@@ -37,7 +37,18 @@ lensbench info     system.zmx --glass-dir <AGF のフォルダ>
 lensbench spot     system.zmx --field 2 --wave 1
 lensbench wavefront system.zmx --n 64
 lensbench zernike  system.zmx --kind fringe --terms 37
+lensbench coatings system.zmx --table coat_tables.ctab
 ```
+
+`coatings` は全コンフィグの境界（`膜|前の媒質|後の媒質`）と膜の扱い（膜なし、理想膜、膜ファイルの薄膜・表、実測表）を一覧にし、
+偏光追跡に実測表が要る境界（暗号化された膜など）を `needs_table` に挙げる。
+
+### 膜の実測表（LBCT 形式）
+
+暗号化された膜（.ZEC）は復号せず、OpticStudio の偏光追跡で測った境界の複素 s・p 係数の表を使う。
+テキストで、`LBCT 1` の行のあとに `KEY 膜|前の媒質|後の媒質`、`WAVE 波長[µm]`、`入射角[deg] Re s Im s Re p Im p` の行が続く
+（詳しくは `lensbench_core::coating::parse_measured`）。ライブラリでは `Coatings::load_measured` で読み、
+`System::try_trace_pol` に渡す。
 
 ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。
 

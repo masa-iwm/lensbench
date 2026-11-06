@@ -139,3 +139,74 @@ fn first_surface_ignored() {
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(v["spot"][0]["rms_centroid"].as_f64().unwrap().is_finite());
 }
+
+#[test]
+fn coatings_lists_interfaces_and_missing_tables() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let glass = format!("{root}/tests/glass");
+    let (ok, out, err) = run(&["coatings", ZMX, "--glass-dir", &glass, "--json"]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let ifs = v["configurations"][0]["interfaces"].as_array().unwrap();
+    assert!(ifs.len() >= 4);
+    assert!(ifs.iter().all(|x| x["kind"] == "bare"));
+    assert_eq!(v["needs_table"].as_array().unwrap().len(), 0);
+
+    // 面 1 に膜ファイルにない膜を付けると、実測表が要る
+    let raw = std::fs::read(format!("{root}/{ZMX}")).unwrap();
+    let u16s: Vec<u16> = raw[2..]
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let txt = String::from_utf16(&u16s).unwrap();
+    let txt = txt.replacen("SURF 1\r\n", "SURF 1\r\n  COAT ZEC_X\r\n", 1);
+    let dir = std::env::temp_dir().join(format!("lensbench-cli-coat-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("a0_coat.zmx");
+    std::fs::write(&p, txt).unwrap();
+    let (ok, out, err) = run(&[
+        "coatings",
+        p.to_str().unwrap(),
+        "--glass-dir",
+        &glass,
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let need = v["needs_table"].as_array().unwrap();
+    assert_eq!(need.len(), 1);
+    let key = need[0]["key"].as_str().unwrap().to_string();
+    assert!(key.starts_with("ZEC_X|AIR|"), "{key}");
+    assert_eq!(need[0]["wavelengths_um"].as_array().unwrap().len(), 3);
+
+    // 実測表を渡すと measured になる
+    let wls: Vec<f64> = need[0]["wavelengths_um"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap())
+        .collect();
+    let mut t = format!("LBCT 1\nKEY {key}\n");
+    for w in &wls {
+        t += &format!("WAVE {w:?}\n");
+        for a in 0..=60 {
+            t += &format!("{a}.0 0.98 0 0.98 0\n");
+        }
+    }
+    let tp = dir.join("t.ctab");
+    std::fs::write(&tp, t).unwrap();
+    let (ok, out, err) = run(&[
+        "coatings",
+        p.to_str().unwrap(),
+        "--glass-dir",
+        &glass,
+        "--table",
+        tp.to_str().unwrap(),
+        "--json",
+    ]);
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["needs_table"].as_array().unwrap().len(), 0);
+    assert_eq!(v["configurations"][0]["interfaces"][0]["kind"], "measured");
+}

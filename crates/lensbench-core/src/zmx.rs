@@ -184,6 +184,35 @@ fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> f64 {
         .unwrap_or(default)
 }
 
+impl Raw {
+    /// マルチコンフィグの数（MNUM、なければ 1）
+    pub fn configurations(&self) -> usize {
+        (sys_f(self, "MNUM", 0, 1.0) as usize).max(1)
+    }
+
+    /// ガラスカタログの名前（GCAT）
+    pub fn catalogs(&self) -> Vec<String> {
+        self.sysl
+            .get("GCAT")
+            .and_then(|v| v.first())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// 膜ファイルの名前（COFN の最初の項目。OpticStudio の Coatings フォルダから探す名前）
+    pub fn coating_file_name(&self) -> Option<String> {
+        let rows = self.sysl.get("COFN")?;
+        let pick = |a: &Vec<String>| {
+            let a: Vec<&String> = a.iter().filter(|v| v.as_str() != "QF").collect();
+            a.first().map(|v| v.trim_matches('"').to_string())
+        };
+        rows.iter()
+            .find(|a| a.first().map(|v| v.as_str()) == Some("QF"))
+            .and_then(pick)
+            .or_else(|| rows.first().and_then(pick))
+    }
+}
+
 /// 読込の追加指定。
 #[derive(Debug, Clone, Default)]
 pub struct LoadOptions {

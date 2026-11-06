@@ -169,6 +169,171 @@ pub struct Measured {
     pub data: Vec<Vec<[C64; 2]>>,
 }
 
+/// 境界の膜の扱い
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoatKind {
+    /// 膜なし（フレネル、鏡は金属基板）
+    Bare,
+    /// 理想膜 I.xx
+    Ideal,
+    /// 膜ファイルの薄膜（鏡）
+    Stack,
+    /// 膜ファイルの表
+    Table,
+    /// 実測表
+    Measured,
+    /// 膜ファイルの薄膜だが透過（未対応。実測表があれば使う）
+    Unsupported,
+    /// 膜ファイルになく、実測表もない（暗号化された膜など）
+    Missing,
+}
+
+impl CoatKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            CoatKind::Bare => "bare",
+            CoatKind::Ideal => "ideal",
+            CoatKind::Stack => "stack",
+            CoatKind::Table => "table",
+            CoatKind::Measured => "measured",
+            CoatKind::Unsupported => "unsupported",
+            CoatKind::Missing => "missing",
+        }
+    }
+
+    /// 実測表が要る（なければ偏光追跡が止まる）
+    pub fn needs_table(self) -> bool {
+        matches!(self, CoatKind::Unsupported | CoatKind::Missing)
+    }
+}
+
+/// 読込中の KEY: (キー, [(波長, [(角度, (s, p))])])
+type Pending = (String, Vec<(f64, Vec<(f64, [C64; 2])>)>);
+
+/// 実測表のファイル形式の 1 行目
+pub const MEASURED_HEADER: &str = "LBCT 1";
+
+/// 実測表のファイル（テキスト、UTF-8）を読む。
+///
+/// ```text
+/// LBCT 1
+/// # コメント
+/// KEY 膜|前の媒質|後の媒質（鏡は MIRROR）
+/// WAVE 波長 [µm]
+/// 入射角 [deg]  Re s  Im s  Re p  Im p      （角度の昇順。全反射より先は nan）
+/// ...
+/// WAVE ...
+/// KEY ...
+/// ```
+///
+/// 係数は OpticStudio の偏光追跡の約束（透過、鏡では反射。パワー規格化、p = s × k、伝搬の位相なし）。
+/// 1 つの KEY の中では、どの波長も同じ角度の並びにする。
+pub fn parse_measured(txt: &str) -> Result<Vec<(String, Measured)>> {
+    let mut out: Vec<(String, Measured)> = Vec::new();
+    let mut header = false;
+    // 今の KEY の (波長, [(角度, s, p)])
+    let mut cur: Option<Pending> = None;
+    fn finish(cur: Option<Pending>, out: &mut Vec<(String, Measured)>) -> Result<()> {
+        let Some((key, waves)) = cur else {
+            return Ok(());
+        };
+        if waves.is_empty() || waves.iter().any(|w| w.1.is_empty()) {
+            invalid!("実測表 {key} にデータがない");
+        }
+        let angles: Vec<f64> = waves[0].1.iter().map(|r| r.0).collect();
+        if waves
+            .iter()
+            .any(|w| w.1.iter().map(|r| r.0).ne(angles.iter().copied()))
+        {
+            invalid!("実測表 {key}: 波長ごとに角度の並びが違う");
+        }
+        if out.iter().any(|(k, _)| *k == key) {
+            invalid!("実測表 {key} が 2 回ある");
+        }
+        let m = Measured {
+            wavelengths: waves.iter().map(|w| w.0).collect(),
+            angles_deg: angles,
+            data: waves
+                .iter()
+                .map(|w| w.1.iter().map(|r| r.1).collect())
+                .collect(),
+        };
+        out.push((key, m));
+        Ok(())
+    }
+    for (ln, line) in txt.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if !header {
+            if line != MEASURED_HEADER {
+                invalid!("実測表の 1 行目が {MEASURED_HEADER} でない");
+            }
+            header = true;
+            continue;
+        }
+        let n = |s: &str| -> Result<f64> {
+            s.parse::<f64>()
+                .map_err(|_| Error::Invalid(format!("実測表の {} 行目の数値 {s}", ln + 1)))
+        };
+        if let Some(k) = line.strip_prefix("KEY ") {
+            finish(cur.take(), &mut out)?;
+            cur = Some((k.trim().to_string(), Vec::new()));
+        } else if let Some(w) = line.strip_prefix("WAVE ") {
+            let Some(c) = cur.as_mut() else {
+                invalid!("実測表の {} 行目: KEY より前に WAVE", ln + 1);
+            };
+            c.1.push((n(w.trim())?, Vec::new()));
+        } else {
+            let t: Vec<&str> = line.split_whitespace().collect();
+            let Some(w) = cur.as_mut().and_then(|c| c.1.last_mut()) else {
+                invalid!("実測表の {} 行目: WAVE より前にデータ", ln + 1);
+            };
+            if t.len() != 5 {
+                invalid!(
+                    "実測表の {} 行目: 角度と係数 4 つ（Re s Im s Re p Im p）",
+                    ln + 1
+                );
+            }
+            let a = n(t[0])?;
+            if let Some(&(b, _)) = w.1.last() {
+                if !(a > b) {
+                    invalid!("実測表の {} 行目: 角度が昇順でない", ln + 1);
+                }
+            }
+            let v = [C64::new(n(t[1])?, n(t[2])?), C64::new(n(t[3])?, n(t[4])?)];
+            w.1.push((a, v));
+        }
+    }
+    if !header {
+        invalid!("実測表が空");
+    }
+    finish(cur, &mut out)?;
+    Ok(out)
+}
+
+/// 実測表をファイルの形式（[`parse_measured`]）にする
+pub fn format_measured(entries: &[(&str, &Measured)]) -> String {
+    use std::fmt::Write;
+    let mut s = format!("{MEASURED_HEADER}\n");
+    for (k, m) in entries {
+        writeln!(s, "KEY {k}").unwrap();
+        for (w, row) in m.wavelengths.iter().zip(&m.data) {
+            writeln!(s, "WAVE {w:?}").unwrap();
+            for (a, v) in m.angles_deg.iter().zip(row) {
+                writeln!(
+                    s,
+                    "{a:?} {:?} {:?} {:?} {:?}",
+                    v[0].re, v[0].im, v[1].re, v[1].im
+                )
+                .unwrap();
+            }
+        }
+    }
+    s
+}
+
 /// 系の膜: 膜ファイルと実測表
 #[derive(Debug, Clone, Default)]
 pub struct Coatings {
@@ -201,6 +366,43 @@ impl Coatings {
         }
         self.measured.insert(key.to_string(), m);
         Ok(())
+    }
+
+    /// 境界 key の膜の扱い（prepare と同じ順で判定する）
+    pub fn kind(&self, key: &str) -> CoatKind {
+        let mut it = key.splitn(3, '|');
+        let coat = it.next().unwrap_or("");
+        let mirror = it.nth(1) == Some("MIRROR");
+        if self.file.table.contains_key(coat) {
+            CoatKind::Table
+        } else if coat == "-" {
+            CoatKind::Bare
+        } else if coat.starts_with("I.") {
+            CoatKind::Ideal
+        } else if mirror && self.file.coat.contains_key(coat) {
+            CoatKind::Stack
+        } else if self.measured.contains_key(key) {
+            CoatKind::Measured
+        } else if self.file.coat.contains_key(coat) {
+            CoatKind::Unsupported
+        } else {
+            CoatKind::Missing
+        }
+    }
+
+    /// 実測表のファイル（[`parse_measured`] の形式）を読み、表の数を返す
+    pub fn load_measured(&mut self, path: &Path) -> Result<usize> {
+        let txt = std::fs::read_to_string(path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let v = parse_measured(&txt).map_err(|e| match e {
+            Error::Invalid(m) => Error::Invalid(format!("{}: {m}", path.display())),
+            e => e,
+        })?;
+        let n = v.len();
+        for (k, m) in v {
+            self.add_measured(&k, m)?;
+        }
+        Ok(n)
     }
 
     /// 材料の複素屈折率（MATE の表、なければ系のガラス）
@@ -261,10 +463,7 @@ impl Coatings {
                 .map_err(|_| Error::Invalid(format!("理想膜 {coat}")))?;
             let v = if mirror { -(1.0 - t).sqrt() } else { t.sqrt() };
             Kind::Ideal(C64::new(v, 0.0))
-        } else if let Some(ls) = self.file.coat.get(coat) {
-            if !mirror {
-                notimpl!("透過する薄膜 {coat}（光線相当の位相が未確認）");
-            }
+        } else if let Some(ls) = self.file.coat.get(coat).filter(|_| mirror) {
             let wl_ref = sys.wavelengths[sys.primary];
             let mut layers = Vec::with_capacity(ls.len());
             for l in ls {
@@ -285,7 +484,11 @@ impl Coatings {
                 d_diel,
             }
         } else {
+            // 実測表: 暗号化された膜と、透過する薄膜（光線相当の位相が未確認なので、表があればそちらを使う）
             let Some(m) = self.measured.get(key) else {
+                if self.file.coat.contains_key(coat) {
+                    notimpl!("透過する薄膜 {coat}（光線相当の位相が未確認。境界 {key} の実測表があれば使う）");
+                }
                 notimpl!(
                     "膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もない（暗号化された膜？）"
                 );
@@ -707,6 +910,72 @@ mod tests {
         for v in [-1.2, -0.95, -0.3, 0.1, 0.7, 1.3] {
             assert!((s.eval(v) - f(v)).abs() < 1e-12, "{v}");
         }
+    }
+
+    #[test]
+    fn measured_file_round_trip() {
+        let m = Measured {
+            wavelengths: vec![0.84, 0.85],
+            angles_deg: vec![0.0, 10.0, 20.0],
+            data: vec![
+                vec![[C64::new(0.9, -0.1), C64::new(0.8, 0.05)]; 3],
+                vec![
+                    [C64::new(0.1, 0.2), C64::new(0.3, 0.4)],
+                    [C64::new(1.0 / 3.0, 0.0), C64::new(0.0, -1e-17)],
+                    [C64::new(f64::NAN, f64::NAN), C64::new(f64::NAN, f64::NAN)],
+                ],
+            ],
+        };
+        let txt = format_measured(&[("X|AIR|N-BK7", &m), ("Y|AIR|MIRROR", &m)]);
+        let v = parse_measured(&txt).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[1].0, "Y|AIR|MIRROR");
+        let r = &v[0].1;
+        assert_eq!(r.wavelengths, m.wavelengths);
+        assert_eq!(r.angles_deg, m.angles_deg);
+        assert_eq!(r.data[1][1], m.data[1][1]);
+        assert!(r.data[1][2][0].re.is_nan());
+        // 誤り
+        for bad in [
+            "",
+            "LBCT 2\n",
+            "LBCT 1\nWAVE 0.5\n",
+            "LBCT 1\nKEY A|AIR|B\n0 1 0 1 0\n",
+            "LBCT 1\nKEY A|AIR|B\nWAVE 0.5\n0 1 0 1\n",
+            "LBCT 1\nKEY A|AIR|B\nWAVE 0.5\n1 1 0 1 0\n0 1 0 1 0\n",
+            "LBCT 1\nKEY A|AIR|B\nWAVE 0.5\n0 1 0 1 0\nWAVE 0.6\n1 1 0 1 0\n",
+            "LBCT 1\nKEY A|AIR|B\n",
+            "LBCT 1\nKEY A|AIR|B\nWAVE 0.5\n0 1 0 1 0\nKEY A|AIR|B\nWAVE 0.5\n0 1 0 1 0\n",
+        ] {
+            assert!(parse_measured(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn kinds() {
+        let mut c = Coatings {
+            file: CoatingFile::parse(
+                "COAT AR\nN15 0.25\nTABLE T\nANGL 0\nWAVE 0.5 0 0 1 1\nMATE N15\n0.5 1.5 0\n",
+            )
+            .unwrap(),
+            measured: HashMap::new(),
+        };
+        assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
+        assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);
+        assert_eq!(c.kind("AR|AIR|MIRROR"), CoatKind::Stack);
+        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Unsupported);
+        assert_eq!(c.kind("T|AIR|N-BK7"), CoatKind::Table);
+        assert_eq!(c.kind("ZEC|AIR|N-BK7"), CoatKind::Missing);
+        let m = Measured {
+            wavelengths: vec![0.5],
+            angles_deg: vec![0.0, 1.0],
+            data: vec![vec![[C64::new(1.0, 0.0); 2]; 2]],
+        };
+        c.add_measured("AR|AIR|N-BK7", m.clone()).unwrap();
+        c.add_measured("ZEC|AIR|N-BK7", m).unwrap();
+        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Measured);
+        assert_eq!(c.kind("ZEC|AIR|N-BK7"), CoatKind::Measured);
+        assert!(CoatKind::Missing.needs_table() && !CoatKind::Measured.needs_table());
     }
 
     #[test]
