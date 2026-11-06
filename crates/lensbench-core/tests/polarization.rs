@@ -237,6 +237,28 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     assert!(t.trace.ok(0) && t.trace.rays[1].vig == j);
     assert!(t.e[0][0][0].norm().is_finite());
     assert!(t.e[1][0][0].re.is_nan());
+    // 後ろの面（像面の手前）でけられる光線も止めない
+    s.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+    let img = s.image();
+    s.surfaces[img - 1].ap = lensbench_core::surface::Aperture::Circular {
+        min: 0.0,
+        max: 1e-3,
+        dx: 0.0,
+        dy: 0.0,
+    };
+    let t = s
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0, 0.0],
+            &[0.1, 1.0],
+            None,
+            &[X],
+            &c,
+        )
+        .unwrap();
+    assert!(t.trace.rays[1].vig == img - 1 && t.trace.rays[1].err == 0);
+    assert!(t.e[1][0][0].re.is_nan());
+    s.surfaces[img - 1].ap = lensbench_core::surface::Aperture::None;
     // けられていない光線が範囲外なら止める
     s.surfaces[j].ap = lensbench_core::surface::Aperture::None;
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
