@@ -1,0 +1,3 @@
+*.npz binary
+*.zmx -text
+*.AGF -text

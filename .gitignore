@@ -1,0 +1,21 @@
+/target
+# 再配布できない第三者データ（非公開側に置く）
+*.ZMF
+*.zmf
+*.ZEC
+*.zec
+*.ZDA
+*.zda
+*.ZAR
+*.zar
+/catalogs/vendor/
+/crates/lensbench-py/target
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+/node_modules/
+
+# ドキュメントサイトの自動生成ページ（scripts/gen_docs.py）
+/docs/reference/cli.md
+/docs/reference/python-api.md
+/docs/gen/
