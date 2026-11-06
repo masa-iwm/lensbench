@@ -113,3 +113,29 @@ fn vignetting_factors_in_a_tilted_system() {
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(v["wavefront"][0]["rms"].as_f64().unwrap().is_finite());
 }
+
+/// 無限遠物体で面 1 が無視（IGNR）でも追跡できる（光路長の基準は次の有効な面）
+#[test]
+fn first_surface_ignored() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let raw = std::fs::read(format!("{root}/tests/refs/A0/system.zmx")).unwrap();
+    let u16s: Vec<u16> = raw[2..]
+        .chunks(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    let txt = String::from_utf16(&u16s).unwrap();
+    assert!(txt.contains("SURF 1\r\n"));
+    let txt = txt.replacen("SURF 1\r\n", "SURF 1\r\n  IGNR 1\r\n", 1);
+    let dir = std::env::temp_dir().join(format!("lensbench-cli-ignr-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("a0_ignr1.zmx");
+    std::fs::write(&p, txt).unwrap();
+    let glass = format!("{root}/tests/glass");
+    let (ok, out, err) = run(&["spot", p.to_str().unwrap(), "--glass-dir", &glass, "--json"]);
+    let (ok2, _, err2) = run(&["wavefront", p.to_str().unwrap(), "--glass-dir", &glass]);
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(ok, "{err}");
+    assert!(ok2, "{err2}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert!(v["spot"][0]["rms_centroid"].as_f64().unwrap().is_finite());
+}
