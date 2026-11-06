@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rayon = "1"
 
 [dev-dependencies]
 ndarray = "0.16"
