@@ -1,0 +1,11 @@
+/target
+# 再配布できない第三者データ（lensbench-private に置く）
+*.ZMF
+*.zmf
+*.ZEC
+*.zec
+*.ZDA
+*.zda
+*.ZAR
+*.zar
+/catalogs/vendor/
