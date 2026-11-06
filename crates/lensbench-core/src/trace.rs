@@ -1,0 +1,271 @@
+//! 実光線の追跡の核（1 本ずつ）。
+//!
+//! 光線が面に当たらない・全反射するとその面で止まり（err = 面番号、以後 NaN）、開口の外に出た光線は
+//! 先へ進む（vig = 最初の面）。OpticStudio のバッチ追跡と同じ扱い。
+
+use crate::math::*;
+use crate::surface::{Aperture, SurfType};
+use crate::system::{Frames, System};
+
+#[derive(Debug, Clone, Copy)]
+pub struct RayOut {
+    /// 最後の面の局所座標での位置・方向（方向は物理的な向き）
+    pub xyz: V3,
+    pub lmn: V3,
+    /// 幾何的な光路長（理想レンズの位相を含まない）
+    pub opl: f64,
+    pub err: usize,
+    pub vig: usize,
+    /// 大域の位置・方向
+    pub p: V3,
+    pub k: V3,
+    /// 理想レンズの位相（OPD に足す）
+    pub lens_opd: f64,
+}
+
+/// 面ごとの記録
+#[derive(Debug, Clone, Copy)]
+pub struct RecEntry {
+    pub surf: usize,
+    pub xyz: V3,
+    pub lmn: V3,
+    pub opl: f64,
+    pub p: V3,
+}
+
+/// 偶数次非球面のサグと d サグ / d(r^2)
+pub fn sag(c: f64, k: f64, asph: &[f64], r2: f64) -> (f64, f64) {
+    let arg = 1.0 - (1.0 + k) * c * c * r2;
+    let root = if c != 0.0 { arg.max(0.0).sqrt() } else { 1.0 };
+    let mut z = c * r2 / (1.0 + root);
+    let mut dz = if c != 0.0 {
+        if arg > 0.0 {
+            c / (2.0 * root)
+        } else {
+            f64::NAN
+        }
+    } else {
+        0.0
+    };
+    for (i, &a) in asph.iter().enumerate() {
+        if a != 0.0 {
+            let i = (i + 1) as i32;
+            z += a * r2.powi(i);
+            dz += i as f64 * a * r2.powi(i - 1);
+        }
+    }
+    (z, dz)
+}
+
+const NAN3: V3 = [f64::NAN; 3];
+
+/// 理想レンズ（焦点距離 f の薄肉、z = 0 面）: 新しい方向と OPD 用の位相
+fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
+    let sz = kl[2].signum();
+    let t = [kl[0] / kl[2].abs(), kl[1] / kl[2].abs()];
+    let r = [pl[0], pl[1]];
+    let t2 = [t[0] - r[0] / f, t[1] - r[1] / f];
+    let nn = (1.0 + t2[0] * t2[0] + t2[1] * t2[1]).sqrt();
+    let k2 = [t2[0] / nn, t2[1] / nn, sz / nn];
+    let rr = [r[0], r[1], 0.0];
+    if !z_obj.is_finite() || z_obj.abs() > 1e12 {
+        let ff = [f * t[0], f * t[1], f];
+        let kin = scale(kl, sz);
+        return (
+            k2,
+            f.signum() * (norm(ff) - norm(sub(ff, rr)) - dot(kin, rr)),
+        );
+    }
+    let p = [r[0] + t[0] * z_obj, r[1] + t[1] * z_obj, z_obj];
+    let zi = 1.0 / (1.0 / f + 1.0 / z_obj);
+    let pi = [p[0] * (zi / z_obj), p[1] * (zi / z_obj), zi];
+    let s_in = (-z_obj).signum() * norm(sub(rr, p));
+    let s_out = zi.signum() * norm(sub(pi, rr));
+    let s_in0 = (-z_obj).signum() * norm(p);
+    let s_out0 = zi.signum() * norm(pi);
+    (k2, (s_in0 + s_out0) - (s_in + s_out))
+}
+
+/// 大域の位置 p・方向 k、光路長 opl の光線を、面 first の直前から面 last まで、波長 w で追跡する
+#[allow(clippy::too_many_arguments)]
+pub fn trace_ray(
+    sys: &System,
+    fr: &Frames,
+    w: usize,
+    mut p: V3,
+    mut k: V3,
+    mut opl: f64,
+    first: usize,
+    last: usize,
+    floating_clip: bool,
+    mut rec: Option<&mut Vec<RecEntry>>,
+) -> RayOut {
+    let sf = &sys.surfaces;
+    let mut err = 0usize;
+    let mut vig = 0usize;
+    let mut nprev = sys.index_before(first, w);
+    let mut lens_opd = 0.0;
+    let mut loc = (NAN3, NAN3);
+    for j in first..=last {
+        let d = &sf[j];
+        if d.ignore {
+            continue;
+        }
+        let f = fr.surf[j].unwrap();
+        let (o, rm) = (f.o, f.r);
+        if err != 0 {
+            let pl = NAN3;
+            loc = (pl, NAN3);
+            p = NAN3;
+            k = NAN3;
+            if let Some(r) = rec.as_deref_mut() {
+                r.push(RecEntry {
+                    surf: j,
+                    xyz: pl,
+                    lmn: NAN3,
+                    opl: f64::NAN,
+                    p: NAN3,
+                });
+            }
+            continue;
+        }
+        let mut pl = mtv(&rm, sub(p, o));
+        let mut kl = mtv(&rm, k);
+        // 頂点面へ
+        let s = -pl[2] / kl[2];
+        if !s.is_finite() {
+            err = j;
+        }
+        pl = add(pl, scale(kl, s));
+        opl += nprev * s;
+        let curved = matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
+            && (d.c != 0.0 || !d.asph.is_empty());
+        if err == 0 && curved {
+            let (c, kc) = (d.c, d.k);
+            let mut s = 0.0;
+            if c != 0.0 {
+                let ff = c * (pl[0] * pl[0] + pl[1] * pl[1]);
+                let gg = kl[2] - c * (pl[0] * kl[0] + pl[1] * kl[1]);
+                let aa = c * (kl[0] * kl[0] + kl[1] * kl[1] + (1.0 + kc) * kl[2] * kl[2]);
+                let disc = gg * gg - aa * ff;
+                if !(disc >= 0.0) {
+                    err = j;
+                }
+                s = ff / (gg + gg.signum() * disc.max(0.0).sqrt());
+                if !s.is_finite() && err == 0 {
+                    err = j;
+                }
+            }
+            if d.has_asph() && err == 0 {
+                let mut ds = 0.0;
+                for _ in 0..60 {
+                    let q = add(pl, scale(kl, s));
+                    let r2 = q[0] * q[0] + q[1] * q[1];
+                    let (z, dz) = sag(c, kc, &d.asph, r2);
+                    ds = (q[2] - z) / (kl[2] - 2.0 * dz * (q[0] * kl[0] + q[1] * kl[1]));
+                    s -= ds;
+                    if !(ds.abs() > 1e-14) {
+                        break;
+                    }
+                }
+                if !(ds.abs() <= 1e-10) {
+                    err = j;
+                }
+            }
+            pl = add(pl, scale(kl, s));
+            opl += nprev * s;
+        }
+        // 開口
+        let clip = match d.ap {
+            Aperture::None => None,
+            Aperture::Floating { .. } if !floating_clip => None,
+            a => Some(a),
+        };
+        if let Some(a) = clip {
+            let out = match a {
+                Aperture::Circular { min, max, dx, dy } => {
+                    let r = (pl[0] - dx).hypot(pl[1] - dy);
+                    r > max + 1e-9 || r < min - 1e-9
+                }
+                Aperture::Floating { semi } => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+                Aperture::Obsc { min, max, dx, dy } => {
+                    let r = (pl[0] - dx).hypot(pl[1] - dy);
+                    r <= max + 1e-9 && r >= min - 1e-9
+                }
+                Aperture::Rect { hx, hy, dx, dy } => {
+                    (pl[0] - dx).abs() > hx + 1e-9 || (pl[1] - dy).abs() > hy + 1e-9
+                }
+                Aperture::None => false,
+            };
+            if out && vig == 0 && err == 0 {
+                vig = j;
+            }
+        }
+        let mut nn = d.n[w];
+        match d.typ {
+            SurfType::CoordBrk => nn = nprev,
+            SurfType::Paraxial => {
+                let (k2, dl) = paraxial(d.focal, pl, kl, sys.lens_conjugate(j));
+                kl = k2;
+                lens_opd += dl;
+            }
+            _ => {
+                let nvec = if d.typ == SurfType::EvenAsph && d.has_asph() {
+                    let (_, dz) = sag(d.c, d.k, &d.asph, pl[0] * pl[0] + pl[1] * pl[1]);
+                    if !dz.is_finite() && err == 0 {
+                        err = j;
+                    }
+                    [-2.0 * dz * pl[0], -2.0 * dz * pl[1], 1.0]
+                } else if d.c == 0.0 {
+                    [0.0, 0.0, 1.0]
+                } else {
+                    [-d.c * pl[0], -d.c * pl[1], 1.0 - d.c * (1.0 + d.k) * pl[2]]
+                };
+                let nv = normalize(nvec);
+                let cosi = dot(kl, nv);
+                if d.mirror {
+                    kl = sub(kl, scale(nv, 2.0 * cosi));
+                    nn = nprev;
+                } else if d.typ != SurfType::Jones && nn != nprev {
+                    let mu = nprev / nn;
+                    let disc = 1.0 - mu * mu * (1.0 - cosi * cosi);
+                    if disc < 0.0 && err == 0 {
+                        err = j;
+                    }
+                    kl = add(
+                        scale(kl, mu),
+                        scale(nv, cosi.signum() * disc.max(0.0).sqrt() - mu * cosi),
+                    );
+                }
+            }
+        }
+        if err != 0 {
+            pl = NAN3;
+            kl = NAN3;
+            opl = f64::NAN;
+        }
+        p = add(o, mv(&rm, pl));
+        k = mv(&rm, kl);
+        nprev = nn;
+        loc = (pl, kl);
+        if let Some(r) = rec.as_deref_mut() {
+            r.push(RecEntry {
+                surf: j,
+                xyz: pl,
+                lmn: kl,
+                opl,
+                p,
+            });
+        }
+    }
+    RayOut {
+        xyz: loc.0,
+        lmn: loc.1,
+        opl,
+        err,
+        vig,
+        p,
+        k,
+        lens_opd,
+    }
+}
