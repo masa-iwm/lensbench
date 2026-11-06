@@ -1,0 +1,39 @@
+{
+ "wave_um": 0.5875618,
+ "field": 0,
+ "pupil_px": [
+  0,
+  0,
+  0,
+  0.7,
+  -0.5,
+  0.3,
+  0,
+  1,
+  -0.6
+ ],
+ "pupil_py": [
+  0,
+  1,
+  -1,
+  0,
+  0.5,
+  -0.6,
+  0.4,
+  0,
+  -0.8
+ ],
+ "opd_waves_OPDC": [
+  0,
+  -164.8025625247727,
+  -164.8025625247727,
+  -213.26429155148514,
+  -150.3433707065552,
+  -98.93330112256228,
+  -26.639189579166775,
+  -436.1461327036572,
+  -262.7717505934803
+ ],
+ "notes": "OPDC operand (OPD wrt chief ray, waves), primary wave, on-axis field; RMS/P-V from Wavefront Map (field 1, wave 2, see wfm_settings)",
+ "wavefront_map": {}
+}

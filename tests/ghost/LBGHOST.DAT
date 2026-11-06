@@ -1,0 +1,8 @@
+! lensbench ghost check (lensbench_ghost_check). L n=1.38, H n=2.1, no absorption.
+MATE L
+0.55 1.38 0
+MATE H
+0.55 2.1 0
+COAT AR2
+L 0.11 1 0
+H 0.06 1 0

@@ -1,0 +1,5 @@
+{ "glass_catalogs": ["SCHOTT"],
+  "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}], "primary": 2,
+  "aperture": {"type": "na", "value": 0.05},
+  "fields": {"type": "object_height", "points": [[0, 0], [0, 1.5], [1, -1]]},
+  "object_distance": 50, "name": "cube_R", "path": "R", "blocks": [{"type": "stop", "semi": 3}, {"type": "air", "t": 10}, {"type": "splitter", "id": "BS", "form": "cube", "size": 12, "glass": "N-BK7", "coat": "BS3", "ar": "AR2"}, {"type": "air", "t": 20}, {"type": "lens", "source": {"surfaces": [{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 8}, {"radius": -60, "semi": 8}]}}, {"type": "air", "t": 60}] }

@@ -1,0 +1,165 @@
+System/Prescription Data
+
+
+
+File : C1.zmx
+
+Title: 
+
+Date : 2026/11/08
+
+
+
+
+
+GENERAL LENS DATA:
+
+
+
+Surfaces                : 	               3
+
+Stop                    : 	               1
+
+System Aperture         : 	Entrance Pupil Diameter = 	8
+
+Fast Semi-Diameters     :	On 
+
+Field Unpolarized       :	On
+
+Convert thin film phase to ray equivalent :	On 
+
+J/E Conversion Method   :	X Axis Reference  
+
+Glass Catalogs          : 	SCHOTT 
+
+Ray Aiming              :	Off
+
+Apodization             : 	Uniform, factor = 	   0.00000E+00
+
+Reference OPD           :	Exit Pupil  
+
+Paraxial Rays Setting   :	Ignore Coordinate Breaks  
+
+Method to Compute F/#   :	Tracing Rays  
+
+Method to Compute Huygens Integral   : Auto
+
+Print Coordinate Breaks :	On
+
+Multi-Threading         :	On
+
+OPD Modulo 2 Pi         :	Off
+
+Temperature (C)         : 	    2.00000E+01
+
+Pressure (ATM)          : 	    1.00000E+00
+
+Adjust Index Data To Environment  :	Off
+
+Effective Focal Length  :	        64.49948	(in air at system temperature and pressure)
+
+Effective Focal Length  :	        64.49948	(in image space)
+
+Back Focal Length       :	        64.49948
+
+Total Track             :	              32
+
+Image Space F/#         :	        8.062435
+
+Paraxial Working F/#    :	        11.34477
+
+Working F/#             :	        8.037534
+
+Image Space NA          :	      0.06220814
+
+Object Space NA         :	           4e-10
+
+Stop Radius             :	               4
+
+Paraxial Image Height   :	        3.365935
+
+Paraxial Magnification  :	               0
+
+Entrance Pupil Diameter :	               8
+
+Entrance Pupil Position :	               0
+
+Exit Pupil Diameter     :	        8.166957
+
+Exit Pupil Position     :	       -31.34608
+
+Field Type              : 	Angle in degrees
+
+Maximum Radial Field    :	               3
+
+Primary Wavelength [µm] :	       0.5875618
+
+Angular Magnification   :	       0.9802352
+
+Lens Units              :	   Millimeters
+
+Source Units            :	   Watts 
+
+Analysis Units          :	   Watts/cm^2 
+
+Afocal Mode Units       :	   milliradians
+
+MTF Units               :	   cycles/millimeter 
+
+Include Calculated Data in Session File  :	On 
+
+Include Calculated Data in Session File  :	On 
+
+ 
+
+Fields          : 3
+
+Field Type              : 	Angle in degrees
+
+ #  	   X-Value     	  Y-Value     	   Weight
+
+ 1 	      0.000000 	      0.000000 	      1.000000
+
+ 2 	      0.000000 	      3.000000 	      1.000000
+
+ 3 	      3.000000 	      0.000000 	      1.000000
+
+ 
+
+Vignetting Factors
+
+ #     	VDX     	VDY     	VCX     	VCY     	VAN
+
+ 1 	 0.000000 	 0.000000 	 0.000000 	 0.000000 	 0.000000
+
+ 2 	 0.000000 	 0.000000 	 0.000000 	 0.000000 	 0.000000
+
+ 3 	 0.000000 	 0.000000 	 0.000000 	 0.000000 	 0.000000
+
+ 
+
+Wavelengths     : 3
+
+Units: µm
+
+ #       	Value       	Weight
+
+ 1 	      0.486133 	      1.000000
+
+ 2 	      0.587562 	      1.000000
+
+ 3 	      0.656273 	      1.000000
+
+ 
+
+Predicted coordinate ABCD matrix:
+
+A = 	       31.32
+
+B = 	           0
+
+C = 	           0
+
+D = 	       30.71
+
+ 

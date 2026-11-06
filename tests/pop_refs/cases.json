@@ -1,0 +1,9 @@
+{
+  "note": "OpticStudio POP との照合の条件（OpticStudio 側の測定スクリプトが読む）。start〜end は OpticStudio の POP の面、lb_surf・lb_dist は lensbench の pop の面と距離",
+  "cases": [
+    {"system": "aperture", "wave": 1, "radius": 0.5, "start": 1, "ends": [2, 3, 4, 5], "lb_surf": 1, "lb_dist": [5, 20, 100, 500]},
+    {"system": "lens25", "wave": 1, "radius": 2.0, "start": 1, "ends": [2, 3, 4], "lb_surf": 1, "lb_dist": [99, 100, 101.5]},
+    {"system": "lens5", "wave": 1, "radius": 10.0, "start": 1, "ends": [2, 3, 4], "lb_surf": 1, "lb_dist": [99, 100, 101.5]},
+    {"system": "A0", "wave": 2, "radius": 5.0, "start": 1, "ends": [8], "lb_surf": 7, "lb_dist": [45.621050385677989]}
+  ]
+}

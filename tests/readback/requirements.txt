@@ -1,0 +1,5 @@
+# 書き出しの読み戻し試験の読み込み器。版を固定する（CI の ubuntu-24.04・Python 3.13 で確認）
+numpy==2.5.4
+pytest==9.2.0
+trimesh==5.2.0
+cadquery-ocp==8.0.1.1.0

@@ -1,0 +1,94 @@
+{
+ "waves": [
+  {
+   "first": 1,
+   "last": 4,
+   "wavelength": 0.486133,
+   "focal_length": [
+    -50.0,
+    50.0
+   ],
+   "focal": [
+    -40.0,
+    0.0
+   ],
+   "principal": [
+    10.0,
+    -50.0
+   ],
+   "anti_principal": [
+    -90.0,
+    50.0
+   ],
+   "nodal": [
+    10.0,
+    -50.0
+   ],
+   "anti_nodal": [
+    -90.0,
+    50.0
+   ],
+   "wave": 0
+  },
+  {
+   "first": 1,
+   "last": 4,
+   "wavelength": 0.587562,
+   "focal_length": [
+    -50.0,
+    50.0
+   ],
+   "focal": [
+    -40.0,
+    0.0
+   ],
+   "principal": [
+    10.0,
+    -50.0
+   ],
+   "anti_principal": [
+    -90.0,
+    50.0
+   ],
+   "nodal": [
+    10.0,
+    -50.0
+   ],
+   "anti_nodal": [
+    -90.0,
+    50.0
+   ],
+   "wave": 1
+  },
+  {
+   "first": 1,
+   "last": 4,
+   "wavelength": 0.656273,
+   "focal_length": [
+    -50.0,
+    50.0
+   ],
+   "focal": [
+    -40.0,
+    0.0
+   ],
+   "principal": [
+    10.0,
+    -50.0
+   ],
+   "anti_principal": [
+    -90.0,
+    50.0
+   ],
+   "nodal": [
+    10.0,
+    -50.0
+   ],
+   "anti_nodal": [
+    -90.0,
+    50.0
+   ],
+   "wave": 2
+  }
+ ]
+}

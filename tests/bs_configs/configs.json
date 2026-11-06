@@ -1,0 +1,10 @@
+{
+  "cube": ["T", "R"],
+  "plate": ["T", "R"],
+  "plate_back": ["T", "R"],
+  "tg": ["TT", "TR", "RT", "RR"],
+  "mich": ["TT", "TR", "RT", "RR"],
+  "p16": ["TT", "TR", "RT", "RR"],
+  "p6": ["far", "near", "no L3"],
+  "p7": ["g2 forward", "g2 tilted"]
+}

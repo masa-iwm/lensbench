@@ -1,0 +1,133 @@
+{
+  "wavelengths": [
+    {
+      "um": 0.55
+    },
+    {
+      "um": 0.6328
+    },
+    {
+      "um": 0.8
+    }
+  ],
+  "primary": 2,
+  "aperture": {
+    "type": "epd",
+    "value": 8
+  },
+  "fields": {
+    "type": "angle",
+    "points": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        2,
+        -2
+      ]
+    ]
+  },
+  "blocks": [
+    {
+      "type": "stop"
+    },
+    {
+      "type": "air",
+      "t": 5
+    },
+    {
+      "type": "lens",
+      "source": {
+        "surfaces": [
+          {
+            "t": 3,
+            "glass": "N-BK7"
+          },
+          {
+            "tilt": [
+              1,
+              0.5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "air",
+      "t": 5
+    },
+    {
+      "type": "surfaces",
+      "surfaces": [
+        {
+          "polarizer": {
+            "axis_deg": 30,
+            "extinction_ratio": 100,
+            "transmittance": 0.9
+          }
+        }
+      ]
+    },
+    {
+      "type": "air",
+      "t": 2
+    },
+    {
+      "type": "surfaces",
+      "surfaces": [
+        {
+          "waveplate": {
+            "retardance": 0.25,
+            "wavelength_um": 0.6328,
+            "axis_deg": 75
+          }
+        }
+      ]
+    },
+    {
+      "type": "air",
+      "t": 2
+    },
+    {
+      "type": "surfaces",
+      "surfaces": [
+        {
+          "waveplate": {
+            "retardance": 0.25,
+            "wavelength_um": 0.6328,
+            "axis_deg": 10,
+            "order": 3
+          }
+        }
+      ]
+    },
+    {
+      "type": "air",
+      "t": 3
+    },
+    {
+      "type": "lens",
+      "source": {
+        "surfaces": [
+          {
+            "radius": 30,
+            "t": 4,
+            "glass": "N-BK7"
+          },
+          {
+            "radius": -30
+          }
+        ]
+      }
+    },
+    {
+      "type": "air",
+      "t": 25
+    }
+  ]
+}

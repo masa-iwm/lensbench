@@ -1,0 +1,12 @@
+! lensbench beam splitter check. L n=1.38, H n=2.1, no absorption. Thickness in um.
+MATE L
+0.55 1.38 0
+MATE H
+0.55 2.1 0
+COAT AR2
+L 0.11 1 0
+H 0.06 1 0
+COAT BS3
+H 0.0655 1 0
+L 0.0996 1 0
+H 0.0655 1 0

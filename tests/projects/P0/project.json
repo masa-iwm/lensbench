@@ -1,0 +1,13 @@
+{
+  "glass_catalogs": ["SCHOTT"],
+  "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}],
+  "primary": 2,
+  "aperture": {"type": "epd", "value": 10},
+  "fields": {"type": "angle", "points": [[0, 0], [0, 3], [0, 5]]},
+  "blocks": [
+    {"type": "stop"},
+    {"type": "lens", "source": {"surfaces": [{"radius": 28, "t": 4.5, "glass": "N-BK7"}, {"radius": -45}]}},
+    {"type": "air", "t": 2},
+    {"type": "zmx", "path": "template.zmx", "from": 3}
+  ]
+}
