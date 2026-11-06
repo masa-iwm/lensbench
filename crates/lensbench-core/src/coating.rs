@@ -627,7 +627,10 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
         } else {
             d.mat.clone()
         };
-        if k > 0 && (!d.coat.is_empty() || d.mirror || (d.n[0] - nprev).abs() > 1e-12) {
+        // 名前の違う媒質は、ある波長で屈折率が同じでも境界にする（他の波長でフレネルが抜けないように）
+        if k > 0
+            && (!d.coat.is_empty() || d.mirror || after != prev || (d.n[0] - nprev).abs() > 1e-12)
+        {
             let c = if d.coat.is_empty() { "-" } else { &d.coat };
             let a = if d.mirror { "MIRROR" } else { &after };
             keys[k] = Some(format!("{c}|{prev}|{a}"));

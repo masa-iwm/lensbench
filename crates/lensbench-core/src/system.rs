@@ -863,6 +863,7 @@ impl System {
                     .collect(),
                 surf,
                 err: None,
+                lost: false,
             });
             let mut r = match pr.as_mut() {
                 Some(q) => {

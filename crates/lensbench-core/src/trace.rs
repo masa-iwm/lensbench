@@ -35,6 +35,8 @@ pub struct PolRay<'a> {
     pub surf: &'a [PolSurf],
     /// 係数を求められなかったとき（膜の表の範囲外など）
     pub err: Option<Error>,
+    /// けられた光線で係数を求められなかった（電場は NaN）
+    pub lost: bool,
 }
 
 #[inline]
@@ -52,6 +54,21 @@ fn cdot(e: CV3, v: V3) -> C64 {
 #[inline]
 fn comb(a: C64, u: V3, b: C64, v: V3) -> CV3 {
     [0, 1, 2].map(|i| a * u[i] + b * v[i])
+}
+
+/// 単位ベクトル a を b へ移す最小の回転（ax = a × b、c = a·b）を e にかける（Rodrigues）
+fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
+    if 1.0 + c <= 1e-15 {
+        return CNAN3;
+    }
+    // R e = c e + ax × e + ax (ax·e) / (1 + c)
+    let ae = cdot(e, ax);
+    let x = [
+        e[2] * ax[1] - e[1] * ax[2],
+        e[0] * ax[2] - e[2] * ax[0],
+        e[1] * ax[0] - e[0] * ax[1],
+    ];
+    [0, 1, 2].map(|i| e[i] * c + x[i] + ae * (ax[i] / (1.0 + c)))
 }
 
 const CNAN3: CV3 = [C64::new(f64::NAN, f64::NAN); 3];
@@ -386,6 +403,13 @@ fn trace_core(
             SurfType::CoordBrk => nn = nprev,
             SurfType::Paraxial => {
                 let (k2, dl) = paraxial(d.focal, pl, kl, sys.lens_conjugate(j));
+                // 電場は方向の変化と同じ最小の回転で回す（振幅は変えない。OpticStudio との照合は未確認）
+                if let Some(pr) = pol.as_deref_mut() {
+                    if err == 0 {
+                        let (ax, c) = (cross(kl, k2), dot(kl, k2));
+                        pr.e.iter_mut().for_each(|e| *e = rotate_min(*e, ax, c));
+                    }
+                }
                 kl = k2;
                 lens_opd += dl;
             }
@@ -423,7 +447,12 @@ fn trace_core(
                         if let Err(e) =
                             pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror)
                         {
-                            pr.err.get_or_insert(e);
+                            // けられた光線は電場を NaN にするだけ（束全体は止めない）
+                            if vig == 0 {
+                                pr.err.get_or_insert(e);
+                            } else {
+                                pr.lost = true;
+                            }
                         }
                     }
                 }
@@ -448,7 +477,7 @@ fn trace_core(
         }
     }
     if let Some(pr) = pol {
-        if err != 0 || pr.err.is_some() {
+        if err != 0 || pr.err.is_some() || pr.lost {
             pr.e.iter_mut().for_each(|e| *e = CNAN3);
         }
     }

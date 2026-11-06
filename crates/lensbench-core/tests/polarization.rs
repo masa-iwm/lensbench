@@ -165,3 +165,80 @@ fn measured_tables_are_used_for_unknown_coatings() {
         assert!(matches!(r, Err(Error::NotImplemented(_))));
     }
 }
+
+fn load(name: &str) -> System {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    zmx::load_with(&root.join(format!("tests/refs/{name}/system.zmx")), &opt).unwrap()
+}
+
+#[test]
+fn ideal_lens_keeps_the_field_transverse() {
+    for name in ["D0", "D2"] {
+        let s = load(name);
+        let c = Coatings::for_system(&s).unwrap();
+        let px = [0.0, 0.8, 0.0, -0.6];
+        let py = [0.0, 0.0, 0.9, -0.6];
+        let ys = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
+        let nf = s.fields.len();
+        let t = s
+            .try_trace_pol(FieldSel::Index(nf - 1), &px, &py, None, &[X, ys], &c)
+            .unwrap();
+        for i in 0..px.len() {
+            let k = t.trace.rays[i].lmn;
+            for m in 0..2 {
+                let e = t.e[i][m];
+                let ek = e[0] * k[0] + e[1] * k[1] + e[2] * k[2];
+                assert!(ek.norm() < 1e-12, "{name} {i} {m} {ek}");
+            }
+        }
+    }
+}
+
+#[test]
+fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
+    let mut s = a0();
+    let w = s.primary;
+    let (j, _, _) = interfaces(&s, w)[0];
+    s.surfaces[j].coat = "ZEC1".into();
+    s.surfaces[j].ap = lensbench_core::surface::Aperture::Circular {
+        min: 0.0,
+        max: 2.0,
+        dx: 0.0,
+        dy: 0.0,
+    };
+    let mut c = Coatings::for_system(&s).unwrap();
+    let key = format!("ZEC1|AIR|{}", s.surfaces[j].mat);
+    let ang: Vec<f64> = (0..=8).map(|a| a as f64).collect();
+    let v = [C64::new(0.9, 0.0), C64::new(0.9, 0.0)];
+    c.add_measured(
+        &key,
+        Measured {
+            wavelengths: vec![s.wavelengths[w]],
+            angles_deg: ang.clone(),
+            data: vec![vec![v; ang.len()]],
+        },
+    )
+    .unwrap();
+    let t = s
+        .try_trace_pol(
+            FieldSel::Norm(0.0, 0.0),
+            &[0.0, 0.0],
+            &[0.1, 1.0],
+            None,
+            &[X],
+            &c,
+        )
+        .unwrap();
+    assert!(t.trace.ok(0) && t.trace.rays[1].vig == j);
+    assert!(t.e[0][0][0].norm().is_finite());
+    assert!(t.e[1][0][0].re.is_nan());
+    // けられていない光線が範囲外なら止める
+    s.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+    let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
+    assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
+}
