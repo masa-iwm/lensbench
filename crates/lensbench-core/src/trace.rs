@@ -33,10 +33,8 @@ pub struct PolSurf {
 pub struct PolRay<'a> {
     pub e: Vec<CV3>,
     pub surf: &'a [PolSurf],
-    /// 係数を求められなかったとき（膜の表の範囲外など）
+    /// 係数を求められなかったとき（膜の表の範囲外など）。電場は NaN にする
     pub err: Option<Error>,
-    /// けられた光線で係数を求められなかった（電場は NaN）
-    pub lost: bool,
 }
 
 #[inline]
@@ -447,12 +445,8 @@ fn trace_core(
                         if let Err(e) =
                             pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror)
                         {
-                            // けられた光線は電場を NaN にするだけ（束全体は止めない）
-                            if vig == 0 {
-                                pr.err.get_or_insert(e);
-                            } else {
-                                pr.lost = true;
-                            }
+                            // 光線ごとに持ち、束を止めるかは追跡の後で決める（後ろの面でけられる光線もあるため）
+                            pr.err.get_or_insert(e);
                         }
                     }
                 }
@@ -477,7 +471,7 @@ fn trace_core(
         }
     }
     if let Some(pr) = pol {
-        if err != 0 || pr.err.is_some() || pr.lost {
+        if err != 0 || pr.err.is_some() {
             pr.e.iter_mut().for_each(|e| *e = CNAN3);
         }
     }

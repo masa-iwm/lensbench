@@ -863,7 +863,6 @@ impl System {
                     .collect(),
                 surf,
                 err: None,
-                lost: false,
             });
             let mut r = match pr.as_mut() {
                 Some(q) => {
@@ -900,6 +899,7 @@ impl System {
         let mut es = Vec::new();
         let mut first_err = None;
         for (r, p, k, rec, pe) in out {
+            let through = r.err == 0 && r.vig == 0;
             rays.push(r);
             p0.push(p);
             k0.push(k);
@@ -909,7 +909,9 @@ impl System {
             if let Some(b) = pe {
                 let (e, perr) = *b;
                 es.push(e);
-                if first_err.is_none() {
+                // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
+                // ほかの光線は電場が NaN になるだけ
+                if first_err.is_none() && through {
                     first_err = perr;
                 }
             }
