@@ -5,7 +5,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use lensbench_core::analysis::{self, ZernKind};
-use lensbench_core::{report, zmx, FieldSel, System};
+use lensbench_core::coating::{self, Coatings};
+use lensbench_core::{glass, report, zmx, FieldSel, System};
 use serde_json::{json, Value};
 
 #[derive(Parser)]
@@ -79,6 +80,20 @@ enum Cmd {
         /// 格子の一辺
         #[arg(long, default_value_t = 64)]
         n: usize,
+    },
+    /// 面の膜: 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
+    Coatings {
+        /// .zmx ファイル
+        file: PathBuf,
+        /// ガラスカタログを探すフォルダ（複数可）
+        #[arg(long = "glass-dir")]
+        glass_dir: Vec<PathBuf>,
+        /// 膜の実測表（LBCT 形式、複数可）
+        #[arg(long)]
+        table: Vec<PathBuf>,
+        /// JSON で出力する
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -186,6 +201,12 @@ fn run(cli: Cli) -> Result<(), String> {
                 json!({ "unit": "waves", "kind": kind, "zernike": v }),
             )
         }
+        Cmd::Coatings {
+            file,
+            glass_dir,
+            table,
+            json,
+        } => (json, coatings(&file, &glass_dir, &table)?),
     };
     if json_out {
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -193,6 +214,66 @@ fn run(cli: Cli) -> Result<(), String> {
         print_text(&out, 0);
     }
     Ok(())
+}
+
+fn coatings(
+    file: &std::path::Path,
+    glass_dir: &[PathBuf],
+    tables: &[PathBuf],
+) -> Result<Value, String> {
+    let e = |e: lensbench_core::Error| e.to_string();
+    let txt = glass::read_text(file).map_err(|x| format!("{}: {x}", file.display()))?;
+    let raw = zmx::parse_text(&txt).map_err(e)?;
+    let mut cfgs = Vec::new();
+    // 実測表が要る境界 → (コンフィグ, 波長)
+    let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
+    let mut found = None;
+    for cfg in 1..=raw.configurations() {
+        let opt = zmx::LoadOptions {
+            cfg,
+            catalog_dirs: glass_dir.to_vec(),
+            ..Default::default()
+        };
+        let s = zmx::load_with(file, &opt).map_err(|x| format!("構成 {cfg}: {x}"))?;
+        let mut c = Coatings::for_system(&s).map_err(e)?;
+        for t in tables {
+            c.load_measured(t).map_err(e)?;
+        }
+        found = s.coating_file.clone();
+        let (keys, _) = coating::media_keys(&s);
+        let mut v = Vec::new();
+        for (j, k) in keys.iter().enumerate() {
+            let Some(k) = k else { continue };
+            let kind = c.kind(k);
+            v.push(json!({ "surface": j, "key": k, "kind": kind.name() }));
+            if kind.needs_table() {
+                let i = match need.iter().position(|n| n.0 == *k) {
+                    Some(i) => i,
+                    None => {
+                        need.push((k.clone(), Vec::new(), Vec::new()));
+                        need.len() - 1
+                    }
+                };
+                let n = &mut need[i];
+                if !n.1.contains(&cfg) {
+                    n.1.push(cfg);
+                }
+                for &w in &s.wavelengths {
+                    if !n.2.contains(&w) {
+                        n.2.push(w);
+                    }
+                }
+            }
+        }
+        cfgs.push(json!({ "cfg": cfg, "wavelengths_um": s.wavelengths, "interfaces": v }));
+    }
+    Ok(json!({
+        "coating_file": raw.coating_file_name(),
+        "coating_file_path": found.map(|p| p.display().to_string()),
+        "catalogs": raw.catalogs(),
+        "configurations": cfgs,
+        "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
+    }))
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
