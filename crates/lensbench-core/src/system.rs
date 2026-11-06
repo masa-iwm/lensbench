@@ -13,6 +13,7 @@ use crate::math::*;
 use crate::surface::{After, SurfType, Surface, Tilt};
 use crate::trace::{self, RayOut, RecEntry};
 use crate::{invalid, notimpl};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -81,10 +82,20 @@ pub struct Frame {
     pub r: M3,
 }
 
+/// 局所座標の間の変換 q = r · p + t。`shift` は r が単位行列で t = (0, 0, shift) のとき（共軸の面の間）
+#[derive(Debug, Clone, Copy)]
+pub struct Rel {
+    pub r: M3,
+    pub t: V3,
+    pub shift: Option<f64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Frames {
     /// 面ごと（無視する面と、無限遠の物体面は None）
     pub surf: Vec<Option<Frame>>,
+    /// 面ごとの、直前の有効な面の局所座標からこの面の局所座標への変換（追跡の内側で大域座標を経ずに進むため）
+    pub rel: Vec<Option<Rel>>,
     /// 面 1 の変換の前の座標系（入射瞳を測る物体空間の軸）
     pub obj: Frame,
 }
@@ -164,6 +175,11 @@ struct Cache {
     realh: Mutex<HashMap<(u64, u64), ObjSpec>>,
     conj: Mutex<HashMap<usize, f64>>,
 }
+
+/// これ以上の本数で並列に追う
+const PAR_MIN_RAYS: usize = 512;
+/// 並列のときの 1 タスクあたりの最少本数
+const PAR_CHUNK: usize = 256;
 
 #[derive(Debug)]
 pub struct System {
@@ -804,17 +820,30 @@ impl System {
         let fr = self.frames();
         let last = last.unwrap_or(self.image());
         let st = self.stop();
-        let mut rays = Vec::with_capacity(n);
-        let mut p0 = Vec::with_capacity(n);
-        let mut k0 = Vec::with_capacity(n);
-        let mut recs: Vec<Vec<RecEntry>> = Vec::new();
-        for i in 0..n {
+        let one = |i: usize| {
             let (p, k) = self.start_ray(spec, ex[i], ey[i]);
             let mut rec = if record { Some(Vec::new()) } else { None };
             let mut r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, last, false, rec.as_mut());
             if fail[i] {
                 r.err = st;
             }
+            (r, p, k, rec)
+        };
+        // 光線は互いに独立なので、本数が多いときは並列に追う（結果の順序は入力のまま）
+        let out: Vec<_> = if n >= PAR_MIN_RAYS {
+            (0..n)
+                .into_par_iter()
+                .with_min_len(PAR_CHUNK)
+                .map(one)
+                .collect()
+        } else {
+            (0..n).map(one).collect()
+        };
+        let mut rays = Vec::with_capacity(n);
+        let mut p0 = Vec::with_capacity(n);
+        let mut k0 = Vec::with_capacity(n);
+        let mut recs: Vec<Vec<RecEntry>> = Vec::new();
+        for (r, p, k, rec) in out {
             rays.push(r);
             p0.push(p);
             k0.push(k);
@@ -1068,9 +1097,25 @@ pub fn frames(surfaces: &[Surface], glrs: usize) -> Frames {
                 r: mm(&gt, &f.r),
             })
         })
-        .collect();
+        .collect::<Vec<Option<Frame>>>();
+    let mut rel = vec![None; res.len()];
+    let mut prev: Option<Frame> = None;
+    for (j, f) in res.iter().enumerate() {
+        if let Some(f) = f {
+            if let Some(q) = prev {
+                let ft = transpose(&f.r);
+                let r = mm(&ft, &q.r);
+                let t = mv(&ft, sub(q.o, f.o));
+                let ident = r == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+                let shift = (ident && t[0] == 0.0 && t[1] == 0.0).then_some(t[2]);
+                rel[j] = Some(Rel { r, t, shift });
+            }
+            prev = Some(*f);
+        }
+    }
     Frames {
         surf: res,
+        rel,
         obj: Frame {
             o: mv(&gt, scale(g.o, -1.0)),
             r: gt,

@@ -5,7 +5,7 @@
 
 use crate::math::*;
 use crate::surface::{Aperture, SurfType};
-use crate::system::{Frames, System};
+use crate::system::{Frame, Frames, Rel, System};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
@@ -106,6 +106,9 @@ pub fn trace_ray(
     let mut nprev = sys.index_before(first, w);
     let mut lens_opd = 0.0;
     let mut loc = (NAN3, NAN3);
+    // 直前に通った面の番号（その局所座標 loc から次の面へ直接移る）
+    let mut prev: Option<usize> = None;
+    let mut last_frame: Option<Frame> = None;
     for j in first..=last {
         let d = &sf[j];
         if d.ignore {
@@ -113,11 +116,13 @@ pub fn trace_ray(
         }
         let f = fr.surf[j].unwrap();
         let (o, rm) = (f.o, f.r);
+        last_frame = Some(f);
         if err != 0 {
             let pl = NAN3;
             loc = (pl, NAN3);
             p = NAN3;
             k = NAN3;
+            prev = Some(j);
             if let Some(r) = rec.as_deref_mut() {
                 r.push(RecEntry {
                     surf: j,
@@ -129,8 +134,17 @@ pub fn trace_ray(
             }
             continue;
         }
-        let mut pl = mtv(&rm, sub(p, o));
-        let mut kl = mtv(&rm, k);
+        let (mut pl, mut kl) = match (prev, fr.rel[j]) {
+            (
+                Some(_),
+                Some(Rel {
+                    shift: Some(dz), ..
+                }),
+            ) => ([loc.0[0], loc.0[1], loc.0[2] + dz], loc.1),
+            (Some(_), Some(q)) => (add(mv(&q.r, loc.0), q.t), mv(&q.r, loc.1)),
+            _ => (mtv(&rm, sub(p, o)), mtv(&rm, k)),
+        };
+        prev = Some(j);
         // 頂点面へ
         let s = -pl[2] / kl[2];
         if !s.is_finite() {
@@ -244,11 +258,10 @@ pub fn trace_ray(
             kl = NAN3;
             opl = f64::NAN;
         }
-        p = add(o, mv(&rm, pl));
-        k = mv(&rm, kl);
         nprev = nn;
         loc = (pl, kl);
         if let Some(r) = rec.as_deref_mut() {
+            p = add(o, mv(&rm, pl));
             r.push(RecEntry {
                 surf: j,
                 xyz: pl,
@@ -257,6 +270,11 @@ pub fn trace_ray(
                 p,
             });
         }
+    }
+    // 大域の位置・方向は最後の面でだけ求める
+    if let Some(f) = last_frame {
+        p = add(f.o, mv(&f.r, loc.0));
+        k = mv(&f.r, loc.1);
     }
     RayOut {
         xyz: loc.0,
