@@ -1,0 +1,240 @@
+//! モンテカルロ公差: 乱数・分布・統計、スレッド数によらない結果、補償、簡易設定。
+
+use lensbench_core::optim::{DefaultMerit, Problem, Var};
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::sweep::RmsRef;
+use lensbench_core::tolerance::{self, Dist, LensTol, McSpec, Rng, Tol};
+use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::System;
+use std::path::PathBuf;
+
+fn root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn load(name: &str) -> System {
+    zmx::load_with(
+        &root().join("tests/refs").join(name).join("system.zmx"),
+        &LoadOptions {
+            cfg: 1,
+            catalog_dirs: vec![root().join("tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap()
+}
+
+fn problem(s: &System) -> Problem {
+    let mut p = Problem::single(s.clone());
+    p.add_default(DefaultMerit::Wavefront, 3, RmsRef::Centroid);
+    p
+}
+
+#[test]
+fn distributions() {
+    let n = 20000;
+    let mut r = Rng::for_trial(7, 0);
+    let u: Vec<f64> = (0..n).map(|_| r.draw(Dist::Uniform, -1.0, 3.0)).collect();
+    let st = tolerance::stats(&u, &[50.0]);
+    assert!(st.min >= -1.0 && st.max < 3.0);
+    assert!((st.mean - 1.0).abs() < 0.03, "{}", st.mean);
+    // 一様分布の標準偏差 = 幅 / √12
+    assert!((st.std - 4.0 / 12f64.sqrt()).abs() < 0.02, "{}", st.std);
+    let g: Vec<f64> = (0..n)
+        .map(|_| r.draw(Dist::Normal { cut: 2.0 }, -2.0, 2.0))
+        .collect();
+    let st = tolerance::stats(&g, &[]);
+    assert!(st.min >= -2.0 && st.max <= 2.0);
+    assert!(st.mean.abs() < 0.03);
+    // ±2σ で切った標準正規の標準偏差は 0.880
+    assert!((st.std - 0.880).abs() < 0.02, "{}", st.std);
+    let e: Vec<f64> = (0..n).map(|_| r.draw(Dist::End, -0.5, 0.25)).collect();
+    assert!(e.iter().all(|&x| x == -0.5 || x == 0.25));
+    let lo = e.iter().filter(|&&x| x == -0.5).count() as f64 / n as f64;
+    assert!((lo - 0.5).abs() < 0.02);
+    // 同じ種・番号は同じ列、番号が違えば違う列
+    assert_eq!(
+        Rng::for_trial(3, 5).next_u64(),
+        Rng::for_trial(3, 5).next_u64()
+    );
+    assert_ne!(
+        Rng::for_trial(3, 5).next_u64(),
+        Rng::for_trial(3, 6).next_u64()
+    );
+}
+
+#[test]
+fn stats_percentiles() {
+    let v: Vec<f64> = (0..=10).map(|i| i as f64).collect();
+    let st = tolerance::stats(&v, &[0.0, 50.0, 90.0, 95.0, 100.0]);
+    assert_eq!(st.n, 11);
+    assert_eq!(st.mean, 5.0);
+    let p: Vec<f64> = st.percentiles.iter().map(|x| x.1).collect();
+    assert_eq!(p, vec![0.0, 5.0, 9.0, 9.5, 10.0]);
+}
+
+#[test]
+fn zero_tolerance_is_nominal() {
+    let s = load("A0");
+    let tols = vec![Tol::pm("0", Param::new(2, Kind::Thick), 0.0)];
+    let mut spec = McSpec::new(problem(&s), tols);
+    spec.trials = 4;
+    let r = tolerance::run(&spec).unwrap();
+    assert_eq!(r.trials.len(), 4);
+    for t in &r.trials {
+        assert_eq!(t.eval.as_ref().unwrap().merit, r.nominal.merit);
+    }
+    assert_eq!(r.sensitivity[0].worst(r.nominal.merit), 0.0);
+}
+
+#[test]
+fn deterministic_across_threads() {
+    let s = load("A0");
+    let lt = LensTol::preset("commercial").unwrap();
+    let tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Normal { cut: 2.0 });
+    assert!(!tols.is_empty());
+    let mut p = problem(&s);
+    p.vars
+        .push(Var::new(Param::new(s.image() - 1, Kind::Thick)));
+    let mut spec = McSpec::new(p, tols);
+    spec.trials = 6;
+    spec.seed = 42;
+    let a = lensbench_core::par::with_threads(Some(1), || tolerance::run(&spec).unwrap());
+    let b = lensbench_core::par::with_threads(Some(4), || tolerance::run(&spec).unwrap());
+    assert_eq!(a.nominal, b.nominal);
+    assert_eq!(a.trials, b.trials);
+    assert_eq!(a.sensitivity, b.sensitivity);
+    // 公差があるので公称より悪くなる試行がある
+    assert!(a.merits().iter().any(|&m| m > a.nominal.merit));
+    // 種を変えると変わる
+    spec.seed = 43;
+    let c = tolerance::run(&spec).unwrap();
+    assert_ne!(a.trials[0].deltas, c.trials[0].deltas);
+}
+
+#[test]
+fn compensator_recovers_focus() {
+    // ピントの間隔そのものの公差は、ピントの補償子で元に戻る
+    let s = load("A0");
+    let f = Param::new(s.image() - 1, Kind::Thick);
+    let tols = vec![Tol::pm("focus", f, 0.2)];
+    let p0 = problem(&s);
+    let mut spec = McSpec::new(p0.clone(), tols.clone());
+    spec.trials = 5;
+    spec.sensitivity = false;
+    let free = tolerance::run(&spec).unwrap();
+    let mut p = p0;
+    p.vars.push(Var::new(f));
+    let mut spec = McSpec::new(p, tols);
+    spec.trials = 5;
+    spec.sensitivity = false;
+    let comp = tolerance::run(&spec).unwrap();
+    for (a, b) in free.trials.iter().zip(&comp.trials) {
+        assert_eq!(a.deltas, b.deltas);
+        let (ma, mb) = (
+            a.eval.as_ref().unwrap().merit,
+            b.eval.as_ref().unwrap().merit,
+        );
+        assert!(mb <= ma + 1e-12);
+        assert!(
+            (mb - comp.nominal.merit).abs() < 1e-3 * comp.nominal.merit.max(1e-3),
+            "{mb} {}",
+            comp.nominal.merit
+        );
+    }
+}
+
+#[test]
+fn simple_set_and_relative() {
+    let s = load("C0");
+    let lt = LensTol {
+        focal_rel: 0.01,
+        decenter: 0.05,
+        space: 0.1,
+        ..Default::default()
+    };
+    let tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
+    let labels: Vec<&str> = tols.iter().map(|t| t.label.as_str()).collect();
+    assert!(labels.contains(&"lens1 焦点距離"), "{labels:?}");
+    assert!(labels.contains(&"lens1 偏心x"));
+    assert!(labels.contains(&"lens1 後の間隔"));
+    // 焦点距離の公差は玉の曲率半径をすべて同じ比で変える
+    let k = labels.iter().position(|&l| l == "lens1 焦点距離").unwrap();
+    let spec = McSpec::new(problem(&s), tols.clone());
+    let mut d = vec![0.0; tols.len()];
+    d[k] = 0.01;
+    let ps = tolerance::perturbed(&spec, &d).unwrap();
+    for &p in &tols[k].params {
+        let (r0, r1) = (s.get_param(p).unwrap(), ps[0].get_param(p).unwrap());
+        assert!((r1 - 1.01 * r0).abs() < 1e-9 * r0.abs(), "{r0} {r1}");
+    }
+}
+
+#[test]
+fn disc_pairs() {
+    // 隣り合う x・y の組を円の中で一様に: 大きさは公差以下、x・y の中心まわりの |r|² の平均は半径² / 2
+    let s = load("C0");
+    let lt = LensTol::preset("commercial").unwrap();
+    let mut tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
+    let n = tolerance::pair_disc(&mut tols);
+    // 玉ごとにくさび・偏心・傾きの 3 組
+    let lenses = tols.iter().filter(|t| t.label.ends_with("偏心x")).count();
+    assert!(lenses > 0);
+    assert_eq!(
+        n,
+        3 * lenses,
+        "{:?}",
+        tols.iter().map(|t| (&t.label, t.dist)).collect::<Vec<_>>()
+    );
+    let k = tols
+        .iter()
+        .position(|t| t.label.ends_with("偏心x"))
+        .unwrap();
+    assert_eq!((tols[k].dist, tols[k + 1].dist), (Dist::DiscX, Dist::DiscY));
+    // 曲率・厚さなどは組にしない
+    assert!(tols
+        .iter()
+        .filter(|t| t.label.contains("厚さ"))
+        .all(|t| t.dist == Dist::Uniform));
+    let mut spec = McSpec::new(problem(&s), tols.clone());
+    spec.trials = 0;
+    let (a, b) = (tols[k].hi, tols[k + 1].hi);
+    let mut r2 = 0.0;
+    let m = 4000;
+    let mut outside_square = 0;
+    for i in 0..m {
+        let d = tolerance::draw_trial(&spec, i);
+        let (x, y) = (d[k] / a, d[k + 1] / b);
+        assert!(x * x + y * y <= 1.0 + 1e-12);
+        if x.abs() > 0.7 && y.abs() > 0.7 {
+            outside_square += 1;
+        }
+        r2 += x * x + y * y;
+    }
+    assert_eq!(outside_square, 0);
+    assert!((r2 / m as f64 - 0.5).abs() < 0.02, "{}", r2 / m as f64);
+    // 同じ種なら同じ
+    assert_eq!(
+        tolerance::draw_trial(&spec, 3),
+        tolerance::draw_trial(&spec, 3)
+    );
+    // 1 つだけ引く Rng::draw は周辺分布（範囲の中、平均 0）
+    let mut rng = Rng::for_trial(1, 0);
+    let v: Vec<f64> = (0..20000)
+        .map(|_| rng.draw(Dist::DiscX, -2.0, 2.0))
+        .collect();
+    let st = tolerance::stats(&v, &[]);
+    assert!(st.min >= -2.0 && st.max <= 2.0 && st.mean.abs() < 0.03);
+    // 円の中の x の標準偏差は 半径 / 2
+    assert!((st.std - 1.0).abs() < 0.02, "{}", st.std);
+    // 組になっていないと誤り
+    let mut bad = tols.clone();
+    bad.swap(k, k + 1);
+    let mut spec = McSpec::new(problem(&s), bad);
+    spec.trials = 1;
+    assert!(tolerance::run(&spec).is_err());
+    let mut lone = vec![tols[k].clone()];
+    lone[0].dist = Dist::DiscY;
+    let spec = McSpec::new(problem(&s), lone);
+    assert!(tolerance::run(&spec).is_err());
+}
