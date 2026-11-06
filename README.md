@@ -24,9 +24,27 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 
 ```
 cargo build --release
-cargo test --workspace
+cargo test --workspace --release
 python3 scripts/check_public.py --history
 ```
+
+## 使い方（CLI）
+
+視野・波長・コンフィグの番号は 1 始まり。`--json` で JSON 出力。
+
+```
+lensbench info     system.zmx --glass-dir <AGF のフォルダ>
+lensbench spot     system.zmx --field 2 --wave 1
+lensbench wavefront system.zmx --n 64
+lensbench zernike  system.zmx --kind fringe --terms 37
+```
+
+ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。
+
+## テスト用データ
+
+- `tests/glass/`: refractiveindex.info のデータベース（CC0）から `scripts/make_test_glass.py` で作った AGF。メーカー配布のカタログではない
+- `tests/refs/`: lensbench 独自の処方のテスト光学系（トリプレット、傾き偏心、理想レンズ、非球面など）について OpticStudio で求めた基準値
 
 ## ライセンス
 
