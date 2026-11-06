@@ -3,9 +3,126 @@
 //! 光線が面に当たらない・全反射するとその面で止まり（err = 面番号、以後 NaN）、開口の外に出た光線は
 //! 先へ進む（vig = 最初の面）。OpticStudio のバッチ追跡と同じ扱い。
 
+use crate::coating::{Iface, C64};
 use crate::math::*;
 use crate::surface::{Aperture, SurfType};
 use crate::system::{Frame, Frames, Rel, System};
+use crate::Error;
+
+/// 複素の 3 次元ベクトル（電場）
+pub type CV3 = [C64; 3];
+
+/// 偏光追跡での面ごとの処理（波長ごとに用意する）
+#[derive(Debug, Clone)]
+pub enum PolKind {
+    None,
+    /// Jones 行列 [[a, b], [c, d]]
+    Jones([C64; 4]),
+    /// 境界の s・p 係数
+    Iface(Iface),
+}
+
+#[derive(Debug, Clone)]
+pub struct PolSurf {
+    pub kind: PolKind,
+    /// 面の前の媒質の内部透過率（強度、1 mm あたり）。吸収がなければ None
+    pub it: Option<f64>,
+}
+
+/// 1 本の光線の偏光の状態: 電場（偏光の入力ごと、今いる面の局所座標）
+pub struct PolRay<'a> {
+    pub e: Vec<CV3>,
+    pub surf: &'a [PolSurf],
+    /// 係数を求められなかったとき（膜の表の範囲外など）
+    pub err: Option<Error>,
+    /// けられた光線で係数を求められなかった（電場は NaN）
+    pub lost: bool,
+}
+
+#[inline]
+fn cmv(m: &M3, e: CV3) -> CV3 {
+    [0, 1, 2].map(|i| e[0] * m[i][0] + e[1] * m[i][1] + e[2] * m[i][2])
+}
+#[inline]
+fn cmtv(m: &M3, e: CV3) -> CV3 {
+    [0, 1, 2].map(|i| e[0] * m[0][i] + e[1] * m[1][i] + e[2] * m[2][i])
+}
+#[inline]
+fn cdot(e: CV3, v: V3) -> C64 {
+    e[0] * v[0] + e[1] * v[1] + e[2] * v[2]
+}
+#[inline]
+fn comb(a: C64, u: V3, b: C64, v: V3) -> CV3 {
+    [0, 1, 2].map(|i| a * u[i] + b * v[i])
+}
+
+/// 単位ベクトル a を b へ移す最小の回転（ax = a × b、c = a·b）を e にかける（Rodrigues）
+fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
+    if 1.0 + c <= 1e-15 {
+        return CNAN3;
+    }
+    // R e = c e + ax × e + ax (ax·e) / (1 + c)
+    let ae = cdot(e, ax);
+    let x = [
+        e[2] * ax[1] - e[1] * ax[2],
+        e[0] * ax[2] - e[2] * ax[0],
+        e[1] * ax[0] - e[0] * ax[1],
+    ];
+    [0, 1, 2].map(|i| e[i] * c + x[i] + ae * (ax[i] / (1.0 + c)))
+}
+
+const CNAN3: CV3 = [C64::new(f64::NAN, f64::NAN); 3];
+
+/// 面での電場の変化（局所座標）。kin・kl は面の前後の方向、nv は法線
+fn pol_surface(
+    ps: &PolSurf,
+    e: &mut [CV3],
+    kin: V3,
+    kl: V3,
+    nv: V3,
+    cosi: f64,
+    mirror: bool,
+) -> Result<(), Error> {
+    match &ps.kind {
+        PolKind::None => {}
+        PolKind::Jones(m) => {
+            // OpticStudio は、局所の ±z 軸を光線へ移す最小の回転が x・y を運んだ横の基底で行列をかける
+            let sz = if kl[2] > 0.0 {
+                1.0
+            } else if kl[2] < 0.0 {
+                -1.0
+            } else {
+                0.0
+            };
+            let h = scale(add(kl, [0.0, 0.0, sz]), 1.0 / (1.0 + kl[2].abs()));
+            let u = sub([1.0, 0.0, 0.0], scale(h, kl[0]));
+            let v = sub([0.0, 1.0, 0.0], scale(h, kl[1]));
+            for x in e.iter_mut() {
+                let (eu, ev) = (cdot(*x, u), cdot(*x, v));
+                *x = comb(m[0] * eu + m[1] * ev, u, m[2] * eu + m[3] * ev, v);
+            }
+        }
+        PolKind::Iface(f) => {
+            let mut sv = cross(kin, nv);
+            if !(norm(sv) > 1e-12) {
+                sv = cross(kin, [1.0, 0.0, 0.0]);
+            }
+            let sv = normalize(sv);
+            let pin = cross(sv, kin);
+            let mut pout = cross(sv, kl);
+            if mirror {
+                pout = scale(pout, -1.0);
+            }
+            let th = cosi.abs().clamp(0.0, 1.0).acos();
+            let tc = f.eval(th)?;
+            for x in e.iter_mut() {
+                let (es, ep) = (cdot(*x, sv), cdot(*x, pin));
+                *x = comb(tc[0] * es, sv, tc[1] * ep, pout);
+            }
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
@@ -92,6 +209,54 @@ pub fn trace_ray(
     sys: &System,
     fr: &Frames,
     w: usize,
+    p: V3,
+    k: V3,
+    opl: f64,
+    first: usize,
+    last: usize,
+    floating_clip: bool,
+    rec: Option<&mut Vec<RecEntry>>,
+) -> RayOut {
+    trace_core(sys, fr, w, p, k, opl, first, last, floating_clip, rec, None)
+}
+
+/// trace_ray に偏光を加えたもの（電場 pol.e を面ごとに更新する）
+#[allow(clippy::too_many_arguments)]
+pub fn trace_ray_pol(
+    sys: &System,
+    fr: &Frames,
+    w: usize,
+    p: V3,
+    k: V3,
+    opl: f64,
+    first: usize,
+    last: usize,
+    floating_clip: bool,
+    rec: Option<&mut Vec<RecEntry>>,
+    pol: &mut PolRay,
+) -> RayOut {
+    trace_core(
+        sys,
+        fr,
+        w,
+        p,
+        k,
+        opl,
+        first,
+        last,
+        floating_clip,
+        rec,
+        Some(pol),
+    )
+}
+
+// 偏光なしの追跡に偏光の分岐が残らないよう、呼び出し側ごとに展開する
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn trace_core(
+    sys: &System,
+    fr: &Frames,
+    w: usize,
     mut p: V3,
     mut k: V3,
     mut opl: f64,
@@ -99,6 +264,7 @@ pub fn trace_ray(
     last: usize,
     floating_clip: bool,
     mut rec: Option<&mut Vec<RecEntry>>,
+    mut pol: Option<&mut PolRay>,
 ) -> RayOut {
     let sf = &sys.surfaces;
     let mut err = 0usize;
@@ -144,6 +310,14 @@ pub fn trace_ray(
             (Some(_), Some(q)) => (add(mv(&q.r, loc.0), q.t), mv(&q.r, loc.1)),
             _ => (mtv(&rm, sub(p, o)), mtv(&rm, k)),
         };
+        // 電場も方向と同じ変換で今の面の局所座標へ
+        if let Some(pr) = pol.as_deref_mut() {
+            match (prev, fr.rel[j]) {
+                (Some(_), Some(Rel { shift: Some(_), .. })) => {}
+                (Some(_), Some(q)) => pr.e.iter_mut().for_each(|e| *e = cmv(&q.r, *e)),
+                _ => pr.e.iter_mut().for_each(|e| *e = cmtv(&rm, *e)),
+            }
+        }
         prev = Some(j);
         // 頂点面へ
         let s = -pl[2] / kl[2];
@@ -152,6 +326,7 @@ pub fn trace_ray(
         }
         pl = add(pl, scale(kl, s));
         opl += nprev * s;
+        let mut s_tot = s;
         let curved = matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
             && (d.c != 0.0 || !d.asph.is_empty());
         if err == 0 && curved {
@@ -188,6 +363,14 @@ pub fn trace_ray(
             }
             pl = add(pl, scale(kl, s));
             opl += nprev * s;
+            s_tot += s;
+        }
+        // 通ってきた媒質の吸収（振幅は内部透過率の 1/2 乗）
+        if let Some(pr) = pol.as_deref_mut() {
+            if let Some(t) = pr.surf[j].it {
+                let a = t.powf(s_tot / 2.0);
+                pr.e.iter_mut().for_each(|e| *e = e.map(|c| c * a));
+            }
         }
         // 開口
         let clip = match d.ap {
@@ -220,6 +403,13 @@ pub fn trace_ray(
             SurfType::CoordBrk => nn = nprev,
             SurfType::Paraxial => {
                 let (k2, dl) = paraxial(d.focal, pl, kl, sys.lens_conjugate(j));
+                // 電場は方向の変化と同じ最小の回転で回す（振幅は変えない。OpticStudio との照合は未確認）
+                if let Some(pr) = pol.as_deref_mut() {
+                    if err == 0 {
+                        let (ax, c) = (cross(kl, k2), dot(kl, k2));
+                        pr.e.iter_mut().for_each(|e| *e = rotate_min(*e, ax, c));
+                    }
+                }
                 kl = k2;
                 lens_opd += dl;
             }
@@ -237,6 +427,7 @@ pub fn trace_ray(
                 };
                 let nv = normalize(nvec);
                 let cosi = dot(kl, nv);
+                let kin = kl;
                 if d.mirror {
                     kl = sub(kl, scale(nv, 2.0 * cosi));
                     nn = nprev;
@@ -250,6 +441,20 @@ pub fn trace_ray(
                         scale(kl, mu),
                         scale(nv, cosi.signum() * disc.max(0.0).sqrt() - mu * cosi),
                     );
+                }
+                if let Some(pr) = pol.as_deref_mut() {
+                    if err == 0 {
+                        if let Err(e) =
+                            pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror)
+                        {
+                            // けられた光線は電場を NaN にするだけ（束全体は止めない）
+                            if vig == 0 {
+                                pr.err.get_or_insert(e);
+                            } else {
+                                pr.lost = true;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -269,6 +474,11 @@ pub fn trace_ray(
                 opl,
                 p,
             });
+        }
+    }
+    if let Some(pr) = pol {
+        if err != 0 || pr.err.is_some() || pr.lost {
+            pr.e.iter_mut().for_each(|e| *e = CNAN3);
         }
     }
     // 大域の位置・方向は最後の面でだけ求める

@@ -7,11 +7,12 @@
 //! - 瞳座標: エイミングなしは近軸入射瞳面、エイミングありは絞り面の (px, py)×絞り半径
 //! - 無限遠物体の光線は面 1 の頂点を通り視野方向に垂直な面から出る（光路長はそこから数える）
 
-use crate::error::Result;
+use crate::coating::{self, Coatings, C64};
+use crate::error::{Error, Result};
 use crate::glass::Glass;
 use crate::math::*;
 use crate::surface::{After, SurfType, Surface, Tilt};
-use crate::trace::{self, RayOut, RecEntry};
+use crate::trace::{self, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
 use crate::{invalid, notimpl};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -157,6 +158,14 @@ pub struct Trace {
     pub rec: Vec<(usize, Vec<RecEntry>, f64)>,
     pub last: usize,
     pub hx_hy: (f64, f64),
+}
+
+/// 偏光追跡の結果
+#[derive(Debug, Clone)]
+pub struct PolTrace {
+    pub trace: Trace,
+    /// 光線ごと・入力の偏光ごとの電場（最後の面の局所座標、伝搬の位相込み）。追跡が止まった光線は NaN
+    pub e: Vec<Vec<CV3>>,
 }
 
 impl Trace {
@@ -794,6 +803,23 @@ impl System {
         record: bool,
         hxy: Option<(f64, f64)>,
     ) -> Trace {
+        self.trace_spec_inner(spec, px, py, w, vig, last, record, hxy, None)
+            .0
+    }
+
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn trace_spec_inner(
+        &self,
+        spec: ObjSpec,
+        px: &[f64],
+        py: &[f64],
+        w: usize,
+        vig: Option<[f64; 5]>,
+        last: Option<usize>,
+        record: bool,
+        hxy: Option<(f64, f64)>,
+        pol: Option<(&[[C64; 2]], &[PolSurf])>,
+    ) -> (Trace, Vec<Vec<CV3>>, Option<Error>) {
         let n = px.len();
         let [vdx, vdy, vcx, vcy, van] = match vig {
             Some(v) => v,
@@ -820,14 +846,42 @@ impl System {
         let fr = self.frames();
         let last = last.unwrap_or(self.image());
         let st = self.stop();
+        let kw = 2.0 * std::f64::consts::PI / (self.wavelengths[w] * 1e-3);
         let one = |i: usize| {
             let (p, k) = self.start_ray(spec, ex[i], ey[i]);
             let mut rec = if record { Some(Vec::new()) } else { None };
-            let mut r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, last, false, rec.as_mut());
+            // 偏光: 物体の座標系の (Ex, Ey, 0) を光線に垂直な面へ射影する（規格化しない、OpticStudio と同じ）
+            let mut pr = pol.map(|(inp, surf)| PolRay {
+                e: inp
+                    .iter()
+                    .map(|a| {
+                        let j: CV3 =
+                            [0, 1, 2].map(|c| a[0] * fr.obj.r[c][0] + a[1] * fr.obj.r[c][1]);
+                        let jk = j[0] * k[0] + j[1] * k[1] + j[2] * k[2];
+                        [0, 1, 2].map(|c| j[c] - jk * k[c])
+                    })
+                    .collect(),
+                surf,
+                err: None,
+                lost: false,
+            });
+            let mut r = match pr.as_mut() {
+                Some(q) => {
+                    trace::trace_ray_pol(self, fr, w, p, k, 0.0, 1, last, false, rec.as_mut(), q)
+                }
+                None => trace::trace_ray(self, fr, w, p, k, 0.0, 1, last, false, rec.as_mut()),
+            };
             if fail[i] {
                 r.err = st;
             }
-            (r, p, k, rec)
+            // 最後の面の局所座標の電場に伝搬の位相 exp(−i k OPL) をかける
+            // 偏光なしの追跡で結果を大きくしないよう箱に入れる
+            let pe = pr.map(|mut pr| {
+                let ph = C64::new(0.0, -kw * r.opl).exp();
+                pr.e.iter_mut().for_each(|x| *x = x.map(|c| c * ph));
+                Box::new((pr.e, pr.err))
+            });
+            (r, p, k, rec, pe)
         };
         // 光線は互いに独立なので、本数が多いときは並列に追う（結果の順序は入力のまま）
         let out: Vec<_> = if n >= PAR_MIN_RAYS {
@@ -843,12 +897,21 @@ impl System {
         let mut p0 = Vec::with_capacity(n);
         let mut k0 = Vec::with_capacity(n);
         let mut recs: Vec<Vec<RecEntry>> = Vec::new();
-        for (r, p, k, rec) in out {
+        let mut es = Vec::new();
+        let mut first_err = None;
+        for (r, p, k, rec, pe) in out {
             rays.push(r);
             p0.push(p);
             k0.push(k);
             if let Some(rc) = rec {
                 recs.push(rc);
+            }
+            if let Some(b) = pe {
+                let (e, perr) = *b;
+                es.push(e);
+                if first_err.is_none() {
+                    first_err = perr;
+                }
             }
         }
         let mut parity = 1.0;
@@ -884,16 +947,98 @@ impl System {
             }
             ObjSpec::Point(_) => rays.iter().map(|r| r.opl).collect(),
         };
-        Trace {
-            rays,
-            parity,
-            p0,
-            k0,
-            opl_os,
-            rec: rec_out,
-            last,
-            hx_hy: hxy.unwrap_or((0.0, 0.0)),
+        (
+            Trace {
+                rays,
+                parity,
+                p0,
+                k0,
+                opl_os,
+                rec: rec_out,
+                last,
+                hx_hy: hxy.unwrap_or((0.0, 0.0)),
+            },
+            es,
+            first_err,
+        )
+    }
+
+    /// 偏光追跡での面ごとの処理を波長 w について用意する（境界の係数、Jones 行列、媒質の吸収）
+    pub fn pol_surfaces(&self, w: usize, coat: &Coatings) -> Result<Vec<PolSurf>> {
+        let (keys, before) = coating::media_keys(self);
+        let wl = self.wavelengths[w];
+        let mut out = Vec::with_capacity(self.surfaces.len());
+        for (j, d) in self.surfaces.iter().enumerate() {
+            let it = self
+                .glasses
+                .get(&before[j])
+                .and_then(|g| coating::internal_t(g, wl));
+            let kind = if d.ignore || j == 0 {
+                PolKind::None
+            } else {
+                match d.typ {
+                    SurfType::Jones => {
+                        let a = d.jones;
+                        PolKind::Jones([
+                            C64::new(a[0], a[1]),
+                            C64::new(a[2], a[3]),
+                            C64::new(a[4], a[5]),
+                            C64::new(a[6], a[7]),
+                        ])
+                    }
+                    SurfType::CoordBrk | SurfType::Paraxial => PolKind::None,
+                    _ => match &keys[j] {
+                        Some(k) => PolKind::Iface(coat.prepare(
+                            self,
+                            k,
+                            wl,
+                            self.index_before(j, w),
+                            d.n[w],
+                        )?),
+                        None => PolKind::None,
+                    },
+                }
+            };
+            out.push(PolSurf { kind, it });
         }
+        Ok(out)
+    }
+
+    /// 偏光追跡: 入力の偏光 pols（物体の座標系の (Ex, Ey)）ごとの電場を、最後の面の局所座標で
+    /// 伝搬の位相 exp(−i k OPL) 込みで返す（OpticStudio の偏光追跡と同じ約束）
+    pub fn try_trace_pol(
+        &self,
+        field: FieldSel,
+        px: &[f64],
+        py: &[f64],
+        w: Option<usize>,
+        pols: &[[C64; 2]],
+        coat: &Coatings,
+    ) -> Result<PolTrace> {
+        let w = w.unwrap_or(self.primary);
+        let (hx, hy) = match field {
+            FieldSel::Index(i) => self.hxhy(i),
+            FieldSel::Norm(a, b) => (a, b),
+        };
+        let spec = self.object_spec(hx, hy)?;
+        let vig = self.vig_factors(hx, hy)?;
+        let ps = self.pol_surfaces(w, coat)?;
+        let (mut t, e, err) = self.trace_spec_inner(
+            spec,
+            px,
+            py,
+            w,
+            Some(vig),
+            None,
+            false,
+            Some((hx, hy)),
+            Some((pols, &ps)),
+        );
+        if let Some(e) = err {
+            return Err(e);
+        }
+        t.hx_hy = (hx, hy);
+        Ok(PolTrace { trace: t, e })
     }
 
     #[allow(clippy::too_many_arguments)]
