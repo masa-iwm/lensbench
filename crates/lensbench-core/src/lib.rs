@@ -10,6 +10,7 @@ pub mod math;
 
 pub mod analysis;
 pub mod catalog;
+pub mod coating;
 pub mod glass;
 pub mod report;
 pub mod surface;
