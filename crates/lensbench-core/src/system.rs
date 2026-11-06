@@ -871,9 +871,13 @@ impl System {
         }
         let opl_os = match spec {
             ObjSpec::Dir(_) => {
-                let ob = fr.surf[1].unwrap();
+                // 面 1 が無視（IGNR）なら、その次の有効な面（大域座標の基準と同じ）
+                let j1 = (1..fr.surf.len())
+                    .find(|&j| fr.surf[j].is_some())
+                    .unwrap_or(1);
+                let ob = fr.surf[j1].unwrap();
                 let ax = col(&ob.r, 2);
-                let nb = self.index_before(1, w);
+                let nb = self.index_before(j1, w);
                 (0..n)
                     .map(|i| rays[i].opl - dot(sub(ob.o, p0[i]), ax) / dot(k0[i], ax) * nb)
                     .collect()
