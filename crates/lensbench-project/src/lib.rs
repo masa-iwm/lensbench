@@ -228,6 +228,9 @@ pub enum Block {
         coat: String,
         #[serde(default = "yes")]
         on: bool,
+        /// 往路を戻る: 同じ並び（群）で鏡より前のブロックを、逆の順・逆の向きにたどる
+        #[serde(default)]
+        back: bool,
     },
     /// 空気中の面の並び（玉に分けない）
     Surfaces {
@@ -397,14 +400,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             s.t = 0.0;
         }
         let l: f64 = self.sf[start..].iter().map(|s| s.t).sum(); // 今の座標の z で
-                                                                 // 傾けた座標で z に l 進んだ点から、元の座標で z に l 進んだ点へ:
-                                                                 // (dx2, dy2, t2) = l e_z − d − R e_z l（R = Rx Ry Rz、戻りは順序 1 で −tz, −ty, −tx）
-        let r: M3 = {
-            let a = lensbench_core::math::mm(&rot(0, tx), &rot(1, ty));
-            lensbench_core::math::mm(&a, &rot(2, tz))
-        };
-        let rz = mv(&r, [0.0, 0.0, l]);
-        let (dx2, dy2, t2) = (-dx - rz[0], -dy - rz[1], l - rz[2]);
+        let (dx2, dy2, t2) = cb_return(place, l);
         // 戻りの座標ブレークの x・y の偏心は傾きを戻したあとの（元の）座標で
         self.sf.push(cb([dx2, dy2, -tx, -ty, -tz], 1, t2 + tail));
         Ok(())
@@ -435,6 +431,106 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
             self.sf.push(s);
         }
+    }
+
+    /// 往路のブロックを復路でたどる（鏡のあと）
+    fn back_block(&mut self, b: &Block) -> Result<(), String> {
+        match b {
+            Block::Air { t, .. } => self.gap(*t),
+            Block::Stop { semi, .. } => {
+                // 復路で絞りの面を通る位置（絞りにはしない）
+                self.push(Surface {
+                    semi: *semi,
+                    comment: "STOP (return)".into(),
+                    ..Default::default()
+                });
+            }
+            Block::Lens {
+                source,
+                reversed,
+                place,
+                ..
+            } => {
+                let mut e = self.lens_element(source)?;
+                if *reversed {
+                    e = elements::reverse(&e).map_err(|x| x.to_string())?;
+                }
+                let len = e.length();
+                if !place.on {
+                    if place.off == OffMode::Air {
+                        self.gap(len);
+                    }
+                    return Ok(());
+                }
+                let mut r = elements::reverse(&e).map_err(|x| x.to_string())?;
+                r.surfaces.iter_mut().for_each(|s| s.stop = false);
+                self.back_placed(place, len, &r.surfaces)?;
+            }
+            Block::Surfaces {
+                surfaces, place, ..
+            } => {
+                let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
+                if !place.on {
+                    if place.off == OffMode::Air {
+                        let l: f64 = v.iter().map(|s| s.t).sum();
+                        self.gap(l);
+                    }
+                    return Ok(());
+                }
+                // 往路の最後の面の厚さ（後の空気）は、復路では最初の面の前の空気
+                let tail = v.last().map(|s| s.t).unwrap_or(0.0);
+                let len: f64 = v.iter().map(|s| s.t).sum::<f64>() - tail;
+                self.gap(tail);
+                self.back_placed(place, len, &reverse_surfaces(&v))?;
+            }
+            Block::Group { blocks, place, .. } => {
+                if place.moved() {
+                    return Err(
+                        "往路を戻る範囲の、偏心・傾きをつけた群は未対応（群の中の玉に付ける）"
+                            .into(),
+                    );
+                }
+                if !place.on {
+                    return Err("往路を戻る範囲の、OFF の群は未対応".into());
+                }
+                for x in blocks.iter().rev() {
+                    self.back_block(x)?;
+                }
+            }
+            Block::Mirror { .. } => return Err("往路を戻る範囲に鏡がある".into()),
+            Block::Zmx { .. } => {
+                return Err("往路を戻る範囲の .zmx の取り込みは未対応（玉のブロックにする）".into())
+            }
+        }
+        Ok(())
+    }
+
+    /// 復路で、往路に偏心・傾き place・長さ len（光の進む向き）で置いたものを、逆向きの面 rev でたどる
+    fn back_placed(&mut self, place: &Place, len: f64, rev: &[Surface]) -> Result<(), String> {
+        if !place.moved() {
+            for s in rev {
+                self.push(s.clone());
+            }
+            return Ok(());
+        }
+        // 往路: CB1（順序 0、d・t）→ 中身（今の座標で l）→ CB2（順序 1、−t・d2、厚さ t2）。復路はその逆:
+        // 元の軸で t2 戻る → CB2 の逆（順序 0、−d2・t）→ 逆向きの中身 → CB1 の逆（順序 1、−d・−t）
+        let pf = -self.parity;
+        let l = len * pf;
+        let (dx2, dy2, t2) = cb_return(place, l);
+        let [dx, dy] = place.decenter;
+        let [tx, ty, tz] = place.tilt;
+        // 今の座標で −t2 進む（gap は光の進む向きの長さを取る）
+        self.gap(-t2 * self.parity);
+        self.sf.push(cb([-dx2, -dy2, tx, ty, tz], 0, 0.0));
+        for s in rev {
+            self.push(s.clone());
+        }
+        if let Some(s) = self.sf.last_mut() {
+            s.t = 0.0;
+        }
+        self.sf.push(cb([-dx, -dy, -tx, -ty, -tz], 1, 0.0));
+        Ok(())
     }
 
     fn load_zmx(&mut self, path: &str) -> Result<System, String> {
@@ -509,7 +605,6 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     fn block(&mut self, b: &Block, siblings: &[Block], idx: usize) -> Result<(), String> {
-        let _ = (siblings, idx);
         match b {
             Block::Air { t, .. } => self.gap(*t),
             Block::Stop { semi, .. } => {
@@ -564,11 +659,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 semi,
                 coat,
                 on,
+                back,
                 ..
             } => {
                 if !on {
                     return Ok(());
                 }
+                let back = *back;
                 let fold = tilt[0] != 0.0 || tilt[1] != 0.0;
                 if fold {
                     self.sf.push(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
@@ -589,6 +686,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.parity = -self.parity;
                 if fold {
                     self.sf.push(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
+                }
+                if back {
+                    if fold {
+                        return Err("往路を戻る鏡は傾けられない".into());
+                    }
+                    for x in siblings[..idx].iter().rev() {
+                        self.back_block(x)?;
+                    }
                 }
             }
             Block::Zmx {
@@ -638,6 +743,34 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
         Ok(())
     }
+}
+
+/// 前の座標ブレーク（順序 0 で偏心 d・傾き t）で傾けた座標の z に l 進んだ点から、元の座標の z に l 進んだ点へ戻る
+/// 座標ブレーク（順序 0 で −t、偏心 (dx2, dy2)、厚さ t2）の値: (dx2, dy2, t2) = l e_z − d − R e_z l（R = Rx Ry Rz）
+fn cb_return(place: &Place, l: f64) -> (f64, f64, f64) {
+    let [dx, dy] = place.decenter;
+    let [tx, ty, tz] = place.tilt;
+    let r: M3 = lensbench_core::math::mm(
+        &lensbench_core::math::mm(&rot(0, tx), &rot(1, ty)),
+        &rot(2, tz),
+    );
+    let rz = mv(&r, [0.0, 0.0, l]);
+    (-dx - rz[0], -dy - rz[1], l - rz[2])
+}
+
+/// 空気中の面の並びを逆向きに（厚さは 1 つ前の面のもの、曲率の符号を変える）。最後の面の厚さは 0
+fn reverse_surfaces(v: &[Surface]) -> Vec<Surface> {
+    let n = v.len();
+    (0..n)
+        .map(|i| {
+            let mut s = v[n - 1 - i].clone();
+            s.c = -s.c;
+            s.asph.iter_mut().for_each(|a| *a = -*a);
+            s.t = if i + 1 < n { v[n - 2 - i].t } else { 0.0 };
+            s.stop = false;
+            s
+        })
+        .collect()
 }
 
 fn curv(r: Option<f64>) -> f64 {

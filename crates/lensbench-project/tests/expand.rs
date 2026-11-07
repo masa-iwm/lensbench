@@ -165,3 +165,59 @@ fn same_rays_xy(a: &System, b: &System) {
         }
     }
 }
+
+#[test]
+fn a_double_pass_returns_to_the_start() {
+    // 絞り → 20 → 偏心・傾けた玉 → 30 → 平面鏡（往路を戻る）→ 復路で玉を逆に通って絞りの面へ
+    let lens = r#"{"type": "lens", "decenter": [0.2, -0.1], "tilt": [1.5, -0.7, 3], "source": {"surfaces": [{"radius": 40, "t": 4, "glass": "N-BK7"}, {"radius": -60}]}}"#;
+    let s = project(&format!(
+        r#"[{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {lens}, {{"type": "air", "t": 30}}, {{"type": "mirror", "back": true}}]"#
+    ));
+    let f = s.frames();
+    // 復路の最後の面（絞りの面に戻ったダミー）は、絞りの面と同じ座標系
+    let ret = s
+        .surfaces
+        .iter()
+        .rposition(|d| d.comment == "STOP (return)")
+        .unwrap();
+    let st = s.stop();
+    let (a, b) = (f.surf[st].unwrap(), f.surf[ret].unwrap());
+    for k in 0..3 {
+        assert!((a.o[k] - b.o[k]).abs() < 1e-12, "{:?} {:?}", a.o, b.o);
+        for m in 0..3 {
+            assert!((a.r[k][m] - b.r[k][m]).abs() < 1e-14);
+        }
+    }
+    // 復路の玉の面は往路と同じ面（同じ座標系・同じ曲率）
+    let glass: Vec<usize> = (0..s.surfaces.len())
+        .filter(|&j| {
+            s.surfaces[j].typ == lensbench_core::surface::SurfType::Standard
+                && s.surfaces[j].c != 0.0
+        })
+        .collect();
+    assert_eq!(glass.len(), 4);
+    for (p, q) in [(glass[0], glass[3]), (glass[1], glass[2])] {
+        assert_eq!(s.surfaces[p].c, s.surfaces[q].c);
+        let (x, y) = (f.surf[p].unwrap(), f.surf[q].unwrap());
+        for k in 0..3 {
+            assert!(
+                (x.o[k] - y.o[k]).abs() < 1e-12,
+                "{p} {q} {:?} {:?}",
+                x.o,
+                y.o
+            );
+        }
+    }
+    // 光線は往復して像面（絞りの面の位置）に届く
+    let t = s
+        .try_trace(
+            FieldSel::Index(0),
+            &[0.0, 0.5],
+            &[0.0, 0.3],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+    assert!(t.ok(0) && t.ok(1));
+}

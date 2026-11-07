@@ -1,0 +1,83 @@
+{
+ "name": "P4 double pass through a tilted lens",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "na",
+  "value": 0.03
+ },
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ]
+  ]
+ },
+ "object_distance": 100,
+ "blocks": [
+  {
+   "type": "stop",
+   "semi": 4
+  },
+  {
+   "type": "air",
+   "t": 20
+  },
+  {
+   "type": "lens",
+   "id": "L",
+   "source": {
+    "surfaces": [
+     {
+      "radius": 40,
+      "t": 4,
+      "glass": "N-BK7",
+      "semi": 6
+     },
+     {
+      "radius": -60,
+      "semi": 6
+     }
+    ]
+   },
+   "decenter": [
+    0.2,
+    -0.1
+   ],
+   "tilt": [
+    1.5,
+    -0.7,
+    3
+   ]
+  },
+  {
+   "type": "air",
+   "t": 30
+  },
+  {
+   "type": "mirror",
+   "radius": -80,
+   "back": true,
+   "semi": 10
+  }
+ ]
+}
