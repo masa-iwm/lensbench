@@ -674,4 +674,35 @@ mod tests {
             assert!((m.sag[k] - ideal).abs() < 1e-4, "{v} {} {ideal}", m.sag[k]);
         }
     }
+
+    #[test]
+    fn a_point_at_the_front_focus_leaves_a_plane_wave() {
+        // 物体点が理想レンズの前側焦点: 像空間は平行光（像は無限遠）。OPD は 0（以前は理想レンズの位相が NaN）
+        let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\
+                   XFLN 0 0\nYFLN 0 2\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\n\
+                   SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 100\n\
+                   SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 50\n\
+                   SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let raw = crate::zmx::parse_text(txt).unwrap();
+        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let (px, py) = pupil_grid(9);
+        for f in 0..2 {
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+                .unwrap();
+            let l: Vec<f64> = (0..px.len())
+                .filter(|&i| t.ok(i))
+                .map(|i| {
+                    // 平行光の波面（主光線に垂直な面）までの光路
+                    let k = t.rays[0].lmn;
+                    let d = crate::math::sub(t.rays[i].xyz, t.rays[0].xyz);
+                    t.opl_os[i] + t.rays[i].lens_opd - crate::math::dot(d, k)
+                })
+                .collect();
+            let (lo, hi) = l
+                .iter()
+                .fold((f64::MAX, f64::MIN), |a, &v| (a.0.min(v), a.1.max(v)));
+            assert!(hi - lo < 1e-9, "視野 {f}: {lo} {hi}");
+        }
+    }
 }

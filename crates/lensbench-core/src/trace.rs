@@ -193,10 +193,14 @@ fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     }
     let p = [r[0] + t[0] * z_obj, r[1] + t[1] * z_obj, z_obj];
     let zi = 1.0 / (1.0 / f + 1.0 / z_obj);
-    let pi = [p[0] * (zi / z_obj), p[1] * (zi / z_obj), zi];
     let s_in = (-z_obj).signum() * norm(sub(rr, p));
-    let s_out = zi.signum() * norm(sub(pi, rr));
     let s_in0 = (-z_obj).signum() * norm(p);
+    if !zi.is_finite() || zi.abs() > 1e12 {
+        // 物体が前側焦点にある（出ていく光は平行光）: 平行光の波面までの道のり C − k2·r を一定にする
+        return (k2, (s_in0 - s_in) + dot(k2, rr));
+    }
+    let pi = [p[0] * (zi / z_obj), p[1] * (zi / z_obj), zi];
+    let s_out = zi.signum() * norm(sub(pi, rr));
     let s_out0 = zi.signum() * norm(pi);
     (k2, (s_in0 + s_out0) - (s_in + s_out))
 }
