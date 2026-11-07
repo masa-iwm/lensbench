@@ -473,7 +473,7 @@ impl Coatings {
             // - 層は膜の外側（基板と反対側）から順。透過で後ろの媒質が空気なら、基板は前の媒質（層を逆に通る）
             // - 鏡の基板は最後の層の材料（半無限）。最後の層より上だけが薄膜
             // - 係数に位相 exp(i k Σ d_j (n_o / cos_o − β² / q_j)) が掛かる（n_o・cos_o は膜の外側の媒質、
-            //   β = n1 sinθ1、q_j = n_j cosθ_j）。鏡では exp(2 i k n1 cosθ1 Σ d_j)
+            //   β = n1 sinθ1、q_j = sqrt(Re(n_j)² − β²)）。鏡では exp(2 i k n1 cosθ1 Σ d_j)
             if mirror {
                 let ns = match layers.pop() {
                     Some((n, _)) => n,
@@ -739,9 +739,14 @@ impl Iface {
                 } else {
                     let b = self.n1 * theta.sin();
                     let co = (1.0 - (b / n_out) * (b / n_out)).max(0.0).sqrt();
+                    if co == 0.0 {
+                        // 膜の外側で全反射（光線の追跡ではその前に止まる）
+                        notimpl!("膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）");
+                    }
                     let mut ph = d * n_out / co;
+                    // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
                     for &(n, dj) in layers {
-                        let q = n * ccos(self.n1, theta.sin(), n);
+                        let q = C64::new(n.re * n.re - b * b, 0.0).sqrt();
                         ph -= dj * (C64::new(b * b, 0.0) / q).re;
                     }
                     let ph = C64::new(0.0, k * ph).exp();
