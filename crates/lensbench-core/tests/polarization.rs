@@ -491,8 +491,27 @@ fn table_coating_uses_p_at_normal_incidence() {
     // 垂直入射は s・p の区別がないので p の値（OpticStudio と同じ）
     let v = f.eval(0.0).unwrap();
     assert!((v[0].norm() - 0.8f64.sqrt()).abs() < 1e-15 && v[0] == v[1]);
-    // 斜め入射は表の s・p
+    // 垂直入射とみなすのは 1 − cosθ < 1e-8 だけ（OpticStudio 26.1 で 0.008102° は p、0.008104° は表の s）
+    let v = f.eval(0.008102f64.to_radians()).unwrap();
+    assert!((v[0].norm() - 0.8f64.sqrt()).abs() < 1e-8);
+    let v = f.eval(0.008104f64.to_radians()).unwrap();
+    assert!((v[0].norm() - 0.9f64.sqrt()).abs() < 1e-8);
+    // 斜め入射は表の s・p を cosθ について線形に補間（OpticStudio の 15° の値 0.887283・0.787283）
     let v = f.eval(15f64.to_radians()).unwrap();
-    assert!((v[0].norm() - 0.875f64.sqrt()).abs() < 1e-12);
-    assert!((v[1].norm() - 0.775f64.sqrt()).abs() < 1e-12);
+    assert!((v[0].norm_sqr() - 0.887283).abs() < 1e-6, "{v:?}");
+    assert!((v[1].norm_sqr() - 0.787283).abs() < 1e-6, "{v:?}");
+    // 段差なし: 0° の行の s を p に置き換えて補間（0° から連続）
+    let c = Coatings {
+        table_normal: lensbench_core::coating::TableNormal::Continuous,
+        ..c
+    };
+    let f = c.prepare(&s, "T|AIR|1.5,0.0", 0.55, 1.0, 1.5).unwrap();
+    for deg in [0.0f64, 0.009, 15.0] {
+        let th = deg.to_radians();
+        let v = f.eval(th).unwrap();
+        // s は 0° で 0.8、30° で 0.85（cosθ で線形）、p は表のまま
+        let t = (1.0 - th.cos()) / (1.0 - 30f64.to_radians().cos());
+        assert!((v[0].norm_sqr() - (0.8 + 0.05 * t)).abs() < 1e-12, "{deg}");
+        assert!((v[1].norm_sqr() - (0.8 - 0.05 * t)).abs() < 1e-12, "{deg}");
+    }
 }

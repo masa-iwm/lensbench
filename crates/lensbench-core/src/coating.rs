@@ -9,7 +9,7 @@
 //! - `COAT`: 薄膜（特性行列、傾いた入射のアドミタンス）。材料は `MATE` の表（n, k。k < 0 で吸収）か
 //!   ガラスカタログ。厚さは基準波長での光学的な波長単位、またはフラグ 1 で絶対値 [µm]。
 //!   係数の位相は OpticStudio の約束に合わせる（[`Coatings::prepare`] の注記）
-//! - `TABLE`: 角度・波長ごとの Rs Rp Ts Tp と位相、線形補間
+//! - `TABLE`: 角度・波長ごとの Rs Rp Ts Tp と位相、線形補間（角度は cosθ について。垂直入射は [`TableNormal`]）
 //! - 暗号化された膜（.ZEC）: 層は読めないので（復号もしない）、OpticStudio の偏光追跡で測った係数の表
 //!   （[`Measured`]）か、膜ごとの特性行列モデル（[`CoatModel`]、任意の硝材・向き・波長）を使う。
 //!   どちらもなければ追跡を止める
@@ -26,6 +26,10 @@ use crate::glass;
 use crate::surface::SurfType;
 use crate::system::System;
 use crate::{invalid, notimpl, Error, Result};
+
+/// TABLE 膜で垂直入射とみなす範囲（1 − cosθ。OpticStudio 26.1 で境界が 0.008102°〜0.008104° の間、
+/// 1 − cosθ = 1e-8 の 0.0081029° と合う）
+pub const TABLE_NORMAL: f64 = 1e-8;
 
 /// 膜なしの鏡の基板
 pub const MIRROR_N: C64 = C64::new(0.7, -7.0);
@@ -622,8 +626,20 @@ pub enum PhaseConvention {
     #[default]
     OpticStudio,
     /// 層ごとの項を外す（波として解いた係数のまま。どの β でも有限で連続）。OpticStudio とは
-    /// s・p 共通の位相だけ違う
+    /// s・p 共通の位相だけ違う。層のわかる膜（膜ファイルの COAT）とモデルにだけ効き、実測表・TABLE・
+    /// 理想膜・膜なしには効かない（層の項がない、または測った値そのもの）
     Physical,
+}
+
+/// TABLE 膜の垂直入射の扱い（表の 0° で s と p が違うとき）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TableNormal {
+    /// OpticStudio と同じ: 垂直入射（1 − cosθ < [`TABLE_NORMAL`]）だけ s に p の値を使い、
+    /// その外は表の s を補間する（0° のすぐ外で s に段差が出る）
+    #[default]
+    OpticStudio,
+    /// 段差なし: 0° の行の s を p で置き換えて補間する（連続。小さい角度で OpticStudio と違う）
+    Continuous,
 }
 
 /// 系の膜: 膜ファイルと実測表
@@ -636,6 +652,8 @@ pub struct Coatings {
     pub models: HashMap<String, CoatModel>,
     /// 透過の位相の約束
     pub phase: PhaseConvention,
+    /// TABLE 膜の垂直入射の扱い
+    pub table_normal: TableNormal,
 }
 
 impl Coatings {
@@ -650,6 +668,7 @@ impl Coatings {
             measured: HashMap::new(),
             models: HashMap::new(),
             phase: PhaseConvention::default(),
+            table_normal: TableNormal::default(),
         })
     }
 
@@ -779,10 +798,19 @@ impl Coatings {
                     vals[c].push(interp(wl, &xs, &ys));
                 }
             }
+            let step = self.table_normal == TableNormal::OpticStudio;
+            if !step && angs[0] == 0.0 {
+                // 段差なし: 0° の行の s を p で置き換えて補間する
+                for c in [0, 2, 4, 6] {
+                    vals[c][0] = vals[c + 1][0];
+                }
+            }
             Kind::Table {
                 name: coat.to_string(),
+                step,
+                xc: angs.iter().map(|a| -a.to_radians().cos()).collect(),
                 angs,
-                vals,
+                vals: Box::new(vals),
             }
         } else if coat == "-" {
             Kind::Fresnel {
@@ -1044,9 +1072,13 @@ enum Kind {
     },
     Table {
         name: String,
+        /// 垂直入射（1 − cosθ < TABLE_NORMAL）だけ s に p を使う（[`TableNormal::OpticStudio`]）
+        step: bool,
         angs: Vec<f64>,
+        /// −cos(角度)（補間の横軸、増加）
+        xc: Vec<f64>,
         /// 量ごと（Rs Rp Ts Tp と位相）の角度に対する値
-        vals: [Vec<f64>; 8],
+        vals: Box<[Vec<f64>; 8]>,
     },
     Measured {
         key: String,
@@ -1234,17 +1266,26 @@ impl Iface {
                     [ts * ph, tp * ph]
                 }
             }
-            Kind::Table { name, angs, vals } => {
+            Kind::Table {
+                name,
+                step,
+                angs,
+                xc,
+                vals,
+            } => {
                 let deg = theta.to_degrees();
                 let (lo, hi) = (angs[0], *angs.last().unwrap());
                 if deg.is_finite() && (deg > hi + 1e-9 || deg < lo - 1e-9) {
                     notimpl!("膜の表 {name}: 入射角 {deg:.4} deg が表の範囲 {lo}〜{hi} の外");
                 }
-                let v = |k: usize| interp(deg, angs, &vals[k]);
+                // 角度ではなく cosθ について線形（OpticStudio と同じ。偏光追跡で照合）
+                let x = -theta.cos();
+                let v = |k: usize| interp(x, xc, &vals[k]);
                 let (a, b) = if mirror { (0, 4) } else { (2, 6) };
                 let p = C64::from_polar(v(a + 1).sqrt(), v(b + 1).to_radians());
-                // 垂直入射では s・p の区別がないので p の値を使う（OpticStudio と同じ。表の s と p が違っても）
-                if deg.abs() < 1e-12 {
+                // 垂直入射では s・p の区別がないので p の値を使う。OpticStudio と同じく、ごく小さい角度
+                // （1 − cosθ < TABLE_NORMAL）だけを垂直入射とみなす（その外は表の s に段差で戻る）
+                if *step && 1.0 - theta.cos() < TABLE_NORMAL {
                     return Ok([p, p]);
                 }
                 [C64::from_polar(v(a).sqrt(), v(b).to_radians()), p]
@@ -1551,6 +1592,7 @@ mod tests {
             measured: HashMap::new(),
             models: HashMap::new(),
             phase: PhaseConvention::default(),
+            table_normal: TableNormal::default(),
         };
         assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
         assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);

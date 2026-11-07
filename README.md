@@ -65,7 +65,10 @@ lensbench coatings system.zmx --table coat_tables.ctab
 透過の位相は既定で OpticStudio と同じ約束にする。その位相には層ごとの項（光線の層の中での横ずれの位相）が含まれ、
 β が層の屈折率に近づくと発散するので、モデルは `BMAX` を超える β では止める。`Coatings::phase` を
 `PhaseConvention::Physical` にするとこの項を外す（どの β でも有限。OpticStudio とは s・p 共通の位相だけ違う）。
-膜ファイルの表（TABLE）の垂直入射は、OpticStudio と同じく s にも p の値を使う。
+`Physical` は層のわかる膜（膜ファイルの COAT）とモデルにだけ効き、実測表・TABLE には効かない。
+膜ファイルの表（TABLE）は OpticStudio と同じく角度を cosθ について線形に補間し、垂直入射（1 − cosθ < 1e-8）では
+s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ外で s に段差が出る）。`Coatings::table_normal` を
+`TableNormal::Continuous` にすると、0° の行の s を p に置き換えて補間する（段差なし）。
 
 ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。
 
