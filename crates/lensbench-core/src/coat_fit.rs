@@ -460,6 +460,10 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
     let mut s = format!("{}\n", crate::coating::MODEL_HEADER);
     for (name, m) in entries {
         writeln!(s, "COAT {name}").unwrap();
+        if !m.kinks.is_empty() {
+            let k: Vec<String> = m.kinks.iter().map(|k| format!("{k:?}")).collect();
+            writeln!(s, "KINKS {}", k.join(" ")).unwrap();
+        }
         if !m.wavelengths.is_empty() {
             writeln!(s, "D {:?}\nBMAX {:?}", m.d, m.bmax).unwrap();
             for (iw, w) in m.wavelengths.iter().enumerate() {

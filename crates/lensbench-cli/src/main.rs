@@ -105,6 +105,9 @@ enum Cmd {
         /// 作る膜（カンマ区切り、既定は表にある全部）
         #[arg(long)]
         coat: Option<String>,
+        /// 波長方向の折れ目 [µm]（カンマ区切り）。膜の材料の分散表の節。補間はこの点をまたがない
+        #[arg(long)]
+        kinks: Option<String>,
         /// BMAX を決める ψ の補間誤差の上限 [rad]
         #[arg(long, default_value_t = 1e-3)]
         tol_psi: f64,
@@ -228,9 +231,13 @@ fn run(cli: Cli) -> Result<(), String> {
             tables,
             out,
             coat,
+            kinks,
             tol_psi,
             json,
-        } => (json, coat_model(&tables, &out, coat.as_deref(), tol_psi)?),
+        } => (
+            json,
+            coat_model(&tables, &out, coat.as_deref(), kinks.as_deref(), tol_psi)?,
+        ),
     };
     if json_out {
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -304,8 +311,17 @@ fn coat_model(
     tables: &[PathBuf],
     out: &std::path::Path,
     only: Option<&str>,
+    kinks: Option<&str>,
     tol_psi: f64,
 ) -> Result<Value, String> {
+    let mut kinks: Vec<f64> = match kinks {
+        None => Vec::new(),
+        Some(k) => k
+            .split(',')
+            .map(|x| x.trim().parse::<f64>().map_err(|_| format!("--kinks: {x}")))
+            .collect::<Result<_, _>>()?,
+    };
+    kinks.sort_by(f64::total_cmp);
     use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
     let mut all = Vec::new();
     for t in tables {
@@ -344,6 +360,22 @@ fn coat_model(
                 continue;
             }
         };
+        let mut r = r;
+        r.model.kinks = kinks.clone();
+        // 折れ目の波長で測っていないと、そこをはさむ区間の端は外挿になる
+        let unmeasured: Vec<f64> = kinks
+            .iter()
+            .copied()
+            .filter(|&k| {
+                let w = &r.model.wavelengths;
+                !w.is_empty()
+                    && (w[0] < k && k < w[w.len() - 1])
+                    && !w.iter().any(|&x| (x - k).abs() < 1e-9)
+            })
+            .collect();
+        if !unmeasured.is_empty() {
+            eprintln!("warning: {c}: 折れ目 {unmeasured:?} um の波長で測っていない（その付近は外挿になる）");
+        }
         let coarse = r.wave_gap > r.wave_gap_needed;
         if coarse {
             eprintln!(
@@ -363,6 +395,7 @@ fn coat_model(
             "wave_gap": r.wave_gap,
             "wave_gap_needed": r.wave_gap_needed,
             "coarse": coarse,
+            "kinks_unmeasured": unmeasured,
         }));
         models.push((c.clone(), r.model));
     }
