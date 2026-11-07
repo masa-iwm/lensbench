@@ -367,6 +367,9 @@ pub struct CoatModel {
     /// [波長][β][偏光] → ψ [µm]
     pub psi: Vec<Vec<[f64; 2]>>,
     pub mirror: Option<MirrorModel>,
+    /// 波長方向の折れ目 [µm]（昇順）。膜の材料の分散表の節で、係数の波長微分がここで跳ぶ。
+    /// 波長の補間はこの点をまたがない（透過・鏡とも。折れ目の波長でも測っておく）
+    pub kinks: Vec<f64>,
 }
 
 /// 鏡のモデル（[`CoatModel`]）
@@ -395,6 +398,7 @@ impl CoatModel {
 /// COAT 膜の名前
 /// D 透過の位相の厚さ [µm]
 /// BMAX 透過で使える β の上限
+/// KINKS 折れ目の波長 [µm] ...      （なくてもよい。波長の補間はこの点をまたがない）
 /// WAVE 波長 [µm]
 /// β  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（s）  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（p）     （19 列、β の昇順）
 /// ...
@@ -523,6 +527,11 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                     c.bmax = v
                 }
             }
+            "KINKS" => {
+                let mut k = t[1..].iter().map(|x| n(x)).collect::<Result<Vec<f64>>>()?;
+                k.sort_by(f64::total_cmp);
+                c.model.kinks = k;
+            }
             "MIRROR" if t.len() == 3 && !c.in_mirror => {
                 c.in_mirror = true;
                 c.model.mirror = Some(MirrorModel {
@@ -577,17 +586,36 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
 }
 
 /// 波長 wl での値: 近い 4 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）
-fn wave_weights(wls: &[f64], wl: f64) -> Option<(usize, Vec<f64>)> {
+fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)> {
+    const EPS: f64 = 1e-9;
     let n = wls.len();
-    if n == 0 || !(wls[0] - 1e-9 <= wl && wl <= wls[n - 1] + 1e-9) {
+    if n == 0 || !(wls[0] - EPS <= wl && wl <= wls[n - 1] + EPS) {
+        return None;
+    }
+    // wl をはさむ折れ目の間 [lo, hi] の点だけを使う（折れ目の上の点は両側で使う）
+    let lo = kinks
+        .iter()
+        .copied()
+        .filter(|&k| k <= wl + EPS)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let hi = kinks
+        .iter()
+        .copied()
+        .filter(|&k| k > wl + EPS)
+        .fold(f64::INFINITY, f64::min);
+    let s = wls.partition_point(|&w| w < lo - EPS);
+    let e = wls.partition_point(|&w| w <= hi + EPS);
+    let seg = &wls[s..e];
+    let n = seg.len();
+    if n == 0 {
         return None;
     }
     let m = n.min(4);
-    let i = wls
+    let i = seg
         .partition_point(|&w| w < wl)
         .saturating_sub(2)
         .min(n - m);
-    let x: Vec<f64> = wls[i..i + m].iter().map(|w| 1.0 / w).collect();
+    let x: Vec<f64> = seg[i..i + m].iter().map(|w| 1.0 / w).collect();
     let xv = 1.0 / wl;
     let w = (0..m)
         .map(|a| {
@@ -597,7 +625,7 @@ fn wave_weights(wls: &[f64], wl: f64) -> Option<(usize, Vec<f64>)> {
                 .product()
         })
         .collect();
-    Some((i, w))
+    Some((s + i, w))
 }
 
 /// 実数の値の列を β² の not-a-knot スプラインにする
@@ -1123,7 +1151,7 @@ fn prepare_model(
         let Some(m) = &md.mirror else {
             notimpl!("膜のモデル {name} に鏡のデータがない");
         };
-        let Some((i, w)) = wave_weights(&m.wavelengths, wl) else {
+        let Some((i, w)) = wave_weights(&m.wavelengths, wl, &md.kinks) else {
             notimpl!("膜のモデル {name}（鏡）: 波長 {wl} µm が範囲の外");
         };
         let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
@@ -1156,7 +1184,7 @@ fn prepare_model(
     if !md.has_transmit() {
         notimpl!("膜のモデル {name} に透過のデータがない");
     }
-    let Some((i, w)) = wave_weights(&md.wavelengths, wl) else {
+    let Some((i, w)) = wave_weights(&md.wavelengths, wl, &md.kinks) else {
         notimpl!(
             "膜のモデル {name}: 波長 {wl} µm が範囲（{}〜{} µm）の外",
             md.wavelengths[0],
@@ -1496,6 +1524,31 @@ pub fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wave_weights_do_not_cross_kinks() {
+        // 波数 x = 1/λ について、折れ目 0.5 µm の両側で別の 3 次式（値は連続、傾きが跳ぶ）
+        let xk = 2.0;
+        let f = |wl: f64| {
+            let x = 1.0 / wl;
+            let t = x - xk;
+            1.0 + 0.3 * t - 0.2 * t * t + 0.05 * t * t * t + if t > 0.0 { 0.7 * t } else { 0.0 }
+        };
+        let wls: Vec<f64> = (0..15).map(|i| 0.4 + 0.025 * i as f64).collect();
+        assert!(wls.iter().any(|&w| (w - 0.5).abs() < 1e-12));
+        let ev = |wl: f64, k: &[f64]| {
+            let (i, w) = wave_weights(&wls, wl, k).unwrap();
+            w.iter()
+                .enumerate()
+                .map(|(a, wa)| wa * f(wls[i + a]))
+                .sum::<f64>()
+        };
+        for wl in [0.41, 0.46, 0.49, 0.499, 0.5, 0.501, 0.51, 0.55, 0.74] {
+            assert!((ev(wl, &[0.5]) - f(wl)).abs() < 1e-12, "{wl}");
+        }
+        // 折れ目を知らないと、またぐ区間でずれる
+        assert!((ev(0.49, &[]) - f(0.49)).abs() > 1e-5);
+    }
 
     #[test]
     fn fresnel_normal_incidence() {
