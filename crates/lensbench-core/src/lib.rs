@@ -12,12 +12,14 @@ pub mod analysis;
 pub mod catalog;
 pub mod coat_fit;
 pub mod coating;
+pub mod elements;
 pub mod glass;
 pub mod report;
 pub mod surface;
 pub mod system;
 pub mod trace;
 pub mod zmx;
+pub mod zmx_write;
 
 pub use error::{Error, Result};
 pub use system::{FieldSel, System};
