@@ -95,6 +95,23 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// 暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
+    CoatModel {
+        /// 実測表（LBCT 形式、複数可）
+        tables: Vec<PathBuf>,
+        /// 書き出す LBCM ファイル
+        #[arg(long)]
+        out: PathBuf,
+        /// 作る膜（カンマ区切り、既定は表にある全部）
+        #[arg(long)]
+        coat: Option<String>,
+        /// BMAX を決める ψ の補間誤差の上限 [rad]
+        #[arg(long, default_value_t = 1e-3)]
+        tol_psi: f64,
+        /// JSON で出力する
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn load(c: &Common) -> Result<System, String> {
@@ -207,6 +224,13 @@ fn run(cli: Cli) -> Result<(), String> {
             table,
             json,
         } => (json, coatings(&file, &glass_dir, &table)?),
+        Cmd::CoatModel {
+            tables,
+            out,
+            coat,
+            tol_psi,
+            json,
+        } => (json, coat_model(&tables, &out, coat.as_deref(), tol_psi)?),
     };
     if json_out {
         println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -274,6 +298,59 @@ fn coatings(
         "configurations": cfgs,
         "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
     }))
+}
+
+fn coat_model(
+    tables: &[PathBuf],
+    out: &std::path::Path,
+    only: Option<&str>,
+    tol_psi: f64,
+) -> Result<Value, String> {
+    use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
+    let mut all = Vec::new();
+    for t in tables {
+        let txt = std::fs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
+        all.extend(coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))?);
+    }
+    let mut coats: Vec<String> = Vec::new();
+    for (k, _) in &all {
+        let c = k.split('|').next().unwrap_or("").to_string();
+        if !coats.contains(&c) {
+            coats.push(c);
+        }
+    }
+    if let Some(o) = only {
+        let want: Vec<&str> = o.split(',').collect();
+        coats.retain(|c| want.contains(&c.as_str()));
+    }
+    let opt = FitOptions {
+        tol_psi,
+        ..Default::default()
+    };
+    let mut models = Vec::new();
+    let mut rep = Vec::new();
+    for c in &coats {
+        let t: Vec<(&str, &coating::Measured)> = all
+            .iter()
+            .filter(|(k, _)| k.split('|').next() == Some(c.as_str()))
+            .map(|(k, m)| (k.as_str(), m))
+            .collect();
+        let r = fit_model(&t, &opt).map_err(|e| format!("{c}: {e}"))?;
+        rep.push(json!({
+            "coat": c,
+            "d_um": r.model.d,
+            "bmax": r.model.bmax,
+            "mirror_d_um": r.model.mirror.as_ref().map(|m| m.d),
+            "wavelengths": r.model.wavelengths.len(),
+            "betas": r.model.betas.len(),
+            "points": r.points,
+            "residual_max": r.residual_max,
+        }));
+        models.push((c.clone(), r.model));
+    }
+    let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
+    std::fs::write(out, format_models(&e)).map_err(|x| format!("{}: {x}", out.display()))?;
+    Ok(json!({ "out": out.display().to_string(), "models": rep }))
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
