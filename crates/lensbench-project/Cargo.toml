@@ -1,0 +1,13 @@
+[package]
+name = "lensbench-project"
+description = "Block-based project files of lensbench and their expansion to sequential surfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

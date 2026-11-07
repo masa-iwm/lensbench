@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
+lensbench-project = { path = "../lensbench-project" }
 clap = { version = "4", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 

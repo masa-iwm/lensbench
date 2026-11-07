@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lensbench-core", "crates/lensbench-cli"]
+members = ["crates/lensbench-core", "crates/lensbench-project", "crates/lensbench-cli"]
 
 [workspace.package]
 version = "0.1.0"

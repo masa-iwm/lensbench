@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::{self, Coatings};
-use lensbench_core::{glass, report, zmx, FieldSel, System};
+use lensbench_core::{elements, glass, report, zmx, zmx_write, FieldSel, System};
 use serde_json::{json, Value};
 
 #[derive(Parser)]
@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Args)]
 struct Common {
-    /// .zmx ファイル
+    /// .zmx ファイル、またはブロックで組んだプロジェクトファイル（.json）
     file: PathBuf,
     /// ガラスカタログを探すフォルダ（複数可。LENSBENCH_GLASSCAT も使う）
     #[arg(long = "glass-dir")]
@@ -81,6 +81,17 @@ enum Cmd {
         #[arg(long, default_value_t = 64)]
         n: usize,
     },
+    /// 玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す。--reverse で玉を反転し、--out で .zmx に書き出す
+    Elements {
+        #[command(flatten)]
+        c: Common,
+        /// 反転する玉の番号（1 始まり、玉だけを数える。カンマ区切り）
+        #[arg(long)]
+        reverse: Option<String>,
+        /// 組み直した系を書き出す .zmx
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// 面の膜: 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
     Coatings {
         /// .zmx ファイル
@@ -133,6 +144,15 @@ fn load(c: &Common) -> Result<System, String> {
     if c.cfg == 0 {
         return Err("--cfg は 1 以上".into());
     }
+    if c.file
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+    {
+        if c.cfg != 1 {
+            return Err("プロジェクトファイルの --cfg は未対応（状態は今後）".into());
+        }
+        return lensbench_project::load(&c.file, &c.glass_dir, None);
+    }
     let opt = zmx::LoadOptions {
         cfg: c.cfg,
         catalog_dirs: c.glass_dir.clone(),
@@ -176,6 +196,59 @@ fn run(cli: Cli) -> Result<(), String> {
                     "paraxial_image_height": d.pimh, "paraxial_mag": d.pmag,
                     "total_track": d.totr, "object_na": d.obna,
                 }),
+            )
+        }
+        Cmd::Elements { c, reverse, out } => {
+            let s = load(&c)?;
+            let mut els = elements::split(&s).map_err(e)?;
+            let lenses: Vec<usize> = (0..els.len())
+                .filter(|&i| els[i].kind == elements::Kind::Lens)
+                .collect();
+            if let Some(r) = reverse {
+                for t in r.split(',') {
+                    let k: usize = t.trim().parse().map_err(|_| format!("--reverse の {t}"))?;
+                    let i = *lenses
+                        .get(k.wrapping_sub(1))
+                        .ok_or_else(|| format!("玉 {k} はありません（1〜{}）", lenses.len()))?;
+                    els[i] = elements::reverse(&els[i]).map_err(e)?;
+                }
+            }
+            let a = elements::assemble(&s, &els).map_err(e)?;
+            if let Some(p) = &out {
+                zmx_write::save(p, &a).map_err(e)?;
+            }
+            let w = s.primary;
+            let mut nl = 0;
+            let v: Vec<Value> = els
+                .iter()
+                .map(|x| {
+                    let kind = match x.kind {
+                        elements::Kind::Lens => "lens",
+                        elements::Kind::Mirror => "mirror",
+                        elements::Kind::CoordBreak => "coordinate_break",
+                        elements::Kind::Surface => "surface",
+                        elements::Kind::Air => "air",
+                    };
+                    let mut o = json!({ "kind": kind });
+                    if x.kind == elements::Kind::Air {
+                        o["thickness"] = json!(x.t);
+                    } else {
+                        o["surfaces"] = json!([x.from, x.from + x.surfaces.len() - 1]);
+                    }
+                    if x.kind == elements::Kind::Lens {
+                        nl += 1;
+                        o["lens"] = json!(nl);
+                        o["materials"] = json!(x.materials());
+                        o["length"] = json!(x.length());
+                        o["efl"] = json!(x.efl(w));
+                        o["reversed"] = json!(x.reversed);
+                    }
+                    o
+                })
+                .collect();
+            (
+                c.json,
+                json!({ "elements": v, "efl": a.paraxial().efl, "written": out.map(|p| p.display().to_string()) }),
             )
         }
         Cmd::Spot { c, s: sel, rings } => {
