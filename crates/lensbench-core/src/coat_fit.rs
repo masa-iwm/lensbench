@@ -435,6 +435,7 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
             wavelengths: refm.wavelengths.clone(),
             betas: bs,
             r,
+            ..Default::default()
         });
     }
     let points = mfit.len();

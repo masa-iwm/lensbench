@@ -383,6 +383,15 @@ pub struct MirrorModel {
     pub betas: Vec<f64>,
     /// [波長][β] → (r_s, r_p)
     pub r: Vec<Vec<[C64; 2]>>,
+    /// 波長ごとの β² 方向の分岐点（[`mirror_branch`]、初めて使うときに求める）
+    pub(crate) branches: std::sync::OnceLock<Vec<Option<f64>>>,
+}
+
+impl MirrorModel {
+    fn branches(&self, b2: &[f64]) -> &[Option<f64>] {
+        self.branches
+            .get_or_init(|| self.r.iter().map(|rw| mirror_branch(b2, rw)).collect())
+    }
 }
 
 impl CoatModel {
@@ -710,6 +719,61 @@ fn rational_solve(xs: &[f64], i: usize, m: usize, q: f64, f: &dyn Fn(usize) -> C
     }
     let v = a[0][m] / a[0][0];
     (v.re.is_finite() && v.im.is_finite()).then_some(v)
+}
+
+/// 鏡の 1 つの波長の表（β² の昇順 b2、点ごとに偏光 s・p の r）から、β² 方向の分岐点を探す。
+/// 膜の外の媒質（屈折率 n）へ光が抜ける鏡では、β > n で全反射になって |r| = 1 に張り付き、
+/// β = n で r が sqrt(n² − β²) の形で変わる。有理関数でも多項式でも表せないので、補間の点がまたがないようにし、
+/// 両側それぞれ t = sqrt(|β² − xb|) で補間する（r は t の滑らかな関数）。
+/// |r| = 1（1e-10 以内）が最後まで続く最初の点を k として、位置 xb は k とその手前の点の間で、両側から t = 0 へ外挿した r が一致する点。
+/// 層が吸収して |r| < 1 のままなら None（分岐点は扱わない）
+fn mirror_branch(b2: &[f64], r: &[[C64; 2]]) -> Option<f64> {
+    let dev = |j: usize| {
+        r[j].iter()
+            .map(|v| (v.norm() - 1.0).abs())
+            .fold(0.0, f64::max)
+    };
+    let n = b2.len();
+    let k = (0..n).rev().find(|&j| !(dev(j) < 1e-10))? + 1;
+    // 両側に 4 点以上。sqrt の形なら手前で |r| は 1 からはっきり離れている（全反射しにくい高反射膜で
+    // |r| が β とともに少しずつ 1 に近づくだけのときは分岐点ではない）
+    if k < 4 || n - k < 4 || dev(k - 2) < 1e-7 {
+        return None;
+    }
+    let m = RATIONAL_N.min(k).min(n - k);
+    // 両側から t = 0 へ外挿した r の食い違い
+    let gap = |xb: f64| -> f64 {
+        let tl: Vec<f64> = (0..m)
+            .map(|i| (xb - b2[k - 1 - i]).max(0.0).sqrt())
+            .collect();
+        let th: Vec<f64> = (0..m).map(|i| (b2[k + i] - xb).max(0.0).sqrt()).collect();
+        (0..2)
+            .map(|pol| {
+                let lo = rational_at(&tl, 0, m, 0.0, &|i| r[k - 1 - i][pol]);
+                let hi = rational_at(&th, 0, m, 0.0, &|i| r[k + i][pol]);
+                (lo - hi).norm()
+            })
+            .sum::<f64>()
+    };
+    let (a0, c0) = (b2[k - 1], b2[k]);
+    const N: usize = 200;
+    let grid = |i: usize| a0 + (c0 - a0) * i as f64 / N as f64;
+    let j = (0..=N)
+        .min_by(|&p, &q| gap(grid(p)).total_cmp(&gap(grid(q))))
+        .unwrap_or(0);
+    let (mut a, mut c) = (grid(j.saturating_sub(1)), grid((j + 1).min(N)));
+    // 黄金分割で詰める
+    for _ in 0..60 {
+        let (p, q) = (a + (c - a) * 0.381_966, a + (c - a) * 0.618_034);
+        if gap(p) < gap(q) {
+            c = q;
+        } else {
+            a = p;
+        }
+    }
+    let xb = 0.5 * (a + c);
+    // 格子の点より悪ければ格子の点
+    Some(if gap(xb) <= gap(grid(j)) { xb } else { grid(j) })
 }
 
 /// [`wave_weights`] が補間できない理由
@@ -1229,7 +1293,55 @@ enum Kind {
         d: f64,
         b2: Vec<f64>,
         r: Box<[Vec<C64>; 2]>,
+        /// β² 方向の分岐点（膜の外の媒質で全反射が始まる β²）。補間の点はこれをまたがない
+        branch: Option<Box<Branch>>,
     },
+}
+
+/// 鏡の β² 方向の分岐点 xb と、その両側の点の座標 t = sqrt(|β² − xb|)（どちらも t の昇順）。
+/// r は分岐点の両側それぞれで t の滑らかな関数なので、t で補間する
+#[derive(Debug, Clone)]
+struct Branch {
+    xb: f64,
+    /// 下側: 点 lo_end − 1 − i の t
+    lo_end: usize,
+    t_lo: Vec<f64>,
+    /// 上側: 点 hi_start + i の t
+    hi_start: usize,
+    t_hi: Vec<f64>,
+}
+
+impl Branch {
+    fn new(b2: &[f64], xb: f64) -> Branch {
+        // 分岐点ちょうどの点は両側で使う
+        let lo_end = b2.partition_point(|&v| v <= xb + 1e-12);
+        let hi_start = b2.partition_point(|&v| v < xb - 1e-12);
+        Branch {
+            xb,
+            lo_end,
+            t_lo: (0..lo_end)
+                .rev()
+                .map(|j| (xb - b2[j]).max(0.0).sqrt())
+                .collect(),
+            hi_start,
+            t_hi: (hi_start..b2.len())
+                .map(|j| (b2[j] - xb).max(0.0).sqrt())
+                .collect(),
+        }
+    }
+
+    /// β² = x での値（f(j) は点 j の値）
+    fn eval(&self, x: f64, f: &dyn Fn(usize) -> C64) -> C64 {
+        if x <= self.xb {
+            let q = (self.xb - x).sqrt();
+            rational_at(&self.t_lo, 0, self.t_lo.len(), q, &|i| {
+                f(self.lo_end - 1 - i)
+            })
+        } else {
+            let q = (x - self.xb).sqrt();
+            rational_at(&self.t_hi, 0, self.t_hi.len(), q, &|i| f(self.hi_start + i))
+        }
+    }
 }
 
 /// 膜のモデルを波長 wl で用意する
@@ -1256,10 +1368,70 @@ fn prepare_model(
         // 波数の昇順に並べた点で補間する（波長は昇順なので逆順）
         let xs: Vec<f64> = (s0..e0).rev().map(|i| 1.0 / m.wavelengths[i]).collect();
         let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
+        let brs = m.branches(&b2);
+        // 分岐点は、はさむ 2 つの波長での値を 1/λ で直線補間する（区間のどの波長にもあるときだけ使う）
+        let iq = s0 + m.wavelengths[s0..e0].partition_point(|&w| w < wl);
+        // 分岐点の位置は波長の滑らかな関数（基板の屈折率の 2 乗）なので、近い 4 点の 1/λ の 3 次式で補間する
+        // （区間のどの波長にもあるときだけ使う）
+        let branch = if brs[s0..e0].iter().all(Option::is_some) {
+            let bx: Vec<f64> = (s0..e0).rev().map(|i| brs[i].unwrap_or(0.0)).collect();
+            let n = xs.len().min(4);
+            let i = xs
+                .partition_point(|&x| x < 1.0 / wl)
+                .saturating_sub(n / 2)
+                .min(xs.len() - n);
+            let q = 1.0 / wl;
+            Some(
+                (i..i + n)
+                    .map(|a| {
+                        let w: f64 = (i..i + n)
+                            .filter(|&c| c != a)
+                            .map(|c| (q - xs[c]) / (xs[a] - xs[c]))
+                            .product();
+                        w * bx[a]
+                    })
+                    .sum::<f64>(),
+            )
+        } else {
+            None
+        };
+        let branch = branch.map(|xb| Box::new(Branch::new(&b2, xb)));
+        // 補間に使いそうな波長（近い RATIONAL_N 点と、その両側に 2 点ずつ）で分岐点が点 j の β² の両側にあるなら、
+        // β² を固定すると波長の補間が分岐点をまたぐ。その点は、各波長の表を分岐点からの β² の差 u = β² − xb で
+        // 揃えてから波長で補間する。ほかの点は β² を固定して補間する（測った点で値が厳密に合う）
+        let (w0, w1) = (
+            iq.saturating_sub(RATIONAL_N / 2 + 2).max(s0),
+            (iq + RATIONAL_N / 2 + 2).min(e0),
+        );
+        let near = |j: usize| {
+            branch.is_some() && {
+                let above = |w: usize| brs[w].is_some_and(|xb| xb > b2[j]);
+                let a = above(w0);
+                (w0..w1).any(|w| above(w) != a)
+            }
+        };
+        let side: Vec<Option<Branch>> = (s0..e0)
+            .map(|i| {
+                brs[i]
+                    .filter(|_| branch.is_some())
+                    .map(|xb| Branch::new(&b2, xb))
+            })
+            .collect();
         let mut r: [Vec<C64>; 2] = [Vec::new(), Vec::new()];
         for (pol, rp) in r.iter_mut().enumerate() {
             *rp = (0..m.betas.len())
-                .map(|j| rational_at(&xs, 0, xs.len(), 1.0 / wl, &|k| m.r[e0 - 1 - k][j][pol]))
+                .map(|j| {
+                    if near(j) {
+                        let u = b2[j] - branch.as_ref().map_or(0.0, |bb| bb.xb);
+                        rational_at(&xs, 0, xs.len(), 1.0 / wl, &|k| {
+                            let w = e0 - 1 - k;
+                            let bk = side[w - s0].as_ref().expect("分岐点");
+                            bk.eval(bk.xb + u, &|jj| m.r[w][jj][pol])
+                        })
+                    } else {
+                        rational_at(&xs, 0, xs.len(), 1.0 / wl, &|k| m.r[e0 - 1 - k][j][pol])
+                    }
+                })
                 .collect();
         }
         return Ok(Kind::ModelMirror {
@@ -1268,6 +1440,7 @@ fn prepare_model(
             d: m.d,
             b2,
             r: Box::new(r),
+            branch,
         });
     }
     if !md.has_transmit() {
@@ -1482,6 +1655,7 @@ impl Iface {
                 d,
                 b2,
                 r: rr,
+                branch,
             } => {
                 let b = self.n1 * theta.sin();
                 let x = b * b;
@@ -1496,7 +1670,10 @@ impl Iface {
                 let ph = C64::new(0.0, 2.0 * k * self.n1 * theta.cos() * d).exp();
                 let mut out = [C64::new(0.0, 0.0); 2];
                 for (pol, o) in out.iter_mut().enumerate() {
-                    let r = rational_at(b2, 0, b2.len(), x, &|j| rr[pol][j]);
+                    let r = match branch.as_deref() {
+                        Some(bb) => bb.eval(x, &|j| rr[pol][j]),
+                        None => rational_at(b2, 0, b2.len(), x, &|j| rr[pol][j]),
+                    };
                     let one = C64::new(1.0, 0.0);
                     let y = admittance(*n_ref, b, pol) * (one - r) / (one + r);
                     let e0 = admittance(self.n1, b, pol);
@@ -1626,6 +1803,63 @@ mod tests {
             worst = worst.max((v - f(q)).norm());
         }
         assert!(worst < 1e-8, "{worst:e}");
+    }
+
+    #[test]
+    fn mirror_model_does_not_cross_the_branch() {
+        // 2.05 の媒質から 3 層を経て、分散のある基板（n ≈ 1.41）へ光が抜ける鏡。β > n_s で |r| = 1 になり、
+        // β = n_s で r が sqrt の形で変わる。分岐点は波長で動く
+        let ns = |wl: f64| 1.4003 + 0.004 / (wl * wl);
+        let layers = [
+            (C64::new(2.10, 0.0), 0.12),
+            (C64::new(2.30, 0.0), 0.08),
+            (C64::new(2.15, 0.0), 0.15),
+        ];
+        let exact = |wl: f64, b: f64| {
+            let (rs, rp, _, _) = stack(2.05, &layers, C64::new(ns(wl), 0.0), wl, (b / 2.05).asin());
+            [rs, rp]
+        };
+        let wavelengths: Vec<f64> = (0..41)
+            .rev()
+            .map(|i| 1.0 / (1.0 / 0.7 + i as f64 * (2.0 - 1.0 / 0.7) / 40.0))
+            .collect();
+        let betas: Vec<f64> = (0..=1600).map(|i| 0.00125 * i as f64).collect();
+        let r = wavelengths
+            .iter()
+            .map(|&w| betas.iter().map(|&b| exact(w, b)).collect())
+            .collect();
+        let md = CoatModel {
+            mirror: Some(MirrorModel {
+                n_ref: 2.05,
+                d: 0.0,
+                wavelengths,
+                betas,
+                r,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let (mut worst, mut over) = (0.0f64, 0.0f64);
+        for wl in [0.5123, 0.5871, 0.6402, 0.6957] {
+            let f = Iface {
+                kind: prepare_model("T", &md, true, false, wl, 0.0, PhaseConvention::OpticStudio)
+                    .unwrap(),
+                mirror: true,
+                n1: 2.05,
+                wl,
+            };
+            let nb = ns(wl);
+            for k in 0..2000 {
+                let b = nb - 0.02 + 0.04 * k as f64 / 1999.0;
+                let v = f.eval((b / 2.05).asin()).unwrap();
+                let e = exact(wl, b);
+                let d = (v[0] - e[0]).norm().max((v[1] - e[1]).norm());
+                worst = worst.max(d);
+                over = over.max(v[0].norm().max(v[1].norm()) - 1.0);
+            }
+        }
+        assert!(worst < 1e-6, "{worst:e}");
+        assert!(over < 1e-7, "{over:e}");
     }
 
     #[test]
