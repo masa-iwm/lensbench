@@ -114,6 +114,8 @@ pub struct Paraxial {
     pub marginal: (Vec<f64>, Vec<f64>),
     pub chief: (Vec<f64>, Vec<f64>),
     pub chief_image_per_unit: f64,
+    /// 主光線の近軸像面（マージナル光線の高さが 0 の面）での高さ。近軸像高の視野はこの面で決める（OpticStudio と同じ）
+    pub chief_parimage_per_unit: f64,
     pub wfno: f64,
     pub isfn: f64,
     pub pmag: f64,
@@ -476,6 +478,12 @@ impl System {
         };
         let (yci, uci) = (yc[img], uc[img - 1]);
         let (ymi, umi) = (ym[img], um[img - 1]);
+        // 像面から近軸像面までずらした主光線の高さ（像面が近軸像面にあれば yci と同じ）
+        let ycp = if umi != 0.0 {
+            yci - uci * ymi / umi
+        } else {
+            yci
+        };
         let mut expp = if uci != 0.0 {
             -yci / uci
         } else {
@@ -500,6 +508,7 @@ impl System {
             stop_radius: ym[s].abs(),
             u_obj,
             chief_image_per_unit: yci,
+            chief_parimage_per_unit: ycp,
             wfno: if umi != 0.0 {
                 1.0 / (2.0 * n_i * umi.abs())
             } else {
@@ -664,7 +673,7 @@ impl System {
             FieldType::RealH => return self.real_height_spec(x, y),
             FieldType::Angle => (x.to_radians().tan(), y.to_radians().tan()),
             FieldType::ParH => {
-                let h1 = par.chief_image_per_unit;
+                let h1 = par.chief_parimage_per_unit;
                 if self.infinite() {
                     (x / h1, y / h1)
                 } else {
@@ -1271,5 +1280,43 @@ pub fn frames(surfaces: &[Surface], glrs: usize) -> Frames {
             o: mv(&gt, scale(g.o, -1.0)),
             r: gt,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 理想レンズ f 50（絞り）の後ろに、近軸像面から外した像面を置いた系。視野は近軸像高 (0, 5)
+    fn defocused(obj: &str, aperture: &str, image_t: f64) -> System {
+        let t = format!(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\n{aperture}\nFTYP 2 0 1 1 0 0 0\n\
+             XFLN 0\nYFLN 5\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+             SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ {obj}\n\
+             SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 50\n  PARM 2 1\n  DISZ {image_t}\n\
+             SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        );
+        let raw = crate::zmx::parse_text(&t).unwrap();
+        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+    }
+
+    #[test]
+    fn paraxial_image_height_is_taken_at_the_paraxial_image_plane() {
+        // 無限遠の物体: 像面がどこでも、近軸像面での高さ 5 は tanθ = 5/50
+        for t in [50.0, 40.0, 60.0] {
+            let s = defocused("INFINITY", "ENPD 10", t);
+            match s.object_spec(0.0, 1.0).unwrap() {
+                ObjSpec::Dir(d) => assert!(((d[1] / d[2]).abs() - 0.1).abs() < 1e-14, "{t}: {d:?}"),
+                o => panic!("{o:?}"),
+            }
+        }
+        // 有限の物体（距離 100、倍率 −1）: 物体高 5
+        for t in [100.0, 80.0, 120.0] {
+            let s = defocused("100", "OBNA 0.05 0", t);
+            match s.object_spec(0.0, 1.0).unwrap() {
+                ObjSpec::Point(p) => assert!((p[1].abs() - 5.0).abs() < 1e-12, "{t}: {p:?}"),
+                o => panic!("{o:?}"),
+            }
+        }
     }
 }
