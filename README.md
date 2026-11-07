@@ -38,7 +38,8 @@ lensbench spot     system.zmx --field 2 --wave 1
 lensbench wavefront system.zmx --n 64
 lensbench zernike  system.zmx --kind fringe --terms 37
 lensbench coatings system.zmx --table coat_tables.ctab
-lensbench coat-model measured.ctab --out coat_models.lbcm
+lensbench coat-kinks scan.ctab
+lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5
 ```
 
 `coatings` は全コンフィグの境界（`膜|前の媒質|後の媒質`）と膜の扱い（膜なし、理想膜、膜ファイルの薄膜・表、実測表、モデル）を一覧にし、
@@ -70,7 +71,10 @@ lensbench coat-model measured.ctab --out coat_models.lbcm
 （波数 1/λ の間隔、係数の差 1e-5 の目安）。膜厚が波長単位（主波長基準）の膜は、主波長で厚さが変わるので、
 作ったモデルは測ったときの主波長でしか使えない。
 膜の材料の分散表は折れ線で補間されることがあり、その節の波長で係数の波長微分が跳ぶ（折れ目）。折れ目は
-`--kinks 0.45,0.5,...` で渡すと LBCM の `KINKS` 行に入り、波長の補間はそこをまたがない（折れ目の波長でも測っておく）。`--kinks` は表にある全部の膜に入るので、材料の違う膜は `--coat` で分けて作る。モデルガラスの組が足りない膜は飛ばす（`skipped`）。
+`--kinks 0.45,0.5,...` で渡すと LBCM の `KINKS` 行に入り、波長の補間はそこをまたがない（折れ目の波長でも測っておく）。`--kinks` は表にある全部の膜に入るので、材料の違う膜は `--coat` で分けて作る。
+折れ目の波長は `lensbench coat-kinks 試しの表.ctab` で探せる（`lensbench_core::coat_fit::detect_kinks`）。空気から入る KEY を、
+膜の厚さから決めた格子の 4 倍くらい細かい波長で測った表を渡すと、膜ごとに `--kinks` に渡せる形（`kinks_arg`）を出す。
+同じ KEY が複数の表にあれば、`coat-model` は後の表のものを使う（鏡だけ細かい波長で測り直した表を後ろに渡す、など）。モデルガラスの組が足りない膜は飛ばす（`skipped`）。
 
 透過の位相は既定で OpticStudio と同じ約束にする。その位相には層ごとの項（光線の層の中での横ずれの位相）が含まれ、
 β が層の屈折率に近づくと発散するので、モデルは `BMAX` を超える β では止める。`Coatings::phase` を

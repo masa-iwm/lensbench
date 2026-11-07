@@ -95,9 +95,21 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// 実測表（LBCT）から、波長方向の折れ目（膜の材料の分散表の節）を探す。
+    /// 波長の格子は膜の厚さから決めた格子の 4 倍くらい細かくして測っておく
+    CoatKinks {
+        /// 実測表（LBCT 形式、複数可）
+        tables: Vec<PathBuf>,
+        /// 調べる KEY（複数回指定できる。既定は空気から入る透過と鏡の KEY。硝材側は高い β の列で残差が大きく、検出が鈍い）
+        #[arg(long)]
+        key: Vec<String>,
+        /// JSON で出力する
+        #[arg(long)]
+        json: bool,
+    },
     /// 暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
     CoatModel {
-        /// 実測表（LBCT 形式、複数可）
+        /// 実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
         tables: Vec<PathBuf>,
         /// 書き出す LBCM ファイル
         #[arg(long)]
@@ -227,6 +239,7 @@ fn run(cli: Cli) -> Result<(), String> {
             table,
             json,
         } => (json, coatings(&file, &glass_dir, &table)?),
+        Cmd::CoatKinks { tables, key, json } => (json, coat_kinks(&tables, &key)?),
         Cmd::CoatModel {
             tables,
             out,
@@ -307,6 +320,51 @@ fn coatings(
     }))
 }
 
+fn coat_kinks(tables: &[PathBuf], only: &[String]) -> Result<Value, String> {
+    use lensbench_core::coat_fit::detect_kinks;
+    let mut keys = Vec::new();
+    // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
+    let mut per: Vec<(String, Vec<f64>)> = Vec::new();
+    for t in tables {
+        let txt = std::fs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
+        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
+            let air = k.split('|').nth(1) == Some("AIR");
+            if (only.is_empty() && !air) || (!only.is_empty() && !only.contains(&k)) {
+                continue;
+            }
+            let ks = detect_kinks(&m);
+            let coat = k.split('|').next().unwrap_or("").to_string();
+            let i = match per.iter().position(|(c, _)| *c == coat) {
+                Some(i) => i,
+                None => {
+                    per.push((coat.clone(), Vec::new()));
+                    per.len() - 1
+                }
+            };
+            for kk in &ks {
+                if !per[i].1.iter().any(|&w| (w - kk.wl).abs() < 5e-4) {
+                    per[i].1.push(kk.wl);
+                }
+            }
+            keys.push(json!({
+                "key": k,
+                "wavelengths": m.wavelengths.len(),
+                "kinks": ks.iter().map(|k| json!({"wl_um": k.wl, "smooth": k.smooth, "kinked": k.kinked})).collect::<Vec<_>>(),
+            }));
+        }
+    }
+    let coats: Vec<Value> = per
+        .into_iter()
+        .map(|(c, mut w)| {
+            w.sort_by(f64::total_cmp);
+            // --kinks にそのまま渡せる形（0.1 nm に丸める）
+            let arg: Vec<String> = w.iter().map(|x| format!("{:.4}", x)).collect();
+            json!({ "coat": c, "kinks_um": w, "kinks_arg": arg.join(",") })
+        })
+        .collect();
+    Ok(json!({ "coats": coats, "keys": keys }))
+}
+
 fn coat_model(
     tables: &[PathBuf],
     out: &std::path::Path,
@@ -326,7 +384,14 @@ fn coat_model(
     let mut all = Vec::new();
     for t in tables {
         let txt = std::fs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
-        all.extend(coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))?);
+        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
+            // 同じ KEY は後の表で置き換える（渡す順で結果が変わらないように、混ぜない）
+            if let Some(i) = all.iter().position(|(a, _): &(String, _)| *a == k) {
+                eprintln!("warning: {k}: {} の表で置き換えた", t.display());
+                all.remove(i);
+            }
+            all.push((k, m));
+        }
     }
     let mut coats: Vec<String> = Vec::new();
     for (k, _) in &all {

@@ -501,3 +501,196 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
     }
     s
 }
+
+/// 見つけた波長方向の折れ目
+#[derive(Debug, Clone, Copy)]
+pub struct Kink {
+    /// 折れ目の波長 [µm]
+    pub wl: f64,
+    /// 折れ目をはさむ点を 1 本の多項式で当てたときの残差（ほかの波長での残差の中央値の何倍か、列の最大）
+    pub smooth: f64,
+    /// 折れ目（値は連続、微分が跳ぶ）を入れて当てたときの残差（同じ基準）
+    pub kinked: f64,
+}
+
+/// 実数の最小二乗 a x = y（y は列が複数）の、列ごとの残差のノルム。ハウスホルダー QR
+fn lsq_resid(a: &[Vec<f64>], ys: &[Vec<f64>]) -> Vec<f64> {
+    let (m, n) = (a.len(), a[0].len());
+    // 行列 [a | y] に左から反射を掛ける
+    let mut w: Vec<Vec<f64>> = a
+        .iter()
+        .zip(ys)
+        .map(|(r, y)| r.iter().chain(y).copied().collect())
+        .collect();
+    let nc = w[0].len();
+    for k in 0..n {
+        let norm = (k..m).map(|i| w[i][k] * w[i][k]).sum::<f64>().sqrt();
+        if norm == 0.0 {
+            continue;
+        }
+        let alpha = if w[k][k] > 0.0 { -norm } else { norm };
+        let mut v: Vec<f64> = (k..m).map(|i| w[i][k]).collect();
+        v[0] -= alpha;
+        let vv: f64 = v.iter().map(|x| x * x).sum();
+        if vv == 0.0 {
+            continue;
+        }
+        for j in k..nc {
+            let d = (k..m).map(|i| v[i - k] * w[i][j]).sum::<f64>() * 2.0 / vv;
+            for i in k..m {
+                w[i][j] -= d * v[i - k];
+            }
+        }
+    }
+    // 残差のノルムは Qᵀy の n 行目より後のノルム
+    (n..nc)
+        .map(|j| w[n..].iter().map(|r| r[j] * r[j]).sum::<f64>().sqrt())
+        .collect()
+}
+
+/// 実測の表（1 つの KEY）から、波長方向の折れ目（膜の材料の分散表の節）を探す。
+///
+/// 波数 x = 1/λ の各点で、前後 `KINK_N` 点ずつを 5 次式 1 本で当てた残差と、
+/// 4 次式に折れ目の項 (x − x_k)₊、(x − x_k)₊²、(x − x_k)₊³ を足して当てた残差を比べる。
+/// 1 本の残差が（列ごとの中央値に比べて）100 倍を超えて山になる点の近くで x_k を動かし、
+/// 折れ目を入れた残差が 1/30 以下になれば折れ目とする。
+/// 折れ目の両側に十分な点が要る（膜の位相の厚さから決めた波長の格子の 4 倍くらい細かく）
+pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
+    const KINK_N: usize = 7;
+    // 波数の昇順に、全角度・s/p の Re/Im を並べる（有限の列だけ）
+    let mut ord: Vec<usize> = (0..m.wavelengths.len()).collect();
+    ord.sort_by(|&a, &b| m.wavelengths[b].total_cmp(&m.wavelengths[a]));
+    let x: Vec<f64> = ord.iter().map(|&i| 1.0 / m.wavelengths[i]).collect();
+    let cols: Vec<usize> = (0..m.angles_deg.len())
+        .filter(|&ia| {
+            m.data
+                .iter()
+                .all(|r| r[ia][0].re.is_finite() && r[ia][1].re.is_finite())
+        })
+        .collect();
+    let v: Vec<Vec<f64>> = ord
+        .iter()
+        .map(|&i| {
+            cols.iter()
+                .flat_map(|&ia| {
+                    let [s, p] = m.data[i][ia];
+                    [s.re, s.im, p.re, p.im]
+                })
+                .collect()
+        })
+        .collect();
+    let n = x.len();
+    if n < 2 * KINK_N + 3 || cols.is_empty() {
+        return Vec::new();
+    }
+    // xk の前後 KINK_N 点で、(1 本、折れ目入り) の残差
+    let res = |xk: f64| -> Option<(Vec<f64>, Vec<f64>)> {
+        let r = x.partition_point(|&q| q < xk - 1e-12);
+        let l = x.partition_point(|&q| q <= xk + 1e-12);
+        // xk ちょうどの点は左右どちらにも入れない
+        if r < KINK_N || l + KINK_N > n {
+            return None;
+        }
+        let idx: Vec<usize> = (r - KINK_N..r).chain(l..l + KINK_N).collect();
+        let ys: Vec<Vec<f64>> = idx.iter().map(|&i| v[i].clone()).collect();
+        let a1: Vec<Vec<f64>> = idx
+            .iter()
+            .map(|&i| {
+                let t = x[i] - xk;
+                (0..6).map(|k| t.powi(k)).collect()
+            })
+            .collect();
+        let a2: Vec<Vec<f64>> = idx
+            .iter()
+            .map(|&i| {
+                let t = x[i] - xk;
+                let tp = t.max(0.0);
+                let mut row: Vec<f64> = (0..5).map(|k| t.powi(k)).collect();
+                row.extend([tp, tp * tp, tp * tp * tp]);
+                row
+            })
+            .collect();
+        Some((lsq_resid(&a1, &ys), lsq_resid(&a2, &ys)))
+    };
+    // 列ごとの 1 本の残差の中央値を基準に、各点の強さ（基準の何倍か、列の最大）を出す
+    let r1s: Vec<Option<Vec<f64>>> = x.iter().map(|&q| res(q).map(|r| r.0)).collect();
+    let nc = v[0].len();
+    let base: Vec<f64> = (0..nc)
+        .map(|c| {
+            let mut col: Vec<f64> = r1s.iter().flatten().map(|r| r[c]).collect();
+            col.sort_by(f64::total_cmp);
+            col.get(col.len() / 2).copied().unwrap_or(0.0).max(1e-300)
+        })
+        .collect();
+    let score = |r: &[f64]| -> f64 { r.iter().zip(&base).map(|(a, b)| a / b).fold(0.0, f64::max) };
+    let s: Vec<f64> = r1s
+        .iter()
+        .map(|r| r.as_deref().map_or(0.0, score))
+        .collect();
+    let mut out: Vec<Kink> = Vec::new();
+    for i in 1..n - 1 {
+        if !(s[i] > 100.0 && s[i] >= s[i - 1] && s[i] >= s[i + 1]) {
+            continue;
+        }
+        let h = (x[i + 1] - x[i - 1]) / 2.0;
+        let mut best: Option<(f64, f64, f64)> = None; // (折れ目入りの強さ, xk, 1 本の強さ)
+        for k in 0..=800 {
+            let q = x[i] - 2.0 * h + 4.0 * h * k as f64 / 800.0;
+            if let Some((r1, r2)) = res(q) {
+                let (s1, s2) = (score(&r1), score(&r2));
+                if best.map_or(true, |b| s2 < b.0) {
+                    best = Some((s2, q, s1));
+                }
+            }
+        }
+        if let Some((s2, q, s1)) = best {
+            if s2 < s1 / 30.0 && !out.iter().any(|k| (1.0 / k.wl - q).abs() < h) {
+                out.push(Kink {
+                    wl: 1.0 / q,
+                    smooth: s1,
+                    kinked: s2,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.wl.total_cmp(&b.wl));
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_kinks_finds_slope_jumps() {
+        // 波数について滑らかな振動に、0.55 µm と 0.47 µm で傾きの跳びを足す
+        let wls: Vec<f64> = (0..300).map(|i| 0.4 + 0.4 * i as f64 / 299.0).collect();
+        // 実測の丸め程度のゆらぎ（1e-9）
+        let noise =
+            |x: f64, a: f64| ((x * 7919.0 + a * 104729.0).sin() * 43758.5453).fract() * 1e-9;
+        let f = |wl: f64, a: f64| {
+            let x = 1.0 / wl;
+            let k1 = (x - 1.0 / 0.55).max(0.0);
+            let k2 = (x - 1.0 / 0.47).max(0.0);
+            C64::new(
+                (3.0 * x + a).cos() + 1e-2 * k1 + 1e-3 * k2 + noise(x, a),
+                (2.0 * x).sin() * a + noise(x, a + 0.5),
+            )
+        };
+        let m = Measured {
+            wavelengths: wls.clone(),
+            angles_deg: vec![0.0, 30.0],
+            data: wls
+                .iter()
+                .map(|&w| vec![[f(w, 0.1), f(w, 0.2)], [f(w, 0.3), f(w, 0.4)]])
+                .collect(),
+        };
+        let k = detect_kinks(&m);
+        let w: Vec<f64> = k.iter().map(|k| k.wl).collect();
+        assert_eq!(w.len(), 2, "{k:?}");
+        assert!(
+            (w[0] - 0.47).abs() < 2e-5 && (w[1] - 0.55).abs() < 2e-5,
+            "{w:?}"
+        );
+    }
+}
