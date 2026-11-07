@@ -585,8 +585,8 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
     Ok(out)
 }
 
-/// 波長 wl での値: 近い 4 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）
-fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)> {
+/// wl をはさむ折れ目の間の点の範囲 [s, e)（範囲外や点が足りなければ None）
+fn wave_segment(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, usize)> {
     const EPS: f64 = 1e-9;
     let n = wls.len();
     if n == 0 || !(wls[0] - EPS <= wl && wl <= wls[n - 1] + EPS) {
@@ -605,12 +605,19 @@ fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)
         .fold(f64::INFINITY, f64::min);
     let s = wls.partition_point(|&w| w < lo - EPS);
     let e = wls.partition_point(|&w| w <= hi + EPS);
-    let seg = &wls[s..e];
-    let n = seg.len();
+    let n = e - s;
     // 折れ目の間に点が 1 つ以下だと補間できない（呼ぶ側が範囲の外と区別して知らせる）
     if n == 0 || (n < 2 && n < wls.len()) {
         return None;
     }
+    Some((s, e))
+}
+
+/// 波長 wl での値: 近い 4 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）
+fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)> {
+    let (s, e) = wave_segment(wls, wl, kinks)?;
+    let seg = &wls[s..e];
+    let n = seg.len();
     let m = n.min(4);
     let i = seg
         .partition_point(|&w| w < wl)
@@ -627,6 +634,82 @@ fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)
         })
         .collect();
     Some((s + i, w))
+}
+
+/// 鏡の補間に使う有理関数の点の数
+const RATIONAL_N: usize = 8;
+
+/// 昇順の点 xs[s..e] のうち q に近い m 点（[`RATIONAL_N`] から始めて、解けなければ 2 点ずつ減らす）を通る
+/// 有理関数（分子 m/2 − 1 次・分母 m/2 次）の q での値。4 点でも解けなければ近い 4 点の多項式にする。
+/// 連立方程式が退化する（データがもっと低い次数の有理関数で表せる）ときは、ピボットが相対的に小さくなるので次の m にする
+fn rational_at(xs: &[f64], s: usize, e: usize, q: f64, f: &dyn Fn(usize) -> C64) -> C64 {
+    let n = e - s;
+    let start = |m: usize| {
+        s + xs[s..e]
+            .partition_point(|&x| x < q)
+            .saturating_sub(m / 2)
+            .min(n - m)
+    };
+    let mut m = RATIONAL_N.min(n - n % 2);
+    while m >= 4 {
+        if let Some(v) = rational_solve(xs, start(m), m, q, f) {
+            return v;
+        }
+        m -= 2;
+    }
+    let m = n.min(4);
+    let i = start(m);
+    (i..i + m)
+        .map(|a| {
+            let w: f64 = (i..i + m)
+                .filter(|&b| b != a)
+                .map(|b| (q - xs[b]) / (xs[a] - xs[b]))
+                .product();
+            f(a) * w
+        })
+        .sum::<C64>()
+}
+
+/// xs[i..i+m] を通る有理関数 P/Q（Q(q) = 1）の q での値。退化していれば None
+fn rational_solve(xs: &[f64], i: usize, m: usize, q: f64, f: &dyn Fn(usize) -> C64) -> Option<C64> {
+    let t: Vec<f64> = (i..i + m).map(|j| xs[j] - q).collect();
+    let h = t.iter().fold(0.0f64, |a, b| a.max(b.abs())).max(1e-300);
+    // P(t) − f Q(t) = 0、Q(0) = 1（t は h で割って条件をよくする）
+    let (np, nq) = (m / 2, m - m / 2);
+    let mut a = vec![vec![C64::new(0.0, 0.0); m + 1]; m];
+    for (r, row) in a.iter_mut().enumerate() {
+        let u = t[r] / h;
+        let fv = f(i + r);
+        for (k, v) in row.iter_mut().enumerate().take(np) {
+            *v = C64::new(u.powi(k as i32), 0.0);
+        }
+        for k in 1..=nq {
+            row[np + k - 1] = -fv * u.powi(k as i32);
+        }
+        row[m] = fv;
+    }
+    let scale = a
+        .iter()
+        .flat_map(|r| r[..m].iter().map(|v| v.norm()))
+        .fold(0.0, f64::max);
+    for c in 0..m {
+        let p = (c..m).max_by(|&x, &y| a[x][c].norm().total_cmp(&a[y][c].norm()))?;
+        if a[p][c].norm() <= 1e-11 * scale {
+            return None;
+        }
+        a.swap(c, p);
+        for r in 0..m {
+            if r != c {
+                let g = a[r][c] / a[c][c];
+                for k in c..=m {
+                    let v = a[c][k];
+                    a[r][k] -= g * v;
+                }
+            }
+        }
+    }
+    let v = a[0][m] / a[0][0];
+    (v.re.is_finite() && v.im.is_finite()).then_some(v)
 }
 
 /// [`wave_weights`] が補間できない理由
@@ -1138,13 +1221,14 @@ enum Kind {
         b2: (f64, f64),
         sp: Box<[[Spline; 9]; 2]>,
     },
-    /// モデルの鏡: 基準の媒質での r の β² のスプライン（偏光ごとに実部・虚部）
+    /// モデルの鏡: 基準の媒質での r（この波長、β² の点ごと、偏光ごと）。β² の有理関数で補間する
+    /// （高い β では導波の共鳴で、β 方向にも鋭く変わる）
     ModelMirror {
         name: String,
         n_ref: f64,
         d: f64,
-        b2: (f64, f64),
-        sp: Box<[[Spline; 2]; 2]>,
+        b2: Vec<f64>,
+        r: Box<[Vec<C64>; 2]>,
     },
 }
 
@@ -1163,37 +1247,27 @@ fn prepare_model(
         let Some(m) = &md.mirror else {
             notimpl!("膜のモデル {name} に鏡のデータがない");
         };
-        let Some((i, w)) = wave_weights(&m.wavelengths, wl, &md.kinks) else {
+        let Some((s0, e0)) = wave_segment(&m.wavelengths, wl, &md.kinks) else {
             notimpl!(
                 "膜のモデル {name}（鏡）: 波長 {wl} µm {}",
                 out_of_waves(&m.wavelengths, wl)
             );
         };
+        // 波数の昇順に並べた点で補間する（波長は昇順なので逆順）
+        let xs: Vec<f64> = (s0..e0).rev().map(|i| 1.0 / m.wavelengths[i]).collect();
         let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
-        let mut sp: Vec<[Spline; 2]> = Vec::new();
-        for pol in 0..2 {
-            let comp = |f: &dyn Fn(C64) -> f64| -> Vec<f64> {
-                (0..m.betas.len())
-                    .map(|j| {
-                        w.iter()
-                            .enumerate()
-                            .map(|(a, wa)| wa * f(m.r[i + a][j][pol]))
-                            .sum()
-                    })
-                    .collect()
-            };
-            sp.push([
-                beta_spline(name, &b2, &comp(&|z| z.re))?,
-                beta_spline(name, &b2, &comp(&|z| z.im))?,
-            ]);
+        let mut r: [Vec<C64>; 2] = [Vec::new(), Vec::new()];
+        for (pol, rp) in r.iter_mut().enumerate() {
+            *rp = (0..m.betas.len())
+                .map(|j| rational_at(&xs, 0, xs.len(), 1.0 / wl, &|k| m.r[e0 - 1 - k][j][pol]))
+                .collect();
         }
-        let [s0, s1]: [[Spline; 2]; 2] = sp.try_into().unwrap();
         return Ok(Kind::ModelMirror {
             name: name.to_string(),
             n_ref: m.n_ref,
             d: m.d,
-            b2: range(&m.betas),
-            sp: Box::new([s0, s1]),
+            b2,
+            r: Box::new(r),
         });
     }
     if !md.has_transmit() {
@@ -1407,21 +1481,22 @@ impl Iface {
                 n_ref,
                 d,
                 b2,
-                sp,
+                r: rr,
             } => {
                 let b = self.n1 * theta.sin();
                 let x = b * b;
-                if x < b2.0 - 1e-12 || x > b2.1 + 1e-12 {
+                let (lo, hi) = (b2[0], b2[b2.len() - 1]);
+                if x < lo - 1e-12 || x > hi + 1e-12 {
                     notimpl!(
                         "膜のモデル {name}（鏡）: β = {b:.4} がモデルの範囲（β ≤ {:.4}）の外",
-                        b2.1.sqrt()
+                        hi.sqrt()
                     );
                 }
                 let k = 2.0 * PI / self.wl;
                 let ph = C64::new(0.0, 2.0 * k * self.n1 * theta.cos() * d).exp();
                 let mut out = [C64::new(0.0, 0.0); 2];
                 for (pol, o) in out.iter_mut().enumerate() {
-                    let r = C64::new(sp[pol][0].eval(x), sp[pol][1].eval(x));
+                    let r = rational_at(b2, 0, b2.len(), x, &|j| rr[pol][j]);
                     let one = C64::new(1.0, 0.0);
                     let y = admittance(*n_ref, b, pol) * (one - r) / (one + r);
                     let e0 = admittance(self.n1, b, pol);
@@ -1538,6 +1613,20 @@ pub fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rational_follows_a_sharp_resonance() {
+        // 実軸のすぐ近くに極がある関数（導波の共鳴の形）。多項式では追えないが有理関数なら追える
+        let f = |x: f64| C64::new(1.0, 0.0) / C64::new(x - 1.2345, 2e-3) + C64::new(0.3 * x, -0.1);
+        let xs: Vec<f64> = (0..60).map(|i| 1.0 + 0.01 * i as f64).collect();
+        let mut worst = 0.0f64;
+        for k in 0..500 {
+            let q = 1.02 + 0.55 * k as f64 / 499.0;
+            let v = rational_at(&xs, 0, xs.len(), q, &|j| f(xs[j]));
+            worst = worst.max((v - f(q)).norm());
+        }
+        assert!(worst < 1e-8, "{worst:e}");
+    }
 
     #[test]
     fn wave_weights_do_not_cross_kinks() {
