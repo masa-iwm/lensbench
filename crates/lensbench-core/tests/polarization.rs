@@ -294,7 +294,10 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
         }
         let e = C64::new(0.0, k * ph).exp();
         let v = f.eval(th).unwrap();
-        assert!((v[0] - ts * e).norm() < 1e-13 && (v[1] - tp * e).norm() < 1e-13, "{deg}");
+        assert!(
+            (v[0] - ts * e).norm() < 1e-13 && (v[1] - tp * e).norm() < 1e-13,
+            "{deg}"
+        );
     }
     // 硝材から空気: 基板は前の媒質（層を逆に通る）。透過率は同じ β の空気から硝材と同じ（相反性）
     let g = c.prepare(&s, "AR2|1.5,0.0|AIR", wl, n2, n1).unwrap();
@@ -309,7 +312,13 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     // 鏡: 基板は最後の層の材料、位相 exp(2 i k n1 cosθ1 Σ d)（最後の層は数えない）
     let h = c.prepare(&s, "MIR|AIR|MIRROR", wl, n1, 0.0).unwrap();
     let th = 0.4f64;
-    let (rs, rp, _, _) = stack(n1, &[(C64::new(1.38, 0.0), 0.1)], C64::new(0.5, 3.0), wl, th);
+    let (rs, rp, _, _) = stack(
+        n1,
+        &[(C64::new(1.38, 0.0), 0.1)],
+        C64::new(0.5, 3.0),
+        wl,
+        th,
+    );
     let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
     let v = h.eval(th).unwrap();
     assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
