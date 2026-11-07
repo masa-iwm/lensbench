@@ -8,10 +8,11 @@
 //! - `I.xx`: 理想膜（強度透過率 xx、反射率 1 − xx、位相なし。鏡では s・p とも −√(1 − xx)）
 //! - `COAT`: 薄膜（特性行列、傾いた入射のアドミタンス）。材料は `MATE` の表（n, k。k < 0 で吸収）か
 //!   ガラスカタログ。厚さは基準波長での光学的な波長単位、またはフラグ 1 で絶対値 [µm]。
-//!   反射の位相は OpticStudio の「光線相当の位相への換算」に合わせる（鏡のみ。透過する薄膜は未確認なので止める）
+//!   係数の位相は OpticStudio の約束に合わせる（[`Coatings::prepare`] の注記）
 //! - `TABLE`: 角度・波長ごとの Rs Rp Ts Tp と位相、線形補間
 //! - 暗号化された膜（.ZEC）: 層は読めないので（復号もしない）、OpticStudio の偏光追跡で測った係数の表
-//!   （[`Measured`]）を使う。表がなければ追跡を止める
+//!   （[`Measured`]）か、膜ごとの特性行列モデル（[`CoatModel`]、任意の硝材・向き・波長）を使う。
+//!   どちらもなければ追跡を止める
 //!
 //! 境界の鍵は `膜|前の媒質|後の媒質（鏡は MIRROR）`（[`media_keys`]）。
 
@@ -182,6 +183,8 @@ pub enum CoatKind {
     Table,
     /// 実測表
     Measured,
+    /// 特性行列モデル（[`CoatModel`]）
+    Model,
     /// 膜ファイルになく、実測表もない（暗号化された膜など）
     Missing,
 }
@@ -194,6 +197,7 @@ impl CoatKind {
             CoatKind::Stack => "stack",
             CoatKind::Table => "table",
             CoatKind::Measured => "measured",
+            CoatKind::Model => "model",
             CoatKind::Missing => "missing",
         }
     }
@@ -331,12 +335,307 @@ pub fn format_measured(entries: &[(&str, &Measured)]) -> String {
     s
 }
 
+/// 膜のモデルのファイル形式の 1 行目
+pub const MODEL_HEADER: &str = "LBCM 2";
+
+/// 暗号化された膜の特性行列モデル（層を読まずに、任意の硝材・向き・波長で使う）。
+///
+/// 透過は膜ごと・波長ごと・β = n sinθ ごと・偏光ごとの特性行列 M（OpticStudio の位相を含む）を
+/// M = exp(i k ψ) · M̃ と分けて持つ。M̃ は det M̃ = 1 の滑らかな行列、ψ [µm] は OpticStudio が掛ける
+/// s・p 共通の位相 −Σ d_j Re(β²/q_j) 由来のスカラー（層の屈折率 Re(n_j) で発散するので、β ≤ `bmax` だけ使う）。
+/// 入射側のアドミタンス e1、基板側 e2（s: n cos、p: n / cos）で
+///   t = 2 e1 / (e1 M00 + M10 + e1 e2 M01 + e2 M11) · sqrt(e2 / e1) · exp(i k D n_o / cos_o)
+/// （n_o は膜の外側の媒質）。基板側から入る（後ろの媒質が空気）ときは M の対角を入れ替える。
+/// 鏡は基準の媒質 `n_ref` から測った r（位相 exp(2 i k n cos D_m) を外したもの）を持ち、
+/// アドミタンス Y = e_ref (1 − r) / (1 + r) を通して入射側の媒質へ換算する。
+/// 補間は β² で 3 次スプライン、波長は近い 4 点で 1/λ の 3 次。
+#[derive(Debug, Clone, Default)]
+pub struct CoatModel {
+    /// 透過の位相の厚さ D [µm]
+    pub d: f64,
+    /// 透過で使える β の上限
+    pub bmax: f64,
+    pub wavelengths: Vec<f64>,
+    /// β（昇順、全波長で共通）
+    pub betas: Vec<f64>,
+    /// [波長][β][偏光 s, p] → (M̃00, M̃10, M̃01, M̃11)
+    pub m: Vec<Vec<[[C64; 4]; 2]>>,
+    /// [波長][β][偏光] → ψ [µm]
+    pub psi: Vec<Vec<[f64; 2]>>,
+    pub mirror: Option<MirrorModel>,
+}
+
+/// 鏡のモデル（[`CoatModel`]）
+#[derive(Debug, Clone, Default)]
+pub struct MirrorModel {
+    /// 基準の媒質の屈折率
+    pub n_ref: f64,
+    /// 鏡の位相の厚さ D_m [µm]
+    pub d: f64,
+    pub wavelengths: Vec<f64>,
+    pub betas: Vec<f64>,
+    /// [波長][β] → (r_s, r_p)
+    pub r: Vec<Vec<[C64; 2]>>,
+}
+
+impl CoatModel {
+    fn has_transmit(&self) -> bool {
+        !self.wavelengths.is_empty()
+    }
+}
+
+/// 膜のモデルのファイル（テキスト、UTF-8）を読む。
+///
+/// ```text
+/// LBCM 2
+/// COAT 膜の名前
+/// D 透過の位相の厚さ [µm]
+/// BMAX 透過で使える β の上限
+/// WAVE 波長 [µm]
+/// β  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（s）  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（p）     （19 列、β の昇順）
+/// ...
+/// MIRROR 基準の屈折率 鏡の位相の厚さ [µm]
+/// WAVE 波長
+/// β  Re r_s  Im r_s  Re r_p  Im r_p
+/// ...
+/// COAT ...
+/// ```
+///
+/// 透過と鏡はどちらか片方だけでもよい。どの波長も同じ β の並びにする。
+pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
+    /// (波長, [(β, 値)])
+    type Waves<T> = (f64, Vec<(f64, T)>);
+    /// 透過の 1 点: 偏光ごとの M̃ と ψ
+    type TRow = ([[C64; 4]; 2], [f64; 2]);
+    #[derive(Default)]
+    struct Cur {
+        name: String,
+        model: CoatModel,
+        d: Option<f64>,
+        bmax: Option<f64>,
+        // 透過の [(波長, [(β, 値)])]、鏡の同じもの
+        t: Vec<Waves<TRow>>,
+        r: Vec<Waves<[C64; 2]>>,
+        in_mirror: bool,
+    }
+    fn same_betas<T>(name: &str, w: &[(f64, Vec<(f64, T)>)]) -> Result<Vec<f64>>
+    where
+        T: Clone,
+    {
+        let b: Vec<f64> = w[0].1.iter().map(|r| r.0).collect();
+        if w.iter()
+            .any(|x| x.1.iter().map(|r| r.0).ne(b.iter().copied()))
+        {
+            invalid!("膜のモデル {name}: 波長ごとに β の並びが違う");
+        }
+        if b.len() < 4 || w.iter().any(|x| x.1.is_empty()) {
+            invalid!("膜のモデル {name}: β の点が足りない（4 点以上）");
+        }
+        if w.windows(2).any(|x| !(x[0].0 < x[1].0)) {
+            invalid!("膜のモデル {name}: 波長が昇順でない");
+        }
+        Ok(b)
+    }
+    fn finish(cur: Option<Cur>, out: &mut Vec<(String, CoatModel)>) -> Result<()> {
+        let Some(mut c) = cur else { return Ok(()) };
+        let name = c.name.clone();
+        if c.t.is_empty() && c.r.is_empty() {
+            invalid!("膜のモデル {name} にデータがない");
+        }
+        if !c.t.is_empty() {
+            let (Some(d), Some(bmax)) = (c.d, c.bmax) else {
+                invalid!("膜のモデル {name}: 透過には D と BMAX が要る");
+            };
+            c.model.d = d;
+            c.model.bmax = bmax;
+            c.model.betas = same_betas(&name, &c.t)?;
+            c.model.wavelengths = c.t.iter().map(|w| w.0).collect();
+            c.model.m =
+                c.t.iter()
+                    .map(|w| w.1.iter().map(|r| r.1 .0).collect())
+                    .collect();
+            c.model.psi =
+                c.t.iter()
+                    .map(|w| w.1.iter().map(|r| r.1 .1).collect())
+                    .collect();
+        }
+        if let Some(m) = c.model.mirror.as_mut() {
+            if c.r.is_empty() {
+                invalid!("膜のモデル {name}: MIRROR にデータがない");
+            }
+            m.betas = same_betas(&name, &c.r)?;
+            m.wavelengths = c.r.iter().map(|w| w.0).collect();
+            m.r =
+                c.r.iter()
+                    .map(|w| w.1.iter().map(|r| r.1).collect())
+                    .collect();
+        }
+        if out.iter().any(|(k, _)| *k == name) {
+            invalid!("膜のモデル {name} が 2 回ある");
+        }
+        out.push((name, c.model));
+        Ok(())
+    }
+    let mut out = Vec::new();
+    let mut header = false;
+    let mut cur: Option<Cur> = None;
+    for (ln, line) in txt.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if !header {
+            if line != MODEL_HEADER {
+                invalid!("膜のモデルの 1 行目が {MODEL_HEADER} でない");
+            }
+            header = true;
+            continue;
+        }
+        let n = |s: &str| -> Result<f64> {
+            s.parse::<f64>()
+                .map_err(|_| Error::Invalid(format!("膜のモデルの {} 行目の数値 {s}", ln + 1)))
+        };
+        let t: Vec<&str> = line.split_whitespace().collect();
+        if t[0] == "COAT" {
+            finish(cur.take(), &mut out)?;
+            if t.len() != 2 {
+                invalid!("膜のモデルの {} 行目: COAT 名前", ln + 1);
+            }
+            cur = Some(Cur {
+                name: t[1].to_string(),
+                ..Default::default()
+            });
+            continue;
+        }
+        let Some(c) = cur.as_mut() else {
+            invalid!("膜のモデルの {} 行目: COAT より前", ln + 1);
+        };
+        match t[0] {
+            "D" | "BMAX" if t.len() == 2 && !c.in_mirror => {
+                let v = Some(n(t[1])?);
+                if t[0] == "D" {
+                    c.d = v
+                } else {
+                    c.bmax = v
+                }
+            }
+            "MIRROR" if t.len() == 3 && !c.in_mirror => {
+                c.in_mirror = true;
+                c.model.mirror = Some(MirrorModel {
+                    n_ref: n(t[1])?,
+                    d: n(t[2])?,
+                    ..Default::default()
+                });
+            }
+            "WAVE" if t.len() == 2 => {
+                let w = n(t[1])?;
+                if c.in_mirror {
+                    c.r.push((w, Vec::new()))
+                } else {
+                    c.t.push((w, Vec::new()))
+                }
+            }
+            _ => {
+                let v = t.iter().map(|x| n(x)).collect::<Result<Vec<f64>>>()?;
+                let b = v[0];
+                let prev = if c.in_mirror {
+                    c.r.last().map(|w| w.1.last().map(|r| r.0))
+                } else {
+                    c.t.last().map(|w| w.1.last().map(|r| r.0))
+                };
+                let Some(prev) = prev else {
+                    invalid!("膜のモデルの {} 行目: WAVE より前にデータ", ln + 1);
+                };
+                if prev.is_some_and(|p| !(b > p)) {
+                    invalid!("膜のモデルの {} 行目: β が昇順でない", ln + 1);
+                }
+                let z = |i: usize| C64::new(v[i], v[i + 1]);
+                if c.in_mirror {
+                    if v.len() != 5 {
+                        invalid!("膜のモデルの {} 行目: 鏡は β と係数 4 つ", ln + 1);
+                    }
+                    c.r.last_mut().unwrap().1.push((b, [z(1), z(3)]));
+                } else {
+                    if v.len() != 19 {
+                        invalid!("膜のモデルの {} 行目: 透過は β と 18 列", ln + 1);
+                    }
+                    let m = [[z(1), z(3), z(5), z(7)], [z(10), z(12), z(14), z(16)]];
+                    c.t.last_mut().unwrap().1.push((b, (m, [v[9], v[18]])));
+                }
+            }
+        }
+    }
+    if !header {
+        invalid!("膜のモデルが空");
+    }
+    finish(cur, &mut out)?;
+    Ok(out)
+}
+
+/// 波長 wl での値: 近い 4 点（少なければ全点）を 1/λ の多項式で補間する（範囲外は None）
+fn wave_weights(wls: &[f64], wl: f64) -> Option<(usize, Vec<f64>)> {
+    let n = wls.len();
+    if n == 0 || !(wls[0] - 1e-9 <= wl && wl <= wls[n - 1] + 1e-9) {
+        return None;
+    }
+    let m = n.min(4);
+    let i = wls
+        .partition_point(|&w| w < wl)
+        .saturating_sub(2)
+        .min(n - m);
+    let x: Vec<f64> = wls[i..i + m].iter().map(|w| 1.0 / w).collect();
+    let xv = 1.0 / wl;
+    let w = (0..m)
+        .map(|a| {
+            (0..m)
+                .filter(|&b| b != a)
+                .map(|b| (xv - x[b]) / (x[a] - x[b]))
+                .product()
+        })
+        .collect();
+    Some((i, w))
+}
+
+/// 実数の値の列を β² の not-a-knot スプラインにする
+fn beta_spline(name: &str, b2: &[f64], ys: &[f64]) -> Result<Spline> {
+    match Spline::not_a_knot(b2, ys) {
+        Some(s) => Ok(s),
+        None => invalid!("膜のモデル {name}: β の補間ができない"),
+    }
+}
+
+/// 媒質 n（実数）の β でのアドミタンス（s: n cos、p: n / cos。cos は実数の枝）
+fn admittance(n: f64, b: f64, pol: usize) -> C64 {
+    let q = C64::new(n * n - b * b, 0.0).sqrt();
+    if pol == 0 {
+        q
+    } else {
+        C64::new(n * n, 0.0) / q
+    }
+}
+
+/// 膜の透過の位相の約束
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PhaseConvention {
+    /// OpticStudio と同じ: 層ごとの項 −Σ d_j Re(β²/q_j)（光線の層の中での横ずれの位相）を含む。
+    /// β が層の屈折率に近づくと発散するので、膜のモデルは BMAX を超える β で止める
+    #[default]
+    OpticStudio,
+    /// 層ごとの項を外す（波として解いた係数のまま。どの β でも有限で連続）。OpticStudio とは
+    /// s・p 共通の位相だけ違う
+    Physical,
+}
+
 /// 系の膜: 膜ファイルと実測表
 #[derive(Debug, Clone, Default)]
 pub struct Coatings {
     pub file: CoatingFile,
     /// 境界の鍵 → 実測表
     pub measured: HashMap<String, Measured>,
+    /// 膜の名前 → 特性行列モデル
+    pub models: HashMap<String, CoatModel>,
+    /// 透過の位相の約束
+    pub phase: PhaseConvention,
 }
 
 impl Coatings {
@@ -349,6 +648,8 @@ impl Coatings {
         Ok(Coatings {
             file,
             measured: HashMap::new(),
+            models: HashMap::new(),
+            phase: PhaseConvention::default(),
         })
     }
 
@@ -379,8 +680,45 @@ impl Coatings {
             CoatKind::Stack
         } else if self.measured.contains_key(key) {
             CoatKind::Measured
+        } else if self.models.get(coat).is_some_and(|m| {
+            if key.ends_with("|MIRROR") {
+                m.mirror.is_some()
+            } else {
+                m.has_transmit()
+            }
+        }) {
+            CoatKind::Model
         } else {
             CoatKind::Missing
+        }
+    }
+
+    /// 膜のモデルのファイル（[`parse_models`] の形式）を読み、モデルの数を返す
+    pub fn load_models(&mut self, path: &Path) -> Result<usize> {
+        let txt = std::fs::read_to_string(path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let v = parse_models(&txt).map_err(|e| match e {
+            Error::Invalid(m) => Error::Invalid(format!("{}: {m}", path.display())),
+            e => e,
+        })?;
+        let n = v.len();
+        self.models.extend(v);
+        Ok(n)
+    }
+
+    /// 実測表（LBCT）か膜のモデル（LBCM）のファイルを、1 行目で見分けて読む
+    pub fn load_file(&mut self, path: &Path) -> Result<usize> {
+        let txt = std::fs::read_to_string(path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let first = txt
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .unwrap_or("");
+        if first == MODEL_HEADER {
+            self.load_models(path)
+        } else {
+            self.load_measured(path)
         }
     }
 
@@ -483,6 +821,7 @@ impl Coatings {
                     layers,
                     ns,
                     n_out: n1,
+                    layer_phase: true,
                 }
             } else {
                 if m2 == "AIR" {
@@ -492,14 +831,23 @@ impl Coatings {
                     layers,
                     ns: C64::new(n2, 0.0),
                     n_out: if m2 == "AIR" { n2 } else { n1 },
+                    layer_phase: self.phase == PhaseConvention::OpticStudio,
                 }
             }
         } else {
-            // 実測表: 暗号化された膜
+            // 実測表・モデル: 暗号化された膜
             let Some(m) = self.measured.get(key) else {
-                notimpl!(
-                    "膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もない（暗号化された膜？）"
-                );
+                return match self.models.get(coat) {
+                    Some(md) => Ok(Iface {
+                        kind: prepare_model(coat, md, mirror, m2 == "AIR", wl, n2, self.phase)?,
+                        mirror,
+                        n1,
+                        wl,
+                    }),
+                    None => notimpl!(
+                        "膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もモデルもない（暗号化された膜？）"
+                    ),
+                };
             };
             let Some(w) = m.wavelengths.iter().position(|&v| (v - wl).abs() <= 1e-9) else {
                 notimpl!(
@@ -691,6 +1039,8 @@ enum Kind {
         ns: C64,
         /// 膜の外側（基板と反対側）の媒質の屈折率（位相の約束に使う）
         n_out: f64,
+        /// 透過で層ごとの位相を含める（[`PhaseConvention::OpticStudio`]）
+        layer_phase: bool,
     },
     Table {
         name: String,
@@ -704,6 +1054,132 @@ enum Kind {
         max_deg: f64,
         sp: Box<[Spline; 4]>,
     },
+    /// モデルの透過: β² のスプライン（偏光ごとに M̃ の実部・虚部 8 本と ψ）
+    Model {
+        name: String,
+        /// 層ごとの位相（ψ）を含める（[`PhaseConvention::OpticStudio`]）
+        layer_phase: bool,
+        reverse: bool,
+        n2: f64,
+        d: f64,
+        bmax: f64,
+        b2: (f64, f64),
+        sp: Box<[[Spline; 9]; 2]>,
+    },
+    /// モデルの鏡: 基準の媒質での r の β² のスプライン（偏光ごとに実部・虚部）
+    ModelMirror {
+        name: String,
+        n_ref: f64,
+        d: f64,
+        b2: (f64, f64),
+        sp: Box<[[Spline; 2]; 2]>,
+    },
+}
+
+/// 膜のモデルを波長 wl で用意する
+fn prepare_model(
+    name: &str,
+    md: &CoatModel,
+    mirror: bool,
+    reverse: bool,
+    wl: f64,
+    n2: f64,
+    phase: PhaseConvention,
+) -> Result<Kind> {
+    let range = |b: &[f64]| (b[0] * b[0], b[b.len() - 1] * b[b.len() - 1]);
+    if mirror {
+        let Some(m) = &md.mirror else {
+            notimpl!("膜のモデル {name} に鏡のデータがない");
+        };
+        let Some((i, w)) = wave_weights(&m.wavelengths, wl) else {
+            notimpl!("膜のモデル {name}（鏡）: 波長 {wl} µm が範囲の外");
+        };
+        let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
+        let mut sp: Vec<[Spline; 2]> = Vec::new();
+        for pol in 0..2 {
+            let comp = |f: &dyn Fn(C64) -> f64| -> Vec<f64> {
+                (0..m.betas.len())
+                    .map(|j| {
+                        w.iter()
+                            .enumerate()
+                            .map(|(a, wa)| wa * f(m.r[i + a][j][pol]))
+                            .sum()
+                    })
+                    .collect()
+            };
+            sp.push([
+                beta_spline(name, &b2, &comp(&|z| z.re))?,
+                beta_spline(name, &b2, &comp(&|z| z.im))?,
+            ]);
+        }
+        let [s0, s1]: [[Spline; 2]; 2] = sp.try_into().unwrap();
+        return Ok(Kind::ModelMirror {
+            name: name.to_string(),
+            n_ref: m.n_ref,
+            d: m.d,
+            b2: range(&m.betas),
+            sp: Box::new([s0, s1]),
+        });
+    }
+    if !md.has_transmit() {
+        notimpl!("膜のモデル {name} に透過のデータがない");
+    }
+    let Some((i, w)) = wave_weights(&md.wavelengths, wl) else {
+        notimpl!(
+            "膜のモデル {name}: 波長 {wl} µm が範囲（{}〜{} µm）の外",
+            md.wavelengths[0],
+            md.wavelengths[md.wavelengths.len() - 1]
+        );
+    };
+    let b2: Vec<f64> = md.betas.iter().map(|b| b * b).collect();
+    let mut sp: Vec<[Spline; 9]> = Vec::new();
+    for pol in 0..2 {
+        let mut v: Vec<Spline> = Vec::new();
+        for c in 0..9 {
+            let ys: Vec<f64> = (0..md.betas.len())
+                .map(|j| {
+                    w.iter()
+                        .enumerate()
+                        .map(|(a, wa)| {
+                            let k = i + a;
+                            wa * if c == 8 {
+                                md.psi[k][j][pol]
+                            } else {
+                                let z = md.m[k][j][pol][c / 2];
+                                if c % 2 == 0 {
+                                    z.re
+                                } else {
+                                    z.im
+                                }
+                            }
+                        })
+                        .sum()
+                })
+                .collect();
+            if c == 8 {
+                // ψ は BMAX までの点だけで（その先は層の屈折率で発散する）
+                let m = md.betas.partition_point(|&b| b <= md.bmax + 1e-12);
+                if m < 4 {
+                    invalid!("膜のモデル {name}: BMAX までの β の点が足りない（4 点以上）");
+                }
+                v.push(beta_spline(name, &b2[..m], &ys[..m])?);
+            } else {
+                v.push(beta_spline(name, &b2, &ys)?);
+            }
+        }
+        sp.push(v.try_into().unwrap());
+    }
+    let [s0, s1]: [[Spline; 9]; 2] = sp.try_into().unwrap();
+    Ok(Kind::Model {
+        name: name.to_string(),
+        layer_phase: phase == PhaseConvention::OpticStudio,
+        reverse,
+        n2,
+        d: md.d,
+        bmax: md.bmax,
+        b2: range(&md.betas),
+        sp: Box::new([s0, s1]),
+    })
 }
 
 /// ある波長で用意した境界の係数
@@ -729,7 +1205,12 @@ impl Iface {
                     [ts, tp]
                 }
             }
-            Kind::Stack { layers, ns, n_out } => {
+            Kind::Stack {
+                layers,
+                ns,
+                n_out,
+                layer_phase,
+            } => {
                 let (rs, rp, ts, tp) = stack(self.n1, layers, *ns, self.wl, theta);
                 let k = 2.0 * PI / self.wl;
                 let d: f64 = layers.iter().map(|l| l.1).sum();
@@ -745,7 +1226,7 @@ impl Iface {
                     }
                     let mut ph = d * n_out / co;
                     // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
-                    for &(n, dj) in layers {
+                    for &(n, dj) in layers.iter().filter(|_| *layer_phase) {
                         let q = C64::new(n.re * n.re - b * b, 0.0).sqrt();
                         ph -= dj * (C64::new(b * b, 0.0) / q).re;
                     }
@@ -761,10 +1242,12 @@ impl Iface {
                 }
                 let v = |k: usize| interp(deg, angs, &vals[k]);
                 let (a, b) = if mirror { (0, 4) } else { (2, 6) };
-                [
-                    C64::from_polar(v(a).sqrt(), v(b).to_radians()),
-                    C64::from_polar(v(a + 1).sqrt(), v(b + 1).to_radians()),
-                ]
+                let p = C64::from_polar(v(a + 1).sqrt(), v(b + 1).to_radians());
+                // 垂直入射では s・p の区別がないので p の値を使う（OpticStudio と同じ。表の s と p が違っても）
+                if deg.abs() < 1e-12 {
+                    return Ok([p, p]);
+                }
+                [C64::from_polar(v(a).sqrt(), v(b).to_radians()), p]
             }
             Kind::Measured {
                 key,
@@ -783,6 +1266,85 @@ impl Iface {
                     C64::new(sp[0].eval(x), sp[1].eval(x)),
                     C64::new(sp[2].eval(x), sp[3].eval(x)),
                 ]
+            }
+            Kind::Model {
+                name,
+                layer_phase,
+                reverse,
+                n2,
+                d,
+                bmax,
+                b2,
+                sp,
+            } => {
+                let b = self.n1 * theta.sin();
+                let x = b * b;
+                if (*layer_phase && b > bmax + 1e-12) || x < b2.0 - 1e-12 || x > b2.1 + 1e-12 {
+                    notimpl!(
+                        "膜のモデル {name}: β = {b:.4} がモデルの範囲（β ≤ {:.4}、BMAX {bmax}）の外",
+                        b2.1.sqrt()
+                    );
+                }
+                if n2 * n2 <= x {
+                    // 後ろの媒質で全反射（光線の追跡ではその前に止まる）
+                    return Ok([C64::new(0.0, 0.0); 2]);
+                }
+                let n_out = if *reverse { *n2 } else { self.n1 };
+                let co = (1.0 - x / (n_out * n_out)).max(0.0).sqrt();
+                if co == 0.0 {
+                    notimpl!("膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）");
+                }
+                let k = 2.0 * PI / self.wl;
+                let ph = C64::new(0.0, k * d * n_out / co).exp();
+                let mut out = [C64::new(0.0, 0.0); 2];
+                for (pol, o) in out.iter_mut().enumerate() {
+                    let s = &sp[pol];
+                    let g = if *layer_phase {
+                        C64::new(0.0, k * s[8].eval(x)).exp()
+                    } else {
+                        C64::new(1.0, 0.0)
+                    };
+                    let m: Vec<C64> = (0..4)
+                        .map(|c| g * C64::new(s[2 * c].eval(x), s[2 * c + 1].eval(x)))
+                        .collect();
+                    let (m00, m10, m01, m11) = if *reverse {
+                        (m[3], m[1], m[2], m[0])
+                    } else {
+                        (m[0], m[1], m[2], m[3])
+                    };
+                    let e1 = admittance(self.n1, b, pol);
+                    let e2 = admittance(*n2, b, pol);
+                    let tp = e1 * 2.0 / (e1 * m00 + m10 + e1 * e2 * m01 + e2 * m11);
+                    *o = tp * (e2 / e1).sqrt() * ph;
+                }
+                out
+            }
+            Kind::ModelMirror {
+                name,
+                n_ref,
+                d,
+                b2,
+                sp,
+            } => {
+                let b = self.n1 * theta.sin();
+                let x = b * b;
+                if x < b2.0 - 1e-12 || x > b2.1 + 1e-12 {
+                    notimpl!(
+                        "膜のモデル {name}（鏡）: β = {b:.4} がモデルの範囲（β ≤ {:.4}）の外",
+                        b2.1.sqrt()
+                    );
+                }
+                let k = 2.0 * PI / self.wl;
+                let ph = C64::new(0.0, 2.0 * k * self.n1 * theta.cos() * d).exp();
+                let mut out = [C64::new(0.0, 0.0); 2];
+                for (pol, o) in out.iter_mut().enumerate() {
+                    let r = C64::new(sp[pol][0].eval(x), sp[pol][1].eval(x));
+                    let one = C64::new(1.0, 0.0);
+                    let y = admittance(*n_ref, b, pol) * (one - r) / (one + r);
+                    let e0 = admittance(self.n1, b, pol);
+                    *o = (e0 - y) / (e0 + y) * ph;
+                }
+                out
             }
         })
     }
@@ -987,6 +1549,8 @@ mod tests {
             )
             .unwrap(),
             measured: HashMap::new(),
+            models: HashMap::new(),
+            phase: PhaseConvention::default(),
         };
         assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
         assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);

@@ -237,7 +237,7 @@ fn coatings(
         let s = zmx::load_with(file, &opt).map_err(|x| format!("構成 {cfg}: {x}"))?;
         let mut c = Coatings::for_system(&s).map_err(e)?;
         for t in tables {
-            c.load_measured(t).map_err(e)?;
+            c.load_file(t).map_err(e)?;
         }
         found = s.coating_file.clone();
         let (keys, _) = coating::media_keys(&s);

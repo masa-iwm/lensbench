@@ -274,7 +274,7 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
                COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
-        measured: Default::default(),
+        ..Default::default()
     };
     assert_eq!(c.kind("AR2|AIR|1.5,0.0"), CoatKind::Stack);
     let wl = 0.55;
@@ -322,4 +322,177 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
     let v = h.eval(th).unwrap();
     assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
+}
+
+/// 層 [(n, d)] の特性行列（外側から順）→ (M00, M10, M01, M11)
+fn char_matrix(layers: &[(C64, f64)], wl: f64, b: f64, pol: usize) -> [C64; 4] {
+    use std::f64::consts::PI;
+    let one = C64::new(1.0, 0.0);
+    let i = C64::new(0.0, 1.0);
+    let mut m = [[one, C64::new(0.0, 0.0)], [C64::new(0.0, 0.0), one]];
+    for &(n, d) in layers {
+        let q = (n * n - b * b).sqrt();
+        let e = if pol == 0 { q } else { n * n / q };
+        let dl = q * (2.0 * PI * d / wl);
+        let l = [[dl.cos(), i * dl.sin() / e], [i * e * dl.sin(), dl.cos()]];
+        m = [
+            [
+                m[0][0] * l[0][0] + m[0][1] * l[1][0],
+                m[0][0] * l[0][1] + m[0][1] * l[1][1],
+            ],
+            [
+                m[1][0] * l[0][0] + m[1][1] * l[1][0],
+                m[1][0] * l[0][1] + m[1][1] * l[1][1],
+            ],
+        ];
+    }
+    [m[0][0], m[1][0], m[0][1], m[1][1]]
+}
+
+#[test]
+fn coating_model_reproduces_the_stack_it_was_made_from() {
+    use lensbench_core::coating::{parse_models, stack, CoatKind, CoatingFile};
+    use std::fmt::Write;
+    let s = a0();
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let layers = [(C64::new(1.38, 0.0), 0.11), (C64::new(2.1, 0.0), 0.06)];
+    // 膜のモデルを層から作る: M̃ = 特性行列、ψ = Σ d_j Re(β²/q_j)（OpticStudio の位相の層の項）
+    let wls: Vec<f64> = (0..=20).map(|i| 0.50 + 0.005 * i as f64).collect();
+    let mut m = String::from("LBCM 2\nCOAT ZAR\nD 0.17\nBMAX 1.3\n");
+    for &wl in &wls {
+        writeln!(m, "WAVE {wl:?}").unwrap();
+        for j in 0..=85 {
+            let b = 0.02 * j as f64;
+            // OpticStudio と同じく Re をとる（β が層の屈折率を超えると 0。BMAX より先は使われない）
+            let psi: f64 = layers
+                .iter()
+                .map(|(n, d)| d * (b * b / C64::new(n.re * n.re - b * b, 0.0).sqrt()).re)
+                .sum();
+            write!(m, "{b:?}").unwrap();
+            for pol in 0..2 {
+                for z in char_matrix(&layers, wl, b, pol) {
+                    write!(m, " {:?} {:?}", z.re, z.im).unwrap();
+                }
+                write!(m, " {psi:?}").unwrap();
+            }
+            m.push('\n');
+        }
+    }
+    // 鏡: 基準 2.05 から見た r（位相を外したもの）
+    let n_ref = 2.05;
+    m.push_str("COAT ZMIR\nMIRROR 2.05 0.1\n");
+    for &wl in &wls {
+        writeln!(m, "WAVE {wl:?}").unwrap();
+        for j in 0..=200 {
+            let b = 0.01 * j as f64;
+            let (rs, rp, _, _) = stack(
+                n_ref,
+                &[(C64::new(1.38, 0.0), 0.1)],
+                C64::new(0.5, 3.0),
+                wl,
+                (b / n_ref).asin(),
+            );
+            writeln!(m, "{b:?} {:?} {:?} {:?} {:?}", rs.re, rs.im, rp.re, rp.im).unwrap();
+        }
+    }
+    let mut c = Coatings {
+        file: CoatingFile::parse(txt).unwrap(),
+        ..Default::default()
+    };
+    c.models.extend(parse_models(&m).unwrap());
+    assert_eq!(c.kind("ZAR|AIR|1.5,0.0"), CoatKind::Model);
+    assert_eq!(c.kind("ZAR|AIR|MIRROR"), CoatKind::Missing);
+    assert_eq!(c.kind("ZMIR|1.6,0.0|MIRROR"), CoatKind::Model);
+    let wl = 0.5525; // 波長の格子の間
+    let mut worst = 0.0f64;
+    // (膜ファイルの鍵, モデルの鍵, n1, n2, 入射角の上限, 許容)。β が層の屈折率（1.38）に近づくと ψ が急に
+    // 変わり、鏡は β の大きい側で r が速く変わるので、β の格子 0.02・0.01 では補間の差が 1e-5 程度になる
+    for (k, km, n1, n2, amax, tol) in [
+        ("AR2|AIR|1.5,0.0", "ZAR|AIR|1.5,0.0", 1.0, 1.5, 80.0, 2e-6),
+        ("AR2|1.5,0.0|AIR", "ZAR|1.5,0.0|AIR", 1.5, 1.0, 40.0, 2e-6),
+        (
+            "AR2|1.7,0.0|1.5,0.0",
+            "ZAR|1.7,0.0|1.5,0.0",
+            1.7,
+            1.5,
+            47.0,
+            1e-4,
+        ),
+        ("MIR|AIR|MIRROR", "ZMIR|AIR|MIRROR", 1.0, 0.0, 80.0, 2e-6),
+        (
+            "MIR|1.6,0.0|MIRROR",
+            "ZMIR|1.6,0.0|MIRROR",
+            1.6,
+            0.0,
+            80.0,
+            1e-4,
+        ),
+    ] {
+        let f = c.prepare(&s, k, wl, n1, n2).unwrap();
+        let g = c.prepare(&s, km, wl, n1, n2).unwrap();
+        for i in 0..=40 {
+            let th = (amax * i as f64 / 40.0f64).to_radians();
+            let (a, b) = (f.eval(th).unwrap(), g.eval(th).unwrap());
+            let d = (a[0] - b[0]).norm().max((a[1] - b[1]).norm());
+            assert!(d < tol, "{km} {th}: {a:?} {b:?}");
+            worst = worst.max(d);
+        }
+    }
+    eprintln!("max |model − stack| {worst:.1e}");
+    // BMAX を超える β と、波長の範囲外は止める
+    let g = c.prepare(&s, "ZAR|1.7,0.0|1.5,0.0", wl, 1.7, 1.5).unwrap();
+    assert!(matches!(
+        g.eval(55f64.to_radians()),
+        Err(Error::NotImplemented(_))
+    ));
+    let r = c.prepare(&s, "ZAR|AIR|1.5,0.0", 0.7, 1.0, 1.5);
+    assert!(matches!(r, Err(Error::NotImplemented(_))));
+    // 物理的な位相: 層ごとの項を外す。膜ファイルの膜とモデルが一致し、BMAX を超えても計算する
+    c.phase = lensbench_core::coating::PhaseConvention::Physical;
+    let f = c.prepare(&s, "AR2|1.7,0.0|1.5,0.0", wl, 1.7, 1.5).unwrap();
+    let g = c.prepare(&s, "ZAR|1.7,0.0|1.5,0.0", wl, 1.7, 1.5).unwrap();
+    for deg in [0.0f64, 30.0, 55.0, 60.0] {
+        let th = deg.to_radians();
+        let (a, b) = (f.eval(th).unwrap(), g.eval(th).unwrap());
+        assert!(
+            (a[0] - b[0]).norm().max((a[1] - b[1]).norm()) < 1e-5,
+            "{deg}: {a:?} {b:?}"
+        );
+        // OpticStudio の約束とは s・p 共通の位相だけ違う
+        let o = Coatings {
+            file: c.file.clone(),
+            ..Default::default()
+        }
+        .prepare(&s, "AR2|1.7,0.0|1.5,0.0", wl, 1.7, 1.5)
+        .unwrap()
+        .eval(th)
+        .unwrap();
+        let (r0, r1) = (o[0] / a[0], o[1] / a[1]);
+        assert!(
+            (r0.norm() - 1.0).abs() < 1e-12 && (r0 - r1).norm() < 1e-12,
+            "{deg}"
+        );
+    }
+}
+
+#[test]
+fn table_coating_uses_p_at_normal_incidence() {
+    use lensbench_core::coating::CoatingFile;
+    let s = a0();
+    let c = Coatings {
+        file: CoatingFile::parse(
+            "TABLE T\nANGL 0\nWAVE 0.55 0.1 0.2 0.9 0.8\nANGL 30\nWAVE 0.55 0.15 0.25 0.85 0.75\n",
+        )
+        .unwrap(),
+        ..Default::default()
+    };
+    let f = c.prepare(&s, "T|AIR|1.5,0.0", 0.55, 1.0, 1.5).unwrap();
+    // 垂直入射は s・p の区別がないので p の値（OpticStudio と同じ）
+    let v = f.eval(0.0).unwrap();
+    assert!((v[0].norm() - 0.8f64.sqrt()).abs() < 1e-15 && v[0] == v[1]);
+    // 斜め入射は表の s・p
+    let v = f.eval(15f64.to_radians()).unwrap();
+    assert!((v[0].norm() - 0.875f64.sqrt()).abs() < 1e-12);
+    assert!((v[1].norm() - 0.775f64.sqrt()).abs() < 1e-12);
 }
