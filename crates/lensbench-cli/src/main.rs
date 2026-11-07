@@ -109,7 +109,7 @@ enum Cmd {
         #[arg(long)]
         kinks: Option<String>,
         /// BMAX を決める ψ の補間誤差の上限 [rad]
-        #[arg(long, default_value_t = 1e-3)]
+        #[arg(long, default_value_t = 1e-4)]
         tol_psi: f64,
         /// JSON で出力する
         #[arg(long)]
