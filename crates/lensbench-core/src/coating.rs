@@ -176,14 +176,12 @@ pub enum CoatKind {
     Bare,
     /// 理想膜 I.xx
     Ideal,
-    /// 膜ファイルの薄膜（鏡）
+    /// 膜ファイルの薄膜（透過・鏡）
     Stack,
     /// 膜ファイルの表
     Table,
     /// 実測表
     Measured,
-    /// 膜ファイルの薄膜だが透過（未対応。実測表があれば使う）
-    Unsupported,
     /// 膜ファイルになく、実測表もない（暗号化された膜など）
     Missing,
 }
@@ -196,14 +194,13 @@ impl CoatKind {
             CoatKind::Stack => "stack",
             CoatKind::Table => "table",
             CoatKind::Measured => "measured",
-            CoatKind::Unsupported => "unsupported",
             CoatKind::Missing => "missing",
         }
     }
 
     /// 実測表が要る（なければ偏光追跡が止まる）
     pub fn needs_table(self) -> bool {
-        matches!(self, CoatKind::Unsupported | CoatKind::Missing)
+        matches!(self, CoatKind::Missing)
     }
 }
 
@@ -372,19 +369,16 @@ impl Coatings {
     pub fn kind(&self, key: &str) -> CoatKind {
         let mut it = key.splitn(3, '|');
         let coat = it.next().unwrap_or("");
-        let mirror = it.nth(1) == Some("MIRROR");
         if self.file.table.contains_key(coat) {
             CoatKind::Table
         } else if coat == "-" {
             CoatKind::Bare
         } else if coat.starts_with("I.") {
             CoatKind::Ideal
-        } else if mirror && self.file.coat.contains_key(coat) {
+        } else if self.file.coat.contains_key(coat) {
             CoatKind::Stack
         } else if self.measured.contains_key(key) {
             CoatKind::Measured
-        } else if self.file.coat.contains_key(coat) {
-            CoatKind::Unsupported
         } else {
             CoatKind::Missing
         }
@@ -463,7 +457,7 @@ impl Coatings {
                 .map_err(|_| Error::Invalid(format!("理想膜 {coat}")))?;
             let v = if mirror { -(1.0 - t).sqrt() } else { t.sqrt() };
             Kind::Ideal(C64::new(v, 0.0))
-        } else if let Some(ls) = self.file.coat.get(coat).filter(|_| mirror) {
+        } else if let Some(ls) = self.file.coat.get(coat) {
             let wl_ref = sys.wavelengths[sys.primary];
             let mut layers = Vec::with_capacity(ls.len());
             for l in ls {
@@ -475,20 +469,34 @@ impl Coatings {
                 };
                 layers.push((n, d));
             }
-            // 反射の位相は誘電体層の底を基準にする（+2 k d cosθ、d は誘電体層の物理的な厚さの和。
-            // 吸収のある金属層は数えない）
-            let d_diel = layers.iter().filter(|l| l.0.im == 0.0).map(|l| l.1).sum();
-            Kind::Stack {
-                layers,
-                ns: MIRROR_N,
-                d_diel,
+            // OpticStudio の約束（COATING.DAT の膜で、空気・硝材どうし・両向き・鏡を偏光追跡と照合）:
+            // - 層は膜の外側（基板と反対側）から順。透過で後ろの媒質が空気なら、基板は前の媒質（層を逆に通る）
+            // - 鏡の基板は最後の層の材料（半無限）。最後の層より上だけが薄膜
+            // - 係数に位相 exp(i k Σ d_j (n_o / cos_o − β² / q_j)) が掛かる（n_o・cos_o は膜の外側の媒質、
+            //   β = n1 sinθ1、q_j = sqrt(Re(n_j)² − β²)）。鏡では exp(2 i k n1 cosθ1 Σ d_j)
+            if mirror {
+                let ns = match layers.pop() {
+                    Some((n, _)) => n,
+                    None => MIRROR_N,
+                };
+                Kind::Stack {
+                    layers,
+                    ns,
+                    n_out: n1,
+                }
+            } else {
+                if m2 == "AIR" {
+                    layers.reverse();
+                }
+                Kind::Stack {
+                    layers,
+                    ns: C64::new(n2, 0.0),
+                    n_out: if m2 == "AIR" { n2 } else { n1 },
+                }
             }
         } else {
-            // 実測表: 暗号化された膜と、透過する薄膜（光線相当の位相が未確認なので、表があればそちらを使う）
+            // 実測表: 暗号化された膜
             let Some(m) = self.measured.get(key) else {
-                if self.file.coat.contains_key(coat) {
-                    notimpl!("透過する薄膜 {coat}（光線相当の位相が未確認。境界 {key} の実測表があれば使う）");
-                }
                 notimpl!(
                     "膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もない（暗号化された膜？）"
                 );
@@ -681,7 +689,8 @@ enum Kind {
     Stack {
         layers: Vec<(C64, f64)>,
         ns: C64,
-        d_diel: f64,
+        /// 膜の外側（基板と反対側）の媒質の屈折率（位相の約束に使う）
+        n_out: f64,
     },
     Table {
         name: String,
@@ -720,10 +729,29 @@ impl Iface {
                     [ts, tp]
                 }
             }
-            Kind::Stack { layers, ns, d_diel } => {
-                let (rs, rp, _, _) = stack(self.n1, layers, *ns, self.wl, theta);
-                let ph = C64::new(0.0, 2.0 * 2.0 * PI / self.wl * d_diel * theta.cos()).exp();
-                [rs * ph, rp * ph]
+            Kind::Stack { layers, ns, n_out } => {
+                let (rs, rp, ts, tp) = stack(self.n1, layers, *ns, self.wl, theta);
+                let k = 2.0 * PI / self.wl;
+                let d: f64 = layers.iter().map(|l| l.1).sum();
+                if mirror {
+                    let ph = C64::new(0.0, 2.0 * k * self.n1 * theta.cos() * d).exp();
+                    [rs * ph, rp * ph]
+                } else {
+                    let b = self.n1 * theta.sin();
+                    let co = (1.0 - (b / n_out) * (b / n_out)).max(0.0).sqrt();
+                    if co == 0.0 {
+                        // 膜の外側で全反射（光線の追跡ではその前に止まる）
+                        notimpl!("膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）");
+                    }
+                    let mut ph = d * n_out / co;
+                    // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
+                    for &(n, dj) in layers {
+                        let q = C64::new(n.re * n.re - b * b, 0.0).sqrt();
+                        ph -= dj * (C64::new(b * b, 0.0) / q).re;
+                    }
+                    let ph = C64::new(0.0, k * ph).exp();
+                    [ts * ph, tp * ph]
+                }
             }
             Kind::Table { name, angs, vals } => {
                 let deg = theta.to_degrees();
@@ -963,7 +991,7 @@ mod tests {
         assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
         assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);
         assert_eq!(c.kind("AR|AIR|MIRROR"), CoatKind::Stack);
-        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Unsupported);
+        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Stack);
         assert_eq!(c.kind("T|AIR|N-BK7"), CoatKind::Table);
         assert_eq!(c.kind("ZEC|AIR|N-BK7"), CoatKind::Missing);
         let m = Measured {
@@ -973,7 +1001,7 @@ mod tests {
         };
         c.add_measured("AR|AIR|N-BK7", m.clone()).unwrap();
         c.add_measured("ZEC|AIR|N-BK7", m).unwrap();
-        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Measured);
+        assert_eq!(c.kind("AR|AIR|N-BK7"), CoatKind::Stack);
         assert_eq!(c.kind("ZEC|AIR|N-BK7"), CoatKind::Measured);
         assert!(CoatKind::Missing.needs_table() && !CoatKind::Measured.needs_table());
     }
