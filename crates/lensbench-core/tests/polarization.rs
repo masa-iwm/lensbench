@@ -515,3 +515,129 @@ fn table_coating_uses_p_at_normal_incidence() {
         assert!((v[1].norm_sqr() - (0.8 - 0.05 * t)).abs() < 1e-12, "{deg}");
     }
 }
+
+#[test]
+fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
+    use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
+    use lensbench_core::coating::{parse_models, CoatingFile, Measured};
+    let s = a0();
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let c = Coatings {
+        file: CoatingFile::parse(txt).unwrap(),
+        ..Default::default()
+    };
+    // OpticStudio の代わりに、膜ファイルの膜（OpticStudio の約束で計算）でモデルガラスの組を「測る」
+    let wls: Vec<f64> = (0..=40).map(|i| 1.0 / (2.0 - 0.0125 * i as f64)).collect();
+    let n = |m: &str| {
+        if m == "AIR" {
+            1.0
+        } else {
+            m.split(',').next().unwrap().parse::<f64>().unwrap()
+        }
+    };
+    let meas = |coat: &str, m1: &str, m2: &str| -> Measured {
+        let n1 = n(m1);
+        let mirror = m2 == "MIRROR";
+        let mut b: Vec<f64> = (0..=40)
+            .map(|i| (2.0 * i as f64).to_radians().sin())
+            .collect();
+        if n1 > 1.0 {
+            let db = if mirror { 0.005 } else { 0.01 };
+            let mut x = 1.0 + db;
+            while x < n1 * 80f64.to_radians().sin() {
+                b.push(x);
+                x += db;
+            }
+        }
+        let angles_deg: Vec<f64> = b.iter().map(|b| (b / n1).asin().to_degrees()).collect();
+        let data = wls
+            .iter()
+            .map(|&wl| {
+                let f = c
+                    .prepare(
+                        &s,
+                        &format!("{coat}|{m1}|{m2}"),
+                        wl,
+                        n1,
+                        if mirror { 0.0 } else { n(m2) },
+                    )
+                    .unwrap();
+                angles_deg
+                    .iter()
+                    .map(|a| f.eval(a.to_radians()).unwrap())
+                    .collect()
+            })
+            .collect();
+        Measured {
+            wavelengths: wls.clone(),
+            angles_deg,
+            data,
+        }
+    };
+    let mut tabs = Vec::new();
+    for m1 in ["AIR", "1.85,0.0", "2.05,0.0"] {
+        for m2 in ["1.45,0.0", "1.65,0.0", "1.85,0.0", "2.05,0.0", "2.3,0.0"] {
+            if m1 == "AIR" && m2 == "2.3,0.0" {
+                continue;
+            }
+            tabs.push((format!("AR2|{m1}|{m2}"), meas("AR2", m1, m2)));
+        }
+    }
+    let t: Vec<(&str, &Measured)> = tabs.iter().map(|(k, m)| (k.as_str(), m)).collect();
+    let rep = fit_model(&t, &FitOptions::default()).unwrap();
+    assert!((rep.model.d - 0.17).abs() < 1e-6, "D {}", rep.model.d);
+    assert!(rep.residual_max < 1e-6, "{}", rep.residual_max);
+    // ψ は層の屈折率 1.38 で発散するので、BMAX はその手前
+    assert!(
+        rep.model.bmax > 1.2 && rep.model.bmax < 1.38,
+        "BMAX {}",
+        rep.model.bmax
+    );
+    let mt = vec![
+        ("MIR|AIR|MIRROR".to_string(), meas("MIR", "AIR", "MIRROR")),
+        (
+            "MIR|2.05,0.0|MIRROR".to_string(),
+            meas("MIR", "2.05,0.0", "MIRROR"),
+        ),
+    ];
+    let t: Vec<(&str, &Measured)> = mt.iter().map(|(k, m)| (k.as_str(), m)).collect();
+    // 鏡だけの表（透過の組がない）は当てはめられない
+    assert!(fit_model(&t, &FitOptions::default()).is_err());
+    let mut all = tabs.clone();
+    all.extend(mt);
+    let t: Vec<(&str, &Measured)> = all.iter().map(|(k, m)| (k.as_str(), m)).collect();
+    let rep = fit_model(&t, &FitOptions::default()).unwrap();
+    let mr = rep.model.mirror.as_ref().unwrap();
+    assert!((mr.d - 0.1).abs() < 1e-6, "mirror D {}", mr.d);
+    // 書き出して読み直し、膜ファイルの膜と比べる（AR2 と MIR は同じ表から作った 1 つのモデル ZX）
+    let txt = format_models(&[("ZX", &rep.model)]);
+    let mut c2 = Coatings {
+        file: c.file.clone(),
+        ..Default::default()
+    };
+    c2.models.extend(parse_models(&txt).unwrap());
+    let wl = 0.6123;
+    let mut worst = 0.0f64;
+    for (k, km, n1, n2, amax) in [
+        ("AR2|AIR|1.5,0.0", "ZX|AIR|1.5,0.0", 1.0, 1.5, 80.0),
+        ("AR2|1.5,0.0|AIR", "ZX|1.5,0.0|AIR", 1.5, 1.0, 40.0),
+        ("AR2|1.7,0.0|1.5,0.0", "ZX|1.7,0.0|1.5,0.0", 1.7, 1.5, 40.0),
+        ("MIR|AIR|MIRROR", "ZX|AIR|MIRROR", 1.0, 0.0, 80.0),
+        ("MIR|1.6,0.0|MIRROR", "ZX|1.6,0.0|MIRROR", 1.6, 0.0, 70.0),
+    ] {
+        let f = c2.prepare(&s, k, wl, n1, n2).unwrap();
+        let g = c2.prepare(&s, km, wl, n1, n2).unwrap();
+        for i in 0..=40 {
+            let th = (amax * i as f64 / 40.0f64).to_radians();
+            let (a, b) = (f.eval(th).unwrap(), g.eval(th).unwrap());
+            let d = (a[0] - b[0]).norm().max((a[1] - b[1]).norm());
+            assert!(d < 1e-5, "{km} {th}: {a:?} {b:?}");
+            worst = worst.max(d);
+        }
+    }
+    eprintln!(
+        "fitted model vs stack: max {worst:.1e}, BMAX {}",
+        rep.model.bmax
+    );
+}

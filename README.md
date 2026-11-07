@@ -38,6 +38,7 @@ lensbench spot     system.zmx --field 2 --wave 1
 lensbench wavefront system.zmx --n 64
 lensbench zernike  system.zmx --kind fringe --terms 37
 lensbench coatings system.zmx --table coat_tables.ctab
+lensbench coat-model measured.ctab --out coat_models.lbcm
 ```
 
 `coatings` は全コンフィグの境界（`膜|前の媒質|後の媒質`）と膜の扱い（膜なし、理想膜、膜ファイルの薄膜・表、実測表、モデル）を一覧にし、
@@ -61,6 +62,10 @@ lensbench coatings system.zmx --table coat_tables.ctab
 `LBCM 2` の行のあとに `COAT 名前`、`D`・`BMAX`、`WAVE` と β ごとの行、鏡なら `MIRROR` の節が続く
 （詳しくは `lensbench_core::coating::parse_models`）。`--table` と `Coatings::load_file` は 1 行目で LBCT と LBCM を見分ける。
 同じ境界に実測表があれば実測表を使う。
+
+モデルは `coat-model` で実測表から作る（`lensbench_core::coat_fit::fit_model`）。表には、屈折率だけのモデルガラス（`"n,0.0"`）を
+媒質にした組を入れる: 透過は前の媒質 2 種以上（`AIR`・`1.85,0.0` など）× 後の媒質 2 種以上、鏡は `AIR|MIRROR` と `2.05,0.0|MIRROR`。
+波長ごとに特性行列を最小二乗で解き、`D`（OpticStudio の位相の厚さ）と `BMAX` を表から決める。
 
 透過の位相は既定で OpticStudio と同じ約束にする。その位相には層ごとの項（光線の層の中での横ずれの位相）が含まれ、
 β が層の屈折率に近づくと発散するので、モデルは `BMAX` を超える β では止める。`Coatings::phase` を
