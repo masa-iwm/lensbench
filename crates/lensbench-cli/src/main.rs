@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Args)]
 struct Common {
-    /// .zmx ファイル
+    /// .zmx ファイル、またはブロックで組んだプロジェクトファイル（.json）
     file: PathBuf,
     /// ガラスカタログを探すフォルダ（複数可。LENSBENCH_GLASSCAT も使う）
     #[arg(long = "glass-dir")]
@@ -143,6 +143,15 @@ enum Cmd {
 fn load(c: &Common) -> Result<System, String> {
     if c.cfg == 0 {
         return Err("--cfg は 1 以上".into());
+    }
+    if c.file
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+    {
+        if c.cfg != 1 {
+            return Err("プロジェクトファイルの --cfg は未対応（状態は今後）".into());
+        }
+        return lensbench_project::load(&c.file, &c.glass_dir, None);
     }
     let opt = zmx::LoadOptions {
         cfg: c.cfg,
