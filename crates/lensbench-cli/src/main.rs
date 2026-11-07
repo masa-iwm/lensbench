@@ -81,6 +81,19 @@ enum Cmd {
         #[arg(long, default_value_t = 64)]
         n: usize,
     },
+    /// 回折 MTF（変調度、子午・球欠）。--wave を省くと多色
+    Mtf {
+        #[command(flatten)]
+        c: Common,
+        #[command(flatten)]
+        s: Sel,
+        /// 周波数 [cycles/mm]（カンマ区切り）。省くと 0 から遮断周波数の 0.95 倍までの 20 等分
+        #[arg(long)]
+        freqs: Option<String>,
+        /// 瞳の重なりの求積の点の数の目安（点は約 n² 個）
+        #[arg(long, default_value_t = 32)]
+        n: usize,
+    },
     /// 面の膜: 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
     Coatings {
         /// .zmx ファイル
@@ -232,6 +245,44 @@ fn run(cli: Cli) -> Result<(), String> {
                 c.json,
                 json!({ "unit": "waves", "kind": kind, "zernike": v }),
             )
+        }
+        Cmd::Mtf {
+            c,
+            s: sel,
+            freqs,
+            n,
+        } => {
+            let s = load(&c)?;
+            let w = wave(&s, &sel)?;
+            let given: Option<Vec<f64>> = match freqs {
+                Some(f) => Some(
+                    f.split(',')
+                        .map(|x| {
+                            x.trim()
+                                .parse::<f64>()
+                                .map_err(|_| format!("--freqs の数が読めない（{x}）"))
+                        })
+                        .collect::<Result<_, _>>()?,
+                ),
+                None => None,
+            };
+            let mut v = Vec::new();
+            for i in fields(&s, &sel)? {
+                let fs = match &given {
+                    Some(f) => f.clone(),
+                    None => {
+                        let m = analysis::mtf(&s, FieldSel::Index(i), w, 4, &[]).map_err(e)?;
+                        let c = m.cutoff.0.min(m.cutoff.1);
+                        (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
+                    }
+                };
+                let m = analysis::mtf(&s, FieldSel::Index(i), w, n, &fs).map_err(e)?;
+                v.push(json!({
+                    "field": i + 1, "freqs": m.freqs, "tangential": m.tan, "sagittal": m.sag,
+                    "cutoff": [m.cutoff.0, m.cutoff.1],
+                }));
+            }
+            (c.json, json!({ "unit": "cycles/mm", "mtf": v }))
         }
         Cmd::Coatings {
             file,

@@ -4,6 +4,7 @@
 //! （像面から EXPP）と交わる点を通る。各光線を像面から参照球まで戻し、(主光線の光路 − 光線の光路) を
 //! その光線の波長の波数で表す（主光線はその波長のもの）。ROPD「無限遠」は主光線に垂直な平面。
 
+use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
 use crate::system::{FieldSel, System, Trace};
@@ -278,6 +279,141 @@ pub fn wavefront(
     })
 }
 
+// ------------------------------------------------------------------------------------------ MTF
+/// MTF（変調度）。freqs [cycles/mm] ごとに子午（像面の y 方向の周波数）と球欠（x 方向）
+#[derive(Debug, Clone)]
+pub struct Mtf {
+    pub freqs: Vec<f64>,
+    pub tan: Vec<f64>,
+    pub sag: Vec<f64>,
+    /// 回折限界の遮断周波数 [cycles/mm]（主波長、(x, y) 方向）
+    pub cutoff: (f64, f64),
+}
+
+/// 単位円を ±d/2 ずらした 2 つの円の重なり（レンズ形）の求積: (ずらす向きの座標 t, 直交する座標 u, 重み)。
+/// t は両側の先端で幅が sqrt で 0 になるので、t = a (1 − τ²)（a = 1 − d/2）と置いて τ で Gauss-Legendre、
+/// u は各 t で幅いっぱいに Gauss-Legendre。重みの和はレンズの面積（d = 0 で π）
+fn lens_quad(d: f64, n: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let a = 1.0 - 0.5 * d;
+    let (mut t, mut u, mut w) = (Vec::new(), Vec::new(), Vec::new());
+    if a <= 0.0 {
+        return (t, u, w);
+    }
+    let (gt, wt) = gauss_legendre(n.div_ceil(2).max(2));
+    let (gu, wu) = gauss_legendre(n.max(2));
+    for (&z, &wz) in gt.iter().zip(&wt) {
+        // τ ∈ [0, 1]
+        let tau = 0.5 * (z + 1.0);
+        let y = a * (1.0 - tau * tau);
+        let dy = 2.0 * a * tau * 0.5 * wz;
+        let x = (1.0 - (y + 0.5 * d).powi(2)).max(0.0).sqrt();
+        for sgn in [1.0, -1.0] {
+            for (&g, &wg) in gu.iter().zip(&wu) {
+                t.push(sgn * y);
+                u.push(x * g);
+                w.push(dy * x * wg);
+            }
+        }
+    }
+    (t, u, w)
+}
+
+/// 像空間の方向余弦の、正規化瞳に対する傾き (∂L/∂px, ∂M/∂py)。瞳の縁の光線の主光線からの差で見積もる
+fn pupil_scale(s: &System, field: FieldSel, w: usize) -> Result<(f64, f64)> {
+    let r = s.try_trace(
+        field,
+        &[1.0, -1.0, 0.0, 0.0],
+        &[0.0, 0.0, 1.0, -1.0],
+        Some(w),
+        None,
+        false,
+    )?;
+    if !(0..4).all(|i| r.ok(i)) {
+        notimpl!("MTF: 瞳の縁の光線がけられる（瞳の大きさが決められない）");
+    }
+    let su = 0.5 * (r.rays[0].lmn[0] - r.rays[1].lmn[0]);
+    let sv = 0.5 * (r.rays[2].lmn[1] - r.rays[3].lmn[1]);
+    if !(su.abs() > 1e-12 && sv.abs() > 1e-12) {
+        notimpl!("MTF: 像空間の開口が 0（アフォーカル？）");
+    }
+    Ok((su, sv))
+}
+
+/// 回折 MTF。瞳関数 P = exp(2πi W)（W は主波長の主光線を基準にした OPD [波]）の自己相関を、ずらした瞳の点を
+/// 光線追跡して直接求める（格子の補間なし、FFT なし）。周波数 ν の像面の縞は、像空間の方向余弦で λν だけずれた
+/// 2 つの光線の干渉なので、正規化瞳では δ = λν / (∂L/∂p) ずらす（瞳から方向余弦への写像は線形とみなす）。
+/// w None なら全波長を重みで足した多色（複素 OTF の和、波長ごとに光量で規格化）。
+/// 重なりの積分は [`lens_quad`]（n は求積の点の数の目安、点は約 n² 個）
+pub fn mtf(s: &System, field: FieldSel, w: Option<usize>, n: usize, freqs: &[f64]) -> Result<Mtf> {
+    if n < 4 {
+        invalid!("MTF の瞳の格子 {n} は 4 以上にする");
+    }
+    let ws: Vec<usize> = match w {
+        None => (0..s.wavelengths.len()).collect(),
+        Some(w) => vec![w],
+    };
+    let mut tan = vec![C64::new(0.0, 0.0); freqs.len()];
+    let mut sag = tan.clone();
+    let mut wsum = 0.0;
+    for &wi in &ws {
+        let wt = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
+        if !(wt > 0.0) {
+            continue;
+        }
+        let (su, sv) = pupil_scale(s, field, wi)?;
+        let lam = s.wavelengths[wi] * 1e-3;
+        // ずらさない瞳の光量（けられを含む）
+        let (t0, u0, w0) = lens_quad(0.0, n);
+        let o0 = opd(s, field, &u0, &t0, Some(wi), true)?;
+        let e0: f64 = (0..t0.len())
+            .filter(|&i| o0.ok(i) && o0.opd[i].is_finite())
+            .map(|i| w0[i])
+            .sum();
+        if !(e0 > 0.0) {
+            invalid!("MTF: 有効な光線がない（すべてけられた）");
+        }
+        wsum += wt;
+        for (k, &f) in freqs.iter().enumerate() {
+            for (dir, out) in [(0usize, &mut sag), (1usize, &mut tan)] {
+                // 正規化瞳でのずれ（符号つき。dir 0: x、1: y）
+                let d = if dir == 0 { lam * f / su } else { lam * f / sv };
+                let (t, u, w) = lens_quad(d.abs(), n);
+                let mut acc = C64::new(0.0, 0.0);
+                if !t.is_empty() {
+                    let h = 0.5 * d;
+                    let (ta, tb): (Vec<f64>, Vec<f64>) = t.iter().map(|&v| (v + h, v - h)).unzip();
+                    let (a, b) = if dir == 0 {
+                        (
+                            opd(s, field, &ta, &u, Some(wi), true)?,
+                            opd(s, field, &tb, &u, Some(wi), true)?,
+                        )
+                    } else {
+                        (
+                            opd(s, field, &u, &ta, Some(wi), true)?,
+                            opd(s, field, &u, &tb, Some(wi), true)?,
+                        )
+                    };
+                    for i in 0..t.len() {
+                        if a.ok(i) && b.ok(i) && a.opd[i].is_finite() && b.opd[i].is_finite() {
+                            let ph = 2.0 * std::f64::consts::PI * (a.opd[i] - b.opd[i]);
+                            acc += C64::new(ph.cos(), ph.sin()) * w[i];
+                        }
+                    }
+                }
+                out[k] += acc * (wt / e0);
+            }
+        }
+    }
+    let (su, sv) = pupil_scale(s, field, s.primary)?;
+    let lam = s.wavelengths[s.primary] * 1e-3;
+    Ok(Mtf {
+        freqs: freqs.to_vec(),
+        tan: tan.iter().map(|c| c.norm() / wsum).collect(),
+        sag: sag.iter().map(|c| c.norm() / wsum).collect(),
+        cutoff: (2.0 * su.abs() / lam, 2.0 * sv.abs() / lam),
+    })
+}
+
 // ------------------------------------------------------------------------------------------ Zernike
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZernKind {
@@ -508,5 +644,34 @@ mod tests {
         let a = vec![vec![1.0, 0.0], vec![1.0, 1.0], vec![1.0, 2.0]];
         let x = lstsq(&a, &[1.0, 3.0, 5.0]);
         assert!((x[0] - 1.0).abs() < 1e-14 && (x[1] - 2.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn mtf_of_a_perfect_lens_is_the_diffraction_limit() {
+        // 無限遠の物体、絞り径 10 mm、焦点距離 100 mm の理想レンズ（F/10）、像は焦点
+        let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 1 1 0 0 0\n\
+                   XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.55 1\nPWAV 1\n\
+                   SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+                   SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
+                   SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let raw = crate::zmx::parse_text(txt).unwrap();
+        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let nc = 1.0 / (0.55e-3 * 10.0);
+        let freqs: Vec<f64> = (0..10).map(|i| nc * i as f64 / 10.0).collect();
+        let m = mtf(&s, FieldSel::Index(0), None, 128, &freqs).unwrap();
+        // 遮断周波数は 2 sinθ / λ（sinθ = 5/√(100² + 5²)、F/# からの 1/(λF) より 0.12 % 低い）
+        let sin = 5.0 / (100.0f64 * 100.0 + 25.0).sqrt();
+        let c = 2.0 * sin / 0.55e-3;
+        assert!(
+            (m.cutoff.0 - c).abs() / c < 1e-9 && (m.cutoff.1 - c).abs() / c < 1e-9,
+            "{:?}",
+            m.cutoff
+        );
+        for (k, &f) in freqs.iter().enumerate() {
+            let v: f64 = f / c;
+            let ideal = 2.0 / std::f64::consts::PI * (v.acos() - v * (1.0 - v * v).sqrt());
+            assert!((m.tan[k] - ideal).abs() < 1e-4, "{v} {} {ideal}", m.tan[k]);
+            assert!((m.sag[k] - ideal).abs() < 1e-4, "{v} {} {ideal}", m.sag[k]);
+        }
     }
 }
