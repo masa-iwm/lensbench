@@ -264,3 +264,53 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
 }
+
+#[test]
+fn coating_file_stacks_follow_the_opticstudio_conventions() {
+    use lensbench_core::coating::{stack, CoatKind, CoatingFile};
+    use std::f64::consts::PI;
+    let s = a0();
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let c = Coatings {
+        file: CoatingFile::parse(txt).unwrap(),
+        measured: Default::default(),
+    };
+    assert_eq!(c.kind("AR2|AIR|1.5,0.0"), CoatKind::Stack);
+    let wl = 0.55;
+    let k = 2.0 * PI / wl;
+    let (n1, n2) = (1.0, 1.5);
+    let layers = [(C64::new(1.38, 0.0), 0.11), (C64::new(2.1, 0.0), 0.06)];
+    // 空気から硝材: 層は外側から順、位相 exp(i k Σ d (n1 / cosθ1 − β² / q))
+    let f = c.prepare(&s, "AR2|AIR|1.5,0.0", wl, n1, n2).unwrap();
+    for deg in [0.0f64, 30.0, 60.0] {
+        let th = deg.to_radians();
+        let (_, _, ts, tp) = stack(n1, &layers, C64::new(n2, 0.0), wl, th);
+        let b = th.sin();
+        let mut ph = 0.17 / th.cos();
+        for (n, d) in layers {
+            let q = (n * n - b * b).sqrt().re;
+            ph -= d * b * b / q;
+        }
+        let e = C64::new(0.0, k * ph).exp();
+        let v = f.eval(th).unwrap();
+        assert!((v[0] - ts * e).norm() < 1e-13 && (v[1] - tp * e).norm() < 1e-13, "{deg}");
+    }
+    // 硝材から空気: 基板は前の媒質（層を逆に通る）。透過率は同じ β の空気から硝材と同じ（相反性）
+    let g = c.prepare(&s, "AR2|1.5,0.0|AIR", wl, n2, n1).unwrap();
+    for deg in [0.0f64, 20.0, 35.0] {
+        let th = deg.to_radians();
+        let ta = f.eval((n2 * th.sin()).asin()).unwrap();
+        let tg = g.eval(th).unwrap();
+        for m in 0..2 {
+            assert!((ta[m].norm() - tg[m].norm()).abs() < 1e-13, "{deg} {m}");
+        }
+    }
+    // 鏡: 基板は最後の層の材料、位相 exp(2 i k n1 cosθ1 Σ d)（最後の層は数えない）
+    let h = c.prepare(&s, "MIR|AIR|MIRROR", wl, n1, 0.0).unwrap();
+    let th = 0.4f64;
+    let (rs, rp, _, _) = stack(n1, &[(C64::new(1.38, 0.0), 0.1)], C64::new(0.5, 3.0), wl, th);
+    let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
+    let v = h.eval(th).unwrap();
+    assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
+}

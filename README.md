@@ -43,6 +43,10 @@ lensbench coatings system.zmx --table coat_tables.ctab
 `coatings` は全コンフィグの境界（`膜|前の媒質|後の媒質`）と膜の扱い（膜なし、理想膜、膜ファイルの薄膜・表、実測表）を一覧にし、
 偏光追跡に実測表が要る境界（暗号化された膜など）を `needs_table` に挙げる。
 
+膜ファイル（COATING.DAT 形式）の多層膜は、透過・鏡とも OpticStudio と同じ約束で計算する（層は膜の外側から順、
+後ろの媒質が空気なら基板は前の媒質、鏡の基板は最後の層の材料、係数に掛かる位相。`lensbench_core::coating` の
+`Coatings::prepare` に説明）。膜厚が波長単位の層は系の主波長で厚さを決める。
+
 ### 膜の実測表（LBCT 形式）
 
 暗号化された膜（.ZEC）は復号せず、OpticStudio の偏光追跡で測った境界の複素 s・p 係数の表を使う。
