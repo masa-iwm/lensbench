@@ -50,6 +50,17 @@ pub struct FitReport {
     pub residual_max: f64,
     /// 当てはめた点の数（波長 × β × 偏光）
     pub points: usize,
+    /// 測った波長の間隔（波数 1/λ [1/µm]）の最大
+    pub wave_gap: f64,
+    /// 係数の差を 1e-5 にするのに要る波数の間隔の目安（[`wave_step`]）
+    pub wave_gap_needed: f64,
+}
+
+/// 波長方向の補間誤差を `tol` にするのに要る波数 1/λ の間隔 [1/µm] の目安。膜の位相の厚さ `d` [µm]
+/// （透過の D と鏡の D_m の大きい方）に反比例する（誤差は間隔の 4 乗に比例。多層膜の測定から決めた係数）
+pub fn wave_step(d: f64, tol: f64) -> f64 {
+    const C: f64 = 0.0352 / 0.2618; // 4.7e-3^(1/4) = 0.2618
+    C * tol.powf(0.25) / d.max(0.05)
 }
 
 fn model_n(m: &str) -> Option<f64> {
@@ -427,10 +438,19 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
         });
     }
     let points = mfit.len();
+    let sig: Vec<f64> = waves.iter().map(|&w| 1.0 / (w as f64 * 1e-9)).collect();
+    let wave_gap = sig
+        .windows(2)
+        .map(|p| (p[0] - p[1]).abs())
+        .fold(0.0, f64::max);
+    let dm = model.mirror.as_ref().map_or(0.0, |m| m.d);
+    let wave_gap_needed = wave_step(model.d.max(dm), 1e-5);
     Ok(FitReport {
         model,
         residual_max,
         points,
+        wave_gap,
+        wave_gap_needed,
     })
 }
 
