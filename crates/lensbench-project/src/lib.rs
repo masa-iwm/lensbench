@@ -706,21 +706,19 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let s = self.load_zmx(path)?;
                 let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
                 let (a, z) = (from.unwrap_or(1), to.unwrap_or(s.image() - 1));
-                let pick: Vec<Element> = els
-                    .into_iter()
-                    .filter(|e| e.kind == Kind::Air || (e.from >= a && e.from <= z))
-                    .collect();
-                // 範囲の外の空気（前後の要素が範囲外）は除く
+                // 範囲の中の要素と、その直後の空気だけを取る（範囲の外の要素の後の空気は除く）
                 let mut keep = Vec::new();
                 let mut last_in = false;
-                for e in pick {
+                for e in els {
                     if e.kind == Kind::Air {
                         if last_in {
                             keep.push(e);
                         }
                     } else {
-                        last_in = true;
-                        keep.push(e);
+                        last_in = e.from >= a && e.from <= z;
+                        if last_in {
+                            keep.push(e);
+                        }
                     }
                 }
                 self.placed(place, &mut |c: &mut Self| {

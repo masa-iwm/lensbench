@@ -72,6 +72,22 @@ fn a_whole_zmx_block_is_the_system() {
 }
 
 #[test]
+fn a_zmx_range_keeps_only_the_air_right_after_it() {
+    // A0 の面 1〜2（1 枚目の玉）: 玉の後ろの空気 5.8 だけが付き、範囲の外の空気は足さない
+    let a = a0();
+    let s = project(
+        r#"[{"type": "zmx", "path": "A0/system.zmx", "from": 1, "to": 2}, {"type": "stop", "semi": 3}]"#,
+    );
+    let t: Vec<f64> = s.surfaces.iter().map(|d| d.t).collect();
+    // 物体、玉の 2 面、絞り、像面
+    assert_eq!(s.surfaces.len(), 5, "{t:?}");
+    assert_eq!(s.surfaces[1].c, a.surfaces[1].c);
+    assert_eq!(s.surfaces[2].c, a.surfaces[2].c);
+    assert_eq!(t[1], a.surfaces[1].t);
+    assert_eq!(t[2], a.surfaces[2].t, "{t:?}");
+}
+
+#[test]
 fn lens_blocks_rebuild_the_triplet() {
     // A0: 玉 3 つ、絞りは 2 つ目と 3 つ目の間の面、像の手前にダミー面
     let a = a0();
