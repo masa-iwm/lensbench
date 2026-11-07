@@ -607,7 +607,8 @@ fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)
     let e = wls.partition_point(|&w| w <= hi + EPS);
     let seg = &wls[s..e];
     let n = seg.len();
-    if n == 0 {
+    // 折れ目の間に点が 1 つ以下だと補間できない（呼ぶ側が範囲の外と区別して知らせる）
+    if n == 0 || (n < 2 && n < wls.len()) {
         return None;
     }
     let m = n.min(4);
@@ -626,6 +627,17 @@ fn wave_weights(wls: &[f64], wl: f64, kinks: &[f64]) -> Option<(usize, Vec<f64>)
         })
         .collect();
     Some((s + i, w))
+}
+
+/// [`wave_weights`] が補間できない理由
+fn out_of_waves(wls: &[f64], wl: f64) -> String {
+    match (wls.first(), wls.last()) {
+        (Some(&a), Some(&b)) if a - 1e-9 <= wl && wl <= b + 1e-9 => {
+            "をはさむ折れ目（KINKS）の間に、測った波長が 2 つ以上ない".to_string()
+        }
+        (Some(&a), Some(&b)) => format!("が範囲（{a}〜{b} µm）の外"),
+        _ => "の波長のデータがない".to_string(),
+    }
 }
 
 /// 実数の値の列を β² の not-a-knot スプラインにする
@@ -1152,7 +1164,10 @@ fn prepare_model(
             notimpl!("膜のモデル {name} に鏡のデータがない");
         };
         let Some((i, w)) = wave_weights(&m.wavelengths, wl, &md.kinks) else {
-            notimpl!("膜のモデル {name}（鏡）: 波長 {wl} µm が範囲の外");
+            notimpl!(
+                "膜のモデル {name}（鏡）: 波長 {wl} µm {}",
+                out_of_waves(&m.wavelengths, wl)
+            );
         };
         let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
         let mut sp: Vec<[Spline; 2]> = Vec::new();
@@ -1186,9 +1201,8 @@ fn prepare_model(
     }
     let Some((i, w)) = wave_weights(&md.wavelengths, wl, &md.kinks) else {
         notimpl!(
-            "膜のモデル {name}: 波長 {wl} µm が範囲（{}〜{} µm）の外",
-            md.wavelengths[0],
-            md.wavelengths[md.wavelengths.len() - 1]
+            "膜のモデル {name}: 波長 {wl} µm {}",
+            out_of_waves(&md.wavelengths, wl)
         );
     };
     let b2: Vec<f64> = md.betas.iter().map(|b| b * b).collect();

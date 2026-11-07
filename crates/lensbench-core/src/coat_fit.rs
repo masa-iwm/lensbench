@@ -37,7 +37,7 @@ impl Default for FitOptions {
     fn default() -> Self {
         FitOptions {
             d_max: 20.0,
-            tol_psi: 1e-3,
+            tol_psi: 1e-4,
         }
     }
 }
@@ -365,14 +365,14 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
             betas.len()
         );
     }
-    let bf: Vec<f64> = betas.iter().map(|&b| b as f64 * 1e-9).collect();
+    let bf: Vec<f64> = betas.iter().map(|&b| b as f64 / 1e9).collect();
     let mut model = CoatModel {
         d,
         bmax: f64::INFINITY,
         ..Default::default()
     };
     for &w in &waves {
-        let wl = w as f64 * 1e-9;
+        let wl = w as f64 / 1e9;
         let mut rows = vec![[[C64::new(0.0, 0.0); 4]; 2]; betas.len()];
         let mut psis = vec![[0.0; 2]; betas.len()];
         for pol in 0..2 {
@@ -438,11 +438,14 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
         });
     }
     let points = mfit.len();
-    let sig: Vec<f64> = waves.iter().map(|&w| 1.0 / (w as f64 * 1e-9)).collect();
-    let wave_gap = sig
-        .windows(2)
-        .map(|p| (p[0] - p[1]).abs())
-        .fold(0.0, f64::max);
+    // 透過と鏡の波長の格子の、波数の間隔の最大
+    let gap = |w: &[f64]| {
+        w.windows(2)
+            .map(|p| (1.0 / p[0] - 1.0 / p[1]).abs())
+            .fold(0.0, f64::max)
+    };
+    let wave_gap =
+        gap(&model.wavelengths).max(model.mirror.as_ref().map_or(0.0, |m| gap(&m.wavelengths)));
     let dm = model.mirror.as_ref().map_or(0.0, |m| m.d);
     let wave_gap_needed = wave_step(model.d.max(dm), 1e-5);
     Ok(FitReport {
