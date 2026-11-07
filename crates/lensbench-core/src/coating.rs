@@ -1369,8 +1369,6 @@ fn prepare_model(
         let xs: Vec<f64> = (s0..e0).rev().map(|i| 1.0 / m.wavelengths[i]).collect();
         let b2: Vec<f64> = m.betas.iter().map(|b| b * b).collect();
         let brs = m.branches(&b2);
-        // 分岐点は、はさむ 2 つの波長での値を 1/λ で直線補間する（区間のどの波長にもあるときだけ使う）
-        let iq = s0 + m.wavelengths[s0..e0].partition_point(|&w| w < wl);
         // 分岐点の位置は波長の滑らかな関数（基板の屈折率の 2 乗）なので、近い 4 点の 1/λ の 3 次式で補間する
         // （区間のどの波長にもあるときだけ使う）
         let branch = if brs[s0..e0].iter().all(Option::is_some) {
@@ -1399,10 +1397,20 @@ fn prepare_model(
         // 補間に使いそうな波長（近い RATIONAL_N 点と、その両側に 2 点ずつ）で分岐点が点 j の β² の両側にあるなら、
         // β² を固定すると波長の補間が分岐点をまたぐ。その点は、各波長の表を分岐点からの β² の差 u = β² − xb で
         // 揃えてから波長で補間する。ほかの点は β² を固定して補間する（測った点で値が厳密に合う）
-        let (w0, w1) = (
-            iq.saturating_sub(RATIONAL_N / 2 + 2).max(s0),
-            (iq + RATIONAL_N / 2 + 2).min(e0),
-        );
+        // rational_at が選ぶ波長の点（端では内側へ寄せる）と、その両側 2 点
+        let (w0, w1) = {
+            let n = xs.len();
+            let m = RATIONAL_N.min(n - n % 2).max(n.min(4));
+            let st = xs
+                .partition_point(|&x| x < 1.0 / wl)
+                .saturating_sub(m / 2)
+                .min(n - m);
+            // xs の k 番目は波長の e0 − 1 − k 番目
+            (
+                (e0 - (st + m)).saturating_sub(2).max(s0),
+                (e0 - st + 2).min(e0),
+            )
+        };
         let near = |j: usize| {
             branch.is_some() && {
                 let above = |w: usize| brs[w].is_some_and(|xb| xb > b2[j]);
@@ -1803,6 +1811,39 @@ mod tests {
             worst = worst.max((v - f(q)).norm());
         }
         assert!(worst < 1e-8, "{worst:e}");
+    }
+
+    #[test]
+    fn mirror_branch_is_not_found_without_one() {
+        let b2: Vec<f64> = (0..=800).map(|i| (0.0025 * i as f64).powi(2)).collect();
+        let tab = |f: &dyn Fn(f64) -> f64| -> Vec<[C64; 2]> {
+            b2.iter()
+                .map(|&x| {
+                    let a = f(x);
+                    [
+                        C64::from_polar(a, 0.3 + x),
+                        C64::from_polar(a, -0.2 + 0.5 * x),
+                    ]
+                })
+                .collect()
+        };
+        // 全反射しにくい高反射膜: |r| が β とともに少しずつ（指数的に）1 に近づくだけ
+        let slow = tab(&|x| 1.0 - 1e-6 * (-8.0 * x).exp());
+        assert!(slow.iter().any(|v| (v[0].norm() - 1.0).abs() < 1e-10));
+        assert_eq!(mirror_branch(&b2, &slow), None);
+        // 吸収のある膜: |r| は 1 に届かない
+        assert_eq!(mirror_branch(&b2, &tab(&|x| 0.9 + 0.05 * x / 4.0)), None);
+        // 分岐点（β = 1.4）の上で |r| = 1 に張り付く表では見つかる
+        let xb = 1.96;
+        let br = tab(&|x| {
+            if x < xb {
+                1.0 - 0.3 * (xb - x).sqrt()
+            } else {
+                1.0
+            }
+        });
+        let got = mirror_branch(&b2, &br).unwrap();
+        assert!((got - xb).abs() < 1e-3, "{got}");
     }
 
     #[test]
