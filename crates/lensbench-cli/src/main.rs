@@ -335,7 +335,22 @@ fn coat_model(
             .filter(|(k, _)| k.split('|').next() == Some(c.as_str()))
             .map(|(k, m)| (k.as_str(), m))
             .collect();
-        let r = fit_model(&t, &opt).map_err(|e| format!("{c}: {e}"))?;
+        // モデルガラスの組がない膜などは飛ばして、ほかの膜は作る
+        let r = match fit_model(&t, &opt) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("warning: {c}: 飛ばした（{e}）");
+                rep.push(json!({ "coat": c, "skipped": e.to_string() }));
+                continue;
+            }
+        };
+        let coarse = r.wave_gap > r.wave_gap_needed;
+        if coarse {
+            eprintln!(
+                "warning: {c}: 波長の格子が粗い（波数の間隔 {:.4} > 目安 {:.4} [1/um]）。波長の間で係数がずれる",
+                r.wave_gap, r.wave_gap_needed
+            );
+        }
         rep.push(json!({
             "coat": c,
             "d_um": r.model.d,
@@ -345,8 +360,14 @@ fn coat_model(
             "betas": r.model.betas.len(),
             "points": r.points,
             "residual_max": r.residual_max,
+            "wave_gap": r.wave_gap,
+            "wave_gap_needed": r.wave_gap_needed,
+            "coarse": coarse,
         }));
         models.push((c.clone(), r.model));
+    }
+    if models.is_empty() {
+        return Err("作れた膜のモデルがない".into());
     }
     let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
     std::fs::write(out, format_models(&e)).map_err(|x| format!("{}: {x}", out.display()))?;
