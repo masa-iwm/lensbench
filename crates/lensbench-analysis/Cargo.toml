@@ -1,0 +1,13 @@
+[package]
+name = "lensbench-analysis"
+description = "Analysis plugins of lensbench (spot, wavefront, Zernike, MTF, PSF, RMS, POP, ghost)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+
+
