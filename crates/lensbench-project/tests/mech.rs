@@ -1,0 +1,267 @@
+//! 機構部品のケラレ: 系に置いた穴（円柱）で切れる光線を数える
+use lensbench_core::mech::vignetting;
+use lensbench_core::system::FieldSel;
+use lensbench_project::{expand, Env, Project};
+use std::path::PathBuf;
+
+fn root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn env() -> Env<'static> {
+    Env {
+        base: root().join("examples/lenses/LBP"),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    }
+}
+
+/// 平行光（EPD 10）が絞りから 40 mm 進んで単レンズに入る系。`mechanics` は置く機構部品、
+/// `aperture` は絞りから 10 mm に置く円の開口の半径（比べる用）
+fn system(mechanics: &str, aperture: Option<f64>) -> lensbench_core::System {
+    let ap = match aperture {
+        Some(r) => format!(
+            r#"{{"type": "air", "t": 10}}, {{"type": "surfaces", "id": "ap", "surfaces": [{{"aperture": {{"type": "circular", "max": {r}}}}}]}}, {{"type": "air", "t": 30}}"#
+        ),
+        None => r#"{"type": "air", "t": 40}"#.into(),
+    };
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+        "fields": {{"points": [[0, 0], [0, 5]]}},
+        "blocks": [{{"type": "stop", "id": "stop"}}, {ap},
+          {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 50, "t": 4, "glass": "N-BK7"}}, {{"radius": -50}}]}}}},
+          {{"type": "air", "t": 45}}],
+        "mechanics": [{mechanics}]}}"#
+    ))
+    .unwrap();
+    expand(&p, &env()).unwrap()
+}
+
+fn pupil(n: usize) -> (Vec<f64>, Vec<f64>) {
+    let (mut px, mut py) = (Vec::new(), Vec::new());
+    for iy in 0..n {
+        for ix in 0..n {
+            let x = -1.0 + 2.0 * ix as f64 / (n - 1) as f64;
+            let y = -1.0 + 2.0 * iy as f64 / (n - 1) as f64;
+            if x * x + y * y <= 1.0 {
+                px.push(x);
+                py.push(y);
+            }
+        }
+    }
+    (px, py)
+}
+
+/// 長さ 0 の穴は、同じ位置の円の開口と同じ光線を切る
+#[test]
+fn thin_bore_matches_a_circular_aperture() {
+    let (px, py) = pupil(31);
+    for r in [3.5, 4.6] {
+        let m = system(
+            &format!(
+                r#"{{"name": "ring", "mech": {{"bores": [{{"z0": 10, "z1": 10, "diameter": {}}}]}}, "at": {{"block": "stop"}}}}"#,
+                2.0 * r
+            ),
+            None,
+        );
+        assert_eq!(m.mechanics.len(), 1);
+        let a = system("", Some(r));
+        let v = vignetting(&m, &m.mechanics, &[0, 1], &[0], &px, &py).unwrap();
+        for (k, f) in [0usize, 1].iter().enumerate() {
+            let t = a.trace(FieldSel::Index(*f), &px, &py, Some(0), None, false);
+            let cut = t.rays.iter().filter(|x| x.vig != 0).count();
+            assert!(cut > 0);
+            assert_eq!(v[k].clipped[0], cut, "半径 {r} 視野 {f}");
+            assert_eq!(v[k].first[0], cut);
+            assert_eq!(v[k].passed, px.len() - cut);
+            assert_eq!(v[k].optical, 0);
+        }
+    }
+}
+
+/// チューブ（長さのある穴）: 斜めの視野は、穴の出口の端で切れる。軸上は内径が光束より太ければ切れない
+#[test]
+fn tube_clips_the_oblique_field_at_its_exit() {
+    let (px, py) = pupil(31);
+    // 絞りから 5〜35 mm、内径 11（光束の半径 5、5° の視野は 35 mm で 3.06 mm ずれる）
+    let m = system(
+        r#"{"name": "tube", "mech": {"bores": [{"z0": 5, "z1": 35, "diameter": 11}], "length": 30, "outer_diameter": 14}, "at": {"block": "stop"}}"#,
+        None,
+    );
+    let v = vignetting(&m, &m.mechanics, &[0, 1], &[0], &px, &py).unwrap();
+    assert_eq!(v[0].clipped[0], 0);
+    // 出口（35 mm）の位置の円の開口と同じ
+    let thin = system(
+        r#"{"mech": {"bores": [{"z0": 35, "z1": 35, "diameter": 11}]}, "at": {"block": "stop"}}"#,
+        None,
+    );
+    let w = vignetting(&thin, &thin.mechanics, &[1], &[0], &px, &py).unwrap();
+    assert!(v[1].clipped[0] > 0);
+    assert_eq!(v[1].clipped[0], w[0].clipped[0]);
+}
+
+/// 2 つの部品: 最初に切った部品にだけ first を数える。ブロックの面と offset で置ける
+#[test]
+fn first_clip_goes_to_the_earlier_part() {
+    let (px, py) = pupil(21);
+    let m = system(
+        r#"{"name": "front", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 8}]}, "at": {"block": "stop"}, "offset": [0, 0, 5]},
+           {"name": "back", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 7}]}, "at": {"block": "L1", "surface": 1}, "offset": [0, 0, 2]}"#,
+        None,
+    );
+    let v = vignetting(&m, &m.mechanics, &[0], &[0], &px, &py).unwrap();
+    let r = &v[0];
+    // 軸上の平行光（半径 5）は前の穴（半径 4）で切れ、レンズの後で光束は細くなる
+    assert!(r.first[0] > 0);
+    assert!(r.clipped[0] >= r.first[0]);
+    assert_eq!(r.first[0] + r.first[1] + r.passed + r.optical, r.launched);
+    assert!(r.clipped[1] >= r.first[1]);
+    // 置いた面: stop は面 1、L1 の面 1（後面）は系の面 3
+    assert_eq!(m.mechanics[0].surface, 1);
+    assert_eq!(m.mechanics[1].surface, 3);
+}
+
+/// カタログの機構部品（LBP の例）と、誤りの書き方
+#[test]
+fn catalog_parts_and_errors() {
+    let m = system(
+        r#"{"catalog": "parts.json", "item": "TUBE-25-30", "at": {"block": "stop"}}"#,
+        None,
+    );
+    assert_eq!(m.mechanics[0].name, "TUBE-25-30");
+    assert!(!m.mechanics[0].bores.is_empty());
+    for bad in [
+        // 機構でない品
+        r#"{"catalog": "parts.json", "item": "WIN-254-3", "at": {"block": "stop"}}"#,
+        // 部品が無い
+        r#"{"at": {"block": "stop"}}"#,
+        // 内径が 0
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 1, "diameter": 0}]}, "at": {"surface": 1}}"#,
+        // 面の番号が範囲外
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 1, "diameter": 5}]}, "at": {"surface": 99}}"#,
+    ] {
+        let p = Project::from_json(&format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+            "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 40}}], "mechanics": [{bad}]}}"#
+        ))
+        .unwrap();
+        assert!(expand(&p, &env()).is_err(), "{bad}");
+    }
+}
+
+/// 配置の確認の系: 絞りから 20 mm に厚さ 5・半径 12.7 の単レンズ L1
+fn fit_system(mechanics: &str) -> lensbench_core::System {
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+        "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 20}},
+          {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}}, {{"radius": -60, "semi": 12.7}}]}}}},
+          {{"type": "air", "t": 50}}],
+        "mechanics": [{mechanics}]}}"#
+    ))
+    .unwrap();
+    expand(&p, &env()).unwrap()
+}
+
+fn kinds(s: &lensbench_core::System) -> Vec<(&'static str, usize, Option<usize>, f64)> {
+    lensbench_core::mech::fit_check(s, &s.mechanics)
+        .unwrap()
+        .into_iter()
+        .map(|f| (f.kind, f.part, f.other, f.value))
+        .collect()
+}
+
+/// 部品の断面の輪: 穴の端で区切り、保持径があれば内側はそれと太い方
+#[test]
+fn profile_rings() {
+    let s = fit_system(
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 3, "diameter": 20}, {"z0": 3, "z1": 10, "diameter": 24}], "length": 12, "outer_diameter": 30, "holds": {"diameter": 22}}, "at": {"block": "stop"}}"#,
+    );
+    let p = &s.mechanics[0];
+    assert_eq!(
+        p.profile(),
+        vec![
+            [0.0, 3.0, 11.0, 15.0],
+            [3.0, 10.0, 12.0, 15.0],
+            [10.0, 12.0, 0.0, 15.0]
+        ]
+    );
+    // 外径なしは一番太い穴 + 1.5
+    let t = fit_system(
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 3, "diameter": 20}]}, "at": {"block": "stop"}}"#,
+    );
+    assert_eq!(t.mechanics[0].outer(), 11.5);
+}
+
+#[test]
+fn fit_collision_protrude_loose() {
+    // チューブ（保持径 25.4）に収まる: 何もない
+    let ok = fit_system(
+        r#"{"catalog": "parts.json", "item": "TUBE-25-30", "at": {"block": "stop"}, "offset": [0, 0, 5], "holds": ["L1"]}"#,
+    );
+    assert_eq!(ok.mechanics[0].holds, vec![2, 3]);
+    assert!(kinds(&ok).is_empty(), "{:?}", kinds(&ok));
+    // 内径 20 の筒: レンズの縁（半径 12.7）が壁に 2.7 mm 当たる（前後の面）
+    let hit = fit_system(
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 40, "diameter": 20}], "outer_diameter": 30}, "at": {"block": "stop"}}"#,
+    );
+    let k = kinds(&hit);
+    assert_eq!(k.len(), 2);
+    for (kind, _, _, v) in &k {
+        assert_eq!(*kind, "collision");
+        assert!((v - 2.7).abs() < 1e-9);
+    }
+    // 長さ 22 の筒が L1 を保持: L1 は 20〜25 なので後ろが 3 mm 余りはみ出す（縁の矢高の分だけ短い）
+    let out = fit_system(
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 22, "diameter": 23}], "outer_diameter": 30, "holds": {"diameter": 25.4}}, "at": {"block": "stop"}, "holds": ["L1"]}"#,
+    );
+    let k = kinds(&out);
+    assert_eq!(k.iter().filter(|x| x.0 == "protrude").count(), 1, "{k:?}");
+    let v = k.iter().find(|x| x.0 == "protrude").unwrap().3;
+    assert!((v - 3.0).abs() < 1e-9, "{v}");
+    // 保持径 30 に 25.4 のレンズ: 細い（注意）
+    let loose = fit_system(
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 40, "diameter": 28}], "outer_diameter": 34, "holds": {"diameter": 30}}, "at": {"block": "stop"}, "holds": ["L1"]}"#,
+    );
+    let f = lensbench_core::mech::fit_check(&loose, &loose.mechanics).unwrap();
+    assert_eq!(f.len(), 2);
+    assert!(f
+        .iter()
+        .all(|x| x.kind == "loose" && !x.error && (x.value - 2.3).abs() < 1e-9));
+}
+
+#[test]
+fn fit_overlap_and_cage() {
+    let tube = |z: f64, d: f64, o: f64| {
+        format!(
+            r#"{{"mech": {{"bores": [{{"z0": 0, "z1": 10, "diameter": {d}}}], "outer_diameter": {o}}}, "at": {{"block": "L1", "surface": 1}}, "offset": [0, 0, {z}]}}"#
+        )
+    };
+    // 同じ位置に 2 本は重なる。端を突き合わせるのは重ならない。太い筒の穴の中の細い筒は重ならない
+    let s = fit_system(&[tube(5.0, 20.0, 30.0), tube(8.0, 20.0, 30.0)].join(","));
+    assert_eq!(kinds(&s), vec![("overlap", 0, Some(1), 0.0)]);
+    let s = fit_system(&[tube(5.0, 20.0, 30.0), tube(15.0, 20.0, 30.0)].join(","));
+    assert!(kinds(&s).is_empty());
+    let s = fit_system(&[tube(5.0, 32.0, 40.0), tube(5.0, 20.0, 30.0)].join(","));
+    assert!(kinds(&s).is_empty());
+    // 横にずらした筒は重ならない
+    let s = fit_system(&format!(
+        "{},{}",
+        tube(5.0, 20.0, 30.0),
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 10, "diameter": 20}], "outer_diameter": 30}, "at": {"block": "L1", "surface": 1}, "offset": [31, 0, 5]}"#
+    ));
+    assert!(kinds(&s).is_empty());
+    // ケージ板 2 枚（間隔 30）: 板の前の端から後ろの端まで 8 + 30 + 8 = 46 mm のロッド
+    let cage = |z: f64, sp: f64| {
+        format!(
+            r#"{{"mech": {{"bores": [{{"z0": 0, "z1": 8, "diameter": 22}}], "outer_diameter": 41, "rod_spacing": {sp}}}, "at": {{"block": "L1", "surface": 1}}, "offset": [0, 0, {z}]}}"#
+        )
+    };
+    let s = fit_system(&[cage(5.0, 30.0), cage(43.0, 30.0)].join(","));
+    let k = kinds(&s);
+    assert_eq!(k.len(), 1);
+    assert_eq!((k[0].0, k[0].1, k[0].2), ("rod", 0, Some(1)));
+    assert!((k[0].3 - 46.0).abs() < 1e-9);
+    let s = fit_system(&[cage(5.0, 30.0), cage(43.0, 60.0)].join(","));
+    let k = kinds(&s);
+    assert!(k.iter().any(|x| x.0 == "rod_mismatch"));
+}

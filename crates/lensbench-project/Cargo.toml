@@ -1,0 +1,26 @@
+[package]
+name = "lensbench-project"
+description = "Block-based project files of lensbench and their expansion to sequential surfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core", features = ["serde", "schema"] }
+lensbench-analysis = { path = "../lensbench-analysis" }
+rayon = "1"
+ciborium = "0.2"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+# JSON スキーマ（docs/schema）
+schemars = "1"
+# float_roundtrip: 数を JSON から読むときに丸めない（書いた値と同じ f64 に戻る。serve の set の値も）
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# gzip で圧縮したカタログ（.json.gz）を読む
+flate2 = "1"
+
+[dev-dependencies]
+# スキーマで例題を検査
+jsonschema = { version = "0.60", default-features = false }
