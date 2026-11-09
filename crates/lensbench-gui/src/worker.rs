@@ -502,9 +502,12 @@ pub mod entry {
         };
         let main = KIND.with(Cell::get) == Kind::Main.code();
         if main {
-            // 前の要求のための中断の印を下ろす（見張りは番号が合うときだけ印を立てる）
-            *cur() = q.id;
+            // 前の要求のための中断の印を下ろす（見張りは番号が合うときだけ印を立てる）。鍵を持ったまま下ろす
+            // （番号を変えてから下ろすまでの間に、この要求への中断が届いて消えないように）
+            let mut c = cur();
+            *c = q.id;
             lensbench_core::par::clear_cancel();
+            drop(c);
         }
         // 画面の側で変わったファイルを当ててから回す（当てた分は返さない）
         for (p, b) in q.files {
