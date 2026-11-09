@@ -43,9 +43,19 @@ fn tilt_line(out: &mut String, which: u8, mode: usize, t: &Tilt) {
 /// .zmx の本文（改行は CRLF）。GRIN の面の直後に座標ブレークがある系（GRIN の面だけを動かす玉・群を含む）も
 /// そのまま書くが、OpticStudio 26.1 はその系を「GRIN の面の後ろに置けない面」としてエラーにする
 pub fn write(s: &System) -> Result<String> {
+    write_as(s, DEFAULT_COAT_FILE)
+}
+
+/// 系に書いた膜の表（[`System::coat_tables`]）を書き出すときの膜ファイルの名前（[`write`] の既定。[`save`] は
+/// `.zmx` の名前から決める）
+pub const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
+
+/// [`write`] で、系に書いた膜の表を `coat_file` の名前の膜ファイルに書く前提で COFN を書く（膜ファイルの中身は
+/// [`coating_dat`]）。表を使う面がなければ `coat_file` は使わない
+pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
     if s.units.iter().any(|u| u.moved()) {
         // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
-        return write(&s.flatten_units()?);
+        return write_as(&s.flatten_units()?, coat_file);
     }
     let mut o = String::new();
     let w = |o: &mut String, l: String| {
@@ -146,11 +156,15 @@ pub fn write(s: &System) -> Result<String> {
             }
             _ => None,
         });
-    let coat = s
-        .coating_file
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .map(|c| c.to_string_lossy().to_string());
+    // 系に書いた膜の表（プロジェクト・カタログの coatings）を使う面があれば、表を足した膜ファイル（coat_file）を指す
+    let coat = if uses_coat_tables(s) {
+        Some(coat_file.to_string())
+    } else {
+        s.coating_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|c| c.to_string_lossy().to_string())
+    };
     match (coat, grd) {
         (Some(c), None) => {
             w(&mut o, format!("COFN QF \"{c}\""));
@@ -657,14 +671,80 @@ pub fn write(s: &System) -> Result<String> {
     Ok(o.replace('\n', "\r\n"))
 }
 
-/// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く
+/// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く。系に書いた膜の表（[`System::coat_tables`]）を使う面があれば、
+/// 表を足した膜ファイル（[`coating_dat`]）を `.zmx` の隣に `名前_coat.dat` で書き、COFN はそれを指す
+/// （lensbench は .zmx のフォルダから読む。OpticStudio で開くときは OpticStudio の Coatings フォルダに写す）
 pub fn save(path: &Path, s: &System) -> Result<()> {
-    let txt = write(s)?;
+    let name = coat_file_for(path);
+    let txt = write_as(s, &name)?;
+    save_coating(path, &name, s)?;
+    save_utf16(path, &txt)
+}
+
+fn save_utf16(path: &Path, txt: &str) -> Result<()> {
     let mut b = vec![0xffu8, 0xfe];
     for u in txt.encode_utf16() {
         b.extend_from_slice(&u.to_le_bytes());
     }
     crate::vfs::write(path, b).map_err(|e| Error::Io(format!("{}: {e}", path.display())))
+}
+
+/// `.zmx` の隣に書く膜ファイルの名前
+fn coat_file_for(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .map(|x| x.to_string_lossy().to_string())
+        .unwrap_or_else(|| "lensbench".into());
+    format!("{stem}_coat.dat")
+}
+
+fn save_coating(path: &Path, name: &str, s: &System) -> Result<()> {
+    if let Some(txt) = coating_dat(s)? {
+        let p = path.with_file_name(name);
+        crate::vfs::write(&p, txt.as_bytes())
+            .map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
+    }
+    Ok(())
+}
+
+/// 系に書いた膜の表を使う面があるか
+fn uses_coat_tables(s: &System) -> bool {
+    s.surfaces
+        .iter()
+        .any(|d| !d.coat.is_empty() && s.coat_tables.contains_key(&d.coat))
+}
+
+/// 系に書いた膜の表（[`System::coat_tables`]）を使う面があれば、その表を足した膜ファイル（COATING.DAT 形式）の中身。
+/// 系の膜ファイル（[`System::coating_file`]）があればその中身を先に置き、表を後ろに足す（同じ名前は後ろの表が勝つ。
+/// lensbench の読込と同じく系の表が膜ファイルより優先）。表を使う面がなければ None
+pub fn coating_dat(s: &System) -> Result<Option<String>> {
+    if !uses_coat_tables(s) {
+        return Ok(None);
+    }
+    let mut o = String::new();
+    if let Some(p) = &s.coating_file {
+        let t =
+            crate::glass::read_text(p).map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
+        o.push_str(t.trim_end());
+        o.push_str("\r\n\r\n");
+    }
+    o.push_str("! lensbench: 系に書いた膜の表（プロジェクト・カタログの coatings）\r\n");
+    let mut names: Vec<&String> = s.coat_tables.keys().collect();
+    names.sort();
+    for k in names {
+        if k.is_empty() || k.chars().any(|c| c.is_whitespace() || !c.is_ascii()) {
+            notimpl!("膜の名前 {k:?}: 空白・ASCII 以外の文字のある名前は膜ファイルに書けない");
+        }
+        let _ = write!(o, "TABLE {k}\r\n");
+        for (a, rows) in &s.coat_tables[k] {
+            let _ = write!(o, "ANGL {}\r\n", f(*a));
+            for r in rows {
+                let v: Vec<String> = r.iter().map(|x| f(*x)).collect();
+                let _ = write!(o, "WAVE {}\r\n", v.join(" "));
+            }
+        }
+    }
+    Ok(Some(o))
 }
 
 /// 面の並びの違う系（BS の経路・プロジェクトの状態など）を、系ごとに 1 構成の多重構成の .zmx にまとめる。
@@ -674,11 +754,16 @@ pub fn save(path: &Path, s: &System) -> Result<()> {
 /// 絞りが構成で違えば STPS、像面の半径が違えば SDIA の行を足す。系の値（視野・波長・開口など）は全部の系で同じでなければならない。
 /// ピックアップ・ソルブは値にして書く（構成ごとに面の番号が違うため）。玉・群の動きは座標ブレークにする
 pub fn write_configs(systems: &[System]) -> Result<String> {
+    Ok(write_configs_as(systems, DEFAULT_COAT_FILE)?.0)
+}
+
+/// [`write_configs`] の本体。まとめた系（膜の表は全部の系の表を合わせる）も返す
+fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, System)> {
     if systems.is_empty() {
         crate::invalid!("書き出す系がない");
     }
     if systems.len() == 1 {
-        return write(&systems[0]);
+        return Ok((write_as(&systems[0], coat_file)?, systems[0].clone()));
     }
     let mut ss: Vec<System> = Vec::with_capacity(systems.len());
     for (i, s) in systems.iter().enumerate() {
@@ -807,8 +892,14 @@ pub fn write_configs(systems: &[System]) -> Result<String> {
         for (k, g) in &s.glasses {
             m.glasses.entry(k.clone()).or_insert_with(|| g.clone());
         }
+        for (k, t) in &s.coat_tables {
+            if m.coat_tables.get(k).is_some_and(|u| u != t) {
+                notimpl!("膜の表 {k} が構成で違う");
+            }
+            m.coat_tables.entry(k.clone()).or_insert_with(|| t.clone());
+        }
     }
-    let mut o = write(&m)?;
+    let mut o = write_as(&m, coat_file)?;
     // 多重構成の表（OpticStudio 26.1 が書く形: 演算子 番号1 構成 値 0 0 0 1 1 倍率 オフセット 0 "" 0。
     // 倍率を落とすと OpticStudio は黙って値を読み違える）
     let n = ss.len();
@@ -850,17 +941,15 @@ pub fn write_configs(systems: &[System]) -> Result<String> {
     if semis.iter().any(|&v| v != semis[0]) {
         row(&mut o, "SDIA", nimg, &semis);
     }
-    Ok(o)
+    Ok((o, m))
 }
 
-/// [`write_configs`] を UTF-16LE で書く
+/// [`write_configs`] を UTF-16LE で書く（膜の表は [`save`] と同じく隣の膜ファイルに）
 pub fn save_configs(path: &Path, systems: &[System]) -> Result<()> {
-    let txt = write_configs(systems)?;
-    let mut b = vec![0xffu8, 0xfe];
-    for u in txt.encode_utf16() {
-        b.extend_from_slice(&u.to_le_bytes());
-    }
-    crate::vfs::write(path, b).map_err(|e| Error::Io(format!("{}: {e}", path.display())))
+    let name = coat_file_for(path);
+    let (txt, m) = write_configs_as(systems, &name)?;
+    save_coating(path, &name, &m)?;
+    save_utf16(path, &txt)
 }
 
 /// 分散ありのモデルガラスの名前 "nd,vd[,ΔPgF]"（vd ≠ 0）

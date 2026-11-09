@@ -2,8 +2,9 @@
 //! から半直径を求める。
 //!
 //! 光線の取り方は OpticStudio が保存した .zmx の値で確かめた:
-//! - 回転対称な系（[`System::symmetric`]。ただし Zernike・Grid Sag の面は対称とみる）: 視野ごとに、
-//!   正規化視野 (hx, hy) の向きの瞳の縁 ±(hx, hy)/|h| の 2 本（軸上は py = ±1）
+//! - 回転対称な系（[`System::symmetric`]。ただし Zernike・Grid Sag の面は対称とみる）: 視野ごとに、視野の値 (x, y)
+//!   の向きの瞳の縁 ±(x, y)/|(x, y)| の 2 本（軸上は py = ±1）。矩形の視野の正規化でも正規化視野 (hx, hy) の向きではない
+//!   （A6v で確かめた）
 //! - そうでない系: 瞳の縁を 45° おきに 8 本（py = 1 から px の正の向きへ）
 //!
 //! 主光線は使わない（主光線が縁の光線より外を通る面でも、OpticStudio の値は縁の光線の高さ）。物体面は
@@ -11,7 +12,7 @@
 //! OpticStudio の既定（Fast Semi-Diameters がオン）の値で、2026 R1 の 17 系の全部の面で 1e-9 で一致を
 //! 確かめた（ケラレ係数・VAN・実光線エイミング・面の傾き偏心・テレセントリック・有限物体を含む）。
 //! 合わないもの: Grid Sag の系の像面（相対 2e-6、OpticStudio の Grid Sag の追跡の差）と、矩形の視野の正規化で
-//! VAN のある視野の系（A6、最大 8%）
+//! ケラレ係数・VAN のある視野の系（A6、最大 8%）
 
 use crate::surface::Aperture;
 use crate::system::{FieldSel, RecSel};
@@ -40,7 +41,8 @@ impl System {
         }
         for i in 0..self.fields.len() {
             if sym {
-                let (hx, hy) = self.hxhy(i);
+                // 向きは視野の値 (x, y) の向き（矩形の正規化でも正規化視野 (hx, hy) ではない）
+                let (hx, hy) = (self.fields[i].x, self.fields[i].y);
                 let r = hx.hypot(hy);
                 let (ux, uy) = if r > 0.0 {
                     (hx / r, hy / r)
