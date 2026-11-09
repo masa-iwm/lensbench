@@ -222,7 +222,8 @@ pub struct Surface {
 
 /// 偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、
 /// 軸の向きを速い軸とする遅延 φ = 2π·(`order` + `retardance`)·`wl0`/λ（ゼロ次は order 0）。
-/// 行列は R(−θ)·diag(tx·e^{−iφ/2}, ty·e^{+iφ/2})·R(θ)（光路の長い側が位相 +、[`crate::fringe`] の e^{+ikL} と同じ向き）。
+/// 行列は R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・
+/// 厚さのある結晶板（[`Bire`]）と同じ向き）。
 /// `plates` があれば（複屈折材の板）遅延は板ごとの Δn(λ)·d/λ で、行列は板の行列の積（光の通る順）
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -360,8 +361,8 @@ impl Retarder {
             let mut m = axis_matrix(C::new(self.tx, 0.0), C::new(self.ty, 0.0), self.axis_deg);
             for (p, r) in self.plates.iter().zip(self.plate_retardance(wl)) {
                 let q = axis_matrix(
-                    C::from_polar(1.0, -tau * r / 2.0),
                     C::from_polar(1.0, tau * r / 2.0),
+                    C::from_polar(1.0, -tau * r / 2.0),
                     self.axis_deg + p.axis_deg,
                 );
                 m = mul2(&q, &m);
@@ -374,8 +375,8 @@ impl Retarder {
             2.0 * std::f64::consts::PI * (self.order as f64 + self.retardance) * self.wl0 / wl
         };
         axis_matrix(
-            C::from_polar(self.tx, -phi / 2.0),
-            C::from_polar(self.ty, phi / 2.0),
+            C::from_polar(self.tx, phi / 2.0),
+            C::from_polar(self.ty, -phi / 2.0),
             self.axis_deg,
         )
     }

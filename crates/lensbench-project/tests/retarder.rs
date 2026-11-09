@@ -190,9 +190,9 @@ fn same_scaled(f: [[C64; 2]; 2], m: [C64; 4], tol: f64, loss: f64) -> bool {
     (c.norm() - 1.0).abs() < loss && (0..4).all(|i| (g[i] - c * m[i]).norm() < tol)
 }
 
-/// 厚さのある結晶板の行列は、OpticStudio と同じ位相の約束（遅い軸が e^{−iφ}）で、理想の板の行列の複素共役
+/// 厚さのある結晶板の行列は、理想の板と同じ（OpticStudio と同じ位相の約束、遅い軸が e^{−iφ}）
 fn crystal(r: f64, axis: f64, wl: f64) -> [C64; 4] {
-    ideal(r, axis, wl).map(|c| c.conj())
+    ideal(r, axis, wl)
 }
 
 /// 結晶板の入口の面（厚さ = 板の厚さ）

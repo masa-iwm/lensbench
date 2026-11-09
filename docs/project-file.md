@@ -84,7 +84,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 偏光子・波長板の面: 面の並び（`surfaces`）の面に `"polarizer": {"axis_deg", "extinction_ratio", "transmittance"}`（理想の直線偏光子。
   透過軸の強度透過率と消光比、省略は 1 と無限）か `"waveplate": {"retardance", "wavelength_um", "axis_deg", "order", "transmittance"}`
   （速い軸 axis_deg、設計波長での遅延 retardance 波長、多次は整数の order。遅延は波長ごとに (order + retardance)·wavelength_um/λ）を書く。
-  平面の Jones 面になり、偏光の追跡は波長ごとの行列 R(−θ)·diag(tx·e^{−iφ/2}, ty·e^{+iφ/2})·R(θ)（光路の長い遅い軸が位相 +）を使う。
+  平面の Jones 面になり、偏光の追跡は波長ごとの行列 R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・厚さのある結晶板と同じ向き）を使う。
   .zmx には設計波長の行列の JONESMAT で書く（OpticStudio の JONESMAT は波長によらない）。
 - 複屈折材の波長板: `waveplate` に `"material": "QUARTZ"`（常光はガラス QUARTZ、異常光は QUARTZ-E。OpticStudio の
   複屈折材の名前の約束）と `"thickness_mm"` を書くと、厚さのある結晶板（平行平板）になる。厚さを省くと設計波長の遅延
@@ -96,8 +96,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   出口で異常光の成分（結晶軸の光線に垂直な向き）に exp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける
   （n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は板の中の光線と結晶軸の角、L は板の中の長さ。斜めに入る光の遅延の変化も入る）。
   OpticStudio の Birefringent In（Mode 2、波長板モード）/ Out と同じで、.zmx にもその面で書く（BIRE__IN・BIRE_OUT）。
-  位相の向きは OpticStudio と同じ（遅い軸が遅れる e^{−iφ}）で、理想の波長板（`material` なし、Jones 面）の行列とは複素共役の関係
-  （ゼロ厚の Jones 面は .zmx の JONESMAT と同じ行列を使うため）。外側の 2 面の膜は波長板の面の `coat`、無ければ透過率 `transmittance`
+  位相の向きは OpticStudio と同じ（遅い軸が e^{−iφ}）で、理想の波長板（`material` なし、Jones 面）とも同じ。外側の 2 面の膜は波長板の面の `coat`、無ければ透過率 `transmittance`
   からの理想膜（1 面あたり √T、T = 1 は `I.99999999`）。貼り合わせの面は無膜（Fresnel）。テスト用の水晶・MgF₂ は
   `tests/glass/LBCRYSTAL.AGF`（refractiveindex.info、CC0）。GUI の面の並びの波長板にも複屈折材・厚さ（2 材まで）の欄がある。
 - 複屈折材の板を面で直接書く: 面の並びに `{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [x, y, z]}}}`
