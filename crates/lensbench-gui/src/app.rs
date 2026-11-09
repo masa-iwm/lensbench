@@ -518,6 +518,8 @@ impl Core {
             }),
         );
         self.browser.loaded = true;
+        self.browser.glasses_pending = true;
+        self.browser.lenses_pending = true;
     }
 
     fn n_fields(&self) -> usize {
@@ -4684,6 +4686,12 @@ impl eframe::App for App {
         while let Some(d) = self.c.preview.poll() {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
             if matches!(d.tag, Tag::Glasses | Tag::Lenses | Tag::UserCatalog) {
+                // 失敗しても読み込み中は終わる
+                match d.tag {
+                    Tag::Glasses => self.c.browser.glasses_pending = false,
+                    Tag::Lenses => self.c.browser.lenses_pending = false,
+                    _ => {}
+                }
                 self.c.take(d);
                 continue;
             }
@@ -4769,7 +4777,18 @@ impl eframe::App for App {
             ),
             None => "lensbench".into(),
         };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        // 変わったときだけ送る（送ると次のフレームを描くので、毎フレーム送ると何もしていなくても描き続ける）
+        let changed = ctx.data_mut(|d| {
+            let k = egui::Id::new("lensbench-title");
+            let same = d.get_temp::<String>(k).is_some_and(|t| t == title);
+            if !same {
+                d.insert_temp(k, title.clone());
+            }
+            !same
+        });
+        if changed {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
 
         egui::TopBottomPanel::top("header")
             .frame(

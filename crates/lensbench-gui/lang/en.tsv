@@ -832,3 +832,7 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。	The main tab was closed, so this panel can no longer compute. Close this tab and reopen the main page.
 元のタブを待っています…	Waiting for the main tab…
 元のタブの返事を待っています。元のタブが同じ窓の裏にあると、ブラウザはそのタブを止めます。このタブを別の窓に引き出すと、両方を並べて使えます。	Waiting for the main tab. Browsers pause tabs hidden behind another tab in the same window; drag this tab out into its own window to use both side by side.
+カタログレンズ（読み込み中…）	Catalog lenses (loading…)
+ガラス（読み込み中…）	Glasses (loading…)
+カタログレンズを読み込んでいます（数万枚あると数十秒かかります）	Loading catalog lenses (tens of thousands of lenses take tens of seconds)
+ガラスカタログを読み込んでいます	Loading glass catalogs
