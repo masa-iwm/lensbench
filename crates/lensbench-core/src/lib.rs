@@ -58,5 +58,9 @@ pub use error::{Error, Result};
 pub use par::with_threads;
 pub use system::{FieldSel, RecSel, System};
 
-/// ライブラリの版。
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// ライブラリの版。ビルド時に環境変数 LENSBENCH_VERSION があればその値（配布物のタグ名など）、
+/// 無ければ Cargo.toml の版。GUI の版の欄・CLI の --version・serve の ping などに出る。
+pub const VERSION: &str = match option_env!("LENSBENCH_VERSION") {
+    Some(v) if !v.is_empty() => v,
+    _ => env!("CARGO_PKG_VERSION"),
+};

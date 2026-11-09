@@ -2034,14 +2034,14 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "lensbench-analysis"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lensbench-core",
 ]
 
 [[package]]
 name = "lensbench-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "flate2",
@@ -2057,7 +2057,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "mimalloc",
@@ -2075,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-export"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lensbench-core",
  "lensbench-project",
@@ -2087,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-gui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "eframe",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-project"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ciborium",
  "flate2",
@@ -2131,7 +2131,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-verify"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lensbench-core",
  "lensbench-project",
@@ -2142,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "lensbench-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "js-sys",
  "lensbench-core",
