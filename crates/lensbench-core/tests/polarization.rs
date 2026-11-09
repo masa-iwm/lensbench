@@ -812,6 +812,22 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
         (got[0] - u[0]).norm() < 1e-12 && (got[1] - u[1]).norm() < 1e-12,
         "{got:?}"
     );
+    // 自動で読んだ実測表があっても、明示したモデル（LBCM）が勝つ（実測表はモデルより先に引かれるので外す）
+    let mut lbcm = String::from("LBCM 2\nCOAT zec_auto\nD 0.0\nBMAX 1.3\n");
+    for w in [0.4, 0.6, 0.8] {
+        lbcm += &format!("WAVE {w}\n");
+        for i in 0..=13 {
+            let b = 0.1 * i as f64;
+            lbcm += &format!("{b:?} 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 1 0 0\n");
+        }
+    }
+    let mp = dir.join("explicit.lbcm");
+    std::fs::write(&mp, lbcm).unwrap();
+    let mut c6 = Coatings::for_system(&s).unwrap();
+    assert_eq!(c6.kind(&key), lensbench_core::coating::CoatKind::Measured);
+    c6.load_file(&mp).unwrap();
+    assert_eq!(c6.kind(&key), lensbench_core::coating::CoatKind::Model);
+    assert!(c6.auto_measured.is_empty());
     // 層のわかる近似の膜（.lbcs）。モデル・実測表（lbcb・lbcm・lbct）があればそちらが勝つ
     s.surfaces[j].coat = "zec_stack".into();
     std::fs::write(

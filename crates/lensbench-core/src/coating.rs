@@ -1171,6 +1171,8 @@ pub struct Coatings {
     /// 膜ファイルのフォルダから膜の名前で自動で読んだモデル・実測表（系の膜の名前 → ファイル）。
     /// [`Coatings::for_system`] が埋める
     pub auto: Vec<(String, PathBuf)>,
+    /// 自動で読んだ実測表（`.lbct`）の境界の鍵（明示したモデルのある膜から外すため）
+    pub auto_measured: Vec<String>,
 }
 
 impl Coatings {
@@ -1191,6 +1193,7 @@ impl Coatings {
             phase: PhaseConvention::default(),
             table_normal: TableNormal::default(),
             auto: Vec::new(),
+            auto_measured: Vec::new(),
         };
         if let Some(dir) = sys.coating_file.as_ref().and_then(|p| p.parent()) {
             c.load_dir_for(sys, dir)?;
@@ -1287,7 +1290,9 @@ impl Coatings {
                 let mut it = key.splitn(2, '|');
                 let (c0, rest) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
                 if c0.eq_ignore_ascii_case(coat) {
-                    self.measured.insert(format!("{coat}|{rest}"), m);
+                    let k = format!("{coat}|{rest}");
+                    self.measured.insert(k.clone(), m);
+                    self.auto_measured.push(k);
                     hit = true;
                 }
             }
@@ -1359,7 +1364,18 @@ impl Coatings {
             e => e,
         })?;
         let n = v.len();
+        // 自動で読んだ実測表は、明示したモデルのある膜から外す（実測表はモデルより先に引かれる）
+        let names: Vec<String> = v.iter().map(|(c, _)| c.clone()).collect();
         self.models.extend(v);
+        let auto = std::mem::take(&mut self.auto_measured);
+        for k in auto {
+            let coat = k.split('|').next().unwrap_or("");
+            if names.iter().any(|c| c == coat) {
+                self.measured.remove(&k);
+            } else {
+                self.auto_measured.push(k);
+            }
+        }
         self.drop_auto_stacks();
         Ok(n)
     }
@@ -1411,6 +1427,7 @@ impl Coatings {
         })?;
         let n = v.len();
         for (k, m) in v {
+            self.auto_measured.retain(|a| *a != k);
             self.add_measured(&k, m)?;
         }
         self.drop_auto_stacks();
@@ -2928,6 +2945,7 @@ mod tests {
             phase: PhaseConvention::default(),
             table_normal: TableNormal::default(),
             auto: Vec::new(),
+            auto_measured: Vec::new(),
         };
         assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
         assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);
