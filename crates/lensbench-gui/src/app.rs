@@ -49,6 +49,8 @@ pub struct Settings {
     pub auto_build: bool,
     /// レイアウト図の見る面
     pub view_plane: ViewPlane,
+    /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
+    pub ld_tree: bool,
 }
 
 impl Settings {
@@ -152,6 +154,7 @@ impl Default for Settings {
             params: Vec::new(),
             auto_build: true,
             view_plane: ViewPlane::Yz,
+            ld_tree: false,
         }
     }
 }
@@ -1780,7 +1783,9 @@ impl Core {
                 .color(theme::weak_text(ui.visuals())),
             );
         }
+        self.ld.tree = self.s.ld_tree;
         let acts = lens_data::ui(ui, &mut self.ld, &ctx);
+        self.s.ld_tree = self.ld.tree;
         for a in acts {
             match a {
                 Act::Select(name) => {
@@ -4439,8 +4444,28 @@ impl App {
                 }
                 self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
+            Step::LensDataTree => {
+                // 折りたたみ表示: 1 枚目の玉をその場で開き、中の面を選ぶ
+                let ids = self.c.browser.combo.span_ids();
+                self.c.s.ld_tree = true;
+                self.c.ld.scope.clear();
+                if let Some(id) = ids.first() {
+                    self.c.ld.open.insert(id.clone());
+                    self.c.ld.sel = Some(id.clone());
+                    let first = self
+                        .c
+                        .ld_blocks
+                        .iter()
+                        .find(|b| &b.name == id)
+                        .and_then(|b| b.surfs.first().copied());
+                    self.c.ld.cur = first.map(|j| (j, lens_data::Col::R));
+                }
+                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
+            }
             Step::ComboSpot => {
-                // 見る面を戻す
+                // 面の表の表示・見る面を戻す
+                self.c.s.ld_tree = false;
+                self.c.ld.open.clear();
                 self.c.s.view_plane = ViewPlane::Yz;
                 self.c.request_layout();
                 if let Some(id) = self.pane_of(spot) {
