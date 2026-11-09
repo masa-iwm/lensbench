@@ -55,6 +55,15 @@ fn surf(s: &System, v: &Value, what: &str) -> Result<usize, String> {
     }
 }
 
+/// スパイダーの腕の本数（0 以上の整数）
+fn arms(n: f64) -> Result<u32, String> {
+    if n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64 {
+        Ok(n as u32)
+    } else {
+        Err(format!("スパイダーの腕の本数 {n}"))
+    }
+}
+
 fn aperture(v: &Value) -> Result<Aperture, String> {
     if v.is_null() {
         return Ok(Aperture::None);
@@ -89,6 +98,12 @@ fn aperture(v: &Value) -> Result<Aperture, String> {
         "ellipse" => Aperture::Ellipse {
             hx: need("hx")?,
             hy: need("hy")?,
+            dx,
+            dy,
+        },
+        "spider" => Aperture::Spider {
+            width: need("width")?,
+            arms: arms(need("arms")?)?,
             dx,
             dy,
         },
@@ -155,6 +170,14 @@ pub fn surf_fields_json(s: &System, j: usize) -> Result<Value, String> {
                 }
                 Aperture::Ellipse { hx, hy, dx, dy } => {
                     serde_json::json!({"type": "ellipse", "hx": hx, "hy": hy, "dx": dx, "dy": dy})
+                }
+                Aperture::Spider {
+                    width,
+                    arms,
+                    dx,
+                    dy,
+                } => {
+                    serde_json::json!({"type": "spider", "width": width, "arms": arms, "dx": dx, "dy": dy})
                 }
                 Aperture::Floating { semi } => {
                     serde_json::json!({"type": "floating", "semi": semi})

@@ -154,6 +154,18 @@ fn apertures_and_toroidal_match_scalar() {
     let v = check("A0+開口", &s, &px, &py);
     assert!(v > 100, "けられた光線が少ない（{v}）");
 
+    // スパイダー（腕 3 本、偏心）
+    let mut s = load("A0");
+    let semi = s.surfaces[3].semi;
+    s.surfaces[3].ap = Aperture::Spider {
+        width: 0.2 * semi,
+        arms: 3,
+        dx: 0.05 * semi,
+        dy: -0.02 * semi,
+    };
+    let v = check("A0+スパイダー", &s, &px, &py);
+    assert!(v > 50, "けられた光線が少ない（{v}）");
+
     let mut s = load("A0");
     let d = &mut s.surfaces[1];
     d.typ = SurfType::Toroidal;

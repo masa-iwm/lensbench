@@ -451,8 +451,25 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
             let (u, v) = ((pl[0] - dx) / hx, (pl[1] - dy) / hy);
             u * u + v * v > 1.0 + 1e-9
         }
+        Aperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        } => spider_hit(width, arms, pl[0] - dx, pl[1] - dy),
         Aperture::None => false,
     }
+}
+
+/// スパイダーの腕に当たるか（x y は開口の中心から）。腕 k は角度 2πk/arms の向きの、中心から外への幅 width の帯
+/// （境界を含む）。OpticStudio 2026 R1.01 と同じく余裕をとらない: 幅 0 では +x の腕の上（y = 0、x ≥ 0）だけ遮り、
+/// cos 90° などが 0 にならないほかの腕は中心のほか遮らない（実測）
+pub(crate) fn spider_hit(width: f64, arms: u32, x: f64, y: f64) -> bool {
+    let hw = 0.5 * width;
+    (0..arms).any(|k| {
+        let (s, c) = (std::f64::consts::TAU * k as f64 / arms as f64).sin_cos();
+        x * c + y * s >= 0.0 && (y * c - x * s).abs() <= hw
+    })
 }
 
 /// 理想レンズ（焦点距離 f の薄肉、z = 0 面）: 新しい方向と OPD 用の位相
