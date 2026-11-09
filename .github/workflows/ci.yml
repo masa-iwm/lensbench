@@ -23,6 +23,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Windows はテストの 100 近い exe のリンクが重いので、MSVC の link.exe でなく同梱の rust-lld でリンクする
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
