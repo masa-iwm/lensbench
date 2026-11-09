@@ -19,6 +19,10 @@ use std::f64::consts::PI;
 
 pub mod arg_spec;
 mod browse;
+/// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
+pub use browse::{
+    set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
+};
 pub mod ext;
 pub mod run;
 pub mod serve;

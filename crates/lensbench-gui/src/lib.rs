@@ -67,6 +67,14 @@ pub fn main() -> std::process::ExitCode {
     );
     portable::set(&store);
     args.notice = store.notice.clone();
+    // カタログの一覧を設定の隣に覚えておく（次の起動で読み直さない）
+    lensbench_cli::set_lens_list_cache_dir(
+        store
+            .file
+            .clone()
+            .or_else(portable::os_file)
+            .and_then(|f| f.parent().map(Into::into)),
+    );
     let options = eframe::NativeOptions {
         persistence_path: store.file.clone(),
         viewport: egui::ViewportBuilder::default()

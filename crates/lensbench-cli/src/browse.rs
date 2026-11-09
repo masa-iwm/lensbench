@@ -195,9 +195,142 @@ fn system_summary(s: &lensbench_core::system::System, efl_cat: f64) -> Result<Va
     }))
 }
 
+/// 前もって作った一覧（[`set_prepared`]）: レンズカタログ・ガラスのフォルダの並び → 一覧の JSON のファイル
+type Prepared = Vec<(Vec<PathBuf>, Vec<PathBuf>, PathBuf)>;
+static PREPARED: std::sync::Mutex<Prepared> = std::sync::Mutex::new(Vec::new());
+
+/// [`lenses`] がこのフォルダの並び（レンズカタログ・ガラス、順も同じ）で呼ばれたら、読む代わりに file の一覧
+/// （[`lenses`] の結果の JSON。`.gz` も読める）を返す。Web 版で、同梱のメーカーのカタログの一覧をビルドのときに
+/// 作っておく（数万品を開くたびに読むと数秒かかる）。file が読めなければ、いつもどおり読む
+pub fn set_prepared(paths: Vec<PathBuf>, glass_dirs: Vec<PathBuf>, file: PathBuf) {
+    let mut p = PREPARED.lock().unwrap_or_else(|e| e.into_inner());
+    p.retain(|x| x.0 != paths || x.1 != glass_dirs);
+    p.push((paths, glass_dirs, file));
+}
+
+fn prepared(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Option<Value> {
+    let file = PREPARED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|x| x.0 == paths && x.1 == glass_dirs)
+        .map(|x| x.2.clone())?;
+    let v: Value = serde_json::from_str(&lensbench_project::read_text(&file).ok()?).ok()?;
+    v["lenses"].is_array().then_some(v)
+}
+
 /// レンズカタログ（.zmx のファイル・フォルダ）を読み、レンズの一覧を返す。
 /// 焦点距離はカタログの値（無ければ主波長の近軸の値）、径は面の半径の最大の 2 倍、厚さは中心厚の合計。
+/// 前もって作った一覧があればそれ（[`set_prepared`]）
 pub fn lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
+    if let Some(v) = prepared(paths, glass_dirs) {
+        return Ok(v);
+    }
+    let dir = CACHE_DIR.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    match dir {
+        Some(d) => lenses_cached(paths, glass_dirs, &d),
+        None => read_lenses(paths, glass_dirs),
+    }
+}
+
+fn lenses_cached(
+    paths: &[PathBuf],
+    glass_dirs: &[PathBuf],
+    dir: &std::path::Path,
+) -> Result<Value, String> {
+    // 覚えた一覧: 同じフォルダの並びで、中のファイル（とこのプログラム）の更新時刻・大きさが同じならそれを使う
+    let key = cache_key(paths, glass_dirs);
+    let file = dir.join(CACHE_FILE);
+    if let Some(v) = lensbench_project::read_text(&file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .filter(|v| v["key"].as_str() == Some(&key) && v["lenses"].is_array())
+    {
+        return Ok(json!({ "lenses": v["lenses"] }));
+    }
+    let v = read_lenses(paths, glass_dirs)?;
+    // 書けなくても一覧は返す（次も読み直すだけ）
+    let _ = vfs::create_dir_all(dir).and_then(|_| {
+        vfs::write(
+            &file,
+            json!({ "key": key, "lenses": v["lenses"] }).to_string(),
+        )
+    });
+    Ok(v)
+}
+
+/// 一覧を覚えておくファイルの名前（[`set_cache_dir`] のフォルダの中）
+pub const CACHE_FILE: &str = "lens-list-cache.json";
+static CACHE_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// [`lenses`] の一覧をこのフォルダに覚えておき、次に同じフォルダの並びで呼ばれ、中のファイルの更新時刻・
+/// 大きさが変わっていなければ読み直さない（GUI の設定のフォルダ。数万品のカタログを読むと数秒かかる）
+pub fn set_cache_dir(dir: Option<PathBuf>) {
+    *CACHE_DIR.lock().unwrap_or_else(|e| e.into_inner()) = dir;
+}
+
+/// 一覧の元になるもの（フォルダの並び、中のファイル 2 階層まで、ガラスのファイル、このプログラム）の更新時刻・
+/// 大きさから作る鍵
+fn cache_key(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> String {
+    use std::fmt::Write;
+    let mut s = String::new();
+    let stamp = |p: &std::path::Path, s: &mut String| {
+        let st = vfs::stamp(p).ok();
+        let t = st
+            .as_ref()
+            .and_then(|x| x.0)
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos());
+        let _ = writeln!(s, "{}\t{:?}\t{:?}", p.display(), t, st.map(|x| x.1));
+    };
+    fn files(p: &std::path::Path, depth: u32, out: &mut Vec<PathBuf>) {
+        if vfs::is_dir(p) {
+            if depth == 0 {
+                return;
+            }
+            let mut v = vfs::read_dir(p).unwrap_or_default();
+            v.sort();
+            for q in v {
+                files(&q, depth - 1, out);
+            }
+        } else {
+            out.push(p.to_path_buf());
+        }
+    }
+    let _ = writeln!(s, "{}", env!("CARGO_PKG_VERSION"));
+    if let Ok(exe) = std::env::current_exe() {
+        stamp(&exe, &mut s);
+    }
+    s.push_str("lens\n");
+    for p in paths {
+        let mut v = Vec::new();
+        let _ = writeln!(s, "{}", p.display());
+        files(p, 2, &mut v);
+        for f in v {
+            stamp(&f, &mut s);
+        }
+    }
+    s.push_str("glass\n");
+    for d in glass_dirs {
+        let _ = writeln!(s, "{}", d.display());
+    }
+    for d in glass::catalog_dirs(glass_dirs) {
+        let mut v = Vec::new();
+        files(&d, 1, &mut v);
+        for f in v {
+            stamp(&f, &mut s);
+        }
+    }
+    // 長い文をそのまま残すと大きいので、ハッシュ（FNV-1a 64 bit、版によらず同じ）と長さに縮める
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}-{}", s.len())
+}
+
+fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
     let cat = LensCatalog::load_registered(paths)?;
     let mut cache = GlassCache::new();
     let mut out: Vec<Value> = cat
@@ -499,6 +632,77 @@ mod tests {
         // 貼り合わせは 2 枚、単レンズは 1 枚
         assert_eq!(a["pieces"], 2);
         assert_eq!(p["pieces"], 1);
+    }
+
+    /// 覚えた一覧: 2 回目は覚えたものを返し、フォルダの中のファイルが変わったら読み直す
+    #[test]
+    fn lens_list_cache_follows_files() {
+        let tmp = std::env::temp_dir().join(format!("lensbench-lcache-{}", std::process::id()));
+        let d = tmp.join("LB");
+        let cache = tmp.join("cache");
+        vfs::create_dir_all(&d).unwrap();
+        for f in ["PCX-100.zmx", "ACH-45.zmx"] {
+            std::fs::copy(root().join("examples/lenses/LB").join(f), d.join(f)).unwrap();
+        }
+        let g = [root().join("tests/glass")];
+        let a = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        assert_eq!(a["lenses"].as_array().unwrap().len(), 2);
+        assert!(vfs::is_file(cache.join(CACHE_FILE)));
+        // 覚えたものを返す（目印を書き込んで確かめる）
+        let mut c: Value =
+            serde_json::from_str(&vfs::read_to_string(cache.join(CACHE_FILE)).unwrap()).unwrap();
+        c["lenses"][0]["part"] = json!("CACHED");
+        vfs::write(cache.join(CACHE_FILE), c.to_string()).unwrap();
+        let b = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        assert_eq!(b["lenses"][0]["part"], "CACHED");
+        // 別のフォルダの並びでは使わない
+        let e = lenses_cached(&[d.clone(), d.clone()], &g, &cache).unwrap();
+        assert_ne!(e["lenses"][0]["part"], "CACHED");
+        // ファイルを足すと読み直す
+        std::fs::copy(
+            root().join("examples/lenses/LB/PCX-100.zmx"),
+            d.join("PCX-101.zmx"),
+        )
+        .unwrap();
+        let f = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        std::fs::remove_dir_all(&tmp).ok();
+        assert_eq!(f["lenses"].as_array().unwrap().len(), 3);
+        assert!(f["lenses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["part"] != "CACHED"));
+    }
+
+    /// 前もって作った一覧: 同じフォルダの並びのときだけ使う。読めなければいつもどおり読む
+    #[test]
+    fn prepared_lens_list() {
+        let tmp = std::env::temp_dir().join(format!("lensbench-prep-{}", std::process::id()));
+        vfs::create_dir_all(&tmp).unwrap();
+        let lb = tmp.join("only-here-LB");
+        vfs::create_dir_all(&lb).unwrap();
+        std::fs::copy(
+            root().join("examples/lenses/LB/PCX-100.zmx"),
+            lb.join("PCX-100.zmx"),
+        )
+        .unwrap();
+        let g = vec![root().join("tests/glass")];
+        let idx = tmp.join("index.json");
+        set_prepared(vec![lb.clone()], g.clone(), idx.clone());
+        // 一覧のファイルがまだ無い: 読む
+        assert_eq!(
+            lenses(std::slice::from_ref(&lb), &g).unwrap()["lenses"][0]["part"],
+            "PCX-100"
+        );
+        vfs::write(&idx, r#"{"lenses":[{"vendor":"X","part":"PREP"}]}"#).unwrap();
+        assert_eq!(
+            lenses(std::slice::from_ref(&lb), &g).unwrap()["lenses"][0]["part"],
+            "PREP"
+        );
+        // ガラスの並びが違えば使わない
+        let w = lenses(std::slice::from_ref(&lb), &[]).unwrap();
+        std::fs::remove_dir_all(&tmp).ok();
+        assert_eq!(w["lenses"][0]["part"], "PCX-100");
     }
 
     /// 玉の無いカタログの鏡は、鏡の面の曲率半径・径を返す（エラーにしない）
