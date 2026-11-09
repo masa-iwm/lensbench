@@ -1,0 +1,18 @@
+[package]
+name = "lensbench-export"
+description = "Layout and trace result export of lensbench (SVG, PNG, DXF, glTF, OBJ, STL, STEP, CSV, JSON, npz)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+png = "0.17"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+ndarray = "0.16"
+ndarray-npy = "0.9"
+lensbench-project = { path = "../lensbench-project" }
