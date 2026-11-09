@@ -175,11 +175,17 @@ mod web {
         DONE.with(|d| d.borrow_mut().remove(id))
     }
 
-    /// 読み込むたびに別のフォルダにする（同じ名前のファイルを読み直しても前のものと混ざらない）
+    /// 読み込むたびに別のフォルダにする（同じ名前のファイルを読み直しても前のものと混ざらない。
+    /// ブラウザに残した前のフォルダとも重ねない）
     fn next_dir() -> PathBuf {
         use std::sync::atomic::{AtomicU64, Ordering};
         static N: AtomicU64 = AtomicU64::new(1);
-        PathBuf::from(UPLOADS).join(N.fetch_add(1, Ordering::Relaxed).to_string())
+        loop {
+            let d = PathBuf::from(UPLOADS).join(N.fetch_add(1, Ordering::Relaxed).to_string());
+            if !lensbench_core::vfs::exists(&d) {
+                return d;
+            }
+        }
     }
 
     pub fn pick(id: &str, d: FileDialog, folder: bool) {

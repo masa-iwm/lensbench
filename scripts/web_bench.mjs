@@ -124,15 +124,16 @@ async function web(page, mt) {
       const te = new TextEncoder(), td = new TextDecoder();
       const enc = (method, params) => {
         const m = te.encode(method), p = te.encode(JSON.stringify(params));
-        const b = new Uint8Array(4 * 5 + m.length + p.length);
+        const b = new Uint8Array(4 * 6 + m.length + p.length);
         const v = new DataView(b.buffer);
-        v.setUint32(0, 0, true); // スレッド数: 既定
-        v.setUint32(4, 1, true);
-        v.setUint32(8, m.length, true);
-        b.set(m, 12);
-        v.setUint32(12 + m.length, p.length, true);
-        b.set(p, 16 + m.length);
-        v.setUint32(16 + m.length + p.length, 0, true); // ファイル: なし
+        v.setUint32(0, 1, true); // 要求の番号
+        v.setUint32(4, 0, true); // スレッド数: 既定
+        v.setUint32(8, 1, true); // 呼び出しの数
+        v.setUint32(12, m.length, true);
+        b.set(m, 16);
+        v.setUint32(16 + m.length, p.length, true);
+        b.set(p, 20 + m.length);
+        v.setUint32(20 + m.length + p.length, 0, true); // ファイル: なし
         return b;
       };
       const dec = b => {
@@ -154,7 +155,10 @@ async function web(page, mt) {
       const ms = [];
       for (const q of reqs) {
         const out = await new Promise((r, j) => {
-          w.onmessage = e => (e.data instanceof Uint8Array ? r(e.data) : j(new Error(e.data.error)));
+          w.onmessage = e => {
+            if (e.data instanceof Uint8Array) r(e.data);
+            else if (!e.data.monitor) j(new Error(e.data.error)); // 見張りの口は使わない
+          };
           w.onerror = e => j(new Error(e.message));
           w.postMessage(enc(q.method, q.params));
         });

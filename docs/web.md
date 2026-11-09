@@ -15,8 +15,28 @@ GUI（lensbench-gui）を wasm にしてブラウザで動かす。コードは�
 | 日本語フォント | OS のフォント | Noto Sans JP（SIL OFL 1.1）を字を絞って配る（`scripts/web_font.py`） |
 
 Web では使えないもの: serve・watch・run（TCP・別プロセス）、OpticStudio との連携。
-今のところ、解析の途中の中断（系を変えると古い結果は捨てるが、計算は最後まで回る）と、最適化・公差・差し替え探索の
-進み具合の表示・停止も効かない。
+1 スレッドの版（cross-origin isolated でないページ・`?st`）では、解析の途中の中断（系を変えると古い結果は捨てるが、
+計算は最後まで回る）と、最適化・公差・差し替え探索の進み具合の表示・停止も効かない（下の「中断と進み具合」）。
+
+## ブラウザに残すもの
+
+| もの | 残す所 | 消すとき |
+|---|---|---|
+| 読み込んだファイル（`/uploads/`）・ユーザーカタログ（`/user/catalogs/`） | IndexedDB（`lensbench` の `files`）。書いた・消したらすぐ写す（`web_store.rs`） | ファイル → 「ブラウザに残したファイルを消す」 |
+| 設定（硝材・レンズのフォルダ、最近のファイル、並び、見た目） | localStorage（eframe。2 秒ごと） | ブラウザのサイトデータの削除 |
+
+ページを開き直すと、残したファイルを起動の前に置き場へ戻し、最近のファイルの先頭がその中にあればそれを開く
+（無ければ見本）。ユーザーカタログは `/user/catalogs/` に保存し（カタログに保存の窓の既定）、最初に保存したときに
+レンズのフォルダに足す。窓の「⬇」でファイルとしてダウンロードできる。ブラウザが認めれば
+`navigator.storage.persist()` で消されにくくする。
+
+## 中断と進み具合
+
+計算の Web Worker が解析を回している間は、その Worker はメッセージを受けられない。スレッドありの版（`mt/`）では、
+Worker が同じ wasm・同じ共有メモリの見張りのスレッド（`monitor.js`）を作り、その口（MessagePort）を画面に渡す。
+画面は見張りを通して、回している解析の中断（系を変えたとき。中断の印 `lensbench_core::par` を立てる）、
+最適化・公差・差し替え探索の停止と進み具合（0.2 秒ごと）を頼む。要求には番号を付け、見張りは計算の側が回している
+要求の番号が合うときだけ印を立てる（終わった要求の中断が次の要求に効かない）。
 
 **新しい機能でファイルを読み書きするときは `std::fs` ではなく `lensbench_core::vfs` を通す。** 一時フォルダは
 `vfs::temp_dir()`（wasm の `std::env::temp_dir` は panic）。保存先は `crate::files::FileDialog::save_file`、
@@ -37,8 +57,7 @@ cd target/web && python -m http.server 8000   # http://localhost:8000/ で開く
 node scripts/web_smoke.mjs target/web shot.png  # 起動確認（npm の playwright が要る）
 ```
 
-Web 版で読み込んだファイルはページを閉じると消える（ブラウザに残すのは今後）。プロジェクトが参照する .zmx・
-カタログは、開くときに一緒に選ぶと同じフォルダに入る。
+プロジェクトが参照する .zmx・カタログは、開くときに一緒に選ぶと同じフォルダに入る。
 
 同梱する見本は `crates/lensbench-web/build.rs` が集める: 公開用ガラス `tests/glass`、例題のレンズ
 `examples/lenses`、例題のプロジェクト `examples/projects`、`tests/refs/*/system.zmx`。
@@ -103,21 +122,12 @@ node scripts/web_bench.mjs target/web --systems A0,C0,A2,C1 --cmds spot,wavefron
 
 ## 公開（Cloudflare Pages ＋ Cloudflare Access、限定公開）
 
-`target/web` をそのまま Cloudflare Pages に置く。`_headers` で COOP/COEP を付ける（並列化に要る）。
-閲覧できる人は Cloudflare Access で限る。配備は非公開側で行う。
+配る形のフォルダはそのまま Cloudflare Pages に置ける。`_headers` で COOP/COEP を付ける（並列化に要る）。
+閲覧できる人は Cloudflare Access で限る。限定公開の版（非公開のカタログを同梱した版）の配備と手順は非公開側にある。
 
-所有者が一度だけ行う設定:
+## 別の入口（カタログ・プラグインを足した版）
 
-1. Cloudflare のアカウントを作る（https://dash.cloudflare.com/sign-up 、無料プランでよい）。
-2. Workers & Pages → Create → Pages → 「Upload assets」で、プロジェクト名（例 `lensbench`）を決めて、
-   CI の成果物 `lensbench-web` の `target/web` の中身を上げる。`https://lensbench.pages.dev` で開ける。
-   （自動の配備を入れた後は GitHub Actions が push ごとに上げる。そのときは API トークンと Account ID を
-   GitHub の Secrets に入れる）
-3. Zero Trust（左のメニュー）を開き、チーム名を決める（無料プラン、50 人まで）。
-4. Zero Trust → Access → Applications → Add an application → Self-hosted:
-   - Application domain に `lensbench.pages.dev` と、プレビュー用に `*.lensbench.pages.dev` を入れる
-   - Policy: Action は Allow、Include の Emails に見てよい人のメールアドレスを入れる
-   - Login methods は One-time PIN（メールに届く番号でログイン）でよい
-5. 別のブラウザ（シークレット窓）で `https://lensbench.pages.dev` を開き、ログインを求められることを確かめる。
-
-Pages の設定の「Access policy」からも同じ設定を始められる。
+この crate（`lensbench-web`）を依存にした wasm の crate を作り、`#[wasm_bindgen(start)]` でカタログの形式・
+プラグインを登録して `lensbench_web::set_extra` で同梱するファイルと硝材・レンズのフォルダを足す。JS の口
+（`start`・`worker_*`・`monitor_*`）とページ（`web/` の index.html・worker.js・monitor.js）はこの crate のものを
+そのまま使う。wasm-bindgen の出力の名前は `--out-name lensbench_web` にそろえる。

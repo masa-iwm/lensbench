@@ -822,3 +822,7 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 要素が無い（消したか名前が変わった）。選び直してください	The element is gone (removed or renamed). Choose it again
 欄と同じ項目の JSON	JSON with the same items as the fields
 量・構成・遅延などは「⚙ 設定」の欄で（CLI のサブコマンドと同じ引数）	Set the quantity, configurations, delay and so on in ⚙ Settings (same arguments as the CLI subcommand)
+ブラウザに残したファイルを消す（{} 個、{} MB）…	Clear files kept in the browser ({} files, {} MB)…
+読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る	Loaded files and user catalogs stay in the browser after the page is closed
+ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？	Delete all loaded files and user catalogs kept in the browser?
+カタログのファイルをダウンロードする	Download the catalog file

@@ -25,21 +25,37 @@ async function load() {
 // メッセージは来た順に 1 つずつ（スレッドを作り終えてから次へ）
 let queue = load().catch(e => { failed = String(e); });
 
+// 見張りのスレッド（monitor.js、同じ wasm・同じメモリ）を作り、画面にその口（MessagePort）を渡す。
+// このスレッドが計算で塞がっている間も、画面は見張りを通して中断・停止・進み具合を頼める
+let monitor = null;
+function startMonitor() {
+  try {
+    const [module, memory] = lb.worker_shared();
+    monitor = new Worker(new URL("monitor.js", import.meta.url), { type: "module" });
+    const ch = new MessageChannel();
+    monitor.postMessage({ module, memory, port: ch.port1 }, [ch.port1]);
+    self.postMessage({ monitor: ch.port2 }, [ch.port2]);
+  } catch (e) {
+    console.warn("見張りのスレッドを作れない（中断・進み具合は使えない）", e);
+  }
+}
+
 async function handle(data) {
   try {
     if (failed) throw new Error("wasm を読み込めない: " + failed);
     if (typeof data === "number") {
-      lb.worker_init(data);
+      await lb.worker_init(data);
       if (mt && data === 0) {
         try {
           await lb.initThreadPool(Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 16)));
           lb.threads_ready();
+          startMonitor();
         } catch (e) {
           console.warn("スレッドを作れないので 1 スレッドの版に戻す", e);
           mt = false;
           lb = await import("./lensbench_web.js");
           await lb.default();
-          lb.worker_init(data);
+          await lb.worker_init(data);
         }
       }
       return;

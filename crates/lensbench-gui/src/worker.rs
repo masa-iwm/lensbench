@@ -377,6 +377,55 @@ impl Worker {
         if self.cancels && *r {
             lensbench_core::par::request_cancel();
         }
+        // Web 版: 計算の Web Worker の見張りに頼む（スレッドありの版だけ）
+        #[cfg(target_arch = "wasm32")]
+        if self.cancels {
+            self.remote.cancel_running();
+        }
+    }
+}
+
+/// 最適化・公差・差し替え探索の進み具合と停止。ネイティブは同じプロセスの serve
+/// （[`lensbench_cli::serve::optimize_progress`] など）、Web 版は計算の Web Worker の見張りのスレッドに訊く
+/// （スレッドありの版だけ。1 スレッドの版では進み具合は出ず、止められない）
+pub mod progress {
+    /// 最適化の反復ごとの評価関数の値（走っていなければ None）
+    pub fn optimize() -> Option<Vec<f64>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        return lensbench_cli::serve::optimize_progress();
+        #[cfg(target_arch = "wasm32")]
+        super::remote::PROGRESS
+            .with(|p| serde_json::from_value(p.borrow()["optimize"].clone()).ok())
+    }
+
+    /// 公差の（終えた数、全体の数）
+    pub fn tolerance() -> Option<(usize, usize)> {
+        #[cfg(not(target_arch = "wasm32"))]
+        return lensbench_cli::serve::tolerance_progress();
+        #[cfg(target_arch = "wasm32")]
+        super::remote::PROGRESS
+            .with(|p| serde_json::from_value(p.borrow()["tolerance"].clone()).ok())
+    }
+
+    /// 差し替え探索の（終えた数、全体の数）
+    pub fn swap() -> Option<(usize, usize)> {
+        #[cfg(not(target_arch = "wasm32"))]
+        return lensbench_cli::serve::swap_progress();
+        #[cfg(target_arch = "wasm32")]
+        super::remote::PROGRESS.with(|p| serde_json::from_value(p.borrow()["swap"].clone()).ok())
+    }
+
+    /// 最適化（"optimize"）・公差（"tolerance"）・差し替え探索（"swap"）を止める（そこまでの結果を返す）
+    pub fn stop(what: &str) {
+        #[cfg(not(target_arch = "wasm32"))]
+        match what {
+            "optimize" => lensbench_cli::serve::optimize_cancel(),
+            "tolerance" => lensbench_cli::serve::tolerance_cancel(),
+            "swap" => lensbench_cli::serve::swap_cancel(),
+            _ => {}
+        }
+        #[cfg(target_arch = "wasm32")]
+        super::remote::stop(what);
     }
 }
 
@@ -397,6 +446,47 @@ pub mod entry {
         KIND.with(|k| k.set(kind));
     }
 
+    /// 回している要求の番号（0 は無し）。計算のスレッドと見張りのスレッド（[`cancel`]・[`stop`]、
+    /// スレッドありの版だけ。メモリを共有する）で、この鍵を取って「回している要求だけを止める」を確かにする
+    static CUR: std::sync::Mutex<u32> = std::sync::Mutex::new(0);
+
+    fn cur() -> std::sync::MutexGuard<'static, u32> {
+        CUR.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む
+    pub fn cancel(id: u32) {
+        let c = cur();
+        if *c == id && id != 0 {
+            lensbench_core::par::request_cancel();
+        }
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、最適化（what = "optimize"）・公差（"tolerance"）・
+    /// 差し替え探索（"swap"）を止める（そこまでの結果を返す）
+    pub fn stop(id: u32, what: &str) {
+        let c = cur();
+        if *c != id || id == 0 {
+            return;
+        }
+        match what {
+            "optimize" => lensbench_cli::serve::optimize_cancel(),
+            "tolerance" => lensbench_cli::serve::tolerance_cancel(),
+            "swap" => lensbench_cli::serve::swap_cancel(),
+            _ => {}
+        }
+    }
+
+    /// 見張りのスレッドから: 最適化・公差・差し替え探索の進み具合（[`super::progress`] の形の JSON）
+    pub fn progress() -> String {
+        serde_json::json!({
+            "optimize": lensbench_cli::serve::optimize_progress(),
+            "tolerance": lensbench_cli::serve::tolerance_progress(),
+            "swap": lensbench_cli::serve::swap_progress(),
+        })
+        .to_string()
+    }
+
     /// 要求（[`Request`] のバイト列）を回して、結果（[`Response`]）を返す
     pub fn call(b: &[u8]) -> Vec<u8> {
         let q = match Request::decode(b) {
@@ -410,6 +500,15 @@ pub mod entry {
                 .encode()
             }
         };
+        let main = KIND.with(Cell::get) == Kind::Main.code();
+        if main {
+            // 前の要求のための中断の印を下ろす（見張りは番号が合うときだけ印を立てる）。鍵を持ったまま下ろす
+            // （番号を変えてから下ろすまでの間に、この要求への中断が届いて消えないように）
+            let mut c = cur();
+            *c = q.id;
+            lensbench_core::par::clear_cancel();
+            drop(c);
+        }
         // 画面の側で変わったファイルを当ててから回す（当てた分は返さない）
         for (p, b) in q.files {
             sync::apply(&p, b);
@@ -427,12 +526,22 @@ pub mod entry {
             }
         }
         let ms = t0.elapsed().as_secs_f64() * 1e3;
+        if main {
+            *cur() = 0;
+        }
         let files = sync::changes_since(seq)
             .into_iter()
             .map(|(p, b, _)| (p, b))
             .collect();
         Response { results, ms, files }.encode()
     }
+}
+
+/// 画面の側: 置き場のこの版より後の変更を、計算の Web Worker に渡す（それまでは Worker も持っている見本）。
+/// 起動の前に 1 回（[`crate::start_web`]）
+#[cfg(target_arch = "wasm32")]
+pub fn set_sync_base(seq: u64) {
+    remote::BASE.with(|b| b.set(Some(seq)));
 }
 
 /// 画面の側: Web Worker（`worker.js`、中は同じ wasm）に要求を 1 つずつ渡す
@@ -448,6 +557,69 @@ mod remote {
     use wasm_bindgen::JsCast;
 
     type Inbox = Rc<RefCell<VecDeque<Result<Vec<u8>, String>>>>;
+
+    thread_local! {
+        /// [`super::set_sync_base`]
+        pub static BASE: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+        /// 計算の Web Worker（serve と同じ要求を受ける方）の見張りのスレッドへの口（スレッドありの版だけ）
+        pub static MONITOR: RefCell<Option<Monitor>> = const { RefCell::new(None) };
+        /// 見張りから受け取った進み具合（{"optimize", "tolerance", "swap"}）
+        pub static PROGRESS: RefCell<Value> = const { RefCell::new(Value::Null) };
+        /// 回している要求の番号（0 は無し）
+        static RUNNING: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    /// 見張りのスレッド（`monitor.js`）への口
+    pub struct Monitor {
+        port: web_sys::MessagePort,
+        _on_message: Closure<dyn FnMut(web_sys::MessageEvent)>,
+        /// 最後に進み具合を訊いた時刻 [ms]
+        asked: f64,
+    }
+
+    fn now_ms() -> f64 {
+        js_sys::Date::now()
+    }
+
+    /// 見張りに渡す（{"cancel": id} など）
+    fn tell(v: Value) {
+        MONITOR.with(|m| {
+            if let Some(m) = &*m.borrow() {
+                let o = js_sys::JSON::parse(&v.to_string()).unwrap_or(JsValue::NULL);
+                let _ = m.port.post_message(&o);
+            }
+        });
+    }
+
+    /// [`super::progress::stop`]
+    pub fn stop(what: &str) {
+        let id = RUNNING.with(|r| r.get());
+        if id != 0 {
+            tell(serde_json::json!({ "stop": what, "id": id }));
+        }
+    }
+
+    /// 見張りの口を受け取る（計算の Web Worker が {monitor: MessagePort} を送ってくる）
+    fn set_monitor(port: web_sys::MessagePort, repaint: Rc<dyn Fn()>) {
+        let on_message = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
+            if let Some(s) = e.data().as_string() {
+                let v: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
+                // 要求が終わった後に届いた古い進み具合は捨てる
+                if RUNNING.with(|r| r.get()) != 0 {
+                    PROGRESS.with(|p| *p.borrow_mut() = v);
+                    repaint();
+                }
+            }
+        });
+        port.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+        MONITOR.with(|m| {
+            *m.borrow_mut() = Some(Monitor {
+                port,
+                _on_message: on_message,
+                asked: 0.0,
+            })
+        });
+    }
 
     /// 動いている Web Worker
     struct Live {
@@ -470,8 +642,10 @@ mod remote {
         repaint: Rc<dyn Fn()>,
         live: Option<Live>,
         inbox: Inbox,
-        /// 渡して、結果を待っている要求
+        /// 渡して、結果を待っている要求とその番号
         inflight: Option<Job>,
+        inflight_id: u32,
+        next_id: u32,
         /// この版より後の置き場の変更を、次の要求と一緒に渡す
         seq: u64,
         /// Web Worker から受け取って当てたファイル（パス → 当てた版）。送り返さない
@@ -495,7 +669,9 @@ mod remote {
                 live: None,
                 inbox: Rc::default(),
                 inflight: None,
-                seq: sync::seq(),
+                inflight_id: 0,
+                next_id: 0,
+                seq: BASE.with(|b| b.get()).unwrap_or_else(sync::seq),
                 echo: HashMap::new(),
             };
             r.spawn();
@@ -523,8 +699,17 @@ mod remote {
                 }
             };
             let (inbox, repaint) = (self.inbox.clone(), self.repaint.clone());
+            let rp = self.repaint.clone();
             let on_message = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
                 let d = e.data();
+                // 見張りのスレッドの口（スレッドありの版の、serve と同じ要求を受ける Worker だけが送る）
+                if let Some(p) = js_sys::Reflect::get(&d, &"monitor".into())
+                    .ok()
+                    .and_then(|p| p.dyn_into::<web_sys::MessagePort>().ok())
+                {
+                    set_monitor(p, rp.clone());
+                    return;
+                }
                 let x = match d.dyn_ref::<js_sys::Uint8Array>() {
                     Some(a) => Ok(a.to_vec()),
                     None => Err(js_sys::Reflect::get(&d, &"error".into())
@@ -561,6 +746,18 @@ mod remote {
             for m in msgs {
                 self.receive(m);
             }
+            // 回している間は見張りに進み具合を訊く（0.2 秒ごと）
+            if matches!(self.kind, Kind::Main) && self.inflight.is_some() {
+                let ask = MONITOR.with(|m| {
+                    let mut m = m.borrow_mut();
+                    let m = m.as_mut()?;
+                    let t = now_ms();
+                    (t - m.asked >= 200.0).then(|| m.asked = t)
+                });
+                if ask.is_some() {
+                    tell(serde_json::json!({ "progress": 1 }));
+                }
+            }
             while self.inflight.is_none() {
                 let Ok(j) = self.jobs.try_recv() else { break };
                 if j.tag.skippable() && j.gen != gen {
@@ -595,7 +792,13 @@ mod remote {
                 .collect();
             self.seq = now;
             self.echo.clear();
+            self.next_id = self.next_id.wrapping_add(1).max(1);
+            self.inflight_id = self.next_id;
+            if matches!(self.kind, Kind::Main) {
+                RUNNING.with(|r| r.set(self.next_id));
+            }
             let b = Request {
+                id: self.next_id,
                 threads: self.threads,
                 calls: j.calls.clone(),
                 files,
@@ -613,7 +816,18 @@ mod remote {
             self.inflight = Some(j);
         }
 
+        /// 回している解析に途中でやめるよう、見張りに頼む（解析でない要求は止めない）
+        pub fn cancel_running(&self) {
+            if self.inflight.as_ref().is_some_and(|j| j.tag.skippable()) {
+                tell(serde_json::json!({ "cancel": self.inflight_id }));
+            }
+        }
+
         fn receive(&mut self, msg: Result<Vec<u8>, String>) {
+            if matches!(self.kind, Kind::Main) {
+                RUNNING.with(|r| r.set(0));
+                PROGRESS.with(|p| *p.borrow_mut() = Value::Null);
+            }
             let resp = msg.and_then(|b| Response::decode(&b));
             let Some(j) = self.inflight.take() else {
                 // 要求を待っていないときのエラー（起動の失敗など）: 止めて、次の要求で作り直す
@@ -663,6 +877,10 @@ mod remote {
 
         /// Web Worker を止める（次の要求で作り直し、置き場は全部写し直す）
         fn stop(&mut self) {
+            if matches!(self.kind, Kind::Main) {
+                MONITOR.with(|m| *m.borrow_mut() = None);
+                RUNNING.with(|r| r.set(0));
+            }
             self.live = None;
             self.seq = 0;
             self.echo.clear();
