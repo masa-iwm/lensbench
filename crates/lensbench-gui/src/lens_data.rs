@@ -4,6 +4,8 @@
 //! 木にする（読込で作った玉 lens1 … は、名前のあるブロックの中にあれば出さない）。最初は系の全部の面と最上位の
 //! ブロックを見せ、ブロックをダブルクリックするとそのブロックに入って中のブロックと面だけを見せる。
 //!
+//! 折りたたみ表示（[`LensData::tree`]）では、ブロックに入らずにその場で開いて（▶/▼）中の面を表で直接変えられる。
+//!
 //! 値の変更は [`Act::Edit`] で GUI に返す（開いた系は serve の `edit`、組合せの系は組合せの要素の値と面の上書き）。
 //! ロックしたブロック（と、その中のブロック）の面は変えられない。
 
@@ -333,6 +335,10 @@ pub struct LensData {
     pub insp: crate::surf_edit::Inspector,
     /// 設定の欄に出すブロック（たたんだブロックの行を選んだ・ブロックだけを選んだ）。欄はパネルの側で描く
     pub block_view: Option<String>,
+    /// 折りたたみ表示（ブロックをその場で開いて中の面を見せる）。false はブロックに入って中を見る表示
+    pub tree: bool,
+    /// 折りたたみ表示で開いたブロック
+    pub open: BTreeSet<String>,
 }
 
 /// 表を描くときに渡すもの
@@ -352,7 +358,11 @@ pub struct Ctx<'a> {
 impl LensData {
     /// 系が変わった（別のファイル）: 階層・選択・ロックを戻す
     pub fn reset(&mut self) {
-        *self = LensData::default();
+        // 表示の切り替えは系が変わっても残す
+        *self = LensData {
+            tree: self.tree,
+            ..LensData::default()
+        };
     }
 
     /// ブロック name に入る（name までの道をたどる）
@@ -423,6 +433,87 @@ fn fold_lines(
     v
 }
 
+/// 表の 1 行
+#[derive(Debug, Clone, PartialEq)]
+struct Line {
+    /// 鍵の面（たたんだブロックはその最後の面）
+    key: usize,
+    /// たたんだブロック（ブロック, 最初の面）
+    fold: Option<(usize, usize)>,
+    /// 開いたブロックの深さ（字下げ）
+    depth: usize,
+    /// この行から始まる開いたブロック（外から順）
+    heads: Vec<usize>,
+    /// この行の属するいちばん内側のブロック（たたんだブロックはそのもの）
+    blk: Option<usize>,
+}
+
+/// 階層 scope の面 surfs を表の行にする。open(i) のブロックはたたまずに中の面（と中のブロック）を字下げして並べる
+fn lines_of(
+    blocks: &[Block],
+    scope: Option<usize>,
+    surfs: &[usize],
+    open: &dyn Fn(usize) -> bool,
+    depth: usize,
+) -> Vec<Line> {
+    let child_of = |j: usize| {
+        (0..blocks.len()).find(|&i| blocks[i].parent == scope && blocks[i].surfs.contains(&j))
+    };
+    let mut v = Vec::new();
+    for (key, f) in fold_lines(surfs, child_of) {
+        match f {
+            Some((i, a)) if open(i) => {
+                let inner: Vec<usize> = blocks[i]
+                    .surfs
+                    .iter()
+                    .copied()
+                    .filter(|&x| a <= x && x <= key)
+                    .collect();
+                let mut sub = lines_of(blocks, Some(i), &inner, open, depth + 1);
+                if let Some(first) = sub.first_mut() {
+                    first.heads.insert(0, i);
+                }
+                v.extend(sub);
+            }
+            Some((i, a)) => v.push(Line {
+                key,
+                fold: Some((i, a)),
+                depth,
+                heads: Vec::new(),
+                blk: Some(i),
+            }),
+            None => v.push(Line {
+                key,
+                fold: None,
+                depth,
+                heads: Vec::new(),
+                blk: scope,
+            }),
+        }
+    }
+    v
+}
+
+/// 面 j を表で見せる行の鍵（その行か、j を含むたたんだ行）。表に無ければ None
+fn visible_key(lines: &[Line], blocks: &[Block], j: usize) -> Option<usize> {
+    lines
+        .iter()
+        .find(|l| match l.fold {
+            None => l.key == j,
+            Some((i, a)) => a <= j && j <= l.key && blocks[i].surfs.contains(&j),
+        })
+        .map(|l| l.key)
+}
+
+/// ブロック i の中で、面 j から続く面の最後（たたんだときの行の鍵）
+fn run_end(b: &Block, j: usize) -> usize {
+    let mut k = j;
+    while b.surfs.contains(&(k + 1)) {
+        k += 1;
+    }
+    k
+}
+
 pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
@@ -455,17 +546,40 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
     let children: Vec<usize> = (0..c.blocks.len())
         .filter(|&i| c.blocks[i].parent == scope)
         .collect();
-    // 面 j の、今の階層の直下のブロック
-    let child_of = |j: usize| {
-        children
-            .iter()
-            .copied()
-            .find(|&i| c.blocks[i].surfs.contains(&j))
-    };
-    // 表の行: 今の階層の面と、直下のブロックを 1 行にたたんだもの（OpticStudio の Black Box のように。中は入って見る）
-    let lines = fold_lines(&surfs, child_of);
-    let rows: Vec<usize> = lines.iter().map(|l| l.0).collect();
-    let folded = |j: usize| lines.iter().find(|l| l.0 == j).and_then(|l| l.1);
+    // 消えたブロックは開いた組から外す
+    st.open.retain(|n| c.blocks.iter().any(|b| &b.name == n));
+    // 表の行: 今の階層の面と、直下のブロックを 1 行にたたんだもの（OpticStudio の Black Box のように。中は入って見る）。
+    // 折りたたみ表示では開いたブロックの中の面もその場に並べる
+    let tree = st.tree;
+    let open_set = st.open.clone();
+    let is_open = |i: usize| tree && open_set.contains(&c.blocks[i].name);
+    let lines = lines_of(c.blocks, scope, &surfs, &is_open, 0);
+    let rows: Vec<usize> = lines.iter().map(|l| l.key).collect();
+    let line = |j: usize| lines.iter().find(|l| l.key == j);
+    let folded = |j: usize| line(j).and_then(|l| l.fold);
+    // 面 j の行の属するブロック（選ぶ・入る・開くブロック）
+    let child_of = |j: usize| line(j).and_then(|l| l.blk);
+    // 今のセルが見えない面（たたんだブロックの中・表示の切り替え・全部たたむの後）なら、それを含むたたんだ行へ
+    if let Some((j, col)) = st.cur {
+        let vis = visible_key(&lines, c.blocks, j);
+        if vis != Some(j) {
+            st.cur = vis.map(|k| (k, col));
+            st.edit = None;
+        }
+    }
+    // 開く・たたむ（折りたたみ表示）
+    let mut toggle: Option<String> = None;
+    // 今の階層の中のブロック（全部開く・たたむ）
+    let inside: Vec<String> = c
+        .blocks
+        .iter()
+        .enumerate()
+        .filter(|&(i, b)| match scope {
+            Some(s) => i != s && b.surfs.iter().all(|x| c.blocks[s].surfs.contains(x)),
+            None => true,
+        })
+        .map(|(_, b)| b.name.clone())
+        .collect();
 
     // 階層（パンくず）
     let mut go: Option<usize> = None;
@@ -485,6 +599,36 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                 .clicked()
             {
                 go = Some(n + 1);
+            }
+        }
+        // 表示の切り替え（ブロックに入って見る・その場で折りたたむ）
+        ui.separator();
+        if ui
+            .selectable_label(!st.tree, tr("階層"))
+            .on_hover_text(tr(
+                "ブロックを 1 行にたたみ、ダブルクリックで中に入って面を変える",
+            ))
+            .clicked()
+        {
+            st.tree = false;
+        }
+        if ui
+            .selectable_label(st.tree, tr("折りたたみ"))
+            .on_hover_text(tr(
+                "ブロックをその場で開いて（▶/▼）、中に入らずに面を変える",
+            ))
+            .clicked()
+        {
+            st.tree = true;
+        }
+        if st.tree && !inside.is_empty() {
+            if ui.small_button(tr("全部開く")).clicked() {
+                st.open.extend(inside.iter().cloned());
+            }
+            if ui.small_button(tr("全部たたむ")).clicked() {
+                for n in &inside {
+                    st.open.remove(n);
+                }
             }
         }
         // 面の挿入・削除（開いた系だけ。Insert・Delete キーでも）
@@ -532,14 +676,20 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                 } else {
                     b.name.clone()
                 };
+                let hint = if tree {
+                    "面 {}〜{}（ダブルクリックで開く・たたむ）"
+                } else {
+                    "面 {}〜{}（ダブルクリックで中へ）"
+                };
                 let r = ui
                     .selectable_label(st.sel.as_deref() == Some(b.name.as_str()), text)
-                    .on_hover_text(trf(
-                        "面 {}〜{}（ダブルクリックで中へ）",
-                        &[&b.surfs[0], &b.surfs[b.surfs.len() - 1]],
-                    ));
+                    .on_hover_text(trf(hint, &[&b.surfs[0], &b.surfs[b.surfs.len() - 1]]));
                 if r.double_clicked() {
-                    enter = Some(b.name.clone());
+                    if tree {
+                        toggle = Some(b.name.clone());
+                    } else {
+                        enter = Some(b.name.clone());
+                    }
                 } else if r.clicked() {
                     st.sel = Some(b.name.clone());
                     acts.push(Act::Select(st.sel.clone()));
@@ -565,9 +715,27 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
             {
                 acts.push(Act::Lock(name.clone(), lk));
             }
+            if tree {
+                let label = if st.open.contains(&name) {
+                    tr("たたむ")
+                } else {
+                    tr("開く")
+                };
+                if ui
+                    .button(label)
+                    .on_hover_text(tr("ダブルクリック・Enter でも"))
+                    .clicked()
+                {
+                    toggle = Some(name.clone());
+                }
+            }
             if ui
                 .button(tr("中へ"))
-                .on_hover_text(tr("ダブルクリック・Ctrl+Enter でも"))
+                .on_hover_text(if tree {
+                    tr("ブロックの中だけを見る")
+                } else {
+                    tr("ダブルクリック・Ctrl+Enter でも")
+                })
                 .clicked()
             {
                 enter = Some(name.clone());
@@ -655,16 +823,49 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                             ui.label(RichText::new(t).monospace());
                         });
                         row.col(|ui| {
-                            if let Some(i) = blk {
+                            let (depth, heads) =
+                                line(j).map_or((0, Vec::new()), |l| (l.depth, l.heads.clone()));
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            // 字下げ（開いたブロックの中）
+                            for _ in 0..depth.saturating_sub(heads.len()) {
+                                ui.label(RichText::new("│").color(weak));
+                            }
+                            // この行から始まる開いたブロック（▼）と、たたんだブロック（▶）
+                            let mut marks: Vec<(usize, bool)> =
+                                heads.iter().map(|&i| (i, true)).collect();
+                            if let (Some(_), Some(i)) = (fold, blk) {
+                                marks.push((i, false));
+                            }
+                            for (i, opened) in marks {
                                 let b = &c.blocks[i];
-                                let mut t = RichText::new(format!("▶ {}", b.name)).color(accent);
-                                if block_locked(c.blocks, c.locked, i) {
-                                    t = RichText::new(format!("■ {}", b.name)).color(accent);
-                                }
+                                let lk = block_locked(c.blocks, c.locked, i);
+                                let text = match (tree, opened, lk) {
+                                    (false, _, true) => format!("■ {}", b.name),
+                                    (false, _, false) => format!("▶ {}", b.name),
+                                    (true, o, l) => format!(
+                                        "{} {}{}",
+                                        if o { "▼" } else { "▶" },
+                                        b.name,
+                                        if l { " ■" } else { "" }
+                                    ),
+                                };
+                                let hint = match (tree, opened) {
+                                    (false, _) => tr("ダブルクリックで中へ"),
+                                    (true, true) => tr("クリックでたたむ"),
+                                    (true, false) => tr("クリックで開く"),
+                                };
                                 let r = ui
-                                    .add(egui::Label::new(t.strong()).sense(Sense::click()))
-                                    .on_hover_text(tr("ダブルクリックで中へ"));
-                                if r.double_clicked() {
+                                    .add(
+                                        egui::Label::new(
+                                            RichText::new(text).color(accent).strong(),
+                                        )
+                                        .sense(Sense::click()),
+                                    )
+                                    .on_hover_text(hint);
+                                if tree && r.clicked() {
+                                    toggle = Some(b.name.clone());
+                                }
+                                if !tree && r.double_clicked() {
                                     enter = Some(b.name.clone());
                                 } else if r.clicked() {
                                     st.sel = Some(b.name.clone());
@@ -718,7 +919,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                                         }
                                     }
                                     if resp.double_clicked() {
-                                        enter = Some(c.blocks[i].name.clone());
+                                        if tree {
+                                            toggle = Some(c.blocks[i].name.clone());
+                                        } else {
+                                            enter = Some(c.blocks[i].name.clone());
+                                        }
                                     }
                                     return;
                                 }
@@ -822,7 +1027,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                                 }
                             }
                             if let (true, Some((i, _))) = (rr.double_clicked(), fold) {
-                                enter = Some(c.blocks[i].name.clone());
+                                if tree {
+                                    toggle = Some(c.blocks[i].name.clone());
+                                } else {
+                                    enter = Some(c.blocks[i].name.clone());
+                                }
                             }
                         }
                     });
@@ -880,7 +1089,12 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
             }
             if let Some((j, col)) = st.cur {
                 let on_block = folded(j).filter(|_| col != Col::T);
-                if (ctrl && enter_k) || (enter_k && on_block.is_some()) {
+                if tree && ((ctrl && enter_k) || (enter_k && on_block.is_some())) {
+                    // 折りたたみ表示: たたんだ行は Enter で開く、開いたブロックの中の面は Ctrl+Enter でそのブロックをたたむ
+                    if let Some(i) = child_of(j) {
+                        toggle = Some(c.blocks[i].name.clone());
+                    }
+                } else if (ctrl && enter_k) || (enter_k && on_block.is_some()) {
                     if let Some(i) = child_of(j) {
                         enter = Some(c.blocks[i].name.clone());
                     }
@@ -993,6 +1207,21 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
             }
         }
     }
+    if let Some(name) = toggle {
+        if st.open.remove(&name) {
+            // たたんだブロックの中の面を選んでいたら、たたんだ行（続く面の最後）へ
+            if let (Some((j, col)), Some(b)) = (st.cur, c.blocks.iter().find(|b| b.name == name)) {
+                if b.surfs.contains(&j) {
+                    st.cur = Some((run_end(b, j), col));
+                    st.edit = None;
+                }
+            }
+        } else if let Some(path) = path_to(c.blocks, &name) {
+            // 外のブロックも開く（たたんだ外のブロックの中では見えないので）
+            st.open.extend(path);
+        }
+        st.active = true;
+    }
     if let Some(name) = enter {
         st.enter(c.blocks, &name);
         st.active = true;
@@ -1095,6 +1324,88 @@ mod tests {
                 (14, None),
             ]
         );
+    }
+
+    #[test]
+    fn open_blocks_show_their_surfaces_in_place() {
+        // 面 0..12、L1 = 2..5（中に lens = 3..4）、G = 6..10
+        let blocks = vec![
+            Block {
+                name: "L1".into(),
+                surfs: (2..=5).collect(),
+                parent: None,
+            },
+            Block {
+                name: "lens".into(),
+                surfs: vec![3, 4],
+                parent: Some(0),
+            },
+            Block {
+                name: "G".into(),
+                surfs: (6..=10).collect(),
+                parent: None,
+            },
+        ];
+        let surfs: Vec<usize> = (0..12).collect();
+        let keys = |v: &[Line]| {
+            v.iter()
+                .map(|l| (l.key, l.fold.map(|f| f.0)))
+                .collect::<Vec<_>>()
+        };
+        // たたんだまま（階層の表示と同じ）
+        let v = lines_of(&blocks, None, &surfs, &|_| false, 0);
+        assert_eq!(
+            keys(&v),
+            [
+                (0, None),
+                (1, None),
+                (5, Some(0)),
+                (10, Some(2)),
+                (11, None)
+            ]
+        );
+        // L1 を開く: 中の lens はたたんだ 1 行
+        let v = lines_of(&blocks, None, &surfs, &|i| i == 0, 0);
+        assert_eq!(
+            keys(&v),
+            [
+                (0, None),
+                (1, None),
+                (2, None),
+                (4, Some(1)),
+                (5, None),
+                (10, Some(2)),
+                (11, None)
+            ]
+        );
+        assert_eq!(v[2].heads, [0]);
+        assert_eq!((v[2].depth, v[2].blk), (1, Some(0)));
+        assert_eq!((v[3].depth, v[3].blk), (1, Some(1)));
+        // L1 と lens を開く: 面 3 から lens も始まる
+        let v = lines_of(&blocks, None, &surfs, &|i| i <= 1, 0);
+        let k: Vec<usize> = v.iter().map(|l| l.key).collect();
+        assert_eq!(k, [0, 1, 2, 3, 4, 5, 10, 11]);
+        assert_eq!(v[3].heads, [1]);
+        assert_eq!((v[3].depth, v[3].blk), (2, Some(1)));
+        assert_eq!((v[5].depth, v[5].blk), (1, Some(0)));
+        // 先頭の面からいくつものブロックが始まる
+        let b2 = vec![
+            blocks[0].clone(),
+            Block {
+                name: "in".into(),
+                surfs: vec![2, 3],
+                parent: Some(0),
+            },
+        ];
+        let v = lines_of(&b2, None, &surfs, &|_| true, 0);
+        assert_eq!(v[2].heads, [0, 1]);
+        assert_eq!(run_end(&blocks[2], 7), 10);
+        // たたんだ中の面は、たたんだ行へ
+        let v = lines_of(&blocks, None, &surfs, &|_| false, 0);
+        assert_eq!(visible_key(&v, &blocks, 3), Some(5));
+        assert_eq!(visible_key(&v, &blocks, 7), Some(10));
+        assert_eq!(visible_key(&v, &blocks, 1), Some(1));
+        assert_eq!(visible_key(&v[..2], &blocks, 7), None);
     }
 
     #[test]
