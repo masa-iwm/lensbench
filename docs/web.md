@@ -122,21 +122,12 @@ node scripts/web_bench.mjs target/web --systems A0,C0,A2,C1 --cmds spot,wavefron
 
 ## 公開（Cloudflare Pages ＋ Cloudflare Access、限定公開）
 
-`target/web` をそのまま Cloudflare Pages に置く。`_headers` で COOP/COEP を付ける（並列化に要る）。
-閲覧できる人は Cloudflare Access で限る。配備は非公開側で行う。
+配る形のフォルダはそのまま Cloudflare Pages に置ける。`_headers` で COOP/COEP を付ける（並列化に要る）。
+閲覧できる人は Cloudflare Access で限る。限定公開の版（非公開のカタログを同梱した版）の配備と手順は非公開側にある。
 
-所有者が一度だけ行う設定:
+## 別の入口（カタログ・プラグインを足した版）
 
-1. Cloudflare のアカウントを作る（https://dash.cloudflare.com/sign-up 、無料プランでよい）。
-2. Workers & Pages → Create → Pages → 「Upload assets」で、プロジェクト名（例 `lensbench`）を決めて、
-   CI の成果物 `lensbench-web` の `target/web` の中身を上げる。`https://lensbench.pages.dev` で開ける。
-   （自動の配備を入れた後は GitHub Actions が push ごとに上げる。そのときは API トークンと Account ID を
-   GitHub の Secrets に入れる）
-3. Zero Trust（左のメニュー）を開き、チーム名を決める（無料プラン、50 人まで）。
-4. Zero Trust → Access → Applications → Add an application → Self-hosted:
-   - Application domain に `lensbench.pages.dev` と、プレビュー用に `*.lensbench.pages.dev` を入れる
-   - Policy: Action は Allow、Include の Emails に見てよい人のメールアドレスを入れる
-   - Login methods は One-time PIN（メールに届く番号でログイン）でよい
-5. 別のブラウザ（シークレット窓）で `https://lensbench.pages.dev` を開き、ログインを求められることを確かめる。
-
-Pages の設定の「Access policy」からも同じ設定を始められる。
+この crate（`lensbench-web`）を依存にした wasm の crate を作り、`#[wasm_bindgen(start)]` でカタログの形式・
+プラグインを登録して `lensbench_web::set_extra` で同梱するファイルと硝材・レンズのフォルダを足す。JS の口
+（`start`・`worker_*`・`monitor_*`）とページ（`web/` の index.html・worker.js・monitor.js）はこの crate のものを
+そのまま使う。wasm-bindgen の出力の名前は `--out-name lensbench_web` にそろえる。

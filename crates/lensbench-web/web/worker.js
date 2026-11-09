@@ -44,7 +44,7 @@ async function handle(data) {
   try {
     if (failed) throw new Error("wasm を読み込めない: " + failed);
     if (typeof data === "number") {
-      lb.worker_init(data);
+      await lb.worker_init(data);
       if (mt && data === 0) {
         try {
           await lb.initThreadPool(Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 16)));
@@ -55,7 +55,7 @@ async function handle(data) {
           mt = false;
           lb = await import("./lensbench_web.js");
           await lb.default();
-          lb.worker_init(data);
+          await lb.worker_init(data);
         }
       }
       return;
