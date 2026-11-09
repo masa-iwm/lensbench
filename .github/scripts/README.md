@@ -7,6 +7,7 @@ Projects ボード（https://github.com/users/masa-iwm/projects/2）の Status �
 `in-progress` ラベルは、開いている PR の本文に `Closes/Fixes/Resolves #N` があればその Issue に自動で付く（PR のイベントと毎日の一括）。
 PR を出す前の作業（調査・PC での照合など）は自動では分からないので、着手したスレッドがラベルを付ける。
 `Refs #N` は Status だけ In Progress にし、ラベルは付けない（まとめの Issue に残り続けないように）。
+マージせずに閉じた PR が付けたラベル（PR を開いた後に付いたもの）は、ほかに開いている PR が閉じる参照をしていなければ外して Todo に戻す。PR より前に手で付けたラベルは残す。
 
 ### token（Secret `ADD_TO_PROJECT_PAT`）の作り直し
 

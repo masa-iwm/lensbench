@@ -281,7 +281,9 @@ enum Op {
 
 /// 仕様での絞り込み 1 つ。書き方:
 /// - `名前`: その仕様がある
-/// - `名前=値`: 数なら一致（相対 1e-9）、範囲 [下限, 上限] の仕様なら値を含む、文字列なら含む（大文字小文字は区別しない）
+/// - `名前=値`: 数なら一致（相対 1e-9）、範囲 [下限, 上限] の仕様なら値を含む、文字列なら含む（大文字小文字は区別しない）。
+///   値が数でも、仕様が数で比べられない文字列（"50:50" など）なら文字列の含むで見る
+/// - 名前と値は最初に現れる演算子で割る（`damage_threshold=>10 J/cm2` は `=` で割り、値は `>10 J/cm2`）
 /// - `名前=a..b`: 数なら a〜b の中、範囲の仕様なら [a, b] を全部含む
 /// - `名前>=値`・`<=`・`>`・`<`: 数で比べる。範囲の仕様は重なりで（`>=v` は上限が v 以上、`<=v` は下限が v 以下）
 #[derive(Debug, Clone, PartialEq)]
@@ -296,6 +298,7 @@ pub struct SpecFilter {
 impl SpecFilter {
     pub fn parse(s: &str) -> Result<SpecFilter, String> {
         let s = s.trim();
+        // 最初に現れる演算子で割る（値に < > = を含む文字列のため）。同じ位置なら 2 文字の方
         let (name, op, rest) = [
             (">=", Op::Ge),
             ("<=", Op::Le),
@@ -304,7 +307,9 @@ impl SpecFilter {
             ("=", Op::Eq),
         ]
         .into_iter()
-        .find_map(|(t, op)| s.split_once(t).map(|(a, b)| (a, op, b)))
+        .filter_map(|(t, op)| s.find(t).map(|i| (i, t, op)))
+        .min_by_key(|&(i, t, _)| (i, std::cmp::Reverse(t.len())))
+        .map(|(i, t, op)| (&s[..i], op, &s[i + t.len()..]))
         .unwrap_or((s, Op::Has, ""));
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -360,22 +365,24 @@ impl SpecFilter {
             Value::String(t) => t.trim().parse::<f64>().ok().map(|x| (x, x)),
             _ => None,
         };
-        match self.op {
-            Op::Eq if self.lo.is_nan() => {
-                // 文字列で含む（配列なら要素のどれか）
-                let q = self.text.to_lowercase();
-                let has = |x: &Value| match x {
-                    Value::String(t) => t.to_lowercase().contains(&q),
-                    other => other.to_string().to_lowercase().contains(&q),
-                };
-                match v {
-                    Value::Array(a) => a.iter().any(has),
-                    other => has(other),
-                }
+        // 文字列で含む（配列なら要素のどれか。大文字小文字は区別しない）
+        let contains = || {
+            let q = self.text.to_lowercase();
+            let has = |x: &Value| match x {
+                Value::String(t) => t.to_lowercase().contains(&q),
+                other => other.to_string().to_lowercase().contains(&q),
+            };
+            match v {
+                Value::Array(a) => a.iter().any(has),
+                other => has(other),
             }
+        };
+        match self.op {
+            Op::Eq if self.lo.is_nan() => contains(),
             Op::Eq => {
+                // 数で比べられない仕様（"50:50" など）は、範囲でない条件なら文字列の含むに落とす
                 let Some((a, b)) = range else {
-                    return false;
+                    return self.lo == self.hi && contains();
                 };
                 if a == b && self.lo != self.hi {
                     // 数の仕様が条件の範囲の中
@@ -504,6 +511,29 @@ mod tests {
         assert!(!ok("wedge"));
         assert!(SpecFilter::parse("efl>=x").is_err());
         assert!(SpecFilter::parse(">=1").is_err());
+        // 数として読める値でも、数で比べられない仕様には文字列の含むで当たる
+        assert!(ok("split_ratio=50"));
+        assert!(!ok("split_ratio=50..60"));
+    }
+
+    #[test]
+    fn spec_filter_first_operator() {
+        let row =
+            json!({ "specs": { "damage_threshold": ">10 J/cm2", "mount": "SM1 <x>", "n": 5 } });
+        let f = SpecFilter::parse("damage_threshold=>10 J/cm2").unwrap();
+        assert_eq!(
+            (f.name.as_str(), f.op, f.text.as_str()),
+            ("damage_threshold", Op::Eq, ">10 J/cm2")
+        );
+        assert!(f.matches(&row));
+        let f = SpecFilter::parse("mount=SM1 <x>").unwrap();
+        assert_eq!((f.name.as_str(), f.op), ("mount", Op::Eq));
+        assert!(f.matches(&row));
+        // 同じ位置なら 2 文字の演算子
+        let f = SpecFilter::parse("n>=5").unwrap();
+        assert_eq!((f.op, f.lo), (Op::Ge, 5.0));
+        assert!(f.matches(&row));
+        assert_eq!(SpecFilter::parse("n<5").unwrap().op, Op::Lt);
     }
 
     #[test]

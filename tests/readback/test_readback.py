@@ -374,9 +374,14 @@ def test_svg(name: str, tmp_path: Path) -> None:
     allp = np.concatenate([pts(e) for e in poly + line])
     assert allp[:, 0].min() >= vb[0] - 1e-9 and allp[:, 0].max() <= vb[0] + vb[2] + 1e-9
     assert -allp[:, 1].max() >= vb[1] - 1e-9 and -allp[:, 1].min() <= vb[1] + vb[3] + 1e-9
+    # 共軸の系は断面の端が立体の箱の端。傾いた立体の断面は自分の子午面なので、立体の箱（縁の円）の内側
     lo, hi = np.array(info["bounds_mm"])
-    np.testing.assert_allclose(allp.min(axis=0), [lo[2], lo[1]], atol=2e-5)
-    np.testing.assert_allclose(allp.max(axis=0), [hi[2], hi[1]], atol=2e-5)
+    if all(coaxial(ref, solid_surfaces(title(e))) for e in poly):
+        np.testing.assert_allclose(allp.min(axis=0), [lo[2], lo[1]], atol=2e-5)
+        np.testing.assert_allclose(allp.max(axis=0), [hi[2], hi[1]], atol=2e-5)
+    else:
+        assert np.all(allp.min(axis=0) >= [lo[2] - 2e-5, lo[1] - 2e-5])
+        assert np.all(allp.max(axis=0) <= [hi[2] + 2e-5, hi[1] + 2e-5])
 
     # 断面: 共軸の立体は x = 0 の断面なので、有効径の内側の点は面の上（SVG は 0.1 µm に丸める）。傾いた立体は
     # 自分の子午面の断面を yz に投げたもので x が分からないので、glTF の同じ立体の yz の箱の中にあることだけ
@@ -418,12 +423,14 @@ def test_glb(name: str, tmp_path: Path) -> None:
     names = list(sc.geometry)
     nf = len(field_index(ref))
     assert names == info["solids"] + info["surfaces"] + [f"rays F{i}" for i in range(1, nf + 1)]
-    # glTF の単位は m。CLI の bounds_mm は立体の縁を 8 点で見た箱なので、共軸の系だけ一致、傾いた系は内側
+    # glTF の単位は m。CLI の bounds_mm は縁の円の箱を式で出すので、周を多角形にした網の箱を含み、
+    # 周を細かくした網（半径方向の輪も bounds と同じ 32）の箱とは、傾いた系でも一致する
     lo, hi = np.array(info["bounds_mm"])
     b = sc.bounds * 1e3
-    if all(coaxial(ref, solid_surfaces(n)) for n in info["solids"]):
-        np.testing.assert_allclose(b, [lo, hi], atol=1e-4)
-    assert np.all(b[0] <= lo + 1e-4) and np.all(b[1] >= hi - 1e-4)
+    assert np.all(b[0] >= lo - 2e-6) and np.all(b[1] <= hi + 2e-6)  # bounds_mm は 1e-6 に丸め
+    layout(ref, tmp_path, "fine.glb", extra=("--segments", "4096", "--rings", "32"))
+    fine = trimesh.load(tmp_path / "fine.glb", force="scene").bounds * 1e3
+    np.testing.assert_allclose(fine, [lo, hi], atol=1e-4)
 
     for n in info["solids"]:
         g = sc.geometry[n]

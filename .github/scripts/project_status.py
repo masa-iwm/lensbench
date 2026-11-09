@@ -198,6 +198,8 @@ def on_event(board):
         pr = ev["pull_request"]
         if pr["state"] != "open":
             board.set_content(pr["node_id"], DONE, f"{REPO}#{pr['number']} (PR)")
+            if not pr.get("merged"):
+                drop_auto_labels(board, pr)
             return
         board.set_content(pr["node_id"], IN_PROGRESS, f"{REPO}#{pr['number']} (PR)")
         for (repo, num), closing in parse_refs(pr.get("body"), REPO).items():
@@ -214,6 +216,51 @@ def on_event(board):
         return
 
     print(f"対象外のイベント: {name}")
+
+
+def last_labeled_at(repo, number):
+    """Issue に in-progress ラベルが最後に付いた時刻（ISO 8601 の文字列、無ければ None）。"""
+    last, page = None, 1
+    while True:
+        q = urllib.parse.urlencode({"per_page": 100, "page": page})
+        rows = api("GET", f"/repos/{repo}/issues/{number}/events?{q}")
+        for e in rows:
+            if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == LABEL:
+                last = max(last or "", e["created_at"])
+        if len(rows) < 100:
+            return last
+        page += 1
+
+
+def drop_auto_labels(board, pr):
+    """マージせずに閉じた PR が閉じる参照をしていた Issue から、その PR が付けたとみられる in-progress を外す。
+
+    スレッドは着手した時（PR より前）に手でラベルを付けるので、最後に付いたのが PR を開いた時より後なら
+    PR の自動付与とみなして外す。PR より前に付いていたもの（手で付けた着手中）と、ほかに開いている PR が
+    閉じる参照をしている Issue はそのまま。
+    """
+    refs = {k: v for k, v in parse_refs(pr.get("body"), REPO).items() if v}
+    if not refs:
+        return
+    others = open_pr_refs(sorted({r for r, _ in refs} | {REPO}))
+    for (repo, num) in sorted(refs):
+        if others.get((repo, num)):
+            print(f"{repo}#{num}: ほかに開いている PR が閉じる参照をしているので {LABEL} を残す")
+            continue
+        try:
+            it = api("GET", f"/repos/{repo}/issues/{num}")
+        except urllib.error.HTTPError:
+            continue
+        if it["state"] != "open" or "pull_request" in it:
+            continue
+        if LABEL not in [l["name"] for l in it.get("labels", [])]:
+            continue
+        at = last_labeled_at(repo, num)
+        if at is None or at < pr["created_at"]:
+            print(f"{repo}#{num}: {LABEL} は PR より前に付いていたので残す")
+            continue
+        remove_label(repo, num)
+        board.set_content(it["node_id"], TODO, f"{repo}#{num}")
 
 
 def open_pr_refs(repos):
