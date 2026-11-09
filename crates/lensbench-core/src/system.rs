@@ -442,6 +442,8 @@ const PAR_MIN_RAYS: usize = 512;
 const PAR_CHUNK: usize = 256;
 /// 実光線エイミングで当てはめの初期値を使う本数（格子の光線を解く分より得になる目安）
 const AIM_FIT_MIN: usize = 1024;
+/// 頂点の尖った面がある系の瞳を求める主光線の視野 [°]（[`System::cusp_pupil`]）
+const CUSP_FIELD_DEG: f64 = 0.01;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1187,11 +1189,8 @@ impl System {
                         && (crate::freeform::is_freeform(d.typ)
                             || d.grin.as_deref().is_some_and(|g| !g.symmetric()))
                 });
-                let mut z = [0.0; 2];
-                for (i, h) in [2e-4, 1e-4].iter().enumerate() {
-                    let r1 = self.trace_novig(0.0, *h, &[0.0], &[0.0]);
-                    let (p1, k1) = (r1.rays[0].xyz, r1.rays[0].lmn);
-                    z[i] = if free {
+                let cross_z = |p1: V3, k1: V3| -> f64 {
+                    if free {
                         // Zernike・Grid Sag・傾けた GRIN の面を含む系は y-z 面で交わる点（3 次元の最近点だと、
                         // 面の傾きの項で主光線が x にも振れる系でずれる。OpticStudio 26.1 の EXPP と、鏡 1 枚の
                         // Z2 で 3e-12、G3 で 8e-7 一致。非公開側の照合データ）
@@ -1205,12 +1204,59 @@ impl System {
                         let (a, b, c) = (dot(k0, k0), dot(k0, k1), dot(k1, k1));
                         let (d, f) = (dot(k0, w0), dot(k1, w0));
                         add(p0, scale(k0, (b * f - c * d) / (a * c - b * b)))[2]
+                    }
+                };
+                if self.cusp_pupil() {
+                    // 頂点の尖った面がある系: OpticStudio と同じく視野 0.01° の実主光線 1 本（外挿しない。外挿すると
+                    // 尖りの傾きの分が消える）。その光線の高さが絞りの後のどこかの面で近軸の主光線と逆の符号になれば
+                    // （尖りで曲がって軸を横切る）、視野を 1/100 にした光線で求め直す
+                    let yc = &self.paraxial().chief.0;
+                    let (s, img) = (self.stop(), self.image());
+                    let chief = |deg: f64| {
+                        self.trace_spec(
+                            ObjSpec::Dir(normalize([0.0, deg.to_radians().tan(), 1.0])),
+                            &[0.0],
+                            &[0.0],
+                            self.primary,
+                            Some([0.0; 5]),
+                            None,
+                            true,
+                            None,
+                        )
                     };
+                    let mut r1 = chief(CUSP_FIELD_DEG);
+                    let flipped = r1
+                        .rec
+                        .iter()
+                        .any(|q| q.surf > s && q.surf < img && q.xyz[0][1] * yc[q.surf] < 0.0);
+                    if flipped {
+                        r1 = chief(CUSP_FIELD_DEG / 100.0);
+                    }
+                    e = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
+                } else {
+                    let mut z = [0.0; 2];
+                    for (i, h) in [2e-4, 1e-4].iter().enumerate() {
+                        let r1 = self.trace_novig(0.0, *h, &[0.0], &[0.0]);
+                        z[i] = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
+                    }
+                    e = (4.0 * z[1] - z[0]) / 3.0;
                 }
-                e = (4.0 * z[1] - z[0]) / 3.0;
             }
             e
         })
+    }
+
+    /// r の 1 次の項（β1、頂点が尖る）がある Odd Asphere の面を含む、無限遠物体・角度の視野の系なら true。
+    /// OpticStudio 2026 R1.01 はこの系の瞳を、視野 0.01° の実主光線 1 本と、軸上の視野の +y 側だけの瞳座標 1e-3 の
+    /// 光線 1 本で求める（尖りの傾き β1 がそのまま瞳の位置・径に効く。β1 = ±1e-3・1e-5、入射瞳径 10・20、
+    /// 最大視野 2・5・10° の自作の系で EXPP・EXPD が 1e-5 mm 一致。非公開側の照合データ）。
+    /// 外挿や ±両側の光線で求める極限の値とは違う
+    pub(crate) fn cusp_pupil(&self) -> bool {
+        self.infinite()
+            && self.field_type == FieldType::Angle
+            && self.surfaces.iter().any(|d| {
+                !d.ignore && d.typ == SurfType::OddAsph && d.asph.first().is_some_and(|&b| b != 0.0)
+            })
     }
 
     /// 瞳の算出用: ケラレ係数を掛けずに主波長で追う（瞳は系の性質で、視野のケラレ係数とは無関係）
@@ -1237,7 +1283,9 @@ impl System {
             if (self.aiming == Aiming::Off && self.symmetric()) || !e.is_finite() {
                 self.paraxial().expd
             } else {
-                let dl = 1e-4;
+                // 頂点の尖った面がある系は OpticStudio と同じく +y 側の瞳座標 1e-3 の光線だけ（[`System::cusp_pupil`]）
+                let cusp = self.cusp_pupil();
+                let dl = if cusp { 1e-3 } else { 1e-4 };
                 let r = self.trace_novig(0.0, 0.0, &[0.0, 0.0, 0.0], &[0.0, dl, -dl]);
                 let p: Vec<V3> = r.rays.iter().map(|x| x.xyz).collect();
                 let k: Vec<V3> = r.rays.iter().map(|x| x.lmn).collect();
@@ -1246,7 +1294,11 @@ impl System {
                 let q: Vec<V3> = (0..3)
                     .map(|i| add(p[i], scale(k[i], dot(sub(cc, p[i]), c) / dot(k[i], c))))
                     .collect();
-                norm(sub(q[1], q[2])) / dl
+                if cusp {
+                    2.0 * norm(sub(q[1], q[0])) / dl
+                } else {
+                    norm(sub(q[1], q[2])) / dl
+                }
             }
         })
     }

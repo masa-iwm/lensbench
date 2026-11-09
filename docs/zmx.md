@@ -14,7 +14,9 @@
 - 面タイプ Tilted（`TILTSURF`、z = x tan α + y tan β、局所座標は傾けない）・Odd Asphere（`ODDASPHE`、標準面 + Σ β_i r^i）・
   Irregular（`IRREGULA`、偏心・傾けた標準面 + Zs ρ⁴ + Za ρ_y² + Zc ρ² ρ_y、ρ は半直径で正規化、ρ_y は角度で回した y）を読む。
   物体面が Tilted なら物点はその面の上。実光線と EFFL は OpticStudio と 1e-11 mm 以下で一致（`tests/surftypes_os`）。
-  Odd Asphere の r の項（β_1、円錐の頂点）があると、射出瞳（実光線で求める）と OPD が OpticStudio と違う
+  Odd Asphere の r の項（β_1、円錐の頂点）がある系（無限遠物体・角度の視野）は、OpticStudio と同じく瞳を微小な実光線 1 本ずつで
+  求める: 射出瞳の位置は視野 0.01° の主光線（その光線が絞りの後の面で近軸の主光線と逆の側を通れば 0.0001°）、径は軸上の視野の
+  +y 側の瞳座標 1e-3 の光線。尖りの傾きが効くので、h → 0 の極限の値とは違う。EXPP・EXPD・OPD が OpticStudio と一致する
 - 座標ブレークの主光線のソルブ（`PPAR` の元の面が負）は、保存された値で固定する
 - 半直径の `DIAM 値 0` は自動（光線から求め直す）。ただし、自動の半直径を入れる前の lensbench が書いた .zmx（`VERS 260327 42 20120530 20120530`
   で、どの面にも `MEMA` の行がない）は、固定の半直径も `DIAM 値 0` で書いていたので、ファイルの値で固定として読む
