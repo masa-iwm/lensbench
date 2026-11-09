@@ -758,3 +758,85 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
         txt.len()
     );
 }
+
+/// 実測表（LBCT）の中身: 鍵 key、波長 wl で係数 s・p が一定
+fn lbct(key: &str, wl: f64, s: C64, p: C64) -> String {
+    let mut t = format!("LBCT 1\nKEY {key}\nWAVE {wl:?}\n");
+    for a in 0..=60 {
+        t += &format!("{a}.0 {} {} {} {}\n", s.re, s.im, p.re, p.im);
+    }
+    t
+}
+
+#[test]
+fn coating_models_are_found_by_name_next_to_the_coating_file() {
+    let mut s = a0();
+    let w = s.primary;
+    let (j, _, _) = interfaces(&s, w)[0];
+    // 膜の名前は大文字小文字を区別しない（ファイルは ZEC_AUTO、系は zec_auto）
+    s.surfaces[j].coat = "zec_auto".into();
+    let dir = std::env::temp_dir().join(format!("lensbench-coat-auto-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("COATING.DAT"), "MATE N15\n0.5 1.5 0\n").unwrap();
+    s.coating_file = Some(dir.join("COATING.DAT"));
+    let mat = s.surfaces[j].mat.clone();
+    let wl = s.wavelengths[w];
+    let v = [C64::new(0.0, 0.9), C64::new(0.8, 0.0)];
+    std::fs::write(
+        dir.join("ZEC_AUTO.lbct"),
+        lbct(&format!("ZEC_AUTO|AIR|{mat}"), wl, v[0], v[1]),
+    )
+    .unwrap();
+    // 使わない膜のファイルは読まない（壊れていても止まらない）
+    std::fs::write(dir.join("UNUSED.lbcm"), "broken").unwrap();
+    let c = Coatings::for_system(&s).unwrap();
+    assert_eq!(c.auto.len(), 1);
+    assert_eq!(c.auto[0].0, "zec_auto");
+    let key = format!("zec_auto|AIR|{mat}");
+    assert_eq!(c.kind(&key), lensbench_core::coating::CoatKind::Measured);
+    let n1 = s.index_before(j, w);
+    let n2 = s.surfaces[j].n[w];
+    let got = c.prepare(&s, &key, wl, n1, n2).unwrap().eval(0.1).unwrap();
+    assert!(
+        (got[0] - v[0]).norm() < 1e-12 && (got[1] - v[1]).norm() < 1e-12,
+        "{got:?}"
+    );
+    // 明示して読んだ表（--table・coatings=）が勝つ
+    let u = [C64::new(0.7, 0.0), C64::new(0.6, 0.0)];
+    let tp = dir.join("explicit.ctab");
+    std::fs::write(&tp, lbct(&key, wl, u[0], u[1])).unwrap();
+    let mut c2 = Coatings::for_system(&s).unwrap();
+    c2.load_file(&tp).unwrap();
+    let got = c2.prepare(&s, &key, wl, n1, n2).unwrap().eval(0.1).unwrap();
+    assert!(
+        (got[0] - u[0]).norm() < 1e-12 && (got[1] - u[1]).norm() < 1e-12,
+        "{got:?}"
+    );
+    // 層のわかる近似の膜（.lbcs）。モデル・実測表（lbcb・lbcm・lbct）があればそちらが勝つ
+    s.surfaces[j].coat = "zec_stack".into();
+    std::fs::write(
+        dir.join("zec_stack.LBCS"),
+        "COAT ZEC_STACK\nN15X 0.25\nMATE N15X\n0.5 1.38 0\n",
+    )
+    .unwrap();
+    let key = format!("zec_stack|AIR|{mat}");
+    let c3 = Coatings::for_system(&s).unwrap();
+    assert_eq!(c3.kind(&key), lensbench_core::coating::CoatKind::Stack);
+    assert!(c3.file.mate.contains_key("N15X") && c3.file.mate.contains_key("N15"));
+    let mut c4 = Coatings::for_system(&s).unwrap();
+    std::fs::write(&tp, lbct(&key, wl, u[0], u[1])).unwrap();
+    c4.load_file(&tp).unwrap();
+    assert_eq!(c4.kind(&key), lensbench_core::coating::CoatKind::Measured);
+    std::fs::write(
+        dir.join("ZEC_STACK.lbct"),
+        lbct(&format!("ZEC_STACK|AIR|{mat}"), wl, v[0], v[1]),
+    )
+    .unwrap();
+    let c5 = Coatings::for_system(&s).unwrap();
+    assert_eq!(c5.kind(&key), lensbench_core::coating::CoatKind::Measured);
+    assert!(c5.auto[0].1.ends_with("ZEC_STACK.lbct"));
+    // 膜ファイルのない系は、どこも探さない
+    s.coating_file = None;
+    assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
+    std::fs::remove_dir_all(&dir).ok();
+}

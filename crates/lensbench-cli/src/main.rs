@@ -2678,6 +2678,8 @@ fn coatings(
     // 実測表が要る境界 → (コンフィグ, 波長)
     let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
     let mut found = None;
+    // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
+    let mut auto: Vec<(String, String)> = Vec::new();
     for cfg in 1..=raw.configurations() {
         let opt = zmx::LoadOptions {
             cfg,
@@ -2690,6 +2692,12 @@ fn coatings(
             c.load_file(t).map_err(e)?;
         }
         found = s.coating_file.clone();
+        for (coat, p) in &c.auto {
+            let p = p.display().to_string();
+            if !auto.iter().any(|(a, b)| a == coat && *b == p) {
+                auto.push((coat.clone(), p));
+            }
+        }
         let (keys, _) = coating::media_keys(&s);
         let mut v = Vec::new();
         for (j, k) in keys.iter().enumerate() {
@@ -2721,6 +2729,7 @@ fn coatings(
         "coating_file": raw.coating_file_name(),
         "coating_file_path": found.map(|p| p.display().to_string()),
         "catalogs": raw.catalogs(),
+        "auto_coatings": auto.iter().map(|(c, p)| json!({ "coat": c, "path": p })).collect::<Vec<_>>(),
         "configurations": cfgs,
         "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
     }))
