@@ -87,7 +87,12 @@ pub fn system_data(s: &System) -> SystemData {
         epdi: p.epd,
         enpp: p.enpp,
         expd: s.exit_pupil_diameter(),
-        expp: p.expp,
+        // 頂点の尖った面がある系は OpticStudio の EXPP も実光線の射出瞳（OPD の基準と同じ）
+        expp: if s.cusp_pupil() {
+            s.exit_pupil()
+        } else {
+            p.expp
+        },
         wfno: working_fnum(s),
         pwfn: p.wfno,
         isfn: p.isfn,
