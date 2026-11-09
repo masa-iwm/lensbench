@@ -640,8 +640,11 @@ fn interp_errors(
 /// MTF の瞳の OPD の求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MtfMethod {
-    /// 瞳の格子を 1 度追跡し、求積点では 6 点の Lagrange 補間（格子にけられた点がある所だけ直接追跡）
+    /// 既定。[`MtfMethod::Interp`]。ただし求積の点数 n を自動で決めて [`AUTO_FFT_N`] を超えるとき
+    /// （収差が大きい系）は [`MtfMethod::Fft`]
     #[default]
+    Auto,
+    /// 瞳の格子を 1 度追跡し、求積点では 6 点の Lagrange 補間（格子にけられた点がある所だけ直接追跡）
     Interp,
     /// 求積点をすべて直接追跡（遅い。補間の確かめ用）
     Direct,
@@ -1102,9 +1105,14 @@ fn autocorr_at(r: &[C64], s: f64) -> C64 {
     (0..4).map(|k| at(i0 - 1 + k as isize) * w[k]).sum()
 }
 
+/// [`MtfMethod::Auto`] が FFT に切り替える求積の点数 n（自動で決めた値がこれを超えるとき）。求積は点が n² 個で
+/// 周波数ごとに足すので、E0・E1 の軸外（OPD の傾き 600〜700 波、n が 2000 超）は FFT の 4 倍ほど遅い。
+/// FFT の瞳の標本は 2n（上限 [`FFT_MAX`]）で、求積との差は E0・E1 で 7e-5 以下
+pub const AUTO_FFT_N: usize = 1024;
+
 /// [`MtfMethod::Fft`] の瞳の標本の数（直径）の範囲
 const FFT_MIN: usize = 512;
-const FFT_MAX: usize = 2048;
+const FFT_MAX: usize = 4096;
 
 /// 1 波長の複素 OTF を FFT の自己相関で求める（[`MtfMethod::Fft`]）。返す値は [`wave_otf`] と同じ形。
 /// 瞳の標本の OPD は [`PupilInterp`] の補間。球欠は行ごと、子午は列ごとの 1 次元の自己相関の和で、
@@ -1125,7 +1133,9 @@ fn wave_otf_fft(
     let ip = mtf_interp(s, field, wi, n)?;
     // 瞳の標本（直径 ns 点、区間の中心）。円の縁は中心が内側かどうかで 0・1 にする（面積の割合を振幅にすると
     // 縁どうしの重なりが割合の積になって h に比例してずれる）。補間との差は ns² に反比例
-    // （A0 などで ns 128: 1.3e-3、256: 2.1e-4、512: 5e-5）
+    // （A0 などで ns 128: 1.3e-3、256: 2.1e-4、512: 5e-5）。標本は求積の点数の 2 倍にする。上限 2048 では E0・E1 の
+    // 視野 3（n が 2000 超、OPD の傾き 600〜700 波）で位相の標本が足りず、高い周波数で MTF が 1.7e-3 浮いた（4096 で
+    // 求積と 2e-5）
     let ns = (2 * n).clamp(FFT_MIN, FFT_MAX);
     let h = 2.0 / ns as f64;
     let cx: Vec<f64> = (0..ns).map(|i| -1.0 + h * (i as f64 + 0.5)).collect();
@@ -1162,7 +1172,7 @@ fn wave_otf_fft(
     }
     let zero = C64::new(0.0, 0.0);
     let mut e0 = 0.0;
-    let p: Vec<C64> = (0..ns * ns)
+    let mut p: Vec<C64> = (0..ns * ns)
         .map(|i| {
             if inside(i) && wv[i].is_finite() {
                 e0 += 1.0;
@@ -1172,6 +1182,7 @@ fn wave_otf_fft(
             }
         })
         .collect();
+    drop(wv);
     if !(e0 > 0.0) {
         invalid!("MTF: 有効な光線がない（すべてけられた）");
     }
@@ -1181,14 +1192,13 @@ fn wave_otf_fft(
     let rt = if axis_symmetric(&jm, &ip) {
         rs.clone()
     } else {
-        let mut pt = vec![zero; ns * ns];
+        // その場で転置する（ns = 4096 で瞳の標本は 1 枚 268 MB。写しを作らない）
         for iy in 0..ns {
-            for ix in 0..ns {
-                pt[ix * ns + iy] = p[iy * ns + ix];
+            for ix in iy + 1..ns {
+                p.swap(iy * ns + ix, ix * ns + iy);
             }
         }
-        drop(p);
-        row_autocorr(&pt, ns, l)
+        row_autocorr(&p, ns, l)
     };
     let (mut sag, mut tan) = (Vec::new(), Vec::new());
     let (sx, _) = pupil_shift(&jm, lam, 0);
@@ -1239,15 +1249,21 @@ fn wave_otf(
     if method == MtfMethod::Fft && !freqs.is_empty() {
         return wave_otf_fft(s, field, wi, n, freqs);
     }
-    let jm = pupil_jacobian(s, field, wi)?;
+    let auto = n.is_none();
     let n = match n {
         Some(n) => n,
         None => mtf_points(opd_slope_max(s, field, wi)?),
     };
+    if method == MtfMethod::Auto && auto && n > AUTO_FFT_N && !freqs.is_empty() {
+        return wave_otf_fft(s, field, wi, Some(n), freqs);
+    }
+    let jm = pupil_jacobian(s, field, wi)?;
     let lam = s.wavelengths[wi] * 1e-3;
     // 補間の格子: 求積の点数と同じくらいの細かさ（6 点補間の誤差は h^6 で小さい）
     let ip = match method {
-        MtfMethod::Interp if !freqs.is_empty() => Some(mtf_interp(s, field, wi, n)?),
+        MtfMethod::Auto | MtfMethod::Interp if !freqs.is_empty() => {
+            Some(mtf_interp(s, field, wi, n)?)
+        }
         _ => None,
     };
     // 軸上の回転対称な系（格子の OPD が対称で、瞳の縮尺が x・y で同じ）なら子午は球欠と同じ
