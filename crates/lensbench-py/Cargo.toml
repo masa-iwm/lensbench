@@ -1,0 +1,38 @@
+[package]
+name = "lensbench-py"
+description = "Python bindings of lensbench"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/masa-iwm/lensbench"
+rust-version = "1.80"
+publish = false
+
+# maturin でビルドする拡張モジュール（Python が要るのでワークスペースから外してある）
+[workspace]
+
+[lib]
+name = "lensbench"
+# rlib は別の拡張モジュール（形式・プラグインを足した版）から init_module を呼ぶ用
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# 拡張モジュールの入口（PyInit_lensbench）を作る。別の拡張モジュールに組み込むときは
+# default-features = false にして、その側の #[pymodule] から init_module を呼ぶ
+default = ["module"]
+module = []
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core", features = ["serde"] }
+lensbench-analysis = { path = "../lensbench-analysis" }
+lensbench-project = { path = "../lensbench-project" }
+lensbench-verify = { path = "../lensbench-verify" }
+numpy = "0.30"
+pyo3 = { version = "0.30", features = ["abi3-py39"] }
+serde_json = "1"
+# 大きな配列の確保を OS に返さず使い回す。入口を作るとき（module）だけ global_allocator にする
+mimalloc = { version = "0.1", default-features = false }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

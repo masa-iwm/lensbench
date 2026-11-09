@@ -1,0 +1,3 @@
+# Names that maturin's generated __init__.py adds (the extension module itself, __all__). ASCII only: stubtest reads this file with the locale encoding.
+lensbench.__all__
+lensbench.lensbench
