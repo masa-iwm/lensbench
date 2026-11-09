@@ -368,9 +368,38 @@ pub fn sag_toroidal(c: f64, k: f64, asph: &[f64], cx: f64, x: f64, y: f64) -> (f
 
 const NAN3: V3 = [f64::NAN; 3];
 
+/// 二次曲面との交点の根（頂点面上の点からの距離）: aa s² − 2 gg s + ff = 0 の根 ff / (gg + σ √disc)（σ はその空間の
+/// 進む向き: 鏡で反射するたびに反転、[`space_signs`]）。OpticStudio と同じく、光線が空間の向きと逆（gg σ < 0、
+/// 90° を超える視野の光線が面 1 へ向かうなど）でも同じ式の根を採る（以前は gg の符号で頂点に近い根を採っていた）。
+/// 桁落ちしないよう gg σ < 0 では同じ根を (gg − σ √disc) / aa で求める
+#[inline(always)]
+pub(crate) fn conic_root(ff: f64, gg: f64, aa: f64, disc: f64, sig: f64) -> f64 {
+    let q = sig * disc.sqrt();
+    if gg * sig >= 0.0 {
+        ff / (gg + q)
+    } else if aa != 0.0 {
+        (gg - q) / aa
+    } else {
+        ff / (2.0 * gg)
+    }
+}
+
+/// 面ごとの空間の進む向き（面 0 から +1、鏡の面の後で反転）。σ[j] は面 j に向かう空間の向き
+pub(crate) fn space_signs(sys: &System) -> Vec<f64> {
+    let mut out = Vec::with_capacity(sys.surfaces.len());
+    let mut s = 1.0;
+    for d in &sys.surfaces {
+        out.push(s);
+        if d.mirror && !d.ignore && d.typ != SurfType::CoordBrk {
+            s = -s;
+        }
+    }
+    out
+}
+
 /// トロイダル面との交点までの距離（頂点面上の pl から方向 kl に）。収束しなければ true も返す。
 /// 初期値は y だけの二次曲面（円柱面）との交点、その後ニュートン法
-pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3) -> (f64, bool) {
+pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
     let (c, kc) = (d.c, d.k);
     let mut s = 0.0;
     if c != 0.0 {
@@ -379,7 +408,7 @@ pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3) -> (f64, bool) {
         let aa = c * (kl[1] * kl[1] + (1.0 + kc) * kl[2] * kl[2]);
         let disc = gg * gg - aa * ff;
         if disc >= 0.0 {
-            let s0 = ff / (gg + gg.signum() * disc.sqrt());
+            let s0 = conic_root(ff, gg, aa, disc, sig);
             if s0.is_finite() {
                 s = s0;
             }
@@ -626,6 +655,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
     // GRIN の媒質に入ったときの方向（座標ブレークを挟んで進むあいだ持つ）
     let mut grin_k0: Option<V3> = None;
     let lam = sys.wavelengths[w];
+    let sigs = space_signs(sys);
     for j in first..=last {
         let d = &sf[j];
         if d.ignore {
@@ -768,15 +798,15 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
         let (s, bad) = match kd.isect {
             _ if err != 0 || on_surf => (0.0, false),
             Isect::Plane => (0.0, false),
-            Isect::Grad9Tilt => crate::freeform::isect_with(d.c, d.k, pl, kl, |x, y| {
+            Isect::Grad9Tilt => crate::freeform::isect_with(d.c, d.k, pl, kl, sigs[j], |x, y| {
                 crate::grin::grad9_sag(d, x, y)
             }),
-            Isect::CylSub => crate::freeform::isect_with(0.0, 0.0, pl, kl, |_, y| {
+            Isect::CylSub => crate::freeform::isect_with(0.0, 0.0, pl, kl, sigs[j], |_, y| {
                 let (z, dz) = sag(d.c, d.k, &d.asph, y * y);
                 (z, 0.0, 2.0 * dz * y)
             }),
-            Isect::Free => crate::freeform::isect(d, pl, kl),
-            Isect::Toroidal => toroidal_isect(d, pl, kl),
+            Isect::Free => crate::freeform::isect(d, pl, kl, sigs[j]),
+            Isect::Toroidal => toroidal_isect(d, pl, kl, sigs[j]),
             Isect::Std { asph } => {
                 let (c, kc) = (d.c, d.k);
                 let mut s = 0.0;
@@ -789,7 +819,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                     if !(disc >= 0.0) {
                         bad = true;
                     }
-                    s = ff / (gg + gg.signum() * disc.max(0.0).sqrt());
+                    s = conic_root(ff, gg, aa, disc.max(0.0), sigs[j]);
                     if !s.is_finite() {
                         bad = true;
                     }
