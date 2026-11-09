@@ -468,6 +468,9 @@ pub struct Browser {
     pub combo: Combo,
     /// 一覧を一度でも読んだか
     pub loaded: bool,
+    /// 読み込み中の一覧（頼んで返事を待っている。0 件と見分ける）
+    pub lenses_pending: bool,
+    pub glasses_pending: bool,
     /// 足す玉をこの要素の直後へ（組合せの図で選んでいる要素。無ければ後ろ）
     pub insert_after: Option<usize>,
     /// 足した玉の番号（図で選ぶ）
@@ -651,12 +654,20 @@ impl Browser {
             ui.selectable_value(
                 &mut self.tab,
                 Tab::Lenses,
-                trf("カタログレンズ（{}）", &[&self.lenses.len()]),
+                if self.lenses_pending {
+                    tr("カタログレンズ（読み込み中…）").to_string()
+                } else {
+                    trf("カタログレンズ（{}）", &[&self.lenses.len()])
+                },
             );
             ui.selectable_value(
                 &mut self.tab,
                 Tab::Glasses,
-                trf("ガラス（{}）", &[&self.glasses.len()]),
+                if self.glasses_pending {
+                    tr("ガラス（読み込み中…）").to_string()
+                } else {
+                    trf("ガラス（{}）", &[&self.glasses.len()])
+                },
             );
             ui.separator();
             if ui.button(tr("⟳ 読み直す")).clicked() {
@@ -675,7 +686,14 @@ impl Browser {
         ui.separator();
         match self.tab {
             Tab::Lenses => {
-                if n_lens_dirs == 0 && self.lenses.is_empty() {
+                if self.lenses_pending {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(tr(
+                            "カタログレンズを読み込んでいます（数万枚あると数十秒かかります）",
+                        ));
+                    });
+                } else if n_lens_dirs == 0 && self.lenses.is_empty() {
                     ui.label(tr("レンズカタログのフォルダ（.zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名）を「フォルダ…」で足してください。"));
                 }
                 if let Some(a) = self.lens_ui(ui) {
@@ -683,7 +701,12 @@ impl Browser {
                 }
             }
             Tab::Glasses => {
-                if n_glass_dirs == 0 && self.glasses.is_empty() {
+                if self.glasses_pending {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(tr("ガラスカタログを読み込んでいます"));
+                    });
+                } else if n_glass_dirs == 0 && self.glasses.is_empty() {
                     ui.label(tr("ガラスカタログ（.AGF）のフォルダを「フォルダ…」で足してください（環境変数 LENSBENCH_GLASSCAT も使います）。"));
                 }
                 self.glass_ui(ui);
