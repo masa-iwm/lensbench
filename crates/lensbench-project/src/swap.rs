@@ -259,6 +259,8 @@ impl<'a> SwapSearch<'a> {
         if spec.state.is_some() && !spec.states.is_empty() {
             return Err("state と states は同時に使えない".into());
         }
+        // 綴りの誤りは組ごとの失敗にせず、始める前に弾く
+        jac_mode(&spec.jac)?;
         if spec.states.is_empty() && !spec.state_vars.is_empty() {
             return Err("state_vars は states と一緒に使う".into());
         }
@@ -430,11 +432,7 @@ impl<'a> SwapSearch<'a> {
         }
         let s = systems[0].clone();
         let mut pr = Problem::new(systems.clone());
-        pr.jac = match self.spec.jac.to_ascii_lowercase().as_str() {
-            "auto" => optim::JacMode::Auto,
-            "fd" => optim::JacMode::FiniteDiff,
-            j => return Err(format!("jac {j}（auto・fd）")),
-        };
+        pr.jac = jac_mode(&self.spec.jac)?;
         // 共通の変数（全状態）と、状態ごとの変数（状態 k だけに効く）
         let mut specs: Vec<(&String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (v, None)).collect();
@@ -740,6 +738,15 @@ impl<'a> SwapSearch<'a> {
         let mut v = par::with_threads_or_outer(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);
         v
+    }
+}
+
+/// 設定の jac（"fd"・"auto"）
+fn jac_mode(j: &str) -> Result<optim::JacMode, String> {
+    match j.to_ascii_lowercase().as_str() {
+        "auto" => Ok(optim::JacMode::Auto),
+        "fd" => Ok(optim::JacMode::FiniteDiff),
+        j => Err(format!("jac {j}（auto・fd）")),
     }
 }
 
