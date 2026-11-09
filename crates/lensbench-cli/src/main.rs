@@ -189,12 +189,15 @@ enum Cmd {
         #[arg(long)]
         n: Option<usize>,
         /// 求積点の OPD をすべて直接追跡する（既定は瞳の格子を 1 度追跡して補間。遅い、確かめ用）
-        #[arg(long, conflicts_with = "fft")]
+        #[arg(long, conflicts_with_all = ["fft", "interp"])]
         direct: bool,
         /// 瞳関数の自己相関を FFT で全周波数まとめて求める（周波数が多いとき・収差が大きいとき速い。
-        /// 既定との差は 1e-4 程度）
-        #[arg(long)]
+        /// 既定との差は 1e-4 程度）。既定でも --n を省いて求積の点数が 1024 を超え、周波数が 8 個以上なら FFT になる
+        #[arg(long, conflicts_with = "interp")]
         fft: bool,
+        /// 求積点の数が多い系でも FFT に切り替えず、補間の求積で求める
+        #[arg(long)]
+        interp: bool,
         /// 多色に加えて波長ごとの MTF も出す（"waves"。波長ごとの計算を使い回すので別々に求めるより速い）。
         /// --wave とは一緒に使えない
         #[arg(long = "each-wave")]
@@ -1824,6 +1827,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             n,
             direct,
             fft,
+            interp,
             each_wave,
         } => {
             let s = load(&c)?;
@@ -1858,8 +1862,10 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     analysis::MtfMethod::Direct
                 } else if fft {
                     analysis::MtfMethod::Fft
-                } else {
+                } else if interp {
                     analysis::MtfMethod::Interp
+                } else {
+                    analysis::MtfMethod::Auto
                 };
                 let f = FieldSel::Index(i);
                 let (m, waves) = if each_wave {

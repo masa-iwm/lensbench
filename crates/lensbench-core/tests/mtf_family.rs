@@ -397,3 +397,38 @@ fn fft_mtf_is_the_quadrature_mtf() {
         }
     }
 }
+
+/// 既定（Auto）は求積の点数を自動で決めて 1024 を超える視野（E0 の視野 3、n が 2000 超）で周波数が 8 個以上の
+/// ときだけ FFT にし、求積と 1e-4 以内で合う。点数の少ない視野・n を指定したときは補間の求積とビットまで同じ
+#[test]
+fn auto_mtf_switches_to_fft_for_many_points() {
+    use analysis::MtfMethod;
+    let s = load("E0");
+    let w = Some(s.primary);
+    let m0 = analysis::mtf(&s, FieldSel::Index(2), w, Some(4), &[]).unwrap();
+    let c = m0.cutoff.0.min(m0.cutoff.1);
+    let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
+    let run = |fi: usize, n: Option<usize>, m: MtfMethod| {
+        analysis::mtf_with(&s, FieldSel::Index(fi), w, n, &freqs, m).unwrap()
+    };
+    let (a, i, f) = (
+        run(2, None, MtfMethod::Auto),
+        run(2, None, MtfMethod::Interp),
+        run(2, None, MtfMethod::Fft),
+    );
+    assert_eq!((&a.tan, &a.sag), (&f.tan, &f.sag));
+    for k in 0..freqs.len() {
+        for (x, y) in [(a.tan[k], i.tan[k]), (a.sag[k], i.sag[k])] {
+            assert!((x - y).abs() < 1e-4, "{k}: {x} {y}");
+        }
+    }
+    for (fi, n) in [(0, None), (2, Some(64))] {
+        let (a, i) = (run(fi, n, MtfMethod::Auto), run(fi, n, MtfMethod::Interp));
+        assert_eq!((&a.tan, &a.sag), (&i.tan, &i.sag), "{fi} {n:?}");
+    }
+    // 周波数が少ない（7 個以下）ときは求積の方が速いので切り替えない
+    let few = &freqs[..analysis::AUTO_FFT_FREQS - 1];
+    let a = analysis::mtf_with(&s, FieldSel::Index(2), w, None, few, MtfMethod::Auto).unwrap();
+    let i = analysis::mtf_with(&s, FieldSel::Index(2), w, None, few, MtfMethod::Interp).unwrap();
+    assert_eq!((&a.tan, &a.sag), (&i.tan, &i.sag));
+}
