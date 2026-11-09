@@ -1,0 +1,62 @@
+# Projects ボード（https://github.com/users/masa-iwm/projects/2）の Status を Issue・PR の状態に合わせる。
+# 規則と処理は .github/scripts/project_status.py。
+#
+# - ボードに無ければ追加する（addProjectV2ItemById は既存なら既存の項目を返す）
+# - Issue: 開く → Todo、in-progress ラベル → In Progress、外す → Todo、閉じる → Done（残った in-progress ラベルは外す）、
+#   開き直す → ラベルに応じて In Progress / Todo
+# - PR: 開く・更新する → PR 自身と本文の Closes/Fixes/Resolves/Refs #N の開いている Issue を In Progress
+#   （Closes/Fixes/Resolves の Issue には in-progress ラベルも付ける。毎日の一括でも付け漏れを補う）、
+#   閉じる・マージする → PR を Done（Issue はそれ自身の closed イベントで Done）
+# - 毎日 1 回と手動（workflow_dispatch）でボード全体を一括で揃える（取りこぼしの保険）
+#
+# 必要な Secret: ADD_TO_PROJECT_PAT
+#   classic の Personal access token（スコープ: project, repo）。
+#   ユーザー所有の Projects には fine-grained token が使えない。無ければ何もしない。
+#   有効期限を付けて作り、切れる前に作り直す（手順は .github/scripts/README.md）。
+#   token は Status を更新する step にだけ渡し、checkout はコミットの SHA に固定する（第三者の action に token を見せない）。
+name: project-status
+
+on:
+  issues:
+    types: [opened, transferred, labeled, unlabeled, closed, reopened]
+  pull_request:
+    types: [opened, reopened, ready_for_review, edited, synchronize, closed]
+  schedule:
+    - cron: "17 21 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 変更せずに表示だけ
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-status-${{ github.event.issue.number || github.event.pull_request.number || 'sync' }}
+
+jobs:
+  status:
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+      github.event.label.name == 'in-progress'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          sparse-checkout: .github/scripts
+      - name: Status を更新
+        if: github.event_name == 'issues' || github.event_name == 'pull_request'
+        run: python3 .github/scripts/project_status.py event
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT }}
+      - name: ボード全体を揃える
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python3 .github/scripts/project_status.py sync ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          GH_TOKEN: ${{ secrets.ADD_TO_PROJECT_PAT }}

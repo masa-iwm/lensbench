@@ -1,0 +1,79 @@
+# 追跡の速さを 2 つの版で比べる（手動のみ）。同じランナーで base と head を交互に測るので、
+# ランナーごとの速さの差は比に入らない。共有 VM なので 1 回ごとに 1〜2 割ぶれる → ラウンドの中央値で見る。
+# 数 % の差の判定には向かない。結果は Job Summary と成果物 bench-<os>
+name: Bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 比べる元の ref（ブランチ・タグ・commit）
+        default: main
+      head:
+        description: 比べる先の ref（空なら実行したブランチ）
+        default: ""
+      os:
+        description: ランナー
+        type: choice
+        options: [both, windows-latest, ubuntu-24.04]
+        default: both
+      systems:
+        description: tests/refs の系（all か A0,C0 のような並び）
+        default: all
+      threads:
+        description: スレッド数（カンマ区切り）
+        default: "1,4"
+      rounds:
+        description: ラウンド数（中央値を取る）
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'both' && '["windows-latest","ubuntu-24.04"]' || format('["{0}"]', inputs.os)) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      # 比べるスクリプトと系（tests/refs）は実行したブランチのものを使う（古い版には無いことがある）。
+      # base・head は全履歴から worktree にする（短い SHA も使えるように。checkout の ref は完全な SHA が要る）
+      - uses: actions/checkout@v6
+        with:
+          path: tool
+          fetch-depth: 0
+      - name: worktrees
+        shell: bash
+        env:
+          BASE: ${{ inputs.base }}
+          HEAD_REF: ${{ inputs.head || github.sha }}
+        run: |
+          rev() { git -C tool rev-parse --verify -q "origin/$1^{commit}" || git -C tool rev-parse --verify "$1^{commit}"; }
+          git -C tool worktree add --detach ../base "$(rev "$BASE")"
+          git -C tool worktree add --detach ../head "$(rev "$HEAD_REF")"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build
+        shell: bash
+        run: |
+          for w in base head; do
+            (cd $w && echo "$w $(git rev-parse --short HEAD)" && cargo build --release --example bench -p lensbench-core)
+            echo "${w^^}_REV=$(cd $w && git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          done
+          nproc 2>/dev/null || echo "$NUMBER_OF_PROCESSORS"
+      - name: run
+        shell: bash
+        run: |
+          ext=""; py=python3; [ "$RUNNER_OS" = Windows ] && ext=.exe && py=python
+          $py tool/scripts/bench_compare.py \
+            --base "base/target/release/examples/bench$ext" \
+            --head "head/target/release/examples/bench$ext" \
+            --refs tool/tests/refs \
+            --systems "${{ inputs.systems }}" --threads "${{ inputs.threads }}" --rounds "${{ inputs.rounds }}" \
+            --base-label "${{ inputs.base }} ($BASE_REV)" --head-label "${{ inputs.head || github.ref_name }} ($HEAD_REV)" \
+            --out bench.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: bench-${{ matrix.os }}
+          path: bench.json

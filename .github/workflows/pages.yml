@@ -1,0 +1,65 @@
+# GitHub Pages に公開する。main への push ごと。初回だけ、リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
+#   /      ドキュメント（mdBook。scripts/build_docs.sh）。/api/rust/ に cargo doc
+#   /app/  Web 版（公開側のビルド: 同梱は公開用の見本だけ。docs/web.md）
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      # スレッドありの版（mt/）は nightly の build-std で作る（scripts/build_web.sh の NIGHTLY と同じ版）
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-10-15
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      # wasm-bindgen-cli は Cargo.lock の wasm-bindgen と同じ版
+      - run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          echo "WASM_BINDGEN=$v" >> "$GITHUB_ENV"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install fonttools numpy matplotlib
+      # ドキュメント: mdBook と、GUI の画面を撮る仮想ディスプレイ
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.4.52
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+      - run: scripts/build_docs.sh target/site
+      - run: scripts/build_web.sh target/site/app
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: target/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
