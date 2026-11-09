@@ -282,6 +282,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 21);
+        assert_eq!(n, 22);
     }
 }

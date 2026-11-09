@@ -494,6 +494,17 @@ fn lines_of(
     v
 }
 
+/// 面 j を表で見せる行の鍵（その行か、j を含むたたんだ行）。表に無ければ None
+fn visible_key(lines: &[Line], blocks: &[Block], j: usize) -> Option<usize> {
+    lines
+        .iter()
+        .find(|l| match l.fold {
+            None => l.key == j,
+            Some((i, a)) => a <= j && j <= l.key && blocks[i].surfs.contains(&j),
+        })
+        .map(|l| l.key)
+}
+
 /// ブロック i の中で、面 j から続く面の最後（たたんだときの行の鍵）
 fn run_end(b: &Block, j: usize) -> usize {
     let mut k = j;
@@ -548,6 +559,14 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
     let folded = |j: usize| line(j).and_then(|l| l.fold);
     // 面 j の行の属するブロック（選ぶ・入る・開くブロック）
     let child_of = |j: usize| line(j).and_then(|l| l.blk);
+    // 今のセルが見えない面（たたんだブロックの中・表示の切り替え・全部たたむの後）なら、それを含むたたんだ行へ
+    if let Some((j, col)) = st.cur {
+        let vis = visible_key(&lines, c.blocks, j);
+        if vis != Some(j) {
+            st.cur = vis.map(|k| (k, col));
+            st.edit = None;
+        }
+    }
     // 開く・たたむ（折りたたみ表示）
     let mut toggle: Option<String> = None;
     // 今の階層の中のブロック（全部開く・たたむ）
@@ -1381,6 +1400,12 @@ mod tests {
         let v = lines_of(&b2, None, &surfs, &|_| true, 0);
         assert_eq!(v[2].heads, [0, 1]);
         assert_eq!(run_end(&blocks[2], 7), 10);
+        // たたんだ中の面は、たたんだ行へ
+        let v = lines_of(&blocks, None, &surfs, &|_| false, 0);
+        assert_eq!(visible_key(&v, &blocks, 3), Some(5));
+        assert_eq!(visible_key(&v, &blocks, 7), Some(10));
+        assert_eq!(visible_key(&v, &blocks, 1), Some(1));
+        assert_eq!(visible_key(&v[..2], &blocks, 7), None);
     }
 
     #[test]
