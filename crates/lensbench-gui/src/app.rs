@@ -4769,7 +4769,18 @@ impl eframe::App for App {
             ),
             None => "lensbench".into(),
         };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        // 変わったときだけ送る（送ると次のフレームを描くので、毎フレーム送ると何もしていなくても描き続ける）
+        let changed = ctx.data_mut(|d| {
+            let k = egui::Id::new("lensbench-title");
+            let same = d.get_temp::<String>(k).is_some_and(|t| t == title);
+            if !same {
+                d.insert_temp(k, title.clone());
+            }
+            !same
+        });
+        if changed {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
 
         egui::TopBottomPanel::top("header")
             .frame(
