@@ -175,6 +175,8 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
     pr.vars
         .push(optim::Var::new(Param::new(gaps[1].1, Kind::Thick)).bounds(1.0, 200.0));
     pr.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+    // 差し替え探索の既定のヤコビアン（jac "fd"）と同じ
+    pr.jac = optim::JacMode::FiniteDiff;
     let d = optim::dls(
         &pr,
         &DlsOpts {
