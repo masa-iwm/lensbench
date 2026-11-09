@@ -2528,16 +2528,20 @@ impl System {
         let good: Vec<usize> = (0..n).filter(|&i| !out[i].1 && !out[i].2).collect();
         if !bad.is_empty() && !good.is_empty() {
             let d2 = |i: usize, j: usize| (px[i] - px[j]).powi(2) + (py[i] - py[j]).powi(2);
-            let re: Vec<Option<[f64; 2]>> = bad
-                .iter()
-                .map(|&i| {
-                    let j = good
-                        .iter()
-                        .copied()
-                        .min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b)))?;
-                    self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
-                })
-                .collect();
+            let redo = |&i: &usize| {
+                let j = good
+                    .iter()
+                    .copied()
+                    .min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b)))?;
+                self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
+            };
+            // 継続法は 1 本で数百〜数千回の追跡になる（瞳の外の届かない光線は刻みを最小まで縮めてから諦める）ので、
+            // 少ない本数でも並列に。光線ごとに独立なので結果はスレッド数によらず同じビット
+            let re: Vec<Option<[f64; 2]>> = if bad.len() > 1 && !crate::par::sequential() {
+                bad.par_iter().with_min_len(1).map(redo).collect()
+            } else {
+                bad.iter().map(redo).collect()
+            };
             for (&i, r) in bad.iter().zip(re) {
                 if let Some(v) = r {
                     out[i] = (v, false, false);
