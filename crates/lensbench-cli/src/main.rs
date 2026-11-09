@@ -629,6 +629,46 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// 分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く。
+    /// 曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。
+    /// angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
+    CoatDesign {
+        /// 曲線の CSV（複数可）
+        targets: Vec<PathBuf>,
+        /// 膜の名前（書く COAT の名前）
+        #[arg(long)]
+        name: String,
+        /// 材料（外側から繰り返す順、例 MGF2,TA2O5）。膜ファイルの MATE か、ガラスカタログのガラス
+        #[arg(long, value_delimiter = ',')]
+        materials: Vec<String>,
+        /// 基板: 屈折率の数か、膜ファイルの MATE・ガラスの名前
+        #[arg(long)]
+        substrate: String,
+        /// 材料を探す膜ファイル（COATING.DAT 形式）
+        #[arg(long = "coating-file")]
+        coating_file: Option<PathBuf>,
+        /// ガラスカタログを探すフォルダ（複数可）
+        #[arg(long = "glass-dir")]
+        glass_dir: Vec<PathBuf>,
+        /// 試す層の数（例 1..12）
+        #[arg(long, default_value = "1..12")]
+        layers: String,
+        /// 層の数ごとの初期値の数
+        #[arg(long, default_value_t = 20)]
+        starts: usize,
+        /// 層の厚さの上限 [µm]
+        #[arg(long = "d-max", default_value_t = 0.6)]
+        d_max: f64,
+        /// いちばん合う RMS の (1 + slack) 倍以内で層のいちばん少ないものを選ぶ
+        #[arg(long, default_value_t = 0.1)]
+        slack: f64,
+        /// 書き出す近似の膜（.lbcs）
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// JSON で出力する
+        #[arg(long)]
+        json: bool,
+    },
     /// 系を読み込んだまま待ち受け、外から JSON-RPC で系の変更・解析を繰り返す（既定は 127.0.0.1 だけ）。
     /// 手順と書式は docs/serve.md
     Serve(serve::ServeArgs),
@@ -2516,6 +2556,35 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             coat_model(&tables, &out, coat.as_deref(), kinks.as_deref(), tol_psi)?,
         ),
         Cmd::CoatCompact { model, out, json } => (json, coat_compact(&model, &out)?),
+        Cmd::CoatDesign {
+            targets,
+            name,
+            materials,
+            substrate,
+            coating_file,
+            glass_dir,
+            layers,
+            starts,
+            d_max,
+            slack,
+            out,
+            json,
+        } => (
+            json,
+            coat_design(&CoatDesignArgs {
+                targets: &targets,
+                name: &name,
+                materials: &materials,
+                substrate: &substrate,
+                coating_file: coating_file.as_deref(),
+                glass_dir: &glass_dir,
+                layers: &layers,
+                starts,
+                d_max,
+                slack,
+                out: out.as_deref(),
+            })?,
+        ),
         Cmd::Pop {
             c,
             surf,
@@ -2917,6 +2986,219 @@ fn coat_compact(model: &std::path::Path, out: &std::path::Path) -> Result<Value,
     Ok(
         json!({ "out": out.display().to_string(), "bytes_in": b.len(), "bytes": bytes.len(), "models": rep }),
     )
+}
+
+struct CoatDesignArgs<'a> {
+    targets: &'a [PathBuf],
+    name: &'a str,
+    materials: &'a [String],
+    substrate: &'a str,
+    coating_file: Option<&'a std::path::Path>,
+    glass_dir: &'a [PathBuf],
+    layers: &'a str,
+    starts: usize,
+    d_max: f64,
+    slack: f64,
+    out: Option<&'a std::path::Path>,
+}
+
+/// 曲線の CSV を読む（[`Cmd::CoatDesign`] の列）
+fn read_targets(p: &std::path::Path) -> Result<Vec<lensbench_core::coat_design::Target>, String> {
+    use lensbench_core::coat_design::{Pol, Quantity, Target};
+    let txt =
+        lensbench_core::vfs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+    let mut lines = txt
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'));
+    let head: Vec<String> = lines
+        .next()
+        .ok_or_else(|| format!("{}: 空", p.display()))?
+        .split(',')
+        .map(|x| x.trim().to_ascii_lowercase())
+        .collect();
+    let col = |n: &str| head.iter().position(|h| h == n);
+    let (wl, scale_wl) = match (col("wl_um"), col("wl_nm")) {
+        (Some(i), _) => (i, 1.0),
+        (None, Some(i)) => (i, 1e-3),
+        _ => return Err(format!("{}: 列 wl_um か wl_nm がない", p.display())),
+    };
+    let (val, scale_v) = match (col("value"), col("value_pct")) {
+        (Some(i), _) => (i, 1.0),
+        (None, Some(i)) => (i, 0.01),
+        _ => return Err(format!("{}: 列 value か value_pct がない", p.display())),
+    };
+    let (ang, pol, qty, w) = (col("angle_deg"), col("pol"), col("quantity"), col("weight"));
+    let mut v = Vec::new();
+    for (ln, l) in lines.enumerate() {
+        let c: Vec<&str> = l.split(',').map(str::trim).collect();
+        let num = |i: usize| -> Result<f64, String> {
+            c.get(i)
+                .and_then(|x| x.parse::<f64>().ok())
+                .ok_or_else(|| format!("{}: {} 行目の数値", p.display(), ln + 2))
+        };
+        let pol = match pol.and_then(|i| c.get(i)).map(|x| x.to_ascii_lowercase()) {
+            None => Pol::Avg,
+            Some(x) if x == "avg" || x.is_empty() => Pol::Avg,
+            Some(x) if x == "s" => Pol::S,
+            Some(x) if x == "p" => Pol::P,
+            Some(x) => return Err(format!("{}: 偏光 {x}（s・p・avg）", p.display())),
+        };
+        let q = match qty.and_then(|i| c.get(i)).map(|x| x.to_ascii_uppercase()) {
+            None => Quantity::R,
+            Some(x) if x == "R" || x.is_empty() => Quantity::R,
+            Some(x) if x == "T" => Quantity::T,
+            Some(x) => return Err(format!("{}: 量 {x}（R・T）", p.display())),
+        };
+        v.push(Target {
+            wl: num(wl)? * scale_wl,
+            angle_deg: match ang {
+                Some(i) => num(i)?,
+                None => 0.0,
+            },
+            pol,
+            q,
+            value: num(val)? * scale_v,
+            weight: match w {
+                Some(i) => num(i)?,
+                None => 1.0,
+            },
+        });
+    }
+    Ok(v)
+}
+
+fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
+    use lensbench_core::coat_design::{fit_all, format_lbcs, pick, Material, Options};
+    let mut ts = Vec::new();
+    for p in a.targets {
+        ts.extend(read_targets(p)?);
+    }
+    let file = match a.coating_file {
+        Some(p) => coating::CoatingFile::load(p).map_err(|e| e.to_string())?,
+        None => coating::CoatingFile::default(),
+    };
+    // ガラスカタログは必要になったときに全部読む
+    let mut glasses: Option<std::collections::HashMap<String, lensbench_core::glass::Glass>> = None;
+    let mut glass = |name: &str| -> Option<lensbench_core::glass::Glass> {
+        let g = glasses.get_or_insert_with(|| {
+            let mut m = std::collections::HashMap::new();
+            for d in lensbench_core::glass::catalog_dirs(a.glass_dir) {
+                for f in lensbench_core::vfs::read_dir(&d).unwrap_or_default() {
+                    if f.extension().is_some_and(|e| e.eq_ignore_ascii_case("agf")) {
+                        if let Ok(x) = lensbench_core::glass::load_agf(&f) {
+                            for (k, v) in x {
+                                m.entry(k).or_insert(v);
+                            }
+                        }
+                    }
+                }
+            }
+            m
+        });
+        g.get(name).cloned()
+    };
+    // 材料: 膜ファイルの MATE、なければガラス（0.2〜2.5 µm を 5 nm 刻みの表にして .lbcs に MATE も書く）
+    let mut mats = Vec::new();
+    let mut with_mate = Vec::new();
+    let mut lookup = |name: &str| -> Result<(Material, bool), String> {
+        if let Some(r) = file.mate.get(name) {
+            let mut rows = r.clone();
+            rows.sort_by(|x, y| x[0].total_cmp(&y[0]));
+            return Ok((
+                Material {
+                    name: name.into(),
+                    rows,
+                },
+                false,
+            ));
+        }
+        let g = glass(name)
+            .ok_or_else(|| format!("材料 {name} が膜ファイルにもガラスカタログにもない"))?;
+        let rows = (0..=460)
+            .map(|i| {
+                let wl = 0.2 + 0.005 * i as f64;
+                [wl, g.index(wl, 20.0, 1.0, false), 0.0]
+            })
+            .collect();
+        Ok((
+            Material {
+                name: name.into(),
+                rows,
+            },
+            true,
+        ))
+    };
+    for m in a.materials {
+        let (mat, from_glass) = lookup(m)?;
+        if from_glass {
+            with_mate.push(mats.len());
+        }
+        mats.push(mat);
+    }
+    let sub: Box<dyn Fn(f64) -> coating::C64> = match a.substrate.parse::<f64>() {
+        Ok(n) => Box::new(move |_| coating::C64::new(n, 0.0)),
+        Err(_) => {
+            let (m, _) = lookup(a.substrate)?;
+            Box::new(move |wl| m.index(wl))
+        }
+    };
+    let (lo, hi) = match a.layers.split_once("..") {
+        Some((x, y)) => (
+            x.trim()
+                .parse::<usize>()
+                .map_err(|_| format!("--layers {}", a.layers))?,
+            y.trim()
+                .parse::<usize>()
+                .map_err(|_| format!("--layers {}", a.layers))?,
+        ),
+        None => {
+            let n = a
+                .layers
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| format!("--layers {}", a.layers))?;
+            (n, n)
+        }
+    };
+    let o = Options {
+        materials: mats.clone(),
+        layers: (lo, hi),
+        starts: a.starts,
+        d_max: a.d_max,
+        ..Default::default()
+    };
+    let all = fit_all(&ts, &*sub, &o).map_err(|e| e.to_string())?;
+    let d = pick(&all, a.slack).ok_or("当てはめられない")?;
+    let lay = |d: &lensbench_core::coat_design::Design| -> Vec<Value> {
+        d.layers
+            .iter()
+            .map(|&(k, t)| json!({ "material": mats[k].name, "d_um": t }))
+            .collect()
+    };
+    let mut written = None;
+    if let Some(out) = a.out {
+        let note = format!(
+            "近似の膜: lensbench coat-design で分光の曲線 {} 点に合わせた（RMS {:.3e}、最大 {:.3e}）。\n\
+             曲線の外（位相・別の角度・硝材の側から）は元の膜と違いうる",
+            ts.len(),
+            d.rms,
+            d.max_err
+        );
+        let txt = format_lbcs(a.name, d, &mats, &with_mate, &note);
+        lensbench_core::vfs::write(out, txt.as_bytes())
+            .map_err(|e| format!("{}: {e}", out.display()))?;
+        written = Some(out.display().to_string());
+    }
+    Ok(json!({
+        "name": a.name,
+        "points": ts.len(),
+        "layers": lay(d),
+        "rms": d.rms,
+        "max_err": d.max_err,
+        "by_layers": all.iter().map(|x| json!({ "layers": x.layers.len(), "rms": x.rms, "max_err": x.max_err })).collect::<Vec<_>>(),
+        "out": written,
+    }))
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）

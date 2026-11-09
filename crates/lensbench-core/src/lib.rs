@@ -12,6 +12,7 @@ mod aim;
 pub mod analysis;
 pub mod batch;
 pub mod catalog;
+pub mod coat_design;
 pub mod coat_fit;
 pub mod coating;
 pub mod edit;

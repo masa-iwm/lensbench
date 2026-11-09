@@ -64,4 +64,23 @@ s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ
 - `lensbench coatings 系.zmx --json` の `auto_coatings` に、自動で読んだ膜とファイルが出る。
 - ファイルの中の膜の名前がファイル名と違う（大文字小文字を除いて）ときは止める。
 
+## 分光の曲線から近似の膜を作る（coat-design）
+
+暗号化された膜を測れないとき、メーカーの分光の曲線（反射率・透過率）に合う多層膜を当てはめて、近似の膜（`.lbcs`）にする。
+
+```
+lensbench coat-design curve.csv --name X --materials MGF2,TA2O5 --substrate N-BK7 \
+  --coating-file COATING.DAT --glass-dir glass --layers 1..12 --out X.lbcs --json
+```
+
+- CSV の列: `wl_um` か `wl_nm`、`angle_deg`（既定 0）、`pol`（`s`・`p`・`avg`、既定 avg）、`quantity`（`R`・`T`、既定 R）、
+  `value`（0〜1）か `value_pct`（%）、`weight`（既定 1）。
+- 材料は外側（入射側）から繰り返す順。膜ファイルの MATE か、ガラスカタログのガラス（ガラスなら `.lbcs` に MATE の表も書く）。
+  基板は屈折率の数か、材料・ガラスの名前。
+- 層の数ごとに、乱数の初期値と、1 つ少ない層の数の最良に層を足したもの・2 つ少ない最良に別の材料の薄い層（針）を挟んだものから
+  Levenberg–Marquardt で厚さを合わせる（`lensbench_core::coat_design`）。いちばん合う RMS の (1 + `--slack`) 倍以内で
+  層のいちばん少ないものを選ぶ。JSON の `by_layers` に層の数ごとの RMS が出る。
+- 同じ曲線を出す設計は一つではない。合わせた曲線の外（位相、別の角度、別の基板、硝材の側から入るとき）は元の膜と違いうる。
+  斜めの曲線（45° の s・p など）があれば足すと外れが減る。
+
 ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。
