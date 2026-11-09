@@ -233,6 +233,15 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // （Ghost Focus Generator が保存するゴーストの系の戻りの面など。名前と nd・vd は保存時の値で、使わない）
             "GLAS" => {
                 s.glas = Some(t.get(1).unwrap_or(&"").to_string());
+                // ソルブ 4 は Offset（#10 Δnd、#11 Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
+                if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
+                    notimpl!(
+                        "zmx の面 {}: 材料の Offset ソルブ（Δnd {}、Δvd {}）",
+                        s.n,
+                        num(10)?,
+                        num(11)?
+                    );
+                }
                 if t.get(2) == Some(&"2") {
                     s.glas_pickup = Some(num(3)? as usize);
                 } else if t.get(1) == Some(&"___BLANK") {
@@ -507,6 +516,19 @@ fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> f64 {
 }
 
 impl Raw {
+    /// 自動の半直径を入れる前の lensbench が書いた .zmx か: VERS が lensbench の書く値（`VERS 260327 42 20120530 20120530`）で、
+    /// どの面にも MEMA の行がない。その頃の書き出しは固定の半直径も `DIAM 値 0`（自動）で書いていたので、半直径は
+    /// ファイルの値で固定として読む（[`LoadOptions::fixed_semi`] と同じ）。OpticStudio が保存した .zmx には全部の面に MEMA が
+    /// あり、今の lensbench の書き出しも MEMA を書くので、どちらもこれに当たらない
+    pub fn legacy_lensbench(&self) -> bool {
+        let vers = self.sysl.get("VERS").and_then(|v| v.first());
+        vers.is_some_and(|v| {
+            v.iter()
+                .map(|x| x.as_str())
+                .eq(["260327", "42", "20120530", "20120530"])
+        }) && !self.surfs.iter().any(|r| r.mema)
+    }
+
     /// マルチコンフィグの数（MNUM、なければ 1）
     pub fn configurations(&self) -> usize {
         (sys_f(self, "MNUM", 0, 1.0) as usize).max(1)
@@ -638,6 +660,8 @@ pub fn build(
         notimpl!("無焦点の像空間");
     }
     let ncfg = sys_f(raw, "MNUM", 0, 1.0) as i64;
+    // 以前の lensbench の書き出し: 半直径は固定として読む（[`Raw::legacy_lensbench`]）
+    let legacy = raw.legacy_lensbench();
     if !(1..=ncfg).contains(&cfg) {
         invalid!("構成 {cfg}（全 {ncfg}）");
     }
@@ -866,6 +890,7 @@ pub fn build(
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
             semi_auto: !opt.fixed_semi
+                && !legacy
                 && s.diam_mode.unwrap_or(0) == 0
                 && !ops.contains_key(&("SDIA".to_string(), ki)),
             ..Default::default()
@@ -1162,10 +1187,10 @@ pub fn build(
         5 => ApertureKind::Cone,
         _ => notimpl!("系の絞りタイプ {satp}"),
     };
-    // MEMA の行のない .zmx（OpticStudio 以外が書いたもの・古い形式）では、OpticStudio 2026 R1 は読込で、半直径を固定した
-    // 玉の面（前か後ろがガラス）に浮動開口（FLAP）を足してける（付属のサンプルと自作の系で確かめた。空気どうしの面・
-    // MEMA のある .zmx には足さない）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
-    if !raw.surfs.iter().any(|r| r.mema) {
+    // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
+    // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。
+    // 以前は MEMA のない .zmx だけとしていた）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
+    {
         let glass = |m: &Option<String>| {
             m.as_deref()
                 .is_some_and(|g| !g.is_empty() && !g.eq_ignore_ascii_case("MIRROR"))

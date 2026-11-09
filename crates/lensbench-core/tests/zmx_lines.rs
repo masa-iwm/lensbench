@@ -438,10 +438,9 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
     .is_err());
 }
 
-/// 固定の半直径の浮動開口（OpticStudio 2026 R1 の読込と同じ）: MEMA の行のない .zmx の玉の面だけ。MEMA のある .zmx・
-/// 空気どうしの面はそのまま
+/// 固定の半直径の浮動開口（OpticStudio 2026 R1 の読込と同じ）: MEMA の行の有無によらず玉の面に付ける。空気どうしの面はそのまま
 #[test]
-fn fixed_semi_diameter_becomes_floating_aperture_in_legacy_files() {
+fn fixed_semi_diameter_becomes_floating_aperture() {
     use lensbench_core::surface::Aperture;
     let txt = |mema: bool| {
         let m = if mema { "  MEMA 6 0 0 0 1 \"\"\n" } else { "" };
@@ -452,16 +451,20 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 40\n  DIAM 5.5 1 0 0 1 \"\"\n{m}\
 SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         )
     };
-    let s = build(&txt(false));
-    assert_eq!(s.surfaces[1].ap, Aperture::None, "空気どうしの絞り");
-    assert!(matches!(s.surfaces[2].ap, Aperture::Floating { .. }));
-    assert!(matches!(s.surfaces[3].ap, Aperture::Floating { .. }));
-    let s = build(&txt(true));
-    for j in 1..=3 {
+    for mema in [false, true] {
+        let s = build(&txt(mema));
         assert_eq!(
-            s.surfaces[j].ap,
+            s.surfaces[1].ap,
             Aperture::None,
-            "MEMA のある .zmx の面 {j}"
+            "空気どうしの絞り（MEMA {mema}）"
+        );
+        assert!(
+            matches!(s.surfaces[2].ap, Aperture::Floating { .. }),
+            "MEMA {mema}"
+        );
+        assert!(
+            matches!(s.surfaces[3].ap, Aperture::Floating { .. }),
+            "MEMA {mema}"
         );
     }
 }

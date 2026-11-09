@@ -20,7 +20,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   .zmx の構成番号 `config` など、ブロックの JSON の項目）、`project` は系の値（`object_distance`・`aperture`・`fields` など）。
   CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand_state`。
 - 自動の半径: 面の `semi` を `"auto"` にすると、半径を光線から求める（OpticStudio の Automatic と同じ決め方: 全視野・全波長の
-  瞳の縁の光線の高さの最大。回転対称な系は視野の向きの上下 2 本、そうでない系は縁の 8 本）。系やパラメータを変えるたびに求め直し、
+  瞳の縁の光線の高さの最大。回転対称な系は視野の値 (x, y) の向きの上下 2 本、そうでない系は縁の 8 本）。系やパラメータを変えるたびに求め直し、
   描画・機構部品の検査・書き出し・Floating 開口に使う。`surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi_auto": true`、
   .zmx の `DIAM 値 0`（自動）も同じ。カタログの玉の半径はファイルの値で固定
 - 面の値の上書き（`surface_edits`）: `[{"block": "L1", "surface": 1, "fields": {"r": -40, "semi": 8}}]` のように、ブロック `id` の
@@ -110,6 +110,11 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   エッジの 10〜90 % の幅 `width_nm`、斜め入射のエッジのずれ λ(θ) = λ0·√(1 − (sinθ/neff)²) の `neff`（2）、反射は 1 − T
   （`absorptive` で 0）。ダイクロイック BS は BS の `coat` にロングパス・ショートパスを書くと、波長で T・R の経路の強度が分かれる。
   色ガラス・吸収型 ND は、内部透過率（AGF の IT 行）のあるガラスでも表せる（厚さに応じた吸収）。
+  理想の形の表は入射角 0〜75°、`curve`・`nd` は 0〜89° で作る。表の角度の範囲より大きい入射角の光線は、表の端の値を使わず
+  誤り（「入射角 … が表の範囲の外」）で止まる（`table` は書いた行の角度の範囲）。
+  .zmx に書き出すと、これらの膜は表（TABLE）にして `.zmx` の隣の `名前_coat.dat`（COATING.DAT 形式。系の膜ファイルがあれば
+  その中身も入れる）に書き、COFN はそのファイルを指す。lensbench は `.zmx` のフォルダから読む。OpticStudio で開くときは
+  このファイルを OpticStudio の Coatings フォルダに写す。
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・

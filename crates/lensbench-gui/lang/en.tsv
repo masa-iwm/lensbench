@@ -822,3 +822,17 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 要素が無い（消したか名前が変わった）。選び直してください	The element is gone (removed or renamed). Choose it again
 欄と同じ項目の JSON	JSON with the same items as the fields
 量・構成・遅延などは「⚙ 設定」の欄で（CLI のサブコマンドと同じ引数）	Set the quantity, configurations, delay and so on in ⚙ Settings (same arguments as the CLI subcommand)
+ブラウザに残したファイルを消す（{} 個、{} MB）…	Clear files kept in the browser ({} files, {} MB)…
+読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る	Loaded files and user catalogs stay in the browser after the page is closed
+ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？	Delete all loaded files and user catalogs kept in the browser?
+カタログのファイルをダウンロードする	Download the catalog file
+別のタブに出す	Open in a new browser tab
+ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します	The browser blocked the new tab (allow pop-ups to open analysis panels in their own tabs). Showing it as a window inside the page instead
+元のタブに戻す	Back to the main tab
+元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。	The main tab was closed, so this panel can no longer compute. Close this tab and reopen the main page.
+元のタブを待っています…	Waiting for the main tab…
+元のタブの返事を待っています。元のタブが同じ窓の裏にあると、ブラウザはそのタブを止めます。このタブを別の窓に引き出すと、両方を並べて使えます。	Waiting for the main tab. Browsers pause tabs hidden behind another tab in the same window; drag this tab out into its own window to use both side by side.
+カタログレンズ（読み込み中…）	Catalog lenses (loading…)
+ガラス（読み込み中…）	Glasses (loading…)
+カタログレンズを読み込んでいます（数万枚あると数十秒かかります）	Loading catalog lenses (tens of thousands of lenses take tens of seconds)
+ガラスカタログを読み込んでいます	Loading glass catalogs

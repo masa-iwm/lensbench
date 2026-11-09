@@ -442,6 +442,8 @@ const PAR_MIN_RAYS: usize = 512;
 const PAR_CHUNK: usize = 256;
 /// 実光線エイミングで当てはめの初期値を使う本数（格子の光線を解く分より得になる目安）
 const AIM_FIT_MIN: usize = 1024;
+/// 頂点の尖った面がある系の瞳を求める主光線の視野 [°]（[`System::cusp_pupil`]）
+const CUSP_FIELD_DEG: f64 = 0.01;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -546,10 +548,70 @@ pub(crate) struct Keep {
 enum Starts {
     Done(Vec<(V3, V3)>),
     Pupil {
-        spec: ObjSpec,
+        geom: StartGeom,
         ex: Vec<f64>,
         ey: Vec<f64>,
     },
+}
+
+/// [`System::start_ray`] のうち瞳の点によらない量（物体の座標系、入射瞳の位置、平行光の方向・物点）。
+/// 光線ごとに座標系・近軸量を引き直さないよう、1 回の追跡で 1 度だけ求める。値は同じ式・同じ順なので同じビット
+#[derive(Clone, Copy)]
+struct StartGeom {
+    o1: V3,
+    r0: M3,
+    z: f64,
+    kind: StartKind,
+}
+
+#[derive(Clone, Copy)]
+enum StartKind {
+    /// 大域の方向
+    Dir(V3),
+    /// 大域の物点
+    Point(V3),
+}
+
+impl StartGeom {
+    fn new(s: &System, spec: ObjSpec) -> StartGeom {
+        let fr = s.frames();
+        let (o1, r0) = (fr.obj.o, fr.obj.r);
+        let z = s.paraxial().enpp.min(ENPP_MAX);
+        let kind = match spec {
+            ObjSpec::Dir(d) => StartKind::Dir(mv(&r0, d)),
+            ObjSpec::Point(pt) => {
+                let f0 = fr.surf[0].expect("有限物体の座標系");
+                // 物体面が平面でない形（Tilted など）なら物点はその面の上（OpticStudio と同じ）
+                let d0 = &s.surfaces[0];
+                let z0 = if crate::freeform::is_freeform(d0.typ) {
+                    crate::freeform::sag_xy(d0, pt[0], pt[1]).0
+                } else {
+                    0.0
+                };
+                StartKind::Point(add(f0.o, mv(&f0.r, [pt[0], pt[1], z0])))
+            }
+        };
+        StartGeom { o1, r0, z, kind }
+    }
+
+    #[inline]
+    fn ray(&self, ex: f64, ey: f64) -> (V3, V3) {
+        let (o1, r0) = (self.o1, &self.r0);
+        let e = add(o1, mv(r0, [ex, ey, self.z]));
+        match self.kind {
+            StartKind::Dir(d) => {
+                let p = sub(e, scale(d, dot(sub(e, o1), d)));
+                (p, d)
+            }
+            StartKind::Point(p) => {
+                let mut k = sub(e, p);
+                if dot(k, col(r0, 2)) < 0.0 {
+                    k = scale(k, -1.0);
+                }
+                (p, normalize(k))
+            }
+        }
+    }
 }
 
 impl Starts {
@@ -561,10 +623,10 @@ impl Starts {
     }
 
     #[inline]
-    fn get(&self, s: &System, i: usize) -> (V3, V3) {
+    fn get(&self, i: usize) -> (V3, V3) {
         match self {
             Starts::Done(v) => v[i],
-            Starts::Pupil { spec, ex, ey } => s.start_ray(*spec, ex[i], ey[i]),
+            Starts::Pupil { geom, ex, ey } => geom.ray(ex[i], ey[i]),
         }
     }
 }
@@ -1127,11 +1189,8 @@ impl System {
                         && (crate::freeform::is_freeform(d.typ)
                             || d.grin.as_deref().is_some_and(|g| !g.symmetric()))
                 });
-                let mut z = [0.0; 2];
-                for (i, h) in [2e-4, 1e-4].iter().enumerate() {
-                    let r1 = self.trace_novig(0.0, *h, &[0.0], &[0.0]);
-                    let (p1, k1) = (r1.rays[0].xyz, r1.rays[0].lmn);
-                    z[i] = if free {
+                let cross_z = |p1: V3, k1: V3| -> f64 {
+                    if free {
                         // Zernike・Grid Sag・傾けた GRIN の面を含む系は y-z 面で交わる点（3 次元の最近点だと、
                         // 面の傾きの項で主光線が x にも振れる系でずれる。OpticStudio 26.1 の EXPP と、鏡 1 枚の
                         // Z2 で 3e-12、G3 で 8e-7 一致。非公開側の照合データ）
@@ -1145,12 +1204,59 @@ impl System {
                         let (a, b, c) = (dot(k0, k0), dot(k0, k1), dot(k1, k1));
                         let (d, f) = (dot(k0, w0), dot(k1, w0));
                         add(p0, scale(k0, (b * f - c * d) / (a * c - b * b)))[2]
+                    }
+                };
+                if self.cusp_pupil() {
+                    // 頂点の尖った面がある系: OpticStudio と同じく視野 0.01° の実主光線 1 本（外挿しない。外挿すると
+                    // 尖りの傾きの分が消える）。その光線の高さが絞りの後のどこかの面で近軸の主光線と逆の符号になれば
+                    // （尖りで曲がって軸を横切る）、視野を 1/100 にした光線で求め直す
+                    let yc = &self.paraxial().chief.0;
+                    let (s, img) = (self.stop(), self.image());
+                    let chief = |deg: f64| {
+                        self.trace_spec(
+                            ObjSpec::Dir(normalize([0.0, deg.to_radians().tan(), 1.0])),
+                            &[0.0],
+                            &[0.0],
+                            self.primary,
+                            Some([0.0; 5]),
+                            None,
+                            true,
+                            None,
+                        )
                     };
+                    let mut r1 = chief(CUSP_FIELD_DEG);
+                    let flipped = r1
+                        .rec
+                        .iter()
+                        .any(|q| q.surf > s && q.surf < img && q.xyz[0][1] * yc[q.surf] < 0.0);
+                    if flipped {
+                        r1 = chief(CUSP_FIELD_DEG / 100.0);
+                    }
+                    e = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
+                } else {
+                    let mut z = [0.0; 2];
+                    for (i, h) in [2e-4, 1e-4].iter().enumerate() {
+                        let r1 = self.trace_novig(0.0, *h, &[0.0], &[0.0]);
+                        z[i] = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
+                    }
+                    e = (4.0 * z[1] - z[0]) / 3.0;
                 }
-                e = (4.0 * z[1] - z[0]) / 3.0;
             }
             e
         })
+    }
+
+    /// r の 1 次の項（β1、頂点が尖る）がある Odd Asphere の面を含む、無限遠物体・角度の視野の系なら true。
+    /// OpticStudio 2026 R1.01 はこの系の瞳を、視野 0.01° の実主光線 1 本と、軸上の視野の +y 側だけの瞳座標 1e-3 の
+    /// 光線 1 本で求める（尖りの傾き β1 がそのまま瞳の位置・径に効く。β1 = ±1e-3・1e-5、入射瞳径 10・20、
+    /// 最大視野 2・5・10° の自作の系で EXPP・EXPD が 1e-5 mm 一致。非公開側の照合データ）。
+    /// 外挿や ±両側の光線で求める極限の値とは違う
+    pub(crate) fn cusp_pupil(&self) -> bool {
+        self.infinite()
+            && self.field_type == FieldType::Angle
+            && self.surfaces.iter().any(|d| {
+                !d.ignore && d.typ == SurfType::OddAsph && d.asph.first().is_some_and(|&b| b != 0.0)
+            })
     }
 
     /// 瞳の算出用: ケラレ係数を掛けずに主波長で追う（瞳は系の性質で、視野のケラレ係数とは無関係）
@@ -1177,7 +1283,9 @@ impl System {
             if (self.aiming == Aiming::Off && self.symmetric()) || !e.is_finite() {
                 self.paraxial().expd
             } else {
-                let dl = 1e-4;
+                // 頂点の尖った面がある系は OpticStudio と同じく +y 側の瞳座標 1e-3 の光線だけ（[`System::cusp_pupil`]）
+                let cusp = self.cusp_pupil();
+                let dl = if cusp { 1e-3 } else { 1e-4 };
                 let r = self.trace_novig(0.0, 0.0, &[0.0, 0.0, 0.0], &[0.0, dl, -dl]);
                 let p: Vec<V3> = r.rays.iter().map(|x| x.xyz).collect();
                 let k: Vec<V3> = r.rays.iter().map(|x| x.lmn).collect();
@@ -1186,7 +1294,11 @@ impl System {
                 let q: Vec<V3> = (0..3)
                     .map(|i| add(p[i], scale(k[i], dot(sub(cc, p[i]), c) / dot(k[i], c))))
                     .collect();
-                norm(sub(q[1], q[2])) / dl
+                if cusp {
+                    2.0 * norm(sub(q[1], q[0])) / dl
+                } else {
+                    norm(sub(q[1], q[2])) / dl
+                }
             }
         })
     }
@@ -1284,6 +1396,17 @@ impl System {
             FieldType::ObjH => return Ok(ObjSpec::Point([x, y])),
         };
         if self.infinite() {
+            // 角度の視野が 90° を超えると光は物体側の後ろから来る（方向余弦 n < 0。OpticStudio と同じ）。
+            // tan のままでは向きが反対になるので符号を戻す。ちょうど 90° は向きが決まらない
+            if self.field_type == FieldType::Angle {
+                let c = x.to_radians().cos() * y.to_radians().cos();
+                if c == 0.0 || !c.is_finite() {
+                    notimpl!("角度の視野 ({x}°, {y}°): ちょうど 90° の視野");
+                }
+                if c < 0.0 {
+                    return Ok(ObjSpec::Dir(normalize([-tx, -ty, -1.0])));
+                }
+            }
             return Ok(ObjSpec::Dir(normalize([tx, ty, 1.0])));
         }
         let l = self.surfaces[0].t + par.enpp;
@@ -1401,33 +1524,7 @@ impl System {
     // ---------------------------------------------------------------------------------- 光線
     /// 入射瞳面の点 (ex, ey) [mm] を通る光線の開始位置・方向（大域）
     pub fn start_ray(&self, spec: ObjSpec, ex: f64, ey: f64) -> (V3, V3) {
-        let fr = self.frames();
-        let (o1, r0) = (fr.obj.o, fr.obj.r);
-        let par = self.paraxial();
-        let e = add(o1, mv(&r0, [ex, ey, par.enpp.min(ENPP_MAX)]));
-        match spec {
-            ObjSpec::Dir(d) => {
-                let d = mv(&r0, d);
-                let p = sub(e, scale(d, dot(sub(e, o1), d)));
-                (p, d)
-            }
-            ObjSpec::Point(pt) => {
-                let f0 = fr.surf[0].expect("有限物体の座標系");
-                // 物体面が平面でない形（Tilted など）なら物点はその面の上（OpticStudio と同じ）
-                let d0 = &self.surfaces[0];
-                let z0 = if crate::freeform::is_freeform(d0.typ) {
-                    crate::freeform::sag_xy(d0, pt[0], pt[1]).0
-                } else {
-                    0.0
-                };
-                let p = add(f0.o, mv(&f0.r, [pt[0], pt[1], z0]));
-                let mut k = sub(e, p);
-                if dot(k, col(&r0, 2)) < 0.0 {
-                    k = scale(k, -1.0);
-                }
-                (p, normalize(k))
-            }
-        }
+        StartGeom::new(self, spec).ray(ex, ey)
     }
 
     /// 瞳座標 1 が狙う絞りの半径 (rx, ry)。符号つき: 入射瞳の上端を通る近軸光線が絞りで負の側に来る系
@@ -1516,7 +1613,7 @@ impl System {
         let st = match st {
             Starts::Done(v) => v,
             Starts::Pupil { .. } => {
-                let start = |i: usize| st.get(self, i);
+                let start = |i: usize| st.get(i);
                 let n = st.len();
                 if n >= PAR_MIN_RAYS && !crate::par::sequential() {
                     (0..n)
@@ -1582,7 +1679,14 @@ impl System {
                 if self.aiming != Aiming::Off {
                     self.aim(spec, &qx, &qy, &mut ex, &mut ey, &mut fail, w);
                 }
-                (Starts::Pupil { spec, ex, ey }, fail)
+                (
+                    Starts::Pupil {
+                        geom: StartGeom::new(self, spec),
+                        ex,
+                        ey,
+                    },
+                    fail,
+                )
             }
             Launch::Stop { spec, x, y } => {
                 let (st, fail) = self.aim_stop(spec, x, y, w);
@@ -1788,7 +1892,7 @@ impl System {
         }
         let ptrs = SoaPtrs::new(&mut rec_out, slot, n);
         let one = |i: usize| {
-            let (p, k) = starts.get(self, i);
+            let (p, k) = starts.get(i);
             let mut row = SoaRow { out: &ptrs, i };
             let rec = if record { Some(&mut row) } else { None };
             // 偏光: 物体の座標系の (Ex, Ey, 0) を光線に垂直な面へ射影する（規格化しない、OpticStudio と同じ）
@@ -1851,7 +1955,7 @@ impl System {
             let group = |(b, ((ro, po), ko)): (usize, ((Out<RayOut>, Out<V3>), Out<V3>))| {
                 // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
                 let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
-                let start = idx.map(|i| starts.get(self, i));
+                let start = idx.map(|i| starts.get(i));
                 let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
                 let mut sink = SoaLanes {
                     out: &ptrs,
@@ -2141,9 +2245,10 @@ impl System {
         let s = self.stop();
         let fr = self.frames();
         let r0 = fr.obj.r;
+        let geom = StartGeom::new(self, spec);
         let start = |v: [f64; 2]| -> (V3, V3) {
             match spec {
-                ObjSpec::Dir(_) => self.start_ray(spec, v[0], v[1]),
+                ObjSpec::Dir(_) => geom.ray(v[0], v[1]),
                 ObjSpec::Point(pt) => {
                     let f0 = fr.surf[0].expect("有限物体の座標系");
                     let p = add(f0.o, mv(&f0.r, [pt[0], pt[1], 0.0]));
@@ -2258,8 +2363,9 @@ impl System {
             .fold(1.0f64, |m, v| m.max(v.abs()));
         let h = 1e-7 * scale_;
         let lim = tol * rx.max(ry).max(1.0);
+        let geom = StartGeom::new(self, spec);
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
-            let (p, k) = self.start_ray(spec, v[0], v[1]);
+            let (p, k) = geom.ray(v[0], v[1]);
             let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
             [r.xyz[0], r.xyz[1]]
         };
@@ -2279,7 +2385,7 @@ impl System {
         const L: usize = batch::L;
         let plan = batch::Plan::new(self, fr, w, 1, s, false);
         let at_stop_l = |v: &[[f64; 2]; L]| -> [[f64; 2]; L] {
-            let st = v.map(|v| self.start_ray(spec, v[0], v[1]));
+            let st = v.map(|v| geom.ray(v[0], v[1]));
             let r =
                 batch::trace_lanes::<batch::NoRec>(&plan, &st.map(|s| s.0), &st.map(|s| s.1), None);
             std::array::from_fn(|l| [r[l].xyz[0], r[l].xyz[1]])
@@ -2325,8 +2431,16 @@ impl System {
         };
         // 光線は互いに独立なので、本数が多ければ並列に（組は入力の順に固定、スレッド数によらず同じビット）
         // 光線 i の初期状態 init(i) から解き、(v, 解けなかったか) を返す
-        let res = |a: &AimLane| (a.v, a.failed(fail_tol));
-        let solve = |n: usize, init: &(dyn Fn(usize) -> AimLane + Sync)| -> Vec<([f64; 2], bool)> {
+        let res = |a: &AimLane| {
+            (
+                a.v,
+                a.failed(fail_tol),
+                !(a.q[0].is_finite() && a.q[1].is_finite()),
+            )
+        };
+        let solve = |n: usize,
+                     init: &(dyn Fn(usize) -> AimLane + Sync)|
+         -> Vec<([f64; 2], bool, bool)> {
             let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
             if plan.is_empty() || !batch::use_for(n) {
                 let f = |i: usize| res(&one(init(i)));
@@ -2363,18 +2477,32 @@ impl System {
         };
         let n = px.len();
         let tgt = |q: [f64; 2]| [q[0] * rx, q[1] * ry];
+        // 近軸の入射瞳から始めると光線が絞りまで届かない系（超広角など）: 主光線を視野の継続法で解き、
+        // 初期値をその入射瞳上の点だけずらす（届く系はずらさない。結果は今までと同じビット）
+        // 90° を超える視野（物体側の後ろから来る光）は、届いても光線を逆向きに進めた別の解のことがあるので必ず継続法で
+        let behind = matches!(spec, ObjSpec::Dir(d) if d[2] < 0.0);
+        let shift = if !behind && at_stop([0.0, 0.0]).iter().all(|v| v.is_finite()) {
+            None
+        } else {
+            self.aim_chief_continuation(spec, w)
+        };
+        if let Some(c) = shift {
+            ex.iter_mut().for_each(|v| *v += c[0]);
+            ey.iter_mut().for_each(|v| *v += c[1]);
+        }
+        let sh = shift.unwrap_or([0.0, 0.0]);
         // 本数が多いときは、格子の光線を先に解いて q → v を多項式で当てはめ、初期値と固定の逆ヤコビアンに使う
         let fit = if n >= AIM_FIT_MIN {
             AimFit::grid(px, py).and_then(|(c, hw, pts)| {
                 let epd = self.paraxial().epd;
                 let init = |i: usize| {
                     let p = pts[i];
-                    let v = [p[0] * epd / 2.0, p[1] * epd / 2.0];
+                    let v = [p[0] * epd / 2.0 + sh[0], p[1] * epd / 2.0 + sh[1]];
                     AimLane::new(tgt(p), v, None, v)
                 };
                 let v: Vec<_> = solve(pts.len(), &init)
                     .into_iter()
-                    .map(|(v, f)| (!f).then_some(v))
+                    .map(|(v, f, nan)| (!f && !nan).then_some(v))
                     .collect();
                 AimFit::new(c, hw, &pts, &v)
             })
@@ -2393,11 +2521,286 @@ impl System {
             }
             AimLane::new(tgt(q), v0, None, v0)
         };
-        let out = solve(n, &init);
-        for (i, (v, f)) in out.into_iter().enumerate() {
+        let mut out = solve(n, &init);
+        // 解けなかった光線（絞りまで届かなかったものも）は、解けた光線のうち瞳座標の最も近いものから、目標を少しずつ
+        // 動かす継続法で解き直す（近軸の初期値の光線が頂点面に平行になる折り曲げの系など）
+        let bad: Vec<usize> = (0..n).filter(|&i| out[i].1 || out[i].2).collect();
+        let good: Vec<usize> = (0..n).filter(|&i| !out[i].1 && !out[i].2).collect();
+        if !bad.is_empty() && !good.is_empty() {
+            let d2 = |i: usize, j: usize| (px[i] - px[j]).powi(2) + (py[i] - py[j]).powi(2);
+            let re: Vec<Option<[f64; 2]>> = bad
+                .iter()
+                .map(|&i| {
+                    let j = good
+                        .iter()
+                        .copied()
+                        .min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b)))?;
+                    self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
+                })
+                .collect();
+            for (&i, r) in bad.iter().zip(re) {
+                if let Some(v) = r {
+                    out[i] = (v, false, false);
+                }
+            }
+        }
+        for (i, (v, f, _)) in out.into_iter().enumerate() {
             fail[i] = f;
             (ex[i], ey[i]) = if f { (0.0, 0.0) } else { (v[0], v[1]) };
         }
+    }
+
+    /// 主光線（絞りの中心を通る光線）の入射瞳の座標を、物体（視野の角度・物点）を軸上から少しずつ動かす継続法で解く。
+    /// 近軸の入射瞳から始めると絞りに届かない超広角の系の光線エイミングの初期値に使う。解けなければ None
+    fn aim_chief_continuation(&self, spec: ObjSpec, w: usize) -> Option<[f64; 2]> {
+        let s = self.stop();
+        let fr = self.frames();
+        let (o1, r0) = (fr.obj.o, fr.obj.r);
+        // 無限遠物体の未知数は、面 1 の原点を通り光線に垂直な面の上の位置（入射瞳の面の座標は視野 90° で決まらなく
+        // なるので、90° を超える視野へもたどれるように）。光線はその面から十分前に戻した点から出し、各面まで光線の
+        // 向きに進む（逆向きに進んで交わる解を採らない）ものだけを認める
+        let n_path = match spec {
+            ObjSpec::Dir(d) if d[0] != 0.0 || d[1] != 0.0 => {
+                let ph = d[1].atan2(d[0]);
+                [-ph.sin(), ph.cos(), 0.0]
+            }
+            _ => [1.0, 0.0, 0.0],
+        };
+        let basis = |d: V3| -> (V3, V3) {
+            let u1 = normalize(sub(n_path, scale(d, dot(n_path, d))));
+            (u1, cross(d, u1))
+        };
+        let back = 1e3
+            + (1..self.image())
+                .map(|j| self.surfaces[j].t.abs())
+                .filter(|t| t.is_finite())
+                .sum::<f64>();
+        let nrec = (1..=s).filter(|&j| !self.surfaces[j].ignore).count();
+        let at = |sp: ObjSpec, v: [f64; 2]| -> [f64; 2] {
+            let (p, k) = match sp {
+                ObjSpec::Dir(d) => {
+                    let (u1, u2) = basis(d);
+                    let q = add(scale(u1, v[0]), scale(u2, v[1]));
+                    (add(o1, mv(&r0, sub(q, scale(d, back)))), mv(&r0, d))
+                }
+                ObjSpec::Point(_) => self.start_ray(sp, v[0], v[1]),
+            };
+            let mut rec = vec![trace::RecEntry::NAN; nrec];
+            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, Some(&mut rec));
+            if r.err != 0 {
+                return [f64::NAN; 2];
+            }
+            // 光路長が面ごとに減らない（光線の向きに進む）
+            let mut prev: f64 = 0.0;
+            for e in &rec {
+                if e.opl < prev - 1e-9 * prev.abs().max(1.0) {
+                    return [f64::NAN; 2];
+                }
+                prev = e.opl;
+            }
+            [r.xyz[0], r.xyz[1]]
+        };
+        let (rx, ry) = self.stop_radius();
+        let lim = 1e-12 * rx.abs().max(ry.abs()).max(1.0);
+        let h = 1e-7 * (self.paraxial().epd / 2.0).max(1.0);
+        let newton = |sp: ObjSpec, mut v: [f64; 2]| -> Option<[f64; 2]> {
+            let mut q = at(sp, v);
+            for _ in 0..60 {
+                if !(q[0].is_finite() && q[1].is_finite()) {
+                    return None;
+                }
+                if q[0].abs().max(q[1].abs()) <= lim {
+                    return Some(v);
+                }
+                let qx = at(sp, [v[0] + h, v[1]]);
+                let qy = at(sp, [v[0], v[1] + h]);
+                let j = [
+                    (qx[0] - q[0]) / h,
+                    (qy[0] - q[0]) / h,
+                    (qx[1] - q[1]) / h,
+                    (qy[1] - q[1]) / h,
+                ];
+                let det = j[0] * j[3] - j[1] * j[2];
+                let dv = [
+                    (j[3] * q[0] - j[1] * q[1]) / det,
+                    (-j[2] * q[0] + j[0] * q[1]) / det,
+                ];
+                if !(dv[0].is_finite() && dv[1].is_finite()) {
+                    return None;
+                }
+                // 光線が面から外れたら刻みを半分に
+                let mut t = 1.0;
+                loop {
+                    let vn = [v[0] - t * dv[0], v[1] - t * dv[1]];
+                    let qn = at(sp, vn);
+                    if qn[0].is_finite() && qn[1].is_finite() {
+                        v = vn;
+                        q = qn;
+                        break;
+                    }
+                    t *= 0.5;
+                    if t < 1e-6 {
+                        return None;
+                    }
+                }
+            }
+            (q[0].abs().max(q[1].abs()) <= lim).then_some(v)
+        };
+        // 軸上（主光線は入射瞳の中心）から物体を動かす
+        let step = |t: f64| -> ObjSpec {
+            match spec {
+                ObjSpec::Dir(d) => {
+                    let th = d[2].clamp(-1.0, 1.0).acos() * t;
+                    let ph = d[1].atan2(d[0]);
+                    ObjSpec::Dir([th.sin() * ph.cos(), th.sin() * ph.sin(), th.cos()])
+                }
+                ObjSpec::Point(p) => ObjSpec::Point([p[0] * t, p[1] * t]),
+            }
+        };
+        // 走査の範囲: 面 1 から絞りまでの面の半径の最大の 2 倍（なければ全長）
+        let span = (1..=s)
+            .map(|j| self.surfaces[j].semi)
+            .filter(|v| v.is_finite())
+            .fold(0.0f64, f64::max)
+            .max(1.0)
+            * 2.0;
+        let scan = |sp: ObjSpec| -> Option<[f64; 2]> {
+            let m = 400;
+            let mut best: Option<(f64, [f64; 2])> = None;
+            for i in 0..=m {
+                let v = [0.0, -span + 2.0 * span * i as f64 / m as f64];
+                let q = at(sp, v);
+                let e = q[0].hypot(q[1]);
+                if e.is_finite() && best.map_or(true, |b| e < b.0) {
+                    best = Some((e, v));
+                }
+            }
+            newton(sp, best?.1)
+        };
+        let mut v = [0.0, 0.0];
+        let mut t: f64 = 0.0;
+        let mut dt: f64 = 1.0 / 16.0;
+        while t < 1.0 {
+            let tn = (t + dt).min(1.0);
+            match newton(step(tn), v) {
+                Some(vn) => {
+                    v = vn;
+                    t = tn;
+                    dt = (dt * 1.5).min(0.25);
+                }
+                None => {
+                    dt *= 0.5;
+                    if dt < 1e-4 {
+                        // 解の枝が途切れた（視野 90° を越えると、光線が面 1 に当たる所が飛ぶ）: 少し先の視野で、
+                        // 継続法の面の中の直線（v1 = 0）を走査して初期値を探し直す
+                        let tn = (t + 1.0 / 64.0).min(1.0);
+                        v = scan(step(tn))?;
+                        t = tn;
+                        dt = 1.0 / 64.0;
+                    }
+                }
+            }
+        }
+        match spec {
+            // 入射瞳の面（物体の座標系の z = 近軸の入射瞳の位置）での座標に直す
+            ObjSpec::Dir(d) => {
+                let (u1, u2) = basis(d);
+                let q = add(scale(u1, v[0]), scale(u2, v[1]));
+                let zp = self.paraxial().enpp.min(ENPP_MAX);
+                let t = (zp - q[2]) / d[2];
+                let e = [q[0] + t * d[0], q[1] + t * d[1]];
+                (e[0].is_finite() && e[1].is_finite()).then_some(e)
+            }
+            ObjSpec::Point(_) => Some(v),
+        }
+    }
+
+    /// 入射瞳の座標 v0 で絞りの点 t0 を通る光線から、目標を t1 まで少しずつ動かして（継続法、各点はニュートン法）
+    /// t1 を通る光線の入射瞳の座標を解く。解けなければ None
+    fn aim_follow(
+        &self,
+        spec: ObjSpec,
+        w: usize,
+        v0: [f64; 2],
+        t0: [f64; 2],
+        t1: [f64; 2],
+    ) -> Option<[f64; 2]> {
+        let s = self.stop();
+        let fr = self.frames();
+        let at = |v: [f64; 2], tg: [f64; 2]| -> [f64; 2] {
+            let (p, k) = self.start_ray(spec, v[0], v[1]);
+            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
+            if r.err != 0 {
+                return [f64::NAN; 2];
+            }
+            [r.xyz[0] - tg[0], r.xyz[1] - tg[1]]
+        };
+        let (rx, ry) = self.stop_radius();
+        let lim = 1e-12 * rx.abs().max(ry.abs()).max(1.0);
+        let h = 1e-7 * (self.paraxial().epd / 2.0).abs().max(1.0);
+        let newton = |mut v: [f64; 2], tg: [f64; 2]| -> Option<[f64; 2]> {
+            let mut q = at(v, tg);
+            for _ in 0..60 {
+                if !(q[0].is_finite() && q[1].is_finite()) {
+                    return None;
+                }
+                if q[0].abs().max(q[1].abs()) <= lim {
+                    return Some(v);
+                }
+                let qx = at([v[0] + h, v[1]], tg);
+                let qy = at([v[0], v[1] + h], tg);
+                let j = [
+                    (qx[0] - q[0]) / h,
+                    (qy[0] - q[0]) / h,
+                    (qx[1] - q[1]) / h,
+                    (qy[1] - q[1]) / h,
+                ];
+                let det = j[0] * j[3] - j[1] * j[2];
+                let dv = [
+                    (j[3] * q[0] - j[1] * q[1]) / det,
+                    (-j[2] * q[0] + j[0] * q[1]) / det,
+                ];
+                if !(dv[0].is_finite() && dv[1].is_finite()) {
+                    return None;
+                }
+                let mut t = 1.0;
+                loop {
+                    let vn = [v[0] - t * dv[0], v[1] - t * dv[1]];
+                    let qn = at(vn, tg);
+                    if qn[0].is_finite() && qn[1].is_finite() {
+                        v = vn;
+                        q = qn;
+                        break;
+                    }
+                    t *= 0.5;
+                    if t < 1e-6 {
+                        return None;
+                    }
+                }
+            }
+            (q[0].abs().max(q[1].abs()) <= lim).then_some(v)
+        };
+        let mut v = v0;
+        let mut t: f64 = 0.0;
+        let mut dt: f64 = 1.0 / 8.0;
+        while t < 1.0 {
+            let tn = (t + dt).min(1.0);
+            let tg = [t0[0] + tn * (t1[0] - t0[0]), t0[1] + tn * (t1[1] - t0[1])];
+            match newton(v, tg) {
+                Some(vn) => {
+                    v = vn;
+                    t = tn;
+                    dt = (dt * 1.5).min(0.25);
+                }
+                None => {
+                    dt *= 0.5;
+                    if dt < 1e-4 {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(v)
     }
 
     /// 視野の光線を瞳座標 (px, py) で波長 w（既定は主波長）、面 last（既定は像面）まで追跡する

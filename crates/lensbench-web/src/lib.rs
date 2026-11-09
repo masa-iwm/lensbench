@@ -5,10 +5,96 @@
 //! 読み込んで [`start`] に渡す。
 //!
 //! 計算は Web Worker（`worker.js`）の中の同じ wasm で回す（[`worker_init`]・[`worker_call`]）。
+//!
+//! 別の入口（非公開版など）は、この crate を依存にした wasm の crate を作り、`#[wasm_bindgen(start)]` で
+//! カタログの形式・プラグインを登録して [`set_extra`] でファイルを足す（JS の口・ページはこの crate のまま）。
+//! スレッドありの版では、同じ wasm・同じメモリの見張りのスレッド（`monitor.js`）が、計算の途中で
+//! 中断・停止・進み具合の問い合わせを受ける（`monitor_*`）。
 
 /// 並列: rayon のスレッドを Web Worker で作る（JS の initThreadPool(n)）。作った後に threads_ready
 #[cfg(all(target_arch = "wasm32", feature = "threads"))]
 pub use wasm_bindgen_rayon::init_thread_pool;
+
+/// 別の入口（非公開版など）が足すファイルとカタログのフォルダ。[`set_extra`]
+#[derive(Default, Clone)]
+pub struct Extra {
+    /// 置き場に入れるファイル（パス、中身）。画面と計算の Web Worker の両方に入れる
+    pub files: Vec<(&'static str, &'static [u8])>,
+    /// 起動のときに読んで置き場に入れる、ファイルの束（ページからの相対の URL）。大きいデータを wasm に
+    /// 入れずに配る（Cloudflare Pages は 1 ファイル 25 MiB まで）。画面と計算の Web Worker がそれぞれ読む
+    /// （2 回目からはブラウザのキャッシュ）。束の形は [`unpack`]
+    pub packs: Vec<&'static str>,
+    /// 硝材のフォルダ（置き場のパス）
+    pub glass_dirs: Vec<String>,
+    /// レンズカタログのフォルダ（置き場のパス）
+    pub lens_dirs: Vec<String>,
+}
+
+static EXTRA: std::sync::Mutex<Option<Extra>> = std::sync::Mutex::new(None);
+
+/// 別の入口（この crate を依存にした wasm の crate）が、起動より前（`#[wasm_bindgen(start)]`）に、同梱する
+/// ファイルとフォルダを足す。カタログの形式・プラグインの登録も同じ所で行う
+pub fn set_extra(e: Extra) {
+    *EXTRA.lock().unwrap_or_else(|e| e.into_inner()) = Some(e);
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn extra() -> Extra {
+    EXTRA
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_default()
+}
+
+/// ファイルの束を解く: u32 の数、続けてファイルごとに（u32 の長さ＋パス（UTF-8）、u32 の長さ＋中身）。
+/// 数はすべてリトルエンディアン
+pub fn unpack(b: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
+    fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
+        if b.len() < n {
+            return Err("ファイルの束が途中で切れている".into());
+        }
+        let (x, rest) = b.split_at(n);
+        *b = rest;
+        Ok(x)
+    }
+    fn u32(b: &mut &[u8]) -> Result<usize, String> {
+        let x = take(b, 4)?;
+        Ok(u32::from_le_bytes([x[0], x[1], x[2], x[3]]) as usize)
+    }
+    let mut b = b;
+    let n = u32(&mut b)?;
+    let mut out = Vec::with_capacity(n.min(1 << 16));
+    for _ in 0..n {
+        let l = u32(&mut b)?;
+        let p = String::from_utf8(take(&mut b, l)?.to_vec()).map_err(|e| e.to_string())?;
+        let l = u32(&mut b)?;
+        out.push((p, take(&mut b, l)?));
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unpack_reads_the_python_layout() {
+        let mut b = Vec::new();
+        b.extend(2u32.to_le_bytes());
+        for (p, d) in [("/vendor/a.agf", &b"xy"[..]), ("/vendor/b", &b""[..])] {
+            b.extend((p.len() as u32).to_le_bytes());
+            b.extend(p.as_bytes());
+            b.extend((d.len() as u32).to_le_bytes());
+            b.extend(d);
+        }
+        let v = super::unpack(&b).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!((v[0].0.as_str(), v[0].1), ("/vendor/a.agf", &b"xy"[..]));
+        assert_eq!((v[1].0.as_str(), v[1].1), ("/vendor/b", &b""[..]));
+        for n in 0..b.len() {
+            assert!(super::unpack(&b[..n]).is_err());
+        }
+    }
+}
 
 #[cfg(target_arch = "wasm32")]
 mod web {
@@ -17,15 +103,45 @@ mod web {
 
     include!(concat!(env!("OUT_DIR"), "/samples.rs"));
 
+    /// URL の中身（画面でも Web Worker でも、その場所の fetch で）
+    async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
+        use js_sys::{Function, Promise, Reflect};
+        use wasm_bindgen_futures::JsFuture;
+        let g = js_sys::global();
+        let f: Function = Reflect::get(&g, &"fetch".into())?.dyn_into()?;
+        let r = JsFuture::from(f.call1(&g, &url.into())?.dyn_into::<Promise>()?).await?;
+        if !Reflect::get(&r, &"ok".into())?.as_bool().unwrap_or(false) {
+            return Err(JsValue::from_str(&format!("{url} を読めない")));
+        }
+        let ab: Function = Reflect::get(&r, &"arrayBuffer".into())?.dyn_into()?;
+        let buf = JsFuture::from(ab.call0(&r)?.dyn_into::<Promise>()?).await?;
+        Ok(js_sys::Uint8Array::new(&buf).to_vec())
+    }
+
+    /// 同梱のファイル・足したファイル・ファイルの束を置き場に入れる
+    async fn insert_all(extra: &super::Extra) -> Result<(), JsValue> {
+        let err = |e: std::io::Error| JsValue::from_str(&e.to_string());
+        for (p, b) in FILES.iter().chain(extra.files.iter()) {
+            lensbench_core::vfs::insert(p, b).map_err(err)?;
+        }
+        for url in &extra.packs {
+            let b = fetch_bytes(url).await?;
+            for (p, d) in
+                super::unpack(&b).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))?
+            {
+                lensbench_core::vfs::insert(p, d).map_err(err)?;
+            }
+        }
+        Ok(())
+    }
+
     /// 起動時に開く見本
     const FIRST: &str = "/lensbench/tests/refs/A0/system.zmx";
 
     /// Web Worker の中で始める（`worker.js`）。kind は受ける要求（0: serve と同じ、1: 下書き）
     #[wasm_bindgen]
-    pub fn worker_init(kind: u8) -> Result<(), JsValue> {
-        for (p, b) in FILES {
-            lensbench_core::vfs::insert(p, b).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        }
+    pub async fn worker_init(kind: u8) -> Result<(), JsValue> {
+        insert_all(&super::extra()).await?;
         lensbench_gui::web_worker::init(kind);
         Ok(())
     }
@@ -43,11 +159,38 @@ mod web {
         lensbench_gui::web_worker::call(req)
     }
 
+    /// 並列: 見張りのスレッド（`monitor.js`）を同じ wasm・同じメモリで始めるための [module, memory]
+    #[cfg(feature = "threads")]
+    #[wasm_bindgen]
+    pub fn worker_shared() -> js_sys::Array {
+        js_sys::Array::of2(&wasm_bindgen::module(), &wasm_bindgen::memory())
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む
+    #[wasm_bindgen]
+    pub fn monitor_cancel(id: u32) {
+        lensbench_gui::web_worker::cancel(id);
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、最適化・公差・差し替え探索を止める
+    #[wasm_bindgen]
+    pub fn monitor_stop(id: u32, what: &str) {
+        lensbench_gui::web_worker::stop(id, what);
+    }
+
+    /// 見張りのスレッドから: 最適化・公差・差し替え探索の進み具合（JSON）
+    #[wasm_bindgen]
+    pub fn monitor_progress() -> String {
+        lensbench_gui::web_worker::progress()
+    }
+
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {
-        for (p, b) in FILES {
-            lensbench_core::vfs::insert(p, b).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let extra = super::extra();
+        // 別のタブのパネル（計算しない）には同梱のデータは要らない
+        if !lensbench_gui::web_panel() {
+            insert_all(&extra).await?;
         }
         if let Some(f) = font {
             lensbench_core::vfs::insert(lensbench_gui::WEB_FONT, f)
@@ -68,13 +211,17 @@ mod web {
             })
             .map(String::from)
             .collect();
+        let mut glass_dirs = vec!["/lensbench/tests/glass".to_string()];
+        glass_dirs.extend(extra.glass_dirs);
+        let mut lens_dirs = vec![
+            "/lensbench/examples/lenses/LB".to_string(),
+            "/lensbench/examples/lenses/LBP".to_string(),
+        ];
+        lens_dirs.extend(extra.lens_dirs);
         let args = lensbench_gui::Args {
             open: Some(FIRST.into()),
-            glass_dirs: vec!["/lensbench/tests/glass".into()],
-            lens_dirs: vec![
-                "/lensbench/examples/lenses/LB".into(),
-                "/lensbench/examples/lenses/LBP".into(),
-            ],
+            glass_dirs,
+            lens_dirs,
             samples,
             ..Default::default()
         };

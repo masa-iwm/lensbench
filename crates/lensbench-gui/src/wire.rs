@@ -13,6 +13,8 @@ pub type Files = Vec<(String, Option<Vec<u8>>)>;
 /// 計算の側へ渡す要求
 #[derive(Debug, PartialEq)]
 pub struct Request {
+    /// 要求の番号（1 から。中断・停止をこの要求に限る、[`crate::worker::entry`]）
+    pub id: u32,
     pub threads: Option<usize>,
     pub calls: Vec<(String, Value)>,
     pub files: Files,
@@ -110,6 +112,7 @@ impl<'a> R<'a> {
 impl Request {
     pub fn encode(&self) -> Vec<u8> {
         let mut w = W::default();
+        w.u32(self.id as usize);
         w.u32(self.threads.map_or(0, |t| t + 1));
         w.u32(self.calls.len());
         for (m, p) in &self.calls {
@@ -122,6 +125,7 @@ impl Request {
 
     pub fn decode(b: &[u8]) -> Result<Request, String> {
         let mut r = R(b);
+        let id = r.u32()? as u32;
         let threads = r.u32()?.checked_sub(1);
         let n = r.u32()?;
         let mut calls = Vec::with_capacity(n.min(1 << 16));
@@ -131,6 +135,7 @@ impl Request {
         }
         let files = r.files()?;
         Ok(Request {
+            id,
             threads,
             calls,
             files,
@@ -204,6 +209,7 @@ mod tests {
     #[test]
     fn roundtrip() {
         let q = Request {
+            id: 7,
             threads: Some(0),
             calls: vec![
                 (
@@ -219,6 +225,7 @@ mod tests {
         };
         assert_eq!(Request::decode(&q.encode()).unwrap(), q);
         let q2 = Request {
+            id: 0,
             threads: None,
             calls: vec![],
             files: vec![],

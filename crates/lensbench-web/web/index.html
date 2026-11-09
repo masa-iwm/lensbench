@@ -42,7 +42,8 @@
       globalThis.lensbenchWorker = mt ? "worker.js?mt" : "worker.js";
       // 日本語のフォント（Noto Sans JP、SIL OFL 1.1）。読めなければ欧文だけで動かす
       const font = fetch("fonts/jp.ttf").then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
-      const lb = await import(mt ? "./mt/lensbench_web.js" : "./lensbench_web.js");
+      // 画面は 1 スレッドの版で足りる（mt/ を読むのは計算の Worker だけ）
+      const lb = await import("./lensbench_web.js");
       await lb.default();
       const f = await font;
       await lb.start("lensbench", f ? new Uint8Array(f) : undefined);

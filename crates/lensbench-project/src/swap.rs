@@ -118,6 +118,10 @@ pub struct SwapSpec {
     /// （カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）
     #[serde(default)]
     pub clear_aperture: bool,
+    /// ヤコビアン: "fd"（すべて中心差分、既定）か "auto"（解析的に求められる列は解析的に）。差し替え探索の
+    /// 変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で 4.3 倍、上位 1000 組は同じ組）
+    #[serde(default = "fd")]
+    pub jac: String,
 }
 
 fn spot() -> String {
@@ -128,6 +132,9 @@ fn centroid() -> String {
 }
 fn three() -> usize {
     3
+}
+fn fd() -> String {
+    "fd".into()
 }
 fn thirty() -> usize {
     30
@@ -252,6 +259,8 @@ impl<'a> SwapSearch<'a> {
         if spec.state.is_some() && !spec.states.is_empty() {
             return Err("state と states は同時に使えない".into());
         }
+        // 綴りの誤りは組ごとの失敗にせず、始める前に弾く
+        jac_mode(&spec.jac)?;
         if spec.states.is_empty() && !spec.state_vars.is_empty() {
             return Err("state_vars は states と一緒に使う".into());
         }
@@ -423,6 +432,7 @@ impl<'a> SwapSearch<'a> {
         }
         let s = systems[0].clone();
         let mut pr = Problem::new(systems.clone());
+        pr.jac = jac_mode(&self.spec.jac)?;
         // 共通の変数（全状態）と、状態ごとの変数（状態 k だけに効く）
         let mut specs: Vec<(&String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (v, None)).collect();
@@ -722,12 +732,21 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// すべての組を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
-    /// threads は [`par::with_threads`] と同じ
+    /// threads は [`par::with_threads_or_outer`] と同じ（None は外の指定を引き継ぐ）
     pub fn run(&self, threads: Option<usize>) -> Vec<Value> {
         let idx: Vec<usize> = (0..self.count()).collect();
-        let mut v = par::with_threads(threads, || par::map(&idx, |&i| self.eval(i)));
+        let mut v = par::with_threads_or_outer(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);
         v
+    }
+}
+
+/// 設定の jac（"fd"・"auto"）
+fn jac_mode(j: &str) -> Result<optim::JacMode, String> {
+    match j.to_ascii_lowercase().as_str() {
+        "auto" => Ok(optim::JacMode::Auto),
+        "fd" => Ok(optim::JacMode::FiniteDiff),
+        j => Err(format!("jac {j}（auto・fd）")),
     }
 }
 

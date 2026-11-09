@@ -32,6 +32,10 @@ mod theme;
 mod tol_panel;
 mod tour;
 mod view3d;
+#[cfg(target_arch = "wasm32")]
+mod web_store;
+#[cfg(target_arch = "wasm32")]
+mod web_tabs;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;
@@ -89,9 +93,37 @@ pub fn main() -> std::process::ExitCode {
 }
 
 /// ブラウザで GUI を起動する（Web 版）。系・ガラス・カタログのファイルは先に
-/// [`lensbench_core::vfs::insert`] で置き場に入れておき、そのパスを args に書く
+/// [`lensbench_core::vfs::insert`] で置き場に入れておき、そのパスを args に書く。
+/// 前に読み込んだファイル・ユーザーカタログ（ブラウザの IndexedDB に残したもの）はここで置き場に戻し、
+/// ユーザーカタログのフォルダ（`/user/catalogs`）があればレンズのフォルダに足す
 #[cfg(target_arch = "wasm32")]
 pub async fn start_web(
+    canvas: web_sys::HtmlCanvasElement,
+    mut args: Args,
+) -> Result<(), wasm_bindgen::JsValue> {
+    // 別のタブのパネルは計算しない（元のタブの結果を描くだけ）。ブラウザに残したファイルも要らない
+    if web_panel() {
+        return run_web(canvas, args).await;
+    }
+    // ここまでに入れた見本は計算の Web Worker も持っている。戻したファイルは最初の要求と一緒に渡す
+    worker::set_sync_base(lensbench_core::vfs::sync::seq());
+    web_store::restore().await;
+    // フォルダはファイルがあるときだけ（無いフォルダは読めないカタログになる。最初に保存したときに足す）
+    let d = web_store::USER_CATALOGS.to_string();
+    if lensbench_core::vfs::is_dir(&d) && !args.lens_dirs.contains(&d) {
+        args.lens_dirs.push(d);
+    }
+    run_web(canvas, args).await
+}
+
+/// Web 版: このページが別のタブのパネル（`?panel=`）か。そのときは同梱のデータも要らない
+#[cfg(target_arch = "wasm32")]
+pub fn web_panel() -> bool {
+    web_tabs::panel_of_location().is_some()
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn run_web(
     canvas: web_sys::HtmlCanvasElement,
     args: Args,
 ) -> Result<(), wasm_bindgen::JsValue> {

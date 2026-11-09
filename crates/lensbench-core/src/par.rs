@@ -80,6 +80,15 @@ pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Sen
     }
 }
 
+/// [`with_threads`] と同じだが、None のときは外の指定を引き継ぐ（`with_threads(Some(1), ..)` の中なら逐次のまま）。
+/// ライブラリの関数が「既定」の意味で None を受け取るときに使う（呼び出し側の `--threads 1` を打ち消さない）
+pub fn with_threads_or_outer<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Send) -> R {
+    match threads {
+        None if sequential() => f(),
+        t => with_threads(t, f),
+    }
+}
+
 /// 環境変数 LENSBENCH_THREADS（1 以上の整数）。最初に読んだ値を使い続ける
 pub fn env_threads() -> Option<usize> {
     static T: OnceLock<Option<usize>> = OnceLock::new();
