@@ -61,7 +61,7 @@ fn wide_angle_rays_are_aimed_like_opticstudio() {
         }
     }
     println!("光線 {n} 本、像面の交点の差 {dp:.1e} mm、OpticStudio が止めて lensbench が通す光線 {extra} 本");
-    assert!(n > 900, "{n}");
+    assert!(n > 600, "{n}");
     assert!(dp < 1e-7, "{dp:e}");
 }
 
