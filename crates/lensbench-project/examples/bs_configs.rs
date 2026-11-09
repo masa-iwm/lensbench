@@ -59,7 +59,7 @@ fn main() {
             for d in s.surfaces.iter_mut() {
                 d.coat.clear();
             }
-            for g in s.glasses.values_mut() {
+            for g in std::sync::Arc::make_mut(&mut s.glasses).values_mut() {
                 if g.catalog.eq_ignore_ascii_case("SCHOTT") {
                     g.catalog = "LBSCH".into();
                 }
