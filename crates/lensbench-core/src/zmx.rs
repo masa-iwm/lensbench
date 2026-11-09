@@ -233,6 +233,15 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // （Ghost Focus Generator が保存するゴーストの系の戻りの面など。名前と nd・vd は保存時の値で、使わない）
             "GLAS" => {
                 s.glas = Some(t.get(1).unwrap_or(&"").to_string());
+                // ソルブ 4 は Offset（#10 Δnd、#11 Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
+                if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
+                    notimpl!(
+                        "zmx の面 {}: 材料の Offset ソルブ（Δnd {}、Δvd {}）",
+                        s.n,
+                        num(10)?,
+                        num(11)?
+                    );
+                }
                 if t.get(2) == Some(&"2") {
                     s.glas_pickup = Some(num(3)? as usize);
                 } else if t.get(1) == Some(&"___BLANK") {
@@ -1143,10 +1152,10 @@ pub fn build(
         5 => ApertureKind::Cone,
         _ => notimpl!("系の絞りタイプ {satp}"),
     };
-    // MEMA の行のない .zmx（OpticStudio 以外が書いたもの・古い形式）では、OpticStudio 2026 R1 は読込で、半直径を固定した
-    // 玉の面（前か後ろがガラス）に浮動開口（FLAP）を足してける（付属のサンプルと自作の系で確かめた。空気どうしの面・
-    // MEMA のある .zmx には足さない）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
-    if !raw.surfs.iter().any(|r| r.mema) {
+    // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
+    // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。
+    // 以前は MEMA のない .zmx だけとしていた）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
+    {
         let glass = |m: &Option<String>| {
             m.as_deref()
                 .is_some_and(|g| !g.is_empty() && !g.eq_ignore_ascii_case("MIRROR"))

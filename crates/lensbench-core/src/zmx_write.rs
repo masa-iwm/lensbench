@@ -115,7 +115,9 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
     w(
         &mut o,
         format!(
-            "FTYP {ft} {} {nf} {} {} 0 {}",
+            // FTYP 種類 テレセントリック 視野の数 波長の数 正規化 Iterate Solves Afocal 視野の数（OpticStudio 2026 R1.01 の書き方。
+            // 8 番目は 3 番目と同じ数で、なくても読みは変わらない）
+            "FTYP {ft} {} {nf} {} {} 0 {} {nf}",
             if s.telecentric { 1 } else { 0 },
             s.wavelengths.len(),
             if s.field_norm == FieldNorm::Rect {
@@ -610,8 +612,8 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 ),
             },
         }
-        // 機械的な半直径（自動）。MEMA の行のない .zmx では OpticStudio が固定の半直径の玉の面に浮動開口を足すので、
-        // 書いておく（lensbench の読込も同じ）
+        // 機械的な半直径（自動。OpticStudio の保存と同じく書く）。半直径を固定した玉の面で開口のない面は、MEMA の行が
+        // あっても OpticStudio・lensbench の読込で浮動開口になる
         w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string());
         match d.ap {
             Aperture::None => {}
