@@ -1,0 +1,15 @@
+[package]
+name = "lensbench-verify"
+description = "Verification tests of lensbench plugins and analyses against reference data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-project = { path = "../lensbench-project" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+ndarray = "0.16"
+ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "num-complex-0_4"] }

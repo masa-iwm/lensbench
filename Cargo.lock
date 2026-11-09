@@ -628,6 +628,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-verify"
+version = "0.1.0"
+dependencies = [
+ "lensbench-core",
+ "lensbench-project",
+ "ndarray",
+ "ndarray-npy",
+ "serde_json",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
