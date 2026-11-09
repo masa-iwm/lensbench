@@ -188,7 +188,10 @@ mod web {
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {
         let extra = super::extra();
-        insert_all(&extra).await?;
+        // 別のタブのパネル（計算しない）には同梱のデータは要らない
+        if !lensbench_gui::web_panel() {
+            insert_all(&extra).await?;
+        }
         if let Some(f) = font {
             lensbench_core::vfs::insert(lensbench_gui::WEB_FONT, f)
                 .map_err(|e| JsValue::from_str(&e.to_string()))?;

@@ -826,3 +826,9 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る	Loaded files and user catalogs stay in the browser after the page is closed
 ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？	Delete all loaded files and user catalogs kept in the browser?
 カタログのファイルをダウンロードする	Download the catalog file
+別のタブに出す	Open in a new browser tab
+ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します	The browser blocked the new tab (allow pop-ups to open analysis panels in their own tabs). Showing it as a window inside the page instead
+元のタブに戻す	Back to the main tab
+元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。	The main tab was closed, so this panel can no longer compute. Close this tab and reopen the main page.
+元のタブを待っています…	Waiting for the main tab…
+元のタブの返事を待っています。元のタブが同じ窓の裏にあると、ブラウザはそのタブを止めます。このタブを別の窓に引き出すと、両方を並べて使えます。	Waiting for the main tab. Browsers pause tabs hidden behind another tab in the same window; drag this tab out into its own window to use both side by side.

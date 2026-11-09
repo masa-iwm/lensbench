@@ -131,6 +131,9 @@ pub enum Kind {
     Main,
     /// 下書き（[`Worker::preview`]）
     Preview,
+    /// 下書きと同じ。Web Worker は要求が来たときに作る（Web 版の別のタブのパネルは計算しない）
+    #[cfg(target_arch = "wasm32")]
+    Idle,
     /// テスト用の呼び出し
     #[cfg(test)]
     Test(CallFn),
@@ -141,6 +144,8 @@ impl Kind {
         match self {
             Kind::Main => main_call,
             Kind::Preview => preview_call,
+            #[cfg(target_arch = "wasm32")]
+            Kind::Idle => preview_call,
             #[cfg(test)]
             Kind::Test(f) => f,
         }
@@ -151,6 +156,8 @@ impl Kind {
     fn code(self) -> u8 {
         match self {
             Kind::Preview => 1,
+            #[cfg(target_arch = "wasm32")]
+            Kind::Idle => 1,
             _ => 0,
         }
     }
@@ -269,6 +276,12 @@ impl Worker {
     /// 別に回すので、解析を回している間も図とカタログが出る）
     pub fn preview(repaint: impl Fn() + Send + 'static) -> Worker {
         Self::with_call(None, repaint, false, Kind::Preview)
+    }
+
+    /// 計算しない Worker（Web 版の別のタブのパネル。要求を出せば下書きとして回す）
+    #[cfg(target_arch = "wasm32")]
+    pub fn idle() -> Worker {
+        Self::with_call(None, || {}, false, Kind::Idle)
     }
 
     fn with_call(
@@ -674,7 +687,9 @@ mod remote {
                 seq: BASE.with(|b| b.get()).unwrap_or_else(sync::seq),
                 echo: HashMap::new(),
             };
-            r.spawn();
+            if !matches!(kind, Kind::Idle) {
+                r.spawn();
+            }
             r
         }
 

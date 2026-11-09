@@ -34,6 +34,8 @@ mod tour;
 mod view3d;
 #[cfg(target_arch = "wasm32")]
 mod web_store;
+#[cfg(target_arch = "wasm32")]
+mod web_tabs;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;
@@ -99,6 +101,10 @@ pub async fn start_web(
     canvas: web_sys::HtmlCanvasElement,
     mut args: Args,
 ) -> Result<(), wasm_bindgen::JsValue> {
+    // 別のタブのパネルは計算しない（元のタブの結果を描くだけ）。ブラウザに残したファイルも要らない
+    if web_panel() {
+        return run_web(canvas, args).await;
+    }
     // ここまでに入れた見本は計算の Web Worker も持っている。戻したファイルは最初の要求と一緒に渡す
     worker::set_sync_base(lensbench_core::vfs::sync::seq());
     web_store::restore().await;
@@ -107,6 +113,20 @@ pub async fn start_web(
     if lensbench_core::vfs::is_dir(&d) && !args.lens_dirs.contains(&d) {
         args.lens_dirs.push(d);
     }
+    run_web(canvas, args).await
+}
+
+/// Web 版: このページが別のタブのパネル（`?panel=`）か。そのときは同梱のデータも要らない
+#[cfg(target_arch = "wasm32")]
+pub fn web_panel() -> bool {
+    web_tabs::panel_of_location().is_some()
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn run_web(
+    canvas: web_sys::HtmlCanvasElement,
+    args: Args,
+) -> Result<(), wasm_bindgen::JsValue> {
     eframe::WebRunner::new()
         .start(
             canvas,

@@ -272,6 +272,12 @@ struct Core {
     swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
     /// モンテカルロ公差のパネル
     tol: crate::tol_panel::TolPanel,
+    /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
+    rev: u64,
+    /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
+    relay: Option<bool>,
+    /// 元のタブが計算中か（別のタブのパネル）
+    relay_busy: bool,
 }
 
 pub struct App {
@@ -288,6 +294,12 @@ pub struct App {
     dragging_tab: Option<(u64, egui::Pos2)>,
     /// 画面の通し確認（--tour）
     tour: Option<Tour>,
+    /// Web 版: 別のタブに出した解析のパネル（元のタブ）
+    #[cfg(target_arch = "wasm32")]
+    tabs: Option<crate::web_tabs::Tabs>,
+    /// Web 版: このタブが別のタブのパネルなら、その口と、届いたパネル
+    #[cfg(target_arch = "wasm32")]
+    child: Option<(crate::web_tabs::Child, Option<Pane>)>,
 }
 
 /// 見本の名前（例題のプロジェクトはファイル名、tests/refs の系はフォルダの名前）
@@ -442,6 +454,7 @@ impl Core {
         self.file = None;
         self.summary = None;
         self.info = None;
+        self.rev += 1;
         self.built = None;
         self.built_combo = None;
         self.combo_path = None;
@@ -587,6 +600,11 @@ impl Core {
     /// 解析パネルを計算する（スポットの図なら光線も追跡する）
     fn run(&mut self, id: u64, cfg: &AnaCfg) {
         if self.summary.is_none() {
+            return;
+        }
+        // 別のタブのパネル: 元のタブに頼む
+        if let Some(r) = &mut self.relay {
+            *r = true;
             return;
         }
         match Self::analysis_params(cfg, self.cutoff()) {
@@ -773,6 +791,7 @@ impl Core {
     }
 
     fn take(&mut self, d: Done) {
+        self.rev += 1;
         let ms = d.ms;
         if let Some((method, e)) = d.error() {
             let text = format!("{method}: {e}");
@@ -1088,6 +1107,73 @@ impl Core {
 
     fn info_num(&self, k: &str) -> Option<f64> {
         self.info.as_ref().and_then(|i| i[k].as_f64())
+    }
+
+    /// Web 版: 別のタブのパネルに送る設定・系の概要・結果
+    #[cfg(target_arch = "wasm32")]
+    fn tab_snapshot(&self, id: u64, cfg: &AnaCfg) -> Value {
+        let res = self.results.get(&id).map(|r| {
+            json!({
+                "cmd": r.cmd,
+                "value": r.value,
+                "prev": r.prev,
+                "ms": r.ms,
+                "error": r.error,
+                "rays": r.rays.iter().map(|x| json!([x.field, x.wave, x.x, x.y])).collect::<Vec<_>>(),
+            })
+        });
+        json!({
+            "cfg": cfg,
+            "file": self.file,
+            "summary": self.summary,
+            "info": self.info,
+            "res": res,
+            "busy": self.worker.busy(),
+        })
+    }
+
+    /// Web 版: 元のタブから届いた系の概要・結果を当てる（別のタブのパネル）
+    #[cfg(target_arch = "wasm32")]
+    fn apply_snapshot(&mut self, id: u64, v: &Value) {
+        let some = |x: &Value| (!x.is_null()).then(|| x.clone());
+        self.file = v["file"].as_str().map(PathBuf::from);
+        self.summary = some(&v["summary"]);
+        self.info = some(&v["info"]);
+        self.relay_busy = v["busy"].as_bool().unwrap_or(false);
+        let r = &v["res"];
+        if r.is_null() {
+            self.results.remove(&id);
+            return;
+        }
+        let rays = r["rays"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|x| {
+                        let f = |k: usize| -> Vec<f64> {
+                            serde_json::from_value(x[k].clone()).unwrap_or_default()
+                        };
+                        plots::SpotRays {
+                            field: x[0].as_u64().unwrap_or(1) as usize,
+                            wave: x[1].as_u64().unwrap_or(1) as usize,
+                            x: f(2),
+                            y: f(3),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.results.insert(
+            id,
+            AnaRes {
+                cmd: r["cmd"].as_str().unwrap_or_default().to_string(),
+                value: some(&r["value"]),
+                prev: some(&r["prev"]),
+                ms: r["ms"].as_f64().unwrap_or(0.0),
+                rays,
+                error: r["error"].as_str().map(String::from),
+            },
+        );
     }
 
     // ---- パネル ----
@@ -2765,7 +2851,7 @@ impl Core {
         }
         ui.separator();
         let Some(r) = self.results.get(&id) else {
-            if !self.worker.busy() {
+            if !self.worker.busy() && !self.relay_busy {
                 self.run(id, cfg);
             }
             return;
@@ -3030,7 +3116,13 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _s: SurfaceIndex, _n: NodeIndex) {
-        if ui.button(tr("別の窓に出す（別モニターへ）")).clicked() {
+        // Web 版の解析のパネルはブラウザの別のタブに出す
+        let label = if cfg!(target_arch = "wasm32") && matches!(tab.kind, Kind::Analysis(_)) {
+            tr("別のタブに出す")
+        } else {
+            tr("別の窓に出す（別モニターへ）")
+        };
+        if ui.button(label).clicked() {
             self.to_window.push(tab.id);
             ui.close_menu();
         }
@@ -3132,10 +3224,29 @@ impl App {
         }
         i18n::set(s.lang);
         theme::apply(&cc.egui_ctx, &s.look);
-        let ctx = cc.egui_ctx.clone();
-        let worker = Worker::new(None, move || ctx.request_repaint());
-        let ctx2 = cc.egui_ctx.clone();
-        let preview = Worker::preview(move || ctx2.request_repaint());
+        // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない
+        #[cfg(target_arch = "wasm32")]
+        let panel = crate::web_tabs::panel_of_location();
+        #[cfg(target_arch = "wasm32")]
+        let (worker, preview) = if panel.is_some() {
+            (Worker::idle(), Worker::idle())
+        } else {
+            let ctx = cc.egui_ctx.clone();
+            let ctx2 = cc.egui_ctx.clone();
+            (
+                Worker::new(None, move || ctx.request_repaint()),
+                Worker::preview(move || ctx2.request_repaint()),
+            )
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let (worker, preview) = {
+            let ctx = cc.egui_ctx.clone();
+            let ctx2 = cc.egui_ctx.clone();
+            (
+                Worker::new(None, move || ctx.request_repaint()),
+                Worker::preview(move || ctx2.request_repaint()),
+            )
+        };
         let browser = Browser {
             combo: s.combo.clone(),
             ..Default::default()
@@ -3178,6 +3289,9 @@ impl App {
                 tol: Default::default(),
                 swap_ids: Vec::new(),
                 swap_file: None,
+                rev: 0,
+                relay: None,
+                relay_busy: false,
                 browser,
                 folders_open: false,
                 help_open: false,
@@ -3201,8 +3315,31 @@ impl App {
             keep: HashMap::new(),
             dragging_tab: None,
             tour: None,
+            #[cfg(target_arch = "wasm32")]
+            tabs: None,
+            #[cfg(target_arch = "wasm32")]
+            child: None,
         };
         app.apply_dock_translations();
+        // Web 版: 別のタブのパネルなら、計算しないで元のタブの結果を描く
+        #[cfg(target_arch = "wasm32")]
+        if let Some((id, sid)) = panel {
+            app.c.relay = Some(false);
+            app.child = Some((crate::web_tabs::Child::new(&cc.egui_ctx, id, sid), None));
+            return app;
+        }
+        // Web 版: 別のタブに出していた解析のパネルはドックに戻す（タブはクリックしないと開けない）
+        #[cfg(target_arch = "wasm32")]
+        if args.tour.is_none() {
+            app.tabs = Some(crate::web_tabs::Tabs::new(&cc.egui_ctx));
+            let (tabs, rest): (Vec<OsWin>, Vec<OsWin>) = std::mem::take(&mut app.windows)
+                .into_iter()
+                .partition(|w| matches!(w.pane.kind, Kind::Analysis(_)));
+            app.windows = rest;
+            for w in tabs {
+                app.dock.push_to_focused_leaf(w.pane);
+            }
+        }
         if let Some(d) = &args.tour {
             let _ = lensbench_core::vfs::create_dir_all(d);
             app.tour = Some(Tour::new(d.clone()));
@@ -3370,6 +3507,130 @@ impl App {
                     pos,
                     size: [720.0, 520.0],
                 });
+            }
+        }
+    }
+
+    /// Web 版（元のタブ）: 別の窓に出した解析のパネルを別のタブで開き、設定・結果をやりとりする。
+    /// タブを閉じたらドックに戻す
+    #[cfg(target_arch = "wasm32")]
+    fn web_tabs(&mut self, ctx: &egui::Context) {
+        use crate::web_tabs::Ev;
+        let Some(t) = self.tabs.as_mut() else {
+            return;
+        };
+        t.retain(&self.windows.iter().map(|w| w.pane.id).collect::<Vec<_>>());
+        for w in &self.windows {
+            let id = w.pane.id;
+            if matches!(w.pane.kind, Kind::Analysis(_))
+                && !t.is_open(id)
+                && !t.blocked.contains(&id)
+                && !t.open(id)
+            {
+                self.c.status = Status {
+                    text: tr("ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します").into(),
+                    error: true,
+                };
+            }
+        }
+        for e in t.events() {
+            match e {
+                Ev::Cfg(id, cfg, run) => {
+                    if let Some(w) = self.windows.iter_mut().find(|w| w.pane.id == id) {
+                        w.pane.kind = Kind::Analysis(cfg.clone());
+                        if run {
+                            self.c.run(id, &cfg);
+                        }
+                    }
+                }
+                Ev::Gone(id) => {
+                    if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
+                        let w = self.windows.remove(k);
+                        self.win_init.remove(&id);
+                        self.keep.remove(&id);
+                        self.dock.push_to_focused_leaf(w.pane);
+                    }
+                }
+            }
+        }
+        let busy = self.c.worker.busy();
+        for w in &self.windows {
+            if let Kind::Analysis(cfg) = &w.pane.kind {
+                if t.stale(w.pane.id, self.c.rev, busy) {
+                    let snap = self.c.tab_snapshot(w.pane.id, cfg);
+                    t.send(w.pane.id, self.c.rev, busy, snap);
+                }
+            }
+        }
+        // 子のタブを閉じたのに気づく
+        if t.any_open() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        }
+    }
+
+    /// Web 版（別のタブのパネル）: 元のタブから届いた結果を描き、設定の変更・計算の依頼を返す
+    #[cfg(target_arch = "wasm32")]
+    fn child_update(&mut self, ctx: &egui::Context) {
+        let App { c, child, .. } = self;
+        let Some((ch, pane)) = child.as_mut() else {
+            return;
+        };
+        if let Some(v) = ch.poll(ctx, pane.is_some()) {
+            if pane.is_none() {
+                if let Ok(cfg) = serde_json::from_value::<AnaCfg>(v["cfg"].clone()) {
+                    ch.got(&cfg);
+                    *pane = Some(Pane {
+                        id: ch.id,
+                        kind: Kind::Analysis(cfg),
+                    });
+                }
+            }
+            c.apply_snapshot(ch.id, &v);
+        }
+        let title = pane.as_ref().map(|p| p.title()).unwrap_or_default();
+        crate::web_tabs::set_title(&format!("lensbench — {title}"));
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(&title).strong());
+                if let Some(f) = c.file.as_ref().and_then(|f| f.file_name()) {
+                    ui.label(RichText::new(f.to_string_lossy()).small().weak());
+                }
+                if ui.small_button(tr("元のタブに戻す")).clicked() {
+                    crate::web_tabs::close_this();
+                }
+            });
+            if ch.closed {
+                ui.colored_label(
+                    ui.visuals().warn_fg_color,
+                    tr("元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。"),
+                );
+            }
+            if !ch.closed && ch.stalled(ctx) {
+                ui.label(
+                    RichText::new(tr("元のタブの返事を待っています。元のタブが同じ窓の裏にあると、ブラウザはそのタブを止めます。このタブを別の窓に引き出すと、両方を並べて使えます。"))
+                        .small()
+                        .color(ui.visuals().warn_fg_color),
+                );
+            }
+            ui.separator();
+            match pane.as_mut() {
+                Some(p) => c.pane_ui(ui, p),
+                None => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(tr("元のタブを待っています…"));
+                    });
+                }
+            }
+        });
+        if let Some(Pane {
+            kind: Kind::Analysis(cfg),
+            ..
+        }) = pane.as_ref()
+        {
+            let run = c.relay.replace(false) == Some(true);
+            if !ch.closed && ch.send(cfg, run) && run {
+                c.relay_busy = true;
             }
         }
     }
@@ -3982,6 +4243,11 @@ impl App {
         let mut wins = std::mem::take(&mut self.windows);
         let mut back = Vec::new();
         for (k, w) in wins.iter_mut().enumerate() {
+            // Web 版: 別のタブに出したパネルは描かない
+            #[cfg(target_arch = "wasm32")]
+            if self.tabs.as_ref().is_some_and(|t| t.is_open(w.pane.id)) {
+                continue;
+            }
             let vid = egui::ViewportId::from_hash_of(("lensbench-pane", w.pane.id));
             let (isize, ipos) = *self.win_init.entry(w.pane.id).or_insert((w.size, w.pos));
             let mut b = egui::ViewportBuilder::default()
@@ -4042,6 +4308,10 @@ impl App {
         }
         for k in back.into_iter().rev() {
             let w = wins.remove(k);
+            #[cfg(target_arch = "wasm32")]
+            if let Some(t) = &mut self.tabs {
+                t.blocked.remove(&w.pane.id);
+            }
             self.win_init.remove(&w.pane.id);
             self.keep.remove(&w.pane.id);
             self.dock.push_to_focused_leaf(w.pane);
@@ -4381,6 +4651,11 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(target_arch = "wasm32")]
+        if self.child.is_some() {
+            self.child_update(ctx);
+            return;
+        }
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.pick_and_open_when(false);
         crate::files::flush_downloads();
@@ -4552,6 +4827,8 @@ impl eframe::App for App {
             self.detach(id);
         }
         self.float_out(ctx);
+        #[cfg(target_arch = "wasm32")]
+        self.web_tabs(ctx);
         self.os_windows(ctx);
         let items = self.palette_items();
         if let Some(cmd) = self.palette.ui(ctx, &items) {
@@ -4580,8 +4857,18 @@ impl eframe::App for App {
         std::time::Duration::from_secs(2)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn persist_egui_memory(&self) -> bool {
+        self.child.is_none()
+    }
+
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if self.tour.is_some() {
+            return;
+        }
+        // 別のタブのパネルは元のタブの設定を上書きしない
+        #[cfg(target_arch = "wasm32")]
+        if self.child.is_some() {
             return;
         }
         self.c.s.combo = self.c.browser.combo.clone();
