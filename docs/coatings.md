@@ -46,7 +46,8 @@ r が急に変わるのに測った点が足りないので notimpl を返す（
 `PhaseConvention::Physical` にするとこの項を外す（どの β でも有限。OpticStudio とは s・p 共通の位相だけ違う）。
 `Physical` は層のわかる膜（膜ファイルの COAT）とモデルにだけ効き、実測表・TABLE には効かない。
 膜ファイルの表（TABLE）は OpticStudio と同じく角度を cosθ について線形に補間し、垂直入射（1 − cosθ < 1e-8）では
-s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ外で s に段差が出る）。`Coatings::table_normal` を
+s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ外で s に段差が出る）。屈折率の高い側から入る透過（硝材 → 空気の裏面など）は、
+表を出る側（屈折率の低い側）の屈折角で引く（OpticStudio と同じ。`tests/filter_os` で照合）。`Coatings::table_normal` を
 `TableNormal::Continuous` にすると、0° の行の s を p に置き換えて補間する（段差なし）。
 
 ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。

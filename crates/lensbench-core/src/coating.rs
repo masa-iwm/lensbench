@@ -1347,6 +1347,7 @@ impl Coatings {
                 xc: angs.iter().map(|a| -a.to_radians().cos()).collect(),
                 angs,
                 vals: Box::new(vals),
+                out: (!mirror && n1 > n2 && n2 > 0.0).then_some(n1 / n2),
             }
         } else if coat == "-" {
             Kind::Fresnel {
@@ -1690,6 +1691,8 @@ enum Kind {
         xc: Vec<f64>,
         /// 量ごと（Rs Rp Ts Tp と位相）の角度に対する値
         vals: Box<[Vec<f64>; 8]>,
+        /// 透過で屈折率の高い側から入るとき n1 / n2（表の角度は屈折率の低い側の角度で引く。OpticStudio と同じ）
+        out: Option<f64>,
     },
     Measured {
         key: String,
@@ -2063,7 +2066,17 @@ impl Iface {
                 angs,
                 xc,
                 vals,
+                out,
             } => {
+                // 屈折率の高い側から入る透過（硝材 → 空気など）は、出る側（低い側）の屈折角で表を引く
+                // （OpticStudio と同じ。tests/filter_os の裏面の膜で照合）
+                let c0 = match out {
+                    Some(r) => {
+                        let so = r * s0;
+                        ((1.0 - so) * (1.0 + so)).max(0.0).sqrt()
+                    }
+                    None => c0,
+                };
                 // 角度ではなく cosθ について線形（OpticStudio と同じ。偏光追跡で照合）
                 let x = -c0;
                 // 範囲の検査: 横軸 −cosθ が表の範囲の中なら角度も中（外れそうなときだけ角度にして調べる）

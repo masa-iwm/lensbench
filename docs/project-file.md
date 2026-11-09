@@ -104,7 +104,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   誤り（「入射角 … が表の範囲の外」）で止まる（`table` は書いた行の角度の範囲）。
   .zmx に書き出すと、これらの膜は表（TABLE）にして `.zmx` の隣の `名前_coat.dat`（COATING.DAT 形式。系の膜ファイルがあれば
   その中身も入れる）に書き、COFN はそのファイルを指す。lensbench は `.zmx` のフォルダから読む。OpticStudio で開くときは
-  このファイルを OpticStudio の Coatings フォルダに写す。
+  このファイルを OpticStudio の Coatings フォルダに写す。OpticStudio の TABLE は全部の角度で同じ波長の並びでないと、
+  エラーを出さずに表全体を R = T = 0 として読むので、書き出しでは全角度の波長の和集合に並べ直す（lensbench では同じ値）。
+  理想の形の表は点が多く（1 膜で 1,500〜3,600 波長 × 13 角度）、膜ファイルが大きいと OpticStudio の読み込みに数十秒かかる。
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
