@@ -139,6 +139,14 @@ pub enum Aperture {
         dx: f64,
         dy: f64,
     },
+    /// スパイダー（.zmx の SPID）: 中心（偏心 dx dy）から外へ無限に伸びる幅 width（全幅）の腕 arms 本を遮る。
+    /// 腕は 360° を等分し、最初の腕は +x の向き
+    Spider {
+        width: f64,
+        arms: u32,
+        dx: f64,
+        dy: f64,
+    },
 }
 
 #[derive(Debug, Clone)]

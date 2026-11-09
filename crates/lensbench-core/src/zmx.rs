@@ -81,6 +81,8 @@ pub struct RawSurf {
     pub elap: Option<Vec<f64>>,
     pub flap: Option<Vec<f64>>,
     pub obsc: Option<Vec<f64>>,
+    /// スパイダー（SPID 腕の幅 腕の本数 開口のピックアップの元の面）
+    pub spid: Option<Vec<f64>>,
     pub obdc: Option<Vec<f64>>,
     pub scbd: Vec<Vec<String>>,
     pub stop: bool,
@@ -309,6 +311,19 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "ELAP" => s.elap = Some(nums()?),
             "FLAP" => s.flap = Some(nums()?),
             "OBSC" => s.obsc = Some(nums()?),
+            // SPID 腕の幅（全幅） 腕の本数 開口のピックアップの元の面（OpticStudio 2026 R1.01 で実測）。ピックアップした面
+            // にも元の面の値と偏心（OBDC）が書かれるので、その値を使う
+            "SPID" => {
+                let v = nums()?;
+                let (w, n) = (
+                    v.first().copied().unwrap_or(0.0),
+                    v.get(1).copied().unwrap_or(0.0),
+                );
+                if !(w >= 0.0) || !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
+                    invalid!("zmx の面 {}: スパイダーの腕の幅 {w}・本数 {n}", s.n);
+                }
+                s.spid = Some(v);
+            }
             "OBDC" => s.obdc = Some(nums()?),
             "SCBD" => s.scbd.push(rest()),
             "STOP" => s.stop = true,
@@ -431,6 +446,10 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         .flatten()
         {
             a.iter_mut().for_each(|v| *v *= f);
+        }
+        // スパイダーは腕の幅だけ長さ
+        if let Some(w) = sf.spid.as_mut().and_then(|v| v.first_mut()) {
+            *w *= f;
         }
         // 面の前後の傾き偏心（SCBD 前後 順序 種類 偏心x 偏心y 傾きx 傾きy 傾きz）: 偏心だけ換算
         for row in sf.scbd.iter_mut() {
@@ -1619,6 +1638,13 @@ fn aperture(s: &RawSurf, d: &mut Surface, ops: &HashMap<(String, i64), String>) 
         Aperture::Obsc {
             min: g(c, 0),
             max: g(c, 1),
+            dx,
+            dy,
+        }
+    } else if let Some(c) = &s.spid {
+        Aperture::Spider {
+            width: g(c, 0),
+            arms: g(c, 1) as u32,
             dx,
             dy,
         }

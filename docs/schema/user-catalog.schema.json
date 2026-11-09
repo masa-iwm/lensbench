@@ -1527,6 +1527,40 @@
           "type": "object"
         },
         {
+          "description": "スパイダー（中心から外へ伸びる幅 width の腕 arms 本を遮る。最初の腕は +x、360° を等分）",
+          "properties": {
+            "arms": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "dx": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "dy": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "spider",
+              "type": "string"
+            },
+            "width": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "type",
+            "width",
+            "arms"
+          ],
+          "type": "object"
+        },
+        {
           "description": "半径（semi）で切る",
           "properties": {
             "type": {

@@ -521,6 +521,15 @@ pub enum SurfAperture {
         #[serde(default)]
         dy: f64,
     },
+    /// スパイダー（中心から外へ伸びる幅 width の腕 arms 本を遮る。最初の腕は +x、360° を等分）
+    Spider {
+        width: f64,
+        arms: u32,
+        #[serde(default)]
+        dx: f64,
+        #[serde(default)]
+        dy: f64,
+    },
     /// 半径（semi）で切る
     Floating,
 }
@@ -2498,6 +2507,17 @@ fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> {
         Aperture::Rect { hx, hy, dx, dy } => Some(SurfAperture::Rect { hx, hy, dx, dy }),
         Aperture::Ellipse { hx, hy, dx, dy } => Some(SurfAperture::Ellipse { hx, hy, dx, dy }),
         Aperture::Obsc { min, max, dx, dy } => Some(SurfAperture::Obscuration { min, max, dx, dy }),
+        Aperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        } => Some(SurfAperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        }),
         Aperture::Floating { .. } => Some(SurfAperture::Floating),
     };
     // 偏光子・波長板の面はその書き方で戻す
@@ -2763,6 +2783,17 @@ fn surf(q: &SurfSpec) -> Result<Surface, String> {
         Some(SurfAperture::Rect { hx, hy, dx, dy }) => Aperture::Rect { hx, hy, dx, dy },
         Some(SurfAperture::Ellipse { hx, hy, dx, dy }) => Aperture::Ellipse { hx, hy, dx, dy },
         Some(SurfAperture::Obscuration { min, max, dx, dy }) => Aperture::Obsc { min, max, dx, dy },
+        Some(SurfAperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        }) => Aperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        },
         Some(SurfAperture::Floating) => Aperture::Floating {
             semi: q.semi.value(),
         },

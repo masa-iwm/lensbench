@@ -235,6 +235,23 @@ pub fn reverse(e: &Element) -> Result<Element> {
                 dx: -dx,
                 dy,
             },
+            // x を反転すると腕の向き θ は π − θ になる。偶数本なら同じ並び、奇数本は最初の腕が −x になり表せない
+            Aperture::Spider {
+                width,
+                arms,
+                dx,
+                dy,
+            } => {
+                if arms % 2 == 1 {
+                    invalid!("腕が奇数本のスパイダー開口のある玉は反転しない");
+                }
+                Aperture::Spider {
+                    width,
+                    arms,
+                    dx: -dx,
+                    dy,
+                }
+            }
             a => a,
         };
         // 面の後の媒質と厚さは、反転前の 1 つ前の面の後のもの

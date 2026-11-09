@@ -663,6 +663,15 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 w(&mut o, format!("  OBSC {} {} 0", f(min), f(max)));
                 w(&mut o, format!("  OBDC {} {}", f(dx), f(dy)));
             }
+            Aperture::Spider {
+                width,
+                arms,
+                dx,
+                dy,
+            } => {
+                w(&mut o, format!("  SPID {} {arms} 0", f(width)));
+                w(&mut o, format!("  OBDC {} {}", f(dx), f(dy)));
+            }
         }
         if let Some(t) = &d.before {
             tilt_line(&mut o, 1, 0, t);
