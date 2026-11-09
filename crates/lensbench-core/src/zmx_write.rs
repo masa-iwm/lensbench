@@ -115,7 +115,9 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
     w(
         &mut o,
         format!(
-            "FTYP {ft} {} {nf} {} {} 0 {}",
+            // FTYP 種類 テレセントリック 視野の数 波長の数 正規化 Iterate Solves Afocal 視野の数（OpticStudio 2026 R1.01 の書き方。
+            // 8 番目は 3 番目と同じ数で、なくても読みは変わらない）
+            "FTYP {ft} {} {nf} {} {} 0 {} {nf}",
             if s.telecentric { 1 } else { 0 },
             s.wavelengths.len(),
             if s.field_norm == FieldNorm::Rect {

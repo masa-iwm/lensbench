@@ -233,6 +233,15 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             // （Ghost Focus Generator が保存するゴーストの系の戻りの面など。名前と nd・vd は保存時の値で、使わない）
             "GLAS" => {
                 s.glas = Some(t.get(1).unwrap_or(&"").to_string());
+                // ソルブ 4 は Offset（#10 Δnd、#11 Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
+                if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
+                    notimpl!(
+                        "zmx の面 {}: 材料の Offset ソルブ（Δnd {}、Δvd {}）",
+                        s.n,
+                        num(10)?,
+                        num(11)?
+                    );
+                }
                 if t.get(2) == Some(&"2") {
                     s.glas_pickup = Some(num(3)? as usize);
                 } else if t.get(1) == Some(&"___BLANK") {
