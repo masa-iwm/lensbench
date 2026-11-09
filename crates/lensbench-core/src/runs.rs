@@ -392,7 +392,7 @@ pub struct Progress {
 /// 実行の設定
 #[derive(Default)]
 pub struct RunOpts<'a> {
-    /// スレッド数（[`crate::with_threads`] と同じ。None は既定）
+    /// スレッド数（[`crate::par::with_threads_or_outer`] と同じ。None は既定、逐次の指定の中では逐次）
     pub threads: Option<usize>,
     /// 結果のファイル（JSONL）。None なら書かない
     pub out: Option<&'a Path>,
@@ -528,7 +528,7 @@ where
     let ran = AtomicUsize::new(0);
     let t0 = Instant::now();
     let cancelled = || opts.cancel.is_some_and(|c| c.load(Ordering::Relaxed));
-    par::with_threads(opts.threads, || {
+    par::with_threads_or_outer(opts.threads, || {
         let _ = par::map(&todo, |&i| {
             if stop.load(Ordering::Relaxed) || cancelled() {
                 return;
