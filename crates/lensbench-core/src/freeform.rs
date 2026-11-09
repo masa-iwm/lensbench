@@ -648,7 +648,7 @@ pub fn paraxial_curv(d: &Surface) -> f64 {
 }
 
 /// 基準の二次曲面（c・k）との交点までの距離（頂点面上の pl から方向 kl に）。交わらなければ 0
-fn conic_isect(c: f64, k: f64, pl: V3, kl: V3) -> f64 {
+fn conic_isect(c: f64, k: f64, pl: V3, kl: V3, sig: f64) -> f64 {
     if c == 0.0 {
         return 0.0;
     }
@@ -657,7 +657,7 @@ fn conic_isect(c: f64, k: f64, pl: V3, kl: V3) -> f64 {
     let aa = c * (kl[0] * kl[0] + kl[1] * kl[1] + (1.0 + k) * kl[2] * kl[2]);
     let disc = gg * gg - aa * ff;
     if disc >= 0.0 {
-        let s = ff / (gg + gg.signum() * disc.sqrt());
+        let s = crate::trace::conic_root(ff, gg, aa, disc, sig);
         if s.is_finite() {
             return s;
         }
@@ -672,9 +672,10 @@ pub fn isect_with(
     k: f64,
     pl: V3,
     kl: V3,
+    sig: f64,
     f: impl Fn(f64, f64) -> (f64, f64, f64),
 ) -> (f64, bool) {
-    let mut s = conic_isect(c, k, pl, kl);
+    let mut s = conic_isect(c, k, pl, kl, sig);
     let mut ds = f64::NAN;
     for _ in 0..60 {
         let q = add(pl, scale(kl, s));
@@ -689,8 +690,8 @@ pub fn isect_with(
 }
 
 /// [`is_freeform`] の面との交点までの距離
-pub fn isect(d: &Surface, pl: V3, kl: V3) -> (f64, bool) {
-    isect_with(d.c, d.k, pl, kl, |x, y| sag_xy(d, x, y))
+pub fn isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
+    isect_with(d.c, d.k, pl, kl, sig, |x, y| sag_xy(d, x, y))
 }
 
 #[cfg(test)]

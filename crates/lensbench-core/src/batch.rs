@@ -206,6 +206,8 @@ struct Step<'a> {
     clip: Option<Aperture>,
     /// 理想レンズの物体側の共役距離
     conj: f64,
+    /// この面に向かう空間の進む向き（[`trace::space_signs`]）
+    sig: f64,
 }
 
 /// 面 first..=last の追跡の準備（波長 w）。光線によらない量を先に求めておく
@@ -223,6 +225,7 @@ impl<'a> Plan<'a> {
         floating_clip: bool,
     ) -> Plan<'a> {
         let mut steps = Vec::new();
+        let sigs = trace::space_signs(sys);
         let mut nprev = sys.index_before(first, w);
         for j in first..=last {
             let d = &sys.surfaces[j];
@@ -281,6 +284,7 @@ impl<'a> Plan<'a> {
                 k1: 1.0 + d.k,
                 ck1: d.c * (1.0 + d.k),
                 clip,
+                sig: sigs[j],
                 conj: if d.typ == SurfType::Paraxial {
                     sys.lens_conjugate(j)
                 } else {
@@ -466,7 +470,7 @@ fn run<R: LaneSink>(
             for i in 0..L {
                 if err[i] == 0.0 {
                     let (pi, ki) = (get(&pl, i), get(&kl, i));
-                    let (s, bad) = crate::freeform::isect(d, pi, ki);
+                    let (s, bad) = crate::freeform::isect(d, pi, ki, st.sig);
                     if bad {
                         err[i] = jf;
                     }
@@ -478,7 +482,7 @@ fn run<R: LaneSink>(
             for i in 0..L {
                 if err[i] == 0.0 {
                     let (pi, ki) = (get(&pl, i), get(&kl, i));
-                    let (s, bad) = trace::toroidal_isect(d, pi, ki);
+                    let (s, bad) = trace::toroidal_isect(d, pi, ki, st.sig);
                     if bad {
                         err[i] = jf;
                     }
@@ -496,7 +500,7 @@ fn run<R: LaneSink>(
                 let aa = lanes!(i => c * (kl[0][i] * kl[0][i] + kl[1][i] * kl[1][i]
                     + st.k1 * kl[2][i] * kl[2][i]));
                 let disc = lanes!(i => gg[i] * gg[i] - aa[i] * ff[i]);
-                s = lanes!(i => ff[i] / (gg[i] + gg[i].signum() * disc[i].max(0.0).sqrt()));
+                s = lanes!(i => trace::conic_root(ff[i], gg[i], aa[i], disc[i].max(0.0), st.sig));
                 for i in 0..L {
                     if m[i] && (!(disc[i] >= 0.0) || !s[i].is_finite()) {
                         err[i] = jf;

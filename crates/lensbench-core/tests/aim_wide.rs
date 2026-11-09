@@ -65,23 +65,44 @@ fn wide_angle_rays_are_aimed_like_opticstudio() {
     assert!(dp < 1e-7, "{dp:e}");
 }
 
-/// 角度の視野が 90° 以上は未対応（光が物体側の後ろから来る）
+/// 90° を超える視野（物体側の後ろから来る光）: 光線は向きどおり（n < 0）に進み、面 1 の球（頂点側の半球）に
+/// 下から当たる（OpticStudio 付属の 210° 広角レンズの 105° の視野と同じ根の選び方。非公開側で OpticStudio と 1.7e-9 mm）
 #[test]
-fn field_angle_over_90_degrees_is_not_implemented() {
-    let s = zmx::load_with(
-        &dir().join("system.zmx"),
+fn field_beyond_90_degrees_hits_the_vertex_side_cap() {
+    let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 4\nFTYP 0 0 2 1 0 0 0\n\
+XFLN 0 0\nYFLN 0 105\nFWGN 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  TYPE STANDARD\n  CURV 0.002777777777777778\n  DISZ 20\n\
+SURF 2\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    let s = zmx::build(
+        &zmx::parse_text(txt).unwrap(),
         &LoadOptions {
             cfg: 1,
             ..Default::default()
         },
+        &[],
+        None,
     )
     .unwrap();
-    let mut s2 = s.clone();
-    s2.fields[3].y = 100.0;
-    assert!(s2
-        .try_trace(FieldSel::Index(3), &[0.0], &[0.0], None, None, false)
-        .is_err());
-    assert!(s2
-        .try_trace(FieldSel::Index(1), &[0.0], &[0.0], None, None, false)
-        .is_ok());
+    let t = s
+        .try_trace(FieldSel::Index(1), &[0.0], &[0.0], None, Some(1), false)
+        .unwrap();
+    let r = &t.rays[0];
+    assert_eq!(r.err, 0);
+    // 向き: y 0.966、z −0.259
+    assert!(
+        (r.lmn[1] - 105f64.to_radians().sin()).abs() < 1e-12,
+        "{:?}",
+        r.lmn
+    );
+    assert!(
+        (r.lmn[2] - 105f64.to_radians().cos()).abs() < 1e-12,
+        "{:?}",
+        r.lmn
+    );
+    // 半径 360 の球の頂点側（z < R）で、y < 0 の側に当たる
+    let (y, z) = (r.xyz[1], r.xyz[2]);
+    assert!(z < 360.0 && y < 0.0, "{:?}", r.xyz);
+    assert!(((360.0 - z).powi(2) + y * y - 360.0 * 360.0).abs() < 1e-6);
 }
