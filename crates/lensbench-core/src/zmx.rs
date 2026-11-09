@@ -81,6 +81,8 @@ pub struct RawSurf {
     pub elap: Option<Vec<f64>>,
     pub flap: Option<Vec<f64>>,
     pub obsc: Option<Vec<f64>>,
+    /// スパイダー（SPID 腕の幅 腕の本数 開口のピックアップの元の面）
+    pub spid: Option<Vec<f64>>,
     pub obdc: Option<Vec<f64>>,
     pub scbd: Vec<Vec<String>>,
     pub stop: bool,
@@ -309,6 +311,19 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "ELAP" => s.elap = Some(nums()?),
             "FLAP" => s.flap = Some(nums()?),
             "OBSC" => s.obsc = Some(nums()?),
+            // SPID 腕の幅（全幅） 腕の本数 開口のピックアップの元の面（OpticStudio 2026 R1.01 で実測）。ピックアップした面
+            // にも元の面の値と偏心（OBDC）が書かれるので、その値を使う
+            "SPID" => {
+                let v = nums()?;
+                let (w, n) = (
+                    v.first().copied().unwrap_or(0.0),
+                    v.get(1).copied().unwrap_or(0.0),
+                );
+                if !(w >= 0.0) || !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
+                    invalid!("zmx の面 {}: スパイダーの腕の幅 {w}・本数 {n}", s.n);
+                }
+                s.spid = Some(v);
+            }
             "OBDC" => s.obdc = Some(nums()?),
             "SCBD" => s.scbd.push(rest()),
             "STOP" => s.stop = true,
@@ -431,6 +446,10 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         .flatten()
         {
             a.iter_mut().for_each(|v| *v *= f);
+        }
+        // スパイダーは腕の幅だけ長さ
+        if let Some(w) = sf.spid.as_mut().and_then(|v| v.first_mut()) {
+            *w *= f;
         }
         // 面の前後の傾き偏心（SCBD 前後 順序 種類 偏心x 偏心y 傾きx 傾きy 傾きz）: 偏心だけ換算
         for row in sf.scbd.iter_mut() {
@@ -857,6 +876,8 @@ pub fn build(
             "ODDASPHE" => SurfType::OddAsph,
             "TILTSURF" => SurfType::TiltSurf,
             "IRREGULA" => SurfType::Irregular,
+            // 複屈折材の板の入口・出口は形は標準面（偏光の位相は Surface::bire）
+            "BIRE__IN" | "BIRE_OUT" => SurfType::Standard,
             _ => notimpl!("面 {k}: 面タイプ {name}"),
         };
         let (mut mat, model) = mats[k].clone();
@@ -893,6 +914,27 @@ pub fn build(
                 && !ops.contains_key(&("SDIA".to_string(), ki)),
             ..Default::default()
         };
+        if name == "BIRE__IN" {
+            let mode = p(1);
+            // Mode 1・3 は異常光の道（屈折が違う）で未対応
+            if !(mode == 0.0 || mode == 2.0) {
+                notimpl!("面 {k}: Birefringent In の Mode {mode}（0 と 2 だけ）");
+            }
+            if s.xdat.get(&1).copied().unwrap_or(0.0) != 0.0 {
+                notimpl!("面 {k}: Birefringent In の Gradient Mode");
+            }
+            let axis = [p(2), p(3), p(4)];
+            if !(axis.iter().map(|v| v * v).sum::<f64>() > 0.0) {
+                invalid!("面 {k}: Birefringent In の結晶軸が 0");
+            }
+            d.bire = Some(crate::surface::Bire::In {
+                mode: mode as u8,
+                axis,
+                ne: Vec::new(),
+            });
+        } else if name == "BIRE_OUT" {
+            d.bire = Some(crate::surface::Bire::Out);
+        }
         match typ {
             SurfType::Jones => {
                 for i in 0..8 {
@@ -1008,7 +1050,10 @@ pub fn build(
                 if nz != 0.0 {
                     notimpl!("面 {k}: トロイダル面の Zernike の項（{nz} 項）");
                 }
-            } else if typ == SurfType::Standard && parm[k].values().any(|&v| v != 0.0) {
+            } else if typ == SurfType::Standard
+                && d.bire.is_none()
+                && parm[k].values().any(|&v| v != 0.0)
+            {
                 notimpl!("面 {k}: 標準面にパラメータ");
             }
             if typ == SurfType::Jones && d.c != 0.0 {
@@ -1045,6 +1090,15 @@ pub fn build(
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
         d.n = n.clone();
+        if let Some(crate::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
+            let en = crate::surface::Bire::e_name(&mat);
+            let g = glasses.get(&en).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない"
+                ))
+            })?;
+            *ne = wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect();
+        }
         if !ign {
             nprev = n;
         }
@@ -1584,6 +1638,13 @@ fn aperture(s: &RawSurf, d: &mut Surface, ops: &HashMap<(String, i64), String>) 
         Aperture::Obsc {
             min: g(c, 0),
             max: g(c, 1),
+            dx,
+            dy,
+        }
+    } else if let Some(c) = &s.spid {
+        Aperture::Spider {
+            width: g(c, 0),
+            arms: g(c, 1) as u32,
             dx,
             dy,
         }

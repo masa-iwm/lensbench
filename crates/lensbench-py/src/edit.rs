@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyString};
 
 /// 開口の dict: {"type": "circular", "min": 0, "max": 3, "dx": 0, "dy": 0}（type は circular・rect・ellipse・
-/// obsc・floating）。None は開口なし
+/// obsc・spider（width・arms）・floating）。None は開口なし
 pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
     if v.is_none() {
         return Ok(Aperture::None);
@@ -57,10 +57,22 @@ pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
             dx,
             dy,
         },
+        "spider" => {
+            let n = need("arms")?;
+            if !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
+                return Err(PyValueError::new_err(format!("スパイダーの腕の本数 {n}")));
+            }
+            Aperture::Spider {
+                width: need("width")?,
+                arms: n as u32,
+                dx,
+                dy,
+            }
+        }
         "floating" => Aperture::Floating { semi: get("semi")? },
         t => {
             return Err(PyValueError::new_err(format!(
-                "開口の type {t}（none circular obsc rect ellipse floating）"
+                "開口の type {t}（none circular obsc rect ellipse spider floating）"
             )))
         }
     })
@@ -91,6 +103,18 @@ pub(crate) fn aperture_dict<'py>(py: Python<'py>, a: &Aperture) -> PyResult<Boun
             d.set_item("type", t)?;
             d.set_item("hx", hx)?;
             d.set_item("hy", hy)?;
+            d.set_item("dx", dx)?;
+            d.set_item("dy", dy)?;
+        }
+        Aperture::Spider {
+            width,
+            arms,
+            dx,
+            dy,
+        } => {
+            d.set_item("type", "spider")?;
+            d.set_item("width", width)?;
+            d.set_item("arms", arms)?;
             d.set_item("dx", dx)?;
             d.set_item("dy", dy)?;
         }

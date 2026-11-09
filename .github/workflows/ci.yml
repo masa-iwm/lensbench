@@ -23,6 +23,9 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Windows はテストの 100 近い exe のリンクが重いので、MSVC の link.exe でなく同梱の rust-lld でリンクする
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -33,18 +36,24 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # テストは ci プロファイル（release と同じ最適化、LTO なしで速くビルド。Cargo.toml）
       - run: cargo test --workspace --profile ci
-      # GUI の exe（インストール不要の 1 ファイル）を成果物に置く。PR では ci プロファイル（テストのビルドを
-      # 使い回す）、main への push では配る形の release
-      - if: runner.os == 'Windows' && github.event_name != 'push'
+
+  # GUI の exe（インストール不要の 1 ファイル）を成果物に置く。テストの後に続けると Windows のジョブが 2〜3 分
+  # 延びるので別のジョブで並行に。PR では ci プロファイル、main への push では配る形の release
+  gui-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: github.event_name != 'push'
         run: cargo build --profile ci -p lensbench-gui
-      - if: runner.os == 'Windows' && github.event_name == 'push'
+      - if: github.event_name == 'push'
         run: |
           cargo build --release -p lensbench-gui
           mkdir -p target/ci
           cp target/release/lensbench-gui.exe target/ci/
         shell: bash
-      - if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v6
         with:
           name: lensbench-gui-windows
           path: target/ci/lensbench-gui.exe

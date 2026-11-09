@@ -282,10 +282,11 @@ class System:
         （既定の評価関数の項、terms の順）で、各項に重みの平方根を掛けたもの
         """
 
-    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "interp", each_wave: bool = False) -> dict[str, Any]:
+    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "auto", each_wave: bool = False) -> dict[str, Any]:
         """回折 MTF（CLI の mtf と同じ）。field は番号（1 始まり）か正規化視野 (hx, hy)、wave は波長の番号（省略で
-        多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "interp"（既定）・"fft"（瞳関数の
-        自己相関を FFT で全周波数まとめて。周波数が多いとき速い、既定との差 1e-4 程度）・"direct"（確かめ用）。
+        多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "auto"（既定。"interp" で、n を省いて
+        求積の点数が 1024 を超え、周波数が 8 個以上なら "fft"）・"interp"（補間の求積）・"fft"（瞳関数の自己相関を FFT で全周波数まとめて。
+        周波数が多いとき速い、求積との差 1e-4 程度）・"direct"（確かめ用）。
         返す dict: freqs・tangential・sagittal（numpy）・cutoff（x・y の遮断周波数 [cycles/mm]）。
         each_wave=True なら多色に加えて waves（波長ごとの dict のリスト。別々に求めるより速い）も返す（wave と一緒に使えない）
         """

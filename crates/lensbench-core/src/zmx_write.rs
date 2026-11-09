@@ -8,7 +8,7 @@ use std::path::Path;
 use crate::error::{Error, Result};
 use crate::notimpl;
 use crate::param::{PickKind, SolveKind, ThickSolve};
-use crate::surface::{After, Aperture, SurfType, Tilt};
+use crate::surface::{After, Aperture, Bire, SurfType, Tilt};
 use crate::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
 use crate::zpl_solve::MacroCol;
 
@@ -218,7 +218,17 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             // 無視する面は標準面として書く
             SurfType::User => "STANDARD",
         };
-        w(&mut o, format!("  TYPE {typ}"));
+        // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（非公開側の照合データで確認）
+        let bire = match (&d.bire, d.typ) {
+            (Some(b), SurfType::Standard) => Some(b),
+            (Some(_), t) => notimpl!("面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）"),
+            (None, _) => None,
+        };
+        match bire {
+            Some(Bire::In { .. }) => w(&mut o, "  TYPE BIRE__IN \"\"".into()),
+            Some(Bire::Out) => w(&mut o, "  TYPE BIRE_OUT".into()),
+            None => w(&mut o, format!("  TYPE {typ}")),
+        }
         if !d.comment.is_empty() {
             w(&mut o, format!("  COMM {}", d.comment));
         }
@@ -281,6 +291,23 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
         }
         if d.k != 0.0 {
             w(&mut o, format!("  CONI {}", f(d.k)));
+        }
+        match bire {
+            Some(Bire::In { mode, axis, .. }) => {
+                // Draw Axis・Mode・結晶軸・Parax Ignore（OS の既定 1）・Shape、Gradient Mode は XDAT 1
+                let mut v = vec![0.0, *mode as f64, axis[0], axis[1], axis[2], 1.0];
+                v.resize(13, 0.0);
+                for (i, a) in v.iter().enumerate() {
+                    w(&mut o, format!("  PARM {i} {}", f(*a)));
+                }
+                w(&mut o, "  XDAT 1 0 0 0 1 0 0 \"\"".into());
+            }
+            Some(Bire::Out) => {
+                for i in 1..=12 {
+                    w(&mut o, format!("  PARM {i} 0"));
+                }
+            }
+            None => {}
         }
         match d.typ {
             SurfType::EvenAsph
@@ -634,6 +661,15 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             }
             Aperture::Obsc { min, max, dx, dy } => {
                 w(&mut o, format!("  OBSC {} {} 0", f(min), f(max)));
+                w(&mut o, format!("  OBDC {} {}", f(dx), f(dy)));
+            }
+            Aperture::Spider {
+                width,
+                arms,
+                dx,
+                dy,
+            } => {
+                w(&mut o, format!("  SPID {} {arms} 0", f(width)));
                 w(&mut o, format!("  OBDC {} {}", f(dx), f(dy)));
             }
         }

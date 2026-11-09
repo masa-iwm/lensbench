@@ -10,7 +10,7 @@
 //! | `spot` | `wave`・`rings`（6） | `x`・`y`・`weight`・`wave`・`centroid`・`chief`・`rms_centroid`・`rms_chief`・`geo` |
 //! | `wavefront` | `wave`・`n`（64）・`ref_primary`（1） | `p`・`w`（(n, n)、外は NaN）・`pv`・`rms` |
 //! | `zernike` | `wave`・`kind`（standard）・`terms`（37）・`n`（64）・`ref_primary`（1） | `coef`・`pv`・`pv_centroid`・`rms_fit`・`max_fit`・`rms_chief`・`rms_centroid`・`variance`・`strehl` |
-//! | `mtf` | `wave`・`freqs`（省けば遮断周波数の 0〜0.95 を 21 点）・`n`・`method`（interp・direct・fft） | `freqs`・`tan`・`sag`・`cutoff` |
+//! | `mtf` | `wave`・`freqs`（省けば遮断周波数の 0〜0.95 を 21 点）・`n`・`method`（auto・interp・direct・fft） | `freqs`・`tan`・`sag`・`cutoff` |
 //! | `psf` | `wave`・`pupil`（64）・`image`（128）・`delta` | `x`・`y`・`i`（(image, image)）・`center`・`delta`・`peak` |
 //! | `rms` | `wave`・`rings`（6）・`reference`（centroid・chief） | `spot`・`spot_x`・`spot_y`・`wfe`・`strehl` |
 //! | `huygens_psf` | `wave`・`pupil`（64）・`image`（128）・`delta` | psf と同じ（x・y は像面の局所座標の中心からの差） |
@@ -233,7 +233,7 @@ impl Plugin for Analysis {
                         "周波数 [cycles/mm]（省けば遮断周波数の 0〜0.95 を 21 点）",
                     ),
                     s2("n", "瞳の格子の一辺（省けば自動）"),
-                    s2("method", "interp・direct・fft"),
+                    s2("method", "auto・interp・direct・fft"),
                 ],
                 vec![
                     s2("freqs", "[cycles/mm]"),
@@ -439,11 +439,12 @@ impl Plugin for Analysis {
                 wave,
                 freqs: r.nums("freqs")?,
                 n: r.opt_count("n")?,
-                method: match r.str("method", "interp")?.as_str() {
+                method: match r.str("method", "auto")?.as_str() {
+                    "auto" => MtfMethod::Auto,
                     "interp" => MtfMethod::Interp,
                     "direct" => MtfMethod::Direct,
                     "fft" => MtfMethod::Fft,
-                    x => invalid!("設定 method は interp・direct・fft に（{x}）"),
+                    x => invalid!("設定 method は auto・interp・direct・fft に（{x}）"),
                 },
             },
             Analysis::Psf => {

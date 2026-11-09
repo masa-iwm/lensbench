@@ -836,3 +836,15 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 ガラス（読み込み中…）	Glasses (loading…)
 カタログレンズを読み込んでいます（数万枚あると数十秒かかります）	Loading catalog lenses (tens of thousands of lenses take tens of seconds)
 ガラスカタログを読み込んでいます	Loading glass catalogs
+クリックでたたむ	Click to collapse
+クリックで開く	Click to expand
+ダブルクリック・Enter でも	Also by double-click or Enter
+ブロックの中だけを見る	Show only the inside of the block
+ブロックを 1 行にたたみ、ダブルクリックで中に入って面を変える	Fold each block to one row; double-click to go inside and edit its surfaces
+ブロックをその場で開いて（▶/▼）、中に入らずに面を変える	Expand blocks in place (▶/▼) and edit their surfaces without going inside
+全部たたむ	Collapse all
+全部開く	Expand all
+折りたたみ	Collapsible
+開く	Expand
+階層	Drill-down
+面 {}〜{}（ダブルクリックで開く・たたむ）	Surfaces {}–{} (double-click to expand or collapse)

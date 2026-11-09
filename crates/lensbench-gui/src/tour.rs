@@ -66,6 +66,7 @@ pub enum Step {
     Layout,
     Layout3d,
     LensData,
+    LensDataTree,
     ComboSpot,
     Optimize,
     OptApply,
@@ -83,7 +84,7 @@ pub enum Step {
 }
 
 impl Step {
-    const ORDER: [Step; 22] = [
+    const ORDER: [Step; 23] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -92,6 +93,7 @@ impl Step {
         Step::Layout,
         Step::Layout3d,
         Step::LensData,
+        Step::LensDataTree,
         Step::ComboSpot,
         Step::Optimize,
         Step::OptApply,
@@ -118,6 +120,7 @@ impl Step {
             Step::Layout => "06_layout",
             Step::Layout3d => "06a_layout_3d",
             Step::LensData => "06b_lens_data",
+            Step::LensDataTree => "06c_lens_data_tree",
             Step::ComboSpot => "07_combo_spot",
             Step::Optimize => "07b_optimize",
             Step::OptApply => "07c_optimize_apply",
@@ -279,6 +282,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 21);
+        assert_eq!(n, 22);
     }
 }
