@@ -518,6 +518,8 @@ impl Core {
             }),
         );
         self.browser.loaded = true;
+        self.browser.glasses_pending = true;
+        self.browser.lenses_pending = true;
     }
 
     fn n_fields(&self) -> usize {
@@ -4684,6 +4686,12 @@ impl eframe::App for App {
         while let Some(d) = self.c.preview.poll() {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
             if matches!(d.tag, Tag::Glasses | Tag::Lenses | Tag::UserCatalog) {
+                // 失敗しても読み込み中は終わる
+                match d.tag {
+                    Tag::Glasses => self.c.browser.glasses_pending = false,
+                    Tag::Lenses => self.c.browser.lenses_pending = false,
+                    _ => {}
+                }
                 self.c.take(d);
                 continue;
             }
