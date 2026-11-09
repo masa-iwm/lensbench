@@ -131,3 +131,45 @@ fn dichroic_splits_wavelengths() {
     assert!(transmission(&t, 2) < 0.01, "{}", transmission(&t, 2));
     assert!(transmission(&r, 2) > 0.95, "{}", transmission(&r, 2));
 }
+
+/// .zmx の書き出し: 系に書いた膜の表は隣の膜ファイル（名前_coat.dat）に書き、COFN はそれを指す。読み戻すと同じ透過
+#[test]
+fn zmx_export_keeps_coat_tables() {
+    let p = project(
+        r#"{"BP532": {"type": "bandpass", "center_nm": 532, "fwhm_nm": 10, "t": 0.9, "od": 3}}"#,
+        r#"[{"type": "stop"}, {"type": "air", "t": 5},
+           {"type": "lens", "source": {"surfaces": [{"t": 2, "glass": "N-BK7", "coat": "BP532"}, {}]}},
+           {"type": "air", "t": 10}]"#,
+    );
+    let s = expand_path(&p, &env(root()), None).unwrap().0;
+    let dir = std::env::temp_dir().join(format!("lb_coat_export_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let zp = dir.join("bp.zmx");
+    lensbench_core::zmx_write::save(&zp, &s).unwrap();
+    let dat = std::fs::read_to_string(dir.join("bp_coat.dat")).unwrap();
+    assert!(dat.contains("TABLE BP532"));
+    let txt = lensbench_core::glass::read_text(&zp).unwrap();
+    assert!(txt.contains("COFN QF \"bp_coat.dat\""), "{txt}");
+    let r = lensbench_core::zmx::load_with(
+        &zp,
+        &lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: vec![root().join("tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        r.coating_file.as_deref(),
+        Some(dir.join("bp_coat.dat").as_path())
+    );
+    for w in 0..3 {
+        let (a, b) = (transmission(&s, w), transmission(&r, w));
+        assert!((a - b).abs() < 1e-12, "波長 {w}: {a} {b}");
+    }
+    // 表を使わない系は膜ファイルを書かない
+    assert!(lensbench_core::zmx_write::coating_dat(&r)
+        .unwrap()
+        .is_none());
+    std::fs::remove_dir_all(&dir).ok();
+}

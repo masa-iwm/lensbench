@@ -507,6 +507,19 @@ fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> f64 {
 }
 
 impl Raw {
+    /// 自動の半直径を入れる前の lensbench が書いた .zmx か: VERS が lensbench の書く値（`VERS 260327 42 20120530 20120530`）で、
+    /// どの面にも MEMA の行がない。その頃の書き出しは固定の半直径も `DIAM 値 0`（自動）で書いていたので、半直径は
+    /// ファイルの値で固定として読む（[`LoadOptions::fixed_semi`] と同じ）。OpticStudio が保存した .zmx には全部の面に MEMA が
+    /// あり、今の lensbench の書き出しも MEMA を書くので、どちらもこれに当たらない
+    pub fn legacy_lensbench(&self) -> bool {
+        let vers = self.sysl.get("VERS").and_then(|v| v.first());
+        vers.is_some_and(|v| {
+            v.iter()
+                .map(|x| x.as_str())
+                .eq(["260327", "42", "20120530", "20120530"])
+        }) && !self.surfs.iter().any(|r| r.mema)
+    }
+
     /// マルチコンフィグの数（MNUM、なければ 1）
     pub fn configurations(&self) -> usize {
         (sys_f(self, "MNUM", 0, 1.0) as usize).max(1)
@@ -638,6 +651,8 @@ pub fn build(
         notimpl!("無焦点の像空間");
     }
     let ncfg = sys_f(raw, "MNUM", 0, 1.0) as i64;
+    // 以前の lensbench の書き出し: 半直径は固定として読む（[`Raw::legacy_lensbench`]）
+    let legacy = raw.legacy_lensbench();
     if !(1..=ncfg).contains(&cfg) {
         invalid!("構成 {cfg}（全 {ncfg}）");
     }
@@ -864,6 +879,7 @@ pub fn build(
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
             semi_auto: !opt.fixed_semi
+                && !legacy
                 && s.diam_mode.unwrap_or(0) == 0
                 && !ops.contains_key(&("SDIA".to_string(), ki)),
             ..Default::default()
