@@ -84,14 +84,24 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 偏光子・波長板の面: 面の並び（`surfaces`）の面に `"polarizer": {"axis_deg", "extinction_ratio", "transmittance"}`（理想の直線偏光子。
   透過軸の強度透過率と消光比、省略は 1 と無限）か `"waveplate": {"retardance", "wavelength_um", "axis_deg", "order", "transmittance"}`
   （速い軸 axis_deg、設計波長での遅延 retardance 波長、多次は整数の order。遅延は波長ごとに (order + retardance)·wavelength_um/λ）を書く。
-  平面の Jones 面になり、偏光の追跡は波長ごとの行列 R(−θ)·diag(tx·e^{−iφ/2}, ty·e^{+iφ/2})·R(θ)（光路の長い遅い軸が位相 +）を使う。
+  平面の Jones 面になり、偏光の追跡は波長ごとの行列 R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・厚さのある結晶板と同じ向き）を使う。
   .zmx には設計波長の行列の JONESMAT で書く（OpticStudio の JONESMAT は波長によらない）。
 - 複屈折材の波長板: `waveplate` に `"material": "QUARTZ"`（常光はガラス QUARTZ、異常光は QUARTZ-E。OpticStudio の
-  複屈折材の名前の約束）と `"thickness_mm"` を書くと、遅延は Δn(λ)·d/λ（Δn = ne − no、カタログ温度の屈折率）。厚さを省くと設計波長の
-  遅延 order + retardance から決める。`"plates": [{"material", "thickness_mm", "axis_deg"}, …]` は板の組（光の通る順、`axis_deg` は
-  波長板の速い軸からの各板の速い軸の向き）で、アクロマティック波長板は速い軸を直交させた 2 材（MgF₂ + 水晶など）で書く。Jones 面の
-  ままなので、板の厚さによる光路は別の平板（常光の屈折率）で置く。斜めに入る光での遅延の変化は見ない。テスト用の水晶・MgF₂ は
+  複屈折材の名前の約束）と `"thickness_mm"` を書くと、厚さのある結晶板（平行平板）になる。厚さを省くと設計波長の遅延
+  order + retardance から決める（d = (order + retardance)·λ0/|Δn(λ0)|、Δn = ne − no、カタログ温度の屈折率）。
+  `"plates": [{"material", "thickness_mm", "axis_deg"}, …]` は板の組（光の通る順、`axis_deg` は波長板の速い軸からの各板の
+  速い軸の向き）で、アクロマティック波長板は速い軸を直交させた 2 材（MgF₂ + 水晶など）で書く。板は面の並びの
+  入口（`birefringent` の `in`、後ろは常光の材料、厚さは板の厚さ、結晶軸は面内で遅い軸（ne > no の材料）か速い軸の向き）と
+  出口（`out`、後ろは次の板の材料で厚さ 0 か、空気で元の面の `t`）になり、系は板の厚さだけ長くなる。光線は常光の屈折率で進み、
+  出口で異常光の成分（結晶軸の光線に垂直な向き）に exp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける
+  （n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は板の中の光線と結晶軸の角、L は板の中の長さ。斜めに入る光の遅延の変化も入る）。
+  OpticStudio の Birefringent In（Mode 2、波長板モード）/ Out と同じで、.zmx にもその面で書く（BIRE__IN・BIRE_OUT）。
+  位相の向きは OpticStudio と同じ（遅い軸が e^{−iφ}）で、理想の波長板（`material` なし、Jones 面）とも同じ。外側の 2 面の膜は波長板の面の `coat`、無ければ透過率 `transmittance`
+  からの理想膜（1 面あたり √T、T = 1 は `I.99999999`）。貼り合わせの面は無膜（Fresnel）。境界の Fresnel は今は常光の屈折率で求める（常光・異常光で分けるのは #52）。無膜の板では OpticStudio と最大 6e-4 違う（OS は面に垂直な光線で、実験室の x・y のうち結晶軸に近い方に ne の透過を入口の面だけで使う。膜のある板は一致）。テスト用の水晶・MgF₂ は
   `tests/glass/LBCRYSTAL.AGF`（refractiveindex.info、CC0）。GUI の面の並びの波長板にも複屈折材・厚さ（2 材まで）の欄がある。
+- 複屈折材の板を面で直接書く: 面の並びに `{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [x, y, z]}}}`
+  （結晶軸は面の局所座標、`"mode": 0` で常光の成分だけ）と `{"t": 5, "birefringent": "out"}`。入口と出口の間にほかの面は置けない。
+  .zmx の BIRE__IN（Mode 0・2）・BIRE_OUT も読める（Mode 1・3 の異常光の道と Gradient Mode は未対応）。
 - フィルタ・ダイクロイックの膜: プロジェクトかユーザーカタログの `"coatings": {名前: 膜}` に書いた膜を、面・BS の `coat`
   に名前で使う（TABLE 膜として偏光の追跡・透過に効く。プロジェクトの同じ名前がカタログより優先、膜ファイルの同じ名前より優先）。
   膜は `{"type": "table", "rows": [[入射角 deg, 波長 µm, Rs, Rp, Ts, Tp], …]}`（表そのまま）、`curve`（`wavelengths_nm`・`t`・`r`、

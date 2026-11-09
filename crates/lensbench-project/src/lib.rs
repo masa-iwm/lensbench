@@ -235,6 +235,27 @@ pub struct SurfSpec {
     /// 開口（省略なら開口なし）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aperture: Option<SurfAperture>,
+    /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。入口の `glass` が常光の材料（異常光は 名前-E）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub birefringent: Option<BireSpec>,
+}
+
+/// 複屈折材の板の入口・出口の面。`{"in": {"axis": [x, y, z]}}` か `"out"`
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BireSpec {
+    In {
+        /// 2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ（OpticStudio の Mode）
+        #[serde(default = "two_u8")]
+        mode: u8,
+        /// 結晶軸の向き（面の局所座標）
+        axis: [f64; 3],
+    },
+    Out,
+}
+
+fn two_u8() -> u8 {
+    2
 }
 
 /// 面の半直径: 数 [mm] か "auto"（全視野・全波長の主光線と瞳の縁の光線から求める）
@@ -941,6 +962,74 @@ fn is_air(m: &str) -> bool {
     m.is_empty() || m.eq_ignore_ascii_case("AIR")
 }
 
+/// 結晶板の面の元（波長板の面の半直径・開口を写した平面の標準面）
+fn plate_face(s: &Surface) -> Surface {
+    Surface {
+        semi: s.semi,
+        semi_auto: s.semi_auto,
+        ap: s.ap,
+        ..Default::default()
+    }
+}
+
+/// cos・sin の丸め誤差（6e-17 など）を 0・±1 に
+fn round_unit(v: f64) -> f64 {
+    if v.abs() < 1e-15 {
+        0.0
+    } else if (v.abs() - 1.0).abs() < 1e-15 {
+        v.signum()
+    } else {
+        v
+    }
+}
+
+/// 強度透過率 T の板の外側の面 1 つの理想膜（√T。OpticStudio の I.xx と同じ書き方で、1 は I.99999999）
+fn ideal_face(t: f64) -> String {
+    let f = (t.sqrt() * 1e8).floor().min(99_999_999.0) as u64;
+    format!("I.{f:08}")
+}
+
+/// 面の並びのブロックの面の後の媒質: 空気（座標ブレークも）のほかは、複屈折材の板の入口の後（結晶）と、
+/// 貼り合わせの出口の後（次の入口へ厚さ 0）だけ。板の入口と出口は交互に並び、最後は空気
+fn check_crystal_order(v: &[Surface]) -> Result<(), String> {
+    use lensbench_core::surface::Bire;
+    let mut inside = false;
+    for (i, s) in v.iter().enumerate() {
+        match (&s.bire, inside) {
+            (Some(Bire::In { .. }), false) => inside = true,
+            (Some(Bire::Out), true) => {
+                inside = false;
+                if !is_air(&s.mat) {
+                    let next_in = matches!(
+                        v.get(i + 1).and_then(|n| n.bire.as_ref()),
+                        Some(Bire::In { .. })
+                    );
+                    if !next_in || s.t != 0.0 || v[i + 1].mat != s.mat {
+                        return Err(
+                            "複屈折材の板の出口の後のガラスは、厚さ 0 で同じ材料の次の板の入口へ"
+                                .into(),
+                        );
+                    }
+                }
+            }
+            (Some(Bire::In { .. }), true) => {
+                return Err("複屈折材の板の入口が続く（出口が要る）".into())
+            }
+            (Some(Bire::Out), false) => return Err("複屈折材の板の出口の前に入口が無い".into()),
+            (None, true) => return Err("複屈折材の板の入口と出口の間にほかの面は置けない".into()),
+            (None, false) => {
+                if s.typ != SurfType::CoordBrk && !is_air(&s.mat) {
+                    return Err("面の並びのブロックは空気中の面だけ（ガラスは玉で）".into());
+                }
+            }
+        }
+    }
+    if inside {
+        return Err("複屈折材の板に出口が無い".into());
+    }
+    Ok(())
+}
+
 /// (dx, dy, tx, ty, tz) の座標ブレーク
 fn cb(d: [f64; 5], order: u8, t: f64) -> Surface {
     Surface {
@@ -963,6 +1052,66 @@ struct ZmxLinks {
 }
 
 impl<'a, 'b> Ctx<'a, 'b> {
+    /// 複屈折材の波長板（`waveplate` の `material`・`plates`）を、厚さのある結晶板の面（入口・出口）に置き換える。
+    /// 板ごとに入口（後ろは常光の材料、厚さは板の厚さ、結晶軸は面内で遅い軸の向き）と出口（後ろは次の板の材料か空気）。
+    /// 外側の 2 面の膜は波長板の面の `coat`、無ければ透過率から理想膜（1 面あたり √T、T = 1 は I.99999999）
+    fn crystal_plates(&self, v: Vec<Surface>) -> Result<Vec<Surface>, String> {
+        let mut out = Vec::with_capacity(v.len());
+        for s in v {
+            let Some(r0) = s.retarder.as_ref().filter(|r| !r.plates.is_empty()) else {
+                out.push(s);
+                continue;
+            };
+            if s.before.is_some() {
+                return Err("複屈折材の波長板に tilt は未対応".into());
+            }
+            let mut r = r0.clone();
+            r.resolve(&self.glasses)?;
+            let coat = if !s.coat.is_empty() {
+                s.coat.clone()
+            } else {
+                ideal_face(r.tx * r.tx)
+            };
+            let n = r.plates.len();
+            for (i, p) in r.plates.iter().enumerate() {
+                // 結晶軸（光学軸）は異常光の向き: ne > no なら遅い軸 = 速い軸 + 90°
+                let fast = r.axis_deg + p.axis_deg;
+                let oa = if p.dn(r.wl0) > 0.0 { fast + 90.0 } else { fast }.to_radians();
+                let axis = [round_unit(oa.cos()), round_unit(oa.sin()), 0.0];
+                out.push(Surface {
+                    mat: p.material.clone(),
+                    t: p.thickness,
+                    stop: s.stop && i == 0,
+                    coat: if i == 0 { coat.clone() } else { String::new() },
+                    comment: if i == 0 {
+                        s.comment.clone()
+                    } else {
+                        String::new()
+                    },
+                    bire: Some(lensbench_core::surface::Bire::In {
+                        mode: 2,
+                        axis,
+                        ne: Vec::new(),
+                    }),
+                    ..plate_face(&s)
+                });
+                let last = i + 1 == n;
+                out.push(Surface {
+                    mat: if last {
+                        String::new()
+                    } else {
+                        r.plates[i + 1].material.clone()
+                    },
+                    t: if last { s.t } else { 0.0 },
+                    coat: if last { coat.clone() } else { String::new() },
+                    bire: Some(lensbench_core::surface::Bire::Out),
+                    ..plate_face(&s)
+                });
+            }
+        }
+        Ok(out)
+    }
+
     /// 面をそのまま足す（出どころなし）
     fn put(&mut self, s: Surface) {
         self.sf.push(s);
@@ -1151,10 +1300,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 surfaces, place, ..
             } => {
                 let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
-                if v.iter()
-                    .any(|s| matches!(s.typ, SurfType::Jones | SurfType::CoordBrk))
-                {
-                    return Err("往路を戻る範囲の面の並びに jones・coordbrk の面は未対応".into());
+                if v.iter().any(|s| {
+                    matches!(s.typ, SurfType::Jones | SurfType::CoordBrk) || s.bire.is_some()
+                }) {
+                    return Err(
+                        "往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応".into(),
+                    );
                 }
                 if !place.on {
                     if place.off == OffMode::Air {
@@ -1443,11 +1594,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 surfaces, place, ..
             } => {
                 let v: Vec<Surface> = surfaces.iter().map(surf).collect::<Result<_, _>>()?;
-                if v.iter()
-                    .any(|s| s.typ != SurfType::CoordBrk && !is_air(&s.mat))
-                {
-                    return Err("面の並びのブロックは空気中の面だけ（ガラスは玉で）".into());
-                }
+                let v = self.crystal_plates(v)?;
+                check_crystal_order(&v)?;
                 self.placed(place, &mut |c: &mut Self| {
                     for s in &v {
                         c.push(s.clone());
@@ -2418,6 +2566,13 @@ fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> {
         polarizer,
         waveplate,
         aperture,
+        birefringent: f.bire.as_ref().map(|b| match b {
+            lensbench_core::surface::Bire::In { mode, axis, .. } => BireSpec::In {
+                mode: *mode,
+                axis: *axis,
+            },
+            lensbench_core::surface::Bire::Out => BireSpec::Out,
+        }),
         ..Default::default()
     })
 }
@@ -2615,11 +2770,36 @@ fn surf(q: &SurfSpec) -> Result<Surface, String> {
     let special = q.jones.is_some() as u8
         + q.coordbrk.is_some() as u8
         + q.polarizer.is_some() as u8
-        + q.waveplate.is_some() as u8;
+        + q.waveplate.is_some() as u8
+        + q.birefringent.is_some() as u8;
     if special > 1 {
-        return Err("面に jones・polarizer・waveplate・coordbrk のうち 2 つ以上は書けない".into());
+        return Err(
+            "面に jones・polarizer・waveplate・coordbrk・birefringent のうち 2 つ以上は書けない"
+                .into(),
+        );
     }
-    if special == 1 {
+    if let Some(b) = q.birefringent {
+        s.bire = Some(match b {
+            BireSpec::In { mode, axis } => {
+                if !matches!(mode, 0 | 2) {
+                    return Err(format!("複屈折材の板の mode {mode}（0 か 2）"));
+                }
+                if !(axis.iter().all(|v| v.is_finite()) && axis.iter().any(|v| *v != 0.0)) {
+                    return Err("複屈折材の板の結晶軸 axis が 0 か数でない".into());
+                }
+                if q.glass.as_deref().map_or(true, |g| is_air(g.trim())) {
+                    return Err("複屈折材の板の入口の面には glass（常光の材料）を書く".into());
+                }
+                lensbench_core::surface::Bire::In {
+                    mode,
+                    axis,
+                    ne: Vec::new(),
+                }
+            }
+            BireSpec::Out => lensbench_core::surface::Bire::Out,
+        });
+    }
+    if special == 1 && q.birefringent.is_none() {
         let what = if q.jones.is_some() {
             "jones"
         } else if q.polarizer.is_some() {
@@ -2917,6 +3097,17 @@ fn expand_inner(
         };
         d.n = n.clone();
         prev = n;
+        // 複屈折材の板の入口: 異常光の屈折率
+        if let Some(lensbench_core::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
+            let en = lensbench_core::surface::Bire::e_name(&d.mat);
+            let g = c.glasses.get(&en).ok_or_else(|| {
+                format!(
+                    "面 {j}: 複屈折材 {} の異常光のガラス {en} がカタログにない",
+                    d.mat
+                )
+            })?;
+            *ne = wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect();
+        }
         // 複屈折材の波長板: 板のガラスを引き、設計波長の行列を作り直す
         if let Some(r) = d.retarder.as_mut().filter(|r| !r.plates.is_empty()) {
             r.resolve(&c.glasses).map_err(|e| format!("面 {j}: {e}"))?;

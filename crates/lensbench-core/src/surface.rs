@@ -206,6 +206,12 @@ pub struct Surface {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub retarder: Option<Retarder>,
+    /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。形は標準面のまま
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub bire: Option<Bire>,
     /// 利用者定義の面（[`SurfType::User`]）のモデルと設定
     #[cfg_attr(
         feature = "serde",
@@ -216,7 +222,8 @@ pub struct Surface {
 
 /// 偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、
 /// 軸の向きを速い軸とする遅延 φ = 2π·(`order` + `retardance`)·`wl0`/λ（ゼロ次は order 0）。
-/// 行列は R(−θ)·diag(tx·e^{−iφ/2}, ty·e^{+iφ/2})·R(θ)（光路の長い側が位相 +、[`crate::fringe`] の e^{+ikL} と同じ向き）。
+/// 行列は R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・
+/// 厚さのある結晶板（[`Bire`]）と同じ向き）。
 /// `plates` があれば（複屈折材の板）遅延は板ごとの Δn(λ)·d/λ で、行列は板の行列の積（光の通る順）
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -354,8 +361,8 @@ impl Retarder {
             let mut m = axis_matrix(C::new(self.tx, 0.0), C::new(self.ty, 0.0), self.axis_deg);
             for (p, r) in self.plates.iter().zip(self.plate_retardance(wl)) {
                 let q = axis_matrix(
-                    C::from_polar(1.0, -tau * r / 2.0),
                     C::from_polar(1.0, tau * r / 2.0),
+                    C::from_polar(1.0, -tau * r / 2.0),
                     self.axis_deg + p.axis_deg,
                 );
                 m = mul2(&q, &m);
@@ -368,8 +375,8 @@ impl Retarder {
             2.0 * std::f64::consts::PI * (self.order as f64 + self.retardance) * self.wl0 / wl
         };
         axis_matrix(
-            C::from_polar(self.tx, -phi / 2.0),
-            C::from_polar(self.ty, phi / 2.0),
+            C::from_polar(self.tx, phi / 2.0),
+            C::from_polar(self.ty, -phi / 2.0),
             self.axis_deg,
         )
     }
@@ -379,6 +386,34 @@ impl Retarder {
         [
             m[0].re, m[0].im, m[1].re, m[1].im, m[2].re, m[2].im, m[3].re, m[3].im,
         ]
+    }
+}
+
+/// 複屈折材の板（OpticStudio の Birefringent In / Out の組）。入口の面の後の媒質（`mat`）が常光の材料、
+/// `mat`-E が異常光の材料。光線は常光の道を進み（屈折率 no）、出口の面で、板の中の光線の向き k と
+/// 結晶軸 a から決まる異常光の成分（a の k に垂直な向き）に、常光の成分に対して
+/// exp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける（OpticStudio の Mode 2、波長板モード）。
+/// n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は k と a の角、L は板の中の光線の長さ。Mode 0 は常光の成分だけを通す
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Bire {
+    In {
+        /// 0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は未対応
+        mode: u8,
+        /// 結晶軸の向き（入口の面の局所座標、規格化しなくてよい）
+        axis: [f64; 3],
+        /// 異常光の屈折率（波長ごと）
+        #[cfg_attr(feature = "serde", serde(default))]
+        ne: Vec<f64>,
+    },
+    Out,
+}
+
+impl Bire {
+    /// 異常光の材料の名前（OpticStudio の約束）
+    pub fn e_name(mat: &str) -> String {
+        format!("{}-E", mat.trim())
     }
 }
 
@@ -430,6 +465,7 @@ impl Default for Surface {
             n_base: Vec::new(),
             reflect: None,
             retarder: None,
+            bire: None,
             user: None,
         }
     }

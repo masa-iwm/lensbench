@@ -406,6 +406,75 @@
       ],
       "type": "object"
     },
+    "Bire": {
+      "description": "複屈折材の板（OpticStudio の Birefringent In / Out の組）。入口の面の後の媒質（`mat`）が常光の材料、\n`mat`-E が異常光の材料。光線は常光の道を進み（屈折率 no）、出口の面で、板の中の光線の向き k と\n結晶軸 a から決まる異常光の成分（a の k に垂直な向き）に、常光の成分に対して\nexp(−i·2π·(n(θ) − no)·L/λ) の位相を付ける（OpticStudio の Mode 2、波長板モード）。\nn(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は k と a の角、L は板の中の光線の長さ。Mode 0 は常光の成分だけを通す",
+      "oneOf": [
+        {
+          "enum": [
+            "Out"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "In": {
+              "properties": {
+                "axis": {
+                  "description": "結晶軸の向き（入口の面の局所座標、規格化しなくてよい）",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "format": "double",
+                        "type": "number"
+                      },
+                      {
+                        "$ref": "#/$defs/NonFinite"
+                      }
+                    ]
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "mode": {
+                  "description": "0: 常光の成分だけ、2: 波長板（両方の位相）。1・3（異常光の道）は未対応",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "ne": {
+                  "default": [],
+                  "description": "異常光の屈折率（波長ごと）",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "format": "double",
+                        "type": "number"
+                      },
+                      {
+                        "$ref": "#/$defs/NonFinite"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "mode",
+                "axis"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "In"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Bore": {
       "description": "部品の穴（円柱）。z は部品の座標 [mm]",
       "properties": {
@@ -1797,7 +1866,7 @@
       "type": "object"
     },
     "Retarder": {
-      "description": "偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、\n軸の向きを速い軸とする遅延 φ = 2π·(`order` + `retardance`)·`wl0`/λ（ゼロ次は order 0）。\n行列は R(−θ)·diag(tx·e^{−iφ/2}, ty·e^{+iφ/2})·R(θ)（光路の長い側が位相 +、[`crate::fringe`] の e^{+ikL} と同じ向き）。\n`plates` があれば（複屈折材の板）遅延は板ごとの Δn(λ)·d/λ で、行列は板の行列の積（光の通る順）",
+      "description": "偏光子・波長板の Jones 行列の元: 軸（`axis_deg`、x から y へ）の向きの振幅透過 `tx`、直交する向き `ty`、\n軸の向きを速い軸とする遅延 φ = 2π·(`order` + `retardance`)·`wl0`/λ（ゼロ次は order 0）。\n行列は R(−θ)·diag(tx·e^{+iφ/2}, ty·e^{−iφ/2})·R(θ)（遅い軸が位相 −。OpticStudio の伝播の位相 e^{−i2πnd/λ}・\n厚さのある結晶板（[`Bire`]）と同じ向き）。\n`plates` があれば（複屈折材の板）遅延は板ごとの Δn(λ)·d/λ で、行列は板の行列の積（光の通る順）",
       "properties": {
         "axis_deg": {
           "anyOf": [
@@ -2319,6 +2388,17 @@
             }
           ],
           "description": "Binary 2 の位相（[`SurfType::Binary2`]）"
+        },
+        "bire": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Bire"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。形は標準面のまま"
         },
         "c": {
           "anyOf": [
