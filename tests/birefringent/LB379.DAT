@@ -1,0 +1,3 @@
+! lensbench 379 stage 2: ideal coatings for the birefringent plate check (Fresnel removal)
+COAT I.99999
+IDEAL2 LBT1 0 0 1 0 0 0 1 0 1

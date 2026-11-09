@@ -1,7 +1,8 @@
 //! 複屈折材の板（OpticStudio の Birefringent In / Out、Mode 2 の波長板と Mode 0）を OpticStudio 26.1 と照合する。
 //! 系（tests/birefringent）: 絞り → 空気 5 → 板 → 空気 20 → 像面、波長 0.55・0.6328・0.8 µm、視野 角度 (0,0)・(0,3)・(2,−2)°。
 //! b1 は水晶 1 mm（多次、結晶軸 30°）、b2 は水晶 0.0175 mm（633 nm で λ/4）、b3 は水晶 0.0175 mm（30°）と MgF₂ 0.0141 mm
-//! （120°）の貼り合わせ、b4_m0 は b1 の Mode 0（常光の成分だけ）。基準は Normalized Polarized の像面の電場（入力 x・y）
+//! （120°）の貼り合わせ、b4_m0 は b1 の Mode 0（常光の成分だけ）、b2_coat は b2 の両面に理想膜 I.99999（LB379.DAT）、
+//! b2_ax0・b2_ax60 は b2 の結晶軸を 0°・60° にしたもの。基準は Normalized Polarized の像面の電場（入力 x・y）
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::{zmx, zmx_write};
@@ -74,16 +75,18 @@ fn pol_diff(s: &System, name: &str) -> Vec<(f64, f64)> {
 
 #[test]
 fn birefringent_plates_match_opticstudio() {
-    for name in ["b1", "b2", "b3", "b4_m0"] {
+    for name in ["b1", "b2", "b3", "b4_m0", "b2_coat", "b2_ax0", "b2_ax60"] {
         let s = load(name);
         let d = pol_diff(&s, name);
         println!("{name}（波長ごとの 比を除いた残り, |s| − 1） {d:?}");
-        // Mode 0（常光の成分だけ）は 1e-12 で合う。Mode 2 の残り 2〜3e-4 は軸上でも同じ大きさで、OS が面に垂直な光線の
-        // s・p を決めるときの小さな二色性（Fresnel の扱いを振っても消えない）（以前の偏光の照合で既知の差とした、直入射付近の s・p の扱いと同じ種類）
-        let tol = if name == "b4_m0" {
+        // Mode 0（常光の成分だけ）と、板の両面に理想膜（I.99999）を付けた b2_coat は、斜めの視野も含め 1e-12 で合う。
+        // 無膜の Mode 2 の残り（最大 6.4e-4）は入口の面の Fresnel の扱いの違い: OS は面に垂直な光線で s・p を実験室の
+        // x・y に取り、結晶軸に近い方に ne、もう一方に no の透過を使う（結晶軸 0° で最大、30°・60° で半分。非公開側の
+        // 第 2 段の測定で 1.9e-9 で確認）。lensbench は入口・出口とも常光の屈折率の Fresnel
+        let tol = if matches!(name, "b4_m0" | "b2_coat") {
             (1e-10, 1e-10)
         } else {
-            (5e-4, 2e-3)
+            (7e-4, 2e-3)
         };
         assert!(
             d.iter().all(|&(r, a)| r < tol.0 && a < tol.1),
