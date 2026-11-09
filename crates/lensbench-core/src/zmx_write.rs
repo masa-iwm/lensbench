@@ -959,8 +959,11 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     let mut m = ss[0].clone();
     m.surfaces = surfs;
     for s in &ss[1..] {
-        for (k, g) in &s.glasses {
-            m.glasses.entry(k.clone()).or_insert_with(|| g.clone());
+        if !std::sync::Arc::ptr_eq(&m.glasses, &s.glasses) {
+            let mg = std::sync::Arc::make_mut(&mut m.glasses);
+            for (k, g) in s.glasses.iter() {
+                mg.entry(k.clone()).or_insert_with(|| g.clone());
+            }
         }
         for (k, t) in &s.coat_tables {
             if m.coat_tables.get(k).is_some_and(|u| u != t) {

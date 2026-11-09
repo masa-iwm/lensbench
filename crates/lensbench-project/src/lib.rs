@@ -1492,7 +1492,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     fn merge_glasses(&mut self, s: &System) {
-        for (k, g) in &s.glasses {
+        for (k, g) in s.glasses.iter() {
             self.glasses.entry(k.clone()).or_insert_with(|| g.clone());
         }
     }

@@ -95,7 +95,10 @@ fn absorption_follows_the_internal_transmittance() {
         .filter(|&q| s.surfaces[q].mat == mat && !s.surfaces[q].mirror)
         .map(|q| s.surfaces[q].t)
         .sum();
-    s.glasses.get_mut(&mat).unwrap().it = vec![[wl - 0.1, 0.9, 10.0], [wl + 0.1, 0.9, 10.0]];
+    std::sync::Arc::make_mut(&mut s.glasses)
+        .get_mut(&mat)
+        .unwrap()
+        .it = vec![[wl - 0.1, 0.9, 10.0], [wl + 0.1, 0.9, 10.0]];
     let t1 = s
         .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
         .unwrap();

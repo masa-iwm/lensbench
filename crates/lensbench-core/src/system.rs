@@ -20,7 +20,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const ENPP_MAX: f64 = 1e10;
 
@@ -459,7 +459,8 @@ pub struct System {
     pub aperture: (ApertureKind, f64),
     pub telecentric: bool,
     pub aiming: Aiming,
-    pub glasses: HashMap<String, Glass>,
+    // 系で使えるガラス（読んだカタログ全体）。系の写し（with_params など）で共有し、変えるときは Arc::make_mut で写す
+    pub glasses: Arc<HashMap<String, Glass>>,
     pub temperature: f64,
     pub pressure: f64,
     pub glrs: usize,
@@ -741,7 +742,7 @@ impl System {
             aperture,
             telecentric,
             aiming,
-            glasses,
+            glasses: Arc::new(glasses),
             temperature: 20.0,
             pressure: 1.0,
             glrs: 1,

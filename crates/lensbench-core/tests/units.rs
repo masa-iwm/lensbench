@@ -208,7 +208,7 @@ fn rigid_motion_equals_coordinate_breaks() {
                 &raw,
                 &LoadOptions {
                     cfg: 1,
-                    glasses: Some(a.glasses.clone()),
+                    glasses: Some((*a.glasses).clone()),
                     ..Default::default()
                 },
                 &[],

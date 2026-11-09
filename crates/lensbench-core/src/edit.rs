@@ -289,7 +289,7 @@ impl System {
 
     /// ガラスを足す（同じ名前は置き換える）。屈折率は材料を設定したときに作る
     pub fn add_glasses(&mut self, g: HashMap<String, Glass>) {
-        self.glasses.extend(g);
+        std::sync::Arc::make_mut(&mut self.glasses).extend(g);
         self.invalidate_frames();
     }
 

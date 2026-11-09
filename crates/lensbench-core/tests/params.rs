@@ -31,7 +31,7 @@ fn reload(s: &System) -> System {
         &raw,
         &LoadOptions {
             cfg: 1,
-            glasses: Some(s.glasses.clone()),
+            glasses: Some((*s.glasses).clone()),
             ..Default::default()
         },
         &[],
