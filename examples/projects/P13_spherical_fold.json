@@ -1,0 +1,74 @@
+{
+ "name": "P13 a spherical mirror tilted 8 deg folds the beam into a catalog lens",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "epd",
+  "value": 8
+ },
+ "fields": {
+  "type": "angle",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1.5
+   ],
+   [
+    1,
+    -1
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "stop",
+   "semi": 4
+  },
+  {
+   "type": "air",
+   "t": 40
+  },
+  {
+   "type": "mirror",
+   "radius": -400,
+   "tilt": [
+    8,
+    0
+   ],
+   "semi": 12
+  },
+  {
+   "type": "air",
+   "t": 30
+  },
+  {
+   "type": "lens",
+   "id": "MEN-75",
+   "source": {
+    "vendor": "LB",
+    "part": "MEN-75"
+   }
+  },
+  {
+   "type": "air",
+   "t": 50
+  }
+ ]
+}

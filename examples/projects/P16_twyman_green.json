@@ -1,0 +1,33 @@
+{
+ "name": "P16 Twyman-Green: test lens in double pass, reference flat, both arms meet at port D",
+ "glass_catalogs": ["SCHOTT"],
+ "wavelengths": [{"um": 0.6328}],
+ "aperture": {"type": "na", "value": 0.02},
+ "fields": {"type": "object_height", "points": [[0, 0], [0, 0.5]]},
+ "object_distance": 100,
+ "blocks": [
+  {"type": "stop", "semi": 3},
+  {"type": "air", "t": 20},
+  {"type": "splitter", "id": "BS", "form": "cube", "size": 20, "glass": "N-BK7",
+   "ratio": 0.5, "ar": "I.s=1,p=1",
+   "t": [
+    {"type": "air", "t": 30},
+    {"type": "lens", "id": "TEST", "source": {"surfaces": [
+      {"radius": 60, "t": 5, "glass": "N-BK7", "semi": 10}, {"radius": -60, "semi": 10}]}},
+    {"type": "air", "t": 40},
+    {"type": "mirror", "id": "M_TEST", "back": true, "coat": "I.s=0,p=0", "semi": 15}
+   ],
+   "r": [
+    {"type": "air", "t": 75},
+    {"type": "mirror", "id": "M_REF", "back": true, "coat": "I.s=0,p=0", "semi": 15}
+   ],
+   "d": [
+    {"type": "air", "t": 50}
+   ]}
+ ],
+ "path": "TR",
+ "states": [
+  {"name": "test arm", "project": {"path": "TR"}},
+  {"name": "reference arm", "project": {"path": "RT"}}
+ ]
+}

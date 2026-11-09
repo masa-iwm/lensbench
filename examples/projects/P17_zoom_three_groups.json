@@ -1,0 +1,29 @@
+{
+ "name": "P17 three-group zoom (variator G2, compensator G3)",
+ "wavelengths": [{"um": 0.5875618}],
+ "aperture": {"type": "epd", "value": 4},
+ "fields": {"type": "angle", "points": [[0, 0], [0, 1.5], [0, 3]]},
+ "blocks": [
+  {"type": "stop", "semi": 4},
+  {"type": "air", "t": 1},
+  {"type": "lens", "id": "G1", "source": {"surfaces": [
+    {"radius": 62.0, "t": 4, "glass": "1.5168", "semi": 6},
+    {"radius": -62.0, "semi": 6}]}},
+  {"type": "air", "id": "d1", "t": 40},
+  {"type": "group", "id": "G2", "role": "zoom", "blocks": [
+   {"type": "lens", "source": {"surfaces": [
+    {"radius": -20.67, "t": 2, "glass": "1.5168", "semi": 4},
+    {"radius": 20.67, "semi": 4}]}}]},
+  {"type": "air", "id": "d2", "t": 20},
+  {"type": "group", "id": "G3", "role": "zoom", "blocks": [
+   {"type": "lens", "source": {"surfaces": [
+    {"radius": 31.0, "t": 4, "glass": "1.5168", "semi": 9},
+    {"radius": -31.0, "semi": 9}]}}]},
+  {"type": "air", "id": "bfl", "t": 27}
+ ],
+ "states": [
+  {"name": "wide", "set": {"G2": {"shift": 0}, "G3": {"shift": 0}}},
+  {"name": "mid", "set": {"G2": {"shift": 2}, "G3": {"shift": 6}}},
+  {"name": "tele", "set": {"G2": {"shift": 5}, "G3": {"shift": 14}}}
+ ]
+}

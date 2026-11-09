@@ -1,0 +1,3 @@
+{ "name": "P2 doublet with the second lens off (kept as air)", "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}], "primary": 2, "aperture": {"type": "epd", "value": 8}, "fields": {"type": "angle", "points": [[0, 0], [0, 3], [2, 2]]},
+  "blocks": [{"type": "stop", "semi": 4}, {"type": "air", "t": 10}, {"type": "lens", "id": "L", "source": {"surfaces": [{"radius": 40, "t": 4, "glass": "N-BK7", "semi": 6}, {"radius": -60, "semi": 6}]}}, {"type": "air", "t": 3},
+    {"type": "lens", "id": "L2", "on": false, "off": "air", "source": {"surfaces": [{"radius": -50, "t": 2, "glass": "F2"}, {"radius": -200}]}}, {"type": "air", "t": 60}] }

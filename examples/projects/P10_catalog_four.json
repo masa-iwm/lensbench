@@ -1,0 +1,104 @@
+{
+ "name": "P10 four catalog lenses: a relay of two achromat pairs",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "epd",
+  "value": 4
+ },
+ "aiming": "real",
+ "fields": {
+  "type": "angle",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1.2
+   ],
+   [
+    0,
+    2
+   ],
+   [
+    0.8,
+    0.8
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "lens",
+   "id": "PCX-100",
+   "source": {
+    "vendor": "LB",
+    "part": "PCX-100"
+   },
+   "reversed": true
+  },
+  {
+   "type": "air",
+   "t": 2
+  },
+  {
+   "type": "lens",
+   "id": "ACH-45",
+   "source": {
+    "vendor": "LB",
+    "part": "ACH-45"
+   }
+  },
+  {
+   "type": "air",
+   "t": 40
+  },
+  {
+   "type": "stop",
+   "semi": 4
+  },
+  {
+   "type": "air",
+   "t": 25
+  },
+  {
+   "type": "lens",
+   "id": "ACH-45",
+   "source": {
+    "vendor": "LB",
+    "part": "ACH-45"
+   },
+   "reversed": true
+  },
+  {
+   "type": "air",
+   "t": 2
+  },
+  {
+   "type": "lens",
+   "id": "BCX-50",
+   "source": {
+    "vendor": "LB",
+    "part": "BCX-50"
+   }
+  },
+  {
+   "type": "air",
+   "t": 40
+  }
+ ]
+}

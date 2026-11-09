@@ -1,0 +1,91 @@
+{
+ "name": "P9 three catalog lenses with the stop inside, finite object",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "na",
+  "value": 0.04
+ },
+ "object_distance": 120,
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    3
+   ],
+   [
+    0,
+    6
+   ],
+   [
+    2,
+    -2
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "lens",
+   "id": "BCX-50",
+   "source": {
+    "vendor": "LB",
+    "part": "BCX-50"
+   }
+  },
+  {
+   "type": "air",
+   "t": 6
+  },
+  {
+   "type": "lens",
+   "id": "BCC-32",
+   "source": {
+    "vendor": "LB",
+    "part": "BCC-32"
+   },
+   "reversed": true
+  },
+  {
+   "type": "air",
+   "t": 4
+  },
+  {
+   "type": "stop",
+   "semi": 5
+  },
+  {
+   "type": "air",
+   "t": 4
+  },
+  {
+   "type": "lens",
+   "id": "MEN-75",
+   "source": {
+    "vendor": "LB",
+    "part": "MEN-75"
+   }
+  },
+  {
+   "type": "air",
+   "t": 60
+  }
+ ]
+}

@@ -1,0 +1,132 @@
+{
+ "name": "P6 states with a focus group and a removable lens",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "epd",
+  "value": 10
+ },
+ "fields": {
+  "type": "angle",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    14
+   ],
+   [
+    0,
+    20
+   ],
+   [
+    10,
+    10
+   ]
+  ]
+ },
+ "object_distance": 1000,
+ "blocks": [
+  {
+   "type": "group",
+   "id": "front",
+   "name": "front",
+   "role": "focus",
+   "blocks": [
+    {
+     "type": "lens",
+     "id": "L1",
+     "source": {
+      "zmx": "../../tests/refs/A0/system.zmx",
+      "lens": 1
+     }
+    },
+    {
+     "type": "air",
+     "t": 5.8
+    },
+    {
+     "type": "lens",
+     "id": "L2",
+     "source": {
+      "zmx": "../../tests/refs/A0/system.zmx",
+      "lens": 2
+     }
+    }
+   ]
+  },
+  {
+   "type": "air",
+   "id": "d",
+   "t": 1.2
+  },
+  {
+   "type": "stop",
+   "semi": 4.1474599813074455
+  },
+  {
+   "type": "air",
+   "t": 2.3
+  },
+  {
+   "type": "lens",
+   "id": "L3",
+   "source": {
+    "zmx": "../../tests/refs/A0/system.zmx",
+    "lens": 3
+   }
+  },
+  {
+   "type": "air",
+   "t": 45.62105038567799
+  }
+ ],
+ "states": [
+  {
+   "name": "far",
+   "project": {
+    "object_distance": 100000.0
+   },
+   "set": {
+    "front": {
+     "shift": 0.3
+    }
+   }
+  },
+  {
+   "name": "near",
+   "project": {
+    "object_distance": 500
+   },
+   "set": {
+    "front": {
+     "shift": -0.4
+    }
+   }
+  },
+  {
+   "name": "no L3",
+   "set": {
+    "L3": {
+     "on": false,
+     "off": "air"
+    }
+   }
+  }
+ ]
+}

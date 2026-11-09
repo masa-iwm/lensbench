@@ -1,0 +1,22 @@
+# カタログレンズの差し替え探索
+
+- `swap`: `--spec` の JSON の `slots`（差し替える玉のブロックの `block` id と、候補 `parts` の並びか `filter`
+  （`vendor`・`efl`・`diameter` の範囲）、`flip` で向きも両方）の候補で差し替えた組をすべて並列に回し、組ごとに `vars` を
+  最適化して、評価関数の小さい順に `--top` 個を出す。`vars` は系のパラメータの書き方に加えて、id のある空気のブロックを
+  `id.t` で指せる（その空気が入る面の厚さ）。`efl` で系の焦点距離の目標も足せる（像だけの値は `image_merit`）。
+  ほかに `merit`・`reference`・`rings`・`iters`・`state`・`max_count`（組の数の上限、既定 100000）。
+- `terms` で評価関数に項を足せる（`optimize --term` と同じ JSON の配列。焦点距離の下限 `{"type": "paraxial", "q": "efl", "min": 351}` など）。
+  `starts` は出発点の並び（`[{"d12.t": 20}, {"d12.t": 150}]` のように変数の名前 → 初期値。書かない変数はプロジェクトの値）で、組ごとに
+  すべての出発点から最適化して評価関数の最も小さい解を採る（結果の `start` にその番号。間隔の局所解が複数ある系向け）。
+  `image_merit` は既定の像の項だけの値（`efl`・`terms` の項を含まない）。
+- `states` で状態をまたいで探索する（ズーム位置など）: 組ごとに `states` の全状態の系を同時に最適化し（評価関数は全状態の像の項）、
+  `state_vars` の変数（群の移動 `G2.shift` など）は状態ごとに別の値で、`vars` は全状態で共通の値で解く。`terms` の `config` は `states` の番号
+  （1 始まり。状態ごとの倍率の目標などに）。結果の `vars` の状態ごとの変数に `state`、`states` に状態ごとの像の評価関数と焦点距離。
+  `state` とは同時に使えない。
+- `clear_aperture: true` で有効径の条件を足す: 差し替える玉の各面で、各視野の瞳の縁（上下左右）の実光線が面の半径（カタログの玉の
+  半直径）の内側にあることを片側の条件の項にする（玉の外を通る組を、けった光線で良く見せずに落とす）。
+- 組の番号 `i` は所ごとの候補の番号の混合基数（最後の所が最も速く回る）。結果は組の番号だけで決まり、スレッド数によらない。
+  `--out r.jsonl` で組ごとに一括実行の JSONL へ逐次書き出し、同じ探索（設定・プロジェクト・候補が同じ）の
+  ファイルがあれば続きから回す（`--no-resume` で書き直す）。
+- 例: `examples/projects/P18_swap_two.json`。Rust は `lensbench_project::swap::SwapSearch`、Python は
+  `lensbench.swap_search(project, spec, lens_catalogs=[…], out=…)`。

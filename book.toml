@@ -1,0 +1,19 @@
+# ドキュメントサイト（GitHub Pages）。ビルドは scripts/build_docs.sh（自動生成のページと Rust API も作る）
+[book]
+title = "lensbench"
+language = "ja"
+src = "docs"
+
+[build]
+build-dir = "target/book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/masa-iwm/lensbench"
+edit-url-template = "https://github.com/masa-iwm/lensbench/edit/main/{path}"
+site-url = "/lensbench/"
+additional-js = ["docs/theme/ja-search.js"]
+
+[output.html.search]
+# 日本語は語の区切りがないので、短い語でも当たるようにする
+use-boolean-and = true

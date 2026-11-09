@@ -1,0 +1,102 @@
+{
+ "name": "P7 lens mode groups in an imported .zmx",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "epd",
+  "value": 10
+ },
+ "fields": {
+  "type": "angle",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    14
+   ],
+   [
+    0,
+    20
+   ],
+   [
+    10,
+    10
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "zmx",
+   "id": "A0",
+   "path": "../../tests/refs/A0/system.zmx",
+   "groups": [
+    {
+     "id": "g1",
+     "name": "G1",
+     "role": "fixed",
+     "from": 1,
+     "to": 2
+    },
+    {
+     "id": "g2",
+     "name": "G2",
+     "role": "zoom",
+     "from": 3,
+     "to": 4
+    },
+    {
+     "id": "g3",
+     "name": "G3",
+     "role": "focus",
+     "from": 6,
+     "to": 7
+    }
+   ]
+  }
+ ],
+ "states": [
+  {
+   "name": "g2 forward",
+   "set": {
+    "g2": {
+     "shift": 0.5
+    },
+    "g3": {
+     "shift": 0.2
+    }
+   }
+  },
+  {
+   "name": "g2 tilted",
+   "set": {
+    "g2": {
+     "decenter": [
+      0.05,
+      0
+     ],
+     "tilt": [
+      0.3,
+      0,
+      0
+     ]
+    }
+   }
+  }
+ ]
+}

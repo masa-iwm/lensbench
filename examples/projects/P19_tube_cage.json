@@ -1,0 +1,17 @@
+{
+ "name": "P19 lens tube and cage plate (mechanical vignetting)",
+ "glass_catalogs": ["SCHOTT"],
+ "wavelengths": [{"um": 0.5875618}],
+ "aperture": {"type": "epd", "value": 12},
+ "fields": {"type": "angle", "points": [[0, 0], [0, 10], [0, 20]]},
+ "blocks": [
+  {"type": "stop", "id": "stop", "semi": 6},
+  {"type": "air", "t": 20},
+  {"type": "lens", "id": "L1", "source": {"surfaces": [{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}, {"radius": -60, "semi": 12.7}]}},
+  {"type": "air", "t": 50}
+ ],
+ "mechanics": [
+  {"name": "tube", "catalog": "../lenses/LBP/parts.json", "item": "TUBE-25-30", "at": {"block": "stop"}, "holds": ["L1"]},
+  {"name": "cage", "catalog": "../lenses/LBP/parts.json", "item": "CP-30", "at": {"block": "L1", "surface": 1}, "offset": [0, 0, 25]}
+ ]
+}

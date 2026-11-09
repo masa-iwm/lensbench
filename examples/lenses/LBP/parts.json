@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "vendor": "LB",
+  "url_template": "https://example.com/lb/{part}",
+  "overlay": {
+    "ACH-*": {"specs": {"coating": "AR 400-700 nm"}, "tags": ["achromat"]},
+    "ACH-45": {"specs": {"wavelength_nm": [400, 700]}}
+  },
+  "items": {
+    "BS-127": {
+      "description": "キューブ BS 12.7 mm、無偏光 50:50（理想の分岐）",
+      "glass_catalogs": ["SCHOTT"],
+      "blocks": [{"type": "splitter", "id": "BS", "form": "cube", "size": 12.7, "glass": "N-BK7", "ratio": 0.5}],
+      "kind": "splitter",
+      "url": "https://example.com/lb/bs-127",
+      "specs": {"wavelength_nm": [400, 700], "thickness": 12.7, "material": "N-BK7", "split_ratio": "50:50", "coating": "AR 400-700 nm", "flatness": 0.1, "surface_quality": "40-20"},
+      "tags": ["non-polarizing", "cube"],
+      "source": "架空の例",
+      "checked": "2026-11-09"
+    },
+    "PBS-127": {
+      "description": "キューブ偏光 BS 12.7 mm（理想の PBS: p 透過、s 反射）",
+      "glass_catalogs": ["SCHOTT"],
+      "blocks": [{"type": "splitter", "id": "BS", "form": "cube", "size": 12.7, "glass": "N-BK7", "pbs": {"tp": 1.0, "ts": 0.0}}],
+      "kind": "splitter",
+      "specs": {"wavelength_nm": [420, 680], "thickness": 12.7, "material": "N-BK7", "extinction_ratio": 1000, "coating": "AR 400-700 nm"},
+      "tags": ["polarizing", "cube"]
+    },
+    "BSP-254": {
+      "description": "平板 BS 径 25.4 mm、厚さ 1 mm、表で 50:50",
+      "glass_catalogs": ["SCHOTT"],
+      "blocks": [{"type": "splitter", "id": "BS", "form": "plate", "thickness": 1.0, "semi": 12.7, "glass": "N-BK7", "ratio": 0.5}],
+      "kind": "splitter",
+      "specs": {"wavelength_nm": [400, 700], "diameter": 25.4, "thickness": 1.0, "split_ratio": "50:50", "aoi_deg": 45, "wedge": 30},
+      "tags": ["plate"]
+    },
+    "PM-254": {
+      "description": "平面鏡 径 25.4 mm",
+      "blocks": [{"type": "mirror", "semi": 12.7}],
+      "kind": "mirror",
+      "specs": {"wavelength_nm": [400, 750], "diameter": 25.4, "thickness": 6.0, "coating": "誘電体多層膜", "reflectance": 99, "flatness": 0.1},
+      "tags": ["dielectric", "flat"]
+    },
+    "CM-254-100": {
+      "description": "凹面鏡 径 25.4 mm、f = 100 mm",
+      "blocks": [{"type": "mirror", "radius": -200.0, "semi": 12.7}],
+      "kind": "mirror",
+      "specs": {"wavelength_nm": [450, 20000], "diameter": 25.4, "coating": "保護膜付きアルミ", "reflectance": 90},
+      "tags": ["metallic", "concave"]
+    },
+    "SL-254-50": {
+      "description": "両凸の単レンズ（面を直接書いた玉）",
+      "glass_catalogs": ["SCHOTT"],
+      "blocks": [{"type": "lens", "source": {"surfaces": [{"radius": 51.0, "t": 5.0, "glass": "N-BK7", "semi": 12.7}, {"radius": -51.0, "semi": 12.7}]}}],
+      "kind": "lens"
+    },
+    "WIN-254-3": {
+      "description": "ウィンドウ 径 25.4 mm、厚さ 3 mm（平行平板）",
+      "kind": "window",
+      "glass_catalogs": ["SCHOTT"],
+      "blocks": [{"type": "lens", "source": {"surfaces": [{"t": 3.0, "glass": "N-BK7", "semi": 12.7}, {"tilt": [0.05, 0], "semi": 12.7}]}}],
+      "specs": {"wavelength_nm": [350, 2000], "diameter": 25.4, "thickness": 3.0, "material": "N-BK7", "flatness": 0.1, "wedge": 3, "surface_quality": "40-20"},
+      "tags": ["uncoated"]
+    },
+    "POL-254": {
+      "description": "直線偏光子（理想、透過軸 x、消光比 1000:1）",
+      "kind": "polarizer",
+      "blocks": [{"type": "surfaces", "surfaces": [{"polarizer": {"axis_deg": 0, "extinction_ratio": 1000, "transmittance": 0.8}, "semi": 12.7}]}],
+      "specs": {"wavelength_nm": [400, 700], "diameter": 25.4, "extinction_ratio": 1000, "transmittance": 80}
+    },
+    "TUBE-25-30": {
+      "description": "レンズチューブ 長さ 30 mm（内径 23 mm、ねじ M25）",
+      "kind": "tube",
+      "mech": {"bores": [{"z0": 0, "z1": 30, "diameter": 23.0}], "length": 30, "outer_diameter": 30.5, "thread": "M25", "holds": {"diameter": 25.4, "seat_z": 0}},
+      "specs": {"length": 30, "inner_diameter": 23.0, "thread": "M25"}
+    },
+    "CP-30": {
+      "description": "ケージ板 30 mm ケージ用（クリア開口 22 mm、厚さ 8 mm）",
+      "kind": "cage_plate",
+      "mech": {"bores": [{"z0": 0, "z1": 8, "diameter": 22.0}], "length": 8, "outer_diameter": 41, "rod_spacing": 30, "holds": {"diameter": 25.4, "seat_z": 2}},
+      "specs": {"clear_aperture": 22.0, "rod_spacing": 30, "thickness": 8}
+    },
+    "QWP-254-633": {
+      "description": "λ/4 板（理想、速軸 45°、633 nm）",
+      "kind": "waveplate",
+      "blocks": [{"type": "surfaces", "surfaces": [{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 45}, "semi": 12.7}]}],
+      "specs": {"wavelength_nm": 633, "diameter": 25.4, "retardance": 0.25, "order": "zero"}
+    }
+  }
+}

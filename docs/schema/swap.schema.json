@@ -1,0 +1,226 @@
+{
+  "$defs": {
+    "Filter": {
+      "additionalProperties": false,
+      "description": "候補の絞り込み（省いた条件は絞らない）",
+      "properties": {
+        "diameter": {
+          "default": [
+            null,
+            null
+          ],
+          "description": "径の範囲 [mm]",
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "efl": {
+          "default": [
+            null,
+            null
+          ],
+          "description": "焦点距離の範囲 [mm]",
+          "items": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "vendor": {
+          "default": null,
+          "description": "メーカー（大文字・小文字を区別しない）",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PartRef": {
+      "additionalProperties": false,
+      "description": "型番 1 つ",
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "vendor",
+        "part"
+      ],
+      "type": "object"
+    },
+    "Slot": {
+      "additionalProperties": false,
+      "description": "差し替える所",
+      "properties": {
+        "block": {
+          "description": "玉のブロック（type lens）の id",
+          "type": "string"
+        },
+        "filter": {
+          "$ref": "#/$defs/Filter",
+          "default": {
+            "diameter": [
+              null,
+              null
+            ],
+            "efl": [
+              null,
+              null
+            ],
+            "vendor": null
+          }
+        },
+        "flip": {
+          "default": false,
+          "description": "向き（reversed）を両方試す（false ならブロックの向きのまま）",
+          "type": "boolean"
+        },
+        "parts": {
+          "default": [],
+          "description": "候補の型番（空なら filter で絞ったカタログのすべて）",
+          "items": {
+            "$ref": "#/$defs/PartRef"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "block"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/swap.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "差し替え探索の設定（CLI の --spec の JSON）",
+  "properties": {
+    "$schema": {
+      "description": "このファイルのスキーマ（エディタの補完・検査用。読むときは無視する）",
+      "type": "string"
+    },
+    "clear_aperture": {
+      "default": false,
+      "description": "有効径の条件: 差し替える玉の各面で、各視野の瞳の縁の実光線（主波長、瞳の上下左右）が面の半径\n（カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）",
+      "type": "boolean"
+    },
+    "efl": {
+      "default": null,
+      "description": "系の焦点距離の目標（省けば目標なし）。重みは像の項の重みの合計の 10 倍（`TermKind::Paraxial`）",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "iters": {
+      "default": 30,
+      "description": "組ごとの反復の上限",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_count": {
+      "default": 100000,
+      "description": "組の数の上限（大きすぎる探索を誤って始めないため）",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "merit": {
+      "default": "spot",
+      "description": "評価関数: \"spot\" か \"wavefront\"",
+      "type": "string"
+    },
+    "reference": {
+      "default": "centroid",
+      "description": "基準: \"centroid\" か \"chief\"",
+      "type": "string"
+    },
+    "rings": {
+      "default": 3,
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "slots": {
+      "items": {
+        "$ref": "#/$defs/Slot"
+      },
+      "type": "array"
+    },
+    "starts": {
+      "default": [],
+      "description": "出発点（変数の名前 → 初期値。書かない変数はプロジェクトの値）。組ごとにすべての出発点から最適化し、\n評価関数の最も小さい解を採る（空なら プロジェクトの値から 1 回）",
+      "items": {
+        "additionalProperties": {
+          "format": "double",
+          "type": "number"
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "state": {
+      "default": null,
+      "description": "状態（None なら変更なし）",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state_vars": {
+      "default": [],
+      "description": "状態ごとに別の値で解く変数（`states` のとき。群の移動 `G2.shift` など、書き方は `vars` と同じ）。\n`vars` は全状態で共通の 1 つの値",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "states": {
+      "default": [],
+      "description": "状態をまたいだ探索（ズーム位置など）: プロジェクトの状態の名前の並び。組ごとに全状態を同時に\n最適化する（評価関数は全状態の像の項）。`state` とは同時に使えない。`terms` の `config` は\nこの並びの番号（1 始まり）",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "terms": {
+      "default": [],
+      "description": "評価関数に足す項（`optimize --term` と同じ JSON。片側の条件 `min`・`max` も）。\n例: `{\"type\": \"paraxial\", \"q\": \"efl\", \"min\": 351}`",
+      "items": true,
+      "type": "array"
+    },
+    "vars": {
+      "default": [],
+      "description": "組ごとに最適化する変数（\"d1.t\"・\"d1.t=0.5:40\"・\"G2.shift\"）",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "slots"
+  ],
+  "title": "lensbench 差し替え探索の設定",
+  "type": "object"
+}

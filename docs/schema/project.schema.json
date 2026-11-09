@@ -1,0 +1,2151 @@
+{
+  "$defs": {
+    "AimingSpec": {
+      "enum": [
+        "off",
+        "paraxial",
+        "real"
+      ],
+      "type": "string"
+    },
+    "ApertureSpec": {
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/ApertureType"
+        },
+        "value": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "ApertureType": {
+      "enum": [
+        "epd",
+        "fnum",
+        "na",
+        "float",
+        "pwfn",
+        "cone"
+      ],
+      "type": "string"
+    },
+    "Arm": {
+      "description": "経路の既定（文字を指定しないとき）",
+      "enum": [
+        "t",
+        "r"
+      ],
+      "type": "string"
+    },
+    "AutoWord": {
+      "description": "[`Semi::Auto`] の綴り \"auto\"",
+      "enum": [
+        "auto"
+      ],
+      "type": "string"
+    },
+    "Block": {
+      "oneOf": [
+        {
+          "description": "ブロックの置き方（ON/OFF、偏心・傾き）",
+          "properties": {
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "reversed": {
+              "default": false,
+              "type": "boolean"
+            },
+            "source": {
+              "$ref": "#/$defs/LensSource"
+            },
+            "stop": {
+              "default": false,
+              "description": "玉の前面を絞りにする",
+              "type": "boolean"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "type": {
+              "const": "lens",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "t": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "air",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "絞り（空気中のダミー面）",
+          "properties": {
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "semi": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "stop",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "back": {
+              "default": false,
+              "description": "往路を戻る: 同じ並び（群）で鏡より前のブロックを、逆の順・逆の向きにたどる",
+              "type": "boolean"
+            },
+            "coat": {
+              "default": "",
+              "type": "string"
+            },
+            "conic": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "radius": {
+              "default": null,
+              "description": "曲率半径（省略・0 なら平面）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "semi": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y [deg]。折り曲げでは鏡の前後で同じ角だけ傾ける（光軸が折れる）。\n`back`（往路を戻る）では鏡だけを傾け、座標は元の軸に戻す（復路の光線が傾きの 2 倍の角で戻る）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "type": {
+              "const": "mirror",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "空気中の面の並び（玉に分けない）",
+          "properties": {
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "surfaces": {
+              "items": {
+                "$ref": "#/$defs/SurfSpec"
+              },
+              "type": "array"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "type": {
+              "const": "surfaces",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "surfaces"
+          ],
+          "type": "object"
+        },
+        {
+          "description": ".zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）",
+          "properties": {
+            "config": {
+              "default": 1,
+              "description": ".zmx のマルチコンフィグの番号（1 始まり）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "from": {
+              "default": null,
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "groups": {
+              "default": [],
+              "description": "玉モードの群（.zmx の面の範囲）",
+              "items": {
+                "$ref": "#/$defs/ZmxGroup"
+              },
+              "type": "array"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "path": {
+              "type": "string"
+            },
+            "stop": {
+              "default": true,
+              "description": ".zmx の絞りを系の絞りにする（false なら取り込んだ面の絞りを外す。系の絞りはほかのブロックで）",
+              "type": "boolean"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "to": {
+              "default": null,
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "zmx",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ユーザーカタログの項目（群と同じに入れる）",
+          "properties": {
+            "catalog": {
+              "description": "ユーザーカタログのファイル（プロジェクトのフォルダから）",
+              "type": "string"
+            },
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "item": {
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "type": {
+              "const": "user",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "catalog",
+            "item"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ビームスプリッター（[`SplitterSpec`]）。id が要る",
+          "properties": {
+            "angle": {
+              "default": [
+                45.0,
+                0.0
+              ],
+              "description": "分ける面の傾き x・y [deg]（鏡の tilt と同じ約束）。キューブは ±45 の一方だけ",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "ar": {
+              "description": "分ける面以外の面の膜の既定（空なら膜なし）",
+              "type": "string"
+            },
+            "arm": {
+              "$ref": "#/$defs/Arm",
+              "default": "t",
+              "description": "経路の文字がないときに選ぶ口"
+            },
+            "coat": {
+              "description": "分ける面の膜（膜ファイル・LBCM の名前）",
+              "type": "string"
+            },
+            "d": {
+              "description": "口 D（B から戻る光の反射）の先のブロック",
+              "items": {
+                "$ref": "#/$defs/Block"
+              },
+              "type": "array"
+            },
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "faces": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "面ごとの膜（キューブは a・b・c・d、平板は front・back。分ける面には付けない）",
+              "type": "object"
+            },
+            "form": {
+              "$ref": "#/$defs/SplitForm",
+              "default": "cube"
+            },
+            "glass": {
+              "default": "",
+              "description": "キューブ・平板の硝材",
+              "type": "string"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "pbs": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PbsSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "理想の偏光ビームスプリッター"
+            },
+            "r": {
+              "description": "口 C（反射）の先のブロック",
+              "items": {
+                "$ref": "#/$defs/Block"
+              },
+              "type": "array"
+            },
+            "ratio": {
+              "description": "分岐比（偏光によらない理想膜の強度の透過率）。ratio・coat・pbs のどれもなければ 0.5",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "semi": {
+              "default": 0.0,
+              "description": "平板・理想面の半径 [mm]（0 なら切らない）",
+              "format": "double",
+              "type": "number"
+            },
+            "size": {
+              "default": 0.0,
+              "description": "キューブの一辺 [mm]",
+              "format": "double",
+              "type": "number"
+            },
+            "split_face": {
+              "$ref": "#/$defs/SplitFace",
+              "default": "front",
+              "description": "平板で分ける面（front: 表、back: 裏）"
+            },
+            "t": {
+              "description": "口 B（透過）の先のブロック",
+              "items": {
+                "$ref": "#/$defs/Block"
+              },
+              "type": "array"
+            },
+            "thickness": {
+              "default": 0.0,
+              "description": "平板の中心の厚さ [mm]（表の法線の向き）",
+              "format": "double",
+              "type": "number"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "type": {
+              "const": "splitter",
+              "type": "string"
+            },
+            "wedge": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "平板のくさび: 裏面を表面に対して傾ける角 x・y [deg]（裏面の頂点のまわり）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ブロックの置き方（ON/OFF、偏心・傾き）",
+          "properties": {
+            "blocks": {
+              "items": {
+                "$ref": "#/$defs/Block"
+              },
+              "type": "array"
+            },
+            "decenter": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "偏心 [mm]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "name": {
+              "default": "",
+              "type": "string"
+            },
+            "off": {
+              "$ref": "#/$defs/OffMode",
+              "default": "collapse"
+            },
+            "on": {
+              "default": true,
+              "type": "boolean"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Role"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "shift": {
+              "default": 0.0,
+              "description": "群の移動 [mm]（光の進む向きが正）。前の間隔に足し、後の間隔から引く",
+              "format": "double",
+              "type": "number"
+            },
+            "tilt": {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "type": {
+              "const": "group",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "blocks"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "検出器（登録した種類。最後のブロックだけに置け、面は足さない）。項目は種類ごと",
+          "properties": {
+            "id": {
+              "default": "",
+              "type": "string"
+            },
+            "type": {
+              "not": {
+                "enum": [
+                  "lens",
+                  "air",
+                  "stop",
+                  "mirror",
+                  "surfaces",
+                  "zmx",
+                  "user",
+                  "splitter",
+                  "group"
+                ]
+              },
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "BoreSpec": {
+      "description": "機構部品の穴（部品の基準面からの z の範囲と内径）",
+      "properties": {
+        "diameter": {
+          "description": "内径・クリア開口 [mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "z0": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "z1": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "z1",
+        "diameter"
+      ],
+      "type": "object"
+    },
+    "CoatSpec": {
+      "description": "プロジェクト・カタログの `coatings` の 1 つ",
+      "oneOf": [
+        {
+          "description": "表: 行 [入射角 deg, 波長 µm, Rs, Rp, Ts, Tp]",
+          "properties": {
+            "rows": {
+              "items": {
+                "items": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "maxItems": 6,
+                "minItems": 6,
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "table",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "rows"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "波長 [nm] ごとの透過 `t`（と反射 `r`、省略は 0）。角度・偏光によらない",
+          "properties": {
+            "r": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "t": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "curve",
+              "type": "string"
+            },
+            "wavelengths_nm": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "type",
+            "wavelengths_nm",
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "エッジ `edge_nm`（透過 50 %）より長い波長を通す",
+          "properties": {
+            "absorptive": {
+              "default": false,
+              "description": "反射を 0 にする（吸収型）。省略は反射 = 1 − 透過（干渉型・ダイクロイック）",
+              "type": "boolean"
+            },
+            "edge_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "neff": {
+              "default": 2.0,
+              "description": "斜め入射でのエッジのずれの実効屈折率",
+              "format": "double",
+              "type": "number"
+            },
+            "od": {
+              "default": 4.0,
+              "description": "帯域外（阻止域）の光学濃度（T = 10^−od）",
+              "format": "double",
+              "type": "number"
+            },
+            "t": {
+              "default": 0.95,
+              "description": "帯域内の透過率（0〜1）",
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "longpass",
+              "type": "string"
+            },
+            "width_nm": {
+              "description": "エッジの幅 [nm]（透過が 10 % から 90 % まで。省略は 1 % のエッジ波長、帯域フィルタは FWHM の 10 %）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "edge_nm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "エッジより短い波長を通す",
+          "properties": {
+            "absorptive": {
+              "default": false,
+              "description": "反射を 0 にする（吸収型）。省略は反射 = 1 − 透過（干渉型・ダイクロイック）",
+              "type": "boolean"
+            },
+            "edge_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "neff": {
+              "default": 2.0,
+              "description": "斜め入射でのエッジのずれの実効屈折率",
+              "format": "double",
+              "type": "number"
+            },
+            "od": {
+              "default": 4.0,
+              "description": "帯域外（阻止域）の光学濃度（T = 10^−od）",
+              "format": "double",
+              "type": "number"
+            },
+            "t": {
+              "default": 0.95,
+              "description": "帯域内の透過率（0〜1）",
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "shortpass",
+              "type": "string"
+            },
+            "width_nm": {
+              "description": "エッジの幅 [nm]（透過が 10 % から 90 % まで。省略は 1 % のエッジ波長、帯域フィルタは FWHM の 10 %）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "edge_nm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "中心 `center_nm`・半値全幅 `fwhm_nm` を通す",
+          "properties": {
+            "absorptive": {
+              "default": false,
+              "description": "反射を 0 にする（吸収型）。省略は反射 = 1 − 透過（干渉型・ダイクロイック）",
+              "type": "boolean"
+            },
+            "center_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "fwhm_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "neff": {
+              "default": 2.0,
+              "description": "斜め入射でのエッジのずれの実効屈折率",
+              "format": "double",
+              "type": "number"
+            },
+            "od": {
+              "default": 4.0,
+              "description": "帯域外（阻止域）の光学濃度（T = 10^−od）",
+              "format": "double",
+              "type": "number"
+            },
+            "t": {
+              "default": 0.95,
+              "description": "帯域内の透過率（0〜1）",
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "bandpass",
+              "type": "string"
+            },
+            "width_nm": {
+              "description": "エッジの幅 [nm]（透過が 10 % から 90 % まで。省略は 1 % のエッジ波長、帯域フィルタは FWHM の 10 %）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "center_nm",
+            "fwhm_nm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "中心・幅の帯域を od で止める（帯域外は t）",
+          "properties": {
+            "absorptive": {
+              "default": false,
+              "description": "反射を 0 にする（吸収型）。省略は反射 = 1 − 透過（干渉型・ダイクロイック）",
+              "type": "boolean"
+            },
+            "center_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "fwhm_nm": {
+              "format": "double",
+              "type": "number"
+            },
+            "neff": {
+              "default": 2.0,
+              "description": "斜め入射でのエッジのずれの実効屈折率",
+              "format": "double",
+              "type": "number"
+            },
+            "od": {
+              "default": 4.0,
+              "description": "帯域外（阻止域）の光学濃度（T = 10^−od）",
+              "format": "double",
+              "type": "number"
+            },
+            "t": {
+              "default": 0.95,
+              "description": "帯域内の透過率（0〜1）",
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "notch",
+              "type": "string"
+            },
+            "width_nm": {
+              "description": "エッジの幅 [nm]（透過が 10 % から 90 % まで。省略は 1 % のエッジ波長、帯域フィルタは FWHM の 10 %）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "center_nm",
+            "fwhm_nm"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "波長によらない ND（T = 10^−od）",
+          "properties": {
+            "absorptive": {
+              "default": false,
+              "type": "boolean"
+            },
+            "od": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "nd",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "od"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FieldKind": {
+      "oneOf": [
+        {
+          "enum": [
+            "angle",
+            "object_height",
+            "paraxial_image_height",
+            "real_image_height"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "solve",
+          "description": "条件で定める視野（solve に条件、points が目標値）",
+          "type": "string"
+        }
+      ]
+    },
+    "FieldSolveSpec": {
+      "description": "条件で定める視野の条件。面は番号か名前（面のコメント）",
+      "oneOf": [
+        {
+          "description": "面 surface での主光線の位置 = 視野の値",
+          "properties": {
+            "cond": {
+              "const": "position",
+              "type": "string"
+            },
+            "surface": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cond",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "面 s1・s2 での主光線の方向余弦 (l, m) の和 = 視野の値（法線入射で戻るなら 0）",
+          "properties": {
+            "cond": {
+              "const": "dir_sum",
+              "type": "string"
+            },
+            "s1": {
+              "type": "string"
+            },
+            "s2": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cond",
+            "s1",
+            "s2"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "差（s1 − s2）= 視野の値",
+          "properties": {
+            "cond": {
+              "const": "dir_diff",
+              "type": "string"
+            },
+            "s1": {
+              "type": "string"
+            },
+            "s2": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cond",
+            "s1",
+            "s2"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FieldsSpec": {
+      "properties": {
+        "points": {
+          "description": "視野の (x, y)",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "solve": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FieldSolveSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "type = solve のときの条件"
+        },
+        "type": {
+          "$ref": "#/$defs/FieldKind",
+          "default": "angle"
+        },
+        "weights": {
+          "default": [],
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "points"
+      ],
+      "type": "object"
+    },
+    "HoldSpec": {
+      "description": "保持する素子",
+      "properties": {
+        "diameter": {
+          "format": "double",
+          "type": "number"
+        },
+        "seat_z": {
+          "default": 0.0,
+          "description": "素子の前面を当てる座の z [mm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "diameter"
+      ],
+      "type": "object"
+    },
+    "LensSource": {
+      "anyOf": [
+        {
+          "description": ".zmx の k 番目の玉（玉だけを数える、1 始まり）",
+          "properties": {
+            "config": {
+              "default": 1,
+              "description": ".zmx のマルチコンフィグの番号（1 始まり）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "lens": {
+              "default": 1,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "zmx": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "zmx"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "レンズカタログ（メーカーと型番）",
+          "properties": {
+            "part": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "vendor",
+            "part"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "面を直接",
+          "properties": {
+            "surfaces": {
+              "items": {
+                "$ref": "#/$defs/SurfSpec"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "surfaces"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "玉の出どころ"
+    },
+    "MechAt": {
+      "additionalProperties": false,
+      "description": "機構を置く基準の面（[`MechPlacement::at`]）",
+      "properties": {
+        "block": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surface": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "MechPlacement": {
+      "additionalProperties": false,
+      "description": "系に置く機構部品（[`Project::mechanics`]）。部品はユーザーカタログの品（`catalog`・`item`）か、\nその場で書いた寸法（`mech`）",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/MechAt",
+          "description": "置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）"
+        },
+        "catalog": {
+          "description": "ユーザーカタログのファイル（プロジェクトのフォルダから）",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "holds": {
+          "description": "保持する素子のブロック id。はみ出し・保持径を確かめる",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "item": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mech": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MechSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "description": "名前（省略で品の名前か mech1, mech2, …）",
+          "type": "string"
+        },
+        "offset": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "基準の面の局所座標でのずれ [dx, dy, dz] [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "tilt": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "傾き [tx, ty] [deg]（ずらした後、x → y の順）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "type": "object"
+    },
+    "MechSpec": {
+      "description": "機構部品の寸法。z は部品の基準面（チューブの入口の端など）から光の進む向き",
+      "properties": {
+        "bores": {
+          "default": [],
+          "description": "光の通る穴（チューブの内径、ケージ板・マウントのクリア開口）",
+          "items": {
+            "$ref": "#/$defs/BoreSpec"
+          },
+          "type": "array"
+        },
+        "holds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HoldSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "保持する素子の径 [mm] と座の z [mm]（マウント・チューブ）"
+        },
+        "length": {
+          "default": 0.0,
+          "description": "長さ [mm]（外形の z の範囲 0〜length。0 なら穴の範囲）",
+          "format": "double",
+          "type": "number"
+        },
+        "outer_diameter": {
+          "default": 0.0,
+          "description": "外径 [mm]（ケージ板は外形の一辺）",
+          "format": "double",
+          "type": "number"
+        },
+        "rod_spacing": {
+          "description": "ケージのロッドの間隔 [mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "thread": {
+          "description": "ねじ（\"SM1\" など）",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "OffMode": {
+      "oneOf": [
+        {
+          "const": "collapse",
+          "description": "長さごと除く",
+          "type": "string"
+        },
+        {
+          "const": "air",
+          "description": "同じ長さの空気で残す",
+          "type": "string"
+        }
+      ]
+    },
+    "PbsSpec": {
+      "description": "理想の偏光ビームスプリッター（強度の透過率。反射は 1 − T）",
+      "properties": {
+        "tp": {
+          "default": 1.0,
+          "format": "double",
+          "type": "number"
+        },
+        "ts": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "PlateSpec": {
+      "description": "波長板の複屈折材の板 1 枚",
+      "properties": {
+        "axis_deg": {
+          "default": 0.0,
+          "description": "速い軸の向き [deg]（波長板の `axis_deg` から）",
+          "format": "double",
+          "type": "number"
+        },
+        "material": {
+          "description": "複屈折材（常光はガラス material、異常光は material-E）",
+          "type": "string"
+        },
+        "thickness_mm": {
+          "description": "厚さ [mm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "material",
+        "thickness_mm"
+      ],
+      "type": "object"
+    },
+    "PolarizerSpec": {
+      "description": "直線偏光子（理想）: 透過軸の向きの強度透過率 `transmittance`、直交する向きは `transmittance / extinction_ratio`",
+      "properties": {
+        "axis_deg": {
+          "default": 0.0,
+          "description": "透過軸の向き [deg]（x から y へ）",
+          "format": "double",
+          "type": "number"
+        },
+        "extinction_ratio": {
+          "description": "消光比（1000 は 1000:1。省略は無限 = 直交の向きを通さない）",
+          "format": "double",
+          "type": "number"
+        },
+        "transmittance": {
+          "default": 1.0,
+          "description": "透過軸の向きの強度透過率",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "Role": {
+      "description": "群の役割",
+      "enum": [
+        "zoom",
+        "focus",
+        "fixed"
+      ],
+      "type": "string"
+    },
+    "Semi": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/AutoWord"
+        }
+      ],
+      "description": "面の半直径: 数 [mm] か \"auto\"（全視野・全波長の主光線と瞳の縁の光線から求める）"
+    },
+    "SplitFace": {
+      "description": "平板で分ける面",
+      "enum": [
+        "front",
+        "back"
+      ],
+      "type": "string"
+    },
+    "SplitForm": {
+      "description": "BS の形",
+      "oneOf": [
+        {
+          "const": "cube",
+          "description": "キューブ（2 つの直角プリズムを貼り合わせた形、斜面が 45°）",
+          "type": "string"
+        },
+        {
+          "const": "plate",
+          "description": "平板（表裏の 2 面、くさびも可）",
+          "type": "string"
+        },
+        {
+          "const": "ideal",
+          "description": "厚さのない理想の面（空気中）",
+          "type": "string"
+        }
+      ]
+    },
+    "State": {
+      "description": "状態（多重構成に当たる）: 値の変更の組",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "project": {
+          "additionalProperties": true,
+          "default": {},
+          "description": "系の値（物体距離・開口・視野など、プロジェクトの JSON の項目名と値）",
+          "type": "object"
+        },
+        "set": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "default": {},
+          "description": "ブロックの id → 変える値（ブロックの JSON の項目名と値）。群・.zmx の中の群も id で指す",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "SurfAperture": {
+      "description": "面の開口（偏心 dx・dy は省略で 0）",
+      "oneOf": [
+        {
+          "description": "円（最小・最大半径）",
+          "properties": {
+            "dx": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "dy": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "circular",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "矩形（x・y の半幅）",
+          "properties": {
+            "dx": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "dy": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "hx": {
+              "format": "double",
+              "type": "number"
+            },
+            "hy": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "rect",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "hx",
+            "hy"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "楕円（x・y の半軸）",
+          "properties": {
+            "dx": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "dy": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "hx": {
+              "format": "double",
+              "type": "number"
+            },
+            "hy": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "ellipse",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "hx",
+            "hy"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "円形の遮蔽（最小〜最大半径の間を遮る）",
+          "properties": {
+            "dx": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "dy": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "max": {
+              "format": "double",
+              "type": "number"
+            },
+            "min": {
+              "default": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "type": {
+              "const": "obscuration",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "max"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "半径（semi）で切る",
+          "properties": {
+            "type": {
+              "const": "floating",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SurfSpec": {
+      "description": "面 1 つ（光の進む向きで書く）",
+      "properties": {
+        "aperture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SurfAperture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "開口（省略なら開口なし）"
+        },
+        "asph": {
+          "default": [],
+          "description": "偶数次非球面の係数 r², r⁴, …",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "coat": {
+          "default": "",
+          "type": "string"
+        },
+        "comment": {
+          "default": "",
+          "type": "string"
+        },
+        "conic": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "coordbrk": {
+          "description": "座標ブレークの面: [dx, dy, tx, ty, tz]（曲率・ガラスは書かない）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 5,
+          "minItems": 5,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "glass": {
+          "default": null,
+          "description": "面の後のガラス（省略なら空気）。数字なら分散なしのモデルガラスの屈折率",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "jones": {
+          "description": "Jones 行列の面（平面、OpticStudio の JONESMAT）: [Ar, Ai, Br, Bi, Cr, Ci, Dr, Di]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 8,
+          "minItems": 8,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "order": {
+          "description": "座標ブレークの順序（0: 偏心してから傾き、1: 傾けてから偏心）",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "polarizer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolarizerSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "直線偏光子の面（平面の Jones 面）"
+        },
+        "radius": {
+          "default": null,
+          "description": "曲率半径 [mm]（省略・0 なら平面）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "semi": {
+          "$ref": "#/$defs/Semi",
+          "default": 0.0,
+          "description": "半直径 [mm]。\"auto\" なら光線から求める（OpticStudio の Automatic）"
+        },
+        "t": {
+          "default": 0.0,
+          "description": "次の面までの厚さ（玉の最後の面では使わない）",
+          "format": "double",
+          "type": "number"
+        },
+        "tilt": {
+          "description": "面だけの傾き [tx, ty] deg（頂点のまわり、後の面の座標は元に戻す。くさびのウィンドウなど）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "waveplate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WaveplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "波長板の面（平面の Jones 面、波長ごとに遅延を変える）"
+        }
+      },
+      "type": "object"
+    },
+    "SurfaceEdit": {
+      "description": "ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた\n番号（0 始まり。偏心・傾きの座標ブレークの有無で番号が変わらないように）。値は系の面の値（順次の面の値。\n鏡の後は厚さ・曲率の符号が逆）で、名前は [`lensbench_core::edit::SURF_FIELDS`]",
+      "properties": {
+        "block": {
+          "type": "string"
+        },
+        "fields": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "surface": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "block",
+        "surface",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "Wave": {
+      "properties": {
+        "um": {
+          "format": "double",
+          "type": "number"
+        },
+        "weight": {
+          "default": 1.0,
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "um"
+      ],
+      "type": "object"
+    },
+    "WaveplateSpec": {
+      "description": "波長板: 速い軸 `axis_deg` に対する遅い軸の遅延。理想（材料なし）は (order + retardance)·wavelength_um/λ 波長。\n`material`（複屈折材、常光はガラス material、異常光は material-E）か `plates`（2 材の組など）があれば\n遅延は板ごとの Δn(λ)·d/λ。`material` で厚さを省くと、設計波長の遅延 order + retardance から決める",
+      "properties": {
+        "axis_deg": {
+          "default": 0.0,
+          "description": "速い軸の向き [deg]（x から y へ）",
+          "format": "double",
+          "type": "number"
+        },
+        "material": {
+          "description": "複屈折材（1 枚の板。速い軸が `axis_deg`）",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "default": 0,
+          "description": "多次の波長板の整数の次数（ゼロ次は 0）",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "plates": {
+          "description": "複屈折材の板の組（光の通る順。アクロマティック波長板は速い軸を直交させた 2 材など）",
+          "items": {
+            "$ref": "#/$defs/PlateSpec"
+          },
+          "type": "array"
+        },
+        "retardance": {
+          "default": 0.0,
+          "description": "設計波長での遅延 [波長]（λ/4 板は 0.25、λ/2 板は 0.5）。厚さを書いた板では使わない",
+          "format": "double",
+          "type": "number"
+        },
+        "thickness_mm": {
+          "description": "`material` の板の厚さ [mm]（省略なら設計波長の遅延から）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "transmittance": {
+          "default": 1.0,
+          "description": "強度透過率",
+          "format": "double",
+          "type": "number"
+        },
+        "wavelength_um": {
+          "description": "設計波長 [µm]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "wavelength_um"
+      ],
+      "type": "object"
+    },
+    "ZmxGroup": {
+      "description": ".zmx の取り込みの中の群（玉モード）: 面 from〜to に始まる玉・鏡・面と、その間の空気",
+      "properties": {
+        "decenter": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "偏心 [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "from": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "default": "",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "off": {
+          "$ref": "#/$defs/OffMode",
+          "default": "collapse"
+        },
+        "on": {
+          "default": true,
+          "type": "boolean"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "shift": {
+          "default": 0.0,
+          "description": "群の移動 [mm]。前の間隔の値（.zmx の厚さの向き）に足し、後の間隔から引く",
+          "format": "double",
+          "type": "number"
+        },
+        "tilt": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "傾き x・y・z [deg]（前面の頂点のまわり、x → y → z の順）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "to": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/project.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "$schema": {
+      "description": "このファイルのスキーマ（エディタの補完・検査用。読むときは無視する）",
+      "type": "string"
+    },
+    "afocal": {
+      "description": "像空間をアフォーカルにする。値は角度の単位（`ur`・`mr`・`rr`・`as`・`am`・`dg`）",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "aiming": {
+      "$ref": "#/$defs/AimingSpec",
+      "default": "off"
+    },
+    "aperture": {
+      "$ref": "#/$defs/ApertureSpec"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/Block"
+      },
+      "type": "array"
+    },
+    "coatings": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CoatSpec"
+      },
+      "description": "膜（名前 → フィルタの透過特性・表）。面の `coat` に名前を書いて使う。ユーザーカタログの同じ名前より優先",
+      "type": "object"
+    },
+    "fields": {
+      "$ref": "#/$defs/FieldsSpec",
+      "default": {
+        "points": [
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "type": "angle",
+        "weights": []
+      }
+    },
+    "glass_catalogs": {
+      "default": [
+        "SCHOTT"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "mechanics": {
+      "description": "機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う",
+      "items": {
+        "$ref": "#/$defs/MechPlacement"
+      },
+      "type": "array"
+    },
+    "name": {
+      "default": "",
+      "type": "string"
+    },
+    "object_distance": {
+      "default": null,
+      "description": "物体面から最初のブロックまで [mm]（省略で無限遠）",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "path": {
+      "description": "ビームスプリッターの経路（BS を通る順の T・R）。省略で各 BS の arm。状態の project でも変えられる",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "primary": {
+      "default": 1,
+      "description": "主波長の番号（1 始まり）",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "states": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/State"
+      },
+      "type": "array"
+    },
+    "surface_edits": {
+      "description": "ブロックの面の値の上書き（GUI の面の表で変えた値）。展開の最後に当てる",
+      "items": {
+        "$ref": "#/$defs/SurfaceEdit"
+      },
+      "type": "array"
+    },
+    "surface_ops": {
+      "description": "面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、\n面（`surface`・`dst`・`src`・`other`）は `{\"block\": id, \"surface\": i}`（[`SurfaceEdit`] と同じ数え方）か系の面の番号。\n展開の最後（`surface_edits` の後）に当てる。ブロックが無い（状態で外したなど）操作は当てずに注意を出す。\n往復するブロックは往路の面を指す",
+      "items": true,
+      "type": "array"
+    },
+    "telecentric": {
+      "description": "物体側テレセントリック（物体距離が有限のときだけ）",
+      "type": "boolean"
+    },
+    "wavelengths": {
+      "items": {
+        "$ref": "#/$defs/Wave"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "wavelengths",
+    "aperture",
+    "blocks"
+  ],
+  "title": "lensbench プロジェクトファイル",
+  "type": "object"
+}

@@ -1,0 +1,78 @@
+{
+ "name": "P8 two catalog lenses (the second reversed)",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "epd",
+  "value": 8
+ },
+ "fields": {
+  "type": "angle",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    2
+   ],
+   [
+    0,
+    4
+   ],
+   [
+    1.5,
+    -2
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "stop",
+   "semi": 4
+  },
+  {
+   "type": "air",
+   "t": 5
+  },
+  {
+   "type": "lens",
+   "id": "PCX-100",
+   "source": {
+    "vendor": "LB",
+    "part": "PCX-100"
+   }
+  },
+  {
+   "type": "air",
+   "t": 3
+  },
+  {
+   "type": "lens",
+   "id": "ACH-45",
+   "source": {
+    "vendor": "LB",
+    "part": "ACH-45"
+   },
+   "reversed": true
+  },
+  {
+   "type": "air",
+   "t": 30
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+{
+ "name": "P18 catalog swap search (two lenses, air gaps as variables)",
+ "glass_catalogs": ["SCHOTT"],
+ "wavelengths": [{"um": 0.4861327}, {"um": 0.5875618}, {"um": 0.6562725}],
+ "primary": 2,
+ "aperture": {"type": "epd", "value": 8},
+ "fields": {"type": "angle", "points": [[0, 0], [0, 2], [0, 4]]},
+ "blocks": [
+  {"type": "stop", "semi": 4},
+  {"type": "air", "t": 5},
+  {"type": "lens", "id": "A", "source": {"vendor": "LB", "part": "PCX-100"}},
+  {"type": "air", "id": "gap", "t": 3},
+  {"type": "lens", "id": "B", "source": {"vendor": "LB", "part": "ACH-45"}, "reversed": true},
+  {"type": "air", "id": "bfl", "t": 30}
+ ]
+}

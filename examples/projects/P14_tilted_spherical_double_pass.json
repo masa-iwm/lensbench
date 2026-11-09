@@ -1,0 +1,69 @@
+{
+ "name": "P14 a catalog lens in double pass to a tilted spherical mirror",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "na",
+  "value": 0.03
+ },
+ "object_distance": 0,
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1.5
+   ],
+   [
+    -1,
+    1
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "air",
+   "t": 60
+  },
+  {
+   "type": "lens",
+   "id": "BCX-50",
+   "source": {
+    "vendor": "LB",
+    "part": "BCX-50"
+   },
+   "stop": true
+  },
+  {
+   "type": "air",
+   "t": 30
+  },
+  {
+   "type": "mirror",
+   "radius": -80,
+   "back": true,
+   "tilt": [
+    -0.4,
+    0.6
+   ],
+   "semi": 10
+  }
+ ]
+}

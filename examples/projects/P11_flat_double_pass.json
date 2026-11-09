@@ -1,0 +1,64 @@
+{
+ "name": "P11 autocollimation: a catalog lens at its focal distance, double pass to a flat mirror",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "na",
+  "value": 0.08
+ },
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    2
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "air",
+   "t": 44
+  },
+  {
+   "type": "lens",
+   "id": "ACH-45",
+   "source": {
+    "vendor": "LB",
+    "part": "ACH-45"
+   },
+   "stop": true
+  },
+  {
+   "type": "air",
+   "t": 20
+  },
+  {
+   "type": "mirror",
+   "back": true,
+   "semi": 12
+  }
+ ],
+ "object_distance": 0
+}

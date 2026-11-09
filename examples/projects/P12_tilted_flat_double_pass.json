@@ -1,0 +1,68 @@
+{
+ "name": "P12 same as P11 with the flat mirror tilted (0.5, -0.3) deg",
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.4861327
+  },
+  {
+   "um": 0.5875618
+  },
+  {
+   "um": 0.6562725
+  }
+ ],
+ "primary": 2,
+ "aperture": {
+  "type": "na",
+  "value": 0.08
+ },
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    2
+   ]
+  ]
+ },
+ "blocks": [
+  {
+   "type": "air",
+   "t": 44
+  },
+  {
+   "type": "lens",
+   "id": "ACH-45",
+   "source": {
+    "vendor": "LB",
+    "part": "ACH-45"
+   },
+   "stop": true
+  },
+  {
+   "type": "air",
+   "t": 20
+  },
+  {
+   "type": "mirror",
+   "back": true,
+   "semi": 12,
+   "tilt": [
+    0.5,
+    -0.3
+   ]
+  }
+ ],
+ "object_distance": 0
+}
