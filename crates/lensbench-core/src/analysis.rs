@@ -2060,6 +2060,10 @@ const ZCH: usize = 256;
 /// (s0 + s1) + (s2 + s3) で足す（和の順は列の組の大きさや CPU によらず同じ）。列の組（TU 列 × TW 列）ごとに
 /// 足すので、読み込み 1 回あたりの積和が多い
 #[inline(always)]
+#[cfg_attr(
+    all(target_arch = "wasm32", target_feature = "simd128"),
+    allow(dead_code) // simd128 では gram_block_simd128（試験で照合に使う）
+)]
 fn gram_tiles<const TU: usize, const TW: usize>(
     a: &[f64],
     ld: usize,
@@ -2144,16 +2148,71 @@ unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64
     }
 }
 
-/// [`gram_tiles`]。AVX があれば 256 ビットのレジスタで（演算と順は同じなので値は同じ）
-fn gram_block(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        if std::arch::is_x86_feature_detected!("avx") {
-            // 安全: AVX があることを上で確かめた
-            return unsafe { gram_block_avx(a, ld, np, n, g) };
+/// [`gram_tiles`] と同じ計算を wasm の simd128 で（4 列 × 2 列の組。128 ビットは 2 点なので、点を 4 つずつに
+/// 分けた 4 本の和を 2 つのレジスタに持つ。積と和は別の命令なので値は同じ）
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+fn gram_block_simd128(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
+    use std::arch::wasm32::*;
+    assert!(ld % 4 == 0 && np % 4 == 0 && a.len() >= ld * np && g.len() >= n * n);
+    let base = a.as_ptr();
+    // 安全: 列 k の p..p+2 は k < np、p + 2 ≤ ld なので a の中（上の assert）。v128_load は整列を求めない
+    let ld2 = |k: usize, p: usize| unsafe { v128_load(base.add(k * ld + p) as *const v128) };
+    for bi in (0..np).step_by(4) {
+        for bj in (0..bi + 4).step_by(2) {
+            // acc[u][w][h]: 点 4 つの組の中の 2h, 2h+1 番目
+            let mut acc = [[[f64x2_splat(0.0); 2]; 2]; 4];
+            for p in (0..ld).step_by(4) {
+                let y = [0, 1].map(|w| [ld2(bj + w, p), ld2(bj + w, p + 2)]);
+                for (u, au) in acc.iter_mut().enumerate() {
+                    let x = [ld2(bi + u, p), ld2(bi + u, p + 2)];
+                    for (w, aw) in au.iter_mut().enumerate() {
+                        for h in 0..2 {
+                            aw[h] = f64x2_add(aw[h], f64x2_mul(x[h], y[w][h]));
+                        }
+                    }
+                }
+            }
+            for (u, au) in acc.iter().enumerate() {
+                let i = bi + u;
+                if i >= n {
+                    break;
+                }
+                for (w, aw) in au.iter().enumerate() {
+                    let j = bj + w;
+                    if j > i {
+                        break;
+                    }
+                    let (s0, s1) = (
+                        f64x2_extract_lane::<0>(aw[0]),
+                        f64x2_extract_lane::<1>(aw[0]),
+                    );
+                    let (s2, s3) = (
+                        f64x2_extract_lane::<0>(aw[1]),
+                        f64x2_extract_lane::<1>(aw[1]),
+                    );
+                    g[i * n + j] = (s0 + s1) + (s2 + s3);
+                }
+            }
         }
     }
-    gram_tiles::<2, 2>(a, ld, np, n, g)
+}
+
+/// [`gram_tiles`]。AVX があれば 256 ビットの、wasm の simd128 なら 128 ビットのレジスタで
+/// （演算と順は同じなので値は同じ）
+fn gram_block(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    gram_block_simd128(a, ld, np, n, g);
+    #[cfg(not(all(target_arch = "wasm32", target_feature = "simd128")))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::arch::is_x86_feature_detected!("avx") {
+                // 安全: AVX があることを上で確かめた
+                return unsafe { gram_block_avx(a, ld, np, n, g) };
+            }
+        }
+        gram_tiles::<2, 2>(a, ld, np, n, g)
+    }
 }
 
 /// Zernike の当てはめの 1 回分の和: 点の塊（ZCH 点）ごとに項を列優先で求め、残差 r = v − A c（c が None なら
@@ -2479,7 +2538,7 @@ mod tests {
 
     #[test]
     fn column_basis_and_gram_match_the_row_forms() {
-        // eval_cols は eval とビットまで同じ。AᵀA は AVX の有無（gram_block と gram_tiles）で同じで、
+        // eval_cols は eval とビットまで同じ。AᵀA は AVX・simd128 の有無（gram_block と gram_tiles）で同じで、
         // 1 点ずつの外積の和と丸めの範囲で一致する
         let mut st = 7u64;
         let mut rnd = || {
