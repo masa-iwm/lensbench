@@ -1,0 +1,27 @@
+[package]
+name = "lensbench-web"
+description = "Web version of the lensbench GUI (wasm, runs in the browser)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# ブラウザで動かす GUI の入口。wasm32-unknown-unknown でビルドして wasm-bindgen にかける
+# （scripts/build_web.sh、docs/web.md）。ネイティブでは中身の無いライブラリ
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-gui = { path = "../lensbench-gui" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }
+js-sys = "0.3"
+wasm-bindgen-rayon = { version = "1.3", optional = true }
+
+[features]
+# 並列: Web Worker の中で rayon のスレッドを使う。nightly と atomics のビルドが要る（scripts/build_web.sh）
+threads = ["dep:wasm-bindgen-rayon"]

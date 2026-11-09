@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lensbench</title>
+<link rel="icon" href="icon.png">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b1f; color: #ddd;
+    font-family: system-ui, sans-serif; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; white-space: pre-wrap; text-align: center; padding: 16px; }
+</style>
+</head>
+<body>
+<canvas id="lensbench"></canvas>
+<div id="msg">lensbench を読み込み中…</div>
+<script type="module">
+  const msg = document.getElementById("msg");
+  const q = new URLSearchParams(location.search);
+  // スレッド: ヘッダー（COOP/COEP）が無い所（GitHub Pages）では、ヘッダーを付け直す Service Worker
+  // （coi.js）を入れて 1 回だけ読み直す。?st で 1 スレッドの版にする
+  async function isolate() {
+    if (crossOriginIsolated || q.has("st") || !window.isSecureContext || !("serviceWorker" in navigator)) return false;
+    if (sessionStorage.getItem("lensbench-coi")) return false; // 読み直しても効かなかった
+    try {
+      await navigator.serviceWorker.register("coi.js");
+      await navigator.serviceWorker.ready;
+      sessionStorage.setItem("lensbench-coi", "1");
+      location.reload();
+      return true;
+    } catch (e) {
+      console.warn("coi.js を入れられない", e);
+      return false;
+    }
+  }
+  try {
+    if (!(await isolate())) {
+      if (crossOriginIsolated) sessionStorage.removeItem("lensbench-coi");
+      const mt = crossOriginIsolated && !q.has("st");
+      globalThis.lensbenchWorker = mt ? "worker.js?mt" : "worker.js";
+      // 日本語のフォント（Noto Sans JP、SIL OFL 1.1）。読めなければ欧文だけで動かす
+      const font = fetch("fonts/jp.ttf").then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
+      const lb = await import(mt ? "./mt/lensbench_web.js" : "./lensbench_web.js");
+      await lb.default();
+      const f = await font;
+      await lb.start("lensbench", f ? new Uint8Array(f) : undefined);
+      msg.remove();
+    }
+  } catch (e) {
+    msg.textContent = "lensbench を起動できませんでした\n" + e;
+    console.error(e);
+  }
+</script>
+</body>
+</html>
