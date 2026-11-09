@@ -1,0 +1,223 @@
+{
+ "glass_catalogs": [
+  "SCHOTT"
+ ],
+ "wavelengths": [
+  {
+   "um": 0.5
+  },
+  {
+   "um": 0.52
+  },
+  {
+   "um": 0.535
+  },
+  {
+   "um": 0.55
+  },
+  {
+   "um": 0.565
+  },
+  {
+   "um": 0.58
+  },
+  {
+   "um": 0.6
+  },
+  {
+   "um": 0.65
+  }
+ ],
+ "primary": 4,
+ "aperture": {
+  "type": "na",
+  "value": 0.05
+ },
+ "fields": {
+  "type": "object_height",
+  "points": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    8
+   ],
+   [
+    6,
+    -6
+   ]
+  ]
+ },
+ "object_distance": 50,
+ "name": "curve_table",
+ "coatings": {
+  "LP550": {
+   "type": "longpass",
+   "edge_nm": 550,
+   "width_nm": 20,
+   "t": 0.93,
+   "od": 3
+  },
+  "SP600": {
+   "type": "shortpass",
+   "edge_nm": 600,
+   "width_nm": 15,
+   "t": 0.9,
+   "od": 2.5,
+   "neff": 1.7
+  },
+  "BP550": {
+   "type": "bandpass",
+   "center_nm": 550,
+   "fwhm_nm": 30,
+   "t": 0.85,
+   "od": 4
+  },
+  "NF560": {
+   "type": "notch",
+   "center_nm": 560,
+   "fwhm_nm": 25,
+   "t": 0.97,
+   "od": 3
+  },
+  "ND05": {
+   "type": "nd",
+   "od": 0.5,
+   "absorptive": true
+  },
+  "CG": {
+   "type": "curve",
+   "wavelengths_nm": [
+    480,
+    520,
+    560,
+    600,
+    640,
+    680
+   ],
+   "t": [
+    0.05,
+    0.2,
+    0.6,
+    0.85,
+    0.9,
+    0.92
+   ],
+   "r": [
+    0.02,
+    0.03,
+    0.04,
+    0.04,
+    0.04,
+    0.04
+   ]
+  },
+  "TB": {
+   "type": "table",
+   "rows": [
+    [
+     0,
+     0.45,
+     0.1,
+     0.1,
+     0.8,
+     0.8
+    ],
+    [
+     0,
+     0.7,
+     0.1,
+     0.1,
+     0.8,
+     0.8
+    ],
+    [
+     30,
+     0.45,
+     0.15,
+     0.08,
+     0.7,
+     0.85
+    ],
+    [
+     30,
+     0.7,
+     0.15,
+     0.08,
+     0.7,
+     0.85
+    ],
+    [
+     60,
+     0.45,
+     0.3,
+     0.05,
+     0.5,
+     0.9
+    ],
+    [
+     60,
+     0.7,
+     0.3,
+     0.05,
+     0.5,
+     0.9
+    ]
+   ]
+  }
+ },
+ "blocks": [
+  {
+   "type": "stop",
+   "semi": 3
+  },
+  {
+   "type": "air",
+   "t": 10
+  },
+  {
+   "type": "lens",
+   "source": {
+    "surfaces": [
+     {
+      "t": 3,
+      "glass": "N-BK7",
+      "semi": 12,
+      "coat": "CG"
+     },
+     {
+      "semi": 12,
+      "coat": "TB"
+     }
+    ]
+   }
+  },
+  {
+   "type": "air",
+   "t": 20
+  },
+  {
+   "type": "lens",
+   "source": {
+    "surfaces": [
+     {
+      "radius": 40,
+      "t": 4,
+      "glass": "N-BK7",
+      "semi": 10
+     },
+     {
+      "radius": -60,
+      "semi": 10
+     }
+    ]
+   }
+  },
+  {
+   "type": "air",
+   "t": 60
+  }
+ ]
+}

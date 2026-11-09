@@ -774,8 +774,8 @@ pub fn coating_dat(s: &System) -> Result<Option<String>> {
             notimpl!("膜の名前 {k:?}: 空白・ASCII 以外の文字のある名前は膜ファイルに書けない");
         }
         let _ = write!(o, "TABLE {k}\r\n");
-        for (a, rows) in &s.coat_tables[k] {
-            let _ = write!(o, "ANGL {}\r\n", f(*a));
+        for (a, rows) in same_wavelengths(&s.coat_tables[k]) {
+            let _ = write!(o, "ANGL {}\r\n", f(a));
             for r in rows {
                 let v: Vec<String> = r.iter().map(|x| f(*x)).collect();
                 let _ = write!(o, "WAVE {}\r\n", v.join(" "));
@@ -783,6 +783,38 @@ pub fn coating_dat(s: &System) -> Result<Option<String>> {
         }
     }
     Ok(Some(o))
+}
+
+/// OpticStudio の TABLE 膜は全部の角度で同じ波長の並び（同じ値・同じ順・同じ数）でなければならない（違うと
+/// エラーを出さずに表全体を R = T = 0 として読む。OpticStudio 26.1 の実測）。角度ごとに波長が違う表は、全角度の
+/// 波長の和集合に、角度ごとに波長の線形補間（範囲の外は端の値）で並べ直す。lensbench の表の読み方（角度ごとに
+/// 波長で線形補間、範囲の外は端の値）では同じ値の表
+fn same_wavelengths(t: &crate::coating::Table) -> Vec<(f64, Vec<[f64; 9]>)> {
+    let mut wl: Vec<f64> = t.iter().flat_map(|(_, r)| r.iter().map(|x| x[0])).collect();
+    wl.sort_by(f64::total_cmp);
+    wl.dedup();
+    t.iter()
+        .map(|(a, rows)| {
+            if rows.len() == wl.len() && rows.iter().zip(&wl).all(|(r, w)| r[0] == *w) {
+                return (*a, rows.clone());
+            }
+            let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
+            let cols: Vec<Vec<f64>> = (1..9)
+                .map(|k| rows.iter().map(|r| r[k]).collect())
+                .collect();
+            let out = wl
+                .iter()
+                .map(|&w| {
+                    let mut r = [w; 9];
+                    for k in 1..9 {
+                        r[k] = crate::coating::interp(w, &xs, &cols[k - 1]);
+                    }
+                    r
+                })
+                .collect();
+            (*a, out)
+        })
+        .collect()
 }
 
 /// 面の並びの違う系（BS の経路・プロジェクトの状態など）を、系ごとに 1 構成の多重構成の .zmx にまとめる。
