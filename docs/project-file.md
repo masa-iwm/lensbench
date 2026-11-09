@@ -97,7 +97,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   （n(θ) = 1/√(cos²θ/no² + sin²θ/ne²)、θ は板の中の光線と結晶軸の角、L は板の中の長さ。斜めに入る光の遅延の変化も入る）。
   OpticStudio の Birefringent In（Mode 2、波長板モード）/ Out と同じで、.zmx にもその面で書く（BIRE__IN・BIRE_OUT）。
   位相の向きは OpticStudio と同じ（遅い軸が e^{−iφ}）で、理想の波長板（`material` なし、Jones 面）とも同じ。外側の 2 面の膜は波長板の面の `coat`、無ければ透過率 `transmittance`
-  からの理想膜（1 面あたり √T、T = 1 は `I.99999999`）。貼り合わせの面は無膜（Fresnel）。テスト用の水晶・MgF₂ は
+  からの理想膜（1 面あたり √T、T = 1 は `I.99999999`）。貼り合わせの面は無膜（Fresnel）。境界の Fresnel は今は常光の屈折率で求める（常光・異常光で分けるのは #52）。無膜の板では OpticStudio と最大 6e-4 違う（OS は面に垂直な光線で、実験室の x・y のうち結晶軸に近い方に ne の透過を入口の面だけで使う。膜のある板は一致）。テスト用の水晶・MgF₂ は
   `tests/glass/LBCRYSTAL.AGF`（refractiveindex.info、CC0）。GUI の面の並びの波長板にも複屈折材・厚さ（2 材まで）の欄がある。
 - 複屈折材の板を面で直接書く: 面の並びに `{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [x, y, z]}}}`
   （結晶軸は面の局所座標、`"mode": 0` で常光の成分だけ）と `{"t": 5, "birefringent": "out"}`。入口と出口の間にほかの面は置けない。
