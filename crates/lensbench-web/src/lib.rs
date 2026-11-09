@@ -5,6 +5,8 @@
 //! 読み込んで [`start`] に渡す。
 //!
 //! 計算は Web Worker（`worker.js`）の中の同じ wasm で回す（[`worker_init`]・[`worker_call`]）。
+//! スレッドありの版では、同じ wasm・同じメモリの見張りのスレッド（`monitor.js`）が、計算の途中で
+//! 中断・停止・進み具合の問い合わせを受ける（`monitor_*`）。
 
 /// 並列: rayon のスレッドを Web Worker で作る（JS の initThreadPool(n)）。作った後に threads_ready
 #[cfg(all(target_arch = "wasm32", feature = "threads"))]
@@ -41,6 +43,31 @@ mod web {
     #[wasm_bindgen]
     pub fn worker_call(req: &[u8]) -> Vec<u8> {
         lensbench_gui::web_worker::call(req)
+    }
+
+    /// 並列: 見張りのスレッド（`monitor.js`）を同じ wasm・同じメモリで始めるための [module, memory]
+    #[cfg(feature = "threads")]
+    #[wasm_bindgen]
+    pub fn worker_shared() -> js_sys::Array {
+        js_sys::Array::of2(&wasm_bindgen::module(), &wasm_bindgen::memory())
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む
+    #[wasm_bindgen]
+    pub fn monitor_cancel(id: u32) {
+        lensbench_gui::web_worker::cancel(id);
+    }
+
+    /// 見張りのスレッドから: 要求 id を回していれば、最適化・公差・差し替え探索を止める
+    #[wasm_bindgen]
+    pub fn monitor_stop(id: u32, what: &str) {
+        lensbench_gui::web_worker::stop(id, what);
+    }
+
+    /// 見張りのスレッドから: 最適化・公差・差し替え探索の進み具合（JSON）
+    #[wasm_bindgen]
+    pub fn monitor_progress() -> String {
+        lensbench_gui::web_worker::progress()
     }
 
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）

@@ -165,6 +165,33 @@ impl CatSave {
                             .response
                             .on_hover_text(tr("カタログブラウザに並んでいるユーザーカタログ"));
                     }
+                    // Web 版: ユーザーカタログはブラウザに残すフォルダ（/user/catalogs）に置く
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        if self.catalog.trim().is_empty() {
+                            self.catalog =
+                                format!("{}/my_catalog.json", crate::web_store::USER_CATALOGS);
+                        }
+                        let cat = std::path::PathBuf::from(self.catalog.trim());
+                        if ui
+                            .add_enabled(
+                                lensbench_core::vfs::is_file(&cat),
+                                egui::Button::new("⬇").small(),
+                            )
+                            .on_hover_text(tr("カタログのファイルをダウンロードする"))
+                            .clicked()
+                        {
+                            if let (Ok(b), Some(n)) =
+                                (lensbench_core::vfs::read(&cat), cat.file_name())
+                            {
+                                let _ = lensbench_core::vfs::write(
+                                    std::path::Path::new(crate::files::DOWNLOADS).join(n),
+                                    b,
+                                );
+                            }
+                        }
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui
                         .small_button("…")
                         .on_hover_text(tr("新しいカタログか既存のカタログを選ぶ"))

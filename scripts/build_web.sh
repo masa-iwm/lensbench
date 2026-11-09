@@ -45,6 +45,6 @@ if [ "$THREADS" != 0 ]; then
   grep -q "import('../../..')" "$H"
   sed -i "s#import('../../..')#import('../../../lensbench_web.js')#" "$H"
 fi
-cp crates/lensbench-web/web/{index.html,_headers,icon.png,worker.js,coi.js} "$OUT/"
+cp crates/lensbench-web/web/{index.html,_headers,icon.png,worker.js,monitor.js,coi.js} "$OUT/"
 python3 scripts/web_font.py "$OUT/fonts/jp.ttf"
 ls -la "$OUT" "$OUT/fonts"

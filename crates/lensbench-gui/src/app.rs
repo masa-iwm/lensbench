@@ -1019,6 +1019,16 @@ impl Core {
                     ),
                     _ => text,
                 };
+                // Web 版: ブラウザに残すユーザーカタログのフォルダは、最初に保存したときにレンズのフォルダに足す
+                #[cfg(target_arch = "wasm32")]
+                if method == "catalog_add" {
+                    let d = crate::web_store::USER_CATALOGS.to_string();
+                    if v["catalog"].as_str().is_some_and(|c| c.starts_with(&d))
+                        && !self.s.lens_dirs.contains(&d)
+                    {
+                        self.s.lens_dirs.push(d);
+                    }
+                }
                 if method != "catalog_items" {
                     self.cat_save.note = Some((text.clone(), false));
                     // カタログブラウザに並ぶカタログなら一覧を読み直す
@@ -1152,7 +1162,7 @@ impl Core {
         let progress = if self.opt.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(150));
-            lensbench_cli::serve::optimize_progress()
+            crate::worker::progress::optimize()
         } else {
             None
         };
@@ -1165,7 +1175,7 @@ impl Core {
                     self.opt.result = None;
                     self.worker.send(Tag::Optimize, "optimize", p);
                 }
-                Action::Stop => lensbench_cli::serve::optimize_cancel(),
+                Action::Stop => crate::worker::progress::stop("optimize"),
                 Action::Apply => {
                     let Some(r) = self.opt.result.clone() else {
                         continue;
@@ -1248,7 +1258,7 @@ impl Core {
         let progress = if self.tol.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(200));
-            Some(lensbench_cli::serve::tolerance_progress().unwrap_or((0, 0)))
+            Some(crate::worker::progress::tolerance().unwrap_or((0, 0)))
         } else {
             None
         };
@@ -1261,7 +1271,7 @@ impl Core {
                     self.tol.result = None;
                     self.worker.send(Tag::Tolerance, "tolerance", p);
                 }
-                Action::Stop => lensbench_cli::serve::tolerance_cancel(),
+                Action::Stop => crate::worker::progress::stop("tolerance"),
                 Action::Save(v) => {
                     if let Some(path) = crate::files::FileDialog::new()
                         .add_filter(tr("公差の設定"), &["json"])
@@ -1333,7 +1343,7 @@ impl Core {
         let progress = if self.swap.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(150));
-            lensbench_cli::serve::swap_progress()
+            crate::worker::progress::swap()
         } else {
             None
         };
@@ -1361,7 +1371,7 @@ impl Core {
                     self.swap.result = None;
                     self.worker.send(Tag::Swap, "swap", v);
                 }
-                Action::Stop => lensbench_cli::serve::swap_cancel(),
+                Action::Stop => crate::worker::progress::stop("swap"),
                 Action::Insert(i) => {
                     let Some(row) = self.swap.result.as_ref().and_then(|r| r["results"].get(i))
                     else {
@@ -3107,6 +3117,9 @@ impl App {
                 }
             }
         }
+        // Web 版: ブラウザに残したフォルダのうち、消えたもの（残したファイルを消した後など）は外す
+        #[cfg(target_arch = "wasm32")]
+        crate::web_store::prune_dirs(&mut s.glass_dirs, &mut s.lens_dirs);
         for d in &args.glass_dirs {
             if !s.glass_dirs.contains(d) {
                 s.glass_dirs.push(d.clone());
@@ -3201,7 +3214,21 @@ impl App {
                     .push("--tour には系のファイルが要る".into());
             }
         }
-        if let Some(p) = &args.open {
+        // Web 版: 前に開いていた、ブラウザに残したファイルがあればそれを開く（見本より先に）
+        #[cfg(target_arch = "wasm32")]
+        let reopen = app
+            .tour
+            .is_none()
+            .then(|| app.c.s.recent.first().cloned())
+            .flatten()
+            .filter(|r| {
+                crate::web_store::KEEP.iter().any(|k| r.starts_with(k))
+                    && lensbench_core::vfs::is_file(r)
+            })
+            .map(PathBuf::from);
+        #[cfg(not(target_arch = "wasm32"))]
+        let reopen: Option<PathBuf> = None;
+        if let Some(p) = reopen.as_ref().or(args.open.as_ref()) {
             app.c.open(p);
         }
         app
@@ -3612,6 +3639,36 @@ impl App {
                     if ui.button(tr("カタログのフォルダ…")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::Folders);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let (n, b) = crate::web_store::usage();
+                        if ui
+                            .add_enabled(
+                                n > 0,
+                                egui::Button::new(trf(
+                                    "ブラウザに残したファイルを消す（{} 個、{} MB）…",
+                                    &[&n, &format!("{:.1}", b as f64 / 1e6)],
+                                )),
+                            )
+                            .on_hover_text(tr(
+                                "読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る",
+                            ))
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            if crate::files::confirm(
+                                "lensbench",
+                                tr("ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？"),
+                            ) {
+                                crate::web_store::clear();
+                                crate::web_store::prune_dirs(
+                                    &mut self.c.s.glass_dirs,
+                                    &mut self.c.s.lens_dirs,
+                                );
+                                self.c.refresh_catalog();
+                            }
+                        }
                     }
                     // ブラウザ（Web 版）では閉じられないので出さない
                     if cfg!(not(target_arch = "wasm32")) {
@@ -4327,6 +4384,9 @@ impl eframe::App for App {
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.pick_and_open_when(false);
         crate::files::flush_downloads();
+        // Web 版: 読み込んだファイル・ユーザーカタログをブラウザに残す
+        #[cfg(target_arch = "wasm32")]
+        crate::web_store::flush();
         let mut redo = Vec::new();
         while let Some(d) = self.c.worker.poll() {
             if !d.skipped {
@@ -4511,6 +4571,13 @@ impl eframe::App for App {
         }
         self.save_layout_window(ctx);
         self.tour_frame(ctx);
+    }
+
+    /// Web 版は設定（最近のファイル・並びなど）をこまめに残す。eframe 0.31 の Web 版はページを閉じるときに
+    /// 保存しない（"onbeforeunload" で待つので呼ばれない）
+    #[cfg(target_arch = "wasm32")]
+    fn auto_save_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(2)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
