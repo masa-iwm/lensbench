@@ -192,7 +192,7 @@ enum Cmd {
         #[arg(long, conflicts_with_all = ["fft", "interp"])]
         direct: bool,
         /// 瞳関数の自己相関を FFT で全周波数まとめて求める（周波数が多いとき・収差が大きいとき速い。
-        /// 既定との差は 1e-4 程度）。既定でも --n を省いて求積の点数が 1024 を超える系は FFT になる
+        /// 既定との差は 1e-4 程度）。既定でも --n を省いて求積の点数が 1024 を超え、周波数が 8 個以上なら FFT になる
         #[arg(long, conflicts_with = "interp")]
         fft: bool,
         /// 求積点の数が多い系でも FFT に切り替えず、補間の求積で求める

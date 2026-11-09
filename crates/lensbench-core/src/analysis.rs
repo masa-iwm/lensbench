@@ -640,8 +640,8 @@ fn interp_errors(
 /// MTF の瞳の OPD の求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MtfMethod {
-    /// 既定。[`MtfMethod::Interp`]。ただし求積の点数 n を自動で決めて [`AUTO_FFT_N`] を超えるとき
-    /// （収差が大きい系）は [`MtfMethod::Fft`]
+    /// 既定。[`MtfMethod::Interp`]。ただし求積の点数 n を自動で決めて [`AUTO_FFT_N`] を超え（収差が大きい系）、
+    /// 周波数が [`AUTO_FFT_FREQS`] 個以上のときは [`MtfMethod::Fft`]
     #[default]
     Auto,
     /// 瞳の格子を 1 度追跡し、求積点では 6 点の Lagrange 補間（格子にけられた点がある所だけ直接追跡）
@@ -1110,6 +1110,11 @@ fn autocorr_at(r: &[C64], s: f64) -> C64 {
 /// FFT の瞳の標本は 2n（上限 [`FFT_MAX`]）で、求積との差は E0・E1 で 7e-5 以下
 pub const AUTO_FFT_N: usize = 1024;
 
+/// [`MtfMethod::Auto`] が FFT に切り替える周波数の数の下限。求積は周波数ごとに時間がかかり、FFT は周波数の数に
+/// よらない。n が [`AUTO_FFT_N`] を超える系では、周波数がおよそ 7 個で時間が並ぶ（E1: 2 個で求積 1.8 s・FFT 3.0 s、
+/// 20 個で 6.6 s・3.4 s）
+pub const AUTO_FFT_FREQS: usize = 8;
+
 /// [`MtfMethod::Fft`] の瞳の標本の数（直径）の範囲
 const FFT_MIN: usize = 512;
 const FFT_MAX: usize = 4096;
@@ -1254,7 +1259,7 @@ fn wave_otf(
         Some(n) => n,
         None => mtf_points(opd_slope_max(s, field, wi)?),
     };
-    if method == MtfMethod::Auto && auto && n > AUTO_FFT_N && !freqs.is_empty() {
+    if method == MtfMethod::Auto && auto && n > AUTO_FFT_N && freqs.len() >= AUTO_FFT_FREQS {
         return wave_otf_fft(s, field, wi, Some(n), freqs);
     }
     let jm = pupil_jacobian(s, field, wi)?;
