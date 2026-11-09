@@ -28,6 +28,10 @@ pub struct Extra {
     pub glass_dirs: Vec<String>,
     /// レンズカタログのフォルダ（置き場のパス）
     pub lens_dirs: Vec<String>,
+    /// 前もって作ったカタログの一覧（置き場のパス、`.json` か `.json.gz`。束に入れておく）。既定のフォルダの並び
+    /// （見本の LB・LBP と lens_dirs、ガラスは見本と glass_dirs）で一覧を頼まれたら、読む代わりにこれを返す
+    /// （`lensbench_cli::set_prepared_lens_list`）。ビルドのときに `lensbench catalog-search --json` で作る
+    pub lens_index: Option<&'static str>,
 }
 
 static EXTRA: std::sync::Mutex<Option<Extra>> = std::sync::Mutex::new(None);
@@ -138,10 +142,28 @@ mod web {
     /// 起動時に開く見本
     const FIRST: &str = "/lensbench/tests/refs/A0/system.zmx";
 
+    /// 既定のフォルダの並び（ガラス、レンズカタログ）。前もって作った一覧があれば、この並びで登録する
+    fn default_dirs(extra: &super::Extra) -> (Vec<String>, Vec<String>) {
+        let mut glass_dirs = vec!["/lensbench/tests/glass".to_string()];
+        glass_dirs.extend(extra.glass_dirs.iter().cloned());
+        let mut lens_dirs = vec![
+            "/lensbench/examples/lenses/LB".to_string(),
+            "/lensbench/examples/lenses/LBP".to_string(),
+        ];
+        lens_dirs.extend(extra.lens_dirs.iter().cloned());
+        if let Some(f) = extra.lens_index {
+            let pb = |v: &[String]| v.iter().map(std::path::PathBuf::from).collect();
+            lensbench_cli::set_prepared_lens_list(pb(&lens_dirs), pb(&glass_dirs), f.into());
+        }
+        (glass_dirs, lens_dirs)
+    }
+
     /// Web Worker の中で始める（`worker.js`）。kind は受ける要求（0: serve と同じ、1: 下書き）
     #[wasm_bindgen]
     pub async fn worker_init(kind: u8) -> Result<(), JsValue> {
-        insert_all(&super::extra()).await?;
+        let extra = super::extra();
+        insert_all(&extra).await?;
+        default_dirs(&extra);
         lensbench_gui::web_worker::init(kind);
         Ok(())
     }
@@ -211,13 +233,7 @@ mod web {
             })
             .map(String::from)
             .collect();
-        let mut glass_dirs = vec!["/lensbench/tests/glass".to_string()];
-        glass_dirs.extend(extra.glass_dirs);
-        let mut lens_dirs = vec![
-            "/lensbench/examples/lenses/LB".to_string(),
-            "/lensbench/examples/lenses/LBP".to_string(),
-        ];
-        lens_dirs.extend(extra.lens_dirs);
+        let (glass_dirs, lens_dirs) = default_dirs(&extra);
         let args = lensbench_gui::Args {
             open: Some(FIRST.into()),
             glass_dirs,

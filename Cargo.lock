@@ -2145,6 +2145,7 @@ name = "lensbench-web"
 version = "0.2.0"
 dependencies = [
  "js-sys",
+ "lensbench-cli",
  "lensbench-core",
  "lensbench-gui",
  "wasm-bindgen",
