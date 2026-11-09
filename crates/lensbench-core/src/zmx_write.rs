@@ -612,8 +612,8 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 ),
             },
         }
-        // 機械的な半直径（自動）。MEMA の行のない .zmx では OpticStudio が固定の半直径の玉の面に浮動開口を足すので、
-        // 書いておく（lensbench の読込も同じ）
+        // 機械的な半直径（自動。OpticStudio の保存と同じく書く）。半直径を固定した玉の面で開口のない面は、MEMA の行が
+        // あっても OpticStudio・lensbench の読込で浮動開口になる
         w(&mut o, "  MEMA 0 0 0 0 1 \"\"".to_string());
         match d.ap {
             Aperture::None => {}

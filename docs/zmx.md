@@ -2,9 +2,9 @@
 
 - レンズ単位が mm 以外（`UNIT` の IN・CM・METER）の .zmx は、読込で mm に直す（長さの値・偶数次非球面の係数・厚さのソルブの値・
   入射瞳径・高さの視野・多重構成の THIC・SDIA・CRVT）。結果も mm で出る。換算の決まっていない面タイプ・データは読込で止める
-- 浮動開口（`FLAP`）の外の光線をける（OpticStudio と同じ）。機械的な半直径の行（`MEMA`）のない .zmx（OpticStudio 以外が書いたもの）では、
-  半直径を固定（`DIAM 値 1`）にした玉の面（前か後ろがガラス）を浮動開口にする（OpticStudio 2026 R1 も読込で `FLAP` を足してける。
-  空気どうしの面と `MEMA` のある .zmx には足さない）。浮動開口でけないようにするには `lensbench_core::trace::set_floating_clip(false)` か
+- 浮動開口（`FLAP`）の外の光線をける（OpticStudio と同じ）。半直径を固定（`DIAM 値 1`）にした玉の面（前か後ろがガラス）で開口のない面は、
+  浮動開口にする（OpticStudio 2026 R1 も読込で `FLAP` を足してける。機械的な半直径の行 `MEMA` があっても同じ。空気どうしの面には足さない）。
+  lensbench で半直径を固定にした玉の面も、.zmx に書き出して読み直すと浮動開口でける。浮動開口でけないようにするには `lensbench_core::trace::set_floating_clip(false)` か
   環境変数 `LENSBENCH_FLOATING_CLIP=0`。光線エイミングの追跡は開口を見ない
 - 視野がすべて 0（軸上だけ）の系では、正規化視野 (hx, hy) を与えても軸上のまま追う（OpticStudio と同じ）
 - 多重構成の `PRAM`（面の PARM）は構成ごとに読む。面の色 `SCOL`・面の熱膨張係数 `TCED`、構成の名前 `MCOM`・重み `CWGT` は読み飛ばす

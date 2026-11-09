@@ -1152,10 +1152,10 @@ pub fn build(
         5 => ApertureKind::Cone,
         _ => notimpl!("系の絞りタイプ {satp}"),
     };
-    // MEMA の行のない .zmx（OpticStudio 以外が書いたもの・古い形式）では、OpticStudio 2026 R1 は読込で、半直径を固定した
-    // 玉の面（前か後ろがガラス）に浮動開口（FLAP）を足してける（付属のサンプルと自作の系で確かめた。空気どうしの面・
-    // MEMA のある .zmx には足さない）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
-    if !raw.surfs.iter().any(|r| r.mema) {
+    // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
+    // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。
+    // 以前は MEMA のない .zmx だけとしていた）。同じにする。絞りの大きさで決める開口（Float By Stop Size）の絞りは瞳そのものなので除く
+    {
         let glass = |m: &Option<String>| {
             m.as_deref()
                 .is_some_and(|g| !g.is_empty() && !g.eq_ignore_ascii_case("MIRROR"))
