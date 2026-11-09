@@ -2084,7 +2084,12 @@ impl Iface {
                     let deg = c0.clamp(-1.0, 1.0).acos().to_degrees();
                     let (lo, hi) = (angs[0], *angs.last().unwrap());
                     if deg.is_finite() && (deg > hi + 1e-9 || deg < lo - 1e-9) {
-                        notimpl!("膜の表 {name}: 入射角 {deg:.4} deg が表の範囲 {lo}〜{hi} の外");
+                        let what = if out.is_some() {
+                            "出る側の屈折角"
+                        } else {
+                            "入射角"
+                        };
+                        notimpl!("膜の表 {name}: {what} {deg:.4} deg が表の範囲 {lo}〜{hi} の外");
                     }
                 }
                 let v = |k: usize| interp(x, xc, &vals[k]);
