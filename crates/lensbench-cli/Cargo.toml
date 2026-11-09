@@ -1,0 +1,39 @@
+[package]
+name = "lensbench-cli"
+description = "Command line interface of lensbench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+# src/main.rs はライブラリの根（下の [lib]）。実行ファイルとして自動で拾わない
+autobins = false
+
+# ライブラリの根は main.rs のまま（GUI が serve の API を呼ぶため lib にした。ファイル名を変えると他の変更と衝突しやすい）
+[lib]
+name = "lensbench_cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "lensbench"
+path = "src/bin/lensbench.rs"
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-analysis = { path = "../lensbench-analysis" }
+lensbench-project = { path = "../lensbench-project" }
+lensbench-export = { path = "../lensbench-export" }
+lensbench-verify = { path = "../lensbench-verify" }
+clap = { version = "4", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# 時計（wasm の std::time::Instant は使えない）
+web-time = "1"
+
+# 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）。
+# wasm（Web 版）では使えないのでネイティブだけ
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mimalloc = { version = "0.1", default-features = false }
+
+[dev-dependencies]
+serde_json = "1"
+flate2 = "1"

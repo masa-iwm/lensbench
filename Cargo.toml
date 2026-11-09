@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/lensbench-core", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-verify", "crates/lensbench-export"]
+members = ["crates/lensbench-core", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-verify", "crates/lensbench-export", "crates/lensbench-cli"]
 exclude = ["crates/lensbench-py"]
 
 [workspace.package]
