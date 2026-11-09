@@ -78,7 +78,17 @@ fn birefringent_plates_match_opticstudio() {
         let s = load(name);
         let d = pol_diff(&s, name);
         println!("{name}（波長ごとの 比を除いた残り, |s| − 1） {d:?}");
-        assert!(d.iter().all(|&(r, a)| r < 5e-4 && a < 2e-3), "{name} {d:?}");
+        // Mode 0（常光の成分だけ）は 1e-12 で合う。Mode 2 の残り 2〜3e-4 は軸上でも同じ大きさで、OS が面に垂直な光線の
+        // s・p を決めるときの小さな二色性（Fresnel の扱いを振っても消えない）（以前の偏光の照合で既知の差とした、直入射付近の s・p の扱いと同じ種類）
+        let tol = if name == "b4_m0" {
+            (1e-10, 1e-10)
+        } else {
+            (5e-4, 2e-3)
+        };
+        assert!(
+            d.iter().all(|&(r, a)| r < tol.0 && a < tol.1),
+            "{name} {d:?}"
+        );
     }
 }
 

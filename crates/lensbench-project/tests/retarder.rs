@@ -383,3 +383,22 @@ fn birefringent_waveplate_errors() {
         assert!(try_system(bad).is_err(), "{bad}");
     }
 }
+
+/// 理想の λ/4 と同じ向きの結晶の λ/4 を重ねると λ/2（位相の向きがそろっている）
+#[test]
+fn ideal_and_crystal_quarter_waves_add() {
+    let s = system(
+        r#"{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 30}, "t": 1},
+           {"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 30, "material": "QUARTZ"}}"#,
+    );
+    let g = |n: &str| s.glasses[n].clone();
+    let dn = |l: f64| g("QUARTZ-E").n_cat(l) - g("QUARTZ").n_cat(l);
+    let d = 0.25 * 0.633e-3 / dn(0.633);
+    let r = 0.25 + dn(0.633) * d * 1e3 / 0.633;
+    assert!((r - 0.5).abs() < 1e-12);
+    assert!(same_up_to_phase(
+        fields(&s, 1),
+        crystal(0.5, 30.0, 0.633),
+        1e-7
+    ));
+}
