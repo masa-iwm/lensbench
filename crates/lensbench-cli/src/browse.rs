@@ -398,8 +398,11 @@ fn user_items(
                         "coat": spec.coat, "splitter": sp,
                     }))
                 }
-                // 空気中の面の並びだけ（Jones 面の偏光子・波長板など）: 玉が無いので面から
-                (_, [Block::Surfaces { surfaces, .. }]) => {
+                // 空気中の面の並びだけ（Jones 面の偏光子・波長板など）: 玉が無いので面から。ガラスのある面の
+                // 並びは玉の要約へ回し、そこで「面の並びは空気中の面だけ」のエラーにする
+                (_, [Block::Surfaces { surfaces, .. }])
+                    if surfaces.iter().all(|q| q.glass.is_none()) =>
+                {
                     let semi = surfaces.iter().map(|q| q.semi.value()).fold(0.0, f64::max);
                     Ok(json!({
                         "kind": "surfaces", "mirror": false, "efl": Value::Null,
@@ -682,6 +685,29 @@ mod tests {
             b["vendor"],
             dir.file_name().unwrap().to_string_lossy().as_ref()
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 面の並びのブロック 1 つの品: 空気中の面だけなら面の要約、ガラスのある面ならエラーの行
+    #[test]
+    fn json_catalog_surfaces_glass_is_error() {
+        let dir = std::env::temp_dir().join(format!("lensbench-surfs-{}", std::process::id()));
+        lensbench_core::vfs::create_dir_all(&dir).unwrap();
+        lensbench_core::vfs::write(
+            dir.join("s.json"),
+            r#"{"items": {
+                "G": {"blocks": [{"type": "surfaces", "surfaces": [{"radius": 51.5, "t": 4, "glass": "N-BK7", "semi": 12.7}, {"semi": 12.7}]}]},
+                "A": {"blocks": [{"type": "surfaces", "surfaces": [{"t": 1, "semi": 5}, {"semi": 5}]}]}
+            }}"#,
+        )
+        .unwrap();
+        let v = lenses(std::slice::from_ref(&dir), &[root().join("tests/glass")]).unwrap();
+        let l = v["lenses"].as_array().unwrap();
+        let g = l.iter().find(|x| x["part"] == "G").unwrap();
+        assert!(g["error"].is_string(), "{g}");
+        let a = l.iter().find(|x| x["part"] == "A").unwrap();
+        assert_eq!(a["kind"], "surfaces");
+        assert!(a.get("error").is_none(), "{a}");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

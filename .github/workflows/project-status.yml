@@ -6,7 +6,9 @@
 #   開き直す → ラベルに応じて In Progress / Todo
 # - PR: 開く・更新する → PR 自身と本文の Closes/Fixes/Resolves/Refs #N の開いている Issue を In Progress
 #   （Closes/Fixes/Resolves の Issue には in-progress ラベルも付ける。毎日の一括でも付け漏れを補う）、
-#   閉じる・マージする → PR を Done（Issue はそれ自身の closed イベントで Done）
+#   閉じる・マージする → PR を Done（Issue はそれ自身の closed イベントで Done）。
+#   マージせずに閉じたら、閉じる参照の Issue から PR を開いた後に付いた in-progress を外して Todo に
+#   （PR より前に手で付けたもの・ほかの開いている PR が閉じる参照をしているものは残す）
 # - 毎日 1 回と手動（workflow_dispatch）でボード全体を一括で揃える（取りこぼしの保険）
 #
 # 必要な Secret: ADD_TO_PROJECT_PAT

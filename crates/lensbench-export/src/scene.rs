@@ -316,6 +316,33 @@ impl Face {
         col(&self.frame.r, 2)
     }
 
+    /// 半径 rim までの面の箱を put に渡す。回転対称の面は局所 z が一定の円の重なりなので、半径ごとの円の
+    /// 箱を式で（中心 ± 半径 × 軸に直交する成分）出す。半径は網（[`crate::mesh`] の既定 16 輪）を含む
+    /// 32 輪と rim。トロイダル・自由曲面は周を細かく取った点で見る
+    pub fn extent(&self, rim: f64, put: &mut impl FnMut(V3)) {
+        const NR: usize = 32;
+        const NA: usize = 256;
+        put(self.point(0.0, 0.0));
+        if rim <= 0.0 {
+            return;
+        }
+        let top = if self.semi > 0.0 { self.semi } else { rim };
+        let mut radii: Vec<f64> = (1..=NR).map(|i| top * i as f64 / NR as f64).collect();
+        if rim > top {
+            radii.push(rim);
+        }
+        for r in radii {
+            if self.toroidal {
+                for a in 0..NA {
+                    let t = 2.0 * std::f64::consts::PI * a as f64 / NA as f64;
+                    put(self.point(r * t.cos(), r * t.sin()));
+                }
+            } else {
+                circle_extent(&self.frame, self.sag(r), r, put);
+            }
+        }
+    }
+
     /// 球面（または平面）か: 円錐係数・非球面係数がない
     pub fn is_spherical(&self) -> bool {
         !self.toroidal && self.k == 0.0 && self.asph.iter().all(|&a| a == 0.0)
@@ -634,26 +661,16 @@ impl Scene {
                 continue;
             }
             for f in [&s.front, &s.back] {
-                for a in 0..8 {
-                    let t = a as f64 * std::f64::consts::FRAC_PI_4;
-                    put(f.point(s.rim * t.cos(), s.rim * t.sin()));
-                }
-                put(f.point(0.0, 0.0));
+                f.extent(s.rim, &mut put);
             }
         }
         for p in &self.plates {
-            for a in 0..8 {
-                let t = a as f64 * std::f64::consts::FRAC_PI_4;
-                put(p.face.point(p.face.semi * t.cos(), p.face.semi * t.sin()));
-            }
+            p.face.extent(p.face.semi, &mut put);
         }
         for m in &self.mechs {
             for q in &m.rings {
-                for a in 0..8 {
-                    let t = a as f64 * std::f64::consts::FRAC_PI_4;
-                    for z in [q[0], q[1]] {
-                        put(m.to_global([q[3] * t.cos(), q[3] * t.sin(), z]));
-                    }
+                for z in [q[0], q[1]] {
+                    circle_extent(&m.frame, z, q[3], &mut put);
                 }
             }
         }
@@ -671,6 +688,17 @@ impl Scene {
         let (lo, hi) = self.bounds();
         norm(sub(hi, lo)).max(1e-6)
     }
+}
+
+/// 局所の z = z の平面上の、軸まわりの半径 r の円の箱の両端を put に渡す
+fn circle_extent(f: &Frame, z: f64, r: f64, put: &mut impl FnMut(V3)) {
+    let c = add(f.o, scale(col(&f.r, 2), z));
+    let mut d = [0.0; 3];
+    for (i, v) in d.iter_mut().enumerate() {
+        *v = r * f.r[i][0].hypot(f.r[i][1]);
+    }
+    put(sub(c, d));
+    put(add(c, d));
 }
 
 fn surface_semi(d: &Surface) -> f64 {
