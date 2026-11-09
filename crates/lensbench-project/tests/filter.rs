@@ -148,6 +148,24 @@ fn zmx_export_keeps_coat_tables() {
     lensbench_core::zmx_write::save(&zp, &s).unwrap();
     let dat = std::fs::read_to_string(dir.join("bp_coat.dat")).unwrap();
     assert!(dat.contains("TABLE BP532"));
+    // OpticStudio は全部の角度で同じ波長の並びでないと表を 0 として読む（理想フィルタの表は角度ごとにエッジの
+    // 近くの波長が違うので、書き出しで並べ直す）
+    let mut per_angle: Vec<Vec<&str>> = Vec::new();
+    for line in dat.lines() {
+        if line.starts_with("ANGL") {
+            per_angle.push(Vec::new());
+        } else if let Some(w) = line.strip_prefix("WAVE ") {
+            per_angle
+                .last_mut()
+                .unwrap()
+                .push(w.split(' ').next().unwrap());
+        }
+    }
+    assert!(per_angle.len() > 2);
+    assert!(
+        per_angle.iter().all(|v| *v == per_angle[0]),
+        "角度ごとに波長が違う"
+    );
     let txt = lensbench_core::glass::read_text(&zp).unwrap();
     assert!(txt.contains("COFN QF \"bp_coat.dat\""), "{txt}");
     let r = lensbench_core::zmx::load_with(
