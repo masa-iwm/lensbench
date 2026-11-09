@@ -546,10 +546,70 @@ pub(crate) struct Keep {
 enum Starts {
     Done(Vec<(V3, V3)>),
     Pupil {
-        spec: ObjSpec,
+        geom: StartGeom,
         ex: Vec<f64>,
         ey: Vec<f64>,
     },
+}
+
+/// [`System::start_ray`] のうち瞳の点によらない量（物体の座標系、入射瞳の位置、平行光の方向・物点）。
+/// 光線ごとに座標系・近軸量を引き直さないよう、1 回の追跡で 1 度だけ求める。値は同じ式・同じ順なので同じビット
+#[derive(Clone, Copy)]
+struct StartGeom {
+    o1: V3,
+    r0: M3,
+    z: f64,
+    kind: StartKind,
+}
+
+#[derive(Clone, Copy)]
+enum StartKind {
+    /// 大域の方向
+    Dir(V3),
+    /// 大域の物点
+    Point(V3),
+}
+
+impl StartGeom {
+    fn new(s: &System, spec: ObjSpec) -> StartGeom {
+        let fr = s.frames();
+        let (o1, r0) = (fr.obj.o, fr.obj.r);
+        let z = s.paraxial().enpp.min(ENPP_MAX);
+        let kind = match spec {
+            ObjSpec::Dir(d) => StartKind::Dir(mv(&r0, d)),
+            ObjSpec::Point(pt) => {
+                let f0 = fr.surf[0].expect("有限物体の座標系");
+                // 物体面が平面でない形（Tilted など）なら物点はその面の上（OpticStudio と同じ）
+                let d0 = &s.surfaces[0];
+                let z0 = if crate::freeform::is_freeform(d0.typ) {
+                    crate::freeform::sag_xy(d0, pt[0], pt[1]).0
+                } else {
+                    0.0
+                };
+                StartKind::Point(add(f0.o, mv(&f0.r, [pt[0], pt[1], z0])))
+            }
+        };
+        StartGeom { o1, r0, z, kind }
+    }
+
+    #[inline]
+    fn ray(&self, ex: f64, ey: f64) -> (V3, V3) {
+        let (o1, r0) = (self.o1, &self.r0);
+        let e = add(o1, mv(r0, [ex, ey, self.z]));
+        match self.kind {
+            StartKind::Dir(d) => {
+                let p = sub(e, scale(d, dot(sub(e, o1), d)));
+                (p, d)
+            }
+            StartKind::Point(p) => {
+                let mut k = sub(e, p);
+                if dot(k, col(r0, 2)) < 0.0 {
+                    k = scale(k, -1.0);
+                }
+                (p, normalize(k))
+            }
+        }
+    }
 }
 
 impl Starts {
@@ -561,10 +621,10 @@ impl Starts {
     }
 
     #[inline]
-    fn get(&self, s: &System, i: usize) -> (V3, V3) {
+    fn get(&self, i: usize) -> (V3, V3) {
         match self {
             Starts::Done(v) => v[i],
-            Starts::Pupil { spec, ex, ey } => s.start_ray(*spec, ex[i], ey[i]),
+            Starts::Pupil { geom, ex, ey } => geom.ray(ex[i], ey[i]),
         }
     }
 }
@@ -1401,33 +1461,7 @@ impl System {
     // ---------------------------------------------------------------------------------- 光線
     /// 入射瞳面の点 (ex, ey) [mm] を通る光線の開始位置・方向（大域）
     pub fn start_ray(&self, spec: ObjSpec, ex: f64, ey: f64) -> (V3, V3) {
-        let fr = self.frames();
-        let (o1, r0) = (fr.obj.o, fr.obj.r);
-        let par = self.paraxial();
-        let e = add(o1, mv(&r0, [ex, ey, par.enpp.min(ENPP_MAX)]));
-        match spec {
-            ObjSpec::Dir(d) => {
-                let d = mv(&r0, d);
-                let p = sub(e, scale(d, dot(sub(e, o1), d)));
-                (p, d)
-            }
-            ObjSpec::Point(pt) => {
-                let f0 = fr.surf[0].expect("有限物体の座標系");
-                // 物体面が平面でない形（Tilted など）なら物点はその面の上（OpticStudio と同じ）
-                let d0 = &self.surfaces[0];
-                let z0 = if crate::freeform::is_freeform(d0.typ) {
-                    crate::freeform::sag_xy(d0, pt[0], pt[1]).0
-                } else {
-                    0.0
-                };
-                let p = add(f0.o, mv(&f0.r, [pt[0], pt[1], z0]));
-                let mut k = sub(e, p);
-                if dot(k, col(&r0, 2)) < 0.0 {
-                    k = scale(k, -1.0);
-                }
-                (p, normalize(k))
-            }
-        }
+        StartGeom::new(self, spec).ray(ex, ey)
     }
 
     /// 瞳座標 1 が狙う絞りの半径 (rx, ry)。符号つき: 入射瞳の上端を通る近軸光線が絞りで負の側に来る系
@@ -1516,7 +1550,7 @@ impl System {
         let st = match st {
             Starts::Done(v) => v,
             Starts::Pupil { .. } => {
-                let start = |i: usize| st.get(self, i);
+                let start = |i: usize| st.get(i);
                 let n = st.len();
                 if n >= PAR_MIN_RAYS && !crate::par::sequential() {
                     (0..n)
@@ -1582,7 +1616,14 @@ impl System {
                 if self.aiming != Aiming::Off {
                     self.aim(spec, &qx, &qy, &mut ex, &mut ey, &mut fail, w);
                 }
-                (Starts::Pupil { spec, ex, ey }, fail)
+                (
+                    Starts::Pupil {
+                        geom: StartGeom::new(self, spec),
+                        ex,
+                        ey,
+                    },
+                    fail,
+                )
             }
             Launch::Stop { spec, x, y } => {
                 let (st, fail) = self.aim_stop(spec, x, y, w);
@@ -1788,7 +1829,7 @@ impl System {
         }
         let ptrs = SoaPtrs::new(&mut rec_out, slot, n);
         let one = |i: usize| {
-            let (p, k) = starts.get(self, i);
+            let (p, k) = starts.get(i);
             let mut row = SoaRow { out: &ptrs, i };
             let rec = if record { Some(&mut row) } else { None };
             // 偏光: 物体の座標系の (Ex, Ey, 0) を光線に垂直な面へ射影する（規格化しない、OpticStudio と同じ）
@@ -1850,7 +1891,7 @@ impl System {
             let group = |(b, ((ro, po), ko)): (usize, ((Out<RayOut>, Out<V3>), Out<V3>))| {
                 // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
                 let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
-                let start = idx.map(|i| starts.get(self, i));
+                let start = idx.map(|i| starts.get(i));
                 let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
                 let mut sink = SoaLanes {
                     out: &ptrs,
