@@ -2153,9 +2153,10 @@ impl System {
         let s = self.stop();
         let fr = self.frames();
         let r0 = fr.obj.r;
+        let geom = StartGeom::new(self, spec);
         let start = |v: [f64; 2]| -> (V3, V3) {
             match spec {
-                ObjSpec::Dir(_) => self.start_ray(spec, v[0], v[1]),
+                ObjSpec::Dir(_) => geom.ray(v[0], v[1]),
                 ObjSpec::Point(pt) => {
                     let f0 = fr.surf[0].expect("有限物体の座標系");
                     let p = add(f0.o, mv(&f0.r, [pt[0], pt[1], 0.0]));
@@ -2270,8 +2271,9 @@ impl System {
             .fold(1.0f64, |m, v| m.max(v.abs()));
         let h = 1e-7 * scale_;
         let lim = tol * rx.max(ry).max(1.0);
+        let geom = StartGeom::new(self, spec);
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
-            let (p, k) = self.start_ray(spec, v[0], v[1]);
+            let (p, k) = geom.ray(v[0], v[1]);
             let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
             [r.xyz[0], r.xyz[1]]
         };
@@ -2291,7 +2293,7 @@ impl System {
         const L: usize = batch::L;
         let plan = batch::Plan::new(self, fr, w, 1, s, false);
         let at_stop_l = |v: &[[f64; 2]; L]| -> [[f64; 2]; L] {
-            let st = v.map(|v| self.start_ray(spec, v[0], v[1]));
+            let st = v.map(|v| geom.ray(v[0], v[1]));
             let r =
                 batch::trace_lanes::<batch::NoRec>(&plan, &st.map(|s| s.0), &st.map(|s| s.1), None);
             std::array::from_fn(|l| [r[l].xyz[0], r[l].xyz[1]])
