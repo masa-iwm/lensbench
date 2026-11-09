@@ -1,0 +1,64 @@
+[package]
+name = "lensbench-gui"
+description = "Windows GUI of lensbench (single exe, no install)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# eframe 0.31 が 1.81 を要る
+rust-version = "1.81"
+
+[lib]
+name = "lensbench_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lensbench-gui"
+path = "src/main.rs"
+
+[dependencies]
+# カタログの仕様の条件・単位
+lensbench-project = { path = "../lensbench-project" }
+lensbench-core = { path = "../lensbench-core" }
+# 計算は serve と同じ API（lensbench_cli::serve::call）をプロセス内で呼ぶ
+lensbench-cli = { path = "../lensbench-cli" }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+serde = { version = "1", features = ["derive"] }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
+egui = { version = "0.31", default-features = false }
+egui_extras = { version = "0.31", default-features = false }
+# パネルのドッキング・タブ・フロート（並びは serde で保存）
+egui_dock = { version = "0.16", features = ["serde"] }
+egui_plot = "0.31"
+# 日本語のフォントの寸法（文字の縦位置の補正。egui と同じ読み方）
+ab_glyph = "0.2"
+# OS の言語（画面の言語の既定）
+sys-locale = "0.3"
+# 通し確認（--tour）の画面を PNG に書く
+png = "0.17"
+# 時計（wasm の std::time::Instant は使えない）
+web-time = "1"
+# ファイルを選ぶ窓（wasm はブラウザのファイル選択、files.rs）
+rfd = "0.15"
+
+# ネイティブだけ（wasm の Web 版では使えない）
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）
+mimalloc = { version = "0.1", default-features = false }
+
+# Web 版
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement", "HtmlAnchorElement", "Blob", "Url", "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent", "Event", "console"] }
+# ブラウザの言語（navigator.language）
+sys-locale = { version = "0.3", features = ["js"] }
+
+# exe のアイコン（Windows のリソース）
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[dev-dependencies]
+# 並びの保存（eframe の保存と同じ RON。並びには無限大の矩形が入るので JSON では読み直せない）
+ron = "0.8"
