@@ -1285,7 +1285,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 path.display()
             ));
         }
-        let cat = UserCatalog::load(&path)?;
+        let cat = UserCatalog::load_shared(&path)?;
         let it = cat
             .items
             .get(item)
@@ -1860,6 +1860,31 @@ impl UserCatalog {
     pub fn load(path: &Path) -> Result<UserCatalog, String> {
         let t = read_text(path)?;
         UserCatalog::from_json(&t).map_err(|e| format!("{}: {e}", path.display()))
+    }
+    /// [`Self::load`] と同じだが、読んだものをファイルの更新時刻・大きさと共に覚えておき、変わっていなければ
+    /// 読み直さない（展開で品ごとに同じカタログを読むと、品の数の 2 乗の時間がかかるため）。読むだけの所で使う
+    pub fn load_shared(path: &Path) -> Result<std::sync::Arc<UserCatalog>, String> {
+        use std::sync::{Arc, Mutex, OnceLock};
+        type Stamp = (Option<std::time::SystemTime>, u64);
+        type Cache = HashMap<PathBuf, (Stamp, Arc<UserCatalog>)>;
+        static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+        // `.gz` だけある場合など、更新時刻が取れなければ覚えずに読む
+        let Ok(stamp) = lensbench_core::vfs::stamp(path) else {
+            return UserCatalog::load(path).map(Arc::new);
+        };
+        let key = lensbench_core::vfs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let cache = CACHE.get_or_init(Default::default);
+        if let Some((st, c)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+            if *st == stamp {
+                return Ok(c.clone());
+            }
+        }
+        let c = Arc::new(UserCatalog::load(path)?);
+        cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, (stamp, c.clone()));
+        Ok(c)
     }
     /// ないファイル（`.gz` を足した名前も無い）なら空のカタログ。`.json.gz` だけあれば、それを読む
     /// （足して保存すると `.json` に書き、一覧では `.json` が勝つので、品は欠けない）
@@ -3049,7 +3074,7 @@ fn place_mechanics(
             (Some(x), None, None) => (x.clone(), String::new()),
             (None, Some(cat), Some(item)) => {
                 let path = base.join(cat);
-                let c = UserCatalog::load(&path)?;
+                let c = UserCatalog::load_shared(&path)?;
                 let it = c
                     .items
                     .get(item)
@@ -3694,6 +3719,25 @@ mod read_text_tests {
             c.to_json()
         );
         assert!(UserCatalog::load_or_new(&dir.join("none.json")).is_ok());
+        // load_shared は同じファイルなら覚えたものを返し、書き換えれば読み直す（.json.gz だけでも読める）
+        assert_eq!(
+            UserCatalog::load_shared(&dir.join("cat.json"))
+                .unwrap()
+                .to_json(),
+            c.to_json()
+        );
+        let p = dir.join("shared.json");
+        let mut a = UserCatalog::default();
+        a.vendor = "A".into();
+        a.save(&p).unwrap();
+        let x = UserCatalog::load_shared(&p).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &x,
+            &UserCatalog::load_shared(&p).unwrap()
+        ));
+        a.vendor = "BB".into();
+        a.save(&p).unwrap();
+        assert_eq!(UserCatalog::load_shared(&p).unwrap().vendor, "BB");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
