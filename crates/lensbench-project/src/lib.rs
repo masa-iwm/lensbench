@@ -3727,8 +3727,10 @@ mod read_text_tests {
             c.to_json()
         );
         let p = dir.join("shared.json");
-        let mut a = UserCatalog::default();
-        a.vendor = "A".into();
+        let mut a = UserCatalog {
+            vendor: "A".into(),
+            ..Default::default()
+        };
         a.save(&p).unwrap();
         let x = UserCatalog::load_shared(&p).unwrap();
         assert!(std::sync::Arc::ptr_eq(
