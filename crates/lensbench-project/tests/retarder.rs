@@ -174,46 +174,96 @@ fn ideal(r: f64, axis: f64, wl: f64) -> [C64; 4] {
     .jones_at(wl)
 }
 
-/// 出口の電場（入力 x・y）と行列 m（列 = 入力）が一致するか
-fn same(f: [[C64; 2]; 2], m: [C64; 4], tol: f64) -> bool {
-    (f[0][0] - m[0]).norm() < tol
-        && (f[0][1] - m[2]).norm() < tol
-        && (f[1][0] - m[1]).norm() < tol
-        && (f[1][1] - m[3]).norm() < tol
+/// 出口の電場 f が、行列 m に複素数 c を 1 つ掛けたものと合うか（|c| − 1 は loss まで）
+fn same_up_to_phase(f: [[C64; 2]; 2], m: [C64; 4], tol: f64) -> bool {
+    same_scaled(f, m, tol, 1e-7)
 }
 
-/// 複屈折材の波長板: 遅延は Δn(λ)·d/λ（水晶は Ghosh の常光・異常光の式）
+fn same_scaled(f: [[C64; 2]; 2], m: [C64; 4], tol: f64, loss: f64) -> bool {
+    let g = [f[0][0], f[1][0], f[0][1], f[1][1]];
+    let (mut num, mut den) = (C64::new(0.0, 0.0), 0.0);
+    for i in 0..4 {
+        num += m[i].conj() * g[i];
+        den += m[i].norm_sqr();
+    }
+    let c = num / den;
+    (c.norm() - 1.0).abs() < loss && (0..4).all(|i| (g[i] - c * m[i]).norm() < tol)
+}
+
+/// 厚さのある結晶板の行列は、OpticStudio と同じ位相の約束（遅い軸が e^{−iφ}）で、理想の板の行列の複素共役
+fn crystal(r: f64, axis: f64, wl: f64) -> [C64; 4] {
+    ideal(r, axis, wl).map(|c| c.conj())
+}
+
+/// 結晶板の入口の面（厚さ = 板の厚さ）
+fn plate_thicknesses(s: &lensbench_core::System) -> Vec<(String, f64)> {
+    s.surfaces
+        .iter()
+        .filter(|d| matches!(d.bire, Some(lensbench_core::surface::Bire::In { .. })))
+        .map(|d| (d.mat.clone(), d.t))
+        .collect()
+}
+
+/// 複屈折材の波長板: 厚さのある結晶板（入口・出口の面）になり、遅延は Δn(λ)·d/λ（水晶は Ghosh の常光・異常光の式）
 #[test]
 fn birefringent_waveplate_by_wavelength() {
     let s = system(
         r#"{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 45, "material": "QUARTZ"}}"#,
     );
-    let r = s.surfaces.iter().find_map(|d| d.retarder.clone()).unwrap();
     let g = |n: &str| s.glasses[n].clone();
     let dn = |l: f64| g("QUARTZ-E").n_cat(l) - g("QUARTZ").n_cat(l);
-    // 厚さは設計波長の遅延 1/4 から
-    let d = r.plates[0].thickness;
+    // 厚さは設計波長の遅延 1/4 から。板の後ろの空気は元の面の厚さ（0）
+    let pl = plate_thicknesses(&s);
+    assert_eq!(pl.len(), 1);
+    let d = pl[0].1;
+    assert_eq!(pl[0].0, "QUARTZ");
     assert!((d - 0.25 * 0.633e-3 / dn(0.633)).abs() < 1e-15, "{d}");
     assert!((dn(0.633) - 0.009045).abs() < 1e-5);
+    assert!(s.surfaces.iter().all(|d| d.retarder.is_none()));
+    // 結晶軸は面内で遅い軸（水晶は ne > no なので速い軸 45° + 90°）
+    let ax = s
+        .surfaces
+        .iter()
+        .find_map(|d| match &d.bire {
+            Some(lensbench_core::surface::Bire::In { axis, mode, .. }) => Some((*axis, *mode)),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(ax.1, 2);
+    assert!((ax.0[0] + 0.5f64.sqrt()).abs() < 1e-15 && (ax.0[1] - 0.5f64.sqrt()).abs() < 1e-15);
     for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
-        let want = ideal(dn(l) * d * 1e3 / l, 45.0, l);
-        assert!(same(fields(&s, w), want, 1e-12), "{l}");
+        let want = crystal(dn(l) * d * 1e3 / l, 45.0, l);
+        assert!(same_up_to_phase(fields(&s, w), want, 1e-7), "{l}");
     }
     // 設計波長では円偏光
     let f = fields(&s, 1);
-    assert!((f[0][0].norm() - f[0][1].norm()).abs() < 1e-12);
-    // jones（OpticStudio の JONESMAT）は設計波長の値
-    let j = s.surfaces.iter().find(|d| d.retarder.is_some()).unwrap();
-    assert_eq!(j.jones, r.jones8(0.633));
+    assert!((f[0][0].norm() - f[0][1].norm()).abs() < 1e-7);
 
     // 厚さを書いた多次の板: 1 mm の水晶は 633 nm で約 14.3 波長
     let s = system(
-        r#"{"waveplate": {"wavelength_um": 0.633, "material": "QUARTZ", "thickness_mm": 1}}"#,
+        r#"{"waveplate": {"wavelength_um": 0.633, "material": "QUARTZ", "thickness_mm": 1}, "t": 2}"#,
     );
+    assert_eq!(plate_thicknesses(&s), vec![("QUARTZ".to_string(), 1.0)]);
+    // 板の後ろの空気は 2 mm（と後ろのブロックの空気 10 mm。板の厚さの分だけ系は長くなる）
+    let out = s
+        .surfaces
+        .iter()
+        .find(|d| d.bire == Some(lensbench_core::surface::Bire::Out))
+        .unwrap();
+    assert_eq!(out.t, 12.0);
     for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
-        let want = ideal(dn(l) * 1e3 / l, 0.0, l);
-        assert!(same(fields(&s, w), want, 1e-12), "{l}");
+        let want = crystal(dn(l) * 1e3 / l, 0.0, l);
+        assert!(same_up_to_phase(fields(&s, w), want, 1e-7), "{l}");
     }
+    // 透過率 0.81 は外側の 2 面の理想膜（1 面 0.9）
+    let s = system(
+        r#"{"waveplate": {"wavelength_um": 0.633, "material": "QUARTZ", "thickness_mm": 1, "transmittance": 0.81}}"#,
+    );
+    let f = fields(&s, 1);
+    assert!(
+        (f[0][0].norm_sqr() + f[1][0].norm_sqr() - 0.81).abs() < 1e-12,
+        "{f:?}"
+    );
 }
 
 /// アクロマティック波長板（2 材の組）: 水晶と MgF₂ の速い軸を直交させ、2 波長で 1/4 になる厚さ
@@ -236,23 +286,85 @@ fn achromatic_waveplate_two_materials() {
         r#"{{"waveplate": {{"wavelength_um": 0.633, "axis_deg": 45, "plates": [
           {{"material": "MGF2", "thickness_mm": {d1}}}, {{"material": "QUARTZ", "thickness_mm": {d2}, "axis_deg": 90}}]}}}}"#
     ));
-    let r = s.surfaces.iter().find_map(|d| d.retarder.clone()).unwrap();
+    // 板 2 枚は 入口(MGF2) → 出口(後ろ QUARTZ、厚さ 0) → 入口(QUARTZ) → 出口(空気)
+    assert_eq!(
+        plate_thicknesses(&s),
+        vec![("MGF2".to_string(), d1), ("QUARTZ".to_string(), d2)]
+    );
     for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
-        let net: f64 = r.plate_retardance(l)[0] - r.plate_retardance(l)[1];
+        let net = (dm(l) * d1 - dq(l) * d2) * 1e3 / l;
         if w != 1 {
             assert!((net - 0.25).abs() < 1e-12, "{l} {net}");
         } else {
             assert!((net - 0.25).abs() < 0.05, "{l} {net}");
         }
-        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ行列
-        assert!(same(fields(&s, w), ideal(net, 45.0, l), 1e-12), "{l}");
+        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ行列（貼り合わせの面の Fresnel で強度 0.3 % 減る）
+        let f = fields(&s, w);
+        assert!(
+            same_scaled(f, crystal(net, 45.0, l), 1e-12, 5e-3),
+            "{l} {f:?}"
+        );
     }
-    // 単材の水晶の 1/4 板なら 0.5 µm と 1 µm で遅延は大きく違う
-    let q = system(
-        r#"{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "material": "QUARTZ"}}"#,
+}
+
+/// 結晶板の面は .zmx の BIRE__IN・BIRE_OUT に書き出し、読み直しても同じ偏光
+#[test]
+fn crystal_plate_zmx_roundtrip() {
+    let s = system(
+        r#"{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 30, "material": "QUARTZ"}, "t": 3}"#,
     );
-    let rq = q.surfaces.iter().find_map(|d| d.retarder.clone()).unwrap();
-    assert!(rq.plate_retardance(0.5)[0] - rq.plate_retardance(1.0)[0] > 0.1);
+    let txt = lensbench_core::zmx_write::write(&s).unwrap();
+    assert!(
+        txt.contains("TYPE BIRE__IN") && txt.contains("TYPE BIRE_OUT"),
+        "{txt}"
+    );
+    assert!(txt.contains("COAT I.99999999"));
+    let p = std::env::temp_dir().join(format!("lb_crystal_{}.zmx", std::process::id()));
+    std::fs::write(&p, &txt).unwrap();
+    let opt = lensbench_core::zmx::LoadOptions {
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    let r = lensbench_core::zmx::load_with(&p, &opt).unwrap();
+    std::fs::remove_file(&p).ok();
+    for w in 0..3 {
+        let (a, b) = (fields(&s, w), fields(&r, w));
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((a[i][j] - b[i][j]).norm() < 1e-12, "{w} {a:?} {b:?}");
+            }
+        }
+    }
+}
+
+/// 結晶板を面で直接書く（OpticStudio の Birefringent In / Out と同じ並び）
+#[test]
+fn crystal_plate_surfaces_directly() {
+    let a = system(
+        r#"{"waveplate": {"wavelength_um": 0.633, "material": "QUARTZ", "thickness_mm": 1, "axis_deg": 60}, "t": 3}"#,
+    );
+    let b = system(
+        r#"{"glass": "QUARTZ", "t": 1, "coat": "I.99999999", "birefringent": {"in": {"axis": [-0.8660254037844386, 0.5, 0]}}},
+           {"t": 3, "coat": "I.99999999", "birefringent": "out"}"#,
+    );
+    for w in 0..3 {
+        let (x, y) = (fields(&a, w), fields(&b, w));
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((x[i][j] - y[i][j]).norm() < 1e-12, "{w} {x:?} {y:?}");
+            }
+        }
+    }
+    for bad in [
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}"#,
+        r#"{"t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}, {"birefringent": "out"}"#,
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [0, 0, 0]}}}, {"birefringent": "out"}"#,
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0], "mode": 1}}}, {"birefringent": "out"}"#,
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}, {"t": 1}, {"birefringent": "out"}"#,
+        r#"{"birefringent": "out"}"#,
+    ] {
+        assert!(try_system(bad).is_err(), "{bad}");
+    }
 }
 
 #[test]

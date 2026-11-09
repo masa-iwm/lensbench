@@ -13,8 +13,8 @@ use crate::coating::{self, Coatings, C64};
 use crate::error::{Error, Result};
 use crate::glass::Glass;
 use crate::math::*;
-use crate::surface::{After, SurfType, Surface, Tilt};
-use crate::trace::{self, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
+use crate::surface::{After, Bire, SurfType, Surface, Tilt};
+use crate::trace::{self, CryKind, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
 use crate::{invalid, notimpl};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -1804,6 +1804,7 @@ impl System {
                     .collect(),
                 surf,
                 err: None,
+                cry: None,
             });
             let mut r = match pr.as_mut() {
                 Some(q) => trace::trace_core(self, fr, w, p, k, 0.0, 1, last, clip, rec, Some(q)),
@@ -2013,7 +2014,35 @@ impl System {
                     },
                 }
             };
-            out.push(PolSurf::new(kind, it));
+            let mut ps = PolSurf::new(kind, it);
+            if !d.ignore && j > 0 {
+                ps.cry = match &d.bire {
+                    Some(Bire::In { mode, axis, ne }) => {
+                        if !matches!(mode, 0 | 2) {
+                            return Err(Error::Invalid(format!(
+                                "{}: 複屈折材の板の Mode {mode} は未対応（0 と 2 だけ）",
+                                self.surf_label(j)
+                            )));
+                        }
+                        let ne = ne.get(w).copied().ok_or_else(|| {
+                            Error::Invalid(format!(
+                                "{}: 異常光 {} の屈折率がない",
+                                self.surf_label(j),
+                                Bire::e_name(&d.mat)
+                            ))
+                        })?;
+                        Some(CryKind::In {
+                            mode: *mode,
+                            axis: *axis,
+                            no: d.n[w],
+                            ne,
+                        })
+                    }
+                    Some(Bire::Out) => Some(CryKind::Out),
+                    None => None,
+                };
+            }
+            out.push(ps);
         }
         Ok(out)
     }

@@ -50,6 +50,8 @@ pub enum PolKind {
 #[derive(Debug, Clone)]
 pub struct PolSurf {
     pub kind: PolKind,
+    /// 複屈折材の板の入口（この波長の値）か出口
+    pub cry: Option<CryKind>,
     /// 面の前の媒質の内部透過率（強度、1 mm あたり）。吸収がなければ None
     pub it: Option<f64>,
     /// ln(it) / 2（振幅の吸収 exp(la · 距離) を pow なしで求める）
@@ -60,9 +62,67 @@ impl PolSurf {
     pub fn new(kind: PolKind, it: Option<f64>) -> PolSurf {
         PolSurf {
             kind,
+            cry: None,
             it,
             la: it.map_or(0.0, |t| 0.5 * t.ln()),
         }
+    }
+}
+
+/// 複屈折材の板の入口（常光・異常光の屈折率、結晶軸、モード）と出口
+#[derive(Debug, Clone, Copy)]
+pub enum CryKind {
+    In {
+        mode: u8,
+        axis: V3,
+        no: f64,
+        ne: f64,
+    },
+    Out,
+}
+
+/// 板の中を進む光線の結晶軸（今の面の局所座標）と、板の中の長さ
+#[derive(Debug, Clone, Copy)]
+pub struct CryState {
+    pub mode: u8,
+    pub axis: V3,
+    pub no: f64,
+    pub ne: f64,
+    pub len: f64,
+}
+
+/// 板の出口で、板の中の方向 k の光線の電場に異常光の位相を付ける（[`crate::surface::Bire`]）。λ は µm、長さは mm
+fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
+    let k = normalize(k);
+    let a = normalize(c.axis);
+    let ca = dot(a, k);
+    let ep = sub(a, scale(k, ca));
+    let s = norm(ep);
+    if c.mode == 0 {
+        // 常光の成分（k と a を含む面に垂直）だけ
+        let es = if s > 1e-12 {
+            normalize(cross(k, scale(ep, 1.0 / s)))
+        } else {
+            return;
+        };
+        for x in e.iter_mut() {
+            let v = cdot(*x, es);
+            *x = [0, 1, 2].map(|i| v * es[i]);
+        }
+        return;
+    }
+    if !(s > 1e-12) {
+        // 結晶軸に沿って進む光線は常光と同じ
+        return;
+    }
+    let ep = scale(ep, 1.0 / s);
+    let sa2 = 1.0 - ca * ca;
+    let nth = 1.0 / (ca * ca / (c.no * c.no) + sa2 / (c.ne * c.ne)).sqrt();
+    let ph = -2.0 * std::f64::consts::PI * (nth - c.no) * c.len * 1e3 / lam;
+    let f = C64::from_polar(1.0, ph) - C64::new(1.0, 0.0);
+    for x in e.iter_mut() {
+        let v = cdot(*x, ep) * f;
+        *x = [0, 1, 2].map(|i| x[i] + v * ep[i]);
     }
 }
 
@@ -72,6 +132,8 @@ pub struct PolRay<'a> {
     pub surf: &'a [PolSurf],
     /// 係数を求められなかったとき（膜の表の範囲外など）。電場は NaN にする
     pub err: Option<Error>,
+    /// 複屈折材の板の中を進んでいるとき
+    pub cry: Option<CryState>,
 }
 
 #[inline]
@@ -753,6 +815,15 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                 (Some(_), Some(q), None) => pr.e.iter_mut().for_each(|e| *e = cmv(&q.r, *e)),
                 _ => pr.e.iter_mut().for_each(|e| *e = cmtv(&rm, *e)),
             }
+            // 板の結晶軸も同じ変換で
+            if let Some(c) = pr.cry.as_mut() {
+                c.axis = match (prev, fr.rel[j], from_grin) {
+                    (_, _, Some((rr, _))) => mv(&rr, c.axis),
+                    (Some(_), Some(Rel { shift: Some(_), .. }), None) => c.axis,
+                    (Some(_), Some(q), None) => mv(&q.r, c.axis),
+                    _ => mtv(&rm, c.axis),
+                };
+            }
         }
         prev = Some(j);
         // 頂点面へ
@@ -823,6 +894,9 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
         }
         // 通ってきた媒質の吸収（振幅は内部透過率の 1/2 乗）
         if let Some(pr) = pol.as_deref_mut() {
+            if let Some(c) = pr.cry.as_mut() {
+                c.len += s_tot;
+            }
             if pr.surf[j].it.is_some() {
                 // 距離 0 は 1（t = 0 でも pow と同じ）
                 let a = if s_tot == 0.0 {
@@ -951,11 +1025,25 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                 }
                 if let Some(pr) = pol.as_deref_mut() {
                     if err == 0 {
+                        // 複屈折材の板の出口: 板の中の方向 kin で異常光の位相を付けてから境界の係数
+                        let cry = pr.surf[j].cry;
+                        if let (Some(CryKind::Out), Some(c)) = (cry, pr.cry.take()) {
+                            crystal_phase(&c, &mut pr.e, kin, lam);
+                        }
                         if let Err(e) =
                             pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror)
                         {
                             // 光線ごとに持ち、束を止めるかは追跡の後で決める（後ろの面でけられる光線もあるため）
                             pr.err.get_or_insert_with(|| e.at(sys.surf_label(j)));
+                        }
+                        if let Some(CryKind::In { mode, axis, no, ne }) = cry {
+                            pr.cry = Some(CryState {
+                                mode,
+                                axis,
+                                no,
+                                ne,
+                                len: 0.0,
+                            });
                         }
                     }
                 }

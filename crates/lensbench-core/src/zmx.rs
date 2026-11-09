@@ -833,6 +833,8 @@ pub fn build(
             "ODDASPHE" => SurfType::OddAsph,
             "TILTSURF" => SurfType::TiltSurf,
             "IRREGULA" => SurfType::Irregular,
+            // 複屈折材の板の入口・出口は形は標準面（偏光の位相は Surface::bire）
+            "BIRE__IN" | "BIRE_OUT" => SurfType::Standard,
             _ => notimpl!("面 {k}: 面タイプ {name}"),
         };
         let (mut mat, model) = mats[k].clone();
@@ -868,6 +870,27 @@ pub fn build(
                 && !ops.contains_key(&("SDIA".to_string(), ki)),
             ..Default::default()
         };
+        if name == "BIRE__IN" {
+            let mode = p(1);
+            // Mode 1・3 は異常光の道（屈折が違う）で未対応
+            if !(mode == 0.0 || mode == 2.0) {
+                notimpl!("面 {k}: Birefringent In の Mode {mode}（0 と 2 だけ）");
+            }
+            if s.xdat.get(&1).copied().unwrap_or(0.0) != 0.0 {
+                notimpl!("面 {k}: Birefringent In の Gradient Mode");
+            }
+            let axis = [p(2), p(3), p(4)];
+            if !(axis.iter().map(|v| v * v).sum::<f64>() > 0.0) {
+                invalid!("面 {k}: Birefringent In の結晶軸が 0");
+            }
+            d.bire = Some(crate::surface::Bire::In {
+                mode: mode as u8,
+                axis,
+                ne: Vec::new(),
+            });
+        } else if name == "BIRE_OUT" {
+            d.bire = Some(crate::surface::Bire::Out);
+        }
         match typ {
             SurfType::Jones => {
                 for i in 0..8 {
@@ -983,7 +1006,10 @@ pub fn build(
                 if nz != 0.0 {
                     notimpl!("面 {k}: トロイダル面の Zernike の項（{nz} 項）");
                 }
-            } else if typ == SurfType::Standard && parm[k].values().any(|&v| v != 0.0) {
+            } else if typ == SurfType::Standard
+                && d.bire.is_none()
+                && parm[k].values().any(|&v| v != 0.0)
+            {
                 notimpl!("面 {k}: 標準面にパラメータ");
             }
             if typ == SurfType::Jones && d.c != 0.0 {
@@ -1020,6 +1046,15 @@ pub fn build(
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
         d.n = n.clone();
+        if let Some(crate::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
+            let en = crate::surface::Bire::e_name(&mat);
+            let g = glasses.get(&en).ok_or_else(|| {
+                Error::Invalid(format!(
+                    "複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない"
+                ))
+            })?;
+            *ne = wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect();
+        }
         if !ign {
             nprev = n;
         }

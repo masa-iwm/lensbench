@@ -50,6 +50,52 @@
       ],
       "type": "string"
     },
+    "BireSpec": {
+      "description": "複屈折材の板の入口・出口の面。`{\"in\": {\"axis\": [x, y, z]}}` か `\"out\"`",
+      "oneOf": [
+        {
+          "enum": [
+            "out"
+          ],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "in": {
+              "properties": {
+                "axis": {
+                  "description": "結晶軸の向き（面の局所座標）",
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "mode": {
+                  "default": 2,
+                  "description": "2: 波長板（常光の道で、常光・異常光の両方の位相）、0: 常光の成分だけ（OpticStudio の Mode）",
+                  "format": "uint8",
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "axis"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "in"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Block": {
       "oneOf": [
         {
@@ -1724,6 +1770,17 @@
             "type": "number"
           },
           "type": "array"
+        },
+        "birefringent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BireSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。入口の `glass` が常光の材料（異常光は 名前-E）"
         },
         "coat": {
           "default": "",
