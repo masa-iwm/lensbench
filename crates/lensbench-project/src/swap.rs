@@ -118,6 +118,10 @@ pub struct SwapSpec {
     /// （カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）
     #[serde(default)]
     pub clear_aperture: bool,
+    /// ヤコビアン: "fd"（すべて中心差分、既定）か "auto"（解析的に求められる列は解析的に）。差し替え探索の
+    /// 変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で 4.3 倍、上位 1000 組は同じ組）
+    #[serde(default = "fd")]
+    pub jac: String,
 }
 
 fn spot() -> String {
@@ -128,6 +132,9 @@ fn centroid() -> String {
 }
 fn three() -> usize {
     3
+}
+fn fd() -> String {
+    "fd".into()
 }
 fn thirty() -> usize {
     30
@@ -423,6 +430,11 @@ impl<'a> SwapSearch<'a> {
         }
         let s = systems[0].clone();
         let mut pr = Problem::new(systems.clone());
+        pr.jac = match self.spec.jac.to_ascii_lowercase().as_str() {
+            "auto" => optim::JacMode::Auto,
+            "fd" => optim::JacMode::FiniteDiff,
+            j => return Err(format!("jac {j}（auto・fd）")),
+        };
         // 共通の変数（全状態）と、状態ごとの変数（状態 k だけに効く）
         let mut specs: Vec<(&String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (v, None)).collect();
