@@ -66,6 +66,27 @@
       ],
       "type": "object"
     },
+    "Prescreen": {
+      "additionalProperties": false,
+      "description": "粗いふるいの設定（[`SwapSpec::prescreen`]）",
+      "properties": {
+        "keep": {
+          "default": 1000,
+          "description": "二段目に回す組の数（一段目の評価関数の小さい順。評価できなかった組は回さない）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rings": {
+          "default": 2,
+          "description": "一段目の評価関数のリング数（`rings` より小さく。実カタログ 5.6 万組で、リング 3 に対して 2 なら上位 1000 組が\n同じ顔ぶれ、1 なら上位 10 組の最悪が 438 位）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Slot": {
       "additionalProperties": false,
       "description": "差し替える所",
@@ -154,6 +175,17 @@
       "default": "spot",
       "description": "評価関数: \"spot\" か \"wavefront\"",
       "type": "string"
+    },
+    "prescreen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Prescreen"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で\n最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない"
     },
     "reference": {
       "default": "centroid",

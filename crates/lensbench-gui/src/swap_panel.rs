@@ -72,6 +72,10 @@ pub struct SwapPanel {
     /// 系の焦点距離の目標（空は目標なし）
     pub efl: String,
     pub max_count: usize,
+    /// 粗いふるい（prescreen）を使う、その リング数・残す組の数
+    pub pre: bool,
+    pub pre_rings: usize,
+    pub pre_keep: usize,
     /// 表に出す組の数
     pub top: usize,
     pub new_var: String,
@@ -96,6 +100,9 @@ impl Default for SwapPanel {
             iters: 30,
             efl: String::new(),
             max_count: 100_000,
+            pre: false,
+            pre_rings: 2,
+            pre_keep: 1000,
             top: 50,
             new_var: String::new(),
             running: false,
@@ -168,6 +175,9 @@ impl SwapPanel {
             "iters": self.iters,
             "max_count": self.max_count,
         });
+        if self.pre {
+            p["prescreen"] = json!({ "rings": self.pre_rings, "keep": self.pre_keep });
+        }
         if let Some(e) = num(&self.efl, tr("焦点距離の目標"))? {
             p["efl"] = json!(e);
         }
@@ -216,6 +226,11 @@ impl SwapPanel {
                 "iters" => n.iters = v.as_u64().unwrap_or(30) as usize,
                 "efl" => n.efl = num_text(v),
                 "max_count" => n.max_count = v.as_u64().unwrap_or(100_000) as usize,
+                "prescreen" => {
+                    n.pre = !v.is_null();
+                    n.pre_rings = v["rings"].as_u64().unwrap_or(2) as usize;
+                    n.pre_keep = v["keep"].as_u64().unwrap_or(1000) as usize;
+                }
                 // GUI では今の系の状態を使う
                 "state" => {}
                 k => return Err(trf("差し替え探索の設定のキー {}", &[&k])),
@@ -599,6 +614,18 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         ui.add(egui::DragValue::new(&mut p.top).range(0..=10_000))
             .on_hover_text(tr("0 はすべて"));
     });
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut p.pre, tr("粗いふるい"))
+            .on_hover_text(tr(
+                "全組を少ないリング数で最適化し、評価関数の小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）",
+            ));
+        ui.add_enabled_ui(p.pre, |ui| {
+            ui.label(tr("リング数"));
+            ui.add(egui::DragValue::new(&mut p.pre_rings).range(1..=20));
+            ui.label(tr("残す組"));
+            ui.add(egui::DragValue::new(&mut p.pre_keep).range(1..=10_000_000));
+        });
+    });
     ui.label(
         RichText::new(tr(
             "組ごとに間隔を減衰最小二乗で最適化し、評価関数の小さい順に並べます。焦点距離の目標を入れると評価関数に足します。",
@@ -788,7 +815,11 @@ mod tests {
             ..Default::default()
         });
         p.efl = "100".into();
+        assert!(p.spec().unwrap().get("prescreen").is_none());
+        p.pre = true;
+        p.pre_keep = 500;
         let s = p.spec().unwrap();
+        assert_eq!(s["prescreen"], json!({"rings": 2, "keep": 500}));
         assert_eq!(s["vars"], json!(["d1.t=0.5:20", "G2.shift"]));
         assert_eq!(s["slots"][0]["filter"]["efl"], json!([50.5, null]));
         assert_eq!(s["efl"], json!(100.0));
@@ -797,6 +828,8 @@ mod tests {
         assert_eq!(q.slots, p.slots);
         assert_eq!(q.vars, p.vars);
         assert_eq!(q.efl, "100");
+        assert!(q.pre);
+        assert_eq!((q.pre_rings, q.pre_keep), (2, 500));
         assert!(q.set_spec(&json!({"bad": 1})).is_err());
     }
 

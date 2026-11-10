@@ -194,6 +194,42 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
 }
 
 #[test]
+fn prescreen_keeps_the_best_coarse_combinations_with_the_same_results() {
+    let (p, dir) = project();
+    let c = cat();
+    let mut a = slot("A");
+    a.filter.efl = [Some(40.0), None];
+    a.flip = true;
+    let mut b = slot("B");
+    b.filter.efl = [Some(40.0), None];
+    let full =
+        SwapSearch::new(&p, &env(dir.clone()), &c, spec(vec![a.clone(), b.clone()])).unwrap();
+    // ふるいなしなら頭に prescreen を書かない（前に書いた JSONL の続きから回せる）
+    assert!(!full.header().contains("prescreen"));
+    let n = full.count();
+    assert!(n >= 8, "{n}");
+    let keep = n / 2;
+    let mut sp = spec(vec![a, b]);
+    sp.prescreen = Some(lensbench_project::swap::Prescreen { rings: 2, keep });
+    let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
+    let idx = s.screened(None);
+    assert!(idx.len() <= keep && !idx.is_empty());
+    assert!(idx.windows(2).all(|w| w[0] < w[1]));
+    // スレッド数によらない
+    assert_eq!(idx, s.screened(Some(1)));
+    // 残った組の結果は、ふるいなしの同じ組の結果と同じ
+    let r = s.run(None);
+    assert_eq!(r.len(), idx.len());
+    let rf = full.run(None);
+    for x in &r {
+        let y = rf.iter().find(|y| y["i"] == x["i"]).unwrap();
+        assert_eq!(x, y);
+    }
+    // ふるいなしの最良の組は残る
+    assert_eq!(r[0], rf[0]);
+}
+
+#[test]
 fn efl_target() {
     let (p, dir) = project();
     let c = cat();

@@ -2738,8 +2738,11 @@ fn swap(p: &Value) -> Result<Value, RpcErr> {
         ..Default::default()
     };
     let t0 = web_time::Instant::now();
-    let r = lensbench_core::runs::run(n, 0, &o, |i, _| {
-        let v = s.eval(i);
+    // 粗いふるい（prescreen）があれば残った組だけ
+    let idx = s.screened(opt_usize(p, "threads")?);
+    *SWAP_RUN.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, idx.len()));
+    let r = lensbench_core::runs::run(idx.len(), 0, &o, |j, _| {
+        let v = s.eval(idx[j]);
         rows.lock().unwrap_or_else(|e| e.into_inner()).push(v);
         Ok("{}".into())
     });
@@ -2755,6 +2758,7 @@ fn swap(p: &Value) -> Result<Value, RpcErr> {
     }
     Ok(json!({
         "count": n,
+        "screened": idx.len(),
         "done": done,
         "failed": failed,
         "cancelled": sum.cancelled,
