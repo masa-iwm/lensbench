@@ -91,10 +91,160 @@ pub fn cis_scaled(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
     cis_impl(phase, amp, out)
 }
 
+/// 一度にまとめる 8 個の組の数（AVX2 版）。多項式は 1 個ごとに長い依存の鎖なので、段ごとに多くの組を並べて
+/// 待ち時間を隠す
+#[cfg(target_arch = "x86_64")]
+const AVX_GROUPS: usize = 4;
+
+/// AVX2 版。[`sincos_poly`] と同じ演算を同じ順に、4 個ずつの 256 ビット命令で書いたもの（FMA は使わないので各値は
+/// 同じビット）。8 個の組の分け方・libm に戻す条件・端数の扱いは [`cis_impl`] と同じ。組を [`AVX_GROUPS`] 個ずつ
+/// まとめ、簡約・sin の多項式・cos の多項式・象限の段ごとに全部の組を計算する（演算の中身は変えずに、依存のない
+/// 計算を並べて待ち時間を隠す）。まとめた組がすべて |φ| ≤ MAX_ARG なら 4 つに分けた簡約は計算しない
+/// （選ばれない値なので結果は同じ）。
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn cis_avx2(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
-    cis_impl(phase, amp, out)
+    use std::arch::x86_64::*;
+    const NV: usize = AVX_GROUPS * 2;
+    let n = phase.len().min(amp.len()).min(out.len());
+    let (phase, amp, out) = (&phase[..n], &amp[..n], &mut out[..n]);
+    let full = n / LANES * LANES;
+    let abs_mask = _mm256_castsi256_pd(_mm256_set1_epi64x(i64::MAX));
+    let max_arg = _mm256_set1_pd(MAX_ARG);
+    let max_med = _mm256_set1_pd(MAX_ARG_MED);
+    let one_i = _mm256_set1_epi64x(1);
+    let two_i = _mm256_set1_epi64x(2);
+    let zero_i = _mm256_setzero_si256();
+    let c = |v: f64| _mm256_set1_pd(v);
+    let pp = phase.as_ptr();
+    let ap = amp.as_ptr();
+    let op = out.as_mut_ptr() as *mut f64;
+    let zero = _mm256_setzero_pd();
+    let mut i = 0;
+    while i < full {
+        // まとめる組: 範囲内の組の 4 個ずつの先頭 pos[..nv]（範囲外・NaN を含む組はここで libm で）
+        let mut pos = [0usize; NV];
+        let mut x = [zero; NV];
+        let mut nv = 0;
+        let mut med = false;
+        let mut g = 0;
+        while g < AVX_GROUPS && i < full {
+            // 安全: i + 8 ≤ full ≤ n
+            let x0 = _mm256_loadu_pd(pp.add(i));
+            let x1 = _mm256_loadu_pd(pp.add(i + 4));
+            let (a0, a1) = (_mm256_and_pd(x0, abs_mask), _mm256_and_pd(x1, abs_mask));
+            // 比較は NaN で偽
+            let ok = _mm256_movemask_pd(_mm256_and_pd(
+                _mm256_cmp_pd::<_CMP_LE_OQ>(a0, max_med),
+                _mm256_cmp_pd::<_CMP_LE_OQ>(a1, max_med),
+            )) == 0b1111;
+            if ok {
+                med |= _mm256_movemask_pd(_mm256_or_pd(
+                    _mm256_cmp_pd::<_CMP_GT_OQ>(a0, max_arg),
+                    _mm256_cmp_pd::<_CMP_GT_OQ>(a1, max_arg),
+                )) != 0;
+                pos[nv] = i;
+                x[nv] = x0;
+                pos[nv + 1] = i + 4;
+                x[nv + 1] = x1;
+                nv += 2;
+            } else {
+                for l in i..i + LANES {
+                    out[l] = Complex64::from_polar(amp[l], phase[l]);
+                }
+            }
+            i += LANES;
+            g += 1;
+        }
+        // 簡約（[`sincos_poly`] の 1 行ずつに対応する）
+        let mut q = [zero_i; NV];
+        let mut r = [zero; NV];
+        for v in 0..nv {
+            let xv = x[v];
+            let t = _mm256_add_pd(_mm256_mul_pd(xv, c(INV_PIO2)), c(ROUND));
+            q[v] = _mm256_castpd_si256(t);
+            let qf = _mm256_sub_pd(t, c(ROUND));
+            let r_small = _mm256_sub_pd(
+                _mm256_sub_pd(
+                    _mm256_sub_pd(xv, _mm256_mul_pd(qf, c(PIO2_1))),
+                    _mm256_mul_pd(qf, c(PIO2_2)),
+                ),
+                _mm256_mul_pd(qf, c(PIO2_2T)),
+            );
+            r[v] = if med {
+                let r_med = _mm256_sub_pd(
+                    _mm256_sub_pd(
+                        _mm256_sub_pd(
+                            _mm256_sub_pd(xv, _mm256_mul_pd(qf, c(MPIO2_1))),
+                            _mm256_mul_pd(qf, c(MPIO2_2)),
+                        ),
+                        _mm256_mul_pd(qf, c(MPIO2_3)),
+                    ),
+                    _mm256_mul_pd(qf, c(MPIO2_4)),
+                );
+                let small = _mm256_cmp_pd::<_CMP_LE_OQ>(_mm256_and_pd(xv, abs_mask), max_arg);
+                _mm256_blendv_pd(r_med, r_small, small)
+            } else {
+                r_small
+            };
+        }
+        // sin r = r + r·z·(S1 + z·(S2 + z·(S3 + z·(S4 + z·(S5 + z·S6)))))
+        let mut z = [zero; NV];
+        let mut sn = [zero; NV];
+        for v in 0..nv {
+            let (rv, zv) = (r[v], _mm256_mul_pd(r[v], r[v]));
+            z[v] = zv;
+            let mut ps = _mm256_mul_pd(zv, c(S6));
+            ps = _mm256_mul_pd(zv, _mm256_add_pd(c(S5), ps));
+            ps = _mm256_mul_pd(zv, _mm256_add_pd(c(S4), ps));
+            ps = _mm256_mul_pd(zv, _mm256_add_pd(c(S3), ps));
+            ps = _mm256_mul_pd(zv, _mm256_add_pd(c(S2), ps));
+            ps = _mm256_add_pd(c(S1), ps);
+            sn[v] = _mm256_add_pd(rv, _mm256_mul_pd(_mm256_mul_pd(rv, zv), ps));
+        }
+        // cos r = w + (((1 − w) − z/2) + z²·(C1 + z·(…)))、w = 1 − z/2
+        let mut cs = [zero; NV];
+        for v in 0..nv {
+            let zv = z[v];
+            let hz = _mm256_mul_pd(c(0.5), zv);
+            let w = _mm256_sub_pd(c(1.0), hz);
+            let mut pc = _mm256_mul_pd(zv, c(C6));
+            pc = _mm256_mul_pd(zv, _mm256_add_pd(c(C5), pc));
+            pc = _mm256_mul_pd(zv, _mm256_add_pd(c(C4), pc));
+            pc = _mm256_mul_pd(zv, _mm256_add_pd(c(C3), pc));
+            pc = _mm256_mul_pd(zv, _mm256_add_pd(c(C2), pc));
+            pc = _mm256_add_pd(c(C1), pc);
+            cs[v] = _mm256_add_pd(
+                w,
+                _mm256_add_pd(
+                    _mm256_sub_pd(_mm256_sub_pd(c(1.0), w), hz),
+                    _mm256_mul_pd(_mm256_mul_pd(zv, zv), pc),
+                ),
+            );
+        }
+        // 象限（ビット演算は sincos_poly と同じ）、振幅を掛けて (re, im) の並びで書く
+        for v in 0..nv {
+            let (s, cc, qv) = (sn[v], cs[v], q[v]);
+            let swap = _mm256_castsi256_pd(_mm256_sub_epi64(zero_i, _mm256_and_si256(qv, one_i)));
+            let a = _mm256_or_pd(_mm256_and_pd(cc, swap), _mm256_andnot_pd(swap, s));
+            let b = _mm256_or_pd(_mm256_and_pd(s, swap), _mm256_andnot_pd(swap, cc));
+            let sin_neg = _mm256_slli_epi64::<62>(_mm256_and_si256(qv, two_i));
+            let cos_neg =
+                _mm256_slli_epi64::<62>(_mm256_and_si256(_mm256_add_epi64(qv, one_i), two_i));
+            let sv = _mm256_xor_pd(a, _mm256_castsi256_pd(sin_neg));
+            let cv = _mm256_xor_pd(b, _mm256_castsi256_pd(cos_neg));
+            let k = pos[v];
+            // 安全: k + 4 ≤ full ≤ n。Complex64 は (re, im) の並び（repr(C)）
+            let am = _mm256_loadu_pd(ap.add(k));
+            let re = _mm256_mul_pd(am, cv);
+            let im = _mm256_mul_pd(am, sv);
+            let lo = _mm256_unpacklo_pd(re, im); // re0 im0 re2 im2
+            let hi = _mm256_unpackhi_pd(re, im); // re1 im1 re3 im3
+            _mm256_storeu_pd(op.add(2 * k), _mm256_permute2f128_pd::<0x20>(lo, hi));
+            _mm256_storeu_pd(op.add(2 * k + 4), _mm256_permute2f128_pd::<0x31>(lo, hi));
+        }
+    }
+    cis_impl(&phase[full..], &amp[full..], &mut out[full..])
 }
 
 #[inline(always)]
@@ -232,6 +382,40 @@ mod tests {
         cis_scaled(&xs, &amp, &mut a);
         cis_impl(&xs, &amp, &mut b);
         assert_eq!(a, b);
+        // 組の全部が MAX_ARG 以下・MAX_ARG を超える値が混ざる・libm に戻る、の組をいろいろな端数の長さで
+        let mut st = 0x1234_5678_9abc_def1u64;
+        let mut ys: Vec<f64> = (0..4099)
+            .map(|i| {
+                st ^= st << 13;
+                st ^= st >> 7;
+                st ^= st << 17;
+                let u = (st >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
+                match (i / 8) % 5 {
+                    0 => u * 20.0,
+                    1 => u * 2.0 * MAX_ARG,
+                    2 => u * 2.0 * MAX_ARG_MED,
+                    3 => u * 1e10,
+                    _ => (i as f64) * std::f64::consts::FRAC_PI_4,
+                }
+            })
+            .collect();
+        ys[77] = f64::NAN;
+        ys[1000] = f64::INFINITY;
+        ys[1001] = -0.0;
+        let amp: Vec<f64> = (0..ys.len()).map(|i| 0.25 + i as f64 * 1e-3).collect();
+        for len in [0, 1, 7, 8, 9, 63, 64, 65, ys.len()] {
+            let mut a = vec![Complex64::new(0.0, 0.0); len];
+            let mut b = a.clone();
+            cis_scaled(&ys[..len], &amp[..len], &mut a);
+            cis_impl(&ys[..len], &amp[..len], &mut b);
+            for (x, y) in a.iter().zip(&b) {
+                assert!(
+                    x.re.to_bits() == y.re.to_bits() && x.im.to_bits() == y.im.to_bits()
+                        || (x.re.is_nan() && y.re.is_nan()),
+                    "{x} vs {y}"
+                );
+            }
+        }
     }
 
     #[test]
