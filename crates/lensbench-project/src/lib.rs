@@ -975,6 +975,9 @@ struct Ctx<'a, 'b> {
     frames: Vec<(String, MechSpec, usize, usize)>,
 }
 
+/// 品の枠（向きを当てる前）と向き
+type ItemFrame = Option<(MechSpec, bool)>;
+
 fn is_air(m: &str) -> bool {
     m.is_empty() || m.eq_ignore_ascii_case("AIR")
 }
@@ -1441,7 +1444,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     fn user_group_frame(
         &mut self,
         b: &Block,
-    ) -> Result<(Block, PathBuf, (PathBuf, String), Option<MechSpec>), String> {
+    ) -> Result<(Block, PathBuf, (PathBuf, String), ItemFrame), String> {
         let Block::User {
             id,
             catalog,
@@ -1503,7 +1506,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             },
             dir,
             key,
-            it.frame.clone(),
+            it.frame.clone().map(|f| (f, it.frame_reversed)),
         ))
     }
 
@@ -1786,11 +1789,24 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.base = base;
                 r?;
                 // 品の枠は、外側の品（項目の中の項目でない）だけ置く
-                if let Some(f) = frame.filter(|_| self.users.is_empty() && self.sf.len() > start) {
+                if let Some((f, rev)) =
+                    frame.filter(|_| self.users.is_empty() && self.sf.len() > start)
+                {
                     let name = if id.is_empty() {
                         item.clone()
                     } else {
                         id.clone()
+                    };
+                    // 逆向きの枠は、品のガラスの厚さ（最初の面から最後の面まで）で座を移す
+                    let f = if rev {
+                        let t: f64 = self.sf[start..self.sf.len() - 1]
+                            .iter()
+                            .filter(|q| q.typ != SurfType::CoordBrk)
+                            .map(|q| q.t)
+                            .sum();
+                        f.flipped(t)
+                    } else {
+                        f
                     };
                     self.frames.push((name, f, start, self.sf.len() - 1));
                 }
@@ -1903,6 +1919,10 @@ pub struct UserItem {
     /// 機構部品として付く（ケラレ・当たりの確認と描画）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<MechSpec>,
+    /// 枠の向き: false なら光は枠の z の小さい端から入り、true なら大きい端から入る（STEP から測った枠は STEP の
+    /// 座標の向きなので、図面の矢印などで決める）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub frame_reversed: bool,
     /// 品の種類（一覧の分類。省略時はブロックから: 鏡・BS のブロック 1 つならそれ、ほかは玉）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<catalog_spec::ItemKind>,
@@ -1987,6 +2007,33 @@ fn is_zero_f64(v: &f64) -> bool {
 }
 
 impl MechSpec {
+    /// 光の進む向きを逆にした寸法（z を長さから引く）。`t` は保持する素子の厚さ（座はその前面）
+    pub fn flipped(&self, t: f64) -> MechSpec {
+        let len = if self.length > 0.0 {
+            self.length
+        } else {
+            self.bores.iter().map(|b| b.z1).fold(0.0, f64::max)
+        };
+        let mut bores: Vec<BoreSpec> = self
+            .bores
+            .iter()
+            .map(|b| BoreSpec {
+                z0: len - b.z1,
+                z1: len - b.z0,
+                diameter: b.diameter,
+            })
+            .collect();
+        bores.sort_by(|a, b| a.z0.total_cmp(&b.z0));
+        MechSpec {
+            bores,
+            holds: self.holds.map(|h| HoldSpec {
+                diameter: h.diameter,
+                seat_z: len - h.seat_z - t,
+            }),
+            ..self.clone()
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         for (k, b) in self.bores.iter().enumerate() {
             if !(b.diameter > 0.0 && b.diameter.is_finite()) {
@@ -3432,6 +3479,9 @@ fn place_mechanics(
                     }
                 },
                 None => {
+                    if m.at.is_unset() {
+                        return Err(format!("{tag}: 置く所（at）か seat が要る"));
+                    }
                     if m.at.surface == 0 || m.at.surface > s.image() {
                         return Err(format!("{tag}: 面 {}（1〜{}）", m.at.surface, s.image()));
                     }

@@ -316,8 +316,185 @@ pub fn page_frame(
     })
 }
 
+/// 仕様表の値（STEP で分けた寸法と突き合わせる [`spec_check`]）[mm]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SpecValues {
+    pub thickness: Option<f64>,
+    pub diameter: Option<f64>,
+    pub mount_thickness: Option<f64>,
+    pub mount_diameter: Option<f64>,
+    pub clear_aperture: Option<f64>,
+}
+
+impl SpecValues {
+    /// 読んだ仕様表の値を先に、無い値は品の `specs` から
+    pub fn of(specs: &serde_json::Map<String, Value>, page: Option<&PageRead>) -> Self {
+        let get = |k: &str| {
+            page.and_then(|p| p.get(k))
+                .or_else(|| specs.get(k).cloned())
+                .and_then(|v| v.as_f64())
+                .filter(|x| *x > 0.0 && x.is_finite())
+        };
+        SpecValues {
+            thickness: get("thickness"),
+            diameter: get("diameter"),
+            mount_thickness: get("mount_thickness"),
+            mount_diameter: get("mount_diameter"),
+            clear_aperture: get("clear_aperture"),
+        }
+    }
+
+    /// serve の params（`{"thickness": …, …}`）から
+    pub fn from_value(v: &Value) -> Self {
+        let m = v.as_object().cloned().unwrap_or_default();
+        Self::of(&m, None)
+    }
+
+    pub fn to_value(&self) -> Value {
+        let mut m = serde_json::Map::new();
+        for (k, v) in [
+            ("thickness", self.thickness),
+            ("diameter", self.diameter),
+            ("mount_thickness", self.mount_thickness),
+            ("mount_diameter", self.mount_diameter),
+            ("clear_aperture", self.clear_aperture),
+        ] {
+            if let Some(v) = v {
+                m.insert(k.into(), json!(v));
+            }
+        }
+        Value::Object(m)
+    }
+
+    /// 枠付きの品で、仕様の厚さ・径が枠の値か（枠の厚さ・外径の欄が無く、枠の長さ・外径と合う）。
+    /// Thorlabs のマウント付きフィルタなどは「厚さ」「径」が枠の値
+    fn frame_valued(&self, frame: Option<&crate::MechSpec>) -> (bool, bool) {
+        let Some(f) = frame else {
+            return (false, false);
+        };
+        let near = |a: Option<f64>, b: f64| a.is_some_and(|a| (a - b).abs() <= SPEC_TOL);
+        (
+            self.mount_thickness.is_none() && near(self.thickness, f.length),
+            self.mount_diameter.is_none() && near(self.diameter, f.outer_diameter),
+        )
+    }
+}
+
+/// STEP と仕様表の値が同じとみなす差 [mm]（図面の寸法の丸め程度）
+pub const SPEC_TOL: f64 = 0.05;
+
+/// STEP の値と仕様表の値の突き合わせ 1 項目
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpecCmp {
+    /// 項目（`thickness`・`diameter` はガラス、`mount_thickness`・`mount_diameter`・`clear_aperture` は枠）
+    pub key: &'static str,
+    pub step: f64,
+    pub spec: f64,
+    /// 仕様の値の欄（枠の値を「厚さ」「径」の欄に書く品では `thickness`・`diameter`）
+    pub spec_key: &'static str,
+}
+
+impl SpecCmp {
+    /// 合うか。有効径は品質を保証する範囲で、枠の穴（機構の開口）より小さいのが普通なので、仕様の値が穴より
+    /// 大きい時だけ食い違いとする
+    pub fn ok(&self) -> bool {
+        if self.key == "clear_aperture" {
+            self.spec <= self.step + SPEC_TOL
+        } else {
+            (self.step - self.spec).abs() <= SPEC_TOL
+        }
+    }
+
+    /// 項目の名前（ユーザーに見せる）
+    pub fn label(&self) -> &'static str {
+        match self.key {
+            "thickness" => "ガラスの厚さ",
+            "diameter" => "ガラスの径",
+            "mount_thickness" => "枠の厚さ",
+            "mount_diameter" => "枠の外径",
+            _ => "有効径",
+        }
+    }
+
+    /// 食い違いの説明（保存する品の notes に書く）
+    pub fn note(&self) -> String {
+        format!(
+            "{}: STEP {} mm、仕様表 {} mm（差 {} mm）",
+            self.label(),
+            round6(self.step),
+            round6(self.spec),
+            round6(self.step - self.spec)
+        )
+    }
+}
+
+/// STEP で測ったガラス（厚さ・径）と枠を、仕様表の値と突き合わせる。比べられる項目だけを返す。
+/// 枠付きの品で仕様の「厚さ」「径」が枠の長さ・外径と合えば、それらは枠の値として比べる。
+/// ガラスと枠が 1 つの立体（`merged`）のガラスの径は見えている径なので、仕様の径とは比べない
+pub fn spec_check(
+    thickness: Option<f64>,
+    diameter: Option<f64>,
+    frame: Option<&crate::MechSpec>,
+    merged: bool,
+    s: &SpecValues,
+) -> Vec<SpecCmp> {
+    let (ft, fd) = s.frame_valued(frame);
+    let mut out = Vec::new();
+    let mut push = |key, step: Option<f64>, spec: Option<f64>, spec_key| {
+        if let (Some(step), Some(spec)) = (step, spec) {
+            out.push(SpecCmp {
+                key,
+                step,
+                spec,
+                spec_key,
+            });
+        }
+    };
+    if !ft {
+        push("thickness", thickness, s.thickness, "thickness");
+    }
+    if !fd && !merged {
+        push("diameter", diameter, s.diameter, "diameter");
+    }
+    if let Some(f) = frame {
+        let (mt, mtk) = if ft {
+            (s.thickness, "thickness")
+        } else {
+            (s.mount_thickness, "mount_thickness")
+        };
+        push("mount_thickness", Some(f.length), mt, mtk);
+        let (md, mdk) = if fd {
+            (s.diameter, "diameter")
+        } else {
+            (s.mount_diameter, "mount_diameter")
+        };
+        push("mount_diameter", Some(f.outer_diameter), md, mdk);
+        let clear = f
+            .bores
+            .iter()
+            .map(|b| b.diameter)
+            .fold(f64::INFINITY, f64::min);
+        push(
+            "clear_aperture",
+            clear.is_finite().then_some(clear),
+            s.clear_aperture,
+            "clear_aperture",
+        );
+    }
+    out
+}
+
+/// ガラスと枠が 1 つの立体の STEP で、STEP から分からないガラスの本当の径を仕様表で補う。
+/// 仕様の径が枠の値でなく、見えている径以上で枠の外径より小さければその値
+pub fn spec_glass_diameter(visible: f64, frame: &crate::MechSpec, s: &SpecValues) -> Option<f64> {
+    let (_, fd) = s.frame_valued(Some(frame));
+    s.diameter
+        .filter(|_| !fd)
+        .filter(|d| *d >= visible - SPEC_TOL && *d < frame.outer_diameter)
+}
+
 /// STEP から測った大きさ
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct StepSize {
     /// 厚さ [mm]（円の軸の向きの長さ。円が無ければ箱の最も短い辺）
     pub thickness: f64,
@@ -329,6 +506,10 @@ pub struct StepSize {
     pub note: String,
     /// 枠付きの品の枠（機構部品の寸法、z は枠の端から）。ガラスは `thickness`・`diameter`
     pub frame: Option<crate::MechSpec>,
+    /// ガラスと枠が 1 つの立体で、ガラスの径は見えている径（本当の径は仕様表で補う。[`spec_glass_diameter`]）
+    pub merged: bool,
+    /// ガラスの無い機構部品（チューブ・ケージ板・マウント）。厚さ・径は枠の長さ・外径で、寸法は `frame`
+    pub mech: bool,
 }
 
 /// STEP の長さの単位（mm へ）
@@ -352,7 +533,8 @@ fn step_unit(upper: &str) -> f64 {
 ///
 /// 立体（`MANIFOLD_SOLID_BREP`）ごとに組立の置き方を当てて共通の座標に置き、最大の円の軸を光軸とする。
 /// 光軸と同じ軸の穴（内壁の円柱の面）を持つ立体を枠、持たない立体をガラスとみなし、両方あれば
-/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。枠の分からない品は、
+/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。ガラスが無く穴のある立体だけなら機構部品（チューブ・
+/// ケージ板・マウント）として全体を枠にし（[`StepSize::mech`]）、ねじ（SM05〜SM3 の内径）・ケージのロッドの間隔も読む。枠の分からない品は、
 /// 径は軸に平行な円の最大の直径、厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の
 /// 最も短い辺を厚さ、残りを [幅, 高さ] とする
 pub fn read_step(text: &str) -> Result<StepSize, String> {
@@ -365,6 +547,8 @@ pub fn read_step(text: &str) -> Result<StepSize, String> {
         unit_mm: k,
         note: m.note,
         frame: m.frame,
+        merged: m.merged,
+        mech: m.mech,
     })
 }
 
@@ -644,6 +828,121 @@ mod tests {
         let r = read_page("Dimensions (mm):\n25.0 x 35.0\nThickness (mm): 1.1");
         assert_eq!(r.diameter, Some(json!([25.0, 35.0])));
         assert_eq!(r.thickness, Some(1.1));
+    }
+
+    fn frame(len: f64, od: f64, bore: f64) -> crate::MechSpec {
+        crate::MechSpec {
+            bores: vec![crate::BoreSpec {
+                z0: 0.0,
+                z1: len,
+                diameter: bore,
+            }],
+            length: len,
+            outer_diameter: od,
+            holds: Some(crate::HoldSpec {
+                diameter: bore,
+                seat_z: 0.5,
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// STEP で分けた寸法と仕様表の値の突き合わせ（Edmund の枠付きフィルタの形）
+    #[test]
+    fn spec_check_compares_glass_and_frame() {
+        let r = read_page("Diameter (mm):\n25.00\nSubstrate Thickness (mm):\n2.00\nMount Thickness (mm):\n3.50\nClear Aperture CA (mm):\n21.00\n");
+        let s = SpecValues::of(&serde_json::Map::new(), Some(&r));
+        let f = frame(3.5, 24.99, 21.209);
+        let c = spec_check(Some(2.0), Some(23.9), Some(&f), false, &s);
+        let keys: Vec<_> = c.iter().map(|c| (c.key, c.ok())).collect();
+        // 径 25 は枠の外径 24.99 と合い、枠の外径の欄が無いので枠の値として比べる
+        assert_eq!(
+            keys,
+            [
+                ("thickness", true),
+                ("mount_thickness", true),
+                ("mount_diameter", true),
+                ("clear_aperture", true),
+            ]
+        );
+        assert_eq!(c[2].spec_key, "diameter");
+        // 有効径が枠の穴より大きいのは食い違い
+        let big = SpecValues {
+            clear_aperture: Some(22.0),
+            ..s
+        };
+        let c = spec_check(Some(2.0), Some(23.9), Some(&f), false, &big);
+        assert!(!c[3].ok());
+        assert!(
+            c[3].note().contains("有効径: STEP 21.209 mm、仕様表 22 mm"),
+            "{}",
+            c[3].note()
+        );
+        // 品の specs の値も使う（読んだページが先）
+        let mut m = serde_json::Map::new();
+        m.insert("thickness".into(), json!(1.5));
+        m.insert("clear_aperture".into(), json!(21.2));
+        let s2 = SpecValues::of(&m, None);
+        assert_eq!((s2.thickness, s2.clear_aperture), (Some(1.5), Some(21.2)));
+        let c = spec_check(Some(2.0), None, Some(&f), false, &s2);
+        assert_eq!(
+            c.iter()
+                .filter(|c| !c.ok())
+                .map(|c| c.key)
+                .collect::<Vec<_>>(),
+            ["thickness"]
+        );
+        assert_eq!(SpecValues::from_value(&s.to_value()), s);
+    }
+
+    /// ガラスと枠が 1 つの立体（Thorlabs のマウント付きフィルタの形）: 仕様の厚さ・径は枠の値、
+    /// ガラスの径は見えている径なので比べない
+    #[test]
+    fn spec_check_merged_and_glass_diameter() {
+        let f = frame(6.3, 25.4, 21.0);
+        let s = SpecValues {
+            thickness: Some(6.3),
+            diameter: Some(25.4),
+            clear_aperture: Some(21.0),
+            ..Default::default()
+        };
+        let c = spec_check(Some(5.3), Some(21.0), Some(&f), true, &s);
+        assert_eq!(
+            c.iter()
+                .map(|c| (c.key, c.spec_key, c.ok()))
+                .collect::<Vec<_>>(),
+            [
+                ("mount_thickness", "thickness", true),
+                ("mount_diameter", "diameter", true),
+                ("clear_aperture", "clear_aperture", true),
+            ]
+        );
+        // 仕様の径が枠の値なら、ガラスの径は補えない
+        assert_eq!(spec_glass_diameter(21.0, &f, &s), None);
+        // ガラスの径の欄があれば補う
+        let s = SpecValues {
+            diameter: Some(22.0),
+            mount_diameter: Some(25.4),
+            ..s
+        };
+        assert_eq!(spec_glass_diameter(21.0, &f, &s), Some(22.0));
+        assert_eq!(
+            spec_glass_diameter(
+                21.0,
+                &f,
+                &SpecValues {
+                    diameter: Some(26.0),
+                    ..s
+                }
+            ),
+            None
+        );
+        // 枠の無い品は厚さ・径だけ
+        let c = spec_check(Some(2.0), Some(25.0), None, false, &s);
+        assert_eq!(
+            c.iter().map(|c| c.key).collect::<Vec<_>>(),
+            ["thickness", "diameter"]
+        );
     }
 
     /// 枠付きの品: 仕様表の枠の厚さ・外径・有効径から簡単な枠（ガラスは中央）

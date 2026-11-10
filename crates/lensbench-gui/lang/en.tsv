@@ -857,7 +857,6 @@ STEP（{}）	STEP ({})
 ダブルクリックで品ページから補います	Double-click to complete it from the product page
 ページの文字を貼り付ける	Paste the page text
 ・	, 
-仕様表の厚さ {} mm と違います（マウント込みの形かもしれません）	Differs from the spec table thickness {} mm (the model may include the mount)
 仕様表を読む	Read the spec table
 仕様表（{}）	Spec table ({})
 値: STEP から	Values: from STEP
@@ -1059,3 +1058,21 @@ STEP から	from the STEP
 部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）	Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)
 入る機構部品（{}）…	Fitting mechanical parts ({})…
 この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します	Tubes, mounts and cage plates that this item's diameter fits. Choosing one adds it to the combination's mechanical parts
+光は枠の逆の端から入る	Light enters from the other end of the mount
+STEP の枠は STEP の座標の向きで、光は z の小さい端（上の「枠の端」）から入るとしています。図面の矢印などで逆なら選びます	The mount from the STEP keeps the STEP's coordinate direction, with light entering from the low-z end (the "mount end" above). Check this if the drawing's arrow shows the opposite
+仕様表との突き合わせ	Comparison with the spec table
+項目	Item
+仕様表	Spec table
+差 {} mm	Off by {} mm
+仕様の値を使う	Use spec value
+ガラスの厚さを仕様表の値にします	Sets the glass thickness to the spec table value
+ガラスの厚さ	Glass thickness
+ガラスの径	Glass diameter
+枠の厚さ	Mount thickness
+枠の外径	Mount outer diameter
+有効径	Clear aperture
+仕様表の「厚さ」「径」が枠の長さ・外径と合うので、枠の値として比べました。	The spec table "thickness" / "diameter" match the mount length / outer diameter, so they were compared as mount values.
+食い違う項目は、保存する品のメモに残します。品ページの図面で確かめてください。	Mismatched items are recorded in the saved item's notes. Check them against the drawing on the product page.
+STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は見えている径です。仕様表の径は {} mm です。	The STEP models the glass and mount as one solid, so the glass diameter {} mm is the visible diameter. The spec table diameter is {} mm.
+ガラスの径を仕様の値にする	Use spec glass diameter
+ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP なので、ガラスの厚さ・径は測れません	This STEP is a mechanical part without glass (tube, cage plate or mount), so the glass thickness and diameter can't be measured

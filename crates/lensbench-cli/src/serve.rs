@@ -1653,7 +1653,7 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
 /// `catalog_fill`: カタログ `catalog` の未完の品 `item` に `thickness`・`diameter`（数か [幅, 高さ]、mm）を足して、
 /// 補足のカタログ `out`（ユーザーカタログ。無ければ作る）に同じ型番・同じメーカーの普通の品として書く。
 /// `from` は値の決め方（page・step・manual）。枠付きの品は `frame`（機構部品の寸法、z は枠の端から）で枠も
-/// 書ける。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
+/// 書ける（`frame_reversed` なら光は枠の z の大きい端から入る）。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
 /// 置けば、次の一覧では未完の品の代わりに並ぶ
 fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
     use lensbench_project::{catalog_fill as cf, UserCatalog};
@@ -1693,7 +1693,7 @@ fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
         ),
         None => None,
     };
-    let filled = cf::complete(
+    let mut filled = cf::complete(
         it,
         p["thickness"].as_f64(),
         p.get("diameter").filter(|v| !v.is_null()).cloned(),
@@ -1702,6 +1702,30 @@ fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
         &today,
     )
     .map_err(RpcErr::params)?;
+    if filled.frame.is_some() {
+        filled.frame_reversed = p["frame_reversed"].as_bool().unwrap_or(false);
+    }
+    // 仕様表の値と食い違う寸法は notes に残す
+    if let Some(sv) = p.get("spec").filter(|v| v.is_object()) {
+        let spec = cf::SpecValues::from_value(sv);
+        let num = |k: &str| filled.specs.get(k).and_then(Value::as_f64);
+        let diffs = cf::spec_check(
+            num("thickness"),
+            num("diameter"),
+            filled.frame.as_ref(),
+            p["glass_visible"].as_bool().unwrap_or(false),
+            &spec,
+        );
+        for d in diffs.iter().filter(|d| !d.ok()) {
+            filled.notes.push(d.note());
+        }
+        // 有効径は枠の穴でなく仕様表の値（品に無ければ）
+        if let (Some(ca), false) = (spec.clear_aperture, it.specs.contains_key("clear_aperture")) {
+            filled
+                .specs
+                .insert("clear_aperture".into(), serde_json::json!(ca));
+        }
+    }
     let mut fc = UserCatalog::load_or_new(&out)?;
     if !fc.vendor.is_empty() && fc.vendor != vendor {
         return Err(RpcErr::app(format!(
@@ -1728,6 +1752,7 @@ fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
         "specs": filled.specs,
         "notes": filled.notes,
         "frame": filled.frame,
+        "frame_reversed": filled.frame_reversed,
     }))
 }
 
