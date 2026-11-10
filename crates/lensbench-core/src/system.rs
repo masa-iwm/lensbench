@@ -361,6 +361,10 @@ struct SoaRow<'a> {
 
 impl trace::RecSink for SoaRow<'_> {
     #[inline(always)]
+    fn wants(&self, k: usize) -> bool {
+        self.out.slot.get(k).is_some_and(|&s| s != usize::MAX)
+    }
+    #[inline(always)]
     fn put(&mut self, k: usize, e: RecEntry) {
         let o = self.out;
         let k = match o.slot.get(k) {
@@ -385,6 +389,10 @@ struct SoaLanes<'a> {
 }
 
 impl batch::LaneSink for SoaLanes<'_> {
+    #[inline(always)]
+    fn wants(&self, k: usize) -> bool {
+        self.out.slot.get(k).is_some_and(|&s| s != usize::MAX)
+    }
     #[inline(always)]
     fn put(&mut self, lane: usize, k: usize, e: RecEntry) {
         let i = self.base + lane;
@@ -434,6 +442,8 @@ struct Cache {
     conj: OnceLock<Vec<f64>>,
     /// 面ごとの交点・法線の求め方（追跡の内側の分岐を前計算）。面の形で決まるので、[`Keep`] でも引き継がない
     kinds: OnceLock<Vec<crate::trace::SurfKind>>,
+    /// 面ごとの空間の進む向き（[`crate::trace::space_signs`]、追跡の内側で光線ごとに作らないため）。面の並びで決まる
+    signs: OnceLock<Vec<f64>>,
 }
 
 /// これ以上の本数で並列に追う
@@ -852,6 +862,12 @@ impl System {
         self.cache
             .kinds
             .get_or_init(|| self.surfaces.iter().map(crate::trace::surf_kind).collect())
+    }
+
+    pub(crate) fn space_signs(&self) -> &[f64] {
+        self.cache
+            .signs
+            .get_or_init(|| crate::trace::space_signs(self))
     }
 
     pub fn frames(&self) -> &Frames {
@@ -2330,15 +2346,110 @@ impl System {
             (start(v), fail)
         };
         let n = x.len().min(y.len());
-        let out: Vec<_> = if n >= PAR_MIN_RAYS && !crate::par::sequential() {
-            (0..n)
+        let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
+        // L 本ずつまとめて同じ反復をする（光線ごとの手順・結果は上の one と同じビット。収束・中断した光線は
+        // そこで止め、残りの光線の反復だけを続ける）
+        const L: usize = batch::L;
+        let plan = batch::Plan::new(self, fr, w, 1, s, false);
+        if plan.is_empty() || !batch::use_for(n) {
+            let out: Vec<_> = if par {
+                (0..n)
+                    .into_par_iter()
+                    .with_min_len(PAR_CHUNK)
+                    .map(one)
+                    .collect()
+            } else {
+                (0..n).map(one).collect()
+            };
+            return out.into_iter().unzip();
+        }
+        let at_stop_l = |v: &[[f64; 2]; L]| -> [[f64; 2]; L] {
+            let st = v.map(start);
+            let r =
+                batch::trace_lanes::<batch::NoRec>(&plan, &st.map(|s| s.0), &st.map(|s| s.1), None);
+            std::array::from_fn(|l| {
+                if r[l].err != 0 {
+                    [f64::NAN; 2]
+                } else {
+                    [r[l].xyz[0], r[l].xyz[1]]
+                }
+            })
+        };
+        let grp = |b: usize| -> [((V3, V3), bool); L] {
+            // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
+            let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
+            let tgt: [[f64; 2]; L] = idx.map(|i| [x[i], y[i]]);
+            // newton の初期値（one と同じ）
+            let mut v: [[f64; 2]; L] = tgt.map(|t| {
+                let d = solve2(jc, t);
+                if d[0].is_finite() && d[1].is_finite() {
+                    [vc[0] + d[0], vc[1] + d[1]]
+                } else {
+                    vc
+                }
+            });
+            let lim = tgt.map(|t| 1e-12 * t[0].abs().max(t[1].abs()).max(1.0));
+            let mut q = at_stop_l(&v);
+            let mut act = [true; L];
+            for _ in 0..40 {
+                let mut e = [[0.0; 2]; L];
+                for l in 0..L {
+                    e[l] = [q[l][0] - tgt[l][0], q[l][1] - tgt[l][1]];
+                    if act[l] && !(e[l][0].abs().max(e[l][1].abs()) > lim[l]) {
+                        act[l] = false;
+                    }
+                }
+                if !act.iter().any(|&a| a) {
+                    break;
+                }
+                // jac と同じ点
+                let qx = at_stop_l(&std::array::from_fn(|l| [v[l][0] + h, v[l][1]]));
+                let qy = at_stop_l(&std::array::from_fn(|l| [v[l][0], v[l][1] + h]));
+                for l in 0..L {
+                    if !act[l] {
+                        continue;
+                    }
+                    let j = [
+                        (qx[l][0] - q[l][0]) / h,
+                        (qy[l][0] - q[l][0]) / h,
+                        (qx[l][1] - q[l][1]) / h,
+                        (qy[l][1] - q[l][1]) / h,
+                    ];
+                    let dv = solve2(j, e[l]);
+                    if !(dv[0].is_finite() && dv[1].is_finite()) {
+                        act[l] = false;
+                        continue;
+                    }
+                    v[l] = [v[l][0] - dv[0], v[l][1] - dv[1]];
+                }
+                let qn = at_stop_l(&v);
+                for l in 0..L {
+                    if act[l] {
+                        q[l] = qn[l];
+                    }
+                }
+            }
+            std::array::from_fn(|l| {
+                let t = tgt[l];
+                let e = (q[l][0] - t[0]).abs().max((q[l][1] - t[1]).abs());
+                let e = if e.is_finite() { e } else { f64::INFINITY };
+                let fail = !(t[0].is_finite() && t[1].is_finite())
+                    || !(e <= 1e-9 * t[0].abs().max(t[1].abs()).max(1.0));
+                (start(v[l]), fail)
+            })
+        };
+        let nb = n.div_ceil(L);
+        let g: Vec<_> = if par {
+            (0..nb)
                 .into_par_iter()
-                .with_min_len(PAR_CHUNK)
-                .map(one)
+                .with_min_len(PAR_CHUNK / L)
+                .map(grp)
                 .collect()
         } else {
-            (0..n).map(one).collect()
+            (0..nb).map(grp).collect()
         };
+        let mut out = g.into_iter().flatten().collect::<Vec<_>>();
+        out.truncate(n);
         out.into_iter().unzip()
     }
 
