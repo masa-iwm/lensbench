@@ -127,6 +127,11 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   穴（円柱）の z の範囲で半径の外に出たら切れたとして、部品ごと・視野と波長ごとに切れた割合（`clipped_pct`、ほかで先に切れた
   光線も数える）と最初に切った割合（`first_pct`）、系の開口で切れた割合、通った割合を出す。例は `examples/projects/P19_tube_cage.json`。
   Python は `System.mech_check()`（同じ dict）。
+- 枠付きの品: ユーザーカタログの品に `frame`（`mech` と同じ形。z は枠の端から光の進む向き、`holds.seat_z` はガラスの前面の位置）を
+  書くと、`blocks`（ガラスだけ）をプロジェクトに `user` のブロックで置いたとき、枠がガラスの最初の面に機構部品（名前は「ブロック id の枠」、
+  保持する素子はその品の面）として付き、`mech-check` のケラレ・当たりと描画に入る。品ページの STEP を測ると（GUI の補う窓）、
+  組立の置き方どおりに置いた立体のうち、光軸と同じ軸の穴（内壁の円柱）を持つものを枠、持たないものをガラスとして分ける。
+  枠の向き（どちらの端が光の入る側か）は STEP の座標の向きのままなので、図面の矢印などで確かめる
 - 機構の配置の確認と描画: `mechanics` の項目に `"holds": [ブロック id]` で、部品が保持する素子を書ける。`mech-check` の
   `fit` は、素子の面の縁が部品の内壁（穴の半径と保持径の半分の大きい方）に当たる `collision`、保持する素子が部品の z の範囲から
   はみ出す `protrude`、保持径より素子が 0.5 mm 以上細い `loose`（注意）、部品どうしの壁が重なる `overlap`、同じ軸のケージ板の組の
@@ -134,6 +139,10 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   3D（glTF・OBJ・STL）・STEP は部品を軸のまわりの輪（内壁〜外径。穴のない区間は詰まった円柱）で描く。
   GUI では、カタログの機構部品の行を足すと組合せの「機構部品」に入り（選んでいる要素に置く）、置く要素・面・ずれ・保持する要素を
   変えられる。レイアウト図・3D 表示に部品を描き、ケラレ・当たりは解析の「機構のケラレ」で見る。
+- 機構部品を素子に合わせて置く: `mechanics` の項目に `"seat": true` と `"holds": [ブロック id]` で、部品の座（寸法の
+  `holds.seat_z`）を保持する最初の素子の前面に合わせて置く（`at` は要らない。`offset` はそこからのずれ）。GUI では機構部品の欄の
+  「座に合わせる」。素子が入る機構部品は `lensbench catalog-search <カタログ> --fits <径>`（保持径が径以上で 0.25 mm より
+  太くないもの）で探せ、GUI のカタログの詳細にも「入る機構部品」を出す
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

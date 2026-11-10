@@ -17,7 +17,7 @@ pub const FILLABLE: [&str; 2] = ["thickness", "diameter"];
 /// 仕様表から読んだ 1 欄
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reading {
-    /// 値の名前（`thickness`・`diameter`）
+    /// 値の名前（`thickness`・`diameter`、枠の `mount_thickness`・`mount_diameter`・`clear_aperture`）
     pub name: &'static str,
     /// ページの欄の名前（`Thickness (mm)` など）
     pub label: String,
@@ -34,6 +34,10 @@ pub struct PageRead {
     pub thickness: Option<f64>,
     /// 径 [mm]（数か [幅, 高さ]）
     pub diameter: Option<Value>,
+    /// 枠付きの品の枠の厚さ・外径、有効径 [mm]（[`page_frame`]）
+    pub mount_thickness: Option<f64>,
+    pub mount_diameter: Option<f64>,
+    pub clear_aperture: Option<f64>,
     /// 見つけた欄（値の読めなかった欄も。ユーザーに見せる）
     pub found: Vec<Reading>,
 }
@@ -44,6 +48,9 @@ impl PageRead {
         match name {
             "thickness" => self.thickness.map(|x| json!(x)),
             "diameter" => self.diameter.clone(),
+            "mount_thickness" => self.mount_thickness.map(|x| json!(x)),
+            "mount_diameter" => self.mount_diameter.map(|x| json!(x)),
+            "clear_aperture" => self.clear_aperture.map(|x| json!(x)),
             _ => None,
         }
     }
@@ -62,6 +69,25 @@ fn label_kind(label: &str) -> Option<(&'static str, u8)> {
     // 欄の名前は短い（長い行は説明の文）
     if l.is_empty() || l.len() > 48 {
         return None;
+    }
+    // 枠（マウント・ハウジング）の厚さ・外径と有効径
+    let head0 = l.split('(').next().unwrap_or("").trim();
+    let frame = match head0 {
+        "mount thickness" | "housing thickness" | "mounted thickness" | "mount thickness t" => {
+            Some(("mount_thickness", 0))
+        }
+        "mount diameter"
+        | "mount outer diameter"
+        | "housing diameter"
+        | "mounted diameter"
+        | "housing outer diameter"
+        | "mount od" => Some(("mount_diameter", 0)),
+        "clear aperture" | "clear aperture ca" | "ca" => Some(("clear_aperture", 0)),
+        _ => None,
+    };
+    if let Some(f) = frame {
+        return (head0.len() == l.len() || l[head0.len()..].trim_start().starts_with('('))
+            .then_some(f);
     }
     let bad = [
         "mount",
@@ -199,7 +225,7 @@ pub fn read_page(text: &str) -> PageRead {
     };
     let lines: Vec<&str> = text.lines().map(str::trim).collect();
     let mut out = PageRead::default();
-    let mut best: [Option<(u8, Value)>; 2] = [None, None];
+    let mut best: [Option<(u8, Value)>; 5] = Default::default();
     for (i, line) in lines.iter().enumerate() {
         // `欄: 値`・`欄\t値`・`欄`（値は次の行）
         let (label, rest) = match line.find(':') {
@@ -224,8 +250,19 @@ pub fn read_page(text: &str) -> PageRead {
         if raw.len() > 80 || numbers(raw).is_empty() {
             continue;
         }
-        let value = parse_value(name, label, raw);
-        let slot = if name == "thickness" { 0 } else { 1 };
+        // 有効径の「90%」などは寸法でない
+        let value = if raw.contains('%') {
+            None
+        } else {
+            parse_value(name, label, raw)
+        };
+        let slot = match name {
+            "thickness" => 0,
+            "diameter" => 1,
+            "mount_thickness" => 2,
+            "mount_diameter" => 3,
+            _ => 4,
+        };
         if let Some(v) = &value {
             if best[slot].as_ref().map_or(true, |(p, _)| prio < *p) {
                 best[slot] = Some((prio, v.clone()));
@@ -240,7 +277,43 @@ pub fn read_page(text: &str) -> PageRead {
     }
     out.thickness = best[0].take().and_then(|(_, v)| v.as_f64());
     out.diameter = best[1].take().map(|(_, v)| v);
+    out.mount_thickness = best[2].take().and_then(|(_, v)| v.as_f64());
+    out.mount_diameter = best[3].take().and_then(|(_, v)| v.as_f64());
+    out.clear_aperture = best[4].take().and_then(|(_, v)| v.as_f64());
     out
+}
+
+/// 仕様表の枠の厚さ・外径（無ければ径の欄）・有効径から、枠付きの品の簡単な枠（長さ全体で有効径の穴）。
+/// 座の位置は仕様表から分からないので、厚さ `thickness` のガラスを枠の中央に置く。ガラスの径 `glass` が
+/// 分かれば保持径にする。値が足りない・外径が有効径以下なら None
+pub fn page_frame(
+    r: &PageRead,
+    thickness: Option<f64>,
+    glass: Option<f64>,
+) -> Option<crate::MechSpec> {
+    let len = r.mount_thickness.filter(|x| *x > 0.0)?;
+    let ca = r.clear_aperture.filter(|x| *x > 0.0)?;
+    let od = r
+        .mount_diameter
+        .or_else(|| r.diameter.as_ref().and_then(Value::as_f64))
+        .filter(|x| *x > ca)?;
+    let seat = thickness
+        .filter(|t| *t > 0.0 && *t <= len)
+        .map_or(0.0, |t| round6((len - t) / 2.0));
+    Some(crate::MechSpec {
+        bores: vec![crate::BoreSpec {
+            z0: 0.0,
+            z1: len,
+            diameter: ca,
+        }],
+        length: len,
+        outer_diameter: od,
+        holds: Some(crate::HoldSpec {
+            diameter: glass.filter(|g| *g >= ca && *g <= od).unwrap_or(ca),
+            seat_z: seat,
+        }),
+        ..Default::default()
+    })
 }
 
 /// STEP から測った大きさ
@@ -254,124 +327,14 @@ pub struct StepSize {
     pub unit_mm: f64,
     /// 測り方の説明
     pub note: String,
-}
-
-/// STEP の 1 つの値
-#[derive(Debug, Clone, PartialEq)]
-enum Arg {
-    Ref(u64),
-    Num(f64),
-    List(Vec<Arg>),
-    Other,
-}
-
-/// `(a,b,(c,d))` の中身を値の並びに（文字・列挙は Other）
-fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
-    let mut out = Vec::new();
-    // s[*i] は '('
-    *i += 1;
-    loop {
-        while *i < s.len() && s[*i].is_ascii_whitespace() {
-            *i += 1;
-        }
-        if *i >= s.len() {
-            return out;
-        }
-        match s[*i] {
-            b')' => {
-                *i += 1;
-                return out;
-            }
-            b',' => {
-                *i += 1;
-            }
-            b'(' => out.push(Arg::List(parse_args(s, i))),
-            b'\'' => {
-                *i += 1;
-                while *i < s.len() {
-                    if s[*i] == b'\'' {
-                        if *i + 1 < s.len() && s[*i + 1] == b'\'' {
-                            *i += 2;
-                            continue;
-                        }
-                        break;
-                    }
-                    *i += 1;
-                }
-                *i += 1;
-                out.push(Arg::Other);
-            }
-            b'#' => {
-                *i += 1;
-                let st = *i;
-                while *i < s.len() && s[*i].is_ascii_digit() {
-                    *i += 1;
-                }
-                let n = std::str::from_utf8(&s[st..*i])
-                    .ok()
-                    .and_then(|x| x.parse().ok());
-                out.push(n.map_or(Arg::Other, Arg::Ref));
-            }
-            c if c == b'-' || c == b'+' || c == b'.' || c.is_ascii_digit() => {
-                let st = *i;
-                *i += 1;
-                while *i < s.len()
-                    && (s[*i].is_ascii_digit() || matches!(s[*i], b'.' | b'e' | b'E' | b'-' | b'+'))
-                {
-                    *i += 1;
-                }
-                let x = std::str::from_utf8(&s[st..*i])
-                    .ok()
-                    .and_then(|x| x.parse::<f64>().ok());
-                out.push(x.map_or(Arg::Other, Arg::Num));
-            }
-            _ => {
-                // 列挙（.T.）・$・* ・型つきの値（名前(...)）
-                while *i < s.len() && !matches!(s[*i], b',' | b')' | b'(') {
-                    *i += 1;
-                }
-                if *i < s.len() && s[*i] == b'(' {
-                    let _ = parse_args(s, i);
-                }
-                out.push(Arg::Other);
-            }
-        }
-    }
-}
-
-type V3 = [f64; 3];
-
-fn dot(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn unit(a: V3) -> Option<V3> {
-    let n = dot(a, a).sqrt();
-    (n > 0.0 && n.is_finite()).then(|| [a[0] / n, a[1] / n, a[2] / n])
-}
-
-fn triple(a: &Arg) -> Option<V3> {
-    match a {
-        Arg::List(v) => {
-            let n: Vec<f64> = v
-                .iter()
-                .filter_map(|x| match x {
-                    Arg::Num(f) => Some(*f),
-                    _ => None,
-                })
-                .collect();
-            match n.as_slice() {
-                [x, y, z] => Some([*x, *y, *z]),
-                [x, y] => Some([*x, *y, 0.0]),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+    /// 枠付きの品の枠（機構部品の寸法、z は枠の端から）。ガラスは `thickness`・`diameter`
+    pub frame: Option<crate::MechSpec>,
 }
 
 /// STEP の長さの単位（mm へ）
 fn step_unit(upper: &str) -> f64 {
+    let squeezed: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
+    let upper = squeezed.as_str();
     if upper.contains("'INCH'") {
         25.4
     } else if upper.contains("SI_UNIT(.MILLI.,.METRE.)") {
@@ -387,185 +350,21 @@ fn step_unit(upper: &str) -> f64 {
 
 /// STEP（AP203/AP214/AP242 の B-rep）の文字から、品の厚さ・径を測る。
 ///
-/// 円（CIRCLE・CYLINDRICAL_SURFACE）があれば、最大の円の軸を光軸とし、径はその軸に平行な円の最大の直径、
-/// 厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の最も短い辺を厚さ、残りを
-/// [幅, 高さ] とする。マウント込みの STEP ではマウントの寸法になる（ユーザーが確かめる）
+/// 立体（`MANIFOLD_SOLID_BREP`）ごとに組立の置き方を当てて共通の座標に置き、最大の円の軸を光軸とする。
+/// 光軸と同じ軸の穴（内壁の円柱の面）を持つ立体を枠、持たない立体をガラスとみなし、両方あれば
+/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。枠の分からない品は、
+/// 径は軸に平行な円の最大の直径、厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の
+/// 最も短い辺を厚さ、残りを [幅, 高さ] とする
 pub fn read_step(text: &str) -> Result<StepSize, String> {
     let upper = text.to_ascii_uppercase();
-    let Some(data) = upper.find("DATA;") else {
-        return Err("STEP の DATA 部が無い".into());
-    };
     let k = step_unit(&upper);
-    let body = &upper.as_bytes()[data + 5..];
-    use std::collections::HashMap;
-    let mut ents: HashMap<u64, (String, Vec<Arg>)> = HashMap::new();
-    let mut i = 0;
-    while i < body.len() {
-        // #n = NAME(args);
-        if body[i] != b'#' {
-            i += 1;
-            continue;
-        }
-        let st = i + 1;
-        let mut j = st;
-        while j < body.len() && body[j].is_ascii_digit() {
-            j += 1;
-        }
-        let Some(id) = std::str::from_utf8(&body[st..j])
-            .ok()
-            .and_then(|x| x.parse::<u64>().ok())
-        else {
-            i = j.max(i + 1);
-            continue;
-        };
-        while j < body.len() && body[j].is_ascii_whitespace() {
-            j += 1;
-        }
-        if j >= body.len() || body[j] != b'=' {
-            i = j;
-            continue;
-        }
-        j += 1;
-        while j < body.len() && body[j].is_ascii_whitespace() {
-            j += 1;
-        }
-        let ns = j;
-        while j < body.len() && (body[j].is_ascii_alphanumeric() || body[j] == b'_') {
-            j += 1;
-        }
-        let name = String::from_utf8_lossy(&body[ns..j]).into_owned();
-        while j < body.len() && body[j].is_ascii_whitespace() {
-            j += 1;
-        }
-        if j < body.len() && body[j] == b'(' {
-            let args = parse_args(body, &mut j);
-            if !name.is_empty() {
-                ents.insert(id, (name, args));
-            }
-        }
-        // 次の ';' へ（文字の中の ';' は parse_args が飛ばしている）
-        while j < body.len() && body[j] != b';' {
-            j += 1;
-        }
-        i = j + 1;
-    }
-    let get = |a: &Arg, ty: &str| -> Option<&Vec<Arg>> {
-        match a {
-            Arg::Ref(r) => ents.get(r).filter(|(n, _)| n == ty).map(|(_, a)| a),
-            _ => None,
-        }
-    };
-    let point = |a: &Arg| {
-        get(a, "CARTESIAN_POINT")
-            .and_then(|v| v.get(1))
-            .and_then(triple)
-    };
-    let dir = |a: &Arg| {
-        get(a, "DIRECTION")
-            .and_then(|v| v.get(1))
-            .and_then(triple)
-            .and_then(unit)
-    };
-    let placement = |a: &Arg| -> Option<(V3, V3)> {
-        let v = get(a, "AXIS2_PLACEMENT_3D")?;
-        let c = point(v.get(1)?)?;
-        let z = v.get(2).and_then(dir).unwrap_or([0.0, 0.0, 1.0]);
-        Some((c, z))
-    };
-    // 円: (中心, 軸, 半径)
-    let mut circles: Vec<(V3, V3, f64)> = Vec::new();
-    let mut verts: Vec<V3> = Vec::new();
-    for (name, args) in ents.values() {
-        match name.as_str() {
-            "CIRCLE" | "CYLINDRICAL_SURFACE" => {
-                if let (Some(pl), Some(Arg::Num(r))) =
-                    (args.get(1).and_then(placement), args.get(2))
-                {
-                    if *r > 0.0 {
-                        circles.push((pl.0, pl.1, *r));
-                    }
-                }
-            }
-            "VERTEX_POINT" => {
-                if let Some(p) = args.get(1).and_then(point) {
-                    verts.push(p);
-                }
-            }
-            _ => {}
-        }
-    }
-    let scale = |x: f64| round6(x * k);
-    if let Some(&(_, axis, _)) = circles
-        .iter()
-        .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
-    {
-        let par: Vec<&(V3, V3, f64)> = circles
-            .iter()
-            .filter(|c| dot(c.1, axis).abs() > 0.999)
-            .collect();
-        let r = par.iter().map(|c| c.2).fold(0.0, f64::max);
-        let pts: Vec<V3> = verts
-            .iter()
-            .copied()
-            .chain(par.iter().map(|c| c.0))
-            .collect();
-        let (lo, hi) = pts
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
-                let z = dot(*p, axis);
-                (lo.min(z), hi.max(z))
-            });
-        let t = hi - lo;
-        if t.is_nan() || t <= 0.0 {
-            return Err("STEP の円の軸の向きに厚さが無い".into());
-        }
-        return Ok(StepSize {
-            thickness: scale(t),
-            diameter: json!(scale(2.0 * r)),
-            unit_mm: k,
-            note: format!(
-                "円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり",
-                circles.len(),
-                par.len(),
-                verts.len()
-            ),
-        });
-    }
-    // 円の無い品: 頂点（無ければ全部の点）の箱
-    let pts: Vec<V3> = if verts.len() >= 2 {
-        verts
-    } else {
-        ents.values()
-            .filter(|(n, _)| n == "CARTESIAN_POINT")
-            .filter_map(|(_, a)| a.get(1).and_then(triple))
-            .collect()
-    };
-    if pts.len() < 2 {
-        return Err("STEP に点が無い".into());
-    }
-    let mut ext = [0.0; 3];
-    for (a, e) in ext.iter_mut().enumerate() {
-        let (lo, hi) = pts
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
-                (lo.min(p[a]), hi.max(p[a]))
-            });
-        *e = hi - lo;
-    }
-    ext.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    if ext[0].is_nan() || ext[0] <= 0.0 {
-        return Err("STEP の形に厚さが無い".into());
-    }
-    let d = if (ext[1] - ext[2]).abs() < 1e-9 {
-        json!(scale(ext[2]))
-    } else {
-        json!([scale(ext[1]), scale(ext[2])])
-    };
+    let m = crate::step_geom::measure(&upper, k, round6)?;
     Ok(StepSize {
-        thickness: scale(ext[0]),
-        diameter: d,
+        thickness: m.thickness,
+        diameter: m.diameter,
         unit_mm: k,
-        note: format!("円が無いので頂点 {} 個の箱（座標軸の向き）", pts.len()),
+        note: m.note,
+        frame: m.frame,
     })
 }
 
@@ -640,11 +439,13 @@ fn semi_of(d: &Value) -> Option<f64> {
 ///
 /// `thickness`・`diameter` は足りない値（`missing`）の分が要る（ほかは品の specs のまま）。
 /// 鏡は平面鏡、ほかは基板（`specs.material`）の平行平板（分からない基板は N-BK7 で代用し、notes に書く）。
-/// `checked` は値を確かめた日（YYYY-MM-DD）
+/// `checked` は値を確かめた日（YYYY-MM-DD）。`frame` は枠付きの品の枠（[`StepSize::frame`]・[`page_frame`]）で、
+/// 品の `frame` に入れる（有効径 `clear_aperture` が無ければ枠の最小の内径を入れる）
 pub fn complete(
     item: &UserItem,
     thickness: Option<f64>,
     diameter: Option<Value>,
+    frame: Option<crate::MechSpec>,
     from: FillFrom,
     checked: &str,
 ) -> Result<UserItem, String> {
@@ -725,6 +526,46 @@ pub fn complete(
         })
     };
     it.blocks = vec![serde_json::from_value(block).map_err(|e| format!("blocks: {e}"))?];
+    if let Some(f) = frame {
+        f.validate().map_err(|e| format!("枠: {e}"))?;
+        if f.bores.is_empty() {
+            return Err("枠: 穴（bores）が無い".into());
+        }
+        let clear = f
+            .bores
+            .iter()
+            .map(|b| b.diameter)
+            .fold(f64::INFINITY, f64::min);
+        it.specs
+            .entry("clear_aperture".to_string())
+            .or_insert_with(|| json!(round6(clear)));
+        if let (Some(h), Some(t)) = (f.holds, t) {
+            let len = if f.length > 0.0 {
+                f.length
+            } else {
+                f.bores.iter().map(|b| b.z1).fold(0.0, f64::max)
+            };
+            if h.seat_z < 0.0 || h.seat_z + t > len + 1e-6 {
+                it.notes.push(format!(
+                    "ガラス（{} 〜 {} mm）が枠の長さ {len} mm からはみ出す",
+                    h.seat_z,
+                    h.seat_z + t
+                ));
+            }
+        }
+        if from == FillFrom::Page {
+            it.notes
+                .push("枠の座の位置は仕様表から分からないので、ガラスを枠の中央に置いた".into());
+        }
+        it.notes.push(format!(
+            "枠を{}で分けた: 長さ {} mm、外径 {} mm、最小の内径 {} mm",
+            from.text(),
+            f.length,
+            f.outer_diameter,
+            round6(clear)
+        ));
+        it.frame = Some(f);
+    }
     let names: Vec<&str> = item
         .missing
         .iter()
@@ -803,6 +644,49 @@ mod tests {
         let r = read_page("Dimensions (mm):\n25.0 x 35.0\nThickness (mm): 1.1");
         assert_eq!(r.diameter, Some(json!([25.0, 35.0])));
         assert_eq!(r.thickness, Some(1.1));
+    }
+
+    /// 枠付きの品: 仕様表の枠の厚さ・外径・有効径から簡単な枠（ガラスは中央）
+    #[test]
+    fn page_frame_from_mount_fields() {
+        let t = "Diameter (mm):\n25.00\nSubstrate Thickness (mm):\n2.00\nMount Thickness (mm):\n3.50\nClear Aperture CA (mm):\n21.00\n";
+        let r = read_page(t);
+        assert_eq!(r.thickness, Some(2.0));
+        assert_eq!(
+            (r.mount_thickness, r.mount_diameter, r.clear_aperture),
+            (Some(3.5), None, Some(21.0))
+        );
+        let f = page_frame(&r, r.thickness, Some(23.9)).unwrap();
+        assert_eq!(f.length, 3.5);
+        assert_eq!(f.outer_diameter, 25.0);
+        assert_eq!(f.bores.len(), 1);
+        assert_eq!((f.bores[0].z1, f.bores[0].diameter), (3.5, 21.0));
+        let h = f.holds.unwrap();
+        assert_eq!((h.seat_z, h.diameter), (0.75, 23.9));
+        // 有効径の「90%」は寸法でない
+        assert_eq!(read_page("Clear Aperture (%): 90%").clear_aperture, None);
+        assert!(page_frame(&read_page("Mount Thickness (mm): 3.5"), None, None).is_none());
+        // 品に枠を入れる
+        let it = incomplete("filter", &["thickness"], json!({ "diameter": 25.0 }));
+        let c = complete(&it, Some(2.0), None, Some(f), FillFrom::Page, "").unwrap();
+        assert_eq!(c.frame.as_ref().unwrap().length, 3.5);
+        assert_eq!(c.specs["clear_aperture"], json!(21.0));
+        assert!(c.notes.iter().any(|n| n.contains("中央")), "{:?}", c.notes);
+        // はみ出すガラスは注記
+        let c = complete(
+            &it,
+            Some(4.0),
+            None,
+            page_frame(&r, None, None),
+            FillFrom::Page,
+            "",
+        )
+        .unwrap();
+        assert!(
+            c.notes.iter().any(|n| n.contains("はみ出す")),
+            "{:?}",
+            c.notes
+        );
     }
 
     #[test]
@@ -889,8 +773,8 @@ mod tests {
     fn complete_builds_blocks() {
         let it = incomplete("filter", &["thickness"], json!({ "diameter": 25.0 }));
         assert!(it.is_incomplete());
-        assert!(complete(&it, None, None, FillFrom::Page, "2026-11-10").is_err());
-        let c = complete(&it, Some(3.0), None, FillFrom::Page, "2026-11-10").unwrap();
+        assert!(complete(&it, None, None, None, FillFrom::Page, "2026-11-10").is_err());
+        let c = complete(&it, Some(3.0), None, None, FillFrom::Page, "2026-11-10").unwrap();
         assert!(!c.is_incomplete() && c.missing.is_empty());
         assert_eq!(c.blocks.len(), 1);
         assert_eq!(c.specs["thickness"], json!(3.0));
@@ -906,7 +790,15 @@ mod tests {
             &["diameter"],
             json!({ "material": "Fused Silica" }),
         );
-        let c = complete(&m, None, Some(json!(25.4)), FillFrom::Step, "2026-11-10").unwrap();
+        let c = complete(
+            &m,
+            None,
+            Some(json!(25.4)),
+            None,
+            FillFrom::Step,
+            "2026-11-10",
+        )
+        .unwrap();
         let b = serde_json::to_value(&c.blocks[0]).unwrap();
         assert_eq!(b["type"], "mirror");
         assert_eq!(b["semi"], json!(12.7));
@@ -916,7 +808,15 @@ mod tests {
             &["diameter"],
             json!({ "thickness": 2, "material": "Fused Silica (Corning 7980)" }),
         );
-        let c = complete(&w, None, Some(json!([10.0, 20.0])), FillFrom::Manual, "").unwrap();
+        let c = complete(
+            &w,
+            None,
+            Some(json!([10.0, 20.0])),
+            None,
+            FillFrom::Manual,
+            "",
+        )
+        .unwrap();
         assert_eq!(c.glass_catalogs, vec!["MISC"]);
         // 四角い品は両面に矩形の開口、semi は対角の半分
         let b = serde_json::to_value(&c.blocks[0]).unwrap();
@@ -926,7 +826,15 @@ mod tests {
             assert_eq!(q["aperture"]["hy"], json!(10.0));
             assert!((q["semi"].as_f64().unwrap() - 125f64.sqrt()).abs() < 1e-12);
         }
-        let c = complete(&m, None, Some(json!([10.0, 20.0])), FillFrom::Manual, "").unwrap();
+        let c = complete(
+            &m,
+            None,
+            Some(json!([10.0, 20.0])),
+            None,
+            FillFrom::Manual,
+            "",
+        )
+        .unwrap();
         let b = serde_json::to_value(&c.blocks[0]).unwrap();
         assert_eq!(b["aperture"]["hx"], json!(5.0));
         assert_eq!(b["aperture"]["hy"], json!(10.0));

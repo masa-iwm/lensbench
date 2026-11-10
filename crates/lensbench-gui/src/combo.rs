@@ -277,6 +277,8 @@ pub struct MechPick {
     pub tilt: [f64; 2],
     /// 保持する要素のブロック id
     pub holds: Vec<String>,
+    /// 部品の座を保持する要素の前面に合わせて置く（置く要素・面の代わり）
+    pub seat: bool,
 }
 
 impl MechPick {
@@ -291,6 +293,9 @@ impl MechPick {
             "offset": self.offset, "tilt": self.tilt });
         if !self.holds.is_empty() {
             v["holds"] = json!(self.holds);
+            if self.seat {
+                v["seat"] = json!(true);
+            }
         }
         v
     }

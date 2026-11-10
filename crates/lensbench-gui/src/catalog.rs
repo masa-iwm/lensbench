@@ -293,6 +293,26 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
         let t: Vec<&str> = t.iter().filter_map(Value::as_str).collect();
         ui.label(trf("タグ {}", &[&t.join(", ")]));
     }
+    // 枠付きの品: 置くと枠が機構部品として付く
+    if let Some(f) = r.raw.get("frame").filter(|f| f.is_object()) {
+        let num = |v: &Value| v.as_f64().map_or("—".to_string(), fmt_num);
+        let clear = f["bores"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|b| b["diameter"].as_f64())
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .filter(|x| x.is_finite());
+        ui.label(trf(
+            "枠付き: 枠の長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）",
+            &[
+                &num(&f["length"]),
+                &num(&f["outer_diameter"]),
+                &clear.map_or("—".to_string(), fmt_num),
+            ],
+        ));
+    }
     if !r.spec_source.is_empty() || !r.checked.is_empty() {
         ui.weak(trf("出典 {}（{}）", &[&r.spec_source, &r.checked]));
     }
@@ -709,7 +729,7 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
     let mut remove = None;
     egui::Grid::new("mechs")
         .striped(true)
-        .num_columns(5)
+        .num_columns(6)
         .show(ui, |ui| {
             for (k, m) in ms.iter_mut().enumerate() {
                 ui.add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
@@ -781,6 +801,8 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                         vec![sel]
                     };
                 }
+                ui.add_enabled(!m.holds.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
+                    .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
                 if ui.button("✖").on_hover_text(tr("外す")).clicked() {
                     remove = Some(k);
                 }
@@ -1123,6 +1145,37 @@ impl Browser {
                     let specs = r.specs();
                     if !specs.is_empty() || !r.description.is_empty() {
                         ui.menu_button(tr("仕様…"), |ui| spec_table(ui, &r));
+                    }
+                    // 素子が入る機構部品（保持径が径以上で、少しだけ太いもの）
+                    if r.kind != RowKind::Mech && !r.is_incomplete() && r.diameter > 0.0 {
+                        let fit: Vec<&LensRow> = self
+                            .lenses
+                            .iter()
+                            .filter(|m| {
+                                m.kind == RowKind::Mech
+                                    && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
+                            })
+                            .collect();
+                        let mut add = None;
+                        if !fit.is_empty() {
+                            ui.menu_button(trf("入る機構部品（{}）…", &[&fit.len()]), |ui| {
+                                for m in &fit {
+                                    if ui
+                                        .button(format!("{} {}", m.vendor, m.part))
+                                        .on_hover_text(&m.description)
+                                        .clicked()
+                                    {
+                                        add = Some((*m).clone());
+                                        ui.close_menu();
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(tr("この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します"));
+                        }
+                        if let Some(m) = add {
+                            self.add_pick(&m);
+                        }
                     }
                 });
             });
