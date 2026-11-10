@@ -7,8 +7,47 @@ on:
 
 permissions:
   contents: read
+  # main への push で、マージした PR の CI の結果を見る（pr-tested）
+  actions: read
+  pull-requests: read
 
 jobs:
+  # main への push（PR のマージ）で、マージした結果の木が PR の head の木と同じ（PR が main に追いついていた）で、
+  # その head の PR の CI が通っていれば、同じ中身の検査（test・docs・gui-tour・export-readback・web・python）を
+  # もう一度回さない。main が先に進んでいて組み合わせが PR で試されていないときは全部回す。
+  # 履歴の検査（public-check）と配る exe のビルド（gui-windows）はいつも回す
+  pr-tested:
+    runs-on: ubuntu-24.04
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          # 判定に失敗したら（API の失敗など）飛ばさずに全部回す
+          check() {
+            local tree before head
+            tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || return 1
+            before=$(gh api "repos/$REPO/commits/$SHA" --jq '.parents[0].sha') || return 1
+            for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha') ; do
+              [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
+              # マージ前の main の先端が head の祖先（PR が main に追いついていた）。PR の CI が試した
+              # 「その時の main と head のマージ」の木が head の木と同じになる条件（後で main が戻された場合を除く）
+              [ "$(gh api "repos/$REPO/compare/$before...$head" --jq .behind_by)" = 0 ] || continue
+              n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq .total_count) || continue
+              if [ "${n:-0}" -gt 0 ]; then
+                echo "::notice::PR の head ${head:0:7} と同じ木で、その CI が通っているので 重複する検査を飛ばす"
+                return 0
+              fi
+            done
+            return 1
+          }
+          if check; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
   public-check:
     runs-on: ubuntu-24.04
     steps:
@@ -18,6 +57,8 @@ jobs:
       - run: python3 scripts/check_public.py --history
 
   test:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +104,8 @@ jobs:
 
   # ドキュメントサイト（mdBook）: CLI の例を実際に走らせて図を作り、本が組めるかを確かめる（GUI の画面・Rust API は Pages で）
   docs:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -83,6 +126,8 @@ jobs:
   # GUI の画面の通し確認: 仮想ディスプレイで起動し、開く → 解析 → カタログ → 組合せ → 系 → 解析を
   # 自分で操作して各画面を撮る。途中でエラーが出れば失敗。画面は成果物 gui-tour に置く
   gui-tour:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -103,6 +148,8 @@ jobs:
   # 書き出しの読み戻し: CLI で書いた SVG・glTF・STEP・CSV・JSON を別の実装（XML・trimesh・OpenCascade）で
   # 読み、形・座標（GLRS）・追跡の値を .zmx と OpticStudio の基準（tests/refs）と照合する
   export-readback:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -118,6 +165,8 @@ jobs:
   # Web 版: wasm でビルドし、配る形のフォルダを作って Chromium で起動を確かめる。フォルダは成果物
   # lensbench-web（GitHub Pages への公開は pages.yml）
   web:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -176,6 +225,8 @@ jobs:
             web-smoke*.png
 
   python:
+    needs: pr-tested
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     strategy:
       fail-fast: false
       matrix:
