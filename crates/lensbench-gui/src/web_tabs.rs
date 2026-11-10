@@ -1,4 +1,4 @@
-//! Web 版: 解析のパネルをブラウザの別のタブに出す（ネイティブの「別の窓」の代わり）。
+//! Web 版: パネルをブラウザの別の窓（ポップアップ）に出す（ネイティブの「別の窓」の代わり）。
 //!
 //! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別のタブで開き、
 //!   そのタブ（[`Child`]）は計算しないで、元のタブから届く系の概要・結果を描くだけ
@@ -177,7 +177,7 @@ impl Tabs {
     /// パネル id を別のタブで開く。remote は解析以外のパネル（元のタブで描いた画面を受けて描くだけ）で、
     /// 別の窓（ポップアップ）にする（同じ窓のタブだと元のタブが裏に回り、ブラウザが元のタブの画面を止めるため）。
     /// ブラウザに止められたら false
-    pub fn open(&mut self, id: u64, remote: bool) -> bool {
+    pub fn open(&mut self, id: u64, remote: bool, size: [f32; 2]) -> bool {
         if self.chan.is_none() || self.blocked.contains(&id) {
             return false;
         }
@@ -186,13 +186,15 @@ impl Tabs {
         };
         let path = w.location().pathname().unwrap_or_default();
         let target = format!("lensbench-{}-{id}", self.sid);
-        let r = if remote {
-            let url = format!("{path}?panel={id}&main={}&remote=1", self.sid);
-            w.open_with_url_and_target_and_features(&url, &target, "popup=yes,width=900,height=700")
-        } else {
-            let url = format!("{path}?panel={id}&main={}", self.sid);
-            w.open_with_url_and_target(&url, &target)
-        };
+        // 解析も解析以外も同じ小さな別の窓に（解析は結果を受けて自分で描き、ほかは元のタブで描いた画面を受ける）
+        let url = format!(
+            "{path}?panel={id}&main={}{}",
+            self.sid,
+            if remote { "&remote=1" } else { "" }
+        );
+        let [w0, h0] = size;
+        let features = format!("popup=yes,width={},height={}", w0.round(), h0.round());
+        let r = w.open_with_url_and_target_and_features(&url, &target, &features);
         match r {
             Ok(Some(win)) => {
                 self.open.insert(
@@ -257,9 +259,9 @@ impl Tabs {
         }
         for (id, o) in &self.open {
             // 別の窓（ポップアップ）は、開いた直後に closed が true を返すブラウザがあるので、少し前まで知らせが
-            // 届いていれば閉じていないとみる（別の窓は 2 秒ごとに知らせる）
+            // 届いていれば閉じていないとみる（別の窓は 2 秒ごとに知らせる。閉じるときは bye も送る）
             let quiet = now_ms() - o.seen > 6000.0;
-            if (!o.remote || quiet)
+            if quiet
                 && o.win.closed().unwrap_or(true)
                 && !out.iter().any(|e| matches!(e, Ev::Gone(x) if x == id))
             {
@@ -368,8 +370,14 @@ impl Child {
                 }
             }
         }
+        let t = now_ms();
+        if has_pane && !self.closed && t - self.hello >= 2000.0 {
+            // 閉じていないと元のタブに知らせる
+            self.hello = t;
+            c.post(&json!({ "sid": self.sid, "from": self.id, "beat": true }));
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(2000));
         if !has_pane && snap.is_none() && !self.closed {
-            let t = now_ms();
             if t - self.hello >= 1000.0 {
                 self.hello = t;
                 c.post(&json!({ "sid": self.sid, "from": self.id, "hello": true }));
@@ -412,7 +420,7 @@ impl Child {
     }
 }
 
-/// このタブを閉じる（元のタブに戻す）
+/// この窓を閉じる（元のタブに戻す）
 pub fn close_this() {
     if let Some(w) = web_sys::window() {
         let _ = w.close();
@@ -441,6 +449,8 @@ pub struct Host {
     sized: bool,
     /// 最後に送った画面の外の出力（変わったときだけ送る）
     last_out: Value,
+    /// パネルの名前（別の窓の上の帯と窓の名前に出す）
+    pub title: String,
 }
 
 impl Host {
@@ -458,6 +468,7 @@ impl Host {
             hash: 0,
             sized: false,
             last_out: Value::Null,
+            title: String::new(),
         }
     }
 
@@ -539,6 +550,7 @@ impl Host {
             "copy": copy.last(),
             "url": url,
             "ime": ime,
+            "title": self.title,
         });
         // 写した文字はいつも、ほかは変わったときだけ
         let send = !extra["copy"].is_null() || !extra["url"].is_null() || extra != self.last_out;
@@ -564,6 +576,7 @@ pub struct Viewer {
     /// 最後に hello を送った時刻 [ms]（画面が届くまで 1 秒ごと）
     hello: f64,
     got: bool,
+    title: String,
 }
 
 impl Viewer {
@@ -581,6 +594,7 @@ impl Viewer {
             last_rect: None,
             hello: f64::NEG_INFINITY,
             got: false,
+            title: String::new(),
         }
     }
 
@@ -647,16 +661,37 @@ impl Viewer {
                     let f = |i: usize| r[i].as_f64().unwrap_or(0.0) as f32;
                     egui::Rect::from_min_max(egui::pos2(f(0), f(1)), egui::pos2(f(2), f(3)))
                 });
+                if let Some(t) = o["title"].as_str().filter(|t| *t != self.title) {
+                    self.title = t.to_string();
+                    set_title(&format!("lensbench — {t}"));
+                }
             }
         }
-        // 入力を元のタブへ
-        let (events, rect, ppp, mods) = ctx.input(|i| {
-            (
-                i.raw.events.clone(),
-                i.screen_rect,
-                i.pixels_per_point,
-                i.modifiers,
-            )
+        // 上の帯: パネルの名前と「元のタブに戻す」（解析のパネルの別の窓と同じ）
+        egui::TopBottomPanel::top("remote-bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&self.title).strong());
+                if ui.small_button(crate::i18n::tr("元のタブに戻す")).clicked() {
+                    close_this();
+                }
+            });
+        });
+        // 入力を元のタブへ（帯の下が元のタブで描く所）
+        let rect = ctx.available_rect();
+        let (events, ppp, mods) = ctx.input(|i| {
+            let events: Vec<egui::Event> = i
+                .raw
+                .events
+                .iter()
+                .filter(|e| match e {
+                    egui::Event::PointerButton {
+                        pos, pressed: true, ..
+                    } => rect.contains(*pos),
+                    _ => true,
+                })
+                .cloned()
+                .collect();
+            (events, i.pixels_per_point, i.modifiers)
         });
         let input = json!({
             "events": events,
@@ -687,7 +722,9 @@ impl Viewer {
                 Some(l) => m.texture_id = *l,
                 None => continue,
             }
-            painter.with_clip_rect(*clip).add(egui::Shape::mesh(m));
+            painter
+                .with_clip_rect(clip.intersect(rect))
+                .add(egui::Shape::mesh(m));
         }
         ctx.set_cursor_icon(self.cursor);
         if let Some(r) = self.ime {
@@ -702,7 +739,7 @@ impl Viewer {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.centered_and_justified(|ui| {
                     ui.label(if self.closed {
-                        crate::i18n::tr("元のタブを閉じたので、このパネルは使えません。このタブを閉じてください。")
+                        crate::i18n::tr("元のタブを閉じたので、このパネルは使えません。この窓を閉じてください。")
                     } else {
                         crate::i18n::tr("元のタブを待っています…")
                     })
