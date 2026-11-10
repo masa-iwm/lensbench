@@ -343,7 +343,7 @@
           "type": "object"
         },
         {
-          "description": ".zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）",
+          "description": ".zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）。`path` は lensbench の系\n（系ファイル・プロジェクトの .json、構成は 1 だけ）でもよい",
           "properties": {
             "config": {
               "default": 1,
@@ -1255,7 +1255,7 @@
     "LensSource": {
       "anyOf": [
         {
-          "description": ".zmx の k 番目の玉（玉だけを数える、1 始まり）",
+          "description": ".zmx の k 番目の玉（玉だけを数える、1 始まり）。lensbench の系の .json でもよい",
           "properties": {
             "config": {
               "default": 1,

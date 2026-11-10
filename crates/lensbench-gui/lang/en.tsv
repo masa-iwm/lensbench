@@ -1155,3 +1155,4 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 保存（Ctrl+S）	Save (Ctrl+S)
 名前を付けて保存…（Ctrl+Shift+S）	Save As… (Ctrl+Shift+S)
 組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに	A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file
+系（.zmx・.json）	System (.zmx / .json)

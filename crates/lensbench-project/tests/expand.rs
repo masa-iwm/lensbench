@@ -575,3 +575,50 @@ fn a_mirror_block_can_have_a_rect_aperture() {
         m.ap
     );
 }
+
+/// zmx ブロックは lensbench の系（系ファイル・プロジェクトの .json）も取り込む（#132）
+#[test]
+fn a_zmx_block_takes_a_lensbench_system_json() {
+    let a = a0();
+    // 系ファイル
+    let dir = std::env::temp_dir().join(format!("lb-json-block-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a0.json");
+    lensbench_project::sysfile::save(&f, &a, &[]).unwrap();
+    let s = project(&format!(
+        r#"[{{"type": "zmx", "path": {}}}]"#,
+        serde_json::to_string(&f.display().to_string()).unwrap()
+    ));
+    assert_eq!(s.surfaces.len(), a.surfaces.len());
+    same_rays(&s, &a, 1e-12);
+    // プロジェクト（中の zmx ブロックの相対パスはそのプロジェクトのフォルダから）
+    let p = dir.join("p.json");
+    std::fs::write(
+        &p,
+        format!(
+            "{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": {}}}] }}",
+            serde_json::to_string(
+                &root()
+                    .join("tests/refs/A0/system.zmx")
+                    .display()
+                    .to_string()
+            )
+            .unwrap()
+        ),
+    )
+    .unwrap();
+    let s = project(&format!(
+        r#"[{{"type": "zmx", "path": {}, "from": 1, "to": 2}}, {{"type": "stop", "semi": 3}}]"#,
+        serde_json::to_string(&p.display().to_string()).unwrap()
+    ));
+    assert_eq!(s.surfaces[1].c, a.surfaces[1].c);
+    assert_eq!(s.surfaces[2].c, a.surfaces[2].c);
+    // 構成の番号は 1 だけ
+    let e = try_project(&format!(
+        r#"[{{"type": "zmx", "path": {}, "config": 2}}]"#,
+        serde_json::to_string(&f.display().to_string()).unwrap()
+    ))
+    .unwrap_err();
+    assert!(e.contains("構成の番号"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

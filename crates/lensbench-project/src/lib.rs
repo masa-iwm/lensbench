@@ -540,7 +540,7 @@ pub enum SurfAperture {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum LensSource {
-    /// .zmx の k 番目の玉（玉だけを数える、1 始まり）
+    /// .zmx の k 番目の玉（玉だけを数える、1 始まり）。lensbench の系の .json でもよい
     Zmx {
         zmx: String,
         #[serde(default = "one")]
@@ -615,7 +615,8 @@ pub enum Block {
         #[serde(flatten)]
         place: Place,
     },
-    /// .zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）
+    /// .zmx から取り込んだ系（面 from〜to、既定は面 1 から像面の手前まで。空気間隔も含む）。`path` は lensbench の系
+    /// （系ファイル・プロジェクトの .json、構成は 1 だけ）でもよい
     Zmx {
         #[serde(default)]
         id: String,
@@ -1424,6 +1425,30 @@ impl<'a, 'b> Ctx<'a, 'b> {
             return Err(format!("{path}: 構成の番号は 1 以上"));
         }
         let p = self.base.join(path);
+        // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む（#132）
+        if p.extension()
+            .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+        {
+            if cfg != 1 {
+                return Err(format!("{path}: .json の系では構成の番号は 1 だけ"));
+            }
+            thread_local! {
+                static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+            }
+            if DEPTH.with(|d| d.get()) >= 8 {
+                return Err(format!("{path}: 系の取り込みが深すぎる（循環？）"));
+            }
+            DEPTH.with(|d| d.set(d.get() + 1));
+            let r = if sysfile::is_system_file(&p) {
+                sysfile::load(&p).map(|x| x.0)
+            } else {
+                load_state(&p, &self.env.glass_dirs, self.env.catalog, None)
+            };
+            DEPTH.with(|d| d.set(d.get() - 1));
+            let s = r?;
+            self.merge_glasses(&s);
+            return Ok(s);
+        }
         let opt = zmx::LoadOptions {
             cfg,
             catalog_dirs: self.env.glass_dirs.clone(),
