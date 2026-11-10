@@ -116,7 +116,6 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 系を開くと解析できます。	Open a system to analyze it.
 系（.zmx・プロジェクト .json）	Systems (.zmx, project .json)
 終了	Quit
-組合せをプロジェクトとして保存…	Save combination as project…
 自動	Auto
 表	Table
 表示	View
@@ -183,7 +182,6 @@ Huygens MTF	Huygens MTF
 システムデータ	System data
 玉モード	Elements
 ゴースト	Ghosts
-{} に保存（開くときはレンズカタログのフォルダが要る）	Saved to {} (opening it needs the lens catalog folders)
 {} 面 · {} 視野 · {} 波長	{} surfaces · {} fields · {} wavelengths
 カタログレンズ {} 枚、うち {} 枚は読めない（{} ms）	{} catalog lenses, {} unreadable ({} ms)
 カタログレンズ {} 枚（{} ms）	{} catalog lenses ({} ms)
@@ -1153,3 +1151,7 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比	Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces
 機構のケラレ: 機構部品の穴の外に出た光線の割合	Mechanical vignetting: share of rays outside the mechanical apertures
 レイアウト	Layout
+今の組合せを消して、ファイルの組合せを開きますか？	Discard the current combination and open the one in the file?
+保存（Ctrl+S）	Save (Ctrl+S)
+名前を付けて保存…（Ctrl+Shift+S）	Save As… (Ctrl+Shift+S)
+組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに	A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file
