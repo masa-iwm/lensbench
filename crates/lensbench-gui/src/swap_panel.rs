@@ -790,7 +790,11 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         ));
         ui.separator();
         ui.label(tr("微分"));
-        for (k, l) in [("fd", tr("すべて差分")), ("auto", tr("解析的（できる所）"))] {
+        for (k, l) in [
+            ("fd", tr("すべて差分")),
+            ("forward", tr("すべて前進差分")),
+            ("auto", tr("解析的（できる所）")),
+        ] {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });

@@ -119,8 +119,9 @@ pub struct SwapSpec {
     /// （カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）
     #[serde(default)]
     pub clear_aperture: bool,
-    /// ヤコビアン: "fd"（すべて中心差分、既定）か "auto"（解析的に求められる列は解析的に）。差し替え探索の
-    /// 変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で 4.3 倍、上位 1000 組は同じ組）
+    /// ヤコビアン: "fd"（すべて中心差分、既定）・"forward"（すべて前進差分）・"auto"（解析的に求められる列は解析的に）。
+    /// 差し替え探索の変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で 4.3 倍、上位 1000 組は同じ組）。
+    /// forward は差分の追跡が中心差分の半分で済む
     #[serde(default = "fd")]
     pub jac: String,
     /// 粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で
@@ -894,13 +895,9 @@ impl<'a> SwapSearch<'a> {
     }
 }
 
-/// 設定の jac（"fd"・"auto"）
+/// 設定の jac（"fd"・"auto"・"forward"）
 fn jac_mode(j: &str) -> Result<optim::JacMode, String> {
-    match j.to_ascii_lowercase().as_str() {
-        "auto" => Ok(optim::JacMode::Auto),
-        "fd" => Ok(optim::JacMode::FiniteDiff),
-        j => Err(format!("jac {j}（auto・fd）")),
-    }
+    optim::JacMode::parse(j).ok_or_else(|| format!("jac {j}（{}）", optim::JacMode::NAMES))
 }
 
 /// 評価関数の小さい順（評価できなかった組は後ろ）、同じなら番号の順

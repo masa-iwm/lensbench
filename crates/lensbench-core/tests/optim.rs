@@ -146,6 +146,27 @@ fn check_jac(name: &str, s: &System, kind: TermKind) {
             vars(s)[q]
         );
     }
+    // 前進差分: 残差は同じ、ヤコビアンは中心差分と刻みの 1 次の差
+    p.jac = JacMode::Forward;
+    let (rw, jw) = p.jacobian(&x).unwrap();
+    assert_eq!(ra, rw);
+    for q in 0..nv {
+        let col = |j: &[f64]| (0..ra.len()).map(|i| j[i * nv + q]).collect::<Vec<_>>();
+        let (w, f) = (col(&jw), col(&jf));
+        let sc = f.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+        let e = w
+            .iter()
+            .zip(&f)
+            .fold(0.0f64, |m, (x, y)| m.max((x - y).abs()));
+        if std::env::var_os("LB_PRINT_FWD").is_some() {
+            eprintln!("fwd {name} 変数 {}: {:.2e}", vars(s)[q], e / (sc + 1e-300));
+        }
+        assert!(
+            e <= 1e-3 * sc + 1e-6 * gsc,
+            "前進差分 {name} {kind:?} 変数 {}: 差 {e:e} / 大きさ {sc:e}",
+            vars(s)[q]
+        );
+    }
 }
 
 #[test]
