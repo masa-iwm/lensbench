@@ -150,7 +150,10 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   寸法の `front_thread`（z 0 の端）・`back_thread`（z の大きい端）に `{"thread": "SM1", "male": true, "length": 3.0}` を書くと、
   つなぐ両端のねじが同じ名前でオスとメスか確かめ（違えば注記して突き当てる）、オスのねじの長さだけ重ねる（ねじ込む）。
   `catalog-step` は両端のねじ（端に接するねじの谷の径の外向きの円柱がオス、内壁がメス。オスの長さは端から外径より細い部分）も読む。
-  GUI では機構部品の欄の置く所で「〜の後ろにつなぐ」
+  GUI では機構部品の欄の置く所で「〜の後ろにつなぐ」。`"reversed": true` で部品を裏返して置く（光が z の大きい端から入る。穴・座・
+  両端のねじも入れ替わる。`seat` なら座は保持する素子の後ろの面に当たる）。チューブの外側のねじ（オス）をケージ板の SM1 の
+  穴（メス）にねじ込む組み方もこれで書ける（ケージ板の後ろにチューブ、または裏返したチューブの後ろにケージ板）。ケージ板どうしは
+  `after` と `offset`（間隔）で並べ、ロッドの間隔の違い・要る長さは `mech-check` の `fit` で見る
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

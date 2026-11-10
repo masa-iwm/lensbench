@@ -827,8 +827,12 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                         vec![sel]
                     };
                 }
-                ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
-                    .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
+                ui.vertical(|ui| {
+                    ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
+                        .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
+                    ui.checkbox(&mut m.reversed, tr("裏返す"))
+                        .on_hover_text(tr("部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）"));
+                });
                 if ui.button("✖").on_hover_text(tr("外す")).clicked() {
                     remove = Some(k);
                 }

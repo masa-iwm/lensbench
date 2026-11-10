@@ -1078,3 +1078,5 @@ STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は�
 ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP なので、ガラスの厚さ・径は測れません	This STEP is a mechanical part without glass (tube, cage plate or mount), so the glass thickness and diameter can't be measured
 {} の後ろにつなぐ	Connect after {}
 前の部品の後ろの端につなぎます。両方の端にねじがあれば、合うか確かめ、オスのねじの分だけ重ねます	Connects to the back end of the earlier part. If both ends have threads, checks that they mate and overlaps by the male thread length
+裏返す	Reverse
+部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）	Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)

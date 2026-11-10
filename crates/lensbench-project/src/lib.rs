@@ -2137,6 +2137,9 @@ pub struct MechPlacement {
     /// ねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さだけ重ねる
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// 部品を裏返して置く（寸法の z の大きい端から光が入る。穴・座・両端のねじも入れ替わる）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reversed: bool,
 }
 
 /// 機構を置く基準の面（[`MechPlacement::at`]）
@@ -3471,6 +3474,27 @@ fn place_mechanics(
             }
         };
         spec.validate().map_err(|e| format!("{tag}: {e}"))?;
+        // 裏返す（z の大きい端から光が入る）。座に合わせるなら、座は保持する素子の後ろの面に当たる
+        let spec = if m.reversed {
+            let t = if m.seat {
+                m.holds
+                    .first()
+                    .and_then(|b| spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)))
+                    .map_or(0.0, |x| {
+                        (x.1 + 1..=x.2)
+                            .filter(|&j| {
+                                j < s.surfaces.len() && s.surfaces[j].typ != SurfType::CoordBrk
+                            })
+                            .map(|j| s.surfaces[j].t)
+                            .sum::<f64>()
+                    })
+            } else {
+                0.0
+            };
+            spec.flipped(t)
+        } else {
+            spec
+        };
         let name = if !m.name.is_empty() {
             m.name.clone()
         } else if !item_name.is_empty() {
