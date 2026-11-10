@@ -263,6 +263,10 @@ struct Core {
     combo_view: combo::View,
     /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
     combo_sel_prev: Option<usize>,
+    /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す（#135）
+    to_combo: Option<bool>,
+    /// 前の画面の組合せの要素の数（空の組合せに足したかを見る。usize::MAX はまだ見ていない）
+    combo_len_prev: usize,
     font: Option<String>,
     next_id: u64,
     /// パネルの中から頼まれた操作
@@ -1874,6 +1878,20 @@ impl Core {
                 ui.weak(tr(
                     "開いている系は組合せから作ったものではありません（図は見るだけ）。",
                 ));
+                if ui
+                    .button(tr("この系を組合せにする"))
+                    .on_hover_text(tr(
+                        "開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる",
+                    ))
+                    .clicked()
+                    && (self.browser.combo.picks.is_empty()
+                        || crate::files::confirm(
+                            tr("組合せにする"),
+                            tr("今の組合せを、開いた系を取り込んだ組合せに置き換えますか？"),
+                        ))
+                {
+                    self.to_combo = Some(false);
+                }
                 if !self.browser.combo.picks.is_empty()
                     && ui.button(tr("▶ 組合せの系を作る")).clicked()
                 {
@@ -2017,6 +2035,25 @@ impl Core {
                 .color(theme::weak_text(ui.visuals())),
             );
         }
+        if !is_combo {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.um_open, tr("＋ 玉・群・機構部品…"))
+                    .on_hover_text(tr(
+                        "面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる",
+                    ))
+                    .clicked()
+                {
+                    self.um_open = !self.um_open;
+                    // 範囲の欄が空なら、選んでいる面から
+                    if self.um_open && self.um.new_spans.trim().is_empty() {
+                        if let Some((j, _)) = self.ld.cur {
+                            self.um.new_spans = j.to_string();
+                        }
+                    }
+                }
+            });
+        }
         self.ld.tree = self.s.ld_tree;
         let acts = lens_data::ui(ui, &mut self.ld, &ctx);
         self.s.ld_tree = self.ld.tree;
@@ -2094,7 +2131,7 @@ impl Core {
         // ブロックの設定（組合せは要素の設定、開いた系は玉・群の偏心・傾き・移動・dn・disp）と、
         // 開いた系の玉・群を足す・機構部品の欄（同じスクロールの中）
         let view = self.ld.block_view.clone();
-        if view.is_some() || !is_combo {
+        if view.is_some() {
             egui::ScrollArea::vertical()
                 .id_salt("block_edit")
                 .auto_shrink([false, false])
@@ -2114,19 +2151,25 @@ impl Core {
                             self.unit_settings(ui, name);
                         }
                     }
-                    if !is_combo {
-                        egui::CollapsingHeader::new(tr("玉・群・機構部品"))
-                            .id_salt("unit_mech")
-                            .open(std::mem::take(&mut self.um_open).then_some(true))
-                            .show(ui, |ui| {
-                                let ops =
-                                    crate::unit_mech::ui(ui, &mut self.um, self.ld_rows.len());
-                                if !ops.is_empty() {
-                                    self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                                }
-                            });
-                    }
                 });
+        }
+        // 開いた系の玉・群を足す・機構部品は別の小窓（面の表の下では、面の設定の欄に押し出されて見えないことがあった、#136）
+        if !is_combo && self.um_open {
+            let mut open = true;
+            let n = self.ld_rows.len();
+            let mut ops = Vec::new();
+            egui::Window::new(tr("玉・群・機構部品"))
+                .id(egui::Id::new("unit_mech_win"))
+                .open(&mut open)
+                .default_width(380.0)
+                .vscroll(true)
+                .show(ui.ctx(), |ui| {
+                    ops = crate::unit_mech::ui(ui, &mut self.um, n);
+                });
+            if !ops.is_empty() {
+                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+            }
+            self.um_open = open;
         }
     }
 
@@ -2520,6 +2563,26 @@ impl Core {
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
+        // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
+        // 置き換わらないように、#135）
+        let n = self.browser.combo.picks.len();
+        if self.file.is_some()
+            && !self.is_combo()
+            && self.to_combo.is_none()
+            && self.combo_len_prev == 0
+            && n > 0
+            && !self
+                .built_combo
+                .as_ref()
+                .is_some_and(|b| !b.picks.is_empty())
+        {
+            self.to_combo = Some(true);
+        }
+        self.combo_len_prev = n;
+        if let Some(keep) = self.to_combo {
+            self.open_to_combo(keep);
+            return;
+        }
         if self.load_stale && !self.worker.busy_core() {
             self.load_stale = false;
             if let Some(p) = self.combo_path.clone() {
@@ -2536,6 +2599,80 @@ impl Core {
             return;
         }
         self.combo_edit = Some(web_time::Instant::now());
+        self.build_combo(self.browser.combo.project());
+    }
+
+    /// 開いた系を組合せにする: 系の取り込み（zmx ブロック、.zmx も lensbench の .json も）1 つと、系の設定。keep は今の
+    /// 組合せの要素をその後ろに残す。系の設定がまだ無ければ読みに行き、届いた後の画面でもう一度呼ぶ（#135）
+    fn open_to_combo(&mut self, keep: bool) {
+        let Some(f) = self.file.clone().filter(|_| !self.is_combo()) else {
+            self.to_combo = None;
+            return;
+        };
+        let Some(d) = self.oss.data.clone() else {
+            if self.oss.want() {
+                self.worker.send(Tag::SysData, "system_data", json!({}));
+            }
+            return;
+        };
+        self.to_combo = None;
+        if self.ld_dirty
+            && !crate::files::confirm(
+                tr("組合せにする"),
+                tr("開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？"),
+            )
+        {
+            if keep {
+                // 足した要素は残し、開いた系はそのまま
+                self.built_combo = Some(self.browser.combo.clone());
+            }
+            return;
+        }
+        let obj_t = self.ld_rows.first().map_or(f64::INFINITY, |r| r.t);
+        let mut c = Combo {
+            name: f
+                .file_stem()
+                .map(|x| x.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
+            self.status = Status {
+                text: e,
+                error: true,
+            };
+            if keep {
+                self.built_combo = Some(self.browser.combo.clone());
+            }
+            return;
+        }
+        let mut z = combo::Pick::new(combo::ElemKind::ZmxRange);
+        // 組合せは保存先から相対に読むので、開いた系は絶対パスで持つ（Web 版の置き場は初めから絶対）
+        z.path = std::path::absolute(&f).unwrap_or(f).display().to_string();
+        // 取り込みは像面の手前の面の厚さまで含むので、後の空気は 0
+        z.air = 0.0;
+        if let Some(cfg) = self
+            .summary
+            .as_ref()
+            .and_then(|s| s["cfg"].as_u64())
+            .filter(|&n| n > 1)
+        {
+            z.config = cfg as usize;
+        }
+        c.picks.push(z);
+        if keep {
+            let old = std::mem::take(&mut self.browser.combo);
+            c.picks.extend(old.picks);
+            c.mechanics = old.mechanics;
+        }
+        self.browser.combo = c;
+        self.combo_view = combo::View::default();
+        self.combo_len_prev = self.browser.combo.picks.len();
+        self.doc_path = None;
+        self.status = Status {
+            text: tr("開いた系を組合せの要素にした（系の取り込み）").into(),
+            error: false,
+        };
         self.build_combo(self.browser.combo.project());
     }
 
@@ -3634,6 +3771,8 @@ impl App {
                 agf_names: Default::default(),
                 combo_view: Default::default(),
                 combo_sel_prev: None,
+                to_combo: None,
+                combo_len_prev: usize::MAX,
                 font,
                 next_id,
                 cmds: Vec::new(),
@@ -4181,7 +4320,26 @@ impl App {
                     }
                     if !self.c.samples.is_empty() {
                         ui.menu_button(tr("見本"), |ui| {
+                            // 組合せ・プロジェクト・.zmx の系の間に区切り
+                            let group = |f: &str| {
+                                if f.contains("/examples/combos/") {
+                                    0
+                                } else if f.ends_with(".json") {
+                                    1
+                                } else {
+                                    2
+                                }
+                            };
+                            let mut last = None;
                             for f in &self.c.samples {
+                                let g = group(f);
+                                if last.is_some_and(|l| l != g) {
+                                    ui.separator();
+                                }
+                                if last != Some(g) && g == 0 {
+                                    ui.weak(tr("組合せ（開くと組合せに戻る）"));
+                                }
+                                last = Some(g);
                                 let name = sample_name(f);
                                 if ui.button(name).on_hover_text(f).clicked() {
                                     ui.close_menu();
@@ -5735,4 +5893,88 @@ fn project_keeps_combo() {
     );
     assert_eq!(combo_of_project(&v), Some(c));
     assert_eq!(combo_of_project(&json!({ "blocks": [] })), None);
+}
+
+/// 見本の組合せ（examples/combos。Web 版の「見本」に出る、#134）
+#[cfg(test)]
+fn sample_combos() -> Vec<(&'static str, Combo)> {
+    use crate::sysset::{ApKind, FieldKind, FieldPt};
+    use combo::{ElemKind, Pick};
+    let cat = |part: &str, air: f64, reversed: bool| Pick {
+        vendor: "LB".into(),
+        part: part.into(),
+        air,
+        reversed,
+        locked: true,
+        ..Pick::default()
+    };
+    let mut c1 = Combo {
+        name: "C1 二枚のカタログレンズ".into(),
+        epd: 8.0,
+        stop_gap: 5.0,
+        fields: [0.0, 2.0, 4.0].map(FieldPt::y).to_vec(),
+        ..Default::default()
+    };
+    c1.picks = vec![cat("PCX-100", 3.0, false), cat("ACH-45", 30.0, true)];
+    let mut c2 = Combo {
+        name: "C2 折り曲げ鏡の後の玉".into(),
+        epd: 8.0,
+        stop_gap: 10.0,
+        fields: [0.0, 2.0, 3.0].map(FieldPt::y).to_vec(),
+        ..Default::default()
+    };
+    let mut m = Pick::new(ElemKind::Mirror);
+    m.semi = 10.0;
+    m.air = 20.0;
+    c2.picks = vec![m, cat("BCX-50", 45.0, false)];
+    let mut c3 = Combo {
+        name: "C3 絞りを挟む 3 枚（有限物体）".into(),
+        aperture: ApKind::Na,
+        ap_value: 0.04,
+        field_kind: FieldKind::ObjectHeight,
+        fields: [0.0, 3.0, 6.0].map(FieldPt::y).to_vec(),
+        object_distance: Some(100.0),
+        ..Default::default()
+    };
+    let mut st = Pick::new(ElemKind::Stop);
+    st.semi = 5.0;
+    st.air = 4.0;
+    c3.picks = vec![
+        cat("BCX-50", 6.0, false),
+        cat("BCC-32", 4.0, true),
+        st,
+        cat("MEN-75", 60.0, false),
+    ];
+    vec![
+        ("C1_catalog_two", c1),
+        ("C2_fold_mirror", c2),
+        ("C3_stop_inside", c3),
+    ]
+}
+
+/// examples/combos の見本は sample_combos から作ったもの（作り直すには LENSBENCH_UPDATE_SAMPLES=1 で cargo test）
+#[test]
+fn sample_combos_are_up_to_date() {
+    let dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/combos"
+    ));
+    let update = std::env::var_os("LENSBENCH_UPDATE_SAMPLES").is_some();
+    for (name, c) in sample_combos() {
+        assert!(c.settings_problems().is_empty(), "{name}");
+        let want = serde_json::to_string_pretty(&project_with_combo(&c)).unwrap() + "\n";
+        let p = dir.join(format!("{name}.json"));
+        if update {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&p, &want).unwrap();
+        }
+        let got = std::fs::read_to_string(&p)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert_eq!(
+            got, want,
+            "{name}: examples/combos が古い。LENSBENCH_UPDATE_SAMPLES=1 cargo test -p lensbench-gui sample_combos で作り直す"
+        );
+        lensbench_project::Project::from_json(&got).unwrap();
+    }
 }

@@ -2007,7 +2007,7 @@ pub fn ui(
     });
     if !combo.picks.is_empty() {
         ui.horizontal_wrapped(|ui| states_ui(ui, combo, view, weak));
-        ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak));
+        ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, None));
     }
     ui.separator();
     if combo.picks.is_empty() {
@@ -3340,8 +3340,17 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     });
     // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
     ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
-    if p.kind == ElemKind::Splitter {
+    let is_bs = p.kind == ElemKind::Splitter;
+    if is_bs {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
+    }
+    // 要素の群の役割・移動もここで（レイアウトのパネルの「群」と同じ、#136）
+    let g = combo
+        .get(&step.loc)
+        .map(|p| p.group.trim().to_string())
+        .unwrap_or_default();
+    if !g.is_empty() {
+        ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, Some(&g)));
     }
 }
 
@@ -3404,8 +3413,9 @@ fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
     }
 }
 
-/// 群の役割と移動。群の名前は要素の設定の「群」で付ける。状態を選んでいれば移動はその状態の値
-fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32) {
+/// 群の役割と移動。群の名前は要素の設定の「群」で付ける。状態を選んでいれば移動はその状態の値。
+/// only は 1 つの群だけ（面の表の要素の設定、#136）
+fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) {
     let mut names: Vec<String> = Vec::new();
     let ids: Vec<String> = combo.ids_all().into_iter().map(|x| x.1).collect();
     for p in combo.all().iter().filter_map(|l| combo.get(l)) {
@@ -3418,6 +3428,9 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32) {
     combo.groups.retain(|d| {
         names.contains(&d.name) || !d.role.is_empty() || d.shift != 0.0 || !d.state_shift.is_empty()
     });
+    if let Some(o) = only {
+        names.retain(|n| n == o);
+    }
     if names.is_empty() {
         return;
     }
@@ -3578,7 +3591,7 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
             .desired_width(60.0),
     )
     .on_hover_text(tr(
-        "続く要素に同じ名前を付けると 1 つの群になる（役割・移動はレイアウトのパネルの「群」で）",
+        "続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）",
     ));
     if p.kind == ElemKind::ZmxRange {
         zgroups_ui(ui, p, weak);

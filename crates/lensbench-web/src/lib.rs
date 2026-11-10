@@ -223,12 +223,14 @@ mod web {
             .and_then(|d| d.get_element_by_id(&canvas_id))
             .ok_or_else(|| JsValue::from_str(&format!("{canvas_id} が無い")))?
             .dyn_into::<web_sys::HtmlCanvasElement>()?;
-        // 見本: 例題のプロジェクトと tests/refs の系
+        // 見本: 例題の組合せ（開くと組合せに戻る）、プロジェクト、tests/refs の系の順
         let samples: Vec<String> = FILES
             .iter()
             .map(|f| f.0)
             .filter(|p| {
-                (p.starts_with("/lensbench/examples/projects/") && p.ends_with(".json"))
+                ((p.starts_with("/lensbench/examples/combos/")
+                    || p.starts_with("/lensbench/examples/projects/"))
+                    && p.ends_with(".json"))
                     || p.ends_with("/system.zmx")
             })
             .map(String::from)
