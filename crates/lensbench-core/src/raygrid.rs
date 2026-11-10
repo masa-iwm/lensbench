@@ -387,7 +387,13 @@ pub fn trace_jones(
     let mut raw0 = vec![0.0; g * g];
     let mut t0 = None;
     for w in 0..nw {
-        let t = sys.try_trace(field, &pxs, &pys, Some(w), None, false)?;
+        // 指定面の交点は中心波長の追跡で一緒に記録する（同じ光線をもう一度追わない）
+        let t = match (w, surf) {
+            (0, Some(s)) => {
+                sys.try_trace_rec(field, &pxs, &pys, Some(w), None, RecSel::Surfs(&[s]))?
+            }
+            _ => sys.try_trace(field, &pxs, &pys, Some(w), None, false)?,
+        };
         let chief = if phase {
             let c = sys.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
             if !c.traced(0) {
@@ -490,7 +496,7 @@ pub fn trace_jones(
     if let Some(s) = surf {
         xf = vec![f64::NAN; g * g];
         yf = vec![f64::NAN; g * g];
-        let tr = sys.try_trace_rec(field, &pxs, &pys, Some(0), None, RecSel::Surfs(&[s]))?;
+        let tr = &t0;
         if let Some(rec) = tr.rec_at(s) {
             for (m, &q) in idx.iter().enumerate() {
                 if good[q] && tr.ok(m) && rec.xyz[m][0].is_finite() {

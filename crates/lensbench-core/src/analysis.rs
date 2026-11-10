@@ -383,6 +383,20 @@ pub(crate) fn lens_quad(d: f64, gl: &LensGl) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     (t, u, w)
 }
 
+/// [`lens_quad`] の d = 0（単位円）の重みの和（点を並べずに求める。単位円の面積 π の近似）
+pub(crate) fn lens_area(gl: &LensGl) -> f64 {
+    let su: f64 = gl.wu.iter().sum();
+    let mut acc = 0.0;
+    for (&z, &wz) in gl.gt.iter().zip(&gl.wt) {
+        let tau = 0.5 * (z + 1.0);
+        let y = 1.0 - tau * tau;
+        let dy = tau * wz;
+        let x = (1.0 - y * y).max(0.0).sqrt();
+        acc += 2.0 * dy * x * su;
+    }
+    acc
+}
+
 /// 像空間の方向余弦 (L, M) の、正規化瞳 (px, py) に対する傾き J = ∂(L, M)/∂(px, py)（2×2、行が L・M）。
 /// 瞳の縁の光線の差で見積もる。これらは基準の光線なので開口・遮蔽は無視する（OpticStudio と同じ）。
 /// 縁の光線が像面まで届かない（面を外れるなど）視野では、軸ごとに内側の点（±0.75, ±0.5, ±0.25）の
@@ -1125,6 +1139,75 @@ fn autocorr_at(r: &[C64], s: f64) -> C64 {
     (0..4).map(|k| at(i0 - 1 + k as isize) * w[k]).sum()
 }
 
+/// 周波数・向きごとの求積の点数（[`MtfMethod::Auto`]・[`MtfMethod::Interp`] で点数が自動のとき。上限は自動の n）。
+/// 求積するのは位相差 D(p) = W(p + s/2) − W(p − s/2)（s はずらし (dx, dy)）の位相因子なので、要る点数は W ではなく
+/// D の傾きで決まる。D の傾きの最大 g_D [波 / 半径] を、重なりの中の [`SHIFT_GRID`]² 点で補間した D の隣り合う
+/// 点の差で見積もり、n_D = [`SHIFT_FAC`]·g_D + 16（32〜4096）にする。自動の n（[`mtf_points`]）は W の傾き g から D の
+/// 傾きの上限 2g を見込むが、低い周波数（ずらしが小さい）では D ≈ s·∇W で傾きはずっと小さい（E1 の視野 3、
+/// 20 cycles/mm で g_D ≈ 40 に対し g ≈ 620）。補間の格子がすべて有限（けられなし）のときだけ呼ぶ
+fn shift_points(ip: &PupilInterp, dx: f64, dy: f64) -> usize {
+    let m = SHIFT_GRID;
+    let d = dx.hypot(dy);
+    let a = 1.0 - 0.5 * d;
+    if a <= 0.0 {
+        return 32;
+    }
+    let (ex, ey) = if d > 0.0 {
+        (dx / d, dy / d)
+    } else {
+        (1.0, 0.0)
+    };
+    // 重なり（レンズ形）の中の m×m 点: ずらす向きの座標 t は区間の中心、直交する座標 u は各 t の弦を m 等分した
+    // 区間の中心（[`lens_quad`] と同じ形の領域を覆う。周波数が高いと領域が細く、正方格子では点が足りない）
+    let mut dv = vec![f64::NAN; m * m];
+    let mut pt = vec![(0.0, 0.0); m * m];
+    for i in 0..m {
+        let t = a * (-1.0 + (2 * i + 1) as f64 / m as f64);
+        let x = (1.0 - (t.abs() + 0.5 * d).powi(2)).max(0.0).sqrt();
+        for j in 0..m {
+            let u = x * (-1.0 + (2 * j + 1) as f64 / m as f64);
+            let (px, py) = (t * ex - u * ey, t * ey + u * ex);
+            pt[i * m + j] = (px, py);
+            if let (Some(va), Some(vb)) = (
+                ip.eval(px + 0.5 * dx, py + 0.5 * dy),
+                ip.eval(px - 0.5 * dx, py - 0.5 * dy),
+            ) {
+                dv[i * m + j] = va - vb;
+            }
+        }
+    }
+    let mut g: f64 = 0.0;
+    let mut slope = |k: usize, k2: usize| {
+        let (v, v2) = (dv[k], dv[k2]);
+        let dist = (pt[k2].0 - pt[k].0).hypot(pt[k2].1 - pt[k].1);
+        if v.is_finite() && v2.is_finite() && dist > 0.0 {
+            g = g.max((v2 - v).abs() / dist);
+        }
+    };
+    for i in 0..m {
+        for j in 0..m {
+            let k = i * m + j;
+            if j + 1 < m {
+                slope(k, k + 1);
+            }
+            if i + 1 < m {
+                slope(k, k + m);
+            }
+        }
+    }
+    ((SHIFT_FAC * g).ceil() as usize + 16).clamp(32, 4096)
+}
+
+/// [`shift_points`] の格子の一辺の点数
+const SHIFT_GRID: usize = 33;
+/// [`shift_points`] で点数を減らす自動の n の下限。n が小さい系は見積もり（補間 2·33² 点）が求積（n² 点）と
+/// 同じくらいかかり、速くならない
+const SHIFT_MIN_N: usize = 128;
+/// [`shift_points`] の傾き g_D あたりの点数。位相が g_D [波 / 半径] で回る因子を Gauss-Legendre で求めるには
+/// 半径あたり 2π g_D 点ほど要る（E1 の視野 3 で 4 では 1e-5 ずれ、6 で 1e-12 に収束）。余裕を見て 8。
+/// 例題 38 系の遮断周波数の 1〜99% で、点数を減らさないときとの差は 1e-7 以下（補間の誤差と同じ桁）
+const SHIFT_FAC: f64 = 8.0;
+
 /// [`MtfMethod::Auto`] が FFT に切り替える求積の点数 n（自動で決めた値がこれを超えるとき）。求積は点が n² 個で
 /// 周波数ごとに足すので、E0・E1 の軸外（OPD の傾き 600〜700 波、n が 2000 超）は FFT の 4 倍ほど遅い。
 /// FFT の瞳の標本は 2n（上限 [`FFT_MAX`]）で、求積との差は E0・E1 で 7e-5 以下
@@ -1270,6 +1353,7 @@ fn wave_otf(
     n: Option<usize>,
     freqs: &[f64],
     method: MtfMethod,
+    only: Option<usize>,
 ) -> Result<WaveOtf> {
     if method == MtfMethod::Fft && !freqs.is_empty() {
         return wave_otf_fft(s, field, wi, n, freqs);
@@ -1293,29 +1377,70 @@ fn wave_otf(
     };
     // 軸上の回転対称な系（格子の OPD が対称で、瞳の縮尺が x・y で同じ）なら子午は球欠と同じ
     let sym = ip.as_ref().is_some_and(|ip| axis_symmetric(&jm, ip));
-    // ずらさない瞳の光量（けられを含む）
-    let gl = LensGl::new(n);
-    let (t0, u0, w0) = lens_quad(0.0, &gl);
-    let o0 = opd_at(s, field, wi, ip.as_ref(), &u0, &t0)?;
-    let e0: f64 = (0..t0.len())
-        .filter(|&i| o0[i].is_finite())
-        .map(|i| w0[i])
-        .sum();
-    if !(e0 > 0.0) {
-        invalid!("MTF: 有効な光線がない（すべてけられた）");
-    }
-    // 瞳が開口・遮蔽で切れている（けられた点がある）なら縁に合わせた求積にする
-    if o0.iter().any(|v| !v.is_finite()) {
-        return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym);
-    }
+    // only の向きだけ求める（もう一方は 0 のまま。対称なら球欠を求めて子午に写す）
+    let dirs: &[usize] = match (sym, only) {
+        (true, _) => &[0],
+        (false, Some(0)) => &[0],
+        (false, Some(_)) => &[1],
+        (false, None) => &[0, 1],
+    };
+    let jobs: Vec<(usize, usize)> = (0..freqs.len())
+        .flat_map(|k| dirs.iter().map(move |&d| (k, d)))
+        .collect();
+    // 正規化瞳でのずれ（dir 0: 像面の x、1: y の周波数）
+    let shift = |(k, dir): (usize, usize)| {
+        let (sx, sy) = pupil_shift(&jm, lam, dir);
+        (sx * freqs[k], sy * freqs[k])
+    };
+    // 補間の格子がすべて有限なら、単位円の中の点はどれも補間できて有限（けられなし）。このときは
+    // - 瞳の光量を点ごとの OPD から数えなくてよい（E0・E1 の軸外で 1 波長 0.4〜0.7 s かかっていた）
+    // - 自動の点数なら、周波数・向きごとにずらしの位相差の傾きで点数を減らす（[`shift_points`]）
+    // 和はその点数での瞳の光量（[`lens_area`]）で割り、光量は単位円の面積 π とする（点数による縁の誤差を
+    // 打ち消し、周波数 0 で 1）
+    let all_finite = ip
+        .as_ref()
+        .is_some_and(|ip| ip.w.iter().all(|v| v.is_finite()));
+    let (gls, nks, e0): (Vec<(usize, LensGl)>, Vec<usize>, f64) = if all_finite {
+        let ip = ip.as_ref().unwrap();
+        let nks: Vec<usize> = jobs
+            .iter()
+            .map(|&j| {
+                let (dx, dy) = shift(j);
+                if auto && n >= SHIFT_MIN_N {
+                    shift_points(ip, dx, dy).min(n)
+                } else {
+                    n
+                }
+            })
+            .collect();
+        let mut uniq = nks.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        let gls = crate::par::map(&uniq, |&m| (m, LensGl::new(m)));
+        (gls, nks, std::f64::consts::PI)
+    } else {
+        // ずらさない瞳の光量（けられを含む）
+        let gl = LensGl::new(n);
+        let (t0, u0, w0) = lens_quad(0.0, &gl);
+        let o0 = opd_at(s, field, wi, ip.as_ref(), &u0, &t0)?;
+        let e0: f64 = (0..t0.len())
+            .filter(|&i| o0[i].is_finite())
+            .map(|i| w0[i])
+            .sum();
+        if !(e0 > 0.0) {
+            invalid!("MTF: 有効な光線がない（すべてけられた）");
+        }
+        // 瞳が開口・遮蔽で切れている（けられた点がある）なら縁に合わせた求積にする
+        if o0.iter().any(|v| !v.is_finite()) {
+            return clipped_otf(s, field, wi, ip.as_ref(), n, &jm, lam, freqs, sym);
+        }
+        (vec![(n, gl)], vec![n; jobs.len()], e0)
+    };
     // 周波数・向きごとに独立（並列でも値は同じ。和は周波数・向きの中で順に取る）
-    let one = |(k, dir): (usize, usize)| -> Result<C64> {
+    let one = |ji: usize| -> Result<C64> {
         // GUI で系が変わったら途中でやめる（周波数・向きごとに確かめる）
         crate::par::check_cancel()?;
-        let f = freqs[k];
-        // 正規化瞳でのずれ（dir 0: 像面の x、1: y の周波数）
-        let (sx, sy) = pupil_shift(&jm, lam, dir);
-        let (dx, dy) = (sx * f, sy * f);
+        let (dx, dy) = shift(jobs[ji]);
         let d = dx.hypot(dy);
         // ずらす向き (ex, ey) と直交する向き (−ey, ex)
         let (ex, ey) = if d > 0.0 {
@@ -1323,12 +1448,14 @@ fn wave_otf(
         } else {
             (1.0, 0.0)
         };
+        let gl = &gls.iter().find(|g| g.0 == nks[ji]).unwrap().1;
+        let scale = if all_finite { e0 / lens_area(gl) } else { 1.0 };
         if let Some(ip) = &ip {
             if ey == 0.0 || ex == 0.0 {
-                return shifted_rows(s, field, wi, ip, &gl, d, (dx, dy), (ex, ey));
+                return Ok(shifted_rows(s, field, wi, ip, gl, d, (dx, dy), (ex, ey))? * scale);
             }
         }
-        let (t, u, w) = lens_quad(d, &gl);
+        let (t, u, w) = lens_quad(d, gl);
         let mut acc = C64::new(0.0, 0.0);
         if t.is_empty() {
             return Ok(acc);
@@ -1346,17 +1473,13 @@ fn wave_otf(
         let a = opd_at(s, field, wi, ip.as_ref(), &xa, &ya)?;
         let b = opd_at(s, field, wi, ip.as_ref(), &xb, &yb)?;
         acc += phasor_sum(&a, &b, &w);
-        Ok(acc)
+        Ok(acc * scale)
     };
-    let dirs: &[usize] = if sym { &[0] } else { &[0, 1] };
-    let jobs: Vec<(usize, usize)> = (0..freqs.len())
-        .flat_map(|k| dirs.iter().map(move |&d| (k, d)))
-        .collect();
     let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
         use rayon::prelude::*;
-        jobs.par_iter().map(|&j| one(j)).collect()
+        (0..jobs.len()).into_par_iter().map(one).collect()
     } else {
-        jobs.iter().map(|&j| one(j)).collect()
+        (0..jobs.len()).map(one).collect()
     };
     let zero = C64::new(0.0, 0.0);
     let (mut sag, mut tan) = (vec![zero; freqs.len()], vec![zero; freqs.len()]);
@@ -1736,6 +1859,20 @@ pub fn mtf_with(
     freqs: &[f64],
     method: MtfMethod,
 ) -> Result<Mtf> {
+    mtf_only(s, field, w, n, freqs, method, None)
+}
+
+/// [`mtf_with`] で、only Some(0) なら球欠、Some(1) なら子午だけを求める（もう一方の値は使えない。評価関数の
+/// 片方の向きの項用。けられのある系・FFT では両方求める）
+pub(crate) fn mtf_only(
+    s: &System,
+    field: FieldSel,
+    w: Option<usize>,
+    n: Option<usize>,
+    freqs: &[f64],
+    method: MtfMethod,
+    only: Option<usize>,
+) -> Result<Mtf> {
     check_n(n)?;
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -1747,7 +1884,7 @@ pub fn mtf_with(
         if !(wt > 0.0) {
             continue;
         }
-        otfs.push((wt, wave_otf(s, field, wi, n, freqs, method)?));
+        otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only)?));
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
     Ok(mtf_sum(freqs, &refs, mtf_cutoff(s, field)?))
@@ -1774,7 +1911,7 @@ pub fn mtf_waves(
     let cutoff = mtf_cutoff(s, field)?;
     let mut otfs = Vec::new();
     for wi in 0..s.wavelengths.len() {
-        otfs.push(wave_otf(s, field, wi, n, freqs, method)?);
+        otfs.push(wave_otf(s, field, wi, n, freqs, method, None)?);
     }
     let multi = otfs.len() > 1;
     let poly: Vec<(f64, &_)> = otfs
@@ -2730,6 +2867,46 @@ mod tests {
             let ideal = 2.0 / std::f64::consts::PI * (v.acos() - v * (1.0 - v * v).sqrt());
             assert!((m.tan[k] - ideal).abs() < 1e-4, "{v} {} {ideal}", m.tan[k]);
             assert!((m.sag[k] - ideal).abs() < 1e-4, "{v} {} {ideal}", m.sag[k]);
+        }
+    }
+
+    #[test]
+    fn mtf_points_per_shift_match_the_full_count() {
+        // 理想レンズ（F/10）の像面を 20 mm ずらす（焦点ずれ約 45 波、自動の n ≈ 290）。周波数ごとに点数を減らした
+        // 自動の値と、同じ n で減らさない値は同じ。片方の向きだけ求めても値は同じ
+        let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\
+                   XFLN 0 0\nYFLN 0 1\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\n\
+                   SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+                   SURF 1\n  STOP\n  TYPE PARAXIAL\n  CURV 0.0\n  PARM 1 100\n  PARM 2 1\n  DISZ 100\n\
+                   SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let raw = crate::zmx::parse_text(txt).unwrap();
+        let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let s = crate::sweep::defocus(&s, 20.0).unwrap();
+        let freqs = [2.0, 10.0, 60.0];
+        for f in 0..2 {
+            let fs = FieldSel::Index(f);
+            let n = mtf_points(opd_slope_max(&s, fs, 0).unwrap());
+            assert!(n >= SHIFT_MIN_N, "{n}");
+            let a = mtf(&s, fs, None, None, &freqs).unwrap();
+            let b = mtf(&s, fs, None, Some(n), &freqs).unwrap();
+            let t = mtf_only(&s, fs, None, None, &freqs, MtfMethod::Auto, Some(1)).unwrap();
+            let g = mtf_only(&s, fs, None, None, &freqs, MtfMethod::Auto, Some(0)).unwrap();
+            for k in 0..freqs.len() {
+                assert!(
+                    (a.tan[k] - b.tan[k]).abs() < 1e-8,
+                    "{f} {k} {} {}",
+                    a.tan[k],
+                    b.tan[k]
+                );
+                assert!(
+                    (a.sag[k] - b.sag[k]).abs() < 1e-8,
+                    "{f} {k} {} {}",
+                    a.sag[k],
+                    b.sag[k]
+                );
+                assert_eq!(t.tan[k], a.tan[k]);
+                assert_eq!(g.sag[k], a.sag[k]);
+            }
         }
     }
 

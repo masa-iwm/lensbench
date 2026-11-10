@@ -304,6 +304,11 @@ pub struct RecEntry {
 /// 追跡の内側で面ごとの記録を受け取る（k は無視しない面の通し番号）
 pub trait RecSink {
     fn put(&mut self, k: usize, e: RecEntry);
+    /// 通し番号 k の記録を受け取るか（受け取らない面は記録の値を作らない。既定は全面）
+    #[inline(always)]
+    fn wants(&self, _k: usize) -> bool {
+        true
+    }
 }
 
 impl RecSink for [RecEntry] {
@@ -551,13 +556,28 @@ pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, boo
 pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
     match a {
         Aperture::Circular { min, max, dx, dy } => {
-            let r = (pl[0] - dx).hypot(pl[1] - dy);
-            r > max + 1e-9 || r < min - 1e-9
+            let (u, v) = (pl[0] - dx, pl[1] - dy);
+            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+                Some(inside) => !inside,
+                None => {
+                    let r = u.hypot(v);
+                    r > max + 1e-9 || r < min - 1e-9
+                }
+            }
         }
-        Aperture::Floating { semi } => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+        Aperture::Floating { semi } => match ring_side(pl[0], pl[1], 0.0, semi + 1e-9) {
+            Some(inside) => !inside,
+            None => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+        },
         Aperture::Obsc { min, max, dx, dy } => {
-            let r = (pl[0] - dx).hypot(pl[1] - dy);
-            r <= max + 1e-9 && r >= min - 1e-9
+            let (u, v) = (pl[0] - dx, pl[1] - dy);
+            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+                Some(inside) => inside,
+                None => {
+                    let r = u.hypot(v);
+                    r <= max + 1e-9 && r >= min - 1e-9
+                }
+            }
         }
         Aperture::Rect { hx, hy, dx, dy } => {
             (pl[0] - dx).abs() > hx + 1e-9 || (pl[1] - dy).abs() > hy + 1e-9
@@ -573,6 +593,28 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
             dy,
         } => spider_hit(width, arms, pl[0] - dx, pl[1] - dy),
         Aperture::None => false,
+    }
+}
+
+/// 半径 r = hypot(u, v) が lo < r < hi（Some(true)）か r < lo・r > hi（Some(false)）かを、半径の 2 乗で十分に離れて
+/// いるときだけ決める（境界の近く・NaN・無限大は None で、呼ぶ側が hypot で決める。[`crate::batch`] の開口と同じ幅）。
+/// hypot は遅いので、ほとんどの光線をこれで決める（決めた結果は hypot と同じ）
+#[inline(always)]
+fn ring_side(u: f64, v: f64, lo: f64, hi: f64) -> Option<bool> {
+    // 半径の 2 乗の丸めの誤差（数 ulp）より十分大きい幅
+    const M: f64 = 1e-12;
+    let r2 = u * u + v * v;
+    let (has_lo, has_hi) = (lo > 0.0, hi > 0.0);
+    let (lo2, hi2) = (lo * lo, hi * hi);
+    let inside = has_hi & (r2 < hi2 * (1.0 - M)) & (!has_lo | (r2 > lo2 * (1.0 + M)));
+    let outside = (has_lo & (r2 < lo2 * (1.0 - M)))
+        | (has_hi & (r2 > hi2 * (1.0 + M)) & (r2 < f64::INFINITY));
+    if inside {
+        Some(true)
+    } else if outside {
+        Some(false)
+    } else {
+        None
     }
 }
 
@@ -787,7 +829,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
     // GRIN の媒質に入ったときの方向（座標ブレークを挟んで進むあいだ持つ）
     let mut grin_k0: Option<V3> = None;
     let lam = sys.wavelengths[w];
-    let sigs = space_signs(sys);
+    let sigs = sys.space_signs();
     for j in first..=last {
         let d = &sf[j];
         if d.ignore {
@@ -1195,6 +1237,10 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
             grin_from = None;
         }
         if let Some(r) = rec.as_deref_mut() {
+            if !r.wants(ri) {
+                ri += 1;
+                continue;
+            }
             p = add(o, mv(&rm, pl));
             r.put(
                 ri,

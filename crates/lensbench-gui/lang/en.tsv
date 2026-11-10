@@ -1042,6 +1042,7 @@ ND	ND
 状態を選ぶと、組ごとに選んだ状態を同時に最適化します（評価関数は全状態の像の項。項の構成はこの並びの番号）。間隔の変数は全状態で共通、状態ごとに解く変数は状態ごとの値。	With states selected, each combination is optimized over all of them together (the merit is the image terms of every state; term configs are indices in this list). Space variables are shared; per-state variables get a value for each state.
 組ごとにすべての出発点から最適化し、評価関数の最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。	Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).
 評価関数に足す項	Extra merit terms
+枠付きの品では、STEP の厚さ・径は枠を含む外形で、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。	For mounted items, the STEP thickness and diameter are those of the outer shape including the mount, not of the glass. Check them against the spec table or the drawing on the product page.
 そのほか	Others
 像面に置く検出器のブロック（プロジェクトの最後のブロック、最後の空気が検出器までの距離）。空の欄は既定値	Detector block at the image surface (the last block of the project; the last air is the distance to the detector). Empty fields use the defaults
 検出器	Detector

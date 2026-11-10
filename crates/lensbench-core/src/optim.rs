@@ -38,7 +38,7 @@
 //! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
 //! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
 
-use crate::analysis::{mtf, pupil_gauss_shared, to_ref, ZernKind};
+use crate::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
 use crate::error::Result;
 use crate::fiber::FiberOpts;
 use crate::invalid;
@@ -1174,7 +1174,13 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             dir,
             target,
         } => {
-            let m = mtf(s, *field, *wave, *n, &[*freq])?;
+            // 片方の向きだけの項はその向きだけ求める（値は両方求めたときと同じ）
+            let only = match dir {
+                MtfDir::Tan => Some(1),
+                MtfDir::Sag => Some(0),
+                MtfDir::Both => None,
+            };
+            let m = mtf_only(s, *field, *wave, *n, &[*freq], MtfMethod::default(), only)?;
             let r = match dir {
                 MtfDir::Tan => vec![m.tan[0] - target],
                 MtfDir::Sag => vec![m.sag[0] - target],

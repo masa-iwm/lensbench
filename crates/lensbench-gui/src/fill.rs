@@ -762,6 +762,8 @@ impl FillWin {
                         ],
                     ));
                     ui.weak(&s.note);
+                    // STEP は外形を測るので、枠（マウント）付きの品では枠の寸法になる
+                    ui.colored_label(warn, tr("枠付きの品では、STEP の厚さ・径は枠を含む外形で、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。"));
                     // 仕様表と食い違えば知らせる（マウント込みの STEP など）
                     if let Some(t) = self.read.as_ref().and_then(|(_, p)| p.thickness) {
                         if (t - s.thickness).abs() > 0.05 {
