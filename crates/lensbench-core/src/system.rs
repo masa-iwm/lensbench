@@ -725,7 +725,7 @@ impl System {
         aperture: (ApertureKind, f64),
         telecentric: bool,
         aiming: Aiming,
-        glasses: HashMap<String, Glass>,
+        glasses: impl Into<Arc<HashMap<String, Glass>>>,
     ) -> Result<System> {
         let s = System {
             surfaces,
@@ -742,7 +742,7 @@ impl System {
             aperture,
             telecentric,
             aiming,
-            glasses: Arc::new(glasses),
+            glasses: glasses.into(),
             temperature: 20.0,
             pressure: 1.0,
             glrs: 1,

@@ -745,8 +745,8 @@ pub fn build(
         invalid!("主波長 {}（波長は {} 個）", primary + 1, wl.len());
     }
     // ガラス
-    let glasses = match &opt.glasses {
-        Some(g) => g.clone(),
+    let glasses: std::sync::Arc<HashMap<String, Glass>> = match &opt.glasses {
+        Some(g) => std::sync::Arc::new(g.clone()),
         None => {
             let cats: Vec<String> = raw
                 .sysl
@@ -754,7 +754,7 @@ pub fn build(
                 .and_then(|v| v.first())
                 .cloned()
                 .unwrap_or_else(|| vec!["SCHOTT".into()]);
-            glass::load_catalogs(&cats, dirs).0
+            glass::load_catalogs_shared(&cats, dirs).0
         }
     };
     let ns = raw.surfs.len();
