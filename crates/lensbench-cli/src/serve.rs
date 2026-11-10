@@ -1651,7 +1651,8 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
 
 /// `catalog_fill`: カタログ `catalog` の未完の品 `item` に `thickness`・`diameter`（数か [幅, 高さ]、mm）を足して、
 /// 補足のカタログ `out`（ユーザーカタログ。無ければ作る）に同じ型番・同じメーカーの普通の品として書く。
-/// `from` は値の決め方（page・step・manual）。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
+/// `from` は値の決め方（page・step・manual）。枠付きの品は `frame`（機構部品の寸法、z は枠の端から）で枠も
+/// 書ける。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
 /// 置けば、次の一覧では未完の品の代わりに並ぶ
 fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
     use lensbench_project::{catalog_fill as cf, UserCatalog};
@@ -1684,10 +1685,18 @@ fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| cf::date_of_unix(d.as_secs()))
         .unwrap_or_default();
+    let frame = match p.get("frame").filter(|v| !v.is_null()) {
+        Some(v) => Some(
+            serde_json::from_value::<lensbench_project::MechSpec>(v.clone())
+                .map_err(|e| RpcErr::params(format!("frame: {e}")))?,
+        ),
+        None => None,
+    };
     let filled = cf::complete(
         it,
         p["thickness"].as_f64(),
         p.get("diameter").filter(|v| !v.is_null()).cloned(),
+        frame,
         cf::FillFrom::parse(p["from"].as_str().unwrap_or("")),
         &today,
     )
@@ -1717,6 +1726,7 @@ fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
         "vendor": vendor,
         "specs": filled.specs,
         "notes": filled.notes,
+        "frame": filled.frame,
     }))
 }
 

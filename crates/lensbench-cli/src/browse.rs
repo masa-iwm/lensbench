@@ -531,6 +531,10 @@ fn user_items(
             if !it.checked.is_empty() {
                 row["checked"] = json!(it.checked);
             }
+            // 枠付きの品の枠（置くと機構部品として付く）
+            if let Some(f) = &it.frame {
+                row["frame"] = json!(f);
+            }
             // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
             if it.is_incomplete() {
                 let size = |k: &str| match it.specs.get(k) {

@@ -293,6 +293,26 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
         let t: Vec<&str> = t.iter().filter_map(Value::as_str).collect();
         ui.label(trf("タグ {}", &[&t.join(", ")]));
     }
+    // 枠付きの品: 置くと枠が機構部品として付く
+    if let Some(f) = r.raw.get("frame").filter(|f| f.is_object()) {
+        let num = |v: &Value| v.as_f64().map_or("—".to_string(), fmt_num);
+        let clear = f["bores"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|b| b["diameter"].as_f64())
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .filter(|x| x.is_finite());
+        ui.label(trf(
+            "枠付き: 枠の長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）",
+            &[
+                &num(&f["length"]),
+                &num(&f["outer_diameter"]),
+                &clear.map_or("—".to_string(), fmt_num),
+            ],
+        ));
+    }
     if !r.spec_source.is_empty() || !r.checked.is_empty() {
         ui.weak(trf("出典 {}（{}）", &[&r.spec_source, &r.checked]));
     }

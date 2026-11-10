@@ -28,6 +28,7 @@ pub mod plugin_term;
 pub mod plugins;
 pub mod schema;
 mod splitter;
+mod step_geom;
 pub mod swap;
 pub mod sysfile;
 pub mod tolerance;
@@ -970,6 +971,8 @@ struct Ctx<'a, 'b> {
     gaps: Vec<Gap>,
     /// ビームスプリッターの経路
     split: SplitState,
+    /// 枠付きのユーザーカタログの品（名前, 枠, sf の最初, 最後）。枠を機構部品として置く
+    frames: Vec<(String, MechSpec, usize, usize)>,
 }
 
 fn is_air(m: &str) -> bool {
@@ -1430,6 +1433,15 @@ impl<'a, 'b> Ctx<'a, 'b> {
 
     /// ユーザーカタログの項目を群にする（と、その中の相対パスの基準）。項目のガラスカタログを足す
     fn user_group(&mut self, b: &Block) -> Result<(Block, PathBuf, (PathBuf, String)), String> {
+        self.user_group_frame(b).map(|(g, d, k, _)| (g, d, k))
+    }
+
+    /// [`Self::user_group`] と、品の枠
+    #[allow(clippy::type_complexity)]
+    fn user_group_frame(
+        &mut self,
+        b: &Block,
+    ) -> Result<(Block, PathBuf, (PathBuf, String), Option<MechSpec>), String> {
         let Block::User {
             id,
             catalog,
@@ -1491,6 +1503,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             },
             dir,
             key,
+            it.frame.clone(),
         ))
     }
 
@@ -1763,14 +1776,24 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     Ok(())
                 })?;
             }
-            Block::User { .. } => {
-                let (g, dir, key) = self.user_group(b)?;
+            Block::User { id, item, .. } => {
+                let (g, dir, key, frame) = self.user_group_frame(b)?;
                 let base = std::mem::replace(&mut self.base, dir);
                 self.users.push(key);
+                let start = self.sf.len();
                 let r = self.block(&g, &[], 0);
                 self.users.pop();
                 self.base = base;
                 r?;
+                // 品の枠は、外側の品（項目の中の項目でない）だけ置く
+                if let Some(f) = frame.filter(|_| self.users.is_empty() && self.sf.len() > start) {
+                    let name = if id.is_empty() {
+                        item.clone()
+                    } else {
+                        id.clone()
+                    };
+                    self.frames.push((name, f, start, self.sf.len() - 1));
+                }
             }
             Block::Splitter { id, spec, place } => {
                 self.splitter_forward(id, spec, place, siblings, idx)?;
@@ -1875,6 +1898,11 @@ pub struct UserItem {
     /// 機構部品の寸法
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mech: Option<MechSpec>,
+    /// 枠付きの品（マウント済みのフィルタなど）の枠。`blocks` はガラスだけで、枠は z を枠の端から光の進む
+    /// 向きに書き、`holds.seat_z` にガラスの前面の位置を書く。プロジェクトに置くと、ガラスの最初の面に
+    /// 機構部品として付く（ケラレ・当たりの確認と描画）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<MechSpec>,
     /// 品の種類（一覧の分類。省略時はブロックから: 鏡・BS のブロック 1 つならそれ、ほかは玉）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<catalog_spec::ItemKind>,
@@ -2294,6 +2322,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
         back_spans: Vec::new(),
         gaps: Vec::new(),
         split: SplitState::default(),
+        frames: Vec::new(),
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;
@@ -3094,6 +3123,7 @@ fn expand_inner(
             strict,
             ..Default::default()
         },
+        frames: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -3316,6 +3346,7 @@ fn expand_inner(
         &c.back_spans,
         &mut warn,
     )?;
+    s.mechanics.extend(place_frames(&s, &c.frames, &mut warn));
     s.validate().map_err(|e| e.to_string())?;
     Ok((s, warn, npass, c.gaps))
 }
@@ -3393,6 +3424,34 @@ fn place_mechanics(
         out.push(part);
     }
     Ok(out)
+}
+
+/// 枠付きのユーザーカタログの品の枠を、ガラスの最初の面に置く（枠の座 `holds.seat_z` をガラスの前面に合わせる）。
+/// 保持する素子はその品の面
+fn place_frames(
+    s: &System,
+    frames: &[(String, MechSpec, usize, usize)],
+    warn: &mut Vec<String>,
+) -> Vec<lensbench_core::mech::MechPart> {
+    let mut out = Vec::new();
+    for (name, f, a, b) in frames {
+        let tag = format!("{name} の枠");
+        if let Err(e) = f.validate() {
+            warn.push(format!("{tag}: {e}（置かない）"));
+            continue;
+        }
+        let faces: Vec<usize> = (a + 1..=b + 1)
+            .filter(|&j| j < s.surfaces.len() && s.surfaces[j].typ != SurfType::CoordBrk)
+            .collect();
+        let Some(&first) = faces.first() else {
+            continue;
+        };
+        let seat = f.holds.map_or(0.0, |h| h.seat_z);
+        let mut part = f.part(&tag, first, [0.0, 0.0, -seat], [0.0, 0.0]);
+        part.holds = faces;
+        out.push(part);
+    }
+    out
 }
 
 /// ブロック block の面 i（座標ブレークを除いた番号、往路）の系の面の番号。ブロックが無ければ None
