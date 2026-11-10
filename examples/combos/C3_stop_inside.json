@@ -1,0 +1,509 @@
+{
+  "name": "C3 絞りを挟む 3 枚（有限物体）",
+  "wavelengths": [
+    {
+      "um": 0.4861327
+    },
+    {
+      "um": 0.5875618
+    },
+    {
+      "um": 0.6562725
+    }
+  ],
+  "primary": 2,
+  "aperture": {
+    "type": "na",
+    "value": 0.04
+  },
+  "fields": {
+    "type": "object_height",
+    "points": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        3.0
+      ],
+      [
+        0.0,
+        6.0
+      ]
+    ]
+  },
+  "object_distance": 100.0,
+  "glass_catalogs": [
+    "SCHOTT"
+  ],
+  "blocks": [
+    {
+      "type": "lens",
+      "id": "BCX-50",
+      "source": {
+        "vendor": "LB",
+        "part": "BCX-50"
+      }
+    },
+    {
+      "type": "air",
+      "t": 6.0
+    },
+    {
+      "type": "lens",
+      "id": "BCC-32",
+      "source": {
+        "vendor": "LB",
+        "part": "BCC-32"
+      },
+      "reversed": true
+    },
+    {
+      "type": "air",
+      "t": 4.0
+    },
+    {
+      "type": "stop",
+      "id": "STO1",
+      "semi": 5.0
+    },
+    {
+      "type": "air",
+      "t": 4.0
+    },
+    {
+      "type": "lens",
+      "id": "MEN-75",
+      "source": {
+        "vendor": "LB",
+        "part": "MEN-75"
+      }
+    },
+    {
+      "type": "air",
+      "t": 60.0
+    }
+  ],
+  "gui": {
+    "combo": {
+      "name": "C3 絞りを挟む 3 枚（有限物体）",
+      "picks": [
+        {
+          "kind": "catalog",
+          "vendor": "LB",
+          "part": "BCX-50",
+          "reversed": false,
+          "air": 6.0,
+          "r1": 50.0,
+          "r2": -50.0,
+          "t": 4.0,
+          "glass": "N-BK7",
+          "semi": 12.7,
+          "semi_auto": false,
+          "decenter": [
+            0.0,
+            0.0
+          ],
+          "tilt": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "arm_r": false,
+          "ratio": 0.5,
+          "path": "",
+          "lens": 1,
+          "locked": true,
+          "lock_place": false,
+          "conic": 0.0,
+          "bs_flip": false,
+          "coat": "",
+          "extra": null,
+          "ap": "circle",
+          "ap_half": [
+            5.0,
+            5.0
+          ],
+          "ap_min": 0.0,
+          "spider_width": 1.0,
+          "spider_arms": 4,
+          "edits": [],
+          "stop_front": false,
+          "config": 1,
+          "surfs": [],
+          "range": [
+            0,
+            0
+          ],
+          "ops": [],
+          "on": true,
+          "off_air": false,
+          "state_on": {},
+          "state_air": {},
+          "state_place": {},
+          "form": "cube",
+          "wedge": [
+            0.0,
+            0.0
+          ],
+          "split_back": false,
+          "bs_angle": [
+            45.0,
+            0.0
+          ],
+          "split": null,
+          "pbs": [
+            1.0,
+            0.0
+          ],
+          "ar": "",
+          "faces": {},
+          "branched": false,
+          "ports": [
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            }
+          ],
+          "back": false,
+          "group": "",
+          "zgroups": []
+        },
+        {
+          "kind": "catalog",
+          "vendor": "LB",
+          "part": "BCC-32",
+          "reversed": true,
+          "air": 4.0,
+          "r1": 50.0,
+          "r2": -50.0,
+          "t": 4.0,
+          "glass": "N-BK7",
+          "semi": 12.7,
+          "semi_auto": false,
+          "decenter": [
+            0.0,
+            0.0
+          ],
+          "tilt": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "arm_r": false,
+          "ratio": 0.5,
+          "path": "",
+          "lens": 1,
+          "locked": true,
+          "lock_place": false,
+          "conic": 0.0,
+          "bs_flip": false,
+          "coat": "",
+          "extra": null,
+          "ap": "circle",
+          "ap_half": [
+            5.0,
+            5.0
+          ],
+          "ap_min": 0.0,
+          "spider_width": 1.0,
+          "spider_arms": 4,
+          "edits": [],
+          "stop_front": false,
+          "config": 1,
+          "surfs": [],
+          "range": [
+            0,
+            0
+          ],
+          "ops": [],
+          "on": true,
+          "off_air": false,
+          "state_on": {},
+          "state_air": {},
+          "state_place": {},
+          "form": "cube",
+          "wedge": [
+            0.0,
+            0.0
+          ],
+          "split_back": false,
+          "bs_angle": [
+            45.0,
+            0.0
+          ],
+          "split": null,
+          "pbs": [
+            1.0,
+            0.0
+          ],
+          "ar": "",
+          "faces": {},
+          "branched": false,
+          "ports": [
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            }
+          ],
+          "back": false,
+          "group": "",
+          "zgroups": []
+        },
+        {
+          "kind": "stop",
+          "vendor": "",
+          "part": "",
+          "reversed": false,
+          "air": 4.0,
+          "r1": 50.0,
+          "r2": -50.0,
+          "t": 4.0,
+          "glass": "N-BK7",
+          "semi": 5.0,
+          "semi_auto": false,
+          "decenter": [
+            0.0,
+            0.0
+          ],
+          "tilt": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "arm_r": false,
+          "ratio": 0.5,
+          "path": "",
+          "lens": 1,
+          "locked": false,
+          "lock_place": false,
+          "conic": 0.0,
+          "bs_flip": false,
+          "coat": "",
+          "extra": null,
+          "ap": "circle",
+          "ap_half": [
+            5.0,
+            5.0
+          ],
+          "ap_min": 0.0,
+          "spider_width": 1.0,
+          "spider_arms": 4,
+          "edits": [],
+          "stop_front": false,
+          "config": 1,
+          "surfs": [],
+          "range": [
+            0,
+            0
+          ],
+          "ops": [],
+          "on": true,
+          "off_air": false,
+          "state_on": {},
+          "state_air": {},
+          "state_place": {},
+          "form": "cube",
+          "wedge": [
+            0.0,
+            0.0
+          ],
+          "split_back": false,
+          "bs_angle": [
+            45.0,
+            0.0
+          ],
+          "split": null,
+          "pbs": [
+            1.0,
+            0.0
+          ],
+          "ar": "",
+          "faces": {},
+          "branched": false,
+          "ports": [
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            }
+          ],
+          "back": false,
+          "group": "",
+          "zgroups": []
+        },
+        {
+          "kind": "catalog",
+          "vendor": "LB",
+          "part": "MEN-75",
+          "reversed": false,
+          "air": 60.0,
+          "r1": 50.0,
+          "r2": -50.0,
+          "t": 4.0,
+          "glass": "N-BK7",
+          "semi": 12.7,
+          "semi_auto": false,
+          "decenter": [
+            0.0,
+            0.0
+          ],
+          "tilt": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "arm_r": false,
+          "ratio": 0.5,
+          "path": "",
+          "lens": 1,
+          "locked": true,
+          "lock_place": false,
+          "conic": 0.0,
+          "bs_flip": false,
+          "coat": "",
+          "extra": null,
+          "ap": "circle",
+          "ap_half": [
+            5.0,
+            5.0
+          ],
+          "ap_min": 0.0,
+          "spider_width": 1.0,
+          "spider_arms": 4,
+          "edits": [],
+          "stop_front": false,
+          "config": 1,
+          "surfs": [],
+          "range": [
+            0,
+            0
+          ],
+          "ops": [],
+          "on": true,
+          "off_air": false,
+          "state_on": {},
+          "state_air": {},
+          "state_place": {},
+          "form": "cube",
+          "wedge": [
+            0.0,
+            0.0
+          ],
+          "split_back": false,
+          "bs_angle": [
+            45.0,
+            0.0
+          ],
+          "split": null,
+          "pbs": [
+            1.0,
+            0.0
+          ],
+          "ar": "",
+          "faces": {},
+          "branched": false,
+          "ports": [
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            },
+            {
+              "air": 20.0,
+              "picks": []
+            }
+          ],
+          "back": false,
+          "group": "",
+          "zgroups": []
+        }
+      ],
+      "mechanics": [],
+      "aperture": "na",
+      "ap_value": 0.04,
+      "epd": 5.0,
+      "stop_gap": 2.0,
+      "field_kind": "object_height",
+      "field_solve": {
+        "cond": "position",
+        "s1": "",
+        "s2": ""
+      },
+      "fields": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 1.0
+        },
+        {
+          "x": 0.0,
+          "y": 3.0,
+          "w": 1.0
+        },
+        {
+          "x": 0.0,
+          "y": 6.0,
+          "w": 1.0
+        }
+      ],
+      "waves": [
+        {
+          "um": 0.4861327,
+          "w": 1.0
+        },
+        {
+          "um": 0.5875618,
+          "w": 1.0
+        },
+        {
+          "um": 0.6562725,
+          "w": 1.0
+        }
+      ],
+      "primary": 2,
+      "object_distance": 100.0,
+      "telecentric": false,
+      "aiming": "off",
+      "afocal": null,
+      "path": "",
+      "glass_catalogs": [
+        "SCHOTT"
+      ],
+      "states": [],
+      "state": null,
+      "state_sys": {},
+      "state_path": {},
+      "coatings": {},
+      "groups": [],
+      "detector": null
+    }
+  }
+}

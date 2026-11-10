@@ -4294,7 +4294,26 @@ impl App {
                     }
                     if !self.c.samples.is_empty() {
                         ui.menu_button(tr("見本"), |ui| {
+                            // 組合せ・プロジェクト・.zmx の系の間に区切り
+                            let group = |f: &str| {
+                                if f.contains("/examples/combos/") {
+                                    0
+                                } else if f.ends_with(".json") {
+                                    1
+                                } else {
+                                    2
+                                }
+                            };
+                            let mut last = None;
                             for f in &self.c.samples {
+                                let g = group(f);
+                                if last.is_some_and(|l| l != g) {
+                                    ui.separator();
+                                }
+                                if last != Some(g) && g == 0 {
+                                    ui.weak(tr("組合せ（開くと組合せに戻る）"));
+                                }
+                                last = Some(g);
                                 let name = sample_name(f);
                                 if ui.button(name).on_hover_text(f).clicked() {
                                     ui.close_menu();
@@ -5848,4 +5867,88 @@ fn project_keeps_combo() {
     );
     assert_eq!(combo_of_project(&v), Some(c));
     assert_eq!(combo_of_project(&json!({ "blocks": [] })), None);
+}
+
+/// 見本の組合せ（examples/combos。Web 版の「見本」に出る、#134）
+#[cfg(test)]
+fn sample_combos() -> Vec<(&'static str, Combo)> {
+    use crate::sysset::{ApKind, FieldKind, FieldPt};
+    use combo::{ElemKind, Pick};
+    let cat = |part: &str, air: f64, reversed: bool| Pick {
+        vendor: "LB".into(),
+        part: part.into(),
+        air,
+        reversed,
+        locked: true,
+        ..Pick::default()
+    };
+    let mut c1 = Combo {
+        name: "C1 二枚のカタログレンズ".into(),
+        epd: 8.0,
+        stop_gap: 5.0,
+        fields: [0.0, 2.0, 4.0].map(FieldPt::y).to_vec(),
+        ..Default::default()
+    };
+    c1.picks = vec![cat("PCX-100", 3.0, false), cat("ACH-45", 30.0, true)];
+    let mut c2 = Combo {
+        name: "C2 折り曲げ鏡の後の玉".into(),
+        epd: 8.0,
+        stop_gap: 10.0,
+        fields: [0.0, 2.0, 3.0].map(FieldPt::y).to_vec(),
+        ..Default::default()
+    };
+    let mut m = Pick::new(ElemKind::Mirror);
+    m.semi = 10.0;
+    m.air = 20.0;
+    c2.picks = vec![m, cat("BCX-50", 45.0, false)];
+    let mut c3 = Combo {
+        name: "C3 絞りを挟む 3 枚（有限物体）".into(),
+        aperture: ApKind::Na,
+        ap_value: 0.04,
+        field_kind: FieldKind::ObjectHeight,
+        fields: [0.0, 3.0, 6.0].map(FieldPt::y).to_vec(),
+        object_distance: Some(100.0),
+        ..Default::default()
+    };
+    let mut st = Pick::new(ElemKind::Stop);
+    st.semi = 5.0;
+    st.air = 4.0;
+    c3.picks = vec![
+        cat("BCX-50", 6.0, false),
+        cat("BCC-32", 4.0, true),
+        st,
+        cat("MEN-75", 60.0, false),
+    ];
+    vec![
+        ("C1_catalog_two", c1),
+        ("C2_fold_mirror", c2),
+        ("C3_stop_inside", c3),
+    ]
+}
+
+/// examples/combos の見本は sample_combos から作ったもの（作り直すには LENSBENCH_UPDATE_SAMPLES=1 で cargo test）
+#[test]
+fn sample_combos_are_up_to_date() {
+    let dir = std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/combos"
+    ));
+    let update = std::env::var_os("LENSBENCH_UPDATE_SAMPLES").is_some();
+    for (name, c) in sample_combos() {
+        assert!(c.settings_problems().is_empty(), "{name}");
+        let want = serde_json::to_string_pretty(&project_with_combo(&c)).unwrap() + "\n";
+        let p = dir.join(format!("{name}.json"));
+        if update {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&p, &want).unwrap();
+        }
+        let got = std::fs::read_to_string(&p)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert_eq!(
+            got, want,
+            "{name}: examples/combos が古い。LENSBENCH_UPDATE_SAMPLES=1 cargo test -p lensbench-gui sample_combos で作り直す"
+        );
+        lensbench_project::Project::from_json(&got).unwrap();
+    }
 }

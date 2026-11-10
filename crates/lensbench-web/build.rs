@@ -1,4 +1,4 @@
-//! 同梱する見本（公開用ガラス tests/glass、例題のレンズ・プロジェクト、tests/refs の系）の一覧を作る。
+//! 同梱する見本（公開用ガラス tests/glass、例題のレンズ・組合せ・プロジェクト、tests/refs の系）の一覧を作る。
 //! ファイルを足せば自動で同梱される
 
 use std::fmt::Write;
@@ -27,6 +27,9 @@ fn main() {
         p.extension().is_some_and(|x| x.eq_ignore_ascii_case("agf"))
     });
     walk(&root.join("examples/lenses"), &mut files, &|_| true);
+    walk(&root.join("examples/combos"), &mut files, &|p| {
+        p.extension().is_some_and(|x| x == "json")
+    });
     walk(&root.join("examples/projects"), &mut files, &|p| {
         p.extension().is_some_and(|x| x == "json")
     });
@@ -54,6 +57,7 @@ fn main() {
     for d in [
         "tests/glass",
         "examples/lenses",
+        "examples/combos",
         "examples/projects",
         "tests/refs",
     ] {

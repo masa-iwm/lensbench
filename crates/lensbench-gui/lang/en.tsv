@@ -1167,3 +1167,4 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？	Unsaved changes to the opened system will not be included (it is imported from the file). Continue?
 開いた系を組合せの要素にした（系の取り込み）	Made the opened system an element of the combination (system import)
 開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる	Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it
+組合せ（開くと組合せに戻る）	Combinations (open as a combination)
