@@ -521,8 +521,9 @@ enum Cmd {
     Pop {
         #[command(flatten)]
         c: Common,
-        /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で像面の前で厚さのある最後の面
-        /// （--dist も --to もなければ像面まで伝える）
+        /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で、間に平面のダミー面だけを挟んで
+        /// 像面まで伝えられる最後の面（--dist も --to もなければ像面まで伝える）。像面まで伝えられる面が無ければ、
+        /// 次の面まで伝えられる最後の面から次の面まで
         #[arg(long)]
         surf: Option<usize>,
         /// 視野の番号（1 始まり、既定 1）
@@ -2622,16 +2623,26 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             grid,
         } => {
             let s = load(&c)?;
-            // --surf を省くと、像面の前で厚さのある最後の面から像面まで伝える（間の厚さ 0 のダミー面は飛ばす）
+            // --surf を省くと、像面まで伝えられる最後の面（間は平面のダミー面だけで、距離が 0 でない面）から像面まで
             let (surf, to) = match surf {
                 Some(j) => (j, to),
                 None => {
                     let img = s.image();
-                    let j = (1..img)
-                        .rev()
-                        .find(|&j| s.surfaces[j].t != 0.0)
-                        .ok_or("--surf（像面の前に厚さのある面がない）")?;
-                    (j, to.or((dist.is_none()).then_some(img)))
+                    let ok = |j: usize, t: usize| {
+                        [1.0, -1.0]
+                            .iter()
+                            .any(|&dir| pop::distance_to(&s, j, t, dir).is_ok())
+                    };
+                    // 像面まで伝えられなければ（像面の手前に曲面など）、次の面まで伝えられる最後の面から次の面まで
+                    let (j, t) = match (1..img).rev().find(|&j| ok(j, img)) {
+                        Some(j) => (j, img),
+                        None => (1..img)
+                            .rev()
+                            .find(|&j| ok(j, j + 1))
+                            .map(|j| (j, j + 1))
+                            .ok_or("--surf を指定する（次の面まで伝えられる面がない）")?,
+                    };
+                    (j, to.or((dist.is_none()).then_some(t)))
                 }
             };
             let sel = Sel {
