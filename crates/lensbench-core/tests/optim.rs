@@ -116,6 +116,8 @@ fn check_jac(name: &str, s: &System, kind: TermKind) {
     let pd = s.param(&format!("{}.dy", stop_of(s) + 1)).unwrap();
     let s = &s.with_params(&[(pd, 0.01)]).unwrap();
     let mut p = Problem::single(s.clone());
+    // 列が少なくても解析的に求める（解析的な微分を確かめる）
+    p.analytic_min = 0;
     for v in vars(s) {
         p.add_var(&v).unwrap();
     }
@@ -373,6 +375,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\nSURF 5\n  TYPE STANDARD\n  CURV 
     ] {
         for reference in [RmsRef::Centroid, RmsRef::Chief] {
             let mut p = Problem::single(base.clone());
+            p.analytic_min = 0;
             for v in ["2.t", "3.c", "3.t", "3.dy", "4.tx"] {
                 p.add_var(v).unwrap();
             }
@@ -423,4 +426,27 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\nSURF 5\n  TYPE STANDARD\n  CURV 
             }
         }
     }
+}
+
+/// auto でも解析的に求める列が analytic_min より少なければ中心差分（fd と同じ値）
+#[test]
+fn auto_uses_fd_for_few_columns() {
+    let s = load("C0");
+    let mut p = Problem::single(s.clone());
+    for v in vars(&s) {
+        p.add_var(&v).unwrap();
+    }
+    p.add_default(DefaultMerit::Spot, 4, RmsRef::Centroid);
+    let x = p.x0().unwrap();
+    assert!(p.vars.len() < p.analytic_min);
+    let (ra, ja) = p.jacobian(&x).unwrap();
+    p.jac = JacMode::FiniteDiff;
+    let (rf, jf) = p.jacobian(&x).unwrap();
+    assert_eq!(ra, rf);
+    assert_eq!(ja, jf);
+    // 0 なら解析的（差分とは丸めの桁で違う）
+    p.jac = JacMode::Auto;
+    p.analytic_min = 0;
+    let (_, jz) = p.jacobian(&x).unwrap();
+    assert_ne!(jz, jf);
 }
