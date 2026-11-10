@@ -147,6 +147,17 @@ fn cross(a: V3, b: V3) -> V3 {
         a[0] * b[1] - a[1] * b[0],
     ]
 }
+/// 単位の向き a に直交する単位の向き（決まった選び方）
+fn perp(a: V3) -> V3 {
+    let t = if a[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    let c = cross(a, t);
+    scale(c, 1.0 / dot(c, c).sqrt())
+}
+
 pub(crate) fn unit(a: V3) -> Option<V3> {
     let n = dot(a, a).sqrt();
     (n > 0.0 && n.is_finite()).then(|| [a[0] / n, a[1] / n, a[2] / n])
@@ -718,6 +729,9 @@ pub(crate) struct Measure {
     pub mech: bool,
     /// 機構部品の付属の止め輪（枠に含めない）
     pub retaining_rings: Vec<RetainingRing>,
+    /// 枠・機構部品の座標（STEP の座標・単位）: 光軸の上の点・光軸の向き・局所の x 軸・枠の端の z（光軸の向きの
+    /// `dot(p - o, axis)`）。`frame` の寸法はこの座標で測っている
+    pub axes: Option<(V3, V3, V3, f64)>,
 }
 
 fn fmt(x: f64) -> String {
@@ -1035,6 +1049,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             merged: merged > 0,
             mech: false,
             retaining_rings: Vec::new(),
+            axes: Some((o, axis, perp(axis), all0)),
         });
     }
     // ガラスの無い機構部品（チューブ・ケージ板・マウント）: 全体を枠として測る
@@ -1076,15 +1091,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             .collect();
         if !bores.is_empty() {
             // 光軸に直交する 2 方向
-            let ex = {
-                let t = if axis[0].abs() < 0.9 {
-                    [1.0, 0.0, 0.0]
-                } else {
-                    [0.0, 1.0, 0.0]
-                };
-                let c = cross(axis, t);
-                scale(c, 1.0 / dot(c, c).sqrt())
-            };
+            let ex = perp(axis);
             let ey = cross(axis, ex);
             let plane = |p: V3| {
                 let d = sub(p, o);
@@ -1144,7 +1151,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 .collect();
             // 外形: 光軸に直交する向きの幅の最小（ケージ板・キューブは一辺。取付けの出っ張りを除く）と、
             // 光軸と同じ軸の円の直径の大きい方（円柱は頂点が少ないので）
-            let min_width = (0..180)
+            let (min_width, min_t) = (0..180)
                 .map(|i| {
                     let t = (i as f64).to_radians();
                     let (c, s) = (t.cos(), t.sin());
@@ -1155,9 +1162,18 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                                 let x = q[0] * c + q[1] * s;
                                 (lo.min(x), hi.max(x))
                             });
-                    hi - lo
+                    (hi - lo, t)
                 })
-                .fold(f64::INFINITY, f64::min);
+                .fold((f64::INFINITY, 0.0), |a, b| if b.0 < a.0 { b } else { a });
+            // 局所の x 軸: 幅の最小の向き（角の部品の辺に直交）
+            let xdir = {
+                let (c, s) = (min_t.cos(), min_t.sin());
+                [
+                    ex[0] * c + ey[0] * s,
+                    ex[1] * c + ey[1] * s,
+                    ex[2] * c + ey[2] * s,
+                ]
+            };
             let circ = 2.0 * sols.iter().map(|s| s.r).fold(0.0, f64::max);
             let outer = if min_width.is_finite() {
                 min_width.max(circ)
@@ -1348,6 +1364,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 merged: false,
                 mech: true,
                 retaining_rings: retaining,
+                axes: Some((o, axis, xdir, all0)),
             });
         }
     }
@@ -1389,7 +1406,43 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         merged: false,
         mech: false,
         retaining_rings: Vec::new(),
+        axes: None,
     })
+}
+
+/// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列、
+/// `[R | t]`）。部品の座標は [`measure`] で枠・機構部品として測った座標（z は枠の端から光軸の向き、x は角の部品の
+/// 辺に直交）。同じ殻が組立で何度も置かれていれば、置き方ごとに 1 つ
+pub(crate) fn shell_poses(
+    upper: &str,
+    k: f64,
+) -> Result<Vec<crate::catalog_fill::ShellPose>, String> {
+    let m = measure(upper, k, |x| x)?;
+    let Some((o, axis, x, z0)) = m.axes else {
+        return Err("STEP から枠・機構部品の座標が決まらない（穴のある立体が無い）".into());
+    };
+    let y = cross(axis, x);
+    let st = Step::parse(upper)?;
+    let mut out = Vec::new();
+    for (solid, rg) in st.instances() {
+        let Some(shell) = st.ents.get(&solid).and_then(|ps| {
+            ps.iter()
+                .find(|(n, _)| SOLIDS.contains(&n.as_str()))
+                .and_then(|(_, a)| a.get(1).and_then(Arg::r))
+        }) else {
+            continue;
+        };
+        // p → k·B·(R p + t − o) − k·z0·e_z（B の行は x・y・axis）
+        let mut mtx = [[0.0; 4]; 3];
+        for (i, b) in [x, y, axis].into_iter().enumerate() {
+            for (j, v) in mtx[i].iter_mut().take(3).enumerate() {
+                *v = k * (0..3).map(|l| b[l] * rg.r[l][j]).sum::<f64>();
+            }
+            mtx[i][3] = k * dot(b, sub(rg.t, o)) - if i == 2 { k * z0 } else { 0.0 };
+        }
+        out.push((shell, mtx));
+    }
+    Ok(out)
 }
 
 trait SubSq {
@@ -1442,6 +1495,7 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
         merged: false,
         mech: false,
         retaining_rings: Vec::new(),
+        axes: None,
     })
 }
 

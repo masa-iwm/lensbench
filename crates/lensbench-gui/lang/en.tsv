@@ -1097,3 +1097,5 @@ STEP（公式）	STEP (official)
 （キャッシュ）	 (cached)
 📄 図面（PDF）	📄 Drawing (PDF)
 📥 詳しい形（STEP）を取る	📥 Fetch detailed shape (STEP)
+機構部品を詳しい形で	Detailed mech shapes
+カタログの品の STEP を取ってあれば（カタログの詳細の「詳しい形（STEP）を取る」）、3D の表示と書き出しで機構部品をその形で描きます。無い部品は簡易外形のまま	If the catalog item's STEP has been fetched ("Fetch detailed shape (STEP)" in the catalog details), mechanical parts are drawn with that shape in the 3D view and exports. Parts without it keep the simple outline

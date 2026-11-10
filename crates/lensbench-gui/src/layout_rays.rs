@@ -61,6 +61,8 @@ pub struct RaySet {
     pub rings: usize,
     /// 書き出しの 3D の光線の管の半径 [mm]（0 は既定）
     pub tube: f64,
+    /// 機構部品を、取った品の STEP の詳しい形で描く（3D の表示と、3D・STEP の書き出し）
+    pub mech_detail: bool,
 }
 
 impl RaySet {
@@ -95,6 +97,9 @@ impl RaySet {
         }
         if !self.color.is_empty() {
             v["color"] = json!(self.color);
+        }
+        if self.mech_detail {
+            v["mech_detail"] = json!(true);
         }
         if export {
             for (k, x) in [
@@ -140,6 +145,10 @@ impl RaySet {
             ui.separator();
             ui.label(tr("色分け"));
             combo(ui, "lr_color", &mut self.color, COLORS);
+            ui.separator();
+            #[cfg(not(target_arch = "wasm32"))]
+            ui.checkbox(&mut self.mech_detail, tr("機構部品を詳しい形で"))
+                .on_hover_text(tr("カタログの品の STEP を取ってあれば（カタログの詳細の「詳しい形（STEP）を取る」）、3D の表示と書き出しで機構部品をその形で描きます。無い部品は簡易外形のまま"));
         });
         ui.horizontal_wrapped(|ui| {
             ui.weak(tr("書き出し"));

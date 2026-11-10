@@ -165,7 +165,13 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `%APPDATA%\lensbench\cad`・ほかは `~/.cache/lensbench/cad`。GUI は設定のフォルダの `cad`）に置く。キャッシュのファイルは品の名前と
   URL で決まり、2 回目からはキャッシュを使う（URL が変われば取り直す）。裏でまとめて取りには行かない。取った STEP は `catalog-step` と
   同じ読み方で測り、簡易外形と長さ・外径が 0.05 mm より違うか、外形の形（丸・角）が違えば知らせる。取れなければ（中身が STEP で
-  ない・つながらない）誤りで、品ページの URL を示す（表示は簡易外形のまま）
+  ない・つながらない）誤りで、品ページの URL を示す（表示は簡易外形のまま）。
+  STEP を取ってある品を `mechanics` に置き、`lensbench layout --mech-detail`（serve の `layout`・`layout_export` の
+  `mech_detail`、GUI のレイアウトの設定の「機構部品を詳しい形で」）で描くと、3D（glTF・OBJ・STL と GUI の 3D 表示）は
+  STEP を三角形にした形（面からのずれ 0.2 mm まで。三角形にできない面・境の読めない面は除く）、STEP の書き出しは元の立体を
+  写したもの（名前は「部品の名前 detail 番号」）で描く。STEP の立体は catalog-step と同じ測り方で部品の座標（z は枠の端から光軸の向き、
+  x は角の部品の辺に直交）に置くので、簡易外形と同じ所に重なる（`reversed` なら裏返す）。2D の断面図・`mech-check` の
+  ケラレ・当たりは簡易外形のまま
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

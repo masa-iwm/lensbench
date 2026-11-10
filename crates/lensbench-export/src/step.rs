@@ -27,14 +27,64 @@ pub struct StepReport {
 pub struct OptionsStep {
     /// 非球面の断面を補間する区間の数
     pub profile_segments: usize,
+    /// 機構部品を、取った品の STEP の立体で書く（[`crate::detail`]。無い部品は簡易外形）
+    pub mech_detail: bool,
 }
 
 impl Default for OptionsStep {
     fn default() -> Self {
         OptionsStep {
             profile_segments: 64,
+            mech_detail: false,
         }
     }
+}
+
+impl crate::step_embed::Sink for Ents {
+    fn next_id(&self) -> usize {
+        self.lines.len() + 1
+    }
+    fn push(&mut self, body: String) -> usize {
+        self.add(body)
+    }
+}
+
+/// 機構部品を取った品の STEP の立体で書く（写した立体の番号）。STEP が無いか写せなければ None
+fn embed_mech(e: &mut Ents, m: &MechShape) -> Option<Vec<usize>> {
+    let (file, flip) = m.step.as_ref()?;
+    let d = crate::detail::load(file)?;
+    let src = d.step.as_ref()?;
+    let ents = crate::step_embed::entities(&src.text);
+    // 部品の座標 → 大域: 裏返しは x 軸のまわりの 180°（z → 長さ − z）
+    let len = m.rings.iter().map(|q| q[1]).fold(0.0, f64::max);
+    let fr = &m.frame;
+    let (r, o) = if *flip {
+        let mut r = fr.r;
+        for row in r.iter_mut() {
+            row[1] = -row[1];
+            row[2] = -row[2];
+        }
+        (
+            r,
+            add(fr.o, scale(lensbench_core::math::col(&fr.r, 2), len)),
+        )
+    } else {
+        (fr.r, fr.o)
+    };
+    let mut out = Vec::new();
+    for (k, (shell, mt)) in src.shells.iter().enumerate() {
+        let name = text(&format!("{} detail {}", m.name, k + 1));
+        out.push(crate::step_embed::embed_shell(
+            e,
+            &ents,
+            (*shell, mt),
+            src.unit_mm,
+            (&r, o),
+            &name,
+            real,
+        )?);
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 /// STEP の実数（小数点と大文字の E が要る）
@@ -901,6 +951,13 @@ pub fn write_step<W: Write>(w: &mut W, sc: &Scene, o: &OptionsStep) -> std::io::
         rep.solids += 1;
     }
     for m in &sc.mechs {
+        if o.mech_detail {
+            if let Some(v) = embed_mech(&mut e, m) {
+                rep.mechs += v.len();
+                items.extend(v);
+                continue;
+            }
+        }
         for (k, q) in m.rings.iter().enumerate() {
             items.push(solid_ring(&mut e, m, k, *q));
             rep.mechs += 1;

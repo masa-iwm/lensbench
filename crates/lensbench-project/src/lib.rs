@@ -2141,6 +2141,8 @@ impl MechSpec {
             hold_radius: self.holds.map_or(0.0, |h| h.diameter / 2.0),
             rod_spacing: self.rod_spacing,
             square: self.outline == MechOutline::Square,
+            step: String::new(),
+            step_flip: false,
             holds: Vec::new(),
         }
     }
@@ -3498,6 +3500,8 @@ fn place_mechanics(
     let mut specs: Vec<MechSpec> = Vec::new();
     for (k, m) in ms.iter().enumerate() {
         let tag = format!("mechanics {}", k + 1);
+        // 取ってキャッシュにある品の STEP（詳しい形の描画に使う、#121）
+        let mut step_file = String::new();
         let (spec, item_name) = match (&m.mech, &m.catalog, &m.item) {
             (Some(x), None, None) => (x.clone(), String::new()),
             (None, Some(cat), Some(item)) => {
@@ -3511,6 +3515,16 @@ fn place_mechanics(
                     .mech
                     .clone()
                     .ok_or_else(|| format!("{tag}: 品 {item} は機構部品でない（mech がない）"))?;
+                if !it.cad.step.trim().is_empty() {
+                    let f = catalog_fill::cad_cache_path(
+                        &catalog_fill::cad_cache_dir(),
+                        item,
+                        &it.cad.step,
+                    );
+                    if f.is_file() {
+                        step_file = f.display().to_string();
+                    }
+                }
                 (x, item.clone())
             }
             _ => {
@@ -3610,6 +3624,8 @@ fn place_mechanics(
                     None => warn.push(format!("{tag}: holds のブロック {b} が無い")),
                 }
             }
+            part0.step = step_file;
+            part0.step_flip = m.reversed;
             out.push(part0);
             specs.push(spec);
             continue;
@@ -3671,6 +3687,8 @@ fn place_mechanics(
                 None => warn.push(format!("{tag}: holds のブロック {b} が無い")),
             }
         }
+        part.step = step_file;
+        part.step_flip = m.reversed;
         out.push(part);
         specs.push(spec);
     }

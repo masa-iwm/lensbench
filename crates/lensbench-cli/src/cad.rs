@@ -11,46 +11,14 @@ use std::path::{Path, PathBuf};
 /// 取るファイルの大きさの上限（STEP は 1 品あたり数 MB）
 const MAX_BYTES: u64 = 64 << 20;
 
-/// キャッシュのフォルダ: 環境変数 `LENSBENCH_CAD_CACHE`、なければ OS の設定の場所
-/// （Windows は `%APPDATA%\lensbench\cad`、ほかは `$XDG_CACHE_HOME/lensbench/cad` か `~/.cache/lensbench/cad`）
+/// キャッシュのフォルダ（[`catalog_fill::cad_cache_dir`]。GUI は設定のフォルダの `cad` に決める）
 pub fn default_cache_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("LENSBENCH_CAD_CACHE").filter(|d| !d.is_empty()) {
-        return PathBuf::from(d);
-    }
-    let env = |k: &str| {
-        std::env::var_os(k)
-            .filter(|d| !d.is_empty())
-            .map(PathBuf::from)
-    };
-    let base = if cfg!(windows) {
-        env("APPDATA")
-    } else {
-        env("XDG_CACHE_HOME").or_else(|| env("HOME").map(|h| h.join(".cache")))
-    };
-    base.unwrap_or_else(std::env::temp_dir)
-        .join("lensbench")
-        .join("cad")
+    catalog_fill::cad_cache_dir()
 }
 
-/// キャッシュのファイル: `<品の名前（ファイル名に使えない文字は _）>-<URL の FNV-1a 64 の 16 進>.step`
+/// キャッシュのファイル（[`catalog_fill::cad_cache_path`]）
 pub fn cache_path(dir: &Path, item: &str, url: &str) -> PathBuf {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in url.trim().bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
-    let name: String = item
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || "-_.+".contains(c) {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(64)
-        .collect();
-    dir.join(format!("{name}-{h:016x}.step"))
+    catalog_fill::cad_cache_path(dir, item, url)
 }
 
 /// 取った STEP
@@ -188,6 +156,103 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
         return Err("取った中身が STEP（ISO-10303-21）でない（ログインの要るページなど）".into());
     }
     Ok(b)
+}
+
+/// 詳しい形の三角形の細かさ [mm]（面からのずれの許し）
+const DETAIL_TOL_MM: f64 = 0.2;
+
+/// STEP の文字を部品の座標の三角形にする（[`catalog_fill::step_shell_poses`] の置き方で、殻ごとに三角形にして置く）。
+/// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
+pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, String> {
+    use truck_meshalgo::prelude::*;
+    use truck_stepio::r#in::Table;
+    let poses = catalog_fill::step_shell_poses(text)?;
+    let all_poses = poses.clone();
+    let upper_unit = catalog_fill::read_step(text)
+        .map(|s| s.unit_mm)
+        .unwrap_or(1.0);
+    let table = Table::from_step(text).ok_or("STEP を読めない（truck）")?;
+    let tol = DETAIL_TOL_MM / upper_unit;
+    let mut meshed: std::collections::HashMap<u64, Vec<[[f64; 3]; 3]>> = Default::default();
+    let mut tris = Vec::new();
+    for (shell, m) in poses {
+        if let std::collections::hash_map::Entry::Vacant(slot) = meshed.entry(shell) {
+            let Some(sh) = table.shell.get(&shell) else {
+                continue;
+            };
+            let Ok(cs) = table.to_compressed_shell(sh) else {
+                continue;
+            };
+            let ms = cs.robust_triangulation(tol);
+            let mut bb = BoundingBox::<Point3>::new();
+            for e in &ms.edges {
+                e.curve.iter().for_each(|p| bb.push(*p));
+            }
+            let d = bb.diameter() * 0.01;
+            let (lo, hi) = (bb.min(), bb.max());
+            let mut v = Vec::new();
+            for f in &ms.faces {
+                let Some(poly) = &f.surface else { continue };
+                let ps = poly.positions();
+                if ps
+                    .iter()
+                    .any(|p| (0..3).any(|i| p[i] < lo[i] - d || p[i] > hi[i] + d))
+                {
+                    continue;
+                }
+                for t in poly.faces().triangle_iter() {
+                    let q = |k: usize| {
+                        let p = ps[t[k].pos];
+                        [p[0], p[1], p[2]]
+                    };
+                    v.push([q(0), q(1), q(2)]);
+                }
+            }
+            slot.insert(v);
+        }
+        let apply = |p: [f64; 3]| {
+            let mut q = [0.0; 3];
+            for (i, r) in m.iter().enumerate() {
+                q[i] = r[0] * p[0] + r[1] * p[1] + r[2] * p[2] + r[3];
+            }
+            q
+        };
+        tris.extend(meshed[&shell].iter().map(|t| t.map(apply)));
+    }
+    if tris.is_empty() {
+        return Err("STEP を三角形にできない".into());
+    }
+    Ok(lensbench_export::detail::Detail {
+        tris,
+        step: Some(lensbench_export::step_embed::StepSource {
+            text: std::sync::Arc::new(text.to_string()),
+            unit_mm: upper_unit,
+            shells: all_poses,
+        }),
+    })
+}
+
+/// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに 1 回だけ読んで覚える
+pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    type Memo = Mutex<HashMap<String, Option<Arc<lensbench_export::detail::Detail>>>>;
+    static MEMO: OnceLock<Memo> = OnceLock::new();
+    let memo = MEMO.get_or_init(Default::default);
+    if let Some(d) = memo.lock().ok()?.get(path) {
+        return d.clone();
+    }
+    let d = std::fs::read(path)
+        .ok()
+        .and_then(|b| detail_of_step(&String::from_utf8_lossy(&b)).ok())
+        .map(Arc::new);
+    memo.lock().ok()?.insert(path.to_string(), d.clone());
+    d
+}
+
+/// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
+pub fn install_detail_loader() {
+    lensbench_export::detail::set_loader(load_detail);
 }
 
 #[cfg(test)]

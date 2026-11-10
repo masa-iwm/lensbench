@@ -27,6 +27,7 @@ lensbench catalog-search lenses --kind polarizer --spec wavelength_nm=633 --spec
 lensbench catalog-search lenses --fits 25.4                    # 径 25.4 mm の素子が入るチューブ・マウント・ケージ板
 lensbench catalog-step item.step --json                       # 品の STEP を測る（枠付きの品はガラスと枠、機構部品は穴・長さ・外径・ねじ・ロッドの間隔）
 lensbench cad-step --catalog thorlabs.json --item CP02F       # 品の公式の STEP を 1 件だけ取ってキャッシュし、簡易外形と比べる
+lensbench layout project.json --mech-detail --out tubes.glb --out tubes.step   # 機構部品を取った STEP の詳しい形で
 lensbench mech-check project.json --grid 31                    # 機構部品（チューブ・ケージ板）で切れる光線の割合
 lensbench coat-kinks scan.ctab
 lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5

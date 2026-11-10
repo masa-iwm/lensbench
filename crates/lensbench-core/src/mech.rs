@@ -53,6 +53,18 @@ pub struct MechPart {
         serde(default, skip_serializing_if = "std::ops::Not::not")
     )]
     pub square: bool,
+    /// 部品の詳しい形の STEP（品の公式の STEP を取ったキャッシュのファイル）。描画で詳しい形を選ぶと使う
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "String::is_empty")
+    )]
+    pub step: String,
+    /// STEP の形を裏返して置く（部品を `reversed` で置いた。z → 長さ − z、y → −y）
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub step_flip: bool,
     /// 保持する素子の面（系の面の番号）。はみ出し・保持径の確認に使う
     #[cfg_attr(
         feature = "serde",

@@ -167,5 +167,81 @@ fn step_is_fetched_once_and_cached() {
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_slice(&o.stdout).unwrap();
     assert_eq!(v["cached"], true, "{v}");
+    detail_is_drawn(&dir, &cat, &cache);
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 詳しい形（#121）: キャッシュに STEP のある品を置き、layout --mech-detail で STL・STEP に取った STEP の形を書く
+fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::path::Path) {
+    let p = dir.join("placed.json");
+    std::fs::write(
+        &p,
+        json!({
+            "wavelengths": [{ "um": 0.5876 }],
+            "aperture": { "type": "epd", "value": 10 },
+            "blocks": [{ "type": "stop" }, { "type": "air", "t": 20 }],
+            "mechanics": [{ "name": "a", "catalog": cat.to_str().unwrap(), "item": "CP-A",
+                            "at": { "surface": 1 }, "offset": [0, 0, 5] }],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let layout = |out: &str, detail: bool| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_lensbench"));
+        c.args([
+            "layout",
+            p.to_str().unwrap(),
+            "--glass-dir",
+            "tests/glass",
+            "--rays",
+            "0",
+        ])
+        .arg("--out")
+        .arg(dir.join(out))
+        .env("LENSBENCH_CAD_CACHE", cache)
+        .current_dir(root());
+        if detail {
+            c.arg("--mech-detail");
+        }
+        let o = c.output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        std::fs::read(dir.join(out)).unwrap()
+    };
+    // STL: 三角形の数が簡易外形と違い、z は 5〜13.89
+    let stl_tris = |b: &[u8]| u32::from_le_bytes(b[80..84].try_into().unwrap());
+    let simple = layout("s.stl", false);
+    let det = layout("d.stl", true);
+    assert_ne!(stl_tris(&simple), stl_tris(&det));
+    let n = stl_tris(&det) as usize;
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for t in 0..n {
+        let o = 84 + 50 * t + 12;
+        for v in 0..3 {
+            let z = f32::from_le_bytes(b4(&det[o + 12 * v + 8..]));
+            // 絞りの面（z 0）と像面（z 20）の円板を除く
+            if z.abs() > 1e-4 && (z - 20.0).abs() > 1e-4 {
+                lo = lo.min(z);
+                hi = hi.max(z);
+            }
+        }
+    }
+    assert!((lo - 5.0).abs() < 1e-3, "{lo}");
+    assert!((hi - 13.89).abs() < 1e-3, "{hi}");
+    // STEP: 取った STEP の立体を写し、測り直すと品の寸法
+    let st = String::from_utf8(layout("d.step", true)).unwrap();
+    assert!(
+        st.contains("MANIFOLD_SOLID_BREP('a detail 1'"),
+        "写した立体"
+    );
+    let s = lensbench_project::catalog_fill::read_step(&st).unwrap();
+    let f = s.frame.clone().expect("枠");
+    assert_eq!((f.length, f.outer_diameter), (8.89, 40.64), "{s:?}");
+    assert_eq!(f.outline, lensbench_project::MechOutline::Square);
+    // 詳しい形を選ばなければ簡易外形
+    let st0 = String::from_utf8(layout("s.step", false)).unwrap();
+    assert!(!st0.contains("detail") && st0.contains("MANIFOLD_SOLID_BREP('a 1'"));
+}
+
+fn b4(b: &[u8]) -> [u8; 4] {
+    [b[0], b[1], b[2], b[3]]
 }

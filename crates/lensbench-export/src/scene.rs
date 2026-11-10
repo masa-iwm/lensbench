@@ -585,6 +585,8 @@ pub struct MechShape {
     pub rings: Vec<[f64; 4]>,
     /// 外側が角（外側の半径は正方形の一辺の半分、辺は局所の x・y 軸に沿う）
     pub square: bool,
+    /// 詳しい形の STEP のファイルと、裏返して置くか（[`crate::detail`]）
+    pub step: Option<(String, bool)>,
 }
 
 impl MechShape {
@@ -1010,6 +1012,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
             frame: maps[j].1.frame(Frame { o, r }),
             rings: p.profile(),
             square: p.square,
+            step: (!p.step.is_empty()).then(|| (p.step.clone(), p.step_flip)),
         });
     }
     Ok(Scene {

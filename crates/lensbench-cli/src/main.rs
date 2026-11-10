@@ -543,6 +543,10 @@ enum Cmd {
         /// 光線を管にする半径 [mm]（3D。STL は省略時に場面の大きさの 0.1%）
         #[arg(long)]
         tube: Option<f64>,
+        /// 機構部品を、取った品の STEP の詳しい形で描く（3D の glTF・OBJ・STL と STEP。キャッシュに STEP の無い部品は
+        /// 簡易外形。STEP は lensbench cad-step で取る）
+        #[arg(long)]
+        mech_detail: bool,
     },
     /// 簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 --dist
     /// （省略で次の面の頂点面まで）伝えた照度。--save で格子（csv・npz）か全部（json）を書き出す
@@ -1686,6 +1690,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             segments,
             rings,
             tube,
+            mech_detail,
         } => {
             let systems = overlay_systems(&c, &l.sel)?;
             let color: d2::ColorBy = match &l.color {
@@ -1714,6 +1719,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 rings,
                 tube,
                 color,
+                mech_detail,
             };
             // 拡張子を先に確かめ、2D 用と 3D 用の場面を要るものだけ作る
             let fmts = out
@@ -3526,6 +3532,9 @@ where
 
 pub fn main() -> ExitCode {
     let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
+    // 機構部品の詳しい形（取った STEP）を描けるように
+    #[cfg(not(target_arch = "wasm32"))]
+    cad::install_detail_loader();
     // run はスレッド数を自分では使わず、起動する Python に渡す
     if let Cmd::Run(a) = &cli.cmd {
         return match run::run(a, cli.threads) {
