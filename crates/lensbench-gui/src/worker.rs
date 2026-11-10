@@ -61,6 +61,8 @@ pub enum Tag {
     Swap,
     /// モンテカルロ公差（serve の tolerance）
     Tolerance,
+    /// ズーム軌跡（serve の zoom）
+    Zoom,
 }
 
 impl Tag {

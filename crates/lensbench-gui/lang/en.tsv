@@ -418,7 +418,6 @@ T {}	T {}
 平面鏡: 径 {} mm	Flat mirror: dia. {} mm
 理想の面	ideal surface
 膜 {}	coating {}
-膜ファイル（COATING.DAT など）・膜モデルの膜の名前。空なら理想の鏡・分岐比のまま	Coating name from a coating file (COATING.DAT etc.) or a coating model. Empty keeps the ideal mirror / split ratio
 偏心 x	Decenter x
 内側の半径	Inner radius
 円の遮蔽	Circular obscuration
@@ -658,14 +657,12 @@ d1.t・G2.shift	d1.t, G2.shift
 OFF の要素は系に入らない（光学系の出し入れ）	An OFF element is left out of the system (insert/remove optics)
 OFF は空気で残す	OFF leaves air
 OFF は詰める	OFF collapses
-この状態で変えた ON/OFF・後の空気をやめる	Drop the ON/OFF and following air changed in this state
 基本	Base
 基本の値に	Use base values
 往路を戻る	Return along the path
 状態 {} での ON/OFF（OFF の要素は系に入らない）	ON/OFF in state {} (an OFF element is left out of the system)
 状態 {} の値	Values of state {}
 状態 {} を消す	Delete state {}
-状態ごとに要素の ON/OFF と後の空気を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系	Each state can change element ON/OFF and following air (inserting measurement optics, zoom, etc.). Base is the system with no state
 状態の名前	State name
 ＋ 状態	+ State
 OFF の要素を選ぶ（下の設定で ON に戻せる）	Select an OFF element (turn it back ON in the settings below)
@@ -880,3 +877,90 @@ y の断面	y section
 粗いふるい	Coarse prescreen
 全組を少ないリング数で最適化し、評価関数の小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）	Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)
 残す組	Keep
+この状態で変えた ON/OFF・後の空気・偏心・傾きをやめる	Drop the ON/OFF, following air, decenter and tilt changed in this state
+基本の経路に	Use the base path
+変えると状態 {} だけの経路になる	Changing it makes a path for state {} only
+状態 {} だけの値にする	Use values for state {} only
+状態 {} で変えた経路をやめる	Drop the path changed in state {}
+状態 {} も基本の値を使う	State {} uses the base values too
+状態ごとに要素の ON/OFF・後の空気・偏心・傾き、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系	Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected
+開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）	Change the aperture, fields, wavelengths, object distance, telecentricity, aiming and afocal mode for this state only (stop position and glass catalogs are shared by all states)
+（基本と同じ）	(same as base)
+1 行に [入射角 deg, 波長 µm, Rs, Rp, Ts, Tp]（メーカーの表など）	One row per line: [incidence angle deg, wavelength µm, Rs, Rp, Ts, Tp] (e.g. a vendor table)
+ND	ND
+{}°	{}°
+この膜を消す	Delete this coating
+エッジ [nm]	Edge [nm]
+エッジ幅 [nm]	Edge width [nm]
+エッジ幅は自動	Automatic edge width
+ショートパス	Shortpass
+ノッチ	Notch
+バンドパス	Bandpass
+ロングパス	Longpass
+中心 [nm]	Center [nm]
+半値全幅 [nm]	FWHM [nm]
+反射	Reflection
+反射も書く	Also give reflection
+名前を鏡・BS の膜の欄、面の表の膜（coating）に書いて使う。膜ファイル・ユーザーカタログの同じ名前より優先	Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs
+吸収型（反射 0）	Absorptive (no reflection)
+定義した膜から選ぶ	Choose a defined coating
+実効屈折率	Effective index
+帯域内の透過	In-band transmission
+帯域外の OD	Out-of-band OD
+書かなければ反射 0（吸収）	Without it, reflection is 0 (absorptive)
+波長 [nm]	Wavelength [nm]
+波長ごとの透過	Transmission per wavelength
+膜の名前	Coating name
+膜の境界	Coating interfaces
+膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま	Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio
+膜（フィルタ）の定義	Coating (filter) definitions
+行が無い	No rows
+表（角度・波長ごと）	Table (per angle and wavelength)
+透過	Transmission
+透過が 10 % から 90 % までの幅。自動はエッジ波長の 1 %、帯域フィルタは半値全幅の 10 %	Width from 10 % to 90 % transmission. Automatic is 1 % of the edge wavelength, or 10 % of the FWHM for band filters
+＋ 膜を足す	＋ Add coating
+＋ 行	＋ Row
+中心厚	Center thickness
+くさび	Wedge
+屈折率	Index
+分散	Dispersion
+後の間隔	Space after
+|焦点距離|	|Focal length|
+スレッド数	Threads
+メーカーごとのカタログの玉の公差	Catalog lens tolerances by vendor
+メーカーごとのカタログの玉の公差（catalog_tols）。名前はブロックのメーカー名に含まれれば合う（大文字小文字は区別しない、* はほか）。空の欄は既定の値。条件の行は前から順に、合うものの値で上書き	Catalog lens tolerances by vendor (catalog_tols). A name matches if the block's vendor contains it (case-insensitive; * is any other). Empty cells use the defaults. Condition rows apply in order; each match overrides the values.
+単レンズ	Singlet
+外径	Diameter
+条件 {}	Condition {}
+玉の種類を問わない	Any lens type
+百分位	Percentiles
+百分位 {} が 0〜100 の数でない	Percentile {} is not a number from 0 to 100
+試行ごとのずれと評価を結果に入れる（samples）	Include each trial's deltas and evaluation in the result (samples)
+読んだ catalog_tols は欄で表せないので、そのまま使います（ここで足すと置き換えます）。	The loaded catalog_tols cannot be shown in these fields, so it is used as is (adding here replaces it).
+貼り合わせ	Cemented
+項目で書く	By item
+＋ メーカー	＋ Vendor
+＋ 条件	＋ Condition
+ズーム軌跡	Zoom track
+ズーム軌跡 完了（{} ms）	Zoom track done ({} ms)
+パラメータを足す	Add parameter
+位置	Position
+位置（状態の番号、0 始まり）	Position (state index, from 0)
+状態と目標	States and targets
+状態を 1 つ以上選んでください	Select at least one state
+状態（プロジェクトの states か .zmx の多重構成）のある系を開くと、状態ごとに解けます。	Open a system with states (project states or .zmx configurations) to solve each state.
+目標	Target
+目標との差の許し（比）	Target tolerance (relative)
+目標なし	No target
+瞳の輪	Pupil rings
+系を開くとズーム軌跡を解けます。	Open a system to solve a zoom track.
+群の移動を足す	Add group shift
+群の移動（G2.shift）や面の後の間隔（7.t）など。状態ごとに減衰最小二乗で解きます。	Group shifts (G2.shift), spaces after surfaces (7.t), etc. Each state is solved by damped least squares.
+解いています…	Solving…
+解くパラメータ	Parameters to solve
+解くパラメータ（G2.shift・7.t など）を足してください	Add parameters to solve (G2.shift, 7.t, etc.)
+軌跡を解く	Solve track
+近軸倍率	Paraxial magnification
+選んだ状態を並びの順に解きます。目標が空の状態は像だけで解きます（目標がすべて空なら像だけ）。	The selected states are solved in order. A state with an empty target is solved for the image only.
+間の点の数	Points between states
+間の点は隣り合う状態の間を継続法でたどります（目標は等比に）。	Points between adjacent states are traced by continuation (targets change geometrically).

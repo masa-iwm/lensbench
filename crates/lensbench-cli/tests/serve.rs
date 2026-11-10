@@ -931,3 +931,88 @@ fn layout_has_mechanics() {
         .count();
     assert_eq!(n, 2);
 }
+
+/// analyze の coatings: 読み込んだ系（プロジェクトの膜の定義も）の膜の境界
+#[test]
+fn coatings_of_loaded_project() {
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": Path::new(ROOT).join("tests/filter_os/bp_nd.json").display().to_string(),
+            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    let r = sv.call("analyze", json!({ "cmd": "coatings" }));
+    let ifs = r["interfaces"].as_array().unwrap();
+    let kind = |c: &str| {
+        ifs.iter()
+            .find(|x| x["key"].as_str().unwrap().starts_with(&format!("{c}|")))
+            .map(|x| x["kind"].as_str().unwrap().to_string())
+    };
+    assert_eq!(kind("BP550").as_deref(), Some("table"), "{r}");
+    assert_eq!(kind("ND05").as_deref(), Some("table"), "{r}");
+    assert_eq!(r["needs_table"], json!([]));
+    assert!(sv
+        .error("analyze", json!({ "cmd": "coatings", "field": 1 }))
+        .contains("field"));
+    sv.stop();
+}
+
+#[test]
+fn zoom_of_loaded_project() {
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": Path::new(ROOT).join("examples/projects/P17_zoom_three_groups.json").display().to_string(),
+            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    let p = json!({
+        "vars": ["G2.shift", { "name": "G3.shift", "lo": -10.0, "hi": 30.0 }],
+        "efl": [140.0, 160.0, 175.0],
+        "steps": 1,
+    });
+    let r = sv.call("zoom", p.clone());
+    let path = r["path"].as_array().unwrap();
+    // 3 状態と間の 2 点
+    assert_eq!(path.len(), 5, "{r}");
+    assert_eq!(r["vars"], json!(["G2.shift", "G3.shift"]));
+    for (k, e) in [(0, 140.0), (2, 160.0), (4, 175.0)] {
+        assert!((path[k]["efl"].as_f64().unwrap() - e).abs() < 1e-5, "{r}");
+    }
+    assert_eq!(path[4]["state"], json!("tele"));
+    // CLI と同じ値
+    let cli: Value = {
+        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+            .current_dir(ROOT)
+            .args([
+                "zoom",
+                "examples/projects/P17_zoom_three_groups.json",
+                "--glass-dir",
+                "tests/glass",
+                "--var",
+                "G2.shift",
+                "--var",
+                "G3.shift=-10:30",
+                "--efl",
+                "140,160,175",
+                "--steps",
+                "1",
+                "--json",
+            ])
+            .output()
+            .unwrap();
+        serde_json::from_slice(&o.stdout).unwrap()
+    };
+    assert_eq!(cli["path"], r["path"]);
+    // 状態を選ぶ・目標の数が違えば誤り
+    let mut q = p.clone();
+    q["configs"] = json!(["wide", "tele"]);
+    assert!(sv.error("zoom", q.clone()).contains("目標"));
+    q["efl"] = json!([140.0, null]);
+    assert_eq!(sv.call("zoom", q)["path"].as_array().unwrap().len(), 3);
+    assert!(sv.error("zoom", json!({ "vars": [] })).contains("vars"));
+    sv.stop();
+}

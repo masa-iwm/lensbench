@@ -369,6 +369,8 @@ pub struct Pick {
     pub state_on: BTreeMap<String, bool>,
     /// 状態ごとの後の空気 [mm]（無ければ air）
     pub state_air: BTreeMap<String, f64>,
+    /// 状態ごとの偏心・傾き（無ければ decenter・tilt。置き方を持つ要素と鏡）
+    pub state_place: BTreeMap<String, StatePlace>,
     /// BS の形
     pub form: BsForm,
     /// BS（平板）: くさび。裏面を表面に対して傾ける角 x・y [deg]
@@ -516,6 +518,7 @@ impl Default for Pick {
             off_air: false,
             state_on: BTreeMap::new(),
             state_air: BTreeMap::new(),
+            state_place: BTreeMap::new(),
             group: String::new(),
             zgroups: Vec::new(),
         }
@@ -1041,6 +1044,50 @@ impl Pick {
             .unwrap_or(self.air)
     }
 
+    /// 状態ごとに偏心・傾きを変えられる要素か（置き方を持つ要素と鏡）
+    pub fn has_state_place(&self) -> bool {
+        place_fields(self.kind) || self.kind == ElemKind::Mirror
+    }
+
+    /// 状態 st での偏心・傾き
+    pub fn place_in(&self, st: Option<&str>) -> StatePlace {
+        st.and_then(|n| self.state_place.get(n).copied())
+            .filter(|_| self.has_state_place())
+            .unwrap_or(StatePlace {
+                decenter: self.decenter,
+                tilt: self.tilt,
+            })
+    }
+
+    /// 状態 st で変える偏心・傾き（状態なら状態の値を作る）
+    pub fn place_mut(&mut self, st: Option<&str>) -> (&mut [f64; 2], &mut [f64; 3]) {
+        match st {
+            Some(n) if self.has_state_place() => {
+                let base = StatePlace {
+                    decenter: self.decenter,
+                    tilt: self.tilt,
+                };
+                let e = self.state_place.entry(n.to_string()).or_insert(base);
+                (&mut e.decenter, &mut e.tilt)
+            }
+            _ => (&mut self.decenter, &mut self.tilt),
+        }
+    }
+
+    /// 状態 n で変えた値があるか
+    pub fn has_state_values(&self, n: &str) -> bool {
+        self.state_on.contains_key(n)
+            || self.state_air.contains_key(n)
+            || self.state_place.contains_key(n)
+    }
+
+    /// 状態 n で変えた値をやめる
+    pub fn clear_state(&mut self, n: &str) {
+        self.state_on.remove(n);
+        self.state_air.remove(n);
+        self.state_place.remove(n);
+    }
+
     /// 状態 st で変える後の空気（状態なら状態の値を作る）
     pub fn air_mut(&mut self, st: Option<&str>) -> &mut f64 {
         match st {
@@ -1048,6 +1095,14 @@ impl Pick {
             None => &mut self.air,
         }
     }
+}
+
+/// 状態ごとの偏心 [mm]・傾き [deg]（[`Pick::state_place`]）
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct StatePlace {
+    pub decenter: [f64; 2],
+    pub tilt: [f64; 3],
 }
 
 /// 組合せ（要素の並びと、系の条件。系の設定は [`crate::sysset`]）
@@ -1091,6 +1146,12 @@ pub struct Combo {
     pub states: Vec<String>,
     /// 今の状態（None は基本）
     pub state: Option<String>,
+    /// 状態ごとの系の値（開口・視野・波長・物体距離など。無ければ基本の値）
+    pub state_sys: BTreeMap<String, crate::sysset::SysSnap>,
+    /// 状態ごとの BS の経路（無ければ path）
+    pub state_path: BTreeMap<String, String>,
+    /// 膜（フィルタ）の定義（プロジェクトの coatings）
+    pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 群の役割・移動（名前は要素の group）
     pub groups: Vec<GroupDef>,
 }
@@ -1141,6 +1202,9 @@ impl Default for Combo {
             glass_catalogs: vec!["SCHOTT".into()],
             states: Vec::new(),
             state: None,
+            state_sys: BTreeMap::new(),
+            state_path: BTreeMap::new(),
+            coatings: BTreeMap::new(),
             groups: Vec::new(),
         }
     }
@@ -1255,6 +1319,15 @@ impl Combo {
                 if let Some(&t) = p.state_air.get(n) {
                     set.insert(format!("{id}_air"), json!({ "t": t }));
                 }
+                if let Some(pl) = p.state_place.get(n).filter(|_| p.has_state_place()) {
+                    let e = set.entry(id.clone()).or_insert_with(|| json!({}));
+                    if p.kind == ElemKind::Mirror {
+                        e["tilt"] = json!([pl.tilt[0], pl.tilt[1]]);
+                    } else {
+                        e["decenter"] = json!(pl.decenter);
+                        e["tilt"] = json!(pl.tilt);
+                    }
+                }
             }
         }
         // 群の移動。群のブロックにした名前だけ（要素から外した群・要素の名前と同じ名前は書かない）
@@ -1286,11 +1359,21 @@ impl Combo {
         if !self.mechanics.is_empty() {
             v["mechanics"] = Value::Array(self.mechanics.iter().map(MechPick::json).collect());
         }
+        if !self.coatings.is_empty() {
+            v["coatings"] = serde_json::to_value(&self.coatings).unwrap_or_default();
+        }
         if !states.is_empty() {
             v["states"] = Value::Array(
                 states
                     .into_iter()
-                    .map(|(name, set)| json!({ "name": name, "set": set }))
+                    .map(|(name, set)| {
+                        let pr = self.state_project(&name);
+                        if pr.is_empty() {
+                            json!({ "name": name, "set": set })
+                        } else {
+                            json!({ "name": name, "set": set, "project": pr })
+                        }
+                    })
                     .collect(),
             );
         }
@@ -1669,19 +1752,26 @@ impl View {
 
     /// 図の縦の向きの偏心 d mm と傾き（縦へ光軸を向ける向き）a° を足す。xz 面では y 軸まわりの傾き
     /// （yz 面の x 軸まわりと、画面で同じ向きに回るよう符号を変える）
-    fn nudge(&self, p: &mut Pick, d: f64, a: f64) {
-        if self.fixed {
+    /// 状態 st を選んでいれば、その状態の値を変える
+    fn nudge(&self, p: &mut Pick, st: Option<&str>, d: f64, a: f64) {
+        if self.fixed || (d == 0.0 && a == 0.0) {
             return;
         }
+        // 開口・遮蔽の偏心は面の開口の値（状態ごとには変えない）
+        let (dec, tilt) = if p.kind == ElemKind::Aperture {
+            (&mut p.decenter, &mut p.tilt)
+        } else {
+            p.place_mut(st)
+        };
         if a != 0.0 {
             if self.xz {
-                p.tilt[1] -= a;
+                tilt[1] -= a;
             } else {
-                p.tilt[0] += a;
+                tilt[0] += a;
             }
         }
         if d != 0.0 {
-            p.decenter[self.vert()] += d;
+            dec[self.vert()] += d;
         }
     }
 
@@ -1755,6 +1845,7 @@ pub fn ui(
     let mut act = None;
     let weak = theme::weak_text(ui.visuals());
     combo.normalize();
+    crate::coat_defs::set_names(ui.ctx(), combo.coatings.keys().cloned().collect());
     // 要素のパレット
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("足す")).small().color(weak));
@@ -1935,35 +2026,69 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
     if !any_bs {
         return false;
     }
-    let was = combo.path.clone();
+    let st = combo.active_state().map(str::to_string);
+    let base = combo.path.clone();
+    let mut path = match &st {
+        Some(n) => combo.state_path.get(n).cloned().unwrap_or(base.clone()),
+        None => base.clone(),
+    };
+    let was = path.clone();
     ui.separator();
     ui.label(RichText::new(tr("経路")).color(theme::weak_text(ui.visuals())))
         .on_hover_text(tr("BS を通る順の透過 T・反射 R（足りない文字は各 BS の既定の口）。図・解析はこの経路。ほかの経路は「重ねる構成」で重ねて描ける"));
-    let shown = if combo.path.is_empty() {
+    let shown = if path.is_empty() {
         tr("既定").to_string()
     } else {
-        combo.path.clone()
+        path.clone()
     };
     egui::ComboBox::from_id_salt("combo_path")
         .selected_text(shown)
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut combo.path, String::new(), tr("既定"));
+            ui.selectable_value(&mut path, String::new(), tr("既定"));
             for p in paths {
-                ui.selectable_value(&mut combo.path, p.clone(), p.as_str());
+                ui.selectable_value(&mut path, p.clone(), p.as_str());
             }
         });
     ui.add(
-        egui::TextEdit::singleline(&mut combo.path)
+        egui::TextEdit::singleline(&mut path)
             .desired_width(48.0)
             .hint_text("TR…"),
     );
-    combo.path = combo
-        .path
+    path = path
         .chars()
         .map(|c| c.to_ascii_uppercase())
         .filter(|c| matches!(c, 'T' | 'R'))
         .collect();
-    combo.path != was
+    if let Some(n) = &st {
+        let own = combo.state_path.contains_key(n);
+        if own {
+            if ui
+                .small_button(tr("基本の経路に"))
+                .on_hover_text(trf("状態 {} で変えた経路をやめる", &[n]))
+                .clicked()
+            {
+                combo.state_path.remove(n);
+                return true;
+            }
+        } else {
+            ui.label(
+                RichText::new(tr("（基本と同じ）"))
+                    .small()
+                    .color(theme::weak_text(ui.visuals())),
+            )
+            .on_hover_text(trf("変えると状態 {} だけの経路になる", &[n]));
+        }
+    }
+    if path == was {
+        return false;
+    }
+    match st {
+        Some(n) => {
+            combo.state_path.insert(n, path);
+        }
+        None => combo.path = path,
+    }
+    true
 }
 
 /// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方）
@@ -2119,11 +2244,12 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                         }
                     } else {
                         let d = step * n.signum() as f64;
+                        let st = combo.active_state().map(str::to_string);
                         let Some(p) = combo.el_mut(k) else { continue };
                         if m.shift {
-                            view.nudge(p, 0.0, d * 10.0);
+                            view.nudge(p, st.as_deref(), 0.0, d * 10.0);
                         } else if p.kind != ElemKind::Mirror && p.kind != ElemKind::Stop {
-                            view.nudge(p, d, 0.0);
+                            view.nudge(p, st.as_deref(), d, 0.0);
                         }
                     }
                 }
@@ -2822,11 +2948,12 @@ fn figure(
             let mut c = c0.clone();
             if ui.input(|i| i.modifiers.shift) {
                 // Shift: 縦は偏心
+                let st = c.active_state().map(str::to_string);
                 if let Some(p) = c
                     .el_mut(k)
                     .filter(|p| !matches!(p.kind, ElemKind::Mirror | ElemKind::Stop))
                 {
-                    view.nudge(p, dy, 0.0);
+                    view.nudge(p, st.as_deref(), dy, 0.0);
                 }
             } else {
                 c.shift(k, dz);
@@ -2950,7 +3077,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
         }
     });
     ui.add_enabled_ui(!p.locked, |ui| {
-        ui.horizontal_wrapped(|ui| kind_fields(ui, p, k, weak));
+        ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak));
         if p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2 {
             surf_table(ui, p, k, weak);
         }
@@ -2961,11 +3088,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
                 {
                     ui.checkbox(&mut p.reversed, tr("反転"));
                 }
-                num(ui, tr("偏心 x"), &mut p.decenter[0], " mm");
-                num(ui, tr("偏心 y"), &mut p.decenter[1], " mm");
-                num(ui, tr("傾き x"), &mut p.tilt[0], "°");
-                num(ui, tr("傾き y"), &mut p.tilt[1], "°");
-                num(ui, tr("傾き z"), &mut p.tilt[2], "°");
+                place_ui(ui, p, st, &[0, 1], &[0, 1, 2]);
             });
         }
         let mut air = p.air_in(st);
@@ -3129,7 +3252,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
         })
         .response
         .on_hover_text(tr(
-            "状態ごとに要素の ON/OFF と後の空気を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系",
+            "状態ごとに要素の ON/OFF・後の空気・偏心・傾き、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系",
         ));
     let r = ui.add(
         egui::TextEdit::singleline(&mut view.new_state)
@@ -3156,10 +3279,13 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
             .clicked()
         {
             combo.states.retain(|s| *s != n);
-            for p in &mut combo.picks {
-                p.state_on.remove(&n);
-                p.state_air.remove(&n);
+            for l in combo.all() {
+                if let Some(p) = combo.get_mut(&l) {
+                    p.clear_state(&n);
+                }
             }
+            combo.state_sys.remove(&n);
+            combo.state_path.remove(&n);
             for g in &mut combo.groups {
                 g.state_shift.remove(&n);
             }
@@ -3230,7 +3356,7 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
         zgroups_ui(ui, p, weak);
     }
     if let Some(n) = st {
-        let own = p.state_on.contains_key(n) || p.state_air.contains_key(n);
+        let own = p.has_state_values(n);
         if own {
             ui.label(
                 RichText::new(trf("状態 {} の値", &[&n]))
@@ -3239,13 +3365,31 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
             );
             if ui
                 .small_button(tr("基本の値に"))
-                .on_hover_text(tr("この状態で変えた ON/OFF・後の空気をやめる"))
+                .on_hover_text(tr("この状態で変えた ON/OFF・後の空気・偏心・傾きをやめる"))
                 .clicked()
             {
-                p.state_on.remove(n);
-                p.state_air.remove(n);
+                p.clear_state(n);
             }
         }
+    }
+}
+
+/// 偏心（番号 dec）・傾き（番号 tilt）の欄。状態 st を選んでいれば、変えたときだけその状態の値にする
+fn place_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, dec: &[usize], tilt: &[usize]) {
+    let was = p.place_in(st);
+    let mut pl = was;
+    const DEC: [&str; 2] = ["偏心 x", "偏心 y"];
+    const TILT: [&str; 3] = ["傾き x", "傾き y", "傾き z"];
+    for &i in dec {
+        num(ui, tr(DEC[i]), &mut pl.decenter[i], " mm");
+    }
+    for &i in tilt {
+        num(ui, tr(TILT[i]), &mut pl.tilt[i], "°");
+    }
+    if pl != was {
+        let (d, t) = p.place_mut(st);
+        *d = pl.decenter;
+        *t = pl.tilt;
     }
 }
 
@@ -3276,7 +3420,7 @@ fn num(ui: &mut Ui, label: &str, v: &mut f64, unit: &str) {
 }
 
 /// 要素の種類ごとの欄（寸法・ガラス・膜など）
-fn kind_fields(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
+fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
     match p.kind {
         ElemKind::Lens if p.surfs.len() >= 2 => {
             ui.label(RichText::new(trf("{} 面（下の表）", &[&p.surfs.len()])).color(weak));
@@ -3326,8 +3470,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
         }
         ElemKind::Mirror => {
             num(ui, "R", &mut p.r1, " mm");
-            num(ui, tr("傾き x"), &mut p.tilt[0], "°");
-            num(ui, tr("傾き y"), &mut p.tilt[1], "°");
+            place_ui(ui, p, st, &[], &[0, 1]);
             num(ui, tr("半径"), &mut p.semi, " mm");
             coat_edit(ui, &mut p.coat, weak);
             ui.checkbox(&mut p.back, tr("往路を戻る")).on_hover_text(tr(
@@ -3472,8 +3615,24 @@ fn coat_edit(ui: &mut Ui, coat: &mut String, weak: Color32) {
             .desired_width(70.0),
     )
     .on_hover_text(tr(
-        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前。空なら理想の鏡・分岐比のまま",
+        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま",
     ));
+    // 系の設定で定義した膜から選ぶ
+    let names = crate::coat_defs::names(ui.ctx());
+    if !names.is_empty() {
+        egui::ComboBox::from_id_salt(("coat_pick", coat as *const String as usize))
+            .selected_text("▾")
+            .width(24.0)
+            .show_ui(ui, |ui| {
+                for n in names {
+                    if ui.selectable_label(*coat == n, n.as_str()).clicked() {
+                        *coat = n;
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tr("定義した膜から選ぶ"));
+    }
 }
 
 /// 選んだ寸法（入力欄とスライダー）・要素の設定。面の表で見る要素を返す
@@ -3601,7 +3760,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         if p.locked {
             ui.disable();
         }
-        kind_fields(ui, p, k, weak);
+        kind_fields(ui, p, st, k, weak);
         if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
             ui.checkbox(&mut p.reversed, tr("反転"));
         }
@@ -3609,8 +3768,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             p.kind,
             ElemKind::Mirror | ElemKind::Stop | ElemKind::Aperture
         ) {
-            num(ui, tr("偏心 y"), &mut p.decenter[1], " mm");
-            num(ui, tr("傾き x"), &mut p.tilt[0], "°");
+            place_ui(ui, p, st, &[1], &[0]);
         }
         let mut air = p.air_in(st);
         if air_gap {
@@ -4295,6 +4453,70 @@ mod tests {
         let (a, m) = (n(None), n(Some("測定")));
         assert_eq!(m, a + 2 * 2, "往復で平板の 2 面が 2 回");
     }
+    /// 状態ごとの偏心・傾き（玉と鏡）・系の値・BS の経路がプロジェクトの状態になり、展開で当たる
+    #[test]
+    fn state_place_settings_and_path() {
+        let mut c = Combo {
+            picks: vec![Pick::new(ElemKind::Lens), Pick::new(ElemKind::Mirror)],
+            states: vec!["S".into()],
+            ..Default::default()
+        };
+        let st = Some("S");
+        // 見るだけでは状態の値を作らない
+        assert_eq!(c.picks[0].place_in(st).decenter, [0.0; 2]);
+        assert!(!c.picks[0].has_state_values("S"));
+        {
+            let (d, t) = c.picks[0].place_mut(st);
+            d[1] = 0.3;
+            t[0] = 1.5;
+        }
+        c.picks[1].place_mut(st).1[1] = 2.0;
+        assert_eq!(c.picks[0].decenter, [0.0; 2]);
+        let mut s = c.snap();
+        s.object_distance = Some(200.0);
+        s.waves = vec![WavePt::um(0.55)];
+        s.primary = 1;
+        c.state_sys.insert("S".into(), s);
+        c.state_path.insert("S".into(), "tr".into());
+        let v = c.project();
+        let ids = c.ids();
+        let set = &v["states"][0]["set"];
+        assert_eq!(set[&ids[0]]["decenter"], json!([0.0, 0.3]));
+        assert_eq!(set[&ids[0]]["tilt"], json!([1.5, 0.0, 0.0]));
+        assert_eq!(set[&ids[1]]["tilt"], json!([45.0, 2.0]));
+        let pr = &v["states"][0]["project"];
+        assert_eq!(pr["object_distance"], 200.0);
+        assert_eq!(pr["wavelengths"], json!([{ "um": 0.55 }]));
+        assert_eq!(pr["primary"], 1);
+        assert_eq!(pr["path"], "TR");
+        assert!(pr.get("aperture").is_none(), "変えていない項目は書かない");
+        // プロジェクトとして読め、状態で値が変わる
+        let p = lensbench_project::Project::from_json(&v.to_string()).unwrap();
+        let q = p.with_state("S").unwrap();
+        assert_eq!(q.object_distance, Some(200.0));
+        assert_eq!(q.path.as_deref(), Some("TR"));
+        // 状態の値をやめる
+        c.picks[0].clear_state("S");
+        assert!(!c.picks[0].has_state_values("S"));
+        // 基本の値が無限遠で、状態で無限遠に戻すなど、書かない項目は既定の値で書く
+        let mut c2 = c.clone();
+        c2.object_distance = Some(50.0);
+        c2.telecentric = true;
+        c2.aiming = Aiming::Real;
+        let mut s2 = c2.snap();
+        s2.object_distance = None;
+        s2.telecentric = false;
+        s2.aiming = Aiming::Off;
+        c2.state_sys.insert("S".into(), s2);
+        let pr = c2.state_project("S");
+        assert_eq!(pr["object_distance"], Value::Null);
+        assert_eq!(pr["telecentric"], json!(false));
+        assert_eq!(pr["aiming"], json!("off"));
+        let v2 = c2.project();
+        let p2 = lensbench_project::Project::from_json(&v2.to_string()).unwrap();
+        assert_eq!(p2.with_state("S").unwrap().object_distance, None);
+    }
+
     /// 群: 続く同じ群の要素を群のブロックに、状態で群を動かす
     #[test]
     fn groups_wrap_runs_and_move_by_state() {
@@ -4433,9 +4655,9 @@ mod tests {
             xz: true,
             ..Default::default()
         };
-        v.nudge(&mut p, 0.5, 2.0);
+        v.nudge(&mut p, None, 0.5, 2.0);
         assert_eq!((p.decenter, p.tilt), ([0.5, 0.0], [0.0, -2.0, 0.0]));
-        View::default().nudge(&mut p, 0.5, 2.0);
+        View::default().nudge(&mut p, None, 0.5, 2.0);
         assert_eq!((p.decenter, p.tilt), ([0.5, 0.5], [2.0, -2.0, 0.0]));
     }
     /// 名前の無い要素（BS）が続くとき、自動の玉を順に当てる

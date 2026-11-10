@@ -25,6 +25,7 @@ pub const ANALYSES: &[(&str, &str, bool)] = &[
     ("fringe", "干渉縞（2 光束）", true),
     ("pop", "簡易 POP", true),
     ("rays", "光線の表", false),
+    ("coatings", "膜の境界", false),
     ("info", "システムデータ", false),
     ("elements", "玉モード", false),
     ("ghost", "ゴースト", false),
@@ -133,6 +134,8 @@ pub enum Kind {
     Swap,
     /// モンテカルロ公差
     Tolerance,
+    /// ズーム軌跡
+    Zoom,
 }
 
 /// 1 つのパネル。id で見分ける
@@ -159,6 +162,7 @@ impl Pane {
             Kind::Optimize => tr("最適化").into(),
             Kind::Swap => tr("差し替え探索").into(),
             Kind::Tolerance => tr("公差").into(),
+            Kind::Zoom => tr("ズーム軌跡").into(),
             Kind::SysSettings => tr("系の設定").into(),
             Kind::Analysis(a) => analysis_label(&a.cmd),
         }

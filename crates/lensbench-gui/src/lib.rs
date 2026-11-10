@@ -8,6 +8,7 @@ mod app;
 mod argform;
 mod catalog;
 mod catsave;
+mod coat_defs;
 mod combo;
 mod combo_tree;
 mod config_panel;
@@ -29,6 +30,7 @@ mod surf_edit;
 mod swap_panel;
 mod sysset;
 mod theme;
+mod tol_catalog;
 mod tol_panel;
 mod tour;
 mod view3d;
@@ -39,6 +41,7 @@ mod web_tabs;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;
+mod zoom_panel;
 
 pub use fonts::WEB_FONT;
 pub use tour::Args;

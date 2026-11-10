@@ -1,7 +1,7 @@
 //! 画面の通し確認（`--tour DIR`）: GUI を自分で操作し、各画面を PNG に撮って閉じる。
 //!
 //! CI（Linux の仮想ディスプレイ）と手元で、起動 → 系を開く → 解析 → カタログ → 組合せ → 系を作る →
-//! 面の表 → スポット → 最適化・差し替え探索・公差 → 値を動かす → ガラス → 別の窓 → パレット → 英語・明るい配色 → 系の設定 → 干渉計（BS の分岐）、を通して画面を残す。途中でエラーが出れば `report.json` の errors に書き、終了コード 1 で終える。
+//! 面の表 → スポット → 最適化・差し替え探索・公差 → 値を動かす → ガラス → 別の窓 → パレット → 英語・明るい配色 → 系の設定 → 干渉計（BS の分岐）→ 簡易 POP → 状態 → 膜の定義 → ズーム軌跡、を通して画面を残す。途中でエラーが出れば `report.json` の errors に書き、終了コード 1 で終える。
 //!
 //! ```text
 //! lensbench-gui --tour shots --glass-dir tests/glass --lens-catalog examples/lenses/LB examples/projects/P8_catalog_two.json
@@ -61,6 +61,9 @@ pub enum Step {
     Open,
     Analysis,
     Pop,
+    States,
+    Coatings,
+    Zoom,
     Catalog,
     Combo,
     Build,
@@ -85,7 +88,7 @@ pub enum Step {
 }
 
 impl Step {
-    const ORDER: [Step; 24] = [
+    const ORDER: [Step; 27] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -109,6 +112,9 @@ impl Step {
         Step::Settings,
         Step::Interferometer,
         Step::Pop,
+        Step::States,
+        Step::Coatings,
+        Step::Zoom,
         Step::Done,
     ];
 
@@ -137,6 +143,9 @@ impl Step {
             Step::Settings => "13_settings",
             Step::Interferometer => "14_interferometer",
             Step::Pop => "15_pop",
+            Step::States => "16_states",
+            Step::Coatings => "17_coatings",
+            Step::Zoom => "18_zoom",
             Step::Done => "done",
         }
     }
@@ -285,6 +294,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 23);
+        assert_eq!(n, 26);
     }
 }

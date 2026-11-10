@@ -82,6 +82,14 @@ pub struct TolPanel {
     pub catalog: bool,
     pub sensitivity: bool,
     pub comp_iters: usize,
+    /// メーカーごとのカタログの玉の公差（catalog_tols）
+    pub catalog_tols: Vec<crate::tol_catalog::VendorTol>,
+    /// 出す百分位（空白・カンマ区切り。空は既定）
+    pub percentiles: String,
+    /// 試行ごとのずれと評価を結果に入れる
+    pub samples: bool,
+    /// スレッド数（0 は自動）
+    pub threads: usize,
     pub lenses: Vec<LensRow>,
     pub groups: Vec<GroupRow>,
     pub tols: Vec<TolRow>,
@@ -107,6 +115,10 @@ impl Default for TolPanel {
             catalog: true,
             sensitivity: true,
             comp_iters: 10,
+            catalog_tols: Vec::new(),
+            percentiles: String::new(),
+            samples: false,
+            threads: 0,
             lenses: Vec::new(),
             groups: Vec::new(),
             tols: Vec::new(),
@@ -146,6 +158,39 @@ impl TolPanel {
         m.insert("catalog".into(), json!(self.catalog));
         m.insert("sensitivity".into(), json!(self.sensitivity));
         m.insert("comp_iters".into(), json!(self.comp_iters));
+        // 空なら extra の分（欄で表せない読んだ値）があればそれを使う
+        if let Some(v) = crate::tol_catalog::to_json(&self.catalog_tols)? {
+            m.insert("catalog_tols".into(), v);
+        }
+        let pc = self
+            .percentiles
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|t| !t.is_empty())
+            .map(|t| {
+                t.parse::<f64>()
+                    .ok()
+                    .filter(|x| (0.0..=100.0).contains(x))
+                    .ok_or_else(|| trf("百分位 {} が 0〜100 の数でない", &[&t]))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if pc.is_empty() {
+            m.remove("percentiles");
+        } else {
+            m.insert(
+                "percentiles".into(),
+                Value::Array(pc.into_iter().map(crate::tol_catalog::num_val).collect()),
+            );
+        }
+        if self.samples {
+            m.insert("samples".into(), json!(true));
+        } else {
+            m.remove("samples");
+        }
+        if self.threads > 0 {
+            m.insert("threads".into(), json!(self.threads));
+        } else {
+            m.remove("threads");
+        }
         // 欄のない上書き（読んだファイルの項目ごとの上書き）に欄の分を足す
         let mut lenses = self
             .extra
@@ -305,6 +350,25 @@ impl TolPanel {
                 "catalog" => n.catalog = x.as_bool().unwrap_or(true),
                 "sensitivity" => n.sensitivity = x.as_bool().unwrap_or(true),
                 "comp_iters" => n.comp_iters = x.as_u64().unwrap_or(10) as usize,
+                // 欄で表せない書き方（範囲の式など）はそのまま残す
+                "catalog_tols" => match crate::tol_catalog::from_json(x) {
+                    Ok(v) => n.catalog_tols = v,
+                    Err(_) => {
+                        n.extra.insert(k.clone(), x.clone());
+                    }
+                },
+                "percentiles" if x.as_array().is_some_and(|a| a.iter().all(Value::is_number)) => {
+                    n.percentiles = x
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_f64)
+                        .map(fmt_num)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+                "samples" => n.samples = x.as_bool().unwrap_or(false),
+                "threads" => n.threads = x.as_u64().unwrap_or(0) as usize,
                 "lenses" => {
                     for (name, p) in x.as_object().into_iter().flatten() {
                         match p {
@@ -467,6 +531,25 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         .small()
         .color(weak),
     );
+    if p.catalog {
+        egui::CollapsingHeader::new(tr("メーカーごとのカタログの玉の公差"))
+            .id_salt("tol_catalog_tols")
+            .default_open(!p.catalog_tols.is_empty())
+            .show(ui, |ui| {
+                if p.extra.contains_key("catalog_tols") {
+                    ui.label(
+                        RichText::new(tr("読んだ catalog_tols は欄で表せないので、そのまま使います（ここで足すと置き換えます）。"))
+                            .small()
+                            .color(weak),
+                    );
+                }
+                let before = p.catalog_tols.len();
+                crate::tol_catalog::ui(ui, &mut p.catalog_tols, &PRESETS[..4], weak);
+                if p.catalog_tols.len() != before {
+                    p.extra.remove("catalog_tols");
+                }
+            });
+    }
     ui.horizontal(|ui| {
         ui.label(tr("分布"));
         for (k, l) in DISTS {
@@ -603,6 +686,26 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
         ui.add(egui::DragValue::new(&mut p.comp_iters).range(1..=200));
         ui.checkbox(&mut p.sensitivity, tr("感度（公差ごとに ± の端）も求める"));
     });
+    ui.horizontal(|ui| {
+        ui.label(tr("百分位"));
+        small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
+        ui.label(tr("スレッド数"));
+        ui.add(
+            egui::DragValue::new(&mut p.threads)
+                .range(0..=256)
+                .custom_formatter(|v, _| {
+                    if v < 0.5 {
+                        tr("自動").to_string()
+                    } else {
+                        format!("{v:.0}")
+                    }
+                }),
+        );
+    });
+    ui.checkbox(
+        &mut p.samples,
+        tr("試行ごとのずれと評価を結果に入れる（samples）"),
+    );
     ui.horizontal(|ui| {
         ui.label(tr("構成"));
         small_edit(ui, &mut p.opt.configs, 160.0, tr("開いている系だけ"));
@@ -856,5 +959,20 @@ mod tests {
         assert_eq!(back["tols"].as_array().unwrap().len(), 2);
         assert_eq!(back["tols"][1]["param"], json!("3.t"));
         assert!(q.extra.contains_key("tols"));
+        assert_eq!(q.percentiles, "50, 99");
+        // catalog_tols・samples・threads は欄に。欄で書けない catalog_tols はそのまま残す
+        let mut w = v.clone();
+        w["catalog_tols"] = json!({"Edmund": {"thickness": 0.05}, "*": "precision"});
+        w["samples"] = json!(true);
+        w["threads"] = json!(4);
+        q.set_spec(&w).unwrap();
+        assert_eq!(q.catalog_tols.len(), 2);
+        assert!(q.samples);
+        assert_eq!(q.threads, 4);
+        assert_eq!(q.spec().unwrap(), w);
+        w["catalog_tols"] = json!({"A": {"rules": [{"dia_lt": 5, "dia_le": 6}]}});
+        q.set_spec(&w).unwrap();
+        assert!(q.catalog_tols.is_empty());
+        assert_eq!(q.spec().unwrap()["catalog_tols"], w["catalog_tols"]);
     }
 }
