@@ -28,17 +28,25 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
         run: |
-          skip=false
-          tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha)
-          for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha'); do
-            [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
-            n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq .total_count)
-            if [ "$n" -gt 0 ]; then
-              skip=true
-              echo "::notice::PR の head ${head:0:7} と同じ木で、その CI が通っているので重複する検査を飛ばす"
-            fi
-          done
-          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          # 判定に失敗したら（API の失敗など）飛ばさずに全部回す
+          check() {
+            local tree before head
+            tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || return 1
+            before=$(gh api "repos/$REPO/commits/$SHA" --jq '.parents[0].sha') || return 1
+            for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha') ; do
+              [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
+              # マージ前の main の先端が head の祖先（PR が main に追いついていた）。PR の CI が試した
+              # 「その時の main と head のマージ」の木が head の木と同じになる条件（後で main が戻された場合を除く）
+              [ "$(gh api "repos/$REPO/compare/$before...$head" --jq .behind_by)" = 0 ] || continue
+              n=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq .total_count) || continue
+              if [ "${n:-0}" -gt 0 ]; then
+                echo "::notice::PR の head ${head:0:7} と同じ木で、その CI が通っているので 重複する検査を飛ばす"
+                return 0
+              fi
+            done
+            return 1
+          }
+          if check; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
 
   public-check:
     runs-on: ubuntu-24.04
@@ -50,7 +58,7 @@ jobs:
 
   test:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -97,7 +105,7 @@ jobs:
   # ドキュメントサイト（mdBook）: CLI の例を実際に走らせて図を作り、本が組めるかを確かめる（GUI の画面・Rust API は Pages で）
   docs:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -119,7 +127,7 @@ jobs:
   # 自分で操作して各画面を撮る。途中でエラーが出れば失敗。画面は成果物 gui-tour に置く
   gui-tour:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -141,7 +149,7 @@ jobs:
   # 読み、形・座標（GLRS）・追跡の値を .zmx と OpticStudio の基準（tests/refs）と照合する
   export-readback:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -158,7 +166,7 @@ jobs:
   # lensbench-web（GitHub Pages への公開は pages.yml）
   web:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -218,7 +226,7 @@ jobs:
 
   python:
     needs: pr-tested
-    if: needs.pr-tested.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
     strategy:
       fail-fast: false
       matrix:
