@@ -10,12 +10,15 @@
 //! （AVX は演算の結果を変えない。FMA は有効にしない）。wasm ＋ simd128 では f64x2 の命令を名指しする
 //! （LLVM が wasm ではこのループをベクトル化しないため。公開 #99）。
 //! トロイダル面・理想レンズ・開口の際どい判定など、まれな・重い処理は光線ごとのスカラーで行う。
-//! 偏光の追跡はまとめない（1 本ずつ）。
+//! 偏光の追跡（[`trace_lanes_pol`]）も同じく、電場の計算を 1 本ずつの追跡と同じ演算・同じ順で光線ごとに
+//! 行う（膜の係数は光線ごとに求める。複屈折材の板は 1 本ずつの追跡で）。
 
+use crate::coating::C64;
 use crate::math::*;
 use crate::surface::{Aperture, SurfType, Surface};
 use crate::system::{Frame, Frames, Rel, System};
-use crate::trace::{self, RayOut, RecEntry};
+use crate::trace::{self, PolKind, PolSurf, RayOut, RecEntry, CV3};
+use crate::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 1 回にまとめて追う光線の数（AVX の 4 本 × 4。多いほど面ごとの準備の手間が薄まる）。
@@ -209,6 +212,7 @@ struct Step<'a> {
 
 /// 面 first..=last の追跡の準備（波長 w）。光線によらない量を先に求めておく
 pub struct Plan<'a> {
+    sys: &'a System,
     steps: Vec<Step<'a>>,
 }
 
@@ -239,7 +243,10 @@ impl<'a> Plan<'a> {
                     | SurfType::Gradient9
                     | SurfType::User
             ) {
-                return Plan { steps: Vec::new() };
+                return Plan {
+                    sys,
+                    steps: Vec::new(),
+                };
             }
             let f = fr.surf[j].unwrap();
             let mv = match (steps.is_empty(), fr.rel[j]) {
@@ -290,7 +297,12 @@ impl<'a> Plan<'a> {
             });
             nprev = nn;
         }
-        Plan { steps }
+        Plan { sys, steps }
+    }
+
+    /// 偏光の追跡（面ごとの処理 surf）をまとめて追えるか（複屈折材の板があれば 1 本ずつ）
+    pub fn supports_pol(&self, surf: &[PolSurf]) -> bool {
+        !self.is_empty() && self.steps.iter().all(|st| surf[st.j].cry.is_none())
     }
 
     /// 追う面が 1 つもない
@@ -324,14 +336,48 @@ pub fn trace_lanes<R: LaneSink>(
     k: &[V3; L],
     rec: Option<&mut R>,
 ) -> [RayOut; L] {
+    dispatch(plan, p, k, rec, None)
+}
+
+/// L 本の光線の偏光の状態（[`trace::PolRay`] の L 本分）
+pub struct PolLanes<'a> {
+    /// 電場（光線 l の偏光の入力 q は `e[l * np + q]`、今いる面の局所座標）
+    pub e: Vec<CV3>,
+    /// 偏光の入力の数
+    pub np: usize,
+    pub surf: &'a [PolSurf],
+    /// 光線ごとの係数のエラー（[`trace::PolRay::err`]）
+    pub err: [Option<Error>; L],
+}
+
+/// [`trace_lanes`] に偏光を加えたもの（電場 pol.e を面ごとに更新する）。plan は
+/// [`Plan::supports_pol`] を満たすこと。結果は光線ごとに [`trace::trace_ray_pol`] と同じビット
+pub fn trace_lanes_pol<R: LaneSink>(
+    plan: &Plan,
+    p: &[V3; L],
+    k: &[V3; L],
+    rec: Option<&mut R>,
+    pol: &mut PolLanes,
+) -> [RayOut; L] {
+    dispatch(plan, p, k, rec, Some(pol))
+}
+
+#[inline(always)]
+fn dispatch<R: LaneSink>(
+    plan: &Plan,
+    p: &[V3; L],
+    k: &[V3; L],
+    rec: Option<&mut R>,
+    pol: Option<&mut PolLanes>,
+) -> [RayOut; L] {
     #[cfg(target_arch = "x86_64")]
     {
         if std::arch::is_x86_feature_detected!("avx") {
             // 安全: AVX があることを上で確かめた
-            return unsafe { run_avx(plan, p, k, rec) };
+            return unsafe { run_avx(plan, p, k, rec, pol) };
         }
     }
-    run(plan, p, k, rec)
+    run(plan, p, k, rec, pol)
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -341,8 +387,182 @@ unsafe fn run_avx<R: LaneSink>(
     p: &[V3; L],
     k: &[V3; L],
     rec: Option<&mut R>,
+    pol: Option<&mut PolLanes>,
 ) -> [RayOut; L] {
-    run(plan, p, k, rec)
+    run(plan, p, k, rec, pol)
+}
+
+/// L 本の電場（偏光の入力ごとに実部・虚部の成分を組で持つ）
+struct PolSoa {
+    re: Vec<VL>,
+    im: Vec<VL>,
+}
+
+/// a · b（[`dot`] と同じ順）
+#[inline(always)]
+fn dot_l(a: &VL, b: &VL) -> F {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// a × b（[`cross`] と同じ式）
+#[inline(always)]
+fn cross_l(a: &VL, b: &VL) -> VL {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+impl PolSoa {
+    fn new(pr: &PolLanes) -> PolSoa {
+        let np = pr.np;
+        let z = [F::splat(0.0); 3];
+        let (mut re, mut im) = (vec![z; np], vec![z; np]);
+        for l in 0..L {
+            for q in 0..np {
+                let e = pr.e[l * np + q];
+                for c in 0..3 {
+                    re[q][c][l] = e[c].re;
+                    im[q][c][l] = e[c].im;
+                }
+            }
+        }
+        PolSoa { re, im }
+    }
+
+    fn get(&self, l: usize, q: usize) -> CV3 {
+        [0, 1, 2].map(|c| C64::new(self.re[q][c][l], self.im[q][c][l]))
+    }
+
+    fn put(&mut self, l: usize, q: usize, e: CV3) {
+        for c in 0..3 {
+            self.re[q][c][l] = e[c].re;
+            self.im[q][c][l] = e[c].im;
+        }
+    }
+
+    /// 実の行列 m をかける（[`trace::cmv`] と同じ順）
+    #[inline(always)]
+    fn mv(&mut self, m: &M3) {
+        for v in self.re.iter_mut().chain(self.im.iter_mut()) {
+            *v = mv_l(m, v);
+        }
+    }
+
+    /// 実の行列 m の転置をかける（[`trace::cmtv`] と同じ順）
+    #[inline(always)]
+    fn mtv(&mut self, m: &M3) {
+        for v in self.re.iter_mut().chain(self.im.iter_mut()) {
+            *v = mtv_l(m, v);
+        }
+    }
+
+    /// 光線ごとの実数 a をかける
+    #[inline(always)]
+    fn scale(&mut self, a: F) {
+        for v in self.re.iter_mut().chain(self.im.iter_mut()) {
+            *v = v3!(c => v[c] * a);
+        }
+    }
+
+    /// 各入力の電場 x を、係数 (a, b)（複素、x を u・w へ射影した値から作る）で a u + b v に置き換える
+    /// （[`trace::pol_surface`] の `comb` と同じ順）。f は射影 (x·u, x·w) から (a, b) を作る
+    #[inline(always)]
+    fn recombine(&mut self, pu: &VL, pw: &VL, u: &VL, v: &VL, f: impl Fn(Cl, Cl) -> (Cl, Cl)) {
+        for q in 0..self.re.len() {
+            let (xr, xi) = (&mut self.re[q], &mut self.im[q]);
+            let eu = (dot_l(xr, pu), dot_l(xi, pu));
+            let ew = (dot_l(xr, pw), dot_l(xi, pw));
+            let (a, b) = f(eu, ew);
+            *xr = v3!(c => a.0 * u[c] + b.0 * v[c]);
+            *xi = v3!(c => a.1 * u[c] + b.1 * v[c]);
+        }
+    }
+}
+
+/// 複素数の組（実部, 虚部）
+type Cl = (F, F);
+
+/// 複素の数 × 組（[`C64`] の積と同じ式）
+#[inline(always)]
+fn cmul_s(m: C64, x: Cl) -> Cl {
+    (m.re * x.0 - m.im * x.1, m.re * x.1 + m.im * x.0)
+}
+
+/// 組 × 組の複素の積（[`C64`] の積と同じ式）
+#[inline(always)]
+fn cmul(t: Cl, x: Cl) -> Cl {
+    (t.0 * x.0 - t.1 * x.1, t.0 * x.1 + t.1 * x.0)
+}
+
+#[inline(always)]
+fn cadd(a: Cl, b: Cl) -> Cl {
+    (a.0 + b.0, a.1 + b.1)
+}
+
+/// 面での電場の変化（[`trace::pol_surface`] の L 本版。複屈折材の板を除く）。g = 面の前後の方向・法線・入射角の
+/// cos、act = 処理する光線（ほかの光線の電場は使わない値になる）。係数のエラーは光線ごとに持つ
+#[inline(always)]
+fn pol_surface_l(
+    sys: &System,
+    pr: &mut PolLanes,
+    e: &mut PolSoa,
+    j: usize,
+    g: (&VL, &VL, &VL, F),
+    mirror: bool,
+    act: B,
+) {
+    let (kin, kl, nv, cosi) = g;
+    let (zero, one) = (F::splat(0.0), F::splat(1.0));
+    match &pr.surf[j].kind {
+        PolKind::None => {}
+        PolKind::Jones(m) => {
+            // u・v は [`trace::pol_surface`] と同じ式（0 の足し算・引き算も同じ）
+            let k2 = kl[2];
+            let sz = sel(k2.gt(0.0), one, sel(k2.lt(0.0), -one, zero));
+            let inv = 1.0 / (1.0 + k2.abs());
+            let h = [(kl[0] + 0.0) * inv, (kl[1] + 0.0) * inv, (k2 + sz) * inv];
+            let u = [1.0 - h[0] * kl[0], 0.0 - h[1] * kl[0], 0.0 - h[2] * kl[0]];
+            let v = [0.0 - h[0] * kl[1], 1.0 - h[1] * kl[1], 0.0 - h[2] * kl[1]];
+            let m = *m;
+            e.recombine(&u, &v, &u, &v, |eu, ev| {
+                (
+                    cadd(cmul_s(m[0], eu), cmul_s(m[1], ev)),
+                    cadd(cmul_s(m[2], eu), cmul_s(m[3], ev)),
+                )
+            });
+        }
+        PolKind::Iface(f) => {
+            // s = kin × nv（小さければ kin × x̂）を規格化
+            let s1 = cross_l(kin, nv);
+            let s2 = cross_l(kin, &[one, zero, zero]);
+            let ok = dot_l(&s1, &s1).sqrt().gt(1e-12);
+            let sv = sel3(ok, s1, s2);
+            let inv = 1.0 / dot_l(&sv, &sv).sqrt();
+            let sv = v3!(c => sv[c] * inv);
+            let pin = cross_l(&sv, kin);
+            let mut pout = cross_l(&sv, kl);
+            if mirror {
+                pout = v3!(c => pout[c] * -1.0);
+            }
+            let (mut t0, mut t1) = ((zero, zero), (zero, zero));
+            for i in 0..L {
+                if act.at(i) {
+                    match f.eval_cos(cosi[i].abs().clamp(0.0, 1.0)) {
+                        Ok(t) => {
+                            (t0.0[i], t0.1[i]) = (t[0].re, t[0].im);
+                            (t1.0[i], t1.1[i]) = (t[1].re, t[1].im);
+                        }
+                        Err(er) => {
+                            pr.err[i].get_or_insert_with(|| er.at(sys.surf_label(j)));
+                        }
+                    }
+                }
+            }
+            e.recombine(&sv, &pin, &sv, &pout, |es, ep| (cmul(t0, es), cmul(t1, ep)));
+        }
+    }
 }
 
 /// 開口の外か（光線ごと）。円・遮蔽は半径の 2 乗で十分に離れていればそれで決め、
@@ -399,7 +619,9 @@ fn run<R: LaneSink>(
     p0: &[V3; L],
     k0: &[V3; L],
     mut rec: Option<&mut R>,
+    mut pol: Option<&mut PolLanes>,
 ) -> [RayOut; L] {
+    let mut pe = pol.as_deref().map(PolSoa::new);
     let nan = F::splat(f64::NAN);
     let nan3 = [nan; 3];
     let zero = F::splat(0.0);
@@ -438,11 +660,21 @@ fn run<R: LaneSink>(
                 kl = mtv_l(&st.f.r, &k);
             }
         }
+        // 電場も方向と同じ変換で今の面の局所座標へ（止まった光線の値は最後に NaN にする）
+        if let Some(e) = pe.as_mut() {
+            match st.mv {
+                Move::Shift(_) => {}
+                Move::Rel(q) => e.mv(&q.r),
+                Move::First => e.mtv(&st.f.r),
+            }
+        }
         // 頂点面へ
         let s = -pl[2] / kl[2];
         err = sel(err.eq(0.0) & !s.is_finite(), jf, err);
         pl = axpy(pl, kl, s);
         opl += nprev * s;
+        // この面までに進んだ長さ（偏光の吸収）
+        let mut s_tot = s;
         if crate::freeform::is_freeform(d.typ) {
             for i in 0..L {
                 if err[i] == 0.0 {
@@ -453,6 +685,7 @@ fn run<R: LaneSink>(
                     }
                     put(&mut pl, i, add(pi, scale(ki, s)));
                     opl[i] += nprev * s;
+                    s_tot[i] += s;
                 }
             }
         } else if st.curved && d.typ == SurfType::Toroidal {
@@ -465,6 +698,7 @@ fn run<R: LaneSink>(
                     }
                     put(&mut pl, i, add(pi, scale(ki, s)));
                     opl[i] += nprev * s;
+                    s_tot[i] += s;
                 }
             }
         } else if st.curved {
@@ -501,6 +735,22 @@ fn run<R: LaneSink>(
             }
             pl = sel3(m, axpy(pl, kl, s), pl);
             opl = sel(m, opl + nprev * s, opl);
+            s_tot = sel(m, s_tot + s, s_tot);
+        }
+        // 通ってきた媒質の吸収（振幅は内部透過率の 1/2 乗。[`trace::trace_core`] と同じ）
+        if let (Some(pr), Some(e)) = (pol.as_deref(), pe.as_mut()) {
+            let ps = &pr.surf[j];
+            if ps.it.is_some() {
+                let la = ps.la;
+                let a = F::from_fn(|i| {
+                    if es.at(i) || s_tot[i] == 0.0 {
+                        1.0
+                    } else {
+                        (la * s_tot[i]).exp()
+                    }
+                });
+                e.scale(a);
+            }
         }
         // 開口
         if let Some(a) = st.clip {
@@ -513,6 +763,15 @@ fn run<R: LaneSink>(
                 for i in 0..L {
                     if !es.at(i) {
                         let (k2, dl) = trace::paraxial(d.focal, get(&pl, i), get(&kl, i), st.conj);
+                        // 電場は方向の変化と同じ最小の回転で回す（[`trace::trace_core`] と同じ）
+                        if let (Some(e), true) = (pe.as_mut(), err[i] == 0.0) {
+                            let k1 = get(&kl, i);
+                            let (ax, c) = (cross(k1, k2), dot(k1, k2));
+                            for q in 0..e.re.len() {
+                                let x = trace::rotate_min(e.get(i, q), ax, c);
+                                e.put(i, q, x);
+                            }
+                        }
                         put(&mut kl, i, k2);
                         lens_opd[i] += dl;
                     }
@@ -525,7 +784,18 @@ fn run<R: LaneSink>(
                 && d.typ != SurfType::Toroidal
                 && !(d.typ == SurfType::EvenAsph && st.asph)
                 && d.c == 0.0
-                && (d.typ == SurfType::Jones || st.nn == nprev) => {}
+                && (d.typ == SurfType::Jones || st.nn == nprev) =>
+            {
+                // 偏光は法線 (0, 0, 1) で面の処理をする（[`trace::trace_core`] と同じ値）
+                if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
+                    if !matches!(pr.surf[j].kind, PolKind::None) {
+                        let nv: VL = [zero, zero, F::splat(1.0)];
+                        let cosi = dot_l(&kl, &nv);
+                        let act = err.eq(0.0);
+                        pol_surface_l(plan.sys, pr, e, j, (&kl, &kl, &nv, cosi), false, act);
+                    }
+                }
+            }
             _ => {
                 let one = F::splat(1.0);
                 let nvec: VL = if crate::freeform::is_freeform(d.typ) {
@@ -565,6 +835,7 @@ fn run<R: LaneSink>(
                 let inv = 1.0 / (nvec[0] * nvec[0] + nvec[1] * nvec[1] + nvec[2] * nvec[2]).sqrt();
                 let nv: VL = v3!(c => nvec[c] * inv);
                 let cosi = kl[0] * nv[0] + kl[1] * nv[1] + kl[2] * nv[2];
+                let kin = kl;
                 if d.mirror {
                     kl = v3!(c => kl[c] - nv[c] * (2.0 * cosi));
                 } else if d.typ != SurfType::Jones && st.nn != nprev {
@@ -576,6 +847,12 @@ fn run<R: LaneSink>(
                     tir = tir | total;
                     let t = cosi.signum() * disc.max0().sqrt() - mu * cosi;
                     kl = v3!(c => kl[c] * mu + nv[c] * t);
+                }
+                if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
+                    if !matches!(pr.surf[j].kind, PolKind::None) {
+                        let act = err.eq(0.0);
+                        pol_surface_l(plan.sys, pr, e, j, (&kin, &kl, &nv, cosi), d.mirror, act);
+                    }
                 }
             }
         }
@@ -604,6 +881,15 @@ fn run<R: LaneSink>(
                     }
                 };
                 r.put(i, ri, e);
+            }
+        }
+    }
+    if let (Some(pr), Some(e)) = (pol, pe) {
+        let np = pr.np;
+        for i in 0..L {
+            let dead = err[i] != 0.0 || pr.err[i].is_some();
+            for q in 0..np {
+                pr.e[i * np + q] = if dead { trace::CNAN3 } else { e.get(i, q) };
             }
         }
     }
