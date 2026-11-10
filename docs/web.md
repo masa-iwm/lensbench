@@ -74,6 +74,14 @@ node scripts/web_smoke.mjs target/web shot.png  # 起動確認（npm の playwri
 
 プロジェクトが参照する .zmx・カタログは、開くときに一緒に選ぶと同じフォルダに入る。
 
+simd128 の経路（Zernike の当てはめの AᵀA）の試験は、wasm32-wasip1 で作って Node の WASI で回す（CI の web ジョブも同じ）:
+
+```sh
+rustup target add wasm32-wasip1
+RUSTFLAGS="-C target-feature=+simd128" CARGO_TARGET_WASM32_WASIP1_RUNNER="node $PWD/scripts/wasi_run.mjs" \
+  cargo test -p lensbench-core --lib --target wasm32-wasip1 column_basis_and_gram_match_the_row_forms
+```
+
 同梱する見本は `crates/lensbench-web/build.rs` が集める: 公開用ガラス `tests/glass`、例題のレンズ
 `examples/lenses`、例題のプロジェクト `examples/projects`、`tests/refs/*/system.zmx`。
 ベンダーのカタログ（AGF・ZMF・膜の表）は同梱しない。

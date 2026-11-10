@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 // 計測は exe と同じアロケータで
+#[cfg(not(target_arch = "wasm32"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
