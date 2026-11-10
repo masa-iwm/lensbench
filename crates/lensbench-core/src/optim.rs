@@ -38,7 +38,7 @@
 //! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
 //! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
 
-use crate::analysis::{mtf, pupil_gauss, to_ref, ZernKind};
+use crate::analysis::{mtf, pupil_gauss_shared, to_ref, ZernKind};
 use crate::error::Result;
 use crate::fiber::FiberOpts;
 use crate::invalid;
@@ -984,10 +984,10 @@ fn waves(s: &System, w: Option<usize>) -> Vec<usize> {
 fn term_rows(s: &System, k: &TermKind) -> usize {
     match k {
         TermKind::Spot { wave, rings, .. } => {
-            2 * waves(s, *wave).len() * pupil_gauss(*rings, None).0.len()
+            2 * waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
         }
         TermKind::Wavefront { wave, rings, .. } => {
-            waves(s, *wave).len() * pupil_gauss(*rings, None).0.len()
+            waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
         }
         TermKind::Mtf { dir, .. } => {
             if *dir == MtfDir::Both {
@@ -1338,7 +1338,8 @@ fn spot_term(
     reference: RmsRef,
     ps: Option<&[Param]>,
 ) -> Result<TermOut> {
-    let (px, py, wts) = pupil_gauss(rings, None);
+    let pg = pupil_gauss_shared(rings);
+    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();
@@ -1346,7 +1347,7 @@ fn spot_term(
     let mut traces = Vec::with_capacity(ws.len());
     let mut grads = Vec::with_capacity(ws.len());
     for &w in &ws {
-        let t = trace_ok(s, field, &px, &py, w, rec)?;
+        let t = trace_ok(s, field, px, py, w, rec)?;
         if let Some(ps) = ps {
             grads.push(s.land_grad(&t, w, ps, None)?);
         }
@@ -1515,7 +1516,8 @@ fn wfe_term(
     reference: RmsRef,
     ps: Option<&[Param]>,
 ) -> Result<TermOut> {
-    let (px, py, wts) = pupil_gauss(rings, None);
+    let pg = pupil_gauss_shared(rings);
+    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();
@@ -1573,7 +1575,7 @@ fn wfe_term(
     // 微分（rows と同じ順）: dOPD・d(L − Lc)・d(M − Mc) [パラメータ]
     let mut drows: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = Vec::new();
     for (k, &w) in ws.iter().enumerate() {
-        let t = trace_ok(s, field, &px, &py, w, rec)?;
+        let t = trace_ok(s, field, px, py, w, rec)?;
         let tc = trace_ok(s, field, &[0.0], &[0.0], w, rec)?;
         let wr = if poly { s.primary } else { w };
         let tp = if wr == w {
