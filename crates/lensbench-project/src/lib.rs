@@ -953,7 +953,8 @@ struct Ctx<'a, 'b> {
     lead: f64,
     /// 鏡の数の偶奇（−1 なら光は −z へ進む）
     parity: f64,
-    glasses: HashMap<String, Glass>,
+    /// 系のガラス（プロジェクトのカタログ＋玉・ユーザーカタログで足したもの）。足す名前がなければ共有のまま
+    glasses: std::sync::Arc<HashMap<String, Glass>>,
     /// ユーザーカタログの `coatings`（TABLE 膜）
     coats: HashMap<String, lensbench_core::coating::Table>,
     nstop: usize,
@@ -1451,16 +1452,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
             .get(item)
             .ok_or_else(|| format!("{}: 項目 {item} はない", path.display()))?;
         let dirs = glass::catalog_dirs(&self.env.glass_dirs);
-        let (g, missing) = glass::load_catalogs(&it.glass_catalogs, &dirs);
+        let (g, missing) = glass::load_catalogs_shared(&it.glass_catalogs, &dirs);
         if !missing.is_empty() {
             return Err(format!(
                 "{item}: ガラスカタログが見つからない: {}",
                 missing.join(", ")
             ));
         }
-        for (k, v) in g {
-            self.glasses.entry(k).or_insert(v);
-        }
+        self.add_glasses(&g);
         // カタログの膜（フィルタの透過特性）。同じ名前で中身の違う膜は誤り
         for (k, spec) in &cat.coatings {
             let t = spec
@@ -1492,8 +1491,23 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     fn merge_glasses(&mut self, s: &System) {
-        for (k, g) in s.glasses.iter() {
-            self.glasses.entry(k.clone()).or_insert_with(|| g.clone());
+        self.add_glasses(&s.glasses);
+    }
+
+    /// 無い名前のガラスだけ足す（全部あれば写さない）
+    fn add_glasses(&mut self, g: &std::sync::Arc<HashMap<String, Glass>>) {
+        if std::sync::Arc::ptr_eq(&self.glasses, g)
+            || g.keys().all(|k| self.glasses.contains_key(k))
+        {
+            return;
+        }
+        if self.glasses.is_empty() {
+            self.glasses = g.clone();
+            return;
+        }
+        let m = std::sync::Arc::make_mut(&mut self.glasses);
+        for (k, v) in g.iter() {
+            m.entry(k.clone()).or_insert_with(|| v.clone());
         }
     }
 
@@ -2250,7 +2264,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
         zpicks: Vec::new(),
         lead: 0.0,
         parity: 1.0,
-        glasses: HashMap::new(),
+        glasses: Default::default(),
         coats: HashMap::new(),
         nstop: 0,
         spans: Vec::new(),
@@ -3027,7 +3041,7 @@ fn expand_inner(
         ));
     }
     let dirs = glass::catalog_dirs(&env.glass_dirs);
-    let (glasses, missing) = glass::load_catalogs(&p.glass_catalogs, &dirs);
+    let (glasses, missing) = glass::load_catalogs_shared(&p.glass_catalogs, &dirs);
     if !missing.is_empty() {
         return Err(format!(
             "ガラスカタログが見つからない: {}",
