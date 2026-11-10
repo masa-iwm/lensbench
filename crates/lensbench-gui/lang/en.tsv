@@ -1042,3 +1042,8 @@ ND	ND
 組ごとにすべての出発点から最適化し、評価関数の最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。	Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).
 評価関数に足す項	Extra merit terms
 枠付きの品では、STEP の厚さ・径は枠を含む外形で、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。	For mounted items, the STEP thickness and diameter are those of the outer shape including the mount, not of the glass. Check them against the spec table or the drawing on the product page.
+そのほか	Others
+像面に置く検出器のブロック（プロジェクトの最後のブロック、最後の空気が検出器までの距離）。空の欄は既定値	Detector block at the image surface (the last block of the project; the last air is the distance to the detector). Empty fields use the defaults
+検出器	Detector
+検出器 {} はこの版で使えない（設定はそのまま残す）	Detector {} is not available in this build (its settings are kept)
+検出器の設定: {}	Detector settings: {}
