@@ -452,6 +452,9 @@ enum Cmd {
         /// `名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
         #[arg(long, num_args = 1)]
         spec: Vec<String>,
+        /// 径 [mm] の素子が入る機構部品（チューブ・マウント・ケージ板）だけ: 保持径が径以上で 0.25 mm より太くない
+        #[arg(long)]
+        fits: Option<f64>,
         /// 名前の決まった仕様の一覧を出す
         #[arg(long)]
         list_specs: bool,
@@ -2504,6 +2507,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             vendor,
             text,
             spec,
+            fits,
             list_specs,
             json,
         } => {
@@ -2532,6 +2536,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     .iter()
                     .map(|s| SpecFilter::parse(s))
                     .collect::<Result<_, _>>()?,
+                fits,
             };
             let v = browse::search(&lens_catalog, &glass_dir, &q)?;
             if !json {

@@ -2048,7 +2048,9 @@ pub struct MechPlacement {
     pub item: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mech: Option<MechSpec>,
-    /// 置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）
+    /// 置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）。
+    /// `seat` なら省略できる（使わない）
+    #[serde(default, skip_serializing_if = "MechAt::is_unset")]
     pub at: MechAt,
     /// 基準の面の局所座標でのずれ [dx, dy, dz] [mm]
     #[serde(default)]
@@ -2059,16 +2061,26 @@ pub struct MechPlacement {
     /// 保持する素子のブロック id。はみ出し・保持径を確かめる
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holds: Vec<String>,
+    /// 部品の座（寸法の `holds.seat_z`）を、保持する最初の素子の前面に合わせて置く（`at` の代わり。`offset` は
+    /// そこからのずれ）
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub seat: bool,
 }
 
 /// 機構を置く基準の面（[`MechPlacement::at`]）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MechAt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block: Option<String>,
     #[serde(default)]
     pub surface: usize,
+}
+
+impl MechAt {
+    fn is_unset(&self) -> bool {
+        self.block.is_none() && self.surface == 0
+    }
 }
 
 impl UserCatalog {
@@ -3385,24 +3397,49 @@ fn place_mechanics(
             }
         };
         spec.validate().map_err(|e| format!("{tag}: {e}"))?;
-        let surface = match &m.at.block {
-            Some(b) => match block_face(s, b, m.at.surface, spans, back_spans)
-                .map_err(|e| format!("{tag}: {e}"))?
-            {
-                Some(j) => j,
+        let mut offset = m.offset;
+        // 座に合わせる: 保持する最初の素子の前面に、部品の座の z を合わせる
+        let seat_at = if m.seat {
+            let seat = spec
+                .holds
+                .ok_or_else(|| format!("{tag}: seat には部品の寸法の holds（座の位置）が要る"))?
+                .seat_z;
+            let b = m
+                .holds
+                .first()
+                .ok_or_else(|| format!("{tag}: seat には holds（保持する素子）が要る"))?;
+            offset[2] -= seat;
+            match block_face(s, b, 0, spans, back_spans).map_err(|e| format!("{tag}: {e}"))? {
+                Some(j) => Some(j),
                 None => {
                     warn.push(format!("{tag}: ブロック {b} が無いので置かない"));
                     continue;
                 }
-            },
-            None => {
-                if m.at.surface == 0 || m.at.surface > s.image() {
-                    return Err(format!("{tag}: 面 {}（1〜{}）", m.at.surface, s.image()));
-                }
-                m.at.surface
             }
+        } else {
+            None
         };
-        if !m.offset.iter().chain(&m.tilt).all(|v| v.is_finite()) {
+        let surface = match (seat_at, &m.at.block) {
+            (Some(j), _) => j,
+            (None, block) => match block {
+                Some(b) => match block_face(s, b, m.at.surface, spans, back_spans)
+                    .map_err(|e| format!("{tag}: {e}"))?
+                {
+                    Some(j) => j,
+                    None => {
+                        warn.push(format!("{tag}: ブロック {b} が無いので置かない"));
+                        continue;
+                    }
+                },
+                None => {
+                    if m.at.surface == 0 || m.at.surface > s.image() {
+                        return Err(format!("{tag}: 面 {}（1〜{}）", m.at.surface, s.image()));
+                    }
+                    m.at.surface
+                }
+            },
+        };
+        if !offset.iter().chain(&m.tilt).all(|v| v.is_finite()) {
             return Err(format!("{tag}: offset・tilt が数でない"));
         }
         let name = if !m.name.is_empty() {
@@ -3412,7 +3449,7 @@ fn place_mechanics(
         } else {
             format!("mech{}", k + 1)
         };
-        let mut part = spec.part(&name, surface, m.offset, m.tilt);
+        let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
             match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
                 Some(x) => part.holds.extend(

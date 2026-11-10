@@ -139,6 +139,10 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   3D（glTF・OBJ・STL）・STEP は部品を軸のまわりの輪（内壁〜外径。穴のない区間は詰まった円柱）で描く。
   GUI では、カタログの機構部品の行を足すと組合せの「機構部品」に入り（選んでいる要素に置く）、置く要素・面・ずれ・保持する要素を
   変えられる。レイアウト図・3D 表示に部品を描き、ケラレ・当たりは解析の「機構のケラレ」で見る。
+- 機構部品を素子に合わせて置く: `mechanics` の項目に `"seat": true` と `"holds": [ブロック id]` で、部品の座（寸法の
+  `holds.seat_z`）を保持する最初の素子の前面に合わせて置く（`at` は要らない。`offset` はそこからのずれ）。GUI では機構部品の欄の
+  「座に合わせる」。素子が入る機構部品は `lensbench catalog-search <カタログ> --fits <径>`（保持径が径以上で 0.25 mm より
+  太くないもの）で探せ、GUI のカタログの詳細にも「入る機構部品」を出す
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

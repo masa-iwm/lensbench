@@ -1054,3 +1054,7 @@ STEP から	from the STEP
 検出器 {} はこの版で使えない（設定はそのまま残す）	Detector {} is not available in this build (its settings are kept)
 検出器の設定: {}	Detector settings: {}
 枠付き: 枠の長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）	Mounted: mount length {} mm, outer diameter {} mm, smallest bore {} mm (added as a mechanical part when placed)
+座に合わせる	Seat on element
+部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）	Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)
+入る機構部品（{}）…	Fitting mechanical parts ({})…
+この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します	Tubes, mounts and cage plates that this item's diameter fits. Choosing one adds it to the combination's mechanical parts

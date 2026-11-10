@@ -313,3 +313,29 @@ fn catalog_item_frame_is_placed_on_the_glass() {
     assert_eq!(v[0].clipped[0], 0);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// `seat`: 部品の座（holds.seat_z）を、保持する最初の素子の前面に合わせて置く（at は省略できる）
+#[test]
+fn seat_places_the_part_on_the_held_element() {
+    let s = fit_system(
+        r#"{"name": "cell", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}, {"z0": 2, "z1": 12, "diameter": 25.6}], "outer_diameter": 30, "holds": {"diameter": 25.6, "seat_z": 2}}, "holds": ["L1"], "seat": true, "offset": [0, 0, 0.5]}"#,
+    );
+    let m = &s.mechanics[0];
+    assert_eq!(m.surface, m.holds[0], "L1 の前面");
+    assert_eq!(m.offset, [0.0, 0.0, -1.5]);
+    assert!(kinds(&s).is_empty(), "{:?}", kinds(&s));
+    // 座の位置の無い部品・保持する素子の無い部品は誤り
+    for bad in [
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}]}, "holds": ["L1"], "seat": true}"#,
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}], "holds": {"diameter": 25.6, "seat_z": 2}}, "seat": true}"#,
+    ] {
+        let p = Project::from_json(&format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+            "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 20}},
+              {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}}, {{"radius": -60, "semi": 12.7}}]}}}},
+              {{"type": "air", "t": 50}}], "mechanics": [{bad}]}}"#
+        ))
+        .unwrap();
+        assert!(expand(&p, &env()).unwrap_err().contains("seat"), "{bad}");
+    }
+}

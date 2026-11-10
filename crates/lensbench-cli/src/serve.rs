@@ -858,6 +858,7 @@ fn catalog_query(p: &Value) -> Result<lensbench_project::catalog_spec::CatalogQu
         vendor: p["vendor"].as_str().unwrap_or("").to_string(),
         text: p["text"].as_str().unwrap_or("").to_string(),
         specs,
+        fits: p["fits"].as_f64(),
     })
 }
 
