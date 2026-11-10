@@ -383,7 +383,7 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
         .collect();
     let mut cats = Vec::new();
     for f in json_catalogs(paths) {
-        let (rows, cat) = user_items(&f, glass_dirs);
+        let (rows, cat) = user_items(&f, glass_dirs, &cat);
         out.extend(rows);
         cats.extend(cat);
     }
@@ -464,6 +464,7 @@ fn is_gz(p: &std::path::Path) -> bool {
 fn user_items(
     path: &PathBuf,
     glass_dirs: &[PathBuf],
+    lens_cat: &LensCatalog,
 ) -> (Vec<Value>, Option<lensbench_project::UserCatalog>) {
     use lensbench_project::{Block, UserCatalog};
     let abs = vfs::canonicalize(path).unwrap_or_else(|_| path.clone());
@@ -627,7 +628,7 @@ fn user_items(
                         "jones": surfaces.iter().any(|q| q.jones.is_some() || q.polarizer.is_some() || q.waveplate.is_some()),
                     }))
                 }
-                _ => user_lens_summary(&abs, name, &it.glass_catalogs, glass_dirs),
+                _ => user_lens_summary(&abs, name, &it.glass_catalogs, glass_dirs, lens_cat),
             };
             match summary {
                 Ok(Value::Object(m)) => row.as_object_mut().unwrap().extend(m),
@@ -640,12 +641,14 @@ fn user_items(
     (rows, Some(cat))
 }
 
-/// lensbench 形式のカタログの玉の要約（項目を 1 つ置いた系を作って見る）
+/// lensbench 形式のカタログの玉の要約（項目を 1 つ置いた系を作って見る）。品がレンズカタログの玉
+/// （`source: {vendor, part}`）を参照していれば、一覧のレンズカタログ（ZMF・.zmx）から引く
 fn user_lens_summary(
     catalog: &std::path::Path,
     item: &str,
     glass_catalogs: &[String],
     glass_dirs: &[PathBuf],
+    lens_cat: &LensCatalog,
 ) -> Result<Value, String> {
     let p = lensbench_project::Project::from_json(
         &json!({
@@ -668,7 +671,7 @@ fn user_lens_summary(
             .map(|x| x.to_path_buf())
             .unwrap_or_default(),
         glass_dirs: glass_dirs.to_vec(),
-        catalog: None,
+        catalog: Some(&|v: &str, q: &str| lens_cat.zmx(v, q)),
     };
     let s = lensbench_project::expand(&p, &env)?;
     system_summary(&s, f64::NAN)
@@ -1037,6 +1040,36 @@ mod tests {
         let a = l.iter().find(|x| x["part"] == "A").unwrap();
         assert_eq!(a["kind"], "surfaces");
         assert!(a.get("error").is_none(), "{a}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// レンズカタログの玉を参照する品（source: {vendor, part}）は、一覧のレンズカタログから玉を引いて要約する（#90）
+    #[test]
+    fn json_item_refers_to_catalog_lens() {
+        let dir = std::env::temp_dir().join(format!("lensbench-catref-{}", std::process::id()));
+        lensbench_core::vfs::create_dir_all(&dir).unwrap();
+        lensbench_core::vfs::write(
+            dir.join("r.json"),
+            r#"{"vendor": "LB", "items": {
+                "PCX-100-AR": {"description": "PCX-100 に AR", "blocks": [{"type": "lens", "source": {"vendor": "LB", "part": "PCX-100"}}]}
+            }}"#,
+        )
+        .unwrap();
+        let g = [root().join("tests/glass")];
+        let v = read_lenses(&[root().join("examples/lenses/LB"), dir.clone()], &g).unwrap();
+        let l = v["lenses"].as_array().unwrap();
+        let base = l.iter().find(|x| x["part"] == "PCX-100").unwrap();
+        let r = l.iter().find(|x| x["part"] == "PCX-100-AR").unwrap();
+        assert!(r.get("error").is_none(), "{r}");
+        for k in ["diameter", "thickness"] {
+            assert_eq!(r[k], base[k], "{k}: {r} {base}");
+        }
+        let (a, b) = (r["efl"].as_f64().unwrap(), base["efl"].as_f64().unwrap());
+        assert!((a - b).abs() < 1e-6 * b.abs(), "efl {a} {b}");
+        // レンズカタログのフォルダが無ければ誤り（引けない）
+        let v = read_lenses(std::slice::from_ref(&dir), &g).unwrap();
+        let r = &v["lenses"].as_array().unwrap()[0];
+        assert!(r["error"].is_string(), "{r}");
         std::fs::remove_dir_all(&dir).ok();
     }
 
