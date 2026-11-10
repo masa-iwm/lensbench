@@ -878,7 +878,7 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         for _ in 0..nn {
             let ln = r.u16()? as usize;
             let name = String::from_utf8_lossy(r.take(ln)?).to_string();
-            let ln = r.u32()? as usize;
+            let ln = r.u32()?;
             let note = String::from_utf8(r.take(ln)?.to_vec())
                 .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の注記が UTF-8 でない".into()))?;
             match out.iter_mut().find(|(k, _)| *k == name) {
