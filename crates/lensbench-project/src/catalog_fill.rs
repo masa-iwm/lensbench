@@ -494,7 +494,7 @@ pub fn spec_glass_diameter(visible: f64, frame: &crate::MechSpec, s: &SpecValues
 }
 
 /// STEP から測った大きさ
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct StepSize {
     /// 厚さ [mm]（円の軸の向きの長さ。円が無ければ箱の最も短い辺）
     pub thickness: f64,
@@ -508,6 +508,8 @@ pub struct StepSize {
     pub frame: Option<crate::MechSpec>,
     /// ガラスと枠が 1 つの立体で、ガラスの径は見えている径（本当の径は仕様表で補う。[`spec_glass_diameter`]）
     pub merged: bool,
+    /// ガラスの無い機構部品（チューブ・ケージ板・マウント）。厚さ・径は枠の長さ・外径で、寸法は `frame`
+    pub mech: bool,
 }
 
 /// STEP の長さの単位（mm へ）
@@ -531,7 +533,8 @@ fn step_unit(upper: &str) -> f64 {
 ///
 /// 立体（`MANIFOLD_SOLID_BREP`）ごとに組立の置き方を当てて共通の座標に置き、最大の円の軸を光軸とする。
 /// 光軸と同じ軸の穴（内壁の円柱の面）を持つ立体を枠、持たない立体をガラスとみなし、両方あれば
-/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。枠の分からない品は、
+/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。ガラスが無く穴のある立体だけなら機構部品（チューブ・
+/// ケージ板・マウント）として全体を枠にし（[`StepSize::mech`]）、ねじ（SM05〜SM3 の内径）・ケージのロッドの間隔も読む。枠の分からない品は、
 /// 径は軸に平行な円の最大の直径、厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の
 /// 最も短い辺を厚さ、残りを [幅, 高さ] とする
 pub fn read_step(text: &str) -> Result<StepSize, String> {
@@ -545,6 +548,7 @@ pub fn read_step(text: &str) -> Result<StepSize, String> {
         note: m.note,
         frame: m.frame,
         merged: m.merged,
+        mech: m.mech,
     })
 }
 

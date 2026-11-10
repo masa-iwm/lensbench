@@ -659,6 +659,14 @@ impl FillWin {
         } else {
             Err(tr("STEP（.step・.stp）でないファイル").to_string())
         };
+        // ガラスの無い機構部品の STEP は、ガラスの厚さ・径にならない
+        let res = res.and_then(|s| {
+            if s.mech {
+                Err(tr("ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP なので、ガラスの厚さ・径は測れません").to_string())
+            } else {
+                Ok(s)
+            }
+        });
         if let Ok(s) = &res {
             if let Some(f) = &s.frame {
                 self.frame = Some((f.clone(), "step"));

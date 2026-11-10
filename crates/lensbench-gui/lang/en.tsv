@@ -1075,3 +1075,4 @@ STEP の枠は STEP の座標の向きで、光は z の小さい端（上の「
 食い違う項目は、保存する品のメモに残します。品ページの図面で確かめてください。	Mismatched items are recorded in the saved item's notes. Check them against the drawing on the product page.
 STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は見えている径です。仕様表の径は {} mm です。	The STEP models the glass and mount as one solid, so the glass diameter {} mm is the visible diameter. The spec table diameter is {} mm.
 ガラスの径を仕様の値にする	Use spec glass diameter
+ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP なので、ガラスの厚さ・径は測れません	This STEP is a mechanical part without glass (tube, cage plate or mount), so the glass thickness and diameter can't be measured

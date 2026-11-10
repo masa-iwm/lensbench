@@ -461,6 +461,14 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// 品の STEP（.step・.stp）を測る: 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品
+    /// （チューブ・ケージ板・マウント）は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+    CatalogStep {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
     /// ユーザーカタログの項目の一覧
     CatalogList {
         catalog: PathBuf,
@@ -2541,6 +2549,47 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 return Ok((false, Value::Null));
             }
             (json, v)
+        }
+        Cmd::CatalogStep { files, json } => {
+            let v: Vec<Value> = files
+                .iter()
+                .map(|f| {
+                    let r = lensbench_core::vfs::read(f)
+                        .map_err(|e| e.to_string())
+                        .and_then(|b| {
+                            lensbench_project::catalog_fill::read_step(&String::from_utf8_lossy(&b))
+                        });
+                    match r {
+                        Ok(s) => {
+                            let mut v = serde_json::to_value(&s).unwrap_or(Value::Null);
+                            v["file"] = json!(f.display().to_string());
+                            v
+                        }
+                        Err(e) => json!({ "file": f.display().to_string(), "error": e }),
+                    }
+                })
+                .collect();
+            if !json {
+                for x in &v {
+                    println!("{}", x["file"].as_str().unwrap_or(""));
+                    match x["error"].as_str() {
+                        Some(e) => println!("  誤り: {e}"),
+                        None => println!(
+                            "  厚さ {} mm、径 {}{}\n  {}",
+                            x["thickness"],
+                            x["diameter"],
+                            if x["frame"].is_null() {
+                                ""
+                            } else {
+                                "、枠あり"
+                            },
+                            x["note"].as_str().unwrap_or("")
+                        ),
+                    }
+                }
+                return Ok((false, Value::Null));
+            }
+            (true, json!({ "files": v }))
         }
         Cmd::CatalogList { catalog, json } => {
             let cat = lensbench_project::UserCatalog::load(&catalog)?;

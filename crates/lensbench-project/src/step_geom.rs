@@ -714,12 +714,22 @@ pub(crate) struct Measure {
     pub frame: Option<crate::MechSpec>,
     /// ガラスと枠が 1 つの立体（ガラスの径は見えている径）
     pub merged: bool,
+    /// ガラスの無い機構部品（厚さ・径は枠の長さ・外径）
+    pub mech: bool,
 }
 
 fn fmt(x: f64) -> String {
     let r = (x * 1e4).round() / 1e4;
     format!("{r}")
 }
+
+/// 光学部品のねじ（名前、内側のねじの谷の径 [mm]、入る素子の径 [mm]）。STEP のねじは谷の径の円柱で描かれる
+const THREADS: [(&str, f64, f64); 4] = [
+    ("SM05", 0.535 * 25.4, 12.7),
+    ("SM1", 1.035 * 25.4, 25.4),
+    ("SM2", 2.035 * 25.4, 50.8),
+    ("SM3", 3.035 * 25.4, 76.2),
+];
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
 pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
@@ -871,30 +881,26 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 (lo.min(s.z[0]), hi.max(s.z[1]))
             })
     };
-    if !rings.is_empty() && !glass.is_empty() {
-        let (g0, g1) = span(&glass);
-        let gr = glass.iter().map(|s| s.r).fold(0.0, f64::max);
-        let (all0, all1) = span(&sols.iter().collect::<Vec<_>>());
-        let eps = 1e-6 * rmax;
-        // 穴: 枠の内壁の面の端で z を区切り、区間ごとに区間をまたぐ内壁の最小の半径
-        let walls: Vec<(f64, [f64; 2])> =
-            rings.iter().flat_map(|s| s.walls.iter().copied()).collect();
+    let eps = 1e-6 * rmax;
+    // z での内壁の最小の半径（内壁が無ければ無限大）
+    let wall_min = |walls: &[(f64, [f64; 2])], z: f64| {
+        walls
+            .iter()
+            .filter(|w| w.1[0] - eps <= z && z <= w.1[1] + eps)
+            .map(|w| w.0)
+            .fold(f64::INFINITY, f64::min)
+    };
+    // 穴: 内壁の面の端で z を区切り、区間ごとに区間をまたぐ内壁の最小の半径。z は all0 から、長さ length（mm）
+    let bores_of = |walls: &[(f64, [f64; 2])], all0: f64, length: f64| {
         let mut zs: Vec<f64> = walls.iter().flat_map(|w| [w.1[0], w.1[1]]).collect();
         zs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         zs.dedup_by(|a, b| (*a - *b).abs() <= eps);
-        let wall_at = |z: f64| {
-            walls
-                .iter()
-                .filter(|w| w.1[0] - eps <= z && z <= w.1[1] + eps)
-                .map(|w| w.0)
-                .fold(f64::INFINITY, f64::min)
-        };
         let mut bores: Vec<crate::BoreSpec> = Vec::new();
         for w in zs.windows(2) {
             if w[1] - w[0] <= eps {
                 continue;
             }
-            let r = wall_at(0.5 * (w[0] + w[1]));
+            let r = wall_min(walls, 0.5 * (w[0] + w[1]));
             if !r.is_finite() {
                 continue;
             }
@@ -910,7 +916,6 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         }
         // 内壁の円柱の無い区間（面取りの円錐など）は、となりの穴の太い方でうめる（穴の無い区間は詰まった
         // 円柱として描かれ、確かめられるので）
-        let length = sc(all1 - all0);
         let mut filled: Vec<crate::BoreSpec> = Vec::new();
         let mut z = 0.0;
         for (k, b) in bores.iter().enumerate() {
@@ -939,6 +944,17 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 _ => bores.push(b),
             }
         }
+        bores
+    };
+    if !rings.is_empty() && !glass.is_empty() {
+        let (g0, g1) = span(&glass);
+        let gr = glass.iter().map(|s| s.r).fold(0.0, f64::max);
+        let (all0, all1) = span(&sols.iter().collect::<Vec<_>>());
+        let length = sc(all1 - all0);
+        let walls: Vec<(f64, [f64; 2])> =
+            rings.iter().flat_map(|s| s.walls.iter().copied()).collect();
+        let bores = bores_of(&walls, all0, length);
+        let wall_at = |z: f64| wall_min(&walls, z);
         let outer = rings.iter().map(|s| s.r).fold(0.0, f64::max);
         let hold_r = wall_at(0.5 * (g0 + g1));
         let hold_d = if hold_r.is_finite() {
@@ -982,7 +998,168 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             },
             frame: Some(frame),
             merged: merged > 0,
+            mech: false,
         });
+    }
+    // ガラスの無い機構部品（チューブ・ケージ板・マウント）: 全体を枠として測る
+    if !rings.is_empty() && glass.is_empty() {
+        let (all0, all1) = span(&sols.iter().collect::<Vec<_>>());
+        let length = sc(all1 - all0);
+        let walls: Vec<(f64, [f64; 2])> =
+            rings.iter().flat_map(|s| s.walls.iter().copied()).collect();
+        let bores = bores_of(&walls, all0, length);
+        if !bores.is_empty() {
+            // 光軸に直交する 2 方向
+            let ex = {
+                let t = if axis[0].abs() < 0.9 {
+                    [1.0, 0.0, 0.0]
+                } else {
+                    [0.0, 1.0, 0.0]
+                };
+                let c = cross(axis, t);
+                scale(c, 1.0 / dot(c, c).sqrt())
+            };
+            let ey = cross(axis, ex);
+            let plane = |p: V3| {
+                let d = sub(p, o);
+                [dot(d, ex), dot(d, ey)]
+            };
+            // ケージのロッドの穴: 軸に平行で光軸に無い内壁の円柱のうち、同じ半径・同じ光軸からの距離に 4 つ以上
+            let mut holes: Vec<(f64, [f64; 2])> = Vec::new();
+            for g in &geos {
+                for f in &g.cyls {
+                    if f.inward && dot(f.axis, axis).abs() > 0.999 && !coax(f.c, f.axis) {
+                        let q = plane(f.c);
+                        if !holes.iter().any(|h| {
+                            (h.0 - f.r).abs() <= 1e-4 * rmax
+                                && (h.1[0] - q[0]).hypot(h.1[1] - q[1]) <= 1e-4 * rmax
+                        }) {
+                            holes.push((f.r, q));
+                        }
+                    }
+                }
+            }
+            let rods = holes.iter().find_map(|h| {
+                let rho = h.1[0].hypot(h.1[1]);
+                let same: Vec<&(f64, [f64; 2])> = holes
+                    .iter()
+                    .filter(|x| {
+                        (x.0 - h.0).abs() <= 1e-4 * rmax
+                            && (x.1[0].hypot(x.1[1]) - rho).abs() <= 1e-4 * rmax
+                    })
+                    .collect();
+                // 4 つの穴が光軸の周りに 90° おき（正方形の角）
+                let perp = same
+                    .iter()
+                    .find(|x| (x.1[0] * h.1[0] + x.1[1] * h.1[1]).abs() <= 1e-3 * rho * rho)?;
+                (same.len() >= 4 && rho > rmax && perp.0 > 0.0).then_some(rho)
+            });
+            let verts: Vec<[f64; 2]> = geos
+                .iter()
+                .flat_map(|g| g.verts.iter().copied())
+                .map(plane)
+                .collect();
+            // 外形: 光軸に直交する向きの幅の最小（ケージ板・キューブは一辺。取付けの出っ張りを除く）と、
+            // 光軸と同じ軸の円の直径の大きい方（円柱は頂点が少ないので）
+            let min_width = (0..180)
+                .map(|i| {
+                    let t = (i as f64).to_radians();
+                    let (c, s) = (t.cos(), t.sin());
+                    let (lo, hi) =
+                        verts
+                            .iter()
+                            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| {
+                                let x = q[0] * c + q[1] * s;
+                                (lo.min(x), hi.max(x))
+                            });
+                    hi - lo
+                })
+                .fold(f64::INFINITY, f64::min);
+            let circ = 2.0 * sols.iter().map(|s| s.r).fold(0.0, f64::max);
+            let outer = if min_width.is_finite() {
+                min_width.max(circ)
+            } else {
+                circ
+            };
+            let rod_spacing = rods.map_or(0.0, |r| r * std::f64::consts::SQRT_2);
+            // 保持する素子: 最も長い穴の径。ねじ（SM05・SM1・SM2・SM3）の内径なら、ねじの名前と入る素子の径
+            let body = rings.iter().copied().max_by(|a, b| {
+                (a.z[1] - a.z[0])
+                    .partial_cmp(&(b.z[1] - b.z[0]))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            // 止め輪を除いた本体の穴から
+            let body_bores = body.map_or_else(Vec::new, |b| bores_of(&b.walls, all0, length));
+            let mut runs: Vec<(f64, f64)> = Vec::new();
+            for b in &body_bores {
+                match runs.iter_mut().find(|r| (r.0 - b.diameter).abs() < 1e-9) {
+                    Some(r) => r.1 += b.z1 - b.z0,
+                    None => runs.push((b.diameter, b.z1 - b.z0)),
+                }
+            }
+            let hold = runs
+                .iter()
+                .copied()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+                .map_or(0.0, |r| r.0);
+            let (thread, hold_d) = THREADS
+                .iter()
+                .find(|t| (t.1 - hold).abs() <= 0.05)
+                .map_or((String::new(), hold), |t| (t.0.to_string(), t.2));
+            // 座: 本体と別の止め輪（本体より z の短い輪）が前半にあれば、その奥の面。無ければ枠の端
+            let seat = rings
+                .iter()
+                .filter(|s| body.is_some_and(|b| !std::ptr::eq(**s, b)))
+                .map(|s| s.z[1] - all0)
+                .filter(|z| *z < 0.5 * (all1 - all0))
+                .fold(0.0, f64::max);
+            let rings_n = rings.len();
+            let frame = crate::MechSpec {
+                bores,
+                length,
+                outer_diameter: sc(outer),
+                thread: thread.clone(),
+                rod_spacing: sc(rod_spacing),
+                holds: Some(crate::HoldSpec {
+                    diameter: hold_d,
+                    seat_z: sc(seat),
+                }),
+            };
+            let clear = frame
+                .bores
+                .iter()
+                .map(|b| b.diameter)
+                .fold(f64::INFINITY, f64::min);
+            return Ok(Measure {
+                thickness: frame.length,
+                diameter: json!(frame.outer_diameter),
+                note: format!(
+                    "ガラスの無い機構部品として、立体 {} 個（穴のある立体 {rings_n}）を枠として測った。長さ {} mm・外径 {} mm{}・最小の内径（クリア開口）{} mm{}。座の位置は{}",
+                    sols.len(),
+                    fmt(frame.length),
+                    fmt(frame.outer_diameter),
+                    if rods.is_some() {
+                        format!("（ケージ板の一辺）・ロッドの間隔 {} mm", fmt(frame.rod_spacing))
+                    } else {
+                        String::new()
+                    },
+                    fmt(clear),
+                    if thread.is_empty() {
+                        String::new()
+                    } else {
+                        format!("・内側のねじ {thread}（入る素子の径 {} mm）", fmt(frame.holds.map_or(0.0, |h| h.diameter)))
+                    },
+                    if seat > 0.0 {
+                        "止め輪の奥の面"
+                    } else {
+                        "枠の端（STEP から分からない）"
+                    }
+                ),
+                frame: Some(frame),
+                merged: false,
+                mech: true,
+            });
+        }
     }
     // 枠の分からない品: 軸に平行な円の最大の直径と、軸の向きの広がり
     let par: Vec<&(V3, V3, f64)> = all
@@ -1020,6 +1197,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         ),
         frame: None,
         merged: false,
+        mech: false,
     })
 }
 
@@ -1071,6 +1249,7 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
         note: format!("円が無いので頂点 {} 個の箱（座標軸の向き）", pts.len()),
         frame: None,
         merged: false,
+        mech: false,
     })
 }
 
@@ -1177,6 +1356,95 @@ mod tests {
         assert_eq!(b, vec![[0.0, 6.3, 21.0]]);
         assert_eq!(f.holds.unwrap().seat_z, 0.5);
         assert!(s.note.contains("1 つの立体"), "{}", s.note);
+    }
+
+    /// ガラスの無い機構部品: SM1 のねじ（内径 1.035 in）のチューブと、30 mm ケージ板（一辺 40.64、ロッドの穴 4 つ）
+    #[test]
+    fn mech_parts_are_measured_as_frames() {
+        let tube = "ISO-10303-21;\nDATA;\n\
+#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n\
+#3=CARTESIAN_POINT('',(0.,0.,0.));\n#4=AXIS2_PLACEMENT_3D('',#3,#1,#2);\n\
+#5=CARTESIAN_POINT('',(0.,0.,10.));\n#6=AXIS2_PLACEMENT_3D('',#5,#1,#2);\n\
+#11=CIRCLE('',#4,15.24);\n#12=CIRCLE('',#6,15.24);\n#13=CYLINDRICAL_SURFACE('',#4,15.24);\n\
+#14=ADVANCED_FACE('',(#11,#12),#13,.T.);\n\
+#15=CIRCLE('',#4,13.1445);\n#16=CIRCLE('',#6,13.1445);\n#17=CYLINDRICAL_SURFACE('',#4,13.1445);\n\
+#18=ADVANCED_FACE('',(#15,#16),#17,.F.);\n\
+#32=CLOSED_SHELL('',(#14,#18));\n#33=MANIFOLD_SOLID_BREP('tube',#32);\nENDSEC;\n";
+        let s = crate::catalog_fill::read_step(tube).unwrap();
+        assert!(s.mech, "{s:?}");
+        let f = s.frame.expect("枠");
+        assert_eq!((f.length, f.outer_diameter), (10.0, 30.48));
+        let b: Vec<[f64; 3]> = f.bores.iter().map(|b| [b.z0, b.z1, b.diameter]).collect();
+        assert_eq!(b, vec![[0.0, 10.0, 26.289]]);
+        assert_eq!(f.thread, "SM1");
+        assert_eq!(f.holds.unwrap().diameter, 25.4);
+        assert_eq!(f.rod_spacing, 0.0);
+        assert_eq!((s.thickness, s.diameter.clone()), (10.0, json!(30.48)));
+        // ケージ板: 角の頂点 8 つ、光軸の穴（内径 22.9）、ロッドの穴（内径 6）が ±15 mm に 4 つ
+        let mut d = String::from(
+            "ISO-10303-21;\nDATA;\n#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n\
+#3=CARTESIAN_POINT('',(0.,0.,0.));\n#4=AXIS2_PLACEMENT_3D('',#3,#1,#2);\n\
+#5=CARTESIAN_POINT('',(0.,0.,8.));\n#6=AXIS2_PLACEMENT_3D('',#5,#1,#2);\n\
+#15=CIRCLE('',#4,11.45);\n#16=CIRCLE('',#6,11.45);\n#17=CYLINDRICAL_SURFACE('',#4,11.45);\n\
+#18=ADVANCED_FACE('',(#15,#16),#17,.F.);\n",
+        );
+        let mut faces = vec!["#18".to_string()];
+        let mut id = 100;
+        for (x, y) in [(15.0, 15.0), (-15.0, 15.0), (-15.0, -15.0), (15.0, -15.0)] {
+            d += &format!(
+                "#{a}=CARTESIAN_POINT('',({x},{y},0.));\n#{b}=AXIS2_PLACEMENT_3D('',#{a},#1,#2);\n\
+#{c}=CARTESIAN_POINT('',({x},{y},8.));\n#{e}=AXIS2_PLACEMENT_3D('',#{c},#1,#2);\n\
+#{f}=CIRCLE('',#{b},3.);\n#{g}=CIRCLE('',#{e},3.);\n#{h}=CYLINDRICAL_SURFACE('',#{b},3.);\n\
+#{i}=ADVANCED_FACE('',(#{f},#{g}),#{h},.F.);\n",
+                a = id,
+                b = id + 1,
+                c = id + 2,
+                e = id + 3,
+                f = id + 4,
+                g = id + 5,
+                h = id + 6,
+                i = id + 7
+            );
+            faces.push(format!("#{}", id + 7));
+            id += 10;
+        }
+        let mut verts = Vec::new();
+        for (x, y) in [
+            (20.32, 20.32),
+            (-20.32, 20.32),
+            (-20.32, -20.32),
+            (20.32, -20.32),
+        ] {
+            for z in [0.0, 8.0] {
+                d += &format!(
+                    "#{id}=CARTESIAN_POINT('',({x},{y},{z}));\n#{}=VERTEX_POINT('',#{id});\n",
+                    id + 1
+                );
+                verts.push(format!("#{}", id + 1));
+                id += 2;
+            }
+        }
+        d += &format!(
+            "#{id}=PLANE('',#4);\n#{}=ADVANCED_FACE('',({}),#{id},.T.);\n",
+            id + 1,
+            verts.join(",")
+        );
+        faces.push(format!("#{}", id + 1));
+        d += &format!(
+            "#900=CLOSED_SHELL('',({}));\n#901=MANIFOLD_SOLID_BREP('plate',#900);\nENDSEC;\n",
+            faces.join(",")
+        );
+        let s = crate::catalog_fill::read_step(&d).unwrap();
+        let f = s.frame.clone().expect("枠");
+        assert!(s.mech);
+        assert_eq!(
+            (f.length, f.outer_diameter, f.rod_spacing),
+            (8.0, 40.64, 30.0),
+            "{s:?}"
+        );
+        assert_eq!(f.thread, "");
+        assert_eq!(f.holds.unwrap().diameter, 22.9);
+        assert!(s.note.contains("ケージ板"), "{}", s.note);
     }
 
     /// 手元の STEP を測って見る（`LB_STEP_FILES` に ; 区切りのパス）
