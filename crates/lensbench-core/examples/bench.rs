@@ -10,6 +10,9 @@
 //! - `--record`       面ごとの交点も記録する追跡（record）を測る
 //! - `--json`         1 系 1 行の JSON で出す（ほかのツールと比べるスクリプト向け）
 //!
+//! wasm（wasm32-wasip1）でも動く: 系・ガラスを vfs に写してから読む。スレッドは作れないので `--threads` は付けない。
+//! 例 `wasmtime run --dir <リポジトリ> bench.wasm <リポジトリ>/tests/refs/A0/system.zmx`（パスは絶対で）
+//!
 //! 瞳の点は xorshift64（種 12345）で単位円内に一様。同じ点列を別の実装でも作れるように、
 //! 乱数は `pupil` の手順どおり（1 点につき r²・角の順に 2 回引く）。
 
@@ -135,6 +138,11 @@ fn main() {
     if !o.json {
         println!("threads {}", rayon::current_num_threads());
     }
+    // wasm（wasmtime などの WASI）では解析のファイル読みが vfs の置き場を見るので、ディスクから写す
+    #[cfg(target_arch = "wasm32")]
+    for p in files.iter().chain(&dirs) {
+        mirror(p);
+    }
     for f in &files {
         let opt = LoadOptions {
             cfg: 1,
@@ -148,5 +156,19 @@ fn main() {
             .unwrap()
             .to_string_lossy();
         bench(&name, &s, &o);
+    }
+}
+
+/// ディスクのファイル・フォルダ（中のファイル）を vfs の置き場に写す（wasm 用）
+#[cfg(target_arch = "wasm32")]
+fn mirror(p: &std::path::Path) {
+    if p.is_dir() {
+        for e in std::fs::read_dir(p).into_iter().flatten().flatten() {
+            if e.path().is_file() {
+                mirror(&e.path());
+            }
+        }
+    } else if let Ok(b) = std::fs::read(p) {
+        lensbench_core::vfs::insert(p, b).unwrap();
     }
 }
