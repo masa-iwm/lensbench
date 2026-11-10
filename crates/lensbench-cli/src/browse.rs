@@ -519,6 +519,10 @@ fn user_items(
             if !it.url.is_empty() {
                 row["url"] = json!(it.url);
             }
+            // CAD データ（STEP・図面）の公式 URL
+            if !it.cad.is_empty() {
+                row["cad"] = json!(it.cad);
+            }
             if !it.specs.is_empty() {
                 row["specs"] = json!(it.specs);
             }

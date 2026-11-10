@@ -523,6 +523,35 @@ pub struct RetainingRing {
     pub outer_diameter: f64,
 }
 
+/// 品の簡易外形（カタログの `mech`）と、取った STEP から測った寸法の食い違い（長さ・外径・外形の形）。
+/// 食い違いの説明の並び（空なら合う）。差は [`SPEC_TOL`] まで許す
+pub fn cad_check(mech: &crate::MechSpec, s: &StepSize) -> Vec<String> {
+    let mut v = Vec::new();
+    let Some(f) = s.frame.as_ref().filter(|_| s.mech) else {
+        return vec!["STEP から機構部品の寸法を測れない（ガラスがある・穴が無いなど）".into()];
+    };
+    for (label, cat, step) in [
+        ("長さ", mech.length, f.length),
+        ("外径", mech.outer_diameter, f.outer_diameter),
+    ] {
+        if cat > 0.0 && (cat - step).abs() > SPEC_TOL {
+            v.push(format!(
+                "{label}: カタログ {cat} mm、STEP {step} mm（差 {} mm）",
+                round6(step - cat)
+            ));
+        }
+    }
+    if mech.outline != f.outline {
+        let n = |o: crate::MechOutline| if o.is_round() { "丸" } else { "角" };
+        v.push(format!(
+            "外形: カタログ {}、STEP {}",
+            n(mech.outline),
+            n(f.outline)
+        ));
+    }
+    v
+}
+
 /// STEP の長さの単位（mm へ）
 fn step_unit(upper: &str) -> f64 {
     let squeezed: String = upper.chars().filter(|c| !c.is_whitespace()).collect();

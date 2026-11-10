@@ -441,3 +441,31 @@ fn reversed_tube_connects_to_cage_plate() {
     assert!((m[1].offset[2] - 7.0).abs() < 1e-12, "{:?}", m[1].offset);
     assert!(!warn.iter().any(|w| w.contains("ねじ")), "{warn:?}");
 }
+
+/// 簡易外形 `outline`: 角なら部品は正方形の柱（壁の中か は |x|・|y| の大きい方で見る）。省略は丸
+#[test]
+fn square_outline_reaches_corners() {
+    let p = Project::from_json(
+        r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 10},
+        "blocks": [{"type": "stop", "id": "stop"}, {"type": "air", "t": 20}],
+        "mechanics": [
+          {"name": "plate", "at": {"surface": 1},
+           "mech": {"bores": [{"z0": 0, "z1": 8, "diameter": 26}], "length": 8, "outer_diameter": 40, "outline": "square"}},
+          {"name": "tube", "at": {"surface": 1}, "offset": [0, 0, 10],
+           "mech": {"bores": [{"z0": 0, "z1": 8, "diameter": 26}], "length": 8, "outer_diameter": 40}}]}"#,
+    )
+    .unwrap();
+    let (s, _) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let m = &s.mechanics;
+    assert!(m[0].square && !m[1].square);
+    // 角の近く（半径 26.9 > 外径の半径 20）は角の板の壁の中、丸のチューブの外
+    let corner = [19.0, 19.0, 4.0];
+    assert!(m[0].inside_wall(corner, 1e-9));
+    assert!(!m[1].inside_wall(corner, 1e-9));
+    // 辺の外は角でも外
+    assert!(!m[0].inside_wall([20.5, 0.0, 4.0], 1e-9));
+    // 書き戻し: 丸は outline を書かない
+    let v = serde_json::to_value(&p).unwrap();
+    assert_eq!(v["mechanics"][0]["mech"]["outline"], "square");
+    assert!(v["mechanics"][1]["mech"].get("outline").is_none());
+}

@@ -534,6 +534,8 @@ pub struct Browser {
     pub fill_req: Option<LensRow>,
     /// 一覧で隠す列（[`LensCol::key`]、設定に残す）
     pub lens_hide: Vec<String>,
+    /// 品の STEP の取得（選んだ品の 1 件だけ）
+    pub cad: crate::cad_fetch::CadFetcher,
 }
 
 /// カタログレンズの一覧の列
@@ -1136,6 +1138,15 @@ impl Browser {
                         );
                     } else if r.kind == RowKind::Splitter {
                         ui.label(splitter_detail(&r));
+                    } else if r.kind == RowKind::Mech {
+                        // 簡易外形（丸は外径、角は一辺）
+                        let m = &r.raw["mech"];
+                        let od = fmt_num(m["outer_diameter"].as_f64().unwrap_or(0.0));
+                        ui.label(if m["outline"] == "square" {
+                            trf("機構部品: 長さ {} mm、角（一辺 {} mm）", &[&fmt_num(r.thickness), &od])
+                        } else {
+                            trf("機構部品: 長さ {} mm、丸（外径 {} mm）", &[&fmt_num(r.thickness), &od])
+                        });
                     } else if let Some((radius, _)) = r.mirror {
                         if radius == 0.0 {
                             ui.label(trf("平面鏡: 径 {} mm", &[&fmt_num(r.diameter)]));
@@ -1172,6 +1183,8 @@ impl Browser {
                         self.add_pick(&r);
                     }
                     link_button(ui, &r.url);
+                    self.cad.poll();
+                    self.cad.ui(ui, &r);
                     let specs = r.specs();
                     if !specs.is_empty() || !r.description.is_empty() {
                         ui.menu_button(tr("仕様…"), |ui| spec_table(ui, &r));

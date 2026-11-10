@@ -1929,6 +1929,9 @@ pub struct UserItem {
     /// 製品ページ
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
+    /// CAD データ（STEP・図面）の公式 URL
+    #[serde(default, skip_serializing_if = "CadLinks::is_empty")]
+    pub cad: CadLinks,
     /// 仕様（名前 → 数・[下限, 上限]・文字列。名前の決まったものは `catalog_spec::SPEC_NAMES`）
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[schemars(with = "BTreeMap<String, serde_json::Value>")]
@@ -1997,6 +2000,44 @@ pub struct MechSpec {
     /// z の大きい端のねじ
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub back_thread: Option<ThreadEnd>,
+    /// 外形の形: 丸（既定、`outer_diameter` は外径）か角（`outer_diameter` は正方形の一辺。ケージ板など）。
+    /// 配置図・3D・書き出しはこの簡易外形で描く
+    #[serde(default, skip_serializing_if = "MechOutline::is_round")]
+    pub outline: MechOutline,
+}
+
+/// 機構部品の簡易外形の形
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MechOutline {
+    /// 丸（円柱）
+    #[default]
+    Round,
+    /// 角（正方形の柱、辺は部品の局所の x・y 軸に沿う）
+    Square,
+}
+
+impl MechOutline {
+    pub fn is_round(&self) -> bool {
+        *self == MechOutline::Round
+    }
+}
+
+/// 品の CAD データの公式 URL（メーカーの配布元）。STEP はカタログに入れず、要るときに 1 件だけ取る
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CadLinks {
+    /// STEP（.step・.stp。zip に入ったものも可）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub step: String,
+    /// 図面の PDF
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pdf: String,
+}
+
+impl CadLinks {
+    pub fn is_empty(&self) -> bool {
+        self.step.is_empty() && self.pdf.is_empty()
+    }
 }
 
 /// 機構部品の端のねじ
@@ -2099,6 +2140,7 @@ impl MechSpec {
             outer_radius: self.outer_diameter / 2.0,
             hold_radius: self.holds.map_or(0.0, |h| h.diameter / 2.0),
             rod_spacing: self.rod_spacing,
+            square: self.outline == MechOutline::Square,
             holds: Vec::new(),
         }
     }

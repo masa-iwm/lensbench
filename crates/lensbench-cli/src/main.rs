@@ -19,6 +19,8 @@ use std::f64::consts::PI;
 
 pub mod arg_spec;
 mod browse;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cad;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
@@ -466,6 +468,21 @@ enum Cmd {
     CatalogStep {
         #[arg(required = true)]
         files: Vec<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く。2 回目からはキャッシュを使う。
+    /// 取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
+    CadStep {
+        /// ユーザーカタログ
+        #[arg(long)]
+        catalog: PathBuf,
+        /// 品の名前
+        #[arg(long)]
+        item: String,
+        /// キャッシュのフォルダ（省略で環境変数 LENSBENCH_CAD_CACHE、なければ OS の設定の場所の lensbench/cad）
+        #[arg(long)]
+        cache: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },
@@ -2590,6 +2607,54 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 return Ok((false, Value::Null));
             }
             (true, json!({ "files": v }))
+        }
+        Cmd::CadStep {
+            catalog,
+            item,
+            cache,
+            json,
+        } => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (catalog, item, cache, json);
+                return Err("cad-step は Web 版では使えない".into());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let cat = lensbench_project::UserCatalog::load(&catalog)?;
+                let it = cat
+                    .items
+                    .get(&item)
+                    .ok_or_else(|| format!("{} に品 {item} がない", catalog.display()))?;
+                let dir = cache.unwrap_or_else(cad::default_cache_dir);
+                let r = match cad::fetch_item(&dir, &item, it) {
+                    Ok(r) => r,
+                    Err(e) if it.url.is_empty() => return Err(e),
+                    Err(e) => return Err(format!("{e}\n品ページ: {}", it.url)),
+                };
+                if !json {
+                    println!(
+                        "{}{}",
+                        r.path.display(),
+                        if r.cached {
+                            "（キャッシュ）"
+                        } else {
+                            ""
+                        }
+                    );
+                    if let Some(m) = &r.measured {
+                        println!("  {}", m.note);
+                    }
+                    if r.notes.is_empty() {
+                        println!("  簡易外形と合う");
+                    }
+                    for n in &r.notes {
+                        println!("  食い違い: {n}");
+                    }
+                    return Ok((false, Value::Null));
+                }
+                (true, r.to_json())
+            }
         }
         Cmd::CatalogList { catalog, json } => {
             let cat = lensbench_project::UserCatalog::load(&catalog)?;

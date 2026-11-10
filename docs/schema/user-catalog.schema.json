@@ -777,6 +777,20 @@
       ],
       "type": "object"
     },
+    "CadLinks": {
+      "description": "品の CAD データの公式 URL（メーカーの配布元）。STEP はカタログに入れず、要るときに 1 件だけ取る",
+      "properties": {
+        "pdf": {
+          "description": "図面の PDF",
+          "type": "string"
+        },
+        "step": {
+          "description": "STEP（.step・.stp。zip に入ったものも可）",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "CoatSpec": {
       "description": "プロジェクト・カタログの `coatings` の 1 つ",
       "oneOf": [
@@ -1196,6 +1210,21 @@
       ],
       "description": "玉の出どころ"
     },
+    "MechOutline": {
+      "description": "機構部品の簡易外形の形",
+      "oneOf": [
+        {
+          "const": "round",
+          "description": "丸（円柱）",
+          "type": "string"
+        },
+        {
+          "const": "square",
+          "description": "角（正方形の柱、辺は部品の局所の x・y 軸に沿う）",
+          "type": "string"
+        }
+      ]
+    },
     "MechSpec": {
       "description": "機構部品の寸法。z は部品の基準面（チューブの入口の端など）から光の進む向き",
       "properties": {
@@ -1251,6 +1280,10 @@
           "description": "外径 [mm]（ケージ板は外形の一辺）",
           "format": "double",
           "type": "number"
+        },
+        "outline": {
+          "$ref": "#/$defs/MechOutline",
+          "description": "外形の形: 丸（既定、`outer_diameter` は外径）か角（`outer_diameter` は正方形の一辺。ケージ板など）。\n配置図・3D・書き出しはこの簡易外形で描く"
         },
         "rod_spacing": {
           "description": "ケージのロッドの間隔 [mm]",
@@ -1793,6 +1826,10 @@
             "$ref": "#/$defs/Block"
           },
           "type": "array"
+        },
+        "cad": {
+          "$ref": "#/$defs/CadLinks",
+          "description": "CAD データ（STEP・図面）の公式 URL"
         },
         "checked": {
           "description": "仕様を確かめた日（YYYY-MM-DD）",

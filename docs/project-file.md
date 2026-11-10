@@ -120,7 +120,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
-  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`・`front_thread`・`back_thread`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
+  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`・`front_thread`・`back_thread`・`outline`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
   `{"name", "catalog", "item", "at": {"block": id, "surface": i}, "offset": [dx, dy, dz], "tilt": [tx, ty]}`（`catalog`・`item` の
   代わりに `mech` をその場で書いても、`at` に系の面の番号 `{"surface": n}` だけでもよい）で、ブロックの面の局所座標に置く。
   光学系の位置は変えず、光線の追跡にも効かない。`lensbench mech-check` は瞳の格子の光線を面 1 から追い、面と面の間の直線が
@@ -138,7 +138,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `fit` は、素子の面の縁が部品の内壁（穴の半径と保持径の半分の大きい方）に当たる `collision`、保持する素子が部品の z の範囲から
   はみ出す `protrude`、保持径より素子が 0.5 mm 以上細い `loose`（注意）、部品どうしの壁が重なる `overlap`、同じ軸のケージ板の組の
   ロッドの要る長さ `rod`（注意）とロッドの間隔の違い `rod_mismatch` を出す。`layout` の 2D（SVG・DXF の MECH レイヤー・PNG）・
-  3D（glTF・OBJ・STL）・STEP は部品を軸のまわりの輪（内壁〜外径。穴のない区間は詰まった円柱）で描く。
+  3D（glTF・OBJ・STL）・STEP は部品を軸のまわりの輪（内壁〜外径。穴のない区間は詰まった円柱）で描く。寸法に
+  `"outline": "square"` を書くと外形を正方形の柱（一辺は `outer_diameter`、辺は部品の x・y 軸に沿う。ケージ板・キューブ）で描く
+  （省略時は `"round"`、円柱）。`catalog-step` は、光軸に直交する向きの幅の最小が軸の円の径より太ければ角とする。
   GUI では、カタログの機構部品の行を足すと組合せの「機構部品」に入り（選んでいる要素に置く）、置く要素・面・ずれ・保持する要素を
   変えられる。レイアウト図・3D 表示に部品を描き、ケラレ・当たりは解析の「機構のケラレ」で見る。
 - 機構部品を素子に合わせて置く: `mechanics` の項目に `"seat": true` と `"holds": [ブロック id]` で、部品の座（寸法の
@@ -156,6 +158,14 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   両端のねじも入れ替わる。`seat` なら座は保持する素子の後ろの面に当たる）。チューブの外側のねじ（オス）をケージ板の SM1 の
   穴（メス）にねじ込む組み方もこれで書ける（ケージ板の後ろにチューブ、または裏返したチューブの後ろにケージ板）。ケージ板どうしは
   `after` と `offset`（間隔）で並べ、ロッドの間隔の違い・要る長さは `mech-check` の `fit` で見る
+- 品の詳しい形（公式の STEP）: カタログには機構部品の簡易外形（`mech`）だけを入れ、STEP は入れない。品に
+  `"cad": {"step": "<STEP の URL>", "pdf": "<図面の URL>"}`（メーカーの配布元。STEP は .step・.stp か、それを含む zip）を書くと、
+  `lensbench cad-step --catalog <カタログ> --item <品>`（serve の `cad_step`、GUI のカタログの詳細の「詳しい形（STEP）を取る」）で、
+  その品の STEP を 1 件だけ取ってキャッシュ（`--cache`、省略で環境変数 `LENSBENCH_CAD_CACHE`、なければ Windows は
+  `%APPDATA%\lensbench\cad`・ほかは `~/.cache/lensbench/cad`。GUI は設定のフォルダの `cad`）に置く。キャッシュのファイルは品の名前と
+  URL で決まり、2 回目からはキャッシュを使う（URL が変われば取り直す）。裏でまとめて取りには行かない。取った STEP は `catalog-step` と
+  同じ読み方で測り、簡易外形と長さ・外径が 0.05 mm より違うか、外形の形（丸・角）が違えば知らせる。取れなければ（中身が STEP で
+  ない・つながらない）誤りで、品ページの URL を示す（表示は簡易外形のまま）
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

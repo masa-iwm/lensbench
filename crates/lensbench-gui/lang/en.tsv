@@ -1080,3 +1080,20 @@ STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は�
 前の部品の後ろの端につなぎます。両方の端にねじがあれば、合うか確かめ、オスのねじの分だけ重ねます	Connects to the back end of the earlier part. If both ends have threads, checks that they mate and overlaps by the male thread length
 裏返す	Reverse
 部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）	Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)
+STEP を取っています…	Fetching the STEP…
+STEP を取れませんでした（簡易外形で描きます）: {}	Could not fetch the STEP (drawing the simple outline): {}
+STEP: {}{}	STEP: {}{}
+STEP（公式）	STEP (official)
+この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）	Fetches the STEP of this item only and caches it in the settings folder (the cache is used from the second time)
+パスを写す	Copy path
+右クリックでパスを写す	Right-click to copy the path
+品ページを開く	Open the product page
+外形を正方形の柱にする（外径の半径は一辺の半分。ケージ板など）	Makes the outline a square prism (the outer radius is half the side; cage plates etc.)
+機構部品: 長さ {} mm、丸（外径 {} mm）	Mechanical part: length {} mm, round (outer diameter {} mm)
+機構部品: 長さ {} mm、角（一辺 {} mm）	Mechanical part: length {} mm, square (side {} mm)
+簡易外形と合います（長さ・外径・外形の形）	Matches the simple outline (length, outer size and shape)
+簡易外形と違う: {}	Differs from the simple outline: {}
+角	Square
+（キャッシュ）	 (cached)
+📄 図面（PDF）	📄 Drawing (PDF)
+📥 詳しい形（STEP）を取る	📥 Fetch detailed shape (STEP)

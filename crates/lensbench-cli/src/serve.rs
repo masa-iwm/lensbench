@@ -1186,6 +1186,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         }
         // カタログの未完の品に厚さ・径を足し、補足のカタログ（ユーザーカタログ）に普通の品として保存
         "catalog_fill" => catalog_fill(p).map(|v| (v, Vec::new())),
+        // 品の詳しい形の STEP を 1 件取ってキャッシュに置き、簡易外形と比べる（CLI の cad-step）
+        "cad_step" => cad_step(p).map(|v| (v, Vec::new())),
         // 解析のサブコマンドの引数の一覧（名前・型・既定・説明。GUI の設定欄）
         "analysis_args" => {
             let cmd = p["cmd"]
@@ -1655,6 +1657,45 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
 /// `from` は値の決め方（page・step・manual）。枠付きの品は `frame`（機構部品の寸法、z は枠の端から）で枠も
 /// 書ける（`frame_reversed` なら光は枠の z の大きい端から入る）。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
 /// 置けば、次の一覧では未完の品の代わりに並ぶ
+/// {catalog, item, cache?} → {item, url, path, cached, measured, notes}。取れなければ誤りで、品ページの URL を添える
+fn cad_step(p: &Value) -> Result<Value, RpcErr> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = p;
+        Err(RpcErr::app("STEP の取得は Web 版では使えない"))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let s = |k: &str| {
+            p[k].as_str()
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .ok_or_else(|| RpcErr::params(format!("cad_step には {k}")))
+        };
+        let src = check_path(Path::new(s("catalog")?), false)?;
+        let name = s("item")?;
+        let cat = lensbench_project::UserCatalog::load(&src)?;
+        let it = cat
+            .items
+            .get(name)
+            .ok_or_else(|| RpcErr::app(format!("{} に項目 {name} がない", src.display())))?;
+        let dir = match p["cache"].as_str().map(str::trim).filter(|x| !x.is_empty()) {
+            Some(d) => check_path(Path::new(d), true)?,
+            // 既定の場所も --root の中でなければ書かない
+            None => check_path(&crate::cad::default_cache_dir(), true)?,
+        };
+        crate::cad::fetch_item(&dir, name, it)
+            .map(|r| r.to_json())
+            .map_err(|e| {
+                if it.url.is_empty() {
+                    RpcErr::app(e)
+                } else {
+                    RpcErr::app(format!("{e}（品ページ: {}）", it.url))
+                }
+            })
+    }
+}
+
 fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
     use lensbench_project::{catalog_fill as cf, UserCatalog};
     let s = |k: &str| {

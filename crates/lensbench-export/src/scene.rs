@@ -583,6 +583,8 @@ pub struct MechShape {
     pub name: String,
     pub frame: Frame,
     pub rings: Vec<[f64; 4]>,
+    /// 外側が角（外側の半径は正方形の一辺の半分、辺は局所の x・y 軸に沿う）
+    pub square: bool,
 }
 
 impl MechShape {
@@ -624,6 +626,7 @@ impl MechShape {
         let mut k: Vec<i64> = self.frame.o.iter().map(|&v| q(v)).collect();
         k.extend(self.axis().iter().map(|&v| q(v)));
         k.extend(self.rings.iter().flatten().map(|&v| q(v)));
+        k.push(self.square as i64);
         k
     }
 }
@@ -670,7 +673,13 @@ impl Scene {
         for m in &self.mechs {
             for q in &m.rings {
                 for z in [q[0], q[1]] {
-                    circle_extent(&m.frame, z, q[3], &mut put);
+                    if m.square {
+                        for (sx, sy) in [(1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0)] {
+                            put(m.to_global([sx * q[3], sy * q[3], z]));
+                        }
+                    } else {
+                        circle_extent(&m.frame, z, q[3], &mut put);
+                    }
                 }
             }
         }
@@ -1000,6 +1009,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
             name: p.name.clone(),
             frame: maps[j].1.frame(Frame { o, r }),
             rings: p.profile(),
+            square: p.square,
         });
     }
     Ok(Scene {

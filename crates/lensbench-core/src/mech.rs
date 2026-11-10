@@ -47,6 +47,12 @@ pub struct MechPart {
     /// ケージのロッドの間隔 [mm]（0 はケージ板でない）
     #[cfg_attr(feature = "serde", serde(default))]
     pub rod_spacing: f64,
+    /// 外形が角（`outer_radius` は正方形の一辺の半分、辺は部品の x・y 軸に沿う）。false は丸
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub square: bool,
     /// 保持する素子の面（系の面の番号）。はみ出し・保持径の確認に使う
     #[cfg_attr(
         feature = "serde",
@@ -147,9 +153,15 @@ impl MechPart {
     /// 部品の座標の点が部品の壁（輪の内側の半径〜外側の半径）の中にあるか。`eps` だけ内側に縮めて見る
     pub fn inside_wall(&self, p: V3, eps: f64) -> bool {
         let r = (p[0] * p[0] + p[1] * p[1]).sqrt();
+        // 外側の境: 角なら正方形（|x|・|y| の大きい方）
+        let ro = if self.square {
+            p[0].abs().max(p[1].abs())
+        } else {
+            r
+        };
         self.profile()
             .iter()
-            .any(|q| p[2] > q[0] + eps && p[2] < q[1] - eps && r > q[2] + eps && r < q[3] - eps)
+            .any(|q| p[2] > q[0] + eps && p[2] < q[1] - eps && r > q[2] + eps && ro < q[3] - eps)
     }
 }
 
