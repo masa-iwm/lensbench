@@ -727,6 +727,7 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
         "チューブ・ケージ板など。カタログの機構部品の行を足すと、選んでいる要素に置きます。ケラレは解析の「機構のケラレ」で見ます",
     ));
     let mut remove = None;
+    let names: Vec<String> = ms.iter().map(|m| m.name.clone()).collect();
     egui::Grid::new("mechs")
         .striped(true)
         .num_columns(6)
@@ -744,21 +745,46 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                     }
                 };
                 let gone = tr("要素が無い（消したか名前が変わった）。選び直してください");
+                // 置く所: 要素か、前の機構部品の後ろ（つなぐ）
+                let after_text = |n: &str| trf("{} の後ろにつなぐ", &[&n]);
+                let prev = &names[..k];
+                let stale_after = !m.after.is_empty() && !prev.contains(&m.after);
                 egui::ComboBox::from_id_salt(("mech-at", k))
-                    .selected_text(if m.at.is_empty() {
+                    .selected_text(if !m.after.is_empty() {
+                        if stale_after {
+                            format!("⚠ {}", after_text(&m.after))
+                        } else {
+                            after_text(&m.after)
+                        }
+                    } else if m.at.is_empty() {
                         none.clone()
                     } else {
                         show(&m.at)
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut m.at, String::new(), none);
+                        let mut pick = |ui: &mut Ui, at: &str, after: &str, label: String| {
+                            let sel = m.at == at && m.after == after;
+                            if ui.selectable_label(sel, label).clicked() {
+                                m.at = at.to_string();
+                                m.after = after.to_string();
+                                if !after.is_empty() {
+                                    m.seat = false;
+                                }
+                            }
+                        };
+                        pick(ui, "", "", none.clone());
                         for id in ids {
-                            ui.selectable_value(&mut m.at, id.clone(), id);
+                            pick(ui, id, "", id.clone());
+                        }
+                        for n in prev {
+                            pick(ui, "", n, after_text(n));
                         }
                     })
                     .response
-                    .on_hover_text(if stale_id(&m.at, ids) {
+                    .on_hover_text(if stale_id(&m.at, ids) || stale_after {
                         gone
+                    } else if !m.after.is_empty() {
+                        tr("前の部品の後ろの端につなぎます。両方の端にねじがあれば、合うか確かめ、オスのねじの分だけ重ねます")
                     } else {
                         tr("置く要素")
                     });
@@ -801,8 +827,12 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                         vec![sel]
                     };
                 }
-                ui.add_enabled(!m.holds.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
-                    .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
+                ui.vertical(|ui| {
+                    ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
+                        .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
+                    ui.checkbox(&mut m.reversed, tr("裏返す"))
+                        .on_hover_text(tr("部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）"));
+                });
                 if ui.button("✖").on_hover_text(tr("外す")).clicked() {
                     remove = Some(k);
                 }
@@ -1301,8 +1331,15 @@ impl Browser {
                 .and_then(|k| ids.get(k).cloned())
                 .or_else(|| ids.iter().find(|x| !x.is_empty()).cloned())
                 .unwrap_or_default();
+            // 名前は組合せの中で別々に（つなぐ相手を名前で選ぶので）
+            let mut name = r.part.clone();
+            let mut n = 2;
+            while self.combo.mechanics.iter().any(|m| m.name == name) {
+                name = format!("{} {n}", r.part);
+                n += 1;
+            }
             self.combo.mechanics.push(crate::combo::MechPick {
-                name: r.part.clone(),
+                name,
                 catalog: r.source.clone().unwrap_or_default(),
                 item: r.part.clone(),
                 at,

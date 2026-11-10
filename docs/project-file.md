@@ -120,7 +120,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
-  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
+  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`・`front_thread`・`back_thread`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
   `{"name", "catalog", "item", "at": {"block": id, "surface": i}, "offset": [dx, dy, dz], "tilt": [tx, ty]}`（`catalog`・`item` の
   代わりに `mech` をその場で書いても、`at` に系の面の番号 `{"surface": n}` だけでもよい）で、ブロックの面の局所座標に置く。
   光学系の位置は変えず、光線の追跡にも効かない。`lensbench mech-check` は瞳の格子の光線を面 1 から追い、面と面の間の直線が
@@ -131,7 +131,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   書くと、`blocks`（ガラスだけ）をプロジェクトに `user` のブロックで置いたとき、枠がガラスの最初の面に機構部品（名前は「ブロック id の枠」、
   保持する素子はその品の面）として付き、`mech-check` のケラレ・当たりと描画に入る。品ページの STEP を測ると（GUI の補う窓）、
   組立の置き方どおりに置いた立体のうち、光軸と同じ軸の穴（内壁の円柱）を持つものを枠、持たないものをガラスとして分ける。
-  ガラスと枠が 1 つの立体なら、光軸をふさぐ面（縁が 1 つの円だけの面）の間をガラスとする（ガラスの径は見えている径）。ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP は、全体を枠として穴・長さ・外径（ケージ板・キューブは一辺）・内側のねじ（SM05〜SM3、保持する素子の径はねじの呼び）・ロッドの間隔・止め輪の奥の座を測る（`lensbench catalog-step`）。付属の止め輪（本体より短く、外径が本体の穴に入る輪）は素子に合わせて動かすので枠の穴に含めず、`retaining_rings`（z・内径・外径）に分けて返す。仕様表の値と 0.05 mm より違う寸法（有効径は枠の最小の穴より大きい時）は `notes` に書く（serve の `catalog_fill` の `spec`）。
+  ガラスと枠が 1 つの立体なら、光軸をふさぐ面（縁が 1 つの円だけの面）の間をガラスとする（ガラスの径は見えている径）。ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP は、全体を枠として穴・長さ・外径（ケージ板・キューブは一辺）・内側のねじ（SM05〜SM3、保持する素子の径はねじの呼び）・ロッドの間隔（規格の 16・30・60 mm に近い穴を優先）・座（止め輪の奥の面か、枠の端から続く保持径より細い穴の段）を測る（`lensbench catalog-step`）。付属の止め輪（本体より短く、外径が本体の穴に入る輪）は素子に合わせて動かすので枠の穴に含めず、`retaining_rings`（z・内径・外径）に分けて返す。仕様表の値と 0.05 mm より違う寸法（有効径は枠の最小の穴より大きい時）は `notes` に書く（serve の `catalog_fill` の `spec`）。
   枠の向きは品の `frame_reversed`（false: 光は枠の z の小さい端から入る、true: 大きい端から）。STEP から測った枠は STEP の
   座標の向きなので、図面の矢印などで決める
 - 機構の配置の確認と描画: `mechanics` の項目に `"holds": [ブロック id]` で、部品が保持する素子を書ける。`mech-check` の
@@ -145,6 +145,17 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `holds.seat_z`）を保持する最初の素子の前面に合わせて置く（`at` は要らない。`offset` はそこからのずれ）。GUI では機構部品の欄の
   「座に合わせる」。素子が入る機構部品は `lensbench catalog-search <カタログ> --fits <径>`（保持径が径以上で 0.25 mm より
   太くないもの）で探せ、GUI のカタログの詳細にも「入る機構部品」を出す
+- 機構部品をつなぐ: `mechanics` の項目に `"after": "前の部品の名前"` で、前に書いた部品の z の大きい端につなぐ（`at`・`seat` は
+  使わない。同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。同じ名前が複数あれば最後のもの）。
+  寸法の `front_thread`（z 0 の端）・`back_thread`（z の大きい端）に `{"thread": "SM1", "male": true, "length": 3.0}` を書くと、
+  つなぐ両端のねじが同じ名前でオスとメスか確かめ（違えば注記して突き当てる）、オスのねじの長さだけ重ねる（ねじ込む）。
+  ねじの穴の端が部品の外形の端より奥にあれば `recess`（引っ込み、mm）を書き、オスはその分も奥へ入る。
+  `catalog-step` は両端のねじも読む（端に接するねじの谷の径の外向きの円柱がオスで、長さは端から外径より細い部分。端から最も近い
+  内壁がねじの谷の径ならメスで、1 mm を超えて奥にあれば `recess`）。
+  GUI では機構部品の欄の置く所で「〜の後ろにつなぐ」。`"reversed": true` で部品を裏返して置く（光が z の大きい端から入る。穴・座・
+  両端のねじも入れ替わる。`seat` なら座は保持する素子の後ろの面に当たる）。チューブの外側のねじ（オス）をケージ板の SM1 の
+  穴（メス）にねじ込む組み方もこれで書ける（ケージ板の後ろにチューブ、または裏返したチューブの後ろにケージ板）。ケージ板どうしは
+  `after` と `offset`（間隔）で並べ、ロッドの間隔の違い・要る長さは `mech-check` の `fit` で見る
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

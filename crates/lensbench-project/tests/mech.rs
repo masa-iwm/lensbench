@@ -358,3 +358,86 @@ fn seat_places_the_part_on_the_held_element() {
         assert!(expand(&p, &env()).unwrap_err().contains("seat"), "{bad}");
     }
 }
+
+/// `after`: 前の部品の後ろの端につなぐ。オスのねじ（前の端）は前の部品のメスにねじの長さだけ重なる。
+/// ねじが合わなければ注記して突き当てる
+#[test]
+fn after_chains_parts_with_threads() {
+    let tube = |name: &str, after: &str, front_male: bool| {
+        format!(
+            r#"{{"name": "{name}", "mech": {{"bores": [{{"z0": 0, "z1": 10, "diameter": 26.3}}], "length": 10, "outer_diameter": 30.5,
+            "front_thread": {{"thread": "SM1", "male": {front_male}, "length": 3}},
+            "back_thread": {{"thread": "SM1", "male": false, "length": 7}}}}{after}}}"#
+        )
+    };
+    let first = tube(
+        "t1",
+        r#", "at": {"block": "L1"}, "offset": [0, 0, -2]"#,
+        true,
+    );
+    let second = tube("t2", r#", "after": "t1""#, true);
+    let third = tube("t3", r#", "after": "t2", "offset": [0, 0, 1]"#, false);
+    let p = Project::from_json(&format!(
+        r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+        "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 20}},
+          {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}}, {{"radius": -60, "semi": 12.7}}]}}}},
+          {{"type": "air", "t": 50}}],
+        "mechanics": [{first}, {second}, {third}]}}"#
+    ))
+    .unwrap();
+    let (s, warn) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let m = &s.mechanics;
+    assert_eq!((m[1].surface, m[2].surface), (m[0].surface, m[0].surface));
+    // t2 のオス（3 mm）が t1 のメスにねじ込む: -2 + 10 - 3
+    assert!((m[1].offset[2] - 5.0).abs() < 1e-12, "{:?}", m[1].offset);
+    // t3 の前はメスで t2 の後ろもメス: 合わないので突き当て（+ offset 1）
+    assert!((m[2].offset[2] - 16.0).abs() < 1e-12, "{:?}", m[2].offset);
+    assert!(
+        warn.iter().any(|w| w.contains("ねじが合わない")),
+        "{warn:?}"
+    );
+    // 前に無い部品・at との併用は誤り
+    for bad in [
+        tube("x", r#", "after": "nope""#, true),
+        tube("x", r#", "after": "t1", "at": {"block": "L1"}"#, true),
+    ] {
+        let p = Project::from_json(&format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+            "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 20}},
+              {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}}, {{"radius": -60, "semi": 12.7}}]}}}},
+              {{"type": "air", "t": 50}}], "mechanics": [{first}, {bad}]}}"#
+        ))
+        .unwrap();
+        assert!(expand(&p, &env()).unwrap_err().contains("after"), "{bad}");
+    }
+}
+
+/// `reversed`: 裏返して置く（両端のねじも入れ替わる）。裏返したチューブの後ろのオスに、前がメスのケージ板をつなぐ
+#[test]
+fn reversed_tube_connects_to_cage_plate() {
+    let p = Project::from_json(
+        r#"{"wavelengths": [{"um": 0.5876}], "aperture": {"type": "epd", "value": 10},
+        "blocks": [{"type": "stop", "id": "stop"}, {"type": "air", "t": 20},
+          {"type": "lens", "id": "L1", "source": {"surfaces": [{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}, {"radius": -60, "semi": 12.7}]}},
+          {"type": "air", "t": 50}],
+        "mechanics": [
+          {"name": "tube", "reversed": true, "at": {"block": "L1"},
+           "mech": {"bores": [{"z0": 0, "z1": 3, "diameter": 24}, {"z0": 3, "z1": 10, "diameter": 26.3}], "length": 10, "outer_diameter": 30.5,
+             "front_thread": {"thread": "SM1", "male": true, "length": 3},
+             "back_thread": {"thread": "SM1", "male": false, "length": 7}}},
+          {"name": "plate", "after": "tube",
+           "mech": {"bores": [{"z0": 0, "z1": 8, "diameter": 26.3}], "length": 8, "outer_diameter": 40.6, "rod_spacing": 30,
+             "front_thread": {"thread": "SM1", "male": false, "length": 8}}}]}"#,
+    )
+    .unwrap();
+    let (s, warn) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let m = &s.mechanics;
+    // 裏返した穴: 細い穴（内径 24）が後ろに
+    assert_eq!(
+        m[0].bores.last().map(|b| (b.z0, b.z1, b.radius)),
+        Some((7.0, 10.0, 12.0))
+    );
+    // ケージ板はチューブの後ろのオス（3 mm）に重なる: 10 - 3
+    assert!((m[1].offset[2] - 7.0).abs() < 1e-12, "{:?}", m[1].offset);
+    assert!(!warn.iter().any(|w| w.contains("ねじ")), "{warn:?}");
+}
