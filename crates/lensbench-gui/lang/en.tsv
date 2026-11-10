@@ -1158,3 +1158,12 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 名前を付けて保存…（Ctrl+Shift+S）	Save As… (Ctrl+Shift+S)
 組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに	A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file
 系（.zmx・.json）	System (.zmx / .json)
+この系を組合せにする	Make this system a combination
+今の組合せを、開いた系を取り込んだ組合せに置き換えますか？	Replace the current combination with one that imports the opened system?
+条件で定める視野の系は、組合せの設定に移せない	A system with solved fields cannot be moved to combination settings
+系の波長が読めない	Cannot read the system wavelengths
+系の開口が読めない	Cannot read the system aperture
+組合せにする	Make a combination
+開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？	Unsaved changes to the opened system will not be included (it is imported from the file). Continue?
+開いた系を組合せの要素にした（系の取り込み）	Made the opened system an element of the combination (system import)
+開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる	Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it

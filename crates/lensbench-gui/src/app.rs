@@ -263,6 +263,10 @@ struct Core {
     combo_view: combo::View,
     /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
     combo_sel_prev: Option<usize>,
+    /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す（#135）
+    to_combo: Option<bool>,
+    /// 前の画面の組合せの要素の数（空の組合せに足したかを見る。usize::MAX はまだ見ていない）
+    combo_len_prev: usize,
     font: Option<String>,
     next_id: u64,
     /// パネルの中から頼まれた操作
@@ -1874,6 +1878,20 @@ impl Core {
                 ui.weak(tr(
                     "開いている系は組合せから作ったものではありません（図は見るだけ）。",
                 ));
+                if ui
+                    .button(tr("この系を組合せにする"))
+                    .on_hover_text(tr(
+                        "開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる",
+                    ))
+                    .clicked()
+                    && (self.browser.combo.picks.is_empty()
+                        || crate::files::confirm(
+                            tr("組合せにする"),
+                            tr("今の組合せを、開いた系を取り込んだ組合せに置き換えますか？"),
+                        ))
+                {
+                    self.to_combo = Some(false);
+                }
                 if !self.browser.combo.picks.is_empty()
                     && ui.button(tr("▶ 組合せの系を作る")).clicked()
                 {
@@ -2520,6 +2538,26 @@ impl Core {
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
     /// （作り直した後にまとめて回す）
     fn auto_build(&mut self) {
+        // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
+        // 置き換わらないように、#135）
+        let n = self.browser.combo.picks.len();
+        if self.file.is_some()
+            && !self.is_combo()
+            && self.to_combo.is_none()
+            && self.combo_len_prev == 0
+            && n > 0
+            && !self
+                .built_combo
+                .as_ref()
+                .is_some_and(|b| !b.picks.is_empty())
+        {
+            self.to_combo = Some(true);
+        }
+        self.combo_len_prev = n;
+        if let Some(keep) = self.to_combo {
+            self.open_to_combo(keep);
+            return;
+        }
         if self.load_stale && !self.worker.busy_core() {
             self.load_stale = false;
             if let Some(p) = self.combo_path.clone() {
@@ -2536,6 +2574,79 @@ impl Core {
             return;
         }
         self.combo_edit = Some(web_time::Instant::now());
+        self.build_combo(self.browser.combo.project());
+    }
+
+    /// 開いた系を組合せにする: 系の取り込み（zmx ブロック、.zmx も lensbench の .json も）1 つと、系の設定。keep は今の
+    /// 組合せの要素をその後ろに残す。系の設定がまだ無ければ読みに行き、届いた後の画面でもう一度呼ぶ（#135）
+    fn open_to_combo(&mut self, keep: bool) {
+        let Some(f) = self.file.clone().filter(|_| !self.is_combo()) else {
+            self.to_combo = None;
+            return;
+        };
+        let Some(d) = self.oss.data.clone() else {
+            if self.oss.want() {
+                self.worker.send(Tag::SysData, "system_data", json!({}));
+            }
+            return;
+        };
+        self.to_combo = None;
+        if self.ld_dirty
+            && !crate::files::confirm(
+                tr("組合せにする"),
+                tr("開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？"),
+            )
+        {
+            if keep {
+                // 足した要素は残し、開いた系はそのまま
+                self.built_combo = Some(self.browser.combo.clone());
+            }
+            return;
+        }
+        let obj_t = self.ld_rows.first().map_or(f64::INFINITY, |r| r.t);
+        let mut c = Combo {
+            name: f
+                .file_stem()
+                .map(|x| x.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
+            self.status = Status {
+                text: e,
+                error: true,
+            };
+            if keep {
+                self.built_combo = Some(self.browser.combo.clone());
+            }
+            return;
+        }
+        let mut z = combo::Pick::new(combo::ElemKind::ZmxRange);
+        z.path = f.display().to_string();
+        // 取り込みは像面の手前の面の厚さまで含むので、後の空気は 0
+        z.air = 0.0;
+        if let Some(cfg) = self
+            .summary
+            .as_ref()
+            .and_then(|s| s["cfg"].as_u64())
+            .filter(|&n| n > 1)
+        {
+            z.config = cfg as usize;
+        }
+        c.picks.push(z);
+        if keep {
+            let old = std::mem::take(&mut self.browser.combo);
+            c.picks.extend(old.picks);
+            c.mechanics = old.mechanics;
+        }
+        self.browser.combo = c;
+        self.combo_view = combo::View::default();
+        self.combo_len_prev = self.browser.combo.picks.len();
+        self.doc_path = None;
+        self.status = Status {
+            text: tr("開いた系を組合せの要素にした（系の取り込み）").into(),
+            error: false,
+        };
         self.build_combo(self.browser.combo.project());
     }
 
@@ -3634,6 +3745,8 @@ impl App {
                 agf_names: Default::default(),
                 combo_view: Default::default(),
                 combo_sel_prev: None,
+                to_combo: None,
+                combo_len_prev: usize::MAX,
                 font,
                 next_id,
                 cmds: Vec::new(),

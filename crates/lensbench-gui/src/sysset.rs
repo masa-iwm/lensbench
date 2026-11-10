@@ -333,6 +333,89 @@ impl Combo {
     }
 
     /// [`Self::snap`] の値を当てる
+    /// 開いた系の設定（serve の `system_data` の data）を組合せの設定にする。obj_t は物体面の厚さ（無限遠は inf）。
+    /// 条件で定める視野は組合せの欄に移せないので断る（#135）
+    pub fn take_system_data(&mut self, d: &Value, obj_t: f64) -> Result<(), String> {
+        let wl: Vec<f64> = d["wavelengths"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_f64).collect())
+            .unwrap_or_default();
+        if wl.is_empty() {
+            return Err(tr("系の波長が読めない").into());
+        }
+        let ws: Vec<f64> = d["weights"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_f64).collect())
+            .unwrap_or_default();
+        self.waves = wl
+            .iter()
+            .enumerate()
+            .map(|(i, &um)| WavePt {
+                um,
+                w: ws.get(i).copied().unwrap_or(1.0),
+            })
+            .collect();
+        self.primary = d["primary"].as_u64().map_or(1, |p| p as usize + 1);
+        self.field_kind = match d["field_type"].as_str() {
+            Some("Angle") => FieldKind::Angle,
+            Some("ObjH") => FieldKind::ObjectHeight,
+            Some("ParH") => FieldKind::ParaxialImageHeight,
+            Some("RealH") => FieldKind::RealImageHeight,
+            _ => return Err(tr("条件で定める視野の系は、組合せの設定に移せない").into()),
+        };
+        self.fields = d["fields"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|f| FieldPt {
+                        x: f["x"].as_f64().unwrap_or(0.0),
+                        y: f["y"].as_f64().unwrap_or(0.0),
+                        w: f["w"].as_f64().unwrap_or(1.0),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (kind, val) = (d["aperture"][0].as_str(), d["aperture"][1].as_f64());
+        let val = val.unwrap_or(0.0);
+        self.aperture = match kind {
+            Some("Epd") => ApKind::Epd,
+            Some("FNum") => ApKind::Fnum,
+            Some("Na") => ApKind::Na,
+            Some("Float") => ApKind::Float,
+            Some("Pwfn") => ApKind::Pwfn,
+            Some("Cone") => ApKind::Cone,
+            _ => return Err(tr("系の開口が読めない").into()),
+        };
+        if self.aperture == ApKind::Epd {
+            self.epd = val;
+        } else {
+            self.ap_value = val;
+        }
+        self.object_distance = obj_t.is_finite().then_some(obj_t);
+        self.telecentric = d["telecentric"].as_bool().unwrap_or(false);
+        self.aiming = match d["aiming"].as_str() {
+            Some("Paraxial") => Aiming::Paraxial,
+            Some("Real") => Aiming::Real,
+            _ => Aiming::Off,
+        };
+        self.afocal = if d["afocal"].as_bool() == Some(true) {
+            Some(
+                match d["afocal_unit"].as_str() {
+                    Some("Microradians") => "ur",
+                    Some("Radians") => "rr",
+                    Some("ArcSeconds") => "as",
+                    Some("ArcMinutes") => "am",
+                    Some("Degrees") => "dg",
+                    _ => "mr",
+                }
+                .to_string(),
+            )
+        } else {
+            None
+        };
+        Ok(())
+    }
+
     pub fn apply_snap(&mut self, s: &SysSnap) {
         self.aperture = s.aperture;
         self.ap_value = s.ap_value;
@@ -1111,6 +1194,54 @@ const PRESETS: &[(&str, &[f64])] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 開いた系（.zmx）を組合せ（系の取り込み 1 つ＋系の設定）にすると、同じ系になる（#135）
+    #[test]
+    fn open_system_becomes_a_combo() {
+        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let glass = vec![root.join("tests/glass")];
+        let zmx = root.join("tests/refs/A0/system.zmx");
+        let opt = lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: glass.clone(),
+            ..Default::default()
+        };
+        let a = lensbench_core::zmx::load_with(&zmx, &opt).unwrap();
+        let d = lensbench_project::edit_ops::system_data(&a).unwrap();
+        let mut c = Combo::default();
+        c.take_system_data(&d, a.surfaces[0].t).unwrap();
+        let mut z = Pick::new(ElemKind::ZmxRange);
+        z.path = zmx.display().to_string();
+        z.air = 0.0;
+        c.picks.push(z);
+        assert!(
+            c.settings_problems().is_empty(),
+            "{:?}",
+            c.settings_problems()
+        );
+        let p = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+        let env = lensbench_project::Env {
+            base: root.clone(),
+            glass_dirs: glass,
+            catalog: None,
+        };
+        let b = lensbench_project::expand(&p, &env).unwrap();
+        assert_eq!(b.surfaces.len(), a.surfaces.len());
+        for (x, y) in a.surfaces.iter().zip(&b.surfaces) {
+            assert_eq!(x.c, y.c);
+            assert!((x.t - y.t).abs() < 1e-12 || x.t == y.t, "{} {}", x.t, y.t);
+        }
+        assert_eq!(b.wavelengths, a.wavelengths);
+        assert_eq!(b.primary, a.primary);
+        assert_eq!(b.fields.len(), a.fields.len());
+        assert_eq!(b.field_type, a.field_type);
+        assert_eq!(c.aperture, ApKind::Epd);
+        assert_eq!(c.object_distance, None);
+        // 条件で定める視野は断る
+        let mut d2 = d.clone();
+        d2["field_type"] = json!({ "Solve": {} });
+        assert!(c.take_system_data(&d2, 0.0).is_err());
+    }
 
     /// 古い保存（視野角 y・波長の数の並び）も読める
     #[test]
