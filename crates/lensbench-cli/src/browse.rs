@@ -238,25 +238,52 @@ fn lenses_cached(
     glass_dirs: &[PathBuf],
     dir: &std::path::Path,
 ) -> Result<Value, String> {
-    // 覚えた一覧: 同じフォルダの並びで、中のファイル（とこのプログラム）の更新時刻・大きさが同じならそれを使う
-    let key = cache_key(paths, glass_dirs);
+    // 覚えた一覧: 同じフォルダの並びで、中のファイル（とこのプログラム）の更新時刻・大きさが同じで、
+    // 一覧を作るときに読んだそのほかのファイル（ユーザーカタログの品が参照するフォルダの外の .zmx・
+    // カタログ・ガラスなど、公開 #67）も変わっていなければそれを使う
+    let (key, covered) = cache_key(paths, glass_dirs);
     let file = dir.join(CACHE_FILE);
+    let deps_same = |v: &Value| {
+        v["deps"].as_array().is_some_and(|a| {
+            a.iter().all(|d| {
+                d[0].as_str()
+                    .is_some_and(|p| d[1].as_str() == Some(&stamp_text(std::path::Path::new(p))))
+            })
+        })
+    };
     if let Some(v) = lensbench_project::read_text(&file)
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .filter(|v| v["key"].as_str() == Some(&key) && v["lenses"].is_array())
+        .filter(|v| v["key"].as_str() == Some(&key) && v["lenses"].is_array() && deps_same(v))
     {
         return Ok(json!({ "lenses": v["lenses"] }));
     }
-    let v = read_lenses(paths, glass_dirs)?;
+    let (v, read) = vfs::recording(|| read_lenses(paths, glass_dirs));
+    let v = v?;
+    let deps: Vec<Value> = read
+        .iter()
+        .filter(|p| !covered.contains(*p))
+        .map(|p| json!([p.display().to_string(), stamp_text(p)]))
+        .collect();
     // 書けなくても一覧は返す（次も読み直すだけ）
     let _ = vfs::create_dir_all(dir).and_then(|_| {
         vfs::write(
             &file,
-            json!({ "key": key, "lenses": v["lenses"] }).to_string(),
+            json!({ "key": key, "deps": deps, "lenses": v["lenses"] }).to_string(),
         )
     });
     Ok(v)
+}
+
+/// ファイル・フォルダの更新時刻 [ns]・大きさ（無ければ None）の文字列
+fn stamp_text(p: &std::path::Path) -> String {
+    let st = vfs::stamp(p).ok();
+    let t = st
+        .as_ref()
+        .and_then(|x| x.0)
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos());
+    format!("{:?}\t{:?}", t, st.map(|x| x.1))
 }
 
 /// 一覧を覚えておくファイルの名前（[`set_cache_dir`] のフォルダの中）
@@ -270,33 +297,35 @@ pub fn set_cache_dir(dir: Option<PathBuf>) {
 }
 
 /// 一覧の元になるもの（フォルダの並び、中のファイル 2 階層まで、ガラスのファイル、このプログラム）の更新時刻・
-/// 大きさから作る鍵
-fn cache_key(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> String {
+/// 大きさから作る鍵と、鍵に入れたファイル・フォルダ（一覧を作るときに読んだものの中で、別に調べなくてよいもの）
+fn cache_key(
+    paths: &[PathBuf],
+    glass_dirs: &[PathBuf],
+) -> (String, std::collections::BTreeSet<PathBuf>) {
     use std::fmt::Write;
     let mut s = String::new();
-    let stamp = |p: &std::path::Path, s: &mut String| {
-        let st = vfs::stamp(p).ok();
-        let t = st
-            .as_ref()
-            .and_then(|x| x.0)
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos());
-        let _ = writeln!(s, "{}\t{:?}\t{:?}", p.display(), t, st.map(|x| x.1));
+    let mut covered = std::collections::BTreeSet::new();
+    let mut stamp = |p: &std::path::Path, s: &mut String| {
+        let _ = writeln!(s, "{}\t{}", p.display(), stamp_text(p));
+        covered.insert(p.to_path_buf());
     };
-    fn files(p: &std::path::Path, depth: u32, out: &mut Vec<PathBuf>) {
+    // フォルダもたどったもの（中の並びは鍵に入る）
+    fn files(p: &std::path::Path, depth: u32, out: &mut Vec<PathBuf>, dirs: &mut Vec<PathBuf>) {
         if vfs::is_dir(p) {
             if depth == 0 {
                 return;
             }
+            dirs.push(p.to_path_buf());
             let mut v = vfs::read_dir(p).unwrap_or_default();
             v.sort();
             for q in v {
-                files(&q, depth - 1, out);
+                files(&q, depth - 1, out, dirs);
             }
         } else {
             out.push(p.to_path_buf());
         }
     }
+    let mut dirs = Vec::new();
     let _ = writeln!(s, "{}", env!("CARGO_PKG_VERSION"));
     if let Ok(exe) = std::env::current_exe() {
         stamp(&exe, &mut s);
@@ -305,7 +334,7 @@ fn cache_key(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> String {
     for p in paths {
         let mut v = Vec::new();
         let _ = writeln!(s, "{}", p.display());
-        files(p, 2, &mut v);
+        files(p, 2, &mut v, &mut dirs);
         for f in v {
             stamp(&f, &mut s);
         }
@@ -316,18 +345,19 @@ fn cache_key(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> String {
     }
     for d in glass::catalog_dirs(glass_dirs) {
         let mut v = Vec::new();
-        files(&d, 1, &mut v);
+        files(&d, 1, &mut v, &mut dirs);
         for f in v {
             stamp(&f, &mut s);
         }
     }
+    covered.extend(dirs);
     // 長い文をそのまま残すと大きいので、ハッシュ（FNV-1a 64 bit、版によらず同じ）と長さに縮める
     let mut h: u64 = 0xcbf29ce484222325;
     for b in s.bytes() {
         h ^= b as u64;
         h = h.wrapping_mul(0x100000001b3);
     }
-    format!("{h:016x}-{}", s.len())
+    (format!("{h:016x}-{}", s.len()), covered)
 }
 
 fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
@@ -672,6 +702,49 @@ mod tests {
             .unwrap()
             .iter()
             .all(|r| r["part"] != "CACHED"));
+    }
+
+    /// 覚えた一覧: ユーザーカタログの品が見ているフォルダの外の .zmx を参照していても、その .zmx が変われば
+    /// 読み直す（公開 #67）。変わらなければ覚えたものを返す
+    #[test]
+    fn lens_list_cache_follows_files_outside_the_folders() {
+        let tmp = std::env::temp_dir().join(format!("lensbench-lcache-out-{}", std::process::id()));
+        let (d, out, cache) = (tmp.join("LB2"), tmp.join("outside"), tmp.join("cache"));
+        vfs::create_dir_all(&d).unwrap();
+        vfs::create_dir_all(&out).unwrap();
+        let lb = root().join("examples/lenses/LB");
+        std::fs::copy(lb.join("PCX-100.zmx"), out.join("lens.zmx")).unwrap();
+        vfs::write(
+            d.join("mine.json"),
+            json!({"version": 1, "vendor": "ME", "items": {"Z1": {
+                "glass_catalogs": ["SCHOTT"],
+                "blocks": [{"type": "zmx", "id": "Z", "path": "../outside/lens.zmx", "stop": false}]}}})
+            .to_string(),
+        )
+        .unwrap();
+        let g = [root().join("tests/glass")];
+        let efl = |v: &Value| v["lenses"][0]["efl"].as_f64().unwrap();
+        let a = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        assert!(a["lenses"][0].get("error").is_none(), "{a}");
+        let e0 = efl(&a);
+        // 参照先が変わらなければ覚えたものを返す（目印で確かめる）
+        let mut c: Value =
+            serde_json::from_str(&vfs::read_to_string(cache.join(CACHE_FILE)).unwrap()).unwrap();
+        assert!(c["deps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|x| x[0].as_str().unwrap().ends_with("lens.zmx")));
+        c["lenses"][0]["part"] = json!("CACHED");
+        vfs::write(cache.join(CACHE_FILE), c.to_string()).unwrap();
+        let b = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        assert_eq!(b["lenses"][0]["part"], "CACHED");
+        // フォルダの外の .zmx を別の玉に替えると読み直す
+        std::fs::copy(lb.join("ACH-45.zmx"), out.join("lens.zmx")).unwrap();
+        let f = lenses_cached(std::slice::from_ref(&d), &g, &cache).unwrap();
+        std::fs::remove_dir_all(&tmp).ok();
+        assert_eq!(f["lenses"][0]["part"], "Z1");
+        assert!((efl(&f) - e0).abs() > 1.0, "{e0} {f}");
     }
 
     /// 前もって作った一覧: 同じフォルダの並びのときだけ使う。読めなければいつもどおり読む

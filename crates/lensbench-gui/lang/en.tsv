@@ -848,3 +848,7 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 開く	Expand
 階層	Drill-down
 面 {}〜{}（ダブルクリックで開く・たたむ）	Surfaces {}–{} (double-click to expand or collapse)
+スパイダー	Spider
+腕の幅（全幅）	Arm width (full)
+腕の本数	Number of arms
+図の半径	Drawn radius

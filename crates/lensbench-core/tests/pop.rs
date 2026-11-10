@@ -303,6 +303,67 @@ fn beam_from_rays_through_ideal_lens_focuses_to_airy() {
     }
 }
 
+/// 絞り面の開口が遮蔽・スパイダー（外の縁が無い）でも、光は絞りの円（瞳の縁）の外を通らない（公開 #62）。
+/// 遮蔽・スパイダーの分だけパワーが減る
+#[test]
+fn obscuration_and_spider_on_the_stop_keep_the_stop_circle() {
+    let (f, epd) = (100.0, 10.0);
+    let a = epd / 2.0;
+    for ap in [
+        Aperture::Spider {
+            width: 0.5,
+            arms: 4,
+            dx: 0.0,
+            dy: 0.0,
+        },
+        Aperture::Obsc {
+            min: 0.0,
+            max: 1.5,
+            dx: 0.0,
+            dy: 0.0,
+        },
+    ] {
+        let mut s = paraxial_lens(f, epd);
+        s.surfaces[1].ap = ap;
+        let rb = pop::beam_from_rays(
+            &s,
+            FieldSel::Index(0),
+            None,
+            1,
+            &RayBeamOpts {
+                rays: 65,
+                n: 160,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(rb.aperture, Some(ap));
+        let b = &rb.beam;
+        let (mut out, mut all) = (0.0, 0.0);
+        for j in 0..b.ny {
+            for i in 0..b.nx {
+                let p = b.u[j * b.nx + i].norm_sqr();
+                all += p;
+                if b.x(i).hypot(b.y(j)) > a + 1.5 * b.dx.max(b.dy) {
+                    out += p;
+                }
+            }
+        }
+        assert!(out <= 1e-12 * all, "{ap:?}: {out} / {all}");
+        // 遮る割合（スパイダー: 4 本 × 幅 0.5 × 半径 5 − 中心の重なり、遮蔽: 半径 1.5 の円）
+        let blocked = match ap {
+            Aperture::Spider { .. } => (4.0 * 0.5 * a - 0.25) / (PI * a * a),
+            _ => (1.5f64 / a).powi(2),
+        };
+        assert!(
+            (rb.transmitted - (1.0 - blocked)).abs() < 2e-2,
+            "{ap:?}: {} vs {}",
+            rb.transmitted,
+            1.0 - blocked
+        );
+    }
+}
+
 /// Gauss ビーム（入力の面で q = q0、パワー 1）
 fn gaussian(n: usize, half: f64, q0: C64) -> Beam {
     let k = 2.0 * PI / WL;
