@@ -126,9 +126,10 @@ fn check(name: &str, s: &System, px: &[f64], py: &[f64]) -> usize {
 #[test]
 fn refs_match_scalar() {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    // 37² = 1369 本（L の倍数でない）、瞳の 3 倍まで（面を外れる・全反射する光線を含む）。
+    // 25² = 625 本（L の倍数でない）、瞳の 3 倍まで（面を外れる・全反射する光線を含む）。
+    // 実光線エイミングの系は 1 系 3〜4 秒かかる（37² では試験全体で 70 秒）。
     // wasm（CI の Node の WASI、1 スレッド）は 13² = 169 本に減らす
-    let (px, py) = grid(if cfg!(target_arch = "wasm32") { 13 } else { 37 }, 3.0);
+    let (px, py) = grid(if cfg!(target_arch = "wasm32") { 13 } else { 25 }, 3.0);
     let mut names: Vec<String> = std::fs::read_dir(root().join("tests/refs"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
