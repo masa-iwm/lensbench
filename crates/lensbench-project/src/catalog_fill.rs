@@ -107,11 +107,26 @@ fn unit_scale(label: &str, raw: &str) -> f64 {
     let r = raw.to_ascii_lowercase();
     if r.contains("mm") {
         1.0
-    } else if r.contains('"') || r.contains("inch") || r.contains(" in") {
+    } else if r.contains('"') || r.contains("inch") || inch_after_number(&r) {
         25.4
     } else {
         1.0
     }
+}
+
+/// 数の直後の `in`（`0.25 in`・`0.25in`）。`3.0 including` のような語の頭は数えない
+fn inch_after_number(r: &str) -> bool {
+    let b = r.as_bytes();
+    numbers(r).iter().any(|&(st, _)| {
+        let mut i = st;
+        while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.') {
+            i += 1;
+        }
+        while i < b.len() && b[i] == b' ' {
+            i += 1;
+        }
+        b[i..].starts_with(b"in") && b.get(i + 2).map_or(true, |c| !c.is_ascii_alphabetic())
+    })
 }
 
 /// 文字の中の数（符号のない小数）を順に
@@ -667,8 +682,24 @@ pub fn complete(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
+    // 四角い品（[幅, 高さ]）は矩形の開口、semi は対角の半分（描く大きさ）
+    let rect = match it.specs.get("diameter") {
+        Some(Value::Array(a)) if a.len() == 2 => match (a[0].as_f64(), a[1].as_f64()) {
+            (Some(w), Some(h)) if w > 0.0 && h > 0.0 => Some((w / 2.0, h / 2.0)),
+            _ => None,
+        },
+        _ => None,
+    };
+    let semi = rect.map_or(semi, |(hx, hy)| hx.hypot(hy));
+    let ap = rect.map(|(hx, hy)| json!({ "type": "rect", "hx": hx, "hy": hy }));
+    let surf = |mut v: Value| {
+        if let Some(a) = &ap {
+            v["aperture"] = a.clone();
+        }
+        v
+    };
     let block = if it.kind == Some(ItemKind::Mirror) {
-        json!({ "type": "mirror", "semi": semi })
+        surf(json!({ "type": "mirror", "semi": semi }))
     } else {
         let t = t.ok_or("厚さ（thickness）が無い")?;
         let (glass, cat, sub) = material_glass(&material);
@@ -687,7 +718,10 @@ pub fn complete(
         }
         json!({
             "type": "lens",
-            "source": { "surfaces": [ { "t": t, "glass": glass, "semi": semi }, { "semi": semi } ] },
+            "source": { "surfaces": [
+                surf(json!({ "t": t, "glass": glass, "semi": semi })),
+                surf(json!({ "semi": semi })),
+            ] },
         })
     };
     it.blocks = vec![serde_json::from_value(block).map_err(|e| format!("blocks: {e}"))?];
@@ -758,6 +792,13 @@ mod tests {
         let r = read_page("Thickness (inches):\t0.25\nDiameter (mm): 12.5");
         assert_eq!(r.thickness, Some(6.35));
         assert_eq!(r.diameter, Some(json!(12.5)));
+        // 単位の無い欄: 数の直後の in だけインチ（including などの語は mm のまま）
+        assert_eq!(
+            read_page("Thickness: 3.0 including AR coating").thickness,
+            Some(3.0)
+        );
+        assert_eq!(read_page("Thickness: 0.25 in").thickness, Some(6.35));
+        assert_eq!(read_page("Thickness: 0.25in").thickness, Some(6.35));
         // 四角の寸法
         let r = read_page("Dimensions (mm):\n25.0 x 35.0\nThickness (mm): 1.1");
         assert_eq!(r.diameter, Some(json!([25.0, 35.0])));
@@ -877,6 +918,18 @@ mod tests {
         );
         let c = complete(&w, None, Some(json!([10.0, 20.0])), FillFrom::Manual, "").unwrap();
         assert_eq!(c.glass_catalogs, vec!["MISC"]);
+        // 四角い品は両面に矩形の開口、semi は対角の半分
+        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        for q in b["source"]["surfaces"].as_array().unwrap() {
+            assert_eq!(q["aperture"]["type"], "rect", "{q}");
+            assert_eq!(q["aperture"]["hx"], json!(5.0));
+            assert_eq!(q["aperture"]["hy"], json!(10.0));
+            assert!((q["semi"].as_f64().unwrap() - 125f64.sqrt()).abs() < 1e-12);
+        }
+        let c = complete(&m, None, Some(json!([10.0, 20.0])), FillFrom::Manual, "").unwrap();
+        let b = serde_json::to_value(&c.blocks[0]).unwrap();
+        assert_eq!(b["aperture"]["hx"], json!(5.0));
+        assert_eq!(b["aperture"]["hy"], json!(10.0));
         assert!(c.notes.iter().all(|n| !n.contains("代用")));
     }
 

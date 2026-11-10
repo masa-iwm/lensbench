@@ -595,6 +595,9 @@ pub enum Block {
         tilt: [f64; 2],
         #[serde(default)]
         semi: f64,
+        /// 鏡の開口（省略なら半径 semi の円。四角い鏡は rect）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        aperture: Option<SurfAperture>,
         #[serde(default)]
         coat: String,
         #[serde(default = "yes")]
@@ -1633,6 +1636,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 conic,
                 tilt,
                 semi,
+                aperture,
                 coat,
                 on,
                 back,
@@ -1653,6 +1657,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     k: *conic,
                     semi: *semi,
                     coat: coat.clone(),
+                    ap: surf_ap(*aperture, *semi),
                     ..Default::default()
                 };
                 if self.parity < 0.0 {
@@ -2790,24 +2795,9 @@ fn curv(r: Option<f64>) -> f64 {
     }
 }
 
-fn surf(q: &SurfSpec) -> Result<Surface, String> {
-    let mut s = Surface {
-        typ: if q.asph.iter().any(|a| *a != 0.0) {
-            SurfType::EvenAsph
-        } else {
-            SurfType::Standard
-        },
-        c: curv(q.radius),
-        k: q.conic,
-        asph: q.asph.clone(),
-        t: q.t,
-        semi: q.semi.value(),
-        semi_auto: q.semi.is_auto(),
-        coat: q.coat.clone(),
-        comment: q.comment.clone(),
-        ..Default::default()
-    };
-    s.ap = match q.aperture {
+/// 面の開口（JSON）を面の開口に。浮動の開口は半径 semi
+fn surf_ap(ap: Option<SurfAperture>, semi: f64) -> Aperture {
+    match ap {
         None => Aperture::None,
         Some(SurfAperture::Circular { min, max, dx, dy }) => {
             Aperture::Circular { min, max, dx, dy }
@@ -2826,10 +2816,28 @@ fn surf(q: &SurfSpec) -> Result<Surface, String> {
             dx,
             dy,
         },
-        Some(SurfAperture::Floating) => Aperture::Floating {
-            semi: q.semi.value(),
+        Some(SurfAperture::Floating) => Aperture::Floating { semi },
+    }
+}
+
+fn surf(q: &SurfSpec) -> Result<Surface, String> {
+    let mut s = Surface {
+        typ: if q.asph.iter().any(|a| *a != 0.0) {
+            SurfType::EvenAsph
+        } else {
+            SurfType::Standard
         },
+        c: curv(q.radius),
+        k: q.conic,
+        asph: q.asph.clone(),
+        t: q.t,
+        semi: q.semi.value(),
+        semi_auto: q.semi.is_auto(),
+        coat: q.coat.clone(),
+        comment: q.comment.clone(),
+        ..Default::default()
     };
+    s.ap = surf_ap(q.aperture, q.semi.value());
     let special = q.jones.is_some() as u8
         + q.coordbrk.is_some() as u8
         + q.polarizer.is_some() as u8
