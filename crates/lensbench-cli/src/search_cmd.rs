@@ -195,6 +195,11 @@ fn parse_var(s: &System, v: &str) -> Result<(lensbench_core::param::Param, (f64,
 
 pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
     let (cs, names) = load_states(a)?;
+    zoom_systems(&cs, &names, a)
+}
+
+/// 読んだ状態の系でズーム軌跡を解く（a のファイル・状態の項目は使わない。serve の zoom からも）
+pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomArgs) -> Result<Value, String> {
     let n = cs.len();
     let (q, txt) = match (&a.efl, &a.pmag) {
         (Some(t), _) => (ParaxQ::Efl, Some(t)),
@@ -251,7 +256,7 @@ pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
         max_iter: a.iters,
         ..Default::default()
     };
-    let r = zoom::solve(&cs, &sp).map_err(|e| e.to_string())?;
+    let r = zoom::solve(cs, &sp).map_err(|e| e.to_string())?;
     let vnames: Vec<String> = sp.moving.iter().map(|&p| cs[0].param_name(p)).collect();
     let path: Vec<Value> = r
         .path

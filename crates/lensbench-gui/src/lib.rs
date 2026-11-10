@@ -42,6 +42,7 @@ mod web_tabs;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;
+mod zoom_panel;
 
 pub use fonts::WEB_FONT;
 pub use tour::Args;

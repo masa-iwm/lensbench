@@ -134,6 +134,8 @@ pub enum Kind {
     Swap,
     /// モンテカルロ公差
     Tolerance,
+    /// ズーム軌跡
+    Zoom,
 }
 
 /// 1 つのパネル。id で見分ける
@@ -160,6 +162,7 @@ impl Pane {
             Kind::Optimize => tr("最適化").into(),
             Kind::Swap => tr("差し替え探索").into(),
             Kind::Tolerance => tr("公差").into(),
+            Kind::Zoom => tr("ズーム軌跡").into(),
             Kind::SysSettings => tr("系の設定").into(),
             Kind::Analysis(a) => analysis_label(&a.cmd),
         }

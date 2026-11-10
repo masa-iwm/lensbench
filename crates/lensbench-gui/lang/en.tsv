@@ -941,3 +941,26 @@ ND	ND
 項目で書く	By item
 ＋ メーカー	＋ Vendor
 ＋ 条件	＋ Condition
+ズーム軌跡	Zoom track
+ズーム軌跡 完了（{} ms）	Zoom track done ({} ms)
+パラメータを足す	Add parameter
+位置	Position
+位置（状態の番号、0 始まり）	Position (state index, from 0)
+状態と目標	States and targets
+状態を 1 つ以上選んでください	Select at least one state
+状態（プロジェクトの states か .zmx の多重構成）のある系を開くと、状態ごとに解けます。	Open a system with states (project states or .zmx configurations) to solve each state.
+目標	Target
+目標との差の許し（比）	Target tolerance (relative)
+目標なし	No target
+瞳の輪	Pupil rings
+系を開くとズーム軌跡を解けます。	Open a system to solve a zoom track.
+群の移動を足す	Add group shift
+群の移動（G2.shift）や面の後の間隔（7.t）など。状態ごとに減衰最小二乗で解きます。	Group shifts (G2.shift), spaces after surfaces (7.t), etc. Each state is solved by damped least squares.
+解いています…	Solving…
+解くパラメータ	Parameters to solve
+解くパラメータ（G2.shift・7.t など）を足してください	Add parameters to solve (G2.shift, 7.t, etc.)
+軌跡を解く	Solve track
+近軸倍率	Paraxial magnification
+選んだ状態を並びの順に解きます。目標が空の状態は像だけで解きます（目標がすべて空なら像だけ）。	The selected states are solved in order. A state with an empty target is solved for the image only.
+間の点の数	Points between states
+間の点は隣り合う状態の間を継続法でたどります（目標は等比に）。	Points between adjacent states are traced by continuation (targets change geometrically).

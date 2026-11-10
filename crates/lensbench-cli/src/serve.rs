@@ -1197,6 +1197,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         "swap" => swap(p).map(|v| (v, Vec::new())),
         // モンテカルロ公差
         "tolerance" => tolerance(p).map(|v| (v, Vec::new())),
+        // ズーム軌跡（GUI のズームのパネル）
+        "zoom" => zoom(p).map(|v| (v, Vec::new())),
         "" => Err(RpcErr {
             code: -32600,
             msg: "method がない".into(),
@@ -2674,6 +2676,109 @@ fn tolerance(p: &Value) -> Result<Value, RpcErr> {
     *TOL_RUN.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let r = r?;
     let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+    out["notes"] = json!(notes);
+    Ok(out)
+}
+
+// ------------------------------------------------------------------------------------ ズーム軌跡
+
+/// ズーム軌跡（CLI の `zoom`）。params:
+/// - configs: 状態（プロジェクトなら状態の名前、.zmx なら構成の番号）の並び。省けばすべて
+/// - vars: 状態ごとに解くパラメータ。"G2.shift"・"G2.shift=-5:20" か {"name", "lo", "hi"}
+/// - efl か pmag: 状態ごとの目標の並び（数か null。状態の数だけ）。省けば目標なし
+/// - steps（0）・merit（"spot"）・reference（"centroid"）・rings（3）・iters（50）・tol（1e-8）
+///
+/// 読み込んだ後の値の変更（set・edit）は各状態の系にも当てる
+fn zoom(p: &Value) -> Result<Value, RpcErr> {
+    let (cur, spec) = current()?;
+    let mut notes = Vec::new();
+    let cfgs: Vec<Value> = match p.get("configs").and_then(Value::as_array) {
+        Some(a) if !a.is_empty() => a.clone(),
+        _ => {
+            let c = configs()?;
+            match c["states"].as_array() {
+                Some(st) if !st.is_empty() => st.clone(),
+                _ => (1..=c["cfgs"].as_u64().unwrap_or(1))
+                    .map(|k| json!(k))
+                    .collect(),
+            }
+        }
+    };
+    let systems = cfgs
+        .iter()
+        .map(|b| config_system(b, &cur, &spec, &mut notes))
+        .collect::<Result<Vec<_>, _>>()?;
+    let names: Vec<String> = cfgs
+        .iter()
+        .map(|b| b.as_str().map_or_else(|| b.to_string(), String::from))
+        .collect();
+    let vars = p
+        .get("vars")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| RpcErr::params("vars（解くパラメータの並び）がない"))?
+        .iter()
+        .map(|v| match v {
+            Value::String(s) => Ok(s.clone()),
+            Value::Object(o) => {
+                let name = o
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcErr::params(format!("vars の {v} に name がない")))?;
+                let b = |k: &str| o.get(k).and_then(Value::as_f64).map(|x| x.to_string());
+                Ok(match (b("lo"), b("hi")) {
+                    (None, None) => name.to_string(),
+                    (lo, hi) => format!(
+                        "{name}={}:{}",
+                        lo.unwrap_or_default(),
+                        hi.unwrap_or_default()
+                    ),
+                })
+            }
+            _ => Err(RpcErr::params(format!(
+                "vars の {v} は文字列か {{name, lo, hi}}"
+            ))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let targets = |k: &str| -> Result<Option<String>, RpcErr> {
+        match p.get(k) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(|x| match x {
+                    Value::Null => Ok("-".to_string()),
+                    Value::Number(n) => Ok(n.to_string()),
+                    _ => Err(RpcErr::params(format!("{k} の {x} は数か null"))),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|v| Some(v.join(","))),
+            Some(x) => Err(RpcErr::params(format!("{k} は数（か null）の並び（{x}）"))),
+        }
+    };
+    let (efl, pmag) = (targets("efl")?, targets("pmag")?);
+    if efl.is_some() && pmag.is_some() {
+        return Err(RpcErr::params("efl と pmag は一方だけ"));
+    }
+    let str_of = |k: &str, d: &str| p.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
+    let a = crate::search_cmd::ZoomArgs {
+        file: spec.file.clone(),
+        glass_dir: Vec::new(),
+        lens_catalog: Vec::new(),
+        states: None,
+        vars,
+        efl,
+        pmag,
+        steps: opt_usize(p, "steps")?.unwrap_or(0),
+        merit: str_of("merit", "spot"),
+        reference: str_of("reference", "centroid"),
+        rings: opt_usize(p, "rings")?.unwrap_or(3),
+        iters: opt_usize(p, "iters")?.unwrap_or(50),
+        tol: p.get("tol").and_then(Value::as_f64).unwrap_or(1e-8),
+        json: true,
+        save: None,
+    };
+    let mut out = crate::search_cmd::zoom_systems(&systems, &names, &a).map_err(RpcErr::params)?;
     out["notes"] = json!(notes);
     Ok(out)
 }

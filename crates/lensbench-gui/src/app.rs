@@ -283,6 +283,7 @@ struct Core {
     swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
     /// モンテカルロ公差のパネル
     tol: crate::tol_panel::TolPanel,
+    zoom: crate::zoom_panel::ZoomPanel,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
     /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
@@ -847,6 +848,10 @@ impl Core {
                     self.tol.running = false;
                     self.tol.error = Some(e.to_string());
                 }
+                Tag::Zoom => {
+                    self.zoom.running = false;
+                    self.zoom.error = Some(e.to_string());
+                }
                 _ => {}
             }
             self.status = Status { text, error: true };
@@ -1108,6 +1113,15 @@ impl Core {
                 );
                 self.tol.result = Some(v);
             }
+            Tag::Zoom => {
+                self.zoom.running = false;
+                self.zoom.error = None;
+                text = trf(
+                    "ズーム軌跡 完了（{} ms）",
+                    &[&fmt_num((ms * 10.0).round() / 10.0)],
+                );
+                self.zoom.result = Some(v);
+            }
         }
         self.status = Status { text, error: false };
     }
@@ -1208,6 +1222,7 @@ impl Core {
             Kind::Optimize => self.optimize_ui(ui),
             Kind::Swap => self.swap_ui(ui),
             Kind::Tolerance => self.tolerance_ui(ui),
+            Kind::Zoom => self.zoom_ui(ui),
             Kind::SysSettings => self.sysset_ui(ui),
             Kind::Analysis(cfg) => self.analysis_ui(ui, id, cfg),
         }
@@ -1332,6 +1347,31 @@ impl Core {
     }
 
     /// モンテカルロ公差
+    /// ズーム軌跡を解ける状態（.zmx の構成か、プロジェクトの状態）
+    fn zoom_cands(&self) -> Vec<crate::zoom_panel::Cand> {
+        self.overlay
+            .items
+            .iter()
+            .filter(|x| x.0 == "cfgs" || x.0 == "states")
+            .map(|x| (x.0 == "cfgs", x.1.clone()))
+            .collect()
+    }
+
+    fn zoom_ui(&mut self, ui: &mut Ui) {
+        if self.summary.is_none() {
+            ui.add_space(8.0);
+            ui.label(tr("系を開くとズーム軌跡を解けます。"));
+            return;
+        }
+        let cands = self.zoom_cands();
+        let units: Vec<String> = self.ld_units.iter().map(|u| u.name.clone()).collect();
+        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.zoom, &cands, &units) {
+            self.zoom.running = true;
+            self.zoom.result = None;
+            self.worker.send(Tag::Zoom, "zoom", p);
+        }
+    }
+
     fn tolerance_ui(&mut self, ui: &mut Ui) {
         use crate::tol_panel::{self as tp, Action};
         if self.summary.is_none() {
@@ -3208,6 +3248,7 @@ fn add_kinds() -> Vec<Kind> {
         Kind::Optimize,
         Kind::Swap,
         Kind::Tolerance,
+        Kind::Zoom,
     ];
     v.extend(
         layout::analyses()
@@ -3320,6 +3361,7 @@ impl App {
                 opt: crate::optim_panel::OptPanel::new(),
                 swap: Default::default(),
                 tol: Default::default(),
+                zoom: Default::default(),
                 swap_ids: Vec::new(),
                 swap_file: None,
                 rev: 0,
@@ -3772,6 +3814,7 @@ impl App {
                 Kind::Optimize => "add panel optimize optimization merit function dls".into(),
                 Kind::Swap => "add panel swap search catalog lens replace".into(),
                 Kind::Tolerance => "add panel tolerance monte carlo sensitivity".into(),
+                Kind::Zoom => "add panel zoom cam track states focal length".into(),
                 Kind::SysSettings => {
                     "add panel system settings aperture field wavelength aiming".into()
                 }
@@ -3789,6 +3832,7 @@ impl App {
                 Kind::Optimize => "optimize".into(),
                 Kind::Swap => "swap".into(),
                 Kind::Tolerance => "tolerance".into(),
+                Kind::Zoom => "zoom".into(),
                 Kind::SysSettings => "settings".into(),
             };
             push(
@@ -4438,6 +4482,45 @@ impl App {
                 self.c.build_combo(p);
                 crate::coat_defs::focus(ctx);
                 self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
+            Step::Zoom => {
+                // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
+                self.c
+                    .open(Path::new("examples/projects/P17_zoom_three_groups.json"));
+                let z = &mut self.c.zoom;
+                z.vars = ["G2.shift", "G3.shift"]
+                    .map(|n| crate::zoom_panel::VarRow {
+                        name: n.into(),
+                        ..Default::default()
+                    })
+                    .to_vec();
+                z.steps = 2;
+                let cands: Vec<crate::zoom_panel::Cand> =
+                    [("wide", "140"), ("mid", "160"), ("tele", "175")]
+                        .map(|(n, t)| {
+                            z.states.insert(
+                                n.into(),
+                                crate::zoom_panel::StateRow {
+                                    on: true,
+                                    target: t.into(),
+                                },
+                            );
+                            (false, n.to_string())
+                        })
+                        .to_vec();
+                match z.params(&cands) {
+                    Ok(p) => {
+                        z.running = true;
+                        self.c.worker.send(Tag::Zoom, "zoom", p);
+                    }
+                    Err(e) => {
+                        self.c.status = Status {
+                            text: e,
+                            error: true,
+                        }
+                    }
+                }
+                self.exec(ctx, Cmd::FocusKind(Kind::Zoom));
             }
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
