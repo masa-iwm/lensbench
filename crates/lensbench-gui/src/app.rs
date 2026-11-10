@@ -333,6 +333,12 @@ pub struct App {
     /// Web 版: このタブが別のタブのパネルなら、その口と、届いたパネル
     #[cfg(target_arch = "wasm32")]
     child: Option<(crate::web_tabs::Child, Option<Pane>)>,
+    /// Web 版: このタブが別の窓に出した解析以外のパネルなら、元のタブで描いた画面を受けて描く口（#137）
+    #[cfg(target_arch = "wasm32")]
+    viewer: Option<crate::web_tabs::Viewer>,
+    /// Web 版（元のタブ）: 別の窓に出した解析以外のパネルを描く画面（パネル id ごと）
+    #[cfg(target_arch = "wasm32")]
+    hosts: HashMap<u64, crate::web_tabs::Host>,
 }
 
 /// 見本の名前（例題のプロジェクトはファイル名、tests/refs の系はフォルダの名前）
@@ -3788,24 +3794,28 @@ impl App {
             tabs: None,
             #[cfg(target_arch = "wasm32")]
             child: None,
+            #[cfg(target_arch = "wasm32")]
+            viewer: None,
+            #[cfg(target_arch = "wasm32")]
+            hosts: HashMap::new(),
         };
         app.apply_dock_translations();
         // Web 版: 別のタブのパネルなら、計算しないで元のタブの結果を描く
         #[cfg(target_arch = "wasm32")]
         if let Some((id, sid)) = panel {
+            if crate::web_tabs::remote_of_location() {
+                app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
+                return app;
+            }
             app.c.relay = Some(false);
             app.child = Some((crate::web_tabs::Child::new(&cc.egui_ctx, id, sid), None));
             return app;
         }
-        // Web 版: 別のタブに出していた解析のパネルはドックに戻す（タブはクリックしないと開けない）
+        // Web 版: 別のタブ・窓に出していたパネルはドックに戻す（タブ・窓はクリックしないと開けない）
         #[cfg(target_arch = "wasm32")]
         if args.tour.is_none() {
             app.tabs = Some(crate::web_tabs::Tabs::new(&cc.egui_ctx));
-            let (tabs, rest): (Vec<OsWin>, Vec<OsWin>) = std::mem::take(&mut app.windows)
-                .into_iter()
-                .partition(|w| matches!(w.pane.kind, Kind::Analysis(_)));
-            app.windows = rest;
-            for w in tabs {
+            for w in std::mem::take(&mut app.windows) {
                 app.dock.push_to_focused_leaf(w.pane);
             }
         }
@@ -3989,21 +3999,29 @@ impl App {
             return;
         };
         t.retain(&self.windows.iter().map(|w| w.pane.id).collect::<Vec<_>>());
+        self.hosts
+            .retain(|id, _| self.windows.iter().any(|w| w.pane.id == *id));
         for w in &self.windows {
             let id = w.pane.id;
-            if matches!(w.pane.kind, Kind::Analysis(_))
-                && !t.is_open(id)
-                && !t.blocked.contains(&id)
-                && !t.open(id)
-            {
+            let remote = !matches!(w.pane.kind, Kind::Analysis(_));
+            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, remote) {
                 self.c.status = Status {
-                    text: tr("ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します").into(),
+                    text: tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します").into(),
                     error: true,
                 };
             }
         }
         for e in t.events() {
             match e {
+                Ev::Hello(id) => {
+                    self.hosts.insert(id, crate::web_tabs::Host::new(ctx));
+                }
+                Ev::Input(id, v) => {
+                    self.hosts
+                        .entry(id)
+                        .or_insert_with(|| crate::web_tabs::Host::new(ctx))
+                        .input(&v);
+                }
                 Ev::Cfg(id, cfg, run) => {
                     if let Some(w) = self.windows.iter_mut().find(|w| w.pane.id == id) {
                         w.pane.kind = Kind::Analysis(cfg.clone());
@@ -4013,6 +4031,7 @@ impl App {
                     }
                 }
                 Ev::Gone(id) => {
+                    self.hosts.remove(&id);
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
                         self.win_init.remove(&id);
@@ -4028,6 +4047,27 @@ impl App {
                     let snap = self.c.tab_snapshot(w.pane.id, cfg);
                     t.send(w.pane.id, self.c.rev, busy, snap);
                 }
+            }
+        }
+        // 解析以外のパネル: 元のタブで描いて、変わった画面を送る
+        let App {
+            c, windows, hosts, ..
+        } = self;
+        for w in windows.iter_mut() {
+            let id = w.pane.id;
+            let Some(h) = hosts.get_mut(&id) else {
+                continue;
+            };
+            if !t.is_open(id) || matches!(w.pane.kind, Kind::Analysis(_)) {
+                continue;
+            }
+            let pane = &mut w.pane;
+            let (frame, out) = h.frame(ctx, |ui| c.pane_ui(ui, pane));
+            if let Some(f) = frame {
+                t.send_frame(id, &f);
+            }
+            if let Some(o) = out {
+                t.send_out(id, o);
             }
         }
         // 子のタブを閉じたのに気づく
@@ -5326,6 +5366,11 @@ impl eframe::App for App {
             self.child_update(ctx);
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(v) = self.viewer.as_mut() {
+            v.update(ctx);
+            return;
+        }
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.pick_and_open_when(false);
         crate::files::flush_downloads();
@@ -5586,7 +5631,7 @@ impl eframe::App for App {
         }
         // 別のタブのパネルは元のタブの設定を上書きしない
         #[cfg(target_arch = "wasm32")]
-        if self.child.is_some() {
+        if self.child.is_some() || self.viewer.is_some() {
             return;
         }
         self.c.s.combo = self.c.browser.combo.clone();
@@ -5775,19 +5820,19 @@ fn overlay_params() {
     );
 }
 
-/// パネルを外に出す操作の名前。Web 版は解析のパネルだけブラウザの別のタブに出せ、ほかは同じページの中に
-/// 浮かせるだけ（別のタブから編集を送る口がまだ無い、#137）
+/// パネルを外に出す操作の名前。Web 版は解析のパネルはブラウザの別のタブに、ほかは別の窓（ポップアップ）に出す。
+/// 解析以外は元のタブで描いた画面を送って、別の窓で操作する（#137）
 fn detach_label(kind: &Kind, web: bool) -> &'static str {
     match (web, kind) {
         (true, Kind::Analysis(_)) => tr("別のタブに出す"),
-        (true, _) => tr("ページの中に浮かせる"),
+        (true, _) => tr("別の窓に出す"),
         (false, _) => tr("別の窓に出す（別モニターへ）"),
     }
 }
 
 #[test]
-fn detach_label_web_only_analysis_goes_to_tab() {
-    assert_eq!(detach_label(&Kind::LensData, true), "ページの中に浮かせる");
+fn detach_label_web() {
+    assert_eq!(detach_label(&Kind::LensData, true), "別の窓に出す");
     assert_eq!(
         detach_label(&Kind::LensData, false),
         "別の窓に出す（別モニターへ）"

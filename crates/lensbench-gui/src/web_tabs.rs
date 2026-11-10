@@ -34,6 +34,8 @@ pub fn panel_of_location() -> Option<(u64, String)> {
 struct Chan {
     ch: web_sys::BroadcastChannel,
     inbox: Rc<RefCell<Vec<Value>>>,
+    /// バイト列の知らせ（別の窓のパネルの画面、[`crate::remote_frame`]）
+    bins: Rc<RefCell<Vec<Vec<u8>>>>,
     _on: Closure<dyn FnMut(web_sys::MessageEvent)>,
     _hide: Option<Closure<dyn FnMut()>>,
 }
@@ -43,14 +45,17 @@ impl Chan {
     fn new(ctx: &egui::Context, bye: Value) -> Option<Chan> {
         let ch = web_sys::BroadcastChannel::new(CHANNEL).ok()?;
         let inbox: Rc<RefCell<Vec<Value>>> = Rc::default();
-        let (i, c) = (inbox.clone(), ctx.clone());
+        let bins: Rc<RefCell<Vec<Vec<u8>>>> = Rc::default();
+        let (i, b, c) = (inbox.clone(), bins.clone(), ctx.clone());
         let on = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
-            if let Some(v) = e
-                .data()
-                .as_string()
-                .and_then(|s| serde_json::from_str(&s).ok())
-            {
+            let d = e.data();
+            if let Some(v) = d.as_string().and_then(|s| serde_json::from_str(&s).ok()) {
                 i.borrow_mut().push(v);
+                c.request_repaint();
+            } else if d.is_instance_of::<js_sys::Uint8Array>()
+                || d.is_instance_of::<js_sys::ArrayBuffer>()
+            {
+                b.borrow_mut().push(js_sys::Uint8Array::new(&d).to_vec());
                 c.request_repaint();
             }
         });
@@ -69,6 +74,7 @@ impl Chan {
         Some(Chan {
             ch,
             inbox,
+            bins,
             _on: on,
             _hide: hide,
         })
@@ -81,6 +87,35 @@ impl Chan {
     fn take(&self) -> Vec<Value> {
         std::mem::take(&mut *self.inbox.borrow_mut())
     }
+
+    fn post_bytes(&self, b: &[u8]) {
+        let a = js_sys::Uint8Array::from(b);
+        let _ = self.ch.post_message(&a);
+    }
+
+    fn take_bins(&self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut *self.bins.borrow_mut())
+    }
+}
+
+/// 別の窓のパネルの画面のバイト列の頭（`LBR1`、sid の長さ u8・sid、宛先のパネル id u64）
+fn frame_head(sid: &str, to: u64) -> Vec<u8> {
+    let mut h = b"LBR1".to_vec();
+    h.push(sid.len().min(255) as u8);
+    h.extend_from_slice(&sid.as_bytes()[..sid.len().min(255)]);
+    h.extend_from_slice(&to.to_le_bytes());
+    h
+}
+
+/// 頭を読む: (sid, 宛先, 残り)
+fn split_head(b: &[u8]) -> Option<(&str, u64, &[u8])> {
+    if b.get(..4)? != b"LBR1" {
+        return None;
+    }
+    let n = *b.get(4)? as usize;
+    let sid = std::str::from_utf8(b.get(5..5 + n)?).ok()?;
+    let to = u64::from_le_bytes(b.get(5 + n..13 + n)?.try_into().ok()?);
+    Some((sid, to, &b[13 + n..]))
 }
 
 fn now_ms() -> f64 {
@@ -95,10 +130,18 @@ pub enum Ev {
     Cfg(u64, AnaCfg, bool),
     /// 子のタブを閉じた（ドックに戻す）
     Gone(u64),
+    /// 別の窓のパネル（解析以外）が始まった（画面を初めから送り直す）
+    Hello(u64),
+    /// 別の窓のパネルの入力
+    Input(u64, Value),
 }
 
 struct Open {
     win: web_sys::Window,
+    /// 解析以外のパネル（元のタブで描いた画面を送る、[`Host`]）
+    remote: bool,
+    /// 最後に知らせが届いた時刻 [ms]（開いた時刻から）
+    seen: f64,
     /// 最後に送った（結果の版、計算中か）
     sent: Option<(u64, bool)>,
 }
@@ -131,8 +174,10 @@ impl Tabs {
         !self.open.is_empty()
     }
 
-    /// パネル id を別のタブで開く。ブラウザに止められたら false
-    pub fn open(&mut self, id: u64) -> bool {
+    /// パネル id を別のタブで開く。remote は解析以外のパネル（元のタブで描いた画面を受けて描くだけ）で、
+    /// 別の窓（ポップアップ）にする（同じ窓のタブだと元のタブが裏に回り、ブラウザが元のタブの画面を止めるため）。
+    /// ブラウザに止められたら false
+    pub fn open(&mut self, id: u64, remote: bool) -> bool {
         if self.chan.is_none() || self.blocked.contains(&id) {
             return false;
         }
@@ -140,10 +185,25 @@ impl Tabs {
             return false;
         };
         let path = w.location().pathname().unwrap_or_default();
-        let url = format!("{path}?panel={id}&main={}", self.sid);
-        match w.open_with_url_and_target(&url, &format!("lensbench-{}-{id}", self.sid)) {
+        let target = format!("lensbench-{}-{id}", self.sid);
+        let r = if remote {
+            let url = format!("{path}?panel={id}&main={}&remote=1", self.sid);
+            w.open_with_url_and_target_and_features(&url, &target, "popup=yes,width=900,height=700")
+        } else {
+            let url = format!("{path}?panel={id}&main={}", self.sid);
+            w.open_with_url_and_target(&url, &target)
+        };
+        match r {
             Ok(Some(win)) => {
-                self.open.insert(id, Open { win, sent: None });
+                self.open.insert(
+                    id,
+                    Open {
+                        win,
+                        remote,
+                        seen: now_ms(),
+                        sent: None,
+                    },
+                );
                 true
             }
             _ => {
@@ -167,13 +227,25 @@ impl Tabs {
                 if !self.open.contains_key(&id) {
                     continue;
                 }
+                let remote = self.open.get(&id).is_some_and(|o| o.remote);
+                if let Some(o) = self.open.get_mut(&id) {
+                    o.seen = now_ms();
+                }
                 if m["hello"].as_bool() == Some(true) {
                     // 始まった: 設定と結果を送り直す
                     if let Some(o) = self.open.get_mut(&id) {
                         o.sent = None;
                     }
+                    if remote {
+                        out.push(Ev::Hello(id));
+                        if m["input"].is_object() {
+                            out.push(Ev::Input(id, m["input"].clone()));
+                        }
+                    }
                 } else if m["bye"].as_bool() == Some(true) {
                     out.push(Ev::Gone(id));
+                } else if remote && m["input"].is_object() {
+                    out.push(Ev::Input(id, m["input"].clone()));
                 } else if let Ok(cfg) = serde_json::from_value(m["cfg"].clone()) {
                     // 返事に送り直す（子のタブは返事を待っている）
                     if let Some(o) = self.open.get_mut(&id) {
@@ -184,7 +256,11 @@ impl Tabs {
             }
         }
         for (id, o) in &self.open {
-            if o.win.closed().unwrap_or(true)
+            // 別の窓（ポップアップ）は、開いた直後に closed が true を返すブラウザがあるので、少し前まで知らせが
+            // 届いていれば閉じていないとみる（別の窓は 2 秒ごとに知らせる）
+            let quiet = now_ms() - o.seen > 6000.0;
+            if (!o.remote || quiet)
+                && o.win.closed().unwrap_or(true)
                 && !out.iter().any(|e| matches!(e, Ev::Gone(x) if x == id))
             {
                 out.push(Ev::Gone(*id));
@@ -212,6 +288,22 @@ impl Tabs {
         };
         o.sent = Some((rev, busy));
         c.post(&json!({ "sid": self.sid, "to": id, "snap": snap.to_string() }));
+    }
+
+    /// 別の窓のパネルに画面（[`crate::remote_frame`] のバイト列）を送る
+    pub fn send_frame(&self, id: u64, frame: &[u8]) {
+        if let Some(c) = &self.chan {
+            let mut b = frame_head(&self.sid, id);
+            b.extend_from_slice(frame);
+            c.post_bytes(&b);
+        }
+    }
+
+    /// 別の窓のパネルに画面の外の出力（カーソル・写した文字・IME の位置）を送る
+    pub fn send_out(&self, id: u64, out: Value) {
+        if let Some(c) = &self.chan {
+            c.post(&json!({ "sid": self.sid, "to": id, "out": out }));
+        }
     }
 
     /// keep に無いパネルのタブを閉じる（並びを呼び出して窓のパネルが無くなったときなど）
@@ -332,4 +424,299 @@ pub fn set_title(t: &str) {
     if let Some(d) = web_sys::window().and_then(|w| w.document()) {
         d.set_title(t);
     }
+}
+
+// ---- 解析以外のパネル: 元のタブで描いて画面を送る（#137）
+
+/// 元のタブ: 別の窓に出した解析以外のパネルを描く別の画面（egui の Context）。入力は別の窓から届く
+pub struct Host {
+    ctx: egui::Context,
+    events: Vec<egui::Event>,
+    rect: egui::Rect,
+    ppp: f32,
+    mods: egui::Modifiers,
+    /// 最後に送った網の指紋
+    hash: u64,
+    /// 別の窓の大きさを受けた（受けるまで描かない）
+    sized: bool,
+    /// 最後に送った画面の外の出力（変わったときだけ送る）
+    last_out: Value,
+}
+
+impl Host {
+    pub fn new(main: &egui::Context) -> Host {
+        let ctx = egui::Context::default();
+        crate::fonts::install(&ctx);
+        let m = main.clone();
+        ctx.set_request_repaint_callback(move |info| m.request_repaint_after(info.delay));
+        Host {
+            ctx,
+            events: Vec::new(),
+            rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(900.0, 700.0)),
+            ppp: 1.0,
+            mods: Default::default(),
+            hash: 0,
+            sized: false,
+            last_out: Value::Null,
+        }
+    }
+
+    /// 別の窓の入力（{events, rect: [x0, y0, x1, y1], ppp, mods}）
+    pub fn input(&mut self, v: &Value) {
+        if let Ok(ev) = serde_json::from_value::<Vec<egui::Event>>(v["events"].clone()) {
+            self.events.extend(ev);
+        }
+        if let Some(r) = v["rect"].as_array().filter(|r| r.len() == 4) {
+            let f = |i: usize| r[i].as_f64().unwrap_or(0.0) as f32;
+            let rect = egui::Rect::from_min_max(egui::pos2(f(0), f(1)), egui::pos2(f(2), f(3)));
+            if rect.is_positive() {
+                self.rect = rect;
+                self.sized = true;
+            }
+        }
+        if let Some(p) = v["ppp"].as_f64().filter(|p| *p > 0.1) {
+            self.ppp = p as f32;
+        }
+        if let Ok(m) = serde_json::from_value(v["mods"].clone()) {
+            self.mods = m;
+        }
+    }
+
+    /// パネルを描き、変わっていれば送る画面（バイト列）と画面の外の出力を返す
+    pub fn frame(
+        &mut self,
+        main: &egui::Context,
+        mut ui: impl FnMut(&mut egui::Ui),
+    ) -> (Option<Vec<u8>>, Option<Value>) {
+        if !self.sized {
+            return (None, None);
+        }
+        self.ctx.set_style(main.style());
+        let mut raw = egui::RawInput {
+            screen_rect: Some(self.rect),
+            time: Some(now_ms() / 1000.0),
+            modifiers: self.mods,
+            events: std::mem::take(&mut self.events),
+            focused: true,
+            ..Default::default()
+        };
+        raw.viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .native_pixels_per_point = Some(self.ppp);
+        let out = self.ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |u| ui(u));
+        });
+        let prims = self.ctx.tessellate(out.shapes, out.pixels_per_point);
+        let h = crate::remote_frame::mesh_hash(&prims);
+        let frame = (h != self.hash || !out.textures_delta.is_empty()).then(|| {
+            self.hash = h;
+            crate::remote_frame::encode(&out.textures_delta, &prims)
+        });
+        let po = out.platform_output;
+        let copy: Vec<&String> = po
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                egui::OutputCommand::CopyText(t) => Some(t),
+                _ => None,
+            })
+            .collect();
+        let url = po.commands.iter().find_map(|c| match c {
+            egui::OutputCommand::OpenUrl(u) => Some(u.url.clone()),
+            _ => None,
+        });
+        let ime = po.ime.map(|i| {
+            [
+                i.cursor_rect.min.x,
+                i.cursor_rect.min.y,
+                i.cursor_rect.max.x,
+                i.cursor_rect.max.y,
+            ]
+        });
+        let extra = json!({
+            "cursor": po.cursor_icon,
+            "copy": copy.last(),
+            "url": url,
+            "ime": ime,
+        });
+        // 写した文字はいつも、ほかは変わったときだけ
+        let send = !extra["copy"].is_null() || !extra["url"].is_null() || extra != self.last_out;
+        self.last_out = extra.clone();
+        (frame, send.then_some(extra))
+    }
+}
+
+/// 別の窓: 元のタブから届く画面を描き、入力を返す（解析以外のパネル）
+pub struct Viewer {
+    chan: Option<Chan>,
+    pub id: u64,
+    sid: String,
+    pub closed: bool,
+    /// 送った側のテクスチャ id → このタブの id
+    tex: HashMap<egui::TextureId, egui::TextureId>,
+    /// 次の画面の前に消すテクスチャ（描いた後に消す）
+    free: Vec<egui::TextureId>,
+    meshes: Vec<(egui::Rect, egui::epaint::Mesh)>,
+    cursor: egui::CursorIcon,
+    ime: Option<egui::Rect>,
+    last_rect: Option<egui::Rect>,
+    /// 最後に hello を送った時刻 [ms]（画面が届くまで 1 秒ごと）
+    hello: f64,
+    got: bool,
+}
+
+impl Viewer {
+    pub fn new(ctx: &egui::Context, id: u64, sid: String) -> Viewer {
+        Viewer {
+            chan: Chan::new(ctx, json!({ "sid": sid, "from": id, "bye": true })),
+            id,
+            sid,
+            closed: false,
+            tex: HashMap::new(),
+            free: Vec::new(),
+            meshes: Vec::new(),
+            cursor: egui::CursorIcon::Default,
+            ime: None,
+            last_rect: None,
+            hello: f64::NEG_INFINITY,
+            got: false,
+        }
+    }
+
+    pub fn update(&mut self, ctx: &egui::Context) {
+        let Some(c) = &self.chan else {
+            return;
+        };
+        let tm = ctx.tex_manager();
+        for id in self.free.drain(..) {
+            tm.write().free(id);
+        }
+        for b in c.take_bins() {
+            let Some((sid, to, rest)) = split_head(&b) else {
+                continue;
+            };
+            if sid != self.sid || to != self.id {
+                continue;
+            }
+            let Ok(f) = crate::remote_frame::decode(rest) else {
+                continue;
+            };
+            self.got = true;
+            for (rid, pos, opt, img) in f.set {
+                match self.tex.get(&rid) {
+                    Some(l) => tm
+                        .write()
+                        .set(*l, crate::remote_frame::delta_of(pos, opt, img)),
+                    None if pos.is_none() => {
+                        let l = tm.write().alloc(
+                            format!("remote-{rid:?}"),
+                            egui::ImageData::Color(std::sync::Arc::new(img)),
+                            opt,
+                        );
+                        self.tex.insert(rid, l);
+                    }
+                    None => {}
+                }
+            }
+            for rid in f.free {
+                if let Some(l) = self.tex.remove(&rid) {
+                    self.free.push(l);
+                }
+            }
+            self.meshes = f.meshes;
+        }
+        for m in c.take() {
+            if m["sid"].as_str() != Some(&self.sid) {
+                continue;
+            }
+            if m["closed"].as_bool() == Some(true) {
+                self.closed = true;
+            } else if m["to"].as_u64() == Some(self.id) {
+                let o = &m["out"];
+                if let Ok(cur) = serde_json::from_value(o["cursor"].clone()) {
+                    self.cursor = cur;
+                }
+                if let Some(t) = o["copy"].as_str() {
+                    ctx.copy_text(t.to_string());
+                }
+                if let Some(u) = o["url"].as_str() {
+                    ctx.open_url(egui::OpenUrl::new_tab(u));
+                }
+                self.ime = o["ime"].as_array().filter(|r| r.len() == 4).map(|r| {
+                    let f = |i: usize| r[i].as_f64().unwrap_or(0.0) as f32;
+                    egui::Rect::from_min_max(egui::pos2(f(0), f(1)), egui::pos2(f(2), f(3)))
+                });
+            }
+        }
+        // 入力を元のタブへ
+        let (events, rect, ppp, mods) = ctx.input(|i| {
+            (
+                i.raw.events.clone(),
+                i.screen_rect,
+                i.pixels_per_point,
+                i.modifiers,
+            )
+        });
+        let input = json!({
+            "events": events,
+            "rect": [rect.min.x, rect.min.y, rect.max.x, rect.max.y],
+            "ppp": ppp,
+            "mods": mods,
+        });
+        let t = now_ms();
+        if !self.got && !self.closed {
+            // 画面が届くまで 1 秒ごとに hello
+            if t - self.hello >= 1000.0 {
+                self.hello = t;
+                c.post(&json!({ "sid": self.sid, "from": self.id, "hello": true, "input": input }));
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(300));
+        } else if !events.is_empty() || self.last_rect != Some(rect) || t - self.hello >= 2000.0 {
+            // 入力・大きさが変わったとき、ほかは 2 秒ごとに（元のタブが閉じていないとみるため）
+            self.hello = t;
+            c.post(&json!({ "sid": self.sid, "from": self.id, "input": input }));
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(2000));
+        self.last_rect = Some(rect);
+        // 元のタブで描いた画面
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        for (clip, m) in &self.meshes {
+            let mut m = m.clone();
+            match self.tex.get(&m.texture_id) {
+                Some(l) => m.texture_id = *l,
+                None => continue,
+            }
+            painter.with_clip_rect(*clip).add(egui::Shape::mesh(m));
+        }
+        ctx.set_cursor_icon(self.cursor);
+        if let Some(r) = self.ime {
+            ctx.output_mut(|o| {
+                o.ime = Some(egui::output::IMEOutput {
+                    rect: r,
+                    cursor_rect: r,
+                })
+            });
+        }
+        if self.meshes.is_empty() {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.label(if self.closed {
+                        crate::i18n::tr("元のタブを閉じたので、このパネルは使えません。このタブを閉じてください。")
+                    } else {
+                        crate::i18n::tr("元のタブを待っています…")
+                    })
+                });
+            });
+        }
+    }
+}
+
+/// ページの URL に `&remote=1`（解析以外のパネルの別の窓）
+pub fn remote_of_location() -> bool {
+    web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok())
+        .and_then(|q| q.get("remote"))
+        .is_some_and(|r| r == "1")
 }
