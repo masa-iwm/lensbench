@@ -510,6 +510,17 @@ pub struct StepSize {
     pub merged: bool,
     /// ガラスの無い機構部品（チューブ・ケージ板・マウント）。厚さ・径は枠の長さ・外径で、寸法は `frame`
     pub mech: bool,
+    /// 機構部品の付属の止め輪（SM1RR など）。素子に合わせて動かすので `frame` に含めない。z は枠の端から
+    pub retaining_rings: Vec<RetainingRing>,
+}
+
+/// 機構部品の付属の止め輪 [mm]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct RetainingRing {
+    pub z0: f64,
+    pub z1: f64,
+    pub inner_diameter: f64,
+    pub outer_diameter: f64,
 }
 
 /// STEP の長さの単位（mm へ）
@@ -549,6 +560,7 @@ pub fn read_step(text: &str) -> Result<StepSize, String> {
         frame: m.frame,
         merged: m.merged,
         mech: m.mech,
+        retaining_rings: m.retaining_rings,
     })
 }
 
