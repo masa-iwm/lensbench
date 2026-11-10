@@ -1160,7 +1160,19 @@ impl System {
                 let before = pick_get(d, q.what);
                 if before != Some(v) {
                     let created = matches!(q.what, PickKind::After(_)) && d.after == After::None;
+                    let made_before = matches!(q.what, PickKind::Before(_)) && d.before.is_none();
+                    let after_was = d.after;
                     let ok = pick_set(d, q.what, v);
+                    // 前の傾き偏心を作ったとき、同じ面の後もピックアップの先なら「前を戻す」にしない（後はそのピックアップで決まる）
+                    if made_before
+                        && after_was == After::None
+                        && self
+                            .pickups
+                            .iter()
+                            .any(|k| k.dst == q.dst && matches!(k.what, PickKind::After(_)))
+                    {
+                        self.surfaces[q.dst].after = After::None;
+                    }
                     if created {
                         // 作ったばかりの面の後の変換の順序は元の面の前のもの（反転なら逆）
                         let o = self.surfaces[q.src].before.map(|b| b.order).unwrap_or(0);

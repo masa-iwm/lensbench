@@ -308,6 +308,39 @@ fn pickup_before_tilt() {
     }
 }
 
+/// 同じ面の前と後の両方をピックアップの先にしても、前を作るときに後を「前を戻す」にしない（後は後のピックアップで決まる）
+#[test]
+fn pickup_before_and_after_together() {
+    use lensbench_core::surface::{After, Tilt};
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.insert_surface(3, surf(40.0)).unwrap();
+    s.surfaces[2].before = Some(Tilt {
+        d: [0.0; 5],
+        order: 0,
+    });
+    s.surfaces[2].after = After::Tilt(Tilt {
+        d: [0.0; 5],
+        order: 1,
+    });
+    s.add_pickup(Pickup::new(3, 2, PickKind::Before(0), 1.0, 0.0))
+        .unwrap();
+    s.add_pickup(Pickup::new(3, 2, PickKind::After(0), 1.0, 0.0))
+        .unwrap();
+    s.set_param(Param::new(2, Kind::Dx), 0.01).unwrap();
+    assert_eq!(s.surfaces[3].before.unwrap().d[0], 0.01);
+    // 面 2 の後は 0 のまま（値 0 のうちは作らない）
+    assert_eq!(s.surfaces[3].after, After::None);
+    if let After::Tilt(t) = &mut s.surfaces[2].after {
+        t.d[0] = -0.02;
+    }
+    s.resolve_pickups().unwrap();
+    match s.surfaces[3].after {
+        After::Tilt(t) => assert_eq!(t.d[0], -0.02),
+        a => panic!("{a:?}"),
+    }
+}
+
 /// 面の種類: 座標ブレークにすると材料・曲率が消え、媒質は前を引き継ぐ。戻すと材料（空気）から作る
 #[test]
 fn surface_type_change() {
