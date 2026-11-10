@@ -71,7 +71,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `system_data` | | 系全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・temperature・pressure・adjust_index・glrs・ropd・coating_file。系ファイルと同じ形 |
 | `config_table` | | 多重構成の表: 構成の数 `n`・今の構成 `active`・行 `rows`（`param`・構成ごとの `values`）。.zmx なら、ファイルの多重構成の数 `zmx_cfgs` と読んだ構成 `zmx_cfg` |
 | `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。系は変えない |
-| `analyze` | `cmd` と CLI と同じ引数 | CLI の `--json` と同じ結果。干渉（`fringe`）は下の「干渉の解析」 |
+| `analyze` | `cmd` と CLI と同じ引数 | CLI の `--json` と同じ結果。干渉（`fringe`）は下の「干渉の解析」。`coatings` は読み込んだ系（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings` |
 | `analysis_args` | `cmd` | 解析のサブコマンドの引数の一覧（GUI の設定欄）: `args`（`name`・`type`・`default`・`unit`・`doc`、選択肢は `choices`、旗を繰り返すものは `repeat`）。`type` は `num`・`count`（0 以上の整数）・`int`・`flag`・`str`・`choice`・`nums`（数のカンマ区切り、JSON では並び）・`path`。系の読み方の引数は除く |
 | `plugins` | | 登録された解析・検出器のプラグインの一覧: `plugins`（`name`・`kind`・`doc`・`needs_system`・`config`・`params`・`inputs`・`outputs`）。`params` は設定の項目の型・既定（`analysis_args` の `args` と同じ形、個数の決まった並びは `len`）。CLI の `plugins --json` と同じ |
 | `catalog_add` | `catalog`（ユーザーカタログのファイル）、`name`、`blocks`（ブロックの id の並び: 1 つか、最上位の並びの範囲の最初と最後）、`description`・`replace`・`vendor`（省略可） | 読み込んだプロジェクト（状態を当てて）のブロック・範囲（間の空気も）を項目に保存する（CLI の `catalog-add --block`）。面の表の変更（`surface_edits`）は玉の面に焼き込む。ファイルが無ければ作る。結果は `catalog_items` と同じと `added` |

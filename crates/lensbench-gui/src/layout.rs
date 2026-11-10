@@ -25,6 +25,7 @@ pub const ANALYSES: &[(&str, &str, bool)] = &[
     ("fringe", "干渉縞（2 光束）", true),
     ("pop", "簡易 POP", true),
     ("rays", "光線の表", false),
+    ("coatings", "膜の境界", false),
     ("info", "システムデータ", false),
     ("elements", "玉モード", false),
     ("ghost", "ゴースト", false),

@@ -2781,6 +2781,64 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
     Ok((json_out, out))
 }
 
+/// 膜の名前で自動で読んだ膜（膜, パス, 注記）
+type AutoCoat = (String, String, String);
+
+/// 系の膜の境界（[`coat_interfaces`]）
+pub(crate) struct CoatInterfaces {
+    /// 境界の並び（surface・key・kind・note）
+    pub list: Vec<Value>,
+    /// 実測表が要る境界の KEY
+    pub needs: Vec<String>,
+    /// 膜の名前で自動で読んだ膜
+    pub auto: Vec<AutoCoat>,
+}
+
+/// 系 s の膜の境界（[`coatings`] の 1 構成分）
+pub(crate) fn coat_interfaces(s: &System, tables: &[PathBuf]) -> Result<CoatInterfaces, String> {
+    let e = |e: lensbench_core::Error| e.to_string();
+    let mut c = Coatings::for_system(s).map_err(e)?;
+    for t in tables {
+        c.load_file(t).map_err(e)?;
+    }
+    let mut auto = Vec::new();
+    for (coat, p) in &c.auto {
+        let p = p.display().to_string();
+        // 注記: モデルの NOTE、近似の多層膜（.lbcs）なら近似の膜であること
+        let note = match c.models.get(coat) {
+            Some(m) => m.note.clone(),
+            None if p.to_ascii_lowercase().ends_with(".lbcs") => {
+                "近似の膜（分光の曲線に合わせた多層膜）".to_string()
+            }
+            None => String::new(),
+        };
+        auto.push((coat.clone(), p, note));
+    }
+    let (keys, _) = coating::media_keys(s);
+    let mut v = Vec::new();
+    let mut need = Vec::new();
+    for (j, k) in keys.iter().enumerate() {
+        let Some(k) = k else { continue };
+        let kind = c.kind(k);
+        let mut it = json!({ "surface": j, "key": k, "kind": kind.name() });
+        if kind == coating::CoatKind::Model {
+            let coat = k.split('|').next().unwrap_or("");
+            if let Some(m) = c.models.get(coat).filter(|m| !m.note.is_empty()) {
+                it["note"] = json!(m.note);
+            }
+        }
+        v.push(it);
+        if kind.needs_table() && !need.contains(k) {
+            need.push(k.clone());
+        }
+    }
+    Ok(CoatInterfaces {
+        list: v,
+        needs: need,
+        auto,
+    })
+}
+
 fn coatings(
     file: &std::path::Path,
     glass_dir: &[PathBuf],
@@ -2794,7 +2852,7 @@ fn coatings(
     let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
     let mut found = None;
     // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
-    let mut auto: Vec<(String, String, String)> = Vec::new();
+    let mut auto: Vec<AutoCoat> = Vec::new();
     for cfg in 1..=raw.configurations() {
         let opt = zmx::LoadOptions {
             cfg,
@@ -2802,54 +2860,32 @@ fn coatings(
             ..Default::default()
         };
         let s = zmx::load_with(file, &opt).map_err(|x| format!("構成 {cfg}: {x}"))?;
-        let mut c = Coatings::for_system(&s).map_err(e)?;
-        for t in tables {
-            c.load_file(t).map_err(e)?;
-        }
         found = s.coating_file.clone();
-        for (coat, p) in &c.auto {
-            let p = p.display().to_string();
-            if !auto.iter().any(|(a, b, _)| a == coat && *b == p) {
-                // 注記: モデルの NOTE、近似の多層膜（.lbcs）なら近似の膜であること
-                let note = match c.models.get(coat) {
-                    Some(m) => m.note.clone(),
-                    None if p.to_ascii_lowercase().ends_with(".lbcs") => {
-                        "近似の膜（分光の曲線に合わせた多層膜）".to_string()
-                    }
-                    None => String::new(),
-                };
-                auto.push((coat.clone(), p, note));
+        let CoatInterfaces {
+            list: v,
+            needs: keys,
+            auto: au,
+        } = coat_interfaces(&s, tables)?;
+        for a in au {
+            if !auto.iter().any(|b| b.0 == a.0 && b.1 == a.1) {
+                auto.push(a);
             }
         }
-        let (keys, _) = coating::media_keys(&s);
-        let mut v = Vec::new();
-        for (j, k) in keys.iter().enumerate() {
-            let Some(k) = k else { continue };
-            let kind = c.kind(k);
-            let mut it = json!({ "surface": j, "key": k, "kind": kind.name() });
-            if kind == coating::CoatKind::Model {
-                let coat = k.split('|').next().unwrap_or("");
-                if let Some(m) = c.models.get(coat).filter(|m| !m.note.is_empty()) {
-                    it["note"] = json!(m.note);
+        for k in keys {
+            let i = match need.iter().position(|n| n.0 == k) {
+                Some(i) => i,
+                None => {
+                    need.push((k, Vec::new(), Vec::new()));
+                    need.len() - 1
                 }
+            };
+            let n = &mut need[i];
+            if !n.1.contains(&cfg) {
+                n.1.push(cfg);
             }
-            v.push(it);
-            if kind.needs_table() {
-                let i = match need.iter().position(|n| n.0 == *k) {
-                    Some(i) => i,
-                    None => {
-                        need.push((k.clone(), Vec::new(), Vec::new()));
-                        need.len() - 1
-                    }
-                };
-                let n = &mut need[i];
-                if !n.1.contains(&cfg) {
-                    n.1.push(cfg);
-                }
-                for &w in &s.wavelengths {
-                    if !n.2.contains(&w) {
-                        n.2.push(w);
-                    }
+            for &w in &s.wavelengths {
+                if !n.2.contains(&w) {
+                    n.2.push(w);
                 }
             }
         }

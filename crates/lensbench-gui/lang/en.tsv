@@ -418,7 +418,6 @@ T {}	T {}
 平面鏡: 径 {} mm	Flat mirror: dia. {} mm
 理想の面	ideal surface
 膜 {}	coating {}
-膜ファイル（COATING.DAT など）・膜モデルの膜の名前。空なら理想の鏡・分岐比のまま	Coating name from a coating file (COATING.DAT etc.) or a coating model. Empty keeps the ideal mirror / split ratio
 偏心 x	Decenter x
 内側の半径	Inner radius
 円の遮蔽	Circular obscuration
@@ -887,3 +886,37 @@ y の断面	y section
 状態ごとに要素の ON/OFF・後の空気・偏心・傾き、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系	Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected
 開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）	Change the aperture, fields, wavelengths, object distance, telecentricity, aiming and afocal mode for this state only (stop position and glass catalogs are shared by all states)
 （基本と同じ）	(same as base)
+1 行に [入射角 deg, 波長 µm, Rs, Rp, Ts, Tp]（メーカーの表など）	One row per line: [incidence angle deg, wavelength µm, Rs, Rp, Ts, Tp] (e.g. a vendor table)
+ND	ND
+{}°	{}°
+この膜を消す	Delete this coating
+エッジ [nm]	Edge [nm]
+エッジ幅 [nm]	Edge width [nm]
+エッジ幅は自動	Automatic edge width
+ショートパス	Shortpass
+ノッチ	Notch
+バンドパス	Bandpass
+ロングパス	Longpass
+中心 [nm]	Center [nm]
+半値全幅 [nm]	FWHM [nm]
+反射	Reflection
+反射も書く	Also give reflection
+名前を鏡・BS の膜の欄、面の表の膜（coating）に書いて使う。膜ファイル・ユーザーカタログの同じ名前より優先	Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs
+吸収型（反射 0）	Absorptive (no reflection)
+定義した膜から選ぶ	Choose a defined coating
+実効屈折率	Effective index
+帯域内の透過	In-band transmission
+帯域外の OD	Out-of-band OD
+書かなければ反射 0（吸収）	Without it, reflection is 0 (absorptive)
+波長 [nm]	Wavelength [nm]
+波長ごとの透過	Transmission per wavelength
+膜の名前	Coating name
+膜の境界	Coating interfaces
+膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま	Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio
+膜（フィルタ）の定義	Coating (filter) definitions
+行が無い	No rows
+表（角度・波長ごと）	Table (per angle and wavelength)
+透過	Transmission
+透過が 10 % から 90 % までの幅。自動はエッジ波長の 1 %、帯域フィルタは半値全幅の 10 %	Width from 10 % to 90 % transmission. Automatic is 1 % of the edge wavelength, or 10 % of the FWHM for band filters
+＋ 膜を足す	＋ Add coating
+＋ 行	＋ Row

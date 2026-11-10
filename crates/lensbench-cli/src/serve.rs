@@ -1306,6 +1306,9 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
     let m = p
         .as_object()
         .ok_or_else(|| RpcErr::params("params はオブジェクト"))?;
+    if m.get("cmd").and_then(Value::as_str) == Some("coatings") {
+        return coatings_loaded(m);
+    }
     let argv = analysis_argv(m, &spec.file).map_err(RpcErr::params)?;
     let cli = crate::parse_cli(&argv).map_err(|e| RpcErr::params(e.render().to_string()))?;
     let mut cmd = cli.cmd;
@@ -1340,6 +1343,42 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
         out["state"] = json!(spec.state);
     }
     Ok(out)
+}
+
+/// analyze の coatings: 読み込んだ系（今の構成・状態）の膜の境界（CLI の coatings の 1 構成分。.zmx でなくてもよい）。
+/// `table` で実測表・モデル（LBCT・LBCM）を足せる
+fn coatings_loaded(m: &Map<String, Value>) -> Result<Value, RpcErr> {
+    let (s, _) = current()?;
+    let mut tables = Vec::new();
+    match m.get("table") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(t)) => tables.push(check_path(Path::new(t), false)?),
+        Some(Value::Array(a)) => {
+            for t in a {
+                let t = t
+                    .as_str()
+                    .ok_or_else(|| RpcErr::params("table はパスの並び"))?;
+                tables.push(check_path(Path::new(t), false)?);
+            }
+        }
+        Some(_) => return Err(RpcErr::params("table はパスの並び")),
+    }
+    if let Some(k) = m
+        .keys()
+        .find(|k| !["cmd", "table", "json"].contains(&k.as_str()))
+    {
+        return Err(RpcErr::params(format!(
+            "coatings の引数 {k} は無い（table だけ）"
+        )));
+    }
+    let c = crate::coat_interfaces(&s, &tables)?;
+    Ok(json!({
+        "coating_file_path": s.coating_file.as_ref().map(|p| p.display().to_string()),
+        "wavelengths_um": s.wavelengths,
+        "interfaces": c.list,
+        "needs_table": c.needs,
+        "auto_coatings": c.auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
+    }))
 }
 
 /// 拡張のサブコマンドに渡す、読み込んだ系（[`ext::Served`]）

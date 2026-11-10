@@ -934,6 +934,24 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
             ui.label(RichText::new(format!("⚠ {p}")).color(Color32::from_rgb(220, 80, 60)));
         }
     }
+    // 膜（フィルタ）の定義（プロジェクトの coatings）
+    ui.add_space(6.0);
+    let head = if c.coatings.is_empty() {
+        tr("膜（フィルタ）の定義").to_string()
+    } else {
+        format!("{} ({})", tr("膜（フィルタ）の定義"), c.coatings.len())
+    };
+    // 通し確認では開いて見せる（[`crate::coat_defs::focus`]）
+    let focus = crate::coat_defs::take_focus(ui.ctx());
+    let r = egui::CollapsingHeader::new(RichText::new(head).strong())
+        .id_salt(id.with("coat_defs"))
+        .open(focus.then_some(true))
+        .show(ui, |ui| {
+            crate::coat_defs::ui(ui, &mut c.coatings);
+        });
+    if focus {
+        r.header_response.scroll_to_me(Some(egui::Align::Min));
+    }
 }
 
 /// 硝材カタログ: 前ほど優先。硝材のフォルダの AGF から足す・外す・順を変える

@@ -8,6 +8,7 @@ mod app;
 mod argform;
 mod catalog;
 mod catsave;
+mod coat_defs;
 mod combo;
 mod combo_tree;
 mod config_panel;

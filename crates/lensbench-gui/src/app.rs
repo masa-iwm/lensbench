@@ -4417,6 +4417,28 @@ impl App {
                 self.c.build_combo(p);
                 self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
             }
+            Step::Coatings => {
+                // 膜（フィルタ）の定義: バンドパスを定義して BS の膜にし、系の設定の膜の欄を開いて見せる
+                let c = &mut self.c.browser.combo;
+                c.coatings.insert(
+                    "BP633".into(),
+                    lensbench_project::filter::CoatSpec::Bandpass {
+                        center_nm: 633.0,
+                        fwhm_nm: 10.0,
+                        ideal: lensbench_project::filter::Ideal {
+                            t: 0.9,
+                            od: 4.0,
+                            width_nm: None,
+                            neff: 2.0,
+                            absorptive: false,
+                        },
+                    },
+                );
+                let p = c.project();
+                self.c.build_combo(p);
+                crate::coat_defs::focus(ctx);
+                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
                 let cfg = AnaCfg::new("pop");

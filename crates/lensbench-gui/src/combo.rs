@@ -1150,6 +1150,8 @@ pub struct Combo {
     pub state_sys: BTreeMap<String, crate::sysset::SysSnap>,
     /// 状態ごとの BS の経路（無ければ path）
     pub state_path: BTreeMap<String, String>,
+    /// 膜（フィルタ）の定義（プロジェクトの coatings）
+    pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 群の役割・移動（名前は要素の group）
     pub groups: Vec<GroupDef>,
 }
@@ -1202,6 +1204,7 @@ impl Default for Combo {
             state: None,
             state_sys: BTreeMap::new(),
             state_path: BTreeMap::new(),
+            coatings: BTreeMap::new(),
             groups: Vec::new(),
         }
     }
@@ -1355,6 +1358,9 @@ impl Combo {
         }
         if !self.mechanics.is_empty() {
             v["mechanics"] = Value::Array(self.mechanics.iter().map(MechPick::json).collect());
+        }
+        if !self.coatings.is_empty() {
+            v["coatings"] = serde_json::to_value(&self.coatings).unwrap_or_default();
         }
         if !states.is_empty() {
             v["states"] = Value::Array(
@@ -1839,6 +1845,7 @@ pub fn ui(
     let mut act = None;
     let weak = theme::weak_text(ui.visuals());
     combo.normalize();
+    crate::coat_defs::set_names(ui.ctx(), combo.coatings.keys().cloned().collect());
     // 要素のパレット
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("足す")).small().color(weak));
@@ -3608,8 +3615,24 @@ fn coat_edit(ui: &mut Ui, coat: &mut String, weak: Color32) {
             .desired_width(70.0),
     )
     .on_hover_text(tr(
-        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前。空なら理想の鏡・分岐比のまま",
+        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま",
     ));
+    // 系の設定で定義した膜から選ぶ
+    let names = crate::coat_defs::names(ui.ctx());
+    if !names.is_empty() {
+        egui::ComboBox::from_id_salt(("coat_pick", coat as *const String as usize))
+            .selected_text("▾")
+            .width(24.0)
+            .show_ui(ui, |ui| {
+                for n in names {
+                    if ui.selectable_label(*coat == n, n.as_str()).clicked() {
+                        *coat = n;
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tr("定義した膜から選ぶ"));
+    }
 }
 
 /// 選んだ寸法（入力欄とスライダー）・要素の設定。面の表で見る要素を返す

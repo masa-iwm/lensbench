@@ -931,3 +931,30 @@ fn layout_has_mechanics() {
         .count();
     assert_eq!(n, 2);
 }
+
+/// analyze の coatings: 読み込んだ系（プロジェクトの膜の定義も）の膜の境界
+#[test]
+fn coatings_of_loaded_project() {
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": Path::new(ROOT).join("tests/filter_os/bp_nd.json").display().to_string(),
+            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    let r = sv.call("analyze", json!({ "cmd": "coatings" }));
+    let ifs = r["interfaces"].as_array().unwrap();
+    let kind = |c: &str| {
+        ifs.iter()
+            .find(|x| x["key"].as_str().unwrap().starts_with(&format!("{c}|")))
+            .map(|x| x["kind"].as_str().unwrap().to_string())
+    };
+    assert_eq!(kind("BP550").as_deref(), Some("table"), "{r}");
+    assert_eq!(kind("ND05").as_deref(), Some("table"), "{r}");
+    assert_eq!(r["needs_table"], json!([]));
+    assert!(sv
+        .error("analyze", json!({ "cmd": "coatings", "field": 1 }))
+        .contains("field"));
+    sv.stop();
+}
