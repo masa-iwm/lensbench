@@ -28,6 +28,7 @@ use lensbench_core::{glass, par, runs, zmx, System};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// 候補の絞り込み（省いた条件は絞らない）
@@ -226,17 +227,55 @@ fn in_range(x: f64, r: &[Option<f64>; 2]) -> bool {
     x.is_finite() && r[0].map_or(true, |a| x >= a) && r[1].map_or(true, |b| x <= b)
 }
 
-/// 絞り込みに合うカタログのレンズ（カタログの順）。要約を作れないレンズは除く
-pub fn candidates(cat: &LensCatalog, f: &Filter, glass_dirs: &[PathBuf]) -> Vec<Candidate> {
+/// レンズの要約（焦点距離・径・中心厚）。作れないレンズは None
+type Info = Option<(f64, f64, f64)>;
+
+/// メーカーの絞り込みに合うカタログのレンズの番号（カタログの順）
+fn vendor_indices(cat: &LensCatalog, f: &Filter) -> Vec<usize> {
     let v = f.vendor.as_deref().map(|v| v.trim().to_uppercase());
     cat.lenses()
         .iter()
-        .filter(|l| {
+        .enumerate()
+        .filter(|(_, l)| {
             v.as_ref()
                 .map_or(true, |v| l.vendor.trim().to_uppercase() == *v)
         })
-        .filter_map(|l| {
-            let (efl, diameter, thickness) = lens_info(&l.zmx, l.efl, glass_dirs).ok()?;
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// idx のレンズの要約を並列に作る（まだ infos に無いものだけ。スレッド数は外の指定に従う）
+fn fill_infos(
+    cat: &LensCatalog,
+    idx: &[usize],
+    glass_dirs: &[PathBuf],
+    infos: &mut HashMap<usize, Info>,
+) {
+    let todo: Vec<usize> = idx
+        .iter()
+        .copied()
+        .filter(|i| !infos.contains_key(i))
+        .collect();
+    let lenses = cat.lenses();
+    let r = par::map(&todo, |&i| {
+        let l = &lenses[i];
+        lens_info(&l.zmx, l.efl, glass_dirs).ok()
+    });
+    infos.extend(todo.into_iter().zip(r));
+}
+
+/// 要約済みのレンズから、絞り込みに合うもの（idx の順）
+fn filter_candidates(
+    cat: &LensCatalog,
+    f: &Filter,
+    idx: &[usize],
+    infos: &HashMap<usize, Info>,
+) -> Vec<Candidate> {
+    let lenses = cat.lenses();
+    idx.iter()
+        .filter_map(|i| {
+            let (efl, diameter, thickness) = infos.get(i).copied().flatten()?;
+            let l = &lenses[*i];
             (in_range(efl, &f.efl) && in_range(diameter, &f.diameter)).then(|| Candidate {
                 vendor: l.vendor.clone(),
                 part: l.part.clone(),
@@ -246,6 +285,15 @@ pub fn candidates(cat: &LensCatalog, f: &Filter, glass_dirs: &[PathBuf]) -> Vec<
             })
         })
         .collect()
+}
+
+/// 絞り込みに合うカタログのレンズ（カタログの順）。要約を作れないレンズは除く。
+/// 要約は並列に作る（スレッド数は外の指定に従い、結果はスレッド数によらない）
+pub fn candidates(cat: &LensCatalog, f: &Filter, glass_dirs: &[PathBuf]) -> Vec<Candidate> {
+    let idx = vendor_indices(cat, f);
+    let mut infos = HashMap::new();
+    fill_infos(cat, &idx, glass_dirs, &mut infos);
+    filter_candidates(cat, f, &idx, &infos)
 }
 
 /// 1 つの所の選び方
@@ -313,6 +361,19 @@ impl<'a> SwapSearch<'a> {
             "chief" => RmsRef::Chief,
             r => return Err(format!("reference {r}（centroid・chief）")),
         };
+        // 候補の要約は所の間で使い回す（絞り込みの所が使うレンズをまとめて 1 回だけ、並列に作る）
+        let slot_idx: Vec<Option<Vec<usize>>> = spec
+            .slots
+            .iter()
+            .map(|sl| sl.parts.is_empty().then(|| vendor_indices(cat, &sl.filter)))
+            .collect();
+        let mut infos = HashMap::new();
+        {
+            let mut all: Vec<usize> = slot_idx.iter().flatten().flatten().copied().collect();
+            all.sort_unstable();
+            all.dedup();
+            fill_infos(cat, &all, &env.glass_dirs, &mut infos);
+        }
         let mut ptrs = Vec::new();
         let mut picks = Vec::new();
         for (k, sl) in spec.slots.iter().enumerate() {
@@ -333,8 +394,8 @@ impl<'a> SwapSearch<'a> {
                 return Err(format!("ブロック {} は玉（type lens）でない", sl.block));
             }
             let rev0 = b["reversed"].as_bool().unwrap_or(false);
-            let lenses = if sl.parts.is_empty() {
-                candidates(cat, &sl.filter, &env.glass_dirs)
+            let lenses = if let Some(idx) = &slot_idx[k] {
+                filter_candidates(cat, &sl.filter, idx, &infos)
             } else {
                 sl.parts
                     .iter()
