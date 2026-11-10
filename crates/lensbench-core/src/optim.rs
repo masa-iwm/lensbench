@@ -425,7 +425,9 @@ type FdSystems = (System, Option<System>);
 /// ヤコビアンの求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JacMode {
-    /// 解析的に求められる列は解析的に、ほかは中心差分
+    /// 解析的に求められる列は解析的に、ほかは中心差分。ただし項ごとに、解析的に求められる列が
+    /// [`Problem::analytic_min`] 個より少なければ中心差分（解析的な微分は列の数によらない手間が大きく、
+    /// 列が少ないと差分の方が速い）
     #[default]
     Auto,
     /// すべて中心差分
@@ -479,6 +481,9 @@ pub struct Problem {
     /// 回転対称でない系の波面の項の差分の刻みの相対値。射出瞳を実光線の外挿で求める（OpticStudio と同じ）ので
     /// 評価関数に 1e-8 程度の揺れがあり、小さい刻みでは差分が揺れに負ける
     pub fd_rel_noisy: f64,
+    /// [`JacMode::Auto`] で解析的に求める列の最少の数（項ごと。これより少なければ中心差分）。
+    /// 既定 16 は、11 面の系のスポットで解析的と中心差分の時間が並ぶ列の数。0 なら常に解析的
+    pub analytic_min: usize,
 }
 
 /// 項の残差（重みを掛ける前）と、解析的に求めた列のヤコビアン（行優先 [行][params]）
@@ -493,6 +498,7 @@ impl Problem {
             jac: JacMode::Auto,
             fd_rel: 1e-6,
             fd_rel_noisy: 1e-3,
+            analytic_min: 16,
         }
     }
 
@@ -849,6 +855,11 @@ impl Problem {
                     .collect()
             } else {
                 Vec::new()
+            };
+            let analytic = if analytic.len() < self.analytic_min {
+                Vec::new()
+            } else {
+                analytic
             };
             let ps: Vec<Param> = analytic.iter().map(|&q| self.vars[q].param).collect();
             let (r, ja, ok) = if ps.is_empty() {

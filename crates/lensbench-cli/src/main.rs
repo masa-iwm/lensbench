@@ -301,7 +301,7 @@ enum Cmd {
         /// 反復の上限
         #[arg(long, default_value_t = 50)]
         iters: usize,
-        /// ヤコビアン: auto（解析的に求められる列は解析的に）・fd（すべて中心差分）・forward（すべて前進差分）
+        /// ヤコビアン: auto（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）・fd（すべて中心差分）・forward（すべて前進差分）
         #[arg(long, default_value = "auto")]
         jac: String,
         /// 最適化した系を書き出す .zmx

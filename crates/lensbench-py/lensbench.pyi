@@ -300,7 +300,7 @@ class System:
     def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None) -> dict[str, Any]:
         """減衰最小二乗（DLS）で最適化した系を返す（元の系は変えない）。vars は変数の列で、各要素は "7.t" か
         ("7.t", 下限, 上限)（None で片側なし）。既定の評価関数 merit は "spot"（RMS スポット）か "wavefront"（RMS 波面）で、
-        全視野（視野の重み）・多色。None なら terms の項だけ。jac は "auto"（解析的に求められる列は解析的に）か
+        全視野（視野の重み）・多色。None なら terms の項だけ。jac は "auto"（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）か
         "fd"（すべて中心差分）か "forward"（すべて前進差分、中心差分の半分の追跡）。
 
         termsは足す項の dict の並び。{"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1} の

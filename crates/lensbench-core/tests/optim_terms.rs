@@ -58,6 +58,8 @@ const SYSTEMS: [&str; 6] = ["A0", "A3", "B0", "B2", "C0", "E0"];
 
 fn one(s: &System, kind: TermKind) -> Problem {
     let mut p = Problem::single(s.clone());
+    // 列が少なくても解析的に求める（解析的な微分を確かめる）
+    p.analytic_min = 0;
     p.terms.push(Term {
         side: Default::default(),
         config: 0,
@@ -354,6 +356,7 @@ fn user_term_batches_fd() {
         }
         // 同じ量を光線の項で
         let mut q = Problem::single(s.clone());
+        q.analytic_min = 0;
         for py in [0.5, -0.5] {
             q.terms.push(Term {
                 side: Default::default(),
