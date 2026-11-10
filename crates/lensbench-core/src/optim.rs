@@ -38,7 +38,7 @@
 //! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
 //! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
 
-use crate::analysis::{mtf_only, pupil_gauss, to_ref, MtfMethod, ZernKind};
+use crate::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
 use crate::error::Result;
 use crate::fiber::FiberOpts;
 use crate::invalid;
@@ -419,6 +419,9 @@ impl Term {
     }
 }
 
+/// 差分の +h の系と -h の系（前進差分では -h はなし）
+type FdSystems = (System, Option<System>);
+
 /// ヤコビアンの求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JacMode {
@@ -427,6 +430,33 @@ pub enum JacMode {
     Auto,
     /// すべて中心差分
     FiniteDiff,
+    /// すべて前進差分（中心差分の半分の追跡で済むが、誤差は刻みの 1 次）。射出瞳の揺れのため刻みを大きく取る
+    /// 波面の項（回転対称でない系など）は中心差分のまま
+    Forward,
+}
+
+impl JacMode {
+    /// 名前（"auto"・"fd"・"forward"、大文字小文字は問わない）から
+    pub fn parse(s: &str) -> Option<JacMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(JacMode::Auto),
+            "fd" => Some(JacMode::FiniteDiff),
+            "forward" => Some(JacMode::Forward),
+            _ => None,
+        }
+    }
+
+    /// 名前
+    pub fn name(self) -> &'static str {
+        match self {
+            JacMode::Auto => "auto",
+            JacMode::FiniteDiff => "fd",
+            JacMode::Forward => "forward",
+        }
+    }
+
+    /// 選べる名前（エラーの表示用）
+    pub const NAMES: &'static str = "auto・fd・forward";
 }
 
 /// 既定の評価関数の種類（[`Problem::add_default`]）
@@ -848,11 +878,11 @@ impl Problem {
         let fd_vars: Vec<usize> = (0..nv)
             .filter(|q| parts.iter().any(|p| p.fd.contains(q)))
             .collect();
+        let forward = self.jac == JacMode::Forward;
         let cols: Vec<Vec<(usize, Vec<f64>)>> = map_maybe_par(&fd_vars, |&q| {
             let mut out = Vec::new();
-            // (構成, 刻みの種類) ごとの ±h の系
-            let mut cache: Vec<[Option<(System, System)>; 2]> =
-                vec![[None, None]; self.configs.len()];
+            // (構成, 刻みの種類) ごとの +h と -h の系（前進差分では -h はなし）
+            let mut cache: Vec<[Option<FdSystems>; 2]> = vec![[None, None]; self.configs.len()];
             for (ti, t) in self.terms.iter().enumerate() {
                 if !parts[ti].fd.contains(&q) || matches!(t.kind, TermKind::User(_)) {
                     continue;
@@ -867,19 +897,34 @@ impl Problem {
                 let slot = &mut cache[t.config][noisy as usize];
                 if slot.is_none() {
                     let mut xp = x.to_vec();
-                    let mut xm = x.to_vec();
                     xp[q] += h;
-                    xm[q] -= h;
-                    *slot = Some((self.system(t.config, &xp)?, self.system(t.config, &xm)?));
+                    // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
+                    let sm = if forward && !noisy {
+                        None
+                    } else {
+                        let mut xm = x.to_vec();
+                        xm[q] -= h;
+                        Some(self.system(t.config, &xm)?)
+                    };
+                    *slot = Some((self.system(t.config, &xp)?, sm));
                 }
                 let (sp, sm) = slot.as_ref().unwrap();
                 let rp = eval_term(sp, &t.kind, None)?.0;
-                let rm = eval_term(sm, &t.kind, None)?.0;
-                let d: Vec<f64> = rp
-                    .iter()
-                    .zip(&rm)
-                    .map(|(a, b)| (a - b) / (2.0 * h))
-                    .collect();
+                let d: Vec<f64> = match sm {
+                    // 前進差分: 元の系の残差（parts の r、重みを掛ける前）との差
+                    None => rp
+                        .iter()
+                        .zip(&parts[ti].r)
+                        .map(|(a, b)| (a - b) / h)
+                        .collect(),
+                    Some(sm) => {
+                        let rm = eval_term(sm, &t.kind, None)?.0;
+                        rp.iter()
+                            .zip(&rm)
+                            .map(|(a, b)| (a - b) / (2.0 * h))
+                            .collect()
+                    }
+                };
                 out.push((ti, d));
             }
             Ok(out)
@@ -899,6 +944,21 @@ impl Problem {
             };
             let fd = parts[ti].fd.clone();
             if fd.is_empty() {
+                continue;
+            }
+            if forward {
+                let ps: Vec<System> = map_maybe_par(&fd, |&q| {
+                    let mut xp = x.to_vec();
+                    xp[q] += steps[q];
+                    self.system(t.config, &xp)
+                })?;
+                let refs: Vec<&System> = ps.iter().collect();
+                let v = u.eval_checked(&refs)?;
+                for (k, &q) in fd.iter().enumerate() {
+                    for i in 0..v[k].len() {
+                        parts[ti].j[i * nv + q] = (v[k][i] - parts[ti].r[i]) / steps[q];
+                    }
+                }
                 continue;
             }
             let pm: Vec<(System, System)> = map_maybe_par(&fd, |&q| {
@@ -984,10 +1044,10 @@ fn waves(s: &System, w: Option<usize>) -> Vec<usize> {
 fn term_rows(s: &System, k: &TermKind) -> usize {
     match k {
         TermKind::Spot { wave, rings, .. } => {
-            2 * waves(s, *wave).len() * pupil_gauss(*rings, None).0.len()
+            2 * waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
         }
         TermKind::Wavefront { wave, rings, .. } => {
-            waves(s, *wave).len() * pupil_gauss(*rings, None).0.len()
+            waves(s, *wave).len() * pupil_gauss_shared(*rings).0.len()
         }
         TermKind::Mtf { dir, .. } => {
             if *dir == MtfDir::Both {
@@ -1344,7 +1404,8 @@ fn spot_term(
     reference: RmsRef,
     ps: Option<&[Param]>,
 ) -> Result<TermOut> {
-    let (px, py, wts) = pupil_gauss(rings, None);
+    let pg = pupil_gauss_shared(rings);
+    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();
@@ -1352,7 +1413,7 @@ fn spot_term(
     let mut traces = Vec::with_capacity(ws.len());
     let mut grads = Vec::with_capacity(ws.len());
     for &w in &ws {
-        let t = trace_ok(s, field, &px, &py, w, rec)?;
+        let t = trace_ok(s, field, px, py, w, rec)?;
         if let Some(ps) = ps {
             grads.push(s.land_grad(&t, w, ps, None)?);
         }
@@ -1521,7 +1582,8 @@ fn wfe_term(
     reference: RmsRef,
     ps: Option<&[Param]>,
 ) -> Result<TermOut> {
-    let (px, py, wts) = pupil_gauss(rings, None);
+    let pg = pupil_gauss_shared(rings);
+    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
     let n = px.len();
     let ws = waves(s, wave);
     let rec = ps.is_some();
@@ -1579,7 +1641,7 @@ fn wfe_term(
     // 微分（rows と同じ順）: dOPD・d(L − Lc)・d(M − Mc) [パラメータ]
     let mut drows: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = Vec::new();
     for (k, &w) in ws.iter().enumerate() {
-        let t = trace_ok(s, field, &px, &py, w, rec)?;
+        let t = trace_ok(s, field, px, py, w, rec)?;
         let tc = trace_ok(s, field, &[0.0], &[0.0], w, rec)?;
         let wr = if poly { s.primary } else { w };
         let tp = if wr == w {
