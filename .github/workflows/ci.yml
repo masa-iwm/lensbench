@@ -41,6 +41,9 @@ jobs:
   # 延びるので別のジョブで並行に。PR では ci プロファイル、main への push では配る形の release
   gui-windows:
     runs-on: windows-latest
+    env:
+      # テストと同じく同梱の rust-lld でリンクする（配る release の exe も。#66 で release を PC で起動し、--tour が通るのを確かめた）
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
