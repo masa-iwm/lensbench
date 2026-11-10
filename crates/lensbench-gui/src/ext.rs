@@ -74,6 +74,34 @@ impl ObjectArg {
 
 static ANALYSES: RwLock<Vec<Analysis>> = RwLock::new(Vec::new());
 
+/// 拡張の検出器（組合せの最後に置く検出器のブロック、`lensbench_project::detectors` に登録した種類）の欄
+#[derive(Clone, Copy)]
+pub struct Detector {
+    /// ブロックの `"type"`
+    pub kind: &'static str,
+    /// 欄の項目（ブロックの項目。値は入れ子の JSON にしてブロックに入れる）
+    pub object: ObjectArg,
+}
+
+static DETECTORS: RwLock<Vec<Detector>> = RwLock::new(Vec::new());
+
+/// 検出器を足す（同じ kind は置き換える）
+pub fn register_detector(d: Detector) {
+    let mut v = DETECTORS.write().unwrap_or_else(|e| e.into_inner());
+    v.retain(|x| x.kind != d.kind);
+    v.push(d);
+}
+
+/// 足した検出器（足した順）
+pub fn detectors() -> Vec<Detector> {
+    DETECTORS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// kind の検出器
+pub fn detector(kind: &str) -> Option<Detector> {
+    detectors().into_iter().find(|d| d.kind == kind)
+}
+
 /// 解析を足す（同じ cmd は置き換える）
 pub fn register(a: Analysis) {
     let mut v = ANALYSES.write().unwrap_or_else(|e| e.into_inner());
@@ -160,5 +188,43 @@ mod tests {
         );
         let v = [("a.b".to_string(), "2.5".to_string())].into();
         assert_eq!(o.json(&v, false).unwrap(), json!({"a": {"b": 2.5}}));
+    }
+
+    #[test]
+    fn detector_block_goes_last() {
+        register_detector(Detector {
+            kind: "testdet",
+            object: ObjectArg {
+                arg: "",
+                title: "テストの検出器",
+                note: "",
+                specs: || {
+                    vec![
+                        json!({"name": "mla.pitch", "type": "num", "default": 0.15, "unit": "mm", "doc": ""}),
+                        json!({"name": "detector.bits", "type": "int", "default": 12, "unit": "", "doc": ""}),
+                    ]
+                },
+                groups: &[("mla.", "MLA")],
+                file_name: "d.json",
+            },
+        });
+        assert!(detector("testdet").is_some());
+        let mut c = crate::combo::Combo {
+            detector: Some(crate::combo::DetectorPick {
+                kind: "testdet".into(),
+                vals: [("mla.pitch".to_string(), "0.3".to_string())].into(),
+            }),
+            ..Default::default()
+        };
+        let p = c.project();
+        let last = p["blocks"].as_array().unwrap().last().unwrap().clone();
+        assert_eq!(last, json!({"type": "testdet", "mla": {"pitch": 0.3}}));
+        // 読めない値は設定の誤り
+        c.detector
+            .as_mut()
+            .unwrap()
+            .vals
+            .insert("detector.bits".into(), "x".into());
+        assert!(!c.settings_problems().is_empty());
     }
 }

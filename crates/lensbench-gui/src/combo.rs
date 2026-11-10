@@ -1154,6 +1154,41 @@ pub struct Combo {
     pub coatings: BTreeMap<String, lensbench_project::filter::CoatSpec>,
     /// 群の役割・移動（名前は要素の group）
     pub groups: Vec<GroupDef>,
+    /// 最後に置く検出器（拡張の検出器のブロック、[`crate::ext::Detector`]）
+    pub detector: Option<DetectorPick>,
+}
+
+/// 組合せの最後の検出器のブロック: 種類と、欄の文字列（項目の名前 → 欄に書いた文字列、空は既定）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DetectorPick {
+    pub kind: String,
+    pub vals: BTreeMap<String, String>,
+}
+
+impl DetectorPick {
+    /// プロジェクトのブロック（{"type": kind, 項目…}）。種類が登録されていなければ欄の値をそのまま入れ子に
+    pub fn block(&self) -> Result<Value, String> {
+        let mut v = match crate::ext::detector(&self.kind) {
+            Some(d) => d.object.json(&self.vals, false)?,
+            None => crate::argform::nest(
+                &self
+                    .vals
+                    .iter()
+                    .filter(|(_, t)| !t.trim().is_empty())
+                    .map(|(k, t)| {
+                        let x = serde_json::from_str(t).unwrap_or_else(|_| json!(t));
+                        (k.clone(), x)
+                    })
+                    .collect(),
+            ),
+        };
+        if !v.is_object() {
+            v = json!({});
+        }
+        v["type"] = json!(self.kind);
+        Ok(v)
+    }
 }
 
 /// 組合せの群（プロジェクトの group ブロック）の役割と移動
@@ -1206,6 +1241,7 @@ impl Default for Combo {
             state_path: BTreeMap::new(),
             coatings: BTreeMap::new(),
             groups: Vec::new(),
+            detector: None,
         }
     }
 }
@@ -1336,6 +1372,12 @@ impl Combo {
                 if let Some(&x) = d.state_shift.get(n) {
                     set.insert(d.name.clone(), json!({ "shift": x }));
                 }
+            }
+        }
+        // 検出器は最後のブロック（前の空気が検出器までの距離）
+        if let Some(d) = &self.detector {
+            if let Ok(b) = d.block() {
+                blocks.push(b);
             }
         }
         let mut v = json!({ "name": self.name });
