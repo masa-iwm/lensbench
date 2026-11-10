@@ -11,7 +11,6 @@ mod catsave;
 mod combo;
 mod combo_tree;
 mod config_panel;
-mod dpi;
 pub mod ext;
 mod figures;
 mod files;

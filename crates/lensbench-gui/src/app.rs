@@ -299,8 +299,6 @@ pub struct App {
     /// 別の窓を開いたときの大きさ・位置（毎フレーム同じ値を渡す。今の値を渡し直すと、DPI の違うモニターへ
     /// 移したときに大きさの変換が往復して窓が暴れる）
     win_init: HashMap<u64, ([f32; 2], Option<[f32; 2]>)>,
-    /// 窓ごとの、拡大率の違うモニターへ移したときに戻す大きさ（0 は本体）
-    keep: HashMap<u64, crate::dpi::KeepSize>,
     /// 引きずっているタブと、最後のポインターの位置（本体の窓の座標）
     dragging_tab: Option<(u64, egui::Pos2)>,
     /// 画面の通し確認（--tour）
@@ -3346,7 +3344,6 @@ impl App {
             windows: lay.windows,
             palette: Palette::default(),
             win_init: HashMap::new(),
-            keep: HashMap::new(),
             dragging_tab: None,
             tour: None,
             #[cfg(target_arch = "wasm32")]
@@ -3581,7 +3578,6 @@ impl App {
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
                         self.win_init.remove(&id);
-                        self.keep.remove(&id);
                         self.dock.push_to_focused_leaf(w.pane);
                     }
                 }
@@ -4297,7 +4293,6 @@ impl App {
             let pid = w.pane.id;
             let size = w.size;
             let (pane, pos, wsize) = (&mut w.pane, &mut w.pos, &mut w.size);
-            let keep = self.keep.entry(pid).or_default();
             ctx.show_viewport_immediate(vid, b, |ctx, class| {
                 let mut body = |ui: &mut Ui, c: &mut Core, ret: &mut bool| {
                     ui.horizontal(|ui| {
@@ -4322,7 +4317,6 @@ impl App {
                     }
                 } else {
                     egui::CentralPanel::default().show(ctx, |ui| body(ui, c, &mut ret));
-                    crate::dpi::keep_size(ctx, keep);
                     let (close, rect) =
                         ctx.input(|i| (i.viewport().close_requested(), i.viewport().outer_rect));
                     if close {
@@ -4347,7 +4341,6 @@ impl App {
                 t.blocked.remove(&w.pane.id);
             }
             self.win_init.remove(&w.pane.id);
-            self.keep.remove(&w.pane.id);
             self.dock.push_to_focused_leaf(w.pane);
         }
         // 窓を出している間に足された窓（パネルの右クリックなど）
@@ -4782,7 +4775,6 @@ impl eframe::App for App {
         }
         self.c.flush_set();
         self.c.auto_build();
-        crate::dpi::keep_size(ctx, self.keep.entry(0).or_default());
         // 窓に落としたファイル
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
