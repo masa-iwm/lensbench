@@ -150,6 +150,7 @@ pub struct Timings {
 }
 
 /// タイミングの設定のファイルの名前（設定のフォルダ）
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub const TIMING_FILE: &str = "catalog-fill-timing.json";
 
 /// URL のホスト名（小文字）
@@ -163,6 +164,7 @@ pub fn url_host(url: &str) -> String {
 
 impl Timings {
     /// 設定の文字から。読めない・負の値は誤り
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub fn parse(text: &str) -> Result<Timings, String> {
         let t: Timings = serde_json::from_str(text).map_err(|e| format!("{TIMING_FILE}: {e}"))?;
         let bad = |x: f64| !(x.is_finite() && x >= 0.0);
