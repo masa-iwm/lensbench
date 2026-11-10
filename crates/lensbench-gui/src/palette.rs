@@ -18,6 +18,8 @@ pub struct Palette {
     pub query: String,
     pub sel: usize,
     focus: bool,
+    /// 開く欄（上の帯の「探す」）の場所。あればその真下に右をそろえて出す
+    pub anchor: Option<egui::Rect>,
 }
 
 /// 空白で区切った語がすべて含まれる（大文字・小文字を区別しない）
@@ -25,6 +27,18 @@ pub fn matches(q: &str, label: &str, hint: &str) -> bool {
     let hay = format!("{label} {hint}").to_lowercase();
     q.split_whitespace()
         .all(|w| hay.contains(&w.to_lowercase()))
+}
+
+/// パレットの左上。開く欄があればその真下に右端をそろえ（画面からはみ出さないように）、無ければ中央
+fn pos_under(screen: egui::Rect, anchor: Option<egui::Rect>, width: f32) -> egui::Pos2 {
+    match anchor {
+        Some(a) => {
+            let lo = screen.left() + 16.0;
+            let hi = (screen.right() - 16.0 - width).max(lo);
+            egui::pos2((a.right() - width).clamp(lo, hi), a.bottom() + 4.0)
+        }
+        None => egui::pos2(screen.center().x - width / 2.0, screen.top() + 70.0),
+    }
 }
 
 impl Palette {
@@ -72,10 +86,7 @@ impl Palette {
         egui::Area::new(egui::Id::new("palette"))
             .order(egui::Order::Foreground)
             .fade_in(false)
-            .fixed_pos(egui::pos2(
-                screen.center().x - width / 2.0,
-                screen.top() + 70.0,
-            ))
+            .fixed_pos(pos_under(screen, self.anchor, width))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(width);
@@ -129,5 +140,24 @@ mod tests {
         assert!(matches("ス 足", "スポットを足す", ""));
         assert!(!matches("mtf", "スポットを足す", "add spot"));
         assert!(matches("", "x", ""));
+    }
+}
+
+#[cfg(test)]
+mod pos_tests {
+    use super::*;
+
+    /// 欄の真下に右端をそろえ、狭い画面でははみ出さない
+    #[test]
+    fn under_anchor() {
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(2000.0, 900.0));
+        let a = egui::Rect::from_min_max(egui::pos2(1500.0, 10.0), egui::pos2(1800.0, 38.0));
+        let p = pos_under(screen, Some(a), 640.0);
+        assert_eq!(p, egui::pos2(1160.0, 42.0));
+        let narrow = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(500.0, 900.0));
+        let a = egui::Rect::from_min_max(egui::pos2(100.0, 10.0), egui::pos2(400.0, 38.0));
+        let p = pos_under(narrow, Some(a), 468.0);
+        assert_eq!(p.x, 16.0);
+        assert_eq!(pos_under(screen, None, 640.0).x, 680.0);
     }
 }

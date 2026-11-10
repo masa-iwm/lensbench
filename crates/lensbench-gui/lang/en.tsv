@@ -73,7 +73,6 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 全視野	All fields
 全長	Total track
 初期の並び	Preset layouts
-別の窓に出す: {}	Move to separate window: {}
 別の窓に出す（別モニターへ）	Move to separate window (another monitor)
 厚さ	Thickness
 反転	Reverse
@@ -225,7 +224,7 @@ Huygens MTF	Huygens MTF
 ＋ {}…	+ {}…
 軸上の光線が像面の前の面まで届かない	The on-axis ray does not reach the surface before the image
 ロック	Lock
-ロックした要素は動かせず、設定も変えられない（L キーでも切り替え）	A locked element cannot be moved or changed (toggle with L)
+ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）	A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with L)
 「▶ 系を作る」でレイアウト図が出ます	Press "▶ Build system" to see the layout
 クリックで版をコピー	Click to copy the version
 鏡: R = {} mm、f = {} mm、径 {} mm	Mirror: R = {} mm, f = {} mm, diameter {} mm
@@ -825,6 +824,7 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？	Delete all loaded files and user catalogs kept in the browser?
 カタログのファイルをダウンロードする	Download the catalog file
 別のタブに出す	Open in a new browser tab
+ページの中に浮かせる	Float inside the page
 ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します	The browser blocked the new tab (allow pop-ups to open analysis panels in their own tabs). Showing it as a window inside the page instead
 元のタブに戻す	Back to the main tab
 元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。	The main tab was closed, so this panel can no longer compute. Close this tab and reopen the main page.
@@ -1099,3 +1099,11 @@ STEP（公式）	STEP (official)
 📥 詳しい形（STEP）を取る	📥 Fetch detailed shape (STEP)
 機構部品を詳しい形で	Detailed mech shapes
 カタログの品の STEP を取ってあれば（カタログの詳細の「詳しい形（STEP）を取る」）、3D の表示と書き出しで機構部品をその形で描きます。無い部品は簡易外形のまま	If the catalog item's STEP has been fetched ("Fetch detailed shape (STEP)" in the catalog details), mechanical parts are drawn with that shape in the 3D view and exports. Parts without it keep the simple outline
+最大化	Maximize
+最小化	Minimize
+元のサイズに戻す	Restore
+OS のタイトルバーを使う	Use the OS title bar
+外すと上の帯をタイトルバーにする（ドラッグで移動、ダブルクリックで最大化、縁で大きさを変える）	When off, the top bar acts as the title bar (drag to move, double-click to maximize, drag edges to resize)
+位置も	Position too
+位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする	Also lock the position (drag, keys, decenter, tilt) and the air after
+位置もロックした要素の後の間隔は変えられない	The gap after an element locked with its position cannot change
