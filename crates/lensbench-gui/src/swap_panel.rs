@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use crate::combo::{Combo, ElemKind};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
-use crate::optim_panel::{section, small_edit, text_of};
+use crate::optim_panel::{section, small_edit, term_rows, terms_json, terms_ui, text_of, TermRow};
 use crate::theme;
 
 /// 差し替える所の行
@@ -60,6 +60,8 @@ pub struct Cands {
     pub gaps: Vec<(String, String)>,
     /// 組合せの系（結果を組合せに入れられる）
     pub combo: bool,
+    /// プロジェクトの状態の名前（複数の状態で同時に評価するときに選ぶ）
+    pub states: Vec<String>,
 }
 
 pub struct SwapPanel {
@@ -76,6 +78,18 @@ pub struct SwapPanel {
     pub pre: bool,
     pub pre_rings: usize,
     pub pre_keep: usize,
+    /// 評価関数に足す項（optimize と同じ）
+    pub terms: Vec<TermRow>,
+    pub new_term: String,
+    /// 出発点（1 行に 1 つ、「d1.t=10, d2.t=5」）
+    pub starts: String,
+    /// 同時に評価する状態（空は今の状態だけ）と、状態ごとに解く変数（カンマ区切り）
+    pub states: Vec<String>,
+    pub state_vars: String,
+    /// 有効径の条件
+    pub clear_aperture: bool,
+    /// ヤコビアン（fd・auto）
+    pub jac: String,
     /// 表に出す組の数
     pub top: usize,
     pub new_var: String,
@@ -103,6 +117,13 @@ impl Default for SwapPanel {
             pre: false,
             pre_rings: 2,
             pre_keep: 1000,
+            terms: Vec::new(),
+            new_term: "paraxial".into(),
+            starts: String::new(),
+            states: Vec::new(),
+            state_vars: String::new(),
+            clear_aperture: false,
+            jac: "fd".into(),
             top: 50,
             new_var: String::new(),
             running: false,
@@ -181,6 +202,32 @@ impl SwapPanel {
         if let Some(e) = num(&self.efl, tr("焦点距離の目標"))? {
             p["efl"] = json!(e);
         }
+        let terms = terms_json(&self.terms)?;
+        if !terms.is_empty() {
+            p["terms"] = json!(terms);
+        }
+        let starts = parse_starts(&self.starts)?;
+        if !starts.is_empty() {
+            p["starts"] = json!(starts);
+        }
+        if !self.states.is_empty() {
+            p["states"] = json!(self.states);
+            let sv: Vec<&str> = self
+                .state_vars
+                .split(',')
+                .map(str::trim)
+                .filter(|x| !x.is_empty())
+                .collect();
+            if !sv.is_empty() {
+                p["state_vars"] = json!(sv);
+            }
+        }
+        if self.clear_aperture {
+            p["clear_aperture"] = json!(true);
+        }
+        if self.jac != "fd" {
+            p["jac"] = json!(self.jac);
+        }
         Ok(p)
     }
 
@@ -231,6 +278,27 @@ impl SwapPanel {
                     n.pre_rings = v["rings"].as_u64().unwrap_or(2) as usize;
                     n.pre_keep = v["keep"].as_u64().unwrap_or(1000) as usize;
                 }
+                "terms" => n.terms = term_rows(v)?,
+                "starts" => n.starts = starts_text(v),
+                "states" => {
+                    n.states = v
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                }
+                "state_vars" => {
+                    n.state_vars = v
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+                "clear_aperture" => n.clear_aperture = v.as_bool().unwrap_or(false),
+                "jac" => n.jac = v.as_str().unwrap_or("fd").into(),
                 // GUI では今の系の状態を使う
                 "state" => {}
                 k => return Err(trf("差し替え探索の設定のキー {}", &[&k])),
@@ -239,6 +307,44 @@ impl SwapPanel {
         *self = n;
         Ok(())
     }
+}
+
+/// 出発点の欄（1 行に 1 つ、「d1.t=10, d2.t=5」）から {名前: 値} の並びへ
+pub fn parse_starts(s: &str) -> Result<Vec<serde_json::Map<String, Value>>, String> {
+    let mut out = Vec::new();
+    for line in s.lines().flat_map(|l| l.split(';')).map(str::trim) {
+        if line.is_empty() {
+            continue;
+        }
+        let mut o = serde_json::Map::new();
+        for kv in line.split(',').map(str::trim).filter(|x| !x.is_empty()) {
+            let (k, v) = kv
+                .split_once('=')
+                .ok_or_else(|| trf("出発点 {} は 名前=値", &[&kv]))?;
+            let x: f64 = v
+                .trim()
+                .parse()
+                .map_err(|_| trf("出発点 {} の値が数でない", &[&kv]))?;
+            o.insert(k.trim().to_string(), json!(x));
+        }
+        out.push(o);
+    }
+    Ok(out)
+}
+
+fn starts_text(v: &Value) -> String {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object)
+        .map(|o| {
+            o.iter()
+                .map(|(k, x)| format!("{k}={}", num_text(x)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// 組合せのプロジェクトの空気に id（d0・d1…）を付けたもの、玉の候補、間隔の候補
@@ -425,6 +531,12 @@ pub fn ui(
                     tr("組ごとに最適化する間隔"),
                     |ui| vars_ui(ui, p, c, weak),
                 );
+                section(ui, "swap_terms_sec", tr("評価関数に足す項"), |ui| {
+                    terms_ui(ui, "swap", &mut p.terms, &mut p.new_term, weak);
+                });
+                section(ui, "swap_states_sec", tr("出発点・状態"), |ui| {
+                    starts_states_ui(ui, p, c, weak)
+                });
                 section(ui, "swap_settings_sec", tr("設定"), |ui| {
                     settings_ui(ui, p, weak)
                 });
@@ -588,6 +700,63 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     }
 }
 
+fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
+    ui.label(tr("出発点（1 行に 1 つ）"));
+    ui.add(
+        egui::TextEdit::multiline(&mut p.starts)
+            .desired_rows(2)
+            .desired_width(260.0)
+            .hint_text("d1.t=10, d2.t=5"),
+    );
+    ui.label(
+        RichText::new(tr(
+            "組ごとにすべての出発点から最適化し、評価関数の最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。",
+        ))
+        .small()
+        .color(weak),
+    );
+    ui.separator();
+    if c.states.is_empty() {
+        ui.label(
+            RichText::new(tr(
+                "状態のあるプロジェクトでは、複数の状態で同時に評価できます。",
+            ))
+            .small()
+            .color(weak),
+        );
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("同時に評価する状態"));
+        for s in &c.states {
+            let mut on = p.states.contains(s);
+            if ui.checkbox(&mut on, s).changed() {
+                if on {
+                    p.states.push(s.clone());
+                    // 状態の並びの順にそろえる
+                    p.states
+                        .sort_by_key(|x| c.states.iter().position(|y| y == x));
+                } else {
+                    p.states.retain(|x| x != s);
+                }
+            }
+        }
+    });
+    ui.add_enabled_ui(!p.states.is_empty(), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tr("状態ごとに解く変数"));
+            small_edit(ui, &mut p.state_vars, 160.0, "G2.shift, d3.t");
+        });
+    });
+    ui.label(
+        RichText::new(tr(
+            "状態を選ぶと、組ごとに選んだ状態を同時に最適化します（評価関数は全状態の像の項。項の構成はこの並びの番号）。間隔の変数は全状態で共通、状態ごとに解く変数は状態ごとの値。",
+        ))
+        .small()
+        .color(weak),
+    );
+}
+
 fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
         ui.label(tr("評価関数"));
@@ -613,6 +782,17 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         ui.label(tr("表の行"));
         ui.add(egui::DragValue::new(&mut p.top).range(0..=10_000))
             .on_hover_text(tr("0 はすべて"));
+    });
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut p.clear_aperture, tr("有効径の条件"))
+            .on_hover_text(tr(
+            "差し替える玉の各面で、各視野の瞳の縁の光線が玉の半径の内側にあることを条件にします",
+        ));
+        ui.separator();
+        ui.label(tr("微分"));
+        for (k, l) in [("fd", tr("すべて差分")), ("auto", tr("解析的（できる所）"))] {
+            ui.selectable_value(&mut p.jac, k.to_string(), l);
+        }
     });
     ui.horizontal(|ui| {
         ui.checkbox(&mut p.pre, tr("粗いふるい"))
@@ -831,6 +1011,28 @@ mod tests {
         assert!(q.pre);
         assert_eq!((q.pre_rings, q.pre_keep), (2, 500));
         assert!(q.set_spec(&json!({"bad": 1})).is_err());
+    }
+
+    #[test]
+    fn spec_terms_starts_states() {
+        let v = json!({
+            "slots": [], "vars": ["d1.t=0:"], "merit": "spot", "reference": "centroid",
+            "rings": 3, "iters": 30, "max_count": 100000,
+            "terms": [{"type": "paraxial", "q": "efl", "min": 351.0}],
+            "starts": [{"d1.t": 10.0, "d2.t": 5.0}, {"d1.t": 20.0}],
+            "states": ["wide", "tele"], "state_vars": ["G2.shift"],
+            "clear_aperture": true, "jac": "auto",
+        });
+        let mut p = SwapPanel::default();
+        p.set_spec(&v).unwrap();
+        assert_eq!(p.starts, "d1.t=10, d2.t=5\nd1.t=20");
+        assert_eq!(p.spec().unwrap(), v);
+        // 状態を選ばなければ state_vars は送らない、出発点の書き間違いは誤り
+        p.states.clear();
+        assert!(p.spec().unwrap().get("state_vars").is_none());
+        p.starts = "d1.t".into();
+        assert!(p.spec().is_err());
+        assert!(parse_starts("d1.t=1; d2.t=2").unwrap().len() == 2);
     }
 
     #[test]

@@ -2837,7 +2837,11 @@ fn swap(p: &Value) -> Result<Value, RpcErr> {
         for k in ["project", "top", "threads", "count_only"] {
             o.remove(k);
         }
-        if !o.contains_key("state") && p.get("project").is_none() {
+        let multi = o
+            .get("states")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty());
+        if !multi && !o.contains_key("state") && p.get("project").is_none() {
             if let Some(s) = &ls.state {
                 o.insert("state".into(), json!(s));
             }

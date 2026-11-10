@@ -1468,7 +1468,7 @@ impl Core {
             return;
         }
         let is_combo = self.is_combo();
-        let (project, cands) = if is_combo {
+        let (project, mut cands) = if is_combo {
             let (p, c) = sp::combo_project(&self.browser.combo);
             (Some(p), c)
         } else {
@@ -1485,6 +1485,17 @@ impl Core {
                 None,
                 std::mem::take(&mut self.swap_file.as_mut().unwrap().1),
             )
+        };
+        // 同時に評価できる状態（組合せは組合せの状態、開いたプロジェクトは読み込んだ系の状態）
+        cands.states = if is_combo {
+            self.browser.combo.states.clone()
+        } else {
+            self.overlay
+                .items
+                .iter()
+                .filter(|x| x.0 == "states")
+                .map(|x| x.1.clone())
+                .collect()
         };
         let progress = if self.swap.running {
             ui.ctx()

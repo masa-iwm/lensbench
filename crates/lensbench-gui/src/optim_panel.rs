@@ -350,7 +350,18 @@ impl OptPanel {
                 },
             });
         }
-        for (i, t) in p["terms"].as_array().into_iter().flatten().enumerate() {
+        n.terms = term_rows(&p["terms"])?;
+        n.new_var = std::mem::take(&mut self.new_var);
+        *self = n;
+        Ok(())
+    }
+}
+
+/// 項の JSON の並びから欄の行へ
+pub(crate) fn term_rows(v: &Value) -> Result<Vec<TermRow>, String> {
+    let mut out = Vec::new();
+    {
+        for (i, t) in v.as_array().into_iter().flatten().enumerate() {
             let o = t
                 .as_object()
                 .ok_or_else(|| trf("項 {} がオブジェクトでない", &[&(i + 1)]))?;
@@ -377,12 +388,19 @@ impl OptPanel {
                     _ => r.vals.push((k.clone(), text_of(v))),
                 }
             }
-            n.terms.push(r);
+            out.push(r);
         }
-        n.new_var = std::mem::take(&mut self.new_var);
-        *self = n;
-        Ok(())
     }
+    Ok(out)
+}
+
+/// 欄の行から項の JSON の並びへ
+pub(crate) fn terms_json(terms: &[TermRow]) -> Result<Vec<Value>, String> {
+    terms
+        .iter()
+        .enumerate()
+        .map(|(i, t)| term_json(t).map_err(|e| trf("項 {}: {}", &[&(i + 1), &e])))
+        .collect()
 }
 
 /// JSON の値を欄の文字列に
@@ -722,13 +740,27 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
                 .color(weak),
         );
     }
+    terms_ui(ui, "opt", &mut p.terms, &mut p.new_term, weak);
+}
+
+/// 評価関数の項の欄（最適化・差し替え探索）。id は欄の id の頭（同時に出るパネルで分ける）
+pub(crate) fn terms_ui(
+    ui: &mut Ui,
+    id: &str,
+    terms: &mut Vec<TermRow>,
+    new_term: &mut String,
+    weak: egui::Color32,
+) {
+    if new_term.is_empty() {
+        *new_term = "paraxial".into();
+    }
     let mut del = None;
-    for (i, t) in p.terms.iter_mut().enumerate() {
+    for (i, t) in terms.iter_mut().enumerate() {
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::symmetric(6, 4))
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    egui::ComboBox::from_id_salt(("opt_term_ty", i))
+                    egui::ComboBox::from_id_salt((id, "term_ty", i))
                         .selected_text(t.ty.clone())
                         .width(90.0)
                         .show_ui(ui, |ui| {
@@ -751,7 +783,7 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
                         let changed = match kind {
                             KeyKind::Choice(opts) => {
                                 let mut ch = false;
-                                egui::ComboBox::from_id_salt(("opt_term_k", i, *k))
+                                egui::ComboBox::from_id_salt((id, "term_k", i, *k))
                                     .selected_text(if v.is_empty() { "—" } else { v.as_str() })
                                     .width(70.0)
                                     .show_ui(ui, |ui| {
@@ -786,20 +818,20 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             });
     }
     if let Some(i) = del {
-        p.terms.remove(i);
+        terms.remove(i);
     }
     ui.horizontal(|ui| {
-        egui::ComboBox::from_id_salt("opt_new_term")
-            .selected_text(p.new_term.clone())
+        egui::ComboBox::from_id_salt((id, "new_term"))
+            .selected_text(new_term.clone())
             .width(90.0)
             .show_ui(ui, |ui| {
                 for ty in TERM_TYPES {
-                    ui.selectable_value(&mut p.new_term, ty.to_string(), *ty)
+                    ui.selectable_value(new_term, ty.to_string(), *ty)
                         .on_hover_text(type_hint(ty));
                 }
             });
         if ui.button(tr("項を足す")).clicked() {
-            p.terms.push(TermRow::new(&p.new_term));
+            terms.push(TermRow::new(new_term));
         }
     });
     ui.label(
