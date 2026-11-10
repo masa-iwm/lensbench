@@ -14,6 +14,7 @@ mod coat_defs;
 mod combo;
 mod combo_tree;
 mod config_panel;
+mod export_table;
 pub mod ext;
 mod figures;
 mod files;

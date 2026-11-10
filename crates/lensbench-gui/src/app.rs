@@ -3030,10 +3030,7 @@ impl Core {
             if r.cmd != cfg.cmd {
                 ui.label(RichText::new(tr("（前の解析の結果）")).small().color(weak));
             }
-            if ui.small_button(tr("JSON をコピー")).clicked() {
-                ui.ctx()
-                    .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
-            }
+            result_export_menu(ui, &r.cmd, v);
         });
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
         if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
@@ -5462,4 +5459,49 @@ fn detach_label_web_only_analysis_goes_to_tab() {
         detach_label(&Kind::LensData, false),
         "別の窓に出す（別モニターへ）"
     );
+}
+
+/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128）
+fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
+    use crate::export_table::{delimited, tables};
+    ui.menu_button(tr("コピー ▾"), |ui| {
+        if ui.button(tr("JSON")).clicked() {
+            ui.ctx()
+                .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
+            ui.close_menu();
+        }
+        if ui
+            .button(tr("テキスト（タブ区切り）"))
+            .on_hover_text(tr("表計算に貼れる形。表が複数あれば「# 名前」の行で区切る"))
+            .clicked()
+        {
+            ui.ctx().copy_text(delimited(&tables(v), '\t'));
+            ui.close_menu();
+        }
+        if ui.button(tr("CSV")).clicked() {
+            ui.ctx().copy_text(delimited(&tables(v), ','));
+            ui.close_menu();
+        }
+    });
+    ui.menu_button(tr("保存 ▾"), |ui| {
+        for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
+            if ui.button(label).clicked() {
+                ui.close_menu();
+                if let Some(p) = crate::files::FileDialog::new()
+                    .add_filter(ext.to_uppercase(), &[ext])
+                    .set_file_name(format!("{cmd}.{ext}"))
+                    .save_file()
+                {
+                    let text = if ext == "json" {
+                        serde_json::to_string_pretty(v).unwrap_or_default()
+                    } else {
+                        delimited(&tables(v), ',')
+                    };
+                    if let Err(e) = lensbench_core::vfs::write(&p, text) {
+                        eprintln!("{}: {e}", p.display());
+                    }
+                }
+            }
+        }
+    });
 }

@@ -1111,3 +1111,11 @@ OS のタイトルバーを使う	Use the OS title bar
 全体を表示（ダブルクリックでも）	Fit all (also double-click)
 拡大	Zoom in
 縮小	Zoom out
+コピー ▾	Copy ▾
+保存 ▾	Save ▾
+テキスト（タブ区切り）	Text (tab-separated)
+表計算に貼れる形。表が複数あれば「# 名前」の行で区切る	Pastes into a spreadsheet. Multiple tables are separated by "# name" lines
+JSON…	JSON…
+CSV…	CSV…
+JSON	JSON
+CSV	CSV
