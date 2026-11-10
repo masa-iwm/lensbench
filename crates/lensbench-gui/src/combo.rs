@@ -1974,7 +1974,9 @@ pub fn ui(
             let key = format!("combo-zmx-{:?}", kind);
             {
                 if let Some(p) = crate::files::open(&key, start, || {
-                    crate::files::FileDialog::new().add_filter("Zemax", &["zmx"])
+                    // lensbench の系（系ファイル・プロジェクトの .json）も取り込める（#132）
+                    crate::files::FileDialog::new()
+                        .add_filter(tr("系（.zmx・.json）"), &["zmx", "json"])
                 }) {
                     let mut e = Pick::new(kind);
                     e.path = p.display().to_string();
@@ -3298,7 +3300,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
             }
         }
     });
-    // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気・ON/OFF は変えられる
+    // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気は「位置も」で止める。ON/OFF はいつも変えられる
     let locked = p.locked;
     ui.add_enabled_ui(!locked, |ui| {
         ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak));
@@ -3335,8 +3337,9 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
                 }
             });
         }
-        ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
     });
+    // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
+    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
     if p.kind == ElemKind::Splitter {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
     }
@@ -4016,8 +4019,8 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                     *p.air_mut(st) = air;
                 }
             }
-            onoff_ui(ui, p, st, weak);
         });
+        onoff_ui(ui, p, st, weak);
         if ui
             .add_enabled(can_prev, egui::Button::new("◀"))
             .on_hover_text(tr("前へ"))
