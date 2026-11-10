@@ -124,7 +124,7 @@ pub struct SwapSpec {
     pub jac: String,
     /// 粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で
     /// 最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prescreen: Option<Prescreen>,
 }
 

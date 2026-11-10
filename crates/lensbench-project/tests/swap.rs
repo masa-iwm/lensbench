@@ -204,6 +204,8 @@ fn prescreen_keeps_the_best_coarse_combinations_with_the_same_results() {
     b.filter.efl = [Some(40.0), None];
     let full =
         SwapSearch::new(&p, &env(dir.clone()), &c, spec(vec![a.clone(), b.clone()])).unwrap();
+    // ふるいなしなら頭に prescreen を書かない（前に書いた JSONL の続きから回せる）
+    assert!(!full.header().contains("prescreen"));
     let n = full.count();
     assert!(n >= 8, "{n}");
     let keep = n / 2;
