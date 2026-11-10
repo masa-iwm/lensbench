@@ -6,6 +6,7 @@
 
 mod app;
 mod argform;
+mod cad_fetch;
 mod catalog;
 mod catsave;
 mod coat_defs;
@@ -89,6 +90,7 @@ pub fn main() -> std::process::ExitCode {
         .or_else(portable::os_file)
         .and_then(|f| f.parent().map(Into::into));
     fill::set_fill_dir(settings_dir.clone());
+    cad_fetch::set_cad_dir(settings_dir.clone());
     lensbench_cli::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {
         persistence_path: store.file.clone(),

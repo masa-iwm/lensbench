@@ -33,6 +33,9 @@ web-time = "1"
 # wasm（Web 版）では使えないのでネイティブだけ
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mimalloc = { version = "0.1", default-features = false }
+# 品の STEP を公式の配布元から 1 件取る（cad.rs、公開 #120）。証明書は OS の信頼する証明書で確かめる
+ureq = { version = "3", features = ["platform-verifier"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 serde_json = "1"

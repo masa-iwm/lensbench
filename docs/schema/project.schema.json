@@ -1332,6 +1332,21 @@
       },
       "type": "object"
     },
+    "MechOutline": {
+      "description": "機構部品の簡易外形の形",
+      "oneOf": [
+        {
+          "const": "round",
+          "description": "丸（円柱）",
+          "type": "string"
+        },
+        {
+          "const": "square",
+          "description": "角（正方形の柱、辺は部品の局所の x・y 軸に沿う）",
+          "type": "string"
+        }
+      ]
+    },
     "MechPlacement": {
       "additionalProperties": false,
       "description": "系に置く機構部品（[`Project::mechanics`]）。部品はユーザーカタログの品（`catalog`・`item`）か、\nその場で書いた寸法（`mech`）",
@@ -1476,6 +1491,10 @@
           "description": "外径 [mm]（ケージ板は外形の一辺）",
           "format": "double",
           "type": "number"
+        },
+        "outline": {
+          "$ref": "#/$defs/MechOutline",
+          "description": "外形の形: 丸（既定、`outer_diameter` は外径）か角（`outer_diameter` は正方形の一辺。ケージ板など）。\n配置図・3D・書き出しはこの簡易外形で描く"
         },
         "rod_spacing": {
           "description": "ケージのロッドの間隔 [mm]",

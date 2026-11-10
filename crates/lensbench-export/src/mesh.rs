@@ -239,23 +239,76 @@ fn tube(m: &mut Mesh, pts: &[V3], r: f64) {
     }
 }
 
-/// 機構部品の網: 輪ごとに外側・内側の円柱の面と両端の輪の面
+/// 機構部品の網: 輪ごとに外側（円柱か、角なら正方形の柱）・内側の円柱の面と両端の輪の面
 fn mech_mesh(m: &MechShape, o: &Options3D) -> Mesh {
     let mut out = Mesh::new(&m.name, MeshKind::Mech, Rgb(150, 140, 128));
-    let na = o.segments.max(8);
+    // 角は正方形の角（45° + k·90°）を周の点に含める（4 の倍数、45° から）
+    let (na, t0) = if m.square {
+        (
+            o.segments.max(8).div_ceil(4) * 4,
+            std::f64::consts::FRAC_PI_4,
+        )
+    } else {
+        (o.segments.max(8), 0.0)
+    };
+    let ang = |a: usize| t0 + 2.0 * std::f64::consts::PI * a as f64 / na as f64;
+    // 角度 t の向きの外側の境の点（局所の xy）。角は正方形の辺の上
+    let outer_at = |r: f64, t: f64| -> [f64; 2] {
+        let (c, s) = (t.cos(), t.sin());
+        let k = if m.square {
+            r / c.abs().max(s.abs())
+        } else {
+            r
+        };
+        [k * c, k * s]
+    };
     let ax = m.axis();
     for q in &m.rings {
-        let dir = |t: f64| [t.cos(), t.sin(), 0.0];
-        let gdir = |t: f64| mv(&m.frame.r, dir(t));
-        // 円柱の面: 外側は外向き、内側は軸向き
-        for (r, sgn) in [(q[3], 1.0), (q[2], -1.0)] {
-            if r <= 0.0 {
-                continue;
+        let gdir = |t: f64| mv(&m.frame.r, [t.cos(), t.sin(), 0.0]);
+        // 外側の面
+        if q[3] > 0.0 {
+            if m.square {
+                // 周の点（角を含む）を結ぶ平らな四角。法線は辺ごと（両端の輪と同じ点なので継ぎ目が合う）
+                for a in 0..na {
+                    let (p0, p1) = (outer_at(q[3], ang(a)), outer_at(q[3], ang((a + 1) % na)));
+                    let mid = [0.5 * (p0[0] + p1[0]), 0.5 * (p0[1] + p1[1])];
+                    let n = if mid[0].abs() >= mid[1].abs() {
+                        [mid[0].signum(), 0.0, 0.0]
+                    } else {
+                        [0.0, mid[1].signum(), 0.0]
+                    };
+                    let n = mv(&m.frame.r, n);
+                    let base = out.pos.len() as u32;
+                    for p in [p0, p1] {
+                        out.vert(m.to_global([p[0], p[1], q[0]]), n);
+                        out.vert(m.to_global([p[0], p[1], q[1]]), n);
+                    }
+                    out.tri(base, base + 2, base + 3);
+                    out.tri(base, base + 3, base + 1);
+                }
+            } else {
+                let base = out.pos.len() as u32;
+                for a in 0..na {
+                    let t = ang(a);
+                    let n = gdir(t);
+                    let p = outer_at(q[3], t);
+                    out.vert(m.to_global([p[0], p[1], q[0]]), n);
+                    out.vert(m.to_global([p[0], p[1], q[1]]), n);
+                }
+                for a in 0..na as u32 {
+                    let b = (a + 1) % na as u32;
+                    out.tri(base + 2 * a, base + 2 * b, base + 2 * b + 1);
+                    out.tri(base + 2 * a, base + 2 * b + 1, base + 2 * a + 1);
+                }
             }
+        }
+        // 内側の円柱の面（法線は軸向き）
+        if q[2] > 0.0 {
             let base = out.pos.len() as u32;
             for a in 0..na {
-                let t = 2.0 * std::f64::consts::PI * a as f64 / na as f64;
-                let n = scale(gdir(t), sgn);
+                let t = ang(a);
+                let n = scale(gdir(t), -1.0);
+                let r = q[2];
                 out.vert(m.to_global([r * t.cos(), r * t.sin(), q[0]]), n);
                 out.vert(m.to_global([r * t.cos(), r * t.sin(), q[1]]), n);
             }
@@ -265,14 +318,15 @@ fn mech_mesh(m: &MechShape, o: &Options3D) -> Mesh {
                 out.tri(base + 2 * a, base + 2 * b + 1, base + 2 * a + 1);
             }
         }
-        // 両端の輪（内側 0 なら円板）
+        // 両端の輪（内側 0 なら円板・正方形の板）
         for (z, sgn) in [(q[0], -1.0), (q[1], 1.0)] {
             let n = scale(ax, sgn);
             let base = out.pos.len() as u32;
             for a in 0..na {
-                let t = 2.0 * std::f64::consts::PI * a as f64 / na as f64;
+                let t = ang(a);
+                let p = outer_at(q[3], t);
                 out.vert(m.to_global([q[2] * t.cos(), q[2] * t.sin(), z]), n);
-                out.vert(m.to_global([q[3] * t.cos(), q[3] * t.sin(), z]), n);
+                out.vert(m.to_global([p[0], p[1], z]), n);
             }
             for a in 0..na as u32 {
                 let b = (a + 1) % na as u32;

@@ -506,6 +506,9 @@ fn solid(e: &mut Ents, sd: &Solid, o: &OptionsStep) -> usize {
 
 /// 機構部品の輪 [z0, z1, 内側の半径, 外側の半径] の立体（外側・内側の円柱の面と両端の平面の輪）
 fn solid_ring(e: &mut Ents, m: &MechShape, k: usize, q: [f64; 4]) -> usize {
+    if m.square {
+        return solid_square_ring(e, m, k, q);
+    }
     let (o, a, x) = (
         m.frame.o,
         m.axis(),
@@ -537,6 +540,112 @@ fn solid_ring(e: &mut Ents, m: &MechShape, k: usize, q: [f64; 4]) -> usize {
     fl.push(face(e, &[b1, b2], cy, true));
     // 内側の円柱（法線は軸向きなので、円柱の自然な向きと逆）
     if let (Some(il), Some(ih)) = (&faces[0].1, &faces[1].1) {
+        let pa = e.axis2(add(o, scale(a, q[0])), a, x);
+        let cy = e.add(format!("CYLINDRICAL_SURFACE('',#{pa},{})", real(q[2])));
+        let b1 = bound(e, il, false, true);
+        let b2 = bound(e, ih, true, false);
+        fl.push(face(e, &[b1, b2], cy, false));
+    }
+    let fs: Vec<String> = fl.iter().map(|x| format!("#{x}")).collect();
+    let shell = e.add(format!("CLOSED_SHELL('',({}))", fs.join(",")));
+    e.add(format!(
+        "MANIFOLD_SOLID_BREP('{}',#{shell})",
+        text(&format!("{} {}", m.name, k + 1))
+    ))
+}
+
+/// 角の機構部品の輪: 正方形の柱（一辺 2·q[3]、辺は局所の x・y 軸に沿う）から内側の円柱を抜いた立体
+fn solid_square_ring(e: &mut Ents, m: &MechShape, k: usize, q: [f64; 4]) -> usize {
+    let (o, a) = (m.frame.o, m.axis());
+    let x = lensbench_core::math::col(&m.frame.r, 0);
+    let y = lensbench_core::math::col(&m.frame.r, 1);
+    let h = q[3];
+    let hollow = q[2] > 0.0;
+    // 角（軸のまわりに反時計回り）
+    let cs = [[h, h], [-h, h], [-h, -h], [h, -h]];
+    let at = |c: [f64; 2], z: f64| add(add(o, scale(a, z)), add(scale(x, c[0]), scale(y, c[1])));
+    let mut vs = [[0usize; 4]; 2];
+    for (i, z) in [q[0], q[1]].into_iter().enumerate() {
+        for j in 0..4 {
+            let p = e.point(at(cs[j], z));
+            vs[i][j] = e.add(format!("VERTEX_POINT('',#{p})"));
+        }
+    }
+    let line = |e: &mut Ents, p0: V3, p1: V3, v0: usize, v1: usize| {
+        let d = sub(p1, p0);
+        let c = e.point(p0);
+        let dr = e.dir(normalize(d));
+        let v = e.add(format!("VECTOR('',#{dr},{})", real(norm(d))));
+        let l = e.add(format!("LINE('',#{c},#{v})"));
+        e.add(format!("EDGE_CURVE('',#{v0},#{v1},#{l},.T.)"))
+    };
+    // 前後の端の辺（角 j → j+1）と、縦の辺（前 → 後ろ）
+    let mut ring_e = [[0usize; 4]; 2];
+    for (i, z) in [q[0], q[1]].into_iter().enumerate() {
+        for j in 0..4 {
+            let j1 = (j + 1) % 4;
+            ring_e[i][j] = line(e, at(cs[j], z), at(cs[j1], z), vs[i][j], vs[i][j1]);
+        }
+    }
+    let mut vert_e = [0usize; 4];
+    for j in 0..4 {
+        vert_e[j] = line(e, at(cs[j], q[0]), at(cs[j], q[1]), vs[0][j], vs[1][j]);
+    }
+    let oe = |e: &mut Ents, edge: usize, sense: bool| {
+        e.add(format!(
+            "ORIENTED_EDGE('',*,*,#{edge},{})",
+            if sense { ".T." } else { ".F." }
+        ))
+    };
+    let lp = |e: &mut Ents, oes: &[usize], outer: bool| {
+        let l: Vec<String> = oes.iter().map(|x| format!("#{x}")).collect();
+        let l = e.add(format!("EDGE_LOOP('',({}))", l.join(",")));
+        let kind = if outer {
+            "FACE_OUTER_BOUND"
+        } else {
+            "FACE_BOUND"
+        };
+        e.add(format!("{kind}('',#{l},.T.)"))
+    };
+    let mut fl = Vec::new();
+    let mut inner = Vec::new();
+    // 両端の平面（前は外向き −a で周を時計回り、後ろは +a で反時計回り）
+    for (i, z, s) in [(0usize, q[0], -1.0), (1, q[1], 1.0)] {
+        let pa = e.axis2(add(o, scale(a, z)), a, x);
+        let pl = e.add(format!("PLANE('',#{pa})"));
+        let oes: Vec<usize> = if s > 0.0 {
+            (0..4).map(|j| oe(e, ring_e[i][j], true)).collect()
+        } else {
+            (0..4).rev().map(|j| oe(e, ring_e[i][j], false)).collect()
+        };
+        let mut b = vec![lp(e, &oes, true)];
+        if hollow {
+            let ic = circle(e, o, a, x, z, q[2]);
+            b.push(bound(e, &ic, loop_sense(s, false), false));
+            inner.push(ic);
+        }
+        fl.push(face(e, &b, pl, s > 0.0));
+    }
+    // 4 つの側面（外向き）: 前の辺 → 次の角の縦の辺 → 後ろの辺を戻る → この角の縦の辺を戻る
+    for j in 0..4 {
+        let j1 = (j + 1) % 4;
+        let c = cs[j];
+        let c1 = cs[j1];
+        let n = normalize(add(scale(x, c[0] + c1[0]), scale(y, c[1] + c1[1])));
+        let mid = scale(add(at(c, q[0]), at(c1, q[0])), 0.5);
+        let pa = e.axis2(mid, n, a);
+        let pl = e.add(format!("PLANE('',#{pa})"));
+        let oes = [
+            oe(e, ring_e[0][j], true),
+            oe(e, vert_e[j1], true),
+            oe(e, ring_e[1][j], false),
+            oe(e, vert_e[j], false),
+        ];
+        let b = lp(e, &oes, true);
+        fl.push(face(e, &[b], pl, true));
+    }
+    // 内側の円柱（法線は軸向き）
+    if let [il, ih] = &inner[..] {
         let pa = e.axis2(add(o, scale(a, q[0])), a, x);
         let cy = e.add(format!("CYLINDRICAL_SURFACE('',#{pa},{})", real(q[2])));
         let b1 = bound(e, il, false, true);

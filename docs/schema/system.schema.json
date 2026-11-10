@@ -1617,6 +1617,10 @@
           "default": 0.0,
           "description": "ケージのロッドの間隔 [mm]（0 はケージ板でない）"
         },
+        "square": {
+          "description": "外形が角（`outer_radius` は正方形の一辺の半分、辺は部品の x・y 軸に沿う）。false は丸",
+          "type": "boolean"
+        },
         "surface": {
           "description": "置く基準の面（その面の局所座標）",
           "format": "uint",

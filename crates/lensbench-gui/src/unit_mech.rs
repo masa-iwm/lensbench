@@ -214,6 +214,9 @@ pub fn ui(ui: &mut Ui, e: &mut Edits, n_surf: usize) -> Vec<Value> {
                             }),
                     );
                 }
+                ui.checkbox(&mut m.square, tr("角")).on_hover_text(tr(
+                    "外形を正方形の柱にする（外径の半径は一辺の半分。ケージ板など）",
+                ));
             });
             let mut bdel = None;
             for (k, b) in m.bores.iter_mut().enumerate() {

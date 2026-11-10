@@ -1164,6 +1164,8 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             } else {
                 circ
             };
+            // 簡易外形: 幅の最小が軸の円より太ければ角（ケージ板・キューブ）。辺の向きは 0°・90° に揃っているとする
+            let square = min_width.is_finite() && min_width > circ + 1e-3 * rmax;
             // mm（規格の間隔に 0.05 mm 以内なら規格の値）
             let rod_spacing_mm = rods.map_or(0.0, |r| {
                 let mm = spacing_mm(r);
@@ -1292,6 +1294,11 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 }),
                 front_thread,
                 back_thread,
+                outline: if square {
+                    crate::MechOutline::Square
+                } else {
+                    crate::MechOutline::Round
+                },
             };
             let clear = frame
                 .bores
@@ -1568,6 +1575,7 @@ mod tests {
         assert!(s.mech, "{s:?}");
         let f = s.frame.clone().expect("枠");
         assert_eq!((f.length, f.outer_diameter), (10.0, 30.48));
+        assert_eq!(f.outline, crate::MechOutline::Round);
         let b: Vec<[f64; 3]> = f.bores.iter().map(|b| [b.z0, b.z1, b.diameter]).collect();
         assert_eq!(b, vec![[0.0, 2.0, 24.0], [2.0, 10.0, 26.289]]);
         assert_eq!(f.thread, "SM1");
@@ -1650,6 +1658,7 @@ mod tests {
             (8.0, 40.64, 30.0),
             "{s:?}"
         );
+        assert_eq!(f.outline, crate::MechOutline::Square);
         assert_eq!(f.thread, "");
         assert_eq!(f.holds.unwrap().diameter, 22.9);
         assert!(s.note.contains("ケージ板"), "{}", s.note);
