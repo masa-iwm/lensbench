@@ -1583,6 +1583,31 @@ impl LayoutData {
         Some([first[0], end])
     }
 
+    /// 物体が最初の面より後ろ（虚物体）のとき、入る光を最初の面の前から描く。
+    /// 光線の最初の点（後ろの物点）を、最初の面に当たる点から前へ物点までの距離の半分だけ伸ばした点に替え、物体面の線は消す
+    pub fn virtual_object_from_front(&mut self) {
+        let (Some(Some(o)), Some(Some(s1))) = (self.vertices.first(), self.vertices.get(1)) else {
+            return;
+        };
+        let d = o[0] - s1[0];
+        if d <= 1e-9 {
+            return;
+        }
+        let len = 0.5 * d;
+        for (_, p) in &mut self.rays {
+            if p.len() < 2 {
+                continue;
+            }
+            let (a, b) = (p[0], p[1]);
+            if (a[0] - b[0]).abs() < 1e-12 {
+                continue;
+            }
+            let k = (a[1] - b[1]) / (a[0] - b[0]);
+            p[0] = [b[0] - len, b[1] - k * len];
+        }
+        self.plates.retain(|x| x.0 != "object");
+    }
+
     /// 像面の面の番号
     pub fn image_surface(&self) -> Option<usize> {
         self.plates.iter().find(|p| p.0 == "image").map(|p| p.1)

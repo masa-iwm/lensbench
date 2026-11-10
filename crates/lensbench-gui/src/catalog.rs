@@ -22,6 +22,8 @@ pub struct GlassRow {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LensRow {
+    /// 最初の玉の前・後ろの面の曲率 [1/mm]（カタログに無ければ None）
+    pub curv: Option<[f64; 2]>,
     pub vendor: String,
     pub part: String,
     pub efl: f64,
@@ -180,6 +182,10 @@ pub fn parse_lenses(v: &Value) -> Vec<LensRow> {
         .map(|a| {
             a.iter()
                 .map(|l| LensRow {
+                    curv: l["curv"].as_array().and_then(|a| match a.as_slice() {
+                        [a, b] => Some([a.as_f64()?, b.as_f64()?]),
+                        _ => None,
+                    }),
                     vendor: s(&l["vendor"]),
                     part: s(&l["part"]),
                     efl: f(&l["efl"]),
@@ -477,6 +483,122 @@ pub struct Browser {
     pub added: Option<usize>,
     /// 選んだ玉の断面（行の番号と serve の layout）
     pub preview: Option<(usize, crate::combo::LayoutData)>,
+    /// 一覧で隠す列（[`LensCol::key`]、設定に残す）
+    pub lens_hide: Vec<String>,
+}
+
+/// カタログレンズの一覧の列
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LensCol {
+    Vendor,
+    Part,
+    Efl,
+    Diameter,
+    Thickness,
+    Glass,
+    Spec,
+}
+
+impl LensCol {
+    pub const ALL: [LensCol; 7] = [
+        LensCol::Vendor,
+        LensCol::Part,
+        LensCol::Efl,
+        LensCol::Diameter,
+        LensCol::Thickness,
+        LensCol::Glass,
+        LensCol::Spec,
+    ];
+
+    /// 設定に書く名前
+    pub fn key(self) -> &'static str {
+        match self {
+            LensCol::Vendor => "vendor",
+            LensCol::Part => "part",
+            LensCol::Efl => "efl",
+            LensCol::Diameter => "diameter",
+            LensCol::Thickness => "thickness",
+            LensCol::Glass => "glass",
+            LensCol::Spec => "spec",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            LensCol::Vendor => tr("メーカー"),
+            LensCol::Part => tr("型番"),
+            LensCol::Efl => tr("焦点距離"),
+            LensCol::Diameter => tr("径"),
+            LensCol::Thickness => tr("厚さ"),
+            LensCol::Glass => tr("ガラス"),
+            LensCol::Spec => tr("仕様"),
+        }
+    }
+
+    fn sort(self) -> Option<LensSort> {
+        match self {
+            LensCol::Vendor => Some(LensSort::Vendor),
+            LensCol::Part => Some(LensSort::Part),
+            LensCol::Efl => Some(LensSort::Efl),
+            LensCol::Diameter => Some(LensSort::Diameter),
+            LensCol::Thickness => Some(LensSort::Thickness),
+            LensCol::Glass | LensCol::Spec => None,
+        }
+    }
+
+    /// 列の幅（初め・最小）
+    fn column(self) -> Column {
+        let c = match self {
+            LensCol::Vendor => Column::initial(110.0),
+            LensCol::Part => Column::initial(120.0),
+            LensCol::Efl => Column::initial(70.0),
+            LensCol::Diameter | LensCol::Thickness => Column::initial(60.0),
+            LensCol::Glass => Column::initial(130.0),
+            LensCol::Spec => Column::initial(220.0),
+        };
+        c.at_least(36.0).clip(true)
+    }
+}
+
+/// 一覧に出す列（型番は必ず出す）
+pub fn shown_cols(hide: &[String]) -> Vec<LensCol> {
+    LensCol::ALL
+        .into_iter()
+        .filter(|c| *c == LensCol::Part || !hide.iter().any(|h| h == c.key()))
+        .collect()
+}
+
+/// プレビューで向きを変える負の単レンズか（貼り合わせ・多枚玉は無限共役を前側に想定した設計が多いので今の向き）
+fn negative_singlet(r: &LensRow) -> bool {
+    r.kind == RowKind::Lens
+        && r.mirror.is_none()
+        && r.pieces == 1
+        && r.efl.is_finite()
+        && r.efl < -1e-3
+}
+
+/// 負の単レンズの断面: 玉を反転するか（曲率の強い面＝無限共役の側を後ろへ）と、前側焦点の位置（前の面の頂点から後ろへ [mm]）。
+/// ガラスの屈折率は分からないので 1.55 とみた厚肉の近軸の式（向きの分かる図にするだけ）。曲率が無ければ主点を玉の中ほどとみる
+fn negative_preview_focus(efl: f64, t: f64, curv: Option<[f64; 2]>) -> (bool, f64) {
+    let Some([c1, c2]) = curv else {
+        return (false, efl.abs() + 0.5 * t);
+    };
+    // 前の面の方が強く曲がっていれば反転（反転すると面の順と曲率の符号が入れ替わる）
+    let reversed = c1.abs() > c2.abs() + 1e-9;
+    let c_back = if reversed { -c1 } else { c2 };
+    let n = 1.55;
+    let phi = 1.0 / efl;
+    let phi2 = (1.0 - n) * c_back;
+    // 前側焦点: 頂点から z_F = -(1 - (t/n)·φ2)/φ（φ < 0 なので後ろ）
+    let z = -(1.0 - t / n * phi2) / phi;
+    (
+        reversed,
+        if z.is_finite() && z > 0.0 {
+            z
+        } else {
+            efl.abs() + 0.5 * t
+        },
+    )
 }
 
 /// カタログの玉 1 枚の断面を見るためのプロジェクト（玉の径の 6 割の平行光、像面は焦点距離の所）
@@ -512,6 +634,29 @@ pub fn preview_project(r: &LensRow) -> serde_json::Value {
     } else {
         20.0
     };
+    if negative_singlet(r) {
+        // 負の単レンズ: 無限共役の側（曲率の強い面）を後ろに向け、絞りは前。前側焦点（玉の後ろ）へ集まる光を
+        // 入れて（物体は負の距離）、平行光で出す
+        let f = r.efl.abs();
+        let t = if r.thickness.is_finite() {
+            r.thickness.max(0.0)
+        } else {
+            0.0
+        };
+        let (reversed, z) = negative_preview_focus(r.efl, t, r.curv);
+        p.reversed = reversed != p.reversed;
+        p.air = f;
+        let stop_gap = 2.0;
+        let c = Combo {
+            name: format!("{} {}", r.vendor, r.part),
+            epd: (r.diameter * 0.6).max(0.5),
+            stop_gap,
+            object_distance: Some(-(stop_gap + z)),
+            picks: vec![p],
+            ..Default::default()
+        };
+        return c.project();
+    }
     let c = Combo {
         name: format!("{} {}", r.vendor, r.part),
         epd: (r.diameter * 0.6).max(0.5),
@@ -634,6 +779,46 @@ fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64), speed:
     }
     if let Some(m) = r.max.as_mut() {
         ui.add(egui::DragValue::new(m).speed(speed));
+    }
+}
+
+/// 一覧の 1 マス
+fn lens_cell(ui: &mut Ui, c: LensCol, r: &LensRow) {
+    // 切れた文字はマウスを載せると全体が出る（egui の Label が切ったときに出す）
+    let text = |ui: &mut Ui, t: &str| {
+        ui.label(t);
+    };
+    match c {
+        LensCol::Vendor => text(ui, &r.vendor),
+        LensCol::Part => text(ui, &r.part),
+        LensCol::Efl => num_cell(ui, r.efl),
+        LensCol::Diameter => num_cell(ui, r.diameter),
+        LensCol::Thickness => num_cell(ui, r.thickness),
+        LensCol::Glass => {
+            if let Some(e) = &r.error {
+                ui.colored_label(Color32::RED, e).on_hover_text(e);
+            } else if r.kind == RowKind::Splitter {
+                text(ui, &format!("BS {}", r.glasses.join(" / ")));
+            } else if r.mirror.is_some() {
+                ui.label(tr("鏡"));
+            } else {
+                let k = CATEGORIES
+                    .iter()
+                    .find(|(c, _)| *c == r.category && !matches!(*c, "lens"));
+                let t = match k {
+                    Some((_, n)) if r.glasses.is_empty() => tr(n).to_string(),
+                    Some((_, n)) => format!("{} {}", tr(n), r.glasses.join(" / ")),
+                    None => r.glasses.join(" / "),
+                };
+                text(ui, &t);
+            }
+        }
+        LensCol::Spec => {
+            let t = r.spec_summary();
+            if !t.is_empty() {
+                ui.label(&t).on_hover_ui(|ui| spec_table(ui, r));
+            }
+        }
     }
 }
 
@@ -831,6 +1016,24 @@ impl Browser {
                 ui.horizontal(|ui| {
                     ui.set_min_height(24.0);
                     ui.label(trf("{} / {} 枚", &[&idx.len(), &self.lenses.len()]));
+                    let hide = &mut self.lens_hide;
+                    ui.menu_button(tr("列…"), |ui| {
+                        for c in LensCol::ALL {
+                            let mut on = !hide.iter().any(|h| h == c.key());
+                            let resp = ui.add_enabled(
+                                c != LensCol::Part,
+                                egui::Checkbox::new(&mut on, c.label()),
+                            );
+                            if resp.changed() {
+                                hide.retain(|h| h != c.key());
+                                if !on {
+                                    hide.push(c.key().to_string());
+                                }
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text(tr("一覧に出す列を選びます"));
                     ui.separator();
                     let Some(r) = picked else {
                         ui.weak(tr("行をクリックで選び、ダブルクリックで組合せに足します"));
@@ -905,85 +1108,53 @@ impl Browser {
                     }
                 }
             };
-        TableBuilder::new(ui)
-            .striped(true)
-            .resizable(true)
-            .sense(Sense::click_and_drag())
-            .column(Column::initial(90.0).at_least(40.0))
-            .column(Column::initial(120.0).at_least(40.0))
-            .column(Column::initial(70.0))
-            .column(Column::initial(60.0))
-            .column(Column::initial(60.0))
-            .column(Column::initial(110.0).at_least(40.0))
-            .column(Column::remainder())
-            .header(22.0, |mut h| {
-                h.col(|ui| header(ui, tr("メーカー"), LensSort::Vendor, sort, desc));
-                h.col(|ui| header(ui, tr("型番"), LensSort::Part, sort, desc));
-                h.col(|ui| header(ui, tr("焦点距離"), LensSort::Efl, sort, desc));
-                h.col(|ui| header(ui, tr("径"), LensSort::Diameter, sort, desc));
-                h.col(|ui| header(ui, tr("厚さ"), LensSort::Thickness, sort, desc));
-                h.col(|ui| {
-                    ui.strong(tr("ガラス"));
-                });
-                h.col(|ui| {
-                    ui.strong(tr("仕様"));
-                });
-            })
-            .body(|body| {
-                body.rows(20.0, idx.len(), |mut row| {
-                    let i = idx[row.index()];
-                    let r = &rows[i];
-                    row.set_selected(sel == Some(i));
-                    row.col(|ui| {
-                        ui.label(&r.vendor);
-                    });
-                    row.col(|ui| {
-                        ui.label(&r.part);
-                    });
-                    row.col(|ui| num_cell(ui, r.efl));
-                    row.col(|ui| num_cell(ui, r.diameter));
-                    row.col(|ui| num_cell(ui, r.thickness));
-                    row.col(|ui| {
-                        if let Some(e) = &r.error {
-                            ui.colored_label(Color32::RED, e).on_hover_text(e);
-                        } else if r.kind == RowKind::Splitter {
-                            ui.label(format!("BS {}", r.glasses.join(" / ")));
-                        } else if r.mirror.is_some() {
-                            ui.label(tr("鏡"));
-                        } else {
-                            let k = CATEGORIES
-                                .iter()
-                                .find(|(c, _)| *c == r.category && !matches!(*c, "lens"));
-                            match k {
-                                Some((_, n)) if r.glasses.is_empty() => ui.label(tr(n)),
-                                Some((_, n)) => {
-                                    ui.label(format!("{} {}", tr(n), r.glasses.join(" / ")))
-                                }
-                                None => ui.label(r.glasses.join(" / ")),
-                            };
+        let cols = shown_cols(&self.lens_hide);
+        // 長い項目は折り返さず列の幅で切る（全体はマウスを載せると出る）。列が収まらなければ横にスクロール
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+        egui::ScrollArea::horizontal()
+            .id_salt("lens_table_h")
+            .show(ui, |ui| {
+                let mut tb = TableBuilder::new(ui)
+                    .striped(true)
+                    .resizable(true)
+                    .sense(Sense::click_and_drag());
+                for c in &cols {
+                    tb = tb.column(c.column());
+                }
+                tb.header(22.0, |mut h| {
+                    for &c in &cols {
+                        h.col(|ui| match c.sort() {
+                            Some(k) => header(ui, c.label(), k, sort, desc),
+                            None => {
+                                ui.strong(c.label());
+                            }
+                        });
+                    }
+                })
+                .body(|body| {
+                    body.rows(20.0, idx.len(), |mut row| {
+                        let i = idx[row.index()];
+                        let r = &rows[i];
+                        row.set_selected(sel == Some(i));
+                        for &c in &cols {
+                            row.col(|ui| lens_cell(ui, c, r));
+                        }
+                        let resp = row.response();
+                        if resp.clicked() {
+                            clicked = Some(i);
+                        }
+                        if resp.double_clicked() {
+                            add = Some(i);
+                        }
+                        // レイアウト図へドラッグして差し込む
+                        if resp.drag_started() && r.error.is_none() {
+                            egui::DragAndDrop::set_payload(
+                                &resp.ctx,
+                                crate::combo::DropPick(pick_from(r)),
+                            );
+                            clicked = Some(i);
                         }
                     });
-                    row.col(|ui| {
-                        let t = r.spec_summary();
-                        if !t.is_empty() {
-                            ui.label(&t).on_hover_ui(|ui| spec_table(ui, r));
-                        }
-                    });
-                    let resp = row.response();
-                    if resp.clicked() {
-                        clicked = Some(i);
-                    }
-                    if resp.double_clicked() {
-                        add = Some(i);
-                    }
-                    // レイアウト図へドラッグして差し込む
-                    if resp.drag_started() && r.error.is_none() {
-                        egui::DragAndDrop::set_payload(
-                            &resp.ctx,
-                            crate::combo::DropPick(pick_from(r)),
-                        );
-                        clicked = Some(i);
-                    }
                 });
             });
         if let Some(i) = clicked {
@@ -2065,6 +2236,92 @@ mod tests {
             assert!(!lay["solids"].as_array().unwrap().is_empty(), "{parts:?}");
         }
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 負の単レンズのプレビューは、集まる光を入れて平行光で出し、絞りは玉の前
+    #[test]
+    fn negative_singlet_preview_exits_parallel() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let glass = root.join("tests/glass").display().to_string();
+        let lb = root.join("examples/lenses/LB").display().to_string();
+        let call = |m: &str, p: Value| lensbench_cli::serve::call(m, &p, Some(1));
+        let l = parse_lenses(
+            &call(
+                "lenses",
+                json!({ "lens_catalog": [lb.clone()], "glass_dir": [glass.clone()] }),
+            )
+            .unwrap(),
+        );
+        let dir =
+            std::env::temp_dir().join(format!("lensbench-gui-negprev-{}", std::process::id()));
+        lensbench_core::vfs::create_dir_all(&dir).unwrap();
+        let f = dir.join("p.json");
+        for part in ["BCC-32", "PCX-100", "ACH-45"] {
+            let r = l.iter().find(|x| x.part == part).unwrap();
+            let p = preview_project(r);
+            let neg = part == "BCC-32";
+            assert_eq!(negative_singlet(r), neg, "{part}: {} {}", r.efl, r.pieces);
+            lensbench_core::vfs::write(&f, p.to_string()).unwrap();
+            let mut lay = crate::combo::LayoutData::parse(
+                &lensbench_cli::serve::preview_layout(
+                    &json!({ "file": f.display().to_string(), "glass_dir": [glass.clone()], "lens_catalog": [lb.clone()] }),
+                    &json!({}),
+                )
+                .unwrap_or_else(|e| panic!("{part}: {e}")),
+            );
+            assert!(!lay.solids.is_empty() && !lay.rays.is_empty(), "{part}");
+            lay.virtual_object_from_front();
+            // 光線は玉の前から始まる
+            assert!(
+                !neg || lay.rays.iter().all(|(_, p)| p[0][0] < -1.0),
+                "{part}"
+            );
+            // 縁の光線の最後の区間の傾き
+            let slope = |pts: &[[f64; 2]]| {
+                let a = pts[pts.len() - 2];
+                let b = pts[pts.len() - 1];
+                (b[1] - a[1]) / (b[0] - a[0])
+            };
+            // 軸上の視野の光線
+            let max = lay
+                .rays
+                .iter()
+                .filter(|(c, _)| *c == 1)
+                .map(|(_, p)| slope(p).abs())
+                .fold(0.0, f64::max);
+            if neg {
+                // 平行に近い（前側焦点は近似の位置、縁の光線は球面収差の分だけ開く）。入る光の傾きの 1/4 未満
+                let first = |pts: &[[f64; 2]]| (pts[1][1] - pts[0][1]) / (pts[1][0] - pts[0][0]);
+                let max_in = lay
+                    .rays
+                    .iter()
+                    .map(|(_, p)| first(p).abs())
+                    .fold(0.0, f64::max);
+                assert!(max < 0.1 * max_in, "{part}: {max} / {max_in}");
+                // 絞りは玉の前
+                let stop = lay.stop.unwrap();
+                let lens_first = lay.units[0].1[0][0];
+                assert!(stop < lens_first, "{part}: stop {stop} {:?}", lay.units);
+            } else {
+                assert!(max > 0.02, "{part}: {max}");
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 負の単レンズは曲率の強い面を後ろ（平行光の出る側）へ向ける
+    #[test]
+    fn negative_preview_orientation() {
+        // 平凹で凹面が前 → 反転、凹面が後ろ → そのまま
+        let (rev, z) = negative_preview_focus(-50.0, 3.0, Some([-0.0388, 0.0]));
+        assert!(rev);
+        // 反転後の後ろの面は凹（c = 0.0388）、前側焦点は |f| より少し後ろ
+        assert!(z > 50.0 && z < 53.0, "{z}");
+        let (rev, z) = negative_preview_focus(-50.0, 3.0, Some([0.0, 0.0388]));
+        assert!(!rev);
+        assert!(z > 50.0 && z < 53.0, "{z}");
+        // 曲率が無ければ反転せず、主点は玉の中ほど
+        assert_eq!(negative_preview_focus(-50.0, 3.0, None), (false, 51.5));
     }
 
     /// カタログの鏡・BS の膜は組合せのブロックに写る

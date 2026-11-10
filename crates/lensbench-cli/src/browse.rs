@@ -192,6 +192,11 @@ fn system_summary(s: &lensbench_core::system::System, efl_cat: f64) -> Result<Va
         "glasses": mats,
         "mirror": e.surfaces.iter().any(|q| q.mirror),
         "kind": "lens",
+        // 最初の玉の前・後ろの面の曲率 [1/mm]（GUI の断面で無限共役の側を見る）
+        "curv": [
+            num(e.surfaces.first().map_or(0.0, |q| q.c)),
+            num(e.surfaces.last().map_or(0.0, |q| q.c)),
+        ],
     }))
 }
 
