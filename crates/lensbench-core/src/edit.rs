@@ -326,6 +326,27 @@ impl System {
             let d = &mut self.surfaces[j];
             d.n_base.clear();
             d.n = base;
+            // 複屈折材の板の異常光の屈折率も材料（名前-E）から作り直す
+            if let Some(crate::surface::Bire::In { ne, .. }) = &mut d.bire {
+                ne.clear();
+            }
+        }
+        let nw = self.wavelengths.len();
+        for j in 0..self.surfaces.len() {
+            let d = &self.surfaces[j];
+            let Some(crate::surface::Bire::In { ne, .. }) = &d.bire else {
+                continue;
+            };
+            if ne.len() == nw {
+                continue;
+            }
+            let en = crate::surface::Bire::e_name(&d.mat);
+            let v = self.material_index(&en).map_err(|e| {
+                crate::error::Error::Invalid(format!("面 {j}: 複屈折材の異常光の材料 {en}: {e}"))
+            })?;
+            if let Some(crate::surface::Bire::In { ne, .. }) = &mut self.surfaces[j].bire {
+                *ne = v;
+            }
         }
         Ok(())
     }
@@ -972,6 +993,18 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
             }
         }
     }
+    // 機構部品: 置く面を消したら外す。保持する面からは外す（番号の付け替えは renumber）
+    s.mechanics.retain_mut(|m| {
+        m.holds.retain(|&h| h != j);
+        if m.surface == j {
+            notes.push(format!(
+                "機構部品 {} を外した（置く面 {j} を消した）",
+                m.name
+            ));
+            return false;
+        }
+        true
+    });
     if s.glrs == j {
         notes.push(format!("大域座標の基準面 {j} を消したので面 1 にした"));
         s.glrs = 1;
@@ -991,6 +1024,12 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
         q.surf = mm(q.surf);
         if let Some(o) = q.kind.other_surface() {
             q.kind = q.kind.with_other_surface(mm(o));
+        }
+    }
+    for m in s.mechanics.iter_mut() {
+        m.surface = mm(m.surface);
+        for h in m.holds.iter_mut() {
+            *h = mm(*h);
         }
     }
     if insert {

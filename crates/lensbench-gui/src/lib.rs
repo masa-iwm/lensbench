@@ -34,6 +34,7 @@ mod theme;
 mod tol_catalog;
 mod tol_panel;
 mod tour;
+mod unit_mech;
 mod view3d;
 #[cfg(target_arch = "wasm32")]
 mod web_store;

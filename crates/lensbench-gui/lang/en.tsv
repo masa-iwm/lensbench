@@ -999,3 +999,45 @@ ND	ND
 選んだ状態を並びの順に解きます。目標が空の状態は像だけで解きます（目標がすべて空なら像だけ）。	The selected states are solved in order. A state with an empty target is solved for the image only.
 間の点の数	Points between states
 間の点は隣り合う状態の間を継続法でたどります（目標は等比に）。	Points between adjacent states are traced by continuation (targets change geometrically).
+ずれ [mm]	Offset [mm]
+ズーム群・フォーカス群などを面の範囲で作ると、G1.shift・G1.dx などで動かせます（範囲は互いに含むか離れているか。ダブルパスは範囲を 2 つ）。	Define zoom or focus groups by surface range to move them with G1.shift, G1.dx, etc. (ranges must nest or be apart; a double pass uses two ranges).
+モード	Mode
+ロッドの間隔	Rod spacing
+保持の半径	Hold radius
+傾き [°]	Tilt [°]
+入口	In
+出口	Out
+動き・移動を 0 にすると、範囲を変えたり外したりできます	Set motion and shift to 0 to change the range or remove it
+変更を当てる	Apply changes
+外径の半径	Outer radius
+常光だけ（0）	Ordinary only (0)
+戻す	Revert
+機構部品は面の局所座標に置き、穴（z の範囲・半径）の外に出た光線をケラレにします（光線の追跡そのものは変えない）。	Mechanical parts sit in a surface's local coordinates; rays outside their bores (z range and radius) count as vignetted (ray tracing itself is unchanged).
+波長板（2）	Wave plate (2)
+玉・群の名前が要る	A lens or group name is required
+玉・群の定義を外す（面はそのまま）	Remove the lens or group definition (surfaces stay)
+玉・群を足す	Add lens or group
+玉・群・機構部品	Lenses, groups and mechanics
+穴 {}	Bore {}
+結晶軸	Crystal axis
+複屈折	Birefringence
+長さ	Length
+面 {} の後の材料が常光、材料名-E が異常光（カタログに要る）。出口の面と組で使う	The material after surface {} is the ordinary ray and material-E the extraordinary ray (must be in the catalog). Use with an Out surface.
+面の範囲	Surface range
+面の範囲 {} が読めない（3-5, 9-12 のように）	Cannot read surface range {} (write like 3-5, 9-12)
+面の範囲が空	Surface range is empty
+＋ 機構部品	＋ Mechanical part
+＋ 玉・群	＋ Lens or group
+＋ 穴	＋ Bore
+出発点 {} の値が数でない	The value of start {} is not a number
+出発点 {} は 名前=値	Start {} must be name=value
+出発点・状態	Starts and states
+出発点（1 行に 1 つ）	Starting points (one per line)
+同時に評価する状態	States evaluated together
+差し替える玉の各面で、各視野の瞳の縁の光線が玉の半径の内側にあることを条件にします	Require the pupil-edge rays of every field to stay inside the radius on each surface of the swapped lenses
+有効径の条件	Clear aperture condition
+状態ごとに解く変数	Per-state variables
+状態のあるプロジェクトでは、複数の状態で同時に評価できます。	In a project with states, several states can be evaluated together.
+状態を選ぶと、組ごとに選んだ状態を同時に最適化します（評価関数は全状態の像の項。項の構成はこの並びの番号）。間隔の変数は全状態で共通、状態ごとに解く変数は状態ごとの値。	With states selected, each combination is optimized over all of them together (the merit is the image terms of every state; term configs are indices in this list). Space variables are shared; per-state variables get a value for each state.
+組ごとにすべての出発点から最適化し、評価関数の最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。	Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).
+評価関数に足す項	Extra merit terms

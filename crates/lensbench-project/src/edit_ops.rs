@@ -20,6 +20,11 @@
 //!   面の前後の傾き偏心 before・after もここで）
 //! - `set_param` param, value（パラメータ名は set と同じ）
 //! - `set_system_data` data（系の設定の項目 [`SYSTEM_KEYS`] の書いた分だけ。形は [`system_data`] と同じ）
+//! - `define_unit` name, spans（[[最初, 最後], …]）, pivot（既定 [0, 0, 0]） ／ `set_unit` unit（名前か番号）,
+//!   name・spans・pivot（書いた分だけ） ／ `remove_unit` unit（玉・群、[`lensbench_core::units`]。範囲を変える・外すのは
+//!   動き・移動が 0 のときだけ）
+//! - `add_mech` part（機構部品、系ファイルの mechanics の要素と同じ形） ／ `set_mech` mech（名前か番号）, part（書いた項目
+//!   だけ変える） ／ `remove_mech` mech
 //! - `set_config_count` n ／ `set_config_row` param, values ／ `add_config_row` param（どの構成も今の値）／
 //!   `remove_config_row` param ／ `set_config` k
 //!
@@ -53,6 +58,101 @@ fn surf(s: &System, v: &Value, what: &str) -> Result<usize, String> {
         Value::String(t) => s.find_surface(t).map_err(|e| format!("{what}: {e}")),
         _ => Err(format!("{what} は面の番号か名前")),
     }
+}
+
+/// 玉・群の範囲 [[最初, 最後], …]
+fn spans_of(v: &Value, what: &str) -> Result<Vec<[usize; 2]>, String> {
+    let bad = || format!("{what} の spans は [[最初, 最後], …]");
+    v.as_array()
+        .ok_or_else(bad)?
+        .iter()
+        .map(|x| match x.as_array().map(|a| a.as_slice()) {
+            Some([a, b]) => Ok([
+                a.as_u64().ok_or_else(bad)? as usize,
+                b.as_u64().ok_or_else(bad)? as usize,
+            ]),
+            _ => Err(bad()),
+        })
+        .collect()
+}
+
+fn vec3(v: &Value, what: &str) -> Result<[f64; 3], String> {
+    match v.as_array().map(|a| a.as_slice()) {
+        Some([a, b, c]) => match (num(a), num(b), num(c)) {
+            (Some(a), Some(b), Some(c)) => Ok([a, b, c]),
+            _ => Err(format!("{what} の pivot は数 3 つ")),
+        },
+        _ => Err(format!("{what} の pivot は数 3 つ")),
+    }
+}
+
+/// 玉・群（名前か、0 始まりの番号）
+fn unit_of(s: &System, v: &Value, what: &str) -> Result<usize, String> {
+    match v {
+        Value::Number(n) => n
+            .as_u64()
+            .map(|i| i as usize)
+            .filter(|&i| i < s.units.len())
+            .ok_or_else(|| format!("{what}: 玉・群 {n}")),
+        Value::String(t) => s
+            .find_unit(t)
+            .ok_or_else(|| format!("{what}: 玉・群 {t} が無い")),
+        _ => Err(format!("{what} の unit は玉・群の名前か番号")),
+    }
+}
+
+/// 機構部品（名前か、0 始まりの番号）
+fn mech_of(s: &System, v: &Value, what: &str) -> Result<usize, String> {
+    match v {
+        Value::Number(n) => n
+            .as_u64()
+            .map(|i| i as usize)
+            .filter(|&i| i < s.mechanics.len())
+            .ok_or_else(|| format!("{what}: 機構部品 {n}")),
+        Value::String(t) => s
+            .mechanics
+            .iter()
+            .position(|m| m.name.eq_ignore_ascii_case(t.trim()))
+            .ok_or_else(|| format!("{what}: 機構部品 {t} が無い")),
+        _ => Err(format!("{what} の mech は機構部品の名前か番号")),
+    }
+}
+
+/// 機構部品の JSON を読んで確かめる（名前・面の番号・寸法）
+fn mech_from(s: &System, v: Value) -> Result<lensbench_core::mech::MechPart, String> {
+    let m: lensbench_core::mech::MechPart =
+        serde_json::from_value(v).map_err(|e| format!("機構部品: {e}"))?;
+    let n = s.surfaces.len();
+    if m.name.trim().is_empty() {
+        return Err("機構部品の名前が空".into());
+    }
+    if m.surface == 0 || m.surface >= n {
+        return Err(format!(
+            "機構部品 {} の面 {}（1〜{}）",
+            m.name,
+            m.surface,
+            n - 1
+        ));
+    }
+    if let Some(h) = m.holds.iter().find(|&&h| h >= n) {
+        return Err(format!("機構部品 {} の保持する面 {h}", m.name));
+    }
+    let fin = m.offset.iter().chain(&m.tilt).all(|x| x.is_finite())
+        && [m.length, m.outer_radius, m.hold_radius, m.rod_spacing]
+            .iter()
+            .all(|x| x.is_finite() && *x >= 0.0);
+    if !fin {
+        return Err(format!("機構部品 {} の位置・寸法", m.name));
+    }
+    for b in &m.bores {
+        if !(b.z0.is_finite() && b.z1.is_finite() && b.z0 <= b.z1 && b.radius > 0.0) {
+            return Err(format!(
+                "機構部品 {} の穴（z {}〜{}・半径 {}）",
+                m.name, b.z0, b.z1, b.radius
+            ));
+        }
+    }
+    Ok(m)
 }
 
 /// スパイダーの腕の本数（0 以上の整数）
@@ -238,7 +338,7 @@ fn coerce(v: Value, tmpl: Option<&Value>, key: &str, in_bin2: bool) -> Value {
             let int = match tmpl {
                 Some(Value::Number(t)) => !t.is_f64(),
                 _ => {
-                    matches!(key, "nx" | "ny" | "cap" | "cb_order" | "opd_mode")
+                    matches!(key, "nx" | "ny" | "cap" | "cb_order" | "opd_mode" | "mode")
                         || (key == "order" && !in_bin2)
                 }
             };
@@ -291,7 +391,7 @@ pub(crate) fn set_surface_data(t: &mut System, j: usize, data: &Value) -> Result
             ));
         }
         // user（利用者定義の面）と semi_autoは無ければ書き出さないので、無くても足せる
-        if !o.contains_key(k) && k != "user" && k != "semi_auto" {
+        if !o.contains_key(k) && !["user", "semi_auto", "bire"].contains(&k.as_str()) {
             return Err(format!("面の項目 {k} は無い"));
         }
         let x = coerce(x.clone(), o.get(k), k, k == "bin2");
@@ -540,6 +640,66 @@ fn apply_one(t: &mut System, op: &Value, notes: &mut Vec<String>) -> Result<(), 
             let p = t.param(&text("param")?).map_err(e)?;
             let v = num(field("value")?).ok_or(format!("{name} の value は数"))?;
             t.set_param(p, v).map_err(e)?;
+        }
+        "define_unit" => {
+            let spans = spans_of(field("spans")?, name)?;
+            let pivot = match op.get("pivot") {
+                None | Some(Value::Null) => [0.0; 3],
+                Some(v) => vec3(v, name)?,
+            };
+            t.define_unit(&text("name")?, &spans, pivot).map_err(e)?;
+        }
+        "set_unit" => {
+            let u = unit_of(t, field("unit")?, name)?;
+            if let Some(v) = op.get("spans") {
+                t.set_unit_spans(u, &spans_of(v, name)?).map_err(e)?;
+            }
+            if let Some(v) = op.get("pivot") {
+                t.set_unit_pivot(u, vec3(v, name)?).map_err(e)?;
+            }
+            if op.get("name").is_some() {
+                t.rename_unit(u, &text("name")?).map_err(e)?;
+            }
+        }
+        "remove_unit" => {
+            let u = unit_of(t, field("unit")?, name)?;
+            notes.extend(t.remove_unit(u).map_err(e)?);
+        }
+        "add_mech" => {
+            let m = mech_from(t, field("part")?.clone())?;
+            if t.mechanics
+                .iter()
+                .any(|x| x.name.eq_ignore_ascii_case(&m.name))
+            {
+                return Err(format!("機構部品 {} は置いてある", m.name));
+            }
+            t.mechanics.push(m);
+        }
+        "set_mech" => {
+            let i = mech_of(t, field("mech")?, name)?;
+            let mut v = serde_json::to_value(&t.mechanics[i]).map_err(|x| x.to_string())?;
+            let part = field("part")?
+                .as_object()
+                .ok_or(format!("{name} の part は {{項目: 値}}"))?;
+            for (k, x) in part {
+                if v.get(k).is_none() && !["holds"].contains(&k.as_str()) {
+                    return Err(format!("機構部品の項目 {k} は無い"));
+                }
+                v[k] = x.clone();
+            }
+            let m = mech_from(t, v)?;
+            if t.mechanics
+                .iter()
+                .enumerate()
+                .any(|(k, x)| k != i && x.name.eq_ignore_ascii_case(&m.name))
+            {
+                return Err(format!("機構部品 {} は置いてある", m.name));
+            }
+            t.mechanics[i] = m;
+        }
+        "remove_mech" => {
+            let i = mech_of(t, field("mech")?, name)?;
+            t.mechanics.remove(i);
         }
         "set_config_count" => t.set_config_count(count("n")?).map_err(e)?,
         "set_config_row" => {

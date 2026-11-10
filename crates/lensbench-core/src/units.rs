@@ -279,6 +279,76 @@ impl System {
         Ok(self.units.len() - 1)
     }
 
+    /// 玉・群の名前を変える（読込で作った玉も、変えれば利用者の定義になる）
+    pub fn rename_unit(&mut self, u: usize, name: &str) -> Result<()> {
+        let name = name.trim();
+        if u >= self.units.len() {
+            invalid!("玉・群 {u}");
+        }
+        if name.is_empty() || name.contains('.') || name.parse::<usize>().is_ok() {
+            invalid!("玉・群の名前 {name:?}（空・数字だけ・「.」を含む名前は使えない）");
+        }
+        if self.find_unit(name).is_some_and(|i| i != u) {
+            invalid!("玉・群 {name} は定義済み");
+        }
+        self.units[u].name = name.to_string();
+        self.units[u].auto = false;
+        Ok(())
+    }
+
+    /// 玉・群の範囲を変える（並びの位置・名前・回転の中心はそのまま）。動き・移動が 0 の玉・群だけ
+    pub fn set_unit_spans(&mut self, u: usize, spans: &[[usize; 2]]) -> Result<()> {
+        let Some(cur) = self.units.get(u).cloned() else {
+            invalid!("玉・群 {u}");
+        };
+        if cur.moved() || cur.shift != 0.0 {
+            invalid!(
+                "玉・群 {} は動かしてある（動き・移動を 0 にしてから範囲を変える）",
+                cur.name
+            );
+        }
+        let mut t = self.clone();
+        t.units.remove(u);
+        t.define_unit(&cur.name, spans, cur.pivot)?;
+        let mut nu = t.units.pop().expect("定義した玉・群");
+        nu.auto = false;
+        t.units.insert(u, nu);
+        self.units = t.units;
+        self.invalidate_frames();
+        Ok(())
+    }
+
+    /// 玉・群を外す（多重構成の表のその玉・群の行も外す）。動き・移動が 0 の玉・群だけ。説明を返す
+    pub fn remove_unit(&mut self, u: usize) -> Result<Vec<String>> {
+        let Some(cur) = self.units.get(u).cloned() else {
+            invalid!("玉・群 {u}");
+        };
+        if cur.moved() || cur.shift != 0.0 {
+            invalid!(
+                "玉・群 {} は動かしてある（動き・移動を 0 にしてから外す）",
+                cur.name
+            );
+        }
+        let mut notes = Vec::new();
+        if let Some(c) = &mut self.configs {
+            c.rows.retain(|r| {
+                let used = matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf == u;
+                if used {
+                    notes.push(format!("多重構成の行 {} を外した", r.param.name()));
+                }
+                !used
+            });
+            for r in c.rows.iter_mut() {
+                if matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf > u {
+                    r.param.surf -= 1;
+                }
+            }
+        }
+        self.units.remove(u);
+        self.invalidate_frames();
+        Ok(notes)
+    }
+
     /// 回転の中心を変える
     pub fn set_unit_pivot(&mut self, u: usize, pivot: [f64; 3]) -> Result<()> {
         if u >= self.units.len() || !pivot.iter().all(|v| v.is_finite()) {

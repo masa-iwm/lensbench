@@ -1088,7 +1088,12 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
                             })
                         })
                         .collect();
-                    Ok((json!({ "surfaces": all, "units": units }), Vec::new()))
+                    // 機構部品（系ファイルの mechanics と同じ形、GUI の面の表で編集）
+                    let mechs = serde_json::to_value(&s.mechanics).unwrap_or_default();
+                    Ok((
+                        json!({ "surfaces": all, "units": units, "mechanics": mechs }),
+                        Vec::new(),
+                    ))
                 }
                 Some(v) => {
                     let j = match v {
@@ -2906,7 +2911,11 @@ fn swap(p: &Value) -> Result<Value, RpcErr> {
         for k in ["project", "top", "threads", "count_only"] {
             o.remove(k);
         }
-        if !o.contains_key("state") && p.get("project").is_none() {
+        let multi = o
+            .get("states")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty());
+        if !multi && !o.contains_key("state") && p.get("project").is_none() {
             if let Some(s) = &ls.state {
                 o.insert("state".into(), json!(s));
             }
