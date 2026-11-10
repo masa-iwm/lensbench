@@ -97,11 +97,50 @@ struct Geo {
     nout: f64,
 }
 
+/// [`local_map`] の、入力によらない量（面ごと・光線ごとに 1 回だけ求める）
+#[derive(Clone, Copy)]
+struct LocalPre {
+    gk: f64,
+    gn: f64,
+    nv: V3,
+    cosi: f64,
+    mu: f64,
+    one_c2: f64,
+    r: f64,
+    sg: f64,
+    gam: f64,
+}
+
+impl LocalPre {
+    fn new(g: &Geo) -> LocalPre {
+        let gk = dot(g.g, g.kin);
+        let gn = norm(g.g);
+        let nv = scale(g.g, 1.0 / gn);
+        let cosi = dot(g.kin, nv);
+        let mu = g.nin / g.nout;
+        let one_c2 = 1.0 - cosi * cosi;
+        let disc = 1.0 - mu * mu * one_c2;
+        let r = disc.max(0.0).sqrt();
+        let sg = cosi.signum();
+        let gam = sg * r - mu * cosi;
+        LocalPre {
+            gk,
+            gn,
+            nv,
+            cosi,
+            mu,
+            one_c2,
+            r,
+            sg,
+            gam,
+        }
+    }
+}
+
 /// 局所座標の線形の写像: 入る光線の変化 (dx, dk)、面の形の変化 (dz, dz_x, dz_y)、屈折率の変化
-/// (dn_in, dn_out) → 交点の変化 dq と出ていく方向の変化 dk'
-fn local_map(g: &Geo, dx: V3, dk: V3, sh: [f64; 3], dn: [f64; 2]) -> (V3, V3) {
-    let gk = dot(g.g, g.kin);
-    let ds = -(dot(g.g, add(dx, scale(dk, g.s))) - sh[0]) / gk;
+/// (dn_in, dn_out) → 交点の変化 dq と出ていく方向の変化 dk'。p は [`LocalPre::new`]`(g)`
+fn local_map(g: &Geo, p: &LocalPre, dx: V3, dk: V3, sh: [f64; 3], dn: [f64; 2]) -> (V3, V3) {
+    let ds = -(dot(g.g, add(dx, scale(dk, g.s))) - sh[0]) / p.gk;
     let dq = add(add(dx, scale(dk, g.s)), scale(g.kin, ds));
     if g.mode == Mode::Pass {
         return (dq, dk);
@@ -111,22 +150,18 @@ fn local_map(g: &Geo, dx: V3, dk: V3, sh: [f64; 3], dn: [f64; 2]) -> (V3, V3) {
         -(g.h[1] * dq[0] + g.h[2] * dq[1] + sh[2]),
         0.0,
     ];
-    let gn = norm(g.g);
-    let nv = scale(g.g, 1.0 / gn);
+    let (gn, nv, cosi) = (p.gn, p.nv, p.cosi);
     let dnv = scale(sub(dg, scale(nv, dot(nv, dg))), 1.0 / gn);
-    let cosi = dot(g.kin, nv);
     let dcosi = dot(dk, nv) + dot(g.kin, dnv);
     let dk2 = match g.mode {
         Mode::Mirror => sub(dk, scale(add(scale(nv, dcosi), scale(dnv, cosi)), 2.0)),
         _ => {
-            let mu = g.nin / g.nout;
+            let mu = p.mu;
             let dmu = (dn[0] - mu * dn[1]) / g.nout;
-            let disc = 1.0 - mu * mu * (1.0 - cosi * cosi);
-            let r = disc.max(0.0).sqrt();
-            let dr = (-mu * dmu * (1.0 - cosi * cosi) + mu * mu * cosi * dcosi) / r;
-            let sg = cosi.signum();
-            let gam = sg * r - mu * cosi;
-            let dgam = sg * dr - dmu * cosi - mu * dcosi;
+            let r = p.r;
+            let dr = (-mu * dmu * p.one_c2 + mu * mu * cosi * dcosi) / r;
+            let gam = p.gam;
+            let dgam = p.sg * dr - dmu * cosi - mu * dcosi;
             add(
                 add(scale(g.kin, dmu), scale(dk, mu)),
                 add(scale(nv, dgam), scale(dnv, gam)),
@@ -136,16 +171,16 @@ fn local_map(g: &Geo, dx: V3, dk: V3, sh: [f64; 3], dn: [f64; 2]) -> (V3, V3) {
     (dq, dk2)
 }
 
-/// 面ごとの写像を、物体に固定した座標系の変化 σ = (dX, dK) で表したもの
+/// 列優先 [入力][出力]、列の長さは出力の数（途中の面 6、最後の面 NY）
 struct SurfMap {
     /// dσ_out/dσ_in（最後の面では dy/dσ_in）
-    j: Vec<f64>,
+    j: [f64; 36],
     /// 剛体運動 (a, ω) から
-    rig: Vec<f64>,
+    rig: [f64; 36],
     /// 形 (dz, dz_x, dz_y) から
-    shape: Vec<f64>,
+    shape: [f64; 18],
     /// 屈折率 (dn_in, dn_out) から
-    dn: Vec<f64>,
+    dn: [f64; 12],
 }
 
 impl System {
@@ -334,6 +369,37 @@ impl System {
             .collect();
         let j0 = t.rec[0].surf;
         let r_first_glrs = fr.surf[j0].expect("面の座標系").r;
+        // 形・屈折率の写像が要る面（要らない面では求めない。値には効かない）
+        let mut need_shape = vec![false; ns];
+        for k in sag_k.iter().flatten() {
+            need_shape[*k] = true;
+        }
+        let mut need_dn = vec![false; ns];
+        for v in &dn_ks {
+            for &(k, _) in v {
+                need_dn[k] = true;
+            }
+        }
+        // どのパラメータも効かない手前の面は、写像も随伴も要らない（そこより前の値は使わない）
+        let k_min = (0..np)
+            .map(|q| {
+                let mut m = ns;
+                if pre[q].d0 != [0.0; 3] {
+                    m = 0;
+                }
+                if let Some(r) = runs[q].first() {
+                    m = m.min(r.0);
+                }
+                if let Some(&(k, _)) = dn_ks[q].first() {
+                    m = m.min(k);
+                }
+                if let Some(k) = sag_k[q] {
+                    m = m.min(k);
+                }
+                m
+            })
+            .min()
+            .unwrap_or(ns);
 
         let one = |i: usize| -> Vec<f64> {
             if t.rays[i].err != 0 {
@@ -426,9 +492,35 @@ impl System {
                 kg.push(kk);
                 kprev_g = kk;
             }
-            // 面ごとの写像を作る（σ_in = (dX, dK) の前の点・方向は X_{k−1}, K_{k−1}）
-            let mut maps: Vec<SurfMap> = Vec::with_capacity(ns);
-            for k in 0..ns {
+            // 面ごとの写像を作る（σ_in = (dX, dK) の前の点・方向は X_{k−1}, K_{k−1}）。
+            // 配列は固定の大きさ（光線ごと・面ごとにメモリを確保しない）
+            // 随伴: W（NY × 6、行優先）= dy/dσ_in(k)。Q_k = W_{k の出力} · (源の写像)。
+            // 面の写像は後ろの面から作りながら掛ける（写像を溜めない）。
+            // 列優先 [入力 c][出力 o] の写像 M に、W（NY × nout）を左から掛ける
+            let mul = |w: &[f64], m: &[f64], nin: usize, nout: usize| -> [f64; NY * 6] {
+                let mut r = [0.0; NY * 6];
+                for y in 0..NY {
+                    for c in 0..nin {
+                        let mut v = 0.0;
+                        for o in 0..nout {
+                            v += w[y * nout + o] * m[c * nout + o];
+                        }
+                        r[y * nin + c] = v;
+                    }
+                }
+                r
+            };
+            let mut q_shape = vec![[0.0; NY * 3]; ns];
+            let mut q_dn = vec![[0.0; NY * 2]; ns];
+            // 剛体運動の Q の後ろからの累積和（cum[k] = Σ_{j≥k} Q_j）
+            let mut cum = vec![[0.0; NY * 6]; ns + 1];
+            // 最後の面の出力そのものは y（W = 単位）
+            let mut id = [0.0; NY * 6];
+            for y in 0..NY {
+                id[y * NY + y] = 1.0;
+            }
+            let mut w_cur = [0.0; NY * 6];
+            for k in (k_min..ns).rev() {
                 let gk = &geo[k];
                 let xprev = if k == 0 {
                     sub(xg[0], scale(mv(&gk.r, gk.kin), gk.s))
@@ -438,12 +530,13 @@ impl System {
                 let kprev = mv(&gk.r, gk.kin);
                 let last = k + 1 == ns;
                 let nout = if last { NY } else { 6 };
-                // 入力 (σ 6, 剛体 6, 形 3, 屈折率 2) → 出力
+                let lp = LocalPre::new(gk);
+                // 入力 (σ 6, 剛体 6, 形 3, 屈折率 2) → 出力（最後の面は先頭の NY 個）
                 let apply =
-                    |dxg: V3, dkg: V3, a: V3, om: V3, sh: [f64; 3], dn: [f64; 2]| -> Vec<f64> {
+                    |dxg: V3, dkg: V3, a: V3, om: V3, sh: [f64; 3], dn: [f64; 2]| -> [f64; 6] {
                         let u = sub(sub(dxg, a), cross(om, xprev));
                         let v = sub(dkg, cross(om, kprev));
-                        let (dq, dk2) = local_map(gk, mtv(&gk.r, u), mtv(&gk.r, v), sh, dn);
+                        let (dq, dk2) = local_map(gk, &lp, mtv(&gk.r, u), mtv(&gk.r, v), sh, dn);
                         if last {
                             let (ex, ey) = match dz {
                                 None => (dq[0], dq[1]),
@@ -456,11 +549,11 @@ impl System {
                                     )
                                 }
                             };
-                            vec![ex, ey, dk2[0], dk2[1]]
+                            [ex, ey, dk2[0], dk2[1], 0.0, 0.0]
                         } else {
                             let dx_out = add(add(a, cross(om, xg[k])), mv(&gk.r, dq));
                             let dk_out = add(cross(om, kg[k]), mv(&gk.r, dk2));
-                            vec![
+                            [
                                 dx_out[0], dx_out[1], dx_out[2], dk_out[0], dk_out[1], dk_out[2],
                             ]
                         }
@@ -471,86 +564,85 @@ impl System {
                     v[c] = 1.0;
                     v
                 };
-                // 列優先 [入力][出力]
-                let mut jm = Vec::with_capacity(6 * nout);
+                // 列優先 [入力][出力]（列の長さは nout）
+                let put = |m: &mut [f64], c: usize, col: [f64; 6]| {
+                    m[c * nout..(c + 1) * nout].copy_from_slice(&col[..nout]);
+                };
+                let mut sm = SurfMap {
+                    j: [0.0; 36],
+                    rig: [0.0; 36],
+                    shape: [0.0; 18],
+                    dn: [0.0; 12],
+                };
                 for c in 0..6 {
                     let col = if c < 3 {
                         apply(e(c), z3, z3, z3, [0.0; 3], [0.0; 2])
                     } else {
                         apply(z3, e(c - 3), z3, z3, [0.0; 3], [0.0; 2])
                     };
-                    jm.extend(col);
+                    put(&mut sm.j, c, col);
                 }
-                let mut rig = Vec::with_capacity(6 * nout);
-                for c in 0..6 {
-                    let col = if c < 3 {
-                        apply(z3, z3, e(c), z3, [0.0; 3], [0.0; 2])
-                    } else {
-                        apply(z3, z3, z3, e(c - 3), [0.0; 3], [0.0; 2])
-                    };
-                    rig.extend(col);
-                }
-                let mut shape = Vec::with_capacity(3 * nout);
+                // 剛体運動の列は写像が線形なので J の列から作る（local_map を呼び直さない）:
+                // 平行移動 a は σ_in = (−a, 0) と出口の +a、回転 ω は σ_in = (−ω×X_{k−1}, −ω×K_{k−1}) と出口の (ω×X_k, ω×K_k)
                 for c in 0..3 {
-                    let mut sh = [0.0; 3];
-                    sh[c] = 1.0;
-                    shape.extend(apply(z3, z3, z3, z3, sh, [0.0; 2]));
+                    let mut col = [0.0; 6];
+                    for o in 0..nout {
+                        col[o] = -sm.j[c * nout + o];
+                    }
+                    if !last {
+                        col[c] += 1.0;
+                    }
+                    put(&mut sm.rig, c, col);
                 }
-                let mut dnm = Vec::with_capacity(2 * nout);
-                for c in 0..2 {
-                    let mut dn = [0.0; 2];
-                    dn[c] = 1.0;
-                    dnm.extend(apply(z3, z3, z3, z3, [0.0; 3], dn));
-                }
-                maps.push(SurfMap {
-                    j: jm,
-                    rig,
-                    shape,
-                    dn: dnm,
-                });
-            }
-            // 随伴: W（NY × 6、行優先）= dy/dσ_in(k)。Q_k = W_{k の出力} · (源の写像)
-            // 列優先 [入力 c][出力 o] の写像 M に、W（NY × nout）を左から掛ける
-            let mul = |w: &[f64], m: &[f64], nin: usize, nout: usize| -> Vec<f64> {
-                let mut r = vec![0.0; NY * nin];
-                for y in 0..NY {
-                    for c in 0..nin {
-                        let mut v = 0.0;
-                        for o in 0..nout {
-                            v += w[y * nout + o] * m[c * nout + o];
+                for c in 0..3 {
+                    let om = e(c);
+                    let u = cross(om, xprev);
+                    let v = cross(om, kprev);
+                    let sig = [-u[0], -u[1], -u[2], -v[0], -v[1], -v[2]];
+                    let mut col = [0.0; 6];
+                    for (i, &si) in sig.iter().enumerate() {
+                        if si != 0.0 {
+                            for o in 0..nout {
+                                col[o] += sm.j[i * nout + o] * si;
+                            }
                         }
-                        r[y * nin + c] = v;
+                    }
+                    if !last {
+                        let (a, b) = (cross(om, xg[k]), cross(om, kg[k]));
+                        for i in 0..3 {
+                            col[i] += a[i];
+                            col[3 + i] += b[i];
+                        }
+                    }
+                    put(&mut sm.rig, 3 + c, col);
+                }
+                if need_shape[k] {
+                    for c in 0..3 {
+                        let mut sh = [0.0; 3];
+                        sh[c] = 1.0;
+                        put(&mut sm.shape, c, apply(z3, z3, z3, z3, sh, [0.0; 2]));
                     }
                 }
-                r
-            };
-            let mut q_rig = vec![[0.0; NY * 6]; ns];
-            let mut q_shape = vec![[0.0; NY * 3]; ns];
-            let mut q_dn = vec![[0.0; NY * 2]; ns];
-            // 最後の面の出力そのものは y（W = 単位）
-            let mut w_cur: Vec<f64> = Vec::new();
-            for k in (0..ns).rev() {
-                let m = &maps[k];
-                let (wk, nout) = if k + 1 == ns {
-                    let mut id = vec![0.0; NY * NY];
-                    for y in 0..NY {
-                        id[y * NY + y] = 1.0;
+                if need_dn[k] {
+                    for c in 0..2 {
+                        let mut dn = [0.0; 2];
+                        dn[c] = 1.0;
+                        put(&mut sm.dn, c, apply(z3, z3, z3, z3, [0.0; 3], dn));
                     }
-                    (id, NY)
-                } else {
-                    (w_cur.clone(), 6)
-                };
-                q_rig[k].copy_from_slice(&mul(&wk, &m.rig, 6, nout));
-                q_shape[k].copy_from_slice(&mul(&wk, &m.shape, 3, nout));
-                q_dn[k].copy_from_slice(&mul(&wk, &m.dn, 2, nout));
-                w_cur = mul(&wk, &m.j, 6, nout);
-            }
-            // 剛体運動の後ろからの累積和
-            let mut cum = vec![[0.0; NY * 6]; ns + 1];
-            for k in (0..ns).rev() {
+                }
+                let m = &sm;
+                let (wk, nout) = if last { (id, NY) } else { (w_cur, 6) };
+                let q_rig = mul(&wk, &m.rig, 6, nout);
                 for c in 0..NY * 6 {
-                    cum[k][c] = cum[k + 1][c] + q_rig[k][c];
+                    cum[k][c] = cum[k + 1][c] + q_rig[c];
                 }
+                if need_shape[k] {
+                    q_shape[k].copy_from_slice(&mul(&wk, &m.shape, 3, nout)[..NY * 3]);
+                }
+                if need_dn[k] {
+                    q_dn[k].copy_from_slice(&mul(&wk, &m.dn, 2, nout)[..NY * 2]);
+                }
+                w_cur = mul(&wk, &m.j, 6, nout);
             }
             let mut out = vec![0.0; np * NY];
             for q in 0..np {
