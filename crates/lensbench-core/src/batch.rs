@@ -5,8 +5,10 @@
 //! （FMA などの融合はしない。`tests/batch.rs` で確かめる）。光線の組は入力の順に L 本ずつに固定するので、
 //! スレッド数にもよらない。
 //!
-//! 演算は光線の配列への素直なループで書き、コンパイラのベクトル化に任せる。x86_64 では AVX があれば
-//! 4 本を 1 命令で計算する版を実行時に選ぶ（AVX は演算の結果を変えない。FMA は有効にしない）。
+//! 演算は光線の値の組 [`lanes::F`] の演算子で書く。ネイティブでは組は光線の配列で、演算は素直なループ
+//! （コンパイラのベクトル化に任せる）。x86_64 では AVX があれば 4 本を 1 命令で計算する版を実行時に選ぶ
+//! （AVX は演算の結果を変えない。FMA は有効にしない）。wasm ＋ simd128 では f64x2 の命令を名指しする
+//! （LLVM が wasm ではこのループをベクトル化しないため。公開 #99）。
 //! トロイダル面・理想レンズ・開口の際どい判定など、まれな・重い処理は光線ごとのスカラーで行う。
 //! 偏光の追跡はまとめない（1 本ずつ）。
 
@@ -16,8 +18,12 @@ use crate::system::{Frame, Frames, Rel, System};
 use crate::trace::{self, RayOut, RecEntry};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// 1 回にまとめて追う光線の数（AVX の 4 本 × 4。多いほど面ごとの準備の手間が薄まる）
+/// 1 回にまとめて追う光線の数（AVX の 4 本 × 4。多いほど面ごとの準備の手間が薄まる）。
+/// wasm は 8 本（f64x2 × 4）: 16 本では値の組がレジスタに載らず、読み書きが増えて遅い（公開 #99）
+#[cfg(not(target_arch = "wasm32"))]
 pub const L: usize = 16;
+#[cfg(target_arch = "wasm32")]
+pub const L: usize = 8;
 
 static ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -31,8 +37,9 @@ pub fn use_for(n: usize) -> bool {
     n >= L / 4 && ENABLED.load(Ordering::Relaxed)
 }
 
-type F = [f64; L];
-type B = [bool; L];
+mod lanes;
+use lanes::{sel, B, F};
+
 type VL = [F; 3];
 
 /// 3 成分（配列の map は内側に展開されないことがあるので書き下す）
@@ -55,26 +62,6 @@ macro_rules! v3 {
     }};
 }
 
-macro_rules! lanes {
-    ($i:ident => $e:expr) => {{
-        let mut o = [0.0f64; L];
-        for $i in 0..L {
-            o[$i] = $e;
-        }
-        o
-    }};
-}
-
-#[inline(always)]
-fn any(m: B) -> bool {
-    m.iter().any(|&b| b)
-}
-
-#[inline(always)]
-fn sel(m: B, a: F, b: F) -> F {
-    lanes!(i => if m[i] { a[i] } else { b[i] })
-}
-
 #[inline(always)]
 fn sel3(m: B, a: VL, b: VL) -> VL {
     [sel(m, a[0], b[0]), sel(m, a[1], b[1]), sel(m, a[2], b[2])]
@@ -83,19 +70,19 @@ fn sel3(m: B, a: VL, b: VL) -> VL {
 /// a + b·s（光線ごとの s）
 #[inline(always)]
 fn axpy(a: VL, b: VL, s: F) -> VL {
-    v3!(c => lanes!(i => a[c][i] + b[c][i] * s[i]))
+    v3!(c => a[c] + b[c] * s)
 }
 
 /// M v（[`mv`] と同じ順）
 #[inline(always)]
 fn mv_l(m: &M3, v: &VL) -> VL {
-    v3!(r => lanes!(i => m[r][0] * v[0][i] + m[r][1] * v[1][i] + m[r][2] * v[2][i]))
+    v3!(r => m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2])
 }
 
 /// Mᵀ v（[`mtv`] と同じ順）
 #[inline(always)]
 fn mtv_l(m: &M3, v: &VL) -> VL {
-    v3!(r => lanes!(i => m[0][r] * v[0][i] + m[1][r] * v[1][i] + m[2][r] * v[2][i]))
+    v3!(r => m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2])
 }
 
 #[inline(always)]
@@ -114,17 +101,27 @@ fn put(v: &mut VL, i: usize, x: V3) {
 #[inline(always)]
 fn powi_l(mut x: F, n: i32) -> F {
     let mut n = n as u32;
-    let mut r = [1.0; L];
+    let mut r = F::splat(1.0);
     loop {
         if n & 1 != 0 {
-            r = lanes!(i => r[i] * x[i]);
+            r = r * x;
         }
         n /= 2;
         if n == 0 {
             return r;
         }
-        x = lanes!(i => x[i] * x[i]);
+        x = x * x;
     }
+}
+
+/// [`trace::conic_root`] の光線ごと版（3 つの場合をすべて計算して選ぶ。同じ演算なので同じビット）
+#[inline(always)]
+fn conic_root_l(ff: F, gg: F, aa: F, disc: F, sig: f64) -> F {
+    let q = sig * disc.sqrt();
+    let near = ff / (gg + q);
+    let far = (gg - q) / aa;
+    let lin = ff / (2.0 * gg);
+    sel((gg * sig).ge(0.0), near, sel(aa.ne(0.0), far, lin))
 }
 
 /// 前の面からこの面の局所座標への移り方
@@ -167,23 +164,23 @@ impl Sag {
     #[inline(always)]
     fn eval(&self, r2: F) -> (F, F) {
         let c = self.c;
-        let arg = lanes!(i => 1.0 - self.kcc * r2[i]);
+        let arg = 1.0 - self.kcc * r2;
         let root = if c != 0.0 {
-            lanes!(i => arg[i].max(0.0).sqrt())
+            arg.max0().sqrt()
         } else {
-            [1.0; L]
+            F::splat(1.0)
         };
-        let mut z = lanes!(i => c * r2[i] / (1.0 + root[i]));
+        let mut z = c * r2 / (1.0 + root);
         let mut dz = if c != 0.0 {
-            lanes!(i => if arg[i] > 0.0 { c / (2.0 * root[i]) } else { f64::NAN })
+            sel(arg.gt(0.0), c / (2.0 * root), F::splat(f64::NAN))
         } else {
-            [0.0; L]
+            F::splat(0.0)
         };
         for &(n, a, na) in &self.terms {
             let p = powi_l(r2, n);
             let q = powi_l(r2, n - 1);
-            z = lanes!(i => z[i] + a * p[i]);
-            dz = lanes!(i => dz[i] + na * q[i]);
+            z += a * p;
+            dz += na * q;
         }
         (z, dz)
     }
@@ -347,66 +344,43 @@ unsafe fn run_avx<R: LaneSink>(
 /// 境界の近く（と NaN・無限大）だけ [`trace::aperture_out`]（hypot）で決める
 #[inline(always)]
 fn aperture_out_l(a: Aperture, pl: &VL) -> B {
-    let mut out = [false; L];
     // 半径の 2 乗の丸めの誤差（数 ulp）より十分大きい幅
     const M: f64 = 1e-12;
     #[inline(always)]
-    fn ring(
-        a: Aperture,
-        pl: &VL,
-        (dx, dy): (f64, f64),
-        (lo, hi): (f64, f64),
-        obsc: bool,
-        out: &mut B,
-    ) {
-        let r2 = lanes!(i => {
-            let (u, v) = (pl[0][i] - dx, pl[1][i] - dy);
-            u * u + v * v
-        });
+    fn ring(a: Aperture, pl: &VL, (dx, dy): (f64, f64), (lo, hi): (f64, f64), obsc: bool) -> B {
+        let (u, v) = (pl[0] - dx, pl[1] - dy);
+        let r = u * u + v * v;
         let (lo2, hi2) = (lo * lo, hi * hi);
-        // inside: lo < r < hi が確か、outside: r < lo か r > hi が確か（どちらでもなければ hypot で）。
-        // 分岐なし（& と |）で書いて 1 組をまとめて比べる
-        let (has_lo, has_hi) = (lo > 0.0, hi > 0.0);
+        // inside: lo < r < hi が確か、outside: r < lo か r > hi が確か（どちらでもなければ hypot で）
+        let (has_lo, has_hi) = (B::splat(lo > 0.0), B::splat(hi > 0.0));
         let (hi_in, hi_out, lo_in, lo_out) = (
             hi2 * (1.0 - M),
             hi2 * (1.0 + M),
             lo2 * (1.0 + M),
             lo2 * (1.0 - M),
         );
-        let mut unsure = false;
-        for i in 0..L {
-            let r = r2[i];
-            let inside = has_hi & (r < hi_in) & (!has_lo | (r > lo_in));
-            let outside = (has_lo & (r < lo_out)) | (has_hi & (r > hi_out) & (r < f64::INFINITY));
-            out[i] = if obsc { inside } else { outside };
-            unsure |= !(inside | outside);
-        }
-        if unsure {
+        let inside = has_hi & r.lt(hi_in) & (!has_lo | r.gt(lo_in));
+        let outside = (has_lo & r.lt(lo_out)) | (has_hi & r.gt(hi_out) & r.lt(f64::INFINITY));
+        let mut out = if obsc { inside } else { outside };
+        let unsure = !(inside | outside);
+        if unsure.any() {
             for i in 0..L {
-                let r = r2[i];
-                let inside = has_hi & (r < hi_in) & (!has_lo | (r > lo_in));
-                let outside =
-                    (has_lo & (r < lo_out)) | (has_hi & (r > hi_out) & (r < f64::INFINITY));
-                if !(inside | outside) {
-                    out[i] = trace::aperture_out(a, get(pl, i));
+                if unsure.at(i) {
+                    out.set(i, trace::aperture_out(a, get(pl, i)));
                 }
             }
         }
+        out
     }
     match a {
         Aperture::Circular { min, max, dx, dy } => {
-            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), false, &mut out)
+            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), false)
         }
         Aperture::Obsc { min, max, dx, dy } => {
-            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), true, &mut out)
+            ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), true)
         }
-        _ => {
-            for i in 0..L {
-                out[i] = trace::aperture_out(a, get(pl, i));
-            }
-        }
+        _ => B::from_fn(|i| trace::aperture_out(a, get(pl, i))),
     }
-    out
 }
 
 #[inline(always)]
@@ -416,63 +390,56 @@ fn run<R: LaneSink>(
     k0: &[V3; L],
     mut rec: Option<&mut R>,
 ) -> [RayOut; L] {
-    let nan = [f64::NAN; L];
+    let nan = F::splat(f64::NAN);
     let nan3 = [nan; 3];
-    let p: VL = v3!(c => lanes!(i => p0[i][c]));
-    let k: VL = v3!(c => lanes!(i => k0[i][c]));
-    // 止まった面・けられた面の番号（f64 で持つと比較・選択が 4 本まとめてできる）
-    let mut err = [0.0f64; L];
-    let mut tir = [false; L];
-    let mut vig = [0.0f64; L];
-    let mut opl = [0.0; L];
-    let mut lens_opd = [0.0; L];
+    let zero = F::splat(0.0);
+    let p: VL = v3!(c => F::from_fn(|i| p0[i][c]));
+    let k: VL = v3!(c => F::from_fn(|i| k0[i][c]));
+    // 止まった面・けられた面の番号（f64 で持つと比較・選択がまとめてできる）
+    let mut err = zero;
+    let mut tir = B::splat(false);
+    let mut vig = zero;
+    let mut opl = zero;
+    let mut lens_opd = zero;
     // 今いる面の局所座標の位置・方向
     let mut pl = nan3;
     let mut kl = nan3;
     for (ri, st) in plan.steps.iter().enumerate() {
         let (d, j) = (st.d, st.j);
-        let jf = j as f64;
+        let jf = F::splat(j as f64);
         let nprev = st.nprev;
         // ここまでに止まった光線（以後は NaN）
-        let es: B = lanes_b(|i| err[i] != 0.0);
+        let es: B = err.ne(0.0);
         match st.mv {
             Move::Shift(dz) => {
-                for i in 0..L {
-                    pl[2][i] += dz;
-                }
+                pl[2] = pl[2] + dz;
             }
             Move::Rel(q) => {
                 pl = mv_l(&q.r, &pl);
                 for c in 0..3 {
-                    for i in 0..L {
-                        pl[c][i] += q.t[c];
-                    }
+                    pl[c] = pl[c] + q.t[c];
                 }
                 kl = mv_l(&q.r, &kl);
             }
             Move::First => {
                 let o = st.f.o;
-                let dp = v3!(c => lanes!(i => p[c][i] - o[c]));
+                let dp = v3!(c => p[c] - o[c]);
                 pl = mtv_l(&st.f.r, &dp);
                 kl = mtv_l(&st.f.r, &k);
             }
         }
         // 頂点面へ
-        let s = lanes!(i => -pl[2][i] / kl[2][i]);
-        for i in 0..L {
-            if err[i] == 0.0 && !s[i].is_finite() {
-                err[i] = jf;
-            }
-        }
+        let s = -pl[2] / kl[2];
+        err = sel(err.eq(0.0) & !s.is_finite(), jf, err);
         pl = axpy(pl, kl, s);
-        opl = lanes!(i => opl[i] + nprev * s[i]);
+        opl += nprev * s;
         if crate::freeform::is_freeform(d.typ) {
             for i in 0..L {
                 if err[i] == 0.0 {
                     let (pi, ki) = (get(&pl, i), get(&kl, i));
                     let (s, bad) = crate::freeform::isect(d, pi, ki, st.sig);
                     if bad {
-                        err[i] = jf;
+                        err[i] = j as f64;
                     }
                     put(&mut pl, i, add(pi, scale(ki, s)));
                     opl[i] += nprev * s;
@@ -484,69 +451,57 @@ fn run<R: LaneSink>(
                     let (pi, ki) = (get(&pl, i), get(&kl, i));
                     let (s, bad) = trace::toroidal_isect(d, pi, ki, st.sig);
                     if bad {
-                        err[i] = jf;
+                        err[i] = j as f64;
                     }
                     put(&mut pl, i, add(pi, scale(ki, s)));
                     opl[i] += nprev * s;
                 }
             }
         } else if st.curved {
-            let m: B = lanes_b(|i| err[i] == 0.0);
+            let m: B = err.eq(0.0);
             let c = d.c;
-            let mut s = [0.0; L];
+            let mut s = zero;
             if c != 0.0 {
-                let ff = lanes!(i => c * (pl[0][i] * pl[0][i] + pl[1][i] * pl[1][i]));
-                let gg = lanes!(i => kl[2][i] - c * (pl[0][i] * kl[0][i] + pl[1][i] * kl[1][i]));
-                let aa = lanes!(i => c * (kl[0][i] * kl[0][i] + kl[1][i] * kl[1][i]
-                    + st.k1 * kl[2][i] * kl[2][i]));
-                let disc = lanes!(i => gg[i] * gg[i] - aa[i] * ff[i]);
-                s = lanes!(i => trace::conic_root(ff[i], gg[i], aa[i], disc[i].max(0.0), st.sig));
-                for i in 0..L {
-                    if m[i] && (!(disc[i] >= 0.0) || !s[i].is_finite()) {
-                        err[i] = jf;
-                    }
-                }
+                let ff = c * (pl[0] * pl[0] + pl[1] * pl[1]);
+                let gg = kl[2] - c * (pl[0] * kl[0] + pl[1] * kl[1]);
+                let aa = c * (kl[0] * kl[0] + kl[1] * kl[1] + st.k1 * kl[2] * kl[2]);
+                let disc = gg * gg - aa * ff;
+                s = conic_root_l(ff, gg, aa, disc.max0(), st.sig);
+                // !(disc >= 0)（NaN も）か s が有限でない
+                err = sel(m & !(disc.ge(0.0) & s.is_finite()), jf, err);
             }
             if st.asph {
-                let mut act: B = lanes_b(|i| m[i] && err[i] == 0.0);
+                let mut act: B = m & err.eq(0.0);
                 let newton = act;
-                let mut ds = [0.0; L];
+                let mut ds = zero;
                 for _ in 0..60 {
-                    if !any(act) {
+                    if !act.any() {
                         break;
                     }
                     let q = axpy(pl, kl, s);
-                    let r2 = lanes!(i => q[0][i] * q[0][i] + q[1][i] * q[1][i]);
+                    let r2 = q[0] * q[0] + q[1] * q[1];
                     let (z, dz) = st.sag.eval(r2);
-                    let dn = lanes!(i => (q[2][i] - z[i])
-                        / (kl[2][i] - 2.0 * dz[i] * (q[0][i] * kl[0][i] + q[1][i] * kl[1][i])));
+                    let dn = (q[2] - z) / (kl[2] - 2.0 * dz * (q[0] * kl[0] + q[1] * kl[1]));
                     ds = sel(act, dn, ds);
-                    s = sel(act, lanes!(i => s[i] - dn[i]), s);
-                    act = lanes_b(|i| act[i] && dn[i].abs() > 1e-14);
+                    s = sel(act, s - dn, s);
+                    act = act & dn.abs().gt(1e-14);
                 }
-                for i in 0..L {
-                    if newton[i] && !(ds[i].abs() <= 1e-10) {
-                        err[i] = jf;
-                    }
-                }
+                // !(|ds| <= 1e-10)（NaN も）
+                err = sel(newton & !ds.abs().le(1e-10), jf, err);
             }
             pl = sel3(m, axpy(pl, kl, s), pl);
-            opl = sel(m, lanes!(i => opl[i] + nprev * s[i]), opl);
+            opl = sel(m, opl + nprev * s, opl);
         }
         // 開口
         if let Some(a) = st.clip {
             let out = aperture_out_l(a, &pl);
-            for i in 0..L {
-                if out[i] && vig[i] == 0.0 && err[i] == 0.0 {
-                    vig[i] = jf;
-                }
-            }
+            vig = sel(out & vig.eq(0.0) & err.eq(0.0), jf, vig);
         }
         match d.typ {
             SurfType::CoordBrk => {}
             SurfType::Paraxial => {
                 for i in 0..L {
-                    if !es[i] {
+                    if !es.at(i) {
                         let (k2, dl) = trace::paraxial(d.focal, get(&pl, i), get(&kl, i), st.conj);
                         put(&mut kl, i, k2);
                         lens_opd[i] += dl;
@@ -554,88 +509,66 @@ fn run<R: LaneSink>(
                 }
             }
             _ => {
+                let one = F::splat(1.0);
                 let nvec: VL = if crate::freeform::is_freeform(d.typ) {
-                    let mut nv = [[0.0; L], [0.0; L], [1.0; L]];
+                    let mut nv = [zero, zero, one];
                     for i in 0..L {
                         let (_, zx, zy) = crate::freeform::sag_xy(d, pl[0][i], pl[1][i]);
                         if !(zx.is_finite() && zy.is_finite()) && err[i] == 0.0 {
-                            err[i] = jf;
+                            err[i] = j as f64;
                         }
                         nv[0][i] = -zx;
                         nv[1][i] = -zy;
                     }
                     nv
                 } else if d.typ == SurfType::Toroidal {
-                    let mut nv = [[0.0; L], [0.0; L], [1.0; L]];
+                    let mut nv = [zero, zero, one];
                     for i in 0..L {
                         let (_, zx, zy) =
                             trace::sag_toroidal(d.c, d.k, &d.asph, d.cx, pl[0][i], pl[1][i]);
                         if !(zx.is_finite() && zy.is_finite()) && err[i] == 0.0 {
-                            err[i] = jf;
+                            err[i] = j as f64;
                         }
                         nv[0][i] = -zx;
                         nv[1][i] = -zy;
                     }
                     nv
                 } else if d.typ == SurfType::EvenAsph && st.asph {
-                    let r2 = lanes!(i => pl[0][i] * pl[0][i] + pl[1][i] * pl[1][i]);
+                    let r2 = pl[0] * pl[0] + pl[1] * pl[1];
                     let (_, dz) = st.sag.eval(r2);
-                    for i in 0..L {
-                        if !dz[i].is_finite() && err[i] == 0.0 {
-                            err[i] = jf;
-                        }
-                    }
-                    [
-                        lanes!(i => -2.0 * dz[i] * pl[0][i]),
-                        lanes!(i => -2.0 * dz[i] * pl[1][i]),
-                        [1.0; L],
-                    ]
+                    err = sel(!dz.is_finite() & err.eq(0.0), jf, err);
+                    [-2.0 * dz * pl[0], -2.0 * dz * pl[1], one]
                 } else if d.c == 0.0 {
-                    [[0.0; L], [0.0; L], [1.0; L]]
+                    [zero, zero, one]
                 } else {
                     let c = d.c;
-                    [
-                        lanes!(i => -c * pl[0][i]),
-                        lanes!(i => -c * pl[1][i]),
-                        lanes!(i => 1.0 - st.ck1 * pl[2][i]),
-                    ]
+                    [-c * pl[0], -c * pl[1], 1.0 - st.ck1 * pl[2]]
                 };
-                let inv = lanes!(i => 1.0 / (nvec[0][i] * nvec[0][i] + nvec[1][i] * nvec[1][i]
-                    + nvec[2][i] * nvec[2][i]).sqrt());
-                let nv: VL = v3!(c => lanes!(i => nvec[c][i] * inv[i]));
-                let cosi =
-                    lanes!(i => kl[0][i] * nv[0][i] + kl[1][i] * nv[1][i] + kl[2][i] * nv[2][i]);
+                let inv = 1.0 / (nvec[0] * nvec[0] + nvec[1] * nvec[1] + nvec[2] * nvec[2]).sqrt();
+                let nv: VL = v3!(c => nvec[c] * inv);
+                let cosi = kl[0] * nv[0] + kl[1] * nv[1] + kl[2] * nv[2];
                 if d.mirror {
-                    kl = v3!(c => lanes!(i => kl[c][i] - nv[c][i] * (2.0 * cosi[i])));
+                    kl = v3!(c => kl[c] - nv[c] * (2.0 * cosi));
                 } else if d.typ != SurfType::Jones && st.nn != nprev {
                     let mu = nprev / st.nn;
                     let mu2 = mu * mu;
-                    let disc = lanes!(i => 1.0 - mu2 * (1.0 - cosi[i] * cosi[i]));
-                    for i in 0..L {
-                        if disc[i] < 0.0 && err[i] == 0.0 {
-                            err[i] = jf;
-                            tir[i] = true;
-                        }
-                    }
-                    let t = lanes!(i => cosi[i].signum() * disc[i].max(0.0).sqrt() - mu * cosi[i]);
-                    kl = v3!(c => lanes!(i => kl[c][i] * mu + nv[c][i] * t[i]));
+                    let disc = 1.0 - mu2 * (1.0 - cosi * cosi);
+                    let total = disc.lt(0.0) & err.eq(0.0);
+                    err = sel(total, jf, err);
+                    tir = tir | total;
+                    let t = cosi.signum() * disc.max0().sqrt() - mu * cosi;
+                    kl = v3!(c => kl[c] * mu + nv[c] * t);
                 }
             }
         }
-        let bad: B = lanes_b(|i| err[i] != 0.0);
-        for i in 0..L {
-            if bad[i] {
-                for c in 0..3 {
-                    pl[c][i] = f64::NAN;
-                    kl[c][i] = f64::NAN;
-                }
-                opl[i] = f64::NAN;
-            }
-        }
+        let bad: B = err.ne(0.0);
+        pl = sel3(bad, nan3, pl);
+        kl = sel3(bad, nan3, kl);
+        opl = sel(bad, nan, opl);
         if let Some(r) = rec.as_deref_mut() {
             let pg = mv_l(&st.f.r, &pl);
             for i in 0..L {
-                let e = if es[i] {
+                let e = if es.at(i) {
                     RecEntry {
                         surf: j,
                         xyz: [f64::NAN; 3],
@@ -664,15 +597,10 @@ fn run<R: LaneSink>(
         lmn: get(&kl, i),
         opl: opl[i],
         err: err[i] as usize,
-        tir: tir[i],
+        tir: tir.at(i),
         vig: vig[i] as usize,
         p: add(f.o, get(&pg, i)),
         k: get(&kg, i),
         lens_opd: lens_opd[i],
     })
-}
-
-#[inline(always)]
-fn lanes_b(f: impl Fn(usize) -> bool) -> B {
-    std::array::from_fn(f)
 }

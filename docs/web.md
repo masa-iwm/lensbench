@@ -143,6 +143,25 @@ node scripts/web_bench.mjs target/web --systems A0,C0,A2,C1 --cmds spot,wavefron
 重い解析（C0・C1 の MTF、1 回 1 秒以上）では、Web 版はネイティブの 1 スレッドで約 1.7 倍、全コアで約 1.5 倍の時間。
 数 ms〜数十 ms の解析は、スレッドに分ける手間や時計の粗さで比がばらつく（Web の mt がかえって遅いこともある）。
 
+光線のまとめ追跡は、wasm では f64x2（simd128）の命令を名指しして 8 本ずつ追う（LLVM は wasm ではまとめ追跡の
+ループをベクトル化しないため。#99）。結果は 1 本ずつの追跡とビットまで同じ（CI で wasm の試験を Node で回して確かめる）。
+光線の多い解析（`--cmds spot:rings=100,wavefront:n=512`）の Web 1T は、この変更の前後で次のとおり（2026-11-10、同じマシン、
+5 回の中央値 [ms]）:
+
+| 系 | 解析 | 前 | 後 |
+| --- | --- | ---: | ---: |
+| A0 | spot rings=100 | 91 | 95 |
+| A0 | wavefront n=512 | 182 | 173 |
+| C0 | spot rings=100 | 114 | 107 |
+| C0 | wavefront n=512 | 235 | 216 |
+| D0 | spot rings=100 | 63 | 60 |
+| D0 | wavefront n=512 | 150 | 103 |
+| E0 | spot rings=100 | 136 | 83 |
+| E0 | wavefront n=512 | 174 | 114 |
+
+追跡だけ（`cargo run --release --example bench`、1 コア）では wasm（wasmtime・Node）がネイティブの約 0.7〜1.0 倍（前は 0.55〜0.9 倍）。
+MTF・PSF は追跡が律速でないので変わらない。
+
 ## 公開（Cloudflare Pages ＋ Cloudflare Access、限定公開）
 
 配る形のフォルダはそのまま Cloudflare Pages に置ける。`_headers` で COOP/COEP を付ける（並列化に要る）。
