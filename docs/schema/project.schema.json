@@ -1336,6 +1336,13 @@
       "additionalProperties": false,
       "description": "系に置く機構部品（[`Project::mechanics`]）。部品はユーザーカタログの品（`catalog`・`item`）か、\nその場で書いた寸法（`mech`）",
       "properties": {
+        "after": {
+          "description": "前に書いた機構部品（名前）の z の大きい端につなぐ（`at`・`seat` の代わり。同じ名前が複数あれば最後のもの）。\n前の部品と同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。両方の部品の向き合う端に\nねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さだけ重ねる",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "at": {
           "$ref": "#/$defs/MechAt",
           "description": "置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）。\n`seat` なら省略できる（使わない）"
@@ -1413,6 +1420,17 @@
     "MechSpec": {
       "description": "機構部品の寸法。z は部品の基準面（チューブの入口の端など）から光の進む向き",
       "properties": {
+        "back_thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadEnd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "z の大きい端のねじ"
+        },
         "bores": {
           "default": [],
           "description": "光の通る穴（チューブの内径、ケージ板・マウントのクリア開口）",
@@ -1420,6 +1438,17 @@
             "$ref": "#/$defs/BoreSpec"
           },
           "type": "array"
+        },
+        "front_thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadEnd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "z 0 の端（光の入る側）のねじ。機構部品をつなぐ（[`MechPlacement::after`]）とき、合うかを確かめる"
         },
         "holds": {
           "anyOf": [
@@ -1960,6 +1989,30 @@
         "block",
         "surface",
         "fields"
+      ],
+      "type": "object"
+    },
+    "ThreadEnd": {
+      "description": "機構部品の端のねじ",
+      "properties": {
+        "length": {
+          "default": 0.0,
+          "description": "ねじの長さ [mm]。オスのねじは相手のメスにこの長さだけねじ込む（部品が重なる）",
+          "format": "double",
+          "type": "number"
+        },
+        "male": {
+          "description": "オス（外側のねじ）なら true、メス（内側のねじ）なら false",
+          "type": "boolean"
+        },
+        "thread": {
+          "description": "ねじの名前（\"SM1\" など）。つなぐ相手と同じ名前なら合う",
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread",
+        "male"
       ],
       "type": "object"
     },

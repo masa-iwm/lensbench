@@ -120,7 +120,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 - 面の傾き: 面に `"tilt": [tx, ty]`（deg）で、その面だけを頂点のまわりに傾ける（後の面の座標は元の軸に戻す。OpticStudio の面の Tilt/Decenter の後を Reverse）。くさびのウィンドウは 2 面目に `tilt`（くさび角 3′ なら 0.05）。
 - 機構部品: ユーザーカタログの品に `kind`（tube・cage_plate・mount・rod・adapter）と `mech`
   （`bores`: 光の通る穴 `{"z0", "z1", "diameter"}` の並び、z は部品の基準面から光の進む向き。`length`・`outer_diameter`・
-  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
+  `thread`・`rod_spacing`・`holds` `{"diameter", "seat_z"}`・`front_thread`・`back_thread`）を書く（`blocks` は省略できる）。プロジェクトの `mechanics` に
   `{"name", "catalog", "item", "at": {"block": id, "surface": i}, "offset": [dx, dy, dz], "tilt": [tx, ty]}`（`catalog`・`item` の
   代わりに `mech` をその場で書いても、`at` に系の面の番号 `{"surface": n}` だけでもよい）で、ブロックの面の局所座標に置く。
   光学系の位置は変えず、光線の追跡にも効かない。`lensbench mech-check` は瞳の格子の光線を面 1 から追い、面と面の間の直線が
@@ -145,6 +145,12 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `holds.seat_z`）を保持する最初の素子の前面に合わせて置く（`at` は要らない。`offset` はそこからのずれ）。GUI では機構部品の欄の
   「座に合わせる」。素子が入る機構部品は `lensbench catalog-search <カタログ> --fits <径>`（保持径が径以上で 0.25 mm より
   太くないもの）で探せ、GUI のカタログの詳細にも「入る機構部品」を出す
+- 機構部品をつなぐ: `mechanics` の項目に `"after": "前の部品の名前"` で、前に書いた部品の z の大きい端につなぐ（`at`・`seat` は
+  使わない。同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。同じ名前が複数あれば最後のもの）。
+  寸法の `front_thread`（z 0 の端）・`back_thread`（z の大きい端）に `{"thread": "SM1", "male": true, "length": 3.0}` を書くと、
+  つなぐ両端のねじが同じ名前でオスとメスか確かめ（違えば注記して突き当てる）、オスのねじの長さだけ重ねる（ねじ込む）。
+  `catalog-step` は両端のねじ（端に接するねじの谷の径の外向きの円柱がオス、内壁がメス。オスの長さは端から外径より細い部分）も読む。
+  GUI では機構部品の欄の置く所で「〜の後ろにつなぐ」
 - カタログの品の種類・仕様・リンク: 項目に `kind`（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、
   省略時はブロックから）、`url`（製品ページ）、`specs`（名前 → 数・[下限, 上限]・文字列。名前の決まったものは
   `lensbench catalog-search x --list-specs`: wavelength_nm・diameter・thickness・coating・split_ratio・extinction_ratio・retardance・wedge・flatness など）、

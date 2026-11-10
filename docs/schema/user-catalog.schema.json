@@ -1199,6 +1199,17 @@
     "MechSpec": {
       "description": "機構部品の寸法。z は部品の基準面（チューブの入口の端など）から光の進む向き",
       "properties": {
+        "back_thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadEnd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "z の大きい端のねじ"
+        },
         "bores": {
           "default": [],
           "description": "光の通る穴（チューブの内径、ケージ板・マウントのクリア開口）",
@@ -1206,6 +1217,17 @@
             "$ref": "#/$defs/BoreSpec"
           },
           "type": "array"
+        },
+        "front_thread": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ThreadEnd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "z 0 の端（光の入る側）のねじ。機構部品をつなぐ（[`MechPlacement::after`]）とき、合うかを確かめる"
         },
         "holds": {
           "anyOf": [
@@ -1730,6 +1752,30 @@
           "description": "波長板の面（平面の Jones 面、波長ごとに遅延を変える）"
         }
       },
+      "type": "object"
+    },
+    "ThreadEnd": {
+      "description": "機構部品の端のねじ",
+      "properties": {
+        "length": {
+          "default": 0.0,
+          "description": "ねじの長さ [mm]。オスのねじは相手のメスにこの長さだけねじ込む（部品が重なる）",
+          "format": "double",
+          "type": "number"
+        },
+        "male": {
+          "description": "オス（外側のねじ）なら true、メス（内側のねじ）なら false",
+          "type": "boolean"
+        },
+        "thread": {
+          "description": "ねじの名前（\"SM1\" など）。つなぐ相手と同じ名前なら合う",
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread",
+        "male"
+      ],
       "type": "object"
     },
     "UserItem": {

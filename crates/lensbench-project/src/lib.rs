@@ -1991,6 +1991,24 @@ pub struct MechSpec {
     /// 保持する素子の径 [mm] と座の z [mm]（マウント・チューブ）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub holds: Option<HoldSpec>,
+    /// z 0 の端（光の入る側）のねじ。機構部品をつなぐ（[`MechPlacement::after`]）とき、合うかを確かめる
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub front_thread: Option<ThreadEnd>,
+    /// z の大きい端のねじ
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub back_thread: Option<ThreadEnd>,
+}
+
+/// 機構部品の端のねじ
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ThreadEnd {
+    /// ねじの名前（"SM1" など）。つなぐ相手と同じ名前なら合う
+    pub thread: String,
+    /// オス（外側のねじ）なら true、メス（内側のねじ）なら false
+    pub male: bool,
+    /// ねじの長さ [mm]。オスのねじは相手のメスにこの長さだけねじ込む（部品が重なる）
+    #[serde(default)]
+    pub length: f64,
 }
 
 /// 保持する素子
@@ -2030,6 +2048,8 @@ impl MechSpec {
                 diameter: h.diameter,
                 seat_z: len - h.seat_z - t,
             }),
+            front_thread: self.back_thread.clone(),
+            back_thread: self.front_thread.clone(),
             ..self.clone()
         }
     }
@@ -2112,6 +2132,11 @@ pub struct MechPlacement {
     /// そこからのずれ）
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub seat: bool,
+    /// 前に書いた機構部品（名前）の z の大きい端につなぐ（`at`・`seat` の代わり。同じ名前が複数あれば最後のもの）。
+    /// 前の部品と同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。両方の部品の向き合う端に
+    /// ねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さだけ重ねる
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
 }
 
 /// 機構を置く基準の面（[`MechPlacement::at`]）
@@ -3420,6 +3445,8 @@ fn place_mechanics(
     warn: &mut Vec<String>,
 ) -> Result<Vec<lensbench_core::mech::MechPart>, String> {
     let mut out = Vec::new();
+    // 置いた部品の寸法（after でねじを見る）
+    let mut specs: Vec<MechSpec> = Vec::new();
     for (k, m) in ms.iter().enumerate() {
         let tag = format!("mechanics {}", k + 1);
         let (spec, item_name) = match (&m.mech, &m.catalog, &m.item) {
@@ -3444,6 +3471,79 @@ fn place_mechanics(
             }
         };
         spec.validate().map_err(|e| format!("{tag}: {e}"))?;
+        let name = if !m.name.is_empty() {
+            m.name.clone()
+        } else if !item_name.is_empty() {
+            item_name.clone()
+        } else {
+            format!("mech{}", k + 1)
+        };
+        // 前の部品の後ろの端につなぐ
+        if let Some(prev_name) = &m.after {
+            if m.seat || !m.at.is_unset() {
+                return Err(format!("{tag}: after は at・seat と一緒に使えない"));
+            }
+            if m.tilt != [0.0, 0.0] {
+                return Err(format!(
+                    "{tag}: after では tilt は使えない（前の部品の傾きになる）"
+                ));
+            }
+            let Some((prev, prev_spec)) = out
+                .iter()
+                .zip(&specs)
+                .rev()
+                .find(|(p, _): &(&lensbench_core::mech::MechPart, _)| &p.name == prev_name)
+            else {
+                return Err(format!("{tag}: after の部品 {prev_name} が前に無い"));
+            };
+            let (prev, prev_spec): (&lensbench_core::mech::MechPart, &MechSpec) = (prev, prev_spec);
+            let overlap = match (&prev_spec.back_thread, &spec.front_thread) {
+                (Some(a), Some(b)) => {
+                    if a.thread != b.thread || a.male == b.male {
+                        let kind = |t: &ThreadEnd| {
+                            format!("{} の{}", t.thread, if t.male { "オス" } else { "メス" })
+                        };
+                        warn.push(format!(
+                            "{tag}: {prev_name} の後ろの端（{}）と、{name} の前の端（{}）のねじが合わない",
+                            kind(a),
+                            kind(b)
+                        ));
+                        0.0
+                    } else if b.male {
+                        b.length
+                    } else {
+                        a.length
+                    }
+                }
+                _ => 0.0,
+            };
+            let mut part0 = spec.part(&name, prev.surface, [0.0; 3], prev.tilt);
+            let z = prev.z_range()[1] - overlap - part0.z_range()[0];
+            let r = lensbench_core::math::mm(
+                &lensbench_core::math::rot(0, prev.tilt[0]),
+                &lensbench_core::math::rot(1, prev.tilt[1]),
+            );
+            let d = lensbench_core::math::mv(&r, [m.offset[0], m.offset[1], m.offset[2] + z]);
+            part0.offset = [
+                prev.offset[0] + d[0],
+                prev.offset[1] + d[1],
+                prev.offset[2] + d[2],
+            ];
+            if !part0.offset.iter().all(|v| v.is_finite()) {
+                return Err(format!("{tag}: offset が数でない"));
+            }
+            for b in &m.holds {
+                match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
+                    Some(x) => part0.holds.extend(
+                        (x.1 + 1..=x.2 + 1).filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk),
+                    ),
+                    None => warn.push(format!("{tag}: holds のブロック {b} が無い")),
+                }
+            }
+            out.push(part0);
+            specs.push(spec);
+            continue;
+        }
         let mut offset = m.offset;
         // 座に合わせる: 保持する最初の素子の前面に、部品の座の z を合わせる
         let seat_at = if m.seat {
@@ -3492,13 +3592,6 @@ fn place_mechanics(
         if !offset.iter().chain(&m.tilt).all(|v| v.is_finite()) {
             return Err(format!("{tag}: offset・tilt が数でない"));
         }
-        let name = if !m.name.is_empty() {
-            m.name.clone()
-        } else if !item_name.is_empty() {
-            item_name
-        } else {
-            format!("mech{}", k + 1)
-        };
         let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
             match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
@@ -3509,6 +3602,7 @@ fn place_mechanics(
             }
         }
         out.push(part);
+        specs.push(spec);
     }
     Ok(out)
 }
