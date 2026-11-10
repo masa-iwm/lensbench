@@ -848,7 +848,11 @@ fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
         ui.label(tr("反復の上限"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=10000));
         ui.label(tr("微分"));
-        for (k, l) in [("auto", tr("解析的（できる所）")), ("fd", tr("すべて差分"))] {
+        for (k, l) in [
+            ("auto", tr("解析的（できる所）")),
+            ("fd", tr("すべて差分")),
+            ("forward", tr("すべて前進差分")),
+        ] {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });

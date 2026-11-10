@@ -301,7 +301,7 @@ enum Cmd {
         /// 反復の上限
         #[arg(long, default_value_t = 50)]
         iters: usize,
-        /// ヤコビアン: auto（解析的に求められる列は解析的に）か fd（すべて差分）
+        /// ヤコビアン: auto（解析的に求められる列は解析的に）・fd（すべて中心差分）・forward（すべて前進差分）
         #[arg(long, default_value = "auto")]
         jac: String,
         /// 最適化した系を書き出す .zmx
@@ -2062,11 +2062,8 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 "chief" => sweep::RmsRef::Chief,
                 r => return Err(format!("--ref {r}（centroid・chief）")),
             };
-            p.jac = match jac.to_ascii_lowercase().as_str() {
-                "auto" => optim::JacMode::Auto,
-                "fd" => optim::JacMode::FiniteDiff,
-                j => return Err(format!("--jac {j}（auto・fd）")),
-            };
+            p.jac = optim::JacMode::parse(&jac)
+                .ok_or_else(|| format!("--jac {jac}（{}）", optim::JacMode::NAMES))?;
             if let Some(kind) = kind {
                 p.add_default(kind, rings, reference);
             }

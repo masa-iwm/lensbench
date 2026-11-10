@@ -425,15 +425,11 @@ fn opt_problem(
             )))
         }
     };
-    p.jac = match jac {
-        "auto" => optim::JacMode::Auto,
-        "fd" => optim::JacMode::FiniteDiff,
-        _ => {
-            return Err(PyValueError::new_err(format!(
-                "jac は \"auto\" か \"fd\"（{jac}）"
-            )))
-        }
-    };
+    p.jac = optim::JacMode::parse(jac).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "jac は \"auto\"・\"fd\"・\"forward\" のどれか（{jac}）"
+        ))
+    })?;
     if let Some(kind) = kind {
         p.add_default(kind, rings, reference);
     }
@@ -2382,7 +2378,7 @@ impl PySystem {
     /// 減衰最小二乗（DLS）で最適化した系を返す（元の系は変えない）。vars は変数の列で、各要素は "7.t" か
     /// ("7.t", 下限, 上限)（None で片側なし）。既定の評価関数 merit は "spot"（RMS スポット）か "wavefront"（RMS 波面）で、
     /// 全視野（視野の重み）・多色。None なら terms の項だけ。jac は "auto"（解析的に求められる列は解析的に）か
-    /// "fd"（すべて差分）。
+    /// "fd"（すべて中心差分）か "forward"（すべて前進差分、中心差分の半分の追跡）。
     ///
     /// termsは足す項の dict の並び。{"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1} の
     /// 形で、種類は spot・wavefront・mtf・paraxial（q: efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・

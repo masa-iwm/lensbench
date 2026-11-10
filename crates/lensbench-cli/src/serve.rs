@@ -2505,7 +2505,7 @@ fn config_system(
 /// - merit: 既定の評価関数 "spot"・"wavefront"・null（なし）。rings（3）・reference（"centroid"）
 /// - terms: 足す項（`lensbench_project::merit` の JSON）
 /// - configs: 構成（.zmx の構成番号か状態の名前）の並び。省けば読み込んだ系だけ。項・変数の構成の番号はこの並びの順
-/// - iters（50）・jac（"auto"・"fd"）
+/// - iters（50）・jac（"auto"・"fd"・"forward"）
 /// - apply: true なら最適化した値を読み込んだ系に set する（読み込んだ系の構成に効く変数だけ）
 ///
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
@@ -2607,11 +2607,10 @@ fn optimize(p: &Value) -> Result<Value, RpcErr> {
             lensbench_project::merit::terms_from_json(&t, &prob.configs).map_err(RpcErr::params)?;
         prob.terms.extend(ts);
     }
-    prob.jac = match p["jac"].as_str().unwrap_or("auto") {
-        "auto" => optim::JacMode::Auto,
-        "fd" => optim::JacMode::FiniteDiff,
-        j => return Err(RpcErr::params(format!("jac は auto か fd（{j}）"))),
-    };
+    let j = p["jac"].as_str().unwrap_or("auto");
+    prob.jac = optim::JacMode::parse(j).ok_or_else(|| {
+        RpcErr::params(format!("jac は {} のどれか（{j}）", optim::JacMode::NAMES))
+    })?;
     prob.check()?;
     let o = optim::DlsOpts {
         max_iter: opt_usize(p, "iters")?.unwrap_or(50),

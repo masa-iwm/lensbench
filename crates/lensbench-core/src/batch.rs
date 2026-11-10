@@ -696,3 +696,53 @@ fn run<R: LaneSink>(
 fn lanes_b(f: impl Fn(usize) -> bool) -> B {
     std::array::from_fn(f)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// まとめた開口の判定は、光線ごとの判定（trace::aperture_out）と同じ（境界のすぐ内外・NaN・無限大も）
+    #[test]
+    fn lane_aperture_matches_scalar_for_floating_and_circular() {
+        let semi = 3.7;
+        let edge = semi + 1e-9;
+        let rs = [
+            0.0,
+            1.0,
+            edge * (1.0 - 1e-15),
+            edge,
+            edge * (1.0 + 1e-15),
+            edge * (1.0 + 1e-12),
+            edge * (1.0 + 1e-9),
+            10.0,
+            f64::NAN,
+            f64::INFINITY,
+            -edge,
+            edge * 0.999_999_999_999,
+        ];
+        let aps = [
+            Aperture::Floating { semi },
+            Aperture::Circular {
+                min: 0.0,
+                max: semi,
+                dx: 0.0,
+                dy: 0.0,
+            },
+        ];
+        for a in aps {
+            for ang in [0.0f64, 0.3, 1.1, 2.5] {
+                let mut pl: VL = [[0.0; L]; 3];
+                for i in 0..L {
+                    let r = rs[i % rs.len()];
+                    let t = ang + i as f64 * 0.7;
+                    pl[0][i] = r * t.cos();
+                    pl[1][i] = r * t.sin();
+                }
+                let out = aperture_out_l(a, &pl);
+                for i in 0..L {
+                    assert_eq!(out[i], trace::aperture_out(a, get(&pl, i)), "{a:?} {i}");
+                }
+            }
+        }
+    }
+}
