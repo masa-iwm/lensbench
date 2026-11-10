@@ -9,6 +9,7 @@ mod argform;
 mod cad_fetch;
 mod catalog;
 mod catsave;
+mod chrome;
 mod coat_defs;
 mod combo;
 mod combo_tree;

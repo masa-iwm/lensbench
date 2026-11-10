@@ -339,6 +339,8 @@ pub struct LensData {
     pub tree: bool,
     /// 折りたたみ表示で開いたブロック
     pub open: BTreeSet<String>,
+    /// 最後に見える所へスクロールした面（選んだ面が変わったときだけスクロールし、手で動かせるように）
+    scrolled: Option<usize>,
 }
 
 /// 表を描くときに渡すもの
@@ -398,6 +400,24 @@ pub fn locked_at(blocks: &[Block], locked: &BTreeSet<String>, j: usize) -> Optio
     blocks
         .iter()
         .find(|b| locked.contains(&b.name) && b.surfs.contains(&j))
+        .map(|b| b.name.clone())
+}
+
+/// 面 j の欄 col を書き換えられないロックのブロック。ロックは中身（面・硝材）だけを止め、
+/// ブロックの最後の面の厚さ（= ブロックの後の間隔）は変えられる
+pub fn locked_cell(
+    blocks: &[Block],
+    locked: &BTreeSet<String>,
+    j: usize,
+    col: Col,
+) -> Option<String> {
+    blocks
+        .iter()
+        .find(|b| {
+            locked.contains(&b.name)
+                && b.surfs.contains(&j)
+                && !(col == Col::T && b.surfs.iter().max() == Some(&j))
+        })
         .map(|b| b.name.clone())
 }
 
@@ -774,10 +794,12 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                     Column::initial(if col.numeric() { 80.0 } else { 90.0 }).at_least(40.0)
                 });
             }
-            if let Some((j, _)) = st.cur {
-                if let Some(pos) = rows.iter().position(|&x| x == j) {
+            let cur = st.cur.map(|x| x.0);
+            if cur != st.scrolled {
+                if let Some(pos) = cur.and_then(|j| rows.iter().position(|&x| x == j)) {
                     table = table.scroll_to_row(pos, None);
                 }
+                st.scrolled = cur;
             }
             table
                 .header(22.0, |mut h| {
@@ -962,7 +984,8 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                                 let is_cur = st.cur == Some((j, col));
                                 let ro = lock
                                     .as_ref()
-                                    .map(|n| trf("{} はロック中", &[n]))
+                                    .and(locked_cell(c.blocks, c.locked, j, col))
+                                    .map(|n| trf("{} はロック中", &[&n]))
                                     .or_else(|| (c.read_only)(j, col));
                                 let mut rt = RichText::new(&text);
                                 if col.numeric() {
@@ -1101,7 +1124,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
                 } else if on_block.is_some() {
                     // たたんだブロックの行のほかの列は書き換えない
                 } else if enter_k || f2 {
-                    let ro = locked_at(c.blocks, c.locked, j)
+                    let ro = locked_cell(c.blocks, c.locked, j, col)
                         .map(|n| trf("{} はロック中", &[&n]))
                         .or_else(|| (c.read_only)(j, col));
                     match ro {

@@ -2238,7 +2238,7 @@ fn insert(combo: &mut Combo, view: &mut View, p: Pick) {
 /// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Esc で選ぶのをやめる。Ctrl で 10 倍、Alt で 1/10
 fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
     let n = combo.len();
-    // 経路に沿った要素（ロックしていない）
+    // 経路に沿った要素（ロックしていない）。ロックは中身だけを止め、動かすのはできる
     let free = |combo: &Combo, k: usize| combo.el(k).is_some_and(|p| !p.locked);
     let ev: Vec<(Key, Modifiers)> = ui.input(|i| {
         i.events
@@ -2299,7 +2299,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     if let Some(v) = gap_mut(combo, g) {
                         *v = (*v + d).max(0.0);
                     }
-                } else if let Some(k) = view.sel.filter(|&k| free(combo, k)) {
+                } else if let Some(k) = view.sel.filter(|&k| k < n) {
                     // 要素: 光軸に近い向きの矢印（光軸が斜めでも ← → か ↑ ↓ のどちらか一方）で光軸に沿って
                     // 動かし、もう一方で偏心（Shift で傾き）
                     let (a, n) = view.along_key(k, dv);
@@ -3002,7 +3002,7 @@ fn figure(
     }
     if resp.dragged() {
         if let (Some(k), Some((p0, c0)), Some(p)) = (
-            view.sel.filter(|&k| els.get(k).is_some_and(|p| !p.locked)),
+            view.sel.filter(|&k| k < els.len()),
             view.drag0.as_ref(),
             resp.interact_pointer_pos(),
         ) {
@@ -3119,7 +3119,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
         ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
         ui.label(RichText::new(p.kind.label()).color(weak));
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は動かせず、設定も変えられない（L キーでも切り替え）",
+            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
         ));
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
@@ -3141,17 +3141,21 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
             }
         }
     });
-    ui.add_enabled_ui(!p.locked, |ui| {
+    // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気・ON/OFF は変えられる
+    let locked = p.locked;
+    ui.add_enabled_ui(!locked, |ui| {
         ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak));
         if p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2 {
             surf_table(ui, p, k, weak);
         }
+    });
+    {
         if place_fields(p.kind) {
             ui.horizontal_wrapped(|ui| {
                 if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx)
                     && !(p.kind == ElemKind::Catalog && !p.path.is_empty())
                 {
-                    ui.checkbox(&mut p.reversed, tr("反転"));
+                    ui.add_enabled(!locked, egui::Checkbox::new(&mut p.reversed, tr("反転")));
                 }
                 place_ui(ui, p, st, &[0, 1], &[0, 1, 2]);
             });
@@ -3175,8 +3179,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
             });
         }
         ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
-    });
-    let locked = p.locked;
+    }
     if p.kind == ElemKind::Splitter {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
     }
@@ -3820,15 +3823,14 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             }
         }
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は動かせず、設定も変えられない（L キーでも切り替え）",
+            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
         ));
-        if p.locked {
-            ui.disable();
-        }
-        kind_fields(ui, p, st, k, weak);
-        if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
-            ui.checkbox(&mut p.reversed, tr("反転"));
-        }
+        ui.add_enabled_ui(!p.locked, |ui| {
+            kind_fields(ui, p, st, k, weak);
+            if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
+                ui.checkbox(&mut p.reversed, tr("反転"));
+            }
+        });
         if !matches!(
             p.kind,
             ElemKind::Mirror | ElemKind::Stop | ElemKind::Aperture

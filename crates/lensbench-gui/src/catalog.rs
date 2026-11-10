@@ -708,10 +708,22 @@ pub fn preview_project(r: &LensRow) -> serde_json::Value {
         };
         return c.project();
     }
+    // 傾けた素子（45° の鏡など）は光軸方向にも広がるので、絞りを素子の手前の端より前に置き、
+    // 像面も素子の端より外に置く（絞りが素子に重なり、光線が絞りより前で折れて見えるのを避ける）
+    let tilt = p.tilt[0].abs().max(p.tilt[1].abs()).min(89.0).to_radians();
+    let half = if p.semi.is_finite() {
+        p.semi.max(0.0)
+    } else {
+        0.0
+    };
+    let stop_gap = 2.0 + half * tilt.sin();
+    if tilt > 0.0 {
+        p.air = p.air.max(half * tilt.cos() + 10.0);
+    }
     let c = Combo {
         name: format!("{} {}", r.vendor, r.part),
         epd: (r.diameter * 0.6).max(0.5),
-        stop_gap: 2.0,
+        stop_gap,
         picks: vec![p],
         ..Default::default()
     };
@@ -1661,6 +1673,8 @@ pub fn pick_from(r: &LensRow) -> Pick {
         // lensbench 形式のカタログの玉はカタログのファイルを参照する
         path: r.source.clone().unwrap_or_default(),
         air,
+        // カタログの玉は中身を変えない前提なので、既定でロック（位置・後の空気は変えられる）
+        locked: true,
         ..Pick::default()
     }
 }
@@ -2500,5 +2514,66 @@ mod tests {
             (Some("BS3"), Some("AR2"))
         );
         assert_eq!(b["size"], 10.0);
+    }
+}
+
+#[cfg(test)]
+mod preview_tilt_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 45° の平面鏡のプレビュー: 絞りは鏡の手前の端より前、光線は絞りを通ってから鏡で折れる（#130）
+    #[test]
+    fn tilted_mirror_preview_stop_before_mirror() {
+        let r = LensRow {
+            vendor: "V".into(),
+            part: "M".into(),
+            efl: f64::INFINITY,
+            diameter: 25.4,
+            thickness: 6.35,
+            mirror: Some((f64::INFINITY, 0.0)),
+            ..Default::default()
+        };
+        let p = preview_project(&r);
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let glass = root.join("tests/glass").display().to_string();
+        let dir =
+            std::env::temp_dir().join(format!("lensbench-gui-mirprev-{}", std::process::id()));
+        lensbench_core::vfs::create_dir_all(&dir).unwrap();
+        let f = dir.join("p.json");
+        lensbench_core::vfs::write(&f, p.to_string()).unwrap();
+        let lay = crate::combo::LayoutData::parse(
+            &lensbench_cli::serve::preview_layout(
+                &json!({ "file": f.display().to_string(), "glass_dir": [glass] }),
+                &json!({ "rays": 5 }),
+            )
+            .unwrap(),
+        );
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!lay.rays.is_empty());
+        // 光線は z = 0（絞り）から +z へ進んでから折れる（絞りより前で鏡に当たらない）
+        for (_, pts) in &lay.rays {
+            assert!(pts[1][0] > 0.5, "{pts:?}");
+        }
+    }
+
+    /// カタログの玉は既定でロック、鏡・BS はロックしない（#123）
+    #[test]
+    fn catalog_lens_locked_by_default() {
+        let lens = LensRow {
+            vendor: "V".into(),
+            part: "L".into(),
+            efl: 50.0,
+            diameter: 25.4,
+            thickness: 3.0,
+            pieces: 1,
+            ..Default::default()
+        };
+        assert!(pick_from(&lens).locked);
+        let mirror = LensRow {
+            mirror: Some((f64::INFINITY, 0.0)),
+            ..lens
+        };
+        assert!(!pick_from(&mirror).locked);
     }
 }
