@@ -521,9 +521,10 @@ enum Cmd {
     Pop {
         #[command(flatten)]
         c: Common,
-        /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）
+        /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で像面の前で厚さのある最後の面
+        /// （--dist も --to もなければ像面まで伝える）
         #[arg(long)]
-        surf: usize,
+        surf: Option<usize>,
         /// 視野の番号（1 始まり、既定 1）
         #[arg(long, default_value_t = 1)]
         field: usize,
@@ -561,6 +562,9 @@ enum Cmd {
         /// 出力の格子の中心 "x,y" [mm]（省略で主光線の向きに進めた点）
         #[arg(long)]
         center: Option<String>,
+        /// 結果の JSON に出力の照度の格子も入れる（"grid_irradiance"、番号 j·nx + i、j は +y の向き。GUI の図）
+        #[arg(long)]
+        grid: bool,
     },
     /// 光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz に、
     /// 省略すると CSV を標準出力へ
@@ -2615,8 +2619,21 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             out_n,
             out_half,
             center,
+            grid,
         } => {
             let s = load(&c)?;
+            // --surf を省くと、像面の前で厚さのある最後の面から像面まで伝える（間の厚さ 0 のダミー面は飛ばす）
+            let (surf, to) = match surf {
+                Some(j) => (j, to),
+                None => {
+                    let img = s.image();
+                    let j = (1..img)
+                        .rev()
+                        .find(|&j| s.surfaces[j].t != 0.0)
+                        .ok_or("--surf（像面の前に厚さのある面がない）")?;
+                    (j, to.or((dist.is_none()).then_some(img)))
+                }
+            };
             let sel = Sel {
                 field: Some(field),
                 wave,
@@ -2707,6 +2724,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 "y": (0..pb.ny).map(|j| pb.y(j)).collect::<Vec<_>>(),
                 "irradiance_y": colm(pb, pb.nx / 2),
             });
+            if grid {
+                v["grid_irradiance"] = json!(pb.irradiance());
+            }
             if let Some(path) = &c.save {
                 let json_file = path
                     .extension()

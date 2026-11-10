@@ -51,6 +51,8 @@ pub struct Settings {
     pub view_plane: ViewPlane,
     /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
     pub ld_tree: bool,
+    /// レイアウト図・書き出しの光線と書き出しの設定
+    pub rays: crate::layout_rays::RaySet,
 }
 
 impl Settings {
@@ -155,6 +157,7 @@ impl Default for Settings {
             auto_build: true,
             view_plane: ViewPlane::Yz,
             ld_tree: false,
+            rays: Default::default(),
         }
     }
 }
@@ -246,6 +249,8 @@ struct Core {
     layout_data: Option<combo::LayoutData>,
     /// レイアウト図に重ねる構成
     overlay: Overlay,
+    /// レイアウトの光線・書き出しの設定の欄を次の描画で開く（通し確認）
+    rays_open: bool,
     combo_view: combo::View,
     font: Option<String>,
     next_id: u64,
@@ -525,6 +530,15 @@ impl Core {
         self.browser.lenses_pending = true;
     }
 
+    /// serve の layout の params（重ねる構成・見る面と光線の設定）
+    fn layout_params(&self) -> Value {
+        let mut v = self.overlay.params_in(self.s.view_plane);
+        self.s
+            .rays
+            .apply(&mut v, self.n_fields(), self.waves_um().len(), false);
+        v
+    }
+
     fn n_fields(&self) -> usize {
         self.summary
             .as_ref()
@@ -711,7 +725,7 @@ impl Core {
                 self.preview.send(
                     Tag::Layout,
                     "preview",
-                    json!({ "load": self.load_params(&path), "layout": self.overlay.params_in(self.s.view_plane) }),
+                    json!({ "load": self.load_params(&path), "layout": self.layout_params() }),
                 );
                 if self.worker.busy_core() {
                     self.load_stale = true;
@@ -777,6 +791,9 @@ impl Core {
             .save_file()
         {
             let mut params = self.overlay.params_in(self.s.view_plane);
+            self.s
+                .rays
+                .apply(&mut params, self.n_fields(), self.waves_um().len(), true);
             params["file"] = json!(p.display().to_string());
             self.worker.send(Tag::LayoutExport, "layout_export", params);
         }
@@ -863,11 +880,8 @@ impl Core {
                 self.read_params();
                 // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
                 if !self.is_combo() {
-                    self.worker.send(
-                        Tag::Layout,
-                        "layout",
-                        self.overlay.params_in(self.s.view_plane),
-                    );
+                    self.worker
+                        .send(Tag::Layout, "layout", self.layout_params());
                 }
                 self.worker.send(Tag::Configs, "configs", json!({}));
                 self.rerun = Some(false);
@@ -942,11 +956,8 @@ impl Core {
                 self.worker.send(Tag::Surfaces, "surface", json!({}));
                 self.worker
                     .send(Tag::Info, "analyze", json!({ "cmd": "info" }));
-                self.worker.send(
-                    Tag::Layout,
-                    "layout",
-                    self.overlay.params_in(self.s.view_plane),
-                );
+                self.worker
+                    .send(Tag::Layout, "layout", self.layout_params());
                 self.rerun = Some(true);
             }
             Tag::Write => {}
@@ -1208,14 +1219,12 @@ impl Core {
                 self.preview.send(
                     Tag::Layout,
                     "preview",
-                    json!({ "load": load, "layout": self.overlay.params_in(self.s.view_plane) }),
+                    json!({ "load": load, "layout": self.layout_params() }),
                 );
             }
-            _ => self.worker.send(
-                Tag::Layout,
-                "layout",
-                self.overlay.params_in(self.s.view_plane),
-            ),
+            _ => self
+                .worker
+                .send(Tag::Layout, "layout", self.layout_params()),
         }
     }
 
@@ -1652,6 +1661,18 @@ impl Core {
                 }
             });
             changed |= self.overlay.ui(ui, self.s.view_plane.vert());
+            let (nf, nw) = (self.n_fields(), self.waves_um().len());
+            let head = if self.s.rays.is_default() {
+                tr("光線・書き出しの設定").to_string()
+            } else {
+                format!("{} ●", tr("光線・書き出しの設定"))
+            };
+            egui::CollapsingHeader::new(head)
+                .id_salt("layout_rays")
+                .open(std::mem::take(&mut self.rays_open).then_some(true))
+                .show(ui, |ui| {
+                    changed |= self.s.rays.ui(ui, nf, nw);
+                });
             if changed {
                 self.request_layout();
             }
@@ -3309,6 +3330,7 @@ impl App {
                 combo_path: None,
                 layout_data: None,
                 overlay: Overlay::default(),
+                rays_open: false,
                 agf_names: Default::default(),
                 combo_view: Default::default(),
                 font,
@@ -4377,6 +4399,13 @@ impl App {
         match step {
             Step::Open | Step::Done => {}
             Step::Analysis => self.run_all(false),
+            Step::Pop => {
+                // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
+                let cfg = AnaCfg::new("pop");
+                let id = self.add_pane(Kind::Analysis(cfg.clone()));
+                self.focus(id);
+                self.c.run(id, &cfg);
+            }
             Step::Catalog => {
                 if let Some(id) = self.pane_of(|k| matches!(k, Kind::Catalog)) {
                     self.focus(id);
@@ -4663,10 +4692,13 @@ impl App {
                 c.waves = vec![crate::sysset::WavePt::um(0.6328)];
                 c.primary = 1;
                 self.c.browser.combo = c;
-                // 参照の腕（RR）も重ねて描く
+                // 参照の腕（RR）も重ねて描く。光線は視野 1 の十字で、光線・書き出しの設定の欄も開いて見せる
                 self.c.overlay.items = ["TR", "RR"]
                     .map(|x| ("paths", x.to_string(), true))
                     .to_vec();
+                self.c.s.rays.fields = vec![1];
+                self.c.s.rays.fan = "cross".into();
+                self.c.rays_open = true;
                 let p = self.c.browser.combo.project();
                 self.c.build_combo(p);
                 self.c.combo_view.select(1);
