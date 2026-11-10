@@ -561,3 +561,17 @@ fn semi_auto_lens_surfaces_follow_the_rays() {
     .unwrap();
     assert!(c.surfaces.iter().all(|d| !d.semi_auto));
 }
+
+#[test]
+fn a_mirror_block_can_have_a_rect_aperture() {
+    // 四角い鏡（補ったカタログ品など）: 矩形の開口が鏡の面に付く
+    let s = project(
+        r#"[{"type": "stop"}, {"type": "air", "t": 10}, {"type": "mirror", "semi": 11.18, "aperture": {"type": "rect", "hx": 5, "hy": 10}}, {"type": "air", "t": 20}]"#,
+    );
+    let m = s.surfaces.iter().find(|q| q.mirror).unwrap();
+    assert!(
+        matches!(m.ap, lensbench_core::surface::Aperture::Rect { hx, hy, .. } if hx == 5.0 && hy == 10.0),
+        "{:?}",
+        m.ap
+    );
+}

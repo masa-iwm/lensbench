@@ -868,8 +868,9 @@ fn catalog_query(p: &Value) -> Result<lensbench_project::catalog_spec::CatalogQu
 pub fn user_catalog_edit(method: &str, params: &Value) -> Result<Value, CallError> {
     let f = || match method {
         "catalog_items" | "catalog_edit" => user_catalog(method, params),
+        "catalog_fill" => catalog_fill(params),
         m => Err(RpcErr::params(format!(
-            "{m} は catalog_items か catalog_edit"
+            "{m} は catalog_items・catalog_edit・catalog_fill"
         ))),
     };
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
@@ -1177,6 +1178,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         "catalog_add" | "catalog_items" | "catalog_edit" => {
             user_catalog(method, p).map(|v| (v, Vec::new()))
         }
+        // カタログの未完の品に厚さ・径を足し、補足のカタログ（ユーザーカタログ）に普通の品として保存
+        "catalog_fill" => catalog_fill(p).map(|v| (v, Vec::new())),
         // 解析のサブコマンドの引数の一覧（名前・型・既定・説明。GUI の設定欄）
         "analysis_args" => {
             let cmd = p["cmd"]
@@ -1197,6 +1200,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         "swap" => swap(p).map(|v| (v, Vec::new())),
         // モンテカルロ公差
         "tolerance" => tolerance(p).map(|v| (v, Vec::new())),
+        // ズーム軌跡（GUI のズームのパネル）
+        "zoom" => zoom(p).map(|v| (v, Vec::new())),
         "" => Err(RpcErr {
             code: -32600,
             msg: "method がない".into(),
@@ -1306,6 +1311,9 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
     let m = p
         .as_object()
         .ok_or_else(|| RpcErr::params("params はオブジェクト"))?;
+    if m.get("cmd").and_then(Value::as_str) == Some("coatings") {
+        return coatings_loaded(m);
+    }
     let argv = analysis_argv(m, &spec.file).map_err(RpcErr::params)?;
     let cli = crate::parse_cli(&argv).map_err(|e| RpcErr::params(e.render().to_string()))?;
     let mut cmd = cli.cmd;
@@ -1340,6 +1348,42 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
         out["state"] = json!(spec.state);
     }
     Ok(out)
+}
+
+/// analyze の coatings: 読み込んだ系（今の構成・状態）の膜の境界（CLI の coatings の 1 構成分。.zmx でなくてもよい）。
+/// `table` で実測表・モデル（LBCT・LBCM）を足せる
+fn coatings_loaded(m: &Map<String, Value>) -> Result<Value, RpcErr> {
+    let (s, _) = current()?;
+    let mut tables = Vec::new();
+    match m.get("table") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(t)) => tables.push(check_path(Path::new(t), false)?),
+        Some(Value::Array(a)) => {
+            for t in a {
+                let t = t
+                    .as_str()
+                    .ok_or_else(|| RpcErr::params("table はパスの並び"))?;
+                tables.push(check_path(Path::new(t), false)?);
+            }
+        }
+        Some(_) => return Err(RpcErr::params("table はパスの並び")),
+    }
+    if let Some(k) = m
+        .keys()
+        .find(|k| !["cmd", "table", "json"].contains(&k.as_str()))
+    {
+        return Err(RpcErr::params(format!(
+            "coatings の引数 {k} は無い（table だけ）"
+        )));
+    }
+    let c = crate::coat_interfaces(&s, &tables)?;
+    Ok(json!({
+        "coating_file_path": s.coating_file.as_ref().map(|p| p.display().to_string()),
+        "wavelengths_um": s.wavelengths,
+        "interfaces": c.list,
+        "needs_table": c.needs,
+        "auto_coatings": c.auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
+    }))
 }
 
 /// 拡張のサブコマンドに渡す、読み込んだ系（[`ext::Served`]）
@@ -1598,6 +1642,77 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
             Ok(catalog_listing(path, &cat))
         }
     }
+}
+
+/// `catalog_fill`: カタログ `catalog` の未完の品 `item` に `thickness`・`diameter`（数か [幅, 高さ]、mm）を足して、
+/// 補足のカタログ `out`（ユーザーカタログ。無ければ作る）に同じ型番・同じメーカーの普通の品として書く。
+/// `from` は値の決め方（page・step・manual）。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
+/// 置けば、次の一覧では未完の品の代わりに並ぶ
+fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
+    use lensbench_project::{catalog_fill as cf, UserCatalog};
+    let s = |k: &str| {
+        p[k].as_str()
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .ok_or_else(|| RpcErr::params(format!("catalog_fill には {k}")))
+    };
+    let src = check_path(Path::new(s("catalog")?), false)?;
+    let out = check_path(Path::new(s("out")?), true)?;
+    let name = s("item")?;
+    let cat = UserCatalog::load(&src)?;
+    let it = cat
+        .items
+        .get(name)
+        .ok_or_else(|| RpcErr::app(format!("{} に項目 {name} がない", src.display())))?;
+    if !it.is_incomplete() {
+        return Err(RpcErr::app(format!("{name} は未完の品でない")));
+    }
+    let vendor = if cat.vendor.trim().is_empty() {
+        src.parent()
+            .and_then(|d| d.file_name())
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    } else {
+        cat.vendor.clone()
+    };
+    let today = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| cf::date_of_unix(d.as_secs()))
+        .unwrap_or_default();
+    let filled = cf::complete(
+        it,
+        p["thickness"].as_f64(),
+        p.get("diameter").filter(|v| !v.is_null()).cloned(),
+        cf::FillFrom::parse(p["from"].as_str().unwrap_or("")),
+        &today,
+    )
+    .map_err(RpcErr::params)?;
+    let mut fc = UserCatalog::load_or_new(&out)?;
+    if !fc.vendor.is_empty() && fc.vendor != vendor {
+        return Err(RpcErr::app(format!(
+            "{} はメーカー {} の補足のカタログ（{vendor} の品は別のファイルに）",
+            out.display(),
+            fc.vendor
+        )));
+    }
+    fc.vendor = vendor.clone();
+    // 膜の名前などを引けるよう、元のカタログの膜も写す
+    for (k, v) in &cat.coatings {
+        fc.coatings.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    fc.items.insert(name.to_string(), filled.clone());
+    if let Some(d) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+        lensbench_core::vfs::create_dir_all(d)
+            .map_err(|e| RpcErr::app(format!("{}: {e}", d.display())))?;
+    }
+    fc.save(&out)?;
+    Ok(json!({
+        "catalog": out.display().to_string(),
+        "item": name,
+        "vendor": vendor,
+        "specs": filled.specs,
+        "notes": filled.notes,
+    }))
 }
 
 fn is_project(f: &Path) -> bool {
@@ -2635,6 +2750,109 @@ fn tolerance(p: &Value) -> Result<Value, RpcErr> {
     *TOL_RUN.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let r = r?;
     let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+    out["notes"] = json!(notes);
+    Ok(out)
+}
+
+// ------------------------------------------------------------------------------------ ズーム軌跡
+
+/// ズーム軌跡（CLI の `zoom`）。params:
+/// - configs: 状態（プロジェクトなら状態の名前、.zmx なら構成の番号）の並び。省けばすべて
+/// - vars: 状態ごとに解くパラメータ。"G2.shift"・"G2.shift=-5:20" か {"name", "lo", "hi"}
+/// - efl か pmag: 状態ごとの目標の並び（数か null。状態の数だけ）。省けば目標なし
+/// - steps（0）・merit（"spot"）・reference（"centroid"）・rings（3）・iters（50）・tol（1e-8）
+///
+/// 読み込んだ後の値の変更（set・edit）は各状態の系にも当てる
+fn zoom(p: &Value) -> Result<Value, RpcErr> {
+    let (cur, spec) = current()?;
+    let mut notes = Vec::new();
+    let cfgs: Vec<Value> = match p.get("configs").and_then(Value::as_array) {
+        Some(a) if !a.is_empty() => a.clone(),
+        _ => {
+            let c = configs()?;
+            match c["states"].as_array() {
+                Some(st) if !st.is_empty() => st.clone(),
+                _ => (1..=c["cfgs"].as_u64().unwrap_or(1))
+                    .map(|k| json!(k))
+                    .collect(),
+            }
+        }
+    };
+    let systems = cfgs
+        .iter()
+        .map(|b| config_system(b, &cur, &spec, &mut notes))
+        .collect::<Result<Vec<_>, _>>()?;
+    let names: Vec<String> = cfgs
+        .iter()
+        .map(|b| b.as_str().map_or_else(|| b.to_string(), String::from))
+        .collect();
+    let vars = p
+        .get("vars")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| RpcErr::params("vars（解くパラメータの並び）がない"))?
+        .iter()
+        .map(|v| match v {
+            Value::String(s) => Ok(s.clone()),
+            Value::Object(o) => {
+                let name = o
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| RpcErr::params(format!("vars の {v} に name がない")))?;
+                let b = |k: &str| o.get(k).and_then(Value::as_f64).map(|x| x.to_string());
+                Ok(match (b("lo"), b("hi")) {
+                    (None, None) => name.to_string(),
+                    (lo, hi) => format!(
+                        "{name}={}:{}",
+                        lo.unwrap_or_default(),
+                        hi.unwrap_or_default()
+                    ),
+                })
+            }
+            _ => Err(RpcErr::params(format!(
+                "vars の {v} は文字列か {{name, lo, hi}}"
+            ))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let targets = |k: &str| -> Result<Option<String>, RpcErr> {
+        match p.get(k) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(|x| match x {
+                    Value::Null => Ok("-".to_string()),
+                    Value::Number(n) => Ok(n.to_string()),
+                    _ => Err(RpcErr::params(format!("{k} の {x} は数か null"))),
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(|v| Some(v.join(","))),
+            Some(x) => Err(RpcErr::params(format!("{k} は数（か null）の並び（{x}）"))),
+        }
+    };
+    let (efl, pmag) = (targets("efl")?, targets("pmag")?);
+    if efl.is_some() && pmag.is_some() {
+        return Err(RpcErr::params("efl と pmag は一方だけ"));
+    }
+    let str_of = |k: &str, d: &str| p.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
+    let a = crate::search_cmd::ZoomArgs {
+        file: spec.file.clone(),
+        glass_dir: Vec::new(),
+        lens_catalog: Vec::new(),
+        states: None,
+        vars,
+        efl,
+        pmag,
+        steps: opt_usize(p, "steps")?.unwrap_or(0),
+        merit: str_of("merit", "spot"),
+        reference: str_of("reference", "centroid"),
+        rings: opt_usize(p, "rings")?.unwrap_or(3),
+        iters: opt_usize(p, "iters")?.unwrap_or(50),
+        tol: p.get("tol").and_then(Value::as_f64).unwrap_or(1e-8),
+        json: true,
+        save: None,
+    };
+    let mut out = crate::search_cmd::zoom_systems(&systems, &names, &a).map_err(RpcErr::params)?;
     out["notes"] = json!(notes);
     Ok(out)
 }

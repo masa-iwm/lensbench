@@ -274,6 +274,10 @@ struct Core {
     oss: open_sysset::State,
     /// 組合せの要素をユーザーカタログに保存する窓
     cat_save: CatSave,
+    /// 未完のカタログ品を補う窓
+    fill: crate::fill::FillWin,
+    /// 未完のカタログ品を、行を選んだら裏で補う
+    auto_fill: crate::fill::AutoFill,
     /// 最適化のパネル
     opt: crate::optim_panel::OptPanel,
     /// 差し替え探索のパネルと、回したときの組合せの id
@@ -283,6 +287,7 @@ struct Core {
     swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
     /// モンテカルロ公差のパネル
     tol: crate::tol_panel::TolPanel,
+    zoom: crate::zoom_panel::ZoomPanel,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
     /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
@@ -299,8 +304,6 @@ pub struct App {
     /// 別の窓を開いたときの大きさ・位置（毎フレーム同じ値を渡す。今の値を渡し直すと、DPI の違うモニターへ
     /// 移したときに大きさの変換が往復して窓が暴れる）
     win_init: HashMap<u64, ([f32; 2], Option<[f32; 2]>)>,
-    /// 窓ごとの、拡大率の違うモニターへ移したときに戻す大きさ（0 は本体）
-    keep: HashMap<u64, crate::dpi::KeepSize>,
     /// 引きずっているタブと、最後のポインターの位置（本体の窓の座標）
     dragging_tab: Option<(u64, egui::Pos2)>,
     /// 画面の通し確認（--tour）
@@ -835,6 +838,7 @@ impl Core {
                     self.ld.insp.stale();
                 }
                 Tag::UserCatalog => self.cat_save.note = Some((e.to_string(), true)),
+                Tag::CatalogFill => self.fill.failed(e),
                 Tag::Optimize => {
                     self.opt.running = false;
                     self.opt.error = Some(e.to_string());
@@ -846,6 +850,10 @@ impl Core {
                 Tag::Tolerance => {
                     self.tol.running = false;
                     self.tol.error = Some(e.to_string());
+                }
+                Tag::Zoom => {
+                    self.zoom.running = false;
+                    self.zoom.error = Some(e.to_string());
                 }
                 _ => {}
             }
@@ -1073,6 +1081,25 @@ impl Core {
                     self.refresh_catalog();
                 }
             }
+            Tag::CatalogFill => {
+                self.fill.done(&v);
+                text = trf(
+                    "{} {} を補って {} に保存",
+                    &[
+                        &v["vendor"].as_str().unwrap_or_default(),
+                        &v["item"].as_str().unwrap_or_default(),
+                        &v["catalog"].as_str().unwrap_or_default(),
+                    ],
+                );
+                // 補足のカタログのフォルダをレンズのフォルダに足し、一覧を読み直す
+                if let Some(d) = crate::fill::fill_dir() {
+                    let d = d.display().to_string();
+                    if !self.s.lens_dirs.contains(&d) {
+                        self.s.lens_dirs.push(d);
+                    }
+                }
+                self.refresh_catalog();
+            }
             Tag::Configs => {
                 self.overlay.update(&v);
                 return;
@@ -1107,6 +1134,15 @@ impl Core {
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
                 self.tol.result = Some(v);
+            }
+            Tag::Zoom => {
+                self.zoom.running = false;
+                self.zoom.error = None;
+                text = trf(
+                    "ズーム軌跡 完了（{} ms）",
+                    &[&fmt_num((ms * 10.0).round() / 10.0)],
+                );
+                self.zoom.result = Some(v);
             }
         }
         self.status = Status { text, error: false };
@@ -1208,6 +1244,7 @@ impl Core {
             Kind::Optimize => self.optimize_ui(ui),
             Kind::Swap => self.swap_ui(ui),
             Kind::Tolerance => self.tolerance_ui(ui),
+            Kind::Zoom => self.zoom_ui(ui),
             Kind::SysSettings => self.sysset_ui(ui),
             Kind::Analysis(cfg) => self.analysis_ui(ui, id, cfg),
         }
@@ -1332,6 +1369,31 @@ impl Core {
     }
 
     /// モンテカルロ公差
+    /// ズーム軌跡を解ける状態（.zmx の構成か、プロジェクトの状態）
+    fn zoom_cands(&self) -> Vec<crate::zoom_panel::Cand> {
+        self.overlay
+            .items
+            .iter()
+            .filter(|x| x.0 == "cfgs" || x.0 == "states")
+            .map(|x| (x.0 == "cfgs", x.1.clone()))
+            .collect()
+    }
+
+    fn zoom_ui(&mut self, ui: &mut Ui) {
+        if self.summary.is_none() {
+            ui.add_space(8.0);
+            ui.label(tr("系を開くとズーム軌跡を解けます。"));
+            return;
+        }
+        let cands = self.zoom_cands();
+        let units: Vec<String> = self.ld_units.iter().map(|u| u.name.clone()).collect();
+        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.zoom, &cands, &units) {
+            self.zoom.running = true;
+            self.zoom.result = None;
+            self.worker.send(Tag::Zoom, "zoom", p);
+        }
+    }
+
     fn tolerance_ui(&mut self, ui: &mut Ui) {
         use crate::tol_panel::{self as tp, Action};
         if self.summary.is_none() {
@@ -2405,7 +2467,7 @@ impl Core {
             return;
         }
         let r = &b.lenses[i];
-        if r.error.is_some() {
+        if !r.placeable() {
             self.browser.preview = Some((i, combo::LayoutData::default()));
             return;
         }
@@ -3003,6 +3065,45 @@ impl Core {
         }
     }
 
+    /// 未完のカタログ品を補う窓（品を足そうとしたら開く）。保存は下書きの worker
+    fn fill_window(&mut self, ctx: &egui::Context) {
+        if let Some(r) = self.browser.fill_req.take() {
+            self.auto_fill.forget(&r.part);
+            self.fill.start(r);
+        }
+        if let Some(e) = self.auto_fill.take_timing_error() {
+            self.status = Status {
+                text: e,
+                error: true,
+            };
+        }
+        // 補う窓が開いている間は裏で読まない
+        if !self.fill.open {
+            let sel = self
+                .browser
+                .lens_sel
+                .and_then(|i| self.browser.lenses.get(i))
+                .cloned();
+            match self.auto_fill.tick(ctx, sel.as_ref()) {
+                Some(crate::fill::AutoOut::Save(p)) => {
+                    self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+                }
+                #[cfg(windows)]
+                Some(crate::fill::AutoOut::Show(b)) => {
+                    let (r, child, text) = *b;
+                    self.fill.adopt(r, child, text);
+                }
+                None => {}
+            }
+        }
+        if !self.fill.open {
+            return;
+        }
+        if let Some(p) = self.fill.window(ctx) {
+            self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+        }
+    }
+
     fn help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.help_open;
         egui::Window::new(tr("キーボード操作"))
@@ -3208,6 +3309,7 @@ fn add_kinds() -> Vec<Kind> {
         Kind::Optimize,
         Kind::Swap,
         Kind::Tolerance,
+        Kind::Zoom,
     ];
     v.extend(
         layout::analyses()
@@ -3317,9 +3419,12 @@ impl App {
                 mc: Default::default(),
                 oss: Default::default(),
                 cat_save: CatSave::default(),
+                fill: Default::default(),
+                auto_fill: Default::default(),
                 opt: crate::optim_panel::OptPanel::new(),
                 swap: Default::default(),
                 tol: Default::default(),
+                zoom: Default::default(),
                 swap_ids: Vec::new(),
                 swap_file: None,
                 rev: 0,
@@ -3346,7 +3451,6 @@ impl App {
             windows: lay.windows,
             palette: Palette::default(),
             win_init: HashMap::new(),
-            keep: HashMap::new(),
             dragging_tab: None,
             tour: None,
             #[cfg(target_arch = "wasm32")]
@@ -3581,7 +3685,6 @@ impl App {
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
                         self.win_init.remove(&id);
-                        self.keep.remove(&id);
                         self.dock.push_to_focused_leaf(w.pane);
                     }
                 }
@@ -3772,6 +3875,7 @@ impl App {
                 Kind::Optimize => "add panel optimize optimization merit function dls".into(),
                 Kind::Swap => "add panel swap search catalog lens replace".into(),
                 Kind::Tolerance => "add panel tolerance monte carlo sensitivity".into(),
+                Kind::Zoom => "add panel zoom cam track states focal length".into(),
                 Kind::SysSettings => {
                     "add panel system settings aperture field wavelength aiming".into()
                 }
@@ -3789,6 +3893,7 @@ impl App {
                 Kind::Optimize => "optimize".into(),
                 Kind::Swap => "swap".into(),
                 Kind::Tolerance => "tolerance".into(),
+                Kind::Zoom => "zoom".into(),
                 Kind::SysSettings => "settings".into(),
             };
             push(
@@ -4297,7 +4402,6 @@ impl App {
             let pid = w.pane.id;
             let size = w.size;
             let (pane, pos, wsize) = (&mut w.pane, &mut w.pos, &mut w.size);
-            let keep = self.keep.entry(pid).or_default();
             ctx.show_viewport_immediate(vid, b, |ctx, class| {
                 let mut body = |ui: &mut Ui, c: &mut Core, ret: &mut bool| {
                     ui.horizontal(|ui| {
@@ -4322,7 +4426,6 @@ impl App {
                     }
                 } else {
                     egui::CentralPanel::default().show(ctx, |ui| body(ui, c, &mut ret));
-                    crate::dpi::keep_size(ctx, keep);
                     let (close, rect) =
                         ctx.input(|i| (i.viewport().close_requested(), i.viewport().outer_rect));
                     if close {
@@ -4347,7 +4450,6 @@ impl App {
                 t.blocked.remove(&w.pane.id);
             }
             self.win_init.remove(&w.pane.id);
-            self.keep.remove(&w.pane.id);
             self.dock.push_to_focused_leaf(w.pane);
         }
         // 窓を出している間に足された窓（パネルの右クリックなど）
@@ -4404,6 +4506,80 @@ impl App {
         match step {
             Step::Open | Step::Done => {}
             Step::Analysis => self.run_all(false),
+            Step::States => {
+                // 干渉計の組合せに状態を足し、状態だけの系の値（物体距離）と経路（参照の腕）にする
+                let c = &mut self.c.browser.combo;
+                c.states = vec!["参照".into()];
+                c.state = Some("参照".into());
+                let mut s = c.snap();
+                s.object_distance = Some(200.0);
+                c.state_sys.insert("参照".into(), s);
+                c.state_path.insert("参照".into(), "RR".into());
+                let p = c.project();
+                self.c.build_combo(p);
+                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
+            Step::Coatings => {
+                // 膜（フィルタ）の定義: バンドパスを定義して BS の膜にし、系の設定の膜の欄を開いて見せる
+                let c = &mut self.c.browser.combo;
+                c.coatings.insert(
+                    "BP633".into(),
+                    lensbench_project::filter::CoatSpec::Bandpass {
+                        center_nm: 633.0,
+                        fwhm_nm: 10.0,
+                        ideal: lensbench_project::filter::Ideal {
+                            t: 0.9,
+                            od: 4.0,
+                            width_nm: None,
+                            neff: 2.0,
+                            absorptive: false,
+                        },
+                    },
+                );
+                let p = c.project();
+                self.c.build_combo(p);
+                crate::coat_defs::focus(ctx);
+                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
+            Step::Zoom => {
+                // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
+                self.c
+                    .open(Path::new("examples/projects/P17_zoom_three_groups.json"));
+                let z = &mut self.c.zoom;
+                z.vars = ["G2.shift", "G3.shift"]
+                    .map(|n| crate::zoom_panel::VarRow {
+                        name: n.into(),
+                        ..Default::default()
+                    })
+                    .to_vec();
+                z.steps = 2;
+                let cands: Vec<crate::zoom_panel::Cand> =
+                    [("wide", "140"), ("mid", "160"), ("tele", "175")]
+                        .map(|(n, t)| {
+                            z.states.insert(
+                                n.into(),
+                                crate::zoom_panel::StateRow {
+                                    on: true,
+                                    target: t.into(),
+                                },
+                            );
+                            (false, n.to_string())
+                        })
+                        .to_vec();
+                match z.params(&cands) {
+                    Ok(p) => {
+                        z.running = true;
+                        self.c.worker.send(Tag::Zoom, "zoom", p);
+                    }
+                    Err(e) => {
+                        self.c.status = Status {
+                            text: e,
+                            error: true,
+                        }
+                    }
+                }
+                self.exec(ctx, Cmd::FocusKind(Kind::Zoom));
+            }
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
                 let cfg = AnaCfg::new("pop");
@@ -4615,6 +4791,12 @@ impl App {
                 let t = &mut self.c.tol;
                 t.trials = 30;
                 t.preset = "precision".into();
+                // カタログの玉の公差: どのメーカーも中心厚 ±0.05 mm、外径 10 mm 未満は焦点距離 ±1%
+                t.catalog_tols = crate::tol_catalog::from_json(&serde_json::json!({
+                    "*": { "thickness": 0.05, "rules": [{ "dia_lt": 10, "focal_rel": 0.01 }] }
+                }))
+                .unwrap_or_default();
+                t.percentiles = "50, 90, 98".into();
                 t.opt.vars = vec![crate::optim_panel::VarRow {
                     name: format!("{}.t", img.saturating_sub(1)),
                     ..Default::default()
@@ -4747,7 +4929,10 @@ impl eframe::App for App {
         }
         while let Some(d) = self.c.preview.poll() {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
-            if matches!(d.tag, Tag::Glasses | Tag::Lenses | Tag::UserCatalog) {
+            if matches!(
+                d.tag,
+                Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill
+            ) {
                 // 失敗しても読み込み中は終わる
                 match d.tag {
                     Tag::Glasses => self.c.browser.glasses_pending = false,
@@ -4782,7 +4967,6 @@ impl eframe::App for App {
         }
         self.c.flush_set();
         self.c.auto_build();
-        crate::dpi::keep_size(ctx, self.keep.entry(0).or_default());
         // 窓に落としたファイル
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
@@ -4929,6 +5113,7 @@ impl eframe::App for App {
         if self.c.cat_save.open {
             self.c.cat_save_window(ctx);
         }
+        self.c.fill_window(ctx);
         self.save_layout_window(ctx);
         self.tour_frame(ctx);
     }

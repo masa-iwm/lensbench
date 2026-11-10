@@ -289,6 +289,115 @@ const AFOCAL_UNITS: [AfocalUnit; 6] = [
     AfocalUnit::Degrees,
 ];
 
+/// 状態ごとに変えられる系の値（プロジェクトの状態の `project`）。絞りの位置・硝材カタログは全部の状態で共通
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SysSnap {
+    pub aperture: ApKind,
+    pub ap_value: f64,
+    pub epd: f64,
+    pub field_kind: FieldKind,
+    pub field_solve: FieldSolve,
+    pub fields: Vec<FieldPt>,
+    pub waves: Vec<WavePt>,
+    pub primary: usize,
+    pub object_distance: Option<f64>,
+    pub telecentric: bool,
+    pub aiming: Aiming,
+    pub afocal: Option<String>,
+}
+
+impl Default for SysSnap {
+    fn default() -> Self {
+        Combo::default().snap()
+    }
+}
+
+impl Combo {
+    /// 状態ごとに変えられる系の値
+    pub fn snap(&self) -> SysSnap {
+        SysSnap {
+            aperture: self.aperture,
+            ap_value: self.ap_value,
+            epd: self.epd,
+            field_kind: self.field_kind,
+            field_solve: self.field_solve.clone(),
+            fields: self.fields.clone(),
+            waves: self.waves.clone(),
+            primary: self.primary,
+            object_distance: self.object_distance,
+            telecentric: self.telecentric,
+            aiming: self.aiming,
+            afocal: self.afocal.clone(),
+        }
+    }
+
+    /// [`Self::snap`] の値を当てる
+    pub fn apply_snap(&mut self, s: &SysSnap) {
+        self.aperture = s.aperture;
+        self.ap_value = s.ap_value;
+        self.epd = s.epd;
+        self.field_kind = s.field_kind;
+        self.field_solve = s.field_solve.clone();
+        self.fields = s.fields.clone();
+        self.waves = s.waves.clone();
+        self.primary = s.primary;
+        self.object_distance = s.object_distance;
+        self.telecentric = s.telecentric;
+        self.aiming = s.aiming;
+        self.afocal = s.afocal.clone();
+    }
+
+    /// 状態 n の系の値を基本と比べ、違う項目をプロジェクトの状態の `project` の形で返す
+    pub fn state_project(&self, n: &str) -> serde_json::Map<String, Value> {
+        let mut out = serde_json::Map::new();
+        if let Some(s) = self.state_sys.get(n) {
+            let mut a = json!({});
+            self.put_settings(&mut a);
+            let mut t = self.clone();
+            t.apply_snap(s);
+            let mut b = json!({});
+            t.put_settings(&mut b);
+            for k in [
+                "wavelengths",
+                "primary",
+                "aperture",
+                "fields",
+                "object_distance",
+                "telecentric",
+                "aiming",
+                "afocal",
+            ] {
+                if a.get(k) == b.get(k) {
+                    continue;
+                }
+                // 書かない項目は既定（無限遠・テレセントリックなし・エイミングなし・アフォーカルなし）
+                let x = b.get(k).cloned().unwrap_or(match k {
+                    "telecentric" => json!(false),
+                    "aiming" => json!("off"),
+                    _ => Value::Null,
+                });
+                out.insert(k.into(), x);
+            }
+        }
+        if let Some(p) = self.state_path.get(n) {
+            let p: String = p
+                .chars()
+                .map(|c| c.to_ascii_uppercase())
+                .filter(|c| matches!(c, 'T' | 'R'))
+                .collect();
+            let base: String = self.path.chars().map(|c| c.to_ascii_uppercase()).collect();
+            if p != base {
+                out.insert(
+                    "path".into(),
+                    if p.is_empty() { Value::Null } else { json!(p) },
+                );
+            }
+        }
+        out
+    }
+}
+
 /// 絞りがどこにあるか
 #[derive(Debug, Clone, PartialEq)]
 pub enum StopAt {
@@ -455,9 +564,51 @@ impl Combo {
     }
 }
 
-/// 系の設定の画面
-/// 系の設定の欄。cats は硝材のフォルダにある AGF の名前（硝材カタログの候補）
+/// 系の設定の欄。cats は硝材のフォルダにある AGF の名前（硝材カタログの候補）。状態を選んでいれば、
+/// その状態だけの値（開口・視野・波長・物体距離・エイミング・アフォーカル）にもできる
 pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
+    let Some(n) = c.active_state().map(str::to_string) else {
+        body(ui, c, cats);
+        return;
+    };
+    let weak = theme::weak_text(ui.visuals());
+    let mut own = c.state_sys.contains_key(&n);
+    let r = ui
+        .checkbox(&mut own, trf("状態 {} だけの値にする", &[&n]))
+        .on_hover_text(tr(
+            "開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）",
+        ));
+    if r.changed() {
+        if own {
+            c.state_sys.insert(n.clone(), c.snap());
+        } else {
+            c.state_sys.remove(&n);
+        }
+    }
+    let Some(snap) = c.state_sys.get(&n).cloned() else {
+        ui.label(
+            RichText::new(trf("状態 {} も基本の値を使う", &[&n]))
+                .small()
+                .color(weak),
+        );
+        ui.add_space(4.0);
+        body(ui, c, cats);
+        return;
+    };
+    // 状態の値を当てた写しで編集し、状態の値と、ほかの（共通の）項目の変更を戻す
+    let base = c.snap();
+    let mut t = c.clone();
+    t.apply_snap(&snap);
+    body(ui, &mut t, cats);
+    let edited = t.snap();
+    t.apply_snap(&base);
+    t.state_sys.insert(n, edited);
+    if t != *c {
+        *c = t;
+    }
+}
+
+fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let weak = theme::weak_text(ui.visuals());
     let id = ui.id().with("sysset");
     // 開口
@@ -782,6 +933,24 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         for p in probs {
             ui.label(RichText::new(format!("⚠ {p}")).color(Color32::from_rgb(220, 80, 60)));
         }
+    }
+    // 膜（フィルタ）の定義（プロジェクトの coatings）
+    ui.add_space(6.0);
+    let head = if c.coatings.is_empty() {
+        tr("膜（フィルタ）の定義").to_string()
+    } else {
+        format!("{} ({})", tr("膜（フィルタ）の定義"), c.coatings.len())
+    };
+    // 通し確認では開いて見せる（[`crate::coat_defs::focus`]）
+    let focus = crate::coat_defs::take_focus(ui.ctx());
+    let r = egui::CollapsingHeader::new(RichText::new(head).strong())
+        .id_salt(id.with("coat_defs"))
+        .open(focus.then_some(true))
+        .show(ui, |ui| {
+            crate::coat_defs::ui(ui, &mut c.coatings);
+        });
+    if focus {
+        r.header_response.scroll_to_me(Some(egui::Align::Min));
     }
 }
 

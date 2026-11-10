@@ -1,0 +1,54 @@
+commit c7d1da09d08e95049a464306d35d4ca73750166b
+Author: insanedps <38654554+insanedps@users.noreply.github.com>
+Date:   Fri Oct 30 13:28:32 2026 +0200
+
+    On Windows, stop a dragged window bouncing between mixed-DPI monitors
+    
+    While the window is in a live move, apply the rect suggested by
+    WM_DPICHANGED instead of the conservative rect. The conservative rect
+    can land back on the monitor being left, which sends another
+    WM_DPICHANGED and grows the window on every crossing.
+    
+    Same approach as rust-windowing/winit#4341 (merged) and #4694.
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/src/platform_impl/windows/event_loop.rs b/src/platform_impl/windows/event_loop.rs
+index b490a6f..b0f1488 100644
+--- a/src/platform_impl/windows/event_loop.rs
++++ b/src/platform_impl/windows/event_loop.rs
+@@ -2307,8 +2307,12 @@ unsafe fn public_window_callback_inner(
+                 }
+             }
+ 
+-            let new_outer_rect: RECT;
+-            {
++            let new_outer_rect: RECT = if dragging_window {
++                // During a live drag, use the rect Windows suggests. The conservative rect below
++                // can land back on the monitor being left, which sends another WM_DPICHANGED and
++                // grows the window on every crossing (rust-windowing/winit#4341, #4694).
++                suggested_rect
++            } else {
+                 let suggested_ul =
+                     (suggested_rect.left + margin_left, suggested_rect.top + margin_top);
+ 
+@@ -2351,7 +2355,7 @@ unsafe fn public_window_callback_inner(
+                 let new_dpi_monitor = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONULL) };
+                 let conservative_rect_monitor =
+                     unsafe { MonitorFromRect(&conservative_rect, MONITOR_DEFAULTTONULL) };
+-                new_outer_rect = if conservative_rect_monitor == new_dpi_monitor {
++                if conservative_rect_monitor == new_dpi_monitor {
+                     conservative_rect
+                 } else {
+                     let get_monitor_rect = |monitor| {
+@@ -2404,8 +2408,8 @@ unsafe fn public_window_callback_inner(
+                     }
+ 
+                     conservative_rect
+-                };
+-            }
++                }
++            };
+ 
+             unsafe {
+                 SetWindowPos(
