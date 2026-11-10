@@ -31,6 +31,8 @@ mod palette;
 mod plot_tools;
 mod plots;
 mod portable;
+#[cfg(any(target_arch = "wasm32", test))]
+mod remote_frame;
 mod surf_edit;
 mod swap_panel;
 mod sysset;

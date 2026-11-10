@@ -822,8 +822,6 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？	Delete all loaded files and user catalogs kept in the browser?
 カタログのファイルをダウンロードする	Download the catalog file
 別のタブに出す	Open in a new browser tab
-ページの中に浮かせる	Float inside the page
-ブラウザが別のタブを開くのを止めました（ポップアップを許すと、解析のパネルを別のタブに出せます）。本体の中の窓に出します	The browser blocked the new tab (allow pop-ups to open analysis panels in their own tabs). Showing it as a window inside the page instead
 元のタブに戻す	Back to the main tab
 元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。	The main tab was closed, so this panel can no longer compute. Close this tab and reopen the main page.
 元のタブを待っています…	Waiting for the main tab…
@@ -1170,3 +1168,6 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 組合せ（開くと組合せに戻る）	Combinations (open as a combination)
 面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる	Create lenses/groups (zoom, focus groups, …) from surface ranges and place mechanical parts. The range starts at the selected surface
 ＋ 玉・群・機構部品…	+ Lenses, groups, mechanics…
+ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します	The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page
+元のタブを閉じたので、このパネルは使えません。このタブを閉じてください。	The original tab was closed, so this panel cannot be used. Please close this tab.
+別の窓に出す	Move to another window
