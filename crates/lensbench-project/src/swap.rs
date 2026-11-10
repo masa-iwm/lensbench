@@ -122,6 +122,23 @@ pub struct SwapSpec {
     /// 変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で 4.3 倍、上位 1000 組は同じ組）
     #[serde(default = "fd")]
     pub jac: String,
+    /// 粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で
+    /// 最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない
+    #[serde(default)]
+    pub prescreen: Option<Prescreen>,
+}
+
+/// 粗いふるいの設定（[`SwapSpec::prescreen`]）
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Prescreen {
+    /// 一段目の評価関数のリング数（`rings` より小さく。実カタログ 5.6 万組で、リング 3 に対して 2 なら上位 1000 組が
+    /// 同じ顔ぶれ、1 なら上位 10 組の最悪が 438 位）
+    #[serde(default = "two")]
+    pub rings: usize,
+    /// 二段目に回す組の数（一段目の評価関数の小さい順。評価できなかった組は回さない）
+    #[serde(default = "thousand")]
+    pub keep: usize,
 }
 
 fn spot() -> String {
@@ -132,6 +149,12 @@ fn centroid() -> String {
 }
 fn three() -> usize {
     3
+}
+fn two() -> usize {
+    2
+}
+fn thousand() -> usize {
+    1000
 }
 fn fd() -> String {
     "fd".into()
@@ -275,6 +298,11 @@ impl<'a> SwapSearch<'a> {
         if spec.slots.is_empty() {
             return Err("差し替える所がない".into());
         }
+        if let Some(pr) = &spec.prescreen {
+            if pr.rings == 0 || pr.keep == 0 {
+                return Err("prescreen の rings・keep は 1 以上".into());
+            }
+        }
         let merit = match spec.merit.to_ascii_lowercase().as_str() {
             "spot" => DefaultMerit::Spot,
             "wavefront" | "wfe" => DefaultMerit::Wavefront,
@@ -409,6 +437,11 @@ impl<'a> SwapSearch<'a> {
 
     /// [`Self::problem`] と、像の項（既定の評価関数）の数
     fn problem_n(&self, i: usize) -> Result<(System, Problem, usize), String> {
+        self.problem_rings(i, self.spec.rings)
+    }
+
+    /// [`Self::problem_n`] の評価関数のリング数を rings にしたもの
+    fn problem_rings(&self, i: usize, rings: usize) -> Result<(System, Problem, usize), String> {
         let p = self.project(i)?;
         let look = |v: &str, q: &str| self.cat.zmx(v, q);
         let env = Env {
@@ -476,7 +509,7 @@ impl<'a> SwapSearch<'a> {
             }
             pr.vars.push(var);
         }
-        pr.add_default(self.merit, self.spec.rings, self.reference);
+        pr.add_default(self.merit, rings, self.reference);
         let n_image = pr.terms.len();
         if let Some(t) = self.spec.efl {
             let w: f64 = pr.terms.iter().map(|t| t.weight).sum();
@@ -577,6 +610,51 @@ impl<'a> SwapSearch<'a> {
 
     fn optimize(&self, i: usize) -> Result<Value, String> {
         let (s, pr0, n_image) = self.problem_n(i)?;
+        let (start, pr, r, names) = self.best_start(pr0)?;
+        self.report(&s, n_image, start, pr, r, names)
+    }
+
+    /// 粗いふるいの評価関数（リング数 `prescreen.rings` で最適化した値。評価できなければ None）
+    fn coarse_merit(&self, i: usize, rings: usize) -> Option<f64> {
+        let (_, pr0, _) = self.problem_rings(i, rings).ok()?;
+        let (_, _, r, _) = self.best_start(pr0).ok()?;
+        r.merit.is_finite().then_some(r.merit)
+    }
+
+    /// 二段目（今の評価）に回す組の番号（小さい順）。粗いふるいがなければ全組。threads は [`Self::run`] と同じ
+    pub fn screened(&self, threads: Option<usize>) -> Vec<usize> {
+        let idx: Vec<usize> = (0..self.count()).collect();
+        let Some(pre) = &self.spec.prescreen else {
+            return idx;
+        };
+        let m = par::with_threads_or_outer(threads, || {
+            par::map(&idx, |&i| self.coarse_merit(i, pre.rings))
+        });
+        let mut ok: Vec<(f64, usize)> = m
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.map(|v| (v, i)))
+            .collect();
+        ok.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut keep: Vec<usize> = ok.into_iter().take(pre.keep).map(|x| x.1).collect();
+        keep.sort_unstable();
+        keep
+    }
+
+    /// 出発点ごとに最適化して、評価関数の最も小さい解: (出発点の番号, 問題, 結果, 変数の (名前, 状態))
+    #[allow(clippy::type_complexity)]
+    fn best_start(
+        &self,
+        pr0: Problem,
+    ) -> Result<
+        (
+            usize,
+            Problem,
+            optim::DlsResult,
+            Vec<(String, Option<usize>)>,
+        ),
+        String,
+    > {
         let o = DlsOpts {
             max_iter: self.spec.iters,
             ..Default::default()
@@ -640,6 +718,19 @@ impl<'a> SwapSearch<'a> {
         let Some((start, pr, r)) = best else {
             return Err(last_err.unwrap_or_else(|| "出発点がない".into()));
         };
+        Ok((start, pr, r, names))
+    }
+
+    /// 最適化の結果の JSON
+    fn report(
+        &self,
+        s: &System,
+        n_image: usize,
+        start: usize,
+        pr: Problem,
+        r: optim::DlsResult,
+        names: Vec<(String, Option<usize>)>,
+    ) -> Result<Value, String> {
         let mut img = pr.clone();
         img.terms.truncate(n_image);
         let image_merit = img.merit(&r.x).map_err(|e| e.to_string())?;
@@ -720,7 +811,8 @@ impl<'a> SwapSearch<'a> {
             progress,
             cancel: None,
         };
-        runs::run(self.count(), 0, &o, |i, _| Ok(self.eval(i).to_string()))
+        let idx = self.screened(threads);
+        runs::run(idx.len(), 0, &o, |j, _| Ok(self.eval(idx[j]).to_string()))
             .map_err(|e| e.to_string())?;
         let (_, rows) = runs::read_results(path).map_err(|e| e.to_string())?;
         let mut v = rows
@@ -734,7 +826,7 @@ impl<'a> SwapSearch<'a> {
     /// すべての組を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
     /// threads は [`par::with_threads_or_outer`] と同じ（None は外の指定を引き継ぐ）
     pub fn run(&self, threads: Option<usize>) -> Vec<Value> {
-        let idx: Vec<usize> = (0..self.count()).collect();
+        let idx = self.screened(threads);
         let mut v = par::with_threads_or_outer(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);
         v

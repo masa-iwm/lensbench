@@ -854,3 +854,6 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 図の半径	Drawn radius
 列…	Columns…
 一覧に出す列を選びます	Choose the columns shown in the list
+粗いふるい	Coarse prescreen
+全組を少ないリング数で最適化し、評価関数の小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）	Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)
+残す組	Keep
