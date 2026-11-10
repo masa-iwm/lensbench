@@ -43,6 +43,31 @@ pub fn analyses() -> Vec<(&'static str, &'static str, bool)> {
     v
 }
 
+/// 解析の説明（ツールチップ、日本語。表示は tr で）。無ければ None
+pub fn analysis_help(cmd: &str) -> Option<&'static str> {
+    Some(match cmd {
+        "spot" => "スポットダイアグラム: 像面での光線の位置と RMS・GEO 半径",
+        "mtf" => "回折 MTF: 周波数ごとの変調度（子午・球欠）。瞳関数の自己相関から",
+        "wavefront" => "波面収差: 主光線基準の OPD の地図と P-V・RMS [波]",
+        "zernike" => "Zernike 係数 [波]（波面を Zernike 多項式で当てはめた係数）",
+        "rms" => "RMS（スポット半径・波面・Strehl の近似）を視野・フォーカス・波長に対して",
+        "psf" => "回折 PSF: 瞳関数の DFT。強度は収差のない同じ瞳の中心を 1 とする",
+        "geo-mtf" => "幾何 MTF: 光線の位置の分布から求めた MTF",
+        "huygens-mtf" => "Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）",
+        "mtf-field" => "フィールド MTF: 正規化視野 0〜1 に対する MTF（周波数ごと）",
+        "mtf-focus" => "スルーフォーカス MTF: 像面をずらしたときの MTF",
+        "fringe" => "干渉縞（2 光束）: 2 つの構成か状態の光を重ねた縞",
+        "pop" => "簡易 POP: 光線から作った場を伝えた照度",
+        "rays" => "光線の表: 面ごとの交点・方向・光路長",
+        "coatings" => "膜の境界: 全構成の境界（膜・前後の媒質）と扱い",
+        "info" => "システムデータ: 焦点距離・F 値・瞳・像高など",
+        "elements" => "玉モード: 系を玉・鏡・座標ブレーク・空気間隔に分けて示す",
+        "ghost" => "ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比",
+        "mech-check" => "機構のケラレ: 機構部品の穴の外に出た光線の割合",
+        _ => return None,
+    })
+}
+
 /// 解析の表示名（今の言語）
 pub fn analysis_label(cmd: &str) -> String {
     analyses()
@@ -156,7 +181,7 @@ impl Pane {
         match &self.kind {
             Kind::System => tr("系").into(),
             Kind::Catalog => tr("カタログ").into(),
-            Kind::Layout => tr("組合せ").into(),
+            Kind::Layout => tr("レイアウト").into(),
             Kind::LensData => tr("レンズデータ").into(),
             Kind::MultiConfig => tr("多重構成").into(),
             Kind::Optimize => tr("最適化").into(),

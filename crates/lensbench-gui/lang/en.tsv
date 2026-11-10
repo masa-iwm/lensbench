@@ -116,7 +116,6 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 系を開くと解析できます。	Open a system to analyze it.
 系（.zmx・プロジェクト .json）	Systems (.zmx, project .json)
 終了	Quit
-組合せをプロジェクトとして保存…	Save combination as project…
 自動	Auto
 表	Table
 表示	View
@@ -183,7 +182,6 @@ Huygens MTF	Huygens MTF
 システムデータ	System data
 玉モード	Elements
 ゴースト	Ghosts
-{} に保存（開くときはレンズカタログのフォルダが要る）	Saved to {} (opening it needs the lens catalog folders)
 {} 面 · {} 視野 · {} 波長	{} surfaces · {} fields · {} wavelengths
 カタログレンズ {} 枚、うち {} 枚は読めない（{} ms）	{} catalog lenses, {} unreadable ({} ms)
 カタログレンズ {} 枚（{} ms）	{} catalog lenses ({} ms)
@@ -700,7 +698,7 @@ BS を通る順の透過 T・反射 R（足りない文字は各 BS の既定の
 光の進む向きが正。前の間隔に足し、後の間隔から引く	Positive along the light. Added to the gap before and subtracted from the gap after
 玉の群	Lens groups
 移動 	Shift 
-続く要素に同じ名前を付けると 1 つの群になる（役割・移動は組合せのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift under Groups in the combination panel)
+続く要素に同じ名前を付けると 1 つの群になる（役割・移動はレイアウトのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift under Groups in the Layout panel)
 群	Group
 面 	Surface 
 ＋ 群	+ Group
@@ -1107,3 +1105,56 @@ OS のタイトルバーを使う	Use the OS title bar
 位置も	Position too
 位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする	Also lock the position (drag, keys, decenter, tilt) and the air after
 位置もロックした要素の後の間隔は変えられない	The gap after an element locked with its position cannot change
+ドラッグで移動、Ctrl（Mac は ⌘）＋ホイールかピンチで拡大縮小、右ドラッグで囲んだ所を拡大、ダブルクリックで全体	Drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, right-drag a box to zoom in, double-click to fit
+全体	Fit
+全体を表示（Home・何も無い所のダブルクリックでも）	Fit all (also Home, or double-click an empty spot)
+全体を表示（ダブルクリックでも）	Fit all (also double-click)
+拡大	Zoom in
+縮小	Zoom out
+コピー ▾	Copy ▾
+保存 ▾	Save ▾
+テキスト（タブ区切り）	Text (tab-separated)
+表計算に貼れる形。表が複数あれば「# 名前」の行で区切る	Pastes into a spreadsheet. Multiple tables are separated by "# name" lines
+JSON…	JSON…
+CSV…	CSV…
+JSON	JSON
+CSV	CSV
+この解析を今の設定で計算する（F5 は開いている解析すべて）	Compute this analysis with the current settings (F5 computes all open analyses)
+ヘルプ	Help
+結果の JSON をそのまま見る（CLI の --json と同じ形）	Show the raw result JSON (same as the CLI --json)
+結果を図で見る（図の無い解析は表）	Show the result as a figure (a table if there is no figure)
+結果を表と木で見る	Show the result as tables and a tree
+マニュアル	Manual
+使い方の目次（ブラウザで開く）	Table of contents (opens in the browser)
+GUI の使い方	Using the GUI
+画面・パネルの使い方（図つき）	Screens and panels, with pictures
+解析と CLI	Analyses and CLI
+解析の種類と引数、出力の例	Analysis types, arguments and example outputs
+プロジェクトファイル	Project file
+ブロックで系を組む JSON（状態・群・BS）	Building systems from blocks in JSON (states, groups, beam splitters)
+評価関数・変数・DLS	Merit function, variables and DLS
+モンテカルロ公差の設定	Monte Carlo tolerancing settings
+スポットダイアグラム: 像面での光線の位置と RMS・GEO 半径	Spot diagram: ray positions on the image and RMS/GEO radius
+回折 MTF: 周波数ごとの変調度（子午・球欠）。瞳関数の自己相関から	Diffraction MTF: modulation per frequency (tangential/sagittal), from the pupil autocorrelation
+波面収差: 主光線基準の OPD の地図と P-V・RMS [波]	Wavefront: OPD map referenced to the chief ray, with P-V and RMS [waves]
+Zernike 係数 [波]（波面を Zernike 多項式で当てはめた係数）	Zernike coefficients [waves] (fit of the wavefront)
+RMS（スポット半径・波面・Strehl の近似）を視野・フォーカス・波長に対して	RMS (spot radius, wavefront, approximate Strehl) versus field, focus or wavelength
+回折 PSF: 瞳関数の DFT。強度は収差のない同じ瞳の中心を 1 とする	Diffraction PSF: DFT of the pupil function, normalized to the aberration-free peak
+幾何 MTF: 光線の位置の分布から求めた MTF	Geometric MTF: MTF from the ray position distribution
+Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface)
+フィールド MTF: 正規化視野 0〜1 に対する MTF（周波数ごと）	Field MTF: MTF versus normalized field 0–1 (per frequency)
+スルーフォーカス MTF: 像面をずらしたときの MTF	Through-focus MTF: MTF as the image plane shifts
+干渉縞（2 光束）: 2 つの構成か状態の光を重ねた縞	Two-beam fringes: overlap of two configurations or states
+簡易 POP: 光線から作った場を伝えた照度	Simple POP: irradiance of a field built from rays and propagated
+光線の表: 面ごとの交点・方向・光路長	Ray table: intersections, directions and optical path per surface
+膜の境界: 全構成の境界（膜・前後の媒質）と扱い	Coating boundaries: every boundary (coating, media) and how it is handled
+システムデータ: 焦点距離・F 値・瞳・像高など	System data: focal length, F-number, pupils, image height, etc.
+玉モード: 系を玉・鏡・座標ブレーク・空気間隔に分けて示す	Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps
+ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比	Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces
+機構のケラレ: 機構部品の穴の外に出た光線の割合	Mechanical vignetting: share of rays outside the mechanical apertures
+レイアウト	Layout
+今の組合せを消して、ファイルの組合せを開きますか？	Discard the current combination and open the one in the file?
+保存（Ctrl+S）	Save (Ctrl+S)
+名前を付けて保存…（Ctrl+Shift+S）	Save As… (Ctrl+Shift+S)
+組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに	A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file
+系（.zmx・.json）	System (.zmx / .json)

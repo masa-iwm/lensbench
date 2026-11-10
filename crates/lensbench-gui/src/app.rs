@@ -195,7 +195,8 @@ enum Cmd {
     Reload,
     RunAll,
     WriteZmx,
-    SaveCombo,
+    /// 保存（true は名前を付けて保存）
+    Save(bool),
     Add(Kind),
     Focus(u64),
     /// その種類のパネルを表に出す（無ければ足す）
@@ -245,8 +246,10 @@ struct Core {
     help_open: bool,
     save_layout_open: bool,
     layout_name: String,
-    /// 最後に組合せから作ったプロジェクト（保存用）
+    /// 最後に組合せから作ったプロジェクト
     built: Option<Value>,
+    /// 今の系（組合せ）を保存するファイル（開いた・保存したプロジェクトの .json。Ctrl+S の書き先）
+    doc_path: Option<PathBuf>,
     /// 最後に系を作った組合せ（今の組合せと違えば作り直す）
     built_combo: Option<Combo>,
     /// 組合せの系のファイル（開いている系が組合せか）
@@ -258,6 +261,8 @@ struct Core {
     /// レイアウトの光線・書き出しの設定の欄を次の描画で開く（通し確認）
     rays_open: bool,
     combo_view: combo::View,
+    /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
+    combo_sel_prev: Option<usize>,
     font: Option<String>,
     next_id: u64,
     /// パネルの中から頼まれた操作
@@ -428,18 +433,70 @@ fn agf_names_of_test_glass() {
     assert_eq!(v, w);
 }
 
+/// 組合せを同梱したプロジェクト（`gui.combo` に組合せ。系の計算は残りのプロジェクトで、CLI でも開ける）
+fn project_with_combo(c: &Combo) -> Value {
+    let mut v = c.project();
+    if let Ok(cv) = serde_json::to_value(c) {
+        v["gui"] = json!({ "combo": cv });
+    }
+    v
+}
+
+/// プロジェクトに同梱した組合せ
+fn combo_of_project(v: &Value) -> Option<Combo> {
+    serde_json::from_value(v.get("gui")?.get("combo")?.clone()).ok()
+}
+
 impl Core {
     fn new_id(&mut self) -> u64 {
         self.next_id += 1;
         self.next_id
     }
 
-    /// 系のファイル（.zmx・プロジェクトの .json）を開く
-    fn open(&mut self, p: &Path) {
+    /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
+    /// 組合せに戻して系を作る（#129）
+    fn open_doc(&mut self, p: &Path) {
         let file = p.display().to_string();
         self.s.recent.retain(|x| x != &file);
         self.s.recent.insert(0, file.clone());
         self.s.recent.truncate(10);
+        let is_json = p
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+        let v = is_json
+            .then(|| lensbench_core::vfs::read(p).ok())
+            .flatten()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+        {
+            if let Some(c) = v.as_ref().and_then(combo_of_project) {
+                if !self.browser.combo.picks.is_empty()
+                    && self.browser.combo != c
+                    && self.built_combo.as_ref() != Some(&self.browser.combo)
+                    && !crate::files::confirm(
+                        tr("開く"),
+                        tr("今の組合せを消して、ファイルの組合せを開きますか？"),
+                    )
+                {
+                    return;
+                }
+                self.browser.combo = c;
+                self.combo_view = combo::View::default();
+                self.doc_path = Some(p.to_path_buf());
+                self.build_combo(self.browser.combo.project());
+                return;
+            }
+        }
+        // 系ファイル（面の並び）だけはその場に上書きする。ブロックで書いたプロジェクトは、保存すると面の並びに
+        // なるので書き先を選ばせる
+        self.doc_path = v
+            .is_some_and(|v| v.get("blocks").is_none())
+            .then(|| p.to_path_buf());
+        self.open(p);
+    }
+
+    /// 系のファイル（.zmx・プロジェクトの .json）を読む
+    fn open(&mut self, p: &Path) {
+        let file = p.display().to_string();
         let params = self.load_params(p);
         self.worker.send(Tag::Load, "load", params);
         self.status = Status {
@@ -482,6 +539,7 @@ impl Core {
         self.built = None;
         self.built_combo = None;
         self.combo_path = None;
+        self.doc_path = None;
         self.layout_data = None;
         self.overlay = Overlay::default();
         self.load_stale = false;
@@ -518,7 +576,7 @@ impl Core {
             crate::files::FileDialog::new()
                 .add_filter(tr("系（.zmx・プロジェクト .json）"), &["zmx", "json"])
         }) {
-            self.open(&p);
+            self.open_doc(&p);
         }
     }
 
@@ -759,28 +817,75 @@ impl Core {
         }
     }
 
-    fn save_built(&mut self) {
-        let Some(v) = &self.built else { return };
-        if let Some(p) = crate::files::FileDialog::new()
-            .add_filter(tr("プロジェクト"), &["json"])
-            .set_file_name("combo.json")
-            .save_file()
-        {
-            let r =
-                lensbench_core::vfs::write(&p, serde_json::to_string_pretty(v).unwrap_or_default());
+    /// 保存（Ctrl+S）・名前を付けて保存（Ctrl+Shift+S）。組合せの系は組合せを同梱したプロジェクトの .json に、
+    /// 開いた系は系ファイル（.json）に書く。書き先は開いた・前に保存した .json（.zmx から開いた系・Web 版・
+    /// as_new は書き先を選ぶ）（#129）
+    fn save(&mut self, as_new: bool) {
+        let combo =
+            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        if !combo && self.file.is_none() {
+            return;
+        }
+        let keep = if as_new || cfg!(target_arch = "wasm32") {
+            None
+        } else {
+            self.doc_path.clone()
+        };
+        let path = match keep {
+            Some(p) => p,
+            None => {
+                let name = self
+                    .doc_path
+                    .as_ref()
+                    .or(if combo { None } else { self.file.as_ref() })
+                    .and_then(|f| f.file_stem())
+                    .map(|x| x.to_string_lossy().into_owned())
+                    .filter(|x| !x.is_empty())
+                    .or_else(|| {
+                        let n = self.browser.combo.name.trim();
+                        (combo && !n.is_empty()).then(|| n.to_string())
+                    })
+                    .unwrap_or_else(|| "project".into());
+                let Some(p) = crate::files::FileDialog::new()
+                    .add_filter(tr("プロジェクト"), &["json"])
+                    .set_file_name(format!("{name}.json"))
+                    .save_file()
+                else {
+                    return;
+                };
+                p
+            }
+        };
+        if combo {
+            let v = project_with_combo(&self.browser.combo);
+            let r = lensbench_core::vfs::write(
+                &path,
+                serde_json::to_string_pretty(&v).unwrap_or_default(),
+            );
             self.status = match r {
-                Ok(()) => Status {
-                    text: trf(
-                        "{} に保存（開くときはレンズカタログのフォルダが要る）",
-                        &[&p.display()],
-                    ),
-                    error: false,
-                },
+                Ok(()) => {
+                    self.doc_path = Some(path.clone());
+                    let f = path.display().to_string();
+                    self.s.recent.retain(|x| x != &f);
+                    self.s.recent.insert(0, f);
+                    self.s.recent.truncate(10);
+                    Status {
+                        text: trf("{} に保存", &[&path.display()]),
+                        error: false,
+                    }
+                }
                 Err(e) => Status {
-                    text: format!("{}: {e}", p.display()),
+                    text: format!("{}: {e}", path.display()),
                     error: true,
                 },
             };
+        } else {
+            self.doc_path = Some(path.clone());
+            self.worker.send(
+                Tag::Save,
+                "save",
+                json!({ "path": path.display().to_string() }),
+            );
         }
     }
 
@@ -1779,7 +1884,8 @@ impl Core {
             // 組合せの要素のパレット・図はその下に
             if let Some(d) = &self.layout_data {
                 let h = (ui.available_height() * 0.55).max(160.0);
-                combo::view_only(ui, d, h, accent);
+                let hl = self.ld.cur.map(|x| x.0);
+                combo::view_only(ui, d, h, accent, Some(egui::Id::new("open_layout_nav")), hl);
                 ui.separator();
             }
         }
@@ -1795,6 +1901,12 @@ impl Core {
             .filter(|x| x.0 == "paths")
             .map(|x| x.1.clone())
             .collect();
+        // 面の表で選んだ面を図で目立たせる（#125）
+        self.combo_view.hl_surf = if is_combo {
+            self.ld.cur.map(|x| x.0)
+        } else {
+            None
+        };
         let act = combo::ui(
             ui,
             &mut self.browser.combo,
@@ -1870,6 +1982,20 @@ impl Core {
         } else {
             Vec::new()
         };
+        // 図で別の要素を選んだら、その要素の外の今の面は外す（図の目立たせと表を合わせる）
+        if is_combo && self.combo_view.sel != self.combo_sel_prev {
+            if let (Some(k), Some((j, _))) = (self.combo_view.sel, self.ld.cur) {
+                let inside = spans
+                    .get(k)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|s| s[0] <= j && j <= s[1]);
+                if !inside {
+                    self.ld.cur = None;
+                }
+            }
+        }
+        self.combo_sel_prev = self.combo_view.sel;
         let rows = &self.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {
             combo_read_only(is_combo, rows, &spans, picks, lead, j, col)
@@ -1924,7 +2050,7 @@ impl Core {
                         self.ld.locked.remove(&name);
                     }
                 }
-                Act::Save => self.save_system(),
+                Act::Save => self.save(false),
                 Act::Refused(why) => {
                     self.status = Status {
                         text: why,
@@ -2389,21 +2515,6 @@ impl Core {
             }
         }
         true
-    }
-
-    /// 編集した系を系ファイル（lensbench の .json）に保存する
-    fn save_system(&mut self) {
-        if let Some(p) = crate::files::FileDialog::new()
-            .add_filter(tr("系ファイル"), &["json"])
-            .set_file_name("system.json")
-            .save_file()
-        {
-            self.worker.send(
-                Tag::Save,
-                "save",
-                json!({ "path": p.display().to_string() }),
-            );
-        }
     }
 
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる
@@ -2951,13 +3062,20 @@ impl Core {
         let nw = self.waves_um().len();
         let before = cfg.clone();
         ui.horizontal_wrapped(|ui| {
-            egui::ComboBox::from_id_salt(("cmd", id))
+            let r = egui::ComboBox::from_id_salt(("cmd", id))
                 .selected_text(layout::analysis_label(&cfg.cmd))
                 .show_ui(ui, |ui| {
                     for (c, l, _) in layout::analyses() {
-                        ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
+                        let r = ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
+                        if let Some(h) = layout::analysis_help(c) {
+                            r.on_hover_text(tr(h));
+                        }
                     }
-                });
+                })
+                .response;
+            if let Some(h) = layout::analysis_help(&cfg.cmd) {
+                r.on_hover_text(tr(h));
+            }
             ui.add_enabled_ui(layout::takes_sel(&cfg.cmd), |ui| {
                 egui::ComboBox::from_id_salt(("field", id))
                     .selected_text(if cfg.field == 0 {
@@ -2984,12 +3102,21 @@ impl Core {
                         }
                     });
             });
-            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"));
-            ui.selectable_value(&mut cfg.view, View::Table, tr("表"));
-            ui.selectable_value(&mut cfg.view, View::Json, "JSON");
+            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
+                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
+            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
+                .on_hover_text(tr("結果を表と木で見る"));
+            ui.selectable_value(&mut cfg.view, View::Json, "JSON")
+                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
             ui.checkbox(&mut cfg.live, tr("自動"))
                 .on_hover_text(tr("系の値が変わったら計算し直す"));
-            if ui.button(tr("▶ 計算")).clicked() {
+            if ui
+                .button(tr("▶ 計算"))
+                .on_hover_text(tr(
+                    "この解析を今の設定で計算する（F5 は開いている解析すべて）",
+                ))
+                .clicked()
+            {
                 self.run(id, cfg);
             }
         });
@@ -3030,10 +3157,7 @@ impl Core {
             if r.cmd != cfg.cmd {
                 ui.label(RichText::new(tr("（前の解析の結果）")).small().color(weak));
             }
-            if ui.small_button(tr("JSON をコピー")).clicked() {
-                ui.ctx()
-                    .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
-            }
+            result_export_menu(ui, &r.cmd, v);
         });
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
         if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
@@ -3501,6 +3625,7 @@ impl App {
                 save_layout_open: false,
                 layout_name: String::new(),
                 built: None,
+                doc_path: None,
                 built_combo,
                 combo_path: None,
                 layout_data: None,
@@ -3508,6 +3633,7 @@ impl App {
                 rays_open: false,
                 agf_names: Default::default(),
                 combo_view: Default::default(),
+                combo_sel_prev: None,
                 font,
                 next_id,
                 cmds: Vec::new(),
@@ -3570,7 +3696,7 @@ impl App {
         #[cfg(not(target_arch = "wasm32"))]
         let reopen: Option<PathBuf> = None;
         if let Some(p) = reopen.as_ref().or(args.open.as_ref()) {
-            app.c.open(p);
+            app.c.open_doc(p);
         }
         app
     }
@@ -3842,11 +3968,11 @@ impl App {
         match cmd {
             Cmd::New => self.c.new_system(),
             Cmd::Open => self.c.pick_and_open(),
-            Cmd::Recent(f) => self.c.open(Path::new(&f)),
+            Cmd::Recent(f) => self.c.open_doc(Path::new(&f)),
             Cmd::Reload => self.c.reload(),
             Cmd::RunAll => self.run_all(false),
             Cmd::WriteZmx => self.c.write_zmx(),
-            Cmd::SaveCombo => self.c.save_built(),
+            Cmd::Save(as_new) => self.c.save(as_new),
             Cmd::Add(k) => {
                 let id = self.add_pane(k);
                 self.focus(id);
@@ -3920,10 +4046,11 @@ impl App {
             "write zmx export",
             Cmd::WriteZmx,
         );
+        push(tr("保存（Ctrl+S）").into(), "save ctrl+s", Cmd::Save(false));
         push(
-            tr("組合せをプロジェクトとして保存…").into(),
-            "save combo project",
-            Cmd::SaveCombo,
+            tr("名前を付けて保存…（Ctrl+Shift+S）").into(),
+            "save as ctrl+shift+s",
+            Cmd::Save(true),
         );
         for k in add_kinds() {
             let t = Pane {
@@ -4095,15 +4222,26 @@ impl App {
                         ui.close_menu();
                         cmd = Some(Cmd::WriteZmx);
                     }
+                    let can_save = self.c.file.is_some() || !self.c.browser.combo.picks.is_empty();
+                    if ui
+                        .add_enabled(can_save, egui::Button::new(tr("保存（Ctrl+S）")))
+                        .on_hover_text(tr(
+                            "組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに",
+                        ))
+                        .clicked()
+                    {
+                        ui.close_menu();
+                        cmd = Some(Cmd::Save(false));
+                    }
                     if ui
                         .add_enabled(
-                            self.c.built.is_some(),
-                            egui::Button::new(tr("組合せをプロジェクトとして保存…")),
+                            can_save,
+                            egui::Button::new(tr("名前を付けて保存…（Ctrl+Shift+S）")),
                         )
                         .clicked()
                     {
                         ui.close_menu();
-                        cmd = Some(Cmd::SaveCombo);
+                        cmd = Some(Cmd::Save(true));
                     }
                     ui.separator();
                     if ui.button(tr("カタログのフォルダ…")).clicked() {
@@ -4253,6 +4391,25 @@ impl App {
                         ui.close_menu();
                         cmd = Some(Cmd::Help);
                     }
+                });
+                ui.menu_button(tr("ヘルプ"), |ui| {
+                    for (label, page, tip) in HELP_PAGES {
+                        if ui
+                            .button(tr(label))
+                            .on_hover_text(tr(tip))
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
+                        ui.close_menu();
+                        cmd = Some(Cmd::Help);
+                    }
+                    ui.separator();
+                    ui.label(RichText::new(version()).small().color(weak));
                 });
             }
             if let Some(f) = &self.c.file {
@@ -5085,9 +5242,18 @@ impl eframe::App for App {
                 .collect()
         });
         if let Some(p) = dropped.into_iter().next() {
-            self.c.open(&p);
+            self.c.open_doc(&p);
         }
         // キー
+        let (save_as, save) = ctx.input_mut(|i| {
+            (
+                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::S),
+                i.consume_key(Modifiers::COMMAND, Key::S),
+            )
+        });
+        if save_as || save {
+            self.c.save(save_as);
+        }
         let (new, open, palette, f5, reload, help, next, prev) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::COMMAND, Key::N),
@@ -5125,7 +5291,13 @@ impl eframe::App for App {
         if next || prev {
             self.cycle(prev);
         }
-        let title = match &self.c.file {
+        // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
+        let shown = if self.c.is_combo() {
+            self.c.doc_path.as_ref()
+        } else {
+            self.c.file.as_ref()
+        };
+        let title = match shown {
             Some(f) => format!(
                 "lensbench — {}",
                 f.file_name()
@@ -5462,4 +5634,105 @@ fn detach_label_web_only_analysis_goes_to_tab() {
         detach_label(&Kind::LensData, false),
         "別の窓に出す（別モニターへ）"
     );
+}
+
+/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128）
+fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
+    use crate::export_table::{delimited, tables};
+    ui.menu_button(tr("コピー ▾"), |ui| {
+        if ui.button(tr("JSON")).clicked() {
+            ui.ctx()
+                .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
+            ui.close_menu();
+        }
+        if ui
+            .button(tr("テキスト（タブ区切り）"))
+            .on_hover_text(tr("表計算に貼れる形。表が複数あれば「# 名前」の行で区切る"))
+            .clicked()
+        {
+            ui.ctx().copy_text(delimited(&tables(v), '\t'));
+            ui.close_menu();
+        }
+        if ui.button(tr("CSV")).clicked() {
+            ui.ctx().copy_text(delimited(&tables(v), ','));
+            ui.close_menu();
+        }
+    });
+    ui.menu_button(tr("保存 ▾"), |ui| {
+        for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
+            if ui.button(label).clicked() {
+                ui.close_menu();
+                if let Some(p) = crate::files::FileDialog::new()
+                    .add_filter(ext.to_uppercase(), &[ext])
+                    .set_file_name(format!("{cmd}.{ext}"))
+                    .save_file()
+                {
+                    let text = if ext == "json" {
+                        serde_json::to_string_pretty(v).unwrap_or_default()
+                    } else {
+                        delimited(&tables(v), ',')
+                    };
+                    if let Err(e) = lensbench_core::vfs::write(&p, text) {
+                        eprintln!("{}: {e}", p.display());
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える
+const DOCS_URL: &str = match option_env!("LENSBENCH_DOCS_URL") {
+    Some(u) => u,
+    None => "https://masa-iwm.github.io/lensbench/",
+};
+
+/// ヘルプのメニューのページ（名前、マニュアルの中のページ、説明）
+const HELP_PAGES: &[(&str, &str, &str)] = &[
+    ("マニュアル", "", "使い方の目次（ブラウザで開く）"),
+    ("GUI の使い方", "gui.html", "画面・パネルの使い方（図つき）"),
+    ("解析と CLI", "cli.html", "解析の種類と引数、出力の例"),
+    (
+        "プロジェクトファイル",
+        "project-file.html",
+        "ブロックで系を組む JSON（状態・群・BS）",
+    ),
+    ("最適化", "optimize.html", "評価関数・変数・DLS"),
+    ("公差", "tolerance.html", "モンテカルロ公差の設定"),
+];
+
+/// マニュアルのページの URL
+fn docs_url(page: &str) -> String {
+    let base = DOCS_URL.trim_end_matches('/');
+    if page.is_empty() {
+        format!("{base}/")
+    } else {
+        format!("{base}/{page}")
+    }
+}
+
+#[test]
+fn docs_urls() {
+    assert!(docs_url("").ends_with('/'));
+    assert!(docs_url("gui.html").ends_with("/gui.html"));
+    assert!(!docs_url("gui.html").contains("//gui"));
+}
+
+/// 組合せを同梱したプロジェクト: 系のプロジェクトとして読め、組合せに戻せる（#129）
+#[test]
+fn project_keeps_combo() {
+    let mut c = Combo {
+        name: "two".into(),
+        ..Default::default()
+    };
+    c.picks.push(combo::Pick::new(combo::ElemKind::Plate));
+    let v = project_with_combo(&c);
+    let txt = serde_json::to_string_pretty(&v).unwrap();
+    let p = lensbench_project::Project::from_json(&txt).unwrap();
+    assert_eq!(
+        p.blocks.len(),
+        c.project()["blocks"].as_array().unwrap().len()
+    );
+    assert_eq!(combo_of_project(&v), Some(c));
+    assert_eq!(combo_of_project(&json!({ "blocks": [] })), None);
 }

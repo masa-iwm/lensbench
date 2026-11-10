@@ -799,43 +799,43 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         f
     };
     let col = |fr: f64| theme::series(freqs.iter().position(|&x| x == fr).unwrap_or(0));
-    Plot::new(("mtf-field", id))
+    let plot = Plot::new(("mtf-field", id))
         .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
         .x_axis_label(tr("視野（正規化）"))
-        .y_axis_label("MTF")
-        .allow_scroll(false)
-        .show(ui, |p| {
-            for (fr, _, pts) in before {
-                p.line(
-                    Line::new(pts)
-                        .color(col(fr).gamma_multiply(0.35))
-                        .style(LineStyle::Dotted { spacing: 4.0 })
-                        .width(1.0_f32),
-                );
-            }
-            for (fr, k, pts) in now {
-                let t = k == "tangential";
-                let name = format!(
-                    "{} {} {}",
-                    fmt_sig(fr, 3),
-                    unit,
-                    if t { tr("子午") } else { tr("球欠") }
-                );
-                p.line(
-                    Line::new(pts)
-                        .color(col(fr))
-                        .style(if t {
-                            LineStyle::Solid
-                        } else {
-                            LineStyle::Dashed { length: 6.0 }
-                        })
-                        .width(1.6_f32)
-                        .name(name),
-                );
-            }
-        });
+        .y_axis_label("MTF");
+    crate::plot_tools::show(ui, plot, "", |p, reg| {
+        for (fr, _, pts) in before {
+            p.line(
+                Line::new(pts)
+                    .color(col(fr).gamma_multiply(0.35))
+                    .style(LineStyle::Dotted { spacing: 4.0 })
+                    .width(1.0_f32),
+            );
+        }
+        for (fr, k, pts) in now {
+            let t = k == "tangential";
+            let name = format!(
+                "{} {} {}",
+                fmt_sig(fr, 3),
+                unit,
+                if t { tr("子午") } else { tr("球欠") }
+            );
+            reg.push(crate::plot_tools::Series::new(name.clone(), col(fr), &pts));
+            p.line(
+                Line::new(pts)
+                    .color(col(fr))
+                    .style(if t {
+                        LineStyle::Solid
+                    } else {
+                        LineStyle::Dashed { length: 6.0 }
+                    })
+                    .width(1.6_f32)
+                    .name(name),
+            );
+        }
+    });
     true
 }
 
@@ -890,42 +890,42 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
     let now = keep(series(v));
     let before = keep(prev.map(series).unwrap_or_default());
     let col = |q: (u64, f64)| theme::series(q.0.saturating_sub(1) as usize);
-    Plot::new(("mtf-focus", id))
+    let plot = Plot::new(("mtf-focus", id))
         .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
         .x_axis_label(tr("像面のずらし [レンズの単位]"))
-        .y_axis_label("MTF")
-        .allow_scroll(false)
-        .show(ui, |p| {
-            for (q, _, pts) in before {
-                p.line(
-                    Line::new(pts)
-                        .color(col(q).gamma_multiply(0.35))
-                        .style(LineStyle::Dotted { spacing: 4.0 })
-                        .width(1.0_f32),
-                );
-            }
-            for (q, k, pts) in now {
-                let t = k == "tangential";
-                let name = if t {
-                    trf("視野 {} 子午", &[&q.0])
-                } else {
-                    trf("視野 {} 球欠", &[&q.0])
-                };
-                p.line(
-                    Line::new(pts)
-                        .color(col(q))
-                        .style(if t {
-                            LineStyle::Solid
-                        } else {
-                            LineStyle::Dashed { length: 6.0 }
-                        })
-                        .width(1.6_f32)
-                        .name(name),
-                );
-            }
-        });
+        .y_axis_label("MTF");
+    crate::plot_tools::show(ui, plot, "", |p, reg| {
+        for (q, _, pts) in before {
+            p.line(
+                Line::new(pts)
+                    .color(col(q).gamma_multiply(0.35))
+                    .style(LineStyle::Dotted { spacing: 4.0 })
+                    .width(1.0_f32),
+            );
+        }
+        for (q, k, pts) in now {
+            let t = k == "tangential";
+            let name = if t {
+                trf("視野 {} 子午", &[&q.0])
+            } else {
+                trf("視野 {} 球欠", &[&q.0])
+            };
+            reg.push(crate::plot_tools::Series::new(name.clone(), col(q), &pts));
+            p.line(
+                Line::new(pts)
+                    .color(col(q))
+                    .style(if t {
+                        LineStyle::Solid
+                    } else {
+                        LineStyle::Dashed { length: 6.0 }
+                    })
+                    .width(1.6_f32)
+                    .name(name),
+            );
+        }
+    });
     true
 }
 
@@ -980,31 +980,39 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         .filter(|p| p["vs"].as_str() == Some(vs.as_str()))
         .map(series)
         .unwrap_or_default();
-    Plot::new(("rms", id))
+    let plot = Plot::new(("rms", id))
         .legend(Legend::default())
         .include_y(0.0)
         .x_axis_label(xl)
-        .y_axis_label(yl)
-        .allow_scroll(false)
-        .show(ui, |p| {
-            for (f, pts) in before {
-                p.line(
-                    Line::new(pts)
-                        .color(theme::series(f.saturating_sub(1) as usize).gamma_multiply(0.35))
-                        .style(LineStyle::Dotted { spacing: 4.0 })
-                        .width(1.0_f32),
-                );
-            }
-            for (f, pts) in now {
-                let mut l = Line::new(pts)
-                    .color(theme::series(f.saturating_sub(1) as usize))
-                    .width(1.6_f32);
+        .y_axis_label(yl);
+    crate::plot_tools::show(ui, plot, "", |p, reg| {
+        for (f, pts) in before {
+            p.line(
+                Line::new(pts)
+                    .color(theme::series(f.saturating_sub(1) as usize).gamma_multiply(0.35))
+                    .style(LineStyle::Dotted { spacing: 4.0 })
+                    .width(1.0_f32),
+            );
+        }
+        for (f, pts) in now {
+            reg.push(crate::plot_tools::Series::new(
                 if f > 0 {
-                    l = l.name(trf("視野 {}", &[&f]));
-                }
-                p.line(l);
+                    trf("視野 {}", &[&f])
+                } else {
+                    String::new()
+                },
+                theme::series(f.saturating_sub(1) as usize),
+                &pts,
+            ));
+            let mut l = Line::new(pts)
+                .color(theme::series(f.saturating_sub(1) as usize))
+                .width(1.6_f32);
+            if f > 0 {
+                l = l.name(trf("視野 {}", &[&f]));
             }
-        });
+            p.line(l);
+        }
+    });
     true
 }
 
@@ -1125,28 +1133,37 @@ fn pop(ui: &mut Ui, id: u64, v: &Value) -> bool {
             h,
         );
     }
-    Plot::new(("pop-cut", id))
+    let plot = Plot::new(("pop-cut", id))
         .legend(Legend::default())
         .include_y(0.0)
         .x_axis_label(tr("位置 [mm]"))
-        .y_axis_label(tr("照度 [W/mm²]"))
-        .allow_scroll(false)
-        .show(ui, |p| {
-            let pts = |a: &[f64], b: &[f64]| -> Vec<[f64; 2]> {
-                a.iter().zip(b).map(|(x, y)| [*x, *y]).collect()
-            };
-            p.line(
-                Line::new(pts(&xs, &ix))
-                    .color(theme::series(0))
-                    .name(tr("x の断面")),
-            );
-            p.line(
-                Line::new(pts(&ys, &iy))
-                    .color(theme::series(1))
-                    .style(LineStyle::Dashed { length: 6.0 })
-                    .name(tr("y の断面")),
-            );
-        });
+        .y_axis_label(tr("照度 [W/mm²]"));
+    crate::plot_tools::show(ui, plot, "mm", |p, reg| {
+        let pts = |a: &[f64], b: &[f64]| -> Vec<[f64; 2]> {
+            a.iter().zip(b).map(|(x, y)| [*x, *y]).collect()
+        };
+        reg.push(crate::plot_tools::Series::new(
+            tr("x の断面"),
+            theme::series(0),
+            &pts(&xs, &ix),
+        ));
+        reg.push(crate::plot_tools::Series::new(
+            tr("y の断面"),
+            theme::series(1),
+            &pts(&ys, &iy),
+        ));
+        p.line(
+            Line::new(pts(&xs, &ix))
+                .color(theme::series(0))
+                .name(tr("x の断面")),
+        );
+        p.line(
+            Line::new(pts(&ys, &iy))
+                .color(theme::series(1))
+                .style(LineStyle::Dashed { length: 6.0 })
+                .name(tr("y の断面")),
+        );
+    });
     true
 }
 
