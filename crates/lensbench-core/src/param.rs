@@ -168,7 +168,7 @@ pub enum PickKind {
     Radius,
     /// 半直径（semi-diameter）
     Semi,
-    /// 面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。面の後の傾き偏心のピックアップの元としてだけ使う
+    /// 面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。ピックアップの元にも先にもなる（座標ブレークの面は [`PickKind::Parm`]）
     Before(u8),
     /// 面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`PickKind::Before`]、反転は倍率 −1）
     After(u8),
@@ -531,7 +531,30 @@ pub(crate) fn pick_set(d: &mut Surface, what: PickKind, v: f64) -> bool {
             }
             After::Reverse => return false,
         },
-        PickKind::Radius | PickKind::Before(_) => return false,
+        PickKind::Before(i) => {
+            if d.typ == SurfType::CoordBrk {
+                return false;
+            }
+            match &mut d.before {
+                Some(t) => t.d[i as usize] = v,
+                // 元の値が 0 のうちは作らない（後で元に値が入ったら作る）
+                None if v == 0.0 => {}
+                // パラメータで値を入れるとき（System::set_params）と同じく、前の傾き偏心を作り、
+                // 面の後がなければ「前を戻す」にする（その面だけが動く）
+                None => {
+                    let mut t = Tilt {
+                        d: [0.0; 5],
+                        order: 0,
+                    };
+                    t.d[i as usize] = v;
+                    d.before = Some(t);
+                    if d.after == After::None {
+                        d.after = After::Reverse;
+                    }
+                }
+            }
+        }
+        PickKind::Radius => return false,
     }
     true
 }
@@ -1137,7 +1160,19 @@ impl System {
                 let before = pick_get(d, q.what);
                 if before != Some(v) {
                     let created = matches!(q.what, PickKind::After(_)) && d.after == After::None;
+                    let made_before = matches!(q.what, PickKind::Before(_)) && d.before.is_none();
+                    let after_was = d.after;
                     let ok = pick_set(d, q.what, v);
+                    // 前の傾き偏心を作ったとき、同じ面の後もピックアップの先なら「前を戻す」にしない（後はそのピックアップで決まる）
+                    if made_before
+                        && after_was == After::None
+                        && self
+                            .pickups
+                            .iter()
+                            .any(|k| k.dst == q.dst && matches!(k.what, PickKind::After(_)))
+                    {
+                        self.surfaces[q.dst].after = After::None;
+                    }
                     if created {
                         // 作ったばかりの面の後の変換の順序は元の面の前のもの（反転なら逆）
                         let o = self.surfaces[q.src].before.map(|b| b.order).unwrap_or(0);
