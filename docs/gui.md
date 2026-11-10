@@ -32,11 +32,15 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 - 解析のパネル: CLI の解析（spot・mtf・wavefront・rms・psf・elements・ghost など）。図で見られるのは、スポット図（視野ごとの光線の点と Airy 円）、
   回折・幾何 MTF の曲線、波面図（色）と干渉縞（参照球との干渉、倍率・傾きの縞を選べる）、回折 PSF（色、対数も）、Zernike 係数の棒、
   フィールド MTF・スルーフォーカス MTF・RMS（視野・フォーカス・波長）の曲線、2 光束の干渉縞（fringe）の図（量・構成は
-  設定の欄で、CLI と同じ）。この GUI を組み込んだ exe は解析・図・設定の欄を足せる（`lensbench_gui::ext`）。
+  設定の欄で、CLI と同じ）、簡易 POP（pop、面・距離・方法は設定の欄で。省くと像面まで伝えられる最後の面から像面まで）の照度の図と
+  x・y の断面。光線の表（rays、面ごとの交点・方向・光路長）は表で見る。この GUI を組み込んだ exe は解析・図・設定の欄を足せる（`lensbench_gui::ext`）。
   ほかは表で見る。CLI の引数は「追加の引数」に JSON で（serve の `analyze` と同じ）。周波数を省いたフィールド・スルーフォーカス MTF は遮断周波数の 1/10・1/4・1/2
 
 ![スポット図と MTF](gen/gui/02_analysis.png)
 *スポット図と MTF*
+
+![簡易 POP の照度と断面](gen/gui/15_pop.png)
+*簡易 POP の照度と断面*
 
 ![組合せで作った系のスポット図](gen/gui/07_combo_spot.png)
 *組合せで作った系のスポット図*
@@ -67,6 +71,8 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 
 ## 組合せ（カタログレンズを並べて系を作る）
 
+- レイアウト図の「光線・書き出しの設定」: 描く視野・波長、光線の並び（y・x・十字・格子・周）と本数、描く面の範囲、色分け
+  （視野・波長・構成）と、書き出しの PNG の横幅・分割数・3D の光線の管の半径（CLI の `layout` と同じ。設定は次に開いたときも使う）。
 - 組合せのパネル: 組合せのレイアウト図（玉の断面・光線・像面）。カタログの玉のほか、自作の玉・平板・鏡・絞り・
   開口・遮蔽（円・矩形・楕円の開口、円の遮蔽、スパイダー（腕の幅・本数）。内側・外側の半径と偏心）・ビームスプリッター・.zmx の玉を足せる。
   自作の玉は「＋ 面」で面を足して貼り合わせ・3 枚玉に、「面の並び」は空気中の面（Jones 行列の面・座標ブレーク・平面）、
@@ -190,7 +196,7 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 ## 画面の通し確認
 
 画面の通し確認: `lensbench-gui --tour DIR --glass-dir tests/glass --lens-catalog examples/lenses/LB examples/projects/P8_catalog_two.json`
-で、開く → 解析 → カタログ → 組合せ → 系を作る → レイアウト図 → スポット → 値を動かす → ガラス → 別の窓 → パレット → 英語・明るい配色を
+で、開く → 解析 → カタログ → 組合せ → 系を作る → レイアウト図 → スポット → 値を動かす → ガラス → 別の窓 → パレット → 英語・明るい配色 → 干渉計 → 簡易 POP を
 自分で操作して `DIR` に PNG と `report.json` を書く
 （エラーがあれば終了コード 1）。CI は Linux の仮想ディスプレイ（xvfb）で回し、画面を成果物 `gui-tour` に置く。
 

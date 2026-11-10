@@ -1729,7 +1729,22 @@ fn layout(p: &Value) -> Result<Value, RpcErr> {
 
 fn layout_with(s: &System, spec: &LoadSpec, p: &Value) -> Result<Value, RpcErr> {
     let sc = layout_scene(s, spec, p)?;
-    view_json(s, &sc, p)
+    let mut v = view_json(s, &sc, p)?;
+    // 光線の色分け（field・wave・cfg）。省略なら書かない（GUI は重ね描きなら構成ごと、ほかは視野ごと）
+    if color_of(p)?.is_some() {
+        v["color"] = json!(p["color"].as_str().unwrap_or_default().to_ascii_lowercase());
+    }
+    Ok(v)
+}
+
+/// layout・layout_export の color（field・wave・cfg、省略で None）
+fn color_of(p: &Value) -> Result<Option<lensbench_export::d2::ColorBy>, RpcErr> {
+    match p.get("color") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(c)) if c.is_empty() => Ok(None),
+        Some(Value::String(c)) => c.parse().map(Some).map_err(RpcErr::params),
+        Some(_) => Err(RpcErr::params("color は field・wave・cfg のどれか")),
+    }
 }
 
 /// layout_export: {"file": 書き出すファイル, layout と同じ引数}。2D（svg・png・dxf）は plane の面
@@ -1757,11 +1772,38 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
     }
     let (s, spec) = current()?;
     let sc = layout_scene(&s, &spec, &q)?;
+    // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
+    let color = match color_of(p)? {
+        Some(c) => c,
+        None if config_sel(p)?.any() => lensbench_export::d2::ColorBy::Config,
+        None => lensbench_export::d2::ColorBy::Field,
+    };
+    let d2 = lensbench_export::d2::Options2D::default();
+    let d3 = lensbench_export::mesh::Options3D::default();
+    let segments = opt_usize(p, "segments")?
+        .unwrap_or(d2.segments)
+        .clamp(4, 1024);
     let o2 = lensbench_export::d2::Options2D {
         plane: if f.is_2d() { plane_of(&q)? } else { Plane::YZ },
-        ..Default::default()
+        color,
+        width: opt_usize(p, "width")?
+            .map(|w| w.clamp(100, 20000) as u32)
+            .unwrap_or(d2.width),
+        segments,
     };
-    lensbench_export::write_layout(&path, &sc, &o2, &Default::default()).map_err(RpcErr::app)?;
+    let tube = match opt_f64(p, "tube")? {
+        Some(t) if !(t > 0.0 && t.is_finite()) => {
+            return Err(RpcErr::params("tube は正の数 [mm]"));
+        }
+        t => t,
+    };
+    let o3 = lensbench_export::mesh::Options3D {
+        segments,
+        rings: opt_usize(p, "rings")?.unwrap_or(d3.rings).clamp(1, 256),
+        tube,
+        color,
+    };
+    lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
     Ok(json!({
         "written": path.display().to_string(),
         "format": format!("{f:?}").to_lowercase(),
