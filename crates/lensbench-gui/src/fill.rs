@@ -95,6 +95,213 @@ fn parse_thickness(s: &str) -> Option<f64> {
         .filter(|t| *t > 0.0 && t.is_finite())
 }
 
+/// 品ページのアプリ内のブラウザを起こす（hidden は見せずに）
+#[cfg(windows)]
+fn spawn(r: &LensRow, hidden: bool) -> Result<crate::webview::Child, String> {
+    let dl = std::env::temp_dir()
+        .join("lensbench-gui")
+        .join("downloads")
+        .join(
+            r.part
+                .replace(|c: char| !c.is_alphanumeric() && c != '-', "_"),
+        );
+    let title = format!("{} {} — lensbench", r.vendor, r.part);
+    crate::webview::Child::spawn(&r.url, &title, &dl, hidden)
+}
+
+/// 裏の読み取りの決め事: 行に止まってから開くまで、前に開いてから次を開くまで、値を待つ長さ
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const AUTO_DWELL: std::time::Duration = std::time::Duration::from_millis(1500);
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const AUTO_GAP: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const AUTO_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// ページの読み取りから、足りない値がすべて一通りに決まるなら catalog_fill の値（厚さ・径）。
+/// 同じ値の欄に違う値が並ぶ・決められない欄だけ・ありえない大きさなら None（窓に出してユーザーが決める）
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn sure_values(missing: &[String], r: &PageRead) -> Option<(Option<f64>, Option<Value>)> {
+    let mut t = None;
+    let mut d = None;
+    for m in missing {
+        let vals: Vec<&Value> = r
+            .found
+            .iter()
+            .filter(|f| f.name == m.as_str())
+            .filter_map(|f| f.value.as_ref())
+            .collect();
+        let first = vals.first()?;
+        if vals.iter().any(|v| v != first) {
+            return None;
+        }
+        let ok = |x: f64, hi: f64| x > 0.0 && x <= hi;
+        match m.as_str() {
+            "thickness" => {
+                let x = r.thickness.filter(|x| ok(*x, 200.0))?;
+                t = Some(x);
+            }
+            "diameter" => {
+                let v = r.diameter.clone()?;
+                let good = match &v {
+                    Value::Array(a) => a.iter().all(|x| x.as_f64().is_some_and(|x| ok(x, 1000.0))),
+                    x => x.as_f64().is_some_and(|x| ok(x, 1000.0)),
+                };
+                if !good {
+                    return None;
+                }
+                d = Some(v);
+            }
+            _ => return None,
+        }
+    }
+    Some((t, d))
+}
+
+/// catalog_fill の params
+#[cfg_attr(not(windows), allow(dead_code))]
+fn fill_params(r: &LensRow, t: Option<f64>, d: Option<&Value>, from: &str) -> Option<Value> {
+    let out = fill_file(&r.vendor)?;
+    let mut p = json!({
+        "catalog": r.source.clone()?,
+        "item": r.part,
+        "out": out.display().to_string(),
+        "from": from,
+    });
+    if let Some(t) = t {
+        p["thickness"] = json!(t);
+    }
+    if let Some(d) = d {
+        p["diameter"] = d.clone();
+    }
+    Some(p)
+}
+
+/// 補う窓へ引き継ぐもの: 品・見せていないブラウザ・最後に届いたページ（URL と文字）
+#[cfg(windows)]
+pub type Handover = (LensRow, crate::webview::Child, Option<(String, String)>);
+
+/// 裏の読み取りの結果
+#[cfg_attr(not(windows), allow(dead_code))]
+pub enum AutoOut {
+    /// 値が決まったので保存する（catalog_fill の params）
+    Save(Value),
+    /// 決まらないので補う窓に出す
+    #[cfg(windows)]
+    Show(Box<Handover>),
+}
+
+/// 行を選んだら、その品のページだけを見えない窓で開いて仕様表を読み、値が一通りに決まればそのまま保存する
+/// （Windows）。矢印キーで流したときに続けて開かないよう、行に [`AUTO_DWELL`] 止まってから開き、
+/// 次を開くまで [`AUTO_GAP`] 空ける。1 度に 1 件、同じ品はこの起動の間は 1 度だけ。決まらない
+/// （欄が無い・食い違う・ボットの判定や captcha）ときは [`AUTO_WAIT`] の後に窓を見せて補う窓へ
+#[derive(Default)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct AutoFill {
+    /// 選んでいる未完の品（メーカー・型番）と選んだ時刻
+    sel: Option<(String, web_time::Instant)>,
+    /// 開いた品
+    tried: std::collections::HashSet<String>,
+    last_open: Option<web_time::Instant>,
+    #[cfg(windows)]
+    job: Option<AutoJob>,
+}
+
+#[cfg(windows)]
+struct AutoJob {
+    row: LensRow,
+    child: crate::webview::Child,
+    started: web_time::Instant,
+    /// 最後に届いたページの文字
+    text: Option<(String, String)>,
+}
+
+impl AutoFill {
+    /// 毎フレーム: 選んでいる行（未完の品なら）を見て、開く・読む・保存する
+    pub fn tick(&mut self, ctx: &egui::Context, sel: Option<&LensRow>) -> Option<AutoOut> {
+        let now = web_time::Instant::now();
+        let row = sel.filter(|r| r.is_incomplete() && !r.url.is_empty() && r.source.is_some());
+        let key = row.map(|r| format!("{}\t{}", r.vendor, r.part));
+        if key.as_deref() != self.sel.as_ref().map(|(k, _)| k.as_str()) {
+            self.sel = key.map(|k| (k, now));
+        }
+        #[cfg(windows)]
+        {
+            if let Some(out) = self.poll(now) {
+                return Some(out);
+            }
+            if self.job.is_some() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(300));
+                return None;
+            }
+            let (Some(r), Some((k, t0))) = (row, self.sel.clone()) else {
+                return None;
+            };
+            if self.tried.contains(&k) || fill_file(&r.vendor).is_none() {
+                return None;
+            }
+            let ready = (t0 + AUTO_DWELL).max(self.last_open.map_or(now, |t| t + AUTO_GAP));
+            if now < ready {
+                ctx.request_repaint_after(ready - now);
+                return None;
+            }
+            self.tried.insert(k);
+            self.last_open = Some(now);
+            if let Ok(child) = spawn(r, true) {
+                self.job = Some(AutoJob {
+                    row: r.clone(),
+                    child,
+                    started: now,
+                    text: None,
+                });
+                ctx.request_repaint_after(std::time::Duration::from_millis(300));
+            }
+        }
+        #[cfg(not(windows))]
+        let _ = (ctx, row);
+        None
+    }
+
+    /// 補う窓を開いた品は裏で読まない（読んでいれば止める）
+    pub fn forget(&mut self, part: &str) {
+        #[cfg(windows)]
+        if self.job.as_ref().is_some_and(|j| j.row.part == part) {
+            self.job = None;
+        }
+        #[cfg(not(windows))]
+        let _ = part;
+    }
+
+    #[cfg(windows)]
+    fn poll(&mut self, now: web_time::Instant) -> Option<AutoOut> {
+        let job = self.job.as_mut()?;
+        let mut closed = false;
+        for m in job.child.poll() {
+            match m {
+                crate::webview::Msg::Page { url, text } => {
+                    let miss = job.row.missing();
+                    if let Some((t, d)) = sure_values(&miss, &read_page(&text)) {
+                        let p = fill_params(&job.row, t, d.as_ref(), "page");
+                        self.job = None;
+                        return p.map(AutoOut::Save);
+                    }
+                    job.text = Some((url, text));
+                }
+                crate::webview::Msg::Closed => closed = true,
+                crate::webview::Msg::Download { .. } => {}
+            }
+        }
+        if closed {
+            self.job = None;
+            return None;
+        }
+        if now.duration_since(job.started) >= AUTO_WAIT {
+            let j = self.job.take()?;
+            return Some(AutoOut::Show(Box::new((j.row, j.child, j.text))));
+        }
+        None
+    }
+}
+
 /// 窓の状態
 #[derive(Default)]
 pub struct FillWin {
@@ -139,8 +346,32 @@ impl FillWin {
         self.row = Some(r);
     }
 
-    /// serve の `catalog_fill` の結果
+    /// 裏の読み取り（[`AutoFill`]）で値が決まらなかった品を、開いているページのまま引き継ぐ
+    #[cfg(windows)]
+    pub fn adopt(
+        &mut self,
+        r: LensRow,
+        mut child: crate::webview::Child,
+        text: Option<(String, String)>,
+    ) {
+        self.start(r);
+        self.opened = true;
+        child.show();
+        self.child = Some(child);
+        if let Some((url, t)) = text {
+            self.take_page(url, &t);
+        }
+        self.note = Some((
+            tr("ページから値が決まらなかったので、窓に出しました").to_string(),
+            false,
+        ));
+    }
+
+    /// serve の `catalog_fill` の結果（この窓の品でなければ何もしない。裏の読み取りの保存も同じ結果で来る）
     pub fn done(&mut self, v: &Value) {
+        if self.row.as_ref().map(|r| r.part.as_str()) != v["item"].as_str() {
+            return;
+        }
         self.pending = false;
         self.note = Some((
             trf(
@@ -175,15 +406,7 @@ impl FillWin {
         self.opened = true;
         #[cfg(windows)]
         {
-            let dl = std::env::temp_dir()
-                .join("lensbench-gui")
-                .join("downloads")
-                .join(
-                    r.part
-                        .replace(|c: char| !c.is_alphanumeric() && c != '-', "_"),
-                );
-            let title = format!("{} {} — lensbench", r.vendor, r.part);
-            match crate::webview::Child::spawn(&r.url, &title, &dl) {
+            match spawn(r, false) {
                 Ok(c) => {
                     self.child = Some(c);
                     return;
@@ -439,20 +662,8 @@ impl FillWin {
                 .on_hover_text(tr("値を確かめてから確定してください。補足のカタログに保存し、元のカタログは書き換えません"))
                 .clicked()
             {
-                let mut p = json!({
-                    "catalog": r.source.clone().unwrap_or_default(),
-                    "item": r.part,
-                    "out": out.as_ref().map(|o| o.display().to_string()),
-                    "from": self.from,
-                });
-                if let Some(t) = t {
-                    p["thickness"] = json!(t);
-                }
-                if let Some(d) = &d {
-                    p["diameter"] = d.clone();
-                }
-                self.pending = true;
-                req = Some(p);
+                req = fill_params(r, t, d.as_ref(), self.from);
+                self.pending = req.is_some();
             }
             if self.pending {
                 ui.spinner();
@@ -524,6 +735,41 @@ mod tests {
         w.take_page("u".into(), "Access denied");
         assert_eq!(w.thickness, "2");
         assert!(w.read.as_ref().unwrap().1.found.is_empty());
+    }
+
+    #[test]
+    fn sure_values_only_when_unambiguous() {
+        let m = |x: &[&str]| x.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let r = read_page("Thickness (mm):\n3.00\nDiameter (mm):\n25.00\n");
+        assert_eq!(
+            sure_values(&m(&["thickness", "diameter"]), &r),
+            Some((Some(3.0), Some(json!(25.0))))
+        );
+        // 欄が無い（ボットの判定のページなど）
+        assert_eq!(
+            sure_values(&m(&["thickness"]), &read_page("Verify you are human")),
+            None
+        );
+        // 同じ値の欄に違う値
+        let r = read_page("Thickness (mm): 3.00\nSubstrate Thickness (mm): 2.00\n");
+        assert_eq!(sure_values(&m(&["thickness"]), &r), None);
+        // 決められない欄だけ
+        let r = read_page("Substrate Thickness (mm):\n2.00 & 3.00\n");
+        assert_eq!(sure_values(&m(&["thickness"]), &r), None);
+        // ありえない大きさ
+        let r = read_page("Thickness (mm): 3000\n");
+        assert_eq!(sure_values(&m(&["thickness"]), &r), None);
+    }
+
+    #[test]
+    fn auto_fill_waits_on_the_row() {
+        // 選んだばかりの行は開かない（Windows 以外は開かない）
+        let ctx = egui::Context::default();
+        let mut a = AutoFill::default();
+        let mut r = row(&["thickness"]);
+        r.url = "https://example.com/p/1".into();
+        assert!(a.tick(&ctx, Some(&r)).is_none());
+        assert!(a.tried.is_empty());
     }
 
     #[test]

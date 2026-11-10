@@ -268,6 +268,8 @@ struct Core {
     cat_save: CatSave,
     /// 未完のカタログ品を補う窓
     fill: crate::fill::FillWin,
+    /// 未完のカタログ品を、行を選んだら裏で補う
+    auto_fill: crate::fill::AutoFill,
     /// 最適化のパネル
     opt: crate::optim_panel::OptPanel,
     /// 差し替え探索のパネルと、回したときの組合せの id
@@ -3002,7 +3004,27 @@ impl Core {
     /// 未完のカタログ品を補う窓（品を足そうとしたら開く）。保存は下書きの worker
     fn fill_window(&mut self, ctx: &egui::Context) {
         if let Some(r) = self.browser.fill_req.take() {
+            self.auto_fill.forget(&r.part);
             self.fill.start(r);
+        }
+        // 補う窓が開いている間は裏で読まない
+        if !self.fill.open {
+            let sel = self
+                .browser
+                .lens_sel
+                .and_then(|i| self.browser.lenses.get(i))
+                .cloned();
+            match self.auto_fill.tick(ctx, sel.as_ref()) {
+                Some(crate::fill::AutoOut::Save(p)) => {
+                    self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+                }
+                #[cfg(windows)]
+                Some(crate::fill::AutoOut::Show(b)) => {
+                    let (r, child, text) = *b;
+                    self.fill.adopt(r, child, text);
+                }
+                None => {}
+            }
         }
         if !self.fill.open {
             return;
@@ -3327,6 +3349,7 @@ impl App {
                 oss: Default::default(),
                 cat_save: CatSave::default(),
                 fill: Default::default(),
+                auto_fill: Default::default(),
                 opt: crate::optim_panel::OptPanel::new(),
                 swap: Default::default(),
                 tol: Default::default(),

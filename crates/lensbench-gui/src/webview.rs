@@ -23,11 +23,12 @@ const SCRIPT: &str = r#"(function () {
   setInterval(send, 2000);
 })();"#;
 
-/// 子のプロセスの入口: `--webview URL --download-dir DIR [--title T]`
+/// 子のプロセスの入口: `--webview URL --download-dir DIR [--title T] [--hidden]`。
+/// `--hidden` は窓を見せずに開き、標準入力に `show` が来たら見せる（行を選んだときの裏の読み取り）
 pub fn run(args: &[String]) -> std::process::ExitCode {
     use std::io::Write;
     use tao::event::{Event, WindowEvent};
-    use tao::event_loop::{ControlFlow, EventLoop};
+    use tao::event_loop::{ControlFlow, EventLoopBuilder};
     use tao::window::WindowBuilder;
     use wry::WebViewBuilder;
     let get = |k: &str| {
@@ -51,9 +52,22 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
         let _ = writeln!(o, "{v}");
         let _ = o.flush();
     };
-    let event_loop = EventLoop::new();
+    let hidden = args.iter().any(|a| a == "--hidden");
+    let event_loop = EventLoopBuilder::<()>::with_user_event().build();
+    // 標準入力の `show` で窓を見せる（親が閉じたら終わる）
+    let proxy = event_loop.create_proxy();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if line.trim() == "show" && proxy.send_event(()).is_err() {
+                break;
+            }
+        }
+    });
     let window = match WindowBuilder::new()
         .with_title(title)
+        .with_visible(!hidden)
         .with_inner_size(tao::dpi::LogicalSize::new(1100.0, 850.0))
         .build(&event_loop)
     {
@@ -99,6 +113,11 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     event_loop.run(move |event, _, flow| {
         let _ = &webview;
         *flow = ControlFlow::Wait;
+        if let Event::UserEvent(()) = event {
+            window.set_visible(true);
+            window.set_focus();
+            return;
+        }
         if let Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
@@ -128,7 +147,12 @@ pub struct Child {
 
 impl Child {
     /// この exe を `--webview` で起こす
-    pub fn spawn(url: &str, title: &str, download_dir: &std::path::Path) -> Result<Child, String> {
+    pub fn spawn(
+        url: &str,
+        title: &str,
+        download_dir: &std::path::Path,
+        hidden: bool,
+    ) -> Result<Child, String> {
         use std::io::BufRead;
         use std::process::{Command, Stdio};
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -139,7 +163,8 @@ impl Child {
             .arg(download_dir)
             .arg("--title")
             .arg(title)
-            .stdin(Stdio::null())
+            .args(hidden.then_some("--hidden"))
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -171,6 +196,15 @@ impl Child {
             let _ = tx.send(Msg::Closed);
         });
         Ok(Child { proc, rx })
+    }
+
+    /// 見せずに開いた窓を見せる
+    pub fn show(&mut self) {
+        use std::io::Write;
+        if let Some(i) = self.proc.stdin.as_mut() {
+            let _ = writeln!(i, "show");
+            let _ = i.flush();
+        }
     }
 
     /// 届いたものを全部
