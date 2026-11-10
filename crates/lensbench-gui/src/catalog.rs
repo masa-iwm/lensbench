@@ -96,6 +96,33 @@ pub fn spec_text(name: &str, v: &Value) -> String {
 
 impl LensRow {
     /// 仕様（名前と値）
+    /// 未完の品（厚さ・径が足りず、補うまで配置できない）か
+    pub fn is_incomplete(&self) -> bool {
+        self.raw["incomplete"] == true
+    }
+    /// 未完の品の足りない値の名前（thickness・diameter）
+    pub fn missing(&self) -> Vec<String> {
+        self.raw["missing"]
+            .as_array()
+            .map(|a| a.iter().map(s).collect())
+            .unwrap_or_default()
+    }
+    /// 足りない値の表示名（「厚さ・径」）
+    pub fn missing_text(&self) -> String {
+        self.missing()
+            .iter()
+            .map(|m| match m.as_str() {
+                "thickness" => tr("厚さ"),
+                "diameter" => tr("径"),
+                x => x,
+            })
+            .collect::<Vec<_>>()
+            .join(tr("・"))
+    }
+    /// 置けない理由（誤り・未完の品）
+    pub fn placeable(&self) -> bool {
+        self.error.is_none() && !self.is_incomplete()
+    }
     pub fn specs(&self) -> Vec<(&str, &Value)> {
         self.raw["specs"]
             .as_object()
@@ -477,6 +504,8 @@ pub struct Browser {
     pub added: Option<usize>,
     /// 選んだ玉の断面（行の番号と serve の layout）
     pub preview: Option<(usize, crate::combo::LayoutData)>,
+    /// 補う窓で開く未完の品（足そうとした行）
+    pub fill_req: Option<LensRow>,
 }
 
 /// カタログの玉 1 枚の断面を見るためのプロジェクト（玉の径の 6 割の平行光、像面は焦点距離の所）
@@ -839,6 +868,11 @@ impl Browser {
                     ui.label(RichText::new(format!("{} {}", r.vendor, r.part)).strong());
                     if let Some(e) = &r.error {
                         ui.colored_label(Color32::RED, e);
+                    } else if r.is_incomplete() {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            trf("未完の品: {} が無いので置けません", &[&r.missing_text()]),
+                        );
                     } else if r.kind == RowKind::Splitter {
                         ui.label(splitter_detail(&r));
                     } else if let Some((radius, _)) = r.mirror {
@@ -865,7 +899,15 @@ impl Browser {
                             ],
                         ));
                     }
-                    if ui.button(tr("➕ 組合せに足す")).clicked() {
+                    if r.is_incomplete() {
+                        if ui
+                            .button(tr("🌐 品ページから補う…"))
+                            .on_hover_text(tr("品ページを開き、仕様表か STEP から足りない値を入れます（ダブルクリックでも）"))
+                            .clicked()
+                        {
+                            self.add_pick(&r);
+                        }
+                    } else if ui.button(tr("➕ 組合せに足す")).clicked() {
                         self.add_pick(&r);
                     }
                     link_button(ui, &r.url);
@@ -946,6 +988,12 @@ impl Browser {
                     row.col(|ui| {
                         if let Some(e) = &r.error {
                             ui.colored_label(Color32::RED, e).on_hover_text(e);
+                        } else if r.is_incomplete() {
+                            ui.colored_label(
+                                ui.visuals().warn_fg_color,
+                                trf("⚠ 未完（{}）", &[&r.missing_text()]),
+                            )
+                            .on_hover_text(tr("ダブルクリックで品ページから補います"));
                         } else if r.kind == RowKind::Splitter {
                             ui.label(format!("BS {}", r.glasses.join(" / ")));
                         } else if r.mirror.is_some() {
@@ -977,7 +1025,7 @@ impl Browser {
                         add = Some(i);
                     }
                     // レイアウト図へドラッグして差し込む
-                    if resp.drag_started() && r.error.is_none() {
+                    if resp.drag_started() && r.placeable() {
                         egui::DragAndDrop::set_payload(
                             &resp.ctx,
                             crate::combo::DropPick(pick_from(r)),
@@ -1016,6 +1064,11 @@ impl Browser {
     }
 
     pub fn add_pick(&mut self, r: &LensRow) {
+        // 未完の品は置かず、補う窓を開く
+        if r.is_incomplete() {
+            self.fill_req = Some(r.clone());
+            return;
+        }
         // 機構部品は要素の並びでなく「機構部品」へ（選んでいる要素に置く）
         if r.kind == RowKind::Mech {
             let ids = self.combo.ids();

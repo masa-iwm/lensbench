@@ -266,6 +266,8 @@ struct Core {
     oss: open_sysset::State,
     /// 組合せの要素をユーザーカタログに保存する窓
     cat_save: CatSave,
+    /// 未完のカタログ品を補う窓
+    fill: crate::fill::FillWin,
     /// 最適化のパネル
     opt: crate::optim_panel::OptPanel,
     /// 差し替え探索のパネルと、回したときの組合せの id
@@ -815,6 +817,7 @@ impl Core {
                     self.ld.insp.stale();
                 }
                 Tag::UserCatalog => self.cat_save.note = Some((e.to_string(), true)),
+                Tag::CatalogFill => self.fill.failed(e),
                 Tag::Optimize => {
                     self.opt.running = false;
                     self.opt.error = Some(e.to_string());
@@ -1058,6 +1061,25 @@ impl Core {
                     // カタログブラウザに並ぶカタログなら一覧を読み直す
                     self.refresh_catalog();
                 }
+            }
+            Tag::CatalogFill => {
+                self.fill.done(&v);
+                text = trf(
+                    "{} {} を補って {} に保存",
+                    &[
+                        &v["vendor"].as_str().unwrap_or_default(),
+                        &v["item"].as_str().unwrap_or_default(),
+                        &v["catalog"].as_str().unwrap_or_default(),
+                    ],
+                );
+                // 補足のカタログのフォルダをレンズのフォルダに足し、一覧を読み直す
+                if let Some(d) = crate::fill::fill_dir() {
+                    let d = d.display().to_string();
+                    if !self.s.lens_dirs.contains(&d) {
+                        self.s.lens_dirs.push(d);
+                    }
+                }
+                self.refresh_catalog();
             }
             Tag::Configs => {
                 self.overlay.update(&v);
@@ -2379,7 +2401,7 @@ impl Core {
             return;
         }
         let r = &b.lenses[i];
-        if r.error.is_some() {
+        if !r.placeable() {
             self.browser.preview = Some((i, combo::LayoutData::default()));
             return;
         }
@@ -2977,6 +2999,19 @@ impl Core {
         }
     }
 
+    /// 未完のカタログ品を補う窓（品を足そうとしたら開く）。保存は下書きの worker
+    fn fill_window(&mut self, ctx: &egui::Context) {
+        if let Some(r) = self.browser.fill_req.take() {
+            self.fill.start(r);
+        }
+        if !self.fill.open {
+            return;
+        }
+        if let Some(p) = self.fill.window(ctx) {
+            self.preview.send(Tag::CatalogFill, "catalog_fill", p);
+        }
+    }
+
     fn help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.help_open;
         egui::Window::new(tr("キーボード操作"))
@@ -3291,6 +3326,7 @@ impl App {
                 mc: Default::default(),
                 oss: Default::default(),
                 cat_save: CatSave::default(),
+                fill: Default::default(),
                 opt: crate::optim_panel::OptPanel::new(),
                 swap: Default::default(),
                 tol: Default::default(),
@@ -4710,7 +4746,10 @@ impl eframe::App for App {
         }
         while let Some(d) = self.c.preview.poll() {
             // カタログの一覧は系の要求と同じに扱う（状態の行・失敗の表示も）
-            if matches!(d.tag, Tag::Glasses | Tag::Lenses | Tag::UserCatalog) {
+            if matches!(
+                d.tag,
+                Tag::Glasses | Tag::Lenses | Tag::UserCatalog | Tag::CatalogFill
+            ) {
                 // 失敗しても読み込み中は終わる
                 match d.tag {
                     Tag::Glasses => self.c.browser.glasses_pending = false,
@@ -4890,6 +4929,7 @@ impl eframe::App for App {
         if self.c.cat_save.open {
             self.c.cat_save_window(ctx);
         }
+        self.c.fill_window(ctx);
         self.save_layout_window(ctx);
         self.tour_frame(ctx);
     }

@@ -352,6 +352,24 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
         out.extend(rows);
         cats.extend(cat);
     }
+    // 未完の品は、同じメーカー・型番の普通の品（補足のカタログで補ったもの）があれば並べない
+    let done: std::collections::HashSet<(String, String)> = out
+        .iter()
+        .filter(|r| r["incomplete"] != json!(true))
+        .map(|r| {
+            (
+                r["vendor"].as_str().unwrap_or_default().to_string(),
+                r["part"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    out.retain(|r| {
+        r["incomplete"] != json!(true)
+            || !done.contains(&(
+                r["vendor"].as_str().unwrap_or_default().to_string(),
+                r["part"].as_str().unwrap_or_default().to_string(),
+            ))
+    });
     // 同じメーカーのカタログの url_template・overlay を全部の行に（ZMF・.zmx の玉にも）
     let refs: Vec<&lensbench_project::UserCatalog> = cats.iter().collect();
     for row in &mut out {
@@ -476,6 +494,35 @@ fn user_items(
             }
             if !it.checked.is_empty() {
                 row["checked"] = json!(it.checked);
+            }
+            // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
+            if it.is_incomplete() {
+                let size = |k: &str| match it.specs.get(k) {
+                    Some(Value::Array(a)) => {
+                        num(a.iter().filter_map(Value::as_f64).fold(0.0, f64::max))
+                    }
+                    Some(x) => x.as_f64().map_or(Value::Null, num),
+                    None => Value::Null,
+                };
+                let m = row.as_object_mut().unwrap();
+                m.extend(
+                    json!({
+                        "kind": "incomplete", "mirror": false, "efl": Value::Null,
+                        "diameter": size("diameter"), "thickness": size("thickness"),
+                        "elements": 0, "pieces": 0, "glasses": [],
+                        "incomplete": true, "missing": it.missing,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                if !it.title.is_empty() {
+                    row["title"] = json!(it.title);
+                }
+                if !it.notes.is_empty() {
+                    row["notes"] = json!(it.notes);
+                }
+                return row;
             }
             let summary = match (it.mech.as_ref(), it.blocks.as_slice()) {
                 // 機構部品: 面が無く寸法だけ
@@ -912,6 +959,75 @@ mod tests {
         let a = l.iter().find(|x| x["part"] == "A").unwrap();
         assert_eq!(a["kind"], "surfaces");
         assert!(a.get("error").is_none(), "{a}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 未完の品は配置できない行で並び、catalog_fill で補った品が補足のカタログにあれば、その品だけが並ぶ
+    #[test]
+    fn incomplete_item_and_fill() {
+        let dir = std::env::temp_dir().join(format!("lensbench-incomplete-{}", std::process::id()));
+        let src = dir.join("vendor");
+        let fill = dir.join("fill");
+        lensbench_core::vfs::create_dir_all(&src).unwrap();
+        lensbench_core::vfs::write(
+            src.join("V_incomplete.json"),
+            r#"{"version": 1, "vendor": "VEND", "note": "x", "items": {
+                "F-1": {"kind": "filter", "url": "https://example.com/p/f1", "title": "Filter 1",
+                        "missing": ["thickness"], "specs": {"diameter": 25, "price": "US$1"}, "notes": ["厚さが無い"]},
+                "M-1": {"kind": "mirror", "url": "https://example.com/p/m1",
+                        "missing": ["thickness", "diameter"], "specs": {}}
+            }}"#,
+        )
+        .unwrap();
+        let g = [root().join("tests/glass")];
+        let v = read_lenses(std::slice::from_ref(&src), &g).unwrap();
+        let l = v["lenses"].as_array().unwrap();
+        let f = l.iter().find(|x| x["part"] == "F-1").unwrap();
+        assert_eq!(f["incomplete"], true, "{f}");
+        assert_eq!(f["kind"], "incomplete");
+        assert_eq!(f["missing"], json!(["thickness"]));
+        assert_eq!(f["diameter"], json!(25.0));
+        assert!(f["thickness"].is_null());
+        assert!(f.get("error").is_none(), "{f}");
+        assert_eq!(f["category"], "filter");
+        // 補う（serve の catalog_fill）
+        let out = fill.join("VEND.json");
+        let r = crate::serve::call(
+            "catalog_fill",
+            &json!({
+                "catalog": src.join("V_incomplete.json").display().to_string(),
+                "item": "F-1", "out": out.display().to_string(),
+                "thickness": 3.0, "from": "page",
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(r["vendor"], "VEND");
+        assert_eq!(r["specs"]["thickness"], json!(3.0));
+        // 足りない値が無ければ誤り
+        assert!(crate::serve::call(
+            "catalog_fill",
+            &json!({
+                "catalog": src.join("V_incomplete.json").display().to_string(),
+                "item": "M-1", "out": out.display().to_string(), "thickness": 3.0,
+            }),
+            None,
+        )
+        .is_err());
+        let v = read_lenses(&[src.clone(), fill.clone()], &g).unwrap();
+        let l = v["lenses"].as_array().unwrap();
+        let fs: Vec<&Value> = l.iter().filter(|x| x["part"] == "F-1").collect();
+        assert_eq!(fs.len(), 1, "{fs:?}");
+        let f = fs[0];
+        assert!(f.get("incomplete").is_none(), "{f}");
+        assert!(f.get("error").is_none(), "{f}");
+        assert_eq!(f["vendor"], "VEND");
+        assert_eq!(f["thickness"], json!(3.0));
+        assert_eq!(f["diameter"], json!(25.0));
+        assert_eq!(f["url"], "https://example.com/p/f1");
+        // まだ補っていない品は未完のまま
+        let m = l.iter().find(|x| x["part"] == "M-1").unwrap();
+        assert_eq!(m["incomplete"], true);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

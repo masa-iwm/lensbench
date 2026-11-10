@@ -1770,6 +1770,20 @@
           ],
           "description": "機構部品の寸法"
         },
+        "missing": {
+          "description": "未完の品の足りない値（`thickness`・`diameter`）。blocks の無い品で空でなければ、配置できない「未完の品」\nとして並べ、品ページの仕様表か STEP で補ってから使う（[`catalog_fill`]）",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "description": "データを作ったときのメモ（読めなかった欄など）",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "source": {
           "description": "仕様の出典（資料・ページ）",
           "type": "string"
@@ -1784,6 +1798,10 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "title": {
+          "description": "品の名前（一覧のページの見出しなど）",
+          "type": "string"
         },
         "url": {
           "description": "製品ページ",

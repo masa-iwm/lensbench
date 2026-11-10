@@ -848,3 +848,37 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 開く	Expand
 階層	Drill-down
 面 {}〜{}（ダブルクリックで開く・たたむ）	Surfaces {}–{} (double-click to expand or collapse)
+STEP（.step・.stp）でないファイル	Not a STEP file (.step, .stp)
+STEP（{}）	STEP ({})
+{} {} を補って {} に保存	Completed {} {} and saved to {}
+{} に保存しました。一覧では普通の品として並びます	Saved to {}. It is now listed as a normal part
+⚠ 未完（{}）	⚠ Incomplete ({})
+✔ 確定して保存	✔ Confirm and save
+アプリ内のブラウザは閉じています。ページの文字を写して下に貼り付けるか、STEP を選んでください。	The in-app browser is closed. Copy the page text and paste it below, or choose a STEP file.
+アプリ内のブラウザを開けないので既定のブラウザで開きます: {}	Cannot open the in-app browser, opening the default browser: {}
+ダブルクリックで品ページから補います	Double-click to complete it from the product page
+ページの文字を貼り付ける	Paste the page text
+・	, 
+仕様表の厚さ {} mm と違います（マウント込みの形かもしれません）	Differs from the spec table thickness {} mm (the model may include the mount)
+仕様表を読む	Read the spec table
+仕様表（{}）	Spec table ({})
+値: STEP から	Values: from STEP
+値: 仕様表から	Values: from the spec table
+値: 入力	Values: entered
+値を確かめてから確定してください。補足のカタログに保存し、元のカタログは書き換えません	Check the values before confirming. They are saved to a supplement catalog; the original catalog is not changed
+厚さ [mm]	Thickness [mm]
+厚さ {} mm、径 {} mm	Thickness {} mm, diameter {} mm
+厚さ・径の欄が見つかりません	No thickness or diameter field found
+品ページの仕様表を読んでいます。CAD 欄から STEP を落とすと測ります。ボットの判定や captcha が出たら、ページの指示に従ってください。	Reading the spec table of the product page. Download a STEP file from the CAD section to measure it. If a bot check or captcha appears, follow the page.
+品ページを既定のブラウザで開きました。ページの文字を全部選んで写し、下に貼り付けるか、CAD 欄から落とした STEP を選んでください。	Opened the product page in the default browser. Select and copy all the page text and paste it below, or choose the STEP file downloaded from the CAD section.
+品ページを開き、仕様表か STEP から足りない値を入れます（ダブルクリックでも）	Opens the product page and fills the missing values from the spec table or STEP (also by double-click)
+既定のブラウザで開く	Open in the default browser
+未完の品: {} が無いので置けません	Incomplete part: cannot be placed without {}
+未完の品を補う — {} {}	Complete part — {} {}
+補足のカタログを置く設定のフォルダがありません	No settings folder for the supplement catalog
+貼り付けた文字	Pasted text
+足りない値: {}。値を入れて確定すると置けるようになります。	Missing: {}. Enter the values and confirm to make it placeable.
+（決められない）	(ambiguous)
+🌐 品ページから補う…	🌐 Complete from product page…
+🌐 品ページを開き直す	🌐 Reopen the product page
+📂 STEP を選んで測る…	📂 Choose a STEP file to measure…

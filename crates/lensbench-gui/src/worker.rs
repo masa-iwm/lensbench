@@ -55,6 +55,8 @@ pub enum Tag {
     Configs,
     /// ユーザーカタログの保存・一覧・変更（serve の catalog_add・catalog_items・catalog_edit）
     UserCatalog,
+    /// 未完のカタログ品を補って保存（serve の catalog_fill）
+    CatalogFill,
     /// 最適化（serve の optimize）
     Optimize,
     /// 差し替え探索（serve の swap）
@@ -185,9 +187,11 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
             .map(|v| (v, Vec::new()))
             .map_err(|e| e.message),
         // ユーザーカタログの一覧・変更（読み込んだ系は要らない）
-        "catalog_items" | "catalog_edit" => lensbench_cli::serve::user_catalog_edit(m, p)
-            .map(|v| (v, Vec::new()))
-            .map_err(|e| e.message),
+        "catalog_items" | "catalog_edit" | "catalog_fill" => {
+            lensbench_cli::serve::user_catalog_edit(m, p)
+                .map(|v| (v, Vec::new()))
+                .map_err(|e| e.message)
+        }
         _ => Err(format!("{m} は下書きでは使えない")),
     }
 }

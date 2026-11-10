@@ -143,6 +143,12 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `lensbench catalog-search` は種類（`--kind`）・メーカー（`--vendor`）・語（`--text`）・仕様（`--spec 名前=値`。数は一致、範囲の仕様は値を含む、
   文字列は含む。`名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）、`名前` だけはある品）で絞り込む。`efl`・`diameter`・`thickness` は
   一覧の値でも比べる。serve は `catalog_search`。
+- 未完の品: blocks の無い項目に `missing`（足りない値の名前 `thickness`・`diameter`）を書くと、配置できない「未完の品」として並ぶ
+  （`title`・`notes` も持てる）。GUI でこの品を選ぶと補う窓が開き、品ページの仕様表（`Thickness (mm):` など）か、CAD 欄から落とした
+  STEP を測って足りない値を入れ、ユーザーが確かめて確定する。確定した品は設定のフォルダの `catalog-fill/<メーカー>.json`
+  （ユーザーカタログ）に普通の品（鏡は平面鏡、ほかは `specs.material` の平行平板。分からない基板は N-BK7 で代用）として保存し、
+  次からは未完の品の代わりに並ぶ（元のカタログは書き換えない）。serve は `catalog_fill`。品ページは選んだ品の 1 件だけを開き、
+  まとめて取りに行くことはしない。
 
 ```json
 "states": [
