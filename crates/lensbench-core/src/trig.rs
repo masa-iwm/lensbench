@@ -382,6 +382,12 @@ mod tests {
         cis_scaled(&xs, &amp, &mut a);
         cis_impl(&xs, &amp, &mut b);
         assert_eq!(a, b);
+    }
+
+    /// AVX2 版（x86_64 だけにある）と cis_impl のビット一致を、いろいろな組・端数で
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn avx2_groups_match_scalar_bits() {
         // 組の全部が MAX_ARG 以下・MAX_ARG を超える値が混ざる・libm に戻る、の組をいろいろな端数の長さで
         let mut st = 0x1234_5678_9abc_def1u64;
         let mut ys: Vec<f64> = (0..4099)
