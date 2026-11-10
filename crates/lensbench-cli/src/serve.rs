@@ -868,8 +868,9 @@ fn catalog_query(p: &Value) -> Result<lensbench_project::catalog_spec::CatalogQu
 pub fn user_catalog_edit(method: &str, params: &Value) -> Result<Value, CallError> {
     let f = || match method {
         "catalog_items" | "catalog_edit" => user_catalog(method, params),
+        "catalog_fill" => catalog_fill(params),
         m => Err(RpcErr::params(format!(
-            "{m} は catalog_items か catalog_edit"
+            "{m} は catalog_items・catalog_edit・catalog_fill"
         ))),
     };
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
@@ -1177,6 +1178,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         "catalog_add" | "catalog_items" | "catalog_edit" => {
             user_catalog(method, p).map(|v| (v, Vec::new()))
         }
+        // カタログの未完の品に厚さ・径を足し、補足のカタログ（ユーザーカタログ）に普通の品として保存
+        "catalog_fill" => catalog_fill(p).map(|v| (v, Vec::new())),
         // 解析のサブコマンドの引数の一覧（名前・型・既定・説明。GUI の設定欄）
         "analysis_args" => {
             let cmd = p["cmd"]
@@ -1639,6 +1642,77 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
             Ok(catalog_listing(path, &cat))
         }
     }
+}
+
+/// `catalog_fill`: カタログ `catalog` の未完の品 `item` に `thickness`・`diameter`（数か [幅, 高さ]、mm）を足して、
+/// 補足のカタログ `out`（ユーザーカタログ。無ければ作る）に同じ型番・同じメーカーの普通の品として書く。
+/// `from` は値の決め方（page・step・manual）。元のカタログは書き換えない。`out` をレンズカタログのフォルダに
+/// 置けば、次の一覧では未完の品の代わりに並ぶ
+fn catalog_fill(p: &Value) -> Result<Value, RpcErr> {
+    use lensbench_project::{catalog_fill as cf, UserCatalog};
+    let s = |k: &str| {
+        p[k].as_str()
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .ok_or_else(|| RpcErr::params(format!("catalog_fill には {k}")))
+    };
+    let src = check_path(Path::new(s("catalog")?), false)?;
+    let out = check_path(Path::new(s("out")?), true)?;
+    let name = s("item")?;
+    let cat = UserCatalog::load(&src)?;
+    let it = cat
+        .items
+        .get(name)
+        .ok_or_else(|| RpcErr::app(format!("{} に項目 {name} がない", src.display())))?;
+    if !it.is_incomplete() {
+        return Err(RpcErr::app(format!("{name} は未完の品でない")));
+    }
+    let vendor = if cat.vendor.trim().is_empty() {
+        src.parent()
+            .and_then(|d| d.file_name())
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    } else {
+        cat.vendor.clone()
+    };
+    let today = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| cf::date_of_unix(d.as_secs()))
+        .unwrap_or_default();
+    let filled = cf::complete(
+        it,
+        p["thickness"].as_f64(),
+        p.get("diameter").filter(|v| !v.is_null()).cloned(),
+        cf::FillFrom::parse(p["from"].as_str().unwrap_or("")),
+        &today,
+    )
+    .map_err(RpcErr::params)?;
+    let mut fc = UserCatalog::load_or_new(&out)?;
+    if !fc.vendor.is_empty() && fc.vendor != vendor {
+        return Err(RpcErr::app(format!(
+            "{} はメーカー {} の補足のカタログ（{vendor} の品は別のファイルに）",
+            out.display(),
+            fc.vendor
+        )));
+    }
+    fc.vendor = vendor.clone();
+    // 膜の名前などを引けるよう、元のカタログの膜も写す
+    for (k, v) in &cat.coatings {
+        fc.coatings.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    fc.items.insert(name.to_string(), filled.clone());
+    if let Some(d) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+        lensbench_core::vfs::create_dir_all(d)
+            .map_err(|e| RpcErr::app(format!("{}: {e}", d.display())))?;
+    }
+    fc.save(&out)?;
+    Ok(json!({
+        "catalog": out.display().to_string(),
+        "item": name,
+        "vendor": vendor,
+        "specs": filled.specs,
+        "notes": filled.notes,
+    }))
 }
 
 fn is_project(f: &Path) -> bool {

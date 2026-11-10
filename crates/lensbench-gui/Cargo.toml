@@ -55,6 +55,11 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlC
 # ブラウザの言語（navigator.language）
 sys-locale = { version = "0.3", features = ["js"] }
 
+# 未完のカタログ品の品ページを開くアプリ内のブラウザ（WebView2。別のプロセスで動かす、webview.rs）
+[target.'cfg(windows)'.dependencies]
+wry = { version = "0.56", default-features = false }
+tao = { version = "0.36", default-features = false, features = ["rwh_06"] }
+
 # exe のアイコン（Windows のリソース）
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

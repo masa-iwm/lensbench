@@ -18,6 +18,7 @@
 //! - 状態（多重構成に当たる）: ブロックの値（ON/OFF、間隔、群の移動、偏心・傾き、.zmx の構成番号など）と
 //!   系の値（物体距離など）の変更の組に名前を付ける。[`expand_state`] でその状態の系を展開する。
 
+pub mod catalog_fill;
 pub mod catalog_spec;
 pub mod detectors;
 pub mod edit_ops;
@@ -594,6 +595,9 @@ pub enum Block {
         tilt: [f64; 2],
         #[serde(default)]
         semi: f64,
+        /// 鏡の開口（省略なら半径 semi の円。四角い鏡は rect）
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        aperture: Option<SurfAperture>,
         #[serde(default)]
         coat: String,
         #[serde(default = "yes")]
@@ -1632,6 +1636,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 conic,
                 tilt,
                 semi,
+                aperture,
                 coat,
                 on,
                 back,
@@ -1652,6 +1657,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     k: *conic,
                     semi: *semi,
                     coat: coat.clone(),
+                    ap: surf_ap(*aperture, *semi),
                     ..Default::default()
                 };
                 if self.parity < 0.0 {
@@ -1887,6 +1893,23 @@ pub struct UserItem {
     /// 仕様を確かめた日（YYYY-MM-DD）
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub checked: String,
+    /// 未完の品の足りない値（`thickness`・`diameter`）。blocks の無い品で空でなければ、配置できない「未完の品」
+    /// として並べ、品ページの仕様表か STEP で補ってから使う（[`catalog_fill`]）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing: Vec<String>,
+    /// 品の名前（一覧のページの見出しなど）
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    /// データを作ったときのメモ（読めなかった欄など）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
+impl UserItem {
+    /// 未完の品（足りない値があり、面も機構の寸法も無い）か
+    pub fn is_incomplete(&self) -> bool {
+        !self.missing.is_empty() && self.blocks.is_empty() && self.mech.is_none()
+    }
 }
 
 /// 機構部品の穴（部品の基準面からの z の範囲と内径）
@@ -2772,24 +2795,9 @@ fn curv(r: Option<f64>) -> f64 {
     }
 }
 
-fn surf(q: &SurfSpec) -> Result<Surface, String> {
-    let mut s = Surface {
-        typ: if q.asph.iter().any(|a| *a != 0.0) {
-            SurfType::EvenAsph
-        } else {
-            SurfType::Standard
-        },
-        c: curv(q.radius),
-        k: q.conic,
-        asph: q.asph.clone(),
-        t: q.t,
-        semi: q.semi.value(),
-        semi_auto: q.semi.is_auto(),
-        coat: q.coat.clone(),
-        comment: q.comment.clone(),
-        ..Default::default()
-    };
-    s.ap = match q.aperture {
+/// 面の開口（JSON）を面の開口に。浮動の開口は半径 semi
+fn surf_ap(ap: Option<SurfAperture>, semi: f64) -> Aperture {
+    match ap {
         None => Aperture::None,
         Some(SurfAperture::Circular { min, max, dx, dy }) => {
             Aperture::Circular { min, max, dx, dy }
@@ -2808,10 +2816,28 @@ fn surf(q: &SurfSpec) -> Result<Surface, String> {
             dx,
             dy,
         },
-        Some(SurfAperture::Floating) => Aperture::Floating {
-            semi: q.semi.value(),
+        Some(SurfAperture::Floating) => Aperture::Floating { semi },
+    }
+}
+
+fn surf(q: &SurfSpec) -> Result<Surface, String> {
+    let mut s = Surface {
+        typ: if q.asph.iter().any(|a| *a != 0.0) {
+            SurfType::EvenAsph
+        } else {
+            SurfType::Standard
         },
+        c: curv(q.radius),
+        k: q.conic,
+        asph: q.asph.clone(),
+        t: q.t,
+        semi: q.semi.value(),
+        semi_auto: q.semi.is_auto(),
+        coat: q.coat.clone(),
+        comment: q.comment.clone(),
+        ..Default::default()
     };
+    s.ap = surf_ap(q.aperture, q.semi.value());
     let special = q.jones.is_some() as u8
         + q.coordbrk.is_some() as u8
         + q.polarizer.is_some() as u8

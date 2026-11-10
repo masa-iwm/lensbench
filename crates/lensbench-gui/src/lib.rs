@@ -15,6 +15,7 @@ mod config_panel;
 pub mod ext;
 mod figures;
 mod files;
+mod fill;
 mod fonts;
 mod i18n;
 mod json_view;
@@ -38,6 +39,8 @@ mod view3d;
 mod web_store;
 #[cfg(target_arch = "wasm32")]
 mod web_tabs;
+#[cfg(windows)]
+mod webview;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;
@@ -52,6 +55,14 @@ pub use worker::entry as web_worker;
 /// GUI を起動する（引数はプロセスの引数から読む）
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main() -> std::process::ExitCode {
+    // 品ページを開くアプリ内のブラウザ（未完のカタログ品を補う窓が、この exe を --webview で起こす）
+    #[cfg(windows)]
+    {
+        let a: Vec<String> = std::env::args().collect();
+        if a.get(1).map(String::as_str) == Some("--webview") {
+            return webview::run(&a);
+        }
+    }
     // 引数: 系のファイル（エクスプローラーで .zmx をこの exe に落としたときも）、--glass-dir・--lens-catalog、
     // 画面の通し確認 --tour DIR（tour.rs）
     let args = match tour::Args::parse(std::env::args().skip(1)) {
@@ -70,14 +81,14 @@ pub fn main() -> std::process::ExitCode {
     );
     portable::set(&store);
     args.notice = store.notice.clone();
-    // カタログの一覧を設定の隣に覚えておく（次の起動で読み直さない）
-    lensbench_cli::set_lens_list_cache_dir(
-        store
-            .file
-            .clone()
-            .or_else(portable::os_file)
-            .and_then(|f| f.parent().map(Into::into)),
-    );
+    // カタログの一覧を設定の隣に覚えておく（次の起動で読み直さない）。補ったカタログ品も設定の隣に
+    let settings_dir: Option<std::path::PathBuf> = store
+        .file
+        .clone()
+        .or_else(portable::os_file)
+        .and_then(|f| f.parent().map(Into::into));
+    fill::set_fill_dir(settings_dir.clone());
+    lensbench_cli::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {
         persistence_path: store.file.clone(),
         viewport: egui::ViewportBuilder::default()

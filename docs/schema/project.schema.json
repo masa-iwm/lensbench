@@ -210,6 +210,17 @@
         },
         {
           "properties": {
+            "aperture": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SurfAperture"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "鏡の開口（省略なら半径 semi の円。四角い鏡は rect）"
+            },
             "back": {
               "default": false,
               "description": "往路を戻る: 同じ並び（群）で鏡より前のブロックを、逆の順・逆の向きにたどる",
