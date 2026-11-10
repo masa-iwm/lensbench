@@ -11,7 +11,7 @@
 
 実測表は境界（膜と前後の媒質）ごとに要る。膜のモデルは膜ごとの特性行列（波長・β = n sinθ・偏光ごと）を持ち、
 任意の硝材・向き（空気から・硝材から・硝材どうし）・波長（範囲内）・鏡の入射側の媒質で係数を出す。
-`LBCM 2` の行のあとに `COAT 名前`、`D`・`BMAX`、`WAVE` と β ごとの行、鏡なら `MIRROR` の節が続く
+`LBCM 2` の行のあとに `COAT 名前`、（あれば `NOTE 注記`）、`D`・`BMAX`、`WAVE` と β ごとの行、鏡なら `MIRROR` の節が続く
 （詳しくは `lensbench_core::coating::parse_models`）。`--table` と `Coatings::load_file` は 1 行目で LBCT と LBCM を見分ける。
 同じ境界に実測表があれば実測表を使う。
 
@@ -49,5 +49,41 @@ r が急に変わるのに測った点が足りないので notimpl を返す（
 s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ外で s に段差が出る）。屈折率の高い側から入る透過（硝材 → 空気の裏面など）は、
 表を出る側（屈折率の低い側）の屈折角で引く（OpticStudio と同じ。`tests/filter_os` で照合）。`Coatings::table_normal` を
 `TableNormal::Continuous` にすると、0° の行の s を p に置き換えて補間する（段差なし）。
+
+## 膜の名前で自動で読む
+
+系の膜ファイル（.zmx の COFN、Python の `coating_file=`）と同じフォルダに `<膜の名前>.lbcb`・`.lbcm`・`.lbct`・`.lbcs` を置くと、
+膜ファイルで決まらない膜（暗号化された膜の宣言だけのもの、膜ファイルにない名前）に、名前の指定なしで使う
+（`Coatings::for_system` → `Coatings::load_dir_for`）。`.lbcs` は層のわかる近似の膜で、膜ファイルと同じ形式で
+`COAT <膜の名前>` の層と、膜ファイルにない材料の `MATE` を書く（分光の曲線に合わせて作った代わりの多層膜など）。
+
+- 膜の名前は大文字小文字を区別しない（`X(550nm)` の系に `X(550NM).lbcb` を使う）。同じ膜に複数あれば lbcb・lbcm・lbct・lbcs の順に 1 つ
+  （測ったモデル・実測表があれば近似の膜より先に使う）。
+- 系が使う膜のファイルだけ読む（フォルダにある他の膜は読まない）。
+- 膜ファイルの COAT・TABLE にある膜、理想膜（`I.`）、膜なしには使わない。
+- `--table`・`coatings=`・`LENSBENCH_COATINGS` で明示したファイルが勝つ（後から読んで上書きする。自動で読んだ実測表は明示したモデルのある膜から、近似の膜は明示したモデル・実測表のある膜から外す）。
+- `lensbench coatings 系.zmx --json` の `auto_coatings` に、自動で読んだ膜とファイルと注記（`note`）が出る。
+  モデルの注記は LBCM の `NOTE`（`coat-model --note`、LBCM 3 では末尾の `NOTES`）で、短い測定から作った近似のモデルなどの印に使う。
+  `.lbcs` は「近似の膜」と出る。境界ごとの `interfaces` にも、注記のあるモデルなら `note` が付く。
+- ファイルの中の膜の名前がファイル名と違う（大文字小文字を除いて）ときは止める。
+
+## 分光の曲線から近似の膜を作る（coat-design）
+
+暗号化された膜を測れないとき、メーカーの分光の曲線（反射率・透過率）に合う多層膜を当てはめて、近似の膜（`.lbcs`）にする。
+
+```
+lensbench coat-design curve.csv --name X --materials MGF2,TA2O5 --substrate N-BK7 \
+  --coating-file COATING.DAT --glass-dir glass --layers 1..12 --out X.lbcs --json
+```
+
+- CSV の列: `wl_um` か `wl_nm`、`angle_deg`（既定 0）、`pol`（`s`・`p`・`avg`、既定 avg）、`quantity`（`R`・`T`、既定 R）、
+  `value`（0〜1）か `value_pct`（%）、`weight`（既定 1）。
+- 材料は外側（入射側）から繰り返す順。膜ファイルの MATE か、ガラスカタログのガラス（ガラスなら `.lbcs` に MATE の表も書く）。
+  基板は屈折率の数か、材料・ガラスの名前。
+- 層の数ごとに、乱数の初期値と、1 つ少ない層の数の最良に層を足したもの・2 つ少ない最良に別の材料の薄い層（針）を挟んだものから
+  Levenberg–Marquardt で厚さを合わせる（`lensbench_core::coat_design`）。いちばん合う RMS の (1 + `--slack`) 倍以内で
+  層のいちばん少ないものを選ぶ。JSON の `by_layers` に層の数ごとの RMS が出る。
+- 同じ曲線を出す設計は一つではない。合わせた曲線の外（位相、別の角度、別の基板、硝材の側から入るとき）は元の膜と違いうる。
+  斜めの曲線（45° の s・p など）があれば足すと外れが減る。
 
 ガラスカタログは `--glass-dir`、環境変数 `LENSBENCH_GLASSCAT`（パス区切りで複数）、.zmx と同じフォルダの順に探す。

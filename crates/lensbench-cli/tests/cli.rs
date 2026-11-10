@@ -662,3 +662,53 @@ fn tolerance_monte_carlo() {
     ]);
     assert!(!ok && err.contains("公差の組"), "{err}");
 }
+
+#[test]
+fn coat_design_fits_a_reflectance_curve_and_writes_a_stack() {
+    // 1/4 波長の MgF2 1 層（n 1.38、基板 1.52）の垂直入射の反射率を、材料 L から当てはめる
+    let dir = std::env::temp_dir().join(format!("lensbench-coat-design-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("m.dat"), "MATE L\n0.3 1.38 0\n2.0 1.38 0\n").unwrap();
+    let (n0, n1, ns, d) = (1.0f64, 1.38f64, 1.52f64, 0.55 / (4.0 * 1.38));
+    let mut csv = String::from("wl_nm,value_pct\n");
+    for i in 0..=40 {
+        let wl = 0.45 + 0.2 * i as f64 / 40.0;
+        let ph = 2.0 * std::f64::consts::PI * n1 * d / wl;
+        let (r1, r2) = ((n0 - n1) / (n0 + n1), (n1 - ns) / (n1 + ns));
+        let num = r1 * r1 + r2 * r2 + 2.0 * r1 * r2 * (2.0 * ph).cos();
+        let den = 1.0 + r1 * r1 * r2 * r2 + 2.0 * r1 * r2 * (2.0 * ph).cos();
+        csv += &format!("{},{}\n", wl * 1e3, 100.0 * num / den);
+    }
+    std::fs::write(dir.join("c.csv"), csv).unwrap();
+    let out = dir.join("X.lbcs");
+    let (ok, o, err) = run(&[
+        "coat-design",
+        dir.join("c.csv").to_str().unwrap(),
+        "--name",
+        "X",
+        "--materials",
+        "L",
+        "--substrate",
+        "1.52",
+        "--coating-file",
+        dir.join("m.dat").to_str().unwrap(),
+        "--layers",
+        "1..2",
+        "--starts",
+        "4",
+        "--out",
+        out.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&o).unwrap();
+    assert!(v["max_err"].as_f64().unwrap() < 1e-7, "{v}");
+    assert_eq!(v["layers"].as_array().unwrap().len(), 1, "{v}");
+    assert!(
+        (v["layers"][0]["d_um"].as_f64().unwrap() - d).abs() < 1e-5,
+        "{v}"
+    );
+    let txt = std::fs::read_to_string(&out).unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(txt.contains("COAT X\nL "), "{txt}");
+}

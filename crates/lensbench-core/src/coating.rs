@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::f64::consts::PI;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use num_complex::Complex64 as C64;
 
@@ -345,6 +345,8 @@ pub const MODEL_HEADER: &str = "LBCM 2";
 
 /// 膜のモデルのバイナリ形式（[`parse_models_bin`]）の先頭
 pub const MODEL_BIN_HEADER: &[u8] = b"LBCM 3\n";
+/// LBCM 3 の末尾の注記の印（注記のある膜があるときだけ書く）
+pub const MODEL_BIN_NOTES: &[u8] = b"NOTES\n";
 
 /// 暗号化された膜の特性行列モデル（層を読まずに、任意の硝材・向き・波長で使う）。
 ///
@@ -374,6 +376,8 @@ pub struct CoatModel {
     /// 波長方向の折れ目 [µm]（昇順）。膜の材料の分散表の節で、係数の波長微分がここで跳ぶ。
     /// 波長の補間はこの点をまたがない（透過・鏡とも。折れ目の波長でも測っておく）
     pub kinks: Vec<f64>,
+    /// 注記（空でなければ利用者に見せる。短い測定から作った近似のモデルの印など）。LBCM 2 の `NOTE` 行、LBCM 3 の末尾の `NOTES`
+    pub note: String,
 }
 
 /// 鏡のモデル（[`CoatModel`]）
@@ -412,6 +416,7 @@ impl CoatModel {
 /// D 透過の位相の厚さ [µm]
 /// BMAX 透過で使える β の上限
 /// KINKS 折れ目の波長 [µm] ...      （なくてもよい。波長の補間はこの点をまたがない）
+/// NOTE 注記（なくてもよい。近似のモデルの印など、利用者に見せる 1 行）
 /// WAVE 波長 [µm]
 /// β  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（s）  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（p）     （19 列、β の昇順）
 /// ...
@@ -539,6 +544,9 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                 } else {
                     c.bmax = v
                 }
+            }
+            "NOTE" => {
+                c.model.note = line[4..].trim().to_string();
             }
             "KINKS" => {
                 let mut k = t[1..].iter().map(|x| n(x)).collect::<Result<Vec<f64>>>()?;
@@ -863,6 +871,22 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         }
         out.push((name, m));
     }
+    // 末尾の注記（なくてもよい）: NOTES\n、数、（名前の長さ u16、名前、注記の長さ u32、注記）× 数
+    if b.len() > r.p && b[r.p..].starts_with(MODEL_BIN_NOTES) {
+        r.p += MODEL_BIN_NOTES.len();
+        let nn = r.u32()?;
+        for _ in 0..nn {
+            let ln = r.u16()? as usize;
+            let name = String::from_utf8_lossy(r.take(ln)?).to_string();
+            let ln = r.u32()?;
+            let note = String::from_utf8(r.take(ln)?.to_vec())
+                .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の注記が UTF-8 でない".into()))?;
+            match out.iter_mut().find(|(k, _)| *k == name) {
+                Some((_, m)) => m.note = note,
+                None => invalid!("膜のモデル（LBCM 3）の注記の膜 {name} がない"),
+            }
+        }
+    }
     if r.p != b.len() {
         invalid!("膜のモデル（LBCM 3）の後ろに余分なデータがある");
     }
@@ -1168,6 +1192,11 @@ pub struct Coatings {
     pub phase: PhaseConvention,
     /// TABLE 膜の垂直入射の扱い
     pub table_normal: TableNormal,
+    /// 膜ファイルのフォルダから膜の名前で自動で読んだモデル・実測表（系の膜の名前 → ファイル）。
+    /// [`Coatings::for_system`] が埋める
+    pub auto: Vec<(String, PathBuf)>,
+    /// 自動で読んだ実測表（`.lbct`）の境界の鍵（明示したモデルのある膜から外すため）
+    pub auto_measured: Vec<String>,
 }
 
 impl Coatings {
@@ -1181,13 +1210,126 @@ impl Coatings {
         for (k, t) in &sys.coat_tables {
             file.table.insert(k.clone(), t.clone());
         }
-        Ok(Coatings {
+        let mut c = Coatings {
             file,
             measured: HashMap::new(),
             models: HashMap::new(),
             phase: PhaseConvention::default(),
             table_normal: TableNormal::default(),
-        })
+            auto: Vec::new(),
+            auto_measured: Vec::new(),
+        };
+        if let Some(dir) = sys.coating_file.as_ref().and_then(|p| p.parent()) {
+            c.load_dir_for(sys, dir)?;
+        }
+        Ok(c)
+    }
+
+    /// フォルダ dir から、系 sys が使う膜のうち膜ファイルで決まらないもの（暗号化された膜など）の
+    /// モデル・実測表を膜の名前で探して読む。ファイル名は `<膜の名前>.lbcb`・`.lbcm`・`.lbct`、
+    /// 層のわかる近似の膜なら `.lbcs`（膜ファイルの形式で COAT とその材料の MATE）
+    /// （大文字小文字は区別しない。同じ膜で複数あれば lbcb・lbcm・lbct・lbcs の順に 1 つ）。
+    /// 使う膜だけ読む。読んだものは [`Coatings::auto`] に記録し、読んだ数を返す。
+    /// 後から [`Coatings::load_file`] で読んだもの（明示の指定）が勝つ
+    pub fn load_dir_for(&mut self, sys: &System, dir: &Path) -> Result<usize> {
+        let (keys, _) = media_keys(sys);
+        let mut want: Vec<&str> = Vec::new();
+        for k in keys.iter().flatten() {
+            let coat = k.split('|').next().unwrap_or("");
+            if coat.is_empty()
+                || coat == "-"
+                || coat.starts_with("I.")
+                || self.file.table.contains_key(coat)
+                || self.file.coat.contains_key(coat)
+                || want.contains(&coat)
+            {
+                continue;
+            }
+            want.push(coat);
+        }
+        if want.is_empty() || !crate::vfs::is_dir(dir) {
+            return Ok(0);
+        }
+        let files =
+            crate::vfs::read_dir(dir).map_err(|e| Error::Io(format!("{}: {e}", dir.display())))?;
+        // 膜の名前（大文字）→ (拡張子の順位, パス)
+        let mut found: HashMap<String, (usize, PathBuf)> = HashMap::new();
+        for p in files {
+            let (Some(stem), Some(ext)) = (p.file_stem(), p.extension()) else {
+                continue;
+            };
+            let ext = ext.to_string_lossy().to_ascii_lowercase();
+            let Some(rank) = ["lbcb", "lbcm", "lbct", "lbcs"]
+                .iter()
+                .position(|e| *e == ext)
+            else {
+                continue;
+            };
+            let name = stem.to_string_lossy().to_uppercase();
+            if found.get(&name).map_or(true, |(r, _)| rank < *r) {
+                found.insert(name, (rank, p));
+            }
+        }
+        let mut n = 0;
+        for coat in want {
+            let Some((_, p)) = found.get(&coat.to_uppercase()) else {
+                continue;
+            };
+            let lbcs = p
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("lbcs"));
+            if lbcs {
+                // 層のわかる近似の膜（膜ファイルの形式）: 膜を系の名前で入れ、足りない材料も足す
+                let f = CoatingFile::load(p)?;
+                let Some(ls) = f
+                    .coat
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case(coat))
+                    .map(|(_, l)| l.clone())
+                else {
+                    invalid!(
+                        "{}: 膜 {coat} の COAT がない（ファイル名と中の膜の名前が違う）",
+                        p.display()
+                    );
+                };
+                for (m, rows) in f.mate {
+                    self.file.mate.entry(m).or_insert(rows);
+                }
+                self.file.coat.insert(coat.to_string(), ls);
+                self.auto.push((coat.to_string(), p.clone()));
+                n += 1;
+                continue;
+            }
+            let mut one = Coatings::default();
+            one.load_file(p)?;
+            // ファイルの中の膜の名前の大文字小文字が系と違っても、系の名前で引けるようにする
+            let mut hit = false;
+            for (name, m) in one.models {
+                if name.eq_ignore_ascii_case(coat) {
+                    self.models.insert(coat.to_string(), m);
+                    hit = true;
+                }
+            }
+            for (key, m) in one.measured {
+                let mut it = key.splitn(2, '|');
+                let (c0, rest) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
+                if c0.eq_ignore_ascii_case(coat) {
+                    let k = format!("{coat}|{rest}");
+                    self.measured.insert(k.clone(), m);
+                    self.auto_measured.push(k);
+                    hit = true;
+                }
+            }
+            if !hit {
+                invalid!(
+                    "{}: 膜 {coat} のモデル・実測表がない（ファイル名と中の膜の名前が違う）",
+                    p.display()
+                );
+            }
+            self.auto.push((coat.to_string(), p.clone()));
+            n += 1;
+        }
+        Ok(n)
     }
 
     pub fn add_measured(&mut self, key: &str, m: Measured) -> Result<()> {
@@ -1246,8 +1388,37 @@ impl Coatings {
             e => e,
         })?;
         let n = v.len();
+        // 自動で読んだ実測表は、明示したモデルのある膜から外す（実測表はモデルより先に引かれる）
+        let names: Vec<String> = v.iter().map(|(c, _)| c.clone()).collect();
         self.models.extend(v);
+        let auto = std::mem::take(&mut self.auto_measured);
+        for k in auto {
+            let coat = k.split('|').next().unwrap_or("");
+            if names.iter().any(|c| c == coat) {
+                self.measured.remove(&k);
+            } else {
+                self.auto_measured.push(k);
+            }
+        }
+        self.drop_auto_stacks();
         Ok(n)
+    }
+
+    /// 自動で読んだ近似の膜（`.lbcs`）のうち、後から明示して読んだモデル・実測表のある膜を膜ファイルから外す
+    /// （膜ファイルの COAT はモデル・実測表より先に引かれるので、外さないと明示の指定が負ける）
+    fn drop_auto_stacks(&mut self) {
+        for (coat, p) in &self.auto {
+            if !p
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("lbcs"))
+            {
+                continue;
+            }
+            let pre = format!("{coat}|");
+            if self.models.contains_key(coat) || self.measured.keys().any(|k| k.starts_with(&pre)) {
+                self.file.coat.remove(coat);
+            }
+        }
     }
 
     /// 実測表（LBCT）か膜のモデル（LBCM）のファイルを、1 行目で見分けて読む
@@ -1280,8 +1451,10 @@ impl Coatings {
         })?;
         let n = v.len();
         for (k, m) in v {
+            self.auto_measured.retain(|a| *a != k);
             self.add_measured(&k, m)?;
         }
+        self.drop_auto_stacks();
         Ok(n)
     }
 
@@ -2813,6 +2986,8 @@ mod tests {
             models: HashMap::new(),
             phase: PhaseConvention::default(),
             table_normal: TableNormal::default(),
+            auto: Vec::new(),
+            auto_measured: Vec::new(),
         };
         assert_eq!(c.kind("-|AIR|N-BK7"), CoatKind::Bare);
         assert_eq!(c.kind("I.98|AIR|N-BK7"), CoatKind::Ideal);
