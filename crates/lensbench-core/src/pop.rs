@@ -819,7 +819,7 @@ pub struct RayBeamOpts {
     pub half: Option<f64>,
     /// 面の開口を格子の上で掛ける（絞り面で開口がなければ絞り半径の円）。このとき瞳を少し広げて光線を追う
     pub aperture: bool,
-    /// 瞳の広げ方（aperture のときの既定 1.05）
+    /// 瞳の広げ方（外の縁のある開口を掛けるときの既定 1.05、遮蔽・スパイダー・開口なしは 1）
     pub overfill: Option<f64>,
 }
 
@@ -877,7 +877,10 @@ pub fn beam_from_rays(
     } else {
         None
     };
-    let of = o.overfill.unwrap_or(if ap.is_some() { 1.05 } else { 1.0 });
+    // 瞳を広げるのは外の縁のある開口（円・矩形・楕円）だけ。遮蔽・スパイダーは外の縁が無いので、光の外の縁は
+    // 開口の無いときと同じ瞳の縁（絞り面なら絞りの円。公開 #62: 広げると光が絞り半径の外まで通っていた）
+    let rim = ap.is_some_and(|a| aperture_reach(a, 0.0, 0.0) > 0.0);
+    let of = o.overfill.unwrap_or(if rim { 1.05 } else { 1.0 });
     let mut px = Vec::with_capacity(nr * nr);
     let mut py = Vec::with_capacity(nr * nr);
     let g = |i: usize| -1.0 + 2.0 * i as f64 / (nr - 1) as f64;
