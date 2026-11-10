@@ -1751,6 +1751,17 @@
           "default": "",
           "type": "string"
         },
+        "frame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MechSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "枠付きの品（マウント済みのフィルタなど）の枠。`blocks` はガラスだけで、枠は z を枠の端から光の進む\n向きに書き、`holds.seat_z` にガラスの前面の位置を書く。プロジェクトに置くと、ガラスの最初の面に\n機構部品として付く（ケラレ・当たりの確認と描画）"
+        },
         "glass_catalogs": {
           "default": [],
           "description": "項目の玉のガラスのカタログ（使うときに足す）",

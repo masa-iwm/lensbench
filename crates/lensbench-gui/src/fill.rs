@@ -9,7 +9,8 @@
 //! ページは選んだ品の 1 件だけを開き、裏でまとめて取りに行かない。ボットの判定・captcha はそのまま見せる。
 
 use egui::{Color32, RichText, Ui};
-use lensbench_project::catalog_fill::{read_page, PageRead, StepSize};
+use lensbench_project::catalog_fill::{page_frame, read_page, PageRead, StepSize};
+use lensbench_project::MechSpec;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -286,7 +287,13 @@ pub fn sure_values(missing: &[String], r: &PageRead) -> Option<(Option<f64>, Opt
 
 /// catalog_fill の params
 #[cfg_attr(not(windows), allow(dead_code))]
-fn fill_params(r: &LensRow, t: Option<f64>, d: Option<&Value>, from: &str) -> Option<Value> {
+fn fill_params(
+    r: &LensRow,
+    t: Option<f64>,
+    d: Option<&Value>,
+    frame: Option<&MechSpec>,
+    from: &str,
+) -> Option<Value> {
     let out = fill_file(&r.vendor)?;
     let mut p = json!({
         "catalog": r.source.clone()?,
@@ -299,6 +306,9 @@ fn fill_params(r: &LensRow, t: Option<f64>, d: Option<&Value>, from: &str) -> Op
     }
     if let Some(d) = d {
         p["diameter"] = d.clone();
+    }
+    if let Some(f) = frame {
+        p["frame"] = serde_json::to_value(f).ok()?;
     }
     Some(p)
 }
@@ -430,8 +440,11 @@ impl AutoFill {
             match m {
                 crate::webview::Msg::Page { url, text } => {
                     let miss = job.row.missing();
-                    if let Some((t, d)) = sure_values(&miss, &read_page(&text)) {
-                        let p = fill_params(&job.row, t, d.as_ref(), "page");
+                    let pr = read_page(&text);
+                    if let Some((t, d)) = sure_values(&miss, &pr) {
+                        // 枠付きの品は、仕様表の枠の厚さ・外径・有効径から簡単な枠も
+                        let frame = page_frame(&pr, t, d.as_ref().and_then(Value::as_f64));
+                        let p = fill_params(&job.row, t, d.as_ref(), frame.as_ref(), "page");
                         self.job = None;
                         return p.map(AutoOut::Save);
                     }
@@ -468,6 +481,10 @@ pub struct FillWin {
     read: Option<(String, PageRead)>,
     /// 測った STEP（ファイルと結果）
     step: Option<(String, Result<StepSize, String>)>,
+    /// 枠付きの品の枠と、その出どころ（step・page）
+    frame: Option<(MechSpec, &'static str)>,
+    /// 枠も保存する
+    keep_frame: bool,
     /// 最後の操作の結果（誤りなら true）
     note: Option<(String, bool)>,
     /// 確定を頼んで返事を待っている
@@ -595,6 +612,15 @@ impl FillWin {
         if filled && self.from != "step" {
             self.from = "page";
         }
+        // STEP で分けた枠が無ければ、仕様表の枠の厚さ・外径・有効径から
+        if !matches!(self.frame, Some((_, "step"))) {
+            let t = parse_thickness(&self.thickness).or(r.thickness);
+            let g = parse_diameter(&self.diameter).and_then(|v| v.as_f64());
+            if let Some(f) = page_frame(&r, t, g) {
+                self.frame = Some((f, "page"));
+                self.keep_frame = true;
+            }
+        }
         self.read = Some((url, r));
     }
 
@@ -607,13 +633,20 @@ impl FillWin {
             .map(|e| e.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
         let res = if ext == "step" || ext == "stp" {
-            lensbench_core::vfs::read_to_string(&path)
+            // STEP の文字は ASCII（見出しのファイル名などに Latin-1 の文字が混じることがある）
+            lensbench_core::vfs::read(&path)
                 .map_err(|e| e.to_string())
-                .and_then(|t| lensbench_project::catalog_fill::read_step(&t))
+                .and_then(|b| {
+                    lensbench_project::catalog_fill::read_step(&String::from_utf8_lossy(&b))
+                })
         } else {
             Err(tr("STEP（.step・.stp）でないファイル").to_string())
         };
         if let Ok(s) = &res {
+            if let Some(f) = &s.frame {
+                self.frame = Some((f.clone(), "step"));
+                self.keep_frame = true;
+            }
             let miss = self.missing();
             if miss.iter().any(|m| m == "thickness") && self.thickness.trim().is_empty() {
                 self.thickness = crate::json_view::fmt_num(s.thickness);
@@ -762,8 +795,12 @@ impl FillWin {
                         ],
                     ));
                     ui.weak(&s.note);
-                    // STEP は外形を測るので、枠（マウント）付きの品では枠の寸法になる
-                    ui.colored_label(warn, tr("枠付きの品では、STEP の厚さ・径は枠を含む外形で、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。"));
+                    if s.frame.is_some() {
+                        ui.label(tr("枠付きの品として、ガラスと枠を分けて測りました（厚さ・径はガラスの値）。"));
+                    } else {
+                        // ガラスと枠が 1 つの立体の STEP は分けられず、外形の寸法になる
+                        ui.colored_label(warn, tr("枠付きの品で STEP がガラスと枠を分けていないと、厚さ・径は枠を含む外形になり、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。"));
+                    }
                     // 仕様表と食い違えば知らせる（マウント込みの STEP など）
                     if let Some(t) = self.read.as_ref().and_then(|(_, p)| p.thickness) {
                         if (t - s.thickness).abs() > 0.05 {
@@ -778,6 +815,32 @@ impl FillWin {
                     ui.colored_label(Color32::RED, e);
                 }
             }
+        }
+        if let Some((f, from)) = &self.frame {
+            let clear = f
+                .bores
+                .iter()
+                .map(|b| b.diameter)
+                .fold(f64::INFINITY, f64::min);
+            ui.label(RichText::new(tr("枠")).strong());
+            ui.label(trf(
+                "長さ {} mm、外径 {} mm、最小の内径 {} mm、ガラスの前面は枠の端から {} mm（{}）",
+                &[
+                    &crate::json_view::fmt_num(f.length),
+                    &crate::json_view::fmt_num(f.outer_diameter),
+                    &crate::json_view::fmt_num(clear),
+                    &crate::json_view::fmt_num(f.holds.map_or(0.0, |h| h.seat_z)),
+                    &if *from == "step" {
+                        tr("STEP から")
+                    } else {
+                        tr("仕様表から。座の位置は中央と仮定")
+                    },
+                ],
+            ));
+            ui.checkbox(
+                &mut self.keep_frame,
+                tr("枠も保存する（組合せに置くと、機構部品として付きます）"),
+            );
         }
         ui.separator();
         let miss = self.missing();
@@ -815,7 +878,8 @@ impl FillWin {
                 .on_hover_text(tr("値を確かめてから確定してください。補足のカタログに保存し、元のカタログは書き換えません"))
                 .clicked()
             {
-                req = fill_params(r, t, d.as_ref(), self.from);
+                let frame = self.frame.as_ref().filter(|_| self.keep_frame).map(|f| &f.0);
+                req = fill_params(r, t, d.as_ref(), frame, self.from);
                 self.pending = req.is_some();
             }
             if self.pending {

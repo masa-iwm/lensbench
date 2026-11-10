@@ -23,12 +23,31 @@ fn root() -> PathBuf {
 }
 
 fn load(name: &str) -> System {
+    // wasm（WASI）では系・ガラスの読み込みが vfs の置き場を見るので、ディスクから写す（公開 #99）
+    #[cfg(target_arch = "wasm32")]
+    for p in [
+        root().join(format!("tests/refs/{name}/system.zmx")),
+        root().join("tests/glass"),
+    ] {
+        mirror(&p);
+    }
     let opt = LoadOptions {
         cfg: 1,
         catalog_dirs: vec![root().join("tests/glass")],
         ..Default::default()
     };
     zmx::load_with(&root().join(format!("tests/refs/{name}/system.zmx")), &opt).unwrap()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn mirror(p: &std::path::Path) {
+    if p.is_dir() {
+        for e in std::fs::read_dir(p).unwrap().flatten() {
+            mirror(&e.path());
+        }
+    } else {
+        lensbench_core::vfs::insert(p, std::fs::read(p).unwrap()).unwrap();
+    }
 }
 
 fn grid(n: usize, r: f64) -> (Vec<f64>, Vec<f64>) {
@@ -107,8 +126,9 @@ fn check(name: &str, s: &System, px: &[f64], py: &[f64]) -> usize {
 #[test]
 fn refs_match_scalar() {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    // 37² = 1369 本（L の倍数でない）、瞳の 3 倍まで（面を外れる・全反射する光線を含む）
-    let (px, py) = grid(37, 3.0);
+    // 37² = 1369 本（L の倍数でない）、瞳の 3 倍まで（面を外れる・全反射する光線を含む）。
+    // wasm（CI の Node の WASI、1 スレッド）は 13² = 169 本に減らす
+    let (px, py) = grid(if cfg!(target_arch = "wasm32") { 13 } else { 37 }, 3.0);
     let mut names: Vec<String> = std::fs::read_dir(root().join("tests/refs"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())

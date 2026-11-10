@@ -531,6 +531,10 @@ fn user_items(
             if !it.checked.is_empty() {
                 row["checked"] = json!(it.checked);
             }
+            // 枠付きの品の枠（置くと機構部品として付く）
+            if let Some(f) = &it.frame {
+                row["frame"] = json!(f);
+            }
             // 未完の品: 面が無く、足りない値（missing）を補うまで配置できない。分かっている径・厚さだけ並べる
             if it.is_incomplete() {
                 let size = |k: &str| match it.specs.get(k) {
@@ -990,6 +994,19 @@ mod tests {
             }),
             ["ACH-45"]
         );
+        // 径 25.4 の素子が入る機構部品（保持径 25.4）、径 25 は入らない（保持径が 0.4 太い）
+        assert_eq!(
+            parts(CatalogQuery {
+                fits: Some(25.4),
+                ..Default::default()
+            }),
+            ["CP-30", "TUBE-25-30"]
+        );
+        assert!(parts(CatalogQuery {
+            fits: Some(25.0),
+            ..Default::default()
+        })
+        .is_empty());
     }
 
     /// 膜付きの鏡・BS の膜の名前

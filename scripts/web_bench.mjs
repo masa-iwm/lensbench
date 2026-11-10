@@ -3,6 +3,8 @@
 //   node scripts/web_bench.mjs [target/web] [--exe target/release/lensbench] [--systems A0,C0,A2,C1]
 //        [--cmds spot,wavefront,mtf,psf] [--rounds 3] [--json out.json]
 //
+// 解析に引数を付けるときは「解析:名前=値:…」（例 spot:rings=60 は光線の多いスポット。値は数のまま渡す）
+//
 // ネイティブは `lensbench serve`（--threads 1 と全コア）、Web 版は配る形のフォルダ（scripts/build_web.sh の出力）を
 // Chromium で開き、計算の Web Worker（worker.js。1 スレッドの版と mt/ の版）に同じ要求（load・analyze）を渡す。
 // 時間はどちらも計算の側で測った 1 回の解析の時間（serve の elapsed_ms、Worker の応答の ms）の中央値で、
@@ -38,7 +40,13 @@ const median = xs => {
 function plan(file, glassDir) {
   const reqs = [{ method: "load", params: { file, glass_dir: [glassDir] } }];
   for (const cmd of cmds) {
-    for (let r = 0; r <= rounds; r++) reqs.push({ method: "analyze", params: { cmd }, cmd, warm: r === 0 });
+    const [name, ...kv] = cmd.split(":");
+    const params = { cmd: name };
+    for (const a of kv) {
+      const [k, v] = a.split("=");
+      params[k] = v === undefined ? true : isNaN(Number(v)) ? v : Number(v);
+    }
+    for (let r = 0; r <= rounds; r++) reqs.push({ method: "analyze", params, cmd, warm: r === 0 });
   }
   return reqs;
 }

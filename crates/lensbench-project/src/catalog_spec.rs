@@ -412,10 +412,27 @@ pub struct CatalogQuery {
     /// 型番・説明・タグ・仕様の文字列に含む語（空白で区切った語をすべて含む）
     pub text: String,
     pub specs: Vec<SpecFilter>,
+    /// 径 [mm] の素子が入る機構部品だけ（保持径が径以上で、[`FIT_TOL`] より太くない）
+    pub fits: Option<f64>,
+}
+
+/// 素子が機構部品に入るとみなす保持径と径の差の上限 [mm]（これより太い保持径は、配置の確認で「細い」の注意になる）
+pub const FIT_TOL: f64 = 0.25;
+
+/// 一覧の行（機構部品）の保持径に、径 `d` の素子が入るか
+pub fn fits_row(row: &Value, d: f64) -> bool {
+    row["mech"]["holds"]["diameter"]
+        .as_f64()
+        .is_some_and(|h| h >= d - 1e-6 && h - d <= FIT_TOL + 1e-9)
 }
 
 impl CatalogQuery {
     pub fn matches(&self, row: &Value) -> bool {
+        if let Some(d) = self.fits {
+            if !fits_row(row, d) {
+                return false;
+            }
+        }
         if !self.kinds.is_empty() {
             let cat = row_category(row);
             if !self.kinds.iter().any(|k| k.as_str() == cat) {

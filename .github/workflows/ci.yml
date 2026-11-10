@@ -157,6 +157,11 @@ jobs:
         env:
           RUSTFLAGS: -C target-feature=+simd128
           CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
+      # まとめ追跡（wasm は f64x2 を名指し、8 本ずつ）が 1 本ずつの追跡とビットまで同じこと（#99）
+      - run: cargo test --release -p lensbench-core --target wasm32-wasip1 --test batch
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
       - run: npm install --no-save playwright@1.55.0 && npx playwright install --with-deps chromium
       # スレッドあり（ヘッダーあり）・GitHub Pages と同じ（ヘッダーなし、coi.js で付け直す）・1 スレッド（?st）
       - run: EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke.png

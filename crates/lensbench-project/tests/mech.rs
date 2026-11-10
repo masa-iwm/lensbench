@@ -265,3 +265,77 @@ fn fit_overlap_and_cage() {
     let k = kinds(&s);
     assert!(k.iter().any(|x| x.0 == "rod_mismatch"));
 }
+
+/// 枠付きのユーザーカタログの品（`frame`）を置くと、枠がガラスの最初の面に機構部品として付く。
+/// 枠の座（0.4 mm）がガラスの前面に来て、縁（内径 21.2）が太い光束を切り、ガラスは枠に当たらない
+#[test]
+fn catalog_item_frame_is_placed_on_the_glass() {
+    let dir = std::env::temp_dir().join(format!("lensbench-frame-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let cat = dir.join("framed.json");
+    std::fs::write(
+        &cat,
+        r#"{"version": 2, "vendor": "LB", "items": {"F25": {
+            "glass_catalogs": ["SCHOTT"], "kind": "filter",
+            "blocks": [{"type": "lens", "source": {"surfaces": [{"t": 2, "glass": "N-BK7", "semi": 11.95}, {"semi": 11.95}]}}],
+            "frame": {"bores": [{"z0": 0, "z1": 0.4, "diameter": 21.2}, {"z0": 0.4, "z1": 3.5, "diameter": 24.08}],
+                      "length": 3.5, "outer_diameter": 25, "holds": {"diameter": 24.08, "seat_z": 0.4}}}}}"#,
+    )
+    .unwrap();
+    let sys = |epd: f64| {
+        let p = Project::from_json(&format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": {epd}}},
+            "fields": {{"points": [[0, 0]]}},
+            "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 10}},
+              {{"type": "user", "id": "F", "catalog": {:?}, "item": "F25"}},
+              {{"type": "air", "t": 20}}]}}"#,
+            cat.to_str().unwrap()
+        ))
+        .unwrap();
+        expand(&p, &env()).unwrap()
+    };
+    let s = sys(24.0);
+    assert_eq!(s.mechanics.len(), 1);
+    let m = &s.mechanics[0];
+    assert_eq!(m.name, "F の枠");
+    assert_eq!(m.offset, [0.0, 0.0, -0.4]);
+    assert_eq!(m.holds.len(), 2);
+    assert_eq!(m.surface, m.holds[0]);
+    assert!(!s.surfaces[m.surface].mat.is_empty(), "ガラスの前面");
+    let fit = lensbench_core::mech::fit_check(&s, &s.mechanics).unwrap();
+    assert!(fit.is_empty(), "{fit:?}");
+    let (px, py) = pupil(41);
+    let v = vignetting(&s, &s.mechanics, &[0], &[0], &px, &py).unwrap();
+    assert!(v[0].clipped[0] > 0);
+    // 光束が縁より細ければ切れない
+    let s = sys(20.0);
+    let v = vignetting(&s, &s.mechanics, &[0], &[0], &px, &py).unwrap();
+    assert_eq!(v[0].clipped[0], 0);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// `seat`: 部品の座（holds.seat_z）を、保持する最初の素子の前面に合わせて置く（at は省略できる）
+#[test]
+fn seat_places_the_part_on_the_held_element() {
+    let s = fit_system(
+        r#"{"name": "cell", "mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}, {"z0": 2, "z1": 12, "diameter": 25.6}], "outer_diameter": 30, "holds": {"diameter": 25.6, "seat_z": 2}}, "holds": ["L1"], "seat": true, "offset": [0, 0, 0.5]}"#,
+    );
+    let m = &s.mechanics[0];
+    assert_eq!(m.surface, m.holds[0], "L1 の前面");
+    assert_eq!(m.offset, [0.0, 0.0, -1.5]);
+    assert!(kinds(&s).is_empty(), "{:?}", kinds(&s));
+    // 座の位置の無い部品・保持する素子の無い部品は誤り
+    for bad in [
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}]}, "holds": ["L1"], "seat": true}"#,
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}], "holds": {"diameter": 25.6, "seat_z": 2}}, "seat": true}"#,
+    ] {
+        let p = Project::from_json(&format!(
+            r#"{{"wavelengths": [{{"um": 0.5876}}], "aperture": {{"type": "epd", "value": 10}},
+            "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 20}},
+              {{"type": "lens", "id": "L1", "source": {{"surfaces": [{{"radius": 60, "t": 5, "glass": "N-BK7", "semi": 12.7}}, {{"radius": -60, "semi": 12.7}}]}}}},
+              {{"type": "air", "t": 50}}], "mechanics": [{bad}]}}"#
+        ))
+        .unwrap();
+        assert!(expand(&p, &env()).unwrap_err().contains("seat"), "{bad}");
+    }
+}

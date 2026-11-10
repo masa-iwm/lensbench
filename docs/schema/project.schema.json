@@ -1338,7 +1338,7 @@
       "properties": {
         "at": {
           "$ref": "#/$defs/MechAt",
-          "description": "置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）"
+          "description": "置く基準: ブロック id の面（座標ブレークを除いた 0 始まりの番号、省略で 0）か、系の面の番号（`surface` だけ）。\n`seat` なら省略できる（使わない）"
         },
         "catalog": {
           "description": "ユーザーカタログのファイル（プロジェクトのフォルダから）",
@@ -1389,6 +1389,10 @@
           "minItems": 3,
           "type": "array"
         },
+        "seat": {
+          "description": "部品の座（寸法の `holds.seat_z`）を、保持する最初の素子の前面に合わせて置く（`at` の代わり。`offset` は\nそこからのずれ）",
+          "type": "boolean"
+        },
         "tilt": {
           "default": [
             0.0,
@@ -1404,9 +1408,6 @@
           "type": "array"
         }
       },
-      "required": [
-        "at"
-      ],
       "type": "object"
     },
     "MechSpec": {
