@@ -3012,6 +3012,12 @@ impl Core {
             self.auto_fill.forget(&r.part);
             self.fill.start(r);
         }
+        if let Some(e) = self.auto_fill.take_timing_error() {
+            self.status = Status {
+                text: e,
+                error: true,
+            };
+        }
         // 補う窓が開いている間は裏で読まない
         if !self.fill.open {
             let sel = self

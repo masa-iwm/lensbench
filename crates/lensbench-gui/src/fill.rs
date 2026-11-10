@@ -24,6 +24,7 @@ static FILL_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 #[cfg(not(target_arch = "wasm32"))]
 pub fn set_fill_dir(settings_dir: Option<PathBuf>) {
     if let Some(d) = settings_dir {
+        load_timings(Some(&d));
         let _ = FILL_DIR.set(d.join("catalog-fill"));
     }
 }
@@ -109,13 +110,137 @@ fn spawn(r: &LensRow, hidden: bool) -> Result<crate::webview::Child, String> {
     crate::webview::Child::spawn(&r.url, &title, &dl, hidden)
 }
 
-/// 裏の読み取りの決め事: 行に止まってから開くまで、前に開いてから次を開くまで、値を待つ長さ
+/// 裏の読み取りのタイミング [秒]: 行に止まってから開くまで（dwell）、同じサイトで前に開いてから次を開くまで（gap）、
+/// 値を待って窓を見せるまで（wait）
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Timing {
+    pub dwell_s: f64,
+    pub gap_s: f64,
+    pub wait_s: f64,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Timing {
+            dwell_s: 1.5,
+            gap_s: 5.0,
+            wait_s: 20.0,
+        }
+    }
+}
+
+/// サイトごとのタイミングの上書き（書いた項目だけ）
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TimingPatch {
+    pub dwell_s: Option<f64>,
+    pub gap_s: Option<f64>,
+    pub wait_s: Option<f64>,
+}
+
+/// タイミングの設定（設定のフォルダの [`TIMING_FILE`]）:
+/// `{"default": {"dwell_s": 1.5, "gap_s": 5, "wait_s": 20}, "sites": {"edmundoptics.com": {"gap_s": 10}}}`。
+/// サイトはホスト名（そのサブドメインにも当たる、長い名前が先）。書かない項目は default、default も書かなければ組込みの値
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Timings {
+    pub default: Timing,
+    pub sites: std::collections::BTreeMap<String, TimingPatch>,
+}
+
+/// タイミングの設定のファイルの名前（設定のフォルダ）
+pub const TIMING_FILE: &str = "catalog-fill-timing.json";
+
+/// URL のホスト名（小文字）
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const AUTO_DWELL: std::time::Duration = std::time::Duration::from_millis(1500);
+pub fn url_host(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = host.rsplit('@').next().unwrap_or(host);
+    host.split(':').next().unwrap_or("").to_ascii_lowercase()
+}
+
+impl Timings {
+    /// 設定の文字から。読めない・負の値は誤り
+    pub fn parse(text: &str) -> Result<Timings, String> {
+        let t: Timings = serde_json::from_str(text).map_err(|e| format!("{TIMING_FILE}: {e}"))?;
+        let bad = |x: f64| !(x.is_finite() && x >= 0.0);
+        let d = t.default;
+        if bad(d.dwell_s) || bad(d.gap_s) || bad(d.wait_s) {
+            return Err(format!("{TIMING_FILE}: default の秒は 0 以上"));
+        }
+        for (k, p) in &t.sites {
+            if [p.dwell_s, p.gap_s, p.wait_s]
+                .into_iter()
+                .flatten()
+                .any(bad)
+            {
+                return Err(format!("{TIMING_FILE}: {k} の秒は 0 以上"));
+            }
+        }
+        Ok(t)
+    }
+
+    /// サイト（品ページの URL のホスト）の名前と、そのタイミング。設定に無いサイトはホスト名で default
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn for_url(&self, url: &str) -> (String, Timing) {
+        let host = url_host(url);
+        let hit = self
+            .sites
+            .iter()
+            .filter(|(k, _)| {
+                let k = k.trim().trim_start_matches('.').to_ascii_lowercase();
+                !k.is_empty() && (host == k || host.ends_with(&format!(".{k}")))
+            })
+            .max_by_key(|(k, _)| k.len());
+        let d = self.default;
+        match hit {
+            Some((k, p)) => (
+                k.trim().trim_start_matches('.').to_ascii_lowercase(),
+                Timing {
+                    dwell_s: p.dwell_s.unwrap_or(d.dwell_s),
+                    gap_s: p.gap_s.unwrap_or(d.gap_s),
+                    wait_s: p.wait_s.unwrap_or(d.wait_s),
+                },
+            ),
+            None => (host, d),
+        }
+    }
+}
+
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const AUTO_GAP: std::time::Duration = std::time::Duration::from_secs(5);
-#[cfg_attr(not(windows), allow(dead_code))]
-pub const AUTO_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+fn secs(x: f64) -> std::time::Duration {
+    std::time::Duration::from_secs_f64(x.clamp(0.0, 86400.0))
+}
+
+/// 設定のフォルダのタイミングの設定（起動時に読む。無ければ組込みの値、読めなければ組込みの値と誤り）
+#[cfg(not(target_arch = "wasm32"))]
+static TIMINGS: std::sync::OnceLock<(Timings, Option<String>)> = std::sync::OnceLock::new();
+
+#[cfg(not(target_arch = "wasm32"))]
+fn load_timings(settings_dir: Option<&std::path::Path>) {
+    let r = match settings_dir.map(|d| d.join(TIMING_FILE)) {
+        Some(f) if f.is_file() => match std::fs::read_to_string(&f)
+            .map_err(|e| format!("{}: {e}", f.display()))
+            .and_then(|t| Timings::parse(&t))
+        {
+            Ok(t) => (t, None),
+            Err(e) => (Timings::default(), Some(e)),
+        },
+        _ => (Timings::default(), None),
+    };
+    let _ = TIMINGS.set(r);
+}
+
+/// 使うタイミングの設定と、読めなかったときの誤り
+pub fn timings() -> (Timings, Option<String>) {
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(t) = TIMINGS.get() {
+        return t.clone();
+    }
+    (Timings::default(), None)
+}
 
 /// ページの読み取りから、足りない値がすべて一通りに決まるなら catalog_fill の値（厚さ・径）。
 /// 同じ値の欄に違う値が並ぶ・決められない欄だけ・ありえない大きさなら None（窓に出してユーザーが決める）
@@ -191,9 +316,9 @@ pub enum AutoOut {
 }
 
 /// 行を選んだら、その品のページだけを見えない窓で開いて仕様表を読み、値が一通りに決まればそのまま保存する
-/// （Windows）。矢印キーで流したときに続けて開かないよう、行に [`AUTO_DWELL`] 止まってから開き、
-/// 次を開くまで [`AUTO_GAP`] 空ける。1 度に 1 件、同じ品はこの起動の間は 1 度だけ。決まらない
-/// （欄が無い・食い違う・ボットの判定や captcha）ときは [`AUTO_WAIT`] の後に窓を見せて補う窓へ
+/// （Windows）。矢印キーで流したときに続けて開かないよう、行に dwell 止まってから開き、同じサイトでは
+/// 次を開くまで gap 空ける（サイトごとの [`Timings`]）。1 度に 1 件、同じ品はこの起動の間は 1 度だけ。決まらない
+/// （欄が無い・食い違う・ボットの判定や captcha）ときは wait の後に窓を見せて補う窓へ
 #[derive(Default)]
 #[cfg_attr(not(windows), allow(dead_code))]
 pub struct AutoFill {
@@ -201,7 +326,12 @@ pub struct AutoFill {
     sel: Option<(String, web_time::Instant)>,
     /// 開いた品
     tried: std::collections::HashSet<String>,
-    last_open: Option<web_time::Instant>,
+    /// サイトごとの最後に開いた時刻
+    last_open: std::collections::HashMap<String, web_time::Instant>,
+    /// タイミングの設定（初めの tick で読む）
+    timings: Option<Timings>,
+    /// タイミングの設定の誤りを知らせた
+    warned: bool,
     #[cfg(windows)]
     job: Option<AutoJob>,
 }
@@ -211,6 +341,7 @@ struct AutoJob {
     row: LensRow,
     child: crate::webview::Child,
     started: web_time::Instant,
+    wait: std::time::Duration,
     /// 最後に届いたページの文字
     text: Option<(String, String)>,
 }
@@ -239,18 +370,27 @@ impl AutoFill {
             if self.tried.contains(&k) || fill_file(&r.vendor).is_none() {
                 return None;
             }
-            let ready = (t0 + AUTO_DWELL).max(self.last_open.map_or(now, |t| t + AUTO_GAP));
+            let (site, tm) = self
+                .timings
+                .get_or_insert_with(|| timings().0)
+                .for_url(&r.url);
+            let ready = (t0 + secs(tm.dwell_s)).max(
+                self.last_open
+                    .get(&site)
+                    .map_or(now, |t| *t + secs(tm.gap_s)),
+            );
             if now < ready {
                 ctx.request_repaint_after(ready - now);
                 return None;
             }
             self.tried.insert(k);
-            self.last_open = Some(now);
+            self.last_open.insert(site, now);
             if let Ok(child) = spawn(r, true) {
                 self.job = Some(AutoJob {
                     row: r.clone(),
                     child,
                     started: now,
+                    wait: secs(tm.wait_s),
                     text: None,
                 });
                 ctx.request_repaint_after(std::time::Duration::from_millis(300));
@@ -259,6 +399,15 @@ impl AutoFill {
         #[cfg(not(windows))]
         let _ = (ctx, row);
         None
+    }
+
+    /// タイミングの設定が読めなかったときの誤り（1 度だけ）
+    pub fn take_timing_error(&mut self) -> Option<String> {
+        if self.warned {
+            return None;
+        }
+        self.warned = true;
+        timings().1
     }
 
     /// 補う窓を開いた品は裏で読まない（読んでいれば止める）
@@ -294,7 +443,7 @@ impl AutoFill {
             self.job = None;
             return None;
         }
-        if now.duration_since(job.started) >= AUTO_WAIT {
+        if now.duration_since(job.started) >= job.wait {
             let j = self.job.take()?;
             return Some(AutoOut::Show(Box::new((j.row, j.child, j.text))));
         }
@@ -759,6 +908,54 @@ mod tests {
         // ありえない大きさ
         let r = read_page("Thickness (mm): 3000\n");
         assert_eq!(sure_values(&m(&["thickness"]), &r), None);
+    }
+
+    #[test]
+    fn timings_per_site() {
+        let t = Timings::parse(
+            r#"{"default": {"gap_s": 6}, "sites": {"edmundoptics.com": {"gap_s": 12, "wait_s": 30}, "www.thorlabs.co.jp": {"dwell_s": 0.5}}}"#,
+        )
+        .unwrap();
+        let (s, e) = t.for_url("https://www.edmundoptics.com/p/x/123/");
+        assert_eq!(s, "edmundoptics.com");
+        assert_eq!(
+            e,
+            Timing {
+                dwell_s: 1.5,
+                gap_s: 12.0,
+                wait_s: 30.0
+            }
+        );
+        let (s, th) = t.for_url("https://www.thorlabs.co.jp/a?b=1");
+        assert_eq!(s, "www.thorlabs.co.jp");
+        assert_eq!(
+            th,
+            Timing {
+                dwell_s: 0.5,
+                gap_s: 6.0,
+                wait_s: 20.0
+            }
+        );
+        // 設定に無いサイトはホスト名ごとに default
+        let (s, o) = t.for_url("https://optosigma.com:443/us_en/x");
+        assert_eq!(s, "optosigma.com");
+        assert_eq!(
+            o,
+            Timing {
+                dwell_s: 1.5,
+                gap_s: 6.0,
+                wait_s: 20.0
+            }
+        );
+        // 似た名前のほかのサイトには当てない
+        assert_eq!(
+            t.for_url("https://notedmundoptics.com/").0,
+            "notedmundoptics.com"
+        );
+        // 誤り: 負の値・知らない項目
+        assert!(Timings::parse(r#"{"sites": {"a.com": {"gap_s": -1}}}"#).is_err());
+        assert!(Timings::parse(r#"{"default": {"gap": 1}}"#).is_err());
+        assert_eq!(Timings::parse("{}").unwrap(), Timings::default());
     }
 
     #[test]
