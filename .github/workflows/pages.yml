@@ -61,5 +61,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # GitHub 側の syncing_files が既定の 10 分で終わらず止まることがある（11/10 に 2 回）ので 20 分待つ
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 1200000
