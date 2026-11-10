@@ -62,14 +62,31 @@ await page.evaluate(() => {
 });
 // 見本の系を読んで解析が回るのを待つ
 await page.waitForTimeout(10000);
-// 開く: Ctrl+O → ブラウザのファイル選択（rfd の窓の Ok）で例題のプロジェクトを読み込む
-await page.mouse.click(700, 400);
-const chooser = page.waitForEvent("filechooser", { timeout: 15000 }).catch(() => null);
-await page.keyboard.press("Control+o");
-const fc = await chooser;
-if (fc) {
-  await fc.setFiles([path.resolve("examples/projects/P8_catalog_two.json")]);
-  await page.getByRole("button", { name: "Ok" }).click().catch(e => errors.push(`Ok を押せない: ${e}`));
+// 開く: Ctrl+O → ブラウザのファイル選択（rfd の窓の Ok）で例題のプロジェクトを読み込む。
+// CI ではときどきファイル選択が出ない（キーが画面に届かない、または rfd の input.click() がユーザー操作の扱いに
+// ならない）。rfd の窓が出ていればその input に直にファイルを入れ、窓も出ていなければもう 1 回 Ctrl+O を押す。
+// どちらも ::warning:: を残す（起きる頻度を見るため）
+const file = path.resolve("examples/projects/P8_catalog_two.json");
+const okButton = page.getByRole("button", { name: "Ok" });
+let opened = false;
+for (let n = 1; n <= 2 && !opened; n++) {
+  await page.mouse.click(700, 400);
+  const chooser = page.waitForEvent("filechooser", { timeout: 15000 }).catch(() => null);
+  await page.keyboard.press("Control+o");
+  const fc = await chooser;
+  if (fc) {
+    await fc.setFiles([file]);
+    opened = true;
+  } else if (await okButton.isVisible()) {
+    console.log(`::warning::rfd の窓は出たがファイル選択が出ない（${n} 回目）。input に直に入れる`);
+    await page.locator("input[type=file]").last().setInputFiles(file);
+    opened = true;
+  } else {
+    console.log(`::warning::Ctrl+O でファイル選択も rfd の窓も出ない（${n} 回目）`);
+  }
+}
+if (opened) {
+  await okButton.click().catch(e => errors.push(`Ok を押せない: ${e}`));
 } else {
   errors.push("Ctrl+O でファイル選択が出ない");
 }
