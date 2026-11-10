@@ -2951,13 +2951,20 @@ impl Core {
         let nw = self.waves_um().len();
         let before = cfg.clone();
         ui.horizontal_wrapped(|ui| {
-            egui::ComboBox::from_id_salt(("cmd", id))
+            let r = egui::ComboBox::from_id_salt(("cmd", id))
                 .selected_text(layout::analysis_label(&cfg.cmd))
                 .show_ui(ui, |ui| {
                     for (c, l, _) in layout::analyses() {
-                        ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
+                        let r = ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
+                        if let Some(h) = layout::analysis_help(c) {
+                            r.on_hover_text(tr(h));
+                        }
                     }
-                });
+                })
+                .response;
+            if let Some(h) = layout::analysis_help(&cfg.cmd) {
+                r.on_hover_text(tr(h));
+            }
             ui.add_enabled_ui(layout::takes_sel(&cfg.cmd), |ui| {
                 egui::ComboBox::from_id_salt(("field", id))
                     .selected_text(if cfg.field == 0 {
@@ -2984,12 +2991,21 @@ impl Core {
                         }
                     });
             });
-            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"));
-            ui.selectable_value(&mut cfg.view, View::Table, tr("表"));
-            ui.selectable_value(&mut cfg.view, View::Json, "JSON");
+            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
+                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
+            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
+                .on_hover_text(tr("結果を表と木で見る"));
+            ui.selectable_value(&mut cfg.view, View::Json, "JSON")
+                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
             ui.checkbox(&mut cfg.live, tr("自動"))
                 .on_hover_text(tr("系の値が変わったら計算し直す"));
-            if ui.button(tr("▶ 計算")).clicked() {
+            if ui
+                .button(tr("▶ 計算"))
+                .on_hover_text(tr(
+                    "この解析を今の設定で計算する（F5 は開いている解析すべて）",
+                ))
+                .clicked()
+            {
                 self.run(id, cfg);
             }
         });
@@ -4251,6 +4267,25 @@ impl App {
                         cmd = Some(Cmd::Help);
                     }
                 });
+                ui.menu_button(tr("ヘルプ"), |ui| {
+                    for (label, page, tip) in HELP_PAGES {
+                        if ui
+                            .button(tr(label))
+                            .on_hover_text(tr(tip))
+                            .clicked()
+                        {
+                            ui.close_menu();
+                            ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
+                        ui.close_menu();
+                        cmd = Some(Cmd::Help);
+                    }
+                    ui.separator();
+                    ui.label(RichText::new(version()).small().color(weak));
+                });
             }
             if let Some(f) = &self.c.file {
                 ui.label(
@@ -5504,4 +5539,41 @@ fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
             }
         }
     });
+}
+
+/// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える
+const DOCS_URL: &str = match option_env!("LENSBENCH_DOCS_URL") {
+    Some(u) => u,
+    None => "https://masa-iwm.github.io/lensbench/",
+};
+
+/// ヘルプのメニューのページ（名前、マニュアルの中のページ、説明）
+const HELP_PAGES: &[(&str, &str, &str)] = &[
+    ("マニュアル", "", "使い方の目次（ブラウザで開く）"),
+    ("GUI の使い方", "gui.html", "画面・パネルの使い方（図つき）"),
+    ("解析と CLI", "cli.html", "解析の種類と引数、出力の例"),
+    (
+        "プロジェクトファイル",
+        "project-file.html",
+        "ブロックで系を組む JSON（状態・群・BS）",
+    ),
+    ("最適化", "optimize.html", "評価関数・変数・DLS"),
+    ("公差", "tolerance.html", "モンテカルロ公差の設定"),
+];
+
+/// マニュアルのページの URL
+fn docs_url(page: &str) -> String {
+    let base = DOCS_URL.trim_end_matches('/');
+    if page.is_empty() {
+        format!("{base}/")
+    } else {
+        format!("{base}/{page}")
+    }
+}
+
+#[test]
+fn docs_urls() {
+    assert!(docs_url("").ends_with('/'));
+    assert!(docs_url("gui.html").ends_with("/gui.html"));
+    assert!(!docs_url("gui.html").contains("//gui"));
 }
