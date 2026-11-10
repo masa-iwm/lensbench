@@ -239,8 +239,41 @@ mod mem {
 #[cfg(target_arch = "wasm32")]
 use mem as imp;
 
+thread_local! {
+    /// [`recording`] の間にこのスレッドで読んだファイル・フォルダ
+    static RECORD: std::cell::RefCell<Option<std::collections::BTreeSet<PathBuf>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn note(p: &Path) {
+    RECORD.with(|r| {
+        if let Some(s) = r.borrow_mut().as_mut() {
+            s.insert(p.to_path_buf());
+        }
+    });
+}
+
+/// f を呼び、その間にこのスレッドで [`read`]・[`read_dir`] で開いた（開こうとした）パスを並べて返す（読み直しの
+/// 判定に使う。公開 #67: カタログの一覧が参照する、見ているフォルダの外のファイル）。ほかのスレッドで読んだものは
+/// 入らない（f の中で並列に読むなら使えない）。入れ子にすると内側の分は外側にも入る
+pub fn recording<R>(f: impl FnOnce() -> R) -> (R, Vec<PathBuf>) {
+    let outer = RECORD.with(|r| r.borrow_mut().replace(Default::default()));
+    let res = f();
+    let got = RECORD.with(|r| {
+        let mut g = r.borrow_mut();
+        let got = g.take().unwrap_or_default();
+        if let Some(mut o) = outer {
+            o.extend(got.iter().cloned());
+            *g = Some(o);
+        }
+        got
+    });
+    (res, got.into_iter().collect())
+}
+
 /// ファイルの中身
 pub fn read(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+    note(p.as_ref());
     imp::read(p.as_ref())
 }
 
@@ -273,6 +306,7 @@ pub fn is_dir(p: impl AsRef<Path>) -> bool {
 
 /// フォルダの中のファイル・フォルダのパス（並びは決まっていない）
 pub fn read_dir(p: impl AsRef<Path>) -> io::Result<Vec<PathBuf>> {
+    note(p.as_ref());
     imp::read_dir(p.as_ref())
 }
 
