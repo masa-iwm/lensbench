@@ -4650,6 +4650,12 @@ impl App {
                 let t = &mut self.c.tol;
                 t.trials = 30;
                 t.preset = "precision".into();
+                // カタログの玉の公差: どのメーカーも中心厚 ±0.05 mm、外径 10 mm 未満は焦点距離 ±1%
+                t.catalog_tols = crate::tol_catalog::from_json(&serde_json::json!({
+                    "*": { "thickness": 0.05, "rules": [{ "dia_lt": 10, "focal_rel": 0.01 }] }
+                }))
+                .unwrap_or_default();
+                t.percentiles = "50, 90, 98".into();
                 t.opt.vars = vec![crate::optim_panel::VarRow {
                     name: format!("{}.t", img.saturating_sub(1)),
                     ..Default::default()

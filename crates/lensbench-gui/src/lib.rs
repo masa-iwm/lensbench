@@ -31,6 +31,7 @@ mod surf_edit;
 mod swap_panel;
 mod sysset;
 mod theme;
+mod tol_catalog;
 mod tol_panel;
 mod tour;
 mod view3d;

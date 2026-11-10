@@ -920,3 +920,24 @@ ND	ND
 透過が 10 % から 90 % までの幅。自動はエッジ波長の 1 %、帯域フィルタは半値全幅の 10 %	Width from 10 % to 90 % transmission. Automatic is 1 % of the edge wavelength, or 10 % of the FWHM for band filters
 ＋ 膜を足す	＋ Add coating
 ＋ 行	＋ Row
+中心厚	Center thickness
+くさび	Wedge
+屈折率	Index
+分散	Dispersion
+後の間隔	Space after
+|焦点距離|	|Focal length|
+スレッド数	Threads
+メーカーごとのカタログの玉の公差	Catalog lens tolerances by vendor
+メーカーごとのカタログの玉の公差（catalog_tols）。名前はブロックのメーカー名に含まれれば合う（大文字小文字は区別しない、* はほか）。空の欄は既定の値。条件の行は前から順に、合うものの値で上書き	Catalog lens tolerances by vendor (catalog_tols). A name matches if the block's vendor contains it (case-insensitive; * is any other). Empty cells use the defaults. Condition rows apply in order; each match overrides the values.
+単レンズ	Singlet
+外径	Diameter
+条件 {}	Condition {}
+玉の種類を問わない	Any lens type
+百分位	Percentiles
+百分位 {} が 0〜100 の数でない	Percentile {} is not a number from 0 to 100
+試行ごとのずれと評価を結果に入れる（samples）	Include each trial's deltas and evaluation in the result (samples)
+読んだ catalog_tols は欄で表せないので、そのまま使います（ここで足すと置き換えます）。	The loaded catalog_tols cannot be shown in these fields, so it is used as is (adding here replaces it).
+貼り合わせ	Cemented
+項目で書く	By item
+＋ メーカー	＋ Vendor
+＋ 条件	＋ Condition
