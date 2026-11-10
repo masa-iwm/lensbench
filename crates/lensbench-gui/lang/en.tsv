@@ -658,14 +658,12 @@ d1.t・G2.shift	d1.t, G2.shift
 OFF の要素は系に入らない（光学系の出し入れ）	An OFF element is left out of the system (insert/remove optics)
 OFF は空気で残す	OFF leaves air
 OFF は詰める	OFF collapses
-この状態で変えた ON/OFF・後の空気をやめる	Drop the ON/OFF and following air changed in this state
 基本	Base
 基本の値に	Use base values
 往路を戻る	Return along the path
 状態 {} での ON/OFF（OFF の要素は系に入らない）	ON/OFF in state {} (an OFF element is left out of the system)
 状態 {} の値	Values of state {}
 状態 {} を消す	Delete state {}
-状態ごとに要素の ON/OFF と後の空気を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系	Each state can change element ON/OFF and following air (inserting measurement optics, zoom, etc.). Base is the system with no state
 状態の名前	State name
 ＋ 状態	+ State
 OFF の要素を選ぶ（下の設定で ON に戻せる）	Select an OFF element (turn it back ON in the settings below)
@@ -880,3 +878,12 @@ y の断面	y section
 粗いふるい	Coarse prescreen
 全組を少ないリング数で最適化し、評価関数の小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）	Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)
 残す組	Keep
+この状態で変えた ON/OFF・後の空気・偏心・傾きをやめる	Drop the ON/OFF, following air, decenter and tilt changed in this state
+基本の経路に	Use the base path
+変えると状態 {} だけの経路になる	Changing it makes a path for state {} only
+状態 {} だけの値にする	Use values for state {} only
+状態 {} で変えた経路をやめる	Drop the path changed in state {}
+状態 {} も基本の値を使う	State {} uses the base values too
+状態ごとに要素の ON/OFF・後の空気・偏心・傾き、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系	Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected
+開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）	Change the aperture, fields, wavelengths, object distance, telecentricity, aiming and afocal mode for this state only (stop position and glass catalogs are shared by all states)
+（基本と同じ）	(same as base)

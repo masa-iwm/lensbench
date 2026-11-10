@@ -173,6 +173,13 @@ mod tests {
     #[test]
     fn all_keys_translated() {
         let t = table(EN);
+        // 衝突の印が残っていない（表の読み方は TAB の無い行を読み飛ばすので、ここで見る）
+        for l in EN.lines() {
+            assert!(
+                !(l.starts_with("<<<<<<<") || l.starts_with(">>>>>>>") || l == "======="),
+                "lang/en.tsv に衝突の印: {l}"
+            );
+        }
         let keys = keys_in_source();
         assert!(keys.len() > 50, "{}", keys.len());
         let missing: Vec<&String> = keys

@@ -4404,6 +4404,19 @@ impl App {
         match step {
             Step::Open | Step::Done => {}
             Step::Analysis => self.run_all(false),
+            Step::States => {
+                // 干渉計の組合せに状態を足し、状態だけの系の値（物体距離）と経路（参照の腕）にする
+                let c = &mut self.c.browser.combo;
+                c.states = vec!["参照".into()];
+                c.state = Some("参照".into());
+                let mut s = c.snap();
+                s.object_distance = Some(200.0);
+                c.state_sys.insert("参照".into(), s);
+                c.state_path.insert("参照".into(), "RR".into());
+                let p = c.project();
+                self.c.build_combo(p);
+                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
             Step::Pop => {
                 // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
                 let cfg = AnaCfg::new("pop");
