@@ -51,6 +51,8 @@ pub struct Settings {
     pub view_plane: ViewPlane,
     /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
     pub ld_tree: bool,
+    /// カタログレンズの一覧で隠す列（[`catalog::LensCol::key`]）
+    pub lens_hide: Vec<String>,
 }
 
 impl Settings {
@@ -155,6 +157,7 @@ impl Default for Settings {
             auto_build: true,
             view_plane: ViewPlane::Yz,
             ld_tree: false,
+            lens_hide: Vec::new(),
         }
     }
 }
@@ -2350,9 +2353,11 @@ impl Core {
             .combo_view
             .sel
             .filter(|&k| k < self.browser.combo.len());
+        self.browser.lens_hide.clone_from(&self.s.lens_hide);
         let act = self
             .browser
             .ui(ui, self.s.glass_dirs.len(), self.s.lens_dirs.len());
+        self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.browser.added.take() {
             self.combo_view.select(k);
         }
@@ -4727,7 +4732,9 @@ impl eframe::App for App {
                 // 頼んだ行の結果だけ受け取る（カタログを読み直す前に頼んだ分は捨てる）
                 (Tag::LensPreview(i), r) if self.c.preview_req == Some(*i) => {
                     self.c.preview_req = None;
-                    let data = r.ok().map(combo::LayoutData::parse).unwrap_or_default();
+                    let mut data = r.ok().map(combo::LayoutData::parse).unwrap_or_default();
+                    // 負の単レンズの断面は虚物体（前側焦点へ集まる光）。入る光を玉の前から描く
+                    data.virtual_object_from_front();
                     self.c.browser.preview = Some((*i, data));
                 }
                 _ => {}
