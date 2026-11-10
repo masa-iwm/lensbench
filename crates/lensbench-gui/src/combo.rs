@@ -350,8 +350,10 @@ pub struct Pick {
     /// .zmx の玉: ファイルと、何番目の玉か
     pub path: String,
     pub lens: usize,
-    /// ロック: 図・キー・設定で変えない（間隔の寸法は変えられる）
+    /// ロック: 中身（種類ごとの欄・面・反転）を変えない。位置・後の空気は変えられる
     pub locked: bool,
+    /// ロックしたとき、位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えない
+    pub lock_place: bool,
     /// 鏡のコーニック
     pub conic: f64,
     /// BS: 分ける面の向きを逆に（反射を反対側へ。キューブの分ける面の傾き −45°）
@@ -511,6 +513,7 @@ impl Default for Pick {
             path: String::new(),
             lens: 1,
             locked: false,
+            lock_place: false,
             conic: 0.0,
             bs_flip: false,
             coat: String::new(),
@@ -549,6 +552,11 @@ impl Default for Pick {
 }
 
 impl Pick {
+    /// 位置もロックしている（図・キーで動かせず、偏心・傾き・後の空気も変えられない）
+    pub fn fixed(&self) -> bool {
+        self.locked && self.lock_place
+    }
+
     /// 前面を絞りにできる要素（玉のブロックになるもの。ユーザーカタログの項目は群なので除く）
     pub fn can_stop_front(&self) -> bool {
         match self.kind {
@@ -2299,7 +2307,10 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     if let Some(v) = gap_mut(combo, g) {
                         *v = (*v + d).max(0.0);
                     }
-                } else if let Some(k) = view.sel.filter(|&k| k < n) {
+                } else if let Some(k) = view
+                    .sel
+                    .filter(|&k| combo.el(k).is_some_and(|p| !p.fixed()))
+                {
                     // 要素: 光軸に近い向きの矢印（光軸が斜めでも ← → か ↑ ↓ のどちらか一方）で光軸に沿って
                     // 動かし、もう一方で偏心（Shift で傾き）
                     let (a, n) = view.along_key(k, dv);
@@ -2368,6 +2379,9 @@ fn gap_get(combo: &Combo, g: usize) -> Option<f64> {
 fn gap_mut(combo: &mut Combo, g: usize) -> Option<&mut f64> {
     if g == STOP_GAP {
         Some(&mut combo.stop_gap)
+    } else if combo.el(g).is_some_and(|p| p.fixed()) {
+        // 位置もロックした要素の後の間隔は変えない
+        None
     } else {
         combo.gap_after(g)
     }
@@ -3002,7 +3016,7 @@ fn figure(
     }
     if resp.dragged() {
         if let (Some(k), Some((p0, c0)), Some(p)) = (
-            view.sel.filter(|&k| k < els.len()),
+            view.sel.filter(|&k| els.get(k).is_some_and(|p| !p.fixed())),
             view.drag0.as_ref(),
             resp.interact_pointer_pos(),
         ) {
@@ -3121,6 +3135,11 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
             "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
         ));
+        if p.locked {
+            ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(
+                "位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする",
+            ));
+        }
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
                 RichText::new(trf(
@@ -3149,7 +3168,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
             surf_table(ui, p, k, weak);
         }
     });
-    {
+    ui.add_enabled_ui(!p.fixed(), |ui| {
         if place_fields(p.kind) {
             ui.horizontal_wrapped(|ui| {
                 if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx)
@@ -3179,7 +3198,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
             });
         }
         ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
-    }
+    });
     if p.kind == ElemKind::Splitter {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
     }
@@ -3825,35 +3844,42 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
             "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
         ));
+        if p.locked {
+            ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(
+                "位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする",
+            ));
+        }
         ui.add_enabled_ui(!p.locked, |ui| {
             kind_fields(ui, p, st, k, weak);
             if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
                 ui.checkbox(&mut p.reversed, tr("反転"));
             }
         });
-        if !matches!(
-            p.kind,
-            ElemKind::Mirror | ElemKind::Stop | ElemKind::Aperture
-        ) {
-            place_ui(ui, p, st, &[1], &[0]);
-        }
-        let mut air = p.air_in(st);
-        if air_gap {
-            num(
-                ui,
-                if k + 1 == n {
-                    tr("像面まで")
-                } else {
-                    tr("後の空気")
-                },
-                &mut air,
-                " mm",
-            );
-            if air != p.air_in(st) {
-                *p.air_mut(st) = air;
+        ui.add_enabled_ui(!p.fixed(), |ui| {
+            if !matches!(
+                p.kind,
+                ElemKind::Mirror | ElemKind::Stop | ElemKind::Aperture
+            ) {
+                place_ui(ui, p, st, &[1], &[0]);
             }
-        }
-        onoff_ui(ui, p, st, weak);
+            let mut air = p.air_in(st);
+            if air_gap {
+                num(
+                    ui,
+                    if k + 1 == n {
+                        tr("像面まで")
+                    } else {
+                        tr("後の空気")
+                    },
+                    &mut air,
+                    " mm",
+                );
+                if air != p.air_in(st) {
+                    *p.air_mut(st) = air;
+                }
+            }
+            onoff_ui(ui, p, st, weak);
+        });
         if ui
             .add_enabled(can_prev, egui::Button::new("◀"))
             .on_hover_text(tr("前へ"))
@@ -4950,5 +4976,24 @@ mod tests {
         // 貼り合わせの玉は 3 面
         let s0 = spans[0].unwrap();
         assert_eq!(s0[1] - s0[0], 2, "{spans:?}");
+    }
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    /// ロックは中身だけ、「位置も」を付けると後の間隔も変えられない
+    #[test]
+    fn lock_place_blocks_gap() {
+        let mut c = Combo::default();
+        c.picks.push(Pick::new(ElemKind::Lens));
+        c.picks.push(Pick::new(ElemKind::Lens));
+        c.picks[0].locked = true;
+        assert!(gap_mut(&mut c, 0).is_some());
+        c.picks[0].lock_place = true;
+        assert!(c.picks[0].fixed());
+        assert!(gap_mut(&mut c, 0).is_none());
+        assert!(gap_mut(&mut c, 1).is_some());
     }
 }

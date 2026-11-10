@@ -3228,6 +3228,12 @@ fn combo_read_only(
         }
         return Some(tr("組合せの要素の外の面（前の絞りは厚さだけ）").into());
     };
+    if picks.get(k).is_some_and(|p| p.fixed())
+        && col == Col::T
+        && spans[k].is_some_and(|s| s[1] == j)
+    {
+        return Some(tr("位置もロックした要素の後の間隔は変えられない").into());
+    }
     if picks
         .get(k)
         .is_some_and(|p| p.kind == combo::ElemKind::Splitter)

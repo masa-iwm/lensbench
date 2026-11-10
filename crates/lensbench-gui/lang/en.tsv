@@ -1102,3 +1102,6 @@ STEP（公式）	STEP (official)
 元のサイズに戻す	Restore
 OS のタイトルバーを使う	Use the OS title bar
 外すと上の帯をタイトルバーにする（ドラッグで移動、ダブルクリックで最大化、縁で大きさを変える）	When off, the top bar acts as the title bar (drag to move, double-click to maximize, drag edges to resize)
+位置も	Position too
+位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする	Also lock the position (drag, keys, decenter, tilt) and the air after
+位置もロックした要素の後の間隔は変えられない	The gap after an element locked with its position cannot change
