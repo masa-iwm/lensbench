@@ -741,16 +741,78 @@ fn fmt(x: f64) -> String {
 
 use crate::catalog_fill::RetainingRing;
 
-/// ケージのロッドの間隔の規格 [mm]
-const ROD_SPACINGS: [f64; 3] = [16.0, 30.0, 60.0];
+/// ケージのロッドの間隔の規格 [mm]（16・30・60 は Thorlabs、26.87 は Edmund の 25・30 mm のケージ（ロッドの円の
+/// 直径 38 mm））
+const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
 
-/// 光学部品のねじ（名前、内側のねじの谷の径 [mm]、入る素子の径 [mm]）。STEP のねじは谷の径の円柱で描かれる
-const THREADS: [(&str, f64, f64); 4] = [
-    ("SM05", 0.535 * 25.4, 12.7),
-    ("SM1", 1.035 * 25.4, 25.4),
-    ("SM2", 2.035 * 25.4, 50.8),
-    ("SM3", 3.035 * 25.4, 76.2),
+/// ケージのロッドの間隔の規格に合わない組を使うときの、ロッドの穴の数
+const ROD_HOLES: usize = 4;
+
+/// 光学部品のねじ（名前、ねじの外径（メスの谷の径）[mm]、ピッチ [mm]、入る素子の径 [mm]（0 は素子を入れない
+/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので
+/// しない））
+struct Thread {
+    name: &'static str,
+    major: f64,
+    pitch: f64,
+    holds: f64,
+    female_major: bool,
+}
+
+const THREADS: [Thread; 5] = [
+    Thread {
+        name: "SM05",
+        major: 0.535 * 25.4,
+        pitch: 25.4 / 40.0,
+        holds: 12.7,
+        female_major: true,
+    },
+    Thread {
+        name: "SM1",
+        major: 1.035 * 25.4,
+        pitch: 25.4 / 40.0,
+        holds: 25.4,
+        female_major: true,
+    },
+    Thread {
+        name: "SM2",
+        major: 2.035 * 25.4,
+        pitch: 25.4 / 40.0,
+        holds: 50.8,
+        female_major: true,
+    },
+    Thread {
+        name: "SM3",
+        major: 3.035 * 25.4,
+        pitch: 25.4 / 40.0,
+        holds: 76.2,
+        female_major: true,
+    },
+    Thread {
+        name: "C-Mount",
+        major: 25.4,
+        pitch: 25.4 / 32.0,
+        holds: 0.0,
+        female_major: false,
+    },
 ];
+
+impl Thread {
+    /// 円柱の直径 `d` [mm] がこのねじか。STEP のねじは外径の円柱で描かれる（Thorlabs）か、メスは山の径（内径）の
+    /// 円柱で描かれる（Edmund。外径 − 0.96 ピッチほど）。メスの内径は基準の内径（外径 − 1.0825 ピッチ）から
+    /// 外径 − 0.9 ピッチまで
+    fn fits(&self, d: f64, female: bool) -> bool {
+        ((!female || self.female_major) && (self.major - d).abs() <= 0.05)
+            || (female
+                && d >= self.major - 1.0825 * self.pitch - 0.05
+                && d <= self.major - 0.9 * self.pitch)
+    }
+}
+
+/// 直径 `d` [mm] のねじ
+fn thread_fits(d: f64, female: bool) -> Option<&'static Thread> {
+    THREADS.iter().find(|t| t.fits(d, female))
+}
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
 pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
@@ -1112,9 +1174,10 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     }
                 }
             }
-            // 候補（同じ半径・同じ距離の穴が 4 つ以上、90° おき）のうち、ロッドの間隔の規格（16・30・60 mm）に合う
+            // 候補（同じ半径・同じ距離の穴が 4 つ以上、90° おき）のうち、ロッドの間隔の規格（[`ROD_SPACINGS`]）に合う
             // ものを先に（キューブなどの取付けのねじ穴を除く）
-            let cands: Vec<f64> = holes
+            let bore_r = walls.iter().map(|w| w.0).fold(0.0, f64::max);
+            let cands: Vec<(f64, usize)> = holes
                 .iter()
                 .filter_map(|h| {
                     let rho = h.1[0].hypot(h.1[1]);
@@ -1129,7 +1192,9 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     let perp = same
                         .iter()
                         .find(|x| (x.1[0] * h.1[0] + x.1[1] * h.1[1]).abs() <= 1e-3 * rho * rho)?;
-                    (same.len() >= 4 && rho > rmax && perp.0 > 0.0).then_some(rho)
+                    // 穴は光軸の穴（内壁）の外
+                    (same.len() >= 4 && rho - h.0 > bore_r && perp.0 > 0.0)
+                        .then_some((rho, same.len()))
                 })
                 .collect();
             let spacing_mm = |rho: f64| rho * std::f64::consts::SQRT_2 * k;
@@ -1139,11 +1204,12 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     .copied()
                     .find(|s| (s - mm).abs() <= 0.05)
             };
+            // 規格に合わなければ、ちょうど 4 つの穴の組（絞りの羽根のピンなど、数の多い穴の組を除く）
             let rods = cands
                 .iter()
-                .copied()
-                .find(|r| standard(spacing_mm(*r)).is_some())
-                .or_else(|| cands.first().copied());
+                .find(|r| standard(spacing_mm(r.0)).is_some())
+                .or_else(|| cands.iter().find(|r| r.1 == ROD_HOLES))
+                .map(|r| r.0);
             let verts: Vec<[f64; 2]> = geos
                 .iter()
                 .flat_map(|g| g.verts.iter().copied())
@@ -1202,10 +1268,12 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 .copied()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map_or(0.0, |r| r.0);
-            let (thread, hold_d) = THREADS
-                .iter()
-                .find(|t| (t.1 - hold).abs() <= 0.05)
-                .map_or((String::new(), hold), |t| (t.0.to_string(), t.2));
+            let (thread, hold_d) = thread_fits(hold, true).map_or((String::new(), hold), |t| {
+                (
+                    t.name.to_string(),
+                    if t.holds > 0.0 { t.holds } else { hold },
+                )
+            });
             // 座: 本体と別の止め輪（本体より z の短い輪）が前半にあれば、その奥の面。枠の端から保持する素子の径より
             // 細い穴が続けば、その段（素子が当たる肩）。どちらも無ければ枠の端
             let ring_seat = rrs
@@ -1227,7 +1295,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let seat_mm = sc(ring_seat).max(shoulder);
             let seat = seat_mm;
             // 両端のねじ: 端に接する、ねじの谷の径の外向きの円柱（オス、外径より細い）か内壁（メス）
-            let thread_of = |r: f64| THREADS.iter().find(|t| (t.1 - sc(2.0 * r)).abs() <= 0.05);
+            let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female);
             let end_thread = |end: f64| -> Option<crate::ThreadEnd> {
                 // 端から 1 mm 以内（面取りの分）
                 let tol = 1.0 / k;
@@ -1242,7 +1310,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 if let Some(t) = narrow
                     .iter()
                     .filter(|o| dist(o.1) <= tol)
-                    .find_map(|o| thread_of(o.0))
+                    .find_map(|o| thread_of(o.0, false))
                 {
                     let mut reach = 0.0f64;
                     loop {
@@ -1257,7 +1325,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                         reach = next;
                     }
                     return Some(crate::ThreadEnd {
-                        thread: t.0.to_string(),
+                        thread: t.name.to_string(),
                         male: true,
                         length: sc(reach),
                         recess: 0.0,
@@ -1270,7 +1338,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                         .partial_cmp(&dist(b.1))
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })?;
-                let t = thread_of(nearest.0)?;
+                let t = thread_of(nearest.0, true)?;
                 // ねじの長さは面取りも含める（端から 1 mm 以内の面取りは端まで）
                 let total = all1 - all0;
                 let start = if dist(nearest.1) <= tol {
@@ -1284,7 +1352,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     far(nearest.1)
                 };
                 (dist(nearest.1) < 0.5 * total).then(|| crate::ThreadEnd {
-                    thread: t.0.to_string(),
+                    thread: t.name.to_string(),
                     male: false,
                     length: sc(stop - start),
                     // 1 mm 以内は面取り（オスの肩は端の面に当たる）
@@ -1729,5 +1797,125 @@ mod tests {
             let t = String::from_utf8_lossy(&std::fs::read(p).unwrap()).into_owned();
             println!("== {p}\n{:#?}", crate::catalog_fill::read_step(&t));
         }
+    }
+
+    /// 円柱の面（`inward` なら内壁）を 1 つ書く。返すのは面の番号
+    fn cyl_face(
+        d: &mut String,
+        id: &mut u32,
+        c: (f64, f64),
+        z: (f64, f64),
+        r: f64,
+        inward: bool,
+    ) -> String {
+        let n = *id;
+        let (x, y) = c;
+        *d += &format!(
+            "#{a}=CARTESIAN_POINT('',({x},{y},{z0}));\n#{b}=AXIS2_PLACEMENT_3D('',#{a},#1,#2);\n\
+#{c}=CARTESIAN_POINT('',({x},{y},{z1}));\n#{e}=AXIS2_PLACEMENT_3D('',#{c},#1,#2);\n\
+#{f}=CIRCLE('',#{b},{r});\n#{g}=CIRCLE('',#{e},{r});\n#{h}=CYLINDRICAL_SURFACE('',#{b},{r});\n\
+#{i}=ADVANCED_FACE('',(#{f},#{g}),#{h},.{o}.);\n",
+            z0 = z.0,
+            z1 = z.1,
+            a = n,
+            b = n + 1,
+            c = n + 2,
+            e = n + 3,
+            f = n + 4,
+            g = n + 5,
+            h = n + 6,
+            i = n + 7,
+            o = if inward { "F" } else { "T" },
+        );
+        *id += 10;
+        format!("#{}", n + 7)
+    }
+
+    fn solid(faces: &[(f64, f64, f64, f64, f64, bool)]) -> String {
+        let mut d = String::from(
+            "ISO-10303-21;\nDATA;\n#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n",
+        );
+        let mut id = 100;
+        let fs: Vec<String> = faces
+            .iter()
+            .map(|f| cyl_face(&mut d, &mut id, (f.0, f.1), (f.2, f.3), f.4, f.5))
+            .collect();
+        d += &format!(
+            "#900=CLOSED_SHELL('',({}));\n#901=MANIFOLD_SOLID_BREP('part',#900);\nENDSEC;\n",
+            fs.join(",")
+        );
+        d
+    }
+
+    /// Edmund の描き方: メスのねじは山の径（内径）の円柱（SM05 は 12.9794）。丸いケージ板のロッドの穴は外形の円の内側で、
+    /// 間隔 26.87（ロッドの円の直径 38）。数の多い穴の組（絞りの羽根のピンなど）はロッドとしない
+    #[test]
+    fn edmund_threads_and_round_cage_plate() {
+        // 10 mm の SM05 のチューブ: z 0〜3 はオスのねじ（外径 13.589）、z 3〜13 は外径 15.97、内側は z 0〜5 が内径 10、
+        // z 6〜13 がメスのねじ
+        let tube = solid(&[
+            (0.0, 0.0, 0.0, 3.0, 6.7945, false),
+            (0.0, 0.0, 3.0, 13.0, 7.985, false),
+            (0.0, 0.0, 0.0, 5.0, 5.0, true),
+            (0.0, 0.0, 5.0, 6.0, 6.8945, true),
+            (0.0, 0.0, 6.0, 13.0, 6.4897, true),
+        ]);
+        let f = crate::catalog_fill::read_step(&tube)
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!(f.thread, "SM05", "{f:?}");
+        let ft = f.front_thread.clone().unwrap();
+        assert_eq!(
+            (ft.thread.as_str(), ft.male, ft.length),
+            ("SM05", true, 3.0)
+        );
+        let bt = f.back_thread.clone().unwrap();
+        assert_eq!(
+            (bt.thread.as_str(), bt.male, bt.length),
+            ("SM05", false, 7.0)
+        );
+        // 25.4 の素通しの穴は C マウントのメスとしない
+        let ring = solid(&[
+            (0.0, 0.0, 0.0, 10.0, 14.975, false),
+            (0.0, 0.0, 0.0, 10.0, 12.7, true),
+        ]);
+        let f = crate::catalog_fill::read_step(&ring)
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!((f.thread.as_str(), &f.front_thread), ("", &None), "{f:?}");
+        // 丸いケージ板（外径 49.25、内径 25）とロッドの穴 4 つ
+        let q = 13.435;
+        let mut plate = vec![
+            (0.0, 0.0, 0.0, 10.0, 24.625, false),
+            (0.0, 0.0, 0.0, 10.0, 12.5, true),
+        ];
+        for (x, y) in [(q, q), (-q, q), (-q, -q), (q, -q)] {
+            plate.push((x, y, 0.0, 10.0, 3.01, true));
+        }
+        let f = crate::catalog_fill::read_step(&solid(&plate))
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!((f.outer_diameter, f.rod_spacing), (49.25, 26.87), "{f:?}");
+        assert_eq!(f.outline, crate::MechOutline::Round);
+        // 7 つのピンの穴（規格に合わない間隔）はロッドとしない
+        let mut iris = vec![
+            (0.0, 0.0, 0.0, 10.0, 15.75, false),
+            (0.0, 0.0, 0.0, 10.0, 6.0, true),
+        ];
+        for k in 0..7 {
+            let t = (k as f64) * std::f64::consts::TAU / 7.0;
+            iris.push((17.05 * t.cos(), 17.05 * t.sin(), 0.0, 10.0, 1.5, true));
+        }
+        // 90° おきの組を作るため、ピンの 1 つの直交の向きにも置く
+        let t = std::f64::consts::FRAC_PI_2;
+        iris.push((17.05 * t.cos(), 17.05 * t.sin(), 0.0, 10.0, 1.5, true));
+        let f = crate::catalog_fill::read_step(&solid(&iris))
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!(f.rod_spacing, 0.0, "{f:?}");
     }
 }
