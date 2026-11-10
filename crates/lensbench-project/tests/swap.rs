@@ -115,6 +115,45 @@ fn candidates_are_filtered_by_efl_and_diameter() {
 }
 
 #[test]
+fn candidate_summaries_are_shared_between_slots_and_independent_of_threads() {
+    use lensbench_core::par;
+    let (p, dir) = project();
+    let c = cat();
+    let g = vec![root().join("tests/glass")];
+    let f = Filter {
+        efl: [Some(40.0), None],
+        ..Default::default()
+    };
+    let one = par::with_threads(Some(1), || swap::candidates(&c, &f, &g));
+    let four = par::with_threads(Some(4), || swap::candidates(&c, &f, &g));
+    assert_eq!(one, four);
+    assert!(!one.is_empty());
+    // 所ごとの候補は、所ごとに求めた候補と同じ（絞り込みの違う所・型番で選ぶ所が混ざっても）
+    let mut a = slot("A");
+    a.filter = f.clone();
+    a.flip = true;
+    let mut b = slot("B");
+    b.filter.diameter = [Some(one[0].diameter), Some(one[0].diameter)];
+    let fb = b.filter.clone();
+    let mk = |t| {
+        par::with_threads(Some(t), || {
+            SwapSearch::new(&p, &env(dir.clone()), &c, spec(vec![a.clone(), b.clone()])).unwrap()
+        })
+    };
+    let s1 = mk(1);
+    let s4 = mk(4);
+    assert_eq!(s1.picks, s4.picks);
+    let la: Vec<_> = s1.picks[0]
+        .iter()
+        .step_by(2)
+        .map(|k| k.lens.clone())
+        .collect();
+    assert_eq!(la, one);
+    let lb: Vec<_> = s1.picks[1].iter().map(|k| k.lens.clone()).collect();
+    assert_eq!(lb, swap::candidates(&c, &fb, &g));
+}
+
+#[test]
 fn search_ranks_combinations_and_matches_a_direct_optimization() {
     let (p, dir) = project();
     let c = cat();
