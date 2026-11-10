@@ -2165,6 +2165,37 @@ impl System {
             }
             out.push(ps);
         }
+        // 板どうしの貼り合わせ（公開 #73）: 出口の面の厚さが 0 で、次の有効な面が同じ形・同じ座標の膜のない入口なら、
+        // 境界は 1 つとして出口の面で係数を 1 回かける
+        for j in 1..self.surfaces.len() {
+            let d = &self.surfaces[j];
+            if !matches!(out[j].cry, Some(CryKind::Out)) || d.mirror || d.t != 0.0 {
+                continue;
+            }
+            if !matches!(d.after, After::None) {
+                continue;
+            }
+            let Some(k) = (j + 1..self.surfaces.len()).find(|&k| !self.surfaces[k].ignore) else {
+                continue;
+            };
+            let e = &self.surfaces[k];
+            let same_shape = e.typ == d.typ
+                && e.c == d.c
+                && e.k == d.k
+                && e.asph == d.asph
+                && e.cx == d.cx
+                && d.zern.is_none()
+                && d.grid.is_none()
+                && e.zern.is_none()
+                && e.grid.is_none();
+            if e.mirror || !e.coat.is_empty() || e.before.is_some() || !same_shape {
+                continue;
+            }
+            if let Some(CryKind::In { axis, no, ne, .. }) = out[k].cry {
+                out[j].cement = Some((axis, no, ne));
+                out[k].cemented = true;
+            }
+        }
         Ok(out)
     }
 

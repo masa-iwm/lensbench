@@ -2184,27 +2184,41 @@ impl Iface {
     /// `entering` = true は板へ入る面（後ろの媒質が板）、false は板から出る面（前の媒質が板）。
     /// 屈折率で決まる係数（膜なし・膜ファイルの層）だけ置き換え、理想膜・実測表・表・モデル・鏡は [`Self::eval_cos`] と同じ
     pub fn eval_cos_crystal(&self, c0: f64, entering: bool, n: f64) -> Result<[C64; 2]> {
+        if entering {
+            self.eval_cos_media(c0, None, Some(n))
+        } else {
+            self.eval_cos_media(c0, Some(n), None)
+        }
+    }
+
+    /// 前の媒質の屈折率を `n1`、後ろの媒質の屈折率を `n2` に置き換えた [`Self::eval_cos`]（None は置き換えない）。
+    /// 複屈折材の板の境界（公開 #52）と、板どうしの貼り合わせの境界（前の板の o・e → 次の板の o・e、公開 #73）に使う。
+    /// 置き換えるのは [`Self::eval_cos_crystal`] と同じく屈折率で決まる係数だけ
+    pub fn eval_cos_media(&self, c0: f64, n1: Option<f64>, n2: Option<f64>) -> Result<[C64; 2]> {
         if self.mirror {
             return self.eval_cos(c0);
         }
         let mut f = self.clone();
         match &mut f.kind {
             Kind::Fresnel { ns } => {
-                if entering {
+                if let Some(n) = n2 {
                     *ns = C64::new(n, 0.0);
-                } else {
+                }
+                if let Some(n) = n1 {
                     f.n1 = n;
                 }
             }
             Kind::Stack { ns, n_out, .. } => {
-                // n_out（位相の約束の外側の媒質）が板なら、それも置き換える
-                if entering {
-                    if ns.im == 0.0 && *n_out == ns.re {
+                // n_out（位相の約束の外側の媒質）が板なら、それも置き換える（判定は置き換える前の値で）
+                let (out_is_2, out_is_1) = (ns.im == 0.0 && *n_out == ns.re, *n_out == f.n1);
+                if let Some(n) = n2 {
+                    if out_is_2 {
                         *n_out = n;
                     }
                     *ns = C64::new(n, 0.0);
-                } else {
-                    if *n_out == f.n1 {
+                }
+                if let Some(n) = n1 {
+                    if out_is_1 {
                         *n_out = n;
                     }
                     f.n1 = n;
