@@ -6,10 +6,12 @@
 #![allow(clippy::needless_range_loop)]
 
 pub mod d2;
+pub mod detail;
 pub mod image;
 pub mod mesh;
 pub mod scene;
 pub mod step;
+pub mod step_embed;
 pub mod table;
 
 use std::path::Path;
@@ -116,7 +118,11 @@ pub fn write_layout(
         LayoutFormat::Obj => mesh::write_obj(&mut w, sc, o3),
         LayoutFormat::Stl => mesh::write_stl(&mut w, sc, o3),
         LayoutFormat::Step => {
-            step::write_step(&mut w, sc, &step::OptionsStep::default()).map(|_| ())
+            let os = step::OptionsStep {
+                mech_detail: o3.mech_detail,
+                ..Default::default()
+            };
+            step::write_step(&mut w, sc, &os).map(|_| ())
         }
     };
     r.and_then(|_| lensbench_core::vfs::write(path, w))

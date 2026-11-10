@@ -1925,6 +1925,7 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
         rings: opt_usize(p, "rings")?.unwrap_or(d3.rings).clamp(1, 256),
         tube,
         color,
+        mech_detail: p["mech_detail"] == true,
     };
     lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
     Ok(json!({
@@ -2086,7 +2087,7 @@ fn scene_opts(s: &System, p: &Value) -> Result<lensbench_export::scene::Options,
 /// 見る面に合わせて、場面を断面図（yz・xz）か 3D の網（"3d"）の JSON に
 fn view_json(s: &System, sc: &lensbench_export::scene::Scene, p: &Value) -> Result<Value, RpcErr> {
     if is_3d(p) {
-        return Ok(scene3d_json(s, sc));
+        return Ok(scene3d_json(s, sc, p["mech_detail"] == true));
     }
     let mut v = scene_json(s, sc, plane_of(p)?);
     if p["unfold"] == true {
@@ -2125,12 +2126,13 @@ fn plane_of(p: &Value) -> Result<Plane, RpcErr> {
 
 /// 場面を GUI の 3D 表示の JSON に: 立体・面・光線の網（座標は大域 [x, y, z] mm を平らに並べたもの）。
 /// 立体と面は `surfaces`（面の番号）を持ち、組合せの要素の選択に使う
-fn scene3d_json(s: &System, sc: &lensbench_export::scene::Scene) -> Value {
+fn scene3d_json(s: &System, sc: &lensbench_export::scene::Scene, mech_detail: bool) -> Value {
     use lensbench_export::mesh::{self, MeshKind};
     use lensbench_export::scene;
     let o = mesh::Options3D {
         segments: 32,
         rings: 6,
+        mech_detail,
         ..Default::default()
     };
     // 立体と面だけ網に（光線は折れ線で別に）

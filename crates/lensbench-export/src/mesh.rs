@@ -20,6 +20,8 @@ pub struct Options3D {
     /// 光線を管にするときの半径 [mm]（None なら glTF・OBJ は線、STL は場面の大きさの 0.1%）
     pub tube: Option<f64>,
     pub color: ColorBy,
+    /// 機構部品を、取った STEP の詳しい形で描く（[`crate::detail`]。無い部品は簡易外形）
+    pub mech_detail: bool,
 }
 
 impl Default for Options3D {
@@ -29,6 +31,7 @@ impl Default for Options3D {
             rings: 16,
             tube: None,
             color: ColorBy::Field,
+            mech_detail: false,
         }
     }
 }
@@ -241,6 +244,15 @@ fn tube(m: &mut Mesh, pts: &[V3], r: f64) {
 
 /// 機構部品の網: 輪ごとに外側（円柱か、角なら正方形の柱）・内側の円柱の面と両端の輪の面
 fn mech_mesh(m: &MechShape, o: &Options3D) -> Mesh {
+    if o.mech_detail {
+        if let Some(d) = m
+            .step
+            .as_ref()
+            .and_then(|(f, flip)| Some((crate::detail::load(f)?, *flip)))
+        {
+            return detail_mesh(m, &d.0, d.1);
+        }
+    }
     let mut out = Mesh::new(&m.name, MeshKind::Mech, Rgb(150, 140, 128));
     // 角は正方形の角（45° + k·90°）を周の点に含める（4 の倍数、45° から）
     let (na, t0) = if m.square {
@@ -334,6 +346,32 @@ fn mech_mesh(m: &MechShape, o: &Options3D) -> Mesh {
                 out.tri(base + 2 * a, base + 2 * b + 1, base + 2 * b);
             }
         }
+    }
+    out
+}
+
+/// 機構部品の詳しい形の網（三角形ごとに平らな法線）。裏返して置いた部品は z → 長さ − z、y → −y
+/// （x 軸のまわりの 180° の回転）
+fn detail_mesh(m: &MechShape, d: &crate::detail::Detail, flip: bool) -> Mesh {
+    let mut out = Mesh::new(&m.name, MeshKind::Mech, Rgb(150, 140, 128));
+    let len = m.rings.iter().map(|q| q[1]).fold(0.0, f64::max);
+    let place = |p: V3| {
+        let q = if flip { [p[0], -p[1], len - p[2]] } else { p };
+        m.to_global(q)
+    };
+    for t in &d.tris {
+        let [a, b, c] = t.map(place);
+        let n = cross(sub(b, a), sub(c, a));
+        let l = norm(n);
+        if l.is_nan() || l <= 0.0 {
+            continue;
+        }
+        let n = scale(n, 1.0 / l);
+        let base = out.pos.len() as u32;
+        for p in [a, b, c] {
+            out.vert(p, n);
+        }
+        out.tri(base, base + 1, base + 2);
     }
     out
 }

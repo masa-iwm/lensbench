@@ -25,6 +25,8 @@ static CAD_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 pub fn set_cad_dir(settings_dir: Option<PathBuf>) {
     if let Some(d) = settings_dir {
         let _ = CAD_DIR.set(d.join("cad"));
+        // 系を開くときも同じキャッシュを見る（詳しい形の描画）
+        lensbench_project::catalog_fill::set_cad_cache_dir(d.join("cad"));
     }
 }
 

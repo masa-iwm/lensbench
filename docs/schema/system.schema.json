@@ -1621,6 +1621,14 @@
           "description": "外形が角（`outer_radius` は正方形の一辺の半分、辺は部品の x・y 軸に沿う）。false は丸",
           "type": "boolean"
         },
+        "step": {
+          "description": "部品の詳しい形の STEP（品の公式の STEP を取ったキャッシュのファイル）。描画で詳しい形を選ぶと使う",
+          "type": "string"
+        },
+        "step_flip": {
+          "description": "STEP の形を裏返して置く（部品を `reversed` で置いた。z → 長さ − z、y → −y）",
+          "type": "boolean"
+        },
         "surface": {
           "description": "置く基準の面（その面の局所座標）",
           "format": "uint",

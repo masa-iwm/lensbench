@@ -36,6 +36,9 @@ mimalloc = { version = "0.1", default-features = false }
 # 品の STEP を公式の配布元から 1 件取る（cad.rs、公開 #120）。証明書は OS の信頼する証明書で確かめる
 ureq = { version = "3", features = ["platform-verifier"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# 取った STEP を読んで三角形にする（cad.rs の詳しい形、公開 #121）
+truck-stepio = "0.3"
+truck-meshalgo = "0.4"
 
 [dev-dependencies]
 serde_json = "1"

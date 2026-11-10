@@ -552,6 +552,71 @@ pub fn cad_check(mech: &crate::MechSpec, s: &StepSize) -> Vec<String> {
     v
 }
 
+/// 取った品の STEP のキャッシュのフォルダ（[`set_cad_cache_dir`] で決めたもの。無ければ環境変数
+/// `LENSBENCH_CAD_CACHE`、なければ OS の設定の場所: Windows は `%APPDATA%\lensbench\cad`、ほかは
+/// `$XDG_CACHE_HOME/lensbench/cad` か `~/.cache/lensbench/cad`）
+pub fn cad_cache_dir() -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Some(d) = CAD_CACHE_DIR.get() {
+        return d.clone();
+    }
+    if let Some(d) = std::env::var_os("LENSBENCH_CAD_CACHE").filter(|d| !d.is_empty()) {
+        return PathBuf::from(d);
+    }
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from)
+    };
+    let base = if cfg!(windows) {
+        env("APPDATA")
+    } else {
+        env("XDG_CACHE_HOME").or_else(|| env("HOME").map(|h| h.join(".cache")))
+    };
+    base.unwrap_or_else(std::env::temp_dir)
+        .join("lensbench")
+        .join("cad")
+}
+
+static CAD_CACHE_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// キャッシュのフォルダを決める（GUI の起動時に設定のフォルダの `cad`。1 回だけ）
+pub fn set_cad_cache_dir(d: std::path::PathBuf) {
+    let _ = CAD_CACHE_DIR.set(d);
+}
+
+/// キャッシュのファイル: `<品の名前（ファイル名に使えない文字は _）>-<URL の FNV-1a 64 の 16 進>.step`
+pub fn cad_cache_path(dir: &std::path::Path, item: &str, url: &str) -> std::path::PathBuf {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in url.trim().bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    let name: String = item
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "-_.+".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect();
+    dir.join(format!("{name}-{h:016x}.step"))
+}
+
+/// 殻の実体の番号と、STEP の座標から部品の座標 [mm] への変換（3 行 4 列 `[R | t]`）
+pub type ShellPose = (u64, [[f64; 4]; 3]);
+
+/// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列 `[R | t]`、
+/// 組立の置き方ごとに 1 つ）。部品の座標は [`read_step`] で測った枠・機構部品の寸法の座標（z は枠の端から光軸の向き、
+/// x は角の部品の辺に直交）。取った STEP の形を部品の簡易外形と同じ所に描くのに使う
+pub fn step_shell_poses(text: &str) -> Result<Vec<ShellPose>, String> {
+    let upper = text.to_ascii_uppercase();
+    crate::step_geom::shell_poses(&upper, step_unit(&upper))
+}
+
 /// STEP の長さの単位（mm へ）
 fn step_unit(upper: &str) -> f64 {
     let squeezed: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
