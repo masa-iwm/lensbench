@@ -205,6 +205,8 @@ pub enum ApShape {
     Ellipse,
     /// 円の遮蔽（内径〜外径を遮る）
     Obscuration,
+    /// スパイダー（中心から外へ伸びる幅の腕を遮る。.zmx の SPID）
+    Spider,
 }
 
 impl ApShape {
@@ -214,6 +216,7 @@ impl ApShape {
             ApShape::Rect => tr("矩形の開口"),
             ApShape::Ellipse => tr("楕円の開口"),
             ApShape::Obscuration => tr("円の遮蔽"),
+            ApShape::Spider => tr("スパイダー"),
         }
     }
 }
@@ -340,6 +343,10 @@ pub struct Pick {
     pub ap_half: [f64; 2],
     /// 円の開口・遮蔽の内径（半径）[mm]
     pub ap_min: f64,
+    /// スパイダーの腕の幅（全幅）[mm]
+    pub spider_width: f64,
+    /// スパイダーの腕の本数（360° を等分、最初の腕は +x）
+    pub spider_arms: u32,
     /// 面の表で変えた面の値（プロジェクトの surface_edits になる）
     pub edits: Vec<SurfEdit>,
     /// 玉の前面を絞りにする（カタログの玉・自作の玉・平板・.zmx の玉）
@@ -486,6 +493,8 @@ impl Default for Pick {
             ap: ApShape::Circle,
             ap_half: [5.0, 5.0],
             ap_min: 0.0,
+            spider_width: 1.0,
+            spider_arms: 4,
             edits: Vec::new(),
             form: BsForm::Cube,
             wedge: [0.0; 2],
@@ -801,6 +810,10 @@ impl Pick {
             ApShape::Obscuration => json!({
                 "type": "obscuration", "min": self.ap_min.max(0.0), "max": self.semi, "dx": dx, "dy": dy,
             }),
+            ApShape::Spider => json!({
+                "type": "spider", "width": self.spider_width.max(0.0), "arms": self.spider_arms.max(1),
+                "dx": dx, "dy": dy,
+            }),
         }
     }
 
@@ -808,7 +821,8 @@ impl Pick {
     pub fn ap_extent(&self) -> f64 {
         let h = match self.ap {
             ApShape::Rect | ApShape::Ellipse => self.ap_half[0].hypot(self.ap_half[1]),
-            ApShape::Circle | ApShape::Obscuration => self.semi,
+            // スパイダーの腕は無限に伸びるので、図では半径（semi）まで
+            ApShape::Circle | ApShape::Obscuration | ApShape::Spider => self.semi,
         };
         h + self.decenter[0].hypot(self.decenter[1])
     }
@@ -2506,6 +2520,25 @@ fn figure(
                         vec![(dy + lo, dy + hi), (dy - hi, dy - lo)]
                     }
                 }
+                ApShape::Spider => {
+                    // 中心の腕の幅と、断面の向きに沿う腕（半径 semi まで）
+                    let hw = p.spider_width.max(0.0) / 2.0;
+                    let mut v = vec![(dy - hw, dy + hw)];
+                    let n = p.spider_arms.max(1);
+                    for k in 0..n {
+                        let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
+                        let (c, s) = (a.cos(), a.sin());
+                        let (along, across) = if iv == 0 { (c, s) } else { (s, c) };
+                        if across.abs() < 1e-9 {
+                            v.push(if along > 0.0 {
+                                (dy, dy + p.semi)
+                            } else {
+                                (dy - p.semi, dy)
+                            });
+                        }
+                    }
+                    v
+                }
                 _ => {
                     let h = match p.ap {
                         ApShape::Circle => p.semi,
@@ -3289,6 +3322,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                         ApShape::Rect,
                         ApShape::Ellipse,
                         ApShape::Obscuration,
+                        ApShape::Spider,
                     ] {
                         ui.selectable_value(&mut p.ap, a, a.label());
                     }
@@ -3301,6 +3335,14 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                 ApShape::Rect | ApShape::Ellipse => {
                     num(ui, tr("半幅 x"), &mut p.ap_half[0], " mm");
                     num(ui, tr("半幅 y"), &mut p.ap_half[1], " mm");
+                }
+                ApShape::Spider => {
+                    num(ui, tr("腕の幅（全幅）"), &mut p.spider_width, " mm");
+                    let mut n = p.spider_arms as f64;
+                    num(ui, tr("腕の本数"), &mut n, "");
+                    p.spider_arms = n.round().clamp(1.0, 360.0) as u32;
+                    // 腕は無限に伸びる。図ではこの半径まで描く
+                    num(ui, tr("図の半径"), &mut p.semi, " mm");
                 }
             }
             num(ui, tr("偏心 x"), &mut p.decenter[0], " mm");
@@ -4420,6 +4462,7 @@ mod tests {
             (ApShape::Obscuration, 0.0),
             (ApShape::Rect, 0.5),
             (ApShape::Circle, 0.0),
+            (ApShape::Spider, 0.0),
         ] {
             let mut a = Pick::new(ElemKind::Aperture);
             a.ap = shape;
@@ -4432,8 +4475,14 @@ mod tests {
         let mut proj = c.project();
         let b = proj["blocks"].as_array().unwrap();
         let ap: Vec<&Value> = b.iter().filter(|x| x["type"] == "surfaces").collect();
-        assert_eq!(ap.len(), 3);
+        assert_eq!(ap.len(), 4);
         assert_eq!(ap[0]["surfaces"][0]["aperture"]["type"], "obscuration");
+        let sp = &ap[3]["surfaces"][0]["aperture"];
+        assert_eq!(sp["type"], "spider");
+        assert_eq!(
+            (sp["width"].as_f64(), sp["arms"].as_u64()),
+            (Some(1.0), Some(4))
+        );
         assert_eq!(ap[1]["surfaces"][0]["aperture"]["dy"], 0.5);
         assert_eq!(ap[1]["surfaces"][0]["aperture"]["hx"], 3.0);
         proj["glass_catalogs"] = json!(["SCHOTT"]);

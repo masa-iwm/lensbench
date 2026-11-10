@@ -129,7 +129,7 @@ jobs:
           components: rust-src
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown, wasm32-wasip1
           components: clippy
       - uses: Swatinem/rust-cache@v2
       # wasm-bindgen-cli は Cargo.lock の wasm-bindgen と同じ版
@@ -140,6 +140,10 @@ jobs:
         with:
           tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN }}
       - run: cargo clippy --target wasm32-unknown-unknown -p lensbench-web -p lensbench-gui -- -D warnings
+      # simd128 の経路（AᵀA の gram_block_simd128 など）: core を wasm32-wasip1 ＋ simd128 で検査（#28）
+      - run: cargo clippy -p lensbench-core --target wasm32-wasip1 --all-targets -- -D warnings
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -148,6 +152,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+      # gram_block_simd128 が gram_tiles とビットまで同じこと（試験 1 本を Node の WASI で。#28）
+      - run: cargo test -p lensbench-core --lib --target wasm32-wasip1 column_basis_and_gram_match_the_row_forms
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
       - run: npm install --no-save playwright@1.55.0 && npx playwright install --with-deps chromium
       # スレッドあり（ヘッダーあり）・GitHub Pages と同じ（ヘッダーなし、coi.js で付け直す）・1 スレッド（?st）
       - run: EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke.png

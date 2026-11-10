@@ -159,6 +159,11 @@ pub fn decode_text(raw: &[u8]) -> String {
 /// 読んだ結果はプロセスの中で使い回す（ファイルの更新時刻と大きさが同じなら読み直さない）。カタログの玉ごと・
 /// 組合せを動かすたびの系の作り直しで、数 MB の AGF を毎回読むと 1 回に数十 ms かかるため
 pub fn load_agf(path: &Path) -> std::io::Result<HashMap<String, Glass>> {
+    Ok((*load_agf_shared(path)?).clone())
+}
+
+/// [`load_agf`] と同じだが、使い回しの結果をそのまま共有して返す（写さない）
+pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass>>> {
     type Cache = HashMap<
         PathBuf,
         (
@@ -173,7 +178,7 @@ pub fn load_agf(path: &Path) -> std::io::Result<HashMap<String, Glass>> {
     let cache = CACHE.get_or_init(Default::default);
     if let Some((t, n, g)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
         if (*t, *n) == stamp {
-            return Ok((**g).clone());
+            return Ok(g.clone());
         }
     }
     let txt = read_text(path)?;
@@ -186,7 +191,7 @@ pub fn load_agf(path: &Path) -> std::io::Result<HashMap<String, Glass>> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(key, (stamp.0, stamp.1, g.clone()));
-    Ok((*g).clone())
+    Ok(g)
 }
 
 pub fn parse_agf(txt: &str, cat: &str) -> HashMap<String, Glass> {
@@ -251,8 +256,38 @@ pub fn parse_agf(txt: &str, cat: &str) -> HashMap<String, Glass> {
 /// GCAT の順にカタログを探して読む。同じ名前のガラスは先のカタログのもの。
 /// 見つからないカタログ名は戻り値の 2 番目に返す。
 pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Glass>, Vec<String>) {
+    let (g, missing) = load_catalogs_shared(names, dirs);
+    ((*g).clone(), missing)
+}
+
+/// [`load_catalogs`] と同じだが、結果を共有して返す。同じカタログ名・フォルダの組は使い回す（見つかった AGF の
+/// 更新時刻と大きさが同じで、見つからないカタログがないとき）。差し替え探索などで系を組むたびに、フォルダを
+/// 探して数千種のガラスの表を作り直さないため
+pub fn load_catalogs_shared(
+    names: &[String],
+    dirs: &[PathBuf],
+) -> (Arc<HashMap<String, Glass>>, Vec<String>) {
+    type Key = (Vec<String>, Vec<PathBuf>);
+    type Entry = (
+        Vec<(PathBuf, crate::vfs::Stamp)>,
+        Arc<HashMap<String, Glass>>,
+    );
+    static CACHE: OnceLock<Mutex<HashMap<Key, Entry>>> = OnceLock::new();
+    let key: Key = (names.to_vec(), dirs.to_vec());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some((files, g)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        if files
+            .iter()
+            .all(|(p, st)| crate::vfs::stamp(p).is_ok_and(|s| s == *st))
+        {
+            return (g.clone(), Vec::new());
+        }
+    }
     let mut out: HashMap<String, Glass> = HashMap::new();
     let mut missing = Vec::new();
+    let mut files = Vec::new();
+    // 読めなかった AGF があれば使い回さない（直したら読み直す）
+    let mut complete = true;
     for name in names {
         let want = format!("{}.AGF", name.to_uppercase());
         let mut found = false;
@@ -266,10 +301,13 @@ pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Gla
                     .unwrap_or_default()
                     == want
                 {
-                    if let Ok(g) = load_agf(&e) {
-                        for (k, v) in g {
-                            out.entry(k).or_insert(v);
+                    if let (Ok(st), Ok(g)) = (crate::vfs::stamp(&e), load_agf_shared(&e)) {
+                        for (k, v) in g.iter() {
+                            out.entry(k.clone()).or_insert_with(|| v.clone());
                         }
+                        files.push((e.clone(), st));
+                    } else {
+                        complete = false;
                     }
                     found = true;
                     break 'dirs;
@@ -279,6 +317,13 @@ pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Gla
         if !found {
             missing.push(name.clone());
         }
+    }
+    let out = Arc::new(out);
+    if missing.is_empty() && complete {
+        cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, (files, out.clone()));
     }
     (out, missing)
 }

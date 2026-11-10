@@ -7,6 +7,7 @@ use lensbench_core::huygens::{huygens_psf, HuygensOpts};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
