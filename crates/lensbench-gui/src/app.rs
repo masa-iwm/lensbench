@@ -2647,7 +2647,8 @@ impl Core {
             return;
         }
         let mut z = combo::Pick::new(combo::ElemKind::ZmxRange);
-        z.path = f.display().to_string();
+        // 組合せは保存先から相対に読むので、開いた系は絶対パスで持つ（Web 版の置き場は初めから絶対）
+        z.path = std::path::absolute(&f).unwrap_or(f).display().to_string();
         // 取り込みは像面の手前の面の厚さまで含むので、後の空気は 0
         z.air = 0.0;
         if let Some(cfg) = self
