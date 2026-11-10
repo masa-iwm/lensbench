@@ -1908,24 +1908,35 @@ impl System {
             };
         }
         let ptrs = SoaPtrs::new(&mut rec_out, slot, n);
+        // 偏光: 物体の座標系の (Ex, Ey, 0) を光線に垂直な面へ射影する（規格化しない、OpticStudio と同じ）
+        let e_start = |inp: &[[C64; 2]], k: V3, out: &mut Vec<CV3>| {
+            out.extend(inp.iter().map(|a| {
+                let j: CV3 = [0, 1, 2].map(|c| a[0] * fr.obj.r[c][0] + a[1] * fr.obj.r[c][1]);
+                let jk = j[0] * k[0] + j[1] * k[1] + j[2] * k[2];
+                [0, 1, 2].map(|c| j[c] - jk * k[c])
+            }))
+        };
+        let phase = pol.is_some_and(|p| p.2);
+        // 最後の面の局所座標の電場に伝搬の位相 exp(−i k OPL) をかける（phase のとき）
+        let put_phase = |e: &mut [CV3], opl: f64| {
+            if phase {
+                let ph = C64::new(0.0, -kw * opl).exp();
+                e.iter_mut().for_each(|x| *x = x.map(|c| c * ph));
+            }
+        };
         let one = |i: usize| {
             let (p, k) = starts.get(i);
             let mut row = SoaRow { out: &ptrs, i };
             let rec = if record { Some(&mut row) } else { None };
-            // 偏光: 物体の座標系の (Ex, Ey, 0) を光線に垂直な面へ射影する（規格化しない、OpticStudio と同じ）
-            let mut pr = pol.map(|(inp, surf, _)| PolRay {
-                e: inp
-                    .iter()
-                    .map(|a| {
-                        let j: CV3 =
-                            [0, 1, 2].map(|c| a[0] * fr.obj.r[c][0] + a[1] * fr.obj.r[c][1]);
-                        let jk = j[0] * k[0] + j[1] * k[1] + j[2] * k[2];
-                        [0, 1, 2].map(|c| j[c] - jk * k[c])
-                    })
-                    .collect(),
-                surf,
-                err: None,
-                cry: None,
+            let mut pr = pol.map(|(inp, surf, _)| {
+                let mut e = Vec::with_capacity(inp.len());
+                e_start(inp, k, &mut e);
+                PolRay {
+                    e,
+                    surf,
+                    err: None,
+                    cry: None,
+                }
             });
             let mut r = match pr.as_mut() {
                 Some(q) => trace::trace_core(self, fr, w, p, k, 0.0, 1, last, clip, rec, Some(q)),
@@ -1934,14 +1945,9 @@ impl System {
             if fail[i] {
                 r.err = st;
             }
-            // 最後の面の局所座標の電場に伝搬の位相 exp(−i k OPL) をかける（phase のとき）
             // 偏光なしの追跡で結果を大きくしないよう箱に入れる
-            let phase = pol.is_some_and(|p| p.2);
             let pe = pr.map(|mut pr| {
-                if phase {
-                    let ph = C64::new(0.0, -kw * r.opl).exp();
-                    pr.e.iter_mut().for_each(|x| *x = x.map(|c| c * ph));
-                }
+                put_phase(&mut pr.e, r.opl);
                 Box::new((pr.e, pr.err))
             });
             (r, p, k, pe)
@@ -1949,11 +1955,18 @@ impl System {
         // 光線は互いに独立なので、本数が多いときは並列に追う（結果の順序は入力のまま、
         // スレッド数によらず同じビット）。with_threads(Some(1), ..) の中では逐次
         let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
-        // 偏光なしは L 本ずつまとめて追う（1 本ずつと同じビット。組は入力の順に固定）
-        let plan = if pol.is_none() && batch::use_for(n) {
-            Some(batch::Plan::new(self, fr, w, 1, last, clip)).filter(|p| !p.is_empty())
+        // L 本ずつまとめて追う（1 本ずつと同じビット。組は入力の順に固定）。偏光ありは別の組で（下）
+        let plan = if batch::use_for(n) {
+            Some(batch::Plan::new(self, fr, w, 1, last, clip)).filter(|p| match pol {
+                None => !p.is_empty(),
+                Some((_, surf, _)) => p.supports_pol(surf),
+            })
         } else {
             None
+        };
+        let (plan, pol_plan) = match pol {
+            None => (plan, None),
+            Some(_) => (None, plan),
         };
         let mut rays: Vec<RayOut>;
         let mut p0: Vec<V3>;
@@ -2016,32 +2029,90 @@ impl System {
             }
             drop(ptrs);
         } else {
-            let out: Vec<_> = if par {
-                (0..n)
-                    .into_par_iter()
-                    .with_min_len(PAR_CHUNK)
-                    .map(one)
-                    .collect()
-            } else {
-                (0..n).map(one).collect()
-            };
-            drop(ptrs);
             rays = Vec::with_capacity(n);
             p0 = Vec::with_capacity(n);
             k0 = Vec::with_capacity(n);
-            for (r, p, k, pe) in out {
-                let through = r.err == 0 && r.vig == 0;
-                rays.push(r);
-                p0.push(p);
-                k0.push(k);
-                if let Some(b) = pe {
-                    let (e, perr) = *b;
-                    es.push(e);
-                    // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
-                    // ほかの光線は電場が NaN になるだけ
-                    if first_err.is_none() && through {
-                        first_err = perr;
+            // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
+            // ほかの光線は電場が NaN になるだけ
+            let mut take_err = |r: &RayOut, perr: Option<Error>| {
+                if first_err.is_none() && r.err == 0 && r.vig == 0 {
+                    first_err = perr;
+                }
+            };
+            if let (Some(plan), Some((inp, surf, _))) = (&pol_plan, pol) {
+                // 偏光あり: L 本ずつまとめて追う（電場も 1 本ずつと同じ演算）
+                const L: usize = batch::L;
+                let np = inp.len();
+                let group = |b: usize| {
+                    let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
+                    let start = idx.map(|i| starts.get(i));
+                    let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
+                    let mut e = Vec::with_capacity(L * np);
+                    for kk in &k {
+                        e_start(inp, *kk, &mut e);
                     }
+                    let mut pl = batch::PolLanes {
+                        e,
+                        np,
+                        surf,
+                        err: std::array::from_fn(|_| None),
+                    };
+                    let mut sink = SoaLanes {
+                        out: &ptrs,
+                        base: b * L,
+                    };
+                    let mut r =
+                        batch::trace_lanes_pol(plan, &p, &k, record.then_some(&mut sink), &mut pl);
+                    let m = (n - b * L).min(L);
+                    for l in 0..m {
+                        if fail[idx[l]] {
+                            r[l].err = st;
+                        }
+                        put_phase(&mut pl.e[l * np..(l + 1) * np], r[l].opl);
+                    }
+                    (r, p, k, pl.e, pl.err, m)
+                };
+                let ng = n.div_ceil(L);
+                let groups: Vec<_> = if par {
+                    (0..ng)
+                        .into_par_iter()
+                        .with_min_len(PAR_CHUNK / L)
+                        .map(group)
+                        .collect()
+                } else {
+                    (0..ng).map(group).collect()
+                };
+                drop(ptrs);
+                es.reserve(n);
+                for (r, p, k, e, mut perr, m) in groups {
+                    for l in 0..m {
+                        take_err(&r[l], perr[l].take());
+                        rays.push(r[l]);
+                        p0.push(p[l]);
+                        k0.push(k[l]);
+                        es.push(e[l * np..(l + 1) * np].to_vec());
+                    }
+                }
+            } else {
+                let out: Vec<_> = if par {
+                    (0..n)
+                        .into_par_iter()
+                        .with_min_len(PAR_CHUNK)
+                        .map(one)
+                        .collect()
+                } else {
+                    (0..n).map(one).collect()
+                };
+                drop(ptrs);
+                for (r, p, k, pe) in out {
+                    if let Some(b) = pe {
+                        let (e, perr) = *b;
+                        es.push(e);
+                        take_err(&r, perr);
+                    }
+                    rays.push(r);
+                    p0.push(p);
+                    k0.push(k);
                 }
             }
         }

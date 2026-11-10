@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use lensbench_core::batch;
+use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::freeform::{GridSag, ZernSag};
 use lensbench_core::surface::{Aperture, SurfType};
 use lensbench_core::system::Trace;
@@ -281,4 +282,111 @@ fn launches_match_scalar() {
             );
         }
     }
+}
+
+/// 偏光の追跡: まとめ追跡（幾何をまとめ、電場は光線ごと）が 1 本ずつと同じビット（電場・エラーも）
+fn check_pol(name: &str, s: &System, c: &Coatings, px: &[f64], py: &[f64]) -> usize {
+    let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
+    let y = [C64::new(0.3, 0.1), C64::new(0.0, -0.9)];
+    let mut compared = 0;
+    for fi in 0..s.fields.len() {
+        for w in 0..s.wavelengths.len() {
+            let f = FieldSel::Index(fi);
+            batch::set_enabled(false);
+            let a = s.try_trace_pol(f, px, py, Some(w), &[x, y], c);
+            batch::set_enabled(true);
+            let b = s.try_trace_pol(f, px, py, Some(w), &[x, y], c);
+            let what = format!("{name} 偏光 視野 {fi} 波長 {w}");
+            let (a, b) = match (a, b) {
+                (Ok(a), Ok(b)) => (a, b),
+                (Err(a), Err(b)) => {
+                    assert_eq!(a.to_string(), b.to_string(), "{what}");
+                    continue;
+                }
+                (a, b) => panic!("{what}: {:?} {:?}", a.err(), b.err()),
+            };
+            same(&a.trace, &b.trace, &what);
+            assert_eq!(a.e.len(), b.e.len());
+            for (i, (ea, eb)) in a.e.iter().zip(&b.e).enumerate() {
+                let bits = |e: &Vec<[C64; 3]>| -> Vec<u64> {
+                    e.iter()
+                        .flat_map(|v| v.iter().flat_map(|c| [c.re.to_bits(), c.im.to_bits()]))
+                        .collect()
+                };
+                assert_eq!(bits(ea), bits(eb), "{what} 光線 {i}");
+            }
+            compared += 1;
+        }
+    }
+    compared
+}
+
+#[test]
+fn pol_matches_scalar() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (px, py) = grid(23, 2.0);
+    let mut names: Vec<String> = std::fs::read_dir(root().join("tests/refs"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    let mut compared = 0;
+    for n in &names {
+        let s = load(n);
+        if let Ok(c) = Coatings::for_system(&s) {
+            compared += check_pol(n, &s, &c, &px, &py);
+        }
+    }
+    assert!(compared > 50, "比べた追跡が少ない（{compared}）");
+
+    // 理想膜・吸収・Jones 面（像面）・鏡
+    let mut s = load("A0");
+    let w = s.primary;
+    for j in 1..s.surfaces.len() {
+        if s.surfaces[j].n[w] != s.index_before(j, w) {
+            s.surfaces[j].coat = "I.95".into();
+        }
+    }
+    // 最初のガラスに内部透過率（厚さ 10 mm で 0.9）
+    let mat = (1..s.surfaces.len())
+        .map(|j| s.surfaces[j].mat.clone())
+        .find(|m| s.glasses.contains_key(m))
+        .unwrap();
+    let wls = s.wavelengths.clone();
+    let g = Arc::make_mut(&mut s.glasses).get_mut(&mat).unwrap();
+    g.it = wls
+        .iter()
+        .flat_map(|&wl| [[wl - 0.01, 0.9, 10.0], [wl + 0.01, 0.9, 10.0]])
+        .collect();
+    let img = s.image();
+    s.surfaces[img].typ = SurfType::Jones;
+    s.surfaces[img].jones = [1.0, 0.0, 0.2, 0.1, 0.0, -0.3, 0.0, 1.0];
+    let c = Coatings::for_system(&s).unwrap();
+    assert!(check_pol("A0+膜・吸収・Jones", &s, &c, &px, &py) > 0);
+
+    // 実測表の範囲（0〜8°）の外: けられた光線は止めず、通る光線は止める（エラーの文も同じ）
+    let mut s = load("A0");
+    s.surfaces[2].coat = "ZEC1".into();
+    s.surfaces[2].ap = Aperture::Circular {
+        min: 0.0,
+        max: 2.0,
+        dx: 0.0,
+        dy: 0.0,
+    };
+    let mut c = Coatings::for_system(&s).unwrap();
+    let key = format!("ZEC1|AIR|{}", s.surfaces[2].mat);
+    let ang: Vec<f64> = (0..=8).map(|a| a as f64).collect();
+    let v = [C64::new(0.9, 0.1), C64::new(0.8, 0.0)];
+    c.add_measured(
+        &key,
+        Measured {
+            wavelengths: s.wavelengths.clone(),
+            angles_deg: ang.clone(),
+            data: vec![vec![v; ang.len()]; s.wavelengths.len()],
+        },
+    )
+    .unwrap();
+    let (qx, qy) = grid(9, 0.3);
+    check_pol("A0+表（通る）", &s, &c, &qx, &qy);
+    check_pol("A0+表（範囲外）", &s, &c, &px, &py);
 }

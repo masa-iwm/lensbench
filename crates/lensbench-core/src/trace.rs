@@ -144,11 +144,11 @@ pub struct PolRay<'a> {
 }
 
 #[inline]
-fn cmv(m: &M3, e: CV3) -> CV3 {
+pub(crate) fn cmv(m: &M3, e: CV3) -> CV3 {
     [0, 1, 2].map(|i| e[0] * m[i][0] + e[1] * m[i][1] + e[2] * m[i][2])
 }
 #[inline]
-fn cmtv(m: &M3, e: CV3) -> CV3 {
+pub(crate) fn cmtv(m: &M3, e: CV3) -> CV3 {
     [0, 1, 2].map(|i| e[0] * m[0][i] + e[1] * m[1][i] + e[2] * m[2][i])
 }
 #[inline]
@@ -161,7 +161,7 @@ fn comb(a: C64, u: V3, b: C64, v: V3) -> CV3 {
 }
 
 /// 単位ベクトル a を b へ移す最小の回転（ax = a × b、c = a·b）を e にかける（Rodrigues）
-fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
+pub(crate) fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
     if 1.0 + c <= 1e-15 {
         return CNAN3;
     }
@@ -175,10 +175,10 @@ fn rotate_min(e: CV3, ax: V3, c: f64) -> CV3 {
     [0, 1, 2].map(|i| e[i] * c + x[i] + ae * (ax[i] / (1.0 + c)))
 }
 
-const CNAN3: CV3 = [C64::new(f64::NAN, f64::NAN); 3];
+pub(crate) const CNAN3: CV3 = [C64::new(f64::NAN, f64::NAN); 3];
 
 /// 面での電場の変化（局所座標）。kin・kl は面の前後の方向、nv は法線
-fn pol_surface(
+pub(crate) fn pol_surface(
     ps: &PolSurf,
     e: &mut [CV3],
     kin: V3,
