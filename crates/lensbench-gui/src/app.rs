@@ -1779,7 +1779,7 @@ impl Core {
             // 組合せの要素のパレット・図はその下に
             if let Some(d) = &self.layout_data {
                 let h = (ui.available_height() * 0.55).max(160.0);
-                combo::view_only(ui, d, h, accent);
+                combo::view_only(ui, d, h, accent, Some(egui::Id::new("open_layout_nav")));
                 ui.separator();
             }
         }

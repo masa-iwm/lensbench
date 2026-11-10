@@ -1105,3 +1105,9 @@ OS のタイトルバーを使う	Use the OS title bar
 位置も	Position too
 位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする	Also lock the position (drag, keys, decenter, tilt) and the air after
 位置もロックした要素の後の間隔は変えられない	The gap after an element locked with its position cannot change
+ドラッグで移動、Ctrl（Mac は ⌘）＋ホイールかピンチで拡大縮小、右ドラッグで囲んだ所を拡大、ダブルクリックで全体	Drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, right-drag a box to zoom in, double-click to fit
+全体	Fit
+全体を表示（Home・何も無い所のダブルクリックでも）	Fit all (also Home, or double-click an empty spot)
+全体を表示（ダブルクリックでも）	Fit all (also double-click)
+拡大	Zoom in
+縮小	Zoom out

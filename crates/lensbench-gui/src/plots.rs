@@ -299,43 +299,45 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
     let now = lines(result);
     let before = prev.map(lines).unwrap_or_default();
     let _ = curves;
-    Plot::new((key, id))
+    let plot = Plot::new((key, id))
         .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
         .include_x(0.0)
-        .x_axis_label(unit)
-        .y_axis_label("MTF")
-        .allow_scroll(false)
-        .show(ui, |p| {
-            for (f, k, pts) in before {
-                p.line(
-                    Line::new(pts)
-                        .color(theme::series(f.saturating_sub(1)).gamma_multiply(0.35))
-                        .style(LineStyle::Dotted { spacing: 4.0 })
-                        .width(1.0_f32),
-                );
-                let _ = k;
-            }
-            for (f, k, pts) in now {
-                let t = k == "tangential";
-                p.line(
-                    Line::new(pts)
-                        .color(theme::series(f.saturating_sub(1)))
-                        .style(if t {
-                            LineStyle::Solid
-                        } else {
-                            LineStyle::Dashed { length: 6.0 }
-                        })
-                        .width(1.6_f32)
-                        .name(if t {
-                            trf("視野 {} 子午", &[&f])
-                        } else {
-                            trf("視野 {} 球欠", &[&f])
-                        }),
-                );
-            }
-        });
+        .x_axis_label(unit.clone())
+        .y_axis_label("MTF");
+    crate::plot_tools::show(ui, plot, &unit, |p, reg| {
+        for (f, k, pts) in before {
+            p.line(
+                Line::new(pts)
+                    .color(theme::series(f.saturating_sub(1)).gamma_multiply(0.35))
+                    .style(LineStyle::Dotted { spacing: 4.0 })
+                    .width(1.0_f32),
+            );
+            let _ = k;
+        }
+        for (f, k, pts) in now {
+            let t = k == "tangential";
+            let name = if t {
+                trf("視野 {} 子午", &[&f])
+            } else {
+                trf("視野 {} 球欠", &[&f])
+            };
+            let color = theme::series(f.saturating_sub(1));
+            reg.push(crate::plot_tools::Series::new(name.clone(), color, &pts));
+            p.line(
+                Line::new(pts)
+                    .color(color)
+                    .style(if t {
+                        LineStyle::Solid
+                    } else {
+                        LineStyle::Dashed { length: 6.0 }
+                    })
+                    .width(1.6_f32)
+                    .name(name),
+            );
+        }
+    });
 }
 
 #[cfg(test)]

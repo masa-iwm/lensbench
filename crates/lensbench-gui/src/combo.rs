@@ -1808,12 +1808,26 @@ pub struct View {
     fixed: bool,
     /// 3D 表示（矢印キーは図を回す）
     d3: bool,
+    /// 2D の図の拡大縮小・移動を使う（組合せのパネルの図。カタログのプレビューは使わない）
+    pub nav: bool,
+    /// 2D の図の拡大率の対数（0 で全体表示）と、画面の上の移動 [pt]
+    zoom_log: f32,
+    pan: Vec2,
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
 pub struct DropPick(pub Pick);
 
 impl View {
+    /// 2D の図を画面の点 c を中心に f 倍する（c の下の図の点は動かない）。fit_center は全体表示の中心
+    fn zoom_about(&mut self, fit_center: Pos2, c: Pos2, f: f32) {
+        let old = self.zoom_log;
+        self.zoom_log = (self.zoom_log + f.ln()).clamp(-3.0, 8.0);
+        let k = (self.zoom_log - old).exp();
+        let o = fit_center + self.pan;
+        self.pan = (o - c) * k + c.to_vec2() - fit_center.to_vec2();
+    }
+
     /// 図の縦の向きの偏心の番号（yz 面は y、xz 面は x）
     fn vert(&self) -> usize {
         if self.xz {
@@ -2030,6 +2044,7 @@ pub fn ui(
     }
     let focused = resp.has_focus();
     if let Some(d) = data {
+        view.nav = true;
         figure(ui, rect, &resp, combo, d, view, accent);
     } else {
         ui.painter().text(
@@ -2165,9 +2180,9 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
 }
 
 /// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方）
-pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32) {
-    // 3D は回す・拡大の操作を受ける
-    let sense = if d.d3.is_some() {
+pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32, nav: Option<egui::Id>) {
+    // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける（#124）
+    let sense = if d.d3.is_some() || nav.is_some() {
         Sense::click_and_drag()
     } else {
         Sense::hover()
@@ -2181,7 +2196,16 @@ pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32) {
         ..Default::default()
     };
     let mut view = View::default();
+    if let Some(id) = nav {
+        let (z, p): (f32, Vec2) = ui.data(|m| m.get_temp(id)).unwrap_or_default();
+        view.nav = true;
+        view.zoom_log = z;
+        view.pan = p;
+    }
     figure(ui, rect, &resp, &mut none, d, &mut view, accent);
+    if let Some(id) = nav {
+        ui.data_mut(|m| m.insert_temp(id, (view.zoom_log, view.pan)));
+    }
 }
 
 /// 落とす位置 q から差し込む番号: 一番近い要素の真ん中より光軸の先なら後ろ、手前なら前
@@ -2425,6 +2449,72 @@ fn cube_of_prism(pts: &[[f64; 2]]) -> Option<[Vec<[f64; 2]>; 2]> {
     Some([vec![a, c, b, o], vec![a, b]])
 }
 
+/// 図を動かすドラッグか（中ボタン・右ボタン、Space＋左ボタン）
+fn panning(ui: &Ui, resp: &egui::Response) -> bool {
+    resp.dragged_by(egui::PointerButton::Middle)
+        || resp.dragged_by(egui::PointerButton::Secondary)
+        || (resp.dragged_by(egui::PointerButton::Primary) && ui.input(|i| i.key_down(Key::Space)))
+}
+
+/// 2D の図の拡大縮小・移動・全体表示（#124）。ホイール・ピンチでカーソルの所を中心に拡大縮小、
+/// 中ボタン・右ボタン・Space＋左のドラッグで移動、Home キー・何も無い所のダブルクリック・「全体」で全体表示。
+/// fit_center は全体表示のときの図の中心（画面）
+fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
+    if panning(ui, resp) {
+        view.pan += resp.drag_delta();
+    }
+    if resp.hovered() {
+        // ホイールは図の拡大縮小に使い、パネルのスクロールには渡さない（なめらかなスクロールは数フレームに
+        // 分けて届くので、図の上にある間は毎フレーム取る）
+        let (wheel, pinch, pos) = ui.input_mut(|i| {
+            let w = i.smooth_scroll_delta.y;
+            i.smooth_scroll_delta = Vec2::ZERO;
+            i.raw_scroll_delta = Vec2::ZERO;
+            (w, i.zoom_delta(), i.pointer.hover_pos())
+        });
+        let f = pinch * (wheel / 200.0).exp();
+        if (f - 1.0).abs() > 1e-4 {
+            view.zoom_about(fit_center, pos.unwrap_or(fit_center), f);
+        }
+        if ui.input(|i| i.key_pressed(Key::Home)) {
+            view.zoom_log = 0.0;
+            view.pan = Vec2::ZERO;
+        }
+    }
+    // 拡大・移動しているときは右上に「全体」（置き場は取らない: ui.put は下の欄の位置をずらす）
+    if view.zoom_log != 0.0 || view.pan != Vec2::ZERO {
+        let b = Rect::from_min_size(
+            rect.right_top() + egui::vec2(-64.0, 8.0),
+            egui::vec2(56.0, 22.0),
+        );
+        let r = ui
+            .interact(b, resp.id.with("fit"), Sense::click())
+            .on_hover_text(crate::i18n::tr(
+                "全体を表示（Home・何も無い所のダブルクリックでも）",
+            ));
+        let w = ui.style().interact(&r);
+        let p = ui.painter_at(rect);
+        p.rect(
+            b,
+            4.0,
+            w.weak_bg_fill,
+            w.bg_stroke,
+            egui::StrokeKind::Inside,
+        );
+        p.text(
+            b.center(),
+            egui::Align2::CENTER_CENTER,
+            crate::i18n::tr("全体"),
+            egui::FontId::proportional(12.0),
+            w.text_color(),
+        );
+        if r.clicked() {
+            view.zoom_log = 0.0;
+            view.pan = Vec2::ZERO;
+        }
+    }
+}
+
 /// 図を描き、クリック・ドラッグを扱う
 fn figure(
     ui: &mut Ui,
@@ -2485,13 +2575,18 @@ fn figure(
     let inner = Rect::from_min_max(inner.min, inner.max - egui::vec2(0.0, dim_room));
     let w = (hi[0] - lo[0]).max(1e-6);
     let h = (hi[1] - lo[1]).max(1e-6);
-    let s = (inner.width() as f64 / w).min(inner.height() as f64 / h);
+    let fit = (inner.width() as f64 / w).min(inner.height() as f64 / h);
     let cz = (lo[0] + hi[0]) / 2.0;
     let cy = (lo[1] + hi[1]) / 2.0;
+    if view.nav {
+        navigate(ui, rect, inner.center(), resp, view);
+    }
+    let s = fit * (view.zoom_log as f64).exp();
+    let center = inner.center() + view.pan;
     let to = |p: [f64; 2]| -> Pos2 {
         Pos2::new(
-            inner.center().x + ((p[0] - cz) * s) as f32,
-            inner.center().y - ((p[1] - cy) * s) as f32,
+            center.x + ((p[0] - cz) * s) as f32,
+            center.y - ((p[1] - cy) * s) as f32,
         )
     };
     // 光軸
@@ -2991,6 +3086,10 @@ fn figure(
             // 要素のダブルクリックは、その要素の面を面の表で
             view.select(k);
             view.open = Some(k);
+        } else if view.nav {
+            // 何も無い所のダブルクリックは全体表示
+            view.zoom_log = 0.0;
+            view.pan = Vec2::ZERO;
         }
     } else if resp.clicked() {
         if let Some(g) = num_hit {
@@ -3005,7 +3104,8 @@ fn figure(
             view.dim = None;
         }
     }
-    if resp.drag_started() {
+    let pan_drag = view.nav && panning(ui, resp);
+    if resp.drag_started_by(egui::PointerButton::Primary) && !pan_drag {
         if let Some(k) = hit {
             view.sel = Some(k);
             view.dim = None;
@@ -3014,7 +3114,7 @@ fn figure(
             view.drag0 = Some((p, combo.clone()));
         }
     }
-    if resp.dragged() {
+    if resp.dragged_by(egui::PointerButton::Primary) && !pan_drag {
         if let (Some(k), Some((p0, c0)), Some(p)) = (
             view.sel.filter(|&k| els.get(k).is_some_and(|p| !p.fixed())),
             view.drag0.as_ref(),
@@ -4995,5 +5095,26 @@ mod lock_tests {
         assert!(c.picks[0].fixed());
         assert!(gap_mut(&mut c, 0).is_none());
         assert!(gap_mut(&mut c, 1).is_some());
+    }
+}
+
+#[cfg(test)]
+mod nav_tests {
+    use super::*;
+
+    /// カーソルの下の点は拡大縮小しても動かない（#124）
+    #[test]
+    fn zoom_keeps_point_under_cursor() {
+        let mut v = View::default();
+        let fc = Pos2::new(100.0, 50.0);
+        let c = Pos2::new(160.0, 20.0);
+        // 図の点 w（全体表示の中心からの図の上の差 × s）が画面の c に来ている
+        let world = |v: &View, q: Pos2| (q - (fc + v.pan)) / v.zoom_log.exp();
+        let w0 = world(&v, c);
+        v.zoom_about(fc, c, 2.0);
+        assert!((world(&v, c) - w0).length() < 1e-4);
+        assert!((v.zoom_log - 2f32.ln()).abs() < 1e-6);
+        v.zoom_about(fc, Pos2::new(10.0, 90.0), 0.5);
+        assert!((v.zoom_log).abs() < 1e-6);
     }
 }
