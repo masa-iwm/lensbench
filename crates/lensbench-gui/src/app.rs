@@ -3585,7 +3585,7 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _s: SurfaceIndex, _n: NodeIndex) {
-        let label = detach_label(&tab.kind, cfg!(target_arch = "wasm32"));
+        let label = detach_label(cfg!(target_arch = "wasm32"));
         if ui.button(label).clicked() {
             self.to_window.push(tab.id);
             ui.close_menu();
@@ -3816,7 +3816,7 @@ impl App {
         if args.tour.is_none() {
             app.tabs = Some(crate::web_tabs::Tabs::new(&cc.egui_ctx));
             for w in std::mem::take(&mut app.windows) {
-                app.dock.push_to_focused_leaf(w.pane);
+                crate::layout::redock(&mut app.dock, w.pane, w.home.as_ref());
             }
         }
         if let Some(d) = &args.tour {
@@ -3980,11 +3980,13 @@ impl App {
             kind: Kind::System,
         };
         if let Some((s, n, t)) = self.dock.find_tab(&probe) {
+            let home = crate::layout::home_of(&self.dock, (s, n, t));
             if let Some(p) = self.dock.remove_tab((s, n, t)) {
                 self.windows.push(OsWin {
                     pane: p,
                     pos,
                     size: [720.0, 520.0],
+                    home,
                 });
             }
         }
@@ -4004,7 +4006,7 @@ impl App {
         for w in &self.windows {
             let id = w.pane.id;
             let remote = !matches!(w.pane.kind, Kind::Analysis(_));
-            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, remote) {
+            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, remote, w.size) {
                 self.c.status = Status {
                     text: tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します").into(),
                     error: true,
@@ -4035,7 +4037,7 @@ impl App {
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
                         let w = self.windows.remove(k);
                         self.win_init.remove(&id);
-                        self.dock.push_to_focused_leaf(w.pane);
+                        crate::layout::redock(&mut self.dock, w.pane, w.home.as_ref());
                     }
                 }
             }
@@ -4062,6 +4064,7 @@ impl App {
                 continue;
             }
             let pane = &mut w.pane;
+            h.title = pane.title();
             let (frame, out) = h.frame(ctx, |ui| c.pane_ui(ui, pane));
             if let Some(f) = frame {
                 t.send_frame(id, &f);
@@ -4110,12 +4113,12 @@ impl App {
             if ch.closed {
                 ui.colored_label(
                     ui.visuals().warn_fg_color,
-                    tr("元のタブを閉じたので、このパネルは計算できません。このタブを閉じて、元のページを開き直してください。"),
+                    tr("元のタブを閉じたので、このパネルは計算できません。この窓を閉じて、元のページを開き直してください。"),
                 );
             }
             if !ch.closed && ch.stalled(ctx) {
                 ui.label(
-                    RichText::new(tr("元のタブの返事を待っています。元のタブが同じ窓の裏にあると、ブラウザはそのタブを止めます。このタブを別の窓に引き出すと、両方を並べて使えます。"))
+                    RichText::new(tr("元のタブの返事を待っています。元のタブが見えていないと、ブラウザはそのタブを止めます。元のタブとこの窓を並べて使ってください。"))
                         .small()
                         .color(ui.visuals().warn_fg_color),
                 );
@@ -4276,7 +4279,7 @@ impl App {
             push(
                 format!(
                     "{}: {}",
-                    detach_label(&p.kind, cfg!(target_arch = "wasm32")),
+                    detach_label(cfg!(target_arch = "wasm32")),
                     p.title()
                 ),
                 &format!("window monitor detach {name}"),
@@ -4812,6 +4815,7 @@ impl App {
                     pane: p,
                     pos: Some([base.x + r.min.x + off, base.y + r.min.y + off]),
                     size: [r.width().max(360.0), r.height().max(280.0)],
+                    home: None,
                 });
             }
         }
@@ -4890,7 +4894,7 @@ impl App {
                 t.blocked.remove(&w.pane.id);
             }
             self.win_init.remove(&w.pane.id);
-            self.dock.push_to_focused_leaf(w.pane);
+            crate::layout::redock(&mut self.dock, w.pane, w.home.as_ref());
         }
         // 窓を出している間に足された窓（パネルの右クリックなど）
         wins.append(&mut self.windows);
@@ -5822,21 +5826,18 @@ fn overlay_params() {
 
 /// パネルを外に出す操作の名前。Web 版は解析のパネルはブラウザの別のタブに、ほかは別の窓（ポップアップ）に出す。
 /// 解析以外は元のタブで描いた画面を送って、別の窓で操作する（#137）
-fn detach_label(kind: &Kind, web: bool) -> &'static str {
-    match (web, kind) {
-        (true, Kind::Analysis(_)) => tr("別のタブに出す"),
-        (true, _) => tr("別の窓に出す"),
-        (false, _) => tr("別の窓に出す（別モニターへ）"),
+fn detach_label(web: bool) -> &'static str {
+    if web {
+        tr("別の窓に出す")
+    } else {
+        tr("別の窓に出す（別モニターへ）")
     }
 }
 
 #[test]
 fn detach_label_web() {
-    assert_eq!(detach_label(&Kind::LensData, true), "別の窓に出す");
-    assert_eq!(
-        detach_label(&Kind::LensData, false),
-        "別の窓に出す（別モニターへ）"
-    );
+    assert_eq!(detach_label(true), "別の窓に出す");
+    assert_eq!(detach_label(false), "別の窓に出す（別モニターへ）");
 }
 
 /// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128）

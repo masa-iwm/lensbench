@@ -201,6 +201,141 @@ pub struct OsWin {
     /// 画面上の位置（論理座標。None は OS に任せる）
     pub pos: Option<[f32; 2]>,
     pub size: [f32; 2],
+    /// ドックのどこから出したか（戻すときに同じ所へ）
+    #[serde(default)]
+    pub home: Option<Home>,
+}
+
+/// 別の窓に出す前のドックの位置。ドックの番号は並べ替えで変わるので、近くのタブの id で覚える
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Home {
+    /// 同じタブの並びに残ったタブと、その並びの何番目にあったか
+    With { tab: u64, index: usize },
+    /// 並びに 1 つだけだったとき: 隣の側のタブ、そのタブから何段上が隣の側の根か、分け方（0 左・1 右・2 上・3 下）と割合
+    Beside {
+        tab: u64,
+        up: usize,
+        side: u8,
+        fraction: f32,
+    },
+}
+
+fn node_at(t: &egui_dock::Tree<Pane>, k: NodeIndex) -> Option<&egui_dock::Node<Pane>> {
+    (k.0 < t.len()).then(|| &t[k])
+}
+
+fn probe(id: u64) -> Pane {
+    Pane {
+        id,
+        kind: Kind::System,
+    }
+}
+
+/// ドックの (面, ノード, タブ) にあるパネルの、戻す先を覚える（取り出す前に呼ぶ）
+pub fn home_of(
+    dock: &DockState<Pane>,
+    (s, n, t): (egui_dock::SurfaceIndex, NodeIndex, egui_dock::TabIndex),
+) -> Option<Home> {
+    let tree = dock.get_surface(s)?.node_tree()?;
+    let tabs = node_at(tree, n)?.tabs()?;
+    if let Some(other) = tabs.iter().enumerate().find(|(k, _)| *k != t.0) {
+        return Some(Home::With {
+            tab: other.1.id,
+            index: t.0,
+        });
+    }
+    let parent = n.parent()?;
+    let (horizontal, fraction) = match node_at(tree, parent)? {
+        egui_dock::Node::Horizontal { fraction, .. } => (true, *fraction),
+        egui_dock::Node::Vertical { fraction, .. } => (false, *fraction),
+        _ => return None,
+    };
+    let sib = if n.is_left() {
+        parent.right()
+    } else {
+        parent.left()
+    };
+    // 隣の側の一番浅いタブ
+    let mut stack = vec![(sib, 0usize)];
+    let mut best: Option<(u64, usize)> = None;
+    while let Some((k, d)) = stack.pop() {
+        match node_at(tree, k) {
+            Some(node) if node.is_leaf() => {
+                if let Some(p) = node.tabs().and_then(|t| t.first()) {
+                    if !best.is_some_and(|b| b.1 <= d) {
+                        best = Some((p.id, d));
+                    }
+                }
+            }
+            Some(node) if node.is_parent() => {
+                stack.push((k.left(), d + 1));
+                stack.push((k.right(), d + 1));
+            }
+            _ => {}
+        }
+    }
+    let (tab, up) = best?;
+    let side = match (horizontal, n.is_left()) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    };
+    Some(Home::Beside {
+        tab,
+        up,
+        side,
+        fraction,
+    })
+}
+
+/// 別の窓から戻したパネルを、覚えた所（無ければ選んでいる所）に入れる
+pub fn redock(dock: &mut DockState<Pane>, pane: Pane, home: Option<&Home>) {
+    match home {
+        Some(Home::With { tab, index }) => {
+            if let Some((s, n, _)) = dock.find_tab(&probe(*tab)) {
+                if let Some(node) = dock
+                    .get_surface_mut(s)
+                    .and_then(|x| x.node_tree_mut())
+                    .filter(|t| n.0 < t.len())
+                    .map(|t| &mut t[n])
+                {
+                    let i = (*index).min(node.tabs_count());
+                    node.insert_tab(egui_dock::TabIndex(i), pane);
+                    dock.set_focused_node_and_surface((s, n));
+                    return;
+                }
+            }
+        }
+        Some(Home::Beside {
+            tab,
+            up,
+            side,
+            fraction,
+        }) => {
+            if let Some((s, mut n, _)) = dock.find_tab(&probe(*tab)) {
+                for _ in 0..*up {
+                    n = n.parent().unwrap_or(n);
+                }
+                let (split, f) = match side {
+                    0 => (egui_dock::Split::Left, *fraction),
+                    1 => (egui_dock::Split::Right, *fraction),
+                    2 => (egui_dock::Split::Above, *fraction),
+                    _ => (egui_dock::Split::Below, *fraction),
+                };
+                let [_, new] = dock.split(
+                    (s, n),
+                    split,
+                    f.clamp(0.05, 0.95),
+                    egui_dock::Node::leaf(pane),
+                );
+                dock.set_focused_node_and_surface((s, new));
+                return;
+            }
+        }
+        None => {}
+    }
+    dock.push_to_focused_leaf(pane);
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -300,11 +435,13 @@ impl Preset {
                         pane: pane(ana("spot")),
                         pos: None,
                         size: [720.0, 560.0],
+                        home: None,
                     },
                     OsWin {
                         pane: pane(ana("mtf")),
                         pos: None,
                         size: [720.0, 480.0],
+                        home: None,
                     },
                 ];
                 Layout { dock, windows }
@@ -316,6 +453,41 @@ impl Preset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 別の窓から戻したパネルは、出す前と同じ所（並びの何番目・分けた側と割合）に戻る
+    #[test]
+    fn redock_returns_to_the_same_place() {
+        let mut d = DockState::new(vec![probe(1), probe(2), probe(3)]);
+        let [_, r] = d
+            .main_surface_mut()
+            .split_right(NodeIndex::root(), 0.3, vec![probe(4)]);
+        d.main_surface_mut().split_below(r, 0.6, vec![probe(5)]);
+        let shape = |d: &DockState<Pane>| -> Vec<Vec<u64>> {
+            d.main_surface()
+                .iter()
+                .filter_map(|n| n.tabs().map(|t| t.iter().map(|p| p.id).collect()))
+                .collect()
+        };
+        let before = shape(&d);
+        for id in [2, 1, 3, 4, 5] {
+            let at = d.find_tab(&probe(id)).unwrap();
+            let home = home_of(&d, at);
+            let p = d.remove_tab(at).unwrap();
+            assert_ne!(shape(&d), before);
+            redock(&mut d, p, home.as_ref());
+            assert_eq!(shape(&d), before, "{id}");
+        }
+        // 4 は上 0.6 の側
+        let at = d.find_tab(&probe(4)).unwrap();
+        assert!(matches!(
+            home_of(&d, at),
+            Some(Home::Beside {
+                tab: 5,
+                side: 2,
+                ..
+            })
+        ));
+    }
 
     #[test]
     fn presets_have_unique_ids_and_roundtrip() {
