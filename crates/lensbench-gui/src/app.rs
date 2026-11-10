@@ -2035,6 +2035,25 @@ impl Core {
                 .color(theme::weak_text(ui.visuals())),
             );
         }
+        if !is_combo {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.um_open, tr("＋ 玉・群・機構部品…"))
+                    .on_hover_text(tr(
+                        "面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる",
+                    ))
+                    .clicked()
+                {
+                    self.um_open = !self.um_open;
+                    // 範囲の欄が空なら、選んでいる面から
+                    if self.um_open && self.um.new_spans.trim().is_empty() {
+                        if let Some((j, _)) = self.ld.cur {
+                            self.um.new_spans = j.to_string();
+                        }
+                    }
+                }
+            });
+        }
         self.ld.tree = self.s.ld_tree;
         let acts = lens_data::ui(ui, &mut self.ld, &ctx);
         self.s.ld_tree = self.ld.tree;
@@ -2112,7 +2131,7 @@ impl Core {
         // ブロックの設定（組合せは要素の設定、開いた系は玉・群の偏心・傾き・移動・dn・disp）と、
         // 開いた系の玉・群を足す・機構部品の欄（同じスクロールの中）
         let view = self.ld.block_view.clone();
-        if view.is_some() || !is_combo {
+        if view.is_some() {
             egui::ScrollArea::vertical()
                 .id_salt("block_edit")
                 .auto_shrink([false, false])
@@ -2132,19 +2151,25 @@ impl Core {
                             self.unit_settings(ui, name);
                         }
                     }
-                    if !is_combo {
-                        egui::CollapsingHeader::new(tr("玉・群・機構部品"))
-                            .id_salt("unit_mech")
-                            .open(std::mem::take(&mut self.um_open).then_some(true))
-                            .show(ui, |ui| {
-                                let ops =
-                                    crate::unit_mech::ui(ui, &mut self.um, self.ld_rows.len());
-                                if !ops.is_empty() {
-                                    self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                                }
-                            });
-                    }
                 });
+        }
+        // 開いた系の玉・群を足す・機構部品は別の小窓（面の表の下では、面の設定の欄に押し出されて見えないことがあった、#136）
+        if !is_combo && self.um_open {
+            let mut open = true;
+            let n = self.ld_rows.len();
+            let mut ops = Vec::new();
+            egui::Window::new(tr("玉・群・機構部品"))
+                .id(egui::Id::new("unit_mech_win"))
+                .open(&mut open)
+                .default_width(380.0)
+                .vscroll(true)
+                .show(ui.ctx(), |ui| {
+                    ops = crate::unit_mech::ui(ui, &mut self.um, n);
+                });
+            if !ops.is_empty() {
+                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+            }
+            self.um_open = open;
         }
     }
 

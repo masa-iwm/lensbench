@@ -698,7 +698,7 @@ BS を通る順の透過 T・反射 R（足りない文字は各 BS の既定の
 光の進む向きが正。前の間隔に足し、後の間隔から引く	Positive along the light. Added to the gap before and subtracted from the gap after
 玉の群	Lens groups
 移動 	Shift 
-続く要素に同じ名前を付けると 1 つの群になる（役割・移動はレイアウトのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift under Groups in the Layout panel)
+続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)
 群	Group
 面 	Surface 
 ＋ 群	+ Group
@@ -1168,3 +1168,5 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 開いた系を組合せの要素にした（系の取り込み）	Made the opened system an element of the combination (system import)
 開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる	Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it
 組合せ（開くと組合せに戻る）	Combinations (open as a combination)
+面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる	Create lenses/groups (zoom, focus groups, …) from surface ranges and place mechanical parts. The range starts at the selected surface
+＋ 玉・群・機構部品…	+ Lenses, groups, mechanics…
