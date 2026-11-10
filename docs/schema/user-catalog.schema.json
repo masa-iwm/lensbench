@@ -1767,6 +1767,11 @@
           "description": "オス（外側のねじ）なら true、メス（内側のねじ）なら false",
           "type": "boolean"
         },
+        "recess": {
+          "description": "部品の端からねじの始まりまでの引っ込み [mm]（ケージ板のねじの穴の端が外形の端より奥にあるときなど）。\nつなぐとき、オスはこの分も奥へ入る",
+          "format": "double",
+          "type": "number"
+        },
         "thread": {
           "description": "ねじの名前（\"SM1\" など）。つなぐ相手と同じ名前なら合う",
           "type": "string"

@@ -1337,7 +1337,7 @@
       "description": "系に置く機構部品（[`Project::mechanics`]）。部品はユーザーカタログの品（`catalog`・`item`）か、\nその場で書いた寸法（`mech`）",
       "properties": {
         "after": {
-          "description": "前に書いた機構部品（名前）の z の大きい端につなぐ（`at`・`seat` の代わり。同じ名前が複数あれば最後のもの）。\n前の部品と同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。両方の部品の向き合う端に\nねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さだけ重ねる",
+          "description": "前に書いた機構部品（名前）の z の大きい端につなぐ（`at`・`seat` の代わり。同じ名前が複数あれば最後のもの）。\n前の部品と同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。両方の部品の向き合う端に\nねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さ（とメスの引っ込み）だけ重ねる",
           "type": [
             "string",
             "null"
@@ -2008,6 +2008,11 @@
         "male": {
           "description": "オス（外側のねじ）なら true、メス（内側のねじ）なら false",
           "type": "boolean"
+        },
+        "recess": {
+          "description": "部品の端からねじの始まりまでの引っ込み [mm]（ケージ板のねじの穴の端が外形の端より奥にあるときなど）。\nつなぐとき、オスはこの分も奥へ入る",
+          "format": "double",
+          "type": "number"
         },
         "thread": {
           "description": "ねじの名前（\"SM1\" など）。つなぐ相手と同じ名前なら合う",

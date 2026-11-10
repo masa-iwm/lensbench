@@ -2009,6 +2009,10 @@ pub struct ThreadEnd {
     /// ねじの長さ [mm]。オスのねじは相手のメスにこの長さだけねじ込む（部品が重なる）
     #[serde(default)]
     pub length: f64,
+    /// 部品の端からねじの始まりまでの引っ込み [mm]（ケージ板のねじの穴の端が外形の端より奥にあるときなど）。
+    /// つなぐとき、オスはこの分も奥へ入る
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub recess: f64,
 }
 
 /// 保持する素子
@@ -2134,7 +2138,7 @@ pub struct MechPlacement {
     pub seat: bool,
     /// 前に書いた機構部品（名前）の z の大きい端につなぐ（`at`・`seat` の代わり。同じ名前が複数あれば最後のもの）。
     /// 前の部品と同じ面・傾きに置き、`offset` は前の部品の座標でのずれ、`tilt` は使えない。両方の部品の向き合う端に
-    /// ねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さだけ重ねる
+    /// ねじ（`front_thread`・`back_thread`）があれば、同じねじでオスとメスか確かめ、オスのねじの長さ（とメスの引っ込み）だけ重ねる
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
     /// 部品を裏返して置く（寸法の z の大きい端から光が入る。穴・座・両端のねじも入れ替わる）
@@ -3534,9 +3538,9 @@ fn place_mechanics(
                         ));
                         0.0
                     } else if b.male {
-                        b.length
+                        b.length + a.recess
                     } else {
-                        a.length
+                        a.length + b.recess
                     }
                 }
                 _ => 0.0,

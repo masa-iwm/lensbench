@@ -805,12 +805,19 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
     let sols: Vec<Sol> = geos
         .iter()
         .filter_map(|g| {
-            let zs = g
-                .verts
-                .iter()
-                .copied()
-                .chain(g.circles.iter().map(|c| c.0))
-                .map(z_of);
+            // z の範囲は頂点から（円の中心は、円錐・トーラスの面の基準の円など立体の外にあることがある）。
+            // 頂点の無い立体だけ円の中心から
+            let zs: Vec<f64> = if g.verts.len() >= 2 {
+                g.verts.iter().copied().map(z_of).collect()
+            } else {
+                g.verts
+                    .iter()
+                    .copied()
+                    .chain(g.circles.iter().map(|c| c.0))
+                    .map(z_of)
+                    .collect()
+            };
+            let zs = zs.into_iter();
             let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| {
                 (lo.min(z), hi.max(z))
             });
@@ -1235,18 +1242,40 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                         thread: t.0.to_string(),
                         male: true,
                         length: sc(reach),
+                        recess: 0.0,
                     });
                 }
-                // メス: 端に接するねじの径の内壁
-                keep.iter()
-                    .flat_map(|x| x.walls.iter())
-                    .filter(|w| dist(w.1) <= tol)
-                    .find_map(|w| thread_of(w.0).map(|t| (t, far(w.1))))
-                    .map(|(t, len)| crate::ThreadEnd {
-                        thread: t.0.to_string(),
-                        male: false,
-                        length: sc(len),
-                    })
+                // メス: 端から最も近い内壁がねじの径（ケージ板のように、ねじの穴の端が外形の端から引っ込んでいても。
+                // 引っ込みは recess）
+                let nearest = keep.iter().flat_map(|x| x.walls.iter()).min_by(|a, b| {
+                    dist(a.1)
+                        .partial_cmp(&dist(b.1))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })?;
+                let t = thread_of(nearest.0)?;
+                // ねじの長さは面取りも含める（端から 1 mm 以内の面取りは端まで）
+                let total = all1 - all0;
+                let start = if dist(nearest.1) <= tol {
+                    0.0
+                } else {
+                    dist(nearest.1)
+                };
+                let stop = if total - far(nearest.1) <= tol {
+                    total
+                } else {
+                    far(nearest.1)
+                };
+                (dist(nearest.1) < 0.5 * total).then(|| crate::ThreadEnd {
+                    thread: t.0.to_string(),
+                    male: false,
+                    length: sc(stop - start),
+                    // 1 mm 以内は面取り（オスの肩は端の面に当たる）
+                    recess: if dist(nearest.1) <= tol {
+                        0.0
+                    } else {
+                        sc(dist(nearest.1))
+                    },
+                })
             };
             let front_thread = end_thread(all0);
             let back_thread = end_thread(all1);
