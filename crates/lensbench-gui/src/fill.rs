@@ -9,7 +9,9 @@
 //! ページは選んだ品の 1 件だけを開き、裏でまとめて取りに行かない。ボットの判定・captcha はそのまま見せる。
 
 use egui::{Color32, RichText, Ui};
-use lensbench_project::catalog_fill::{page_frame, read_page, PageRead, StepSize};
+use lensbench_project::catalog_fill::{
+    page_frame, read_page, spec_check, spec_glass_diameter, PageRead, SpecValues, StepSize,
+};
 use lensbench_project::MechSpec;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -291,7 +293,8 @@ fn fill_params(
     r: &LensRow,
     t: Option<f64>,
     d: Option<&Value>,
-    frame: Option<&MechSpec>,
+    frame: Option<(&MechSpec, bool)>,
+    spec: Option<(SpecValues, bool)>,
     from: &str,
 ) -> Option<Value> {
     let out = fill_file(&r.vendor)?;
@@ -307,8 +310,13 @@ fn fill_params(
     if let Some(d) = d {
         p["diameter"] = d.clone();
     }
-    if let Some(f) = frame {
+    if let Some((f, rev)) = frame {
         p["frame"] = serde_json::to_value(f).ok()?;
+        p["frame_reversed"] = json!(rev);
+    }
+    if let Some((sv, visible)) = spec {
+        p["spec"] = sv.to_value();
+        p["glass_visible"] = json!(visible);
     }
     Some(p)
 }
@@ -444,7 +452,14 @@ impl AutoFill {
                     if let Some((t, d)) = sure_values(&miss, &pr) {
                         // 枠付きの品は、仕様表の枠の厚さ・外径・有効径から簡単な枠も
                         let frame = page_frame(&pr, t, d.as_ref().and_then(Value::as_f64));
-                        let p = fill_params(&job.row, t, d.as_ref(), frame.as_ref(), "page");
+                        let p = fill_params(
+                            &job.row,
+                            t,
+                            d.as_ref(),
+                            frame.as_ref().map(|f| (f, false)),
+                            None,
+                            "page",
+                        );
                         self.job = None;
                         return p.map(AutoOut::Save);
                     }
@@ -485,6 +500,8 @@ pub struct FillWin {
     frame: Option<(MechSpec, &'static str)>,
     /// 枠も保存する
     keep_frame: bool,
+    /// 光は枠の z の大きい端から入る
+    frame_reversed: bool,
     /// 最後の操作の結果（誤りなら true）
     note: Option<(String, bool)>,
     /// 確定を頼んで返事を待っている
@@ -660,6 +677,98 @@ impl FillWin {
         self.step = Some((name, res));
     }
 
+    /// 突き合わせる仕様表の値（読んだページが先、無い値は品の specs）
+    fn spec_values(&self, r: &LensRow) -> SpecValues {
+        let specs = r.raw["specs"].as_object().cloned().unwrap_or_default();
+        SpecValues::of(&specs, self.read.as_ref().map(|(_, p)| p))
+    }
+
+    /// STEP で分けた寸法を仕様表の値と突き合わせて見せ、STEP で分からない値を仕様で補う
+    fn spec_ui(&mut self, ui: &mut egui::Ui, r: &LensRow, warn: Color32) {
+        let Some((_, Ok(s))) = &self.step else {
+            return;
+        };
+        let sv = self.spec_values(r);
+        let frame = s.frame.as_ref();
+        let cmp = spec_check(Some(s.thickness), s.diameter.as_f64(), frame, s.merged, &sv);
+        let glass_d = frame
+            .filter(|_| s.merged)
+            .zip(s.diameter.as_f64())
+            .and_then(|(f, v)| spec_glass_diameter(v, f, &sv).filter(|d| (d - v).abs() > 1e-9));
+        if cmp.is_empty() && glass_d.is_none() {
+            return;
+        }
+        let num = crate::json_view::fmt_num;
+        let mut use_t = None;
+        ui.label(RichText::new(tr("仕様表との突き合わせ")).strong());
+        egui::Grid::new("fill_spec_grid")
+            .num_columns(4)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.weak(tr("項目"));
+                ui.weak("STEP");
+                ui.weak(tr("仕様表"));
+                ui.weak("");
+                ui.end_row();
+                for c in &cmp {
+                    ui.label(tr(c.label()));
+                    ui.label(format!("{} mm", num(c.step)));
+                    ui.label(format!("{} mm", num(c.spec)));
+                    if c.ok() {
+                        ui.label("✔");
+                    } else {
+                        ui.colored_label(warn, trf("差 {} mm", &[&num(c.step - c.spec)]));
+                        if c.key == "thickness"
+                            && ui
+                                .small_button(tr("仕様の値を使う"))
+                                .on_hover_text(tr("ガラスの厚さを仕様表の値にします"))
+                                .clicked()
+                        {
+                            use_t = Some(c.spec);
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+        if cmp.iter().any(|c| c.spec_key != c.key) {
+            ui.weak(tr(
+                "仕様表の「厚さ」「径」が枠の長さ・外径と合うので、枠の値として比べました。",
+            ));
+        }
+        if cmp.iter().any(|c| !c.ok()) {
+            ui.colored_label(
+                warn,
+                tr("食い違う項目は、保存する品のメモに残します。品ページの図面で確かめてください。"),
+            );
+        }
+        let mut use_d = None;
+        if let Some(d) = glass_d {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(trf(
+                    "STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は見えている径です。仕様表の径は {} mm です。",
+                    &[&s.diameter.to_string(), &num(d)],
+                ));
+                if ui.small_button(tr("ガラスの径を仕様の値にする")).clicked() {
+                    use_d = Some(d);
+                }
+            });
+        }
+        if let Some(t) = use_t {
+            self.thickness = num(t);
+            self.from = "page";
+        }
+        if let Some(d) = use_d {
+            self.diameter = num(d);
+            self.from = "page";
+            // 枠に入るガラスの径も合わせる
+            if let Some((f, _)) = &mut self.frame {
+                if let Some(h) = &mut f.holds {
+                    h.diameter = d;
+                }
+            }
+        }
+    }
+
     /// 窓を描く。確定したら serve の `catalog_fill` の params を返す
     pub fn window(&mut self, ctx: &egui::Context) -> Option<Value> {
         let r = self.row.clone()?;
@@ -798,17 +907,8 @@ impl FillWin {
                     if s.frame.is_some() {
                         ui.label(tr("枠付きの品として、ガラスと枠を分けて測りました（厚さ・径はガラスの値）。"));
                     } else {
-                        // ガラスと枠が 1 つの立体の STEP は分けられず、外形の寸法になる
+                        // ガラスと枠を見分けられない STEP は、外形の寸法になる
                         ui.colored_label(warn, tr("枠付きの品で STEP がガラスと枠を分けていないと、厚さ・径は枠を含む外形になり、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。"));
-                    }
-                    // 仕様表と食い違えば知らせる（マウント込みの STEP など）
-                    if let Some(t) = self.read.as_ref().and_then(|(_, p)| p.thickness) {
-                        if (t - s.thickness).abs() > 0.05 {
-                            ui.colored_label(
-                                warn,
-                                trf("仕様表の厚さ {} mm と違います（マウント込みの形かもしれません）", &[&crate::json_view::fmt_num(t)]),
-                            );
-                        }
                     }
                 }
                 Err(e) => {
@@ -841,7 +941,10 @@ impl FillWin {
                 &mut self.keep_frame,
                 tr("枠も保存する（組合せに置くと、機構部品として付きます）"),
             );
+            ui.checkbox(&mut self.frame_reversed, tr("光は枠の逆の端から入る"))
+                .on_hover_text(tr("STEP の枠は STEP の座標の向きで、光は z の小さい端（上の「枠の端」）から入るとしています。図面の矢印などで逆なら選びます"));
         }
+        self.spec_ui(ui, r, warn);
         ui.separator();
         let miss = self.missing();
         let mut changed = false;
@@ -878,8 +981,18 @@ impl FillWin {
                 .on_hover_text(tr("値を確かめてから確定してください。補足のカタログに保存し、元のカタログは書き換えません"))
                 .clicked()
             {
-                let frame = self.frame.as_ref().filter(|_| self.keep_frame).map(|f| &f.0);
-                req = fill_params(r, t, d.as_ref(), frame, self.from);
+                let frame = self
+                    .frame
+                    .as_ref()
+                    .filter(|_| self.keep_frame)
+                    .map(|f| (&f.0, self.frame_reversed));
+                // STEP で測った値は、保存の時に仕様表と突き合わせてメモに残す
+                let spec = self.step.as_ref().and_then(|(_, s)| s.as_ref().ok()).map(|s| {
+                    // 仕様の径にしたガラスは見えている径でない
+                    let visible = s.merged && d.as_ref().and_then(Value::as_f64) == s.diameter.as_f64();
+                    (self.spec_values(r), visible)
+                });
+                req = fill_params(r, t, d.as_ref(), frame, spec, self.from);
                 self.pending = req.is_some();
             }
             if self.pending {

@@ -405,6 +405,8 @@ struct Geo {
     circles: Vec<(V3, V3, f64)>,
     verts: Vec<V3>,
     cyls: Vec<CylFace>,
+    /// 縁が 1 つの円だけの面（円板・球の帽子）: (円の中心, 軸, 半径)。光軸をふさぐ面（ガラスの面）
+    caps: Vec<(V3, V3, f64)>,
 }
 
 impl Geo {
@@ -426,6 +428,11 @@ impl Geo {
                     inward: f.inward,
                     pts: f.pts.iter().map(|p| m.apply(*p)).collect(),
                 })
+                .collect(),
+            caps: self
+                .caps
+                .iter()
+                .map(|(c, a, r)| (m.apply(*c), m.rot(*a), *r))
                 .collect(),
         }
     }
@@ -466,6 +473,27 @@ impl Step {
                 continue;
             };
             if self.part(geom, "CYLINDRICAL_SURFACE").is_none() {
+                // 縁が 1 つの円だけの面（円柱・円錐でない）は帽子
+                let one = a.get(1).and_then(Arg::list).is_some_and(|b| b.len() == 1);
+                if one && self.part(geom, "CONICAL_SURFACE").is_none() {
+                    let mut st = Vec::new();
+                    push_refs(std::slice::from_ref(&a[1]), &mut st);
+                    let fg = self.geo_of(&self.reach(&st));
+                    if let Some(&(c, ax, r)) = fg.circles.first() {
+                        let tol = 1e-6 * r + 1e-9;
+                        let same = fg.circles.iter().all(|q| {
+                            (q.2 - r).abs() <= tol && dot(sub(q.0, c), sub(q.0, c)).sqrt() <= tol
+                        });
+                        let on_rim = fg.verts.iter().all(|v| {
+                            let d = sub(*v, c);
+                            let z = dot(d, ax);
+                            ((dot(d, d) - z * z).max(0.0).sqrt() - r).abs() <= tol
+                        });
+                        if same && on_rim {
+                            g.caps.push((c, ax, r));
+                        }
+                    }
+                }
                 continue;
             }
             let Some((c, axis, r)) = self.circle(geom) else {
@@ -684,6 +712,8 @@ pub(crate) struct Measure {
     pub note: String,
     /// 枠付きの品の枠（ガラスは thickness・diameter）
     pub frame: Option<crate::MechSpec>,
+    /// ガラスと枠が 1 つの立体（ガラスの径は見えている径）
+    pub merged: bool,
 }
 
 fn fmt(x: f64) -> String {
@@ -751,6 +781,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         r: f64,
         ring: bool,
         walls: Vec<(f64, [f64; 2])>,
+        caps: Vec<(f64, f64)>,
     }
     let sols: Vec<Sol> = geos
         .iter()
@@ -788,14 +819,50 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     (b > a).then_some((f.r, [a, b]))
                 })
                 .collect();
+            // 光軸をふさぐ帽子（ガラスの面）の z と半径
+            let caps: Vec<(f64, f64)> = g
+                .caps
+                .iter()
+                .filter(|c| coax(c.0, c.1))
+                .map(|c| (z_of(c.0), c.2))
+                .collect();
             Some(Sol {
                 z: [lo, hi],
                 r,
                 ring: !walls.is_empty(),
                 walls,
+                caps,
             })
         })
         .collect();
+    // ガラスと枠が 1 つの立体（穴の内壁と、光軸をふさぐ面の両方を持つ）: 光軸をふさぐ面の間をガラスとみなす。
+    // ガラスの径は見えている径（帽子の縁）で、枠に隠れた部分は分からない
+    let mut merged = 0;
+    let virt: Vec<Sol> = sols
+        .iter()
+        .filter(|s| s.ring && s.caps.len() >= 2)
+        .filter_map(|s| {
+            let (lo, hi) = s
+                .caps
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), c| {
+                    (lo.min(c.0), hi.max(c.0))
+                });
+            let r = s.caps.iter().map(|c| c.1).fold(0.0, f64::max);
+            (hi - lo > 1e-6 * rmax && r > 0.0).then(|| {
+                merged += 1;
+                Sol {
+                    z: [lo, hi],
+                    r,
+                    ring: false,
+                    walls: Vec::new(),
+                    caps: Vec::new(),
+                }
+            })
+        })
+        .collect();
+    let mut sols = sols;
+    sols.extend(virt);
     let rings: Vec<&Sol> = sols.iter().filter(|s| s.ring).collect();
     let glass: Vec<&Sol> = sols.iter().filter(|s| !s.ring && s.r > 0.0).collect();
     let span = |v: &[&Sol]| {
@@ -899,7 +966,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             note: format!(
                 "立体 {} 個（ガラス {}・枠 {}）を組立の置き方どおりに置いて測った。ガラスは厚さ {} mm・径 {} mm、\
 枠は長さ {} mm・外径 {} mm・最小の内径（クリア開口）{} mm、ガラスの前面は枠の端から {} mm",
-                sols.len(),
+                sols.len() - merged,
                 glass.len(),
                 rings.len(),
                 fmt(sc(g1 - g0)),
@@ -908,8 +975,13 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 fmt(frame.outer_diameter),
                 fmt(clear),
                 fmt(sc(g0 - all0)),
-            ),
+            ) + if merged > 0 {
+                "。ガラスと枠が 1 つの立体なので、光軸をふさぐ面の間をガラスとし、ガラスの径は見えている径（枠に隠れた部分は分からない）"
+            } else {
+                ""
+            },
             frame: Some(frame),
+            merged: merged > 0,
         });
     }
     // 枠の分からない品: 軸に平行な円の最大の直径と、軸の向きの広がり
@@ -947,6 +1019,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             all.verts.len()
         ),
         frame: None,
+        merged: false,
     })
 }
 
@@ -997,6 +1070,7 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
         diameter: d,
         note: format!("円が無いので頂点 {} 個の箱（座標軸の向き）", pts.len()),
         frame: None,
+        merged: false,
     })
 }
 
@@ -1070,6 +1144,39 @@ mod tests {
             let h = f.holds.unwrap();
             assert_eq!((h.seat_z, h.diameter), (0.4, 24.08), "{nauo}");
         }
+    }
+
+    /// ガラスと枠が 1 つの立体（外径 25.4、長さ 6.3、両端の縁は内径 21、z ±2.65 にガラスの面）
+    #[test]
+    fn merged_solid_splits_between_caps() {
+        let d = "ISO-10303-21;\nDATA;\n\
+#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n\
+#3=CARTESIAN_POINT('',(0.,0.,-3.15));\n#4=AXIS2_PLACEMENT_3D('',#3,#1,#2);\n\
+#5=CARTESIAN_POINT('',(0.,0.,3.15));\n#6=AXIS2_PLACEMENT_3D('',#5,#1,#2);\n\
+#7=CARTESIAN_POINT('',(0.,0.,-2.65));\n#8=AXIS2_PLACEMENT_3D('',#7,#1,#2);\n\
+#9=CARTESIAN_POINT('',(0.,0.,2.65));\n#10=AXIS2_PLACEMENT_3D('',#9,#1,#2);\n\
+#11=CIRCLE('',#4,12.7);\n#12=CIRCLE('',#6,12.7);\n#13=CYLINDRICAL_SURFACE('',#4,12.7);\n\
+#14=ADVANCED_FACE('',(#11,#12),#13,.T.);\n\
+#15=CIRCLE('',#4,10.5);\n#16=CIRCLE('',#8,10.5);\n#17=CYLINDRICAL_SURFACE('',#4,10.5);\n\
+#18=ADVANCED_FACE('',(#15,#16),#17,.F.);\n\
+#19=CIRCLE('',#10,10.5);\n#20=CIRCLE('',#6,10.5);\n#21=ADVANCED_FACE('',(#19,#20),#17,.F.);\n\
+#22=PLANE('',#8);\n#23=FACE_OUTER_BOUND('',#16,.T.);\n#24=ADVANCED_FACE('',(#23),#22,.F.);\n\
+#25=PLANE('',#10);\n#26=FACE_OUTER_BOUND('',#19,.T.);\n#27=ADVANCED_FACE('',(#26),#25,.T.);\n\
+#28=PLANE('',#4);\n#29=FACE_OUTER_BOUND('',#11,.T.);\n#30=FACE_BOUND('',#15,.T.);\n\
+#31=ADVANCED_FACE('',(#29,#30),#28,.F.);\n\
+#32=CLOSED_SHELL('',(#14,#18,#21,#24,#27,#31));\n#33=MANIFOLD_SOLID_BREP('one',#32);\nENDSEC;\n";
+        let s = crate::catalog_fill::read_step(d).unwrap();
+        assert_eq!(
+            (s.thickness, s.diameter.clone()),
+            (5.3, json!(21.0)),
+            "{s:?}"
+        );
+        let f = s.frame.expect("枠");
+        assert_eq!((f.length, f.outer_diameter), (6.3, 25.4));
+        let b: Vec<[f64; 3]> = f.bores.iter().map(|b| [b.z0, b.z1, b.diameter]).collect();
+        assert_eq!(b, vec![[0.0, 6.3, 21.0]]);
+        assert_eq!(f.holds.unwrap().seat_z, 0.5);
+        assert!(s.note.contains("1 つの立体"), "{}", s.note);
     }
 
     /// 手元の STEP を測って見る（`LB_STEP_FILES` に ; 区切りのパス）

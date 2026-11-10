@@ -1132,6 +1132,33 @@ mod tests {
         .unwrap();
         assert_eq!(r["vendor"], "VEND");
         assert_eq!(r["specs"]["thickness"], json!(3.0));
+        // 枠付きで仕様表の値も渡すと、食い違う寸法を notes に、有効径は仕様表の値に
+        let r = crate::serve::call(
+            "catalog_fill",
+            &json!({
+                "catalog": src.join("V_incomplete.json").display().to_string(),
+                "item": "F-1", "out": out.display().to_string(),
+                "thickness": 3.0, "from": "step",
+                "frame": {"bores": [{"z0": 0, "z1": 3.5, "diameter": 21.2}], "length": 3.5,
+                          "outer_diameter": 25, "holds": {"diameter": 23, "seat_z": 0.25}},
+                "spec": {"thickness": 2.0, "mount_thickness": 3.5, "clear_aperture": 21.0},
+            }),
+            None,
+        )
+        .unwrap();
+        let notes: Vec<&str> = r["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|n| n.contains("STEP") && n.contains("仕様表"))
+            .collect();
+        assert_eq!(
+            notes,
+            ["ガラスの厚さ: STEP 3 mm、仕様表 2 mm（差 1 mm）"],
+            "{r}"
+        );
+        assert_eq!(r["specs"]["clear_aperture"], json!(21.0));
         // 足りない値が無ければ誤り
         assert!(crate::serve::call(
             "catalog_fill",

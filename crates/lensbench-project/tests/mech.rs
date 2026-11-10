@@ -311,6 +311,24 @@ fn catalog_item_frame_is_placed_on_the_glass() {
     let s = sys(20.0);
     let v = vignetting(&s, &s.mechanics, &[0], &[0], &px, &py).unwrap();
     assert_eq!(v[0].clipped[0], 0);
+    // 逆向き（光は枠の z の大きい端から）: 縁は後ろの端に来て、座はガラスの前面（3.5 − 0.4 − 2 = 1.1）
+    let txt = std::fs::read_to_string(&cat).unwrap().replace(
+        r#""kind": "filter","#,
+        r#""kind": "filter", "frame_reversed": true,"#,
+    );
+    std::fs::write(&cat, txt).unwrap();
+    let s = sys(24.0);
+    let m = &s.mechanics[0];
+    assert!((m.offset[2] + 1.1).abs() < 1e-12, "{:?}", m.offset);
+    let b: Vec<[f64; 3]> = m
+        .bores
+        .iter()
+        .map(|b| [b.z0, b.z1, 2.0 * b.radius])
+        .collect();
+    assert!((b[0][1] - 3.1).abs() < 1e-12 && b[0][2] == 24.08, "{b:?}");
+    assert!((b[1][0] - 3.1).abs() < 1e-12 && b[1][2] == 21.2, "{b:?}");
+    let fit = lensbench_core::mech::fit_check(&s, &s.mechanics).unwrap();
+    assert!(fit.is_empty(), "{fit:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -324,9 +342,10 @@ fn seat_places_the_part_on_the_held_element() {
     assert_eq!(m.surface, m.holds[0], "L1 の前面");
     assert_eq!(m.offset, [0.0, 0.0, -1.5]);
     assert!(kinds(&s).is_empty(), "{:?}", kinds(&s));
-    // 座の位置の無い部品・保持する素子の無い部品は誤り
+    // 座の位置の無い部品・保持する素子の無い部品・置く所（at も seat も）の無い部品は誤り
     for bad in [
         r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}]}, "holds": ["L1"], "seat": true}"#,
+        r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}]}, "holds": ["L1"]}"#,
         r#"{"mech": {"bores": [{"z0": 0, "z1": 2, "diameter": 22}], "holds": {"diameter": 25.6, "seat_z": 2}}, "seat": true}"#,
     ] {
         let p = Project::from_json(&format!(
