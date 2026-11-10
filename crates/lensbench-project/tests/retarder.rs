@@ -266,6 +266,27 @@ fn birefringent_waveplate_by_wavelength() {
     );
 }
 
+/// 膜のない結晶板の境界の Fresnel は、常光の成分が no、異常光の成分が ne（公開 #52）: 垂直入射で片面の透過が
+/// 2√n/(1+n)（入口・出口で 2 回）。結晶軸 x なので、x の入力が異常光、y が常光
+#[test]
+fn bare_plate_fresnel_by_ordinary_and_extraordinary() {
+    let s = system(
+        r#"{"glass": "QUARTZ", "t": 1, "birefringent": {"in": {"axis": [1, 0, 0]}}}, {"t": 3, "birefringent": "out"}"#,
+    );
+    let g = |n: &str| s.glasses[n].clone();
+    let t = |n: f64| 2.0 * n.sqrt() / (1.0 + n);
+    for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
+        let (no, ne) = (g("QUARTZ").n_cat(l), g("QUARTZ-E").n_cat(l));
+        let f = fields(&s, w);
+        assert!((f[0][0].norm() - t(ne) * t(ne)).abs() < 1e-14, "{l} {f:?}");
+        assert!((f[1][1].norm() - t(no) * t(no)).abs() < 1e-14, "{l} {f:?}");
+        assert!(
+            f[0][1].norm() < 1e-14 && f[1][0].norm() < 1e-14,
+            "{l} {f:?}"
+        );
+    }
+}
+
 /// アクロマティック波長板（2 材の組）: 水晶と MgF₂ の速い軸を直交させ、2 波長で 1/4 になる厚さ
 #[test]
 fn achromatic_waveplate_two_materials() {
@@ -298,12 +319,25 @@ fn achromatic_waveplate_two_materials() {
         } else {
             assert!((net - 0.25).abs() < 0.05, "{l} {net}");
         }
-        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ行列（貼り合わせの面の Fresnel で強度 0.3 % 減る）
+        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ位相。振幅は貼り合わせの境界の Fresnel を常光・異常光で分けた
+        // もの（公開 #52）: 135°（MgF₂ の結晶軸 = 遅い軸）の向きは MgF₂ の異常光 → 水晶の常光、45° は MgF₂ の常光 →
+        // 水晶の異常光
+        let t = |a: f64, b: f64| 2.0 * (a * b).sqrt() / (a + b);
+        let (nom, nem) = (g("MGF2").n_cat(l), g("MGF2-E").n_cat(l));
+        let (noq, neq) = (g("QUARTZ").n_cat(l), g("QUARTZ-E").n_cat(l));
+        // 外側の 2 面は理想膜（両方の向きで同じ）、貼り合わせの 2 面は膜なし
+        let a135 = t(nem, noq);
+        let a45 = t(nom, noq) * t(noq, neq);
+        let (p, q) = ((a45 + a135) / 2.0, (a45 - a135) / 2.0);
+        let m = crystal(net, 45.0, l);
+        let want = [
+            m[0] * p + m[2] * q,
+            m[1] * p + m[3] * q,
+            m[0] * q + m[2] * p,
+            m[1] * q + m[3] * p,
+        ];
         let f = fields(&s, w);
-        assert!(
-            same_scaled(f, crystal(net, 45.0, l), 1e-12, 5e-3),
-            "{l} {f:?}"
-        );
+        assert!(same_scaled(f, want, 1e-12, 1e-7), "{l} {f:?}");
     }
 }
 

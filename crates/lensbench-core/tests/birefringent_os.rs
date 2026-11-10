@@ -80,13 +80,14 @@ fn birefringent_plates_match_opticstudio() {
         let d = pol_diff(&s, name);
         println!("{name}（波長ごとの 比を除いた残り, |s| − 1） {d:?}");
         // Mode 0（常光の成分だけ）と、板の両面に理想膜（I.99999）を付けた b2_coat は、斜めの視野も含め 1e-12 で合う。
-        // 無膜の Mode 2 の残り（最大 6.4e-4）は入口の面の Fresnel の扱いの違い: OS は面に垂直な光線で s・p を実験室の
-        // x・y に取り、結晶軸に近い方に ne、もう一方に no の透過を使う（結晶軸 0° で最大、30°・60° で半分。非公開側の
-        // 第 2 段の測定で 1.9e-9 で確認）。lensbench は入口・出口とも常光の屈折率の Fresnel
-        let tol = if matches!(name, "b4_m0" | "b2_coat") {
-            (1e-10, 1e-10)
-        } else {
-            (7e-4, 2e-3)
+        // 無膜の Mode 2 の残り（最大 4.8e-4、既知の差）は境界の Fresnel の扱いの違い: OS は面に垂直な光線で s・p を
+        // 実験室の x・y に取り、結晶軸に近い方に ne、もう一方に no の透過を入口の面だけで使う（結晶軸の向きと無関係。
+        // 非公開側の第 2 段の測定で 1.9e-9 で確認）。lensbench は入口・出口とも常光・異常光の成分に分けて no・n(θ) の
+        // Fresnel（公開 #52、物理的に正しい式を採る）。結晶軸が x の b2_ax0 は OS の取り方と向きが合い 2.5e-6
+        let tol = match name {
+            "b4_m0" | "b2_coat" => (1e-10, 1e-10),
+            "b2_ax0" => (3e-6, 1e-8),
+            _ => (5.5e-4, 5e-6),
         };
         assert!(
             d.iter().all(|&(r, a)| r < tol.0 && a < tol.1),

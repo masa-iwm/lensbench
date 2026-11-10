@@ -2007,6 +2007,41 @@ impl Iface {
         self.eval_sc(((1.0 - c0) * (1.0 + c0)).sqrt(), c0)
     }
 
+    /// 複屈折材の板の境界で、板の側の屈折率を `n` に置き換えた [`Self::eval_cos`]（公開 #52: 異常光の成分の係数）。
+    /// `entering` = true は板へ入る面（後ろの媒質が板）、false は板から出る面（前の媒質が板）。
+    /// 屈折率で決まる係数（膜なし・膜ファイルの層）だけ置き換え、理想膜・実測表・表・モデル・鏡は [`Self::eval_cos`] と同じ
+    pub fn eval_cos_crystal(&self, c0: f64, entering: bool, n: f64) -> Result<[C64; 2]> {
+        if self.mirror {
+            return self.eval_cos(c0);
+        }
+        let mut f = self.clone();
+        match &mut f.kind {
+            Kind::Fresnel { ns } => {
+                if entering {
+                    *ns = C64::new(n, 0.0);
+                } else {
+                    f.n1 = n;
+                }
+            }
+            Kind::Stack { ns, n_out, .. } => {
+                // n_out（位相の約束の外側の媒質）が板なら、それも置き換える
+                if entering {
+                    if ns.im == 0.0 && *n_out == ns.re {
+                        *n_out = n;
+                    }
+                    *ns = C64::new(n, 0.0);
+                } else {
+                    if *n_out == f.n1 {
+                        *n_out = n;
+                    }
+                    f.n1 = n;
+                }
+            }
+            _ => return self.eval_cos(c0),
+        }
+        f.eval_cos(c0)
+    }
+
     /// 入射角 theta [rad] での (s, p): 透過、鏡では反射
     pub fn eval(&self, theta: f64) -> Result<[C64; 2]> {
         let (s0, c0) = theta.sin_cos();
@@ -2340,9 +2375,14 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
         } else {
             d.mat.clone()
         };
-        // 名前の違う媒質は、ある波長で屈折率が同じでも境界にする（他の波長でフレネルが抜けないように）
+        // 名前の違う媒質は、ある波長で屈折率が同じでも境界にする（他の波長でフレネルが抜けないように）。
+        // 複屈折材の板の入口・出口も境界にする（同じ材料の常光どうしでも、異常光の成分に Fresnel がある。公開 #52）
         if k > 0
-            && (!d.coat.is_empty() || d.mirror || after != prev || (d.n[0] - nprev).abs() > 1e-12)
+            && (!d.coat.is_empty()
+                || d.mirror
+                || after != prev
+                || (d.n[0] - nprev).abs() > 1e-12
+                || d.bire.is_some())
         {
             let c = if d.coat.is_empty() { "-" } else { &d.coat };
             keys[k] = Some(match &d.reflect {

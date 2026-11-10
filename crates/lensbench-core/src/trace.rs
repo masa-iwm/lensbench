@@ -220,6 +220,59 @@ fn pol_surface(
     Ok(())
 }
 
+/// 複屈折材の板の境界の係数（公開 #52）: 板の中の電場を常光の成分（k と結晶軸を含む面に垂直）と異常光の成分に
+/// 分け、常光は no、異常光は n(θ) = 1 / √(cos²θ / no² + sin²θ / ne²)（θ は板の中の方向 k と結晶軸の角）を板の側の
+/// 屈折率にした境界の係数をかける。板へ入る面は外の電場に両方の係数をかけてから板の中の成分を取り、板から出る面は
+/// 成分に分けてからそれぞれの係数をかけて足す。光線の道は常光のまま（walk-off は扱わない）。
+/// `x` = (結晶軸, no, ne, 板の中の方向, 入る面か)。結晶軸に沿う光線は常光だけなので [`pol_surface`] と同じ
+#[allow(clippy::too_many_arguments)]
+fn pol_surface_crystal(
+    ps: &PolSurf,
+    e: &mut [CV3],
+    kin: V3,
+    kl: V3,
+    nv: V3,
+    cosi: f64,
+    x: (V3, f64, f64, V3, bool),
+) -> Result<(), Error> {
+    let (axis, no, ne, kc, entering) = x;
+    let PolKind::Iface(f) = &ps.kind else {
+        return pol_surface(ps, e, kin, kl, nv, cosi, false);
+    };
+    let k = normalize(kc);
+    let a = normalize(axis);
+    let ca = dot(a, k);
+    let ep = sub(a, scale(k, ca));
+    let sn = norm(ep);
+    if !(sn > 1e-12) {
+        return pol_surface(ps, e, kin, kl, nv, cosi, false);
+    }
+    let ee = scale(ep, 1.0 / sn);
+    let eo = normalize(cross(k, ee));
+    let nth = 1.0 / (ca * ca / (no * no) + (1.0 - ca * ca) / (ne * ne)).sqrt();
+    let mut sv = cross(kin, nv);
+    if !(norm(sv) > 1e-12) {
+        sv = cross(kin, [1.0, 0.0, 0.0]);
+    }
+    let sv = normalize(sv);
+    let pin = cross(sv, kin);
+    let pout = cross(sv, kl);
+    let c0 = cosi.abs().clamp(0.0, 1.0);
+    let to = f.eval_cos(c0)?;
+    let te = f.eval_cos_crystal(c0, entering, nth)?;
+    let sp = |t: &[C64; 2], x: CV3| comb(t[0] * cdot(x, sv), sv, t[1] * cdot(x, pin), pout);
+    for x in e.iter_mut() {
+        *x = if entering {
+            comb(cdot(sp(&to, *x), eo), eo, cdot(sp(&te, *x), ee), ee)
+        } else {
+            let (xo, xe) = (eo.map(|v| cdot(*x, eo) * v), ee.map(|v| cdot(*x, ee) * v));
+            let (a, b) = (sp(&to, xo), sp(&te, xe));
+            [0, 1, 2].map(|i| a[i] + b[i])
+        };
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
     /// 最後の面の局所座標での位置・方向（方向は物理的な向き）
@@ -1074,12 +1127,22 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                     if err == 0 {
                         // 複屈折材の板の出口: 板の中の方向 kin で異常光の位相を付けてから境界の係数
                         let cry = pr.surf[j].cry;
+                        // 境界の係数を常光・異常光で分ける板の面（公開 #52）: (結晶軸, no, ne, 板の中の方向, 入る面か)
+                        let mut xc = None;
                         if let (Some(CryKind::Out), Some(c)) = (cry, pr.cry.take()) {
                             crystal_phase(&c, &mut pr.e, kin, lam);
+                            xc = Some((c.axis, c.no, c.ne, kin, false));
                         }
-                        if let Err(e) =
-                            pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror)
-                        {
+                        if let Some(CryKind::In { axis, no, ne, .. }) = cry {
+                            xc = Some((axis, no, ne, kl, true));
+                        }
+                        let r = match xc {
+                            Some(x) if !d.mirror => {
+                                pol_surface_crystal(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, x)
+                            }
+                            _ => pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror),
+                        };
+                        if let Err(e) = r {
                             // 光線ごとに持ち、束を止めるかは追跡の後で決める（後ろの面でけられる光線もあるため）
                             pr.err.get_or_insert_with(|| e.at(sys.surf_label(j)));
                         }
