@@ -123,7 +123,7 @@ impl Default for SwapPanel {
             states: Vec::new(),
             state_vars: String::new(),
             clear_aperture: false,
-            jac: "fd".into(),
+            jac: "forward".into(),
             top: 50,
             new_var: String::new(),
             running: false,
@@ -225,7 +225,7 @@ impl SwapPanel {
         if self.clear_aperture {
             p["clear_aperture"] = json!(true);
         }
-        if self.jac != "fd" {
+        if self.jac != "forward" {
             p["jac"] = json!(self.jac);
         }
         Ok(p)
@@ -298,7 +298,7 @@ impl SwapPanel {
                         .join(", ")
                 }
                 "clear_aperture" => n.clear_aperture = v.as_bool().unwrap_or(false),
-                "jac" => n.jac = v.as_str().unwrap_or("fd").into(),
+                "jac" => n.jac = v.as_str().unwrap_or("forward").into(),
                 // GUI では今の系の状態を使う
                 "state" => {}
                 k => return Err(trf("差し替え探索の設定のキー {}", &[&k])),
@@ -791,8 +791,8 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         ui.separator();
         ui.label(tr("微分"));
         for (k, l) in [
-            ("fd", tr("すべて差分")),
             ("forward", tr("すべて前進差分")),
+            ("fd", tr("すべて差分")),
             ("auto", tr("解析的（できる所）")),
         ] {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
