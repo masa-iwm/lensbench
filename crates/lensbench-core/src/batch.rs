@@ -222,7 +222,7 @@ impl<'a> Plan<'a> {
         floating_clip: bool,
     ) -> Plan<'a> {
         let mut steps = Vec::new();
-        let sigs = trace::space_signs(sys);
+        let sigs = sys.space_signs();
         let mut nprev = sys.index_before(first, w);
         for j in first..=last {
             let d = &sys.surfaces[j];
@@ -302,6 +302,11 @@ impl<'a> Plan<'a> {
 /// 面ごとの記録を光線ごとに受け取る（lane は組の中の番号、k は無視しない面の通し番号）
 pub trait LaneSink {
     fn put(&mut self, lane: usize, k: usize, e: RecEntry);
+    /// 無視しない面の通し番号 k の記録を受け取るか（受け取らない面は記録の値を作らない。既定は全面）
+    #[inline(always)]
+    fn wants(&self, _k: usize) -> bool {
+        true
+    }
 }
 
 /// 記録しない
@@ -378,6 +383,11 @@ fn aperture_out_l(a: Aperture, pl: &VL) -> B {
         }
         Aperture::Obsc { min, max, dx, dy } => {
             ring(a, pl, (dx, dy), (min - 1e-9, max + 1e-9), true)
+        }
+        // [`trace::aperture_out`] と同じ比較を光線ごとに（NaN は外にならない）
+        Aperture::Rect { hx, hy, dx, dy } => {
+            let (bx, by) = (hx + 1e-9, hy + 1e-9);
+            (pl[0] - dx).abs().gt(bx) | (pl[1] - dy).abs().gt(by)
         }
         _ => B::from_fn(|i| trace::aperture_out(a, get(pl, i))),
     }
@@ -508,6 +518,14 @@ fn run<R: LaneSink>(
                     }
                 }
             }
+            // 平面で屈折率が変わらない面（鏡でない）は方向が変わらないので、法線を求めない
+            // （求めても使わない。結果は同じビット）
+            _ if !d.mirror
+                && !crate::freeform::is_freeform(d.typ)
+                && d.typ != SurfType::Toroidal
+                && !(d.typ == SurfType::EvenAsph && st.asph)
+                && d.c == 0.0
+                && (d.typ == SurfType::Jones || st.nn == nprev) => {}
             _ => {
                 let one = F::splat(1.0);
                 let nvec: VL = if crate::freeform::is_freeform(d.typ) {
@@ -565,7 +583,7 @@ fn run<R: LaneSink>(
         pl = sel3(bad, nan3, pl);
         kl = sel3(bad, nan3, kl);
         opl = sel(bad, nan, opl);
-        if let Some(r) = rec.as_deref_mut() {
+        if let Some(r) = rec.as_deref_mut().filter(|r| r.wants(ri)) {
             let pg = mv_l(&st.f.r, &pl);
             for i in 0..L {
                 let e = if es.at(i) {

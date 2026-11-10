@@ -52,6 +52,11 @@ pub struct PolSurf {
     pub kind: PolKind,
     /// 複屈折材の板の入口（この波長の値）か出口
     pub cry: Option<CryKind>,
+    /// 板の出口のすぐ後（厚さ 0、間に面なし）に次の板の入口が来る貼り合わせ（公開 #73）: 次の板の
+    /// (結晶軸, no, ne)。この面で前の板の o・e から次の板の o・e への係数を 1 回でかけ、次の板の入口では係数をかけない
+    pub cement: Option<(V3, f64, f64)>,
+    /// 貼り合わせの次の板の入口（係数は前の板の出口の面でかけ済み）
+    pub cemented: bool,
     /// 面の前の媒質の内部透過率（強度、1 mm あたり）。吸収がなければ None
     pub it: Option<f64>,
     /// ln(it) / 2（振幅の吸収 exp(la · 距離) を pow なしで求める）
@@ -63,6 +68,8 @@ impl PolSurf {
         PolSurf {
             kind,
             cry: None,
+            cement: None,
+            cemented: false,
             it,
             la: it.map_or(0.0, |t| 0.5 * t.ln()),
         }
@@ -273,6 +280,82 @@ fn pol_surface_crystal(
     Ok(())
 }
 
+/// 板の中の方向 k と結晶軸 axis での常光・異常光の振動の向きと、異常光の屈折率 n(θ)。結晶軸に沿う光線は
+/// 両方とも常光（向きは k に垂直な任意の組、屈折率は no）
+fn crystal_basis(axis: V3, k: V3, no: f64, ne: f64) -> (V3, V3, f64) {
+    let k = normalize(k);
+    let a = normalize(axis);
+    let ca = dot(a, k);
+    let ep = sub(a, scale(k, ca));
+    let sn = norm(ep);
+    if !(sn > 1e-12) {
+        let mut u = cross(k, [1.0, 0.0, 0.0]);
+        if !(norm(u) > 1e-6) {
+            u = cross(k, [0.0, 1.0, 0.0]);
+        }
+        let u = normalize(u);
+        return (u, cross(k, u), no);
+    }
+    let ee = scale(ep, 1.0 / sn);
+    let eo = normalize(cross(k, ee));
+    let nth = 1.0 / (ca * ca / (no * no) + (1.0 - ca * ca) / (ne * ne)).sqrt();
+    (eo, ee, nth)
+}
+
+/// 複屈折材の板どうしの貼り合わせの境界（公開 #73）: 前の板（`a`、板の中の方向 kin）の電場を o・e の成分に分け、
+/// 各成分を次の板（`b`、板の中の方向 kl）の o・e の基底へ、前の板の屈折率（no₁ か n₁(θ)）→ 次の板の屈折率
+/// （no₂ か n₂(θ)）の境界の係数で移して足す。境界は 1 回（出口・入口の 2 段に分けない）。
+/// `a`・`b` = (結晶軸, no, ne)。結晶軸はどちらもこの面の局所座標
+#[allow(clippy::too_many_arguments)]
+fn pol_surface_cement(
+    ps: &PolSurf,
+    e: &mut [CV3],
+    kin: V3,
+    kl: V3,
+    nv: V3,
+    cosi: f64,
+    a: (V3, f64, f64),
+    b: (V3, f64, f64),
+) -> Result<(), Error> {
+    let PolKind::Iface(f) = &ps.kind else {
+        return pol_surface(ps, e, kin, kl, nv, cosi, false);
+    };
+    let (eo1, ee1, n1e) = crystal_basis(a.0, kin, a.1, a.2);
+    let (eo2, ee2, n2e) = crystal_basis(b.0, kl, b.1, b.2);
+    let mut sv = cross(kin, nv);
+    if !(norm(sv) > 1e-12) {
+        sv = cross(kin, [1.0, 0.0, 0.0]);
+    }
+    let sv = normalize(sv);
+    let pin = cross(sv, kin);
+    let pout = cross(sv, kl);
+    let c0 = cosi.abs().clamp(0.0, 1.0);
+    // t[i][j]: 前の板の成分 i（0 = o、1 = e）→ 次の板の成分 j の (s, p)
+    let (n1s, n2s) = ([a.1, n1e], [b.1, n2e]);
+    let mut t = [[[C64::new(0.0, 0.0); 2]; 2]; 2];
+    for i in 0..2 {
+        for j in 0..2 {
+            t[i][j] = f.eval_cos_media(c0, Some(n1s[i]), Some(n2s[j]))?;
+        }
+    }
+    let sp = |t: &[C64; 2], x: CV3| comb(t[0] * cdot(x, sv), sv, t[1] * cdot(x, pin), pout);
+    let (b1, b2) = ([eo1, ee1], [eo2, ee2]);
+    for x in e.iter_mut() {
+        let mut y = [C64::new(0.0, 0.0); 3];
+        for i in 0..2 {
+            let xi = b1[i].map(|v| cdot(*x, b1[i]) * v);
+            for j in 0..2 {
+                let c = cdot(sp(&t[i][j], xi), b2[j]);
+                for m in 0..3 {
+                    y[m] += c * b2[j][m];
+                }
+            }
+        }
+        *x = y;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
     /// 最後の面の局所座標での位置・方向（方向は物理的な向き）
@@ -304,6 +387,11 @@ pub struct RecEntry {
 /// 追跡の内側で面ごとの記録を受け取る（k は無視しない面の通し番号）
 pub trait RecSink {
     fn put(&mut self, k: usize, e: RecEntry);
+    /// 通し番号 k の記録を受け取るか（受け取らない面は記録の値を作らない。既定は全面）
+    #[inline(always)]
+    fn wants(&self, _k: usize) -> bool {
+        true
+    }
 }
 
 impl RecSink for [RecEntry] {
@@ -551,13 +639,28 @@ pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, boo
 pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
     match a {
         Aperture::Circular { min, max, dx, dy } => {
-            let r = (pl[0] - dx).hypot(pl[1] - dy);
-            r > max + 1e-9 || r < min - 1e-9
+            let (u, v) = (pl[0] - dx, pl[1] - dy);
+            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+                Some(inside) => !inside,
+                None => {
+                    let r = u.hypot(v);
+                    r > max + 1e-9 || r < min - 1e-9
+                }
+            }
         }
-        Aperture::Floating { semi } => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+        Aperture::Floating { semi } => match ring_side(pl[0], pl[1], 0.0, semi + 1e-9) {
+            Some(inside) => !inside,
+            None => (pl[0]).hypot(pl[1]) > semi + 1e-9,
+        },
         Aperture::Obsc { min, max, dx, dy } => {
-            let r = (pl[0] - dx).hypot(pl[1] - dy);
-            r <= max + 1e-9 && r >= min - 1e-9
+            let (u, v) = (pl[0] - dx, pl[1] - dy);
+            match ring_side(u, v, min - 1e-9, max + 1e-9) {
+                Some(inside) => inside,
+                None => {
+                    let r = u.hypot(v);
+                    r <= max + 1e-9 && r >= min - 1e-9
+                }
+            }
         }
         Aperture::Rect { hx, hy, dx, dy } => {
             (pl[0] - dx).abs() > hx + 1e-9 || (pl[1] - dy).abs() > hy + 1e-9
@@ -573,6 +676,28 @@ pub(crate) fn aperture_out(a: Aperture, pl: V3) -> bool {
             dy,
         } => spider_hit(width, arms, pl[0] - dx, pl[1] - dy),
         Aperture::None => false,
+    }
+}
+
+/// 半径 r = hypot(u, v) が lo < r < hi（Some(true)）か r < lo・r > hi（Some(false)）かを、半径の 2 乗で十分に離れて
+/// いるときだけ決める（境界の近く・NaN・無限大は None で、呼ぶ側が hypot で決める。[`crate::batch`] の開口と同じ幅）。
+/// hypot は遅いので、ほとんどの光線をこれで決める（決めた結果は hypot と同じ）
+#[inline(always)]
+fn ring_side(u: f64, v: f64, lo: f64, hi: f64) -> Option<bool> {
+    // 半径の 2 乗の丸めの誤差（数 ulp）より十分大きい幅
+    const M: f64 = 1e-12;
+    let r2 = u * u + v * v;
+    let (has_lo, has_hi) = (lo > 0.0, hi > 0.0);
+    let (lo2, hi2) = (lo * lo, hi * hi);
+    let inside = has_hi & (r2 < hi2 * (1.0 - M)) & (!has_lo | (r2 > lo2 * (1.0 + M)));
+    let outside = (has_lo & (r2 < lo2 * (1.0 - M)))
+        | (has_hi & (r2 > hi2 * (1.0 + M)) & (r2 < f64::INFINITY));
+    if inside {
+        Some(true)
+    } else if outside {
+        Some(false)
+    } else {
+        None
     }
 }
 
@@ -787,7 +912,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
     // GRIN の媒質に入ったときの方向（座標ブレークを挟んで進むあいだ持つ）
     let mut grin_k0: Option<V3> = None;
     let lam = sys.wavelengths[w];
-    let sigs = space_signs(sys);
+    let sigs = sys.space_signs();
     for j in first..=last {
         let d = &sf[j];
         if d.ignore {
@@ -1129,15 +1254,24 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                         let cry = pr.surf[j].cry;
                         // 境界の係数を常光・異常光で分ける板の面（公開 #52）: (結晶軸, no, ne, 板の中の方向, 入る面か)
                         let mut xc = None;
+                        // 貼り合わせ（公開 #73）: 前の板の出口で次の板の o・e へ 1 回で移す
+                        let mut cem = None;
                         if let (Some(CryKind::Out), Some(c)) = (cry, pr.cry.take()) {
                             crystal_phase(&c, &mut pr.e, kin, lam);
                             xc = Some((c.axis, c.no, c.ne, kin, false));
+                            if let Some(b) = pr.surf[j].cement {
+                                cem = Some(((c.axis, c.no, c.ne), b));
+                            }
                         }
                         if let Some(CryKind::In { axis, no, ne, .. }) = cry {
                             xc = Some((axis, no, ne, kl, true));
                         }
-                        let r = match xc {
-                            Some(x) if !d.mirror => {
+                        let r = match (xc, cem) {
+                            _ if pr.surf[j].cemented && !d.mirror => Ok(()),
+                            (_, Some((a, b))) if !d.mirror => {
+                                pol_surface_cement(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, a, b)
+                            }
+                            (Some(x), _) if !d.mirror => {
                                 pol_surface_crystal(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, x)
                             }
                             _ => pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror),
@@ -1195,6 +1329,10 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
             grin_from = None;
         }
         if let Some(r) = rec.as_deref_mut() {
+            if !r.wants(ri) {
+                ri += 1;
+                continue;
+            }
             p = add(o, mv(&rm, pl));
             r.put(
                 ri,

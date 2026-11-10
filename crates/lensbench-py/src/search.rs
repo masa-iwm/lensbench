@@ -176,15 +176,19 @@ fn swap_search<'py>(
             let p = Project::from_json(&txt)?;
             let spec = SwapSpec::from_json(&st)?;
             let cat = LensCatalog::load_registered(&lens_catalogs)?;
-            let env = Env {
-                base: project
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default(),
-                glass_dirs: glass_dirs.clone(),
-                catalog: None,
-            };
-            let s = SwapSearch::new(&p, &env, &cat, spec)?;
+            let base = project
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
+            // 候補の要約も threads の指定で作る（Env は Sync でないので中で作る）
+            let s = with_threads(threads, || {
+                let env = Env {
+                    base,
+                    glass_dirs: glass_dirs.clone(),
+                    catalog: None,
+                };
+                SwapSearch::new(&p, &env, &cat, spec)
+            })?;
             let mut r = s.run_to(out.as_deref(), resume, threads, None)?;
             if top > 0 {
                 r.truncate(top);

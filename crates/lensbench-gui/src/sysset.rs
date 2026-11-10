@@ -526,6 +526,9 @@ impl Combo {
     /// 系を作れない設定の説明（作る前に画面で示す）
     pub fn settings_problems(&self) -> Vec<String> {
         let mut out = Vec::new();
+        if let Some(Err(e)) = self.detector.as_ref().map(|d| d.block()) {
+            out.push(trf("検出器の設定: {}", &[&e]));
+        }
         if self.waves.is_empty() {
             out.push(tr("波長が無い").to_string());
         }
@@ -566,6 +569,89 @@ impl Combo {
 
 /// 系の設定の欄。cats は硝材のフォルダにある AGF の名前（硝材カタログの候補）。状態を選んでいれば、
 /// その状態だけの値（開口・視野・波長・物体距離・エイミング・アフォーカル）にもできる
+/// 最後に置く検出器（拡張が足した検出器のブロック。無ければ出さない）
+fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
+    let kinds = crate::ext::detectors();
+    if kinds.is_empty() && c.detector.is_none() {
+        return;
+    }
+    ui.add_space(6.0);
+    let head = match c
+        .detector
+        .as_ref()
+        .and_then(|d| crate::ext::detector(&d.kind))
+    {
+        Some(d) => format!("{} ({})", tr("検出器"), tr(d.object.title)),
+        None => tr("検出器").to_string(),
+    };
+    egui::CollapsingHeader::new(RichText::new(head).strong())
+        .id_salt(id.with("detector"))
+        .show(ui, |ui| {
+            let weak = theme::weak_text(ui.visuals());
+            let cur = c.detector.as_ref().map(|d| d.kind.clone());
+            ui.horizontal_wrapped(|ui| {
+                if ui.selectable_label(cur.is_none(), tr("なし")).clicked() {
+                    c.detector = None;
+                }
+                for d in &kinds {
+                    if ui
+                        .selectable_label(cur.as_deref() == Some(d.kind), tr(d.object.title))
+                        .clicked()
+                        && cur.as_deref() != Some(d.kind)
+                    {
+                        c.detector = Some(crate::combo::DetectorPick {
+                            kind: d.kind.into(),
+                            ..Default::default()
+                        });
+                    }
+                }
+            });
+            ui.label(
+                RichText::new(tr(
+                    "像面に置く検出器のブロック（プロジェクトの最後のブロック、最後の空気が検出器までの距離）。空の欄は既定値",
+                ))
+                .small()
+                .color(weak),
+            );
+            let Some(d) = c.detector.as_mut() else {
+                return;
+            };
+            let Some(kind) = crate::ext::detector(&d.kind) else {
+                ui.label(trf("検出器 {} はこの版で使えない（設定はそのまま残す）", &[&d.kind]));
+                return;
+            };
+            let specs = crate::argform::object_specs(&kind.object);
+            let mut done = vec![false; specs.len()];
+            let mut groups: Vec<(&str, Vec<&crate::argform::ArgSpec>)> = Vec::new();
+            for (prefix, title) in kind.object.groups {
+                let g: Vec<usize> = (0..specs.len())
+                    .filter(|&k| !done[k] && specs[k].name.starts_with(prefix))
+                    .collect();
+                for &k in &g {
+                    done[k] = true;
+                }
+                groups.push((title, g.into_iter().map(|k| &specs[k]).collect()));
+            }
+            let rest: Vec<&crate::argform::ArgSpec> =
+                (0..specs.len()).filter(|&k| !done[k]).map(|k| &specs[k]).collect();
+            if !rest.is_empty() {
+                groups.push(("", rest));
+            }
+            for (title, g) in groups {
+                if g.is_empty() {
+                    continue;
+                }
+                egui::CollapsingHeader::new(if title.is_empty() { tr("そのほか") } else { tr(title) })
+                    .id_salt(id.with(("detector_group", title)))
+                    .show(ui, |ui| {
+                        crate::argform::form(ui, ("detector", title), &g, &mut d.vals);
+                    });
+            }
+            // 空の欄は持たない（組合せの比べ・保存を軽く）
+            d.vals.retain(|_, t| !t.trim().is_empty());
+        });
+}
+
 pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let Some(n) = c.active_state().map(str::to_string) else {
         body(ui, c, cats);
@@ -952,6 +1038,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     if focus {
         r.header_response.scroll_to_me(Some(egui::Align::Min));
     }
+    detector_ui(ui, c, id);
 }
 
 /// 硝材カタログ: 前ほど優先。硝材のフォルダの AGF から足す・外す・順を変える
