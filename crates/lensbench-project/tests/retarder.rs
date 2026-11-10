@@ -319,15 +319,14 @@ fn achromatic_waveplate_two_materials() {
         } else {
             assert!((net - 0.25).abs() < 0.05, "{l} {net}");
         }
-        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ位相。振幅は貼り合わせの境界の Fresnel を常光・異常光で分けた
-        // もの（公開 #52）: 135°（MgF₂ の結晶軸 = 遅い軸）の向きは MgF₂ の異常光 → 水晶の常光、45° は MgF₂ の常光 →
-        // 水晶の異常光
+        // 速い軸が直交する 2 枚は、差の遅延の 1 枚と同じ位相。振幅は貼り合わせの境界 1 回の Fresnel（公開 #52・#73）:
+        // 135°（MgF₂ の結晶軸 = 遅い軸）の向きは MgF₂ の異常光 → 水晶の常光、45° は MgF₂ の常光 → 水晶の異常光
         let t = |a: f64, b: f64| 2.0 * (a * b).sqrt() / (a + b);
         let (nom, nem) = (g("MGF2").n_cat(l), g("MGF2-E").n_cat(l));
         let (noq, neq) = (g("QUARTZ").n_cat(l), g("QUARTZ-E").n_cat(l));
         // 外側の 2 面は理想膜（両方の向きで同じ）、貼り合わせの 2 面は膜なし
         let a135 = t(nem, noq);
-        let a45 = t(nom, noq) * t(noq, neq);
+        let a45 = t(nom, neq);
         let (p, q) = ((a45 + a135) / 2.0, (a45 - a135) / 2.0);
         let m = crystal(net, 45.0, l);
         let want = [
@@ -338,6 +337,62 @@ fn achromatic_waveplate_two_materials() {
         ];
         let f = fields(&s, w);
         assert!(same_scaled(f, want, 1e-12, 1e-7), "{l} {f:?}");
+    }
+}
+
+/// 板どうしの貼り合わせの境界は 1 回（公開 #73）: 垂直入射で、前の板の o（e）が次の板の o（e）へ移る振幅は
+/// 2√(n₁n₂)/(n₁+n₂)。結晶軸が平行でない板は、前の板の o・e の成分を次の板の o・e の基底へ分けてから係数をかける
+#[test]
+fn cemented_plates_single_boundary() {
+    let t = |a: f64, b: f64| 2.0 * (a * b).sqrt() / (a + b);
+    let two = |ax2: [f64; 2]| {
+        system(&format!(
+            r#"{{"glass": "MGF2", "t": 0.3, "coat": "I.99999999", "birefringent": {{"in": {{"axis": [1, 0, 0]}}}}}},
+               {{"glass": "QUARTZ", "t": 0, "birefringent": "out"}},
+               {{"glass": "QUARTZ", "t": 0.5, "birefringent": {{"in": {{"axis": [{}, {}, 0]}}}}}},
+               {{"t": 3, "coat": "I.99999999", "birefringent": "out"}}"#,
+            ax2[0], ax2[1]
+        ))
+    };
+    // 結晶軸が平行（x）: x の入力は e → e、y は o → o
+    let s = two([1.0, 0.0]);
+    let g = |n: &str| s.glasses[n].clone();
+    for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
+        let (nom, nem) = (g("MGF2").n_cat(l), g("MGF2-E").n_cat(l));
+        let (noq, neq) = (g("QUARTZ").n_cat(l), g("QUARTZ-E").n_cat(l));
+        let f = fields(&s, w);
+        assert!((f[0][0].norm() - t(nem, neq)).abs() < 1e-8, "{l} {f:?}");
+        assert!((f[1][1].norm() - t(nom, noq)).abs() < 1e-8, "{l} {f:?}");
+        assert!(
+            f[0][1].norm() < 1e-14 && f[1][0].norm() < 1e-14,
+            "{l} {f:?}"
+        );
+    }
+    // 結晶軸が 30° ずれる: 前の板の位相 → 境界（成分ごとの係数）→ 次の板の位相
+    let (c, sn) = (30f64.to_radians().cos(), 30f64.to_radians().sin());
+    let s = two([c, sn]);
+    for (w, l) in [0.5, 0.633, 1.0].into_iter().enumerate() {
+        let (nom, nem) = (g("MGF2").n_cat(l), g("MGF2-E").n_cat(l));
+        let (noq, neq) = (g("QUARTZ").n_cat(l), g("QUARTZ-E").n_cat(l));
+        let ph =
+            |dn: f64, d: f64| C64::from_polar(1.0, -2.0 * std::f64::consts::PI * dn * d * 1e3 / l);
+        let (p1, p2) = (ph(nem - nom, 0.3), ph(neq - noq, 0.5));
+        // 基底（x, y 成分）: 前の板 e = x、o = y。次の板 e = (c, s)、o = (−s, c)
+        let b1 = [([1.0, 0.0], nem, p1), ([0.0, 1.0], nom, C64::new(1.0, 0.0))];
+        let b2 = [([c, sn], neq, p2), ([-sn, c], noq, C64::new(1.0, 0.0))];
+        let mut m = [C64::new(0.0, 0.0); 4];
+        for (u, n1, q1) in b1 {
+            for (v, n2, q2) in b2 {
+                let k = q1 * q2 * t(n1, n2) * (u[0] * v[0] + u[1] * v[1]);
+                for (i, vi) in v.iter().enumerate() {
+                    for (j, uj) in u.iter().enumerate() {
+                        m[2 * i + j] += k * vi * uj;
+                    }
+                }
+            }
+        }
+        let f = fields(&s, w);
+        assert!(same_scaled(f, m, 1e-12, 1e-7), "{l} {f:?} {m:?}");
     }
 }
 
