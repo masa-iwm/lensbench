@@ -78,11 +78,11 @@ impl Scene3 {
         let rays: Vec<(usize, Vec<[f32; 3]>)> = arr(&v["rays"])
             .iter()
             .map(|r| {
-                let c = if by_cfg {
-                    us(&r["cfg"]) + 1
-                } else {
-                    us(&r["field"])
-                };
+                let c = crate::layout_rays::ray_class(
+                    r,
+                    v["color"].as_str().unwrap_or_default(),
+                    by_cfg,
+                );
                 let pts = arr(&r["pts"])
                     .iter()
                     .filter_map(|p| {

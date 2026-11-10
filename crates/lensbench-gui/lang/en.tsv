@@ -852,6 +852,29 @@ ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番�
 腕の幅（全幅）	Arm width (full)
 腕の本数	Number of arms
 図の半径	Drawn radius
+PNG の横幅 [px]	PNG width [px]
+主波長	Primary wavelength
+光線の管の半径 [mm]	Ray tube radius [mm]
+光線・書き出しの設定	Rays and export settings
+分割数（3D の半径）	Segments (3D radial)
+分割数（周・面の線）	Segments (circumference, surface lines)
+描く面	Surfaces drawn
+書き出し	Export
+本数	Rays
+色分け	Color by
+y の扇	y fan
+x の扇	x fan
+十字	Cross
+格子	Grid
+周（ring）	Ring
+x の断面	x section
+y の断面	y section
+位置 [mm]	Position [mm]
+光線の表	Ray table
+照度	Irradiance
+照度 [W/mm²]	Irradiance [W/mm²]
+簡易 POP	Simple POP
+面 {} の後 {} mm · {} · パワー {} · RMS 幅 {} mm	After surface {}: {} mm · {} · power {} · RMS width {} mm
 列…	Columns…
 一覧に出す列を選びます	Choose the columns shown in the list
 粗いふるい	Coarse prescreen

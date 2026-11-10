@@ -30,6 +30,7 @@ pub fn has_figure(cmd: &str) -> bool {
             | "mtf-focus"
             | "rms"
             | "fringe"
+            | "pop"
     )
 }
 
@@ -44,7 +45,7 @@ pub fn figure_params(cmd: &str, m: &mut Map<String, Value>, cutoff: Option<f64>,
         "wavefront" if figure => {
             m.entry("map").or_insert(json!(true));
         }
-        "fringe" if figure => {
+        "fringe" | "pop" if figure => {
             m.entry("grid").or_insert(json!(true));
         }
         // 周波数が要る解析は遮断周波数の 1/10・1/4・1/2（無ければ 10・20・40）
@@ -84,6 +85,7 @@ pub fn show(ui: &mut Ui, id: u64, cmd: &str, v: &Value, prev: Option<&Value>) ->
             true
         }
         "fringe" => interference(ui, id, v),
+        "pop" => pop(ui, id, v),
         _ => false,
     }
 }
@@ -1054,6 +1056,100 @@ fn interference_cmap(v: &Value, gray_intensity: bool) -> Cmap {
     }
 }
 
+/// 簡易 POP の出力の照度の格子（`grid_irradiance`、番号 j·nx + i、j は +y の向き）。上の行から並べ直す
+pub fn pop_grid(v: &Value) -> Option<Grid> {
+    let xs = f64s(&v["x"]);
+    let ys = f64s(&v["y"]);
+    let g = f64s(&v["grid_irradiance"]);
+    let (nx, ny) = (xs.len(), ys.len());
+    if nx < 2 || ny < 2 || g.len() != nx * ny {
+        return None;
+    }
+    let mut out = Vec::with_capacity(nx * ny);
+    for j in (0..ny).rev() {
+        out.extend_from_slice(&g[j * nx..(j + 1) * nx]);
+    }
+    let dx = (xs[nx - 1] - xs[0]) / (nx - 1) as f64;
+    let dy = (ys[ny - 1] - ys[0]) / (ny - 1) as f64;
+    Some(Grid {
+        w: nx,
+        h: ny,
+        v: out,
+        extent: [
+            xs[0] - dx / 2.0,
+            xs[nx - 1] + dx / 2.0,
+            ys[0] - dy / 2.0,
+            ys[ny - 1] + dy / 2.0,
+        ],
+    })
+}
+
+/// 簡易 POP: 出力の照度の図と、中心を通る x・y の断面
+fn pop(ui: &mut Ui, id: u64, v: &Value) -> bool {
+    let xs = f64s(&v["x"]);
+    let ys = f64s(&v["y"]);
+    let ix = f64s(&v["irradiance_x"]);
+    let iy = f64s(&v["irradiance_y"]);
+    if xs.len() != ix.len() || ys.len() != iy.len() || xs.is_empty() {
+        return false;
+    }
+    let n = |x: &Value| fmt_sig(x.as_f64().unwrap_or(f64::NAN), 4);
+    let o = &v["output"];
+    ui.label(weak(
+        ui,
+        trf(
+            "面 {} の後 {} mm · {} · パワー {} · RMS 幅 {} mm",
+            &[
+                &v["surface"],
+                &n(&v["distance"]),
+                &v["method"].as_str().unwrap_or_default(),
+                &n(&o["power"]),
+                &o["rms_width"]
+                    .as_array()
+                    .map(|a| a.iter().map(n).collect::<Vec<_>>().join(" × "))
+                    .unwrap_or_else(|| n(&o["rms_width"])),
+            ],
+        ),
+    ));
+    let h = (ui.available_height() * 0.55).clamp(160.0, 520.0);
+    if let Some(g) = pop_grid(v) {
+        let (lo, hi) = g.range().unwrap_or((0.0, 1.0));
+        heatmap(
+            ui,
+            ("pop", id),
+            &g,
+            Cmap::Viridis,
+            lo.min(0.0),
+            hi,
+            ("x [mm]", "y [mm]", tr("照度")),
+            h,
+        );
+    }
+    Plot::new(("pop-cut", id))
+        .legend(Legend::default())
+        .include_y(0.0)
+        .x_axis_label(tr("位置 [mm]"))
+        .y_axis_label(tr("照度 [W/mm²]"))
+        .allow_scroll(false)
+        .show(ui, |p| {
+            let pts = |a: &[f64], b: &[f64]| -> Vec<[f64; 2]> {
+                a.iter().zip(b).map(|(x, y)| [*x, *y]).collect()
+            };
+            p.line(
+                Line::new(pts(&xs, &ix))
+                    .color(theme::series(0))
+                    .name(tr("x の断面")),
+            );
+            p.line(
+                Line::new(pts(&ys, &iy))
+                    .color(theme::series(1))
+                    .style(LineStyle::Dashed { length: 6.0 })
+                    .name(tr("y の断面")),
+            );
+        });
+    true
+}
+
 fn interference(ui: &mut Ui, id: u64, v: &Value) -> bool {
     let n = |k: &str| fmt_sig(v[k].as_f64().unwrap_or(f64::NAN), 3);
     let q = v["quantity"].as_str().unwrap_or("intensity");
@@ -1155,6 +1251,17 @@ mod tests {
         let up = g.upsample(2);
         assert_eq!((up.w, up.h), (6, 6));
         assert!(up.v.iter().any(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn pop_grid_rows_top_first() {
+        let v = json!({ "x": [-1.0, 0.0, 1.0], "y": [-0.5, 0.5],
+            "grid_irradiance": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] });
+        let g = pop_grid(&v).unwrap();
+        assert_eq!((g.w, g.h), (3, 2));
+        assert_eq!(g.v, vec![4.0, 5.0, 6.0, 1.0, 2.0, 3.0]);
+        assert_eq!(g.extent, [-1.5, 1.5, -1.0, 1.0]);
+        assert!(pop_grid(&json!({ "x": [0.0], "y": [0.0] })).is_none());
     }
 
     #[test]

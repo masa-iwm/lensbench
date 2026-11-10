@@ -1385,6 +1385,7 @@ impl LayoutData {
             .map(|x| x.as_str().unwrap_or_default().to_string())
             .collect();
         let by_cfg = configs.len() > 1;
+        let color = v["color"].as_str().unwrap_or_default();
         LayoutData {
             solids: arr("solids")
                 .iter()
@@ -1432,11 +1433,7 @@ impl LayoutData {
             rays: arr("rays")
                 .iter()
                 .map(|r| {
-                    let c = if by_cfg {
-                        us(&r["cfg"]) + 1
-                    } else {
-                        us(&r["field"])
-                    };
+                    let c = crate::layout_rays::ray_class(r, color, by_cfg);
                     (c, pts(&r["pts"]))
                 })
                 .collect(),
