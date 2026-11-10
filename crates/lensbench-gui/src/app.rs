@@ -265,6 +265,10 @@ struct Core {
     ld: lens_data::LensData,
     ld_rows: Vec<lens_data::Row>,
     ld_units: Vec<lens_data::Unit>,
+    /// 開いた系の玉・群・機構部品の欄
+    um: crate::unit_mech::Edits,
+    /// 玉・群・機構部品の欄を開く（通し確認）
+    um_open: bool,
     ld_blocks: Vec<lens_data::Block>,
     /// 開いた系を面の表で変えて、まだ保存していない
     ld_dirty: bool,
@@ -983,6 +987,7 @@ impl Core {
                     sum["surfaces"] = json!(a.len());
                 }
                 let (rows, units) = lens_data::parse(&v);
+                self.um.set_mechs(&v["mechanics"]);
                 self.ld_blocks = lens_data::tree(&units);
                 self.ld.insp.stale();
                 self.ld_rows = rows;
@@ -1919,24 +1924,40 @@ impl Core {
                 }
             }
         }
-        // ブロックの設定（組合せは要素の設定、開いた系は玉・群の偏心・傾き・移動・dn・disp）
-        if let Some(name) = self.ld.block_view.clone() {
+        // ブロックの設定（組合せは要素の設定、開いた系は玉・群の偏心・傾き・移動・dn・disp）と、
+        // 開いた系の玉・群を足す・機構部品の欄（同じスクロールの中）
+        let view = self.ld.block_view.clone();
+        if view.is_some() || !is_combo {
             egui::ScrollArea::vertical()
                 .id_salt("block_edit")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    if is_combo {
-                        match ids.iter().position(|i| *i == name) {
-                            Some(k) => combo::block_settings(ui, &mut self.browser.combo, k),
-                            None => {
-                                ui.weak(trf(
-                                    "{} は組合せの要素でない（設定は要素を選んで）",
-                                    &[&name],
-                                ));
+                    if let Some(name) = &view {
+                        if is_combo {
+                            match ids.iter().position(|i| i == name) {
+                                Some(k) => combo::block_settings(ui, &mut self.browser.combo, k),
+                                None => {
+                                    ui.weak(trf(
+                                        "{} は組合せの要素でない（設定は要素を選んで）",
+                                        &[name],
+                                    ));
+                                }
                             }
+                        } else {
+                            self.unit_settings(ui, name);
                         }
-                    } else {
-                        self.unit_settings(ui, &name);
+                    }
+                    if !is_combo {
+                        egui::CollapsingHeader::new(tr("玉・群・機構部品"))
+                            .id_salt("unit_mech")
+                            .open(std::mem::take(&mut self.um_open).then_some(true))
+                            .show(ui, |ui| {
+                                let ops =
+                                    crate::unit_mech::ui(ui, &mut self.um, self.ld_rows.len());
+                                if !ops.is_empty() {
+                                    self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                                }
+                            });
                     }
                 });
         }
@@ -1966,6 +1987,26 @@ impl Core {
 
     /// 開いた系の玉・群の設定（serve の set の `名前.dx` など）
     fn unit_settings(&mut self, ui: &mut Ui, name: &str) {
+        // 名前・範囲を変える・外す（serve の edit）
+        if let Some(u) = self.ld_units.iter().find(|u| u.name == name) {
+            let moved = u.motion.iter().any(|&x| x != 0.0) || u.shift != 0.0;
+            let spans = u.spans.clone();
+            let ops = crate::unit_mech::unit_ui(ui, &mut self.um, name, &spans, moved);
+            for op in &ops {
+                match op["op"].as_str() {
+                    Some("remove_unit") => self.ld.block_view = None,
+                    _ => {
+                        if let Some(n) = op["name"].as_str() {
+                            self.ld.block_view = Some(n.to_string());
+                            self.ld.sel = Some(n.to_string());
+                        }
+                    }
+                }
+            }
+            if !ops.is_empty() {
+                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+            }
+        }
         let Some(u) = self.ld_units.iter_mut().find(|u| u.name == name) else {
             return;
         };
@@ -3351,6 +3392,8 @@ impl App {
                 ld: Default::default(),
                 ld_rows: Vec::new(),
                 ld_units: Vec::new(),
+                um: Default::default(),
+                um_open: false,
                 ld_blocks: Vec::new(),
                 ld_dirty: false,
                 mc: Default::default(),
@@ -4475,6 +4518,30 @@ impl App {
                 self.c.build_combo(p);
                 crate::coat_defs::focus(ctx);
                 self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
+            }
+            Step::Units => {
+                // 開いた系（P17）に群 G23（群 2・3）を足し、機構部品（筒）を置いて、群 G2 の設定と欄を見せる
+                let u = |n: &str| {
+                    self.c
+                        .ld_units
+                        .iter()
+                        .find(|u| u.name == n)
+                        .map(|u| u.spans.clone())
+                };
+                let mut ops = Vec::new();
+                if let (Some(a), Some(b)) = (u("G2"), u("G3")) {
+                    ops.push(json!({ "op": "define_unit", "name": "G23", "spans": [[a[0][0], b[0][1]]] }));
+                }
+                ops.push(json!({ "op": "add_mech", "part": {
+                    "name": "tube", "surface": 1, "offset": [0.0, 0.0, -2.0],
+                    "bores": [{ "z0": 0.0, "z1": 40.0, "radius": 15.0 }], "outer_radius": 18.0,
+                }}));
+                self.c.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                self.c.ld.scope.clear();
+                self.c.ld.sel = Some("G2".into());
+                self.c.ld.block_view = Some("G2".into());
+                self.c.um_open = true;
+                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
             Step::Zoom => {
                 // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる

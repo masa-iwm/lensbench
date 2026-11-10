@@ -1087,7 +1087,12 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
                             })
                         })
                         .collect();
-                    Ok((json!({ "surfaces": all, "units": units }), Vec::new()))
+                    // 機構部品（系ファイルの mechanics と同じ形、GUI の面の表で編集）
+                    let mechs = serde_json::to_value(&s.mechanics).unwrap_or_default();
+                    Ok((
+                        json!({ "surfaces": all, "units": units, "mechanics": mechs }),
+                        Vec::new(),
+                    ))
                 }
                 Some(v) => {
                     let j = match v {

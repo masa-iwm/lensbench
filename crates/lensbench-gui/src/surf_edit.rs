@@ -93,6 +93,66 @@ impl Inspector {
     }
 }
 
+/// 複屈折材の板の欄（入口: mode・結晶軸、出口）。変えたら面のデータの bire の値（ne は材料「名前-E」から作り直す）
+fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
+    let kind = match cur {
+        Value::String(s) if s == "Out" => 2,
+        Value::Object(o) if o.contains_key("In") => 1,
+        _ => 0,
+    };
+    let inn = &cur["In"];
+    let mut mode = inn["mode"].as_u64().unwrap_or(2);
+    let mut axis: [f64; 3] = std::array::from_fn(|i| inn["axis"][i].as_f64().unwrap_or(0.0));
+    if kind != 1 {
+        axis = [0.0, 1.0, 0.0];
+    }
+    let mut k = kind;
+    let mut out = None;
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            for (i, l) in [tr("なし"), tr("入口"), tr("出口")].iter().enumerate() {
+                ui.selectable_value(&mut k, i, *l);
+            }
+        });
+        let mut changed = k != kind;
+        if k == 1 {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(tr("モード"));
+                for (m, l) in [(2, tr("波長板（2）")), (0, tr("常光だけ（0）"))] {
+                    changed |= ui.selectable_value(&mut mode, m, l).changed();
+                }
+                ui.label(tr("結晶軸"));
+                for (i, a) in axis.iter_mut().enumerate() {
+                    changed |= ui
+                        .add(
+                            egui::DragValue::new(a)
+                                .speed(0.01)
+                                .max_decimals(6)
+                                .prefix(["x ", "y ", "z "][i]),
+                        )
+                        .changed();
+                }
+            });
+            ui.label(
+                RichText::new(trf(
+                    "面 {} の後の材料が常光、材料名-E が異常光（カタログに要る）。出口の面と組で使う",
+                    &[&dj],
+                ))
+                .small()
+                .color(theme::weak_text(ui.visuals())),
+            );
+        }
+        if changed {
+            out = Some(match k {
+                1 => json!({ "In": { "mode": mode, "axis": axis } }),
+                2 => json!("Out"),
+                _ => Value::Null,
+            });
+        }
+    });
+    out
+}
+
 /// JSON の数（inf は {"$f": "inf"}）
 fn num(v: &Value) -> Option<f64> {
     if let Some(x) = v.as_f64() {
@@ -369,6 +429,14 @@ pub fn ui(
                     .changed()
                 {
                     fields.insert("cb_order".into(), json!(if o { 1 } else { 0 }));
+                }
+                ui.end_row();
+            }
+            // 複屈折材の板の入口・出口（開いた系の標準面）
+            if (!combo && typ == "Standard") || !d["bire"].is_null() {
+                label(ui, tr("複屈折"));
+                if let Some(b) = bire_ui(ui, dj, &d["bire"]) {
+                    data.insert("bire".into(), b);
                 }
                 ui.end_row();
             }
