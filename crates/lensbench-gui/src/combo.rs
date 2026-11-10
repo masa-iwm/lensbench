@@ -1808,11 +1808,13 @@ pub struct View {
     fixed: bool,
     /// 3D 表示（矢印キーは図を回す）
     d3: bool,
-    /// 2D の図の拡大縮小・移動を使う（組合せのパネルの図。カタログのプレビューは使わない）
+    /// 2D の図の拡大縮小・移動を使う（レイアウトのパネルの図。カタログのプレビューは使わない）
     pub nav: bool,
     /// 2D の図の拡大率の対数（0 で全体表示）と、画面の上の移動 [pt]
     zoom_log: f32,
     pan: Vec2,
+    /// 面の表で選んだ面（図で目立たせる、#125）
+    pub hl_surf: Option<usize>,
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
@@ -2180,7 +2182,14 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
 }
 
 /// 組合せでない系のレイアウト図（見るだけ。玉・鏡・像面・光線は組合せの図と同じ描き方）
-pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32, nav: Option<egui::Id>) {
+pub fn view_only(
+    ui: &mut Ui,
+    d: &LayoutData,
+    h: f32,
+    accent: Color32,
+    nav: Option<egui::Id>,
+    hl_surf: Option<usize>,
+) {
     // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける（#124）
     let sense = if d.d3.is_some() || nav.is_some() {
         Sense::click_and_drag()
@@ -2195,7 +2204,10 @@ pub fn view_only(ui: &mut Ui, d: &LayoutData, h: f32, accent: Color32, nav: Opti
         picks: Vec::new(),
         ..Default::default()
     };
-    let mut view = View::default();
+    let mut view = View {
+        hl_surf,
+        ..Default::default()
+    };
     if let Some(id) = nav {
         let (z, p): (f32, Vec2) = ui.data(|m| m.get_temp(id)).unwrap_or_default();
         view.nav = true;
@@ -2737,6 +2749,32 @@ fn figure(
             if inside(&poly, p) {
                 hit = Some(k);
             }
+        }
+    }
+    // 面の表で選んだ面: その面を持つ玉の縁と、面の頂点の印（#125）
+    if let Some(j) = view.hl_surf {
+        let hl = Color32::from_rgb(0xE0, 0x6C, 0x00);
+        for sd in d
+            .solids
+            .iter()
+            .filter(|sd| sd.surfaces[0] <= j && j <= sd.surfaces[1])
+        {
+            let mut closed: Vec<Pos2> = sd.pts.iter().map(|&q| to(q)).collect();
+            if let Some(f) = closed.first().copied() {
+                closed.push(f);
+            }
+            painter.add(egui::Shape::line(closed, Stroke::new(2.0_f32, hl)));
+        }
+        if let Some(Some(v)) = d.vertices.get(j) {
+            let c = to(*v);
+            painter.circle_stroke(c, 4.0, Stroke::new(2.0_f32, hl));
+            painter.text(
+                c + egui::vec2(5.0, -5.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("S{j}"),
+                egui::FontId::proportional(11.0),
+                hl,
+            );
         }
     }
     // 機構部品: 壁の断面（選べない、名前は指したとき）
@@ -3537,7 +3575,7 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
             .desired_width(60.0),
     )
     .on_hover_text(tr(
-        "続く要素に同じ名前を付けると 1 つの群になる（役割・移動は組合せのパネルの「群」で）",
+        "続く要素に同じ名前を付けると 1 つの群になる（役割・移動はレイアウトのパネルの「群」で）",
     ));
     if p.kind == ElemKind::ZmxRange {
         zgroups_ui(ui, p, weak);

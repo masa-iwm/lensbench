@@ -1329,7 +1329,7 @@ impl Browser {
         match &self.preview {
             Some((j, d)) if *j == i && !d.solids.is_empty() => {
                 let accent = ui.visuals().selection.stroke.color;
-                crate::combo::view_only(ui, d, h, accent, None);
+                crate::combo::view_only(ui, d, h, accent, None, None);
             }
             Some((j, _)) if *j == i => {
                 ui.allocate_space(egui::vec2(ui.available_width(), h));

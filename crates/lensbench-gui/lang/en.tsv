@@ -700,7 +700,7 @@ BS を通る順の透過 T・反射 R（足りない文字は各 BS の既定の
 光の進む向きが正。前の間隔に足し、後の間隔から引く	Positive along the light. Added to the gap before and subtracted from the gap after
 玉の群	Lens groups
 移動 	Shift 
-続く要素に同じ名前を付けると 1 つの群になる（役割・移動は組合せのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift under Groups in the combination panel)
+続く要素に同じ名前を付けると 1 つの群になる（役割・移動はレイアウトのパネルの「群」で）	Consecutive elements with the same name form one group (role and shift under Groups in the Layout panel)
 群	Group
 面 	Surface 
 ＋ 群	+ Group
@@ -1152,3 +1152,4 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 玉モード: 系を玉・鏡・座標ブレーク・空気間隔に分けて示す	Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps
 ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比	Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces
 機構のケラレ: 機構部品の穴の外に出た光線の割合	Mechanical vignetting: share of rays outside the mechanical apertures
+レイアウト	Layout

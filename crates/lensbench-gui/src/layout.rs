@@ -181,7 +181,7 @@ impl Pane {
         match &self.kind {
             Kind::System => tr("系").into(),
             Kind::Catalog => tr("カタログ").into(),
-            Kind::Layout => tr("組合せ").into(),
+            Kind::Layout => tr("レイアウト").into(),
             Kind::LensData => tr("レンズデータ").into(),
             Kind::MultiConfig => tr("多重構成").into(),
             Kind::Optimize => tr("最適化").into(),

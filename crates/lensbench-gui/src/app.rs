@@ -258,6 +258,8 @@ struct Core {
     /// レイアウトの光線・書き出しの設定の欄を次の描画で開く（通し確認）
     rays_open: bool,
     combo_view: combo::View,
+    /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
+    combo_sel_prev: Option<usize>,
     font: Option<String>,
     next_id: u64,
     /// パネルの中から頼まれた操作
@@ -1779,7 +1781,8 @@ impl Core {
             // 組合せの要素のパレット・図はその下に
             if let Some(d) = &self.layout_data {
                 let h = (ui.available_height() * 0.55).max(160.0);
-                combo::view_only(ui, d, h, accent, Some(egui::Id::new("open_layout_nav")));
+                let hl = self.ld.cur.map(|x| x.0);
+                combo::view_only(ui, d, h, accent, Some(egui::Id::new("open_layout_nav")), hl);
                 ui.separator();
             }
         }
@@ -1795,6 +1798,12 @@ impl Core {
             .filter(|x| x.0 == "paths")
             .map(|x| x.1.clone())
             .collect();
+        // 面の表で選んだ面を図で目立たせる（#125）
+        self.combo_view.hl_surf = if is_combo {
+            self.ld.cur.map(|x| x.0)
+        } else {
+            None
+        };
         let act = combo::ui(
             ui,
             &mut self.browser.combo,
@@ -1870,6 +1879,20 @@ impl Core {
         } else {
             Vec::new()
         };
+        // 図で別の要素を選んだら、その要素の外の今の面は外す（図の目立たせと表を合わせる）
+        if is_combo && self.combo_view.sel != self.combo_sel_prev {
+            if let (Some(k), Some((j, _))) = (self.combo_view.sel, self.ld.cur) {
+                let inside = spans
+                    .get(k)
+                    .copied()
+                    .flatten()
+                    .is_some_and(|s| s[0] <= j && j <= s[1]);
+                if !inside {
+                    self.ld.cur = None;
+                }
+            }
+        }
+        self.combo_sel_prev = self.combo_view.sel;
         let rows = &self.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {
             combo_read_only(is_combo, rows, &spans, picks, lead, j, col)
@@ -3521,6 +3544,7 @@ impl App {
                 rays_open: false,
                 agf_names: Default::default(),
                 combo_view: Default::default(),
+                combo_sel_prev: None,
                 font,
                 next_id,
                 cmds: Vec::new(),
