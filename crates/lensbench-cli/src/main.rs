@@ -613,6 +613,9 @@ enum Cmd {
         /// BMAX を決める ψ の補間誤差の上限 [rad]
         #[arg(long, default_value_t = 1e-4)]
         tol_psi: f64,
+        /// モデルに入れる注記（NOTE。`lensbench coatings` に出る。短い測定から作った近似のモデルの印など）
+        #[arg(long)]
+        note: Option<String>,
         /// JSON で出力する
         #[arg(long)]
         json: bool,
@@ -2550,10 +2553,18 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             coat,
             kinks,
             tol_psi,
+            note,
             json,
         } => (
             json,
-            coat_model(&tables, &out, coat.as_deref(), kinks.as_deref(), tol_psi)?,
+            coat_model(
+                &tables,
+                &out,
+                coat.as_deref(),
+                kinks.as_deref(),
+                tol_psi,
+                note.as_deref(),
+            )?,
         ),
         Cmd::CoatCompact { model, out, json } => (json, coat_compact(&model, &out)?),
         Cmd::CoatDesign {
@@ -2748,7 +2759,7 @@ fn coatings(
     let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
     let mut found = None;
     // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
-    let mut auto: Vec<(String, String)> = Vec::new();
+    let mut auto: Vec<(String, String, String)> = Vec::new();
     for cfg in 1..=raw.configurations() {
         let opt = zmx::LoadOptions {
             cfg,
@@ -2763,8 +2774,16 @@ fn coatings(
         found = s.coating_file.clone();
         for (coat, p) in &c.auto {
             let p = p.display().to_string();
-            if !auto.iter().any(|(a, b)| a == coat && *b == p) {
-                auto.push((coat.clone(), p));
+            if !auto.iter().any(|(a, b, _)| a == coat && *b == p) {
+                // 注記: モデルの NOTE、近似の多層膜（.lbcs）なら近似の膜であること
+                let note = match c.models.get(coat) {
+                    Some(m) => m.note.clone(),
+                    None if p.to_ascii_lowercase().ends_with(".lbcs") => {
+                        "近似の膜（分光の曲線に合わせた多層膜）".to_string()
+                    }
+                    None => String::new(),
+                };
+                auto.push((coat.clone(), p, note));
             }
         }
         let (keys, _) = coating::media_keys(&s);
@@ -2772,7 +2791,14 @@ fn coatings(
         for (j, k) in keys.iter().enumerate() {
             let Some(k) = k else { continue };
             let kind = c.kind(k);
-            v.push(json!({ "surface": j, "key": k, "kind": kind.name() }));
+            let mut it = json!({ "surface": j, "key": k, "kind": kind.name() });
+            if kind == coating::CoatKind::Model {
+                let coat = k.split('|').next().unwrap_or("");
+                if let Some(m) = c.models.get(coat).filter(|m| !m.note.is_empty()) {
+                    it["note"] = json!(m.note);
+                }
+            }
+            v.push(it);
             if kind.needs_table() {
                 let i = match need.iter().position(|n| n.0 == *k) {
                     Some(i) => i,
@@ -2798,7 +2824,7 @@ fn coatings(
         "coating_file": raw.coating_file_name(),
         "coating_file_path": found.map(|p| p.display().to_string()),
         "catalogs": raw.catalogs(),
-        "auto_coatings": auto.iter().map(|(c, p)| json!({ "coat": c, "path": p })).collect::<Vec<_>>(),
+        "auto_coatings": auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
         "configurations": cfgs,
         "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
     }))
@@ -2856,6 +2882,7 @@ fn coat_model(
     only: Option<&str>,
     kinks: Option<&str>,
     tol_psi: f64,
+    note: Option<&str>,
 ) -> Result<Value, String> {
     let mut kinks: Vec<f64> = match kinks {
         None => Vec::new(),
@@ -2913,6 +2940,7 @@ fn coat_model(
         };
         let mut r = r;
         r.model.kinks = kinks.clone();
+        r.model.note = note.unwrap_or("").trim().to_string();
         // 折れ目の波長で測っていないと、そこをはさむ区間の端は外挿になる
         let unmeasured: Vec<f64> = kinks
             .iter()

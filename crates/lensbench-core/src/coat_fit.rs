@@ -537,6 +537,19 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
             }
         }
     }
+    // 注記のある膜があれば末尾に（parse_models_bin の NOTES）
+    let notes: Vec<&(&str, &CoatModel)> =
+        entries.iter().filter(|(_, m)| !m.note.is_empty()).collect();
+    if !notes.is_empty() {
+        o.extend_from_slice(crate::coating::MODEL_BIN_NOTES);
+        u32(&mut o, notes.len());
+        for (name, m) in notes {
+            o.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            o.extend_from_slice(name.as_bytes());
+            u32(&mut o, m.note.len());
+            o.extend_from_slice(m.note.as_bytes());
+        }
+    }
     Ok(o)
 }
 
@@ -546,6 +559,9 @@ pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
     let mut s = format!("{}\n", crate::coating::MODEL_HEADER);
     for (name, m) in entries {
         writeln!(s, "COAT {name}").unwrap();
+        if !m.note.is_empty() {
+            writeln!(s, "NOTE {}", m.note.replace(['\n', '\r'], " ")).unwrap();
+        }
         if !m.kinks.is_empty() {
             let k: Vec<String> = m.kinks.iter().map(|k| format!("{k:?}")).collect();
             writeln!(s, "KINKS {}", k.join(" ")).unwrap();

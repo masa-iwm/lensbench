@@ -345,6 +345,8 @@ pub const MODEL_HEADER: &str = "LBCM 2";
 
 /// 膜のモデルのバイナリ形式（[`parse_models_bin`]）の先頭
 pub const MODEL_BIN_HEADER: &[u8] = b"LBCM 3\n";
+/// LBCM 3 の末尾の注記の印（注記のある膜があるときだけ書く）
+pub const MODEL_BIN_NOTES: &[u8] = b"NOTES\n";
 
 /// 暗号化された膜の特性行列モデル（層を読まずに、任意の硝材・向き・波長で使う）。
 ///
@@ -374,6 +376,8 @@ pub struct CoatModel {
     /// 波長方向の折れ目 [µm]（昇順）。膜の材料の分散表の節で、係数の波長微分がここで跳ぶ。
     /// 波長の補間はこの点をまたがない（透過・鏡とも。折れ目の波長でも測っておく）
     pub kinks: Vec<f64>,
+    /// 注記（空でなければ利用者に見せる。短い測定から作った近似のモデルの印など）。LBCM 2 の `NOTE` 行、LBCM 3 の末尾の `NOTES`
+    pub note: String,
 }
 
 /// 鏡のモデル（[`CoatModel`]）
@@ -412,6 +416,7 @@ impl CoatModel {
 /// D 透過の位相の厚さ [µm]
 /// BMAX 透過で使える β の上限
 /// KINKS 折れ目の波長 [µm] ...      （なくてもよい。波長の補間はこの点をまたがない）
+/// NOTE 注記（なくてもよい。近似のモデルの印など、利用者に見せる 1 行）
 /// WAVE 波長 [µm]
 /// β  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（s）  (Re Im)×(M̃00 M̃10 M̃01 M̃11) ψ（p）     （19 列、β の昇順）
 /// ...
@@ -539,6 +544,9 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                 } else {
                     c.bmax = v
                 }
+            }
+            "NOTE" => {
+                c.model.note = line[4..].trim().to_string();
             }
             "KINKS" => {
                 let mut k = t[1..].iter().map(|x| n(x)).collect::<Result<Vec<f64>>>()?;
@@ -862,6 +870,22 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             invalid!("膜のモデル {name} が 2 回ある");
         }
         out.push((name, m));
+    }
+    // 末尾の注記（なくてもよい）: NOTES\n、数、（名前の長さ u16、名前、注記の長さ u32、注記）× 数
+    if b.len() > r.p && b[r.p..].starts_with(MODEL_BIN_NOTES) {
+        r.p += MODEL_BIN_NOTES.len();
+        let nn = r.u32()?;
+        for _ in 0..nn {
+            let ln = r.u16()? as usize;
+            let name = String::from_utf8_lossy(r.take(ln)?).to_string();
+            let ln = r.u32()? as usize;
+            let note = String::from_utf8(r.take(ln)?.to_vec())
+                .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の注記が UTF-8 でない".into()))?;
+            match out.iter_mut().find(|(k, _)| *k == name) {
+                Some((_, m)) => m.note = note,
+                None => invalid!("膜のモデル（LBCM 3）の注記の膜 {name} がない"),
+            }
+        }
     }
     if r.p != b.len() {
         invalid!("膜のモデル（LBCM 3）の後ろに余分なデータがある");

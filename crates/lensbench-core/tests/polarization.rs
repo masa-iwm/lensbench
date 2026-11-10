@@ -752,6 +752,17 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
             let _ = parse_models_bin(&b);
         }
     }
+    // 注記（NOTE）はテキストでも LBCM 3 でも残る
+    let mut noted = rep.model.clone();
+    noted.note = "近似: 短い測定".into();
+    let t2 = format_models(&[("ZX", &noted)]);
+    assert!(t2.contains("\nNOTE 近似: 短い測定\n"));
+    assert_eq!(parse_models(&t2).unwrap()[0].1.note, "近似: 短い測定");
+    let b2 = format_models_bin(&[("ZX", &noted)]).unwrap();
+    let back2 = parse_models_bin(&b2).unwrap();
+    assert_eq!(back2[0].1.note, "近似: 短い測定");
+    assert_eq!(back2[0].1.wavelengths.len(), rep.model.wavelengths.len());
+    assert!(parse_models_bin(&b2[..b2.len() - 3]).is_err());
     eprintln!(
         "binary {} bytes (text {}), max {worst:.1e}",
         bin.len(),
