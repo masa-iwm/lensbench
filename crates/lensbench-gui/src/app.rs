@@ -55,6 +55,8 @@ pub struct Settings {
     pub rays: crate::layout_rays::RaySet,
     /// カタログレンズの一覧で隠す列（[`catalog::LensCol::key`]）
     pub lens_hide: Vec<String>,
+    /// アプリ版で OS のタイトルバーを使う（false は上の帯をタイトルバーにする、#138）
+    pub os_titlebar: bool,
 }
 
 impl Settings {
@@ -161,6 +163,7 @@ impl Default for Settings {
             ld_tree: false,
             rays: Default::default(),
             lens_hide: Vec::new(),
+            os_titlebar: false,
         }
     }
 }
@@ -312,6 +315,9 @@ pub struct App {
     dragging_tab: Option<(u64, egui::Pos2)>,
     /// 画面の通し確認（--tour）
     tour: Option<Tour>,
+    /// 窓に送った OS のタイトルバーの有無（設定と違えば送り直す）
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    decorations: Option<bool>,
     /// Web 版: 別のタブに出した解析のパネル（元のタブ）
     #[cfg(target_arch = "wasm32")]
     tabs: Option<crate::web_tabs::Tabs>,
@@ -2065,7 +2071,8 @@ impl Core {
             }
         });
         let mut set = Vec::new();
-        ui.add_enabled_ui(!locked, |ui| {
+        // ロックは中身（dn・disp）だけを止める。偏心・傾き・移動は変えられる
+        {
             ui.horizontal_wrapped(|ui| {
                 let labels = [
                     (tr("偏心 x"), " mm"),
@@ -2112,7 +2119,10 @@ impl Core {
                     match v {
                         Some(x) => {
                             if ui
-                                .add(egui::DragValue::new(x).speed(1e-5).max_decimals(8))
+                                .add_enabled(
+                                    !locked,
+                                    egui::DragValue::new(x).speed(1e-5).max_decimals(8),
+                                )
                                 .changed()
                             {
                                 set.push((k, *x));
@@ -2126,7 +2136,7 @@ impl Core {
                     }
                 }
             });
-        });
+        }
         for (k, v) in set {
             self.pending_set.insert(format!("{name}.{k}"), v);
         }
@@ -3218,6 +3228,12 @@ fn combo_read_only(
         }
         return Some(tr("組合せの要素の外の面（前の絞りは厚さだけ）").into());
     };
+    if picks.get(k).is_some_and(|p| p.fixed())
+        && col == Col::T
+        && spans[k].is_some_and(|s| s[1] == j)
+    {
+        return Some(tr("位置もロックした要素の後の間隔は変えられない").into());
+    }
     if picks
         .get(k)
         .is_some_and(|p| p.kind == combo::ElemKind::Splitter)
@@ -3302,12 +3318,7 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _s: SurfaceIndex, _n: NodeIndex) {
-        // Web 版の解析のパネルはブラウザの別のタブに出す
-        let label = if cfg!(target_arch = "wasm32") && matches!(tab.kind, Kind::Analysis(_)) {
-            tr("別のタブに出す")
-        } else {
-            tr("別の窓に出す（別モニターへ）")
-        };
+        let label = detach_label(&tab.kind, cfg!(target_arch = "wasm32"));
         if ui.button(label).clicked() {
             self.to_window.push(tab.id);
             ui.close_menu();
@@ -3507,6 +3518,7 @@ impl App {
             win_init: HashMap::new(),
             dragging_tab: None,
             tour: None,
+            decorations: None,
             #[cfg(target_arch = "wasm32")]
             tabs: None,
             #[cfg(target_arch = "wasm32")]
@@ -3956,7 +3968,11 @@ impl App {
                 Cmd::Focus(p.id),
             );
             push(
-                trf("別の窓に出す: {}", &[&p.title()]),
+                format!(
+                    "{}: {}",
+                    detach_label(&p.kind, cfg!(target_arch = "wasm32")),
+                    p.title()
+                ),
                 &format!("window monitor detach {name}"),
                 Cmd::ToWindow(p.id),
             );
@@ -4219,6 +4235,12 @@ impl App {
                             theme::apply(ctx, &self.c.s.look);
                         }
                     });
+                    if cfg!(not(target_arch = "wasm32")) {
+                        ui.checkbox(&mut self.c.s.os_titlebar, tr("OS のタイトルバーを使う"))
+                            .on_hover_text(tr(
+                                "外すと上の帯をタイトルバーにする（ドラッグで移動、ダブルクリックで最大化、縁で大きさを変える）",
+                            ));
+                    }
                     ui.separator();
                     ui.label(RichText::new(tr("言語")).small().color(weak));
                     for l in Lang::ALL {
@@ -4244,7 +4266,11 @@ impl App {
                 )
                 .on_hover_text(f.display().to_string());
             }
+            let custom = crate::chrome::custom(self.c.s.os_titlebar);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if custom {
+                    crate::chrome::window_buttons(ui);
+                }
                 let run = egui::Button::new(
                     RichText::new(tr("▶ 計算（F5）"))
                         .strong()
@@ -4270,8 +4296,13 @@ impl App {
                         .color(weak),
                 )
                 .min_size(egui::vec2(300.0, 28.0));
-                if ui.add(search).clicked() {
+                let r = ui.add(search);
+                self.palette.anchor = Some(r.rect);
+                if r.clicked() {
                     self.palette.show();
+                }
+                if custom {
+                    crate::chrome::drag_area(ui);
                 }
             });
         });
@@ -5116,6 +5147,17 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let os = self.c.s.os_titlebar || self.tour.is_some();
+            if self.decorations != Some(os) {
+                self.decorations = Some(os);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(os));
+            }
+            if !os {
+                crate::chrome::resize_edges(ctx);
+            }
+        }
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
@@ -5400,5 +5442,24 @@ fn overlay_params() {
     assert_eq!(
         serde_json::to_value(ViewPlane::Unfold).unwrap(),
         json!("unfold")
+    );
+}
+
+/// パネルを外に出す操作の名前。Web 版は解析のパネルだけブラウザの別のタブに出せ、ほかは同じページの中に
+/// 浮かせるだけ（別のタブから編集を送る口がまだ無い、#137）
+fn detach_label(kind: &Kind, web: bool) -> &'static str {
+    match (web, kind) {
+        (true, Kind::Analysis(_)) => tr("別のタブに出す"),
+        (true, _) => tr("ページの中に浮かせる"),
+        (false, _) => tr("別の窓に出す（別モニターへ）"),
+    }
+}
+
+#[test]
+fn detach_label_web_only_analysis_goes_to_tab() {
+    assert_eq!(detach_label(&Kind::LensData, true), "ページの中に浮かせる");
+    assert_eq!(
+        detach_label(&Kind::LensData, false),
+        "別の窓に出す（別モニターへ）"
     );
 }
