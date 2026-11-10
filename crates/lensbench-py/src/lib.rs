@@ -1741,7 +1741,7 @@ impl PySystem {
         self.mutate(|s| Ok(s.add_glass_catalogs(&names, &dirs)))
     }
 
-    /// ピックアップの一覧: dst・src・what（c t k p1〜）・scale・offset の dict
+    /// ピックアップの一覧: dst・src・what（c t k p1〜 before0〜4 after0〜4 など）・scale・offset の dict。元の量が what と違えば src_what も
     fn pickups<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.sys()
             .pickups
@@ -1753,13 +1753,18 @@ impl PySystem {
                 d.set_item("what", edit::pick_name(p.what))?;
                 d.set_item("scale", p.scale)?;
                 d.set_item("offset", p.offset)?;
+                if let Some(w) = p.from {
+                    d.set_item("src_what", edit::pick_name(w))?;
+                }
                 Ok(d)
             })
             .collect()
     }
 
-    /// ピックアップを付ける: 面 dst の what = scale × 面 src の what + offset（同じ先・量のものは置き換える）
-    #[pyo3(signature = (dst, src, what, scale=1.0, offset=0.0))]
+    /// ピックアップを付ける: 面 dst の what = scale × 面 src の src_what + offset（同じ先・量のものは置き換える）。
+    /// what は c r t k p1〜 dn disp semi before0〜4 after0〜4（面の前・後の傾き偏心 dx dy tx ty tz）。
+    /// src_what を省くと what と同じ量（例: 面の後を元の面の前から引くなら what="after0", src_what="before0"）
+    #[pyo3(signature = (dst, src, what, scale=1.0, offset=0.0, src_what=None))]
     fn add_pickup(
         &self,
         dst: SurfArg,
@@ -1767,15 +1772,20 @@ impl PySystem {
         what: &str,
         scale: f64,
         offset: f64,
+        src_what: Option<&str>,
     ) -> PyResult<()> {
         let s0 = self.sys();
-        let p = lensbench_core::param::Pickup::new(
+        let mut p = lensbench_core::param::Pickup::new(
             surf_of(&s0, dst)?,
             surf_of(&s0, src)?,
             edit::pick_kind(what)?,
             scale,
             offset,
         );
+        if let Some(w) = src_what {
+            let w = edit::pick_kind(w)?;
+            p.from = (w != p.what).then_some(w);
+        }
         self.mutate(|s| s.add_pickup(p))
     }
 

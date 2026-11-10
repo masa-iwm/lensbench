@@ -100,8 +100,11 @@ class System:
         見つからなかったカタログの名前を返す
         """
 
-    def add_pickup(self, dst: _Surf, src: _Surf, what: str, scale: float = 1.0, offset: float = 0.0) -> None:
-        """ピックアップを付ける: 面 dst の what = scale × 面 src の what + offset（同じ先・量のものは置き換える）"""
+    def add_pickup(self, dst: _Surf, src: _Surf, what: str, scale: float = 1.0, offset: float = 0.0, src_what: str | None = None) -> None:
+        """ピックアップを付ける: 面 dst の what = scale × 面 src の src_what + offset（同じ先・量のものは置き換える）。
+        what は c r t k p1〜 dn disp semi before0〜4 after0〜4（面の前・後の傾き偏心 dx dy tx ty tz）。
+        src_what を省くと what と同じ量（例: 面の後を元の面の前から引くなら what="after0", src_what="before0"）
+        """
 
     def add_solve(self, surf: _Surf, kind: str = "marginal_height", value: float = 0.0, other: _Surf | None = None, param: float = 0.0) -> None:
         """面 surf にソルブを付ける（同じ面・同じ量のものは置き換える）。kind は厚さの marginal_height（既定）・
@@ -317,7 +320,7 @@ class System:
         """
 
     def pickups(self) -> list[dict[str, Any]]:
-        """ピックアップの一覧: dst・src・what（c t k p1〜）・scale・offset の dict"""
+        """ピックアップの一覧: dst・src・what（c t k p1〜 before0〜4 after0〜4 など）・scale・offset の dict。元の量が what と違えば src_what も"""
 
     @property
     def primary(self) -> int:

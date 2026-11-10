@@ -39,7 +39,8 @@ j = s.trace(2, px, py, wavelengths=[1], pol=True)["jones"]       # (光線, 2, 2
   値は `s.surface(4)` の dict と同じ名前: type comment t c r k asph cx material coating semi ignore aperture cb cb_order focal jones dn disp）、
   `s.set_surface(j, ...)`、`s.delete_surface(j)`（外したピックアップ・ソルブの説明を返す）、`s.set_surface_type(j, "COORDBRK")`、
   `s.set_material(j, "MIRROR")`、`s.set_stop(j)`、`s.add_glass_catalogs(["SCHOTT"], dirs=[...])`。
-  ピックアップ `s.add_pickup(dst, src, "c", scale=-1)`・`remove_pickup`・`pickups()`、厚さのソルブ `s.add_solve(j, height=0)`・
+  ピックアップ `s.add_pickup(dst, src, "c", scale=-1)`（面の前・後の傾き偏心も `"before0"`〜`"before4"`・`"after0"`〜`"after4"` で。
+  面の後を元の面の前から引くなら `src_what="before0"`）・`remove_pickup`・`pickups()`、厚さのソルブ `s.add_solve(j, height=0)`・
   `remove_solve`・`solves()`。多重構成の表 `s.set_config_count(3)`・`s.set_config_row("5.t", [10, 12, 14])`・`s.config(2)`（新しい系）・
   `s.set_config(2)`・`s.configs()`。どの編集も失敗すれば系は元のまま。編集の後はピックアップとソルブを解き直し、面番号は付け替える
 - 光路長の微分: `trace(..., grad=["3.t", "objx"])` で `grad`（(波長, 光線, パラメータ)）

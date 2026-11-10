@@ -1743,7 +1743,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。面の後の傾き偏心のピックアップの元としてだけ使う",
+          "description": "面の前の傾き偏心の値 i（0〜4 = dx dy tx ty tz）。ピックアップの元にも先にもなる（座標ブレークの面は [`PickKind::Parm`]）",
           "properties": {
             "Before": {
               "format": "uint8",

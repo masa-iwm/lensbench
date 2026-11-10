@@ -261,6 +261,53 @@ fn pickups_follow_and_renumber() {
     assert!(s.delete_surface(s.image()).is_err());
 }
 
+/// 面の前の傾き偏心（before0〜4）をピックアップの先にできる（倍率つき）。先に傾き偏心がなければ作り、
+/// 面の後は「前を戻す」になる。パラメータで元を動かすと先も動き、微分の連鎖にも入る
+#[test]
+fn pickup_before_tilt() {
+    let mut s = empty();
+    s.insert_surface(2, surf(5.0)).unwrap();
+    s.insert_surface(3, surf(40.0)).unwrap();
+    // 元に値がないうちは先に作らない
+    for i in 0..5u8 {
+        s.add_pickup(Pickup::new(3, 2, PickKind::Before(i), -1.0, 0.0))
+            .unwrap();
+    }
+    assert!(s.surfaces[3].before.is_none());
+    s.set_param(Param::new(2, Kind::Dx), 0.01).unwrap();
+    s.set_param(Param::new(2, Kind::Ty), 0.5).unwrap();
+    let b = s.surfaces[3].before.unwrap();
+    assert_eq!(b.d, [-0.01, 0.0, 0.0, -0.5, 0.0]);
+    assert_eq!(s.surfaces[3].after, lensbench_core::surface::After::Reverse);
+    // with_params（元の系は変わらない）
+    let t = s
+        .with_params(&[
+            (Param::new(2, Kind::Dy), 0.02),
+            (Param::new(2, Kind::Tz), 1.0),
+        ])
+        .unwrap();
+    assert_eq!(
+        t.surfaces[3].before.unwrap().d,
+        [-0.01, -0.02, 0.0, -0.5, -1.0]
+    );
+    assert_eq!(s.surfaces[3].before.unwrap().d[1], 0.0);
+    // 先のパラメータはピックアップで決まる
+    assert!(s.pickup_of(Param::new(3, Kind::Dx)).is_some());
+    // 後の傾き偏心（after）も先にできる（面 4 の後 = 面 2 の前）
+    s.insert_surface(4, surf(10.0)).unwrap();
+    s.add_pickup(Pickup {
+        from: Some(PickKind::Before(0)),
+        ..Pickup::new(4, 2, PickKind::After(0), 1.0, 0.0)
+    })
+    .unwrap();
+    s.set_param(Param::new(2, Kind::Dx), 0.03).unwrap();
+    assert_eq!(s.surfaces[3].before.unwrap().d[0], -0.03);
+    match s.surfaces[4].after {
+        lensbench_core::surface::After::Tilt(t) => assert_eq!(t.d[0], 0.03),
+        a => panic!("{a:?}"),
+    }
+}
+
 /// 面の種類: 座標ブレークにすると材料・曲率が消え、媒質は前を引き継ぐ。戻すと材料（空気）から作る
 #[test]
 fn surface_type_change() {

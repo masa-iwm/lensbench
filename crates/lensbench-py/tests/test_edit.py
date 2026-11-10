@@ -56,6 +56,31 @@ def test_build_singlet_and_solve():
     s.set_param(f"{back}.t", 30.0)
 
 
+def test_pickup_tilt_decenter():
+    """面の前・後の傾き偏心（before0〜4・after0〜4）をピックアップの元・先にできる（往き・戻りの展開系）"""
+    s = empty()
+    st = s.stop
+    a, b, c = st + 1, st + 2, st + 3
+    s.insert_surface(a, t=5.0)
+    s.insert_surface(b, t=5.0)
+    s.insert_surface(c, t=40.0)
+    s.set_param(f"{a}.dx", 0.01)
+    for i in range(5):
+        s.add_pickup(b, a, f"before{i}", -1.0)
+    assert s.get_param(f"{b}.dx") == -0.01
+    t = s.with_params({f"{a}.dx": 0.02, f"{a}.ty": 0.5})
+    assert t.get_param(f"{b}.dx") == -0.02 and t.get_param(f"{b}.ty") == -0.5
+    assert s.get_param(f"{b}.dx") == -0.01
+    # 先はピックアップで決まるので直接は動かせない
+    with pytest.raises(ValueError):
+        s.set_param(f"{b}.dx", 0.1)
+    # 面の後を元の面の前から引く
+    s.add_pickup(c, a, "after0", src_what="before0")
+    assert {
+        "dst": c, "src": a, "what": "after0", "scale": 1.0, "offset": 0.0, "src_what": "before0"
+    } in s.pickups()
+
+
 def test_pickup_and_delete():
     s = empty()
     st = s.stop
