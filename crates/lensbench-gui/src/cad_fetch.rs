@@ -123,7 +123,7 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         {
             return Err(format!("置き場の中身が STEP でない: {url}"));
         }
-        lensbench_core::vfs::write(&path, &lensbench_cli::cad_detail::gzip(&b))
+        lensbench_core::vfs::write(&path, lensbench_cli::cad_detail::gzip(&b))
             .map_err(|e| e.to_string())?;
         b
     };
