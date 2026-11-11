@@ -3588,12 +3588,11 @@ fn place_mechanics(
                     .ok_or_else(|| format!("{tag}: 品 {item} は機構部品でない（mech がない）"))?;
                 // URL の無い品も、共有の置き場から取ってあればキャッシュにある
                 {
-                    let f = catalog_fill::cad_cache_path(
+                    if let Some(f) = catalog_fill::cad_cache_find(
                         &catalog_fill::cad_cache_dir(),
                         item,
                         &it.cad.step,
-                    );
-                    if lensbench_core::vfs::is_file(&f) {
+                    ) {
                         step_file = f.display().to_string();
                     }
                 }

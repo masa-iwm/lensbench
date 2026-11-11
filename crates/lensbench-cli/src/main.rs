@@ -2764,7 +2764,8 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 if let Some(c) = cache {
                     let d = c.unwrap_or_else(cad::default_cache_dir);
                     for f in cad::step_files(&d)? {
-                        if f.extension().map(|x| x == "step").unwrap_or(false) {
+                        let n = f.to_string_lossy();
+                        if n.ends_with(".step") || n.ends_with(".step.gz") {
                             jobs.push((cad::store_key(&f), f, String::new()));
                         }
                     }

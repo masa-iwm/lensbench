@@ -102,6 +102,7 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
     }
     let d = lensbench_core::vfs::read(path)
         .ok()
+        .and_then(|b| gunzip(b, 512 << 20).ok())
         .and_then(|b| detail_of_step(&String::from_utf8_lossy(&b)).ok())
         .map(Arc::new);
     memo.lock().ok()?.insert(path.to_string(), d.clone());
@@ -111,4 +112,29 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 /// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
 pub fn install_detail_loader() {
     lensbench_export::detail::set_loader(load_detail);
+}
+
+/// STEP を gzip にする（キャッシュと置き場の形）
+pub fn gzip(b: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    e.write_all(b).expect("メモリへの書き込み");
+    e.finish().expect("メモリへの書き込み")
+}
+
+/// gzip なら展開する（置き場の STEP は gzip。展開して `max` バイトを超えれば Err）
+pub fn gunzip(b: Vec<u8>, max: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    if !b.starts_with(&[0x1f, 0x8b]) {
+        return Ok(b);
+    }
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(&b[..])
+        .take(max + 1)
+        .read_to_end(&mut out)
+        .map_err(|e| format!("gzip を展開できない: {e}"))?;
+    if out.len() as u64 > max {
+        return Err("gzip の中身が大きすぎる".into());
+    }
+    Ok(out)
 }

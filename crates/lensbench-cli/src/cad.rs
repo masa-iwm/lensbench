@@ -13,8 +13,10 @@ use lensbench_project::{catalog_fill, UserItem};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-/// 取るファイルの大きさの上限（STEP は 1 品あたり数 MB）
+/// 置き場とやりとりする本文の大きさの上限（受け口の上限と同じ。STEP は gzip で約 1/4 になる）
 const MAX_BYTES: u64 = 64 << 20;
+/// STEP（展開したもの）の大きさの上限。配布元の STEP には 100 MB を超えるものがある
+const MAX_STEP: u64 = 512 << 20;
 
 /// キャッシュのフォルダ（[`catalog_fill::cad_cache_dir`]。GUI は設定のフォルダの `cad` に決める）
 pub fn default_cache_dir() -> PathBuf {
@@ -101,12 +103,17 @@ pub fn fetch_item_with(
     if url.is_empty() && store.is_none() {
         return Err(format!("{name} に STEP の URL（cad.step）がない"));
     }
-    let path = cache_path(dir, name, url);
-    let cached = path.is_file();
+    let found = catalog_fill::cad_cache_find(dir, name, url);
+    let cached = found.is_some();
+    let path = found.unwrap_or_else(|| cache_path(dir, name, url));
     let mut source = Source::Cache;
     let mut store_notes = Vec::new();
     let text = if cached {
-        std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?
+        crate::cad_detail::gunzip(
+            std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?,
+            MAX_STEP,
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))?
     } else {
         let key = store_key(&path);
         let from_store = match store {
@@ -136,7 +143,7 @@ pub fn fetch_item_with(
                 step_bytes(download(url)?)?
             }
         };
-        write_cache(dir, &path, &b)?;
+        write_cache(dir, &path, &crate::cad_detail::gzip(&b))?;
         if source == Source::Vendor {
             if let Some(s) = store {
                 match s.put(&key, &b) {
@@ -168,12 +175,13 @@ pub(crate) fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), Strin
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// 置き場の鍵（キャッシュのファイル名）
+/// 置き場の鍵（キャッシュのファイル名から `.gz` を除いたもの）
 pub fn store_key(cache_file: &Path) -> String {
-    cache_file
+    let n = cache_file
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    n.strip_suffix(".gz").map(str::to_string).unwrap_or(n)
 }
 
 /// 共有の置き場（自前の HTTP の口）。`GET <url>/<鍵>` で STEP（無ければ 404）、`PUT <url>/<鍵>` で上げる。
@@ -348,21 +356,36 @@ impl Store {
         Ok(Some(b))
     }
 
-    /// 鍵で上げる（STEP・膜のモデル）
+    /// 鍵で上げる（STEP・膜のモデル）。STEP は gzip にして上げる（取るときは [`step_bytes`] が展開する）
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
         self.check_scheme()?;
         let u = self.url_of(key);
+        let is_step = key.ends_with(".step");
+        let gz;
+        let body = if is_step && !step.starts_with(&[0x1f, 0x8b]) {
+            gz = crate::cad_detail::gzip(step);
+            &gz[..]
+        } else {
+            step
+        };
+        if body.len() as u64 > MAX_BYTES {
+            return Err(format!(
+                "置き場に上げられない（{} MB 超{}）: {u}",
+                MAX_BYTES >> 20,
+                if is_step { "、gzip にしても" } else { "" }
+            ));
+        }
         let r = self
             .auth(Self::agent().put(&u))
             .header(
                 "Content-Type",
-                if key.ends_with(".step") {
-                    "application/step"
+                if is_step {
+                    "application/gzip"
                 } else {
                     "application/octet-stream"
                 },
             )
-            .send(step)
+            .send(body)
             .map_err(|e| format!("置き場に上げられない（{u}）: {e}"))?;
         let st = r.status().as_u16();
         if (200..300).contains(&st) {
@@ -456,7 +479,13 @@ pub fn step_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
                 .extension()
                 .map(|x| {
                     let x = x.to_string_lossy().to_ascii_lowercase();
-                    x == "step" || x == "stp" || x == "zip"
+                    x == "step"
+                        || x == "stp"
+                        || x == "zip"
+                        || (x == "gz"
+                            && p.to_string_lossy()
+                                .to_ascii_lowercase()
+                                .ends_with(".step.gz"))
                 })
                 .unwrap_or(false)
             {
@@ -528,10 +557,10 @@ pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
                 .by_name(&entry)
                 .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
             let mut out = Vec::new();
-            f.take(MAX_BYTES + 1)
+            f.take(MAX_STEP + 1)
                 .read_to_end(&mut out)
                 .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
-            if out.len() as u64 > MAX_BYTES {
+            if out.len() as u64 > MAX_STEP {
                 return Err(format!("{} の {entry} が大きすぎる", z.display()));
             }
             return Ok(out);
@@ -650,21 +679,22 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut b = Vec::new();
     r.body_mut()
         .as_reader()
-        .take(MAX_BYTES + 1)
+        .take(MAX_STEP + 1)
         .read_to_end(&mut b)
         .map_err(|e| format!("STEP を取れない（{url}）: {e}"))?;
-    if b.len() as u64 > MAX_BYTES {
+    if b.len() as u64 > MAX_STEP {
         return Err(format!(
             "STEP が大きすぎる（{} MB 超）: {url}",
-            MAX_BYTES >> 20
+            MAX_STEP >> 20
         ));
     }
     Ok(b)
 }
 
-/// 取った中身から STEP の文字を取り出す（zip なら中の最初の .step・.stp）。STEP でなければ Err
+/// 取った中身から STEP の文字を取り出す（gzip なら展開、zip なら中の最初の .step・.stp）。STEP でなければ Err
 /// （ログインの要るページの HTML など）
 pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
+    let b = crate::cad_detail::gunzip(b, MAX_STEP)?;
     let b = if b.starts_with(b"PK\x03\x04") {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(b))
             .map_err(|e| format!("zip を読めない: {e}"))?;
@@ -681,10 +711,10 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
             .by_name(&name)
             .map_err(|e| format!("zip の {name}: {e}"))?;
         let mut out = Vec::new();
-        f.take(MAX_BYTES + 1)
+        f.take(MAX_STEP + 1)
             .read_to_end(&mut out)
             .map_err(|e| format!("zip の {name}: {e}"))?;
-        if out.len() as u64 > MAX_BYTES {
+        if out.len() as u64 > MAX_STEP {
             return Err(format!("zip の {name} が大きすぎる"));
         }
         out
@@ -707,6 +737,27 @@ pub use crate::cad_detail::{detail_of_step, install_detail_loader, load_detail, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cache_is_gzip_and_old_step_files_are_still_found() {
+        let d = std::env::temp_dir().join(format!("lb-cad-find-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = cache_path(&d, "X1", "u");
+        assert!(p.to_string_lossy().ends_with(".step.gz"));
+        assert_eq!(store_key(&p), store_key(&p.with_extension("")));
+        assert!(store_key(&p).ends_with(".step"));
+        assert_eq!(catalog_fill::cad_cache_find(&d, "X1", "u"), None);
+        std::fs::write(p.with_extension(""), b"ISO-10303-21;").unwrap();
+        assert_eq!(
+            catalog_fill::cad_cache_find(&d, "X1", "u"),
+            Some(p.with_extension(""))
+        );
+        std::fs::write(&p, crate::cad_detail::gzip(b"ISO-10303-21;")).unwrap();
+        assert_eq!(catalog_fill::cad_cache_find(&d, "X1", "u"), Some(p.clone()));
+        let gz = std::fs::read(&p).unwrap();
+        assert_eq!(step_bytes(gz).unwrap(), b"ISO-10303-21;");
+        std::fs::remove_dir_all(&d).ok();
+    }
 
     #[test]
     fn cache_path_depends_on_item_and_url() {

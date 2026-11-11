@@ -375,7 +375,28 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         .unwrap()
         .to_string_lossy()
         .to_string();
-    assert_eq!(db.lock().unwrap().get(&key), Some(&step));
+    // キャッシュは gzip の .step.gz、置き場の鍵は .gz を除いた名前で、中身も gzip
+    let key = key
+        .strip_suffix(".gz")
+        .expect("キャッシュは .step.gz")
+        .to_string();
+    let gunzip = |b: &[u8]| {
+        let mut out = Vec::new();
+        std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(b), &mut out).unwrap();
+        out
+    };
+    let put = db
+        .lock()
+        .unwrap()
+        .get(&key)
+        .cloned()
+        .expect("置き場に上がる");
+    assert_eq!(&put[..2], &[0x1f, 0x8b]);
+    assert_eq!(gunzip(&put), step);
+    assert_eq!(
+        gunzip(&std::fs::read(v["path"].as_str().unwrap()).unwrap()),
+        step
+    );
     // 2 台目（別のキャッシュ）: 置き場から取り、配布元へは行かない
     let (ok, v, e) = run(
         &["cad-step", "--catalog", c, "--item", "CP-A"],

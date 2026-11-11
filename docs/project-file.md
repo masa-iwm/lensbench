@@ -163,11 +163,11 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `lensbench cad-step --catalog <カタログ> --item <品>`（serve の `cad_step`、GUI のカタログの詳細の「詳しい形（STEP）を取る」）で、
   その品の STEP を 1 件だけ取ってキャッシュ（`--cache`、省略で環境変数 `LENSBENCH_CAD_CACHE`、なければ Windows は
   `%APPDATA%\lensbench\cad`・ほかは `~/.cache/lensbench/cad`。GUI は設定のフォルダの `cad`）に置く。キャッシュのファイルは品の名前と
-  URL で決まり、2 回目からはキャッシュを使う（URL が変われば取り直す）。裏でまとめて取りには行かない。取った STEP は `catalog-step` と
+  URL で決まり（`<品>-<URL のハッシュ>.step.gz`、gzip の STEP。以前の `.step` も読む）、2 回目からはキャッシュを使う（URL が変われば取り直す）。裏でまとめて取りには行かない。取った STEP は `catalog-step` と
   同じ読み方で測り、簡易外形と長さ・外径が 0.05 mm より違うか、外形の形（丸・角）が違えば知らせる。取れなければ（中身が STEP で
   ない・つながらない）誤りで、品ページの URL を示す（表示は簡易外形のまま）。
   **共有の置き場**: 自前の HTTP の口（`GET <URL>/<鍵>` で STEP、無ければ 404。`PUT <URL>/<鍵>` で上げる。鍵はキャッシュの
-  ファイル名）を決めておくと、キャッシュに無い品は配布元より先に置き場を見て、配布元から取った STEP は置き場にも上げる。
+  ファイル名から `.gz` を除いたもの。STEP は gzip で上げ、取るときに展開する）を決めておくと、キャッシュに無い品は配布元より先に置き場を見て、配布元から取った STEP は置き場にも上げる。
   `cad.step` の無い品も、置き場に上げてあれば取れる。決め方は、GUI の「カタログのフォルダ」の窓の「品の STEP の置き場」、
   環境変数 `LENSBENCH_CAD_STORE`（URL）、配る版がビルドのときに組み込んだ置き場（`lensbench_cli::cad::set_default_store`）の順。
   Cloudflare Access で守った口（Cloudflare R2 を Pages Functions で返すなど）には、Access のサービストークンを GUI の
