@@ -22,3 +22,8 @@ PR を出す前の作業（調査・PC での照合など）は自動では分�
 4. 古い token を削除する。
 
 ユーザー所有の Projects は fine-grained token に対応していないので classic を使う。
+
+## apt_install.sh
+
+CI で apt の包みを入れる（`ci.yml` の gui-tour、`pages.yml`）。入っていない包みだけ入れ、apt の再試行・タイムアウトを付け、失敗したら 30 秒おいて最大 3 回、2 回目からはランナー既定のミラー（azure.archive.ubuntu.com）をやめて archive.ubuntu.com を直に使う。
+web ジョブの Playwright は `--with-deps` を使わない（Chromium の共有ライブラリはランナーの像に入っている。apt の障害で落ちないように）。
