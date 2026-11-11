@@ -8,7 +8,7 @@
 //! | `trials` | 試行の数（100）。0 なら感度だけ |
 //! | `seed` | 乱数の種（1）。同じ種なら同じ結果（スレッド数によらない） |
 //! | `dist` | 既定の分布（"normal"）: "uniform"・"normal"（範囲の端が ±2σ）・"normal:3"・"end"（端の値を半々） |
-//! | `radial` | 偏心・傾き・くさびの x・y を組にして、円の中で一様に引く（false）。隣り合う x・y の公差（同じ面・玉・群の dx と dy、tx と ty）が対象で、大きさが公差以下になる（x・y 別々では角で √2 倍まで）。組の分布は `dist` によらない |
+//! | `radial` | 偏心・傾き・くさびの x・y を組にして、円の中で引く（false）。`true`・`"uniform"` は円の中で一様、`"normal"`・`"normal:σの数"` は等方の 2 次元正規分布を円で切ったもの（σ = 公差 / σの数、既定 2）。隣り合う x・y の公差（同じ面・玉・群の dx と dy、tx と ty）が対象で、大きさが公差以下になる（x・y 別々では角で √2 倍まで）。組の分布は `dist` によらない |
 //! | `preset` | 玉の既定の公差の組: "commercial"（一般）・"precision"（精密）・"high"（高精度）・"none" |
 //! | `catalog` | カタログの玉（プロジェクトのレンズカタログのブロック）はカタログの玉の公差（[`catalog_lens_tol`]、`catalog_tols`）を既定にする（true） |
 //! | `catalog_tols` | メーカーごとの公差 {"メーカー": {玉の公差と外径・焦点距離の条件つきの rules}}（[`catalog_rule`]。名前は大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほか） |
@@ -569,9 +569,25 @@ pub fn spec_from_json(
     match get("radial") {
         None | Some(Value::Bool(false)) => {}
         Some(Value::Bool(true)) => {
-            tolerance::pair_disc(&mut tols);
+            tolerance::pair_disc(&mut tols, None);
         }
-        Some(x) => return Err(format!("radial は true・false（{x}）")),
+        Some(Value::String(r)) => {
+            let normal = match Dist::parse(r) {
+                Ok(Dist::Uniform) => None,
+                Ok(Dist::Normal { cut }) => Some(cut),
+                _ => {
+                    return Err(format!(
+                        "radial は true・false・uniform・normal・normal:σの数（{r}）"
+                    ))
+                }
+            };
+            tolerance::pair_disc(&mut tols, normal);
+        }
+        Some(x) => {
+            return Err(format!(
+                "radial は true・false・uniform・normal・normal:σの数（{x}）"
+            ))
+        }
     }
     let mut spec = McSpec::new(p, tols);
     if let Some(x) = get("trials") {

@@ -779,7 +779,9 @@ trials が整数でない	trials is not an integer
 フィルター	Filter
 プリズム	Prism
 その他	Other
-偏心・傾き・くさびは x・y を組にして円の中で一様に（大きさが公差以下）	Pair x/y of decenters, tilts and wedges, uniform within a circle (magnitude at most the tolerance)
+偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）	Pair x/y of decenters, tilts and wedges within a circle (magnitude at most the tolerance)
+正規（半径 2σ）	Normal (radius 2σ)
+等方の 2 次元正規分布を円で切ったもの。半径 2σ の中は 86%	Isotropic 2D normal truncated at the circle; 86% fall within 2σ
 透過軸	Transmission axis
 消光比	Extinction
 0 は無限（直交の向きを通さない）	0 means infinite (blocks the orthogonal direction)
