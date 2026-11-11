@@ -326,30 +326,13 @@ impl Step {
     /// 辺（EDGE_CURVE）で半周以上を回る円（CIRCLE）の実体。同じ円（中心・軸・半径）を分けて描いた辺は回る角を
     /// 足す。光軸を決めるのに使う（ロッドの穴の周りの溝のような、半径の大きい短い弧を除く）
     fn big_arcs(&self) -> HashSet<u64> {
-        let key = |c: V3, z: V3, r: f64| {
-            let q = |x: f64| (x * 1e4).round() as i64;
-            let s = if z
-                .iter()
-                .fold(0.0, |a: f64, b| if b.abs() > a.abs() { *b } else { a })
-                < 0.0
-            {
-                -1.0
-            } else {
-                1.0
-            };
-            (
-                q(c[0]),
-                q(c[1]),
-                q(c[2]),
-                q(s * z[0]),
-                q(s * z[1]),
-                q(s * z[2]),
-                q(r),
-            )
-        };
-        let mut sweep: HashMap<_, f64> = HashMap::new();
-        let mut ids: Vec<(u64, _)> = Vec::new();
-        for parts in self.ents.values() {
+        // 同じ円の弧の組（中心・軸・半径）。中心は半径の 1% まで、半径は 0.1% まで違ってよい（分けて描いた弧の
+        // 中心が丸めでずれる STEP がある）
+        let mut groups: Vec<(V3, V3, f64, f64)> = Vec::new();
+        let mut ids: Vec<(u64, usize)> = Vec::new();
+        let mut keys: Vec<u64> = self.ents.keys().copied().collect();
+        keys.sort_unstable();
+        for parts in keys.iter().map(|k| &self.ents[k]) {
             let Some(a) = parts
                 .iter()
                 .find(|(n, _)| n == "EDGE_CURVE")
@@ -393,12 +376,22 @@ impl Step {
             } else {
                 (ang(p1) - ang(p2)).rem_euclid(tau)
             };
-            let k = key(c, z, r);
-            *sweep.entry(k).or_default() += w;
-            ids.push((cid, k));
+            let g = match groups.iter().position(|g| {
+                dot(g.1, z).abs() > 0.999
+                    && (g.2 - r).abs() <= 1e-3 * r
+                    && dot(sub(g.0, c), sub(g.0, c)).sqrt() <= 1e-2 * r
+            }) {
+                Some(i) => i,
+                None => {
+                    groups.push((c, z, r, 0.0));
+                    groups.len() - 1
+                }
+            };
+            groups[g].3 += w;
+            ids.push((cid, g));
         }
         ids.into_iter()
-            .filter(|(_, k)| sweep[k] >= 0.99 * std::f64::consts::PI)
+            .filter(|(_, g)| groups[*g].3 >= 0.99 * std::f64::consts::PI)
             .map(|(id, _)| id)
             .collect()
     }
@@ -849,6 +842,9 @@ use crate::catalog_fill::RetainingRing;
 /// ケージのロッドの間隔の規格 [mm]（16・30・60 は Thorlabs、26.87 は Edmund の 25・30 mm のケージ（ロッドの円の
 /// 直径 38 mm））
 const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
+
+/// 端のねじとする最短の長さ [mm]（ねじの径の浅い座ぐり・刻印などを除く）
+const MIN_THREAD_MM: f64 = 0.5;
 
 /// ケージのロッドの間隔の規格に合わない組を使うときの、ロッドの穴の数
 const ROD_HOLES: usize = 4;
@@ -1527,6 +1523,9 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                         }
                         reach = next;
                     }
+                    if sc(reach) < MIN_THREAD_MM {
+                        return None;
+                    }
                     return Some(crate::ThreadEnd {
                         thread: t.name.to_string(),
                         male: true,
@@ -1548,6 +1547,24 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                         .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
                 })?;
                 let t = thread_of(nearest.0, true)?;
+                // ねじの奥: 同じねじの径の内壁が続く範囲（別の立体の短い輪が同じ径の内壁を持っていても、本体の
+                // 長い内壁まで。面をたどる順によらない）
+                let mut reach = far(nearest.1);
+                loop {
+                    let next = keep
+                        .iter()
+                        .flat_map(|x| x.walls.iter())
+                        .filter(|w| {
+                            thread_of(w.0, true).is_some_and(|u| u.name == t.name)
+                                && dist(w.1) <= reach + eps
+                        })
+                        .map(|w| far(w.1))
+                        .fold(reach, f64::max);
+                    if next <= reach + eps {
+                        break;
+                    }
+                    reach = next;
+                }
                 // ねじの長さは面取りも含める（端から 1 mm 以内の面取りは端まで）
                 let total = all1 - all0;
                 let start = if dist(nearest.1) <= tol {
@@ -1555,21 +1572,19 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 } else {
                     dist(nearest.1)
                 };
-                let stop = if total - far(nearest.1) <= tol {
-                    total
-                } else {
-                    far(nearest.1)
-                };
-                (dist(nearest.1) < 0.5 * total).then(|| crate::ThreadEnd {
-                    thread: t.name.to_string(),
-                    male: false,
-                    length: sc(stop - start),
-                    // 1 mm 以内は面取り（オスの肩は端の面に当たる）
-                    recess: if dist(nearest.1) <= tol {
-                        0.0
-                    } else {
-                        sc(dist(nearest.1))
-                    },
+                let stop = if total - reach <= tol { total } else { reach };
+                (dist(nearest.1) < 0.5 * total && sc(stop - start) >= MIN_THREAD_MM).then(|| {
+                    crate::ThreadEnd {
+                        thread: t.name.to_string(),
+                        male: false,
+                        length: sc(stop - start),
+                        // 1 mm 以内は面取り（オスの肩は端の面に当たる）
+                        recess: if dist(nearest.1) <= tol {
+                            0.0
+                        } else {
+                            sc(dist(nearest.1))
+                        },
+                    }
                 })
             };
             let front_thread = end_thread(all0);
@@ -2322,6 +2337,37 @@ mod tests {
                 .unwrap();
             assert_eq!(f.rod_spacing, 30.0, "{f:?}");
             h.rotate_left(1);
+        }
+    }
+
+    /// メスのねじの長さは、同じ径の内壁が端から続くところまで（短い輪の内壁と本体の長い内壁が同じ径でも、面の並びに
+    /// よらず本体の長さ）
+    #[test]
+    fn female_thread_reaches_the_longest_wall() {
+        for order in [false, true] {
+            let mut f = vec![
+                (0.0, 0.0, 0.0, 26.0, 16.637, false),
+                (0.0, 0.0, 17.3, 26.0, 12.0, true),
+            ];
+            let walls = [
+                (0.0, 0.0, 0.0, 3.81, 13.1445, true),
+                (0.0, 0.0, 0.0, 17.3, 13.1445, true),
+            ];
+            if order {
+                f.extend(walls.iter().rev());
+            } else {
+                f.extend(walls);
+            }
+            let m = crate::catalog_fill::read_step(&solid(&f))
+                .unwrap()
+                .frame
+                .unwrap();
+            let t = m.front_thread.clone().unwrap();
+            assert_eq!(
+                (t.thread.as_str(), t.male, t.length),
+                ("SM1", false, 17.3),
+                "{order}: {m:?}"
+            );
         }
     }
 }
