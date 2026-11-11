@@ -933,6 +933,8 @@ fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
 /// 2. 座: 長さ 0.5 mm 以上で、となりにそれより細い穴（径の 0.75 倍以上で、0.2〜6 mm 細い。素子が当たる肩）がある
 ///    区間。複数なら最も細いもの。両隣より太い 1 mm 未満の溝（止め輪の溝など）は除いてから探す
 /// 3. 最も長い穴（同じ径の区間の長さの和）
+///
+/// 2・3 で選んだ穴が素子を入れないねじ（C マウントなど）なら、そのねじの名前も返す
 fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
     let len = |b: &crate::BoreSpec| b.z1 - b.z0;
     let by_len = |a: &&(f64, f64), b: &&(f64, f64)| {
@@ -975,8 +977,13 @@ fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
         })
         .map(|i| bs[i].diameter)
         .fold(f64::INFINITY, f64::min);
+    // 素子を入れないねじ（C マウントなど）の穴なら、径はそのままでねじの名前を付ける
+    let named = |d: f64| {
+        let t = thread_fits(d, true, &|_| false).filter(|t| t.holds <= 0.0);
+        (t.map_or_else(String::new, |t| t.name.to_string()), d)
+    };
     if seat.is_finite() {
-        return (String::new(), seat);
+        return named(seat);
     }
     let mut runs: Vec<(f64, f64)> = Vec::new();
     for b in bores {
@@ -985,10 +992,7 @@ fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
             None => runs.push((b.diameter, len(b))),
         }
     }
-    (
-        String::new(),
-        runs.iter().max_by(by_len).map_or(0.0, |r| r.0),
-    )
+    named(runs.iter().max_by(by_len).map_or(0.0, |r| r.0))
 }
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
@@ -2434,5 +2438,8 @@ mod tests {
         // となりが細すぎる（0.75 倍未満）なら座ではなく、最も長い穴
         let r = super::pick_hold(&[b(0.0, 2.0, 20.0), b(2.0, 10.0, 8.0)]);
         assert_eq!((r.0.as_str(), r.1), ("", 8.0));
+        // 素子を入れないねじ（C マウントのメス）の穴は、径はそのままでねじの名前を付ける
+        let r = super::pick_hold(&[b(0.0, 9.525, 24.5364)]);
+        assert_eq!((r.0.as_str(), r.1), ("C-Mount", 24.5364));
     }
 }
