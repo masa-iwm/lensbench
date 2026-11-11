@@ -534,7 +534,8 @@ fn run_end(b: &Block, j: usize) -> usize {
     k
 }
 
-pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
+/// 返す Ui は設定の欄（ブロックの設定はパネルの側でここに描く）
+pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let accent = ui.visuals().selection.stroke.color;
@@ -769,12 +770,14 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
     let mut clicked_any = false;
     let sel_block = st.sel.clone();
     let row_h = 20.0;
-    // 幅が足りなければ横に流す
-    // 表は上の半分ほど、下に選んだ面の設定
-    let table_h = (ui.available_height() * 0.5).max(120.0);
+    // 表と選んだ面の設定に残りを分ける（パネルが低くても設定の欄が押し出されないように。
+    // 横に広く低いパネルでは左右に並べる。境はドラッグで動かせる）
+    let (mut top, bottom) = crate::split::two(ui, "lens_data", (0.5, 0.55), 90.0);
+    // 幅が足りなければ横に流す（見出しと横のスクロールバーの分を引く）
+    let table_h = (top.available_height() - 22.0 - 14.0).max(20.0);
     egui::ScrollArea::horizontal()
         .id_salt("lens_data_h")
-        .show(ui, |ui| {
+        .show(&mut top, |ui| {
             // 文字を選べるラベルはクリックを取ってしまう（セルの空き・行のクリックが行に届かない）
             ui.style_mut().interaction.selectable_labels = false;
             let mut table = TableBuilder::new(ui)
@@ -1250,7 +1253,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
         st.active = true;
     }
     // 選んだ面の設定（たたんだブロックの行・ブロックだけを選んだときは、ブロックの設定をパネルの側で）
-    ui.separator();
+    let mut bottom = bottom;
     st.block_view = None;
     match st.cur.map(|x| x.0).filter(|&j| j < c.rows.len()) {
         Some(j) if folded(j).is_none() => {
@@ -1264,7 +1267,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
             egui::ScrollArea::vertical()
                 .id_salt("surf_edit")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
+                .show(&mut bottom, |ui| {
                     acts.extend(crate::surf_edit::ui(ui, &mut st.insp, j, ro, c.combo));
                 });
         }
@@ -1274,13 +1277,13 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> Vec<Act> {
         None => match st.sel.clone() {
             Some(b) => st.block_view = Some(b),
             None => {
-                ui.weak(tr(
+                bottom.weak(tr(
                     "面かブロックを選ぶと、その設定をここで変えられます（ブロックはダブルクリック・Enter で中へ、マウスの戻るボタン・Backspace で外へ）。",
                 ));
             }
         },
     }
-    acts
+    (acts, bottom)
 }
 
 #[cfg(test)]

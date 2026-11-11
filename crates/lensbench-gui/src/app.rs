@@ -25,6 +25,7 @@ use crate::lens_data;
 use crate::open_sysset;
 use crate::palette::{Item, Palette};
 use crate::plots::{self, SpotRays, SysInfo};
+use crate::split;
 use crate::theme::{self, Look, Mode};
 use crate::tour::{Args, Step, Tour};
 use crate::worker::{Done, Tag, Worker};
@@ -1871,6 +1872,8 @@ impl Core {
     /// 組合せのレイアウト図と要素の操作
     fn layout_ui(&mut self, ui: &mut Ui) {
         let is_combo = self.is_combo();
+        // 開いた系の図の下の欄（図と分けたとき）
+        let mut below: Option<Ui> = None;
         let accent = theme::accent(&self.s.look);
         if self.file.is_some() {
             let mut changed = false;
@@ -1944,13 +1947,26 @@ impl Core {
             });
             // 開いている系のレイアウト図（組合せと同じ描き方）
             // 組合せの要素のパレット・図はその下に
+            // 図と下の組合せの欄に残りを分ける（パネルが低くても下が押し出されないように）
             if let Some(d) = &self.layout_data {
-                let h = (ui.available_height() * 0.55).max(160.0);
+                let (mut top, b) = split::two(ui, "open_layout", (0.55, 0.55), 80.0);
+                let h = top.available_height();
                 let hl = self.ld.cur.map(|x| x.0);
-                combo::view_only(ui, d, h, accent, Some(egui::Id::new("open_layout_nav")), hl);
-                ui.separator();
+                combo::view_only(
+                    &mut top,
+                    d,
+                    h,
+                    accent,
+                    Some(egui::Id::new("open_layout_nav")),
+                    hl,
+                );
+                below = Some(b);
             }
         }
+        let ui = match below.as_mut() {
+            Some(b) => b,
+            None => ui,
+        };
         let data = if is_combo {
             self.layout_data.as_ref()
         } else {
@@ -2099,7 +2115,7 @@ impl Core {
             });
         }
         self.ld.tree = self.s.ld_tree;
-        let acts = lens_data::ui(ui, &mut self.ld, &ctx);
+        let (acts, mut bottom) = lens_data::ui(ui, &mut self.ld, &ctx);
         self.s.ld_tree = self.ld.tree;
         for a in acts {
             match a {
@@ -2179,7 +2195,7 @@ impl Core {
             egui::ScrollArea::vertical()
                 .id_salt("block_edit")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
+                .show(&mut bottom, |ui| {
                     if let Some(name) = &view {
                         if is_combo {
                             match ids.iter().position(|i| i == name) {
@@ -3341,13 +3357,24 @@ impl Core {
             result_export_menu(ui, &r.cmd, v);
         });
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
+        // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
         if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
-            plots::mtf(ui, v, r.prev.as_ref(), id);
+            egui::ScrollArea::vertical()
+                .id_salt(("fig", id))
+                .auto_shrink([false, false])
+                .show(ui, |ui| plots::mtf(ui, v, r.prev.as_ref(), id));
             return;
         }
         // スポット以外の図（描けない結果なら表）
-        if fig && r.cmd != "spot" && figures::show(ui, id, &r.cmd, v, r.prev.as_ref()) {
-            return;
+        if fig && r.cmd != "spot" {
+            let shown = egui::ScrollArea::vertical()
+                .id_salt(("fig", id))
+                .auto_shrink([false, false])
+                .show(ui, |ui| figures::show(ui, id, &r.cmd, v, r.prev.as_ref()))
+                .inner;
+            if shown {
+                return;
+            }
         }
         egui::ScrollArea::both()
             .id_salt(("res", id))

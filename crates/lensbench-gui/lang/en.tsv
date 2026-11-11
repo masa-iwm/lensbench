@@ -1182,6 +1182,7 @@ Client ID	Client ID
 Client Secret	Client Secret
 品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。	When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable.
 空のときは、この版に組み込んだ置き場を使います。	When empty, the store built into this edition is used.
+ドラッグで大きさを変える（ダブルクリックで元に戻す）	Drag to resize (double-click to reset)
 置き場にこの品の STEP がありません（アプリ版で取ると置き場に上がります）	This item's STEP is not in the store (fetching it in the desktop app uploads it)
 置き場がありません	No store is set
 結果を保存…	Save results…
