@@ -9,6 +9,7 @@
 use egui::{RichText, Ui};
 use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
 use crate::catalog::LensRow;
