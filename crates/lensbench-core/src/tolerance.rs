@@ -443,19 +443,17 @@ impl Rng {
         let a = std::f64::consts::TAU * self.uniform();
         (r * a.cos(), r * a.sin())
     }
-    /// 単位円の中の点を、normal が None なら一様に、Some(cut) なら半径 1 が cut σ の等方の 2 次元正規分布で
-    /// （円の外は引き直す。cut が小さくても 1 回で入る確率は 1 − exp(−cut²/2)）
+    /// 単位円の中の点を、normal が None なら一様に、Some(cut) なら半径 1 が cut σ の等方の 2 次元正規分布を円で切ったもので。
+    /// 半径は切った分布の逆関数で引く（r²/σ² は平均 2 の指数分布: r² = −2σ² ln(1 − u (1 − e^{−cut²/2}))）、方位は一様
     pub fn disc_dist(&mut self, normal: Option<f64>) -> (f64, f64) {
         let Some(cut) = normal else {
             return self.disc();
         };
-        for _ in 0..1000 {
-            let (x, y) = (self.normal(), self.normal());
-            if x * x + y * y <= cut * cut {
-                return (x / cut, y / cut);
-            }
-        }
-        (0.0, 0.0)
+        let u = self.uniform();
+        let p = -(-0.5 * cut * cut).exp_m1(); // 1 − e^{−cut²/2}
+        let r = ((-2.0 * (-u * p).ln_1p()).sqrt() / cut).min(1.0);
+        let a = std::f64::consts::TAU * self.uniform();
+        (r * a.cos(), r * a.sin())
     }
     /// 分布 d で [lo, hi] のずれを引く
     pub fn draw(&mut self, d: Dist, lo: f64, hi: f64) -> f64 {
@@ -784,7 +782,7 @@ pub struct GroupTol {
 ///
 /// - 玉（[`System::lens_units`] で作った lens1 …）ごとに lens(名前) の組。名前は、同じ範囲のブロック・群の玉・群が
 ///   あればその名前（ブロックの id）、なければ lens1 …。None の玉は公差を作らない
-/// - 玉でない玉・群（群・複数の玉のブロック）は group(名前) の組（None なら作らない）
+/// - 群・ブロックは group(名前) の組（None なら作らない）。玉 1 つのブロックでは、玉の組とは別に足す（組立の公差）
 ///
 /// 分布はすべて dist。ピックアップで決まるパラメータ・変えられないパラメータは除く
 pub fn simple(
@@ -944,40 +942,44 @@ pub fn simple(
     }
     for u in 0..s.units.len() {
         let unit = &s.units[u];
-        if unit.auto
-            || s.units.iter().any(|v| v.auto && v.spans == unit.spans)
-            || links.iter().any(|l| l.unit == u)
-        {
+        if unit.auto {
             continue;
         }
         let Some(g) = group(&unit.name) else { continue };
-        let n = &unit.name;
+        // 玉 1 つのブロック（往復する玉も）は玉の公差の偏心・傾きと別に足す（組立の公差）。名前は「群の」を付けて分ける
+        let is_lens = s.units.iter().any(|v| v.auto && v.spans == unit.spans)
+            || links.iter().any(|l| l.unit == u);
+        let n = if is_lens {
+            format!("{} 群の", unit.name)
+        } else {
+            format!("{} ", unit.name)
+        };
         push(
-            format!("{n} 偏心x"),
+            format!("{n}偏心x"),
             one(Param::unit(u, UnitKind::Dx)),
             g.decenter,
             false,
         );
         push(
-            format!("{n} 偏心y"),
+            format!("{n}偏心y"),
             one(Param::unit(u, UnitKind::Dy)),
             g.decenter,
             false,
         );
         push(
-            format!("{n} 傾きx"),
+            format!("{n}傾きx"),
             one(Param::unit(u, UnitKind::Tx)),
             g.tilt,
             false,
         );
         push(
-            format!("{n} 傾きy"),
+            format!("{n}傾きy"),
             one(Param::unit(u, UnitKind::Ty)),
             g.tilt,
             false,
         );
         push(
-            format!("{n} 移動"),
+            format!("{n}移動"),
             one(Param::unit(u, UnitKind::Shift)),
             g.shift,
             false,

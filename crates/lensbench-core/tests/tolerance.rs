@@ -308,6 +308,17 @@ fn disc_normal_pairs() {
     let e = (-2.0f64).exp();
     let er2 = 0.25 * 2.0 * (1.0 - 2.0 * e / (1.0 - e));
     assert!((vx + vy - er2).abs() < 0.01, "{} {er2}", vx + vy);
+    // cut が小さくても偏らない（cut → 0 で円の中の一様、E[r²] → 1/2）
+    let mut rng = Rng::for_trial(2, 0);
+    let m2: f64 = (0..20000)
+        .map(|_| {
+            let (x, y) = rng.disc_dist(Some(0.05));
+            assert!(x * x + y * y <= 1.0);
+            x * x + y * y
+        })
+        .sum::<f64>()
+        / 20000.0;
+    assert!((m2 - 0.5).abs() < 0.01, "{m2}");
     // 1 つだけ引くときも範囲の中
     let mut rng = Rng::for_trial(1, 0);
     for _ in 0..1000 {
