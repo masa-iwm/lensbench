@@ -986,11 +986,6 @@ fn click_to(st: &mut LensData, j: usize, col: Col, shift: bool, keep: bool) {
     }
 }
 
-/// Shift だけを押した貼り付け（Windows の egui は Shift+Insert を貼り付けにする）。表では「前に面を挿入」に使う
-fn shift_insert_paste(m: egui::Modifiers) -> bool {
-    m.shift && !m.command && !m.ctrl && !m.alt
-}
-
 /// 面 at に面を足したとき（after なら面 at−1 の後に、そうでなければ面 at の前に）、ブロック scope（と外のブロック）が
 /// at から始まる・at−1 で終わるなら、足した面も含める範囲にする（serve の edit の set_unit。insert_surface の後に当てる）
 fn grow_blocks(blocks: &[Block], scope: Option<usize>, at: usize, after: bool) -> Vec<Value> {
@@ -1288,7 +1283,7 @@ fn row_menu(
     if !combo {
         ui.separator();
         m.insert = ui.button(tr("後に面を挿入（Insert）")).clicked();
-        m.insert_before = ui.button(tr("前に面を挿入（Shift+Insert）")).clicked();
+        m.insert_before = ui.button(tr("前に面を挿入（Alt+Insert）")).clicked();
         m.insert |= m.insert_before;
         m.delete = ui
             .add_enabled(
@@ -1732,7 +1727,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut enter: Option<String> = None;
     let (mut ins_btn, mut del_btn) = (false, false);
     let mut export_btn = false;
-    // 挿入は今の面の後（Insert）。前は Shift+Insert・右クリックの「前に」
+    // 挿入は今の面の後（Insert）。前は Alt+Insert・右クリックの「前に」
     let mut ins_before = false;
     let full = ui.available_rect_before_wrap();
     ui.allocate_rect(full, Sense::hover());
@@ -1951,7 +1946,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         // 面の挿入・削除（開いた系だけ。Insert・Delete キー・右クリックでも）
         if !c.combo {
             ins_btn |= icon(ui, "＋", false)
-                .on_hover_text(tr("選んだ行の後に面を挿入（Insert。前は Shift+Insert）"))
+                .on_hover_text(tr("選んだ行の後に面を挿入（Insert。前は Alt+Insert）"))
                 .clicked();
             del_btn |= icon(ui, "－", false)
                 .on_hover_text(tr("選んだ面を消す（Delete）"))
@@ -2604,8 +2599,8 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 st.kbd_menu = Some((j, col, pos, false));
             }
         }
-        // Insert は後に、Shift+Insert は前に。Shift は押したときの修飾キーで見る（同じフレームで離しても）。
-        // Windows の egui は Shift+Insert を貼り付けにする（クリップボードが空なら何も来ない）ので、Shift だけの貼り付けも前に挿入
+        // Insert は後に、Alt+Insert は前に。修飾キーは押したときので見る（同じフレームで離しても）。
+        // Shift+Insert は Windows の貼り付け（egui も貼り付けにする）なので挿入に使わない
         let (ins_k, ins_shift, del_k) = ui.input(|i| {
             let (mut k, mut sh) = (false, false);
             for e in &i.events {
@@ -2615,13 +2610,9 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                         pressed: true,
                         modifiers,
                         ..
-                    } => {
+                    } if !modifiers.shift => {
                         k = true;
-                        sh |= modifiers.shift;
-                    }
-                    egui::Event::Paste(_) if shift_insert_paste(i.modifiers) => {
-                        k = true;
-                        sh = true;
+                        sh |= modifiers.alt;
                     }
                     _ => {}
                 }
@@ -2653,7 +2644,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 .iter()
                 .any(|e| matches!(e, egui::Event::Copy | egui::Event::Cut));
             let paste = i.events.iter().find_map(|e| match e {
-                egui::Event::Paste(t) if !shift_insert_paste(i.modifiers) => Some(t.clone()),
+                egui::Event::Paste(t) => Some(t.clone()),
                 _ => None,
             });
             (copy, paste)

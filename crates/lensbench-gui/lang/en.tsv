@@ -539,7 +539,7 @@ OPD の基準 (ROPD)	OPD reference (ROPD)
 組合せの設定（組合せの系を作ると使われる）	Combination settings (used when a combination is built)
 膜ファイル	Coating file
 読み込み中…	Loading…
-選んだ行の後に面を挿入（Insert。前は Shift+Insert）	Insert a surface after the selected row (Insert; Shift+Insert inserts before)
+選んだ行の後に面を挿入（Insert。前は Alt+Insert）	Insert a surface after the selected row (Insert; Alt+Insert inserts before)
 選んだ面を消す（Delete）	Delete the selected surface (Delete)
 開いている系の設定です。変えた値は系に入り、「系ファイルに保存…」で残せます。	Settings of the open system. Changes go into the system; keep them with "Save system file…".
 範囲に .zmx の絞りの面が無い	The range has no .zmx stop surface
@@ -1247,7 +1247,7 @@ y⁸ の係数	y⁸ coeff
 円柱フレネル	Cylinder Fresnel
 利用者定義	User defined
 後に面を挿入（Insert）	Insert surface after (Insert)
-前に面を挿入（Shift+Insert）	Insert surface before (Shift+Insert)
+前に面を挿入（Alt+Insert）	Insert surface before (Alt+Insert)
 右クリック・Shift+F10 で絞り・無視・挿入・削除、ダブルクリックで詳細設定	Right-click or Shift+F10 for stop, ignore, insert, delete; double-click for details
 合う面タイプが無い	No matching surface type
 回転半径	Radius of rotation
