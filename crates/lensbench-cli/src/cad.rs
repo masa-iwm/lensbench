@@ -188,7 +188,7 @@ pub fn store_key(cache_file: &Path) -> String {
 /// 共有の置き場（自前の HTTP の口）。`GET <url>/<鍵>` で STEP（無ければ 404）、`PUT <url>/<鍵>` で上げる。
 /// Cloudflare Access で守った口には、サービストークン（`id`・`secret`）を `CF-Access-Client-Id`・
 /// `CF-Access-Client-Secret` の見出しで渡す
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Store {
     /// 口の URL（例 `https://example.pages.dev/cad`）
     pub url: String,
@@ -243,12 +243,38 @@ pub fn has_default_store() -> bool {
         .is_some()
 }
 
+// secret を出さない
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Store")
+            .field("url", &self.url)
+            .field("id", &self.id)
+            .field("secret", &if self.secret.is_empty() { "" } else { "***" })
+            .finish()
+    }
+}
+
 impl Store {
+    /// トークンを送るのは https の口だけ（試験の手元の口 http://127.0.0.1・localhost は許す）
+    fn check_scheme(&self) -> Result<(), String> {
+        let u = self.url.trim();
+        if self.id.trim().is_empty()
+            || u.starts_with("https://")
+            || u.starts_with("http://127.0.0.1")
+            || u.starts_with("http://localhost")
+        {
+            Ok(())
+        } else {
+            Err(format!("トークンを送る置き場は https だけ: {u}"))
+        }
+    }
+
     fn url_of(&self, key: &str) -> String {
         let k: String = key
             .chars()
             .map(|c| match c {
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' => c.to_string(),
+                // + はそのまま（受け口が道をデコードしなくても鍵の形に合う）
+                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '+' => c.to_string(),
                 c => {
                     let mut b = [0u8; 4];
                     c.encode_utf8(&mut b)
@@ -294,6 +320,7 @@ impl Store {
 
     /// 鍵の STEP（無ければ Ok(None)）
     pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        self.check_scheme()?;
         let u = self.url_of(key);
         let mut r = self
             .auth(Self::agent().get(&u))
@@ -322,6 +349,7 @@ impl Store {
 
     /// 鍵で STEP を上げる
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
+        self.check_scheme()?;
         let u = self.url_of(key);
         let r = self
             .auth(Self::agent().put(&u))
@@ -338,6 +366,7 @@ impl Store {
 
     /// 鍵があるか（HEAD）
     pub fn has(&self, key: &str) -> Result<bool, String> {
+        self.check_scheme()?;
         let u = self.url_of(key);
         let r = self
             .auth(Self::agent().head(&u))
@@ -725,10 +754,31 @@ mod tests {
             url: "https://x.example/cad/".into(),
             ..Default::default()
         };
-        assert_eq!(
-            s.url_of("A+B-0123.step"),
-            "https://x.example/cad/A%2BB-0123.step"
-        );
+        assert_eq!(s.url_of("A+B 1.step"), "https://x.example/cad/A+B%201.step");
+        assert!(!format!(
+            "{:?}",
+            Store {
+                secret: "S3".into(),
+                ..s.clone()
+            }
+        )
+        .contains("S3"));
+        let t = |url: &str| {
+            Store {
+                url: url.into(),
+                id: "i".into(),
+                secret: "s".into(),
+            }
+            .check_scheme()
+        };
+        assert!(t("https://x/cad").is_ok());
+        assert!(t("http://127.0.0.1:9/cad").is_ok());
+        assert!(t("http://x.example/cad").is_err());
+        let plain = Store {
+            url: "http://x.example/cad".into(),
+            ..Default::default()
+        };
+        assert!(plain.check_scheme().is_ok());
     }
 
     #[test]
