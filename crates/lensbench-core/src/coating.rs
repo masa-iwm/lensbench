@@ -1180,6 +1180,17 @@ pub enum TableNormal {
     Continuous,
 }
 
+/// フォルダに無い膜のモデルを取る口（膜ファイルのフォルダ、膜の名前）→ 取ったファイル（`.lbcb` など）
+pub type RemoteLoader = fn(&Path, &str) -> Option<PathBuf>;
+
+static REMOTE: std::sync::OnceLock<RemoteLoader> = std::sync::OnceLock::new();
+
+/// [`Coatings::load_dir_for`] がフォルダで膜のモデル・実測表を見つけられなかったときに呼ぶ口を決める
+/// （CLI・GUI の起動時。共有の置き場から取る、lensbench_cli::coat_remote）。1 回だけ
+pub fn set_remote_loader(f: RemoteLoader) {
+    let _ = REMOTE.set(f);
+}
+
 /// 系の膜: 膜ファイルと実測表
 #[derive(Debug, Clone, Default)]
 pub struct Coatings {
@@ -1272,8 +1283,17 @@ impl Coatings {
         }
         let mut n = 0;
         for coat in want {
-            let Some((_, p)) = found.get(&coat.to_uppercase()) else {
-                continue;
+            // フォルダに無ければ、共有の置き場から取る（[`set_remote_loader`]、配る版で膜のモデルを外したとき）
+            let remote;
+            let p = match found.get(&coat.to_uppercase()) {
+                Some((_, p)) => p,
+                None => match REMOTE.get().and_then(|f| f(dir, coat)) {
+                    Some(r) => {
+                        remote = r;
+                        &remote
+                    }
+                    None => continue,
+                },
             };
             let lbcs = p
                 .extension()
