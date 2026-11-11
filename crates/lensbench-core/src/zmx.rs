@@ -727,6 +727,23 @@ pub fn build(
             wav.insert(fv(&a[0])? as i64, (fv(&a[1])?, fv(&a[2])?));
         }
     }
+    // 古い書式（WAVM が無く、WAVL に使う波長を並べ、WWGT にその重み）
+    let mut nw = nw;
+    if wav.is_empty() {
+        if let Some(l) = raw.sysl.get("WAVL").and_then(|v| v.first()) {
+            let w = raw.sysl.get("WWGT").and_then(|v| v.first());
+            for (i, x) in l.iter().enumerate() {
+                let wt = w
+                    .and_then(|w| w.get(i))
+                    .and_then(|x| fv(x).ok())
+                    .unwrap_or(1.0);
+                wav.insert(i as i64 + 1, (fv(x)?, wt));
+            }
+            if !raw.sysl.contains_key("FTYP") {
+                nw = l.len().max(1);
+            }
+        }
+    }
     let mut wl = Vec::new();
     let mut wwt = Vec::new();
     for i in 1..=nw as i64 {

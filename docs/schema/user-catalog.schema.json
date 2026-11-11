@@ -1641,6 +1641,31 @@
         }
       ]
     },
+    "SurfShape": {
+      "description": "面の形（[`SurfSpec::shape`]）",
+      "oneOf": [
+        {
+          "const": "standard",
+          "description": "標準面・偶数次非球面",
+          "type": "string"
+        },
+        {
+          "const": "odd_asph",
+          "description": "Odd Asphere",
+          "type": "string"
+        },
+        {
+          "const": "toroidal",
+          "description": "トロイダル面（円柱面を含む）",
+          "type": "string"
+        },
+        {
+          "const": "fresnel",
+          "description": "Fresnel（平面の上の屈折）",
+          "type": "string"
+        }
+      ]
+    },
     "SurfSpec": {
       "description": "面 1 つ（光の進む向きで書く）",
       "properties": {
@@ -1749,10 +1774,22 @@
             "null"
           ]
         },
+        "radius_x": {
+          "description": "トロイダル面の x 方向の曲率半径 [mm]（省略・0 なら円柱面）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
         "semi": {
           "$ref": "#/$defs/Semi",
           "default": 0.0,
           "description": "半直径 [mm]。\"auto\" なら光線から求める（OpticStudio の Automatic）"
+        },
+        "shape": {
+          "$ref": "#/$defs/SurfShape",
+          "description": "面の形（省略は標準面。`asph` があれば偶数次非球面）。`odd_asph` は `asph` が β1..β8（r¹..r⁸ の係数、\nOpticStudio の Odd Asphere）。`toroidal` は `radius`・`conic`・`asph` が y 方向の曲線で、x 方向の曲率半径が\n`radius_x`（省略・0 なら円柱面、OpticStudio の Toroidal）。`fresnel` は平面の上で、屈折だけ\n`radius`・`conic`・`asph` の面の傾きで決まる（OpticStudio の Fresnel）"
         },
         "t": {
           "default": 0.0,
