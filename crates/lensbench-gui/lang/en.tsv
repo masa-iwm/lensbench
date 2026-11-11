@@ -545,6 +545,7 @@ OPD の基準 (ROPD)	OPD reference (ROPD)
 範囲に .zmx の絞りの面が無い	The range has no .zmx stop surface
 # 最適化
 1 本の光線の OPD [波] − 目標（OPDC 相当）	OPD of one ray [waves] − target (like OPDC)
+像面の光束の重心の x か y − 目標（スポットの項と同じ光線。鏡の傾きで像点を合わせる補償など）	x or y of the beam centroid on the image − target (same rays as the spot term; e.g. a compensator that centres the returned spot with a mirror tilt)
 1 本の実光線の面の局所座標での位置・方向余弦 − 目標（REAX〜REAC 相当）	Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC)
 7.t・lens2.tx など	7.t, lens2.tx, …
 MTF − 目標（既定の目標 1）	MTF − target (default target 1)
@@ -778,7 +779,9 @@ trials が整数でない	trials is not an integer
 フィルター	Filter
 プリズム	Prism
 その他	Other
-偏心・傾き・くさびは x・y を組にして円の中で一様に（大きさが公差以下）	Pair x/y of decenters, tilts and wedges, uniform within a circle (magnitude at most the tolerance)
+偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）	Pair x/y of decenters, tilts and wedges within a circle (magnitude at most the tolerance)
+正規（半径 2σ）	Normal (radius 2σ)
+等方の 2 次元正規分布を円で切ったもの。半径 2σ の中は 86%	Isotropic 2D normal truncated at the circle; 86% fall within 2σ
 透過軸	Transmission axis
 消光比	Extinction
 0 は無限（直交の向きを通さない）	0 means infinite (blocks the orthogonal direction)
@@ -1180,3 +1183,10 @@ Client Secret	Client Secret
 品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。	When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable.
 空のときは、この版に組み込んだ置き場を使います。	When empty, the store built into this edition is used.
 ドラッグで大きさを変える（ダブルクリックで元に戻す）	Drag to resize (double-click to reset)
+結果を保存…	Save results…
+補償子の CSV…	Compensator CSV…
+試行ごとの評価関数・補償子・傾きの大きさ [分]	Merit, compensators and tilt magnitudes [arcmin] for each trial
+試行ごとのずれは「設定」の samples を入れて回すと結果に入ります	Turn on samples under Settings to include each trial's perturbations in the results
+「.tilt [′]」は同じ玉・群・面の傾き tx・ty の組の大きさ √(tx² + ty²)（分）。	".tilt [′]" is the magnitude √(tx² + ty²) of the tilt pair tx, ty of the same lens, group or surface (arcmin).
+ヒストグラム	Histogram
+公差の結果	Tolerance results

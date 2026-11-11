@@ -8,12 +8,12 @@
 //! | `trials` | 試行の数（100）。0 なら感度だけ |
 //! | `seed` | 乱数の種（1）。同じ種なら同じ結果（スレッド数によらない） |
 //! | `dist` | 既定の分布（"normal"）: "uniform"・"normal"（範囲の端が ±2σ）・"normal:3"・"end"（端の値を半々） |
-//! | `radial` | 偏心・傾き・くさびの x・y を組にして、円の中で一様に引く（false）。隣り合う x・y の公差（同じ面・玉・群の dx と dy、tx と ty）が対象で、大きさが公差以下になる（x・y 別々では角で √2 倍まで）。組の分布は `dist` によらない |
+//! | `radial` | 偏心・傾き・くさびの x・y を組にして、円の中で引く（false）。`true`・`"uniform"` は円の中で一様、`"normal"`・`"normal:σの数"` は等方の 2 次元正規分布を円で切ったもの（σ = 公差 / σの数、既定 2）。隣り合う x・y の公差（同じ面・玉・群の dx と dy、tx と ty）が対象で、大きさが公差以下になる（x・y 別々では角で √2 倍まで）。組の分布は `dist` によらない |
 //! | `preset` | 玉の既定の公差の組: "commercial"（一般）・"precision"（精密）・"high"（高精度）・"none" |
 //! | `catalog` | カタログの玉（プロジェクトのレンズカタログのブロック）はカタログの玉の公差（[`catalog_lens_tol`]、`catalog_tols`）を既定にする（true） |
 //! | `catalog_tols` | メーカーごとの公差 {"メーカー": {玉の公差と外径・焦点距離の条件つきの rules}}（[`catalog_rule`]。名前は大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほか） |
 //! | `lenses` | 玉ごとの上書き {"名前": {玉の公差} か 組の名前 か null（公差なし）}。名前はブロックの id か lens1 … |
-//! | `groups` | 群・ブロック（玉でないもの）の公差 {"名前": {"decenter", "tilt", "shift"}} |
+//! | `groups` | 群・ブロックの公差 {"名前": {"decenter", "tilt", "shift"}}。玉 1 つのブロックでは玉の公差（`lenses`）と別に足す（組立の公差。名前は「G1 群の偏心x」など） |
 //! | `tols` | 個別の公差の並び（下） |
 //! | `compensators` | 補償子（"9.t"・"G1.shift=-1:1"、または {"param", "lo", "hi", "configs"}。configs は効く構成の番号（1 から）の並びで、省くと全構成で同じ値。構成ごとに別の値にするときは構成ごとに 1 つずつ書く） |
 //! | `comp_iters` | 補償子の DLS の反復の上限（10） |
@@ -28,7 +28,10 @@
 //! （[`LensTol`]。比・mm・deg。書いた項目だけ既定の組を上書きする）。
 //!
 //! 個別の公差: {"param": "3.t"} か {"params": ["2.r", "3.r"]} に、`pm`（±）か `lo`・`hi`、`relative`（比、false）、
-//! `dist`、`label`。
+//! `dist`、`label`、`scale`（パラメータごとにずれに掛ける数の並び。往復する面の厚さのように逆の符号で与えるとき -1）。
+//!
+//! 鏡の `back` で同じ玉を往復する系では、玉の公差の組は往きと戻りの面に同じ誤差を与える（曲率・くさびは同じ面、
+//! 厚さ・間隔は戻りで逆の符号、偏心・傾きは往復の範囲を持つブロックの動き）。玉の名前はブロックの id。
 
 use std::collections::HashMap;
 
@@ -166,7 +169,12 @@ fn lens_geometry(s: &System) -> HashMap<String, LensGeom> {
         };
         let auto = format!("lens{}", k + 1);
         if let Some(u) = s.units.iter().find(|u| u.auto && u.name == auto) {
-            for v in s.units.iter().filter(|v| !v.auto && v.spans == u.spans) {
+            // 鏡で折り返して往復する玉は、最初の範囲がこの玉のブロック
+            for v in s
+                .units
+                .iter()
+                .filter(|v| !v.auto && (v.spans == u.spans || v.spans.first() == u.spans.first()))
+            {
                 m.insert(v.name.clone(), g);
             }
         }
@@ -335,7 +343,7 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         .as_object()
         .ok_or_else(|| format!("公差 {i} はオブジェクト（{v}）"))?;
     let known = [
-        "param", "params", "pm", "lo", "hi", "relative", "dist", "label",
+        "param", "params", "pm", "lo", "hi", "relative", "dist", "label", "scale",
     ];
     if let Some(k) = m.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("公差 {i}: 項目 {k}（{}）", known.join(" ")));
@@ -379,6 +387,19 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         .and_then(|x| x.as_str())
         .map(|x| x.to_string())
         .unwrap_or_else(|| names.join("+"));
+    let scale = match m.get("scale") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) if a.len() == params.len() => a
+            .iter()
+            .map(|x| num(x, "scale"))
+            .collect::<Result<Vec<_>, _>>()?,
+        Some(x) => {
+            return Err(format!(
+                "公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{x}）",
+                params.len()
+            ))
+        }
+    };
     Ok(Tol {
         label,
         params,
@@ -386,6 +407,7 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         hi,
         relative,
         dist,
+        scale,
     })
 }
 
@@ -547,9 +569,25 @@ pub fn spec_from_json(
     match get("radial") {
         None | Some(Value::Bool(false)) => {}
         Some(Value::Bool(true)) => {
-            tolerance::pair_disc(&mut tols);
+            tolerance::pair_disc(&mut tols, None);
         }
-        Some(x) => return Err(format!("radial は true・false（{x}）")),
+        Some(Value::String(r)) => {
+            let normal = match Dist::parse(r) {
+                Ok(Dist::Uniform) => None,
+                Ok(Dist::Normal { cut }) => Some(cut),
+                _ => {
+                    return Err(format!(
+                        "radial は true・false・uniform・normal・normal:σの数（{r}）"
+                    ))
+                }
+            };
+            tolerance::pair_disc(&mut tols, normal);
+        }
+        Some(x) => {
+            return Err(format!(
+                "radial は true・false・uniform・normal・normal:σの数（{x}）"
+            ))
+        }
     }
     let mut spec = McSpec::new(p, tols);
     if let Some(x) = get("trials") {
@@ -625,6 +663,82 @@ fn term_label(p: &Problem, k: usize) -> String {
     }
 }
 
+/// 補償子の傾きの x・y の組: 同じ玉・群・面の `.tx` と `.ty` で、効く構成も同じもの。(名前, x の位置, y の位置)。
+/// 名前は「M.tilt」（面なら「5.tilt」）
+pub fn tilt_pairs(vars: &[Var], names: &[String]) -> Vec<(String, usize, usize)> {
+    let mut out = Vec::new();
+    for (qx, nx) in names.iter().enumerate() {
+        let Some(base) = nx.strip_suffix(".tx") else {
+            continue;
+        };
+        let ny = format!("{base}.ty");
+        if let Some(qy) = names
+            .iter()
+            .enumerate()
+            .position(|(q, n)| *n == ny && vars[q].configs == vars[qx].configs)
+        {
+            out.push((format!("{base}.tilt"), qx, qy));
+        }
+    }
+    out
+}
+
+/// 試行ごとの補償子の CSV（[`result_json`] の結果から）。列は 試行（1 から）・評価関数・補償子・傾きの大きさ [分]。
+/// 追跡できなかった試行は値を空にする
+pub fn compensators_csv(result: &Value) -> Result<String, String> {
+    let comps = result["compensators"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let tilts = result["tilt_magnitudes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let merits = result["merit_values"]
+        .as_array()
+        .ok_or("結果に試行ごとの値（merit_values）がない")?;
+    let n = merits.len();
+    let cols: Vec<(String, &Vec<Value>)> = comps
+        .iter()
+        .map(|c| (c["name"].as_str().unwrap_or("").to_string(), &c["values"]))
+        .chain(tilts.iter().map(|t| {
+            (
+                format!("{} [arcmin]", t["name"].as_str().unwrap_or("")),
+                &t["values"],
+            )
+        }))
+        .map(|(h, v)| {
+            v.as_array()
+                .filter(|a| a.len() == n)
+                .map(|a| (h.clone(), a))
+                .ok_or_else(|| format!("補償子 {h} の試行ごとの値がない"))
+        })
+        .collect::<Result<_, _>>()?;
+    let esc = |s: &str| {
+        if s.contains([',', '"', '\n']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    let cell = |v: &Value| v.as_f64().map_or(String::new(), |x| format!("{x}"));
+    let mut out = String::from("trial,merit");
+    for (h, _) in &cols {
+        out.push(',');
+        out.push_str(&esc(h));
+    }
+    out.push('\n');
+    for i in 0..n {
+        out.push_str(&format!("{},{}", i + 1, cell(&merits[i])));
+        for (_, a) in &cols {
+            out.push(',');
+            out.push_str(&cell(&a[i]));
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 /// 結果の JSON
 pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
     let s0 = &spec.problem.configs[0];
@@ -639,6 +753,7 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
                 "label": t.label,
                 "params": t.params.iter().map(|&p| s0.param_name(p)).collect::<Vec<_>>(),
                 "lo": t.lo, "hi": t.hi, "relative": t.relative, "dist": t.dist.name(),
+                "scale": if t.scale.is_empty() { Value::Null } else { json!(t.scale) },
             })
         })
         .collect();
@@ -700,22 +815,67 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
             })
         })
         .collect();
+    // 補償子の試行ごとの値（試行の順、追跡できなかった試行は None）
+    let per_trial = |q: usize| -> Vec<Option<f64>> {
+        r.trials
+            .iter()
+            .map(|t| t.eval.as_ref().map(|e| e.comp[q]))
+            .collect()
+    };
+    let opt_json = |v: &[Option<f64>]| -> Value {
+        v.iter()
+            .map(|x| {
+                x.filter(|x| x.is_finite())
+                    .map_or(Value::Null, |x| json!(x))
+            })
+            .collect()
+    };
+    let names: Vec<String> = spec
+        .problem
+        .vars
+        .iter()
+        .map(|v| s0.param_name(v.param))
+        .collect();
     let comps: Vec<Value> = spec
         .problem
         .vars
         .iter()
         .enumerate()
         .map(|(q, v)| {
-            let x: Vec<f64> = r
-                .trials
-                .iter()
-                .filter_map(|t| t.eval.as_ref().map(|e| e.comp[q]))
-                .collect();
+            let vals = per_trial(q);
+            let x: Vec<f64> = vals.iter().flatten().copied().collect();
             json!({
-                "name": s0.param_name(v.param),
+                "name": names[q],
                 "configs": v.configs.as_ref().map(|c| c.iter().map(|k| k + 1).collect::<Vec<_>>()),
                 "nominal": r.nominal.comp.get(q),
                 "stats": stats_json(&x, pc),
+                "values": opt_json(&vals),
+            })
+        })
+        .collect();
+    // 傾きの x・y の組（同じ玉・群・面の tx と ty、効く構成も同じ）は大きさ √(tx² + ty²) を分で
+    let tilts: Vec<Value> = tilt_pairs(&spec.problem.vars, &names)
+        .into_iter()
+        .map(|(name, qx, qy)| {
+            let (vx, vy) = (per_trial(qx), per_trial(qy));
+            let vals: Vec<Option<f64>> = vx
+                .iter()
+                .zip(&vy)
+                .map(|(a, b)| Some(60.0 * a.as_ref()?.hypot(*b.as_ref()?)))
+                .collect();
+            let x: Vec<f64> = vals.iter().flatten().copied().collect();
+            let nom = match (r.nominal.comp.get(qx), r.nominal.comp.get(qy)) {
+                (Some(a), Some(b)) => json!(60.0 * a.hypot(*b)),
+                _ => Value::Null,
+            };
+            json!({
+                "name": name,
+                "x": names[qx],
+                "y": names[qy],
+                "unit": "arcmin",
+                "nominal": nom,
+                "stats": stats_json(&x, pc),
+                "values": opt_json(&vals),
             })
         })
         .collect();
@@ -740,6 +900,8 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
         "cdf": sorted(merits),
         "terms": terms,
         "compensators": comps,
+        "tilt_magnitudes": tilts,
+        "merit_values": opt_json(&r.trials.iter().map(|t| t.eval.as_ref().map(|e| e.merit)).collect::<Vec<_>>()),
         "sensitivity": sens.into_iter().map(|x| x.1).collect::<Vec<_>>(),
         "rss_estimate": rss,
         "correlation": cv.into_iter().map(|x| x.1).collect::<Vec<_>>(),

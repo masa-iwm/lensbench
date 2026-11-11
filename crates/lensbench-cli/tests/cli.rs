@@ -609,6 +609,7 @@ fn tolerance_monte_carlo() {
     let dir = std::env::temp_dir().join(format!("lb-tol-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let worst = dir.join("worst.json");
+    let csv = dir.join("comp.csv");
     let args = |seed: &str| -> Vec<String> {
         [
             "tolerance",
@@ -624,6 +625,8 @@ fn tolerance_monte_carlo() {
             r#"{"preset":"precision","compensators":["6.t"]}"#,
             "--save-worst",
             worst.to_str().unwrap(),
+            "--comp-csv",
+            csv.to_str().unwrap(),
         ]
         .iter()
         .map(|x| x.to_string())
@@ -643,6 +646,13 @@ fn tolerance_monte_carlo() {
     assert!(a["sensitivity"].as_array().unwrap().len() > 10);
     assert_eq!(a["compensators"][0]["name"], "6.t");
     assert!(worst.exists());
+    // 試行ごとの補償子の CSV（見出し＋試行の数の行、値は結果の values と同じ）
+    let t = std::fs::read_to_string(&csv).unwrap();
+    let lines: Vec<&str> = t.lines().collect();
+    assert_eq!(lines[0], "trial,merit,6.t");
+    assert_eq!(lines.len(), 6);
+    let x: f64 = lines[1].split(',').nth(2).unwrap().parse().unwrap();
+    assert_eq!(Some(x), a["compensators"][0]["values"][0].as_f64());
     // 書き出した系を読み直して評価できる
     let (ok, _, err) = run(&[
         "info",
