@@ -22,6 +22,8 @@ mod browse;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cad;
 pub mod cad_detail;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod coat_remote;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
@@ -514,6 +516,27 @@ enum Cmd {
         /// 当て方だけ示して上げない
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に無いものを上げる。
+    /// 目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
+    CoatUpload {
+        /// 膜ファイル（COATING.DAT）と .lbcb のフォルダ
+        dir: PathBuf,
+        /// 目録の書き出し先（省略でフォルダの lbcb-remote.json）
+        #[arg(long)]
+        index: Option<PathBuf>,
+        /// 目録だけ作って上げない
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// 膜ファイルのフォルダの目録 lbcb-remote.json の膜のモデルを置き場からすべて取り、フォルダに <膜>.lbcb として置く
+    /// （Python など置き場を見ない使い方のため。ふつうは使う膜だけ自動で取る）
+    CoatFetch {
+        dir: PathBuf,
         #[arg(long)]
         json: bool,
     },
@@ -2835,6 +2858,90 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 )
             }
         }
+        Cmd::CoatUpload {
+            dir,
+            index,
+            dry_run,
+            json,
+        } => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (dir, index, dry_run, json);
+                return Err("coat-upload は Web 版では使えない".into());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let store = cad::store();
+                let rows =
+                    coat_remote::upload_dir(&dir, index.as_deref(), store.as_ref(), dry_run)?;
+                let n = |s: &str| rows.iter().filter(|r| r.2 == s).count();
+                if !json {
+                    for (name, key, st, e) in &rows {
+                        if *st != "exists" {
+                            println!(
+                                "{st}: {name} → {key}{}",
+                                if e.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(": {e}")
+                                }
+                            );
+                        }
+                    }
+                    println!(
+                        "上げた {}・置き場にある {}・誤り {}（{} 膜）",
+                        n("uploaded"),
+                        n("exists"),
+                        n("error"),
+                        rows.len()
+                    );
+                    if n("error") > 0 {
+                        return Err("上げられない膜がある".into());
+                    }
+                    return Ok((false, Value::Null));
+                }
+                (
+                    true,
+                    json!({
+                        "files": rows.iter().map(|(name, key, st, e)| json!({"name": name, "key": key, "status": st, "error": e})).collect::<Vec<_>>(),
+                        "uploaded": n("uploaded"), "exists": n("exists"), "errors": n("error"),
+                    }),
+                )
+            }
+        }
+        Cmd::CoatFetch { dir, json } => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (dir, json);
+                return Err("coat-fetch は Web 版では使えない".into());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let rows = coat_remote::fetch_dir(&dir, cad::store().as_ref())?;
+                let n = |s: &str| rows.iter().filter(|r| r.1 == s).count();
+                if !json {
+                    for (name, st, e) in &rows {
+                        if *st == "error" {
+                            println!("誤り: {name}: {e}");
+                        }
+                    }
+                    println!(
+                        "取った {}・あった {}・誤り {}",
+                        n("fetched"),
+                        n("exists"),
+                        n("error")
+                    );
+                    return Ok((false, Value::Null));
+                }
+                (
+                    true,
+                    json!({
+                        "files": rows.iter().map(|(name, st, e)| json!({"name": name, "status": st, "error": e})).collect::<Vec<_>>(),
+                        "fetched": n("fetched"), "exists": n("exists"), "errors": n("error"),
+                    }),
+                )
+            }
+        }
         Cmd::CatalogList { catalog, json } => {
             let cat = lensbench_project::UserCatalog::load(&catalog)?;
             let v: Vec<Value> = cat
@@ -3708,6 +3815,8 @@ pub fn main() -> ExitCode {
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
     cad_detail::install_detail_loader();
+    #[cfg(not(target_arch = "wasm32"))]
+    coat_remote::install();
     // run はスレッド数を自分では使わず、起動する Python に渡す
     if let Cmd::Run(a) = &cli.cmd {
         return match run::run(a, cli.threads) {

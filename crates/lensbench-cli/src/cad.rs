@@ -161,9 +161,9 @@ pub fn fetch_item_with(
 }
 
 /// 途中で止まっても壊れたファイルを残さないよう、別名に書いてから置き換える
-fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), String> {
+pub(crate) fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let tmp = path.with_extension("step.part");
+    let tmp = path.with_extension("part");
     std::fs::write(&tmp, b).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -266,7 +266,8 @@ impl Store {
             .chars()
             .map(|c| match c {
                 // + はそのまま（受け口が道をデコードしなくても鍵の形に合う）
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '+' => c.to_string(),
+                // / は鍵の中の区切り（膜のモデルは coat/<膜>-<ハッシュ>.lbcb）
+                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '+' | '/' => c.to_string(),
                 c => {
                     let mut b = [0u8; 4];
                     c.encode_utf8(&mut b)
@@ -312,6 +313,16 @@ impl Store {
 
     /// 鍵の STEP（無ければ Ok(None)）
     pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        match self.get_raw(key)? {
+            None => Ok(None),
+            Some(b) => step_bytes(b)
+                .map(Some)
+                .map_err(|e| format!("置き場の中身が STEP でない（{}）: {e}", self.url_of(key))),
+        }
+    }
+
+    /// 鍵の中身（確かめない。無ければ Ok(None)）
+    pub fn get_raw(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let mut r = self
@@ -332,20 +343,25 @@ impl Store {
             .read_to_end(&mut b)
             .map_err(|e| format!("置き場を読めない（{u}）: {e}"))?;
         if b.len() as u64 > MAX_BYTES {
-            return Err(format!("置き場の STEP が大きすぎる: {u}"));
+            return Err(format!("置き場の中身が大きすぎる: {u}"));
         }
-        step_bytes(b)
-            .map(Some)
-            .map_err(|e| format!("置き場の中身が STEP でない（{u}）: {e}"))
+        Ok(Some(b))
     }
 
-    /// 鍵で STEP を上げる
+    /// 鍵で上げる（STEP・膜のモデル）
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let r = self
             .auth(Self::agent().put(&u))
-            .header("Content-Type", "application/step")
+            .header(
+                "Content-Type",
+                if key.ends_with(".step") {
+                    "application/step"
+                } else {
+                    "application/octet-stream"
+                },
+            )
             .send(step)
             .map_err(|e| format!("置き場に上げられない（{u}）: {e}"))?;
         let st = r.status().as_u16();
