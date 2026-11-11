@@ -1562,11 +1562,6 @@ fn catalog_listing(path: &str, cat: &lensbench_project::UserCatalog) -> Value {
     json!({ "catalog": path, "vendor": cat.vendor, "items": items })
 }
 
-/// ユーザーカタログの操作（GUI の保存）
-/// - `catalog_add` {catalog, name, blocks: [id…]（1 つか範囲の最初と最後）, description?, replace?, vendor?}:
-///   読み込んだプロジェクト（状態を当てて）のブロックを項目にする。面の表の変更は焼き込む。ファイルが無ければ作る
-/// - `catalog_items` {catalog}: 項目の一覧
-/// - `catalog_edit` {catalog, name, rename?, description?, delete?, vendor?}
 /// 系 s の面 from〜to（1〜像面の 1 つ前）と物体面・像面だけの系（save_range）
 pub fn range_system(s: &System, from: usize, to: usize) -> lensbench_core::error::Result<System> {
     let img = s.image();
@@ -1591,6 +1586,11 @@ pub fn range_system(s: &System, from: usize, to: usize) -> lensbench_core::error
     Ok(s)
 }
 
+/// ユーザーカタログの操作（GUI の保存）
+/// - `catalog_add` {catalog, name, blocks: [id…]（1 つか範囲の最初と最後）, description?, replace?, vendor?}:
+///   読み込んだプロジェクト（状態を当てて）のブロックを項目にする。面の表の変更は焼き込む。ファイルが無ければ作る
+/// - `catalog_items` {catalog}: 項目の一覧
+/// - `catalog_edit` {catalog, name, rename?, description?, delete?, vendor?}
 fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
     use lensbench_project::UserCatalog;
     let path = p["catalog"]

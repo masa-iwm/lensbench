@@ -1800,6 +1800,11 @@
             "After"
           ],
           "type": "object"
+        },
+        {
+          "const": "Coating",
+          "description": "膜の名前（倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）",
+          "type": "string"
         }
       ]
     },
