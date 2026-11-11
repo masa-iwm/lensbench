@@ -1079,7 +1079,6 @@ STEP を取っています…	Fetching the STEP…
 STEP を取れませんでした（簡易外形で描きます）: {}	Could not fetch the STEP (drawing the simple outline): {}
 STEP: {}{}	STEP: {}{}
 STEP（公式）	STEP (official)
-この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）	Fetches the STEP of this item only and caches it in the settings folder (the cache is used from the second time)
 パスを写す	Copy path
 右クリックでパスを写す	Right-click to copy the path
 品ページを開く	Open the product page
@@ -1170,3 +1169,13 @@ Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）	Huy
 ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します	The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page
 元のタブを閉じたので、このパネルは使えません。この窓を閉じてください。	The main tab was closed, so this panel cannot be used. Please close this window.
 別の窓に出す	Move to another window
+この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）。置き場があれば先に置き場を見て、配布元から取ったら置き場にも上げます	Fetch only this item's STEP and cache it in the settings folder (the cache is used from the second time). If a shared store is set, it is checked first, and a STEP fetched from the vendor is also uploaded to it
+（置き場から）	 (from the store)
+（置き場にも上げました）	 (also uploaded to the store)
+置き場: {}	Store: {}
+品の STEP の置き場（共有）	Shared store for item STEP files
+URL	URL
+Client ID	Client ID
+Client Secret	Client Secret
+品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。	When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable.
+空のときは、この版に組み込んだ置き場を使います。	When empty, the store built into this edition is used.

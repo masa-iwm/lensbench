@@ -3540,7 +3540,8 @@ fn place_mechanics(
                     .mech
                     .clone()
                     .ok_or_else(|| format!("{tag}: 品 {item} は機構部品でない（mech がない）"))?;
-                if !it.cad.step.trim().is_empty() {
+                // URL の無い品も、共有の置き場から取ってあればキャッシュにある
+                {
                     let f = catalog_fill::cad_cache_path(
                         &catalog_fill::cad_cache_dir(),
                         item,

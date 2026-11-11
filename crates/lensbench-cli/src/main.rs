@@ -486,6 +486,33 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// 手元の STEP を共有の置き場（環境変数 LENSBENCH_CAD_STORE。cad-step が配布元より先に見る所）に上げる。
+    /// --cache はキャッシュのフォルダの STEP をそのまま（ファイル名が鍵）、--catalog はフォルダの STEP をファイル名で品に当てて
+    /// （cad-step と同じ鍵）上げる。置き場にある鍵は上げない（--overwrite で上げ直す）
+    CadUpload {
+        /// キャッシュのフォルダの STEP を上げる（値を省くと cad-step の既定のキャッシュ）
+        #[arg(long, num_args = 0..=1, default_missing_value = "", conflicts_with = "catalog")]
+        cache: Option<PathBuf>,
+        /// ユーザーカタログ（--dir か --item・--file と）
+        #[arg(long)]
+        catalog: Option<PathBuf>,
+        /// STEP（.step・.stp・それを入れた .zip）のフォルダ。ファイル名に品の名前を含むものを当てる（下のフォルダも）
+        #[arg(long, requires = "catalog")]
+        dir: Option<PathBuf>,
+        /// 1 品だけ上げる（--file と）
+        #[arg(long, requires = "catalog", requires = "file", conflicts_with = "dir")]
+        item: Option<String>,
+        #[arg(long, requires = "item")]
+        file: Option<PathBuf>,
+        /// 置き場にあっても上げ直す
+        #[arg(long)]
+        overwrite: bool,
+        /// 当て方だけ示して上げない
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// ユーザーカタログの項目の一覧
     CatalogList {
         catalog: PathBuf,
@@ -2642,12 +2669,16 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     println!(
                         "{}{}",
                         r.path.display(),
-                        if r.cached {
-                            "（キャッシュ）"
-                        } else {
-                            ""
+                        match r.source {
+                            cad::Source::Cache => "（キャッシュ）",
+                            cad::Source::Store => "（置き場から）",
+                            cad::Source::Vendor => "",
+                            cad::Source::VendorUploaded => "（置き場にも上げた）",
                         }
                     );
+                    for n in &r.store_notes {
+                        println!("  置き場: {n}");
+                    }
                     if let Some(m) = &r.measured {
                         println!("  {}", m.note);
                     }
@@ -2660,6 +2691,126 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     return Ok((false, Value::Null));
                 }
                 (true, r.to_json())
+            }
+        }
+        Cmd::CadUpload {
+            cache,
+            catalog,
+            dir,
+            item,
+            file,
+            overwrite,
+            dry_run,
+            json,
+        } => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (cache, catalog, dir, item, file, overwrite, dry_run, json);
+                return Err("cad-upload は Web 版では使えない".into());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let store = cad::store().ok_or(
+                    "置き場が無い（環境変数 LENSBENCH_CAD_STORE に口の URL、Access で守った口なら LENSBENCH_CAD_STORE_ID・LENSBENCH_CAD_STORE_SECRET にサービストークン）",
+                )?;
+                // （鍵、ファイル、品）
+                let mut jobs: Vec<(String, PathBuf, String)> = Vec::new();
+                let mut unmatched: Vec<PathBuf> = Vec::new();
+                if let Some(c) = cache {
+                    let d = if c.as_os_str().is_empty() {
+                        cad::default_cache_dir()
+                    } else {
+                        c
+                    };
+                    for f in cad::step_files(&d)? {
+                        if f.extension().map(|x| x == "step").unwrap_or(false) {
+                            jobs.push((cad::store_key(&f), f, String::new()));
+                        }
+                    }
+                } else if let Some(catalog) = catalog {
+                    let cat = lensbench_project::UserCatalog::load(&catalog)?;
+                    let key_of = |name: &str| -> Result<String, String> {
+                        let it = cat
+                            .items
+                            .get(name)
+                            .ok_or_else(|| format!("{} に品 {name} がない", catalog.display()))?;
+                        Ok(cad::store_key(&cad::cache_path(
+                            std::path::Path::new(""),
+                            name,
+                            &it.cad.step,
+                        )))
+                    };
+                    if let (Some(name), Some(f)) = (item, file) {
+                        jobs.push((key_of(&name)?, f, name));
+                    } else if let Some(d) = dir {
+                        // 機構部品（mech）の品だけに当てる
+                        let names = cat
+                            .items
+                            .iter()
+                            .filter(|(_, it)| it.mech.is_some())
+                            .map(|(k, _)| k.as_str());
+                        let (got, miss) = cad::match_files(names, &cad::step_files(&d)?);
+                        unmatched = miss;
+                        for (name, f) in got {
+                            jobs.push((key_of(&name)?, f, name));
+                        }
+                    } else {
+                        return Err("--catalog には --dir か --item・--file".into());
+                    }
+                } else {
+                    return Err("--cache か --catalog".into());
+                }
+                let mut rows = Vec::new();
+                for (k, f, name) in &jobs {
+                    let u = cad::upload_file(&store, k, f, name, overwrite, dry_run);
+                    if !json {
+                        let what = if u.item.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{} ← ", u.item)
+                        };
+                        let st = match u.status {
+                            "uploaded" => "上げた",
+                            "exists" => "置き場にある",
+                            "dry_run" => "（上げない）",
+                            _ => "誤り",
+                        };
+                        println!(
+                            "{st}: {what}{} → {}{}",
+                            f.display(),
+                            u.key,
+                            if u.error.is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {}", u.error)
+                            }
+                        );
+                    }
+                    rows.push(u);
+                }
+                let count = |s: &str| rows.iter().filter(|u| u.status == s).count();
+                if !json {
+                    for f in &unmatched {
+                        println!("品に当たらない: {}", f.display());
+                    }
+                    println!(
+                        "上げた {}・置き場にある {}・誤り {}・品に当たらない {}",
+                        count("uploaded"),
+                        count("exists"),
+                        count("error"),
+                        unmatched.len()
+                    );
+                    return Ok((false, Value::Null));
+                }
+                (
+                    true,
+                    json!({
+                        "store": store.url,
+                        "files": rows.iter().map(|u| u.to_json()).collect::<Vec<_>>(),
+                        "unmatched": unmatched.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
+                        "uploaded": count("uploaded"), "exists": count("exists"), "errors": count("error"),
+                    }),
+                )
             }
         }
         Cmd::CatalogList { catalog, json } => {

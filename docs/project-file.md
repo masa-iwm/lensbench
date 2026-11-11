@@ -166,6 +166,16 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   URL で決まり、2 回目からはキャッシュを使う（URL が変われば取り直す）。裏でまとめて取りには行かない。取った STEP は `catalog-step` と
   同じ読み方で測り、簡易外形と長さ・外径が 0.05 mm より違うか、外形の形（丸・角）が違えば知らせる。取れなければ（中身が STEP で
   ない・つながらない）誤りで、品ページの URL を示す（表示は簡易外形のまま）。
+  **共有の置き場**: 自前の HTTP の口（`GET <URL>/<鍵>` で STEP、無ければ 404。`PUT <URL>/<鍵>` で上げる。鍵はキャッシュの
+  ファイル名）を決めておくと、キャッシュに無い品は配布元より先に置き場を見て、配布元から取った STEP は置き場にも上げる。
+  `cad.step` の無い品も、置き場に上げてあれば取れる。決め方は、GUI の「カタログのフォルダ」の窓の「品の STEP の置き場」、
+  環境変数 `LENSBENCH_CAD_STORE`（URL）、配る版がビルドのときに組み込んだ置き場（`lensbench_cli::cad::set_default_store`）の順。
+  Cloudflare Access で守った口（Cloudflare R2 を Pages Functions で返すなど）には、Access のサービストークンを GUI の
+  Client ID・Client Secret か環境変数 `LENSBENCH_CAD_STORE_ID`・`LENSBENCH_CAD_STORE_SECRET` で渡す
+  （見出し `CF-Access-Client-Id`・`CF-Access-Client-Secret`。トークンを送るのは https の口だけ。GUI の Secret は設定のファイルに平文で残る）。置き場に届かなくても配布元から取る（結果に理由を添える）。
+  手元にある STEP は `lensbench cad-upload --catalog <カタログ> --dir <フォルダ>`（ファイル名に品の名前を含む .step・.stp・
+  .zip を機構部品の品に当てる。`--dry-run` で当て方だけ）か `--cache`（キャッシュのファイルをそのまま）で上げる。
+  置き場にある鍵は上げない（`--overwrite` で上げ直す）。
   STEP を取ってある品を `mechanics` に置き、`lensbench layout --mech-detail`（serve の `layout`・`layout_export` の
   `mech_detail`、GUI のレイアウトの設定の「機構部品を詳しい形で」）で描くと、3D（glTF・OBJ・STL と GUI の 3D 表示）は
   STEP を三角形にした形（面からのずれ 0.2 mm まで。三角形にできない面・境の読めない面は除く）、STEP の書き出しは元の立体を
