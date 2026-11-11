@@ -326,3 +326,95 @@ fn disc_normal_pairs() {
         assert!(v.abs() <= 2.0);
     }
 }
+
+/// 光源の波長のずれ（#163）: 波長のパラメータで全媒質の屈折率が新しい波長の値になる（波長を振る解析と同じ値）
+#[test]
+fn wavelength_param_reindexes_media() {
+    let s = load("A0");
+    let nw = s.wavelengths.len();
+    assert!(nw >= 3);
+    let p = s.param("wave2").unwrap();
+    assert_eq!(p.kind, Kind::Wave(1));
+    assert_eq!(s.param_name(p), "wave2");
+    assert!(s.param(&format!("wave{}", nw + 1)).is_err());
+    let dl = 0.01;
+    let ch: Vec<(Param, f64)> = (0..nw)
+        .map(|w| (Param::new(0, Kind::Wave(w as u8)), s.wavelengths[w] + dl))
+        .collect();
+    let t = s.with_params(&ch).unwrap();
+    for w in 0..nw {
+        assert_eq!(
+            t.get_param(Param::new(0, Kind::Wave(w as u8))).unwrap(),
+            s.wavelengths[w] + dl
+        );
+        let (d, k) = lensbench_core::sweep::with_wavelength(&s, s.wavelengths[w] + dl).unwrap();
+        for j in 0..s.surfaces.len() {
+            let (a, b) = (t.surfaces[j].n[w], d.surfaces[j].n[k]);
+            assert!((a - b).abs() < 1e-14, "面 {j} 波長 {w}: {a} {b}");
+        }
+    }
+    // ガラスの屈折率は変わる（短い波長側へずらすと上がる）
+    let j = (0..s.surfaces.len())
+        .find(|&j| s.surfaces[j].n[1] > 1.2)
+        .unwrap();
+    assert!(t.surfaces[j].n[1] < s.surfaces[j].n[1]);
+    // 戻すと元の屈折率
+    let back: Vec<(Param, f64)> = (0..nw)
+        .map(|w| (Param::new(0, Kind::Wave(w as u8)), s.wavelengths[w]))
+        .collect();
+    let u = t.with_params(&back).unwrap();
+    for j in 0..s.surfaces.len() {
+        for w in 0..nw {
+            assert!((u.surfaces[j].n[w] - s.surfaces[j].n[w]).abs() < 1e-15);
+        }
+    }
+    // 正でない波長・最適化の変数は不正
+    assert!(s.with_params(&[(p, 0.0)]).is_err());
+    let mut pr = problem(&s);
+    pr.vars.push(Var::new(p));
+    assert!(pr.check().is_err());
+}
+
+/// 波長の公差: ピントの補償子が波長のずれの軸上色収差を吸収し、± で補償子の向きが逆になる
+#[test]
+fn wavelength_tolerance_with_focus() {
+    let s = load("A0");
+    let nw = s.wavelengths.len();
+    let tol = Tol {
+        label: "wave".into(),
+        params: (0..nw)
+            .map(|w| Param::new(0, Kind::Wave(w as u8)))
+            .collect(),
+        lo: -0.02,
+        hi: 0.02,
+        relative: false,
+        dist: Dist::Uniform,
+        scale: Vec::new(),
+    };
+    let mut p = problem(&s);
+    p.vars
+        .push(Var::new(Param::new(s.image() - 1, Kind::Thick)));
+    let mut spec = McSpec::new(p, vec![tol]);
+    spec.trials = 8;
+    let r = tolerance::run(&spec).unwrap();
+    let sn = &r.sensitivity[0];
+    let (lo, hi) = (sn.lo.as_ref().unwrap(), sn.hi.as_ref().unwrap());
+    let c0 = r.nominal.comp[0];
+    assert!(
+        (lo.comp[0] - c0) * (hi.comp[0] - c0) < 0.0,
+        "{} {} {}",
+        lo.comp[0],
+        c0,
+        hi.comp[0]
+    );
+    // 補償なしのずれた系より、補償した評価関数は小さい
+    let unc = {
+        let sys = tolerance::perturbed(&spec, &[0.02]).unwrap();
+        let mut q = problem(&sys[0]);
+        q.vars.clear();
+        q.merit(&[]).unwrap()
+    };
+    assert!(hi.merit <= unc + 1e-12, "{} {}", hi.merit, unc);
+    assert!(r.trials.iter().all(|t| t.eval.is_some()));
+    assert!(r.trials.iter().all(|t| t.deltas[0].abs() <= 0.02));
+}

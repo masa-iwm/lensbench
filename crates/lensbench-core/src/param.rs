@@ -61,6 +61,9 @@ pub enum Kind {
     /// 物点の x・y（有限物体。面の番号は使わない）
     ObjX,
     ObjY,
+    /// 系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる
+    /// （光源の波長のずれの公差用。最適化の変数・多重構成の行には使えない）
+    Wave(u8),
     /// 玉・群のパラメータ（[`Param::surf`] は玉・群の番号）
     Unit(UnitKind),
 }
@@ -83,6 +86,11 @@ impl Kind {
             "objx" => Kind::ObjX,
             "objy" => Kind::ObjY,
             _ => {
+                if let Some(n) = l.strip_prefix("wave").and_then(|v| v.parse::<u16>().ok()) {
+                    if (1..=256).contains(&n) {
+                        return Ok(Kind::Wave((n - 1) as u8));
+                    }
+                }
                 if let Some(n) = l.strip_prefix('z').and_then(|v| v.parse::<u16>().ok()) {
                     if (1..=231).contains(&n) {
                         return Ok(Kind::Zern(n));
@@ -93,7 +101,7 @@ impl Kind {
                         return Ok(Kind::Asph(n / 2 - 1));
                     }
                 }
-                invalid!("パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy）")
+                invalid!("パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜）")
             }
         })
     }
@@ -115,6 +123,7 @@ impl Kind {
             Kind::Disp => "disp".into(),
             Kind::ObjX => "objx".into(),
             Kind::ObjY => "objy".into(),
+            Kind::Wave(i) => format!("wave{}", *i as usize + 1),
             Kind::Unit(u) => u.name().into(),
         }
     }
@@ -134,6 +143,16 @@ impl Kind {
     /// 物点の移動（面のパラメータではない）
     pub fn is_object(&self) -> bool {
         matches!(self, Kind::ObjX | Kind::ObjY)
+    }
+
+    /// 系の波長
+    pub fn is_wave(&self) -> bool {
+        matches!(self, Kind::Wave(_))
+    }
+
+    /// 面・玉・群に付かない系全体のパラメータ（物点の移動・波長）。[`Param::surf`] は使わない
+    pub fn is_global(&self) -> bool {
+        self.is_object() || self.is_wave()
     }
 
     /// 玉・群のパラメータ
@@ -619,7 +638,7 @@ impl Param {
         Param::new(u, Kind::Unit(kind))
     }
     pub fn name(&self) -> String {
-        if self.kind.is_object() {
+        if self.kind.is_global() {
             self.kind.name()
         } else if self.kind.is_unit() {
             format!("unit{}.{}", self.surf, self.kind.name())
@@ -654,8 +673,10 @@ impl System {
     pub fn param(&self, spec: &str) -> Result<Param> {
         let s = spec.trim();
         if let Ok(k) = Kind::parse(s) {
-            if k.is_object() {
-                return Ok(Param::new(0, k));
+            if k.is_global() {
+                let p = Param::new(0, k);
+                self.check_param(p)?;
+                return Ok(p);
             }
         }
         let Some((t, k)) = s.rsplit_once('.') else {
@@ -708,6 +729,12 @@ impl System {
     /// パラメータがこの系で使えるか
     pub fn check_param(&self, p: Param) -> Result<()> {
         if p.kind.is_object() {
+            return Ok(());
+        }
+        if let Kind::Wave(i) = p.kind {
+            if i as usize >= self.wavelengths.len() {
+                invalid!("{}（波長は {} 個）", p.kind.name(), self.wavelengths.len());
+            }
             return Ok(());
         }
         if let Kind::Unit(k) = p.kind {
@@ -767,6 +794,9 @@ impl System {
         self.check_param(p)?;
         if p.kind.is_object() {
             invalid!("物点 {} は系のデータでない（追跡の入力）", p.kind.name());
+        }
+        if let Kind::Wave(i) = p.kind {
+            return Ok(self.wavelengths[i as usize]);
         }
         if let Kind::Unit(k) = p.kind {
             let u = &self.units[p.surf];
@@ -1044,6 +1074,12 @@ impl System {
             if !v.is_finite() && !(p.kind == Kind::Thick && p.surf == 0) {
                 invalid!("{} = {v}", p.name());
             }
+            if p.kind.is_wave() {
+                if !(v > 0.0) {
+                    invalid!("{} = {v} µm", p.name());
+                }
+                continue;
+            }
             let solved = |k: Kind| {
                 self.solves
                     .iter()
@@ -1068,7 +1104,22 @@ impl System {
             }
         }
         let mut index = false;
+        // 波長は先に変える（屈折率は元の系の値の作り方に合わせて作り直す）
+        let waves: Vec<(usize, f64)> = changes
+            .iter()
+            .filter_map(|&(p, v)| match p.kind {
+                Kind::Wave(i) => Some((i as usize, v)),
+                _ => None,
+            })
+            .collect();
+        if !waves.is_empty() {
+            self.set_wavelengths(&waves)?;
+            index = true;
+        }
         for &(p, v) in changes {
+            if p.kind.is_wave() {
+                continue;
+            }
             let d = &mut self.surfaces[p.surf];
             match p.kind {
                 Kind::Curv => d.c = v,
@@ -1131,7 +1182,7 @@ impl System {
 
     /// パラメータ p がピックアップ先ならそのピックアップ
     pub fn pickup_of(&self, p: Param) -> Option<Pickup> {
-        if p.kind.is_object() || p.kind.is_unit() || p.surf >= self.surfaces.len() {
+        if p.kind.is_global() || p.kind.is_unit() || p.surf >= self.surfaces.len() {
             return None;
         }
         let what = pick_kind(&self.surfaces[p.surf], p.kind)?;
@@ -1209,7 +1260,7 @@ impl System {
             return Ok(out);
         }
         let mut out = vec![(p, 1.0)];
-        if p.kind.is_object() || p.kind.is_unit() || self.pickups.is_empty() {
+        if p.kind.is_global() || p.kind.is_unit() || self.pickups.is_empty() {
             return Ok(out);
         }
         // 半径を変えたときの曲率の変化 dc/dR = −c²

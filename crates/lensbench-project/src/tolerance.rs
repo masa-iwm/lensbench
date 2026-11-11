@@ -32,10 +32,14 @@
 //!
 //! 鏡の `back` で同じ玉を往復する系では、玉の公差の組は往きと戻りの面に同じ誤差を与える（曲率・くさびは同じ面、
 //! 厚さ・間隔は戻りで逆の符号、偏心・傾きは往復の範囲を持つブロックの動き）。玉の名前はブロックの id。
+//!
+//! 光源の波長のずれは {"param": "wave", "pm": 0.01}（µm。すべての波長を試行ごとに同じだけずらし、全媒質の屈折率が
+//! その波長の値になる）。1 つの波長だけなら "wave1" など（1 から）。
 
 use std::collections::HashMap;
 
 use lensbench_core::optim::{DefaultMerit, DlsOpts, Problem, Var};
+use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::tolerance::{self, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
 use lensbench_core::System;
@@ -364,10 +368,15 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
             ))
         }
     };
-    let params = names
-        .iter()
-        .map(|n| s.param(n).map_err(|e| format!("公差 {i}: {e}")))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut params = Vec::new();
+    for n in &names {
+        // "wave" はすべての波長（光源の波長のずれ。全波長を同じだけずらす）
+        if n.trim().eq_ignore_ascii_case("wave") {
+            params.extend((0..s.wavelengths.len()).map(|w| Param::new(0, Kind::Wave(w as u8))));
+            continue;
+        }
+        params.push(s.param(n).map_err(|e| format!("公差 {i}: {e}"))?);
+    }
     let (lo, hi) = match (m.get("pm"), m.get("lo"), m.get("hi")) {
         (Some(p), None, None) => {
             let p = num(p, "pm")?.abs();

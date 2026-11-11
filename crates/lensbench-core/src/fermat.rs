@@ -333,6 +333,9 @@ impl System {
                     [0.0, 1.0, 0.0]
                 };
             }
+            Kind::Wave(_) => {
+                invalid!("波長 {} の微分はない", p.kind.name());
+            }
             Kind::Unit(k) if k.motion_index().is_none() => {
                 invalid!(
                     "内部エラー: 玉・群の {} は面のパラメータに展開してから",
@@ -389,7 +392,7 @@ impl System {
     /// p がソルブで決まる量を動かしうるか（ソルブの微分を足す面のパラメータか）
     fn moves_solves(&self, p: Param) -> bool {
         !(self.solves.is_empty()
-            || p.kind.is_object()
+            || p.kind.is_global()
             || p.kind.is_unit()
             || self.pickup_of(p).is_some()
             || self.solves.iter().any(|q| {

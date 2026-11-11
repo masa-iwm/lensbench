@@ -722,6 +722,8 @@ trials が整数でない	trials is not an integer
 カタログの玉はカタログの玉の公差（設定の catalog_tols、なければ中心厚 ±0.1 mm・焦点距離 ±2%・芯取り 5′）	Catalog lenses use catalog tolerances (catalog_tols in the settings; otherwise center thickness ±0.1 mm, focal length ±2%, centration 5′)
 乱数の種	Random seed
 個別の公差を足す	Add a tolerance
+波長のずれを足す	Add wavelength shift
+光源の波長のずれ（± µm、すべての波長を同じだけずらす。wave1 などは 1 つの波長だけ）	Source wavelength shift (± µm, all wavelengths shifted by the same amount; wave1 etc. for a single wavelength)
 個別の公差（面ごと）	Individual tolerances (per surface)
 偏心	Decenter
 傾き	Tilt
