@@ -327,3 +327,81 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     std::fs::remove_dir_all(&dir).ok();
     assert!(e.contains("before"), "{e}");
 }
+
+/// 標準面でない面（Odd Asphere・トロイダル・Fresnel）の玉も、面を直接書いた玉に保存して同じ光線になる
+#[test]
+fn saved_lens_keeps_odd_asphere_toroidal_and_fresnel() {
+    const ZHEAD: &str =
+        "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 3 1 0 0 0\n\
+XFLN 0 4 -3\nYFLN 0 2 5\nFWGN 1 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n";
+    let surf1 = [
+        // アキシコン風の Odd Asphere（β1 の円錐 + β3）
+        "  TYPE ODDASPHE\n  CURV 0.02\n  PARM 1 -0.05\n  PARM 2 0\n  PARM 3 1e-5\n",
+        // 円柱面（回転半径 0）と、x にも曲率のあるトロイダル面
+        "  TYPE TOROIDAL\n  CURV 0.04\n  CONI -0.5\n  PARM 1 0\n  PARM 2 0\n  PARM 3 2e-6\n",
+        "  TYPE TOROIDAL\n  CURV 0.04\n  PARM 1 60\n",
+        // Fresnel（平面の上で、傾きは偶数次非球面の面）
+        "  TYPE FRESNELS\n  CURV 0.05\n  CONI -1\n  PARM 1 0\n  PARM 2 1e-6\n",
+    ];
+    let dir = tmp("shape");
+    for (n, s1) in surf1.iter().enumerate() {
+        let txt = format!(
+            "{ZHEAD}SURF 1\n  STOP\n{s1}  DISZ 4\n  GLAS ___BLANK 1 0 1.5168 0 0 0 0 0 0\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 40\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+        );
+        let raw = zmx::parse_text(&txt).unwrap();
+        let a = zmx::build(
+            &raw,
+            &LoadOptions {
+                cfg: 1,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
+        let item = lens_item(&a, 1, "").unwrap();
+        let js = serde_json::to_string(&item).unwrap();
+        let want = ["odd_asph", "toroidal", "toroidal", "fresnel"][n];
+        assert!(js.contains(&format!("\"shape\":\"{want}\"")), "{js}");
+        assert_eq!(js.contains("radius_x"), n == 2, "{js}");
+        let mut cat = UserCatalog::default();
+        cat.items.insert("L".into(), item);
+        cat.save(&dir.join("s.json")).unwrap();
+        let p = r#"{ "glass_catalogs": [],
+          "wavelengths": [{"um": 0.5876}], "primary": 1,
+          "aperture": {"type": "epd", "value": 10},
+          "fields": {"type": "angle", "points": [[0, 0], [4, 2], [-3, 5]]},
+          "blocks": [{"type": "stop"}, {"type": "user", "catalog": "s.json", "item": "L"},
+            {"type": "air", "t": 40}, {"type": "surfaces", "surfaces": [{"t": 0}]}] }"#;
+        let s = expand(&Project::from_json(p).unwrap(), &env_at(&dir)).unwrap();
+        same_rays(&s, &a, 1e-12);
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 古い書式の .zmx（WAVM が無く WAVL・WWGT に波長と重み）
+#[test]
+fn old_zmx_wavelength_lines() {
+    let txt = "VERS 31125 33\nUNIT MM X W X CM\nENPD 4\nWAVL 0.486 0.5876 0.656\nWWGT 1 2 1\n\
+WAVN 0.486 0.5876 0.656 0.55 0.55 0.55 0.55 0.55 0.55 0.55 0.55 0.55\nPWAV 2\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.1\n  DISZ 2\n  GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0\n\
+SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    let raw = zmx::parse_text(txt).unwrap();
+    let s = zmx::build(
+        &raw,
+        &LoadOptions {
+            cfg: 1,
+            ..Default::default()
+        },
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(s.wavelengths, vec![0.486, 0.5876, 0.656]);
+    assert_eq!(s.primary, 1);
+}

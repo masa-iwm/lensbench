@@ -468,3 +468,21 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         );
     }
 }
+
+/// Odd Asphere の面のコバ厚のソルブ（アキシコン: 平面 → β1 の円錐、EDGE で中心厚を決める）
+#[test]
+fn edge_solve_on_odd_asphere() {
+    let txt = format!(
+        "{HEAD}SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 1\n  GLAS ___BLANK 1 0 1.5168 0 0 0 0 0 0\n  EDGE 5 0\n  DIAM 12.7 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE ODDASPHE\n  CURV 0.0\n  PARM 1 -0.0087268677907590\n  DISZ 100\n  DIAM 12.7 1 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+    );
+    let s = build(&txt);
+    // 半直径 12.7 での矢高は β1·r なので、中心厚 = 5 − β1·12.7
+    let want = 5.0 + 0.0087268677907590 * 12.7;
+    assert!(
+        (s.surfaces[1].t - want).abs() < 1e-12,
+        "{}",
+        s.surfaces[1].t
+    );
+}

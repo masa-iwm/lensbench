@@ -1588,14 +1588,22 @@ impl System {
                 let d = &self.surfaces[k];
                 let n = &self.surfaces[k + 1];
                 for (j, x) in [(k, d), (k + 1, n)] {
-                    if !matches!(x.typ, SurfType::Standard | SurfType::EvenAsph) {
+                    if !matches!(
+                        x.typ,
+                        SurfType::Standard | SurfType::EvenAsph | SurfType::OddAsph
+                    ) {
                         notimpl!("面 {j}（{:?}）のコバ厚のソルブ", x.typ);
                     }
                 }
                 let r = if r == 0.0 { d.semi } else { r };
                 let r2 = r * r;
-                let z1 = crate::trace::sag(d.c, d.k, &d.asph, r2).0;
-                let z2 = crate::trace::sag(n.c, n.k, &n.asph, r2).0;
+                // Odd Asphere は回転対称なので y 軸の上の矢高で測る
+                let sag_r = |x: &crate::surface::Surface| match x.typ {
+                    SurfType::OddAsph => crate::freeform::sag_xy(x, 0.0, r).0,
+                    _ => crate::trace::sag(x.c, x.k, &x.asph, r2).0,
+                };
+                let z1 = sag_r(d);
+                let z2 = sag_r(n);
                 Some(h + z1 - z2)
             }
             SolveKind::Position(f) => {

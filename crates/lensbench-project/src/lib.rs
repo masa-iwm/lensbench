@@ -240,6 +240,36 @@ pub struct SurfSpec {
     /// 複屈折材の板の入口・出口（OpticStudio の Birefringent In / Out）。入口の `glass` が常光の材料（異常光は 名前-E）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub birefringent: Option<BireSpec>,
+    /// 面の形（省略は標準面。`asph` があれば偶数次非球面）。`odd_asph` は `asph` が β1..β8（r¹..r⁸ の係数、
+    /// OpticStudio の Odd Asphere）。`toroidal` は `radius`・`conic`・`asph` が y 方向の曲線で、x 方向の曲率半径が
+    /// `radius_x`（省略・0 なら円柱面、OpticStudio の Toroidal）。`fresnel` は平面の上で、屈折だけ
+    /// `radius`・`conic`・`asph` の面の傾きで決まる（OpticStudio の Fresnel）
+    #[serde(default, skip_serializing_if = "SurfShape::is_standard")]
+    pub shape: SurfShape,
+    /// トロイダル面の x 方向の曲率半径 [mm]（省略・0 なら円柱面）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius_x: Option<f64>,
+}
+
+/// 面の形（[`SurfSpec::shape`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfShape {
+    /// 標準面・偶数次非球面
+    #[default]
+    Standard,
+    /// Odd Asphere
+    OddAsph,
+    /// トロイダル面（円柱面を含む）
+    Toroidal,
+    /// Fresnel（平面の上の屈折）
+    Fresnel,
+}
+
+impl SurfShape {
+    fn is_standard(&self) -> bool {
+        *self == SurfShape::Standard
+    }
 }
 
 /// 複屈折材の板の入口・出口の面。`{"in": {"axis": [x, y, z]}}` か `"out"`
@@ -2358,12 +2388,16 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
     let n = e.surfaces.len();
     let mut v = Vec::new();
     for (i, s) in e.surfaces.iter().enumerate() {
-        if !matches!(s.typ, SurfType::Standard | SurfType::EvenAsph) {
-            return Err(format!(
-                "玉の面 {}: 標準面・偶数次非球面だけ保存できる",
+        let shape = match s.typ {
+            SurfType::Standard | SurfType::EvenAsph => SurfShape::Standard,
+            SurfType::OddAsph => SurfShape::OddAsph,
+            SurfType::Toroidal => SurfShape::Toroidal,
+            SurfType::Fresnel => SurfShape::Fresnel,
+            _ => return Err(format!(
+                "玉の面 {}: 標準面・偶数次非球面・Odd Asphere・トロイダル・Fresnel だけ保存できる",
                 i + 1
-            ));
-        }
+            )),
+        };
         if s.mirror {
             return Err(format!("玉の面 {}: 鏡の面のある玉は保存できない", i + 1));
         }
@@ -2387,11 +2421,13 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
         v.push(SurfSpec {
             radius: (s.c != 0.0).then(|| 1.0 / s.c),
             conic: s.k,
-            asph: if s.typ == SurfType::EvenAsph {
-                s.asph.clone()
-            } else {
+            asph: if s.typ == SurfType::Standard {
                 Vec::new()
+            } else {
+                s.asph.clone()
             },
+            shape,
+            radius_x: (shape == SurfShape::Toroidal && s.cx != 0.0).then(|| 1.0 / s.cx),
             t: if i + 1 == n { 0.0 } else { s.t },
             glass,
             // カタログの玉は径が決まっているので固定（自動ならいまの値）
@@ -3011,10 +3047,17 @@ fn surf_ap(ap: Option<SurfAperture>, semi: f64) -> Aperture {
 
 fn surf(q: &SurfSpec) -> Result<Surface, String> {
     let mut s = Surface {
-        typ: if q.asph.iter().any(|a| *a != 0.0) {
-            SurfType::EvenAsph
+        typ: match q.shape {
+            SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => SurfType::EvenAsph,
+            SurfShape::Standard => SurfType::Standard,
+            SurfShape::OddAsph => SurfType::OddAsph,
+            SurfShape::Toroidal => SurfType::Toroidal,
+            SurfShape::Fresnel => SurfType::Fresnel,
+        },
+        cx: if q.shape == SurfShape::Toroidal {
+            curv(q.radius_x)
         } else {
-            SurfType::Standard
+            0.0
         },
         c: curv(q.radius),
         k: q.conic,
@@ -3069,7 +3112,11 @@ fn surf(q: &SurfSpec) -> Result<Surface, String> {
         } else {
             "coordbrk"
         };
-        if curv(q.radius) != 0.0 || q.conic != 0.0 || s.typ == SurfType::EvenAsph {
+        if curv(q.radius) != 0.0
+            || q.conic != 0.0
+            || s.typ == SurfType::EvenAsph
+            || q.shape != SurfShape::Standard
+        {
             return Err(format!("{what} の面に曲率・円錐係数・非球面は書けない"));
         }
         if q.glass.as_deref().is_some_and(|g| !is_air(g.trim())) {
