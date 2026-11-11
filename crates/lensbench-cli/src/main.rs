@@ -1028,8 +1028,13 @@ fn provenance() -> Value {
     json!({ "lensbench": lensbench_core::VERSION, "system_hash": h })
 }
 
-/// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）。.zmx・系ファイルなら空
-fn tolerance_vendors(c: &Common) -> std::collections::HashMap<String, String> {
+/// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id。.zmx・系ファイルなら空
+fn tolerance_vendors(
+    c: &Common,
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashSet<String>,
+) {
     if !c
         .file
         .extension()
@@ -1041,7 +1046,12 @@ fn tolerance_vendors(c: &Common) -> std::collections::HashMap<String, String> {
     lensbench_core::vfs::read_to_string(&c.file)
         .ok()
         .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-        .map(|p| lensbench_project::tolerance::catalog_vendors(&p))
+        .map(|p| {
+            (
+                lensbench_project::tolerance::catalog_vendors(&p),
+                lensbench_project::tolerance::reversed_lenses(&p),
+            )
+        })
         .unwrap_or_default()
 }
 
@@ -2256,8 +2266,13 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             if let Some(n) = seed {
                 v["seed"] = json!(n);
             }
-            let vendors = tolerance_vendors(&c);
-            let ms = lensbench_project::tolerance::spec_from_json(&v, vec![s], &vendors)?;
+            let (vendors, reversed) = tolerance_vendors(&c);
+            let ms = lensbench_project::tolerance::spec_from_json_with(
+                &v,
+                vec![s],
+                &vendors,
+                &reversed,
+            )?;
             let oo = lensbench_project::tolerance::out_opts(&v)?;
             let json_out = c.json;
             let step = (ms.trials + 2 * ms.tols.len()).div_ceil(20).max(1);

@@ -722,6 +722,9 @@ pub struct LensTol {
     pub tilt: f64,
     /// 玉の後の空気の間隔 [mm]（次に玉がある場合）
     pub space: f64,
+    /// くさびを玉の最初の面に入れる（false は最後の面）。最初・最後は系の中で光の通る順（往復する玉は往きの範囲）。
+    /// 玉の向き（裏返して置いたか）で選ぶのはプロジェクトの側（`wedge_face`）
+    pub wedge_first: bool,
 }
 
 impl LensTol {
@@ -741,6 +744,7 @@ impl LensTol {
                 decenter: 0.1,
                 tilt: 3.0 * am,
                 space: 0.1,
+                wedge_first: false,
             },
             "precision" | "精密" => LensTol {
                 radius_rel: 0.001,
@@ -752,6 +756,7 @@ impl LensTol {
                 decenter: 0.05,
                 tilt: 1.0 * am,
                 space: 0.05,
+                wedge_first: false,
             },
             "high" | "高精度" => LensTol {
                 radius_rel: 0.0005,
@@ -763,6 +768,7 @@ impl LensTol {
                 decenter: 0.02,
                 tilt: 0.5 * am,
                 space: 0.02,
+                wedge_first: false,
             },
             "none" => LensTol::default(),
             n => invalid!("公差の組 {n}（commercial・precision・high・none）"),
@@ -902,9 +908,20 @@ pub fn simple(
                 false,
             );
         }
-        // くさびは後ろの面の傾き。往復の同じ面に同じ符号（往復の範囲を持つ玉の剛体の傾きと同じ向き）
-        push(format!("{name} くさびx"), surf(b, Kind::Tx), t.wedge, false);
-        push(format!("{name} くさびy"), surf(b, Kind::Ty), t.wedge, false);
+        // くさびは最後（wedge_first なら最初）の面の傾き。往復の同じ面に同じ符号（往復の範囲を持つ玉の剛体の傾きと同じ向き）
+        let wf = if t.wedge_first { a } else { b };
+        push(
+            format!("{name} くさびx"),
+            surf(wf, Kind::Tx),
+            t.wedge,
+            false,
+        );
+        push(
+            format!("{name} くさびy"),
+            surf(wf, Kind::Ty),
+            t.wedge,
+            false,
+        );
         push(
             format!("{name} 偏心x"),
             one(Param::unit(mu, UnitKind::Dx)),

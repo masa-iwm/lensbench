@@ -2476,14 +2476,16 @@ impl PySystem {
     /// ref・terms・sensitivity・percentiles・samples）。None なら既定（一般の公差の組を全部の玉に、RMS 波面、100 回）。
     /// terms は optimize の terms と同じ並びで、spec の terms の後に足す（Python の関数の項 {"type": "user", ...} も使える。
     /// 測定値などを評価量にするときに）。vendors はブロックの id → メーカーの dict（カタログの玉の既定の公差に使う）。
-    /// configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。
+    /// configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。reversed は裏返して置いた玉のブロックの
+    /// id の並び（spec の wedge_face の前・後ろを玉のもとの向きで決めるのに使う）。
     ///
     /// 返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
     /// 昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・
     /// tilt_magnitudes（補償子の tx・ty の組の大きさ [分]）・merit_values（試行ごとの評価関数）・sensitivity（公差ごとの lo・hi での評価関数の
     /// 変化、悪い順）・rss_estimate・correlation（ずれとの相関 r と |ずれ| との相関 r_abs）・tolerances・trials・failed・
     /// errors（samples が true なら試行ごとの deltas・eval も）
-    #[pyo3(signature = (spec=None, terms=None, vendors=None, configs=None, threads=None))]
+    #[pyo3(signature = (spec=None, terms=None, vendors=None, configs=None, threads=None, reversed=None))]
+    #[allow(clippy::too_many_arguments)]
     fn tolerance<'py>(
         &self,
         py: Python<'py>,
@@ -2492,6 +2494,7 @@ impl PySystem {
         vendors: Option<std::collections::HashMap<String, String>>,
         configs: Option<Vec<PyRef<'py, PySystem>>>,
         threads: Option<usize>,
+        reversed: Option<Vec<String>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let json = py.import("json")?;
         let v: serde_json::Value = match &spec {
@@ -2506,8 +2509,11 @@ impl PySystem {
             systems.push((*c.sys()).clone());
         }
         let vendors = vendors.unwrap_or_default();
-        let mut ms = lensbench_project::tolerance::spec_from_json(&v, systems, &vendors)
-            .map_err(PyValueError::new_err)?;
+        let reversed: std::collections::HashSet<String> =
+            reversed.unwrap_or_default().into_iter().collect();
+        let mut ms =
+            lensbench_project::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
+                .map_err(PyValueError::new_err)?;
         let oo = lensbench_project::tolerance::out_opts(&v).map_err(PyValueError::new_err)?;
         let users = match &terms {
             Some(t) => userterm::add_terms(py, &mut ms.problem, t, &self.coat_files)?,

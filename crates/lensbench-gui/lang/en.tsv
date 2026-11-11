@@ -1278,3 +1278,7 @@ y⁸ の係数	y⁸ coeff
 面 {}〜{} で玉・群を作る	Make a lens/group from surfaces {}–{}
 選び方: 面単位（選んだ面だけをハイライト）。クリックでブロック単位に	Selection: by surface (only the chosen surfaces are highlighted). Click for by block
 選び方: ブロック単位（面を選ぶとそのブロック全体を選ぶ）。クリックで面単位に	Selection: by block (choosing a surface selects its whole block). Click for by surface
+くさびの面	Wedge face
+後ろの面	Back face
+前の面	Front face
+前・後ろは玉のもとの向き（カタログ・.zmx の向き）。裏返して置いた玉や鏡で往復する玉でも同じ面	Front/back refer to the lens's own orientation (as in the catalog or .zmx). The same face is used for reversed lenses and lenses traversed twice via a mirror
