@@ -134,6 +134,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+        timeout-minutes: 10
       - run: cargo build --profile ci -p lensbench-gui
       - run: >-
           xvfb-run -a -s "-screen 0 1400x900x24"

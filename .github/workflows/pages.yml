@@ -48,6 +48,7 @@ jobs:
         with:
           tool: mdbook@0.4.52
       - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+        timeout-minutes: 10
       - run: scripts/build_docs.sh target/site
       - run: scripts/build_web.sh target/site/app
       - uses: actions/upload-pages-artifact@v4

@@ -2,7 +2,8 @@
 # CI の apt を落ちにくくする: 使う: .github/scripts/apt_install.sh 包み...
 #
 # - 入っていない包みだけ入れる（ランナーの像に入っていれば apt に触らない）
-# - apt 自体の再試行（Acquire::Retries）と短めのタイムアウト
+# - apt 自体の再試行は少なめ（Acquire::Retries=2）・短めのタイムアウト。update は取得失敗を失敗にする（--error-on=any）。
+#   DNS 失敗でも update は既定で 0 を返し、install が deb ごとに再試行を重ねて数十分止まるため（#169 のレビュー）
 # - 失敗したら 30 秒おいて最大 3 回。2 回目からは、ランナーの既定のミラー（mirror+file:/etc/apt/apt-mirrors.txt、
 #   azure.archive.ubuntu.com）をやめて archive.ubuntu.com・security.ubuntu.com を直に使う
 #   （11/11 に azure.archive.ubuntu.com の名前解決が数分続けて失敗し、gui-tour・web・Pages が落ちた）
@@ -18,7 +19,7 @@ if [ ${#missing[@]} -eq 0 ]; then
 fi
 echo "apt: 入れる: ${missing[*]}"
 
-opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120)
+opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o DPkg::Lock::Timeout=120)
 
 use_direct_mirrors() {
   echo "::warning::apt: 既定のミラーで失敗したので archive.ubuntu.com を直に使う"
@@ -37,8 +38,8 @@ for attempt in 1 2 3; do
     sleep 30
     use_direct_mirrors
   fi
-  # update の失敗（W: Failed to fetch は終了コード 0）は install の失敗で分かる
-  sudo apt-get "${opts[@]}" update -q && \
+  # --error-on=any: 取得の失敗（W: Failed to fetch）も update の失敗にして、すぐ次の回（直のミラー）へ
+  sudo apt-get "${opts[@]}" update -q --error-on=any && \
     sudo DEBIAN_FRONTEND=noninteractive apt-get "${opts[@]}" install -y -q --no-install-recommends "${missing[@]}" && exit 0
   echo "::warning::apt: ${attempt} 回目が失敗"
 done
