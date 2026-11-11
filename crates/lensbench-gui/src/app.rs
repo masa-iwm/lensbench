@@ -3739,6 +3739,12 @@ impl App {
             s.lang = Lang::Ja;
         } else {
             s.resolve_paths();
+            // 初めてのポータブルで OS の場所の設定を取り込んだら、硝材・レンズのフォルダは exe の隣の catalogs/ に
+            if matches!(args.notice, Some(crate::portable::Notice::Imported(_))) {
+                if let Some(d) = crate::portable::exe_dir() {
+                    crate::portable::imported_catalogs(&d, &mut s.glass_dirs, &mut s.lens_dirs);
+                }
+            }
             // 硝材・レンズのフォルダが無ければ、exe の隣の catalogs/ を既定に（リリースを展開してすぐ見える）
             if s.glass_dirs.is_empty() && s.lens_dirs.is_empty() {
                 if let Some(d) = crate::portable::exe_dir() {
