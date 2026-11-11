@@ -21,6 +21,7 @@ pub mod arg_spec;
 mod browse;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cad;
+pub mod cad_detail;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
@@ -3685,7 +3686,7 @@ pub fn main() -> ExitCode {
     let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
-    cad::install_detail_loader();
+    cad_detail::install_detail_loader();
     // run はスレッド数を自分では使わず、起動する Python に渡す
     if let Cmd::Run(a) = &cli.cmd {
         return match run::run(a, cli.threads) {

@@ -28,6 +28,9 @@ clap = { version = "4", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 # 時計（wasm の std::time::Instant は使えない）
 web-time = "1"
+# 取った STEP を読んで三角形にする（cad_detail.rs の詳しい形、公開 #121。Web 版でも #158）
+truck-stepio = "0.3"
+truck-meshalgo = "0.4"
 
 # 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）。
 # wasm（Web 版）では使えないのでネイティブだけ
@@ -36,9 +39,6 @@ mimalloc = { version = "0.1", default-features = false }
 # 品の STEP を公式の配布元から 1 件取る（cad.rs、公開 #120）。証明書は OS の信頼する証明書で確かめる
 ureq = { version = "3", features = ["platform-verifier"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-# 取った STEP を読んで三角形にする（cad.rs の詳しい形、公開 #121）
-truck-stepio = "0.3"
-truck-meshalgo = "0.4"
 
 [dev-dependencies]
 serde_json = "1"
