@@ -374,6 +374,45 @@ fn double_pass_lens_errors_on_both_passes() {
 }
 
 #[test]
+fn groups_on_lens_blocks() {
+    // 玉 1 つのブロック（往復する玉も）に groups を書くと、玉の公差と別に組立の偏心・傾き・移動を足す
+    let p = Project::from_json(DP).unwrap();
+    let env = Env {
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let s = expand(&p, &env).unwrap();
+    let v = json!({"preset": "none", "groups": {"L1": {"decenter": 0.2, "tilt": 0.1}, "L2": {"shift": 0.05}}});
+    let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+    let names: Vec<&str> = m.tols.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "L1 群の偏心x",
+            "L1 群の偏心y",
+            "L1 群の傾きx",
+            "L1 群の傾きy",
+            "L2 群の移動"
+        ]
+    );
+    assert_eq!(s.param_name(m.tols[0].params[0]), "L1.dx");
+    assert_eq!(s.param_name(m.tols[4].params[0]), "L2.shift");
+    // 玉の公差（preset）とは名前を分けて両方入る
+    let v = json!({"preset": "commercial", "groups": {"L1": {"decenter": 0.2}}});
+    let names = labels(&v, &s, &HashMap::new());
+    assert!(names.iter().any(|l| l == "L1 偏心x") && names.iter().any(|l| l == "L1 群の偏心x"));
+    // 片道の系の玉 1 つのブロックでも
+    let (_, s1) = sys();
+    let names = labels(
+        &json!({"preset": "none", "groups": {"L1": {"tilt": 0.1}}}),
+        &s1,
+        &HashMap::new(),
+    );
+    assert_eq!(names, ["L1 群の傾きx", "L1 群の傾きy"]);
+}
+
+#[test]
 fn explicit_tol_scale() {
     let (_, s) = sys();
     let v = json!({"preset": "none", "tols": [{"params": ["1.t", "2.t"], "pm": 0.1, "scale": [1, -1]}]});
