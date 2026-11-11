@@ -32,6 +32,9 @@ pub struct Extra {
     /// （見本の LB・LBP と lens_dirs、ガラスは見本と glass_dirs）で一覧を頼まれたら、読む代わりにこれを返す
     /// （`lensbench_cli::set_prepared_lens_list`）。ビルドのときに `lensbench catalog-search --json` で作る
     pub lens_index: Option<&'static str>,
+    /// 品の STEP の共有の置き場の URL（例 `/cad`。同じサイトの口なら Access のログインがそのまま効く）。
+    /// あれば、カタログの詳細から品の STEP を取り、3D・書き出しで機構部品を詳しい形で描ける（#158）
+    pub cad_store: Option<&'static str>,
 }
 
 static EXTRA: std::sync::Mutex<Option<Extra>> = std::sync::Mutex::new(None);
@@ -164,6 +167,8 @@ mod web {
         let extra = super::extra();
         insert_all(&extra).await?;
         default_dirs(&extra);
+        // 機構部品の詳しい形（置き場から取って vfs の /cad に入れた STEP）を描けるように
+        lensbench_cli::cad_detail::install_detail_loader();
         lensbench_gui::web_worker::init(kind);
         Ok(())
     }
@@ -236,6 +241,8 @@ mod web {
             .map(String::from)
             .collect();
         let (glass_dirs, lens_dirs) = default_dirs(&extra);
+        lensbench_gui::set_web_cad_store(extra.cad_store.map(String::from));
+        lensbench_cli::cad_detail::install_detail_loader();
         let args = lensbench_gui::Args {
             open: Some(FIRST.into()),
             glass_dirs,

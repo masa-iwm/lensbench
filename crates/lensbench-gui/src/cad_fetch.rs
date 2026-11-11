@@ -3,14 +3,13 @@
 //! 品の一覧で選んだ品に `cad.step` があれば「詳しい形（STEP）を取る」ボタンを出し、押したときにその 1 ファイルだけを
 //! 裏のスレッドで取る（serve の `cad_step` と同じ [`lensbench_cli::cad`]）。キャッシュは設定のフォルダの `cad`。
 //! 取れたら簡易外形との食い違いを示し、取れなければ品ページのリンクを出す（表示は簡易外形のまま）。
-//! Web 版は取らず、リンクだけを出す。
-
-// Web 版は取らない（状態・結果の表示は使わない）
-#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
+//! Web 版は配布元からは取れない（CORS）。共有の置き場（[`set_web_store`]、同じサイトの口）があればそこから取り、
+//! 置き場（vfs）の `/cad` に入れる（計算の Web Worker にも写り、詳しい形の描画に使う。#158）。
 
 use egui::{RichText, Ui};
 use serde_json::Value;
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
 use crate::catalog::LensRow;
@@ -38,6 +37,101 @@ fn cad_dir() -> PathBuf {
         .unwrap_or_else(lensbench_cli::cad::default_cache_dir)
 }
 
+/// Web 版の共有の置き場の URL（例 `/cad`。別の入口が [`crate::set_web_cad_store`] で決める）
+#[cfg(target_arch = "wasm32")]
+static WEB_STORE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(target_arch = "wasm32")]
+pub fn set_web_store(url: Option<String>) {
+    *WEB_STORE.lock().unwrap_or_else(|e| e.into_inner()) = url.filter(|u| !u.trim().is_empty());
+}
+
+#[cfg(target_arch = "wasm32")]
+fn web_store() -> Option<String> {
+    WEB_STORE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Web 版: 置き場から品の STEP を取って vfs に入れ、serve の `cad_step` と同じ形の結果にする
+#[cfg(target_arch = "wasm32")]
+async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value, String> {
+    use js_sys::{Function, Promise, Reflect};
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+    let cat = lensbench_project::UserCatalog::load(std::path::Path::new(&catalog))?;
+    let it = cat
+        .items
+        .get(&name)
+        .ok_or_else(|| format!("{catalog} に品 {name} がない"))?;
+    let path = lensbench_project::catalog_fill::cad_cache_path(
+        &lensbench_project::catalog_fill::cad_cache_dir(),
+        &name,
+        &it.cad.step,
+    );
+    let cached = lensbench_core::vfs::is_file(&path);
+    let text = if cached {
+        lensbench_core::vfs::read(&path).map_err(|e| e.to_string())?
+    } else {
+        let key = path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let url = format!("{}/{}", store.trim_end_matches('/'), key);
+        let js = |e: wasm_bindgen::JsValue| format!("置き場を読めない（{url}）: {e:?}");
+        let g = js_sys::global();
+        let f: Function = Reflect::get(&g, &"fetch".into())
+            .map_err(js)?
+            .dyn_into()
+            .map_err(js)?;
+        let p: Promise = f
+            .call1(&g, &url.as_str().into())
+            .map_err(js)?
+            .dyn_into()
+            .map_err(js)?;
+        let r = JsFuture::from(p).await.map_err(js)?;
+        let st = Reflect::get(&r, &"status".into())
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as u32;
+        if st == 404 {
+            return Err(tr(
+                "置き場にこの品の STEP がありません（アプリ版で取ると置き場に上がります）",
+            )
+            .to_string());
+        }
+        if st != 200 {
+            return Err(format!("置き場を読めない（{st}）: {url}"));
+        }
+        let ab: Function = Reflect::get(&r, &"arrayBuffer".into())
+            .map_err(js)?
+            .dyn_into()
+            .map_err(js)?;
+        let p: Promise = ab.call0(&r).map_err(js)?.dyn_into().map_err(js)?;
+        let buf = JsFuture::from(p).await.map_err(js)?;
+        let b = js_sys::Uint8Array::new(&buf).to_vec();
+        let head = String::from_utf8_lossy(&b[..b.len().min(256)]).to_ascii_uppercase();
+        if !head
+            .trim_start_matches('\u{feff}')
+            .trim_start()
+            .starts_with("ISO-10303-21")
+        {
+            return Err(format!("置き場の中身が STEP でない: {url}"));
+        }
+        lensbench_core::vfs::write(&path, &b).map_err(|e| e.to_string())?;
+        b
+    };
+    let (measured, notes) = lensbench_cli::cad_detail::measure(it, &text);
+    Ok(serde_json::json!({
+        "item": name,
+        "url": it.cad.step,
+        "path": path.display().to_string(),
+        "cached": cached,
+        "source": if cached { "cache" } else { "store" },
+        "store_notes": [],
+        "measured": measured.as_ref().map(|m| serde_json::to_value(m).unwrap_or_default()),
+        "notes": notes,
+    }))
+}
+
 /// 品の取得の状態
 #[derive(Debug, Clone)]
 pub enum CadState {
@@ -51,9 +145,7 @@ pub enum CadState {
 #[derive(Default)]
 pub struct CadFetcher {
     pub state: HashMap<(String, String), CadState>,
-    #[cfg(not(target_arch = "wasm32"))]
     rx: Option<std::sync::mpsc::Receiver<((String, String), CadState)>>,
-    #[cfg(not(target_arch = "wasm32"))]
     tx: Option<std::sync::mpsc::Sender<((String, String), CadState)>>,
 }
 
@@ -68,7 +160,6 @@ fn key_of(r: &LensRow) -> Option<(String, String)> {
 impl CadFetcher {
     /// 終わった取得の結果を受け取る
     pub fn poll(&mut self) {
-        #[cfg(not(target_arch = "wasm32"))]
         if let Some(rx) = &self.rx {
             while let Ok((k, s)) = rx.try_recv() {
                 self.state.insert(k, s);
@@ -76,8 +167,7 @@ impl CadFetcher {
         }
     }
 
-    /// 選んだ品の 1 件だけを裏で取る
-    #[cfg(not(target_arch = "wasm32"))]
+    /// 選んだ品の 1 件だけを裏で取る（Web 版は置き場から非同期に）
     fn start(&mut self, ctx: &egui::Context, key: (String, String)) {
         if matches!(self.state.get(&key), Some(CadState::Pending)) {
             return;
@@ -90,24 +180,41 @@ impl CadFetcher {
         let tx = self.tx.clone().unwrap();
         self.state.insert(key.clone(), CadState::Pending);
         let ctx = ctx.clone();
-        let dir = cad_dir();
-        std::thread::spawn(move || {
-            let r = lensbench_project::UserCatalog::load(std::path::Path::new(&key.0))
-                .map_err(|e| e.to_string())
-                .and_then(|cat| {
-                    let it = cat
-                        .items
-                        .get(&key.1)
-                        .ok_or_else(|| format!("{} に品 {} がない", key.0, key.1))?;
-                    lensbench_cli::cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
-                });
+        let done = move |key, r: Result<Value, String>| {
             let s = match r {
                 Ok(v) => CadState::Done(v),
                 Err(e) => CadState::Failed(e),
             };
             let _ = tx.send((key, s));
             ctx.request_repaint();
-        });
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let dir = cad_dir();
+            std::thread::spawn(move || {
+                let r = lensbench_project::UserCatalog::load(std::path::Path::new(&key.0))
+                    .map_err(|e| e.to_string())
+                    .and_then(|cat| {
+                        let it = cat
+                            .items
+                            .get(&key.1)
+                            .ok_or_else(|| format!("{} に品 {} がない", key.0, key.1))?;
+                        lensbench_cli::cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
+                    });
+                done(key, r);
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let Some(store) = web_store() else {
+                done(key, Err(tr("置き場がありません").to_string()));
+                return;
+            };
+            wasm_bindgen_futures::spawn_local(async move {
+                let r = web_fetch(store, key.0.clone(), key.1.clone()).await;
+                done(key, r);
+            });
+        }
     }
 
     /// 品の CAD の欄: STEP を取るボタン・結果と、図面（PDF）のリンク。CAD の URL の無い品は何も出さない
@@ -119,7 +226,7 @@ impl CadFetcher {
         let from_store =
             step.is_empty() && r.raw.get("mech").is_some() && lensbench_cli::cad::store().is_some();
         #[cfg(target_arch = "wasm32")]
-        let from_store = false;
+        let from_store = web_store().is_some() && r.raw.get("mech").is_some();
         if step.is_empty() && pdf.is_empty() && !from_store {
             return;
         }
@@ -134,7 +241,9 @@ impl CadFetcher {
             if !step.is_empty() {
                 ui.hyperlink_to(tr("STEP（公式）"), &step);
             }
-            #[cfg(not(target_arch = "wasm32"))]
+            if !from_store && cfg!(target_arch = "wasm32") {
+                return;
+            }
             if let Some(key) = key_of(r) {
                 let st = self.state.get(&key).cloned();
                 match st {
@@ -157,7 +266,6 @@ impl CadFetcher {
                 }
             }
         });
-        #[cfg(not(target_arch = "wasm32"))]
         if let Some(st) = key_of(r).and_then(|k| self.state.get(&k)) {
             match st {
                 CadState::Pending => {}
