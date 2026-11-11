@@ -99,6 +99,9 @@ pub struct Tol {
     /// ずれを今の値に対する比で与える
     pub relative: bool,
     pub dist: Dist,
+    /// パラメータごとにずれに掛ける数（空はすべて 1）。鏡で折り返して往復する玉の厚さのように、往きと戻りで同じずれを
+    /// 逆の符号で与えるときに -1
+    pub scale: Vec<f64>,
 }
 
 impl Tol {
@@ -111,7 +114,13 @@ impl Tol {
             hi: pm,
             relative: false,
             dist: Dist::Uniform,
+            scale: Vec::new(),
         }
+    }
+
+    /// パラメータ k のずれに掛ける数
+    pub fn scale_of(&self, k: usize) -> f64 {
+        self.scale.get(k).copied().unwrap_or(1.0)
     }
 }
 
@@ -150,6 +159,14 @@ impl McSpec {
         for (i, t) in self.tols.iter().enumerate() {
             if t.params.is_empty() {
                 invalid!("公差 {i}（{}）: パラメータがない", t.label);
+            }
+            if !t.scale.is_empty() && t.scale.len() != t.params.len() {
+                invalid!(
+                    "公差 {i}（{}）: scale は {} 個（パラメータは {} 個）",
+                    t.label,
+                    t.scale.len(),
+                    t.params.len()
+                );
             }
             if !(t.lo.is_finite() && t.hi.is_finite() && t.lo <= t.hi) {
                 invalid!("公差 {i}（{}）: 範囲 [{}, {}]", t.label, t.lo, t.hi);
@@ -442,9 +459,9 @@ pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
                 if d == 0.0 {
                     continue;
                 }
-                for &p in &t.params {
+                for (k, &p) in t.params.iter().enumerate() {
                     let v0 = s.get_param(p)?;
-                    let dv = if t.relative { v0 * d } else { d };
+                    let dv = t.scale_of(k) * if t.relative { v0 * d } else { d };
                     match ch.iter_mut().find(|x| x.0 == p) {
                         Some(x) => x.1 += dv,
                         None => ch.push((p, v0 + dv)),
@@ -522,6 +539,7 @@ pub fn pair_disc(tols: &mut [Tol]) -> usize {
         !a.relative
             && !b.relative
             && a.params.len() == b.params.len()
+            && a.scale == b.scale
             && a.params
                 .iter()
                 .zip(&b.params)
@@ -721,31 +739,66 @@ pub fn simple(
 ) -> Vec<Tol> {
     let ok = |p: Param| s.check_param(p).is_ok() && s.pickup_of(p).is_none();
     let mut out: Vec<Tol> = Vec::new();
-    let mut push = |label: String, params: Vec<Param>, pm: f64, relative: bool| {
-        let params: Vec<Param> = params.into_iter().filter(|&p| ok(p)).collect();
+    // params は (パラメータ, ずれに掛ける数)
+    let mut push = |label: String, params: Vec<(Param, f64)>, pm: f64, relative: bool| {
+        let params: Vec<(Param, f64)> = params.into_iter().filter(|&(p, _)| ok(p)).collect();
         if pm > 0.0 && !params.is_empty() {
+            let scale: Vec<f64> = if params.iter().all(|x| x.1 == 1.0) {
+                Vec::new()
+            } else {
+                params.iter().map(|x| x.1).collect()
+            };
             out.push(Tol {
                 label,
-                params,
+                params: params.into_iter().map(|x| x.0).collect(),
                 lo: -pm,
                 hi: pm,
                 relative,
                 dist,
+                scale,
             });
         }
     };
+    let one = |p: Param| vec![(p, 1.0)];
     let auto: Vec<usize> = (0..s.units.len()).filter(|&u| s.units[u].auto).collect();
     let starts: Vec<usize> = auto.iter().map(|&u| s.units[u].spans[0][0]).collect();
+    let links = lens_links(s);
     for (k, &u) in auto.iter().enumerate() {
         let unit = &s.units[u];
-        // 同じ範囲のブロックの名前
-        let name = s
-            .units
-            .iter()
-            .find(|v| !v.auto && v.spans == unit.spans)
-            .map_or(unit.name.clone(), |v| v.name.clone());
+        // 往復する玉の 2 つ目からの範囲は、最初の範囲の玉にまとめる
+        if links.iter().any(|l| l.others.iter().any(|o| o.auto == u)) {
+            continue;
+        }
+        let link = links.iter().find(|l| l.first == u);
+        // 同じ範囲のブロックの名前（往復する玉は範囲を全部持つブロック）
+        let (name, mu) = match link {
+            Some(l) => (s.units[l.unit].name.clone(), l.unit),
+            None => s
+                .units
+                .iter()
+                .position(|v| !v.auto && v.spans == unit.spans)
+                .map_or((unit.name.clone(), u), |i| (s.units[i].name.clone(), i)),
+        };
         let Some(t) = lens(&name) else { continue };
         let [a, b] = unit.spans[0];
+        let others: Vec<LinkSpan> = link.map(|l| l.others.clone()).unwrap_or_default();
+        // 面 j（最初の範囲）と、往復のほかの範囲の同じ面
+        let surf = |j: usize, kind: Kind| -> Vec<(Param, f64)> {
+            let mut v = vec![(Param::new(j, kind), 1.0)];
+            for o in &others {
+                v.push((Param::new(o.surf(a, j), kind), 1.0));
+            }
+            v
+        };
+        // 面 j の後の媒質（厚さ・屈折率）と、ほかの範囲の同じ媒質。厚さは逆向きの範囲では符号が逆
+        let medium = |j: usize, kind: Kind, thick: bool| -> Vec<(Param, f64)> {
+            let mut v = vec![(Param::new(j, kind), 1.0)];
+            for o in &others {
+                let f = if thick && o.reversed { -1.0 } else { 1.0 };
+                v.push((Param::new(o.medium(a, j), kind), f));
+            }
+            v
+        };
         let curved: Vec<usize> = (a..=b)
             .filter(|&j| {
                 let d = &s.surfaces[j];
@@ -755,26 +808,27 @@ pub fn simple(
         for &j in &curved {
             push(
                 format!("{name} R{}", j - a + 1),
-                vec![Param::new(j, Kind::Radius)],
+                surf(j, Kind::Radius),
                 t.radius_rel,
                 true,
             );
         }
         push(
             format!("{name} 焦点距離"),
-            curved
-                .iter()
-                .map(|&j| Param::new(j, Kind::Radius))
-                .collect(),
+            curved.iter().flat_map(|&j| surf(j, Kind::Radius)).collect(),
             t.focal_rel,
             true,
         );
-        let media = s.unit_media(u);
+        let media: Vec<usize> = s
+            .unit_media(u)
+            .into_iter()
+            .filter(|&j| (a..=b).contains(&j))
+            .collect();
         for &j in &media {
             if j < b {
                 push(
                     format!("{name} 厚さ{}", j - a + 1),
-                    vec![Param::new(j, Kind::Thick)],
+                    medium(j, Kind::Thick, true),
                     t.thickness,
                     false,
                 );
@@ -783,99 +837,189 @@ pub fn simple(
         for &j in &media {
             push(
                 format!("{name} 屈折率{}", j - a + 1),
-                vec![Param::new(j, Kind::Dn)],
+                medium(j, Kind::Dn, false),
                 t.dn,
                 false,
             );
             push(
                 format!("{name} 分散{}", j - a + 1),
-                vec![Param::new(j, Kind::Disp)],
+                medium(j, Kind::Disp, false),
                 t.disp,
                 false,
             );
         }
-        push(
-            format!("{name} くさびx"),
-            vec![Param::new(b, Kind::Tx)],
-            t.wedge,
-            false,
-        );
-        push(
-            format!("{name} くさびy"),
-            vec![Param::new(b, Kind::Ty)],
-            t.wedge,
-            false,
-        );
+        // くさびは後ろの面の傾き。往復の同じ面に同じ符号（往復の範囲を持つ玉の剛体の傾きと同じ向き）
+        push(format!("{name} くさびx"), surf(b, Kind::Tx), t.wedge, false);
+        push(format!("{name} くさびy"), surf(b, Kind::Ty), t.wedge, false);
         push(
             format!("{name} 偏心x"),
-            vec![Param::unit(u, UnitKind::Dx)],
+            one(Param::unit(mu, UnitKind::Dx)),
             t.decenter,
             false,
         );
         push(
             format!("{name} 偏心y"),
-            vec![Param::unit(u, UnitKind::Dy)],
+            one(Param::unit(mu, UnitKind::Dy)),
             t.decenter,
             false,
         );
         push(
             format!("{name} 傾きx"),
-            vec![Param::unit(u, UnitKind::Tx)],
+            one(Param::unit(mu, UnitKind::Tx)),
             t.tilt,
             false,
         );
         push(
             format!("{name} 傾きy"),
-            vec![Param::unit(u, UnitKind::Ty)],
+            one(Param::unit(mu, UnitKind::Ty)),
             t.tilt,
             false,
         );
         if k + 1 < starts.len() && b < starts[k + 1] {
-            push(
-                format!("{name} 後の間隔"),
-                vec![Param::new(b, Kind::Thick)],
-                t.space,
-                false,
-            );
+            // 玉の後の間隔。逆向きの範囲では範囲の前の間隔（符号が逆）
+            let mut v = vec![(Param::new(b, Kind::Thick), 1.0)];
+            for o in &others {
+                if let Some((j, f)) = o.space() {
+                    v.push((Param::new(j, Kind::Thick), f));
+                }
+            }
+            push(format!("{name} 後の間隔"), v, t.space, false);
         }
     }
     for u in 0..s.units.len() {
         let unit = &s.units[u];
-        if unit.auto || s.units.iter().any(|v| v.auto && v.spans == unit.spans) {
+        if unit.auto
+            || s.units.iter().any(|v| v.auto && v.spans == unit.spans)
+            || links.iter().any(|l| l.unit == u)
+        {
             continue;
         }
         let Some(g) = group(&unit.name) else { continue };
         let n = &unit.name;
         push(
             format!("{n} 偏心x"),
-            vec![Param::unit(u, UnitKind::Dx)],
+            one(Param::unit(u, UnitKind::Dx)),
             g.decenter,
             false,
         );
         push(
             format!("{n} 偏心y"),
-            vec![Param::unit(u, UnitKind::Dy)],
+            one(Param::unit(u, UnitKind::Dy)),
             g.decenter,
             false,
         );
         push(
             format!("{n} 傾きx"),
-            vec![Param::unit(u, UnitKind::Tx)],
+            one(Param::unit(u, UnitKind::Tx)),
             g.tilt,
             false,
         );
         push(
             format!("{n} 傾きy"),
-            vec![Param::unit(u, UnitKind::Ty)],
+            one(Param::unit(u, UnitKind::Ty)),
             g.tilt,
             false,
         );
         push(
             format!("{n} 移動"),
-            vec![Param::unit(u, UnitKind::Shift)],
+            one(Param::unit(u, UnitKind::Shift)),
             g.shift,
             false,
         );
+    }
+    out
+}
+
+/// 往復する玉の 2 つ目からの範囲（自動の玉の番号と、最初の範囲に対する向き）
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct LinkSpan {
+    /// 自動の玉（lens1 …）の番号
+    auto: usize,
+    /// 範囲 [始め, 終わり]
+    span: [usize; 2],
+    /// 最初の範囲と逆向きにたどる（鏡で折り返した戻り）
+    reversed: bool,
+    /// 範囲の前の面（逆向きの範囲の前の間隔の面）
+    before: Option<usize>,
+}
+
+impl LinkSpan {
+    /// 最初の範囲が a から始まるときの、最初の範囲の面 j と同じ面
+    fn surf(&self, a: usize, j: usize) -> usize {
+        let k = j - a;
+        if self.reversed {
+            self.span[1] - k
+        } else {
+            self.span[0] + k
+        }
+    }
+    /// 最初の範囲の面 j の後の媒質と同じ媒質の面（その面の後の媒質）
+    fn medium(&self, a: usize, j: usize) -> usize {
+        let k = j - a;
+        if self.reversed {
+            self.span[1] - k - 1
+        } else {
+            self.span[0] + k
+        }
+    }
+    /// 最初の範囲の後の間隔と同じ間隔の面と、ずれに掛ける数
+    fn space(&self) -> Option<(usize, f64)> {
+        if self.reversed {
+            self.before.map(|j| (j, -1.0))
+        } else {
+            Some((self.span[1], 1.0))
+        }
+    }
+}
+
+/// 鏡で折り返して同じ玉を往復する（範囲が 2 つ以上あり、どの範囲も自動の玉の範囲と同じ）ブロックの玉
+#[derive(Debug, Clone)]
+struct LensLink {
+    /// 往復の範囲を持つ玉（ブロック）の番号
+    unit: usize,
+    /// 最初の範囲の自動の玉の番号
+    first: usize,
+    others: Vec<LinkSpan>,
+}
+
+fn lens_links(s: &System) -> Vec<LensLink> {
+    let auto_of = |sp: &[usize; 2]| {
+        s.units
+            .iter()
+            .position(|v| v.auto && v.spans.len() == 1 && v.spans[0] == *sp)
+    };
+    let mut out = Vec::new();
+    for (i, u) in s.units.iter().enumerate() {
+        if u.auto || u.spans.len() < 2 {
+            continue;
+        }
+        let Some(autos) = u.spans.iter().map(auto_of).collect::<Option<Vec<usize>>>() else {
+            continue;
+        };
+        let [a, b] = u.spans[0];
+        let n = b - a;
+        let dir = |sp: &[usize; 2]| s.surfaces[sp[0]].t.signum();
+        let mut others = Vec::new();
+        let mut fine = true;
+        for (k, sp) in u.spans.iter().enumerate().skip(1) {
+            if sp[1] - sp[0] != n {
+                fine = false;
+                break;
+            }
+            others.push(LinkSpan {
+                auto: autos[k],
+                span: *sp,
+                reversed: dir(sp) != dir(&u.spans[0]),
+                before: sp[0].checked_sub(1),
+            });
+        }
+        if fine {
+            out.push(LensLink {
+                unit: i,
+                first: autos[0],
+                others,
+            });
+        }
     }
     out
 }
