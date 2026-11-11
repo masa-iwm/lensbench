@@ -22,3 +22,13 @@ PR を出す前の作業（調査・PC での照合など）は自動では分�
 4. 古い token を削除する。
 
 ユーザー所有の Projects は fine-grained token に対応していないので classic を使う。
+
+## apt_install.sh
+
+CI で apt の包みを入れる（`ci.yml` の gui-tour、`pages.yml`）。
+
+- 入っていない包みだけ入れる。
+- 前に入れた deb を `~/.cache/apt-debs`（actions/cache、像の版ごとの鍵）に保存し、あればネットを使わずにそこから入れる。11/11 は Ubuntu のミラーの名前が azure.archive・archive とも 2 時間以上引けなかったため。
+- 取りに行くときは、apt の再試行を少なめにし、update は 4 分、deb を落とす段は 5 分で打ち切る。2 回まで試し、2 回目はランナー既定のミラー（azure.archive.ubuntu.com）をやめて archive.ubuntu.com を直に使う。ステップ全体も `timeout-minutes: 20` で打ち切る。
+
+web ジョブの Playwright は `--with-deps` を使わない。Chromium の共有ライブラリはランナーの像に入っており、apt の障害で落ちないようにするため。

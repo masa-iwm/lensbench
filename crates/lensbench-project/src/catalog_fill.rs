@@ -560,6 +560,10 @@ pub fn cad_cache_dir() -> std::path::PathBuf {
     if let Some(d) = CAD_CACHE_DIR.get() {
         return d.clone();
     }
+    // Web 版（ファイルシステムが無い）: 置き場（vfs）の /cad
+    if cfg!(target_arch = "wasm32") {
+        return PathBuf::from("/cad");
+    }
     if let Some(d) = std::env::var_os("LENSBENCH_CAD_CACHE").filter(|d| !d.is_empty()) {
         return PathBuf::from(d);
     }
