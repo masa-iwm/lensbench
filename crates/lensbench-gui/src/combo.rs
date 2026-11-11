@@ -2037,11 +2037,16 @@ pub fn ui(
         .filter(|p| p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2)
         .map_or(0, |p| p.surfs.len() + 1);
     let editor_h = if bs_sel { 200.0 } else { 96.0 } + 24.0 * rows as f32;
-    let fig_h = (ui.available_height() - editor_h).max(160.0);
-    let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), fig_h),
-        Sense::click_and_drag(),
+    // 図と設定に残りを分ける（パネルが低くても設定が押し出されないように。横に広く低いと左右に並べる）
+    let avail = ui.available_height().max(1.0);
+    let (mut top, mut bottom) = crate::split::two(
+        ui,
+        "combo_fig",
+        (((avail - editor_h) / avail).clamp(0.5, 0.85), 0.6),
+        80.0,
     );
+    let ui = &mut top;
+    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let id = resp.id;
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
@@ -2098,7 +2103,8 @@ pub fn ui(
     }
     let opened = egui::ScrollArea::both()
         .id_salt("combo_editor")
-        .show(ui, |ui| editor(ui, combo, view))
+        .auto_shrink([false, false])
+        .show(&mut bottom, |ui| editor(ui, combo, view))
         .inner;
     if let Some(k) = opened.or(view.open.take()) {
         act = Some(Act::Open(k));

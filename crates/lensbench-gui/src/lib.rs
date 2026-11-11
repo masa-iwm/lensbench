@@ -33,6 +33,7 @@ mod plots;
 mod portable;
 #[cfg(any(target_arch = "wasm32", test))]
 mod remote_frame;
+mod split;
 mod surf_edit;
 mod swap_panel;
 mod sysset;
