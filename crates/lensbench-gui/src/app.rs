@@ -1194,6 +1194,12 @@ impl Core {
                 self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
                 text = trf("多重構成の表に {} 行を取り込んだ", &[&v["rows"]]);
             }
+            Tag::SaveRange => {
+                text = trf(
+                    "{} に書き出し",
+                    &[&params["path"].as_str().unwrap_or_default()],
+                );
+            }
             Tag::Save => {
                 self.ld_dirty = false;
                 text = trf("{} に保存", &[&params["path"].as_str().unwrap_or_default()]);
@@ -2089,7 +2095,6 @@ impl Core {
             blocks: &self.ld_blocks,
             locked: &locked,
             read_only: &read_only,
-            dirty: self.ld_dirty && !is_combo,
             combo: is_combo,
             unit_mech: (!is_combo).then_some(self.um_open),
             note: is_combo.then(|| tr(
@@ -2133,7 +2138,25 @@ impl Core {
                         self.ld.locked.remove(&name);
                     }
                 }
-                Act::Save => self.save(false),
+                Act::ExportRange([a, b]) => {
+                    let stem = self
+                        .file
+                        .as_ref()
+                        .and_then(|f| f.file_stem())
+                        .map(|x| x.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "system".into());
+                    if let Some(p) = crate::files::FileDialog::new()
+                        .add_filter(tr("系ファイル"), &["json"])
+                        .set_file_name(format!("{stem}_{a}-{b}.json"))
+                        .save_file()
+                    {
+                        self.worker.send(
+                            Tag::SaveRange,
+                            "save_range",
+                            json!({ "path": p.display().to_string(), "from": a, "to": b }),
+                        );
+                    }
+                }
                 Act::UnitMech => {
                     self.um_open = !self.um_open;
                     // 範囲の欄が空なら、選んでいる面から

@@ -47,6 +47,9 @@ pub struct Row {
     pub focal: f64,
     /// Jones 行列（実・虚 ×4）
     pub jones: Vec<f64>,
+    /// 媒質の屈折率のずれ dn・分散の相対変化 disp（硝材の追加設定）
+    pub dn: f64,
+    pub disp: f64,
     /// ソルブ（量 c・t、説明）
     pub solves: Vec<(String, String)>,
     /// ピックアップ（量 c r t k pN semi …、説明）
@@ -145,6 +148,8 @@ pub fn parse(v: &Value) -> (Vec<Row>, Vec<Unit>) {
                     cb_order: num(&f["cb_order"]),
                     focal: num(&f["focal"]),
                     jones: nums(&f["jones"]),
+                    dn: f["dn"].as_f64().unwrap_or(0.0),
+                    disp: f["disp"].as_f64().unwrap_or(0.0),
                     solves: f["solves"]
                         .as_array()
                         .map(|a| a.iter().map(solve_text).collect())
@@ -488,7 +493,8 @@ impl Col {
         }
     }
 
-    /// ピックアップの量の名前（serve の add_pickup の what）。種類・コメント・硝材・膜は None
+    /// ピックアップの量の名前（serve の add_pickup の what）。種類・コメントは None。硝材は dn（材料と一緒に追従し、
+    /// disp も組で足す）、膜は coating（名前を写す）
     pub fn pick_what(self) -> Option<String> {
         Some(match self {
             Col::R => "r".into(),
@@ -496,8 +502,23 @@ impl Col {
             Col::Semi => "semi".into(),
             Col::Conic => "k".into(),
             Col::Par(i) => format!("p{i}"),
+            Col::Material => "dn".into(),
+            Col::Coating => "coating".into(),
             _ => return None,
         })
+    }
+
+    /// セルの右端の [...]（ソルブ・ピックアップ・硝材の追加設定）があるか
+    pub fn has_extra(self) -> bool {
+        self.solve_what().is_some() || self.pick_what().is_some()
+    }
+
+    /// ピックアップの量のうち、この列で組にして足す・外すもの（硝材は dn と disp）
+    fn pick_set(self) -> Vec<String> {
+        match self {
+            Col::Material => vec!["dn".into(), "disp".into()],
+            c => c.pick_what().into_iter().collect(),
+        }
     }
 
     /// ソルブの量（c・t）
@@ -612,8 +633,8 @@ pub enum Act {
     Select(Option<String>),
     /// ブロックのロックを切り替える
     Lock(String, bool),
-    /// 編集した系を系ファイルに保存する
-    Save,
+    /// 面の範囲 [最初, 最後] だけを系ファイルに書き出す（serve の save_range）
+    ExportRange([usize; 2]),
     /// 表に出ない理由（ロック・組合せの要素の設定で変える値など）
     Refused(String),
     /// 面 j の値を名前で変える（serve の edit の set_surface の fields）
@@ -661,6 +682,25 @@ struct CellMenu {
     offset: String,
     /// 選んだ範囲で作る玉・群の名前
     unit_name: String,
+    /// 硝材の追加設定の dn・disp の入力（cell の面・列が変わったら今の値から）
+    dn: String,
+    disp: String,
+    cell: Option<(usize, Col)>,
+    /// 面・玉・群のピックアップの元（面の番号・「a-b」・ブロックの名前）と向き
+    rp_src: String,
+    rp_mode: RangePick,
+}
+
+/// 面・玉・群のピックアップの向き
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RangePick {
+    /// 同じ向き（元と同じ値）
+    #[default]
+    Same,
+    /// 向きを変えた玉（面の順を逆にし、曲率・非球面の符号を変える。厚さはそのまま）
+    Flip,
+    /// 鏡の後の戻り（面の順を逆にし、曲率はそのまま、厚さの符号を変える。ダブルパス）
+    Return,
 }
 
 /// 行の右クリックの欄で選んだこと
@@ -668,6 +708,8 @@ struct CellMenu {
 struct RowMenu {
     acts: Vec<Act>,
     insert: bool,
+    /// 前に挿入（Shift+Insert）
+    insert_before: bool,
     delete: bool,
     detail: bool,
 }
@@ -715,18 +757,32 @@ fn curv_kind(k: &str) -> bool {
     lensbench_core::edit::solve_kind_parse(k, 0.0, Some(0)).is_ok_and(|x| x.is_curv())
 }
 
-/// セルの右クリックの欄: その値のソルブ・ピックアップ（OpticStudio のソルブの小欄のように）
-fn cell_menu(ui: &mut Ui, m: &mut CellMenu, j: usize, col: Col, r: &Row) -> Vec<Act> {
+/// セルの右クリック・[...] の欄: その値のソルブ・ピックアップ（OpticStudio のソルブの小欄のように）。硝材は
+/// 屈折率の追加設定（dn・disp・複屈折）も。bire は面の複屈折の値（読んでいなければ None）、combo は組合せの系
+fn cell_menu(
+    ui: &mut Ui,
+    m: &mut CellMenu,
+    j: usize,
+    col: Col,
+    r: &Row,
+    bire: Option<&Value>,
+    combo: bool,
+) -> Vec<Act> {
     let mut ops: Vec<Value> = Vec::new();
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
+    if m.cell != Some((j, col)) {
+        m.cell = Some((j, col));
+        m.dn = crate::surf_edit::full(r.dn);
+        m.disp = crate::surf_edit::full(r.disp);
+    }
     let field = |ui: &mut Ui, label: &str, s: &mut String, hint: &str, w: f32| {
         ui.label(RichText::new(label).color(weak));
         ui.add(
             egui::TextEdit::singleline(s)
                 .hint_text(hint)
                 .desired_width(w),
-        );
+        )
     };
     if let Some(w) = col.solve_what() {
         ui.label(RichText::new(tr("ソルブ")).strong());
@@ -774,37 +830,122 @@ fn cell_menu(ui: &mut Ui, m: &mut CellMenu, j: usize, col: Col, r: &Row) -> Vec<
         }
         ui.separator();
     }
+    let picked_mat = r.pickups.iter().any(|p| p.0 == "dn");
     if let Some(w) = col.pick_what() {
+        let set = col.pick_set();
         ui.label(RichText::new(tr("ピックアップ")).strong());
-        for (pw, t) in r
+        let now: Vec<&(String, String)> = r
             .pickups
             .iter()
             .filter(|p| p.0 == w || (col == Col::R && p.0 == "c"))
-        {
+            .collect();
+        for (_, t) in &now {
             ui.horizontal(|ui| {
                 ui.label(t);
                 if ui.small_button(tr("外す")).clicked() {
-                    ops.push(json!({ "op": "remove_pickup", "dst": j, "what": pw }));
+                    // 硝材は dn・disp の組を外す
+                    for p in r
+                        .pickups
+                        .iter()
+                        .filter(|p| set.contains(&p.0) || (col == Col::R && p.0 == "c"))
+                    {
+                        ops.push(json!({ "op": "remove_pickup", "dst": j, "what": p.0 }));
+                    }
                 }
             });
         }
+        // 硝材・膜は名前を写すだけ（倍率・オフセットは使わない）
+        let named = matches!(col, Col::Material | Col::Coating);
         ui.horizontal(|ui| {
             field(ui, tr("元の面"), &mut m.src, "", 40.0);
-            field(ui, tr("倍率"), &mut m.scale, "1", 50.0);
-            field(ui, tr("オフセット"), &mut m.offset, "0", 50.0);
+            if !named {
+                field(ui, tr("倍率"), &mut m.scale, "1", 50.0);
+                field(ui, tr("オフセット"), &mut m.offset, "0", 50.0);
+            }
         });
+        if col == Col::Material {
+            ui.label(
+                RichText::new(tr("元の面の硝材（dn・disp も）に追従する"))
+                    .small()
+                    .color(weak),
+            );
+        }
         if ui.button(tr("＋ ピックアップにする")).clicked() {
             match m.src.trim().parse::<usize>() {
-                Ok(s) => {
+                Ok(src) => {
                     let f = |x: &str, d: f64| x.trim().parse::<f64>().unwrap_or(d);
-                    ops.push(json!({
-                        "op": "add_pickup", "dst": j, "src": s, "what": w,
-                        "scale": f(&m.scale, 1.0), "offset": f(&m.offset, 0.0),
-                    }));
+                    let (sc, off) = if named {
+                        (1.0, 0.0)
+                    } else {
+                        (f(&m.scale, 1.0), f(&m.offset, 0.0))
+                    };
+                    for w in &set {
+                        ops.push(json!({
+                            "op": "add_pickup", "dst": j, "src": src, "what": w,
+                            "scale": sc, "offset": off,
+                        }));
+                    }
                 }
                 Err(_) => acts.push(Act::Refused(
                     tr("ピックアップには元の面の番号が要る").into(),
                 )),
+            }
+        }
+        ui.separator();
+    }
+    // 硝材の追加設定: 屈折率のずれ・分散の変化・複屈折（鏡・座標ブレークには無い）
+    if col == Col::Material && !r.is_cb() && !r.material.eq_ignore_ascii_case("MIRROR") {
+        ui.label(RichText::new(tr("屈折率")).strong());
+        let mut fields = Map::new();
+        ui.add_enabled_ui(!picked_mat, |ui| {
+            egui::Grid::new(("ld_index", j))
+                .num_columns(2)
+                .show(ui, |ui| {
+                    for (key, name, cur, buf) in [
+                        ("dn", tr("屈折率のずれ dn"), r.dn, &mut m.dn),
+                        ("disp", tr("分散の変化 disp"), r.disp, &mut m.disp),
+                    ] {
+                        ui.label(RichText::new(name).color(weak));
+                        let resp = ui.add(egui::TextEdit::singleline(buf).desired_width(110.0));
+                        if resp.lost_focus() {
+                            match buf.trim().parse::<f64>().ok().filter(|v| v.is_finite()) {
+                                Some(v) if v != cur => {
+                                    fields.insert(key.into(), json!(v));
+                                }
+                                Some(_) => {}
+                                None => {
+                                    acts.push(Act::Refused(trf("{} は数ではない", &[&buf.trim()])))
+                                }
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+        if picked_mat {
+            ui.label(
+                RichText::new(tr("硝材のピックアップ中（dn・disp も元の面から）"))
+                    .small()
+                    .color(weak),
+            );
+        }
+        if !fields.is_empty() {
+            acts.push(Act::Fields { j, fields });
+        }
+        // 複屈折材の板の入口・出口（開いた系の標準面。組合せは要素の波長板で）
+        if (!combo && r.typ == "STANDARD") || bire.is_some_and(|b| !b.is_null()) {
+            ui.label(RichText::new(tr("複屈折")).color(weak));
+            match bire {
+                Some(b) => {
+                    if let Some(nb) = crate::surf_edit::bire_ui(ui, j, b) {
+                        let mut data = Map::new();
+                        data.insert("bire".into(), nb);
+                        acts.push(Act::Data { j, data });
+                    }
+                }
+                None => {
+                    ui.weak(tr("面の値を読んでいます…"));
+                }
             }
         }
         ui.separator();
@@ -845,14 +986,25 @@ fn click_to(st: &mut LensData, j: usize, col: Col, shift: bool, keep: bool) {
     }
 }
 
-/// 面 at の前に面を足したとき、ブロック scope（と外のブロック）が at から始まるなら、足した面も含める範囲にする
-/// （serve の edit の set_unit。insert_surface の後に当てる）
-fn grow_blocks(blocks: &[Block], scope: Option<usize>, at: usize) -> Vec<Value> {
+/// Shift だけを押した貼り付け（Windows の egui は Shift+Insert を貼り付けにする）。表では「前に面を挿入」に使う
+fn shift_insert_paste(m: egui::Modifiers) -> bool {
+    m.shift && !m.command && !m.ctrl && !m.alt
+}
+
+/// 面 at に面を足したとき（after なら面 at−1 の後に、そうでなければ面 at の前に）、ブロック scope（と外のブロック）が
+/// at から始まる・at−1 で終わるなら、足した面も含める範囲にする（serve の edit の set_unit。insert_surface の後に当てる）
+fn grow_blocks(blocks: &[Block], scope: Option<usize>, at: usize, after: bool) -> Vec<Value> {
     let mut ops = Vec::new();
     let mut b = scope;
     while let Some(i) = b {
         let blk = &blocks[i];
-        if blk.surfs.contains(&at) && (at == 0 || !blk.surfs.contains(&(at - 1))) {
+        let has = |x: usize| blk.surfs.contains(&x);
+        let edge = if after {
+            at > 0 && has(at - 1) && !has(at)
+        } else {
+            has(at) && (at == 0 || !has(at - 1))
+        };
+        if edge {
             // 続く面の組 [最初, 最後] を、足した後の番号に（at から始まる組は前に 1 つ伸ばす）
             let mut spans: Vec<[usize; 2]> = Vec::new();
             for &x in &blk.surfs {
@@ -867,6 +1019,8 @@ fn grow_blocks(blocks: &[Block], scope: Option<usize>, at: usize) -> Vec<Value> 
                 }
                 if s[1] >= at {
                     s[1] += 1;
+                } else if after && s[1] + 1 == at {
+                    s[1] = at;
                 }
             }
             ops.push(json!({ "op": "set_unit", "unit": blk.name, "spans": spans }));
@@ -997,7 +1151,96 @@ fn paste_acts(
     acts
 }
 
-/// 行の右クリックの欄: 絞り・無視・面の挿入・削除・玉や群を作る・外す・詳細設定
+/// 面・玉・群のピックアップの元の面: ブロックの名前ならその面、「a-b」なら a〜b、番号 s なら s から n 面
+fn range_src(text: &str, blocks: &[Block], n: usize) -> Result<Vec<usize>, String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return Err(tr("ピックアップの元（面の番号・範囲・ブロック名）が要る").into());
+    }
+    if let Some(b) = blocks.iter().find(|b| b.name == t) {
+        return Ok(b.surfs.clone());
+    }
+    let num = |x: &str| x.trim().parse::<usize>().ok();
+    if let Some((a, b)) = t.split_once(['-', '~', '〜']) {
+        if let (Some(a), Some(b)) = (num(a), num(b)) {
+            if a <= b {
+                return Ok((a..=b).collect());
+            }
+        }
+    }
+    match num(t) {
+        Some(s) => Ok((s..s + n).collect()),
+        None => Err(trf(
+            "ピックアップの元 {} がわからない（面の番号・3-5・ブロック名）",
+            &[&t],
+        )),
+    }
+}
+
+/// 面の並び dst を面の並び src からピックアップする操作（serve の edit の add_pickup）。形（曲率・コーニック・
+/// 面タイプのパラメータ）と膜は対応する面（反転・戻りは逆の順）から、面の間の硝材・厚さは対応する間から。
+/// 1 面だけ（面としてのピックアップ）を同じ向きでするときは、その面の後の硝材も
+pub fn range_pick_ops(
+    rows: &[Row],
+    dst: &[usize],
+    src: &[usize],
+    mode: RangePick,
+) -> Result<Vec<Value>, String> {
+    let n = dst.len();
+    if n == 0 || n != src.len() {
+        return Err(trf("面の数が違う（先 {}、元 {}）", &[&n, &src.len()]));
+    }
+    if let Some(k) = dst.iter().chain(src).find(|&&k| k >= rows.len()) {
+        return Err(trf("面 {} は無い", &[k]));
+    }
+    if dst.iter().any(|d| src.contains(d)) {
+        return Err(tr("ピックアップの先と元の面が重なっている").into());
+    }
+    let rev = mode != RangePick::Same;
+    if rev && dst.iter().chain(src).any(|&k| rows[k].is_cb()) {
+        return Err(tr("座標ブレークを含む範囲は逆向きにピックアップできない").into());
+    }
+    let pick = |w: &str, d: usize, s: usize, sc: f64| json!({ "op": "add_pickup", "dst": d, "src": s, "what": w, "scale": sc, "offset": 0.0 });
+    let flip = if mode == RangePick::Flip { -1.0 } else { 1.0 };
+    let mut ops = Vec::new();
+    for (i, &d) in dst.iter().enumerate() {
+        let s = if rev { src[n - 1 - i] } else { src[i] };
+        let (rd, rs) = (&rows[d], &rows[s]);
+        if !rd.is_cb() && !rs.is_cb() {
+            ops.push(pick("c", d, s, flip));
+            ops.push(pick("k", d, s, 1.0));
+        }
+        if rd.typ == rs.typ && rd.typ != "JONESMAT" {
+            // 反転すると面のサグの符号が変わる（非球面の係数も）。焦点距離（近軸面）はそのまま
+            let sc = if rd.typ == "PARAXIAL" { 1.0 } else { flip };
+            for p in 1..=par_count(&rd.typ) {
+                ops.push(pick(&format!("p{p}"), d, s, sc));
+            }
+        }
+        ops.push(pick("coating", d, s, 1.0));
+    }
+    let mirror = |k: usize| rows[k].material.eq_ignore_ascii_case("MIRROR");
+    let mut gap = |d: usize, s: usize, t: Option<f64>| {
+        if !mirror(d) && !mirror(s) && !rows[d].is_cb() && !rows[s].is_cb() {
+            ops.push(pick("dn", d, s, 1.0));
+            ops.push(pick("disp", d, s, 1.0));
+        }
+        if let Some(sc) = t {
+            ops.push(pick("t", d, s, sc));
+        }
+    };
+    let tsc = if mode == RangePick::Return { -1.0 } else { 1.0 };
+    for i in 0..n - 1 {
+        let s = if rev { src[n - 2 - i] } else { src[i] };
+        gap(dst[i], s, Some(tsc));
+    }
+    if n == 1 && !rev {
+        gap(dst[0], src[0], None);
+    }
+    Ok(ops)
+}
+
+/// 行の右クリックの欄: 絞り・無視・面の挿入・削除・玉や群を作る・外す・面や玉・群のピックアップ・詳細設定
 #[allow(clippy::too_many_arguments)]
 fn row_menu(
     ui: &mut Ui,
@@ -1009,6 +1252,8 @@ fn row_menu(
     last: usize,
     span: Option<[usize; 2]>,
     block: Option<String>,
+    rows: &[Row],
+    blocks: &[Block],
 ) -> RowMenu {
     let mut m = RowMenu::default();
     let edge = j == 0 || j == last;
@@ -1042,7 +1287,9 @@ fn row_menu(
     });
     if !combo {
         ui.separator();
-        m.insert = ui.button(tr("前に面を挿入（Insert）")).clicked();
+        m.insert = ui.button(tr("後に面を挿入（Insert）")).clicked();
+        m.insert_before = ui.button(tr("前に面を挿入（Shift+Insert）")).clicked();
+        m.insert |= m.insert_before;
         m.delete = ui
             .add_enabled(
                 !edge && !r.stop,
@@ -1091,6 +1338,55 @@ fn row_menu(
                 .color(theme::weak_text(ui.visuals())),
         );
     }
+    // 面・玉・群としてのピックアップ（選んだ範囲の面を、別の面・範囲・ブロックから。反転・戻りの向きも）
+    ui.separator();
+    let span = span.unwrap_or([j, j]);
+    let dst: Vec<usize> = (span[0]..=span[1]).collect();
+    ui.label(
+        RichText::new(if dst.len() == 1 {
+            trf("面 {} を面としてピックアップ", &[&j])
+        } else {
+            trf(
+                "面 {}〜{} を玉・群としてピックアップ",
+                &[&span[0], &span[1]],
+            )
+        })
+        .strong(),
+    );
+    ui.add_enabled_ui(locked.is_none(), |ui| {
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut cm.rp_src)
+                    .hint_text(tr("元: 面の番号・3-5・ブロック名"))
+                    .desired_width(150.0),
+            );
+            if ui.button(tr("ピックアップ")).clicked() {
+                let r = range_src(&cm.rp_src, blocks, dst.len())
+                    .and_then(|src| range_pick_ops(rows, &dst, &src, cm.rp_mode));
+                m.acts.push(match r {
+                    Ok(ops) => Act::Ops(ops),
+                    Err(e) => Act::Refused(e),
+                });
+            }
+        });
+        ui.horizontal(|ui| {
+            for (v, l, h) in [
+                (RangePick::Same, tr("同じ向き"), tr("元と同じ値")),
+                (
+                    RangePick::Flip,
+                    tr("反転"),
+                    tr("向きを変えた玉: 面の順を逆に、曲率・非球面の符号を変える（厚さはそのまま）"),
+                ),
+                (
+                    RangePick::Return,
+                    tr("戻り"),
+                    tr("鏡の後の戻り（ダブルパス）: 面の順を逆に、曲率はそのまま、厚さの符号を変える"),
+                ),
+            ] {
+                ui.selectable_value(&mut cm.rp_mode, v, l).on_hover_text(h);
+            }
+        });
+    });
     ui.separator();
     m.detail = ui
         .button(tr("詳細設定（開口・傾き偏心・形のデータ）"))
@@ -1140,8 +1436,10 @@ pub struct LensData {
     hscroll: bool,
     /// 範囲選択の起点の行（None は今のセルの行だけ）
     anchor: Option<usize>,
-    /// キーボード（Shift+F10）で開いたセルの欄（面、列、出す所）
-    kbd_menu: Option<(usize, Col, egui::Pos2)>,
+    /// キーボード（Shift+F10）・セルの [...] で開いたセルの欄（面、列、出す所、セルの欄だけか）
+    kbd_menu: Option<(usize, Col, egui::Pos2, bool)>,
+    /// 欄を開いたフレーム（開いたクリックで「外のクリック」として閉じない）
+    kbd_fresh: bool,
     /// 表の下に面の詳細設定（開口・傾き偏心・形のデータ・全項目）とブロックの設定を出す
     pub detail: bool,
     /// 開いた系（組合せでない系）でロックしたブロック
@@ -1168,8 +1466,6 @@ pub struct Ctx<'a> {
     pub locked: &'a BTreeSet<String>,
     /// 面 j の列 c を表で変えられない理由（ロック以外）
     pub read_only: &'a dyn Fn(usize, Col) -> Option<String>,
-    /// 開いた系を編集して、まだ保存していない
-    pub dirty: bool,
     /// 組合せの系（絞り・ソルブ・ピックアップは開いた系だけ）
     pub combo: bool,
     /// 玉・群・機構部品の欄（開いた系だけ。Some は今開いているか）
@@ -1435,6 +1731,9 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut go: Option<usize> = None;
     let mut enter: Option<String> = None;
     let (mut ins_btn, mut del_btn) = (false, false);
+    let mut export_btn = false;
+    // 挿入は今の面の後（Insert）。前は Shift+Insert・右クリックの「前に」
+    let mut ins_before = false;
     let full = ui.available_rect_before_wrap();
     ui.allocate_rect(full, Sense::hover());
     let strip_w = 30.0;
@@ -1652,7 +1951,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         // 面の挿入・削除（開いた系だけ。Insert・Delete キー・右クリックでも）
         if !c.combo {
             ins_btn |= icon(ui, "＋", false)
-                .on_hover_text(tr("選んだ行の前に面を挿入（Insert）"))
+                .on_hover_text(tr("選んだ行の後に面を挿入（Insert。前は Shift+Insert）"))
                 .clicked();
             del_btn |= icon(ui, "－", false)
                 .on_hover_text(tr("選んだ面を消す（Delete）"))
@@ -1677,21 +1976,12 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 acts.push(Act::UnitMech);
             }
         }
-        if c.dirty {
-            let r = ui
-                .add(
-                    egui::Button::new(
-                        RichText::new("💾")
-                            .size(15.0)
-                            .color(ui.visuals().warn_fg_color),
-                    )
-                    .min_size(egui::vec2(26.0, 26.0)),
-                )
-                .on_hover_text(tr("変更あり: 系ファイルに保存…"));
-            if r.clicked() {
-                acts.push(Act::Save);
-            }
-        }
+        // 選んだ面の範囲（玉・群）だけを系ファイルに書き出す（系全体の保存はファイルのメニュー・Ctrl+S）
+        export_btn |= icon(ui, "📤", false)
+            .on_hover_text(tr(
+                "選んだ面の範囲（玉・群）だけを系ファイルに書き出す…（Shift で範囲を選ぶ。系全体の保存はファイル → 保存）",
+            ))
+            .clicked();
         if let Some(note) = c.note {
             ui.label(RichText::new("ℹ").size(15.0).color(weak))
                 .on_hover_text(note);
@@ -1720,6 +2010,19 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let sel_block = st.sel.clone();
     // 選んだ行（Shift+クリック・Shift+↑↓ で範囲。コピー・貼り付け・削除・玉や群を作る）
     let shift_down = ui.input(|i| i.modifiers.shift);
+    // 面の複屈折の値（硝材の追加設定。serve の surface_data で読む）
+    let bire_now = st
+        .insp
+        .data
+        .as_ref()
+        .map(|(dj, v)| (*dj, v["data"]["bire"].clone()));
+    let bire_of = |j: usize| bire_now.as_ref().filter(|b| b.0 == j).map(|b| &b.1);
+    if let Some((j, Col::Material)) = st.cur {
+        if j < c.rows.len() && bire_of(j).is_none() && st.insp.asked != Some(j) {
+            st.insp.asked = Some(j);
+            acts.push(Act::NeedData(j));
+        }
+    }
     let selected = selection(&rows, st.anchor, st.cur.map(|x| x.0));
     // 選んだ行の面の範囲（たたんだ行はブロックの最初の面から）
     let sel_span: Option<[usize; 2]> = {
@@ -1879,10 +2182,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     c.combo,
                                     last,
                                     sel_span,
-                                    inner_block(c.blocks, j),
+                                    inner_block(c.blocks, j), c.rows, c.blocks,
                                 );
                                 menu_acts.extend(m.acts);
                                 ins_btn |= m.insert;
+                                    ins_before |= m.insert_before;
                                 del_btn |= m.delete;
                                 open_detail |= m.detail;
                             });
@@ -2113,23 +2417,64 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     egui::Layout::left_to_right(egui::Align::Center)
                                 };
                                 let solved = col.solved(r);
-                                let resp = ui
-                                    .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        // ソルブ・ピックアップの印（OpticStudio のセルの右の小さな欄のように）
-                                        if let Some((ch, why)) = &solved {
-                                            ui.add(egui::Label::new(
-                                                RichText::new(ch.to_string()).small().strong().color(accent),
-                                            ))
-                                            .on_hover_text(why.as_str());
+                                // セル全体でクリックを受ける（文字の外の空いたところでも、このセルを選ぶ）。文字のラベルは
+                                // クリックを取らない（取ると、文字の上と外で選ばれるセルが変わる）
+                                let cell_rect = ui.max_rect();
+                                let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), Sense::click());
+                                let hover = ui.rect_contains_pointer(cell_rect);
+                                let mut extra_at: Option<egui::Pos2> = None;
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    // セルの右端の [...]: ソルブ・ピックアップ（と硝材の追加設定）の欄を開く。
+                                    // ソルブ・ピックアップがあれば S・P（OpticStudio のセルの右の小さな欄のように）
+                                    if col.has_extra() {
+                                        let show = solved.is_some() || is_cur || hover;
+                                        let can = ro.is_none() && show;
+                                        let (rect, b) = ui.allocate_exact_size(
+                                            egui::vec2(14.0, row_h - 4.0),
+                                            if can { Sense::click() } else { Sense::hover() },
+                                        );
+                                        if show {
+                                            let (glyph, color) = match &solved {
+                                                Some((ch, _)) => (ch.to_string(), accent),
+                                                None => ("…".to_string(), weak),
+                                            };
+                                            if can && b.hovered() {
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    2.0,
+                                                    ui.visuals().widgets.hovered.bg_fill,
+                                                );
+                                            }
+                                            ui.painter().text(
+                                                rect.center(),
+                                                egui::Align2::CENTER_CENTER,
+                                                glyph,
+                                                egui::FontId::proportional(11.0),
+                                                color,
+                                            );
                                         }
-                                        ui.with_layout(layout, |ui| {
-                                            ui.add(
-                                                egui::Label::new(rt).sense(Sense::click()).truncate(),
-                                            )
-                                        })
-                                        .inner
-                                    })
-                                    .inner;
+                                        let b = match (&solved, can) {
+                                            (Some((_, why)), _) => b.on_hover_text(why.as_str()),
+                                            (None, true) if col == Col::Material => b.on_hover_text(tr(
+                                                "ピックアップ・屈折率のずれ・分散・複屈折",
+                                            )),
+                                            (None, true) => b.on_hover_text(tr("ソルブ・ピックアップ")),
+                                            _ => b,
+                                        };
+                                        if b.clicked() {
+                                            extra_at = Some(rect.left_bottom());
+                                        }
+                                    }
+                                    ui.with_layout(layout, |ui| {
+                                        ui.add(egui::Label::new(rt).truncate());
+                                    });
+                                });
+                                if let Some(pos) = extra_at {
+                                    clicked_any = true;
+                                    click_to(st, j, col, false, false);
+                                    st.kbd_menu = Some((j, col, pos, true));
+                                    st.kbd_fresh = true;
+                                }
                                 if is_cur {
                                     cur_pos = Some(ui.max_rect().left_bottom());
                                     if st.hscroll {
@@ -2150,7 +2495,10 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                 };
                                 if resp.clicked() || resp.double_clicked() || resp.secondary_clicked() {
                                     clicked_any = true;
-                                    let keep = resp.secondary_clicked() && selected.contains(&j);
+                                    // 範囲を選んでいる行の右クリックは範囲を残す（今のセルも動かさない）
+                                    let keep = resp.secondary_clicked()
+                                        && selected.len() > 1
+                                        && selected.contains(&j);
                                     click_to(st, j, col, shift_down, keep);
                                     if let Some(i) = blk.filter(|_| fold.is_some() || !st.by_surface) {
                                         if st.sel.as_deref() != Some(c.blocks[i].name.as_str()) {
@@ -2168,7 +2516,15 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                 let row_ro = lock.as_ref().map(|n| trf("{} はロック中", &[n]));
                                 resp.context_menu(|ui| {
                                     if ro.is_none() {
-                                        menu_acts.extend(cell_menu(ui, &mut st.menu, j, col, r));
+                                        menu_acts.extend(cell_menu(
+                                            ui,
+                                            &mut st.menu,
+                                            j,
+                                            col,
+                                            r,
+                                            bire_of(j),
+                                            c.combo,
+                                        ));
                                     }
                                     let m = row_menu(
                                     ui,
@@ -2179,10 +2535,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     c.combo,
                                     last,
                                     sel_span,
-                                    inner_block(c.blocks, j),
+                                    inner_block(c.blocks, j), c.rows, c.blocks,
                                 );
                                     menu_acts.extend(m.acts);
                                     ins_btn |= m.insert;
+                                    ins_before |= m.insert_before;
                                     del_btn |= m.delete;
                                     open_detail |= m.detail;
                                 });
@@ -2244,11 +2601,35 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         if ui.input(|i| i.modifiers.shift && i.key_pressed(Key::F10)) {
             if let Some((j, col)) = st.cur {
                 let pos = cur_pos.unwrap_or_else(|| ui.min_rect().left_top());
-                st.kbd_menu = Some((j, col, pos));
+                st.kbd_menu = Some((j, col, pos, false));
             }
         }
-        let (ins_k, del_k) = ui.input(|i| (i.key_pressed(Key::Insert), i.key_pressed(Key::Delete)));
+        // Insert は後に、Shift+Insert は前に。Shift は押したときの修飾キーで見る（同じフレームで離しても）。
+        // Windows の egui は Shift+Insert を貼り付けにする（クリップボードが空なら何も来ない）ので、Shift だけの貼り付けも前に挿入
+        let (ins_k, ins_shift, del_k) = ui.input(|i| {
+            let (mut k, mut sh) = (false, false);
+            for e in &i.events {
+                match e {
+                    egui::Event::Key {
+                        key: Key::Insert,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } => {
+                        k = true;
+                        sh |= modifiers.shift;
+                    }
+                    egui::Event::Paste(_) if shift_insert_paste(i.modifiers) => {
+                        k = true;
+                        sh = true;
+                    }
+                    _ => {}
+                }
+            }
+            (k, sh, i.key_pressed(Key::Delete))
+        });
         ins_btn |= ins_k;
+        ins_before |= ins_shift;
         del_btn |= del_k;
         let (up, down, left, right, enter_k, f2, back, esc, ctrl, lkey) = ui.input(|i| {
             (
@@ -2272,7 +2653,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 .iter()
                 .any(|e| matches!(e, egui::Event::Copy | egui::Event::Cut));
             let paste = i.events.iter().find_map(|e| match e {
-                egui::Event::Paste(t) => Some(t.clone()),
+                egui::Event::Paste(t) if !shift_insert_paste(i.modifiers) => Some(t.clone()),
                 _ => None,
             });
             (copy, paste)
@@ -2387,7 +2768,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         }
     }
     // キーボードで開いたセルの欄（右クリックと同じ中身。Esc・外のクリックで閉じる）
-    if let Some((j, col, pos)) = st.kbd_menu {
+    if let Some((j, col, pos, cell_only)) = st.kbd_menu {
         if j >= c.rows.len() || folded(j).is_some() {
             st.kbd_menu = None;
         } else {
@@ -2403,9 +2784,12 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                     egui::Frame::menu(ui.style()).show(ui, |ui| {
                         ui.set_max_width(340.0);
                         if ro.is_none() {
-                            let a = cell_menu(ui, menu, j, col, r);
+                            let a = cell_menu(ui, menu, j, col, r, bire_of(j), c.combo);
                             done |= !a.is_empty();
                             acts.extend(a);
+                        }
+                        if cell_only {
+                            return;
                         }
                         let m = row_menu(
                             ui,
@@ -2417,15 +2801,21 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                             last,
                             sel_span,
                             inner_block(c.blocks, j),
+                            c.rows,
+                            c.blocks,
                         );
                         done |= !m.acts.is_empty() || m.insert || m.delete || m.detail;
                         acts.extend(m.acts);
                         ins_btn |= m.insert;
+                        ins_before |= m.insert_before;
                         del_btn |= m.delete;
                         open_detail |= m.detail;
                     });
                 });
-            if done || ui.input(|i| i.key_pressed(Key::Escape)) || area.response.clicked_elsewhere()
+            let fresh = std::mem::take(&mut st.kbd_fresh);
+            if done
+                || ui.input(|i| i.key_pressed(Key::Escape))
+                || (!fresh && area.response.clicked_elsewhere())
             {
                 st.kbd_menu = None;
                 st.active = true;
@@ -2433,6 +2823,15 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             if open_detail {
                 st.detail = true;
             }
+        }
+    }
+    // 選んだ範囲の書き出し（物体面・像面は除く）
+    if export_btn {
+        match sel_span.map(|[a, b]| [a.max(1), b.min(last.saturating_sub(1))]) {
+            Some([a, b]) if a <= b => acts.push(Act::ExportRange([a, b])),
+            _ => acts.push(Act::Refused(
+                tr("書き出す面を選んでください（物体面・像面は除く）").into(),
+            )),
         }
     }
     // 面の挿入・削除（serve の edit の insert_surface・delete_surface）
@@ -2450,13 +2849,19 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 if let Some(n) = lock {
                     acts.push(Act::Refused(trf("{} はロック中", &[&n])));
                 } else if ins_btn {
-                    let at = first.max(1);
+                    // 後に: たたんだブロックの行はブロックの最後の面の後。像面の後には足せないので像面の前
+                    let at = if ins_before {
+                        first.max(1)
+                    } else {
+                        (j + 1).min(last).max(1)
+                    };
+                    let after = !ins_before && at == j + 1;
                     let mut ops = vec![
                         serde_json::json!({ "op": "insert_surface", "at": at, "surface": {} }),
                     ];
                     // ブロックの中を見ているとき、そのブロック（と外のブロック）の最初の面の前に足した面もブロックに入れる
                     // （入れないとブロックの外になって表から消える）
-                    ops.extend(grow_blocks(c.blocks, scope, at));
+                    ops.extend(grow_blocks(c.blocks, scope, at, after));
                     acts.push(Act::Ops(ops));
                     st.ins_at = Some((at, c.rows.len()));
                 } else if selected.len() > 1 {
@@ -2573,7 +2978,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 .id_salt("surf_edit")
                 .auto_shrink([false, false])
                 .show(&mut bottom, |ui| {
-                    acts.extend(crate::surf_edit::ui(ui, &mut st.insp, j, ro, c.combo));
+                    acts.extend(crate::surf_edit::ui(ui, &mut st.insp, j, ro));
                 });
         }
         Some(j) => {
@@ -2964,16 +3369,94 @@ mod tests {
         ];
         let b = tree(&units);
         let g12 = b.iter().position(|x| x.name == "G12");
-        let ops = grow_blocks(&b, g12, 3);
+        let ops = grow_blocks(&b, g12, 3, false);
         assert_eq!(
             ops,
             vec![json!({ "op": "set_unit", "unit": "G12", "spans": [[3, 7], [9, 12]] })]
         );
         // 途中の面の前なら範囲はもともと伸びる
-        assert!(grow_blocks(&b, g12, 5).is_empty());
+        assert!(grow_blocks(&b, g12, 5, false).is_empty());
         // 中のブロック G2 に入っていれば G2 と、同じ所から始まる G12 も
         let g2 = b.iter().position(|x| x.name == "G2");
-        assert_eq!(grow_blocks(&b, g2, 3).len(), 2);
-        assert!(grow_blocks(&b, None, 3).is_empty());
+        assert_eq!(grow_blocks(&b, g2, 3, false).len(), 2);
+        assert!(grow_blocks(&b, None, 3, false).is_empty());
+        // 最後の面の後に足す（Insert）: 面 6 の後（at 7）なら最初の組が伸びる
+        assert_eq!(
+            grow_blocks(&b, g12, 7, true),
+            vec![json!({ "op": "set_unit", "unit": "G12", "spans": [[3, 7], [9, 12]] })]
+        );
+        // 途中の面の後なら範囲はもともと伸びる
+        assert!(grow_blocks(&b, g12, 5, true).is_empty());
+    }
+
+    /// 鏡の後の戻り（ダブルパス）: 面 4・5 を面 1・2 から逆の順に。曲率はそのまま、間の硝材は元の間、厚さは符号を変える
+    #[test]
+    fn range_pickup_return_and_flip() {
+        use lensbench_core::edit::pick_kind_parse;
+        use lensbench_core::param::Pickup;
+        let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 1 1 0 0 0\n\
+XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4\n  GLAS ___BLANK 1 0 1.62 36.4 0 0 0 0 0\n  CONI -0.5\n\
+SURF 2\n  TYPE STANDARD\n  CURV -0.01\n  DISZ 10\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -10\n  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -1\n\
+SURF 5\n  TYPE STANDARD\n  CURV 0.0\n  DISZ -20\n\
+SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let raw = lensbench_core::zmx::parse_text(txt).unwrap();
+        let base = lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap();
+        let rows: Vec<Row> = base
+            .surfaces
+            .iter()
+            .map(|d| Row {
+                typ: "STANDARD".into(),
+                material: d.mat.clone(),
+                ..Default::default()
+            })
+            .collect();
+        let apply = |mode: RangePick, dst: &[usize]| {
+            let mut s = base.clone();
+            for op in range_pick_ops(&rows, dst, &[1, 2], mode).unwrap() {
+                let w = pick_kind_parse(op["what"].as_str().unwrap()).unwrap();
+                let p = Pickup::new(
+                    op["dst"].as_u64().unwrap() as usize,
+                    op["src"].as_u64().unwrap() as usize,
+                    w,
+                    op["scale"].as_f64().unwrap(),
+                    0.0,
+                );
+                s.add_pickup(p).unwrap();
+            }
+            s
+        };
+        let s = apply(RangePick::Return, &[4, 5]);
+        let d = &s.surfaces;
+        assert_eq!((d[4].c, d[5].c), (-0.01, 0.02));
+        assert_eq!((d[4].k, d[5].k), (0.0, -0.5));
+        assert_eq!(d[4].mat, d[1].mat);
+        assert_eq!(d[4].n, d[1].n);
+        assert_eq!(d[4].t, -4.0);
+        // 戻りの最後の面の後（玉の外）は変えない
+        assert_eq!(d[5].t, -20.0);
+        // 元の値を変えると追従する
+        let mut s2 = s.clone();
+        s2.set_material(1, "1.7,30").unwrap();
+        assert_eq!(s2.surfaces[4].mat, "1.7,30");
+        // 反転: 曲率の符号が変わり、厚さはそのまま
+        let s = apply(RangePick::Flip, &[4, 5]);
+        assert_eq!((s.surfaces[4].c, s.surfaces[5].c), (0.01, -0.02));
+        assert_eq!(s.surfaces[4].t, 4.0);
+        // 数が合わない・重なりはエラー
+        assert!(range_pick_ops(&rows, &[4], &[1, 2], RangePick::Same).is_err());
+        assert!(range_pick_ops(&rows, &[2, 3], &[1, 2], RangePick::Same).is_err());
+        let b = vec![Block {
+            name: "L1".into(),
+            surfs: vec![1, 2],
+            parent: None,
+        }];
+        assert_eq!(range_src("L1", &b, 9).unwrap(), vec![1, 2]);
+        assert_eq!(range_src("3-5", &b, 9).unwrap(), vec![3, 4, 5]);
+        assert_eq!(range_src("3", &b, 2).unwrap(), vec![3, 4]);
+        assert!(range_src("x", &b, 2).is_err());
     }
 }

@@ -597,6 +597,32 @@ fn edit_and_save() {
     sv.call("load", json!({ "file": p.to_str().unwrap() }));
     let b = spot(&mut sv);
     assert_eq!(a, b);
+    // 選んだ範囲（面 2〜3）だけの書き出し: 物体面・像面と 2 面
+    let curv = |sv: &mut Server, j: usize| {
+        sv.call("surface", json!({ "surface": j }))["fields"]["c"].clone()
+    };
+    let (c2, c3) = (curv(&mut sv, 2), curv(&mut sv, 3));
+    let q = dir.join("range.json");
+    let w = sv.call(
+        "save_range",
+        json!({ "path": q.to_str().unwrap(), "from": 2, "to": 3 }),
+    );
+    assert_eq!(w["surfaces"], json!(4));
+    sv.call("load", json!({ "file": q.to_str().unwrap() }));
+    assert_eq!((curv(&mut sv, 1), curv(&mut sv, 2)), (c2, c3));
+    assert_eq!(
+        sv.call("surface", json!({}))["surfaces"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(sv
+        .error(
+            "save_range",
+            json!({ "path": q.to_str().unwrap(), "from": 0, "to": 1 })
+        )
+        .contains("書き出す面"));
     sv.stop();
     std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -233,6 +233,7 @@ impl System {
         if self.glrs >= ns {
             invalid!("大域座標の基準面 {}（面 {ns} 個）", self.glrs);
         }
+        self.pick_names()?;
         self.refresh_media()?;
         self.resolve_pickups()?;
         self.update_indices();
@@ -411,6 +412,8 @@ impl System {
                 "dn" => w == PickKind::Dn,
                 "disp" => w == PickKind::Disp,
                 "semi" => w == PickKind::Semi,
+                "material" => w == PickKind::Dn,
+                "coating" => w == PickKind::Coating,
                 "asph" | "cb" | "cx" | "focal" | "jones" => matches!(w, PickKind::Parm(_)),
                 _ => false,
             };
@@ -1179,7 +1182,7 @@ pub fn solve_kind_info(k: crate::param::SolveKind) -> (&'static str, f64, Option
 }
 
 /// ピックアップの量の名前: c（曲率）・r（半径）・t（厚さ）・k（円錐係数）・p1〜（面タイプのパラメータ）・
-/// dn・disp・semi・before0〜4・after0〜4（傾き偏心の値 dx dy tx ty tz）
+/// dn・disp（材料も一緒に追従）・semi・coating（膜の名前）・before0〜4・after0〜4（傾き偏心の値 dx dy tx ty tz）
 pub fn pick_kind_parse(s: &str) -> Result<crate::param::PickKind> {
     use crate::param::PickKind;
     let t = s.trim().to_ascii_lowercase();
@@ -1192,6 +1195,7 @@ pub fn pick_kind_parse(s: &str) -> Result<crate::param::PickKind> {
         "dn" => PickKind::Dn,
         "disp" => PickKind::Disp,
         "semi" => PickKind::Semi,
+        "coating" | "coat" => PickKind::Coating,
         _ => {
             if let Some(i) = num("before").filter(|&i| i < 5) {
                 PickKind::Before(i)
@@ -1200,7 +1204,7 @@ pub fn pick_kind_parse(s: &str) -> Result<crate::param::PickKind> {
             } else if let Some(i) = num("parm").or_else(|| num("p")) {
                 PickKind::Parm(i)
             } else {
-                invalid!("ピックアップの量 {s}（c r t k p1〜 dn disp semi before0〜4 after0〜4）")
+                invalid!("ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）")
             }
         }
     })
@@ -1217,6 +1221,7 @@ pub fn pick_kind_name(k: crate::param::PickKind) -> String {
         PickKind::Dn => "dn".into(),
         PickKind::Disp => "disp".into(),
         PickKind::Semi => "semi".into(),
+        PickKind::Coating => "coating".into(),
         PickKind::Radius => "r".into(),
         PickKind::Before(i) => format!("before{i}"),
         PickKind::After(i) => format!("after{i}"),

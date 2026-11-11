@@ -539,7 +539,7 @@ OPD の基準 (ROPD)	OPD reference (ROPD)
 組合せの設定（組合せの系を作ると使われる）	Combination settings (used when a combination is built)
 膜ファイル	Coating file
 読み込み中…	Loading…
-選んだ行の前に面を挿入（Insert）	Insert a surface before the selected row (Insert)
+選んだ行の後に面を挿入（Insert。前は Shift+Insert）	Insert a surface after the selected row (Insert; Shift+Insert inserts before)
 選んだ面を消す（Delete）	Delete the selected surface (Delete)
 開いている系の設定です。変えた値は系に入り、「系ファイルに保存…」で残せます。	Settings of the open system. Changes go into the system; keep them with "Save system file…".
 範囲に .zmx の絞りの面が無い	The range has no .zmx stop surface
@@ -1246,15 +1246,15 @@ y⁸ の係数	y⁸ coeff
 傾き Z	Tilt Z
 円柱フレネル	Cylinder Fresnel
 利用者定義	User defined
-前に面を挿入（Insert）	Insert surface before (Insert)
+後に面を挿入（Insert）	Insert surface after (Insert)
+前に面を挿入（Shift+Insert）	Insert surface before (Shift+Insert)
 右クリック・Shift+F10 で絞り・無視・挿入・削除、ダブルクリックで詳細設定	Right-click or Shift+F10 for stop, ignore, insert, delete; double-click for details
 合う面タイプが無い	No matching surface type
 回転半径	Radius of rotation
-変更あり: 系ファイルに保存…	Modified: save to system file…
 標準	Standard
 物体面・像面の種類は変えられない	The object and image surface types cannot be changed
 種類: {}	Kind: {}
-種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップ・絞り・無視はセルの右クリック（Shift+F10）で。	Type, radius, thickness, material, coating, semi-diameter, conic and parameters are set in the table. Solves, pickups, stop and ignore via right-click on a cell (Shift+F10).
+種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップはセルの右端の [...]、屈折率のずれ・分散・複屈折は硝材のセルの [...]、絞り・無視・挿入は右クリック（Shift+F10）で。	Type, radius, thickness, material, coating, semi-diameter, conic and parameters are in the table. Solves and pickups: the [...] at the right of a cell; index offset, dispersion and birefringence: the [...] of the material cell; stop, ignore and insert: right-click (Shift+F10).
 系（全部の面）	System (all surfaces)
 絞りを外す	Remove stop
 絞り（別の面を絞りにすると外れる）	Stop (make another surface the stop to move it)
@@ -1278,3 +1278,24 @@ y⁸ の係数	y⁸ coeff
 面 {}〜{} で玉・群を作る	Make a lens/group from surfaces {}–{}
 選び方: 面単位（選んだ面だけをハイライト）。クリックでブロック単位に	Selection: by surface (only the chosen surfaces are highlighted). Click for by block
 選び方: ブロック単位（面を選ぶとそのブロック全体を選ぶ）。クリックで面単位に	Selection: by block (choosing a surface selects its whole block). Click for by surface
+ピックアップ・屈折率のずれ・分散・複屈折	Pickup, index offset, dispersion, birefringence
+ソルブ・ピックアップ	Solve / pickup
+元の面の硝材（dn・disp も）に追従する	Follows the source surface's material (and dn, disp)
+硝材のピックアップ中（dn・disp も元の面から）	Material is picked up (dn and disp come from the source too)
+ピックアップの元（面の番号・範囲・ブロック名）が要る	A pickup source (surface number, range or block name) is needed
+ピックアップの元 {} がわからない（面の番号・3-5・ブロック名）	Unknown pickup source {} (surface number, 3-5 or block name)
+面の数が違う（先 {}、元 {}）	Surface counts differ (target {}, source {})
+面 {} は無い	No surface {}
+ピックアップの先と元の面が重なっている	Pickup target and source surfaces overlap
+座標ブレークを含む範囲は逆向きにピックアップできない	A range with coordinate breaks cannot be picked up reversed
+面 {} を面としてピックアップ	Pick up surface {} as a surface
+面 {}〜{} を玉・群としてピックアップ	Pick up surfaces {}–{} as a lens/group
+元: 面の番号・3-5・ブロック名	Source: surface, 3-5 or block
+同じ向き	Same
+元と同じ値	Same values as the source
+向きを変えた玉: 面の順を逆に、曲率・非球面の符号を変える（厚さはそのまま）	Turned-around lens: reverse surface order, negate curvature and aspheric terms (thickness unchanged)
+戻り	Return
+鏡の後の戻り（ダブルパス）: 面の順を逆に、曲率はそのまま、厚さの符号を変える	Return pass after a mirror (double pass): reverse surface order, keep curvature, negate thickness
+選んだ面の範囲（玉・群）だけを系ファイルに書き出す…（Shift で範囲を選ぶ。系全体の保存はファイル → 保存）	Export only the selected surface range (lens/group) to a system file… (Shift selects a range; save the whole system with File → Save)
+書き出す面を選んでください（物体面・像面は除く）	Select the surfaces to export (not the object or image surface)
+{} に書き出し	Exported to {}
