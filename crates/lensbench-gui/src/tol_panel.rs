@@ -722,9 +722,24 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     if let Some(i) = del {
         p.tols.remove(i);
     }
-    if ui.button(tr("個別の公差を足す")).clicked() {
-        p.tols.push(TolRow::default());
-    }
+    ui.horizontal(|ui| {
+        if ui.button(tr("個別の公差を足す")).clicked() {
+            p.tols.push(TolRow::default());
+        }
+        if ui
+            .button(tr("波長のずれを足す"))
+            .on_hover_text(tr(
+                "光源の波長のずれ（± µm、すべての波長を同じだけずらす。wave1 などは 1 つの波長だけ）",
+            ))
+            .clicked()
+        {
+            p.tols.push(TolRow {
+                param: "wave".into(),
+                pm: "0.01".into(),
+                ..Default::default()
+            });
+        }
+    });
     if !p.extra.is_empty() {
         ui.label(
             RichText::new(trf(

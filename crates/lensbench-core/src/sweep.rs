@@ -37,6 +37,13 @@ fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
     if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
         return Ok(prev);
     }
+    if let Some(g) = &d.grin {
+        return g.vertex_index(lam).ok_or_else(|| {
+            crate::error::Error::Invalid(format!(
+                "面 {j}: GRIN の頂点が分布の範囲の外（波長 {lam} µm）"
+            ))
+        });
+    }
     let mat = d.mat.trim();
     if mat.is_empty() || mat.eq_ignore_ascii_case("AIR") {
         return Ok(1.0);
@@ -75,6 +82,63 @@ fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
         return Ok(n0);
     }
     invalid!("面 {j}: 材料 {mat} の屈折率を波長 {lam} µm で作れない");
+}
+
+impl System {
+    /// 波長 i を lam [µm] に変える（(i, lam) の並び）。全媒質の屈折率（dn・disp をかける前の値と、複屈折材の異常光）を
+    /// 新しい波長で作り直す。作り方は元の系の値に合わせる（[`base_index_at`]）。dn・disp の反映
+    /// （[`System::update_indices`]）とキャッシュの扱いは呼ぶ側（[`System::set_params`]）で
+    pub(crate) fn set_wavelengths(&mut self, waves: &[(usize, f64)]) -> Result<()> {
+        let ns = self.surfaces.len();
+        let mut new: Vec<(usize, Vec<f64>)> = Vec::with_capacity(waves.len());
+        for &(i, lam) in waves {
+            if i >= self.wavelengths.len() || !(lam > 0.0) {
+                invalid!(
+                    "波長 {} = {lam} µm（波長は {} 個）",
+                    i + 1,
+                    self.wavelengths.len()
+                );
+            }
+            let mut prev = 1.0;
+            let mut col = Vec::with_capacity(ns);
+            for j in 0..ns {
+                let n = base_index_at(self, j, prev, lam)?;
+                col.push(n);
+                if !self.surfaces[j].ignore || j == 0 {
+                    prev = n;
+                }
+            }
+            new.push((i, col));
+        }
+        for (i, col) in new {
+            for (j, n) in col.into_iter().enumerate() {
+                let d = &mut self.surfaces[j];
+                let v = if d.n_base.is_empty() {
+                    &mut d.n
+                } else {
+                    &mut d.n_base
+                };
+                if let Some(x) = v.get_mut(i) {
+                    *x = n;
+                }
+            }
+        }
+        for &(i, lam) in waves {
+            self.wavelengths[i] = lam;
+        }
+        // 複屈折材の異常光の屈折率は材料（名前-E）から作り直す
+        let mut bire = false;
+        for d in self.surfaces.iter_mut() {
+            if let Some(crate::surface::Bire::In { ne, .. }) = &mut d.bire {
+                ne.clear();
+                bire = true;
+            }
+        }
+        if bire {
+            self.refresh_media()?;
+        }
+        Ok(())
+    }
 }
 
 /// 波長 lam [µm] を末尾に重み 0 で足した系と、その波長の番号（0 始まり）。主波長・視野・エイミングは変えない

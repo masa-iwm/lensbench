@@ -302,7 +302,7 @@ impl System {
 
     /// 材料の印 `n` が空の面（挿入した面・材料を変えた面）の屈折率を材料から作る。
     /// GRIN の面は頂点の屈折率
-    fn refresh_media(&mut self) -> Result<()> {
+    pub(crate) fn refresh_media(&mut self) -> Result<()> {
         for j in 0..self.surfaces.len() {
             let d = &self.surfaces[j];
             if !d.n.is_empty() || (j > 0 && (d.mirror || d.typ == SurfType::CoordBrk)) {
@@ -839,8 +839,8 @@ impl System {
             invalid!("値の数 {}（構成 {}）", values.len(), c.n);
         }
         self.check_param(p)?;
-        if p.kind.is_object() {
-            invalid!("物点 {} は表に入れられない", p.name());
+        if p.kind.is_global() {
+            invalid!("{} は表に入れられない（物点・波長）", p.name());
         }
         let mut c = c.clone();
         c.rows.retain(|r| r.param != p);
@@ -977,7 +977,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         c.rows.retain(|r| {
             let used = match r.param.kind {
                 Kind::Unit(_) => unit_map.get(r.param.surf).copied().flatten().is_none(),
-                k if k.is_object() => false,
+                k if k.is_global() => false,
                 _ => r.param.surf == j,
             };
             if used {
@@ -1062,7 +1062,7 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
     };
     if let Some(c) = &mut s.configs {
         for r in c.rows.iter_mut() {
-            if !r.param.kind.is_object() && !r.param.kind.is_unit() {
+            if !r.param.kind.is_global() && !r.param.kind.is_unit() {
                 r.param.surf = mm(r.param.surf);
             }
         }

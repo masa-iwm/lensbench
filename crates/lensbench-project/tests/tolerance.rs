@@ -484,3 +484,25 @@ fn compensator_values_tilt_magnitude_and_csv() {
     assert_eq!(tilt_pairs(&vars[..1], &names[..1]).len(), 0);
     assert!(compensators_csv(&json!({"compensators": []})).is_err());
 }
+
+/// 光源の波長のずれ（#163）: "wave" はすべての波長、"wave1" は 1 つ
+#[test]
+fn wavelength_tolerance_param() {
+    let (_, s) = sys();
+    let v = json!({"preset": "none", "tols": [
+        {"param": "wave", "pm": 0.01},
+        {"param": "wave1", "pm": 0.005, "label": "λ1"}
+    ]});
+    let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+    assert_eq!(m.tols.len(), 2);
+    assert_eq!(m.tols[0].params.len(), s.wavelengths.len());
+    assert_eq!(m.tols[0].label, "wave");
+    assert_eq!((m.tols[0].lo, m.tols[0].hi), (-0.01, 0.01));
+    assert_eq!(m.tols[1].params.len(), 1);
+    assert!(spec_from_json(
+        &json!({"preset": "none", "tols": [{"param": "wave2", "pm": 0.01}]}),
+        vec![s.clone()],
+        &HashMap::new()
+    )
+    .is_err());
+}

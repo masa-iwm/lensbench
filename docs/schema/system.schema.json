@@ -1438,6 +1438,22 @@
         },
         {
           "additionalProperties": false,
+          "description": "系の波長 i（0 始まり、名前は wave1 から）[µm]。面の番号は使わない。変えると全媒質の屈折率がその波長の値になる\n（光源の波長のずれの公差用。最適化の変数・多重構成の行には使えない）",
+          "properties": {
+            "Wave": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "Wave"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "玉・群のパラメータ（[`Param::surf`] は玉・群の番号）",
           "properties": {
             "Unit": {

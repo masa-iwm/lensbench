@@ -573,6 +573,9 @@ impl Problem {
             if v.param.kind.is_object() {
                 invalid!("変数 {q}: 物点の移動は系のデータでない");
             }
+            if v.param.kind.is_wave() {
+                invalid!("変数 {q}: 波長は変数にできない（公差の項目だけ）");
+            }
             if !(v.lo <= v.hi) {
                 invalid!("変数 {q}: 範囲 [{}, {}]", v.lo, v.hi);
             }
