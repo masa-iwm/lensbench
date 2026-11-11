@@ -1069,9 +1069,16 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             };
             match p.get("surface") {
                 None | Some(Value::Null) => {
-                    let all = (0..s.surfaces.len())
+                    let mut all = (0..s.surfaces.len())
                         .map(one)
                         .collect::<Result<Vec<_>, _>>()?;
+                    // 面ごとのソルブ・ピックアップ（GUI の面の表の印。形は surface_data と同じ）
+                    for (j, f) in all.iter_mut().enumerate() {
+                        let sp = lensbench_project::edit_ops::surface_solves(&s, j);
+                        if let (Some(o), Value::Object(x)) = (f.as_object_mut(), sp) {
+                            o.extend(x);
+                        }
+                    }
                     // 玉・群（ブロック）の面の範囲も（GUI の面の表の階層）
                     // 玉・群の偏心・傾き（motion: dx dy tx ty tz）・移動 shift・媒質の dn・disp（面ごとに違えば null）
                     let units: Vec<Value> = s

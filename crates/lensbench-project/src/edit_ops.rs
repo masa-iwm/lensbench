@@ -289,20 +289,8 @@ pub fn surf_fields_json(s: &System, j: usize) -> Result<Value, String> {
     Ok(Value::Object(o))
 }
 
-/// 面 j のデータを全部の項目で（系ファイルの面と同じ形。計算で作る屈折率 n・n_base・ゴーストの reflect は除く）と、
-/// その面のソルブ・ピックアップ（GUI の面の設定）
-pub fn surface_data(s: &System, j: usize) -> Result<Value, String> {
-    let d = s
-        .surfaces
-        .get(j)
-        .ok_or_else(|| format!("面 {j}（面は 0〜{}）", s.surfaces.len().saturating_sub(1)))?;
-    let c = ciborium::value::Value::serialized(d).map_err(|e| e.to_string())?;
-    let mut v = crate::sysfile::to_json(c)?;
-    if let Some(o) = v.as_object_mut() {
-        for k in ["n", "n_base", "reflect"] {
-            o.remove(k);
-        }
-    }
+/// 面 j のソルブ・ピックアップ（{"solves": [...], "pickups": [...]}。GUI の面の設定・面の表の印）
+pub fn surface_solves(s: &System, j: usize) -> Value {
     let solves: Vec<Value> = s
         .solves
         .iter()
@@ -327,7 +315,25 @@ pub fn surface_data(s: &System, j: usize) -> Result<Value, String> {
             })
         })
         .collect();
-    Ok(serde_json::json!({ "data": v, "solves": solves, "pickups": pickups }))
+    serde_json::json!({ "solves": solves, "pickups": pickups })
+}
+
+/// 面 j のデータを全部の項目で（系ファイルの面と同じ形。計算で作る屈折率 n・n_base・ゴーストの reflect は除く）と、
+/// その面のソルブ・ピックアップ（GUI の面の設定）
+pub fn surface_data(s: &System, j: usize) -> Result<Value, String> {
+    let d = s
+        .surfaces
+        .get(j)
+        .ok_or_else(|| format!("面 {j}（面は 0〜{}）", s.surfaces.len().saturating_sub(1)))?;
+    let c = ciborium::value::Value::serialized(d).map_err(|e| e.to_string())?;
+    let mut v = crate::sysfile::to_json(c)?;
+    if let Some(o) = v.as_object_mut() {
+        for k in ["n", "n_base", "reflect"] {
+            o.remove(k);
+        }
+    }
+    let sp = surface_solves(s, j);
+    Ok(serde_json::json!({ "data": v, "solves": sp["solves"], "pickups": sp["pickups"] }))
 }
 
 /// JSON の整数を、面のデータの実数の所では実数にする（ciborium は整数から f64 を読まない）。今の値 tmpl の同じ所が
