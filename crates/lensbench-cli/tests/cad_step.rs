@@ -461,3 +461,99 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 膜のモデル: coat-upload で目録を作って上げ、フォルダから外した膜を置き場から取って使う（系の膜の自動の読み）。
+/// coat-fetch でフォルダに戻す
+#[test]
+fn coating_models_come_from_the_store_when_missing() {
+    use lensbench_core::coating::Coatings;
+    let dir = std::env::temp_dir().join(format!("lensbench-coat-store-{}", std::process::id()));
+    let coat = dir.join("coating");
+    std::fs::create_dir_all(&coat).unwrap();
+    let (store_url, db, _log) = store_server();
+    // 膜 ZEC_R のモデル（どの角度・波長でも素通し）
+    let mut lbcm = String::from("LBCM 2\nCOAT ZEC_R\nD 0.0\nBMAX 1.3\n");
+    for w in [0.4, 0.6, 0.8] {
+        lbcm += &format!("WAVE {w}\n");
+        for i in 0..=13 {
+            let b = 0.1 * i as f64;
+            lbcm += &format!("{b:?} 1 0 0 0 0 0 1 0 0 1 0 0 0 0 0 1 0 0\n");
+        }
+    }
+    std::fs::write(coat.join("ZEC_R.lbcb"), &lbcm).unwrap();
+    std::fs::write(coat.join("COATING.DAT"), "MATE N15\n0.5 1.5 0\n").unwrap();
+    let run = |args: &[&str]| {
+        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+            .args(args)
+            .arg("--json")
+            .env("LENSBENCH_CAD_CACHE", dir.join("cache"))
+            .env("LENSBENCH_CAD_STORE", &store_url)
+            .env("LENSBENCH_CAD_STORE_ID", "tid")
+            .env("LENSBENCH_CAD_STORE_SECRET", "tsecret")
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        serde_json::from_slice::<Value>(&o.stdout).unwrap()
+    };
+    let v = run(&["coat-upload", coat.to_str().unwrap()]);
+    assert_eq!(v["uploaded"], 1, "{v}");
+    let idx: Value =
+        serde_json::from_slice(&std::fs::read(coat.join("lbcb-remote.json")).unwrap()).unwrap();
+    let h = idx["files"]["ZEC_R"].as_str().unwrap().to_string();
+    assert_eq!(h, lensbench_cli::coat_remote::hash_hex(lbcm.as_bytes()));
+    assert!(db
+        .lock()
+        .unwrap()
+        .contains_key(&format!("coat/ZEC_R-{h}.lbcb")));
+    assert_eq!(run(&["coat-upload", coat.to_str().unwrap()])["exists"], 1);
+    // 配る版と同じく .lbcb を外す。系の膜は置き場から取って読む
+    std::fs::remove_file(coat.join("ZEC_R.lbcb")).unwrap();
+    let opt = lensbench_core::zmx::LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    let mut s =
+        lensbench_core::zmx::load_with(&root().join("tests/refs/A0/system.zmx"), &opt).unwrap();
+    let j = (1..s.surfaces.len())
+        .find(|&j| !s.surfaces[j].mat.is_empty())
+        .unwrap();
+    s.surfaces[j].coat = "zec_r".into();
+    s.coating_file = Some(coat.join("COATING.DAT"));
+    lensbench_project::catalog_fill::set_cad_cache_dir(dir.join("cache"));
+    lensbench_cli::cad::set_store(Some(lensbench_cli::cad::Store {
+        url: store_url.clone(),
+        id: "tid".into(),
+        secret: "tsecret".into(),
+    }));
+    // 口が無いうちは読めない
+    assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
+    lensbench_cli::coat_remote::install();
+    let c = Coatings::for_system(&s).unwrap();
+    assert_eq!(c.auto.len(), 1, "{:?}", c.auto);
+    assert!(
+        c.auto[0].1.starts_with(dir.join("cache").join("coat")),
+        "{:?}",
+        c.auto
+    );
+    assert!(c.models.contains_key("zec_r"));
+    // 中身が目録と違えば使わない（キャッシュも作らない）
+    db.lock()
+        .unwrap()
+        .insert(format!("coat/ZEC_R-{h}.lbcb"), b"LBCM 2\nCOAT X\n".to_vec());
+    std::fs::remove_dir_all(dir.join("cache")).unwrap();
+    let e = lensbench_cli::coat_remote::fetch(lensbench_cli::cad::store().as_ref(), "ZEC_R", &h)
+        .unwrap_err();
+    assert!(e.contains("目録と違う"), "{e}");
+    db.lock()
+        .unwrap()
+        .insert(format!("coat/ZEC_R-{h}.lbcb"), lbcm.clone().into_bytes());
+    // coat-fetch でフォルダに戻す
+    let v = run(&["coat-fetch", coat.to_str().unwrap()]);
+    assert_eq!(v["fetched"], 1, "{v}");
+    assert_eq!(
+        std::fs::read_to_string(coat.join("ZEC_R.lbcb")).unwrap(),
+        lbcm
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

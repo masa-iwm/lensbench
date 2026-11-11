@@ -230,7 +230,7 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 - 設定の保存先: 既定は OS の場所（Windows `%APPDATA%\lensbench\data\app.ron`、Linux `~/.local/share/lensbench/app.ron`）。
   exe の隣に `lensbench.portable`（空のファイル）か `settings.ron` があればポータブルで、exe の隣の `settings.ron` に保存し、
   exe のフォルダの中のカタログのフォルダ・最近のファイル・組合せの .zmx は相対パス（区切り `/`）で書く（フォルダごと移しても使える）。
-  初めてのポータブルの起動で OS の場所に設定があれば取り込む。フォルダに書けなければ OS の場所に保存する。`--settings FILE` で
+  初めてのポータブルの起動で OS の場所に設定があれば取り込む（硝材・レンズのフォルダは、exe の隣に `catalogs/` があればそちらに替える）。フォルダに書けなければ OS の場所に保存する。`--settings FILE` で
   ファイルを決めることもできる（相対パスはそのファイルのフォルダから）。硝材・レンズのフォルダが空なら、exe の隣の
   `catalogs/glass`（硝材）・`catalogs/lens`・`catalogs/items`（レンズ）を既定に使う
 - 日本語のフォントは OS のもの（Windows は游ゴシック・メイリオ・MS ゴシックの順）を起動時に読む。`LENSBENCH_GUI_FONT` で選べる。

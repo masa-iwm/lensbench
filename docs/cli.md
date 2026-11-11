@@ -30,6 +30,7 @@ lensbench cad-step --catalog thorlabs.json --item CP02F       # 品の公式の 
 lensbench cad-upload --catalog thorlabs.json --dir step/      # 手元の STEP をファイル名で品に当てて共有の置き場に上げる（--cache はキャッシュをそのまま）
 lensbench layout project.json --mech-detail --out tubes.glb --out tubes.step   # 機構部品を取った STEP の詳しい形で
 lensbench mech-check project.json --grid 31                    # 機構部品（チューブ・ケージ板）で切れる光線の割合
+lensbench coat-upload catalogs/coating                      # 膜のモデル（.lbcb）の目録を作り共有の置き場に上げる（coat-fetch で取る）
 lensbench coat-kinks scan.ctab
 lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5
 lensbench layout   system.zmx --out layout.svg --out layout.png --out lens.glb --out lens.step

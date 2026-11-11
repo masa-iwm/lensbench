@@ -1553,6 +1553,26 @@ impl Core {
         }
     }
 
+    /// 文字列をファイルに保存する（保存先はダイアログで選ぶ）
+    fn save_text(&mut self, filter: &str, ext: &str, name: &str, txt: String) {
+        if let Some(path) = crate::files::FileDialog::new()
+            .add_filter(filter, &[ext])
+            .set_file_name(name)
+            .save_file()
+        {
+            self.status = match lensbench_core::vfs::write(&path, txt) {
+                Ok(()) => Status {
+                    text: trf("{} に保存", &[&path.display()]),
+                    error: false,
+                },
+                Err(e) => Status {
+                    text: format!("{}: {e}", path.display()),
+                    error: true,
+                },
+            };
+        }
+    }
+
     fn tolerance_ui(&mut self, ui: &mut Ui) {
         use crate::tol_panel::{self as tp, Action};
         if self.summary.is_none() {
@@ -1597,23 +1617,15 @@ impl Core {
                 }
                 Action::Stop => crate::worker::progress::stop("tolerance"),
                 Action::Save(v) => {
-                    if let Some(path) = crate::files::FileDialog::new()
-                        .add_filter(tr("公差の設定"), &["json"])
-                        .set_file_name("tolerance.json")
-                        .save_file()
-                    {
-                        let txt = serde_json::to_string_pretty(&v).unwrap_or_default();
-                        self.status = match lensbench_core::vfs::write(&path, txt + "\n") {
-                            Ok(()) => Status {
-                                text: trf("{} に保存", &[&path.display()]),
-                                error: false,
-                            },
-                            Err(e) => Status {
-                                text: format!("{}: {e}", path.display()),
-                                error: true,
-                            },
-                        };
-                    }
+                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default() + "\n";
+                    self.save_text(tr("公差の設定"), "json", "tolerance.json", txt);
+                }
+                Action::SaveResult(v) => {
+                    let txt = serde_json::to_string_pretty(&v).unwrap_or_default() + "\n";
+                    self.save_text(tr("公差の結果"), "json", "tolerance_result.json", txt);
+                }
+                Action::SaveCsv(txt) => {
+                    self.save_text("CSV", "csv", "tolerance_compensators.csv", txt);
                 }
                 Action::Load => load = true,
             }
@@ -3761,6 +3773,12 @@ impl App {
             s.lang = Lang::Ja;
         } else {
             s.resolve_paths();
+            // 初めてのポータブルで OS の場所の設定を取り込んだら、硝材・レンズのフォルダは exe の隣の catalogs/ に
+            if matches!(args.notice, Some(crate::portable::Notice::Imported(_))) {
+                if let Some(d) = crate::portable::exe_dir() {
+                    crate::portable::imported_catalogs(&d, &mut s.glass_dirs, &mut s.lens_dirs);
+                }
+            }
             // 硝材・レンズのフォルダが無ければ、exe の隣の catalogs/ を既定に（リリースを展開してすぐ見える）
             if s.glass_dirs.is_empty() && s.lens_dirs.is_empty() {
                 if let Some(d) = crate::portable::exe_dir() {

@@ -147,16 +147,7 @@ pub fn fetch_item_with(
         }
         b
     };
-    let (measured, notes) = match catalog_fill::read_step(&String::from_utf8_lossy(&text)) {
-        Ok(s) => {
-            let notes = match &item.mech {
-                Some(m) => catalog_fill::cad_check(m, &s),
-                None => Vec::new(),
-            };
-            (Some(s), notes)
-        }
-        Err(e) => (None, vec![format!("STEP を測れない: {e}")]),
-    };
+    let (measured, notes) = measure(item, &text);
     Ok(CadStep {
         item: name.to_string(),
         url: url.to_string(),
@@ -170,9 +161,9 @@ pub fn fetch_item_with(
 }
 
 /// 途中で止まっても壊れたファイルを残さないよう、別名に書いてから置き換える
-fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), String> {
+pub(crate) fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let tmp = path.with_extension("step.part");
+    let tmp = path.with_extension("part");
     std::fs::write(&tmp, b).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -258,11 +249,12 @@ impl Store {
     /// トークンを送るのは https の口だけ（試験の手元の口 http://127.0.0.1・localhost は許す）
     fn check_scheme(&self) -> Result<(), String> {
         let u = self.url.trim();
-        if self.id.trim().is_empty()
-            || u.starts_with("https://")
-            || u.starts_with("http://127.0.0.1")
-            || u.starts_with("http://localhost")
-        {
+        // http は手元の口だけ（ホストが 127.0.0.1・localhost にちょうど一致）
+        let local = u.strip_prefix("http://").is_some_and(|r| {
+            let host = r.split(['/', ':']).next().unwrap_or("");
+            host == "127.0.0.1" || host == "localhost"
+        });
+        if self.id.trim().is_empty() || u.starts_with("https://") || local {
             Ok(())
         } else {
             Err(format!("トークンを送る置き場は https だけ: {u}"))
@@ -274,7 +266,8 @@ impl Store {
             .chars()
             .map(|c| match c {
                 // + はそのまま（受け口が道をデコードしなくても鍵の形に合う）
-                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '+' => c.to_string(),
+                // / は鍵の中の区切り（膜のモデルは coat/<膜>-<ハッシュ>.lbcb）
+                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '+' | '/' => c.to_string(),
                 c => {
                     let mut b = [0u8; 4];
                     c.encode_utf8(&mut b)
@@ -320,6 +313,16 @@ impl Store {
 
     /// 鍵の STEP（無ければ Ok(None)）
     pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        match self.get_raw(key)? {
+            None => Ok(None),
+            Some(b) => step_bytes(b)
+                .map(Some)
+                .map_err(|e| format!("置き場の中身が STEP でない（{}）: {e}", self.url_of(key))),
+        }
+    }
+
+    /// 鍵の中身（確かめない。無ければ Ok(None)）
+    pub fn get_raw(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let mut r = self
@@ -340,20 +343,25 @@ impl Store {
             .read_to_end(&mut b)
             .map_err(|e| format!("置き場を読めない（{u}）: {e}"))?;
         if b.len() as u64 > MAX_BYTES {
-            return Err(format!("置き場の STEP が大きすぎる: {u}"));
+            return Err(format!("置き場の中身が大きすぎる: {u}"));
         }
-        step_bytes(b)
-            .map(Some)
-            .map_err(|e| format!("置き場の中身が STEP でない（{u}）: {e}"))
+        Ok(Some(b))
     }
 
-    /// 鍵で STEP を上げる
+    /// 鍵で上げる（STEP・膜のモデル）
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let r = self
             .auth(Self::agent().put(&u))
-            .header("Content-Type", "application/step")
+            .header(
+                "Content-Type",
+                if key.ends_with(".step") {
+                    "application/step"
+                } else {
+                    "application/octet-stream"
+                },
+            )
             .send(step)
             .map_err(|e| format!("置き場に上げられない（{u}）: {e}"))?;
         let st = r.status().as_u16();
@@ -584,102 +592,7 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
     Ok(b)
 }
 
-/// 詳しい形の三角形の細かさ [mm]（面からのずれの許し）
-const DETAIL_TOL_MM: f64 = 0.2;
-
-/// STEP の文字を部品の座標の三角形にする（[`catalog_fill::step_shell_poses`] の置き方で、殻ごとに三角形にして置く）。
-/// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
-pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, String> {
-    use truck_meshalgo::prelude::*;
-    use truck_stepio::r#in::Table;
-    let poses = catalog_fill::step_shell_poses(text)?;
-    let all_poses = poses.clone();
-    let upper_unit = catalog_fill::read_step(text)
-        .map(|s| s.unit_mm)
-        .unwrap_or(1.0);
-    let table = Table::from_step(text).ok_or("STEP を読めない（truck）")?;
-    let tol = DETAIL_TOL_MM / upper_unit;
-    let mut meshed: std::collections::HashMap<u64, Vec<[[f64; 3]; 3]>> = Default::default();
-    let mut tris = Vec::new();
-    for (shell, m) in poses {
-        if let std::collections::hash_map::Entry::Vacant(slot) = meshed.entry(shell) {
-            let Some(sh) = table.shell.get(&shell) else {
-                continue;
-            };
-            let Ok(cs) = table.to_compressed_shell(sh) else {
-                continue;
-            };
-            let ms = cs.robust_triangulation(tol);
-            let mut bb = BoundingBox::<Point3>::new();
-            for e in &ms.edges {
-                e.curve.iter().for_each(|p| bb.push(*p));
-            }
-            let d = bb.diameter() * 0.01;
-            let (lo, hi) = (bb.min(), bb.max());
-            let mut v = Vec::new();
-            for f in &ms.faces {
-                let Some(poly) = &f.surface else { continue };
-                let ps = poly.positions();
-                if ps
-                    .iter()
-                    .any(|p| (0..3).any(|i| p[i] < lo[i] - d || p[i] > hi[i] + d))
-                {
-                    continue;
-                }
-                for t in poly.faces().triangle_iter() {
-                    let q = |k: usize| {
-                        let p = ps[t[k].pos];
-                        [p[0], p[1], p[2]]
-                    };
-                    v.push([q(0), q(1), q(2)]);
-                }
-            }
-            slot.insert(v);
-        }
-        let apply = |p: [f64; 3]| {
-            let mut q = [0.0; 3];
-            for (i, r) in m.iter().enumerate() {
-                q[i] = r[0] * p[0] + r[1] * p[1] + r[2] * p[2] + r[3];
-            }
-            q
-        };
-        tris.extend(meshed[&shell].iter().map(|t| t.map(apply)));
-    }
-    if tris.is_empty() {
-        return Err("STEP を三角形にできない".into());
-    }
-    Ok(lensbench_export::detail::Detail {
-        tris,
-        step: Some(lensbench_export::step_embed::StepSource {
-            text: std::sync::Arc::new(text.to_string()),
-            unit_mm: upper_unit,
-            shells: all_poses,
-        }),
-    })
-}
-
-/// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに 1 回だけ読んで覚える
-pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex, OnceLock};
-    type Memo = Mutex<HashMap<String, Option<Arc<lensbench_export::detail::Detail>>>>;
-    static MEMO: OnceLock<Memo> = OnceLock::new();
-    let memo = MEMO.get_or_init(Default::default);
-    if let Some(d) = memo.lock().ok()?.get(path) {
-        return d.clone();
-    }
-    let d = std::fs::read(path)
-        .ok()
-        .and_then(|b| detail_of_step(&String::from_utf8_lossy(&b)).ok())
-        .map(Arc::new);
-    memo.lock().ok()?.insert(path.to_string(), d.clone());
-    d
-}
-
-/// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
-pub fn install_detail_loader() {
-    lensbench_export::detail::set_loader(load_detail);
-}
+pub use crate::cad_detail::{detail_of_step, install_detail_loader, load_detail, measure};
 
 #[cfg(test)]
 mod tests {
@@ -774,6 +687,9 @@ mod tests {
         assert!(t("https://x/cad").is_ok());
         assert!(t("http://127.0.0.1:9/cad").is_ok());
         assert!(t("http://x.example/cad").is_err());
+        assert!(t("http://localhost/cad").is_ok());
+        assert!(t("http://localhost.example.com/cad").is_err());
+        assert!(t("http://127.0.0.1.example.com/cad").is_err());
         let plain = Store {
             url: "http://x.example/cad".into(),
             ..Default::default()

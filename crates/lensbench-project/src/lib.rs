@@ -3547,7 +3547,7 @@ fn place_mechanics(
                         item,
                         &it.cad.step,
                     );
-                    if f.is_file() {
+                    if lensbench_core::vfs::is_file(&f) {
                         step_file = f.display().to_string();
                     }
                 }
