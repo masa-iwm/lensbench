@@ -927,6 +927,70 @@ fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
     })
 }
 
+/// 保持する素子の径（mm）と、そのねじの名前（ねじでなければ空）。穴の並び `bores`（mm、止め輪を除いた全立体）から
+/// 次の順で選ぶ（組立のマウントで、素子の入る立体と最も長い立体が違っても読めるように。#182）:
+/// 1. 長さ 0.5 mm 以上の、素子を入れるメスねじ（SM05〜SM3）のうち最も長いもの。径はねじの呼び
+/// 2. 座: 長さ 0.5 mm 以上で、となりにそれより細い穴（径の 0.75 倍以上で、0.2〜6 mm 細い。素子が当たる肩）がある
+///    区間。複数なら最も細いもの。両隣より太い 1 mm 未満の溝（止め輪の溝など）は除いてから探す
+/// 3. 最も長い穴（同じ径の区間の長さの和）
+fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
+    let len = |b: &crate::BoreSpec| b.z1 - b.z0;
+    let by_len = |a: &&(f64, f64), b: &&(f64, f64)| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal))
+    };
+    let mut threads: Vec<(f64, f64)> = Vec::new();
+    for b in bores.iter().filter(|b| len(b) >= MIN_THREAD_MM) {
+        if thread_fits(b.diameter, true, &|_| false).is_some_and(|t| t.holds > 0.0) {
+            match threads.iter_mut().find(|r| (r.0 - b.diameter).abs() < 1e-9) {
+                Some(r) => r.1 += len(b),
+                None => threads.push((b.diameter, len(b))),
+            }
+        }
+    }
+    if let Some(&(d, _)) = threads.iter().max_by(by_len) {
+        let t = thread_fits(d, true, &|_| false).expect("ねじ");
+        return (t.name.to_string(), t.holds);
+    }
+    let n = bores.len();
+    let groove = |i: usize| {
+        i > 0
+            && i + 1 < n
+            && len(&bores[i]) < 1.0
+            && bores[i - 1].diameter < bores[i].diameter
+            && bores[i + 1].diameter < bores[i].diameter
+    };
+    let bs: Vec<&crate::BoreSpec> = (0..n).filter(|&i| !groove(i)).map(|i| &bores[i]).collect();
+    let seat = (0..bs.len())
+        .filter(|&i| len(bs[i]) >= 0.5)
+        .filter(|&i| {
+            let d = bs[i].diameter;
+            [i.wrapping_sub(1), i + 1]
+                .iter()
+                .filter_map(|&j| bs.get(j))
+                .any(|nb| {
+                    nb.diameter >= 0.75 * d && nb.diameter < d - 0.2 && nb.diameter >= d - 6.0
+                })
+        })
+        .map(|i| bs[i].diameter)
+        .fold(f64::INFINITY, f64::min);
+    if seat.is_finite() {
+        return (String::new(), seat);
+    }
+    let mut runs: Vec<(f64, f64)> = Vec::new();
+    for b in bores {
+        match runs.iter_mut().find(|r| (r.0 - b.diameter).abs() < 1e-9) {
+            Some(r) => r.1 += len(b),
+            None => runs.push((b.diameter, len(b))),
+        }
+    }
+    (
+        String::new(),
+        runs.iter().max_by(by_len).map_or(0.0, |r| r.0),
+    )
+}
+
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
 pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
     let st = Step::parse(upper)?;
@@ -1449,30 +1513,9 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 let mm = spacing_mm(r);
                 standard(mm).unwrap_or_else(|| round(mm))
             });
-            // 保持する素子: 最も長い穴の径。ねじ（SM05・SM1・SM2・SM3）の内径なら、ねじの名前と入る素子の径
-            // 止め輪を除いた本体の穴から
-            let body_bores = body.map_or_else(Vec::new, |b| bores_of(&b.walls, all0, length));
-            let mut runs: Vec<(f64, f64)> = Vec::new();
-            for b in &body_bores {
-                match runs.iter_mut().find(|r| (r.0 - b.diameter).abs() < 1e-9) {
-                    Some(r) => r.1 += b.z1 - b.z0,
-                    None => runs.push((b.diameter, b.z1 - b.z0)),
-                }
-            }
-            let hold = runs
-                .iter()
-                .copied()
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-                .map_or(0.0, |r| r.0);
-            // 保持する素子のねじは逃げの溝で判定しない（奥の 25.4 の穴の止め輪の溝と区別できない）。端のねじだけ
+            // 保持する素子（止め輪を除いた全立体の穴から。[`pick_hold`]）
             let relief = |major: f64| relief_next_to(&bores, major);
-            let (thread, hold_d) =
-                thread_fits(hold, true, &|_| false).map_or((String::new(), hold), |t| {
-                    (
-                        t.name.to_string(),
-                        if t.holds > 0.0 { t.holds } else { hold },
-                    )
-                });
+            let (thread, hold_d) = pick_hold(&bores);
             // 座: 本体と別の止め輪（本体より z の短い輪）が前半にあれば、その奥の面。枠の端から保持する素子の径より
             // 細い穴が続けば、その段（素子が当たる肩）。どちらも無ければ枠の端
             let ring_seat = rrs
@@ -2369,5 +2412,27 @@ mod tests {
                 "{order}: {m:?}"
             );
         }
+    }
+
+    /// 保持する素子の選び方（#182）: ねじ → 座（溝を除く） → 最も長い穴
+    #[test]
+    fn pick_hold_order() {
+        let b = |z0: f64, z1: f64, diameter: f64| crate::BoreSpec { z0, z1, diameter };
+        // 素子の入る短い SM1 のメスねじは、より長い別の穴より優先
+        let sm1 = 1.035 * 25.4;
+        let r = super::pick_hold(&[b(0.0, 3.0, sm1), b(3.0, 20.0, 30.0)]);
+        assert_eq!((r.0.as_str(), r.1), ("SM1", 25.4));
+        // 座: 長い入口の穴（20）より、肩（11）の手前の 12.7 の区間。間の 0.6 mm の溝（13.5）は除く
+        let r = super::pick_hold(&[
+            b(0.0, 8.0, 20.0),
+            b(8.0, 9.5, 12.7),
+            b(9.5, 10.1, 13.5),
+            b(10.1, 10.6, 12.7),
+            b(10.6, 12.0, 11.0),
+        ]);
+        assert_eq!((r.0.as_str(), r.1), ("", 12.7));
+        // となりが細すぎる（0.75 倍未満）なら座ではなく、最も長い穴
+        let r = super::pick_hold(&[b(0.0, 2.0, 20.0), b(2.0, 10.0, 8.0)]);
+        assert_eq!((r.0.as_str(), r.1), ("", 8.0));
     }
 }
