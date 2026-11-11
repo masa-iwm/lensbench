@@ -405,3 +405,50 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert_eq!(s.wavelengths, vec![0.486, 0.5876, 0.656]);
     assert_eq!(s.primary, 1);
 }
+
+/// 古い .zmx の重みを省いた WAVM と短い FTYP（Edmund の一部の品の .zmx）
+#[test]
+fn old_zmx_wavm_without_weight() {
+    let txt = "UNIT MM X W X CM\nENPD 12\nFTYP 0 0\n\
+XFLD 0\nYFLD 0\nFWGT 1\nWAVM 1 0.5876\nPWAV 1\n\
+SURF 0\n  CURV 0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  CURV 0.1\n  DISZ 2\n  GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0\n  DIAM 5.5\n\
+SURF 2\n  CURV -0.1\n  DISZ 10\n  DIAM 5.5\n\
+SURF 3\n  CURV 0\n  DISZ 0\n";
+    let raw = zmx::parse_text(txt).unwrap();
+    let s = zmx::build(
+        &raw,
+        &LoadOptions {
+            cfg: 1,
+            ..Default::default()
+        },
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(s.wavelengths, vec![0.5876]);
+    assert_eq!(s.primary, 0);
+}
+
+/// 面の行を字下げしない古い .zmx（Edmund の一部の品の .zmx の形）
+#[test]
+fn old_zmx_unindented_surfaces() {
+    let txt = "NAME 22163\nUNIT MM X W X CM\nENPD 12\nFTYP 0 0\nWAVM 1 0.5876\nPWAV 1\n\
+SURF 0\nCURV 0\nDISZ INFINITY\nSURF 1\nstop\nCOMM 22163\nCURV 0.1\nDISZ 2\n\
+GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0\nDIAM 5.5\nOEMA 0.5\nSURF 2\nCURV -0.1\nDISZ 10\n\
+MAZH 0 0\nDIAM 5.5\nSURF 3\nCURV 0\nDISZ 0\n";
+    let raw = zmx::parse_text(txt).unwrap();
+    let s = zmx::build(
+        &raw,
+        &LoadOptions {
+            cfg: 1,
+            ..Default::default()
+        },
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(s.stop(), 1);
+    assert!((s.surfaces[1].c - 0.1).abs() < 1e-12);
+    assert!((s.surfaces[2].c + 0.1).abs() < 1e-12);
+}
