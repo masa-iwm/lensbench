@@ -2389,15 +2389,14 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
     let mut v = Vec::new();
     for (i, s) in e.surfaces.iter().enumerate() {
         let shape = match s.typ {
-            SurfType::Standard | SurfType::EvenAsph => SurfShape::Standard,
-            SurfType::OddAsph => SurfShape::OddAsph,
-            SurfType::Toroidal => SurfShape::Toroidal,
-            SurfType::Fresnel => SurfShape::Fresnel,
-            _ => return Err(format!(
-                "玉の面 {}: 標準面・偶数次非球面・Odd Asphere・トロイダル・Fresnel だけ保存できる",
-                i + 1
-            )),
+            SurfType::Standard | SurfType::EvenAsph => Some(SurfShape::Standard),
+            SurfType::OddAsph => Some(SurfShape::OddAsph),
+            SurfType::Toroidal => Some(SurfShape::Toroidal),
+            SurfType::Fresnel => Some(SurfShape::Fresnel),
+            _ => None,
         };
+        let msg = "標準面・偶数次非球面・Odd Asphere・トロイダル・Fresnel だけ保存できる";
+        let shape = shape.ok_or_else(|| format!("玉の面 {}: {msg}", i + 1))?;
         if s.mirror {
             return Err(format!("玉の面 {}: 鏡の面のある玉は保存できない", i + 1));
         }
