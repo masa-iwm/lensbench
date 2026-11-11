@@ -167,6 +167,7 @@ mod tests {
         keys.extend(crate::layout_rays::LABELS.iter().map(|a| a.to_string()));
         keys.extend(crate::coat_defs::LABELS.iter().map(|a| a.to_string()));
         keys.extend(crate::tol_catalog::FIELDS.iter().map(|a| a.1.to_string()));
+        keys.extend(crate::lens_data::labels().iter().map(|a| a.to_string()));
         keys.sort();
         keys.dedup();
         keys

@@ -1,8 +1,9 @@
-//! 面の設定: 面の表で選んだ面の、すべての項目を編集する欄。
+//! 面の詳細設定: 面の表で選んだ面の、表に無い項目を編集する欄（表の「詳細設定」で出す）。
 //!
-//! 値は serve の `surface_data`（面のデータを全部の項目で、とソルブ・ピックアップ）で読む。よく使う項目は入力欄で、
-//! 開口・面の前後の傾き偏心・面タイプの形のデータ（Zernike・Grid Sag・Binary 2・Cylinder Fresnel・GRIN・利用者定義の面）は JSON で、
-//! 「全項目（JSON）」では面のデータをそのまま書き換えられる。書き換えは [`Act`] で GUI に返す。
+//! 種類・曲率半径・厚さ・硝材・膜・半径・コーニック・面タイプのパラメータ・ソルブ・ピックアップ・絞り・無視は
+//! 面の表で変える（OpticStudio の Lens Data のように）。ここは dn・disp・複屈折・表に出ない面タイプの非球面と、
+//! 開口・面の前後の傾き偏心・面タイプの形のデータ（Zernike・Grid Sag・Binary 2・Cylinder Fresnel・GRIN・利用者定義の面）を JSON で。
+//! 値は serve の `surface_data` で読み、「全項目（JSON）」では面のデータをそのまま書き換えられる。書き換えは [`Act`] で GUI に返す。
 
 use std::collections::HashMap;
 
@@ -10,15 +11,8 @@ use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
 
 use crate::i18n::{tr, trf};
-use crate::json_view::fmt_num;
 use crate::lens_data::Act;
 use crate::theme;
-
-/// 面タイプ（.zmx の名前）
-pub const TYPES: &[&str] = &[
-    "STANDARD", "EVENASPH", "COORDBRK", "JONESMAT", "PARAXIAL", "TOROIDAL", "SZERNSAG", "FZERNSAG",
-    "GRID_SAG", "FRESNELS", "CFRESNEL", "BINARY_2", "GRINSUR8", "GRINSUR9", "USER",
-];
 
 /// 面データの typ（serde の名前）と .zmx の名前
 const TYP_NAMES: &[(&str, &str)] = &[
@@ -72,10 +66,6 @@ pub struct Inspector {
     bufs: HashMap<String, String>,
     /// 全項目（JSON）の文字
     all: Option<String>,
-    /// 足すソルブ（種類、値、param、別の面）
-    solve: (String, String, String, String),
-    /// 足すピックアップ（量、元の面、倍率、オフセット）
-    pick: (String, String, String, String),
 }
 
 impl Inspector {
@@ -234,18 +224,24 @@ pub fn ui(
     let typ = d["typ"].as_str().unwrap_or("Standard");
     let ztyp = zmx_type(typ);
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(trf("面 {} の設定", &[&dj])).strong());
+        ui.label(RichText::new(trf("面 {} の詳細設定", &[&dj])).strong());
         ui.label(RichText::new(ztyp).small().color(weak));
         if let Some(why) = &read_only {
             ui.label(RichText::new(why).color(ui.visuals().warn_fg_color));
         }
     });
+    ui.label(
+        RichText::new(tr(
+            "種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップ・絞り・無視はセルの右クリック（Shift+F10）で。",
+        ))
+        .small()
+        .color(weak),
+    );
     if read_only.is_some() {
         ui.disable();
     }
     let mut fields = Map::new();
     let mut data = Map::new();
-    let mut ops: Vec<Value> = Vec::new();
     let mut err: Option<String> = None;
     let bufs = &mut st.bufs;
     egui::Grid::new(("surf_edit", dj))
@@ -255,84 +251,8 @@ pub fn ui(
             let label = |ui: &mut Ui, t: &str| {
                 ui.label(RichText::new(t).color(weak));
             };
-            // 種類
-            label(ui, tr("種類"));
-            let mut sel = ztyp.to_string();
-            egui::ComboBox::from_id_salt(("surf_type", dj))
-                .selected_text(&sel)
-                .show_ui(ui, |ui| {
-                    for t in TYPES {
-                        ui.selectable_value(&mut sel, t.to_string(), *t);
-                    }
-                });
-            if sel != ztyp {
-                fields.insert("type".into(), json!(sel));
-            }
-            ui.end_row();
-            // 絞り・無視
-            label(ui, tr("絞り・無視"));
-            ui.horizontal(|ui| {
-                let stop = d["stop"] == true;
-                let mut s = stop;
-                // 組合せでは外すこともできる（前の絞り・絞りの要素に戻す）
-                let r = ui.add_enabled(!stop || combo, egui::Checkbox::new(&mut s, tr("絞り")));
-                if r.changed() {
-                    if s {
-                        ops.push(json!({ "op": "set_stop", "surface": dj }));
-                    } else {
-                        ops.push(json!({ "op": "unset_stop", "surface": dj }));
-                    }
-                }
-                let mut ig = d["ignore"] == true;
-                if ui.checkbox(&mut ig, tr("この面を無視")).changed() {
-                    fields.insert("ignore".into(), json!(ig));
-                }
-            });
-            ui.end_row();
-            for (key, name, cur) in [
-                (
-                    "comment",
-                    tr("コメント"),
-                    d["comment"].as_str().unwrap_or_default().to_string(),
-                ),
-                (
-                    "material",
-                    tr("硝材"),
-                    d["mat"].as_str().unwrap_or_default().to_string(),
-                ),
-                (
-                    "coating",
-                    tr("膜"),
-                    d["coat"].as_str().unwrap_or_default().to_string(),
-                ),
-            ] {
-                if key == "material" && typ == "CoordBrk" {
-                    continue;
-                }
-                label(ui, name);
-                if let Some(t) = text_field(ui, bufs, key, cur, 200.0) {
-                    fields.insert(key.into(), json!(t.trim()));
-                }
-                ui.end_row();
-            }
-            // 数
-            let c = num(&d["c"]).unwrap_or(0.0);
-            let r = if c == 0.0 { f64::INFINITY } else { 1.0 / c };
+            // 数（屈折率のずれ・分散の変化。曲率半径・厚さ・半径・コーニック・面タイプのパラメータは表で）
             let mut items: Vec<(&str, &str, f64)> = Vec::new();
-            if typ != "CoordBrk" {
-                items.push(("r", tr("曲率半径"), r));
-            }
-            items.push(("t", tr("厚さ"), num(&d["t"]).unwrap_or(f64::NAN)));
-            if typ != "CoordBrk" {
-                items.push(("semi", tr("半径"), num(&d["semi"]).unwrap_or(0.0)));
-                items.push(("k", tr("コーニック"), num(&d["k"]).unwrap_or(0.0)));
-            }
-            if typ == "Toroidal" {
-                items.push(("cx", tr("x の曲率（回転）"), num(&d["cx"]).unwrap_or(0.0)));
-            }
-            if typ == "Paraxial" {
-                items.push(("focal", tr("焦点距離"), num(&d["focal"]).unwrap_or(0.0)));
-            }
             if typ != "CoordBrk" && d["mat"] != "MIRROR" {
                 items.push(("dn", tr("屈折率のずれ dn"), num(&d["dn"]).unwrap_or(0.0)));
                 items.push((
@@ -341,34 +261,12 @@ pub fn ui(
                     num(&d["disp"]).unwrap_or(0.0),
                 ));
             }
-            if typ != "CoordBrk" {
-                // 半径の自動（光線から求める）
-                label(ui, tr("半径を自動"));
-                let mut auto = d["semi_auto"] == true;
-                if ui
-                    .checkbox(&mut auto, "")
-                    .on_hover_text(tr("半径を全視野・全波長の光線から求める"))
-                    .changed()
-                {
-                    fields.insert("semi_auto".into(), json!(auto));
-                }
-                ui.end_row();
-            }
             for (key, name, x) in items {
                 label(ui, name);
                 let cur = full(x);
                 if let Some(t) = text_field(ui, bufs, key, cur, 120.0) {
                     let t = t.trim();
-                    let val = if key == "r"
-                        && (t.is_empty()
-                            || t.eq_ignore_ascii_case("inf")
-                            || t.eq_ignore_ascii_case("infinity"))
-                    {
-                        Some(0.0)
-                    } else {
-                        t.parse::<f64>().ok().filter(|v| v.is_finite())
-                    };
-                    match val {
+                    match t.parse::<f64>().ok().filter(|v| v.is_finite()) {
                         Some(v) => {
                             fields.insert(key.into(), json!(v));
                         }
@@ -377,58 +275,28 @@ pub fn ui(
                 }
                 ui.end_row();
             }
-            // 並びの数
-            let mut lists: Vec<(&str, String, Value, Option<usize>)> = Vec::new();
-            if typ != "CoordBrk" {
-                lists.push((
-                    "asph",
-                    tr("非球面 r², r⁴, …").into(),
-                    d["asph"].clone(),
-                    None,
-                ));
-            }
-            if typ == "CoordBrk" {
-                lists.push((
-                    "cb",
-                    tr("偏心 x y・傾き x y z").into(),
-                    d["cb"].clone(),
-                    Some(5),
-                ));
-            }
-            if typ == "Jones" {
-                lists.push((
-                    "jones",
-                    tr("Jones 行列（実・虚 ×4）").into(),
-                    d["jones"].clone(),
-                    Some(8),
-                ));
-            }
-            for (key, name, cur, n) in lists {
-                label(ui, &name);
-                if let Some(t) = text_field(ui, bufs, key, nums_text(&cur), 260.0) {
+            // 非球面の係数（表のパラメータの列に出ない面タイプだけ）
+            let in_table = crate::lens_data::par_count(ztyp) > 0;
+            let asph_used = matches!(
+                typ,
+                "ZernikeStd"
+                    | "ZernikeFringe"
+                    | "GridSag"
+                    | "User"
+                    | "OddAsph"
+                    | "Irregular"
+                    | "TiltSurf"
+            );
+            if !in_table && (asph_used || d["asph"].as_array().is_some_and(|a| !a.is_empty())) {
+                let name = tr("非球面 r², r⁴, …");
+                label(ui, name);
+                if let Some(t) = text_field(ui, bufs, "asph", nums_text(&d["asph"]), 260.0) {
                     match parse_nums(&t) {
-                        Ok(a) if n.map_or(true, |n| a.len() == n) => {
-                            fields.insert(key.into(), json!(a));
-                        }
                         Ok(a) => {
-                            err = Some(trf(
-                                "{} は {} 個（{} 個）",
-                                &[&name, &n.unwrap_or(0), &a.len()],
-                            ))
+                            fields.insert("asph".into(), json!(a));
                         }
                         Err(e) => err = Some(e),
                     }
-                }
-                ui.end_row();
-            }
-            if typ == "CoordBrk" {
-                label(ui, tr("順序"));
-                let mut o = d["cb_order"].as_u64().unwrap_or(0) != 0;
-                if ui
-                    .checkbox(&mut o, tr("傾けてから偏心（順序 1）"))
-                    .changed()
-                {
-                    fields.insert("cb_order".into(), json!(if o { 1 } else { 0 }));
                 }
                 ui.end_row();
             }
@@ -474,113 +342,6 @@ pub fn ui(
         .small()
         .color(weak),
     );
-
-    // ソルブ・ピックアップ（組合せでは要素の surface_ops に）
-    {
-        ui.separator();
-        ui.label(RichText::new(tr("ソルブ")).strong());
-        for s in v["solves"].as_array().cloned().unwrap_or_default() {
-            ui.horizontal(|ui| {
-                let what = s["what"].as_str().unwrap_or("t");
-                ui.label(format!(
-                    "{} : {} {}",
-                    what,
-                    s["kind"].as_str().unwrap_or_default(),
-                    fmt_num(num(&s["value"]).unwrap_or(0.0))
-                ));
-                if let Some(o) = s["other"].as_u64() {
-                    ui.label(trf("（面 {}）", &[&o]));
-                }
-                if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
-                    ops.push(json!({ "op": "remove_solve", "surface": dj, "what": what }));
-                }
-            });
-        }
-        ui.horizontal_wrapped(|ui| {
-            let (kind, val, param, other) = &mut st.solve;
-            if kind.is_empty() {
-                *kind = "marginal_height".into();
-            }
-            egui::ComboBox::from_id_salt(("solve_kind", dj))
-                .selected_text(kind.as_str())
-                .show_ui(ui, |ui| {
-                    for k in SOLVE_KINDS {
-                        ui.selectable_value(kind, k.to_string(), *k);
-                    }
-                });
-            ui.label(RichText::new(tr("値")).color(weak));
-            ui.add(egui::TextEdit::singleline(val).desired_width(60.0));
-            ui.label(RichText::new("param").color(weak));
-            ui.add(egui::TextEdit::singleline(param).desired_width(50.0));
-            ui.label(RichText::new(tr("別の面")).color(weak));
-            ui.add(egui::TextEdit::singleline(other).desired_width(40.0));
-            if ui.button(tr("＋ ソルブを足す")).clicked() {
-                let mut op = json!({ "op": "add_solve", "surface": dj, "kind": kind });
-                let f = |s: &str| s.trim().parse::<f64>().ok();
-                if let Some(x) = f(val) {
-                    op["value"] = json!(x);
-                }
-                if let Some(x) = f(param) {
-                    op["param"] = json!(x);
-                }
-                if let Ok(o) = other.trim().parse::<usize>() {
-                    op["other"] = json!(o);
-                }
-                ops.push(op);
-            }
-        });
-        ui.label(RichText::new(tr("ピックアップ")).strong());
-        for p in v["pickups"].as_array().cloned().unwrap_or_default() {
-            ui.horizontal(|ui| {
-                let what = p["what"].as_str().unwrap_or_default().to_string();
-                ui.label(format!(
-                    "{what} = {} × {} {} + {}",
-                    fmt_num(num(&p["scale"]).unwrap_or(1.0)),
-                    trf("面 {}", &[&p["src"]]),
-                    p["from"].as_str().unwrap_or(&what),
-                    fmt_num(num(&p["offset"]).unwrap_or(0.0)),
-                ));
-                if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
-                    ops.push(json!({ "op": "remove_pickup", "dst": dj, "what": what }));
-                }
-            });
-        }
-        ui.horizontal_wrapped(|ui| {
-            let (what, src, scale, offset) = &mut st.pick;
-            ui.label(RichText::new(tr("量")).color(weak));
-            ui.add(
-                egui::TextEdit::singleline(what)
-                    .hint_text("c r t k p1 semi …")
-                    .desired_width(60.0),
-            );
-            ui.label(RichText::new(tr("元の面")).color(weak));
-            ui.add(egui::TextEdit::singleline(src).desired_width(40.0));
-            ui.label(RichText::new(tr("倍率")).color(weak));
-            ui.add(
-                egui::TextEdit::singleline(scale)
-                    .hint_text("1")
-                    .desired_width(50.0),
-            );
-            ui.label(RichText::new(tr("オフセット")).color(weak));
-            ui.add(
-                egui::TextEdit::singleline(offset)
-                    .hint_text("0")
-                    .desired_width(50.0),
-            );
-            if ui.button(tr("＋ ピックアップを足す")).clicked() {
-                match src.trim().parse::<usize>() {
-                    Ok(s) if !what.trim().is_empty() => {
-                        let f = |x: &str, d: f64| x.trim().parse::<f64>().unwrap_or(d);
-                        ops.push(json!({
-                            "op": "add_pickup", "dst": dj, "src": s, "what": what.trim(),
-                            "scale": f(scale, 1.0), "offset": f(offset, 0.0),
-                        }));
-                    }
-                    _ => err = Some(tr("ピックアップには量と元の面の番号が要る").into()),
-                }
-            }
-        });
-    }
 
     // 全項目（JSON）
     ui.separator();
@@ -636,33 +397,8 @@ pub fn ui(
     if !data.is_empty() {
         acts.push(Act::Data { j: dj, data });
     }
-    if !ops.is_empty() {
-        acts.push(Act::Ops(ops));
-    }
     acts
 }
-
-/// ソルブの種類（serve の add_solve の kind）
-const SOLVE_KINDS: &[&str] = &[
-    "marginal_height",
-    "marginal_height_zone",
-    "chief_height",
-    "pupil_position",
-    "edge",
-    "opd",
-    "position",
-    "compensator",
-    "center_of_curvature",
-    "marginal_angle",
-    "chief_angle",
-    "marginal_normal",
-    "chief_normal",
-    "aplanatic",
-    "element_power",
-    "concentric_surface",
-    "concentric_radius",
-    "f_number",
-];
 
 #[cfg(test)]
 mod tests {
@@ -672,12 +408,13 @@ mod tests {
     fn names_and_lists() {
         assert_eq!(zmx_type("ZernikeStd"), "SZERNSAG");
         assert_eq!(zmx_type("Jones"), "JONESMAT");
-        assert_eq!(TYPES.len(), TYP_NAMES.len());
+        // 表の種類の候補はどれも面データの typ にある
+        for (t, _) in crate::lens_data::TYPE_NAMES {
+            assert!(TYP_NAMES.iter().any(|x| x.1 == *t), "{t}");
+        }
         assert_eq!(parse_nums("1, 2.5 -3").unwrap(), vec![1.0, 2.5, -3.0]);
         assert!(parse_nums("1, x").is_err());
         assert_eq!(nums_text(&json!([0.0, 1e-6])), "0, 0.000001");
         assert_eq!(full(0.1 + 0.2), "0.30000000000000004");
-        // 計算側のソルブの種類と同じ
-        assert_eq!(SOLVE_KINDS, lensbench_core::edit::SOLVE_KINDS);
     }
 }

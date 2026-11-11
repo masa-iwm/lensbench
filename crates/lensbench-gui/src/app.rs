@@ -52,6 +52,10 @@ pub struct Settings {
     pub view_plane: ViewPlane,
     /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
     pub ld_tree: bool,
+    /// レンズデータの表の下に詳細設定（開口・傾き偏心・形のデータ・ブロックの設定）を出す
+    pub ld_detail: bool,
+    /// レンズデータの表を面単位で選ぶ（ブロックを自動で選ばない）
+    pub ld_by_surface: bool,
     /// レイアウト図・書き出しの光線と書き出しの設定
     pub rays: crate::layout_rays::RaySet,
     /// カタログレンズの一覧で隠す列（[`catalog::LensCol::key`]）
@@ -187,6 +191,8 @@ impl Default for Settings {
             auto_build: true,
             view_plane: ViewPlane::Yz,
             ld_tree: false,
+            ld_detail: false,
+            ld_by_surface: false,
             rays: Default::default(),
             lens_hide: Vec::new(),
             os_titlebar: false,
@@ -2073,38 +2079,18 @@ impl Core {
             read_only: &read_only,
             dirty: self.ld_dirty && !is_combo,
             combo: is_combo,
+            unit_mech: (!is_combo).then_some(self.um_open),
+            note: is_combo.then(|| tr(
+                "組合せの系: 変えた値は組合せの要素に残ります（後の空気は要素の間隔、ほかは面の上書き）。偏心・傾き・BS は要素の設定で。",
+            )),
         };
-        if is_combo {
-            ui.label(
-                RichText::new(tr(
-                    "組合せの系: 変えた値は組合せの要素に残ります（後の空気は要素の間隔、ほかは面の上書き）。偏心・傾き・BS は要素の設定で。",
-                ))
-                .small()
-                .color(theme::weak_text(ui.visuals())),
-            );
-        }
-        if !is_combo {
-            ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(self.um_open, tr("＋ 玉・群・機構部品…"))
-                    .on_hover_text(tr(
-                        "面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる",
-                    ))
-                    .clicked()
-                {
-                    self.um_open = !self.um_open;
-                    // 範囲の欄が空なら、選んでいる面から
-                    if self.um_open && self.um.new_spans.trim().is_empty() {
-                        if let Some((j, _)) = self.ld.cur {
-                            self.um.new_spans = j.to_string();
-                        }
-                    }
-                }
-            });
-        }
         self.ld.tree = self.s.ld_tree;
+        self.ld.detail = self.s.ld_detail;
+        self.ld.by_surface = self.s.ld_by_surface;
         let (acts, mut bottom) = lens_data::ui(ui, &mut self.ld, &ctx);
         self.s.ld_tree = self.ld.tree;
+        self.s.ld_detail = self.ld.detail;
+        self.s.ld_by_surface = self.ld.by_surface;
         for a in acts {
             match a {
                 Act::Select(name) => {
@@ -2136,6 +2122,15 @@ impl Core {
                     }
                 }
                 Act::Save => self.save(false),
+                Act::UnitMech => {
+                    self.um_open = !self.um_open;
+                    // 範囲の欄が空なら、選んでいる面から
+                    if self.um_open && self.um.new_spans.trim().is_empty() {
+                        if let Some((j, _)) = self.ld.cur {
+                            self.um.new_spans = j.to_string();
+                        }
+                    }
+                }
                 Act::Refused(why) => {
                     self.status = Status {
                         text: why,
@@ -5217,6 +5212,7 @@ impl App {
                     }
                 }
                 // 最上位で 1 枚目の玉（ブロック）を選び、ブロックの設定（要素の設定）を出す
+                self.c.s.ld_detail = true;
                 if let Some(id) = ids.first() {
                     self.c.ld.scope.clear();
                     self.c.ld.sel = Some(id.clone());
@@ -5245,6 +5241,7 @@ impl App {
             Step::ComboSpot => {
                 // 面の表の表示・見る面を戻す
                 self.c.s.ld_tree = false;
+                self.c.s.ld_detail = false;
                 self.c.ld.open.clear();
                 self.c.s.view_plane = ViewPlane::Yz;
                 self.c.request_layout();

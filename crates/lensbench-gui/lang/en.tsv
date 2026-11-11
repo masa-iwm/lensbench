@@ -1180,3 +1180,87 @@ Client Secret	Client Secret
 品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。	When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable.
 空のときは、この版に組み込んだ置き場を使います。	When empty, the store built into this edition is used.
 ドラッグで大きさを変える（ダブルクリックで元に戻す）	Drag to resize (double-click to reset)
+A 実	A re
+A 虚	A im
+B 実	B re
+B 虚	B im
+C 実	C re
+C 虚	C im
+D 実	D re
+D 虚	D im
+Binary 2	Binary 2
+GRIN（Gradient 9）	GRIN (Gradient 9)
+GRIN（Gradium）	GRIN (Gradium)
+Grid Sag	Grid Sag
+Zernike（Fringe）	Zernike (Fringe)
+Zernike（Standard）	Zernike (Standard)
+r² の係数	r² coeff
+r¹² の係数	r¹² coeff
+r¹⁰ の係数	r¹⁰ coeff
+r¹⁴ の係数	r¹⁴ coeff
+r¹⁶ の係数	r¹⁶ coeff
+r⁴ の係数	r⁴ coeff
+r⁶ の係数	r⁶ coeff
+r⁸ の係数	r⁸ coeff
+y² の係数	y² coeff
+y¹² の係数	y¹² coeff
+y¹⁰ の係数	y¹⁰ coeff
+y¹⁴ の係数	y¹⁴ coeff
+y⁴ の係数	y⁴ coeff
+y⁶ の係数	y⁶ coeff
+y⁸ の係数	y⁸ coeff
+{} という面タイプは無い	No surface type named {}
+{} にパラメータ {} は無い	{} has no parameter {}
+この面は無視（光線が通らない）	This surface is ignored (rays skip it)
+この面を削除（Delete）	Delete this surface (Delete)
+この面を絞りにする	Make this surface the stop
+ソルブ: {}	Solve: {}
+トロイダル	Toroidal
+パラメータ {}	Par {}
+パラメータ {}: {}	Par {}: {}
+ピックアップ: {}	Pickup: {}
+ピックアップには元の面の番号が要る	A pickup needs the source surface number
+フレネル	Fresnel
+ブロック: {}（クリックで選ぶ・ロック・中へ）	Block: {} (click to select, lock, enter)
+ブロック（クリックで選ぶ・ロック・中へ）	Blocks (click to select, lock, enter)
+ロックしたブロック（と中のブロック）の面は変えられない（Ctrl+L でも切り替え）	Surfaces of a locked block (and its inner blocks) cannot be changed (Ctrl+L also toggles)
+偏心 X	Decenter X
+偏心 Y	Decenter Y
+偶数次非球面	Even asphere
+傾き X	Tilt X
+傾き Y	Tilt Y
+傾き Z	Tilt Z
+円柱フレネル	Cylinder Fresnel
+利用者定義	User defined
+前に面を挿入（Insert）	Insert surface before (Insert)
+右クリック・Shift+F10 で絞り・無視・挿入・削除、ダブルクリックで詳細設定	Right-click or Shift+F10 for stop, ignore, insert, delete; double-click for details
+合う面タイプが無い	No matching surface type
+回転半径	Radius of rotation
+変更あり: 系ファイルに保存…	Modified: save to system file…
+標準	Standard
+物体面・像面の種類は変えられない	The object and image surface types cannot be changed
+種類: {}	Kind: {}
+種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップ・絞り・無視はセルの右クリック（Shift+F10）で。	Type, radius, thickness, material, coating, semi-diameter, conic and parameters are set in the table. Solves, pickups, stop and ignore via right-click on a cell (Shift+F10).
+系（全部の面）	System (all surfaces)
+絞りを外す	Remove stop
+絞り（別の面を絞りにすると外れる）	Stop (make another surface the stop to move it)
+表の下に面の詳細設定（開口・前後の傾き偏心・形のデータ・全項目 JSON）とブロックの設定を出す。面の番号のダブルクリックでも	Show surface details (aperture, tilt/decenter before and after, shape data, all items as JSON) and block settings below the table. Also by double-clicking a surface number
+詳細設定（開口・傾き偏心・形のデータ）	Details (aperture, tilt/decenter, shape data)
+近軸レンズ	Paraxial lens
+階層: {}（クリックで一覧・表示の切り替え。Backspace で 1 つ上へ）	Level: {} (click for the list and view mode; Backspace goes up)
+階層: 系の全部の面（クリックで一覧・表示の切り替え）	Level: all surfaces (click for the list and view mode)
+面 {} の詳細設定	Surface {} details
+面 {}〜{}	Surfaces {}–{}
+面 {}〜{}（クリックで中へ）	Surfaces {}–{} (click to enter)
+順序は 0（偏心してから傾ける）か 1（傾けてから偏心）	Order is 0 (decenter then tilt) or 1 (tilt then decenter)
+＋ ソルブにする	+ Make solve
+＋ ピックアップにする	+ Make pickup
+ブロック {} を外す（面は残す）	Remove block {} (keep surfaces)
+作る	Create
+名前（G1 など）	Name (G1 etc.)
+組合せの群は要素の設定の「群」で	Groups in a combination are set in the element settings (Group)
+貼り付け先は変えられないセル	The paste target cells cannot be changed
+選んだ範囲に消せる面が無い	No deletable surface in the selection
+面 {}〜{} で玉・群を作る	Make a lens/group from surfaces {}–{}
+選び方: 面単位（選んだ面だけをハイライト）。クリックでブロック単位に	Selection: by surface (only the chosen surfaces are highlighted). Click for by block
+選び方: ブロック単位（面を選ぶとそのブロック全体を選ぶ）。クリックで面単位に	Selection: by block (choosing a surface selects its whole block). Click for by surface
