@@ -74,11 +74,7 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
             .file_name()
             .map(|f| f.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let url = format!(
-            "{}/{}",
-            store.trim_end_matches('/'),
-            key
-        );
+        let url = format!("{}/{}", store.trim_end_matches('/'), key);
         let js = |e: wasm_bindgen::JsValue| format!("置き場を読めない（{url}）: {e:?}");
         let g = js_sys::global();
         let f: Function = Reflect::get(&g, &"fetch".into())
@@ -96,7 +92,10 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0) as u32;
         if st == 404 {
-            return Err(tr("置き場にこの品の STEP がありません（アプリ版で取ると置き場に上がります）").to_string());
+            return Err(tr(
+                "置き場にこの品の STEP がありません（アプリ版で取ると置き場に上がります）",
+            )
+            .to_string());
         }
         if st != 200 {
             return Err(format!("置き場を読めない（{st}）: {url}"));

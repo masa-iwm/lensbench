@@ -112,4 +112,3 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 pub fn install_detail_loader() {
     lensbench_export::detail::set_loader(load_detail);
 }
-

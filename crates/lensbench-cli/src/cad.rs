@@ -249,11 +249,12 @@ impl Store {
     /// トークンを送るのは https の口だけ（試験の手元の口 http://127.0.0.1・localhost は許す）
     fn check_scheme(&self) -> Result<(), String> {
         let u = self.url.trim();
-        if self.id.trim().is_empty()
-            || u.starts_with("https://")
-            || u.starts_with("http://127.0.0.1")
-            || u.starts_with("http://localhost")
-        {
+        // http は手元の口だけ（ホストが 127.0.0.1・localhost にちょうど一致）
+        let local = u.strip_prefix("http://").is_some_and(|r| {
+            let host = r.split(['/', ':']).next().unwrap_or("");
+            host == "127.0.0.1" || host == "localhost"
+        });
+        if self.id.trim().is_empty() || u.starts_with("https://") || local {
             Ok(())
         } else {
             Err(format!("トークンを送る置き場は https だけ: {u}"))
@@ -670,6 +671,9 @@ mod tests {
         assert!(t("https://x/cad").is_ok());
         assert!(t("http://127.0.0.1:9/cad").is_ok());
         assert!(t("http://x.example/cad").is_err());
+        assert!(t("http://localhost/cad").is_ok());
+        assert!(t("http://localhost.example.com/cad").is_err());
+        assert!(t("http://127.0.0.1.example.com/cad").is_err());
         let plain = Store {
             url: "http://x.example/cad".into(),
             ..Default::default()
