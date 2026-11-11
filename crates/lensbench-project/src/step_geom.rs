@@ -134,6 +134,10 @@ pub(crate) fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
 fn dot(a: V3, b: V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
+fn add(a: V3, b: V3) -> V3 {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
 fn sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
@@ -219,6 +223,8 @@ impl Rigid {
 /// 読んだ STEP（実体の番号 → 部分の名前と値の並び。複合の実体は部分が 2 つ以上）
 pub(crate) struct Step {
     ents: HashMap<u64, Vec<(String, Vec<Arg>)>>,
+    /// 半周以上の弧の円（CIRCLE）の実体（[`Step::big_arcs`]）
+    big: HashSet<u64>,
 }
 
 /// 名前（英数字と _）を読む
@@ -309,7 +315,92 @@ impl Step {
             }
             i = j + 1;
         }
-        Ok(Step { ents })
+        let mut st = Step {
+            ents,
+            big: HashSet::new(),
+        };
+        st.big = st.big_arcs();
+        Ok(st)
+    }
+
+    /// 辺（EDGE_CURVE）で半周以上を回る円（CIRCLE）の実体。同じ円（中心・軸・半径）を分けて描いた辺は回る角を
+    /// 足す。光軸を決めるのに使う（ロッドの穴の周りの溝のような、半径の大きい短い弧を除く）
+    fn big_arcs(&self) -> HashSet<u64> {
+        let key = |c: V3, z: V3, r: f64| {
+            let q = |x: f64| (x * 1e4).round() as i64;
+            let s = if z
+                .iter()
+                .fold(0.0, |a: f64, b| if b.abs() > a.abs() { *b } else { a })
+                < 0.0
+            {
+                -1.0
+            } else {
+                1.0
+            };
+            (
+                q(c[0]),
+                q(c[1]),
+                q(c[2]),
+                q(s * z[0]),
+                q(s * z[1]),
+                q(s * z[2]),
+                q(r),
+            )
+        };
+        let mut sweep: HashMap<_, f64> = HashMap::new();
+        let mut ids: Vec<(u64, _)> = Vec::new();
+        for parts in self.ents.values() {
+            let Some(a) = parts
+                .iter()
+                .find(|(n, _)| n == "EDGE_CURVE")
+                .map(|(_, a)| a)
+            else {
+                continue;
+            };
+            let Some(cid) = a.get(3).and_then(Arg::r) else {
+                continue;
+            };
+            let Some(ca) = self.part(cid, "CIRCLE") else {
+                continue;
+            };
+            let Some((c, z, rx)) = ca.get(1).and_then(|x| self.placement(x)) else {
+                continue;
+            };
+            let Some(r) = ca.get(2).and_then(Arg::num) else {
+                continue;
+            };
+            let vert = |i: usize| {
+                let v = a.get(i)?;
+                self.point(self.get(v, "VERTEX_POINT")?.get(1)?)
+            };
+            let (Some(p1), Some(p2)) = (vert(1), vert(2)) else {
+                continue;
+            };
+            let x0 = rx.unwrap_or_else(|| perp(z));
+            let x = unit(sub(x0, scale(z, dot(x0, z)))).unwrap_or_else(|| perp(z));
+            let y = cross(z, x);
+            let ang = |p: V3| {
+                let d = sub(p, c);
+                dot(d, y).atan2(dot(d, x))
+            };
+            let tau = std::f64::consts::TAU;
+            let same = !matches!(a.get(4), Some(Arg::Bool(false)));
+            let d = dot(sub(p1, p2), sub(p1, p2)).sqrt();
+            let w = if d <= 1e-6 * r {
+                tau
+            } else if same {
+                (ang(p2) - ang(p1)).rem_euclid(tau)
+            } else {
+                (ang(p1) - ang(p2)).rem_euclid(tau)
+            };
+            let k = key(c, z, r);
+            *sweep.entry(k).or_default() += w;
+            ids.push((cid, k));
+        }
+        ids.into_iter()
+            .filter(|(_, k)| sweep[k] >= 0.99 * std::f64::consts::PI)
+            .map(|(id, _)| id)
+            .collect()
     }
 
     /// 実体 id の部分 ty の値
@@ -414,6 +505,8 @@ struct CylFace {
 #[derive(Debug, Clone, Default)]
 struct Geo {
     circles: Vec<(V3, V3, f64)>,
+    /// 半周以上の弧の円（[`Step::big_arcs`]）
+    arcs: Vec<(V3, V3, f64)>,
     verts: Vec<V3>,
     cyls: Vec<CylFace>,
     /// 縁が 1 つの円だけの面（円板・球の帽子）: (円の中心, 軸, 半径)。光軸をふさぐ面（ガラスの面）
@@ -425,6 +518,11 @@ impl Geo {
         Geo {
             circles: self
                 .circles
+                .iter()
+                .map(|(c, a, r)| (m.apply(*c), m.rot(*a), *r))
+                .collect(),
+            arcs: self
+                .arcs
                 .iter()
                 .map(|(c, a, r)| (m.apply(*c), m.rot(*a), *r))
                 .collect(),
@@ -450,7 +548,11 @@ impl Geo {
 }
 
 /// 立体の名前
-const SOLIDS: [&str; 2] = ["MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS"];
+const SOLIDS: [&str; 3] = [
+    "MANIFOLD_SOLID_BREP",
+    "BREP_WITH_VOIDS",
+    "SHELL_BASED_SURFACE_MODEL",
+];
 
 impl Step {
     /// 実体の集まりの円と頂点
@@ -459,6 +561,9 @@ impl Step {
         for &j in set {
             if let Some(c) = self.circle(j) {
                 g.circles.push(c);
+                if self.big.contains(&j) {
+                    g.arcs.push(c);
+                }
             }
             if let Some(p) = self.part(j, "VERTEX_POINT").and_then(|a| a.get(1)) {
                 if let Some(p) = self.point(p) {
@@ -749,8 +854,8 @@ const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
 const ROD_HOLES: usize = 4;
 
 /// 光学部品のねじ（名前、ねじの外径（メスの谷の径）[mm]、ピッチ [mm]、入る素子の径 [mm]（0 は素子を入れない
-/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので
-/// しない））
+/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので、
+/// 端のねじで、奥にねじの逃げの溝（外径より太い短い穴）のあるときだけ。[`relief_next_to`]））
 struct Thread {
     name: &'static str,
     major: f64,
@@ -801,17 +906,29 @@ impl Thread {
     /// 円柱の直径 `d` [mm] がこのねじか。STEP のねじは外径の円柱で描かれる（Thorlabs）か、メスは山の径（内径）の
     /// 円柱で描かれる（Edmund。外径 − 0.96 ピッチほど）。メスの内径は基準の内径（外径 − 1.0825 ピッチ）から
     /// 外径 − 0.9 ピッチまで
-    fn fits(&self, d: f64, female: bool) -> bool {
-        ((!female || self.female_major) && (self.major - d).abs() <= 0.05)
+    fn fits(&self, d: f64, female: bool, relief: bool) -> bool {
+        ((!female || self.female_major || relief) && (self.major - d).abs() <= 0.05)
             || (female
                 && d >= self.major - 1.0825 * self.pitch - 0.05
                 && d <= self.major - 0.9 * self.pitch)
     }
 }
 
-/// 直径 `d` [mm] のねじ
-fn thread_fits(d: f64, female: bool) -> Option<&'static Thread> {
-    THREADS.iter().find(|t| t.fits(d, female))
+/// 直径 `d` [mm] のねじ。`relief` は穴の並びがねじの逃げの溝を持つか（[`relief_next_to`]）
+fn thread_fits(d: f64, female: bool, relief: &dyn Fn(f64) -> bool) -> Option<&'static Thread> {
+    THREADS.iter().find(|t| t.fits(d, female, relief(t.major)))
+}
+
+/// 穴の並び（mm）で、直径 `major` の穴のとなりに、それより太い（1.1 mm まで）短い（2 mm まで）穴があるか
+/// （メスのねじの奥の逃げの溝。Thorlabs の C マウントのメスは外径 25.4 の円柱と逃げの溝 26.416 で描かれる）
+fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
+    bores.windows(2).any(|w| {
+        let groove = |g: &crate::BoreSpec| {
+            g.diameter > major + 0.05 && g.diameter <= major + 1.1 && g.z1 - g.z0 <= 2.0
+        };
+        let thread = |t: &crate::BoreSpec| (t.diameter - major).abs() <= 0.05;
+        (thread(&w[0]) && groove(&w[1])) || (groove(&w[0]) && thread(&w[1]))
+    })
 }
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
@@ -833,17 +950,88 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         let mut g = Geo::default();
         for x in &geos {
             g.circles.extend(x.circles.iter().copied());
+            g.arcs.extend(x.arcs.iter().copied());
             g.verts.extend(x.verts.iter().copied());
         }
         g
     };
-    let biggest = all
-        .circles
-        .iter()
-        .copied()
-        .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+    // 光軸: 半周以上の弧の円のうち最大のもの（無ければ円の最大）。ロッドの穴の周りの溝などの、半径の大きい
+    // 短い弧を光軸に取らないように
+    let biggest_of = |cs: &[(V3, V3, f64)]| {
+        cs.iter()
+            .copied()
+            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+    };
+    let biggest = biggest_of(&all.arcs).or_else(|| biggest_of(&all.circles));
     let Some((o, axis, rmax)) = biggest else {
         return boxed(&st, &all, sc);
+    };
+    // 同じ大きさの円が複数（穴の無い板のロッドの穴など）なら、頂点の重心に近いもの（同じなら座標の小さいもの）。
+    // 円の並びの順によらない
+    let cands: Vec<(V3, V3, f64)> = if all.arcs.is_empty() {
+        &all.circles
+    } else {
+        &all.arcs
+    }
+    .iter()
+    .copied()
+    .filter(|c| (c.2 - rmax).abs() <= 1e-9 * rmax)
+    .collect();
+    let mid = {
+        let n = all.verts.len().max(1) as f64;
+        let s = all.verts.iter().fold([0.0; 3], |a, p| add(a, *p));
+        scale(s, 1.0 / n)
+    };
+    let (o, axis, rmax) = cands
+        .iter()
+        .copied()
+        .min_by(|a, b| {
+            let da = dot(sub(a.0, mid), sub(a.0, mid));
+            let db = dot(sub(b.0, mid), sub(b.0, mid));
+            if (da - db).abs() > 1e-9 * rmax * rmax {
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+            }
+        })
+        .unwrap_or((o, axis, rmax));
+    // 光軸に取った円が、同じ大きさ（0.2 mm まで）の平行な円（円柱の面を含む）4 つの正方形の 1 つなら（穴の無い板の
+    // ロッドの穴）、
+    // 正方形の中心を光軸にする
+    let o = {
+        let tol = 0.2 / k;
+        let mut sq: Vec<V3> = Vec::new();
+        for c in all.circles.iter().filter(|c| {
+            (c.2 - rmax).abs() <= tol && dot(unit(c.1).unwrap_or(c.1), axis).abs() > 0.999
+        }) {
+            // 軸の向きに重なる円（穴の両端）は 1 つに数える
+            let d = sub(c.0, o);
+            let p = sub(d, scale(axis, dot(d, axis)));
+            if !sq
+                .iter()
+                .any(|q| dot(sub(*q, p), sub(*q, p)).sqrt() <= 1e-3 * rmax)
+            {
+                sq.push(p);
+            }
+        }
+        let cen = scale(sq.iter().fold([0.0; 3], |a, p| add(a, *p)), 0.25);
+        let rr: Vec<f64> = sq
+            .iter()
+            .map(|p| dot(sub(*p, cen), sub(*p, cen)).sqrt())
+            .collect();
+        let square = sq.len() == 4
+            && rr
+                .iter()
+                .all(|r| (r - rr[0]).abs() <= 1e-3 * rr[0] && *r > 2.0 * rmax)
+            && sq
+                .iter()
+                .skip(1)
+                .any(|p| dot(sub(*p, cen), sub(sq[0], cen)).abs() <= 1e-3 * rr[0] * rr[0]);
+        if square {
+            add(o, cen)
+        } else {
+            o
+        }
     };
     // 軸の向きは STEP の座標の向きにそろえる（絶対値の最大の成分を正に）。光の進む向きは STEP から分からない
     let axis = {
@@ -1175,19 +1363,26 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 }
             }
             // 候補（同じ半径・同じ距離の穴が 4 つ以上、90° おき）のうち、ロッドの間隔の規格（[`ROD_SPACINGS`]）に合う
-            // ものを先に（キューブなどの取付けのねじ穴を除く）
+            // ものを先に（キューブなどの取付けのねじ穴を除く）。半径は 0.2 mm まで違ってよい（1 つだけ逃げの大きい穴）
             let bore_r = walls.iter().map(|w| w.0).fold(0.0, f64::max);
+            let same_r = 0.2 / k;
             let cands: Vec<(f64, usize)> = holes
                 .iter()
                 .filter_map(|h| {
                     let rho = h.1[0].hypot(h.1[1]);
-                    let same: Vec<&(f64, [f64; 2])> = holes
-                        .iter()
-                        .filter(|x| {
-                            (x.0 - h.0).abs() <= 1e-4 * rmax
-                                && (x.1[0].hypot(x.1[1]) - rho).abs() <= 1e-4 * rmax
-                        })
-                        .collect();
+                    let mut same: Vec<&(f64, [f64; 2])> = Vec::new();
+                    for x in holes.iter().filter(|x| {
+                        (x.0 - h.0).abs() <= same_r
+                            && (x.1[0].hypot(x.1[1]) - rho).abs() <= 1e-4 * rmax
+                    }) {
+                        // 同じ位置の穴は 1 つに数える
+                        if !same
+                            .iter()
+                            .any(|y| (y.1[0] - x.1[0]).hypot(y.1[1] - x.1[1]) <= 1e-4 * rmax)
+                        {
+                            same.push(x);
+                        }
+                    }
                     // 4 つの穴が光軸の周りに 90° おき（正方形の角）
                     let perp = same
                         .iter()
@@ -1204,11 +1399,16 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     .copied()
                     .find(|s| (s - mm).abs() <= 0.05)
             };
-            // 規格に合わなければ、ちょうど 4 つの穴の組（絞りの羽根のピンなど、数の多い穴の組を除く）
+            // 規格に合う組が複数（ロッドの間隔を変える板など）なら間隔の大きい方。規格に合わなければ、ちょうど 4 つの
+            // 穴の組（絞りの羽根のピンなど、数の多い穴の組を除く）の外側。穴の並びの順によらない
+            let outer_most = |a: &&(f64, usize), b: &&(f64, usize)| {
+                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+            };
             let rods = cands
                 .iter()
-                .find(|r| standard(spacing_mm(r.0)).is_some())
-                .or_else(|| cands.iter().find(|r| r.1 == ROD_HOLES))
+                .filter(|r| standard(spacing_mm(r.0)).is_some())
+                .max_by(outer_most)
+                .or_else(|| cands.iter().filter(|r| r.1 == ROD_HOLES).max_by(outer_most))
                 .map(|r| r.0);
             let verts: Vec<[f64; 2]> = geos
                 .iter()
@@ -1268,12 +1468,15 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 .copied()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map_or(0.0, |r| r.0);
-            let (thread, hold_d) = thread_fits(hold, true).map_or((String::new(), hold), |t| {
-                (
-                    t.name.to_string(),
-                    if t.holds > 0.0 { t.holds } else { hold },
-                )
-            });
+            // 保持する素子のねじは逃げの溝で判定しない（奥の 25.4 の穴の止め輪の溝と区別できない）。端のねじだけ
+            let relief = |major: f64| relief_next_to(&bores, major);
+            let (thread, hold_d) =
+                thread_fits(hold, true, &|_| false).map_or((String::new(), hold), |t| {
+                    (
+                        t.name.to_string(),
+                        if t.holds > 0.0 { t.holds } else { hold },
+                    )
+                });
             // 座: 本体と別の止め輪（本体より z の短い輪）が前半にあれば、その奥の面。枠の端から保持する素子の径より
             // 細い穴が続けば、その段（素子が当たる肩）。どちらも無ければ枠の端
             let ring_seat = rrs
@@ -1295,7 +1498,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let seat_mm = sc(ring_seat).max(shoulder);
             let seat = seat_mm;
             // 両端のねじ: 端に接する、ねじの谷の径の外向きの円柱（オス、外径より細い）か内壁（メス）
-            let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female);
+            let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female, &relief);
             let end_thread = |end: f64| -> Option<crate::ThreadEnd> {
                 // 端から 1 mm 以内（面取りの分）
                 let tol = 1.0 / k;
@@ -1333,10 +1536,16 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 }
                 // メス: 端から最も近い内壁がねじの径（ケージ板のように、ねじの穴の端が外形の端から引っ込んでいても。
                 // 引っ込みは recess）
+                // 同じ近さの内壁が複数なら、ねじの径のもの、次に細いもの（面をたどる順によらない）
                 let nearest = keep.iter().flat_map(|x| x.walls.iter()).min_by(|a, b| {
-                    dist(a.1)
-                        .partial_cmp(&dist(b.1))
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    let (da, db) = (dist(a.1), dist(b.1));
+                    if (da - db).abs() > eps {
+                        return da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal);
+                    }
+                    let ta = thread_of(a.0, true).is_none();
+                    let tb = thread_of(b.0, true).is_none();
+                    ta.cmp(&tb)
+                        .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
                 })?;
                 let t = thread_of(nearest.0, true)?;
                 // ねじの長さは面取りも含める（端から 1 mm 以内の面取りは端まで）
@@ -1442,7 +1651,37 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         .iter()
         .filter(|c| dot(c.1, axis).abs() > 0.999)
         .collect();
-    let r = par.iter().map(|c| c.2).fold(0.0, f64::max);
+    // 光軸と同じ軸の円の最大。無ければ（ロッドの穴の組の中心を光軸にした穴の無い板）頂点の幅の最小の半分
+    let r = par
+        .iter()
+        .filter(|c| coax(c.0, c.1))
+        .map(|c| c.2)
+        .fold(0.0, f64::max);
+    let r = if r > 0.0 {
+        r
+    } else {
+        let ex = perp(axis);
+        let ey = cross(axis, ex);
+        let w = (0..180)
+            .map(|i| {
+                let t = (i as f64).to_radians();
+                let d = add(scale(ex, t.cos()), scale(ey, t.sin()));
+                let (lo, hi) =
+                    all.verts
+                        .iter()
+                        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+                            let x = dot(sub(*p, o), d);
+                            (lo.min(x), hi.max(x))
+                        });
+                hi - lo
+            })
+            .fold(f64::INFINITY, f64::min);
+        if w.is_finite() {
+            0.5 * w
+        } else {
+            par.iter().map(|c| c.2).fold(0.0, f64::max)
+        }
+    };
     let (lo, hi) = all
         .verts
         .iter()
@@ -1808,13 +2047,28 @@ mod tests {
         r: f64,
         inward: bool,
     ) -> String {
+        arc_face(d, id, c, z, r, inward, None)
+    }
+
+    /// 円柱の面。縁は辺（EDGE_CURVE）で、`span` が無ければ全周、あれば角度 [rad] の範囲の弧
+    fn arc_face(
+        d: &mut String,
+        id: &mut u32,
+        c: (f64, f64),
+        z: (f64, f64),
+        r: f64,
+        inward: bool,
+        span: Option<(f64, f64)>,
+    ) -> String {
         let n = *id;
         let (x, y) = c;
+        let (t0, t1) = span.unwrap_or((0.0, 0.0));
+        let p = |t: f64| (x + r * t.cos(), y + r * t.sin());
+        let (p0, p1) = (p(t0), p(t1));
         *d += &format!(
             "#{a}=CARTESIAN_POINT('',({x},{y},{z0}));\n#{b}=AXIS2_PLACEMENT_3D('',#{a},#1,#2);\n\
 #{c}=CARTESIAN_POINT('',({x},{y},{z1}));\n#{e}=AXIS2_PLACEMENT_3D('',#{c},#1,#2);\n\
-#{f}=CIRCLE('',#{b},{r});\n#{g}=CIRCLE('',#{e},{r});\n#{h}=CYLINDRICAL_SURFACE('',#{b},{r});\n\
-#{i}=ADVANCED_FACE('',(#{f},#{g}),#{h},.{o}.);\n",
+#{f}=CIRCLE('',#{b},{r});\n#{g}=CIRCLE('',#{e},{r});\n#{h}=CYLINDRICAL_SURFACE('',#{b},{r});\n",
             z0 = z.0,
             z1 = z.1,
             a = n,
@@ -1824,10 +2078,36 @@ mod tests {
             f = n + 4,
             g = n + 5,
             h = n + 6,
+        );
+        // 縁の頂点と辺（全周なら始めと終わりが同じ頂点）
+        let mut edges = Vec::new();
+        for (k, (zz, circ)) in [(z.0, n + 4), (z.1, n + 5)].into_iter().enumerate() {
+            let m = n + 10 + 10 * k as u32;
+            *d += &format!(
+                "#{q0}=CARTESIAN_POINT('',({},{},{zz}));\n#{v0}=VERTEX_POINT('',#{q0});\n\
+#{q1}=CARTESIAN_POINT('',({},{},{zz}));\n#{v1}=VERTEX_POINT('',#{q1});\n\
+#{ec}=EDGE_CURVE('',#{v0},#{ve},#{circ},.T.);\n",
+                p0.0,
+                p0.1,
+                p1.0,
+                p1.1,
+                q0 = m,
+                v0 = m + 1,
+                q1 = m + 2,
+                v1 = m + 3,
+                ve = if span.is_some() { m + 3 } else { m + 1 },
+                ec = m + 4,
+            );
+            edges.push(format!("#{}", m + 4));
+        }
+        *d += &format!(
+            "#{i}=ADVANCED_FACE('',({}),#{h},.{o}.);\n",
+            edges.join(","),
             i = n + 7,
+            h = n + 6,
             o = if inward { "F" } else { "T" },
         );
-        *id += 10;
+        *id += 40;
         format!("#{}", n + 7)
     }
 
@@ -1875,6 +2155,23 @@ mod tests {
             (bt.thread.as_str(), bt.male, bt.length),
             ("SM05", false, 7.0)
         );
+        // C マウントのチューブ（Thorlabs の描き方）: 前はオス（外径 25.4）、後ろはメス（外径 25.4 の円柱と、奥の逃げの
+        // 溝 26.416）
+        let cml = solid(&[
+            (0.0, 0.0, 0.0, 4.064, 12.7, false),
+            (0.0, 0.0, 4.064, 14.064, 15.24, false),
+            (0.0, 0.0, 0.0, 4.826, 11.557, true),
+            (0.0, 0.0, 4.826, 5.588, 13.208, true),
+            (0.0, 0.0, 5.588, 14.064, 12.7, true),
+        ]);
+        let f = crate::catalog_fill::read_step(&cml).unwrap().frame.unwrap();
+        let ft = f.front_thread.clone().unwrap();
+        assert_eq!((ft.thread.as_str(), ft.male), ("C-Mount", true), "{f:?}");
+        let bt = f.back_thread.clone().unwrap();
+        assert_eq!(
+            (bt.thread.as_str(), bt.male, bt.length),
+            ("C-Mount", false, 8.476)
+        );
         // 25.4 の素通しの穴は C マウントのメスとしない
         let ring = solid(&[
             (0.0, 0.0, 0.0, 10.0, 14.975, false),
@@ -1917,5 +2214,114 @@ mod tests {
             .frame
             .unwrap();
         assert_eq!(f.rod_spacing, 0.0, "{f:?}");
+    }
+
+    /// 角の板（一辺 40、厚さ 10）: 円柱の面と、角の頂点を持つ面。`arcs` は (中心, 半径, 角度の範囲) の弧の溝
+    /// 弧: (中心, 半径, 角度の範囲)
+    type Arc = ((f64, f64), f64, (f64, f64));
+
+    fn square_plate(holes: &[(f64, f64, f64)], arcs: &[Arc]) -> String {
+        let mut d = String::from(
+            "ISO-10303-21;\nDATA;\n#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n\
+#3=CARTESIAN_POINT('',(0.,0.,0.));\n#4=AXIS2_PLACEMENT_3D('',#3,#1,#2);\n",
+        );
+        let mut id = 100;
+        let mut faces: Vec<String> = holes
+            .iter()
+            .map(|h| cyl_face(&mut d, &mut id, (h.0, h.1), (0.0, 10.0), h.2, true))
+            .collect();
+        for a in arcs {
+            faces.push(arc_face(
+                &mut d,
+                &mut id,
+                a.0,
+                (0.0, 10.0),
+                a.1,
+                true,
+                Some(a.2),
+            ));
+        }
+        let mut verts = Vec::new();
+        for (x, y) in [(20.0, 20.0), (-20.0, 20.0), (-20.0, -20.0), (20.0, -20.0)] {
+            for z in [0.0, 10.0] {
+                d += &format!(
+                    "#{id}=CARTESIAN_POINT('',({x},{y},{z}));\n#{}=VERTEX_POINT('',#{id});\n",
+                    id + 1
+                );
+                verts.push(format!("#{}", id + 1));
+                id += 2;
+            }
+        }
+        d += &format!(
+            "#{id}=PLANE('',#4);\n#{}=ADVANCED_FACE('',({}),#{id},.T.);\n",
+            id + 1,
+            verts.join(",")
+        );
+        faces.push(format!("#{}", id + 1));
+        d += &format!(
+            "#9000=CLOSED_SHELL('',({}));\n#9001=MANIFOLD_SOLID_BREP('plate',#9000);\nENDSEC;\n",
+            faces.join(",")
+        );
+        d
+    }
+
+    /// OptoSigma の描き方: ロッドの穴の周りの溝は、ロッドの穴を中心とする半径の大きい短い弧。光軸は半周以上の弧の
+    /// 円のうち最大のもの（光軸の穴）に取る。穴の無い板はロッドの穴の正方形の中心を光軸にする。ロッドの間隔の規格に
+    /// 合う組が 2 つなら大きい方（穴の並びの順によらない）
+    #[test]
+    fn optosigma_grooves_blank_plate_and_two_rod_patterns() {
+        let rods = |r: f64| {
+            [
+                (15.0, 15.0, r),
+                (-15.0, 15.0, r),
+                (-15.0, -15.0, r),
+                (15.0, -15.0, r),
+            ]
+        };
+        // 光軸の穴（内径 25）・ロッドの穴（1 つだけ逃げの大きい 3.1）・ロッドの穴の周りの半径 45 の溝の弧
+        let mut holes = vec![(0.0, 0.0, 12.5)];
+        holes.extend(rods(3.0).into_iter().take(3));
+        holes.push((15.0, -15.0, 3.1));
+        let t = 200f64.to_radians();
+        let plate = square_plate(&holes, &[((15.0, 15.0), 45.0, (t, t + 0.05))]);
+        let f = crate::catalog_fill::read_step(&plate)
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!(
+            (f.outer_diameter, f.holds.map(|h| h.diameter), f.rod_spacing),
+            (40.0, Some(25.0), 30.0),
+            "{f:?}"
+        );
+        assert_eq!(f.outline, crate::MechOutline::Square);
+        // 穴の無い板（中心に細い穴も無い）: ロッドの穴の正方形の中心が光軸で、一辺 40
+        let blank = square_plate(&rods(3.0), &[]);
+        let s = crate::catalog_fill::read_step(&blank).unwrap();
+        assert_eq!(s.diameter, json!(40.0), "{s:?}");
+        // 中心に細い穴のある穴の無い板は、枠として測る
+        let mut h = vec![(0.0, 0.0, 1.0)];
+        h.extend(rods(3.0));
+        let f = crate::catalog_fill::read_step(&square_plate(&h, &[]))
+            .unwrap()
+            .frame
+            .unwrap();
+        assert_eq!((f.outer_diameter, f.rod_spacing), (40.0, 30.0), "{f:?}");
+        // ロッドの間隔を変える板: 16 と 30 の組は 30
+        let mut h = vec![(0.0, 0.0, 6.35)];
+        h.extend(rods(3.0));
+        h.extend([
+            (8.0, 8.0, 2.0),
+            (-8.0, 8.0, 2.0),
+            (-8.0, -8.0, 2.0),
+            (8.0, -8.0, 2.0),
+        ]);
+        for _ in 0..4 {
+            let f = crate::catalog_fill::read_step(&square_plate(&h, &[]))
+                .unwrap()
+                .frame
+                .unwrap();
+            assert_eq!(f.rod_spacing, 30.0, "{f:?}");
+            h.rotate_left(1);
+        }
     }
 }
