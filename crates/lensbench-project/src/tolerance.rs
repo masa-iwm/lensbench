@@ -647,6 +647,82 @@ fn term_label(p: &Problem, k: usize) -> String {
     }
 }
 
+/// 補償子の傾きの x・y の組: 同じ玉・群・面の `.tx` と `.ty` で、効く構成も同じもの。(名前, x の位置, y の位置)。
+/// 名前は「M.tilt」（面なら「5.tilt」）
+pub fn tilt_pairs(vars: &[Var], names: &[String]) -> Vec<(String, usize, usize)> {
+    let mut out = Vec::new();
+    for (qx, nx) in names.iter().enumerate() {
+        let Some(base) = nx.strip_suffix(".tx") else {
+            continue;
+        };
+        let ny = format!("{base}.ty");
+        if let Some(qy) = names
+            .iter()
+            .enumerate()
+            .position(|(q, n)| *n == ny && vars[q].configs == vars[qx].configs)
+        {
+            out.push((format!("{base}.tilt"), qx, qy));
+        }
+    }
+    out
+}
+
+/// 試行ごとの補償子の CSV（[`result_json`] の結果から）。列は 試行（1 から）・評価関数・補償子・傾きの大きさ [分]。
+/// 追跡できなかった試行は値を空にする
+pub fn compensators_csv(result: &Value) -> Result<String, String> {
+    let comps = result["compensators"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let tilts = result["tilt_magnitudes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let merits = result["merit_values"]
+        .as_array()
+        .ok_or("結果に試行ごとの値（merit_values）がない")?;
+    let n = merits.len();
+    let cols: Vec<(String, &Vec<Value>)> = comps
+        .iter()
+        .map(|c| (c["name"].as_str().unwrap_or("").to_string(), &c["values"]))
+        .chain(tilts.iter().map(|t| {
+            (
+                format!("{} [arcmin]", t["name"].as_str().unwrap_or("")),
+                &t["values"],
+            )
+        }))
+        .map(|(h, v)| {
+            v.as_array()
+                .filter(|a| a.len() == n)
+                .map(|a| (h.clone(), a))
+                .ok_or_else(|| format!("補償子 {h} の試行ごとの値がない"))
+        })
+        .collect::<Result<_, _>>()?;
+    let esc = |s: &str| {
+        if s.contains([',', '"', '\n']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    let cell = |v: &Value| v.as_f64().map_or(String::new(), |x| format!("{x}"));
+    let mut out = String::from("trial,merit");
+    for (h, _) in &cols {
+        out.push(',');
+        out.push_str(&esc(h));
+    }
+    out.push('\n');
+    for i in 0..n {
+        out.push_str(&format!("{},{}", i + 1, cell(&merits[i])));
+        for (_, a) in &cols {
+            out.push(',');
+            out.push_str(&cell(&a[i]));
+        }
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 /// 結果の JSON
 pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
     let s0 = &spec.problem.configs[0];
@@ -723,22 +799,67 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
             })
         })
         .collect();
+    // 補償子の試行ごとの値（試行の順、追跡できなかった試行は None）
+    let per_trial = |q: usize| -> Vec<Option<f64>> {
+        r.trials
+            .iter()
+            .map(|t| t.eval.as_ref().map(|e| e.comp[q]))
+            .collect()
+    };
+    let opt_json = |v: &[Option<f64>]| -> Value {
+        v.iter()
+            .map(|x| {
+                x.filter(|x| x.is_finite())
+                    .map_or(Value::Null, |x| json!(x))
+            })
+            .collect()
+    };
+    let names: Vec<String> = spec
+        .problem
+        .vars
+        .iter()
+        .map(|v| s0.param_name(v.param))
+        .collect();
     let comps: Vec<Value> = spec
         .problem
         .vars
         .iter()
         .enumerate()
         .map(|(q, v)| {
-            let x: Vec<f64> = r
-                .trials
-                .iter()
-                .filter_map(|t| t.eval.as_ref().map(|e| e.comp[q]))
-                .collect();
+            let vals = per_trial(q);
+            let x: Vec<f64> = vals.iter().flatten().copied().collect();
             json!({
-                "name": s0.param_name(v.param),
+                "name": names[q],
                 "configs": v.configs.as_ref().map(|c| c.iter().map(|k| k + 1).collect::<Vec<_>>()),
                 "nominal": r.nominal.comp.get(q),
                 "stats": stats_json(&x, pc),
+                "values": opt_json(&vals),
+            })
+        })
+        .collect();
+    // 傾きの x・y の組（同じ玉・群・面の tx と ty、効く構成も同じ）は大きさ √(tx² + ty²) を分で
+    let tilts: Vec<Value> = tilt_pairs(&spec.problem.vars, &names)
+        .into_iter()
+        .map(|(name, qx, qy)| {
+            let (vx, vy) = (per_trial(qx), per_trial(qy));
+            let vals: Vec<Option<f64>> = vx
+                .iter()
+                .zip(&vy)
+                .map(|(a, b)| Some(60.0 * a.as_ref()?.hypot(*b.as_ref()?)))
+                .collect();
+            let x: Vec<f64> = vals.iter().flatten().copied().collect();
+            let nom = match (r.nominal.comp.get(qx), r.nominal.comp.get(qy)) {
+                (Some(a), Some(b)) => json!(60.0 * a.hypot(*b)),
+                _ => Value::Null,
+            };
+            json!({
+                "name": name,
+                "x": names[qx],
+                "y": names[qy],
+                "unit": "arcmin",
+                "nominal": nom,
+                "stats": stats_json(&x, pc),
+                "values": opt_json(&vals),
             })
         })
         .collect();
@@ -763,6 +884,8 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
         "cdf": sorted(merits),
         "terms": terms,
         "compensators": comps,
+        "tilt_magnitudes": tilts,
+        "merit_values": opt_json(&r.trials.iter().map(|t| t.eval.as_ref().map(|e| e.merit)).collect::<Vec<_>>()),
         "sensitivity": sens.into_iter().map(|x| x.1).collect::<Vec<_>>(),
         "rss_estimate": rss,
         "correlation": cv.into_iter().map(|x| x.1).collect::<Vec<_>>(),

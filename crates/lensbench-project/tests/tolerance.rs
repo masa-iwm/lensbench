@@ -3,7 +3,9 @@
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::tolerance::Dist;
 use lensbench_core::System;
-use lensbench_project::tolerance::{catalog_vendors, out_opts, result_json, spec_from_json};
+use lensbench_project::tolerance::{
+    catalog_vendors, compensators_csv, out_opts, result_json, spec_from_json, tilt_pairs,
+};
 use lensbench_project::{expand, Env, Project};
 use serde_json::json;
 use std::collections::HashMap;
@@ -358,4 +360,61 @@ fn explicit_tol_scale() {
     let bad =
         json!({"preset": "none", "tols": [{"params": ["1.t", "2.t"], "pm": 0.1, "scale": [1]}]});
     assert!(spec_from_json(&bad, vec![s], &HashMap::new()).is_err());
+}
+
+#[test]
+fn compensator_values_tilt_magnitude_and_csv() {
+    // 補償子の試行ごとの値（試行の順）・傾き tx・ty の組の大きさ（分）・試行ごとの CSV（#164）
+    let (_, s) = sys();
+    let v = json!({
+        "preset": "none", "trials": 5, "seed": 2, "dist": "uniform", "sensitivity": false,
+        "tols": [{"param": "L1.dy", "pm": 0.05}, {"param": "L1.dx", "pm": 0.05}],
+        "compensators": ["G.tx=-1:1", "G.ty=-1:1", "G.shift=-2:2"],
+        "percentiles": [50, 95],
+    });
+    let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let out = result_json(&m, &r, &out_opts(&v).unwrap());
+    let comps = out["compensators"].as_array().unwrap();
+    assert_eq!(comps.len(), 3);
+    for (q, c) in comps.iter().enumerate() {
+        let vals = c["values"].as_array().unwrap();
+        assert_eq!(vals.len(), 5);
+        for (t, x) in r.trials.iter().zip(vals) {
+            assert_eq!(x.as_f64(), t.eval.as_ref().map(|e| e.comp[q]));
+        }
+    }
+    let tm = out["tilt_magnitudes"].as_array().unwrap();
+    assert_eq!(tm.len(), 1);
+    assert_eq!(tm[0]["name"], "G.tilt");
+    assert_eq!(tm[0]["x"], "G.tx");
+    assert_eq!(tm[0]["y"], "G.ty");
+    assert_eq!(tm[0]["unit"], "arcmin");
+    assert_eq!(tm[0]["stats"]["percentiles"].as_array().unwrap().len(), 2);
+    for (i, t) in r.trials.iter().enumerate() {
+        let e = t.eval.as_ref().unwrap();
+        let want = 60.0 * e.comp[0].hypot(e.comp[1]);
+        assert!((tm[0]["values"][i].as_f64().unwrap() - want).abs() < 1e-12);
+    }
+    let merits = out["merit_values"].as_array().unwrap();
+    assert_eq!(merits.len(), 5);
+    let csv = compensators_csv(&out).unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines[0], "trial,merit,G.tx,G.ty,G.shift,G.tilt [arcmin]");
+    assert_eq!(lines.len(), 6);
+    let row: Vec<f64> = lines[3].split(',').map(|x| x.parse().unwrap()).collect();
+    assert_eq!(row[0], 3.0);
+    assert_eq!(row[1], merits[2].as_f64().unwrap());
+    assert_eq!(row[4], comps[2]["values"][2].as_f64().unwrap());
+    // 構成の違う tx・ty は組にしない。CSV は結果に試行の値がないと誤り
+    let names = vec!["5.tx".to_string(), "5.ty".to_string(), "G.tx".to_string()];
+    let p = s.param("5.tx").unwrap();
+    let vars = vec![
+        lensbench_core::optim::Var::new(p),
+        lensbench_core::optim::Var::new(p).in_configs(vec![0]),
+        lensbench_core::optim::Var::new(p),
+    ];
+    assert!(tilt_pairs(&vars, &names).is_empty());
+    assert_eq!(tilt_pairs(&vars[..1], &names[..1]).len(), 0);
+    assert!(compensators_csv(&json!({"compensators": []})).is_err());
 }
