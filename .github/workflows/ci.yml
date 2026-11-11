@@ -133,7 +133,16 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+      # apt で入れる包みの deb を保存して、Ubuntu のミラーが引けないときはそこから入れる（apt_install.sh）。
+      # 像の版ごとに鍵を分ける（像の更新で版が合わなくなったら取りに行き、新しい鍵で保存し直す）
+      - run: echo "APT_DEB_KEY=apt-debs-gui-${{ runner.arch }}-$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt-debs
+          key: ${{ env.APT_DEB_KEY }}
+          restore-keys: apt-debs-gui-${{ runner.arch }}-
+      - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+        timeout-minutes: 20
       - run: cargo build --profile ci -p lensbench-gui
       - run: >-
           xvfb-run -a -s "-screen 0 1400x900x24"
@@ -211,7 +220,7 @@ jobs:
         env:
           RUSTFLAGS: -C target-feature=+simd128
           CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
-      - run: npm install --no-save playwright@1.55.0 && npx playwright install --with-deps chromium
+      - run: npm install --no-save playwright@1.55.0 && npx playwright install chromium
       # スレッドあり（ヘッダーあり）・GitHub Pages と同じ（ヘッダーなし、coi.js で付け直す）・1 スレッド（?st）
       - run: EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke.png
       - run: HEADERS=0 EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke-coi.png

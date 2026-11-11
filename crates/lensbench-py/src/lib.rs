@@ -2392,7 +2392,7 @@ impl PySystem {
     ///
     /// termsは足す項の dict の並び。{"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1} の
     /// 形で、種類は spot・wavefront・mtf・paraxial（q: efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・
-    /// obna・isna）・ray（q: x・y・z・l・m・n、面 surf の局所座標）・opd・zernike・coupling・zplm（ZPL マクロの OPTRETURN）・
+    /// obna・isna）・ray（q: x・y・z・l・m・n、面 surf の局所座標）・centroid（像面の光束の重心、q: x・y）・opd・zernike・coupling・zplm（ZPL マクロの OPTRETURN）・
     /// plugin（登録したプラグインの出力。CLI の --term と同じ）。
     /// {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} は Python の関数で定義する項: f(systems) は
     /// System の list を受け取り、系ごとの残差を (len(systems), 残差の数) の配列で返す（差分の系はまとめて 1 回で渡す）。
@@ -2479,7 +2479,8 @@ impl PySystem {
     /// configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。
     ///
     /// 返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
-    /// 昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators・sensitivity（公差ごとの lo・hi での評価関数の
+    /// 昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・
+    /// tilt_magnitudes（補償子の tx・ty の組の大きさ [分]）・merit_values（試行ごとの評価関数）・sensitivity（公差ごとの lo・hi での評価関数の
     /// 変化、悪い順）・rss_estimate・correlation（ずれとの相関 r と |ずれ| との相関 r_abs）・tolerances・trials・failed・
     /// errors（samples が true なら試行ごとの deltas・eval も）
     #[pyo3(signature = (spec=None, terms=None, vendors=None, configs=None, threads=None))]

@@ -147,6 +147,13 @@ pub async fn start_web(
     run_web(canvas, args).await
 }
 
+/// Web 版: 品の STEP の共有の置き場の URL（例 `/cad`）。別の入口（`lensbench-web` の `Extra::cad_store`）が起動の前に決める。
+/// 決めてあれば、カタログの詳細の「詳しい形（STEP）を取る」で置き場から取る（#158）
+#[cfg(target_arch = "wasm32")]
+pub fn set_web_cad_store(url: Option<String>) {
+    cad_fetch::set_web_store(url);
+}
+
 /// Web 版: このページが別のタブのパネル（`?panel=`）か。そのときは同梱のデータも要らない
 #[cfg(target_arch = "wasm32")]
 pub fn web_panel() -> bool {

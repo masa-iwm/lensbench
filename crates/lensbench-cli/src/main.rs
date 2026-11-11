@@ -21,6 +21,7 @@ pub mod arg_spec;
 mod browse;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cad;
+pub mod cad_detail;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
@@ -332,6 +333,9 @@ enum Cmd {
         /// ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
         #[arg(long = "save-worst")]
         save_worst: Option<PathBuf>,
+        /// 試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
+        #[arg(long = "comp-csv")]
+        comp_csv: Option<PathBuf>,
     },
     /// 回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。--wave を省くと多色。
     /// --huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す。座標は像面の局所座標）
@@ -1274,10 +1278,12 @@ impl Cmd {
                 c,
                 spec,
                 save_worst,
+                comp_csv,
                 ..
             } => {
                 let mut v: Vec<_> = spec.iter_mut().map(|p| (p, false)).collect();
                 v.extend(save_worst.iter_mut().map(|p| (p, true)));
+                v.extend(comp_csv.iter_mut().map(|p| (p, true)));
                 (Some(c), v)
             }
             Cmd::Convert { c, out } => (Some(c), vec![(out, true)]),
@@ -2201,6 +2207,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             trials,
             seed,
             save_worst,
+            comp_csv,
         } => {
             let s = load(&c)?;
             let mut v = match &spec {
@@ -2271,11 +2278,26 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 }
             }
             let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+            if let Some(path) = &comp_csv {
+                let csv = lensbench_project::tolerance::compensators_csv(&out)?;
+                lensbench_core::vfs::write(path, csv)
+                    .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
+            }
             if !json_out {
                 // 画面には要点だけ（分布の全体は --json か --save で）
                 if let Some(o) = out.as_object_mut() {
                     o.remove("cdf");
                     o.remove("tolerances");
+                    o.remove("merit_values");
+                    for k in ["compensators", "tilt_magnitudes"] {
+                        if let Some(Value::Array(a)) = o.get_mut(k) {
+                            for t in a {
+                                if let Some(t) = t.as_object_mut() {
+                                    t.remove("values");
+                                }
+                            }
+                        }
+                    }
                     for k in ["sensitivity", "correlation"] {
                         if let Some(Value::Array(a)) = o.get_mut(k) {
                             a.truncate(10);
@@ -3685,7 +3707,7 @@ pub fn main() -> ExitCode {
     let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
-    cad::install_detail_loader();
+    cad_detail::install_detail_loader();
     // run はスレッド数を自分では使わず、起動する Python に渡す
     if let Cmd::Run(a) = &cli.cmd {
         return match run::run(a, cli.threads) {

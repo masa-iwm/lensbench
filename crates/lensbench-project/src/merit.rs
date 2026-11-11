@@ -2,7 +2,7 @@
 //!
 //! 1 つの項は {"type": 種類, ...} のオブジェクト。共通のキー: `weight`（既定 1）、`config`（構成の番号、1 始まり、既定 1）。
 //! 視野 `field` は番号（1 始まり）か正規化視野 [hx, hy]、波長 `wave` は番号（1 始まり）か null、面 `surf` は面の番号
-//! （物体 0）。目標 `target` の既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・
+//! （物体 0）。目標 `target` の既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・centroid・opd・
 //! zernike・coupling）は `target` の代わりに `min`（値 ≥ min のときは残差 0）か `max`（値 ≤ max のときは残差 0）を書ける。
 //!
 //! | type | キー |
@@ -10,6 +10,7 @@
 //! | `spot`・`wavefront` | field、wave（null は多色）、rings（3）、reference（"centroid"・"chief"） |
 //! | `mtf` | field、wave、freq [cycles/mm]、dir（"tan"・"sag"・"both"）、n（瞳の標本数）、target |
 //! | `paraxial` | q（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obna・isna）、target |
+//! | `centroid` | field、wave（null は多色）、rings（3）、q（x・y）、target [レンズ単位]。像面の光束の重心（スポットの項と同じ光線・重み） |
 //! | `ray` | field、wave（null は主波長）、px・py（正規化瞳座標、0）、surf（像面）、q（x・y・z・l・m・n）、target |
 //! | `opd` | field、wave、px・py、target [波] |
 //! | `zernike` | field、wave、term（1 始まり）、kind（"fringe"・"standard"）、n（格子、64）、target [波] |
@@ -214,6 +215,17 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
             q: RayQ::parse(&o.str_or("q", "")?).map_err(|e| e.to_string())?,
             target: o.f64_or("target", 0.0)?,
         },
+        "centroid" => TermKind::Centroid {
+            field: o.field(s)?,
+            wave: o.wave(s)?,
+            rings: o.usize_opt("rings")?.unwrap_or(3),
+            y: match o.str_or("q", "")?.to_ascii_lowercase().as_str() {
+                "x" => false,
+                "y" => true,
+                q => return Err(format!("centroid の q は x か y（{q}）")),
+            },
+            target: o.f64_or("target", 0.0)?,
+        },
         "opd" => TermKind::Opd {
             field: o.field(s)?,
             wave: o.wave(s)?,
@@ -322,6 +334,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
                 ..
             } | TermKind::Paraxial { .. }
                 | TermKind::Ray { .. }
+                | TermKind::Centroid { .. }
                 | TermKind::Opd { .. }
                 | TermKind::Zernike { .. }
                 | TermKind::Coupling { .. }

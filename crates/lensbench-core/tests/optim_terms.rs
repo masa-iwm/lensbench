@@ -418,3 +418,48 @@ fn dls_with_ray_targets() {
         r.merit
     );
 }
+
+#[test]
+fn centroid_value_and_jacobian() {
+    for name in SYSTEMS {
+        let s = load(name);
+        // x・y とも対称で 0 にならない視野（0 の向きは差分が追跡の誤差だけになる）
+        let field = FieldSel::Norm(0.6, 0.8);
+        // 値: スポットの項と同じ光線（ガウス求積の瞳の点）の像面の位置の、重みつきの平均
+        let w = s.primary;
+        let (px, py, wt) = lensbench_core::analysis::pupil_gauss(3, None);
+        let t = s.try_trace(field, &px, &py, Some(w), None, false).unwrap();
+        let (mut sw, mut sx, mut sy) = (0.0, 0.0, 0.0);
+        for (i, a) in wt.iter().enumerate() {
+            if t.ok(i) {
+                sw += a;
+                sx += a * t.rays[i].xyz[0];
+                sy += a * t.rays[i].xyz[1];
+            }
+        }
+        for (y, v) in [(false, sx / sw), (true, sy / sw)] {
+            let kind = TermKind::Centroid {
+                field,
+                wave: Some(w),
+                rings: 3,
+                y,
+                target: 0.25,
+            };
+            let p = one(&s, kind.clone());
+            let got = p.term_values(&[]).unwrap()[0];
+            assert!((got - v).abs() <= 1e-12, "{name} y={y}: {got} {v}");
+            check_jac(name, &s, kind);
+            check_jac(
+                name,
+                &s,
+                TermKind::Centroid {
+                    field,
+                    wave: None,
+                    rings: 3,
+                    y,
+                    target: 0.0,
+                },
+            );
+        }
+    }
+}
