@@ -1,4 +1,4 @@
-// cargo の wasm32-wasip1 の試験を Node の WASI で回す（CARGO_TARGET_WASM32_WASIP1_RUNNER に置く。公開 #28）。
+// cargo の wasm32-wasip1 の試験を Node の WASI で回す（手元用。CI は #181 から wasmtime で回す。公開 #28）。
 // 使い方: node scripts/wasi_run.mjs <試験の .wasm> [試験の引数...]。終了コードは試験のもの。
 // 試験は env!("CARGO_MANIFEST_DIR") からの絶対パスで tests/ を読むので、リポジトリの根も同じパスで見せる
 //
