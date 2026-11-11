@@ -497,9 +497,9 @@ enum Cmd {
     /// （cad-step と同じ鍵）上げる。置き場にある鍵は上げない（--overwrite で上げ直す）
     CadUpload {
         /// キャッシュのフォルダの STEP を上げる（値を省くと cad-step の既定のキャッシュ）
-        #[arg(long, num_args = 0..=1, default_missing_value = "", conflicts_with = "catalog")]
-        cache: Option<PathBuf>,
-        /// ユーザーカタログ（--dir か --item・--file と）
+        #[arg(long, num_args = 0..=1, conflicts_with = "catalog")]
+        cache: Option<Option<PathBuf>>,
+        /// ユーザーカタログ（--dir か --item・--file と）。フォルダなら中の .json・.json.gz を全部（下のフォルダも）
         #[arg(long)]
         catalog: Option<PathBuf>,
         /// STEP（.step・.stp・それを入れた .zip）のフォルダ。ファイル名に品の名前を含むものを当てる（下のフォルダも）
@@ -2762,18 +2762,14 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let mut jobs: Vec<(String, PathBuf, String)> = Vec::new();
                 let mut unmatched: Vec<PathBuf> = Vec::new();
                 if let Some(c) = cache {
-                    let d = if c.as_os_str().is_empty() {
-                        cad::default_cache_dir()
-                    } else {
-                        c
-                    };
+                    let d = c.unwrap_or_else(cad::default_cache_dir);
                     for f in cad::step_files(&d)? {
                         if f.extension().map(|x| x == "step").unwrap_or(false) {
                             jobs.push((cad::store_key(&f), f, String::new()));
                         }
                     }
                 } else if let Some(catalog) = catalog {
-                    let cat = lensbench_project::UserCatalog::load(&catalog)?;
+                    let cat = cad::load_catalogs(&catalog)?;
                     let key_of = |name: &str| -> Result<String, String> {
                         let it = cat
                             .items
@@ -2794,7 +2790,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                             .iter()
                             .filter(|(_, it)| it.mech.is_some())
                             .map(|(k, _)| k.as_str());
-                        let (got, miss) = cad::match_files(names, &cad::step_files(&d)?);
+                        let (got, miss) = cad::match_files(names, &cad::step_sources(&d)?);
                         unmatched = miss;
                         for (name, f) in got {
                             jobs.push((key_of(&name)?, f, name));
