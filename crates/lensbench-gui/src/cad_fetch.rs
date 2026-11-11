@@ -114,18 +114,26 @@ impl CadFetcher {
     pub fn ui(&mut self, ui: &mut Ui, r: &LensRow) {
         let step = r.raw["cad"]["step"].as_str().unwrap_or("").to_string();
         let pdf = r.raw["cad"]["pdf"].as_str().unwrap_or("").to_string();
-        if step.is_empty() && pdf.is_empty() {
+        // STEP の URL の無い機構部品も、共有の置き場があれば置き場から取れる
+        #[cfg(not(target_arch = "wasm32"))]
+        let from_store =
+            step.is_empty() && r.raw.get("mech").is_some() && lensbench_cli::cad::store().is_some();
+        #[cfg(target_arch = "wasm32")]
+        let from_store = false;
+        if step.is_empty() && pdf.is_empty() && !from_store {
             return;
         }
         ui.horizontal_wrapped(|ui| {
             if !pdf.is_empty() {
                 ui.hyperlink_to(tr("📄 図面（PDF）"), &pdf);
             }
-            if step.is_empty() {
+            if step.is_empty() && !from_store {
                 return;
             }
             #[cfg(target_arch = "wasm32")]
-            ui.hyperlink_to(tr("STEP（公式）"), &step);
+            if !step.is_empty() {
+                ui.hyperlink_to(tr("STEP（公式）"), &step);
+            }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(key) = key_of(r) {
                 let st = self.state.get(&key).cloned();
@@ -139,7 +147,7 @@ impl CadFetcher {
                             .button(tr("📥 詳しい形（STEP）を取る"))
                             .on_hover_text(format!(
                                 "{}\n{step}",
-                                tr("この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）")
+                                tr("この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）。置き場があれば先に置き場を見て、配布元から取ったら置き場にも上げます")
                             ))
                             .clicked()
                         {
@@ -160,10 +168,11 @@ impl CadFetcher {
                             "STEP: {}{}",
                             &[
                                 &path,
-                                &if v["cached"] == true {
-                                    tr("（キャッシュ）")
-                                } else {
-                                    ""
+                                &match v["source"].as_str() {
+                                    Some("cache") => tr("（キャッシュ）"),
+                                    Some("store") => tr("（置き場から）"),
+                                    Some("vendor_uploaded") => tr("（置き場にも上げました）"),
+                                    _ => "",
                                 },
                             ],
                         ))
@@ -174,6 +183,12 @@ impl CadFetcher {
                             ui.close_menu();
                         }
                     });
+                    for n in v["store_notes"].as_array().into_iter().flatten() {
+                        ui.label(
+                            RichText::new(trf("置き場: {}", &[&n.as_str().unwrap_or("")]))
+                                .color(ui.visuals().warn_fg_color),
+                        );
+                    }
                     let notes: Vec<&str> = v["notes"]
                         .as_array()
                         .map(|a| a.iter().filter_map(Value::as_str).collect())

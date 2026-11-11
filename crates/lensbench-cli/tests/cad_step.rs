@@ -245,3 +245,219 @@ fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::pa
 fn b4(b: &[u8]) -> [u8; 4] {
     [b[0], b[1], b[2], b[3]]
 }
+
+/// 共有の置き場の口（/cad/<鍵> の GET・HEAD・PUT）。Access のサービストークンの見出しが無ければ 302（ログインへ）。
+/// 受けた要求（方法と道）を覚える
+type Db = Arc<std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>>;
+
+fn store_server() -> (String, Db, Arc<std::sync::Mutex<Vec<String>>>) {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/cad", l.local_addr().unwrap());
+    let db: Db = Default::default();
+    let log: Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+    let (db2, log2) = (db.clone(), log.clone());
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            // 見出しと本文（Content-Length の分）を読む
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 65536];
+            let (head, mut body) = loop {
+                let k = s.read(&mut tmp).unwrap_or(0);
+                if k == 0 {
+                    break (String::from_utf8_lossy(&buf).to_string(), Vec::new());
+                }
+                buf.extend_from_slice(&tmp[..k]);
+                if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break (
+                        String::from_utf8_lossy(&buf[..i]).to_string(),
+                        buf[i + 4..].to_vec(),
+                    );
+                }
+            };
+            let lower = head.to_ascii_lowercase();
+            let len: usize = lower
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:"))
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            while body.len() < len {
+                let k = s.read(&mut tmp).unwrap_or(0);
+                if k == 0 {
+                    break;
+                }
+                body.extend_from_slice(&tmp[..k]);
+            }
+            let mut it = head.split_whitespace();
+            let (m, path) = (
+                it.next().unwrap_or("").to_string(),
+                it.next().unwrap_or("").to_string(),
+            );
+            log2.lock().unwrap().push(format!("{m} {path}"));
+            let key = path.trim_start_matches("/cad/").to_string();
+            let ok_token = lower.contains("cf-access-client-id: tid")
+                && lower.contains("cf-access-client-secret: tsecret");
+            let (st, out): (&str, Vec<u8>) = if !ok_token {
+                ("302 Found\r\nLocation: https://login.example/", Vec::new())
+            } else {
+                match m.as_str() {
+                    "PUT" => {
+                        db2.lock().unwrap().insert(key, body);
+                        ("201 Created", Vec::new())
+                    }
+                    "GET" | "HEAD" => match db2.lock().unwrap().get(&key) {
+                        Some(b) if m == "GET" => ("200 OK", b.clone()),
+                        Some(_) => ("200 OK", Vec::new()),
+                        None => ("404 Not Found", Vec::new()),
+                    },
+                    _ => ("405 Method Not Allowed", Vec::new()),
+                }
+            };
+            let _ = write!(
+                s,
+                "HTTP/1.1 {st}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                out.len()
+            );
+            let _ = s.write_all(&out);
+        }
+    });
+    (base, db, log)
+}
+
+#[test]
+fn store_is_checked_first_and_vendor_steps_are_uploaded() {
+    let dir = std::env::temp_dir().join(format!("lensbench-cad-store-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let step = plate_step(&dir);
+    let (vendor, hits) = server(step.clone());
+    let (store_url, db, log) = store_server();
+    let mech = json!({ "bores": [{ "z0": 0, "z1": 8.89, "diameter": 26.416 }],
+                       "length": 8.89, "outer_diameter": 40.64, "outline": "square" });
+    let cat = dir.join("cat.json");
+    std::fs::write(
+        &cat,
+        json!({ "items": {
+            "CP-A": { "mech": mech, "cad": { "step": format!("{vendor}/plate.step") } },
+            // URL の無い品（置き場にだけある）
+            "CP-N": { "mech": mech },
+        } })
+        .to_string(),
+    )
+    .unwrap();
+    let run = |args: &[&str], cache: &std::path::Path, secret: &str| {
+        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+            .args(args)
+            .arg("--json")
+            .env("LENSBENCH_CAD_CACHE", cache)
+            .env("LENSBENCH_CAD_STORE", &store_url)
+            .env("LENSBENCH_CAD_STORE_ID", "tid")
+            .env("LENSBENCH_CAD_STORE_SECRET", secret)
+            .output()
+            .unwrap();
+        (
+            o.status.success(),
+            serde_json::from_slice::<Value>(&o.stdout).unwrap_or(Value::Null),
+            String::from_utf8_lossy(&o.stderr).to_string(),
+        )
+    };
+    let c = cat.to_str().unwrap();
+    // 1 台目: 置き場に無いので配布元から取り、置き場に上げる
+    let (ok, v, e) = run(
+        &["cad-step", "--catalog", c, "--item", "CP-A"],
+        &dir.join("c1"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(v["source"], "vendor_uploaded", "{v}");
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    let key = std::path::Path::new(v["path"].as_str().unwrap())
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    assert_eq!(db.lock().unwrap().get(&key), Some(&step));
+    // 2 台目（別のキャッシュ）: 置き場から取り、配布元へは行かない
+    let (ok, v, e) = run(
+        &["cad-step", "--catalog", c, "--item", "CP-A"],
+        &dir.join("c2"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(v["source"], "store", "{v}");
+    assert_eq!(v["notes"], json!([]), "{v}");
+    assert_eq!(
+        hits.load(Ordering::SeqCst),
+        1,
+        "置き場にあれば配布元へ行かない"
+    );
+    // トークンが違えば（Access のログインへの 302）、配布元から取り、置き場の誤りを添える
+    let (ok, v, e) = run(
+        &["cad-step", "--catalog", c, "--item", "CP-A"],
+        &dir.join("c3"),
+        "bad",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(v["source"], "vendor", "{v}");
+    assert!(
+        v["store_notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("サービストークン"),
+        "{v}"
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 2);
+    // URL の無い品: 置き場に無ければ誤り。cad-upload --dir でファイル名から当てて上げると取れる
+    let (ok, _, e) = run(
+        &["cad-step", "--catalog", c, "--item", "CP-N"],
+        &dir.join("c4"),
+        "tsecret",
+    );
+    assert!(!ok && e.contains("置き場にもない"), "{e}");
+    let up = dir.join("vendor-files");
+    std::fs::create_dir_all(&up).unwrap();
+    std::fs::write(up.join("CP-N_ttn0001-e0w.step"), &step).unwrap();
+    std::fs::write(up.join("unknown.step"), &step).unwrap();
+    let u = up.to_str().unwrap();
+    let n_put = |log: &Vec<String>| log.iter().filter(|l| l.starts_with("PUT")).count();
+    let put0 = n_put(&log.lock().unwrap());
+    let (ok, v, e) = run(
+        &["cad-upload", "--catalog", c, "--dir", u, "--dry-run"],
+        &dir.join("c4"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(v["files"][0]["status"], "dry_run", "{v}");
+    assert_eq!(v["unmatched"].as_array().unwrap().len(), 1, "{v}");
+    assert_eq!(n_put(&log.lock().unwrap()), put0, "dry-run は上げない");
+    let (ok, v, e) = run(
+        &["cad-upload", "--catalog", c, "--dir", u],
+        &dir.join("c4"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(
+        (v["uploaded"].as_u64(), v["files"][0]["item"].as_str()),
+        (Some(1), Some("CP-N")),
+        "{v}"
+    );
+    let (ok, v, e) = run(
+        &["cad-step", "--catalog", c, "--item", "CP-N"],
+        &dir.join("c4"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(v["source"], "store", "{v}");
+    // キャッシュをそのまま上げる: 置き場にある鍵は上げない
+    let (ok, v, e) = run(
+        &["cad-upload", "--cache", dir.join("c1").to_str().unwrap()],
+        &dir.join("c1"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(
+        (v["exists"].as_u64(), v["uploaded"].as_u64()),
+        (Some(1), Some(0)),
+        "{v}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
