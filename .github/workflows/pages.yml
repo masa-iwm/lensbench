@@ -47,8 +47,16 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: mdbook@0.4.52
+      # apt で入れる包みの deb を保存して、Ubuntu のミラーが引けないときはそこから入れる（apt_install.sh）。
+      # 像の版ごとに鍵を分ける（像の更新で版が合わなくなったら取りに行き、新しい鍵で保存し直す）
+      - run: echo "APT_DEB_KEY=apt-debs-gui-${{ runner.arch }}-$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt-debs
+          key: ${{ env.APT_DEB_KEY }}
+          restore-keys: apt-debs-gui-${{ runner.arch }}-
       - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
-        timeout-minutes: 10
+        timeout-minutes: 20
       - run: scripts/build_docs.sh target/site
       - run: scripts/build_web.sh target/site/app
       - uses: actions/upload-pages-artifact@v4
