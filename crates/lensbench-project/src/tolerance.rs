@@ -28,7 +28,10 @@
 //! （[`LensTol`]。比・mm・deg。書いた項目だけ既定の組を上書きする）。
 //!
 //! 個別の公差: {"param": "3.t"} か {"params": ["2.r", "3.r"]} に、`pm`（±）か `lo`・`hi`、`relative`（比、false）、
-//! `dist`、`label`。
+//! `dist`、`label`、`scale`（パラメータごとにずれに掛ける数の並び。往復する面の厚さのように逆の符号で与えるとき -1）。
+//!
+//! 鏡の `back` で同じ玉を往復する系では、玉の公差の組は往きと戻りの面に同じ誤差を与える（曲率・くさびは同じ面、
+//! 厚さ・間隔は戻りで逆の符号、偏心・傾きは往復の範囲を持つブロックの動き）。玉の名前はブロックの id。
 
 use std::collections::HashMap;
 
@@ -166,7 +169,12 @@ fn lens_geometry(s: &System) -> HashMap<String, LensGeom> {
         };
         let auto = format!("lens{}", k + 1);
         if let Some(u) = s.units.iter().find(|u| u.auto && u.name == auto) {
-            for v in s.units.iter().filter(|v| !v.auto && v.spans == u.spans) {
+            // 鏡で折り返して往復する玉は、最初の範囲がこの玉のブロック
+            for v in s
+                .units
+                .iter()
+                .filter(|v| !v.auto && (v.spans == u.spans || v.spans.first() == u.spans.first()))
+            {
                 m.insert(v.name.clone(), g);
             }
         }
@@ -335,7 +343,7 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         .as_object()
         .ok_or_else(|| format!("公差 {i} はオブジェクト（{v}）"))?;
     let known = [
-        "param", "params", "pm", "lo", "hi", "relative", "dist", "label",
+        "param", "params", "pm", "lo", "hi", "relative", "dist", "label", "scale",
     ];
     if let Some(k) = m.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("公差 {i}: 項目 {k}（{}）", known.join(" ")));
@@ -379,6 +387,19 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         .and_then(|x| x.as_str())
         .map(|x| x.to_string())
         .unwrap_or_else(|| names.join("+"));
+    let scale = match m.get("scale") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) if a.len() == params.len() => a
+            .iter()
+            .map(|x| num(x, "scale"))
+            .collect::<Result<Vec<_>, _>>()?,
+        Some(x) => {
+            return Err(format!(
+                "公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{x}）",
+                params.len()
+            ))
+        }
+    };
     Ok(Tol {
         label,
         params,
@@ -386,6 +407,7 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         hi,
         relative,
         dist,
+        scale,
     })
 }
 
@@ -639,6 +661,7 @@ pub fn result_json(spec: &McSpec, r: &McResult, o: &OutOpts) -> Value {
                 "label": t.label,
                 "params": t.params.iter().map(|&p| s0.param_name(p)).collect::<Vec<_>>(),
                 "lo": t.lo, "hi": t.hi, "relative": t.relative, "dist": t.dist.name(),
+                "scale": if t.scale.is_empty() { Value::Null } else { json!(t.scale) },
             })
         })
         .collect();
