@@ -468,6 +468,116 @@ pub fn step_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// [`step_files`] と同じだが、STEP を 2 つ以上入れた zip は中の STEP を 1 つずつ `<zip>/<中の道>` の形で返す
+/// （束ねた zip の中身を品に当てるため。[`read_source`] で読む）。STEP が 1 つの zip は zip のまま
+pub fn step_sources(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut out = Vec::new();
+    for f in step_files(dir)? {
+        let is_zip = f
+            .extension()
+            .map(|x| x.eq_ignore_ascii_case("zip"))
+            .unwrap_or(false);
+        let entries = if is_zip { zip_steps(&f) } else { Vec::new() };
+        if entries.len() >= 2 {
+            out.extend(entries.iter().map(|n| f.join(n)));
+        } else {
+            out.push(f);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// zip の中の .step・.stp の名前（読めなければ空）
+fn zip_steps(f: &Path) -> Vec<String> {
+    let Ok(file) = std::fs::File::open(f) else {
+        return Vec::new();
+    };
+    let Ok(z) = zip::ZipArchive::new(file) else {
+        return Vec::new();
+    };
+    let mut v: Vec<String> = z
+        .file_names()
+        .filter(|n| {
+            let l = n.to_ascii_lowercase();
+            !n.ends_with('/') && (l.ends_with(".step") || l.ends_with(".stp"))
+        })
+        .map(str::to_string)
+        .collect();
+    v.sort();
+    v
+}
+
+/// ファイルを読む。無ければ、道の途中の zip の中のもの（[`step_sources`] の `<zip>/<中の道>`）を読む
+pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
+    if path.is_file() {
+        return std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
+    }
+    for z in path.ancestors().skip(1) {
+        if z.is_file() {
+            let entry = path
+                .strip_prefix(z)
+                .map_err(|e| e.to_string())?
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            let file = std::fs::File::open(z).map_err(|e| format!("{}: {e}", z.display()))?;
+            let mut a = zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", z.display()))?;
+            let f = a
+                .by_name(&entry)
+                .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
+            let mut out = Vec::new();
+            f.take(MAX_BYTES + 1)
+                .read_to_end(&mut out)
+                .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
+            if out.len() as u64 > MAX_BYTES {
+                return Err(format!("{} の {entry} が大きすぎる", z.display()));
+            }
+            return Ok(out);
+        }
+    }
+    Err(format!("{}: ファイルが無い", path.display()))
+}
+
+/// ユーザーカタログを読む。フォルダなら中の .json・.json.gz を全部（下のフォルダも）読んで品を合わせる
+pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, String> {
+    if !path.is_dir() {
+        return lensbench_project::UserCatalog::load(path);
+    }
+    let mut files = Vec::new();
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).map_err(|e| format!("{}: {e}", d.display()))? {
+            let p = e.map_err(|e| e.to_string())?.path();
+            let n = p.to_string_lossy().to_ascii_lowercase();
+            if p.is_dir() {
+                stack.push(p);
+            } else if n.ends_with(".json") || n.ends_with(".json.gz") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut all = lensbench_project::UserCatalog::default();
+    for f in &files {
+        // 品の無い JSON（目録など）は読めなくても飛ばす
+        let Ok(c) = lensbench_project::UserCatalog::load(f) else {
+            continue;
+        };
+        for (k, v) in c.items {
+            all.items.entry(k).or_insert(v);
+        }
+    }
+    if all.items.is_empty() {
+        return Err(format!(
+            "{} にカタログ（品のある .json・.json.gz）が無い",
+            path.display()
+        ));
+    }
+    Ok(all)
+}
+
 /// 置き場に上げた結果（1 ファイル）
 #[derive(Debug, Clone)]
 pub struct Uploaded {
@@ -506,7 +616,7 @@ pub fn upload_file(
         error: String::new(),
     };
     let r = (|| -> Result<&'static str, String> {
-        let b = step_bytes(std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?)?;
+        let b = step_bytes(read_source(file)?)?;
         if dry_run {
             return Ok("dry_run");
         }

@@ -174,7 +174,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   Client ID・Client Secret か環境変数 `LENSBENCH_CAD_STORE_ID`・`LENSBENCH_CAD_STORE_SECRET` で渡す
   （見出し `CF-Access-Client-Id`・`CF-Access-Client-Secret`。トークンを送るのは https の口だけ。GUI の Secret は設定のファイルに平文で残る）。置き場に届かなくても配布元から取る（結果に理由を添える）。
   手元にある STEP は `lensbench cad-upload --catalog <カタログ> --dir <フォルダ>`（ファイル名に品の名前を含む .step・.stp・
-  .zip を機構部品の品に当てる。`--dry-run` で当て方だけ）か `--cache`（キャッシュのファイルをそのまま）で上げる。
+  .zip を機構部品の品に当てる。STEP を 2 つ以上束ねた zip は中の STEP を 1 つずつ当てる。`--catalog` にフォルダを渡すと
+  中の .json・.json.gz を全部読む。`--dry-run` で当て方だけ）か `--cache`（キャッシュのファイルをそのまま。値を省くと既定のキャッシュ）で上げる。
   置き場にある鍵は上げない（`--overwrite` で上げ直す）。
   STEP を取ってある品を `mechanics` に置き、`lensbench layout --mech-detail`（serve の `layout`・`layout_export` の
   `mech_detail`、GUI のレイアウトの設定の「機構部品を詳しい形で」）で描くと、3D（glTF・OBJ・STL と GUI の 3D 表示）は

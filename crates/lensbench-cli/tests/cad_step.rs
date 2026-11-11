@@ -459,6 +459,46 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         (Some(1), Some(0)),
         "{v}"
     );
+    // --cache の値を省くと既定のキャッシュ（LENSBENCH_CAD_CACHE）
+    let (ok, v, e) = run(&["cad-upload", "--cache"], &dir.join("c1"), "tsecret");
+    assert!(ok, "{e}");
+    assert_eq!(v["exists"].as_u64(), Some(1), "{v}");
+    // --catalog にフォルダ（中の .json・.json.gz を全部）、STEP を束ねた zip は中の STEP を 1 つずつ当てる
+    let cats = dir.join("cats");
+    std::fs::create_dir_all(cats.join("sub")).unwrap();
+    std::fs::copy(&cat, cats.join("sub/cat.json")).unwrap();
+    std::fs::write(cats.join("other.json"), "{\"files\": 1}").unwrap();
+    let bundle = dir.join("bundle");
+    std::fs::create_dir_all(&bundle).unwrap();
+    {
+        let f = std::fs::File::create(bundle.join("many.zip")).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let o = zip::write::SimpleFileOptions::default();
+        for n in ["steps/CP-N_x.stp", "steps/nothing.stp", "readme.txt"] {
+            z.start_file(n, o).unwrap();
+            std::io::Write::write_all(&mut z, &step).unwrap();
+        }
+        z.finish().unwrap();
+    }
+    let (ok, v, e) = run(
+        &[
+            "cad-upload",
+            "--catalog",
+            cats.to_str().unwrap(),
+            "--dir",
+            bundle.to_str().unwrap(),
+            "--overwrite",
+        ],
+        &dir.join("c4"),
+        "tsecret",
+    );
+    assert!(ok, "{e}");
+    assert_eq!(
+        (v["uploaded"].as_u64(), v["files"][0]["item"].as_str()),
+        (Some(1), Some("CP-N")),
+        "{v}"
+    );
+    assert_eq!(v["unmatched"].as_array().unwrap().len(), 1, "{v}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
