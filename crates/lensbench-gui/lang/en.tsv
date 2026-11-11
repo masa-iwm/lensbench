@@ -539,7 +539,7 @@ OPD の基準 (ROPD)	OPD reference (ROPD)
 組合せの設定（組合せの系を作ると使われる）	Combination settings (used when a combination is built)
 膜ファイル	Coating file
 読み込み中…	Loading…
-選んだ行の後に面を挿入（Insert。前は Alt+Insert）	Insert a surface after the selected row (Insert; Alt+Insert inserts before)
+選んだ行の前に面を挿入（Insert。後は Alt+Insert）	Insert a surface before the selected row (Insert; Alt+Insert inserts after)
 選んだ面を消す（Delete）	Delete the selected surface (Delete)
 開いている系の設定です。変えた値は系に入り、「系ファイルに保存…」で残せます。	Settings of the open system. Changes go into the system; keep them with "Save system file…".
 範囲に .zmx の絞りの面が無い	The range has no .zmx stop surface
@@ -1246,8 +1246,8 @@ y⁸ の係数	y⁸ coeff
 傾き Z	Tilt Z
 円柱フレネル	Cylinder Fresnel
 利用者定義	User defined
-後に面を挿入（Insert）	Insert surface after (Insert)
-前に面を挿入（Alt+Insert）	Insert surface before (Alt+Insert)
+後に面を挿入（Alt+Insert）	Insert surface after (Alt+Insert)
+前に面を挿入（Insert）	Insert surface before (Insert)
 右クリック・Shift+F10 で絞り・無視・挿入・削除、ダブルクリックで詳細設定	Right-click or Shift+F10 for stop, ignore, insert, delete; double-click for details
 合う面タイプが無い	No matching surface type
 回転半径	Radius of rotation
@@ -1299,3 +1299,23 @@ y⁸ の係数	y⁸ coeff
 選んだ面の範囲（玉・群）だけを系ファイルに書き出す…（Shift で範囲を選ぶ。系全体の保存はファイル → 保存）	Export only the selected surface range (lens/group) to a system file… (Shift selects a range; save the whole system with File → Save)
 書き出す面を選んでください（物体面・像面は除く）	Select the surfaces to export (not the object or image surface)
 {} に書き出し	Exported to {}
+Zernike {}	Zernike {}
+r^{} の係数	r^{} coefficient
+{} の{}	{} {}
+面 {} の{}	surface {} {}
+この値を全部の構成に	Use this value in all configurations
+この構成を消す	Delete this configuration
+この構成を系に入れる	Apply this configuration to the system
+この構成を複製して最後に足す	Duplicate this configuration at the end
+クリックでこの構成を系に入れる。右クリックで複製・削除	Click to apply this configuration. Right-click to duplicate or delete
+パラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる	Add a parameter row (names as in Python / serve set; every configuration starts from the current value). Also available from "Make a multi-config row" in the lens data cell right-click menu
+分散の変化	dispersion change
+屈折率のずれ	index offset
+書き換える（F2）	Edit (F2)
+最後の構成を消す（1 つにすると表も消える。途中の構成は見出しの右クリックで）	Delete the last configuration (going to 1 removes the table; delete others from the header right-click menu)
+構成 {} を系に入れる	Apply configuration {} to the system
+物体の位置	object position
+行をコピー（Ctrl+C）	Copy row (Ctrl+C)
+行を消す（Delete）	Delete row (Delete)
+多重構成の行 {} あり	Multi-config row {} exists
+多重構成の行にする（{}）	Make a multi-config row ({})

@@ -708,7 +708,7 @@ pub enum RangePick {
 struct RowMenu {
     acts: Vec<Act>,
     insert: bool,
-    /// 前に挿入（Shift+Insert）
+    /// 前に挿入（Insert）
     insert_before: bool,
     delete: bool,
     detail: bool,
@@ -759,6 +759,7 @@ fn curv_kind(k: &str) -> bool {
 
 /// セルの右クリック・[...] の欄: その値のソルブ・ピックアップ（OpticStudio のソルブの小欄のように）。硝材は
 /// 屈折率の追加設定（dn・disp・複屈折）も。bire は面の複屈折の値（読んでいなければ None）、combo は組合せの系
+#[allow(clippy::too_many_arguments)]
 fn cell_menu(
     ui: &mut Ui,
     m: &mut CellMenu,
@@ -767,6 +768,7 @@ fn cell_menu(
     r: &Row,
     bire: Option<&Value>,
     combo: bool,
+    cfg: (usize, &[String]),
 ) -> Vec<Act> {
     let mut ops: Vec<Value> = Vec::new();
     let mut acts = Vec::new();
@@ -950,6 +952,25 @@ fn cell_menu(
         }
         ui.separator();
     }
+    // 多重構成の行にする（開いた系）
+    if let (false, Some(name)) = (combo, config_param(r, j, col)) {
+        let have = cfg.1.iter().any(|p| p.eq_ignore_ascii_case(&name));
+        let resp = ui.add_enabled(
+            !have,
+            egui::Button::new(if have {
+                trf("多重構成の行 {} あり", &[&name])
+            } else {
+                trf("多重構成の行にする（{}）", &[&name])
+            }),
+        );
+        if resp.clicked() {
+            if cfg.0 < 2 {
+                ops.push(json!({ "op": "set_config_count", "n": 2 }));
+            }
+            ops.push(json!({ "op": "add_config_row", "param": name }));
+        }
+        ui.separator();
+    }
     if !ops.is_empty() {
         acts.push(Act::Ops(ops));
     }
@@ -957,6 +978,25 @@ fn cell_menu(
         ui.close_menu();
     }
     acts
+}
+
+/// 面 j の列 col の多重構成の行の名前（serve の add_config_row の param）。行にできない列は None
+pub fn config_param(r: &Row, j: usize, col: Col) -> Option<String> {
+    let k = match col {
+        Col::R => "r".to_string(),
+        Col::T => "t".into(),
+        Col::Conic => "k".into(),
+        Col::Material => "dn".into(),
+        Col::Par(i) => match r.typ.as_str() {
+            "EVENASPH" if (1..=8).contains(&i) => format!("a{}", 2 * i),
+            "COORDBRK" if (1..=5).contains(&i) => {
+                ["dx", "dy", "tx", "ty", "tz"][i as usize - 1].into()
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(format!("{j}.{k}"))
 }
 
 /// 今のセルの行 cur と起点 anchor の間の行（表の並び rows の順）
@@ -1282,8 +1322,8 @@ fn row_menu(
     });
     if !combo {
         ui.separator();
-        m.insert = ui.button(tr("後に面を挿入（Insert）")).clicked();
-        m.insert_before = ui.button(tr("前に面を挿入（Alt+Insert）")).clicked();
+        m.insert_before = ui.button(tr("前に面を挿入（Insert）")).clicked();
+        m.insert = ui.button(tr("後に面を挿入（Alt+Insert）")).clicked();
         m.insert |= m.insert_before;
         m.delete = ui
             .add_enabled(
@@ -1467,6 +1507,9 @@ pub struct Ctx<'a> {
     pub unit_mech: Option<bool>,
     /// 表についての注意（左端の帯の ⓘ に出す）
     pub note: Option<&'a str>,
+    /// 多重構成の構成の数と行の名前（セルのメニューの「多重構成の行にする」）
+    pub config_n: usize,
+    pub config_rows: &'a [String],
 }
 
 impl LensData {
@@ -1727,7 +1770,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut enter: Option<String> = None;
     let (mut ins_btn, mut del_btn) = (false, false);
     let mut export_btn = false;
-    // 挿入は今の面の後（Insert）。前は Alt+Insert・右クリックの「前に」
+    // 挿入は今の面の前（Insert・＋）。後は Alt+Insert・右クリックの「後に」
     let mut ins_before = false;
     let full = ui.available_rect_before_wrap();
     ui.allocate_rect(full, Sense::hover());
@@ -1945,9 +1988,13 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         ui.separator();
         // 面の挿入・削除（開いた系だけ。Insert・Delete キー・右クリックでも）
         if !c.combo {
-            ins_btn |= icon(ui, "＋", false)
-                .on_hover_text(tr("選んだ行の後に面を挿入（Insert。前は Alt+Insert）"))
-                .clicked();
+            if icon(ui, "＋", false)
+                .on_hover_text(tr("選んだ行の前に面を挿入（Insert。後は Alt+Insert）"))
+                .clicked()
+            {
+                ins_btn = true;
+                ins_before = true;
+            }
             del_btn |= icon(ui, "－", false)
                 .on_hover_text(tr("選んだ面を消す（Delete）"))
                 .clicked();
@@ -2519,6 +2566,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                             r,
                                             bire_of(j),
                                             c.combo,
+                                            (c.config_n, c.config_rows),
                                         ));
                                     }
                                     let m = row_menu(
@@ -2599,7 +2647,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 st.kbd_menu = Some((j, col, pos, false));
             }
         }
-        // Insert は後に、Alt+Insert は前に。修飾キーは押したときので見る（同じフレームで離しても）。
+        // Insert は前に、Alt+Insert は後に。修飾キーは押したときので見る（同じフレームで離しても）。
         // Shift+Insert は Windows の貼り付け（egui も貼り付けにする）なので挿入に使わない
         let (ins_k, ins_shift, del_k) = ui.input(|i| {
             let (mut k, mut sh) = (false, false);
@@ -2612,7 +2660,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                         ..
                     } if !modifiers.shift => {
                         k = true;
-                        sh |= modifiers.alt;
+                        sh |= !modifiers.alt;
                     }
                     _ => {}
                 }
@@ -2775,7 +2823,16 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                     egui::Frame::menu(ui.style()).show(ui, |ui| {
                         ui.set_max_width(340.0);
                         if ro.is_none() {
-                            let a = cell_menu(ui, menu, j, col, r, bire_of(j), c.combo);
+                            let a = cell_menu(
+                                ui,
+                                menu,
+                                j,
+                                col,
+                                r,
+                                bire_of(j),
+                                c.combo,
+                                (c.config_n, c.config_rows),
+                            );
                             done |= !a.is_empty();
                             acts.extend(a);
                         }
@@ -3187,6 +3244,41 @@ mod tests {
         assert!(type_matches("xyz").is_empty());
         assert_eq!(Col::Type.parse("st"), Ok(json!("STANDARD")));
         assert!(Col::Type.parse("xyz").is_err());
+    }
+
+    /// セルの「多重構成の行にする」の名前は core の多重構成の名前として読める
+    #[test]
+    fn config_param_names() {
+        let cb = Row {
+            typ: "COORDBRK".into(),
+            ..Default::default()
+        };
+        let asph = Row {
+            typ: "EVENASPH".into(),
+            ..Default::default()
+        };
+        let std = Row {
+            typ: "STANDARD".into(),
+            ..Default::default()
+        };
+        let cases = [
+            (config_param(&std, 2, Col::R), Some("2.r")),
+            (config_param(&std, 2, Col::T), Some("2.t")),
+            (config_param(&std, 2, Col::Conic), Some("2.k")),
+            (config_param(&std, 2, Col::Material), Some("2.dn")),
+            (config_param(&std, 2, Col::Semi), None),
+            (config_param(&asph, 3, Col::Par(1)), Some("3.a2")),
+            (config_param(&asph, 3, Col::Par(4)), Some("3.a8")),
+            (config_param(&cb, 4, Col::Par(3)), Some("4.tx")),
+            (config_param(&cb, 4, Col::Par(6)), None),
+        ];
+        for (got, want) in cases {
+            assert_eq!(got.as_deref(), want);
+            if let Some(n) = got {
+                let k = n.split_once('.').unwrap().1;
+                lensbench_core::param::Kind::parse(k).unwrap();
+            }
+        }
     }
 
     #[test]

@@ -2090,7 +2090,15 @@ impl Core {
         let read_only = |j: usize, col: Col| -> Option<String> {
             combo_read_only(is_combo, rows, &spans, picks, lead, j, col)
         };
+        let cfg_rows: Vec<String> = self
+            .mc
+            .table
+            .as_ref()
+            .map(|t| t.rows.iter().map(|r| r.0.clone()).collect())
+            .unwrap_or_default();
         let ctx = lens_data::Ctx {
+            config_n: self.mc.table.as_ref().map_or(1, |t| t.n),
+            config_rows: &cfg_rows,
             rows,
             blocks: &self.ld_blocks,
             locked: &locked,
