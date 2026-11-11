@@ -12,6 +12,7 @@
 //!   除いたもの（[`crate::sweep::rms`] と同じ定義）
 //! - [`TermKind::Mtf`]: 1 つの周波数の MTF と目標の差
 //! - [`TermKind::Paraxial`]: 近軸量（焦点距離・倍率・瞳・F ナンバーなど、[`ParaxQ`]）と目標の差
+//! - [`TermKind::Centroid`]: 瞳の光線の像面の位置の重心（x か y）と目標の差（光線はスポットの項と同じ、解析的な微分）
 //! - [`TermKind::Ray`]: 1 本の実光線の、面の局所座標での位置・方向余弦と目標の差（OpticStudio の REAX〜REAC 相当）
 //! - [`TermKind::Opd`]: 1 本の光線の OPD [波] と目標の差（参照球は主波長の主光線、OpticStudio の OPDC 相当）
 //! - [`TermKind::Zernike`]: OPD の Zernike 係数 [波] と目標の差（[`crate::analysis::zernike`]）
@@ -121,6 +122,15 @@ pub enum TermKind {
     },
     /// 近軸量 − target（主波長の近軸追跡。[`System::paraxial`]）。ズーム軌跡の焦点距離・倍率の条件
     Paraxial { q: ParaxQ, target: f64 },
+    /// 像面の光束の重心の x（`y` が false）か y − target [レンズ単位]。光線・重みはスポットの項と同じ（ガウス求積、
+    /// rings、wave None なら重みのある全波長）。けられた光線は除く。鏡で像点を合わせる補償など
+    Centroid {
+        field: FieldSel,
+        wave: Option<usize>,
+        rings: usize,
+        y: bool,
+        target: f64,
+    },
     /// 1 本の実光線の量 − target。視野 field・正規化瞳座標 (px, py)・波長 wave（None なら主波長）の光線を
     /// 面 surf（None なら像面）まで追い、その面の局所座標での値（[`RayQ`]）。光線が止まると評価できない
     Ray {
@@ -364,6 +374,7 @@ impl TermKind {
             TermKind::Mtf { dir, target, .. } if *dir != MtfDir::Both => Some(*target),
             TermKind::Paraxial { target, .. }
             | TermKind::Ray { target, .. }
+            | TermKind::Centroid { target, .. }
             | TermKind::Opd { target, .. }
             | TermKind::Zernike { target, .. }
             | TermKind::Coupling { target, .. } => Some(*target),
@@ -594,6 +605,9 @@ impl Problem {
                     field, wave, rings, ..
                 }
                 | TermKind::Wavefront {
+                    field, wave, rings, ..
+                }
+                | TermKind::Centroid {
                     field, wave, rings, ..
                 } => {
                     if *rings == 0 {
@@ -1069,6 +1083,7 @@ fn term_rows(s: &System, k: &TermKind) -> usize {
         }
         TermKind::Paraxial { .. }
         | TermKind::Ray { .. }
+        | TermKind::Centroid { .. }
         | TermKind::Opd { .. }
         | TermKind::Zernike { .. }
         | TermKind::Coupling { .. } => 1,
@@ -1086,7 +1101,7 @@ fn flat_image(s: &System) -> bool {
 
 fn supports_analytic(s: &System, k: &TermKind) -> bool {
     match k {
-        TermKind::Spot { .. } => true,
+        TermKind::Spot { .. } | TermKind::Centroid { .. } => true,
         TermKind::Wavefront { .. } | TermKind::Opd { .. } => {
             flat_image(s) && (s.ropd == 1 || s.ropd == 2)
         }
@@ -1118,6 +1133,7 @@ fn launch_moves(s: &System, k: &TermKind, p: Param, v: f64, h: f64) -> Result<bo
     let (field, wave) = match k {
         TermKind::Spot { field, wave, .. }
         | TermKind::Wavefront { field, wave, .. }
+        | TermKind::Centroid { field, wave, .. }
         | TermKind::Ray { field, wave, .. }
         | TermKind::Opd { field, wave, .. } => (*field, *wave),
         _ => return Ok(true),
@@ -1171,6 +1187,13 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             rings,
             reference,
         } => spot_term(s, *field, *wave, *rings, *reference, ps),
+        TermKind::Centroid {
+            field,
+            wave,
+            rings,
+            y,
+            target,
+        } => centroid_term(s, *field, *wave, *rings, *y, *target, ps),
         TermKind::Wavefront {
             field,
             wave,
@@ -1512,6 +1535,52 @@ fn spot_term(
         }
     }
     Ok((r, j))
+}
+
+/// 像面の光束の重心（スポットの項と同じ光線・重み）の x か y − target と、その解析的な微分
+fn centroid_term(
+    s: &System,
+    field: FieldSel,
+    wave: Option<usize>,
+    rings: usize,
+    y: bool,
+    target: f64,
+    ps: Option<&[Param]>,
+) -> Result<TermOut> {
+    let pg = pupil_gauss_shared(rings);
+    let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
+    let n = px.len();
+    let ws = waves(s, wave);
+    let np = ps.map_or(0, |p| p.len());
+    let c = usize::from(y);
+    let (mut sw, mut sc) = (0.0, 0.0);
+    let mut dc = vec![0.0; np];
+    for &w in &ws {
+        let t = trace_ok(s, field, px, py, w, ps.is_some())?;
+        let g = match ps {
+            Some(ps) => Some(s.land_grad(&t, w, ps, None)?),
+            None => None,
+        };
+        let kw = if ws.len() == 1 { 1.0 } else { s.weights[w] };
+        for i in 0..n {
+            if !t.ok(i) {
+                continue;
+            }
+            let a = wts[i] * kw;
+            sw += a;
+            sc += a * t.rays[i].xyz[c];
+            if let Some(g) = &g {
+                for (q, d) in dc.iter_mut().enumerate() {
+                    *d += a * g[(i * np + q) * 4 + c];
+                }
+            }
+        }
+    }
+    if !(sw > 0.0) {
+        invalid!("有効な光線がない（すべてけられた）");
+    }
+    let j = ps.map(|_| dc.iter().map(|d| d / sw).collect());
+    Ok((vec![sc / sw - target], j))
 }
 
 /// to_ref（[`crate::analysis`]）の値の微分。d は (dpc, dkc, dq, dk, dopl, dni, dexpp)

@@ -45,11 +45,16 @@ pub enum Dist {
     },
     /// lo か hi を半々
     End,
-    /// 隣り合う 2 つの公差（x・y の組。[`pair_disc`]）を、中心 (lo+hi)/2・半径 (hi−lo)/2 の円（楕円）の中で一様に引く
-    /// 組の x。次の公差は [`Dist::DiscY`]。偏心・傾きの大きさが公差以下になる（x・y 別々の一様分布は角で √2 倍まで）
-    DiscX,
+    /// 隣り合う 2 つの公差（x・y の組。[`pair_disc`]）を、中心 (lo+hi)/2・半径 (hi−lo)/2 の円（楕円）の中で引く
+    /// 組の x。次の公差は同じ `normal` の [`Dist::DiscY`]。偏心・傾きの大きさが公差以下になる（x・y 別々の一様分布は角で √2 倍まで）。
+    /// `normal` が None なら円の中で一様、Some(cut) なら半径が cut σ の等方の 2 次元正規分布を円で切ったもの
+    DiscX {
+        normal: Option<f64>,
+    },
     /// [`Dist::DiscX`] の組の y
-    DiscY,
+    DiscY {
+        normal: Option<f64>,
+    },
 }
 
 impl Dist {
@@ -59,9 +64,26 @@ impl Dist {
             "uniform" | "u" => Dist::Uniform,
             "normal" | "gauss" | "n" => Dist::Normal { cut: 2.0 },
             "end" | "ends" | "e" => Dist::End,
-            "disc_x" => Dist::DiscX,
-            "disc_y" => Dist::DiscY,
+            "disc_x" => Dist::DiscX { normal: None },
+            "disc_y" => Dist::DiscY { normal: None },
             _ => {
+                // disc_x:normal・disc_x:normal:3（y も）
+                for (pre, y) in [("disc_x:", false), ("disc_y:", true)] {
+                    if let Some(r) = l.strip_prefix(pre) {
+                        let normal = match Dist::parse(r) {
+                            Ok(Dist::Normal { cut }) => Some(cut),
+                            Ok(Dist::Uniform) => None,
+                            _ => invalid!(
+                                "分布 {s}（disc_x・disc_x:normal・disc_x:normal:σの数、y も同じ）"
+                            ),
+                        };
+                        return Ok(if y {
+                            Dist::DiscY { normal }
+                        } else {
+                            Dist::DiscX { normal }
+                        });
+                    }
+                }
                 // normal:3 のように σ の数を付けられる
                 if let Some(c) = l
                     .strip_prefix("normal:")
@@ -81,8 +103,17 @@ impl Dist {
             Dist::Normal { cut } if *cut == 2.0 => "normal".into(),
             Dist::Normal { cut } => format!("normal:{cut}"),
             Dist::End => "end".into(),
-            Dist::DiscX => "disc_x".into(),
-            Dist::DiscY => "disc_y".into(),
+            Dist::DiscX { normal } | Dist::DiscY { normal } => {
+                let xy = if matches!(self, Dist::DiscX { .. }) {
+                    "x"
+                } else {
+                    "y"
+                };
+                match normal {
+                    None => format!("disc_{xy}"),
+                    Some(cut) => format!("disc_{xy}:{}", Dist::Normal { cut: *cut }.name()),
+                }
+            }
         }
     }
 }
@@ -173,15 +204,21 @@ impl McSpec {
             }
             let prev = i.checked_sub(1).map(|j| self.tols[j].dist);
             let next = self.tols.get(i + 1).map(|u| u.dist);
-            if t.dist == Dist::DiscX && next != Some(Dist::DiscY)
-                || t.dist == Dist::DiscY && prev != Some(Dist::DiscX)
-            {
+            let bad = match t.dist {
+                Dist::DiscX { normal } => next != Some(Dist::DiscY { normal }),
+                Dist::DiscY { normal } => prev != Some(Dist::DiscX { normal }),
+                _ => false,
+            };
+            if bad {
                 invalid!(
-                    "公差 {i}（{}）: 円の中の分布は x（disc_x）のすぐ後に y（disc_y）を置く組",
+                    "公差 {i}（{}）: 円の中の分布は x（disc_x）のすぐ後に同じ分布の y（disc_y）を置く組",
                     t.label
                 );
             }
-            if let Dist::Normal { cut } = t.dist {
+            if let Dist::Normal { cut }
+            | Dist::DiscX { normal: Some(cut) }
+            | Dist::DiscY { normal: Some(cut) } = t.dist
+            {
                 if !(cut > 0.0) {
                     invalid!("公差 {i}（{}）: 正規分布の σ の数 {cut}", t.label);
                 }
@@ -406,6 +443,20 @@ impl Rng {
         let a = std::f64::consts::TAU * self.uniform();
         (r * a.cos(), r * a.sin())
     }
+    /// 単位円の中の点を、normal が None なら一様に、Some(cut) なら半径 1 が cut σ の等方の 2 次元正規分布で
+    /// （円の外は引き直す。cut が小さくても 1 回で入る確率は 1 − exp(−cut²/2)）
+    pub fn disc_dist(&mut self, normal: Option<f64>) -> (f64, f64) {
+        let Some(cut) = normal else {
+            return self.disc();
+        };
+        for _ in 0..1000 {
+            let (x, y) = (self.normal(), self.normal());
+            if x * x + y * y <= cut * cut {
+                return (x / cut, y / cut);
+            }
+        }
+        (0.0, 0.0)
+    }
     /// 分布 d で [lo, hi] のずれを引く
     pub fn draw(&mut self, d: Dist, lo: f64, hi: f64) -> f64 {
         if lo == hi {
@@ -421,9 +472,13 @@ impl Rng {
                 }
             }
             // 組でなく 1 つだけ引くときは、円の中の一様分布の片方の成分（周辺分布）
-            Dist::DiscX | Dist::DiscY => {
-                let (x, y) = self.disc();
-                let v = if d == Dist::DiscX { x } else { y };
+            Dist::DiscX { normal } | Dist::DiscY { normal } => {
+                let (x, y) = self.disc_dist(normal);
+                let v = if matches!(d, Dist::DiscX { .. }) {
+                    x
+                } else {
+                    y
+                };
                 0.5 * (lo + hi) + 0.5 * (hi - lo) * v
             }
             Dist::Normal { cut } => {
@@ -506,8 +561,8 @@ pub fn draw_trial(spec: &McSpec, i: usize) -> Vec<f64> {
     while k < spec.tols.len() {
         let t = &spec.tols[k];
         match (t.dist, spec.tols.get(k + 1)) {
-            (Dist::DiscX, Some(u)) if u.dist == Dist::DiscY => {
-                let (x, y) = r.disc();
+            (Dist::DiscX { normal }, Some(u)) if u.dist == Dist::DiscY { normal } => {
+                let (x, y) = r.disc_dist(normal);
                 out.push(0.5 * (t.lo + t.hi) + 0.5 * (t.hi - t.lo) * x);
                 out.push(0.5 * (u.lo + u.hi) + 0.5 * (u.hi - u.lo) * y);
                 k += 2;
@@ -521,9 +576,10 @@ pub fn draw_trial(spec: &McSpec, i: usize) -> Vec<f64> {
     out
 }
 
-/// 隣り合う x・y の公差の組（同じ面・玉・群の dx と dy、tx と ty。パラメータの数が同じもの）を、円の中で一様の
-/// 分布（[`Dist::DiscX`]・[`Dist::DiscY`]）にする。偏心・傾き・くさびの大きさを公差以下にしたいときに。組にした数を返す
-pub fn pair_disc(tols: &mut [Tol]) -> usize {
+/// 隣り合う x・y の公差の組（同じ面・玉・群の dx と dy、tx と ty。パラメータの数が同じもの）を、円の中の
+/// 分布（[`Dist::DiscX`]・[`Dist::DiscY`]、normal が None で一様・Some(cut) で 2 次元正規）にする。偏心・傾き・くさびの
+/// 大きさを公差以下にしたいときに。組にした数を返す
+pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
     use crate::param::Kind as K;
     use crate::units::UnitKind as U;
     let partner = |a: K| -> Option<K> {
@@ -549,8 +605,8 @@ pub fn pair_disc(tols: &mut [Tol]) -> usize {
     let mut k = 0;
     while k + 1 < tols.len() {
         if is_pair(&tols[k], &tols[k + 1]) {
-            tols[k].dist = Dist::DiscX;
-            tols[k + 1].dist = Dist::DiscY;
+            tols[k].dist = Dist::DiscX { normal };
+            tols[k + 1].dist = Dist::DiscY { normal };
             n += 1;
             k += 2;
         } else {

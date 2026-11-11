@@ -199,11 +199,11 @@ fn radial_pairs() {
                    "tols": [{"param": "L1.dx", "pm": 0.1}, {"param": "L1.dy", "pm": 0.1}]});
     let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
     let d: Vec<Dist> = m.tols.iter().map(|t| t.dist).collect();
-    assert!(d.contains(&Dist::DiscX) && d.contains(&Dist::Normal { cut: 2.0 }));
+    assert!(d.contains(&Dist::DiscX { normal: None }) && d.contains(&Dist::Normal { cut: 2.0 }));
     let n = m.tols.len();
     assert_eq!(
         (m.tols[n - 2].dist, m.tols[n - 1].dist),
-        (Dist::DiscX, Dist::DiscY)
+        (Dist::DiscX { normal: None }, Dist::DiscY { normal: None })
     );
     let r = lensbench_core::tolerance::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
@@ -218,12 +218,39 @@ fn radial_pairs() {
     }
     let v = json!({"radial": 1});
     assert!(spec_from_json(&v, vec![s.clone()], &HashMap::new()).is_err());
+    let v = json!({"radial": "end"});
+    assert!(spec_from_json(&v, vec![s.clone()], &HashMap::new()).is_err());
+    // 円の中の 2 次元正規分布
+    let v = json!({"trials": 4, "radial": "normal:3", "sensitivity": false,
+                   "tols": [{"param": "L1.dx", "pm": 0.1}, {"param": "L1.dy", "pm": 0.1}]});
+    let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+    let n = m.tols.len();
+    assert_eq!(
+        (m.tols[n - 2].dist, m.tols[n - 1].dist),
+        (
+            Dist::DiscX { normal: Some(3.0) },
+            Dist::DiscY { normal: Some(3.0) }
+        )
+    );
+    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let out = result_json(&m, &r, &out_opts(&v).unwrap());
+    assert!(out["tolerances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["dist"] == "disc_y:normal:3"));
+    // 公差ごとの分布でも書ける
+    let v = json!({"preset": "none", "catalog": false, "trials": 2, "sensitivity": false,
+                   "tols": [{"param": "L1.dx", "pm": 0.1, "dist": "disc_x:normal"},
+                            {"param": "L1.dy", "pm": 0.1, "dist": "disc_y:normal"}]});
+    let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
+    assert!(lensbench_core::tolerance::run(&m).is_ok());
     // 既定は組にしない
     let m = spec_from_json(&json!({}), vec![s], &HashMap::new()).unwrap();
     assert!(m
         .tols
         .iter()
-        .all(|t| !matches!(t.dist, Dist::DiscX | Dist::DiscY)));
+        .all(|t| !matches!(t.dist, Dist::DiscX { .. } | Dist::DiscY { .. })));
 }
 
 /// 鏡の back で往復する系（貼り合わせ L1・単レンズ L2 を通って平面鏡で戻る）

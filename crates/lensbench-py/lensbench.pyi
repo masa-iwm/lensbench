@@ -308,7 +308,7 @@ class System:
 
         termsは足す項の dict の並び。{"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1} の
         形で、種類は spot・wavefront・mtf・paraxial（q: efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・
-        obna・isna）・ray（q: x・y・z・l・m・n、面 surf の局所座標）・opd・zernike・coupling・zplm（ZPL マクロの OPTRETURN）・
+        obna・isna）・ray（q: x・y・z・l・m・n、面 surf の局所座標）・centroid（像面の光束の重心、q: x・y）・opd・zernike・coupling・zplm（ZPL マクロの OPTRETURN）・
         plugin（登録したプラグインの出力。CLI の --term と同じ）。
         {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} は Python の関数で定義する項: f(systems) は
         System の list を受け取り、系ごとの残差を (len(systems), 残差の数) の配列で返す（差分の系はまとめて 1 回で渡す）。

@@ -176,7 +176,7 @@ fn disc_pairs() {
     let s = load("C0");
     let lt = LensTol::preset("commercial").unwrap();
     let mut tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
-    let n = tolerance::pair_disc(&mut tols);
+    let n = tolerance::pair_disc(&mut tols, None);
     // 玉ごとにくさび・偏心・傾きの 3 組
     let lenses = tols.iter().filter(|t| t.label.ends_with("偏心x")).count();
     assert!(lenses > 0);
@@ -190,7 +190,10 @@ fn disc_pairs() {
         .iter()
         .position(|t| t.label.ends_with("偏心x"))
         .unwrap();
-    assert_eq!((tols[k].dist, tols[k + 1].dist), (Dist::DiscX, Dist::DiscY));
+    assert_eq!(
+        (tols[k].dist, tols[k + 1].dist),
+        (Dist::DiscX { normal: None }, Dist::DiscY { normal: None })
+    );
     // 曲率・厚さなどは組にしない
     assert!(tols
         .iter()
@@ -221,7 +224,7 @@ fn disc_pairs() {
     // 1 つだけ引く Rng::draw は周辺分布（範囲の中、平均 0）
     let mut rng = Rng::for_trial(1, 0);
     let v: Vec<f64> = (0..20000)
-        .map(|_| rng.draw(Dist::DiscX, -2.0, 2.0))
+        .map(|_| rng.draw(Dist::DiscX { normal: None }, -2.0, 2.0))
         .collect();
     let st = tolerance::stats(&v, &[]);
     assert!(st.min >= -2.0 && st.max <= 2.0 && st.mean.abs() < 0.03);
@@ -234,7 +237,81 @@ fn disc_pairs() {
     spec.trials = 1;
     assert!(tolerance::run(&spec).is_err());
     let mut lone = vec![tols[k].clone()];
-    lone[0].dist = Dist::DiscY;
+    lone[0].dist = Dist::DiscY { normal: None };
     let spec = McSpec::new(problem(&s), lone);
     assert!(tolerance::run(&spec).is_err());
+    // x と y で分布が違う組も誤り
+    let mut mixed = tols.clone();
+    mixed[k + 1].dist = Dist::DiscY { normal: Some(2.0) };
+    let mut spec = McSpec::new(problem(&s), mixed);
+    spec.trials = 1;
+    assert!(tolerance::run(&spec).is_err());
+}
+
+#[test]
+fn disc_normal_pairs() {
+    // 円の中の 2 次元正規分布: 大きさは公差以下、|r|/半径 ≤ 0.5（1σ、cut 2）の割合は (1 − e^{-1/2}) / (1 − e^{-2})
+    let s = load("C0");
+    let lt = LensTol::preset("commercial").unwrap();
+    let mut tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
+    let n = tolerance::pair_disc(&mut tols, Some(2.0));
+    assert!(n > 0);
+    let k = tols
+        .iter()
+        .position(|t| t.label.ends_with("偏心x"))
+        .unwrap();
+    assert_eq!(
+        (tols[k].dist, tols[k + 1].dist),
+        (
+            Dist::DiscX { normal: Some(2.0) },
+            Dist::DiscY { normal: Some(2.0) }
+        )
+    );
+    assert_eq!(tols[k].dist.name(), "disc_x:normal");
+    assert_eq!(
+        Dist::parse("disc_y:normal:3").unwrap(),
+        Dist::DiscY { normal: Some(3.0) }
+    );
+    assert_eq!(
+        Dist::parse("disc_x:normal:3").unwrap().name(),
+        "disc_x:normal:3"
+    );
+    assert_eq!(
+        Dist::parse("disc_x:uniform").unwrap(),
+        Dist::DiscX { normal: None }
+    );
+    assert!(Dist::parse("disc_x:end").is_err());
+    let mut spec = McSpec::new(problem(&s), tols.clone());
+    spec.trials = 0;
+    let (a, b) = (tols[k].hi, tols[k + 1].hi);
+    let m = 20000;
+    let (mut inner, mut sx, mut sy, mut sxy) = (0, 0.0, 0.0, 0.0);
+    for i in 0..m {
+        let d = tolerance::draw_trial(&spec, i);
+        let (x, y) = (d[k] / a, d[k + 1] / b);
+        let r2 = x * x + y * y;
+        assert!(r2 <= 1.0 + 1e-12);
+        if r2 <= 0.25 {
+            inner += 1;
+        }
+        sx += x * x;
+        sy += y * y;
+        sxy += x * y;
+    }
+    let want = (1.0 - (-0.5f64).exp()) / (1.0 - (-2.0f64).exp());
+    let got = inner as f64 / m as f64;
+    assert!((got - want).abs() < 0.01, "{got} {want}");
+    // 等方（x・y の分散が同じで相関なし）
+    let (vx, vy, c) = (sx / m as f64, sy / m as f64, sxy / m as f64);
+    assert!((vx - vy).abs() < 0.01 && c.abs() < 0.005, "{vx} {vy} {c}");
+    // 切った 2 次元正規の E[r²]: r²/σ² は自由度 2 の χ²（平均 2 の指数分布）を cut² で切ったもの。σ = 1/2
+    let e = (-2.0f64).exp();
+    let er2 = 0.25 * 2.0 * (1.0 - 2.0 * e / (1.0 - e));
+    assert!((vx + vy - er2).abs() < 0.01, "{} {er2}", vx + vy);
+    // 1 つだけ引くときも範囲の中
+    let mut rng = Rng::for_trial(1, 0);
+    for _ in 0..1000 {
+        let v = rng.draw(Dist::DiscY { normal: Some(2.0) }, -2.0, 2.0);
+        assert!(v.abs() <= 2.0);
+    }
 }

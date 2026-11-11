@@ -76,8 +76,10 @@ pub struct TolPanel {
     pub trials: usize,
     pub seed: u64,
     pub dist: String,
-    /// 偏心・傾き・くさびの x・y を組にして円の中で一様に引く
+    /// 偏心・傾き・くさびの x・y を組にして円の中で引く
     pub radial: bool,
+    /// 円の中の分布（uniform・normal・normal:σの数）
+    pub radial_dist: String,
     pub preset: String,
     pub catalog: bool,
     pub sensitivity: bool,
@@ -111,6 +113,7 @@ impl Default for TolPanel {
             seed: 1,
             dist: "normal".into(),
             radial: false,
+            radial_dist: "uniform".into(),
             preset: "commercial".into(),
             catalog: true,
             sensitivity: true,
@@ -150,7 +153,12 @@ impl TolPanel {
         m.insert("seed".into(), json!(self.seed));
         m.insert("dist".into(), json!(self.dist));
         if self.radial {
-            m.insert("radial".into(), json!(true));
+            let d = self.radial_dist.trim();
+            if d.is_empty() || d == "uniform" {
+                m.insert("radial".into(), json!(true));
+            } else {
+                m.insert("radial".into(), json!(d));
+            }
         } else {
             m.remove("radial");
         }
@@ -345,7 +353,13 @@ impl TolPanel {
                 "trials" => n.trials = x.as_u64().ok_or(tr("trials が整数でない"))? as usize,
                 "seed" => n.seed = x.as_u64().ok_or(tr("seed が整数でない"))?,
                 "dist" => n.dist = x.as_str().unwrap_or("normal").into(),
-                "radial" => n.radial = x.as_bool().unwrap_or(false),
+                "radial" => match x.as_str() {
+                    Some(d) => {
+                        n.radial = true;
+                        n.radial_dist = d.into();
+                    }
+                    None => n.radial = x.as_bool().unwrap_or(false),
+                },
                 "preset" => n.preset = x.as_str().unwrap_or("commercial").into(),
                 "catalog" => n.catalog = x.as_bool().unwrap_or(true),
                 "sensitivity" => n.sensitivity = x.as_bool().unwrap_or(true),
@@ -556,10 +570,23 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             ui.selectable_value(&mut p.dist, k.to_string(), tr(l));
         }
     });
-    ui.checkbox(
-        &mut p.radial,
-        tr("偏心・傾き・くさびは x・y を組にして円の中で一様に（大きさが公差以下）"),
-    );
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(
+            &mut p.radial,
+            tr("偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）"),
+        );
+        ui.add_enabled_ui(p.radial, |ui| {
+            ui.selectable_value(&mut p.radial_dist, "uniform".to_string(), tr("一様"));
+            ui.selectable_value(
+                &mut p.radial_dist,
+                "normal".to_string(),
+                tr("正規（半径 2σ）"),
+            )
+            .on_hover_text(tr(
+                "等方の 2 次元正規分布を円で切ったもの。半径 2σ の中は 86%",
+            ));
+        });
+    });
     // 玉ごとの組
     ui.label(RichText::new(tr("玉ごとの組")).strong());
     let mut del = None;
@@ -945,6 +972,13 @@ mod tests {
         let mut q = TolPanel::default();
         q.set_spec(&v).unwrap();
         assert_eq!(q.spec().unwrap(), v);
+        // 円の中の正規分布
+        let mut r = v.clone();
+        r["radial"] = json!("normal:3");
+        let mut q = TolPanel::default();
+        q.set_spec(&r).unwrap();
+        assert!(q.radial);
+        assert_eq!(q.spec().unwrap(), r);
         // 欄のない項目は残す
         let mut w = v.clone();
         w["percentiles"] = json!([50, 99]);
