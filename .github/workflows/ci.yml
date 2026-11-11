@@ -210,16 +210,22 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-      # gram_block_simd128 が gram_tiles とビットまで同じこと（試験 1 本を Node の WASI で。#28）
+      # wasm32-wasip1 の試験は wasmtime で回す（Node 22 の WASI は .wasm によって SIGSEGV で落ち続けることがあり、
+      # 手元では再現しない。#181）。試験は env!("CARGO_MANIFEST_DIR") からの絶対パスで tests/ を読むので、
+      # リポジトリの根を同じパスで見せる
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime@29.0.1
+      # gram_block_simd128 が gram_tiles とビットまで同じこと（試験 1 本を WASI で。#28）
       - run: cargo test -p lensbench-core --lib --target wasm32-wasip1 column_basis_and_gram_match_the_row_forms
         env:
           RUSTFLAGS: -C target-feature=+simd128
-          CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime run --dir . --dir ${{ github.workspace }}::${{ github.workspace }}
       # まとめ追跡（wasm は f64x2 を名指し、8 本ずつ）が 1 本ずつの追跡とビットまで同じこと（#99）
       - run: cargo test --release -p lensbench-core --target wasm32-wasip1 --test batch
         env:
           RUSTFLAGS: -C target-feature=+simd128
-          CARGO_TARGET_WASM32_WASIP1_RUNNER: node ${{ github.workspace }}/scripts/wasi_run.mjs
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: wasmtime run --dir . --dir ${{ github.workspace }}::${{ github.workspace }}
       - run: npm install --no-save playwright@1.55.0 && npx playwright install chromium
       # スレッドあり（ヘッダーあり）・GitHub Pages と同じ（ヘッダーなし、coi.js で付け直す）・1 スレッド（?st）
       - run: EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke.png

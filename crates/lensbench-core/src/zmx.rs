@@ -141,12 +141,19 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
     let mut raw = Raw::default();
     let mut cur: Option<usize> = None;
     let mut in_mce = false;
+    // 古い .zmx（Edmund の一部の品など）は面の行を字下げしない。字下げした行が 1 つも無いときは、
+    // SURF の後の行を全て面の行として読み、知らない行は飛ばす（小文字の stop は絞り）
+    let legacy = !txt.lines().any(|l| l.starts_with("  "));
     for line in txt.lines() {
         let t: Vec<&str> = line.split_whitespace().collect();
         if t.is_empty() {
             continue;
         }
-        let key = t[0];
+        let key = if legacy && cur.is_some() && t[0] == "stop" {
+            "STOP"
+        } else {
+            t[0]
+        };
         let rest = || t[1..].iter().map(|s| s.to_string()).collect::<Vec<_>>();
         if key == "SURF" {
             raw.surfs.push(RawSurf {
@@ -168,7 +175,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             }
             continue;
         }
-        let Some(ci) = cur.filter(|_| line.starts_with("  ")) else {
+        let Some(ci) = cur.filter(|_| legacy || line.starts_with("  ")) else {
             raw.sysl.entry(key.into()).or_default().push(rest());
             cur = None;
             continue;
@@ -333,6 +340,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "IGNR" => s.ignore = t.get(1).is_some_and(|v| *v != "0"),
             "MEMA" => s.mema = true,
             k if HARMLESS.contains(&k) => {}
+            _ if legacy => {}
             k => notimpl!("zmx の面 {}: 行 {} は未対応", s.n, k),
         }
     }
@@ -723,8 +731,10 @@ pub fn build(
     let nw = *ftyp.get(3).unwrap_or(&1) as usize;
     let mut wav: HashMap<i64, (f64, f64)> = HashMap::new();
     for a in raw.sysl.get("WAVM").into_iter().flatten() {
-        if a.len() >= 3 {
-            wav.insert(fv(&a[0])? as i64, (fv(&a[1])?, fv(&a[2])?));
+        // 古い .zmx は重みを省く（WAVM 1 0.5876）。省いた重みは 1
+        if a.len() >= 2 {
+            let w = a.get(2).map(|x| fv(x)).transpose()?.unwrap_or(1.0);
+            wav.insert(fv(&a[0])? as i64, (fv(&a[1])?, w));
         }
     }
     // 古い書式（WAVM が無く、WAVL に使う波長を並べ、WWGT にその重み）
