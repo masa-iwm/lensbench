@@ -4,7 +4,7 @@ members = ["crates/lensbench-core", "crates/lensbench-analysis", "crates/lensben
 exclude = ["crates/lensbench-py", "third_party/winit"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/masa-iwm/lensbench"
