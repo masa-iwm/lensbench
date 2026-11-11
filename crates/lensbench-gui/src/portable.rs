@@ -182,6 +182,16 @@ pub fn from_stored(p: &str, base: &Path) -> String {
     clean(&out).to_string_lossy().into_owned()
 }
 
+/// OS の場所から設定を取り込んだときの硝材・レンズのフォルダ: `dir` の隣の `catalogs/` があればそれに替える
+/// （古い版のカタログを絶対パスのまま読み続けないように）。`catalogs/` が無ければ取り込んだまま
+pub fn imported_catalogs(dir: &Path, glass: &mut Vec<String>, lens: &mut Vec<String>) {
+    let (g, l) = default_catalogs(dir);
+    if !g.is_empty() || !l.is_empty() {
+        *glass = g;
+        *lens = l;
+    }
+}
+
 /// 設定が空のときの既定のカタログ: `dir` の `catalogs/glass`（硝材）と `catalogs/lens`・`catalogs/items`（レンズ）
 pub fn default_catalogs(dir: &Path) -> (Vec<String>, Vec<String>) {
     let c = dir.join("catalogs");
@@ -269,6 +279,19 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()]
         );
+        // 取り込んだ設定のフォルダは exe の隣の catalogs/ に替える
+        let mut g = vec!["C:/old/catalogs/glass".to_string()];
+        let mut l = vec!["C:/old/catalogs/lens".to_string()];
+        imported_catalogs(&exe, &mut g, &mut l);
+        assert_eq!(g, default_catalogs(&exe).0);
+        assert_eq!(l, default_catalogs(&exe).1);
+        // catalogs/ が無ければ取り込んだまま
+        let bare = tmp.join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        let mut g = vec!["C:/mine".to_string()];
+        let mut l = vec![];
+        imported_catalogs(&bare, &mut g, &mut l);
+        assert_eq!((g, l), (vec!["C:/mine".to_string()], vec![]));
         std::fs::remove_dir_all(&tmp).ok();
     }
 }
