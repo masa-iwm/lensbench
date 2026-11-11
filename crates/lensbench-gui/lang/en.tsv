@@ -1182,3 +1182,10 @@ Client ID	Client ID
 Client Secret	Client Secret
 品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。	When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable.
 空のときは、この版に組み込んだ置き場を使います。	When empty, the store built into this edition is used.
+結果を保存…	Save results…
+補償子の CSV…	Compensator CSV…
+試行ごとの評価関数・補償子・傾きの大きさ [分]	Merit, compensators and tilt magnitudes [arcmin] for each trial
+試行ごとのずれは「設定」の samples を入れて回すと結果に入ります	Turn on samples under Settings to include each trial's perturbations in the results
+「.tilt [′]」は同じ玉・群・面の傾き tx・ty の組の大きさ √(tx² + ty²)（分）。	".tilt [′]" is the magnitude √(tx² + ty²) of the tilt pair tx, ty of the same lens, group or surface (arcmin).
+ヒストグラム	Histogram
+公差の結果	Tolerance results

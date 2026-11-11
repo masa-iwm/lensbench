@@ -70,6 +70,10 @@ pub enum Action {
     Stop,
     Save(Value),
     Load,
+    /// 結果の JSON を保存する
+    SaveResult(Value),
+    /// 試行ごとの補償子の CSV を保存する
+    SaveCsv(String),
 }
 
 pub struct TolPanel {
@@ -100,6 +104,9 @@ pub struct TolPanel {
     pub running: bool,
     pub result: Option<Value>,
     pub error: Option<String>,
+    /// 結果の補償子の分布の図: 選んだ補償子（補償子、続いて傾きの大きさ）と、累積分布で出すか（false はヒストグラム）
+    pub comp_sel: usize,
+    pub comp_cdf: bool,
     /// 設定の JSON にあってパネルに欄のない項目（読んだまま保存・実行に使う）
     pub extra: Map<String, Value>,
 }
@@ -129,6 +136,8 @@ impl Default for TolPanel {
             running: false,
             result: None,
             error: None,
+            comp_sel: 0,
+            comp_cdf: false,
             extra: Map::new(),
         }
     }
@@ -452,6 +461,8 @@ impl TolPanel {
         }
         // 欄に出ていない lenses・tols の項目は extra に残し、spec で欄の分と合わせて送る
         n.result = self.result.take();
+        n.comp_sel = self.comp_sel;
+        n.comp_cdf = self.comp_cdf;
         *self = n;
         Ok(())
     }
@@ -507,7 +518,32 @@ pub fn ui(
             egui::CollapsingHeader::new(RichText::new(tr("結果")).strong())
                 .id_salt("tol_result")
                 .default_open(true)
-                .show(ui, |ui| result_ui(ui, &r, weak));
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button(tr("結果を保存…")).clicked() {
+                            acts.push(Action::SaveResult(r.clone()));
+                        }
+                        let has_comp = r["compensators"].as_array().is_some_and(|a| !a.is_empty());
+                        if ui
+                            .add_enabled(has_comp, egui::Button::new(tr("補償子の CSV…")))
+                            .on_hover_text(tr("試行ごとの評価関数・補償子・傾きの大きさ [分]"))
+                            .clicked()
+                        {
+                            match lensbench_project::tolerance::compensators_csv(&r) {
+                                Ok(t) => acts.push(Action::SaveCsv(t)),
+                                Err(e) => p.error = Some(e),
+                            }
+                        }
+                        if r.get("samples").is_none() {
+                            ui.label(
+                                RichText::new(tr("試行ごとのずれは「設定」の samples を入れて回すと結果に入ります"))
+                                    .small()
+                                    .color(weak),
+                            );
+                        }
+                    });
+                    result_ui(ui, &r, &mut p.comp_sel, &mut p.comp_cdf, weak)
+                });
         }
         ui.separator();
         ui.add_enabled_ui(!p.running, |ui| {
@@ -748,7 +784,178 @@ fn f(v: &Value) -> String {
     v.as_f64().map_or("—".into(), fmt_num)
 }
 
-fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
+/// 補償子の分布の 1 つ: 名前・公称・統計・試行の値（追跡できた試行だけ）
+struct CompDist {
+    name: String,
+    nominal: Value,
+    stats: Value,
+    values: Vec<f64>,
+}
+
+/// 結果の補償子と傾きの大きさ（分）を並べる
+fn comp_dists(r: &Value) -> Vec<CompDist> {
+    let mut out = Vec::new();
+    let vals = |v: &Value| -> Vec<f64> {
+        v.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_f64)
+            .filter(|x| x.is_finite())
+            .collect()
+    };
+    for c in r["compensators"].as_array().into_iter().flatten() {
+        out.push(CompDist {
+            name: text_of(&c["name"]),
+            nominal: c["nominal"].clone(),
+            stats: c["stats"].clone(),
+            values: vals(&c["values"]),
+        });
+    }
+    for t in r["tilt_magnitudes"].as_array().into_iter().flatten() {
+        out.push(CompDist {
+            name: format!("{} [′]", text_of(&t["name"])),
+            nominal: t["nominal"].clone(),
+            stats: t["stats"].clone(),
+            values: vals(&t["values"]),
+        });
+    }
+    out
+}
+
+/// ヒストグラムの区間: (下端, 幅, 数)。区間の数は √n（5〜50）
+fn histogram(v: &[f64]) -> Vec<(f64, f64, usize)> {
+    let (lo, hi) = v
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &x| {
+            (a.min(x), b.max(x))
+        });
+    if v.is_empty() || !lo.is_finite() {
+        return Vec::new();
+    }
+    let nb = ((v.len() as f64).sqrt().round() as usize).clamp(5, 50);
+    let w = if hi > lo {
+        (hi - lo) / nb as f64
+    } else {
+        lo.abs().max(1e-12) * 1e-3
+    };
+    let mut cnt = vec![0usize; nb];
+    for &x in v {
+        let i = (((x - lo) / w) as usize).min(nb - 1);
+        cnt[i] += 1;
+    }
+    cnt.into_iter()
+        .enumerate()
+        .map(|(i, c)| (lo + i as f64 * w, w, c))
+        .collect()
+}
+
+/// 補償子の分布の表と図
+fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui::Color32) {
+    let ds = comp_dists(r);
+    if ds.is_empty() {
+        return;
+    }
+    ui.label(RichText::new(tr("補償子")).strong());
+    let pcts: Vec<String> = ds[0].stats["percentiles"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|x| format!("{}%", f(&x[0])))
+        .collect();
+    egui::ScrollArea::horizontal()
+        .id_salt("tol_comps_h")
+        .show(ui, |ui| {
+            egui::Grid::new("tol_comps").striped(true).show(ui, |ui| {
+                for h in [
+                    tr("名前"),
+                    tr("公称"),
+                    tr("平均"),
+                    tr("標準偏差"),
+                    tr("最小"),
+                    tr("最大"),
+                ] {
+                    ui.label(RichText::new(h).small().color(weak));
+                }
+                for p in &pcts {
+                    ui.label(RichText::new(p).small().color(weak));
+                }
+                ui.end_row();
+                for d in &ds {
+                    ui.label(&d.name);
+                    ui.label(f(&d.nominal));
+                    for k in ["mean", "std", "min", "max"] {
+                        ui.label(f(&d.stats[k]));
+                    }
+                    for x in d.stats["percentiles"].as_array().into_iter().flatten() {
+                        ui.label(f(&x[1]));
+                    }
+                    ui.end_row();
+                }
+            });
+        });
+    if r["tilt_magnitudes"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty())
+    {
+        ui.label(
+            RichText::new(tr(
+                "「.tilt [′]」は同じ玉・群・面の傾き tx・ty の組の大きさ √(tx² + ty²)（分）。",
+            ))
+            .small()
+            .color(weak),
+        );
+    }
+    if ds.iter().all(|d| d.values.is_empty()) {
+        return;
+    }
+    *sel = (*sel).min(ds.len() - 1);
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt("tol_comp_sel")
+            .selected_text(ds[*sel].name.as_str())
+            .show_ui(ui, |ui| {
+                for (i, d) in ds.iter().enumerate() {
+                    ui.selectable_value(sel, i, d.name.as_str());
+                }
+            });
+        ui.selectable_value(cdf, false, tr("ヒストグラム"));
+        ui.selectable_value(cdf, true, tr("累積分布"));
+    });
+    let d = &ds[*sel];
+    let nom = d.nominal.as_f64();
+    let plot = Plot::new("tol_comp_plot")
+        .height(180.0)
+        .x_axis_label(d.name.clone())
+        .allow_scroll(false);
+    if *cdf {
+        let mut v = d.values.clone();
+        v.sort_by(|a, b| a.total_cmp(b));
+        let n = v.len() as f64;
+        let pts: PlotPoints = v
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
+            .collect();
+        plot.y_axis_label(tr("累積 [%]")).show(ui, |pu| {
+            pu.line(Line::new(pts).name(tr("累積分布")));
+            if let Some(x) = nom {
+                pu.vline(egui_plot::VLine::new(x).name(tr("公称")));
+            }
+        });
+    } else {
+        let bars: Vec<egui_plot::Bar> = histogram(&d.values)
+            .into_iter()
+            .map(|(x0, w, c)| egui_plot::Bar::new(x0 + w / 2.0, c as f64).width(w))
+            .collect();
+        plot.y_axis_label(tr("試行の数")).show(ui, |pu| {
+            pu.bar_chart(egui_plot::BarChart::new(bars).name(tr("ヒストグラム")));
+            if let Some(x) = nom {
+                pu.vline(egui_plot::VLine::new(x).name(tr("公称")));
+            }
+        });
+    }
+}
+
+fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: egui::Color32) {
     ui.label(trf(
         "試行 {}（追跡できなかった {}）、種 {}",
         &[&r["trials"], &r["failed"], &r["seed"]],
@@ -839,32 +1046,7 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
                 }
             });
     }
-    // 補償子
-    let comps = r["compensators"].as_array().cloned().unwrap_or_default();
-    if !comps.is_empty() {
-        ui.label(RichText::new(tr("補償子")).strong());
-        egui::Grid::new("tol_comps").striped(true).show(ui, |ui| {
-            for h in [
-                tr("名前"),
-                tr("公称"),
-                tr("平均"),
-                tr("標準偏差"),
-                tr("最小"),
-                tr("最大"),
-            ] {
-                ui.label(RichText::new(h).small().color(weak));
-            }
-            ui.end_row();
-            for c in &comps {
-                ui.label(text_of(&c["name"]));
-                ui.label(f(&c["nominal"]));
-                for k in ["mean", "std", "min", "max"] {
-                    ui.label(f(&c["stats"][k]));
-                }
-                ui.end_row();
-            }
-        });
-    }
+    comps_ui(ui, r, sel, as_cdf, weak);
     // 感度（悪い順）
     let sens = r["sensitivity"].as_array().cloned().unwrap_or_default();
     if !sens.is_empty() {
@@ -1008,5 +1190,26 @@ mod tests {
         q.set_spec(&w).unwrap();
         assert!(q.catalog_tols.is_empty());
         assert_eq!(q.spec().unwrap()["catalog_tols"], w["catalog_tols"]);
+    }
+
+    #[test]
+    fn comp_dists_and_histogram() {
+        let r = json!({
+            "compensators": [{"name": "M.tx", "nominal": 0.0, "stats": {}, "values": [0.1, null, -0.2]}],
+            "tilt_magnitudes": [{"name": "M.tilt", "nominal": 0.0, "stats": {}, "values": [6.0, null, 12.0]}],
+        });
+        let d = comp_dists(&r);
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[0].values, vec![0.1, -0.2]);
+        assert_eq!(d[1].name, "M.tilt [′]");
+        let v: Vec<f64> = (0..100).map(|i| i as f64).collect();
+        let h = histogram(&v);
+        assert_eq!(h.len(), 10);
+        assert_eq!(h.iter().map(|x| x.2).sum::<usize>(), 100);
+        assert_eq!(h[9].2, 10);
+        // 値がすべて同じでも区間を作る
+        let h = histogram(&[2.0; 4]);
+        assert_eq!(h.iter().map(|x| x.2).sum::<usize>(), 4);
+        assert!(histogram(&[]).is_empty());
     }
 }

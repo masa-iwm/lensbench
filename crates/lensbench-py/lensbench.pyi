@@ -457,7 +457,8 @@ class System:
         configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。
 
         返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
-        昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators・sensitivity（公差ごとの lo・hi での評価関数の
+        昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・
+        tilt_magnitudes（補償子の tx・ty の組の大きさ [分]）・merit_values（試行ごとの評価関数）・sensitivity（公差ごとの lo・hi での評価関数の
         変化、悪い順）・rss_estimate・correlation（ずれとの相関 r と |ずれ| との相関 r_abs）・tolerances・trials・failed・
         errors（samples が true なら試行ごとの deltas・eval も）
         """
