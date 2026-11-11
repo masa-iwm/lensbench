@@ -455,7 +455,8 @@ class System:
         terms は optimize の terms と同じ並びで、spec の terms の後に足す（Python の関数の項 {"type": "user", ...} も使える。
         測定値などを評価量にするときに）。vendors はブロックの id → メーカーの dict（カタログの玉の既定の公差に使う）。
         configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。reversed は裏返して置いた玉のブロックの
-        id の並び（spec の wedge_face の前・後ろを玉のもとの向きで決めるのに使う）。
+        id の並び（spec の wedge_face の前・後ろを玉のもとの向きで決めるのに使う。from_project で作った系は裏返しの印を
+        持つので要らない）。
 
         返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
         昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・

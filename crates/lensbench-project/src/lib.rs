@@ -1004,6 +1004,8 @@ struct Ctx<'a, 'b> {
     split: SplitState,
     /// 枠付きのユーザーカタログの品（名前, 枠, sf の最初, 最後）。枠を機構部品として置く
     frames: Vec<(String, MechSpec, usize, usize)>,
+    /// 裏返して置いた玉（`reversed` の玉のブロック）の往路の面の範囲（sf の最初, 最後）。玉・群の `flipped` にする
+    rev_spans: Vec<(usize, usize)>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -1681,9 +1683,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 if *stop {
                     e.surfaces[0].stop = true;
                 }
+                let rev = *reversed;
                 self.placed(place, &mut |c: &mut Self| {
+                    let start = c.sf.len();
                     for s in &e.surfaces {
                         c.push(s.clone());
+                    }
+                    if rev && c.sf.len() > start {
+                        c.rev_spans.push((start, c.sf.len() - 1));
                     }
                     Ok(())
                 })?;
@@ -2518,6 +2525,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
         gaps: Vec::new(),
         split: SplitState::default(),
         frames: Vec::new(),
+        rev_spans: Vec::new(),
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;
@@ -3330,6 +3338,7 @@ fn expand_inner(
             ..Default::default()
         },
         frames: Vec::new(),
+        rev_spans: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -3532,6 +3541,13 @@ fn expand_inner(
             Ok(u) => s.units[u].shift = group_shift(&p.blocks, id).unwrap_or(0.0),
             Err(e) => warn.push(format!("ブロック {id} を玉・群のパラメータにしない: {e}")),
         }
+    }
+    // 裏返して置いた玉（id の無い玉の lens1 … も）。最初の範囲が玉の面と同じ玉・群
+    for u in s.units.iter_mut() {
+        u.flipped = c
+            .rev_spans
+            .iter()
+            .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
     }
     apply_surface_edits(&mut s, &p.surface_edits, &c.spans, &c.back_spans)?;
     let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &c.spans, &c.back_spans)?;

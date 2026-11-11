@@ -460,7 +460,7 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
 }
 
 /// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）。
-/// 裏返した玉が分からない（すべて置いた向きのまま）とする。プロジェクトなら [`spec_from_json_with`]
+/// 裏返した玉は系の玉・群の印（[`lensbench_core::units::Unit::flipped`]、プロジェクトの展開で付く）で分かる
 pub fn spec_from_json(
     v: &Value,
     configs: Vec<System>,
@@ -469,8 +469,9 @@ pub fn spec_from_json(
     spec_from_json_with(v, configs, vendors, &HashSet::new())
 }
 
-/// [`spec_from_json`] に、裏返して置いた玉のブロックの id（[`reversed_lenses`]）を足したもの。`wedge_face` の
-/// 前・後ろは玉のもとの向き（カタログ・.zmx の向き）で決めるので、裏返した玉では系の中の面の順と逆になる
+/// [`spec_from_json`] に、裏返して置いた玉の名前（ブロックの id、[`reversed_lenses`]）を足したもの。`wedge_face` の
+/// 前・後ろは玉のもとの向き（カタログ・.zmx の向き）で決めるので、裏返した玉では系の中の面の順と逆になる。
+/// 名前は、系の玉・群に裏返しの印が無いとき（印を持たない系）だけ使う
 pub fn spec_from_json_with(
     v: &Value,
     configs: Vec<System>,
@@ -590,9 +591,11 @@ pub fn spec_from_json_with(
                 }
             },
         };
-        // 裏返した玉は、もとの向きの後ろの面が系の中では最初の面
+        // 裏返した玉は、もとの向きの後ろの面が系の中では最初の面。系の玉・群に裏返しの印（Unit::flipped）があれば
+        // simple が直すので、ここでは印の無い系に名前で渡されたときだけ直す
+        let marked = s0.units.iter().any(|v| v.name == name && v.flipped);
         t.map(|t| LensTol {
-            wedge_first: t.wedge_first != reversed.contains(name),
+            wedge_first: t.wedge_first != (reversed.contains(name) && !marked),
             ..t
         })
     };
