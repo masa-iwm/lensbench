@@ -62,18 +62,22 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         .items
         .get(&name)
         .ok_or_else(|| format!("{catalog} に品 {name} がない"))?;
-    let path = lensbench_project::catalog_fill::cad_cache_path(
-        &lensbench_project::catalog_fill::cad_cache_dir(),
-        &name,
-        &it.cad.step,
-    );
-    let cached = lensbench_core::vfs::is_file(&path);
+    use lensbench_project::catalog_fill;
+    let found = catalog_fill::cad_cache_find(&catalog_fill::cad_cache_dir(), &name, &it.cad.step);
+    let cached = found.is_some();
+    let path = found.unwrap_or_else(|| {
+        catalog_fill::cad_cache_path(&catalog_fill::cad_cache_dir(), &name, &it.cad.step)
+    });
     let text = if cached {
-        lensbench_core::vfs::read(&path).map_err(|e| e.to_string())?
+        lensbench_cli::cad_detail::gunzip(
+            lensbench_core::vfs::read(&path).map_err(|e| e.to_string())?,
+            512 << 20,
+        )?
     } else {
+        // 置き場の鍵はキャッシュのファイル名から .gz を除いたもの
         let key = path
             .file_name()
-            .map(|f| f.to_string_lossy().into_owned())
+            .map(|f| f.to_string_lossy().trim_end_matches(".gz").to_string())
             .unwrap_or_default();
         let url = format!("{}/{}", store.trim_end_matches('/'), key);
         let js = |e: wasm_bindgen::JsValue| format!("置き場を読めない（{url}）: {e:?}");
@@ -107,7 +111,10 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
             .map_err(js)?;
         let p: Promise = ab.call0(&r).map_err(js)?.dyn_into().map_err(js)?;
         let buf = JsFuture::from(p).await.map_err(js)?;
-        let b = js_sys::Uint8Array::new(&buf).to_vec();
+        // 置き場の STEP は gzip（展開してから STEP か確かめる）
+        let b =
+            lensbench_cli::cad_detail::gunzip(js_sys::Uint8Array::new(&buf).to_vec(), 512 << 20)
+                .map_err(|e| format!("{e}: {url}"))?;
         let head = String::from_utf8_lossy(&b[..b.len().min(256)]).to_ascii_uppercase();
         if !head
             .trim_start_matches('\u{feff}')
@@ -116,7 +123,8 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         {
             return Err(format!("置き場の中身が STEP でない: {url}"));
         }
-        lensbench_core::vfs::write(&path, &b).map_err(|e| e.to_string())?;
+        lensbench_core::vfs::write(&path, lensbench_cli::cad_detail::gzip(&b))
+            .map_err(|e| e.to_string())?;
         b
     };
     let (measured, notes) = lensbench_cli::cad_detail::measure(it, &text);
