@@ -548,7 +548,11 @@ impl Geo {
 }
 
 /// 立体の名前
-const SOLIDS: [&str; 2] = ["MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS"];
+const SOLIDS: [&str; 3] = [
+    "MANIFOLD_SOLID_BREP",
+    "BREP_WITH_VOIDS",
+    "SHELL_BASED_SURFACE_MODEL",
+];
 
 impl Step {
     /// 実体の集まりの円と頂点
@@ -850,8 +854,8 @@ const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
 const ROD_HOLES: usize = 4;
 
 /// 光学部品のねじ（名前、ねじの外径（メスの谷の径）[mm]、ピッチ [mm]、入る素子の径 [mm]（0 は素子を入れない
-/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので
-/// しない））
+/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので、
+/// 端のねじで、奥にねじの逃げの溝（外径より太い短い穴）のあるときだけ。[`relief_next_to`]））
 struct Thread {
     name: &'static str,
     major: f64,
@@ -902,17 +906,29 @@ impl Thread {
     /// 円柱の直径 `d` [mm] がこのねじか。STEP のねじは外径の円柱で描かれる（Thorlabs）か、メスは山の径（内径）の
     /// 円柱で描かれる（Edmund。外径 − 0.96 ピッチほど）。メスの内径は基準の内径（外径 − 1.0825 ピッチ）から
     /// 外径 − 0.9 ピッチまで
-    fn fits(&self, d: f64, female: bool) -> bool {
-        ((!female || self.female_major) && (self.major - d).abs() <= 0.05)
+    fn fits(&self, d: f64, female: bool, relief: bool) -> bool {
+        ((!female || self.female_major || relief) && (self.major - d).abs() <= 0.05)
             || (female
                 && d >= self.major - 1.0825 * self.pitch - 0.05
                 && d <= self.major - 0.9 * self.pitch)
     }
 }
 
-/// 直径 `d` [mm] のねじ
-fn thread_fits(d: f64, female: bool) -> Option<&'static Thread> {
-    THREADS.iter().find(|t| t.fits(d, female))
+/// 直径 `d` [mm] のねじ。`relief` は穴の並びがねじの逃げの溝を持つか（[`relief_next_to`]）
+fn thread_fits(d: f64, female: bool, relief: &dyn Fn(f64) -> bool) -> Option<&'static Thread> {
+    THREADS.iter().find(|t| t.fits(d, female, relief(t.major)))
+}
+
+/// 穴の並び（mm）で、直径 `major` の穴のとなりに、それより太い（1.1 mm まで）短い（2 mm まで）穴があるか
+/// （メスのねじの奥の逃げの溝。Thorlabs の C マウントのメスは外径 25.4 の円柱と逃げの溝 26.416 で描かれる）
+fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
+    bores.windows(2).any(|w| {
+        let groove = |g: &crate::BoreSpec| {
+            g.diameter > major + 0.05 && g.diameter <= major + 1.1 && g.z1 - g.z0 <= 2.0
+        };
+        let thread = |t: &crate::BoreSpec| (t.diameter - major).abs() <= 0.05;
+        (thread(&w[0]) && groove(&w[1])) || (groove(&w[0]) && thread(&w[1]))
+    })
 }
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
@@ -1452,12 +1468,15 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 .copied()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map_or(0.0, |r| r.0);
-            let (thread, hold_d) = thread_fits(hold, true).map_or((String::new(), hold), |t| {
-                (
-                    t.name.to_string(),
-                    if t.holds > 0.0 { t.holds } else { hold },
-                )
-            });
+            // 保持する素子のねじは逃げの溝で判定しない（奥の 25.4 の穴の止め輪の溝と区別できない）。端のねじだけ
+            let relief = |major: f64| relief_next_to(&bores, major);
+            let (thread, hold_d) =
+                thread_fits(hold, true, &|_| false).map_or((String::new(), hold), |t| {
+                    (
+                        t.name.to_string(),
+                        if t.holds > 0.0 { t.holds } else { hold },
+                    )
+                });
             // 座: 本体と別の止め輪（本体より z の短い輪）が前半にあれば、その奥の面。枠の端から保持する素子の径より
             // 細い穴が続けば、その段（素子が当たる肩）。どちらも無ければ枠の端
             let ring_seat = rrs
@@ -1479,7 +1498,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let seat_mm = sc(ring_seat).max(shoulder);
             let seat = seat_mm;
             // 両端のねじ: 端に接する、ねじの谷の径の外向きの円柱（オス、外径より細い）か内壁（メス）
-            let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female);
+            let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female, &relief);
             let end_thread = |end: f64| -> Option<crate::ThreadEnd> {
                 // 端から 1 mm 以内（面取りの分）
                 let tol = 1.0 / k;
@@ -1517,10 +1536,16 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 }
                 // メス: 端から最も近い内壁がねじの径（ケージ板のように、ねじの穴の端が外形の端から引っ込んでいても。
                 // 引っ込みは recess）
+                // 同じ近さの内壁が複数なら、ねじの径のもの、次に細いもの（面をたどる順によらない）
                 let nearest = keep.iter().flat_map(|x| x.walls.iter()).min_by(|a, b| {
-                    dist(a.1)
-                        .partial_cmp(&dist(b.1))
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    let (da, db) = (dist(a.1), dist(b.1));
+                    if (da - db).abs() > eps {
+                        return da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal);
+                    }
+                    let ta = thread_of(a.0, true).is_none();
+                    let tb = thread_of(b.0, true).is_none();
+                    ta.cmp(&tb)
+                        .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
                 })?;
                 let t = thread_of(nearest.0, true)?;
                 // ねじの長さは面取りも含める（端から 1 mm 以内の面取りは端まで）
@@ -2129,6 +2154,23 @@ mod tests {
         assert_eq!(
             (bt.thread.as_str(), bt.male, bt.length),
             ("SM05", false, 7.0)
+        );
+        // C マウントのチューブ（Thorlabs の描き方）: 前はオス（外径 25.4）、後ろはメス（外径 25.4 の円柱と、奥の逃げの
+        // 溝 26.416）
+        let cml = solid(&[
+            (0.0, 0.0, 0.0, 4.064, 12.7, false),
+            (0.0, 0.0, 4.064, 14.064, 15.24, false),
+            (0.0, 0.0, 0.0, 4.826, 11.557, true),
+            (0.0, 0.0, 4.826, 5.588, 13.208, true),
+            (0.0, 0.0, 5.588, 14.064, 12.7, true),
+        ]);
+        let f = crate::catalog_fill::read_step(&cml).unwrap().frame.unwrap();
+        let ft = f.front_thread.clone().unwrap();
+        assert_eq!((ft.thread.as_str(), ft.male), ("C-Mount", true), "{f:?}");
+        let bt = f.back_thread.clone().unwrap();
+        assert_eq!(
+            (bt.thread.as_str(), bt.male, bt.length),
+            ("C-Mount", false, 8.476)
         );
         // 25.4 の素通しの穴は C マウントのメスとしない
         let ring = solid(&[
