@@ -2307,7 +2307,15 @@ impl Core {
     /// 多重構成の表
     fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
-        for a in config_panel::ui(ui, &mut self.mc, combo) {
+        let cands = config_panel::Cands {
+            surfs: self
+                .ld_rows
+                .iter()
+                .map(|r| (r.typ.clone(), r.comment.clone()))
+                .collect(),
+            units: self.ld_blocks.iter().map(|b| b.name.clone()).collect(),
+        };
+        for a in config_panel::ui(ui, &mut self.mc, combo, &cands) {
             match a {
                 config_panel::Act::Ops(ops) => {
                     self.mc.notes.clear();

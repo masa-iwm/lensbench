@@ -1376,3 +1376,5 @@ r^{} の係数	r^{} coefficient
 選んだ行を消す（列の見出しを選んでいれば構成を消す）	Delete the selected row (or the configuration if a column header is selected)
 選んだ面を消す	Delete the selected surfaces
 ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1	Solves/pickups: […] at the right of a cell; dn, dispersion, birefringence: the material's […]; stop, ignore, insert, paste: right-click (Shift+F10). Keys: F1
+パラメータを面・玉・群から選んで行を挿入	Choose a parameter from surfaces / lenses / groups and insert the row
+玉・群	Lenses / groups
