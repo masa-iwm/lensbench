@@ -419,23 +419,36 @@ fn norm(s: &str) -> String {
         .collect()
 }
 
-/// 区切りで切り落とす側がメーカーの付け足しだけか（`ttn170465-e0w`・`edm`・`Newport`・`STP` など）。
-/// 小文字を含む 3 文字以上の区切りと `STP`・`STEP` は付け足し、それ以外（`B`・`PZ`・`MZ8`・`N` など）は
-/// 別の品番の一部とみなす。残す側と同じ品番の繰り返し（OptoSigma の `C16_AP_12.7_STP__C16-AP-12.7`）も付け足し
+/// 区切りで切り落とす側がメーカーの付け足しだけか（`ttn170465-e0w`・`TTN051068-E0W`・`22933-e0w`・`edm`・
+/// `Newport`・`STP` など）。付け足しとみなす区切りは、`STP`・`STEP`・`E0W`、5 桁以上の数字か `TTN`・`ETN`・`DTN`・
+/// `ITN` に数字が続く ID、小文字を含む 3 文字以上。それ以外（`B`・`PZ`・`MZ8`・`N` など）は別の品番の一部とみなす。
+/// 残す側と同じ品番の繰り返し（OptoSigma の `C16_AP_12.7_STP__C16-AP-12.7`、Thorlabs の `CP1M12_M_cp1m12_m-e0w`・
+/// `ELL12_ELL12-E0W`）も付け足し
 fn is_decoration(dropped: &str, kept: &str) -> bool {
-    let mut rest = String::new();
+    let is_id = |u: &str| {
+        let d = ["TTN", "ETN", "DTN", "ITN"]
+            .iter()
+            .find_map(|p| u.strip_prefix(p))
+            .filter(|d| !d.is_empty());
+        match d {
+            Some(d) => d.chars().all(|c| c.is_ascii_digit()),
+            None => u.len() >= 5 && u.chars().all(|c| c.is_ascii_digit()),
+        }
+    };
+    // tag: 決まった付け足しを除いた残り、rest: さらに小文字の区切りも除いた残り
+    let (mut tag, mut rest) = (String::new(), String::new());
     for t in dropped.split(['_', '-', ' ']) {
         let u = t.to_ascii_uppercase();
-        if t.is_empty()
-            || u == "STP"
-            || u == "STEP"
-            || (t.len() >= 3 && t.chars().any(|c| c.is_ascii_lowercase()))
-        {
+        if t.is_empty() || u == "STP" || u == "STEP" || u == "E0W" || is_id(&u) {
             continue;
         }
-        rest.push_str(t);
+        tag.push_str(t);
+        if !(t.len() >= 3 && t.chars().any(|c| c.is_ascii_lowercase())) {
+            rest.push_str(t);
+        }
     }
-    rest.is_empty() || norm(&rest) == norm(kept)
+    let k = norm(kept);
+    rest.is_empty() || norm(&rest) == k || norm(&tag) == k
 }
 
 /// 手元の STEP（.step・.stp・それを入れた .zip）のファイルを、カタログの品に当てる。ファイル名（拡張子を除く）の
@@ -855,7 +868,18 @@ mod tests {
     #[test]
     fn match_files_does_not_take_longer_part_numbers() {
         // 公開 #195: 正しいファイルが同じフォルダにあっても、長い別品番のファイルを当てていた
-        let items = ["CFS1", "KC1T", "PRM1", "PH-20-ARS", "MHX-25.4A", "CM1L03"];
+        let items = [
+            "CFS1",
+            "KC1T",
+            "PRM1",
+            "PH-20-ARS",
+            "MHX-25.4A",
+            "CM1L03",
+            "C4W-CC",
+            "B5C1",
+            "CP1M12/M",
+            "ELL12",
+        ];
         let files: Vec<PathBuf> = [
             "CFS1-B.step",
             "CFS1.step",
@@ -865,6 +889,10 @@ mod tests {
             "PH_20_ARS_N_STP__PH-20-ARS-N.stp",
             "MHX-25.4A-PDM.stp",
             "CM1L03_ttn170465-e0w.step",
+            "C4W-CC_22933-e0w.step",
+            "B5C1_TTN051068-E0W.step",
+            "CP1M12_M_cp1m12_m-e0w.step",
+            "ELL12_ELL12-E0W.step",
         ]
         .iter()
         .map(PathBuf::from)
@@ -877,8 +905,12 @@ mod tests {
         assert_eq!(
             g,
             [
+                ("B5C1", "B5C1_TTN051068-E0W.step"),
+                ("C4W-CC", "C4W-CC_22933-e0w.step"),
                 ("CFS1", "CFS1.step"),
                 ("CM1L03", "CM1L03_ttn170465-e0w.step"),
+                ("CP1M12/M", "CP1M12_M_cp1m12_m-e0w.step"),
+                ("ELL12", "ELL12_ELL12-E0W.step"),
                 ("KC1T", "KC1T-Step.step"),
             ]
         );
