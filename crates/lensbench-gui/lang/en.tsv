@@ -1495,3 +1495,5 @@ tif を float で	Float tif
 系を書くフォルダ	Output folder
 反転する玉	Elements to reverse
 膜の実測表	Measured coating tables
+周波数の上限	Max frequency
+周波数の分割数	Frequency steps

@@ -722,3 +722,25 @@ fn coat_design_fits_a_reflectance_curve_and_writes_a_stack() {
     std::fs::remove_dir_all(&dir).ok();
     assert!(txt.contains("COAT X\nL "), "{txt}");
 }
+
+/// 周波数を省いたときの上限と分割数（--max-freq・--freq-steps）。--freqs とは一緒に使えない
+#[test]
+fn mtf_max_freq_steps() {
+    let g = ["--glass-dir", "tests/glass", "--field", "1", "--json"];
+    for cmd in ["mtf", "geo-mtf"] {
+        let mut a = vec![cmd, ZMX, "--max-freq", "40", "--freq-steps", "4"];
+        a.extend(g);
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{cmd}: {err}");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let key = if cmd == "mtf" { "mtf" } else { "geometric_mtf" };
+        assert_eq!(
+            v[key][0]["freqs"],
+            serde_json::json!([0.0, 10.0, 20.0, 30.0, 40.0]),
+            "{cmd}"
+        );
+    }
+    let mut a = vec!["mtf", ZMX, "--freqs", "10", "--max-freq", "40"];
+    a.extend(g);
+    assert!(!run(&a).0);
+}

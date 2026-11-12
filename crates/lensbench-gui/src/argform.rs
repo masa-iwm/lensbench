@@ -208,6 +208,8 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "field") => "視野",
         (_, "wave") => "波長",
         (_, "freqs") => "周波数",
+        (_, "max_freq") => "周波数の上限",
+        (_, "freq_steps") => "周波数の分割数",
         (_, "rings") => "リング数",
         (_, "map") => "波面の格子も出す",
         (_, "kind") => "種類",
@@ -557,7 +559,9 @@ pub fn form(
                                 }
                             }
                             let r = if num {
-                                r.on_hover_text(tr("↑↓ で増減（整数は 1、実数は書いた最後の桁の 1）"))
+                                r.on_hover_text(tr(
+                                    "↑↓ で増減（整数は 1、実数は書いた最後の桁の 1）",
+                                ))
                             } else {
                                 r
                             };

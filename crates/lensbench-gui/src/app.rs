@@ -925,6 +925,11 @@ impl Core {
             args.remove("field");
             args.remove("wave");
         }
+        // 周波数を書いたら上限・分割数は使わない（CLI では一緒に使えない）
+        if args.contains_key("freqs") {
+            args.remove("max_freq");
+            args.remove("freq_steps");
+        }
         m.extend(argform::to_map(&specs, &args)?);
         if let Some(o) = crate::ext::get(&cfg.cmd).and_then(|a| a.object) {
             if !cfg.sensor.is_empty() {
