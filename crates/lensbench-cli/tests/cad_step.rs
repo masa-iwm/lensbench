@@ -495,7 +495,7 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         let f = std::fs::File::create(bundle.join("many.zip")).unwrap();
         let mut z = zip::ZipWriter::new(f);
         let o = zip::write::SimpleFileOptions::default();
-        for n in ["steps/CP-N_x.stp", "steps/nothing.stp", "readme.txt"] {
+        for n in ["steps/CP-N_vendor.stp", "steps/nothing.stp", "readme.txt"] {
             z.start_file(n, o).unwrap();
             std::io::Write::write_all(&mut z, &step).unwrap();
         }
