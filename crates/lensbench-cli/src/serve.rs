@@ -202,11 +202,13 @@ struct Served {
     last_set: Option<(Vec<String>, Instant)>,
 }
 
-/// 元に戻す 1 段: 系と、そのときの変更の記録
+/// 元に戻す 1 段: 系と読み方、そのときの変更の記録、この段から次の段への変更の短い記述（GUI の一覧の名前）
 #[derive(Clone)]
 struct Snap {
     sys: Arc<System>,
+    spec: LoadSpec,
     log: Vec<Change>,
+    what: Value,
 }
 
 /// 元に戻せる段の数
@@ -252,6 +254,72 @@ fn store(sys: System, spec: LoadSpec) {
     });
 }
 
+/// load・reload の段の扱い（`history`）
+#[derive(Clone, Copy, PartialEq)]
+enum LoadHistory {
+    /// 段を空にする（既定）
+    Clear,
+    /// 前の系を 1 段として積む（開く・読み直すを元に戻せる）
+    Push,
+    /// 段はそのまま（GUI の組合せの作り直しなど、段を別に持つとき）
+    Keep,
+}
+
+fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
+    Ok(match p.get("history").and_then(Value::as_str) {
+        None | Some("clear") => LoadHistory::Clear,
+        Some("push") => LoadHistory::Push,
+        Some("keep") => LoadHistory::Keep,
+        Some(x) => {
+            return Err(RpcErr::params(format!(
+                "history は clear・push・keep（{x}）"
+            )))
+        }
+    })
+}
+
+/// 読み込んだ系を置く。h が Push なら前の系を段に積み、Keep なら段はそのまま
+fn store_loaded(sys: System, spec: LoadSpec, h: LoadHistory, reload: bool) {
+    let mut g = served();
+    let Some(mut x) = g.take().filter(|_| h != LoadHistory::Clear) else {
+        drop(g);
+        store(sys, spec);
+        return;
+    };
+    if h == LoadHistory::Push {
+        let name = spec
+            .file
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let what = if reload {
+            json!({ "reload": name })
+        } else {
+            json!({ "open": name })
+        };
+        push_undo(&mut x, what);
+        x.redo.clear();
+    }
+    x.sys = Arc::new(sys);
+    x.spec = spec;
+    x.log = Vec::new();
+    x.last_set = None;
+    *g = Some(x);
+}
+
+/// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる）
+fn push_undo(x: &mut Served, what: Value) {
+    x.undo.push(Snap {
+        sys: x.sys.clone(),
+        spec: x.spec.clone(),
+        log: x.log.clone(),
+        what,
+    });
+    if x.undo.len() > UNDO_DEPTH {
+        x.undo.remove(0);
+    }
+}
+
 /// 変更した系を置き、変更を記録する。前の系は元に戻す段に積む（やり直す段は空にする）
 fn store_changed(sys: System, spec: LoadSpec, c: Change) {
     let mut g = served();
@@ -274,13 +342,8 @@ fn store_changed(sys: System, spec: LoadSpec, c: Change) {
     let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t)))
         if n == m && now.duration_since(*t).as_secs_f64() < SET_MERGE_S && !x.undo.is_empty());
     if !merge {
-        x.undo.push(Snap {
-            sys: x.sys.clone(),
-            log: x.log.clone(),
-        });
-        if x.undo.len() > UNDO_DEPTH {
-            x.undo.remove(0);
-        }
+        let what = change_label(Some(&c));
+        push_undo(&mut x, what);
     }
     x.redo.clear();
     x.last_set = names.map(|n| (n, now));
@@ -308,15 +371,22 @@ fn step_history(back: bool) -> Result<Value, RpcErr> {
             "やり直す変更がない"
         }));
     };
+    let file0 = x.spec.file.clone();
     to.push(Snap {
         sys: std::mem::replace(&mut x.sys, snap.sys),
+        spec: std::mem::replace(&mut x.spec, snap.spec),
         log: std::mem::replace(&mut x.log, snap.log),
+        what: snap.what,
     });
     x.last_set = None;
     let hash = lensbench_project::sysfile::system_hash(&x.sys).map_err(RpcErr::app)?;
     let mut v = history_json(x);
     v["surfaces"] = json!(x.sys.surfaces.len());
     v["system_hash"] = json!(hash);
+    // 開く・読み直すを戻したら、戻した系の概要（ファイルが変わる）
+    if x.spec.file != file0 || snap_was_load(&v, back) {
+        v["loaded"] = summary(&x.sys, &x.spec);
+    }
     Ok(v)
 }
 
@@ -351,31 +421,24 @@ fn change_label(c: Option<&Change>) -> Value {
 
 /// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）
 fn history_json(x: &Served) -> Value {
-    let n = x.undo.len();
-    let undo_list: Vec<Value> = (0..n)
-        .rev()
-        .map(|i| {
-            let next = if i + 1 < n {
-                &x.undo[i + 1].log
-            } else {
-                &x.log
-            };
-            change_label(next.get(x.undo[i].log.len()))
-        })
-        .collect();
-    let m = x.redo.len();
-    let redo_list: Vec<Value> = (0..m)
-        .rev()
-        .map(|i| {
-            let prev = if i + 1 < m {
-                &x.redo[i + 1].log
-            } else {
-                &x.log
-            };
-            change_label(x.redo[i].log.get(prev.len()))
-        })
-        .collect();
-    json!({ "undo": n, "redo": m, "undo_list": undo_list, "redo_list": redo_list })
+    let list = |v: &[Snap]| v.iter().rev().map(|s| s.what.clone()).collect::<Vec<_>>();
+    json!({
+        "undo": x.undo.len(),
+        "redo": x.redo.len(),
+        "undo_list": list(&x.undo),
+        "redo_list": list(&x.redo),
+    })
+}
+
+/// 今戻した・やり直した段が開く・読み直すだったか（系の概要を返して GUI の表を読み直させる）
+fn snap_was_load(v: &Value, back: bool) -> bool {
+    // 戻したら、その段はやり直す段の先頭に、やり直したら元に戻す段の先頭にある
+    let top = if back {
+        &v["redo_list"][0]
+    } else {
+        &v["undo_list"][0]
+    };
+    top.get("open").is_some() || top.get("reload").is_some()
 }
 
 /// 元に戻せる段・やり直せる段（`history_json`）
@@ -386,14 +449,31 @@ fn history() -> Value {
     )
 }
 
+/// 結果に段の数と一覧を足す
+fn add_history(v: &mut Value) {
+    if let (Some(o), Value::Object(h)) = (v.as_object_mut(), history()) {
+        o.extend(h);
+    }
+}
+
 /// steps 段まとめて戻す・やり直す（途中で尽きたらそこまで）
 fn step_history_n(back: bool, p: &Value) -> Result<Value, RpcErr> {
     let n = opt_usize(p, "steps")?.unwrap_or(1).max(1);
     let mut v = step_history(back)?;
+    let mut loaded = v.get("loaded").is_some();
     for _ in 1..n {
         match step_history(back) {
-            Ok(w) => v = w,
+            Ok(w) => {
+                loaded |= w.get("loaded").is_some();
+                v = w;
+            }
             Err(_) => break,
+        }
+    }
+    // 途中で開く・読み直すを越えたら、最後の系の概要
+    if loaded && v.get("loaded").is_none() {
+        if let Ok((s, spec)) = current() {
+            v["loaded"] = summary(&s, &spec);
         }
     }
     Ok(v)
@@ -1142,18 +1222,22 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         // 配列をそのまま返す（往復の時間を測る）
         "echo" => Ok((json!({ "params": p }), bins)),
         "load" => {
+            let h = load_history(p)?;
             let spec = load_spec(p)?;
             let s = load_file(&spec.common())?;
-            let v = summary(&s, &spec);
-            store(s, spec);
+            let mut v = summary(&s, &spec);
+            store_loaded(s, spec, h, false);
+            add_history(&mut v);
             Ok((v, Vec::new()))
         }
         // 同じ読み方でファイルを読み直す（set で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に使う
         "reload" => {
+            let h = load_history(p)?;
             let (_, spec) = current()?;
             let s = load_file(&spec.common())?;
-            let v = summary(&s, &spec);
-            store(s, spec);
+            let mut v = summary(&s, &spec);
+            store_loaded(s, spec, h, true);
+            add_history(&mut v);
             Ok((v, Vec::new()))
         }
         "system" => {
@@ -1161,7 +1245,7 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             Ok((summary(&s, &spec), Vec::new()))
         }
         // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
-        // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる）
+        // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる。history: "push" で読めば読む前の系も 1 段）
         "undo" => Ok((step_history_n(true, p)?, Vec::new())),
         "redo" => Ok((step_history_n(false, p)?, Vec::new())),
         "history" => Ok((history(), Vec::new())),

@@ -297,6 +297,37 @@ fn undo_redo_history() {
     sv.call("reload", json!({}));
     let h = sv.call("history", json!({}));
     assert_eq!((h["undo"].as_u64(), h["redo"].as_u64()), (Some(0), Some(0)));
+
+    // history: "push" の開く・読み直すは 1 段（戻すと前の系・変えた値・前の段に戻る）、"keep" は段を変えない
+    sv.call("set", json!({ "values": { "3.t": t3 + 1.0 } }));
+    let r = sv.call(
+        "load",
+        json!({ "file": "tests/refs/A1/system.zmx", "glass_dir": ["tests/glass"], "history": "push" }),
+    );
+    assert_eq!(r["undo"].as_u64(), Some(2));
+    assert_eq!(r["undo_list"][0], json!({ "open": "system.zmx" }));
+    let r = sv.call("undo", json!({}));
+    assert!(r["loaded"]["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("A0/system.zmx"));
+    assert_eq!(get(&mut sv, "3.t"), t3 + 1.0);
+    let r = sv.call("redo", json!({}));
+    assert!(r["loaded"]["file"].as_str().unwrap().contains("A1"));
+    sv.call("undo", json!({}));
+    let r = sv.call("reload", json!({ "history": "push" }));
+    assert_eq!(r["undo_list"][0], json!({ "reload": "system.zmx" }));
+    assert_eq!(get(&mut sv, "3.t"), t3);
+    sv.call("undo", json!({}));
+    assert_eq!(get(&mut sv, "3.t"), t3 + 1.0);
+    let r = sv.call(
+        "load",
+        json!({ "file": ZMX, "glass_dir": ["tests/glass"], "history": "keep" }),
+    );
+    assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(1), Some(1)));
+    assert!(sv
+        .error("load", json!({ "file": ZMX, "history": "x" }))
+        .contains("history"));
     sv.stop();
 }
 
