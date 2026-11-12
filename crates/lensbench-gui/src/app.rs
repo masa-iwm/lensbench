@@ -605,6 +605,8 @@ impl Core {
                     return;
                 }
                 self.browser.combo = c;
+                // 別の組合せ: 元に戻す段は空から
+                self.combo_hist = Default::default();
                 self.combo_view = combo::View::default();
                 self.doc_path = Some(p.to_path_buf());
                 self.build_combo(self.browser.combo.project());
@@ -656,6 +658,8 @@ impl Core {
             return;
         }
         self.browser.combo = Combo::default();
+        // 別の組合せ: 元に戻す段は空から
+        self.combo_hist = Default::default();
         self.combo_view = combo::View::default();
         self.file = None;
         self.summary = None;
@@ -1228,14 +1232,17 @@ impl Core {
                 }
                 return;
             }
+            Tag::HistoryDepth => {
+                if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
+                    self.hist = (u as usize, r as usize);
+                }
+                return;
+            }
             Tag::Set | Tag::Edit | Tag::History => {
                 if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
                     self.hist = (u as usize, r as usize);
                 }
                 if d.tag == Tag::History {
-                    if v.get("surfaces").is_none() {
-                        return;
-                    }
                     text = tr(if params["back"].as_bool() == Some(true) {
                         "元に戻した"
                     } else {
@@ -1399,7 +1406,7 @@ impl Core {
                 self.opt.error = None;
                 self.opt.undo = None;
                 // 結果を系に当てたら元に戻す段が増える
-                self.worker.send(Tag::History, "history", json!({}));
+                self.worker.send(Tag::HistoryDepth, "history", json!({}));
                 text = trf(
                     "最適化 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],

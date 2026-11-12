@@ -67,8 +67,10 @@ pub enum Tag {
     Tolerance,
     /// ズーム軌跡（serve の zoom）
     Zoom,
-    /// 元に戻す・やり直す（serve の undo・redo・history）
+    /// 元に戻す・やり直す（serve の undo・redo）
     History,
+    /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
+    HistoryDepth,
 }
 
 impl Tag {
