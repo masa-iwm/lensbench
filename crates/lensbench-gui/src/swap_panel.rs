@@ -15,6 +15,7 @@ use crate::combo::{Combo, ElemKind};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::optim_panel::{section, small_edit, term_rows, terms_json, terms_ui, text_of, TermRow};
+use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 /// 差し替える所の行
@@ -62,6 +63,8 @@ pub struct Cands {
     pub combo: bool,
     /// プロジェクトの状態の名前（複数の状態で同時に評価するときに選ぶ）
     pub states: Vec<String>,
+    /// 名前の欄の補完の候補（開いた系の玉・群）
+    pub sys: crate::param_pick::Sys,
 }
 
 pub struct SwapPanel {
@@ -632,6 +635,7 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
 }
 
 fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
+    let set = Set::Swap { gaps: &c.gaps };
     let mut del = None;
     egui::Grid::new("swap_vars")
         .striped(true)
@@ -648,7 +652,11 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
                     .find(|g| format!("{}.t", g.0) == v.name)
                     .map(|g| g.1.clone())
                     .unwrap_or_default();
-                small_edit(ui, &mut v.name, 80.0, "d1.t").on_hover_text(d);
+                ui.horizontal(|ui| {
+                    pp::edit_pick(ui, &mut v.name, 80.0, "d1.t", &c.sys, set)
+                        .0
+                        .on_hover_text(d);
+                });
                 small_edit(ui, &mut v.lo, 50.0, "−∞");
                 small_edit(ui, &mut v.hi, 50.0, "∞");
                 if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
@@ -661,8 +669,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
         p.vars.remove(i);
     }
     ui.horizontal(|ui| {
-        let r = small_edit(ui, &mut p.new_var, 90.0, tr("d1.t・G2.shift"));
-        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t・G2.shift"), &c.sys, set);
         if (ui.button(tr("足す")).clicked() || enter) && !p.new_var.trim().is_empty() {
             p.vars.push(VarRow {
                 name: p.new_var.trim().into(),

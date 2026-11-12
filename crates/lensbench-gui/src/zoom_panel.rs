@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::optim_panel::{section, small_edit};
+use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 /// 状態の行（名前で覚える。選べる状態に無い行は出さない）
@@ -142,8 +143,8 @@ impl ZoomPanel {
     }
 }
 
-/// パネルを描く。走らせるなら params を返す。units は群の名前（移動の候補）
-pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], units: &[String]) -> Option<Value> {
+/// パネルを描く。走らせるなら params を返す。sys は名前の欄の補完の候補（群の名前は移動の候補にも）
+pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Option<Value> {
     let mut run = None;
     let weak = theme::weak_text(ui.visuals());
     egui::ScrollArea::vertical()
@@ -178,7 +179,7 @@ pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], units: &[String]) -> O
                 states_ui(ui, p, cands, weak)
             });
             section(ui, "zoom_vars_sec", tr("解くパラメータ"), |ui| {
-                vars_ui(ui, p, units, weak)
+                vars_ui(ui, p, sys, weak)
             });
             section(ui, "zoom_run_sec", tr("設定"), |ui| run_ui(ui, p, weak));
         });
@@ -228,14 +229,24 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
     );
 }
 
-fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, units: &[String], weak: egui::Color32) {
+fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
+    let units = &sys.units;
     let mut del = None;
     egui::Grid::new("zoom_vars")
         .striped(true)
         .num_columns(4)
         .show(ui, |ui| {
             for (i, v) in p.vars.iter_mut().enumerate() {
-                small_edit(ui, &mut v.name, 90.0, "G2.shift");
+                ui.horizontal(|ui| {
+                    pp::edit_pick(
+                        ui,
+                        &mut v.name,
+                        90.0,
+                        "G2.shift",
+                        sys,
+                        Set::Var { combo: false },
+                    );
+                });
                 small_edit(ui, &mut v.lo, 60.0, tr("下限"));
                 small_edit(ui, &mut v.hi, 60.0, tr("上限"));
                 if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {

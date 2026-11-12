@@ -122,8 +122,6 @@ pub struct State {
     kbd_fresh: bool,
     /// 今のセルの左下（Shift+F10 の欄の位置）
     cur_pos: Option<egui::Pos2>,
-    /// 名前の欄の補完の候補で選んでいる番号
-    comp_pick: usize,
     /// 取り込みで表にできなかった違い
     pub notes: Vec<String>,
 }
@@ -173,159 +171,8 @@ fn set_cell(row: &(String, Vec<f64>), k: usize, v: f64) -> Value {
 /// 書き換えの確定: (行, 構成, 文字, 確定後に移る向き)
 type Commit = (usize, usize, String, Option<(i32, i32)>);
 
-/// パラメータの名前の説明（3.t → 面 3 の厚さ、G1.shift → G1 の移動）
-pub fn param_desc(name: &str) -> String {
-    let Some((who, k)) = name.trim().rsplit_once('.') else {
-        return match name.trim() {
-            "objx" | "objy" => tr("物体の位置").into(),
-            n if n.starts_with("wave") => tr("波長").into(),
-            _ => String::new(),
-        };
-    };
-    let what = match k.to_ascii_lowercase().as_str() {
-        "c" => tr("曲率").to_string(),
-        "r" => tr("曲率半径").into(),
-        "k" => tr("コーニック").into(),
-        "t" => tr("厚さ").into(),
-        "dx" => tr("偏心 X").into(),
-        "dy" => tr("偏心 Y").into(),
-        "tx" => tr("傾き X").into(),
-        "ty" => tr("傾き Y").into(),
-        "tz" => tr("傾き Z").into(),
-        "dn" => tr("屈折率のずれ").into(),
-        "disp" => tr("分散の変化").into(),
-        "shift" => tr("移動").into(),
-        a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => trf("r^{} の係数", &[&&a[1..]]),
-        z if z.starts_with('z') && z[1..].parse::<u16>().is_ok() => trf("Zernike {}", &[&&z[1..]]),
-        _ => return String::new(),
-    };
-    if who.trim().parse::<usize>().is_ok() {
-        trf("面 {} の{}", &[&who.trim(), &what])
-    } else {
-        trf("{} の{}", &[&who.trim(), &what])
-    }
-}
-
-/// 名前の候補を作るための系の面・玉・群
-#[derive(Debug, Clone, Default)]
-pub struct Cands {
-    /// 面ごとの (面タイプ, コメント)
-    pub surfs: Vec<(String, String)>,
-    /// 玉・群の名前
-    pub units: Vec<String>,
-}
-
-/// 面タイプで使えるパラメータの種類
-fn surf_kinds(typ: &str) -> Vec<String> {
-    let mut v: Vec<String> = ["r", "t", "k", "dn", "disp"]
-        .iter()
-        .map(|x| x.to_string())
-        .collect();
-    match typ {
-        "EVENASPH" | "ODDASPHE" => v.extend((1..=8).map(|i| format!("a{}", 2 * i))),
-        "COORDBRK" => {
-            v = ["t", "dx", "dy", "tx", "ty", "tz"]
-                .iter()
-                .map(|x| x.to_string())
-                .collect();
-        }
-        "SZERNSAG" | "FZERNSAG" => v.extend((1..=37).map(|i| format!("z{i}"))),
-        _ => {}
-    }
-    v
-}
-
-/// 玉・群のパラメータの種類
-const UNIT_KINDS: [&str; 8] = ["shift", "dx", "dy", "tx", "ty", "tz", "dn", "disp"];
-
-/// 表の行にできるパラメータの名前（全部）
-fn all_params(c: &Cands) -> Vec<String> {
-    let mut v = Vec::new();
-    for (j, (typ, _)) in c.surfs.iter().enumerate() {
-        for k in surf_kinds(typ) {
-            v.push(format!("{j}.{k}"));
-        }
-    }
-    for u in &c.units {
-        for k in UNIT_KINDS {
-            v.push(format!("{u}.{k}"));
-        }
-    }
-    v.push("objx".into());
-    v.push("objy".into());
-    v
-}
-
-/// 打った文字に合う名前（前方一致を先に、次に名前・説明の部分一致）。多すぎるときは先頭だけ
-fn complete(c: &Cands, text: &str) -> Vec<String> {
-    let q = text.trim().to_lowercase();
-    if q.is_empty() {
-        return Vec::new();
-    }
-    let (mut head, mut rest) = (Vec::new(), Vec::new());
-    for n in all_params(c) {
-        let l = n.to_lowercase();
-        if l.starts_with(&q) {
-            head.push(n);
-        } else if l.contains(&q) || param_desc(&n).to_lowercase().contains(&q) {
-            rest.push(n);
-        }
-    }
-    head.extend(rest);
-    head.truncate(200);
-    head
-}
-
-/// 名前を階層で選ぶ欄（面 → 種類、玉・群 → 種類、物体の位置）。選んだ名前を返す
-fn param_menu(ui: &mut Ui, c: &Cands) -> Option<String> {
-    let mut out = None;
-    ui.menu_button(tr("面"), |ui| {
-        egui::ScrollArea::vertical()
-            .max_height(400.0)
-            .show(ui, |ui| {
-                for (j, (typ, comment)) in c.surfs.iter().enumerate() {
-                    let label = if comment.is_empty() {
-                        format!("{j}  {typ}")
-                    } else {
-                        format!("{j}  {typ}  {comment}")
-                    };
-                    ui.menu_button(label, |ui| {
-                        for k in surf_kinds(typ) {
-                            let n = format!("{j}.{k}");
-                            if ui.button(format!("{k}  {}", param_desc(&n))).clicked() {
-                                out = Some(n);
-                                ui.close_menu();
-                            }
-                        }
-                    });
-                }
-            });
-    });
-    ui.add_enabled_ui(!c.units.is_empty(), |ui| {
-        ui.menu_button(tr("玉・群"), |ui| {
-            for u in &c.units {
-                ui.menu_button(u, |ui| {
-                    for k in UNIT_KINDS {
-                        let n = format!("{u}.{k}");
-                        if ui.button(format!("{k}  {}", param_desc(&n))).clicked() {
-                            out = Some(n);
-                            ui.close_menu();
-                        }
-                    }
-                });
-            }
-        });
-    });
-    ui.menu_button(tr("物体の位置"), |ui| {
-        for n in ["objx", "objy"] {
-            if ui.button(n).clicked() {
-                out = Some(n.to_string());
-                ui.close_menu();
-            }
-        }
-    });
-    out
-}
+pub use crate::param_pick::param_desc;
+use crate::param_pick::{self as pp, Set};
 
 /// 構成を位置 at（1 始まり、新しい構成の番号）に挿入する操作。値は構成 from（1 始まり）、pickup なら from のピックアップ
 fn insert_op(at: usize, from: usize, pickup: bool) -> Value {
@@ -522,7 +369,7 @@ fn cell_menu(
     }
 }
 
-pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &Cands) -> Vec<Act> {
+pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let accent = ui.visuals().selection.stroke.color;
@@ -570,83 +417,23 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &Cands) -> Vec<Act> {
     let mut bar_ops: Vec<Value> = Vec::new();
     let mut bar_remove: Option<usize> = None;
     ui.horizontal_wrapped(|ui| {
-        let resp = ui.add(
-            egui::TextEdit::singleline(&mut st.new_param)
-                .hint_text("3.t・2.c・STOP.k・G1.shift")
-                .desired_width(150.0),
+        let (resp, mut enter) = pp::edit(
+            ui,
+            &mut st.new_param,
+            150.0,
+            "3.t・2.c・STOP.k・G1.shift",
+            cands,
+            Set::Config,
         );
         if std::mem::take(&mut st.focus_name) {
             resp.request_focus();
         }
-        // 補完: 打った文字に合う名前の一覧（↑ ↓ で選び Enter で足す、Tab で欄に入れる、クリックでも）
-        let mut picked: Option<String> = None;
-        let mut enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
-        if resp.has_focus() || enter {
-            let m = complete(cands, &st.new_param);
-            let exact = m.iter().any(|x| x.eq_ignore_ascii_case(st.new_param.trim()));
-            if resp.changed() {
-                st.comp_pick = 0;
-            }
-            if st.comp_pick >= m.len() {
-                st.comp_pick = 0;
-            }
-            let (up, down, tab) = ui.input(|x| {
-                (
-                    x.key_pressed(Key::ArrowUp),
-                    x.key_pressed(Key::ArrowDown),
-                    x.key_pressed(Key::Tab),
-                )
-            });
-            if up && st.comp_pick > 0 {
-                st.comp_pick -= 1;
-            }
-            if down && st.comp_pick + 1 < m.len() {
-                st.comp_pick += 1;
-            }
-            if !m.is_empty() && !(exact && m.len() == 1) {
-                let area = egui::Area::new(resp.id.with("comp"))
-                    .order(egui::Order::Foreground)
-                    .fixed_pos(resp.rect.left_bottom())
-                    .show(ui.ctx(), |ui| {
-                        egui::Frame::popup(ui.style()).show(ui, |ui| {
-                            ui.set_min_width(240.0);
-                            egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
-                                for (k, n) in m.iter().enumerate() {
-                                    let r = ui.selectable_label(
-                                        k == st.comp_pick,
-                                        format!("{n}  {}", param_desc(n)),
-                                    );
-                                    if k == st.comp_pick && (up || down) {
-                                        r.scroll_to_me(None);
-                                    }
-                                    if r.clicked() {
-                                        picked = Some(n.clone());
-                                    }
-                                }
-                            });
-                        });
-                    });
-                let _ = area;
-                if tab {
-                    if let Some(n) = m.get(st.comp_pick) {
-                        st.new_param = n.clone();
-                        st.focus_name = true;
-                    }
-                }
-                if enter && !exact {
-                    if let Some(n) = m.get(st.comp_pick) {
-                        st.new_param = n.clone();
-                    }
-                }
-            }
-        }
-        let pm = ui.menu_button("…", |ui| param_menu(ui, cands));
-        pm.response
-            .on_hover_text(tr("パラメータを面・玉・群から選んで行を挿入"));
-        if let Some(Some(n)) = pm.inner {
-            picked = Some(n);
-        }
-        if let Some(n) = picked {
+        if let Some(n) = pp::menu_button(
+            ui,
+            cands,
+            Set::Config,
+            tr("パラメータを面・玉・群から選んで行を挿入"),
+        ) {
             st.new_param = n;
             enter = true;
         }
@@ -1193,23 +980,6 @@ mod tests {
             vec![json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 5.0, 6.0] })]
         );
         assert!(paste_ops(&t, 0, 0, "1\tx").is_err());
-        let c = Cands {
-            surfs: vec![
-                ("STANDARD".into(), String::new()),
-                ("EVENASPH".into(), "L1".into()),
-                ("COORDBRK".into(), String::new()),
-            ],
-            units: vec!["G1".into()],
-        };
-        let all = all_params(&c);
-        assert!(all.contains(&"1.a4".to_string()) && all.contains(&"2.tx".to_string()));
-        assert!(!all.contains(&"2.r".to_string()));
-        assert_eq!(complete(&c, "g1.s"), vec!["G1.shift".to_string()]);
-        assert_eq!(
-            complete(&c, "2.t")[..2],
-            ["2.t".to_string(), "2.tx".to_string()]
-        );
-        assert!(complete(&c, "").is_empty());
         assert_eq!(param_desc("3.t"), "面 3 の厚さ");
         assert_eq!(param_desc("G1.shift"), "G1 の移動");
     }
