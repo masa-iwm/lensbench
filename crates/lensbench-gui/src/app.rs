@@ -219,11 +219,11 @@ struct AnaRes {
     error: Option<String>,
 }
 
-/// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）
+/// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前
 #[derive(Default)]
 struct ComboHist {
-    undo: Vec<Combo>,
-    redo: Vec<Combo>,
+    undo: Vec<(Combo, String)>,
+    redo: Vec<(Combo, String)>,
     /// 最後に段に積んだ（落ち着いた）組合せ
     last: Option<Combo>,
     /// 前の画面の組合せと、最後に変わった時刻（入力・ドラッグの途中は積まない）
@@ -233,6 +233,101 @@ struct ComboHist {
 
 /// 元に戻せる段の数
 const UNDO_DEPTH: usize = 100;
+
+/// serve の段の変更の名前（set はパラメータの説明、edit は操作）
+fn hist_label(v: &Value) -> String {
+    if let Some(names) = v["set"].as_array() {
+        let d: Vec<String> = names
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|n| {
+                let d = crate::param_pick::param_desc(n);
+                if d.is_empty() {
+                    n.to_string()
+                } else {
+                    d
+                }
+            })
+            .collect();
+        return match d.len() {
+            0 => tr("値の変更").into(),
+            1..=2 => d.join("、"),
+            n => trf("{} ほか {} 個", &[&d[0], &(n - 1)]),
+        };
+    }
+    let ops = v["edit"].as_array().cloned().unwrap_or_default();
+    let one = |o: &Value| -> String {
+        let s = o["surface"].as_u64().map(|x| x.to_string());
+        let op = o["op"].as_str().unwrap_or_default();
+        let what = match op {
+            "insert_surface" => tr("面を挿入"),
+            "delete_surface" => tr("面を削除"),
+            "set_surface" | "set_surface_data" => tr("面の値"),
+            "set_surface_type" => tr("面の種類"),
+            "set_material" => tr("硝材"),
+            "set_stop" => tr("絞り"),
+            "add_pickup" | "remove_pickup" => tr("ピックアップ"),
+            "add_solve" | "remove_solve" => tr("ソルブ"),
+            "set_system_data" => tr("系の設定"),
+            "set_param" => tr("値の変更"),
+            "define_unit" | "set_unit" | "remove_unit" => tr("玉・群"),
+            "add_mech" | "set_mech" | "remove_mech" => tr("機構部品"),
+            "set_config" => tr("構成の切り替え"),
+            o if o.contains("config") => tr("多重構成"),
+            _ => tr("編集"),
+        };
+        // 面の値の 1 項目なら、その項目の名前（面 8 の厚さ など）
+        if let (Some(s), Some([f])) = (&s, o["fields"].as_array().map(Vec::as_slice)) {
+            let short = match f.as_str().unwrap_or_default() {
+                "thickness" | "t" => "t",
+                "radius" | "r" => "r",
+                "curv" | "c" => "c",
+                "conic" | "k" => "k",
+                _ => "",
+            };
+            if !short.is_empty() {
+                return crate::param_pick::param_desc(&format!("{s}.{short}"));
+            }
+        }
+        match s {
+            Some(s) => trf("{}（面 {}）", &[&what, &s]),
+            None => what.to_string(),
+        }
+    };
+    match ops.len() {
+        0 => tr("編集").into(),
+        1 => one(&ops[0]),
+        n => trf("{} ほか {} 件", &[&one(&ops[0]), &(n - 1)]),
+    }
+}
+
+/// 組合せの変更の名前（要素の追加・削除・どの要素か・系の設定）
+fn combo_change(a: &Combo, b: &Combo) -> String {
+    use std::cmp::Ordering;
+    match b.picks.len().cmp(&a.picks.len()) {
+        Ordering::Greater => {
+            let k = (0..a.picks.len())
+                .find(|&k| a.picks[k] != b.picks[k])
+                .unwrap_or(a.picks.len());
+            return trf("要素を足す（{}）", &[&b.picks[k].label()]);
+        }
+        Ordering::Less => {
+            let k = (0..b.picks.len())
+                .find(|&k| a.picks[k] != b.picks[k])
+                .unwrap_or(b.picks.len());
+            return trf("要素を消す（{}）", &[&a.picks[k].label()]);
+        }
+        Ordering::Equal => {}
+    }
+    let diff: Vec<usize> = (0..a.picks.len())
+        .filter(|&k| a.picks[k] != b.picks[k])
+        .collect();
+    match diff.as_slice() {
+        [] => tr("組合せの設定").into(),
+        [k] => trf("要素 {} を変える（{}）", &[&(k + 1), &b.picks[*k].label()]),
+        _ => trf("{} 個の要素を変える", &[&diff.len()]),
+    }
+}
 
 impl ComboHist {
     /// 画面ごとに呼ぶ。組合せが変わって落ち着いたら（ポインタを離し、入力欄を離れるか 0.8 秒たったら）前を積む
@@ -260,7 +355,8 @@ impl ComboHist {
     fn commit(&mut self, cur: &Combo) {
         if let Some(last) = self.last.replace(cur.clone()) {
             if &last != cur {
-                self.undo.push(last);
+                let what = combo_change(&last, cur);
+                self.undo.push((last, what));
                 if self.undo.len() > UNDO_DEPTH {
                     self.undo.remove(0);
                 }
@@ -277,16 +373,32 @@ impl ComboHist {
         }
     }
 
-    /// 1 段戻す（back）・やり直す。戻した後の組合せ
-    fn step(&mut self, cur: &Combo, back: bool) -> Option<Combo> {
+    /// 段の名前（元に戻す段は新しい順、やり直す段は次の順）
+    fn list(&self, back: bool) -> Vec<String> {
+        let v = if back { &self.undo } else { &self.redo };
+        v.iter().rev().map(|x| x.1.clone()).collect()
+    }
+
+    /// n 段戻す（back）・やり直す。戻した後の組合せ
+    fn step(&mut self, cur: &Combo, back: bool, n: usize) -> Option<Combo> {
         self.commit(cur);
-        let (from, to) = if back {
-            (&mut self.undo, &mut self.redo)
-        } else {
-            (&mut self.redo, &mut self.undo)
-        };
-        let c = from.pop()?;
-        to.push(cur.clone());
+        let mut c = cur.clone();
+        let mut moved = false;
+        for _ in 0..n.max(1) {
+            let (from, to) = if back {
+                (&mut self.undo, &mut self.redo)
+            } else {
+                (&mut self.redo, &mut self.undo)
+            };
+            let Some((x, what)) = from.pop() else {
+                break;
+            };
+            to.push((std::mem::replace(&mut c, x), what));
+            moved = true;
+        }
+        if !moved {
+            return None;
+        }
         self.last = Some(c.clone());
         self.seen = Some(c.clone());
         Some(c)
@@ -297,8 +409,8 @@ impl ComboHist {
 #[derive(Clone)]
 enum Cmd {
     New,
-    /// 元に戻す（true）・やり直す
-    Undo(bool),
+    /// 元に戻す（true）・やり直す、段の数
+    Undo(bool, usize),
     Open,
     Recent(String),
     Reload,
@@ -384,6 +496,8 @@ struct Core {
     combo_edit: Option<web_time::Instant>,
     /// 開いた系の元に戻せる段・やり直せる段の数（serve の set・edit・undo・redo の結果）
     hist: (usize, usize),
+    /// その段の変更（serve の undo_list・redo_list）
+    hist_list: (Vec<Value>, Vec<Value>),
     /// 組合せの元に戻す・やり直す
     combo_hist: ComboHist,
     /// 面の表: 状態、面の値、玉・群、木
@@ -1143,6 +1257,7 @@ impl Core {
                 // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
                 self.ld_dirty = false;
                 self.hist = (0, 0);
+                self.hist_list = Default::default();
                 if new_file != self.file {
                     self.ld.reset();
                 }
@@ -1233,15 +1348,11 @@ impl Core {
                 return;
             }
             Tag::HistoryDepth => {
-                if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
-                    self.hist = (u as usize, r as usize);
-                }
+                self.take_history(&v);
                 return;
             }
             Tag::Set | Tag::Edit | Tag::History => {
-                if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
-                    self.hist = (u as usize, r as usize);
-                }
+                self.take_history(&v);
                 if d.tag == Tag::History {
                     text = tr(if params["back"].as_bool() == Some(true) {
                         "元に戻した"
@@ -1582,10 +1693,32 @@ impl Core {
         }
     }
 
-    /// 元に戻す（back）・やり直す（Ctrl+Z・Ctrl+Y）
-    fn undo(&mut self, back: bool) {
+    /// serve の結果の段の数と一覧を覚える
+    fn take_history(&mut self, v: &Value) {
+        if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
+            self.hist = (u as usize, r as usize);
+            let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
+            self.hist_list = (list("undo_list"), list("redo_list"));
+        }
+    }
+
+    /// 元に戻す・やり直す段の名前（元に戻す段は新しい順、やり直す段は次の順）
+    fn undo_list(&self, back: bool) -> Vec<String> {
         if self.is_combo() {
-            match self.combo_hist.step(&self.browser.combo, back) {
+            return self.combo_hist.list(back);
+        }
+        let l = if back {
+            &self.hist_list.0
+        } else {
+            &self.hist_list.1
+        };
+        l.iter().map(hist_label).collect()
+    }
+
+    /// n 段元に戻す（back）・やり直す（Ctrl+Z・Ctrl+Y、編集メニューの一覧）
+    fn undo(&mut self, back: bool, n: usize) {
+        if self.is_combo() {
+            match self.combo_hist.step(&self.browser.combo, back, n) {
                 Some(c) => {
                     self.browser.combo = c;
                     if !self.s.auto_build {
@@ -1618,7 +1751,8 @@ impl Core {
         if self.summary.is_some() {
             self.flush_set();
             let m = if back { "undo" } else { "redo" };
-            self.worker.send(Tag::History, m, json!({ "back": back }));
+            self.worker
+                .send(Tag::History, m, json!({ "back": back, "steps": n }));
         }
     }
 
@@ -4131,6 +4265,7 @@ impl App {
                 rerun: None,
                 combo_edit: None,
                 hist: (0, 0),
+                hist_list: Default::default(),
                 combo_hist: Default::default(),
                 ld: Default::default(),
                 ld_rows: Vec::new(),
@@ -4541,7 +4676,7 @@ impl App {
     fn exec(&mut self, ctx: &egui::Context, cmd: Cmd) {
         match cmd {
             Cmd::New => self.c.new_system(),
-            Cmd::Undo(back) => self.c.undo(back),
+            Cmd::Undo(back, n) => self.c.undo(back, n),
             Cmd::Open => self.c.pick_and_open(),
             Cmd::Recent(f) => self.c.open_doc(Path::new(&f)),
             Cmd::Reload => self.c.reload(),
@@ -4613,12 +4748,12 @@ impl App {
         push(
             tr("元に戻す（Ctrl+Z）").into(),
             "undo ctrl+z",
-            Cmd::Undo(true),
+            Cmd::Undo(true, 1),
         );
         push(
             tr("やり直す（Ctrl+Y）").into(),
             "redo ctrl+y ctrl+shift+z",
-            Cmd::Undo(false),
+            Cmd::Undo(false, 1),
         );
         push(tr("系を読み直す").into(), "reload", Cmd::Reload);
         push(
@@ -4897,14 +5032,30 @@ impl App {
                         .clicked()
                     {
                         ui.close_menu();
-                        cmd = Some(Cmd::Undo(true));
+                        cmd = Some(Cmd::Undo(true, 1));
                     }
                     if ui
                         .add_enabled(r, egui::Button::new(tr("やり直す（Ctrl+Y）")))
                         .clicked()
                     {
                         ui.close_menu();
-                        cmd = Some(Cmd::Undo(false));
+                        cmd = Some(Cmd::Undo(false, 1));
+                    }
+                    // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
+                    for (back, title) in [(true, tr("ここまで元に戻す")), (false, tr("ここまでやり直す"))] {
+                        let list = self.c.undo_list(back);
+                        ui.add_enabled_ui(!list.is_empty(), |ui| {
+                            ui.menu_button(title, |ui| {
+                                egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                                    for (i, l) in list.iter().enumerate() {
+                                        if ui.button(format!("{}. {l}", i + 1)).clicked() {
+                                            ui.close_menu();
+                                            cmd = Some(Cmd::Undo(back, i + 1));
+                                        }
+                                    }
+                                });
+                            });
+                        });
                     }
                     ui.label(
                         RichText::new(tr(
@@ -5939,7 +6090,7 @@ impl eframe::App for App {
                 )
             });
             if undo || redo {
-                self.c.undo(undo);
+                self.c.undo(undo, 1);
             }
         }
         // Ctrl+A・Ctrl+Shift+A: 多重構成の次・前の構成（入力欄にフォーカスがあるときは全選択に使う）
@@ -6502,17 +6653,21 @@ mod hist_tests {
         assert_eq!(h.undo.len(), 1);
         c.name = "x".into();
         h.track(&c, false);
-        let b = h.step(&c, true).unwrap();
+        assert_eq!(h.list(true).len(), 2);
+        assert_eq!(h.list(true)[0], "組合せの設定");
+        let b = h.step(&c, true, 1).unwrap();
         assert_eq!(b.name, "ab");
-        let b = h.step(&b, true).unwrap();
+        let b = h.step(&b, true, 1).unwrap();
         assert_eq!(b.name, name0);
-        assert!(h.step(&b, true).is_none());
-        let f = h.step(&b, false).unwrap();
+        assert!(h.step(&b, true, 1).is_none());
+        let f = h.step(&b, false, 1).unwrap();
         assert_eq!(f.name, "ab");
         let mut g = f.clone();
         g.name = "y".into();
         h.track(&g, false);
         assert!(!h.can(&g, false));
-        assert_eq!(h.step(&g, true).unwrap().name, "ab");
+        assert_eq!(h.step(&g, true, 1).unwrap().name, "ab");
+        // まとめて 2 段戻す
+        assert_eq!(h.step(&f, true, 2).map(|c| c.name), Some(name0.clone()));
     }
 }

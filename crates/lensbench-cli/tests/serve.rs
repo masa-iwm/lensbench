@@ -262,6 +262,20 @@ fn undo_redo_history() {
         json!({ "ops": [{ "op": "set_surface", "surface": 2, "fields": { "t": t2 + 0.5 } }] }),
     );
     assert_eq!(r["undo"].as_u64(), Some(2));
+    // 段の一覧（新しい順）: edit の操作と set の名前
+    let h = sv.call("history", json!({}));
+    assert_eq!(
+        h["undo_list"][0]["edit"][0],
+        json!({ "op": "set_surface", "surface": 2, "fields": ["t"] })
+    );
+    assert_eq!(h["undo_list"][1], json!({ "set": ["3.t"] }));
+    // steps でまとめて戻す・やり直す
+    let r = sv.call("undo", json!({ "steps": 2 }));
+    assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(0), Some(2)));
+    assert_eq!(r["redo_list"][0], json!({ "set": ["3.t"] }));
+    assert_eq!(get(&mut sv, "3.t"), t3);
+    sv.call("redo", json!({ "steps": 2 }));
+    assert_eq!(get(&mut sv, "2.t"), t2 + 0.5);
     let r = sv.call("undo", json!({}));
     assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(1), Some(1)));
     assert_eq!(get(&mut sv, "2.t"), t2);
