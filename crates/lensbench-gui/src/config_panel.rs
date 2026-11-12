@@ -117,6 +117,11 @@ pub struct State {
     focus_name: bool,
     /// ピックアップの欄（セル、元の構成、倍率、ずれ）
     pick_form: Option<((usize, usize), String, String, String)>,
+    /// Shift+F10 で開いたセルの欄（行、構成、出す位置）と、開いたフレーム（同じフレームのクリックで閉じない）
+    kbd_menu: Option<(usize, usize, egui::Pos2)>,
+    kbd_fresh: bool,
+    /// 今のセルの左下（Shift+F10 の欄の位置）
+    cur_pos: Option<egui::Pos2>,
     /// 取り込みで表にできなかった違い
     pub notes: Vec<String>,
 }
@@ -292,6 +297,105 @@ fn paste_ops(t: &Table, i: usize, k: usize, text: &str) -> Result<Vec<Value>, St
         }
     }
     Ok(ops)
+}
+
+/// セルの右クリック（Shift+F10）の欄
+#[allow(clippy::too_many_arguments)]
+fn cell_menu(
+    ui: &mut Ui,
+    st: &mut State,
+    t: &Table,
+    i: usize,
+    k: usize,
+    start: &mut Option<(usize, usize, Option<String>)>,
+    menu_ops: &mut Vec<Value>,
+    acts: &mut Vec<Act>,
+    remove: &mut Option<usize>,
+) {
+    let weak = theme::weak_text(ui.visuals());
+    let name = &t.rows[i].0;
+    let v = t.rows[i].1.get(k).copied().unwrap_or(f64::NAN);
+    let pick = t.pick(i, k);
+    if ui.button(tr("書き換える（F2）")).clicked() {
+        *start = Some((i, k, None));
+        ui.close_menu();
+    }
+    if ui
+        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
+        .clicked()
+    {
+        menu_ops.push(json!({
+            "op": "set_config_row", "param": name, "values": vec![v; t.n],
+        }));
+        ui.close_menu();
+    }
+    if k + 1 != t.active
+        && ui
+            .button(trf("構成 {} を系に入れる", &[&(k + 1)]))
+            .clicked()
+    {
+        menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
+        ui.close_menu();
+    }
+    // 構成のピックアップ
+    if t.n > 1 {
+        ui.separator();
+        ui.label(RichText::new(tr("ピックアップ")).strong());
+        if let Some(p) = pick {
+            ui.horizontal(|ui| {
+                ui.label(trf(
+                    "構成 {} × {} + {}",
+                    &[&p.from, &full(p.scale), &full(p.offset)],
+                ));
+                if ui.small_button(tr("外す")).clicked() {
+                    menu_ops.push(json!({
+                        "op": "remove_config_pickup", "param": name, "k": k + 1,
+                    }));
+                    ui.close_menu();
+                }
+            });
+        }
+        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
+            let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
+            let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
+            st.pick_form = Some(((i, k), from.to_string(), full(sc), full(of)));
+        }
+        if let Some(f) = st.pick_form.as_mut() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(tr("元の構成")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
+                ui.label(RichText::new(tr("倍率")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
+                ui.label(RichText::new(tr("ずれ")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
+            });
+            if ui.button(tr("+ ピックアップにする")).clicked() {
+                match (
+                    f.1.trim().parse::<usize>(),
+                    parse_num(&f.2),
+                    parse_num(&f.3),
+                ) {
+                    (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
+                        "op": "set_config_pickup", "param": name, "k": k + 1,
+                        "from": from, "scale": sc, "offset": of,
+                    })),
+                    _ => acts.push(Act::Refused(
+                        tr("ピックアップの元の構成・倍率・ずれは数で").into(),
+                    )),
+                }
+                ui.close_menu();
+            }
+        }
+    }
+    ui.separator();
+    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
+        ui.ctx().copy_text(copy_text(t, &[i]));
+        ui.close_menu();
+    }
+    if ui.button(tr("行を消す（Delete）")).clicked() {
+        *remove = Some(i);
+        ui.close_menu();
+    }
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
@@ -605,6 +709,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     },
                                 );
                                 if st.cur == Some((i, k)) {
+                                    st.cur_pos = Some(ui.max_rect().left_bottom());
                                     ui.painter().rect_stroke(
                                         ui.max_rect(),
                                         2.0,
@@ -621,83 +726,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     start = Some((i, k, None));
                                 }
                                 resp.context_menu(|ui| {
-                                    if ui.button(tr("書き換える（F2）")).clicked() {
-                                        start = Some((i, k, None));
-                                        ui.close_menu();
-                                    }
-                                    if ui
-                                        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
-                                        .clicked()
-                                    {
-                                        menu_ops.push(json!({
-                                            "op": "set_config_row", "param": name, "values": vec![v; t.n],
-                                        }));
-                                        ui.close_menu();
-                                    }
-                                    if k + 1 != t.active && ui.button(trf("構成 {} を系に入れる", &[&(k + 1)])).clicked() {
-                                        menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
-                                        ui.close_menu();
-                                    }
-                                    // 構成のピックアップ
-                                    if t.n > 1 {
-                                        ui.separator();
-                                        ui.label(RichText::new(tr("ピックアップ")).strong());
-                                        if let Some(p) = pick {
-                                            ui.horizontal(|ui| {
-                                                ui.label(trf(
-                                                    "構成 {} × {} + {}",
-                                                    &[&p.from, &full(p.scale), &full(p.offset)],
-                                                ));
-                                                if ui.small_button(tr("外す")).clicked() {
-                                                    menu_ops.push(json!({
-                                                        "op": "remove_config_pickup", "param": name, "k": k + 1,
-                                                    }));
-                                                    ui.close_menu();
-                                                }
-                                            });
-                                        }
-                                        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
-                                            let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
-                                            let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
-                                            st.pick_form =
-                                                Some(((i, k), from.to_string(), full(sc), full(of)));
-                                        }
-                                        if let Some(f) = st.pick_form.as_mut() {
-                                            ui.horizontal(|ui| {
-                                                ui.label(RichText::new(tr("元の構成")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
-                                                ui.label(RichText::new(tr("倍率")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
-                                                ui.label(RichText::new(tr("ずれ")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
-                                            });
-                                            if ui.button(tr("+ ピックアップにする")).clicked() {
-                                                match (
-                                                    f.1.trim().parse::<usize>(),
-                                                    parse_num(&f.2),
-                                                    parse_num(&f.3),
-                                                ) {
-                                                    (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
-                                                        "op": "set_config_pickup", "param": name, "k": k + 1,
-                                                        "from": from, "scale": sc, "offset": of,
-                                                    })),
-                                                    _ => acts.push(Act::Refused(tr(
-                                                        "ピックアップの元の構成・倍率・ずれは数で",
-                                                    ).into())),
-                                                }
-                                                ui.close_menu();
-                                            }
-                                        }
-                                    }
-                                    ui.separator();
-                                    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
-                                        ui.ctx().copy_text(copy_text(&t, &[i]));
-                                        ui.close_menu();
-                                    }
-                                    if ui.button(tr("行を消す（Delete）")).clicked() {
-                                        remove = Some(i);
-                                        ui.close_menu();
-                                    }
+                                    cell_menu(ui, st, &t, i, k, &mut start, &mut menu_ops, &mut acts, &mut remove);
                                 });
                             });
                         }
@@ -714,6 +743,50 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                 });
         });
     let _ = table_resp;
+    // Shift+F10: 今のセルの右クリックの欄
+    if st.active
+        && st.edit.is_none()
+        && ui.memory(|m| m.focused().is_none())
+        && ui.input(|x| x.modifiers.shift && x.key_pressed(Key::F10))
+    {
+        if let Some((i, k)) = st.cur {
+            let pos = st.cur_pos.unwrap_or_else(|| ui.min_rect().left_top());
+            st.kbd_menu = Some((i, k, pos));
+            st.kbd_fresh = true;
+        }
+    }
+    if let Some((i, k, pos)) = st.kbd_menu.filter(|m| m.0 < t.rows.len() && m.1 < t.n) {
+        let n0 = (menu_ops.len(), acts.len());
+        let area = egui::Area::new(ui.id().with("mce_kbd_menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::menu(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(320.0);
+                    cell_menu(
+                        ui,
+                        st,
+                        &t,
+                        i,
+                        k,
+                        &mut start,
+                        &mut menu_ops,
+                        &mut acts,
+                        &mut remove,
+                    );
+                });
+            });
+        let fresh = std::mem::take(&mut st.kbd_fresh);
+        let done = (menu_ops.len(), acts.len()) != n0 || start.is_some() || remove.is_some();
+        if done
+            || ui.input(|x| x.key_pressed(Key::Escape))
+            || (!fresh && area.response.clicked_elsewhere())
+        {
+            st.kbd_menu = None;
+        }
+    } else {
+        st.kbd_menu = None;
+    }
     if clicked_any || !menu_ops.is_empty() {
         st.active = true;
     } else if ui.input(|x| x.pointer.any_click()) && !ui.ui_contains_pointer() {
