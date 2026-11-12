@@ -241,14 +241,14 @@ impl CadFetcher {
         // 折り返さない（カタログの詳細の横スクロールの行の中で、折り返すと見えない所に縦に積まれて行が高くなる）
         ui.horizontal(|ui| {
             if !pdf.is_empty() {
-                ui.hyperlink_to(tr("📄 図面（PDF）"), &pdf);
+                ui.add(egui::Hyperlink::from_label_and_url(tr("📄 図面（PDF）"), pdf.as_str()).open_in_new_tab(true));
             }
             if step.is_empty() && !from_store {
                 return;
             }
             #[cfg(target_arch = "wasm32")]
             if !step.is_empty() {
-                ui.hyperlink_to(tr("STEP（公式）"), &step);
+                ui.add(egui::Hyperlink::from_label_and_url(tr("STEP（公式）"), step.as_str()).open_in_new_tab(true));
             }
             if !from_store && cfg!(target_arch = "wasm32") {
                 return;
@@ -329,7 +329,13 @@ impl CadFetcher {
                         .color(ui.visuals().warn_fg_color),
                     );
                     if !r.url.is_empty() {
-                        ui.hyperlink_to(tr("品ページを開く"), &r.url);
+                        ui.add(
+                            egui::Hyperlink::from_label_and_url(
+                                tr("品ページを開く"),
+                                r.url.as_str(),
+                            )
+                            .open_in_new_tab(true),
+                        );
                     }
                 }
             }

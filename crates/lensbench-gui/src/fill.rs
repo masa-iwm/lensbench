@@ -848,7 +848,10 @@ impl FillWin {
                     }
                     self.open_page(ui.ctx());
                 }
-                ui.hyperlink_to(tr("既定のブラウザで開く"), &r.url);
+                ui.add(
+                    egui::Hyperlink::from_label_and_url(tr("既定のブラウザで開く"), r.url.as_str())
+                        .open_in_new_tab(true),
+                );
             }
         });
         #[cfg(windows)]

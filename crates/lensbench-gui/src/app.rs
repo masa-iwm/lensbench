@@ -1969,7 +1969,7 @@ impl Core {
         true
     }
 
-    /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（たたんだ行は最初の面）
+    /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（今のセルはブロックの最後の面）
     fn select_ld_surface(&mut self, j: usize) {
         self.ld.scope.clear();
         let top = self
@@ -1979,8 +1979,9 @@ impl Core {
         match top {
             Some(b) => {
                 self.ld.sel = Some(b.name.clone());
-                let first = b.surfs.first().copied().unwrap_or(j);
-                self.ld.cur = Some((first, lens_data::Col::R));
+                // ブロックの最後の面（たたんだ行の鍵。続けて足すとブロックの後に入る）
+                let last = b.surfs.last().copied().unwrap_or(j);
+                self.ld.cur = Some((last, lens_data::Col::R));
             }
             None => {
                 self.ld.sel = None;
@@ -3348,6 +3349,9 @@ impl Core {
         {
             z.config = cfg as usize;
         }
+        // 開いた系の玉・群（最上位のブロック）を取り込みの中の群として残す（取り込み全体が 1 つのブロックになり、
+        // その中に元の玉が並ぶ）
+        z.zgroups = open_groups(&self.ld_blocks);
         match self.open_insert.take() {
             Some((after, p)) => c.picks.extend(split_open(z, &self.ld_rows, after, p)),
             None => c.picks.push(z),
@@ -4387,6 +4391,24 @@ impl Core {
 
 /// フォルダの並びを編集する。変えたら true
 /// 組合せの系で、面の表から変えられない値の理由（開いた系は None）
+/// 開いた系の最上位のブロック（玉・群）を、系の取り込みの群（面の範囲と名前）に
+pub(crate) fn open_groups(blocks: &[lens_data::Block]) -> Vec<combo::ZGroup> {
+    blocks
+        .iter()
+        .filter(|b| b.parent.is_none() && !b.name.trim().is_empty())
+        .filter_map(|b| {
+            let from = *b.surfs.iter().min()?;
+            let to = *b.surfs.iter().max()?;
+            (from >= 1).then(|| combo::ZGroup {
+                from,
+                to,
+                name: b.name.clone(),
+                role: String::new(),
+            })
+        })
+        .collect()
+}
+
 /// 開いた系の面 `after` の後が、要素を差し込める空気の間隔か（物体面・像面の後、座標ブレーク、ガラスの中、鏡の後は不可）
 pub(crate) fn open_gap_ok(rows: &[lens_data::Row], after: usize) -> bool {
     let Some(r) = rows.get(after) else {
@@ -4416,6 +4438,8 @@ pub(crate) fn split_open(
     let half = rows[a].t / 2.0;
     let mut z1 = z.clone();
     z1.range = [1, a];
+    // 群は分けた範囲に収まるものだけ（間隔はブロックの外なので、跨ぐ群は無い）
+    z1.zgroups.retain(|g| g.to <= a);
     // 取り込みの面 a（座標ブレークを除いて数えた番号）の厚さを半分に
     let rel = (1..a).filter(|&i| !rows[i].is_cb()).count();
     z1.set_edit(rel, "t", serde_json::json!(half));
@@ -4425,6 +4449,7 @@ pub(crate) fn split_open(
     }
     let mut z2 = z;
     z2.range = [a + 1, 0];
+    z2.zgroups.retain(|g| g.from > a);
     vec![z1, p, z2]
 }
 
@@ -7209,6 +7234,17 @@ mod open_insert_tests {
         p.t = 2.0;
         p.glass = "N-BK7".into();
         p.semi = 5.0;
+        // 開いた系の玉（lens1 1–2、lens2 3–4、lens3 6–7）を群として残す
+        let blk = |name: &str, surfs: Vec<usize>| lens_data::Block {
+            name: name.into(),
+            surfs,
+            parent: None,
+        };
+        z.zgroups = open_groups(&[
+            blk("lens1", vec![1, 2]),
+            blk("lens2", vec![3, 4]),
+            blk("lens3", vec![6, 7]),
+        ]);
         let picks = split_open(z.clone(), &rows, Some(gap), p.clone());
         assert_eq!(picks.len(), 3);
         assert_eq!((picks[0].range, picks[2].range), ([1, gap], [gap + 1, 0]));
@@ -7222,6 +7258,11 @@ mod open_insert_tests {
         let b = lensbench_project::expand(&pj, &env).unwrap();
         // 平板の 2 面が増える
         assert_eq!(b.surfaces.len(), a.surfaces.len() + 2);
+        // 元の玉は取り込みのブロックの中の玉として残る
+        let names: Vec<&str> = b.units.iter().map(|u| u.name.as_str()).collect();
+        for n in ["lens1", "lens2", "lens3", "ZX1", "ZX2"] {
+            assert!(names.contains(&n), "{n} が無い: {names:?}");
+        }
         let half = a.surfaces[gap].t / 2.0;
         // 物体面の厚さは系の設定（物体の位置）なので比べない
         for j in 1..gap {
