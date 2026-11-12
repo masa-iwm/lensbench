@@ -179,14 +179,23 @@ fn remove_config_ops(t: &Table, k: usize) -> Vec<Value> {
     ops
 }
 
-/// 構成 k（0 始まり）を複製して最後に足す操作
-fn duplicate_config_ops(t: &Table, k: usize) -> Vec<Value> {
+/// 構成 src（0 始まり）の値で、新しい構成を位置 at（0 始まり、at の前。n なら最後）に挿入する操作。
+/// 今の構成は同じ構成を指すようにずらす
+fn insert_config_ops(t: &Table, src: usize, at: usize) -> Vec<Value> {
+    let at = at.min(t.n);
     let mut ops = vec![json!({ "op": "set_config_count", "n": t.n + 1 })];
     for (name, vals) in &t.rows {
         let mut v = vals.clone();
-        v.push(vals.get(k).copied().unwrap_or(0.0));
+        v.resize(t.n, *vals.last().unwrap_or(&0.0));
+        v.insert(at, vals.get(src).copied().unwrap_or(0.0));
         ops.push(json!({ "op": "set_config_row", "param": name, "values": v }));
     }
+    let active = if t.active > at {
+        t.active + 1
+    } else {
+        t.active
+    };
+    ops.push(json!({ "op": "set_config", "k": active }));
     ops
 }
 
@@ -356,7 +365,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
                             ui.label(if k == t.active { rt.color(accent) } else { rt });
                             let r = r.on_hover_text(tr(
-                                "クリックでこの構成を系に入れる。右クリックで複製・削除",
+                                "クリックでこの構成を系に入れる。右クリックで前後に挿入・削除",
                             ));
                             if r.clicked() && k != t.active {
                                 acts.push(Act::Ops(vec![json!({ "op": "set_config", "k": k })]));
@@ -366,8 +375,12 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     menu_ops.push(json!({ "op": "set_config", "k": k }));
                                     ui.close_menu();
                                 }
-                                if ui.button(tr("この構成を複製して最後に足す")).clicked() {
-                                    menu_ops.extend(duplicate_config_ops(&t, k - 1));
+                                if ui.button(tr("前に構成を挿入（この構成の値で）")).clicked() {
+                                    menu_ops.extend(insert_config_ops(&t, k - 1, k - 1));
+                                    ui.close_menu();
+                                }
+                                if ui.button(tr("後に構成を挿入（この構成の値で）")).clicked() {
+                                    menu_ops.extend(insert_config_ops(&t, k - 1, k));
                                     ui.close_menu();
                                 }
                                 if ui
@@ -720,13 +733,21 @@ mod tests {
         );
         assert_eq!(ops[2], json!({ "op": "set_config_count", "n": 2 }));
         assert_eq!(ops[3], json!({ "op": "set_config", "k": 2 }));
-        // 構成 1 を複製
-        let ops = duplicate_config_ops(&t, 0);
+        // 構成 1 を最後に複製（今の構成 3 はそのまま）
+        let ops = insert_config_ops(&t, 0, 3);
         assert_eq!(ops[0], json!({ "op": "set_config_count", "n": 4 }));
         assert_eq!(
             ops[1],
             json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 3.0, 1.0] })
         );
+        assert_eq!(ops[3], json!({ "op": "set_config", "k": 3 }));
+        // 構成 2 の前に構成 2 の値で挿入: 今の構成 3 は 4 へ
+        let ops = insert_config_ops(&t, 1, 1);
+        assert_eq!(
+            ops[1],
+            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 2.0, 3.0] })
+        );
+        assert_eq!(ops[3], json!({ "op": "set_config", "k": 4 }));
         // コピーと貼り付け（名前つきの行は名前の行へ、数だけなら今のセルから右へ）
         let txt = copy_text(&t, &[1]);
         assert_eq!(txt, "G1.shift\t0\t0.5\t1");

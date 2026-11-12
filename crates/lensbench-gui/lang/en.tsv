@@ -1306,8 +1306,9 @@ r^{} の係数	r^{} coefficient
 この値を全部の構成に	Use this value in all configurations
 この構成を消す	Delete this configuration
 この構成を系に入れる	Apply this configuration to the system
-この構成を複製して最後に足す	Duplicate this configuration at the end
-クリックでこの構成を系に入れる。右クリックで複製・削除	Click to apply this configuration. Right-click to duplicate or delete
+前に構成を挿入（この構成の値で）	Insert a configuration before (with these values)
+後に構成を挿入（この構成の値で）	Insert a configuration after (with these values)
+クリックでこの構成を系に入れる。右クリックで前後に挿入・削除	Click to apply this configuration. Right-click to insert before/after or delete
 パラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる	Add a parameter row (names as in Python / serve set; every configuration starts from the current value). Also available from "Make a multi-config row" in the lens data cell right-click menu
 分散の変化	dispersion change
 屈折率のずれ	index offset
