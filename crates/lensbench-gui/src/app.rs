@@ -798,6 +798,10 @@ impl Core {
 
     /// 新規: 組合せと開いている系を空にする（前の状態は新規を元に戻す段に。確かめずに空にし、元に戻せる）
     fn new_system(&mut self) {
+        // すでに空なら何もしない（新規の前の状態を空で上書きしない）
+        if self.summary.is_none() && self.browser.combo.picks.is_empty() {
+            return;
+        }
         self.new_undo = Some(NewSnap {
             combo: std::mem::take(&mut self.browser.combo),
             combo_hist: {
