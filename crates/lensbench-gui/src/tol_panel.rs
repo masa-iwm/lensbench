@@ -84,6 +84,8 @@ pub struct TolPanel {
     pub radial: bool,
     /// 円の中の分布（uniform・normal・normal:σの数）
     pub radial_dist: String,
+    /// くさびを玉の前の面に入れる（false は後ろの面。玉のもとの向きで、wedge_face）
+    pub wedge_front: bool,
     pub preset: String,
     pub catalog: bool,
     pub sensitivity: bool,
@@ -121,6 +123,7 @@ impl Default for TolPanel {
             dist: "normal".into(),
             radial: false,
             radial_dist: "uniform".into(),
+            wedge_front: false,
             preset: "commercial".into(),
             catalog: true,
             sensitivity: true,
@@ -172,6 +175,11 @@ impl TolPanel {
             m.remove("radial");
         }
         m.insert("preset".into(), json!(self.preset));
+        if self.wedge_front {
+            m.insert("wedge_face".into(), json!("front"));
+        } else {
+            m.remove("wedge_face");
+        }
         m.insert("catalog".into(), json!(self.catalog));
         m.insert("sensitivity".into(), json!(self.sensitivity));
         m.insert("comp_iters".into(), json!(self.comp_iters));
@@ -370,6 +378,7 @@ impl TolPanel {
                     None => n.radial = x.as_bool().unwrap_or(false),
                 },
                 "preset" => n.preset = x.as_str().unwrap_or("commercial").into(),
+                "wedge_face" => n.wedge_front = x.as_str() == Some("front"),
                 "catalog" => n.catalog = x.as_bool().unwrap_or(true),
                 "sensitivity" => n.sensitivity = x.as_bool().unwrap_or(true),
                 "comp_iters" => n.comp_iters = x.as_u64().unwrap_or(10) as usize,
@@ -623,6 +632,15 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             ));
         });
     });
+    ui.horizontal(|ui| {
+        ui.label(tr("くさびの面"));
+        ui.selectable_value(&mut p.wedge_front, false, tr("後ろの面"));
+        ui.selectable_value(&mut p.wedge_front, true, tr("前の面"));
+    })
+    .response
+    .on_hover_text(tr(
+        "前・後ろは玉のもとの向き（カタログ・.zmx の向き）。裏返して置いた玉や鏡で往復する玉でも同じ面",
+    ));
     // 玉ごとの組
     ui.label(RichText::new(tr("玉ごとの組")).strong());
     let mut del = None;

@@ -1319,3 +1319,7 @@ r^{} の係数	r^{} coefficient
 行を消す（Delete）	Delete row (Delete)
 多重構成の行 {} あり	Multi-config row {} exists
 多重構成の行にする（{}）	Make a multi-config row ({})
+くさびの面	Wedge face
+後ろの面	Back face
+前の面	Front face
+前・後ろは玉のもとの向き（カタログ・.zmx の向き）。裏返して置いた玉や鏡で往復する玉でも同じ面	Front/back refer to the lens's own orientation (as in the catalog or .zmx). The same face is used for reversed lenses and lenses traversed twice via a mirror

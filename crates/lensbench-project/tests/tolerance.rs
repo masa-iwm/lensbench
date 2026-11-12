@@ -4,11 +4,12 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::tolerance::Dist;
 use lensbench_core::System;
 use lensbench_project::tolerance::{
-    catalog_vendors, compensators_csv, out_opts, result_json, spec_from_json, tilt_pairs,
+    catalog_vendors, compensators_csv, out_opts, result_json, reversed_lenses, spec_from_json,
+    spec_from_json_with, tilt_pairs,
 };
 use lensbench_project::{expand, Env, Project};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -373,6 +374,65 @@ fn double_pass_lens_errors_on_both_passes() {
         .find(|t| t["label"] == "L2 厚さ1")
         .unwrap();
     assert_eq!(th["scale"], json!([1.0, -1.0]));
+}
+
+/// くさびの面は玉のもとの向きの後ろ（wedge_face "front" なら前）。裏返して置いた玉・往復する玉でも同じ面
+#[test]
+fn wedge_face_follows_lens_orientation() {
+    let env = Env {
+        base: root(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    // L2（R80 と平面）。後ろの面は平面
+    for rev in [false, true] {
+        let src = if rev {
+            DP.replace(
+                r#"{"type": "lens", "id": "L2","#,
+                r#"{"type": "lens", "id": "L2", "reversed": true,"#,
+            )
+        } else {
+            DP.to_string()
+        };
+        let p = Project::from_json(&src).unwrap();
+        let s = expand(&p, &env).unwrap();
+        let r = reversed_lenses(&p);
+        assert_eq!(r.contains("L2"), rev);
+        // 往きと戻りの面がすべて平面（front なら曲面）
+        let flat = |v: serde_json::Value, r: &HashSet<String>| -> Vec<bool> {
+            let m = spec_from_json_with(&v, vec![s.clone()], &HashMap::new(), r).unwrap();
+            let t = m.tols.iter().find(|t| t.label == "L2 くさびx").unwrap();
+            assert_eq!(t.params.len(), 2, "往きと戻り");
+            t.params
+                .iter()
+                .map(|q| s.surfaces[q.surf].c == 0.0)
+                .collect()
+        };
+        assert_eq!(flat(json!({}), &r), [true, true], "rev {rev}");
+        assert_eq!(flat(json!({"wedge_face": "back"}), &r), [true, true]);
+        assert_eq!(flat(json!({"wedge_face": "front"}), &r), [false, false]);
+        // 玉ごとの上書き（組の名前で上書きしても全体の wedge_face は残る）
+        assert_eq!(
+            flat(json!({"lenses": {"L2": {"wedge_face": "front"}}}), &r),
+            [false, false]
+        );
+        assert_eq!(
+            flat(
+                json!({"wedge_face": "front", "lenses": {"L2": "precision"}}),
+                &r
+            ),
+            [false, false]
+        );
+        // 裏返した玉が分からないと、系の中の面の順の最後の面
+        assert_eq!(flat(json!({}), &HashSet::new()), [!rev, !rev]);
+    }
+    let (_, s) = sys();
+    for bad in [
+        json!({"wedge_face": "rear"}),
+        json!({"lenses": {"L1": {"wedge_face": 1}}}),
+    ] {
+        assert!(spec_from_json(&bad, vec![s.clone()], &HashMap::new()).is_err());
+    }
 }
 
 #[test]

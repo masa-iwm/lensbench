@@ -2848,11 +2848,16 @@ fn tolerance(p: &Value) -> Result<Value, RpcErr> {
             .collect::<Result<Vec<_>, _>>()?,
         _ => vec![(*cur).clone()],
     };
-    let vendors = if is_project(&spec.file) {
+    let (vendors, reversed) = if is_project(&spec.file) {
         lensbench_core::vfs::read_to_string(&spec.file)
             .ok()
             .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-            .map(|p| lensbench_project::tolerance::catalog_vendors(&p))
+            .map(|p| {
+                (
+                    lensbench_project::tolerance::catalog_vendors(&p),
+                    lensbench_project::tolerance::reversed_lenses(&p),
+                )
+            })
             .unwrap_or_default()
     } else {
         Default::default()
@@ -2864,7 +2869,7 @@ fn tolerance(p: &Value) -> Result<Value, RpcErr> {
             check_term_paths(t)?;
         }
     }
-    let ms = lensbench_project::tolerance::spec_from_json(&v, systems, &vendors)
+    let ms = lensbench_project::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
         .map_err(RpcErr::params)?;
     let oo = lensbench_project::tolerance::out_opts(&v).map_err(RpcErr::params)?;
     TOL_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);

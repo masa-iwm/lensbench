@@ -10,6 +10,7 @@
 //! | `dist` | 既定の分布（"normal"）: "uniform"・"normal"（範囲の端が ±2σ）・"normal:3"・"end"（端の値を半々） |
 //! | `radial` | 偏心・傾き・くさびの x・y を組にして、円の中で引く（false）。`true`・`"uniform"` は円の中で一様、`"normal"`・`"normal:σの数"` は等方の 2 次元正規分布を円で切ったもの（σ = 公差 / σの数、既定 2）。隣り合う x・y の公差（同じ面・玉・群の dx と dy、tx と ty）が対象で、大きさが公差以下になる（x・y 別々では角で √2 倍まで）。組の分布は `dist` によらない |
 //! | `preset` | 玉の既定の公差の組: "commercial"（一般）・"precision"（精密）・"high"（高精度）・"none" |
+//! | `wedge_face` | くさびを入れる面（"back"）: "back" は玉の後ろの面、"front" は前の面。前・後ろは玉のもとの向き（カタログ・.zmx の向き）で、ブロックを裏返して置いても（`reversed`）、鏡で往復しても同じ面。玉ごとには `lenses` の {"wedge_face": "front"} |
 //! | `catalog` | カタログの玉（プロジェクトのレンズカタログのブロック）はカタログの玉の公差（[`catalog_lens_tol`]、`catalog_tols`）を既定にする（true） |
 //! | `catalog_tols` | メーカーごとの公差 {"メーカー": {玉の公差と外径・焦点距離の条件つきの rules}}（[`catalog_rule`]。名前は大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほか） |
 //! | `lenses` | 玉ごとの上書き {"名前": {玉の公差} か 組の名前 か null（公差なし）}。名前はブロックの id か lens1 … |
@@ -24,7 +25,7 @@
 //! | `percentiles` | 出す百分位（[50, 80, 90, 95, 98]） |
 //! | `samples` | 試行ごとのずれと値も返す（false） |
 //!
-//! 玉の公差 {"radius_rel", "focal_rel", "thickness", "wedge", "dn", "disp", "decenter", "tilt", "space"}
+//! 玉の公差 {"radius_rel", "focal_rel", "thickness", "wedge", "wedge_face", "dn", "disp", "decenter", "tilt", "space"}
 //! （[`LensTol`]。比・mm・deg。書いた項目だけ既定の組を上書きする）。
 //!
 //! 個別の公差: {"param": "3.t"} か {"params": ["2.r", "3.r"]} に、`pm`（±）か `lo`・`hi`、`relative`（比、false）、
@@ -36,7 +37,7 @@
 //! 光源の波長のずれは {"param": "wave", "pm": 0.01}（µm。すべての波長を試行ごとに同じだけずらし、全媒質の屈折率が
 //! その波長の値になる）。1 つの波長だけなら "wave1" など（1 から）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use lensbench_core::optim::{DefaultMerit, DlsOpts, Problem, Var};
 use lensbench_core::param::{Kind, Param};
@@ -209,6 +210,35 @@ pub fn catalog_vendors(p: &Project) -> HashMap<String, String> {
     m
 }
 
+/// `wedge_face` の値: "back"（玉の後ろの面）→ false、"front"（前の面）→ true
+fn wedge_face(v: &Value, k: &str) -> Result<bool, String> {
+    match v.as_str().map(|x| x.trim().to_ascii_lowercase()) {
+        Some(x) if x == "back" => Ok(false),
+        Some(x) if x == "front" => Ok(true),
+        _ => Err(format!("{k} は \"back\" か \"front\"（{v}）")),
+    }
+}
+
+/// 裏返して置いた玉のブロックの id（`reversed` の玉。[`spec_from_json_with`] の reversed に渡す）
+pub fn reversed_lenses(p: &Project) -> HashSet<String> {
+    fn walk(bs: &[Block], m: &mut HashSet<String>) {
+        for b in bs {
+            match b {
+                Block::Lens {
+                    id, reversed: true, ..
+                } if !id.is_empty() => {
+                    m.insert(id.clone());
+                }
+                Block::Group { blocks, .. } => walk(blocks, m),
+                _ => {}
+            }
+        }
+    }
+    let mut m = HashSet::new();
+    walk(&p.blocks, &mut m);
+    m
+}
+
 fn num(v: &Value, k: &str) -> Result<f64, String> {
     v.as_f64().ok_or_else(|| format!("{k} は数（{v}）"))
 }
@@ -217,11 +247,20 @@ fn lens_tol_from(v: &Value, base: LensTol, what: &str) -> Result<Option<LensTol>
     match v {
         Value::Null => Ok(None),
         Value::String(s) => LensTol::preset(s)
-            .map(Some)
+            .map(|t| {
+                Some(LensTol {
+                    wedge_first: base.wedge_first,
+                    ..t
+                })
+            })
             .map_err(|e| format!("{what}: {e}")),
         Value::Object(m) => {
             let mut t = base;
             for (k, x) in m {
+                if k == "wedge_face" {
+                    t.wedge_first = wedge_face(x, &format!("{what}.{k}"))?;
+                    continue;
+                }
                 let f = num(x, &format!("{what}.{k}"))?;
                 match k.as_str() {
                     "radius_rel" => t.radius_rel = f,
@@ -235,7 +274,7 @@ fn lens_tol_from(v: &Value, base: LensTol, what: &str) -> Result<Option<LensTol>
                     "space" => t.space = f,
                     _ => {
                         return Err(format!(
-                            "{what}: 玉の公差の項目 {k}（radius_rel focal_rel thickness wedge dn disp decenter tilt space）"
+                            "{what}: 玉の公差の項目 {k}（radius_rel focal_rel thickness wedge wedge_face dn disp decenter tilt space）"
                         ))
                     }
                 }
@@ -420,11 +459,23 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
     })
 }
 
-/// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）
+/// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）。
+/// 裏返した玉が分からない（すべて置いた向きのまま）とする。プロジェクトなら [`spec_from_json_with`]
 pub fn spec_from_json(
     v: &Value,
     configs: Vec<System>,
     vendors: &HashMap<String, String>,
+) -> Result<McSpec, String> {
+    spec_from_json_with(v, configs, vendors, &HashSet::new())
+}
+
+/// [`spec_from_json`] に、裏返して置いた玉のブロックの id（[`reversed_lenses`]）を足したもの。`wedge_face` の
+/// 前・後ろは玉のもとの向き（カタログ・.zmx の向き）で決めるので、裏返した玉では系の中の面の順と逆になる
+pub fn spec_from_json_with(
+    v: &Value,
+    configs: Vec<System>,
+    vendors: &HashMap<String, String>,
+    reversed: &HashSet<String>,
 ) -> Result<McSpec, String> {
     let empty = Map::new();
     let m = match v {
@@ -438,6 +489,7 @@ pub fn spec_from_json(
         "dist",
         "radial",
         "preset",
+        "wedge_face",
         "catalog",
         "catalog_tols",
         "lenses",
@@ -464,11 +516,15 @@ pub fn spec_from_json(
         Some(Value::String(d)) => Dist::parse(d).map_err(|e| e.to_string())?,
         Some(d) => return Err(format!("dist は文字列（{d}）")),
     };
-    let base = match get("preset") {
+    let mut base = match get("preset") {
         None => LensTol::preset("commercial").unwrap(),
         Some(Value::String(p)) => LensTol::preset(p).map_err(|e| e.to_string())?,
         Some(p) => return Err(format!("preset は文字列（{p}）")),
     };
+    // ここでの wedge_first は玉のもとの向きで前の面か。系の面の順へは lens_fn で直す
+    if let Some(w) = get("wedge_face") {
+        base.wedge_first = wedge_face(w, "wedge_face")?;
+    }
     let use_catalog = get("catalog").and_then(|x| x.as_bool()).unwrap_or(true);
     // メーカー名（大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほかのすべて）→ 公差
     let mut cat_over: Vec<(String, Value)> = Vec::new();
@@ -524,16 +580,21 @@ pub fn spec_from_json(
     }
     let base_err = std::cell::RefCell::new(None);
     let lens_fn = |name: &str| -> Option<LensTol> {
-        if let Some(t) = lens_over.get(name) {
-            return *t;
-        }
-        match lens_base(name) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                base_err.borrow_mut().get_or_insert(e);
-                None
-            }
-        }
+        let t = match lens_over.get(name) {
+            Some(t) => *t,
+            None => match lens_base(name) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    base_err.borrow_mut().get_or_insert(e);
+                    None
+                }
+            },
+        };
+        // 裏返した玉は、もとの向きの後ろの面が系の中では最初の面
+        t.map(|t| LensTol {
+            wedge_first: t.wedge_first != reversed.contains(name),
+            ..t
+        })
     };
     let group_fn = |name: &str| group_over.get(name).copied().flatten();
     let mut tols = tolerance::simple(&s0, &lens_fn, &group_fn, dist);

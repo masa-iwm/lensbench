@@ -448,13 +448,14 @@ class System:
     def to_json(self) -> str:
         """系ファイルの中身（JSON の文字列）"""
 
-    def tolerance(self, spec: Any = None, terms: Any = None, vendors: Any = None, configs: Sequence[System] | None = None, threads: int | None = None) -> Any:
+    def tolerance(self, spec: Any = None, terms: Any = None, vendors: Any = None, configs: Sequence[System] | None = None, threads: int | None = None, reversed: Sequence[str] | None = None) -> Any:
         """モンテカルロ公差シミュレーション。spec は CLI の `lensbench tolerance --spec` と同じ設定の dict
         （trials・seed・dist・preset・catalog・catalog_tols・lenses・groups・tols・compensators・comp_iters・merit・rings・
         ref・terms・sensitivity・percentiles・samples）。None なら既定（一般の公差の組を全部の玉に、RMS 波面、100 回）。
         terms は optimize の terms と同じ並びで、spec の terms の後に足す（Python の関数の項 {"type": "user", ...} も使える。
         測定値などを評価量にするときに）。vendors はブロックの id → メーカーの dict（カタログの玉の既定の公差に使う）。
-        configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。
+        configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。reversed は裏返して置いた玉のブロックの
+        id の並び（spec の wedge_face の前・後ろを玉のもとの向きで決めるのに使う）。
 
         返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
         昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・
