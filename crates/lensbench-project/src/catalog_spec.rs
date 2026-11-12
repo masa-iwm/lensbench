@@ -419,11 +419,16 @@ pub struct CatalogQuery {
 /// 素子が機構部品に入るとみなす保持径と径の差の上限 [mm]（これより太い保持径は、配置の確認で「細い」の注意になる）
 pub const FIT_TOL: f64 = 0.25;
 
+/// 保持径 `hold` に、径 `d` の素子が入るか（保持径が d 以上、d + FIT_TOL 以下）
+pub fn fits(hold: f64, d: f64) -> bool {
+    hold >= d - 1e-6 && hold - d <= FIT_TOL + 1e-9
+}
+
 /// 一覧の行（機構部品）の保持径に、径 `d` の素子が入るか
 pub fn fits_row(row: &Value, d: f64) -> bool {
     row["mech"]["holds"]["diameter"]
         .as_f64()
-        .is_some_and(|h| h >= d - 1e-6 && h - d <= FIT_TOL + 1e-9)
+        .is_some_and(|h| fits(h, d))
 }
 
 impl CatalogQuery {

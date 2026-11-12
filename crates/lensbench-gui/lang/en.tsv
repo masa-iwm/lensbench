@@ -1498,3 +1498,24 @@ r^{} の係数	r^{} coefficient
 面を挿入	Insert surface
 {} を開く	Open {}
 {} を読み直す	Reload {}
+{}（保持径 {} mm）に入る素子	Optics that fit {} (holding diameter {} mm)
+{}（径 {} mm）が入る機構部品	Mechanics that hold {} (diameter {} mm)
+、保持径 {} mm	, holding diameter {} mm
+この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します（組合せにこの品があれば、それを保持して座に合わせます）	Tubes, mounts and cage plates that this item's diameter fits. Picking one adds it to the combination's mechanics (if this item is in the combination, it holds it and seats it)
+この絞り込みを外します	Remove this filter
+カタログの機構部品に、この径が入る保持径のものがありません	No catalog mechanics has a holding diameter this item fits
+一覧をこの品が入る機構部品だけに絞ります（絞り込みは欄の ✖ で外す）	Show only the mechanics this item fits (remove the filter with ✖ next to the fields)
+仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000	Spec conditions (space separated, all must hold): name (present), name=value (numbers equal, range specs contain, strings contain), name=a..b, name>=value, <=, >, <. efl, diameter and thickness also compare the list values. Example: wavelength_nm=633 extinction_ratio>=1000
+例 wavelength_nm=633	e.g. wavelength_nm=633
+保持径 {} mm に入る径（{} mm 細いものまで）の玉・鏡などだけを一覧に出します	Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)
+光学素子	Optics
+光学素子（すべて）	Optics (all)
+入る機構部品なし	No fitting mechanics
+入る素子（{}）で絞る	Filter fitting optics ({})
+機構部品（すべて）	Mechanics (all)
+組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）	Added to the combination (the open system is unchanged; build it with "▶ Build a system from this combination")
+開いた系に足す	Add to the open system
+開いた系を組合せにして {} を足します。今の組合せ（{} 個の要素）は置き換わります。よいですか？	Turn the open system into a combination and add {}. The current combination ({} elements) will be replaced. OK?
+面 {} の後に差し込む	Insert after surface {}
+面 {} の後は空気の間隔でないので差し込めない	Cannot insert after surface {}: not an air gap
+🔍 一覧でこれだけ見る	🔍 Show only these in the list
