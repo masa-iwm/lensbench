@@ -226,7 +226,6 @@ Huygens MTF	Huygens MTF
 クリックで版をコピー	Click to copy the version
 鏡: R = {} mm、f = {} mm、径 {} mm	Mirror: R = {} mm, f = {} mm, diameter {} mm
 {} をレイアウト図へ	{} → layout
-今の組合せを消して、空の状態から始めますか？	Clear the current combination and start from scratch?
 新規	New
 新規（Ctrl+N）	New (Ctrl+N)
 新規（組合せを空にする）	New (clear the combination)
@@ -1475,7 +1474,7 @@ r^{} の係数	r^{} coefficient
 元に戻した変更をやり直す	Redo the undone change
 元に戻す（Ctrl+Z）	Undo (Ctrl+Z)
 系の変更を元に戻す（100 段まで。入力欄の中では欄の文字）	Undo a system change (up to 100 steps; inside a text box, its text)
-系の変更（面の表・多重構成・最適化の結果・組合せ）を 100 段まで。開き直すと消える	System changes (lens data, multi-config, optimization results, combination), up to 100 steps. Cleared when reopened
+系の変更（面の表・多重構成・最適化の結果・組合せ）と、系を開く・読み直す・新規を 100 段まで	System changes (lens data, multi-config, optimization results, combination) and open, reload and new, up to 100 steps
 編集	Edit
 元に戻した	Undone
 やり直した	Redone
@@ -1497,3 +1496,5 @@ r^{} の係数	r^{} coefficient
 面の種類	Surface type
 面を削除	Delete surface
 面を挿入	Insert surface
+{} を開く	Open {}
+{} を読み直す	Reload {}

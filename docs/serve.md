@@ -58,11 +58,11 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | method | params | result |
 | --- | --- | --- |
 | `ping` | | `version` |
-| `load` | `file`、`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`（省略可） | 系の概要（面の数・視野・波長など） |
-| `reload` | | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
+| `load` | `file`、`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`・`history`（省略可） | 系の概要（面の数・視野・波長など）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
+| `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
 | `system` | | 系の概要 |
-| `undo`・`redo` | `steps`（まとめて戻す段の数、省略で 1） | 読み込んだ後の `set`・`edit`（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで、同じパラメータの `set` が 1 秒以内に続けば 1 段、戻した後に変えるとやり直す段は消える、`load`・`reload` で空）。`surfaces`・`system_hash`・残りの段の数 `undo`・`redo`。`set`・`edit` の結果にも `undo`・`redo` |
-| `history` | | 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも |
+| `undo`・`redo` | `steps`（まとめて戻す段の数、省略で 1） | 読み込んだ後の `set`・`edit`（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで、同じパラメータの `set` が 1 秒以内に続けば 1 段、戻した後に変えるとやり直す段は消える、`load`・`reload` で空。`history: "push"` で読んだときは読む前の系も 1 段）。`surfaces`・`system_hash`・残りの段の数 `undo`・`redo`。開く・読み直すを越えて戻した・やり直したときは `loaded`（その系の概要、`load` の結果と同じ）。`set`・`edit` の結果にも `undo`・`redo` |
+| `history` | | 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、開く・読み直すは `{"open": ファイル名}`・`{"reload": ファイル名}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも |
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
 | `write` | `path` | 今の系を .zmx に書く（別アプリに渡す） |

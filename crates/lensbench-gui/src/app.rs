@@ -234,8 +234,29 @@ struct ComboHist {
 /// 元に戻せる段の数
 const UNDO_DEPTH: usize = 100;
 
+/// 新規の前の状態（新規を元に戻す。serve には前の系が残っているので、GUI の状態だけ戻す）
+struct NewSnap {
+    combo: Combo,
+    combo_hist: ComboHist,
+    file: Option<PathBuf>,
+    summary: Option<Value>,
+    built: Option<Value>,
+    built_combo: Option<Combo>,
+    combo_path: Option<PathBuf>,
+    doc_path: Option<PathBuf>,
+    ld_dirty: bool,
+    hist: (usize, usize),
+    hist_list: (Vec<Value>, Vec<Value>),
+}
+
 /// serve の段の変更の名前（set はパラメータの説明、edit は操作）
 fn hist_label(v: &Value) -> String {
+    if let Some(f) = v["open"].as_str() {
+        return trf("{} を開く", &[&f]);
+    }
+    if let Some(f) = v["reload"].as_str() {
+        return trf("{} を読み直す", &[&f]);
+    }
     if let Some(names) = v["set"].as_array() {
         let d: Vec<String> = names
             .iter()
@@ -500,6 +521,12 @@ struct Core {
     hist_list: (Vec<Value>, Vec<Value>),
     /// 組合せの元に戻す・やり直す
     combo_hist: ComboHist,
+    /// 新規の前の状態（新規を元に戻す）と、新規をやり直せるか
+    new_undo: Option<NewSnap>,
+    /// 新規を戻したときの serve のやり直す段の数（それより下の段は新規の前のもので、やり直さない）
+    new_redo: Option<usize>,
+    /// serve のやり直しの後に新規をやり直す（一覧で新規より先まで選んだ）
+    redo_new_pending: bool,
     /// 面の表: 状態、面の値、玉・群、木
     ld: lens_data::LensData,
     ld_rows: Vec<lens_data::Row>,
@@ -738,7 +765,15 @@ impl Core {
     /// 系のファイル（.zmx・プロジェクトの .json）を読む
     fn open(&mut self, p: &Path) {
         let file = p.display().to_string();
-        let params = self.load_params(p);
+        let mut params = self.load_params(p);
+        // 開く前の系は serve の段に積む（開くを元に戻せる）。組合せの作り直しは組合せの段で戻すので積まない
+        params["history"] = json!(
+            if self.is_combo() && self.combo_path.as_deref() == Some(p) {
+                "keep"
+            } else {
+                "push"
+            }
+        );
         self.worker.send(Tag::Load, "load", params);
         self.status = Status {
             text: trf("{} を読んでいます…", &[&file]),
@@ -761,21 +796,28 @@ impl Core {
         v
     }
 
-    /// 新規: 組合せと開いている系を空にする（組合せがあれば確かめる）
+    /// 新規: 組合せと開いている系を空にする（前の状態は新規を元に戻す段に。確かめずに空にし、元に戻せる）
     fn new_system(&mut self) {
-        if !self.browser.combo.picks.is_empty()
-            && !crate::files::confirm(
-                tr("新規"),
-                tr("今の組合せを消して、空の状態から始めますか？"),
-            )
-        {
-            return;
-        }
-        self.browser.combo = Combo::default();
-        // 別の組合せ: 元に戻す段は空から
-        self.combo_hist = Default::default();
+        self.new_undo = Some(NewSnap {
+            combo: std::mem::take(&mut self.browser.combo),
+            combo_hist: {
+                // 新規の前のやり直す段は捨てる（新規の後にやり直すと順がおかしくなる）
+                let mut h = std::mem::take(&mut self.combo_hist);
+                h.redo.clear();
+                h
+            },
+            file: self.file.take(),
+            summary: self.summary.take(),
+            built: self.built.take(),
+            built_combo: self.built_combo.take(),
+            combo_path: self.combo_path.take(),
+            doc_path: self.doc_path.take(),
+            ld_dirty: self.ld_dirty,
+            hist: std::mem::take(&mut self.hist),
+            hist_list: std::mem::take(&mut self.hist_list),
+        });
+        self.new_redo = None;
         self.combo_view = combo::View::default();
-        self.file = None;
         self.summary = None;
         self.info = None;
         self.rev += 1;
@@ -806,10 +848,56 @@ impl Core {
         };
     }
 
+    /// 読み直す。開いた系は前の系を段に積む（読み直すを元に戻せる）。組合せの系は組合せから作り直す
     fn reload(&mut self) {
-        if let Some(f) = self.file.clone() {
+        let Some(f) = self.file.clone() else {
+            return;
+        };
+        if self.is_combo() {
             self.open(&f);
+            return;
         }
+        self.worker
+            .send(Tag::Load, "reload", json!({ "history": "push" }));
+        self.status = Status {
+            text: trf("{} を読んでいます…", &[&f.display()]),
+            error: false,
+        };
+    }
+
+    /// 新規を元に戻す（back）・やり直す
+    fn undo_new(&mut self, back: bool) {
+        if !back {
+            self.new_system();
+            self.status = Status {
+                text: tr("やり直した").into(),
+                error: false,
+            };
+            return;
+        }
+        let Some(n) = self.new_undo.take() else {
+            return;
+        };
+        self.browser.combo = n.combo;
+        self.combo_hist = n.combo_hist;
+        self.combo_len_prev = self.browser.combo.picks.len();
+        self.built = n.built;
+        self.built_combo = n.built_combo;
+        self.combo_path = n.combo_path;
+        self.doc_path = n.doc_path;
+        self.hist = n.hist;
+        self.hist_list = n.hist_list;
+        self.new_redo = Some(self.hist.1);
+        if let Some(sum) = n.summary {
+            // serve には新規の前の系が残っている（読み直さずに表・解析を出し直す）
+            self.on_loaded(sum);
+            self.file = n.file;
+            self.ld_dirty = n.ld_dirty;
+        }
+        self.status = Status {
+            text: tr("元に戻した").into(),
+            error: false,
+        };
     }
 
     /// 系のファイルを選んで開く。start のフレームで選び始める（Web 版は選び終わった後のフレームで開くので、
@@ -1018,6 +1106,8 @@ impl Core {
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
     fn build_combo(&mut self, project: Value) {
+        // 組合せを変えたら、新規はやり直さない
+        self.new_redo = None;
         let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui");
         let name: String = self
             .browser
@@ -1251,35 +1341,13 @@ impl Core {
         let params = params.clone();
         match d.tag {
             Tag::Load => {
-                let new_file = v["file"].as_str().map(PathBuf::from);
-                if new_file != self.file {
-                    // 別の系: 前との差は出さない
-                    for r in self.results.values_mut() {
-                        r.value = None;
-                        r.prev = None;
-                    }
-                }
-                // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
-                self.ld_dirty = false;
+                // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
                 self.hist = (0, 0);
                 self.hist_list = Default::default();
-                if new_file != self.file {
-                    self.ld.reset();
-                }
-                self.file = new_file;
-                self.summary = Some(v);
-                self.worker.send(Tag::Surfaces, "surface", json!({}));
-                self.info = None;
-                self.worker
-                    .send(Tag::Info, "analyze", json!({ "cmd": "info" }));
-                self.read_params();
-                // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
-                if !self.is_combo() {
-                    self.worker
-                        .send(Tag::Layout, "layout", self.layout_params());
-                }
-                self.worker.send(Tag::Configs, "configs", json!({}));
-                self.rerun = Some(false);
+                self.take_history(&v);
+                self.new_undo = None;
+                self.new_redo = None;
+                self.on_loaded(v);
             }
             Tag::Info => self.info = Some(v),
             Tag::Analyze(id) => {
@@ -1358,6 +1426,31 @@ impl Core {
             }
             Tag::Set | Tag::Edit | Tag::History => {
                 self.take_history(&v);
+                if d.tag != Tag::History {
+                    self.new_redo = None;
+                }
+                if d.tag == Tag::History && std::mem::take(&mut self.redo_new_pending) {
+                    self.new_system();
+                    return;
+                }
+                // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
+                // 面の表は変更あり
+                if let Some(l) = v.get("loaded") {
+                    self.on_loaded(l.clone());
+                    let top = &self.hist_list.0.first();
+                    self.ld_dirty =
+                        top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
+                    self.status = Status {
+                        text: tr(if params["back"].as_bool() == Some(true) {
+                            "元に戻した"
+                        } else {
+                            "やり直した"
+                        })
+                        .into(),
+                        error: false,
+                    };
+                    return;
+                }
                 if d.tag == Tag::History {
                     text = tr(if params["back"].as_bool() == Some(true) {
                         "元に戻した"
@@ -1685,17 +1778,69 @@ impl Core {
 
     /// 元に戻す（back）・やり直すことができるか。組合せの系は組合せの段、開いた系は serve の段
     fn can_undo(&self, back: bool) -> bool {
-        if self.is_combo() {
-            self.combo_hist.can(&self.browser.combo, back)
-        } else if self.summary.is_some() {
+        if let Some(n) = self.new_undo_step(back) {
+            return n;
+        }
+        if self.is_combo() && self.combo_hist.can(&self.browser.combo, back) {
+            return true;
+        }
+        if self.summary.is_some() {
             if back {
                 self.hist.0 > 0
             } else {
-                self.hist.1 > 0
+                self.serve_redo() > 0
             }
         } else {
             false
         }
+    }
+
+    /// 新規の直後（元に戻す）・新規を戻した直後（やり直す）なら Some（戻せるか）。それ以外は None
+    fn new_undo_step(&self, back: bool) -> Option<bool> {
+        if self.summary.is_none() && self.browser.combo.picks.is_empty() {
+            return Some(back && self.new_undo.is_some());
+        }
+        (!back
+            && self.new_redo.is_some()
+            && self.serve_redo() == 0
+            && !self.combo_hist.can(&self.browser.combo, false))
+        .then_some(true)
+    }
+
+    /// serve のやり直せる段の数（新規を戻した後は、新規の前の段を除く）
+    fn serve_redo(&self) -> usize {
+        self.hist.1.saturating_sub(self.new_redo.unwrap_or(0))
+    }
+
+    /// 系を読んだ（開いた・読み直した・それを戻した）後: ファイル名・概要を置き、面の表・解析を読み直す
+    fn on_loaded(&mut self, v: Value) {
+        let new_file = v["file"].as_str().map(PathBuf::from);
+        if new_file != self.file {
+            // 別の系: 前との差は出さない
+            for r in self.results.values_mut() {
+                r.value = None;
+                r.prev = None;
+            }
+        }
+        // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
+        self.ld_dirty = false;
+        if new_file != self.file {
+            self.ld.reset();
+        }
+        self.file = new_file;
+        self.summary = Some(v);
+        self.worker.send(Tag::Surfaces, "surface", json!({}));
+        self.info = None;
+        self.worker
+            .send(Tag::Info, "analyze", json!({ "cmd": "info" }));
+        self.read_params();
+        // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
+        if !self.is_combo() {
+            self.worker
+                .send(Tag::Layout, "layout", self.layout_params());
+        }
+        self.worker.send(Tag::Configs, "configs", json!({}));
+        self.rerun = Some(false);
     }
 
     /// serve の結果の段の数と一覧を覚える
@@ -1709,20 +1854,52 @@ impl Core {
 
     /// 元に戻す・やり直す段の名前（元に戻す段は新しい順、やり直す段は次の順）
     fn undo_list(&self, back: bool) -> Vec<String> {
-        if self.is_combo() {
-            return self.combo_hist.list(back);
+        match self.new_undo_step(back) {
+            Some(true) => return vec![tr("新規").into()],
+            Some(false) => return Vec::new(),
+            None => {}
         }
+        // 組合せの系は組合せの段の後に、組合せを作る前の serve の段（開く など）
+        let mut out = if self.is_combo() {
+            self.combo_hist.list(back)
+        } else {
+            Vec::new()
+        };
         let l = if back {
             &self.hist_list.0
         } else {
             &self.hist_list.1
         };
-        l.iter().map(hist_label).collect()
+        if self.is_combo() && !out.is_empty() && !back {
+            return out;
+        }
+        let m = if back { l.len() } else { self.serve_redo() };
+        out.extend(l.iter().take(m).map(hist_label));
+        if !back && self.new_redo.is_some() {
+            out.push(tr("新規").into());
+        }
+        out
     }
 
     /// n 段元に戻す（back）・やり直す（Ctrl+Z・Ctrl+Y、編集メニューの一覧）
     fn undo(&mut self, back: bool, n: usize) {
-        if self.is_combo() {
+        if self.new_undo_step(back) == Some(true) {
+            self.undo_new(back);
+            return;
+        }
+        // 組合せの段を使い切ったら serve の段（組合せを作る前に開いた系など）
+        let k = if self.is_combo() {
+            self.combo_hist.list(back).len()
+        } else {
+            0
+        };
+        if k > 0 {
+            if n > k && k > 0 && back {
+                // 組合せの段を越えて選んだ: 組合せの段は捨てて、残りを serve で戻す
+                self.combo_hist = Default::default();
+                self.undo(back, n - k);
+                return;
+            }
             match self.combo_hist.step(&self.browser.combo, back, n) {
                 Some(c) => {
                     self.browser.combo = c;
@@ -1755,6 +1932,12 @@ impl Core {
         }
         if self.summary.is_some() {
             self.flush_set();
+            let mut n = n;
+            if !back && self.new_redo.is_some() && n > self.serve_redo() {
+                // serve の段の後に新規までやり直す
+                n = self.serve_redo();
+                self.redo_new_pending = true;
+            }
             let m = if back { "undo" } else { "redo" };
             self.worker
                 .send(Tag::History, m, json!({ "back": back, "steps": n }));
@@ -4419,6 +4602,9 @@ impl App {
                 hist: (0, 0),
                 hist_list: Default::default(),
                 combo_hist: Default::default(),
+                new_undo: None,
+                new_redo: None,
+                redo_new_pending: false,
                 ld: Default::default(),
                 ld_rows: Vec::new(),
                 ld_units: Vec::new(),
@@ -5211,7 +5397,7 @@ impl App {
                     }
                     ui.label(
                         RichText::new(tr(
-                            "系の変更（面の表・多重構成・最適化の結果・組合せ）を 100 段まで。開き直すと消える",
+                            "系の変更（面の表・多重構成・最適化の結果・組合せ）と、系を開く・読み直す・新規を 100 段まで",
                         ))
                         .small()
                         .weak(),
