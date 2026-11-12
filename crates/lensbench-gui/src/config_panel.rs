@@ -117,6 +117,13 @@ pub struct State {
     focus_name: bool,
     /// ピックアップの欄（セル、元の構成、倍率、ずれ）
     pick_form: Option<((usize, usize), String, String, String)>,
+    /// Shift+F10 で開いたセルの欄（行、構成、出す位置）と、開いたフレーム（同じフレームのクリックで閉じない）
+    kbd_menu: Option<(usize, usize, egui::Pos2)>,
+    kbd_fresh: bool,
+    /// 今のセルの左下（Shift+F10 の欄の位置）
+    cur_pos: Option<egui::Pos2>,
+    /// 名前の欄の補完の候補で選んでいる番号
+    comp_pick: usize,
     /// 取り込みで表にできなかった違い
     pub notes: Vec<String>,
 }
@@ -197,6 +204,127 @@ pub fn param_desc(name: &str) -> String {
     } else {
         trf("{} の{}", &[&who.trim(), &what])
     }
+}
+
+/// 名前の候補を作るための系の面・玉・群
+#[derive(Debug, Clone, Default)]
+pub struct Cands {
+    /// 面ごとの (面タイプ, コメント)
+    pub surfs: Vec<(String, String)>,
+    /// 玉・群の名前
+    pub units: Vec<String>,
+}
+
+/// 面タイプで使えるパラメータの種類
+fn surf_kinds(typ: &str) -> Vec<String> {
+    let mut v: Vec<String> = ["r", "t", "k", "dn", "disp"]
+        .iter()
+        .map(|x| x.to_string())
+        .collect();
+    match typ {
+        "EVENASPH" | "ODDASPHE" => v.extend((1..=8).map(|i| format!("a{}", 2 * i))),
+        "COORDBRK" => {
+            v = ["t", "dx", "dy", "tx", "ty", "tz"]
+                .iter()
+                .map(|x| x.to_string())
+                .collect();
+        }
+        "SZERNSAG" | "FZERNSAG" => v.extend((1..=37).map(|i| format!("z{i}"))),
+        _ => {}
+    }
+    v
+}
+
+/// 玉・群のパラメータの種類
+const UNIT_KINDS: [&str; 8] = ["shift", "dx", "dy", "tx", "ty", "tz", "dn", "disp"];
+
+/// 表の行にできるパラメータの名前（全部）
+fn all_params(c: &Cands) -> Vec<String> {
+    let mut v = Vec::new();
+    for (j, (typ, _)) in c.surfs.iter().enumerate() {
+        for k in surf_kinds(typ) {
+            v.push(format!("{j}.{k}"));
+        }
+    }
+    for u in &c.units {
+        for k in UNIT_KINDS {
+            v.push(format!("{u}.{k}"));
+        }
+    }
+    v.push("objx".into());
+    v.push("objy".into());
+    v
+}
+
+/// 打った文字に合う名前（前方一致を先に、次に名前・説明の部分一致）。多すぎるときは先頭だけ
+fn complete(c: &Cands, text: &str) -> Vec<String> {
+    let q = text.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let (mut head, mut rest) = (Vec::new(), Vec::new());
+    for n in all_params(c) {
+        let l = n.to_lowercase();
+        if l.starts_with(&q) {
+            head.push(n);
+        } else if l.contains(&q) || param_desc(&n).to_lowercase().contains(&q) {
+            rest.push(n);
+        }
+    }
+    head.extend(rest);
+    head.truncate(200);
+    head
+}
+
+/// 名前を階層で選ぶ欄（面 → 種類、玉・群 → 種類、物体の位置）。選んだ名前を返す
+fn param_menu(ui: &mut Ui, c: &Cands) -> Option<String> {
+    let mut out = None;
+    ui.menu_button(tr("面"), |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(400.0)
+            .show(ui, |ui| {
+                for (j, (typ, comment)) in c.surfs.iter().enumerate() {
+                    let label = if comment.is_empty() {
+                        format!("{j}  {typ}")
+                    } else {
+                        format!("{j}  {typ}  {comment}")
+                    };
+                    ui.menu_button(label, |ui| {
+                        for k in surf_kinds(typ) {
+                            let n = format!("{j}.{k}");
+                            if ui.button(format!("{k}  {}", param_desc(&n))).clicked() {
+                                out = Some(n);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                }
+            });
+    });
+    ui.add_enabled_ui(!c.units.is_empty(), |ui| {
+        ui.menu_button(tr("玉・群"), |ui| {
+            for u in &c.units {
+                ui.menu_button(u, |ui| {
+                    for k in UNIT_KINDS {
+                        let n = format!("{u}.{k}");
+                        if ui.button(format!("{k}  {}", param_desc(&n))).clicked() {
+                            out = Some(n);
+                            ui.close_menu();
+                        }
+                    }
+                });
+            }
+        });
+    });
+    ui.menu_button(tr("物体の位置"), |ui| {
+        for n in ["objx", "objy"] {
+            if ui.button(n).clicked() {
+                out = Some(n.to_string());
+                ui.close_menu();
+            }
+        }
+    });
+    out
 }
 
 /// 構成を位置 at（1 始まり、新しい構成の番号）に挿入する操作。値は構成 from（1 始まり）、pickup なら from のピックアップ
@@ -294,7 +422,107 @@ fn paste_ops(t: &Table, i: usize, k: usize, text: &str) -> Result<Vec<Value>, St
     Ok(ops)
 }
 
-pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
+/// セルの右クリック（Shift+F10）の欄
+#[allow(clippy::too_many_arguments)]
+fn cell_menu(
+    ui: &mut Ui,
+    st: &mut State,
+    t: &Table,
+    i: usize,
+    k: usize,
+    start: &mut Option<(usize, usize, Option<String>)>,
+    menu_ops: &mut Vec<Value>,
+    acts: &mut Vec<Act>,
+    remove: &mut Option<usize>,
+) {
+    let weak = theme::weak_text(ui.visuals());
+    let name = &t.rows[i].0;
+    let v = t.rows[i].1.get(k).copied().unwrap_or(f64::NAN);
+    let pick = t.pick(i, k);
+    if ui.button(tr("書き換える（F2）")).clicked() {
+        *start = Some((i, k, None));
+        ui.close_menu();
+    }
+    if ui
+        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
+        .clicked()
+    {
+        menu_ops.push(json!({
+            "op": "set_config_row", "param": name, "values": vec![v; t.n],
+        }));
+        ui.close_menu();
+    }
+    if k + 1 != t.active
+        && ui
+            .button(trf("構成 {} を系に入れる", &[&(k + 1)]))
+            .clicked()
+    {
+        menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
+        ui.close_menu();
+    }
+    // 構成のピックアップ
+    if t.n > 1 {
+        ui.separator();
+        ui.label(RichText::new(tr("ピックアップ")).strong());
+        if let Some(p) = pick {
+            ui.horizontal(|ui| {
+                ui.label(trf(
+                    "構成 {} × {} + {}",
+                    &[&p.from, &full(p.scale), &full(p.offset)],
+                ));
+                if ui.small_button(tr("外す")).clicked() {
+                    menu_ops.push(json!({
+                        "op": "remove_config_pickup", "param": name, "k": k + 1,
+                    }));
+                    ui.close_menu();
+                }
+            });
+        }
+        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
+            let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
+            let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
+            st.pick_form = Some(((i, k), from.to_string(), full(sc), full(of)));
+        }
+        if let Some(f) = st.pick_form.as_mut() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(tr("元の構成")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
+                ui.label(RichText::new(tr("倍率")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
+                ui.label(RichText::new(tr("ずれ")).color(weak));
+                ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
+            });
+            if ui.button(tr("+ ピックアップにする")).clicked() {
+                match (
+                    f.1.trim().parse::<usize>(),
+                    parse_num(&f.2),
+                    parse_num(&f.3),
+                ) {
+                    (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
+                        "op": "set_config_pickup", "param": name, "k": k + 1,
+                        "from": from, "scale": sc, "offset": of,
+                    })),
+                    _ => acts.push(Act::Refused(
+                        tr("ピックアップの元の構成・倍率・ずれは数で").into(),
+                    )),
+                }
+                ui.close_menu();
+            }
+        }
+    }
+    ui.separator();
+    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
+        ui.ctx().copy_text(copy_text(t, &[i]));
+        st.kbd_menu = None;
+        ui.close_menu();
+    }
+    if ui.button(tr("行を消す（Delete）")).clicked() {
+        *remove = Some(i);
+        ui.close_menu();
+    }
+}
+
+pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &Cands) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let accent = ui.visuals().selection.stroke.color;
@@ -350,7 +578,78 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
         if std::mem::take(&mut st.focus_name) {
             resp.request_focus();
         }
-        let enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
+        // 補完: 打った文字に合う名前の一覧（↑ ↓ で選び Enter で足す、Tab で欄に入れる、クリックでも）
+        let mut picked: Option<String> = None;
+        let mut enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
+        if resp.has_focus() || enter {
+            let m = complete(cands, &st.new_param);
+            let exact = m.iter().any(|x| x.eq_ignore_ascii_case(st.new_param.trim()));
+            if resp.changed() {
+                st.comp_pick = 0;
+            }
+            if st.comp_pick >= m.len() {
+                st.comp_pick = 0;
+            }
+            let (up, down, tab) = ui.input(|x| {
+                (
+                    x.key_pressed(Key::ArrowUp),
+                    x.key_pressed(Key::ArrowDown),
+                    x.key_pressed(Key::Tab),
+                )
+            });
+            if up && st.comp_pick > 0 {
+                st.comp_pick -= 1;
+            }
+            if down && st.comp_pick + 1 < m.len() {
+                st.comp_pick += 1;
+            }
+            if !m.is_empty() && !(exact && m.len() == 1) {
+                let area = egui::Area::new(resp.id.with("comp"))
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(resp.rect.left_bottom())
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.set_min_width(240.0);
+                            egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
+                                for (k, n) in m.iter().enumerate() {
+                                    let r = ui.selectable_label(
+                                        k == st.comp_pick,
+                                        format!("{n}  {}", param_desc(n)),
+                                    );
+                                    if k == st.comp_pick && (up || down) {
+                                        r.scroll_to_me(None);
+                                    }
+                                    if r.clicked() {
+                                        picked = Some(n.clone());
+                                    }
+                                }
+                            });
+                        });
+                    });
+                let _ = area;
+                if tab {
+                    if let Some(n) = m.get(st.comp_pick) {
+                        st.new_param = n.clone();
+                        st.focus_name = true;
+                    }
+                }
+                if enter && !exact {
+                    if let Some(n) = m.get(st.comp_pick) {
+                        st.new_param = n.clone();
+                    }
+                }
+            }
+        }
+        let pm = ui.menu_button("…", |ui| param_menu(ui, cands));
+        pm.response
+            .on_hover_text(tr("パラメータを面・玉・群から選んで行を挿入"));
+        if let Some(Some(n)) = pm.inner {
+            picked = Some(n);
+        }
+        if let Some(n) = picked {
+            st.new_param = n;
+            enter = true;
+        }
         let add = ui
             .button(tr("行を挿入"))
             .on_hover_text(tr(
@@ -605,6 +904,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     },
                                 );
                                 if st.cur == Some((i, k)) {
+                                    st.cur_pos = Some(ui.max_rect().left_bottom());
                                     ui.painter().rect_stroke(
                                         ui.max_rect(),
                                         2.0,
@@ -621,83 +921,17 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     start = Some((i, k, None));
                                 }
                                 resp.context_menu(|ui| {
-                                    if ui.button(tr("書き換える（F2）")).clicked() {
-                                        start = Some((i, k, None));
-                                        ui.close_menu();
-                                    }
-                                    if ui
-                                        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
-                                        .clicked()
-                                    {
-                                        menu_ops.push(json!({
-                                            "op": "set_config_row", "param": name, "values": vec![v; t.n],
-                                        }));
-                                        ui.close_menu();
-                                    }
-                                    if k + 1 != t.active && ui.button(trf("構成 {} を系に入れる", &[&(k + 1)])).clicked() {
-                                        menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
-                                        ui.close_menu();
-                                    }
-                                    // 構成のピックアップ
-                                    if t.n > 1 {
-                                        ui.separator();
-                                        ui.label(RichText::new(tr("ピックアップ")).strong());
-                                        if let Some(p) = pick {
-                                            ui.horizontal(|ui| {
-                                                ui.label(trf(
-                                                    "構成 {} × {} + {}",
-                                                    &[&p.from, &full(p.scale), &full(p.offset)],
-                                                ));
-                                                if ui.small_button(tr("外す")).clicked() {
-                                                    menu_ops.push(json!({
-                                                        "op": "remove_config_pickup", "param": name, "k": k + 1,
-                                                    }));
-                                                    ui.close_menu();
-                                                }
-                                            });
-                                        }
-                                        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
-                                            let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
-                                            let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
-                                            st.pick_form =
-                                                Some(((i, k), from.to_string(), full(sc), full(of)));
-                                        }
-                                        if let Some(f) = st.pick_form.as_mut() {
-                                            ui.horizontal(|ui| {
-                                                ui.label(RichText::new(tr("元の構成")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
-                                                ui.label(RichText::new(tr("倍率")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
-                                                ui.label(RichText::new(tr("ずれ")).color(weak));
-                                                ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
-                                            });
-                                            if ui.button(tr("+ ピックアップにする")).clicked() {
-                                                match (
-                                                    f.1.trim().parse::<usize>(),
-                                                    parse_num(&f.2),
-                                                    parse_num(&f.3),
-                                                ) {
-                                                    (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
-                                                        "op": "set_config_pickup", "param": name, "k": k + 1,
-                                                        "from": from, "scale": sc, "offset": of,
-                                                    })),
-                                                    _ => acts.push(Act::Refused(tr(
-                                                        "ピックアップの元の構成・倍率・ずれは数で",
-                                                    ).into())),
-                                                }
-                                                ui.close_menu();
-                                            }
-                                        }
-                                    }
-                                    ui.separator();
-                                    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
-                                        ui.ctx().copy_text(copy_text(&t, &[i]));
-                                        ui.close_menu();
-                                    }
-                                    if ui.button(tr("行を消す（Delete）")).clicked() {
-                                        remove = Some(i);
-                                        ui.close_menu();
-                                    }
+                                    cell_menu(
+                                        ui,
+                                        st,
+                                        &t,
+                                        i,
+                                        k,
+                                        &mut start,
+                                        &mut menu_ops,
+                                        &mut acts,
+                                        &mut remove,
+                                    );
                                 });
                             });
                         }
@@ -714,6 +948,50 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                 });
         });
     let _ = table_resp;
+    // Shift+F10: 今のセルの右クリックの欄
+    if st.active
+        && st.edit.is_none()
+        && ui.memory(|m| m.focused().is_none())
+        && ui.input(|x| x.modifiers.shift && x.key_pressed(Key::F10))
+    {
+        if let Some((i, k)) = st.cur {
+            let pos = st.cur_pos.unwrap_or_else(|| ui.min_rect().left_top());
+            st.kbd_menu = Some((i, k, pos));
+            st.kbd_fresh = true;
+        }
+    }
+    if let Some((i, k, pos)) = st.kbd_menu.filter(|m| m.0 < t.rows.len() && m.1 < t.n) {
+        let n0 = (menu_ops.len(), acts.len());
+        let area = egui::Area::new(ui.id().with("mce_kbd_menu"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::menu(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(320.0);
+                    cell_menu(
+                        ui,
+                        st,
+                        &t,
+                        i,
+                        k,
+                        &mut start,
+                        &mut menu_ops,
+                        &mut acts,
+                        &mut remove,
+                    );
+                });
+            });
+        let fresh = std::mem::take(&mut st.kbd_fresh);
+        let done = (menu_ops.len(), acts.len()) != n0 || start.is_some() || remove.is_some();
+        if done
+            || ui.input(|x| x.key_pressed(Key::Escape))
+            || (!fresh && area.response.clicked_elsewhere())
+        {
+            st.kbd_menu = None;
+        }
+    } else {
+        st.kbd_menu = None;
+    }
     if clicked_any || !menu_ops.is_empty() {
         st.active = true;
     } else if ui.input(|x| x.pointer.any_click()) && !ui.ui_contains_pointer() {
@@ -915,6 +1193,23 @@ mod tests {
             vec![json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 5.0, 6.0] })]
         );
         assert!(paste_ops(&t, 0, 0, "1\tx").is_err());
+        let c = Cands {
+            surfs: vec![
+                ("STANDARD".into(), String::new()),
+                ("EVENASPH".into(), "L1".into()),
+                ("COORDBRK".into(), String::new()),
+            ],
+            units: vec!["G1".into()],
+        };
+        let all = all_params(&c);
+        assert!(all.contains(&"1.a4".to_string()) && all.contains(&"2.tx".to_string()));
+        assert!(!all.contains(&"2.r".to_string()));
+        assert_eq!(complete(&c, "g1.s"), vec!["G1.shift".to_string()]);
+        assert_eq!(
+            complete(&c, "2.t")[..2],
+            ["2.t".to_string(), "2.tx".to_string()]
+        );
+        assert!(complete(&c, "").is_empty());
         assert_eq!(param_desc("3.t"), "面 3 の厚さ");
         assert_eq!(param_desc("G1.shift"), "G1 の移動");
     }

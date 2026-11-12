@@ -315,6 +315,8 @@ struct Core {
     /// 玉・群・機構部品の欄を開く（通し確認）
     um_open: bool,
     ld_blocks: Vec<lens_data::Block>,
+    /// レンズデータの硝材の候補（ガラスカタログを読んだときに作る）
+    ld_glasses: Vec<lens_data::GlassChoice>,
     /// 開いた系を面の表で変えて、まだ保存していない
     ld_dirty: bool,
     /// 多重構成の表
@@ -1082,6 +1084,15 @@ impl Core {
             Tag::Glasses => {
                 self.browser.glasses = catalog::parse_glasses(&v);
                 self.browser.glass_sel = None;
+                self.ld_glasses = self
+                    .browser
+                    .glasses
+                    .iter()
+                    .map(|g| lens_data::GlassChoice {
+                        name: g.name.clone(),
+                        desc: format!("{}  nd {:.5}  νd {:.2}", g.catalog, g.nd, g.vd),
+                    })
+                    .collect();
                 text = trf("ガラス {} 種", &[&self.browser.glasses.len()]);
             }
             Tag::Lenses => {
@@ -2099,6 +2110,8 @@ impl Core {
         let ctx = lens_data::Ctx {
             config_n: self.mc.table.as_ref().map_or(1, |t| t.n),
             config_rows: &cfg_rows,
+            glasses: &self.ld_glasses,
+            glasses_loaded: self.browser.loaded && !self.browser.glasses_pending,
             rows,
             blocks: &self.ld_blocks,
             locked: &locked,
@@ -2208,6 +2221,11 @@ impl Core {
                         self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
                     }
                 }
+                Act::NeedGlasses => {
+                    if !self.browser.glasses_pending {
+                        self.refresh_catalog();
+                    }
+                }
                 Act::NeedData(j) => {
                     self.worker
                         .send(Tag::SurfData(j), "surface_data", json!({ "surface": j }));
@@ -2289,7 +2307,15 @@ impl Core {
     /// 多重構成の表
     fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
-        for a in config_panel::ui(ui, &mut self.mc, combo) {
+        let cands = config_panel::Cands {
+            surfs: self
+                .ld_rows
+                .iter()
+                .map(|r| (r.typ.clone(), r.comment.clone()))
+                .collect(),
+            units: self.ld_blocks.iter().map(|b| b.name.clone()).collect(),
+        };
+        for a in config_panel::ui(ui, &mut self.mc, combo, &cands) {
             match a {
                 config_panel::Act::Ops(ops) => {
                     self.mc.notes.clear();
@@ -3573,6 +3599,7 @@ impl Core {
                         ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
                         ("Enter / Space", tr("ボタンを押す・選ぶ")),
                         ("↑ ↓", tr("数の欄で値を増減（パラメータは解析をすぐ計算し直す）")),
+                        ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）")),
                         ("F1", tr("この一覧")),
                         ("Esc", tr("パレット・窓を閉じる")),
                     ] {
@@ -3581,6 +3608,44 @@ impl Core {
                         ui.end_row();
                     }
                 });
+                for (title, keys) in [
+                    (
+                        tr("レンズデータ"),
+                        vec![
+                            ("← → ↑ ↓ / Tab", tr("セルを移る（Shift+↑ ↓・Shift+クリックで行の範囲）")),
+                            ("Enter / F2", tr("書き換え（文字を打っても始まる）。Enter で決め、Esc で取り消し")),
+                            ("Insert", tr("今の面の前に面を挿入")),
+                            ("Alt+Insert", tr("今の面の後に面を挿入")),
+                            ("Delete", tr("選んだ面を消す")),
+                            ("Ctrl+C", tr("選んだ行をタブ区切りでコピー")),
+                            ("Ctrl+V", tr("今のセルから上書きで貼り付け")),
+                            ("Ctrl+Shift+V", tr("写した行の数だけ面を挿入して貼り付け")),
+                            ("Shift+F10", tr("右クリックの欄")),
+                            ("Ctrl+L", tr("ブロックのロック")),
+                            ("Enter / Backspace", tr("ブロックの中へ・外へ")),
+                        ],
+                    ),
+                    (
+                        tr("多重構成"),
+                        vec![
+                            ("← → ↑ ↓ / Tab", tr("セルを移る")),
+                            ("Enter / F2", tr("書き換え（文字を打っても始まる）")),
+                            ("Delete", tr("選んだ行を消す（列の見出しを選んでいれば構成を消す）")),
+                            ("Ctrl+C / Ctrl+V", tr("行のコピー・上書きで貼り付け")),
+                            ("Shift+F10", tr("右クリックの欄")),
+                        ],
+                    ),
+                ] {
+                    ui.separator();
+                    ui.strong(title);
+                    egui::Grid::new(("keys", title)).striped(true).show(ui, |ui| {
+                        for (k, v) in keys {
+                            ui.label(RichText::new(k).monospace().strong());
+                            ui.label(v);
+                            ui.end_row();
+                        }
+                    });
+                }
                 ui.separator();
                 ui.label(
                     RichText::new(tr("パネルはタブを引きずって並べ替え・分割・フロートできます。タブを右クリックすると別の窓（別モニター）に出せます。")).small(),
@@ -3920,6 +3985,7 @@ impl App {
                 um: Default::default(),
                 um_open: false,
                 ld_blocks: Vec::new(),
+                ld_glasses: Vec::new(),
                 ld_dirty: false,
                 mc: Default::default(),
                 oss: Default::default(),

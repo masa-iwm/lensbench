@@ -224,13 +224,6 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
             ui.label(RichText::new(why).color(ui.visuals().warn_fg_color));
         }
     });
-    ui.label(
-        RichText::new(tr(
-            "種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップはセルの右端の [...]、屈折率のずれ・分散・複屈折は硝材のセルの [...]、絞り・無視・挿入は右クリック（Shift+F10）で。",
-        ))
-        .small()
-        .color(weak),
-    );
     if read_only.is_some() {
         ui.disable();
     }

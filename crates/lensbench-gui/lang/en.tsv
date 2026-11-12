@@ -1348,3 +1348,33 @@ r^{} の係数	r^{} coefficient
 行を削除	Delete row
 行を挿入	Insert row
 選んだ行を表から消す（系の値は今のまま）。Delete キーでも	Remove the selected row from the table (system values stay). Also with the Delete key
+{} 件。打って絞る（名前・カタログ・nd）	{} items. Type to filter (name, catalog, nd)
+ガラスカタログを読んでいます…（名前・1.5,60 のようなモデルガラスは打って Enter）	Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)
+ブロック {}	block {}
+候補から選ぶ（打つと絞り込む）	Choose from the list (type to filter)
+合うガラスが無い（打った名前・モデルガラスのまま Enter で決める）	No matching glass (Enter keeps the typed name or model glass)
+詳細設定	Details
+開口・前後の傾き偏心・形のデータ・全項目 JSON とブロックの設定（クリックで開く・閉じる）	Aperture, tilt/decenter before and after, shape data, all-fields JSON and block settings (click to open/close)
+写した行の数だけ面を挿入してから値を書く（OpticStudio の Paste Surfaces）	Insert as many surfaces as copied rows, then write the values (like OpticStudio's Paste Surfaces)
+前に面を挿入して貼り付け（Ctrl+Shift+V）	Insert surfaces before and paste (Ctrl+Shift+V)
+貼り付け（上書き、Ctrl+V）	Paste (overwrite, Ctrl+V)
+この系で使用	used in this system
+セルを移る	Move between cells
+セルを移る（Shift+↑ ↓・Shift+クリックで行の範囲）	Move between cells (Shift+↑ ↓ / Shift+click select a row range)
+ブロックのロック	Lock a block
+ブロックの中へ・外へ	Enter / leave a block
+今のセルから上書きで貼り付け	Paste over cells from the current one
+今の面の前に面を挿入	Insert a surface before the current one
+今の面の後に面を挿入	Insert a surface after the current one
+写した行の数だけ面を挿入して貼り付け	Insert as many surfaces as copied rows and paste
+右クリックの欄	Right-click menu
+多重構成の次の構成（Shift で前へ）	Next multi-config configuration (Shift: previous)
+書き換え（文字を打っても始まる）	Edit (typing also starts editing)
+書き換え（文字を打っても始まる）。Enter で決め、Esc で取り消し	Edit (typing also starts editing). Enter commits, Esc cancels
+行のコピー・上書きで貼り付け	Copy rows / paste over
+選んだ行をタブ区切りでコピー	Copy selected rows as tab-separated text
+選んだ行を消す（列の見出しを選んでいれば構成を消す）	Delete the selected row (or the configuration if a column header is selected)
+選んだ面を消す	Delete the selected surfaces
+ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1	Solves/pickups: […] at the right of a cell; dn, dispersion, birefringence: the material's […]; stop, ignore, insert, paste: right-click (Shift+F10). Keys: F1
+パラメータを面・玉・群から選んで行を挿入	Choose a parameter from surfaces / lenses / groups and insert the row
+玉・群	Lenses / groups
