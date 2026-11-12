@@ -68,6 +68,20 @@ pub fn analysis_help(cmd: &str) -> Option<&'static str> {
     })
 }
 
+/// 解析の群の並び
+pub const ANALYSIS_GROUPS: &[&str] = &["像の質", "MTF・PSF", "干渉・伝搬", "表・系", "追加の解析"];
+
+/// 解析の群（一覧の見出し、日本語。表示は tr で）。拡張の解析は「追加の解析」
+pub fn analysis_group(cmd: &str) -> &'static str {
+    match cmd {
+        "spot" | "wavefront" | "zernike" | "rms" => "像の質",
+        "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF・PSF",
+        "fringe" | "pop" => "干渉・伝搬",
+        "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "表・系",
+        _ => "追加の解析",
+    }
+}
+
 /// 解析の表示名（今の言語）
 pub fn analysis_label(cmd: &str) -> String {
     analyses()

@@ -3408,19 +3408,38 @@ impl Core {
         });
     }
 
-    /// 解析の引数の欄、拡張の解析なら設定のオブジェクトの欄、追加の引数（JSON）。計算し直すなら true
-    fn args_ui(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) -> bool {
-        let mut rerun = false;
-        let specs = argform::analysis_specs(&cfg.cmd);
+    /// 解析の引数の欄に並べる項目（視野・波長を上で選ぶ解析はそれを除く。図に要る引数は図のときは GUI が足すので除く）
+    fn shown_specs(&self, cfg: &AnaCfg) -> Vec<argform::ArgSpec> {
         let object = crate::ext::get(&cfg.cmd).and_then(|a| a.object);
         let sel = layout::takes_sel(&cfg.cmd);
-        let shown: Vec<&argform::ArgSpec> = specs
-            .iter()
+        let fig = cfg.view == View::Figure;
+        argform::analysis_specs(&cfg.cmd)
+            .into_iter()
             // 結果の書き出し（save）は「JSON をコピー」で足りるので出さない
             // 設定のオブジェクトの引数（とそのファイル）は下の欄（JSON を読む）で
             .filter(|s| s.name != "save" && !object.is_some_and(|o| s.name == o.arg))
             .filter(|s| !(sel && (s.name == "field" || s.name == "wave")))
-            .collect();
+            .filter(|s| {
+                !(fig
+                    && matches!(
+                        (cfg.cmd.as_str(), s.name.as_str()),
+                        ("wavefront", "map") | ("fringe" | "pop", "grid")
+                    ))
+            })
+            .map(|mut s| {
+                // GUI が既定で足す周波数は欄の薄い字に
+                if matches!(cfg.cmd.as_str(), "mtf-field" | "mtf-focus") && s.name == "freqs" {
+                    s.default = json!(figures::default_freqs(self.cutoff()));
+                    s.required = false;
+                }
+                s
+            })
+            .collect()
+    }
+
+    /// 上の行の「⚙ 設定」（開閉と変えた数）と「すべて既定に」。計算し直すなら true
+    fn args_head(&self, ui: &mut Ui, cfg: &mut AnaCfg) -> bool {
+        let shown = self.shown_specs(cfg);
         let set = shown
             .iter()
             .filter(|s| cfg.args.contains_key(&s.name))
@@ -3432,55 +3451,62 @@ impl Core {
         } else {
             tr("⚙ 設定").to_string()
         };
-        let weak = theme::weak_text(ui.visuals());
-        ui.horizontal(|ui| {
-            let arrow = if cfg.args_open { "⏷" } else { "⏵" };
-            if ui
-                .selectable_label(cfg.args_open, format!("{arrow} {head}"))
-                .on_hover_text(tr("解析の引数（CLI と同じ名前）を欄で"))
+        let mut rerun = false;
+        if ui
+            .selectable_label(cfg.args_open, head)
+            .on_hover_text(tr("解析の設定の欄を開く・閉じる"))
+            .clicked()
+        {
+            cfg.args_open = !cfg.args_open;
+        }
+        if set > 0
+            && ui
+                .small_button("↺")
+                .on_hover_text(tr("すべて既定に"))
                 .clicked()
-            {
-                cfg.args_open = !cfg.args_open;
-            }
-            if set > 0 && ui.small_button(tr("すべて既定に")).clicked() {
-                cfg.args.clear();
-                cfg.sensor.clear();
-                cfg.extra.clear();
+        {
+            cfg.args.clear();
+            cfg.sensor.clear();
+            cfg.extra.clear();
+            rerun = true;
+        }
+        rerun
+    }
+
+    /// 解析の設定の欄、拡張の解析なら設定のオブジェクトの欄、詳細（追加の引数の JSON）。計算し直すなら true
+    fn args_body(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) -> bool {
+        let mut rerun = false;
+        let specs = self.shown_specs(cfg);
+        let shown: Vec<&argform::ArgSpec> = specs.iter().collect();
+        let object = crate::ext::get(&cfg.cmd).and_then(|a| a.object);
+        let weak = theme::weak_text(ui.visuals());
+        if shown.is_empty() && object.is_none() {
+            ui.weak(tr("この解析に設定はありません"));
+        } else if argform::form(ui, ("a", id), &shown, &mut cfg.args) {
+            rerun = true;
+        }
+        if let Some(o) = object {
+            if self.object_ui(ui, id, cfg, &o) {
                 rerun = true;
             }
-        });
-        if !cfg.args_open {
-            return rerun;
         }
-        egui::ScrollArea::vertical()
-            .id_salt(("args", id))
-            .max_height(ui.available_height() * 0.5)
+        let extra_set = !cfg.extra.trim().is_empty();
+        egui::CollapsingHeader::new(RichText::new(tr("詳細（JSON で引数を足す）")).small().color(weak))
+            .id_salt(("args-extra", id))
+            .default_open(extra_set)
             .show(ui, |ui| {
-                if shown.is_empty() {
-                    ui.weak(tr("この解析に引数はありません"));
-                } else if argform::form(ui, ("a", id), &shown, &mut cfg.args) {
+                let r = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut cfg.extra)
+                            .hint_text("{\"freqs\": [10, 20]}")
+                            .desired_width(f32::INFINITY),
+                    )
+                    .on_hover_text(tr(
+                        "CLI と同じ引数を JSON で（キーの _ は -。docs/serve.md の analyze）。欄の値より優先",
+                    ));
+                if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     rerun = true;
                 }
-                if let Some(o) = object {
-                    if self.object_ui(ui, id, cfg, &o) {
-                        rerun = true;
-                    }
-                }
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("追加の引数")).small().color(weak));
-                    let r = ui
-                        .add(
-                            egui::TextEdit::singleline(&mut cfg.extra)
-                                .hint_text("{\"freqs\": [10, 20]}")
-                                .desired_width(200.0),
-                        )
-                        .on_hover_text(tr(
-                            "CLI と同じ引数を JSON で（キーの _ は -。docs/serve.md の analyze）。欄の値より優先",
-                        ));
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                        rerun = true;
-                    }
-                });
             });
         rerun
     }
@@ -3612,61 +3638,144 @@ impl Core {
         changed
     }
 
+    /// 解析の種類の選択: 群に分けた一覧と、打って絞り込む欄（Enter で最初の候補）
+    fn analysis_picker(ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
+        let fkey = egui::Id::new(("ana-filter", id));
+        let r = egui::ComboBox::from_id_salt(("cmd", id))
+            .selected_text(layout::analysis_label(&cfg.cmd))
+            .height(480.0)
+            .show_ui(ui, |ui| {
+                let mut q: String = ui.data(|d| d.get_temp(fkey)).unwrap_or_default();
+                let te = ui.add(
+                    egui::TextEdit::singleline(&mut q)
+                        .hint_text(tr("絞り込む…"))
+                        .desired_width(200.0),
+                );
+                // 開いたときに絞り込みの欄へ
+                if !ui.data(|d| d.get_temp::<bool>(fkey.with("f")).unwrap_or(false)) {
+                    te.request_focus();
+                    ui.data_mut(|d| d.insert_temp(fkey.with("f"), true));
+                }
+                let ql = q.to_lowercase();
+                let hit = |c: &str, l: &'static str| {
+                    ql.is_empty()
+                        || c.to_lowercase().contains(&ql)
+                        || tr(l).to_lowercase().contains(&ql)
+                        || layout::analysis_help(c)
+                            .is_some_and(|h| tr(h).to_lowercase().contains(&ql))
+                };
+                let mut list: Vec<(&str, &str)> = layout::analyses()
+                    .into_iter()
+                    .filter(|(c, l, _)| hit(c, l))
+                    .map(|(c, l, _)| (c, l))
+                    .collect();
+                list.sort_by_key(|(c, _)| {
+                    let g = layout::analysis_group(c);
+                    layout::ANALYSIS_GROUPS.iter().position(|x| *x == g)
+                });
+                if te.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                    if let Some((c, _)) = list.first() {
+                        cfg.cmd = c.to_string();
+                        ui.memory_mut(|m| m.close_popup());
+                    }
+                }
+                ui.data_mut(|d| d.insert_temp(fkey, q.clone()));
+                let weak = theme::weak_text(ui.visuals());
+                let mut last = "";
+                for (c, l) in &list {
+                    let g = layout::analysis_group(c);
+                    if g != last {
+                        ui.label(RichText::new(tr(g)).small().color(weak));
+                        last = g;
+                    }
+                    let r = ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
+                    if let Some(h) = layout::analysis_help(c) {
+                        r.on_hover_text(tr(h));
+                    }
+                }
+                if list.is_empty() {
+                    ui.weak(tr("合う解析がありません"));
+                }
+            });
+        let r = {
+            // 閉じたら絞り込みを忘れる
+            if r.inner.is_none() {
+                ui.data_mut(|d| {
+                    d.remove::<String>(fkey);
+                    d.remove::<bool>(fkey.with("f"));
+                });
+            }
+            r.response
+        };
+        if let Some(h) = layout::analysis_help(&cfg.cmd) {
+            r.on_hover_text(tr(h));
+        }
+    }
+
     fn analysis_ui(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
         if self.summary.is_none() {
             ui.weak(tr("系を開くと解析できます。"));
             return;
         }
         let nf = self.n_fields();
-        let nw = self.waves_um().len();
+        let waves = self.waves_um();
+        let fields: Vec<String> = self
+            .summary
+            .as_ref()
+            .and_then(|s| s["fields"].as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .map(|f| {
+                format!(
+                    "({}, {})",
+                    fmt_num(f[0].as_f64().unwrap_or(0.0)),
+                    fmt_num(f[1].as_f64().unwrap_or(0.0))
+                )
+            })
+            .collect();
         let before = cfg.clone();
+        let mut rerun = false;
         ui.horizontal_wrapped(|ui| {
-            let r = egui::ComboBox::from_id_salt(("cmd", id))
-                .selected_text(layout::analysis_label(&cfg.cmd))
-                .show_ui(ui, |ui| {
-                    for (c, l, _) in layout::analyses() {
-                        let r = ui.selectable_value(&mut cfg.cmd, c.to_string(), tr(l));
-                        if let Some(h) = layout::analysis_help(c) {
-                            r.on_hover_text(tr(h));
-                        }
-                    }
-                })
-                .response;
-            if let Some(h) = layout::analysis_help(&cfg.cmd) {
-                r.on_hover_text(tr(h));
-            }
+            Self::analysis_picker(ui, id, cfg);
             ui.add_enabled_ui(layout::takes_sel(&cfg.cmd), |ui| {
+                let fname = |i: usize| match fields.get(i - 1) {
+                    Some(f) => trf("視野 {} {}", &[&i, f]),
+                    None => trf("視野 {}", &[&i]),
+                };
                 egui::ComboBox::from_id_salt(("field", id))
                     .selected_text(if cfg.field == 0 {
                         tr("全視野").to_string()
                     } else {
-                        trf("視野 {}", &[&cfg.field])
+                        fname(cfg.field)
                     })
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut cfg.field, 0, tr("全視野"));
                         for i in 1..=nf {
-                            ui.selectable_value(&mut cfg.field, i, trf("視野 {}", &[&i]));
+                            ui.selectable_value(&mut cfg.field, i, fname(i));
                         }
                     });
+                let wname = |i: usize| match waves.get(i - 1) {
+                    Some(w) => trf("波長 {} {} µm", &[&i, &fmt_num(*w)]),
+                    None => trf("波長 {}", &[&i]),
+                };
                 egui::ComboBox::from_id_salt(("wave", id))
                     .selected_text(if cfg.wave == 0 {
                         tr("多色").to_string()
                     } else {
-                        trf("波長 {}", &[&cfg.wave])
+                        wname(cfg.wave)
                     })
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut cfg.wave, 0, tr("多色"));
-                        for i in 1..=nw {
-                            ui.selectable_value(&mut cfg.wave, i, trf("波長 {}", &[&i]));
+                        for i in 1..=waves.len() {
+                            let w = waves[i - 1];
+                            ui.selectable_value(
+                                &mut cfg.wave,
+                                i,
+                                RichText::new(wname(i)).color(theme::wave_color(w)),
+                            );
                         }
                     });
             });
-            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
-                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
-            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
-                .on_hover_text(tr("結果を表と木で見る"));
-            ui.selectable_value(&mut cfg.view, View::Json, "JSON")
-                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
             ui.checkbox(&mut cfg.live, tr("自動"))
                 .on_hover_text(tr("系の値が変わったら計算し直す"));
             if ui
@@ -3676,24 +3785,58 @@ impl Core {
                 ))
                 .clicked()
             {
-                self.run(id, cfg);
+                rerun = true;
             }
+            rerun |= self.args_head(ui, cfg);
         });
-        if self.args_ui(ui, id, cfg) {
-            self.run(id, cfg);
+        ui.separator();
+        if cfg.args_open {
+            let rect = ui.available_rect_before_wrap();
+            if split::side_by_side(rect.width(), rect.height()) {
+                // 横に広いパネル: 設定を左、結果を右に（境はドラッグ）
+                let (mut a, mut b) = split::two(ui, ("ana-args", id), (0.4, 0.35), 220.0);
+                egui::ScrollArea::vertical()
+                    .id_salt(("args", id))
+                    .auto_shrink([false, false])
+                    .show(&mut a, |ui| rerun |= self.args_body(ui, id, cfg));
+                self.result_ui(&mut b, id, cfg);
+            } else {
+                egui::ScrollArea::vertical()
+                    .id_salt(("args", id))
+                    .max_height(ui.available_height() * 0.45)
+                    .show(ui, |ui| rerun |= self.args_body(ui, id, cfg));
+                ui.separator();
+                self.result_ui(ui, id, cfg);
+            }
+        } else {
+            self.result_ui(ui, id, cfg);
         }
         // 設定を変えたら計算し直す（追加の引数は Enter か計算ボタン）
-        if cfg.cmd != before.cmd
+        if rerun
+            || cfg.cmd != before.cmd
             || cfg.field != before.field
             || cfg.wave != before.wave
             || (cfg.view != before.view
-                && (matches!(cfg.cmd.as_str(), "spot" | "wavefront")
+                && (matches!(cfg.cmd.as_str(), "spot" | "wavefront" | "fringe" | "pop")
                     || crate::ext::get(&cfg.cmd).is_some_and(|a| a.figure_params.is_some())))
         {
             self.run(id, cfg);
         }
-        ui.separator();
+    }
+
+    /// 解析の結果（見せ方の選択・時間・書き出しと、図・表・JSON）
+    fn result_ui(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
+        let weak = theme::weak_text(ui.visuals());
+        let view_row = |ui: &mut Ui, cfg: &mut AnaCfg| {
+            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
+                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
+            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
+                .on_hover_text(tr("結果を表と木で見る"));
+            ui.selectable_value(&mut cfg.view, View::Json, "JSON")
+                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
+        };
         let Some(r) = self.results.get(&id) else {
+            ui.horizontal(|ui| view_row(ui, cfg));
             if !self.worker.busy() && !self.relay_busy {
                 self.run(id, cfg);
             }
@@ -3703,11 +3846,13 @@ impl Core {
             ui.colored_label(ui.visuals().error_fg_color, e);
         }
         let Some(v) = &r.value else {
+            ui.horizontal(|ui| view_row(ui, cfg));
             ui.spinner();
             return;
         };
-        let weak = theme::weak_text(ui.visuals());
         ui.horizontal(|ui| {
+            view_row(ui, cfg);
+            ui.separator();
             ui.label(
                 RichText::new(format!("{} ms", fmt_num((r.ms * 10.0).round() / 10.0)))
                     .small()
@@ -3883,8 +4028,10 @@ impl Core {
                         ("Ctrl+Tab", tr("次のパネルへ（Shift で前へ）")),
                         ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
                         ("Enter / Space", tr("ボタンを押す・選ぶ")),
-                        ("↑ ↓", tr("数の欄で値を増減（パラメータは解析をすぐ計算し直す）")),
+                        ("↑ ↓", tr("数の欄で値を増減（パラメータ・解析の設定は解析をすぐ計算し直す）")),
                         ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）")),
+                        ("Enter", tr("解析の設定の欄: 打った値で計算し直す")),
+                        (tr("文字"), tr("解析の種類の一覧: 打って絞り込む（Enter で最初の候補）")),
                         ("F1", tr("この一覧")),
                         ("Esc", tr("パレット・窓を閉じる")),
                     ] {
