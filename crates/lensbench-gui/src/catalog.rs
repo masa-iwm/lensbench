@@ -361,8 +361,166 @@ pub struct LensFilter {
     pub kind: Option<RowKind>,
     /// 品の種類（serve の `category`、None はすべて）
     pub category: Option<String>,
+    /// 種類の組（category が None のとき。Some(true) は機構部品だけ、Some(false) は光学素子だけ）
+    pub kind_group: Option<bool>,
     /// 仕様の条件（空白で区切る。CLI catalog-search --spec と同じ書き方: `wavelength_nm=633`・`extinction_ratio>=1000`）
     pub spec: String,
+    /// 玉と機構部品の対応での絞り込み（選んだ玉が入る機構部品・選んだ機構部品に入る素子）
+    pub fit: Option<FitFilter>,
+}
+
+/// 玉と機構部品の対応での絞り込みの向き
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FitMode {
+    /// 径 `d` の素子が入る機構部品（保持径が d 以上、d + FIT_TOL 以下）
+    MechFor,
+    /// 保持径 `d` の機構部品に入る素子（径が d − FIT_TOL 以上、d 以下）
+    OpticsFor,
+}
+
+/// 玉と機構部品の対応での絞り込み
+#[derive(Debug, Clone, PartialEq)]
+pub struct FitFilter {
+    pub mode: FitMode,
+    /// 素子の径（MechFor）か、機構部品の保持径（OpticsFor）[mm]
+    pub d: f64,
+    /// 元の品の型番（表示用）
+    pub label: String,
+}
+
+/// 保持径 `hold` の機構部品に、径 `d` の素子が入るか（[`lensbench_project::catalog_spec::fits_row`] と同じ幅）
+fn fits_hold(hold: f64, d: f64) -> bool {
+    lensbench_project::catalog_spec::fits(hold, d)
+}
+
+/// 機構部品の保持径
+fn hold_diameter(r: &LensRow) -> Option<f64> {
+    (r.kind == RowKind::Mech)
+        .then(|| r.raw["mech"]["holds"]["diameter"].as_f64())
+        .flatten()
+        .filter(|h| *h > 0.0)
+}
+
+/// 種類の選択（「機構部品（すべて）」と、一覧にある品の種類）
+fn kind_combo(ui: &mut Ui, q: &mut LensFilter, rows: &[LensRow]) {
+    // 一覧にある種類だけ
+    let have: Vec<&str> = CATEGORIES
+        .iter()
+        .map(|(k, _)| *k)
+        .filter(|k| rows.iter().any(|l| l.category == *k))
+        .collect();
+    let name = |k: &str| {
+        CATEGORIES
+            .iter()
+            .find(|(c, _)| *c == k)
+            .map_or(k.to_string(), |(_, n)| tr(n).to_string())
+    };
+    let mech_all = tr("機構部品（すべて）");
+    let optics_all = tr("光学素子（すべて）");
+    let selected = match (&q.category, q.kind_group) {
+        (Some(c), _) => name(c),
+        (None, Some(true)) => mech_all.to_string(),
+        (None, Some(false)) => optics_all.to_string(),
+        (None, None) => tr("すべて").to_string(),
+    };
+    let has_mech = rows.iter().any(|l| l.kind == RowKind::Mech);
+    egui::ComboBox::from_id_salt("category")
+        .selected_text(selected)
+        .height(480.0)
+        .show_ui(ui, |ui| {
+            let mut pick = |ui: &mut Ui, cat: Option<&str>, group: Option<bool>, label: String| {
+                let sel = q.category.as_deref() == cat && (cat.is_some() || q.kind_group == group);
+                if ui.selectable_label(sel, label).clicked() {
+                    q.category = cat.map(str::to_string);
+                    q.kind_group = if cat.is_some() { None } else { group };
+                }
+            };
+            pick(ui, None, None, tr("すべて").to_string());
+            if has_mech {
+                pick(ui, None, Some(false), optics_all.to_string());
+                pick(ui, None, Some(true), mech_all.to_string());
+            }
+            // 光学素子の種類、続けて機構部品の種類
+            for mech in [false, true] {
+                let ks: Vec<&str> = have
+                    .iter()
+                    .copied()
+                    .filter(|k| {
+                        rows.iter()
+                            .any(|l| l.category == *k && (l.kind == RowKind::Mech) == mech)
+                    })
+                    .collect();
+                if ks.is_empty() {
+                    continue;
+                }
+                ui.separator();
+                if has_mech {
+                    ui.weak(if mech {
+                        tr("機構部品")
+                    } else {
+                        tr("光学素子")
+                    });
+                }
+                for k in ks {
+                    pick(ui, Some(k), None, format!("  {}", name(k)));
+                }
+            }
+        });
+}
+
+/// 選んだ品の 1 行の説明（誤り・未完の品は 2 行目に出すので空）
+fn row_detail(r: &LensRow) -> String {
+    if r.error.is_some() || r.is_incomplete() {
+        return String::new();
+    }
+    if r.kind == RowKind::Splitter {
+        return splitter_detail(r);
+    }
+    if r.kind == RowKind::Mech {
+        // 簡易外形（丸は外径、角は一辺）と保持径
+        let m = &r.raw["mech"];
+        let od = fmt_num(m["outer_diameter"].as_f64().unwrap_or(0.0));
+        let mut t = if m["outline"] == "square" {
+            trf(
+                "機構部品: 長さ {} mm、角（一辺 {} mm）",
+                &[&fmt_num(r.thickness), &od],
+            )
+        } else {
+            trf(
+                "機構部品: 長さ {} mm、丸（外径 {} mm）",
+                &[&fmt_num(r.thickness), &od],
+            )
+        };
+        if let Some(h) = hold_diameter(r) {
+            t.push_str(&trf("、保持径 {} mm", &[&fmt_num(h)]));
+        }
+        return t;
+    }
+    if let Some((radius, _)) = r.mirror {
+        let mut t = if radius == 0.0 {
+            trf("平面鏡: 径 {} mm", &[&fmt_num(r.diameter)])
+        } else {
+            trf(
+                "鏡: R = {} mm、f = {} mm、径 {} mm",
+                &[&fmt_num(radius), &fmt_num(r.efl), &fmt_num(r.diameter)],
+            )
+        };
+        if !r.coat.is_empty() {
+            t.push_str("  ");
+            t.push_str(&trf("膜 {}", &[&r.coat]));
+        }
+        return t;
+    }
+    trf(
+        "f = {} mm、径 {} mm、厚さ {} mm、{} 枚、ガラス {}",
+        &[
+            &fmt_num(r.efl),
+            &fmt_num(r.diameter),
+            &fmt_num(r.thickness),
+            &r.pieces,
+            &r.glasses.join(" / "),
+        ],
+    )
 }
 
 /// 仕様の条件を読む（読めない条件は誤りの文に）
@@ -434,6 +592,19 @@ pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: boo
                     n => r.pieces == n,
                 }
                 && q.kind.map_or(true, |k| r.kind == k)
+                && q.kind_group
+                    .map_or(true, |m| (r.kind == RowKind::Mech) == m)
+                && q.fit.as_ref().map_or(true, |f| match f.mode {
+                    FitMode::MechFor => {
+                        r.kind == RowKind::Mech
+                            && lensbench_project::catalog_spec::fits_row(&r.raw, f.d)
+                    }
+                    FitMode::OpticsFor => {
+                        r.kind != RowKind::Mech
+                            && r.diameter.is_finite()
+                            && fits_hold(f.d, r.diameter)
+                    }
+                })
         })
         .collect();
     let key = |i: &usize| {
@@ -1035,6 +1206,7 @@ impl Browser {
 
     fn lens_list(&mut self, ui: &mut Ui) {
         let q = &mut self.lens_q;
+        // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("検索"));
             ui.add(
@@ -1057,6 +1229,9 @@ impl Browser {
                         ui.selectable_value(&mut q.vendor, v.to_string(), v);
                     }
                 });
+            ui.label(tr("種類"));
+            kind_combo(ui, q, &self.lenses);
+            ui.separator();
             ui.selectable_value(&mut q.sign, Sign::Any, tr("正負とも"));
             ui.selectable_value(&mut q.sign, Sign::Positive, tr("正"));
             ui.selectable_value(&mut q.sign, Sign::Negative, tr("負"));
@@ -1066,28 +1241,6 @@ impl Browser {
             ui.selectable_value(&mut q.pieces, 1, "1");
             ui.selectable_value(&mut q.pieces, 2, "2");
             ui.selectable_value(&mut q.pieces, 3, "3+");
-            ui.separator();
-            ui.label(tr("種類"));
-            // 一覧にある種類だけ
-            let have: Vec<&str> = CATEGORIES
-                .iter()
-                .map(|(k, _)| *k)
-                .filter(|k| self.lenses.iter().any(|l| l.category == *k))
-                .collect();
-            let name = |k: &str| {
-                CATEGORIES
-                    .iter()
-                    .find(|(c, _)| *c == k)
-                    .map_or(k.to_string(), |(_, n)| tr(n).to_string())
-            };
-            egui::ComboBox::from_id_salt("category")
-                .selected_text(q.category.as_deref().map_or(tr("すべて").to_string(), name))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut q.category, None, tr("すべて"));
-                    for k in have {
-                        ui.selectable_value(&mut q.category, Some(k.to_string()), name(k));
-                    }
-                });
         });
         ui.horizontal_wrapped(|ui| {
             range_ui(ui, tr("焦点距離 [mm]"), &mut q.efl, (10.0, 100.0), 1.0);
@@ -1097,20 +1250,34 @@ impl Browser {
             ui.label(tr("仕様"));
             ui.add(
                 egui::TextEdit::singleline(&mut q.spec)
-                    .hint_text("wavelength_nm=633 extinction_ratio>=1000")
-                    .desired_width(220.0),
+                    .hint_text(tr("例 wavelength_nm=633"))
+                    .desired_width(160.0),
             )
             .on_hover_text(tr(
-                "仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる",
+                "仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000",
             ));
             if let Err(e) = parse_spec_filters(&q.spec) {
                 ui.colored_label(Color32::RED, e);
             }
+            // 玉と機構部品の対応での絞り込み（「入る機構部品」「入る素子」から）
+            if let Some(f) = &q.fit {
+                let text = match f.mode {
+                    FitMode::MechFor => trf("{}（径 {} mm）が入る機構部品", &[&f.label, &fmt_num(f.d)]),
+                    FitMode::OpticsFor => trf("{}（保持径 {} mm）に入る素子", &[&f.label, &fmt_num(f.d)]),
+                };
+                if ui
+                    .button(format!("{text}  ✖"))
+                    .on_hover_text(tr("この絞り込みを外します"))
+                    .clicked()
+                {
+                    q.fit = None;
+                }
+            }
         });
         let idx = filter_lenses(&self.lenses, &self.lens_q, self.lens_sort, self.lens_desc);
-        // 件数と、選んだレンズの詳細（1 行。選んでも表が動かないよう高さを決めておく）
+        // 件数と選んだ品の詳細（1 行目）、選んだ品の操作（2 行目）。選んでも表が動かないよう高さを決め、
+        // 長ければ横にスクロール（右の組合せ・図に重ならない）
         let picked = self.lens_sel.and_then(|i| self.lenses.get(i)).cloned();
-        // 1 行に収め、長ければ横にスクロール（右の組合せ・図に重ならない）
         egui::ScrollArea::horizontal()
             .id_salt("lens_detail")
             .show(ui, |ui| {
@@ -1136,11 +1303,20 @@ impl Browser {
                     .response
                     .on_hover_text(tr("一覧に出す列を選びます"));
                     ui.separator();
-                    let Some(r) = picked else {
+                    let Some(r) = &picked else {
                         ui.weak(tr("行をクリックで選び、ダブルクリックで組合せに足します"));
                         return;
                     };
                     ui.label(RichText::new(format!("{} {}", r.vendor, r.part)).strong());
+                    ui.label(row_detail(r));
+                });
+            });
+        egui::ScrollArea::horizontal()
+            .id_salt("lens_detail_actions")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.set_min_height(24.0);
+                    let Some(r) = &picked else { return };
                     if let Some(e) = &r.error {
                         ui.colored_label(Color32::RED, e);
                     } else if r.is_incomplete() {
@@ -1148,40 +1324,6 @@ impl Browser {
                             ui.visuals().warn_fg_color,
                             trf("未完の品: {} が無いので置けません", &[&r.missing_text()]),
                         );
-                    } else if r.kind == RowKind::Splitter {
-                        ui.label(splitter_detail(&r));
-                    } else if r.kind == RowKind::Mech {
-                        // 簡易外形（丸は外径、角は一辺）
-                        let m = &r.raw["mech"];
-                        let od = fmt_num(m["outer_diameter"].as_f64().unwrap_or(0.0));
-                        ui.label(if m["outline"] == "square" {
-                            trf("機構部品: 長さ {} mm、角（一辺 {} mm）", &[&fmt_num(r.thickness), &od])
-                        } else {
-                            trf("機構部品: 長さ {} mm、丸（外径 {} mm）", &[&fmt_num(r.thickness), &od])
-                        });
-                    } else if let Some((radius, _)) = r.mirror {
-                        if radius == 0.0 {
-                            ui.label(trf("平面鏡: 径 {} mm", &[&fmt_num(r.diameter)]));
-                        } else {
-                            ui.label(trf(
-                                "鏡: R = {} mm、f = {} mm、径 {} mm",
-                                &[&fmt_num(radius), &fmt_num(r.efl), &fmt_num(r.diameter)],
-                            ));
-                        }
-                        if !r.coat.is_empty() {
-                            ui.label(trf("膜 {}", &[&r.coat]));
-                        }
-                    } else {
-                        ui.label(trf(
-                            "f = {} mm、径 {} mm、厚さ {} mm、{} 枚、ガラス {}",
-                            &[
-                                &fmt_num(r.efl),
-                                &fmt_num(r.diameter),
-                                &fmt_num(r.thickness),
-                                &r.pieces,
-                                &r.glasses.join(" / "),
-                            ],
-                        ));
                     }
                     if r.is_incomplete() {
                         if ui
@@ -1189,49 +1331,19 @@ impl Browser {
                             .on_hover_text(tr("品ページを開き、仕様表か STEP から足りない値を入れます（ダブルクリックでも）"))
                             .clicked()
                         {
-                            self.add_pick(&r);
+                            self.add_pick(r);
                         }
                     } else if ui.button(tr("➕ 組合せに足す")).clicked() {
-                        self.add_pick(&r);
+                        self.add_pick(r);
+                    }
+                    self.fit_ui(ui, r);
+                    let specs = r.specs();
+                    if !specs.is_empty() || !r.description.is_empty() {
+                        ui.menu_button(tr("仕様…"), |ui| spec_table(ui, r));
                     }
                     link_button(ui, &r.url);
                     self.cad.poll();
-                    self.cad.ui(ui, &r);
-                    let specs = r.specs();
-                    if !specs.is_empty() || !r.description.is_empty() {
-                        ui.menu_button(tr("仕様…"), |ui| spec_table(ui, &r));
-                    }
-                    // 素子が入る機構部品（保持径が径以上で、少しだけ太いもの）
-                    if r.kind != RowKind::Mech && !r.is_incomplete() && r.diameter > 0.0 {
-                        let fit: Vec<&LensRow> = self
-                            .lenses
-                            .iter()
-                            .filter(|m| {
-                                m.kind == RowKind::Mech
-                                    && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
-                            })
-                            .collect();
-                        let mut add = None;
-                        if !fit.is_empty() {
-                            ui.menu_button(trf("入る機構部品（{}）…", &[&fit.len()]), |ui| {
-                                for m in &fit {
-                                    if ui
-                                        .button(format!("{} {}", m.vendor, m.part))
-                                        .on_hover_text(&m.description)
-                                        .clicked()
-                                    {
-                                        add = Some((*m).clone());
-                                        ui.close_menu();
-                                    }
-                                }
-                            })
-                            .response
-                            .on_hover_text(tr("この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します"));
-                        }
-                        if let Some(m) = add {
-                            self.add_pick(&m);
-                        }
-                    }
+                    self.cad.ui(ui, r);
                 });
             });
         ui.separator();
@@ -1327,7 +1439,8 @@ impl Browser {
         let Some(i) = self.lens_sel else { return };
         let h = 120.0;
         match &self.preview {
-            Some((j, d)) if *j == i && !d.solids.is_empty() => {
+            // 機構部品だけの断面は玉が無い（solids が空）ので、部品の壁があれば描く
+            Some((j, d)) if *j == i && (!d.solids.is_empty() || !d.mechs.is_empty()) => {
                 let accent = ui.visuals().selection.stroke.color;
                 crate::combo::view_only(ui, d, h, accent, None, None);
             }
@@ -1340,6 +1453,117 @@ impl Browser {
                 });
             }
         }
+    }
+
+    /// 玉と機構部品の対応: 素子の行は「入る機構部品」、機構部品の行は「入る素子」
+    fn fit_ui(&mut self, ui: &mut Ui, r: &LensRow) {
+        if r.kind == RowKind::Mech {
+            let Some(h) = hold_diameter(r) else { return };
+            let n = self
+                .lenses
+                .iter()
+                .filter(|l| {
+                    l.kind != RowKind::Mech && l.diameter.is_finite() && fits_hold(h, l.diameter)
+                })
+                .count();
+            if ui
+                .add_enabled(n > 0, egui::Button::new(trf("入る素子（{}）で絞る", &[&n])))
+                .on_hover_text(trf(
+                    "保持径 {} mm に入る径（{} mm 細いものまで）の玉・鏡などだけを一覧に出します",
+                    &[
+                        &fmt_num(h),
+                        &fmt_num(lensbench_project::catalog_spec::FIT_TOL),
+                    ],
+                ))
+                .clicked()
+            {
+                self.lens_q.fit = Some(FitFilter {
+                    mode: FitMode::OpticsFor,
+                    d: h,
+                    label: r.part.clone(),
+                });
+                self.lens_q.category = None;
+                self.lens_q.kind_group = None;
+            }
+            return;
+        }
+        if r.is_incomplete() || r.diameter.is_nan() || r.diameter <= 0.0 {
+            return;
+        }
+        let fit: Vec<&LensRow> = self
+            .lenses
+            .iter()
+            .filter(|m| {
+                m.kind == RowKind::Mech
+                    && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
+            })
+            .collect();
+        if fit.is_empty() {
+            ui.weak(tr("入る機構部品なし")).on_hover_text(tr(
+                "カタログの機構部品に、この径が入る保持径のものがありません",
+            ));
+            return;
+        }
+        let mut add = None;
+        let mut filter = false;
+        ui.menu_button(trf("入る機構部品（{}）…", &[&fit.len()]), |ui| {
+            if ui
+                .button(tr("🔍 一覧でこれだけ見る"))
+                .on_hover_text(tr("一覧をこの品が入る機構部品だけに絞ります（絞り込みは欄の ✖ で外す）"))
+                .clicked()
+            {
+                filter = true;
+                ui.close_menu();
+            }
+            ui.separator();
+            egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                for m in &fit {
+                    if ui
+                        .button(format!("{} {}", m.vendor, m.part))
+                        .on_hover_text(format!("{}\n{}", row_detail(m), m.description))
+                        .clicked()
+                    {
+                        add = Some((*m).clone());
+                        ui.close_menu();
+                    }
+                }
+            });
+        })
+        .response
+        .on_hover_text(tr("この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します（組合せにこの品があれば、それを保持して座に合わせます）"));
+        if filter {
+            self.lens_q.fit = Some(FitFilter {
+                mode: FitMode::MechFor,
+                d: r.diameter,
+                label: r.part.clone(),
+            });
+            self.lens_q.category = None;
+            self.lens_q.kind_group = None;
+        }
+        if let Some(m) = add {
+            self.add_mech_for(&m, r);
+        }
+    }
+
+    /// 素子 `lens` に合わせて機構部品を足す: 組合せにその素子があれば、そこに置いて保持する
+    pub fn add_mech_for(&mut self, mech: &LensRow, lens: &LensRow) {
+        let chain = self.combo.chain_picks();
+        let same = |p: &crate::combo::Pick| {
+            p.kind == crate::combo::ElemKind::Catalog
+                && p.vendor == lens.vendor
+                && p.part == lens.part
+        };
+        // 同じ玉が 2 つ以上あれば、選んでいる方を優先
+        let k = self
+            .insert_after
+            .filter(|&k| chain.get(k).is_some_and(same))
+            .or_else(|| chain.iter().position(same));
+        let keep = self.insert_after;
+        if k.is_some() {
+            self.insert_after = k;
+        }
+        self.add_pick(mech);
+        self.insert_after = keep;
     }
 
     pub fn add_pick(&mut self, r: &LensRow) {
@@ -1363,10 +1587,24 @@ impl Browser {
                 name = format!("{} {n}", r.part);
                 n += 1;
             }
+            // 置く要素がカタログの玉で、その径が部品の保持径に入るなら、その玉を保持して座に合わせる
+            let held = ids
+                .iter()
+                .position(|x| !at.is_empty() && *x == at)
+                .and_then(|k| self.combo.el(k))
+                .filter(|p| p.kind == crate::combo::ElemKind::Catalog)
+                .and_then(|p| {
+                    self.lenses.iter().find(|l| {
+                        l.vendor == p.vendor && l.part == p.part && l.kind != RowKind::Mech
+                    })
+                })
+                .is_some_and(|l| lensbench_project::catalog_spec::fits_row(&r.raw, l.diameter));
             self.combo.mechanics.push(crate::combo::MechPick {
                 name,
                 catalog: r.source.clone().unwrap_or_default(),
                 item: r.part.clone(),
+                holds: if held { vec![at.clone()] } else { Vec::new() },
+                seat: held,
                 at,
                 ..Default::default()
             });
@@ -2141,6 +2379,70 @@ mod tests {
         assert_eq!(f(&q), vec![1]);
         q.pieces = 3;
         assert_eq!(f(&q), vec![2]);
+    }
+
+    /// 機構部品の組・玉と機構部品の対応での絞り込み、素子に合わせて足すと保持する
+    #[test]
+    fn mech_group_and_fit_filters() {
+        let mut m = lens("TL", "SM1L05", f64::NAN, 30.5);
+        m.kind = RowKind::Mech;
+        m.category = "tube".into();
+        m.source = Some("/c/items/tl_mech.json".into());
+        m.raw = json!({ "mech": { "outer_diameter": 30.5, "holds": { "diameter": 25.4, "seat_z": 3.0 } } });
+        let mut small = m.clone();
+        small.part = "SM05L05".into();
+        small.raw["mech"]["holds"]["diameter"] = json!(12.7);
+        let mut rows = vec![
+            lens("A", "L25", 50.0, 25.4),
+            lens("A", "L12", 50.0, 12.7),
+            m,
+            small,
+        ];
+        rows[0].category = "lens".into();
+        rows[1].category = "lens".into();
+        let f = |q: &LensFilter| filter_lenses(&rows, q, LensSort::Part, false);
+        let mut q = LensFilter {
+            kind_group: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(f(&q), vec![3, 2]);
+        q.kind_group = Some(false);
+        assert_eq!(f(&q), vec![1, 0]);
+        q.kind_group = None;
+        q.fit = Some(FitFilter {
+            mode: FitMode::MechFor,
+            d: 25.4,
+            label: "L25".into(),
+        });
+        assert_eq!(f(&q), vec![2]);
+        q.fit = Some(FitFilter {
+            mode: FitMode::OpticsFor,
+            d: 12.7,
+            label: "SM05L05".into(),
+        });
+        assert_eq!(f(&q), vec![1]);
+        assert!(row_detail(&rows[2]).contains("25.4"));
+        // 組合せの玉に合わせて足すと、その玉に置いて保持し座に合わせる
+        let mut b = Browser {
+            lenses: rows.clone(),
+            ..Default::default()
+        };
+        b.add_pick(&rows[1]);
+        b.add_pick(&rows[0]);
+        b.add_mech_for(&rows[2], &rows[0]);
+        let mp = &b.combo.mechanics[0];
+        assert_eq!(
+            (mp.at.as_str(), mp.holds.clone(), mp.seat),
+            ("L25", vec!["L25".to_string()], true)
+        );
+        // 入らない玉の所に置くときは保持しない
+        b.insert_after = Some(0);
+        b.add_pick(&rows[2]);
+        let mp = &b.combo.mechanics[1];
+        assert_eq!(
+            (mp.at.as_str(), mp.holds.is_empty(), mp.seat),
+            ("L12", true, false)
+        );
     }
 
     /// カタログの機構部品は要素でなく機構部品として、選んでいる要素に置く

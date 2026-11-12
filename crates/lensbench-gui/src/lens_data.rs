@@ -657,6 +657,11 @@ pub enum Act {
     NeedData(usize),
     /// 硝材の候補（ガラスカタログ）を読む
     NeedGlasses,
+    /// カタログの行を表へ落とした: 面 `after` の後に差し込む
+    DropPick {
+        after: usize,
+        pick: Box<crate::combo::Pick>,
+    },
 }
 
 /// 書き換え中のセル
@@ -2908,6 +2913,29 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                         }
                         // セルの文字の外（空いたところ・面・ブロックの列）のクリックでも行を選ぶ
                         let rr = row.response();
+                        // カタログの行を落とす: 行の下の線に差し込む（たたんだブロックの行はブロックの後、像面には落とせない）
+                        if j + 1 < c.rows.len()
+                            && egui::DragAndDrop::has_payload_of_type::<crate::combo::DropPick>(&rr.ctx)
+                            && rr.ctx.pointer_hover_pos().is_some_and(|q| rr.rect.contains(q))
+                        {
+                            let accent = rr.ctx.style().visuals.selection.stroke.color;
+                            rr.ctx
+                                .layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("ld_drop")))
+                                .line_segment(
+                                    [rr.rect.left_bottom(), rr.rect.right_bottom()],
+                                    egui::Stroke::new(2.5_f32, accent),
+                                );
+                            if rr.ctx.input(|i| i.pointer.any_released()) {
+                                if let Some(p) =
+                                    egui::DragAndDrop::take_payload::<crate::combo::DropPick>(&rr.ctx)
+                                {
+                                    acts.push(Act::DropPick {
+                                        after: j,
+                                        pick: Box::new(p.0.clone()),
+                                    });
+                                }
+                            }
+                        }
                         if rr.clicked() || rr.double_clicked() {
                             clicked_any = true;
                             let col = st.cur.map_or(Col::R, |x| x.1);

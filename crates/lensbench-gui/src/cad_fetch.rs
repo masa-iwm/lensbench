@@ -238,7 +238,8 @@ impl CadFetcher {
         if step.is_empty() && pdf.is_empty() && !from_store {
             return;
         }
-        ui.horizontal_wrapped(|ui| {
+        // 折り返さない（カタログの詳細の横スクロールの行の中で、折り返すと見えない所に縦に積まれて行が高くなる）
+        ui.horizontal(|ui| {
             if !pdf.is_empty() {
                 ui.hyperlink_to(tr("📄 図面（PDF）"), &pdf);
             }

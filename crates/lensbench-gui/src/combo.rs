@@ -1815,6 +1815,10 @@ pub struct View {
     pan: Vec2,
     /// 面の表で選んだ面（図で目立たせる、#125）
     pub hl_surf: Option<usize>,
+    /// ポインタの下の玉の面の範囲（開いた系の図のクリックで面の表の行を選ぶ）
+    pub hover_surfs: Option<[usize; 2]>,
+    /// 面の頂点の画面の位置（開いた系の図へカタログから落とすとき、差し込む間隔を決める）
+    pub surf_pos: Vec<Option<Pos2>>,
 }
 
 /// カタログの行をレイアウト図へドラッグするときの荷物
@@ -2197,7 +2201,7 @@ pub fn view_only(
     accent: Color32,
     nav: Option<egui::Id>,
     hl_surf: Option<usize>,
-) {
+) -> Option<OpenAct> {
     // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける（#124）
     let sense = if d.d3.is_some() || nav.is_some() {
         Sense::click_and_drag()
@@ -2226,6 +2230,74 @@ pub fn view_only(
     if let Some(id) = nav {
         ui.data_mut(|m| m.insert_temp(id, (view.zoom_log, view.pan)));
     }
+    // カタログの行を落とす（nav のある開いた系の図だけ。2D の図）: 差し込む間隔の印
+    if nav.is_some() && d.d3.is_none() && !d.unfold {
+        let q = ui.ctx().pointer_hover_pos().filter(|q| rect.contains(*q));
+        let after = q.and_then(|q| open_drop_after(&view.surf_pos, q));
+        if resp.dnd_hover_payload::<DropPick>().is_some() {
+            if let Some(a) = after {
+                let pa = view.surf_pos.get(a).copied().flatten();
+                let pb = view.surf_pos.get(a + 1).copied().flatten();
+                if let (Some(pa), Some(pb)) = (pa, pb) {
+                    let x = (pa.x + pb.x) / 2.0;
+                    let p = ui.painter_at(rect);
+                    p.line_segment(
+                        [
+                            Pos2::new(x, rect.top() + 8.0),
+                            Pos2::new(x, rect.bottom() - 8.0),
+                        ],
+                        Stroke::new(2.5_f32, accent),
+                    );
+                    p.text(
+                        Pos2::new(x + 4.0, rect.top() + 10.0),
+                        egui::Align2::LEFT_TOP,
+                        trf("面 {} の後に差し込む", &[&a]),
+                        egui::FontId::proportional(12.0),
+                        accent,
+                    );
+                }
+            }
+        }
+        if let Some(p) = resp.dnd_release_payload::<DropPick>() {
+            if let Some(a) = after {
+                return Some(OpenAct::Drop {
+                    after: a,
+                    pick: Box::new(p.0.clone()),
+                });
+            }
+        }
+    }
+    // クリックした玉の面の範囲（ドラッグで動かしたときは除く）
+    resp.clicked()
+        .then_some(view.hover_surfs)
+        .flatten()
+        .map(OpenAct::Clicked)
+}
+
+/// 開いた系（組合せでない系）の図の操作
+pub enum OpenAct {
+    /// クリックした玉の面の範囲
+    Clicked([usize; 2]),
+    /// カタログの行を落とした: 面 `after` の後の間隔に差し込む
+    Drop { after: usize, pick: Box<Pick> },
+}
+
+/// 開いた系の図へ落とす位置 q から、差し込む間隔（その前の面の番号）: 一番近い面の頂点より右なら、その面の後、
+/// 左なら前の面の後。物体面の後（面 0）と像面の後には差し込まない
+fn open_drop_after(surf_pos: &[Option<Pos2>], q: Pos2) -> Option<usize> {
+    let n = surf_pos.len();
+    if n < 3 {
+        return None;
+    }
+    let (j, v) = surf_pos
+        .iter()
+        .enumerate()
+        .take(n - 1)
+        .skip(1)
+        .filter_map(|(j, v)| v.map(|v| (j, v)))
+        .min_by(|a, b| (a.1 - q).length().total_cmp(&(b.1 - q).length()))?;
+    let after = if q.x >= v.x { j } else { j - 1 };
+    (1..n - 1).contains(&after).then_some(after)
 }
 
 /// 落とす位置 q から差し込む番号: 一番近い要素の真ん中より光軸の先なら後ろ、手前なら前
@@ -2399,7 +2471,11 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                 }
             }
             Key::Delete | Key::Backspace => {
-                if let Some(k) = view.sel.filter(|&k| free(combo, k)) {
+                // 外すのは中身だけのロック（カタログの玉の既定）でもできる。「位置も」ロックした要素は外さない
+                if let Some(k) = view
+                    .sel
+                    .filter(|&k| combo.el(k).is_some_and(|p| !p.fixed()))
+                {
                     combo.remove_chain(k);
                     view.sel = None;
                     view.dim = None;
@@ -2609,6 +2685,7 @@ fn figure(
             center.y - ((p[1] - cy) * s) as f32,
         )
     };
+    view.surf_pos = d.vertices.iter().map(|v| v.map(to)).collect();
     // 光軸
     let axis_y = to([0.0, 0.0]).y;
     if rect.y_range().contains(axis_y) {
@@ -2753,8 +2830,9 @@ fn figure(
             closed.push(*f);
         }
         painter.add(egui::Shape::line(closed, stroke));
-        if let (Some(p), Some(k)) = (pointer, k) {
-            if inside(&poly, p) {
+        if pointer.is_some_and(|p| inside(&poly, p)) {
+            view.hover_surfs = Some(sd.surfaces);
+            if let Some(k) = k {
                 hit = Some(k);
             }
         }
