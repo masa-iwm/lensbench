@@ -4,12 +4,13 @@
 
 use crate::i18n::{tr, trf};
 use egui::{Key, Response, Ui};
+use lensbench_core::surface::SurfType;
 
 /// 名前の候補を作るための系の面・玉・群
 #[derive(Debug, Clone, Default)]
 pub struct Sys {
-    /// 面ごとの (面タイプ, コメント)
-    pub surfs: Vec<(String, String)>,
+    /// 面ごとの (面タイプ, コメント, 鏡か)
+    pub surfs: Vec<(String, String, bool)>,
     /// 玉・群の名前
     pub units: Vec<String>,
     /// 波長の数（wave1〜）
@@ -66,26 +67,49 @@ pub fn param_desc(name: &str) -> String {
     }
 }
 
-/// 面タイプの係数（非球面 a2〜a16、Zernike z1〜z37）
+/// 面タイプの係数（偶数次非球面・自由曲面 a2〜a16、Zernike z1〜z37）
 fn coef_kinds(typ: &str) -> Vec<String> {
-    match typ {
-        "EVENASPH" | "ODDASPHE" => (1..=8).map(|i| format!("a{}", 2 * i)).collect(),
-        "SZERNSAG" | "FZERNSAG" => (1..=37).map(|i| format!("z{i}")).collect(),
-        _ => Vec::new(),
+    let t = lensbench_core::edit::surf_type_parse(typ).ok();
+    let mut v = Vec::new();
+    if t.is_some_and(|t| t == SurfType::EvenAsph || lensbench_core::freeform::is_freeform(t)) {
+        v.extend((1..=8).map(|i| format!("a{}", 2 * i)));
     }
+    if matches!(t, Some(SurfType::ZernikeStd | SurfType::ZernikeFringe)) {
+        v.extend((1..=37).map(|i| format!("z{i}")));
+    }
+    v
 }
 
 fn strs(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 
-/// 面 typ で候補にする種類
-fn surf_kinds(typ: &str, set: Set) -> Vec<String> {
+/// 面 j の種類 k を core が受け付けるか（core の `System::check_param` と同じ条件）
+fn surf_ok(sys: &Sys, j: usize, k: &str) -> bool {
+    let (typ, _, mirror) = &sys.surfs[j];
+    let t = lensbench_core::edit::surf_type_parse(typ).ok();
+    let curved = t.is_some_and(|t| {
+        matches!(t, SurfType::Standard | SurfType::EvenAsph)
+            || lensbench_core::freeform::is_freeform(t)
+    });
+    let cb = t == Some(SurfType::CoordBrk);
+    match k {
+        "r" | "c" | "k" => j > 0 && curved,
+        "dx" | "dy" | "tx" | "ty" | "tz" => j > 0,
+        "t" => j + 1 < sys.surfs.len(),
+        "dn" | "disp" => !mirror && !cb,
+        _ => true,
+    }
+}
+
+/// 面 j で候補にする種類
+fn surf_kinds(sys: &Sys, j: usize, set: Set) -> Vec<String> {
+    let typ = sys.surfs[j].0.as_str();
     let cb = typ == "COORDBRK";
     let mut v = match set {
         Set::Config if cb => strs(&["t", "dx", "dy", "tx", "ty", "tz"]),
         Set::Config => strs(&["r", "t", "k", "dn", "disp"]),
-        Set::Var { combo: true } => return strs(&["t", "r", "k"]),
+        Set::Var { combo: true } => strs(&["t", "r", "k"]),
         Set::Var { .. } if cb => strs(&["t", "dx", "dy", "tx", "ty", "tz"]),
         Set::Var { .. } => strs(&["r", "c", "t", "k", "dx", "dy", "tx", "ty", "tz"]),
         Set::Any if cb => strs(&["t", "dx", "dy", "tx", "ty", "tz"]),
@@ -94,9 +118,10 @@ fn surf_kinds(typ: &str, set: Set) -> Vec<String> {
         ]),
         Set::Units | Set::Swap { .. } => return Vec::new(),
     };
-    if !cb {
+    if !cb && !matches!(set, Set::Var { combo: true }) {
         v.extend(coef_kinds(typ));
     }
+    v.retain(|k| surf_ok(sys, j, k));
     v
 }
 
@@ -133,8 +158,8 @@ pub fn names(sys: &Sys, set: Set) -> Vec<(String, String)> {
             .map(|u| (u.clone(), String::new()))
             .collect();
     }
-    for (j, (typ, _)) in sys.surfs.iter().enumerate() {
-        for k in surf_kinds(typ, set) {
+    for j in 0..sys.surfs.len() {
+        for k in surf_kinds(sys, j, set) {
             v.push(format!("{j}.{k}"));
         }
     }
@@ -294,17 +319,14 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
         }
         return out;
     }
-    let any_surf = sys
-        .surfs
-        .iter()
-        .any(|(t, _)| !surf_kinds(t, set).is_empty());
+    let any_surf = (0..sys.surfs.len()).any(|j| !surf_kinds(sys, j, set).is_empty());
     if any_surf {
         ui.menu_button(tr("面"), |ui| {
             egui::ScrollArea::vertical()
                 .max_height(400.0)
                 .show(ui, |ui| {
-                    for (j, (typ, comment)) in sys.surfs.iter().enumerate() {
-                        let kinds = surf_kinds(typ, set);
+                    for (j, (typ, comment, _)) in sys.surfs.iter().enumerate() {
+                        let kinds = surf_kinds(sys, j, set);
                         if kinds.is_empty() {
                             continue;
                         }
@@ -388,12 +410,16 @@ pub fn edit_pick(
 mod tests {
     use super::*;
 
+    /// 面 0 物体、1 偶数次非球面、2 座標ブレーク、3 トロイダル、4 鏡、5 像面
     fn sys() -> Sys {
         Sys {
             surfs: vec![
-                ("STANDARD".into(), String::new()),
-                ("EVENASPH".into(), "L1".into()),
-                ("COORDBRK".into(), String::new()),
+                ("STANDARD".into(), String::new(), false),
+                ("EVENASPH".into(), "L1".into(), false),
+                ("COORDBRK".into(), String::new(), false),
+                ("TOROIDAL".into(), String::new(), false),
+                ("STANDARD".into(), String::new(), true),
+                ("STANDARD".into(), String::new(), false),
             ],
             units: vec!["G1".into()],
             waves: 2,
@@ -423,6 +449,33 @@ mod tests {
         let sw = names(&s, Set::Swap { gaps: &gaps });
         assert_eq!(sw[0], ("d1.t".to_string(), "lens1 の後".to_string()));
         assert!(sw.iter().any(|x| x.0 == "G1.shift"));
+    }
+
+    /// core の check_param が断る名前は候補に出さない（面 0 の曲率・傾き偏心、像面の厚さ、鏡の dn、曲率の無い面タイプ）
+    #[test]
+    fn names_follow_check_param() {
+        let s = sys();
+        for set in [
+            Set::Config,
+            Set::Var { combo: false },
+            Set::Var { combo: true },
+            Set::Any,
+        ] {
+            let n: Vec<String> = names(&s, set).into_iter().map(|x| x.0).collect();
+            for bad in [
+                "0.r", "0.c", "0.k", "0.dx", "0.tx", "3.r", "3.k", "5.t", "4.dn", "4.disp", "2.dn",
+            ] {
+                assert!(!n.contains(&bad.to_string()), "{set:?} {bad}");
+            }
+            assert!(
+                n.contains(&"0.t".to_string()) && n.contains(&"4.t".to_string()),
+                "{set:?}"
+            );
+        }
+        let any: Vec<String> = names(&s, Set::Any).into_iter().map(|x| x.0).collect();
+        assert!(any.contains(&"3.t".to_string()) && any.contains(&"3.dn".to_string()));
+        assert!(any.contains(&"5.r".to_string()) && any.contains(&"4.r".to_string()));
+        assert!(!any.contains(&"3.a4".to_string()) && any.contains(&"1.a16".to_string()));
     }
 
     #[test]

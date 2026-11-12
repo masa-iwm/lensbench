@@ -671,7 +671,13 @@ impl Core {
             surfs: self
                 .ld_rows
                 .iter()
-                .map(|r| (r.typ.clone(), r.comment.clone()))
+                .map(|r| {
+                    (
+                        r.typ.clone(),
+                        r.comment.clone(),
+                        r.material.eq_ignore_ascii_case("MIRROR"),
+                    )
+                })
                 .collect(),
             units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
             waves: self.waves_um().len(),
