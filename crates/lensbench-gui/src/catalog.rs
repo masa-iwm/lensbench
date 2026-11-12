@@ -404,14 +404,38 @@ fn hold_diameter(r: &LensRow) -> Option<f64> {
         .filter(|h| *h > 0.0)
 }
 
+/// 一覧にある品の種類（種類の選択肢。[`Browser::lens_meta`] で一覧が変わったときだけ作る）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct KindChoices {
+    /// 光学素子の種類・機構部品の種類（[`CATEGORIES`] の順）
+    pub optics: Vec<&'static str>,
+    pub mech: Vec<&'static str>,
+    /// 機構部品があるか
+    pub has_mech: bool,
+}
+
+impl KindChoices {
+    fn of(rows: &[LensRow]) -> Self {
+        let kinds = |mech: bool| {
+            CATEGORIES
+                .iter()
+                .map(|(k, _)| *k)
+                .filter(|k| {
+                    rows.iter()
+                        .any(|l| l.category == *k && (l.kind == RowKind::Mech) == mech)
+                })
+                .collect()
+        };
+        KindChoices {
+            optics: kinds(false),
+            mech: kinds(true),
+            has_mech: rows.iter().any(|l| l.kind == RowKind::Mech),
+        }
+    }
+}
+
 /// 種類の選択（「機構部品（すべて）」と、一覧にある品の種類）
-fn kind_combo(ui: &mut Ui, q: &mut LensFilter, rows: &[LensRow]) {
-    // 一覧にある種類だけ
-    let have: Vec<&str> = CATEGORIES
-        .iter()
-        .map(|(k, _)| *k)
-        .filter(|k| rows.iter().any(|l| l.category == *k))
-        .collect();
+fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
     let name = |k: &str| {
         CATEGORIES
             .iter()
@@ -426,7 +450,7 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, rows: &[LensRow]) {
         (None, Some(false)) => optics_all.to_string(),
         (None, None) => tr("すべて").to_string(),
     };
-    let has_mech = rows.iter().any(|l| l.kind == RowKind::Mech);
+    let has_mech = kinds.has_mech;
     egui::ComboBox::from_id_salt("category")
         .selected_text(selected)
         .height(480.0)
@@ -445,14 +469,7 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, rows: &[LensRow]) {
             }
             // 光学素子の種類、続けて機構部品の種類
             for mech in [false, true] {
-                let ks: Vec<&str> = have
-                    .iter()
-                    .copied()
-                    .filter(|k| {
-                        rows.iter()
-                            .any(|l| l.category == *k && (l.kind == RowKind::Mech) == mech)
-                    })
-                    .collect();
+                let ks = if mech { &kinds.mech } else { &kinds.optics };
                 if ks.is_empty() {
                     continue;
                 }
@@ -464,7 +481,7 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, rows: &[LensRow]) {
                         tr("光学素子")
                     });
                 }
-                for k in ks {
+                for &k in ks {
                     pick(ui, Some(k), None, format!("  {}", name(k)));
                 }
             }
@@ -710,6 +727,29 @@ pub struct Browser {
     pub lens_hide: Vec<String>,
     /// 品の STEP の取得（選んだ品の 1 件だけ）
     pub cad: crate::cad_fetch::CadFetcher,
+    /// 一覧の絞り込み・並べ替えの結果（条件と一覧が変わったときだけ作り直す）。
+    /// 何万件のカタログで毎フレーム作り直すと 1 フレームが遅くなり、egui がポインタの動きを
+    /// 見落としてツールチップが出なくなる（クリックの後、動いた時刻が更新されない）
+    pub cache: ListCache,
+}
+
+/// 一覧の版（入れ替えた回数、件数）
+type ListKey = (u64, usize);
+/// 条件・並べ方と、その結果の行の番号
+type LensIdx = (ListKey, LensFilter, LensSort, bool, Vec<usize>);
+
+/// [`Browser`] の一覧から作るもの。`gen` は一覧を入れ替えた回数（[`Browser::set_lenses`]）
+#[derive(Default)]
+pub struct ListCache {
+    lens_gen: u64,
+    glass_gen: u64,
+    /// メーカー・品の種類の選択肢
+    lens_meta: Option<(ListKey, Vec<String>, KindChoices)>,
+    lens_idx: Option<LensIdx>,
+    /// 選んだ行と対応する品（素子なら入る機構部品、機構部品なら入る素子。行の番号）
+    lens_fit: Option<(ListKey, usize, Vec<usize>)>,
+    glass_meta: Option<(ListKey, Vec<String>)>,
+    glass_idx: Option<(ListKey, GlassFilter, Vec<usize>)>,
 }
 
 /// カタログレンズの一覧の列
@@ -1108,6 +1148,119 @@ fn num_cell(ui: &mut Ui, x: f64) {
 }
 
 impl Browser {
+    /// カタログレンズの一覧を入れ替える（絞り込みの結果を作り直させる）
+    pub fn set_lenses(&mut self, v: Vec<LensRow>) {
+        self.lenses = v;
+        self.cache.lens_gen += 1;
+    }
+
+    /// ガラスの一覧を入れ替える
+    pub fn set_glasses(&mut self, v: Vec<GlassRow>) {
+        self.glasses = v;
+        self.cache.glass_gen += 1;
+    }
+
+    fn lens_key(&self) -> ListKey {
+        (self.cache.lens_gen, self.lenses.len())
+    }
+
+    fn glass_key(&self) -> ListKey {
+        (self.cache.glass_gen, self.glasses.len())
+    }
+
+    /// メーカーと、一覧にある品の種類（選択肢）
+    fn lens_meta(&mut self) -> (Vec<String>, KindChoices) {
+        let key = self.lens_key();
+        if self.cache.lens_meta.as_ref().map_or(true, |c| c.0 != key) {
+            let mut vendors: Vec<String> = self.lenses.iter().map(|l| l.vendor.clone()).collect();
+            vendors.sort();
+            vendors.dedup();
+            self.cache.lens_meta = Some((key, vendors, KindChoices::of(&self.lenses)));
+        }
+        let c = self.cache.lens_meta.as_ref().unwrap();
+        (c.1.clone(), c.2.clone())
+    }
+
+    /// 絞り込んで並べた行の番号
+    fn lens_idx(&mut self) -> Vec<usize> {
+        let key = self.lens_key();
+        let hit = self.cache.lens_idx.as_ref().is_some_and(|c| {
+            c.0 == key && c.1 == self.lens_q && c.2 == self.lens_sort && c.3 == self.lens_desc
+        });
+        if !hit {
+            let idx = filter_lenses(&self.lenses, &self.lens_q, self.lens_sort, self.lens_desc);
+            self.cache.lens_idx = Some((
+                key,
+                self.lens_q.clone(),
+                self.lens_sort,
+                self.lens_desc,
+                idx,
+            ));
+        }
+        self.cache.lens_idx.as_ref().unwrap().4.clone()
+    }
+
+    /// 行 `sel`（品 `r`）と対応する品の行: 機構部品なら保持径に入る素子、素子ならその径が入る機構部品
+    fn lens_fit(&mut self, sel: usize, r: &LensRow) -> Vec<usize> {
+        let key = self.lens_key();
+        if self
+            .cache
+            .lens_fit
+            .as_ref()
+            .map_or(true, |c| c.0 != key || c.1 != sel)
+        {
+            let rows = &self.lenses;
+            let fit = if r.kind == RowKind::Mech {
+                match hold_diameter(r) {
+                    Some(h) => (0..rows.len())
+                        .filter(|&i| {
+                            let l = &rows[i];
+                            l.kind != RowKind::Mech
+                                && l.diameter.is_finite()
+                                && fits_hold(h, l.diameter)
+                        })
+                        .collect(),
+                    None => Vec::new(),
+                }
+            } else {
+                (0..rows.len())
+                    .filter(|&i| {
+                        let m = &rows[i];
+                        m.kind == RowKind::Mech
+                            && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
+                    })
+                    .collect()
+            };
+            self.cache.lens_fit = Some((key, sel, fit));
+        }
+        self.cache.lens_fit.as_ref().unwrap().2.clone()
+    }
+
+    fn glass_cats(&mut self) -> Vec<String> {
+        let key = self.glass_key();
+        if self.cache.glass_meta.as_ref().map_or(true, |c| c.0 != key) {
+            let mut cats: Vec<String> = self.glasses.iter().map(|g| g.catalog.clone()).collect();
+            cats.sort();
+            cats.dedup();
+            self.cache.glass_meta = Some((key, cats));
+        }
+        self.cache.glass_meta.as_ref().unwrap().1.clone()
+    }
+
+    fn glass_idx(&mut self) -> Vec<usize> {
+        let key = self.glass_key();
+        let hit = self
+            .cache
+            .glass_idx
+            .as_ref()
+            .is_some_and(|c| c.0 == key && c.1 == self.glass_q);
+        if !hit {
+            let idx = filter_glasses(&self.glasses, &self.glass_q);
+            self.cache.glass_idx = Some((key, self.glass_q.clone(), idx));
+        }
+        self.cache.glass_idx.as_ref().unwrap().2.clone()
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, n_glass_dirs: usize, n_lens_dirs: usize) -> Option<Action> {
         let mut act = None;
         ui.horizontal(|ui| {
@@ -1208,6 +1361,7 @@ impl Browser {
     }
 
     fn lens_list(&mut self, ui: &mut Ui) {
+        let (vendors, kinds) = self.lens_meta();
         let q = &mut self.lens_q;
         // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
         ui.horizontal_wrapped(|ui| {
@@ -1217,9 +1371,6 @@ impl Browser {
                     .hint_text(tr("型番・メーカー・ガラス"))
                     .desired_width(160.0),
             );
-            let mut vendors: Vec<&str> = self.lenses.iter().map(|l| l.vendor.as_str()).collect();
-            vendors.sort();
-            vendors.dedup();
             egui::ComboBox::from_id_salt("vendor")
                 .selected_text(if q.vendor.is_empty() {
                     tr("すべてのメーカー")
@@ -1228,12 +1379,12 @@ impl Browser {
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut q.vendor, String::new(), tr("すべてのメーカー"));
-                    for v in vendors {
-                        ui.selectable_value(&mut q.vendor, v.to_string(), v);
+                    for v in &vendors {
+                        ui.selectable_value(&mut q.vendor, v.clone(), v);
                     }
                 });
             ui.label(tr("種類"));
-            kind_combo(ui, q, &self.lenses);
+            kind_combo(ui, q, &kinds);
             ui.separator();
             ui.selectable_value(&mut q.sign, Sign::Any, tr("正負とも"));
             ui.selectable_value(&mut q.sign, Sign::Positive, tr("正"));
@@ -1277,7 +1428,7 @@ impl Browser {
                 }
             }
         });
-        let idx = filter_lenses(&self.lenses, &self.lens_q, self.lens_sort, self.lens_desc);
+        let idx = self.lens_idx();
         // 件数と選んだ品の詳細（1 行目）、選んだ品の操作（2 行目）。選んでも表が動かないよう高さを決め、
         // 長ければ横にスクロール（右の組合せ・図に重ならない）
         let picked = self.lens_sel.and_then(|i| self.lenses.get(i)).cloned();
@@ -1463,13 +1614,7 @@ impl Browser {
     fn fit_ui(&mut self, ui: &mut Ui, r: &LensRow) {
         if r.kind == RowKind::Mech {
             let Some(h) = hold_diameter(r) else { return };
-            let n = self
-                .lenses
-                .iter()
-                .filter(|l| {
-                    l.kind != RowKind::Mech && l.diameter.is_finite() && fits_hold(h, l.diameter)
-                })
-                .count();
+            let n = self.lens_fit(self.lens_sel.unwrap_or(usize::MAX), r).len();
             if ui
                 .add_enabled(n > 0, egui::Button::new(trf("入る素子（{}）で絞る", &[&n])))
                 .on_hover_text(trf(
@@ -1495,12 +1640,9 @@ impl Browser {
             return;
         }
         let fit: Vec<&LensRow> = self
-            .lenses
-            .iter()
-            .filter(|m| {
-                m.kind == RowKind::Mech
-                    && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
-            })
+            .lens_fit(self.lens_sel.unwrap_or(usize::MAX), r)
+            .into_iter()
+            .filter_map(|i| self.lenses.get(i))
             .collect();
         if fit.is_empty() {
             ui.weak(tr("入る機構部品なし")).on_hover_text(tr(
@@ -1723,6 +1865,7 @@ impl Browser {
     }
 
     fn glass_ui(&mut self, ui: &mut Ui) {
+        let cats = self.glass_cats();
         let q = &mut self.glass_q;
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("検索"));
@@ -1731,9 +1874,6 @@ impl Browser {
                     .hint_text(tr("ガラス名"))
                     .desired_width(140.0),
             );
-            let mut cats: Vec<&str> = self.glasses.iter().map(|g| g.catalog.as_str()).collect();
-            cats.sort();
-            cats.dedup();
             egui::ComboBox::from_id_salt("glass_cat")
                 .selected_text(if q.catalog.is_empty() {
                     tr("すべてのカタログ")
@@ -1742,8 +1882,8 @@ impl Browser {
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut q.catalog, String::new(), tr("すべてのカタログ"));
-                    for v in cats {
-                        ui.selectable_value(&mut q.catalog, v.to_string(), v);
+                    for v in &cats {
+                        ui.selectable_value(&mut q.catalog, v.clone(), v);
                     }
                 });
         });
@@ -1752,7 +1892,7 @@ impl Browser {
             ui.separator();
             range_ui(ui, "νd", &mut q.vd, (30.0, 60.0), 0.1);
         });
-        let idx = filter_glasses(&self.glasses, &self.glass_q);
+        let idx = self.glass_idx();
         let picked = self.glass_sel.and_then(|i| self.glasses.get(i));
         // 1 行に収め、長ければ横にスクロール（右の組合せ・図に重ならない）
         egui::ScrollArea::horizontal()
@@ -2273,6 +2413,39 @@ mod tests {
         }
     }
 
+    /// 一覧の絞り込みの結果は使い回すが、条件・並べ方・一覧が変われば作り直す
+    #[test]
+    fn list_cache_follows_filter_and_rows() {
+        let mut b = Browser::default();
+        b.set_lenses(vec![
+            lens("LB", "A", 50.0, 25.4),
+            lens("TL", "B", -30.0, 12.7),
+        ]);
+        assert_eq!(b.lens_idx(), vec![0, 1]);
+        assert_eq!(b.lens_meta().0, ["LB", "TL"]);
+        b.lens_q.sign = Sign::Negative;
+        assert_eq!(b.lens_idx(), vec![1]);
+        b.lens_q.sign = Sign::Any;
+        b.lens_sort = LensSort::Efl;
+        assert_eq!(b.lens_idx(), vec![1, 0]);
+        b.lens_desc = true;
+        assert_eq!(b.lens_idx(), vec![0, 1]);
+        // 同じ件数の別の一覧に入れ替えても作り直す
+        b.set_lenses(vec![lens("ZZ", "C", 10.0, 5.0), lens("ZZ", "D", 20.0, 5.0)]);
+        assert_eq!(b.lens_idx(), vec![1, 0]);
+        assert_eq!(b.lens_meta().0, ["ZZ"]);
+        let g = |name: &str, catalog: &str| GlassRow {
+            name: name.into(),
+            catalog: catalog.into(),
+            ..Default::default()
+        };
+        b.set_glasses(vec![g("N-BK7", "SCHOTT"), g("S-BSL7", "OHARA")]);
+        assert_eq!(b.glass_cats(), ["OHARA", "SCHOTT"]);
+        assert_eq!(b.glass_idx(), vec![0, 1]);
+        b.glass_q.catalog = "OHARA".into();
+        assert_eq!(b.glass_idx(), vec![1]);
+    }
+
     /// ダブルクリックで足す玉は、図で選んでいる要素の直後へ（続けて足すとその後ろへ）
     #[test]
     fn add_pick_goes_after_selected() {
@@ -2426,6 +2599,17 @@ mod tests {
         });
         assert_eq!(f(&q), vec![1]);
         assert!(row_detail(&rows[2]).contains("25.4"));
+        // 選んだ品と対応する品（キャッシュ）: 素子なら入る機構部品、機構部品なら入る素子
+        let mut c = Browser::default();
+        c.set_lenses(rows.clone());
+        assert_eq!(c.lens_fit(0, &rows[0]), vec![2]);
+        assert_eq!(c.lens_fit(3, &rows[3]), vec![1]);
+        assert_eq!(c.lens_fit(2, &rows[2]), vec![0]);
+        let k = c.lens_meta().1;
+        assert_eq!(
+            (k.optics, k.mech, k.has_mech),
+            (vec!["lens"], vec!["tube"], true)
+        );
         // 組合せの玉に合わせて足すと、その玉に置いて保持し座に合わせる
         let mut b = Browser {
             lenses: rows.clone(),
