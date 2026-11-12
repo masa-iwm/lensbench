@@ -665,6 +665,25 @@ impl Core {
             .unwrap_or(0)
     }
 
+    /// パラメータの名前の欄の補完・階層選択の候補（面・玉・群・波長の数）
+    fn param_sys(&self) -> crate::param_pick::Sys {
+        crate::param_pick::Sys {
+            surfs: self
+                .ld_rows
+                .iter()
+                .map(|r| {
+                    (
+                        r.typ.clone(),
+                        r.comment.clone(),
+                        r.material.eq_ignore_ascii_case("MIRROR"),
+                    )
+                })
+                .collect(),
+            units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
+            waves: self.waves_um().len(),
+        }
+    }
+
     fn waves_um(&self) -> Vec<f64> {
         self.summary
             .as_ref()
@@ -1458,22 +1477,9 @@ impl Core {
         }
         let is_combo = self.is_combo();
         let cands = op::Cands {
-            surfaces: self
-                .ld_rows
-                .iter()
-                .enumerate()
-                .skip(1)
-                .map(|(j, r)| {
-                    let d = if r.comment.is_empty() {
-                        r.typ.clone()
-                    } else {
-                        r.comment.clone()
-                    };
-                    (j, d)
-                })
-                .collect(),
             units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
             combo: is_combo,
+            sys: self.param_sys(),
         };
         let progress = if self.opt.running {
             ui.ctx()
@@ -1562,8 +1568,8 @@ impl Core {
             return;
         }
         let cands = self.zoom_cands();
-        let units: Vec<String> = self.ld_units.iter().map(|u| u.name.clone()).collect();
-        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.zoom, &cands, &units) {
+        let sys = self.param_sys();
+        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.zoom, &cands, &sys) {
             self.zoom.running = true;
             self.zoom.result = None;
             self.worker.send(Tag::Zoom, "zoom", p);
@@ -1598,23 +1604,10 @@ impl Core {
             return;
         }
         let cands = crate::optim_panel::Cands {
-            surfaces: self
-                .ld_rows
-                .iter()
-                .enumerate()
-                .skip(1)
-                .map(|(j, r)| {
-                    let d = if r.comment.is_empty() {
-                        r.typ.clone()
-                    } else {
-                        r.comment.clone()
-                    };
-                    (j, d)
-                })
-                .collect(),
             units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
             // 補償子は系の中で動かすだけ（組合せに当てない）ので、面の値の種類を絞らない
             combo: false,
+            sys: self.param_sys(),
         };
         let progress = if self.tol.running {
             ui.ctx()
@@ -1711,6 +1704,7 @@ impl Core {
         } else {
             None
         };
+        cands.sys = self.param_sys();
         let acts = sp::ui(ui, &mut self.swap, &cands, progress);
         if !is_combo {
             if let Some(x) = self.swap_file.as_mut() {
@@ -2307,14 +2301,7 @@ impl Core {
     /// 多重構成の表
     fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
-        let cands = config_panel::Cands {
-            surfs: self
-                .ld_rows
-                .iter()
-                .map(|r| (r.typ.clone(), r.comment.clone()))
-                .collect(),
-            units: self.ld_blocks.iter().map(|b| b.name.clone()).collect(),
-        };
+        let cands = self.param_sys();
         for a in config_panel::ui(ui, &mut self.mc, combo, &cands) {
             match a {
                 config_panel::Act::Ops(ops) => {
@@ -3098,12 +3085,15 @@ impl Core {
                 self.param_vals.remove(&p);
             }
             ui.horizontal(|ui| {
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut self.new_param)
-                        .hint_text("3.t · STOP.r · G1.shift")
-                        .desired_width(120.0),
+                let sys = self.param_sys();
+                let (_, enter) = crate::param_pick::edit_pick(
+                    ui,
+                    &mut self.new_param,
+                    120.0,
+                    "3.t · STOP.r · G1.shift",
+                    &sys,
+                    crate::param_pick::Set::Any,
                 );
-                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 if (ui.button(tr("＋ パラメータを足す")).clicked() || enter)
                     && !self.new_param.trim().is_empty()
                 {

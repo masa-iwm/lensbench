@@ -28,6 +28,7 @@ mod lens_data;
 mod open_sysset;
 mod optim_panel;
 mod palette;
+mod param_pick;
 mod plot_tools;
 mod plots;
 mod portable;

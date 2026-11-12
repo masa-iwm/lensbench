@@ -11,6 +11,7 @@ use serde_json::{json, Map, Value};
 
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
+use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 /// 項のキーの値の書き方
@@ -511,12 +512,12 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
 
 /// 変数の候補（面の表の行・玉と群）
 pub struct Cands {
-    /// 面ごとに (番号, 説明)
-    pub surfaces: Vec<(usize, String)>,
     /// 玉・群の名前
     pub units: Vec<String>,
     /// 組合せの系（面の値は t・r・k だけ組合せに当てられる）
     pub combo: bool,
+    /// 名前の欄の補完の候補
+    pub sys: crate::param_pick::Sys,
 }
 
 pub(crate) fn small_edit(ui: &mut Ui, s: &mut String, w: f32, hint: &str) -> egui::Response {
@@ -616,6 +617,7 @@ fn fmt_g(x: f64) -> String {
 }
 
 pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Color32) {
+    let set = Set::Var { combo: c.combo };
     let multi = !p.configs.trim().is_empty();
     let mut del = None;
     egui::Grid::new("opt_vars")
@@ -631,7 +633,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
             ui.label("");
             ui.end_row();
             for (i, v) in p.vars.iter_mut().enumerate() {
-                small_edit(ui, &mut v.name, 110.0, "7.t");
+                pp::edit(ui, &mut v.name, 110.0, "7.t", &c.sys, set);
                 small_edit(ui, &mut v.lo, 60.0, "−∞");
                 small_edit(ui, &mut v.hi, 60.0, "∞");
                 if multi {
@@ -648,20 +650,29 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
         p.vars.remove(i);
     }
     ui.horizontal(|ui| {
-        let r = small_edit(ui, &mut p.new_var, 110.0, tr("7.t・lens2.tx など"));
-        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if (ui.button(tr("足す")).clicked() || enter) && !p.new_var.trim().is_empty() {
-            p.vars.push(VarRow {
-                name: p.new_var.trim().into(),
-                ..Default::default()
-            });
+        let (_, mut enter) = pp::edit(
+            ui,
+            &mut p.new_var,
+            110.0,
+            tr("7.t・lens2.tx など"),
+            &c.sys,
+            set,
+        );
+        if let Some(n) = pp::menu_button(ui, &c.sys, set, tr("面・玉・群から選んで足す"))
+        {
+            p.new_var = n;
+            enter = true;
+        }
+        let name = p.new_var.trim().to_string();
+        if (ui.button(tr("足す")).clicked() || enter) && !name.is_empty() {
+            if !p.vars.iter().any(|v| v.name == name) {
+                p.vars.push(VarRow {
+                    name,
+                    ..Default::default()
+                });
+            }
             p.new_var.clear();
         }
-        ui.menu_button(tr("候補から足す"), |ui| {
-            egui::ScrollArea::vertical()
-                .max_height(320.0)
-                .show(ui, |ui| cand_menu(ui, p, c));
-        });
     });
     if c.combo {
         ui.label(
@@ -671,56 +682,6 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
             .small()
             .color(weak),
         );
-    }
-}
-
-fn cand_menu(ui: &mut Ui, p: &mut OptPanel, c: &Cands) {
-    let mut add = |ui: &mut Ui, name: String, label: String| {
-        let have = p.vars.iter().any(|v| v.name == name);
-        if ui.add_enabled(!have, egui::Button::new(label)).clicked() {
-            p.vars.push(VarRow {
-                name,
-                ..Default::default()
-            });
-            ui.close_menu();
-        }
-    };
-    let kinds: &[(&str, &str)] = if c.combo {
-        &[("t", "厚さ"), ("r", "曲率半径"), ("k", "コーニック")]
-    } else {
-        &[
-            ("t", "厚さ"),
-            ("c", "曲率"),
-            ("k", "コーニック"),
-            ("dx", "偏心 x"),
-            ("dy", "偏心 y"),
-            ("tx", "傾き x"),
-            ("ty", "傾き y"),
-        ]
-    };
-    for (j, desc) in &c.surfaces {
-        ui.menu_button(trf("面 {} {}", &[j, desc]), |ui| {
-            for (k, label) in kinds {
-                add(ui, format!("{j}.{k}"), format!("{j}.{k}  {}", tr(label)));
-            }
-        });
-    }
-    if !c.combo && !c.units.is_empty() {
-        ui.separator();
-        for u in &c.units {
-            ui.menu_button(trf("玉・群 {}", &[u]), |ui| {
-                for (k, label) in [
-                    ("shift", "移動（光軸）"),
-                    ("dx", "偏心 x"),
-                    ("dy", "偏心 y"),
-                    ("tx", "傾き x"),
-                    ("ty", "傾き y"),
-                    ("tz", "傾き z"),
-                ] {
-                    add(ui, format!("{u}.{k}"), format!("{u}.{k}  {}", tr(label)));
-                }
-            });
-        }
     }
 }
 

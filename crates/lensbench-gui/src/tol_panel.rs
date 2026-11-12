@@ -13,6 +13,7 @@ use serde_json::{json, Map, Value};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::optim_panel::{self as op, section, small_edit, text_of, OptPanel};
+use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 /// 公差の組の選択肢（"" は既定 = 全体の組）
@@ -646,7 +647,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     let mut del = None;
     for (i, l) in p.lenses.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            small_edit(ui, &mut l.name, 90.0, "lens1");
+            pp::edit(ui, &mut l.name, 90.0, "lens1", &c.sys, Set::Units);
             egui::ComboBox::from_id_salt(("tol_lens_preset", i))
                 .selected_text(preset_label(&l.preset))
                 .width(80.0)
@@ -682,7 +683,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         .num_columns(5)
         .show(ui, |ui| {
             for (i, g) in p.groups.iter_mut().enumerate() {
-                small_edit(ui, &mut g.name, 70.0, "G1");
+                pp::edit(ui, &mut g.name, 70.0, "G1", &c.sys, Set::Units);
                 small_edit(ui, &mut g.decenter, 55.0, tr("偏心"));
                 small_edit(ui, &mut g.tilt, 55.0, tr("傾き"));
                 small_edit(ui, &mut g.shift, 55.0, tr("移動"));
@@ -714,7 +715,9 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         .num_columns(5)
         .show(ui, |ui| {
             for (i, t) in p.tols.iter_mut().enumerate() {
-                small_edit(ui, &mut t.param, 80.0, "3.t");
+                ui.horizontal(|ui| {
+                    pp::edit_pick(ui, &mut t.param, 80.0, "3.t", &c.sys, Set::Any);
+                });
                 small_edit(ui, &mut t.pm, 60.0, "±");
                 egui::ComboBox::from_id_salt(("tol_dist", i))
                     .selected_text(if t.dist.is_empty() {

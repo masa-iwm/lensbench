@@ -1378,3 +1378,7 @@ r^{} の係数	r^{} coefficient
 ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1	Solves/pickups: […] at the right of a cell; dn, dispersion, birefringence: the material's […]; stop, ignore, insert, paste: right-click (Shift+F10). Keys: F1
 パラメータを面・玉・群から選んで行を挿入	Choose a parameter from surfaces / lenses / groups and insert the row
 玉・群	Lenses / groups
+物体の位置 X	Object position X
+物体の位置 Y	Object position Y
+面・玉・群から選ぶ	Pick from surfaces, lenses and groups
+面・玉・群から選んで足す	Pick from surfaces, lenses and groups and add
