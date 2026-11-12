@@ -67,6 +67,10 @@ pub enum Tag {
     Tolerance,
     /// ズーム軌跡（serve の zoom）
     Zoom,
+    /// 元に戻す・やり直す（serve の undo・redo）
+    History,
+    /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
+    HistoryDepth,
 }
 
 impl Tag {
@@ -77,7 +81,7 @@ impl Tag {
 
     /// serve の系を変える要求（出す前に、待っている・回っている解析をやめる）
     fn changes_system(&self) -> bool {
-        matches!(self, Tag::Load | Tag::Set | Tag::Edit)
+        matches!(self, Tag::Load | Tag::Set | Tag::Edit | Tag::History)
     }
 }
 

@@ -246,7 +246,7 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 
 - 下の行に状態と EFFL・F/#・NA・全長・像高、版（git のハッシュ。クリックでコピー）
 - キーボードだけで操作できる: Ctrl+K コマンドパレット（操作・解析・パネル・並びを名前で探す）、Ctrl+N 新規（組合せを空にする）、Ctrl+O 開く、F5 計算、
-  Ctrl+R 読み直す、Ctrl+Tab 次のパネル、Ctrl+A・Ctrl+Shift+A 多重構成の次・前の構成、F1 キーの一覧（レンズデータ・多重構成のキーも）
+  Ctrl+R 読み直す、Ctrl+Z 元に戻す・Ctrl+Y（Ctrl+Shift+Z）やり直す、Ctrl+Tab 次のパネル、Ctrl+A・Ctrl+Shift+A 多重構成の次・前の構成、F1 キーの一覧（レンズデータ・多重構成のキーも）
 
 | パネル | キー | 操作 |
 |---|---|---|
