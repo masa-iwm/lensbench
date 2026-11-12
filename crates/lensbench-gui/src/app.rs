@@ -1378,7 +1378,7 @@ impl Core {
                 return;
             }
             Tag::Glasses => {
-                self.browser.glasses = catalog::parse_glasses(&v);
+                self.browser.set_glasses(catalog::parse_glasses(&v));
                 self.browser.glass_sel = None;
                 self.ld_glasses = self
                     .browser
@@ -1392,7 +1392,7 @@ impl Core {
                 text = trf("ガラス {} 種", &[&self.browser.glasses.len()]);
             }
             Tag::Lenses => {
-                self.browser.lenses = catalog::parse_lenses(&v);
+                self.browser.set_lenses(catalog::parse_lenses(&v));
                 self.browser.lens_sel = None;
                 // 前のカタログの断面は捨てる（同じ番号の行でも別の玉。作りかけの結果も受け取らない）
                 self.browser.preview = None;
