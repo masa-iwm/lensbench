@@ -242,6 +242,50 @@ fn loop_thickness() {
     sv.stop();
 }
 
+/// undo・redo は set・edit を 1 段ずつ戻す・やり直す。同じパラメータの set が続けば 1 段、load で空になる
+#[test]
+fn undo_redo_history() {
+    let mut sv = Server::start(&[ZMX, "--glass-dir", "tests/glass"]);
+    let get = |sv: &mut Server, p: &str| {
+        sv.call("get", json!({ "param": p }))["value"]
+            .as_f64()
+            .unwrap()
+    };
+    let (t3, t2) = (get(&mut sv, "3.t"), get(&mut sv, "2.t"));
+    assert!(sv.error("undo", json!({})).contains("元に戻す"));
+    // 同じ名前の set が続けば 1 段にまとめる
+    sv.call("set", json!({ "values": { "3.t": t3 + 1.0 } }));
+    let r = sv.call("set", json!({ "values": { "3.t": t3 + 2.0 } }));
+    assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(1), Some(0)));
+    let r = sv.call(
+        "edit",
+        json!({ "ops": [{ "op": "set_surface", "surface": 2, "fields": { "t": t2 + 0.5 } }] }),
+    );
+    assert_eq!(r["undo"].as_u64(), Some(2));
+    let r = sv.call("undo", json!({}));
+    assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(1), Some(1)));
+    assert_eq!(get(&mut sv, "2.t"), t2);
+    assert_eq!(get(&mut sv, "3.t"), t3 + 2.0);
+    sv.call("undo", json!({}));
+    assert_eq!(get(&mut sv, "3.t"), t3);
+    assert!(sv.error("undo", json!({})).contains("元に戻す"));
+    sv.call("redo", json!({}));
+    sv.call("redo", json!({}));
+    assert_eq!(
+        (get(&mut sv, "3.t"), get(&mut sv, "2.t")),
+        (t3 + 2.0, t2 + 0.5)
+    );
+    assert!(sv.error("redo", json!({})).contains("やり直す"));
+    // 戻した後に変えるとやり直す段は消える
+    sv.call("undo", json!({}));
+    let r = sv.call("set", json!({ "values": { "2.t": t2 + 0.25 } }));
+    assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(2), Some(0)));
+    sv.call("reload", json!({}));
+    let h = sv.call("history", json!({}));
+    assert_eq!((h["undo"].as_u64(), h["redo"].as_u64()), (Some(0), Some(0)));
+    sv.stop();
+}
+
 /// trace は配列をバイナリで受け渡し、コアの追跡とビット一致する。往復の時間を測る
 #[test]
 fn trace_binary_and_timing() {

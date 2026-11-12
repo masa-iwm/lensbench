@@ -219,10 +219,86 @@ struct AnaRes {
     error: Option<String>,
 }
 
+/// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）
+#[derive(Default)]
+struct ComboHist {
+    undo: Vec<Combo>,
+    redo: Vec<Combo>,
+    /// 最後に段に積んだ（落ち着いた）組合せ
+    last: Option<Combo>,
+    /// 前の画面の組合せと、最後に変わった時刻（入力・ドラッグの途中は積まない）
+    seen: Option<Combo>,
+    changed_at: Option<web_time::Instant>,
+}
+
+/// 元に戻せる段の数
+const UNDO_DEPTH: usize = 100;
+
+impl ComboHist {
+    /// 画面ごとに呼ぶ。組合せが変わって落ち着いたら（ポインタを離し、入力欄を離れるか 0.8 秒たったら）前を積む
+    fn track(&mut self, cur: &Combo, busy: bool) {
+        if self.seen.as_ref() != Some(cur) {
+            self.seen = Some(cur.clone());
+            self.changed_at = Some(web_time::Instant::now());
+        }
+        let Some(last) = &self.last else {
+            self.last = Some(cur.clone());
+            return;
+        };
+        if last == cur {
+            return;
+        }
+        let quiet = self
+            .changed_at
+            .is_some_and(|t| t.elapsed().as_secs_f64() > 0.8);
+        if !busy || quiet {
+            self.commit(cur);
+        }
+    }
+
+    /// 前の落ち着いた組合せを積む
+    fn commit(&mut self, cur: &Combo) {
+        if let Some(last) = self.last.replace(cur.clone()) {
+            if &last != cur {
+                self.undo.push(last);
+                if self.undo.len() > UNDO_DEPTH {
+                    self.undo.remove(0);
+                }
+                self.redo.clear();
+            }
+        }
+    }
+
+    fn can(&self, cur: &Combo, back: bool) -> bool {
+        if back {
+            !self.undo.is_empty() || self.last.as_ref().is_some_and(|l| l != cur)
+        } else {
+            !self.redo.is_empty()
+        }
+    }
+
+    /// 1 段戻す（back）・やり直す。戻した後の組合せ
+    fn step(&mut self, cur: &Combo, back: bool) -> Option<Combo> {
+        self.commit(cur);
+        let (from, to) = if back {
+            (&mut self.undo, &mut self.redo)
+        } else {
+            (&mut self.redo, &mut self.undo)
+        };
+        let c = from.pop()?;
+        to.push(cur.clone());
+        self.last = Some(c.clone());
+        self.seen = Some(c.clone());
+        Some(c)
+    }
+}
+
 /// パレット・メニューから実行する操作
 #[derive(Clone)]
 enum Cmd {
     New,
+    /// 元に戻す（true）・やり直す
+    Undo(bool),
     Open,
     Recent(String),
     Reload,
@@ -306,6 +382,10 @@ struct Core {
     cmds: Vec<Cmd>,
     /// 最後に組合せを変えて系を作り直した時刻（動かしている間は解析を待たせる）
     combo_edit: Option<web_time::Instant>,
+    /// 開いた系の元に戻せる段・やり直せる段の数（serve の set・edit・undo・redo の結果）
+    hist: (usize, usize),
+    /// 組合せの元に戻す・やり直す
+    combo_hist: ComboHist,
     /// 面の表: 状態、面の値、玉・群、木
     ld: lens_data::LensData,
     ld_rows: Vec<lens_data::Row>,
@@ -1058,6 +1138,7 @@ impl Core {
                 }
                 // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
                 self.ld_dirty = false;
+                self.hist = (0, 0);
                 if new_file != self.file {
                     self.ld.reset();
                 }
@@ -1147,8 +1228,22 @@ impl Core {
                 }
                 return;
             }
-            Tag::Set | Tag::Edit => {
-                if d.tag == Tag::Edit {
+            Tag::Set | Tag::Edit | Tag::History => {
+                if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
+                    self.hist = (u as usize, r as usize);
+                }
+                if d.tag == Tag::History {
+                    if v.get("surfaces").is_none() {
+                        return;
+                    }
+                    text = tr(if params["back"].as_bool() == Some(true) {
+                        "元に戻した"
+                    } else {
+                        "やり直した"
+                    })
+                    .into();
+                }
+                if d.tag != Tag::Set {
                     self.ld_dirty = true;
                 }
                 // 値を変えたら要約と、開いている解析を計算し直す
@@ -1303,6 +1398,8 @@ impl Core {
                 self.opt.running = false;
                 self.opt.error = None;
                 self.opt.undo = None;
+                // 結果を系に当てたら元に戻す段が増える
+                self.worker.send(Tag::History, "history", json!({}));
                 text = trf(
                     "最適化 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
@@ -1460,6 +1557,61 @@ impl Core {
             _ => self
                 .worker
                 .send(Tag::Layout, "layout", self.layout_params()),
+        }
+    }
+
+    /// 元に戻す（back）・やり直すことができるか。組合せの系は組合せの段、開いた系は serve の段
+    fn can_undo(&self, back: bool) -> bool {
+        if self.is_combo() {
+            self.combo_hist.can(&self.browser.combo, back)
+        } else if self.summary.is_some() {
+            if back {
+                self.hist.0 > 0
+            } else {
+                self.hist.1 > 0
+            }
+        } else {
+            false
+        }
+    }
+
+    /// 元に戻す（back）・やり直す（Ctrl+Z・Ctrl+Y）
+    fn undo(&mut self, back: bool) {
+        if self.is_combo() {
+            match self.combo_hist.step(&self.browser.combo, back) {
+                Some(c) => {
+                    self.browser.combo = c;
+                    if !self.s.auto_build {
+                        self.build_combo(self.browser.combo.project());
+                    }
+                    self.status = Status {
+                        text: tr(if back {
+                            "元に戻した"
+                        } else {
+                            "やり直した"
+                        })
+                        .into(),
+                        error: false,
+                    };
+                }
+                None => {
+                    self.status = Status {
+                        text: tr(if back {
+                            "元に戻す変更がない"
+                        } else {
+                            "やり直す変更がない"
+                        })
+                        .into(),
+                        error: false,
+                    }
+                }
+            }
+            return;
+        }
+        if self.summary.is_some() {
+            self.flush_set();
+            let m = if back { "undo" } else { "redo" };
+            self.worker.send(Tag::History, m, json!({ "back": back }));
         }
     }
 
@@ -3585,6 +3737,8 @@ impl Core {
                         ("Ctrl+O", tr("系のファイルを開く")),
                         ("F5", tr("開いている解析をすべて計算し直す")),
                         ("Ctrl+R", tr("系を読み直す（変えた値を捨てる）")),
+                        ("Ctrl+Z", tr("系の変更を元に戻す（100 段まで。入力欄の中では欄の文字）")),
+                        ("Ctrl+Y / Ctrl+Shift+Z", tr("元に戻した変更をやり直す")),
                         ("Ctrl+Tab", tr("次のパネルへ（Shift で前へ）")),
                         ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
                         ("Enter / Space", tr("ボタンを押す・選ぶ")),
@@ -3969,6 +4123,8 @@ impl App {
                 pending_set: Default::default(),
                 rerun: None,
                 combo_edit: None,
+                hist: (0, 0),
+                combo_hist: Default::default(),
                 ld: Default::default(),
                 ld_rows: Vec::new(),
                 ld_units: Vec::new(),
@@ -4378,6 +4534,7 @@ impl App {
     fn exec(&mut self, ctx: &egui::Context, cmd: Cmd) {
         match cmd {
             Cmd::New => self.c.new_system(),
+            Cmd::Undo(back) => self.c.undo(back),
             Cmd::Open => self.c.pick_and_open(),
             Cmd::Recent(f) => self.c.open_doc(Path::new(&f)),
             Cmd::Reload => self.c.reload(),
@@ -4445,6 +4602,16 @@ impl App {
             tr("系のファイルを開く…").into(),
             "open file ctrl+o",
             Cmd::Open,
+        );
+        push(
+            tr("元に戻す（Ctrl+Z）").into(),
+            "undo ctrl+z",
+            Cmd::Undo(true),
+        );
+        push(
+            tr("やり直す（Ctrl+Y）").into(),
+            "redo ctrl+y ctrl+shift+z",
+            Cmd::Undo(false),
         );
         push(tr("系を読み直す").into(), "reload", Cmd::Reload);
         push(
@@ -4715,6 +4882,30 @@ impl App {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     }
+                });
+                ui.menu_button(tr("編集"), |ui| {
+                    let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
+                    if ui
+                        .add_enabled(u, egui::Button::new(tr("元に戻す（Ctrl+Z）")))
+                        .clicked()
+                    {
+                        ui.close_menu();
+                        cmd = Some(Cmd::Undo(true));
+                    }
+                    if ui
+                        .add_enabled(r, egui::Button::new(tr("やり直す（Ctrl+Y）")))
+                        .clicked()
+                    {
+                        ui.close_menu();
+                        cmd = Some(Cmd::Undo(false));
+                    }
+                    ui.label(
+                        RichText::new(tr(
+                            "系の変更（面の表・多重構成・最適化の結果・組合せ）を 100 段まで。開き直すと消える",
+                        ))
+                        .small()
+                        .weak(),
+                    );
                 });
                 ui.menu_button(tr("パネル"), |ui| {
                     for k in add_kinds() {
@@ -5670,6 +5861,8 @@ impl eframe::App for App {
             self.run_all(live);
         }
         self.c.flush_set();
+        let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        self.c.combo_hist.track(&self.c.browser.combo, busy);
         self.c.auto_build();
         // 窓に落としたファイル
         let dropped: Vec<PathBuf> = ctx.input(|i| {
@@ -5728,6 +5921,19 @@ impl eframe::App for App {
         }
         if next || prev {
             self.cycle(prev);
+        }
+        // Ctrl+Z・Ctrl+Y（Ctrl+Shift+Z）: 系の変更を元に戻す・やり直す（入力欄の中では欄の文字の取り消し）
+        if !ctx.wants_keyboard_input() {
+            let (redo, undo) = ctx.input_mut(|i| {
+                (
+                    i.consume_key(Modifiers::COMMAND, Key::Y)
+                        || i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z),
+                    i.consume_key(Modifiers::COMMAND, Key::Z),
+                )
+            });
+            if undo || redo {
+                self.c.undo(undo);
+            }
         }
         // Ctrl+A・Ctrl+Shift+A: 多重構成の次・前の構成（入力欄にフォーカスがあるときは全選択に使う）
         if !ctx.wants_keyboard_input() {
@@ -6265,5 +6471,41 @@ fn sample_combos_are_up_to_date() {
             "{name}: examples/combos が古い。LENSBENCH_UPDATE_SAMPLES=1 cargo test -p lensbench-gui sample_combos で作り直す"
         );
         lensbench_project::Project::from_json(&got).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod hist_tests {
+    use super::*;
+
+    /// 組合せの段: 入力・ドラッグの途中は積まず、落ち着いたら 1 段。戻す・やり直す、戻した後に変えるとやり直す段は消える
+    #[test]
+    fn combo_history_steps() {
+        let mut h = ComboHist::default();
+        let mut c = Combo::default();
+        let name0 = c.name.clone();
+        h.track(&c, false);
+        assert!(!h.can(&c, true));
+        c.name = "a".into();
+        h.track(&c, true);
+        c.name = "ab".into();
+        h.track(&c, true);
+        assert!(h.undo.is_empty() && h.can(&c, true));
+        h.track(&c, false);
+        assert_eq!(h.undo.len(), 1);
+        c.name = "x".into();
+        h.track(&c, false);
+        let b = h.step(&c, true).unwrap();
+        assert_eq!(b.name, "ab");
+        let b = h.step(&b, true).unwrap();
+        assert_eq!(b.name, name0);
+        assert!(h.step(&b, true).is_none());
+        let f = h.step(&b, false).unwrap();
+        assert_eq!(f.name, "ab");
+        let mut g = f.clone();
+        g.name = "y".into();
+        h.track(&g, false);
+        assert!(!h.can(&g, false));
+        assert_eq!(h.step(&g, true).unwrap().name, "ab");
     }
 }

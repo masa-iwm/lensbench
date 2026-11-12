@@ -195,7 +195,24 @@ struct Served {
     sys: Arc<System>,
     spec: LoadSpec,
     log: Vec<Change>,
+    /// 元に戻す・やり直すための前の系と変更の記録（新しいものが後ろ）
+    undo: Vec<Snap>,
+    redo: Vec<Snap>,
+    /// 最後に記録した set の名前と時刻（同じ名前の set が続けば 1 段にまとめる。スライダーのドラッグなど）
+    last_set: Option<(Vec<String>, Instant)>,
 }
+
+/// 元に戻す 1 段: 系と、そのときの変更の記録
+#[derive(Clone)]
+struct Snap {
+    sys: Arc<System>,
+    log: Vec<Change>,
+}
+
+/// 元に戻せる段の数
+const UNDO_DEPTH: usize = 100;
+/// 同じ名前の set をまとめる間隔 [s]
+const SET_MERGE_S: f64 = 1.0;
 
 /// 読み込んだ系（プロセスに 1 つ）
 static SERVED: Mutex<Option<Served>> = Mutex::new(None);
@@ -223,25 +240,93 @@ fn current_log() -> Vec<Change> {
     served().as_ref().map(|x| x.log.clone()).unwrap_or_default()
 }
 
-/// 読み込んだ系を置く（変更の記録は空にする）
+/// 読み込んだ系を置く（変更の記録・元に戻す段は空にする）
 fn store(sys: System, spec: LoadSpec) {
     *served() = Some(Served {
         sys: Arc::new(sys),
         spec,
         log: Vec::new(),
+        undo: Vec::new(),
+        redo: Vec::new(),
+        last_set: None,
     });
 }
 
-/// 変更した系を置き、変更を記録する
+/// 変更した系を置き、変更を記録する。前の系は元に戻す段に積む（やり直す段は空にする）
 fn store_changed(sys: System, spec: LoadSpec, c: Change) {
     let mut g = served();
-    let mut log = g.take().map(|x| x.log).unwrap_or_default();
-    log.push(c);
-    *g = Some(Served {
-        sys: Arc::new(sys),
-        spec,
-        log,
+    let Some(mut x) = g.take() else {
+        *g = Some(Served {
+            sys: Arc::new(sys),
+            spec,
+            log: vec![c],
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_set: None,
+        });
+        return;
+    };
+    let now = Instant::now();
+    let names = match &c {
+        Change::Set(v) => Some(v.iter().map(|r| r.0.clone()).collect::<Vec<_>>()),
+        Change::Edit(_) => None,
+    };
+    let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t)))
+        if n == m && now.duration_since(*t).as_secs_f64() < SET_MERGE_S && !x.undo.is_empty());
+    if !merge {
+        x.undo.push(Snap {
+            sys: x.sys.clone(),
+            log: x.log.clone(),
+        });
+        if x.undo.len() > UNDO_DEPTH {
+            x.undo.remove(0);
+        }
+    }
+    x.redo.clear();
+    x.last_set = names.map(|n| (n, now));
+    x.log.push(c);
+    x.sys = Arc::new(sys);
+    x.spec = spec;
+    *g = Some(x);
+}
+
+/// 元に戻す（back）・やり直す。戻した後の系の面の数と、残りの段の数
+fn step_history(back: bool) -> Result<Value, RpcErr> {
+    let mut g = served();
+    let x = g
+        .as_mut()
+        .ok_or_else(|| RpcErr::app("系がない（先に load）"))?;
+    let (from, to) = if back {
+        (&mut x.undo, &mut x.redo)
+    } else {
+        (&mut x.redo, &mut x.undo)
+    };
+    let Some(snap) = from.pop() else {
+        return Err(RpcErr::app(if back {
+            "元に戻す変更がない"
+        } else {
+            "やり直す変更がない"
+        }));
+    };
+    to.push(Snap {
+        sys: std::mem::replace(&mut x.sys, snap.sys),
+        log: std::mem::replace(&mut x.log, snap.log),
     });
+    x.last_set = None;
+    let hash = lensbench_project::sysfile::system_hash(&x.sys).map_err(RpcErr::app)?;
+    Ok(json!({
+        "surfaces": x.sys.surfaces.len(),
+        "system_hash": hash,
+        "undo": x.undo.len(),
+        "redo": x.redo.len(),
+    }))
+}
+
+/// 元に戻せる段・やり直せる段の数
+fn history_depth() -> (usize, usize) {
+    served()
+        .as_ref()
+        .map_or((0, 0), |x| (x.undo.len(), x.redo.len()))
 }
 
 /// 別に読んだ光束の系に、読み込んだ後の変更（set・edit）を順に当てる。set のパラメータの値が、読み込んだ系で
@@ -1005,6 +1090,14 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             let (s, spec) = current()?;
             Ok((summary(&s, &spec), Vec::new()))
         }
+        // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
+        // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる）
+        "undo" => Ok((step_history(true)?, Vec::new())),
+        "redo" => Ok((step_history(false)?, Vec::new())),
+        "history" => {
+            let (u, r) = history_depth();
+            Ok((json!({ "undo": u, "redo": r }), Vec::new()))
+        }
         "get" => {
             let (s, _) = current()?;
             if let Some(one) = p.get("param").and_then(Value::as_str) {
@@ -1036,7 +1129,11 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
                 .map(|((q, v), name)| Ok((name.clone(), s.get_param(*q)?, *v)))
                 .collect::<Result<Vec<_>, lensbench_core::Error>>()?;
             store_changed(n, spec, Change::Set(rec));
-            Ok((json!({ "changed": names }), Vec::new()))
+            let (u, r) = history_depth();
+            Ok((
+                json!({ "changed": names, "undo": u, "redo": r }),
+                Vec::new(),
+            ))
         }
         // 系を .zmx に書き出す（別アプリに渡す）
         "write" => {
@@ -1056,8 +1153,9 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             let hash = lensbench_project::sysfile::system_hash(&n).map_err(RpcErr::app)?;
             let count = n.surfaces.len();
             store_changed(n, spec, Change::Edit(p["ops"].clone()));
+            let (u, r) = history_depth();
             Ok((
-                json!({ "notes": notes, "surfaces": count, "system_hash": hash }),
+                json!({ "notes": notes, "surfaces": count, "system_hash": hash, "undo": u, "redo": r }),
                 Vec::new(),
             ))
         }
