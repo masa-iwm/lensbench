@@ -419,11 +419,32 @@ fn norm(s: &str) -> String {
         .collect()
 }
 
+/// 区切りで切り落とす側がメーカーの付け足しだけか（`ttn170465-e0w`・`edm`・`Newport`・`STP` など）。
+/// 小文字を含む 3 文字以上の区切りと `STP`・`STEP` は付け足し、それ以外（`B`・`PZ`・`MZ8`・`N` など）は
+/// 別の品番の一部とみなす。残す側と同じ品番の繰り返し（OptoSigma の `C16_AP_12.7_STP__C16-AP-12.7`）も付け足し
+fn is_decoration(dropped: &str, kept: &str) -> bool {
+    let mut rest = String::new();
+    for t in dropped.split(['_', '-', ' ']) {
+        let u = t.to_ascii_uppercase();
+        if t.is_empty()
+            || u == "STP"
+            || u == "STEP"
+            || (t.len() >= 3 && t.chars().any(|c| c.is_ascii_lowercase()))
+        {
+            continue;
+        }
+        rest.push_str(t);
+    }
+    rest.is_empty() || norm(&rest) == norm(kept)
+}
+
 /// 手元の STEP（.step・.stp・それを入れた .zip）のファイルを、カタログの品に当てる。ファイル名（拡張子を除く）の
-/// 全体と、区切り（`_`・`-`・空白）で切った前の部分・後ろの部分のどれかが、品の名前と英数字だけで一致すれば当てる
+/// 全体が品の名前と英数字だけで一致すればそれを当てる。全体で当たらない品には、区切り（`_`・`-`・空白）で切った
+/// 前の部分・後ろの部分が一致し、切り落とした側がメーカーの付け足しだけ（[`is_decoration`]）のファイルを当てる
 /// （`edm_11-211`・`CM1L03_ttn170465-e0w`・`C16_AP_12.7_STP__C16-AP-12.7`・`Newport-M-100.zip` など）。
-/// 1 つのファイルに品が 2 つ当たれば長い名前の方、1 つの品にファイルが 2 つ当たれば名前順で先の方。
-/// 返すのは（品の名前、ファイル）の名前順の並びと、当たらなかったファイル
+/// `CFS1-B` を `CFS1` に、`PH-20-ARS-N` を `PH-20-ARS` に当てることはしない（公開 #195）。
+/// 1 つのファイルに品が 2 つ当たれば長い名前の方、1 つの品にファイルが 2 つ当たれば全体で一致した方、
+/// 同じなら名前順で先の方。返すのは（品の名前、ファイル）の名前順の並びと、当たらなかったファイル
 pub fn match_files<'a>(
     items: impl IntoIterator<Item = &'a str>,
     files: &[PathBuf],
@@ -437,33 +458,42 @@ pub fn match_files<'a>(
     }
     let mut files: Vec<PathBuf> = files.to_vec();
     files.sort();
-    let mut got: std::collections::BTreeMap<String, PathBuf> = Default::default();
+    // 品 → （全体で一致したか、ファイル）
+    let mut got: std::collections::BTreeMap<String, (bool, PathBuf)> = Default::default();
     let mut miss = Vec::new();
     for f in &files {
         let stem = f
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut cands = vec![stem.as_str()];
+        let mut cands = vec![(stem.as_str(), true)];
         for (i, c) in stem.char_indices() {
             if matches!(c, '_' | '-' | ' ') {
-                cands.push(&stem[..i]);
-                cands.push(&stem[i + c.len_utf8()..]);
+                let (head, tail) = (&stem[..i], &stem[i + c.len_utf8()..]);
+                if is_decoration(tail, head) {
+                    cands.push((head, false));
+                }
+                if is_decoration(head, tail) {
+                    cands.push((tail, false));
+                }
             }
         }
         let best = cands
             .iter()
-            .filter_map(|c| by_norm.get(&norm(c)))
-            .flatten()
-            .max_by_key(|n| (norm(n).len(), std::cmp::Reverse(**n)));
+            .filter_map(|(c, whole)| by_norm.get(&norm(c)).map(|ns| (ns, *whole)))
+            .flat_map(|(ns, whole)| ns.iter().map(move |n| (*n, whole)))
+            .max_by_key(|(n, whole)| (norm(n).len(), *whole, std::cmp::Reverse(*n)));
         match best {
-            Some(n) => {
-                got.entry(n.to_string()).or_insert_with(|| f.clone());
+            Some((n, whole)) => {
+                let e = got.entry(n.to_string()).or_insert((whole, f.clone()));
+                if whole && !e.0 {
+                    *e = (true, f.clone());
+                }
             }
             None => miss.push(f.clone()),
         }
     }
-    (got.into_iter().collect(), miss)
+    (got.into_iter().map(|(n, (_, f))| (n, f)).collect(), miss)
 }
 
 /// フォルダの中の STEP（.step・.stp・.zip、下のフォルダも）
@@ -820,6 +850,49 @@ mod tests {
             ]
         );
         assert_eq!(miss, [PathBuf::from("other.step")]);
+    }
+
+    #[test]
+    fn match_files_does_not_take_longer_part_numbers() {
+        // 公開 #195: 正しいファイルが同じフォルダにあっても、長い別品番のファイルを当てていた
+        let items = ["CFS1", "KC1T", "PRM1", "PH-20-ARS", "MHX-25.4A", "CM1L03"];
+        let files: Vec<PathBuf> = [
+            "CFS1-B.step",
+            "CFS1.step",
+            "KC1-T-PZ.step",
+            "KC1T-Step.step",
+            "PRM1_MZ8.step",
+            "PH_20_ARS_N_STP__PH-20-ARS-N.stp",
+            "MHX-25.4A-PDM.stp",
+            "CM1L03_ttn170465-e0w.step",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        let (got, miss) = match_files(items, &files);
+        let g: Vec<(&str, &str)> = got
+            .iter()
+            .map(|(n, f)| (n.as_str(), f.to_str().unwrap()))
+            .collect();
+        assert_eq!(
+            g,
+            [
+                ("CFS1", "CFS1.step"),
+                ("CM1L03", "CM1L03_ttn170465-e0w.step"),
+                ("KC1T", "KC1T-Step.step"),
+            ]
+        );
+        let m: Vec<&str> = miss.iter().map(|f| f.to_str().unwrap()).collect();
+        assert_eq!(
+            m,
+            [
+                "CFS1-B.step",
+                "KC1-T-PZ.step",
+                "MHX-25.4A-PDM.stp",
+                "PH_20_ARS_N_STP__PH-20-ARS-N.stp",
+                "PRM1_MZ8.step",
+            ]
+        );
     }
 
     #[test]
