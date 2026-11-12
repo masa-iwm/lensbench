@@ -1181,6 +1181,27 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             let hash = lensbench_project::sysfile::system_hash(&s).map_err(RpcErr::app)?;
             Ok((json!({ "written": path, "system_hash": hash }), Vec::new()))
         }
+        // 今の系の面 from〜to だけを系ファイル（面の並び）に書き出す（GUI のレンズデータの「選んだ範囲を書き出す」）。
+        // 物体面・像面は残し、範囲の外の面は消す（外を参照するピックアップ・ソルブは外れる）。絞りが範囲の外なら from を絞りに
+        "save_range" => {
+            let (s, _) = current()?;
+            let path = p["path"]
+                .as_str()
+                .ok_or_else(|| RpcErr::params("save_range には path"))?;
+            let num = |k: &str| {
+                p[k].as_u64()
+                    .map(|x| x as usize)
+                    .ok_or_else(|| RpcErr::params(format!("save_range には {k}（面の番号）")))
+            };
+            let (from, to) = (num("from")?, num("to")?);
+            let s = range_system(&s, from, to).map_err(|e| RpcErr::app(e.to_string()))?;
+            lensbench_project::sysfile::save(&check_path(Path::new(path), true)?, &s, &[])
+                .map_err(RpcErr::app)?;
+            Ok((
+                json!({ "written": path, "surfaces": s.surfaces.len() }),
+                Vec::new(),
+            ))
+        }
         "analyze" => analyze(p).map(|v| (v, Vec::new())),
         // カタログを探す一覧（GUI のカタログブラウザ）
         "glasses" | "lenses" | "catalog_search" => browse_of(method, p).map(|v| (v, Vec::new())),
@@ -1539,6 +1560,30 @@ fn catalog_listing(path: &str, cat: &lensbench_project::UserCatalog) -> Value {
         })
         .collect();
     json!({ "catalog": path, "vendor": cat.vendor, "items": items })
+}
+
+/// 系 s の面 from〜to（1〜像面の 1 つ前）と物体面・像面だけの系（save_range）
+pub fn range_system(s: &System, from: usize, to: usize) -> lensbench_core::error::Result<System> {
+    let img = s.image();
+    if from == 0 || from > to || to >= img {
+        return Err(lensbench_core::error::Error::Invalid(format!(
+            "書き出す面 {from}〜{to}（1〜{}）",
+            img - 1
+        )));
+    }
+    let mut s = s.clone();
+    if let Some(stop) = s.surfaces.iter().position(|d| d.stop) {
+        if !(from..=to).contains(&stop) {
+            s.set_stop(from)?;
+        }
+    }
+    for j in (to + 1..img).rev() {
+        s.delete_surface(j)?;
+    }
+    for j in (1..from).rev() {
+        s.delete_surface(j)?;
+    }
+    Ok(s)
 }
 
 /// ユーザーカタログの操作（GUI の保存）

@@ -191,6 +191,8 @@ pub enum PickKind {
     Before(u8),
     /// 面の後の傾き偏心の値 i（.zmx の SCBD 2 のピックアップ。元は [`PickKind::Before`]、反転は倍率 −1）
     After(u8),
+    /// 膜の名前（倍率・オフセットは使わない。OpticStudio に無いので .zmx には書かない）
+    Coating,
 }
 
 impl PickKind {
@@ -511,6 +513,8 @@ pub(crate) fn pick_get(d: &Surface, what: PickKind) -> Option<f64> {
         // 平面の半径は 1e10（OpticStudio が平面を R = 1e10 として扱うのに合わせる）
         PickKind::Radius => Some(if d.c == 0.0 { 1e10 } else { 1.0 / d.c }),
         PickKind::Semi => Some(d.semi),
+        // 膜は名前を写すだけ（[`System::pick_names`]）。数の値は無いので一定の 0
+        PickKind::Coating => Some(0.0),
         PickKind::Before(i) => Some(d.before.map(|t| t.d[i as usize]).unwrap_or(0.0)),
         PickKind::After(i) => match d.after {
             After::Tilt(t) => Some(t.d[i as usize]),
@@ -574,6 +578,7 @@ pub(crate) fn pick_set(d: &mut Surface, what: PickKind, v: f64) -> bool {
             }
         }
         PickKind::Radius => return false,
+        PickKind::Coating => {}
     }
     true
 }
@@ -600,7 +605,7 @@ fn kind_of_pick(d: &Surface, what: PickKind) -> Option<Kind> {
         PickKind::Conic => Some(Kind::Conic),
         PickKind::Dn => Some(Kind::Dn),
         PickKind::Disp => Some(Kind::Disp),
-        PickKind::Radius | PickKind::Semi | PickKind::After(_) => None,
+        PickKind::Radius | PickKind::Semi | PickKind::After(_) | PickKind::Coating => None,
         PickKind::Before(i) => [Kind::Dx, Kind::Dy, Kind::Tx, Kind::Ty, Kind::Tz]
             .get(i as usize)
             .copied(),
@@ -1190,6 +1195,52 @@ impl System {
             .iter()
             .find(|q| q.dst == p.surf && q.what == what)
             .copied()
+    }
+
+    /// 名前のピックアップを写す: 材料（[`PickKind::Dn`] のピックアップは元の面の材料・鏡も一緒に追従する。
+    /// OpticStudio の材料のピックアップ）と膜（[`PickKind::Coating`]）。連なっていてもよい。屈折率は後で材料から作る
+    pub(crate) fn pick_names(&mut self) -> Result<()> {
+        let ns = self.surfaces.len();
+        for _ in 0..=ns {
+            let mut changed = false;
+            for i in 0..self.pickups.len() {
+                let q = self.pickups[i];
+                if q.src >= ns || q.dst >= ns {
+                    invalid!("ピックアップの面（元 {}、先 {}）がない", q.src, q.dst);
+                }
+                match q.what {
+                    PickKind::Dn => {
+                        let a = &self.surfaces[q.src];
+                        let (mat, mirror) = (a.mat.clone(), a.mirror);
+                        let d = &mut self.surfaces[q.dst];
+                        if d.typ == SurfType::CoordBrk
+                            || (mirror && q.dst == 0)
+                            || (d.mat == mat && d.mirror == mirror)
+                        {
+                            continue;
+                        }
+                        d.mat = mat;
+                        d.mirror = mirror;
+                        d.n.clear();
+                        d.n_base.clear();
+                        changed = true;
+                    }
+                    PickKind::Coating => {
+                        let coat = self.surfaces[q.src].coat.clone();
+                        let d = &mut self.surfaces[q.dst];
+                        if d.coat != coat {
+                            d.coat = coat;
+                            changed = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !changed {
+                return Ok(());
+            }
+        }
+        invalid!("材料・膜のピックアップが収束しない（循環？）")
     }
 
     /// ピックアップを解決する（元の面が後ろにあっても、連なっていてもよい）。循環して収まらなければエラー

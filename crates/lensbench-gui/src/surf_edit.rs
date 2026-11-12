@@ -1,7 +1,8 @@
 //! 面の詳細設定: 面の表で選んだ面の、表に無い項目を編集する欄（表の「詳細設定」で出す）。
 //!
 //! 種類・曲率半径・厚さ・硝材・膜・半径・コーニック・面タイプのパラメータ・ソルブ・ピックアップ・絞り・無視は
-//! 面の表で変える（OpticStudio の Lens Data のように）。ここは dn・disp・複屈折・表に出ない面タイプの非球面と、
+//! 面の表で変える（OpticStudio の Lens Data のように。屈折率のずれ dn・分散の変化 disp・複屈折は硝材のセルの [...]）。
+//! ここは表に出ない面タイプの非球面と、
 //! 開口・面の前後の傾き偏心・面タイプの形のデータ（Zernike・Grid Sag・Binary 2・Cylinder Fresnel・GRIN・利用者定義の面）を JSON で。
 //! 値は serve の `surface_data` で読み、「全項目（JSON）」では面のデータをそのまま書き換えられる。書き換えは [`Act`] で GUI に返す。
 
@@ -84,7 +85,7 @@ impl Inspector {
 }
 
 /// 複屈折材の板の欄（入口: mode・結晶軸、出口）。変えたら面のデータの bire の値（ne は材料「名前-E」から作り直す）
-fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
+pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
     let kind = match cur {
         Value::String(s) if s == "Out" => 2,
         Value::Object(o) if o.contains_key("In") => 1,
@@ -205,15 +206,8 @@ fn text_field(
     None
 }
 
-/// 面 j の設定の欄。read_only は変えられない理由（ロック・組合せの要素の設定で変える面など）、combo は組合せの系
-/// （絞り・ソルブ・ピックアップは組合せの要素の surface_ops になる）
-pub fn ui(
-    ui: &mut Ui,
-    st: &mut Inspector,
-    j: usize,
-    read_only: Option<String>,
-    combo: bool,
-) -> Vec<Act> {
+/// 面 j の設定の欄。read_only は変えられない理由（ロック・組合せの要素の設定で変える面など）
+pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let Some((dj, v)) = st.data.clone().filter(|(dj, _)| *dj == j) else {
@@ -232,7 +226,7 @@ pub fn ui(
     });
     ui.label(
         RichText::new(tr(
-            "種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップ・絞り・無視はセルの右クリック（Shift+F10）で。",
+            "種類・曲率半径・厚さ・硝材・膜・半径・コーニック・パラメータは表で。ソルブ・ピックアップはセルの右端の [...]、屈折率のずれ・分散・複屈折は硝材のセルの [...]、絞り・無視・挿入は右クリック（Shift+F10）で。",
         ))
         .small()
         .color(weak),
@@ -251,30 +245,6 @@ pub fn ui(
             let label = |ui: &mut Ui, t: &str| {
                 ui.label(RichText::new(t).color(weak));
             };
-            // 数（屈折率のずれ・分散の変化。曲率半径・厚さ・半径・コーニック・面タイプのパラメータは表で）
-            let mut items: Vec<(&str, &str, f64)> = Vec::new();
-            if typ != "CoordBrk" && d["mat"] != "MIRROR" {
-                items.push(("dn", tr("屈折率のずれ dn"), num(&d["dn"]).unwrap_or(0.0)));
-                items.push((
-                    "disp",
-                    tr("分散の変化 disp"),
-                    num(&d["disp"]).unwrap_or(0.0),
-                ));
-            }
-            for (key, name, x) in items {
-                label(ui, name);
-                let cur = full(x);
-                if let Some(t) = text_field(ui, bufs, key, cur, 120.0) {
-                    let t = t.trim();
-                    match t.parse::<f64>().ok().filter(|v| v.is_finite()) {
-                        Some(v) => {
-                            fields.insert(key.into(), json!(v));
-                        }
-                        None => err = Some(trf("{} は数ではない", &[&t])),
-                    }
-                }
-                ui.end_row();
-            }
             // 非球面の係数（表のパラメータの列に出ない面タイプだけ）
             let in_table = crate::lens_data::par_count(ztyp) > 0;
             let asph_used = matches!(
@@ -297,14 +267,6 @@ pub fn ui(
                         }
                         Err(e) => err = Some(e),
                     }
-                }
-                ui.end_row();
-            }
-            // 複屈折材の板の入口・出口（開いた系の標準面）
-            if (!combo && typ == "Standard") || !d["bire"].is_null() {
-                label(ui, tr("複屈折"));
-                if let Some(b) = bire_ui(ui, dj, &d["bire"]) {
-                    data.insert("bire".into(), b);
                 }
                 ui.end_row();
             }

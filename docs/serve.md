@@ -65,6 +65,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
 | `write` | `path` | 今の系を .zmx に書く（別アプリに渡す） |
 | `save` | `path` | 今の系（`set`・`edit` の後）を系ファイル（.json）に書く。`written`・`system_hash` |
+| `save_range` | `path`・`from`・`to` | 今の系の面 from〜to と物体面・像面だけを系ファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces` |
 | `edit` | `ops`: 操作の並び（下） | 系を編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すれば系は変えない |
 | `surface` | `surface`（番号か名前、省くと全部） | 面の値（`fields`、全部なら `surfaces` の並びと、玉・群の面の範囲 `units`（name・spans・auto、偏心・傾き `motion`（dx dy tx ty tz）・移動 `shift`・媒質の `dn`・`disp`（面ごとに違えば null））） |
 | `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。系ファイルの面と同じ形、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |

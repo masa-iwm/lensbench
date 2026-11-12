@@ -63,8 +63,12 @@ pub enum Act {
 #[derive(Debug, Clone, Default)]
 pub struct State {
     pub table: Option<Table>,
-    /// 書き換え中のセル（行、構成 0 始まり、文字、入力欄にフォーカスを渡したか）
-    edit: Option<(usize, usize, String, bool)>,
+    /// 今のセル（行、構成 0 始まり）
+    cur: Option<(usize, usize)>,
+    /// 書き換え中のセル（行、構成 0 始まり、文字、入力欄にフォーカスを渡したか、全部を選んで始めるか）
+    edit: Option<(usize, usize, String, bool, bool)>,
+    /// 表をクリックした後（キーを表が使う）
+    active: bool,
     /// 足す行のパラメータの名前
     new_param: String,
     /// 取り込みで表にできなかった違い
@@ -113,6 +117,138 @@ fn set_cell(row: &(String, Vec<f64>), k: usize, v: f64) -> Value {
     json!({ "op": "set_config_row", "param": row.0, "values": vals })
 }
 
+/// 書き換えの確定: (行, 構成, 文字, 確定後に移る向き)
+type Commit = (usize, usize, String, Option<(i32, i32)>);
+
+/// パラメータの名前の説明（3.t → 面 3 の厚さ、G1.shift → G1 の移動）
+pub fn param_desc(name: &str) -> String {
+    let Some((who, k)) = name.trim().rsplit_once('.') else {
+        return match name.trim() {
+            "objx" | "objy" => tr("物体の位置").into(),
+            n if n.starts_with("wave") => tr("波長").into(),
+            _ => String::new(),
+        };
+    };
+    let what = match k.to_ascii_lowercase().as_str() {
+        "c" => tr("曲率").to_string(),
+        "r" => tr("曲率半径").into(),
+        "k" => tr("コーニック").into(),
+        "t" => tr("厚さ").into(),
+        "dx" => tr("偏心 X").into(),
+        "dy" => tr("偏心 Y").into(),
+        "tx" => tr("傾き X").into(),
+        "ty" => tr("傾き Y").into(),
+        "tz" => tr("傾き Z").into(),
+        "dn" => tr("屈折率のずれ").into(),
+        "disp" => tr("分散の変化").into(),
+        "shift" => tr("移動").into(),
+        a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => trf("r^{} の係数", &[&&a[1..]]),
+        z if z.starts_with('z') && z[1..].parse::<u16>().is_ok() => trf("Zernike {}", &[&&z[1..]]),
+        _ => return String::new(),
+    };
+    if who.trim().parse::<usize>().is_ok() {
+        trf("面 {} の{}", &[&who.trim(), &what])
+    } else {
+        trf("{} の{}", &[&who.trim(), &what])
+    }
+}
+
+/// 構成 k（0 始まり）を消す操作: 各行の値から k を抜き（最後を足して数は n のまま）、構成の数を n−1 に。
+/// 今の構成は同じ構成を指すようにずらす
+fn remove_config_ops(t: &Table, k: usize) -> Vec<Value> {
+    let mut ops = Vec::new();
+    for (name, vals) in &t.rows {
+        let mut v = vals.clone();
+        if k < v.len() {
+            v.remove(k);
+            v.push(*v.last().unwrap_or(&0.0));
+            ops.push(json!({ "op": "set_config_row", "param": name, "values": v }));
+        }
+    }
+    let active = t.active;
+    let next = if active == k + 1 {
+        k.max(1).min(t.n - 1)
+    } else if active > k + 1 {
+        active - 1
+    } else {
+        active
+    };
+    // 今の構成を先に、消した後でも残る番号へ（値の並べ替えの後で入れ直す）
+    ops.push(json!({ "op": "set_config_count", "n": t.n - 1 }));
+    ops.push(json!({ "op": "set_config", "k": next }));
+    ops
+}
+
+/// 構成 src（0 始まり）の値で、新しい構成を位置 at（0 始まり、at の前。n なら最後）に挿入する操作。
+/// 今の構成は同じ構成を指すようにずらす
+fn insert_config_ops(t: &Table, src: usize, at: usize) -> Vec<Value> {
+    let at = at.min(t.n);
+    let mut ops = vec![json!({ "op": "set_config_count", "n": t.n + 1 })];
+    for (name, vals) in &t.rows {
+        let mut v = vals.clone();
+        v.resize(t.n, *vals.last().unwrap_or(&0.0));
+        v.insert(at, vals.get(src).copied().unwrap_or(0.0));
+        ops.push(json!({ "op": "set_config_row", "param": name, "values": v }));
+    }
+    let active = if t.active > at {
+        t.active + 1
+    } else {
+        t.active
+    };
+    ops.push(json!({ "op": "set_config", "k": active }));
+    ops
+}
+
+/// 表を文字に（タブ区切り、1 行目は見出し。Excel に貼れる）
+fn copy_text(t: &Table, rows: &[usize]) -> String {
+    rows.iter()
+        .filter_map(|&i| t.rows.get(i))
+        .map(|(n, v)| {
+            std::iter::once(n.clone())
+                .chain(v.iter().map(|x| full(*x)))
+                .collect::<Vec<_>>()
+                .join("\t")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 貼り付け: タブ区切りの文字を今のセル (i, k) から右下へ。行の最初がパラメータの名前ならその行に（無ければ足す）
+fn paste_ops(t: &Table, i: usize, k: usize, text: &str) -> Result<Vec<Value>, String> {
+    let mut ops = Vec::new();
+    let mut rows: Vec<(String, Vec<f64>)> = t.rows.clone();
+    for (li, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        let cells: Vec<&str> = line.split('\t').collect();
+        // 最初の欄が数でなければパラメータの名前（Ctrl+C で写した行）
+        let (row, start, vals) = match parse_num(cells[0]) {
+            Ok(_) => (i + li, k, &cells[..]),
+            Err(_) => {
+                let name = cells[0].trim();
+                let r = match rows.iter().position(|x| x.0 == name) {
+                    Some(r) => r,
+                    None => {
+                        ops.push(json!({ "op": "add_config_row", "param": name }));
+                        let n = t.n;
+                        rows.push((name.to_string(), vec![f64::NAN; n]));
+                        rows.len() - 1
+                    }
+                };
+                (r, 0, &cells[1..])
+            }
+        };
+        let Some(r) = rows.get_mut(row) else { break };
+        for (c, x) in vals.iter().enumerate() {
+            if let Some(slot) = r.1.get_mut(start + c) {
+                *slot = parse_num(x)?;
+            }
+        }
+        if r.1.iter().all(|x| !x.is_nan()) {
+            ops.push(json!({ "op": "set_config_row", "param": r.0, "values": r.1 }));
+        }
+    }
+    Ok(ops)
+}
+
 pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
@@ -122,6 +258,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
         ui.label(tr("系を開くと、多重構成の表が出ます。"));
         return acts;
     };
+    if st.cur.is_some_and(|(i, k)| i >= t.rows.len() || k >= t.n) {
+        st.cur = None;
+        st.edit = None;
+    }
     if combo {
         ui.label(
             RichText::new(tr(
@@ -156,7 +296,9 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
         }
         if ui
             .add_enabled(t.n > 1, egui::Button::new("−"))
-            .on_hover_text(tr("最後の構成を消す（1 つにすると表も消える）"))
+            .on_hover_text(tr(
+                "最後の構成を消す（1 つにすると表も消える。途中の構成は見出しの右クリックで）",
+            ))
             .clicked()
         {
             let mut ops = Vec::new();
@@ -189,10 +331,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
     }
     ui.add_space(4.0);
 
-    // 表
-    let mut commit: Option<(usize, usize, String)> = None;
+    // 表（セルのクリックで選び、ダブルクリック・Enter・F2・打鍵で書き換え。レンズデータの表と同じ操作）
+    // (行, 構成, 文字, 確定後に移る向き)
+    let mut commit: Option<Commit> = None;
+    let mut cancel = false;
+    let mut start: Option<(usize, usize, Option<String>)> = None;
+    let mut clicked_any = false;
+    let mut menu_ops: Vec<Value> = Vec::new();
     let mut remove: Option<usize> = None;
-    egui::ScrollArea::horizontal()
+    let table_resp = egui::ScrollArea::horizontal()
         .id_salt("mce_h")
         .show(ui, |ui| {
             // 文字を選べるラベルはクリックを取ってしまう（セルの空き・行のクリックが行に届かない）
@@ -215,7 +362,35 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                     for k in 1..=t.n {
                         h.col(|ui| {
                             let rt = RichText::new(trf("構成 {}", &[&k])).strong();
+                            let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
                             ui.label(if k == t.active { rt.color(accent) } else { rt });
+                            let r = r.on_hover_text(tr(
+                                "クリックでこの構成を系に入れる。右クリックで前後に挿入・削除",
+                            ));
+                            if r.clicked() && k != t.active {
+                                acts.push(Act::Ops(vec![json!({ "op": "set_config", "k": k })]));
+                            }
+                            r.context_menu(|ui| {
+                                if ui.button(tr("この構成を系に入れる")).clicked() {
+                                    menu_ops.push(json!({ "op": "set_config", "k": k }));
+                                    ui.close_menu();
+                                }
+                                if ui.button(tr("前に構成を挿入（この構成の値で）")).clicked() {
+                                    menu_ops.extend(insert_config_ops(&t, k - 1, k - 1));
+                                    ui.close_menu();
+                                }
+                                if ui.button(tr("後に構成を挿入（この構成の値で）")).clicked() {
+                                    menu_ops.extend(insert_config_ops(&t, k - 1, k));
+                                    ui.close_menu();
+                                }
+                                if ui
+                                    .add_enabled(t.n > 1, egui::Button::new(tr("この構成を消す")))
+                                    .clicked()
+                                {
+                                    menu_ops.extend(remove_config_ops(&t, k - 1));
+                                    ui.close_menu();
+                                }
+                            });
                         });
                     }
                     h.col(|_| {});
@@ -224,40 +399,84 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                     body.rows(20.0, t.rows.len(), |mut row| {
                         let i = row.index();
                         let (name, vals) = &t.rows[i];
+                        row.set_selected(st.cur.is_some_and(|c| c.0 == i));
                         row.col(|ui| {
+                            let r = ui.interact(ui.max_rect(), ui.id().with("mce_name"), Sense::click());
                             ui.label(RichText::new(name).monospace());
+                            let d = param_desc(name);
+                            let r = if d.is_empty() { r } else { r.on_hover_text(d) };
+                            if r.clicked() {
+                                clicked_any = true;
+                                st.cur = Some((i, st.cur.map_or(0, |c| c.1)));
+                            }
+                            r.context_menu(|ui| {
+                                if ui.button(tr("行を消す（系の値は今のまま）")).clicked() {
+                                    remove = Some(i);
+                                    ui.close_menu();
+                                }
+                            });
                         });
                         for k in 0..t.n {
                             row.col(|ui| {
                                 if let Some(e) = st.edit.as_mut().filter(|e| e.0 == i && e.1 == k) {
+                                    let (tab, shift, up, down, enter, esc) = ui.input(|x| {
+                                        (
+                                            x.key_pressed(Key::Tab),
+                                            x.modifiers.shift,
+                                            x.key_pressed(Key::ArrowUp),
+                                            x.key_pressed(Key::ArrowDown),
+                                            x.key_pressed(Key::Enter),
+                                            x.key_pressed(Key::Escape),
+                                        )
+                                    });
                                     let resp = ui.add(
                                         egui::TextEdit::singleline(&mut e.2)
                                             .desired_width(f32::INFINITY)
-                                            .horizontal_align(egui::Align::RIGHT),
+                                            .horizontal_align(egui::Align::RIGHT)
+                                            .lock_focus(true),
                                     );
                                     if !e.3 {
-                                        // 開いたら全部を選んで、打てばそのまま置き換わる
                                         resp.request_focus();
                                         if let Some(mut s) =
                                             egui::TextEdit::load_state(ui.ctx(), resp.id)
                                         {
-                                            let all = egui::text::CCursorRange::two(
-                                                egui::text::CCursor::new(0),
-                                                egui::text::CCursor::new(e.2.chars().count()),
-                                            );
-                                            s.cursor.set_char_range(Some(all));
+                                            let n = e.2.chars().count();
+                                            // Enter・F2・ダブルクリックは全部を選んで、打った文字から始めたときは後ろにカーソル
+                                            let r = if e.4 {
+                                                egui::text::CCursorRange::two(
+                                                    egui::text::CCursor::new(0),
+                                                    egui::text::CCursor::new(n),
+                                                )
+                                            } else {
+                                                egui::text::CCursorRange::one(egui::text::CCursor::new(n))
+                                            };
+                                            s.cursor.set_char_range(Some(r));
                                             s.store(ui.ctx(), resp.id);
                                         }
                                         e.3 = true;
                                     }
-                                    if ui.input(|x| x.key_pressed(Key::Escape)) {
-                                        st.edit = None;
-                                    } else if resp.lost_focus() {
-                                        commit = Some((i, k, e.2.clone()));
+                                    let mv = if tab {
+                                        Some((0, if shift { -1 } else { 1 }))
+                                    } else if up {
+                                        Some((-1, 0))
+                                    } else if down || enter {
+                                        Some((if enter { 0 } else { 1 }, 0))
+                                    } else {
+                                        None
+                                    };
+                                    if esc {
+                                        cancel = true;
+                                    } else if mv.is_some() || resp.lost_focus() {
+                                        commit = Some((i, k, e.2.clone(), mv));
+                                        resp.surrender_focus();
                                     }
                                     return;
                                 }
                                 let v = vals.get(k).copied().unwrap_or(f64::NAN);
+                                // セル全体でクリックを受ける（文字の外でも）
+                                let resp = ui
+                                    .interact(ui.max_rect(), ui.id().with(("mce", i, k)), Sense::click())
+                                    .on_hover_text(full(v));
                                 let mut rt = RichText::new(short(v)).monospace();
                                 if k + 1 == t.active {
                                     rt = rt.color(accent);
@@ -266,17 +485,49 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| ui.label(rt),
                                 );
-                                // セルのどこをクリックしても書き換える
-                                let resp = ui
-                                    .interact(
+                                if st.cur == Some((i, k)) {
+                                    ui.painter().rect_stroke(
                                         ui.max_rect(),
-                                        ui.id().with(("mce", i, k)),
-                                        Sense::click(),
-                                    )
-                                    .on_hover_text(full(v));
-                                if resp.double_clicked() || resp.clicked() {
-                                    st.edit = Some((i, k, full(v), false));
+                                        2.0,
+                                        egui::Stroke::new(1.5_f32, accent),
+                                        egui::StrokeKind::Inside,
+                                    );
                                 }
+                                if resp.clicked() || resp.secondary_clicked() || resp.double_clicked() {
+                                    clicked_any = true;
+                                    st.cur = Some((i, k));
+                                }
+                                if resp.double_clicked() {
+                                    start = Some((i, k, None));
+                                }
+                                resp.context_menu(|ui| {
+                                    if ui.button(tr("書き換える（F2）")).clicked() {
+                                        start = Some((i, k, None));
+                                        ui.close_menu();
+                                    }
+                                    if ui
+                                        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
+                                        .clicked()
+                                    {
+                                        menu_ops.push(json!({
+                                            "op": "set_config_row", "param": name, "values": vec![v; t.n],
+                                        }));
+                                        ui.close_menu();
+                                    }
+                                    if k + 1 != t.active && ui.button(trf("構成 {} を系に入れる", &[&(k + 1)])).clicked() {
+                                        menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
+                                        ui.close_menu();
+                                    }
+                                    ui.separator();
+                                    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
+                                        ui.ctx().copy_text(copy_text(&t, &[i]));
+                                        ui.close_menu();
+                                    }
+                                    if ui.button(tr("行を消す（Delete）")).clicked() {
+                                        remove = Some(i);
+                                        ui.close_menu();
+                                    }
+                                });
                             });
                         }
                         row.col(|ui| {
@@ -291,8 +542,95 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                     });
                 });
         });
-    if let Some((i, k, text)) = commit {
+    let _ = table_resp;
+    if clicked_any || !menu_ops.is_empty() {
+        st.active = true;
+    } else if ui.input(|x| x.pointer.any_click()) && !ui.ui_contains_pointer() {
+        st.active = false;
+    }
+    if cancel {
         st.edit = None;
+        st.active = true;
+    }
+    // キー（表をクリックした後。書き換え中・ほかの入力欄にフォーカスがあるときは入力欄が使う）
+    if st.active && st.edit.is_none() && ui.memory(|m| m.focused().is_none()) && !t.rows.is_empty()
+    {
+        let (up, down, left, right, enter, f2, del, esc) = ui.input(|x| {
+            (
+                x.key_pressed(Key::ArrowUp),
+                x.key_pressed(Key::ArrowDown),
+                x.key_pressed(Key::ArrowLeft) || (x.key_pressed(Key::Tab) && x.modifiers.shift),
+                x.key_pressed(Key::ArrowRight) || (x.key_pressed(Key::Tab) && !x.modifiers.shift),
+                x.key_pressed(Key::Enter),
+                x.key_pressed(Key::F2),
+                x.key_pressed(Key::Delete),
+                x.key_pressed(Key::Escape),
+            )
+        });
+        let (copy, paste, typed) = ui.input(|x| {
+            let copy = x
+                .events
+                .iter()
+                .any(|e| matches!(e, egui::Event::Copy | egui::Event::Cut));
+            let paste = x.events.iter().find_map(|e| match e {
+                egui::Event::Paste(s) => Some(s.clone()),
+                _ => None,
+            });
+            let typed = if x.modifiers.command || x.modifiers.ctrl || x.modifiers.alt {
+                None
+            } else {
+                x.events.iter().find_map(|e| match e {
+                    egui::Event::Text(s) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                })
+            };
+            (copy, paste, typed)
+        });
+        let (i, k) = st.cur.unwrap_or((0, 0));
+        let n_rows = t.rows.len();
+        if up || down || left || right {
+            st.cur = Some(if st.cur.is_none() {
+                (0, 0)
+            } else if up {
+                (i.saturating_sub(1), k)
+            } else if down {
+                ((i + 1).min(n_rows - 1), k)
+            } else if left {
+                (i, k.saturating_sub(1))
+            } else {
+                (i, (k + 1).min(t.n - 1))
+            });
+        } else if let Some(c) = st.cur {
+            if enter || f2 || typed.is_some() {
+                start = Some((c.0, c.1, typed));
+            } else if del {
+                remove = Some(c.0);
+            } else if esc {
+                st.cur = None;
+            }
+            if copy {
+                ui.ctx().copy_text(copy_text(&t, &[c.0]));
+            }
+            if let Some(text) = paste {
+                match paste_ops(&t, c.0, c.1, &text) {
+                    Ok(ops) if !ops.is_empty() => acts.push(Act::Ops(ops)),
+                    Ok(_) => {}
+                    Err(e) => acts.push(Act::Refused(e)),
+                }
+            }
+        }
+    }
+    if let Some((i, k, typed)) = start {
+        let v = t.rows[i].1.get(k).copied().unwrap_or(f64::NAN);
+        st.cur = Some((i, k));
+        st.edit = Some(match typed {
+            Some(s) => (i, k, s, false, false),
+            None => (i, k, full(v), false, true),
+        });
+    }
+    if let Some((i, k, text, mv)) = commit {
+        st.edit = None;
+        st.active = true;
         if let Some(r) = t.rows.get(i) {
             match parse_num(&text) {
                 // set_config_row は今の構成の値を系に入れ直す（ほかの構成の値を変えても系はそのまま）
@@ -301,6 +639,14 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                 Err(e) => acts.push(Act::Refused(e)),
             }
         }
+        if let Some((dr, dc)) = mv {
+            let ni = (i as i32 + dr).clamp(0, t.rows.len() as i32 - 1) as usize;
+            let nk = (k as i32 + dc).clamp(0, t.n as i32 - 1) as usize;
+            st.cur = Some((ni, nk));
+        }
+    }
+    if !menu_ops.is_empty() {
+        acts.push(Act::Ops(menu_ops));
     }
     if let Some(i) = remove {
         acts.push(Act::Ops(vec![
@@ -322,7 +668,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                 egui::Button::new(tr("行を足す")),
             )
             .on_hover_text(tr(
-                "パラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）",
+                "パラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる",
             ))
             .clicked();
         if (add || enter) && !st.new_param.trim().is_empty() {
@@ -333,6 +679,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
             ops.push(json!({ "op": "add_config_row", "param": st.new_param.trim() }));
             acts.push(Act::Ops(ops));
             st.new_param.clear();
+        }
+        let d = param_desc(&st.new_param);
+        if !d.is_empty() {
+            ui.label(RichText::new(d).small().color(weak));
         }
     });
     if t.n < 2 && t.zmx_cfgs < 2 {
@@ -367,5 +717,52 @@ mod tests {
         assert!(parse_num("x").is_err());
         assert_eq!(short(0.1 + 0.2), "0.3");
         assert_eq!(short(-0.0), "0");
+    }
+
+    #[test]
+    fn config_ops_and_text() {
+        let t = parse(&json!({
+            "n": 3, "active": 3,
+            "rows": [{ "param": "2.t", "values": [1.0, 2.0, 3.0] }, { "param": "G1.shift", "values": [0.0, 0.5, 1.0] }],
+        }));
+        // 構成 2 を消す: 値から抜き、数を 2 に、今の構成 3 は 2 へ
+        let ops = remove_config_ops(&t, 1);
+        assert_eq!(
+            ops[0],
+            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 3.0, 3.0] })
+        );
+        assert_eq!(ops[2], json!({ "op": "set_config_count", "n": 2 }));
+        assert_eq!(ops[3], json!({ "op": "set_config", "k": 2 }));
+        // 構成 1 を最後に複製（今の構成 3 はそのまま）
+        let ops = insert_config_ops(&t, 0, 3);
+        assert_eq!(ops[0], json!({ "op": "set_config_count", "n": 4 }));
+        assert_eq!(
+            ops[1],
+            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 3.0, 1.0] })
+        );
+        assert_eq!(ops[3], json!({ "op": "set_config", "k": 3 }));
+        // 構成 2 の前に構成 2 の値で挿入: 今の構成 3 は 4 へ
+        let ops = insert_config_ops(&t, 1, 1);
+        assert_eq!(
+            ops[1],
+            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 2.0, 3.0] })
+        );
+        assert_eq!(ops[3], json!({ "op": "set_config", "k": 4 }));
+        // コピーと貼り付け（名前つきの行は名前の行へ、数だけなら今のセルから右へ）
+        let txt = copy_text(&t, &[1]);
+        assert_eq!(txt, "G1.shift\t0\t0.5\t1");
+        let ops = paste_ops(&t, 0, 0, &txt.replace("0.5", "0.7")).unwrap();
+        assert_eq!(
+            ops,
+            vec![json!({ "op": "set_config_row", "param": "G1.shift", "values": [0.0, 0.7, 1.0] })]
+        );
+        let ops = paste_ops(&t, 0, 1, "5\t6").unwrap();
+        assert_eq!(
+            ops,
+            vec![json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 5.0, 6.0] })]
+        );
+        assert!(paste_ops(&t, 0, 0, "1\tx").is_err());
+        assert_eq!(param_desc("3.t"), "面 3 の厚さ");
+        assert_eq!(param_desc("G1.shift"), "G1 の移動");
     }
 }

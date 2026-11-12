@@ -130,3 +130,32 @@ fn cycle_and_missing_source_are_errors() {
     )
     .is_err());
 }
+
+/// 元の面の材料を変えると、ピックアップ先の材料も変わる（名前と屈折率）。先の材料は直接は変えられない
+#[test]
+fn follows_material_change() {
+    let mut s = build(&picked());
+    s.set_material(1, "1.7,30").unwrap();
+    assert_eq!(s.surfaces[5].mat, "1.7,30");
+    assert_eq!(s.surfaces[5].n, s.surfaces[1].n);
+    let f = [(
+        "material".to_string(),
+        lensbench_core::edit::SurfValue::Text("1.5,60".into()),
+    )];
+    let e = s.set_surface_fields(5, &f);
+    assert!(e.unwrap_err().to_string().contains("ピックアップ"));
+}
+
+/// 膜のピックアップ: 元の面の膜の名前を写す。.zmx には書かない（OpticStudio に無い）
+#[test]
+fn coating_pickup_copies_name() {
+    use lensbench_core::param::Pickup;
+    let mut s = build(&explicit());
+    s.set_coating(1, "AR").unwrap();
+    s.add_pickup(Pickup::new(2, 1, PickKind::Coating, 1.0, 0.0))
+        .unwrap();
+    assert_eq!(s.surfaces[2].coat, "AR");
+    s.set_coating(1, "HR").unwrap();
+    assert_eq!(s.surfaces[2].coat, "HR");
+    assert!(zmx_write::write(&s).is_ok());
+}

@@ -521,7 +521,8 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 | PickKind::Semi
                 | PickKind::After(_)
                 | PickKind::Radius
-                | PickKind::Before(_) => {}
+                | PickKind::Before(_)
+                | PickKind::Coating => {}
             }
         }
         // パラメータ・円錐係数の ZPL マクロのソルブ: PZPL 番号 "名前"・KZPL "名前"（OpticStudio 26.1.1 の書き方）。

@@ -43,6 +43,8 @@ pub enum Tag {
     Edit,
     /// 系ファイルに保存（serve の save）
     Save,
+    /// 選んだ面の範囲を系ファイルに書き出す（serve の save_range）
+    SaveRange,
     /// 面の設定（serve の surface_data、面の番号）
     SurfData(usize),
     /// 開いた系の系の設定（serve の system_data）
