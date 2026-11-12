@@ -106,6 +106,13 @@ pub struct Unit {
     pub shift: f64,
     /// 読込で作った玉（lens1 …）
     pub auto: bool,
+    /// 玉をもとの向き（カタログ・.zmx の向き）から裏返して置いた（プロジェクトの `reversed` の玉）。
+    /// 公差のくさびの面（もとの向きの後ろの面）を選ぶのに使う
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub flipped: bool,
 }
 
 impl Unit {
@@ -274,6 +281,7 @@ impl System {
             motion: [0.0; 5],
             shift: 0.0,
             auto: false,
+            flipped: false,
         });
         self.invalidate_frames();
         Ok(self.units.len() - 1)
@@ -374,6 +382,7 @@ impl System {
                 motion: [0.0; 5],
                 shift: 0.0,
                 auto: true,
+                flipped: false,
             })
             .collect()
     }

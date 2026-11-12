@@ -3125,6 +3125,10 @@
           "description": "読込で作った玉（lens1 …）",
           "type": "boolean"
         },
+        "flipped": {
+          "description": "玉をもとの向き（カタログ・.zmx の向き）から裏返して置いた（プロジェクトの `reversed` の玉）。\n公差のくさびの面（もとの向きの後ろの面）を選ぶのに使う",
+          "type": "boolean"
+        },
         "motion": {
           "description": "剛体の動き dx dy tx ty tz [mm, deg]",
           "items": {

@@ -722,8 +722,8 @@ pub struct LensTol {
     pub tilt: f64,
     /// 玉の後の空気の間隔 [mm]（次に玉がある場合）
     pub space: f64,
-    /// くさびを玉の最初の面に入れる（false は最後の面）。最初・最後は系の中で光の通る順（往復する玉は往きの範囲）。
-    /// 玉の向き（裏返して置いたか）で選ぶのはプロジェクトの側（`wedge_face`）
+    /// くさびを玉の前の面に入れる（false は後ろの面）。前・後ろは玉のもとの向きで、裏返して置いた玉（[`crate::units::Unit::flipped`]）
+    /// では系の中で光の通る順の逆（往復する玉は往きの範囲の順）
     pub wedge_first: bool,
 }
 
@@ -909,7 +909,8 @@ pub fn simple(
             );
         }
         // くさびは最後（wedge_first なら最初）の面の傾き。往復の同じ面に同じ符号（往復の範囲を持つ玉の剛体の傾きと同じ向き）
-        let wf = if t.wedge_first { a } else { b };
+        let flipped = s.units[u].flipped || s.units[mu].flipped;
+        let wf = if t.wedge_first != flipped { a } else { b };
         push(
             format!("{name} くさびx"),
             surf(wf, Kind::Tx),

@@ -423,8 +423,39 @@ fn wedge_face_follows_lens_orientation() {
             ),
             [false, false]
         );
-        // 裏返した玉が分からないと、系の中の面の順の最後の面
-        assert_eq!(flat(json!({}), &HashSet::new()), [!rev, !rev]);
+        // 系の玉・群に裏返しの印があるので、名前を渡さなくても同じ
+        assert_eq!(flat(json!({}), &HashSet::new()), [true, true]);
+        // 印の無い系（Python で作った系など）: 名前で渡せば同じ、渡さなければ系の中の面の順の最後の面
+        let mut s1 = s.clone();
+        s1.units.iter_mut().for_each(|u| u.flipped = false);
+        let flat1 = |r: &HashSet<String>| -> Vec<bool> {
+            let m = spec_from_json_with(&json!({}), vec![s1.clone()], &HashMap::new(), r).unwrap();
+            let t = m.tols.iter().find(|t| t.label == "L2 くさびx").unwrap();
+            t.params
+                .iter()
+                .map(|q| s1.surfaces[q.surf].c == 0.0)
+                .collect()
+        };
+        assert_eq!(flat1(&r), [true, true]);
+        assert_eq!(flat1(&HashSet::new()), [!rev, !rev]);
+        // id の無い裏返した玉（lens2 …）も同じ（#192）
+        let src2 = src.replace(r#""id": "L2", "#, "");
+        let p2 = Project::from_json(&src2).unwrap();
+        let s2 = expand(&p2, &env).unwrap();
+        assert!(reversed_lenses(&p2).is_empty());
+        let m = spec_from_json(&json!({}), vec![s2.clone()], &HashMap::new()).unwrap();
+        let t = m
+            .tols
+            .iter()
+            .find(|t| t.label.ends_with(" くさびx") && !t.label.starts_with("L1"))
+            .unwrap();
+        let f: Vec<bool> = t
+            .params
+            .iter()
+            .map(|q| s2.surfaces[q.surf].c == 0.0)
+            .collect();
+        // id の無い玉は往きと戻りが別の玉（lens2・lens3）になるので、往きの玉の面だけ見る
+        assert_eq!(f, [true], "{} rev {rev}", t.label);
     }
     let (_, s) = sys();
     for bad in [
