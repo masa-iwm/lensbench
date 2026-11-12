@@ -2,7 +2,7 @@
 //!
 //! 行 = パラメータ（serve の `set` と同じ名前: `3.t`・`2.c`・`G1.shift` など）、列 = 構成。表は serve の
 //! `config_table` から作り、変更は serve の `edit` の操作（`set_config_count`・`set_config_row`・`add_config_row`・
-//! `remove_config_row`・`set_config`）で送る。.zmx の多重構成は `config_diff` で表に取り込む。
+//! `remove_config_row`・`set_config`・`insert_config`・`remove_config`・`set_config_pickup`・`remove_config_pickup`）で送る。.zmx の多重構成は `config_diff` で表に取り込む。
 
 use egui::{Key, RichText, Sense, Ui};
 use egui_extras::{Column, TableBuilder};
@@ -20,9 +20,27 @@ pub struct Table {
     pub active: usize,
     /// (パラメータの名前, 構成ごとの値)
     pub rows: Vec<(String, Vec<f64>)>,
+    /// 行ごとの構成のピックアップ
+    pub picks: Vec<Vec<Pick>>,
     /// .zmx の多重構成の数と、読んだ構成
     pub zmx_cfgs: usize,
     pub zmx_cfg: usize,
+}
+
+/// 構成のピックアップ: 構成 k（1 始まり）の値 = 構成 from の値 × scale + offset
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pick {
+    pub k: usize,
+    pub from: usize,
+    pub scale: f64,
+    pub offset: f64,
+}
+
+impl Table {
+    /// 行 i の構成 k（0 始まり）のピックアップ
+    fn pick(&self, i: usize, k: usize) -> Option<Pick> {
+        self.picks.get(i)?.iter().find(|p| p.k == k + 1).copied()
+    }
 }
 
 pub fn parse(v: &Value) -> Table {
@@ -40,6 +58,28 @@ pub fn parse(v: &Value) -> Table {
                             .map(|x| x.iter().map(|y| y.as_f64().unwrap_or(f64::NAN)).collect())
                             .unwrap_or_default();
                         (r["param"].as_str().unwrap_or_default().to_string(), vals)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        picks: v["rows"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|r| {
+                        r["picks"]
+                            .as_array()
+                            .map(|ps| {
+                                ps.iter()
+                                    .map(|p| Pick {
+                                        k: p["k"].as_u64().unwrap_or(0) as usize,
+                                        from: p["from"].as_u64().unwrap_or(0) as usize,
+                                        scale: p["scale"].as_f64().unwrap_or(1.0),
+                                        offset: p["offset"].as_f64().unwrap_or(0.0),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default()
                     })
                     .collect()
             })
@@ -71,6 +111,12 @@ pub struct State {
     active: bool,
     /// 足す行のパラメータの名前
     new_param: String,
+    /// 選んだ列（構成 0 始まり。見出しのクリック）
+    sel_col: Option<usize>,
+    /// 名前の欄にフォーカスを渡す
+    focus_name: bool,
+    /// ピックアップの欄（セル、元の構成、倍率、ずれ）
+    pick_form: Option<((usize, usize), String, String, String)>,
     /// 取り込みで表にできなかった違い
     pub notes: Vec<String>,
 }
@@ -153,50 +199,49 @@ pub fn param_desc(name: &str) -> String {
     }
 }
 
-/// 構成 k（0 始まり）を消す操作: 各行の値から k を抜き（最後を足して数は n のまま）、構成の数を n−1 に。
-/// 今の構成は同じ構成を指すようにずらす
-fn remove_config_ops(t: &Table, k: usize) -> Vec<Value> {
-    let mut ops = Vec::new();
-    for (name, vals) in &t.rows {
-        let mut v = vals.clone();
-        if k < v.len() {
-            v.remove(k);
-            v.push(*v.last().unwrap_or(&0.0));
-            ops.push(json!({ "op": "set_config_row", "param": name, "values": v }));
-        }
-    }
-    let active = t.active;
-    let next = if active == k + 1 {
-        k.max(1).min(t.n - 1)
-    } else if active > k + 1 {
-        active - 1
-    } else {
-        active
-    };
-    // 今の構成を先に、消した後でも残る番号へ（値の並べ替えの後で入れ直す）
-    ops.push(json!({ "op": "set_config_count", "n": t.n - 1 }));
-    ops.push(json!({ "op": "set_config", "k": next }));
-    ops
+/// 構成を位置 at（1 始まり、新しい構成の番号）に挿入する操作。値は構成 from（1 始まり）、pickup なら from のピックアップ
+fn insert_op(at: usize, from: usize, pickup: bool) -> Value {
+    json!({ "op": "insert_config", "at": at, "from": from, "pickup": pickup })
 }
 
-/// 構成 src（0 始まり）の値で、新しい構成を位置 at（0 始まり、at の前。n なら最後）に挿入する操作。
-/// 今の構成は同じ構成を指すようにずらす
-fn insert_config_ops(t: &Table, src: usize, at: usize) -> Vec<Value> {
-    let at = at.min(t.n);
-    let mut ops = vec![json!({ "op": "set_config_count", "n": t.n + 1 })];
-    for (name, vals) in &t.rows {
-        let mut v = vals.clone();
-        v.resize(t.n, *vals.last().unwrap_or(&0.0));
-        v.insert(at, vals.get(src).copied().unwrap_or(0.0));
-        ops.push(json!({ "op": "set_config_row", "param": name, "values": v }));
+/// 構成 k（1 始まり）を消す操作
+fn remove_op(k: usize) -> Value {
+    json!({ "op": "remove_config", "k": k })
+}
+
+/// 構成の挿入の選択肢（構成 k の前後、ピックアップ付き）。選んだ操作を返す
+fn insert_menu(ui: &mut Ui, k: usize) -> Option<Value> {
+    let mut op = None;
+    if ui.button(trf("構成 {} の前に構成を挿入", &[&k])).clicked() {
+        op = Some(insert_op(k, k, false));
     }
-    let active = if t.active > at {
-        t.active + 1
-    } else {
-        t.active
-    };
-    ops.push(json!({ "op": "set_config", "k": active }));
-    ops
+    if ui.button(trf("構成 {} の後に構成を挿入", &[&k])).clicked() {
+        op = Some(insert_op(k + 1, k, false));
+    }
+    if ui
+        .button(trf("構成 {} の前にピックアップ付きで挿入", &[&k]))
+        .on_hover_text(trf(
+            "新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）",
+            &[&k],
+        ))
+        .clicked()
+    {
+        op = Some(insert_op(k, k, true));
+    }
+    if ui
+        .button(trf("構成 {} の後にピックアップ付きで挿入", &[&k]))
+        .on_hover_text(trf(
+            "新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）",
+            &[&k],
+        ))
+        .clicked()
+    {
+        op = Some(insert_op(k + 1, k, true));
+    }
+    if op.is_some() {
+        ui.close_menu();
+    }
+    op
 }
 
 /// 表を文字に（タブ区切り、1 行目は見出し。Excel に貼れる）
@@ -277,36 +322,88 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
         for k in 1..=t.n {
             if ui
                 .selectable_label(k == t.active, k.to_string())
-                .on_hover_text(tr("この構成の値を系に入れる（解析・図・面の表が追従）"))
+                .on_hover_text(tr(
+                    "この構成の値を系に入れる（解析・図・面の表が追従）。Ctrl+A で次、Ctrl+Shift+A で前の構成",
+                ))
                 .clicked()
                 && k != t.active
             {
                 acts.push(Act::Ops(vec![json!({ "op": "set_config", "k": k })]));
             }
         }
-        ui.separator();
-        if ui
-            .button("＋")
-            .on_hover_text(tr("構成を足す（値は今の構成と同じ）"))
-            .clicked()
-        {
-            acts.push(Act::Ops(vec![
-                json!({ "op": "set_config_count", "n": t.n + 1 }),
-            ]));
+    });
+    // 挿入・削除（標準は行、▼で構成）。挿入・削除の元の構成は選んだ列、無ければ今のセルの列、無ければ今の構成
+    let refk = st
+        .sel_col
+        .or(st.cur.map(|c| c.1))
+        .unwrap_or(t.active - 1)
+        .min(t.n - 1)
+        + 1;
+    let mut bar_ops: Vec<Value> = Vec::new();
+    let mut bar_remove: Option<usize> = None;
+    ui.horizontal_wrapped(|ui| {
+        let resp = ui.add(
+            egui::TextEdit::singleline(&mut st.new_param)
+                .hint_text("3.t・2.c・STOP.k・G1.shift")
+                .desired_width(150.0),
+        );
+        if std::mem::take(&mut st.focus_name) {
+            resp.request_focus();
         }
-        if ui
-            .add_enabled(t.n > 1, egui::Button::new("−"))
+        let enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
+        let add = ui
+            .button(tr("行を挿入"))
             .on_hover_text(tr(
-                "最後の構成を消す（1 つにすると表も消える。途中の構成は見出しの右クリックで）",
+                "左の名前のパラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる",
             ))
+            .clicked();
+        if add && st.new_param.trim().is_empty() {
+            st.focus_name = true;
+        }
+        if (add || enter) && !st.new_param.trim().is_empty() {
+            if t.n < 2 {
+                bar_ops.push(json!({ "op": "set_config_count", "n": 2 }));
+            }
+            bar_ops.push(json!({ "op": "add_config_row", "param": st.new_param.trim() }));
+            st.new_param.clear();
+        }
+        ui.menu_button("▼", |ui| {
+            if let Some(op) = insert_menu(ui, refk) {
+                bar_ops.push(op);
+            }
+        })
+        .response
+        .on_hover_text(tr("構成の挿入（前・後、ピックアップ付き）"));
+        ui.separator();
+        let cur_row = st.cur.map(|c| c.0);
+        if ui
+            .add_enabled(cur_row.is_some(), egui::Button::new(tr("行を削除")))
+            .on_hover_text(tr("選んだ行を表から消す（系の値は今のまま）。Delete キーでも"))
             .clicked()
         {
-            let mut ops = Vec::new();
-            if t.active == t.n {
-                ops.push(json!({ "op": "set_config", "k": t.n - 1 }));
+            bar_remove = cur_row;
+        }
+        ui.menu_button("▼", |ui| {
+            if ui
+                .add_enabled(t.n > 1, egui::Button::new(trf("構成 {} を削除", &[&refk])))
+                .clicked()
+            {
+                bar_ops.push(remove_op(refk));
+                ui.close_menu();
             }
-            ops.push(json!({ "op": "set_config_count", "n": t.n - 1 }));
-            acts.push(Act::Ops(ops));
+            if ui
+                .add_enabled(t.n > 1, egui::Button::new(tr("最後の構成を削除")))
+                .clicked()
+            {
+                bar_ops.push(remove_op(t.n));
+                ui.close_menu();
+            }
+        })
+        .response
+        .on_hover_text(tr("構成の削除（列の見出しをクリックして選び Delete でも）"));
+        let d = param_desc(&st.new_param);
+        if !d.is_empty() {
+            ui.label(RichText::new(d).small().color(weak));
         }
     });
     if t.zmx_cfgs > 1 && t.rows.is_empty() {
@@ -363,11 +460,19 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                         h.col(|ui| {
                             let rt = RichText::new(trf("構成 {}", &[&k])).strong();
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
+                            if st.sel_col == Some(k - 1) {
+                                ui.painter().rect_filled(ui.max_rect(), 2.0, ui.visuals().selection.bg_fill);
+                            }
                             ui.label(if k == t.active { rt.color(accent) } else { rt });
                             let r = r.on_hover_text(tr(
-                                "クリックでこの構成を系に入れる。右クリックで前後に挿入・削除",
+                                "クリックで列を選ぶ（Delete で構成を削除）。ダブルクリックでこの構成を系に入れる。右クリックで挿入・削除",
                             ));
-                            if r.clicked() && k != t.active {
+                            if r.clicked() || r.secondary_clicked() {
+                                clicked_any = true;
+                                st.sel_col = Some(k - 1);
+                                st.cur = None;
+                            }
+                            if r.double_clicked() && k != t.active {
                                 acts.push(Act::Ops(vec![json!({ "op": "set_config", "k": k })]));
                             }
                             r.context_menu(|ui| {
@@ -375,19 +480,16 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     menu_ops.push(json!({ "op": "set_config", "k": k }));
                                     ui.close_menu();
                                 }
-                                if ui.button(tr("前に構成を挿入（この構成の値で）")).clicked() {
-                                    menu_ops.extend(insert_config_ops(&t, k - 1, k - 1));
-                                    ui.close_menu();
+                                ui.separator();
+                                if let Some(op) = insert_menu(ui, k) {
+                                    menu_ops.push(op);
                                 }
-                                if ui.button(tr("後に構成を挿入（この構成の値で）")).clicked() {
-                                    menu_ops.extend(insert_config_ops(&t, k - 1, k));
-                                    ui.close_menu();
-                                }
+                                ui.separator();
                                 if ui
-                                    .add_enabled(t.n > 1, egui::Button::new(tr("この構成を消す")))
+                                    .add_enabled(t.n > 1, egui::Button::new(tr("この構成を消す（Delete）")))
                                     .clicked()
                                 {
-                                    menu_ops.extend(remove_config_ops(&t, k - 1));
+                                    menu_ops.push(remove_op(k));
                                     ui.close_menu();
                                 }
                             });
@@ -408,6 +510,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                             if r.clicked() {
                                 clicked_any = true;
                                 st.cur = Some((i, st.cur.map_or(0, |c| c.1)));
+                                st.sel_col = None;
                             }
                             r.context_menu(|ui| {
                                 if ui.button(tr("行を消す（系の値は今のまま）")).clicked() {
@@ -473,17 +576,33 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     return;
                                 }
                                 let v = vals.get(k).copied().unwrap_or(f64::NAN);
+                                let pick = t.pick(i, k);
+                                if st.sel_col == Some(k) {
+                                    ui.painter().rect_filled(ui.max_rect(), 0.0, ui.visuals().selection.bg_fill);
+                                }
                                 // セル全体でクリックを受ける（文字の外でも）
+                                let hover = match pick {
+                                    Some(p) => trf(
+                                        "{}（構成 {} × {} + {} のピックアップ）",
+                                        &[&full(v), &p.from, &full(p.scale), &full(p.offset)],
+                                    ),
+                                    None => full(v),
+                                };
                                 let resp = ui
                                     .interact(ui.max_rect(), ui.id().with(("mce", i, k)), Sense::click())
-                                    .on_hover_text(full(v));
+                                    .on_hover_text(hover);
                                 let mut rt = RichText::new(short(v)).monospace();
                                 if k + 1 == t.active {
                                     rt = rt.color(accent);
                                 }
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| ui.label(rt),
+                                    |ui| {
+                                        ui.label(rt);
+                                        if pick.is_some() {
+                                            ui.label(RichText::new("P").small().strong().color(weak));
+                                        }
+                                    },
                                 );
                                 if st.cur == Some((i, k)) {
                                     ui.painter().rect_stroke(
@@ -496,6 +615,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                 if resp.clicked() || resp.secondary_clicked() || resp.double_clicked() {
                                     clicked_any = true;
                                     st.cur = Some((i, k));
+                                    st.sel_col = None;
                                 }
                                 if resp.double_clicked() {
                                     start = Some((i, k, None));
@@ -517,6 +637,57 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
                                     if k + 1 != t.active && ui.button(trf("構成 {} を系に入れる", &[&(k + 1)])).clicked() {
                                         menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
                                         ui.close_menu();
+                                    }
+                                    // 構成のピックアップ
+                                    if t.n > 1 {
+                                        ui.separator();
+                                        ui.label(RichText::new(tr("ピックアップ")).strong());
+                                        if let Some(p) = pick {
+                                            ui.horizontal(|ui| {
+                                                ui.label(trf(
+                                                    "構成 {} × {} + {}",
+                                                    &[&p.from, &full(p.scale), &full(p.offset)],
+                                                ));
+                                                if ui.small_button(tr("外す")).clicked() {
+                                                    menu_ops.push(json!({
+                                                        "op": "remove_config_pickup", "param": name, "k": k + 1,
+                                                    }));
+                                                    ui.close_menu();
+                                                }
+                                            });
+                                        }
+                                        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
+                                            let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
+                                            let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
+                                            st.pick_form =
+                                                Some(((i, k), from.to_string(), full(sc), full(of)));
+                                        }
+                                        if let Some(f) = st.pick_form.as_mut() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(RichText::new(tr("元の構成")).color(weak));
+                                                ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
+                                                ui.label(RichText::new(tr("倍率")).color(weak));
+                                                ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
+                                                ui.label(RichText::new(tr("ずれ")).color(weak));
+                                                ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
+                                            });
+                                            if ui.button(tr("+ ピックアップにする")).clicked() {
+                                                match (
+                                                    f.1.trim().parse::<usize>(),
+                                                    parse_num(&f.2),
+                                                    parse_num(&f.3),
+                                                ) {
+                                                    (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
+                                                        "op": "set_config_pickup", "param": name, "k": k + 1,
+                                                        "from": from, "scale": sc, "offset": of,
+                                                    })),
+                                                    _ => acts.push(Act::Refused(tr(
+                                                        "ピックアップの元の構成・倍率・ずれは数で",
+                                                    ).into())),
+                                                }
+                                                ui.close_menu();
+                                            }
+                                        }
                                     }
                                     ui.separator();
                                     if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
@@ -551,6 +722,20 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
     if cancel {
         st.edit = None;
         st.active = true;
+    }
+    // 列を選んで Delete: 構成を削除
+    if st.active
+        && st.edit.is_none()
+        && ui.memory(|m| m.focused().is_none())
+        && t.n > 1
+        && ui.input(|x| x.key_pressed(Key::Delete))
+    {
+        if let Some(k) = st.sel_col.take() {
+            acts.push(Act::Ops(vec![remove_op(k + 1)]));
+        }
+    }
+    if st.sel_col.is_some_and(|k| k >= t.n) {
+        st.sel_col = None;
     }
     // キー（表をクリックした後。書き換え中・ほかの入力欄にフォーカスがあるときは入力欄が使う）
     if st.active && st.edit.is_none() && ui.memory(|m| m.focused().is_none()) && !t.rows.is_empty()
@@ -603,7 +788,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
         } else if let Some(c) = st.cur {
             if enter || f2 || typed.is_some() {
                 start = Some((c.0, c.1, typed));
-            } else if del {
+            } else if del && st.sel_col.is_none() {
                 remove = Some(c.0);
             } else if esc {
                 st.cur = None;
@@ -648,47 +833,19 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool) -> Vec<Act> {
     if !menu_ops.is_empty() {
         acts.push(Act::Ops(menu_ops));
     }
+    if !bar_ops.is_empty() {
+        acts.push(Act::Ops(bar_ops));
+    }
+    let remove = remove.or(bar_remove);
     if let Some(i) = remove {
         acts.push(Act::Ops(vec![
             json!({ "op": "remove_config_row", "param": t.rows[i].0 }),
         ]));
     }
-    // 行を足す
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        let resp = ui.add(
-            egui::TextEdit::singleline(&mut st.new_param)
-                .hint_text("3.t・2.c・STOP.k・G1.shift")
-                .desired_width(160.0),
-        );
-        let enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
-        let add = ui
-            .add_enabled(
-                !st.new_param.trim().is_empty(),
-                egui::Button::new(tr("行を足す")),
-            )
-            .on_hover_text(tr(
-                "パラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる",
-            ))
-            .clicked();
-        if (add || enter) && !st.new_param.trim().is_empty() {
-            let mut ops = Vec::new();
-            if t.n < 2 {
-                ops.push(json!({ "op": "set_config_count", "n": 2 }));
-            }
-            ops.push(json!({ "op": "add_config_row", "param": st.new_param.trim() }));
-            acts.push(Act::Ops(ops));
-            st.new_param.clear();
-        }
-        let d = param_desc(&st.new_param);
-        if !d.is_empty() {
-            ui.label(RichText::new(d).small().color(weak));
-        }
-    });
     if t.n < 2 && t.zmx_cfgs < 2 {
         ui.label(
             RichText::new(tr(
-                "構成は 1 つです。＋ で構成を足すか、行を足すと構成 2 つの表になります。",
+                "構成は 1 つです。挿入の ▼ で構成を足すか、行を挿入すると構成 2 つの表になります。",
             ))
             .small()
             .color(weak),
@@ -725,29 +882,25 @@ mod tests {
             "n": 3, "active": 3,
             "rows": [{ "param": "2.t", "values": [1.0, 2.0, 3.0] }, { "param": "G1.shift", "values": [0.0, 0.5, 1.0] }],
         }));
-        // 構成 2 を消す: 値から抜き、数を 2 に、今の構成 3 は 2 へ
-        let ops = remove_config_ops(&t, 1);
+        assert_eq!(t.pick(0, 1), None);
         assert_eq!(
-            ops[0],
-            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 3.0, 3.0] })
+            insert_op(2, 1, true),
+            json!({ "op": "insert_config", "at": 2, "from": 1, "pickup": true })
         );
-        assert_eq!(ops[2], json!({ "op": "set_config_count", "n": 2 }));
-        assert_eq!(ops[3], json!({ "op": "set_config", "k": 2 }));
-        // 構成 1 を最後に複製（今の構成 3 はそのまま）
-        let ops = insert_config_ops(&t, 0, 3);
-        assert_eq!(ops[0], json!({ "op": "set_config_count", "n": 4 }));
+        assert_eq!(remove_op(3), json!({ "op": "remove_config", "k": 3 }));
+        let t2 = parse(&json!({
+            "n": 2, "active": 1,
+            "rows": [{ "param": "2.t", "values": [1.0, 2.0], "picks": [{ "k": 2, "from": 1, "scale": 2.0, "offset": 0.0 }] }],
+        }));
         assert_eq!(
-            ops[1],
-            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 3.0, 1.0] })
+            t2.pick(0, 1),
+            Some(Pick {
+                k: 2,
+                from: 1,
+                scale: 2.0,
+                offset: 0.0
+            })
         );
-        assert_eq!(ops[3], json!({ "op": "set_config", "k": 3 }));
-        // 構成 2 の前に構成 2 の値で挿入: 今の構成 3 は 4 へ
-        let ops = insert_config_ops(&t, 1, 1);
-        assert_eq!(
-            ops[1],
-            json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 2.0, 2.0, 3.0] })
-        );
-        assert_eq!(ops[3], json!({ "op": "set_config", "k": 4 }));
         // コピーと貼り付け（名前つきの行は名前の行へ、数だけなら今のセルから右へ）
         let txt = copy_text(&t, &[1]);
         assert_eq!(txt, "G1.shift\t0\t0.5\t1");

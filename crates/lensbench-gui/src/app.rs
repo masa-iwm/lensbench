@@ -2259,6 +2259,33 @@ impl Core {
         }
     }
 
+    /// 多重構成の次（back なら前）の構成を系に入れる（Ctrl+A・Ctrl+Shift+A、最後の次は最初）
+    fn cycle_config(&mut self, back: bool) {
+        let Some(t) = self.mc.table.as_ref().filter(|t| t.n > 1) else {
+            return;
+        };
+        let k = if back {
+            if t.active <= 1 {
+                t.n
+            } else {
+                t.active - 1
+            }
+        } else if t.active >= t.n {
+            1
+        } else {
+            t.active + 1
+        };
+        self.status = Status {
+            text: trf("構成 {} / {}", &[&k, &t.n]),
+            error: false,
+        };
+        self.worker.send(
+            Tag::Edit,
+            "edit",
+            json!({ "ops": [{ "op": "set_config", "k": k }] }),
+        );
+    }
+
     /// 多重構成の表
     fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
@@ -5645,6 +5672,18 @@ impl eframe::App for App {
         }
         if next || prev {
             self.cycle(prev);
+        }
+        // Ctrl+A・Ctrl+Shift+A: 多重構成の次・前の構成（入力欄にフォーカスがあるときは全選択に使う）
+        if !ctx.wants_keyboard_input() {
+            let (back, fwd) = ctx.input_mut(|i| {
+                (
+                    i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A),
+                    i.consume_key(Modifiers::COMMAND, Key::A),
+                )
+            });
+            if back || fwd {
+                self.c.cycle_config(back);
+            }
         }
         // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
         let shown = if self.c.is_combo() {

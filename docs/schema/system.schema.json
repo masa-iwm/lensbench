@@ -579,14 +579,65 @@
       ],
       "type": "object"
     },
+    "ConfigPick": {
+      "description": "多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）",
+      "properties": {
+        "from": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "k": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 0.0
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ],
+          "default": 1.0
+        }
+      },
+      "required": [
+        "k",
+        "from"
+      ],
+      "type": "object"
+    },
     "ConfigRow": {
       "description": "多重構成の表の 1 行",
       "properties": {
         "param": {
           "$ref": "#/$defs/Param"
         },
+        "picks": {
+          "description": "構成のピックアップ（OpticStudio の多重構成の pickup）。無ければ省く",
+          "items": {
+            "$ref": "#/$defs/ConfigPick"
+          },
+          "type": "array"
+        },
         "values": {
-          "description": "構成ごとの値（長さは構成の数）",
+          "description": "構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値",
           "items": {
             "anyOf": [
               {

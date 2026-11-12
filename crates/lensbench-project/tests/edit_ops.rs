@@ -392,3 +392,81 @@ fn bire_by_surface_data() {
         x => panic!("{x:?}"),
     }
 }
+
+/// 構成の挿入・削除（ピックアップの番号の付け替え）と構成のピックアップ
+#[test]
+fn config_insert_remove_and_pickups() {
+    let mut s = a0();
+    let t = |s: &lensbench_core::System| s.configs().unwrap().rows[0].values.clone();
+    let picks = |s: &lensbench_core::System| {
+        s.configs().unwrap().rows[0]
+            .picks
+            .iter()
+            .map(|p| (p.k, p.from, p.scale, p.offset))
+            .collect::<Vec<_>>()
+    };
+    edit_ops::apply(
+        &mut s,
+        &json!([
+            {"op": "set_config_count", "n": 2},
+            {"op": "set_config_row", "param": "1.t", "values": [5.0, 6.0]},
+            // ピックアップ付きで最後に（構成 1 から）
+            {"op": "insert_config", "at": 3, "pickup": true},
+        ]),
+    )
+    .unwrap();
+    assert_eq!(t(&s), vec![5.0, 6.0, 5.0]);
+    assert_eq!(picks(&s), vec![(3, 1, 1.0, 0.0)]);
+    // 構成 1 の値を変えると構成 3 も追従（今の構成 1 を系で変えても）
+    edit_ops::apply(
+        &mut s,
+        &json!([{"op": "set_param", "param": "1.t", "value": 7.0}]),
+    )
+    .unwrap();
+    s.sync_active_config();
+    assert_eq!(t(&s), vec![7.0, 6.0, 7.0]);
+    // 構成 1 の前に挿入: ピックアップの番号がずれる、今の構成は 2 に
+    edit_ops::apply(
+        &mut s,
+        &json!([{"op": "insert_config", "at": 1, "from": 2}]),
+    )
+    .unwrap();
+    assert_eq!(t(&s), vec![6.0, 7.0, 6.0, 7.0]);
+    assert_eq!(picks(&s), vec![(4, 2, 1.0, 0.0)]);
+    assert_eq!(s.configs().unwrap().active, 2);
+    // 倍率・ずれ付きのピックアップ、今の構成にすると系に入る
+    edit_ops::apply(
+        &mut s,
+        &json!([
+            {"op": "set_config_pickup", "param": "1.t", "k": 1, "from": 2, "scale": 2.0, "offset": 1.0},
+            {"op": "set_config", "k": 1},
+        ]),
+    )
+    .unwrap();
+    assert_eq!(t(&s), vec![15.0, 7.0, 6.0, 7.0]);
+    assert_eq!(s.surfaces[1].t, 15.0);
+    // 循環は不可、ピックアップの構成の値を直接変えるとピックアップは外れる
+    assert!(edit_ops::apply(
+        &mut s,
+        &json!([{"op": "set_config_pickup", "param": "1.t", "k": 2, "from": 1}])
+    )
+    .is_err());
+    edit_ops::apply(
+        &mut s,
+        &json!([{"op": "set_config_row", "param": "1.t", "values": [15.0, 7.0, 6.0, 9.0]}]),
+    )
+    .unwrap();
+    assert_eq!(picks(&s), vec![(1, 2, 2.0, 1.0)]);
+    // 元の構成 2 を消す: ピックアップは値を残して外れる。今の構成 1 はそのまま
+    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 2}])).unwrap();
+    assert_eq!(t(&s), vec![15.0, 6.0, 9.0]);
+    assert!(picks(&s).is_empty());
+    assert_eq!(s.configs().unwrap().active, 1);
+    // 今の構成を消すと次の構成が系に入る、1 つになると表が消えて残りの値が系に
+    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
+    assert_eq!(s.configs().unwrap().active, 1);
+    assert_eq!(s.surfaces[1].t, 6.0);
+    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
+    assert!(s.configs().is_none());
+    assert_eq!(s.surfaces[1].t, 9.0);
+}

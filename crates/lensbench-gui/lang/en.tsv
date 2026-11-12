@@ -1324,3 +1324,27 @@ r^{} の係数	r^{} coefficient
 後ろの面	Back face
 前の面	Front face
 前・後ろは玉のもとの向き（カタログ・.zmx の向き）。裏返して置いた玉や鏡で往復する玉でも同じ面	Front/back refer to the lens's own orientation (as in the catalog or .zmx). The same face is used for reversed lenses and lenses traversed twice via a mirror
++ ピックアップにする	+ Make pickup
+{}（構成 {} × {} + {} のピックアップ）	{} (pickup: configuration {} × {} + {})
+この構成の値を系に入れる（解析・図・面の表が追従）。Ctrl+A で次、Ctrl+Shift+A で前の構成	Apply this configuration to the system (analyses, plots and lens data follow). Ctrl+A: next, Ctrl+Shift+A: previous
+この構成を消す（Delete）	Delete this configuration (Delete)
+ずれ	Offset
+クリックで列を選ぶ（Delete で構成を削除）。ダブルクリックでこの構成を系に入れる。右クリックで挿入・削除	Click to select the column (Delete removes the configuration). Double-click to apply it. Right-click to insert or delete
+ピックアップの元の構成・倍率・ずれは数で	Pickup source configuration, scale and offset must be numbers
+元の構成	Source config
+左の名前のパラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる	Add the parameter named on the left (names as in Python / serve set; every configuration starts from the current value). Also available from "Make a multi-config row" in the lens data cell right-click menu
+新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）	Every row of the new configuration picks up configuration {} (follows when the source changes)
+最後の構成を削除	Delete the last configuration
+構成 {} / {}	Configuration {} / {}
+構成 {} × {} + {}	Configuration {} × {} + {}
+構成 {} の前にピックアップ付きで挿入	Insert with pickups before configuration {}
+構成 {} の前に構成を挿入	Insert a configuration before configuration {}
+構成 {} の後にピックアップ付きで挿入	Insert with pickups after configuration {}
+構成 {} の後に構成を挿入	Insert a configuration after configuration {}
+構成 {} を削除	Delete configuration {}
+構成の削除（列の見出しをクリックして選び Delete でも）	Delete a configuration (or select its column header and press Delete)
+構成の挿入（前・後、ピックアップ付き）	Insert a configuration (before / after, with pickups)
+構成は 1 つです。挿入の ▼ で構成を足すか、行を挿入すると構成 2 つの表になります。	There is one configuration. Add one from the insert ▼, or insert a row to make a two-configuration table.
+行を削除	Delete row
+行を挿入	Insert row
+選んだ行を表から消す（系の値は今のまま）。Delete キーでも	Remove the selected row from the table (system values stay). Also with the Delete key
