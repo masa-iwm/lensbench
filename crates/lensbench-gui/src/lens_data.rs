@@ -2334,7 +2334,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                         row.set_selected(in_sel || selected.contains(&j));
                         row.col(|ui| {
                             if let Some((i, a)) = fold {
-                                let resp = ui.interact(ui.max_rect(), ui.id().with("ld_num"), Sense::click());
+                                let resp = ui.interact(
+                                    ui.max_rect(),
+                                    ui.id().with("ld_num"),
+                                    Sense::click(),
+                                );
                                 ui.label(RichText::new(format!("{a}–{j}")).monospace().color(weak));
                                 if resp.clicked() || resp.secondary_clicked() {
                                     clicked_any = true;
@@ -2368,7 +2372,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                 rt = rt.strikethrough().color(weak);
                             }
                             // セル全体で受ける（文字の外の空いたところでも右クリック・クリックが効く）
-                            let resp = ui.interact(ui.max_rect(), ui.id().with("ld_num"), Sense::click());
+                            let resp = ui.interact(
+                                ui.max_rect(),
+                                ui.id().with("ld_num"),
+                                Sense::click(),
+                            );
                             ui.label(rt);
                             let resp = if r.ignore {
                                 resp.on_hover_text(tr("この面は無視（光線が通らない）"))
@@ -2395,12 +2403,16 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     c.combo,
                                     last,
                                     sel_span,
-                                    inner_block(c.blocks, j), c.rows, c.blocks,
+                                    inner_block(c.blocks, j),
+                                    c.rows,
+                                    c.blocks,
                                 );
                                 menu_acts.extend(m.acts);
                                 ins_btn |= m.insert;
                                     ins_before |= m.insert_before;
-if let Some(p) = m.paste { menu_paste = Some(p); }
+                                if let Some(p) = m.paste {
+                                    menu_paste = Some(p);
+                                }
                                 del_btn |= m.delete;
                                 open_detail |= m.detail;
                             });
@@ -2408,7 +2420,11 @@ if let Some(p) = m.paste { menu_paste = Some(p); }
                         row.col(|ui| {
                             // セル全体（ブロック名の外）: 行を選ぶ・右クリックで行の欄（面の番号の列と同じ）。
                             // ブロック名は後に足すので、名前の上はブロックの操作が勝つ
-                            let cell = ui.interact(ui.max_rect(), ui.id().with("ld_blk_cell"), Sense::click());
+                            let cell = ui.interact(
+                                ui.max_rect(),
+                                ui.id().with("ld_blk_cell"),
+                                Sense::click(),
+                            );
                             if cell.clicked() || cell.secondary_clicked() {
                                 clicked_any = true;
                                 let col = st.cur.map_or(Col::R, |x| x.1);
@@ -2434,7 +2450,9 @@ if let Some(p) = m.paste { menu_paste = Some(p); }
                                     menu_acts.extend(m.acts);
                                     ins_btn |= m.insert;
                                     ins_before |= m.insert_before;
-if let Some(p) = m.paste { menu_paste = Some(p); }
+                                    if let Some(p) = m.paste {
+                                        menu_paste = Some(p);
+                                    }
                                     del_btn |= m.delete;
                                     open_detail |= m.detail;
                                 });
@@ -2505,7 +2523,11 @@ if let Some(p) = m.paste { menu_paste = Some(p); }
                                         ),
                                         _ => String::new(),
                                     };
-                                    let resp = ui.interact(ui.max_rect(), ui.id().with("ld_fold_cell"), Sense::click());
+                                    let resp = ui.interact(
+                                        ui.max_rect(),
+                                        ui.id().with("ld_fold_cell"),
+                                        Sense::click(),
+                                    );
                                     ui.add(egui::Label::new(RichText::new(text).color(weak)).truncate());
                                     if st.cur == Some((j, col)) {
                                         ui.painter().rect_stroke(
@@ -2869,12 +2891,16 @@ if let Some(p) = m.paste { menu_paste = Some(p); }
                                     c.combo,
                                     last,
                                     sel_span,
-                                    inner_block(c.blocks, j), c.rows, c.blocks,
+                                    inner_block(c.blocks, j),
+                                    c.rows,
+                                    c.blocks,
                                 );
                                     menu_acts.extend(m.acts);
                                     ins_btn |= m.insert;
                                     ins_before |= m.insert_before;
-if let Some(p) = m.paste { menu_paste = Some(p); }
+                                    if let Some(p) = m.paste {
+                                        menu_paste = Some(p);
+                                    }
                                     del_btn |= m.delete;
                                     open_detail |= m.detail;
                                 });

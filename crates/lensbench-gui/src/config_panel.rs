@@ -513,6 +513,7 @@ fn cell_menu(
     ui.separator();
     if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
         ui.ctx().copy_text(copy_text(t, &[i]));
+        st.kbd_menu = None;
         ui.close_menu();
     }
     if ui.button(tr("行を消す（Delete）")).clicked() {
@@ -920,7 +921,17 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &Cands) -> Vec<Act> {
                                     start = Some((i, k, None));
                                 }
                                 resp.context_menu(|ui| {
-                                    cell_menu(ui, st, &t, i, k, &mut start, &mut menu_ops, &mut acts, &mut remove);
+                                    cell_menu(
+                                        ui,
+                                        st,
+                                        &t,
+                                        i,
+                                        k,
+                                        &mut start,
+                                        &mut menu_ops,
+                                        &mut acts,
+                                        &mut remove,
+                                    );
                                 });
                             });
                         }
