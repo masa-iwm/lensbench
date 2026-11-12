@@ -191,9 +191,15 @@ enum Cmd {
         c: Common,
         #[command(flatten)]
         s: Sel,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から遮断周波数の 0.95 倍までの 20 等分
+        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
         #[arg(long)]
         freqs: Option<String>,
+        /// 周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
+        #[arg(long = "max-freq", conflicts_with = "freqs")]
+        max_freq: Option<f64>,
+        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
+        freq_steps: usize,
         /// 瞳の重なりの求積の点の数の目安（点は約 n² 個）。省くと OPD の傾きから自動で決める
         #[arg(long)]
         n: Option<usize>,
@@ -365,9 +371,15 @@ enum Cmd {
         c: Common,
         #[command(flatten)]
         s: Sel,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から遮断周波数の 0.95 倍までの 20 等分
+        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
         #[arg(long)]
         freqs: Option<String>,
+        /// 周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
+        #[arg(long = "max-freq", conflicts_with = "freqs")]
+        max_freq: Option<f64>,
+        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
+        freq_steps: usize,
         /// 瞳の求積の点の数の目安（点は約 n² 個）
         #[arg(long, default_value_t = 128)]
         n: usize,
@@ -381,9 +393,15 @@ enum Cmd {
         c: Common,
         #[command(flatten)]
         s: Sel,
-        /// 周波数 [cycles/mm]（カンマ区切り）。省くと 0 から遮断周波数の 0.95 倍までの 20 等分
+        /// 周波数 [cycles/mm]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
         #[arg(long)]
         freqs: Option<String>,
+        /// 周波数を省いたときの上限 [cycles/mm]。省くと遮断周波数の 0.95 倍
+        #[arg(long = "max-freq", conflicts_with = "freqs")]
+        max_freq: Option<f64>,
+        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
+        freq_steps: usize,
         /// 瞳の格子の一辺
         #[arg(long, default_value_t = 64)]
         pupil: usize,
@@ -1202,6 +1220,16 @@ fn wave(s: &System, sel: &Sel) -> Result<Option<usize>, String> {
     }
 }
 
+/// 周波数を省いたときの並び: 0 から `top` までの `steps` 等分（点は steps + 1 個）
+fn auto_freqs(top: f64, steps: usize) -> Result<Vec<f64>, String> {
+    if !(top.is_finite() && top > 0.0) {
+        return Err(format!("--max-freq は正の数（{top}）"));
+    }
+    if steps == 0 {
+        return Err("--freq-steps は 1 以上".into());
+    }
+    Ok((0..=steps).map(|k| top * k as f64 / steps as f64).collect())
+}
 /// カンマ区切りの数
 fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, String> {
     let v: Vec<f64> = s
@@ -1976,6 +2004,8 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             c,
             s: sel,
             freqs,
+            max_freq,
+            freq_steps,
             n,
             direct,
             fft,
@@ -2004,10 +2034,15 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let fs = match &given {
                     Some(f) => f.clone(),
                     None => {
-                        let m =
-                            analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[]).map_err(e)?;
-                        let c = m.cutoff.0.min(m.cutoff.1);
-                        (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
+                        let top = match max_freq {
+                            Some(x) => x,
+                            None => {
+                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
+                                    .map_err(e)?;
+                                0.95 * m.cutoff.0.min(m.cutoff.1)
+                            }
+                        };
+                        auto_freqs(top, freq_steps)?
                     }
                 };
                 let method = if direct {
@@ -2492,6 +2527,8 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             c,
             s: sel,
             freqs,
+            max_freq,
+            freq_steps,
             n,
             diff_limit,
         } => {
@@ -2503,10 +2540,15 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let fs = match &given {
                     Some(f) => f.clone(),
                     None => {
-                        let m =
-                            analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[]).map_err(e)?;
-                        let c = m.cutoff.0.min(m.cutoff.1);
-                        (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
+                        let top = match max_freq {
+                            Some(x) => x,
+                            None => {
+                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
+                                    .map_err(e)?;
+                                0.95 * m.cutoff.0.min(m.cutoff.1)
+                            }
+                        };
+                        auto_freqs(top, freq_steps)?
                     }
                 };
                 let m =
@@ -2525,6 +2567,8 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             c,
             s: sel,
             freqs,
+            max_freq,
+            freq_steps,
             pupil,
             image,
             delta,
@@ -2542,10 +2586,15 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let fs = match &given {
                     Some(f) => f.clone(),
                     None => {
-                        let m =
-                            analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[]).map_err(e)?;
-                        let c = m.cutoff.0.min(m.cutoff.1);
-                        (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
+                        let top = match max_freq {
+                            Some(x) => x,
+                            None => {
+                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
+                                    .map_err(e)?;
+                                0.95 * m.cutoff.0.min(m.cutoff.1)
+                            }
+                        };
+                        auto_freqs(top, freq_steps)?
                     }
                 };
                 let m = huygens::huygens_mtf(&s, FieldSel::Index(i), w, o, &fs).map_err(e)?;

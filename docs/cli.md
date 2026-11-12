@@ -9,6 +9,7 @@ lensbench spot     system.zmx --field 2 --wave 1
 lensbench wavefront system.zmx --n 64
 lensbench zernike  system.zmx --kind fringe --terms 37
 lensbench mtf      system.zmx --freqs 0,50,100 --wave 2
+lensbench mtf      system.zmx --max-freq 200 --freq-steps 40     # 周波数を省いたときの上限と分割数（既定は遮断周波数の 0.95 倍・20 等分）
 lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --steps 11
 lensbench mtf-field system.zmx --freqs 30,60 --points 11
 lensbench rms      system.zmx --vs field --points 11 --ref centroid

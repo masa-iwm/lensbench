@@ -86,7 +86,6 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 径 [mm]	Diameter [mm]
 後の空気	Air after
 操作・解析・パネル・並びを探す	Search actions, analyses, panels, layouts
-数の欄で値を増減（パラメータは解析をすぐ計算し直す）	Step a number field (parameters recompute the analyses right away)
 日本語のフォントが見つからない	No Japanese font found
 明るい	Light
 暗い	Dark
@@ -446,6 +445,96 @@ a, b, …	a, b, …
 すべて既定に	Reset all
 ファイルを選ぶ	Choose a file
 既定に戻す	Reset to default
+a, b, …（必須）	a, b, … (required)
+↑↓ で増減（整数は 1、実数は書いた最後の桁の 1）	↑↓ steps the value (1 for integers, the last typed digit for decimals)
+この解析に設定はありません	This analysis has no settings
+どれか 1 つ（一緒には使えない）	Pick one (they can't be combined)
+レンズ単位	lens units
+合う解析がありません	No matching analysis
+必須	required
+数の欄で値を増減（パラメータ・解析の設定は解析をすぐ計算し直す）	Step a number field (parameters and analysis settings recompute right away)
+文字	Letters
+方式	Method
+既定: {}	Default: {}
+波長 {} {} µm	Wave {} {} µm
+省けない値	Required value
+絞り込む…	Filter…
+自動（a, b, …）	Auto (a, b, …)
+自動（既定）	Auto (default)
+視野 {} {}	Field {} {}
+解析の種類の一覧: 打って絞り込む（Enter で最初の候補）	Analysis list: type to filter (Enter picks the first match)
+解析の設定の欄: 打った値で計算し直す	Analysis settings: recompute with the typed value
+解析の設定の欄を開く・閉じる	Show or hide the analysis settings
+詳細（JSON で引数を足す）	Advanced (extra arguments as JSON)
+像の質	Image quality
+MTF・PSF	MTF / PSF
+干渉・伝搬	Interference / propagation
+表・系	Tables / system
+追加の解析	Extra analyses
+求積点の数	Quadrature points
+格子の一辺	Grid size
+瞳の格子の一辺	Pupil grid
+入力の標本の数	Input samples
+視野の点の数	Field points
+横軸の点の数	Points
+瞳の光線の格子	Pupil ray grid
+瞳座標	Pupil coordinates
+瞳の光線の数	Pupil rays
+光線の本数	Rays
+範囲の中心	Area center
+出力の中心	Output center
+範囲の一辺	Area width
+組み直した系の書き出し	Write rebuilt system
+周波数	Frequencies
+波面の格子も出す	Include wavefront grid
+項数	Terms
+直接追跡	Direct trace
+FFT	FFT
+補間	Interpolated
+波長ごとも出す	Also per wavelength
+ずらしの範囲 ±	Defocus range ±
+ずらしの点の数	Defocus steps
+視野を振る向き	Field direction
+横軸	X axis
+視野を解析の波長で解く	Solve field at analysis wavelength
+Huygens PSF	Huygens PSF
+像の格子の一辺	Image grid
+像の格子の間隔	Image grid spacing
+回折限界をかける	Apply diffraction limit
+光束 1（試料）	Beam 1 (sample)
+光束 2（参照）	Beam 2 (reference)
+重ねる所	Where to overlap
+OPD の差の倍率	OPD difference scale
+x の傾きの縞	x tilt fringes
+y の傾きの縞	y tilt fringes
+画素の数	Pixels
+試料の強度の倍率	Sample power
+参照の強度の倍率	Reference power
+参照の光路長	Reference delay
+偏光追跡で重ねる	Polarized overlap
+試料の入射偏光	Sample input polarization
+参照の入射偏光	Reference input polarization
+書き出すファイル	Output file
+tif を float で	Float tif
+格子も出す	Include grid
+場を作る面	Field surface
+伝える距離	Distance
+伝える先の面	To surface
+方法	Method
+入力の半幅	Input half width
+開口を掛けない	No aperture
+出力の標本の数	Output samples
+出力の半幅	Output half width
+光線の並び	Ray pattern
+書く面	Surfaces
+最初の面	First surface
+最後の面	Last surface
+膜のファイル	Coating files
+系を書くフォルダ	Output folder
+反転する玉	Elements to reverse
+膜の実測表	Measured coating tables
+周波数の上限	Max frequency
+周波数の分割数	Frequency steps
 解析の引数（CLI と同じ名前）を欄で	Analysis arguments as fields (same names as the CLI)
 （既定）	(default)
 重心	Centroid

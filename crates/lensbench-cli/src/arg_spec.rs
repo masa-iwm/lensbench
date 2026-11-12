@@ -3,7 +3,7 @@
 //! 形はプラグインの設定の項目（[`lensbench_core::plugin::ParamSpec`]）の JSON と同じ:
 //! `{"name", "type", "default", "unit", "doc", "choices"?, "len"?, "repeat"?}`。`type` は `num`（実数）・`count`
 //! （0 以上の整数）・`int`・`flag`（旗）・`str`・`choice`・`nums`（数のカンマ区切り）・`path`。`repeat` は
-//! 旗を繰り返して複数渡せる引数（値は並び）。
+//! 旗を繰り返して複数渡せる引数（値は並び）。`required` は省けない引数、`conflicts` は一緒に使えない引数の名前の並び。
 
 use std::any::TypeId;
 use std::path::PathBuf;
@@ -163,6 +163,18 @@ pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
         if repeat {
             v["repeat"] = json!(true);
         }
+        if a.is_required_set() {
+            v["required"] = json!(true);
+        }
+        let conflicts: Vec<String> = sub
+            .get_arg_conflicts_with(a)
+            .iter()
+            .filter_map(|c| c.get_long())
+            .map(|l| l.replace('-', "_"))
+            .collect();
+        if !conflicts.is_empty() {
+            v["conflicts"] = json!(conflicts);
+        }
         out.push(v);
     }
     Some(out)
@@ -208,6 +220,13 @@ mod tests {
         assert!(get("glass_dir").is_none() && get("file").is_none());
         assert!(get("field").is_some());
         assert!(analysis_args("no-such").is_none());
+        // 一緒に使えない旗・省けない引数
+        let c = get("fft").unwrap()["conflicts"].clone();
+        assert!(c.as_array().unwrap().contains(&json!("interp")), "{c}");
+        assert!(get("freqs").unwrap().get("required").is_none());
+        let mf = analysis_args("mtf-focus").unwrap();
+        let f = mf.iter().find(|x| x["name"] == "freqs").unwrap();
+        assert_eq!(f["required"], true);
     }
 
     /// GUI に並べる解析はどれも引数の一覧が引け、型の補い（HINTS）はどれも実在の引数に当たる
