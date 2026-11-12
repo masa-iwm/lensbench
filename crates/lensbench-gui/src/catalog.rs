@@ -317,7 +317,10 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
         ui.weak(trf("出典 {}（{}）", &[&r.spec_source, &r.checked]));
     }
     if !r.url.is_empty() {
-        ui.hyperlink_to(tr("製品ページ"), &r.url);
+        ui.add(
+            egui::Hyperlink::from_label_and_url(tr("製品ページ"), r.url.as_str())
+                .open_in_new_tab(true),
+        );
     }
 }
 
@@ -1415,7 +1418,8 @@ impl Browser {
                             add = Some(i);
                         }
                         // レイアウト図へドラッグして差し込む
-                        if resp.drag_started() && r.placeable() {
+                        // 機構部品は要素でないので図・表へは落とさない（ダブルクリック・「組合せに足す」で機構部品に足す）
+                        if resp.drag_started() && r.placeable() && r.kind != RowKind::Mech {
                             egui::DragAndDrop::set_payload(
                                 &resp.ctx,
                                 crate::combo::DropPick(pick_from(r)),
