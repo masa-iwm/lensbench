@@ -1392,3 +1392,19 @@ r^{} の係数	r^{} coefficient
 やり直した	Redone
 元に戻す変更がない	Nothing to undo
 やり直す変更がない	Nothing to redo
+{} ほか {} 件	{} and {} more
+{} ほか {} 個	{} and {} more
+{} 個の要素を変える	Change {} elements
+{}（面 {}）	{} (surface {})
+ここまでやり直す	Redo up to
+ここまで元に戻す	Undo up to
+値の変更	Value change
+構成の切り替え	Switch configuration
+組合せの設定	Combination settings
+要素 {} を変える（{}）	Change element {} ({})
+要素を消す（{}）	Remove element ({})
+要素を足す（{}）	Add element ({})
+面の値	Surface values
+面の種類	Surface type
+面を削除	Delete surface
+面を挿入	Insert surface

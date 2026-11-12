@@ -314,19 +314,89 @@ fn step_history(back: bool) -> Result<Value, RpcErr> {
     });
     x.last_set = None;
     let hash = lensbench_project::sysfile::system_hash(&x.sys).map_err(RpcErr::app)?;
-    Ok(json!({
-        "surfaces": x.sys.surfaces.len(),
-        "system_hash": hash,
-        "undo": x.undo.len(),
-        "redo": x.redo.len(),
-    }))
+    let mut v = history_json(x);
+    v["surfaces"] = json!(x.sys.surfaces.len());
+    v["system_hash"] = json!(hash);
+    Ok(v)
 }
 
-/// 元に戻せる段・やり直せる段の数
-fn history_depth() -> (usize, usize) {
-    served()
-        .as_ref()
-        .map_or((0, 0), |x| (x.undo.len(), x.redo.len()))
+/// 段の変更の短い記述（GUI の一覧の名前）: set は名前の並び、edit は操作ごとの op と面・名前
+fn change_label(c: Option<&Change>) -> Value {
+    match c {
+        Some(Change::Set(v)) => json!({ "set": v.iter().map(|r| r.0.clone()).collect::<Vec<_>>() }),
+        Some(Change::Edit(ops)) => {
+            let ops: Vec<Value> = ops
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|o| {
+                    let mut m = serde_json::Map::new();
+                    for k in ["op", "surface", "param", "at", "k", "name"] {
+                        if let Some(x) = o.get(k) {
+                            m.insert(k.into(), x.clone());
+                        }
+                    }
+                    // 変えた項目の名前（値は出さない）
+                    if let Some(f) = o.get("fields").and_then(Value::as_object) {
+                        m.insert("fields".into(), json!(f.keys().collect::<Vec<_>>()));
+                    }
+                    Value::Object(m)
+                })
+                .collect();
+            json!({ "edit": ops })
+        }
+        None => Value::Null,
+    }
+}
+
+/// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）
+fn history_json(x: &Served) -> Value {
+    let n = x.undo.len();
+    let undo_list: Vec<Value> = (0..n)
+        .rev()
+        .map(|i| {
+            let next = if i + 1 < n {
+                &x.undo[i + 1].log
+            } else {
+                &x.log
+            };
+            change_label(next.get(x.undo[i].log.len()))
+        })
+        .collect();
+    let m = x.redo.len();
+    let redo_list: Vec<Value> = (0..m)
+        .rev()
+        .map(|i| {
+            let prev = if i + 1 < m {
+                &x.redo[i + 1].log
+            } else {
+                &x.log
+            };
+            change_label(x.redo[i].log.get(prev.len()))
+        })
+        .collect();
+    json!({ "undo": n, "redo": m, "undo_list": undo_list, "redo_list": redo_list })
+}
+
+/// 元に戻せる段・やり直せる段（`history_json`）
+fn history() -> Value {
+    served().as_ref().map_or_else(
+        || json!({ "undo": 0, "redo": 0, "undo_list": [], "redo_list": [] }),
+        history_json,
+    )
+}
+
+/// steps 段まとめて戻す・やり直す（途中で尽きたらそこまで）
+fn step_history_n(back: bool, p: &Value) -> Result<Value, RpcErr> {
+    let n = opt_usize(p, "steps")?.unwrap_or(1).max(1);
+    let mut v = step_history(back)?;
+    for _ in 1..n {
+        match step_history(back) {
+            Ok(w) => v = w,
+            Err(_) => break,
+        }
+    }
+    Ok(v)
 }
 
 /// 別に読んだ光束の系に、読み込んだ後の変更（set・edit）を順に当てる。set のパラメータの値が、読み込んだ系で
@@ -1092,12 +1162,9 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
         }
         // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
         // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる）
-        "undo" => Ok((step_history(true)?, Vec::new())),
-        "redo" => Ok((step_history(false)?, Vec::new())),
-        "history" => {
-            let (u, r) = history_depth();
-            Ok((json!({ "undo": u, "redo": r }), Vec::new()))
-        }
+        "undo" => Ok((step_history_n(true, p)?, Vec::new())),
+        "redo" => Ok((step_history_n(false, p)?, Vec::new())),
+        "history" => Ok((history(), Vec::new())),
         "get" => {
             let (s, _) = current()?;
             if let Some(one) = p.get("param").and_then(Value::as_str) {
@@ -1129,11 +1196,9 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
                 .map(|((q, v), name)| Ok((name.clone(), s.get_param(*q)?, *v)))
                 .collect::<Result<Vec<_>, lensbench_core::Error>>()?;
             store_changed(n, spec, Change::Set(rec));
-            let (u, r) = history_depth();
-            Ok((
-                json!({ "changed": names, "undo": u, "redo": r }),
-                Vec::new(),
-            ))
+            let mut v = history();
+            v["changed"] = json!(names);
+            Ok((v, Vec::new()))
         }
         // 系を .zmx に書き出す（別アプリに渡す）
         "write" => {
@@ -1153,11 +1218,11 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             let hash = lensbench_project::sysfile::system_hash(&n).map_err(RpcErr::app)?;
             let count = n.surfaces.len();
             store_changed(n, spec, Change::Edit(p["ops"].clone()));
-            let (u, r) = history_depth();
-            Ok((
-                json!({ "notes": notes, "surfaces": count, "system_hash": hash, "undo": u, "redo": r }),
-                Vec::new(),
-            ))
+            let mut v = history();
+            v["notes"] = json!(notes);
+            v["surfaces"] = json!(count);
+            v["system_hash"] = json!(hash);
+            Ok((v, Vec::new()))
         }
         // 面の値（surface は番号か名前。省略で全部の面と、玉・群の面の範囲 units）
         "surface" => {
