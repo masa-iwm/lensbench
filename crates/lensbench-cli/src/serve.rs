@@ -1141,7 +1141,13 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
                 .map(|c| {
                     c.rows
                         .iter()
-                        .map(|r| json!({ "param": s.param_name(r.param), "values": r.values }))
+                        .map(|r| {
+                            json!({
+                                "param": s.param_name(r.param), "values": r.values, "picks": r.picks.iter()
+                                    .map(|p| json!({ "k": p.k, "from": p.from, "scale": p.scale, "offset": p.offset }))
+                                    .collect::<Vec<_>>(),
+                            })
+                        })
                         .collect()
                 })
                 .unwrap_or_default();

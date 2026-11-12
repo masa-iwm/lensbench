@@ -732,6 +732,31 @@ fn apply_one(t: &mut System, op: &Value, notes: &mut Vec<String>) -> Result<(), 
             let k = count("k")?;
             *t = t.config(k).map_err(e)?;
         }
+        "insert_config" => {
+            let at = count("at")?;
+            let pickup = op.get("pickup").and_then(Value::as_bool).unwrap_or(false);
+            let from = match op.get("from") {
+                Some(_) => count("from")?,
+                None if pickup => 1,
+                None => t.configs().map_or(1, |c| c.active),
+            };
+            t.insert_config(at, from, pickup).map_err(e)?;
+        }
+        "remove_config" => t.remove_config(count("k")?).map_err(e)?,
+        "set_config_pickup" => {
+            let p = t.param(&text("param")?).map_err(e)?;
+            let f = |k: &str, d: f64| -> Result<f64, String> {
+                op.get(k)
+                    .map_or(Ok(d), |x| num(x).ok_or(format!("{name} の {k} は数")))
+            };
+            let (scale, offset) = (f("scale", 1.0)?, f("offset", 0.0)?);
+            t.set_config_pickup(p, count("k")?, count("from")?, scale, offset)
+                .map_err(e)?;
+        }
+        "remove_config_pickup" => {
+            let p = t.param(&text("param")?).map_err(e)?;
+            t.remove_config_pickup(p, count("k")?).map_err(e)?;
+        }
         _ => return Err(format!("操作 {name} はない")),
     }
     Ok(())

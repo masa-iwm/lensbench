@@ -39,8 +39,58 @@ pub struct Configs {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ConfigRow {
     pub param: Param,
-    /// 構成ごとの値（長さは構成の数）
+    /// 構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値
     pub values: Vec<f64>,
+    /// 構成のピックアップ（OpticStudio の多重構成の pickup）。無ければ省く
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
+    pub picks: Vec<ConfigPick>,
+}
+
+/// 多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct ConfigPick {
+    pub k: usize,
+    pub from: usize,
+    #[cfg_attr(feature = "serde", serde(default = "one"))]
+    pub scale: f64,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub offset: f64,
+}
+
+#[cfg(feature = "serde")]
+fn one() -> f64 {
+    1.0
+}
+
+impl ConfigRow {
+    /// ピックアップの値を元の構成から求め直す（ピックアップの元がピックアップでも、並びの順によらず）
+    pub fn resolve_picks(&mut self) {
+        for _ in 0..=self.picks.len() {
+            let mut changed = false;
+            for p in &self.picks {
+                if let (Some(&v), true) = (self.values.get(p.from - 1), p.k <= self.values.len()) {
+                    let x = v * p.scale + p.offset;
+                    if self.values[p.k - 1] != x {
+                        self.values[p.k - 1] = x;
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    /// 構成 k のピックアップ
+    pub fn pick(&self, k: usize) -> Option<&ConfigPick> {
+        self.picks.iter().find(|p| p.k == k)
+    }
 }
 
 /// 面タイプの名前（.zmx の名前と、短い別名）
@@ -816,6 +866,7 @@ impl System {
         for r in c.rows.iter_mut() {
             let now = self.get_param(r.param)?;
             r.values.resize(n, now);
+            r.picks.retain(|p| p.k <= n && p.from <= n);
         }
         c.n = n;
         let back = c.active > n;
@@ -846,8 +897,20 @@ impl System {
             invalid!("{} は表に入れられない（物点・波長）", p.name());
         }
         let mut c = c.clone();
+        // ピックアップは残す（ピックアップの構成の値を変えたら、その構成のピックアップは外す）
+        let mut picks = Vec::new();
+        if let Some(old) = c.rows.iter().find(|r| r.param == p) {
+            picks = old.picks.clone();
+            picks.retain(|q| old.values.get(q.k - 1) == values.get(q.k - 1));
+        }
         c.rows.retain(|r| r.param != p);
-        c.rows.push(ConfigRow { param: p, values });
+        let mut row = ConfigRow {
+            param: p,
+            values,
+            picks,
+        };
+        row.resolve_picks();
+        c.rows.push(row);
         let mut s = self.clone();
         s.configs = Some(c);
         let k = s.configs.as_ref().map(|c| c.active).unwrap_or(1);
@@ -864,10 +927,157 @@ impl System {
         let k = c.active.saturating_sub(1);
         for r in &mut c.rows {
             if let (Ok(v), Some(x)) = (self.get_param(r.param), r.values.get_mut(k)) {
-                *x = v;
+                if *x != v {
+                    // 今の構成がピックアップなら、値を変えたのでピックアップを外す
+                    *x = v;
+                    r.picks.retain(|p| p.k != k + 1);
+                }
             }
+            // 今の構成を元にするピックアップの値も変わる（今の構成でない列なので系はそのまま）
+            r.resolve_picks();
         }
         self.configs = Some(c);
+    }
+
+    /// 構成を位置 at（1 始まり、1〜n+1）に挿入する。値は構成 from（挿入前の番号）の値。pickup なら各行の新しい構成を
+    /// 構成 from のピックアップにする（OpticStudio の Insert Configuration with Pickups）。ピックアップの番号は付け替える。
+    /// 今の構成は同じ構成を指したまま（番号はずれる）。表が無ければ構成 2 つの表を作る
+    pub fn insert_config(&mut self, at: usize, from: usize, pickup: bool) -> Result<()> {
+        let mut c = self.configs.clone().unwrap_or(Configs {
+            n: 1,
+            active: 1,
+            rows: Vec::new(),
+        });
+        if at == 0 || at > c.n + 1 {
+            invalid!("構成を挿入する位置 {at}（1〜{}）", c.n + 1);
+        }
+        if from == 0 || from > c.n {
+            invalid!("構成 {from}（1〜{}）", c.n);
+        }
+        let shift = |k: usize| if k >= at { k + 1 } else { k };
+        let src = shift(from);
+        for r in c.rows.iter_mut() {
+            let v = r.values[from - 1];
+            r.values.insert(at - 1, v);
+            for p in r.picks.iter_mut() {
+                p.k = shift(p.k);
+                p.from = shift(p.from);
+            }
+            if pickup {
+                r.picks.push(ConfigPick {
+                    k: at,
+                    from: src,
+                    scale: 1.0,
+                    offset: 0.0,
+                });
+            } else if let Some(q) = r.picks.iter().find(|p| p.k == src).copied() {
+                // 元がピックアップなら、新しい構成も同じ元のピックアップ
+                r.picks.push(ConfigPick { k: at, ..q });
+            }
+        }
+        c.n += 1;
+        c.active = shift(c.active);
+        self.configs = Some(c);
+        Ok(())
+    }
+
+    /// 構成 k（1 始まり）を消す。k を元にするピックアップは値を残して外し、番号を付け替える。今の構成を消したら
+    /// 次の構成（最後なら前）を系に入れる。構成が 1 つになったら表を消す（残った構成の値は系に入る）
+    pub fn remove_config(&mut self, k: usize) -> Result<()> {
+        let Some(mut c) = self.configs.clone() else {
+            invalid!("構成が 1 つ");
+        };
+        if k == 0 || k > c.n {
+            invalid!("構成 {k}（1〜{}）", c.n);
+        }
+        let shift = |j: usize| if j > k { j - 1 } else { j };
+        for r in c.rows.iter_mut() {
+            r.values.remove(k - 1);
+            r.picks.retain(|p| p.k != k && p.from != k);
+            for p in r.picks.iter_mut() {
+                p.k = shift(p.k);
+                p.from = shift(p.from);
+            }
+        }
+        let was = c.active;
+        c.n -= 1;
+        c.active = if was == k { k.min(c.n) } else { shift(was) };
+        let mut t = self.clone();
+        if c.n == 1 {
+            // 表の値の数を 1 つにはできないので、残った構成の値を系に入れて表を消す
+            let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[0])).collect();
+            t.configs = None;
+            *self = t.with_params(&ch)?;
+            return Ok(());
+        }
+        t.configs = Some(c.clone());
+        *self = if was == k { t.config(c.active)? } else { t };
+        Ok(())
+    }
+
+    /// 表の行 p の構成 k を、構成 from の値 × scale + offset のピックアップにする（同じ構成のピックアップは置き換える）
+    pub fn set_config_pickup(
+        &mut self,
+        p: Param,
+        k: usize,
+        from: usize,
+        scale: f64,
+        offset: f64,
+    ) -> Result<()> {
+        let Some(c) = &self.configs else {
+            invalid!("構成が 1 つ");
+        };
+        let n = c.n;
+        if k == 0 || k > n || from == 0 || from > n || k == from {
+            invalid!("構成のピックアップ {from} → {k}（1〜{n}、別の構成）");
+        }
+        if !scale.is_finite() || !offset.is_finite() {
+            invalid!("構成のピックアップの倍率・ずれ");
+        }
+        let mut c = c.clone();
+        let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
+            invalid!("表に {} の行は無い", p.name());
+        };
+        let mut picks = r.picks.clone();
+        picks.retain(|q| q.k != k);
+        picks.push(ConfigPick {
+            k,
+            from,
+            scale,
+            offset,
+        });
+        // 循環（k が元をたどって k に戻る）は不可
+        let mut at = from;
+        for _ in 0..=picks.len() {
+            match picks.iter().find(|q| q.k == at) {
+                Some(q) if q.from == k => invalid!("構成のピックアップが循環する（{k}）"),
+                Some(q) => at = q.from,
+                None => break,
+            }
+        }
+        r.picks = picks;
+        r.resolve_picks();
+        let active = c.active;
+        let mut s = self.clone();
+        s.configs = Some(c);
+        *self = if active == k { s.config(k)? } else { s };
+        Ok(())
+    }
+
+    /// 表の行 p の構成 k のピックアップを外す（値は今のまま）
+    pub fn remove_config_pickup(&mut self, p: Param, k: usize) -> Result<()> {
+        let Some(c) = &mut self.configs else {
+            invalid!("構成が 1 つ");
+        };
+        let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
+            invalid!("表に {} の行は無い", p.name());
+        };
+        let n0 = r.picks.len();
+        r.picks.retain(|q| q.k != k);
+        if r.picks.len() == n0 {
+            invalid!("{} の構成 {k} のピックアップは無い", p.name());
+        }
+        Ok(())
     }
 
     /// 表の行（パラメータ p）を消す。系の値は今のまま
@@ -918,6 +1128,16 @@ impl System {
                 );
             }
             self.check_param(r.param)?;
+            for p in &r.picks {
+                if p.k == 0 || p.k > c.n || p.from == 0 || p.from > c.n || p.k == p.from {
+                    invalid!(
+                        "多重構成の行 {} のピックアップ {} → {}",
+                        r.param.name(),
+                        p.from,
+                        p.k
+                    );
+                }
+            }
         }
         Ok(())
     }

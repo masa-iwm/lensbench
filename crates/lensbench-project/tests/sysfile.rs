@@ -108,6 +108,8 @@ fn edited_system_roundtrip() {
     let t0 = s.surfaces[k].t;
     s.set_config_row(Param::new(k, Kind::Thick), vec![t0, t0 + 1.0])
         .unwrap();
+    // 構成のピックアップも保存される
+    s.insert_config(3, 2, true).unwrap();
     s.define_unit("G", &[[2, 5]], [0.0, 0.0, 0.0]).unwrap();
     s.set_param(s.param("G.tx").unwrap(), 0.1).unwrap();
     let h1 = sysfile::system_hash(&s).unwrap();
