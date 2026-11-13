@@ -56,6 +56,20 @@ pub enum FieldNorm {
     Radial,
     Rect,
 }
+/// 定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum VigInterp {
+    /// OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。
+    /// OpticStudio と照合するとき
+    OpticStudio,
+    /// 連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は
+    /// 同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値
+    #[default]
+    Continuous,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -222,6 +236,146 @@ pub enum ObjSpec {
     Point([f64; 2]),
 }
 
+/// 三角形の頂点の番号
+type Tri = (usize, usize, usize);
+
+/// Delaunay の三角形分割（外接円の中に他の点がない、総当たり。視野は多くても数十）。同じ円に 4 点以上が
+/// 乗ると（格子の視野など）候補の三角形が重なるので、番号の順に重ならないものだけを取る（凸多角形を
+/// 重ならない三角形で埋め尽くす）
+/// `scale` は座標の大きさ。判定の許容差は大きさに対する相対（計算上は同じ円に乗る点を、丸め誤差の符号で
+/// 外接円の中と見て捨てると分割に穴があく）
+fn delaunay(pts: &[[f64; 2]], scale: f64) -> Vec<Tri> {
+    let tol_area = 1e-12 * scale * scale;
+    let tol_circle = 1e-9 * scale.powi(4);
+    let n = pts.len();
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    let mut tris: Vec<Tri> = Vec::new();
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                let (a, b, c) = (pts[i], pts[j], pts[k]);
+                let area = cross(a, b, c);
+                if area.abs() <= tol_area {
+                    continue;
+                }
+                let in_circle = |d: [f64; 2]| {
+                    let m = |p: [f64; 2]| {
+                        [
+                            p[0] - d[0],
+                            p[1] - d[1],
+                            (p[0] - d[0]).powi(2) + (p[1] - d[1]).powi(2),
+                        ]
+                    };
+                    let (u, v, w) = (m(a), m(b), m(c));
+                    let det = u[0] * (v[1] * w[2] - v[2] * w[1])
+                        - u[1] * (v[0] * w[2] - v[2] * w[0])
+                        + u[2] * (v[0] * w[1] - v[1] * w[0]);
+                    det * area.signum() > tol_circle
+                };
+                if !(0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
+                    continue;
+                }
+                let t = [a, b, c];
+                if tris
+                    .iter()
+                    .all(|&(p, q, r)| !tri_overlap(&t, &[pts[p], pts[q], pts[r]], tol_area))
+                {
+                    tris.push((i, j, k));
+                }
+            }
+        }
+    }
+    tris
+}
+
+/// 2 つの三角形の内部が重なるか（分離軸: どちらかの辺で、もう一方の 3 点がすべて外側か辺の上なら重ならない）
+fn tri_overlap(t: &[[f64; 2]; 3], u: &[[f64; 2]; 3], tol: f64) -> bool {
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    let separated = |t: &[[f64; 2]; 3], u: &[[f64; 2]; 3]| {
+        let sgn = cross(t[0], t[1], t[2]).signum();
+        (0..3).any(|e| {
+            let (a, b) = (t[e], t[(e + 1) % 3]);
+            u.iter().all(|&p| sgn * cross(a, b, p) <= tol)
+        })
+    };
+    !(separated(t, u) || separated(u, t))
+}
+
+/// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
+/// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
+fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
+    let n = pts.len();
+    let eps = 1e-12
+        * pts
+            .iter()
+            .map(|p| p[0].abs().max(p[1].abs()))
+            .fold(0.0, f64::max);
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    // 分割は視野が同じなら同じなので、スレッドごとに直前の結果を使い回す（走査で毎回作らない）
+    thread_local! {
+        static TRIS: std::cell::RefCell<(Vec<[f64; 2]>, Vec<Tri>)> =
+            const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+    }
+    let tris = TRIS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0.as_slice() != pts {
+            *c = (pts.to_vec(), delaunay(pts, eps / 1e-12));
+        }
+        c.1.clone()
+    });
+    for &(i, j, k) in &tris {
+        let (a, b, c) = (pts[i], pts[j], pts[k]);
+        let area = cross(a, b, c);
+        let (wa, wb, wc) = (
+            cross(q, b, c) / area,
+            cross(a, q, c) / area,
+            cross(a, b, q) / area,
+        );
+        let tol = -1e-12;
+        if wa >= tol && wb >= tol && wc >= tol {
+            return vec![(i, wa), (j, wb), (k, wc)];
+        }
+    }
+    // 外側（または三角形がない）: 三角形の辺（なければ全部の点の組）の中で最も近い線分の点
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+    for &(i, j, k) in &tris {
+        edges.extend([(i, j), (j, k), (i, k)]);
+    }
+    if edges.is_empty() {
+        for i in 0..n {
+            for j in i + 1..n {
+                edges.push((i, j));
+            }
+        }
+    }
+    let mut best: (f64, Vec<(usize, f64)>) = (f64::INFINITY, vec![(0, 1.0)]);
+    if n == 1 {
+        return best.1;
+    }
+    for (i, j) in edges {
+        let (a, b) = (pts[i], pts[j]);
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let l2 = d[0] * d[0] + d[1] * d[1];
+        let t = if l2 > 0.0 {
+            (((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / l2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let p = [a[0] + t * d[0], a[1] + t * d[1]];
+        let dist = (q[0] - p[0]).hypot(q[1] - p[1]);
+        if dist < best.0 - eps {
+            best = (dist, vec![(i, 1.0 - t), (j, t)]);
+        }
+    }
+    best.1
+}
+
 /// 平面の点の部分集合の最近傍を引く格子（エイミングの継続法の、解けた光線の探索）
 struct NearGrid {
     lo: [f64; 2],
@@ -319,8 +473,7 @@ impl NearGrid {
 /// 光線の始め方
 #[derive(Debug, Clone, Copy)]
 pub enum Launch<'a> {
-    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの。hxy が定義した視野でなく、係数のある視野が
-    /// あれば全光線を失敗にする。エイミングは系の設定どおり）。
+    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの（[`System::vig_factors`]）。エイミングは系の設定どおり）。
     /// signed なら、入射瞳が物体より前（ENPP + 物体距離 < 0）の有限物体系で瞳座標の符号を反転して与える
     /// （px = 1 が絞りの同じ側を通り、入射瞳が無限遠をまたいでも向きが連続。既定の false は OpticStudio と同じ）
     Pupil {
@@ -578,6 +731,9 @@ pub struct System {
     /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目）
     #[cfg_attr(feature = "serde", serde(default))]
     pub afocal_unit: AfocalUnit,
+    /// 定義した視野以外の点のケラレ係数の求め方（既定は連続、OpticStudio と照合するときは OpticStudio）
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub vig_interp: VigInterp,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
     /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）。変えたら [`System::changed`] を呼ぶ
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -778,6 +934,7 @@ impl System {
             ropd: self.ropd,
             afocal: self.afocal,
             afocal_unit: self.afocal_unit,
+            vig_interp: self.vig_interp,
             field_wave: self.field_wave,
             coating_file: self.coating_file.clone(),
             coat_tables: self.coat_tables.clone(),
@@ -864,6 +1021,7 @@ impl System {
             ropd: 2,
             afocal: false,
             afocal_unit: AfocalUnit::Milliradians,
+            vig_interp: VigInterp::Continuous,
             field_wave: None,
             coating_file: None,
             coat_tables: HashMap::new(),
@@ -1542,22 +1700,91 @@ impl System {
         (self.fields[i].x / nx, self.fields[i].y / ny)
     }
 
-    /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）
+    /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）。
+    ///
+    /// 既定（[`VigInterp::Continuous`]）は段差のない補間。[`VigInterp::OpticStudio`] なら OpticStudio 2026 R1.01 と
+    /// 同じ規則（公開 #226、25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
+    /// - 視野の物理座標 (X, Y) = 正規化視野 × 正規化の値（Radial は最大の半径、Rectangular は x・y それぞれの最大。
+    ///   最大が 0 の向きは 0）
+    /// - 全視野が x = 0 で y の符号がそろい、X² + Y² ≤ max|y|² なら、視野を |y| の順に並べ、r² = X² + Y² の区分線形で
+    ///   補間する（r ではなく r²。最も内側の視野より内は、その視野の値）
+    /// - それ以外（x ≠ 0 の視野がある、y の符号が混ざる、外側の点）は補間せず、物理座標の L1 距離
+    ///   |X − x_i| + |Y − y_i| が最小の視野の値（同じ距離なら番号の小さい視野）
     pub fn vig_factors(&self, hx: f64, hy: f64) -> Result<[f64; 5]> {
+        let vals = |f: &Field| [f.vdx, f.vdy, f.vcx, f.vcy, f.van];
         let (fx, fy) = self.field_norm_values();
         for f in &self.fields {
             if (f.x / fx - hx).abs() < 1e-12 && (f.y / fy - hy).abs() < 1e-12 {
-                return Ok([f.vdx, f.vdy, f.vcx, f.vcy, f.van]);
+                return Ok(vals(f));
             }
         }
-        if self.fields.iter().any(|f| {
-            [f.vdx, f.vdy, f.vcx, f.vcy, f.van]
-                .iter()
-                .any(|&v| v != 0.0)
-        }) {
-            notimpl!("定義済み視野以外の点でのケラレ係数");
+        if self
+            .fields
+            .iter()
+            .all(|f| vals(f).iter().all(|&v| v == 0.0))
+        {
+            return Ok([0.0; 5]);
         }
-        Ok([0.0; 5])
+        if !(hx.is_finite() && hy.is_finite()) {
+            invalid!("視野 ({hx}, {hy}) のケラレ係数");
+        }
+        // 物理座標（正規化の値の 0 は割り算のための 1 にせず 0 のまま）
+        let max_x = self.fields.iter().map(|f| f.x.abs()).fold(0.0, f64::max);
+        let max_y = self.fields.iter().map(|f| f.y.abs()).fold(0.0, f64::max);
+        let (sx, sy) = match self.field_norm {
+            FieldNorm::Rect => (max_x, max_y),
+            FieldNorm::Radial => {
+                let r = self
+                    .fields
+                    .iter()
+                    .map(|f| f.x.hypot(f.y))
+                    .fold(0.0, f64::max);
+                (r, r)
+            }
+        };
+        let (x, y) = (hx * sx, hy * sy);
+        let r2 = x * x + y * y;
+        let y_only = self.fields.iter().all(|f| f.x == 0.0)
+            && (self.fields.iter().all(|f| f.y >= 0.0) || self.fields.iter().all(|f| f.y <= 0.0));
+        let cont = self.vig_interp == VigInterp::Continuous;
+        if y_only && (cont || r2 <= max_y * max_y) {
+            let mut ord: Vec<&Field> = self.fields.iter().collect();
+            ord.sort_by(|a, b| a.y.abs().total_cmp(&b.y.abs()));
+            let first = ord[0];
+            if r2 <= first.y * first.y {
+                return Ok(vals(first));
+            }
+            for w in ord.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                let (a2, b2) = (a.y * a.y, b.y * b.y);
+                if r2 <= b2 && b2 > a2 {
+                    let t = (r2 - a2) / (b2 - a2);
+                    let (va, vb) = (vals(a), vals(b));
+                    return Ok(std::array::from_fn(|k| va[k] + (vb[k] - va[k]) * t));
+                }
+            }
+            return Ok(vals(ord[ord.len() - 1]));
+        }
+        if cont {
+            let pts: Vec<[f64; 2]> = self.fields.iter().map(|f| [f.x, f.y]).collect();
+            let w = interp_weights(&pts, [x, y]);
+            let mut out = [0.0; 5];
+            for (i, wi) in w {
+                let v = vals(&self.fields[i]);
+                for k in 0..5 {
+                    out[k] += wi * v[k];
+                }
+            }
+            return Ok(out);
+        }
+        let mut best = (f64::INFINITY, 0usize);
+        for (i, f) in self.fields.iter().enumerate() {
+            let d = (x - f.x).abs() + (y - f.y).abs();
+            if d < best.0 {
+                best = (d, i);
+            }
+        }
+        Ok(vals(&self.fields[best.1]))
     }
 
     /// 物体の指定（無限遠: 方向、有限: 物体面の点）
@@ -1855,7 +2082,7 @@ impl System {
                         self.vig_factors(hx, hy)
                     }
                 };
-                // ケラレ係数が決められない点（定義した視野以外）は、係数 0 で黙って追わず全光線を失敗にする
+                // ケラレ係数が決められない点（視野が有限でない）は、係数 0 で黙って追わず全光線を失敗にする
                 // （try_trace は同じ条件で誤りを返す）
                 let Ok([vdx, vdy, vcx, vcy, van]) = vig else {
                     return (
