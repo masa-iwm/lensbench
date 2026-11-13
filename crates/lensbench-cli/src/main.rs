@@ -355,9 +355,9 @@ enum Cmd {
         /// Huygens PSF（像面の上。傾いた像面・収差の大きい系向け、FFT より遅い）
         #[arg(long)]
         huygens: bool,
-        /// 瞳の格子の一辺
-        #[arg(long, default_value_t = 64)]
-        pupil: usize,
+        /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
+        #[arg(long)]
+        pupil: Option<usize>,
         /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）
         #[arg(long, default_value_t = 128)]
         image: usize,
@@ -402,9 +402,9 @@ enum Cmd {
         /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
         #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
         freq_steps: usize,
-        /// 瞳の格子の一辺
-        #[arg(long, default_value_t = 64)]
-        pupil: usize,
+        /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
+        #[arg(long)]
+        pupil: Option<usize>,
         /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）。PSF を覆いきれないと低周波の MTF が下がる
         #[arg(long, default_value_t = 128)]
         image: usize,
@@ -2238,20 +2238,16 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             if let Some(path) = &out {
                 zmx_write::save(path, &r.systems[0]).map_err(e)?;
             }
-            let stop = match r.stop {
-                optim::Stop::Converged => "converged",
-                optim::Stop::SmallStep => "small_step",
-                optim::Stop::NoProgress => "no_progress",
-                optim::Stop::MaxIter => "max_iter",
-                optim::Stop::Cancelled => "cancelled",
-                optim::Stop::NoVars => "no_vars",
-            };
+            let stop = r.stop.as_str();
             let vs: Vec<Value> = p
                 .vars
                 .iter()
                 .enumerate()
-                .map(|(q, v)| json!({ "name": s.param_name(v.param), "x0": r.x0[q], "x": r.x[q] }))
+                .map(|(q, v)| json!({ "name": s.param_name(v.param), "x0": r.x0[q], "x": r.x[q], "inactive": r.inactive.contains(&q) }))
                 .collect();
+            if let Some(n) = &r.note {
+                eprintln!("注意: {n}");
+            }
             // 足した項の値（最適化の前と後）
             let tv0 = p.term_values(&r.x0).map_err(e)?;
             let tv = p.term_values(&r.x).map_err(e)?;
@@ -2264,7 +2260,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 c.json,
                 json!({
                     "merit": merit, "merit0": r.merit0, "merit_final": r.merit, "iterations": r.iterations,
-                    "evals": r.evals, "stop": stop, "vars": vs, "terms": ts, "history": r.history,
+                    "evals": r.evals, "stop": stop, "note": r.note, "vars": vs, "terms": ts, "history": r.history,
                 }),
             )
         }
@@ -2492,6 +2488,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 delta,
             };
             let (mut v, mut axes) = (Vec::new(), Vec::new());
+            let (mut warn, mut samp) = (Vec::<String>::new(), Vec::new());
             for i in fields(&s, &sel)? {
                 let p = if huygens {
                     huygens::huygens_psf(&s, FieldSel::Index(i), w, ho)
@@ -2506,21 +2503,29 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     }
                 }
                 eprintln!(
-                    "視野 {}: ピーク {:.6e}、中心 ({:.6e}, {:.6e})、間隔 ({:.6e}, {:.6e})",
+                    "視野 {}: ピーク {:.6e}、中心 ({:.6e}, {:.6e})、間隔 ({:.6e}, {:.6e})、瞳の格子 {}、位相差の最大 {:.3} rad、格子の中の光量 {:.4}",
                     i + 1,
                     p.peak,
                     p.center.0,
                     p.center.1,
                     p.delta.0,
-                    p.delta.1
+                    p.delta.1,
+                    p.pupil,
+                    p.phase_step,
+                    p.enclosed
                 );
+                for m in &p.warnings {
+                    eprintln!("注意: 視野 {}: {m}", i + 1);
+                    warn.push(format!("視野 {}: {m}", i + 1));
+                }
+                samp.push(json!({ "field": i + 1, "pupil": p.pupil, "phase_step": p.phase_step, "enclosed": p.enclosed }));
             }
             // x・y は主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）。
             // Huygens では像面の局所座標（e1・e2 = x̂・ŷ）
             let method = if huygens { "huygens" } else { "fft" };
             (
                 c.json,
-                json!({ "unit": spot_unit(&s), "method": method, "psf": v, "axes": axes }),
+                json!({ "unit": spot_unit(&s), "method": method, "psf": v, "axes": axes, "sampling": samp, "warnings": warn }),
             )
         }
         Cmd::GeoMtf {

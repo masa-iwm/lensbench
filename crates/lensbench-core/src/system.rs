@@ -695,6 +695,9 @@ impl System {
     }
 }
 
+/// 視野が軸上だけの系で、射出瞳を求める補助の主光線に使う最大視野の代わりの値（視野の単位）
+const ON_AXIS_PUPIL_FIELD: f64 = 10.0;
+
 impl System {
     /// 分散式の有効範囲（AGF の LD 行）の外の波長で屈折率を求めている材料の警告（面の番号・材料・波長・範囲）。
     /// lensbench は式をそのまま延ばして計算する（OpticStudio は範囲外ではエラーにして屈折率を 1.0 にする）
@@ -798,6 +801,19 @@ impl System {
         let st = self.stop();
         if st == 0 || st >= sf.len() - 1 {
             invalid!("絞り面 {st}");
+        }
+        // 非球面の項を使わない面タイプに項が残っていれば誤り（交点・法線・近軸で解釈が食い違う）
+        for (j, d) in sf.iter().enumerate() {
+            if matches!(
+                d.typ,
+                SurfType::Standard | SurfType::Gradium | SurfType::Gradient9
+            ) && d.has_asph()
+            {
+                invalid!(
+                    "面 {j}（{:?}）に非球面の係数がある（偶数次非球面などの型にするか、係数を消す）",
+                    d.typ
+                );
+            }
         }
         // GRIN の媒質の次の面（座標ブレークは通して、その次）は交点を求められる面タイプに限る
         for (j, d) in sf.iter().enumerate() {
@@ -924,6 +940,10 @@ impl System {
         for j in 1..=upto {
             let d = &sf[j];
             if d.ignore {
+                // 無視する面は位置も厚さも持たない。直前の高さ・傾きを写して、全番号で「面 j の後」が定義されるようにする
+                // （像面の直前を無視すると u[img - 1] が NaN になり、近軸量・射出瞳が壊れていた）
+                y[j] = yy;
+                u[j] = uu;
                 continue;
             }
             y[j] = yy;
@@ -1253,7 +1273,30 @@ impl System {
                 } else {
                     let mut z = [0.0; 2];
                     for (i, h) in [2e-4, 1e-4].iter().enumerate() {
-                        let r1 = self.trace_novig(0.0, *h, &[0.0], &[0.0]);
+                        let r1 = if self.on_axis_only() {
+                            // 視野が軸上だけの系は正規化視野が軸上に潰れる（object_spec）ので、最大視野 10（度・mm）の
+                            // 系と同じ小さい値（視野の単位で 2e-3・1e-3）の主光線にする。以前は 2 本とも軸上の主光線に
+                            // なり、交点が 0/0 で NaN、OPD の基準が黙って平面に落ちていた。C0 で最大視野を 0.5〜50 に
+                            // した外挿は 47.4273〜47.4292（小さいほど丸めで揺れ、5 以上で 47.42734〜47.42754）
+                            match self.object_spec_abs(0.0, *h * ON_AXIS_PUPIL_FIELD) {
+                                Ok(spec) => self.trace_spec(
+                                    spec,
+                                    &[0.0],
+                                    &[0.0],
+                                    self.primary,
+                                    Some([0.0; 5]),
+                                    None,
+                                    false,
+                                    None,
+                                ),
+                                Err(_) => {
+                                    z[i] = f64::NAN;
+                                    continue;
+                                }
+                            }
+                        } else {
+                            self.trace_novig(0.0, *h, &[0.0], &[0.0])
+                        };
                         z[i] = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
                     }
                     e = (4.0 * z[1] - z[0]) / 3.0;
@@ -1388,13 +1431,21 @@ impl System {
     pub fn object_spec(&self, hx: f64, hy: f64) -> Result<ObjSpec> {
         // 視野がすべて 0（軸上だけ）の系では、正規化視野は軸上のまま（OpticStudio 2026 R1 と同じ。正規化の値の
         // 1 は割り算のためだけ）
-        let all0 = self.fields.iter().all(|f| f.x == 0.0 && f.y == 0.0);
-        let (nx, ny) = if all0 {
+        let (nx, ny) = if self.on_axis_only() {
             (0.0, 0.0)
         } else {
             self.field_norm_values()
         };
-        let (x, y) = (hx * nx, hy * ny);
+        self.object_spec_abs(hx * nx, hy * ny)
+    }
+
+    /// 視野がすべて 0（軸上の 1 点だけ）
+    fn on_axis_only(&self) -> bool {
+        self.fields.iter().all(|f| f.x == 0.0 && f.y == 0.0)
+    }
+
+    /// 視野の値 (x, y)（視野の種類の単位、正規化しない）の物体の指定
+    fn object_spec_abs(&self, x: f64, y: f64) -> Result<ObjSpec> {
         let par = self.paraxial();
         let (tx, ty) = match self.field_type {
             FieldType::RealH => {

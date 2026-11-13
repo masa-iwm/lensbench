@@ -92,14 +92,7 @@ fn is_json(p: &std::path::Path) -> bool {
 }
 
 fn stop_name(s: Stop) -> &'static str {
-    match s {
-        Stop::Converged => "converged",
-        Stop::SmallStep => "small_step",
-        Stop::NoProgress => "no_progress",
-        Stop::MaxIter => "max_iter",
-        Stop::Cancelled => "cancelled",
-        Stop::NoVars => "no_vars",
-    }
+    s.as_str()
 }
 
 fn num(x: f64) -> Value {

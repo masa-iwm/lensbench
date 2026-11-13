@@ -431,7 +431,8 @@ impl Term {
 }
 
 /// 差分の +h の系と -h の系（前進差分では -h はなし）
-type FdSystems = (System, Option<System>);
+/// 差分の +h・−h の系（境界の外に出る・作れない側は None）
+type FdSystems = (Option<System>, Option<System>);
 
 /// ヤコビアンの求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -923,34 +924,48 @@ impl Problem {
                         1.0
                     };
                 let slot = &mut cache[t.config][noisy as usize];
+                let (lo, hi) = (self.vars[q].lo, self.vars[q].hi);
                 if slot.is_none() {
-                    let mut xp = x.to_vec();
-                    xp[q] += h;
-                    // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
-                    let sm = if forward && !noisy {
-                        None
-                    } else {
-                        let mut xm = x.to_vec();
-                        xm[q] -= h;
-                        Some(self.system(t.config, &xm)?)
+                    // 境界の外へは出さない（厚さの下限 0 で x − h が負になるなど）。出る側・系が作れない側は片側差分に
+                    let up_ok = x[q] + h <= hi;
+                    let dn_ok = x[q] - h >= lo;
+                    let mk = |d: f64| {
+                        let mut xs = x.to_vec();
+                        xs[q] += d;
+                        self.system(t.config, &xs)
                     };
-                    *slot = Some((self.system(t.config, &xp)?, sm));
+                    let sp = if up_ok { mk(h).ok() } else { None };
+                    // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
+                    let want_m = !(forward && !noisy && sp.is_some());
+                    let sm = if want_m && dn_ok { mk(-h).ok() } else { None };
+                    if sp.is_none() && sm.is_none() {
+                        // どちらの側も作れない: 元の誤りを返す
+                        mk(if up_ok { h } else { -h })?;
+                        crate::invalid!("差分の系を作れない（変数 {}）", q + 1);
+                    }
+                    *slot = Some((sp, sm));
                 }
                 let (sp, sm) = slot.as_ref().unwrap();
-                let rp = eval_term(sp, &t.kind, None)?.0;
-                let d: Vec<f64> = match sm {
-                    // 前進差分: 元の系の残差（parts の r、重みを掛ける前）との差
-                    None => rp
+                let rp = match sp {
+                    Some(sp) => eval_term(sp, &t.kind, None).map(|v| v.0),
+                    None => Err(crate::Error::Invalid(String::new())),
+                };
+                let rm = match sm {
+                    Some(sm) => eval_term(sm, &t.kind, None).map(|v| v.0),
+                    None => Err(crate::Error::Invalid(String::new())),
+                };
+                let r0 = &parts[ti].r;
+                let d: Vec<f64> = match (rp, rm) {
+                    (Ok(rp), Ok(rm)) => rp
                         .iter()
-                        .zip(&parts[ti].r)
-                        .map(|(a, b)| (a - b) / h)
+                        .zip(&rm)
+                        .map(|(a, b)| (a - b) / (2.0 * h))
                         .collect(),
-                    Some(sm) => {
-                        let rm = eval_term(sm, &t.kind, None)?.0;
-                        rp.iter()
-                            .zip(&rm)
-                            .map(|(a, b)| (a - b) / (2.0 * h))
-                            .collect()
+                    // 片側だけ: 元の系の残差（parts の r、重みを掛ける前）との差
+                    (Ok(rp), Err(_)) => rp.iter().zip(r0).map(|(a, b)| (a - b) / h).collect(),
+                    (Err(_), Ok(rm)) => r0.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
+                    (Err(e), Err(e2)) => {
+                        return Err(if sp.is_some() { e } else { e2 });
                     }
                 };
                 out.push((ti, d));
@@ -1926,6 +1941,24 @@ pub enum Stop {
     Cancelled,
     /// 変数がない
     NoVars,
+    /// 途中でヤコビアンが求まらなかった（差分の系が追跡できないなど。理由は [`DlsResult::note`]）。それまでの
+    /// 最良の x・系を返す
+    JacobianFailed,
+}
+
+impl Stop {
+    /// 出力用の名前
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Stop::Converged => "converged",
+            Stop::SmallStep => "small_step",
+            Stop::NoProgress => "no_progress",
+            Stop::MaxIter => "max_iter",
+            Stop::Cancelled => "cancelled",
+            Stop::NoVars => "no_vars",
+            Stop::JacobianFailed => "jacobian_failed",
+        }
+    }
 }
 
 /// 反復ごとの進み具合
@@ -1951,8 +1984,57 @@ pub struct DlsResult {
     pub iterations: usize,
     pub evals: usize,
     pub stop: Stop,
+    /// 止まった理由の補足（[`Stop::JacobianFailed`] の誤りの文など）
+    pub note: Option<String>,
+    /// 最後の反復で評価関数に効かないとみなして動かさなかった変数の番号（0 始まり。差分の雑音しかない列）
+    pub inactive: Vec<usize>,
     /// 最適化した系（構成ごと）
     pub systems: Vec<System>,
+}
+
+/// 評価関数に効かない変数の判定: 目安の大きさだけ動かしたときの残差の変化 ‖J_q‖·目安 が残差の EFFECT_TOL 倍に
+/// 満たない変数は動かさない
+const EFFECT_TOL: f64 = 1e-9;
+
+/// この比（[`EFFECT_TOL`] と同じ量）より小さい列は、差分の丸めの雑音だけの列かを [`fd_noise`] で確かめる。
+/// 差分の刻みは目安の 1e-6 倍で、追跡の丸めによる雑音の列はこの比で 3e-8〜5e-6（A0 の空気の中の絞り面の曲率・
+/// 円錐係数で実測、波面の評価関数）。比だけで切ると、目安の大きさが合わない小さいレンズの高次の非球面係数など
+/// 本当に効く弱い変数まで外れるので、比は疑いの目安にだけ使う
+const SUSPECT_TOL: f64 = 1e-3;
+
+/// 変数 q の列 J_q が差分の雑音だけか: 刻みを 1000 倍にした中心差分の列と比べ、1/10 未満なら雑音（線形に効く
+/// 変数なら刻みによらず同じ列になり、雑音なら刻みに反比例して小さくなる）。以前はこの雑音の列が自由な変数になり、
+/// 減衰が効かずに大きく動いて（A0 の絞り面が R = −4.9 mm など）系に書かれた
+fn fd_noise(p: &Problem, x: &[f64], r: &[f64], j: &[f64], q: usize, scale: f64) -> bool {
+    let nv = x.len();
+    let h = 1e3 * p.fd_rel * scale;
+    let v = &p.vars[q];
+    let at = |d: f64| -> Option<Vec<f64>> {
+        let xv = x[q] + d;
+        if xv < v.lo || xv > v.hi {
+            return None;
+        }
+        let mut xs = x.to_vec();
+        xs[q] = xv;
+        p.residuals(&xs).ok().filter(|rr| rr.len() == r.len())
+    };
+    let big: Vec<f64> = match (at(h), at(-h)) {
+        (Some(rp), Some(rm)) => rp
+            .iter()
+            .zip(&rm)
+            .map(|(a, b)| (a - b) / (2.0 * h))
+            .collect(),
+        (Some(rp), None) => rp.iter().zip(r).map(|(a, b)| (a - b) / h).collect(),
+        (None, Some(rm)) => r.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
+        // 確かめられなければ今の列のまま
+        (None, None) => return false,
+    };
+    let n_small: f64 = (0..r.len())
+        .map(|i| j[i * nv + q].powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let n_big: f64 = big.iter().map(|v| v * v).sum::<f64>().sqrt();
+    n_big < 0.1 * n_small
 }
 
 /// 減衰最小二乗で最適化する
@@ -1987,6 +2069,8 @@ pub fn dls_with(
             iterations: 0,
             evals: 1,
             stop: Stop::NoVars,
+            note: None,
+            inactive: Vec::new(),
             systems: p.final_systems(&x)?,
         });
     }
@@ -1997,6 +2081,8 @@ pub fn dls_with(
     let mut mu = o.damping;
     let mut nu = 2.0;
     let mut stop = Stop::MaxIter;
+    let mut note = None;
+    let mut inactive = Vec::new();
     let mut iterations = 0;
     let scale: Vec<f64> = p
         .vars
@@ -2027,11 +2113,25 @@ pub fn dls_with(
         // 境界にあって外へ向かう変数と、評価関数にほとんど効かない変数（目安の大きさだけ動かしても残差の変化が
         // 残差の 1e-9 未満。差分の丸め誤差だけの列で大きく動かさないため）は動かさない
         let rn2 = f.sqrt();
+        inactive = (0..nv)
+            .filter(|&q| {
+                let ratio = a[q * nv + q].sqrt() * scale[q] / rn2.max(f64::MIN_POSITIVE);
+                !(ratio > EFFECT_TOL)
+                    || (ratio < SUSPECT_TOL && fd_noise(p, &x, &r, &j, q, scale[q]))
+            })
+            .collect();
+        evals += 2
+            * (0..nv)
+                .filter(|&q| {
+                    let ratio = a[q * nv + q].sqrt() * scale[q] / rn2.max(f64::MIN_POSITIVE);
+                    ratio > EFFECT_TOL && ratio < SUSPECT_TOL
+                })
+                .count();
+        let effective = |q: usize| !inactive.contains(&q);
         let free: Vec<usize> = (0..nv)
             .filter(|&q| {
                 let v = &p.vars[q];
-                !((x[q] <= v.lo && g[q] > 0.0) || (x[q] >= v.hi && g[q] < 0.0))
-                    && a[q * nv + q].sqrt() * scale[q] > 1e-9 * rn2
+                !((x[q] <= v.lo && g[q] > 0.0) || (x[q] >= v.hi && g[q] < 0.0)) && effective(q)
             })
             .collect();
         if free.is_empty() {
@@ -2120,7 +2220,15 @@ pub fn dls_with(
             break;
         }
         if it + 1 < o.max_iter {
-            (r, j) = p.jacobian(&x)?;
+            // 途中のヤコビアンの失敗は、それまでの改善を捨てずに止める
+            match p.jacobian(&x) {
+                Ok(v) => (r, j) = v,
+                Err(e) => {
+                    stop = Stop::JacobianFailed;
+                    note = Some(e.to_string());
+                    break;
+                }
+            }
         }
     }
     Ok(DlsResult {
@@ -2131,6 +2239,8 @@ pub fn dls_with(
         iterations,
         evals,
         stop,
+        note,
+        inactive,
         systems: p.final_systems(&x)?,
         x,
     })

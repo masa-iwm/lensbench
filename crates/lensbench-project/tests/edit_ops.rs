@@ -135,11 +135,12 @@ fn surface_data_roundtrip() {
     let mat = d["mat"].as_str().unwrap().to_string();
     edit_ops::apply(
         &mut s,
-        &json!([{"op": "set_surface_data", "surface": 2, "data": {"k": -0.5, "asph": [0.0, 1e-6], "semi": 9.5}},
+        &json!([{"op": "set_surface_data", "surface": 2, "data": {"typ": "EvenAsph", "k": -0.5, "asph": [0.0, 1e-6], "semi": 9.5}},
                 {"op": "add_solve", "surface": 2, "kind": "marginal_height"}]),
     )
     .unwrap();
     let d2 = &s.surfaces[2];
+    assert_eq!(d2.typ, lensbench_core::surface::SurfType::EvenAsph);
     assert_eq!((d2.k, d2.semi), (-0.5, 9.5));
     assert_eq!(d2.asph, vec![0.0, 1e-6]);
     assert_eq!(d2.mat, mat);
