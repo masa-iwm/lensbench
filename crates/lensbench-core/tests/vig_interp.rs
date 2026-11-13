@@ -301,3 +301,76 @@ fn continuous_on_rings() {
         }
     }
 }
+
+/// 視野の大きさによらない: 同じ並びを 1e-4 倍に縮めても、正規化視野での値は同じ
+#[test]
+fn continuous_is_scale_invariant() {
+    use std::f64::consts::PI;
+    // 一般の位置の 15 点（決まった擬似乱数）と、輪 12 点＋内側 6 点
+    let mut seed = 12345u64;
+    let mut rnd = || {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 11) as f64 / (1u64 << 53) as f64 * 20.0 - 10.0
+    };
+    let general: Vec<(f64, f64)> = (0..15).map(|_| (rnd(), rnd())).collect();
+    let mut rings: Vec<(f64, f64)> = (0..12)
+        .map(|i| {
+            let a = 2.0 * PI * i as f64 / 12.0;
+            (10.0 * a.cos(), 10.0 * a.sin())
+        })
+        .collect();
+    rings.extend((0..6).map(|i| {
+        let a = 2.0 * PI * i as f64 / 6.0 + 0.3;
+        (5.0 * a.cos(), 5.0 * a.sin())
+    }));
+    for pts in [general, rings] {
+        let val = |i: usize| {
+            let t = i as f64;
+            [
+                0.03 * (t % 5.0),
+                0.02 * (t % 7.0),
+                0.01 * (t % 3.0),
+                0.04 * (t % 4.0),
+                t - 7.0,
+            ]
+        };
+        let build = |k: f64| {
+            let fields: Vec<_> = pts
+                .iter()
+                .enumerate()
+                .map(|(i, &(x, y))| (k * x, k * y, val(i)))
+                .collect();
+            let mut s = with_fields(&fields, FieldNorm::Radial);
+            s.vig_interp = VigInterp::Continuous;
+            s.changed().unwrap();
+            s
+        };
+        let n = 60;
+        let grid: Vec<(f64, f64)> = (0..=n)
+            .flat_map(|i| (0..=n).map(move |j| (i, j)))
+            .map(|(i, j)| {
+                (
+                    -1.2 + 2.4 * i as f64 / n as f64,
+                    -1.2 + 2.4 * j as f64 / n as f64,
+                )
+            })
+            .collect();
+        // 系ごとにまとめて求める（分割の使い回しが効くように）
+        let all = |s: &System| -> Vec<[f64; 5]> {
+            grid.iter()
+                .map(|&(hx, hy)| s.vig_factors(hx, hy).unwrap())
+                .collect()
+        };
+        let (va, vb) = (all(&build(1.0)), all(&build(1e-4)));
+        for ((&(hx, hy), fa), fb) in grid.iter().zip(&va).zip(&vb) {
+            let e = fa
+                .iter()
+                .zip(fb)
+                .map(|(x, y)| (x - y).abs())
+                .fold(0.0, f64::max);
+            assert!(e < 1e-9, "({hx}, {hy}): {fa:?} {fb:?}");
+        }
+    }
+}

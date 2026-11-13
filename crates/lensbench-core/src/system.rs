@@ -313,7 +313,7 @@ fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
         * pts
             .iter()
             .map(|p| p[0].abs().max(p[1].abs()))
-            .fold(1.0, f64::max);
+            .fold(0.0, f64::max);
     let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     };
