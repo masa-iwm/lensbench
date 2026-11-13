@@ -266,6 +266,15 @@ impl SplitterSpec {
         Ok(())
     }
 
+    /// 反射した軸の座標（C・D の口の面の向き）: 鏡の折り曲げ（傾き R の座標ブレークの後に、同じ角で回す順を逆にした
+    /// 座標ブレーク）と同じ R·Ry(ty)·Rx(tx)。z は −dC。1 軸の傾きでは R·R と同じ
+    fn fold(&self) -> M3 {
+        mm(
+            &self.tilt(),
+            &mm(&rot(1, self.angle[1]), &rot(0, self.angle[0])),
+        )
+    }
+
     /// 分ける面の法線（BS の座標）と、A から入る軸の反射の向き dC
     fn dirs(&self) -> (V3, V3) {
         let n = col(&self.tilt(), 2);
@@ -275,7 +284,7 @@ impl SplitterSpec {
 
     fn faces(&self) -> Vec<Face> {
         let r = self.tilt();
-        let r2 = mm(&r, &r);
+        let r2 = self.fold();
         let (n, dc) = self.dirs();
         match self.form {
             SplitForm::Cube => {
@@ -417,8 +426,7 @@ impl SplitterSpec {
 
     /// 口 p の軸（原点、z が外向きの回転）
     fn port(&self, p: usize) -> (V3, M3) {
-        let r = self.tilt();
-        let r2 = mm(&r, &r);
+        let r2 = self.fold();
         let (n, dc) = self.dirs();
         let (oc, od) = match self.form {
             SplitForm::Cube => {
