@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
       - run: python3 scripts/check_public.py --history
@@ -80,7 +80,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # ツールチェーンは rust-toolchain.toml の版（Windows のリンカ rust-lld は .cargo/config.toml）
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
@@ -101,7 +101,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       - run: |
@@ -109,7 +109,7 @@ jobs:
           mkdir -p target/ci
           cp target/release/lensbench-gui.exe target/ci/
         shell: bash
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: lensbench-gui-windows
           path: target/ci/lensbench-gui.exe
@@ -124,20 +124,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: mdbook@0.4.52
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.13"
       - run: python -m pip install numpy matplotlib
       # apt で入れる包みの deb を保存して、Ubuntu のミラーが引けないときはそこから入れる（apt_install.sh）。
       # 像の版ごとに鍵を分ける（像の更新で版が合わなくなったら取りに行き、新しい鍵で保存し直す）
       - run: echo "APT_DEB_KEY=apt-debs-gui-${{ runner.arch }}-$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/apt-debs
           key: ${{ env.APT_DEB_KEY }}
@@ -145,12 +145,12 @@ jobs:
       - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
         timeout-minutes: 20
       - run: scripts/build_docs.sh target/book
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: site-book
           path: target/book
       - if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: gui-tour
           path: target/docs-gui-tour
@@ -163,9 +163,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: rustup toolchain install && rustc --version
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.13"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
@@ -181,7 +181,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # スレッドありの版（mt/）は nightly の build-std で作る（版は scripts/build_web.sh の NIGHTLY）。
       # 1 スレッドの版と検査は rust-toolchain.toml の版
       - run: |
@@ -207,12 +207,12 @@ jobs:
       - run: cargo clippy --locked -p lensbench-core --target wasm32-wasip1 --all-targets -- -D warnings
         env:
           RUSTFLAGS: -C target-feature=+simd128
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.12"
       - run: python -m pip install fonttools
       - run: REQUIRE_WASM_OPT=1 scripts/build_web.sh target/web
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6.5.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: "22"
       # wasm32-wasip1 の試験は wasmtime で回す（Node 22 の WASI は .wasm によって SIGSEGV で落ち続けることがあり、
@@ -237,7 +237,7 @@ jobs:
       - run: HEADERS=0 EXPECT_MT=1 node scripts/web_smoke.mjs target/web web-smoke-coi.png
       - run: ST=1 node scripts/web_smoke.mjs target/web web-smoke-st.png
       - if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: lensbench-web
           path: |
@@ -261,9 +261,9 @@ jobs:
       # PR は ci プロファイル（LTO なし）、配る wheel を作る main への push は release（#216 BLD-16）
       P: ${{ github.event_name == 'push' && 'release' || 'ci' }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: rustup toolchain install && rustc --version
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.12"
       # crates/lensbench-py はワークスペースのメンバー（fmt・clippy は test ジョブで一緒に見る）
@@ -284,7 +284,7 @@ jobs:
       # serve の Python クライアントと解析ループの例。例は 1 回の往復の時間を出す
       - run: python -m pytest -q clients/python/tests
       - run: python examples/loop/serve_loop.py
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: wheel-${{ matrix.os }}
           path: dist/*.whl
