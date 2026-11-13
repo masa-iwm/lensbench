@@ -3067,6 +3067,11 @@
           },
           "type": "array"
         },
+        "vig_interp": {
+          "$ref": "#/$defs/VigInterp",
+          "default": "Continuous",
+          "description": "定義した視野以外の点のケラレ係数の求め方（既定は連続、OpticStudio と照合するときは OpticStudio）"
+        },
         "wavelengths": {
           "items": {
             "anyOf": [
@@ -3354,6 +3359,21 @@
         }
       ],
       "description": "設定の値（系ファイルの JSON では数・文字列・数の並びをそのまま書く）"
+    },
+    "VigInterp": {
+      "description": "定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）",
+      "oneOf": [
+        {
+          "const": "OpticStudio",
+          "description": "OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。\nOpticStudio と照合するとき",
+          "type": "string"
+        },
+        {
+          "const": "Continuous",
+          "description": "連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は\n同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値",
+          "type": "string"
+        }
+      ]
     },
     "ZernSag": {
       "description": "Zernike の矢高の項\n\nserde では内部の `groups`・`mmax` を書き出さず、読み直したら `coef` から作り直す。\n項の数が [`ZernSag::max_terms`] を超えるものは読み直しでエラーにする",

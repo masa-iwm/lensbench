@@ -1,7 +1,8 @@
-//! 定義した視野以外の点のケラレ係数（公開 #226）。OpticStudio 2026 R1.01 を ZOS-API で測った値と同じ
-//! （PC の Documents\Zemax\lensbench_vig_interp、25 系 5010 点。ここはその代表値）
+//! 定義した視野以外の点のケラレ係数（公開 #226）。OpticStudio 互換（VigInterp::OpticStudio）は OpticStudio 2026 R1.01 を
+//! ZOS-API で測った値と同じ（PC の Documents\Zemax\lensbench_vig_interp、25 系 5010 点。ここはその代表値）。
+//! 既定の連続（VigInterp::Continuous）は視野の間で段差がない
 
-use lensbench_core::system::{Field, FieldNorm, FieldSel};
+use lensbench_core::system::{Field, FieldNorm, FieldSel, VigInterp};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use std::path::PathBuf;
@@ -26,6 +27,7 @@ fn with_fields(fields: &[(f64, f64, [f64; 5])], norm: FieldNorm) -> System {
         })
         .collect();
     s.field_norm = norm;
+    s.vig_interp = VigInterp::OpticStudio;
     s.changed().unwrap();
     s
 }
@@ -114,4 +116,53 @@ fn xy_fields_take_the_nearest_field() {
             false
         )
         .is_ok());
+}
+
+/// 既定の連続な補間: 定義した視野で値が一致し、視野の間で段差がない（L1 最近傍の段差の場所をまたいでも連続）
+#[test]
+fn continuous_is_continuous_and_matches_fields() {
+    let f3 = [0.2, 0.0, 0.4, 0.0, 0.0];
+    let f4 = [0.0, 0.15, 0.0, 0.25, -8.0];
+    let fields = [
+        (0.0, 0.0, [0.0; 5]),
+        (0.0, 10.0, F3),
+        (10.0, 0.0, f3),
+        (7.0, 7.0, f4),
+    ];
+    let mut s = with_fields(&fields, FieldNorm::Radial);
+    s.vig_interp = VigInterp::Continuous;
+    s.changed().unwrap();
+    let r = 10.0;
+    for &(x, y, v) in &fields {
+        assert!(near(s.vig_factors(x / r, y / r).unwrap(), v));
+    }
+    // 細かく刻んで隣り合う値の差が小さい（段差がない）
+    let n = 400;
+    for row in [0.2, 0.5, 0.75, -0.3] {
+        let mut prev: Option<[f64; 5]> = None;
+        for i in 0..=n {
+            let hx = -0.5 + 1.8 * i as f64 / n as f64;
+            let v = s.vig_factors(hx, row).unwrap();
+            if let Some(p) = prev {
+                // 係数は 0.5 以下、VAN は 12° 以下。刻み 0.0045 で段差がなければ差は傾き × 刻み
+                let d = (0..4).map(|k| (p[k] - v[k]).abs()).fold(0.0, f64::max);
+                let da = (p[4] - v[4]).abs();
+                assert!(d < 0.01 && da < 0.3, "hy {row} hx {hx}: {p:?} → {v:?}");
+            }
+            prev = Some(v);
+        }
+    }
+    // 三角形 (0,0)-(10,0)-(7,7) の重心は 3 視野の平均
+    let c = s.vig_factors(17.0 / 30.0, 7.0 / 30.0).unwrap();
+    let mean: [f64; 5] = std::array::from_fn(|k| (f3[k] + f4[k]) / 3.0);
+    assert!(near(c, mean), "{c:?} {mean:?}");
+    // y だけの視野は OpticStudio と同じ区間は同じ値、外は最も外の視野の値
+    let mut y = with_fields(
+        &[(0.0, 0.0, [0.0; 5]), (0.0, 5.0, F2), (0.0, 10.0, F3)],
+        FieldNorm::Radial,
+    );
+    let os = y.vig_factors(0.0, 0.7).unwrap();
+    y.vig_interp = VigInterp::Continuous;
+    assert!(near(y.vig_factors(0.0, 0.7).unwrap(), os));
+    assert!(near(y.vig_factors(0.0, 1.3).unwrap(), F3));
 }

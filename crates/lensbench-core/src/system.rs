@@ -56,6 +56,20 @@ pub enum FieldNorm {
     Radial,
     Rect,
 }
+/// 定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum VigInterp {
+    /// OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。
+    /// OpticStudio と照合するとき
+    OpticStudio,
+    /// 連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は
+    /// 同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値
+    #[default]
+    Continuous,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -220,6 +234,95 @@ pub struct Paraxial {
 pub enum ObjSpec {
     Dir(V3),
     Point([f64; 2]),
+}
+
+/// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
+/// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
+fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
+    let n = pts.len();
+    let eps = 1e-12
+        * pts
+            .iter()
+            .map(|p| p[0].abs().max(p[1].abs()))
+            .fold(1.0, f64::max);
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    // Delaunay の三角形（外接円の中に他の点がない、総当たり。視野は多くても数十）
+    let mut tris = Vec::new();
+    for i in 0..n {
+        for j in i + 1..n {
+            for k in j + 1..n {
+                let (a, b, c) = (pts[i], pts[j], pts[k]);
+                let area = cross(a, b, c);
+                if area.abs() <= eps * eps {
+                    continue;
+                }
+                let in_circle = |d: [f64; 2]| {
+                    let m = |p: [f64; 2]| {
+                        [
+                            p[0] - d[0],
+                            p[1] - d[1],
+                            (p[0] - d[0]).powi(2) + (p[1] - d[1]).powi(2),
+                        ]
+                    };
+                    let (u, v, w) = (m(a), m(b), m(c));
+                    let det = u[0] * (v[1] * w[2] - v[2] * w[1])
+                        - u[1] * (v[0] * w[2] - v[2] * w[0])
+                        + u[2] * (v[0] * w[1] - v[1] * w[0]);
+                    det * area.signum() > eps * eps * eps
+                };
+                if (0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
+                    tris.push((i, j, k));
+                }
+            }
+        }
+    }
+    for &(i, j, k) in &tris {
+        let (a, b, c) = (pts[i], pts[j], pts[k]);
+        let area = cross(a, b, c);
+        let (wa, wb, wc) = (
+            cross(q, b, c) / area,
+            cross(a, q, c) / area,
+            cross(a, b, q) / area,
+        );
+        let tol = -1e-12;
+        if wa >= tol && wb >= tol && wc >= tol {
+            return vec![(i, wa), (j, wb), (k, wc)];
+        }
+    }
+    // 外側（または三角形がない）: 三角形の辺（なければ全部の点の組）の中で最も近い線分の点
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+    for &(i, j, k) in &tris {
+        edges.extend([(i, j), (j, k), (i, k)]);
+    }
+    if edges.is_empty() {
+        for i in 0..n {
+            for j in i + 1..n {
+                edges.push((i, j));
+            }
+        }
+    }
+    let mut best: (f64, Vec<(usize, f64)>) = (f64::INFINITY, vec![(0, 1.0)]);
+    if n == 1 {
+        return best.1;
+    }
+    for (i, j) in edges {
+        let (a, b) = (pts[i], pts[j]);
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let l2 = d[0] * d[0] + d[1] * d[1];
+        let t = if l2 > 0.0 {
+            (((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / l2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let p = [a[0] + t * d[0], a[1] + t * d[1]];
+        let dist = (q[0] - p[0]).hypot(q[1] - p[1]);
+        if dist < best.0 - eps {
+            best = (dist, vec![(i, 1.0 - t), (j, t)]);
+        }
+    }
+    best.1
 }
 
 /// 平面の点の部分集合の最近傍を引く格子（エイミングの継続法の、解けた光線の探索）
@@ -577,6 +680,9 @@ pub struct System {
     /// アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目）
     #[cfg_attr(feature = "serde", serde(default))]
     pub afocal_unit: AfocalUnit,
+    /// 定義した視野以外の点のケラレ係数の求め方（既定は連続、OpticStudio と照合するときは OpticStudio）
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub vig_interp: VigInterp,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
     /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）。変えたら [`System::changed`] を呼ぶ
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -777,6 +883,7 @@ impl System {
             ropd: self.ropd,
             afocal: self.afocal,
             afocal_unit: self.afocal_unit,
+            vig_interp: self.vig_interp,
             field_wave: self.field_wave,
             coating_file: self.coating_file.clone(),
             coat_tables: self.coat_tables.clone(),
@@ -863,6 +970,7 @@ impl System {
             ropd: 2,
             afocal: false,
             afocal_unit: AfocalUnit::Milliradians,
+            vig_interp: VigInterp::Continuous,
             field_wave: None,
             coating_file: None,
             coat_tables: HashMap::new(),
@@ -1543,7 +1651,8 @@ impl System {
 
     /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）。
     ///
-    /// 定義した視野以外の点は OpticStudio 2026 R1.01 と同じ規則（公開 #226、25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
+    /// 既定（[`VigInterp::Continuous`]）は段差のない補間。[`VigInterp::OpticStudio`] なら OpticStudio 2026 R1.01 と
+    /// 同じ規則（公開 #226、25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
     /// - 視野の物理座標 (X, Y) = 正規化視野 × 正規化の値（Radial は最大の半径、Rectangular は x・y それぞれの最大。
     ///   最大が 0 の向きは 0）
     /// - 全視野が x = 0 で y の符号がそろい、X² + Y² ≤ max|y|² なら、視野を |y| の順に並べ、r² = X² + Y² の区分線形で
@@ -1586,7 +1695,8 @@ impl System {
         let r2 = x * x + y * y;
         let y_only = self.fields.iter().all(|f| f.x == 0.0)
             && (self.fields.iter().all(|f| f.y >= 0.0) || self.fields.iter().all(|f| f.y <= 0.0));
-        if y_only && r2 <= max_y * max_y {
+        let cont = self.vig_interp == VigInterp::Continuous;
+        if y_only && (cont || r2 <= max_y * max_y) {
             let mut ord: Vec<&Field> = self.fields.iter().collect();
             ord.sort_by(|a, b| a.y.abs().total_cmp(&b.y.abs()));
             let first = ord[0];
@@ -1603,6 +1713,18 @@ impl System {
                 }
             }
             return Ok(vals(ord[ord.len() - 1]));
+        }
+        if cont {
+            let pts: Vec<[f64; 2]> = self.fields.iter().map(|f| [f.x, f.y]).collect();
+            let w = interp_weights(&pts, [x, y]);
+            let mut out = [0.0; 5];
+            for (i, wi) in w {
+                let v = vals(&self.fields[i]);
+                for k in 0..5 {
+                    out[k] += wi * v[k];
+                }
+            }
+            return Ok(out);
         }
         let mut best = (f64::INFINITY, 0usize);
         for (i, f) in self.fields.iter().enumerate() {
