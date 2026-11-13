@@ -93,20 +93,11 @@ jobs:
       # nextest で exe をまたいで並べて回す（.config/nextest.toml）。doctest は nextest が回さないので別に
       - run: cargo nextest run --locked --profile ci --cargo-profile ci --workspace
       - run: cargo test --locked --doc --workspace --profile ci
-      # PR の GUI の exe（テストと同じ target/ci の依存を使うので 1 分ほど。別のジョブにすると main のキャッシュに
-      # ci プロファイルが無く 7 分の全ビルドになっていた。#216 BLD-11）。main への push は下の gui-windows（release）
-      - if: runner.os == 'Windows' && github.event_name != 'push'
-        run: cargo build --locked --profile ci -p lensbench-gui
-      - if: runner.os == 'Windows' && github.event_name != 'push'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
-        with:
-          name: lensbench-gui-windows
-          path: target/ci/lensbench-gui.exe
 
-  # 配る形の GUI の exe（インストール不要の 1 ファイル、release）を成果物に置く。main への push だけ
-  # （PR は上の test (windows) が ci プロファイルで作る）
+  # GUI の exe（インストール不要の 1 ファイル、配る形の release）を成果物に置く。PR も release で作る
+  # （rust-cache は main で保存したものしか PR から使えず、main は release なので、PR を ci プロファイルにすると
+  # 毎回 7 分の全ビルドになっていた。release なら main のキャッシュに当たる。#216 BLD-11）。テストと並行の別ジョブ
   gui-windows:
-    if: github.event_name == 'push'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
