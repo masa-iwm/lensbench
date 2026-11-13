@@ -255,7 +255,8 @@ jobs:
 
   python:
     needs: pr-tested
-    if: ${{ !cancelled() && needs.pr-tested.outputs.skip != 'true' }}
+    # main への push では検査を飛ばす run でも回す（配る形の release の wheel を成果物に置くため）
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.pr-tested.outputs.skip != 'true') }}
     strategy:
       fail-fast: false
       matrix:
