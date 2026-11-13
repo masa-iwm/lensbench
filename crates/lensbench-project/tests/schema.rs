@@ -30,7 +30,8 @@ fn check(v: &jsonschema::Validator, what: &str, x: &Value) {
 fn schema_files_match_types() {
     let update = std::env::var_os("LENSBENCH_UPDATE_SCHEMA").is_some();
     let mut stale = Vec::new();
-    for (name, v) in schema::all() {
+    // 組み込みだけ（detector.rs が同じ exe で登録する試しの種類を入れない、XCT-32）
+    for (name, v) in schema::all_with(&[]) {
         let p = schema_path(name);
         let want = schema::to_text(&v);
         if update {

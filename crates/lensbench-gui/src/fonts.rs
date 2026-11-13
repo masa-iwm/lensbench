@@ -83,6 +83,16 @@ pub fn install(ctx: &egui::Context) -> Option<String> {
     Some(path)
 }
 
+/// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない、GUX-24・GUX-29）
+pub fn glyph_or<'a>(ui: &egui::Ui, sym: &'a str, alt: &'a str) -> &'a str {
+    let id = egui::FontId::proportional(16.0);
+    if ui.fonts(|f| f.has_glyphs(&id, sym)) {
+        sym
+    } else {
+        alt
+    }
+}
+
 /// 文字の縦位置の補正（字の大きさに対する割合）。
 ///
 /// egui は行の高さをフォントの ascent・descent・line gap で決め、字を行の上から ascent の所に置く。游ゴシックなど
@@ -109,6 +119,18 @@ pub fn center_tweak(bytes: &[u8], index: u32) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUX-29: 無い記号は代わりの字に、ある記号はそのまま
+    #[test]
+    fn gux29_glyph_or_falls_back_for_missing_symbols() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                assert_eq!(glyph_or(ui, "A", "<"), "A");
+                assert_eq!(glyph_or(ui, "\u{E000}", "<"), "<");
+            });
+        });
+    }
 
     /// 手元にある日本語フォントで確かめる（無ければ何もしない）
     #[test]
