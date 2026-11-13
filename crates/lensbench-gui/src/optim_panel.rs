@@ -542,10 +542,32 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                     }
                     ui.spinner();
                 } else {
-                    let run = ui.add_enabled(
-                        !p.vars.iter().all(|v| v.name.trim().is_empty()),
-                        egui::Button::new(RichText::new(tr("最適化する")).strong()),
-                    );
+                    let no_var = p.vars.iter().all(|v| v.name.trim().is_empty());
+                    let check = if no_var { Err(String::new()) } else { p.params().map(|_| ()) };
+                    let run = ui
+                        .add_enabled(
+                            check.is_ok(),
+                            egui::Button::new(RichText::new(tr("最適化する")).strong()),
+                        )
+                        .on_disabled_hover_text(if no_var {
+                            tr("変数を 1 つ以上足す（下の「変数」の表に 4.t のような名前、または […] から選ぶ）").to_string()
+                        } else {
+                            check.clone().err().unwrap_or_default()
+                        });
+                    // 押せない理由を横にも出す（GUX-21）
+                    if no_var {
+                        ui.label(
+                            RichText::new(tr("変数を 1 つ以上足すと押せる"))
+                                .small()
+                                .color(ui.visuals().warn_fg_color),
+                        );
+                    } else if let Err(e) = &check {
+                        ui.label(
+                            RichText::new(format!("⚠ {e}"))
+                                .small()
+                                .color(ui.visuals().error_fg_color),
+                        );
+                    }
                     if run.clicked() {
                         match p.params() {
                             Ok(v) => {

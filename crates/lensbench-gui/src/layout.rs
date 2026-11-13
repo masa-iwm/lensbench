@@ -373,7 +373,7 @@ impl Layout {
 /// 初期の並び
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
-    /// 系・スポット・MTF・数値
+    /// 系・レイアウト図・レンズデータ・スポット・MTF
     Analysis,
     /// 組合せのレイアウト図を大きく、横にカタログと解析
     Catalog,
@@ -401,18 +401,22 @@ impl Preset {
         let ana = |c: &str| Kind::Analysis(AnaCfg::new(c));
         match self {
             Preset::Analysis => {
-                let spot = pane(ana("spot"));
-                let catalog = pane(Kind::Catalog);
-                let lens = pane(Kind::LensData);
-                let mce = pane(Kind::MultiConfig);
-                let mut dock = DockState::new(vec![spot, catalog, lens, mce]);
+                // 左: 系（カタログはタブ）、中央上: レイアウト図、中央下: レンズデータ（多重構成はタブ）、
+                // 右上: スポット、右下: MTF（波面はタブ）（GUX-04）
+                let lay = pane(Kind::Layout);
+                let mut dock = DockState::new(vec![lay]);
                 let sys = pane(Kind::System);
+                let catalog = pane(Kind::Catalog);
+                let spot = pane(ana("spot"));
                 let mtf = pane(ana("mtf"));
                 let wf = pane(ana("wavefront"));
+                let lens = pane(Kind::LensData);
+                let mce = pane(Kind::MultiConfig);
                 let m = dock.main_surface_mut();
-                let [center, _] = m.split_left(NodeIndex::root(), 0.23, vec![sys]);
-                let [center, _] = m.split_right(center, 0.55, vec![mtf]);
-                m.split_below(center, 0.68, vec![wf]);
+                let [center, _] = m.split_left(NodeIndex::root(), 0.22, vec![sys, catalog]);
+                let [center, right] = m.split_right(center, 0.6, vec![spot]);
+                m.split_below(right, 0.5, vec![mtf, wf]);
+                m.split_below(center, 0.5, vec![lens, mce]);
                 Layout {
                     dock,
                     windows: Vec::new(),

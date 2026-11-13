@@ -468,6 +468,7 @@ pub mod entry {
 
     /// 何を受けるか（[`Kind::code`]）
     pub fn init(kind: u8) {
+        crate::crash::install();
         KIND.with(|k| k.set(kind));
     }
 

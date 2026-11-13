@@ -494,16 +494,27 @@ pub fn ui(
                     acts.push(Action::Stop);
                 }
                 ui.spinner();
-            } else if ui
-                .button(RichText::new(tr("公差を回す")).strong())
-                .clicked()
-            {
-                match p.spec() {
-                    Ok(v) => {
+            } else {
+                // 欄の誤りがあれば押せなくして理由を出す（GPN-10）
+                let check = p.spec();
+                let r = ui
+                    .add_enabled(
+                        check.is_ok(),
+                        egui::Button::new(RichText::new(tr("公差を回す")).strong()),
+                    )
+                    .on_disabled_hover_text(check.clone().err().unwrap_or_default());
+                if let Err(e) = &check {
+                    ui.label(
+                        RichText::new(format!("⚠ {e}"))
+                            .small()
+                            .color(ui.visuals().error_fg_color),
+                    );
+                }
+                if r.clicked() {
+                    if let Ok(v) = check {
                         p.error = None;
                         acts.push(Action::Run(v));
                     }
-                    Err(e) => p.error = Some(e),
                 }
             }
             ui.add_enabled_ui(!p.running, |ui| {
@@ -616,22 +627,35 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             ui.selectable_value(&mut p.dist, k.to_string(), tr(l));
         }
     });
-    ui.horizontal_wrapped(|ui| {
-        ui.checkbox(
-            &mut p.radial,
-            tr("偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）"),
-        );
-        ui.add_enabled_ui(p.radial, |ui| {
-            ui.selectable_value(&mut p.radial_dist, "uniform".to_string(), tr("一様"));
-            ui.selectable_value(
-                &mut p.radial_dist,
-                "normal".to_string(),
-                tr("正規（半径 2σ）"),
+    // チェックの文が長いので、選択は次の行に字下げして置く（折り返しの中の入れ子で縦 1 文字に崩れない、GUX-13）
+    ui.checkbox(
+        &mut p.radial,
+        tr("偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）"),
+    );
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        let on = p.radial;
+        if ui
+            .add_enabled(
+                on,
+                egui::SelectableLabel::new(p.radial_dist == "uniform", tr("一様")),
+            )
+            .clicked()
+        {
+            p.radial_dist = "uniform".to_string();
+        }
+        if ui
+            .add_enabled(
+                on,
+                egui::SelectableLabel::new(p.radial_dist == "normal", tr("正規（半径 2σ）")),
             )
             .on_hover_text(tr(
                 "等方の 2 次元正規分布を円で切ったもの。半径 2σ の中は 86%",
-            ));
-        });
+            ))
+            .clicked()
+        {
+            p.radial_dist = "normal".to_string();
+        }
     });
     ui.horizontal(|ui| {
         ui.label(tr("くさびの面"));
