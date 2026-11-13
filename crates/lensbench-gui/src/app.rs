@@ -6645,6 +6645,9 @@ impl eframe::App for App {
             !same
         });
         if changed {
+            // Web 版はブラウザのタブの題にする（起動確認 scripts/web_smoke.mjs が開いたファイルの名前を見る）
+            #[cfg(target_arch = "wasm32")]
+            crate::web_tabs::set_title(&title);
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
 

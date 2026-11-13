@@ -1,0 +1,7 @@
+# ツールチェーンの版を固定する（CI のキャッシュの鍵に rustc の版が入るので、勝手に上がると main のキャッシュが外れて
+# PR が全部作り直しになる。clippy の新しい lint で関係ない PR が落ちることも防ぐ）。上げるときは PR で版を書き換える
+# （その PR のマージで main の CI が全部回り、キャッシュが作り直される）。非公開側の rust-toolchain.toml と揃える
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

@@ -21,7 +21,9 @@ fn main() {
     });
     if let Some(dir) = git(&["rev-parse", "--git-dir"]) {
         let dir = Path::new(&dir);
-        for f in ["HEAD", "index", "packed-refs"] {
+        // index は見ない（git add のたびに GUI のクレートが作り直しになる。手元の変更の印「+」はコミット・
+        // ブランチの切り替えのときに付け直す。公開 #216 GAR-22）
+        for f in ["HEAD", "packed-refs"] {
             println!("cargo:rerun-if-changed={}", dir.join(f).display());
         }
         if let Some(r) = git(&["symbolic-ref", "-q", "HEAD"]) {

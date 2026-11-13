@@ -1,5 +1,7 @@
-#![allow(clippy::neg_cmp_op_on_partial_ord)]
-//! OpticStudio 26.1 の基準データ（tests/refs）との照合。
+//! OpticStudio 26.1 の基準データ（公開側の tests/refs、非公開側の refs/lensbench）との照合。
+//!
+//! 公開側のテスト（`tests/zemax_refs.rs`）と、非公開側のテスト（非公開の基準とメーカーのガラス）の両方から
+//! [`check_dir`] を呼ぶ（照合の中身を 1 か所に置き、非公開側の CI が公開側を別に checkout しなくて済むように）。
 //!
 //! 許容差: エイミングなしは丸め誤差まで（位置 1e-11 mm、方向 1e-12）、エイミングありは
 //! OpticStudio 自身のエイミングの収束（〜1e-7 mm）で位置 2e-7 mm・方向 1e-8。OPD [波] はエイミングなし 5e-6
@@ -13,21 +15,22 @@ use lensbench_core::zmx::{self, LoadOptions};
 use ndarray::{Array2, Array4};
 use ndarray_npy::NpzReader;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+/// リポジトリの根（公開側）
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// 基準データのフォルダ（LB_REFS_DIR で差し替え。非公開の基準を同じ照合にかけるため）
-fn refs_dir() -> PathBuf {
+/// 既定の基準データのフォルダ（LB_REFS_DIR で差し替え。非公開の基準を同じ照合にかけるため）
+pub fn refs_dir() -> PathBuf {
     std::env::var_os("LB_REFS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root().join("tests/refs"))
 }
 
-/// ガラスカタログのフォルダ（LB_GLASS_DIR で差し替え、パス区切りで複数可）
-fn glass_dirs() -> Vec<PathBuf> {
+/// 既定のガラスカタログのフォルダ（LB_GLASS_DIR で差し替え、パス区切りで複数可）
+pub fn glass_dirs() -> Vec<PathBuf> {
     match std::env::var_os("LB_GLASS_DIR") {
         Some(v) => std::env::split_paths(&v).collect(),
         None => vec![root().join("tests/glass")],
@@ -74,8 +77,8 @@ fn ptp_detrended(dl: &[f64], q: &[[f64; 3]]) -> f64 {
     r.iter().cloned().fold(f64::MIN, f64::max) - r.iter().cloned().fold(f64::MAX, f64::min)
 }
 
-fn compare(name: &str) -> (Cmp, Aiming) {
-    let d = refs_dir().join(name);
+fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
+    let d = refs.join(name);
     let info: Value =
         serde_json::from_str(&std::fs::read_to_string(d.join("ops.json")).unwrap()).unwrap();
     let mut npz = NpzReader::new(std::fs::File::open(d.join("rays.npz")).unwrap()).unwrap();
@@ -87,7 +90,7 @@ fn compare(name: &str) -> (Cmp, Aiming) {
     let gmat: Array2<f64> = npz.by_name("gmat").unwrap();
     let opt = LoadOptions {
         cfg: 1,
-        catalog_dirs: glass_dirs(),
+        catalog_dirs: glass.to_vec(),
         ..Default::default()
     };
     let mut s = zmx::load_with(&d.join("system.zmx"), &opt).unwrap();
@@ -342,9 +345,11 @@ fn compare(name: &str) -> (Cmp, Aiming) {
     (c, s.aiming)
 }
 
-#[test]
-fn against_opticstudio() {
-    let mut names: Vec<String> = std::fs::read_dir(refs_dir())
+/// `refs` の下の系（rays.npz のあるフォルダ）を全部、ガラス `glass` で OpticStudio の基準と比べる。
+/// `only` に系の名前（カンマ区切り）を渡すとそれだけ。系ごとの差を 1 行ずつ出し、許容差を超えたものを返す（空なら合格）
+#[allow(clippy::neg_cmp_op_on_partial_ord)] // NaN も不合格にする
+pub fn check_dir(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(refs)
         .unwrap()
         .flatten()
         // 光線の基準（rays.npz）がある系だけ（A6v は MTF の基準だけ）
@@ -352,12 +357,12 @@ fn against_opticstudio() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
-    if let Ok(only) = std::env::var("LB_REFS") {
+    if let Some(only) = only {
         names.retain(|n| only.split(',').any(|o| o == n));
     }
     let mut fails = Vec::new();
     for n in &names {
-        let (c, aiming) = compare(n);
+        let (c, aiming) = compare(refs, glass, n);
         let aimed = aiming != Aiming::Off;
         let d2 = n == "D2";
         // Zernike・Grid Sag の面の系。射出瞳は実光線で求める（傾きの系と同じ許容差）
@@ -484,5 +489,5 @@ fn against_opticstudio() {
         }
         println!("{line}");
     }
-    assert!(fails.is_empty(), "{}", fails.join("\n"));
+    fails
 }

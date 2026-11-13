@@ -1,20 +1,27 @@
 [package]
 name = "lensbench-py"
 description = "Python bindings of lensbench"
-version = "0.3.0"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/masa-iwm/lensbench"
-rust-version = "1.80"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 publish = false
 
-# maturin でビルドする拡張モジュール（Python が要るのでワークスペースから外してある）
-[workspace]
+# maturin でビルドする拡張モジュール。ワークスペースのメンバー（target・Cargo.lock・プロファイルを共有する。
+# pyo3 の abi3 は Python なしで check・ビルドできる。.cargo/config.toml の PYO3_BUILD_EXTENSION_MODULE）
+
+
+[lints]
+workspace = true
 
 [lib]
 name = "lensbench"
 # rlib は別の拡張モジュール（形式・プラグインを足した版）から init_module を呼ぶ用
 crate-type = ["cdylib", "rlib"]
+# テストは tests/（pytest）
+test = false
+doctest = false
 
 [features]
 # 拡張モジュールの入口（PyInit_lensbench）を作る。別の拡張モジュールに組み込むときは
@@ -33,6 +40,3 @@ serde_json = "1"
 # 大きな配列の確保を OS に返さず使い回す。入口を作るとき（module）だけ global_allocator にする
 mimalloc = { version = "0.1", default-features = false }
 
-[profile.release]
-lto = "thin"
-codegen-units = 1

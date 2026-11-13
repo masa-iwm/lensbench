@@ -10,6 +10,10 @@ publish = false
 
 # ブラウザで動かす GUI の入口。wasm32-unknown-unknown でビルドして wasm-bindgen にかける
 # （scripts/build_web.sh、docs/web.md）。ネイティブでは中身の無いライブラリ
+
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

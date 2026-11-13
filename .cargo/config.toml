@@ -1,0 +1,12 @@
+[env]
+# crates/lensbench-py（Python の拡張モジュール）はワークスペースのメンバー。cargo build・clippy・test でも maturin と
+# 同じく libpython をリンクしない（Python の開発用ファイルが無くてもビルドできる）
+PYO3_BUILD_EXTENSION_MODULE = "1"
+
+# Windows は同梱の rust-lld でリンクする（MSVC の link.exe より速い。CI・配る exe と同じ。#66 で release の GUI を確かめた）
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+
+[alias]
+# CI と同じテスト（nextest、ci プロファイル。.config/nextest.toml）
+t = "nextest run --profile ci --cargo-profile ci --workspace"
