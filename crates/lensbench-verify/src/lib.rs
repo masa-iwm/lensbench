@@ -39,6 +39,8 @@
 //! 入力・基準を JSON に直接書くときは、数は形 []、入れ子の並びは多次元の配列、真偽の並びは bool の配列、
 //! `{"re": [...], "im": [...]}` は complex の配列（re・im は同じ形）。npz は float64・complex128・bool の配列。
 
+pub mod zemax_refs;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

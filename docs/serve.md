@@ -190,7 +190,7 @@ with Client.spawn("system.zmx", glass_dir=["catalogs"], threads=1) as lb:   # se
 
 ### 往復の時間
 
-`examples/loop/serve_loop.py`・`crates/lensbench-cli/tests/serve.rs` で測る（`cargo test --release -p lensbench-cli --test serve -- --nocapture`）。
+`examples/loop/serve_loop.py`・`crates/lensbench-cli/tests/serve.rs` で測る（`cargo test --release -p lensbench-cli --test it serve:: -- --nocapture`）。
 クラウドの Linux（2026-11-08、1 スレッド）の例:
 
 | 往復 | 時間 |

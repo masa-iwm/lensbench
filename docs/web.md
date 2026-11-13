@@ -81,11 +81,12 @@ node scripts/web_smoke.mjs target/web shot.png  # 起動確認（npm の playwri
 
 プロジェクトが参照する .zmx・カタログは、開くときに一緒に選ぶと同じフォルダに入る。
 
-simd128 の経路（Zernike の当てはめの AᵀA）の試験は、wasm32-wasip1 で作って Node の WASI で回す（CI の web ジョブも同じ）:
+simd128 の経路（Zernike の当てはめの AᵀA）の試験は、wasm32-wasip1 で作って wasmtime で回す（CI の web ジョブも同じ。
+Node 22 の WASI は .wasm によって SIGSEGV で落ちることがあるので使わない）:
 
 ```sh
 rustup target add wasm32-wasip1
-RUSTFLAGS="-C target-feature=+simd128" CARGO_TARGET_WASM32_WASIP1_RUNNER="node $PWD/scripts/wasi_run.mjs" \
+RUSTFLAGS="-C target-feature=+simd128" CARGO_TARGET_WASM32_WASIP1_RUNNER="wasmtime run --dir . --dir $PWD::$PWD" \
   cargo test -p lensbench-core --lib --target wasm32-wasip1 column_basis_and_gram_match_the_row_forms
 ```
 

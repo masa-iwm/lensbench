@@ -1,17 +1,20 @@
-# GitHub Pages に公開する。main への push ごと。初回だけ、リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
+# GitHub Pages に公開する。main の CI が通ったら（と手動）。初回だけ、リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
 #   /      ドキュメント（mdBook。scripts/build_docs.sh）。/api/rust/ に cargo doc
 #   /app/  Web 版（公開側のビルド: 同梱は公開用の見本だけ。docs/web.md）
+# 中身は CI が作って検査した成果物（docs ジョブの site-book、web ジョブの lensbench-web）をそのまま載せる
+# （同じものを作り直さない・検査したものと載せるものを同じにする。#216 BLD-21）。main の CI が「PR と同じ木」で
+# 検査を飛ばしたときは、その PR の CI の成果物を使う。どちらも取れなければ（手動実行・成果物の期限切れ）ここで作る
 name: Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -19,59 +22,121 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      # CI の成果物を取る
+      actions: read
+      pull-requests: read
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - uses: actions/checkout@v6
+      # 成果物のある CI の run を探す: その run か、検査を飛ばしたならマージした PR の head の成功した run
+      - id: src
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          has() { gh api "repos/$REPO/actions/runs/$1/artifacts?per_page=100" --jq '[.artifacts[] | select(.expired | not) | .name]' \
+            | grep -q '"site-book"' && gh api "repos/$REPO/actions/runs/$1/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.expired | not) | .name]' | grep -q '"lensbench-web"'; }
+          run=""
+          if has "$RUN"; then run=$RUN
+          else
+            tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha)
+            for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha'); do
+              [ "$(gh api "repos/$REPO/commits/$head" --jq .commit.tree.sha)" = "$tree" ] || continue
+              for r in $(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha=$head" --jq '.workflow_runs[].id'); do
+                if has "$r"; then run=$r; break 2; fi
+              done
+            done
+          fi
+          echo "成果物の run: ${run:-なし（ここで作る）}"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - if: steps.src.outputs.run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ steps.src.outputs.run }}
+        run: |
+          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n site-book -D target/site
+          gh run download "$RUN" -R "$GITHUB_REPOSITORY" -n lensbench-web -D target/webart
+          mv target/webart/target/web target/site/app
+          ls target/site target/site/app
+      - if: steps.src.outputs.run == ''
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          ref: ${{ env.SHA }}
       # スレッドありの版（mt/）は nightly の build-std で作る（scripts/build_web.sh の NIGHTLY と同じ版）
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-10-15
-          targets: wasm32-unknown-unknown
-          components: rust-src
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - if: steps.src.outputs.run == ''
+        run: |
+          nightly=$(grep -oE 'nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}' scripts/build_web.sh | head -1)
+          rustup toolchain install "$nightly" --profile minimal -c rust-src -t wasm32-unknown-unknown
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
+          v=version_123
+          curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/$v/binaryen-$v-x86_64-linux.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-$v/bin" >> "$GITHUB_PATH"
+      - if: steps.src.outputs.run == ''
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       # wasm-bindgen-cli は Cargo.lock の wasm-bindgen と同じ版
-      - run: |
+      - if: steps.src.outputs.run == ''
+        run: |
           v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
           echo "WASM_BINDGEN=$v" >> "$GITHUB_ENV"
-      - uses: taiki-e/install-action@v2
+      - if: steps.src.outputs.run == ''
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN }}
-      - uses: actions/setup-python@v6
+      - if: steps.src.outputs.run == ''
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: "3.12"
-      - run: python -m pip install fonttools numpy matplotlib
+      - if: steps.src.outputs.run == ''
+        run: python -m pip install fonttools numpy matplotlib
       # ドキュメント: mdBook と、GUI の画面を撮る仮想ディスプレイ
-      - uses: taiki-e/install-action@v2
+      - if: steps.src.outputs.run == ''
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: mdbook@0.4.52
       # apt で入れる包みの deb を保存して、Ubuntu のミラーが引けないときはそこから入れる（apt_install.sh）。
       # 像の版ごとに鍵を分ける（像の更新で版が合わなくなったら取りに行き、新しい鍵で保存し直す）
-      - run: echo "APT_DEB_KEY=apt-debs-gui-${{ runner.arch }}-$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - if: steps.src.outputs.run == ''
+        run: echo "APT_DEB_KEY=apt-debs-gui-${{ runner.arch }}-$ImageOS-$ImageVersion" >> "$GITHUB_ENV"
+      - if: steps.src.outputs.run == ''
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.cache/apt-debs
           key: ${{ env.APT_DEB_KEY }}
           restore-keys: apt-debs-gui-${{ runner.arch }}-
-      - run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
+      - if: steps.src.outputs.run == ''
+        run: .github/scripts/apt_install.sh xvfb libxkbcommon-x11-0 libgl1 libegl1 libgl1-mesa-dri fonts-noto-cjk
         timeout-minutes: 20
-      - run: scripts/build_docs.sh target/site
-      - run: scripts/build_web.sh target/site/app
-      - uses: actions/upload-pages-artifact@v4
+      - if: steps.src.outputs.run == ''
+        run: scripts/build_docs.sh target/site
+      - if: steps.src.outputs.run == ''
+        run: REQUIRE_WASM_OPT=1 scripts/build_web.sh target/site/app
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b  # v4.0.0
         with:
           path: target/site
 
   deploy:
     needs: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # 書き込みの権限は配備のジョブだけに渡す（ビルドのジョブでは第三者の action とスクリプトが走る。#216 BLD-18）
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # GitHub 側の syncing_files が既定の 10 分で終わらず止まることがある（11/10 に 2 回）ので 20 分待つ
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5
         with:
           timeout: 1200000
