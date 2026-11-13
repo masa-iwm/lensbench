@@ -2413,7 +2413,20 @@ impl UserCatalog {
             Ok(UserCatalog::default())
         }
     }
-    /// 保存する。名前が `.gz` で終われば gzip で圧縮して書く
+    /// ファイルの今の中身を読み直して f で変え、すぐ書き戻す（読んでから時間のかかる処理の後に足すときに使う。
+    /// 前に読んだ写しを書き戻すと、その間にほかの所（GUI・CLI）が足した品を消してしまう）。変えた後のカタログを返す
+    pub fn update(
+        path: &Path,
+        f: impl FnOnce(&mut UserCatalog) -> Result<(), String>,
+    ) -> Result<UserCatalog, String> {
+        let mut c = UserCatalog::load_or_new(path)?;
+        f(&mut c)?;
+        c.save(path)?;
+        Ok(c)
+    }
+
+    /// 保存する。名前が `.gz` で終われば gzip で圧縮して書く（一時ファイルに書いて名前を替える。途中で落ちても
+    /// 前の中身が残る）
     pub fn save(&self, path: &Path) -> Result<(), String> {
         use std::io::Write;
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
@@ -2424,9 +2437,9 @@ impl UserCatalog {
         if gz {
             let mut w = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
             w.write_all(text.as_bytes()).map_err(err)?;
-            lensbench_core::vfs::write(path, w.finish().map_err(err)?).map_err(err)
+            lensbench_core::vfs::write_atomic(path, w.finish().map_err(err)?).map_err(err)
         } else {
-            lensbench_core::vfs::write(path, text).map_err(err)
+            lensbench_core::vfs::write_atomic(path, text).map_err(err)
         }
     }
 }

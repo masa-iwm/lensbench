@@ -1890,7 +1890,7 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
                     "catalog_add はプロジェクトファイル（組合せ）を読み込んだときだけ",
                 ));
             }
-            let mut cat = UserCatalog::load_or_new(&file)?;
+            let cat = UserCatalog::load_or_new(&file)?;
             if cat.items.contains_key(name) && p["replace"].as_bool() != Some(true) {
                 return Err(RpcErr::app(format!(
                     "項目 {name} はもうある（置き換えは replace: true）"
@@ -1915,9 +1915,17 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
             };
             let desc = p["description"].as_str().unwrap_or_default();
             let item = lensbench_project::blocks_item(&pr, &env, &ids, desc)?;
-            cat.items.insert(name.to_string(), item);
-            set_vendor(&mut cat);
-            cat.save(&file)?;
+            let replace = p["replace"].as_bool() == Some(true);
+            let cat = UserCatalog::update(&file, |cat| {
+                if cat.items.contains_key(name) && !replace {
+                    return Err(format!(
+                        "項目 {name} はもうある（置き換えは replace: true）"
+                    ));
+                }
+                cat.items.insert(name.to_string(), item);
+                set_vendor(cat);
+                Ok(())
+            })?;
             let mut out = catalog_listing(path, &cat);
             out["added"] = json!(name);
             Ok(out)

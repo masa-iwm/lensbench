@@ -21,6 +21,31 @@ mod imp {
     pub fn write(p: &Path, b: &[u8]) -> io::Result<()> {
         std::fs::write(p, b)
     }
+    pub fn write_atomic(p: &Path, b: &[u8]) -> io::Result<()> {
+        use std::io::Write;
+        let dir = match p.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+            _ => PathBuf::from("."),
+        };
+        let name = p
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ファイル名が無い"))?;
+        let mut tmp_name = std::ffi::OsString::from(".");
+        tmp_name.push(name);
+        tmp_name.push(format!(".{}.tmp", std::process::id()));
+        let tmp = dir.join(tmp_name);
+        let r = (|| {
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(b)?;
+            f.sync_all()?;
+            drop(f);
+            std::fs::rename(&tmp, p)
+        })();
+        if r.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        r
+    }
     pub fn append(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
         std::fs::OpenOptions::new()
@@ -167,6 +192,9 @@ mod mem {
         put(key(p), b.to_vec());
         Ok(())
     }
+    pub fn write_atomic(p: &Path, b: &[u8]) -> io::Result<()> {
+        write(p, b)
+    }
     pub fn append(p: &Path, b: &[u8]) -> io::Result<()> {
         let k = key(p);
         let mut x = store().get(&k).map(|e| e.0.clone()).unwrap_or_default();
@@ -285,6 +313,12 @@ pub fn read_to_string(p: impl AsRef<Path>) -> io::Result<String> {
 /// 書く（あれば置き換える）
 pub fn write(p: impl AsRef<Path>, b: impl AsRef<[u8]>) -> io::Result<()> {
     imp::write(p.as_ref(), b.as_ref())
+}
+
+/// 書く（あれば置き換える）。途中で落ちても前の中身か新しい中身のどちらかが残るように、同じフォルダの
+/// 一時ファイルに書いて `sync_all` してから名前を替える。カタログ・系ファイルなど作り直しのきかないものの保存に
+pub fn write_atomic(p: impl AsRef<Path>, b: impl AsRef<[u8]>) -> io::Result<()> {
+    imp::write_atomic(p.as_ref(), b.as_ref())
 }
 
 /// 末尾に足す（無ければ作る）
@@ -412,5 +446,19 @@ mod tests {
         assert_eq!(mem::read(&d.join("a/x.agf")).unwrap(), b"r");
         mem::apply("/vfs-test/a/x.agf", None);
         assert!(mem::read(&d.join("a/x.agf")).is_err());
+    }
+
+    /// 書き替えは一時ファイルを残さず、前の中身を置き換える
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn write_atomic_replaces() {
+        let d = std::env::temp_dir().join(format!("lb-vfs-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("cat.json");
+        super::write_atomic(&p, "a").unwrap();
+        super::write_atomic(&p, "bb").unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "bb");
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 1);
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

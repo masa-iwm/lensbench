@@ -2677,7 +2677,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             replace,
             json,
         } => {
-            let mut cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
+            let cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
             if cat.items.contains_key(&name) && !replace {
                 return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
             }
@@ -2713,8 +2713,14 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 }
                 _ => return Err("--lens か --block のどちらか 1 つ".into()),
             };
-            cat.items.insert(name.clone(), item);
-            cat.save(&catalog)?;
+            // 読み直して足す（品を作る間にほかで足した品を消さない）
+            let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
+                if cat.items.contains_key(&name) && !replace {
+                    return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
+                }
+                cat.items.insert(name.clone(), item);
+                Ok(())
+            })?;
             (
                 json,
                 json!({ "catalog": catalog, "added": name, "items": cat.items.keys().collect::<Vec<_>>() }),
