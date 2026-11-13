@@ -6,10 +6,16 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# 結合テストは下の [[test]]（tests/it.rs）にまとめる
+autotests = false
 # src/main.rs はライブラリの根（下の [lib]）。実行ファイルとして自動で拾わない
 autobins = false
 
 # ライブラリの根は main.rs のまま（GUI が serve の API を呼ぶため lib にした。ファイル名を変えると他の変更と衝突しやすい）
+
+[lints]
+workspace = true
+
 [lib]
 name = "lensbench_cli"
 path = "src/main.rs"
@@ -31,18 +37,18 @@ web-time = "1"
 # 取った STEP を読んで三角形にする（cad_detail.rs の詳しい形、公開 #121。Web 版でも #158）
 truck-stepio = "0.3"
 truck-meshalgo = "0.4"
-
-# 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）。
 # 置き場の STEP（gzip）を展開する（cad.rs・cad_detail.rs、Web 版でも）
 flate2 = "1"
 
 # wasm（Web 版）では使えないのでネイティブだけ
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）
 mimalloc = { version = "0.1", default-features = false }
 # 品の STEP を公式の配布元から 1 件取る（cad.rs、公開 #120）。証明書は OS の信頼する証明書で確かめる
 ureq = { version = "3", features = ["platform-verifier"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
-[dev-dependencies]
-serde_json = "1"
-flate2 = "1"
+# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
+[[test]]
+name = "it"
+path = "tests/it.rs"

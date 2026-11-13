@@ -1,0 +1,16 @@
+# テストの実行（cargo-nextest）。exe をまたいでテストを並べて回す（cargo test は exe を 1 本ずつ順に回し、遅い 3 本
+# batch・mtf_family_refs・huygens_refs が実行時間の 6〜9 割を占めていた。公開 #216 BLD-04）。
+# 各テストは別のプロセスで動く（1 つの exe にまとめたテストどうしでも、グローバルな状態を取り合わない）。
+#   cargo nextest run --profile ci --cargo-profile ci --workspace   （エイリアス: cargo t）
+
+[profile.ci]
+fail-fast = false
+# 60 秒ごとに「遅い」と出し、10 分を超えたら止める（止まったテストでジョブが 6 時間待たない）
+slow-timeout = { period = "60s", terminate-after = 10 }
+failure-output = "immediate-final"
+
+# 外部のプロセス・ソケット・時間に依存するテスト（serve の口・CLI を起動する試験）は 1 回だけやり直す。
+# やり直して通ったものは結果に FLAKY と出る。数値の照合にはやり直しを付けない
+[[profile.ci.overrides]]
+filter = 'binary(it) & package(lensbench-cli) & test(/^(serve_ipc|serve|cad_step)::/)'
+retries = 1
