@@ -348,7 +348,7 @@ fn matches_opticstudio() {
             );
         }
         let po = PsfOpts {
-            pupil: 128,
+            pupil: Some(128),
             image: 256,
             delta: Some(0.0914374977),
         };

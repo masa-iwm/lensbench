@@ -8,13 +8,13 @@
 //! | 名前 | 設定 | 出力 |
 //! |---|---|---|
 //! | `spot` | `wave`・`rings`（6） | `x`・`y`・`weight`・`wave`・`centroid`・`chief`・`rms_centroid`・`rms_chief`・`geo` |
-//! | `wavefront` | `wave`・`n`（64）・`ref_primary`（1） | `p`・`w`（(n, n)、外は NaN）・`pv`・`rms` |
-//! | `zernike` | `wave`・`kind`（standard）・`terms`（37）・`n`（64）・`ref_primary`（1） | `coef`・`pv`・`pv_centroid`・`rms_fit`・`max_fit`・`rms_chief`・`rms_centroid`・`variance`・`strehl` |
+//! | `wavefront` | `wave`・`n`（64）・`ref_primary`（0） | `p`・`w`（(n, n)、外は NaN）・`pv`・`rms` |
+//! | `zernike` | `wave`・`kind`（standard）・`terms`（37）・`n`（64）・`ref_primary`（0） | `coef`・`pv`・`pv_centroid`・`rms_fit`・`max_fit`・`rms_chief`・`rms_centroid`・`variance`・`strehl` |
 //! | `mtf` | `wave`・`freqs`（省けば遮断周波数の 0〜0.95 を 21 点）・`n`・`method`（auto・interp・direct・fft） | `freqs`・`tan`・`sag`・`cutoff` |
-//! | `psf` | `wave`・`pupil`（64）・`image`（128）・`delta` | `x`・`y`・`i`（(image, image)）・`center`・`delta`・`peak` |
+//! | `psf` | `wave`・`pupil`（自動）・`image`（128）・`delta` | `x`・`y`・`i`（(image, image)）・`center`・`delta`・`peak`・`pupil`・`phase_step`・`enclosed` |
 //! | `rms` | `wave`・`rings`（6）・`reference`（centroid・chief） | `spot`・`spot_x`・`spot_y`・`wfe`・`strehl` |
-//! | `huygens_psf` | `wave`・`pupil`（64）・`image`（128）・`delta` | psf と同じ（x・y は像面の局所座標の中心からの差） |
-//! | `huygens_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`pupil`（64）・`image`（128）・`delta` | `freqs`・`tan`・`sag`・`cutoff` |
+//! | `huygens_psf` | `wave`・`pupil`（自動）・`image`（128）・`delta` | psf と同じ（x・y は像面の局所座標の中心からの差） |
+//! | `huygens_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`pupil`（自動）・`image`（128）・`delta` | `freqs`・`tan`・`sag`・`cutoff` |
 //! | `geo_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`n`（128）・`diff_limit`（0） | `freqs`・`tan`・`sag`・`cutoff` |
 //! | `pop` | `surface`（必須）・`wave`・`dist` か `to`・`method`（auto・fresnel・angular・direct）・`rays`（65）・`n`（256）・`half`・`aperture`（1）・`out_n`・`out_half`・`out_center`（2 個） | 出力の場 `u`（complex (ny, nx)、パイロットを除く）・`dx`・`dy`・`center`・`pilot`（ax・ay・curv）・`power`・`peak`・`centroid`・`rms_width`・`distance`・`wavelength`・`index`・`kernel_step`・`fresnel_error`、入力の場 `input_u`・`input_dx`・`input_dy`・`input_center` |
 //! | `interferogram` | `wave`・`n`（64）・`beam1`（1）・`beam2`（2、0 で参照球）・`scale`（1）・`xtilt`・`ytilt`（0） | `p`・`delta`・`intensity`（(n, n)、外は NaN）・`pv`・`rms` |
@@ -194,7 +194,7 @@ impl Plugin for Analysis {
                 vec![
                     wave,
                     s2("n", "格子の一辺（64）"),
-                    s2("ref_primary", "1 なら主波長の主光線を基準（1）"),
+                    s2("ref_primary", "1 なら主波長の主光線を基準（0: その波長の主光線。CLI・OpticStudio と同じ）"),
                 ],
                 vec![
                     s2("p", "格子の瞳座標 (n,)"),
@@ -210,7 +210,7 @@ impl Plugin for Analysis {
                     s2("kind", "standard か fringe"),
                     s2("terms", "項数（37）"),
                     s2("n", "格子の一辺（64）"),
-                    s2("ref_primary", "1 なら主波長の主光線を基準（1）"),
+                    s2("ref_primary", "1 なら主波長の主光線を基準（0: その波長の主光線。CLI・OpticStudio と同じ）"),
                 ],
                 vec![
                     s2("coef", "係数 [波]"),
@@ -246,7 +246,7 @@ impl Plugin for Analysis {
                 "FFT PSF",
                 vec![
                     wave,
-                    s2("pupil", "瞳の格子の一辺（64）"),
+                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
                     s2("image", "像の格子の一辺（128）"),
                     s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
                 ],
@@ -257,6 +257,9 @@ impl Plugin for Analysis {
                     s2("center", "(2,) [mm]"),
                     s2("delta", "(2,) [mm]"),
                     s2("peak", "格子の最大値"),
+                    s2("pupil", "使った瞳の格子の一辺"),
+                    s2("phase_step", "瞳の隣り合う標本の位相差の最大 [rad]（π/2 を超えたら標本不足）"),
+                    s2("enclosed", "像の格子に入った光量の割合"),
                 ],
             ),
             Analysis::Rms => (
@@ -296,7 +299,7 @@ impl Plugin for Analysis {
                 "Huygens PSF（像面の上、参照球の各点からの 2 次波の和）",
                 vec![
                     wave,
-                    s2("pupil", "瞳の格子の一辺（64）"),
+                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
                     s2("image", "像の格子の一辺（128）"),
                     s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
                 ],
@@ -307,6 +310,9 @@ impl Plugin for Analysis {
                     s2("center", "(2,) [mm]"),
                     s2("delta", "(2,) [mm]"),
                     s2("peak", "格子の最大値"),
+                    s2("pupil", "使った瞳の格子の一辺"),
+                    s2("phase_step", "瞳の隣り合う標本の位相差の最大 [rad]（π/2 を超えたら標本不足）"),
+                    s2("enclosed", "像の格子に入った光量の割合"),
                 ],
             ),
             Analysis::HuygensMtf => (
@@ -317,7 +323,7 @@ impl Plugin for Analysis {
                         "freqs",
                         "周波数 [cycles/mm]（省けば遮断周波数の 0〜0.95 を 21 点）",
                     ),
-                    s2("pupil", "瞳の格子の一辺（64）"),
+                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
                     s2("image", "像の格子の一辺（128）"),
                     s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
                 ],
@@ -426,14 +432,14 @@ impl Plugin for Analysis {
             Analysis::Wavefront => Prepared::Wavefront {
                 wave,
                 n: r.count("n", 64)?,
-                ref_primary: r.flag("ref_primary", true)?,
+                ref_primary: r.flag("ref_primary", false)?,
             },
             Analysis::Zernike => Prepared::Zernike {
                 wave,
                 kind: zern_kind(&r.str("kind", "standard")?)?,
                 terms: r.count("terms", 37)?,
                 n: r.count("n", 64)?,
-                ref_primary: r.flag("ref_primary", true)?,
+                ref_primary: r.flag("ref_primary", false)?,
             },
             Analysis::Mtf => Prepared::Mtf {
                 wave,
@@ -453,7 +459,7 @@ impl Plugin for Analysis {
                 Prepared::Psf {
                     wave,
                     opts: PsfOpts {
-                        pupil: r.count("pupil", d.pupil)?,
+                        pupil: r.opt_count("pupil")?,
                         image: r.count("image", d.image)?,
                         delta: (!delta.is_nan()).then_some(delta),
                     },
@@ -485,7 +491,7 @@ impl Plugin for Analysis {
                 let d = HuygensOpts::default();
                 let delta = r.num("delta", f64::NAN)?;
                 let opts = HuygensOpts {
-                    pupil: r.count("pupil", d.pupil)?,
+                    pupil: r.opt_count("pupil")?,
                     image: r.count("image", d.image)?,
                     delta: (!delta.is_nan()).then_some(delta),
                 };
@@ -696,6 +702,9 @@ impl Prepared {
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
+                    ("pupil", Array::scalar(r.pupil as f64)),
+                    ("phase_step", Array::scalar(r.phase_step)),
+                    ("enclosed", Array::scalar(r.enclosed)),
                 ])
             }
             Prepared::Rms { wave, opts } => {
@@ -732,6 +741,9 @@ impl Prepared {
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
+                    ("pupil", Array::scalar(r.pupil as f64)),
+                    ("phase_step", Array::scalar(r.phase_step)),
+                    ("enclosed", Array::scalar(r.enclosed)),
                 ])
             }
             Prepared::HuygensMtf { wave, freqs, opts } => {

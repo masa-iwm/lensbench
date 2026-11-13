@@ -283,7 +283,8 @@ impl<'a> Plan<'a> {
                 nprev,
                 nn,
                 curved,
-                asph: d.has_asph(),
+                // 標準面に残った非球面の項は使わない（法線と同じ判定。trace::std_asph）
+                asph: d.typ != SurfType::Standard && d.has_asph(),
                 sag: Sag::new(d),
                 k1: 1.0 + d.k,
                 ck1: d.c * (1.0 + d.k),

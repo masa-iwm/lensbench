@@ -192,7 +192,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
             f,
             None,
             psf::PsfOpts {
-                pupil: 128,
+                pupil: Some(128),
                 image: 256,
                 delta: None,
             },
@@ -233,7 +233,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
             f,
             Some(w),
             psf::PsfOpts {
-                pupil: 256,
+                pupil: Some(256),
                 image: 512,
                 delta: None,
             },
@@ -279,7 +279,7 @@ fn psf_of_a_near_perfect_system_peaks_at_its_strehl() {
         f,
         Some(w),
         psf::PsfOpts {
-            pupil: 32,
+            pupil: Some(32),
             image: 128,
             delta: None
         }

@@ -407,6 +407,18 @@ fn pearson(a: &[f64], b: &[f64]) -> f64 {
 
 // ------------------------------------------------------------------------------------------ 乱数
 
+/// SplitMix64 の出力の混ぜ関数
+fn fin(mut z: u64) -> u64 {
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
+/// SplitMix64 の 1 段（種の混ぜ合わせ）
+fn splitmix(z: u64) -> u64 {
+    fin(z.wrapping_add(0x9e37_79b9_7f4a_7c15))
+}
+
 /// SplitMix64（試行ごとの乱数。外部の crate に頼らず、版によらず同じ列になる）
 #[derive(Debug, Clone)]
 pub struct Rng(u64);
@@ -414,18 +426,15 @@ pub struct Rng(u64);
 impl Rng {
     /// 種 seed の試行 i の乱数
     pub fn for_trial(seed: u64, i: u64) -> Rng {
-        let mut r = Rng(seed ^ 0x6a09_e667_f3bc_c909);
-        // 試行の番号を混ぜる（隣の番号の列が似ないよう 2 回進める）
-        r.0 = r.0.wrapping_add(i.wrapping_mul(0x9e37_79b9_7f4a_7c15));
-        r.next_u64();
-        r
+        // 種と試行の番号を混ぜ関数に通して状態の始点にする。以前は状態に i·γ（γ は SplitMix64 の 1 回の増分）を
+        // 足していたため、試行 i+1 の列が試行 i の列を 1 つずらしただけになっていた
+        Rng(splitmix(
+            splitmix(seed ^ 0x6a09_e667_f3bc_c909).wrapping_add(i),
+        ))
     }
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        z ^ (z >> 31)
+        fin(self.0)
     }
     /// [0, 1)
     pub fn uniform(&mut self) -> f64 {

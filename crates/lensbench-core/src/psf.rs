@@ -33,13 +33,91 @@ pub struct Psf {
     pub axes: [[f64; 3]; 2],
     /// 格子の最大値（ストレール比の目安）
     pub peak: f64,
+    /// 使った瞳の格子の一辺（自動ならその値）
+    pub pupil: usize,
+    /// 瞳の隣り合う標本の位相差の最大 [rad]（使う波長のうち最大）。π を超えると像が折り返して重なり、値は格子で
+    /// 変わる（[`PHASE_STEP_WARN`] を超えたら warnings に入れる）
+    pub phase_step: f64,
+    /// 像の格子に入った光量の割合（全光量に対する、重みつきの波長の平均）。小さければ格子が PSF を覆えていない
+    pub enclosed: f64,
+    /// 標本不足・格子の外の光量の注意（空なら問題なし）
+    pub warnings: Vec<String>,
+}
+
+/// 瞳の隣り合う標本の位相差の注意のしきい値 [rad]
+pub const PHASE_STEP_WARN: f64 = std::f64::consts::FRAC_PI_2;
+/// 像の格子に入った光量の割合の注意のしきい値
+pub const ENCLOSED_WARN: f64 = 0.95;
+
+/// 瞳の格子の一辺の自動の値: 隣り合う標本の位相差が [`PHASE_STEP_WARN`] 以下になるよう OPD の傾きの最大 g
+/// [波 / 半径] から n ≥ 8g（標本の間隔 2/n で位相差 2π·g·2/n ≤ π/2）。64〜cap。加えて像の格子の幅が瞳の標本の
+/// 周期を超えない大きさ（need）以上
+pub(crate) fn auto_pupil(
+    s: &System,
+    field: FieldSel,
+    ws: &[usize],
+    need: usize,
+    cap: usize,
+) -> Result<usize> {
+    let mut g: f64 = 0.0;
+    for &wi in ws {
+        g = g.max(crate::analysis::opd_slope_max(s, field, wi)?);
+    }
+    let n = if g.is_finite() {
+        ((8.0 * g).ceil() as usize).next_multiple_of(16)
+    } else {
+        cap
+    };
+    Ok(n.max(need).clamp(64, cap.max(need)))
+}
+
+/// 瞳の格子 (ix, iy) の OPD [波]（使えない標本は NaN）から、隣り合う標本の位相差の最大 [rad]
+pub(crate) fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
+    let mut g = vec![f64::NAN; np * np];
+    for &(ix, iy, v) in w {
+        g[iy * np + ix] = v;
+    }
+    let mut m: f64 = 0.0;
+    for iy in 0..np {
+        for ix in 0..np {
+            let v = g[iy * np + ix];
+            if !v.is_finite() {
+                continue;
+            }
+            if ix + 1 < np && g[iy * np + ix + 1].is_finite() {
+                m = m.max((g[iy * np + ix + 1] - v).abs());
+            }
+            if iy + 1 < np && g[(iy + 1) * np + ix].is_finite() {
+                m = m.max((g[(iy + 1) * np + ix] - v).abs());
+            }
+        }
+    }
+    2.0 * std::f64::consts::PI * m
+}
+
+/// 標本不足・格子の外の光量の注意の文
+pub(crate) fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64) -> Vec<String> {
+    let mut w = Vec::new();
+    if step > PHASE_STEP_WARN {
+        w.push(format!(
+            "{what}: 瞳の隣り合う標本の位相差が最大 {step:.2} rad（瞳の格子 {np}）。π/2 を超えると値が瞳の格子で変わる（瞳の格子を増やす）"
+        ));
+    }
+    if enclosed < ENCLOSED_WARN {
+        w.push(format!(
+            "{what}: 像の格子に入った光量が全体の {:.1} %。格子が PSF を覆えていない（像の格子・間隔を増やす）",
+            enclosed * 100.0
+        ));
+    }
+    w
 }
 
 /// PSF の設定
 #[derive(Debug, Clone, Copy)]
 pub struct PsfOpts {
-    /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）
-    pub pupil: usize,
+    /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）。None で自動（隣り合う標本の位相差が π/2 以下に
+    /// なる大きさ、64〜2048）
+    pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
     /// 像の格子の間隔 [レンズ単位]（None で 1 / (2 × 遮断周波数)、x・y 別、使う波長のうち最も短い波長で。
@@ -51,7 +129,7 @@ pub struct PsfOpts {
 impl Default for PsfOpts {
     fn default() -> Self {
         PsfOpts {
-            pupil: 64,
+            pupil: None,
             image: 128,
             delta: None,
         }
@@ -131,9 +209,12 @@ fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
 
 /// 回折 PSF。w None なら全波長を重みで足した多色（各波長の全強度を重みに比例させる）
 pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<Psf> {
-    let (np, ni) = (o.pupil, o.image);
-    if np < 4 || ni < 2 {
-        invalid!("PSF の瞳の格子 {np} は 4 以上、像の格子 {ni} は 2 以上");
+    let ni = o.image;
+    if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
+        invalid!(
+            "PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上",
+            o.pupil
+        );
     }
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -170,6 +251,19 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
     let half = (ni / 2) as f64;
     let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.0).collect();
     let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.1).collect();
+    let np = match o.pupil {
+        Some(n) => n,
+        None => {
+            let ws: Vec<usize> = ws
+                .iter()
+                .copied()
+                .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
+                .collect();
+            // 像の格子の幅が瞳の標本の周期を超えない大きさ（ni·Δ·|a|·h ≤ 1、h = 2/n）
+            let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
+            auto_pupil(s, field, &ws, need, 2048)?
+        }
+    };
 
     // 瞳の格子（区間の中心）と円内の割合
     let h = 2.0 / np as f64;
@@ -190,6 +284,7 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
 
     let mut tot = vec![vec![0.0; ni]; ni];
     let (mut norm, mut wsum) = (0.0, 0.0);
+    let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for &wi in &ws {
         crate::par::check_cancel()?;
         let k = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
@@ -224,6 +319,13 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
         if !(sa > 0.0) {
             invalid!("PSF: 有効な光線がない（すべてけられた）");
         }
+        let w_ok: Vec<(usize, usize, f64)> = cells
+            .iter()
+            .enumerate()
+            .filter(|&(q, _)| op.ok(q) && op.opd[q].is_finite())
+            .map(|(q, c)| (c.0, c.1, op.opd[q]))
+            .collect();
+        step = step.max(phase_step(np, &w_ok));
         // 行列の DFT: U[y][x] = Σ_iy e^{−2πi b py y} Σ_ix e^{−2πi a px x} P[iy][ix]
         let ex: Vec<Vec<C64>> = xs
             .iter()
@@ -283,6 +385,8 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
                 *a += k * v / e_w;
             }
         }
+        // 格子に入った光量（格子の点の強度 × 1 点の面積）の全光量に対する割合
+        encl += k * iw.iter().flatten().sum::<f64>() * delta.0 * delta.1 / e_w;
         norm += k * dl;
         wsum += k;
     }
@@ -295,6 +399,7 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
         }
     }
     let peak = tot.iter().flatten().cloned().fold(0.0, f64::max);
+    let enclosed = encl / wsum;
     Ok(Psf {
         x: xs,
         y: ys,
@@ -303,6 +408,10 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
         delta,
         axes: [e1, e2],
         peak,
+        pupil: np,
+        phase_step: step,
+        enclosed,
+        warnings: sampling_warnings("PSF", np, step, enclosed),
     })
 }
 

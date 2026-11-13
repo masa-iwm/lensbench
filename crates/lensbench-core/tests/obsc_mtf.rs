@@ -167,3 +167,26 @@ fn obscured_and_clipped() {
     let sp = analysis::spot(&s, FieldSel::Index(0), None, 6).unwrap();
     assert!(sp.chief.0.is_finite() && sp.chief.1.is_finite());
 }
+
+/// 中心遮蔽で主光線がけられる系でも Huygens MTF が求まり、輪帯瞳の MTF と合う（以前は主光線を開口つきで見ていて
+/// 「主光線がけられる」で止まった）
+#[test]
+fn huygens_central_obscuration() {
+    use lensbench_core::huygens::{huygens_mtf, HuygensOpts};
+    let e = 0.4;
+    let s = ideal(5.0 * e);
+    let cut = 10.0 / (0.55e-3 * 100.0);
+    let fr: Vec<f64> = (0..8).map(|i| cut * i as f64 / 10.0).collect();
+    let o = HuygensOpts {
+        pupil: Some(64),
+        image: 128,
+        delta: None,
+    };
+    let r = huygens_mtf(&s, FieldSel::Index(0), None, o, &fr).unwrap();
+    for (i, &f) in fr.iter().enumerate() {
+        let a = annular(e, f / cut);
+        for (what, v) in [("tan", r.tan[i]), ("sag", r.sag[i])] {
+            assert!((v - a).abs() < 1e-2, "{what} {f}: {v} vs {a}");
+        }
+    }
+}
