@@ -3,7 +3,7 @@
 //! 形はプラグインの設定の項目（[`lensbench_core::plugin::ParamSpec`]）の JSON と同じ:
 //! `{"name", "type", "default", "unit", "doc", "choices"?, "len"?, "repeat"?}`。`type` は `num`（実数）・`count`
 //! （0 以上の整数）・`int`・`flag`（旗）・`str`・`choice`・`nums`（数のカンマ区切り）・`path`。`repeat` は
-//! 旗を繰り返して複数渡せる引数（値は並び）。`required` は省けない引数、`conflicts` は一緒に使えない引数の名前の並び。
+//! 旗を繰り返して複数渡せる引数（値は並び）。`min` は数の下限（0 で結果が空になるリング数など）。`required` は省けない引数、`conflicts` は一緒に使えない引数の名前の並び。
 
 use std::any::TypeId;
 use std::path::PathBuf;
@@ -53,6 +53,18 @@ const HINTS: &[(&str, &str, Hint)] = &[
             "reference",
         ]),
     ),
+];
+
+/// 下限のある数の引数（サブコマンド（* は全部）, 引数の名前, 下限）。0 では結果が空になるもの
+const MINS: &[(&str, &str, f64)] = &[
+    ("*", "rings", 1.0),
+    ("*", "grid", 1.0),
+    ("*", "freq_steps", 1.0),
+    ("*", "pupil", 1.0),
+    ("*", "image", 1.0),
+    ("*", "points", 1.0),
+    ("*", "steps", 1.0),
+    ("*", "rays", 1.0),
 ];
 
 /// サブコマンド `cmd` の引数（位置引数・系の読み方の引数を除く）。`cmd` が無ければ None
@@ -159,6 +171,14 @@ pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
         });
         if !choices.is_empty() {
             v["choices"] = json!(choices);
+        }
+        if matches!(ty, "num" | "count" | "int") {
+            if let Some(m) = MINS
+                .iter()
+                .find(|m| (m.0 == "*" || m.0 == cmd) && m.1 == key)
+            {
+                v["min"] = json!(m.2);
+            }
         }
         if repeat {
             v["repeat"] = json!(true);

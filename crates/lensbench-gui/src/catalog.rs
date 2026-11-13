@@ -693,6 +693,8 @@ pub enum Action {
     Settings,
     /// 系の設定のパネルを開く
     SysSettings,
+    /// 新規（組合せを空にする）
+    New,
 }
 
 #[derive(Default)]
@@ -719,6 +721,8 @@ pub struct Browser {
     pub insert_after: Option<usize>,
     /// 足した玉の番号（図で選ぶ）
     pub added: Option<usize>,
+    /// 最後に玉を足した: 系ができたら像面を近軸の焦点へ動かす（GUX-10）
+    pub refocus: bool,
     /// 選んだ玉の断面（行の番号と serve の layout）
     pub preview: Option<(usize, crate::combo::LayoutData)>,
     /// 補う窓で開く未完の品（足そうとした行）
@@ -1591,8 +1595,14 @@ impl Browser {
 
     /// 選んだ玉の断面（平行光が集まる様子）
     fn preview_ui(&self, ui: &mut Ui) {
-        let Some(i) = self.lens_sel else { return };
         let h = 120.0;
+        // 選んでいないときも同じ高さを取る（1 回目のクリックで表が下へずれてダブルクリックが外れない、GUX-09）
+        let Some(i) = self.lens_sel else {
+            ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
+                ui.centered_and_justified(|ui| ui.weak(tr("行を選ぶと断面が出ます")));
+            });
+            return;
+        };
         match &self.preview {
             // 機構部品だけの断面は玉が無い（solids が空）ので、部品の壁があれば描く
             Some((j, d)) if *j == i && (!d.solids.is_empty() || !d.mechs.is_empty()) => {
@@ -1757,7 +1767,26 @@ impl Browser {
             return;
         }
         let at = self.insert_after.map_or(self.combo.len(), |k| k + 1);
-        let at = crate::combo::insert_pick(&mut self.combo, at, pick_from(r));
+        let n = self.combo.len();
+        let at = if at >= n && n > 0 {
+            // 最後に足す: 前の最後の要素の後（像面までだった空気）は小さな間隔にし、足した玉の後の空気は
+            // 系ができたら近軸の焦点まで（2 枚目で像面が遠くに残って像が崩れない、GUX-10）
+            let chain = self.combo.chain();
+            if let Some(g) = chain.last().and_then(|s| s.after.clone()) {
+                if matches!(g, crate::combo_tree::Gap::Air(_)) {
+                    if let Some(v) = self.combo.gap(&g) {
+                        *v = 5.0;
+                    }
+                }
+            }
+            self.refocus = true;
+            self.combo.insert_chain_with(at, pick_from(r), false)
+        } else {
+            if n == 0 {
+                self.refocus = true;
+            }
+            crate::combo::insert_pick(&mut self.combo, at, pick_from(r))
+        };
         // 続けて足すと、足した玉の後ろへ
         self.insert_after = Some(at);
         self.added = Some(at);
@@ -1767,7 +1796,7 @@ impl Browser {
         let mut act = None;
         let c = &mut self.combo;
         ui.heading(tr("組合せ"));
-        ui.label(tr("一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。光は上から下へ進みます。"));
+        ui.label(tr("一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。一覧は光の進む順（字下げは BS の分岐の先）。"));
         ui.horizontal(|ui| {
             ui.label(tr("名前"));
             ui.text_edit_singleline(&mut c.name);
@@ -1789,8 +1818,15 @@ impl Browser {
         }
         ui.separator();
         let ids: Vec<String> = c.ids().into_iter().filter(|x| !x.is_empty()).collect();
-        let n = c.picks.len();
+        // 図・要素の設定と同じ経路に沿った並び（分岐の先も）。ロック・状態・分岐を尊重する（GPN-05）
+        let chain = c.chain();
+        let n = chain.len();
+        let st = c.active_state().map(str::to_string);
+        let st = st.as_deref();
         let mut op: Option<(usize, i32)> = None; // (行, -1 上へ / +1 下へ / 0 消す)
+        let can: Vec<(bool, bool)> = (0..n)
+            .map(|k| (c.can_swap(k, -1), c.can_swap(k, 1)))
+            .collect();
         egui::ScrollArea::vertical()
             .max_height(ui.available_height() - 40.0)
             .show(ui, |ui| {
@@ -1798,32 +1834,69 @@ impl Browser {
                     .striped(true)
                     .num_columns(4)
                     .show(ui, |ui| {
-                        for (i, p) in c.picks.iter_mut().enumerate() {
+                        for (k, step) in chain.iter().enumerate() {
+                            let air_gap =
+                                matches!(step.after, Some(crate::combo_tree::Gap::Air(_)));
+                            let Some(p) = c.get_mut(&step.loc) else {
+                                continue;
+                            };
+                            let indent = "  ".repeat(step.loc.len().saturating_sub(1));
                             ui.label(if p.is_branched() {
                                 // 分岐の先は組合せの図・要素の設定で
-                                trf("{}. {}（分岐）", &[&(i + 1), &p.label()])
+                                trf(
+                                    "{}. {}（分岐）",
+                                    &[&format!("{indent}{}", k + 1), &p.label()],
+                                )
                             } else {
-                                format!("{}. {} {}", i + 1, p.vendor, p.part)
+                                format!("{indent}{}. {}", k + 1, p.label())
                             });
-                            ui.checkbox(&mut p.reversed, tr("反転"))
+                            if matches!(
+                                p.kind,
+                                crate::combo::ElemKind::Catalog
+                                    | crate::combo::ElemKind::Lens
+                                    | crate::combo::ElemKind::Zmx
+                            ) && !(p.kind == crate::combo::ElemKind::Catalog
+                                && !p.path.is_empty())
+                            {
+                                ui.add_enabled(
+                                    !p.locked,
+                                    egui::Checkbox::new(&mut p.reversed, tr("反転")),
+                                )
                                 .on_hover_text(tr("レンズを裏返して置く"));
+                            } else {
+                                ui.label("");
+                            }
                             ui.horizontal(|ui| {
-                                ui.label(if i + 1 == n {
-                                    tr("像面まで")
-                                } else {
-                                    tr("後の空気")
-                                });
-                                ui.add(egui::DragValue::new(&mut p.air).speed(0.1).suffix(" mm"));
+                                if air_gap {
+                                    ui.label(if k + 1 == n {
+                                        tr("像面まで")
+                                    } else {
+                                        tr("後の空気")
+                                    });
+                                    let fixed = p.fixed();
+                                    let air = p.air_mut(st);
+                                    ui.add_enabled(
+                                        !fixed,
+                                        egui::DragValue::new(air)
+                                            .speed(0.1)
+                                            .range(0.0..=f64::INFINITY)
+                                            .suffix(" mm"),
+                                    );
+                                }
                             });
                             ui.horizontal(|ui| {
-                                if ui.add_enabled(i > 0, egui::Button::new("↑")).clicked() {
-                                    op = Some((i, -1));
+                                if ui.add_enabled(can[k].0, egui::Button::new("↑")).clicked() {
+                                    op = Some((k, -1));
                                 }
-                                if ui.add_enabled(i + 1 < n, egui::Button::new("↓")).clicked() {
-                                    op = Some((i, 1));
+                                if ui.add_enabled(can[k].1, egui::Button::new("↓")).clicked() {
+                                    op = Some((k, 1));
                                 }
-                                if ui.button("✖").on_hover_text(tr("外す")).clicked() {
-                                    op = Some((i, 0));
+                                if ui
+                                    .button("✖")
+                                    .on_hover_text(tr("外す（Ctrl+Z で戻す）"))
+                                    .clicked()
+                                {
+                                    op = Some((k, 0));
                                 }
                             });
                             ui.end_row();
@@ -1835,11 +1908,10 @@ impl Browser {
                 }
             });
         match op {
-            Some((i, 0)) => {
-                c.picks.remove(i);
+            Some((k, 0)) => c.remove_chain(k),
+            Some((k, d)) => {
+                c.swap_chain(k, d);
             }
-            Some((i, -1)) => c.picks.swap(i, i - 1),
-            Some((i, _)) => c.picks.swap(i, i + 1),
             None => {}
         }
         ui.horizontal(|ui| {
@@ -1856,9 +1928,10 @@ impl Browser {
             }
             if ui
                 .add_enabled(!c.picks.is_empty(), egui::Button::new(tr("空にする")))
+                .on_hover_text(tr("新規（Ctrl+N）と同じ。Ctrl+Z で戻す"))
                 .clicked()
             {
-                c.picks.clear();
+                act = Some(Action::New);
             }
         });
         act

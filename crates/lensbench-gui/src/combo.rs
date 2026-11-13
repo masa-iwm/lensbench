@@ -422,6 +422,9 @@ pub struct Pick {
     pub group: String,
     /// .zmx の取り込み: 玉モードの群（面 from〜to、名前・役割）
     pub zgroups: Vec<ZGroup>,
+    /// edits・ops を付けたときの面の並びの印（[`Pick::surf_sig`]）。面の数・順・元が変わったら上書きを外す
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub edits_for: String,
 }
 
 /// BS の形
@@ -547,11 +550,53 @@ impl Default for Pick {
             state_place: BTreeMap::new(),
             group: String::new(),
             zgroups: Vec::new(),
+            edits_for: String::new(),
         }
     }
 }
 
 impl Pick {
+    /// 面の上書き（edits・ops）の面番号を決める並びの印。種類・元（型番・ファイル・何番目の玉・構成・範囲）・
+    /// 反転・面の並びの種類が変わると変わる
+    pub fn surf_sig(&self) -> String {
+        let kinds: Vec<SurfKind> = self.surfs.iter().map(|r| r.kind).collect();
+        format!(
+            "{:?}|{}|{}|{}|{}|{}|{:?}|{}|{:?}|{:?}",
+            self.kind,
+            self.vendor,
+            self.part,
+            self.path,
+            self.lens,
+            self.config,
+            self.range,
+            self.reversed,
+            self.form,
+            kinds
+        )
+    }
+
+    /// 面の並びが edits・ops を付けたときから変わっていれば、上書きを外して外した数を返す。
+    /// 上書きが無ければ印を消し、印が無い（前の保存）上書きは今の並びのものとみなす
+    pub fn drop_stale_edits(&mut self) -> usize {
+        if self.edits.is_empty() && self.ops.is_empty() {
+            self.edits_for.clear();
+            return 0;
+        }
+        let sig = self.surf_sig();
+        if self.edits_for.is_empty() {
+            self.edits_for = sig;
+            return 0;
+        }
+        if self.edits_for == sig {
+            return 0;
+        }
+        let n = self.edits.len() + self.ops.len();
+        self.edits.clear();
+        self.ops.clear();
+        self.edits_for.clear();
+        n
+    }
+
     /// 位置もロックしている（図・キーで動かせず、偏心・傾き・後の空気も変えられない）
     pub fn fixed(&self) -> bool {
         self.locked && self.lock_place
@@ -1278,6 +1323,37 @@ impl Default for Combo {
 }
 
 impl Combo {
+    /// 要素の数（分岐の先も）・状態の数・面の上書きの数（消す操作の後に「Ctrl+Z で戻す」を出す、GPN-20）
+    pub fn census(&self) -> [usize; 3] {
+        fn walk(ps: &[Pick], n: &mut [usize; 3]) {
+            for p in ps {
+                n[0] += 1;
+                n[2] += p.edits.len() + p.ops.len();
+                for b in &p.ports {
+                    walk(&b.picks, n);
+                }
+            }
+        }
+        let mut n = [0, self.states.len(), 0];
+        walk(&self.picks, &mut n);
+        n
+    }
+
+    /// 面の並びが変わった要素（分岐の先も）の面の上書きを外す（GPN-02）。外した数
+    pub fn drop_stale_edits(&mut self) -> usize {
+        fn walk(ps: &mut [Pick]) -> usize {
+            let mut n = 0;
+            for p in ps {
+                n += p.drop_stale_edits();
+                for b in p.ports.iter_mut() {
+                    n += walk(&mut b.picks);
+                }
+            }
+            n
+        }
+        walk(&mut self.picks)
+    }
+
     /// 要素（分岐の先も）の .zmx のファイルのパスを f で変える（設定の相対パス）
     pub fn map_paths(&mut self, f: &impl Fn(&str) -> String) {
         fn walk(ps: &mut [Pick], f: &impl Fn(&str) -> String) {
@@ -1505,6 +1581,8 @@ pub struct LayoutData {
     /// 面の頂点 [z, y]
     pub vertices: Vec<Option<[f64; 2]>>,
     pub stop: Option<usize>,
+    /// 絞りの面の半径 [mm]（layout の surfaces の semi。無ければ組合せの epd/2）
+    pub stop_semi: Option<f64>,
     /// 玉・群の名前と面の範囲
     pub units: Vec<(String, Vec<[usize; 2]>)>,
     /// xz 面の図（縦は x）。偏心・傾きの操作も x の向き
@@ -1607,6 +1685,11 @@ impl LayoutData {
                 })
                 .collect(),
             stop: arr("surfaces").iter().position(|s| s["stop"] == true),
+            stop_semi: arr("surfaces")
+                .iter()
+                .find(|s| s["stop"] == true)
+                .and_then(|s| s["semi"].as_f64())
+                .filter(|r| r.is_finite() && *r > 0.0),
             units: arr("units")
                 .iter()
                 .map(|u| {
@@ -2901,7 +2984,7 @@ fn figure(
     if let Some(j) = d.stop {
         if let Some(Some(v)) = d.vertices.get(j) {
             let c = to(*v);
-            let r = (combo.epd / 2.0 * s) as f32;
+            let r = (d.stop_semi.unwrap_or(combo.epd / 2.0) * s) as f32;
             // 絞りの要素なら、その光軸に垂直に
             let u = spans
                 .iter()
@@ -3035,7 +3118,7 @@ fn figure(
                 pos.y + r + 10.0
             };
             (
-                Pos2::new(pos.x, y.clamp(rect.top() + 10.0, rect.bottom() - 10.0)),
+                Pos2::new(pos.x, y.min(rect.bottom() - 10.0).max(rect.top() + 10.0)),
                 if n.y < 0.0 {
                     egui::Align2::CENTER_BOTTOM
                 } else {
@@ -3297,16 +3380,37 @@ fn figure(
             } else if te.lost_focus() {
                 let (esc, enter) =
                     ui.input(|i| (i.key_pressed(Key::Escape), i.key_pressed(Key::Enter)));
-                // Enter・Esc で終えたら図にフォーカスを戻す（寸法は選んだまま、← → が効く）
-                if esc || enter {
-                    resp.request_focus();
+                let v = text
+                    .trim()
+                    .replace(',', ".")
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|v| v.is_finite() && *v >= 0.0);
+                let err_id = te_id.with("err");
+                if !esc && v.is_none() {
+                    // 数でない・負の値は黙って捨てず、欄を残して赤枠にする（Esc でやめる、GPN-10）
+                    ui.data_mut(|d| d.insert_temp(err_id, true));
+                    *focused = false;
+                } else {
+                    ui.data_mut(|d| d.remove::<bool>(err_id));
+                    // Enter・Esc で終えたら図にフォーカスを戻す（寸法は選んだまま、← → が効く）
+                    if esc || enter {
+                        resp.request_focus();
+                    }
+                    done = Some((*g, if esc { None } else { v }));
                 }
-                done = Some((
-                    *g,
-                    (!esc)
-                        .then(|| text.trim().replace(',', ".").parse::<f64>().ok())
-                        .flatten(),
-                ));
+            }
+            if ui
+                .data(|d| d.get_temp::<bool>(te_id.with("err")))
+                .unwrap_or(false)
+            {
+                ui.painter().rect_stroke(
+                    te.rect.expand(1.0),
+                    2.0,
+                    egui::Stroke::new(1.5_f32, ui.visuals().error_fg_color),
+                    egui::StrokeKind::Outside,
+                );
+                te.on_hover_text(tr("0 以上の数（Esc でやめる）"));
             }
         } else {
             done = Some((*g, None));
@@ -3734,12 +3838,18 @@ fn place_fields(kind: ElemKind) -> bool {
 
 /// 要素の数の欄（名前と値）
 fn num(ui: &mut Ui, label: &str, v: &mut f64, unit: &str) {
+    num_in(ui, label, v, unit, f64::NEG_INFINITY);
+}
+
+/// 下限のある数の欄（厚さ ≥ 0・半径 > 0 など。負や 0 を入れて系を作る段で誤りにしない、GPN-10）
+fn num_in(ui: &mut Ui, label: &str, v: &mut f64, unit: &str, min: f64) {
     let weak = theme::weak_text(ui.visuals());
     ui.label(RichText::new(label).color(weak));
     ui.add(
         egui::DragValue::new(v)
             .speed(0.05)
             .max_decimals(4)
+            .range(min..=f64::INFINITY)
             .suffix(unit),
     );
 }
@@ -3753,7 +3863,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
         ElemKind::Lens => {
             num(ui, "R1", &mut p.r1, " mm");
             num(ui, "R2", &mut p.r2, " mm");
-            num(ui, tr("厚さ"), &mut p.t, " mm");
+            num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0);
             ui.label(RichText::new(tr("ガラス")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             semi_edit(ui, &mut p.semi, &mut p.semi_auto);
@@ -3788,7 +3898,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                 .on_hover_text(tr(".zmx のマルチコンフィグの番号"));
         }
         ElemKind::Plate => {
-            num(ui, tr("厚さ"), &mut p.t, " mm");
+            num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0);
             ui.label(RichText::new(tr("ガラス")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             semi_edit(ui, &mut p.semi, &mut p.semi_auto);
@@ -3796,13 +3906,13 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
         ElemKind::Mirror => {
             num(ui, "R", &mut p.r1, " mm");
             place_ui(ui, p, st, &[], &[0, 1]);
-            num(ui, tr("半径"), &mut p.semi, " mm");
+            num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
             coat_edit(ui, &mut p.coat, weak);
             ui.checkbox(&mut p.back, tr("往路を戻る")).on_hover_text(tr(
                 "鏡で反射した光が来た道を戻る（ダブルパス・干渉計の腕の端）。BS の分岐の中なら、戻った光は BS で分かれる",
             ));
         }
-        ElemKind::Stop => num(ui, tr("半径"), &mut p.semi, " mm"),
+        ElemKind::Stop => num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001),
         ElemKind::Aperture => {
             egui::ComboBox::from_id_salt(("ap_shape", k))
                 .selected_text(p.ap.label())
@@ -3819,20 +3929,20 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                 });
             match p.ap {
                 ApShape::Circle | ApShape::Obscuration => {
-                    num(ui, tr("内側の半径"), &mut p.ap_min, " mm");
-                    num(ui, tr("外側の半径"), &mut p.semi, " mm");
+                    num_in(ui, tr("内側の半径"), &mut p.ap_min, " mm", 0.0);
+                    num_in(ui, tr("外側の半径"), &mut p.semi, " mm", 0.001);
                 }
                 ApShape::Rect | ApShape::Ellipse => {
-                    num(ui, tr("半幅 x"), &mut p.ap_half[0], " mm");
-                    num(ui, tr("半幅 y"), &mut p.ap_half[1], " mm");
+                    num_in(ui, tr("半幅 x"), &mut p.ap_half[0], " mm", 0.001);
+                    num_in(ui, tr("半幅 y"), &mut p.ap_half[1], " mm", 0.001);
                 }
                 ApShape::Spider => {
-                    num(ui, tr("腕の幅（全幅）"), &mut p.spider_width, " mm");
+                    num_in(ui, tr("腕の幅（全幅）"), &mut p.spider_width, " mm", 0.0);
                     let mut n = p.spider_arms as f64;
                     num(ui, tr("腕の本数"), &mut n, "");
                     p.spider_arms = n.round().clamp(1.0, 360.0) as u32;
                     // 腕は無限に伸びる。図ではこの半径まで描く
-                    num(ui, tr("図の半径"), &mut p.semi, " mm");
+                    num_in(ui, tr("図の半径"), &mut p.semi, " mm", 0.001);
                 }
             }
             num(ui, tr("偏心 x"), &mut p.decenter[0], " mm");
@@ -3856,8 +3966,8 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                 }
             }
             match p.form {
-                BsForm::Cube => num(ui, tr("一辺"), &mut p.t, " mm"),
-                BsForm::Plate => num(ui, tr("厚さ"), &mut p.t, " mm"),
+                BsForm::Cube => num_in(ui, tr("一辺"), &mut p.t, " mm", 0.001),
+                BsForm::Plate => num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0),
                 BsForm::Ideal => {}
             }
             if p.form != BsForm::Ideal {
@@ -3865,7 +3975,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                 ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             }
             if p.form != BsForm::Cube {
-                num(ui, tr("半径"), &mut p.semi, " mm");
+                num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
             }
             let mut mode = p.split_mode();
             egui::ComboBox::from_id_salt(("bs_split", k))
@@ -3946,7 +4056,7 @@ fn coat_edit(ui: &mut Ui, coat: &mut String, weak: Color32) {
     let names = crate::coat_defs::names(ui.ctx());
     if !names.is_empty() {
         egui::ComboBox::from_id_salt(("coat_pick", coat as *const String as usize))
-            .selected_text("▾")
+            .selected_text("▼")
             .width(24.0)
             .show_ui(ui, |ui| {
                 for n in names {
@@ -4293,19 +4403,35 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
     }
 }
 
-/// .zmx の絞りの面と像面の番号（読めなければ None）。ファイルの更新時刻ごとに覚えておく（図を描くたびに呼ぶので）
+/// .zmx の絞りの面と像面の番号（読めなければ None）。ファイルの更新時刻ごとに覚えておく（図を描くたびに呼ぶので）。
+/// 更新時刻の読み出し（stat）も 1 秒に 1 回まで（1 フレームに何十回も呼ばれ、ネットワークの上では遅い、GPN-12）
 pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
-    type Memo = HashMap<String, (Option<std::time::SystemTime>, Option<(usize, usize)>)>;
+    /// 更新時刻、確かめた時刻、値
+    type Memo = HashMap<
+        String,
+        (
+            Option<std::time::SystemTime>,
+            web_time::Instant,
+            Option<(usize, usize)>,
+        ),
+    >;
     static MEMO: OnceLock<Mutex<Memo>> = OnceLock::new();
     if path.is_empty() {
         return None;
     }
-    let mtime = lensbench_core::vfs::stamp(path).ok().and_then(|s| s.0);
     let memo = MEMO.get_or_init(Default::default);
-    if let Some((t, v)) = memo.lock().ok()?.get(path) {
+    if let Some((_, at, v)) = memo.lock().ok()?.get(path) {
+        if at.elapsed() < std::time::Duration::from_secs(1) {
+            return *v;
+        }
+    }
+    let mtime = lensbench_core::vfs::stamp(path).ok().and_then(|s| s.0);
+    let now = web_time::Instant::now();
+    if let Some((t, at, v)) = memo.lock().ok()?.get_mut(path) {
         if *t == mtime {
+            *at = now;
             return *v;
         }
     }
@@ -4316,7 +4442,7 @@ pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
             let stop = raw.surfs.iter().position(|x| x.stop)?;
             Some((stop, raw.surfs.len().checked_sub(1)?))
         });
-    memo.lock().ok()?.insert(path.to_string(), (mtime, v));
+    memo.lock().ok()?.insert(path.to_string(), (mtime, now, v));
     v
 }
 
@@ -4546,7 +4672,7 @@ fn semi_json(semi: f64, auto: bool) -> Value {
 
 /// 自作の玉・平板の半径の欄と自動の切り替え
 fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
-    ui.add_enabled_ui(!*auto, |ui| num(ui, tr("半径"), semi, " mm"));
+    ui.add_enabled_ui(!*auto, |ui| num_in(ui, tr("半径"), semi, " mm", 0.001));
     ui.checkbox(auto, tr("自動"))
         .on_hover_text(tr("半径を全視野・全波長の光線から求める"));
 }
@@ -4703,6 +4829,38 @@ mod tests {
         c.picks[2].edits.clear();
         assert!(c.project().get("surface_edits").is_none());
     }
+    /// 面の数・順・元が変わったら、面番号の上書き（edits・ops）を外す。値だけの変更では残す（GPN-02）
+    #[test]
+    fn stale_surface_edits_are_dropped() {
+        let mut c = Combo::default();
+        let mut a = Pick::new(ElemKind::Surfaces);
+        a.surfs = vec![SurfRow::default(), SurfRow::default(), SurfRow::default()];
+        a.set_edit(1, "r", json!(-40.0));
+        a.ops.push(json!({ "op": "set_stop", "surface": 2 }));
+        c.picks = vec![a];
+        // 印の無い上書き（前の保存）は今の並びのものとみなす
+        assert_eq!(c.drop_stale_edits(), 0);
+        assert!(!c.picks[0].edits_for.is_empty());
+        // 値だけ変える（面の数・種類は同じ）: 残す
+        c.picks[0].surfs[0].radius = 12.0;
+        assert_eq!(c.drop_stale_edits(), 0);
+        assert_eq!(c.picks[0].edits.len(), 1);
+        // 面を足す: 番号がずれるので外す
+        c.picks[0].surfs.insert(1, SurfRow::default());
+        assert_eq!(c.drop_stale_edits(), 2);
+        assert!(c.picks[0].edits.is_empty() && c.picks[0].ops.is_empty());
+        assert!(c.picks[0].edits_for.is_empty());
+        // 反転も番号の向きが変わるので外す
+        let mut b = Pick::new(ElemKind::Lens);
+        b.set_edit(0, "semi", json!(8.0));
+        c.picks.push(b);
+        assert_eq!(c.drop_stale_edits(), 0);
+        c.picks[1].reversed = true;
+        assert_eq!(c.drop_stale_edits(), 1);
+        // 消す操作の後の数
+        assert_eq!(c.census(), [2, 0, 0]);
+    }
+
     /// 絞り・ソルブ・ピックアップ: 要素の面はその要素の id に、絞りを面に置けば前の絞りは無くなる
     #[test]
     fn surface_ops_follow_the_element() {
