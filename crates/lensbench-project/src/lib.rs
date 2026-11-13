@@ -1218,6 +1218,8 @@ fn cb(d: [f64; 5], order: u8, t: f64) -> Surface {
 /// zmx ブロックで取り込んだ .zmx のピックアップと厚さのソルブ（面番号は取り込んだ .zmx の番号）
 struct ZmxLinks {
     path: String,
+    /// 取り込んだ向き（1 か、鏡の後で −1。曲率・厚さの符号を返した）
+    sign: f64,
     pickups: Vec<Pickup>,
     solves: Vec<ThickSolve>,
     /// 取り込んだ .zmx の像面の番号
@@ -1928,6 +1930,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {
                     path: path.clone(),
+                    sign: 1.0,
                     pickups: s.pickups.clone(),
                     solves: s.solves.clone(),
                     image: s.image(),
@@ -1956,6 +1959,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let spans = zmx_group_spans(&keep, groups).map_err(|e| format!("{path}: {e}"))?;
                 self.placed(place, &mut |c: &mut Self| {
                     let sign = c.parity;
+                    c.zpicks[inst].sign = sign;
                     let mut i = 0;
                     while i < keep.len() {
                         let Some(&(g, a, z)) = spans.iter().find(|q| q.1 == i) else {
@@ -4271,16 +4275,36 @@ fn keep_pickups(
                 ));
                 continue;
             };
-            // 鏡のあと（向きが逆）では厚さ・非球面係数の符号が変わるので、オフセットの符号も試す
-            let cands = [
-                Pickup { dst, src, ..*q },
-                Pickup {
+            // 鏡のあと（向きが逆、sign = −1）で取り込むと、曲率・厚さの符号が変わる。先 dst' = σd·dst、元 src' = σs·src
+            // （σ は量の符号が変われば sign、変わらなければ 1）なら、dst = a·src + b は dst' = (σd·σs·a)·src' + σd·b。
+            // 向きから決めた組を先に試し、合わなければ（面タイプのパラメータの意味は型で違う）ほかの符号の組を試す
+            use lensbench_core::param::PickKind as Pk;
+            let flips = |k: Pk| matches!(k, Pk::Curv | Pk::Thick | Pk::Radius);
+            let sd = if flips(q.what) { z.sign } else { 1.0 };
+            let ss = if flips(q.from.unwrap_or(q.what)) {
+                z.sign
+            } else {
+                1.0
+            };
+            let mut cands = vec![Pickup {
+                dst,
+                src,
+                scale: sd * ss * q.scale,
+                offset: sd * q.offset,
+                ..*q
+            }];
+            for (a, b) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                let c = Pickup {
                     dst,
                     src,
-                    offset: -q.offset,
+                    scale: a * q.scale,
+                    offset: b * q.offset,
                     ..*q
-                },
-            ];
+                };
+                if !cands.contains(&c) {
+                    cands.push(c);
+                }
+            }
             match cands.iter().find(|c| c.holds(s)) {
                 Some(c) => s.pickups.push(*c),
                 None => warn.push(format!(
