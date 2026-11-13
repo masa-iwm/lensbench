@@ -47,8 +47,51 @@ impl Arg {
     }
 }
 
+/// 括弧の入れ子の深さの上限（これより深い所は読み飛ばす。再帰でスタックがあふれないように）
+const MAX_DEPTH: usize = 64;
+
 /// `(a,b,(c,d))` の中身を値の並びに（文字・.T./.F. 以外の列挙は Other）
 pub(crate) fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
+    parse_args_at(s, i, 0)
+}
+
+/// s[*i] の '(' に対応する ')' の後へ、再帰せずに進む（文字の中の括弧は数えない）
+fn skip_group(s: &[u8], i: &mut usize) {
+    let mut depth = 0usize;
+    while *i < s.len() {
+        match s[*i] {
+            b'(' => depth += 1,
+            b')' => {
+                if depth <= 1 {
+                    *i += 1;
+                    return;
+                }
+                depth -= 1;
+            }
+            b'\'' => {
+                *i += 1;
+                while *i < s.len() {
+                    if s[*i] == b'\'' {
+                        if s.get(*i + 1) == Some(&b'\'') {
+                            *i += 2;
+                            continue;
+                        }
+                        break;
+                    }
+                    *i += 1;
+                }
+            }
+            _ => {}
+        }
+        *i += 1;
+    }
+}
+
+fn parse_args_at(s: &[u8], i: &mut usize, depth: usize) -> Vec<Arg> {
+    if depth > MAX_DEPTH {
+        skip_group(s, i);
+        return Vec::new();
+    }
     let mut out = Vec::new();
     // s[*i] は '('
     *i += 1;
@@ -67,7 +110,7 @@ pub(crate) fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
             b',' => {
                 *i += 1;
             }
-            b'(' => out.push(Arg::List(parse_args(s, i))),
+            b'(' => out.push(Arg::List(parse_args_at(s, i, depth + 1))),
             b'\'' => {
                 *i += 1;
                 while *i < s.len() {
@@ -119,7 +162,7 @@ pub(crate) fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
                 }
                 let tok = std::str::from_utf8(&s[st..*i]).unwrap_or("").trim();
                 if *i < s.len() && s[*i] == b'(' {
-                    let _ = parse_args(s, i);
+                    let _ = parse_args_at(s, i, depth + 1);
                 }
                 out.push(match tok {
                     ".T." => Arg::Bool(true),
@@ -242,13 +285,56 @@ fn skip_ws(body: &[u8], j: &mut usize) {
     }
 }
 
+/// 注釈 `/* … */` を除く（文字 '…' の中は残す）
+fn strip_comments(t: &str) -> std::borrow::Cow<'_, str> {
+    if !t.contains("/*") {
+        return std::borrow::Cow::Borrowed(t);
+    }
+    let b = t.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    let mut quoted = false;
+    while i < b.len() {
+        if quoted {
+            out.push(b[i]);
+            if b[i] == b'\'' {
+                if b.get(i + 1) == Some(&b'\'') {
+                    out.push(b'\'');
+                    i += 1;
+                } else {
+                    quoted = false;
+                }
+            }
+            i += 1;
+        } else if b[i] == b'\'' {
+            quoted = true;
+            out.push(b[i]);
+            i += 1;
+        } else if b[i] == b'/' && b.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i < b.len() && !(b[i] == b'*' && b.get(i + 1) == Some(&b'/')) {
+                i += 1;
+            }
+            i += 2;
+            out.push(b' ');
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    std::borrow::Cow::Owned(String::from_utf8_lossy(&out).into_owned())
+}
+
 impl Step {
     /// DATA 部を読む（大文字にした文字）
     pub(crate) fn parse(upper: &str) -> Result<Step, String> {
-        let Some(data) = upper.find("DATA;") else {
+        let text = strip_comments(upper);
+        // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）
+        let from = text.find("ENDSEC;").map_or(0, |k| k + 7);
+        let Some(data) = text[from..].find("DATA;").map(|k| k + from) else {
             return Err("STEP の DATA 部が無い".into());
         };
-        let body = &upper.as_bytes()[data + 5..];
+        let body = &text.as_bytes()[data + 5..];
         let mut ents: HashMap<u64, Vec<(String, Vec<Arg>)>> = HashMap::new();
         let mut i = 0;
         while i < body.len() {
@@ -2441,5 +2527,27 @@ mod tests {
         // 素子を入れないねじ（C マウントのメス）の穴は、径はそのままでねじの名前を付ける
         let r = super::pick_hold(&[b(0.0, 9.525, 24.5364)]);
         assert_eq!((r.0.as_str(), r.1), ("C-Mount", 24.5364));
+    }
+
+    /// 深い括弧の入れ子でスタックがあふれず、注釈の中の実体（#5 の上書き）を読まない
+    #[test]
+    fn deep_nesting_and_comments() {
+        let deep = format!(
+            "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=X({}1{});\n#2=CARTESIAN_POINT('',(1.,2.,3.));\nENDSEC;\n",
+            "(".repeat(300_000),
+            ")".repeat(300_000)
+        );
+        let st = super::Step::parse(&deep).unwrap();
+        assert!(st.ents.contains_key(&2));
+        let c =
+            "ISO-10303-21;\nHEADER;\nFILE_NAME('DATA;','',(''),(''),'','','');\nENDSEC;\nDATA;\n\
+#5=CIRCLE('',#4,12.7);\n/* #5=CIRCLE('',#4,99.); */\n#6=X('/* not a comment */');\nENDSEC;\n";
+        let st = super::Step::parse(c).unwrap();
+        let five = &st.ents[&5][0].1;
+        assert!(
+            matches!(five[2], super::Arg::Num(r) if r == 12.7),
+            "{five:?}"
+        );
+        assert!(st.ents.contains_key(&6));
     }
 }
