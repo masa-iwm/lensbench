@@ -1039,9 +1039,9 @@ pub fn build(
     if primary >= wl.len() {
         invalid!("主波長 {}（波長は {} 個）", primary + 1, wl.len());
     }
-    // ガラス
-    let glasses: std::sync::Arc<HashMap<String, Glass>> = match &opt.glasses {
-        Some(g) => std::sync::Arc::new(g.clone()),
+    // ガラス。見つからない・読めなかったカタログ（理由つき）は、ガラスが無いときの誤りに添える（XCT-01）
+    let (glasses, cat_missing): (std::sync::Arc<HashMap<String, Glass>>, _) = match &opt.glasses {
+        Some(g) => (std::sync::Arc::new(g.clone()), Vec::new()),
         None => {
             let cats: Vec<String> = raw
                 .sysl
@@ -1049,9 +1049,10 @@ pub fn build(
                 .and_then(|v| v.first())
                 .cloned()
                 .unwrap_or_else(|| vec!["SCHOTT".into()]);
-            glass::load_catalogs_shared(&cats, dirs).0
+            glass::load_catalogs_shared(&cats, dirs)
         }
     };
+    let why = glass::missing_note(&cat_missing); // 空か「（見つからない…）」
     let ns = raw.surfs.len();
     // 厚さ・パラメータとピックアップ
     let mut th: Vec<f64> = raw.surfs.iter().map(|s| s.disz.unwrap_or(0.0)).collect();
@@ -1379,9 +1380,8 @@ pub fn build(
                     .collect()
             }
         } else {
-            let g = glasses
-                .get(&mat)
-                .ok_or_else(|| Error::Invalid(format!("ガラス {mat}（面 {k}）がカタログにない")))?;
+            let miss = || Error::Invalid(format!("ガラス {mat}（面 {k}）がカタログにない{why}"));
+            let g = glasses.get(&mat).ok_or_else(miss)?;
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
         d.n = n.clone();
@@ -1389,7 +1389,7 @@ pub fn build(
             let en = crate::surface::Bire::e_name(&mat);
             let g = glasses.get(&en).ok_or_else(|| {
                 Error::Invalid(format!(
-                    "複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない"
+                    "複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない{why}"
                 ))
             })?;
             *ne = wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect();

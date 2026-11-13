@@ -7,6 +7,7 @@
 mod app;
 mod argform;
 mod cad_fetch;
+mod cad_store;
 mod catalog;
 mod catsave;
 mod chrome;

@@ -145,7 +145,8 @@ pub fn fetch_item_with(
         };
         write_cache(dir, &path, &crate::cad_detail::gzip(&b))?;
         if source == Source::Vendor {
-            if let Some(s) = store {
+            // 読み取り専用の置き場（配る exe に組み込んだ GET だけのトークン）には上げない
+            if let Some(s) = store.filter(|s| !s.read_only) {
                 match s.put(&key, &b) {
                     Ok(()) => source = Source::VendorUploaded,
                     Err(e) => store_notes.push(e),
@@ -195,6 +196,9 @@ pub struct Store {
     pub id: String,
     /// Access のサービストークンの Client Secret
     pub secret: String,
+    /// 読むだけ（[`Store::put`] は誤り、品の STEP を取ったときも上げない）。配る exe に組み込む読み取り用の
+    /// トークンはこれにする（exe から取り出しても置き場には書けない、XCT-14）
+    pub read_only: bool,
 }
 
 static STORE: std::sync::Mutex<Option<Store>> = std::sync::Mutex::new(None);
@@ -214,24 +218,51 @@ pub fn set_store(s: Option<Store>) {
 
 /// 今の置き場: [`set_store`] で決めたもの、無ければ環境変数 `LENSBENCH_CAD_STORE`（URL）・
 /// `LENSBENCH_CAD_STORE_ID`・`LENSBENCH_CAD_STORE_SECRET`、無ければ組み込みの置き場（[`set_default_store`]）。
+/// 組み込みの置き場は、URL の環境変数が無くトークン（ID・SECRET）の環境変数があれば、そのトークンで読み書きする
+/// （組み込みは読み取り用、書き込み用のトークンは手元の環境変数だけに置く、XCT-14）。
 /// どれも無ければ None（配布元だけ）
 pub fn store() -> Option<Store> {
-    if let Some(s) = STORE.lock().unwrap_or_else(|e| e.into_inner()).clone() {
-        return Some(s);
-    }
     let env = |k: &str| std::env::var(k).unwrap_or_default().trim().to_string();
-    let url = env("LENSBENCH_CAD_STORE");
+    resolve_store(
+        STORE.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        [
+            env("LENSBENCH_CAD_STORE"),
+            env("LENSBENCH_CAD_STORE_ID"),
+            env("LENSBENCH_CAD_STORE_SECRET"),
+        ],
+        DEFAULT_STORE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
+    )
+}
+
+/// [`store`] の決め方（環境変数は [URL, ID, SECRET]）
+fn resolve_store(set: Option<Store>, env: [String; 3], default: Option<Store>) -> Option<Store> {
+    if set.is_some() {
+        return set;
+    }
+    let [url, id, secret] = env;
     if !url.is_empty() {
         return Some(Store {
             url,
-            id: env("LENSBENCH_CAD_STORE_ID"),
-            secret: env("LENSBENCH_CAD_STORE_SECRET"),
+            id,
+            secret,
+            read_only: false,
         });
     }
-    DEFAULT_STORE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    default.map(|d| {
+        if id.is_empty() || secret.is_empty() {
+            d
+        } else {
+            Store {
+                id,
+                secret,
+                read_only: false,
+                ..d
+            }
+        }
+    })
 }
 
 /// 組み込みの置き場があるか（GUI の欄の説明に使う）
@@ -249,6 +280,7 @@ impl std::fmt::Debug for Store {
             .field("url", &self.url)
             .field("id", &self.id)
             .field("secret", &if self.secret.is_empty() { "" } else { "***" })
+            .field("read_only", &self.read_only)
             .finish()
     }
 }
@@ -358,6 +390,12 @@ impl Store {
 
     /// 鍵で上げる（STEP・膜のモデル）。STEP は gzip にして上げる（取るときは [`step_bytes`] が展開する）
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
+        if self.read_only {
+            return Err(format!(
+                "読み取り専用の置き場には上げない（書き込み用のトークンを環境変数 LENSBENCH_CAD_STORE_ID・LENSBENCH_CAD_STORE_SECRET に）: {}",
+                self.url
+            ));
+        }
         self.check_scheme()?;
         let u = self.url_of(key);
         let is_step = key.ends_with(".step");
@@ -927,6 +965,62 @@ mod tests {
         );
     }
 
+    /// XCT-14: 組み込みの読み取り用の置き場には上げない。書き込みは手元の環境変数のトークンだけ
+    #[test]
+    fn xct14_read_only_store_does_not_put_and_env_token_overrides_default() {
+        let ro = Store {
+            url: "https://x.example/cad".into(),
+            id: "read".into(),
+            secret: "r".into(),
+            read_only: true,
+        };
+        let e = ro
+            .put("A-0123456789abcdef.step", b"ISO-10303-21;")
+            .unwrap_err();
+        assert!(e.contains("読み取り専用"), "{e}");
+        let none = || [String::new(), String::new(), String::new()];
+        // 環境変数が無ければ組み込みのまま（読むだけ）
+        assert_eq!(
+            resolve_store(None, none(), Some(ro.clone())),
+            Some(ro.clone())
+        );
+        // ID・SECRET の環境変数があれば、組み込みの URL に書き込み用のトークン
+        let w = resolve_store(
+            None,
+            [String::new(), "write".into(), "w".into()],
+            Some(ro.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            (w.url.as_str(), w.id.as_str(), w.read_only),
+            ("https://x.example/cad", "write", false)
+        );
+        // 片方だけでは差し替えない
+        let half = resolve_store(
+            None,
+            [String::new(), "write".into(), String::new()],
+            Some(ro.clone()),
+        );
+        assert_eq!(half, Some(ro.clone()));
+        // URL の環境変数は組み込みより先
+        let u = resolve_store(
+            None,
+            ["https://y/cad".into(), String::new(), String::new()],
+            Some(ro.clone()),
+        )
+        .unwrap();
+        assert_eq!((u.url.as_str(), u.read_only), ("https://y/cad", false));
+        // 設定で決めたものが一番先
+        let set = Store {
+            url: "https://z/cad".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_store(Some(set.clone()), none(), Some(ro)),
+            Some(set)
+        );
+    }
+
     #[test]
     fn store_url_escapes_key() {
         let s = Store {
@@ -947,6 +1041,7 @@ mod tests {
                 url: url.into(),
                 id: "i".into(),
                 secret: "s".into(),
+                read_only: false,
             }
             .check_scheme()
         };

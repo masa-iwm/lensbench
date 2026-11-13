@@ -586,6 +586,7 @@ fn coating_models_come_from_the_store_when_missing() {
         url: store_url.clone(),
         id: "tid".into(),
         secret: "tsecret".into(),
+        read_only: false,
     }));
     // 口が無いうちは読めない
     assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
@@ -617,4 +618,43 @@ fn coating_models_come_from_the_store_when_missing() {
         lbcm
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// XCT-14: 読み取り専用の置き場（配る exe に組み込む読み取り用のトークン）は、配布元から取った STEP を上げない
+#[test]
+fn xct14_read_only_store_reads_but_never_uploads() {
+    let dir = std::env::temp_dir().join(format!("lensbench-cad-ro-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let step = plate_step(&dir);
+    let (vendor, hits) = server(step.clone());
+    let (store_url, db, log) = store_server();
+    let item: lensbench_project::UserItem = serde_json::from_value(json!({
+        "mech": { "bores": [{ "z0": 0, "z1": 8.89, "diameter": 26.416 }],
+                  "length": 8.89, "outer_diameter": 40.64, "outline": "square" },
+        "cad": { "step": format!("{vendor}/plate.step") },
+    }))
+    .unwrap();
+    let ro = lensbench_cli::cad::Store {
+        url: store_url,
+        id: "tid".into(),
+        secret: "tsecret".into(),
+        read_only: true,
+    };
+    let r =
+        lensbench_cli::cad::fetch_item_with(&dir.join("c1"), "CP-RO", &item, Some(&ro)).unwrap();
+    assert_eq!(r.source, lensbench_cli::cad::Source::Vendor);
+    assert!(r.store_notes.is_empty(), "{:?}", r.store_notes);
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    assert!(
+        db.lock().unwrap().is_empty(),
+        "読み取り専用の置き場に上がった"
+    );
+    let log = log.lock().unwrap().clone();
+    assert!(log.iter().all(|l| !l.starts_with("PUT")), "{log:?}");
+    assert!(
+        log.iter().any(|l| l.starts_with("GET")),
+        "読むのは先に見る: {log:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
