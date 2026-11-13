@@ -1334,7 +1334,15 @@ impl Cmd {
         let (c, mut v): (Option<&mut Common>, Vec<(&mut PathBuf, bool)>) = match self {
             Cmd::Layout { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
             Cmd::Elements { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
-            Cmd::Optimize { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
+            Cmd::Optimize {
+                c, out, terms_file, ..
+            } => (
+                Some(c),
+                out.iter_mut()
+                    .map(|p| (p, true))
+                    .chain(terms_file.iter_mut().map(|p| (p, false)))
+                    .collect(),
+            ),
             Cmd::Tolerance {
                 c,
                 spec,
@@ -2253,6 +2261,10 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     v => specs.push(v),
                 }
             }
+            // serve の中（--root・--allow-remote）なら zplm の file・macro_dirs の場所を確かめる
+            for v in specs.iter_mut() {
+                serve::check_term_paths(v).map_err(|x| x.msg)?;
+            }
             for (i, v) in specs.iter().enumerate() {
                 let t = lensbench_project::merit::term_from_json(v, &p.configs)
                     .map_err(|x| format!("項 {}: {x}", i + 1))?;
@@ -2336,6 +2348,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             if let Some(n) = seed {
                 v["seed"] = json!(n);
+            }
+            if let Some(t) = v.get_mut("terms") {
+                serve::check_term_paths(t).map_err(|x| x.msg)?;
             }
             let (vendors, reversed) = tolerance_vendors(&c);
             let ms = lensbench_project::tolerance::spec_from_json_with(

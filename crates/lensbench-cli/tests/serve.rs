@@ -642,6 +642,23 @@ fn root_limits_files() {
     let tol = json!({ "trials": 1, "merit": "none", "tols": [{"param": "1.t", "pm": 0.01}],
         "terms": [{"type": "zplm", "file": zp}] });
     outside(sv.error("tolerance", tol));
+    // analyze 経由の optimize の --terms・--term、tolerance の --set の terms も同じく確かめる
+    std::fs::write(dir.join("terms.json"), "[]").unwrap();
+    let tf = dir.join("terms.json").display().to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "optimize", "var": ["3.t"], "terms": tf }),
+    ));
+    let zt = json!({"type": "zplm", "file": zp}).to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "optimize", "var": ["3.t"], "merit": "none", "term": [zt] }),
+    ));
+    let set = json!({ "terms": [{"type": "zplm", "file": zp}] }).to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "tolerance", "trials": 1, "set": [set] }),
+    ));
     sv.stop();
     std::fs::remove_dir_all(&dir).ok();
 }

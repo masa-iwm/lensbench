@@ -88,7 +88,7 @@ static FILES: std::sync::OnceLock<Files> = std::sync::OnceLock::new();
 
 /// 評価関数の項（1 つか並び）の zplm のファイル・フォルダを [`check_path`] で確かめる。ファイルを限っているとき
 /// （--root・--allow-remote）は、既定の場所（LENSBENCH_MACROS・今のフォルダ）を探さない
-fn check_term_paths(t: &mut Value) -> Result<(), RpcErr> {
+pub(crate) fn check_term_paths(t: &mut Value) -> Result<(), RpcErr> {
     let limited = !matches!(FILES.get().unwrap_or(&Files::Any), Files::Any);
     let items: Vec<&mut Value> = match t {
         Value::Array(a) => a.iter_mut().collect(),
@@ -520,9 +520,9 @@ fn replay(
 }
 
 /// JSON-RPC のエラー
-struct RpcErr {
+pub(crate) struct RpcErr {
     code: i64,
-    msg: String,
+    pub(crate) msg: String,
 }
 
 impl RpcErr {
