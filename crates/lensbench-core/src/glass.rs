@@ -178,7 +178,13 @@ pub fn decode_text_enc(raw: &[u8]) -> (String, TextEncoding) {
         return (s.to_string(), TextEncoding::Utf8);
     }
     let (s, had_errors) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(body);
-    if !had_errors {
+    // Windows-1252 の ° µ ± などの 1 バイトは Shift_JIS では半角カナに読める。全角の文字が 1 つもなく半角カナだけなら
+    // Windows-1252 とみる（日本語の .zmx の名前・コメントは全角を含む）
+    let halfwidth_only = s.chars().any(|c| ('\u{ff61}'..='\u{ff9f}').contains(&c))
+        && !s
+            .chars()
+            .any(|c| c as u32 >= 0x3000 && !('\u{ff61}'..='\u{ff9f}').contains(&c));
+    if !had_errors && !halfwidth_only {
         return (s.into_owned(), TextEncoding::ShiftJis);
     }
     let (s, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(body);
@@ -455,6 +461,11 @@ mod tests {
         assert_eq!(
             decode_text_enc(b"COMM caf\xe9\n"),
             ("COMM café\n".to_string(), TextEncoding::Windows1252)
+        );
+        // ° µ ±（0xB0 0xB5 0xB1）は Shift_JIS では半角カナに読めるが、全角がなければ Windows-1252
+        assert_eq!(
+            decode_text_enc(b"COMM 5\xb0 1\xb5m \xb10.1\n"),
+            ("COMM 5° 1µm ±0.1\n".to_string(), TextEncoding::Windows1252)
         );
     }
     /// 未対応の分散式・数として読めない欄は読込で誤り（以前は読込を通り、追跡で panic した）

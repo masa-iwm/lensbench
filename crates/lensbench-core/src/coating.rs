@@ -110,10 +110,6 @@ impl CoatingFile {
                                 invalid!("膜ファイル: 材料 {name} の行 {line}");
                             }
                             let k = if t.len() > 2 { num(t[2], name)? } else { 0.0 };
-                            if k > 0.0 {
-                                // N = n + ik の約束で吸収は k < 0（文献の n − ik の k は符号を変えて書く）。k > 0 は増幅する媒質になる
-                                invalid!("膜ファイル: 材料 {name} の k が正（{line}）。吸収は k < 0 で書く");
-                            }
                             let row = [num(t[0], name)?, num(t[1], name)?, k];
                             f.mate.get_mut(name.as_str()).unwrap().push(row);
                         }
@@ -1498,6 +1494,15 @@ impl Coatings {
             }
             let n: Vec<f64> = m.iter().map(|r| r[1]).collect();
             let k: Vec<f64> = m.iter().map(|r| r[2]).collect();
+            // N = n + ik の約束で吸収は k < 0（文献の n − ik の k は符号を変えて書く）。k > 0 は増幅する媒質になる。
+            // 使う材料だけを見る（使わない材料の行でファイル全体を読めなくしない）
+            if let Some(r) = m.iter().find(|r| r[2] > 0.0) {
+                invalid!(
+                    "膜の材料 {name} の k が正（波長 {} µm で {}）。吸収は k < 0 で書く",
+                    r[0],
+                    r[2]
+                );
+            }
             return Ok(C64::new(interp(wl, &xs, &n), interp(wl, &xs, &k)));
         }
         match sys.glasses.get(name) {
@@ -3124,9 +3129,8 @@ mod tests {
             f.table["T"][0].1[0],
             [1.0, 0.1, 0.1, 0.9, 0.9, 0.0, 0.0, 0.0, 0.0]
         );
-        // 吸収は k < 0。k > 0（増幅）は誤り
-        assert!(CoatingFile::parse("MATE M\n0.5 0.5 -3\n").is_ok());
-        assert!(CoatingFile::parse("MATE M\n0.5 0.5 3\n").is_err());
+        // k > 0（増幅）の材料も読むだけなら止めない（使うときに誤り。polarization の試験）
+        assert!(CoatingFile::parse("MATE M\n0.5 0.5 3\n").is_ok());
     }
 
     /// 表の位相は ±180° の折り返しをほどいて補間する

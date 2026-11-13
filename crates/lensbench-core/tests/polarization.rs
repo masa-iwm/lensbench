@@ -283,7 +283,8 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     use std::f64::consts::PI;
     let s = a0();
     let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
         ..Default::default()
@@ -334,6 +335,9 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
     let v = h.eval(th).unwrap();
     assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
+    // k > 0（増幅）の材料は使うときだけ誤り（使わない膜は上のとおり求まる）。表の範囲外の波長も誤り
+    assert!(c.prepare(&s, "GAIN|AIR|1.5,0.0", wl, n1, n2).is_err());
+    assert!(c.prepare(&s, "AR2|AIR|1.5,0.0", 1.5, n1, n2).is_err());
 }
 
 /// 層 [(n, d)] の特性行列（外側から順）→ (M00, M10, M01, M11)
@@ -367,7 +371,8 @@ fn coating_model_reproduces_the_stack_it_was_made_from() {
     use std::fmt::Write;
     let s = a0();
     let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n";
     let layers = [(C64::new(1.38, 0.0), 0.11), (C64::new(2.1, 0.0), 0.06)];
     // 膜のモデルを層から作る: M̃ = 特性行列、ψ = Σ d_j Re(β²/q_j)（OpticStudio の位相の層の項）
     let wls: Vec<f64> = (0..=20).map(|i| 0.50 + 0.005 * i as f64).collect();
@@ -565,7 +570,8 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
     use lensbench_core::coating::{parse_models, CoatingFile, Measured};
     let s = a0();
     let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
         ..Default::default()

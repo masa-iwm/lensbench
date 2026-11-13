@@ -18,9 +18,20 @@ mod imp {
     pub fn read(p: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(p)
     }
-    /// 同じフォルダの一時ファイルに書いてから名前を変える（書く途中で落ちても元のファイルは残る）
+    /// 同じフォルダの一時ファイルに書いてから名前を変える（書く途中で落ちても元のファイルは残る）。
+    /// 書き先がシンボリックリンクならリンクの先を置き換え、普通のファイルでないもの（/dev/stdout・名前付きパイプなど）
+    /// には直接書く（置き換えると壊す）
     pub fn write(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
+        let resolved;
+        let p = match std::fs::metadata(p) {
+            Ok(m) if !m.is_file() => return std::fs::write(p, b),
+            Ok(_) if std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()) => {
+                resolved = std::fs::canonicalize(p)?;
+                resolved.as_path()
+            }
+            _ => p,
+        };
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let name = p
@@ -404,6 +415,21 @@ mod tests {
             .collect();
         assert_eq!(names.len(), 1, "{names:?}");
         assert!(super::imp::write(&d.join("no/such/dir.zmx"), b"x").is_err());
+        // シンボリックリンクはリンクの先を書き換え、リンクは残す
+        #[cfg(unix)]
+        {
+            let link = d.join("link.zmx");
+            std::os::unix::fs::symlink(&p, &link).unwrap();
+            super::imp::write(&link, b"via link").unwrap();
+            assert!(std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(std::fs::read(&p).unwrap(), b"via link");
+            // 普通のファイルでない書き先（/dev/null）は置き換えずに直接書く
+            super::imp::write(Path::new("/dev/null"), b"x").unwrap();
+            assert!(!std::fs::metadata("/dev/null").unwrap().is_file());
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 
