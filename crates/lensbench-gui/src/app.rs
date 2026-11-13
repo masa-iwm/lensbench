@@ -6253,7 +6253,7 @@ impl App {
                     cmd = Some(Cmd::RunAll);
                 }
                 // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー、GAR-15）。押すと何を戻すかをホバーで
-                for (back, icon, key) in [(false, "↷", "Ctrl+Y"), (true, "↶", "Ctrl+Z")] {
+                for (back, icon, key) in [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")] {
                     let next = self.c.undo_list(back).into_iter().next();
                     let tip = match (&next, back) {
                         (Some(n), true) => trf("元に戻す（{}）: {}", &[&key, n]),
@@ -6264,7 +6264,7 @@ impl App {
                     if ui
                         .add_enabled(
                             self.c.can_undo(back),
-                            egui::Button::new(RichText::new(icon).size(16.0))
+                            egui::Button::new(RichText::new(crate::fonts::glyph_or(ui, icon[0], icon[1])).size(16.0))
                                 .min_size(egui::vec2(28.0, 28.0)),
                         )
                         .on_hover_text(tip.clone())

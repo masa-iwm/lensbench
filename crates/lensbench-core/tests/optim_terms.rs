@@ -5,7 +5,7 @@ use crate::common::root;
 use lensbench_core::analysis::{opd, zernike, ZernKind};
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::optim::{
-    dls, DlsOpts, JacMode, ParaxQ, Problem, RayQ, Term, TermKind, UserTerm, UserTermRef,
+    dls, DlsOpts, JacMode, ParaxQ, Problem, RayQ, Stop, Term, TermKind, UserTerm, UserTermRef,
 };
 use lensbench_core::param::Param;
 use lensbench_core::zmx::{self, LoadOptions};
@@ -413,6 +413,71 @@ fn dls_with_ray_targets() {
         r.merit0,
         r.merit
     );
+}
+
+/// 縁の光線の y（ピントずれ）。微分は 1 回目だけ差分に任せ（None）、2 回目からは失敗する利用者の項
+struct FailSecondJac {
+    grads: AtomicUsize,
+}
+
+impl UserTerm for FailSecondJac {
+    fn name(&self) -> &str {
+        "fail_second_jac"
+    }
+    fn rows(&self) -> usize {
+        1
+    }
+    fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
+        systems
+            .iter()
+            .map(|s| {
+                let t = s.try_trace(FieldSel::Index(0), &[0.0], &[0.7], None, None, false)?;
+                Ok(vec![t.rays[0].xyz[1]])
+            })
+            .collect()
+    }
+    fn grad(&self, _s: &System, _ps: &[Param]) -> Result<Option<Vec<f64>>> {
+        if self.grads.fetch_add(1, Ordering::SeqCst) == 0 {
+            Ok(None)
+        } else {
+            lensbench_core::invalid!("試しの失敗")
+        }
+    }
+}
+
+/// IOO-07: 途中のヤコビアンが失敗しても、それまでに良くなった x と評価関数・系を返す（初めの値に戻さない）
+#[test]
+fn ioo07_dls_keeps_best_x_when_a_later_jacobian_fails() {
+    let s = load("A0");
+    let f = s.param(&format!("{}.t", s.image() - 1)).unwrap();
+    let s0 = s
+        .with_params(&[(f, s.get_param(f).unwrap() + 0.5)])
+        .unwrap();
+    let u = Arc::new(FailSecondJac {
+        grads: AtomicUsize::new(0),
+    });
+    let mut p = Problem::single(s0);
+    p.jac = JacMode::Auto;
+    p.add_var(&format!("{}.t", s.image() - 1)).unwrap();
+    p.terms.push(Term {
+        side: Default::default(),
+        config: 0,
+        weight: 1.0,
+        kind: TermKind::User(UserTermRef(u.clone())),
+    });
+    let r = dls(&p, &DlsOpts::default()).unwrap();
+    assert_eq!(r.stop, Stop::JacobianFailed, "{:?}", r.note);
+    assert!(
+        r.note.as_deref().unwrap_or("").contains("試しの失敗"),
+        "{:?}",
+        r.note
+    );
+    assert_eq!(r.iterations, 1);
+    assert!(r.merit < 0.5 * r.merit0, "{} → {}", r.merit0, r.merit);
+    assert_ne!(r.x, r.x0);
+    // 返した評価関数は返した x のもの、系も同じ x
+    assert_eq!(p.merit_of(&p.residuals(&r.x).unwrap()), r.merit);
+    assert_eq!(r.systems[0].get_param(f).unwrap(), r.x[0]);
 }
 
 #[test]

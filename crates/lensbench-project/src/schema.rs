@@ -53,8 +53,13 @@ fn gen<T: JsonSchema>() -> Value {
     s.to_value()
 }
 
-/// 名前のスキーマ（JSON の値）。知らない名前なら None
+/// 名前のスキーマ（JSON の値）。登録した検出器の種類も入る。知らない名前なら None
 pub fn schema(name: &str) -> Option<Value> {
+    schema_with(name, &detectors::list())
+}
+
+/// 名前のスキーマ。検出器は `kinds` だけ（空なら組み込みのブロックと、何でもよい検出器のブロックだけ）
+pub fn schema_with(name: &str, kinds: &[detectors::DetectorKind]) -> Option<Value> {
     let (mut v, title) = match name {
         "project" => (gen::<Project>(), "lensbench プロジェクトファイル"),
         "system" => {
@@ -73,7 +78,7 @@ pub fn schema(name: &str) -> Option<Value> {
         "swap" => (gen::<SwapSpec>(), "lensbench 差し替え探索の設定"),
         _ => return None,
     };
-    add_detectors(&mut v);
+    add_detectors(&mut v, kinds);
     let o = v.as_object_mut().expect("スキーマはオブジェクト");
     o.insert(
         "$id".into(),
@@ -92,11 +97,17 @@ pub fn schema(name: &str) -> Option<Value> {
     Some(v)
 }
 
-/// すべてのスキーマ（名前と値）
+/// すべてのスキーマ（名前と値）。登録した検出器も入る
 pub fn all() -> Vec<(&'static str, Value)> {
+    all_with(&detectors::list())
+}
+
+/// すべてのスキーマで、検出器は `kinds` だけ。docs/schema は `all_with(&[])`（同じプロセスの試験・プラグインが
+/// 登録した種類に左右されない、XCT-32）
+pub fn all_with(kinds: &[detectors::DetectorKind]) -> Vec<(&'static str, Value)> {
     NAMES
         .iter()
-        .map(|n| (*n, schema(n).expect("NAMES の名前")))
+        .map(|n| (*n, schema_with(n, kinds).expect("NAMES の名前")))
         .collect()
 }
 
@@ -124,14 +135,13 @@ fn sorted(v: &Value) -> Value {
 
 /// ブロックの選択肢（`$defs/Block/oneOf`）に検出器のブロックを足す: 登録した種類ごとのもの（スキーマがあれば）と、
 /// それ以外の名前の何でもよいブロック
-fn add_detectors(v: &mut Value) {
+fn add_detectors(v: &mut Value, kinds: &[detectors::DetectorKind]) {
     let Some(Value::Array(a)) = v.pointer_mut("/$defs/Block/oneOf") else {
         return;
     };
-    let kinds = detectors::list();
     let id = json!({"type": "string", "default": ""});
     let mut taken: Vec<&str> = BUILTIN_BLOCKS.to_vec();
-    for k in &kinds {
+    for k in kinds {
         let Some(f) = k.schema else { continue };
         let mut sc = f();
         if let Some(o) = sc.as_object_mut() {
