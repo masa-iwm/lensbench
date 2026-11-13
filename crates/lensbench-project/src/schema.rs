@@ -1,7 +1,7 @@
 //! JSON スキーマ: プロジェクト・系ファイル・ユーザーカタログ・差し替え探索の設定の形を、
 //! serde の型から schemars で作る。リポジトリの `docs/schema/<名前>.schema.json` はこれで作り、テスト
 //! （`tests/schema.rs`）で型とずれていないかを確かめる（作り直すには `LENSBENCH_UPDATE_SCHEMA=1 cargo test
-//! -p lensbench-project --test schema`）。
+//! -p lensbench-project --test it schema::`）。
 //!
 //! - 説明は型・項目のドキュメントコメント。既定値は serde の default から。
 //! - どの JSON にも先頭に `"$schema": "…"` を書ける（エディタの補完・検査用。読むときは無視する）。

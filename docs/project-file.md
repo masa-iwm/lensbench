@@ -7,7 +7,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
 `"$schema": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/project.schema.json"` のように書くと、
 エディタ（VS Code など）で項目の補完・説明・検査が効く（lensbench は読むときに `$schema` を無視する）。スキーマは serde の型
 （`lensbench_project::schema`）から作り、テストで型とずれていないか・例題が合うかを確かめる。型を変えたら
-`LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test schema` で作り直す。
+`LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema::` で作り直す。
 
 - 検出器のブロック（`"type"` が組み込みのブロックでない名前）は、この lensbench を組み込んだ版が登録した種類
   （`lensbench_project::detectors`）だけ読める。最後のブロックだけに置け、面は足さない（像面に置く。前の空気のブロックが距離）

@@ -37,10 +37,11 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os == 'both' && '["windows-latest","ubuntu-24.04"]' || format('["{0}"]', inputs.os)) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       # 比べるスクリプトと系（tests/refs）は実行したブランチのものを使う（古い版には無いことがある）。
       # base・head は全履歴から worktree にする（短い SHA も使えるように。checkout の ref は完全な SHA が要る）
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
         with:
           path: tool
           fetch-depth: 0
@@ -53,7 +54,8 @@ jobs:
           rev() { git -C tool rev-parse --verify -q "origin/$1^{commit}" || git -C tool rev-parse --verify "$1^{commit}"; }
           git -C tool worktree add --detach ../base "$(rev "$BASE")"
           git -C tool worktree add --detach ../head "$(rev "$HEAD_REF")"
-      - uses: dtolnay/rust-toolchain@stable
+      # 各 worktree に rust-toolchain.toml があればその版（rustup が入れる）。無い古い版は stable
+      - run: rustup toolchain install stable --profile minimal
       - name: build
         shell: bash
         run: |
@@ -64,16 +66,23 @@ jobs:
           nproc 2>/dev/null || echo "$NUMBER_OF_PROCESSORS"
       - name: run
         shell: bash
+        # 入力はシェルに直に展開せず env で渡す（#216 BLD-18）
+        env:
+          SYSTEMS: ${{ inputs.systems }}
+          THREADS: ${{ inputs.threads }}
+          ROUNDS: ${{ inputs.rounds }}
+          BASE_LABEL: ${{ inputs.base }}
+          HEAD_LABEL: ${{ inputs.head || github.ref_name }}
         run: |
           ext=""; py=python3; [ "$RUNNER_OS" = Windows ] && ext=.exe && py=python
           $py tool/scripts/bench_compare.py \
             --base "base/target/release/examples/bench$ext" \
             --head "head/target/release/examples/bench$ext" \
             --refs tool/tests/refs \
-            --systems "${{ inputs.systems }}" --threads "${{ inputs.threads }}" --rounds "${{ inputs.rounds }}" \
-            --base-label "${{ inputs.base }} ($BASE_REV)" --head-label "${{ inputs.head || github.ref_name }} ($HEAD_REV)" \
+            --systems "$SYSTEMS" --threads "$THREADS" --rounds "$ROUNDS" \
+            --base-label "$BASE_LABEL ($BASE_REV)" --head-label "$HEAD_LABEL ($HEAD_REV)" \
             --out bench.json | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: bench-${{ matrix.os }}
           path: bench.json

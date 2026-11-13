@@ -1,0 +1,49 @@
+//! 結合テストを 1 つの exe にまとめる（ファイルごとに exe を作るとリンクが 100 回になり、Windows のビルドが 6 分かかっていた。
+//! 公開 #216 BLD-03）。tests/ の .rs は各ファイルが 1 つのモジュール。テストを足すときは下の一覧にも足す
+//! （足し忘れは `every_test_file_is_listed` が落とす）。1 ファイルだけ回すときは `cargo test --test it <モジュール名>::`。
+
+mod catalog;
+mod configs_zmx;
+mod detector;
+mod edit_ops;
+mod expand;
+mod field_solve;
+mod filter;
+mod mech;
+mod os_a3;
+mod os_p0;
+mod pickups;
+mod retarder;
+mod schema;
+mod solve;
+mod splitter;
+mod states;
+mod surface_edits;
+mod surface_ops;
+mod swap;
+mod sysfile;
+mod tolerance;
+mod units;
+mod usersurf;
+mod zoom;
+
+/// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）
+#[test]
+fn every_test_file_is_listed() {
+    let me = include_str!("it.rs");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let separate: &[&str] = &[];
+    for e in std::fs::read_dir(dir).unwrap().flatten() {
+        let p = e.path();
+        let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if p.extension().is_some_and(|x| x == "rs") && stem != "it" && !separate.contains(&stem) {
+            assert!(
+                // 行ごとに見る（Windows の checkout は改行が CRLF になる）
+                me.lines().any(|l| l.trim() == format!("mod {stem};")),
+                "tests/{stem}.rs が tests/it.rs の一覧に無い"
+            );
+        }
+    }
+}

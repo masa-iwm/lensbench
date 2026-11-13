@@ -1,5 +1,5 @@
 //! serve・watch: 外のプロセスから系を開き、間隔を変えて再解析を繰り返す。1 回の往復の時間も測る
-//! （`cargo test --release -p lensbench-cli --test serve -- --nocapture` で表示）。
+//! （`cargo test --release -p lensbench-cli --test it serve:: -- --nocapture` で表示）。
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;

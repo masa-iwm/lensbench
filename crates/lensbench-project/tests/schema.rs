@@ -1,5 +1,5 @@
 //! JSON スキーマ: docs/schema のファイルが serde の型から作ったものと同じか、例題・書き出した JSON が
-//! スキーマに合うか。スキーマを作り直すには `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test schema`
+//! スキーマに合うか。スキーマを作り直すには `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema::`
 
 use lensbench_project::{schema, sysfile, Project, UserCatalog};
 use serde_json::Value;
@@ -47,7 +47,7 @@ fn schema_files_match_types() {
     }
     assert!(
         stale.is_empty(),
-        "docs/schema の {} が型とずれている。LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test schema で作り直す",
+        "docs/schema の {} が型とずれている。LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema:: で作り直す",
         stale.join(", ")
     );
 }

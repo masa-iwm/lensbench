@@ -6,6 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# 結合テストは下の [[test]]（tests/it.rs）にまとめる
+autotests = false
+
+
+[lints]
+workspace = true
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
@@ -13,3 +19,8 @@ lensbench-project = { path = "../lensbench-project" }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 ndarray = "0.16"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "num-complex-0_4"] }
+
+# 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
+[[test]]
+name = "it"
+path = "tests/it.rs"
