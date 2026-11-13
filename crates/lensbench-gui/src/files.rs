@@ -214,15 +214,20 @@ mod zenity {
         }
     }
 
+    /// zenity が無ければ「いいえ」（消す・上書きする側に倒さない）
     pub fn confirm(title: &str, text: &str) -> bool {
-        Command::new("zenity")
+        let st = Command::new("zenity")
             .args([
                 "--question",
+                "--no-markup",
                 &format!("--title={title}"),
                 &format!("--text={text}"),
             ])
-            .status()
-            .is_ok_and(|s| s.success())
+            .status();
+        if let Err(e) = &st {
+            eprintln!("lensbench-gui: zenity を起こせない（{e}）。「{title}」は「いいえ」にする");
+        }
+        st.is_ok_and(|s| s.success())
     }
 }
 
