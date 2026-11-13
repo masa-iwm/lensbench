@@ -8,6 +8,7 @@ mod aim;
 mod aim_wide;
 mod birefringent_os;
 mod cardinal;
+mod common;
 mod determinism;
 mod dispersion_range;
 mod edit;

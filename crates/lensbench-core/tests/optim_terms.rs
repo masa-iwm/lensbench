@@ -1,6 +1,7 @@
 //! 評価関数の項の追加: 光線・OPD・近軸量・Zernike・結合効率・利用者の項の値と、解析的なヤコビアン
 //! （光線・OPD）が差分と合うこと、利用者の項の差分がまとめて 1 回で評価されること。
 
+use crate::common::root;
 use lensbench_core::analysis::{opd, zernike, ZernKind};
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::optim::{
@@ -9,13 +10,8 @@ use lensbench_core::optim::{
 use lensbench_core::param::Param;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, Result, System};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

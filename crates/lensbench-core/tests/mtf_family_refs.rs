@@ -23,6 +23,7 @@
 //! - A6 の MTF vs 視野は OS が VDY・VCY を視野の間で補間して使うため端（h > 0.75）で最大 0.05 違うので外し、
 //!   口径食の係数をすべて 0 にした A6v で照合する（RMS vs 視野は A6 でも合う）。
 
+use crate::common::{refs_dir, root};
 use lensbench_core::psf;
 use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};
 use lensbench_core::system::{FieldSel, System};
@@ -30,17 +31,6 @@ use lensbench_core::zmx::{self, LoadOptions};
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn refs_dir() -> PathBuf {
-    std::env::var_os("LB_REFS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root().join("tests/refs"))
-}
 
 fn load(name: &str) -> System {
     let opt = LoadOptions {

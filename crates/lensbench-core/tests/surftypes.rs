@@ -8,16 +8,11 @@
 //!
 //! 光線ごと・面ごとの交点・方向・光路長、EFL、OPDC を見る。
 
-use std::path::PathBuf;
-
+use crate::common::root;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::zmx_write;
 use lensbench_core::{analysis, FieldSel, System};
 use serde_json::Value;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> (System, Value) {
     let dir = root().join("tests/surftypes").join(name);

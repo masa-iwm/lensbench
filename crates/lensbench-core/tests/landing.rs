@@ -4,17 +4,13 @@
 //! （端点を固定した微分 = 開始を固定した微分 − ∂V/∂E · dE/dp）。
 #![allow(clippy::type_complexity, clippy::needless_range_loop)]
 
+use crate::common::root;
 use lensbench_core::math::*;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
 use lensbench_core::system::{Launch, Trace};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

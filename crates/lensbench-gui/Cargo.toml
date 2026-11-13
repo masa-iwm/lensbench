@@ -12,6 +12,12 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Windows のアプリ内のブラウザ（wry・tao。webview.rs）。切ると品ページは既定のブラウザで開く。
+# CI の Windows のテストは --no-default-features で切る（windows クレート一式をテストのビルドに乗せない。公開 #216 BLD-22）
+default = ["webview"]
+webview = ["dep:wry", "dep:tao"]
+
 [lib]
 name = "lensbench_gui"
 path = "src/lib.rs"
@@ -28,7 +34,8 @@ lensbench-core = { path = "../lensbench-core" }
 lensbench-cli = { path = "../lensbench-cli" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 serde = { version = "1", features = ["derive"] }
-eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence", "x11"] }
+# Linux の GUI は CI（xvfb の x11）用なので wayland は入れない（Wayland の机でも XWayland で動く。公開 #216 BLD-23）
 egui = { version = "0.31", default-features = false }
 egui_extras = { version = "0.31", default-features = false }
 # パネルのドッキング・タブ・フロート（並びは serde で保存）
@@ -42,8 +49,6 @@ sys-locale = "0.3"
 png = "0.17"
 # 時計（wasm の std::time::Instant は使えない）
 web-time = "1"
-# ファイルを選ぶ窓（wasm はブラウザのファイル選択、files.rs）
-rfd = "0.15"
 
 # ネイティブだけ（wasm の Web 版では使えない）
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -59,10 +64,15 @@ web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlC
 # ブラウザの言語（navigator.language）
 sys-locale = { version = "0.3", features = ["js"] }
 
-# 未完のカタログ品の品ページを開くアプリ内のブラウザ（WebView2。別のプロセスで動かす、webview.rs）
+# ファイルを選ぶ窓（wasm はブラウザのファイル選択、files.rs）。Linux は zenity を呼ぶ（rfd の xdg-portal は
+# zbus など 55 クレートを引く。Linux の GUI は CI 用。公開 #216 BLD-23）
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+rfd = "0.15"
+
+# 未完のカタログ品の品ページを開くアプリ内のブラウザ（WebView2。別のプロセスで動かす、webview.rs）。feature webview
 [target.'cfg(windows)'.dependencies]
-wry = { version = "0.56", default-features = false }
-tao = { version = "0.36", default-features = false, features = ["rwh_06"] }
+wry = { version = "0.56", default-features = false, optional = true }
+tao = { version = "0.36", default-features = false, features = ["rwh_06"], optional = true }
 
 # exe のアイコン（Windows のリソース）
 [target.'cfg(windows)'.build-dependencies]

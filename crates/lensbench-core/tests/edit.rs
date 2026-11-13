@@ -1,5 +1,6 @@
 //! 系の編集: 面の挿入・削除・種類と材料の変更、ピックアップとソルブの付け外し、多重構成の表。
 
+use crate::common::root;
 use lensbench_core::edit::surf_type_parse;
 use lensbench_core::param::{Kind, Param, PickKind, Pickup, SolveKind, ThickSolve};
 use lensbench_core::surface::{Aperture, SurfType, Surface};
@@ -7,11 +8,6 @@ use lensbench_core::system::{Aiming, ApertureKind, Field, FieldNorm, FieldSel, F
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use std::collections::HashMap;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

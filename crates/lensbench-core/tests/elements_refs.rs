@@ -5,21 +5,12 @@ use lensbench_core::elements::{self, Kind};
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+use crate::common::{glass_dirs, refs_dir};
 
 #[test]
 fn split_and_assemble_trace_the_same_rays() {
-    let dir = std::env::var_os("LB_REFS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root().join("tests/refs"));
-    let glass = match std::env::var_os("LB_GLASS_DIR") {
-        Some(v) => std::env::split_paths(&v).collect(),
-        None => vec![root().join("tests/glass")],
-    };
+    let dir = refs_dir();
+    let glass = glass_dirs();
     let mut names: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .flatten()

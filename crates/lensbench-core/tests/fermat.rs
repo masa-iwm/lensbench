@@ -4,16 +4,12 @@
 //! 合格: 相対 1e-9 以内、または差のずれが差分の丸め誤差以内（|解析 − 差分|·刻み < 1e-12 mm）。
 //! 微分が小さい量（光線の高さが小さいときの円錐係数など）は、差分の側の丸め誤差で相対 1e-9 に届かない。
 
+use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldSel, ObjSpec};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

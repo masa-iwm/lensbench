@@ -1,14 +1,10 @@
 //! スルーフォーカス・フィールド MTF、RMS の各種、FFT PSF、幾何 MTFの性質を
 //! 既存の解析と突き合わせて確かめる（OpticStudio との照合は別、tests/refs の基準が揃ってから）。
 
+use crate::common::root;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{analysis, psf, sweep};
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     let opt = LoadOptions {
