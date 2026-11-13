@@ -63,6 +63,8 @@ python3 scripts/check_public.py --history
 
 速さの測り方・テスト用データは [ビルドとテスト](https://masa-iwm.github.io/lensbench/build.html)。
 
+開発は非公開側でまとめて行い、このリポジトリの main へは公開してよい部分を書き出しています。このリポジトリでは Pull Request を受け付けていません（Issue は受け付けます）。
+
 ## ライセンス
 
 MIT または Apache-2.0 のどちらか（`LICENSE-MIT`、`LICENSE-APACHE`）。
