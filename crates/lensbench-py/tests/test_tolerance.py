@@ -79,3 +79,30 @@ def test_tolerance_bad_spec():
         s.tolerance({"trails": 3})
     with pytest.raises(ValueError):
         s.tolerance({"lenses": {"nolens": None}})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGINT を子に送るのは POSIX で")
+def test_tolerance_ctrl_c_interrupts():
+    # 長い公差の計算も Ctrl-C（SIGINT）で KeyboardInterrupt になって止まる
+    import signal
+    import time
+
+    code = (
+        "import lensbench as lb, sys\n"
+        f"s = lb.System.load({zmx('C0')!r}, glass_dirs={GLASS!r})\n"
+        "print('start', flush=True)\n"
+        "try:\n"
+        "    s.tolerance({'trials': 200000, 'seed': 1, 'preset': 'precision', 'compensators': ['6.t']}, threads=1)\n"
+        "except KeyboardInterrupt:\n"
+        "    print('interrupted', flush=True)\n"
+        "    sys.exit(3)\n"
+    )
+    p = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    assert p.stdout.readline().strip() == "start"
+    time.sleep(1.0)
+    t0 = time.monotonic()
+    p.send_signal(signal.SIGINT)
+    out, _ = p.communicate(timeout=60)
+    assert p.returncode == 3, out
+    assert "interrupted" in out
+    assert time.monotonic() - t0 < 10

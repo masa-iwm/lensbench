@@ -18,6 +18,7 @@ mod search;
 mod userterm;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::catalog::LensCatalog;
@@ -31,7 +32,7 @@ use lensbench_core::system::{
 use lensbench_core::{analysis, huygens, optim, psf, sweep, with_threads, zmx, RecSel, System};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
-use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple};
 
@@ -97,6 +98,50 @@ fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResul
     err.call_method1("write", (line,))?;
     err.call_method0("flush")?;
     Ok(())
+}
+
+/// 長い計算を別のスレッドで回し、呼んだスレッド（Python の主スレッド）で Ctrl-C（シグナル）を見張る。
+/// シグナルが来たら stop を立てて計算の終わりを待ち、KeyboardInterrupt などの例外を返す。
+/// 計算は stop を反復・試行ごとに見て止まる（optim::dls_with・tolerance::run_with の進み具合の口）
+pub fn interruptible<R: Send>(
+    py: Python<'_>,
+    f: impl FnOnce(&AtomicBool) -> R + Send,
+) -> PyResult<R> {
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|sc| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = &stop;
+        sc.spawn(move || {
+            // 受け手が先に去っていても（例外で返った後）送りの失敗は気にしない
+            let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(stop))));
+        });
+        let tick = std::time::Duration::from_millis(100);
+        // Receiver は Sync でないので、GIL を外す間は持ち出して返してもらう
+        let mut rx = Some(rx);
+        loop {
+            let (got, r) = py.detach(|| {
+                let r = rx.take().unwrap();
+                (r.recv_timeout(tick), r)
+            });
+            rx = Some(r);
+            match got {
+                Ok(r) => {
+                    return r.map_err(|_| PyRuntimeError::new_err("計算のスレッドが panic した"))
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(PyRuntimeError::new_err("計算のスレッドが終わった"))
+                }
+            }
+            if let Err(e) = py.check_signals() {
+                stop.store(true, Ordering::Relaxed);
+                // 計算が stop を見て止まるのを待つ（scope の終わりで join する）
+                let r = rx.take().unwrap();
+                let _ = py.detach(move || r.recv());
+                return Err(e);
+            }
+        }
+    })
 }
 
 /// 誤りを ValueError に
@@ -2459,7 +2504,9 @@ impl PySystem {
             max_iter: iters,
             ..Default::default()
         };
-        let r = py.detach(|| with_threads(threads, || optim::dls(&p, &o)));
+        let r = interruptible(py, |stop| {
+            with_threads(threads, || optim::dls_with(&p, &o, |_| !stop.load(Ordering::Relaxed)))
+        })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let tv = |x: &[f64]| -> PyResult<Vec<f64>> {
@@ -2549,7 +2596,11 @@ impl PySystem {
             None => Vec::new(),
         };
         let th = threads.or(oo.threads);
-        let r = py.detach(|| with_threads(th, || lensbench_core::tolerance::run(&ms)));
+        let r = interruptible(py, |stop| {
+            with_threads(th, || {
+                lensbench_core::tolerance::run_with(&ms, |_, _| !stop.load(Ordering::Relaxed))
+            })
+        })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
