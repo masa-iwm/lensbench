@@ -418,7 +418,18 @@ impl<'a> SwapSearch<'a> {
                     .collect::<Result<Vec<_>, String>>()?
             };
             if lenses.is_empty() {
-                return Err(format!("所 {}: 候補がない", sl.block));
+                return Err(if cat.is_empty() {
+                    format!(
+                        "所 {}: 候補がない（レンズカタログが 0 品。メーカーのフォルダか .zmx・ZMF のあるフォルダを指定する）",
+                        sl.block
+                    )
+                } else {
+                    format!(
+                        "所 {}: 候補がない（カタログ {} 品のうち、条件に合う品が 0）",
+                        sl.block,
+                        cat.len()
+                    )
+                });
             }
             let mut v = Vec::new();
             for l in lenses {
