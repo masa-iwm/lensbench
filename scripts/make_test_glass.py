@@ -22,8 +22,9 @@ def entry(path, name):
         raise SystemExit('%s: 定数項がある' % path)
     lo, hi = (float(v) for v in f[0]['wavelength_range'].split())
     pr = y['PROPERTIES']
-    td = [float(v) for v in pr['thermal_dispersion'][0]['coefficients'].split()]
-    tref = y['CONDITIONS']['temperature'] - 273.0
+    td = ([float(v) for v in pr['thermal_dispersion'][0]['coefficients'].split()]
+          if 'thermal_dispersion' in pr else [0.0] * 6)
+    tref = y.get('CONDITIONS', {}).get('temperature', 293) - 273.0
     nd, vd = pr['nd'], pr['Vd']
     code = pr.get('glass_code', 0)
     return ['NM %s 2 %s %.5f %.2f 0 1' % (name, code, nd, vd),

@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use egui::{RichText, Ui};
 use egui_plot::{Legend, Line, Plot, Points};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::i18n::{tr, trf};
@@ -14,7 +15,8 @@ use crate::param_pick::{self as pp, Set};
 use crate::theme;
 
 /// 状態の行（名前で覚える。選べる状態に無い行は出さない）
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StateRow {
     pub on: bool,
     /// 目標（空は目標なし）
@@ -31,7 +33,8 @@ impl Default for StateRow {
 }
 
 /// 解くパラメータ（範囲は空なら無し）
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VarRow {
     pub name: String,
     pub lo: String,
@@ -88,7 +91,60 @@ fn num(t: &str, what: &str) -> Result<Option<f64>, String> {
         .ok_or_else(|| trf("{} の値 {} が数でない", &[&what, &t]))
 }
 
+/// 設定に残す欄（走らせた結果・走行中は残さない、GPN-14）
+#[derive(Serialize, Deserialize)]
+struct Saved {
+    states: BTreeMap<String, StateRow>,
+    vars: Vec<VarRow>,
+    pmag: bool,
+    steps: usize,
+    merit: String,
+    reference: String,
+    rings: usize,
+    iters: usize,
+    tol: f64,
+}
+
 impl ZoomPanel {
+    /// 設定・プロジェクトに残す形（既定のままなら None）
+    pub fn saved(&self) -> Option<Value> {
+        let z = ZoomPanel::default();
+        let s = |p: &ZoomPanel| Saved {
+            states: p.states.clone(),
+            vars: p.vars.clone(),
+            pmag: p.pmag,
+            steps: p.steps,
+            merit: p.merit.clone(),
+            reference: p.reference.clone(),
+            rings: p.rings,
+            iters: p.iters,
+            tol: p.tol,
+        };
+        let (a, b) = (
+            serde_json::to_value(s(self)).ok()?,
+            serde_json::to_value(s(&z)).ok()?,
+        );
+        (a != b).then_some(a)
+    }
+
+    /// [`ZoomPanel::saved`] を戻す（読めなければ何もしない）
+    pub fn restore(&mut self, v: &Value) {
+        if let Ok(s) = serde_json::from_value::<Saved>(v.clone()) {
+            *self = ZoomPanel {
+                states: s.states,
+                vars: s.vars,
+                pmag: s.pmag,
+                steps: s.steps,
+                merit: s.merit,
+                reference: s.reference,
+                rings: s.rings,
+                iters: s.iters,
+                tol: s.tol,
+                ..ZoomPanel::default()
+            };
+        }
+    }
+
     /// serve の zoom の params。cands は選べる状態（並びの順に解く）
     pub fn params(&self, cands: &[Cand]) -> Result<Value, String> {
         let mut configs = Vec::new();
@@ -399,6 +455,35 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GPN-14: ズームの設定は設定・プロジェクトに残る（既定のままなら残さない、結果は残さない）
+    #[test]
+    fn gpn14_zoom_settings_round_trip() {
+        assert!(ZoomPanel::default().saved().is_none());
+        let mut p = ZoomPanel::default();
+        p.vars.push(VarRow {
+            name: "G2.shift".into(),
+            lo: "-1".into(),
+            ..Default::default()
+        });
+        p.states.insert(
+            "tele".into(),
+            StateRow {
+                on: false,
+                target: "50".into(),
+            },
+        );
+        p.pmag = true;
+        p.result = Some(json!({ "x": 1 }));
+        let v = p.saved().unwrap();
+        let mut q = ZoomPanel::default();
+        q.restore(&v);
+        assert_eq!(
+            (q.vars.clone(), q.states.clone(), q.pmag),
+            (p.vars, p.states, true)
+        );
+        assert!(q.result.is_none());
+    }
 
     #[test]
     fn params_follow_rows() {

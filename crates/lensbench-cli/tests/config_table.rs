@@ -90,7 +90,17 @@ fn config_table_from_zmx_and_edit() {
     assert_eq!(th(2), 80.0);
 
     // 構成を切り替えると値が入る
+    let u0 = ok("history", json!({}))["undo"].as_u64().unwrap();
     ok("edit", json!({ "ops": [{ "op": "set_config", "k": 1 }] }));
+    assert_eq!(th(2), 90.0);
+    // GAR-28: 構成の切り替えだけが続いても元に戻す段は 1 つ（間があいても）。戻すと切り替える前の構成
+    ok("edit", json!({ "ops": [{ "op": "set_config", "k": 2 }] }));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    ok("edit", json!({ "ops": [{ "op": "set_config", "k": 1 }] }));
+    assert_eq!(ok("history", json!({}))["undo"].as_u64(), Some(u0 + 1));
+    ok("undo", json!({}));
+    assert_eq!(th(2), 80.0);
+    ok("redo", json!({}));
     assert_eq!(th(2), 90.0);
 
     // 行を足す（どの構成も今の値）・値を変える・消す

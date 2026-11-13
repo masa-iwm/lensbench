@@ -64,8 +64,10 @@ pub struct Settings {
     pub os_titlebar: bool,
     /// 品の STEP の共有の置き場（アプリ版。空なら環境変数 LENSBENCH_CAD_STORE、なければ配布元だけ）
     pub cad_store: crate::cad_store::CadStore,
-    /// 最適化・公差・差し替えのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
+    /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
     pub panels: Value,
+    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す、GPN-14）
+    pub locked: std::collections::BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Settings {
@@ -178,6 +180,7 @@ impl Default for Settings {
             os_titlebar: false,
             cad_store: Default::default(),
             panels: Value::Null,
+            locked: Default::default(),
         }
     }
 }
@@ -763,6 +766,14 @@ fn dirs(v: &[String]) -> Value {
     json!(v)
 }
 
+/// serve に渡すガラスのフォルダ（アプリ版は同梱のカタログを後ろに足す、GUX-01）
+fn glass_dirs(v: &[String]) -> Value {
+    #[cfg(not(target_arch = "wasm32"))]
+    return crate::builtin_glass::dirs(v);
+    #[cfg(target_arch = "wasm32")]
+    dirs(v)
+}
+
 /// フォルダの並びにある AGF の名前（拡張子なし、重なりは前のもの、名前の順）
 fn agf_names(dirs: &[String]) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
@@ -834,6 +845,9 @@ impl Core {
                 v.insert("swap".into(), p);
             }
         }
+        if let Some(p) = self.zoom.saved() {
+            v.insert("zoom".into(), p);
+        }
         if v.is_empty() {
             Value::Null
         } else {
@@ -851,6 +865,9 @@ impl Core {
         }
         if let Some(p) = v.get("swap") {
             let _ = self.swap.set_spec(p);
+        }
+        if let Some(p) = v.get("zoom") {
+            self.zoom.restore(p);
         }
     }
 
@@ -966,7 +983,7 @@ impl Core {
     fn load_params(&self, p: &Path) -> Value {
         let mut v = json!({
             "file": p.display().to_string(),
-            "glass_dir": dirs(&self.s.glass_dirs),
+            "glass_dir": glass_dirs(&self.s.glass_dirs),
             "lens_catalog": dirs(&self.s.lens_dirs),
         });
         // 組合せの今の状態
@@ -1108,14 +1125,14 @@ impl Core {
         self.preview.send(
             Tag::Glasses,
             "glasses",
-            json!({ "glass_dir": dirs(&self.s.glass_dirs) }),
+            json!({ "glass_dir": glass_dirs(&self.s.glass_dirs) }),
         );
         self.preview.send(
             Tag::Lenses,
             "lenses",
             json!({
                 "lens_catalog": dirs(&self.s.lens_dirs),
-                "glass_dir": dirs(&self.s.glass_dirs),
+                "glass_dir": glass_dirs(&self.s.glass_dirs),
             }),
         );
         self.browser.loaded = true;
@@ -2074,6 +2091,10 @@ impl Core {
         self.ld_dirty = false;
         if new_file != self.file {
             self.ld.reset();
+            let key = new_file.as_ref().map(|f| f.display().to_string());
+            self.ld.locked = key
+                .and_then(|k| self.s.locked.get(&k).cloned())
+                .unwrap_or_default();
         }
         self.file = new_file;
         self.summary = Some(v);
@@ -2251,6 +2272,7 @@ impl Core {
             units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
             combo: is_combo,
             sys: self.param_sys(),
+            rows: self.ld_rows.clone(),
         };
         let progress = if self.opt.running {
             ui.ctx()
@@ -2379,6 +2401,7 @@ impl Core {
             // 補償子は系の中で動かすだけ（組合せに当てない）ので、面の値の種類を絞らない
             combo: false,
             sys: self.param_sys(),
+            rows: self.ld_rows.clone(),
         };
         let progress = if self.tol.running {
             ui.ctx()
@@ -2928,10 +2951,20 @@ impl Core {
                                 }
                             }
                         }
-                    } else if on {
-                        self.ld.locked.insert(name);
                     } else {
-                        self.ld.locked.remove(&name);
+                        if on {
+                            self.ld.locked.insert(name);
+                        } else {
+                            self.ld.locked.remove(&name);
+                        }
+                        // ファイルごとに設定へ残す（空になったら消す、GPN-14）
+                        if let Some(f) = self.file.as_ref().map(|f| f.display().to_string()) {
+                            if self.ld.locked.is_empty() {
+                                self.s.locked.remove(&f);
+                            } else {
+                                self.s.locked.insert(f, self.ld.locked.clone());
+                            }
+                        }
                     }
                 }
                 Act::ExportRange([a, b]) => {

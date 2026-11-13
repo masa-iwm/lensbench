@@ -6,6 +6,8 @@
 
 mod app;
 mod argform;
+#[cfg(not(target_arch = "wasm32"))]
+mod builtin_glass;
 mod cad_fetch;
 mod cad_store;
 mod catalog;
@@ -101,6 +103,7 @@ pub fn main() -> std::process::ExitCode {
     crash::install(settings_dir.clone());
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
+    builtin_glass::install(settings_dir.clone());
     lensbench_cli::cad::install_detail_loader();
     lensbench_cli::coat_remote::install();
     lensbench_cli::set_lens_list_cache_dir(settings_dir);

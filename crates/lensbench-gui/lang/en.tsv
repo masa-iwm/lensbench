@@ -1581,3 +1581,9 @@ BS の分ける面の向きを逆に	Flip the splitting surface of the BS
 面の上書き {} 件	{} surface overrides
 （ファイル > カタログのフォルダ… でガラスカタログを足す）	(add glass catalogs in File > Catalog folders…)
 （未保存）	(unsaved)
+選び方	Select
+挿入	Insert
+削除	Delete
+詳細	Details
+開閉	Fold
+今の値	Current
