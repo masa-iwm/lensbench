@@ -44,6 +44,7 @@ mod surftypes_os;
 mod tolerance;
 mod units;
 mod usersurf;
+mod zmx_broken;
 mod zmx_lines;
 mod zmx_roundtrip;
 mod zmx_solves;
