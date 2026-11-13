@@ -871,9 +871,49 @@ pub struct Project {
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
+    /// 温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし
+    #[serde(default, skip_serializing_if = "Environment::is_default")]
+    pub environment: Environment,
     /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gui: Option<Value>,
+}
+
+/// 系の環境（[`Project::environment`]）。.zmx の ENVD（温度・気圧・屈折率の補正）と同じ
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Environment {
+    /// 温度 [°C]
+    #[serde(default = "env_t")]
+    pub temperature_c: f64,
+    /// 気圧 [atm]
+    #[serde(default = "env_p")]
+    pub pressure_atm: f64,
+    /// ガラスの屈折率を温度・気圧で補正する（OpticStudio の Adjust Index Data To Environment）
+    #[serde(default)]
+    pub adjust_index: bool,
+}
+
+fn env_t() -> f64 {
+    20.0
+}
+fn env_p() -> f64 {
+    1.0
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Environment {
+            temperature_c: env_t(),
+            pressure_atm: env_p(),
+            adjust_index: false,
+        }
+    }
+}
+
+impl Environment {
+    fn is_default(&self) -> bool {
+        *self == Environment::default()
+    }
 }
 
 /// ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた
@@ -1084,6 +1124,8 @@ struct Ctx<'a, 'b> {
     frames: Vec<(String, MechSpec, usize, usize)>,
     /// 裏返して置いた玉（`reversed` の玉のブロック）の往路の面の範囲（sf の最初, 最後）。玉・群の `flipped` にする
     rev_spans: Vec<(usize, usize)>,
+    /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
+    zenv: Vec<(String, f64, f64, bool)>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -1880,6 +1922,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 ..
             } => {
                 let s = self.load_zmx(path, *config)?;
+                self.zenv
+                    .push((path.clone(), s.temperature, s.pressure, s.adjust_index));
                 let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {
@@ -2636,6 +2680,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
         split: SplitState::default(),
         frames: Vec::new(),
         rev_spans: Vec::new(),
+        zenv: Vec::new(),
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;
@@ -3449,6 +3494,7 @@ fn expand_inner(
         },
         frames: Vec::new(),
         rev_spans: Vec::new(),
+        zenv: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -3505,6 +3551,7 @@ fn expand_inner(
     let zpicks = std::mem::take(&mut c.zpicks);
     sf.push(Surface::default());
     // 面の後の屈折率（波長ごと）
+    let envr = p.environment;
     let mut prev = vec![1.0; wl.len()];
     for (j, d) in sf.iter_mut().enumerate() {
         let n = if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
@@ -3512,7 +3559,9 @@ fn expand_inner(
         } else if is_air(&d.mat) {
             vec![1.0; wl.len()]
         } else if let Some(g) = c.glasses.get(&d.mat) {
-            wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect()
+            wl.iter()
+                .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                .collect()
         } else if let Some(&n0) = d.n.first() {
             if d.n.iter().any(|&v| v != n0) {
                 return Err(format!("面 {j}: ガラス {} がカタログにない", d.mat));
@@ -3532,7 +3581,10 @@ fn expand_inner(
                     d.mat
                 )
             })?;
-            *ne = wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect();
+            *ne = wl
+                .iter()
+                .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                .collect();
         }
         // 複屈折材の波長板: 板のガラスを引き、設計波長の行列を作り直す
         if let Some(r) = d.retarder.as_mut().filter(|r| !r.plates.is_empty()) {
@@ -3544,7 +3596,9 @@ fn expand_inner(
             r.n = if is_air(&r.mat) {
                 vec![1.0; wl.len()]
             } else if let Some(g) = c.glasses.get(&r.mat) {
-                wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect()
+                wl.iter()
+                    .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                    .collect()
             } else {
                 return Err(format!("面 {j}: ガラス {} がカタログにない", r.mat));
             };
@@ -3597,6 +3651,9 @@ fn expand_inner(
     )
     .map_err(|e| e.to_string())?;
     s.name = p.name.clone();
+    s.temperature = envr.temperature_c;
+    s.pressure = envr.pressure_atm;
+    s.adjust_index = envr.adjust_index;
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {
@@ -3630,6 +3687,20 @@ fn expand_inner(
         return Err("fields の solve は type が solve のときだけ".into());
     }
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
+    for (path, t, pr, adj) in &c.zenv {
+        let e = &p.environment;
+        // 屈折率の補正は 20 °C・1 atm の外でだけ効く
+        let off_ref = e.temperature_c != 20.0 || e.pressure_atm != 1.0;
+        if (t - e.temperature_c).abs() > 1e-9
+            || (pr - e.pressure_atm).abs() > 1e-9
+            || (off_ref && *adj != e.adjust_index)
+        {
+            warn.push(format!(
+                "{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違う。屈折率はプロジェクトの環境で計算する（environment で変える）",
+                e.temperature_c, e.pressure_atm
+            ));
+        }
+    }
     // 玉・群のパラメータ: 玉モードの玉 lens1 … と、id のあるブロック・群（同じ id の範囲は 1 つの玉・群）
     s.units = s.lens_units();
     let mut ids: Vec<&str> = Vec::new();

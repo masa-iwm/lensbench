@@ -1107,6 +1107,29 @@
         }
       ]
     },
+    "Environment": {
+      "description": "系の環境（[`Project::environment`]）。.zmx の ENVD（温度・気圧・屈折率の補正）と同じ",
+      "properties": {
+        "adjust_index": {
+          "default": false,
+          "description": "ガラスの屈折率を温度・気圧で補正する（OpticStudio の Adjust Index Data To Environment）",
+          "type": "boolean"
+        },
+        "pressure_atm": {
+          "default": 1.0,
+          "description": "気圧 [atm]",
+          "format": "double",
+          "type": "number"
+        },
+        "temperature_c": {
+          "default": 20.0,
+          "description": "温度 [°C]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
     "FieldKind": {
       "oneOf": [
         {
@@ -2275,6 +2298,10 @@
       },
       "description": "膜（名前 → フィルタの透過特性・表）。面の `coat` に名前を書いて使う。ユーザーカタログの同じ名前より優先",
       "type": "object"
+    },
+    "environment": {
+      "$ref": "#/$defs/Environment",
+      "description": "温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし"
     },
     "fields": {
       "$ref": "#/$defs/FieldsSpec",

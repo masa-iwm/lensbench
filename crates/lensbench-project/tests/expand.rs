@@ -654,3 +654,51 @@ fn two_axis_fold_mirror_keeps_axis() {
         }
     }
 }
+
+/// 環境（温度・気圧）: プロジェクトの environment で屈折率を計算し、取り込んだ .zmx の環境と違えば注意を出す
+#[test]
+fn environment_sets_indices_and_warns() {
+    let dir = std::env::temp_dir().join(format!("lb-env-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let hot = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nENVD 4.0E+1 1.2 1\n\
+GCAT SCHOTT\nFTYP 0 0 1 3 0 0 0\nXFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.4861327 1\nWAVM 2 0.5875618 1\n\
+WAVM 3 0.6562725 1\nPWAV 2\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4\n  GLAS N-BK7 0 0 1.5 40 0 0 0 0 0 0\n  DIAM 10 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DISZ 45\n  DIAM 10 1 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    std::fs::write(dir.join("hot.zmx"), &hot).unwrap();
+    let opt = LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root().join("tests/glass")],
+        ..Default::default()
+    };
+    let z = zmx::load_with(&dir.join("hot.zmx"), &opt).unwrap();
+    assert_eq!(
+        (z.temperature, z.pressure, z.adjust_index),
+        (40.0, 1.2, true)
+    );
+    let env = Env {
+        base: dir.clone(),
+        glass_dirs: vec![root().join("tests/glass")],
+        catalog: None,
+    };
+    let run = |extra: &str| {
+        let t = format!(
+            "{{ {HEAD} {extra} \"blocks\": [{{\"type\": \"zmx\", \"path\": \"hot.zmx\"}}] }}"
+        );
+        lensbench_project::expand_report(&Project::from_json(&t).unwrap(), &env).unwrap()
+    };
+    // 既定の環境（20 °C）: 注意が出て、屈折率は .zmx を単体で読んだのと違う
+    let (s, warn) = run("");
+    assert!(warn.iter().any(|w| w.contains("環境")), "{warn:?}");
+    assert!(s.surfaces[1].n[1] != z.surfaces[1].n[1]);
+    // 同じ環境にすれば注意はなく、屈折率も同じ
+    let (s, warn) =
+        run(r#""environment": {"temperature_c": 40, "pressure_atm": 1.2, "adjust_index": true},"#);
+    assert!(!warn.iter().any(|w| w.contains("環境")), "{warn:?}");
+    for j in 1..s.surfaces.len() {
+        assert_eq!(s.surfaces[j].n, z.surfaces[j].n, "面 {j}");
+    }
+    assert_eq!((s.temperature, s.pressure), (40.0, 1.2));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
