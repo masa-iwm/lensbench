@@ -40,7 +40,8 @@ fn every_test_file_is_listed() {
         };
         if p.extension().is_some_and(|x| x == "rs") && stem != "it" && !separate.contains(&stem) {
             assert!(
-                me.contains(&format!("\nmod {stem};\n")),
+                // 行ごとに見る（Windows の checkout は改行が CRLF になる）
+                me.lines().any(|l| l.trim() == format!("mod {stem};")),
                 "tests/{stem}.rs が tests/it.rs の一覧に無い"
             );
         }
