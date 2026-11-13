@@ -6646,6 +6646,9 @@ impl App {
         }
         if t.step == Step::Done {
             t.finish();
+            // 通し確認は保存していない変更があっても聞かずに閉じる（ここで tour を外すので close_guard の tour の除外は
+            // 効かない）
+            self.c.close_ok = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else {
             self.tour = Some(t);
