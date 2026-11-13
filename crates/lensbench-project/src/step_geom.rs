@@ -329,8 +329,12 @@ impl Step {
     /// DATA 部を読む（大文字にした文字）
     pub(crate) fn parse(upper: &str) -> Result<Step, String> {
         let text = strip_comments(upper);
-        // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）
-        let from = text.find("ENDSEC;").map_or(0, |k| k + 7);
+        // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）。
+        // HEADER の無い STEP は先頭から
+        let from = match (text.find("HEADER;"), text.find("ENDSEC;")) {
+            (Some(h), Some(e)) if h < e => e + 7,
+            _ => 0,
+        };
         let Some(data) = text[from..].find("DATA;").map(|k| k + from) else {
             return Err("STEP の DATA 部が無い".into());
         };

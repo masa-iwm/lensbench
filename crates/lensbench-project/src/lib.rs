@@ -3693,6 +3693,10 @@ fn expand_inner(
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
     for (path, t, pr, adj) in &c.zenv {
         let e = &p.environment;
+        // どちらも補正しないなら温度・気圧は屈折率に効かない
+        if !*adj && !e.adjust_index {
+            continue;
+        }
         // 屈折率の補正は 20 °C・1 atm の外でだけ効く
         let off_ref = e.temperature_c != 20.0 || e.pressure_atm != 1.0;
         if (t - e.temperature_c).abs() > 1e-9
@@ -4305,8 +4309,16 @@ fn keep_pickups(
                     cands.push(c);
                 }
             }
-            match cands.iter().find(|c| c.holds(s)) {
-                Some(c) => s.pickups.push(*c),
+            match cands.iter().position(|c| c.holds(s)) {
+                Some(0) => s.pickups.push(cands[0]),
+                Some(k) => {
+                    // 向きから決めた組と違う符号で値が合った（元の値が 0 だと符号を区別できない）
+                    s.pickups.push(cands[k]);
+                    warn.push(format!(
+                        "{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めた（倍率 {}・ずれ {}）。意図どおりか確かめる",
+                        q.dst, q.what, q.src, cands[k].scale, cands[k].offset
+                    ));
+                }
                 None => warn.push(format!(
                     "{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わった（値で固定）",
                     q.dst, q.what, q.src

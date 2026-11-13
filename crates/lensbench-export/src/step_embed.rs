@@ -23,8 +23,13 @@ pub fn entities(text: &str) -> HashMap<u64, String> {
     let mut out = HashMap::new();
     let text = strip_comments(text);
     let text = text.as_str();
-    let data = match text.find("DATA;") {
-        Some(i) => &text[i + 5..],
+    // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）
+    let from = match (text.find("HEADER;"), text.find("ENDSEC;")) {
+        (Some(h), Some(e)) if h < e => e + 7,
+        _ => 0,
+    };
+    let data = match text[from..].find("DATA;") {
+        Some(i) => &text[from + i + 5..],
         None => text,
     };
     let b = data.as_bytes();
