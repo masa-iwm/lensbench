@@ -500,7 +500,7 @@ mod tests {
         let exe = dir.join("my python");
         std::fs::write(&exe, "").unwrap();
         let p = exe.display().to_string();
-        assert_eq!(split_command(&p), [p.clone()]);
+        assert_eq!(split_command(&p), std::slice::from_ref(&p));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

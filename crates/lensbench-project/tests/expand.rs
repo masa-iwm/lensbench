@@ -666,7 +666,7 @@ WAVM 3 0.6562725 1\nPWAV 2\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY
 SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4\n  GLAS N-BK7 0 0 1.5 40 0 0 0 0 0 0\n  DIAM 10 1 0 0 1 \"\"\n\
 SURF 2\n  TYPE STANDARD\n  CURV -0.02\n  DISZ 45\n  DIAM 10 1 0 0 1 \"\"\n\
 SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
-    std::fs::write(dir.join("hot.zmx"), &hot).unwrap();
+    std::fs::write(dir.join("hot.zmx"), hot).unwrap();
     let opt = LoadOptions {
         cfg: 1,
         catalog_dirs: vec![root().join("tests/glass")],
