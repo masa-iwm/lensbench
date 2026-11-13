@@ -520,6 +520,12 @@ pub struct System {
         serde(default, skip_serializing_if = "Vec::is_empty")
     )]
     pub macro_notes: Vec<String>,
+    /// ファイルから読んだときの注意（.zmx の読まずに飛ばした行・既定と違う設定など）
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
+    pub import_notes: Vec<String>,
     /// 玉・群（[`crate::units`]）。剛体の動きは座標系にかける
     #[cfg_attr(feature = "serde", serde(default))]
     pub units: Vec<crate::units::Unit>,
@@ -687,6 +693,7 @@ impl System {
             macros: self.macros.clone(),
             macro_parms: self.macro_parms.clone(),
             macro_notes: self.macro_notes.clone(),
+            import_notes: self.import_notes.clone(),
             units: self.units.clone(),
             mechanics: self.mechanics.clone(),
             configs: self.configs.clone(),
@@ -772,6 +779,7 @@ impl System {
             macros: Vec::new(),
             macro_parms: Vec::new(),
             macro_notes: Vec::new(),
+            import_notes: Vec::new(),
             units: Vec::new(),
             mechanics: Vec::new(),
             configs: None,

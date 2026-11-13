@@ -2967,6 +2967,13 @@
           "minimum": 0,
           "type": "integer"
         },
+        "import_notes": {
+          "description": "ファイルから読んだときの注意（.zmx の読まずに飛ばした行・既定と違う設定など）",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "macro_notes": {
           "description": "マクロのソルブを外して保存された値で固定した理由（マクロがない・対応していない命令など）と、\n解き直しでマクロがエラーになって値を変えなかったこと（[`System::macro_warnings`]）",
           "items": {

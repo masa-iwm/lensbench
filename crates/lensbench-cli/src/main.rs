@@ -1029,6 +1029,7 @@ fn load(c: &Common) -> Result<System, String> {
                 .dispersion_warnings()
                 .into_iter()
                 .chain(s.macro_warnings())
+                .chain(s.import_notes.iter().cloned())
             {
                 eprintln!("注意: {w}");
             }
@@ -1153,6 +1154,7 @@ pub(crate) fn load_beam(a: &FringeArgs, beam: &str) -> Result<System, String> {
         .dispersion_warnings()
         .into_iter()
         .chain(s.macro_warnings())
+        .chain(s.import_notes.iter().cloned())
     {
         eprintln!("注意: {w}");
     }
@@ -1636,7 +1638,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 .extension()
                 .is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
             if zmx {
-                zmx_write::save(&out, &s).map_err(e)?;
+                warn_notes(zmx_write::save(&out, &s).map_err(e)?);
             } else {
                 lensbench_project::sysfile::save(&out, &s, &[])?;
             }
@@ -1678,7 +1680,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             let a = elements::assemble(&s, &els).map_err(e)?;
             if let Some(p) = &out {
-                zmx_write::save(p, &a).map_err(e)?;
+                warn_notes(zmx_write::save(p, &a).map_err(e)?);
             }
             let w = s.primary;
             let mut nl = 0;
@@ -1975,7 +1977,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     let gs =
                         lensbench_core::ghost::ghost_system(&s, g.par.a, g.par.b).map_err(e)?;
                     let p = dir.join(format!("ghost_{}_{}.zmx", g.par.a, g.par.b));
-                    zmx_write::save(&p, &gs.sys).map_err(e)?;
+                    warn_notes(zmx_write::save(&p, &gs.sys).map_err(e)?);
                     written.push(p.display().to_string());
                 }
             }
@@ -2236,7 +2238,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             })
             .map_err(e)?;
             if let Some(path) = &out {
-                zmx_write::save(path, &r.systems[0]).map_err(e)?;
+                warn_notes(zmx_write::save(path, &r.systems[0]).map_err(e)?);
             }
             let stop = r.stop.as_str();
             let vs: Vec<Value> = p
@@ -2341,9 +2343,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 {
                     lensbench_project::sysfile::save(path, &sys[0], &[])?;
                 } else {
-                    zmx_write::save(path, &sys[0]).map_err(|x| {
+                    warn_notes(zmx_write::save(path, &sys[0]).map_err(|x| {
                         format!("--save-worst: {x}（.json の系ファイルなら書ける）")
-                    })?;
+                    })?);
                 }
             }
             let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
@@ -3900,5 +3902,12 @@ pub fn main() -> ExitCode {
             eprintln!("lensbench: {m}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// .zmx に書けなかったもの（[`zmx_write::write_notes`]）を標準エラーに出す
+fn warn_notes(notes: Vec<String>) {
+    for n in notes {
+        eprintln!("注意: {n}");
     }
 }

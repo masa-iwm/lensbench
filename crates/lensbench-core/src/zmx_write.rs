@@ -55,7 +55,10 @@ pub const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
 pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
     if s.units.iter().any(|u| u.moved()) {
         // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
-        return write_as(&s.flatten_units()?, coat_file);
+        // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）
+        let mut f = s.flatten_units()?;
+        f.configs = None;
+        return write_as(&f, coat_file);
     }
     let mut o = String::new();
     let w = |o: &mut String, l: String| {
@@ -707,17 +710,125 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             (After::Tilt(t), _) => tilt_line(&mut o, 2, 0, t),
         }
     }
+    // 多重構成の表（MCE）。書ける行だけ（[`config_op`]）
+    if let Some(c) = &s.configs {
+        w(&mut o, format!("MNUM {} {}", c.n, c.active));
+        for r in &c.rows {
+            let Some((op, p1, parm, conv)) = config_op(s, r.param) else {
+                continue;
+            };
+            for (k, &v) in r.values.iter().enumerate() {
+                let v = conv(v);
+                match parm {
+                    Some(p) => w(
+                        &mut o,
+                        format!("{op} {p1} {} {} 0 {p} 0 1 1 1 0 0 \"\" 0", k + 1, f(v)),
+                    ),
+                    None => w(
+                        &mut o,
+                        format!("{op} {p1} {} {} 0 0 0 1 1 1 0 0 \"\" 0", k + 1, f(v)),
+                    ),
+                }
+            }
+        }
+    }
     Ok(o.replace('\n', "\r\n"))
+}
+
+/// 多重構成の表の行の .zmx の演算子: (演算子, 番号 1, PARM の番号, 値の換算)。書けない行は None
+type ConfigOp = (&'static str, usize, Option<u8>, fn(f64) -> f64);
+fn config_op(s: &System, p: crate::param::Param) -> Option<ConfigOp> {
+    use crate::param::Kind;
+    let d = s.surfaces.get(p.surf)?;
+    let id: fn(f64) -> f64 = |v| v;
+    Some(match p.kind {
+        Kind::Thick => ("THIC", p.surf, None, id),
+        Kind::Curv => ("CRVT", p.surf, None, id),
+        Kind::Radius => (
+            "CRVT",
+            p.surf,
+            None,
+            |r| if r == 0.0 { 0.0 } else { 1.0 / r },
+        ),
+        Kind::Conic => ("CONN", p.surf, None, id),
+        Kind::Asph(i) if d.typ == SurfType::EvenAsph => ("PRAM", p.surf, Some(i + 1), id),
+        k if d.typ == SurfType::CoordBrk => {
+            let i = k.tilt_index()?;
+            ("PRAM", p.surf, Some(i as u8 + 1), id)
+        }
+        _ => return None,
+    })
+}
+
+/// 多重構成の表のうち .zmx に書けない行の注意
+fn config_notes(s: &System) -> Vec<String> {
+    let Some(c) = &s.configs else {
+        return Vec::new();
+    };
+    if s.units.iter().any(|u| u.moved()) {
+        return vec![
+            "玉・群を動かした系の多重構成の表は .zmx に書けない（面の番号が変わる）".to_string(),
+        ];
+    }
+    let mut out = Vec::new();
+    for r in &c.rows {
+        if config_op(s, r.param).is_none() {
+            out.push(format!(
+                "多重構成の行 {} は .zmx に書けない",
+                r.param.name()
+            ));
+        }
+        if !r.picks.is_empty() {
+            out.push(format!(
+                "多重構成の行 {} の構成のピックアップは値だけ書いた",
+                r.param.name()
+            ));
+        }
+    }
+    out
 }
 
 /// UTF-16LE（BOM 付き、OpticStudio の保存と同じ）で書く。系に書いた膜の表（[`System::coat_tables`]）を使う面があれば、
 /// 表を足した膜ファイル（[`coating_dat`]）を `.zmx` の隣に `名前_coat.dat` で書き、COFN はそれを指す
 /// （lensbench は .zmx のフォルダから読む。OpticStudio で開くときは OpticStudio の Coatings フォルダに写す）
-pub fn save(path: &Path, s: &System) -> Result<()> {
+/// 書いたファイルに入らなかったもの・変えたものの注意を返す（[`write_notes`]）
+pub fn save(path: &Path, s: &System) -> Result<Vec<String>> {
     let name = coat_file_for(path);
     let txt = write_as(s, &name)?;
     save_coating(path, &name, s)?;
-    save_utf16(path, &txt)
+    save_utf16(path, &txt)?;
+    Ok(write_notes(s))
+}
+
+/// .zmx に書くと落ちる・変わるもの（以前は黙って落としていた）。空なら系の全部を書ける。欠けなく残すなら系ファイル（.json）
+pub fn write_notes(s: &System) -> Vec<String> {
+    let mut out = Vec::new();
+    if s.units.iter().any(|u| u.moved()) {
+        out.push("玉・群の動きは座標ブレークに展開して書いた（面の番号が変わる）".to_string());
+    }
+    for q in &s.pickups {
+        let what = match q.what {
+            PickKind::Before(_) => "面の前の傾き偏心",
+            PickKind::Coating => "膜",
+            PickKind::Radius => "曲率半径",
+            _ => continue,
+        };
+        out.push(format!(
+            "面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書いた",
+            q.dst, q.src
+        ));
+    }
+    if !s.mechanics.is_empty() {
+        out.push(format!(
+            "機構部品 {} 個は .zmx に書けない",
+            s.mechanics.len()
+        ));
+    }
+    out.extend(config_notes(s));
+    if !out.is_empty() {
+        out.push("欠けなく残すなら系ファイル（.json）に書く".to_string());
+    }
+    out
 }
 
 fn save_utf16(path: &Path, txt: &str) -> Result<()> {

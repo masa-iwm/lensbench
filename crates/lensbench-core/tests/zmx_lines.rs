@@ -486,3 +486,137 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         s.surfaces[1].t
     );
 }
+
+/// OpticStudio が書いた .zmx（構成 1 つでも MNUM・MOFF の行がある）の単位を cm にしても読め、長さが 10 倍の系になる
+/// （以前は多重構成のオペランド MOFF で止まった）
+#[test]
+fn real_zmx_in_cm() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let txt = lensbench_core::glass::read_text(&root.join("tests/refs/A0/system.zmx")).unwrap();
+    assert!(txt.contains("MOFF"));
+    let opt = zmx::LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    let load =
+        |t: &str| zmx::build(&zmx::parse_text(t).unwrap(), &opt, &opt.catalog_dirs, None).unwrap();
+    let mm = load(&txt);
+    let cm = load(&txt.replacen("UNIT MM", "UNIT CM", 1));
+    let (a, b) = (mm.paraxial().efl, cm.paraxial().efl);
+    assert!((b / a - 10.0).abs() < 1e-9, "{a} {b}");
+}
+
+fn a0_text() -> (String, zmx::LoadOptions) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let txt = lensbench_core::glass::read_text(&root.join("tests/refs/A0/system.zmx"))
+        .unwrap()
+        .replace("\r\n", "\n");
+    let opt = zmx::LoadOptions {
+        cfg: 1,
+        catalog_dirs: vec![root.join("tests/glass")],
+        ..Default::default()
+    };
+    (txt, opt)
+}
+
+/// UTF-8・Shift_JIS の .zmx の日本語の名前・面のコメントが化けずに読め、書いて読み直しても同じ
+#[test]
+fn japanese_names_roundtrip() {
+    let (txt, opt) = a0_text();
+    let txt = txt.replacen("NAME ", "NAME 試験レンズ", 1).replacen(
+        "SURF 1\n",
+        "SURF 1\n  COMM 前玉\n",
+        1,
+    );
+    let (sj, _, _) = encoding_rs::SHIFT_JIS.encode(&txt);
+    for bytes in [txt.as_bytes().to_vec(), sj.into_owned()] {
+        let t = lensbench_core::glass::decode_text(&bytes);
+        let s = zmx::build(&zmx::parse_text(&t).unwrap(), &opt, &opt.catalog_dirs, None).unwrap();
+        assert_eq!(s.name, "試験レンズ");
+        assert_eq!(s.surfaces[1].comment, "前玉");
+        let w = zmx_write::write(&s).unwrap();
+        let s2 = zmx::build(&zmx::parse_text(&w).unwrap(), &opt, &opt.catalog_dirs, None).unwrap();
+        assert_eq!(
+            (s2.name.as_str(), s2.surfaces[1].comment.as_str()),
+            ("試験レンズ", "前玉")
+        );
+    }
+}
+
+/// 読まない系の行は注意に残し、瞳のアポダイゼーションは止める。多重構成の読めない行は誤り
+#[test]
+fn unread_lines_are_reported() {
+    let (txt, opt) = a0_text();
+    let load =
+        |t: &str| zmx::parse_text(t).and_then(|r| zmx::build(&r, &opt, &opt.catalog_dirs, None));
+    let s = load(&txt).unwrap();
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    let s = load(&txt.replacen("SDMA 0 1 0", "SDMA 1 1 0", 1).replacen(
+        "HYPR 0",
+        "HYPR 0\nZZZZ 3 4",
+        1,
+    ))
+    .unwrap();
+    assert_eq!(s.import_notes.len(), 2, "{:?}", s.import_notes);
+    assert!(load(&txt.replacen("GFAC 0 0", "GFAC 1 3", 1)).is_err());
+    assert!(load(&format!("{txt}\nTHIC 2 x broken\n")).is_err());
+    // 数として読めない系の値は既定値にせず誤り
+    assert!(load(&txt.replacen("ENPD ", "ENPD abc ", 1)).is_err());
+}
+
+/// 多重構成の .zmx は多重構成の表として読み、どの構成も構成を選んで読んだ系と同じ。書いて読み直しても表は同じ
+#[test]
+fn multi_config_table_roundtrip() {
+    let (txt, opt) = a0_text();
+    let mce = "MNUM 2 1\nMOFF   0   1 \"\" 0 0 0 1 1 0 0.0 \"\" 0\n\
+               THIC   4   1 2.3 0 0 0 1 1 1 0 0 \"\" 0\n\
+               THIC   4   2 2.8 0 0 0 1 1 1 0 0 \"\" 0\n\
+               THIC   2   1 5.8 0 0 0 1 1 1 0 0 \"\" 0\n\
+               THIC   2   2 6.3 0 0 0 1 1 1 0 0 \"\" 0\n";
+    let i = txt.find("MNUM 1 1").unwrap();
+    let txt = format!("{}{mce}", &txt[..i]);
+    let load = |t: &str, cfg: usize| {
+        let o = zmx::LoadOptions { cfg, ..opt.clone() };
+        zmx::build(&zmx::parse_text(t).unwrap(), &o, &o.catalog_dirs, None).unwrap()
+    };
+    let s = load(&txt, 1);
+    let c = s.configs.as_ref().expect("多重構成の表");
+    assert_eq!((c.n, c.active, c.rows.len()), (2, 1, 2), "{c:?}");
+    assert!(s.import_notes.is_empty(), "{:?}", s.import_notes);
+    for k in 1..=2 {
+        let (a, b) = (s.config(k).unwrap(), load(&txt, k));
+        for j in 0..a.surfaces.len() {
+            assert_eq!(a.surfaces[j].t, b.surfaces[j].t, "構成 {k} 面 {j}");
+        }
+        assert!((a.paraxial().efl - b.paraxial().efl).abs() < 1e-12);
+    }
+    let out = zmx_write::write(&s).unwrap();
+    assert!(out.contains("MNUM 2 1"), "{out}");
+    let back = load(&out, 1);
+    assert_eq!(back.configs.as_ref().unwrap().rows, c.rows);
+}
+
+/// .zmx に書けないもの（曲率半径のピックアップ等）は注意として返し、書けるものだけの系では空
+#[test]
+fn write_notes_list_dropped_items() {
+    use lensbench_core::param::{PickKind, Pickup};
+    let (txt, opt) = a0_text();
+    let mut s = zmx::build(
+        &zmx::parse_text(&txt).unwrap(),
+        &opt,
+        &opt.catalog_dirs,
+        None,
+    )
+    .unwrap();
+    assert!(zmx_write::write_notes(&s).is_empty());
+    s.pickups
+        .push(Pickup::new(3, 1, PickKind::Radius, 1.0, 0.0));
+    let notes = zmx_write::write_notes(&s);
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("曲率半径") && n.contains("面 3")),
+        "{notes:?}"
+    );
+}
