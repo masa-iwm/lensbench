@@ -319,8 +319,7 @@ impl NearGrid {
 /// 光線の始め方
 #[derive(Debug, Clone, Copy)]
 pub enum Launch<'a> {
-    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの。hxy が定義した視野でなく、係数のある視野が
-    /// あれば全光線を失敗にする。エイミングは系の設定どおり）。
+    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの（[`System::vig_factors`]）。エイミングは系の設定どおり）。
     /// signed なら、入射瞳が物体より前（ENPP + 物体距離 < 0）の有限物体系で瞳座標の符号を反転して与える
     /// （px = 1 が絞りの同じ側を通り、入射瞳が無限遠をまたいでも向きが連続。既定の false は OpticStudio と同じ）
     Pupil {
@@ -1542,22 +1541,77 @@ impl System {
         (self.fields[i].x / nx, self.fields[i].y / ny)
     }
 
-    /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）
+    /// 視野 (hx, hy) のケラレ係数 [VDX, VDY, VCX, VCY, VAN]（視野の補間込み）。
+    ///
+    /// 定義した視野以外の点は OpticStudio 2026 R1.01 と同じ規則（公開 #226、25 系 5010 点を ZOS-API で測って 2e-13 で一致）:
+    /// - 視野の物理座標 (X, Y) = 正規化視野 × 正規化の値（Radial は最大の半径、Rectangular は x・y それぞれの最大。
+    ///   最大が 0 の向きは 0）
+    /// - 全視野が x = 0 で y の符号がそろい、X² + Y² ≤ max|y|² なら、視野を |y| の順に並べ、r² = X² + Y² の区分線形で
+    ///   補間する（r ではなく r²。最も内側の視野より内は、その視野の値）
+    /// - それ以外（x ≠ 0 の視野がある、y の符号が混ざる、外側の点）は補間せず、物理座標の L1 距離
+    ///   |X − x_i| + |Y − y_i| が最小の視野の値（同じ距離なら番号の小さい視野）
     pub fn vig_factors(&self, hx: f64, hy: f64) -> Result<[f64; 5]> {
+        let vals = |f: &Field| [f.vdx, f.vdy, f.vcx, f.vcy, f.van];
         let (fx, fy) = self.field_norm_values();
         for f in &self.fields {
             if (f.x / fx - hx).abs() < 1e-12 && (f.y / fy - hy).abs() < 1e-12 {
-                return Ok([f.vdx, f.vdy, f.vcx, f.vcy, f.van]);
+                return Ok(vals(f));
             }
         }
-        if self.fields.iter().any(|f| {
-            [f.vdx, f.vdy, f.vcx, f.vcy, f.van]
-                .iter()
-                .any(|&v| v != 0.0)
-        }) {
-            notimpl!("定義済み視野以外の点でのケラレ係数");
+        if self
+            .fields
+            .iter()
+            .all(|f| vals(f).iter().all(|&v| v == 0.0))
+        {
+            return Ok([0.0; 5]);
         }
-        Ok([0.0; 5])
+        if !(hx.is_finite() && hy.is_finite()) {
+            invalid!("視野 ({hx}, {hy}) のケラレ係数");
+        }
+        // 物理座標（正規化の値の 0 は割り算のための 1 にせず 0 のまま）
+        let max_x = self.fields.iter().map(|f| f.x.abs()).fold(0.0, f64::max);
+        let max_y = self.fields.iter().map(|f| f.y.abs()).fold(0.0, f64::max);
+        let (sx, sy) = match self.field_norm {
+            FieldNorm::Rect => (max_x, max_y),
+            FieldNorm::Radial => {
+                let r = self
+                    .fields
+                    .iter()
+                    .map(|f| f.x.hypot(f.y))
+                    .fold(0.0, f64::max);
+                (r, r)
+            }
+        };
+        let (x, y) = (hx * sx, hy * sy);
+        let r2 = x * x + y * y;
+        let y_only = self.fields.iter().all(|f| f.x == 0.0)
+            && (self.fields.iter().all(|f| f.y >= 0.0) || self.fields.iter().all(|f| f.y <= 0.0));
+        if y_only && r2 <= max_y * max_y {
+            let mut ord: Vec<&Field> = self.fields.iter().collect();
+            ord.sort_by(|a, b| a.y.abs().total_cmp(&b.y.abs()));
+            let first = ord[0];
+            if r2 <= first.y * first.y {
+                return Ok(vals(first));
+            }
+            for w in ord.windows(2) {
+                let (a, b) = (w[0], w[1]);
+                let (a2, b2) = (a.y * a.y, b.y * b.y);
+                if r2 <= b2 && b2 > a2 {
+                    let t = (r2 - a2) / (b2 - a2);
+                    let (va, vb) = (vals(a), vals(b));
+                    return Ok(std::array::from_fn(|k| va[k] + (vb[k] - va[k]) * t));
+                }
+            }
+            return Ok(vals(ord[ord.len() - 1]));
+        }
+        let mut best = (f64::INFINITY, 0usize);
+        for (i, f) in self.fields.iter().enumerate() {
+            let d = (x - f.x).abs() + (y - f.y).abs();
+            if d < best.0 {
+                best = (d, i);
+            }
+        }
+        Ok(vals(&self.fields[best.1]))
     }
 
     /// 物体の指定（無限遠: 方向、有限: 物体面の点）
@@ -1855,7 +1909,7 @@ impl System {
                         self.vig_factors(hx, hy)
                     }
                 };
-                // ケラレ係数が決められない点（定義した視野以外）は、係数 0 で黙って追わず全光線を失敗にする
+                // ケラレ係数が決められない点（視野が有限でない）は、係数 0 で黙って追わず全光線を失敗にする
                 // （try_trace は同じ条件で誤りを返す）
                 let Ok([vdx, vdy, vcx, vcy, van]) = vig else {
                     return (
