@@ -345,3 +345,30 @@ fn ray_functions_match_trace() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 終わらない繰り返しのマクロは固まらず、ソルブを外して保存された値で固定し警告を残す。深すぎる式は落ちず、
+/// ほかの文法の誤りと同じく走らせた時点のエラー（OpticStudio と同じく値は 0）
+#[test]
+fn runaway_and_deep_macros_do_not_hang_or_crash() {
+    let deep = format!(
+        "X = {}1{}\nSOLVERETURN X\n",
+        "(".repeat(5000),
+        ")".repeat(5000)
+    );
+    let d = macro_dir(
+        "runaway",
+        &[
+            ("LBLOOP", "LABEL 1\nGOTO 1\nSOLVERETURN 0.01\n"),
+            ("LBDEEP", deep.as_str()),
+        ],
+    );
+    let t0 = std::time::Instant::now();
+    let s = load(&singlet("LBLOOP", -0.0123), &d);
+    assert!(t0.elapsed().as_secs_f64() < 10.0);
+    assert_eq!(s.surfaces[2].c, -0.0123);
+    let w = s.macro_warnings();
+    assert!(w.len() == 1 && w[0].contains("超えた"), "{w:?}");
+    let s = load(&singlet("LBDEEP", -0.0123), &d);
+    assert_eq!(s.surfaces[2].c, 0.0);
+    let _ = std::fs::remove_dir_all(&d);
+}

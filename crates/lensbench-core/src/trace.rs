@@ -925,7 +925,8 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
         if d.ignore {
             continue;
         }
-        let f = fr.surf[j].unwrap();
+        // 座標系の無い面（無限遠の物体面）は通らない（first = 0 を渡されても落ちない）
+        let Some(f) = fr.surf[j] else { continue };
         let (o, rm) = (f.o, f.r);
         last_frame = Some(f);
         if err != 0 {
@@ -1246,7 +1247,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                 } else if d.typ != SurfType::Jones && nn != nprev {
                     let mu = nprev / nn;
                     let disc = 1.0 - mu * mu * (1.0 - cosi * cosi);
-                    if disc < 0.0 && err == 0 {
+                    if !(disc >= 0.0) && err == 0 {
                         err = j;
                         tir = true;
                     }
@@ -1322,6 +1323,11 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                     }
                 }
             }
+        }
+        // 面の中で方向・位置が有限でなくなった光線（理想レンズの kl[2] = 0、屈折率 NaN など）もこの面で止める
+        // （最後の面でも「err = 0 なら有限」を守る）
+        if err == 0 && !(pl.iter().chain(&kl).all(|v| v.is_finite()) && opl.is_finite()) {
+            err = j;
         }
         if err != 0 {
             pl = NAN3;

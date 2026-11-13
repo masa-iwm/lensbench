@@ -126,7 +126,8 @@ pub(crate) fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f6
     let dd = sub(q, pc);
     let b = dot(dd, k);
     let c = dot(dd, dd) - rr * rr;
-    let disc = (b * b - c).max(0.0).sqrt();
+    // 基準球に届かない光線は NaN（接点に丸めない）
+    let disc = (b * b - c).sqrt();
     let t = if sc < 0.0 { -b - disc } else { -b + disc };
     opl + ni * t
 }
@@ -144,6 +145,11 @@ pub fn opd(
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
         notimpl!("OPD の基準 {}（射出瞳・無限遠のみ）", s.ropd);
     }
+    if !s.afocal && s.ropd != 1 && s.exit_pupil().is_nan() {
+        invalid!(
+            "射出瞳が求められない（瞳の算出の補助の光線が解けない）。OPD の基準が決められない"
+        );
+    }
     let w = w.unwrap_or(s.primary);
     let r = s.try_trace(field, px, py, Some(w), None, false)?;
     let rc = s.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
@@ -152,6 +158,21 @@ pub fn opd(
     } else {
         s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?
     };
+    for (t, wi) in [(&rc, w), (&rp, s.primary)] {
+        let c = &t.rays[0];
+        if c.err != 0 {
+            let why = if c.tir {
+                "で全反射"
+            } else {
+                "に当たらない"
+            };
+            invalid!(
+                "主光線（波長 {}）が像面に届かない（面 {}{why}）。OPD の基準が決められない",
+                wi + 1,
+                c.err
+            );
+        }
+    }
     let (pc, kc) = (rp.rays[0].xyz, rp.rays[0].lmn);
     let c = &rc.rays[0];
     let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;

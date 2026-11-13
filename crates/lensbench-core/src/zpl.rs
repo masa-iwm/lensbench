@@ -207,7 +207,12 @@ struct Parser<'a> {
     t: &'a [Tok],
     i: usize,
     line: usize,
+    /// 式の入れ子の深さ（括弧・単項の演算子を何万も重ねた行でスタックがあふれないよう上限を置く）
+    depth: usize,
 }
+
+/// 式の入れ子の深さの上限
+const MAX_EXPR_DEPTH: usize = 200;
 
 impl Parser<'_> {
     fn peek(&self) -> Option<&Tok> {
@@ -233,6 +238,19 @@ impl Parser<'_> {
     }
 
     fn expr(&mut self, min: u8) -> Result<Expr> {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            return Err(err(
+                self.line,
+                format!("式の入れ子が深すぎる（{MAX_EXPR_DEPTH} まで）"),
+            ));
+        }
+        let r = self.expr_in(min);
+        self.depth -= 1;
+        r
+    }
+
+    fn expr_in(&mut self, min: u8) -> Result<Expr> {
         let mut l = self.unary()?;
         while let Some((op, p)) = match self.peek() {
             Some(Tok::Op(o)) => prec(o).filter(|p| *p >= min).map(|p| (*o, p)),
@@ -246,6 +264,19 @@ impl Parser<'_> {
     }
 
     fn unary(&mut self) -> Result<Expr> {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            return Err(err(
+                self.line,
+                format!("式の入れ子が深すぎる（{MAX_EXPR_DEPTH} まで）"),
+            ));
+        }
+        let r = self.unary_in();
+        self.depth -= 1;
+        r
+    }
+
+    fn unary_in(&mut self) -> Result<Expr> {
         if self.eat_op("-") {
             return Ok(Expr::Neg(Box::new(self.unary()?)));
         }
@@ -349,6 +380,8 @@ enum Stop {
     Keep(Error),
     /// 系の命令が止めた（[`Flow::Abort`]。ソルブでは Keep と同じ）
     Abort(Error),
+    /// 命令の数・時間の上限を超えた（終わらない繰り返し）。ソルブでも値を入れずに誤りを返す（読込ではソルブを外して注記）
+    Limit(Error),
 }
 
 impl From<Error> for Stop {
@@ -419,7 +452,12 @@ impl Program {
                 if head == "REM" {
                     return Ok(());
                 }
-                let mut ps = Parser { t: &t, i: 1, line };
+                let mut ps = Parser {
+                    t: &t,
+                    i: 1,
+                    line,
+                    depth: 0,
+                };
                 let at = p.ops.len();
                 let push = |p: &mut Program, op: Op| {
                     p.ops.push(op);
@@ -442,6 +480,7 @@ impl Program {
                                     t: &t[..j],
                                     i: 1,
                                     line,
+                                    depth: 0,
                                 }
                                 .whole()?;
                                 let body =
@@ -631,7 +670,7 @@ impl Program {
         let mut ret = None;
         match self.exec(host, vars, &mut ret) {
             Ok(()) => Ok(ret),
-            Err(Stop::Err(e) | Stop::Keep(e) | Stop::Abort(e)) => Err(e),
+            Err(Stop::Err(e) | Stop::Keep(e) | Stop::Abort(e) | Stop::Limit(e)) => Err(e),
         }
     }
 
@@ -641,7 +680,7 @@ impl Program {
         let mut ret = None;
         match self.exec(host, vars, &mut ret) {
             Ok(()) | Err(Stop::Abort(_)) => Ok(()),
-            Err(Stop::Err(e) | Stop::Keep(e)) => Err(e),
+            Err(Stop::Err(e) | Stop::Keep(e) | Stop::Limit(e)) => Err(e),
         }
     }
 
@@ -660,7 +699,8 @@ impl Program {
             Err(
                 Stop::Err(e @ Error::NotImplemented(_))
                 | Stop::Keep(e @ Error::NotImplemented(_))
-                | Stop::Abort(e @ Error::NotImplemented(_)),
+                | Stop::Abort(e @ Error::NotImplemented(_))
+                | Stop::Limit(e),
             ) => return Err(e),
             Err(Stop::Err(e)) => Outcome {
                 value: fin(Some(ret.unwrap_or(0.0))),
@@ -679,7 +719,13 @@ impl Program {
         vars: &mut Vars,
         ret: &mut Option<f64>,
     ) -> std::result::Result<(), Stop> {
-        const MAX_STEPS: usize = 50_000_000;
+        // 命令の数の上限。マクロのソルブは読込・値の変更・最適化の差分のたびに走るので、終わらない繰り返しで
+        // 長く固まらないよう、以前の 5000 万から下げ、経過時間（ネイティブのみ）でも止める
+        const MAX_STEPS: usize = 5_000_000;
+        #[cfg(not(target_arch = "wasm32"))]
+        const MAX_SECS: f64 = 2.0;
+        #[cfg(not(target_arch = "wasm32"))]
+        let t0 = std::time::Instant::now();
         const MAX_DEPTH: usize = 100;
         let mut pc = 0;
         let mut stack: Vec<usize> = vec![];
@@ -690,9 +736,16 @@ impl Program {
             steps += 1;
             let line = self.lines[pc];
             if steps > MAX_STEPS {
-                return Err(Stop::Keep(err(
+                return Err(Stop::Limit(err(
                     line,
-                    "命令の数が多すぎる（終わらない繰り返し？）",
+                    format!("命令の数が {MAX_STEPS} を超えた（終わらない繰り返し？）"),
+                )));
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            if steps % 4096 == 0 && t0.elapsed().as_secs_f64() > MAX_SECS {
+                return Err(Stop::Limit(err(
+                    line,
+                    format!("{MAX_SECS} 秒を超えた（終わらない繰り返し？）"),
                 )));
             }
             let mut ev = Eval {

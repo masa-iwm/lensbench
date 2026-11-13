@@ -282,8 +282,10 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     use lensbench_core::coating::{stack, CoatKind, CoatingFile};
     use std::f64::consts::PI;
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n\
+               MATE E\n0.4 1.46 -1e-4\n0.5 1.46 4.8e-7\n1.2 1.46 -1e-4\nCOAT EPS\nE 0.1 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
         ..Default::default()
@@ -327,13 +329,25 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     let (rs, rp, _, _) = stack(
         n1,
         &[(C64::new(1.38, 0.0), 0.1)],
-        C64::new(0.5, 3.0),
+        C64::new(0.5, -3.0),
         wl,
         th,
     );
     let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
     let v = h.eval(th).unwrap();
     assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
+    // k > 0（増幅）の材料は使うときだけ誤り（使わない膜は上のとおり求まる）
+    assert!(c.prepare(&s, "GAIN|AIR|1.5,0.0", wl, n1, n2).is_err());
+    // 標準の膜ファイルにある数値の誤差ほどの正の k（+5e-7）は止めない
+    assert!(c.prepare(&s, "EPS|AIR|1.5,0.0", 0.5, n1, n2).is_ok());
+    // 表の範囲外の波長は端の値（OpticStudio と同じ）: 1.5 µm は 1.2 µm の値の層と同じ
+    let far = c
+        .prepare(&s, "AR2|AIR|1.5,0.0", 1.5, n1, n2)
+        .unwrap()
+        .eval(0.3)
+        .unwrap();
+    let (_, _, ts, tp) = stack(n1, &layers, C64::new(n2, 0.0), 1.5, 0.3);
+    assert!((far[0].norm() - ts.norm()).abs() < 1e-12 && (far[1].norm() - tp.norm()).abs() < 1e-12);
 }
 
 /// 層 [(n, d)] の特性行列（外側から順）→ (M00, M10, M01, M11)
@@ -366,8 +380,10 @@ fn coating_model_reproduces_the_stack_it_was_made_from() {
     use lensbench_core::coating::{parse_models, stack, CoatKind, CoatingFile};
     use std::fmt::Write;
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n\
+               MATE E\n0.4 1.46 -1e-4\n0.5 1.46 4.8e-7\n1.2 1.46 -1e-4\nCOAT EPS\nE 0.1 1\n";
     let layers = [(C64::new(1.38, 0.0), 0.11), (C64::new(2.1, 0.0), 0.06)];
     // 膜のモデルを層から作る: M̃ = 特性行列、ψ = Σ d_j Re(β²/q_j)（OpticStudio の位相の層の項）
     let wls: Vec<f64> = (0..=20).map(|i| 0.50 + 0.005 * i as f64).collect();
@@ -401,7 +417,7 @@ fn coating_model_reproduces_the_stack_it_was_made_from() {
             let (rs, rp, _, _) = stack(
                 n_ref,
                 &[(C64::new(1.38, 0.0), 0.1)],
-                C64::new(0.5, 3.0),
+                C64::new(0.5, -3.0),
                 wl,
                 (b / n_ref).asin(),
             );
@@ -564,8 +580,10 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
     use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
     use lensbench_core::coating::{parse_models, CoatingFile, Measured};
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
-               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
+               COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
+               MATE G\n0.4 1.5 2.0\n1.2 1.5 2.0\nCOAT GAIN\nG 0.1 1\n\
+               MATE E\n0.4 1.46 -1e-4\n0.5 1.46 4.8e-7\n1.2 1.46 -1e-4\nCOAT EPS\nE 0.1 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
         ..Default::default()

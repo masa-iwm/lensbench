@@ -1311,8 +1311,8 @@ fn handle(method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
             let path = p["path"]
                 .as_str()
                 .ok_or_else(|| RpcErr::params("write には path"))?;
-            zmx_write::save(&check_path(Path::new(path), true)?, &s)?;
-            Ok((json!({ "written": path }), Vec::new()))
+            let notes = zmx_write::save(&check_path(Path::new(path), true)?, &s)?;
+            Ok((json!({ "written": path, "notes": notes }), Vec::new()))
         }
         // 系の編集: ops の操作の列を順に当てる（どれかが失敗すれば系は変えない）
         "edit" => {

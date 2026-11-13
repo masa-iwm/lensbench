@@ -131,13 +131,34 @@ pub fn air(wl: f64, t: f64, p: f64) -> f64 {
     1.0 + (n15 - 1.0) * p / (1.0 + 3.4785e-3 * (t - 15.0))
 }
 
-/// UTF-16（BOM あり）か Latin-1 のテキストを読む。
+/// テキストファイルを読む（文字コードは [`decode_text`]）。
 pub fn read_text(path: &Path) -> std::io::Result<String> {
     let raw = crate::vfs::read(path)?;
     Ok(decode_text(&raw))
 }
 
+/// 読んだテキストの文字コード
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextEncoding {
+    /// UTF-16（BOM で LE・BE を判定。OpticStudio の .zmx）
+    Utf16,
+    /// UTF-8（BOM の有無を問わない）。ASCII だけのファイルもこれ
+    Utf8,
+    /// Shift_JIS（日本語の Windows の ANSI、CP932）
+    ShiftJis,
+    /// Windows-1252（欧文の Windows の ANSI。Latin-1 の上位）
+    Windows1252,
+}
+
+/// バイト列をテキストにする: BOM（UTF-16 LE/BE・UTF-8）→ BOM なしで UTF-8 として正しければ UTF-8 → Shift_JIS として
+/// 誤りなく読めれば Shift_JIS → Windows-1252。以前は BOM のないものを 1 バイト = 1 文字（Latin-1）で読み、UTF-8・
+/// CP932 の日本語の面の名前が化けたまま UTF-16 で保存されていた
 pub fn decode_text(raw: &[u8]) -> String {
+    decode_text_enc(raw).0
+}
+
+/// [`decode_text`] と同じで、判定した文字コードも返す
+pub fn decode_text_enc(raw: &[u8]) -> (String, TextEncoding) {
     if raw.len() >= 2 && (raw[..2] == [0xff, 0xfe] || raw[..2] == [0xfe, 0xff]) {
         let le = raw[0] == 0xff;
         let u: Vec<u16> = raw[2..]
@@ -150,10 +171,24 @@ pub fn decode_text(raw: &[u8]) -> String {
                 }
             })
             .collect();
-        String::from_utf16_lossy(&u)
-    } else {
-        raw.iter().map(|&b| b as char).collect()
+        return (String::from_utf16_lossy(&u), TextEncoding::Utf16);
     }
+    let body = raw.strip_prefix(&[0xef, 0xbb, 0xbf][..]).unwrap_or(raw);
+    if let Ok(s) = std::str::from_utf8(body) {
+        return (s.to_string(), TextEncoding::Utf8);
+    }
+    let (s, had_errors) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(body);
+    // Windows-1252 の ° µ ± などの 1 バイトは Shift_JIS では半角カナに読める。全角の文字が 1 つもなく半角カナだけなら
+    // Windows-1252 とみる（日本語の .zmx の名前・コメントは全角を含む）
+    let halfwidth_only = s.chars().any(|c| ('\u{ff61}'..='\u{ff9f}').contains(&c))
+        && !s
+            .chars()
+            .any(|c| c as u32 >= 0x3000 && !('\u{ff61}'..='\u{ff9f}').contains(&c));
+    if !had_errors && !halfwidth_only {
+        return (s.into_owned(), TextEncoding::ShiftJis);
+    }
+    let (s, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(body);
+    (s.into_owned(), TextEncoding::Windows1252)
 }
 
 /// AGF を読む（名前 → ガラス）。
@@ -401,6 +436,37 @@ mod tests {
         let l2: f64 = 0.5875618f64.powi(2);
         let expect = (1.0 + l2 / (l2 - 0.006) + 0.2 * l2 / (l2 - 0.02) + l2 / (l2 - 100.0)).sqrt();
         assert!((g.n(0.5875618, 20.0, 1.0) - expect).abs() < 1e-15);
+    }
+    /// 文字コードの判定: UTF-16（BOM）・UTF-8（BOM の有無）・Shift_JIS・Windows-1252
+    #[test]
+    fn decode_encodings() {
+        let s = "NAME 試験レンズ\nCOMM 前玉\n";
+        let mut u16le = vec![0xff, 0xfe];
+        u16le.extend(s.encode_utf16().flat_map(|c| c.to_le_bytes()));
+        let mut u16be = vec![0xfe, 0xff];
+        u16be.extend(s.encode_utf16().flat_map(|c| c.to_be_bytes()));
+        let mut u8bom = vec![0xef, 0xbb, 0xbf];
+        u8bom.extend(s.as_bytes());
+        let (sj, _, _) = encoding_rs::SHIFT_JIS.encode(s);
+        for (b, e) in [
+            (u16le, TextEncoding::Utf16),
+            (u16be, TextEncoding::Utf16),
+            (s.as_bytes().to_vec(), TextEncoding::Utf8),
+            (u8bom, TextEncoding::Utf8),
+            (sj.into_owned(), TextEncoding::ShiftJis),
+        ] {
+            assert_eq!(decode_text_enc(&b), (s.to_string(), e));
+        }
+        // Latin-1 の é（0xE9）単独は Shift_JIS として読めないので Windows-1252
+        assert_eq!(
+            decode_text_enc(b"COMM caf\xe9\n"),
+            ("COMM café\n".to_string(), TextEncoding::Windows1252)
+        );
+        // ° µ ±（0xB0 0xB5 0xB1）は Shift_JIS では半角カナに読めるが、全角がなければ Windows-1252
+        assert_eq!(
+            decode_text_enc(b"COMM 5\xb0 1\xb5m \xb10.1\n"),
+            ("COMM 5° 1µm ±0.1\n".to_string(), TextEncoding::Windows1252)
+        );
     }
     /// 未対応の分散式・数として読めない欄は読込で誤り（以前は読込を通り、追跡で panic した）
     #[test]

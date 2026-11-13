@@ -62,11 +62,12 @@ fn config_table_from_zmx_and_edit() {
             t["zmx_cfgs"].as_u64(),
             t["zmx_cfg"].as_u64()
         ),
-        (Some(1), Some(2), Some(2))
+        (Some(2), Some(2), Some(2))
     );
-    assert_eq!(t["rows"], json!([]));
+    // .zmx の多重構成は読込で表になる（構成 2 を読んだので、今の構成は 2）
+    assert_eq!(t["rows"].as_array().unwrap().len(), 2, "{t}");
 
-    // .zmx の多重構成を表に（構成 2 を読んでいたので、今の構成は 2 のまま）
+    // config_diff（.zmx から構成ごとに読み直した表）を当てても同じ
     let d2 = ok("config_diff", json!({}));
     assert_eq!(d2["rows"], 2, "{d2}");
     ok("edit", json!({ "ops": d2["ops"] }));

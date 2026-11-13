@@ -18,8 +18,44 @@ mod imp {
     pub fn read(p: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(p)
     }
+    /// 同じフォルダの一時ファイルに書いてから名前を変える（書く途中で落ちても元のファイルは残る）。
+    /// 書き先がシンボリックリンクならリンクの先を置き換え、普通のファイルでないもの（/dev/stdout・名前付きパイプなど）
+    /// には直接書く（置き換えると壊す）
     pub fn write(p: &Path, b: &[u8]) -> io::Result<()> {
-        std::fs::write(p, b)
+        use std::io::Write;
+        let resolved;
+        let p = match std::fs::metadata(p) {
+            Ok(m) if !m.is_file() => return std::fs::write(p, b),
+            Ok(_) if std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()) => {
+                resolved = std::fs::canonicalize(p)?;
+                resolved.as_path()
+            }
+            _ => p,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let name = p
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ファイル名が無い"))?;
+        let mut tmp_name = std::ffi::OsString::from(".");
+        tmp_name.push(name);
+        tmp_name.push(format!(
+            ".{}-{}.tmp",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let tmp = p.with_file_name(tmp_name);
+        let res = (|| {
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(b)?;
+            f.sync_all()?;
+            drop(f);
+            std::fs::rename(&tmp, p)
+        })();
+        if res.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        res
     }
     pub fn write_atomic(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
@@ -396,6 +432,40 @@ pub mod sync {
 mod tests {
     use super::mem;
     use std::path::{Path, PathBuf};
+
+    /// 保存は一時ファイルから名前を変える: 上書きでき、一時ファイルは残らない
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn native_write_is_atomic_replace() {
+        let d = std::env::temp_dir().join(format!("lb-vfs-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("a.zmx");
+        super::imp::write(&p, b"old").unwrap();
+        super::imp::write(&p, b"new").unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"new");
+        let names: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+        assert!(super::imp::write(&d.join("no/such/dir.zmx"), b"x").is_err());
+        // シンボリックリンクはリンクの先を書き換え、リンクは残す
+        #[cfg(unix)]
+        {
+            let link = d.join("link.zmx");
+            std::os::unix::fs::symlink(&p, &link).unwrap();
+            super::imp::write(&link, b"via link").unwrap();
+            assert!(std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(std::fs::read(&p).unwrap(), b"via link");
+            // 普通のファイルでない書き先（/dev/null）は置き換えずに直接書く
+            super::imp::write(Path::new("/dev/null"), b"x").unwrap();
+            assert!(!std::fs::metadata("/dev/null").unwrap().is_file());
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn memory_store_reads_lists_and_stamps() {

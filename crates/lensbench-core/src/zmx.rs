@@ -95,6 +95,75 @@ pub struct Raw {
     /// (オペランド, 番号, 構成, 値, 残り)
     pub mce: Vec<(String, i64, i64, String, Vec<String>)>,
     pub sysl: HashMap<String, Vec<Vec<String>>>,
+    /// 読まずに飛ばした行など、読込の注意（[`System::import_notes`] に入る）
+    pub notes: Vec<String>,
+}
+
+/// 系の行のうち、読む鍵（build・Raw のメソッドで使う）
+const SYS_READ: &[&str] = &[
+    "VERS", "MODE", "UNIT", "NAME", "ENPD", "FNUM", "OBNA", "FLOA", "ENVD", "GCAT", "RAIM", "FTYP",
+    "ROPD", "XFLN", "YFLN", "FWGN", "VDXN", "VDYN", "VCXN", "VCYN", "VANN", "WAVM", "WAVL", "WWGT",
+    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR",
+];
+
+/// 系の行のうち、読まなくても光線追跡・解析に効かない鍵（表示・作者・言語・公差・非順次の設定・最適化の設定・
+/// エイミングの途中の値など）
+const SYS_HARMLESS: &[&str] = &[
+    "AUTH", "NOTE", "PFIL", "LANG", "IWDP", "TOL", "TOLE", "NSCD", "LUID", "EERA", "BLNK", "OMMA",
+    "PUSH", "GSTD", "MAZH", "MCOM", "XFIE", "YFIE", "RSCE", "DMFS", "OPDX", "TELE",
+];
+
+/// 系の行のうち、値が既定（OpticStudio が普通に書く値）のときだけ害がない鍵と、その既定。違えば注意に残す
+const SYS_DEFAULT_ONLY: &[(&str, &str)] = &[
+    // 自動の半直径の余裕（mm・%）
+    ("SDMA", "0 1 0"),
+    // 偏光の状態（解析ごとに lensbench の設定を使う）
+    ("POLS", "1 0 1 0 0 1 0"),
+    // 近軸の量で座標ブレークを無視する
+    ("PICB", "1"),
+];
+
+impl Raw {
+    /// 読まずに飛ばした系の行の注意（行の鍵と値）。アポダイゼーション（GFAC）が一様でなければ誤り
+    fn system_notes(&self) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        let mut keys: Vec<&String> = self.sysl.keys().collect();
+        keys.sort();
+        for k in keys {
+            let k = k.as_str();
+            if SYS_READ.contains(&k) || SYS_HARMLESS.contains(&k) {
+                continue;
+            }
+            let vals = &self.sysl[k];
+            let joined: Vec<String> = vals.iter().map(|v| v.join(" ")).collect();
+            if k == "GFAC" {
+                // アポダイゼーションの種類（0 は一様）。瞳の振幅が変わるので、読まずに進めると別の系になる
+                if vals
+                    .first()
+                    .and_then(|v| v.first())
+                    .is_some_and(|x| !matches!(fv(x), Ok(v) if v == 0.0))
+                {
+                    notimpl!("瞳のアポダイゼーション（GFAC {}）", joined.join(" "));
+                }
+                continue;
+            }
+            if let Some((_, d)) = SYS_DEFAULT_ONLY.iter().find(|(n, _)| *n == k) {
+                if joined.iter().all(|j| j == d) {
+                    continue;
+                }
+                out.push(format!(
+                    ".zmx の系の行 {k} {}（既定 {d} と違うが、lensbench は読まない）",
+                    joined.join(" / ")
+                ));
+                continue;
+            }
+            out.push(format!(
+                ".zmx の系の行 {k} {} を読まずに飛ばした",
+                joined.join(" / ")
+            ));
+        }
+        Ok(out)
+    }
 }
 
 fn fv(v: &str) -> Result<f64> {
@@ -170,8 +239,9 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             continue;
         }
         if in_mce {
-            if let Some(m) = mce_line(line) {
-                raw.mce.push(m);
+            match mce_line(line) {
+                Some(m) => raw.mce.push(m),
+                None => invalid!("zmx の多重構成の行を読めない: {}", line.trim()),
             }
             continue;
         }
@@ -196,11 +266,12 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "PPAR" => {
                 let i = num(1)? as i64;
                 let from = pick_col(s.n, "PPAR", num(5)?, PickKind::Parm(i.clamp(0, 255) as u8))?;
-                s.ppar.insert(i, (num(2)? as usize, num(3)?, num(4)?, from));
+                s.ppar
+                    .insert(i, (surf_no(num(2)?)?, num(3)?, num(4)?, from));
             }
             "PZUP" => {
                 let from = pick_col(s.n, "PZUP", num(4)?, PickKind::Thick)?;
-                s.pzup = Some((num(1)? as usize, num(2)?, num(3)?, from));
+                s.pzup = Some((surf_no(num(1)?)?, num(2)?, num(3)?, from));
             }
             // 厚さのソルブ（OpticStudio 2026 R1.01 で実測）。OPDZ OPD 帯
             "MAZH" => {
@@ -221,7 +292,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "OPDZ" => s.tsolve = Some((SolveKind::Opd(num(2)?), num(1)?)),
             "PKUP" => {
                 let from = pick_col(s.n, "PKUP", num(3)?, PickKind::Conic)?;
-                s.pkup = Some((num(1)? as usize, num(2)?, 0.0, from));
+                s.pkup = Some((surf_no(num(1)?)?, num(2)?, 0.0, from));
             }
             "XDAT" => {
                 s.xdat.insert(num(1)? as i64, num(2)?);
@@ -233,7 +304,10 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                     invalid!("面 {}: GARR の値が足りない", s.n);
                 }
                 let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
-                s.garr.push((v[0] as usize, [g(1), g(2), g(3), g(4), g(5)]));
+                s.garr.push((
+                    count_in(v[0], "GARR の番号", 0, MAX_GRID)?,
+                    [g(1), g(2), g(3), g(4), g(5)],
+                ));
             }
             "FIMP" => s.fimp = Some(line.trim().get(5..).unwrap_or("").trim().to_string()),
             "TYPE" => s.typ = Some(t.get(1).unwrap_or(&"").to_string()),
@@ -252,7 +326,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                     );
                 }
                 if t.get(2) == Some(&"2") {
-                    s.glas_pickup = Some(num(3)? as usize);
+                    s.glas_pickup = Some(surf_no(num(3)?)?);
                 } else if t.get(1) == Some(&"___BLANK") {
                     s.model_glass = Some((num(4)?, num(5)?, num(6)?));
                 }
@@ -266,7 +340,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                     "0" | "1" => None,
                     "4" => {
                         let from = pick_col(s.n, "CURV", num(5)?, PickKind::Curv)?;
-                        s.curv_pickup = Some((p1 as usize, num(4)?, from));
+                        s.curv_pickup = Some((surf_no(p1)?, num(4)?, from));
                         None
                     }
                     // 曲率のソルブ（OpticStudio 2026 R1.01 で実測）
@@ -310,7 +384,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 }
                 if t.get(2) == Some(&"2") {
                     let from = pick_col(s.n, "DIAM", num(4)?, PickKind::Semi)?;
-                    s.diam_pickup = Some((num(3)? as usize, num(5)?, from));
+                    s.diam_pickup = Some((surf_no(num(3)?)?, num(5)?, from));
                 }
             }
             "CLAP" => s.clap = Some(nums()?),
@@ -340,11 +414,31 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "IGNR" => s.ignore = t.get(1).is_some_and(|v| *v != "0"),
             "MEMA" => s.mema = true,
             k if HARMLESS.contains(&k) => {}
-            _ if legacy => {}
+            k if legacy => raw.notes.push(format!(
+                "zmx の面 {}: 行 {k} を読まずに飛ばした（字下げのない古い .zmx）",
+                s.n
+            )),
             k => notimpl!("zmx の面 {}: 行 {} は未対応", s.n, k),
         }
     }
+    raw.check_counts()?;
     Ok(raw)
+}
+
+/// 構成・視野・波長の数の上限（壊れた .zmx の巨大な数でメモリを確保しないため）
+const MAX_CONFIGS: usize = 1000;
+const MAX_FIELDS: usize = 10_000;
+const MAX_WAVES: usize = 1000;
+/// Grid Sag の格子の点の数の上限
+const MAX_GRID: usize = 16_000_000;
+
+/// 数の欄 v を lo〜hi の整数として読む（負・小数・範囲外・NaN は誤り。`as usize` で巨大な数や負の数が
+/// メモリ確保の暴走・panic になっていた）
+fn count_in(v: f64, what: &str, lo: usize, hi: usize) -> Result<usize> {
+    if !(v.fract() == 0.0 && v >= lo as f64 && v <= hi as f64) {
+        invalid!("{what} {v}（{lo}〜{hi} の整数）");
+    }
+    Ok(v as usize)
 }
 
 /// mm 以外のレンズ単位（UNIT の CM・IN・METER）の .zmx を mm に直す。長さの値（曲率・厚さ・半直径・開口・偏心・
@@ -386,31 +480,11 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         // PARM: 面タイプごとの単位
         let mut parm = BTreeMap::new();
         for (&i, &v) in &sf.parm {
-            let w = match typ.as_str() {
-                "STANDARD" | "TILTSURF" => v,
-                // r^{2i} の係数: [長さ]^{1−2i}
-                "EVENASPH" => v * f.powi(1 - 2 * i as i32),
-                // r^i の係数: [長さ]^{1−i}
-                "ODDASPHE" => v * f.powi(1 - i as i32),
-                // 偏心 x・y（1・2）は長さ、傾き（3〜5）・順序（6）はそのまま
-                // 偏心 x・y（1・2）と Zs・Za・Zc（5〜7）は長さ、傾き（3・4）・角度（8）はそのまま
-                "IRREGULA" => {
-                    if matches!(i, 1 | 2 | 5 | 6 | 7) {
-                        v * f
-                    } else {
-                        v
-                    }
-                }
-                "COORDBRK" => {
-                    if i == 1 || i == 2 {
-                        v * f
-                    } else {
-                        v
-                    }
-                }
-                t => notimpl!("面 {k}: レンズ単位 {unit} の面タイプ {t}"),
-            };
-            parm.insert(i, w);
+            parm.insert(
+                i,
+                v * parm_scale(&typ, i, f)
+                    .map_err(|e| e.at(format!("面 {k}: レンズ単位 {unit}")))?,
+            );
         }
         sf.parm = parm;
         if !sf.xdat.is_empty() || sf.gdat.is_some() {
@@ -493,20 +567,160 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
             }
         }
     }
-    for (op, _, _, v, _) in r.mce.iter_mut() {
+    // 構成ごとの絞りの種類（APER の単位が種類で変わる）
+    let satp0 = aperture_type(raw)?;
+    let satp_of = |c: i64| -> i64 {
+        raw.mce
+            .iter()
+            .find(|m| m.0 == "SATP" && m.2 == c)
+            .and_then(|m| fv(&m.3).ok())
+            .map(|v| v as i64)
+            .unwrap_or(satp0)
+    };
+    let typs: Vec<String> = raw
+        .surfs
+        .iter()
+        .map(|s| s.typ.clone().unwrap_or_else(|| "STANDARD".into()))
+        .collect();
+    for (op, p1, c, v, rest) in r.mce.iter_mut() {
         let k = match op.as_str() {
-            "THIC" | "SDIA" => f,
+            "THIC" | "SDIA" | "APMX" => f,
             "CRVT" => 1.0 / f,
             "XFIE" | "YFIE" if height_fields => f,
+            // 入射瞳径・浮動の絞りの半径は長さ、F 値・NA・コーン角はそのまま
+            "APER" => match satp_of(*c) {
+                0 | 3 => f,
+                _ => 1.0,
+            },
+            "PRAM" => {
+                let (Some(typ), Some(i)) = (
+                    usize::try_from(*p1).ok().and_then(|k| typs.get(k)),
+                    rest.get(1).and_then(|x| x.parse::<i64>().ok()),
+                ) else {
+                    invalid!("多重構成の PRAM {p1}: 面か PARM の番号が不正");
+                };
+                parm_scale(typ, i, f)
+                    .map_err(|e| e.at(format!("多重構成の PRAM {p1}: レンズ単位 {unit}")))?
+            }
             "XFIE" | "YFIE" | "IGNR" | "STPS" | "WAVE" | "GLSS" | "MCOM" | "CWGT" | "CONN"
-            | "SATP" | "TELE" => 1.0,
-            o => notimpl!("レンズ単位 {unit} の多重構成のオペランド {o}"),
+            | "SATP" | "TELE" | "MOFF" | "LTTL" => 1.0,
+            // 扱わないオペランドは構成で変わらなければ使わない（build で確かめる）ので換算しない
+            _ => 1.0,
         };
         if k != 1.0 {
             *v = format!("{:e}", fv(v)? * k);
         }
     }
     Ok(r)
+}
+
+/// .zmx の多重構成（MCE）を多重構成の表（[`crate::edit::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
+/// 偶数次非球面・座標ブレークの PRAM。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
+/// 演算子・光線追跡に効かない演算子は表に入れない）
+fn config_table(
+    raw: &Raw,
+    s: &System,
+    n: usize,
+    active: usize,
+) -> std::result::Result<crate::edit::Configs, String> {
+    use crate::edit::{ConfigRow, Configs};
+    use crate::param::{Kind, Param};
+    let mut rows: Vec<(String, i64, i64, Vec<Option<f64>>)> = Vec::new();
+    for (op, p1, c, v, rest) in &raw.mce {
+        let parm = if op == "PRAM" {
+            rest.get(1)
+                .and_then(|x| x.parse::<i64>().ok())
+                .unwrap_or(-1)
+        } else {
+            0
+        };
+        let i = match rows
+            .iter()
+            .position(|r| r.0 == *op && r.1 == *p1 && r.2 == parm)
+        {
+            Some(i) => i,
+            None => {
+                rows.push((op.clone(), *p1, parm, vec![None; n]));
+                rows.len() - 1
+            }
+        };
+        if (1..=n as i64).contains(c) {
+            rows[i].3[*c as usize - 1] = fv(v).ok();
+        }
+    }
+    let mut out = Vec::new();
+    for (op, p1, parm, vals) in rows {
+        let first = vals.first().copied().flatten();
+        let varies = vals.iter().any(|v| *v != first);
+        let surf = usize::try_from(p1).ok().filter(|&k| k < s.surfaces.len());
+        let kind = match (op.as_str(), surf) {
+            ("THIC", Some(_)) => Some(Kind::Thick),
+            ("CRVT", Some(_)) => Some(Kind::Curv),
+            ("CONN", Some(_)) => Some(Kind::Conic),
+            ("PRAM", Some(k)) => match (s.surfaces[k].typ, parm) {
+                (SurfType::EvenAsph, 1..=8) => Some(Kind::Asph(parm as u8 - 1)),
+                (SurfType::CoordBrk, 1) => Some(Kind::Dx),
+                (SurfType::CoordBrk, 2) => Some(Kind::Dy),
+                (SurfType::CoordBrk, 3) => Some(Kind::Tx),
+                (SurfType::CoordBrk, 4) => Some(Kind::Ty),
+                (SurfType::CoordBrk, 5) => Some(Kind::Tz),
+                _ => None,
+            },
+            _ => None,
+        };
+        match kind {
+            Some(kind) => {
+                if !varies {
+                    continue;
+                }
+                let p = Param::new(surf.unwrap(), kind);
+                // 書いていない構成の値は今の系の値
+                let now = s.get_param(p).map_err(|e| e.to_string())?;
+                out.push(ConfigRow {
+                    param: p,
+                    values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
+                    picks: Vec::new(),
+                });
+            }
+            None if varies && !matches!(op.as_str(), "MCOM" | "CWGT" | "MOFF" | "LTTL") => {
+                return Err(format!("{op} {p1}"));
+            }
+            None => {}
+        }
+    }
+    Ok(Configs {
+        n,
+        active,
+        rows: out,
+    })
+}
+
+/// 面タイプ typ の PARM i の、レンズ単位の長さ f [mm] 倍への換算の倍率
+fn parm_scale(typ: &str, i: i64, f: f64) -> Result<f64> {
+    Ok(match typ {
+        "STANDARD" | "TILTSURF" => 1.0,
+        // r^{2i} の係数: [長さ]^{1−2i}
+        "EVENASPH" => f.powi(1 - 2 * i as i32),
+        // r^i の係数: [長さ]^{1−i}
+        "ODDASPHE" => f.powi(1 - i as i32),
+        // 偏心 x・y（1・2）と Zs・Za・Zc（5〜7）は長さ、傾き（3・4）・角度（8）はそのまま
+        "IRREGULA" => {
+            if matches!(i, 1 | 2 | 5 | 6 | 7) {
+                f
+            } else {
+                1.0
+            }
+        }
+        // 偏心 x・y（1・2）は長さ、傾き（3〜5）・順序（6）はそのまま
+        "COORDBRK" => {
+            if i == 1 || i == 2 {
+                f
+            } else {
+                1.0
+            }
+        }
+        t => notimpl!("面タイプ {t} のパラメータの単位の換算"),
+    })
 }
 
 /// マクロのソルブの行の名前（最初の " から最後の " までの中身）
@@ -536,10 +750,13 @@ fn pick_col(n: i64, key: &str, col: f64, dst: PickKind) -> Result<Option<PickKin
 fn sys_str<'a>(raw: &'a Raw, key: &str, i: usize) -> Option<&'a str> {
     raw.sysl.get(key)?.first()?.get(i).map(|s| s.as_str())
 }
-fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> f64 {
-    sys_str(raw, key, i)
-        .and_then(|v| fv(v).ok())
-        .unwrap_or(default)
+/// 系の行 key の i 番目の数（行・欄がなければ default、数として読めなければ誤り。以前は読み損ねを黙って既定値に
+/// していた: `ENPD abc` が入射瞳径 0 になる）
+fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> Result<f64> {
+    match sys_str(raw, key, i) {
+        None => Ok(default),
+        Some(v) => fv(v).map_err(|e| e.at(format!("zmx の {key} の {} 番目の値", i + 1))),
+    }
 }
 
 impl Raw {
@@ -558,7 +775,33 @@ impl Raw {
 
     /// マルチコンフィグの数（MNUM、なければ 1）
     pub fn configurations(&self) -> usize {
-        (sys_f(self, "MNUM", 0, 1.0) as usize).max(1)
+        // 範囲は parse_text で確かめている
+        (sys_f(self, "MNUM", 0, 1.0).unwrap_or(1.0) as usize).clamp(1, MAX_CONFIGS)
+    }
+
+    /// 数の欄の範囲の確かめ（構成・視野・波長の数）
+    fn check_counts(&self) -> Result<()> {
+        count_in(
+            sys_f(self, "MNUM", 0, 1.0)?,
+            "zmx の構成の数 MNUM",
+            1,
+            MAX_CONFIGS,
+        )?;
+        if let Some(v) = self.sysl.get("FTYP").and_then(|v| v.first()) {
+            if v.is_empty() {
+                invalid!("zmx の FTYP に値がない");
+            }
+            for x in v {
+                fv(x).map_err(|e| e.at("zmx の FTYP"))?;
+            }
+            if let Some(x) = v.get(2) {
+                count_in(fv(x)?, "zmx の視野の数（FTYP の 3 番目）", 1, MAX_FIELDS)?;
+            }
+            if let Some(x) = v.get(3) {
+                count_in(fv(x)?, "zmx の波長の数（FTYP の 4 番目）", 1, MAX_WAVES)?;
+            }
+        }
+        Ok(())
     }
 
     /// ガラスカタログの名前（GCAT）
@@ -683,10 +926,15 @@ pub fn build(
         scaled = to_mm(raw, unit)?;
         &scaled
     };
-    if raw.sysl.contains_key("AFOC") && sys_f(raw, "AFOC", 0, 0.0) != 0.0 {
+    if raw.sysl.contains_key("AFOC") && sys_f(raw, "AFOC", 0, 0.0)? != 0.0 {
         notimpl!("無焦点の像空間");
     }
-    let ncfg = sys_f(raw, "MNUM", 0, 1.0) as i64;
+    let ncfg = count_in(
+        sys_f(raw, "MNUM", 0, 1.0)?,
+        "zmx の構成の数 MNUM",
+        1,
+        MAX_CONFIGS,
+    )? as i64;
     // 以前の lensbench の書き出し: 半直径は固定として読む（[`Raw::legacy_lensbench`]）
     let legacy = raw.legacy_lensbench();
     if !(1..=ncfg).contains(&cfg) {
@@ -718,16 +966,22 @@ pub fn build(
             .unwrap_or(default)
     };
 
-    let temp = sys_f(raw, "ENVD", 0, 20.0);
-    let pres = sys_f(raw, "ENVD", 1, 1.0);
-    let adjust = sys_f(raw, "ENVD", 2, 0.0) != 0.0;
+    let temp = sys_f(raw, "ENVD", 0, 20.0)?;
+    let pres = sys_f(raw, "ENVD", 1, 1.0)?;
+    let adjust = sys_f(raw, "ENVD", 2, 0.0)? != 0.0;
     // 波長
     let ftyp: Vec<i64> = raw
         .sysl
         .get("FTYP")
         .and_then(|v| v.first())
-        .map(|v| v.iter().map(|x| fv(x).unwrap_or(0.0) as i64).collect())
+        .map(|v| {
+            v.iter()
+                .map(|x| fv(x).map(|x| x as i64))
+                .collect::<Result<Vec<i64>>>()
+        })
+        .transpose()?
         .unwrap_or_else(|| vec![0, 0, 1, 1]);
+    // 数の範囲は parse_text で確かめている
     let nw = *ftyp.get(3).unwrap_or(&1) as usize;
     let mut wav: HashMap<i64, (f64, f64)> = HashMap::new();
     for a in raw.sysl.get("WAVM").into_iter().flatten() {
@@ -767,7 +1021,12 @@ pub fn build(
         wl = w.clone();
         wwt = vec![1.0; wl.len()];
     }
-    let primary = (sys_f(raw, "PWAV", 0, 1.0) as usize).saturating_sub(1);
+    let primary = count_in(
+        sys_f(raw, "PWAV", 0, 1.0)?,
+        "zmx の主波長 PWAV",
+        1,
+        MAX_WAVES,
+    )? - 1;
     if primary >= wl.len() {
         invalid!("主波長 {}（波長は {} 個）", primary + 1, wl.len());
     }
@@ -1223,7 +1482,7 @@ pub fn build(
             }
         }
     }
-    let satp = fop("SATP", 0, aperture_type(raw) as f64) as i64;
+    let satp = fop("SATP", 0, aperture_type(raw)? as f64) as i64;
     let kind = match satp {
         0 => ApertureKind::Epd,
         1 => ApertureKind::FNum,
@@ -1253,7 +1512,7 @@ pub fn build(
             }
         }
     }
-    let aval = fop("APER", 0, aperture_value(raw, satp));
+    let aval = fop("APER", 0, aperture_value(raw, satp)?);
     let tele = fop("TELE", 0, *ftyp.get(1).unwrap_or(&0) as f64) != 0.0;
     let ft = match ftyp[0] {
         0 | 4 => FieldType::Angle, // 経緯儀: ファイルには x・y の角度で入っている
@@ -1296,14 +1555,19 @@ pub fn build(
     } else {
         FieldNorm::Radial
     };
-    let aiming = match sys_f(raw, "RAIM", 1, 0.0) as i64 {
+    let aiming = match sys_f(raw, "RAIM", 1, 0.0)? as i64 {
         0 => Aiming::Off,
         1 => Aiming::Paraxial,
         2 => Aiming::Real,
         r => notimpl!("光線エイミング {r}"),
     };
-    let glrs = sys_f(raw, "GLRS", 0, 1.0) as usize;
-    let ropd = sys_f(raw, "ROPD", 0, 2.0) as i64;
+    let glrs = count_in(
+        sys_f(raw, "GLRS", 0, 1.0)?,
+        "zmx の GLRS",
+        0,
+        raw.surfs.len().max(1),
+    )?;
+    let ropd = sys_f(raw, "ROPD", 0, 2.0)? as i64;
     let mut cofn = None;
     for a in raw.sysl.get("COFN").into_iter().flatten() {
         if a.first().map(|s| s.as_str()) == Some("QF") {
@@ -1352,6 +1616,19 @@ pub fn build(
     }
     s.coating_file = coating_file;
     s.name = name;
+    s.import_notes = raw.notes.clone();
+    s.import_notes.extend(raw.system_notes()?);
+    if ncfg > 1 {
+        match config_table(raw, &s, ncfg as usize, cfg as usize) {
+            Ok(c) => {
+                s.configs = Some(c);
+                s.changed()?;
+            }
+            Err(why) => s.import_notes.push(format!(
+                "多重構成は構成 {cfg}（全 {ncfg}）だけを読んだ（{why} が多重構成の表で表せない）"
+            )),
+        }
+    }
     s.adjust_index = adjust;
     s.pickups = pickups;
     if !s.pickups.is_empty() {
@@ -1544,34 +1821,34 @@ fn thickness_pickups(raw: &Raw, th: &mut [f64]) -> Result<()> {
     invalid!("厚さのピックアップが収束しない（循環？）")
 }
 
-fn aperture_type(raw: &Raw) -> i64 {
+fn aperture_type(raw: &Raw) -> Result<i64> {
     if raw.sysl.contains_key("FLOA") {
-        return 3;
+        return Ok(3);
     }
     if raw.sysl.contains_key("FNUM") {
-        return if sys_f(raw, "FNUM", 1, 0.0) as i64 == 1 {
+        return Ok(if sys_f(raw, "FNUM", 1, 0.0)? as i64 == 1 {
             4
         } else {
             1
-        };
+        });
     }
     if raw.sysl.contains_key("OBNA") {
-        return if sys_f(raw, "OBNA", 1, 0.0) as i64 == 1 {
+        return Ok(if sys_f(raw, "OBNA", 1, 0.0)? as i64 == 1 {
             5
         } else {
             2
-        };
+        });
     }
-    0
+    Ok(0)
 }
 
-fn aperture_value(raw: &Raw, satp: i64) -> f64 {
-    match satp {
-        0 => sys_f(raw, "ENPD", 0, 0.0),
-        1 | 4 => sys_f(raw, "FNUM", 0, 0.0),
-        2 | 5 => sys_f(raw, "OBNA", 0, 0.0),
+fn aperture_value(raw: &Raw, satp: i64) -> Result<f64> {
+    Ok(match satp {
+        0 => sys_f(raw, "ENPD", 0, 0.0)?,
+        1 | 4 => sys_f(raw, "FNUM", 0, 0.0)?,
+        2 | 5 => sys_f(raw, "OBNA", 0, 0.0)?,
         _ => 0.0,
-    }
+    })
 }
 
 /// 面の傾き偏心。面の後のピックアップなら（元の面, 反転）を返す（値は系を作ってから元の面の前の値で解決する）
@@ -1721,8 +1998,24 @@ fn freeform_surface(
             invalid!("面 {k}: Grid Sag の格子（GDAT）がない");
         };
         let g = |i: usize| h.get(i).copied().unwrap_or(0.0);
-        let (nx, ny) = (g(0) as usize, g(1) as usize);
-        if nx < 2 || ny < 2 || !(g(2) > 0.0 && g(3) > 0.0) {
+        let (nx, ny) = (
+            count_in(
+                g(0),
+                &format!("面 {k}: Grid Sag の格子の列の数"),
+                2,
+                MAX_GRID,
+            )?,
+            count_in(
+                g(1),
+                &format!("面 {k}: Grid Sag の格子の行の数"),
+                2,
+                MAX_GRID,
+            )?,
+        );
+        if nx.saturating_mul(ny) > MAX_GRID {
+            invalid!("面 {k}: Grid Sag の格子 {nx}×{ny}（点は {MAX_GRID} まで）");
+        }
+        if !(g(2) > 0.0 && g(3) > 0.0) {
             invalid!("面 {k}: Grid Sag の格子 {nx}×{ny}、間隔 {} {}", g(2), g(3));
         }
         if g(6) != 0.0 {

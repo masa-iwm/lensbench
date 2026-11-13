@@ -32,6 +32,9 @@ use crate::{invalid, notimpl, Error, Result};
 /// 1 − cosθ = 1e-8 の 0.0081029° と合う）
 pub const TABLE_NORMAL: f64 = 1e-8;
 
+/// 膜の材料の表の k の、誤りにしない正の値の上限（標準の膜ファイルの数値の誤差を許す）
+const MATE_K_POS_TOL: f64 = 1e-6;
+
 /// 膜なしの鏡の基板
 pub const MIRROR_N: C64 = C64::new(0.7, -7.0);
 
@@ -102,58 +105,60 @@ impl CoatingFile {
                         }
                     };
                 }
-                _ => match &mut cur {
-                    Cur::None => {}
-                    Cur::Mate(name) => {
-                        if t.len() < 2 {
-                            invalid!("膜ファイル: 材料 {name} の行 {line}");
+                _ => {
+                    match &mut cur {
+                        Cur::None => {}
+                        Cur::Mate(name) => {
+                            if t.len() < 2 {
+                                invalid!("膜ファイル: 材料 {name} の行 {line}");
+                            }
+                            let k = if t.len() > 2 { num(t[2], name)? } else { 0.0 };
+                            let row = [num(t[0], name)?, num(t[1], name)?, k];
+                            f.mate.get_mut(name.as_str()).unwrap().push(row);
                         }
-                        let k = if t.len() > 2 { num(t[2], name)? } else { 0.0 };
-                        let row = [num(t[0], name)?, num(t[1], name)?, k];
-                        f.mate.get_mut(name.as_str()).unwrap().push(row);
-                    }
-                    Cur::Coat(name) => {
-                        if t.len() < 2 {
-                            invalid!("膜ファイル: 膜 {name} の行 {line}");
-                        }
-                        let flag = if t.len() > 2 {
-                            num(t[2], name)? as i64
-                        } else {
-                            0
-                        };
-                        let l = Layer {
-                            mat: t[0].to_string(),
-                            d: num(t[1], name)?,
-                            absolute: flag == 1,
-                        };
-                        f.coat.get_mut(name.as_str()).unwrap().push(l);
-                    }
-                    Cur::Table(name, ang) => match t[0] {
-                        "ANGL" if t.len() >= 2 => {
-                            let a = num(t[1], name)?;
-                            let v = tables.get_mut(name.as_str()).unwrap();
-                            v.retain(|(b, _)| *b != a);
-                            v.push((a, Vec::new()));
-                            *ang = Some(a);
-                        }
-                        "WAVE" => {
-                            let Some(a) = *ang else {
-                                invalid!("膜ファイル: 表 {name} の最初の ANGL より前に WAVE");
+                        Cur::Coat(name) => {
+                            if t.len() < 2 {
+                                invalid!("膜ファイル: 膜 {name} の行 {line}");
+                            }
+                            let flag = if t.len() > 2 {
+                                num(t[2], name)? as i64
+                            } else {
+                                0
                             };
-                            // 波長 Rs Rp Ts Tp に位相 4 つが続く（位相は省略すると 0）
-                            if t.len() < 6 {
-                                invalid!("膜ファイル: 表 {name} の行 {line}");
-                            }
-                            let mut row = [0.0; 9];
-                            for i in 0..(t.len() - 1).min(9) {
-                                row[i] = num(t[i + 1], name)?;
-                            }
-                            let v = tables.get_mut(name.as_str()).unwrap();
-                            v.iter_mut().find(|(b, _)| *b == a).unwrap().1.push(row);
+                            let l = Layer {
+                                mat: t[0].to_string(),
+                                d: num(t[1], name)?,
+                                absolute: flag == 1,
+                            };
+                            f.coat.get_mut(name.as_str()).unwrap().push(l);
                         }
-                        _ => {}
-                    },
-                },
+                        Cur::Table(name, ang) => match t[0] {
+                            "ANGL" if t.len() >= 2 => {
+                                let a = num(t[1], name)?;
+                                let v = tables.get_mut(name.as_str()).unwrap();
+                                v.retain(|(b, _)| *b != a);
+                                v.push((a, Vec::new()));
+                                *ang = Some(a);
+                            }
+                            "WAVE" => {
+                                let Some(a) = *ang else {
+                                    invalid!("膜ファイル: 表 {name} の最初の ANGL より前に WAVE");
+                                };
+                                // 波長 Rs Rp Ts Tp に位相 4 つが続く（位相は省略すると 0）
+                                if t.len() < 6 {
+                                    invalid!("膜ファイル: 表 {name} の行 {line}");
+                                }
+                                let mut row = [0.0; 9];
+                                for i in 0..(t.len() - 1).min(9) {
+                                    row[i] = num(t[i + 1], name)?;
+                                }
+                                let v = tables.get_mut(name.as_str()).unwrap();
+                                v.iter_mut().find(|(b, _)| *b == a).unwrap().1.push(row);
+                            }
+                            _ => {}
+                        },
+                    }
+                }
             }
         }
         for (k, mut v) in tables {
@@ -1485,8 +1490,18 @@ impl Coatings {
                 invalid!("膜の材料 {name} にデータがない");
             }
             let xs: Vec<f64> = m.iter().map(|r| r[0]).collect();
+            // 表の中は隣の 2 行の線形、外は近い方の端の行の値（外挿しない）。OpticStudio 2026 R1.01 と同じ
+            // （2026-11-13 実測: 7 膜 0.30〜1.10 µm で反射率・透過率 5e-8、位相 5e-5° 一致。OpticStudio は注意も出さない。
+            // 膜厚を波の単位から直す基準波長の n も同じ）。1 行だけの材料は分散なし
             let n: Vec<f64> = m.iter().map(|r| r[1]).collect();
             let k: Vec<f64> = m.iter().map(|r| r[2]).collect();
+            // N = n + ik の約束で吸収は k < 0（文献の n − ik の k は符号を変えて書く）。k > 0 は増幅する媒質になる。
+            // 使う波長で補間した k を見る。OpticStudio 標準の COATING.DAT にも数値の誤差で +1e-11〜+5e-7 の行が
+            // あるので（赤外の端の行など）、それより大きい正の k だけを誤りにする（値はそのまま使う）
+            let kk = interp(wl, &xs, &k);
+            if kk > MATE_K_POS_TOL {
+                invalid!("膜の材料 {name} の k が正（波長 {wl} µm で {kk}）。吸収は k < 0 で書く");
+            }
             return Ok(C64::new(interp(wl, &xs, &n), interp(wl, &xs, &k)));
         }
         match sys.glasses.get(name) {
@@ -1523,7 +1538,10 @@ impl Coatings {
                 }
                 let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
                 for c in 0..8 {
-                    let ys: Vec<f64> = rows.iter().map(|r| r[c + 1]).collect();
+                    let mut ys: Vec<f64> = rows.iter().map(|r| r[c + 1]).collect();
+                    if c >= 4 {
+                        unwrap_deg(&mut ys);
+                    }
                     vals[c].push(interp(wl, &xs, &ys));
                 }
             }
@@ -1533,6 +1551,10 @@ impl Coatings {
                 for c in [0, 2, 4, 6] {
                     vals[c][0] = vals[c + 1][0];
                 }
+            }
+            // 位相（度）は ±180° の折り返しをほどいてから補間する（+179° と −179° の間を 0° にしない）
+            for v in &mut vals[4..] {
+                unwrap_deg(v);
             }
             Kind::Table {
                 name: coat.to_string(),
@@ -1691,6 +1713,14 @@ fn xcos_s(r: f64, s0: f64) -> f64 {
 }
 
 /// 線形補間（xs は昇順。範囲外は端の値、numpy の interp と同じ）
+/// 度の位相の列の ±180° の飛びをほどく（隣との差が 180° を超えれば 360° ずらす）
+fn unwrap_deg(v: &mut [f64]) {
+    for i in 1..v.len() {
+        let d = v[i] - v[i - 1];
+        v[i] -= 360.0 * (d / 360.0).round();
+    }
+}
+
 pub fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
     let n = xs.len();
     if x.is_nan() {
@@ -3098,5 +3128,17 @@ mod tests {
             f.table["T"][0].1[0],
             [1.0, 0.1, 0.1, 0.9, 0.9, 0.0, 0.0, 0.0, 0.0]
         );
+        // k > 0（増幅）の材料も読むだけなら止めない（使うときに誤り。polarization の試験）
+        assert!(CoatingFile::parse("MATE M\n0.5 0.5 3\n").is_ok());
+    }
+
+    /// 表の位相は ±180° の折り返しをほどいて補間する
+    #[test]
+    fn table_phase_unwrap() {
+        let mut v = vec![170.0, 179.0, -179.0, -170.0, 175.0];
+        unwrap_deg(&mut v);
+        assert_eq!(v, vec![170.0, 179.0, 181.0, 190.0, 175.0]);
+        let x = interp(0.55, &[0.5, 0.6], &[179.0, 181.0]);
+        assert!((x - 180.0).abs() < 1e-12);
     }
 }

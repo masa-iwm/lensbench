@@ -65,7 +65,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `history` | | 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、開く・読み直すは `{"open": ファイル名}`・`{"reload": ファイル名}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも |
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
-| `write` | `path` | 今の系を .zmx に書く（別アプリに渡す） |
+| `write` | `path` | 今の系を .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意） |
 | `save` | `path` | 今の系（`set`・`edit` の後）を系ファイル（.json）に書く。`written`・`system_hash` |
 | `save_range` | `path`・`from`・`to` | 今の系の面 from〜to と物体面・像面だけを系ファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces` |
 | `edit` | `ops`: 操作の並び（下） | 系を編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すれば系は変えない |
