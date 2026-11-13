@@ -236,15 +236,17 @@ pub enum ObjSpec {
     Point([f64; 2]),
 }
 
-/// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
-/// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
 /// 三角形の頂点の番号
 type Tri = (usize, usize, usize);
 
 /// Delaunay の三角形分割（外接円の中に他の点がない、総当たり。視野は多くても数十）。同じ円に 4 点以上が
 /// 乗ると（格子の視野など）候補の三角形が重なるので、番号の順に重ならないものだけを取る（凸多角形を
 /// 重ならない三角形で埋め尽くす）
-fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<Tri> {
+/// `scale` は座標の大きさ。判定の許容差は大きさに対する相対（計算上は同じ円に乗る点を、丸め誤差の符号で
+/// 外接円の中と見て捨てると分割に穴があく）
+fn delaunay(pts: &[[f64; 2]], scale: f64) -> Vec<Tri> {
+    let tol_area = 1e-12 * scale * scale;
+    let tol_circle = 1e-9 * scale.powi(4);
     let n = pts.len();
     let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
@@ -255,7 +257,7 @@ fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<Tri> {
             for k in j + 1..n {
                 let (a, b, c) = (pts[i], pts[j], pts[k]);
                 let area = cross(a, b, c);
-                if area.abs() <= eps * eps {
+                if area.abs() <= tol_area {
                     continue;
                 }
                 let in_circle = |d: [f64; 2]| {
@@ -270,7 +272,7 @@ fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<Tri> {
                     let det = u[0] * (v[1] * w[2] - v[2] * w[1])
                         - u[1] * (v[0] * w[2] - v[2] * w[0])
                         + u[2] * (v[0] * w[1] - v[1] * w[0]);
-                    det * area.signum() > eps * eps * eps
+                    det * area.signum() > tol_circle
                 };
                 if !(0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
                     continue;
@@ -278,7 +280,7 @@ fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<Tri> {
                 let t = [a, b, c];
                 if tris
                     .iter()
-                    .all(|&(p, q, r)| !tri_overlap(&t, &[pts[p], pts[q], pts[r]], eps * eps))
+                    .all(|&(p, q, r)| !tri_overlap(&t, &[pts[p], pts[q], pts[r]], tol_area))
                 {
                     tris.push((i, j, k));
                 }
@@ -303,6 +305,8 @@ fn tri_overlap(t: &[[f64; 2]; 3], u: &[[f64; 2]; 3], tol: f64) -> bool {
     !(separated(t, u) || separated(u, t))
 }
 
+/// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
+/// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
 fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
     let n = pts.len();
     let eps = 1e-12
@@ -321,7 +325,7 @@ fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
     let tris = TRIS.with(|c| {
         let mut c = c.borrow_mut();
         if c.0.as_slice() != pts {
-            *c = (pts.to_vec(), delaunay(pts, eps));
+            *c = (pts.to_vec(), delaunay(pts, eps / 1e-12));
         }
         c.1.clone()
     });

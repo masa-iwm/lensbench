@@ -238,3 +238,66 @@ fn continuous_on_cocircular_grids() {
         }
     }
 }
+
+/// 輪の上に並ぶ視野（cos・sin で作るので、同じ円に乗るかが丸め誤差で揺れる）でも、穴があかず段差がない
+#[test]
+fn continuous_on_rings() {
+    use std::f64::consts::PI;
+    let v = |x: f64, y: f64| {
+        [
+            0.02 * x + 0.01 * y + 0.2,
+            0.015 * y + 0.2,
+            0.0,
+            0.0,
+            x - 0.5 * y,
+        ]
+    };
+    let ring = |n: usize, r: f64, ph: f64| -> Vec<(f64, f64)> {
+        (0..n)
+            .map(|i| {
+                let a = 2.0 * PI * i as f64 / n as f64 + ph;
+                (r * a.cos(), r * a.sin())
+            })
+            .collect()
+    };
+    let one: Vec<(f64, f64)> = ring(8, 10.0, 0.0);
+    let mut two = ring(12, 10.0, 0.0);
+    two.extend(ring(6, 5.0, 0.3));
+    for pts in [one, two] {
+        let fields: Vec<_> = pts.iter().map(|&(x, y)| (x, y, v(x, y))).collect();
+        let mut s = with_fields(&fields, FieldNorm::Radial);
+        s.vig_interp = VigInterp::Continuous;
+        s.changed().unwrap();
+        // 中は平面の値（三角形の線形で厳密に再現）、外も縁で連続
+        let n = 600;
+        for (row, horiz) in [
+            (0.0, true),
+            (0.37, true),
+            (-0.81, true),
+            (0.5, false),
+            (-0.2, false),
+        ] {
+            let mut prev: Option<[f64; 5]> = None;
+            for i in 0..=n {
+                let t = -1.3 + 2.6 * i as f64 / n as f64;
+                let (hx, hy) = if horiz { (t, row) } else { (row, t) };
+                let f = s.vig_factors(hx, hy).unwrap();
+                if hx.hypot(hy) < 0.9 {
+                    let w = v(10.0 * hx, 10.0 * hy);
+                    let e = f
+                        .iter()
+                        .zip(&w)
+                        .map(|(a, b)| (a - b).abs())
+                        .fold(0.0, f64::max);
+                    assert!(e < 1e-9, "({hx}, {hy}): {f:?} {w:?}");
+                }
+                if let Some(p) = prev {
+                    let d = (0..4).map(|k| (p[k] - f[k]).abs()).fold(0.0, f64::max);
+                    let da = (p[4] - f[4]).abs();
+                    assert!(d < 0.005 && da < 0.2, "({hx}, {hy}): {p:?} → {f:?}");
+                }
+                prev = Some(f);
+            }
+        }
+    }
+}
