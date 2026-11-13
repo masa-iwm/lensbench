@@ -2154,7 +2154,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "through_focus": v, "warnings": warn }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "through_focus": v, "warnings": warn }),
             )
         }
         Cmd::MtfField {
@@ -2188,7 +2188,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "field_mtf": v, "warnings": m.warnings }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "field_mtf": v, "warnings": m.warnings }),
             )
         }
         Cmd::Optimize {
@@ -2490,7 +2490,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "lens", "wfe_unit": "waves", "vs": vs, "reference": reference, "rms": v, "warnings": warn }),
+                json!({ "unit": spot_unit(&s), "wfe_unit": "waves", "vs": vs, "reference": reference, "rms": v, "warnings": warn }),
             )
         }
         Cmd::Psf {
@@ -2627,7 +2627,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "method": "huygens", "mtf": v }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "method": "huygens", "mtf": v }),
             )
         }
         Cmd::CatalogAdd {
