@@ -410,6 +410,19 @@ pub fn load_catalogs_shared(
     (out, missing)
 }
 
+/// [`load_catalogs_shared`] の見つからない・読めなかったカタログを、ガラスが無いときの誤りに添える文にする
+/// （空なら空。読めなかった理由が「カタログにない」の誤りに出るように、XCT-01）
+pub fn missing_note(missing: &[String]) -> String {
+    if missing.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "（見つからない・読めなかったカタログ: {}）",
+            missing.join(", ")
+        )
+    }
+}
+
 /// ガラスの検索パス: 引数、環境変数 LENSBENCH_GLASSCAT（OS のパス区切り）。
 pub fn catalog_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = extra.to_vec();
@@ -496,5 +509,23 @@ mod tests {
             .unwrap();
         g.formula = 99;
         assert!(g.n_cat(0.55).is_nan());
+    }
+
+    /// XCT-01: AGF が読めなかったときは、ガラスが無いという誤りに読めなかった理由が出る
+    #[test]
+    fn xct01_unreadable_catalog_reason_reaches_missing_glass_error() {
+        let d = std::env::temp_dir().join(format!("lb-xct01-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("BADCAT.AGF"), "NM G 99 0 1.5 60\nCD 1.0 0.006 0.2\n").unwrap();
+        let zmx = d.join("s.zmx");
+        std::fs::write(
+            &zmx,
+            "MODE SEQ\nUNIT MM X W X CM MR CPMR\nENPD 10\nGCAT BADCAT\nWAVM 1 0.55 1\nSURF 0\n  TYPE STANDARD\n  DISZ INFINITY\nSURF 1\n  TYPE STANDARD\n  CURV 0.01\n  DISZ 5\n  GLAS G 0 0 1.5 60 0 0 0 0 0 0\n  STOP\nSURF 2\n  TYPE STANDARD\n  DISZ 100\nSURF 3\n  TYPE STANDARD\n",
+        )
+        .unwrap();
+        let e = crate::zmx::load(&zmx).unwrap_err().to_string();
+        let _ = std::fs::remove_dir_all(&d);
+        assert!(e.contains("カタログにない"), "{e}");
+        assert!(e.contains("BADCAT") && e.contains("分散式 99"), "{e}");
     }
 }
