@@ -91,22 +91,21 @@ impl UserTerm for PluginTerm {
         self.rows
     }
     fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
-        use rayon::prelude::*;
-        systems
-            .par_iter()
-            .map(|s| {
-                let v = self.values(s)?;
-                if v.len() != self.rows {
-                    return Err(Error::Invalid(format!(
-                        "{}: 出力 {} 個（{} 個のはず）",
-                        self.label,
-                        v.len(),
-                        self.rows
-                    )));
-                }
-                Ok(v.iter().zip(&self.target).map(|(x, t)| x - t).collect())
-            })
-            .collect()
+        // par::map は `--threads 1`（with_threads(Some(1), ..)）の中で逐次
+        lensbench_core::par::map(systems, |s| {
+            let v = self.values(s)?;
+            if v.len() != self.rows {
+                return Err(Error::Invalid(format!(
+                    "{}: 出力 {} 個（{} 個のはず）",
+                    self.label,
+                    v.len(),
+                    self.rows
+                )));
+            }
+            Ok(v.iter().zip(&self.target).map(|(x, t)| x - t).collect())
+        })
+        .into_iter()
+        .collect()
     }
 }
 

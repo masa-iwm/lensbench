@@ -248,7 +248,13 @@ impl<'a> Plan<'a> {
                     steps: Vec::new(),
                 };
             }
-            let f = fr.surf[j].unwrap();
+            // 座標系の無い面（無限遠の物体面）を含む範囲はスカラー版に任せる
+            let Some(f) = fr.surf[j] else {
+                return Plan {
+                    sys,
+                    steps: Vec::new(),
+                };
+            };
             let mv = match (steps.is_empty(), fr.rel[j]) {
                 (
                     false,
@@ -843,7 +849,7 @@ fn run<R: LaneSink>(
                     let mu = nprev / st.nn;
                     let mu2 = mu * mu;
                     let disc = 1.0 - mu2 * (1.0 - cosi * cosi);
-                    let total = disc.lt(0.0) & err.eq(0.0);
+                    let total = !disc.ge(0.0) & err.eq(0.0);
                     err = sel(total, jf, err);
                     tir = tir | total;
                     let t = cosi.signum() * disc.max0().sqrt() - mu * cosi;
@@ -857,6 +863,15 @@ fn run<R: LaneSink>(
                 }
             }
         }
+        // 面の中で有限でなくなった光線もこの面で止める（スカラー版と同じ）
+        let fin = pl[0].is_finite()
+            & pl[1].is_finite()
+            & pl[2].is_finite()
+            & kl[0].is_finite()
+            & kl[1].is_finite()
+            & kl[2].is_finite()
+            & opl.is_finite();
+        err = sel(err.eq(0.0) & !fin, jf, err);
         let bad: B = err.ne(0.0);
         pl = sel3(bad, nan3, pl);
         kl = sel3(bad, nan3, kl);

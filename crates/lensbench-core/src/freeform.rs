@@ -241,8 +241,17 @@ fn eval_groups(
     }
     // w^m = (u + i v)^m の実部・虚部（m = 0..=mmax）
     let mm = mmax as usize;
-    let mut wr = [0.0; 32];
-    let mut wi = [0.0; 32];
+    // ふつうは固定長の配列（m ≤ 31 は Standard 231 項・Fringe 37 項まで）。項数の上限を超えた係数を
+    // API から渡されても落ちないよう、超えるときだけ確保する
+    let (mut br, mut bi) = ([0.0; 32], [0.0; 32]);
+    let (mut vr, mut vi);
+    let (wr, wi): (&mut [f64], &mut [f64]) = if mm < 32 {
+        (&mut br, &mut bi)
+    } else {
+        vr = vec![0.0; mm + 1];
+        vi = vec![0.0; mm + 1];
+        (&mut vr, &mut vi)
+    };
     wr[0] = 1.0;
     for m in 1..=mm {
         wr[m] = wr[m - 1] * u - wi[m - 1] * v;
@@ -387,7 +396,18 @@ impl GridSag {
         if head.len() < 4 {
             return Err("1 行目は nx ny delx dely unitflag xdec ydec".into());
         }
-        let (nx, ny) = (head[0] as usize, head[1] as usize);
+        // 点の数は 1〜2^24 の整数（負・小数・巨大な値で確保があふれない）
+        let count = |v: f64, what: &str| -> Result<usize, String> {
+            if v.fract() == 0.0 && (1.0..=16_777_216.0).contains(&v) {
+                Ok(v as usize)
+            } else {
+                Err(format!("{what} {v} は 1〜16777216 の整数にする"))
+            }
+        };
+        let (nx, ny) = (count(head[0], "nx")?, count(head[1], "ny")?);
+        if nx * ny > 16_777_216 {
+            return Err(format!("点の数 {nx}×{ny} が多すぎる（16777216 まで）"));
+        }
         let unit = head.get(4).copied().unwrap_or(0.0) as i32;
         let sc = match unit {
             0 => 1.0,

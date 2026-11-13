@@ -93,12 +93,10 @@ fn single_thread_runs_on_the_calling_thread() {
     let id = std::thread::current().id();
     let r = with_threads(Some(1), || {
         assert!(lensbench_core::par::sequential());
-        // 中から既定に戻せる
-        with_threads(None, || assert!(!lensbench_core::par::sequential()));
-        // ライブラリの「既定」（with_threads_or_outer の None）は外の逐次を引き継ぐ
-        lensbench_core::par::with_threads_or_outer(None, || {
-            assert!(lensbench_core::par::sequential())
-        });
+        // Some(0) で中から既定に戻せる
+        with_threads(Some(0), || assert!(!lensbench_core::par::sequential()));
+        // 既定（None）は外の逐次を引き継ぐ
+        with_threads(None, || assert!(lensbench_core::par::sequential()));
         assert!(lensbench_core::par::sequential());
         std::thread::current().id()
     });

@@ -57,13 +57,15 @@ fn pool(n: usize) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError>
     Ok(p)
 }
 
-/// f を threads 本のスレッドで実行する。None は既定（環境変数 LENSBENCH_THREADS があればその数、
-/// なければ rayon の大域プールで RAYON_NUM_THREADS が効く。
-/// 別の with_threads のプールの中ならそのプール）、
-/// Some(1) は呼び出したスレッドで逐次、Some(0) は None と同じ。
+/// f を threads 本のスレッドで実行する。None は既定（外の指定を引き継ぐ: `with_threads(Some(1), ..)` の中なら逐次、
+/// 別の with_threads のプールの中ならそのプール。どちらでもなければ環境変数 LENSBENCH_THREADS があればその数、
+/// なければ rayon の大域プールで RAYON_NUM_THREADS が効く）、
+/// Some(1) は呼び出したスレッドで逐次、Some(0) は外の逐次の指定を外して既定に戻す。
 /// Some(n)（n ≥ 2）のプールは n ごとに作って使い回し、解放しない。
 pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Send) -> R {
     match threads {
+        // 既定は外の逐次の指定を打ち消さない（以前は with_threads_or_outer と分かれていた）
+        None if sequential() => f(),
         // 既定の数は環境変数 LENSBENCH_THREADS（`lensbench run --threads`）。別のプールの中ならそのプール
         None if rayon::current_thread_index().is_none() && env_threads().is_some() => {
             with_threads(env_threads(), f)
@@ -77,15 +79,6 @@ pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Sen
             // スレッドを作れないときは逐次にする（結果は同じ）
             Err(_) => with_flag(true, f),
         },
-    }
-}
-
-/// [`with_threads`] と同じだが、None のときは外の指定を引き継ぐ（`with_threads(Some(1), ..)` の中なら逐次のまま）。
-/// ライブラリの関数が「既定」の意味で None を受け取るときに使う（呼び出し側の `--threads 1` を打ち消さない）
-pub fn with_threads_or_outer<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Send) -> R {
-    match threads {
-        None if sequential() => f(),
-        t => with_threads(t, f),
     }
 }
 

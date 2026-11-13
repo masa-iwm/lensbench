@@ -90,10 +90,9 @@ impl UserTerm for ZplmTerm {
         1
     }
     fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
-        use rayon::prelude::*;
-        systems
-            .par_iter()
-            .map(|s| Ok(vec![self.value(s)? - self.target]))
+        // par::map は `--threads 1`（with_threads(Some(1), ..)）の中で逐次
+        crate::par::map(systems, |s| Ok(vec![self.value(s)? - self.target]))
+            .into_iter()
             .collect()
     }
 }

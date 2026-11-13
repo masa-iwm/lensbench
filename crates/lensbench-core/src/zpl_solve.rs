@@ -44,9 +44,9 @@ pub struct Macro {
     /// 読んだファイル（記録だけ。系ファイルには書かない）
     #[cfg_attr(feature = "serde", serde(skip))]
     pub path: PathBuf,
-    /// 解釈した文（JSON から戻したときは None で、使うときに source から解釈し直す）
+    /// 解釈した文（JSON から戻したときは空で、最初に使うときに source から解釈して残す）
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) prog: Option<Arc<Program>>,
+    pub(crate) prog: std::sync::OnceLock<Arc<Program>>,
 }
 
 impl Macro {
@@ -57,17 +57,18 @@ impl Macro {
             name: name.to_string(),
             source: src.to_string(),
             path: PathBuf::new(),
-            prog: Some(Arc::new(prog)),
+            prog: Arc::new(prog).into(),
         })
     }
 
     pub(crate) fn program(&self) -> Result<Arc<Program>> {
-        match &self.prog {
-            Some(p) => Ok(p.clone()),
-            None => Ok(Arc::new(
-                Program::parse(&self.source).map_err(|e| e.at(format!("マクロ {}", self.name)))?,
-            )),
+        if let Some(p) = self.prog.get() {
+            return Ok(p.clone());
         }
+        let p = Arc::new(
+            Program::parse(&self.source).map_err(|e| e.at(format!("マクロ {}", self.name)))?,
+        );
+        Ok(self.prog.get_or_init(|| p).clone())
     }
 }
 
@@ -116,7 +117,7 @@ pub fn find_macro(name: &str, dirs: &[PathBuf]) -> Result<Macro> {
                     name: name.to_string(),
                     source,
                     path,
-                    prog: Some(Arc::new(prog)),
+                    prog: Arc::new(prog).into(),
                 });
             }
         }

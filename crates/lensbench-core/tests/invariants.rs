@@ -2,6 +2,7 @@
 //! - 厚さ 0 の無視（IGNR）の面をどこに挟んでも近軸量・波面収差は変わらない
 //! - 回転対称でない系で視野を軸上 1 点だけにしても、その視野の射出瞳・波面収差は変わらない
 //! - 標準面に非球面の係数を残した系は誤り（交点と法線で解釈が食い違わない）
+//! - 間隔の分割・恒等の座標ブレークで結果は変わらない、追跡できた ⇔ 有限、スレッド数で変わらない、入力で落ちない
 
 use lensbench_core::analysis;
 use lensbench_core::report::system_data;
@@ -149,4 +150,143 @@ fn optimizer_leaves_ineffective_vars() {
     assert_eq!(r.x[1], r.x0[1], "{}.k", stop);
     assert!(r.inactive.contains(&0) && r.inactive.contains(&1));
     assert!(r.merit <= r.merit0);
+}
+
+/// 面 at の前に、前の面の後の媒質のまま面 d（無視しない）を挟んだ系。前の面が鏡なら None
+fn with_surface(s0: &System, at: usize, mut d: Surface) -> Option<System> {
+    let p = &s0.surfaces[at - 1];
+    if p.mirror {
+        return None;
+    }
+    // 座標ブレークは材料を持たない（前の媒質が続く）
+    if d.typ != lensbench_core::surface::SurfType::CoordBrk {
+        d.mat = p.mat.clone();
+        d.n = p.n.clone();
+    }
+    let mut s = s0.clone();
+    s.insert_surface(at, d).unwrap();
+    Some(s)
+}
+
+fn near(a: f64, b: f64, rel: f64) -> bool {
+    (a.is_nan() && b.is_nan()) || (a - b).abs() <= rel * a.abs().max(b.abs()).max(1.0)
+}
+
+/// 空気・ガラスの間隔を厚さ 0 でない平面で 2 つに分けても（面の分割）、近軸量・波面収差は丸め誤差まで同じ
+#[test]
+fn split_gap_anywhere() {
+    for name in ["A0", "C0"] {
+        let s0 = load(name);
+        let v0 = values(&s0);
+        for at in 2..s0.image() {
+            let t = s0.surfaces[at - 1].t;
+            if !(t.is_finite() && t.abs() > 1e-3) || s0.solves.iter().any(|q| q.surf == at - 1) {
+                continue;
+            }
+            let Some(mut s) = with_surface(&s0, at, Surface::default()) else {
+                continue;
+            };
+            s.surfaces[at - 1].t = 0.4 * t;
+            s.surfaces[at].t = t - 0.4 * t;
+            s.changed().unwrap();
+            let v = values(&s);
+            for ((k, a), (_, b)) in v0.iter().zip(&v) {
+                assert!(
+                    near(*a, *b, 1e-9),
+                    "{name} 面 {at} の前の間隔を分けた: {k} {a} → {b}"
+                );
+            }
+        }
+    }
+}
+
+/// 値がすべて 0 の座標ブレーク（恒等）をどこに挟んでも同じ
+#[test]
+fn identity_coordinate_break_anywhere() {
+    use lensbench_core::surface::SurfType;
+    for name in ["A0", "C0"] {
+        let s0 = load(name);
+        let v0 = values(&s0);
+        for at in 1..=s0.image() {
+            let cb = Surface {
+                typ: SurfType::CoordBrk,
+                ..Default::default()
+            };
+            let Some(s) = with_surface(&s0, at, cb) else {
+                continue;
+            };
+            let v = values(&s);
+            for ((k, a), (_, b)) in v0.iter().zip(&v) {
+                assert!(
+                    near(*a, *b, 1e-9),
+                    "{name} 面 {at} に恒等の座標ブレーク: {k} {a} → {b}"
+                );
+            }
+        }
+    }
+}
+
+/// 追跡できた光線（traced）⇔ 位置・方向・光路長が全部有限。瞳の外の届かない光線を含む格子で
+#[test]
+fn traced_iff_finite() {
+    for name in ["A0", "A2", "C0"] {
+        let s = load(name);
+        let n = 21;
+        let (mut px, mut py) = (Vec::new(), Vec::new());
+        for i in 0..n {
+            for j in 0..n {
+                px.push(3.0 * (2.0 * i as f64 / (n - 1) as f64 - 1.0));
+                py.push(3.0 * (2.0 * j as f64 / (n - 1) as f64 - 1.0));
+            }
+        }
+        for f in 0..s.fields.len() {
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+                .unwrap();
+            for (i, r) in t.rays.iter().enumerate() {
+                let fin = r.xyz.iter().chain(&r.lmn).all(|v| v.is_finite()) && r.opl.is_finite();
+                assert_eq!(t.traced(i), fin, "{name} 視野 {f} 光線 {i}: {r:?}");
+            }
+        }
+    }
+}
+
+/// `--threads 1`（with_threads(Some(1))）の中の既定（None）は逐次のまま、結果はスレッド数によらず同じビット
+#[test]
+fn threads_default_inherits_sequential() {
+    use lensbench_core::par::{current_threads, with_threads};
+    assert_eq!(
+        with_threads(Some(1), || with_threads(None, current_threads)),
+        1
+    );
+    let s = load("A2");
+    let run = || {
+        analysis::wavefront(&s, FieldSel::Index(1), None, 64, false)
+            .unwrap()
+            .rms
+    };
+    let a = with_threads(Some(1), run);
+    let b = with_threads(Some(4), run);
+    assert_eq!(a.to_bits(), b.to_bits());
+}
+
+/// 入力で落ちない: 範囲外の視野・波長の番号は誤り、上限を超えた Zernike の項・壊れた Grid Sag の点の数も落ちない
+#[test]
+fn bad_inputs_are_errors() {
+    use lensbench_core::freeform::{GridSag, ZernSag};
+    let s = load("A0");
+    assert!(s
+        .try_trace(FieldSel::Index(99), &[0.0], &[0.0], None, None, false)
+        .is_err());
+    assert!(s
+        .try_trace(FieldSel::Index(0), &[0.0], &[0.0], Some(99), None, false)
+        .is_err());
+    let z = ZernSag::new(false, 10.0, vec![1e-6; 600], true);
+    assert!(z.eval(1.0, 2.0).0.is_finite());
+    for head in ["-3 4 0.1 0.1 0", "1e9 1e9 0.1 0.1 0", "2.5 2 0.1 0.1 0"] {
+        assert!(
+            GridSag::from_dat(&format!("{head}\n0 0 0 0 0\n")).is_err(),
+            "{head}"
+        );
+    }
 }

@@ -690,7 +690,7 @@ impl<'a> SwapSearch<'a> {
         let Some(pre) = &self.spec.prescreen else {
             return idx;
         };
-        let m = par::with_threads_or_outer(threads, || {
+        let m = par::with_threads(threads, || {
             par::map(&idx, |&i| self.coarse_merit(i, pre.rings))
         });
         let mut ok: Vec<(f64, usize)> = m
@@ -887,10 +887,10 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// すべての組を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
-    /// threads は [`par::with_threads_or_outer`] と同じ（None は外の指定を引き継ぐ）
+    /// threads は [`par::with_threads`] と同じ（None は外の指定を引き継ぐ）
     pub fn run(&self, threads: Option<usize>) -> Vec<Value> {
         let idx = self.screened(threads);
-        let mut v = par::with_threads_or_outer(threads, || par::map(&idx, |&i| self.eval(i)));
+        let mut v = par::with_threads(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);
         v
     }

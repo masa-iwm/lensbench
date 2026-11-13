@@ -222,10 +222,105 @@ pub enum ObjSpec {
     Point([f64; 2]),
 }
 
+/// 平面の点の部分集合の最近傍を引く格子（エイミングの継続法の、解けた光線の探索）
+struct NearGrid {
+    lo: [f64; 2],
+    cell: f64,
+    nx: usize,
+    ny: usize,
+    cells: Vec<Vec<usize>>,
+}
+
+impl NearGrid {
+    fn new(pts: &[[f64; 2]], idx: &[usize]) -> NearGrid {
+        let mut lo = [f64::INFINITY; 2];
+        let mut hi = [f64::NEG_INFINITY; 2];
+        for &i in idx {
+            for c in 0..2 {
+                lo[c] = lo[c].min(pts[i][c]);
+                hi[c] = hi[c].max(pts[i][c]);
+            }
+        }
+        let m = idx.len().max(1) as f64;
+        let (w, h) = ((hi[0] - lo[0]).max(0.0), (hi[1] - lo[1]).max(0.0));
+        // 1 つの箱に平均 2 点ほど
+        let mut cell = ((w * h).max(w.max(h).powi(2) / m) * 2.0 / m).sqrt();
+        if !(cell > 0.0 && cell.is_finite()) {
+            cell = 1.0;
+        }
+        let nx = ((w / cell) as usize + 1).min(4096);
+        let ny = ((h / cell) as usize + 1).min(4096);
+        let mut g = NearGrid {
+            lo: if idx.is_empty() { [0.0; 2] } else { lo },
+            cell,
+            nx,
+            ny,
+            cells: vec![Vec::new(); nx * ny],
+        };
+        for &i in idx {
+            let (cx, cy) = g.at(pts[i]);
+            g.cells[cy * nx + cx].push(i);
+        }
+        g
+    }
+
+    fn at(&self, q: [f64; 2]) -> (usize, usize) {
+        let f = |v: f64, lo: f64, n: usize| (((v - lo) / self.cell).max(0.0) as usize).min(n - 1);
+        (f(q[0], self.lo[0], self.nx), f(q[1], self.lo[1], self.ny))
+    }
+
+    /// q に最も近い点（except を除く）と距離。同じ距離なら番号の小さい方（結果は順によらない）
+    fn nearest(
+        &self,
+        pts: &[[f64; 2]],
+        q: [f64; 2],
+        except: Option<usize>,
+    ) -> Option<(usize, f64)> {
+        let (cx, cy) = self.at(q);
+        let mut best: Option<(usize, f64)> = None;
+        let rmax = self.nx.max(self.ny);
+        for r in 0..=rmax {
+            // 輪 r の箱はどれも q から (r − 1)·cell より遠い
+            if let Some((_, d)) = best {
+                if (r as f64 - 1.0) * self.cell > d {
+                    break;
+                }
+            }
+            let (x0, x1) = (cx as i64 - r as i64, cx as i64 + r as i64);
+            let (y0, y1) = (cy as i64 - r as i64, cy as i64 + r as i64);
+            for y in y0..=y1 {
+                if y < 0 || y >= self.ny as i64 {
+                    continue;
+                }
+                for x in x0..=x1 {
+                    if x < 0 || x >= self.nx as i64 || (y != y0 && y != y1 && x != x0 && x != x1) {
+                        continue;
+                    }
+                    for &j in &self.cells[y as usize * self.nx + x as usize] {
+                        if Some(j) == except {
+                            continue;
+                        }
+                        let d = ((pts[j][0] - q[0]).powi(2) + (pts[j][1] - q[1]).powi(2)).sqrt();
+                        let better = match best {
+                            None => true,
+                            Some((bj, bd)) => d < bd || (d == bd && j < bj),
+                        };
+                        if better {
+                            best = Some((j, d));
+                        }
+                    }
+                }
+            }
+        }
+        best
+    }
+}
+
 /// 光線の始め方
 #[derive(Debug, Clone, Copy)]
 pub enum Launch<'a> {
-    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの。エイミングは系の設定どおり）。
+    /// 物体と正規化瞳座標（ケラレ係数 vig、None なら視野 hxy のもの。hxy が定義した視野でなく、係数のある視野が
+    /// あれば全光線を失敗にする。エイミングは系の設定どおり）。
     /// signed なら、入射瞳が物体より前（ENPP + 物体距離 < 0）の有限物体系で瞳座標の符号を反転して与える
     /// （px = 1 が絞りの同じ側を通り、入射瞳が無限遠をまたいでも向きが連続。既定の false は OpticStudio と同じ）
     Pupil {
@@ -1226,7 +1321,10 @@ impl System {
         *self.cache.expp.get_or_init(|| {
             let mut e = self.paraxial().expp;
             if !self.symmetric() {
-                let r0 = self.trace_novig(0.0, 0.0, &[0.0], &[0.0]);
+                // 補助の光線の物体指定が解けなければ射出瞳は求まらない（NaN。OPD は誤りにする）
+                let Some(r0) = self.trace_novig(0.0, 0.0, &[0.0], &[0.0]) else {
+                    return f64::NAN;
+                };
                 let (p0, k0) = (r0.rays[0].xyz, r0.rays[0].lmn);
                 // GRIN の分布・形を傾けた面も同じ（G8B で OpticStudio と OPDC 5e-7 波）
                 let free = self.surfaces.iter().any(|d| {
@@ -1303,7 +1401,13 @@ impl System {
                                 }
                             }
                         } else {
-                            self.trace_novig(0.0, *h, &[0.0], &[0.0])
+                            match self.trace_novig(0.0, *h, &[0.0], &[0.0]) {
+                                Some(t) => t,
+                                None => {
+                                    z[i] = f64::NAN;
+                                    continue;
+                                }
+                            }
                         };
                         z[i] = cross_z(r1.rays[0].xyz, r1.rays[0].lmn);
                     }
@@ -1328,8 +1432,9 @@ impl System {
     }
 
     /// 瞳の算出用: ケラレ係数を掛けずに主波長で追う（瞳は系の性質で、視野のケラレ係数とは無関係）
-    fn trace_novig(&self, hx: f64, hy: f64, px: &[f64], py: &[f64]) -> Trace {
-        let spec = self.object_spec(hx, hy).expect("瞳の算出の物体指定");
+    /// 物体指定が解けない（実像高の視野で補助の光線が求まらないなど）なら None
+    fn trace_novig(&self, hx: f64, hy: f64, px: &[f64], py: &[f64]) -> Option<Trace> {
+        let spec = self.object_spec(hx, hy).ok()?;
         let mut t = self.trace_spec(
             spec,
             px,
@@ -1341,20 +1446,25 @@ impl System {
             Some((hx, hy)),
         );
         t.hx_hy = (hx, hy);
-        t
+        Some(t)
     }
 
     /// 射出瞳径（OpticStudio の EXPD）
     pub fn exit_pupil_diameter(&self) -> f64 {
         *self.cache.expd.get_or_init(|| {
             let e = self.exit_pupil();
+            if e.is_nan() {
+                return f64::NAN;
+            }
             if (self.aiming == Aiming::Off && self.symmetric()) || !e.is_finite() {
                 self.paraxial().expd
             } else {
                 // 頂点の尖った面がある系は OpticStudio と同じく +y 側の瞳座標 1e-3 の光線だけ（[`System::cusp_pupil`]）
                 let cusp = self.cusp_pupil();
                 let dl = if cusp { 1e-3 } else { 1e-4 };
-                let r = self.trace_novig(0.0, 0.0, &[0.0, 0.0, 0.0], &[0.0, dl, -dl]);
+                let Some(r) = self.trace_novig(0.0, 0.0, &[0.0, 0.0, 0.0], &[0.0, dl, -dl]) else {
+                    return f64::NAN;
+                };
                 let p: Vec<V3> = r.rays.iter().map(|x| x.xyz).collect();
                 let k: Vec<V3> = r.rays.iter().map(|x| x.lmn).collect();
                 let c = k[0];
@@ -1412,6 +1522,21 @@ impl System {
     }
 
     /// 視野 i の正規化視野
+    /// 視野の指定の正規化座標。視野・波長の番号が範囲の外なら誤り（入力で落ちない）
+    fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
+        if w >= self.wavelengths.len() {
+            invalid!("波長の番号 {}（全 {}）", w + 1, self.wavelengths.len());
+        }
+        match field {
+            FieldSel::Index(i) if i >= self.fields.len() => {
+                invalid!("視野の番号 {}（全 {}）", i + 1, self.fields.len())
+            }
+            FieldSel::Index(i) => Ok(self.hxhy(i)),
+            FieldSel::Norm(a, b) => Ok((a, b)),
+        }
+    }
+
+    /// 視野 i の正規化座標（i は範囲の中。範囲の外は panic）
     pub fn hxhy(&self, i: usize) -> (f64, f64) {
         let (nx, ny) = self.field_norm_values();
         (self.fields[i].x / nx, self.fields[i].y / ny)
@@ -1723,12 +1848,24 @@ impl System {
                 } else {
                     1.0
                 };
-                let [vdx, vdy, vcx, vcy, van] = match vig {
-                    Some(v) => v,
+                let vig = match vig {
+                    Some(v) => Ok(v),
                     None => {
                         let (hx, hy) = hxy.unwrap_or((0.0, 0.0));
-                        self.vig_factors(hx, hy).unwrap_or([0.0; 5])
+                        self.vig_factors(hx, hy)
                     }
+                };
+                // ケラレ係数が決められない点（定義した視野以外）は、係数 0 で黙って追わず全光線を失敗にする
+                // （try_trace は同じ条件で誤りを返す）
+                let Ok([vdx, vdy, vcx, vcy, van]) = vig else {
+                    return (
+                        Starts::Pupil {
+                            geom: StartGeom::new(self, spec),
+                            ex: vec![f64::NAN; n],
+                            ey: vec![f64::NAN; n],
+                        },
+                        vec![true; n],
+                    );
                 };
                 let (qx, qy): (Vec<f64>, Vec<f64>) =
                     if vdx != 0.0 || vdy != 0.0 || vcx != 0.0 || vcy != 0.0 || van != 0.0 {
@@ -2357,10 +2494,7 @@ impl System {
         phase: bool,
     ) -> Result<PolTrace> {
         let w = w.unwrap_or(self.primary);
-        let (hx, hy) = match field {
-            FieldSel::Index(i) => self.hxhy(i),
-            FieldSel::Norm(a, b) => (a, b),
-        };
+        let (hx, hy) = self.field_sel_norm(field, w)?;
         let spec = self.object_spec(hx, hy)?;
         let vig = self.vig_factors(hx, hy)?;
         self.trace_pol_spec(
@@ -2796,29 +2930,63 @@ impl System {
         };
         let mut out = solve(n, &init);
         // 解けなかった光線（絞りまで届かなかったものも）は、解けた光線のうち瞳座標の最も近いものから、目標を少しずつ
-        // 動かす継続法で解き直す（近軸の初期値の光線が頂点面に平行になる折り曲げの系など）
-        let bad: Vec<usize> = (0..n).filter(|&i| out[i].1 || out[i].2).collect();
-        let good: Vec<usize> = (0..n).filter(|&i| !out[i].1 && !out[i].2).collect();
+        // 動かす継続法で解き直す（近軸の初期値の光線が頂点面に平行になる折り曲げの系など）。継続法は 1 本で数百〜数千回の
+        // 追跡になるので、解けた領域の縁に隣り合う光線（最も近い解けた光線が、どちらかの光線の最近接の光線の間隔の 1.5 倍
+        // 以内）だけを解き直し、解けた光線を足して縁を広げる。縁に届かない光線（瞳の外の届かない領域の奥）は解き直さずに
+        // 失敗とする（以前は全部を解き直し、届かない光線 1 本に約 7 ms かかった。見直し KRN-07）
+        let mut bad: Vec<usize> = (0..n).filter(|&i| out[i].1 || out[i].2).collect();
+        let mut good: Vec<usize> = (0..n).filter(|&i| !out[i].1 && !out[i].2).collect();
         if !bad.is_empty() && !good.is_empty() {
-            let d2 = |i: usize, j: usize| (px[i] - px[j]).powi(2) + (py[i] - py[j]).powi(2);
-            let redo = |&i: &usize| {
-                let j = good
-                    .iter()
-                    .copied()
-                    .min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b)))?;
-                self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
-            };
-            // 継続法は 1 本で数百〜数千回の追跡になる（瞳の外の届かない光線は刻みを最小まで縮めてから諦める）ので、
-            // 少ない本数でも並列に。光線ごとに独立なので結果はスレッド数によらず同じビット
-            let re: Vec<Option<[f64; 2]>> = if bad.len() > 1 && !crate::par::sequential() {
-                bad.par_iter().with_min_len(1).map(redo).collect()
-            } else {
-                bad.iter().map(redo).collect()
-            };
-            for (&i, r) in bad.iter().zip(re) {
-                if let Some(v) = r {
-                    out[i] = (v, false, false);
+            let pts: Vec<[f64; 2]> = (0..n).map(|i| [px[i], py[i]]).collect();
+            let all = NearGrid::new(&pts, &(0..n).collect::<Vec<_>>());
+            // 光線ごとの最近接の（別の）光線までの距離
+            let gap: Vec<f64> = bad
+                .iter()
+                .map(|&i| {
+                    all.nearest(&pts, pts[i], Some(i))
+                        .map_or(f64::INFINITY, |(_, d)| d)
+                })
+                .collect();
+            let mut gap_of = vec![0.0; n];
+            for (&i, &g) in bad.iter().zip(&gap) {
+                gap_of[i] = g;
+            }
+            let gap_good = |j: usize| all.nearest(&pts, pts[j], Some(j)).map_or(0.0, |x| x.1);
+            loop {
+                let near = NearGrid::new(&pts, &good);
+                let mut front = Vec::new();
+                let mut rest = Vec::new();
+                for &i in &bad {
+                    match near.nearest(&pts, pts[i], None) {
+                        Some((j, d)) if d <= 1.5 * gap_of[i].max(gap_good(j)) => front.push((i, j)),
+                        _ => rest.push(i),
+                    }
                 }
+                if front.is_empty() {
+                    break;
+                }
+                let redo = |&(i, j): &(usize, usize)| {
+                    self.aim_follow(spec, w, out[j].0, tgt([px[j], py[j]]), tgt([px[i], py[i]]))
+                };
+                // 光線ごとに独立なので結果はスレッド数によらず同じビット
+                let re: Vec<Option<[f64; 2]>> = if front.len() > 1 && !crate::par::sequential() {
+                    front.par_iter().with_min_len(1).map(redo).collect()
+                } else {
+                    front.iter().map(redo).collect()
+                };
+                let mut solved = 0;
+                for (&(i, _), r) in front.iter().zip(re) {
+                    if let Some(v) = r {
+                        out[i] = (v, false, false);
+                        good.push(i);
+                        solved += 1;
+                    }
+                }
+                if solved == 0 {
+                    break;
+                }
+                // 失敗した縁の光線はもう試さない（次の縁は新しく解けた光線の隣）
+                bad = rest;
             }
         }
         for (i, (v, f, _)) in out.into_iter().enumerate() {
@@ -3104,10 +3272,7 @@ impl System {
         record: bool,
     ) -> Result<Trace> {
         let w = w.unwrap_or(self.primary);
-        let (hx, hy) = match field {
-            FieldSel::Index(i) => self.hxhy(i),
-            FieldSel::Norm(a, b) => (a, b),
-        };
+        let (hx, hy) = self.field_sel_norm(field, w)?;
         let spec = self.object_spec(hx, hy)?;
         let vig = self.vig_factors(hx, hy)?;
         let mut t = self.trace_spec(spec, px, py, w, Some(vig), last, record, Some((hx, hy)));
@@ -3126,10 +3291,7 @@ impl System {
         rec: RecSel<'_>,
     ) -> Result<Trace> {
         let w = w.unwrap_or(self.primary);
-        let (hx, hy) = match field {
-            FieldSel::Index(i) => self.hxhy(i),
-            FieldSel::Norm(a, b) => (a, b),
-        };
+        let (hx, hy) = self.field_sel_norm(field, w)?;
         let spec = self.object_spec(hx, hy)?;
         let vig = self.vig_factors(hx, hy)?;
         let l = Launch::Pupil {

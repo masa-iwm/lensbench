@@ -282,7 +282,7 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     use lensbench_core::coating::{stack, CoatKind, CoatingFile};
     use std::f64::consts::PI;
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
                COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
@@ -327,7 +327,7 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     let (rs, rp, _, _) = stack(
         n1,
         &[(C64::new(1.38, 0.0), 0.1)],
-        C64::new(0.5, 3.0),
+        C64::new(0.5, -3.0),
         wl,
         th,
     );
@@ -366,7 +366,7 @@ fn coating_model_reproduces_the_stack_it_was_made_from() {
     use lensbench_core::coating::{parse_models, stack, CoatKind, CoatingFile};
     use std::fmt::Write;
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
                COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
     let layers = [(C64::new(1.38, 0.0), 0.11), (C64::new(2.1, 0.0), 0.06)];
     // 膜のモデルを層から作る: M̃ = 特性行列、ψ = Σ d_j Re(β²/q_j)（OpticStudio の位相の層の項）
@@ -401,7 +401,7 @@ fn coating_model_reproduces_the_stack_it_was_made_from() {
             let (rs, rp, _, _) = stack(
                 n_ref,
                 &[(C64::new(1.38, 0.0), 0.1)],
-                C64::new(0.5, 3.0),
+                C64::new(0.5, -3.0),
                 wl,
                 (b / n_ref).asin(),
             );
@@ -564,7 +564,7 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
     use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
     use lensbench_core::coating::{parse_models, CoatingFile, Measured};
     let s = a0();
-    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 3.0\n1.2 0.5 3.0\n\
+    let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
                COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n";
     let c = Coatings {
         file: CoatingFile::parse(txt).unwrap(),
