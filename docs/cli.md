@@ -43,6 +43,11 @@ lensbench ghost    system.zmx --coatings coat_models.lbcm --out-dir ghosts
 lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 ```
 
+**負の数**: `--dist -5`・`--pmag -0.5` のように値として渡せる（`--center -1,2` のような数の並びも）。
+
+**終了コード**: 0 は成功、1 は実行の失敗（一部の品・膜の上げ・取り・読みの失敗も。結果は出したうえで 1）、
+2 は引数の誤り。`verify` の不一致も 1。`--save` の中身は `--json` の有無によらず同じ（画面の文字の出力だけ要点に絞る）。
+
 この CLI を組み込んだ exe（非公開版など）は、サブコマンドを足せる（`lensbench_cli::ext`）。足したサブコマンドも
 `serve` の `analyze`・`watch`・GUI の解析で同じに使える。
 

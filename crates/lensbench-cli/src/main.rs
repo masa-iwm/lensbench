@@ -3,6 +3,7 @@
 //! この crate はライブラリでもある（GUI が serve と同じ API を同じプロセスで呼ぶため。[`serve::call`]）。
 //! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ。
 
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -1255,13 +1256,25 @@ fn parse_axis(s: &str) -> Result<sweep::FieldAxis, String> {
     }
 }
 
-/// 文字で出すときは長い表を省く（PSF の格子など。--json・--save では全体）
+/// 文字で出すときは長い表を省く（PSF・波面の格子など。--json・--save では全体）
 fn brief(v: &Value) -> Value {
+    /// 入れ子の配列も数えた要素の数
+    fn leaves(v: &Value) -> usize {
+        match v {
+            Value::Array(a) => a.iter().map(leaves).sum::<usize>().max(1),
+            _ => 1,
+        }
+    }
     match v {
         Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), brief(x))).collect()),
-        Value::Array(a) if a.len() > 1000 => {
-            json!(format!("（{} 行。全体は --json か --save で）", a.len()))
+        Value::Array(a) if leaves(v) > 1000 => {
+            json!(format!(
+                "（{} 行・{} 要素。全体は --json か --save で）",
+                a.len(),
+                leaves(v)
+            ))
         }
+        Value::Array(a) => Value::Array(a.iter().map(brief).collect()),
         _ => v.clone(),
     }
 }
@@ -1435,6 +1448,16 @@ pub(crate) fn plugins_json() -> Value {
     json!({ "plugins": list })
 }
 
+thread_local! {
+    /// 一部が失敗したコマンド（上げ・取り・読みの一部の誤り）の説明。結果は出したうえで終了コード 1 にする
+    static PARTIAL_FAILURE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// 一部が失敗したことを記す（[`PARTIAL_FAILURE`]。CLI は結果を出した後に終了コード 1、serve は結果の JSON の errors で）
+fn partial_failure(msg: impl Into<String>) {
+    PARTIAL_FAILURE.with(|x| *x.borrow_mut() = Some(msg.into()));
+}
+
 fn run(cli: Cli) -> Result<(), String> {
     match cli.cmd {
         Cmd::Serve(a) => serve::serve(a, cli.threads),
@@ -1443,7 +1466,10 @@ fn run(cli: Cli) -> Result<(), String> {
         cmd => {
             let (json_out, out) = execute(cmd)?;
             print_out(json_out, &out);
-            Ok(())
+            match PARTIAL_FAILURE.with(|x| x.borrow_mut().take()) {
+                Some(m) => Err(m),
+                None => Ok(()),
+            }
         }
     }
 }
@@ -1588,10 +1614,17 @@ fn print_out(json_out: bool, out: &Value) {
     if out.is_null() {
         return;
     }
-    if json_out {
-        println!("{}", serde_json::to_string_pretty(out).unwrap());
+    let mut w = std::io::BufWriter::new(std::io::stdout().lock());
+    let r = if json_out {
+        writeln!(w, "{}", serde_json::to_string_pretty(out).unwrap())
     } else {
-        print_text(&brief(&tolerance_brief(out)), 0);
+        print_text(&mut w, &brief(&tolerance_brief(out)), 0)
+    };
+    // 読み手が先に閉じた（`| head` など）ときは黙って終える
+    if let Err(e) = r.and_then(|_| w.flush()) {
+        if e.kind() != std::io::ErrorKind::BrokenPipe {
+            eprintln!("lensbench: 出力: {e}");
+        }
     }
 }
 
@@ -1641,6 +1674,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
     let e = |e: lensbench_core::Error| e.to_string();
     let save = cmd.save();
     LOADED_HASH.with(|x| *x.borrow_mut() = None);
+    PARTIAL_FAILURE.with(|x| *x.borrow_mut() = None);
     let (json_out, out): (bool, Value) = match cmd {
         Cmd::Serve(_) | Cmd::Watch(_) | Cmd::Run(_) => {
             return Err("serve・watch・run は入れ子にできない".into())
@@ -2750,6 +2784,10 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     }
                 })
                 .collect();
+            let bad = v.iter().filter(|x| x.get("error").is_some()).count();
+            if bad > 0 {
+                partial_failure(format!("読めない STEP が {bad} 個"));
+            }
             if !json {
                 for x in &v {
                     println!("{}", x["file"].as_str().unwrap_or(""));
@@ -2917,6 +2955,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     rows.push(u);
                 }
                 let count = |s: &str| rows.iter().filter(|u| u.status == s).count();
+                if count("error") > 0 {
+                    partial_failure(format!("上げられないファイルが {} 個", count("error")));
+                }
                 if !json {
                     for f in &unmatched {
                         println!("品に当たらない: {}", f.display());
@@ -2958,6 +2999,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let rows =
                     coat_remote::upload_dir(&dir, index.as_deref(), store.as_ref(), dry_run)?;
                 let n = |s: &str| rows.iter().filter(|r| r.2 == s).count();
+                if n("error") > 0 {
+                    partial_failure(format!("上げられない膜が {} 個", n("error")));
+                }
                 if !json {
                     for (name, key, st, e) in &rows {
                         if *st != "exists" {
@@ -2978,9 +3022,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                         n("error"),
                         rows.len()
                     );
-                    if n("error") > 0 {
-                        return Err("上げられない膜がある".into());
-                    }
                     return Ok((false, Value::Null));
                 }
                 (
@@ -3002,6 +3043,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             {
                 let rows = coat_remote::fetch_dir(&dir, cad::store().as_ref())?;
                 let n = |s: &str| rows.iter().filter(|r| r.1 == s).count();
+                if n("error") > 0 {
+                    partial_failure(format!("取れない膜が {} 個", n("error")));
+                }
                 if !json {
                     for (name, st, e) in &rows {
                         if *st == "error" {
@@ -3786,28 +3830,29 @@ fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
-fn print_text(v: &Value, ind: usize) {
+fn print_text(w: &mut dyn std::io::Write, v: &Value, ind: usize) -> std::io::Result<()> {
     let pad = "  ".repeat(ind);
     match v {
         Value::Object(m) => {
             for (k, x) in m {
                 match x {
                     Value::Object(_) | Value::Array(_) if !is_flat(x) => {
-                        println!("{pad}{k}:");
-                        print_text(x, ind + 1);
+                        writeln!(w, "{pad}{k}:")?;
+                        print_text(w, x, ind + 1)?;
                     }
-                    _ => println!("{pad}{k}: {}", fmt(x)),
+                    _ => writeln!(w, "{pad}{k}: {}", fmt(x))?,
                 }
             }
         }
         Value::Array(a) => {
             for x in a {
-                println!("{pad}-");
-                print_text(x, ind + 1);
+                writeln!(w, "{pad}-")?;
+                print_text(w, x, ind + 1)?;
             }
         }
-        _ => println!("{pad}{}", fmt(v)),
+        _ => writeln!(w, "{pad}{}", fmt(v))?,
     }
+    Ok(())
 }
 
 fn is_flat(v: &Value) -> bool {
@@ -3821,14 +3866,32 @@ fn is_flat_pair(v: &Value) -> bool {
     matches!(v, Value::Array(a) if a.iter().all(Value::is_number))
 }
 
+/// 数の表示: 有効 6 桁。ふつうの大きさ（1e-4 〜 1e6）は小数で、ほかは指数で
+fn fmt_f64(f: f64) -> String {
+    if f == 0.0 || !f.is_finite() {
+        return format!("{f}");
+    }
+    let a = f.abs();
+    if (1e-4..1e6).contains(&a) {
+        let digits = (5 - a.log10().floor() as i32).max(0) as usize;
+        let t = format!("{f:.digits$}");
+        if t.contains('.') {
+            t.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            t
+        }
+    } else {
+        format!("{f:.5e}")
+    }
+}
+
 fn fmt(v: &Value) -> String {
     match v {
         Value::Number(n) => {
-            let f = n.as_f64().unwrap_or(0.0);
             if n.is_i64() || n.is_u64() {
                 n.to_string()
             } else {
-                format!("{f:.6e}")
+                fmt_f64(n.as_f64().unwrap_or(0.0))
             }
         }
         Value::Array(a) => format!("[{}]", a.iter().map(fmt).collect::<Vec<_>>().join(", ")),
@@ -3844,6 +3907,26 @@ fn spot_unit(s: &System) -> &'static str {
     } else {
         "lens"
     }
+}
+
+/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず
+/// 黙って終える（終了コード 0。ほかの panic はいつもどおり）
+fn quiet_broken_pipe() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if msg.contains("failed printing to stdout") && msg.contains("Broken pipe")
+            || msg.contains("os error 32")
+        {
+            std::process::exit(0);
+        }
+        prev(info);
+    }));
 }
 
 /// コマンドラインの入口（`lensbench` の実行ファイル）
@@ -3900,6 +3983,7 @@ where
 }
 
 pub fn main() -> ExitCode {
+    quiet_broken_pipe();
     let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
