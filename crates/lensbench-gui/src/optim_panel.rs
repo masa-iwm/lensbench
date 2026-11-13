@@ -511,7 +511,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
 }
 
 /// 変数の候補（面の表の行・玉と群）
-pub struct Cands {
+pub struct Cands<'a> {
     /// 玉・群の名前
     pub units: Vec<String>,
     /// 組合せの系（面の値は t・r・k だけ組合せに当てられる）
@@ -519,7 +519,7 @@ pub struct Cands {
     /// 名前の欄の補完の候補
     pub sys: crate::param_pick::Sys,
     /// 面の表の行（変数の今の値を出す、GUX-21）
-    pub rows: Vec<crate::lens_data::Row>,
+    pub rows: &'a [crate::lens_data::Row],
 }
 
 /// 変数の今の値（面の値 `<面>.<t|r|c|k>` だけ。玉・群・ほかは None、GUX-21）
@@ -529,6 +529,8 @@ pub fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
     Some(match f {
         "t" => r.t,
         "r" => r.r,
+        // 平面は r = ∞（0 で持つ行も平面）
+        "c" if r.r == 0.0 => 0.0,
         "c" => 1.0 / r.r,
         "k" => r.k,
         _ => return None,
@@ -673,7 +675,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
             ui.end_row();
             for (i, v) in p.vars.iter_mut().enumerate() {
                 pp::edit(ui, &mut v.name, 110.0, "7.t", &c.sys, set);
-                match var_value(&c.rows, &v.name) {
+                match var_value(c.rows, &v.name) {
                     Some(x) => ui.label(RichText::new(fmt_num(x)).monospace()),
                     None => ui.weak("—"),
                 };

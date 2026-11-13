@@ -1587,3 +1587,4 @@ BS の分ける面の向きを逆に	Flip the splitting surface of the BS
 詳細	Details
 開閉	Fold
 今の値	Current
+ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます	Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…

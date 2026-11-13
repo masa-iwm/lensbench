@@ -18,25 +18,65 @@ pub fn install(base: Option<PathBuf>) {
     let d = base
         .unwrap_or_else(|| std::env::temp_dir().join("lensbench"))
         .join("glass-builtin");
-    let ok = std::fs::create_dir_all(&d).is_ok()
-        && FILES.iter().all(|(n, t)| {
-            let p = d.join(n);
-            std::fs::read(&p).is_ok_and(|b| b == t.as_bytes()) || std::fs::write(&p, t).is_ok()
-        });
-    if ok {
+    if write_to(&d) {
         let _ = DIR.set(d.display().to_string());
     }
 }
 
+/// フォルダ `d` に同梱の AGF を書く（中身が同じなら書かない）。書けたら true
+fn write_to(d: &std::path::Path) -> bool {
+    std::fs::create_dir_all(d).is_ok()
+        && FILES.iter().all(|(n, t)| {
+            let p = d.join(n);
+            std::fs::read(&p).is_ok_and(|b| b == t.as_bytes()) || std::fs::write(&p, t).is_ok()
+        })
+}
+
 /// serve に渡すガラスのフォルダ: 設定のフォルダの後ろに同梱のフォルダ
 pub fn dirs(v: &[String]) -> Value {
+    dirs_with(v, DIR.get().map(String::as_str))
+}
+
+fn dirs_with(v: &[String], builtin: Option<&str>) -> Value {
     let mut out = v.to_vec();
-    if let Some(d) = DIR.get() {
-        if !out.contains(d) {
-            out.push(d.clone());
+    if let Some(d) = builtin {
+        if !out.iter().any(|x| x == d) {
+            out.push(d.to_string());
         }
     }
     json!(out)
+}
+
+/// 同梱のカタログのガラスの名前（カタログ名、ガラス名）
+fn names() -> &'static Vec<(String, String)> {
+    static N: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    N.get_or_init(|| {
+        FILES
+            .iter()
+            .flat_map(|(f, t)| {
+                let cat = f.trim_end_matches(".AGF");
+                t.lines()
+                    .filter_map(|l| l.strip_prefix("NM "))
+                    .filter_map(|l| l.split_whitespace().next())
+                    .map(move |n| (cat.to_string(), n.to_string()))
+            })
+            .collect()
+    })
+}
+
+/// 系の面の材料のうち、同梱のカタログから取ったもの（設定のフォルダに同じ名前の AGF が無いカタログのガラス）。
+/// 同梱のカタログは屈折率だけ（内部透過率・熱膨張が無く、温度係数の無いガラスもある）なので、使ったら知らせる
+pub fn used(materials: &[&str], user_agf: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for m in materials {
+        let hit = names().iter().any(|(c, n)| {
+            n.eq_ignore_ascii_case(m) && !user_agf.iter().any(|u| u.eq_ignore_ascii_case(c))
+        });
+        if hit && !out.iter().any(|x| x.eq_ignore_ascii_case(m)) {
+            out.push(m.to_string());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -56,10 +96,21 @@ mod tests {
         let n = s["N-BK7"].index(0.5875618, 20.0, 1.0, false);
         assert!((n - 1.5168).abs() < 2e-5, "{n}");
         let d = std::env::temp_dir().join(format!("lb-gux01-{}", std::process::id()));
-        install(Some(d.clone()));
-        let v = dirs(&["a".into()]);
-        assert_eq!(v[0], "a");
-        assert!(v[1].as_str().unwrap().ends_with("glass-builtin"), "{v}");
+        assert!(write_to(&d) && write_to(&d));
+        assert!(d.join("SCHOTT.AGF").is_file());
         let _ = std::fs::remove_dir_all(&d);
+        let v = dirs_with(&["a".into()], Some("b"));
+        assert_eq!(v, json!(["a", "b"]));
+        assert_eq!(dirs_with(&["b".into()], Some("b")), json!(["b"]));
+        // 同梱から取ったガラス（設定に SCHOTT.AGF が無いとき）だけを知らせる
+        assert_eq!(
+            used(&["N-BK7", "AIR", "n-bk7", ""], &[]),
+            vec!["N-BK7".to_string()]
+        );
+        assert!(used(&["N-BK7"], &["schott".into()]).is_empty());
+        assert_eq!(
+            used(&["S-FSL5"], &["SCHOTT".into()]),
+            vec!["S-FSL5".to_string()]
+        );
     }
 }

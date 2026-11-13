@@ -53,6 +53,9 @@ pub(super) fn snap_was_load(v: &Value, back: bool) -> bool {
     top.get("open").is_some() || top.get("reload").is_some()
 }
 
+/// 構成の切り替えだけの edit の段の印（set のパラメータの名前と重ならない）
+pub(super) const CONFIG_KEY: &str = "\u{1}set_config";
+
 /// edit の ops が構成の切り替え（`set_config`）だけか。続けて切り替えても元に戻す段は 1 つにする（GAR-28: Ctrl+A で
 /// 構成を順に見ても、段が切り替えの数だけ積まれない）
 pub(super) fn config_only(ops: &Value) -> bool {

@@ -1748,6 +1748,22 @@ impl Core {
                 self.ld.insp.stale();
                 self.ld_rows = rows;
                 self.ld_units = units;
+                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる（GUX-01）
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let mats: Vec<&str> =
+                        self.ld_rows.iter().map(|r| r.material.as_str()).collect();
+                    let used = crate::builtin_glass::used(&mats, &agf_names(&self.s.glass_dirs));
+                    if !used.is_empty() && !self.status.error {
+                        self.status = Status {
+                            text: trf(
+                                "ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます",
+                                &[&used.join("・")],
+                            ),
+                            error: false,
+                        };
+                    }
+                }
                 return;
             }
             Tag::SurfData(j) => {
@@ -2272,7 +2288,7 @@ impl Core {
             units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
             combo: is_combo,
             sys: self.param_sys(),
-            rows: self.ld_rows.clone(),
+            rows: &self.ld_rows,
         };
         let progress = if self.opt.running {
             ui.ctx()
@@ -2401,7 +2417,7 @@ impl Core {
             // 補償子は系の中で動かすだけ（組合せに当てない）ので、面の値の種類を絞らない
             combo: false,
             sys: self.param_sys(),
-            rows: self.ld_rows.clone(),
+            rows: &self.ld_rows,
         };
         let progress = if self.tol.running {
             ui.ctx()

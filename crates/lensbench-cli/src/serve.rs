@@ -309,7 +309,7 @@ fn store_loaded(sys: System, spec: LoadSpec, h: LoadHistory, reload: bool) {
 
 #[path = "serve_hist.rs"]
 mod hist;
-use hist::{change_label, config_only, history_json, snap_was_load};
+use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
 
 /// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる）
 fn push_undo(x: &mut Served, what: Value) {
@@ -339,13 +339,13 @@ fn store_changed(sys: System, spec: LoadSpec, c: Change) {
         return;
     };
     let now = Instant::now();
-    // 構成の切り替えだけの edit が続くときは、間があいても 1 段にまとめる（名前は空、GAR-28）
+    // 構成の切り替えだけの edit が続くときは、間があいても 1 段にまとめる（名前は CONFIG_KEY、GAR-28）
     let names = match &c {
         Change::Set(v) => Some(v.iter().map(|r| r.0.clone()).collect::<Vec<_>>()),
-        Change::Edit(o) => config_only(o).then(Vec::new),
+        Change::Edit(o) => config_only(o).then(|| vec![CONFIG_KEY.to_string()]),
     };
     let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t))) if n == m && !x.undo.is_empty()
-        && (n.is_empty() || now.duration_since(*t).as_secs_f64() < SET_MERGE_S));
+        && (n[..] == [CONFIG_KEY] || now.duration_since(*t).as_secs_f64() < SET_MERGE_S));
     if !merge {
         let what = change_label(Some(&c));
         push_undo(&mut x, what);
