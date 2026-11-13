@@ -27,10 +27,10 @@ pub struct ZoomArgs {
     #[arg(long = "var", required = true)]
     pub vars: Vec<String>,
     /// 状態ごとの焦点距離の目標（カンマで、状態の数だけ。"-" は目標なし）
-    #[arg(long, conflicts_with = "pmag")]
+    #[arg(long, conflicts_with = "pmag", allow_hyphen_values = true)]
     pub efl: Option<String>,
     /// 状態ごとの近軸倍率の目標（有限物体。書き方は --efl と同じ）
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     pub pmag: Option<String>,
     /// 隣り合う状態の間にとる点の数
     #[arg(long, default_value_t = 0)]
@@ -92,14 +92,7 @@ fn is_json(p: &std::path::Path) -> bool {
 }
 
 fn stop_name(s: Stop) -> &'static str {
-    match s {
-        Stop::Converged => "converged",
-        Stop::SmallStep => "small_step",
-        Stop::NoProgress => "no_progress",
-        Stop::MaxIter => "max_iter",
-        Stop::Cancelled => "cancelled",
-        Stop::NoVars => "no_vars",
-    }
+    s.as_str()
 }
 
 fn num(x: f64) -> Value {

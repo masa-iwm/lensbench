@@ -79,7 +79,7 @@ fn huygens_psf_matches_opticstudio() {
         let c0 = it["crop_start"].as_u64().unwrap() as usize;
         assert_eq!(c0 + nx / 2, it["image"].as_u64().unwrap() as usize / 2);
         let o = HuygensOpts {
-            pupil: pupil as usize,
+            pupil: Some(pupil as usize),
             image: nx,
             delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };
@@ -117,7 +117,7 @@ fn huygens_mtf_matches_opticstudio() {
             continue;
         }
         let o = HuygensOpts {
-            pupil: it["pupil"].as_u64().unwrap() as usize,
+            pupil: Some(it["pupil"].as_u64().unwrap() as usize),
             image: it["image"].as_u64().unwrap() as usize,
             delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };

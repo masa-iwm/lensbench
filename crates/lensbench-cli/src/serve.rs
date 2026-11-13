@@ -88,7 +88,7 @@ static FILES: std::sync::OnceLock<Files> = std::sync::OnceLock::new();
 
 /// 評価関数の項（1 つか並び）の zplm のファイル・フォルダを [`check_path`] で確かめる。ファイルを限っているとき
 /// （--root・--allow-remote）は、既定の場所（LENSBENCH_MACROS・今のフォルダ）を探さない
-fn check_term_paths(t: &mut Value) -> Result<(), RpcErr> {
+pub(crate) fn check_term_paths(t: &mut Value) -> Result<(), RpcErr> {
     let limited = !matches!(FILES.get().unwrap_or(&Files::Any), Files::Any);
     let items: Vec<&mut Value> = match t {
         Value::Array(a) => a.iter_mut().collect(),
@@ -520,9 +520,9 @@ fn replay(
 }
 
 /// JSON-RPC のエラー
-struct RpcErr {
+pub(crate) struct RpcErr {
     code: i64,
-    msg: String,
+    pub(crate) msg: String,
 }
 
 impl RpcErr {
@@ -1590,25 +1590,22 @@ pub(crate) fn analysis_argv(p: &Map<String, Value>, file: &Path) -> Result<Vec<S
         match x {
             // 設定のオブジェクト（センサの設定など）は JSON の文字列のまま `--<名前>-json` に
             Value::Object(_) => {
-                v.push(format!("{flag}-json"));
-                v.push(x.to_string());
+                v.push(format!("{flag}-json={x}"));
             }
             Value::Bool(true) => v.push(flag),
             Value::Bool(false) | Value::Null => {}
+            // 値は `--flag=値` の 1 要素で積む（負の数・- で始まる文字列を旗と取り違えない）
             Value::Array(a) if a.iter().all(Value::is_number) => {
                 let s: Vec<String> = a.iter().map(|n| n.to_string()).collect();
-                v.push(flag);
-                v.push(s.join(","));
+                v.push(format!("{flag}={}", s.join(",")));
             }
             Value::Array(a) => {
                 for e in a {
-                    v.push(flag.clone());
-                    v.push(scalar(e)?);
+                    v.push(format!("{flag}={}", scalar(e)?));
                 }
             }
             _ => {
-                v.push(flag);
-                v.push(scalar(x)?);
+                v.push(format!("{flag}={}", scalar(x)?));
             }
         }
     }
@@ -1914,7 +1911,7 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
                     "catalog_add はプロジェクトファイル（組合せ）を読み込んだときだけ",
                 ));
             }
-            let mut cat = UserCatalog::load_or_new(&file)?;
+            let cat = UserCatalog::load_or_new(&file)?;
             if cat.items.contains_key(name) && p["replace"].as_bool() != Some(true) {
                 return Err(RpcErr::app(format!(
                     "項目 {name} はもうある（置き換えは replace: true）"
@@ -1939,11 +1936,25 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
             };
             let desc = p["description"].as_str().unwrap_or_default();
             let item = lensbench_project::blocks_item(&pr, &env, &ids, desc)?;
-            cat.items.insert(name.to_string(), item);
-            set_vendor(&mut cat);
-            cat.save(&file)?;
+            let replace = p["replace"].as_bool() == Some(true);
+            let cat = UserCatalog::update(&file, |cat| {
+                if cat.items.contains_key(name) && !replace {
+                    return Err(format!(
+                        "項目 {name} はもうある（置き換えは replace: true）"
+                    ));
+                }
+                cat.items.insert(name.to_string(), item);
+                set_vendor(cat);
+                Ok(())
+            })?;
             let mut out = catalog_listing(path, &cat);
             out["added"] = json!(name);
+            // 品はプロジェクトファイルの中身から作る（展開した系への set・edit はブロックへ戻せない）
+            if !current_log().is_empty() {
+                out["notes"] = json!([
+                    "読み込んだ後の変更（set・edit）は品に入らない（品はプロジェクトファイルから作る。変更を入れるには先に保存して読み直す）"
+                ]);
+            }
             Ok(out)
         }
         _ => {
@@ -2169,7 +2180,8 @@ fn opt_index_list(p: &Value, k: &str, n: usize) -> Result<Option<Vec<usize>>, Rp
 /// 断面図（YZ）の図形と、玉・群・面の位置（GUI のレイアウト図）。座標は [z, y] mm（大域座標）
 ///
 /// `cfgs`・`states`・`paths`（並びか "all"）を与えると、その構成（.zmx の多重構成・プロジェクトの状態・BS の経路）を
-/// ファイルから読み直して重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。`set` で変えた値は入らない。
+/// ファイルから読み直して重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。読み込んだ後の変更（set・edit）は
+/// 読み直した構成にも当てる（構成で値の違うパラメータの set は当てずに `notes` に書く）。
 /// `surfaces`・`units` は読み込んだ系のもの
 fn layout(p: &Value) -> Result<Value, RpcErr> {
     let (s, spec) = current()?;
@@ -2177,8 +2189,11 @@ fn layout(p: &Value) -> Result<Value, RpcErr> {
 }
 
 fn layout_with(s: &System, spec: &LoadSpec, p: &Value) -> Result<Value, RpcErr> {
-    let sc = layout_scene(s, spec, p)?;
+    let (sc, notes) = layout_scene(s, spec, p)?;
     let mut v = view_json(s, &sc, p)?;
+    if !notes.is_empty() {
+        v["notes"] = json!(notes);
+    }
     // 光線の色分け（field・wave・cfg）。省略なら書かない（GUI は重ね描きなら構成ごと、ほかは視野ごと）
     if color_of(p)?.is_some() {
         v["color"] = json!(p["color"].as_str().unwrap_or_default().to_ascii_lowercase());
@@ -2220,7 +2235,7 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
         }
     }
     let (s, spec) = current()?;
-    let sc = layout_scene(&s, &spec, &q)?;
+    let (sc, notes) = layout_scene(&s, &spec, &q)?;
     // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
     let color = match color_of(p)? {
         Some(c) => c,
@@ -2260,20 +2275,38 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
         "solids": sc.solids.len(),
         "mechanics": sc.mechs.len(),
         "rays": sc.rays.len(),
+        "notes": notes,
     }))
 }
 
-/// layout・layout_export の場面（構成を選べば重ねる）
+/// layout・layout_export の場面（構成を選べば重ねる）と、読み直した構成に変更を当てられなかった説明
 fn layout_scene(
     s: &System,
     spec: &LoadSpec,
     p: &Value,
-) -> Result<lensbench_export::scene::Scene, RpcErr> {
+) -> Result<(lensbench_export::scene::Scene, Vec<String>), RpcErr> {
     let sel = config_sel(p)?;
     if !sel.any() {
-        return Ok(lensbench_export::scene::build(s, &scene_opts(s, p)?)?);
+        return Ok((
+            lensbench_export::scene::build(s, &scene_opts(s, p)?)?,
+            Vec::new(),
+        ));
     }
-    let systems = crate::overlay_systems(&spec.common(), &sel)?;
+    // ファイルから読み直した構成にも、読み込んだ後の変更（set・edit）を当てる
+    let log = current_log();
+    let mut notes = Vec::new();
+    let systems = crate::overlay_systems(&spec.common(), &sel)?
+        .into_iter()
+        .map(|(name, sy)| {
+            let label = if name.is_empty() {
+                "構成".to_string()
+            } else {
+                name.clone()
+            };
+            replay(sy, &log, &label, &mut notes).map(|sy| (name, sy))
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map_err(RpcErr::app)?;
     let offset = match p.get("offset") {
         None | Some(Value::Null) => [0.0; 3],
         Some(v) => {
@@ -2298,7 +2331,7 @@ fn layout_scene(
         let sc = scene::build(sy, &opt).map_err(|x| RpcErr::app(format!("{name}: {x}")))?;
         parts.push((name.clone(), sc));
     }
-    Ok(scene::overlay(parts, offset)?)
+    Ok((scene::overlay(parts, offset)?, notes))
 }
 
 /// layout の構成の選び方（文字列か並び。"all" は全部）
@@ -3039,14 +3072,7 @@ fn optimize(p: &Value) -> Result<Value, RpcErr> {
         .collect();
     let tv0 = prob.term_values(&r.x0)?;
     let tv = prob.term_values(&r.x)?;
-    let stop = match r.stop {
-        optim::Stop::Converged => "converged",
-        optim::Stop::SmallStep => "small_step",
-        optim::Stop::NoProgress => "no_progress",
-        optim::Stop::MaxIter => "max_iter",
-        optim::Stop::Cancelled => "cancelled",
-        optim::Stop::NoVars => "no_vars",
-    };
+    let stop = r.stop.as_str();
     // 読み込んだ系に当てられる変数（読み込んだ系の構成に効くもの）
     let applicable: Vec<bool> = prob
         .vars
@@ -3473,19 +3499,19 @@ mod tests {
                 "lensbench",
                 "mtf",
                 "s.zmx",
-                "--field",
-                "2",
-                "--freq",
-                "10,20.5",
+                "--field=2",
+                "--freq=10,20.5",
                 "--json",
-                "--out",
-                "a.svg",
-                "--out",
-                "b.step",
-                "--max-freq",
-                "50"
+                "--out=a.svg",
+                "--out=b.step",
+                "--max-freq=50"
             ]
         );
+        // 負の数は値として渡る（旗と取り違えない）
+        let p = json!({ "cmd": "pop", "dist": -5.0, "center": [-1, 2] });
+        let v = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap();
+        assert_eq!(v[3..], ["--dist=-5.0", "--center=-1,2"]);
+        assert!(crate::parse_cli(&v).is_ok());
         for bad in [
             json!({ "cmd": "spot", "cfg": 2 }),
             // path（経路）も load で選ぶ。黙って load の値で上書きされないよう誤りにする
@@ -3503,6 +3529,6 @@ mod tests {
     fn object_arg_becomes_json_flag() {
         let p = json!({ "cmd": "camera", "sensor": { "mla": { "pitch": [0.2, 0.2] } } });
         let v = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap();
-        assert_eq!(v[3..], ["--sensor-json", r#"{"mla":{"pitch":[0.2,0.2]}}"#]);
+        assert_eq!(v[3..], [r#"--sensor-json={"mla":{"pitch":[0.2,0.2]}}"#]);
     }
 }

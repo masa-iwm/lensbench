@@ -250,7 +250,7 @@ impl Instance for PyFuncInstance {
                     let ps = PySystem {
                         sys: RwLock::new(sys.clone()),
                         coat_files: Vec::new(),
-                        coat,
+                        coat: RwLock::new(Arc::new(coat)),
                     };
                     f.call1((cfg, inp, Bound::new(py, ps)?))?
                 }
@@ -423,7 +423,7 @@ impl PyPlugin {
         Ok(py.detach(|| {
             let ctx = Context {
                 system: Some(&sys),
-                coatings,
+                coatings: coatings.as_deref(),
             };
             f(inst, &ctx)
         }))

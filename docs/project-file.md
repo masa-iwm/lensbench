@@ -44,6 +44,9 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   .zmx には書けない（OpticStudio にない）。Python は `s.set_field_type("solve", ("dirsum", 1, 6), fields=[(0, 0)])`
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
+- 温度・気圧は `"environment": {"temperature_c": 25, "pressure_atm": 1, "adjust_index": true}`（省略で 20 °C・1 atm・補正なし。
+  .zmx の ENVD と同じ）。ガラスの屈折率はこの環境で計算し、取り込んだ .zmx の環境と違えば注意を出す。
+- 知らないキー（綴りの違いなど）は誤りにする。GUI は自分の編集の状態を `gui` に残す。
 
 - ビームスプリッター（`"type": "splitter"`）: 形は `cube`（`size` 一辺・`glass`、斜面が 45°）・`plate`（`thickness`・`glass`・`semi`、
   `wedge` でくさび、`split_face` で分ける面 front・back）・`ideal`（厚さのない面）。分ける面の傾きは `angle`（既定 [45, 0]、鏡の tilt と同じ約束）。

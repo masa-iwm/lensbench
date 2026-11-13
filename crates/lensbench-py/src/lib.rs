@@ -18,6 +18,7 @@ mod search;
 mod userterm;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::catalog::LensCatalog;
@@ -31,7 +32,7 @@ use lensbench_core::system::{
 use lensbench_core::{analysis, huygens, optim, psf, sweep, with_threads, zmx, RecSel, System};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
-use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyTuple};
 
@@ -99,6 +100,52 @@ fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResul
     Ok(())
 }
 
+/// 長い計算を別のスレッドで回し、呼んだスレッド（Python の主スレッド）で Ctrl-C（シグナル）を見張る。
+/// シグナルが来たら stop を立てて計算の終わりを待ち、KeyboardInterrupt などの例外を返す。
+/// 計算は stop を反復・試行ごとに見て止まる（optim::dls_with・tolerance::run_with の進み具合の口）
+pub fn interruptible<R: Send>(
+    py: Python<'_>,
+    f: impl FnOnce(&AtomicBool) -> R + Send,
+) -> PyResult<R> {
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|sc| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let stop = &stop;
+        sc.spawn(move || {
+            // 受け手が先に去っていても（例外で返った後）送りの失敗は気にしない
+            let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || f(stop),
+            )));
+        });
+        let tick = std::time::Duration::from_millis(100);
+        // Receiver は Sync でないので、GIL を外す間は持ち出して返してもらう
+        let mut rx = Some(rx);
+        loop {
+            let (got, r) = py.detach(|| {
+                let r = rx.take().unwrap();
+                (r.recv_timeout(tick), r)
+            });
+            rx = Some(r);
+            match got {
+                Ok(r) => {
+                    return r.map_err(|_| PyRuntimeError::new_err("計算のスレッドが panic した"))
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(PyRuntimeError::new_err("計算のスレッドが終わった"))
+                }
+            }
+            if let Err(e) = py.check_signals() {
+                stop.store(true, Ordering::Relaxed);
+                // 計算が stop を見て止まるのを待つ（scope の終わりで join する）
+                let r = rx.take().unwrap();
+                let _ = py.detach(move || r.recv());
+                return Err(e);
+            }
+        }
+    })
+}
+
 /// 誤りを ValueError に
 pub fn err<E: ToString>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -111,7 +158,32 @@ pub struct PySystem {
     /// 変更は複製した系に施して差し替えるので、走っている追跡は前の系のまま
     sys: RwLock<Arc<System>>,
     coat_files: Vec<PathBuf>,
-    coat: OnceLock<Result<Coatings, String>>,
+    /// 系の膜（初めて要ったときに読む）。膜・媒質・膜ファイルの変わる編集で空に戻す
+    coat: RwLock<CoatCell>,
+}
+
+/// 系の膜を読んだもの（複製した系・派生した系で共有する）
+pub type CoatCell = Arc<OnceLock<Result<Coatings, String>>>;
+
+/// 読んだ膜への参照（[`PySystem::coatings`]）
+pub struct CoatRef(CoatCell);
+
+impl std::ops::Deref for CoatRef {
+    type Target = Coatings;
+    fn deref(&self) -> &Coatings {
+        // coatings() が Ok を確かめてから作る
+        self.0
+            .get()
+            .and_then(|r| r.as_ref().ok())
+            .expect("膜を読んだ後")
+    }
+}
+
+/// 膜の読み込みに関わる系の部分が変わったか（膜・媒質の境界、膜ファイル、系の膜の表）
+fn coat_changed(a: &System, b: &System) -> bool {
+    a.coating_file != b.coating_file
+        || a.coat_tables != b.coat_tables
+        || lensbench_core::coating::media_keys(a).0 != lensbench_core::coating::media_keys(b).0
 }
 
 /// 視野の指定: 番号（1 始まり）か正規化視野 (hx, hy)。bool は弾く
@@ -503,39 +575,45 @@ impl PySystem {
     }
 
     /// 系から作る（膜のファイル、膜を読んだもの）
-    pub fn new(
-        sys: System,
-        coat_files: Vec<PathBuf>,
-        coat: OnceLock<Result<Coatings, String>>,
-    ) -> Self {
+    pub fn new(sys: System, coat_files: Vec<PathBuf>, coat: CoatCell) -> Self {
         PySystem {
             sys: RwLock::new(Arc::new(sys)),
             coat_files,
-            coat,
+            coat: RwLock::new(coat),
         }
     }
 
-    /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）
+    /// 読んだ膜（派生した系に引き継ぐ）
+    pub fn coat_cell(&self) -> CoatCell {
+        self.coat.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）。
+    /// 膜の読み込みに関わる所が変われば、読んだ膜を捨てて次に要ったときに読み直す
     fn mutate<R>(&self, f: impl FnOnce(&mut System) -> lensbench_core::Result<R>) -> PyResult<R> {
         let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
         let mut n: System = (**g).clone();
         let r = f(&mut n).map_err(err)?;
+        if coat_changed(&g, &n) {
+            *self.coat.write().unwrap_or_else(|e| e.into_inner()) = CoatCell::default();
+        }
         *g = Arc::new(n);
         Ok(r)
     }
 
     /// 系の膜（初めて呼んだときに読む）
-    pub fn coatings(&self, s: &System) -> PyResult<&Coatings> {
-        self.coat
-            .get_or_init(|| {
-                let mut c = Coatings::for_system(s).map_err(|e| e.to_string())?;
-                for p in &self.coat_files {
-                    c.load_file(p).map_err(|e| e.to_string())?;
-                }
-                Ok(c)
-            })
-            .as_ref()
-            .map_err(err)
+    pub fn coatings(&self, s: &System) -> PyResult<CoatRef> {
+        let cell = self.coat_cell();
+        cell.get_or_init(|| {
+            let mut c = Coatings::for_system(s).map_err(|e| e.to_string())?;
+            for p in &self.coat_files {
+                c.load_file(p).map_err(|e| e.to_string())?;
+            }
+            Ok(c)
+        })
+        .as_ref()
+        .map_err(err)?;
+        Ok(CoatRef(cell))
     }
 }
 
@@ -773,7 +851,7 @@ impl PySystem {
             None => None,
         };
         let out = gil
-            .detach(|| with_threads(o.threads, || compute(s, coat, launch, n, o)))
+            .detach(|| with_threads(o.threads, || compute(s, coat.as_deref(), launch, n, o)))
             .map_err(err)?;
         to_dict(gil, s, o, out)
     }
@@ -1074,7 +1152,7 @@ impl PySystem {
                     saved_coatings
                 }
             }),
-            OnceLock::new(),
+            Default::default(),
         ))
     }
 
@@ -1096,7 +1174,7 @@ impl PySystem {
     fn from_json(py: Python<'_>, text: &str) -> PyResult<PySystem> {
         let (s, m, w) = lensbench_project::sysfile::from_str(text).map_err(err)?;
         warn_all(py, &w)?;
-        Ok(PySystem::new(s, m.coatings, OnceLock::new()))
+        Ok(PySystem::new(s, m.coatings, Default::default()))
     }
 
     /// 系の hash（"sha256:…"、系ファイルと同じ）。解析の結果に刻んで、後から同じ系か確かめる
@@ -1157,7 +1235,7 @@ impl PySystem {
         Ok(PySystem::new(
             sys,
             coatings.unwrap_or_else(env_coatings),
-            OnceLock::new(),
+            Default::default(),
         ))
     }
 
@@ -1235,7 +1313,7 @@ impl PySystem {
                 if coating_file.is_some() {
                     s.coating_file = coating_file.clone();
                 }
-                PySystem::new(s, coat.clone(), OnceLock::new())
+                PySystem::new(s, coat.clone(), Default::default())
             })
             .collect())
     }
@@ -1519,7 +1597,7 @@ impl PySystem {
         };
         let coat = if pol { Some(self.coatings(&s)?) } else { None };
         let c = py
-            .detach(|| lensbench_core::fiber::fiber_coupling(&s, w, &o, coat))
+            .detach(|| lensbench_core::fiber::fiber_coupling(&s, w, &o, coat.as_deref()))
             .map_err(err)?;
         let d = PyDict::new(py);
         d.set_item("eta", c.eta)?;
@@ -1665,7 +1743,7 @@ impl PySystem {
         let s = self.sys();
         let c = parse_changes(&s, changes)?;
         let n = s.with_params(&c).map_err(err)?;
-        Ok(PySystem::new(n, self.coat_files.clone(), self.coat.clone()))
+        Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
     // ---------------------------------------------------------------------- 系の編集
@@ -1900,7 +1978,7 @@ impl PySystem {
     /// 構成 k（1 始まり）の値を入れた新しい系（元の系は変えない）
     fn config(&self, k: usize) -> PyResult<PySystem> {
         let n = self.sys().config(k).map_err(err)?;
-        Ok(PySystem::new(n, self.coat_files.clone(), self.coat.clone()))
+        Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
     /// 今の系を構成 k に切り替える
@@ -1920,7 +1998,7 @@ impl PySystem {
         Ok(PySystem::new(
             g.sys,
             self.coat_files.clone(),
-            self.coat.clone(),
+            self.coat_cell(),
         ))
     }
 
@@ -2399,7 +2477,8 @@ impl PySystem {
     /// g(system, names) を与えると残差の偏微分 (残差の数, len(names)) をそれで求める。
     ///
     /// 返り値の dict: system（最適化した系）・x0・x（変数の値）・merit0・merit・history（反復ごとの評価関数）・
-    /// iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"）・term_values0・term_values
+    /// iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"・"jacobian_failed"）・note（止まった理由の補足）・
+    /// inactive（効かないとみなして動かさなかった変数の番号）・term_values0・term_values
     /// （terms の項ごとの値: 目標のある項は値、ほかは √Σr²）
     #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None))]
     #[allow(clippy::too_many_arguments)]
@@ -2431,7 +2510,11 @@ impl PySystem {
             max_iter: iters,
             ..Default::default()
         };
-        let r = py.detach(|| with_threads(threads, || optim::dls(&p, &o)));
+        let r = interruptible(py, |stop| {
+            with_threads(threads, || {
+                optim::dls_with(&p, &o, |_| !stop.load(Ordering::Relaxed))
+            })
+        })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let tv = |x: &[f64]| -> PyResult<Vec<f64>> {
@@ -2443,19 +2526,12 @@ impl PySystem {
         };
         let (tv0, tv1) = (tv(&r.x0)?, tv(&r.x)?);
         let d = PyDict::new(py);
-        let stop = match r.stop {
-            optim::Stop::Converged => "converged",
-            optim::Stop::SmallStep => "small_step",
-            optim::Stop::NoProgress => "no_progress",
-            optim::Stop::MaxIter => "max_iter",
-            optim::Stop::Cancelled => "cancelled",
-            optim::Stop::NoVars => "no_vars",
-        };
+        let stop = r.stop.as_str();
         let names: Vec<String> = p.vars.iter().map(|v| s.param_name(v.param)).collect();
         let sys = r.systems.into_iter().next().unwrap();
         d.set_item(
             "system",
-            PySystem::new(sys, self.coat_files.clone(), self.coat.clone()),
+            PySystem::new(sys, self.coat_files.clone(), self.coat_cell()),
         )?;
         d.set_item("names", names)?;
         d.set_item("x0", r.x0)?;
@@ -2466,6 +2542,8 @@ impl PySystem {
         d.set_item("iterations", r.iterations)?;
         d.set_item("evals", r.evals)?;
         d.set_item("stop", stop)?;
+        d.set_item("note", r.note)?;
+        d.set_item("inactive", r.inactive)?;
         d.set_item("term_values0", tv0)?;
         d.set_item("term_values", tv1)?;
         Ok(d)
@@ -2521,7 +2599,11 @@ impl PySystem {
             None => Vec::new(),
         };
         let th = threads.or(oo.threads);
-        let r = py.detach(|| with_threads(th, || lensbench_core::tolerance::run(&ms)));
+        let r = interruptible(py, |stop| {
+            with_threads(th, || {
+                lensbench_core::tolerance::run_with(&ms, |_, _| !stop.load(Ordering::Relaxed))
+            })
+        })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
@@ -2659,15 +2741,17 @@ impl PySystem {
     /// 回折 PSF: 瞳関数（MTF と同じ）の DFT。強度 i は (y, x) の配列で、収差のない同じ瞳の多色 PSF の中心を
     /// 1 とする（peak はストレール比の目安）。x・y は主波長の主光線の像点 center からの、主光線に垂直な面の座標
     /// [レンズ単位]（OpticStudio の FFT PSF と同じ。向きは axes = [e1, e2]、像空間の単位ベクトル）。
-    /// pupil は瞳の格子の一辺、image は像の格子の一辺、delta は像の格子の間隔（省略で 1 / (2 × 遮断周波数)）
-    #[pyo3(signature = (field, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    /// pupil は瞳の格子の一辺（省略で自動: 隣り合う標本の位相差が π/2 以下）、image は像の格子の一辺、delta は像の格子の
+    /// 間隔（省略で 1 / (2 × 遮断周波数)）。pupil（使った値）・phase_step（瞳の隣り合う標本の位相差の最大 [rad]）・
+    /// enclosed（像の格子に入った光量の割合）・warnings（標本不足などの注意）も返す
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn psf<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,
@@ -2694,6 +2778,10 @@ impl PySystem {
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
         d.set_item("peak", p.peak)?;
+        d.set_item("pupil", p.pupil)?;
+        d.set_item("phase_step", p.phase_step)?;
+        d.set_item("enclosed", p.enclosed)?;
+        d.set_item("warnings", p.warnings)?;
         Ok(d)
     }
 
@@ -2723,14 +2811,14 @@ impl PySystem {
 
     /// Huygens PSF: 射出瞳の参照球の各点からの 2 次波を像面の上で足す（傾いた像面・収差の大きい系向け）。
     /// 返す dict は psf と同じ形で、x・y は中心 center からの像面の局所座標の差（axes は x̂・ŷ）
-    #[pyo3(signature = (field, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_psf<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,
@@ -2757,11 +2845,15 @@ impl PySystem {
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
         d.set_item("peak", p.peak)?;
+        d.set_item("pupil", p.pupil)?;
+        d.set_item("phase_step", p.phase_step)?;
+        d.set_item("enclosed", p.enclosed)?;
+        d.set_item("warnings", p.warnings)?;
         Ok(d)
     }
 
     /// Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）。返す dict は mtf と同じ形
-    #[pyo3(signature = (field, freqs, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
         &self,
@@ -2769,7 +2861,7 @@ impl PySystem {
         field: FieldArg,
         freqs: PyArrayLike1<'_, f64, AllowTypeChange>,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,
@@ -2869,7 +2961,7 @@ fn trace_many<'py>(
     let outs = gil.detach(|| {
         with_threads(threads, || {
             lensbench_core::par::map(&jobs, |(s, pre, o, coat)| {
-                compute(s, *coat, &pre.launch(&px, &pyv), n, o)
+                compute(s, coat.as_deref(), &pre.launch(&px, &pyv), n, o)
             })
         })
     });
@@ -2893,7 +2985,7 @@ fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem
     // 長さと系の約束は sysfile::check で確かめる（壊れたバイト列で追跡が panic しないよう）
     let (sys, _, _) = lensbench_project::sysfile::from_str(txt)
         .map_err(|e| PyValueError::new_err(format!("系の読み直し: {e}")))?;
-    Ok(PySystem::new(sys, coatings, OnceLock::new()))
+    Ok(PySystem::new(sys, coatings, Default::default()))
 }
 
 /// Python API の版 (major, minor)。互換を壊す変更で major、足すだけの変更で minor を上げる

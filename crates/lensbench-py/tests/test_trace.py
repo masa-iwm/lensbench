@@ -868,3 +868,16 @@ def test_pol_grid_missing(tmp_path):
     assert good.sum() > 0.5 * len(px) and np.all(np.isfinite(b["jones"][good]))
     a = o.trace(1, px, py, pol=True)
     assert np.abs(a["jones"][good] - b["jones"][good]).max() < 1e-5
+
+
+def test_coatings_reload_after_edit(tmp_path):
+    """膜を変える編集の後の偏光追跡は、変えた後の系で膜を読み直す（フォルダの .lbcs は使う膜だけ読む）"""
+    (tmp_path / "COATING.DAT").write_text(COATING_DAT)
+    (tmp_path / "X.lbcs").write_text("MATE L\n0.4 1.38 0\n1.2 1.38 0\nCOAT X\nL 0.25 1\n")
+    (tmp_path / "p.zmx").write_text(PICKUP_ZMX)
+    s = lb.System.load(str(tmp_path / "p.zmx"), coating_file=str(tmp_path / "COATING.DAT"))
+    a = s.trace(1, [0.0], [0.5], pol=True)
+    s.set_surface(1, coating="X")
+    b = s.trace(1, [0.0], [0.5], pol=True)
+    # 膜 X（AR2 と違う 1 層）で透過が変わる
+    assert not np.array_equal(a["jones"], b["jones"])

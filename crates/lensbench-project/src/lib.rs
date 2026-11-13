@@ -620,7 +620,7 @@ pub enum Block {
         radius: Option<f64>,
         #[serde(default)]
         conic: f64,
-        /// 傾き x・y [deg]。折り曲げでは鏡の前後で同じ角だけ傾ける（光軸が折れる）。
+        /// 傾き x・y [deg]。折り曲げでは鏡の前後で同じ角だけ傾ける（光軸が折れる。後ろは回す順を逆にして、2 軸でも後の軸が反射した光軸に乗る）。
         /// `back`（往路を戻る）では鏡だけを傾け、座標は元の軸に戻す（復路の光線が傾きの 2 倍の角で戻る）
         #[serde(default)]
         tilt: [f64; 2],
@@ -871,6 +871,49 @@ pub struct Project {
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
+    /// 温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし
+    #[serde(default, skip_serializing_if = "Environment::is_default")]
+    pub environment: Environment,
+    /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui: Option<Value>,
+}
+
+/// 系の環境（[`Project::environment`]）。.zmx の ENVD（温度・気圧・屈折率の補正）と同じ
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Environment {
+    /// 温度 [°C]
+    #[serde(default = "env_t")]
+    pub temperature_c: f64,
+    /// 気圧 [atm]
+    #[serde(default = "env_p")]
+    pub pressure_atm: f64,
+    /// ガラスの屈折率を温度・気圧で補正する（OpticStudio の Adjust Index Data To Environment）
+    #[serde(default)]
+    pub adjust_index: bool,
+}
+
+fn env_t() -> f64 {
+    20.0
+}
+fn env_p() -> f64 {
+    1.0
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Environment {
+            temperature_c: env_t(),
+            pressure_atm: env_p(),
+            adjust_index: false,
+        }
+    }
+}
+
+impl Environment {
+    fn is_default(&self) -> bool {
+        *self == Environment::default()
+    }
 }
 
 /// ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた
@@ -885,8 +928,21 @@ pub struct SurfaceEdit {
 
 impl Project {
     pub fn from_json(txt: &str) -> Result<Project, String> {
-        let p: Project =
+        let v: Value =
             serde_json::from_str(txt).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+        let p: Project =
+            serde_json::from_value(v.clone()).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+        // "$schema" はエディタの検査用（docs/schema）
+        let unknown: Vec<String> = unknown_keys::<Project>(&v, &p)
+            .into_iter()
+            .filter(|k| k != "$schema")
+            .collect();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "プロジェクトファイル: 知らないキー {}（綴りを確かめる）",
+                unknown.join("・")
+            ));
+        }
         check_detectors(&p.blocks)?;
         Ok(p)
     }
@@ -942,7 +998,13 @@ impl Project {
                 obj.insert(k.clone(), x.clone());
             }
         }
-        serde_json::from_value(v).map_err(|e| format!("状態 {name}: {e}"))
+        let p: Project =
+            serde_json::from_value(v.clone()).map_err(|e| format!("状態 {name}: {e}"))?;
+        let unknown = unknown_keys::<Project>(&v, &p);
+        if !unknown.is_empty() {
+            return Err(format!("状態 {name}: 知らないキー {}", unknown.join("・")));
+        }
+        Ok(p)
     }
 }
 
@@ -960,6 +1022,62 @@ pub(crate) fn find_id(v: &Value, path: &str, id: &str, out: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// 読んだ JSON のうち、型に読まれずに捨てられたキーの場所（`blocks/3/reversd` の形）。
+/// `#[serde(flatten)]`・untagged の型には `deny_unknown_fields` を付けられないので、読んだ値を書き戻した JSON と
+/// 比べて、書き戻しに無いキーを探す。書き戻しで省かれる既定値（`"on": true` など）と区別するため、そのキーの値を
+/// 型に合わない値に替えて読み直し、読めて結果が変わらなければ「捨てられた」とする
+pub fn unknown_keys<T: serde::de::DeserializeOwned + Serialize>(
+    input: &Value,
+    parsed: &T,
+) -> Vec<String> {
+    fn walk(i: &Value, o: &Value, path: &mut Vec<String>, miss: &mut Vec<Vec<String>>) {
+        match (i, o) {
+            (Value::Object(a), Value::Object(b)) => {
+                for (k, x) in a {
+                    path.push(k.clone());
+                    match b.get(k) {
+                        Some(y) => walk(x, y, path, miss),
+                        None => miss.push(path.clone()),
+                    }
+                    path.pop();
+                }
+            }
+            (Value::Array(a), Value::Array(b)) => {
+                for (n, (x, y)) in a.iter().zip(b).enumerate() {
+                    path.push(n.to_string());
+                    walk(x, y, path, miss);
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+    let Ok(out) = serde_json::to_value(parsed) else {
+        return Vec::new();
+    };
+    let mut miss = Vec::new();
+    walk(input, &out, &mut Vec::new(), &mut miss);
+    miss.into_iter()
+        .filter(|p| {
+            let mut probe = input.clone();
+            let mut at = &mut probe;
+            for k in p {
+                at = match at {
+                    Value::Object(m) => m.get_mut(k).expect("walk で見たキー"),
+                    Value::Array(a) => &mut a[k.parse::<usize>().expect("添字")],
+                    _ => unreachable!(),
+                };
+            }
+            *at = serde_json::json!({ "\u{1}lensbench_probe": [true] });
+            serde_json::from_value::<T>(probe)
+                .ok()
+                .and_then(|t| serde_json::to_value(t).ok())
+                .is_some_and(|v| v == out)
+        })
+        .map(|p| p.join("/"))
+        .collect()
 }
 
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
@@ -1006,6 +1124,8 @@ struct Ctx<'a, 'b> {
     frames: Vec<(String, MechSpec, usize, usize)>,
     /// 裏返して置いた玉（`reversed` の玉のブロック）の往路の面の範囲（sf の最初, 最後）。玉・群の `flipped` にする
     rev_spans: Vec<(usize, usize)>,
+    /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
+    zenv: Vec<(String, f64, f64, bool)>,
 }
 
 /// 品の枠（向きを当てる前）と向き
@@ -1098,6 +1218,8 @@ fn cb(d: [f64; 5], order: u8, t: f64) -> Surface {
 /// zmx ブロックで取り込んだ .zmx のピックアップと厚さのソルブ（面番号は取り込んだ .zmx の番号）
 struct ZmxLinks {
     path: String,
+    /// 取り込んだ向き（1 か、鏡の後で −1。曲率・厚さの符号を返した）
+    sign: f64,
     pickups: Vec<Pickup>,
     solves: Vec<ThickSolve>,
     /// 取り込んだ .zmx の像面の番号
@@ -1218,16 +1340,32 @@ impl<'a, 'b> Ctx<'a, 'b> {
         if !place.on {
             if place.off == OffMode::Air {
                 // 長さを測るため一度入れて、空気に置き換える
+                // 中身が足した面の範囲・記録は全部巻き戻す（残すと後ろの別のブロックの面を指す）
                 let start = self.sf.len();
-                let (p0, n0) = (self.parity, self.nstop);
+                let (p0, n0, lead0) = (self.parity, self.nstop, self.lead);
+                let lens = (
+                    self.spans.len(),
+                    self.back_spans.len(),
+                    self.gaps.len(),
+                    self.frames.len(),
+                    self.rev_spans.len(),
+                    self.zpicks.len(),
+                );
                 body(self)?;
                 if self.parity != p0 {
                     return Err("鏡を含むブロックは「空気で残す」にできない".into());
                 }
-                let l = self.length_since(start);
+                let l = self.length_since(start) + (self.lead - lead0);
                 self.sf.truncate(start);
                 self.org.truncate(start);
+                self.spans.truncate(lens.0);
+                self.back_spans.truncate(lens.1);
+                self.gaps.truncate(lens.2);
+                self.frames.truncate(lens.3);
+                self.rev_spans.truncate(lens.4);
+                self.zpicks.truncate(lens.5);
                 self.nstop = n0;
+                self.lead = lead0;
                 self.gap(l);
             }
             return Ok(());
@@ -1748,7 +1886,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     // 復路の面は往路と同じ位置にあり、光線は鏡の傾きの 2 倍の角でそこを戻る
                     self.put(cb([0.0, 0.0, -tilt[0], -tilt[1], 0.0], 1, 0.0));
                 } else if fold {
-                    self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
+                    // 鏡の後の軸を反射した光軸に乗せる: 前の座標ブレークが R = Rx(tx)·Ry(ty) なら、鏡の座標で入射の軸は
+                    // Rᵀz、反射はその z 成分の反転。後の回転 R₂ は R₂z = diag(−1, −1, 1)·Rᵀz を満たせばよく、
+                    // R₂ = Ry(ty)·Rx(tx)、つまり同じ角で回す順を逆にした座標ブレーク（順序 1）。1 軸の傾きでは順序によらない
+                    self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 1, 0.0));
                 }
                 self.note(id, start);
                 if back {
@@ -1783,10 +1924,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 ..
             } => {
                 let s = self.load_zmx(path, *config)?;
+                self.zenv
+                    .push((path.clone(), s.temperature, s.pressure, s.adjust_index));
                 let els = elements::split(&s).map_err(|e| format!("{path}: {e}"))?;
                 let inst = self.zpicks.len();
                 self.zpicks.push(ZmxLinks {
                     path: path.clone(),
+                    sign: 1.0,
                     pickups: s.pickups.clone(),
                     solves: s.solves.clone(),
                     image: s.image(),
@@ -1815,6 +1959,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let spans = zmx_group_spans(&keep, groups).map_err(|e| format!("{path}: {e}"))?;
                 self.placed(place, &mut |c: &mut Self| {
                     let sign = c.parity;
+                    c.zpicks[inst].sign = sign;
                     let mut i = 0;
                     while i < keep.len() {
                         let Some(&(g, a, z)) = spans.iter().find(|q| q.1 == i) else {
@@ -2316,7 +2461,20 @@ impl UserCatalog {
             Ok(UserCatalog::default())
         }
     }
-    /// 保存する。名前が `.gz` で終われば gzip で圧縮して書く
+    /// ファイルの今の中身を読み直して f で変え、すぐ書き戻す（読んでから時間のかかる処理の後に足すときに使う。
+    /// 前に読んだ写しを書き戻すと、その間にほかの所（GUI・CLI）が足した品を消してしまう）。変えた後のカタログを返す
+    pub fn update(
+        path: &Path,
+        f: impl FnOnce(&mut UserCatalog) -> Result<(), String>,
+    ) -> Result<UserCatalog, String> {
+        let mut c = UserCatalog::load_or_new(path)?;
+        f(&mut c)?;
+        c.save(path)?;
+        Ok(c)
+    }
+
+    /// 保存する。名前が `.gz` で終われば gzip で圧縮して書く（一時ファイルに書いて名前を替える。途中で落ちても
+    /// 前の中身が残る）
     pub fn save(&self, path: &Path) -> Result<(), String> {
         use std::io::Write;
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
@@ -2327,9 +2485,9 @@ impl UserCatalog {
         if gz {
             let mut w = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
             w.write_all(text.as_bytes()).map_err(err)?;
-            lensbench_core::vfs::write(path, w.finish().map_err(err)?).map_err(err)
+            lensbench_core::vfs::write_atomic(path, w.finish().map_err(err)?).map_err(err)
         } else {
-            lensbench_core::vfs::write(path, text).map_err(err)
+            lensbench_core::vfs::write_atomic(path, text).map_err(err)
         }
     }
 }
@@ -2526,6 +2684,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
         split: SplitState::default(),
         frames: Vec::new(),
         rev_spans: Vec::new(),
+        zenv: Vec::new(),
     };
     let mut cats = p.glass_catalogs.clone();
     let b = portable(&mut c, b, &mut cats)?;
@@ -3339,6 +3498,7 @@ fn expand_inner(
         },
         frames: Vec::new(),
         rev_spans: Vec::new(),
+        zenv: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
         if c.split.done {
@@ -3395,6 +3555,7 @@ fn expand_inner(
     let zpicks = std::mem::take(&mut c.zpicks);
     sf.push(Surface::default());
     // 面の後の屈折率（波長ごと）
+    let envr = p.environment;
     let mut prev = vec![1.0; wl.len()];
     for (j, d) in sf.iter_mut().enumerate() {
         let n = if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
@@ -3402,7 +3563,9 @@ fn expand_inner(
         } else if is_air(&d.mat) {
             vec![1.0; wl.len()]
         } else if let Some(g) = c.glasses.get(&d.mat) {
-            wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect()
+            wl.iter()
+                .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                .collect()
         } else if let Some(&n0) = d.n.first() {
             if d.n.iter().any(|&v| v != n0) {
                 return Err(format!("面 {j}: ガラス {} がカタログにない", d.mat));
@@ -3422,7 +3585,10 @@ fn expand_inner(
                     d.mat
                 )
             })?;
-            *ne = wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect();
+            *ne = wl
+                .iter()
+                .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                .collect();
         }
         // 複屈折材の波長板: 板のガラスを引き、設計波長の行列を作り直す
         if let Some(r) = d.retarder.as_mut().filter(|r| !r.plates.is_empty()) {
@@ -3434,7 +3600,9 @@ fn expand_inner(
             r.n = if is_air(&r.mat) {
                 vec![1.0; wl.len()]
             } else if let Some(g) = c.glasses.get(&r.mat) {
-                wl.iter().map(|&l| g.index(l, 20.0, 1.0, false)).collect()
+                wl.iter()
+                    .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
+                    .collect()
             } else {
                 return Err(format!("面 {j}: ガラス {} がカタログにない", r.mat));
             };
@@ -3487,6 +3655,9 @@ fn expand_inner(
     )
     .map_err(|e| e.to_string())?;
     s.name = p.name.clone();
+    s.temperature = envr.temperature_c;
+    s.pressure = envr.pressure_atm;
+    s.adjust_index = envr.adjust_index;
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {
@@ -3520,6 +3691,24 @@ fn expand_inner(
         return Err("fields の solve は type が solve のときだけ".into());
     }
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
+    for (path, t, pr, adj) in &c.zenv {
+        let e = &p.environment;
+        // どちらも補正しないなら温度・気圧は屈折率に効かない
+        if !*adj && !e.adjust_index {
+            continue;
+        }
+        // 屈折率の補正は 20 °C・1 atm の外でだけ効く
+        let off_ref = e.temperature_c != 20.0 || e.pressure_atm != 1.0;
+        if (t - e.temperature_c).abs() > 1e-9
+            || (pr - e.pressure_atm).abs() > 1e-9
+            || (off_ref && *adj != e.adjust_index)
+        {
+            warn.push(format!(
+                "{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違う。屈折率はプロジェクトの環境で計算する（environment で変える）",
+                e.temperature_c, e.pressure_atm
+            ));
+        }
+    }
     // 玉・群のパラメータ: 玉モードの玉 lens1 … と、id のあるブロック・群（同じ id の範囲は 1 つの玉・群）
     s.units = s.lens_units();
     let mut ids: Vec<&str> = Vec::new();
@@ -3549,7 +3738,12 @@ fn expand_inner(
             .iter()
             .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
     }
-    apply_surface_edits(&mut s, &p.surface_edits, &c.spans, &c.back_spans)?;
+    warn.extend(apply_surface_edits(
+        &mut s,
+        &p.surface_edits,
+        &c.spans,
+        &c.back_spans,
+    )?);
     let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &c.spans, &c.back_spans)?;
     if c.nstop == 0 && !stopped {
         // 仮の絞りのまま（set_stop のブロックが無い）にはしない
@@ -3889,13 +4083,15 @@ fn apply_surface_ops(
     Ok((warn, stopped))
 }
 
-/// 面の値の上書きを当てる（ブロック id の面のうち座標ブレークを除いた番号）
+/// 面の値の上書きを当てる（ブロック id の面のうち座標ブレークを除いた番号）。
+/// ブロックが系に無い（状態で外した・OFF の群の中など）上書きは `surface_ops` と同じく当てずに注意を返す
 fn apply_surface_edits(
     s: &mut System,
     edits: &[SurfaceEdit],
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
+    let mut warn = Vec::new();
     // 範囲の面（座標ブレークを除く）
     let faces = |s: &System, a: usize, b: usize| -> Vec<usize> {
         (a + 1..=b + 1)
@@ -3923,7 +4119,11 @@ fn apply_surface_edits(
             .map(|x| faces(s, x.1, x.2))
             .collect();
         let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
-            return Err(format!("surface_edits: ブロック {} はない", e.block));
+            warn.push(format!(
+                "surface_edits: ブロック {} が無いので面 {} の上書きを当てない",
+                e.block, e.surface
+            ));
+            continue;
         };
         let i = e.surface;
         if i >= n {
@@ -4012,7 +4212,7 @@ fn apply_surface_edits(
             }
         }
     }
-    Ok(())
+    Ok(warn)
 }
 
 /// id の群（ブロックの群・.zmx の取り込みの中の群）の移動
@@ -4079,18 +4279,46 @@ fn keep_pickups(
                 ));
                 continue;
             };
-            // 鏡のあと（向きが逆）では厚さ・非球面係数の符号が変わるので、オフセットの符号も試す
-            let cands = [
-                Pickup { dst, src, ..*q },
-                Pickup {
+            // 鏡のあと（向きが逆、sign = −1）で取り込むと、曲率・厚さの符号が変わる。先 dst' = σd·dst、元 src' = σs·src
+            // （σ は量の符号が変われば sign、変わらなければ 1）なら、dst = a·src + b は dst' = (σd·σs·a)·src' + σd·b。
+            // 向きから決めた組を先に試し、合わなければ（面タイプのパラメータの意味は型で違う）ほかの符号の組を試す
+            use lensbench_core::param::PickKind as Pk;
+            let flips = |k: Pk| matches!(k, Pk::Curv | Pk::Thick | Pk::Radius);
+            let sd = if flips(q.what) { z.sign } else { 1.0 };
+            let ss = if flips(q.from.unwrap_or(q.what)) {
+                z.sign
+            } else {
+                1.0
+            };
+            let mut cands = vec![Pickup {
+                dst,
+                src,
+                scale: sd * ss * q.scale,
+                offset: sd * q.offset,
+                ..*q
+            }];
+            for (a, b) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                let c = Pickup {
                     dst,
                     src,
-                    offset: -q.offset,
+                    scale: a * q.scale,
+                    offset: b * q.offset,
                     ..*q
-                },
-            ];
-            match cands.iter().find(|c| c.holds(s)) {
-                Some(c) => s.pickups.push(*c),
+                };
+                if !cands.contains(&c) {
+                    cands.push(c);
+                }
+            }
+            match cands.iter().position(|c| c.holds(s)) {
+                Some(0) => s.pickups.push(cands[0]),
+                Some(k) => {
+                    // 向きから決めた組と違う符号で値が合った（元の値が 0 だと符号を区別できない）
+                    s.pickups.push(cands[k]);
+                    warn.push(format!(
+                        "{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めた（倍率 {}・ずれ {}）。意図どおりか確かめる",
+                        q.dst, q.what, q.src, cands[k].scale, cands[k].offset
+                    ));
+                }
                 None => warn.push(format!(
                     "{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わった（値で固定）",
                     q.dst, q.what, q.src

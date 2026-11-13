@@ -101,11 +101,16 @@ fn fringe_detector<'py>(
         reference_power,
         delay,
     };
-    let pol = if polarized {
+    let coat = if polarized {
+        Some(sample.coatings(&ss)?)
+    } else {
+        None
+    };
+    let pol = if let Some(coat) = coat.as_deref() {
         Some(Polarized {
             sample: InputPol::parse(sample_input).map_err(err)?,
             reference: InputPol::parse(reference_input).map_err(err)?,
-            coat: sample.coatings(&ss)?,
+            coat,
         })
     } else {
         None

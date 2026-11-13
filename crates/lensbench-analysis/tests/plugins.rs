@@ -90,7 +90,7 @@ fn spot_wavefront_zernike_match_core() {
         &s,
         2.0,
     );
-    let r = analysis::wavefront(&s, FieldSel::Index(1), Some(0), 32, true).unwrap();
+    let r = analysis::wavefront(&s, FieldSel::Index(1), Some(0), 32, false).unwrap();
     assert_eq!(o["w"].shape, vec![32, 32]);
     assert_eq!(bits(get(&o, "w")), bits(&r.w.concat()));
     let cfg = Config::from([
@@ -98,8 +98,16 @@ fn spot_wavefront_zernike_match_core() {
         ("terms".into(), Value::Num(16.0)),
     ]);
     let o = run("zernike", cfg, &s, 1.0);
-    let r =
-        analysis::zernike(&s, FieldSel::Index(0), None, ZernKind::Fringe, 16, 64, true).unwrap();
+    let r = analysis::zernike(
+        &s,
+        FieldSel::Index(0),
+        None,
+        ZernKind::Fringe,
+        16,
+        64,
+        false,
+    )
+    .unwrap();
     assert_eq!(bits(get(&o, "coef")), bits(&r.coef));
     assert_eq!(get(&o, "strehl"), &[r.strehl]);
 }
@@ -125,7 +133,7 @@ fn mtf_and_psf_match_core() {
     ]);
     let o = run("psf", cfg, &s, 1.0);
     let opts = PsfOpts {
-        pupil: 32,
+        pupil: Some(32),
         image: 64,
         delta: None,
     };
@@ -192,7 +200,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         ("image".into(), Value::Num(16.0)),
     ]);
     let ho = lensbench_core::huygens::HuygensOpts {
-        pupil: 16,
+        pupil: Some(16),
         image: 16,
         delta: None,
     };

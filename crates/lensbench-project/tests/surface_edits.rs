@@ -1,6 +1,6 @@
 //! ブロックの面の値の上書き（surface_edits の GUI の面の表）
 
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, expand_report, Env, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -50,8 +50,6 @@ fn edits_count_surfaces_without_coordinate_breaks() {
 
 #[test]
 fn bad_edits_are_errors() {
-    let e = project("", r#"[{"block": "X", "surface": 0, "fields": {"r": 1}}]"#).unwrap_err();
-    assert!(e.contains("X"), "{e}");
     let e = project("", r#"[{"block": "L1", "surface": 2, "fields": {"r": 1}}]"#).unwrap_err();
     assert!(e.contains("面 2"), "{e}");
     let e = project(
@@ -131,4 +129,58 @@ fn data_fields_are_applied() {
     )
     .unwrap_err();
     assert!(e.contains("stop"), "{e}");
+}
+
+/// 系に無いブロック（OFF の群の中・状態で外したもの）への上書きは、surface_ops と同じく当てずに注意を出す
+#[test]
+fn edits_to_missing_blocks_warn() {
+    let txt = r#"{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{"um": 0.5875618}],
+        "aperture": {"type": "epd", "value": 5},
+        "blocks": [{"type": "stop", "semi": 2.5}, {"type": "air", "t": 2},
+          {"type": "lens", "id": "L1", "source": {"surfaces": [
+            {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}, {"radius": -50, "semi": 10}]}},
+          {"type": "air", "t": 30}],
+        "surface_edits": [{"block": "X", "surface": 0, "fields": {"r": 1}}] }"#;
+    let (s, warn) = expand_report(&Project::from_json(txt).unwrap(), &env()).unwrap();
+    assert!(warn.iter().any(|w| w.contains("X")), "{warn:?}");
+    assert!(s.surfaces.iter().all(|d| d.c != 1.0));
+}
+
+/// OFF・空気で残す群の中の id は、後ろの別のブロックの面を指さない（範囲の記録を巻き戻す）
+#[test]
+fn off_air_group_does_not_leak_spans() {
+    let txt = |edits: &str| {
+        format!(
+            r#"{{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{{"um": 0.5875618}}],
+            "aperture": {{"type": "epd", "value": 5}},
+            "blocks": [{{"type": "stop", "semi": 2.5}}, {{"type": "air", "t": 10}},
+              {{"type": "group", "id": "G", "on": false, "off": "air", "blocks": [
+                {{"type": "lens", "id": "L1", "source": {{"surfaces": [
+                  {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -50, "semi": 6}}]}}}},
+                {{"type": "air", "id": "d1", "t": 3}},
+                {{"type": "lens", "id": "L1b", "source": {{"surfaces": [
+                  {{"radius": 40, "t": 3, "glass": "N-BK7", "semi": 6}}, {{"radius": -40, "semi": 6}}]}}}}]}},
+              {{"type": "air", "t": 5}},
+              {{"type": "lens", "id": "L2", "source": {{"surfaces": [
+                {{"radius": 60, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -60, "semi": 6}}]}}}},
+              {{"type": "air", "t": 60}}],
+            "surface_edits": {edits} }}"#
+        )
+    };
+    let run = |e: &str| expand_report(&Project::from_json(&txt(e)).unwrap(), &env()).unwrap();
+    let (a, _) = run("[]");
+    let (b, warn) = run(r#"[{"block": "L1", "surface": 0, "fields": {"semi": 2.5}}]"#);
+    assert_eq!(a.surfaces.len(), b.surfaces.len());
+    for (x, y) in a.surfaces.iter().zip(&b.surfaces) {
+        assert_eq!(x.semi, y.semi);
+    }
+    assert!(warn.iter().any(|w| w.contains("L1")), "{warn:?}");
+    // 群の長さ（4 + 3 + 3 = 10）は空気で残る: L2 の前面は 10 + 10 + 5 = 25 の位置
+    let z: f64 = a.surfaces[1..a.surfaces.len() - 3]
+        .iter()
+        .map(|d| d.t)
+        .sum();
+    assert!((z - 25.0).abs() < 1e-12, "{z}");
+    // 関係のない注意（L1b の範囲）を出さない
+    assert!(!warn.iter().any(|w| w.contains("L1b")), "{warn:?}");
 }

@@ -262,7 +262,7 @@
                 0.0,
                 0.0
               ],
-              "description": "傾き x・y [deg]。折り曲げでは鏡の前後で同じ角だけ傾ける（光軸が折れる）。\n`back`（往路を戻る）では鏡だけを傾け、座標は元の軸に戻す（復路の光線が傾きの 2 倍の角で戻る）",
+              "description": "傾き x・y [deg]。折り曲げでは鏡の前後で同じ角だけ傾ける（光軸が折れる。後ろは回す順を逆にして、2 軸でも後の軸が反射した光軸に乗る）。\n`back`（往路を戻る）では鏡だけを傾け、座標は元の軸に戻す（復路の光線が傾きの 2 倍の角で戻る）",
               "items": {
                 "format": "double",
                 "type": "number"
@@ -1106,6 +1106,29 @@
           "type": "object"
         }
       ]
+    },
+    "Environment": {
+      "description": "系の環境（[`Project::environment`]）。.zmx の ENVD（温度・気圧・屈折率の補正）と同じ",
+      "properties": {
+        "adjust_index": {
+          "default": false,
+          "description": "ガラスの屈折率を温度・気圧で補正する（OpticStudio の Adjust Index Data To Environment）",
+          "type": "boolean"
+        },
+        "pressure_atm": {
+          "default": 1.0,
+          "description": "気圧 [atm]",
+          "format": "double",
+          "type": "number"
+        },
+        "temperature_c": {
+          "default": 20.0,
+          "description": "温度 [°C]",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "FieldKind": {
       "oneOf": [
@@ -2276,6 +2299,10 @@
       "description": "膜（名前 → フィルタの透過特性・表）。面の `coat` に名前を書いて使う。ユーザーカタログの同じ名前より優先",
       "type": "object"
     },
+    "environment": {
+      "$ref": "#/$defs/Environment",
+      "description": "温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし"
+    },
     "fields": {
       "$ref": "#/$defs/FieldsSpec",
       "default": {
@@ -2297,6 +2324,9 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "gui": {
+      "description": "GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない"
     },
     "mechanics": {
       "description": "機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う",

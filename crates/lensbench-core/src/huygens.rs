@@ -28,8 +28,9 @@ use std::f64::consts::PI;
 /// Huygens PSF・MTF の設定
 #[derive(Debug, Clone, Copy)]
 pub struct HuygensOpts {
-    /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）
-    pub pupil: usize,
+    /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）。None で自動（隣り合う標本の位相差が π/2 以下に
+    /// なる大きさ、64〜256。超えたら格子を増やして求め直す。計算量は瞳の格子² × 像の格子²）
+    pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
     /// 像の格子の間隔 [レンズ単位]（像面の上で。None で FFT PSF の既定と同じ 1 / (2 × 遮断周波数)、x・y 別）
@@ -39,7 +40,7 @@ pub struct HuygensOpts {
 impl Default for HuygensOpts {
     fn default() -> Self {
         HuygensOpts {
-            pupil: 64,
+            pupil: None,
             image: 128,
             delta: None,
         }
@@ -113,9 +114,21 @@ type Sphere = Option<(V3, f64, f64)>;
 /// Huygens PSF。w None なら全波長を重みで足した多色。座標は像面の局所座標 (x, y)（中心 = 主波長の主光線の
 /// 像点）で、axes は像面の x̂・ŷ
 pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
-    let (np, ni) = (o.pupil, o.image);
-    if np < 4 || ni < 2 {
-        invalid!("Huygens PSF の瞳の格子 {np} は 4 以上、像の格子 {ni} は 2 以上");
+    crate::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
+        huygens_once(s, field, w, HuygensOpts { pupil: np, ..o })
+    })
+}
+
+/// 自動の瞳の格子の上限（Huygens PSF。計算量は瞳の格子² × 像の格子²）
+const HUYGENS_PUPIL_CAP: usize = 256;
+
+fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
+    let ni = o.image;
+    if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
+        invalid!(
+            "Huygens PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上",
+            o.pupil
+        );
     }
     if s.afocal {
         notimpl!("Huygens PSF: アフォーカル像空間（FFT PSF を使う）");
@@ -128,8 +141,8 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         Some(w) => vec![w],
     };
     let c = s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?;
-    if !c.ok(0) {
-        invalid!("Huygens PSF: 主波長の主光線がけられる");
+    if !c.traced(0) {
+        invalid!("Huygens PSF: 主波長の主光線が追跡できない");
     }
     let (pc, kc) = (c.rays[0].xyz, c.rays[0].lmn);
     if !(kc[2].abs() > 1e-9) {
@@ -179,9 +192,22 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         })
         .collect();
 
+    let np = match o.pupil {
+        Some(n) => n,
+        None => {
+            let ws: Vec<usize> = ws
+                .iter()
+                .copied()
+                .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
+                .collect();
+            let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
+            crate::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
+        }
+    };
     // 瞳の格子（FFT PSF と同じ区間の中心）
     let h = 2.0 / np as f64;
     let mut cells = Vec::new();
+    let mut cell_ix = Vec::new();
     for iy in 0..np {
         for ix in 0..np {
             let ux = -1.0 + h * (ix as f64 + 0.5);
@@ -189,6 +215,7 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
             let (f, qx, qy) = cell_frac(ux, uy, h);
             if f > 0.0 {
                 cells.push((f, qx, qy));
+                cell_ix.push((ix, iy));
             }
         }
     }
@@ -197,6 +224,7 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
 
     let mut tot = vec![0.0; pts.len()];
     let (mut nrm, mut wsum) = (0.0, 0.0);
+    let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for (&wi, &(a, b)) in ws.iter().zip(&slopes) {
         let kw = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
         if !(kw > 0.0) {
@@ -254,6 +282,11 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         if !(sa > 0.0) {
             invalid!("Huygens PSF: 有効な光線がない（すべてけられた）");
         }
+        let w_ok: Vec<(usize, usize, f64)> = (0..cells.len())
+            .filter(|&i| op.ok(i) && op.opd[i].is_finite())
+            .map(|i| (cell_ix[i].0, cell_ix[i].1, op.opd[i]))
+            .collect();
+        step = step.max(crate::psf::phase_step(np, &w_ok));
         // 光源を成分ごとの配列に（像の 1 点の内側のループをベクトル化し、位相因子をまとめて求める）
         let (qx, qy, qz): (Vec<f64>, Vec<f64>, Vec<f64>) = (
             src.iter().map(|q| q.q[0]).collect(),
@@ -327,6 +360,11 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         for (t, v) in tot.iter_mut().zip(&iw) {
             *t += kw * g * v / (sa * sa);
         }
+        // 格子に入った光量の割合: 全光量は FFT PSF と同じく Σf / |a b h²|（主光線に垂直な面で）。像面の上の
+        // 1 点の面積は垂直な面では |k_z| 倍
+        encl +=
+            kw * iw.iter().sum::<f64>() * delta.0 * delta.1 * kc[2].abs() * (a * b * h * h).abs()
+                / sa;
         nrm += kw * g;
         wsum += kw;
     }
@@ -338,6 +376,7 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         .map(|r| r.iter().map(|v| v / nrm).collect())
         .collect();
     let peak = i.iter().flatten().cloned().fold(0.0, f64::max);
+    let enclosed = encl / wsum;
     Ok(Psf {
         x: xs,
         y: ys,
@@ -346,6 +385,10 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
         delta,
         axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         peak,
+        pupil: np,
+        phase_step: step,
+        enclosed,
+        warnings: crate::psf::sampling_warnings("Huygens PSF", np, step, enclosed),
     })
 }
 

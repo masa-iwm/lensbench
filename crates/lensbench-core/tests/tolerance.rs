@@ -59,6 +59,35 @@ fn distributions() {
     );
 }
 
+/// 隣の試行の列が 1 つずらした同じ列にならない（試行 i の k 番目と試行 i+1 の k−1 番目の相関が小さい。以前の
+/// 作り方では値がそのまま一致していた）
+#[test]
+fn trials_independent() {
+    let (trials, k) = (2000u64, 8usize);
+    let seq = |i: u64| {
+        let mut r = Rng::for_trial(1, i);
+        (0..k).map(|_| r.uniform()).collect::<Vec<f64>>()
+    };
+    let all: Vec<Vec<f64>> = (0..trials).map(seq).collect();
+    for shift in 0..2usize {
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        for i in 0..trials as usize - 1 {
+            for j in shift..k {
+                a.push(all[i][j]);
+                b.push(all[i + 1][j - shift]);
+            }
+        }
+        assert!(a.iter().zip(&b).all(|(x, y)| x != y));
+        let n = a.len() as f64;
+        let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+        let cov: f64 = a.iter().zip(&b).map(|(x, y)| (x - ma) * (y - mb)).sum();
+        let va: f64 = a.iter().map(|x| (x - ma).powi(2)).sum();
+        let vb: f64 = b.iter().map(|y| (y - mb).powi(2)).sum();
+        let c = cov / (va * vb).sqrt();
+        assert!(c.abs() < 0.05, "shift {shift}: {c}");
+    }
+}
+
 #[test]
 fn stats_percentiles() {
     let v: Vec<f64> = (0..=10).map(|i| i as f64).collect();

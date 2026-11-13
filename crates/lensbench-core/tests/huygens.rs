@@ -89,7 +89,7 @@ fn perfect_lens_gives_diffraction_limit() {
     let c = m.cutoff.0;
     let fs: Vec<f64> = (0..=10).map(|k| 0.95 * c * k as f64 / 10.0).collect();
     let o = HuygensOpts {
-        pupil: 128,
+        pupil: Some(128),
         image: 256,
         delta: None,
     };
@@ -123,7 +123,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     )
     .unwrap();
     let o = HuygensOpts {
-        pupil: 64,
+        pupil: Some(64),
         image: 128,
         delta: Some(d),
     };
@@ -140,7 +140,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     let c = m.cutoff.0;
     let fs: Vec<f64> = (0..=8).map(|k| 0.9 * c * cs * k as f64 / 8.0).collect();
     let o = HuygensOpts {
-        pupil: 128,
+        pupil: Some(128),
         image: 256,
         delta: None,
     };
@@ -157,14 +157,14 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
 fn rejects_bad_grids() {
     let s = load("A0");
     let o = HuygensOpts {
-        pupil: 2,
+        pupil: Some(2),
         image: 16,
         delta: None,
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), None, o).is_err());
     // 像の格子が瞳の標本の周期を超える
     let o = HuygensOpts {
-        pupil: 16,
+        pupil: Some(16),
         image: 64,
         delta: None,
     };

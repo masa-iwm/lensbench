@@ -20,6 +20,7 @@ mod ghost;
 mod grin;
 mod huygens;
 mod huygens_refs;
+mod invariants;
 mod landing;
 mod launch;
 mod material_pickup;

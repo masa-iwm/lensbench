@@ -373,7 +373,7 @@ fn fft_psf_matches_opticstudio() {
             let want: Array2<f32> = npz.by_name(key).unwrap();
             let image = it["image"].as_u64().unwrap() as usize;
             let o = psf::PsfOpts {
-                pupil: it["pupil"].as_u64().unwrap() as usize,
+                pupil: Some(it["pupil"].as_u64().unwrap() as usize),
                 image,
                 delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
             };

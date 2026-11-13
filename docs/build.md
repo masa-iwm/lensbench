@@ -15,6 +15,17 @@ python3 scripts/check_public.py --history
 一度に追う光線の組（1024 本以上か未満か、座標の範囲）で結果がわずかに変わる（絞りでの位置はどちらも収束の許容差の範囲、tests/refs の像面で 2e-11 mm 以下。ビット単位の再現はスレッド数と
 まとめ追跡の有無についてで、光線の組についてではない）。
 
+## 第三者のライセンス
+
+配る exe・wheel には第三者のクレート（egui の既定のフォント OFL・UFL を含む）が静的に入る。MIT・Apache-2.0・OFL は
+バイナリの配布でも著作権表示とライセンス文の同梱を求めるので、配る zip には一覧を添える:
+
+```
+python scripts/third_party_licenses.py --out THIRD-PARTY-LICENSES.txt          # GUI・CLI（Windows 向けの依存）
+python scripts/third_party_licenses.py --check                                  # 許すライセンスだけか（コピーレフトの混入を止める）
+python scripts/third_party_licenses.py --root lensbench-py --manifest crates/lensbench-py/Cargo.toml --out THIRD-PARTY-LICENSES-py.txt
+```
+
 ## ドキュメント
 
 このサイトの元は `docs/`（mdBook、目次は `docs/SUMMARY.md`）。`scripts/build_docs.sh` で `target/book` に作る（mdbook と Python の

@@ -27,7 +27,7 @@ fn main() {
         for (pupil, image) in [(64, 128), (128, 128), (256, 256)] {
             let t0 = Instant::now();
             let o = HuygensOpts {
-                pupil,
+                pupil: Some(pupil),
                 image,
                 delta: None,
             };

@@ -192,3 +192,33 @@ fn zmx_block_without_its_stop() {
     let e = expand_report(&p, &env).unwrap_err();
     assert!(e.contains("絞りが 0 個"), "{e}");
 }
+
+/// 鏡のあとで、符号の変わる量（厚さ）から変わらない量（円錐）への別の列のピックアップは、倍率の符号を返して残す
+#[test]
+fn after_a_mirror_cross_column_scale_flips() {
+    const Z: &str =
+        "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 2 1 0 0 0\n\
+XFLN 0 1\nYFLN 0 2\nFWGN 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 4\n  GLAS ___BLANK 1 0 1.5168 0 0 0 0 0 0\n\
+SURF 2\n  TYPE STANDARD\n  CURV -0.01\n  CONI 0.4\n  PKUP 1 0.1 2\n  DISZ 20\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    std::fs::write(dir().join("xc.zmx"), Z).unwrap();
+    let (s, warn) = project(
+        r#"[{"type": "stop", "semi": 4}, {"type": "air", "t": 30}, {"type": "mirror", "tilt": [0, 0]}, {"type": "air", "t": 2},
+           {"type": "zmx", "path": "xc.zmx", "from": 1, "to": 2, "stop": false}]"#,
+    );
+    let k = s
+        .pickups
+        .iter()
+        .find(|q| q.what == lensbench_core::param::PickKind::Conic)
+        .unwrap_or_else(|| panic!("円錐のピックアップが残らない: {warn:?}"));
+    assert_eq!(k.scale, -0.1);
+    let t = s.surfaces[k.src].t;
+    assert!(t < 0.0);
+    assert!((s.surfaces[k.dst].k - 0.4).abs() < 1e-12);
+    let s2 = s
+        .with_params(&[(s.param(&format!("{}.t", k.src)).unwrap(), t - 1.0)])
+        .unwrap();
+    assert!((s2.surfaces[k.dst].k - 0.5).abs() < 1e-12);
+}

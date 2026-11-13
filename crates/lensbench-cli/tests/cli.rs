@@ -673,6 +673,94 @@ fn tolerance_monte_carlo() {
     assert!(!ok && err.contains("公差の組"), "{err}");
 }
 
+/// --save の中身は --json の有無によらず同じ全体（画面用の間引きは表示だけ）
+#[test]
+fn tolerance_save_is_full_without_json() {
+    const C0: &str = "tests/refs/C0/system.zmx";
+    let dir = std::env::temp_dir().join(format!("lb-tol-save-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (a, b) = (dir.join("a.json"), dir.join("b.json"));
+    for (p, json) in [(&a, false), (&b, true)] {
+        let mut args = vec![
+            "tolerance",
+            C0,
+            "--glass-dir",
+            "tests/glass",
+            "--trials",
+            "4",
+            "--seed",
+            "3",
+            "--save",
+            p.to_str().unwrap(),
+        ];
+        if json {
+            args.push("--json");
+        }
+        let (ok, _, err) = run(&args);
+        assert!(ok, "{err}");
+    }
+    let rd = |p: &std::path::Path| -> serde_json::Value {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("provenance");
+        v
+    };
+    let (va, vb) = (rd(&a), rd(&b));
+    assert!(va.get("cdf").is_some() && va.get("merit_values").is_some());
+    assert!(va["sensitivity"].as_array().unwrap().len() > 10);
+    assert_eq!(va, vb);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// アフォーカル像空間の系では mtf-focus・mtf-field・rms の単位の表示も角度の単位
+#[test]
+fn afocal_units() {
+    let dir = std::env::temp_dir().join(format!("lb-afocal-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("tel.zmx");
+    std::fs::write(
+        &f,
+        "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 1\n\
+XFLN 0 0\nYFLN 0 0.5\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 50\n  DISZ 75\nSURF 2\n  TYPE PARAXIAL\n  PARM 1 25\n  DISZ 20\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+    )
+    .unwrap();
+    let f = f.to_str().unwrap();
+    let unit = |args: &[&str]| -> String {
+        let mut a = args.to_vec();
+        a.insert(1, f);
+        a.push("--json");
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{args:?}: {err}");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        v["unit"].as_str().unwrap().to_string()
+    };
+    let mtf = unit(&["mtf", "--freqs", "1"]);
+    assert_ne!(mtf, "cycles/mm");
+    assert_eq!(unit(&["mtf-focus", "--freqs", "1"]), mtf);
+    assert_eq!(unit(&["mtf-field", "--freqs", "1"]), mtf);
+    assert_ne!(unit(&["rms"]), "lens");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 負の数を値として受ける（--dist -5、--center -1,2）
+#[test]
+fn negative_numbers_are_values() {
+    let (ok, _, err) = run(&[
+        "pop",
+        ZMX,
+        "--glass-dir",
+        "tests/glass",
+        "--dist",
+        "-5",
+        "--center",
+        "-0.1,0",
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+}
+
 #[test]
 fn coat_design_fits_a_reflectance_curve_and_writes_a_stack() {
     // 1/4 波長の MgF2 1 層（n 1.38、基板 1.52）の垂直入射の反射率を、材料 L から当てはめる
