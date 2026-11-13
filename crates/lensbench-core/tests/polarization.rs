@@ -336,11 +336,18 @@ fn coating_file_stacks_follow_the_opticstudio_conventions() {
     let e = C64::new(0.0, 2.0 * k * th.cos() * 0.1).exp();
     let v = h.eval(th).unwrap();
     assert!((v[0] - rs * e).norm() < 1e-13 && (v[1] - rp * e).norm() < 1e-13);
-    // k > 0（増幅）の材料は使うときだけ誤り（使わない膜は上のとおり求まる）。表の範囲外の波長も誤り
+    // k > 0（増幅）の材料は使うときだけ誤り（使わない膜は上のとおり求まる）
     assert!(c.prepare(&s, "GAIN|AIR|1.5,0.0", wl, n1, n2).is_err());
     // 標準の膜ファイルにある数値の誤差ほどの正の k（+5e-7）は止めない
     assert!(c.prepare(&s, "EPS|AIR|1.5,0.0", 0.5, n1, n2).is_ok());
-    assert!(c.prepare(&s, "AR2|AIR|1.5,0.0", 1.5, n1, n2).is_err());
+    // 表の範囲外の波長は端の値（OpticStudio と同じ）: 1.5 µm は 1.2 µm の値の層と同じ
+    let far = c
+        .prepare(&s, "AR2|AIR|1.5,0.0", 1.5, n1, n2)
+        .unwrap()
+        .eval(0.3)
+        .unwrap();
+    let (_, _, ts, tp) = stack(n1, &layers, C64::new(n2, 0.0), 1.5, 0.3);
+    assert!((far[0].norm() - ts.norm()).abs() < 1e-12 && (far[1].norm() - tp.norm()).abs() < 1e-12);
 }
 
 /// 層 [(n, d)] の特性行列（外側から順）→ (M00, M10, M01, M11)

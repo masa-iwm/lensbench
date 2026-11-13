@@ -1490,11 +1490,9 @@ impl Coatings {
                 invalid!("膜の材料 {name} にデータがない");
             }
             let xs: Vec<f64> = m.iter().map(|r| r[0]).collect();
-            // 1 行だけの材料は分散なし（どの波長も同じ値）。表なら範囲外を端の値で延ばさない
-            let (lo, hi) = (xs[0], xs[xs.len() - 1]);
-            if xs.len() > 1 && !(lo - 1e-9..=hi + 1e-9).contains(&wl) {
-                invalid!("膜の材料 {name} の表は波長 {lo}〜{hi} µm で、{wl} µm がない（範囲外は延ばさない）");
-            }
+            // 表の中は隣の 2 行の線形、外は近い方の端の行の値（外挿しない）。OpticStudio 2026 R1.01 と同じ
+            // （2026-11-13 実測: 7 膜 0.30〜1.10 µm で反射率・透過率 5e-8、位相 5e-5° 一致。OpticStudio は注意も出さない。
+            // 膜厚を波の単位から直す基準波長の n も同じ）。1 行だけの材料は分散なし
             let n: Vec<f64> = m.iter().map(|r| r[1]).collect();
             let k: Vec<f64> = m.iter().map(|r| r[2]).collect();
             // N = n + ik の約束で吸収は k < 0（文献の n − ik の k は符号を変えて書く）。k > 0 は増幅する媒質になる。
