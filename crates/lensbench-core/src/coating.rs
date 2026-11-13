@@ -33,6 +33,9 @@ use crate::{invalid, notimpl, Error, Result};
 pub const TABLE_NORMAL: f64 = 1e-8;
 
 /// 膜なしの鏡の基板
+/// 膜の材料の表の k の、誤りにしない正の値の上限（標準の膜ファイルの数値の誤差を許す）
+const MATE_K_POS_TOL: f64 = 1e-6;
+
 pub const MIRROR_N: C64 = C64::new(0.7, -7.0);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1495,13 +1498,11 @@ impl Coatings {
             let n: Vec<f64> = m.iter().map(|r| r[1]).collect();
             let k: Vec<f64> = m.iter().map(|r| r[2]).collect();
             // N = n + ik の約束で吸収は k < 0（文献の n − ik の k は符号を変えて書く）。k > 0 は増幅する媒質になる。
-            // 使う材料だけを見る（使わない材料の行でファイル全体を読めなくしない）
-            if let Some(r) = m.iter().find(|r| r[2] > 0.0) {
-                invalid!(
-                    "膜の材料 {name} の k が正（波長 {} µm で {}）。吸収は k < 0 で書く",
-                    r[0],
-                    r[2]
-                );
+            // 使う波長で補間した k を見る。OpticStudio 標準の COATING.DAT にも数値の誤差で +1e-11〜+5e-7 の行が
+            // あるので（SIO2_EM の 7.6 µm など）、それより大きい正の k だけを誤りにする（値はそのまま使う）
+            let kk = interp(wl, &xs, &k);
+            if kk > MATE_K_POS_TOL {
+                invalid!("膜の材料 {name} の k が正（波長 {wl} µm で {kk}）。吸収は k < 0 で書く");
             }
             return Ok(C64::new(interp(wl, &xs, &n), interp(wl, &xs, &k)));
         }
