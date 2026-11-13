@@ -3,6 +3,7 @@
 //! この crate はライブラリでもある（GUI が serve と同じ API を同じプロセスで呼ぶため。[`serve::call`]）。
 //! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ。
 
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -665,7 +666,7 @@ enum Cmd {
         #[arg(long)]
         out_half: Option<f64>,
         /// 出力の格子の中心 "x,y" [mm]（省略で主光線の向きに進めた点）
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         center: Option<String>,
         /// 結果の JSON に出力の照度の格子も入れる（"grid_irradiance"、番号 j·nx + i、j は +y の向き。GUI の図）
         #[arg(long)]
@@ -1255,13 +1256,25 @@ fn parse_axis(s: &str) -> Result<sweep::FieldAxis, String> {
     }
 }
 
-/// 文字で出すときは長い表を省く（PSF の格子など。--json・--save では全体）
+/// 文字で出すときは長い表を省く（PSF・波面の格子など。--json・--save では全体）
 fn brief(v: &Value) -> Value {
+    /// 入れ子の配列も数えた要素の数
+    fn leaves(v: &Value) -> usize {
+        match v {
+            Value::Array(a) => a.iter().map(leaves).sum::<usize>().max(1),
+            _ => 1,
+        }
+    }
     match v {
         Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), brief(x))).collect()),
-        Value::Array(a) if a.len() > 1000 => {
-            json!(format!("（{} 行。全体は --json か --save で）", a.len()))
+        Value::Array(a) if leaves(v) > 1000 => {
+            json!(format!(
+                "（{} 行・{} 要素。全体は --json か --save で）",
+                a.len(),
+                leaves(v)
+            ))
         }
+        Value::Array(a) => Value::Array(a.iter().map(brief).collect()),
         _ => v.clone(),
     }
 }
@@ -1334,7 +1347,15 @@ impl Cmd {
         let (c, mut v): (Option<&mut Common>, Vec<(&mut PathBuf, bool)>) = match self {
             Cmd::Layout { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
             Cmd::Elements { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
-            Cmd::Optimize { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
+            Cmd::Optimize {
+                c, out, terms_file, ..
+            } => (
+                Some(c),
+                out.iter_mut()
+                    .map(|p| (p, true))
+                    .chain(terms_file.iter_mut().map(|p| (p, false)))
+                    .collect(),
+            ),
             Cmd::Tolerance {
                 c,
                 spec,
@@ -1427,6 +1448,16 @@ pub(crate) fn plugins_json() -> Value {
     json!({ "plugins": list })
 }
 
+thread_local! {
+    /// 一部が失敗したコマンド（上げ・取り・読みの一部の誤り）の説明。結果は出したうえで終了コード 1 にする
+    static PARTIAL_FAILURE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// 一部が失敗したことを記す（[`PARTIAL_FAILURE`]。CLI は結果を出した後に終了コード 1、serve は結果の JSON の errors で）
+fn partial_failure(msg: impl Into<String>) {
+    PARTIAL_FAILURE.with(|x| *x.borrow_mut() = Some(msg.into()));
+}
+
 fn run(cli: Cli) -> Result<(), String> {
     match cli.cmd {
         Cmd::Serve(a) => serve::serve(a, cli.threads),
@@ -1435,7 +1466,10 @@ fn run(cli: Cli) -> Result<(), String> {
         cmd => {
             let (json_out, out) = execute(cmd)?;
             print_out(json_out, &out);
-            Ok(())
+            match PARTIAL_FAILURE.with(|x| x.borrow_mut().take()) {
+                Some(m) => Err(m),
+                None => Ok(()),
+            }
         }
     }
 }
@@ -1580,11 +1614,54 @@ fn print_out(json_out: bool, out: &Value) {
     if out.is_null() {
         return;
     }
-    if json_out {
-        println!("{}", serde_json::to_string_pretty(out).unwrap());
+    let mut w = std::io::BufWriter::new(std::io::stdout().lock());
+    let r = if json_out {
+        writeln!(w, "{}", serde_json::to_string_pretty(out).unwrap())
     } else {
-        print_text(&brief(out), 0);
+        print_text(&mut w, &brief(&tolerance_brief(out)), 0)
+    };
+    // 読み手が先に閉じた（`| head` など）ときは黙って終える
+    if let Err(e) = r.and_then(|_| w.flush()) {
+        if e.kind() != std::io::ErrorKind::BrokenPipe {
+            eprintln!("lensbench: 出力: {e}");
+        }
     }
+}
+
+/// 公差の結果（`merit_values` を持つ）を画面用に要点だけにする。--save・serve・GUI には全体を渡す
+fn tolerance_brief(out: &Value) -> Value {
+    let mut out = out.clone();
+    let Some(o) = out.as_object_mut() else {
+        return out;
+    };
+    if !o.contains_key("merit_values") {
+        return out;
+    }
+    o.remove("cdf");
+    o.remove("tolerances");
+    o.remove("merit_values");
+    for k in ["compensators", "tilt_magnitudes"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            for t in a {
+                if let Some(t) = t.as_object_mut() {
+                    t.remove("values");
+                }
+            }
+        }
+    }
+    for k in ["sensitivity", "correlation"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            a.truncate(10);
+        }
+    }
+    if let Some(Value::Array(a)) = o.get_mut("terms") {
+        for t in a {
+            if let Some(t) = t.as_object_mut() {
+                t.remove("cdf");
+            }
+        }
+    }
+    out
 }
 
 /// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。serve・watch もこれを使う
@@ -1597,6 +1674,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
     let e = |e: lensbench_core::Error| e.to_string();
     let save = cmd.save();
     LOADED_HASH.with(|x| *x.borrow_mut() = None);
+    PARTIAL_FAILURE.with(|x| *x.borrow_mut() = None);
     let (json_out, out): (bool, Value) = match cmd {
         Cmd::Serve(_) | Cmd::Watch(_) | Cmd::Run(_) => {
             return Err("serve・watch・run は入れ子にできない".into())
@@ -2110,7 +2188,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "through_focus": v, "warnings": warn }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "through_focus": v, "warnings": warn }),
             )
         }
         Cmd::MtfField {
@@ -2144,7 +2222,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "field_mtf": v, "warnings": m.warnings }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "field_mtf": v, "warnings": m.warnings }),
             )
         }
         Cmd::Optimize {
@@ -2216,6 +2294,10 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     Value::Array(a) => specs.extend(a),
                     v => specs.push(v),
                 }
+            }
+            // serve の中（--root・--allow-remote）なら zplm の file・macro_dirs の場所を確かめる
+            for v in specs.iter_mut() {
+                serve::check_term_paths(v).map_err(|x| x.msg)?;
             }
             for (i, v) in specs.iter().enumerate() {
                 let t = lensbench_project::merit::term_from_json(v, &p.configs)
@@ -2297,6 +2379,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             if let Some(n) = seed {
                 v["seed"] = json!(n);
             }
+            if let Some(t) = v.get_mut("terms") {
+                serve::check_term_paths(t).map_err(|x| x.msg)?;
+            }
             let (vendors, reversed) = tolerance_vendors(&c);
             let ms = lensbench_project::tolerance::spec_from_json_with(
                 &v,
@@ -2346,40 +2431,11 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     })?;
                 }
             }
-            let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+            let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
             if let Some(path) = &comp_csv {
                 let csv = lensbench_project::tolerance::compensators_csv(&out)?;
                 lensbench_core::vfs::write(path, csv)
                     .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
-            }
-            if !json_out {
-                // 画面には要点だけ（分布の全体は --json か --save で）
-                if let Some(o) = out.as_object_mut() {
-                    o.remove("cdf");
-                    o.remove("tolerances");
-                    o.remove("merit_values");
-                    for k in ["compensators", "tilt_magnitudes"] {
-                        if let Some(Value::Array(a)) = o.get_mut(k) {
-                            for t in a {
-                                if let Some(t) = t.as_object_mut() {
-                                    t.remove("values");
-                                }
-                            }
-                        }
-                    }
-                    for k in ["sensitivity", "correlation"] {
-                        if let Some(Value::Array(a)) = o.get_mut(k) {
-                            a.truncate(10);
-                        }
-                    }
-                    if let Some(Value::Array(a)) = o.get_mut("terms") {
-                        for t in a {
-                            if let Some(t) = t.as_object_mut() {
-                                t.remove("cdf");
-                            }
-                        }
-                    }
-                }
             }
             (json_out, out)
         }
@@ -2464,7 +2520,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "lens", "wfe_unit": "waves", "vs": vs, "reference": reference, "rms": v, "warnings": warn }),
+                json!({ "unit": spot_unit(&s), "wfe_unit": "waves", "vs": vs, "reference": reference, "rms": v, "warnings": warn }),
             )
         }
         Cmd::Psf {
@@ -2610,7 +2666,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             }
             (
                 c.json,
-                json!({ "unit": "cycles/mm", "method": "huygens", "mtf": v }),
+                json!({ "unit": format!("cycles/{}", s.image_unit()), "method": "huygens", "mtf": v }),
             )
         }
         Cmd::CatalogAdd {
@@ -2626,7 +2682,7 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             replace,
             json,
         } => {
-            let mut cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
+            let cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
             if cat.items.contains_key(&name) && !replace {
                 return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
             }
@@ -2662,8 +2718,14 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 }
                 _ => return Err("--lens か --block のどちらか 1 つ".into()),
             };
-            cat.items.insert(name.clone(), item);
-            cat.save(&catalog)?;
+            // 読み直して足す（品を作る間にほかで足した品を消さない）
+            let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
+                if cat.items.contains_key(&name) && !replace {
+                    return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
+                }
+                cat.items.insert(name.clone(), item);
+                Ok(())
+            })?;
             (
                 json,
                 json!({ "catalog": catalog, "added": name, "items": cat.items.keys().collect::<Vec<_>>() }),
@@ -2733,6 +2795,10 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     }
                 })
                 .collect();
+            let bad = v.iter().filter(|x| x.get("error").is_some()).count();
+            if bad > 0 {
+                partial_failure(format!("読めない STEP が {bad} 個"));
+            }
             if !json {
                 for x in &v {
                     println!("{}", x["file"].as_str().unwrap_or(""));
@@ -2900,6 +2966,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     rows.push(u);
                 }
                 let count = |s: &str| rows.iter().filter(|u| u.status == s).count();
+                if count("error") > 0 {
+                    partial_failure(format!("上げられないファイルが {} 個", count("error")));
+                }
                 if !json {
                     for f in &unmatched {
                         println!("品に当たらない: {}", f.display());
@@ -2941,6 +3010,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 let rows =
                     coat_remote::upload_dir(&dir, index.as_deref(), store.as_ref(), dry_run)?;
                 let n = |s: &str| rows.iter().filter(|r| r.2 == s).count();
+                if n("error") > 0 {
+                    partial_failure(format!("上げられない膜が {} 個", n("error")));
+                }
                 if !json {
                     for (name, key, st, e) in &rows {
                         if *st != "exists" {
@@ -2961,9 +3033,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                         n("error"),
                         rows.len()
                     );
-                    if n("error") > 0 {
-                        return Err("上げられない膜がある".into());
-                    }
                     return Ok((false, Value::Null));
                 }
                 (
@@ -2985,6 +3054,9 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             {
                 let rows = coat_remote::fetch_dir(&dir, cad::store().as_ref())?;
                 let n = |s: &str| rows.iter().filter(|r| r.1 == s).count();
+                if n("error") > 0 {
+                    partial_failure(format!("取れない膜が {} 個", n("error")));
+                }
                 if !json {
                     for (name, st, e) in &rows {
                         if *st == "error" {
@@ -3769,28 +3841,29 @@ fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
-fn print_text(v: &Value, ind: usize) {
+fn print_text(w: &mut dyn std::io::Write, v: &Value, ind: usize) -> std::io::Result<()> {
     let pad = "  ".repeat(ind);
     match v {
         Value::Object(m) => {
             for (k, x) in m {
                 match x {
                     Value::Object(_) | Value::Array(_) if !is_flat(x) => {
-                        println!("{pad}{k}:");
-                        print_text(x, ind + 1);
+                        writeln!(w, "{pad}{k}:")?;
+                        print_text(w, x, ind + 1)?;
                     }
-                    _ => println!("{pad}{k}: {}", fmt(x)),
+                    _ => writeln!(w, "{pad}{k}: {}", fmt(x))?,
                 }
             }
         }
         Value::Array(a) => {
             for x in a {
-                println!("{pad}-");
-                print_text(x, ind + 1);
+                writeln!(w, "{pad}-")?;
+                print_text(w, x, ind + 1)?;
             }
         }
-        _ => println!("{pad}{}", fmt(v)),
+        _ => writeln!(w, "{pad}{}", fmt(v))?,
     }
+    Ok(())
 }
 
 fn is_flat(v: &Value) -> bool {
@@ -3804,14 +3877,32 @@ fn is_flat_pair(v: &Value) -> bool {
     matches!(v, Value::Array(a) if a.iter().all(Value::is_number))
 }
 
+/// 数の表示: 有効 6 桁。ふつうの大きさ（1e-4 〜 1e6）は小数で、ほかは指数で
+fn fmt_f64(f: f64) -> String {
+    if f == 0.0 || !f.is_finite() {
+        return format!("{f}");
+    }
+    let a = f.abs();
+    if (1e-4..1e6).contains(&a) {
+        let digits = (5 - a.log10().floor() as i32).max(0) as usize;
+        let t = format!("{f:.digits$}");
+        if t.contains('.') {
+            t.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            t
+        }
+    } else {
+        format!("{f:.5e}")
+    }
+}
+
 fn fmt(v: &Value) -> String {
     match v {
         Value::Number(n) => {
-            let f = n.as_f64().unwrap_or(0.0);
             if n.is_i64() || n.is_u64() {
                 n.to_string()
             } else {
-                format!("{f:.6e}")
+                fmt_f64(n.as_f64().unwrap_or(0.0))
             }
         }
         Value::Array(a) => format!("[{}]", a.iter().map(fmt).collect::<Vec<_>>().join(", ")),
@@ -3829,6 +3920,26 @@ fn spot_unit(s: &System) -> &'static str {
     }
 }
 
+/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず
+/// 黙って終える（終了コード 0。ほかの panic はいつもどおり）
+fn quiet_broken_pipe() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| info.payload().downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if msg.contains("failed printing to stdout") && msg.contains("Broken pipe")
+            || msg.contains("os error 32")
+        {
+            std::process::exit(0);
+        }
+        prev(info);
+    }));
+}
+
 /// コマンドラインの入口（`lensbench` の実行ファイル）
 /// clap の定義に拡張のサブコマンド（[`ext::list`]）を足したもの
 fn cli_command() -> clap::Command {
@@ -3837,7 +3948,13 @@ fn cli_command() -> clap::Command {
     for e in ext::list() {
         c = c.subcommand((e.command)().name(e.name));
     }
-    c
+    negative_numbers(c)
+}
+
+/// `--dist -5`・`--pmag -0.5` のような負の数を値として受ける（入れ子のサブコマンドも）
+fn negative_numbers(c: clap::Command) -> clap::Command {
+    c.allow_negative_numbers(true)
+        .mut_subcommands(negative_numbers)
 }
 
 /// 同梱のサブコマンドの名前
@@ -3877,6 +3994,7 @@ where
 }
 
 pub fn main() -> ExitCode {
+    quiet_broken_pipe();
     let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]

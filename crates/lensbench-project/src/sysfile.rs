@@ -336,7 +336,7 @@ pub fn check(sys: &System) -> Result<(), String> {
 /// 系ファイルに書く（coatings は書いたとおりに残す）
 pub fn save(path: &Path, s: &System, coatings: &[PathBuf]) -> Result<(), String> {
     let txt = to_string(s, coatings)?;
-    lensbench_core::vfs::write(path, txt).map_err(|e| format!("{}: {e}", path.display()))
+    lensbench_core::vfs::write_atomic(path, txt).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// 系ファイルを読む。coatings の相対パスはファイルのフォルダからにする

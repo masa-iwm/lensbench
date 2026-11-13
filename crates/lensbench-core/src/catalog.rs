@@ -99,7 +99,27 @@ impl LensCatalog {
             let mut files = Vec::new();
             if crate::vfs::is_dir(p) {
                 let rd = crate::vfs::read_dir(p).map_err(|e| format!("{}: {e}", p.display()))?;
-                files.extend(rd.into_iter().filter(|f| crate::vfs::is_file(f)));
+                let known = |f: &std::path::PathBuf| {
+                    let ext = f
+                        .extension()
+                        .map(|x| x.to_string_lossy().to_ascii_lowercase())
+                        .unwrap_or_default();
+                    sources
+                        .iter()
+                        .any(|s| s.extensions().contains(&ext.as_str()))
+                };
+                files.extend(rd.iter().filter(|f| crate::vfs::is_file(f)).cloned());
+                // カタログのファイルが 1 つも無ければ、メーカーのフォルダの親を渡したとみて 1 段下も探す
+                if !files.iter().any(known) {
+                    for d in rd.iter().filter(|d| crate::vfs::is_dir(d)) {
+                        if let Ok(sub) = crate::vfs::read_dir(d) {
+                            files.extend(
+                                sub.into_iter()
+                                    .filter(|f| crate::vfs::is_file(f) && known(f)),
+                            );
+                        }
+                    }
+                }
                 files.sort();
             } else {
                 files.push(p.clone());

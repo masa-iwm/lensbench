@@ -21,8 +21,15 @@ pub struct StepSource {
 /// 実体の番号 → 本体の文字（`=` の後ろ、`;` の前）
 pub fn entities(text: &str) -> HashMap<u64, String> {
     let mut out = HashMap::new();
-    let data = match text.find("DATA;") {
-        Some(i) => &text[i + 5..],
+    let text = strip_comments(text);
+    let text = text.as_str();
+    // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）
+    let from = match (text.find("HEADER;"), text.find("ENDSEC;")) {
+        (Some(h), Some(e)) if h < e => e + 7,
+        _ => 0,
+    };
+    let data = match text[from..].find("DATA;") {
+        Some(i) => &text[from + i + 5..],
         None => text,
     };
     let b = data.as_bytes();
@@ -63,6 +70,40 @@ pub fn entities(text: &str) -> HashMap<u64, String> {
         }
         out.insert(id.unwrap(), data[body0..q].trim().replace(['\r', '\n'], ""));
         i = q + 1;
+    }
+    out
+}
+
+/// 注釈 `/* … */` を空白に（文字 '…' の中は残す）。注釈の中の実体を読まないように
+fn strip_comments(t: &str) -> String {
+    if !t.contains("/*") {
+        return t.to_string();
+    }
+    let mut out = String::with_capacity(t.len());
+    let mut it = t.chars().peekable();
+    let mut in_str = false;
+    while let Some(c) = it.next() {
+        if in_str {
+            out.push(c);
+            if c == '\'' {
+                in_str = false;
+            }
+        } else if c == '\'' {
+            in_str = true;
+            out.push(c);
+        } else if c == '/' && it.peek() == Some(&'*') {
+            it.next();
+            let mut prev = ' ';
+            for d in it.by_ref() {
+                if prev == '*' && d == '/' {
+                    break;
+                }
+                prev = d;
+            }
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
     }
     out
 }
@@ -306,5 +347,10 @@ mod tests {
         assert_eq!(split(&e[&2]).unwrap(), ("CIRCLE", vec!["''", "#3", "2.5"]));
         assert!(split(&e[&3]).is_none());
         assert_eq!(refs(&e[&3]), vec![1]);
+        // 注釈の中の実体は読まない（文字の中の /* は注釈でない）
+        let t = "DATA;\n#5=CIRCLE('',#4,12.7);\n/* #5=CIRCLE('',#4,99.); */\n#6=X('/*');\nENDSEC;";
+        let e = entities(t);
+        assert_eq!(e[&5], "CIRCLE('',#4,12.7)");
+        assert_eq!(e[&6], "X('/*')");
     }
 }

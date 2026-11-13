@@ -124,7 +124,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
     }
     // python は文字列（"py -3" のように引数つきも可）か並び。パスに見えるものだけ設定ファイルから解く
     r.python = match obj.get("python") {
-        Some(Value::String(s)) => s.split_whitespace().map(str::to_string).collect(),
+        Some(Value::String(s)) => split_command(s),
         _ => strs("python")?,
     };
     if let Some(first) = r.python.first_mut() {
@@ -166,7 +166,7 @@ pub fn resolve(a: &RunArgs, threads: Option<usize>) -> Result<Resolved, String> 
         None => Resolved::default(),
     };
     if let Some(p) = &a.python {
-        r.python = p.split_whitespace().map(str::to_string).collect();
+        r.python = split_command(p);
     }
     r.glass_dirs = a.glass_dir.iter().cloned().chain(r.glass_dirs).collect();
     r.coatings = a.coatings.iter().cloned().chain(r.coatings).collect();
@@ -194,6 +194,44 @@ pub fn resolve(a: &RunArgs, threads: Option<usize>) -> Result<Resolved, String> 
     Ok(r)
 }
 
+/// Python の指定（`--python`・`LENSBENCH_PYTHON`・設定の文字列）をコマンドと引数に分ける。
+/// 全体が在るファイルならそのまま 1 つのパス（`C:\Program Files\Python312\python.exe`）。
+/// ほかは空白で分け、"…"・'…' の中の空白は分けない（`"C:\Program Files\py.exe" -3`、`py -3`）
+pub fn split_command(s: &str) -> Vec<String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Vec::new();
+    }
+    if std::path::Path::new(t).is_file() {
+        return vec![t.to_string()];
+    }
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut any = false;
+    for ch in t.chars() {
+        match quote {
+            Some(q) if ch == q => quote = None,
+            Some(_) => cur.push(ch),
+            None if ch == '"' || ch == '\'' => {
+                quote = Some(ch);
+                any = true;
+            }
+            None if ch.is_whitespace() => {
+                if any || !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+                any = false;
+            }
+            None => cur.push(ch),
+        }
+    }
+    if any || !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
 /// 試す Python の候補（先頭から順に起動を試す）
 fn python_candidates(r: &Resolved) -> Vec<Vec<String>> {
     if !r.python.is_empty() {
@@ -202,7 +240,7 @@ fn python_candidates(r: &Resolved) -> Vec<Vec<String>> {
     let mut v = Vec::new();
     if let Ok(p) = std::env::var("LENSBENCH_PYTHON") {
         if !p.trim().is_empty() {
-            return vec![p.split_whitespace().map(str::to_string).collect()];
+            return vec![split_command(&p)];
         }
     }
     if let Some(venv) = std::env::var_os("VIRTUAL_ENV") {
@@ -441,4 +479,28 @@ pub fn run(a: &RunArgs, threads: Option<usize>) -> Result<i32, String> {
         }
     })?;
     Ok(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_command;
+
+    #[test]
+    fn python_command_with_spaces() {
+        assert_eq!(split_command("py -3"), ["py", "-3"]);
+        assert_eq!(
+            split_command(r#""C:\Program Files\Python312\python.exe" -X utf8"#),
+            [r"C:\Program Files\Python312\python.exe", "-X", "utf8"]
+        );
+        assert_eq!(split_command("  python3  "), ["python3"]);
+        assert!(split_command("  ").is_empty());
+        // 全体が在るファイルなら空白を含んでも 1 つのパス
+        let dir = std::env::temp_dir().join(format!("lb run {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("my python");
+        std::fs::write(&exe, "").unwrap();
+        let p = exe.display().to_string();
+        assert_eq!(split_command(&p), std::slice::from_ref(&p));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

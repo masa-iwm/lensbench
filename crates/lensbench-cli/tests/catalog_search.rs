@@ -254,3 +254,12 @@ fn gzipped_catalogs() {
     assert_eq!(v["parts"][0]["name"], "tube");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// メーカーのフォルダの親を渡しても、1 段下のカタログを読む（0 品のまま進まない）
+#[test]
+fn parent_of_vendor_folder() {
+    let (ok, out) = cli(&["catalog-search", "examples/lenses", "--json"]);
+    assert!(ok, "{out}");
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert!(parts(&v).contains(&"PCX-100"), "{out}");
+}

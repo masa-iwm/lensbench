@@ -642,6 +642,23 @@ fn root_limits_files() {
     let tol = json!({ "trials": 1, "merit": "none", "tols": [{"param": "1.t", "pm": 0.01}],
         "terms": [{"type": "zplm", "file": zp}] });
     outside(sv.error("tolerance", tol));
+    // analyze 経由の optimize の --terms・--term、tolerance の --set の terms も同じく確かめる
+    std::fs::write(dir.join("terms.json"), "[]").unwrap();
+    let tf = dir.join("terms.json").display().to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "optimize", "var": ["3.t"], "terms": tf }),
+    ));
+    let zt = json!({"type": "zplm", "file": zp}).to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "optimize", "var": ["3.t"], "merit": "none", "term": [zt] }),
+    ));
+    let set = json!({ "terms": [{"type": "zplm", "file": zp}] }).to_string();
+    outside(sv.error(
+        "analyze",
+        json!({ "cmd": "tolerance", "trials": 1, "set": [set] }),
+    ));
     sv.stop();
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -917,6 +934,15 @@ fn layout_overlay_paths() {
     assert!(sv
         .error("layout", json!({ "paths": "all", "offset": [1, 2] }))
         .contains("offset"));
+    // 読み込んだ後の set は、ファイルから読み直した経路にも当てる
+    let before = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    let t = sv.call("get", json!({ "param": "1.t" }))["value"]
+        .as_f64()
+        .unwrap();
+    sv.call("set", json!({ "values": { "1.t": t + 3.0 } }));
+    let after = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    assert_ne!(before["rays"], after["rays"]);
+    assert!(after.get("notes").is_none(), "{}", after["notes"]);
     sv.stop();
 }
 
