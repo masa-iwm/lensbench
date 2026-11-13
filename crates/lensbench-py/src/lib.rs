@@ -113,7 +113,9 @@ pub fn interruptible<R: Send>(
         let stop = &stop;
         sc.spawn(move || {
             // 受け手が先に去っていても（例外で返った後）送りの失敗は気にしない
-            let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(stop))));
+            let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || f(stop),
+            )));
         });
         let tick = std::time::Duration::from_millis(100);
         // Receiver は Sync でないので、GIL を外す間は持ち出して返してもらう
@@ -170,7 +172,10 @@ impl std::ops::Deref for CoatRef {
     type Target = Coatings;
     fn deref(&self) -> &Coatings {
         // coatings() が Ok を確かめてから作る
-        self.0.get().and_then(|r| r.as_ref().ok()).expect("膜を読んだ後")
+        self.0
+            .get()
+            .and_then(|r| r.as_ref().ok())
+            .expect("膜を読んだ後")
     }
 }
 
@@ -2505,7 +2510,9 @@ impl PySystem {
             ..Default::default()
         };
         let r = interruptible(py, |stop| {
-            with_threads(threads, || optim::dls_with(&p, &o, |_| !stop.load(Ordering::Relaxed)))
+            with_threads(threads, || {
+                optim::dls_with(&p, &o, |_| !stop.load(Ordering::Relaxed))
+            })
         })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
