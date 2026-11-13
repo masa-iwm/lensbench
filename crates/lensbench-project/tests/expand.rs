@@ -622,3 +622,35 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
     assert!(e.contains("構成の番号"), "{e}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 折り曲げの鏡を 2 軸で傾けても、鏡の後の軸は反射した光軸に乗る（軸上の主光線が鏡の後の全部の面で (0, 0) を
+/// 通り、方向は局所の ∓z）
+#[test]
+fn two_axis_fold_mirror_keeps_axis() {
+    for tilt in ["[30, 20]", "[30, 0]", "[0, 20]", "[-12, 37]"] {
+        let txt = format!(
+            r#"{{ "wavelengths": [{{"um": 0.55}}], "aperture": {{"type": "epd", "value": 2}},
+            "blocks": [{{"type": "stop", "semi": 2}}, {{"type": "air", "t": 10}},
+              {{"type": "mirror", "tilt": {tilt}, "semi": 10}}, {{"type": "air", "t": 50}},
+              {{"type": "lens", "source": {{"surfaces": [
+                {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -50, "semi": 6}}]}}}},
+              {{"type": "air", "t": 20}}] }}"#
+        );
+        let s = expand(&Project::from_json(&txt).unwrap(), &env()).unwrap();
+        let t = s.trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true);
+        let m = (1..s.surfaces.len())
+            .position(|j| s.surfaces[j].mirror)
+            .unwrap()
+            + 1;
+        for j in m + 2..s.surfaces.len() {
+            let Some(r) = t.rec_at(j) else { continue };
+            let [x, y, _] = r.xyz[0];
+            let [l, mm, _] = r.lmn[0];
+            assert!(x.abs().max(y.abs()) < 1e-9, "{tilt} 面 {j}: ({x}, {y})");
+            assert!(
+                l.abs().max(mm.abs()) < 1e-9,
+                "{tilt} 面 {j}: 方向 ({l}, {mm})"
+            );
+        }
+    }
+}
