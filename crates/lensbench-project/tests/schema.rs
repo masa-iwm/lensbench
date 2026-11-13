@@ -150,3 +150,32 @@ fn swap_accepts_schema_key() {
     bad["slot"] = Value::Null;
     assert!(!v.is_valid(&bad));
 }
+
+/// 知らないキー（綴りの違い）は黙って捨てずに誤りにする。書き戻しで省かれる既定値を書いたものは通す
+#[test]
+fn unknown_keys_are_errors() {
+    let base = |extra: &str, block: &str| {
+        format!(
+            r#"{{ "wavelengths": [{{"um": 0.55}}], "aperture": {{"type": "epd", "value": 5}}, {extra}
+            "blocks": [{{"type": "stop", "semi": 2.5}}, {{"type": "air", "t": 2}},
+              {{"type": "lens", "id": "L1", {block} "source": {{"surfaces": [
+                {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}}, {{"radius": -50, "semi": 10}}]}}}},
+              {{"type": "air", "t": 30}}] }}"#
+        )
+    };
+    let e = lensbench_project::Project::from_json(&base("", r#""reversd": true,"#)).unwrap_err();
+    assert!(e.contains("blocks/2/reversd"), "{e}");
+    let e =
+        lensbench_project::Project::from_json(&base(r#""object_distanse": 100,"#, "")).unwrap_err();
+    assert!(e.contains("object_distanse"), "{e}");
+    // 面の中（untagged の出どころの中）も
+    let t = base("", "").replace(r#""glass": "N-BK7""#, r#""glas": "N-BK7""#);
+    let e = lensbench_project::Project::from_json(&t).unwrap_err();
+    assert!(e.contains("glas"), "{e}");
+    // 既定値をわざわざ書いたもの（書き戻しでは省かれる）は通す
+    lensbench_project::Project::from_json(&base(
+        r#""telecentric": false, "surface_edits": [], "path": null,"#,
+        r#""reversed": false, "on": true, "decenter": [0, 0],"#,
+    ))
+    .unwrap();
+}

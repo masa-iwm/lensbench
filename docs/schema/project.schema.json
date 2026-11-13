@@ -2298,6 +2298,9 @@
       },
       "type": "array"
     },
+    "gui": {
+      "description": "GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない"
+    },
     "mechanics": {
       "description": "機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う",
       "items": {

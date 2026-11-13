@@ -871,6 +871,9 @@ pub struct Project {
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
+    /// GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gui: Option<Value>,
 }
 
 /// ブロックの面の値の上書き（[`Project::surface_edits`]）。面はブロック id の面のうち座標ブレークを除いて数えた
@@ -885,8 +888,21 @@ pub struct SurfaceEdit {
 
 impl Project {
     pub fn from_json(txt: &str) -> Result<Project, String> {
-        let p: Project =
+        let v: Value =
             serde_json::from_str(txt).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+        let p: Project =
+            serde_json::from_value(v.clone()).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+        // "$schema" はエディタの検査用（docs/schema）
+        let unknown: Vec<String> = unknown_keys::<Project>(&v, &p)
+            .into_iter()
+            .filter(|k| k != "$schema")
+            .collect();
+        if !unknown.is_empty() {
+            return Err(format!(
+                "プロジェクトファイル: 知らないキー {}（綴りを確かめる）",
+                unknown.join("・")
+            ));
+        }
         check_detectors(&p.blocks)?;
         Ok(p)
     }
@@ -942,7 +958,13 @@ impl Project {
                 obj.insert(k.clone(), x.clone());
             }
         }
-        serde_json::from_value(v).map_err(|e| format!("状態 {name}: {e}"))
+        let p: Project =
+            serde_json::from_value(v.clone()).map_err(|e| format!("状態 {name}: {e}"))?;
+        let unknown = unknown_keys::<Project>(&v, &p);
+        if !unknown.is_empty() {
+            return Err(format!("状態 {name}: 知らないキー {}", unknown.join("・")));
+        }
+        Ok(p)
     }
 }
 
@@ -960,6 +982,62 @@ pub(crate) fn find_id(v: &Value, path: &str, id: &str, out: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// 読んだ JSON のうち、型に読まれずに捨てられたキーの場所（`blocks/3/reversd` の形）。
+/// `#[serde(flatten)]`・untagged の型には `deny_unknown_fields` を付けられないので、読んだ値を書き戻した JSON と
+/// 比べて、書き戻しに無いキーを探す。書き戻しで省かれる既定値（`"on": true` など）と区別するため、そのキーの値を
+/// 型に合わない値に替えて読み直し、読めて結果が変わらなければ「捨てられた」とする
+pub fn unknown_keys<T: serde::de::DeserializeOwned + Serialize>(
+    input: &Value,
+    parsed: &T,
+) -> Vec<String> {
+    fn walk(i: &Value, o: &Value, path: &mut Vec<String>, miss: &mut Vec<Vec<String>>) {
+        match (i, o) {
+            (Value::Object(a), Value::Object(b)) => {
+                for (k, x) in a {
+                    path.push(k.clone());
+                    match b.get(k) {
+                        Some(y) => walk(x, y, path, miss),
+                        None => miss.push(path.clone()),
+                    }
+                    path.pop();
+                }
+            }
+            (Value::Array(a), Value::Array(b)) => {
+                for (n, (x, y)) in a.iter().zip(b).enumerate() {
+                    path.push(n.to_string());
+                    walk(x, y, path, miss);
+                    path.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+    let Ok(out) = serde_json::to_value(parsed) else {
+        return Vec::new();
+    };
+    let mut miss = Vec::new();
+    walk(input, &out, &mut Vec::new(), &mut miss);
+    miss.into_iter()
+        .filter(|p| {
+            let mut probe = input.clone();
+            let mut at = &mut probe;
+            for k in p {
+                at = match at {
+                    Value::Object(m) => m.get_mut(k).expect("walk で見たキー"),
+                    Value::Array(a) => &mut a[k.parse::<usize>().expect("添字")],
+                    _ => unreachable!(),
+                };
+            }
+            *at = serde_json::json!({ "\u{1}lensbench_probe": [true] });
+            serde_json::from_value::<T>(probe)
+                .ok()
+                .and_then(|t| serde_json::to_value(t).ok())
+                .is_some_and(|v| v == out)
+        })
+        .map(|p| p.join("/"))
+        .collect()
 }
 
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
