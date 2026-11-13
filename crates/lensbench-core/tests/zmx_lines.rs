@@ -544,7 +544,7 @@ fn japanese_names_roundtrip() {
     }
 }
 
-/// 読まない系の行は注意に残し、瞳のアポダイゼーションは止める。多重構成の読めない行は誤り
+/// 読まない系の行は注意に残し、瞳のアポダイゼーションは止める（カタログの玉としてなら注意）。多重構成の読めない行は誤り
 #[test]
 fn unread_lines_are_reported() {
     let (txt, opt) = a0_text();
@@ -560,6 +560,16 @@ fn unread_lines_are_reported() {
     .unwrap();
     assert_eq!(s.import_notes.len(), 2, "{:?}", s.import_notes);
     assert!(load(&txt.replacen("GFAC 0 0", "GFAC 1 3", 1)).is_err());
+    // カタログの玉として読むとき（fixed_semi）は注意だけ
+    let cat = zmx::LoadOptions {
+        fixed_semi: true,
+        ..opt.clone()
+    };
+    let s = zmx::parse_text(&txt.replacen("GFAC 0 0", "GFAC 1 1", 1))
+        .and_then(|r| zmx::build(&r, &cat, &cat.catalog_dirs, None))
+        .unwrap();
+    assert_eq!(s.import_notes.len(), 1, "{:?}", s.import_notes);
+    assert!(s.import_notes[0].contains("GFAC"));
     assert!(load(&format!("{txt}\nTHIC 2 x broken\n")).is_err());
     // 数として読めない系の値は既定値にせず誤り
     assert!(load(&txt.replacen("ENPD ", "ENPD abc ", 1)).is_err());

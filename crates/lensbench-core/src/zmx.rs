@@ -124,8 +124,10 @@ const SYS_DEFAULT_ONLY: &[(&str, &str)] = &[
 ];
 
 impl Raw {
-    /// 読まずに飛ばした系の行の注意（行の鍵と値）。アポダイゼーション（GFAC）が一様でなければ誤り
-    fn system_notes(&self) -> Result<Vec<String>> {
+    /// 読まずに飛ばした系の行の注意（行の鍵と値）。アポダイゼーション（GFAC）が一様でなければ誤り。
+    /// ただしカタログの玉として読むとき（`catalog`）は注意だけ（玉の面の形・材料・径には関係せず、
+    /// 差し込んだ先の系の瞳は使う側の系が決める）
+    fn system_notes(&self, catalog: bool) -> Result<Vec<String>> {
         let mut out = Vec::new();
         let mut keys: Vec<&String> = self.sysl.keys().collect();
         keys.sort();
@@ -143,7 +145,13 @@ impl Raw {
                     .and_then(|v| v.first())
                     .is_some_and(|x| !matches!(fv(x), Ok(v) if v == 0.0))
                 {
-                    notimpl!("瞳のアポダイゼーション（GFAC {}）", joined.join(" "));
+                    if !catalog {
+                        notimpl!("瞳のアポダイゼーション（GFAC {}）", joined.join(" "));
+                    }
+                    out.push(format!(
+                        ".zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログの玉として読むので使わない",
+                        joined.join(" / ")
+                    ));
                 }
                 continue;
             }
@@ -852,7 +860,8 @@ pub struct LoadOptions {
     /// ZPL Macro Solve のマクロ（.ZPL）を探すフォルダ（.zmx のフォルダ・その隣の Macros・環境変数
     /// LENSBENCH_MACROS の前に探す。[`crate::zpl_solve::macro_dirs`]）
     pub macro_dirs: Vec<PathBuf>,
-    /// 半直径をファイルの値で固定する（カタログの玉: 径は決まっている。自動の面も光線から求めない）
+    /// カタログの玉として読む: 半直径をファイルの値で固定する（径は決まっている。自動の面も光線から
+    /// 求めない）。系だけの設定（瞳のアポダイゼーション GFAC）は誤りにせず注意だけにする
     pub fixed_semi: bool,
 }
 
@@ -1617,7 +1626,7 @@ pub fn build(
     s.coating_file = coating_file;
     s.name = name;
     s.import_notes = raw.notes.clone();
-    s.import_notes.extend(raw.system_notes()?);
+    s.import_notes.extend(raw.system_notes(opt.fixed_semi)?);
     if ncfg > 1 {
         match config_table(raw, &s, ncfg as usize, cfg as usize) {
             Ok(c) => {
