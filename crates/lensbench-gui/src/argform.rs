@@ -33,6 +33,8 @@ pub struct ArgSpec {
     pub conflicts: Vec<String>,
     /// 欄の短い名前（日本語の鍵、表示は tr で）。無ければ説明の頭か名前
     pub label: Option<&'static str>,
+    /// 数の下限（リング数 0 などを欄で止める）
+    pub min: Option<f64>,
 }
 
 impl ArgSpec {
@@ -63,6 +65,7 @@ impl ArgSpec {
                 })
                 .unwrap_or_default(),
             label: None,
+            min: v["min"].as_f64(),
         })
     }
 
@@ -123,7 +126,25 @@ impl ArgSpec {
                 .filter(|x| x.is_finite())
                 .ok_or_else(bad)
         };
-        Ok(Some(match self.ty.as_str() {
+        let v = self.value_raw(t, bad, num)?;
+        if v.is_null() {
+            return Ok(None);
+        }
+        if let (Some(m), Some(x)) = (self.min, v.as_f64()) {
+            if x < m {
+                return Err(trf("{} は {} 以上", &[&self.name, &m]));
+            }
+        }
+        Ok(Some(v))
+    }
+
+    fn value_raw(
+        &self,
+        t: &str,
+        bad: impl Fn() -> String,
+        num: impl Fn(&str) -> Result<f64, String>,
+    ) -> Result<Value, String> {
+        Ok(match self.ty.as_str() {
             "flag" => match t {
                 "true" => json!(true),
                 "false" => json!(false),
@@ -152,7 +173,7 @@ impl ArgSpec {
             "nums" => {
                 let v: Vec<f64> = split(t).map(num).collect::<Result<_, _>>()?;
                 if v.is_empty() {
-                    return Ok(None);
+                    return Ok(Value::Null);
                 }
                 match self.len {
                     Some(n) if v.len() > n => {
@@ -165,7 +186,7 @@ impl ArgSpec {
             }
             _ if self.repeat => json!(split(t).map(str::to_string).collect::<Vec<_>>()),
             _ => json!(t),
-        }))
+        })
     }
 }
 
@@ -552,7 +573,9 @@ pub fn form(
                                     )
                                 });
                                 if up || down {
-                                    if let Some(n) = step_text(t, &s.default, &s.ty, up) {
+                                    if let Some(n) = step_text(t, &s.default, &s.ty, up)
+                                        .filter(|n| s.value(n).is_ok())
+                                    {
                                         *t = n;
                                         changed = true;
                                     }
@@ -709,7 +732,18 @@ mod tests {
             required: false,
             conflicts: Vec::new(),
             label: None,
+            min: None,
         }
+    }
+
+    /// 下限のある数（リング数 0 など）は欄で止める（GUX-08）
+    #[test]
+    fn min_refuses_below() {
+        let mut s = spec("rings", "count", None);
+        s.min = Some(1.0);
+        assert!(s.value("0").is_err());
+        assert_eq!(s.value("1").unwrap(), Some(json!(1)));
+        assert_eq!(s.value("").unwrap(), None);
     }
 
     #[test]

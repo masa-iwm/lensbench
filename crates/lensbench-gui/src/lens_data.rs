@@ -657,12 +657,23 @@ pub enum Act {
     NeedData(usize),
     /// 硝材の候補（ガラスカタログ）を読む
     NeedGlasses,
+    /// 最適化の変数に足す（名前は serve の set と同じ 4.t など、GUX-21）
+    OptVar(String),
     /// カタログの行を表へ落とした: 面 `after` の後に差し込む
     DropPick {
         after: usize,
         pick: Box<crate::combo::Pick>,
     },
 }
+
+/// 候補の一覧の覚え（打った文字、絞るか、ガラスの数、行の数、候補）
+type ChoiceCache = (
+    String,
+    bool,
+    usize,
+    usize,
+    std::sync::Arc<Vec<(String, String)>>,
+);
 
 /// 書き換え中のセル
 #[derive(Debug, Clone)]
@@ -682,6 +693,11 @@ struct Editing {
     filtered: bool,
     /// 候補を ↑↓ で選んだ（硝材は選ばなければ打った文字のまま決める）
     moved: bool,
+    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc で取り消し、GPN-10）
+    error: Option<String>,
+    /// 候補の一覧（打った文字・絞るか・ガラスの数・行の数が変わったときだけ作り直す。毎フレーム全ガラスを
+    /// 写さない、GPN-11）
+    choices: Option<ChoiceCache>,
     /// 選んでいる候補まで一覧を送る
     scroll: bool,
 }
@@ -798,6 +814,32 @@ struct RowMenu {
     detail: bool,
     /// 貼り付け（false は上書き、true は面を挿入して）
     paste: Option<bool>,
+}
+
+/// 硝材の欄の文字を入れられるか: 空・AIR・MIRROR、nd,νd[,ΔPgF] のモデルガラス、カタログのガラス、表で使っている
+/// ガラス。カタログをまだ読んでいなければ serve に任せる
+fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), String> {
+    let m = text.trim();
+    if m.is_empty()
+        || m.eq_ignore_ascii_case("AIR")
+        || m.eq_ignore_ascii_case("MIRROR")
+        || glasses.is_empty()
+        || glasses.iter().any(|g| g.name.eq_ignore_ascii_case(m))
+        || rows.iter().any(|r| r.material.eq_ignore_ascii_case(m))
+    {
+        return Ok(());
+    }
+    let v: Vec<f64> = m
+        .split(',')
+        .filter_map(|x| x.trim().parse::<f64>().ok())
+        .collect();
+    if (2..=3).contains(&v.len()) && m.split(',').count() == v.len() && v[0] > 0.0 {
+        return Ok(());
+    }
+    Err(trf(
+        "ガラス {} がカタログにない（モデルガラスは 1.5,60 のように nd,νd で。カタログはファイル > カタログのフォルダ…）",
+        &[&m],
+    ))
 }
 
 /// 書き換えた文字を、面 j（今の値 r）の列 col の変更に（今と同じなら None）
@@ -1054,6 +1096,15 @@ fn cell_menu(
                 ops.push(json!({ "op": "set_config_count", "n": 2 }));
             }
             ops.push(json!({ "op": "add_config_row", "param": name }));
+        }
+        // 最適化の変数にする（硝材の dn は除く）
+        if col != Col::Material
+            && ui
+                .button(trf("最適化の変数にする（{}）", &[&name]))
+                .on_hover_text(tr("最適化のパネルの変数の表に足して、パネルを出す"))
+                .clicked()
+        {
+            acts.push(Act::OptVar(name.clone()));
         }
         ui.separator();
     }
@@ -1630,6 +1681,8 @@ pub struct LensData {
     pub tree: bool,
     /// 折りたたみ表示で開いたブロック
     pub open: BTreeSet<String>,
+    /// 一度でも見たブロック（新しいブロックは開いた状態で出す。たたむのは利用者が選んだときだけ、GUX-05）
+    seen: BTreeSet<String>,
     /// 最後に見える所へスクロールした面（選んだ面が変わったときだけスクロールし、手で動かせるように）
     scrolled: Option<usize>,
 }
@@ -1867,8 +1920,13 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let children: Vec<usize> = (0..c.blocks.len())
         .filter(|&i| c.blocks[i].parent == scope)
         .collect();
-    // 消えたブロックは開いた組から外す
+    // 消えたブロックは開いた組から外す。新しいブロックは開く（折りたたみ表示で面が全部見える）
     st.open.retain(|n| c.blocks.iter().any(|b| &b.name == n));
+    for b in c.blocks {
+        if st.seen.insert(b.name.clone()) {
+            st.open.insert(b.name.clone());
+        }
+    }
     // 表の行: 今の階層の面と、直下のブロックを 1 行にたたんだもの（OpticStudio の Black Box のように。中は入って見る）。
     // 折りたたみ表示では開いたブロックの中の面もその場に並べる
     let tree = st.tree;
@@ -2041,6 +2099,24 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 });
             }
         });
+        // 全部開く・全部たたむを帯に常に出す（折りたたみ表示のとき）
+        if st.tree && !inside.is_empty() {
+            let all_open = inside.iter().all(|n| st.open.contains(n));
+            let (t, tip) = if all_open {
+                ("▶", tr("全部たたむ（ブロックを 1 行に）"))
+            } else {
+                ("▼", tr("全部開く（面を全部見せる）"))
+            };
+            if icon(ui, t, false).on_hover_text(tip).clicked() {
+                if all_open {
+                    for n in &inside {
+                        st.open.remove(n);
+                    }
+                } else {
+                    st.open.extend(inside.iter().cloned());
+                }
+            }
+        }
         // ブロック: 今の階層の直下のブロックのドロップダウンと、選んだブロックのロック・開く・中へ
         if !children.is_empty() || st.sel.is_some() {
             let hint = match &st.sel {
@@ -2272,7 +2348,10 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 egui::Rect::from_min_size(rect.left_bottom(), egui::Vec2::ZERO),
             )
         };
-        (child(ui, table_r, "a"), child(ui, bar_r, "b"))
+        let mut a = child(ui, table_r, "a");
+        // 表は自分の矩形の外（下の帯）に描かない
+        a.set_clip_rect(table_r.intersect(a.clip_rect()));
+        (a, child(ui, bar_r, "b"))
     };
     // 幅が足りなければ横に流す（見出しと横のスクロールバーの分を引く）
     let table_h = (top.available_height() - 22.0 - 14.0).max(20.0);
@@ -2311,11 +2390,12 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             }
             table
                 .header(22.0, |mut h| {
+                    // 見出しは折り返さない（2 行に折れて行に重ならない、GUX-15）
                     h.col(|ui| {
-                        ui.strong(tr("面"));
+                        ui.add(egui::Label::new(RichText::new(tr("面")).strong()).truncate());
                     });
                     h.col(|ui| {
-                        ui.strong(tr("ブロック"));
+                        ui.add(egui::Label::new(RichText::new(tr("ブロック")).strong()).truncate());
                     });
                     for &col in &cols {
                         h.col(|ui| {
@@ -2580,6 +2660,30 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                         te
                                     };
                                     let resp = ui.add(te);
+                                    if let Some(why) = &e.error {
+                                        ui.painter().rect_stroke(
+                                            resp.rect.expand(1.0),
+                                            2.0,
+                                            egui::Stroke::new(1.5_f32, ui.visuals().error_fg_color),
+                                            egui::StrokeKind::Outside,
+                                        );
+                                        let why = why.clone();
+                                        egui::Area::new(resp.id.with("why"))
+                                            .order(egui::Order::Tooltip)
+                                            .fixed_pos(resp.rect.left_bottom() + egui::vec2(0.0, 2.0))
+                                            .interactable(false)
+                                            .show(ui.ctx(), |ui| {
+                                                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                                    ui.colored_label(
+                                                        ui.visuals().error_fg_color,
+                                                        format!("⚠ {why}（Esc で取り消し）"),
+                                                    );
+                                                });
+                                            });
+                                        if resp.changed() {
+                                            e.error = None;
+                                        }
+                                    }
                                     if !e.focused {
                                         resp.request_focus();
                                         if let Some(mut s) =
@@ -2615,16 +2719,29 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                             e.pick = 0;
                                             e.scroll = true;
                                         }
-                                        let mut used: Vec<String> = Vec::new();
-                                        if col == Col::Material {
-                                            for x in c.rows {
-                                                let n = x.material.trim();
-                                                if !n.is_empty() && !used.iter().any(|u| u.eq_ignore_ascii_case(n)) {
-                                                    used.push(n.to_string());
+                                        let fresh = e.choices.as_ref().is_some_and(|x| {
+                                            x.0 == e.text && x.1 == e.filtered && x.2 == c.glasses.len() && x.3 == c.rows.len()
+                                        });
+                                        if !fresh {
+                                            let mut used: Vec<String> = Vec::new();
+                                            if col == Col::Material {
+                                                for x in c.rows {
+                                                    let n = x.material.trim();
+                                                    if !n.is_empty() && !used.iter().any(|u| u.eq_ignore_ascii_case(n)) {
+                                                        used.push(n.to_string());
+                                                    }
                                                 }
                                             }
+                                            let m = list_choices(col, c.glasses, &used, &e.text, e.filtered);
+                                            e.choices = Some((
+                                                e.text.clone(),
+                                                e.filtered,
+                                                c.glasses.len(),
+                                                c.rows.len(),
+                                                std::sync::Arc::new(m),
+                                            ));
                                         }
-                                        let m = list_choices(col, c.glasses, &used, &e.text, e.filtered);
+                                        let m = e.choices.as_ref().map(|x| x.4.clone()).unwrap_or_default();
                                         if !e.filtered && !e.moved && e.scroll {
                                             let now = col.text(r);
                                             e.pick = m
@@ -2660,7 +2777,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                                         } else if c.glasses.is_empty() && !c.glasses_loaded {
                                                             tr("ガラスカタログを読んでいます…（名前・1.5,60 のようなモデルガラスは打って Enter）")
                                                         } else {
-                                                            tr("合うガラスが無い（打った名前・モデルガラスのまま Enter で決める）")
+                                                            tr("合うガラスが無い（カタログに無い名前は入れられない。モデルガラスは 1.5,60 のように nd,νd で）")
                                                         });
                                                         return;
                                                     }
@@ -3099,6 +3216,13 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 _ => None,
             })
         });
+        // Ctrl+A: 表の全部の行を選ぶ（表を使っているとき。多重構成の次の構成より先に取る、GAR-28）
+        let all = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::A));
+        if all && !rows.is_empty() {
+            let col = st.cur.map_or(Col::R, |x| x.1);
+            st.anchor = Some(rows[0]);
+            st.cur = Some((rows[rows.len() - 1], col));
+        }
         if !rows.is_empty() {
             let (j, col) = st.cur.unwrap_or((rows[0], Col::R));
             let pos = rows.iter().position(|&x| x == j).unwrap_or(0);
@@ -3347,19 +3471,51 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             filtered: !select_all,
             moved: false,
             scroll: true,
+            error: None,
+            choices: None,
         });
         if col == Col::Material && c.glasses.is_empty() {
             acts.push(Act::NeedGlasses);
         }
     }
     if let Some((j, col, text)) = commit {
-        st.edit = None;
         st.active = true;
-        if let Some(a) = commit_act(&c.rows[j], j, col, &text) {
-            acts.push(a);
+        let mut act = commit_act(&c.rows[j], j, col, &text);
+        // カタログに無いガラスは serve に送る前に止める（Enter で欄を閉じて黙って戻らない、GUX-07）
+        if col == Col::Material && matches!(act, Some(Act::Edit { .. })) {
+            if let Err(e) = material_ok(&text, c.glasses, c.rows) {
+                act = Some(Act::Refused(e));
+            }
+        }
+        let refused = match &act {
+            Some(Act::Refused(e)) => Some(e.clone()),
+            _ => None,
+        };
+        if let Some(e) = refused {
+            // 誤りなら欄を閉じず、打った文字を残して赤枠と理由を出す（Esc で取り消し、GPN-10）
+            st.edit = Some(Editing {
+                j,
+                col,
+                text,
+                focused: false,
+                select_all: false,
+                pick: 0,
+                list_hover: false,
+                filtered: true,
+                moved: false,
+                scroll: false,
+                error: Some(e),
+                choices: None,
+            });
+            st.cur = Some((j, col));
+        } else {
+            st.edit = None;
+            if let Some(a) = act {
+                acts.push(a);
+            }
         }
         // Tab・↑↓ で決めたら隣のセルへ
-        if let Some((dr, dc)) = after {
+        if let Some((dr, dc)) = after.filter(|_| st.edit.is_none()) {
             let pos = rows.iter().position(|&x| x == j).unwrap_or(0) as i32;
             let ci = cols.iter().position(|&x| x == col).unwrap_or(0) as i32;
             let p = (pos + dr).clamp(0, rows.len() as i32 - 1) as usize;
@@ -3426,17 +3582,14 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                     egui::Label::new(RichText::new(label).small().color(weak))
                         .sense(Sense::click()),
                 )
-                .on_hover_text(tr(
-                    "開口・前後の傾き偏心・形のデータ・全項目 JSON とブロックの設定（クリックで開く・閉じる）",
+                .on_hover_text(format!(
+                    "{}\n\n{}",
+                    tr("開口・前後の傾き偏心・形のデータ・全項目 JSON とブロックの設定（クリックで開く・閉じる）"),
+                    tr("ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1"),
                 ));
             if r.clicked() {
                 st.detail = !st.detail;
             }
-            let hint = tr(
-                "ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1",
-            );
-            ui.add(egui::Label::new(RichText::new(hint).small().color(weak)).truncate())
-                .on_hover_text(hint);
         });
     }
     if !st.detail {

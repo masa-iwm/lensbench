@@ -10,6 +10,8 @@ pub struct Item<C> {
     /// 探すときにも見る別名（英語名・キー）
     pub hint: String,
     pub cmd: C,
+    /// 今の系・組合せを捨てる操作（新規・読み直す）。何も打っていないときは一覧の最後に置く
+    pub danger: bool,
 }
 
 #[derive(Default)]
@@ -20,6 +22,27 @@ pub struct Palette {
     focus: bool,
     /// 開く欄（上の帯の「探す」）の場所。あればその真下に右をそろえて出す
     pub anchor: Option<egui::Rect>,
+    /// 最近実行した行の名前（新しい順）。何も打っていないときは先頭に出す
+    pub recent: Vec<String>,
+}
+
+/// 何も打っていないときの並び: 最近使った操作 → ほか → 捨てる操作（GUX-25: Enter で新規が走らない）
+fn order<'a, C>(items: &'a [Item<C>], query: &str, recent: &[String]) -> Vec<&'a Item<C>> {
+    let mut hits: Vec<&Item<C>> = items
+        .iter()
+        .filter(|i| matches(query, &i.label, &i.hint))
+        .collect();
+    if query.trim().is_empty() {
+        let rank = |i: &Item<C>| -> (usize, usize) {
+            match recent.iter().position(|r| r == &i.label) {
+                Some(k) if !i.danger => (0, k),
+                _ if i.danger => (2, 0),
+                _ => (1, 0),
+            }
+        };
+        hits.sort_by_key(|i| rank(i));
+    }
+    hits
 }
 
 /// 空白で区切った語がすべて含まれる（大文字・小文字を区別しない）
@@ -54,10 +77,7 @@ impl Palette {
         if !self.open {
             return None;
         }
-        let hits: Vec<&Item<C>> = items
-            .iter()
-            .filter(|i| matches(&self.query, &i.label, &i.hint))
-            .collect();
+        let hits = order(items, &self.query, &self.recent);
         let (up, down, enter, esc) = ctx.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
@@ -78,8 +98,10 @@ impl Palette {
         }
         self.sel = self.sel.min(hits.len().saturating_sub(1));
         let mut chosen = None;
+        let mut chosen_label = None;
         if enter {
             chosen = hits.get(self.sel).map(|i| i.cmd.clone());
+            chosen_label = hits.get(self.sel).map(|i| i.label.clone());
         }
         let screen = ctx.screen_rect();
         let width = (screen.width() - 32.0).clamp(240.0, 640.0);
@@ -117,6 +139,7 @@ impl Palette {
                                 }
                                 if resp.clicked() {
                                     chosen = Some(it.cmd.clone());
+                                    chosen_label = Some(it.label.clone());
                                 }
                             }
                         });
@@ -125,6 +148,11 @@ impl Palette {
             });
         if chosen.is_some() {
             self.open = false;
+            if let Some(l) = chosen_label {
+                self.recent.retain(|x| x != &l);
+                self.recent.insert(0, l);
+                self.recent.truncate(5);
+            }
         }
         chosen
     }
@@ -133,6 +161,34 @@ impl Palette {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 何も打っていないときは、最近使った操作が先頭、捨てる操作（新規）は最後（GUX-25）
+    #[test]
+    fn empty_query_puts_danger_last() {
+        let it = |l: &str, danger: bool| Item {
+            label: l.into(),
+            hint: String::new(),
+            cmd: l.to_string(),
+            danger,
+        };
+        let items = vec![it("新規", true), it("開く", false), it("保存", false)];
+        let o: Vec<&str> = order(&items, "", &[])
+            .iter()
+            .map(|i| i.label.as_str())
+            .collect();
+        assert_eq!(o, ["開く", "保存", "新規"]);
+        let o: Vec<&str> = order(&items, "", &["保存".into()])
+            .iter()
+            .map(|i| i.label.as_str())
+            .collect();
+        assert_eq!(o, ["保存", "開く", "新規"]);
+        // 打ったときは一覧の順のまま
+        let o: Vec<&str> = order(&items, "新", &[])
+            .iter()
+            .map(|i| i.label.as_str())
+            .collect();
+        assert_eq!(o, ["新規"]);
+    }
 
     #[test]
     fn query() {

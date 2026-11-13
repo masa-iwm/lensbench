@@ -2,7 +2,7 @@
 //! 図が入るまでの、どの解析にも使える表示。
 
 use crate::i18n::{tr, trf};
-use egui::{CollapsingHeader, Grid, RichText, Ui};
+use egui::{CollapsingHeader, RichText, Ui};
 use serde_json::Value;
 
 /// 長い数の並びは先頭だけ示す
@@ -108,29 +108,98 @@ fn show_value(ui: &mut Ui, name: &str, v: &Value, depth: usize) {
     }
 }
 
+/// 一様なオブジェクトの並びを表に。見える行だけ描くので行の上限は無い。見出しのクリックで並べ替え、
+/// 数は右寄せ（GPN-16）
 fn table(ui: &mut Ui, id: egui::Id, cols: &[String], rows: &[Value]) {
-    egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
-        Grid::new(id.with("grid"))
-            .striped(true)
-            .min_col_width(40.0)
-            .show(ui, |ui| {
-                ui.label(RichText::new("#").strong());
-                for c in cols {
-                    ui.label(RichText::new(c).strong());
+    use egui_extras::{Column, TableBuilder};
+    // 並べ替え（列の番号、逆順）
+    let sort_id = id.with("sort");
+    let mut sort: Option<(usize, bool)> = ui.data(|d| d.get_temp(sort_id)).unwrap_or(None);
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    if let Some((c, desc)) = sort.filter(|s| s.0 < cols.len()) {
+        let key = &cols[c];
+        order.sort_by(|&a, &b| {
+            let (x, y) = (rows[a].get(key), rows[b].get(key));
+            let o = match (x.and_then(Value::as_f64), y.and_then(Value::as_f64)) {
+                (Some(p), Some(q)) => p.total_cmp(&q),
+                _ => {
+                    let t = |v: Option<&Value>| v.and_then(inline).unwrap_or_default();
+                    t(x).cmp(&t(y))
                 }
-                ui.end_row();
-                for (i, r) in rows.iter().enumerate().take(MAX_ROWS) {
-                    ui.label(format!("{}", i + 1));
-                    for c in cols {
-                        ui.label(r.get(c).and_then(inline).unwrap_or_default());
+            };
+            if desc {
+                o.reverse()
+            } else {
+                o
+            }
+        });
+    }
+    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 4.0;
+    egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
+        let mut t = TableBuilder::new(ui)
+            .id_salt(id.with("table"))
+            .striped(true)
+            .resizable(true)
+            .max_scroll_height(420.0)
+            .column(Column::auto().at_least(30.0));
+        for _ in cols {
+            t = t.column(Column::auto().at_least(50.0));
+        }
+        t.header(row_h, |mut h| {
+            h.col(|ui| {
+                ui.strong("#");
+            });
+            for (k, c) in cols.iter().enumerate() {
+                h.col(|ui| {
+                    let mark = match sort {
+                        Some((s, false)) if s == k => " ▲",
+                        Some((s, true)) if s == k => " ▼",
+                        _ => "",
+                    };
+                    if ui
+                        .add(
+                            egui::Label::new(RichText::new(format!("{c}{mark}")).strong())
+                                .sense(egui::Sense::click()),
+                        )
+                        .on_hover_text(tr("クリックで並べ替え"))
+                        .clicked()
+                    {
+                        sort = match sort {
+                            Some((s, false)) if s == k => Some((k, true)),
+                            Some((s, true)) if s == k => None,
+                            _ => Some((k, false)),
+                        };
                     }
-                    ui.end_row();
+                });
+            }
+        })
+        .body(|body| {
+            body.rows(row_h, order.len(), |mut row| {
+                let i = order[row.index()];
+                let r = &rows[i];
+                row.col(|ui| {
+                    ui.label(format!("{}", i + 1));
+                });
+                for c in cols {
+                    row.col(|ui| {
+                        let v = r.get(c);
+                        let text = v.and_then(inline).unwrap_or_default();
+                        if v.is_some_and(Value::is_number) {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(text);
+                                },
+                            );
+                        } else {
+                            ui.label(text);
+                        }
+                    });
                 }
             });
+        });
     });
-    if rows.len() > MAX_ROWS {
-        ui.label(trf("…（全 {} 行）", &[&rows.len()]));
-    }
+    ui.data_mut(|d| d.insert_temp(sort_id, sort));
 }
 
 #[cfg(test)]
