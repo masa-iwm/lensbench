@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use lensbench_core::param::Param;
@@ -228,7 +228,7 @@ impl PyGrid {
 
 fn system_at(p: &PlanBase, i: usize) -> PyResult<PySystem> {
     let s = p.base.with_params(&p.changes(i)?).map_err(err)?;
-    Ok(PySystem::new(s, p.coat_files.clone(), OnceLock::new()))
+    Ok(PySystem::new(s, p.coat_files.clone(), Default::default()))
 }
 
 #[derive(FromPyObject)]
@@ -400,7 +400,7 @@ fn run_batch<'py>(
                 Ok(s) => s,
                 Err(e) => return Err(fail(err(e))),
             };
-            let ps = PySystem::new(sys, pb.coat_files.clone(), OnceLock::new());
+            let ps = PySystem::new(sys, pb.coat_files.clone(), Default::default());
             let r = func.call1(py, (i, ps, s)).map_err(fail)?;
             let t: String = dumps
                 .call1(py, (r,))

@@ -111,7 +111,29 @@ pub struct PySystem {
     /// 変更は複製した系に施して差し替えるので、走っている追跡は前の系のまま
     sys: RwLock<Arc<System>>,
     coat_files: Vec<PathBuf>,
-    coat: OnceLock<Result<Coatings, String>>,
+    /// 系の膜（初めて要ったときに読む）。膜・媒質・膜ファイルの変わる編集で空に戻す
+    coat: RwLock<CoatCell>,
+}
+
+/// 系の膜を読んだもの（複製した系・派生した系で共有する）
+pub type CoatCell = Arc<OnceLock<Result<Coatings, String>>>;
+
+/// 読んだ膜への参照（[`PySystem::coatings`]）
+pub struct CoatRef(CoatCell);
+
+impl std::ops::Deref for CoatRef {
+    type Target = Coatings;
+    fn deref(&self) -> &Coatings {
+        // coatings() が Ok を確かめてから作る
+        self.0.get().and_then(|r| r.as_ref().ok()).expect("膜を読んだ後")
+    }
+}
+
+/// 膜の読み込みに関わる系の部分が変わったか（膜・媒質の境界、膜ファイル、系の膜の表）
+fn coat_changed(a: &System, b: &System) -> bool {
+    a.coating_file != b.coating_file
+        || a.coat_tables != b.coat_tables
+        || lensbench_core::coating::media_keys(a).0 != lensbench_core::coating::media_keys(b).0
 }
 
 /// 視野の指定: 番号（1 始まり）か正規化視野 (hx, hy)。bool は弾く
@@ -503,39 +525,45 @@ impl PySystem {
     }
 
     /// 系から作る（膜のファイル、膜を読んだもの）
-    pub fn new(
-        sys: System,
-        coat_files: Vec<PathBuf>,
-        coat: OnceLock<Result<Coatings, String>>,
-    ) -> Self {
+    pub fn new(sys: System, coat_files: Vec<PathBuf>, coat: CoatCell) -> Self {
         PySystem {
             sys: RwLock::new(Arc::new(sys)),
             coat_files,
-            coat,
+            coat: RwLock::new(coat),
         }
     }
 
-    /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）
+    /// 読んだ膜（派生した系に引き継ぐ）
+    pub fn coat_cell(&self) -> CoatCell {
+        self.coat.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）。
+    /// 膜の読み込みに関わる所が変われば、読んだ膜を捨てて次に要ったときに読み直す
     fn mutate<R>(&self, f: impl FnOnce(&mut System) -> lensbench_core::Result<R>) -> PyResult<R> {
         let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
         let mut n: System = (**g).clone();
         let r = f(&mut n).map_err(err)?;
+        if coat_changed(&g, &n) {
+            *self.coat.write().unwrap_or_else(|e| e.into_inner()) = CoatCell::default();
+        }
         *g = Arc::new(n);
         Ok(r)
     }
 
     /// 系の膜（初めて呼んだときに読む）
-    pub fn coatings(&self, s: &System) -> PyResult<&Coatings> {
-        self.coat
-            .get_or_init(|| {
-                let mut c = Coatings::for_system(s).map_err(|e| e.to_string())?;
-                for p in &self.coat_files {
-                    c.load_file(p).map_err(|e| e.to_string())?;
-                }
-                Ok(c)
-            })
-            .as_ref()
-            .map_err(err)
+    pub fn coatings(&self, s: &System) -> PyResult<CoatRef> {
+        let cell = self.coat_cell();
+        cell.get_or_init(|| {
+            let mut c = Coatings::for_system(s).map_err(|e| e.to_string())?;
+            for p in &self.coat_files {
+                c.load_file(p).map_err(|e| e.to_string())?;
+            }
+            Ok(c)
+        })
+        .as_ref()
+        .map_err(err)?;
+        Ok(CoatRef(cell))
     }
 }
 
@@ -773,7 +801,7 @@ impl PySystem {
             None => None,
         };
         let out = gil
-            .detach(|| with_threads(o.threads, || compute(s, coat, launch, n, o)))
+            .detach(|| with_threads(o.threads, || compute(s, coat.as_deref(), launch, n, o)))
             .map_err(err)?;
         to_dict(gil, s, o, out)
     }
@@ -1074,7 +1102,7 @@ impl PySystem {
                     saved_coatings
                 }
             }),
-            OnceLock::new(),
+            Default::default(),
         ))
     }
 
@@ -1096,7 +1124,7 @@ impl PySystem {
     fn from_json(py: Python<'_>, text: &str) -> PyResult<PySystem> {
         let (s, m, w) = lensbench_project::sysfile::from_str(text).map_err(err)?;
         warn_all(py, &w)?;
-        Ok(PySystem::new(s, m.coatings, OnceLock::new()))
+        Ok(PySystem::new(s, m.coatings, Default::default()))
     }
 
     /// 系の hash（"sha256:…"、系ファイルと同じ）。解析の結果に刻んで、後から同じ系か確かめる
@@ -1157,7 +1185,7 @@ impl PySystem {
         Ok(PySystem::new(
             sys,
             coatings.unwrap_or_else(env_coatings),
-            OnceLock::new(),
+            Default::default(),
         ))
     }
 
@@ -1235,7 +1263,7 @@ impl PySystem {
                 if coating_file.is_some() {
                     s.coating_file = coating_file.clone();
                 }
-                PySystem::new(s, coat.clone(), OnceLock::new())
+                PySystem::new(s, coat.clone(), Default::default())
             })
             .collect())
     }
@@ -1519,7 +1547,7 @@ impl PySystem {
         };
         let coat = if pol { Some(self.coatings(&s)?) } else { None };
         let c = py
-            .detach(|| lensbench_core::fiber::fiber_coupling(&s, w, &o, coat))
+            .detach(|| lensbench_core::fiber::fiber_coupling(&s, w, &o, coat.as_deref()))
             .map_err(err)?;
         let d = PyDict::new(py);
         d.set_item("eta", c.eta)?;
@@ -1665,7 +1693,7 @@ impl PySystem {
         let s = self.sys();
         let c = parse_changes(&s, changes)?;
         let n = s.with_params(&c).map_err(err)?;
-        Ok(PySystem::new(n, self.coat_files.clone(), self.coat.clone()))
+        Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
     // ---------------------------------------------------------------------- 系の編集
@@ -1900,7 +1928,7 @@ impl PySystem {
     /// 構成 k（1 始まり）の値を入れた新しい系（元の系は変えない）
     fn config(&self, k: usize) -> PyResult<PySystem> {
         let n = self.sys().config(k).map_err(err)?;
-        Ok(PySystem::new(n, self.coat_files.clone(), self.coat.clone()))
+        Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
     /// 今の系を構成 k に切り替える
@@ -1920,7 +1948,7 @@ impl PySystem {
         Ok(PySystem::new(
             g.sys,
             self.coat_files.clone(),
-            self.coat.clone(),
+            self.coat_cell(),
         ))
     }
 
@@ -2455,7 +2483,7 @@ impl PySystem {
         let sys = r.systems.into_iter().next().unwrap();
         d.set_item(
             "system",
-            PySystem::new(sys, self.coat_files.clone(), self.coat.clone()),
+            PySystem::new(sys, self.coat_files.clone(), self.coat_cell()),
         )?;
         d.set_item("names", names)?;
         d.set_item("x0", r.x0)?;
@@ -2869,7 +2897,7 @@ fn trace_many<'py>(
     let outs = gil.detach(|| {
         with_threads(threads, || {
             lensbench_core::par::map(&jobs, |(s, pre, o, coat)| {
-                compute(s, *coat, &pre.launch(&px, &pyv), n, o)
+                compute(s, coat.as_deref(), &pre.launch(&px, &pyv), n, o)
             })
         })
     });
@@ -2893,7 +2921,7 @@ fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem
     // 長さと系の約束は sysfile::check で確かめる（壊れたバイト列で追跡が panic しないよう）
     let (sys, _, _) = lensbench_project::sysfile::from_str(txt)
         .map_err(|e| PyValueError::new_err(format!("系の読み直し: {e}")))?;
-    Ok(PySystem::new(sys, coatings, OnceLock::new()))
+    Ok(PySystem::new(sys, coatings, Default::default()))
 }
 
 /// Python API の版 (major, minor)。互換を壊す変更で major、足すだけの変更で minor を上げる

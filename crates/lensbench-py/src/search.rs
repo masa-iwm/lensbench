@@ -1,7 +1,6 @@
 //! ズーム軌跡とカタログレンズの差し替え探索の Python 側。
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
@@ -126,7 +125,7 @@ fn zoom<'py>(
     let sys = PyList::empty(py);
     for (k, s) in r.systems.into_iter().enumerate() {
         let src = &systems[k];
-        sys.append(PySystem::new(s, src.coat_files.clone(), OnceLock::new()))?;
+        sys.append(PySystem::new(s, src.coat_files.clone(), Default::default()))?;
     }
     d.set_item("systems", sys)?;
     d.set_item("warnings", r.warnings)?;

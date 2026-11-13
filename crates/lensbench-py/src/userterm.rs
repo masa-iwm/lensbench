@@ -7,7 +7,7 @@
 //! 関数の例外は、最適化が終わったあとにそのまま投げ直す。
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use lensbench_core::optim::{Problem, Term, TermKind, UserTerm, UserTermRef};
 use lensbench_core::param::Param;
@@ -72,7 +72,7 @@ impl PyUserTerm {
     ) -> PyResult<Bound<'py, PyList>> {
         let v: Vec<PySystem> = systems
             .iter()
-            .map(|s| PySystem::new((*s).clone(), self.coat_files.clone(), OnceLock::new()))
+            .map(|s| PySystem::new((*s).clone(), self.coat_files.clone(), Default::default()))
             .collect();
         PyList::new(py, v)
     }
@@ -101,7 +101,7 @@ impl UserTerm for PyUserTerm {
         let names: Vec<String> = params.iter().map(|p| s.param_name(*p)).collect();
         Python::attach(|py| {
             py.check_signals()?;
-            let ps = PySystem::new(s.clone(), self.coat_files.clone(), OnceLock::new());
+            let ps = PySystem::new(s.clone(), self.coat_files.clone(), Default::default());
             let r = jac.call1(py, (ps, names))?;
             // (残差, 変数) を「系」の代わりに残差を行にして読む
             let j = to_rows(r.bind(py), self.rows, Some(params.len()))?;
@@ -177,7 +177,7 @@ pub(crate) fn add_terms(
             let s0 = PySystem::new(
                 p.configs[config].clone(),
                 coat_files.to_vec(),
-                OnceLock::new(),
+                Default::default(),
             );
             let l = PyList::new(py, [s0])?;
             let r0 = f.call1(py, (l,))?;
