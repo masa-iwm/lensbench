@@ -9,7 +9,7 @@ GUI（lensbench-gui）を wasm にしてブラウザで動かす。コードは�
 | 計算（`worker.rs`） | 別のスレッド | Web Worker（`worker.js`、中は同じ wasm）。ファイルの置き場は要求・結果と一緒に互いに写す（`wire.rs`） |
 | 並列（`lensbench_core::par`） | rayon | ページが cross-origin isolated なら、計算の Web Worker の中で rayon のスレッド（wasm-bindgen-rayon、`mt/` の版）。そうでなければ逐次 |
 | SIMD | AVX（実行時に判定） | simd128（両方の版。自動ベクトル化と、Zernike の当てはめの AᵀA は命令を明示した経路。値は同じ） |
-| ファイルの窓（`files.rs`） | rfd | 開く: ブラウザのファイル選択（複数選べる）で `/uploads/` に入れる。保存: `/downloads/` に書いてダウンロード。窓に落としても開ける |
+| ファイルの窓（`files.rs`） | rfd（Linux は zenity） | 開く: ブラウザのファイル選択（複数選べる）で `/uploads/` に入れる。保存: `/downloads/` に書いてダウンロード。窓に落としても開ける |
 | 時計 | `std::time::Instant` | `web_time::Instant`（ネイティブでは std そのもの） |
 | アロケータ | mimalloc | 既定 |
 | 別の窓（パネルを外に出す） | OS の窓（egui の viewport） | ブラウザの別の窓（`web_tabs.rs`、下の「別の窓のパネル」）。解析は結果を送って描き、ほかのパネルは元のタブが描いた画面を送る |

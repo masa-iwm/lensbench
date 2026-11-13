@@ -1,14 +1,10 @@
 //! 光線を直接渡す追跡: 開始位置と方向（Launch::Rays）、絞り面の実座標（Launch::Stop）。
 
+use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::{Aiming, FieldSel, Launch, ObjSpec};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

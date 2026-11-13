@@ -1,4 +1,4 @@
-//! ファイルを選ぶ・確かめる窓。ネイティブは rfd の同期の窓そのまま。
+//! ファイルを選ぶ・確かめる窓。ネイティブは rfd の同期の窓そのまま（Linux は zenity を呼ぶ [`zenity`]）。
 //!
 //! ブラウザ（wasm）には同期の窓もファイルシステムも無いので:
 //! - **開く**（[`open`]・[`open_folder`]）: ブラウザのファイル選択で選んだファイルを
@@ -32,7 +32,7 @@ impl FileDialog {
         self
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
     fn rfd(&self) -> rfd::FileDialog {
         let mut d = rfd::FileDialog::new();
         for (n, e) in &self.filters {
@@ -42,6 +42,11 @@ impl FileDialog {
             d = d.set_file_name(f);
         }
         d
+    }
+
+    #[cfg(target_os = "linux")]
+    fn rfd(&self) -> zenity::FileDialog<'_> {
+        zenity::FileDialog(self)
     }
 
     /// 保存先を選ぶ（ネイティブ）
@@ -136,7 +141,13 @@ pub fn set_ctx(ctx: &egui::Context) {
 }
 
 /// 「はい・いいえ」で確かめる
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "linux")]
+pub fn confirm(title: &str, text: &str) -> bool {
+    zenity::confirm(title, text)
+}
+
+/// 「はい・いいえ」で確かめる
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
 pub fn confirm(title: &str, text: &str) -> bool {
     rfd::MessageDialog::new()
         .set_title(title)
@@ -146,12 +157,102 @@ pub fn confirm(title: &str, text: &str) -> bool {
         == rfd::MessageDialogResult::Yes
 }
 
+/// エラーを窓で知らせる（Linux は zenity、無ければ何もしない）
+#[cfg(not(target_arch = "wasm32"))]
+pub fn error_box(title: &str, text: &str) {
+    #[cfg(target_os = "linux")]
+    zenity::error(title, text);
+    #[cfg(not(target_os = "linux"))]
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title(title)
+        .set_description(text)
+        .show();
+}
+
 /// 「はい・いいえ」で確かめる（ブラウザの confirm）
 #[cfg(target_arch = "wasm32")]
 pub fn confirm(_title: &str, text: &str) -> bool {
     web_sys::window()
         .and_then(|w| w.confirm_with_message(text).ok())
         .unwrap_or(false)
+}
+
+/// Linux: rfd の代わりに zenity（GTK の窓）を呼ぶ。zenity が無ければ何も選ばない（「いいえ」）。
+/// rfd の xdg-portal（zbus など）をビルドに乗せないため（Linux の GUI は CI 用。公開 #216 BLD-23）
+#[cfg(target_os = "linux")]
+mod zenity {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    fn run(args: &[String]) -> Option<String> {
+        match Command::new("zenity").args(args).output() {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout)
+                    .trim_end_matches('\n')
+                    .to_string();
+                (!s.is_empty()).then_some(s)
+            }
+            Ok(_) => None,
+            Err(e) => {
+                eprintln!("lensbench-gui: zenity を起こせない（{e}）。ファイルは窓に落として開く");
+                None
+            }
+        }
+    }
+
+    pub struct FileDialog<'a>(pub &'a super::FileDialog);
+
+    impl FileDialog<'_> {
+        fn args(&self, extra: &[&str]) -> Vec<String> {
+            let mut a: Vec<String> = vec!["--file-selection".into()];
+            a.extend(extra.iter().map(|s| s.to_string()));
+            for (n, e) in &self.0.filters {
+                let pats: Vec<String> = e.iter().map(|x| format!("*.{x}")).collect();
+                a.push(format!("--file-filter={n} | {}", pats.join(" ")));
+            }
+            if let Some(f) = &self.0.file_name {
+                a.push(format!("--filename={f}"));
+            }
+            a
+        }
+        pub fn pick_file(self) -> Option<PathBuf> {
+            run(&self.args(&[])).map(PathBuf::from)
+        }
+        pub fn pick_folder(self) -> Option<PathBuf> {
+            run(&self.args(&["--directory"])).map(PathBuf::from)
+        }
+        pub fn save_file(self) -> Option<PathBuf> {
+            run(&self.args(&["--save", "--confirm-overwrite"])).map(PathBuf::from)
+        }
+    }
+
+    pub fn error(title: &str, text: &str) {
+        let _ = Command::new("zenity")
+            .args([
+                "--error",
+                "--no-markup",
+                &format!("--title={title}"),
+                &format!("--text={text}"),
+            ])
+            .status();
+    }
+
+    /// zenity が無ければ「いいえ」（消す・上書きする側に倒さない）
+    pub fn confirm(title: &str, text: &str) -> bool {
+        let st = Command::new("zenity")
+            .args([
+                "--question",
+                "--no-markup",
+                &format!("--title={title}"),
+                &format!("--text={text}"),
+            ])
+            .status();
+        if let Err(e) = &st {
+            eprintln!("lensbench-gui: zenity を起こせない（{e}）。「{title}」は「いいえ」にする");
+        }
+        st.is_ok_and(|s| s.success())
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

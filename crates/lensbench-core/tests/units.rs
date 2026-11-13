@@ -1,15 +1,11 @@
 //! 玉・群の単位のパラメータ: 面ごとに同じ変更を与えた系と一致し、dOPL/dp・着地点の微分が中心差分と一致する。
 
+use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldSel, ObjSpec};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{zmx_write, System};
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

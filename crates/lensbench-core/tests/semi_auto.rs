@@ -2,16 +2,11 @@
 //! 基準は tests/refs の系（OpticStudio 2026 R1 が保存、Fast Semi-Diameters はオン）。PC の OpticStudio で
 //! 開き直して自動の値が保存のままであることも確かめた（非公開側の data/validate/semi_auto）
 
-use std::path::PathBuf;
-
+use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str, fixed: bool) -> System {
     let opt = LoadOptions {

@@ -11,16 +11,11 @@
 //! lensbench は刻みを自動で決めて収束値を出す（Δt は使わない）。
 //! G9A の rays_dtnom.json・sysdata_dtnom.txt は Δt 0.5 のときの値で、収束値と 4e-6 ずれる（参考）。
 
-use std::path::PathBuf;
-
+use crate::common::root;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::zmx_write;
 use lensbench_core::{analysis, FieldSel, System};
 use serde_json::Value;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> (System, Value) {
     let dir = root().join("tests/grin").join(name);

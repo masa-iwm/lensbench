@@ -4761,7 +4761,7 @@ impl Core {
                 Some(crate::fill::AutoOut::Save(p)) => {
                     self.preview.send(Tag::CatalogFill, "catalog_fill", p);
                 }
-                #[cfg(windows)]
+                #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {
                     let (r, child, text) = *b;
                     self.fill.adopt(r, child, text);

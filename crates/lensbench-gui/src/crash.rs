@@ -53,13 +53,10 @@ pub fn install(dir: Option<std::path::PathBuf>) {
                 .as_ref()
                 .map(|d| d.join("crash.log").display().to_string())
                 .unwrap_or_default();
-            let _ = rfd::MessageDialog::new()
-                .set_level(rfd::MessageLevel::Error)
-                .set_title("lensbench")
-                .set_description(format!(
-                    "内部エラーで終了します / Internal error:\n{t}\n\n{where_}"
-                ))
-                .show();
+            crate::files::error_box(
+                "lensbench",
+                &format!("内部エラーで終了します / Internal error:\n{t}\n\n{where_}"),
+            );
         }
         prev(info);
     }));

@@ -100,7 +100,7 @@ fn parse_thickness(s: &str) -> Option<f64> {
 }
 
 /// 品ページのアプリ内のブラウザを起こす（hidden は見せずに）
-#[cfg(windows)]
+#[cfg(all(windows, feature = "webview"))]
 fn spawn(r: &LensRow, hidden: bool) -> Result<crate::webview::Child, String> {
     let dl = std::env::temp_dir()
         .join("lensbench-gui")
@@ -157,7 +157,7 @@ pub struct Timings {
 pub const TIMING_FILE: &str = "catalog-fill-timing.json";
 
 /// URL のホスト名（小文字）
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub fn url_host(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     let host = rest.split(['/', '?', '#']).next().unwrap_or("");
@@ -188,7 +188,7 @@ impl Timings {
     }
 
     /// サイト（品ページの URL のホスト）の名前と、そのタイミング。設定に無いサイトはホスト名で default
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
     pub fn for_url(&self, url: &str) -> (String, Timing) {
         let host = url_host(url);
         let hit = self
@@ -214,7 +214,7 @@ impl Timings {
     }
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 fn secs(x: f64) -> std::time::Duration {
     std::time::Duration::from_secs_f64(x.clamp(0.0, 86400.0))
 }
@@ -249,7 +249,7 @@ pub fn timings() -> (Timings, Option<String>) {
 
 /// ページの読み取りから、足りない値がすべて一通りに決まるなら catalog_fill の値（厚さ・径）。
 /// 同じ値の欄に違う値が並ぶ・決められない欄だけ・ありえない大きさなら None（窓に出してユーザーが決める）
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub fn sure_values(missing: &[String], r: &PageRead) -> Option<(Option<f64>, Option<Value>)> {
     let mut t = None;
     let mut d = None;
@@ -288,7 +288,7 @@ pub fn sure_values(missing: &[String], r: &PageRead) -> Option<(Option<f64>, Opt
 }
 
 /// catalog_fill の params
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 fn fill_params(
     r: &LensRow,
     t: Option<f64>,
@@ -322,16 +322,16 @@ fn fill_params(
 }
 
 /// 補う窓へ引き継ぐもの: 品・見せていないブラウザ・最後に届いたページ（URL と文字）
-#[cfg(windows)]
+#[cfg(all(windows, feature = "webview"))]
 pub type Handover = (LensRow, crate::webview::Child, Option<(String, String)>);
 
 /// 裏の読み取りの結果
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub enum AutoOut {
     /// 値が決まったので保存する（catalog_fill の params）
     Save(Value),
     /// 決まらないので補う窓に出す
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     Show(Box<Handover>),
 }
 
@@ -340,7 +340,7 @@ pub enum AutoOut {
 /// 次を開くまで gap 空ける（サイトごとの [`Timings`]）。1 度に 1 件、同じ品はこの起動の間は 1 度だけ。決まらない
 /// （欄が無い・食い違う・ボットの判定や captcha）ときは wait の後に窓を見せて補う窓へ
 #[derive(Default)]
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(all(windows, feature = "webview")), allow(dead_code))]
 pub struct AutoFill {
     /// 選んでいる未完の品（メーカー・型番）と選んだ時刻
     sel: Option<(String, web_time::Instant)>,
@@ -352,11 +352,11 @@ pub struct AutoFill {
     timings: Option<Timings>,
     /// タイミングの設定の誤りを知らせた
     warned: bool,
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     job: Option<AutoJob>,
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "webview"))]
 struct AutoJob {
     row: LensRow,
     child: crate::webview::Child,
@@ -375,7 +375,7 @@ impl AutoFill {
         if key.as_deref() != self.sel.as_ref().map(|(k, _)| k.as_str()) {
             self.sel = key.map(|k| (k, now));
         }
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         {
             if let Some(out) = self.poll(now) {
                 return Some(out);
@@ -416,7 +416,7 @@ impl AutoFill {
                 ctx.request_repaint_after(std::time::Duration::from_millis(300));
             }
         }
-        #[cfg(not(windows))]
+        #[cfg(not(all(windows, feature = "webview")))]
         let _ = (ctx, row);
         None
     }
@@ -432,15 +432,15 @@ impl AutoFill {
 
     /// 補う窓を開いた品は裏で読まない（読んでいれば止める）
     pub fn forget(&mut self, part: &str) {
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         if self.job.as_ref().is_some_and(|j| j.row.part == part) {
             self.job = None;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(all(windows, feature = "webview")))]
         let _ = part;
     }
 
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     fn poll(&mut self, now: web_time::Instant) -> Option<AutoOut> {
         let job = self.job.as_mut()?;
         let mut closed = false;
@@ -509,7 +509,7 @@ pub struct FillWin {
     /// 品ページを開いたか（開くのは 1 回だけ）
     opened: bool,
     /// アプリ内のブラウザ
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     child: Option<crate::webview::Child>,
 }
 
@@ -532,7 +532,7 @@ impl FillWin {
     }
 
     /// 裏の読み取り（[`AutoFill`]）で値が決まらなかった品を、開いているページのまま引き継ぐ
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     pub fn adopt(
         &mut self,
         r: LensRow,
@@ -567,7 +567,7 @@ impl FillWin {
         ));
         self.row = None;
         self.open = false;
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         {
             self.child = None;
         }
@@ -589,7 +589,7 @@ impl FillWin {
             return;
         }
         self.opened = true;
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         {
             match spawn(r, false) {
                 Ok(c) => {
@@ -783,7 +783,7 @@ impl FillWin {
         if !self.opened {
             self.open_page(ctx);
         }
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         if let Some(c) = &mut self.child {
             let mut closed = false;
             for m in c.poll() {
@@ -814,7 +814,7 @@ impl FillWin {
         if !open {
             self.open = false;
             self.row = None;
-            #[cfg(windows)]
+            #[cfg(all(windows, feature = "webview"))]
             {
                 self.child = None;
             }
@@ -842,7 +842,7 @@ impl FillWin {
         ui.horizontal_wrapped(|ui| {
             if !r.url.is_empty() {
                 if ui.button(tr("🌐 品ページを開き直す")).clicked() {
-                    #[cfg(windows)]
+                    #[cfg(all(windows, feature = "webview"))]
                     {
                         self.child = None;
                     }
@@ -854,13 +854,13 @@ impl FillWin {
                 );
             }
         });
-        #[cfg(windows)]
+        #[cfg(all(windows, feature = "webview"))]
         ui.weak(if self.child.is_some() {
             tr("品ページの仕様表を読んでいます。CAD 欄から STEP を落とすと測ります。ボットの判定や captcha が出たら、ページの指示に従ってください。")
         } else {
             tr("アプリ内のブラウザは閉じています。ページの文字を写して下に貼り付けるか、STEP を選んでください。")
         });
-        #[cfg(not(windows))]
+        #[cfg(not(all(windows, feature = "webview")))]
         ui.weak(tr("品ページを既定のブラウザで開きました。ページの文字を全部選んで写し、下に貼り付けるか、CAD 欄から落とした STEP を選んでください。"));
         ui.separator();
         ui.collapsing(tr("ページの文字を貼り付ける"), |ui| {

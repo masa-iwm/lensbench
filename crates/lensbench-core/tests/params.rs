@@ -1,15 +1,11 @@
 //! 系を作り直さずにパラメータを変える: 変えた系の追跡が、同じ値の .zmx を読み直した系の追跡とビット一致する。
 
+use crate::common::root;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{zmx_write, System};
-use std::path::PathBuf;
 use std::time::Instant;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

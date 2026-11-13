@@ -79,11 +79,21 @@ jobs:
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    env:
+      # ワークスペース自身のクレートは rust-cache に乗らない（毎回作り直し）ので、sccache（GHA のキャッシュ）で拾う。
+      # 当たるのは incremental なしの ci プロファイルのテストのビルド（公開 #216 BLD-16）
+      SCCACHE_GHA_ENABLED: "true"
+      # Windows のテストはアプリ内のブラウザ（wry・tao と windows クレート一式）を切る。gui-windows の exe は入れる（BLD-22）
+      FEAT: ${{ startsWith(matrix.os, 'windows') && '--no-default-features' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # ツールチェーンは rust-toolchain.toml の版（Windows のリンカ rust-lld は .cargo/config.toml）
       - run: rustup toolchain install && rustc --version
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+      - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad  # v0.0.9
+      # rust-cache の鍵（RUST で始まる環境変数を含む）を変えないよう、rust-cache の後で入れる
+      - run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+        shell: bash
       - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2.90.3
         with:
           tool: nextest
@@ -91,8 +101,12 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       # テストは ci プロファイル（release と同じ最適化、LTO なし・オーバーフロー検査あり。Cargo.toml）。
       # nextest で exe をまたいで並べて回す（.config/nextest.toml）。doctest は nextest が回さないので別に
-      - run: cargo nextest run --locked --profile ci --cargo-profile ci --workspace
-      - run: cargo test --locked --doc --workspace --profile ci
+      - run: cargo nextest run --locked --profile ci --cargo-profile ci --workspace $FEAT
+        shell: bash
+      - run: cargo test --locked --doc --workspace --profile ci $FEAT
+        shell: bash
+      - if: always()
+        run: sccache --show-stats
 
   # GUI の exe（インストール不要の 1 ファイル、配る形の release）を成果物に置く。PR も release で作る
   # （rust-cache は main で保存したものしか PR から使えず、main は release なので、PR を ci プロファイルにすると

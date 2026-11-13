@@ -4,16 +4,12 @@
 //! 正規化瞳の単位円の中でパワー 1）。断面（格子の中心の行・列）の差の最大を、OpticStudio の断面の最大で割る。
 //! pop.json がない系は飛ばす。
 
+use crate::common::root;
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use serde_json::Value;
 use std::f64::consts::PI;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn nums(v: &Value) -> Vec<f64> {
     v.as_array()

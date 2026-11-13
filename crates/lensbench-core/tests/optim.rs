@@ -1,17 +1,13 @@
 //! 減衰最小二乗: 評価関数が解析の RMS と一致すること、解析的なヤコビアンが差分と合うこと、
 //! ずらした系が元の性能まで戻ること。
 
+use crate::common::root;
 use lensbench_core::optim::{
     dls, DefaultMerit, DlsOpts, JacMode, MtfDir, Problem, Term, TermKind, Var,
 };
 use lensbench_core::sweep::{rms, RmsOpts, RmsRef};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(name: &str) -> System {
     zmx::load_with(

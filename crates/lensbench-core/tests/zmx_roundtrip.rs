@@ -1,14 +1,9 @@
 //! .zmx の書き出し → 読み戻しで、面の値と状態（半直径の固定・自動、開口、無視、ピックアップ・ソルブ）が保たれる。
 //! 系は tests/refs の OpticStudio が保存した .zmx
 
-use std::path::PathBuf;
-
+use crate::common::root;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{glass, zmx_write, System};
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn opt() -> LoadOptions {
     LoadOptions {

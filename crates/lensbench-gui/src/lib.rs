@@ -49,7 +49,7 @@ mod view3d;
 mod web_store;
 #[cfg(target_arch = "wasm32")]
 mod web_tabs;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "webview"))]
 mod webview;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
@@ -66,7 +66,7 @@ pub use worker::entry as web_worker;
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main() -> std::process::ExitCode {
     // 品ページを開くアプリ内のブラウザ（未完のカタログ品を補う窓が、この exe を --webview で起こす）
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "webview"))]
     {
         let a: Vec<String> = std::env::args().collect();
         if a.get(1).map(String::as_str) == Some("--webview") {

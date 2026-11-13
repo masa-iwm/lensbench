@@ -13,17 +13,13 @@
 //!   未収束なので使わない。
 //! - FFT PSF（主光線に垂直な面）より Huygens（像面の上）の方が OS の Huygens に近い（A6 の VANN の視野で 0.1 対 0.7）。
 
+use crate::common::root;
 use lensbench_core::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
-use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn load(rel: &str) -> System {
     let opt = LoadOptions {

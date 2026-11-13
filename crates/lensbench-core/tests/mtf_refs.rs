@@ -12,28 +12,12 @@
 //! よらない、D4 の低い周波数と同じ挙動）ので FFT s512 の値に置き換えてある。許容差は 5e-3〜1e-2 に収めた値。
 //! 多色の重みは A0 の重みを変えた系（mtf_weights.json）で別に確かめる。
 
+use crate::common::{glass_dirs, refs_dir};
 use lensbench_core::analysis;
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use serde_json::Value;
 use std::path::PathBuf;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn refs_dir() -> PathBuf {
-    std::env::var_os("LB_REFS_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root().join("tests/refs"))
-}
-
-fn glass_dirs() -> Vec<PathBuf> {
-    match std::env::var_os("LB_GLASS_DIR") {
-        Some(v) => std::env::split_paths(&v).collect(),
-        None => vec![root().join("tests/glass")],
-    }
-}
 
 fn nums(v: &Value) -> Vec<f64> {
     v.as_array()
