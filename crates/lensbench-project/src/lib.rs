@@ -1218,16 +1218,32 @@ impl<'a, 'b> Ctx<'a, 'b> {
         if !place.on {
             if place.off == OffMode::Air {
                 // 長さを測るため一度入れて、空気に置き換える
+                // 中身が足した面の範囲・記録は全部巻き戻す（残すと後ろの別のブロックの面を指す）
                 let start = self.sf.len();
-                let (p0, n0) = (self.parity, self.nstop);
+                let (p0, n0, lead0) = (self.parity, self.nstop, self.lead);
+                let lens = (
+                    self.spans.len(),
+                    self.back_spans.len(),
+                    self.gaps.len(),
+                    self.frames.len(),
+                    self.rev_spans.len(),
+                    self.zpicks.len(),
+                );
                 body(self)?;
                 if self.parity != p0 {
                     return Err("鏡を含むブロックは「空気で残す」にできない".into());
                 }
-                let l = self.length_since(start);
+                let l = self.length_since(start) + (self.lead - lead0);
                 self.sf.truncate(start);
                 self.org.truncate(start);
+                self.spans.truncate(lens.0);
+                self.back_spans.truncate(lens.1);
+                self.gaps.truncate(lens.2);
+                self.frames.truncate(lens.3);
+                self.rev_spans.truncate(lens.4);
+                self.zpicks.truncate(lens.5);
                 self.nstop = n0;
+                self.lead = lead0;
                 self.gap(l);
             }
             return Ok(());
@@ -3549,7 +3565,12 @@ fn expand_inner(
             .iter()
             .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
     }
-    apply_surface_edits(&mut s, &p.surface_edits, &c.spans, &c.back_spans)?;
+    warn.extend(apply_surface_edits(
+        &mut s,
+        &p.surface_edits,
+        &c.spans,
+        &c.back_spans,
+    )?);
     let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &c.spans, &c.back_spans)?;
     if c.nstop == 0 && !stopped {
         // 仮の絞りのまま（set_stop のブロックが無い）にはしない
@@ -3889,13 +3910,15 @@ fn apply_surface_ops(
     Ok((warn, stopped))
 }
 
-/// 面の値の上書きを当てる（ブロック id の面のうち座標ブレークを除いた番号）
+/// 面の値の上書きを当てる（ブロック id の面のうち座標ブレークを除いた番号）。
+/// ブロックが系に無い（状態で外した・OFF の群の中など）上書きは `surface_ops` と同じく当てずに注意を返す
 fn apply_surface_edits(
     s: &mut System,
     edits: &[SurfaceEdit],
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
+    let mut warn = Vec::new();
     // 範囲の面（座標ブレークを除く）
     let faces = |s: &System, a: usize, b: usize| -> Vec<usize> {
         (a + 1..=b + 1)
@@ -3923,7 +3946,11 @@ fn apply_surface_edits(
             .map(|x| faces(s, x.1, x.2))
             .collect();
         let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
-            return Err(format!("surface_edits: ブロック {} はない", e.block));
+            warn.push(format!(
+                "surface_edits: ブロック {} が無いので面 {} の上書きを当てない",
+                e.block, e.surface
+            ));
+            continue;
         };
         let i = e.surface;
         if i >= n {
@@ -4012,7 +4039,7 @@ fn apply_surface_edits(
             }
         }
     }
-    Ok(())
+    Ok(warn)
 }
 
 /// id の群（ブロックの群・.zmx の取り込みの中の群）の移動

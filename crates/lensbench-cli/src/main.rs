@@ -665,7 +665,7 @@ enum Cmd {
         #[arg(long)]
         out_half: Option<f64>,
         /// 出力の格子の中心 "x,y" [mm]（省略で主光線の向きに進めた点）
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         center: Option<String>,
         /// 結果の JSON に出力の照度の格子も入れる（"grid_irradiance"、番号 j·nx + i、j は +y の向き。GUI の図）
         #[arg(long)]
@@ -1583,8 +1583,44 @@ fn print_out(json_out: bool, out: &Value) {
     if json_out {
         println!("{}", serde_json::to_string_pretty(out).unwrap());
     } else {
-        print_text(&brief(out), 0);
+        print_text(&brief(&tolerance_brief(out)), 0);
     }
+}
+
+/// 公差の結果（`merit_values` を持つ）を画面用に要点だけにする。--save・serve・GUI には全体を渡す
+fn tolerance_brief(out: &Value) -> Value {
+    let mut out = out.clone();
+    let Some(o) = out.as_object_mut() else {
+        return out;
+    };
+    if !o.contains_key("merit_values") {
+        return out;
+    }
+    o.remove("cdf");
+    o.remove("tolerances");
+    o.remove("merit_values");
+    for k in ["compensators", "tilt_magnitudes"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            for t in a {
+                if let Some(t) = t.as_object_mut() {
+                    t.remove("values");
+                }
+            }
+        }
+    }
+    for k in ["sensitivity", "correlation"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            a.truncate(10);
+        }
+    }
+    if let Some(Value::Array(a)) = o.get_mut("terms") {
+        for t in a {
+            if let Some(t) = t.as_object_mut() {
+                t.remove("cdf");
+            }
+        }
+    }
+    out
 }
 
 /// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。serve・watch もこれを使う
@@ -2350,40 +2386,11 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     })?;
                 }
             }
-            let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+            let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
             if let Some(path) = &comp_csv {
                 let csv = lensbench_project::tolerance::compensators_csv(&out)?;
                 lensbench_core::vfs::write(path, csv)
                     .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
-            }
-            if !json_out {
-                // 画面には要点だけ（分布の全体は --json か --save で）
-                if let Some(o) = out.as_object_mut() {
-                    o.remove("cdf");
-                    o.remove("tolerances");
-                    o.remove("merit_values");
-                    for k in ["compensators", "tilt_magnitudes"] {
-                        if let Some(Value::Array(a)) = o.get_mut(k) {
-                            for t in a {
-                                if let Some(t) = t.as_object_mut() {
-                                    t.remove("values");
-                                }
-                            }
-                        }
-                    }
-                    for k in ["sensitivity", "correlation"] {
-                        if let Some(Value::Array(a)) = o.get_mut(k) {
-                            a.truncate(10);
-                        }
-                    }
-                    if let Some(Value::Array(a)) = o.get_mut("terms") {
-                        for t in a {
-                            if let Some(t) = t.as_object_mut() {
-                                t.remove("cdf");
-                            }
-                        }
-                    }
-                }
             }
             (json_out, out)
         }
@@ -3832,7 +3839,13 @@ fn cli_command() -> clap::Command {
     for e in ext::list() {
         c = c.subcommand((e.command)().name(e.name));
     }
-    c
+    negative_numbers(c)
+}
+
+/// `--dist -5`・`--pmag -0.5` のような負の数を値として受ける（入れ子のサブコマンドも）
+fn negative_numbers(c: clap::Command) -> clap::Command {
+    c.allow_negative_numbers(true)
+        .mut_subcommands(negative_numbers)
 }
 
 /// 同梱のサブコマンドの名前

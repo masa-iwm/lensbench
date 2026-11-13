@@ -1569,25 +1569,22 @@ pub(crate) fn analysis_argv(p: &Map<String, Value>, file: &Path) -> Result<Vec<S
         match x {
             // 設定のオブジェクト（センサの設定など）は JSON の文字列のまま `--<名前>-json` に
             Value::Object(_) => {
-                v.push(format!("{flag}-json"));
-                v.push(x.to_string());
+                v.push(format!("{flag}-json={x}"));
             }
             Value::Bool(true) => v.push(flag),
             Value::Bool(false) | Value::Null => {}
+            // 値は `--flag=値` の 1 要素で積む（負の数・- で始まる文字列を旗と取り違えない）
             Value::Array(a) if a.iter().all(Value::is_number) => {
                 let s: Vec<String> = a.iter().map(|n| n.to_string()).collect();
-                v.push(flag);
-                v.push(s.join(","));
+                v.push(format!("{flag}={}", s.join(",")));
             }
             Value::Array(a) => {
                 for e in a {
-                    v.push(flag.clone());
-                    v.push(scalar(e)?);
+                    v.push(format!("{flag}={}", scalar(e)?));
                 }
             }
             _ => {
-                v.push(flag);
-                v.push(scalar(x)?);
+                v.push(format!("{flag}={}", scalar(x)?));
             }
         }
     }
@@ -3452,19 +3449,19 @@ mod tests {
                 "lensbench",
                 "mtf",
                 "s.zmx",
-                "--field",
-                "2",
-                "--freq",
-                "10,20.5",
+                "--field=2",
+                "--freq=10,20.5",
                 "--json",
-                "--out",
-                "a.svg",
-                "--out",
-                "b.step",
-                "--max-freq",
-                "50"
+                "--out=a.svg",
+                "--out=b.step",
+                "--max-freq=50"
             ]
         );
+        // 負の数は値として渡る（旗と取り違えない）
+        let p = json!({ "cmd": "pop", "dist": -5.0, "center": [-1, 2] });
+        let v = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap();
+        assert_eq!(v[3..], ["--dist=-5.0", "--center=-1,2"]);
+        assert!(crate::parse_cli(&v).is_ok());
         for bad in [
             json!({ "cmd": "spot", "cfg": 2 }),
             // path（経路）も load で選ぶ。黙って load の値で上書きされないよう誤りにする
@@ -3482,6 +3479,6 @@ mod tests {
     fn object_arg_becomes_json_flag() {
         let p = json!({ "cmd": "camera", "sensor": { "mla": { "pitch": [0.2, 0.2] } } });
         let v = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap();
-        assert_eq!(v[3..], ["--sensor-json", r#"{"mla":{"pitch":[0.2,0.2]}}"#]);
+        assert_eq!(v[3..], [r#"--sensor-json={"mla":{"pitch":[0.2,0.2]}}"#]);
     }
 }

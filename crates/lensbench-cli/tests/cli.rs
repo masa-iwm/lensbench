@@ -673,6 +673,62 @@ fn tolerance_monte_carlo() {
     assert!(!ok && err.contains("公差の組"), "{err}");
 }
 
+/// --save の中身は --json の有無によらず同じ全体（画面用の間引きは表示だけ）
+#[test]
+fn tolerance_save_is_full_without_json() {
+    const C0: &str = "tests/refs/C0/system.zmx";
+    let dir = std::env::temp_dir().join(format!("lb-tol-save-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (a, b) = (dir.join("a.json"), dir.join("b.json"));
+    for (p, json) in [(&a, false), (&b, true)] {
+        let mut args = vec![
+            "tolerance",
+            C0,
+            "--glass-dir",
+            "tests/glass",
+            "--trials",
+            "4",
+            "--seed",
+            "3",
+            "--save",
+            p.to_str().unwrap(),
+        ];
+        if json {
+            args.push("--json");
+        }
+        let (ok, _, err) = run(&args);
+        assert!(ok, "{err}");
+    }
+    let rd = |p: &std::path::Path| -> serde_json::Value {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+        v.as_object_mut().unwrap().remove("provenance");
+        v
+    };
+    let (va, vb) = (rd(&a), rd(&b));
+    assert!(va.get("cdf").is_some() && va.get("merit_values").is_some());
+    assert!(va["sensitivity"].as_array().unwrap().len() > 10);
+    assert_eq!(va, vb);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 負の数を値として受ける（--dist -5、--center -1,2）
+#[test]
+fn negative_numbers_are_values() {
+    let (ok, _, err) = run(&[
+        "pop",
+        ZMX,
+        "--glass-dir",
+        "tests/glass",
+        "--dist",
+        "-5",
+        "--center",
+        "-0.1,0",
+        "--json",
+    ]);
+    assert!(ok, "{err}");
+}
+
 #[test]
 fn coat_design_fits_a_reflectance_curve_and_writes_a_stack() {
     // 1/4 波長の MgF2 1 層（n 1.38、基板 1.52）の垂直入射の反射率を、材料 L から当てはめる
