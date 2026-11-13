@@ -157,6 +157,19 @@ pub fn confirm(title: &str, text: &str) -> bool {
         == rfd::MessageDialogResult::Yes
 }
 
+/// エラーを窓で知らせる（Linux は zenity、無ければ何もしない）
+#[cfg(not(target_arch = "wasm32"))]
+pub fn error_box(title: &str, text: &str) {
+    #[cfg(target_os = "linux")]
+    zenity::error(title, text);
+    #[cfg(not(target_os = "linux"))]
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title(title)
+        .set_description(text)
+        .show();
+}
+
 /// 「はい・いいえ」で確かめる（ブラウザの confirm）
 #[cfg(target_arch = "wasm32")]
 pub fn confirm(_title: &str, text: &str) -> bool {
@@ -212,6 +225,17 @@ mod zenity {
         pub fn save_file(self) -> Option<PathBuf> {
             run(&self.args(&["--save", "--confirm-overwrite"])).map(PathBuf::from)
         }
+    }
+
+    pub fn error(title: &str, text: &str) {
+        let _ = Command::new("zenity")
+            .args([
+                "--error",
+                "--no-markup",
+                &format!("--title={title}"),
+                &format!("--text={text}"),
+            ])
+            .status();
     }
 
     /// zenity が無ければ「いいえ」（消す・上書きする側に倒さない）
