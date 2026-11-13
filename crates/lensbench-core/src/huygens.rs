@@ -29,7 +29,7 @@ use std::f64::consts::PI;
 #[derive(Debug, Clone, Copy)]
 pub struct HuygensOpts {
     /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）。None で自動（隣り合う標本の位相差が π/2 以下に
-    /// なる大きさ、64〜512。計算量は瞳の格子² × 像の格子²）
+    /// なる大きさ、64〜256。超えたら格子を増やして求め直す。計算量は瞳の格子² × 像の格子²）
     pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
@@ -114,6 +114,15 @@ type Sphere = Option<(V3, f64, f64)>;
 /// Huygens PSF。w None なら全波長を重みで足した多色。座標は像面の局所座標 (x, y)（中心 = 主波長の主光線の
 /// 像点）で、axes は像面の x̂・ŷ
 pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
+    crate::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
+        huygens_once(s, field, w, HuygensOpts { pupil: np, ..o })
+    })
+}
+
+/// 自動の瞳の格子の上限（Huygens PSF。計算量は瞳の格子² × 像の格子²）
+const HUYGENS_PUPIL_CAP: usize = 256;
+
+fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
@@ -192,7 +201,7 @@ pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts
                 .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
                 .collect();
             let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
-            crate::psf::auto_pupil(s, field, &ws, need, 512)?
+            crate::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
         }
     };
     // 瞳の格子（FFT PSF と同じ区間の中心）

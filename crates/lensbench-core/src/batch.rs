@@ -283,8 +283,8 @@ impl<'a> Plan<'a> {
                 nprev,
                 nn,
                 curved,
-                // 標準面に残った非球面の項は使わない（法線と同じ判定。trace::std_asph）
-                asph: d.typ != SurfType::Standard && d.has_asph(),
+                // 非球面の項は偶数次非球面（trace::std_asph、法線と同じ判定）とトロイダル面だけ
+                asph: trace::std_asph(d) || (d.typ == SurfType::Toroidal && d.has_asph()),
                 sag: Sag::new(d),
                 k1: 1.0 + d.k,
                 ck1: d.c * (1.0 + d.k),

@@ -116,7 +116,7 @@ pub(crate) fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64)
 #[derive(Debug, Clone, Copy)]
 pub struct PsfOpts {
     /// 瞳の格子の一辺（直径を n 区間に分けた各区間の中心で標本化）。None で自動（隣り合う標本の位相差が π/2 以下に
-    /// なる大きさ、64〜2048）
+    /// なる大きさ、64〜2048。超えたら格子を増やして求め直す）
     pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
@@ -209,6 +209,39 @@ fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
 
 /// 回折 PSF。w None なら全波長を重みで足した多色（各波長の全強度を重みに比例させる）
 pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<Psf> {
+    retry_auto(o.pupil, PSF_PUPIL_CAP, |np| {
+        psf_once(s, field, w, PsfOpts { pupil: np, ..o })
+    })
+}
+
+/// 自動の瞳の格子の上限（FFT PSF）
+const PSF_PUPIL_CAP: usize = 2048;
+
+/// 瞳の格子が自動（pupil = None）なら、見積もりで求めた結果の位相差が [`PHASE_STEP_WARN`] を超えたとき、超えた比の
+/// 1.2 倍に格子を増やして求め直す（上限 cap まで、3 回まで）。見積もり（33×33 の OPD の傾き）は格子の上の差より少し
+/// 小さく出るため
+pub(crate) fn retry_auto(
+    pupil: Option<usize>,
+    cap: usize,
+    run: impl Fn(Option<usize>) -> Result<Psf>,
+) -> Result<Psf> {
+    let mut r = run(pupil)?;
+    if pupil.is_some() {
+        return Ok(r);
+    }
+    for _ in 0..3 {
+        if r.phase_step <= PHASE_STEP_WARN || r.pupil >= cap {
+            break;
+        }
+        let n = ((r.pupil as f64 * r.phase_step / PHASE_STEP_WARN * 1.2).ceil() as usize)
+            .next_multiple_of(16)
+            .min(cap);
+        r = run(Some(n))?;
+    }
+    Ok(r)
+}
+
+fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<Psf> {
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
@@ -261,7 +294,7 @@ pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<
                 .collect();
             // 像の格子の幅が瞳の標本の周期を超えない大きさ（ni·Δ·|a|·h ≤ 1、h = 2/n）
             let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
-            auto_pupil(s, field, &ws, need, 2048)?
+            auto_pupil(s, field, &ws, need, PSF_PUPIL_CAP)?
         }
     };
 
