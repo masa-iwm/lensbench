@@ -1,5 +1,5 @@
 //! 定義した視野以外の点のケラレ係数（公開 #226）。OpticStudio 互換（VigInterp::OpticStudio）は OpticStudio 2026 R1.01 を
-//! ZOS-API で測った値と同じ（PC の Documents\Zemax\lensbench_vig_interp、25 系 5010 点。ここはその代表値）。
+//! ZOS-API で測った値と同じ（25 系 5010 点。ここはその代表値）。
 //! 既定の連続（VigInterp::Continuous）は視野の間で段差がない
 
 use lensbench_core::system::{Field, FieldNorm, FieldSel, VigInterp};
@@ -165,4 +165,76 @@ fn continuous_is_continuous_and_matches_fields() {
     y.vig_interp = VigInterp::Continuous;
     assert!(near(y.vig_factors(0.0, 0.7).unwrap(), os));
     assert!(near(y.vig_factors(0.0, 1.3).unwrap(), F3));
+}
+
+/// 同じ円に 4 点以上が乗る視野（x・y の格子、正方形の 4 隅）でも、連続モードは対角線で飛ばない
+#[test]
+fn continuous_on_cocircular_grids() {
+    let v = |x: f64, y: f64| {
+        [
+            0.02 * x + 0.01 * y,
+            0.03 * y,
+            0.01 * x * y / 10.0,
+            0.0,
+            x - y,
+        ]
+    };
+    let mut grid = Vec::new();
+    for x in [-10.0, 0.0, 10.0] {
+        for y in [-10.0, 0.0, 10.0] {
+            grid.push((x, y, v(x, y)));
+        }
+    }
+    let square: Vec<_> = [(0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)]
+        .iter()
+        .enumerate()
+        .map(|(i, &(x, y))| {
+            (
+                x,
+                y,
+                [
+                    0.1 * i as f64,
+                    0.05 * (i % 2) as f64,
+                    0.0,
+                    0.0,
+                    3.0 * i as f64,
+                ],
+            )
+        })
+        .collect();
+    for (fields, norm) in [(grid, FieldNorm::Rect), (square, FieldNorm::Rect)] {
+        let mut s = with_fields(&fields, norm);
+        s.vig_interp = VigInterp::Continuous;
+        s.changed().unwrap();
+        for &(x, y, f) in &fields {
+            assert!(near(s.vig_factors(x / 10.0, y / 10.0).unwrap(), f));
+        }
+        // 縦・横・斜めに刻み 0.004 で走査して段差がない
+        let n = 500;
+        for (dir, off) in [
+            ((1.0, 0.0), 0.37),
+            ((0.0, 1.0), 0.61),
+            ((1.0, 1.0), 0.0),
+            ((1.0, -1.0), 0.13),
+        ] {
+            let mut prev: Option<[f64; 5]> = None;
+            for i in 0..=n {
+                let t = -1.0 + 2.0 * i as f64 / n as f64;
+                let (hx, hy) = if dir.1 == 0.0 {
+                    (t, off)
+                } else if dir.0 == 0.0 {
+                    (off, t)
+                } else {
+                    (t, dir.1 * t + off)
+                };
+                let v = s.vig_factors(hx, hy).unwrap();
+                if let Some(p) = prev {
+                    let d = (0..4).map(|k| (p[k] - v[k]).abs()).fold(0.0, f64::max);
+                    let da = (p[4] - v[4]).abs();
+                    assert!(d < 0.005 && da < 0.2, "{dir:?} t {t}: {p:?} → {v:?}");
+                }
+                prev = Some(v);
+            }
+        }
+    }
 }

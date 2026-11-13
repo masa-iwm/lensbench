@@ -238,18 +238,15 @@ pub enum ObjSpec {
 
 /// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
 /// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
-fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
+/// Delaunay の三角形分割（外接円の中に他の点がない、総当たり。視野は多くても数十）。同じ円に 4 点以上が
+/// 乗ると（格子の視野など）候補の三角形が重なるので、番号の順に重ならないものだけを取る（凸多角形を
+/// 重ならない三角形で埋め尽くす）
+fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<(usize, usize, usize)> {
     let n = pts.len();
-    let eps = 1e-12
-        * pts
-            .iter()
-            .map(|p| p[0].abs().max(p[1].abs()))
-            .fold(1.0, f64::max);
     let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     };
-    // Delaunay の三角形（外接円の中に他の点がない、総当たり。視野は多くても数十）
-    let mut tris = Vec::new();
+    let mut tris: Vec<(usize, usize, usize)> = Vec::new();
     for i in 0..n {
         for j in i + 1..n {
             for k in j + 1..n {
@@ -272,12 +269,59 @@ fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
                         + u[2] * (v[0] * w[1] - v[1] * w[0]);
                     det * area.signum() > eps * eps * eps
                 };
-                if (0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
+                if !(0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
+                    continue;
+                }
+                let t = [a, b, c];
+                if tris
+                    .iter()
+                    .all(|&(p, q, r)| !tri_overlap(&t, &[pts[p], pts[q], pts[r]], eps * eps))
+                {
                     tris.push((i, j, k));
                 }
             }
         }
     }
+    tris
+}
+
+/// 2 つの三角形の内部が重なるか（分離軸: どちらかの辺で、もう一方の 3 点がすべて外側か辺の上なら重ならない）
+fn tri_overlap(t: &[[f64; 2]; 3], u: &[[f64; 2]; 3], tol: f64) -> bool {
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    let separated = |t: &[[f64; 2]; 3], u: &[[f64; 2]; 3]| {
+        let sgn = cross(t[0], t[1], t[2]).signum();
+        (0..3).any(|e| {
+            let (a, b) = (t[e], t[(e + 1) % 3]);
+            u.iter().all(|&p| sgn * cross(a, b, p) <= tol)
+        })
+    };
+    !(separated(t, u) || separated(u, t))
+}
+
+fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
+    let n = pts.len();
+    let eps = 1e-12
+        * pts
+            .iter()
+            .map(|p| p[0].abs().max(p[1].abs()))
+            .fold(1.0, f64::max);
+    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    };
+    // 分割は視野が同じなら同じなので、スレッドごとに直前の結果を使い回す（走査で毎回作らない）
+    thread_local! {
+        static TRIS: std::cell::RefCell<(Vec<[f64; 2]>, Vec<(usize, usize, usize)>)> =
+            const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+    }
+    let tris = TRIS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0.as_slice() != pts {
+            *c = (pts.to_vec(), delaunay(pts, eps));
+        }
+        c.1.clone()
+    });
     for &(i, j, k) in &tris {
         let (a, b, c) = (pts[i], pts[j], pts[k]);
         let area = cross(a, b, c);
