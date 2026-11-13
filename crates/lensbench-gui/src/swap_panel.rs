@@ -435,8 +435,9 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &Value) -> Result<(), Stri
         pk.vendor = l["vendor"].as_str().unwrap_or_default().into();
         pk.part = l["part"].as_str().unwrap_or_default().into();
         pk.reversed = l["reversed"].as_bool().unwrap_or(false);
-        // 面の上書きは前の玉の面のもの
+        // 面の上書き・面の操作は前の玉の面のもの
         pk.edits.clear();
+        pk.ops.clear();
     }
     for v in row["vars"].as_array().into_iter().flatten() {
         let name = v["name"].as_str().unwrap_or_default();

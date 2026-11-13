@@ -67,7 +67,6 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 像面まで	To image
 像高	Image height
 元に戻す	Revert
-元に戻す（読み直す）	Revert (reload)
 光線を追跡しています…	Tracing rays…
 入射瞳径 [mm]	Entrance pupil diameter [mm]
 全視野	All fields
@@ -155,7 +154,6 @@ f = {} mm、径 {} mm、厚さ {} mm、{} 枚、ガラス {}	f = {} mm, diameter
 行をクリックで選び、ダブルクリックで組合せに足します	Click a row to select it, double-click to add it to the combination
 ➕ 組合せに足す	➕ Add to combination
 組合せ	Combination
-一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。光は上から下へ進みます。	Double-click a row (or "Add to combination") to insert it right after the element selected in the layout (or append it). Light travels from top to bottom.
 名前	Name
 レンズを裏返して置く	Place the lens reversed
 ▶ この組合せで系を作る	▶ Build a system from this combination
@@ -439,7 +437,6 @@ a, b, …	a, b, …
 {}: 知らない項目 {}	{}: unknown items {}
 {}（既定）	{} (default)
 ⚙ 設定	⚙ Settings
-⚙ 設定（{} 個を変更）	⚙ Settings ({} changed)
 この解析に引数はありません	This analysis has no arguments
 すべて既定に	Reset all
 ファイルを選ぶ	Choose a file
@@ -1200,8 +1197,8 @@ OS のタイトルバーを使う	Use the OS title bar
 全体を表示（ダブルクリックでも）	Fit all (also double-click)
 拡大	Zoom in
 縮小	Zoom out
-コピー ▾	Copy ▾
-保存 ▾	Save ▾
+コピー ▼	Copy ▼
+保存 ▼	Save ▼
 テキスト（タブ区切り）	Text (tab-separated)
 表計算に貼れる形。表が複数あれば「# 名前」の行で区切る	Pastes into a spreadsheet. Multiple tables are separated by "# name" lines
 JSON…	JSON…
@@ -1440,7 +1437,6 @@ r^{} の係数	r^{} coefficient
 ガラスカタログを読んでいます…（名前・1.5,60 のようなモデルガラスは打って Enter）	Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)
 ブロック {}	block {}
 候補から選ぶ（打つと絞り込む）	Choose from the list (type to filter)
-合うガラスが無い（打った名前・モデルガラスのまま Enter で決める）	No matching glass (Enter keeps the typed name or model glass)
 詳細設定	Details
 開口・前後の傾き偏心・形のデータ・全項目 JSON とブロックの設定（クリックで開く・閉じる）	Aperture, tilt/decenter before and after, shape data, all-fields JSON and block settings (click to open/close)
 写した行の数だけ面を挿入してから値を書く（OpticStudio の Paste Surfaces）	Insert as many surfaces as copied rows, then write the values (like OpticStudio's Paste Surfaces)
@@ -1456,7 +1452,6 @@ r^{} の係数	r^{} coefficient
 今の面の後に面を挿入	Insert a surface after the current one
 写した行の数だけ面を挿入して貼り付け	Insert as many surfaces as copied rows and paste
 右クリックの欄	Right-click menu
-多重構成の次の構成（Shift で前へ）	Next multi-config configuration (Shift: previous)
 書き換え（文字を打っても始まる）	Edit (typing also starts editing)
 書き換え（文字を打っても始まる）。Enter で決め、Esc で取り消し	Edit (typing also starts editing). Enter commits, Esc cancels
 行のコピー・上書きで貼り付け	Copy rows / paste over
@@ -1519,3 +1514,70 @@ r^{} の係数	r^{} coefficient
 面 {} の後に差し込む	Insert after surface {}
 面 {} の後は空気の間隔でないので差し込めない	Cannot insert after surface {}: not an air gap
 🔍 一覧でこれだけ見る	🔍 Show only these in the list
+読み込み	Load
+読み直し	Reload
+解析	Analysis
+差し替え	Swap
+0 以上の数（Esc でやめる）	A number ≥ 0 (Esc to cancel)
+BS の分ける面の向きを逆に	Flip the splitting surface of the BS
+{} は {} 以上	{} must be at least {}
+{} を外しました（Ctrl+Z で戻す）	Removed {} (Ctrl+Z to undo)
+{} を最適化の変数に足した	Added {} to the optimization variables
+{} を開けません: ガラス {} がカタログにありません。	Cannot open {}: glass {} is not in the catalogs.
+● 保存していない変更がある（Ctrl+S で保存）	● Unsaved changes (Ctrl+S to save)
+またはパスを貼って Enter	Or paste a path and press Enter
+やめる	Cancel
+やり直す段は無い	Nothing to redo
+やり直す（{}）: {}	Redo ({}): {}
+カタログのフォルダを足す…	Add catalog folders…
+ガラス {} がカタログにない（モデルガラスは 1.5,60 のように nd,νd で。カタログはファイル > カタログのフォルダ…）	Glass {} is not in the catalogs (write a model glass as nd,νd like 1.5,60; add catalogs in File > Catalog folders…)
+ガラス {} は nd・νd が書かれていないので代用できない	Glass {} has no nd/νd in the file, so it cannot be substituted
+ガラス {} をモデルガラス（nd・νd）で代用して開いた（元のファイルは変えていない。保存は名前を付けて）	Opened with model glasses (nd, νd) in place of {} (the original file is unchanged; use Save As)
+ガラスが見つからない	Glass not found
+クリックで並べ替え	Click to sort
+クリックで全文と履歴	Click for the full text and history
+メーカーのガラスカタログ（.AGF）のフォルダを足すか、.zmx に書かれた nd・νd のモデルガラスで代用して開けます。	Add the folder of the maker's glass catalog (.AGF), or open with model glasses from the nd and νd written in the .zmx.
+モデルガラス（nd・νd）で代用して開く	Open with model glasses (nd, νd)
+レイアウト図（組合せ）	Layout figure (combination)
+一時フォルダに写しを作って開く（元のファイルは変えない。保存は名前を付けて）	Opens a copy in a temporary folder (the original file is unchanged; use Save As)
+一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。一覧は光の進む順（字下げは BS の分岐の先）。	Double-click a row in the list (or "Add to combination") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch).
+代用は .zmx だけ	Only .zmx files can be substituted
+保存していない変更	Unsaved changes
+保存していない変更があります。閉じる前に保存しますか？	There are unsaved changes. Save before closing?
+保存して閉じる	Save and close
+保存しないで閉じる	Close without saving
+偏心（Shift で傾き）	Decenter (Shift: tilt)
+元に戻す段は無い	Nothing to undo
+元に戻す（{}）: {}	Undo ({}): {}
+光軸に沿って動かす（寸法を選んでいればその間隔）。Ctrl で 10 倍、Alt で 1/10	Move along the axis (the selected gap if a dimension is selected). Ctrl ×10, Alt ×1/10
+全文をコピー	Copy full text
+全部たたむ（ブロックを 1 行に）	Collapse all (blocks on one row)
+全部開く（面を全部見せる）	Expand all (show every surface)
+前の結果（系を変える前）	Previous result (before the system change)
+前・次の要素を選ぶ	Select the previous / next element
+合うガラスが無い（カタログに無い名前は入れられない。モデルガラスは 1.5,60 のように nd,νd で）	No matching glass (names not in the catalogs are refused; write a model glass as nd,νd like 1.5,60)
+図の画像	Figure as image
+図の画像（PNG）…	Figure as image (PNG)…
+図を画像で写した	Copied the figure as an image
+変数を 1 つ以上足すと押せる	Add at least one variable to enable
+変数を 1 つ以上足す（下の「変数」の表に 4.t のような名前、または […] から選ぶ）	Add at least one variable (a name like 4.t in the Variables table below, or pick with […])
+外す（Ctrl+Z で戻す）	Remove (Ctrl+Z to undo)
+多重構成の次の構成（Shift で前へ）。レンズデータの表を使っているときは全部の行を選ぶ	Next multi-configuration (Shift: previous). In the Lens Data table, selects all rows
+探す	Search
+新規（Ctrl+N）と同じ。Ctrl+Z で戻す	Same as New (Ctrl+N). Ctrl+Z to undo
+新規（Ctrl+Z で戻す）	New (Ctrl+Z to undo)
+最適化のパネルの変数の表に足して、パネルを出す	Adds it to the Variables table of the Optimize panel and shows the panel
+最適化の変数にする（{}）	Make an optimization variable ({})
+状態 {} 個	{} states
+状態の履歴	Status history
+行を選ぶと断面が出ます	Select a row to see its cross-section
+要素 {} 個	{} elements
+要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）	The element's surfaces changed, so {} values changed in Lens Data were dropped (Ctrl+Z to undo)
+解析の設定の欄を開く・閉じる（{} 個を変更）	Open / close the analysis settings ({} changed)
+解析・パネル・操作を探す（Ctrl+K）	Search analyses, panels and commands (Ctrl+K)
+読み直した（Ctrl+Z で戻す）	Reloaded (Ctrl+Z to undo)
+読み直す（変えた値を捨てる、Ctrl+Z で戻す）	Reload (discard changed values; Ctrl+Z to undo)
+選ぶのをやめる	Deselect
+面の上書き {} 件	{} surface overrides
+（ファイル > カタログのフォルダ… でガラスカタログを足す）	(add glass catalogs in File > Catalog folders…)
+（未保存）	(unsaved)

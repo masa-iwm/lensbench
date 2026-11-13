@@ -1,14 +1,24 @@
 [workspace]
 resolver = "2"
-members = ["crates/lensbench-core", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-verify", "crates/lensbench-export", "crates/lensbench-cli", "crates/lensbench-gui", "crates/lensbench-web"]
-exclude = ["crates/lensbench-py", "third_party/winit", "third_party/branches"]
+members = ["crates/lensbench-core", "crates/lensbench-analysis", "crates/lensbench-project", "crates/lensbench-verify", "crates/lensbench-export", "crates/lensbench-cli", "crates/lensbench-gui", "crates/lensbench-web", "crates/lensbench-py"]
+exclude = ["third_party/winit", "third_party/branches"]
 
 [workspace.package]
 version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/masa-iwm/lensbench"
-rust-version = "1.80"
+# 実際に使う版（rust-toolchain.toml で固定）。古い版での検査はしない（個人利用）
+rust-version = "1.100"
+
+# ワークスペース共通の lint（各クレートは [lints] workspace = true）。clippy の -D warnings は CI のコマンドライン
+[workspace.lints.clippy]
+# rustc 1.100 の clippy で増えた形の指摘。直すと各所に小さな変更が散って並行の作業と衝突するので、まとめて直すまで止める
+manual_is_multiple_of = "allow"
+unnecessary_map_or = "allow"
+chunks_exact_to_as_chunks = "allow"
+manual_repeat_n = "allow"
+needless_range_loop = "allow"
 
 [profile.release]
 lto = "thin"
@@ -21,6 +31,8 @@ inherits = "release"
 lto = false
 codegen-units = 16
 incremental = false
+# 添字・個数の計算のオーバーフローをテストで見つける（浮動小数の結果は変わらない。配る release には入れない）
+overflow-checks = true
 
 # Windows で拡大率の違うモニターの間を引きずると窓の大きさが飛ぶ winit 0.30 の不具合を直した版（third_party/winit/LENSBENCH.md）
 [patch.crates-io]

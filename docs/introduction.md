@@ -24,7 +24,7 @@ Zemax および OpticStudio は Ansys, Inc. の商標です。lensbench は Ansy
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
 | `crates/lensbench-cli` | コマンドライン（`lensbench`）。serve の API（`serve::call`）をライブラリとしても出す |
 | `crates/lensbench-gui` | GUI（`lensbench-gui`、eframe・egui）。計算は serve と同じ API をプロセス内で呼ぶ |
-| `crates/lensbench-py` | Python バインディング（pyo3・maturin、ワークスペースの外） |
+| `crates/lensbench-py` | Python バインディング（pyo3・maturin、ワークスペースのメンバー） |
 | `clients/python` | `lensbench serve` の Python クライアント（標準ライブラリだけ） |
 | `docs` | このドキュメント（mdBook の元）と JSON スキーマ（`docs/schema`） |
 | `scripts/check_public.py` | 公開できないファイル（メーカーのカタログなど）が入っていないかの検査。CI で全履歴に対して実行 |

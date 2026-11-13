@@ -64,6 +64,8 @@ pub struct Settings {
     pub os_titlebar: bool,
     /// 品の STEP の共有の置き場（アプリ版。空なら環境変数 LENSBENCH_CAD_STORE、なければ配布元だけ）
     pub cad_store: CadStore,
+    /// 最適化・公差・差し替えのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
+    pub panels: Value,
 }
 
 /// 品の STEP の共有の置き場（`lensbench_cli::cad::Store`）。取るときは配布元より先に見て、配布元から取った STEP を上げる
@@ -199,13 +201,15 @@ impl Default for Settings {
             params: Vec::new(),
             auto_build: true,
             view_plane: ViewPlane::Yz,
-            ld_tree: false,
+            // 既定は折りたたみ表示で全部開く（曲率半径・硝材がすぐ見える、GUX-05）
+            ld_tree: true,
             ld_detail: false,
             ld_by_surface: false,
             rays: Default::default(),
             lens_hide: Vec::new(),
             os_titlebar: false,
             cad_store: CadStore::default(),
+            panels: Value::Null,
         }
     }
 }
@@ -216,10 +220,100 @@ struct Status {
     error: bool,
 }
 
+/// serve の要求の名前を画面の言葉に（状態の行、GUX-06）
+fn method_label(m: &str) -> String {
+    let ja = match m {
+        "load" => "読み込み",
+        "reload" => "読み直し",
+        "edit" => "編集",
+        "set" => "値の変更",
+        "analyze" => "解析",
+        "save" => "保存",
+        "write" => "書き出し",
+        "layout" | "layout_export" => "レイアウト",
+        "optimize" => "最適化",
+        "tolerance" => "公差",
+        "swap" => "差し替え",
+        "zoom" => "ズーム",
+        "surface" => "面の表",
+        "history" => "元に戻す",
+        _ => return m.to_string(),
+    };
+    tr(ja).to_string()
+}
+
+/// serve の誤りの文から、GUI の利用者に関係の無い内部の言葉を外す（「操作 1: 」、serve の操作名の案内）
+fn plain_error(e: &str) -> String {
+    let mut t = e.to_string();
+    // 編集の操作の番号（1 つだけ送ったときは要らない）
+    if let Some(rest) = t.strip_prefix("操作 1: ") {
+        t = rest.to_string();
+    }
+    t = t.replace("不正: ", "");
+    t.replace(
+        "（カタログを足す: add_glasses・add_glass_catalogs）",
+        tr("（ファイル > カタログのフォルダ… でガラスカタログを足す）"),
+    )
+}
+
+/// カタログに無いガラスで開けなかった系（GUX-01）
+#[derive(Default, Clone)]
+struct MissingGlass {
+    /// 開こうとしたファイル
+    file: PathBuf,
+    /// 見つからなかったガラスの名前
+    names: Vec<String>,
+    /// モデルガラスで代用した写し（読み直しで次の無いガラスも代用する）
+    model: Option<PathBuf>,
+    /// 代用を続けた回数（止まらないときの上限）
+    tries: usize,
+}
+
+/// エラーの文から、カタログに無いガラスの名前（「ガラス N-SK16（面 1）がカタログにない」など）
+fn missing_glass_name(e: &str) -> Option<String> {
+    let i = e.find("ガラス ")? + "ガラス ".len();
+    let rest = &e[i..];
+    let end = rest.find(['（', ' ', '）'])?;
+    let tail = &rest[end..];
+    (tail.contains("がカタログにない") || tail.contains("がない")).then(|| rest[..end].to_string())
+}
+
+/// .zmx の GLAS の行のうち names のガラスを、行にある nd・νd のモデルガラス（___BLANK、ソルブ 1）に替える。
+/// 替えた名前（nd が無い行は替えない）
+fn model_glass_zmx(text: &str, names: &[String]) -> (String, Vec<String>) {
+    let mut done = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let t: Vec<&str> = line.split_whitespace().collect();
+        let hit = t.first() == Some(&"GLAS")
+            && t.get(1)
+                .is_some_and(|n| names.iter().any(|x| x.eq_ignore_ascii_case(n)))
+            && t.get(2) != Some(&"2")
+            && t.get(4)
+                .and_then(|x| x.parse::<f64>().ok())
+                .is_some_and(|nd| nd > 1.0);
+        if hit {
+            let mut u: Vec<String> = t.iter().map(|x| x.to_string()).collect();
+            done.push(u[1].clone());
+            u[1] = "___BLANK".into();
+            u[2] = "1".into();
+            let indent = &line[..line.len() - line.trim_start().len()];
+            out.push_str(indent);
+            out.push_str(&u.join(" "));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    (out, done)
+}
+
 /// 解析パネルの結果
 #[derive(Default)]
 struct AnaRes {
     cmd: String,
+    /// 結果を出したときの引数（設定を変えただけなら前の結果は出さない）
+    params: Value,
     value: Option<Value>,
     /// 値を変える前の結果（同じ解析のとき）
     prev: Option<Value>,
@@ -254,6 +348,7 @@ struct NewSnap {
     combo_path: Option<PathBuf>,
     doc_path: Option<PathBuf>,
     ld_dirty: bool,
+    saved_combo: Option<Combo>,
     hist: (usize, usize),
     hist_list: (Vec<Value>, Vec<Value>),
 }
@@ -551,6 +646,27 @@ struct Core {
     ld_glasses: Vec<lens_data::GlassChoice>,
     /// 開いた系を面の表で変えて、まだ保存していない
     ld_dirty: bool,
+    /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり、GUX-02）
+    saved_combo: Option<Combo>,
+    /// 閉じる前に「保存しますか」を聞いている
+    close_ask: bool,
+    /// 前の画面の組合せの要素・状態・面の上書きの数
+    combo_census: Option<[usize; 3]>,
+    /// 図を画像にする（パネル、写すか、解析の名前）。画面の写しが届いたら切り出す
+    shot: Option<(u64, bool, String)>,
+    /// 解析パネルの図の矩形
+    fig_rects: HashMap<u64, egui::Rect>,
+    /// 最後に値の変更を送った時刻（解析を中断して送る間隔）
+    last_set: Option<web_time::Instant>,
+    /// 状態の行の履歴（文、誤りか）と、その窓を開いているか
+    status_log: Vec<(String, bool)>,
+    status_log_open: bool,
+    /// 開けなかった系の、カタログに無いガラス（案内の窓、GUX-01）
+    missing_glass: Option<MissingGlass>,
+    /// 未保存の確認の後に閉じる（もう聞かない）
+    close_ok: bool,
+    /// 保存が終わったら閉じる
+    close_pending: bool,
     /// 多重構成の表
     mc: config_panel::State,
     /// 開いた系の系の設定
@@ -725,6 +841,87 @@ fn combo_of_project(v: &Value) -> Option<Combo> {
 }
 
 impl Core {
+    /// 最適化・公差・差し替えのパネルの設定（変数・項・公差の表。serve の optimize・tolerance・swap と同じ形）。
+    /// 空のパネルは入れない（GPN-14）
+    fn panels_value(&self) -> Value {
+        let mut v = serde_json::Map::new();
+        if self.opt.vars.iter().any(|x| !x.name.trim().is_empty()) || !self.opt.terms.is_empty() {
+            if let Ok(p) = self.opt.params() {
+                v.insert("optimize".into(), p);
+            }
+        }
+        if let Ok(p) = self.tol.spec() {
+            if p != crate::tol_panel::TolPanel::default()
+                .spec()
+                .unwrap_or(Value::Null)
+            {
+                v.insert("tolerance".into(), p);
+            }
+        }
+        if let Ok(p) = self.swap.spec() {
+            if p != crate::swap_panel::SwapPanel::default()
+                .spec()
+                .unwrap_or(Value::Null)
+            {
+                v.insert("swap".into(), p);
+            }
+        }
+        if v.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(v)
+        }
+    }
+
+    /// [`Core::panels_value`] をパネルに戻す（読めない項目は飛ばす）
+    fn set_panels(&mut self, v: &Value) {
+        if let Some(p) = v.get("optimize") {
+            let _ = self.opt.set_params(p);
+        }
+        if let Some(p) = v.get("tolerance") {
+            let _ = self.tol.set_spec(p);
+        }
+        if let Some(p) = v.get("swap") {
+            let _ = self.swap.set_spec(p);
+        }
+    }
+
+    /// 保存していない変更がある（組合せは最後に保存・開いたものと違う、開いた系は面の表・値を変えた）
+    fn dirty(&self) -> bool {
+        let combo =
+            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        if combo {
+            match &self.saved_combo {
+                Some(c) => c != &self.browser.combo,
+                None => !self.browser.combo.picks.is_empty(),
+            }
+        } else {
+            self.ld_dirty
+        }
+    }
+
+    /// 閉じると失う変更がある。一度もファイルに保存・ファイルから開いていない組合せは設定に残り、次に起動したときに
+    /// 戻るので失わない（毎回の閉じる確認を出さない）
+    fn close_loses(&self) -> bool {
+        let combo =
+            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        if combo && self.saved_combo.is_none() {
+            return false;
+        }
+        self.dirty()
+    }
+
+    /// 最近のファイルの先頭に足す。Web 版の保存先（`/downloads/`、ダウンロードにして置き場から消える）は
+    /// 開き直せないので足さない（GAR-12）
+    fn push_recent(&mut self, file: &str) {
+        if file.starts_with("/downloads/") {
+            return;
+        }
+        self.s.recent.retain(|x| x != file);
+        self.s.recent.insert(0, file.to_string());
+        self.s.recent.truncate(10);
+    }
+
     fn new_id(&mut self) -> u64 {
         self.next_id += 1;
         self.next_id
@@ -733,10 +930,8 @@ impl Core {
     /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
     /// 組合せに戻して系を作る（#129）
     fn open_doc(&mut self, p: &Path) {
-        let file = p.display().to_string();
-        self.s.recent.retain(|x| x != &file);
-        self.s.recent.insert(0, file.clone());
-        self.s.recent.truncate(10);
+        self.combo_census = None;
+        self.push_recent(&p.display().to_string());
         let is_json = p
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("json"));
@@ -755,6 +950,14 @@ impl Core {
                     )
                 {
                     return;
+                }
+                // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
+                // 付ける前を持つと、開いただけで未保存になる
+                let mut c = c;
+                c.drop_stale_edits();
+                self.saved_combo = Some(c.clone());
+                if let Some(g) = v.as_ref().and_then(|v| v.get("gui")) {
+                    self.set_panels(g);
                 }
                 self.browser.combo = c;
                 // 別の組合せ: 元に戻す段は空から
@@ -828,6 +1031,7 @@ impl Core {
             combo_path: self.combo_path.take(),
             doc_path: self.doc_path.take(),
             ld_dirty: self.ld_dirty,
+            saved_combo: self.saved_combo.take(),
             hist: std::mem::take(&mut self.hist),
             hist_list: std::mem::take(&mut self.hist_list),
         });
@@ -858,7 +1062,7 @@ impl Core {
             r.error = None;
         }
         self.status = Status {
-            text: tr("新規").to_string(),
+            text: tr("新規（Ctrl+Z で戻す）").to_string(),
             error: false,
         };
     }
@@ -900,6 +1104,7 @@ impl Core {
         self.built_combo = n.built_combo;
         self.combo_path = n.combo_path;
         self.doc_path = n.doc_path;
+        self.saved_combo = n.saved_combo;
         self.hist = n.hist;
         self.hist_list = n.hist_list;
         self.new_redo = Some(self.hist.1);
@@ -1229,7 +1434,13 @@ impl Core {
             }
         };
         if combo {
-            let v = project_with_combo(&self.browser.combo);
+            let mut v = project_with_combo(&self.browser.combo);
+            let panels = self.panels_value();
+            if let Some(o) = panels.as_object() {
+                for (k, x) in o {
+                    v["gui"][k] = x.clone();
+                }
+            }
             let r = lensbench_core::vfs::write(
                 &path,
                 serde_json::to_string_pretty(&v).unwrap_or_default(),
@@ -1237,10 +1448,8 @@ impl Core {
             self.status = match r {
                 Ok(()) => {
                     self.doc_path = Some(path.clone());
-                    let f = path.display().to_string();
-                    self.s.recent.retain(|x| x != &f);
-                    self.s.recent.insert(0, f);
-                    self.s.recent.truncate(10);
+                    self.saved_combo = Some(self.browser.combo.clone());
+                    self.push_recent(&path.display().to_string());
                     Status {
                         text: trf("{} に保存", &[&path.display()]),
                         error: false,
@@ -1309,7 +1518,7 @@ impl Core {
         self.rev += 1;
         let ms = d.ms;
         if let Some((method, e)) = d.error() {
-            let text = format!("{method}: {e}");
+            let text = format!("{}: {}", method_label(method), plain_error(e));
             match &d.tag {
                 Tag::Analyze(id) | Tag::Rays(id) => {
                     self.results.entry(*id).or_default().error = Some(e.to_string());
@@ -1323,6 +1532,34 @@ impl Core {
                 Tag::Edit => {
                     self.oss = Default::default();
                     self.ld.insp.stale();
+                }
+                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）
+                Tag::Load => {
+                    if let Some(f) = d.replies[0].params["file"].as_str() {
+                        let f = f.to_string();
+                        self.s.recent.retain(|x| x != &f);
+                        if let Some(name) = missing_glass_name(e) {
+                            let m = self.missing_glass.get_or_insert_with(Default::default);
+                            let same = m
+                                .model
+                                .as_ref()
+                                .is_some_and(|p| p.display().to_string() == f);
+                            if !same {
+                                *m = MissingGlass {
+                                    file: PathBuf::from(&f),
+                                    ..Default::default()
+                                };
+                            }
+                            if !m.names.contains(&name) {
+                                m.names.push(name);
+                            }
+                            if same && m.tries < 64 {
+                                // 代用した写しにまだ無いガラスがある: それも代用して読み直す
+                                self.open_model_glass();
+                                return;
+                            }
+                        }
+                    }
                 }
                 Tag::UserCatalog => self.cat_save.note = Some((e.to_string(), true)),
                 Tag::CatalogFill => self.fill.failed(e),
@@ -1349,7 +1586,10 @@ impl Core {
         }
         let mut text = trf(
             "{} 完了（{} ms）",
-            &[&d.replies[0].method, &fmt_num((ms * 10.0).round() / 10.0)],
+            &[
+                &method_label(&d.replies[0].method),
+                &fmt_num((ms * 10.0).round() / 10.0),
+            ],
         );
         let (_, params, v) = d.first();
         let v = v.cloned().unwrap_or(Value::Null);
@@ -1362,13 +1602,30 @@ impl Core {
                 self.take_history(&v);
                 self.new_undo = None;
                 self.new_redo = None;
+                if d.replies[0].method == "reload" {
+                    text = tr("読み直した（Ctrl+Z で戻す）").into();
+                }
+                if let Some(m) = self.missing_glass.take() {
+                    if m.model.is_some() {
+                        text = trf(
+                            "ガラス {} をモデルガラス（nd・νd）で代用して開いた（元のファイルは変えていない。保存は名前を付けて）",
+                            &[&m.names.join("・")],
+                        );
+                    }
+                }
                 self.on_loaded(v);
             }
             Tag::Info => self.info = Some(v),
             Tag::Analyze(id) => {
                 let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
                 let r = self.results.entry(id).or_default();
-                r.prev = if r.cmd == cmd { r.value.take() } else { None };
+                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない（GUX-19）
+                r.prev = if r.cmd == cmd && r.params == params {
+                    r.value.take()
+                } else {
+                    None
+                };
+                r.params = params.clone();
                 r.cmd = cmd;
                 r.value = Some(v);
                 r.ms = ms;
@@ -1474,9 +1731,8 @@ impl Core {
                     })
                     .into();
                 }
-                if d.tag != Tag::Set {
-                    self.ld_dirty = true;
-                }
+                // 値の変更（Set）も保存していない変更
+                self.ld_dirty = true;
                 // 値を変えたら要約と、開いている解析を計算し直す
                 self.worker.send(Tag::Surfaces, "surface", json!({}));
                 self.worker
@@ -1672,15 +1928,23 @@ impl Core {
     }
 
     /// 値の変更を送る（計算中なら終わってからまとめて）
+    /// 値の変更を送る。解析でない要求（読み込み・前の値の変更）を待っている間だけ待つ。解析が回っている間は
+    /// 送れば中断する（Set は系を変える）が、動かし続けると解析が 1 つも出ないので 250 ms に 1 回まで（GAR-06）
     fn flush_set(&mut self) {
-        if self.worker.busy() {
+        if self.pending_set.is_empty() || self.worker.busy_core() {
             return;
         }
-        if !self.pending_set.is_empty() {
-            let values = std::mem::take(&mut self.pending_set);
-            self.worker
-                .send(Tag::Set, "set", json!({ "values": values }));
+        if self.worker.busy()
+            && self
+                .last_set
+                .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(250))
+        {
+            return;
         }
+        let values = std::mem::take(&mut self.pending_set);
+        self.worker
+            .send(Tag::Set, "set", json!({ "values": values }));
+        self.last_set = Some(web_time::Instant::now());
     }
 
     fn info_num(&self, k: &str) -> Option<f64> {
@@ -1750,6 +2014,7 @@ impl Core {
                 ms: r["ms"].as_f64().unwrap_or(0.0),
                 rays,
                 error: r["error"].as_str().map(String::from),
+                params: Value::Null,
             },
         );
     }
@@ -1898,6 +2163,8 @@ impl Core {
 
     /// n 段元に戻す（back）・やり直す（Ctrl+Z・Ctrl+Y、編集メニューの一覧）
     fn undo(&mut self, back: bool, n: usize) {
+        // 戻して要素が減っても「外しました」は出さない
+        self.combo_census = None;
         if self.new_undo_step(back) == Some(true) {
             self.undo_new(back);
             return;
@@ -2790,6 +3057,23 @@ impl Core {
                         self.refresh_catalog();
                     }
                 }
+                Act::OptVar(name) => {
+                    if !self.opt.vars.iter().any(|v| v.name.trim() == name) {
+                        // 空の行があればそこに入れる
+                        match self.opt.vars.iter_mut().find(|v| v.name.trim().is_empty()) {
+                            Some(v) => v.name = name.clone(),
+                            None => self.opt.vars.push(crate::optim_panel::VarRow {
+                                name: name.clone(),
+                                ..Default::default()
+                            }),
+                        }
+                    }
+                    self.cmds.push(Cmd::FocusKind(Kind::Optimize));
+                    self.status = Status {
+                        text: trf("{} を最適化の変数に足した", &[&name]),
+                        error: false,
+                    };
+                }
                 Act::NeedData(j) => {
                     self.worker
                         .send(Tag::SurfData(j), "surface_data", json!({ "surface": j }));
@@ -3459,6 +3743,9 @@ impl Core {
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.browser.added.take() {
             if self.file.is_some() && !self.is_combo() {
+                // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直し（GUX-10）は要らない。立てたままだと
+                // 組合せにした後に開いた系の像面までの距離を書き換える
+                self.browser.refocus = false;
                 // 組合せでない系を開いているときは開いた系に足す: レンズデータで選んでいる面の後（空気の間隔なら）、
                 // 無ければ系の後ろ。以前は前の組合せが残っていると、足した玉は前の組合せに入り、開いた系が前の組合せの
                 // 系に置き換わっていた
@@ -3489,6 +3776,7 @@ impl Core {
             Some(catalog::Action::Refresh) => self.refresh_catalog(),
             Some(catalog::Action::Settings) => self.folders_open = true,
             Some(catalog::Action::SysSettings) => self.cmds.push(Cmd::FocusKind(Kind::SysSettings)),
+            Some(catalog::Action::New) => self.cmds.push(Cmd::New),
             Some(catalog::Action::Build(p)) => self.build_combo(p),
             None => {}
         }
@@ -3608,9 +3896,10 @@ impl Core {
                 .num_columns(2)
                 .striped(true)
                 .show(ui, |ui| {
+                    // 値は折り返す（視野が多くてもパネルの右で切れない、GUX-14）
                     let mut row = |k: &str, v: RichText| {
                         ui.label(RichText::new(k).color(weak));
-                        ui.label(v);
+                        ui.add(egui::Label::new(v).wrap());
                         ui.end_row();
                     };
                     let n = |x: Option<f64>| {
@@ -3713,7 +4002,10 @@ impl Core {
                 .small()
                 .color(weak),
             );
-            if ui.button(tr("元に戻す（読み直す）")).clicked() {
+            if ui
+                .button(tr("読み直す（変えた値を捨てる、Ctrl+Z で戻す）"))
+                .clicked()
+            {
                 self.reload();
             }
         });
@@ -3757,24 +4049,38 @@ impl Core {
             .count()
             + cfg.sensor.len()
             + usize::from(!cfg.extra.trim().is_empty());
+        // 変えた数はボタンの中の小さい印にして幅を変えない（押そうとした欄が動かない、GUX-23）
         let head = if set > 0 {
-            trf("⚙ 設定（{} 個を変更）", &[&set])
+            format!("{} ●{set}", tr("⚙ 設定"))
         } else {
             tr("⚙ 設定").to_string()
         };
         let mut rerun = false;
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let w = ui.fonts(|f| {
+            f.layout_no_wrap(format!("{} ●99", tr("⚙ 設定")), font, Color32::WHITE)
+                .size()
+                .x
+        }) + 2.0 * ui.spacing().button_padding.x;
+        let tip = if set > 0 {
+            trf("解析の設定の欄を開く・閉じる（{} 個を変更）", &[&set])
+        } else {
+            tr("解析の設定の欄を開く・閉じる").to_string()
+        };
         if ui
-            .selectable_label(cfg.args_open, head)
-            .on_hover_text(tr("解析の設定の欄を開く・閉じる"))
+            .add_sized(
+                [w, ui.spacing().interact_size.y],
+                egui::SelectableLabel::new(cfg.args_open, head),
+            )
+            .on_hover_text(tip)
             .clicked()
         {
             cfg.args_open = !cfg.args_open;
         }
-        if set > 0
-            && ui
-                .small_button("↺")
-                .on_hover_text(tr("すべて既定に"))
-                .clicked()
+        if ui
+            .add_enabled(set > 0, egui::Button::new("↺").small())
+            .on_hover_text(tr("すべて既定に"))
+            .clicked()
         {
             cfg.args.clear();
             cfg.sensor.clear();
@@ -4172,9 +4478,41 @@ impl Core {
             if r.cmd != cfg.cmd {
                 ui.label(RichText::new(tr("（前の解析の結果）")).small().color(weak));
             }
-            result_export_menu(ui, &r.cmd, v);
+            let fig_now = cfg.view == View::Figure && figures::has_figure(&r.cmd);
+            match result_export_menu(ui, &r.cmd, v, fig_now) {
+                Some(ResOut::Shot(copy)) => {
+                    self.shot = Some((id, copy, r.cmd.clone()));
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+                }
+                Some(ResOut::Error(e)) => {
+                    self.status = Status {
+                        text: e,
+                        error: true,
+                    }
+                }
+                None => {}
+            }
         });
+        // 図の矩形（画像にするときに切り出す）
+        self.fig_rects.insert(id, ui.available_rect_before_wrap());
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
+        // MTF の凡例に出す視野の座標
+        let coords: Vec<String> = self
+            .summary
+            .as_ref()
+            .and_then(|s| s["fields"].as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .map(|f| {
+                format!(
+                    "({}, {})",
+                    fmt_num(f[0].as_f64().unwrap_or(0.0)),
+                    fmt_num(f[1].as_f64().unwrap_or(0.0))
+                )
+            })
+            .collect();
+        ui.data_mut(|d| d.insert_temp(egui::Id::new(plots::FIELD_LABELS), coords));
         // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
         if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
             egui::ScrollArea::vertical()
@@ -4267,6 +4605,124 @@ impl Core {
         }
     }
 
+    /// カタログに無いガラスで開けなかったときの案内（GUX-01）
+    fn missing_glass_window(&mut self, ctx: &egui::Context) {
+        let Some(m) = self.missing_glass.clone() else {
+            return;
+        };
+        if m.model.is_some() {
+            return;
+        }
+        let mut open = true;
+        let mut act = None;
+        egui::Window::new(tr("ガラスが見つからない"))
+            .open(&mut open)
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(trf(
+                    "{} を開けません: ガラス {} がカタログにありません。",
+                    &[
+                        &m.file
+                            .file_name()
+                            .map(|x| x.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                        &m.names.join("・"),
+                    ],
+                ));
+                ui.label(
+                    RichText::new(tr(
+                        "メーカーのガラスカタログ（.AGF）のフォルダを足すか、.zmx に書かれた nd・νd のモデルガラスで代用して開けます。",
+                    ))
+                    .small(),
+                );
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(tr("カタログのフォルダを足す…")).clicked() {
+                        act = Some(0);
+                    }
+                    let zmx = m
+                        .file
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("zmx"));
+                    if ui
+                        .add_enabled(zmx, egui::Button::new(tr("モデルガラス（nd・νd）で代用して開く")))
+                        .on_hover_text(tr(
+                            "一時フォルダに写しを作って開く（元のファイルは変えない。保存は名前を付けて）",
+                        ))
+                        .on_disabled_hover_text(tr("代用は .zmx だけ"))
+                        .clicked()
+                    {
+                        act = Some(1);
+                    }
+                });
+            });
+        match act {
+            Some(0) => {
+                self.folders_open = true;
+                self.missing_glass = None;
+            }
+            Some(1) => self.open_model_glass(),
+            _ if !open => self.missing_glass = None,
+            _ => {}
+        }
+    }
+
+    /// カタログに無いガラスをモデルガラスにした写しを一時フォルダに作って開く
+    fn open_model_glass(&mut self) {
+        let Some(m) = self.missing_glass.as_mut() else {
+            return;
+        };
+        m.tries += 1;
+        let src = m.model.clone().unwrap_or_else(|| m.file.clone());
+        let text = match lensbench_core::vfs::read(&src) {
+            Ok(b) => lensbench_core::glass::decode_text(&b),
+            Err(e) => {
+                self.status = Status {
+                    text: format!("{}: {e}", src.display()),
+                    error: true,
+                };
+                self.missing_glass = None;
+                return;
+            }
+        };
+        let (out, done) = model_glass_zmx(&text, &m.names);
+        if done.is_empty() {
+            self.status = Status {
+                text: trf(
+                    "ガラス {} は nd・νd が書かれていないので代用できない",
+                    &[&m.names.join("・")],
+                ),
+                error: true,
+            };
+            self.missing_glass = None;
+            return;
+        }
+        let dir = if cfg!(target_arch = "wasm32") {
+            PathBuf::from("/tmp/model-glass")
+        } else {
+            std::env::temp_dir().join("lensbench-model-glass")
+        };
+        let _ = lensbench_core::vfs::create_dir_all(&dir);
+        let name = m
+            .file
+            .file_name()
+            .map(|x| x.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "system.zmx".into());
+        let dst = dir.join(name);
+        if let Err(e) = lensbench_core::vfs::write(&dst, out.as_bytes()) {
+            self.status = Status {
+                text: format!("{}: {e}", dst.display()),
+                error: true,
+            };
+            self.missing_glass = None;
+            return;
+        }
+        m.model = Some(dst.clone());
+        self.doc_path = None;
+        self.open(&dst);
+    }
+
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
     fn cat_save_window(&mut self, ctx: &egui::Context) {
         let ready = self.is_combo() && self.built_combo.as_ref() == Some(&self.browser.combo);
@@ -4323,10 +4779,16 @@ impl Core {
 
     fn help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.help_open;
+        // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール、GUX-22）
+        let screen = ctx.screen_rect();
         egui::Window::new(tr("キーボード操作"))
             .open(&mut open)
             .default_width(460.0)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(screen.center())
+            .max_height(screen.height() * 0.8)
             .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
                 egui::Grid::new("keys").striped(true).show(ui, |ui| {
                     for (k, v) in [
                         ("Ctrl+K", tr("コマンドパレット（操作・解析・パネル・並びを名前で探す）")),
@@ -4340,7 +4802,7 @@ impl Core {
                         ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
                         ("Enter / Space", tr("ボタンを押す・選ぶ")),
                         ("↑ ↓", tr("数の欄で値を増減（パラメータ・解析の設定は解析をすぐ計算し直す）")),
-                        ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）")),
+                        ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）。レンズデータの表を使っているときは全部の行を選ぶ")),
                         ("Enter", tr("解析の設定の欄: 打った値で計算し直す")),
                         (tr("文字"), tr("解析の種類の一覧: 打って絞り込む（Enter で最初の候補）")),
                         ("F1", tr("この一覧")),
@@ -4378,6 +4840,19 @@ impl Core {
                             ("Shift+F10", tr("右クリックの欄")),
                         ],
                     ),
+                    (
+                        tr("レイアウト図（組合せ）"),
+                        vec![
+                            ("[ ]", tr("前・次の要素を選ぶ")),
+                            ("← →", tr("光軸に沿って動かす（寸法を選んでいればその間隔）。Ctrl で 10 倍、Alt で 1/10")),
+                            ("↑ ↓", tr("偏心（Shift で傾き）")),
+                            ("R", tr("反転")),
+                            ("F", tr("BS の分ける面の向きを逆に")),
+                            ("L", tr("ロック")),
+                            ("Delete", tr("外す（Ctrl+Z で戻す）")),
+                            ("Esc", tr("選ぶのをやめる")),
+                        ],
+                    ),
                 ] {
                     ui.separator();
                     ui.strong(title);
@@ -4393,6 +4868,7 @@ impl Core {
                 ui.label(
                     RichText::new(tr("パネルはタブを引きずって並べ替え・分割・フロートできます。タブを右クリックすると別の窓（別モニター）に出せます。")).small(),
                 );
+                });
             });
         self.help_open = open;
     }
@@ -4574,7 +5050,28 @@ fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>) -> bool {
         dirs.remove(i);
         changed = true;
     }
-    let start = ui.button(tr("➕ フォルダを足す…")).clicked();
+    let mut start = false;
+    ui.horizontal(|ui| {
+        start = ui.button(tr("➕ フォルダを足す…")).clicked();
+        // パスを打つ・貼る（GUX-01）
+        let id = egui::Id::new(("dir-typed", title));
+        let mut t: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut t)
+                .hint_text(tr("またはパスを貼って Enter"))
+                .desired_width(260.0),
+        );
+        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if enter && !t.trim().is_empty() {
+            let p = t.trim().trim_matches('"').to_string();
+            if !dirs.contains(&p) {
+                dirs.push(p);
+                changed = true;
+            }
+            t.clear();
+        }
+        ui.data_mut(|d| d.insert_temp(id, t));
+    });
     {
         if let Some(p) = crate::files::open_folder(&format!("folder-{title}"), start, || {
             crate::files::FileDialog::new()
@@ -4798,6 +5295,17 @@ impl App {
                 ld_blocks: Vec::new(),
                 ld_glasses: Vec::new(),
                 ld_dirty: false,
+                saved_combo: None,
+                close_ask: false,
+                combo_census: None,
+                missing_glass: None,
+                status_log: Vec::new(),
+                last_set: None,
+                shot: None,
+                fig_rects: HashMap::new(),
+                status_log_open: false,
+                close_ok: false,
+                close_pending: false,
                 mc: Default::default(),
                 oss: Default::default(),
                 cat_save: CatSave::default(),
@@ -4850,6 +5358,9 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             hosts: HashMap::new(),
         };
+        // 前に閉じたときの最適化・公差・差し替えの設定（GPN-14）
+        let panels = app.c.s.panels.clone();
+        app.c.set_panels(&panels);
         app.apply_dock_translations();
         // Web 版: 別のタブのパネルなら、計算しないで元のタブの結果を描く
         #[cfg(target_arch = "wasm32")]
@@ -4949,6 +5460,21 @@ impl App {
 
     fn add_pane(&mut self, kind: Kind) -> u64 {
         let id = self.c.new_id();
+        // いちばん広い葉にタブで足す（フォーカスのある小さな所に入って図が潰れない、GUX-04）
+        let big = self
+            .dock
+            .main_surface()
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.is_leaf())
+            .filter_map(|(i, n)| n.rect().map(|r| (i, r.area())))
+            .filter(|(_, a)| a.is_finite() && *a > 0.0)
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| NodeIndex(i));
+        if let Some(n) = big {
+            self.dock
+                .set_focused_node_and_surface((SurfaceIndex::main(), n));
+        }
         self.dock.push_to_focused_leaf(Pane { id, kind });
         id
     }
@@ -5256,6 +5782,7 @@ impl App {
             v.push(Item {
                 label,
                 hint: hint.into(),
+                danger: matches!(cmd, Cmd::New | Cmd::Reload),
                 cmd,
             })
         };
@@ -5715,16 +6242,26 @@ impl App {
                     ui.label(RichText::new(version()).small().color(weak));
                 });
             }
-            if let Some(f) = &self.c.file {
-                ui.label(
-                    RichText::new(
-                        f.file_name()
-                            .map(|x| x.to_string_lossy().into_owned())
-                            .unwrap_or_default(),
-                    )
-                    .strong(),
-                )
-                .on_hover_text(f.display().to_string());
+            let shown = if self.c.is_combo() {
+                self.c.doc_path.clone()
+            } else {
+                self.c.file.clone()
+            };
+            let dirty = self.c.dirty();
+            if shown.is_some() || dirty {
+                let name = shown
+                    .as_ref()
+                    .and_then(|f| f.file_name())
+                    .map(|x| x.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| tr("（未保存）").to_string());
+                let mark = if dirty { " ●" } else { "" };
+                let r = ui.label(RichText::new(format!("{name}{mark}")).strong());
+                let tip = shown.map(|f| f.display().to_string()).unwrap_or_default();
+                if dirty {
+                    r.on_hover_text(format!("{tip}\n{}", tr("● 保存していない変更がある（Ctrl+S で保存）")));
+                } else {
+                    r.on_hover_text(tip);
+                }
             }
             let custom = crate::chrome::custom(self.c.s.os_titlebar);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -5741,22 +6278,40 @@ impl App {
                 if ui.add_enabled(self.c.summary.is_some(), run).clicked() {
                     cmd = Some(Cmd::RunAll);
                 }
-                if ui
-                    .add_enabled(
-                        self.c.file.is_some(),
-                        egui::Button::new(tr("元に戻す")).min_size(egui::vec2(0.0, 28.0)),
-                    )
-                    .on_hover_text(tr("系を読み直す（変えた値を捨てる）"))
-                    .clicked()
-                {
-                    cmd = Some(Cmd::Reload);
+                // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー、GAR-15）。押すと何を戻すかをホバーで
+                for (back, icon, key) in [(false, "↷", "Ctrl+Y"), (true, "↶", "Ctrl+Z")] {
+                    let next = self.c.undo_list(back).into_iter().next();
+                    let tip = match (&next, back) {
+                        (Some(n), true) => trf("元に戻す（{}）: {}", &[&key, n]),
+                        (Some(n), false) => trf("やり直す（{}）: {}", &[&key, n]),
+                        (None, true) => tr("元に戻す段は無い").to_string(),
+                        (None, false) => tr("やり直す段は無い").to_string(),
+                    };
+                    if ui
+                        .add_enabled(
+                            self.c.can_undo(back),
+                            egui::Button::new(RichText::new(icon).size(16.0))
+                                .min_size(egui::vec2(28.0, 28.0)),
+                        )
+                        .on_hover_text(tip.clone())
+                        .on_disabled_hover_text(tip)
+                        .clicked()
+                    {
+                        cmd = Some(Cmd::Undo(back, 1));
+                    }
                 }
-                let search = egui::Button::new(
-                    RichText::new(format!("🔍  {}    Ctrl K", tr("解析・パネル・操作を探す")))
-                        .color(weak),
-                )
-                .min_size(egui::vec2(300.0, 28.0));
-                let r = ui.add(search);
+                // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない、GUX-03）
+                let room = ui.available_width() - 8.0;
+                let label = if room >= 300.0 {
+                    format!("🔍  {}    Ctrl K", tr("解析・パネル・操作を探す"))
+                } else if room >= 150.0 {
+                    format!("🔍  {}", tr("探す"))
+                } else {
+                    "🔍".to_string()
+                };
+                let search = egui::Button::new(RichText::new(label).color(weak))
+                    .min_size(egui::vec2(room.clamp(28.0, 300.0), 28.0));
+                let r = ui.add(search).on_hover_text(tr("解析・パネル・操作を探す（Ctrl+K）"));
                 self.palette.anchor = Some(r.rect);
                 if r.clicked() {
                     self.palette.show();
@@ -5792,10 +6347,40 @@ impl App {
             } else {
                 self.c.status.text.clone()
             };
-            if self.c.status.error {
-                ui.colored_label(Color32::from_rgb(0xFF, 0x7A, 0x6B), text);
+            // 履歴（直近 20 件。クリックで全文と履歴を開く）
+            if !self.c.status.text.is_empty()
+                && self.c.status_log.last().map(|x| &x.0) != Some(&self.c.status.text)
+            {
+                self.c
+                    .status_log
+                    .push((self.c.status.text.clone(), self.c.status.error));
+                if self.c.status_log.len() > 20 {
+                    self.c.status_log.remove(0);
+                }
+            }
+            // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る（GUX-06）
+            let right_w: f32 = ui
+                .data(|d| d.get_temp(egui::Id::new("status-right-w")))
+                .unwrap_or(320.0);
+            let room = (ui.available_width() - right_w - 180.0).max(80.0);
+            let rich = if self.c.status.error {
+                RichText::new(text.clone()).color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
             } else {
-                ui.label(RichText::new(text).color(weak));
+                RichText::new(text.clone()).color(weak)
+            };
+            let r = ui
+                .scope(|ui| {
+                    ui.set_max_width(room);
+                    ui.add(
+                        egui::Label::new(rich)
+                            .truncate()
+                            .sense(egui::Sense::click()),
+                    )
+                })
+                .inner
+                .on_hover_text(tr("クリックで全文と履歴"));
+            if r.clicked() {
+                self.c.status_log_open = !self.c.status_log_open;
             }
             if let Some(s) = &self.c.summary {
                 ui.separator();
@@ -5807,7 +6392,7 @@ impl App {
                     .color(weak),
                 );
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let right = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add(
                         egui::Label::new(RichText::new(version()).small().color(weak))
@@ -5845,8 +6430,36 @@ impl App {
                         ui.add_space(6.0);
                     }
                 }
+                ui.min_rect().width()
             });
+            let w = right.inner;
+            ui.data_mut(|d| d.insert_temp(egui::Id::new("status-right-w"), w));
         });
+        if self.c.status_log_open {
+            let mut open = true;
+            egui::Window::new(tr("状態の履歴"))
+                .open(&mut open)
+                .default_width(560.0)
+                .max_height(ui.ctx().screen_rect().height() * 0.6)
+                .show(ui.ctx(), |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (t, err) in self.c.status_log.iter().rev() {
+                            let rt = RichText::new(t);
+                            let rt = if *err {
+                                rt.color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
+                            } else {
+                                rt
+                            };
+                            ui.add(egui::Label::new(rt).wrap());
+                            ui.separator();
+                        }
+                    });
+                    if ui.button(tr("全文をコピー")).clicked() {
+                        ui.ctx().copy_text(self.c.status.text.clone());
+                    }
+                });
+            self.c.status_log_open = open;
+        }
     }
 
     fn save_layout_window(&mut self, ctx: &egui::Context) {
@@ -6467,6 +7080,124 @@ impl App {
     }
 }
 
+impl App {
+    /// 画面の写しが届いたら、頼んだ図の所を切り出して写す・PNG で保存する（GUX-18）
+    fn take_shot(&mut self, ctx: &egui::Context) {
+        let Some((id, copy, cmd)) = self.c.shot.clone() else {
+            return;
+        };
+        let img = ctx.input(|i| {
+            i.raw.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        let Some(img) = img else {
+            return;
+        };
+        self.c.shot = None;
+        let Some(r) = self.c.fig_rects.get(&id).copied() else {
+            return;
+        };
+        let Some(part) = crop_image(&img, r, ctx.pixels_per_point()) else {
+            return;
+        };
+        if copy {
+            ctx.copy_image(part);
+            self.c.status = Status {
+                text: tr("図を画像で写した").into(),
+                error: false,
+            };
+            return;
+        }
+        let Some(p) = crate::files::FileDialog::new()
+            .add_filter("PNG", &["png"])
+            .set_file_name(format!("{cmd}.png"))
+            .save_file()
+        else {
+            return;
+        };
+        self.c.status = match png_bytes(&part)
+            .and_then(|b| lensbench_core::vfs::write(&p, b).map_err(|e| e.to_string()))
+        {
+            Ok(()) => Status {
+                text: trf("{} に保存", &[&p.display()]),
+                error: false,
+            },
+            Err(e) => Status {
+                text: format!("{}: {e}", p.display()),
+                error: true,
+            },
+        };
+    }
+
+    /// 窓を閉じる前に、保存していない変更があれば「保存 / 保存しない / やめる」を聞く（GUX-02）
+    fn close_guard(&mut self, ctx: &egui::Context) {
+        if cfg!(target_arch = "wasm32") || self.tour.is_some() {
+            return;
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.c.close_ok && self.c.close_loses()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.c.close_ask = true;
+        }
+        // 保存してから閉じる: 保存が終わって変更が無くなったら閉じる（失敗したらやめる）
+        if self.c.close_pending {
+            if self.c.status.error {
+                self.c.close_pending = false;
+            } else if !self.c.dirty() && !self.c.worker.busy() {
+                self.c.close_pending = false;
+                self.c.close_ok = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+        if !self.c.close_ask {
+            return;
+        }
+        let mut choice = None;
+        egui::Window::new(tr("保存していない変更"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(tr("保存していない変更があります。閉じる前に保存しますか？"));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .button(RichText::new(tr("保存して閉じる")).strong())
+                        .clicked()
+                    {
+                        choice = Some(0);
+                    }
+                    if ui.button(tr("保存しないで閉じる")).clicked() {
+                        choice = Some(1);
+                    }
+                    if ui.button(tr("やめる")).clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                    {
+                        choice = Some(2);
+                    }
+                });
+            });
+        match choice {
+            Some(0) => {
+                self.c.close_ask = false;
+                self.c.status.error = false;
+                self.c.save(false);
+                // 保存の窓をやめたら閉じない（開いた系の保存は計算のスレッドで終わるのを待つ）
+                self.c.close_pending = self.c.worker.busy() || !self.c.dirty();
+            }
+            Some(1) => {
+                self.c.close_ask = false;
+                self.c.close_ok = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(2) => self.c.close_ask = false,
+            _ => {}
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         #[cfg(target_arch = "wasm32")]
@@ -6544,7 +7275,47 @@ impl eframe::App for App {
         }
         self.c.flush_set();
         let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
+        let dropped = self.c.browser.combo.drop_stale_edits();
+        if dropped > 0 {
+            self.c.status = Status {
+                text: trf(
+                    "要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）",
+                    &[&dropped],
+                ),
+                error: false,
+            };
+        }
+        // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない、GPN-20）
+        let census = self.c.browser.combo.census();
+        if let Some(prev) = self.c.combo_census.replace(census) {
+            let lost: Vec<String> = [
+                (prev[0].saturating_sub(census[0]), tr("要素 {} 個")),
+                (prev[1].saturating_sub(census[1]), tr("状態 {} 個")),
+                (prev[2].saturating_sub(census[2]), tr("面の上書き {} 件")),
+            ]
+            .iter()
+            .filter(|(n, _)| *n > 0)
+            .map(|(n, f)| f.replace("{}", &n.to_string()))
+            .collect();
+            // 新規・開くで組合せごと入れ替えたときは出さない
+            if !lost.is_empty() && census[0] > 0 && dropped == 0 {
+                self.c.status = Status {
+                    text: trf("{} を外しました（Ctrl+Z で戻す）", &[&lost.join("・")]),
+                    error: false,
+                };
+            }
+        }
         self.c.combo_hist.track(&self.c.browser.combo, busy);
+        // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ（GUX-10）
+        if self.c.browser.refocus
+            && self.c.is_combo()
+            && self.c.built_combo.as_ref() == Some(&self.c.browser.combo)
+            && self.c.layout_data.is_some()
+            && !self.c.worker.busy()
+        {
+            self.c.browser.refocus = false;
+            self.c.request_focus();
+        }
         self.c.auto_build();
         // 窓に落としたファイル
         let dropped: Vec<PathBuf> = ctx.input(|i| {
@@ -6635,13 +7406,15 @@ impl eframe::App for App {
         } else {
             self.c.file.as_ref()
         };
+        let mark = if self.c.dirty() { "● " } else { "" };
         let title = match shown {
             Some(f) => format!(
-                "lensbench — {}",
+                "lensbench — {mark}{}",
                 f.file_name()
                     .map(|x| x.to_string_lossy().into_owned())
                     .unwrap_or_default()
             ),
+            None if !mark.is_empty() => format!("lensbench — {mark}{}", tr("（未保存）")),
             None => "lensbench".into(),
         };
         // 変わったときだけ送る（送ると次のフレームを描くので、毎フレーム送ると何もしていなくても描き続ける）
@@ -6654,6 +7427,9 @@ impl eframe::App for App {
             !same
         });
         if changed {
+            // Web 版はブラウザのタブの題にする（起動確認 scripts/web_smoke.mjs が開いたファイルの名前を見る）
+            #[cfg(target_arch = "wasm32")]
+            crate::web_tabs::set_title(&title);
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
 
@@ -6737,6 +7513,9 @@ impl eframe::App for App {
         if self.c.folders_open {
             self.c.folders_window(ctx);
         }
+        self.close_guard(ctx);
+        self.take_shot(ctx);
+        self.c.missing_glass_window(ctx);
         if self.c.help_open {
             self.c.help_window(ctx);
         }
@@ -6770,6 +7549,7 @@ impl eframe::App for App {
             return;
         }
         self.c.s.combo = self.c.browser.combo.clone();
+        self.c.s.panels = self.c.panels_value();
         self.c.s.layout = Some(self.layout());
         // ポータブル: 設定のフォルダの中のパスは相対で書く
         if let Some(b) = crate::portable::base() {
@@ -6971,10 +7751,23 @@ fn detach_label_web() {
     assert_eq!(detach_label(false), "別の窓に出す（別モニターへ）");
 }
 
-/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128）
-fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
+/// 解析の結果のメニューから頼むこと
+enum ResOut {
+    /// 図を画像にする（true は写す、false は PNG で保存）
+    Shot(bool),
+    /// 保存できなかった
+    Error(String),
+}
+
+/// 解析の結果を写す・保存するメニュー（JSON・テキスト（タブ区切り）・CSV、#128。図の画像、GUX-18）
+fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -> Option<ResOut> {
     use crate::export_table::{delimited, tables};
-    ui.menu_button(tr("コピー ▾"), |ui| {
+    let mut out = None;
+    ui.menu_button(tr("コピー ▼"), |ui| {
+        if fig && ui.button(tr("図の画像")).clicked() {
+            out = Some(ResOut::Shot(true));
+            ui.close_menu();
+        }
         if ui.button(tr("JSON")).clicked() {
             ui.ctx()
                 .copy_text(serde_json::to_string_pretty(v).unwrap_or_default());
@@ -6993,7 +7786,7 @@ fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
             ui.close_menu();
         }
     });
-    ui.menu_button(tr("保存 ▾"), |ui| {
+    ui.menu_button(tr("保存 ▼"), |ui| {
         for (label, ext) in [(tr("JSON…"), "json"), (tr("CSV…"), "csv")] {
             if ui.button(label).clicked() {
                 ui.close_menu();
@@ -7008,12 +7801,51 @@ fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value) {
                         delimited(&tables(v), ',')
                     };
                     if let Err(e) = lensbench_core::vfs::write(&p, text) {
-                        eprintln!("{}: {e}", p.display());
+                        out = Some(ResOut::Error(format!("{}: {e}", p.display())));
                     }
                 }
             }
         }
+        if fig && ui.button(tr("図の画像（PNG）…")).clicked() {
+            ui.close_menu();
+            out = Some(ResOut::Shot(false));
+        }
     });
+    out
+}
+
+/// 画面の写し（ColorImage）の矩形 r（画面の点）を切り出す
+fn crop_image(img: &egui::ColorImage, r: egui::Rect, ppp: f32) -> Option<egui::ColorImage> {
+    let [w, h] = img.size;
+    let x0 = ((r.left() * ppp).round().max(0.0) as usize).min(w);
+    let y0 = ((r.top() * ppp).round().max(0.0) as usize).min(h);
+    let x1 = ((r.right() * ppp).round().max(0.0) as usize).min(w);
+    let y1 = ((r.bottom() * ppp).round().max(0.0) as usize).min(h);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let mut px = Vec::with_capacity((x1 - x0) * (y1 - y0));
+    for y in y0..y1 {
+        px.extend_from_slice(&img.pixels[y * w + x0..y * w + x1]);
+    }
+    Some(egui::ColorImage {
+        size: [x1 - x0, y1 - y0],
+        pixels: px,
+    })
+}
+
+/// ColorImage を PNG のバイト列に
+fn png_bytes(img: &egui::ColorImage) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut buf, img.size[0] as u32, img.size[1] as u32);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().map_err(|e| e.to_string())?;
+        let raw: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+        w.write_image_data(&raw).map_err(|e| e.to_string())?;
+    }
+    Ok(buf)
 }
 
 /// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える
@@ -7311,5 +8143,30 @@ mod cad_store_tests {
         assert!(back.secret.is_empty());
         let old: CadStore = ron::from_str(r#"(url: "u", id: "i", secret: "old")"#).unwrap();
         assert_eq!(old.secret, "old");
+    }
+}
+
+#[cfg(test)]
+mod missing_glass_tests {
+    use super::*;
+
+    /// エラーの文から無いガラスの名前を取り、.zmx の GLAS の行をモデルガラスに替える（GUX-01）
+    #[test]
+    fn model_glass_substitution() {
+        assert_eq!(
+            missing_glass_name("load: 不正: ガラス N-SK16（面 1）がカタログにない").as_deref(),
+            Some("N-SK16")
+        );
+        assert_eq!(
+            missing_glass_name("edit: 面 3: 不正: ガラス XYZ9 がない（…）").as_deref(),
+            Some("XYZ9")
+        );
+        assert_eq!(missing_glass_name("ほかのエラー"), None);
+        let z = "SURF 1\n  GLAS N-SK16 0 0 1.62041 60.32 0 0 0 0 0 0\nSURF 2\n  GLAS F2 2 1 0 0\n";
+        let (out, done) = model_glass_zmx(z, &["N-SK16".into(), "F2".into()]);
+        assert_eq!(done, vec!["N-SK16".to_string()]);
+        assert!(out.contains("  GLAS ___BLANK 1 0 1.62041 60.32"));
+        // ピックアップ（ソルブ 2）は替えない
+        assert!(out.contains("GLAS F2 2 1 0 0"));
     }
 }

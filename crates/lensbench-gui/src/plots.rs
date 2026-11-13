@@ -2,7 +2,7 @@
 //! ほかの解析の図は figures.rs。
 
 use egui::{Color32, RichText, Sense, Ui};
-use egui_plot::{Legend, Line, LineStyle, Plot};
+use egui_plot::{Line, LineStyle, Plot};
 use serde_json::Value;
 
 use crate::i18n::{tr, trf};
@@ -263,6 +263,9 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
         });
 }
 
+/// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）
+pub const FIELD_LABELS: &str = "lensbench-field-labels";
+
 /// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
 pub fn mtf(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64) {
     mtf_curves(ui, result, prev, id, "mtf");
@@ -297,24 +300,68 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
         out
     };
     let now = lines(result);
-    let before = prev.map(lines).unwrap_or_default();
+    // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない、GUX-19）
+    let show_prev_id = egui::Id::new(("mtf-show-prev", key, id));
+    let mut show_prev: bool = ui.data(|d| d.get_temp(show_prev_id)).unwrap_or(true);
+    let xmax = now
+        .iter()
+        .flat_map(|(_, _, p)| p.iter().map(|q| q[0]))
+        .filter(|x| x.is_finite())
+        .fold(f64::NEG_INFINITY, f64::max);
+    let before: Vec<(usize, &str, Vec<[f64; 2]>)> = if show_prev {
+        prev.map(lines)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(f, k, p)| {
+                (
+                    f,
+                    k,
+                    p.into_iter()
+                        .filter(|q| q[0] <= xmax * (1.0 + 1e-9))
+                        .collect(),
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let _ = curves;
+    let mut fields: Vec<usize> = now.iter().map(|x| x.0).collect();
+    fields.dedup();
+    let has_prev = prev.is_some();
+    // 凡例は図の外（下）に、線の見本と視野の値で。順は視野 → 子午・球欠に固定
+    let legend_h = 22.0 + if has_prev { 20.0 } else { 0.0 };
     let plot = Plot::new((key, id))
-        .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
         .include_x(0.0)
+        .height({
+            let h = ui.available_height() - legend_h;
+            if h.is_finite() {
+                h.max(80.0)
+            } else {
+                300.0
+            }
+        })
         .x_axis_label(unit.clone())
         .y_axis_label("MTF");
+    let coords: Vec<String> = ui
+        .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
+        .unwrap_or_default();
+    let field_label = |f: usize| -> String {
+        match coords.get(f.wrapping_sub(1)) {
+            Some(c) => trf("視野 {} {}", &[&f, c]),
+            None => trf("視野 {}", &[&f]),
+        }
+    };
     crate::plot_tools::show(ui, plot, &unit, |p, reg| {
-        for (f, k, pts) in before {
+        for (f, _k, pts) in before {
             p.line(
                 Line::new(pts)
                     .color(theme::series(f.saturating_sub(1)).gamma_multiply(0.35))
                     .style(LineStyle::Dotted { spacing: 4.0 })
                     .width(1.0_f32),
             );
-            let _ = k;
         }
         for (f, k, pts) in now {
             let t = k == "tangential";
@@ -333,11 +380,55 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
                     } else {
                         LineStyle::Dashed { length: 6.0 }
                     })
-                    .width(1.6_f32)
-                    .name(name),
+                    .width(1.6_f32),
             );
         }
     });
+    let weak = theme::weak_text(ui.visuals());
+    let sample = |ui: &mut Ui, color: Color32, dashed: bool, dotted: bool| {
+        let (r, _) = ui.allocate_exact_size(egui::vec2(22.0, 10.0), Sense::hover());
+        let y = r.center().y;
+        let st = egui::Stroke::new(1.6_f32, color);
+        let p = ui.painter();
+        if dashed || dotted {
+            let (on, off) = if dotted { (1.5, 3.0) } else { (5.0, 3.0) };
+            let mut x = r.left();
+            while x < r.right() {
+                let x2 = (x + on).min(r.right());
+                p.line_segment([egui::pos2(x, y), egui::pos2(x2, y)], st);
+                x += on + off;
+            }
+        } else {
+            p.line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], st);
+        }
+    };
+    ui.horizontal_wrapped(|ui| {
+        sample(ui, weak, false, false);
+        ui.label(RichText::new(tr("子午")).small().color(weak));
+        sample(ui, weak, true, false);
+        ui.label(RichText::new(tr("球欠")).small().color(weak));
+        ui.add_space(8.0);
+        for f in &fields {
+            let (r, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), Sense::hover());
+            ui.painter()
+                .rect_filled(r, 2.0, theme::series(f.saturating_sub(1)));
+            ui.label(RichText::new(field_label(*f)).small());
+        }
+    });
+    if has_prev {
+        ui.horizontal(|ui| {
+            sample(ui, weak, false, true);
+            if ui
+                .checkbox(
+                    &mut show_prev,
+                    RichText::new(tr("前の結果（系を変える前）")).small(),
+                )
+                .changed()
+            {
+                ui.data_mut(|d| d.insert_temp(show_prev_id, show_prev));
+            }
+        });
+    }
 }
 
 #[cfg(test)]

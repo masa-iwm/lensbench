@@ -976,6 +976,16 @@ fn connection(
     Ok(())
 }
 
+thread_local! {
+    /// このスレッドの最後の panic の文と場所（[`note_panic`]）
+    static LAST_PANIC: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// panic の hook から、panic の文と場所を残す（[`dispatch`] が「内部エラー（panic）: …」に載せる）
+pub fn note_panic(text: &str) {
+    LAST_PANIC.with(|l| *l.borrow_mut() = Some(text.to_string()));
+}
+
 /// 要求を 1 つ処理する（1 つずつ順に。panic はエラーにする）
 fn dispatch(
     method: &str,
@@ -985,10 +995,21 @@ fn dispatch(
 ) -> Result<Reply, RpcErr> {
     let _g = REQUEST.lock().unwrap_or_else(|e| e.into_inner());
     lensbench_core::with_threads(threads, || {
+        LAST_PANIC.with(|l| l.borrow_mut().take());
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             handle(method, params, bins)
         }))
-        .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
+        .unwrap_or_else(|e| {
+            // panic の hook（GUI の crash.rs）が残した文と場所。無ければ panic の文だけ
+            let t = LAST_PANIC
+                .with(|l| l.borrow_mut().take())
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .or_else(|| e.downcast_ref::<String>().cloned());
+            Err(RpcErr::app(match t {
+                Some(t) => format!("内部エラー（panic）: {t}"),
+                None => "内部エラー（panic）".into(),
+            }))
+        })
     })
 }
 

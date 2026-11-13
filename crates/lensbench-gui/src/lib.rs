@@ -14,6 +14,7 @@ mod coat_defs;
 mod combo;
 mod combo_tree;
 mod config_panel;
+mod crash;
 mod export_table;
 pub mod ext;
 mod figures;
@@ -96,6 +97,7 @@ pub fn main() -> std::process::ExitCode {
         .clone()
         .or_else(portable::os_file)
         .and_then(|f| f.parent().map(Into::into));
+    crash::install(settings_dir.clone());
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
     lensbench_cli::cad::install_detail_loader();
@@ -135,6 +137,7 @@ pub async fn start_web(
     canvas: web_sys::HtmlCanvasElement,
     mut args: Args,
 ) -> Result<(), wasm_bindgen::JsValue> {
+    crash::install();
     // 別のタブのパネルは計算しない（元のタブの結果を描くだけ）。ブラウザに残したファイルも要らない
     if web_panel() {
         return run_web(canvas, args).await;

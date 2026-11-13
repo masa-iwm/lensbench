@@ -87,10 +87,15 @@ for (let n = 1; n <= 2 && !opened; n++) {
 }
 if (opened) {
   await okButton.click().catch(e => errors.push(`Ok を押せない: ${e}`));
+  // 開いたファイルの名前がタブの題に出るまで待つ（固定の待ち時間でなく、読み込めたことを確かめる）
+  const name = path.basename(file);
+  await page.waitForFunction(n => document.title.includes(n), name, { timeout: 60000 })
+    .catch(async () => errors.push(`開いたのに題が「${name}」にならない（題: ${await page.title()}）`));
+  // 読み込んだ系の解析が回る間も画面が止まらないかを見る
+  await page.waitForTimeout(3000);
 } else {
   errors.push("Ctrl+O でファイル選択が出ない");
 }
-await page.waitForTimeout(8000);
 const gap = await page.evaluate(() => window.__gap);
 console.log(`画面が止まった最長 ${gap.toFixed(0)} ms`);
 await page.screenshot({ path: shot });
