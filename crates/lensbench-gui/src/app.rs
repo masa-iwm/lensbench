@@ -74,6 +74,9 @@ pub struct CadStore {
     pub url: String,
     /// Cloudflare Access のサービストークン（Client ID・Client Secret）。空なら送らない
     pub id: String,
+    /// Client Secret は設定ファイルに書かない（ポータブルの settings.ron をフォルダごと渡すと付いていくため）。
+    /// 起動のたびに入れるか、環境変数 `LENSBENCH_CAD_STORE_SECRET` に置く（欄が空ならそれを使う）
+    #[serde(skip_serializing)]
     pub secret: String,
 }
 
@@ -84,7 +87,13 @@ impl CadStore {
         lensbench_cli::cad::set_store(Some(lensbench_cli::cad::Store {
             url: self.url.trim().to_string(),
             id: self.id.trim().to_string(),
-            secret: self.secret.trim().to_string(),
+            secret: match self.secret.trim() {
+                "" => std::env::var("LENSBENCH_CAD_STORE_SECRET")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+                s => s.to_string(),
+            },
         }));
     }
 }
@@ -4527,7 +4536,7 @@ fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
     });
     ui.label(
         RichText::new(tr(
-            "品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。",
+            "品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。Secret は設定ファイルに保存しません（起動のたびに入れるか、環境変数 LENSBENCH_CAD_STORE_SECRET に置く）。",
         ))
         .small()
         .weak(),
@@ -7281,5 +7290,26 @@ mod open_insert_tests {
             2
         );
         assert_eq!(split_open(z, &rows, None, p).len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod cad_store_tests {
+    use super::CadStore;
+
+    /// 置き場の Client Secret は設定ファイルに書かない（前の版の設定に書いてあれば読める）
+    #[test]
+    fn secret_is_not_saved() {
+        let st = CadStore {
+            url: "https://x/cad".into(),
+            id: "cid".into(),
+            secret: "s3cret".into(),
+        };
+        let t = ron::to_string(&st).unwrap();
+        assert!(t.contains("cid") && !t.contains("s3cret"), "{t}");
+        let back: CadStore = ron::from_str(&t).unwrap();
+        assert!(back.secret.is_empty());
+        let old: CadStore = ron::from_str(r#"(url: "u", id: "i", secret: "old")"#).unwrap();
+        assert_eq!(old.secret, "old");
     }
 }
