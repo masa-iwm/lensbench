@@ -216,10 +216,10 @@ class System:
     def hash(self) -> str:
         """系の hash（"sha256:…"、系ファイルと同じ）。解析の結果に刻んで、後から同じ系か確かめる"""
 
-    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int = 64, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
         """Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）。返す dict は mtf と同じ形"""
 
-    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int = 64, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
         """Huygens PSF: 射出瞳の参照球の各点からの 2 次波を像面の上で足す（傾いた像面・収差の大きい系向け）。
         返す dict は psf と同じ形で、x・y は中心 center からの像面の局所座標の差（axes は x̂・ŷ）
         """
@@ -315,7 +315,8 @@ class System:
         g(system, names) を与えると残差の偏微分 (残差の数, len(names)) をそれで求める。
 
         返り値の dict: system（最適化した系）・x0・x（変数の値）・merit0・merit・history（反復ごとの評価関数）・
-        iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"）・term_values0・term_values
+        iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"・"jacobian_failed"）・note（止まった理由の補足）・
+        inactive（効かないとみなして動かさなかった変数の番号）・term_values0・term_values
         （terms の項ごとの値: 目標のある項は値、ほかは √Σr²）
         """
 
@@ -326,11 +327,13 @@ class System:
     def primary(self) -> int:
         """主波長の番号（1 始まり）"""
 
-    def psf(self, field: _Field, wave: int | None = None, pupil: int = 64, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
         """回折 PSF: 瞳関数（MTF と同じ）の DFT。強度 i は (y, x) の配列で、収差のない同じ瞳の多色 PSF の中心を
         1 とする（peak はストレール比の目安）。x・y は主波長の主光線の像点 center からの、主光線に垂直な面の座標
         [レンズ単位]（OpticStudio の FFT PSF と同じ。向きは axes = [e1, e2]、像空間の単位ベクトル）。
-        pupil は瞳の格子の一辺、image は像の格子の一辺、delta は像の格子の間隔（省略で 1 / (2 × 遮断周波数)）
+        pupil は瞳の格子の一辺（省略で自動: 隣り合う標本の位相差が π/2 以下）、image は像の格子の一辺、delta は像の格子の
+        間隔（省略で 1 / (2 × 遮断周波数)）。pupil（使った値）・phase_step（瞳の隣り合う標本の位相差の最大 [rad]）・
+        enclosed（像の格子に入った光量の割合）・warnings（標本不足などの注意）も返す
         """
 
     @property

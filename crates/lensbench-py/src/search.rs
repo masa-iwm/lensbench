@@ -16,14 +16,7 @@ use pyo3::types::{PyDict, PyList};
 use crate::{err, PySystem, VarArg};
 
 fn stop_name(s: Stop) -> &'static str {
-    match s {
-        Stop::Converged => "converged",
-        Stop::SmallStep => "small_step",
-        Stop::NoProgress => "no_progress",
-        Stop::MaxIter => "max_iter",
-        Stop::Cancelled => "cancelled",
-        Stop::NoVars => "no_vars",
-    }
+    s.as_str()
 }
 
 fn merit_kind(m: &str) -> PyResult<DefaultMerit> {

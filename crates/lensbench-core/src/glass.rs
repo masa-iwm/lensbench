@@ -74,7 +74,9 @@ impl Glass {
                 + c[2] * l2 * l2
                 + (3..9).map(|k| c[k] / l2.powi(k as i32 - 2)).sum::<f64>())
             .sqrt(),
-            f => panic!("分散式 {f} は未対応（{}）", self.name),
+            // 読込（parse_agf）で 1〜13 以外は止めているので、ここへは手で組んだ Glass だけが来る。panic せず NaN にする
+            // （追跡は NaN の屈折率を不正として止める）
+            _ => f64::NAN,
         }
     }
 
@@ -186,7 +188,10 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let g = Arc::new(parse_agf(&txt, &cat));
+    let g = Arc::new(
+        parse_agf(&txt, &cat)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?,
+    );
     cache
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -194,10 +199,12 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
     Ok(g)
 }
 
-pub fn parse_agf(txt: &str, cat: &str) -> HashMap<String, Glass> {
+/// AGF の本文を読む。分散式の番号が 1〜13 でない・数として読めない欄はその場で誤りにする（以前は読込を通り、追跡で
+/// panic していた）
+pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> {
+    use crate::Error;
     let mut out = HashMap::new();
     let mut cur: Option<Glass> = None;
-    let f = |s: &str| s.parse::<f64>().unwrap_or(0.0);
     let flush = |g: Option<Glass>, out: &mut HashMap<String, Glass>| {
         if let Some(g) = g {
             if !g.c.is_empty() {
@@ -205,18 +212,37 @@ pub fn parse_agf(txt: &str, cat: &str) -> HashMap<String, Glass> {
             }
         }
     };
-    for line in txt.lines() {
+    for (ln, line) in txt.lines().enumerate() {
         let t: Vec<&str> = line.split_whitespace().collect();
         if t.is_empty() {
             continue;
         }
+        let at = |what: &str| format!("{cat}.AGF の {} 行目（{what}）", ln + 1);
+        let f = |s: &str| -> crate::Result<f64> {
+            // 欠けた値を "-" と書くカタログがある（0 とみなす）
+            if s == "-" {
+                return Ok(0.0);
+            }
+            s.parse::<f64>()
+                .map_err(|_| Error::Invalid(format!("{}: 数として読めない値 {s:?}", at(t[0]))))
+        };
+        let nums = |v: &[&str]| v.iter().map(|v| f(v)).collect::<crate::Result<Vec<f64>>>();
         match t[0] {
             "NM" if t.len() >= 3 => {
                 flush(cur.take(), &mut out);
+                let x = f(t[2])?;
+                if x.fract() != 0.0 || !(1.0..=13.0).contains(&x) {
+                    return Err(Error::NotImplemented(format!(
+                        "{}: ガラス {} の分散式 {} は未対応（1〜13）",
+                        at("NM"),
+                        t[1],
+                        t[2]
+                    )));
+                }
                 cur = Some(Glass {
                     name: t[1].to_string(),
                     catalog: cat.to_string(),
-                    formula: f(t[2]) as i32,
+                    formula: x as i32,
                     c: Vec::new(),
                     td: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 20.0],
                     ld: None,
@@ -225,36 +251,52 @@ pub fn parse_agf(txt: &str, cat: &str) -> HashMap<String, Glass> {
             }
             "CD" => {
                 if let Some(g) = cur.as_mut() {
-                    g.c = t[1..].iter().map(|v| f(v)).collect();
-                    g.c.resize(g.c.len() + 10, 0.0);
+                    g.c = nums(&t[1..])?;
+                    let need = n_coef(g.formula);
+                    // 書いていない後ろの係数は 0（AGF は 10 個書くのが普通だが、短い行もある）
+                    g.c.resize(g.c.len().max(need).max(10), 0.0);
                 }
             }
             "TD" => {
                 if let Some(g) = cur.as_mut() {
-                    let mut v: Vec<f64> = t[1..].iter().map(|v| f(v)).collect();
+                    let mut v = nums(&t[1..])?;
                     v.resize(7, 0.0);
                     g.td.copy_from_slice(&v[..7]);
                 }
             }
             "IT" if t.len() >= 4 => {
                 if let Some(g) = cur.as_mut() {
-                    g.it.push([f(t[1]), f(t[2]), f(t[3])]);
+                    g.it.push([f(t[1])?, f(t[2])?, f(t[3])?]);
                 }
             }
             "LD" if t.len() >= 3 => {
                 if let Some(g) = cur.as_mut() {
-                    g.ld = Some([f(t[1]), f(t[2])]);
+                    g.ld = Some([f(t[1])?, f(t[2])?]);
                 }
             }
             _ => {}
         }
     }
     flush(cur.take(), &mut out);
-    out
+    Ok(out)
+}
+
+/// 分散式ごとの係数の数
+fn n_coef(formula: i32) -> usize {
+    match formula {
+        5 => 3,
+        7 | 8 => 4,
+        4 | 9 => 5,
+        1..=3 => 6,
+        6 | 10 | 12 => 8,
+        13 => 9,
+        11 => 10,
+        _ => 0,
+    }
 }
 
 /// GCAT の順にカタログを探して読む。同じ名前のガラスは先のカタログのもの。
-/// 見つからないカタログ名は戻り値の 2 番目に返す。
+/// 見つからないカタログ名は戻り値の 2 番目に返す（読めなかったカタログは「名前（理由）」の形で）。
 pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Glass>, Vec<String>) {
     let (g, missing) = load_catalogs_shared(names, dirs);
     ((*g).clone(), missing)
@@ -301,13 +343,18 @@ pub fn load_catalogs_shared(
                     .unwrap_or_default()
                     == want
                 {
-                    if let (Ok(st), Ok(g)) = (crate::vfs::stamp(&e), load_agf_shared(&e)) {
-                        for (k, v) in g.iter() {
-                            out.entry(k.clone()).or_insert_with(|| v.clone());
+                    match (crate::vfs::stamp(&e), load_agf_shared(&e)) {
+                        (Ok(st), Ok(g)) => {
+                            for (k, v) in g.iter() {
+                                out.entry(k.clone()).or_insert_with(|| v.clone());
+                            }
+                            files.push((e.clone(), st));
                         }
-                        files.push((e.clone(), st));
-                    } else {
-                        complete = false;
+                        (Err(err), _) | (_, Err(err)) => {
+                            // 読めなかったカタログは理由つきで「見つからない」に入れる（黙って飛ばさない）
+                            complete = false;
+                            missing.push(format!("{name}（{err}）"));
+                        }
                     }
                     found = true;
                     break 'dirs;
@@ -349,10 +396,39 @@ mod tests {
     fn sellmeier_fictitious() {
         // 架空のガラス（Sellmeier 1）
         let txt = "NM TESTG 2 0 1.5 60 0 1\nCD 1.0 0.006 0.2 0.02 1.0 100\nTD 0 0 0 0 0 0 20\n";
-        let g = parse_agf(txt, "TEST");
+        let g = parse_agf(txt, "TEST").unwrap();
         let g = &g["TESTG"];
         let l2: f64 = 0.5875618f64.powi(2);
         let expect = (1.0 + l2 / (l2 - 0.006) + 0.2 * l2 / (l2 - 0.02) + l2 / (l2 - 100.0)).sqrt();
         assert!((g.n(0.5875618, 20.0, 1.0) - expect).abs() < 1e-15);
+    }
+    /// 未対応の分散式・数として読めない欄は読込で誤り（以前は読込を通り、追跡で panic した）
+    #[test]
+    fn bad_formula_is_error() {
+        let ok = "CD 1.0 0.006 0.2 0.02 1.0 100\n";
+        for nm in [
+            "NM G 99 0 1.5 60\n",
+            "NM G 0 0 1.5 60\n",
+            "NM G abc 0 1.5 60\n",
+            "NM G 2.5 0 1.5 60\n",
+        ] {
+            let e = parse_agf(&format!("{nm}{ok}"), "T").unwrap_err();
+            assert!(
+                matches!(
+                    e,
+                    crate::Error::NotImplemented(_) | crate::Error::Invalid(_)
+                ),
+                "{nm}: {e}"
+            );
+        }
+        let e = parse_agf("NM G 2 0 1.5 60\nCD 1.0 x 0.2\n", "T").unwrap_err();
+        assert!(e.to_string().contains("2 行目"), "{e}");
+        // 手で組んだ未対応の式は panic せず NaN
+        let mut g = parse_agf(&format!("NM G 2 0 1.5 60\n{ok}"), "T")
+            .unwrap()
+            .remove("G")
+            .unwrap();
+        g.formula = 99;
+        assert!(g.n_cat(0.55).is_nan());
     }
 }

@@ -2477,7 +2477,8 @@ impl PySystem {
     /// g(system, names) を与えると残差の偏微分 (残差の数, len(names)) をそれで求める。
     ///
     /// 返り値の dict: system（最適化した系）・x0・x（変数の値）・merit0・merit・history（反復ごとの評価関数）・
-    /// iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"）・term_values0・term_values
+    /// iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"・"jacobian_failed"）・note（止まった理由の補足）・
+    /// inactive（効かないとみなして動かさなかった変数の番号）・term_values0・term_values
     /// （terms の項ごとの値: 目標のある項は値、ほかは √Σr²）
     #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None))]
     #[allow(clippy::too_many_arguments)]
@@ -2525,14 +2526,7 @@ impl PySystem {
         };
         let (tv0, tv1) = (tv(&r.x0)?, tv(&r.x)?);
         let d = PyDict::new(py);
-        let stop = match r.stop {
-            optim::Stop::Converged => "converged",
-            optim::Stop::SmallStep => "small_step",
-            optim::Stop::NoProgress => "no_progress",
-            optim::Stop::MaxIter => "max_iter",
-            optim::Stop::Cancelled => "cancelled",
-            optim::Stop::NoVars => "no_vars",
-        };
+        let stop = r.stop.as_str();
         let names: Vec<String> = p.vars.iter().map(|v| s.param_name(v.param)).collect();
         let sys = r.systems.into_iter().next().unwrap();
         d.set_item(
@@ -2548,6 +2542,8 @@ impl PySystem {
         d.set_item("iterations", r.iterations)?;
         d.set_item("evals", r.evals)?;
         d.set_item("stop", stop)?;
+        d.set_item("note", r.note)?;
+        d.set_item("inactive", r.inactive)?;
         d.set_item("term_values0", tv0)?;
         d.set_item("term_values", tv1)?;
         Ok(d)
@@ -2745,15 +2741,17 @@ impl PySystem {
     /// 回折 PSF: 瞳関数（MTF と同じ）の DFT。強度 i は (y, x) の配列で、収差のない同じ瞳の多色 PSF の中心を
     /// 1 とする（peak はストレール比の目安）。x・y は主波長の主光線の像点 center からの、主光線に垂直な面の座標
     /// [レンズ単位]（OpticStudio の FFT PSF と同じ。向きは axes = [e1, e2]、像空間の単位ベクトル）。
-    /// pupil は瞳の格子の一辺、image は像の格子の一辺、delta は像の格子の間隔（省略で 1 / (2 × 遮断周波数)）
-    #[pyo3(signature = (field, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    /// pupil は瞳の格子の一辺（省略で自動: 隣り合う標本の位相差が π/2 以下）、image は像の格子の一辺、delta は像の格子の
+    /// 間隔（省略で 1 / (2 × 遮断周波数)）。pupil（使った値）・phase_step（瞳の隣り合う標本の位相差の最大 [rad]）・
+    /// enclosed（像の格子に入った光量の割合）・warnings（標本不足などの注意）も返す
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn psf<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,
@@ -2780,6 +2778,10 @@ impl PySystem {
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
         d.set_item("peak", p.peak)?;
+        d.set_item("pupil", p.pupil)?;
+        d.set_item("phase_step", p.phase_step)?;
+        d.set_item("enclosed", p.enclosed)?;
+        d.set_item("warnings", p.warnings)?;
         Ok(d)
     }
 
@@ -2809,14 +2811,14 @@ impl PySystem {
 
     /// Huygens PSF: 射出瞳の参照球の各点からの 2 次波を像面の上で足す（傾いた像面・収差の大きい系向け）。
     /// 返す dict は psf と同じ形で、x・y は中心 center からの像面の局所座標の差（axes は x̂・ŷ）
-    #[pyo3(signature = (field, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_psf<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,
@@ -2843,11 +2845,15 @@ impl PySystem {
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
         d.set_item("peak", p.peak)?;
+        d.set_item("pupil", p.pupil)?;
+        d.set_item("phase_step", p.phase_step)?;
+        d.set_item("enclosed", p.enclosed)?;
+        d.set_item("warnings", p.warnings)?;
         Ok(d)
     }
 
     /// Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）。返す dict は mtf と同じ形
-    #[pyo3(signature = (field, freqs, wave=None, pupil=64, image=128, delta=None, threads=None))]
+    #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
         &self,
@@ -2855,7 +2861,7 @@ impl PySystem {
         field: FieldArg,
         freqs: PyArrayLike1<'_, f64, AllowTypeChange>,
         wave: Option<usize>,
-        pupil: usize,
+        pupil: Option<usize>,
         image: usize,
         delta: Option<f64>,
         threads: Option<usize>,

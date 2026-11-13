@@ -830,6 +830,12 @@ pub(crate) struct SurfKind {
     pub fresnel: bool,
 }
 
+/// 回転対称の面（[`Isect::Std`]）で非球面の項を使うか: 偶数次非球面・Binary 2 で項があるとき。標準面などに残った
+/// 項は使わない（[`crate::system::System::check`] で誤りにする）
+pub(crate) fn std_asph(d: &Surface) -> bool {
+    matches!(d.typ, SurfType::EvenAsph | SurfType::Binary2) && d.has_asph()
+}
+
 pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     let curved = matches!(
         d.typ,
@@ -852,7 +858,8 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     } else if curved && d.typ == SurfType::Toroidal {
         Isect::Toroidal
     } else if curved {
-        Isect::Std { asph: d.has_asph() }
+        // 交点と法線は同じ判定で（非球面の項を使う型だけ。以前は交点だけ型を見ずに非球面の項を使っていた）
+        Isect::Std { asph: std_asph(d) }
     } else {
         Isect::Plane
     };
@@ -864,7 +871,7 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
         Norm::Toroidal
     } else if fresnel {
         Norm::Fresnel
-    } else if matches!(d.typ, SurfType::EvenAsph | SurfType::Binary2) && d.has_asph() {
+    } else if std_asph(d) {
         Norm::Asph
     } else if d.c == 0.0 {
         Norm::Flat

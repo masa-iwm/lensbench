@@ -3072,14 +3072,7 @@ fn optimize(p: &Value) -> Result<Value, RpcErr> {
         .collect();
     let tv0 = prob.term_values(&r.x0)?;
     let tv = prob.term_values(&r.x)?;
-    let stop = match r.stop {
-        optim::Stop::Converged => "converged",
-        optim::Stop::SmallStep => "small_step",
-        optim::Stop::NoProgress => "no_progress",
-        optim::Stop::MaxIter => "max_iter",
-        optim::Stop::Cancelled => "cancelled",
-        optim::Stop::NoVars => "no_vars",
-    };
+    let stop = r.stop.as_str();
     // 読み込んだ系に当てられる変数（読み込んだ系の構成に効くもの）
     let applicable: Vec<bool> = prob
         .vars
