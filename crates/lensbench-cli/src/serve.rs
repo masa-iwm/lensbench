@@ -307,6 +307,10 @@ fn store_loaded(sys: System, spec: LoadSpec, h: LoadHistory, reload: bool) {
     *g = Some(x);
 }
 
+#[path = "serve_hist.rs"]
+mod hist;
+use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
+
 /// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる）
 fn push_undo(x: &mut Served, what: Value) {
     x.undo.push(Snap {
@@ -335,12 +339,13 @@ fn store_changed(sys: System, spec: LoadSpec, c: Change) {
         return;
     };
     let now = Instant::now();
+    // 構成の切り替えだけの edit が続くときは、間があいても 1 段にまとめる（名前は CONFIG_KEY、GAR-28）
     let names = match &c {
         Change::Set(v) => Some(v.iter().map(|r| r.0.clone()).collect::<Vec<_>>()),
-        Change::Edit(_) => None,
+        Change::Edit(o) => config_only(o).then(|| vec![CONFIG_KEY.to_string()]),
     };
-    let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t)))
-        if n == m && now.duration_since(*t).as_secs_f64() < SET_MERGE_S && !x.undo.is_empty());
+    let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t))) if n == m && !x.undo.is_empty()
+        && (n[..] == [CONFIG_KEY] || now.duration_since(*t).as_secs_f64() < SET_MERGE_S));
     if !merge {
         let what = change_label(Some(&c));
         push_undo(&mut x, what);
@@ -388,57 +393,6 @@ fn step_history(back: bool) -> Result<Value, RpcErr> {
         v["loaded"] = summary(&x.sys, &x.spec);
     }
     Ok(v)
-}
-
-/// 段の変更の短い記述（GUI の一覧の名前）: set は名前の並び、edit は操作ごとの op と面・名前
-fn change_label(c: Option<&Change>) -> Value {
-    match c {
-        Some(Change::Set(v)) => json!({ "set": v.iter().map(|r| r.0.clone()).collect::<Vec<_>>() }),
-        Some(Change::Edit(ops)) => {
-            let ops: Vec<Value> = ops
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|o| {
-                    let mut m = serde_json::Map::new();
-                    for k in ["op", "surface", "param", "at", "k", "name"] {
-                        if let Some(x) = o.get(k) {
-                            m.insert(k.into(), x.clone());
-                        }
-                    }
-                    // 変えた項目の名前（値は出さない）
-                    if let Some(f) = o.get("fields").and_then(Value::as_object) {
-                        m.insert("fields".into(), json!(f.keys().collect::<Vec<_>>()));
-                    }
-                    Value::Object(m)
-                })
-                .collect();
-            json!({ "edit": ops })
-        }
-        None => Value::Null,
-    }
-}
-
-/// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）
-fn history_json(x: &Served) -> Value {
-    let list = |v: &[Snap]| v.iter().rev().map(|s| s.what.clone()).collect::<Vec<_>>();
-    json!({
-        "undo": x.undo.len(),
-        "redo": x.redo.len(),
-        "undo_list": list(&x.undo),
-        "redo_list": list(&x.redo),
-    })
-}
-
-/// 今戻した・やり直した段が開く・読み直すだったか（系の概要を返して GUI の表を読み直させる）
-fn snap_was_load(v: &Value, back: bool) -> bool {
-    // 戻したら、その段はやり直す段の先頭に、やり直したら元に戻す段の先頭にある
-    let top = if back {
-        &v["redo_list"][0]
-    } else {
-        &v["undo_list"][0]
-    };
-    top.get("open").is_some() || top.get("reload").is_some()
 }
 
 /// 元に戻せる段・やり直せる段（`history_json`）

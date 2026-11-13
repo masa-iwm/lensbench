@@ -511,13 +511,31 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
 }
 
 /// 変数の候補（面の表の行・玉と群）
-pub struct Cands {
+pub struct Cands<'a> {
     /// 玉・群の名前
     pub units: Vec<String>,
     /// 組合せの系（面の値は t・r・k だけ組合せに当てられる）
     pub combo: bool,
     /// 名前の欄の補完の候補
     pub sys: crate::param_pick::Sys,
+    /// 面の表の行（変数の今の値を出す、GUX-21）
+    pub rows: &'a [crate::lens_data::Row],
+}
+
+/// 変数の今の値（面の値 `<面>.<t|r|c|k>` だけ。玉・群・ほかは None、GUX-21）
+pub fn var_value(rows: &[crate::lens_data::Row], name: &str) -> Option<f64> {
+    let (j, f) = name.trim().split_once('.')?;
+    let r = rows.get(j.parse::<usize>().ok()?)?;
+    Some(match f {
+        "t" => r.t,
+        "r" => r.r,
+        // 平面は r = ∞（0 で持つ行も平面）
+        "c" if r.r == 0.0 => 0.0,
+        "c" => 1.0 / r.r,
+        "k" => r.k,
+        _ => return None,
+    })
+    .filter(|x| x.is_finite() || f == "r")
 }
 
 pub(crate) fn small_edit(ui: &mut Ui, s: &mut String, w: f32, hint: &str) -> egui::Response {
@@ -644,9 +662,10 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
     let mut del = None;
     egui::Grid::new("opt_vars")
         .striped(true)
-        .num_columns(if multi { 5 } else { 4 })
+        .num_columns(if multi { 6 } else { 5 })
         .show(ui, |ui| {
             ui.label(RichText::new(tr("名前")).small().color(weak));
+            ui.label(RichText::new(tr("今の値")).small().color(weak));
             ui.label(RichText::new(tr("下限")).small().color(weak));
             ui.label(RichText::new(tr("上限")).small().color(weak));
             if multi {
@@ -656,6 +675,10 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
             ui.end_row();
             for (i, v) in p.vars.iter_mut().enumerate() {
                 pp::edit(ui, &mut v.name, 110.0, "7.t", &c.sys, set);
+                match var_value(c.rows, &v.name) {
+                    Some(x) => ui.label(RichText::new(fmt_num(x)).monospace()),
+                    None => ui.weak("—"),
+                };
                 small_edit(ui, &mut v.lo, 60.0, "−∞");
                 small_edit(ui, &mut v.hi, 60.0, "∞");
                 if multi {
@@ -1011,6 +1034,26 @@ pub fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Value), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUX-21: 変数の行に面の値（t・r・c・k）の今の値を出す
+    #[test]
+    fn gux21_var_value_reads_surface_rows() {
+        let row = |r: f64, t: f64| crate::lens_data::Row {
+            r,
+            t,
+            k: -1.0,
+            ..Default::default()
+        };
+        let rows = vec![row(f64::INFINITY, 0.0), row(50.0, 4.0)];
+        assert_eq!(var_value(&rows, "1.t"), Some(4.0));
+        assert_eq!(var_value(&rows, " 1.r"), Some(50.0));
+        assert_eq!(var_value(&rows, "1.c"), Some(0.02));
+        assert_eq!(var_value(&rows, "1.k"), Some(-1.0));
+        assert_eq!(var_value(&rows, "0.r"), Some(f64::INFINITY));
+        assert_eq!(var_value(&rows, "0.c"), Some(0.0));
+        assert_eq!(var_value(&rows, "5.t"), None);
+        assert_eq!(var_value(&rows, "G1.shift"), None);
+    }
 
     #[test]
     fn params_round_trip() {
