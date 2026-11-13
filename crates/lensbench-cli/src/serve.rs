@@ -1928,6 +1928,12 @@ fn user_catalog(method: &str, p: &Value) -> Result<Value, RpcErr> {
             })?;
             let mut out = catalog_listing(path, &cat);
             out["added"] = json!(name);
+            // 品はプロジェクトファイルの中身から作る（展開した系への set・edit はブロックへ戻せない）
+            if !current_log().is_empty() {
+                out["notes"] = json!([
+                    "読み込んだ後の変更（set・edit）は品に入らない（品はプロジェクトファイルから作る。変更を入れるには先に保存して読み直す）"
+                ]);
+            }
             Ok(out)
         }
         _ => {
@@ -2153,7 +2159,8 @@ fn opt_index_list(p: &Value, k: &str, n: usize) -> Result<Option<Vec<usize>>, Rp
 /// 断面図（YZ）の図形と、玉・群・面の位置（GUI のレイアウト図）。座標は [z, y] mm（大域座標）
 ///
 /// `cfgs`・`states`・`paths`（並びか "all"）を与えると、その構成（.zmx の多重構成・プロジェクトの状態・BS の経路）を
-/// ファイルから読み直して重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。`set` で変えた値は入らない。
+/// ファイルから読み直して重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。読み込んだ後の変更（set・edit）は
+/// 読み直した構成にも当てる（構成で値の違うパラメータの set は当てずに `notes` に書く）。
 /// `surfaces`・`units` は読み込んだ系のもの
 fn layout(p: &Value) -> Result<Value, RpcErr> {
     let (s, spec) = current()?;
@@ -2161,8 +2168,11 @@ fn layout(p: &Value) -> Result<Value, RpcErr> {
 }
 
 fn layout_with(s: &System, spec: &LoadSpec, p: &Value) -> Result<Value, RpcErr> {
-    let sc = layout_scene(s, spec, p)?;
+    let (sc, notes) = layout_scene(s, spec, p)?;
     let mut v = view_json(s, &sc, p)?;
+    if !notes.is_empty() {
+        v["notes"] = json!(notes);
+    }
     // 光線の色分け（field・wave・cfg）。省略なら書かない（GUI は重ね描きなら構成ごと、ほかは視野ごと）
     if color_of(p)?.is_some() {
         v["color"] = json!(p["color"].as_str().unwrap_or_default().to_ascii_lowercase());
@@ -2204,7 +2214,7 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
         }
     }
     let (s, spec) = current()?;
-    let sc = layout_scene(&s, &spec, &q)?;
+    let (sc, notes) = layout_scene(&s, &spec, &q)?;
     // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
     let color = match color_of(p)? {
         Some(c) => c,
@@ -2244,20 +2254,38 @@ fn layout_export(p: &Value) -> Result<Value, RpcErr> {
         "solids": sc.solids.len(),
         "mechanics": sc.mechs.len(),
         "rays": sc.rays.len(),
+        "notes": notes,
     }))
 }
 
-/// layout・layout_export の場面（構成を選べば重ねる）
+/// layout・layout_export の場面（構成を選べば重ねる）と、読み直した構成に変更を当てられなかった説明
 fn layout_scene(
     s: &System,
     spec: &LoadSpec,
     p: &Value,
-) -> Result<lensbench_export::scene::Scene, RpcErr> {
+) -> Result<(lensbench_export::scene::Scene, Vec<String>), RpcErr> {
     let sel = config_sel(p)?;
     if !sel.any() {
-        return Ok(lensbench_export::scene::build(s, &scene_opts(s, p)?)?);
+        return Ok((
+            lensbench_export::scene::build(s, &scene_opts(s, p)?)?,
+            Vec::new(),
+        ));
     }
-    let systems = crate::overlay_systems(&spec.common(), &sel)?;
+    // ファイルから読み直した構成にも、読み込んだ後の変更（set・edit）を当てる
+    let log = current_log();
+    let mut notes = Vec::new();
+    let systems = crate::overlay_systems(&spec.common(), &sel)?
+        .into_iter()
+        .map(|(name, sy)| {
+            let label = if name.is_empty() {
+                "構成".to_string()
+            } else {
+                name.clone()
+            };
+            replay(sy, &log, &label, &mut notes).map(|sy| (name, sy))
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map_err(RpcErr::app)?;
     let offset = match p.get("offset") {
         None | Some(Value::Null) => [0.0; 3],
         Some(v) => {
@@ -2282,7 +2310,7 @@ fn layout_scene(
         let sc = scene::build(sy, &opt).map_err(|x| RpcErr::app(format!("{name}: {x}")))?;
         parts.push((name.clone(), sc));
     }
-    Ok(scene::overlay(parts, offset)?)
+    Ok((scene::overlay(parts, offset)?, notes))
 }
 
 /// layout の構成の選び方（文字列か並び。"all" は全部）

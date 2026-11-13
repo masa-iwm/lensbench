@@ -934,6 +934,15 @@ fn layout_overlay_paths() {
     assert!(sv
         .error("layout", json!({ "paths": "all", "offset": [1, 2] }))
         .contains("offset"));
+    // 読み込んだ後の set は、ファイルから読み直した経路にも当てる
+    let before = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    let t = sv.call("get", json!({ "param": "1.t" }))["value"]
+        .as_f64()
+        .unwrap();
+    sv.call("set", json!({ "values": { "1.t": t + 3.0 } }));
+    let after = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    assert_ne!(before["rays"], after["rays"]);
+    assert!(after.get("notes").is_none(), "{}", after["notes"]);
     sv.stop();
 }
 
