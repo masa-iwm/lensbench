@@ -6637,6 +6637,9 @@ impl App {
         }
         if t.step == Step::Done {
             t.finish();
+            // 通し確認の変更は保存しない。閉じる前の「保存していない変更」の確認（close_guard）を出さない
+            // （出すと xvfb の中で誰も押せず、プロセスが終わらない）
+            self.c.close_ok = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else {
             self.tour = Some(t);
