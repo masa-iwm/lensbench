@@ -238,15 +238,18 @@ pub enum ObjSpec {
 
 /// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
 /// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
+/// 三角形の頂点の番号
+type Tri = (usize, usize, usize);
+
 /// Delaunay の三角形分割（外接円の中に他の点がない、総当たり。視野は多くても数十）。同じ円に 4 点以上が
 /// 乗ると（格子の視野など）候補の三角形が重なるので、番号の順に重ならないものだけを取る（凸多角形を
 /// 重ならない三角形で埋め尽くす）
-fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<(usize, usize, usize)> {
+fn delaunay(pts: &[[f64; 2]], eps: f64) -> Vec<Tri> {
     let n = pts.len();
     let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     };
-    let mut tris: Vec<(usize, usize, usize)> = Vec::new();
+    let mut tris: Vec<Tri> = Vec::new();
     for i in 0..n {
         for j in i + 1..n {
             for k in j + 1..n {
@@ -312,7 +315,7 @@ fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
     };
     // 分割は視野が同じなら同じなので、スレッドごとに直前の結果を使い回す（走査で毎回作らない）
     thread_local! {
-        static TRIS: std::cell::RefCell<(Vec<[f64; 2]>, Vec<(usize, usize, usize)>)> =
+        static TRIS: std::cell::RefCell<(Vec<[f64; 2]>, Vec<Tri>)> =
             const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
     }
     let tris = TRIS.with(|c| {
