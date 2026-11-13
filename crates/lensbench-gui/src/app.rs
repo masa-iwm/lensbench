@@ -891,6 +891,17 @@ impl Core {
         }
     }
 
+    /// 閉じると失う変更がある。一度もファイルに保存・ファイルから開いていない組合せは設定に残り、次に起動したときに
+    /// 戻るので失わない（毎回の閉じる確認を出さない）
+    fn close_loses(&self) -> bool {
+        let combo =
+            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        if combo && self.saved_combo.is_none() {
+            return false;
+        }
+        self.dirty()
+    }
+
     /// 最近のファイルの先頭に足す。Web 版の保存先（`/downloads/`、ダウンロードにして置き場から消える）は
     /// 開き直せないので足さない（GAR-12）
     fn push_recent(&mut self, file: &str) {
@@ -931,6 +942,10 @@ impl Core {
                 {
                     return;
                 }
+                // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
+                // 付ける前を持つと、開いただけで未保存になる
+                let mut c = c;
+                c.drop_stale_edits();
                 self.saved_combo = Some(c.clone());
                 if let Some(g) = v.as_ref().and_then(|v| v.get("gui")) {
                     self.set_panels(g);
@@ -3719,6 +3734,9 @@ impl Core {
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.browser.added.take() {
             if self.file.is_some() && !self.is_combo() {
+                // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直し（GUX-10）は要らない。立てたままだと
+                // 組合せにした後に開いた系の像面までの距離を書き換える
+                self.browser.refocus = false;
                 // 組合せでない系を開いているときは開いた系に足す: レンズデータで選んでいる面の後（空気の間隔なら）、
                 // 無ければ系の後ろ。以前は前の組合せが残っていると、足した玉は前の組合せに入り、開いた系が前の組合せの
                 // 系に置き換わっていた
@@ -7109,7 +7127,8 @@ impl App {
         if cfg!(target_arch = "wasm32") || self.tour.is_some() {
             return;
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.c.close_ok && self.c.dirty() {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.c.close_ok && self.c.close_loses()
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.c.close_ask = true;
         }
