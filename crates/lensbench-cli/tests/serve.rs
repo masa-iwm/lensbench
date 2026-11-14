@@ -1157,3 +1157,53 @@ fn zoom_of_loaded_project() {
     assert!(sv.error("zoom", json!({ "vars": [] })).contains("vars"));
     sv.stop();
 }
+
+/// 登録簿の解析の analyze: 前の受け方（数の文字列・カンマ区切り・ハイフンの鍵・json）も受け、設定の誤りは要求の誤り（−32602）。
+/// save の provenance は今の系（set の後なら編集後）の hash
+#[test]
+fn analyze_registered_params_and_save_hash() {
+    let mut sv = Server::start(&[]);
+    sv.call("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }));
+    let a = sv.call(
+        "analyze",
+        json!({ "cmd": "mtf", "field": 2, "freqs": [10, 20] }),
+    );
+    let b = sv.call(
+        "analyze",
+        json!({ "cmd": "mtf", "field": "2", "freqs": "10,20", "json": true }),
+    );
+    assert_eq!(a, b);
+    let c = sv.call(
+        "analyze",
+        json!({ "cmd": "mtf", "field": 2, "max-freq": 20, "freq-steps": 1 }),
+    );
+    assert_eq!(a["mtf"][0]["freqs"].as_array().unwrap().len(), 2);
+    assert_eq!(c["mtf"][0]["freqs"], json!([0.0, 20.0]));
+    for bad in [
+        json!({ "cmd": "spot", "nope": 1 }),
+        json!({ "cmd": "spot", "rings": "x" }),
+    ] {
+        let (h, _) = sv.call_bin("analyze", bad, &[]);
+        assert_eq!(h["error"]["code"], json!(-32602), "{h}");
+    }
+    let dir = std::env::temp_dir().join(format!("lensbench-hash-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("s.json");
+    let hash = |sv: &mut Server| {
+        sv.call(
+            "analyze",
+            json!({ "cmd": "spot", "field": 1, "save": p.to_str().unwrap() }),
+        );
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        v["provenance"]["system_hash"].clone()
+    };
+    let h0 = hash(&mut sv);
+    assert!(h0.is_string(), "{h0}");
+    let t = sv.call("get", json!({ "param": "3.t" }))["value"]
+        .as_f64()
+        .unwrap();
+    sv.call("set", json!({ "values": { "3.t": t + 0.1 } }));
+    let h1 = hash(&mut sv);
+    assert!(h1.is_string() && h1 != h0, "{h0} {h1}");
+    std::fs::remove_dir_all(&dir).ok();
+}

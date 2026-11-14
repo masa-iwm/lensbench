@@ -120,7 +120,7 @@ pub(crate) fn check_term_paths(t: &mut Value) -> Result<(), RpcErr> {
 }
 
 /// 要求で与えたパスを確かめて、使うパスを返す（write は書き出し）
-fn check_path(p: &Path, write: bool) -> Result<PathBuf, RpcErr> {
+pub(crate) fn check_path(p: &Path, write: bool) -> Result<PathBuf, RpcErr> {
     match FILES.get().unwrap_or(&Files::Any) {
         Files::Any => Ok(p.to_path_buf()),
         Files::Deny => Err(RpcErr::app(format!(
@@ -228,6 +228,11 @@ fn served() -> std::sync::MutexGuard<'static, Option<Served>> {
 /// serve で読み込んだ系（serve でなければ None）。CLI の解析はこれがあればファイルを読まずに使う
 pub(crate) fn loaded() -> Option<System> {
     served().as_ref().map(|x| (*x.sys).clone())
+}
+
+/// 読み込んだ系
+pub(crate) fn current_system() -> Result<Arc<System>, RpcErr> {
+    Ok(current()?.0)
 }
 
 fn current() -> Result<(Arc<System>, LoadSpec), RpcErr> {
@@ -486,7 +491,7 @@ impl RpcErr {
             msg: m.into(),
         }
     }
-    fn params(m: impl Into<String>) -> Self {
+    pub(crate) fn params(m: impl Into<String>) -> Self {
         RpcErr {
             code: -32602,
             msg: m.into(),
@@ -1573,7 +1578,14 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
         .as_object()
         .ok_or_else(|| RpcErr::params("params はオブジェクト"))?;
     if m.get("cmd").and_then(Value::as_str) == Some("coatings") {
-        return coatings_loaded(m);
+        return crate::serve_analyze::coatings_loaded(m);
+    }
+    if let Some(def) = m
+        .get("cmd")
+        .and_then(Value::as_str)
+        .and_then(|c| crate::analyses().get(c))
+    {
+        return crate::serve_analyze::run(def.as_ref(), m);
     }
     let argv = analysis_argv(m, &spec.file).map_err(RpcErr::params)?;
     let cli = crate::parse_cli(&argv).map_err(|e| RpcErr::params(e.render().to_string()))?;
@@ -1609,42 +1621,6 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
         out["state"] = json!(spec.state);
     }
     Ok(out)
-}
-
-/// analyze の coatings: 読み込んだ系（今の構成・状態）の膜の境界（CLI の coatings の 1 構成分。.zmx でなくてもよい）。
-/// `table` で実測表・モデル（LBCT・LBCM）を足せる
-fn coatings_loaded(m: &Map<String, Value>) -> Result<Value, RpcErr> {
-    let (s, _) = current()?;
-    let mut tables = Vec::new();
-    match m.get("table") {
-        None | Some(Value::Null) => {}
-        Some(Value::String(t)) => tables.push(check_path(Path::new(t), false)?),
-        Some(Value::Array(a)) => {
-            for t in a {
-                let t = t
-                    .as_str()
-                    .ok_or_else(|| RpcErr::params("table はパスの並び"))?;
-                tables.push(check_path(Path::new(t), false)?);
-            }
-        }
-        Some(_) => return Err(RpcErr::params("table はパスの並び")),
-    }
-    if let Some(k) = m
-        .keys()
-        .find(|k| !["cmd", "table", "json"].contains(&k.as_str()))
-    {
-        return Err(RpcErr::params(format!(
-            "coatings の引数 {k} は無い（table だけ）"
-        )));
-    }
-    let c = crate::coat_interfaces(&s, &tables)?;
-    Ok(json!({
-        "coating_file_path": s.coating_file.as_ref().map(|p| p.display().to_string()),
-        "wavelengths_um": s.wavelengths,
-        "interfaces": c.list,
-        "needs_table": c.needs,
-        "auto_coatings": c.auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
-    }))
 }
 
 /// 拡張のサブコマンドに渡す、読み込んだ系（[`ext::Served`]）

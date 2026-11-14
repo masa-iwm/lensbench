@@ -8,16 +8,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
-use lensbench_core::{
-    elements, glass, huygens, pop, psf, report, sweep, zmx, zmx_write, FieldSel, System,
-};
+use lensbench_core::{elements, glass, pop, report, sweep, zmx, zmx_write, FieldSel, System};
 use lensbench_export::{d2, mesh, scene, table};
 use serde_json::{json, Value};
 use std::f64::consts::PI;
 
+mod analysis_cmd;
 pub mod arg_spec;
 mod browse;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
@@ -29,8 +27,10 @@ use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
 pub mod ext;
+mod provenance;
 pub mod run;
 pub mod serve;
+mod serve_analyze;
 mod serve_ipc;
 mod watch;
 
@@ -106,45 +106,6 @@ enum Cmd {
         #[arg(long, short)]
         out: PathBuf,
     },
-    /// スポット（RMS・GEO 半径）
-    Spot {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// ガウス求積のリング数
-        #[arg(long, default_value_t = 6)]
-        rings: usize,
-    },
-    /// 波面収差（主光線基準の OPD、P-V・RMS [波]）
-    Wavefront {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 格子の一辺
-        #[arg(long, default_value_t = 64)]
-        n: usize,
-        /// 波面の格子も出す（"p": 正規化瞳座標、"map": W[iy][ix]、瞳の外・けられは null。GUI の波面図）
-        #[arg(long)]
-        map: bool,
-    },
-    /// Zernike 係数 [波]
-    Zernike {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// standard または fringe
-        #[arg(long, default_value = "standard")]
-        kind: String,
-        /// 項数
-        #[arg(long, default_value_t = 37)]
-        terms: usize,
-        /// 格子の一辺
-        #[arg(long, default_value_t = 64)]
-        n: usize,
-    },
     /// 系を .zmx に書き出す（プロジェクトの展開など）。--paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx に
     /// まとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
     Zmx {
@@ -166,124 +127,6 @@ enum Cmd {
         /// 組み直した系を書き出す .zmx
         #[arg(long)]
         out: Option<PathBuf>,
-    },
-    /// ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧:
-    /// 近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（膜込み）。--out-dir で展開した系を .zmx に書く
-    Ghost {
-        #[command(flatten)]
-        c: Common,
-        /// 反射させる最初の面
-        #[arg(long, default_value_t = 1)]
-        first: usize,
-        /// 反射させる最後の面（省略で像面。像面は膜があるときだけ反射させる）
-        #[arg(long)]
-        last: Option<usize>,
-        /// 膜の実測表（LBCT）・モデル（LBCM）のファイル（複数可）
-        #[arg(long)]
-        coatings: Vec<PathBuf>,
-        /// 展開したゴーストの系を書くフォルダ（ghost_a_b.zmx）
-        #[arg(long = "out-dir")]
-        out_dir: Option<PathBuf>,
-    },
-    /// 回折 MTF（変調度、子午・球欠）。--wave を省くと多色
-    Mtf {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
-        #[arg(long)]
-        freqs: Option<String>,
-        /// 周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
-        #[arg(long = "max-freq", conflicts_with = "freqs")]
-        max_freq: Option<f64>,
-        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
-        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
-        freq_steps: usize,
-        /// 瞳の重なりの求積の点の数の目安（点は約 n² 個）。省くと OPD の傾きから自動で決める
-        #[arg(long)]
-        n: Option<usize>,
-        /// 求積点の OPD をすべて直接追跡する（既定は瞳の格子を 1 度追跡して補間。遅い、確かめ用）
-        #[arg(long, conflicts_with_all = ["fft", "interp"])]
-        direct: bool,
-        /// 瞳関数の自己相関を FFT で全周波数まとめて求める（周波数が多いとき・収差が大きいとき速い。
-        /// 既定との差は 1e-4 程度）。既定でも --n を省いて求積の点数が 1024 を超え、周波数が 8 個以上なら FFT になる
-        #[arg(long, conflicts_with = "interp")]
-        fft: bool,
-        /// 求積点の数が多い系でも FFT に切り替えず、補間の求積で求める
-        #[arg(long)]
-        interp: bool,
-        /// 多色に加えて波長ごとの MTF も出す（"waves"。波長ごとの計算を使い回すので別々に求めるより速い）。
-        /// --wave とは一緒に使えない
-        #[arg(long = "each-wave")]
-        each_wave: bool,
-    },
-    /// スルーフォーカス MTF（像面を --range の範囲で --steps 点ずらした回折 MTF）。--wave を省くと多色
-    MtfFocus {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）
-        #[arg(long, required = true)]
-        freqs: String,
-        /// 像面のずらしの範囲 ±range [レンズ単位]
-        #[arg(long, default_value_t = 0.1)]
-        range: f64,
-        /// ずらしの点数（−range から +range まで）
-        #[arg(long, default_value_t = 11)]
-        steps: usize,
-        /// 瞳の重なりの求積の点の数の目安（mtf と同じ。省くと自動）
-        #[arg(long)]
-        n: Option<usize>,
-    },
-    /// フィールド MTF（正規化視野 0〜1 を --points 点で刻んだ回折 MTF）。--wave を省くと多色
-    MtfField {
-        #[command(flatten)]
-        c: Common,
-        /// 波長の番号（1 始まり、省略で多色）
-        #[arg(long)]
-        wave: Option<usize>,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）
-        #[arg(long, required = true)]
-        freqs: String,
-        /// 視野の点数（正規化視野 0 から 1 まで）
-        #[arg(long, default_value_t = 11)]
-        points: usize,
-        /// 視野を振る向き（y か x）
-        #[arg(long, default_value = "y")]
-        axis: String,
-        #[arg(long)]
-        n: Option<usize>,
-    },
-    /// RMS（スポット半径・x・y、波面、ストレール比の近似）を視野・フォーカス・波長に対して
-    Rms {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 横軸: field（正規化視野 0〜1）、focus（像面のずらし ±range）、wavelength（系の波長の最小〜最大、単色）
-        #[arg(long, default_value = "field")]
-        vs: String,
-        /// 横軸の点数
-        #[arg(long, default_value_t = 11)]
-        points: usize,
-        /// focus のずらしの範囲 ±range [レンズ単位]
-        #[arg(long, default_value_t = 0.1)]
-        range: f64,
-        /// field の視野を振る向き（y か x）
-        #[arg(long, default_value = "y")]
-        axis: String,
-        /// 基準: centroid（重心）か chief（主光線）
-        #[arg(long = "ref", default_value = "centroid")]
-        reference: String,
-        /// 瞳のガウス求積のリング数
-        #[arg(long, default_value_t = 6)]
-        rings: usize,
-        /// 単色の field・wavelength の掃引で、実像高（と条件で定める視野）の視野を解析の波長の主光線で解く
-        /// （OpticStudio の単色の RMS vs Field・vs Wavelength と同じ。省くと主波長で解く）
-        #[arg(long)]
-        field_wave: bool,
     },
     /// 減衰最小二乗（DLS）で変数を最適化する。評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、
     /// --term・--terms の項を足したもの。--out で最適化した系を .zmx に書き出す
@@ -344,73 +187,6 @@ enum Cmd {
         /// 試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
         #[arg(long = "comp-csv")]
         comp_csv: Option<PathBuf>,
-    },
-    /// 回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。--wave を省くと多色。
-    /// --huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す。座標は像面の局所座標）
-    Psf {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// Huygens PSF（像面の上。傾いた像面・収差の大きい系向け、FFT より遅い）
-        #[arg(long)]
-        huygens: bool,
-        /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
-        #[arg(long)]
-        pupil: Option<usize>,
-        /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）
-        #[arg(long, default_value_t = 128)]
-        image: usize,
-        /// 像の格子の間隔 [レンズ単位、アフォーカル像空間では角度の単位]（省くと 1 / (2 × 遮断周波数)）
-        #[arg(long)]
-        delta: Option<f64>,
-    },
-    /// 幾何 MTF（光線の位置の分布から）。--wave を省くと多色
-    GeoMtf {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
-        #[arg(long)]
-        freqs: Option<String>,
-        /// 周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
-        #[arg(long = "max-freq", conflicts_with = "freqs")]
-        max_freq: Option<f64>,
-        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
-        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
-        freq_steps: usize,
-        /// 瞳の求積の点の数の目安（点は約 n² 個）
-        #[arg(long, default_value_t = 128)]
-        n: usize,
-        /// 回折限界の MTF をかける
-        #[arg(long = "diff-limit")]
-        diff_limit: bool,
-    },
-    /// Huygens MTF（Huygens PSF のフーリエ変換、像面の上の周波数）。--wave を省くと多色。出力は mtf と同じ形
-    HuygensMtf {
-        #[command(flatten)]
-        c: Common,
-        #[command(flatten)]
-        s: Sel,
-        /// 周波数 [cycles/mm]（カンマ区切り）。省くと 0 から上限（--max-freq、既定は遮断周波数の 0.95 倍）までの --freq-steps 等分
-        #[arg(long)]
-        freqs: Option<String>,
-        /// 周波数を省いたときの上限 [cycles/mm]。省くと遮断周波数の 0.95 倍
-        #[arg(long = "max-freq", conflicts_with = "freqs")]
-        max_freq: Option<f64>,
-        /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
-        #[arg(long = "freq-steps", default_value_t = 20, conflicts_with = "freqs")]
-        freq_steps: usize,
-        /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
-        #[arg(long)]
-        pupil: Option<usize>,
-        /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）。PSF を覆いきれないと低周波の MTF が下がる
-        #[arg(long, default_value_t = 128)]
-        image: usize,
-        /// 像の格子の間隔 [mm]（省くと 1 / (2 × 遮断周波数)）
-        #[arg(long)]
-        delta: Option<f64>,
     },
     /// ズーム軌跡: 状態（プロジェクトの states か .zmx の構成）ごとに群の位置（--var）を解く。
     /// 評価関数は像の RMS（全視野・多色）と、--efl・--pmag の目標。--steps で状態の間を継続法でたどる
@@ -816,6 +592,9 @@ enum Cmd {
     /// 拡張のサブコマンド（[`ext`]。clap の定義は [`cli_command`] が足す）
     #[command(skip)]
     Ext(ExtCmd),
+    /// 解析の登録簿の解析（[`analysis_cmd`]。clap の定義は [`cli_command`] が設定のスキーマから足す）
+    #[command(skip)]
+    Analysis(Box<analysis_cmd::AnalysisCmd>),
 }
 
 /// レイアウトの光線の選び方
@@ -1014,11 +793,6 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
     })
 }
 
-thread_local! {
-    /// このスレッドで最後に読んだ系の hash（--save の JSON の provenance に刻む）
-    static LOADED_HASH: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-}
-
 fn load(c: &Common) -> Result<System, String> {
     // serve で系を読み込んであれば、ファイルを読まずにその系を使う
     let s = match serve::loaded() {
@@ -1036,15 +810,8 @@ fn load(c: &Common) -> Result<System, String> {
             s
         }
     };
-    let h = lensbench_project::sysfile::system_hash(&s).ok();
-    LOADED_HASH.with(|x| *x.borrow_mut() = h);
+    provenance::set(&s);
     Ok(s)
-}
-
-/// 結果に刻む版と系の hash
-fn provenance() -> Value {
-    let h = LOADED_HASH.with(|x| x.borrow().clone());
-    json!({ "lensbench": lensbench_core::VERSION, "system_hash": h })
 }
 
 /// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id。.zmx・系ファイルなら空
@@ -1222,16 +989,6 @@ fn wave(s: &System, sel: &Sel) -> Result<Option<usize>, String> {
     }
 }
 
-/// 周波数を省いたときの並び: 0 から `top` までの `steps` 等分（点は steps + 1 個）
-fn auto_freqs(top: f64, steps: usize) -> Result<Vec<f64>, String> {
-    if !(top.is_finite() && top > 0.0) {
-        return Err(format!("--max-freq は正の数（{top}）"));
-    }
-    if steps == 0 {
-        return Err("--freq-steps は 1 以上".into());
-    }
-    Ok((0..=steps).map(|k| top * k as f64 / steps as f64).collect())
-}
 /// カンマ区切りの数
 fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, String> {
     let v: Vec<f64> = s
@@ -1247,14 +1004,6 @@ fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, String> {
         return Err(format!("{what} が空"));
     }
     Ok(v)
-}
-
-fn parse_axis(s: &str) -> Result<sweep::FieldAxis, String> {
-    match s.to_ascii_lowercase().as_str() {
-        "x" => Ok(sweep::FieldAxis::X),
-        "y" => Ok(sweep::FieldAxis::Y),
-        _ => Err(format!("--axis は x か y（{s}）")),
-    }
 }
 
 /// 文字で出すときは長い表を省く（PSF・波面の格子など。--json・--save では全体）
@@ -1298,14 +1047,14 @@ fn parse_pupil(s: &str) -> Result<(Vec<f64>, Vec<f64>), String> {
 }
 
 /// --save: 解析の結果を書き出す（json はそのまま、csv・npz は表にして）
-fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
+pub(crate) fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
     let json = p
         .extension()
         .is_some_and(|x| x.eq_ignore_ascii_case("json"));
     if json {
         let mut v = v.clone();
         if let Some(o) = v.as_object_mut() {
-            o.insert("provenance".into(), provenance());
+            o.insert("provenance".into(), provenance::value());
         }
         let s = serde_json::to_string_pretty(&v).unwrap();
         lensbench_core::vfs::write(p, s + "\n").map_err(|x| format!("{}: {x}", p.display()))
@@ -1319,26 +1068,16 @@ impl Cmd {
     fn common_mut(&mut self) -> Option<&mut Common> {
         match self {
             Cmd::Info(c)
-            | Cmd::Spot { c, .. }
-            | Cmd::Wavefront { c, .. }
-            | Cmd::Zernike { c, .. }
-            | Cmd::Mtf { c, .. }
-            | Cmd::MtfFocus { c, .. }
-            | Cmd::MtfField { c, .. }
-            | Cmd::Rms { c, .. }
             | Cmd::Optimize { c, .. }
             | Cmd::Tolerance { c, .. }
-            | Cmd::Psf { c, .. }
-            | Cmd::GeoMtf { c, .. }
-            | Cmd::HuygensMtf { c, .. }
             | Cmd::Elements { c, .. }
             | Cmd::Convert { c, .. }
-            | Cmd::Ghost { c, .. }
             | Cmd::Layout { c, .. }
             | Cmd::Pop { c, .. }
             | Cmd::MechCheck { c, .. }
             | Cmd::Rays { c, .. } => Some(c),
             Cmd::Ext(e) => e.args.common_mut(),
+            Cmd::Analysis(a) => Some(&mut a.c),
             _ => None,
         }
     }
@@ -1375,16 +1114,6 @@ impl Cmd {
                 // 拡張の paths_mut は --save も含む
                 return v;
             }
-            Cmd::Ghost {
-                c,
-                coatings,
-                out_dir,
-                ..
-            } => {
-                let mut v: Vec<_> = coatings.iter_mut().map(|p| (p, false)).collect();
-                v.extend(out_dir.iter_mut().map(|p| (p, true)));
-                (Some(c), v)
-            }
             other => (other.common_mut(), Vec::new()),
         };
         if let Some(p) = c.and_then(|c| c.save.as_mut()) {
@@ -1397,24 +1126,15 @@ impl Cmd {
     fn save(&self) -> Option<PathBuf> {
         match self {
             Cmd::Info(c)
-            | Cmd::Spot { c, .. }
-            | Cmd::Wavefront { c, .. }
-            | Cmd::Zernike { c, .. }
-            | Cmd::Mtf { c, .. }
-            | Cmd::MtfFocus { c, .. }
-            | Cmd::MtfField { c, .. }
-            | Cmd::Rms { c, .. }
             | Cmd::Optimize { c, .. }
             | Cmd::Tolerance { c, .. }
-            | Cmd::Psf { c, .. }
-            | Cmd::GeoMtf { c, .. }
-            | Cmd::HuygensMtf { c, .. }
             | Cmd::Elements { c, .. }
             | Cmd::MechCheck { c, .. }
             | Cmd::Layout { c, .. } => c.save.clone(),
             Cmd::Zoom(a) => a.save.clone(),
             Cmd::Swap(a) => a.save.clone(),
             Cmd::Ext(e) => e.args.common().and_then(|c| c.save.clone()),
+            Cmd::Analysis(a) => a.c.save.clone(),
             _ => None,
         }
     }
@@ -1674,7 +1394,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
 fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
     let e = |e: lensbench_core::Error| e.to_string();
     let save = cmd.save();
-    LOADED_HASH.with(|x| *x.borrow_mut() = None);
+    provenance::clear();
     PARTIAL_FAILURE.with(|x| *x.borrow_mut() = None);
     let (json_out, out): (bool, Value) = match cmd {
         Cmd::Serve(_) | Cmd::Watch(_) | Cmd::Run(_) => {
@@ -1684,6 +1404,24 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
         Cmd::Verify { .. } => return Err("verify はコマンドラインからだけ使える".into()),
         Cmd::Plugins { json } => (json, plugins_json()),
         Cmd::Ext(e) => e.args.run(ctx)?,
+        Cmd::Analysis(a) => {
+            let s = load(&a.c)?;
+            let def = analyses()
+                .get(&a.name)
+                .ok_or_else(|| format!("解析 {} は無い", a.name))?;
+            let out = def
+                .run_json(&lensbench_analysis::Cx { system: &s }, &a.params)
+                .map_err(e)?;
+            // 注意は結果の warnings にも入る。コマンドラインでは標準エラーにも出す
+            if ctx.serve.is_none() {
+                for w in out["warnings"].as_array().into_iter().flatten() {
+                    if let Some(w) = w.as_str() {
+                        eprintln!("注意: {w}");
+                    }
+                }
+            }
+            (a.c.json, out)
+        }
         Cmd::Zoom(a) => (a.json, search_cmd::zoom(&a)?),
         Cmd::Swap(a) => (a.json, search_cmd::swap(&a)?),
         Cmd::Fringe(a) => {
@@ -1791,67 +1529,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
             (
                 c.json,
                 json!({ "elements": v, "efl": a.paraxial().efl, "written": out.map(|p| p.display().to_string()) }),
-            )
-        }
-        Cmd::Spot { c, s: sel, rings } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let sp = analysis::spot(&s, FieldSel::Index(i), w, rings).map_err(e)?;
-                v.push(json!({
-                    "field": i + 1, "rms_centroid": sp.rms_centroid, "rms_chief": sp.rms_chief,
-                    "geo": sp.geo, "centroid": [sp.centroid.0, sp.centroid.1],
-                    "chief": [sp.chief.0, sp.chief.1],
-                }));
-            }
-            (c.json, json!({ "unit": spot_unit(&s), "spot": v }))
-        }
-        Cmd::Wavefront { c, s: sel, n, map } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let wf = analysis::wavefront(&s, FieldSel::Index(i), w, n, false).map_err(e)?;
-                let mut x = json!({ "field": i + 1, "pv": wf.pv, "rms": wf.rms });
-                if map {
-                    // NaN（瞳の外・けられ）は JSON の null になる
-                    x["p"] = json!(wf.p);
-                    x["map"] = json!(wf.w);
-                }
-                v.push(x);
-            }
-            (c.json, json!({ "unit": "waves", "wavefront": v }))
-        }
-        Cmd::Zernike {
-            c,
-            s: sel,
-            kind,
-            terms,
-            n,
-        } => {
-            let k = match kind.to_ascii_lowercase().as_str() {
-                "standard" => ZernKind::Standard,
-                "fringe" => ZernKind::Fringe,
-                _ => return Err(format!("--kind は standard か fringe（{kind}）")),
-            };
-            if k == ZernKind::Fringe && terms > 37 {
-                return Err("Fringe は 37 項まで".into());
-            }
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let z =
-                    analysis::zernike(&s, FieldSel::Index(i), w, k, terms, n, false).map_err(e)?;
-                v.push(json!({
-                    "field": i + 1, "coef": z.coef, "pv": z.pv, "rms_chief": z.rms_chief,
-                    "rms_centroid": z.rms_centroid, "rms_fit": z.rms_fit, "strehl": z.strehl,
-                }));
-            }
-            (
-                c.json,
-                json!({ "unit": "waves", "kind": kind, "zernike": v }),
             )
         }
         Cmd::Layout {
@@ -2031,200 +1708,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     return Ok((false, Value::Null));
                 }
             }
-        }
-        Cmd::Ghost {
-            c,
-            first,
-            last,
-            coatings,
-            out_dir,
-        } => {
-            let s = load(&c)?;
-            let last = last.unwrap_or(s.image());
-            let mut co = Coatings::for_system(&s).map_err(e)?;
-            for p in &coatings {
-                co.load_file(p).map_err(e)?;
-            }
-            let v = lensbench_core::ghost::survey(&s, first, last, &co).map_err(e)?;
-            let mut written = Vec::new();
-            if let Some(dir) = &out_dir {
-                lensbench_core::vfs::create_dir_all(dir)
-                    .map_err(|x| format!("{}: {x}", dir.display()))?;
-                for g in &v {
-                    let gs =
-                        lensbench_core::ghost::ghost_system(&s, g.par.a, g.par.b).map_err(e)?;
-                    let p = dir.join(format!("ghost_{}_{}.zmx", g.par.a, g.par.b));
-                    warn_notes(zmx_write::save(&p, &gs.sys).map_err(e)?);
-                    written.push(p.display().to_string());
-                }
-            }
-            let rows: Vec<Value> = v
-                .iter()
-                .map(|g| {
-                    let p = &g.par;
-                    let mut o = json!({
-                        "a": p.a, "b": p.b, "marginal_y": p.marginal_y, "marginal_u": p.marginal_u,
-                        "focus": if p.focus.is_finite() { json!(p.focus) } else { Value::Null },
-                        "wfno": p.wfno,
-                    });
-                    match &g.intensity {
-                        Ok(x) => o["intensity"] = json!(x),
-                        Err(m) => o["intensity_error"] = json!(m),
-                    }
-                    o
-                })
-                .collect();
-            (
-                c.json,
-                json!({ "first": first, "last": last, "ghosts": rows, "written": written }),
-            )
-        }
-        Cmd::Mtf {
-            c,
-            s: sel,
-            freqs,
-            max_freq,
-            freq_steps,
-            n,
-            direct,
-            fft,
-            interp,
-            each_wave,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            if each_wave && w.is_some() {
-                return Err("--each-wave は --wave と一緒に使えない".into());
-            }
-            let given: Option<Vec<f64>> = match freqs {
-                Some(f) => Some(
-                    f.split(',')
-                        .map(|x| {
-                            x.trim()
-                                .parse::<f64>()
-                                .map_err(|_| format!("--freqs の数が読めない（{x}）"))
-                        })
-                        .collect::<Result<_, _>>()?,
-                ),
-                None => None,
-            };
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let fs = match &given {
-                    Some(f) => f.clone(),
-                    None => {
-                        let top = match max_freq {
-                            Some(x) => x,
-                            None => {
-                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
-                                    .map_err(e)?;
-                                0.95 * m.cutoff.0.min(m.cutoff.1)
-                            }
-                        };
-                        auto_freqs(top, freq_steps)?
-                    }
-                };
-                let method = if direct {
-                    analysis::MtfMethod::Direct
-                } else if fft {
-                    analysis::MtfMethod::Fft
-                } else if interp {
-                    analysis::MtfMethod::Interp
-                } else {
-                    analysis::MtfMethod::Auto
-                };
-                let f = FieldSel::Index(i);
-                let (m, waves) = if each_wave {
-                    let mw = analysis::mtf_waves(&s, f, n, &fs, method).map_err(e)?;
-                    (mw.poly, Some(mw.waves))
-                } else {
-                    (
-                        analysis::mtf_with(&s, f, w, n, &fs, method).map_err(e)?,
-                        None,
-                    )
-                };
-                let mut o = json!({
-                    "field": i + 1, "freqs": m.freqs, "tangential": m.tan, "sagittal": m.sag,
-                    "cutoff": [m.cutoff.0, m.cutoff.1],
-                });
-                if let Some(ws) = waves {
-                    o["waves"] = ws
-                        .iter()
-                        .enumerate()
-                        .map(|(k, m)| json!({ "wave": k + 1, "tangential": m.tan, "sagittal": m.sag }))
-                        .collect();
-                }
-                v.push(o);
-            }
-            (
-                c.json,
-                json!({ "unit": format!("cycles/{}", s.image_unit()), "mtf": v }),
-            )
-        }
-        Cmd::MtfFocus {
-            c,
-            s: sel,
-            freqs,
-            range,
-            steps,
-            n,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let fs = parse_list(&freqs, "--freqs")?;
-            let dz = sweep::steps_sym(range, steps);
-            let mut v = Vec::new();
-            let mut warn = Vec::new();
-            for i in fields(&s, &sel)? {
-                let m = sweep::through_focus_mtf(&s, FieldSel::Index(i), w, n, &fs, &dz);
-                for (k, &f) in fs.iter().enumerate() {
-                    for (j, &z) in dz.iter().enumerate() {
-                        v.push(json!({
-                            "field": i + 1, "freq": f, "dz": z,
-                            "tangential": m.tan[k][j], "sagittal": m.sag[k][j],
-                        }));
-                    }
-                }
-                warn.extend(m.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
-            }
-            (
-                c.json,
-                json!({ "unit": format!("cycles/{}", s.image_unit()), "through_focus": v, "warnings": warn }),
-            )
-        }
-        Cmd::MtfField {
-            c,
-            wave: wv,
-            freqs,
-            points,
-            axis,
-            n,
-        } => {
-            let s = load(&c)?;
-            let w = wave(
-                &s,
-                &Sel {
-                    field: None,
-                    wave: wv,
-                },
-            )?;
-            let fs = parse_list(&freqs, "--freqs")?;
-            let ax = parse_axis(&axis)?;
-            let h = sweep::steps01(points);
-            let m = sweep::field_mtf(&s, ax, &h, w, n, &fs);
-            let mut v = Vec::new();
-            for (k, &f) in fs.iter().enumerate() {
-                for (j, &hh) in h.iter().enumerate() {
-                    v.push(json!({
-                        "freq": f, "h": hh, "field_value": ax.value(&s, hh),
-                        "tangential": m.tan[k][j], "sagittal": m.sag[k][j],
-                    }));
-                }
-            }
-            (
-                c.json,
-                json!({ "unit": format!("cycles/{}", s.image_unit()), "field_mtf": v, "warnings": m.warnings }),
-            )
         }
         Cmd::Optimize {
             c,
@@ -2439,236 +1922,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
             }
             (json_out, out)
-        }
-        Cmd::Rms {
-            c,
-            s: sel,
-            vs,
-            points,
-            range,
-            axis,
-            reference,
-            rings,
-            field_wave,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let o = sweep::RmsOpts {
-                rings,
-                field_wave,
-                reference: match reference.to_ascii_lowercase().as_str() {
-                    "centroid" => sweep::RmsRef::Centroid,
-                    "chief" => sweep::RmsRef::Chief,
-                    _ => return Err(format!("--ref は centroid か chief（{reference}）")),
-                },
-            };
-            let row = |x: (&str, f64), f: Option<usize>, r: &sweep::Rms| {
-                let mut o = json!({
-                    "spot": r.spot, "spot_x": r.spot_x, "spot_y": r.spot_y,
-                    "wfe": r.wfe, "strehl": r.strehl,
-                });
-                o[x.0] = json!(x.1);
-                if let Some(f) = f {
-                    o["field"] = json!(f + 1);
-                }
-                o
-            };
-            let mut v = Vec::new();
-            let mut warn = Vec::new();
-            match vs.to_ascii_lowercase().as_str() {
-                "field" => {
-                    if sel.field.is_some() {
-                        return Err("--vs field では --field は使わない".into());
-                    }
-                    let ax = parse_axis(&axis)?;
-                    let r = sweep::rms_vs_field(&s, ax, &sweep::steps01(points), w, o);
-                    for (x, q) in r.x.iter().zip(&r.rms) {
-                        let mut e = row(("h", *x), None, q);
-                        e["field_value"] = json!(ax.value(&s, *x));
-                        v.push(e);
-                    }
-                    warn = r.warnings;
-                }
-                "focus" => {
-                    for i in fields(&s, &sel)? {
-                        let r = sweep::rms_vs_focus(
-                            &s,
-                            FieldSel::Index(i),
-                            &sweep::steps_sym(range, points),
-                            w,
-                            o,
-                        );
-                        for (x, q) in r.x.iter().zip(&r.rms) {
-                            v.push(row(("dz", *x), Some(i), q));
-                        }
-                        warn.extend(r.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
-                    }
-                }
-                "wavelength" => {
-                    if sel.wave.is_some() {
-                        return Err("--vs wavelength では --wave は使わない".into());
-                    }
-                    let lams = sweep::wavelength_steps(&s, points);
-                    for i in fields(&s, &sel)? {
-                        let r = sweep::rms_vs_wavelength(&s, FieldSel::Index(i), &lams, o);
-                        for (x, q) in r.x.iter().zip(&r.rms) {
-                            v.push(row(("wavelength", *x), Some(i), q));
-                        }
-                        warn.extend(r.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
-                    }
-                }
-                _ => return Err(format!("--vs は field・focus・wavelength（{vs}）")),
-            }
-            (
-                c.json,
-                json!({ "unit": spot_unit(&s), "wfe_unit": "waves", "vs": vs, "reference": reference, "rms": v, "warnings": warn }),
-            )
-        }
-        Cmd::Psf {
-            c,
-            s: sel,
-            huygens,
-            pupil,
-            image,
-            delta,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let o = psf::PsfOpts {
-                pupil,
-                image,
-                delta,
-            };
-            let ho = huygens::HuygensOpts {
-                pupil,
-                image,
-                delta,
-            };
-            let (mut v, mut axes) = (Vec::new(), Vec::new());
-            let (mut warn, mut samp) = (Vec::<String>::new(), Vec::new());
-            for i in fields(&s, &sel)? {
-                let p = if huygens {
-                    huygens::huygens_psf(&s, FieldSel::Index(i), w, ho)
-                } else {
-                    psf::psf(&s, FieldSel::Index(i), w, o)
-                }
-                .map_err(e)?;
-                axes.push(json!({ "field": i + 1, "center": [p.center.0, p.center.1], "e1": p.axes[0], "e2": p.axes[1] }));
-                for (iy, row) in p.i.iter().enumerate() {
-                    for (ix, val) in row.iter().enumerate() {
-                        v.push(json!({ "field": i + 1, "x": p.x[ix], "y": p.y[iy], "i": val }));
-                    }
-                }
-                eprintln!(
-                    "視野 {}: ピーク {:.6e}、中心 ({:.6e}, {:.6e})、間隔 ({:.6e}, {:.6e})、瞳の格子 {}、位相差の最大 {:.3} rad、格子の中の光量 {:.4}",
-                    i + 1,
-                    p.peak,
-                    p.center.0,
-                    p.center.1,
-                    p.delta.0,
-                    p.delta.1,
-                    p.pupil,
-                    p.phase_step,
-                    p.enclosed
-                );
-                for m in &p.warnings {
-                    eprintln!("注意: 視野 {}: {m}", i + 1);
-                    warn.push(format!("視野 {}: {m}", i + 1));
-                }
-                samp.push(json!({ "field": i + 1, "pupil": p.pupil, "phase_step": p.phase_step, "enclosed": p.enclosed }));
-            }
-            // x・y は主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）。
-            // Huygens では像面の局所座標（e1・e2 = x̂・ŷ）
-            let method = if huygens { "huygens" } else { "fft" };
-            (
-                c.json,
-                json!({ "unit": spot_unit(&s), "method": method, "psf": v, "axes": axes, "sampling": samp, "warnings": warn }),
-            )
-        }
-        Cmd::GeoMtf {
-            c,
-            s: sel,
-            freqs,
-            max_freq,
-            freq_steps,
-            n,
-            diff_limit,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let given = freqs.map(|f| parse_list(&f, "--freqs")).transpose()?;
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let fs = match &given {
-                    Some(f) => f.clone(),
-                    None => {
-                        let top = match max_freq {
-                            Some(x) => x,
-                            None => {
-                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
-                                    .map_err(e)?;
-                                0.95 * m.cutoff.0.min(m.cutoff.1)
-                            }
-                        };
-                        auto_freqs(top, freq_steps)?
-                    }
-                };
-                let m =
-                    psf::geometric_mtf(&s, FieldSel::Index(i), w, n, &fs, diff_limit).map_err(e)?;
-                v.push(json!({
-                    "field": i + 1, "freqs": m.freqs, "tangential": m.tan, "sagittal": m.sag,
-                    "cutoff": [m.cutoff.0, m.cutoff.1],
-                }));
-            }
-            (
-                c.json,
-                json!({ "unit": format!("cycles/{}", s.image_unit()), "geometric_mtf": v }),
-            )
-        }
-        Cmd::HuygensMtf {
-            c,
-            s: sel,
-            freqs,
-            max_freq,
-            freq_steps,
-            pupil,
-            image,
-            delta,
-        } => {
-            let s = load(&c)?;
-            let w = wave(&s, &sel)?;
-            let given = freqs.map(|f| parse_list(&f, "--freqs")).transpose()?;
-            let o = huygens::HuygensOpts {
-                pupil,
-                image,
-                delta,
-            };
-            let mut v = Vec::new();
-            for i in fields(&s, &sel)? {
-                let fs = match &given {
-                    Some(f) => f.clone(),
-                    None => {
-                        let top = match max_freq {
-                            Some(x) => x,
-                            None => {
-                                let m = analysis::mtf(&s, FieldSel::Index(i), w, Some(4), &[])
-                                    .map_err(e)?;
-                                0.95 * m.cutoff.0.min(m.cutoff.1)
-                            }
-                        };
-                        auto_freqs(top, freq_steps)?
-                    }
-                };
-                let m = huygens::huygens_mtf(&s, FieldSel::Index(i), w, o, &fs).map_err(e)?;
-                v.push(json!({
-                    "field": i + 1, "freqs": m.freqs, "tangential": m.tan, "sagittal": m.sag,
-                    "cutoff": [m.cutoff.0, m.cutoff.1],
-                }));
-            }
-            (
-                c.json,
-                json!({ "unit": format!("cycles/{}", s.image_unit()), "method": "huygens", "mtf": v }),
-            )
         }
         Cmd::CatalogAdd {
             catalog,
@@ -3912,15 +3165,6 @@ fn fmt(v: &Value) -> String {
     }
 }
 
-/// スポット・PSF の位置の単位: レンズの単位（mm）、アフォーカル像空間では角度の単位
-fn spot_unit(s: &System) -> &'static str {
-    if s.afocal {
-        s.image_unit()
-    } else {
-        "lens"
-    }
-}
-
 /// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず
 /// 黙って終える（終了コード 0。ほかの panic はいつもどおり）
 fn quiet_broken_pipe() {
@@ -3946,6 +3190,9 @@ fn quiet_broken_pipe() {
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command();
+    for a in analysis_commands() {
+        c = c.subcommand(a.clone());
+    }
     for e in ext::list() {
         c = c.subcommand((e.command)().name(e.name));
     }
@@ -3964,7 +3211,24 @@ fn builtin_command_names() -> Vec<String> {
     Cli::command()
         .get_subcommands()
         .map(|c| c.get_name().to_string())
+        .chain(analyses().iter().map(|a| a.meta().name.to_string()))
         .collect()
+}
+
+/// 解析の登録簿（同梱の解析）
+pub(crate) fn analyses() -> &'static lensbench_analysis::Analyses {
+    lensbench_analysis::Analyses::builtin()
+}
+
+/// 解析の登録簿のサブコマンド（設定のスキーマから 1 回だけ作る）
+fn analysis_commands() -> &'static [clap::Command] {
+    static C: std::sync::OnceLock<Vec<clap::Command>> = std::sync::OnceLock::new();
+    C.get_or_init(|| {
+        analyses()
+            .iter()
+            .map(|a| analysis_cmd::command(a.as_ref()))
+            .collect()
+    })
 }
 
 /// 引数を解釈する（拡張のサブコマンドも）
@@ -3976,6 +3240,15 @@ where
     use clap::FromArgMatches;
     let m = cli_command().try_get_matches_from(argv)?;
     if let Some((name, sub)) = m.subcommand() {
+        if let Some(a) = analyses().get(name) {
+            let threads = m.try_get_one::<usize>("threads").ok().flatten().copied();
+            let cmd = analysis_cmd::parse(a.as_ref(), sub)
+                .map_err(|x| cli_command().error(clap::error::ErrorKind::ValueValidation, x))?;
+            return Ok(Cli {
+                threads,
+                cmd: Cmd::Analysis(Box::new(cmd)),
+            });
+        }
         if let Some(e) = ext::get(name) {
             let threads = sub
                 .try_get_one::<usize>("threads")

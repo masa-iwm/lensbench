@@ -34,12 +34,10 @@ enum Hint {
 }
 
 /// clap では文字列で受ける引数の型（サブコマンド（* は全部）, 引数の名前（- は _）, 型）
+/// （解析の登録簿の解析は設定のスキーマに型があるので要らない）
 const HINTS: &[(&str, &str, Hint)] = &[
     ("*", "freqs", Hint::Nums),
-    ("*", "kind", Hint::Choice(&["standard", "fringe"])),
-    ("rms", "vs", Hint::Choice(&["field", "focus", "wavelength"])),
     ("*", "axis", Hint::Choice(&["y", "x"])),
-    ("rms", "ref", Hint::Choice(&["centroid", "chief"])),
     ("fringe", "mode", Hint::Choice(&["pupil", "detector"])),
     (
         "fringe",
@@ -69,6 +67,10 @@ const MINS: &[(&str, &str, f64)] = &[
 
 /// サブコマンド `cmd` の引数（位置引数・系の読み方の引数を除く）。`cmd` が無ければ None
 pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
+    // 解析の登録簿の解析は設定のスキーマから（clap の定義を走査しない）
+    if let Some(a) = crate::analyses().get(cmd) {
+        return Some(a.params().iter().map(|p| p.to_json()).collect());
+    }
     let root = crate::cli_command();
     let sub = root.get_subcommands().find(|c| c.get_name() == cmd)?;
     let ext_choices = crate::ext::get(cmd).map(|e| e.choices).unwrap_or_default();
@@ -240,9 +242,11 @@ mod tests {
         assert!(get("glass_dir").is_none() && get("file").is_none());
         assert!(get("field").is_some());
         assert!(analysis_args("no-such").is_none());
-        // 一緒に使えない旗・省けない引数
-        let c = get("fft").unwrap()["conflicts"].clone();
-        assert!(c.as_array().unwrap().contains(&json!("interp")), "{c}");
+        // 求め方は選択肢、省けない引数
+        assert_eq!(
+            get("method").unwrap()["choices"],
+            json!(["auto", "interp", "direct", "fft"])
+        );
         assert!(get("freqs").unwrap().get("required").is_none());
         let mf = analysis_args("mtf-focus").unwrap();
         let f = mf.iter().find(|x| x["name"] == "freqs").unwrap();

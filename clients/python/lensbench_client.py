@@ -332,8 +332,9 @@ class Client:
     # ---- 解析 ----
 
     def analyze(self, cmd: str, **kw) -> dict:
-        """CLI の解析のサブコマンドを実行する。引数は CLI の旗と同じ（_ は - に、True は旗、数の並びはカンマ）:
-        analyze("mtf", field=2, freq=[10, 20]) は lensbench mtf <系> --field 2 --freq 10,20 と同じ結果"""
+        """CLI の解析のサブコマンドを実行する。引数の名前は CLI の旗の - を _ にしたもの、値は JSON の型のまま
+        （数の並びはリスト、旗は True）: analyze("mtf", field=2, freqs=[10, 20]) は
+        lensbench mtf <系> --field 2 --freqs 10,20 と同じ結果。知らない名前・型違いは誤り"""
         p = {"cmd": cmd}
         p.update(kw)
         return self.call("analyze", p)[0]

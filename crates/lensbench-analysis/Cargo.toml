@@ -1,6 +1,6 @@
 [package]
 name = "lensbench-analysis"
-description = "Analysis plugins of lensbench (spot, wavefront, Zernike, MTF, PSF, RMS, POP, ghost)"
+description = "Analyses of lensbench: one typed definition per analysis (spot, wavefront, Zernike, MTF, PSF, RMS, ghost), plus the plugin adapters"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,5 +13,7 @@ workspace = true
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
-
-
+# 解析ごとの設定・結果の型（serde）と、そのスキーマ（CLI の引数・serve・GUI の欄・ドキュメントを作る）
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+schemars = "1"
