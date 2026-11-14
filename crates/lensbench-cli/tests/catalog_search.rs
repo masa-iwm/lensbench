@@ -97,8 +97,8 @@ fn cli_search() {
 #[test]
 fn serve_search() {
     let p = json!({
-        "lens_catalog": [root().join("examples/lenses/LBP")],
-        "glass_dir": [root().join("tests/glass")],
+        "lens_catalogs": [root().join("examples/lenses/LBP")],
+        "glass_dirs": [root().join("tests/glass")],
         "kinds": ["splitter"],
         "specs": ["wavelength_nm=420..680"],
     });
@@ -106,7 +106,7 @@ fn serve_search() {
     assert_eq!(parts(&v), ["BS-127", "BSP-254", "PBS-127"]);
     let v = lensbench_engine::call("catalog_search", &p, Some(1)).unwrap();
     assert_eq!(parts(&v).len(), 3);
-    let bad = json!({ "lens_catalog": [], "kinds": ["gizmo"] });
+    let bad = json!({ "lens_catalogs": [], "kinds": ["gizmo"] });
     assert!(lensbench_engine::browse("catalog_search", &bad).is_err());
 }
 

@@ -105,7 +105,7 @@ mod tests {
         assert!(a.iter().all(|x| x["name"] != "glass_dir"));
         // serve の analyze: 読み込んだ系と読み方
         let sv = lensbench_engine::Session::new();
-        sv.call("load", &json!({ "file": zmx, "glass_dir": [glass] }), None)
+        sv.call("load", &json!({ "file": zmx, "glass_dirs": [glass] }), None)
             .unwrap();
         let r = sv
             .call(

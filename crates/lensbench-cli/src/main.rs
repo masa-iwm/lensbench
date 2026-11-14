@@ -62,8 +62,8 @@ pub struct Common {
     /// プロジェクトファイル（.json）の状態の名前（多重構成に当たる）
     #[arg(long)]
     pub state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm。旧名 --path）
-    #[arg(long = "beam-path", alias = "path")]
+    /// プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm）
+    #[arg(long = "beam-path")]
     pub path: Option<String>,
     /// JSON で出力する
     #[arg(long)]
@@ -97,8 +97,8 @@ pub(crate) struct ConfigSel {
     /// プロジェクトの状態（名前のカンマ区切り、all で全部）
     #[arg(long)]
     states: Option<String>,
-    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部。旧名 --paths）
-    #[arg(long = "beam-paths", alias = "paths")]
+    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+    #[arg(long = "beam-paths")]
     paths: Option<String>,
 }
 
@@ -160,8 +160,8 @@ enum Cmd {
         /// 足す項の JSON ファイル（項の配列）
         #[arg(long = "terms")]
         terms_file: Option<PathBuf>,
-        /// 基準: centroid（重心）か chief（主光線）（旧名 --ref）
-        #[arg(long = "reference", alias = "ref", default_value = "centroid")]
+        /// 基準: centroid（重心）か chief（主光線）
+        #[arg(long = "reference", default_value = "centroid")]
         reference: String,
         /// 瞳のガウス求積のリング数
         #[arg(long, default_value_t = 3)]
@@ -1882,7 +1882,7 @@ fn quiet_broken_pipe() {
     }));
 }
 
-/// コマンドラインの入口（`lensbench` の実行ファイル）clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
+/// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command();

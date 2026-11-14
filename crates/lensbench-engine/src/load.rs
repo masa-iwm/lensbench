@@ -125,11 +125,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
     let kind = FileKind::of(&c.file);
     let is_json = kind != FileKind::Zmx;
     if kind == FileKind::SystemFile {
-        return Err("系ファイルは構成を重ねて描けない（--cfgs・--states・--paths は .zmx・プロジェクトだけ）".into());
+        return Err("系ファイルは構成を重ねて描けない（--cfgs・--states・--beam-paths は .zmx・プロジェクトだけ）".into());
     }
     if let Some(v) = &l.cfgs {
         if is_json {
-            return Err("--cfgs は .zmx だけ（プロジェクトは --states・--paths）".into());
+            return Err("--cfgs は .zmx だけ（プロジェクトは --states・--beam-paths）".into());
         }
         let opt = zmx::LoadOptions {
             catalog_dirs: c.glass_dir.clone(),
@@ -148,7 +148,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
     }
     if !is_json {
         return Err(
-            "--states・--paths はプロジェクトファイル（.json）だけ（.zmx は --cfgs）".into(),
+            "--states・--beam-paths はプロジェクトファイル（.json）だけ（.zmx は --cfgs）".into(),
         );
     }
     let txt = lensbench_core::vfs::read_to_string(&c.file)

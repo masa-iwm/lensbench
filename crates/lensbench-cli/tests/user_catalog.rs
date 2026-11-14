@@ -39,7 +39,7 @@ fn save_list_rename_delete() {
     )
     .unwrap();
     let glass = root().join("tests/glass");
-    call(&sv, "load", json!({ "file": proj, "glass_dir": [glass] })).unwrap();
+    call(&sv, "load", json!({ "file": proj, "glass_dirs": [glass] })).unwrap();
     let cat = dir.join("my.json").display().to_string();
     // 1 つ（面の表の変更を焼き込む）と範囲
     let v = call(&sv,

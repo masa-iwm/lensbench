@@ -83,7 +83,7 @@ def test_rms(b0):
     one = b0.rms(2)
     assert set(one) >= {"spot", "spot_x", "spot_y", "wfe", "strehl"}
     r = b0.rms(vs="field", x=np.linspace(0, 1, 3), reference="chief")
-    c = cli("rms", zmx("B0"), "--vs", "field", "--points", "3", "--ref", "chief")
+    c = cli("rms", zmx("B0"), "--vs", "field", "--points", "3", "--reference", "chief")
     assert np.array_equal(r["wfe"], [q["wfe"] for q in c["rms"]])
     assert np.array_equal(r["spot"], [q["spot"] for q in c["rms"]])
     w = b0.rms(2, vs="wavelength", x=b0.wavelengths)

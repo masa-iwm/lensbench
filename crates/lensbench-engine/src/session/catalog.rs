@@ -4,7 +4,7 @@ use super::*;
 
 /// カタログの一覧（`glasses`・`lenses`）
 pub(super) fn browse_of(sess: &Session, method: &str, p: &Value) -> Result<Value, RpcErr> {
-    // 名前は load と同じ（glass_dirs・lens_catalogs、旧名 glass_dir・lens_catalog も受ける）
+    // 名前は load と同じ（glass_dirs・lens_catalogs。旧名 glass_dir・lens_catalog は誤り）
     let read_all = |k: &'static str, old: &'static str| -> Result<Vec<PathBuf>, RpcErr> {
         str_list(renamed(p, k, old)?, k)?
             .iter()

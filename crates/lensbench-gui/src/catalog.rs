@@ -2817,11 +2817,11 @@ mod tests {
         let glass = root.join("tests/glass").display().to_string();
         let lb = root.join("examples/lenses/LB").display().to_string();
         let call = |m: &str, p: Value| lensbench_engine::call(m, &p, Some(1)).unwrap();
-        let g = parse_glasses(&call("glasses", json!({ "glass_dir": [glass] })));
+        let g = parse_glasses(&call("glasses", json!({ "glass_dirs": [glass] })));
         assert!(g.iter().any(|x| x.name == "N-BK7"));
         let l = parse_lenses(&call(
             "lenses",
-            json!({ "lens_catalog": [lb], "glass_dir": [glass] }),
+            json!({ "lens_catalogs": [lb], "glass_dirs": [glass] }),
         ));
         assert_eq!(l.len(), 5);
         assert!(l.iter().all(|x| x.error.is_none()), "{l:?}");
@@ -2843,7 +2843,7 @@ mod tests {
         lensbench_core::vfs::write(&f, b.combo.project().to_string()).unwrap();
         let s = call(
             "load",
-            json!({ "file": f.display().to_string(), "glass_dir": [glass], "lens_catalog": [lb] }),
+            json!({ "file": f.display().to_string(), "glass_dirs": [glass], "lens_catalogs": [lb] }),
         );
         assert_eq!(s["fields"].as_array().unwrap().len(), 3);
         let info = call("analyze", json!({ "cmd": "info" }));
@@ -2868,7 +2868,7 @@ mod tests {
         lensbench_core::vfs::write(&f, b.combo.project().to_string()).unwrap();
         call(
             "load",
-            json!({ "file": f.display().to_string(), "glass_dir": [glass], "lens_catalog": [lb] }),
+            json!({ "file": f.display().to_string(), "glass_dirs": [glass], "lens_catalogs": [lb] }),
         );
         let (y_img, ..) = ray(img);
         assert!(y_img.abs() < 1e-9, "{y_img} (入射 {y})");
@@ -2884,7 +2884,7 @@ mod tests {
         let l = parse_lenses(
             &call(
                 "lenses",
-                json!({ "lens_catalog": [lbp], "glass_dir": [glass] }),
+                json!({ "lens_catalogs": [lbp], "glass_dirs": [glass] }),
             )
             .unwrap(),
         );
@@ -2962,7 +2962,7 @@ mod tests {
             lensbench_core::vfs::write(&f, pr.to_string()).unwrap();
             // serve の load は系を差し替える（ほかのテストと並ぶ）ので、系を変えない下書きの断面で確かめる
             let lay = lensbench_engine::preview_layout(
-                &json!({ "file": f.display().to_string(), "glass_dir": [glass] }),
+                &json!({ "file": f.display().to_string(), "glass_dirs": [glass] }),
                 &json!({}),
             )
             .unwrap_or_else(|e| panic!("{parts:?}: {e}"));
@@ -2981,7 +2981,7 @@ mod tests {
         let l = parse_lenses(
             &call(
                 "lenses",
-                json!({ "lens_catalog": [lb.clone()], "glass_dir": [glass.clone()] }),
+                json!({ "lens_catalogs": [lb.clone()], "glass_dirs": [glass.clone()] }),
             )
             .unwrap(),
         );
@@ -2997,7 +2997,7 @@ mod tests {
             lensbench_core::vfs::write(&f, p.to_string()).unwrap();
             let mut lay = crate::combo::LayoutData::parse(
                 &lensbench_engine::preview_layout(
-                    &json!({ "file": f.display().to_string(), "glass_dir": [glass.clone()], "lens_catalog": [lb.clone()] }),
+                    &json!({ "file": f.display().to_string(), "glass_dirs": [glass.clone()], "lens_catalogs": [lb.clone()] }),
                     &json!({}),
                 )
                 .unwrap_or_else(|e| panic!("{part}: {e}")),
@@ -3107,7 +3107,7 @@ mod preview_tilt_tests {
         lensbench_core::vfs::write(&f, p.to_string()).unwrap();
         let lay = crate::combo::LayoutData::parse(
             &lensbench_engine::preview_layout(
-                &json!({ "file": f.display().to_string(), "glass_dir": [glass] }),
+                &json!({ "file": f.display().to_string(), "glass_dirs": [glass] }),
                 &json!({ "rays": 5 }),
             )
             .unwrap(),

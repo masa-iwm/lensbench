@@ -37,8 +37,8 @@ pub struct ServeArgs {
     /// プロジェクトファイルの状態の名前
     #[arg(long)]
     state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（T・R の並び。旧名 --path）
-    #[arg(long = "beam-path", alias = "path")]
+    /// プロジェクトファイルのビームスプリッターの経路（T・R の並び）
+    #[arg(long = "beam-path")]
     path: Option<String>,
     /// 待ち受けるアドレス（既定 127.0.0.1。ほかのアドレスは --allow-remote が要る）
     #[arg(long, default_value = "127.0.0.1")]
@@ -66,7 +66,8 @@ pub struct ServeArgs {
 /// 共有メモリを使ってよいか（--allow-remote では使わない）
 static SHM_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
-/// ヘッダの "bin" から配列の並びと大きさを読む配列の名前・dtype・形・バイト数・共有メモリの位置
+/// ヘッダの "bin" から配列の並びと大きさを読む
+/// 配列の名前・dtype・形・バイト数・共有メモリの位置
 type Layout = Vec<(String, String, Vec<usize>, usize, Option<u64>)>;
 
 fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {

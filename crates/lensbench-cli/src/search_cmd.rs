@@ -35,8 +35,8 @@ pub struct ZoomArgs {
     /// 像の評価関数: spot か wavefront
     #[arg(long, default_value = "spot")]
     pub merit: String,
-    /// 基準: centroid か chief（旧名 --ref）
-    #[arg(long = "reference", alias = "ref", default_value = "centroid")]
+    /// 基準: centroid か chief
+    #[arg(long = "reference", default_value = "centroid")]
     pub reference: String,
     #[arg(long, default_value_t = 3)]
     pub rings: usize,

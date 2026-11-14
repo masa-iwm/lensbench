@@ -59,7 +59,7 @@ fn registered_source_and_plugin() {
     let call = |m: &str| {
         lensbench_engine::call(
             m,
-            &serde_json::json!({ "lens_catalog": [dir], "glass_dir": [root.join("tests/glass")] }),
+            &serde_json::json!({ "lens_catalogs": [dir], "glass_dirs": [root.join("tests/glass")] }),
             Some(1),
         )
     };

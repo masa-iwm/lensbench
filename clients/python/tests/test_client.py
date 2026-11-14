@@ -240,16 +240,13 @@ def test_progress_and_stop_from_another_connection(lb):
             o.stop("foo")
 
 
-def test_old_argument_names_warn():
-    """CLI-17 で名前をそろえた引数の旧名（glass_dir・lens_catalog・global_）は DeprecationWarning で動く"""
-    with pytest.warns(DeprecationWarning, match="glass_dir"):
-        lb = Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1)
-    with lb:
-        with pytest.warns(DeprecationWarning, match="glass_dir"):
+def test_old_argument_names_are_gone():
+    """CLI-17 で名前をそろえた引数の旧名（glass_dir・lens_catalog・global_）は受けない"""
+    with pytest.raises(TypeError):
+        Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1)
+    with Client.spawn(ZMX, exe=_exe(), glass_dirs=[GLASS], threads=1) as lb:
+        with pytest.raises(TypeError):
             lb.load(ZMX, glass_dir=[GLASS])
-        a = lb.trace([0.0], [0.5], field=1, globals=True)
-        with pytest.warns(DeprecationWarning, match="global_"):
-            b = lb.trace([0.0], [0.5], field=1, global_=True)
-        assert list(a["x"]) == list(b["x"])
-        with pytest.raises(ValueError):
-            lb.load(ZMX, glass_dirs=[GLASS], glass_dir=[GLASS])
+        with pytest.raises(TypeError):
+            lb.trace([0.0], [0.5], field=1, global_=True)
+        assert lb.trace([0.0], [0.5], field=1, globals=True)["rays"] == 1

@@ -501,13 +501,15 @@ pub fn spec_from_json_with(
         "merit",
         "rings",
         "reference",
-        "ref",
         "terms",
         "sensitivity",
         "percentiles",
         "samples",
         "threads",
     ];
+    if m.contains_key("ref") {
+        return Err("公差の設定の ref は reference に名前を変えた".into());
+    }
     if let Some(k) = m.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("公差の設定の項目 {k}（{}）", known.join(" ")));
     }
@@ -625,12 +627,11 @@ pub fn spec_from_json_with(
         None => 3,
         Some(x) => x.as_u64().ok_or("rings は整数")? as usize,
     };
-    // 名前は CLI・Python と同じ reference（CLI-17）。旧名 ref も受ける
-    let reference = match (get("reference"), get("ref")) {
-        (Some(_), Some(_)) => return Err("reference と ref（旧名）の両方は書けない".into()),
-        (a, b) => a.or(b),
-    };
-    let reference = match reference.and_then(|x| x.as_str()).unwrap_or("centroid") {
+    // 名前は CLI・Python と同じ reference（CLI-17）
+    let reference = match get("reference")
+        .and_then(|x| x.as_str())
+        .unwrap_or("centroid")
+    {
         "centroid" => RmsRef::Centroid,
         "chief" => RmsRef::Chief,
         r => return Err(format!("reference {r}（centroid・chief）")),

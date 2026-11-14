@@ -20,7 +20,9 @@ pub(crate) fn run(
     for (k, v) in m {
         // 鍵はハイフンでも（CLI の旗と同じ書き方）
         let k = k.replace('-', "_");
-        let k = lensbench_analysis::registry::current_param_name(&k).to_string();
+        if let Some(n) = lensbench_analysis::registry::renamed_param(&k) {
+            return Err(RpcErr::params(format!("{k} は {n} に名前を変えた")));
+        }
         match k.as_str() {
             // json は CLI の --json に当たる（serve の結果はいつも JSON）
             "cmd" | "json" => {}

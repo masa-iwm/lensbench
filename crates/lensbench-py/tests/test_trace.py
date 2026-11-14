@@ -916,24 +916,19 @@ def test_load_error_classes(tmp_path):
         lb.System.load(zmx("A5"), glass_dirs=GLASS, state="x")
 
 
-def test_renamed_arguments_accept_old_names():
-    """CLI-17 で名前をそろえた引数（beam_path・waves・wave）は旧名（split_path・wavelengths・wavelength）も受ける"""
+def test_renamed_arguments():
+    """CLI-17 で名前をそろえた引数（beam_path・waves・wave）。旧名（split_path・wavelengths・wavelength）は受けない"""
     prj = str(ROOT / "examples" / "projects" / "P16_twyman_green.json")
     paths = lb.System.beam_paths(prj, glass_dirs=GLASS)
-    with pytest.warns(DeprecationWarning, match="beam_paths"):
-        assert paths and paths == lb.System.split_paths(prj, glass_dirs=GLASS)
+    assert paths and not hasattr(lb.System, "split_paths")
     a = lb.System.load(prj, glass_dirs=GLASS, beam_path=paths[-1])
-    with pytest.warns(DeprecationWarning, match="split_path"):
-        b = lb.System.load(prj, glass_dirs=GLASS, split_path=paths[-1])
-    assert a.hash == b.hash
-    with pytest.raises(lb.InvalidError, match="beam_path"):
-        lb.System.load(prj, glass_dirs=GLASS, beam_path="T", split_path="T")
+    assert a.hash != lb.System.load(prj, glass_dirs=GLASS, beam_path=paths[0]).hash or len(paths) == 1
+    with pytest.raises(TypeError):
+        lb.System.load(prj, glass_dirs=GLASS, split_path=paths[-1])
     with pytest.raises(lb.InvalidError, match="beam_path"):
         lb.System.load(zmx("A5"), glass_dirs=GLASS, beam_path="T")
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
     px, py = [0.0, 0.3], [0.5, -0.2]
-    with pytest.warns(DeprecationWarning, match="wavelengths"):
-        old = s.trace(1, px, py, wavelengths=[1])
-    np.testing.assert_array_equal(s.trace(1, px, py, waves=[1])["x"], old["x"])
-    with pytest.raises(lb.InvalidError, match="waves"):
-        s.trace(1, px, py, waves=[1], wavelengths=[1])
+    assert s.trace(1, px, py, waves=[1])["x"].shape[0] == 1
+    with pytest.raises(TypeError):
+        s.trace(1, px, py, wavelengths=[1])

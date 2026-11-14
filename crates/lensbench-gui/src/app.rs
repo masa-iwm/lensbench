@@ -983,8 +983,8 @@ impl Core {
     fn load_params(&self, p: &Path) -> Value {
         let mut v = json!({
             "file": p.display().to_string(),
-            "glass_dir": glass_dirs(&self.s.glass_dirs),
-            "lens_catalog": dirs(&self.s.lens_dirs),
+            "glass_dirs": glass_dirs(&self.s.glass_dirs),
+            "lens_catalogs": dirs(&self.s.lens_dirs),
         });
         // 組合せの今の状態
         if self.combo_path.as_deref() == Some(p) {
@@ -1125,14 +1125,14 @@ impl Core {
         self.preview.send(
             Tag::Glasses,
             "glasses",
-            json!({ "glass_dir": glass_dirs(&self.s.glass_dirs) }),
+            json!({ "glass_dirs": glass_dirs(&self.s.glass_dirs) }),
         );
         self.preview.send(
             Tag::Lenses,
             "lenses",
             json!({
-                "lens_catalog": dirs(&self.s.lens_dirs),
-                "glass_dir": glass_dirs(&self.s.glass_dirs),
+                "lens_catalogs": dirs(&self.s.lens_dirs),
+                "glass_dirs": glass_dirs(&self.s.glass_dirs),
             }),
         );
         self.browser.loaded = true;
@@ -7602,7 +7602,7 @@ impl Overlay {
         v
     }
 
-    /// serve の layout の params（何も選ばなければ今の構成だけ、見る面は yz）
+    /// serve の layout の params（何も選ばなければ今の構成だけ、見る面は yz。BS の経路の鍵は beam_paths）
     pub fn params(&self) -> Value {
         let mut m = Map::new();
         for key in ["cfgs", "states", "paths"] {
@@ -7619,7 +7619,7 @@ impl Overlay {
                 })
                 .collect();
             if !on.is_empty() {
-                m.insert(key.into(), Value::Array(on));
+                m.insert(key.replace("paths", "beam_paths"), Value::Array(on));
             }
         }
         if !m.is_empty() && self.offset != [0.0; 2] {
@@ -7681,7 +7681,7 @@ fn overlay_params() {
     o.offset = [30.0, 0.0];
     assert_eq!(
         o.params(),
-        json!({ "paths": ["RR"], "offset": [0.0, 0.0, 30.0] })
+        json!({ "beam_paths": ["RR"], "offset": [0.0, 0.0, 30.0] })
     );
     o.update(&json!({ "cfgs": 1, "paths": ["RR", "TT", "TR"] }));
     assert_eq!(o.items.iter().filter(|x| x.2).count(), 1);

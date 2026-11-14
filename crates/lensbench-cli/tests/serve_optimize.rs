@@ -18,7 +18,7 @@ fn load(sv: &Session, file: &str, state: Option<&str>) {
         "load",
         json!({
             "file": Path::new(ROOT).join(file).display().to_string(),
-            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
             "state": state,
         }),
     );

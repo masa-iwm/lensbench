@@ -213,7 +213,7 @@ class System:
         """系ファイルの JSON の文字列から系を作る（coatings のパスはそのまま使う）"""
 
     @staticmethod
-    def from_project(project: Any, base: _StrPath | None = None, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None, beam_path: str | None = None, split_path: str | None = None) -> System:
+    def from_project(project: Any, base: _StrPath | None = None, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None, beam_path: str | None = None) -> System:
         """プロジェクト（ブロックで組む系）を、ファイルを介さずに JSON の文字列か dict から展開する。
 
         - project: プロジェクトファイルと同じ形の JSON の文字列、または dict
@@ -272,14 +272,14 @@ class System:
         """
 
     @staticmethod
-    def load(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, cfg: int = 1, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None, wavelengths: Sequence[float] | None = None, beam_path: str | None = None, split_path: str | None = None) -> System:
+    def load(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, cfg: int = 1, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None, wavelengths: Sequence[float] | None = None, beam_path: str | None = None) -> System:
         """系を読む。path は .zmx かプロジェクトファイル（.json）。
 
         - glass_dirs: ガラスカタログ（AGF）を探すフォルダ
         - cfg: .zmx のマルチコンフィグの番号（1 始まり）
         - state: プロジェクトファイルの状態の名前
         - beam_path: プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 "TR"）。
-          とれる経路は `System.beam_paths(path)`。旧名 split_path も受ける
+          とれる経路は `System.beam_paths(path)`
         - lens_catalogs: プロジェクトファイルのカタログレンズを探すレンズカタログ（.zmx またはフォルダ）
         - coatings: 偏光追跡で使う膜の実測表（LBCT）・モデル（LBCM）のファイル
         - coating_file: 系の膜ファイル（COATING.DAT 形式）を置き換える
@@ -432,7 +432,7 @@ class System:
     def set_unit_pivot(self, name: str, pivot: tuple[float, float, float]) -> None:
         """玉・群の回転の中心を変える"""
 
-    def solve_ray(self, unknown: str, residual: Any, object: _ObjectPoint | None = None, field: _Field | None = None, pupil: tuple[float, float] = ..., wave: int | None = None, tol: float = 1e-12, max_iter: int = 50, wavelength: int | None = None) -> dict[str, Any]:
+    def solve_ray(self, unknown: str, residual: Any, object: _ObjectPoint | None = None, field: _Field | None = None, pupil: tuple[float, float] = ..., wave: int | None = None, tol: float = 1e-12, max_iter: int = 50) -> dict[str, Any]:
         """未知数 2 つ・残差 2 つの実光線を Newton 法で解く。
 
         - unknown: "object"（物点の x・y [mm]、有限物体）か "pupil"（瞳座標 px・py）
@@ -441,17 +441,13 @@ class System:
         - object: 物体（物点 (x, y) か方向 (l, m, n)）。未知数が物点なら初期値。省くと field の物体
         - field: object を省いたときの視野（番号か (hx, hy)、省くと軸上）
         - pupil: 瞳座標。未知数が瞳座標なら初期値
-        - wave: 波長の番号（省くと主波長。旧名 wavelength）
+        - wave: 波長の番号（省くと主波長）
 
         返す dict: object、pupil、residual、iterations（そのまま trace(None, [px], [py], object=...) に渡せる）
         """
 
     def solves(self) -> list[dict[str, Any]]:
         """ソルブの一覧: surf・what（"t" 厚さ / "c" 曲率）・kind（種類の名前）・value・param・other の dict"""
-
-    @staticmethod
-    def split_paths(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None) -> list[str]:
-        """`beam_paths` の旧名（DeprecationWarning。次の major 版で消す）"""
 
     @property
     def stop(self) -> int:
@@ -497,12 +493,12 @@ class System:
         errors（samples が true なら試行ごとの deltas・eval も）
         """
 
-    def trace(self, field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | None = None, land: bool = False, pol_grid: Any = None, wavelengths: Sequence[int] | None = None) -> dict[str, Any]:
+    def trace(self, field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | None = None, land: bool = False, pol_grid: Any = None) -> dict[str, Any]:
         """光線を追跡し、numpy 配列の dict を返す。
 
         - field: 視野の番号（1 始まり）か正規化視野 (hx, hy)。object を与えるときは None
         - px, py: 正規化瞳座標（1 次元、同じ長さ。list・float32 も可）
-        - waves: 波長の番号（1 始まり）の列。省くと全波長。旧名 wavelengths も受ける
+        - waves: 波長の番号（1 始まり）の列。省くと全波長
         - last: この面で止める（省くと像面）
         - record: True なら途中の全面の交点も返す（`rec_*`、形は (波長, 面, 光線)）。面の番号の列なら
           その面だけ（無視する面・last より後は除く。面の多い系で速い）
@@ -540,7 +536,7 @@ class System:
         object なら object。record のとき rec_surfaces と rec_x … rec_opl（rec_gx・rec_gy・rec_gz は大域）
         """
 
-    def trace_rays(self, start: ArrayLike, direction: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, frame: str = "object", grad: Sequence[str] | None = None, threads: int | None = None, dz: float | None = None, land: bool = False, wavelengths: Sequence[int] | None = None) -> dict[str, Any]:
+    def trace_rays(self, start: ArrayLike, direction: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, frame: str = "object", grad: Sequence[str] | None = None, threads: int | None = None, dz: float | None = None, land: bool = False) -> dict[str, Any]:
         """開始位置と方向を直接与えて追跡する。返す dict は [`trace`] と同じ（hx・hy・object はない）。
 
         - start, direction: (光線, 3) の配列。方向は規格化する（0 ベクトルは止まった光線）。光路長は開始位置から
@@ -656,7 +652,7 @@ def swap_search(project: _StrPath, spec: Any, glass_dirs: Sequence[_StrPath] | N
     """
 
 
-def trace_many(systems: Sequence[System], field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | ArrayLike | None = None, land: bool = False, wavelengths: Sequence[int] | None = None) -> list[dict[str, Any]]:
+def trace_many(systems: Sequence[System], field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | ArrayLike | None = None, land: bool = False) -> list[dict[str, Any]]:
     """多数の系を 1 回の呼び出しでまとめて追跡する。返すのは系ごとの dict の list で、
     それぞれ `systems[i].trace(field, px, py, ...)` と同じビット（スレッド数にもよらない）。
 

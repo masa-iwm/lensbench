@@ -543,7 +543,7 @@ fn aperture_block_builds() {
     lensbench_core::vfs::write(&f, proj.to_string()).unwrap();
     let gd = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass");
     let v = lensbench_engine::preview_layout(
-        &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
+        &json!({ "file": f.display().to_string(), "glass_dirs": [gd.display().to_string()] }),
         &json!({}),
     )
     .unwrap();
@@ -672,7 +672,7 @@ fn multi_surface_blocks_build() {
     lensbench_core::vfs::write(&f, proj.to_string()).unwrap();
     let gd = root.join("tests/glass");
     let v = lensbench_engine::preview_layout(
-        &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
+        &json!({ "file": f.display().to_string(), "glass_dirs": [gd.display().to_string()] }),
         &json!({}),
     )
     .unwrap();
@@ -684,7 +684,7 @@ fn multi_surface_blocks_build() {
     sp["glass_catalogs"] = json!(["SCHOTT"]);
     lensbench_core::vfs::write(&f, sp.to_string()).unwrap();
     let v2 = lensbench_engine::preview_layout(
-        &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
+        &json!({ "file": f.display().to_string(), "glass_dirs": [gd.display().to_string()] }),
         &json!({}),
     );
     lensbench_core::vfs::remove_file(&f).ok();

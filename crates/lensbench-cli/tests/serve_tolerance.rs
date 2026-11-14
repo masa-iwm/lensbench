@@ -21,7 +21,7 @@ fn tolerance_serve() {
     call(
         &sv,
         "load",
-        json!({ "file": zmx.display().to_string(), "glass_dir": [glass.display().to_string()] }),
+        json!({ "file": zmx.display().to_string(), "glass_dirs": [glass.display().to_string()] }),
     );
     let spec = json!({"trials": 4, "seed": 2, "preset": "precision", "compensators": ["6.t"]});
     let r = call(&sv, "tolerance", spec.clone());
@@ -66,7 +66,7 @@ fn progress_and_stop_while_running() {
     call(
         &sv,
         "load",
-        json!({ "file": zmx.display().to_string(), "glass_dir": [glass.display().to_string()] }),
+        json!({ "file": zmx.display().to_string(), "glass_dirs": [glass.display().to_string()] }),
     );
     // 何もしていない
     let p = call(&sv, "progress", json!({}));

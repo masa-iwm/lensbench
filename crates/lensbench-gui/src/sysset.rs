@@ -1390,7 +1390,7 @@ mod tests {
         assert_eq!(bl[0]["type"], "lens");
         assert_eq!(bl[2]["stop"], true);
         lensbench_core::vfs::write(&f, p.to_string()).unwrap();
-        let load = json!({ "file": f.display().to_string(), "glass_dir": [glass] });
+        let load = json!({ "file": f.display().to_string(), "glass_dirs": [glass] });
         let v = lensbench_engine::preview_layout(&load, &json!({})).unwrap();
         let surfs = v["surfaces"].as_array().unwrap();
         let st = surfs.iter().position(|x| x["stop"] == true).unwrap();
@@ -1420,7 +1420,7 @@ mod tests {
         let f = dir.join("combo.json");
         let build = |c: &Combo| {
             lensbench_core::vfs::write(&f, c.project().to_string()).unwrap();
-            let load = json!({ "file": f.display().to_string(), "glass_dir": [glass] });
+            let load = json!({ "file": f.display().to_string(), "glass_dirs": [glass] });
             lensbench_engine::preview_layout(&load, &json!({}))
         };
         let mut base = Combo::default();

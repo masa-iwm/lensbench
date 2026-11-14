@@ -1035,13 +1035,13 @@ impl PySystem {
     /// - cfg: .zmx のマルチコンフィグの番号（1 始まり）
     /// - state: プロジェクトファイルの状態の名前
     /// - beam_path: プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 "TR"）。
-    ///   とれる経路は `System.beam_paths(path)`。旧名 split_path も受ける
+    ///   とれる経路は `System.beam_paths(path)`
     /// - lens_catalogs: プロジェクトファイルのカタログレンズを探すレンズカタログ（.zmx またはフォルダ）
     /// - coatings: 偏光追跡で使う膜の実測表（LBCT）・モデル（LBCM）のファイル
     /// - coating_file: 系の膜ファイル（COATING.DAT 形式）を置き換える
     /// - wavelengths: 波長 [µm] を置き換える（.zmx だけ。系ファイル・プロジェクトファイルに渡すと InvalidError。重みは 1、主波長の番号はそのまま）
     #[staticmethod]
-    #[pyo3(signature = (path, glass_dirs=None, cfg=1, state=None, lens_catalogs=None, coatings=None, coating_file=None, wavelengths=None, beam_path=None, split_path=None))]
+    #[pyo3(signature = (path, glass_dirs=None, cfg=1, state=None, lens_catalogs=None, coatings=None, coating_file=None, wavelengths=None, beam_path=None))]
     #[allow(clippy::too_many_arguments)]
     fn load(
         py: Python<'_>,
@@ -1054,9 +1054,7 @@ impl PySystem {
         coating_file: Option<PathBuf>,
         wavelengths: Option<Vec<f64>>,
         beam_path: Option<String>,
-        split_path: Option<String>,
     ) -> PyResult<PySystem> {
-        let split_path = names::renamed(py, beam_path, split_path, "beam_path", "split_path")?;
         let glass_dirs = glass_dirs.unwrap_or_default();
         let lens_catalogs = lens_catalogs.unwrap_or_default();
         let o = py.detach(|| {
@@ -1067,7 +1065,7 @@ impl PySystem {
                     lens_catalogs: &lens_catalogs,
                     cfg,
                     state: state.as_deref(),
-                    split_path: split_path.as_deref(),
+                    split_path: beam_path.as_deref(),
                     wavelengths,
                     names: lensbench_project::open::ArgNames::PYTHON,
                 },
@@ -1129,7 +1127,7 @@ impl PySystem {
     /// - そのほかは load と同じ。取り込んだ .zmx のピックアップのうち展開で残せないもの（範囲の外を参照するなど）は
     ///   値で固定し、warnings で知らせる
     #[staticmethod]
-    #[pyo3(signature = (project, base=None, glass_dirs=None, state=None, lens_catalogs=None, coatings=None, coating_file=None, beam_path=None, split_path=None))]
+    #[pyo3(signature = (project, base=None, glass_dirs=None, state=None, lens_catalogs=None, coatings=None, coating_file=None, beam_path=None))]
     #[allow(clippy::too_many_arguments)]
     fn from_project(
         py: Python<'_>,
@@ -1141,9 +1139,7 @@ impl PySystem {
         coatings: Option<Vec<PathBuf>>,
         coating_file: Option<PathBuf>,
         beam_path: Option<String>,
-        split_path: Option<String>,
     ) -> PyResult<PySystem> {
-        let split_path = names::renamed(py, beam_path, split_path, "beam_path", "split_path")?;
         let txt: String = if let Ok(t) = project.extract::<String>() {
             t
         } else if project.cast::<PyDict>().is_ok() {
@@ -1163,7 +1159,7 @@ impl PySystem {
                 &glass_dirs,
                 Some(&look),
                 state.as_deref(),
-                split_path.as_deref(),
+                beam_path.as_deref(),
             )
         });
         let (mut sys, warn) = r.map_err(err)?;
@@ -1189,20 +1185,6 @@ impl PySystem {
         state: Option<String>,
         lens_catalogs: Option<Vec<PathBuf>>,
     ) -> PyResult<Vec<String>> {
-        names::beam_paths_of(py, path, glass_dirs, state, lens_catalogs)
-    }
-
-    /// `beam_paths` の旧名（DeprecationWarning。次の major 版で消す）
-    #[staticmethod]
-    #[pyo3(signature = (path, glass_dirs=None, state=None, lens_catalogs=None))]
-    fn split_paths(
-        py: Python<'_>,
-        path: PathBuf,
-        glass_dirs: Option<Vec<PathBuf>>,
-        state: Option<String>,
-        lens_catalogs: Option<Vec<PathBuf>>,
-    ) -> PyResult<Vec<String>> {
-        names::deprecated(py, "split_paths は beam_paths の旧名")?;
         names::beam_paths_of(py, path, glass_dirs, state, lens_catalogs)
     }
 
@@ -2033,7 +2015,7 @@ impl PySystem {
     ///
     /// - field: 視野の番号（1 始まり）か正規化視野 (hx, hy)。object を与えるときは None
     /// - px, py: 正規化瞳座標（1 次元、同じ長さ。list・float32 も可）
-    /// - waves: 波長の番号（1 始まり）の列。省くと全波長。旧名 wavelengths も受ける
+    /// - waves: 波長の番号（1 始まり）の列。省くと全波長
     /// - last: この面で止める（省くと像面）
     /// - record: True なら途中の全面の交点も返す（`rec_*`、形は (波長, 面, 光線)）。面の番号の列なら
     ///   その面だけ（無視する面・last より後は除く。面の多い系で速い）
@@ -2069,7 +2051,7 @@ impl PySystem {
     /// opl（光路長）, opl_os（OpticStudio の生の光路長）, lens_opd（理想レンズの位相）, err・vig（止まった・
     /// けられた面の番号、0 は通過）, ok（err も vig も 0）。ほかに wavelengths（番号）, last、視野なら hx・hy、
     /// object なら object。record のとき rec_surfaces と rec_x … rec_opl（rec_gx・rec_gy・rec_gz は大域）
-    #[pyo3(signature = (field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false, pol_grid=None, wavelengths=None))]
+    #[pyo3(signature = (field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false, pol_grid=None))]
     #[allow(clippy::too_many_arguments)]
     fn trace<'py>(
         &self,
@@ -2090,24 +2072,12 @@ impl PySystem {
         dz: Option<f64>,
         land: bool,
         pol_grid: Option<GridArg>,
-        wavelengths: Option<Vec<usize>>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let wavelengths = names::renamed(gil, waves, wavelengths, "waves", "wavelengths")?;
         let s = self.sys();
         let (px, pyv) = (floats(&px), floats(&py));
         let pre = Prep::new(&s, field, object, pupil, px.len(), pyv.len())?;
         let mut opts = TraceOpts::new(
-            &s,
-            wavelengths,
-            last,
-            record,
-            pol,
-            pol_phase,
-            globals,
-            grad,
-            threads,
-            dz,
-            land,
+            &s, waves, last, record, pol, pol_phase, globals, grad, threads, dz, land,
         )?;
         if let Some(g) = pol_grid {
             let g = match g {
@@ -2141,7 +2111,7 @@ impl PySystem {
     /// - start, direction: (光線, 3) の配列。方向は規格化する（0 ベクトルは止まった光線）。光路長は開始位置から
     /// - frame: "object"（既定。有限物体なら物体面の局所座標、無限遠物体なら面 1 の変換の前の座標系）か "global"（大域）
     /// - ほかの引数は trace と同じ。grad の objx・objy は開始位置を物体面と一緒に動かした微分
-    #[pyo3(signature = (start, direction, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, frame="object", grad=None, threads=None, dz=None, land=false, wavelengths=None))]
+    #[pyo3(signature = (start, direction, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, frame="object", grad=None, threads=None, dz=None, land=false))]
     #[allow(clippy::too_many_arguments)]
     fn trace_rays<'py>(
         &self,
@@ -2159,9 +2129,7 @@ impl PySystem {
         threads: Option<usize>,
         dz: Option<f64>,
         land: bool,
-        wavelengths: Option<Vec<usize>>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let wavelengths = names::renamed(gil, waves, wavelengths, "waves", "wavelengths")?;
         let s = self.sys();
         let rows =
             |a: &PyArrayLike2<'py, f64, AllowTypeChange>, name: &str| -> PyResult<Vec<[f64; 3]>> {
@@ -2205,17 +2173,7 @@ impl PySystem {
         }
         let launch = Launch::Rays { p: &p, k: &k };
         let opts = TraceOpts::new(
-            &s,
-            wavelengths,
-            last,
-            record,
-            pol,
-            pol_phase,
-            globals,
-            grad,
-            threads,
-            dz,
-            land,
+            &s, waves, last, record, pol, pol_phase, globals, grad, threads, dz, land,
         )?;
         self.run_trace(gil, &s, &launch, p.len(), &opts)
     }
@@ -2228,10 +2186,10 @@ impl PySystem {
     /// - object: 物体（物点 (x, y) か方向 (l, m, n)）。未知数が物点なら初期値。省くと field の物体
     /// - field: object を省いたときの視野（番号か (hx, hy)、省くと軸上）
     /// - pupil: 瞳座標。未知数が瞳座標なら初期値
-    /// - wave: 波長の番号（省くと主波長。旧名 wavelength）
+    /// - wave: 波長の番号（省くと主波長）
     ///
     /// 返す dict: object、pupil、residual、iterations（そのまま trace(None, [px], [py], object=...) に渡せる）
-    #[pyo3(signature = (unknown, residual, object=None, field=None, pupil=(0.0, 0.0), wave=None, tol=1e-12, max_iter=50, wavelength=None))]
+    #[pyo3(signature = (unknown, residual, object=None, field=None, pupil=(0.0, 0.0), wave=None, tol=1e-12, max_iter=50))]
     #[allow(clippy::too_many_arguments)]
     fn solve_ray<'py>(
         &self,
@@ -2244,9 +2202,7 @@ impl PySystem {
         wave: Option<usize>,
         tol: f64,
         max_iter: usize,
-        wavelength: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let wavelength = names::renamed(gil, wave, wavelength, "wave", "wavelength")?;
         let s = self.sys();
         let unknown = match unknown.to_ascii_lowercase().as_str() {
             "object" => Unknown::Object,
@@ -2296,7 +2252,7 @@ impl PySystem {
                 return Err(PyValueError::new_err("object と field は一緒に与えない"))
             }
         };
-        let w = match wavelength {
+        let w = match wave {
             None => s.primary,
             Some(w) => wave_index(&s, w)?,
         };
@@ -2862,7 +2818,7 @@ impl PySystem {
 /// 系の単位と光線の単位の両方で並列にするので、系ごとの光線が少なくてもコアを使い切る。
 /// threads は全体のスレッド数（1 で逐次）
 #[pyfunction]
-#[pyo3(signature = (systems, field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false, wavelengths=None))]
+#[pyo3(signature = (systems, field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false))]
 #[allow(clippy::too_many_arguments)]
 fn trace_many<'py>(
     gil: Python<'py>,
@@ -2882,9 +2838,7 @@ fn trace_many<'py>(
     pupil: &str,
     dz: Option<f64>,
     land: bool,
-    wavelengths: Option<Vec<usize>>,
 ) -> PyResult<Vec<Bound<'py, PyDict>>> {
-    let wavelengths = names::renamed(gil, waves, wavelengths, "waves", "wavelengths")?;
     let (px, pyv) = (floats(&px), floats(&py));
     let n = px.len();
     // 系ごとの準備（引数の検査・膜の読み込みは GIL のあるうちに）
@@ -2895,7 +2849,7 @@ fn trace_many<'py>(
         let pre = Prep::new(&s, field.clone(), object.clone(), pupil, n, pyv.len())?;
         let o = TraceOpts::new(
             &s,
-            wavelengths.clone(),
+            waves.clone(),
             last,
             record.clone(),
             pol.clone(),
@@ -2944,7 +2898,7 @@ fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem
 
 /// Python API の版 (major, minor)。互換を壊す変更で major、足すだけの変更で minor を上げる
 /// （docs/python.md の「版と互換」）。変えたら docs/python.md の変更履歴に書く
-pub const API_VERSION: (u32, u32) = (1, 2);
+pub const API_VERSION: (u32, u32) = (2, 0);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
 // 組み込むとき（default-features = false）は、その側で global_allocator を決める

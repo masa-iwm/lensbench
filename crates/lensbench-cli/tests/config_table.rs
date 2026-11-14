@@ -56,7 +56,7 @@ fn config_table_from_zmx_and_edit() {
     ok(
         &sv,
         "load",
-        json!({ "file": f, "glass_dir": [format!("{root}/tests/glass")], "cfg": 2 }),
+        json!({ "file": f, "glass_dirs": [format!("{root}/tests/glass")], "cfg": 2 }),
     );
     let t = ok(&sv, "config_table", json!({}));
     assert_eq!(

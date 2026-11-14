@@ -24,8 +24,8 @@ fn swap_serve() {
         "load",
         json!({
             "file": path("examples/projects/P18_swap_two.json"),
-            "glass_dir": [path("tests/glass")],
-            "lens_catalog": [path("examples/lenses/LB")],
+            "glass_dirs": [path("tests/glass")],
+            "lens_catalogs": [path("examples/lenses/LB")],
         }),
     );
     let spec = json!({

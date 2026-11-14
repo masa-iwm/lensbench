@@ -161,20 +161,21 @@ fn loop_thickness() {
     assert!(sv
         .error("analyze", json!({ "cmd": "spot" }))
         .contains("load"));
-    let sum = sv.call("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }));
-    assert_eq!(sum["image_surface"], 9);
-    // 名前は Python と同じ glass_dirs（旧名 glass_dir も受ける、両方は誤り。CLI-17）
     let sum = sv.call(
         "load",
         json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
     );
     assert_eq!(sum["image_surface"], 9);
+    // 名前は Python と同じ glass_dirs。旧名 glass_dir・path・ref は新しい名前を示す誤り（CLI-17）
     assert!(sv
-        .error(
-            "load",
-            json!({ "file": ZMX, "glass_dirs": ["tests/glass"], "glass_dir": ["tests/glass"] })
-        )
-        .contains("旧名"));
+        .error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }))
+        .contains("glass_dirs に名前を変えた"));
+    assert!(sv
+        .error("load", json!({ "file": ZMX, "path": "TR" }))
+        .contains("beam_path"));
+    assert!(sv
+        .error("analyze", json!({ "cmd": "rms", "ref": "chief" }))
+        .contains("reference に名前を変えた"));
     let base = core_system(&Path::new(ROOT).join(ZMX));
     let p = base.param("3.t").unwrap();
     let t0 = sv.call("get", json!({ "param": "3.t" }))["value"]
@@ -319,7 +320,7 @@ fn undo_redo_history() {
     sv.call("set", json!({ "values": { "3.t": t3 + 1.0 } }));
     let r = sv.call(
         "load",
-        json!({ "file": "tests/refs/A1/system.zmx", "glass_dir": ["tests/glass"], "history": "push" }),
+        json!({ "file": "tests/refs/A1/system.zmx", "glass_dirs": ["tests/glass"], "history": "push" }),
     );
     assert_eq!(r["undo"].as_u64(), Some(2));
     assert_eq!(r["undo_list"][0], json!({ "open": "system.zmx" }));
@@ -339,7 +340,7 @@ fn undo_redo_history() {
     assert_eq!(get(&mut sv, "3.t"), t3 + 1.0);
     let r = sv.call(
         "load",
-        json!({ "file": ZMX, "glass_dir": ["tests/glass"], "history": "keep" }),
+        json!({ "file": ZMX, "glass_dirs": ["tests/glass"], "history": "keep" }),
     );
     assert_eq!((r["undo"].as_u64(), r["redo"].as_u64()), (Some(1), Some(1)));
     assert!(sv
@@ -580,7 +581,10 @@ fn request_size_is_limited() {
 fn remote_does_not_touch_files() {
     let mut sv = Server::start(&["--allow-remote", ZMX, "--glass-dir", "tests/glass"]);
     let deny = |m: String| assert!(m.contains("--allow-remote"), "{m}");
-    deny(sv.error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] })));
+    deny(sv.error(
+        "load",
+        json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
+    ));
     deny(sv.error("write", json!({ "path": "x.zmx" })));
     deny(sv.error("analyze", json!({ "cmd": "spot", "save": "out.json" })));
     deny(sv.error("layout_export", json!({ "file": "a.svg" })));
@@ -612,7 +616,10 @@ fn root_limits_files() {
     }
     let r = root.display().to_string();
     let mut sv = Server::start(&["--allow-remote", "--root", &r]);
-    sv.call("load", json!({ "file": "sys.zmx", "glass_dir": ["glass"] }));
+    sv.call(
+        "load",
+        json!({ "file": "sys.zmx", "glass_dirs": ["glass"] }),
+    );
     // 外のパス、または無いファイル・フォルダ（OS のエラー）
     let out = |m: String| assert!(m.contains("--root の外") || m.contains("os error"), "{m}");
     let outside = |m: String| assert!(m.contains("--root の外"), "{m}");
@@ -621,7 +628,7 @@ fn root_limits_files() {
         "load",
         json!({ "file": Path::new(ROOT).join(ZMX).display().to_string() }),
     ));
-    outside(sv.error("load", json!({ "file": "sys.zmx", "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()] })));
+    outside(sv.error("load", json!({ "file": "sys.zmx", "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()] })));
     // 無いファイルは読めない（外か内かを明かさない）
     out(sv.error("load", json!({ "file": "../root/../../x.zmx" })));
     // 書き出しも下だけ
@@ -676,7 +683,10 @@ fn edit_and_save() {
     let dir = std::env::temp_dir().join(format!("lb_serve_edit_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut sv = Server::start(&[]);
-    sv.call("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }));
+    sv.call(
+        "load",
+        json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
+    );
     let n0 = sv.call("surface", json!({}))["surfaces"]
         .as_array()
         .unwrap()
@@ -748,8 +758,8 @@ fn layout_of_combo() {
         "load",
         json!({
             "file": Path::new(ROOT).join("examples/projects/P8_catalog_two.json").display().to_string(),
-            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
-            "lens_catalog": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+            "lens_catalogs": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
         }),
     );
     let v = sv.call("layout", json!({ "rays": 5 }));
@@ -792,7 +802,7 @@ fn layout_export_writes_formats() {
         "load",
         json!({
             "file": Path::new(ROOT).join("examples/projects/P16_twyman_green.json").display().to_string(),
-            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
         }),
     );
     for (name, extra, fmt) in [
@@ -838,8 +848,8 @@ fn layout_export_writes_formats() {
 fn preview_layout_matches_load_and_layout() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P8_catalog_two.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
-        "lens_catalog": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "lens_catalogs": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
     });
     let pre = lensbench_engine::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
     lensbench_engine::call("load", &load, None).unwrap();
@@ -853,8 +863,8 @@ fn preview_layout_matches_load_and_layout() {
 fn layout_plane_xz() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P8_catalog_two.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
-        "lens_catalog": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "lens_catalogs": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
     });
     let yz = lensbench_engine::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
     let xz = lensbench_engine::preview_layout(&load, &json!({ "rays": 5, "plane": "xz" })).unwrap();
@@ -899,7 +909,7 @@ fn layout_plane_xz() {
 fn layout_overlay_paths() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P16_twyman_green.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
     let mut sv = Server::start(&[]);
     sv.call("load", load);
@@ -923,7 +933,7 @@ fn layout_overlay_paths() {
     let a = sv.call("layout", json!({ "rays": 3, "beam_paths": two }));
     let b = sv.call(
         "layout",
-        json!({ "rays": 3, "paths": two, "offset": [0, 0, 50] }),
+        json!({ "rays": 3, "beam_paths": two, "offset": [0, 0, 50] }),
     );
     let ra = a["rays"].as_array().unwrap();
     let rb = b["rays"].as_array().unwrap();
@@ -941,12 +951,18 @@ fn layout_overlay_paths() {
         .error("layout", json!({ "beam_paths": "all", "offset": [1, 2] }))
         .contains("offset"));
     // 読み込んだ後の set は、ファイルから読み直した経路にも当てる
-    let before = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    let before = sv.call(
+        "layout",
+        json!({ "rays": 3, "beam_paths": [paths[0].clone()] }),
+    );
     let t = sv.call("get", json!({ "param": "1.t" }))["value"]
         .as_f64()
         .unwrap();
     sv.call("set", json!({ "values": { "1.t": t + 3.0 } }));
-    let after = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
+    let after = sv.call(
+        "layout",
+        json!({ "rays": 3, "beam_paths": [paths[0].clone()] }),
+    );
     assert_ne!(before["rays"], after["rays"]);
     assert!(after.get("notes").is_none(), "{}", after["notes"]);
     sv.stop();
@@ -957,7 +973,7 @@ fn layout_overlay_paths() {
 fn preview_layout_overlay() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P16_twyman_green.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
     let v = lensbench_engine::preview_layout(&load, &json!({ "rays": 3, "beam_paths": "all" }))
         .unwrap();
@@ -974,7 +990,7 @@ fn preview_layout_overlay() {
 fn layout_unfold_and_3d() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P3_fold.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
     let call = |o: Value| lensbench_engine::preview_layout(&load, &o);
     let yz = call(json!({ "rays": 5 })).unwrap();
@@ -1057,7 +1073,7 @@ fn layout_unfold_and_3d() {
 fn layout_has_mechanics() {
     let load = json!({
         "file": Path::new(ROOT).join("examples/projects/P19_tube_cage.json").display().to_string(),
-        "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
     let call = |o: Value| lensbench_engine::preview_layout(&load, &o).unwrap();
     let v = call(json!({ "rays": 3 }));
@@ -1087,7 +1103,7 @@ fn coatings_of_loaded_project() {
         "load",
         json!({
             "file": Path::new(ROOT).join("tests/filter_os/bp_nd.json").display().to_string(),
-            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
         }),
     );
     let r = sv.call("analyze", json!({ "cmd": "coatings" }));
@@ -1113,7 +1129,7 @@ fn zoom_of_loaded_project() {
         "load",
         json!({
             "file": Path::new(ROOT).join("examples/projects/P17_zoom_three_groups.json").display().to_string(),
-            "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
         }),
     );
     let p = json!({
@@ -1169,7 +1185,10 @@ fn zoom_of_loaded_project() {
 #[test]
 fn analyze_registered_params_and_save_hash() {
     let mut sv = Server::start(&[]);
-    sv.call("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }));
+    sv.call(
+        "load",
+        json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
+    );
     let a = sv.call(
         "analyze",
         json!({ "cmd": "mtf", "field": 2, "freqs": [10, 20] }),

@@ -168,7 +168,7 @@ pub(super) fn layout_scene(
 /// layout の構成の選び方（文字列か並び。"all" は全部）
 fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
     let one = |k: &'static str| -> Result<Option<String>, RpcErr> {
-        // BS の経路は load の beam_path に合わせて beam_paths（旧名 paths も受ける）
+        // BS の経路は load の beam_path に合わせて beam_paths（旧名 paths は誤り）
         let v = if k == "beam_paths" {
             Some(renamed(p, "beam_paths", "paths")?)
         } else {

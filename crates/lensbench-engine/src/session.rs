@@ -735,25 +735,12 @@ impl std::fmt::Display for CallError {
 /// 結果の配列（`trace` の x・y・z・opl・err・vig など。名前と f64 の並び、整数も f64 にする）
 pub type Arrays = Vec<(String, Vec<f64>)>;
 
-/// 新しい名前か旧名の値（両方は誤り。無ければ null）と、使った鍵
-fn renamed_key<'a>(
-    p: &'a Value,
-    new: &'static str,
-    old: &'static str,
-) -> Result<(&'a Value, &'static str), RpcErr> {
-    match (&p[new], &p[old]) {
-        (Value::Null, Value::Null) => Ok((&Value::Null, new)),
-        (v, Value::Null) => Ok((v, new)),
-        (Value::Null, v) => Ok((v, old)),
-        _ => Err(RpcErr::params(format!(
-            "{new} と {old}（旧名）の両方は渡せない"
-        ))),
-    }
-}
-
-/// [`renamed_key`] の値だけ
+/// 鍵 new の値（無ければ null）。名前を変える前の鍵 old を渡すと誤り（CLI-17、旧名は受けない）
 fn renamed<'a>(p: &'a Value, new: &'static str, old: &'static str) -> Result<&'a Value, RpcErr> {
-    renamed_key(p, new, old).map(|x| x.0)
+    if !p[old].is_null() {
+        return Err(RpcErr::params(format!("{old} は {new} に名前を変えた")));
+    }
+    Ok(&p[new])
 }
 
 /// load の params から系の読み方
@@ -764,15 +751,14 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let read_all = |v: Vec<PathBuf>| -> Result<Vec<PathBuf>, RpcErr> {
         v.iter().map(|x| sess.files.check_path(x, false)).collect()
     };
-    // 名前は Python と同じ（CLI-17）。旧名 glass_dir・lens_catalog・path も受ける
+    // 名前は Python と同じ（CLI-17）
     let glass = renamed(p, "glass_dirs", "glass_dir")?;
     let lens = renamed(p, "lens_catalogs", "lens_catalog")?;
-    let (bp, bk) = renamed_key(p, "beam_path", "path")?;
-    let path = match bp {
+    let path = match renamed(p, "beam_path", "path")? {
         Value::Null => None,
         v => Some(
             v.as_str()
-                .ok_or_else(|| RpcErr::params(format!("{bk} は文字列（BS の経路、例 \"TR\"）")))?
+                .ok_or_else(|| RpcErr::params("beam_path は文字列（BS の経路、例 \"TR\"）"))?
                 .to_string(),
         ),
     };

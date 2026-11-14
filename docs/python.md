@@ -24,8 +24,9 @@
 
 ### 変更履歴
 
-- **1.2**: 引数の名前を CLI・serve とそろえた（用語の表は下の「引数の名前」）。旧名は `DeprecationWarning` を出して動き、
-  次の major 版で消す: `load`・`from_project` の `split_path` → `beam_path`、`System.split_paths` → `System.beam_paths`、
+- **2.0**: 引数の名前を CLI・serve とそろえた（用語の表は下の「引数の名前」）。互換を壊す変更で、旧名は受けない
+  （全コードの見直しの破壊的変更として、非推奨の期間を置かずに変えた）:
+  `load`・`from_project` の `split_path` → `beam_path`、`System.split_paths` → `System.beam_paths`、
   `trace`・`trace_rays`・`trace_many` の `wavelengths` → `waves`、`solve_ray` の `wavelength` → `wave`。
   serve のクライアント（`lensbench_client`）は `glass_dir`・`lens_catalog` → `glass_dirs`・`lens_catalogs`、`trace` の `global_` → `globals`。
 - **1.1**: `verify()`・`verify_compare()`（照合試験の枠組み）を追加。
@@ -73,8 +74,8 @@ CLI では単数形の旗を繰り返します。
 | `lens_catalogs` | レンズカタログ | `lens_catalogs=` | `--lens-catalog`（繰り返す） | `lens_catalogs` |
 | `reference` | RMS の基準（centroid・chief） | `reference=` | `--reference` | `reference` |
 
-旧名（`split_path`・`--path`・`path`、`wavelengths=`（番号）・`wavelength=`、`glass_dir`・`lens_catalog`（serve）、
-`--ref`・`ref`（公差の設定も））も今は受けます。Python では `DeprecationWarning` が出ます。
+旧名（`split_path`・`--path`・`path`、`--paths`・`paths`（layout）、`wavelengths=`（番号）・`wavelength=`、
+`glass_dir`・`lens_catalog`（serve）、`--ref`・`ref`（rms・公差の設定））は受けません（2.0 で変えた）。
 解析の名前は CLI のサブコマンド（`geo-mtf`・`mtf-focus`・`mtf-field`）と Python のメソッド（`geometric_mtf`・
 `through_focus_mtf`・`field_mtf`）で違います（CLI-02 の登録簿でそろえる予定）。
 
