@@ -371,9 +371,9 @@ enum Cmd {
         /// ガラスカタログを探すフォルダ（複数可）
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
-        /// 膜の実測表（LBCT 形式、複数可）
+        /// 膜の実測表・モデル（複数可。ghost・解析の --coatings と同じ）
         #[arg(long)]
-        table: Vec<PathBuf>,
+        coatings: Vec<PathBuf>,
         /// JSON で出力する
         #[arg(long)]
         json: bool,
@@ -1656,7 +1656,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
         Cmd::Coatings {
             file,
             glass_dir,
-            table,
+            coatings: table,
             json,
         } => (json, coatings(&file, &glass_dir, &table)?),
         Cmd::CoatKinks { tables, key, json } => (json, coat_kinks(&tables, &key)?),

@@ -12,7 +12,7 @@
 実測表は境界（膜と前後の媒質）ごとに要る。膜のモデルは膜ごとの特性行列（波長・β = n sinθ・偏光ごと）を持ち、
 任意の硝材・向き（空気から・硝材から・硝材どうし）・波長（範囲内）・鏡の入射側の媒質で係数を出す。
 `LBCM 2` の行のあとに `COAT 名前`、（あれば `NOTE 注記`）、`D`・`BMAX`、`WAVE` と β ごとの行、鏡なら `MIRROR` の節が続く
-（詳しくは `lensbench_core::coating::parse_models`）。`--table` と `Coatings::load_file` は 1 行目で LBCT と LBCM を見分ける。
+（詳しくは `lensbench_core::coating::parse_models`）。`--coatings` と `Coatings::load_file` は 1 行目で LBCT と LBCM を見分ける。
 同じ境界に実測表があれば実測表を使う。
 
 モデルは `coat-model` で実測表から作る（`lensbench_design::coat_fit::fit_model`）。表には、屈折率だけのモデルガラス（`"n,0.0"`）を
@@ -70,7 +70,7 @@ s にも p の値を使う（表の 0° で s と p が違うと、0° のすぐ
   （測ったモデル・実測表があれば近似の膜より先に使う）。
 - 系が使う膜のファイルだけ読む（フォルダにある他の膜は読まない）。
 - 膜ファイルの COAT・TABLE にある膜、理想膜（`I.`）、膜なしには使わない。
-- `--table`・`coatings=`・`LENSBENCH_COATINGS` で明示したファイルが勝つ（後から読んで上書きする。自動で読んだ実測表は明示したモデルのある膜から、近似の膜は明示したモデル・実測表のある膜から外す）。
+- `--coatings`・`coatings=`・`LENSBENCH_COATINGS` で明示したファイルが勝つ（後から読んで上書きする。自動で読んだ実測表は明示したモデルのある膜から、近似の膜は明示したモデル・実測表のある膜から外す）。
 - `lensbench coatings 系.zmx --json` の `auto_coatings` に、自動で読んだ膜とファイルと注記（`note`）が出る。
   モデルの注記は LBCM の `NOTE`（`coat-model --note`、LBCM 3 では末尾の `NOTES`）で、短い測定から作った近似のモデルなどの印に使う。
   `.lbcs` は「近似の膜」と出る。境界ごとの `interfaces` にも、注記のあるモデルなら `note` が付く。

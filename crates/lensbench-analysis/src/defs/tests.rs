@@ -52,7 +52,7 @@ fn every_builtin_runs_with_defaults() {
     for a in Analyses::builtin().iter() {
         let name = a.meta().name;
         let p = match name {
-            "mtf-focus" => json!({ "freqs": [10.0, 20.0], "steps": 3 }),
+            "mtf-focus" => json!({ "freqs": [10.0, 20.0], "points": 3 }),
             "mtf-field" => json!({ "freqs": [10.0, 20.0], "points": 3 }),
             "psf" => json!({ "field": 1, "image": 32 }),
             "huygens-mtf" => json!({ "field": 1, "image": 32, "freq_steps": 2 }),

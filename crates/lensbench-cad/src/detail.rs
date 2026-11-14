@@ -93,24 +93,48 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
 }
 
 #[cfg(feature = "mesh")]
-/// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに 1 回だけ読んで覚える
+/// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに読んで覚える。
+/// 更新時刻が変われば読み直し、覚えるのは最近使った [`MEMO_MAX`] 個まで（STEP の全文を持つので増やし続けない）
 pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex, OnceLock};
-    type Memo = Mutex<HashMap<String, Option<Arc<lensbench_export::detail::Detail>>>>;
-    static MEMO: OnceLock<Memo> = OnceLock::new();
-    let memo = MEMO.get_or_init(Default::default);
-    if let Some(d) = memo.lock().ok()?.get(path) {
-        return d.clone();
+    use lensbench_core::LockExt;
+    use std::sync::{Arc, Mutex};
+    type Entry = (
+        String,
+        Option<std::time::SystemTime>,
+        Option<Arc<lensbench_export::detail::Detail>>,
+    );
+    // 最近使った順（末尾が新しい）
+    static MEMO: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+    let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    {
+        let mut m = MEMO.lock_ok();
+        if let Some(i) = m.iter().position(|e| e.0 == path) {
+            let e = m.remove(i);
+            if e.1 == mtime {
+                let d = e.2.clone();
+                m.push(e);
+                return d;
+            }
+        }
     }
     let d = lensbench_core::vfs::read(path)
         .ok()
         .and_then(|b| gunzip(b, 512 << 20).ok())
         .and_then(|b| detail_of_step(&String::from_utf8_lossy(&b)).ok())
         .map(Arc::new);
-    memo.lock().ok()?.insert(path.to_string(), d.clone());
+    let mut m = MEMO.lock_ok();
+    m.retain(|e| e.0 != path);
+    m.push((path.to_string(), mtime, d.clone()));
+    if m.len() > MEMO_MAX {
+        let n = m.len() - MEMO_MAX;
+        m.drain(..n);
+    }
     d
 }
+
+/// [`load_detail`] が覚える数の上限
+#[cfg(feature = "mesh")]
+pub const MEMO_MAX: usize = 64;
 
 /// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
 /// （feature `mesh` が無ければ何もしない）

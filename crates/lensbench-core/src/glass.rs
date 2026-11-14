@@ -420,6 +420,10 @@ pub fn missing_note(missing: &[String]) -> String {
     }
 }
 
+/// ガラスがカタログに無いときの文の後ろに足す案内（CLI-14）
+pub const DIRS_HINT: &str =
+    "。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡す";
+
 /// ガラスの検索パス: 引数、環境変数 LENSBENCH_GLASSCAT（OS のパス区切り）。
 pub fn catalog_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = extra.to_vec();

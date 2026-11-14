@@ -150,7 +150,7 @@ pub struct MtfFocusParams {
     pub range: f64,
     /// ずらしの点数（−range から +range まで）
     #[schemars(extend("x-min" = 1))]
-    pub steps: usize,
+    pub points: usize,
     /// 瞳の重なりの求積の点の数の目安（mtf と同じ。省くと自動）
     pub n: Option<usize>,
 }
@@ -162,7 +162,7 @@ impl Default for MtfFocusParams {
             wave: None,
             freqs: Vec::new(),
             range: 0.1,
-            steps: 11,
+            points: 11,
             n: None,
         }
     }
@@ -204,7 +204,7 @@ impl Analysis for MtfFocus {
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;
-        let dz = sweep::steps_sym(p.range, p.steps);
+        let dz = sweep::steps_sym(p.range, p.points);
         let (mut v, mut warn) = (Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
             let m = sweep::through_focus_mtf(

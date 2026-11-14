@@ -242,7 +242,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "interp") => "補間",
         (_, "each_wave") => "波長ごとも出す",
         (_, "range") => "ずらしの範囲 ±",
-        (_, "steps") => "ずらしの点の数",
+        ("mtf-focus", "points") => "ずらしの点の数",
         (_, "axis") => "視野を振る向き",
         (_, "vs") => "横軸",
         (_, "reference") => "基準",

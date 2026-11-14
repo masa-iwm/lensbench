@@ -45,7 +45,7 @@ OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio �
 
 MTF のまわりの解析（`tests/mtf_family.rs` で既存の MTF・スポット・波面と突き合わせ済み。OpticStudio との照合はこれから）:
 
-- `mtf-focus`（Through Focus MTF 相当）: 像面を `--range` の ±範囲で `--steps` 点ずらした回折 MTF。ずらしは像面の手前の面の厚さに
+- `mtf-focus`（Through Focus MTF 相当）: 像面を `--range` の ±範囲で `--points` 点ずらした回折 MTF。ずらしは像面の手前の面の厚さに
   足す（厚さのソルブは解き直さない）。
 - `mtf-field`（MTF vs Field 相当）: 正規化視野 0〜1 を `--points` 点（`--axis y`・`x`）。OpticStudio と同じくケラレ係数は使わない（`rms --vs field` も）。
 - `rms`（RMS vs Field・Focus・Wavelength 相当）: `--vs field|focus|wavelength`。量はスポット半径（`spot`・`spot_x`・`spot_y`）、

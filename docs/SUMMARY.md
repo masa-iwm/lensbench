@@ -23,6 +23,7 @@
   - [Python API の約束](python.md)
 - [ライブラリ（Rust）](rust.md)
 - [Web 版](web.md)
+- [壊れる変更](changes.md)
 
 # リファレンス
 

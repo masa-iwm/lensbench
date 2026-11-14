@@ -617,7 +617,7 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
         (got[0] - v[0]).norm() < 1e-12 && (got[1] - v[1]).norm() < 1e-12,
         "{got:?}"
     );
-    // 明示して読んだ表（--table・coatings=）が勝つ
+    // 明示して読んだ表（--coatings・coatings=）が勝つ
     let u = [C64::new(0.7, 0.0), C64::new(0.6, 0.0)];
     let tp = dir.join("explicit.ctab");
     std::fs::write(&tp, lbct(&key, wl, u[0], u[1])).unwrap();

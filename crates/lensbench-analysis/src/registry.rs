@@ -156,7 +156,7 @@ impl ParamTy {
 }
 
 /// 設定の項目の旧名（新しい名前, 旧名）。旧名は受けず、誤りの文で新しい名前を示す（CLI-17）
-pub const OLD_PARAM_NAMES: &[(&str, &str)] = &[("reference", "ref")];
+pub const OLD_PARAM_NAMES: &[(&str, &str)] = &[("reference", "ref"), ("points", "steps")];
 
 /// 旧名なら新しい名前
 pub fn renamed_param(k: &str) -> Option<&'static str> {

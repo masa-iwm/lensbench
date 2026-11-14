@@ -1,6 +1,7 @@
 //! 展開の入口（状態・経路）と、面の並びのあとの仕上げ（機構部品の配置・面の操作と編集・群の移動・ピックアップの保持）
 
 use super::*;
+use lensbench_core::glass::DIRS_HINT as HINT;
 /// .zmx の取り込みの群の、要素の範囲 (群の番号, 最初, 最後)。最初・最後は面が from〜to に始まる要素（空気でない）
 pub(crate) fn zmx_group_spans(
     keep: &[Element],
@@ -446,11 +447,11 @@ pub(crate) fn expand_inner(
                 .collect()
         } else if let Some(&n0) = d.n.first() {
             if d.n.iter().any(|&v| v != n0) {
-                return Err(format!("面 {j}: ガラス {} がカタログにない", d.mat));
+                return Err(format!("面 {j}: ガラス {} がカタログにない{HINT}", d.mat));
             }
             vec![n0; wl.len()]
         } else {
-            return Err(format!("面 {j}: ガラス {} がカタログにない", d.mat));
+            return Err(format!("面 {j}: ガラス {} がカタログにない{HINT}", d.mat));
         };
         d.n = n.clone();
         prev = n;

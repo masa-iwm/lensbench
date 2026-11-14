@@ -1052,7 +1052,7 @@ pub fn build(
             glass::load_catalogs_shared(&cats, dirs)
         }
     };
-    let why = glass::missing_note(&cat_missing); // 空か「（見つからない…）」
+    let why = glass::missing_note(&cat_missing) + glass::DIRS_HINT; // 「（見つからない…）」と渡し方の案内
     let ns = raw.surfs.len();
     // 厚さ・パラメータとピックアップ
     let mut th: Vec<f64> = raw.surfs.iter().map(|s| s.disz.unwrap_or(0.0)).collect();

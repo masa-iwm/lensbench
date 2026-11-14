@@ -78,12 +78,12 @@ pub struct SwapSpec {
     /// 組ごとに最適化する変数（"d1.t"・"d1.t=0.5:40"・"G2.shift"）
     #[serde(default)]
     pub vars: Vec<String>,
-    /// 評価関数: "spot" か "wavefront"
-    #[serde(default = "spot")]
-    pub merit: String,
-    /// 基準: "centroid" か "chief"
-    #[serde(default = "centroid")]
-    pub reference: String,
+    /// 評価関数
+    #[serde(default)]
+    pub merit: SwapMerit,
+    /// 基準
+    #[serde(default)]
+    pub reference: SwapRef,
     #[serde(default = "three")]
     pub rings: usize,
     /// 組ごとの反復の上限
@@ -123,12 +123,97 @@ pub struct SwapSpec {
     /// 差し替え探索の変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で fd は auto の 4.3 倍）。
     /// forward は差分の追跡が中心差分の半分で済み、fd よりさらに約 1.4 倍速い（実カタログ 3,000 組で上位 300 組の顔ぶれ・順位は
     /// fd と同じ、評価関数の差は相対 3e-7 以下）
-    #[serde(default = "forward")]
-    pub jac: String,
+    #[serde(default)]
+    pub jac: SwapJac,
     /// 粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で
     /// 最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prescreen: Option<Prescreen>,
+}
+
+/// 評価関数（[`SwapSpec::merit`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SwapMerit {
+    /// スポットの RMS
+    #[default]
+    Spot,
+    /// 波面の RMS
+    #[serde(alias = "wfe")]
+    Wavefront,
+}
+
+/// RMS の基準（[`SwapSpec::reference`]）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SwapRef {
+    /// 重心
+    #[default]
+    Centroid,
+    /// 主光線
+    Chief,
+}
+
+/// ヤコビアンの求め方（[`SwapSpec::jac`]、`optimize --jac` と同じ名前）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SwapJac {
+    /// すべて前進差分
+    #[default]
+    Forward,
+    /// すべて中心差分
+    Fd,
+    /// 解析的に求められる列が多い項は解析的に
+    Auto,
+}
+
+impl SwapMerit {
+    fn core(self) -> DefaultMerit {
+        match self {
+            SwapMerit::Spot => DefaultMerit::Spot,
+            SwapMerit::Wavefront => DefaultMerit::Wavefront,
+        }
+    }
+}
+
+impl SwapRef {
+    fn core(self) -> RmsRef {
+        match self {
+            SwapRef::Centroid => RmsRef::Centroid,
+            SwapRef::Chief => RmsRef::Chief,
+        }
+    }
+}
+
+impl SwapJac {
+    fn core(self) -> optim::JacMode {
+        match self {
+            SwapJac::Forward => optim::JacMode::Forward,
+            SwapJac::Fd => optim::JacMode::FiniteDiff,
+            SwapJac::Auto => optim::JacMode::Auto,
+        }
+    }
+}
+
+/// 変数の範囲（下限, 上限）
+type Range = (f64, f64);
+
+/// 変数の書き方 "d1.t" か "d1.t=下限:上限"（片側は空でよい）を (名前, 範囲) に分ける
+fn parse_var(v: &str) -> Result<(&str, Option<Range>), String> {
+    let Some((name, r)) = v.split_once('=') else {
+        return Ok((v.trim(), None));
+    };
+    let (lo, hi) = r
+        .split_once(':')
+        .ok_or_else(|| format!("変数 {v} の範囲は 下限:上限"))?;
+    let num = |t: &str, d: f64| -> Result<f64, String> {
+        match t.trim() {
+            "" => Ok(d),
+            t => t.parse().map_err(|_| format!("変数 {v} の範囲 {t}")),
+        }
+    };
+    let range = (num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
+    Ok((name.trim(), Some(range)))
 }
 
 /// 粗いふるいの設定（[`SwapSpec::prescreen`]）
@@ -144,12 +229,6 @@ pub struct Prescreen {
     pub keep: usize,
 }
 
-fn spot() -> String {
-    "spot".into()
-}
-fn centroid() -> String {
-    "centroid".into()
-}
 fn three() -> usize {
     3
 }
@@ -158,9 +237,6 @@ fn two() -> usize {
 }
 fn thousand() -> usize {
     1000
-}
-fn forward() -> String {
-    "forward".into()
 }
 fn thirty() -> usize {
     30
@@ -316,8 +392,6 @@ pub struct SwapSearch<'a> {
     ptrs: Vec<String>,
     /// 所ごとの選び方
     pub picks: Vec<Vec<Pick>>,
-    merit: DefaultMerit,
-    reference: RmsRef,
 }
 
 impl<'a> SwapSearch<'a> {
@@ -332,8 +406,10 @@ impl<'a> SwapSearch<'a> {
         if spec.state.is_some() && !spec.states.is_empty() {
             return Err("state と states は同時に使えない".into());
         }
-        // 綴りの誤りは組ごとの失敗にせず、始める前に弾く
-        jac_mode(&spec.jac)?;
+        // 変数の書き方の誤りは組ごとの失敗にせず、始める前に弾く
+        for v in spec.vars.iter().chain(&spec.state_vars) {
+            parse_var(v)?;
+        }
         if spec.states.is_empty() && !spec.state_vars.is_empty() {
             return Err("state_vars は states と一緒に使う".into());
         }
@@ -353,16 +429,6 @@ impl<'a> SwapSearch<'a> {
                 return Err("prescreen の rings・keep は 1 以上".into());
             }
         }
-        let merit = match spec.merit.to_ascii_lowercase().as_str() {
-            "spot" => DefaultMerit::Spot,
-            "wavefront" | "wfe" => DefaultMerit::Wavefront,
-            m => return Err(format!("merit {m}（spot・wavefront）")),
-        };
-        let reference = match spec.reference.to_ascii_lowercase().as_str() {
-            "centroid" => RmsRef::Centroid,
-            "chief" => RmsRef::Chief,
-            r => return Err(format!("reference {r}（centroid・chief）")),
-        };
         // 候補の要約は所の間で使い回す（絞り込みの所が使うレンズをまとめて 1 回だけ、並列に作る）
         let slot_idx: Vec<Option<Vec<usize>>> = spec
             .slots
@@ -449,8 +515,6 @@ impl<'a> SwapSearch<'a> {
             dir: env.base.clone(),
             glass_dirs: env.glass_dirs.clone(),
             cat,
-            merit,
-            reference,
             ptrs,
             picks,
             spec,
@@ -536,7 +600,7 @@ impl<'a> SwapSearch<'a> {
         }
         let s = systems[0].clone();
         let mut pr = Problem::new(systems.clone());
-        pr.jac = jac_mode(&self.spec.jac)?;
+        pr.jac = self.spec.jac.core();
         // 共通の変数（全状態）と、状態ごとの変数（状態 k だけに効く）
         let mut specs: Vec<(&String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (v, None)).collect();
@@ -544,10 +608,7 @@ impl<'a> SwapSearch<'a> {
             specs.extend(self.spec.state_vars.iter().map(|v| (v, Some(k))));
         }
         for (v, cfg) in specs {
-            let (spec, range) = match v.split_once('=') {
-                Some((a, b)) => (a.trim(), Some(b)),
-                None => (v.trim(), None),
-            };
+            let (spec, range) = parse_var(v)?;
             let c = cfg.unwrap_or(0);
             let param = var_param(&systems[c], &gapss[c], spec)?;
             if cfg.is_none() {
@@ -565,22 +626,12 @@ impl<'a> SwapSearch<'a> {
             if let Some(k) = cfg {
                 var.configs = Some(vec![k]);
             }
-            if let Some(r) = range {
-                let (lo, hi) = r
-                    .split_once(':')
-                    .ok_or_else(|| format!("変数 {v} の範囲は 下限:上限"))?;
-                let num = |t: &str, d: f64| -> Result<f64, String> {
-                    if t.trim().is_empty() {
-                        Ok(d)
-                    } else {
-                        t.trim().parse().map_err(|_| format!("変数 {v} の範囲 {t}"))
-                    }
-                };
-                var = var.bounds(num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
+            if let Some((lo, hi)) = range {
+                var = var.bounds(lo, hi);
             }
             pr.vars.push(var);
         }
-        pr.add_default(self.merit, rings, self.reference);
+        pr.add_default(self.spec.merit.core(), rings, self.spec.reference.core());
         let n_image = pr.terms.len();
         if let Some(t) = self.spec.efl {
             let w: f64 = pr.terms.iter().map(|t| t.weight).sum();
@@ -732,12 +783,7 @@ impl<'a> SwapSearch<'a> {
         };
         // 出発点ごとに最適化して、評価関数の最も小さい解を採る
         // pr.vars と同じ順の (名前, 状態の番号)
-        let vname = |v: &String| {
-            v.split_once('=')
-                .map_or(v.as_str(), |x| x.0)
-                .trim()
-                .to_string()
-        };
+        let vname = |v: &String| parse_var(v).map_or(v.trim(), |x| x.0).to_string();
         let mut names: Vec<(String, Option<usize>)> =
             self.spec.vars.iter().map(|v| (vname(v), None)).collect();
         for k in 0..self.spec.states.len() {
@@ -902,11 +948,6 @@ impl<'a> SwapSearch<'a> {
         sort_results(&mut v);
         v
     }
-}
-
-/// 設定の jac（"fd"・"auto"・"forward"）
-fn jac_mode(j: &str) -> Result<optim::JacMode, String> {
-    optim::JacMode::parse(j).ok_or_else(|| format!("jac {j}（{}）", optim::JacMode::NAMES))
 }
 
 /// 評価関数の小さい順（評価できなかった組は後ろ）、同じなら番号の順

@@ -127,6 +127,56 @@
         "block"
       ],
       "type": "object"
+    },
+    "SwapJac": {
+      "description": "ヤコビアンの求め方（[`SwapSpec::jac`]、`optimize --jac` と同じ名前）",
+      "oneOf": [
+        {
+          "const": "forward",
+          "description": "すべて前進差分",
+          "type": "string"
+        },
+        {
+          "const": "fd",
+          "description": "すべて中心差分",
+          "type": "string"
+        },
+        {
+          "const": "auto",
+          "description": "解析的に求められる列が多い項は解析的に",
+          "type": "string"
+        }
+      ]
+    },
+    "SwapMerit": {
+      "description": "評価関数（[`SwapSpec::merit`]）",
+      "oneOf": [
+        {
+          "const": "spot",
+          "description": "スポットの RMS",
+          "type": "string"
+        },
+        {
+          "const": "wavefront",
+          "description": "波面の RMS",
+          "type": "string"
+        }
+      ]
+    },
+    "SwapRef": {
+      "description": "RMS の基準（[`SwapSpec::reference`]）",
+      "oneOf": [
+        {
+          "const": "centroid",
+          "description": "重心",
+          "type": "string"
+        },
+        {
+          "const": "chief",
+          "description": "主光線",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/swap.schema.json",
@@ -160,9 +210,9 @@
       "type": "integer"
     },
     "jac": {
+      "$ref": "#/$defs/SwapJac",
       "default": "forward",
-      "description": "ヤコビアン: \"forward\"（すべて前進差分、既定）・\"fd\"（すべて中心差分）・\"auto\"（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）。\n差し替え探索の変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で fd は auto の 4.3 倍）。\nforward は差分の追跡が中心差分の半分で済み、fd よりさらに約 1.4 倍速い（実カタログ 3,000 組で上位 300 組の顔ぶれ・順位は\nfd と同じ、評価関数の差は相対 3e-7 以下）",
-      "type": "string"
+      "description": "ヤコビアン: \"forward\"（すべて前進差分、既定）・\"fd\"（すべて中心差分）・\"auto\"（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）。\n差し替え探索の変数（間隔・群の移動など少数）では差分の方が速い（実カタログ 7 万組で fd は auto の 4.3 倍）。\nforward は差分の追跡が中心差分の半分で済み、fd よりさらに約 1.4 倍速い（実カタログ 3,000 組で上位 300 組の顔ぶれ・順位は\nfd と同じ、評価関数の差は相対 3e-7 以下）"
     },
     "max_count": {
       "default": 100000,
@@ -172,9 +222,9 @@
       "type": "integer"
     },
     "merit": {
+      "$ref": "#/$defs/SwapMerit",
       "default": "spot",
-      "description": "評価関数: \"spot\" か \"wavefront\"",
-      "type": "string"
+      "description": "評価関数"
     },
     "prescreen": {
       "anyOf": [
@@ -188,9 +238,9 @@
       "description": "粗いふるい（省けばなし）: 全組を光線の少ない評価関数で最適化し、評価関数の小さい組だけを今の評価で\n最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない"
     },
     "reference": {
+      "$ref": "#/$defs/SwapRef",
       "default": "centroid",
-      "description": "基準: \"centroid\" か \"chief\"",
-      "type": "string"
+      "description": "基準"
     },
     "rings": {
       "default": 3,

@@ -47,7 +47,7 @@ def test_mtf_and_through_focus(b0):
     assert t["tangential"].shape == (2, 3)
     assert np.array_equal(t["tangential"][:, 1], m["tangential"])
     assert np.array_equal(t["sagittal"][:, 1], m["sagittal"])
-    c = cli("mtf-focus", zmx("B0"), "--field", "2", "--freqs", "20,50", "--range", "0.01", "--steps", "3")
+    c = cli("mtf-focus", zmx("B0"), "--field", "2", "--freqs", "20,50", "--range", "0.01", "--points", "3")
     rows = c["through_focus"]
     got = np.array([r["tangential"] for r in rows]).reshape(2, 3)
     assert np.array_equal(got, t["tangential"])

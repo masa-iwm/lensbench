@@ -10,7 +10,7 @@ lensbench wavefront system.zmx --n 64
 lensbench zernike  system.zmx --kind fringe --terms 37
 lensbench mtf      system.zmx --freqs 0,50,100 --wave 2
 lensbench mtf      system.zmx --max-freq 200 --freq-steps 40     # 周波数を省いたときの上限と分割数（既定は遮断周波数の 0.95 倍・20 等分）
-lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --steps 11
+lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --points 11
 lensbench mtf-field system.zmx --freqs 30,60 --points 11
 lensbench rms      system.zmx --vs field --points 11 --reference centroid
 lensbench optimize system.zmx --var 8.t --var "6.c=0:0.05" --merit wavefront --out opt.zmx
@@ -20,7 +20,7 @@ lensbench swap     project.json --spec swap.json --lens-catalog lenses --top 10
 lensbench psf      system.zmx --field 2 --pupil 64 --image 128 --save psf.npz
 lensbench geo-mtf  system.zmx --freqs 0,50,100 --diff-limit
 lensbench huygens-mtf system.zmx --field 3 --pupil 128 --image 256
-lensbench coatings system.zmx --table coat_tables.ctab
+lensbench coatings system.zmx --coatings coat_tables.ctab
 lensbench info     project.json --state near
 lensbench catalog-add my.json --name "L2" --from system.zmx --lens 2
 lensbench catalog-list my.json

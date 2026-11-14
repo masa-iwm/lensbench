@@ -258,7 +258,7 @@ fn coatings_lists_interfaces_and_missing_tables() {
         p.to_str().unwrap(),
         "--glass-dir",
         &glass,
-        "--table",
+        "--coatings",
         tp.to_str().unwrap(),
         "--json",
     ]);
