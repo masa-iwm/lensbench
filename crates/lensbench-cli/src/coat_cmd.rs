@@ -391,3 +391,66 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
         "out": written,
     }))
 }
+
+/// 面の膜の一覧（coatings）
+pub(crate) fn coatings(
+    file: &std::path::Path,
+    glass_dir: &[PathBuf],
+    tables: &[PathBuf],
+) -> Result<Value, AppError> {
+    let e = AppError::from;
+    let txt = glass::read_text(file).map_err(AppError::io_at(file))?;
+    let raw = zmx::parse_text(&txt).map_err(e)?;
+    let mut cfgs = Vec::new();
+    // 実測表が要る境界 → (コンフィグ, 波長)
+    let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
+    let mut found = None;
+    // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
+    let mut auto: Vec<AutoCoat> = Vec::new();
+    for cfg in 1..=raw.configurations() {
+        let opt = zmx::LoadOptions {
+            cfg,
+            catalog_dirs: glass_dir.to_vec(),
+            ..Default::default()
+        };
+        let s = zmx::load_with(file, &opt).map_err(|x| x.at(format!("構成 {cfg}")))?;
+        found = s.coating_file.clone();
+        let CoatInterfaces {
+            list: v,
+            needs: keys,
+            auto: au,
+        } = coat_interfaces(&s, tables)?;
+        for a in au {
+            if !auto.iter().any(|b| b.0 == a.0 && b.1 == a.1) {
+                auto.push(a);
+            }
+        }
+        for k in keys {
+            let i = match need.iter().position(|n| n.0 == k) {
+                Some(i) => i,
+                None => {
+                    need.push((k, Vec::new(), Vec::new()));
+                    need.len() - 1
+                }
+            };
+            let n = &mut need[i];
+            if !n.1.contains(&cfg) {
+                n.1.push(cfg);
+            }
+            for &w in &s.wavelengths {
+                if !n.2.contains(&w) {
+                    n.2.push(w);
+                }
+            }
+        }
+        cfgs.push(json!({ "cfg": cfg, "wavelengths_um": s.wavelengths, "interfaces": v }));
+    }
+    Ok(json!({
+        "coating_file": raw.coating_file_name(),
+        "coating_file_path": found.map(|p| p.display().to_string()),
+        "catalogs": raw.catalogs(),
+        "auto_coatings": auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
+        "configurations": cfgs,
+        "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
+    }))
+}

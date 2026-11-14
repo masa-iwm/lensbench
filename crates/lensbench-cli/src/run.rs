@@ -35,7 +35,7 @@ pub struct RunArgs {
     #[arg(long)]
     pub coatings: Vec<PathBuf>,
     /// 出力先のフォルダ（無ければ作る。スクリプトは run_settings()["out"] で受け取る）
-    #[arg(long)]
+    #[arg(long, short)]
     pub out: Option<PathBuf>,
     /// ログのファイル（省くと --out があれば <out>/run.log、なければ書かない）
     #[arg(long)]

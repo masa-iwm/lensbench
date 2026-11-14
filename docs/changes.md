@@ -10,12 +10,18 @@
 - プロジェクトの知らないキーはエラー（GUI だけの設定は `gui` 欄）。`environment` 欄（既定 20°C・1 気圧）。
 - 差し替え探索の設定の `merit`・`reference`・`jac` は決まった綴りだけ（大文字小文字を区別する）。
 - serve の `analyze` は CLI と同じ `--flag=値` の並びで受ける。
+- `tolerance --save-worst` は `--out` に（最も悪い試行の系の書き出し先。系を書き出す旗はどれも `--out`）。`--out` はどのコマンドでも `-o` でも渡せる。
 - 評価関数の項（`optimize --term`・`terms` 欄）は種類ごとの型で読む（スキーマ `terms.schema.json`）。`dir`・`reference`・`kind`・
   centroid の `q` は決まった綴りだけ（小文字。`type` は前どおり大文字も可）。型の合わない値・知らないキーの誤りの文は serde のもの
   （例「ray の項: unknown field `taget`, expected one of …」）。
 - 公差の設定（`tolerance --spec`）も型で読む（スキーマ `tolerance.schema.json`）。`wedge_face` は小文字の `back`・`front` だけ、
   `relative`・`catalog`・`samples` などの真偽に真偽でない値は誤り（前は無視）。誤りの文は欄の道つきの serde のもの
   （例「tolerance.lenses.L1: unknown field `tlit`, …」）。先頭の `$schema` は受ける。
+
+### 終了コード
+- CLI の終了コードを誤りの種類で分けた: 1 失敗（系・値の不正・計算・照合の不合格・一部の失敗）、2 使い方（引数・設定ファイル）、
+  3 ファイルが無い・読めない・書けない、4 未対応の機能、130 中断（以前は引数の誤り 2 のほかは全部 1）。表は [使い方（CLI）](cli.md)・
+  `lensbench --help` の末尾。誤りの文の次の行に `案内:` を出すことがある。
 
 ### 結果の形
 - 回折 MTF（`mtf`・`geo-mtf`・`huygens-mtf`）の `cutoff` は `[x, y]` から `{"tangential", "sagittal"}` に（JSON・Python）。

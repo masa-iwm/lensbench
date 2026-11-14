@@ -623,7 +623,7 @@ fn tolerance_monte_carlo() {
             seed,
             "--set",
             r#"{"preset":"precision","compensators":["6.t"]}"#,
-            "--save-worst",
+            "--out",
             worst.to_str().unwrap(),
             "--comp-csv",
             csv.to_str().unwrap(),
@@ -831,4 +831,74 @@ fn mtf_max_freq_steps() {
     let mut a = vec!["mtf", ZMX, "--freqs", "10", "--max-freq", "40"];
     a.extend(g);
     assert!(!run(&a).0);
+}
+
+/// 終了コードは誤りの種類で分かれ、案内が付く（見直し CLI-25）
+#[test]
+fn exit_codes_by_kind() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let code = |args: &[&str]| {
+        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+            .current_dir(root)
+            .args(args)
+            .env_remove("LENSBENCH_GLASSCAT")
+            .output()
+            .unwrap();
+        (
+            o.status.code(),
+            String::from_utf8_lossy(&o.stderr).into_owned(),
+        )
+    };
+    // 引数の誤り（clap・値の検査）は 2
+    assert_eq!(code(&["spot", ZMX, "--bogus"]).0, Some(2));
+    let (c, err) = code(&[
+        "optimize",
+        ZMX,
+        "--glass-dir",
+        "tests/glass",
+        "--var",
+        "8.t",
+        "--merit",
+        "x",
+    ]);
+    assert_eq!(c, Some(2), "{err}");
+    assert!(err.contains("案内:") && err.contains("--help"), "{err}");
+    // ファイルが無いのは 3
+    let (c, err) = code(&["info", "no/such.zmx"]);
+    assert_eq!(c, Some(3), "{err}");
+    assert!(err.contains("案内:"), "{err}");
+    // 未対応は 4
+    let dir = std::env::temp_dir().join(format!("lb-exit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ni = dir.join("unit.zmx");
+    std::fs::write(
+        &ni,
+        "VERS 190513 80 123457\nMODE SEQ\nUNIT FURLONG X W X CM MR CPMM\nSURF 0\n  DISZ INFINITY\nSURF 1\n  STOP\n  DISZ 10\nSURF 2\n",
+    )
+    .unwrap();
+    let (c, err) = code(&["info", ni.to_str().unwrap()]);
+    assert_eq!(c, Some(4), "{err}");
+    std::fs::remove_dir_all(&dir).ok();
+    // 系の不正は 1（ガラスが無いときは渡し方の案内が文に入る）
+    let (c, err) = code(&["spot", ZMX]);
+    assert_eq!(c, Some(1), "{err}");
+    assert!(err.contains("--glass-dir"), "{err}");
+}
+
+/// `help --json` は clap の定義（登録簿の解析も）と終了コードの表を出す（見直し CLI-29、マニュアルの CLI のページの元）
+#[test]
+fn help_json_lists_commands() {
+    let (ok, out, err) = run(&["help", "--json"]);
+    assert!(ok, "{err}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let subs = v["subcommands"].as_array().unwrap();
+    assert!(subs.iter().any(|s| s["name"] == "mtf-focus"));
+    assert!(v["exit_codes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|e| e["code"] == 4));
+    // ふつうの help はそのまま
+    let (ok, out, _) = run(&["help", "spot"]);
+    assert!(ok && out.contains("Usage: lensbench spot"), "{out}");
 }

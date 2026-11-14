@@ -11,7 +11,7 @@ where
     T: Into<std::ffi::OsString> + Clone,
 {
     let cli = crate::parse_cli(argv).map_err(|e| e.render().to_string())?;
-    Ok(crate::execute(cli.cmd)?.1)
+    Ok(crate::execute(cli.cmd).map_err(|e| e.to_string())?.1)
 }
 
 #[cfg(test)]
@@ -95,6 +95,19 @@ mod tests {
         assert!(v["other"].as_u64().unwrap() > 3);
         // 引数の誤りは clap の誤り
         assert!(super::run_cli(["lensbench", "toy-ext", &zmx, "--nope"]).is_err());
+        // help --json（マニュアルの CLI のページの元）では足した解析の印 ext が付く
+        let h = crate::help_json::help_json(crate::cli_command());
+        let sub = |n: &str| {
+            h["subcommands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(sub("toy-ext")["ext"], json!(true));
+        assert_eq!(sub("spot")["ext"], json!(false));
         // GUI の引数の欄: 選択は choice、オブジェクトは json、系の読み方の引数は出ない
         let a = lensbench_engine::params::analysis_args("toy-ext").unwrap();
         let m = a.iter().find(|x| x["name"] == "mode").unwrap();

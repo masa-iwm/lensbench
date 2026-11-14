@@ -97,7 +97,7 @@ fn run_once(cmd: &[String]) -> (Result<(bool, Value, Option<PathBuf>), String>, 
             }
             None => None,
         };
-        let (json_out, out) = execute(cli.cmd)?;
+        let (json_out, out) = execute(cli.cmd).map_err(|e| e.to_string())?;
         if let Some(p) = &save {
             std::fs::rename(tmp_path(p), p).map_err(|e| format!("{}: {e}", p.display()))?;
         }
@@ -108,12 +108,12 @@ fn run_once(cmd: &[String]) -> (Result<(bool, Value, Option<PathBuf>), String>, 
     (r, files)
 }
 
-pub fn watch(a: WatchArgs) -> Result<(), String> {
+pub fn watch(a: WatchArgs) -> Result<(), crate::AppError> {
     if a.interval.is_nan() || a.interval <= 0.0 {
-        return Err("--interval は正".into());
+        return Err(crate::AppError::usage("--interval は正"));
     }
     // 引数の誤りは最初に知らせる
-    let mut cli = parse(&a.cmd)?;
+    let mut cli = parse(&a.cmd).map_err(crate::AppError::usage)?;
     let mut files: Vec<PathBuf> = file_and_save(&mut cli.cmd)
         .map(|(f, _)| f.to_path_buf())
         .into_iter()

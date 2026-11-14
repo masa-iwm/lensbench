@@ -2,7 +2,7 @@
 
     python3 scripts/gen_docs.py --cli target/release/lensbench   # docs/reference/cli.md・python-api.md を書く
 
-- CLI: `lensbench --help` のサブコマンドの一覧と、各サブコマンドの `--help` をそのまま載せる
+- CLI: `lensbench help --json`（clap の定義の JSON）から、サブコマンドの一覧・使い方・引数の表・終了コードを作る
 - Python: 型スタブ `crates/lensbench-py/lensbench.pyi` の名前・引数・説明から作る（wheel のビルドは要らない）
 
 書いたファイルは .gitignore 済み。手で直さず、元（clap の説明・Rust の doc コメント）を直す。
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -23,39 +24,81 @@ PYI = ROOT / "crates" / "lensbench-py" / "lensbench.pyi"
 NOTE = "<!-- 自動生成（scripts/gen_docs.py）。手で直さない -->\n\n"
 
 
-def run_help(cli: str, *args: str) -> str:
-    out = subprocess.run([cli, *args, "--help"], capture_output=True, text=True, check=True, encoding="utf-8")
-    return out.stdout.rstrip()
+def cli_json(cli: str) -> dict:
+    """`lensbench help --json`（clap の定義の JSON。登録簿の解析・終了コードの表も）"""
+    out = subprocess.run([cli, "help", "--json"], capture_output=True, text=True, check=True, encoding="utf-8")
+    return json.loads(out.stdout)
 
 
-def subcommands(top: str) -> list[tuple[str, str]]:
-    """`lensbench --help` の Commands: の節から（名前, 説明）を取る。説明が折り返していても 1 行目の名前で区切る"""
-    cmds: list[tuple[str, str]] = []
-    on = False
-    for line in top.splitlines():
-        if line.startswith("Commands:"):
-            on = True
-            continue
-        if on:
-            if not line.strip():
-                break
-            m = re.match(r"^  (\S+)\s+(.*)$", line)
-            if m and m.group(1) != "help":
-                cmds.append((m.group(1), m.group(2).strip()))
-    return cmds
+def cell(s: str | None) -> str:
+    """表の欄に入れる文字（| と改行を除く）"""
+    return (s or "").replace("|", "&#124;").replace("\n", " ").strip()
+
+
+def arg_name(a: dict) -> str:
+    if a["positional"]:
+        n = f"<{a['value_name']}>"
+        return f"`{n}...`" if a["multiple"] else f"`{n}`"
+    n = f"--{a['long']}" if a["long"] else f"-{a['short']}"
+    if a["short"] and a["long"]:
+        n = f"-{a['short']}, {n}"
+    if not a["flag"]:
+        n += f" <{a['value_name']}>"
+    return f"`{n}`"
+
+
+def arg_note(a: dict) -> str:
+    notes = []
+    h = a["long_help"] or a["help"] or ""
+    if a["required"] and not a["positional"] and "必須" not in h:
+        notes.append("必須")
+    if a["multiple"] and not a["positional"] and "複数可" not in h:
+        notes.append("複数可")
+    if a["choices"]:
+        notes.append("値: " + "・".join(f"`{c}`" for c in a["choices"]))
+    return "（" + "、".join(notes) + "）" if notes else ""
+
+
+def args_table(args: list[dict]) -> str:
+    if not args:
+        return "引数なし。\n"
+    rows = ["| 引数 | 既定 | 説明 |\n|---|---|---|\n"]
+    for a in args:
+        d = "" if a["flag"] else ",".join(a["default"])
+        rows.append(f"| {arg_name(a)} | {('`' + cell(d) + '`') if d else ''} | {cell(a['long_help'] or a['help'])}{arg_note(a)} |\n")
+    return "".join(rows)
+
+
+def command_md(c: dict, level: int, prefix: str) -> list[str]:
+    name = f"{prefix} {c['name']}".strip()
+    md = [f"\n{'#' * level} {name}\n\n"]
+    about = c["long_about"] or c["about"] or ""
+    if about:
+        md.append(about.strip() + "\n\n")
+    md.append(f"```text\n{c['usage']}\n```\n\n")
+    # 全体の引数（--threads）は「共通」に 1 度だけ
+    md.append(args_table([a for a in c["args"] if not a["global"]]))
+    for s in c["subcommands"]:
+        md.extend(command_md(s, level + 1, name))
+    return md
 
 
 def gen_cli(cli: str) -> str:
-    top = run_help(cli)
-    cmds = subcommands(top)
+    v = cli_json(cli)
     md = [NOTE, "# CLI リファレンス\n\n",
-          "`lensbench <コマンド> --help` と同じ内容です。使い方の例は [使い方（CLI）](../cli.md)。\n\n",
+          f"lensbench {v['version']} の `lensbench help --json` から作る（`lensbench <コマンド> --help` と同じ中身）。"
+          "使い方の例は [使い方（CLI）](../cli.md)。\n\n",
           "| コマンド | 説明 |\n|---|---|\n"]
-    for name, desc in cmds:
-        md.append(f"| [`{name}`](#{name}) | {desc.replace('|', '&#124;')} |\n")
-    md.append("\n## 共通\n\n```text\n" + top + "\n```\n")
-    for name, _ in cmds:
-        md.append(f"\n## {name}\n\n```text\n{run_help(cli, name)}\n```\n")
+    for c in v["subcommands"]:
+        md.append(f"| [`{c['name']}`](#{c['name']}) | {cell(c['about'])} |\n")
+    md.append("\n## 共通\n\n")
+    md.append(f"```text\n{v['usage']}\n```\n\n")
+    md.append(args_table(v["args"]))
+    md.append("\n終了コード:\n\n| コード | 意味 |\n|---|---|\n")
+    for e in v["exit_codes"]:
+        md.append(f"| {e['code']} | {cell(e['meaning'])} |\n")
+    for c in v["subcommands"]:
+        md.extend(command_md(c, 2, ""))
     return "".join(md)
 
 

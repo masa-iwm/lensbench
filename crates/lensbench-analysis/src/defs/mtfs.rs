@@ -194,7 +194,7 @@ impl Analysis for MtfFocus {
     fn meta(&self) -> Meta {
         Meta {
             name: "mtf-focus",
-            about: "スルーフォーカス MTF（像面を ±range で steps 点ずらした回折 MTF）。wave を省くと多色",
+            about: "スルーフォーカス MTF（像面を ±range で points 点ずらした回折 MTF）。wave を省くと多色",
             help: "",
         }
     }

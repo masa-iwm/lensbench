@@ -68,7 +68,7 @@ pub struct SwapArgs {
     #[arg(long)]
     pub state: Option<String>,
     /// 組ごとの結果を逐次書き出す JSONL（一括実行の形）。同じ探索のファイルがあれば続きから回す
-    #[arg(long)]
+    #[arg(long, short)]
     pub out: Option<PathBuf>,
     /// --out のファイルがあっても続きからにせず書き直す
     #[arg(long = "no-resume")]

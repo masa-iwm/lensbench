@@ -16,8 +16,11 @@ use lensbench_export::{d2, mesh, scene};
 use serde_json::{json, Value};
 
 mod analysis_cmd;
+pub mod error;
+mod help_json;
+pub use error::AppError;
 mod coat_cmd;
-use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model};
+use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
@@ -138,7 +141,7 @@ enum Cmd {
         #[command(flatten)]
         sel: ConfigSel,
         /// 書き出す .zmx
-        #[arg(long)]
+        #[arg(long, short)]
         out: PathBuf,
     },
     /// 減衰最小二乗（DLS）で変数を最適化する
@@ -173,7 +176,7 @@ enum Cmd {
         #[arg(long, default_value = "auto")]
         jac: String,
         /// 最適化した系を書き出す .zmx
-        #[arg(long)]
+        #[arg(long, short)]
         out: Option<PathBuf>,
     },
     /// モンテカルロ公差シミュレーション
@@ -196,8 +199,8 @@ enum Cmd {
         #[arg(long)]
         seed: Option<u64>,
         /// 評価関数が最も悪かった試行の系（補償の後）を書き出すファイル。.json は系ファイル（屈折率の公差も書ける）、ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
-        #[arg(long = "save-worst")]
-        save_worst: Option<PathBuf>,
+        #[arg(long, short)]
+        out: Option<PathBuf>,
         /// 試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
         #[arg(long = "comp-csv")]
         comp_csv: Option<PathBuf>,
@@ -402,7 +405,7 @@ enum Cmd {
         #[command(flatten)]
         l: LayoutArgs,
         /// 書き出すファイル（複数可）
-        #[arg(long, required = true)]
+        #[arg(long, short, required = true)]
         out: Vec<PathBuf>,
         /// 2D の投影面（yz か xz）
         #[arg(long, default_value = "yz")]
@@ -430,7 +433,7 @@ enum Cmd {
         /// 実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
         tables: Vec<PathBuf>,
         /// 書き出す LBCM ファイル
-        #[arg(long)]
+        #[arg(long, short)]
         out: PathBuf,
         /// 作る膜（カンマ区切り、既定は表にある全部）
         #[arg(long)]
@@ -457,7 +460,7 @@ enum Cmd {
         /// 元のモデル（LBCM 2 か 3）
         model: PathBuf,
         /// 書き出すモデル（LBCM 3）
-        #[arg(long)]
+        #[arg(long, short)]
         out: PathBuf,
         /// JSON で出力する
         #[arg(long)]
@@ -497,7 +500,7 @@ enum Cmd {
         #[arg(long, default_value_t = 0.1)]
         slack: f64,
         /// 書き出す近似の膜（.lbcs）
-        #[arg(long)]
+        #[arg(long, short)]
         out: Option<PathBuf>,
         /// JSON で出力する
         #[arg(long)]
@@ -603,8 +606,8 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
     })
 }
 
-fn load(c: &Common) -> Result<System, String> {
-    lensbench_engine::load::load_file_noted(&c.spec()).map_err(|e| e.to_string())
+fn load(c: &Common) -> Result<System, AppError> {
+    Ok(lensbench_engine::load::load_file_noted(&c.spec())?)
 }
 
 /// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id。.zmx・系ファイルなら空
@@ -631,18 +634,18 @@ fn tolerance_vendors(
 }
 
 /// カンマ区切りの数
-fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, String> {
+fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, AppError> {
     let v: Vec<f64> = s
         .split(',')
         .filter(|x| !x.trim().is_empty())
         .map(|x| {
             x.trim()
                 .parse::<f64>()
-                .map_err(|_| format!("{what} の数が読めない（{x}）"))
+                .map_err(|_| AppError::usage(format!("{what} の数が読めない（{x}）")))
         })
         .collect::<Result<_, _>>()?;
     if v.is_empty() {
-        return Err(format!("{what} が空"));
+        return Err(AppError::usage(format!("{what} が空")));
     }
     Ok(v)
 }
@@ -706,16 +709,16 @@ fn partial_failure(msg: impl Into<String>) {
     PARTIAL_FAILURE.with(|x| *x.borrow_mut() = Some(msg.into()));
 }
 
-fn run(cli: Cli) -> Result<(), String> {
+fn run(cli: Cli) -> Result<(), AppError> {
     match cli.cmd {
-        Cmd::Serve(a) => serve::serve(a, cli.threads),
+        Cmd::Serve(a) => Ok(serve::serve(a, cli.threads)?),
         Cmd::Watch(a) => watch::watch(a),
         Cmd::Verify { paths, ci, json } => verify(&paths, ci, json),
         cmd => {
             let (json_out, out) = execute(cmd)?;
             print_out(json_out, &out);
             match PARTIAL_FAILURE.with(|x| x.borrow_mut().take()) {
-                Some(m) => Err(m),
+                Some(m) => Err(AppError::Failed(m)),
                 None => Ok(()),
             }
         }
@@ -723,7 +726,7 @@ fn run(cli: Cli) -> Result<(), String> {
 }
 
 /// 照合: 記述を回して表か JSON を出し、通らなければ誤り
-fn verify(paths: &[PathBuf], ci: bool, json_out: bool) -> Result<(), String> {
+fn verify(paths: &[PathBuf], ci: bool, json_out: bool) -> Result<(), AppError> {
     let opt = lensbench_verify::Options { ci_only: ci };
     let reps = lensbench_verify::run_paths(paths, &builtin_plugins(), &opt)?;
     if json_out {
@@ -742,7 +745,7 @@ fn verify(paths: &[PathBuf], ci: bool, json_out: bool) -> Result<(), String> {
         return Err("照合の記述（*.verify.json）が見つからない".into());
     }
     if bad > 0 {
-        return Err(format!("照合 {} 件のうち {bad} 件が通らない", reps.len()));
+        return Err(format!("照合 {} 件のうち {bad} 件が通らない", reps.len()).into());
     }
     Ok(())
 }
@@ -845,8 +848,8 @@ fn tolerance_brief(out: &Value) -> Value {
 }
 
 /// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。watch・ext::run_cli もこれを使う
-fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
-    let e = |e: lensbench_core::Error| e.to_string();
+fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
+    let e = AppError::from;
     let save = cmd.save();
     provenance::clear();
     PARTIAL_FAILURE.with(|x| *x.borrow_mut() = None);
@@ -877,7 +880,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 )
                 .map_err(e)?;
             if let (Some(p), Some(v)) = (&a.c.save, &to_save) {
-                save_value(p, v)?;
+                save_value(p, v).map_err(AppError::io)?;
             }
             // 注意は結果の warnings・notes にも入る。コマンドラインでは標準エラーにも出す（serve は serve_analyze を通る）
             for k in ["warnings", "notes"] {
@@ -944,7 +947,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 Some(v) => {
                     let x = parse_list(v, "--offset")?;
                     if x.len() != 3 {
-                        return Err("--offset は dx,dy,dz の 3 つ".into());
+                        return Err(AppError::usage("--offset は dx,dy,dz の 3 つ"));
                     }
                     [x[0], x[1], x[2]]
                 }
@@ -967,15 +970,15 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 .iter()
                 .map(|p| {
                     lensbench_export::LayoutFormat::from_path(p).ok_or_else(|| {
-                        format!(
+                        AppError::usage(format!(
                             "{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか",
                             p.display()
-                        )
+                        ))
                     })
                 })
-                .collect::<Result<Vec<_>, String>>()?;
+                .collect::<Result<Vec<_>, AppError>>()?;
             if l.unfold && fmts.iter().any(|f| !f.is_2d()) {
-                return Err("--unfold は 2D（svg・png・dxf）だけ".into());
+                return Err(AppError::usage("--unfold は 2D（svg・png・dxf）だけ"));
             }
             let mut scenes: [Option<scene::Scene>; 2] = [None, None];
             for f in &fmts {
@@ -993,7 +996,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                             if name.is_empty() {
                                 e(x)
                             } else {
-                                format!("{name}: {x}")
+                                AppError::Core(x.at(name))
                             }
                         })?;
                         parts.push((name.clone(), sc));
@@ -1048,14 +1051,14 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 if let Some(r) = range {
                     let (lo, hi) = r
                         .split_once(':')
-                        .ok_or_else(|| format!("--var {v} の範囲は 下限:上限"))?;
-                    let num = |t: &str, d: f64| -> Result<f64, String> {
+                        .ok_or_else(|| AppError::usage(format!("--var {v} の範囲は 下限:上限")))?;
+                    let num = |t: &str, d: f64| -> Result<f64, AppError> {
                         if t.trim().is_empty() {
                             Ok(d)
                         } else {
                             t.trim()
                                 .parse()
-                                .map_err(|_| format!("--var {v} の範囲 {t}"))
+                                .map_err(|_| AppError::usage(format!("--var {v} の範囲 {t}")))
                         }
                     };
                     var = var.bounds(num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
@@ -1066,28 +1069,39 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 "spot" => Some(optim::DefaultMerit::Spot),
                 "wavefront" | "wfe" => Some(optim::DefaultMerit::Wavefront),
                 "none" => None,
-                m => return Err(format!("--merit {m}（spot・wavefront・none）")),
+                m => {
+                    return Err(AppError::usage(format!(
+                        "--merit {m}（spot・wavefront・none）"
+                    )))
+                }
             };
             let reference = match reference.to_ascii_lowercase().as_str() {
                 "centroid" => sweep::RmsRef::Centroid,
                 "chief" => sweep::RmsRef::Chief,
-                r => return Err(format!("--reference {r}（centroid・chief）")),
+                r => {
+                    return Err(AppError::usage(format!(
+                        "--reference {r}（centroid・chief）"
+                    )))
+                }
             };
-            p.jac = optim::JacMode::parse(&jac)
-                .ok_or_else(|| format!("--jac {jac}（{}）", optim::JacMode::NAMES))?;
+            p.jac = optim::JacMode::parse(&jac).ok_or_else(|| {
+                AppError::usage(format!("--jac {jac}（{}）", optim::JacMode::NAMES))
+            })?;
             if let Some(kind) = kind {
                 p.add_default(kind, rings, reference);
             }
             let n_default = p.terms.len();
             let mut specs: Vec<Value> = Vec::new();
             for t in &terms {
-                specs.push(serde_json::from_str(t).map_err(|x| format!("--term {t}: {x}"))?);
+                specs.push(
+                    serde_json::from_str(t)
+                        .map_err(|x| AppError::usage(format!("--term {t}: {x}")))?,
+                );
             }
             if let Some(f) = &terms_file {
-                let txt = lensbench_core::vfs::read_to_string(f)
-                    .map_err(|x| format!("{}: {x}", f.display()))?;
-                let v: Value =
-                    serde_json::from_str(&txt).map_err(|x| format!("{}: {x}", f.display()))?;
+                let txt = lensbench_core::vfs::read_to_string(f).map_err(AppError::io_at(f))?;
+                let v: Value = serde_json::from_str(&txt)
+                    .map_err(|x| AppError::usage(format!("{}: {x}", f.display())))?;
                 match v {
                     Value::Array(a) => specs.extend(a),
                     v => specs.push(v),
@@ -1150,23 +1164,23 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
             set,
             trials,
             seed,
-            save_worst,
+            out,
             comp_csv,
         } => {
             let s = load(&c)?;
             let mut v = match &spec {
                 Some(f) => {
-                    let txt = lensbench_core::vfs::read_to_string(f)
-                        .map_err(|x| format!("{}: {x}", f.display()))?;
+                    let txt = lensbench_core::vfs::read_to_string(f).map_err(AppError::io_at(f))?;
                     serde_json::from_str::<Value>(&txt)
-                        .map_err(|x| format!("{}: {x}", f.display()))?
+                        .map_err(|x| AppError::usage(format!("{}: {x}", f.display())))?
                 }
                 None => json!({}),
             };
             for t in &set {
-                let o: Value = serde_json::from_str(t).map_err(|x| format!("--set {t}: {x}"))?;
+                let o: Value = serde_json::from_str(t)
+                    .map_err(|x| AppError::usage(format!("--set {t}: {x}")))?;
                 let Value::Object(o) = o else {
-                    return Err(format!("--set {t} はオブジェクト"));
+                    return Err(AppError::usage(format!("--set {t} はオブジェクト")));
                 };
                 let m = v.as_object_mut().ok_or("設定はオブジェクト")?;
                 m.extend(o);
@@ -1199,14 +1213,14 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 None => run(),
             }
             .map_err(e)?;
-            if let Some(path) = &save_worst {
+            if let Some(path) = &out {
                 let worst = r
                     .trials
                     .iter()
                     .filter_map(|t| t.eval.as_ref().map(|x| (x.merit, t)))
                     .max_by(|a, b| a.0.total_cmp(&b.0));
                 let Some((_, t)) = worst else {
-                    return Err("--save-worst: 追跡できた試行がない".into());
+                    return Err("--out: 追跡できた試行がない".into());
                 };
                 let cs = lensbench_design::montecarlo::perturbed(&ms, &t.deltas).map_err(e)?;
                 let mut p = ms.problem.clone();
@@ -1220,16 +1234,16 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 {
                     lensbench_project::sysfile::save(path, &sys[0], &[])?;
                 } else {
-                    warn_notes(zmx_write::save(path, &sys[0]).map_err(|x| {
-                        format!("--save-worst: {x}（.json の系ファイルなら書ける）")
-                    })?);
+                    warn_notes(
+                        zmx_write::save(path, &sys[0])
+                            .map_err(|x| format!("--out: {x}（.json の系ファイルなら書ける）"))?,
+                    );
                 }
             }
             let out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
             if let Some(path) = &comp_csv {
                 let csv = lensbench_design::tolerance::compensators_csv(&out)?;
-                lensbench_core::vfs::write(path, csv)
-                    .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
+                lensbench_core::vfs::write(path, csv).map_err(AppError::io_at(path))?;
             }
             (json_out, out)
         }
@@ -1248,10 +1262,14 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
         } => {
             let cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
             if cat.items.contains_key(&name) && !replace {
-                return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
+                return Err(AppError::usage(format!(
+                    "項目 {name} はもうある（置き換えは --replace）"
+                )));
             }
             if block.len() > 2 {
-                return Err("--block は 1 つか 2 つ（範囲の最初と最後）".into());
+                return Err(AppError::usage(
+                    "--block は 1 つか 2 つ（範囲の最初と最後）",
+                ));
             }
             let item = match (lens, block.is_empty()) {
                 (Some(k), true) => {
@@ -1269,7 +1287,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 }
                 (None, false) => {
                     let txt = lensbench_core::vfs::read_to_string(&from)
-                        .map_err(|x| format!("{}: {x}", from.display()))?;
+                        .map_err(AppError::io_at(&from))?;
                     let p = lensbench_project::Project::from_json(&txt)?;
                     let cat = LensCatalog::load_registered(&lens_catalog)?;
                     let look = |v: &str, p: &str| cat.zmx(v, p);
@@ -1280,7 +1298,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                     };
                     lensbench_project::blocks_item(&p, &env, &block, &description)?
                 }
-                _ => return Err("--lens か --block のどちらか 1 つ".into()),
+                _ => return Err(AppError::usage("--lens か --block のどちらか 1 つ")),
             };
             // 読み直して足す（品を作る間にほかで足した品を消さない）
             let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
@@ -1323,7 +1341,10 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
             let q = CatalogQuery {
                 kinds: kind
                     .iter()
-                    .map(|k| ItemKind::parse(k).ok_or_else(|| format!("--kind: 知らない種類 {k}")))
+                    .map(|k| {
+                        ItemKind::parse(k)
+                            .ok_or_else(|| AppError::usage(format!("--kind: 知らない種類 {k}")))
+                    })
                     .collect::<Result<_, _>>()?,
                 vendor,
                 text,
@@ -1406,8 +1427,8 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 let dir = cache.unwrap_or_else(cad::default_cache_dir);
                 let r = match cad::fetch_item(&dir, &item, it) {
                     Ok(r) => r,
-                    Err(e) if it.url.is_empty() => return Err(e),
-                    Err(e) => return Err(format!("{e}\n品ページ: {}", it.url)),
+                    Err(e) if it.url.is_empty() => return Err(e.into()),
+                    Err(e) => return Err(format!("{e}\n品ページ: {}", it.url).into()),
                 };
                 if !json {
                     println!(
@@ -1496,10 +1517,10 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                             jobs.push((key_of(&name)?, f, name));
                         }
                     } else {
-                        return Err("--catalog には --dir か --item・--file".into());
+                        return Err(AppError::usage("--catalog には --dir か --item・--file"));
                     }
                 } else {
-                    return Err("--cache か --catalog".into());
+                    return Err(AppError::usage("--cache か --catalog"));
                 }
                 let mut rows = Vec::new();
                 for (k, f, name) in &jobs {
@@ -1711,71 +1732,9 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
         ),
     };
     if let Some(p) = &save {
-        save_value(p, &out)?;
+        save_value(p, &out).map_err(AppError::io)?;
     }
     Ok((json_out, out))
-}
-
-fn coatings(
-    file: &std::path::Path,
-    glass_dir: &[PathBuf],
-    tables: &[PathBuf],
-) -> Result<Value, String> {
-    let e = |e: lensbench_core::Error| e.to_string();
-    let txt = glass::read_text(file).map_err(|x| format!("{}: {x}", file.display()))?;
-    let raw = zmx::parse_text(&txt).map_err(e)?;
-    let mut cfgs = Vec::new();
-    // 実測表が要る境界 → (コンフィグ, 波長)
-    let mut need: Vec<(String, Vec<usize>, Vec<f64>)> = Vec::new();
-    let mut found = None;
-    // 膜ファイルのフォルダから膜の名前で自動で読んだもの（膜, パス）
-    let mut auto: Vec<AutoCoat> = Vec::new();
-    for cfg in 1..=raw.configurations() {
-        let opt = zmx::LoadOptions {
-            cfg,
-            catalog_dirs: glass_dir.to_vec(),
-            ..Default::default()
-        };
-        let s = zmx::load_with(file, &opt).map_err(|x| format!("構成 {cfg}: {x}"))?;
-        found = s.coating_file.clone();
-        let CoatInterfaces {
-            list: v,
-            needs: keys,
-            auto: au,
-        } = coat_interfaces(&s, tables)?;
-        for a in au {
-            if !auto.iter().any(|b| b.0 == a.0 && b.1 == a.1) {
-                auto.push(a);
-            }
-        }
-        for k in keys {
-            let i = match need.iter().position(|n| n.0 == k) {
-                Some(i) => i,
-                None => {
-                    need.push((k, Vec::new(), Vec::new()));
-                    need.len() - 1
-                }
-            };
-            let n = &mut need[i];
-            if !n.1.contains(&cfg) {
-                n.1.push(cfg);
-            }
-            for &w in &s.wavelengths {
-                if !n.2.contains(&w) {
-                    n.2.push(w);
-                }
-            }
-        }
-        cfgs.push(json!({ "cfg": cfg, "wavelengths_um": s.wavelengths, "interfaces": v }));
-    }
-    Ok(json!({
-        "coating_file": raw.coating_file_name(),
-        "coating_file_path": found.map(|p| p.display().to_string()),
-        "catalogs": raw.catalogs(),
-        "auto_coatings": auto.iter().map(|(c, p, n)| json!({ "coat": c, "path": p, "note": n })).collect::<Vec<_>>(),
-        "configurations": cfgs,
-        "needs_table": need.iter().map(|(k, c, w)| json!({ "key": k, "cfgs": c, "wavelengths_um": w })).collect::<Vec<_>>(),
-    }))
 }
 
 struct CoatDesignArgs<'a> {
@@ -1885,7 +1844,7 @@ fn quiet_broken_pipe() {
 /// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
-    let mut c = Cli::command();
+    let mut c = Cli::command().after_long_help(error::exit_code_help());
     for a in analysis_commands() {
         c = c.subcommand(a);
     }
@@ -1935,7 +1894,13 @@ where
 
 pub fn main() -> ExitCode {
     quiet_broken_pipe();
-    let cli = parse_cli(std::env::args_os()).unwrap_or_else(|e| e.exit());
+    // 隠し: clap の定義を JSON で（マニュアルの CLI のページの元、CLI-29）
+    let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if help_json::wants(&argv[1.min(argv.len())..]) {
+        print_out(true, &help_json::help_json(cli_command()));
+        return ExitCode::SUCCESS;
+    }
+    let cli = parse_cli(argv).unwrap_or_else(|e| e.exit());
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
     cad_detail::install_detail_loader();
@@ -1946,8 +1911,9 @@ pub fn main() -> ExitCode {
         return match run::run(a, cli.threads) {
             // 0〜255 の外（Windows の異常終了の NTSTATUS は負など）は 1 にする（0 に丸めると成功に見える）
             Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+            // 設定の誤りは 2（ファイルが無いなども設定の誤りとして 2、Python の終了コードと分ける）
             Err(m) => {
-                eprintln!("lensbench run: {m}");
+                error::report("lensbench run", &AppError::usage(m));
                 ExitCode::from(2)
             }
         };
@@ -1955,9 +1921,9 @@ pub fn main() -> ExitCode {
     lensbench_core::init_from_env();
     match lensbench_core::with_threads(cli.threads, || run(cli)) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(m) => {
-            eprintln!("lensbench: {m}");
-            ExitCode::FAILURE
+        Err(e) => {
+            error::report("lensbench", &e);
+            ExitCode::from(e.exit_code())
         }
     }
 }
