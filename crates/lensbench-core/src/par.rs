@@ -1,4 +1,7 @@
-//! 並列の制御: 呼び出しごとのスレッド数。
+//! 並列の制御: 呼び出しごとのスレッド数と、計算の文脈（[`Ctx`]: 中断の印 [`CancelToken`]・まとめ追跡の切り替え）。
+//!
+//! 文脈は呼び出したスレッドに置き（[`with_cancel`]・[`with_batch`]）、このモジュールの並列は作業のスレッドへ引き継ぐ。
+//! プロセスの大域には置かないので、同じプロセスで同時に回る別の計算（GUI の下書き・serve の別の接続）に響かない。
 //!
 //! 追跡は光線ごとに独立に計算し、結果は入力の順に並べる。総和・統計は並列にせず決まった順で足すので、
 //! スレッド数によらず結果は同じビットになる（tests/determinism.rs）。
@@ -75,7 +78,11 @@ pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Sen
         // wasm はスレッドを足せない（使えるのは Web Worker で作った大域プールだけ）
         Some(_) if cfg!(target_arch = "wasm32") => with_flag(false, f),
         Some(n) => match pool(n) {
-            Ok(p) => p.install(f),
+            Ok(p) => {
+                // プールのスレッドで回すので、中断の印を引き継ぐ
+                let c = current();
+                p.install(move || with_ctx(&c, f))
+            }
             // スレッドを作れないときは逐次にする（結果は同じ）
             Err(_) => with_flag(true, f),
         },
@@ -125,7 +132,10 @@ pub fn for_each_chunk_mut<T: Send>(
     if sequential() {
         a.chunks_mut(n).enumerate().for_each(|(i, c)| f(i, c));
     } else {
-        a.par_chunks_mut(n).enumerate().for_each(|(i, c)| f(i, c));
+        let cx = current();
+        a.par_chunks_mut(n)
+            .enumerate()
+            .for_each(|(i, c)| with_ctx(&cx, || f(i, c)));
     }
 }
 
@@ -136,27 +146,101 @@ pub fn map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync + Send) -> 
     if sequential() || items.len() < 2 {
         items.iter().map(f).collect()
     } else {
-        items.par_iter().with_max_len(1).map(f).collect()
+        items.par_iter().with_max_len(1).map(scoped(f)).collect()
     }
 }
 
-/// 計算の中断の印（プロセスで 1 つ）。GUI が系を変えるときに立て、次の要求の前に下ろす
-static CANCEL: AtomicBool = AtomicBool::new(false);
+/// 計算の中断の印。計算（要求）ごとに作って [`with_cancel`] で渡し、別のスレッドから [`CancelToken::cancel`] で倒す。
+/// 印は計算ごとなので、同じプロセスで同時に回っている別の計算は止めない
+#[derive(Clone, Debug, Default)]
+pub struct CancelToken(Arc<AtomicBool>);
 
-/// 回っている解析に、区切りのよい所でやめるよう頼む（[`check_cancel`] が `Error::Cancelled` を返す）。
-/// 印はプロセスで 1 つなので、同じプロセスで同時に回っている別の解析もやめる
-pub fn request_cancel() {
-    CANCEL.store(true, Ordering::Relaxed);
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// この印で回っている計算に、区切りのよい所でやめるよう頼む（[`check_cancel`] が `Error::Cancelled` を返す）
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// 中断を頼まれたか
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
 }
 
-/// 中断の印を下ろす（次の計算を始める前に）
-pub fn clear_cancel() {
-    CANCEL.store(false, Ordering::Relaxed);
+/// 計算の文脈（呼び出したスレッドに置き、このモジュールの並列が作業のスレッドへ引き継ぐ）
+#[derive(Clone, Debug, Default)]
+pub struct Ctx {
+    /// 中断の印（[`with_cancel`]）。None は中断できない
+    pub cancel: Option<CancelToken>,
+    /// まとめ追跡（`batch`）を使わない（[`with_batch`]。結果は同じビットなので切り分け・比較のためだけ）
+    pub no_batch: bool,
 }
 
-/// 中断を頼まれているか
+thread_local! {
+    /// 呼び出し中のスレッドの計算の文脈
+    static CTX: std::cell::RefCell<Ctx> = std::cell::RefCell::new(Ctx::default());
+}
+
+/// f を文脈 c の下で回す（panic でも戻す）
+pub fn with_ctx<R>(c: &Ctx, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Ctx>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            if let Some(c) = self.0.take() {
+                CTX.with(|x| *x.borrow_mut() = c);
+            }
+        }
+    }
+    let _g = Restore(Some(CTX.with(|x| x.replace(c.clone()))));
+    f()
+}
+
+/// 呼び出し中のスレッドの文脈（rayon を直に使う所で、作業のスレッドへ [`with_ctx`] で引き継ぐ）
+pub fn current() -> Ctx {
+    CTX.with(|x| x.borrow().clone())
+}
+
+/// f を中断の印 t の下で回す（文脈のほかの項目は引き継ぐ）。この中の [`check_cancel`]・[`cancelled`] は t を見る
+pub fn with_cancel<R>(t: Option<&CancelToken>, f: impl FnOnce() -> R) -> R {
+    let c = Ctx {
+        cancel: t.cloned(),
+        ..current()
+    };
+    with_ctx(&c, f)
+}
+
+/// f をまとめ追跡あり（on）・なしで回す（文脈のほかの項目は引き継ぐ）
+pub fn with_batch<R>(on: bool, f: impl FnOnce() -> R) -> R {
+    let c = Ctx {
+        no_batch: !on,
+        ..current()
+    };
+    with_ctx(&c, f)
+}
+
+/// まとめ追跡を使ってよいか（[`with_batch`]）
+pub fn batch_enabled() -> bool {
+    CTX.with(|x| !x.borrow().no_batch)
+}
+
+/// f を、今の文脈を引き継ぐ関数にする（`par_iter().map(scoped(f))` のように rayon に渡す）
+pub fn scoped<A, R>(f: impl Fn(A) -> R + Sync + Send) -> impl Fn(A) -> R + Sync + Send {
+    let c = current();
+    move |a| with_ctx(&c, || f(a))
+}
+
+/// 中断を頼まれているか（印の無い計算は頼まれない）
 pub fn cancelled() -> bool {
-    CANCEL.load(Ordering::Relaxed)
+    CTX.with(|x| {
+        x.borrow()
+            .cancel
+            .as_ref()
+            .is_some_and(CancelToken::is_cancelled)
+    })
 }
 
 /// 中断を頼まれていれば `Error::Cancelled`。重い解析のループ（MTF の周波数・Huygens の像の点など）で呼ぶ
@@ -165,5 +249,41 @@ pub fn check_cancel() -> crate::Result<()> {
         Err(crate::error::Error::Cancelled)
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+
+    /// 印は計算ごと: 倒した印の計算だけが止まり、並列の作業のスレッドにも引き継がれる
+    #[test]
+    fn token_is_per_computation_and_reaches_workers() {
+        let a = CancelToken::new();
+        let b = CancelToken::new();
+        a.cancel();
+        with_cancel(Some(&a), || {
+            assert!(check_cancel().is_err());
+            let v = with_threads(Some(3), || map(&[1, 2, 3, 4], |_| cancelled()));
+            assert!(v.iter().all(|&x| x));
+        });
+        with_cancel(Some(&b), || {
+            assert!(check_cancel().is_ok());
+            let v = with_threads(Some(3), || map(&[1, 2, 3, 4], |_| cancelled()));
+            assert!(v.iter().all(|&x| !x));
+        });
+        // 印の外は頼まれない
+        assert!(!cancelled());
+    }
+
+    /// まとめ追跡の切り替えも文脈で、作業のスレッドに引き継ぎ、外では既定（使う）に戻る
+    #[test]
+    fn batch_switch_is_scoped() {
+        assert!(batch_enabled());
+        let v = with_batch(false, || {
+            with_threads(Some(3), || map(&[1, 2, 3, 4], |_| batch_enabled()))
+        });
+        assert!(v.iter().all(|&x| !x));
+        assert!(batch_enabled());
     }
 }

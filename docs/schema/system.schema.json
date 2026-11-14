@@ -2956,6 +2956,10 @@
           },
           "type": "array"
         },
+        "floating_clip": {
+          "description": "浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定はける。OpticStudio は半直径を固定した面を\n浮動開口にしてける）。光線エイミングの追跡は開口を見ない",
+          "type": "boolean"
+        },
         "glasses": {
           "additionalProperties": {
             "$ref": "#/$defs/Glass"

@@ -12,10 +12,11 @@ use crate::batch;
 use crate::coating::{self, Coatings, C64};
 use crate::error::{Error, Result};
 use crate::glass::Glass;
+use crate::interp2d::interp_weights;
 use crate::math::*;
 use crate::surface::{After, Bire, SurfType, Surface, Tilt};
 use crate::trace::{self, CryKind, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
-use crate::{invalid, notimpl};
+use crate::{invalid, notimpl, par::scoped};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem::MaybeUninit;
@@ -234,146 +235,6 @@ pub struct Paraxial {
 pub enum ObjSpec {
     Dir(V3),
     Point([f64; 2]),
-}
-
-/// 三角形の頂点の番号
-type Tri = (usize, usize, usize);
-
-/// Delaunay の三角形分割（外接円の中に他の点がない、総当たり。視野は多くても数十）。同じ円に 4 点以上が
-/// 乗ると（格子の視野など）候補の三角形が重なるので、番号の順に重ならないものだけを取る（凸多角形を
-/// 重ならない三角形で埋め尽くす）
-/// `scale` は座標の大きさ。判定の許容差は大きさに対する相対（計算上は同じ円に乗る点を、丸め誤差の符号で
-/// 外接円の中と見て捨てると分割に穴があく）
-fn delaunay(pts: &[[f64; 2]], scale: f64) -> Vec<Tri> {
-    let tol_area = 1e-12 * scale * scale;
-    let tol_circle = 1e-9 * scale.powi(4);
-    let n = pts.len();
-    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
-        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-    };
-    let mut tris: Vec<Tri> = Vec::new();
-    for i in 0..n {
-        for j in i + 1..n {
-            for k in j + 1..n {
-                let (a, b, c) = (pts[i], pts[j], pts[k]);
-                let area = cross(a, b, c);
-                if area.abs() <= tol_area {
-                    continue;
-                }
-                let in_circle = |d: [f64; 2]| {
-                    let m = |p: [f64; 2]| {
-                        [
-                            p[0] - d[0],
-                            p[1] - d[1],
-                            (p[0] - d[0]).powi(2) + (p[1] - d[1]).powi(2),
-                        ]
-                    };
-                    let (u, v, w) = (m(a), m(b), m(c));
-                    let det = u[0] * (v[1] * w[2] - v[2] * w[1])
-                        - u[1] * (v[0] * w[2] - v[2] * w[0])
-                        + u[2] * (v[0] * w[1] - v[1] * w[0]);
-                    det * area.signum() > tol_circle
-                };
-                if !(0..n).all(|l| l == i || l == j || l == k || !in_circle(pts[l])) {
-                    continue;
-                }
-                let t = [a, b, c];
-                if tris
-                    .iter()
-                    .all(|&(p, q, r)| !tri_overlap(&t, &[pts[p], pts[q], pts[r]], tol_area))
-                {
-                    tris.push((i, j, k));
-                }
-            }
-        }
-    }
-    tris
-}
-
-/// 2 つの三角形の内部が重なるか（分離軸: どちらかの辺で、もう一方の 3 点がすべて外側か辺の上なら重ならない）
-fn tri_overlap(t: &[[f64; 2]; 3], u: &[[f64; 2]; 3], tol: f64) -> bool {
-    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
-        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-    };
-    let separated = |t: &[[f64; 2]; 3], u: &[[f64; 2]; 3]| {
-        let sgn = cross(t[0], t[1], t[2]).signum();
-        (0..3).any(|e| {
-            let (a, b) = (t[e], t[(e + 1) % 3]);
-            u.iter().all(|&p| sgn * cross(a, b, p) <= tol)
-        })
-    };
-    !(separated(t, u) || separated(u, t))
-}
-
-/// 平面の点 pts の上の連続な線形補間の重み（点の番号, 重み）。Delaunay 三角形分割の三角形の中は重心座標、
-/// 外側は凸包の縁の最も近い点（線分の両端の線形）、点が 1 つ・一直線なら最も近い線分・点
-fn interp_weights(pts: &[[f64; 2]], q: [f64; 2]) -> Vec<(usize, f64)> {
-    let n = pts.len();
-    let eps = 1e-12
-        * pts
-            .iter()
-            .map(|p| p[0].abs().max(p[1].abs()))
-            .fold(0.0, f64::max);
-    let cross = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
-        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-    };
-    // 分割は視野が同じなら同じなので、スレッドごとに直前の結果を使い回す（走査で毎回作らない）
-    thread_local! {
-        static TRIS: std::cell::RefCell<(Vec<[f64; 2]>, Vec<Tri>)> =
-            const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
-    }
-    let tris = TRIS.with(|c| {
-        let mut c = c.borrow_mut();
-        if c.0.as_slice() != pts {
-            *c = (pts.to_vec(), delaunay(pts, eps / 1e-12));
-        }
-        c.1.clone()
-    });
-    for &(i, j, k) in &tris {
-        let (a, b, c) = (pts[i], pts[j], pts[k]);
-        let area = cross(a, b, c);
-        let (wa, wb, wc) = (
-            cross(q, b, c) / area,
-            cross(a, q, c) / area,
-            cross(a, b, q) / area,
-        );
-        let tol = -1e-12;
-        if wa >= tol && wb >= tol && wc >= tol {
-            return vec![(i, wa), (j, wb), (k, wc)];
-        }
-    }
-    // 外側（または三角形がない）: 三角形の辺（なければ全部の点の組）の中で最も近い線分の点
-    let mut edges: Vec<(usize, usize)> = Vec::new();
-    for &(i, j, k) in &tris {
-        edges.extend([(i, j), (j, k), (i, k)]);
-    }
-    if edges.is_empty() {
-        for i in 0..n {
-            for j in i + 1..n {
-                edges.push((i, j));
-            }
-        }
-    }
-    let mut best: (f64, Vec<(usize, f64)>) = (f64::INFINITY, vec![(0, 1.0)]);
-    if n == 1 {
-        return best.1;
-    }
-    for (i, j) in edges {
-        let (a, b) = (pts[i], pts[j]);
-        let d = [b[0] - a[0], b[1] - a[1]];
-        let l2 = d[0] * d[0] + d[1] * d[1];
-        let t = if l2 > 0.0 {
-            (((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / l2).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let p = [a[0] + t * d[0], a[1] + t * d[1]];
-        let dist = (q[0] - p[0]).hypot(q[1] - p[1]);
-        if dist < best.0 - eps {
-            best = (dist, vec![(i, 1.0 - t), (j, t)]);
-        }
-    }
-    best.1
 }
 
 /// 平面の点の部分集合の最近傍を引く格子（エイミングの継続法の、解けた光線の探索）
@@ -734,6 +595,16 @@ pub struct System {
     /// 定義した視野以外の点のケラレ係数の求め方（既定は連続、OpticStudio と照合するときは OpticStudio）
     #[cfg_attr(feature = "serde", serde(default))]
     pub vig_interp: VigInterp,
+    /// 浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定はける。OpticStudio は半直径を固定した面を
+    /// 浮動開口にしてける）。光線エイミングの追跡は開口を見ない
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            default = "crate::edit::yes",
+            skip_serializing_if = "crate::edit::is_yes"
+        )
+    )]
+    pub floating_clip: bool,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
     /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）。変えたら [`System::changed`] を呼ぶ
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -935,6 +806,7 @@ impl System {
             afocal: self.afocal,
             afocal_unit: self.afocal_unit,
             vig_interp: self.vig_interp,
+            floating_clip: self.floating_clip,
             field_wave: self.field_wave,
             coating_file: self.coating_file.clone(),
             coat_tables: self.coat_tables.clone(),
@@ -1022,6 +894,7 @@ impl System {
             afocal: false,
             afocal_unit: AfocalUnit::Milliradians,
             vig_interp: VigInterp::Continuous,
+            floating_clip: true,
             field_wave: None,
             coating_file: None,
             coat_tables: HashMap::new(),
@@ -2047,7 +1920,7 @@ impl System {
                     (0..n)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK)
-                        .map(start)
+                        .map(scoped(start))
                         .collect()
                 } else {
                     (0..n).map(start).collect()
@@ -2254,7 +2127,7 @@ impl System {
             0.0,
             1,
             last,
-            trace::floating_clip(),
+            self.floating_clip,
             Some(&mut rec),
         );
         if r.err == 0 {
@@ -2286,7 +2159,7 @@ impl System {
         let last = last.unwrap_or(self.image());
         let fres_fr = self.fresnel_frames(l, w, last);
         let fr = fres_fr.as_ref().unwrap_or(self.frames());
-        let clip = trace::floating_clip();
+        let clip = self.floating_clip;
         let st = self.stop();
         let kw = 2.0 * std::f64::consts::PI / (self.wavelengths[w] * 1e-3);
         // 記録する面（無視しない面）の配列を先に用意し、光線ごとにその位置へ直接書く
@@ -2325,7 +2198,7 @@ impl System {
                 p: vec![[f64::NAN; 3]; n],
             };
             rec_out = if n * heads.len() >= 1 << 16 && !crate::par::sequential() {
-                heads.par_iter().map(mk).collect()
+                heads.par_iter().map(scoped(mk)).collect()
             } else {
                 heads.iter().map(mk).collect()
             };
@@ -2436,7 +2309,7 @@ impl System {
                     .zip(ku.par_chunks_mut(L))
                     .enumerate()
                     .with_min_len(PAR_CHUNK / L)
-                    .for_each(group);
+                    .for_each(scoped(group));
             } else {
                 ru.chunks_mut(L)
                     .zip(pu.chunks_mut(L))
@@ -2500,7 +2373,7 @@ impl System {
                     (0..ng)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK / L)
-                        .map(group)
+                        .map(scoped(group))
                         .collect()
                 } else {
                     (0..ng).map(group).collect()
@@ -2521,7 +2394,7 @@ impl System {
                     (0..n)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK)
-                        .map(one)
+                        .map(scoped(one))
                         .collect()
                 } else {
                     (0..n).map(one).collect()
@@ -2560,7 +2433,7 @@ impl System {
                     (0..n)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK)
-                        .map(f)
+                        .map(scoped(f))
                         .collect()
                 } else {
                     (0..n).map(f).collect()
@@ -2878,7 +2751,7 @@ impl System {
                 (0..n)
                     .into_par_iter()
                     .with_min_len(PAR_CHUNK)
-                    .map(one)
+                    .map(scoped(one))
                     .collect()
             } else {
                 (0..n).map(one).collect()
@@ -2965,7 +2838,7 @@ impl System {
             (0..nb)
                 .into_par_iter()
                 .with_min_len(PAR_CHUNK / L)
-                .map(grp)
+                .map(scoped(grp))
                 .collect()
         } else {
             (0..nb).map(grp).collect()
@@ -3082,7 +2955,7 @@ impl System {
                     (0..n)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK)
-                        .map(f)
+                        .map(scoped(f))
                         .collect()
                 } else {
                     (0..n).map(f).collect()
@@ -3099,7 +2972,7 @@ impl System {
                     (0..nb)
                         .into_par_iter()
                         .with_min_len(PAR_CHUNK / L)
-                        .map(grp)
+                        .map(scoped(grp))
                         .collect()
                 } else {
                     (0..nb).map(grp).collect()
@@ -3197,7 +3070,7 @@ impl System {
                 };
                 // 光線ごとに独立なので結果はスレッド数によらず同じビット
                 let re: Vec<Option<[f64; 2]>> = if front.len() > 1 && !crate::par::sequential() {
-                    front.par_iter().with_min_len(1).map(redo).collect()
+                    front.par_iter().with_min_len(1).map(scoped(redo)).collect()
                 } else {
                     front.iter().map(redo).collect()
                 };

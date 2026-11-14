@@ -438,6 +438,7 @@ pub const SYSTEM_KEYS: &[&str] = &[
     "aiming",
     "afocal",
     "afocal_unit",
+    "floating_clip",
     "temperature",
     "pressure",
     "adjust_index",
@@ -454,7 +455,12 @@ pub fn system_data(s: &System) -> Result<Value, String> {
     Ok(Value::Object(
         SYSTEM_KEYS
             .iter()
-            .filter_map(|k| o.get(*k).map(|x| (k.to_string(), x.clone())))
+            .filter_map(|k| match (o.get(*k), *k) {
+                (Some(x), _) => Some((k.to_string(), x.clone())),
+                // 既定（ける）は系ファイルに書かない
+                (None, "floating_clip") => Some((k.to_string(), Value::Bool(true))),
+                _ => None,
+            })
             .collect(),
     ))
 }

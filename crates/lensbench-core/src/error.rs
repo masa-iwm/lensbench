@@ -8,7 +8,7 @@ pub enum Error {
     Invalid(String),
     /// ファイルの読込
     Io(String),
-    /// 計算を途中でやめた（[`crate::par::request_cancel`]、GUI で系が変わったとき）
+    /// 計算を途中でやめた（[`crate::par::CancelToken::cancel`]、GUI で系が変わったとき）
     Cancelled,
 }
 

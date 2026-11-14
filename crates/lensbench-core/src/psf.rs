@@ -14,6 +14,7 @@ use crate::analysis::{lens_quad, opd, pupil_jacobian, pupil_shift, LensGl};
 use crate::coating::C64;
 use crate::error::Result;
 use crate::invalid;
+use crate::par::scoped;
 use crate::system::{FieldSel, System};
 
 /// 回折 PSF
@@ -404,7 +405,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         };
         let iw: Vec<Vec<f64>> = if ni * ni * np >= 1 << 20 && !crate::par::sequential() {
             use rayon::prelude::*;
-            (0..ni).into_par_iter().map(one).collect()
+            (0..ni).into_par_iter().map(scoped(one)).collect()
         } else {
             (0..ni).map(one).collect()
         };

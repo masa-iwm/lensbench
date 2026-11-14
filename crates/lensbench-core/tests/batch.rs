@@ -4,19 +4,15 @@
 //! 面ごとの記録、実光線エイミングを含む）。光線は瞳の外（けられ・追跡の失敗）まで含み、本数は L の倍数にしない。
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 
-use lensbench_core::batch;
 use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::freeform::{GridSag, ZernSag};
+use lensbench_core::par::with_batch;
 use lensbench_core::surface::{Aperture, SurfType};
 use lensbench_core::system::Trace;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, System};
 use std::sync::Arc;
-
-// まとめ追跡の切り替えはプロセス全体なので、テストを 1 つずつ動かす
-static LOCK: Mutex<()> = Mutex::new(());
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -102,9 +98,7 @@ fn check(name: &str, s: &System, px: &[f64], py: &[f64]) -> usize {
         for w in 0..s.wavelengths.len() {
             for record in [false, true] {
                 let f = FieldSel::Index(fi);
-                batch::set_enabled(false);
-                let a = s.try_trace(f, px, py, Some(w), None, record);
-                batch::set_enabled(true);
+                let a = with_batch(false, || s.try_trace(f, px, py, Some(w), None, record));
                 let b = s.try_trace(f, px, py, Some(w), None, record);
                 let (Ok(a), Ok(b)) = (a, b) else {
                     continue;
@@ -125,7 +119,6 @@ fn check(name: &str, s: &System, px: &[f64], py: &[f64]) -> usize {
 
 #[test]
 fn refs_match_scalar() {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // 25² = 625 本（L の倍数でない）、瞳の 3 倍まで（面を外れる・全反射する光線を含む）。
     // 実光線エイミングの系は 1 系 3〜4 秒かかる（37² では試験全体で 70 秒）。
     // wasm（CI の Node の WASI、1 スレッド）は 13² = 169 本に減らす
@@ -145,7 +138,6 @@ fn refs_match_scalar() {
 /// 開口の形（円環・遮蔽・矩形・楕円）とトロイダル面。開口の境界の近くを細かく通す
 #[test]
 fn apertures_and_toroidal_match_scalar() {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (px, py) = grid(73, 1.2);
     let mut s = load("A0");
     let semi = s.surfaces[2].semi.max(1.0);
@@ -235,7 +227,6 @@ fn apertures_and_toroidal_match_scalar() {
 /// 少ない本数（1 本ずつの方へ回る）と、まとめ追跡の端の組
 #[test]
 fn small_counts_match_scalar() {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let s = load("C1");
     for n in [1, 3, 4, 5, 15, 16, 17, 33] {
         let px: Vec<f64> = (0..n).map(|i| -0.9 + 1.8 * i as f64 / n as f64).collect();
@@ -248,7 +239,6 @@ fn small_counts_match_scalar() {
 #[test]
 fn launches_match_scalar() {
     use lensbench_core::system::{Launch, ObjSpec};
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (px, py) = grid(23, 1.3);
     let mut names: Vec<String> = std::fs::read_dir(root().join("tests/refs"))
         .unwrap()
@@ -256,9 +246,7 @@ fn launches_match_scalar() {
         .collect();
     names.sort();
     let both = |s: &System, l: &Launch, record: bool, what: &str| {
-        batch::set_enabled(false);
-        let a = s.trace_launch(l, s.primary, None, record);
-        batch::set_enabled(true);
+        let a = with_batch(false, || s.trace_launch(l, s.primary, None, record));
         let b = s.trace_launch(l, s.primary, None, record);
         same(&a, &b, what);
     };
@@ -313,9 +301,7 @@ fn check_pol(name: &str, s: &System, c: &Coatings, px: &[f64], py: &[f64]) -> us
     for fi in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
             let f = FieldSel::Index(fi);
-            batch::set_enabled(false);
-            let a = s.try_trace_pol(f, px, py, Some(w), &[x, y], c);
-            batch::set_enabled(true);
+            let a = with_batch(false, || s.try_trace_pol(f, px, py, Some(w), &[x, y], c));
             let b = s.try_trace_pol(f, px, py, Some(w), &[x, y], c);
             let what = format!("{name} 偏光 視野 {fi} 波長 {w}");
             let (a, b) = match (a, b) {
@@ -344,7 +330,6 @@ fn check_pol(name: &str, s: &System, c: &Coatings, px: &[f64], py: &[f64]) -> us
 
 #[test]
 fn pol_matches_scalar() {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (px, py) = grid(23, 2.0);
     let mut names: Vec<String> = std::fs::read_dir(root().join("tests/refs"))
         .unwrap()

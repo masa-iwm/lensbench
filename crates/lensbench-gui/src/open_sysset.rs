@@ -153,6 +153,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
             d.insert("telecentric".into(), json!(tele));
             changed.push("telecentric");
         }
+        let mut clip = d["floating_clip"].as_bool().unwrap_or(true);
+        if ui
+            .checkbox(&mut clip, tr("半直径を固定した面の外の光線をける"))
+            .on_hover_text(tr(crate::sysset::FLOATING_CLIP_HINT))
+            .changed()
+        {
+            d.insert("floating_clip".into(), json!(clip));
+            changed.push("floating_clip");
+        }
     });
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("光線エイミング")).color(weak));

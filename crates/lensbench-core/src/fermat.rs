@@ -18,6 +18,7 @@
 
 use crate::error::Result;
 use crate::math::*;
+use crate::par::scoped;
 use crate::param::{Kind, Param, ThickSolve};
 use crate::surface::{After, SurfType, Tilt};
 use crate::system::{FieldSel, Trace};
@@ -746,7 +747,11 @@ impl System {
             g
         };
         let rows: Vec<Vec<f64>> = if n >= 256 && !crate::par::sequential() {
-            (0..n).into_par_iter().with_min_len(64).map(one).collect()
+            (0..n)
+                .into_par_iter()
+                .with_min_len(64)
+                .map(scoped(one))
+                .collect()
         } else {
             (0..n).map(one).collect()
         };

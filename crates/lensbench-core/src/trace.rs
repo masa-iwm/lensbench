@@ -8,31 +8,6 @@ use crate::math::*;
 use crate::surface::{Aperture, SurfType, Surface};
 use crate::system::{Frame, Frames, Rel, System};
 use crate::Error;
-use std::sync::atomic::{AtomicU8, Ordering};
-
-/// 浮動開口（[`Aperture::Floating`]）で光線をけるか。0 は未設定（環境変数 LENSBENCH_FLOATING_CLIP を見る）、1 ける、2 けない
-static FLOATING_CLIP: AtomicU8 = AtomicU8::new(0);
-
-/// 浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定はける。OpticStudio は半直径を固定した面を
-/// 浮動開口にしてける）。環境変数 LENSBENCH_FLOATING_CLIP=0 でも切れる。光線エイミングの追跡は開口を見ない
-pub fn set_floating_clip(on: bool) {
-    FLOATING_CLIP.store(if on { 1 } else { 2 }, Ordering::Relaxed);
-}
-
-/// 浮動開口で光線をけるか（[`set_floating_clip`]）
-pub fn floating_clip() -> bool {
-    match FLOATING_CLIP.load(Ordering::Relaxed) {
-        1 => true,
-        2 => false,
-        _ => {
-            let on = std::env::var("LENSBENCH_FLOATING_CLIP")
-                .map(|v| !matches!(v.trim(), "0" | "false" | "off" | "no"))
-                .unwrap_or(true);
-            set_floating_clip(on);
-            on
-        }
-    }
-}
 
 /// 複素の 3 次元ベクトル（電場）
 pub type CV3 = [C64; 3];

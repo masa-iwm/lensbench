@@ -25,6 +25,7 @@ pub mod ghost;
 pub mod glass;
 pub mod grin;
 pub mod huygens;
+mod interp2d;
 pub mod landing;
 pub mod mech;
 pub mod optim;

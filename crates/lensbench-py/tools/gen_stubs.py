@@ -312,6 +312,9 @@ def render(lb) -> str:
                     out += db if db else []
                     if not db:
                         out[-1] += " ..."
+                    # #[setter] の fn set_<名前>（Python のメソッドには出ない）があれば書ける属性
+                    if f"{rs}.set_{m}" in fns and not hasattr(o, f"set_{m}"):
+                        out += ["", f"    @{m}.setter", f"    def {m}(self, value: {ty}) -> None: ..."]
                 elif isinstance(raw, staticmethod) or type(raw).__name__ == "staticmethod":
                     out += [""] + render_fn(m, getattr(o, m), key, fns, classes, "    ", "static")
                 elif m == "__new__":

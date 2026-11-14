@@ -15,6 +15,7 @@
 use crate::error::Result;
 use crate::fermat::{dsag, raw_frames_d, PrepParam};
 use crate::math::*;
+use crate::par::scoped;
 use crate::param::{Kind, Param};
 use crate::surface::SurfType;
 use crate::system::Trace;
@@ -690,7 +691,11 @@ impl System {
             out
         };
         let rows: Vec<Vec<f64>> = if n >= 64 && !crate::par::sequential() {
-            (0..n).into_par_iter().with_min_len(16).map(one).collect()
+            (0..n)
+                .into_par_iter()
+                .with_min_len(16)
+                .map(scoped(one))
+                .collect()
         } else {
             (0..n).map(one).collect()
         };

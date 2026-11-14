@@ -29,6 +29,7 @@
 use crate::error::Result;
 use crate::invalid;
 use crate::optim::{dls, DlsOpts, Problem};
+use crate::par::scoped;
 use crate::param::{Kind, Param};
 use crate::system::System;
 use crate::units::UnitKind;
@@ -673,7 +674,7 @@ pub fn run_with(
     let sens_out: Vec<_> = if seq {
         sens_in.iter().map(sens_one).collect()
     } else {
-        sens_in.par_iter().map(sens_one).collect()
+        sens_in.par_iter().map(scoped(sens_one)).collect()
     };
     let sensitivity: Vec<Sens> = (0..spec.tols.len())
         .filter(|_| spec.sensitivity)
@@ -688,7 +689,7 @@ pub fn run_with(
     let out: Vec<_> = if seq {
         ids.iter().map(trial_one).collect()
     } else {
-        ids.par_iter().map(trial_one).collect()
+        ids.par_iter().map(scoped(trial_one)).collect()
     };
     let cancelled = stop.load(Ordering::Relaxed);
     let trials = out

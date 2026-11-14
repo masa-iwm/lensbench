@@ -71,7 +71,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `edit` | `ops`: 操作の並び（下） | 系を編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すれば系は変えない |
 | `surface` | `surface`（番号か名前、省くと全部） | 面の値（`fields`、全部なら `surfaces` の並びと、玉・群の面の範囲 `units`（name・spans・auto、偏心・傾き `motion`（dx dy tx ty tz）・移動 `shift`・媒質の `dn`・`disp`（面ごとに違えば null））） |
 | `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。系ファイルの面と同じ形、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |
-| `system_data` | | 系全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・temperature・pressure・adjust_index・glrs・ropd・coating_file。系ファイルと同じ形 |
+| `system_data` | | 系全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。系ファイルと同じ形 |
 | `config_table` | | 多重構成の表: 構成の数 `n`・今の構成 `active`・行 `rows`（`param`・構成ごとの `values`・構成のピックアップ `picks`（`k`・`from`・`scale`・`offset`））。.zmx なら、ファイルの多重構成の数 `zmx_cfgs` と読んだ構成 `zmx_cfg` |
 | `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。系は変えない |
 | `analyze` | `cmd` と CLI と同じ引数 | CLI の `--json` と同じ結果。干渉（`fringe`）は下の「干渉の解析」。`coatings` は読み込んだ系（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings` |

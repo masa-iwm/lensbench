@@ -546,28 +546,6 @@ fn surf_of(s: &System, a: SurfArg) -> PyResult<usize> {
     }
 }
 
-/// 視野の条件: ("position", 面) / ("dirsum", 面1, 面2) / ("dirdiff", 面1, 面2)
-fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
-    let kind: String = c.get_item(0)?.extract()?;
-    let at = |i: usize| -> PyResult<usize> { surf_of(s, c.get_item(i)?.extract()?) };
-    Ok(match (kind.to_ascii_lowercase().as_str(), c.len()) {
-        ("position", 2) => FieldCond::Position { surf: at(1)? },
-        ("dirsum", 3) => FieldCond::DirSum {
-            s1: at(1)?,
-            s2: at(2)?,
-        },
-        ("dirdiff", 3) => FieldCond::DirDiff {
-            s1: at(1)?,
-            s2: at(2)?,
-        },
-        _ => {
-            return Err(PyValueError::new_err(
-                "cond は (\"position\", 面)、(\"dirsum\", 面1, 面2)、(\"dirdiff\", 面1, 面2)",
-            ))
-        }
-    })
-}
-
 impl PySystem {
     /// 今の系（複製した Arc）
     pub fn sys(&self) -> Arc<System> {
@@ -1390,6 +1368,21 @@ impl PySystem {
         }
     }
 
+    /// 浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定 True。OpticStudio と同じ）。
+    /// 半直径でけらない従来のモデルと比べるときに False にする
+    #[getter]
+    fn floating_clip(&self) -> bool {
+        self.sys().floating_clip
+    }
+
+    #[setter]
+    fn set_floating_clip(&self, on: bool) -> PyResult<()> {
+        self.mutate(|s| {
+            s.floating_clip = on;
+            s.changed()
+        })
+    }
+
     /// 基点（OpticStudio の Cardinal Points 相当）。wave は波長の番号（1 始まり、省略で主波長）。
     ///
     /// 面 1 から像面の手前の面までの近軸の系（Y-Z 面）。物体空間の位置は面 1 の頂点から、像空間の位置は像面の
@@ -2057,7 +2050,7 @@ impl PySystem {
             ("object_height", None) => FieldType::ObjH,
             ("paraxial_image_height", None) => FieldType::ParH,
             ("real_image_height", None) => FieldType::RealH,
-            ("solve", Some(c)) => FieldType::Solve(field_cond(&g, c)?),
+            ("solve", Some(c)) => FieldType::Solve(edit::field_cond(&g, c)?),
             ("solve", None) => return Err(PyValueError::new_err("solve には cond が要る")),
             (_, Some(_)) => return Err(PyValueError::new_err("cond は kind が solve のときだけ")),
             (k, None) => {

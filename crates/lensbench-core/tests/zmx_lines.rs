@@ -467,6 +467,27 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
             "MEMA {mema}"
         );
     }
+    // 系の設定 floating_clip: 既定はける、false でけらない（以前の環境変数 LENSBENCH_FLOATING_CLIP の代わり）
+    let mut s = build(&txt(false));
+    assert!(s.floating_clip);
+    let py: Vec<f64> = (0..=24).map(|i| 1.2 * i as f64 / 24.0).collect();
+    let px = vec![0.0; py.len()];
+    let vig = |s: &System| -> usize {
+        let t = s
+            .try_trace(
+                lensbench_core::FieldSel::Index(0),
+                &px,
+                &py,
+                None,
+                None,
+                false,
+            )
+            .unwrap();
+        t.rays.iter().filter(|r| r.vig != 0).count()
+    };
+    assert!(vig(&s) > 0);
+    s.floating_clip = false;
+    assert_eq!(vig(&s), 0);
 }
 
 /// Odd Asphere の面のコバ厚のソルブ（アキシコン: 平面 → β1 の円錐、EDGE で中心厚を決める）

@@ -11,6 +11,7 @@
 
 use crate::coating::{Coatings, C64};
 use crate::math::V3;
+use crate::par::scoped;
 use crate::surface::SurfType;
 use crate::system::{FieldSel, RecSel, System};
 use crate::{invalid, Result};
@@ -253,7 +254,7 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
             .zip(ll.par_chunks_mut(npx * nw))
             .zip(ex.par_chunks_mut(npx).zip(ey.par_chunks_mut(npx)))
             .enumerate()
-            .for_each(row);
+            .for_each(scoped(row));
     }
     // 行ごとの [波長][画素] を [波長][全画素] に並べ直す
     let mut l = vec![vec![0.0; n2]; nw];

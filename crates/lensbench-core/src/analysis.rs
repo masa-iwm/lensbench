@@ -8,7 +8,7 @@ use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
 use crate::system::{FieldSel, System, Trace};
-use crate::{invalid, notimpl};
+use crate::{invalid, notimpl, par::scoped};
 
 /// n×n の格子のうち単位円内の点
 pub fn pupil_grid(n: usize) -> (Vec<f64>, Vec<f64>) {
@@ -831,7 +831,7 @@ fn opd_at(
                 out.par_iter_mut()
                     .enumerate()
                     .with_min_len(1024)
-                    .for_each(f);
+                    .for_each(scoped(f));
             } else {
                 out.iter_mut().enumerate().for_each(f);
             }
@@ -1061,10 +1061,11 @@ fn shifted_rows(
     let new_buf = || -> [Vec<f64>; 5] { Default::default() };
     let rows: Vec<(C64, Vec<Miss>)> = if nr * gl.gu.len() >= 4096 && !crate::par::sequential() {
         use rayon::prelude::*;
+        let cx = crate::par::current();
         (0..nr)
             .into_par_iter()
             .with_min_len((1024 / gl.gu.len()).max(1))
-            .map_init(new_buf, |b, r| row(r, b))
+            .map_init(new_buf, |b, r| crate::par::with_ctx(&cx, || row(r, b)))
             .collect()
     } else {
         let mut b = new_buf();
@@ -1117,7 +1118,7 @@ fn row_autocorr(p: &[C64], ns: usize, l: usize) -> Vec<C64> {
         acc
     };
     let parts: Vec<Vec<f64>> = if !crate::par::sequential() {
-        p.par_chunks(ns * CH).map(part).collect()
+        p.par_chunks(ns * CH).map(scoped(part)).collect()
     } else {
         p.chunks(ns * CH).map(part).collect()
     };
@@ -1282,7 +1283,7 @@ fn wave_otf_fft(
             ip.eval_lines(false, cx[iy], cx[iy], &cx, row, &mut tmp, &mut col);
         };
         if !crate::par::sequential() {
-            wv.par_chunks_mut(ns).enumerate().for_each(f);
+            wv.par_chunks_mut(ns).enumerate().for_each(scoped(f));
         } else {
             wv.chunks_mut(ns).enumerate().for_each(f);
         }
@@ -1498,7 +1499,7 @@ fn wave_otf(
     };
     let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
         use rayon::prelude::*;
-        (0..jobs.len()).into_par_iter().map(one).collect()
+        (0..jobs.len()).into_par_iter().map(scoped(one)).collect()
     } else {
         (0..jobs.len()).map(one).collect()
     };
@@ -1811,7 +1812,7 @@ fn clipped_otf(
         .collect();
     let accs: Vec<Result<C64>> = if jobs.len() > 1 && !crate::par::sequential() {
         use rayon::prelude::*;
-        jobs.par_iter().map(|&j| one(j)).collect()
+        jobs.par_iter().copied().map(scoped(one)).collect()
     } else {
         jobs.iter().map(|&j| one(j)).collect()
     };
@@ -2232,7 +2233,7 @@ pub(crate) fn lstsq_cols(q: &mut [f64], m: usize, b: &[f64]) -> Vec<f64> {
         refl(ck);
         // 残りの列は互いに独立（列ごとに同じ計算なので並列でも同じ値）
         if par {
-            rest.par_chunks_mut(m).for_each(refl);
+            rest.par_chunks_mut(m).for_each(scoped(refl));
         } else {
             rest.chunks_mut(m).for_each(refl);
         }
@@ -2458,7 +2459,7 @@ fn zern_pass(
     let parts: Vec<_> = if crate::par::sequential() {
         (0..nch).map(part).collect()
     } else {
-        (0..nch).into_par_iter().map(part).collect()
+        (0..nch).into_par_iter().map(scoped(part)).collect()
     };
     let mut g = if gram { vec![0.0; n * n] } else { Vec::new() };
     let mut atr = vec![0.0; n];

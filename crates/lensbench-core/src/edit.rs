@@ -67,6 +67,16 @@ fn one() -> f64 {
     1.0
 }
 
+#[cfg(feature = "serde")]
+pub(crate) fn yes() -> bool {
+    true
+}
+
+#[cfg(feature = "serde")]
+pub(crate) fn is_yes(b: &bool) -> bool {
+    *b
+}
+
 impl ConfigRow {
     /// ピックアップの値を元の構成から求め直す（ピックアップの元がピックアップでも、並びの順によらず）
     pub fn resolve_picks(&mut self) {

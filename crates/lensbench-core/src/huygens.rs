@@ -349,7 +349,10 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         };
         let iw: Vec<f64> = if pts.len() * src.len() >= 1 << 18 && !crate::par::sequential() {
             use rayon::prelude::*;
-            pts.par_iter().map_init(buf, |b, p| one(p, b)).collect()
+            let cx = crate::par::current();
+            pts.par_iter()
+                .map_init(buf, |b, p| crate::par::with_ctx(&cx, || one(p, b)))
+                .collect()
         } else {
             let mut b = buf();
             pts.iter().map(|p| one(p, &mut b)).collect()

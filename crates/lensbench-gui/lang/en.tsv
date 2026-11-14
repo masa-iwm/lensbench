@@ -1588,3 +1588,5 @@ BS の分ける面の向きを逆に	Flip the splitting surface of the BS
 開閉	Fold
 今の値	Current
 ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます	Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…
+半直径を固定した面の外の光線をける	Vignette rays outside fixed semi-diameters
+浮動開口（.zmx の FLAP など）。外すと半直径でけらない（半直径でけらない従来のモデルと比べるとき）	Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)

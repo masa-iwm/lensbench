@@ -1068,7 +1068,7 @@ fn map_maybe_par<T: Sync, R: Send>(
     f: impl Fn(&T) -> Result<R> + Sync + Send,
 ) -> Result<Vec<R>> {
     if v.len() > 1 && !crate::par::sequential() {
-        v.par_iter().map(f).collect()
+        v.par_iter().map(crate::par::scoped(f)).collect()
     } else {
         v.iter().map(f).collect()
     }

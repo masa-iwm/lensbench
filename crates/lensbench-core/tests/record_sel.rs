@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use lensbench_core::batch;
+use lensbench_core::par::with_batch;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, RecSel, System};
 
@@ -37,36 +37,36 @@ fn selected_surfaces_match_the_full_record() {
         let img = s.image();
         let sel = [img, 2, 3, img + 5];
         for on in [true, false] {
-            batch::set_enabled(on);
             for th in [1, 4] {
-                lensbench_core::with_threads(Some(th), || {
-                    let all = s.try_trace(f, &px, &py, None, None, true).unwrap();
-                    let part = s
-                        .try_trace_rec(f, &px, &py, None, None, RecSel::Surfs(&sel))
-                        .unwrap();
-                    let surfs: Vec<usize> = part.rec.iter().map(|r| r.surf).collect();
-                    assert_eq!(surfs, vec![2, 3, img], "{name}");
-                    for r in &part.rec {
-                        let a = all.rec_at(r.surf).unwrap();
-                        assert_eq!(bits(&a.xyz), bits(&r.xyz), "{name} {}", r.surf);
-                        assert_eq!(bits(&a.lmn), bits(&r.lmn), "{name} {}", r.surf);
-                        assert_eq!(bits(&a.p), bits(&r.p), "{name} {}", r.surf);
-                        let (oa, or): (Vec<u64>, Vec<u64>) = (
-                            a.opl.iter().map(|x| x.to_bits()).collect(),
-                            r.opl.iter().map(|x| x.to_bits()).collect(),
-                        );
-                        assert_eq!(oa, or, "{name} {}", r.surf);
-                        assert_eq!(a.parity, r.parity);
-                    }
-                    for i in 0..px.len() {
-                        assert_eq!(all.rays[i].opl.to_bits(), part.rays[i].opl.to_bits());
-                    }
-                    // dOPL/dp は全面の記録が要る
-                    let p = [s.param("2.t").unwrap()];
-                    assert!(s.opl_grad(&part, s.primary, &p).is_err());
+                with_batch(on, || {
+                    lensbench_core::with_threads(Some(th), || {
+                        let all = s.try_trace(f, &px, &py, None, None, true).unwrap();
+                        let part = s
+                            .try_trace_rec(f, &px, &py, None, None, RecSel::Surfs(&sel))
+                            .unwrap();
+                        let surfs: Vec<usize> = part.rec.iter().map(|r| r.surf).collect();
+                        assert_eq!(surfs, vec![2, 3, img], "{name}");
+                        for r in &part.rec {
+                            let a = all.rec_at(r.surf).unwrap();
+                            assert_eq!(bits(&a.xyz), bits(&r.xyz), "{name} {}", r.surf);
+                            assert_eq!(bits(&a.lmn), bits(&r.lmn), "{name} {}", r.surf);
+                            assert_eq!(bits(&a.p), bits(&r.p), "{name} {}", r.surf);
+                            let (oa, or): (Vec<u64>, Vec<u64>) = (
+                                a.opl.iter().map(|x| x.to_bits()).collect(),
+                                r.opl.iter().map(|x| x.to_bits()).collect(),
+                            );
+                            assert_eq!(oa, or, "{name} {}", r.surf);
+                            assert_eq!(a.parity, r.parity);
+                        }
+                        for i in 0..px.len() {
+                            assert_eq!(all.rays[i].opl.to_bits(), part.rays[i].opl.to_bits());
+                        }
+                        // dOPL/dp は全面の記録が要る
+                        let p = [s.param("2.t").unwrap()];
+                        assert!(s.opl_grad(&part, s.primary, &p).is_err());
+                    })
                 });
             }
         }
-        batch::set_enabled(true);
     }
 }

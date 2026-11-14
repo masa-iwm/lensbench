@@ -51,24 +51,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-fn yes() -> bool {
-    true
-}
-fn one() -> usize {
-    1
-}
-fn default_catalogs() -> Vec<String> {
-    vec!["SCHOTT".into()]
-}
+mod defaults;
+use defaults::{default_catalogs, is_yes, one, one_f64, wave_weight, yes};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Wave {
     pub um: f64,
     #[serde(default = "wave_weight")]
     pub weight: f64,
-}
-fn wave_weight() -> f64 {
-    1.0
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -344,10 +334,6 @@ impl Semi {
 
 fn is_zero_u8(v: &u8) -> bool {
     *v == 0
-}
-
-fn one_f64() -> f64 {
-    1.0
 }
 
 fn inf_f64() -> f64 {
@@ -853,6 +839,9 @@ pub struct Project {
     /// 像空間をアフォーカルにする。値は角度の単位（`ur`・`mr`・`rr`・`as`・`am`・`dg`）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub afocal: Option<String>,
+    /// 浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub floating_clip: bool,
     pub blocks: Vec<Block>,
     #[serde(default)]
     pub states: Vec<State>,
@@ -3658,6 +3647,7 @@ fn expand_inner(
     s.temperature = envr.temperature_c;
     s.pressure = envr.pressure_atm;
     s.adjust_index = envr.adjust_index;
+    s.floating_clip = p.floating_clip;
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {

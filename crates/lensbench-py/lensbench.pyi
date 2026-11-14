@@ -177,6 +177,15 @@ class System:
     def find_surface(self, target: str) -> int:
         """面を番号か名前（コメント）で探し、面番号を返す"""
 
+    @property
+    def floating_clip(self) -> bool:
+        """浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定 True。OpticStudio と同じ）。
+        半直径でけらない従来のモデルと比べるときに False にする
+        """
+
+    @floating_clip.setter
+    def floating_clip(self, value: bool) -> None: ...
+
     @staticmethod
     def from_json(text: str) -> System:
         """系ファイルの JSON の文字列から系を作る（coatings のパスはそのまま使う）"""

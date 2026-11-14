@@ -19,7 +19,6 @@ use crate::surface::{Aperture, SurfType, Surface};
 use crate::system::{Frame, Frames, Rel, System};
 use crate::trace::{self, PolKind, PolSurf, RayOut, RecEntry, CV3};
 use crate::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 1 回にまとめて追う光線の数（AVX の 4 本 × 4。多いほど面ごとの準備の手間が薄まる）。
 /// wasm は 8 本（f64x2 × 4）: 16 本では値の組がレジスタに載らず、読み書きが増えて遅い（公開 #99）
@@ -28,16 +27,10 @@ pub const L: usize = 16;
 #[cfg(target_arch = "wasm32")]
 pub const L: usize = 8;
 
-static ENABLED: AtomicBool = AtomicBool::new(true);
-
-/// まとめ追跡を使うか（既定は使う）。結果は同じビットなので、切り分け・比較のためだけに使う
-pub fn set_enabled(on: bool) {
-    ENABLED.store(on, Ordering::Relaxed);
-}
-
-/// n 本の追跡をまとめて追うか（少ない本数は 1 本ずつの方が速い）
+/// n 本の追跡をまとめて追うか（少ない本数は 1 本ずつの方が速い）。まとめ追跡は
+/// [`crate::par::with_batch`] で切れる（結果は同じビットなので、切り分け・比較のためだけに使う）
 pub fn use_for(n: usize) -> bool {
-    n >= L / 4 && ENABLED.load(Ordering::Relaxed)
+    n >= L / 4 && crate::par::batch_enabled()
 }
 
 mod lanes;

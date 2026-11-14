@@ -2316,6 +2316,10 @@
         "weights": []
       }
     },
+    "floating_clip": {
+      "description": "浮動開口（半直径を固定した面）の外の光線をけるか（既定はける。OpticStudio と同じ）",
+      "type": "boolean"
+    },
     "glass_catalogs": {
       "default": [
         "SCHOTT"

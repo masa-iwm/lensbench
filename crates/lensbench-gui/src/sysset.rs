@@ -289,6 +289,9 @@ const AFOCAL_UNITS: [AfocalUnit; 6] = [
     AfocalUnit::Degrees,
 ];
 
+/// 浮動開口の欄の説明
+pub const FLOATING_CLIP_HINT: &str = "浮動開口（.zmx の FLAP など）。外すと半直径でけらない（半直径でけらない従来のモデルと比べるとき）";
+
 /// 状態ごとに変えられる系の値（プロジェクトの状態の `project`）。絞りの位置・硝材カタログは全部の状態で共通
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -393,6 +396,7 @@ impl Combo {
         }
         self.object_distance = obj_t.is_finite().then_some(obj_t);
         self.telecentric = d["telecentric"].as_bool().unwrap_or(false);
+        self.floating_clip = d["floating_clip"].as_bool().unwrap_or(true);
         self.aiming = match d["aiming"].as_str() {
             Some("Paraxial") => Aiming::Paraxial,
             Some("Real") => Aiming::Real,
@@ -571,6 +575,9 @@ impl Combo {
         }
         if let Some(u) = &self.afocal {
             v["afocal"] = json!(u.to_ascii_lowercase());
+        }
+        if !self.floating_clip {
+            v["floating_clip"] = json!(false);
         }
         let cats: Vec<&str> = self
             .glass_catalogs
@@ -941,6 +948,13 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                     *code = u.code().to_ascii_lowercase();
                 }
             });
+            ui.end_row();
+            ui.label("");
+            ui.checkbox(
+                &mut c.floating_clip,
+                tr("半直径を固定した面の外の光線をける"),
+            )
+            .on_hover_text(tr(FLOATING_CLIP_HINT));
             ui.end_row();
         });
     ui.separator();

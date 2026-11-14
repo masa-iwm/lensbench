@@ -12,6 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
+use lensbench_core::par::CancelToken;
 use serde_json::Value;
 
 pub use lensbench_engine::Arrays;
@@ -212,10 +213,11 @@ pub struct Worker {
     /// そのうち解析でないもの（系の読み込み・レイアウトなど）
     pending_core: usize,
     gen: Arc<AtomicU64>,
-    /// 回している要求が解析か（中断を頼んでよいか）。系を変える側と回す側でこの鍵を取って、
-    /// 「解析を回している間だけ中断の印を立てる」を確かにする（最適化などの中の解析を止めない）
-    running: Arc<Mutex<bool>>,
-    /// 中断の印（lensbench_core::par の、プロセスで 1 つ）を使うか。下書きの Worker は使わない
+    /// 回している解析の中断の印（[`CancelToken`]。解析でない要求・下書きの Worker では None）。
+    /// 印は要求ごとに作るので、最適化などの中の解析や別の Worker の計算は止めない
+    running: Arc<Mutex<Option<CancelToken>>>,
+    /// Web 版: 計算の Web Worker に中断を頼むか。下書きの Worker は使わない
+    #[cfg(target_arch = "wasm32")]
     cancels: bool,
     #[cfg(target_arch = "wasm32")]
     remote: remote::Remote,
@@ -229,18 +231,22 @@ struct Runner {
     cancels: bool,
     /// 今の世代
     cur: Arc<AtomicU64>,
-    run_flag: Arc<Mutex<bool>>,
+    run_flag: Arc<Mutex<Option<CancelToken>>>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Runner {
     fn run(&self, j: Job) -> Done {
         if self.cancels {
-            // 前の要求のための中断の印を下ろしてから、世代を確かめる（この間に系が変われば印が残る）
-            let mut r = self.run_flag.lock().unwrap_or_else(|e| e.into_inner());
-            *r = j.tag.skippable();
-            lensbench_core::par::clear_cancel();
+            // この要求の中断の印を置いてから、世代を確かめる（この後に系が変われば印が立つ）
+            *self.run_flag.lock().unwrap_or_else(|e| e.into_inner()) =
+                j.tag.skippable().then(CancelToken::new);
         }
+        let token = self
+            .run_flag
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if j.tag.skippable() && j.gen != self.cur.load(Ordering::Relaxed) {
             return Done {
                 tag: j.tag,
@@ -253,7 +259,9 @@ impl Runner {
         let t0 = Instant::now();
         let mut replies = Vec::with_capacity(j.calls.len());
         for (method, params) in j.calls {
-            let result = (self.call)(&method, &params, self.threads);
+            let result = lensbench_core::par::with_cancel(token.as_ref(), || {
+                (self.call)(&method, &params, self.threads)
+            });
             let failed = result.is_err();
             replies.push(Reply {
                 method,
@@ -266,7 +274,7 @@ impl Runner {
         }
         let ms = t0.elapsed().as_secs_f64() * 1e3;
         if self.cancels {
-            *self.run_flag.lock().unwrap_or_else(|e| e.into_inner()) = false;
+            *self.run_flag.lock().unwrap_or_else(|e| e.into_inner()) = None;
         }
         Done {
             tag: j.tag,
@@ -305,7 +313,7 @@ impl Worker {
         let (tx, jobs) = channel::<Job>();
         let (done, rx) = channel::<Done>();
         let gen = Arc::new(AtomicU64::new(0));
-        let running = Arc::new(Mutex::new(false));
+        let running = Arc::new(Mutex::new(None));
         #[cfg(not(target_arch = "wasm32"))]
         let runner = Runner {
             call: kind.call(),
@@ -338,6 +346,7 @@ impl Worker {
             pending_core: 0,
             gen,
             running,
+            #[cfg(target_arch = "wasm32")]
             cancels,
             // ブラウザ（wasm）: Web Worker の中で回す
             #[cfg(target_arch = "wasm32")]
@@ -399,8 +408,8 @@ impl Worker {
     pub fn drop_queued(&self) {
         let r = self.running.lock().unwrap_or_else(|e| e.into_inner());
         self.gen.fetch_add(1, Ordering::Relaxed);
-        if self.cancels && *r {
-            lensbench_core::par::request_cancel();
+        if let Some(t) = r.as_ref() {
+            t.cancel();
         }
         // Web 版: 計算の Web Worker の見張りに頼む（スレッドありの版だけ）
         #[cfg(target_arch = "wasm32")]
@@ -474,17 +483,20 @@ pub mod entry {
 
     /// 回している要求の番号（0 は無し）。計算のスレッドと見張りのスレッド（[`cancel`]・[`stop`]、
     /// スレッドありの版だけ。メモリを共有する）で、この鍵を取って「回している要求だけを止める」を確かにする
-    static CUR: std::sync::Mutex<u32> = std::sync::Mutex::new(0);
+    /// 番号とその要求の中断の印
+    static CUR: std::sync::Mutex<(u32, Option<CancelToken>)> = std::sync::Mutex::new((0, None));
 
-    fn cur() -> std::sync::MutexGuard<'static, u32> {
+    fn cur() -> std::sync::MutexGuard<'static, (u32, Option<CancelToken>)> {
         CUR.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む
     pub fn cancel(id: u32) {
         let c = cur();
-        if *c == id && id != 0 {
-            lensbench_core::par::request_cancel();
+        if c.0 == id && id != 0 {
+            if let Some(t) = &c.1 {
+                t.cancel();
+            }
         }
     }
 
@@ -492,7 +504,7 @@ pub mod entry {
     /// 差し替え探索（"swap"）を止める（そこまでの結果を返す）
     pub fn stop(id: u32, what: &str) {
         let c = cur();
-        if *c != id || id == 0 {
+        if c.0 != id || id == 0 {
             return;
         }
         match what {
@@ -527,13 +539,10 @@ pub mod entry {
             }
         };
         let main = KIND.with(Cell::get) == Kind::Main.code();
+        // この要求の中断の印（見張りは番号が合うときだけ印を立てる）
+        let token = main.then(CancelToken::new);
         if main {
-            // 前の要求のための中断の印を下ろす（見張りは番号が合うときだけ印を立てる）。鍵を持ったまま下ろす
-            // （番号を変えてから下ろすまでの間に、この要求への中断が届いて消えないように）
-            let mut c = cur();
-            *c = q.id;
-            lensbench_core::par::clear_cancel();
-            drop(c);
+            *cur() = (q.id, token.clone());
         }
         // 画面の側で変わったファイルを当ててから回す（当てた分は返さない）
         for (p, b) in q.files {
@@ -544,7 +553,7 @@ pub mod entry {
         let t0 = Instant::now();
         let mut results = Vec::with_capacity(q.calls.len());
         for (m, p) in &q.calls {
-            let r = call(m, p, q.threads);
+            let r = lensbench_core::par::with_cancel(token.as_ref(), || call(m, p, q.threads));
             let failed = r.is_err();
             results.push(r);
             if failed {
@@ -553,7 +562,7 @@ pub mod entry {
         }
         let ms = t0.elapsed().as_secs_f64() * 1e3;
         if main {
-            *cur() = 0;
+            *cur() = (0, None);
         }
         let files = sync::changes_since(seq)
             .into_iter()
@@ -960,7 +969,7 @@ mod tests {
         STARTED.store(false, Ordering::SeqCst);
     }
 
-    // 中断の印はプロセスで 1 つなので、1 つのテストの中で順に確かめる
+    // 順番待ちと世代は Worker で 1 つなので、1 つのテストの中で順に確かめる
     #[test]
     fn changing_the_system_cancels_and_drops_analyses_but_not_other_jobs() {
         let mut w = Worker::with_call(Some(1), || {}, true, Kind::Test(fake));

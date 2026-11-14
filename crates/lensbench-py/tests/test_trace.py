@@ -3,6 +3,7 @@
 CLI（LENSBENCH_CLI、なければ target/release/lensbench）の rays --save の結果とビット一致することも確かめる。
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -570,6 +571,17 @@ def test_cardinal_and_system_data():
     assert t.cardinal()["efl"] != pytest.approx(c["efl"], rel=1e-6)
     assert t.cardinal()["efl"] == pytest.approx(t.system_data()["effl"], rel=1e-14)
 
+
+
+def test_floating_clip_setting():
+    """浮動開口でけるかは系の設定（既定はける）。系ファイルの JSON にも残る"""
+    s = lb.System.load(zmx("A5"), glass_dirs=GLASS)
+    assert s.floating_clip is True
+    s.floating_clip = False
+    assert s.floating_clip is False
+    assert json.loads(s.to_json())["system"]["floating_clip"] is False
+    assert lb.System.from_json(s.to_json()).floating_clip is False
+    assert "floating_clip" not in json.loads(lb.System.load(zmx("A5"), glass_dirs=GLASS).to_json())["system"]
 
 PICKUP_ZMX = """VERS 260327 42
 MODE SEQ

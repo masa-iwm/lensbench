@@ -3,9 +3,11 @@
 use lensbench_core::edit::SurfValue;
 use lensbench_core::param::PickKind;
 use lensbench_core::surface::Aperture;
+use lensbench_core::system::FieldCond;
+use lensbench_core::System;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyString};
+use pyo3::types::{PyBool, PyDict, PyString, PyTuple};
 
 /// 開口の dict: {"type": "circular", "min": 0, "max": 3, "dx": 0, "dy": 0}（type は circular・rect・ellipse・
 /// obsc・spider（width・arms）・floating）。None は開口なし
@@ -174,4 +176,26 @@ pub(crate) fn pick_kind(s: &str) -> PyResult<PickKind> {
 
 pub(crate) fn pick_name(k: PickKind) -> String {
     lensbench_core::edit::pick_kind_name(k)
+}
+
+/// 視野の条件: ("position", 面) / ("dirsum", 面1, 面2) / ("dirdiff", 面1, 面2)
+pub fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
+    let kind: String = c.get_item(0)?.extract()?;
+    let at = |i: usize| -> PyResult<usize> { crate::surf_of(s, c.get_item(i)?.extract()?) };
+    Ok(match (kind.to_ascii_lowercase().as_str(), c.len()) {
+        ("position", 2) => FieldCond::Position { surf: at(1)? },
+        ("dirsum", 3) => FieldCond::DirSum {
+            s1: at(1)?,
+            s2: at(2)?,
+        },
+        ("dirdiff", 3) => FieldCond::DirDiff {
+            s1: at(1)?,
+            s2: at(2)?,
+        },
+        _ => {
+            return Err(PyValueError::new_err(
+                "cond は (\"position\", 面)、(\"dirsum\", 面1, 面2)、(\"dirdiff\", 面1, 面2)",
+            ))
+        }
+    })
 }
