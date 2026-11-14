@@ -263,7 +263,7 @@ mod tests {
     /// 視野ごとのオブジェクト（スポット）は 1 行ずつ、中の並びは別の表
     #[test]
     fn spot_rows_and_nested() {
-        let v = json!({"unit": "lens", "spot": [
+        let v = json!({"unit": "mm", "spot": [
             {"field": 1, "rms": 0.01, "centroid": [0.0, 0.1], "chief": [0.0, 0.0]},
             {"field": 2, "rms": 0.02, "centroid": [0.0, 0.2], "chief": [0.0, 0.0]}
         ]});

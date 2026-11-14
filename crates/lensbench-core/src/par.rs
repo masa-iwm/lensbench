@@ -47,14 +47,16 @@ pub fn sequential() -> bool {
 
 /// スレッド数ごとのプール（作るのが重いので使い回す。系の状態は持たない）。
 /// 一度作ったプールとそのスレッドはプロセスの終わりまで解放しない（使うスレッド数の種類だけ残る）
-fn pool(n: usize) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError> {
-    static POOLS: OnceLock<Mutex<HashMap<usize, Arc<rayon::ThreadPool>>>> = OnceLock::new();
+/// apart は [`with_threads_apart`] の別のプール
+fn pool(n: usize, apart: bool) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError> {
+    type Pools = HashMap<(usize, bool), Arc<rayon::ThreadPool>>;
+    static POOLS: OnceLock<Mutex<Pools>> = OnceLock::new();
     let mut m = POOLS.get_or_init(Default::default).lock_ok();
-    if let Some(p) = m.get(&n) {
+    if let Some(p) = m.get(&(n, apart)) {
         return Ok(p.clone());
     }
     let p = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(n).build()?);
-    m.insert(n, p.clone());
+    m.insert((n, apart), p.clone());
     Ok(p)
 }
 
@@ -64,18 +66,28 @@ fn pool(n: usize) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError>
 /// Some(1) は呼び出したスレッドで逐次、Some(0) は外の逐次の指定を外して既定に戻す。
 /// Some(n)（n ≥ 2）のプールは n ごとに作って使い回し、解放しない。
 pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Send) -> R {
+    threads_in(threads, false, f)
+}
+
+/// [`with_threads`] で、n ≥ 2 のときは同じ数でも別のプールで回す（長い計算を、同時に回る短い計算のプールの
+/// 盗みに載せない。載ると短い計算が長い計算の終わりまで返らない）
+pub fn with_threads_apart<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Send) -> R {
+    threads_in(threads, true, f)
+}
+
+fn threads_in<R: Send>(threads: Option<usize>, apart: bool, f: impl FnOnce() -> R + Send) -> R {
     match threads {
         // 既定は外の逐次の指定を打ち消さない（以前は with_threads_or_outer と分かれていた）
         None if sequential() => f(),
         // 既定の数（CLI・Python が起動時に決める）。別のプールの中ならそのプール
         None if rayon::current_thread_index().is_none() && default_threads().is_some() => {
-            with_threads(default_threads(), f)
+            threads_in(default_threads(), apart, f)
         }
         None | Some(0) => with_flag(false, f),
         Some(1) => with_flag(true, f),
         // wasm はスレッドを足せない（使えるのは Web Worker で作った大域プールだけ）
         Some(_) if cfg!(target_arch = "wasm32") => with_flag(false, f),
-        Some(n) => match pool(n) {
+        Some(n) => match pool(n, apart) {
             Ok(p) => {
                 // プールのスレッドで回すので、中断の印を引き継ぐ
                 let c = current();
@@ -178,6 +190,11 @@ impl CancelToken {
     /// 中断を頼まれたか
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
+    }
+
+    /// 同じ印か（写しも同じ印）
+    pub fn same(&self, o: &CancelToken) -> bool {
+        Arc::ptr_eq(&self.0, &o.0)
     }
 }
 

@@ -6,7 +6,7 @@
 //! - 系は場に 1 つ。要求は場ごとに 1 つずつ順に処理する
 //! - 解析（`analyze`）は解析の登録簿の解析で、CLI のサブコマンドと同じ設定・同じ結果。系はファイルを読まず、読み込んだ系を使う
 
-use lensbench_core::LockExt;
+use lensbench_core::{LockExt, RwLockExt};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -143,15 +143,20 @@ const UNDO_DEPTH: usize = 100;
 const SET_MERGE_S: f64 = 1.0;
 
 /// serve の 1 つの場: 読み込んだ系・変更の記録・元に戻す段・走っている最適化などの進み具合と、要求で与えたパスの扱い。
-/// 要求は場ごとに 1 つずつ順に処理する。TCP・パイプの serve は 1 つの場を全部の接続で共有し、GUI は [`global`] の場を、
+/// 系を変える要求は場ごとに 1 つずつ順に、読むだけの要求（[`Access::Read`]）は並行に処理する。
+/// 最適化などの長い要求（[`Access::Long`]）は始めたときの系で回し、その間も他の要求を止めない（GAR-20）。TCP・パイプの serve は 1 つの場を全部の接続で共有し、GUI は [`global`] の場を、
 /// 試験は場を別々に作って使う
 pub struct Session {
     pub(crate) files: Files,
     served: Mutex<Option<Served>>,
-    /// 要求を 1 つずつ処理する
-    request: Mutex<()>,
-    /// 処理している要求の中断の印（`cancel` で倒す）
-    running: Mutex<Option<lensbench_core::par::CancelToken>>,
+    /// 系を変える要求は書き、読むだけの要求は読みで取る
+    request: std::sync::RwLock<()>,
+    /// 長い要求（最適化・公差・差し替え探索・ズーム軌跡）を 1 つずつ
+    long: Mutex<()>,
+    /// 最適化の apply で当てる変更（長い要求の計算の後、プールの外で当てる。[`dispatch`]）
+    pending_apply: Mutex<Option<PendingApply>>,
+    /// 処理している要求の中断の印（`cancel` で全部倒す）
+    running: Mutex<Vec<lensbench_core::par::CancelToken>>,
     opt_run: Mutex<Option<OptRun>>,
     opt_cancel: AtomicBool,
     tol_run: Mutex<Option<(usize, usize)>>,
@@ -183,8 +188,10 @@ impl Session {
         Session {
             files,
             served: Mutex::new(None),
-            request: Mutex::new(()),
-            running: Mutex::new(None),
+            request: std::sync::RwLock::new(()),
+            long: Mutex::new(()),
+            pending_apply: Mutex::new(None),
+            running: Mutex::new(Vec::new()),
             opt_run: Mutex::new(None),
             opt_cancel: AtomicBool::new(false),
             tol_run: Mutex::new(None),
@@ -225,6 +232,14 @@ impl Session {
     /// 読み込んだ系
     pub(crate) fn current_system(&self) -> Result<Arc<System>, RpcErr> {
         Ok(self.current()?.0)
+    }
+
+    /// 読み込んだ系・読み方・変更の記録を 1 度に（鍵を持たない長い要求が、間の set で混ざらないように）
+    fn current_full(&self) -> Result<(Arc<System>, LoadSpec, Vec<Change>), RpcErr> {
+        self.served()
+            .as_ref()
+            .map(|x| (x.sys.clone(), x.spec.clone(), x.log.clone()))
+            .ok_or_else(|| RpcErr::app("系がない（先に load）"))
     }
 
     fn current(&self) -> Result<(Arc<System>, LoadSpec), RpcErr> {
@@ -314,16 +329,18 @@ mod hist;
 mod catalog;
 mod layout;
 mod optim;
+mod proto;
 mod trace;
 pub use catalog::range_system;
 use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
 use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
 use layout::{configs, layout, layout_export, layout_with};
-use optim::{optimize, swap, tolerance, zoom, OptRun};
+use optim::{apply_pending, optimize, swap, tolerance, zoom, OptRun, PendingApply};
 pub use optim::{
     optimize_cancel, optimize_progress, swap_cancel, swap_progress, tolerance_cancel,
     tolerance_progress,
 };
+pub use proto::{Access, METHODS, PROTOCOL};
 use trace::{plugin, trace};
 
 /// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる）
@@ -630,7 +647,7 @@ pub fn note_panic(text: &str) {
     LAST_PANIC.with(|l| *l.borrow_mut() = Some(text.to_string()));
 }
 
-/// 要求を 1 つ処理する（1 つずつ順に。panic はエラーにする）
+/// 要求を 1 つ処理する（鍵は [`Access`]。panic はエラーにする）
 fn dispatch(
     sess: &Session,
     method: &str,
@@ -642,18 +659,28 @@ fn dispatch(
     if let Some(r) = status(sess, method, params) {
         return r;
     }
-    let _g = sess.request.lock_ok();
+    let (_r, _w, _l);
+    let access = Access::of(method);
+    match access {
+        Access::Read => _r = sess.request.read_ok(),
+        Access::Write => _w = sess.request.write_ok(),
+        // 長い要求は鍵を持たずに回す（系は始めに写しを取る。結果を当てるのは計算の後、プールの外で）
+        Access::Long => _l = sess.long.lock_ok(),
+    }
     // 中断の印: 呼び出し側（GUI の Worker）が置いた印があればそれを使う
     let tok = lensbench_core::par::current().cancel.unwrap_or_default();
-    *sess.running.lock_ok() = Some(tok.clone());
-    struct Done<'a>(&'a Session);
+    sess.running.lock_ok().push(tok.clone());
+    struct Done<'a>(&'a Session, lensbench_core::par::CancelToken);
     impl Drop for Done<'_> {
         fn drop(&mut self) {
-            *self.0.running.lock_ok() = None;
+            let mut r = self.0.running.lock_ok();
+            if let Some(i) = r.iter().position(|t| t.same(&self.1)) {
+                r.swap_remove(i);
+            }
         }
     }
-    let _d = Done(sess);
-    lensbench_core::with_threads(threads, || {
+    let _d = Done(sess, tok.clone());
+    let run = || {
         LAST_PANIC.with(|l| l.borrow_mut().take());
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             lensbench_core::par::with_cancel(Some(&tok), || handle(sess, method, params, bins))
@@ -669,7 +696,20 @@ fn dispatch(
                 None => "内部エラー（panic）".into(),
             }))
         })
-    })
+    };
+    if access != Access::Long {
+        return lensbench_core::with_threads(threads, run);
+    }
+    // 長い要求は別のプールで（読む要求のプールの盗みに載せない）。場の鍵はプールのスレッドでは待たない
+    let r = lensbench_core::par::with_threads_apart(threads, run);
+    let p = sess.pending_apply.lock_ok().take();
+    match (r, p) {
+        (Ok((mut v, b)), Some(p)) => {
+            apply_pending(sess, p, &mut v);
+            Ok((v, b))
+        }
+        (r, _) => r,
+    }
 }
 
 /// 処理している要求を待たない method: `progress`（最適化・公差・差し替え探索の進み具合と、要求を処理しているか）、
@@ -678,17 +718,15 @@ fn dispatch(
 fn status(sess: &Session, method: &str, p: &Value) -> Option<Result<Reply, RpcErr>> {
     let r = match method {
         "progress" => json!({
-            "running": sess.running.lock_ok().is_some(),
+            "running": !sess.running.lock_ok().is_empty(),
             "optimize": sess.optimize_progress(),
             "tolerance": sess.tolerance_progress(),
             "swap": sess.swap_progress(),
         }),
         "cancel" => {
-            let t = sess.running.lock_ok().clone();
-            if let Some(t) = &t {
-                t.cancel();
-            }
-            json!(t.is_some())
+            let r = sess.running.lock_ok();
+            r.iter().for_each(|t| t.cancel());
+            json!(!r.is_empty())
         }
         "stop" => match p["what"].as_str() {
             Some("optimize") => {
@@ -940,57 +978,6 @@ fn summary(s: &System, spec: &LoadSpec) -> Value {
 }
 
 type Reply = (Value, Vec<Bin>);
-
-/// serve の method の名前（`describe` が返す。`handle` の match と試験で突き合わせる、CLI-22）
-pub const METHODS: &[&str] = &[
-    "ping",
-    "progress",
-    "cancel",
-    "stop",
-    "describe",
-    "shutdown",
-    "echo",
-    "load",
-    "reload",
-    "system",
-    "undo",
-    "redo",
-    "history",
-    "get",
-    "set",
-    "write",
-    "edit",
-    "surface",
-    "surface_data",
-    "system_data",
-    "config_table",
-    "config_diff",
-    "save",
-    "save_range",
-    "analyze",
-    "glasses",
-    "lenses",
-    "catalog_search",
-    "trace",
-    "plugins",
-    "catalog_add",
-    "catalog_items",
-    "catalog_edit",
-    "catalog_fill",
-    "cad_step",
-    "analysis_args",
-    "plugin",
-    "layout",
-    "layout_export",
-    "configs",
-    "optimize",
-    "swap",
-    "tolerance",
-    "zoom",
-];
-
-/// 書式の版（枠組み・method の約束を壊す変更で上げる）
-pub const PROTOCOL: u32 = 1;
 
 fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     match method {

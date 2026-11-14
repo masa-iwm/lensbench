@@ -205,6 +205,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     let mut states = Vec::with_capacity(n);
     let mut systems = Vec::with_capacity(n);
     for (k, s) in configs.iter().enumerate() {
+        crate::par::check_cancel()?;
         let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)
             .map_err(|e| crate::error::Error::Invalid(format!("状態 {}: {e}", k + 1)))?;
         states.push(p);
@@ -268,6 +269,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
                     (spec.moving[q], v)
                 })
                 .collect();
+            crate::par::check_cancel()?;
             let s0 = systems[k].with_params(&start)?;
             let pos = k as f64 + f;
             let (p, _) =

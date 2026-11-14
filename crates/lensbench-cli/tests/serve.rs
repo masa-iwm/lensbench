@@ -1258,6 +1258,20 @@ fn describe_lists_every_method() {
     }
     let (h, _) = sv.call_bin("no_such_method", json!({}), &[]);
     assert_eq!(h["error"]["code"], -32601);
+    // docs/serve.md の method の表に全部ある（表の行の頭の `名前`・`名前`）
+    let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/serve.md"))
+        .unwrap();
+    let heads: Vec<&str> = doc.lines().filter_map(|l| l.strip_prefix("| `")).collect();
+    for m in lensbench_engine::session::METHODS {
+        let tick = format!("`{m}`");
+        assert!(
+            heads.iter().any(|h| h
+                .split(" |")
+                .next()
+                .is_some_and(|c| format!("`{c}").contains(&tick))),
+            "docs/serve.md の表に {m} が無い"
+        );
+    }
     let _ = sv.w.write_all(&vec![b'a'; (1 << 20) + 16]); // 先に切られれば失敗してよい
     let mut line = String::new();
     assert_eq!(sv.r.read_line(&mut line).unwrap_or(0), 0, "{line}");

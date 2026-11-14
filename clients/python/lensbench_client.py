@@ -300,7 +300,10 @@ class Client:
         if name.startswith("_") or "_r" not in self.__dict__:
             raise AttributeError(name)
         if "_methods" not in self.__dict__:
-            self._methods = set(self.describe()["methods"])
+            try:
+                self._methods = set(self.describe()["methods"])
+            except RpcError:
+                self._methods = set()  # describe の無い古い serve
         if name not in self._methods:
             raise AttributeError(f"serve に method {name} はない")
         return lambda **params: self.call(name, params)[0]

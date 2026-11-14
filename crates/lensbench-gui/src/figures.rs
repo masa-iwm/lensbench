@@ -554,11 +554,7 @@ pub fn psf_grids(v: &Value) -> Vec<(u64, Grid)> {
         }
     }
     // 単位: lens（mm）なら µm に。アフォーカル（角度）はそのまま
-    let k = if v["unit"].as_str() == Some("lens") {
-        1e3
-    } else {
-        1.0
-    };
+    let k = if lens_mm(v) { 1e3 } else { 1.0 };
     out.into_iter()
         .filter_map(|(f, pts)| {
             let uniq = |sel: fn(&(f64, f64, f64)) -> f64| {
@@ -669,7 +665,7 @@ fn psf(ui: &mut Ui, id: u64, v: &Value) -> bool {
         ));
     });
     ui.ctx().data_mut(|d| d.insert_temp(key, log));
-    let unit = if v["unit"].as_str() == Some("lens") {
+    let unit = if lens_mm(v) {
         "µm".to_string()
     } else {
         v["unit"].as_str().unwrap_or("").to_string()
@@ -948,7 +944,7 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         ui.selectable_value(&mut q, 2, "Strehl");
     });
     ui.ctx().data_mut(|d| d.insert_temp(key, q));
-    let lens_um = v["unit"].as_str() == Some("lens");
+    let lens_um = lens_mm(v);
     let (yk, yl, k) = match q {
         1 => ("wfe", tr("RMS 波面 [波]").to_string(), 1.0),
         2 => ("strehl", "Strehl".to_string(), 1.0),
@@ -1219,6 +1215,11 @@ pub fn interference_view(
     let h = fig_height(ui, 8.0);
     heatmap(ui, ("ifr", salt), &g, c, lo, hi, (xl, yl, &q), h);
     true
+}
+
+/// 位置が mm か（アフォーカルの角度でない。前の結果は mm を "lens" と書いた）
+fn lens_mm(v: &Value) -> bool {
+    matches!(v["unit"].as_str(), Some("mm" | "lens"))
 }
 
 #[cfg(test)]

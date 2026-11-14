@@ -29,7 +29,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   - `--allow-remote` で `--root` なし: 要求ではファイルを読み書きしない。起動時に与えた系と、その読み方での `reload`・ファイルを書かない解析だけ
   - プロジェクトファイル（.json）が中で参照するファイル（.zmx のブロックなど）は検査しない。遠隔から使うときは、信頼できるファイルだけを DIR に置く
 - 1 つの要求の配列の合計は `--max-request-bytes`（既定 2 GiB）まで。形の積があふれるもの・上限を超えるものは確保の前に断り、接続を閉じる
-- 系は 1 プロセスに 1 つ。要求は 1 つずつ順に処理する（複数の接続も順番待ち）。別の系を並べて回すときはプロセスを分ける。
+- 系は 1 プロセスに 1 つ。系を変える要求（`load`・`set`・`edit`・`undo` など）は 1 つずつ順に処理し、読むだけの要求（`get`・`surface`・`analyze`・`trace`・`layout` など）は複数の接続から並行に処理する。
+  `optimize`・`tolerance`・`swap`・`zoom` は始めたときの系で回し、その間も他の要求を止めない（これらどうしは 1 つずつ）。`optimize` の `apply` は、回している間に系が変わっていれば当てない（`notes` に出る）。別の系を並べて回すときはプロセスを分ける。
   `--threads 1` で 1 プロセス 1 スレッド（結果はスレッド数によらない）
 - `--cfg`・`--state`・`--beam-path`・`--lens-catalog` は CLI と同じ（系の読み方。`load` でも選べる）
 
@@ -63,7 +64,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `ping` | | `version` |
 | `describe` | | `version`・`protocol`（書式の版、今は 1）・`methods`（使える method の名前）・`analyses`（`analyze` に渡せる解析の名前）。クライアントがつないだ先の機能を確かめるのに |
 | `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
-| `cancel` | | 処理している要求に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
+| `cancel` | | 処理している要求（読むだけの要求が並行に回っていれば、その全部）に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
 | `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
 | `load` | `file`、`cfg`・`state`・`beam_path`・`glass_dirs`・`lens_catalogs`・`history`（省略可） | 系の概要（面の数・視野・波長など）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
 | `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
@@ -174,7 +175,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 `lensbench_engine::preview_layout(load, layout)` は `load` と同じ params の系を読んで `layout` の結果を返す（構成の重ね描きも同じ。読み込んだ系は変えず、順番も待たない。GUI のレイアウト図の下書き）。
 
 `lensbench_engine::Session::call(method, &params, threads)`（プロセスで共通の場は `lensbench_engine::call`）は TCP の要求と同じ method・params・result を同じプロセスの中で処理する
-（系は場に 1 つ、要求は場ごとに 1 つずつ順に。場は `Session::new()` でいくつでも作れる）。GUI（`crates/lensbench-gui`）は共通の場だけで計算する。bin の配列は使えない
+（系は場に 1 つ、系を変える要求は場ごとに 1 つずつ順に。場は `Session::new()` でいくつでも作れる）。GUI（`crates/lensbench-gui`）は共通の場だけで計算する。bin の配列は使えない
 （`trace` の px・py は JSON の並びで渡す）。結果の配列は `call_arrays` で受け取る（名前と f64 の並び）。`shutdown` はプロセスを止めない。
 `optimize` を回している間は、別のスレッドから `optimize_progress()`（反復ごとの評価関数の値）で進み具合を読み、
 `optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す）。TCP・パイプでは別の接続から `progress`・`stop` を送る。進み具合・中止は場ごと（`Session::optimize_progress` など。上の関数は共通の場のもの）。

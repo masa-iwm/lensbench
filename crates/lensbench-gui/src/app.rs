@@ -1933,7 +1933,7 @@ impl Core {
         if self.pending_set.is_empty() || self.worker.busy_core() {
             return;
         }
-        if self.worker.busy()
+        if self.worker.busy_short()
             && self
                 .last_set
                 .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(250))
@@ -2826,7 +2826,7 @@ impl Core {
             data,
             &mut self.combo_view,
             &mut self.s.auto_build,
-            self.worker.busy(),
+            self.worker.busy_short(),
             accent,
             &paths,
         );
@@ -4469,7 +4469,7 @@ impl Core {
         };
         let Some(r) = self.results.get(&id) else {
             ui.horizontal(|ui| view_row(ui, cfg));
-            if !self.worker.busy() && !self.relay_busy {
+            if !self.worker.busy_short() && !self.relay_busy {
                 self.run(id, cfg);
             }
             return;
@@ -5591,7 +5591,7 @@ impl App {
                 }
             }
         }
-        let busy = self.c.worker.busy();
+        let busy = self.c.worker.busy_short();
         for w in &self.windows {
             if let Kind::Analysis(cfg) = &w.pane.kind {
                 if t.stale(w.pane.id, self.c.rev, busy) {
@@ -7286,7 +7286,7 @@ impl eframe::App for App {
             && self.c.is_combo()
             && self.c.built_combo.as_ref() == Some(&self.c.browser.combo)
             && self.c.layout_data.is_some()
-            && !self.c.worker.busy()
+            && !self.c.worker.busy_short()
         {
             self.c.browser.refocus = false;
             self.c.request_focus();

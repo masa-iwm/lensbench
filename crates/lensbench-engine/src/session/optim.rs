@@ -5,6 +5,32 @@ use lensbench_core::LockExt;
 
 // ------------------------------------------------------------------------------------------ 最適化
 
+/// 最適化の apply で当てる変更（base は最適化を始めたときの系）
+pub(super) struct PendingApply {
+    base: Arc<System>,
+    sys: System,
+    spec: LoadSpec,
+    change: Change,
+}
+
+/// 最適化の結果を当てる（プールの外で。回している間に系が変わっていたら当てず、結果の applied・notes を直す）
+pub(super) fn apply_pending(sess: &Session, p: PendingApply, v: &mut Value) {
+    let _w = sess.request.write_ok();
+    if sess
+        .current_system()
+        .is_ok_and(|now| Arc::ptr_eq(&now, &p.base))
+    {
+        store_changed(sess, p.sys, p.spec, p.change);
+    } else {
+        v["applied"] = json!(false);
+        if let Some(n) = v["notes"].as_array_mut() {
+            n.push(json!(
+                "最適化の間に系が変わったので、結果を系に当てなかった"
+            ));
+        }
+    }
+}
+
 /// 最適化の進み具合（同じプロセスの GUI が読む、[`optimize_progress`]）
 pub(super) struct OptRun {
     /// 反復ごとの評価関数の値（初期値を含む）
@@ -37,10 +63,10 @@ pub fn optimize_cancel() {
 /// 構成（.zmx の構成番号か、プロジェクトの状態の名前）の系。読み込んだ系と同じ構成なら読み込んだ系（set・edit の後）、
 /// ほかはファイルから読み、読み込んだ後の変更を当てる
 pub(super) fn config_system(
-    sess: &Session,
     b: &Value,
     cur: &Arc<System>,
     spec: &LoadSpec,
+    log: &[Change],
     notes: &mut Vec<String>,
 ) -> Result<System, RpcErr> {
     let mut sp = spec.clone();
@@ -69,7 +95,7 @@ pub(super) fn config_system(
     } else {
         format!("構成 {b}")
     };
-    Ok(replay(s, &sess.current_log(), &beam, notes)?)
+    Ok(replay(s, log, &beam, notes)?)
 }
 
 /// 最適化。params:
@@ -83,7 +109,7 @@ pub(super) fn config_system(
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
 pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     use lensbench_core::optim;
-    let (cur, spec) = sess.current()?;
+    let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
     let (systems, cur_idx) = match p.get("configs").and_then(Value::as_array) {
         Some(bs) if !bs.is_empty() => {
@@ -100,7 +126,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 if same && cur_idx.is_none() {
                     cur_idx = Some(v.len());
                 }
-                v.push(config_system(sess, b, &cur, &spec, &mut notes)?);
+                v.push(config_system(b, &cur, &spec, &log, &mut notes)?);
             }
             (v, cur_idx)
         }
@@ -230,7 +256,13 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 .iter()
                 .map(|(q, v)| Ok((n.param_name(*q), cur.get_param(*q)?, *v)))
                 .collect::<Result<Vec<_>, lensbench_core::Error>>()?;
-            store_changed(sess, n, spec, Change::Set(rec));
+            // 当てるのは計算の後（dispatch がプールの外で場の鍵を取り、系が変わっていれば当てない）
+            *sess.pending_apply.lock_ok() = Some(PendingApply {
+                base: cur.clone(),
+                sys: n,
+                spec,
+                change: Change::Set(rec),
+            });
             applied = true;
         }
     }
@@ -284,12 +316,12 @@ pub fn tolerance_cancel() {
 /// configs（構成の番号か状態の名前の並び。optimize と同じ。省けば読み込んだ系だけ）。読み込んだ系（set・edit の後）を使う。
 /// 同じプロセスからは [`tolerance_progress`] で進み具合を読み、[`tolerance_cancel`] で止められる
 pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    let (cur, spec) = sess.current()?;
+    let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
     let systems = match p.get("configs").and_then(Value::as_array) {
         Some(bs) if !bs.is_empty() => bs
             .iter()
-            .map(|b| config_system(sess, b, &cur, &spec, &mut notes))
+            .map(|b| config_system(b, &cur, &spec, &log, &mut notes))
             .collect::<Result<Vec<_>, _>>()?,
         _ => vec![(*cur).clone()],
     };
@@ -350,7 +382,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 ///
 /// 読み込んだ後の値の変更（set・edit）は各状態の系にも当てる
 pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    let (cur, spec) = sess.current()?;
+    let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
     let cfgs: Vec<Value> = match p.get("configs").and_then(Value::as_array) {
         Some(a) if !a.is_empty() => a.clone(),
@@ -366,7 +398,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     };
     let systems = cfgs
         .iter()
-        .map(|b| config_system(sess, b, &cur, &spec, &mut notes))
+        .map(|b| config_system(b, &cur, &spec, &log, &mut notes))
         .collect::<Result<Vec<_>, _>>()?;
     let names: Vec<String> = cfgs
         .iter()

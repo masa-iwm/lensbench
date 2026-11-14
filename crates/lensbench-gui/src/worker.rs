@@ -1,6 +1,7 @@
 //! 計算を GUI の外のスレッドで回す。要求は serve と同じ method・params（[`lensbench_engine::call_arrays`]）。
 //!
-//! 要求は 1 本のスレッドで順に処理する（serve と同じく系はプロセスに 1 つで、要求は 1 つずつ）。
+//! 要求は 1 本のスレッドで順に処理する。最適化・公差・差し替え探索・ズーム軌跡（[`Tag::long`]）だけは別のスレッドで回し、
+//! その間も面の表・レイアウト・解析を止めない（serve は始めたときの系で回す。GAR-20）。
 //! 1 つの要求に複数の呼び出しをまとめられる（スポット図の視野・波長ごとの trace など）。終わると GUI を描き直させる。
 //!
 //! ブラウザ（wasm）にはスレッドが無いので、Web Worker の中の別の wasm のインスタンスで回す（[`remote`]）。
@@ -79,6 +80,11 @@ impl Tag {
     /// 解析（系が変われば、待っている分は捨ててよい）
     fn skippable(&self) -> bool {
         matches!(self, Tag::Analyze(_) | Tag::Rays(_))
+    }
+
+    /// 長い計算（ネイティブは別のスレッドで回し、[`Worker::busy_core`]・[`Worker::busy_short`] に数えない）
+    fn long(&self) -> bool {
+        matches!(self, Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom)
     }
 
     /// serve の系を変える要求（出す前に、待っている・回っている解析をやめる）
@@ -223,11 +229,15 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
 
 pub struct Worker {
     tx: Sender<Job>,
+    /// 長い要求のスレッド（ネイティブの本体の Worker だけ。無ければ tx）
+    tx_long: Option<Sender<Job>>,
     rx: Receiver<Done>,
     /// 出して、まだ結果を受け取っていない要求の数
     pending: usize,
-    /// そのうち解析でないもの（系の読み込み・レイアウトなど）
+    /// そのうち解析でないもの（系の読み込み・レイアウトなど。長い要求は除く）
     pending_core: usize,
+    /// そのうち長い要求
+    pending_long: usize,
     gen: Arc<AtomicU64>,
     /// 回している解析の中断の印（[`CancelToken`]。解析でない要求・下書きの Worker では None）。
     /// 印は要求ごとに作るので、最適化などの中の解析や別の Worker の計算は止めない
@@ -241,6 +251,7 @@ pub struct Worker {
 
 /// 1 つの要求を回す（計算のスレッドで）
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
 struct Runner {
     call: CallFn,
     threads: Option<usize>,
@@ -299,13 +310,13 @@ impl Runner {
 
 impl Worker {
     /// `repaint` は結果が出たときに呼ぶ（GUI を描き直させる）
-    pub fn new(threads: Option<usize>, repaint: impl Fn() + Send + 'static) -> Worker {
+    pub fn new(threads: Option<usize>, repaint: impl Fn() + Send + Sync + 'static) -> Worker {
         Self::with_call(threads, repaint, true, Kind::Main)
     }
 
     /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit` だけを受ける。serve の系・順番待ちとは
     /// 別に回すので、解析を回している間も図とカタログが出る）
-    pub fn preview(repaint: impl Fn() + Send + 'static) -> Worker {
+    pub fn preview(repaint: impl Fn() + Send + Sync + 'static) -> Worker {
         Self::with_call(None, repaint, false, Kind::Preview)
     }
 
@@ -317,7 +328,7 @@ impl Worker {
 
     fn with_call(
         threads: Option<usize>,
-        repaint: impl Fn() + Send + 'static,
+        repaint: impl Fn() + Send + Sync + 'static,
         cancels: bool,
         kind: Kind,
     ) -> Worker {
@@ -333,28 +344,50 @@ impl Worker {
             cur: gen.clone(),
             run_flag: running.clone(),
         };
-        // ネイティブは別のスレッドで順に回す
+        // ネイティブは別のスレッドで順に回す（本体の Worker は長い要求のスレッドも）
         #[cfg(not(target_arch = "wasm32"))]
-        std::thread::Builder::new()
-            .name("lensbench-worker".into())
-            .spawn(move || {
-                for j in jobs {
-                    let d = runner.run(j);
-                    let skipped = d.skipped;
-                    if done.send(d).is_err() {
-                        break;
-                    }
-                    if !skipped {
-                        repaint();
-                    }
-                }
-            })
-            .expect("計算のスレッドを作れない");
+        let tx_long = {
+            let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(repaint);
+            let spawn = |name: &str, jobs: Receiver<Job>, runner: Runner| {
+                let (done, repaint) = (done.clone(), repaint.clone());
+                std::thread::Builder::new()
+                    .name(name.into())
+                    .spawn(move || {
+                        for j in jobs {
+                            let d = runner.run(j);
+                            let skipped = d.skipped;
+                            if done.send(d).is_err() {
+                                break;
+                            }
+                            if !skipped {
+                                repaint();
+                            }
+                        }
+                    })
+                    .expect("計算のスレッドを作れない");
+            };
+            let long = cancels.then(|| {
+                let (tx, jobs) = channel::<Job>();
+                // 長い要求は解析の中断の印を使わない（止めるのは stop）
+                let r = Runner {
+                    cancels: false,
+                    ..runner.clone()
+                };
+                spawn("lensbench-worker-long", jobs, r);
+                tx
+            });
+            spawn("lensbench-worker", jobs, runner);
+            long
+        };
+        #[cfg(target_arch = "wasm32")]
+        let tx_long = None;
         Worker {
             tx,
+            tx_long,
             rx,
             pending: 0,
             pending_core: 0,
+            pending_long: 0,
             gen,
             running,
             #[cfg(target_arch = "wasm32")]
@@ -374,17 +407,18 @@ impl Worker {
         if calls.is_empty() {
             return;
         }
-        let core = !tag.skippable();
+        let long = tag.long();
+        let core = !tag.skippable() && !long;
         // 系を変えるなら、それより前に出した解析は要らない（待っている分は捨て、回っている分はやめる）
         if tag.changes_system() {
             self.drop_queued();
         }
         let gen = self.gen.load(Ordering::Relaxed);
-        if self.tx.send(Job { tag, calls, gen }).is_ok() {
+        let tx = self.tx_long.as_ref().filter(|_| long).unwrap_or(&self.tx);
+        if tx.send(Job { tag, calls, gen }).is_ok() {
             self.pending += 1;
-            if core {
-                self.pending_core += 1;
-            }
+            self.pending_core += core as usize;
+            self.pending_long += long as usize;
         }
     }
 
@@ -395,7 +429,9 @@ impl Worker {
         self.remote.pump(self.gen.load(Ordering::Relaxed));
         let mut d = self.rx.try_recv().ok()?;
         self.pending -= 1;
-        if !d.tag.skippable() {
+        if d.tag.long() {
+            self.pending_long -= 1;
+        } else if !d.tag.skippable() {
             self.pending_core -= 1;
         } else if d.gen != self.gen.load(Ordering::Relaxed) {
             // 回している間に系が変わった（古い系の結果、または中断した）
@@ -405,8 +441,14 @@ impl Worker {
         Some(d)
     }
 
+    /// 何か待っている（長い要求も）
     pub fn busy(&self) -> bool {
         self.pending > 0
+    }
+
+    /// 長い要求（最適化など）のほかに待っている
+    pub fn busy_short(&self) -> bool {
+        self.pending > self.pending_long
     }
 
     /// 解析でない要求（系の読み込み・レイアウトなど）を待っている
@@ -1002,14 +1044,18 @@ mod tests {
             ]
         );
         assert!(!w.busy());
-        // 解析でない長い要求（最適化など）は系の変更で止めない（中の解析も止めない）
+        // 解析でない長い要求（最適化など）は系の変更で止めない（中の解析も止めない）。
+        // 別のスレッドで回るので、その間の系の変更・解析は先に終わる（GAR-20）
         w.send(Tag::Optimize, "spin", Value::Null);
         wait_started();
+        assert!(w.busy() && !w.busy_short() && !w.busy_core());
         w.send(Tag::Set, "set", Value::Null);
-        let d = wait_all(&mut w, 2);
-        assert_eq!(d[0].tag, Tag::Optimize);
-        assert!(!d[0].skipped);
-        assert_eq!(d[0].first().2, Ok(&Value::from("timeout")));
-        assert_eq!(d[1].tag, Tag::Set);
+        w.send(Tag::Analyze(4), "info", Value::Null);
+        let d = wait_all(&mut w, 3);
+        let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();
+        assert_eq!(tags, vec![Tag::Set, Tag::Analyze(4), Tag::Optimize]);
+        assert!(!d[2].skipped);
+        assert_eq!(d[2].first().2, Ok(&Value::from("timeout")));
+        assert!(!w.busy());
     }
 }
