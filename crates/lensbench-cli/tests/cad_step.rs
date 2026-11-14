@@ -567,6 +567,18 @@ fn coating_models_come_from_the_store_when_missing() {
         .unwrap()
         .contains_key(&format!("coat/ZEC_R-{h}.lbcb")));
     assert_eq!(run(&["coat-upload", coat.to_str().unwrap()])["exists"], 1);
+    // フォルダに無い膜は目録に残す（1 膜だけ足すときに、手元に無い膜が目録から消えない）
+    std::fs::rename(coat.join("ZEC_R.lbcb"), dir.join("ZEC_R.lbcb.bak")).unwrap();
+    let v = run(&["coat-upload", coat.to_str().unwrap()]);
+    assert_eq!(
+        (v["kept"].as_u64(), v["uploaded"].as_u64()),
+        (Some(1), Some(0)),
+        "{v}"
+    );
+    let idx2: Value =
+        serde_json::from_slice(&std::fs::read(coat.join("lbcb-remote.json")).unwrap()).unwrap();
+    assert_eq!(idx2["files"]["ZEC_R"].as_str(), Some(h.as_str()));
+    std::fs::rename(dir.join("ZEC_R.lbcb.bak"), coat.join("ZEC_R.lbcb")).unwrap();
     // 配る版と同じく .lbcb を外す。系の膜は置き場から取って読む
     std::fs::remove_file(coat.join("ZEC_R.lbcb")).unwrap();
     let opt = lensbench_core::zmx::LoadOptions {

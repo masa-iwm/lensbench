@@ -334,7 +334,7 @@ enum Cmd {
     },
     /// 膜のモデルの目録を作り、共有の置き場に上げる（保守用）
     ///
-    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に無いものを上げる。目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
+    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に無いものを上げる。今の目録にあってフォルダに無い膜は目録に残す。目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatUpload {
@@ -1612,11 +1612,11 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                         }
                     }
                     println!(
-                        "上げた {}・置き場にある {}・誤り {}（{} 膜）",
+                        "上げた {}・置き場にある {}・フォルダに無く目録に残した {}・誤り {}",
                         n("uploaded"),
                         n("exists"),
-                        n("error"),
-                        rows.len()
+                        n("kept"),
+                        n("error")
                     );
                     return Ok((false, Value::Null));
                 }
@@ -1624,7 +1624,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     true,
                     json!({
                         "files": rows.iter().map(|(name, key, st, e)| json!({"name": name, "key": key, "status": st, "error": e})).collect::<Vec<_>>(),
-                        "uploaded": n("uploaded"), "exists": n("exists"), "errors": n("error"),
+                        "uploaded": n("uploaded"), "exists": n("exists"), "kept": n("kept"), "errors": n("error"),
                     }),
                 )
             }

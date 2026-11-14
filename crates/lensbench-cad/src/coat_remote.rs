@@ -31,12 +31,16 @@ pub fn key_of(name: &str, hash: &str) -> String {
 
 /// 目録（膜の名前、ハッシュ）。無ければ空
 pub fn read_index(dir: &Path) -> Result<Vec<(String, String)>, String> {
-    let p = dir.join(INDEX);
+    read_index_file(&dir.join(INDEX))
+}
+
+/// 目録のファイルを読む（膜の名前、ハッシュ）。無ければ空
+pub fn read_index_file(p: &Path) -> Result<Vec<(String, String)>, String> {
     if !p.is_file() {
         return Ok(Vec::new());
     }
     let v: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?)
+        serde_json::from_slice(&std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?)
             .map_err(|e| format!("{}: {e}", p.display()))?;
     let mut out = Vec::new();
     for (k, h) in v["files"].as_object().into_iter().flatten() {
@@ -106,7 +110,8 @@ pub fn install() {
 }
 
 /// フォルダの `.lbcb` の目録を作り（`out`、省略でフォルダの `lbcb-remote.json`）、置き場に無いものを上げる
-/// （dry_run なら上げない）。返すのは（膜、鍵、"uploaded"・"exists"・"dry_run"・"error"、誤り）
+/// （dry_run なら上げない）。今の目録にあってフォルダに `.lbcb` が無い膜は、目録にそのまま残す（"kept"。
+/// 全部を手元に取らずに 1 膜だけ足す・作り直すため）。返すのは（膜、鍵、"uploaded"・"exists"・"dry_run"・"kept"・"error"、誤り）
 pub fn upload_dir(
     dir: &Path,
     out: Option<&Path>,
@@ -122,8 +127,26 @@ pub fn upload_dir(
         })
         .collect();
     files.sort();
+    let out = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| dir.join(INDEX));
     let mut index = serde_json::Map::new();
     let mut rows = Vec::new();
+    let present: std::collections::HashSet<String> = files
+        .iter()
+        .map(|f| {
+            f.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    for (name, h) in read_index_file(&out)? {
+        if !present.contains(&name) {
+            rows.push((name.clone(), key_of(&name, &h), "kept", String::new()));
+            index.insert(name, serde_json::Value::String(h));
+        }
+    }
     for f in files {
         let name = f
             .file_stem()
@@ -153,9 +176,6 @@ pub fn upload_dir(
             Err(e) => (name, key, "error", e),
         });
     }
-    let out = out
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| dir.join(INDEX));
     let text = serde_json::to_string_pretty(&serde_json::json!({ "version": 1, "files": index }))
         .map_err(|e| e.to_string())?;
     std::fs::write(&out, text + "\n").map_err(|e| format!("{}: {e}", out.display()))?;
