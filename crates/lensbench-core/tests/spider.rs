@@ -39,7 +39,9 @@ fn bitmap(s: &System) -> Vec<String> {
     for j in (0..67).rev() {
         let px: Vec<f64> = (0..67).map(|i| c(i) / 10.0).collect();
         let py = vec![c(j) / 10.0; 67];
-        let t = s.trace(FieldSel::Index(0), &px, &py, None, None, false);
+        let t = s
+            .try_trace(FieldSel::Index(0), &px, &py, None, None, false)
+            .unwrap();
         out.push(
             t.rays
                 .iter()

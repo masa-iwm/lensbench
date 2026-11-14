@@ -42,7 +42,9 @@ fn rays(s: &System) -> Vec<f64> {
     let mut out = Vec::new();
     for f in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(FieldSel::Index(f), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn));
                 out.push(r.opl);
@@ -181,7 +183,9 @@ fn build_singlet() {
         kind: SolveKind::MarginalHeight,
     })
     .unwrap();
-    let t = s.trace(FieldSel::Index(0), &[0.0], &[0.1], Some(1), None, false);
+    let t = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[0.1], Some(1), None, false)
+        .unwrap();
     let y = t.rays[0].xyz[1];
     assert!(y.abs() < 1e-3, "{y}");
     // 解いた厚さはパラメータで変えられない、外せば変えられる
@@ -216,7 +220,9 @@ fn build_singlet() {
         },
     )
     .unwrap();
-    let t = s.trace(FieldSel::Index(0), &[0.0], &[1.0], Some(1), None, false);
+    let t = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[1.0], Some(1), None, false)
+        .unwrap();
     assert!(t.rays[0].vig != 0 || t.rays[0].err != 0);
     s.set_coating(2, "AR").unwrap();
     assert_eq!(s.surfaces[2].coat, "AR");

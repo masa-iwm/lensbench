@@ -55,14 +55,16 @@ fn build(txt: &str) -> System {
 fn bits(s: &System) -> Vec<u64> {
     let mut v = Vec::new();
     for f in 0..s.fields.len() {
-        let t = s.trace(
-            FieldSel::Index(f),
-            &[0.0, 0.3, -0.5],
-            &[0.0, 0.6, 0.2],
-            None,
-            None,
-            false,
-        );
+        let t = s
+            .try_trace(
+                FieldSel::Index(f),
+                &[0.0, 0.3, -0.5],
+                &[0.0, 0.6, 0.2],
+                None,
+                None,
+                false,
+            )
+            .unwrap();
         for r in &t.rays {
             // 極端な解（強い曲率など）では通らない光線もある: 通るかどうかも比べる
             v.push(r.err as u64);
@@ -165,14 +167,16 @@ fn thickness_solves_meet_their_definition() {
             SolveKind::Compensator(_) => close(s.surfaces[2].t + t, 8.0, 1e-13),
             SolveKind::CenterOfCurvature(_) => close(t, 88.0, 1e-13),
             SolveKind::MarginalHeightZone(z) => {
-                let r = s.trace(
-                    FieldSel::Norm(0.0, 0.0),
-                    &[0.0],
-                    &[z],
-                    None,
-                    Some(k + 1),
-                    false,
-                );
+                let r = s
+                    .try_trace(
+                        FieldSel::Norm(0.0, 0.0),
+                        &[0.0],
+                        &[z],
+                        None,
+                        Some(k + 1),
+                        false,
+                    )
+                    .unwrap();
                 // 像面（平面）での実光線の高さ
                 close(r.rays[0].xyz[1], 0.2, 1e-12)
             }

@@ -268,14 +268,16 @@ fn raytrace_marginal_focus_thickness() {
     let s = load(&txt, &d);
     assert!(s.macro_warnings().is_empty(), "{:?}", s.macro_warnings());
     // 周辺光線が像面で光軸に来る
-    let t = s.trace(
-        lensbench_core::system::FieldSel::Norm(0.0, 0.0),
-        &[0.0],
-        &[1.0],
-        None,
-        None,
-        false,
-    );
+    let t = s
+        .try_trace(
+            lensbench_core::system::FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[1.0],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
     assert!(
         t.rays[0].xyz[1].abs() < 1e-12,
         "{:?} t = {}",
@@ -295,14 +297,16 @@ fn ray_functions_match_trace() {
     let d = macro_dir("rayf", &[]);
     let txt = singlet("X", -0.02).replace("  CURV -2e-2 12 0 0 0 \"X\"\n", "  CURV -2e-2\n");
     let s = load(&txt, &d);
-    let t = s.trace(
-        lensbench_core::system::FieldSel::Norm(0.0, 1.0),
-        &[0.3],
-        &[-0.7],
-        Some(0),
-        None,
-        true,
-    );
+    let t = s
+        .try_trace(
+            lensbench_core::system::FieldSel::Norm(0.0, 1.0),
+            &[0.3],
+            &[-0.7],
+            Some(0),
+            None,
+            true,
+        )
+        .unwrap();
     let (r1, r2) = (t.rec_at(1).unwrap(), t.rec_at(2).unwrap());
     let val = |src: &str| {
         Program::parse(src)

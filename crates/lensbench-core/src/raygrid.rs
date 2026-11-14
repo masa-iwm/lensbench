@@ -415,9 +415,7 @@ pub fn trace_jones(
     for w in 0..nw {
         // 指定面の交点は中心波長の追跡で一緒に記録する（同じ光線をもう一度追わない）
         let t = match (w, surf) {
-            (0, Some(s)) => {
-                sys.try_trace_rec(field, &pxs, &pys, Some(w), None, RecSel::Surfs(&[s]))?
-            }
+            (0, Some(s)) => sys.try_trace(field, &pxs, &pys, Some(w), None, RecSel::Surfs(&[s]))?,
             _ => sys.try_trace(field, &pxs, &pys, Some(w), None, false)?,
         };
         let chief = if phase {
@@ -475,7 +473,7 @@ pub fn trace_jones(
         let ppx: Vec<f64> = probe.iter().map(|p| p.0).collect();
         let ppy: Vec<f64> = probe.iter().map(|p| p.1).collect();
         let ima = sys.image();
-        let tp = sys.try_trace_rec(field, &ppx, &ppy, Some(0), None, RecSel::All)?;
+        let tp = sys.try_trace(field, &ppx, &ppy, Some(0), None, RecSel::All)?;
         let mut fs = None;
         for k in 1..ima {
             let Some(rec) = tp.rec_at(k) else { continue };
@@ -501,7 +499,7 @@ pub fn trace_jones(
             }
             Some(fsurf) => {
                 let ta =
-                    sys.try_trace_rec(field, &pxs, &pys, Some(0), None, RecSel::Surfs(&[fsurf]))?;
+                    sys.try_trace(field, &pxs, &pys, Some(0), None, RecSel::Surfs(&[fsurf]))?;
                 let rec = ta.rec_at(fsurf).expect("record");
                 for (m, &q) in idx.iter().enumerate() {
                     let d = rec.lmn[m];

@@ -512,7 +512,9 @@ fn real_lens_peak_matches_strehl_from_opd() {
     let f = pop::propagate(&rb.beam, d, PopMethod::Fresnel, out).unwrap();
     assert!(f.fresnel_error > 1.0, "{}", f.fresnel_error);
     // 像空間の NA（実光線、周辺光線の sin U）
-    let tr = s.trace(FieldSel::Index(0), &[0.0], &[1.0], Some(w), None, false);
+    let tr = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[1.0], Some(w), None, false)
+        .unwrap();
     let na = tr.rays[0].lmn[1].abs() * s.image_index(w);
     let lam = s.wavelengths[w] * 1e-3;
     let i0 = PI * (na / lam).powi(2);

@@ -495,14 +495,16 @@ fn clear_aperture_terms_keep_rays_inside() {
         for j in u.spans[0][0]..=u.spans[0][1] {
             let semi = fin.surfaces[j].semi;
             for f in 0..fin.fields.len() {
-                let t = fin.trace(
-                    lensbench_core::FieldSel::Index(f),
-                    &[0.0, 0.0],
-                    &[1.0, -1.0],
-                    None,
-                    Some(j),
-                    false,
-                );
+                let t = fin
+                    .try_trace(
+                        lensbench_core::FieldSel::Index(f),
+                        &[0.0, 0.0],
+                        &[1.0, -1.0],
+                        None,
+                        Some(j),
+                        false,
+                    )
+                    .unwrap();
                 for ray in &t.rays {
                     if ray.err == 0 {
                         assert!(
@@ -572,14 +574,16 @@ fn clear_aperture_with_fixed_semi_diameters() {
                 ));
                 let semi = fin.surfaces[j].semi;
                 for f in 0..fin.fields.len() {
-                    let t = fin.trace(
-                        lensbench_core::FieldSel::Index(f),
-                        &[0.0, 0.0],
-                        &[1.0, -1.0],
-                        None,
-                        Some(j),
-                        false,
-                    );
+                    let t = fin
+                        .try_trace(
+                            lensbench_core::FieldSel::Index(f),
+                            &[0.0, 0.0],
+                            &[1.0, -1.0],
+                            None,
+                            Some(j),
+                            false,
+                        )
+                        .unwrap();
                     for ray in &t.rays {
                         if ray.err == 0 {
                             assert!(

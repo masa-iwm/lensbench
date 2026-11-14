@@ -40,14 +40,16 @@ fn rays_reproduce_pupil_trace() {
         let s = load(name);
         let (px, py) = grid();
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(
-                FieldSel::Index(s.fields.len() - 1),
-                &px,
-                &py,
-                Some(w),
-                None,
-                true,
-            );
+            let t = s
+                .try_trace(
+                    FieldSel::Index(s.fields.len() - 1),
+                    &px,
+                    &py,
+                    Some(w),
+                    None,
+                    true,
+                )
+                .unwrap();
             let r = s.trace_launch(&Launch::Rays { p: &t.p0, k: &t.k0 }, w, None, true);
             assert_eq!(r.rec.len(), t.rec.len());
             for (i, (a, b)) in t.rays.iter().zip(&r.rays).enumerate() {

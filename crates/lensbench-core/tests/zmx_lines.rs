@@ -49,8 +49,12 @@ const PY: [f64; 6] = [0.0, 0.2, 0.6, -0.9, 0.95, 0.0];
 /// 全視野の光線の像面の位置・方向・光路長が同じ
 fn same_rays(a: &System, b: &System, px: &[f64], py: &[f64], tol: f64) {
     for fi in 0..a.fields.len() {
-        let ta = a.trace(FieldSel::Index(fi), px, py, None, None, false);
-        let tb = b.trace(FieldSel::Index(fi), px, py, None, None, false);
+        let ta = a
+            .try_trace(FieldSel::Index(fi), px, py, None, None, false)
+            .unwrap();
+        let tb = b
+            .try_trace(FieldSel::Index(fi), px, py, None, None, false)
+            .unwrap();
         for (i, (ra, rb)) in ta.rays.iter().zip(&tb.rays).enumerate() {
             assert_eq!((ra.err, ra.vig), (rb.err, rb.vig), "視野 {fi} 光線 {i}");
             assert_eq!(ra.err, 0);
@@ -151,7 +155,9 @@ fn toroidal_rays_land_on_the_surface() {
     let s = build(&lens(&toroid(c, k, r, &asph)));
     assert!((s.surfaces[1].cx + 1.0 / 30.0).abs() < 1e-15);
     for fi in 0..s.fields.len() {
-        let t = s.trace(FieldSel::Index(fi), &PX, &PY, None, Some(1), true);
+        let t = s
+            .try_trace(FieldSel::Index(fi), &PX, &PY, None, Some(1), true)
+            .unwrap();
         let rec = t.rec_at(1).unwrap();
         for (i, e) in (0..rec.xyz.len()).map(|i| (i, rec.entry(i))) {
             assert_eq!(t.rays[i].err, 0);
@@ -215,14 +221,16 @@ fn elliptical_aperture() {
         }
     );
     // 瞳の半径 5: (0, 0.9) は y 4.5 で中、(0.9, 0) は x 4.5 で外、(0.5, 0.75) は 0.69 + 0.66 > 1 で外
-    let tr = s.trace(
-        FieldSel::Index(0),
-        &[0.0, 0.9, 0.5, 0.4],
-        &[0.9, 0.0, 0.75, 0.5],
-        None,
-        None,
-        false,
-    );
+    let tr = s
+        .try_trace(
+            FieldSel::Index(0),
+            &[0.0, 0.9, 0.5, 0.4],
+            &[0.9, 0.0, 0.75, 0.5],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
     let vig: Vec<usize> = tr.rays.iter().map(|r| r.vig).collect();
     assert_eq!(vig, vec![0, 1, 1, 0]);
 }

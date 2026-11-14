@@ -66,7 +66,9 @@ fn image_position_is_real_image_height() {
         // 視野の値を像高にする（角度の視野の像面での位置）
         let fs: Vec<_> = (0..a.fields.len())
             .map(|i| {
-                let t = a.trace(FieldSel::Index(i), &[0.0], &[0.0], None, None, false);
+                let t = a
+                    .try_trace(FieldSel::Index(i), &[0.0], &[0.0], None, None, false)
+                    .unwrap();
                 (t.rays[0].xyz[0], t.rays[0].xyz[1])
             })
             .collect();
@@ -107,7 +109,13 @@ fn chief_ray_returning_on_itself_as_a_field() {
         let spec = s.object_spec(hx, hy).unwrap();
         let ObjSpec::Point(o) = spec else { panic!() };
         // 主光線の方向余弦の和が目標値
-        let t = s.trace_spec(spec, &[0.0], &[0.0], w, Some([0.0; 5]), None, true, None);
+        let t = s.trace_spec(
+            spec,
+            &[0.0],
+            &[0.0],
+            w,
+            lensbench_core::TraceOpts::new().vig([0.0; 5]).record(),
+        );
         let (a, b) = (t.rec_at(1).unwrap().lmn[0], t.rec_at(6).unwrap().lmn[0]);
         let r = [a[0] + b[0] - tgt[0], a[1] + b[1] - tgt[1]];
         assert!(r[0].abs().max(r[1].abs()) < 1e-12, "視野 {i}: {r:?}");

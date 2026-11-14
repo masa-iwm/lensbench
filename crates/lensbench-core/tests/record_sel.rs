@@ -42,7 +42,7 @@ fn selected_surfaces_match_the_full_record() {
                     lensbench_core::with_threads(Some(th), || {
                         let all = s.try_trace(f, &px, &py, None, None, true).unwrap();
                         let part = s
-                            .try_trace_rec(f, &px, &py, None, None, RecSel::Surfs(&sel))
+                            .try_trace(f, &px, &py, None, None, RecSel::Surfs(&sel))
                             .unwrap();
                         let surfs: Vec<usize> = part.rec.iter().map(|r| r.surf).collect();
                         assert_eq!(surfs, vec![2, 3, img], "{name}");

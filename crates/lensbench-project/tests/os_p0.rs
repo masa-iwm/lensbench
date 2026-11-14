@@ -115,14 +115,16 @@ fn matches_opticstudio_after_the_changes() {
         let f = r["field"].as_u64().unwrap() as usize;
         let w = r["wave"].as_u64().unwrap() as usize;
         let i = r["ray"].as_u64().unwrap() as usize;
-        let t = s.trace(
-            FieldSel::Index(f),
-            &px[i..=i],
-            &py[i..=i],
-            Some(w),
-            None,
-            false,
-        );
+        let t = s
+            .try_trace(
+                FieldSel::Index(f),
+                &px[i..=i],
+                &py[i..=i],
+                Some(w),
+                None,
+                false,
+            )
+            .unwrap();
         let ray = &t.rays[0];
         assert_eq!(ray.err, 0);
         assert_eq!(r["err"].as_i64().unwrap(), 0);

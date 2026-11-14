@@ -54,7 +54,7 @@ impl System {
             }
             for w in 0..self.wavelengths.len() {
                 let Ok(t) =
-                    self.try_trace_rec(FieldSel::Index(i), &px, &py, Some(w), None, RecSel::All)
+                    self.try_trace(FieldSel::Index(i), &px, &py, Some(w), None, RecSel::All)
                 else {
                     continue;
                 };

@@ -55,7 +55,10 @@ fn trace(c: &mut Criterion) {
         for &n in &threads {
             g.bench_with_input(BenchmarkId::new(name, format!("{n}T")), &s, |b, s| {
                 lensbench_core::with_threads(Some(n), || {
-                    b.iter(|| s.trace(f, &px, &py, Some(s.primary), None, false))
+                    b.iter(|| {
+                        s.try_trace(f, &px, &py, Some(s.primary), None, false)
+                            .unwrap()
+                    })
                 })
             });
         }

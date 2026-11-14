@@ -861,7 +861,7 @@ fn compute(
             (Some(v), false) => RecSel::Surfs(v),
             _ => RecSel::from(rec_trace),
         };
-        let mut t = sys.trace_launch_rec(launch, w, o.last, sel);
+        let mut t = sys.trace_launch(launch, w, o.last, sel);
         if let Some(ps) = &o.params {
             let mut gw = sys.opl_grad(&t, w, ps)?;
             if let Some(z) = o.dz {
@@ -893,7 +893,7 @@ fn compute(
             let t = match o.ws.iter().position(|&q| q == w) {
                 Some(k) if o.dz.is_none() => &traces[k],
                 _ => {
-                    own = sys.trace_launch_rec(launch, w, o.last, RecSel::Off);
+                    own = sys.trace_launch(launch, w, o.last, RecSel::Off);
                     &own
                 }
             };

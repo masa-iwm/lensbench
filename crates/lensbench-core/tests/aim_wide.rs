@@ -37,14 +37,16 @@ fn wide_angle_rays_are_aimed_like_opticstudio() {
     // 定義した 4 つの視野
     for h in 0..4 {
         for w in 0..img.shape()[1] {
-            let t = s.trace(
-                FieldSel::Norm(hxy[[h, 0]], hxy[[h, 1]]),
-                &px,
-                &py,
-                Some(w),
-                None,
-                false,
-            );
+            let t = s
+                .try_trace(
+                    FieldSel::Norm(hxy[[h, 0]], hxy[[h, 1]]),
+                    &px,
+                    &py,
+                    Some(w),
+                    None,
+                    false,
+                )
+                .unwrap();
             for (i, r) in t.rays.iter().enumerate() {
                 // 列は x y z l m n opd opd_chief err vig
                 let os_ok = img[[h, w, i, 8]] == 0.0;

@@ -73,7 +73,7 @@ pub fn init_from_env() {
     }
 }
 pub use sync::{LockExt, RwLockExt};
-pub use system::{FieldSel, RecSel, System};
+pub use system::{FieldSel, RecSel, System, TraceOpts};
 pub use tansag::TanSag;
 pub use waves::Waves;
 

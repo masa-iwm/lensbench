@@ -417,6 +417,53 @@ impl Trace {
     }
 }
 
+/// [`System::trace_spec`] の選択（既定: ケラレ係数なし・像面まで・記録なし・視野の正規化座標なし）
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TraceOpts {
+    /// ケラレ係数（VDX, VDY, VCX, VCY, VAN）
+    pub vig: Option<[f64; 5]>,
+    /// 止める面（None は像面）
+    pub upto: Option<usize>,
+    /// 面ごとの記録を残す
+    pub record: bool,
+    /// 視野の正規化座標（浮動開口・ケラレの補間に使う）
+    pub hxy: Option<(f64, f64)>,
+}
+
+impl TraceOpts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn vig(self, v: [f64; 5]) -> Self {
+        self.vig_opt(Some(v))
+    }
+    pub fn vig_opt(mut self, v: Option<[f64; 5]>) -> Self {
+        self.vig = v;
+        self
+    }
+    pub fn upto(self, j: usize) -> Self {
+        self.upto_opt(Some(j))
+    }
+    pub fn upto_opt(mut self, j: Option<usize>) -> Self {
+        self.upto = j;
+        self
+    }
+    pub fn record(self) -> Self {
+        self.record_if(true)
+    }
+    pub fn record_if(mut self, b: bool) -> Self {
+        self.record = b;
+        self
+    }
+    pub fn hxy(self, h: (f64, f64)) -> Self {
+        self.hxy_opt(Some(h))
+    }
+    pub fn hxy_opt(mut self, h: Option<(f64, f64)>) -> Self {
+        self.hxy = h;
+        self
+    }
+}
+
 /// 面ごとの記録（record）をどの面について残すか
 #[derive(Debug, Clone, Copy)]
 pub enum RecSel<'a> {
@@ -1393,10 +1440,7 @@ impl System {
                             &[0.0],
                             &[0.0],
                             self.primary,
-                            Some([0.0; 5]),
-                            None,
-                            true,
-                            None,
+                            TraceOpts::new().vig([0.0; 5]).record(),
                         )
                     };
                     let mut r1 = chief(CUSP_FIELD_DEG);
@@ -1422,10 +1466,7 @@ impl System {
                                     &[0.0],
                                     &[0.0],
                                     self.primary,
-                                    Some([0.0; 5]),
-                                    None,
-                                    false,
-                                    None,
+                                    TraceOpts::new().vig([0.0; 5]),
                                 ),
                                 Err(_) => {
                                     z[i] = f64::NAN;
@@ -1472,10 +1513,7 @@ impl System {
             px,
             py,
             self.primary,
-            Some([0.0; 5]),
-            None,
-            false,
-            Some((hx, hy)),
+            TraceOpts::new().vig([0.0; 5]).hxy((hx, hy)),
         );
         t.hx_hy = (hx, hy);
         Some(t)
@@ -1754,10 +1792,7 @@ impl System {
                         &[0.0],
                         &[0.0],
                         self.field_wave.unwrap_or(self.primary),
-                        Some([0.0; 5]),
-                        Some(surf),
-                        false,
-                        None,
+                        TraceOpts::new().vig([0.0; 5]).upto(surf),
                     );
                     [r.rays[0].xyz[0], r.rays[0].xyz[1]]
                 }
@@ -1767,10 +1802,7 @@ impl System {
                         &[0.0],
                         &[0.0],
                         self.field_wave.unwrap_or(self.primary),
-                        Some([0.0; 5]),
-                        Some(s1.max(s2)),
-                        true,
-                        None,
+                        TraceOpts::new().vig([0.0; 5]).upto(s1.max(s2)).record(),
                     );
                     if r.rays[0].err != 0 {
                         return [f64::NAN; 2];
@@ -1868,20 +1900,17 @@ impl System {
         })
     }
 
-    /// 物体の指定と瞳座標の光線を追跡する
-    #[allow(clippy::too_many_arguments)]
+    /// 物体の指定と瞳座標の光線を波長 w で追跡する（ケラレ係数・止める面・記録・視野は [`TraceOpts`]）
     pub fn trace_spec(
         &self,
         spec: ObjSpec,
         px: &[f64],
         py: &[f64],
         w: usize,
-        vig: Option<[f64; 5]>,
-        last: Option<usize>,
-        record: bool,
-        hxy: Option<(f64, f64)>,
+        o: TraceOpts,
     ) -> Trace {
-        self.trace_spec_inner(spec, px, py, w, vig, last, record, hxy, None)
+        let o = (o.vig, o.upto, o.record, o.hxy);
+        self.trace_spec_inner(spec, px, py, w, o.0, o.1, o.2, o.3, None)
             .0
     }
 
@@ -2040,21 +2069,16 @@ impl System {
         fr.surf[0].unwrap_or(fr.obj)
     }
 
-    /// 光線の始め方 l で追跡する（波長 w、面 last まで、record なら面ごとの記録つき）
-    pub fn trace_launch(&self, l: &Launch, w: usize, last: Option<usize>, record: bool) -> Trace {
-        self.trace_launch_inner(l, w, last, RecSel::from(record), None)
-            .0
-    }
-
-    /// [`Self::trace_launch`] で、記録する面を選ぶ（[`RecSel`]）。面の多い系で一部の面だけ記録すると速い
-    pub fn trace_launch_rec(
+    /// 光線の始め方 l で追跡する（波長 w、面 last まで）。rec は記録する面（[`RecSel`]、bool なら全部か無し）。
+    /// 面の多い系で一部の面だけ記録すると速い
+    pub fn trace_launch<'r>(
         &self,
         l: &Launch,
         w: usize,
         last: Option<usize>,
-        rec: RecSel<'_>,
+        rec: impl Into<RecSel<'r>>,
     ) -> Trace {
-        self.trace_launch_inner(l, w, last, rec, None).0
+        self.trace_launch_inner(l, w, last, rec.into(), None).0
     }
 
     /// 光線の始め方 l での偏光追跡（[`Self::trace_pol_spec`] と同じ約束）
@@ -3349,47 +3373,16 @@ impl System {
         Some(v)
     }
 
-    /// 視野の光線を瞳座標 (px, py) で波長 w（既定は主波長）、面 last（既定は像面）まで追跡する
-    pub fn trace(
+    /// 視野の光線を瞳座標 (px, py) で波長 w（既定は主波長）、面 last（既定は像面）まで追跡する。
+    /// rec は記録する面（[`RecSel`]、bool なら全部か無し）
+    pub fn try_trace<'r>(
         &self,
         field: FieldSel,
         px: &[f64],
         py: &[f64],
         w: Option<usize>,
         last: Option<usize>,
-        record: bool,
-    ) -> Trace {
-        self.try_trace(field, px, py, w, last, record)
-            .expect("trace")
-    }
-
-    pub fn try_trace(
-        &self,
-        field: FieldSel,
-        px: &[f64],
-        py: &[f64],
-        w: Option<usize>,
-        last: Option<usize>,
-        record: bool,
-    ) -> Result<Trace> {
-        let w = w.unwrap_or(self.primary);
-        let (hx, hy) = self.field_sel_norm(field, w)?;
-        let spec = self.object_spec(hx, hy)?;
-        let vig = self.vig_factors(hx, hy)?;
-        let mut t = self.trace_spec(spec, px, py, w, Some(vig), last, record, Some((hx, hy)));
-        t.hx_hy = (hx, hy);
-        Ok(t)
-    }
-
-    /// [`Self::try_trace`] で、記録する面を選ぶ（[`RecSel`]）
-    pub fn try_trace_rec(
-        &self,
-        field: FieldSel,
-        px: &[f64],
-        py: &[f64],
-        w: Option<usize>,
-        last: Option<usize>,
-        rec: RecSel<'_>,
+        rec: impl Into<RecSel<'r>>,
     ) -> Result<Trace> {
         let w = w.unwrap_or(self.primary);
         let (hx, hy) = self.field_sel_norm(field, w)?;
@@ -3403,7 +3396,7 @@ impl System {
             vig: Some(vig),
             hxy: Some((hx, hy)),
         };
-        let mut t = self.trace_launch_rec(&l, w, last, rec);
+        let mut t = self.trace_launch(&l, w, last, rec);
         t.hx_hy = (hx, hy);
         Ok(t)
     }

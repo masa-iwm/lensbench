@@ -200,14 +200,16 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
                 mx(&mut c.opl, v);
             }
         }
-        let r = s.trace(
-            f,
-            &pps.column(0).to_vec(),
-            &pps.column(1).to_vec(),
-            Some(s.primary),
-            None,
-            true,
-        );
+        let r = s
+            .try_trace(
+                f,
+                &pps.column(0).to_vec(),
+                &pps.column(1).to_vec(),
+                Some(s.primary),
+                None,
+                true,
+            )
+            .unwrap();
         for rs in &r.rec {
             let (j, parity) = (&rs.surf, &rs.parity);
             for n in 0..rs.xyz.len() {

@@ -127,7 +127,9 @@ fn ideal_reflection_is_a_fold_mirror() {
         );
         same_global(&bs, &hand, 1e-11);
         // 2 軸の傾きでも反射した軸上の主光線は後ろの面の (0, 0) を通る
-        let t = bs.trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true);
+        let t = bs
+            .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true)
+            .unwrap();
         for j in bs.surfaces.len() - 3..bs.surfaces.len() {
             if let Some(r) = t.rec_at(j) {
                 assert!(

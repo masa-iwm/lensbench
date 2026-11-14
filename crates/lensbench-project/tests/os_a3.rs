@@ -93,7 +93,9 @@ fn rays_match_opticstudio() {
         for tr in os["traces"].as_array().unwrap() {
             let f = tr["field"].as_u64().unwrap() as usize - 1;
             let w = tr["wave"].as_u64().unwrap() as usize - 1;
-            let t = s.trace(FieldSel::Index(f), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
             for (i, r) in tr["rays"].as_array().unwrap().iter().enumerate() {
                 let v: Vec<f64> = r
                     .as_array()

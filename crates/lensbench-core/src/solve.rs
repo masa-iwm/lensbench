@@ -111,10 +111,11 @@ impl System {
                 &[pp[0]],
                 &[pp[1]],
                 w,
-                Some([0.0; 5]),
-                Some(last),
-                true,
-                Some((0.0, 0.0)),
+                crate::TraceOpts::new()
+                    .vig([0.0; 5])
+                    .upto(last)
+                    .record()
+                    .hxy((0.0, 0.0)),
             );
             let at = |j: usize| -> &RecSurf { t.rec_at(j).unwrap() };
             let bad = t.rays[0].err != 0;

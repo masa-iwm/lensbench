@@ -48,7 +48,9 @@ fn bits(s: &System) -> Vec<u64> {
     let py = [0.0, 0.1, 0.6];
     let mut v = Vec::new();
     for f in 0..s.fields.len() {
-        let t = s.trace(FieldSel::Index(f), &px, &py, None, None, false);
+        let t = s
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
         for r in &t.rays {
             assert_eq!(r.err, 0);
             v.extend([r.xyz[0], r.xyz[1], r.opl].map(f64::to_bits));

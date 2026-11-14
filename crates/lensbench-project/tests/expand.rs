@@ -472,15 +472,21 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
         ([0.1, 0.0, 0.0, 0.0, 0.0], 1)
     );
     let (px, py) = ([0.0, 0.4], [0.3, -0.6]);
-    let t0 = base.trace(FieldSel::Index(3), &px, &py, Some(1), None, false);
-    let t1 = c.trace(FieldSel::Index(3), &px, &py, Some(1), None, false);
+    let t0 = base
+        .try_trace(FieldSel::Index(3), &px, &py, Some(1), None, false)
+        .unwrap();
+    let t1 = c
+        .try_trace(FieldSel::Index(3), &px, &py, Some(1), None, false)
+        .unwrap();
     for (a, b) in t0.rays.iter().zip(&t1.rays) {
         assert!((a.xyz[0] - 0.1 - b.xyz[0]).abs() < 1e-12);
         assert!((a.xyz[1] - b.xyz[1]).abs() < 1e-12);
     }
     // 小さな円の開口で光線がけられる
     let v = with(r#"{"aperture": {"type": "circular", "max": 0.001}}"#);
-    let t = v.trace(FieldSel::Index(1), &px, &py, Some(1), None, false);
+    let t = v
+        .try_trace(FieldSel::Index(1), &px, &py, Some(1), None, false)
+        .unwrap();
     assert!(t.rays.iter().all(|r| r.vig == k));
     // 書けない組み合わせ
     for (s, msg) in [
@@ -637,7 +643,9 @@ fn two_axis_fold_mirror_keeps_axis() {
               {{"type": "air", "t": 20}}] }}"#
         );
         let s = expand(&Project::from_json(&txt).unwrap(), &env()).unwrap();
-        let t = s.trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true);
+        let t = s
+            .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true)
+            .unwrap();
         let m = (1..s.surfaces.len())
             .position(|j| s.surfaces[j].mirror)
             .unwrap()

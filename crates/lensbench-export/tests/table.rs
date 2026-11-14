@@ -50,7 +50,9 @@ fn ray_table_matches_the_trace() {
     let (x, l, opl) = (f64s(&t, "x"), f64s(&t, "l"), f64s(&t, "opl"));
     let (surf, wave) = (i64s(&t, "surface"), i64s(&t, "wave"));
     for (k, w) in [0usize, 2].into_iter().enumerate() {
-        let tr = s.trace(FieldSel::Index(2), &px, &py, Some(w), None, false);
+        let tr = s
+            .try_trace(FieldSel::Index(2), &px, &py, Some(w), None, false)
+            .unwrap();
         for i in 0..3 {
             // 像面の行
             let r = k * 6 + i * 2 + 1;

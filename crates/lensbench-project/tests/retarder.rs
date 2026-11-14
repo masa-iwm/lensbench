@@ -146,7 +146,9 @@ fn wedge_window_deviation() {
         catalog: None,
     };
     let s = expand(&p, &env).unwrap();
-    let t = s.trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, false);
+    let t = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, false)
+        .unwrap();
     let l = t.rays[0].lmn;
     let n = s.surfaces.iter().find(|d| d.mat == "N-BK7").unwrap().n[0];
     let dev = l[1].atan2(l[2]).to_degrees().abs();

@@ -44,14 +44,16 @@ fn ray_diff(name: &str) -> (f64, f64, f64, usize) {
     for r in v["rays"].as_array().unwrap() {
         let w = r["wave"].as_u64().unwrap() as usize;
         let (hx, hy) = (f(&r["Hx"]), f(&r["Hy"]));
-        let t = s.trace(
-            FieldSel::Norm(hx, hy),
-            &[f(&r["Px"])],
-            &[f(&r["Py"])],
-            Some(w),
-            None,
-            true,
-        );
+        let t = s
+            .try_trace(
+                FieldSel::Norm(hx, hy),
+                &[f(&r["Px"])],
+                &[f(&r["Py"])],
+                Some(w),
+                None,
+                true,
+            )
+            .unwrap();
         let surfs = r["surfaces"].as_array().unwrap();
         let ok = surfs.last().unwrap()["err"].as_f64().unwrap() == 0.0;
         assert_eq!(ok, t.rays[0].err == 0, "{name}: {r}");
@@ -176,8 +178,12 @@ fn write_roundtrip() {
         let px = [0.0, 0.3, -0.7, 1.0];
         let py = [0.0, 0.9, 0.2, -0.4];
         for fi in 0..s.fields.len() {
-            let a = s.trace(FieldSel::Index(fi), &px, &py, None, None, false);
-            let b = s2.trace(FieldSel::Index(fi), &px, &py, None, None, false);
+            let a = s
+                .try_trace(FieldSel::Index(fi), &px, &py, None, None, false)
+                .unwrap();
+            let b = s2
+                .try_trace(FieldSel::Index(fi), &px, &py, None, None, false)
+                .unwrap();
             for (x, y) in a.rays.iter().zip(&b.rays) {
                 assert_eq!(x.err, y.err, "{name}");
                 assert_eq!(x.xyz, y.xyz, "{name}");
@@ -209,7 +215,9 @@ fn image_rays(s: &System) -> Vec<f64> {
     let mut out = Vec::new();
     for fi in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(FieldSel::Index(fi), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(fi), &px, &py, Some(w), None, false)
+                .unwrap();
             for r in &t.rays {
                 assert_eq!(r.err, 0);
                 out.extend(r.xyz.iter().chain(&r.lmn));

@@ -83,14 +83,16 @@ fn solve_before_the_stop_converges() {
 #[test]
 fn real_ray_zone() {
     let s = build(&lens("  DISZ 30\n", "  DISZ 50\n  MAZH 0 0.7\n")).unwrap();
-    let t = s.trace(
-        lensbench_core::system::FieldSel::Norm(0.0, 0.0),
-        &[0.0],
-        &[0.7],
-        None,
-        None,
-        false,
-    );
+    let t = s
+        .try_trace(
+            lensbench_core::system::FieldSel::Norm(0.0, 0.0),
+            &[0.0],
+            &[0.7],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
     assert!(t.rays[0].xyz[1].abs() < 1e-12, "{}", t.rays[0].xyz[1]);
 }
 

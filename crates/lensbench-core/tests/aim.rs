@@ -32,10 +32,12 @@ fn many_rays_agree_with_few_rays() {
         let r = rx.abs().max(ry.abs()).max(1.0);
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let all = s.trace(f, &px, &py, None, Some(st), false);
+            let all = s.try_trace(f, &px, &py, None, Some(st), false).unwrap();
             let mut ok = 0;
             for c in (0..n).step_by(250) {
-                let part = s.trace(f, &px[c..c + 250], &py[c..c + 250], None, Some(st), false);
+                let part = s
+                    .try_trace(f, &px[c..c + 250], &py[c..c + 250], None, Some(st), false)
+                    .unwrap();
                 for (k, b) in part.rays.iter().enumerate() {
                     let a = &all.rays[c + k];
                     assert_eq!(

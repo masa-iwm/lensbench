@@ -60,10 +60,7 @@ fn chief_ray_returns_on_itself() {
         &[0.0],
         &[0.0],
         w,
-        Some([0.0; 5]),
-        None,
-        true,
-        None,
+        lensbench_core::TraceOpts::new().vig([0.0; 5]).record(),
     );
     assert_eq!(t.rays[0].err, 0);
     for (a, b) in [(1, 7), (2, 6)] {
@@ -115,10 +112,7 @@ fn return_ray_through_point() {
             &[pupil[0]],
             &[pupil[1]],
             w,
-            Some([0.0; 5]),
-            None,
-            true,
-            None,
+            lensbench_core::TraceOpts::new().vig([0.0; 5]).record(),
         );
         let x = t.rec_at(surf).unwrap().xyz[0];
         assert!((x[0] - target[0]).abs() < 1e-9 && (x[1] - target[1]).abs() < 1e-9);
@@ -169,10 +163,7 @@ fn dir_diff_and_errors() {
         &[0.3],
         &[0.0],
         w,
-        Some([0.0; 5]),
-        None,
-        true,
-        None,
+        lensbench_core::TraceOpts::new().vig([0.0; 5]).record(),
     );
     let (a, b) = (t.rec_at(2).unwrap().lmn[0], t.rec_at(7).unwrap().lmn[0]);
     assert!(

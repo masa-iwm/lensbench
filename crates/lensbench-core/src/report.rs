@@ -3,16 +3,18 @@
 use crate::math::*;
 use crate::system::{FieldSel, FieldType, System, ENPP_MAX};
 
-/// 実光線の作動 F 値（OpticStudio の WFNO）
+/// 実光線の作動 F 値（OpticStudio の WFNO）。軸上の光線が追えなければ NaN
 pub fn working_fnum(s: &System) -> f64 {
-    let r = s.trace(
+    let Ok(r) = s.try_trace(
         FieldSel::Norm(0.0, 0.0),
         &[0.0, 1.0, -1.0, 0.0, 0.0],
         &[0.0, 0.0, 0.0, 1.0, -1.0],
         Some(s.primary),
         None,
         false,
-    );
+    ) else {
+        return f64::NAN;
+    };
     let k0 = r.rays[0].lmn;
     let m: f64 = r.rays[1..]
         .iter()

@@ -76,10 +76,11 @@ fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Pa
         &px,
         &py,
         w,
-        Some([0.0; 5]),
-        Some(last),
-        true,
-        Some((hx, hy)),
+        lensbench_core::TraceOpts::new()
+            .vig([0.0; 5])
+            .upto(last)
+            .record()
+            .hxy((hx, hy)),
     );
     let g = s.opl_grad(&t, w, params).unwrap();
     let rl = t.rec.last().unwrap();
@@ -272,7 +273,9 @@ fn trace_grad_matches_trace() {
     let (t, g) = s
         .trace_grad(FieldSel::Index(1), &px, &py, None, None, &p)
         .unwrap();
-    let t2 = s.trace(FieldSel::Index(1), &px, &py, None, None, false);
+    let t2 = s
+        .try_trace(FieldSel::Index(1), &px, &py, None, None, false)
+        .unwrap();
     for i in 0..2 {
         assert_eq!(t.rays[i].opl.to_bits(), t2.rays[i].opl.to_bits());
     }
@@ -314,10 +317,11 @@ SURF 8\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         &[0.3],
         &[0.2],
         0,
-        Some([0.0; 5]),
-        Some(7),
-        true,
-        Some((0.0, 1.0)),
+        lensbench_core::TraceOpts::new()
+            .vig([0.0; 5])
+            .upto(7)
+            .record()
+            .hxy((0.0, 1.0)),
     );
     let a = s.opl_grad(&tr, 0, &p[..1]).unwrap()[0];
     let b = free.opl_grad(&tr, 0, &p[..1]).unwrap()[0];

@@ -44,7 +44,9 @@ fn optreturn_values_and_pv() {
     assert_eq!(o[3], Some(0.5));
     assert!(o[1].is_none());
     // RAYTRACE は lensbench の追跡と同じ光線
-    let r = s.trace(FieldSel::Norm(0.0, 0.5), &[0.0], &[1.0], None, None, false);
+    let r = s
+        .try_trace(FieldSel::Norm(0.0, 0.5), &[0.0], &[1.0], None, None, false)
+        .unwrap();
     assert_eq!(o[5], Some(r.rays[0].xyz[1]));
     // 項の値は OPTRETURN data − target
     let t = ZplmTerm::new(&m, 0, pv, 0.01).unwrap();

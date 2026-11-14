@@ -45,7 +45,9 @@ fn rays(s: &System) -> Vec<f64> {
     let mut out = Vec::new();
     for f in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(FieldSel::Index(f), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn));
                 out.push(r.opl);
@@ -454,10 +456,11 @@ fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Pa
         &px,
         &py,
         w,
-        Some([0.0; 5]),
-        Some(last),
-        true,
-        Some((hx, hy)),
+        lensbench_core::TraceOpts::new()
+            .vig([0.0; 5])
+            .upto(last)
+            .record()
+            .hxy((hx, hy)),
     );
     let g = s.opl_grad(&t, w, params).unwrap();
     let rl = t.rec.last().unwrap();

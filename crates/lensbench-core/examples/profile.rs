@@ -86,13 +86,15 @@ fn main() {
             let f = FieldSel::Index(1.min(s.fields.len() - 1));
             time("load", || zmx::load_with(&p, &opt).unwrap());
             let (px, py) = pupil(20000);
-            time("trace 20k", || s.trace(f, &px, &py, None, None, false));
+            time("trace 20k", || {
+                s.try_trace(f, &px, &py, None, None, false).unwrap()
+            });
             time("trace 20k record", || {
-                s.trace(f, &px, &py, None, None, true)
+                s.try_trace(f, &px, &py, None, None, true).unwrap()
             });
             let img = s.image();
             time("trace 20k record (像面のみ)", || {
-                s.try_trace_rec(
+                s.try_trace(
                     f,
                     &px,
                     &py,
@@ -103,7 +105,7 @@ fn main() {
                 .unwrap()
             });
             time("trace 1 (chief)", || {
-                s.trace(f, &[0.0], &[0.0], None, None, false)
+                s.try_trace(f, &[0.0], &[0.0], None, None, false).unwrap()
             });
             time("spot (rings 6)", || {
                 analysis::spot(&s, f, Waves::All, 6).unwrap()

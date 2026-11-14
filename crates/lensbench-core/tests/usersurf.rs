@@ -38,8 +38,12 @@ fn tan_traces_like_the_paraxial_lens() {
     let px = [0.0, 0.3, -0.7, 0.5];
     let py = [0.0, -0.2, 0.4, 0.9];
     for f in 0..5 {
-        let ta = a.trace(FieldSel::Index(f), &px, &py, None, None, false);
-        let tb = b.trace(FieldSel::Index(f), &px, &py, None, None, false);
+        let ta = a
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
+        let tb = b
+            .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
+            .unwrap();
         for (ra, rb) in ta.rays.iter().zip(&tb.rays) {
             assert_eq!(
                 (ra.xyz, ra.lmn, ra.opl, ra.lens_opd),
@@ -62,7 +66,9 @@ fn image_height_follows_the_mapping_without_aberration() {
         let s = f50(m);
         assert!((s.paraxial().efl - 50.0).abs() < 1e-12, "{m}");
         for (i, deg) in [0.0f64, 10.0, 20.0, 30.0, 40.0].iter().enumerate() {
-            let t = s.trace(FieldSel::Index(i), &[0.0], &[0.0], None, None, false);
+            let t = s
+                .try_trace(FieldSel::Index(i), &[0.0], &[0.0], None, None, false)
+                .unwrap();
             let want = h(deg.to_radians());
             assert!(
                 (t.rays[0].xyz[1] - want).abs() < 1e-9,
@@ -141,8 +147,12 @@ fn user_registered_model() {
     s.surfaces[2].user =
         Some(UserSurf::new("test_plate", Config::from([("a".into(), Value::Num(1e-3))])).unwrap());
     s.changed().unwrap();
-    let t = s.trace(FieldSel::Index(0), &[0.0], &[1.0], None, None, false);
-    let t0 = paraxial().trace(FieldSel::Index(0), &[0.0], &[1.0], None, None, false);
+    let t = s
+        .try_trace(FieldSel::Index(0), &[0.0], &[1.0], None, None, false)
+        .unwrap();
+    let t0 = paraxial()
+        .try_trace(FieldSel::Index(0), &[0.0], &[1.0], None, None, false)
+        .unwrap();
     assert_eq!(t.rays[0].xyz, t0.rays[0].xyz);
     assert!(
         (t.rays[0].lens_opd - t0.rays[0].lens_opd - 1e-3 * t0.rays[0].xyz[1].powi(2)).abs() < 1e-15

@@ -38,7 +38,9 @@ fn rays(s: &System) -> Vec<u64> {
     let mut out = Vec::new();
     for f in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(FieldSel::Index(f), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn).map(|x| x.to_bits()));
                 out.push(r.opl.to_bits());

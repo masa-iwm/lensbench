@@ -57,7 +57,9 @@ fn bits(s: &System) -> Vec<u64> {
     let mut out = Vec::new();
     for f in 0..s.fields.len() {
         for w in 0..s.wavelengths.len() {
-            let t = s.trace(FieldSel::Index(f), &px, &py, Some(w), None, false);
+            let t = s
+                .try_trace(FieldSel::Index(f), &px, &py, Some(w), None, false)
+                .unwrap();
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn).map(|v| v.to_bits()));
                 out.push(r.opl.to_bits());
@@ -219,7 +221,8 @@ fn index_offsets() {
 fn change_cost() {
     let base = load("C1");
     let (px, py) = grid();
-    base.trace(FieldSel::Index(1), &px, &py, None, None, false);
+    base.try_trace(FieldSel::Index(1), &px, &py, None, None, false)
+        .unwrap();
     let n = 2000;
     for (label, p) in [
         ("曲率", base.param("2.c").unwrap()),
@@ -237,14 +240,10 @@ fn change_cost() {
         let t1 = Instant::now();
         for i in 0..n / 10 {
             let s = base.with_params(&[(p, v0 + 1e-6 * i as f64)]).unwrap();
-            std::hint::black_box(s.trace(
-                FieldSel::Index(1),
-                &px[..1],
-                &py[..1],
-                None,
-                None,
-                false,
-            ));
+            std::hint::black_box(
+                s.try_trace(FieldSel::Index(1), &px[..1], &py[..1], None, None, false)
+                    .unwrap(),
+            );
         }
         let dt1 = t1.elapsed().as_secs_f64() / (n / 10) as f64;
         println!(

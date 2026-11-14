@@ -30,7 +30,9 @@ fn edit_and_system_file_round_trip() {
         ]),
     )
     .unwrap();
-    let t = s.trace(FieldSel::Index(2), &[0.0], &[0.0], None, None, false);
+    let t = s
+        .try_trace(FieldSel::Index(2), &[0.0], &[0.0], None, None, false)
+        .unwrap();
     assert!((t.rays[0].xyz[1] - 50.0 * 30f64.to_radians()).abs() < 1e-9);
     let d = edit_ops::surface_data(&s, 1).unwrap();
     assert_eq!(d["data"]["user"]["model"], json!("ideal_mapping"));
@@ -38,22 +40,26 @@ fn edit_and_system_file_round_trip() {
     // 系ファイルに書いて読み直すと同じ追跡
     let txt = sysfile::to_string(&s, &[]).unwrap();
     let (s2, _, _) = sysfile::from_str(&txt).unwrap();
-    let t2 = s2.trace(
-        FieldSel::Index(2),
-        &[0.0, 0.3],
-        &[0.0, -0.5],
-        None,
-        None,
-        false,
-    );
-    let t1 = s.trace(
-        FieldSel::Index(2),
-        &[0.0, 0.3],
-        &[0.0, -0.5],
-        None,
-        None,
-        false,
-    );
+    let t2 = s2
+        .try_trace(
+            FieldSel::Index(2),
+            &[0.0, 0.3],
+            &[0.0, -0.5],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
+    let t1 = s
+        .try_trace(
+            FieldSel::Index(2),
+            &[0.0, 0.3],
+            &[0.0, -0.5],
+            None,
+            None,
+            false,
+        )
+        .unwrap();
     for (a, b) in t1.rays.iter().zip(&t2.rays) {
         assert_eq!((a.xyz, a.lmn, a.lens_opd), (b.xyz, b.lmn, b.lens_opd));
     }

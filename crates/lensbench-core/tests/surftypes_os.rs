@@ -58,14 +58,16 @@ fn rays_and_efl_match_opticstudio() {
         let (mut dp, mut dd, mut n) = (0.0f64, 0.0f64, 0);
         for h in 0..hxy.nrows() {
             for w in 0..img.shape()[1] {
-                let t = s.trace(
-                    FieldSel::Norm(hxy[[h, 0]], hxy[[h, 1]]),
-                    &px,
-                    &py,
-                    Some(w),
-                    None,
-                    false,
-                );
+                let t = s
+                    .try_trace(
+                        FieldSel::Norm(hxy[[h, 0]], hxy[[h, 1]]),
+                        &px,
+                        &py,
+                        Some(w),
+                        None,
+                        false,
+                    )
+                    .unwrap();
                 for (i, r) in t.rays.iter().enumerate() {
                     // 列は x y z l m n opd opd_chief err vig
                     let os_err = img[[h, w, i, 8]];

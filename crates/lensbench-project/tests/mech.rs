@@ -68,7 +68,9 @@ fn thin_bore_matches_a_circular_aperture() {
         let a = system("", Some(r));
         let v = vignetting(&m, &m.mechanics, &[0, 1], &[0], &px, &py).unwrap();
         for (k, f) in [0usize, 1].iter().enumerate() {
-            let t = a.trace(FieldSel::Index(*f), &px, &py, Some(0), None, false);
+            let t = a
+                .try_trace(FieldSel::Index(*f), &px, &py, Some(0), None, false)
+                .unwrap();
             let cut = t.rays.iter().filter(|x| x.vig != 0).count();
             assert!(cut > 0);
             assert_eq!(v[k].clipped[0], cut, "半径 {r} 視野 {f}");

@@ -246,7 +246,7 @@ def examples() -> list[Example]:
         ("mtf", ["mtf", A0, *GLASS, "--freqs", "0,25,50,75,100", "--field", "1"], 12, plot_mtf,
          ["mtf", A0, *GLASS, "--freqs", ",".join(str(v) for v in range(0, 161, 5)), "--json"]),
         ("mtf-field", ["mtf-field", A0, *GLASS, "--freqs", "20,40", "--points", "11", "--json"], 0, plot_mtf_field, None),
-        ("mtf-focus", ["mtf-focus", A0, *GLASS, "--field", "1", "--freqs", "20,50", "--range", "0.1", "--steps", "21", "--json"], 0,
+        ("mtf-focus", ["mtf-focus", A0, *GLASS, "--field", "1", "--freqs", "20,50", "--range", "0.1", "--points", "21", "--json"], 0,
          plot_mtf_focus, None),
         ("rms", ["rms", A0, *GLASS, "--vs", "field", "--points", "11", "--json"], 0, plot_rms, None),
         ("wavefront", ["wavefront", A0, *GLASS, "--n", "64"], 14, None, None),

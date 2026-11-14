@@ -57,13 +57,19 @@ fn bench(label: &str, s: &System, o: &Opts) {
     let f = FieldSel::Index(fi);
     // 初回の準備（エイミングの表など）を計測から外す
     let m = 100.min(o.rays);
-    s.trace(f, &px[..m], &py[..m], Some(s.primary), None, o.record);
-    let r = s.trace(f, &px, &py, Some(s.primary), None, o.record);
+    s.try_trace(f, &px[..m], &py[..m], Some(s.primary), None, o.record)
+        .unwrap();
+    let r = s
+        .try_trace(f, &px, &py, Some(s.primary), None, o.record)
+        .unwrap();
     let ok = (0..r.rays.len()).filter(|&i| r.ok(i)).count();
     let t0 = Instant::now();
     let mut k = 0;
     while k == 0 || t0.elapsed().as_secs_f64() < o.secs {
-        std::hint::black_box(s.trace(f, &px, &py, Some(s.primary), None, o.record));
+        std::hint::black_box(
+            s.try_trace(f, &px, &py, Some(s.primary), None, o.record)
+                .unwrap(),
+        );
         k += 1;
     }
     let dt = t0.elapsed().as_secs_f64() / k as f64;

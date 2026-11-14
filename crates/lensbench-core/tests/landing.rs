@@ -70,10 +70,11 @@ fn check(
         &px,
         &py,
         w,
-        Some([0.0; 5]),
-        Some(last),
-        true,
-        Some((hx, hy)),
+        lensbench_core::TraceOpts::new()
+            .vig([0.0; 5])
+            .upto(last)
+            .record()
+            .hxy((hx, hy)),
     );
     let np = params.len();
     let lg = s.land_grad(&t, w, params, dz).unwrap();
@@ -281,10 +282,7 @@ fn aspheric_and_toroidal() {
         &[0.1],
         &[0.2],
         s.primary,
-        None,
-        None,
-        true,
-        None,
+        lensbench_core::TraceOpts::new().record(),
     );
     assert!(s
         .land_grad(&t, s.primary, &[Param::new(1, Kind::Curv)], None)
@@ -356,7 +354,13 @@ fn freeform_surfaces() {
 fn shift_end_and_errors() {
     let s = load("A0");
     let spec = s.object_spec(0.0, 1.0).unwrap();
-    let t = s.trace_spec(spec, &[0.3], &[-0.2], s.primary, None, None, false, None);
+    let t = s.trace_spec(
+        spec,
+        &[0.3],
+        &[-0.2],
+        s.primary,
+        lensbench_core::TraceOpts::new(),
+    );
     assert!(s.land_grad(&t, s.primary, &ps(&s, &["1.c"]), None).is_err());
     let mut t2 = t.clone();
     let tt = s.shift_end(&mut t2, s.primary, 1.25).unwrap();
