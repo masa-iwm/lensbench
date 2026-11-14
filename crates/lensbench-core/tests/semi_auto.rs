@@ -1,6 +1,6 @@
 //! 自動の半直径: OpticStudio が保存した .zmx の自動の値（DIAM 値 0）と、光線から求めた値が合う。
 //! 基準は tests/refs の系（OpticStudio 2026 R1 が保存、Fast Semi-Diameters はオン）。PC の OpticStudio で
-//! 開き直して自動の値が保存のままであることも確かめた（非公開側の data/validate/semi_auto）
+//! 開き直して自動の値が保存のままであることも確かめた（非公開側の refs/semi_auto）
 
 use crate::common::root;
 use lensbench_core::param::{Kind, Param};
