@@ -23,6 +23,40 @@ fn czero() -> C64 {
 // ---------------------------------------------------------------------------------------------------------------
 // 光線の格子と画素への補間
 
+/// 瞳の G × G の格子（正規化瞳座標 −1〜1 を等間隔、行優先で q = iy·G + ix）。座標と単位円の中の判定の 1 か所
+/// （[`trace_jones`] と、それと同じ光線を追い直す側・微分の計算が同じ点を指すように）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PupilGrid {
+    pub g: usize,
+}
+
+impl PupilGrid {
+    /// 格子点 q の正規化瞳座標 [px, py]
+    #[inline]
+    pub fn coords(&self, q: usize) -> [f64; 2] {
+        let g = self.g;
+        [
+            -1.0 + 2.0 * (q % g) as f64 / (g - 1) as f64,
+            -1.0 + 2.0 * (q / g) as f64 / (g - 1) as f64,
+        ]
+    }
+
+    /// 格子点 q が単位円の中（縁を含む）か
+    #[inline]
+    pub fn inside(&self, q: usize) -> bool {
+        let [x, y] = self.coords(q);
+        x * x + y * y <= 1.0
+    }
+
+    /// 単位円の中の格子点（行優先）の (番号, px, py)。[`trace_jones`] が追う光線の並び
+    pub fn rays(&self) -> (Vec<usize>, Vec<f64>, Vec<f64>) {
+        let idx: Vec<usize> = (0..self.g * self.g).filter(|&q| self.inside(q)).collect();
+        let px = idx.iter().map(|&q| self.coords(q)[0]).collect();
+        let py = idx.iter().map(|&q| self.coords(q)[1]).collect();
+        (idx, px, py)
+    }
+}
+
 /// 1 本の経路の光線の格子（瞳の G × G、番号 = iy·G + ix、瞳座標 −1 + 2·i/(G−1)）
 #[derive(Debug, Clone, PartialEq)]
 pub struct RayGrid {
@@ -363,32 +397,12 @@ pub fn trace_jones(
     }
     let nw = sys.wavelengths.len();
     let mut r = RayGrid::new(g, nw);
-    let mut idx = Vec::new();
-    for iy in 0..g {
-        for ix in 0..g {
-            let (px, py) = (
-                -1.0 + 2.0 * ix as f64 / (g - 1) as f64,
-                -1.0 + 2.0 * iy as f64 / (g - 1) as f64,
-            );
-            if px * px + py * py <= 1.0 {
-                idx.push(iy * g + ix);
-            }
-        }
-    }
-    let pxs: Vec<f64> = idx
-        .iter()
-        .map(|&q| -1.0 + 2.0 * (q % g) as f64 / (g - 1) as f64)
-        .collect();
-    let pys: Vec<f64> = idx
-        .iter()
-        .map(|&q| -1.0 + 2.0 * (q / g) as f64 / (g - 1) as f64)
-        .collect();
+    let (idx, pxs, pys) = PupilGrid { g }.rays();
     let mut good = vec![false; g * g];
     for &q in &idx {
         good[q] = true;
     }
     let phase = has_phase_terms(sys);
-    let mut raw0 = vec![0.0; g * g];
     // 中心波長の検出面の着地点の z（曲がった検出面でも 3 次元で直すため）
     let mut zs0 = vec![0.0; g * g];
     let mut landing = vec![vec![0.0; g * g]; nw];
@@ -423,7 +437,6 @@ pub fn trace_jones(
                 None => lraw,
             };
             if w == 0 {
-                raw0[q] = lraw;
                 r.xs[q] = t.rays[m].xyz[0];
                 r.ys[q] = t.rays[m].xyz[1];
                 zs0[q] = t.rays[m].xyz[2];
@@ -525,7 +538,6 @@ pub fn trace_jones(
             }
         }
     }
-    let _ = raw0;
     r.ok = good;
     Ok(JonesGrid {
         rays: r,
