@@ -290,6 +290,21 @@ class Client:
     def ping(self) -> dict:
         return self.call("ping")[0]
 
+    def describe(self) -> dict:
+        """serve の版（version）・書式の版（protocol）・method の一覧（methods）・解析の一覧（analyses）"""
+        return self.call("describe")[0]
+
+    def __getattr__(self, name: str):
+        """包みの無い method（undo・history・layout・optimize・swap など）は ``c.undo(steps=2)`` のように
+        キーワード引数で呼べる（結果の dict を返す。配列を受け渡すものは call を使う）"""
+        if name.startswith("_") or "_r" not in self.__dict__:
+            raise AttributeError(name)
+        if "_methods" not in self.__dict__:
+            self._methods = set(self.describe()["methods"])
+        if name not in self._methods:
+            raise AttributeError(f"serve に method {name} はない")
+        return lambda **params: self.call(name, params)[0]
+
     def load(self, file, *, cfg=None, state=None, beam_path=None, glass_dirs=None, lens_catalogs=None) -> dict:
         """系を読み込む（前の系と set で変えた値は捨てる）"""
         p = {"file": os.fspath(file), "glass_dirs": _paths(glass_dirs), "lens_catalogs": _paths(lens_catalogs)}

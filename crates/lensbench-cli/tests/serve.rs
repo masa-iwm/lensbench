@@ -1237,3 +1237,28 @@ fn analyze_registered_params_and_save_hash() {
     assert!(h1.is_string() && h1 != h0, "{h0} {h1}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// describe の method の一覧はどれも serve が知っている（-32601 にならない）。ヘッダの行が上限を超えると接続を切る（CLI-22）
+#[test]
+fn describe_lists_every_method() {
+    let mut sv = Server::start(&[]);
+    let d = sv.call("describe", json!({}));
+    assert_eq!(d["protocol"], 1);
+    assert!(d["analyses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|a| a == "spot"));
+    for m in d["methods"].as_array().unwrap() {
+        let m = m.as_str().unwrap();
+        if m != "shutdown" {
+            let (h, _) = sv.call_bin(m, json!({}), &[]);
+            assert_ne!(h["error"]["code"], -32601, "{m}: {h}");
+        }
+    }
+    let (h, _) = sv.call_bin("no_such_method", json!({}), &[]);
+    assert_eq!(h["error"]["code"], -32601);
+    let _ = sv.w.write_all(&vec![b'a'; (1 << 20) + 16]); // 先に切られれば失敗してよい
+    let mut line = String::new();
+    assert_eq!(sv.r.read_line(&mut line).unwrap_or(0), 0, "{line}");
+}

@@ -51,6 +51,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 <px の 8000 バイト><py の 8000 バイト>
 ```
 
+ヘッダの 1 行は 1 MiB まで（超えると接続を切る。大きな配列は `bin` か共有メモリで）。
+
 エラーは `{"error": {"code", "message"}}`（-32700 JSON が読めない、-32601 method がない、-32602 引数の誤り、-32000 解析の失敗）。
 計算の誤りには `data.kind`（`invalid` 値・構成が不正、`not_implemented` 対応していない機能、`io` 読込、`cancelled` 中断した）が付く（Python のクライアントは `RpcError.kind`）。
 
@@ -59,6 +61,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | method | params | result |
 | --- | --- | --- |
 | `ping` | | `version` |
+| `describe` | | `version`・`protocol`（書式の版、今は 1）・`methods`（使える method の名前）・`analyses`（`analyze` に渡せる解析の名前）。クライアントがつないだ先の機能を確かめるのに |
 | `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
 | `cancel` | | 処理している要求に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
 | `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
@@ -194,6 +197,7 @@ with Client.spawn("system.zmx", glass_dirs=["catalogs"], threads=1) as lb:   # s
 `Client("127.0.0.1", 7010)` で動いている serve につなぐ（パイプは `Client(pipe="lb1")`）。
 `Client.spawn(..., pipe=True)` でパイプ、`lb.use_shm(128 << 20)` で共有メモリ（numpy が要る、`use_shm(0)` でやめる）。
 長い要求（`optimize`・`tolerance`・`swap`）を回している間は、`o = lb.another()` で別の接続を開いて `o.progress()`・`o.stop("tolerance")`・`o.cancel()` を送る（別のスレッドから）。
+表にない method も `lb.history()`・`lb.undo(steps=1)` のように名前で呼べる（キーワード引数が params、結果は `result`。名前は `describe` の `methods` で確かめる）。
 `lb.fringe(...)` は `analyze("fringe", ...)` と同じ。`lb.plugin("spot", field=np.array(2.0))` でプラグインを呼ぶ
 （numpy の float64・complex128・bool はそのまま送る）。例: `examples/loop/serve_loop.py`（間隔を変えて再解析を繰り返し、往復の時間を出す。CI で回す）。
 

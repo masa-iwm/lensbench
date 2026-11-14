@@ -250,3 +250,15 @@ def test_old_argument_names_are_gone():
         with pytest.raises(TypeError):
             lb.trace([0.0], [0.5], field=1, global_=True)
         assert lb.trace([0.0], [0.5], field=1, globals=True)["rays"] == 1
+
+
+def test_describe_and_unwrapped_methods(lb):
+    d = lb.describe()
+    assert d["protocol"] == 1 and "undo" in d["methods"] and "spot" in d["analyses"]
+    t0 = lb.get("3.t")
+    lb.set({"3.t": t0 + 0.1})
+    assert lb.history()["undo"] >= 1  # 包みの無い method もキーワード引数で呼べる
+    lb.undo(steps=1)
+    assert lb.get("3.t") == t0
+    with pytest.raises(AttributeError):
+        lb.no_such_method()

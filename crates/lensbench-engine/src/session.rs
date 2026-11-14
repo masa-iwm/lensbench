@@ -941,9 +941,67 @@ fn summary(s: &System, spec: &LoadSpec) -> Value {
 
 type Reply = (Value, Vec<Bin>);
 
+/// serve の method の名前（`describe` が返す。`handle` の match と試験で突き合わせる、CLI-22）
+pub const METHODS: &[&str] = &[
+    "ping",
+    "progress",
+    "cancel",
+    "stop",
+    "describe",
+    "shutdown",
+    "echo",
+    "load",
+    "reload",
+    "system",
+    "undo",
+    "redo",
+    "history",
+    "get",
+    "set",
+    "write",
+    "edit",
+    "surface",
+    "surface_data",
+    "system_data",
+    "config_table",
+    "config_diff",
+    "save",
+    "save_range",
+    "analyze",
+    "glasses",
+    "lenses",
+    "catalog_search",
+    "trace",
+    "plugins",
+    "catalog_add",
+    "catalog_items",
+    "catalog_edit",
+    "catalog_fill",
+    "cad_step",
+    "analysis_args",
+    "plugin",
+    "layout",
+    "layout_export",
+    "configs",
+    "optimize",
+    "swap",
+    "tolerance",
+    "zoom",
+];
+
+/// 書式の版（枠組み・method の約束を壊す変更で上げる）
+pub const PROTOCOL: u32 = 1;
+
 fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     match method {
         "ping" => Ok((json!({ "version": lensbench_core::VERSION }), Vec::new())),
+        "describe" => {
+            let a: Vec<&str> = crate::analyses().iter().map(|d| d.meta().name).collect();
+            let v = lensbench_core::VERSION;
+            let d =
+                json!({ "version": v, "protocol": PROTOCOL, "methods": METHODS, "analyses": a });
+            Ok((d, Vec::new()))
+        }
         "shutdown" => Ok((json!(true), Vec::new())),
         // 配列をそのまま返す（往復の時間を測る）
         "echo" => Ok((json!({ "params": p }), bins)),

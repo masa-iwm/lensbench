@@ -176,6 +176,9 @@ fn open_shm(head: &Value) -> Result<crate::serve_ipc::Shm, String> {
     crate::serve_ipc::Shm::open(&name)
 }
 
+/// ヘッダ（JSON の 1 行）の長さの上限 [バイト]
+const HEAD_MAX: u64 = 1 << 20;
+
 /// メッセージを読む（接続が閉じたら None）。JSON が読めないときは Err（配列の長さが分からないので続けられない）
 pub(crate) fn read_msg(
     r: &mut impl BufRead,
@@ -184,8 +187,13 @@ pub(crate) fn read_msg(
     let mut line = Vec::new();
     loop {
         line.clear();
-        if r.read_until(b'\n', &mut line)? == 0 {
+        // ヘッダの行は HEAD_MAX まで（改行の無い巨大な入力でメモリを使い切らない。続きは読めないので接続を切る）
+        if std::io::Read::take(&mut *r, HEAD_MAX).read_until(b'\n', &mut line)? == 0 {
             return Ok(None);
+        }
+        if line.last() != Some(&b'\n') && line.len() as u64 >= HEAD_MAX {
+            let e = format!("ヘッダの行が {HEAD_MAX} バイトを超えた");
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e));
         }
         if line.iter().any(|c| !c.is_ascii_whitespace()) {
             break;
