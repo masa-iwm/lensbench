@@ -182,7 +182,7 @@ fn canonical(v: &Value, out: &mut String) {
     }
 }
 
-pub(crate) fn hash_value(v: &Value) -> String {
+pub fn hash_value(v: &Value) -> String {
     let mut txt = String::new();
     canonical(v, &mut txt);
     let d = Sha256::digest(txt.as_bytes());

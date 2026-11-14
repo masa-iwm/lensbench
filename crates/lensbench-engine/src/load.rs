@@ -36,6 +36,7 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
             state: c.state.as_deref(),
             split_path: c.path.as_deref(),
             wavelengths: None,
+            cli_names: true,
         },
     )?;
     for w in o.warnings {
@@ -239,7 +240,7 @@ pub fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
 /// 同梱のプラグインを登録した表（exe に組み込む分）に、プロセスで共通の登録
 /// （[`lensbench_core::plugin::global`]、この CLI を組み込んだ exe が足した分）を重ねたもの
 pub fn builtin_plugins() -> lensbench_core::plugin::Registry {
-    lensbench_project::plugins::builtin()
+    lensbench_design::plugins::builtin()
 }
 
 pub fn plugins_json() -> Value {

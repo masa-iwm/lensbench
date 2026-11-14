@@ -1,4 +1,4 @@
-//! JSON スキーマ: プロジェクト・系ファイル・ユーザーカタログ・差し替え探索の設定の形を、
+//! JSON スキーマ: プロジェクト・系ファイル・ユーザーカタログの形を（差し替え探索の設定は lensbench-design）、
 //! serde の型から schemars で作る。リポジトリの `docs/schema/<名前>.schema.json` はこれで作り、テスト
 //! （`tests/schema.rs`）で型とずれていないかを確かめる（作り直すには `LENSBENCH_UPDATE_SCHEMA=1 cargo test
 //! -p lensbench-project --test it schema::`）。
@@ -9,7 +9,6 @@
 //!   種類（[`crate::detectors`]）にスキーマがあればそれを足す（リポジトリのスキーマは登録なしで作る）。
 //! - 系ファイルの数は JSON に書けない値（inf・NaN）を `{"$f": "inf"}` などで書くので、系の中の数はそれも許す。
 
-use crate::swap::SwapSpec;
 use crate::{detectors, Project, UserCatalog, BUILTIN_BLOCKS};
 use lensbench_core::System;
 use schemars::generate::SchemaSettings;
@@ -17,7 +16,7 @@ use schemars::{JsonSchema, Schema};
 use serde_json::{json, Map, Value};
 
 /// スキーマの名前（`docs/schema/<名前>.schema.json`）
-pub const NAMES: [&str; 4] = ["project", "system", "user-catalog", "swap"];
+pub const NAMES: [&str; 3] = ["project", "system", "user-catalog"];
 
 /// スキーマの `$id` の元（公開リポジトリの main の docs/schema）
 pub const BASE_URL: &str = "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/";
@@ -45,7 +44,8 @@ struct SystemFile {
     system: System,
 }
 
-fn gen<T: JsonSchema>() -> Value {
+/// 型のスキーマ（draft 2020-12、読む側の形）。仕上げは [`finish`]
+pub fn gen<T: JsonSchema>() -> Value {
     let g = SchemaSettings::draft2020_12()
         .for_deserialize()
         .into_generator();
@@ -75,10 +75,15 @@ pub fn schema_with(name: &str, kinds: &[detectors::DetectorKind]) -> Option<Valu
             (v, "lensbench 系ファイル")
         }
         "user-catalog" => (gen::<UserCatalog>(), "lensbench ユーザーカタログ"),
-        "swap" => (gen::<SwapSpec>(), "lensbench 差し替え探索の設定"),
         _ => return None,
     };
     add_detectors(&mut v, kinds);
+    finish(&mut v, name, title);
+    Some(v)
+}
+
+/// `$id`・`title`・どの JSON にも書ける `$schema` のキーを足す（他のクレートの設定のスキーマも同じ形にする）
+pub fn finish(v: &mut Value, name: &str, title: &str) {
     let o = v.as_object_mut().expect("スキーマはオブジェクト");
     o.insert(
         "$id".into(),
@@ -94,7 +99,6 @@ pub fn schema_with(name: &str, kinds: &[detectors::DetectorKind]) -> Option<Valu
             }),
         );
     }
-    Some(v)
 }
 
 /// すべてのスキーマ（名前と値）。登録した検出器も入る

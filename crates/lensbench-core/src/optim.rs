@@ -19,7 +19,7 @@
 //! - [`TermKind::Coupling`]（単一モードファイバへの結合効率と目標の差、[`crate::fiber::fiber_coupling`]）
 //! - [`TermKind::User`]: 利用者が定義する項（[`UserTerm`]。Python の関数など）。系の並びをまとめて評価する
 //!
-//! 項は JSON でも書ける（`lensbench_project::merit`、CLI の `--term`・Python の `terms=`）。
+//! 項は JSON でも書ける（`lensbench_design::merit`、CLI の `--term`・Python の `terms=`）。
 //!
 //! 光線の項の残差は、けられた光線を 0 にする（RMS から除くのと同じ）。追跡が止まった光線（全反射・面に届かない）が
 //! あると評価できない（エラー。最適化ではその一歩を捨てて減衰を強める）。

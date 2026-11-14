@@ -53,7 +53,7 @@ fn swap_serve() {
     assert!(m.windows(2).all(|w| w[0] <= w[1]), "{m:?}");
     assert!(sv.swap_progress().is_none());
 
-    // CLI（lensbench_project::swap）と同じ
+    // CLI（lensbench_design::swap）と同じ
     let p = lensbench_project::Project::from_json(
         &std::fs::read_to_string(path("examples/projects/P18_swap_two.json")).unwrap(),
     )
@@ -66,7 +66,7 @@ fn swap_serve() {
         glass_dirs: vec![path("tests/glass").into()],
         catalog: None,
     };
-    let s = lensbench_project::swap::SwapSearch::new(
+    let s = lensbench_design::swap::SwapSearch::new(
         &p,
         &env,
         &cat,

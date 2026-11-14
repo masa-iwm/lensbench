@@ -2763,6 +2763,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-cad",
  "lensbench-core",
+ "lensbench-design",
  "lensbench-engine",
  "lensbench-export",
  "lensbench-project",
@@ -2795,12 +2796,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-design"
+version = "0.4.0"
+dependencies = [
+ "jsonschema",
+ "lensbench-analysis",
+ "lensbench-core",
+ "lensbench-project",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lensbench-engine"
 version = "0.4.0"
 dependencies = [
  "lensbench-analysis",
  "lensbench-cad",
  "lensbench-core",
+ "lensbench-design",
  "lensbench-export",
  "lensbench-project",
  "schemars",
@@ -2834,6 +2849,7 @@ dependencies = [
  "js-sys",
  "lensbench-cad",
  "lensbench-core",
+ "lensbench-design",
  "lensbench-engine",
  "lensbench-project",
  "mimalloc",
@@ -2859,7 +2875,6 @@ dependencies = [
  "ciborium",
  "flate2",
  "jsonschema",
- "lensbench-analysis",
  "lensbench-core",
  "rayon",
  "schemars",
@@ -2874,6 +2889,7 @@ version = "0.4.0"
 dependencies = [
  "lensbench-analysis",
  "lensbench-core",
+ "lensbench-design",
  "lensbench-project",
  "lensbench-verify",
  "mimalloc",
@@ -2887,6 +2903,7 @@ name = "lensbench-verify"
 version = "0.4.0"
 dependencies = [
  "lensbench-core",
+ "lensbench-design",
  "lensbench-project",
  "ndarray",
  "ndarray-npy",

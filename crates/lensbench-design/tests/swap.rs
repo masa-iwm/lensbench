@@ -4,7 +4,7 @@ use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
 use lensbench_core::optim::{self, DefaultMerit, DlsOpts};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
-use lensbench_project::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
+use lensbench_design::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
 use lensbench_project::{expand, expand_gaps, Env, Project};
 use std::path::PathBuf;
 
@@ -249,7 +249,7 @@ fn prescreen_keeps_the_best_coarse_combinations_with_the_same_results() {
     assert!(n >= 8, "{n}");
     let keep = n / 2;
     let mut sp = spec(vec![a, b]);
-    sp.prescreen = Some(lensbench_project::swap::Prescreen { rings: 2, keep });
+    sp.prescreen = Some(lensbench_design::swap::Prescreen { rings: 2, keep });
     let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
     let idx = s.screened(None);
     assert!(idx.len() <= keep && !idx.is_empty());

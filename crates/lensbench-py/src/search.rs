@@ -7,7 +7,7 @@ use lensbench_core::optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::with_threads;
 use lensbench_core::zoom::{self as zoom_core, ZoomSpec};
-use lensbench_project::swap::{SwapSearch, SwapSpec};
+use lensbench_design::swap::{SwapSearch, SwapSpec};
 use lensbench_project::{Env, Project};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;

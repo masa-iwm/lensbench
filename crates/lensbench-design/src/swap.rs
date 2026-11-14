@@ -5,7 +5,7 @@
 //! - 差し替える所（[`Slot`]）: 玉のブロックの id と、候補（型番の並びか、メーカー・焦点距離・径の範囲）。
 //!   `flip` なら向き（reversed）を両方試す。
 //! - 変数（[`SwapSpec::vars`]）: 展開した系のパラメータの書き方（`G2.shift` など、[`System::param`]）に加えて、
-//!   id のある空気のブロックを `id.t` で指せる（その空気が入る面の厚さ。[`crate::expand_gaps`]）。範囲は
+//!   id のある空気のブロックを `id.t` で指せる（その空気が入る面の厚さ。[`lensbench_project::expand_gaps`]）。範囲は
 //!   `d1.t=0.5:40`。
 //! - 組の番号 i（0 から [`SwapSearch::count`] 未満）は、差し替える所ごとの候補の番号を並べた混合基数
 //!   （最後の所が最も速く回る）。[`SwapSearch::eval`] は組 i だけから決まる JSON を返す。
@@ -16,7 +16,6 @@
 //!
 //! 候補の焦点距離はカタログの値（無ければ玉の .zmx の主波長の近軸の値）、径は面の半径の最大の 2 倍。
 
-use crate::{expand_gaps, find_id, Env, Gap, Project};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::optim::{
@@ -25,6 +24,7 @@ use lensbench_core::optim::{
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::{glass, par, runs, zmx, System};
+use lensbench_project::{expand_gaps, find_id, Env, Gap, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -171,7 +171,7 @@ fn max_count() -> usize {
 
 impl SwapSpec {
     pub fn from_json(txt: &str) -> Result<SwapSpec, String> {
-        let r = match crate::schema::strip_schema_key(txt) {
+        let r = match lensbench_project::schema::strip_schema_key(txt) {
             Some(v) => serde_json::from_value(v),
             None => serde_json::from_str(txt),
         };
@@ -858,7 +858,7 @@ impl<'a> SwapSearch<'a> {
         json!({
             "lensbench": lensbench_core::VERSION,
             "kind": "swap",
-            "project_hash": crate::sysfile::hash_value(&self.base),
+            "project_hash": lensbench_project::sysfile::hash_value(&self.base),
             "spec": serde_json::to_value(&self.spec).unwrap(),
             "picks": picks,
         })

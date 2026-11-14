@@ -1,6 +1,6 @@
 //! 公差の設定の `catalog_tols`（メーカーごとのカタログの玉の公差）の欄。メーカーごとに、玉の公差の項目の値と、
 //! 外径・焦点距離・貼り合わせの条件つきの上書き（`rules`、前から順に、条件が合うものを当てる）を書く。
-//! 形は lensbench_project::tolerance::catalog_rule。
+//! 形は lensbench_design::tolerance::catalog_rule。
 
 use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
@@ -376,12 +376,12 @@ mod tests {
         assert_eq!(to_json(&t).unwrap().unwrap(), v);
         // 公差の計算が読める（条件が当たる）
         let base = lensbench_core::tolerance::LensTol::preset("commercial").unwrap();
-        let g = lensbench_project::tolerance::LensGeom {
+        let g = lensbench_design::tolerance::LensGeom {
             dia: 8.0,
             efl: 50.0,
             glasses: 1,
         };
-        let r = lensbench_project::tolerance::catalog_rule(&v["Edmund"], base, g, "Edmund")
+        let r = lensbench_design::tolerance::catalog_rule(&v["Edmund"], base, g, "Edmund")
             .unwrap()
             .unwrap();
         assert_eq!((r.thickness, r.focal_rel), (0.1, 0.02));

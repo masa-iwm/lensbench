@@ -550,7 +550,7 @@ pub fn ui(
                             .on_hover_text(tr("試行ごとの評価関数・補償子・傾きの大きさ [分]"))
                             .clicked()
                         {
-                            match lensbench_project::tolerance::compensators_csv(&r) {
+                            match lensbench_design::tolerance::compensators_csv(&r) {
                                 Ok(t) => acts.push(Action::SaveCsv(t)),
                                 Err(e) => p.error = Some(e),
                             }

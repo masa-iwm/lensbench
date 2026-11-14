@@ -1,4 +1,4 @@
-//! 系のファイル（.zmx・プロジェクトファイル・系ファイル）を拡張子で見分けて読む。CLI・serve・GUI・Python
+//! 系のファイル（.zmx・プロジェクトファイル・系ファイル）を拡張子で見分けて読む。CLI・serve・Python
 //! の共通の入口（XCT-06・CLI-16）。誤りは core の [`Error`] で、種類（読込・不正・未対応）が付く
 
 use std::path::{Path, PathBuf};
@@ -21,6 +21,9 @@ pub struct OpenSpec<'a> {
     pub split_path: Option<&'a str>,
     /// .zmx の波長を置き換える [µm]
     pub wavelengths: Option<Vec<f64>>,
+    /// 誤りの文で引数を CLI の旗（`--cfg`・`--state`・`--path`）で書く。偽なら Python・serve の名前
+    /// （`cfg`・`state`・`split_path`）
+    pub cli_names: bool,
 }
 
 /// 読んだ系
@@ -36,17 +39,28 @@ pub struct Opened {
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む。
 /// ファイルが無い・読めないときは [`Error::Io`]、引数の組み合わせや中身の誤りは [`Error::Invalid`]
 pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
+    let (cfg, state, split) = if o.cli_names {
+        ("--cfg", "--state", "--path")
+    } else {
+        ("cfg", "state", "split_path")
+    };
     if o.cfg == 0 {
-        return Err(Error::Invalid("cfg（--cfg）は 1 以上".into()));
+        return Err(Error::Invalid(format!("{cfg} は 1 以上")));
+    }
+    if lensbench_core::vfs::is_dir(path) {
+        return Err(Error::Io(format!(
+            "{}: フォルダ（系のファイルを渡す）",
+            path.display()
+        )));
     }
     if !lensbench_core::vfs::is_file(path) {
         return Err(Error::Io(format!("{}: ファイルが無い", path.display())));
     }
     if crate::sysfile::is_system_file(path) {
         if o.cfg != 1 || o.state.is_some() || o.split_path.is_some() {
-            return Err(Error::Invalid(
-                "系ファイルでは cfg・state・split_path（--cfg・--state・--path）は使えない".into(),
-            ));
+            return Err(Error::Invalid(format!(
+                "系ファイルでは {cfg}・{state}・{split} は使えない"
+            )));
         }
         if o.wavelengths.is_some() {
             return Err(Error::Invalid("wavelengths は .zmx だけ".into()));
@@ -63,9 +77,9 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
         .is_some_and(|x| x.eq_ignore_ascii_case("json"))
     {
         if o.cfg != 1 {
-            return Err(Error::Invalid(
-                "プロジェクトファイルでは cfg（--cfg）ではなく state（--state）で状態を選ぶ".into(),
-            ));
+            return Err(Error::Invalid(format!(
+                "プロジェクトファイルでは {cfg} ではなく {state} で状態を選ぶ"
+            )));
         }
         if o.wavelengths.is_some() {
             return Err(Error::Invalid("wavelengths は .zmx だけ".into()));
@@ -82,14 +96,14 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
         });
     }
     if o.state.is_some() {
-        return Err(Error::Invalid(
-            "state（--state）はプロジェクトファイル（.json）だけ（.zmx は cfg・--cfg）".into(),
-        ));
+        return Err(Error::Invalid(format!(
+            "{state} はプロジェクトファイル（.json）だけ（.zmx は {cfg}）"
+        )));
     }
     if o.split_path.is_some() {
-        return Err(Error::Invalid(
-            "split_path（--path）はプロジェクトファイル（.json）だけ".into(),
-        ));
+        return Err(Error::Invalid(format!(
+            "{split} はプロジェクトファイル（.json）だけ"
+        )));
     }
     let opt = zmx::LoadOptions {
         cfg: o.cfg,
@@ -141,5 +155,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(open(Path::new("x.zmx"), &o).unwrap_err().kind(), "invalid");
+    }
+
+    #[test]
+    fn folder_is_io_with_its_own_message() {
+        let o = OpenSpec {
+            cfg: 1,
+            ..Default::default()
+        };
+        let e = open(Path::new("."), &o).unwrap_err();
+        assert_eq!(e.kind(), "io");
+        assert!(e.to_string().contains("フォルダ"), "{e}");
     }
 }

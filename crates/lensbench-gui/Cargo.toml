@@ -29,6 +29,7 @@ path = "src/main.rs"
 [dependencies]
 # カタログの仕様の条件・単位
 lensbench-project = { path = "../lensbench-project" }
+lensbench-design = { path = "../lensbench-design" }
 lensbench-core = { path = "../lensbench-core" }
 # 計算は serve と同じ API（lensbench_engine::Session）をプロセス内で呼ぶ
 lensbench-engine = { path = "../lensbench-engine" }

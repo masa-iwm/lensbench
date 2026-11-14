@@ -10,4 +10,4 @@ lensbench が読み書きする JSON ファイルのスキーマです。ファ�
 | [user-catalog](../schema/user-catalog.schema.json) | ユーザーカタログ |
 | [swap](../schema/swap.schema.json) | 差し替え探索の `--spec` |
 
-serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project --test it schema::` で作り直す。
+serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project -p lensbench-design --test it schema::` で作り直す（swap は lensbench-design）。

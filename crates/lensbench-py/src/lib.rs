@@ -1048,7 +1048,7 @@ impl PySystem {
     /// - lens_catalogs: プロジェクトファイルのカタログレンズを探すレンズカタログ（.zmx またはフォルダ）
     /// - coatings: 偏光追跡で使う膜の実測表（LBCT）・モデル（LBCM）のファイル
     /// - coating_file: 系の膜ファイル（COATING.DAT 形式）を置き換える
-    /// - wavelengths: 波長 [µm] を置き換える（.zmx だけ。重みは 1、主波長の番号はそのまま）
+    /// - wavelengths: 波長 [µm] を置き換える（.zmx だけ。系ファイル・プロジェクトファイルに渡すと InvalidError。重みは 1、主波長の番号はそのまま）
     #[staticmethod]
     #[pyo3(signature = (path, glass_dirs=None, cfg=1, state=None, lens_catalogs=None, coatings=None, coating_file=None, wavelengths=None, split_path=None))]
     #[allow(clippy::too_many_arguments)]
@@ -1076,6 +1076,7 @@ impl PySystem {
                     state: state.as_deref(),
                     split_path: split_path.as_deref(),
                     wavelengths,
+                    cli_names: false,
                 },
             )
         });
@@ -2551,9 +2552,9 @@ impl PySystem {
         let reversed: std::collections::HashSet<String> =
             reversed.unwrap_or_default().into_iter().collect();
         let mut ms =
-            lensbench_project::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
+            lensbench_design::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
                 .map_err(PyValueError::new_err)?;
-        let oo = lensbench_project::tolerance::out_opts(&v).map_err(PyValueError::new_err)?;
+        let oo = lensbench_design::tolerance::out_opts(&v).map_err(PyValueError::new_err)?;
         let users = match &terms {
             Some(t) => userterm::add_terms(py, &mut ms.problem, t, &self.coat_files)?,
             None => Vec::new(),
@@ -2566,7 +2567,7 @@ impl PySystem {
         })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
-        let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+        let out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
         json.call_method1("loads", (out.to_string(),))
     }
 

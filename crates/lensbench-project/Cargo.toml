@@ -15,7 +15,6 @@ workspace = true
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core", features = ["serde", "schema"] }
-lensbench-analysis = { path = "../lensbench-analysis" }
 rayon = "1"
 ciborium = "0.2"
 sha2 = "0.10"

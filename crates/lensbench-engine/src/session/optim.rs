@@ -78,7 +78,7 @@ pub(super) fn config_system(
 /// 最適化。params:
 /// - vars: 変数の並び。各要素は "7.t" か {"name": "7.t", "lo": 下限, "hi": 上限, "configs": [構成の番号（1 始まり）]}
 /// - merit: 既定の評価関数 "spot"・"wavefront"・null（なし）。rings（3）・reference（"centroid"）
-/// - terms: 足す項（`lensbench_project::merit` の JSON）
+/// - terms: 足す項（`lensbench_design::merit` の JSON）
 /// - configs: 構成（.zmx の構成番号か状態の名前）の並び。省けば読み込んだ系だけ。項・変数の構成の番号はこの並びの順
 /// - iters（50）・jac（"auto"・"fd"・"forward"）
 /// - apply: true なら最適化した値を読み込んだ系に set する（読み込んだ系の構成に効く変数だけ）
@@ -179,7 +179,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         let mut t = t.clone();
         sess.files.check_term_paths(&mut t)?;
         let ts =
-            lensbench_project::merit::terms_from_json(&t, &prob.configs).map_err(RpcErr::params)?;
+            lensbench_design::merit::terms_from_json(&t, &prob.configs).map_err(RpcErr::params)?;
         prob.terms.extend(ts);
     }
     let j = p["jac"].as_str().unwrap_or("auto");
@@ -288,7 +288,7 @@ pub fn tolerance_cancel() {
     global().tolerance_cancel()
 }
 
-/// モンテカルロ公差。params は `lensbench tolerance --spec` の JSON（`lensbench_project::tolerance`）に加えて
+/// モンテカルロ公差。params は `lensbench tolerance --spec` の JSON（`lensbench_design::tolerance`）に加えて
 /// configs（構成の番号か状態の名前の並び。optimize と同じ。省けば読み込んだ系だけ）。読み込んだ系（set・edit の後）を使う。
 /// 同じプロセスからは [`tolerance_progress`] で進み具合を読み、[`tolerance_cancel`] で止められる
 pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
@@ -307,8 +307,8 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             .and_then(|t| lensbench_project::Project::from_json(&t).ok())
             .map(|p| {
                 (
-                    lensbench_project::tolerance::catalog_vendors(&p),
-                    lensbench_project::tolerance::reversed_lenses(&p),
+                    lensbench_design::tolerance::catalog_vendors(&p),
+                    lensbench_design::tolerance::reversed_lenses(&p),
                 )
             })
             .unwrap_or_default()
@@ -322,9 +322,9 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             sess.files.check_term_paths(t)?;
         }
     }
-    let ms = lensbench_project::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
+    let ms = lensbench_design::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
         .map_err(RpcErr::params)?;
-    let oo = lensbench_project::tolerance::out_opts(&v).map_err(RpcErr::params)?;
+    let oo = lensbench_design::tolerance::out_opts(&v).map_err(RpcErr::params)?;
     sess.tol_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
     *sess.tol_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, 0));
@@ -343,7 +343,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     };
     *sess.tol_run.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let r = r?;
-    let mut out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+    let mut out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
     out["notes"] = json!(notes);
     Ok(out)
 }
@@ -481,7 +481,7 @@ pub fn swap_cancel() {
 /// 読み込んだ系のガラス・レンズカタログのフォルダを使う。同じプロセスからは [`swap_progress`] で進み具合を読み、
 /// [`swap_cancel`] で止められる
 pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    use lensbench_project::swap::{SwapSearch, SwapSpec};
+    use lensbench_design::swap::{SwapSearch, SwapSpec};
     let (_, ls) = sess.current()?;
     let proj = match p.get("project").filter(|v| !v.is_null()) {
         // 中の zmx・カタログ・膜のパスを check_path で確かめられないので、要求のファイルを制限するときは断る
@@ -570,7 +570,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     *sess.swap_run.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let sum = r?;
     let mut rows = rows.into_inner().unwrap_or_else(|e| e.into_inner());
-    lensbench_project::swap::sort_results(&mut rows);
+    lensbench_design::swap::sort_results(&mut rows);
     let done = rows.len();
     let failed = rows.iter().filter(|x| x.get("error").is_some()).count();
     let top = opt_usize(p, "top")?.unwrap_or(50);

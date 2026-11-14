@@ -16,6 +16,7 @@ workspace = true
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-design = { path = "../lensbench-design" }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 ndarray = "0.16"
 ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "num-complex-0_4"] }

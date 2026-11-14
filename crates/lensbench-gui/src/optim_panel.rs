@@ -1,7 +1,7 @@
 //! 最適化のパネル: 変数・評価関数の項・設定を並べ、serve の `optimize` で減衰最小二乗を回す。
 //!
 //! 設定は serve の `optimize` の params と同じ JSON（[`OptPanel::params`]）で、そのままファイルに保存・読込できる。
-//! 項の種類とキーは `lensbench_project::merit`（CLI の `--term`）と同じ。走っている間は
+//! 項の種類とキーは `lensbench_design::merit`（CLI の `--term`）と同じ。走っている間は
 //! [`lensbench_engine::optimize_progress`] で評価関数の履歴を読み、止めるのは
 //! [`lensbench_engine::optimize_cancel`]。
 
@@ -445,7 +445,7 @@ fn pair(t: &str) -> Option<Value> {
     (v.len() == 2).then(|| json!(v))
 }
 
-/// 項の行を JSON に（`lensbench_project::merit` の形）
+/// 項の行を JSON に（`lensbench_design::merit` の形）
 fn term_json(t: &TermRow) -> Result<Value, String> {
     let mut o = Map::new();
     o.insert("type".into(), json!(t.ty));

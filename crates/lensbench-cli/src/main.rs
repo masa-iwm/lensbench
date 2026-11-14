@@ -605,8 +605,8 @@ fn tolerance_vendors(
         .and_then(|t| lensbench_project::Project::from_json(&t).ok())
         .map(|p| {
             (
-                lensbench_project::tolerance::catalog_vendors(&p),
-                lensbench_project::tolerance::reversed_lenses(&p),
+                lensbench_design::tolerance::catalog_vendors(&p),
+                lensbench_design::tolerance::reversed_lenses(&p),
             )
         })
         .unwrap_or_default()
@@ -1080,7 +1080,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 lensbench_engine::Files::Any.check_terms(v)?;
             }
             for (i, v) in specs.iter().enumerate() {
-                let t = lensbench_project::merit::term_from_json(v, &p.configs)
+                let t = lensbench_design::merit::term_from_json(v, &p.configs)
                     .map_err(|x| format!("項 {}: {x}", i + 1))?;
                 p.terms.push(t);
             }
@@ -1163,13 +1163,9 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 lensbench_engine::Files::Any.check_terms(t)?;
             }
             let (vendors, reversed) = tolerance_vendors(&c);
-            let ms = lensbench_project::tolerance::spec_from_json_with(
-                &v,
-                vec![s],
-                &vendors,
-                &reversed,
-            )?;
-            let oo = lensbench_project::tolerance::out_opts(&v)?;
+            let ms =
+                lensbench_design::tolerance::spec_from_json_with(&v, vec![s], &vendors, &reversed)?;
+            let oo = lensbench_design::tolerance::out_opts(&v)?;
             let json_out = c.json;
             let step = (ms.trials + 2 * ms.tols.len()).div_ceil(20).max(1);
             let run = || {
@@ -1211,9 +1207,9 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                     })?);
                 }
             }
-            let out = lensbench_project::tolerance::result_json(&ms, &r, &oo);
+            let out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
             if let Some(path) = &comp_csv {
-                let csv = lensbench_project::tolerance::compensators_csv(&out)?;
+                let csv = lensbench_design::tolerance::compensators_csv(&out)?;
                 lensbench_core::vfs::write(path, csv)
                     .map_err(|x| format!("--comp-csv {}: {x}", path.display()))?;
             }

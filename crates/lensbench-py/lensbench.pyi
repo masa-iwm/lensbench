@@ -277,7 +277,7 @@ class System:
         - lens_catalogs: プロジェクトファイルのカタログレンズを探すレンズカタログ（.zmx またはフォルダ）
         - coatings: 偏光追跡で使う膜の実測表（LBCT）・モデル（LBCM）のファイル
         - coating_file: 系の膜ファイル（COATING.DAT 形式）を置き換える
-        - wavelengths: 波長 [µm] を置き換える（.zmx だけ。重みは 1、主波長の番号はそのまま）
+        - wavelengths: 波長 [µm] を置き換える（.zmx だけ。系ファイル・プロジェクトファイルに渡すと InvalidError。重みは 1、主波長の番号はそのまま）
         """
 
     @staticmethod

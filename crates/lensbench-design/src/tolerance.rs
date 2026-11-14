@@ -46,7 +46,7 @@ use lensbench_core::tolerance::{self, Dist, GroupTol, LensTol, McResult, McSpec,
 use lensbench_core::System;
 use serde_json::{json, Map, Value};
 
-use crate::{Block, LensSource, Project};
+use lensbench_project::{Block, LensSource, Project};
 
 /// カタログの玉の既定の公差（メーカーによらない目安）: 中心厚 ±0.1 mm・焦点距離 ±2%・芯取り 5′。偏心・傾き・間隔は
 /// 組立の公差なので、既定の組（`preset`）の値を使う。メーカーごとの公表値は `catalog_tols` で与える

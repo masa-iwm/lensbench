@@ -33,6 +33,7 @@ module = []
 lensbench-core = { path = "../lensbench-core", features = ["serde"] }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-design = { path = "../lensbench-design" }
 lensbench-verify = { path = "../lensbench-verify" }
 numpy = "0.30"
 pyo3 = { version = "0.30", features = ["abi3-py39"] }

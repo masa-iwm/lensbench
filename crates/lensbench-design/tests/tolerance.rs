@@ -3,7 +3,7 @@
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::tolerance::Dist;
 use lensbench_core::System;
-use lensbench_project::tolerance::{
+use lensbench_design::tolerance::{
     catalog_vendors, compensators_csv, out_opts, result_json, reversed_lenses, spec_from_json,
     spec_from_json_with, tilt_pairs,
 };

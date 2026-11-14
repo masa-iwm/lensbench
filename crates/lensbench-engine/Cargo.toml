@@ -14,6 +14,7 @@ workspace = true
 lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-design = { path = "../lensbench-design" }
 lensbench-export = { path = "../lensbench-export" }
 # 品の STEP を取る（serve の cad_step）
 lensbench-cad = { path = "../lensbench-cad" }

@@ -138,20 +138,6 @@ fn system_file_matches_schema() {
     assert!(n >= 5, "{n}");
 }
 
-#[test]
-fn swap_accepts_schema_key() {
-    let v = validator("swap");
-    let x: Value = serde_json::from_str(
-        r#"{"$schema": "s", "slots": [{"block": "A", "filter": {"efl": [40, null]}}], "vars": ["d.t"]}"#,
-    )
-    .unwrap();
-    check(&v, "swap", &x);
-    lensbench_project::swap::SwapSpec::from_json(&x.to_string()).unwrap();
-    let mut bad = x.clone();
-    bad["slot"] = Value::Null;
-    assert!(!v.is_valid(&bad));
-}
-
 /// 知らないキー（綴りの違い）は黙って捨てずに誤りにする。書き戻しで省かれる既定値を書いたものは通す
 #[test]
 fn unknown_keys_are_errors() {

@@ -201,7 +201,7 @@ pub(crate) fn add_terms(
         }
         let txt: String = dumps.call1((d,))?.extract()?;
         let v: serde_json::Value = serde_json::from_str(&txt).map_err(err)?;
-        let term = lensbench_project::merit::term_from_json(&v, &p.configs)
+        let term = lensbench_design::merit::term_from_json(&v, &p.configs)
             .map_err(|e| PyValueError::new_err(format!("terms[{i}]: {e}")))?;
         p.terms.push(term);
     }

@@ -30,6 +30,7 @@ lensbench-analysis = { path = "../lensbench-analysis" }
 # 解析の登録簿・系の読み方・serve の場
 lensbench-engine = { path = "../lensbench-engine" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-design = { path = "../lensbench-design" }
 lensbench-export = { path = "../lensbench-export" }
 lensbench-verify = { path = "../lensbench-verify" }
 # 品の STEP を取る・測る・三角形にする（以前はこのクレートの cad.rs・cad_detail.rs・coat_remote.rs）

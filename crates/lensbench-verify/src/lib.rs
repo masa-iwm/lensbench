@@ -971,7 +971,7 @@ pub fn run_paths(paths: &[PathBuf], reg: &Registry, opt: &Options) -> Result<Vec
 
 /// 同梱のプラグイン（とプロセスで共通の登録）で回す
 pub fn run_builtin(paths: &[PathBuf], opt: &Options) -> Result<Vec<Report>, String> {
-    run_paths(paths, &lensbench_project::plugins::builtin(), opt)
+    run_paths(paths, &lensbench_design::plugins::builtin(), opt)
 }
 
 /// Rust の試験から: フォルダの照合を全部回し、通らなければ表を出して panic する
