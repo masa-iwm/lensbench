@@ -900,5 +900,19 @@ fn help_json_lists_commands() {
         .any(|e| e["code"] == 4));
     // ふつうの help はそのまま
     let (ok, out, _) = run(&["help", "spot"]);
-    assert!(ok && out.contains("Usage: lensbench spot"), "{out}");
+    // exe の名前は OS で違う（Windows は lensbench.exe）
+    assert!(
+        ok && out.contains("Usage: lensbench") && out.contains(" spot [OPTIONS]"),
+        "{out}"
+    );
+    // help --json の使い方の行は exe の名前によらず lensbench（マニュアルに lensbench.exe を出さない）
+    let spot = subs.iter().find(|s| s["name"] == "spot").unwrap();
+    assert!(
+        spot["usage"]
+            .as_str()
+            .unwrap()
+            .starts_with("lensbench spot "),
+        "{}",
+        spot["usage"]
+    );
 }
