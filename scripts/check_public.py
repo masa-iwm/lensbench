@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """公開リポジトリに置いてはいけないファイルが追跡されていないかを調べる。
 
-- 拡張子: ZMF・ZEC・ZDA・ZAR（Zemax のカタログ、暗号化膜、アーカイブ）
+- 拡張子: ZMF・ZEC・ZDA・ZAR（Zemax のカタログ、暗号化膜、アーカイブ）と LBCAT（メーカーのカタログを変換したレンズカタログの束）
 - AGF: tests/glass/ 以下のテスト用カタログと、GUI に同梱するカタログ（crates/lensbench-gui/assets/glass/）だけを許す。
   どちらも refractiveindex.info のデータベース（CC0）から作ったもので、先頭の CC 行に出典を書くこと（今の版だけ検査）
 - COATING.DAT などメーカー・Zemax 由来の名前
@@ -10,7 +10,7 @@
 """
 import subprocess, sys, re
 
-DENY_EXT = re.compile(r"\.(zmf|zec|zda|zar)$", re.I)
+DENY_EXT = re.compile(r"\.(zmf|zec|zda|zar|lbcat)$", re.I)
 AGF = re.compile(r"\.agf$", re.I)
 AGF_OK = re.compile(r"^(tests/glass|crates/lensbench-gui/assets/glass)/[^/]+\.agf$", re.I)
 DENY_NAME = re.compile(r"(^|/)(coating\.dat)$", re.I)
