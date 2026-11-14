@@ -1,5 +1,6 @@
 //! MTF の FFT（[`MtfMethod::Fft`]）と補間（既定）の比べ: OpticStudio の値（tests/refs/<系>/mtf.json）との差、
 //! 2 つの方法の差、時間。`cargo run --release --example mtf_fft -- [系 ...]`（既定は mtf.json のある全系）
+use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -42,8 +43,8 @@ fn main() {
         ) {
             Ok(t) => serde_json::from_str(&t).unwrap(),
             Err(_) => {
-                let m0 =
-                    analysis::mtf(&s, FieldSel::Index(0), Some(s.primary), Some(4), &[]).unwrap();
+                let m0 = analysis::mtf(&s, FieldSel::Index(0), Waves::One(s.primary), Some(4), &[])
+                    .unwrap();
                 let c = m0.cutoff.0.min(m0.cutoff.1);
                 let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
                 let nan = vec![f64::NAN; freqs.len()];
@@ -70,9 +71,10 @@ fn main() {
             }
             let fs = FieldSel::Index(fi as usize - 1);
             let t0 = Instant::now();
-            let mi = analysis::mtf_with(&s, fs, None, None, &freqs, MtfMethod::Interp).unwrap();
+            let mi =
+                analysis::mtf_with(&s, fs, Waves::All, None, &freqs, MtfMethod::Interp).unwrap();
             let t1 = Instant::now();
-            let mf = analysis::mtf_with(&s, fs, None, None, &freqs, MtfMethod::Fft).unwrap();
+            let mf = analysis::mtf_with(&s, fs, Waves::All, None, &freqs, MtfMethod::Fft).unwrap();
             let t2 = Instant::now();
             a += (t1 - t0).as_secs_f64();
             b += (t2 - t1).as_secs_f64();

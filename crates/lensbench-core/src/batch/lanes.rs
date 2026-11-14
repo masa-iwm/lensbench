@@ -272,7 +272,7 @@ mod simd {
 
     /// 2 本ずつの組の数
     const N: usize = L / 2;
-    const _: () = assert!(L % 2 == 0);
+    const _: () = assert!(L.is_multiple_of(2));
 
     /// L 本の光線の値（2 本ずつ f64x2）
     #[derive(Clone, Copy)]

@@ -4,6 +4,7 @@
 use crate::common::root;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use lensbench_core::{analysis, psf, sweep};
 
 fn load(name: &str) -> System {
@@ -37,8 +38,8 @@ fn through_focus_at_zero_is_the_mtf() {
     for name in ["A0", "B0", "D4"] {
         let s = load(name);
         let f = FieldSel::Index(s.fields.len() - 1);
-        let m = analysis::mtf(&s, f, None, None, &FREQS).unwrap();
-        let t = sweep::through_focus_mtf(&s, f, None, None, &FREQS, &[-0.01, 0.0, 0.01]);
+        let m = analysis::mtf(&s, f, Waves::All, None, &FREQS).unwrap();
+        let t = sweep::through_focus_mtf(&s, f, Waves::All, None, &FREQS, &[-0.01, 0.0, 0.01]);
         assert!(t.warnings.is_empty(), "{name}: {:?}", t.warnings);
         for k in 0..FREQS.len() {
             assert_eq!(t.tan[k][1], m.tan[k], "{name}");
@@ -49,7 +50,7 @@ fn through_focus_at_zero_is_the_mtf() {
         let j = d.image() - 1;
         d.surfaces[j].t += 0.01;
         d.changed().unwrap();
-        let md = analysis::mtf(&d, f, None, None, &FREQS).unwrap();
+        let md = analysis::mtf(&d, f, Waves::All, None, &FREQS).unwrap();
         for k in 0..FREQS.len() {
             assert_eq!(t.tan[k][2], md.tan[k], "{name}");
         }
@@ -71,9 +72,9 @@ fn field_mtf_at_defined_fields_is_the_mtf() {
             continue;
         }
         let h: Vec<f64> = (0..s.fields.len()).map(|i| s.hxhy(i).1).collect();
-        let fm = sweep::field_mtf(&s, sweep::FieldAxis::Y, &h, None, None, &FREQS);
+        let fm = sweep::field_mtf(&s, sweep::FieldAxis::Y, &h, Waves::All, None, &FREQS);
         for (i, &hi) in h.iter().enumerate() {
-            match analysis::mtf(&s, FieldSel::Index(i), None, None, &FREQS) {
+            match analysis::mtf(&s, FieldSel::Index(i), Waves::All, None, &FREQS) {
                 Ok(m) => {
                     for k in 0..FREQS.len() {
                         assert_eq!(fm.tan[k][i], m.tan[k], "{name} 視野 {}", i + 1);
@@ -95,12 +96,12 @@ fn rms_agrees_with_spot_and_wavefront() {
         let s = load(name);
         for i in 0..s.fields.len() {
             let f = FieldSel::Index(i);
-            let sp = analysis::spot(&s, f, None, 6).unwrap();
-            let c = sweep::rms(&s, f, None, sweep::RmsOpts::default()).unwrap();
+            let sp = analysis::spot(&s, f, Waves::All, 6).unwrap();
+            let c = sweep::rms(&s, f, Waves::All, sweep::RmsOpts::default()).unwrap();
             let h = sweep::rms(
                 &s,
                 f,
-                None,
+                Waves::All,
                 sweep::RmsOpts {
                     rings: 6,
                     reference: sweep::RmsRef::Chief,
@@ -116,7 +117,7 @@ fn rms_agrees_with_spot_and_wavefront() {
             let r = sweep::rms(
                 &s,
                 f,
-                Some(w),
+                Waves::One(w),
                 sweep::RmsOpts {
                     rings: 20,
                     reference: sweep::RmsRef::Chief,
@@ -157,7 +158,7 @@ fn added_wavelength_reproduces_the_system_indices() {
     let f = FieldSel::Index(1);
     let r = sweep::rms_vs_wavelength(&s, f, &s.wavelengths, Default::default());
     for (w, q) in r.rms.iter().enumerate() {
-        let a = sweep::rms(&s, f, Some(w), Default::default()).unwrap();
+        let a = sweep::rms(&s, f, Waves::One(w), Default::default()).unwrap();
         assert_eq!((q.spot, q.wfe), (a.spot, a.wfe));
     }
 }
@@ -167,7 +168,7 @@ fn rms_vs_focus_has_its_minimum_near_best_focus() {
     let s = load("B0");
     let f = FieldSel::Index(0);
     let dz = sweep::steps_sym(0.3, 13);
-    let r = sweep::rms_vs_focus(&s, f, &dz, Some(s.primary), Default::default());
+    let r = sweep::rms_vs_focus(&s, f, &dz, Waves::One(s.primary), Default::default());
     assert!(r.warnings.is_empty());
     let (imin, _) = r
         .rms
@@ -186,7 +187,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
         let p = psf::psf(
             &s,
             f,
-            None,
+            Waves::All,
             psf::PsfOpts {
                 pupil: Some(128),
                 image: 256,
@@ -194,7 +195,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
             },
         )
         .unwrap();
-        let sp = analysis::spot(&s, f, None, 10).unwrap();
+        let sp = analysis::spot(&s, f, Waves::All, 10).unwrap();
         // 格子（主光線に垂直な面）の点を像面へ
         let img = |p: &psf::Psf, x: f64, y: f64| {
             let [e1, e2] = p.axes;
@@ -227,7 +228,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
         let p = psf::psf(
             &s,
             f,
-            Some(w),
+            Waves::One(w),
             psf::PsfOpts {
                 pupil: Some(256),
                 image: 512,
@@ -236,7 +237,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
         )
         .unwrap();
         let fr = [10.0, 30.0, 60.0];
-        let m = analysis::mtf(&s, f, Some(w), None, &fr).unwrap();
+        let m = analysis::mtf(&s, f, Waves::One(w), None, &fr).unwrap();
         let tot: f64 = p.i.iter().flatten().sum();
         for (k, &nu) in fr.iter().enumerate() {
             // MTF の周波数は瞳の軸に沿う（J の対角）ので、像面の y に直した格子の y で
@@ -260,8 +261,8 @@ fn psf_of_a_near_perfect_system_peaks_at_its_strehl() {
     let s = load("B0");
     let f = FieldSel::Index(0);
     let w = s.primary;
-    let p = psf::psf(&s, f, Some(w), Default::default()).unwrap();
-    let r = sweep::rms(&s, f, Some(w), Default::default()).unwrap();
+    let p = psf::psf(&s, f, Waves::One(w), Default::default()).unwrap();
+    let r = sweep::rms(&s, f, Waves::One(w), Default::default()).unwrap();
     assert!(p.peak <= 1.0 + 1e-9);
     assert!(
         (p.peak - r.strehl).abs() < 0.1,
@@ -273,7 +274,7 @@ fn psf_of_a_near_perfect_system_peaks_at_its_strehl() {
     assert!(psf::psf(
         &s,
         f,
-        Some(w),
+        Waves::One(w),
         psf::PsfOpts {
             pupil: Some(32),
             image: 128,
@@ -287,19 +288,19 @@ fn psf_of_a_near_perfect_system_peaks_at_its_strehl() {
 fn geometric_mtf_basics() {
     let s = load("D4");
     let f = FieldSel::Index(2);
-    let g = psf::geometric_mtf(&s, f, None, 128, &FREQS, false).unwrap();
+    let g = psf::geometric_mtf(&s, f, Waves::All, 128, &FREQS, false).unwrap();
     assert!((g.tan[0] - 1.0).abs() < 1e-14 && (g.sag[0] - 1.0).abs() < 1e-14);
-    let g2 = psf::geometric_mtf(&s, f, None, 256, &FREQS, false).unwrap();
+    let g2 = psf::geometric_mtf(&s, f, Waves::All, 256, &FREQS, false).unwrap();
     for k in 0..FREQS.len() {
         assert!((g.tan[k] - g2.tan[k]).abs() < 1e-6 && (g.sag[k] - g2.sag[k]).abs() < 1e-6);
     }
-    let gd = psf::geometric_mtf(&s, f, None, 64, &[g.cutoff.0 * 1.5], true).unwrap();
+    let gd = psf::geometric_mtf(&s, f, Waves::All, 64, &[g.cutoff.0 * 1.5], true).unwrap();
     assert_eq!(gd.sag[0], 0.0);
     // 大きくぼかすと幾何 MTF は回折 MTF に近づく
     let d = sweep::defocus(&s, 0.3).unwrap();
     let fr = [2.0, 5.0, 10.0];
-    let m = analysis::mtf(&d, f, Some(s.primary), None, &fr).unwrap();
-    let g = psf::geometric_mtf(&d, f, Some(s.primary), 128, &fr, false).unwrap();
+    let m = analysis::mtf(&d, f, Waves::One(s.primary), None, &fr).unwrap();
+    let g = psf::geometric_mtf(&d, f, Waves::One(s.primary), 128, &fr, false).unwrap();
     for k in 0..fr.len() {
         assert!(
             (m.tan[k] - g.tan[k]).abs() < 0.05,
@@ -320,7 +321,7 @@ fn mtf_waves_is_the_separate_mtfs() {
             let f = FieldSel::Index(fi);
             for method in [MtfMethod::Interp, MtfMethod::Fft] {
                 let mw = analysis::mtf_waves(&s, f, None, &FREQS, method).unwrap();
-                let p = analysis::mtf_with(&s, f, None, None, &FREQS, method).unwrap();
+                let p = analysis::mtf_with(&s, f, Waves::All, None, &FREQS, method).unwrap();
                 assert_eq!(
                     (&mw.poly.tan, &mw.poly.sag),
                     (&p.tan, &p.sag),
@@ -328,7 +329,8 @@ fn mtf_waves_is_the_separate_mtfs() {
                 );
                 assert_eq!(mw.waves.len(), s.wavelengths.len());
                 for (wi, m) in mw.waves.iter().enumerate() {
-                    let o = analysis::mtf_with(&s, f, Some(wi), None, &FREQS, method).unwrap();
+                    let o =
+                        analysis::mtf_with(&s, f, Waves::One(wi), None, &FREQS, method).unwrap();
                     assert_eq!((&m.tan, &m.sag), (&o.tan, &o.sag), "{name} {fi} {wi}");
                 }
             }
@@ -342,9 +344,9 @@ fn on_axis_tangential_is_the_sagittal() {
     use analysis::MtfMethod;
     let s = load("A0");
     let f = FieldSel::Index(0);
-    let i = analysis::mtf_with(&s, f, None, Some(48), &FREQS, MtfMethod::Interp).unwrap();
+    let i = analysis::mtf_with(&s, f, Waves::All, Some(48), &FREQS, MtfMethod::Interp).unwrap();
     assert_eq!(i.tan, i.sag);
-    let d = analysis::mtf_with(&s, f, None, Some(48), &FREQS, MtfMethod::Direct).unwrap();
+    let d = analysis::mtf_with(&s, f, Waves::All, Some(48), &FREQS, MtfMethod::Direct).unwrap();
     for k in 0..FREQS.len() {
         assert!(
             (i.tan[k] - d.tan[k]).abs() < 1e-6,
@@ -363,8 +365,8 @@ fn interp_mtf_matches_direct_across_an_opd_step() {
     let s = load("Z3");
     let freqs = [0.0, 40.0, 80.0, 120.0, 160.0];
     let f = FieldSel::Index(1);
-    let i = analysis::mtf_with(&s, f, Some(1), None, &freqs, MtfMethod::Interp).unwrap();
-    let d = analysis::mtf_with(&s, f, Some(1), None, &freqs, MtfMethod::Direct).unwrap();
+    let i = analysis::mtf_with(&s, f, Waves::One(1), None, &freqs, MtfMethod::Interp).unwrap();
+    let d = analysis::mtf_with(&s, f, Waves::One(1), None, &freqs, MtfMethod::Direct).unwrap();
     for (k, fr) in freqs.iter().enumerate() {
         for (a, b) in [(i.tan[k], d.tan[k]), (i.sag[k], d.sag[k])] {
             assert!((a - b).abs() < 1e-9, "{fr}: {a} {b}");
@@ -380,11 +382,11 @@ fn fft_mtf_is_the_quadrature_mtf() {
         let s = load(name);
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let m0 = analysis::mtf(&s, f, Some(s.primary), Some(4), &[]).unwrap();
+            let m0 = analysis::mtf(&s, f, Waves::One(s.primary), Some(4), &[]).unwrap();
             let c = m0.cutoff.0.min(m0.cutoff.1);
             let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
-            let a = analysis::mtf_with(&s, f, None, None, &freqs, MtfMethod::Interp).unwrap();
-            let b = analysis::mtf_with(&s, f, None, None, &freqs, MtfMethod::Fft).unwrap();
+            let a = analysis::mtf_with(&s, f, Waves::All, None, &freqs, MtfMethod::Interp).unwrap();
+            let b = analysis::mtf_with(&s, f, Waves::All, None, &freqs, MtfMethod::Fft).unwrap();
             for k in 0..freqs.len() {
                 for (x, y) in [(a.tan[k], b.tan[k]), (a.sag[k], b.sag[k])] {
                     assert!((x - y).abs() < 1.5e-4, "{name} {fi} {k}: {x} {y}");
@@ -401,11 +403,11 @@ fn auto_mtf_switches_to_fft_for_many_points() {
     use analysis::MtfMethod;
     let s = load("E0");
     let w = Some(s.primary);
-    let m0 = analysis::mtf(&s, FieldSel::Index(2), w, Some(4), &[]).unwrap();
+    let m0 = analysis::mtf(&s, FieldSel::Index(2), Waves::all_or(w), Some(4), &[]).unwrap();
     let c = m0.cutoff.0.min(m0.cutoff.1);
     let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
     let run = |fi: usize, n: Option<usize>, m: MtfMethod| {
-        analysis::mtf_with(&s, FieldSel::Index(fi), w, n, &freqs, m).unwrap()
+        analysis::mtf_with(&s, FieldSel::Index(fi), Waves::all_or(w), n, &freqs, m).unwrap()
     };
     let (a, i, f) = (
         run(2, None, MtfMethod::Auto),
@@ -424,7 +426,23 @@ fn auto_mtf_switches_to_fft_for_many_points() {
     }
     // 周波数が少ない（7 個以下）ときは求積の方が速いので切り替えない
     let few = &freqs[..analysis::AUTO_FFT_FREQS - 1];
-    let a = analysis::mtf_with(&s, FieldSel::Index(2), w, None, few, MtfMethod::Auto).unwrap();
-    let i = analysis::mtf_with(&s, FieldSel::Index(2), w, None, few, MtfMethod::Interp).unwrap();
+    let a = analysis::mtf_with(
+        &s,
+        FieldSel::Index(2),
+        Waves::all_or(w),
+        None,
+        few,
+        MtfMethod::Auto,
+    )
+    .unwrap();
+    let i = analysis::mtf_with(
+        &s,
+        FieldSel::Index(2),
+        Waves::all_or(w),
+        None,
+        few,
+        MtfMethod::Interp,
+    )
+    .unwrap();
     assert_eq!((&a.tan, &a.sag), (&i.tan, &i.sag));
 }

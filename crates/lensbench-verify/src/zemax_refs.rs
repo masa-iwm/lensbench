@@ -12,6 +12,7 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::report;
 use lensbench_core::system::{Aiming, FieldSel, FieldType};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use ndarray::{Array2, Array4};
 use ndarray_npy::NpzReader;
 use serde_json::Value;
@@ -275,7 +276,11 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
             let sp = analysis::spot_arms(
                 &s,
                 FieldSel::Index(i),
-                if w == 0 { None } else { Some(w - 1) },
+                if w == 0 {
+                    Waves::All
+                } else {
+                    Waves::One(w - 1)
+                },
                 10,
                 Some(20),
             )

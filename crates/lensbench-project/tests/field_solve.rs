@@ -6,6 +6,7 @@ use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{FieldCond, FieldSel, FieldType, ObjSpec};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
+use lensbench_core::Waves;
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -127,8 +128,15 @@ fn chief_ray_returning_on_itself_as_a_field() {
                 "{q:?} {o:?}"
             );
         }
-        analysis::spot(&s, FieldSel::Index(i), None, 4).unwrap();
-        analysis::mtf(&s, FieldSel::Index(i), Some(w), Some(16), &[0.0, 10.0]).unwrap();
+        analysis::spot(&s, FieldSel::Index(i), Waves::All, 4).unwrap();
+        analysis::mtf(
+            &s,
+            FieldSel::Index(i),
+            Waves::One(w),
+            Some(16),
+            &[0.0, 10.0],
+        )
+        .unwrap();
     }
     let o0 = s.object_spec(0.0, 0.0).unwrap();
     let s2 = s.with_params(&[(s.param("3.dx").unwrap(), 0.5)]).unwrap();

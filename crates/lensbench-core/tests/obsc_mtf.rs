@@ -4,6 +4,7 @@ use lensbench_core::analysis::{self, MtfMethod};
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
+use lensbench_core::Waves;
 
 /// 理想レンズ（f 100、入射瞳径 10、λ 0.55 µm）の前の平行光の中に遮蔽（半径 obsc）を置く
 fn ideal(obsc: f64) -> System {
@@ -55,7 +56,8 @@ fn central_obscuration_matches_annular_pupil() {
     let fr: Vec<f64> = (0..10).map(|i| cut * i as f64 / 10.0).collect();
     for k in 0..2 {
         for m in [MtfMethod::Interp, MtfMethod::Fft] {
-            let r = analysis::mtf_with(&s, FieldSel::Index(k), None, Some(128), &fr, m).unwrap();
+            let r =
+                analysis::mtf_with(&s, FieldSel::Index(k), Waves::All, Some(128), &fr, m).unwrap();
             for (i, &f) in fr.iter().enumerate() {
                 let a = annular(e, f / cut);
                 for (what, v) in [("tan", r.tan[i]), ("sag", r.sag[i])] {
@@ -137,7 +139,8 @@ fn obscured_and_clipped() {
             };
             for m in [MtfMethod::Interp, MtfMethod::Direct] {
                 for n in [None, Some(256)] {
-                    let r = analysis::mtf_with(&s, FieldSel::Index(k), None, n, &fr, m).unwrap();
+                    let r =
+                        analysis::mtf_with(&s, FieldSel::Index(k), Waves::All, n, &fr, m).unwrap();
                     for (i, &f) in fr.iter().enumerate() {
                         let (es, et) = clipped_mtf(
                             obsc / 5.0,
@@ -164,7 +167,7 @@ fn obscured_and_clipped() {
         dy: 1.5,
     };
     s.changed().unwrap();
-    let sp = analysis::spot(&s, FieldSel::Index(0), None, 6).unwrap();
+    let sp = analysis::spot(&s, FieldSel::Index(0), Waves::All, 6).unwrap();
     assert!(sp.chief.0.is_finite() && sp.chief.1.is_finite());
 }
 
@@ -182,7 +185,7 @@ fn huygens_central_obscuration() {
         image: 128,
         delta: None,
     };
-    let r = huygens_mtf(&s, FieldSel::Index(0), None, o, &fr).unwrap();
+    let r = huygens_mtf(&s, FieldSel::Index(0), Waves::All, o, &fr).unwrap();
     for (i, &f) in fr.iter().enumerate() {
         let a = annular(e, f / cut);
         for (what, v) in [("tan", r.tan[i]), ("sag", r.sag[i])] {

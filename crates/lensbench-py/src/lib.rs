@@ -27,13 +27,13 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::param::Param;
 use lensbench_core::polgrid::{self, PolGrid};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
     Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolTrace, Trace,
 };
 use lensbench_core::{analysis, huygens, optim, psf, sweep, with_threads, zmx, RecSel, System};
+use lensbench_core::{param::Param, Waves};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
@@ -2291,7 +2291,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
         let method = match method {
             "auto" => analysis::MtfMethod::Auto,
@@ -2305,7 +2305,7 @@ impl PySystem {
             }
         };
         if each_wave {
-            if w.is_some() {
+            if w != Waves::All {
                 return Err(PyValueError::new_err("each_wave は wave と一緒に使えない"));
             }
             let mw = py
@@ -2343,7 +2343,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let (fs, z) = (floats(&freqs), floats(&dz));
         let m =
             py.detach(|| with_threads(threads, || sweep::through_focus_mtf(&s, f, w, n, &fs, &z)));
@@ -2366,7 +2366,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let ax = field_axis(axis)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let (fs, hs) = (floats(&freqs), floats(&h));
         let m = py.detach(|| with_threads(threads, || sweep::field_mtf(&s, ax, &hs, w, n, &fs)));
         let d = sweep_dict(py, "h", &m)?;
@@ -2588,7 +2588,7 @@ impl PySystem {
                 }
             },
         };
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let xs = x.map(|a| floats(&a));
         let need_x = || {
             xs.clone()
@@ -2666,7 +2666,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let o = psf::PsfOpts {
             pupil,
             image,
@@ -2709,7 +2709,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
         let m = py
             .detach(|| with_threads(threads, || psf::geometric_mtf(&s, f, w, n, &fs, diff_limit)))
@@ -2733,7 +2733,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let o = huygens::HuygensOpts {
             pupil,
             image,
@@ -2776,7 +2776,7 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = wave.map(|w| wave_index(&s, w)).transpose()?;
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
         let fs = floats(&freqs);
         let o = huygens::HuygensOpts {
             pupil,

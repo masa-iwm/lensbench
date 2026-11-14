@@ -2,6 +2,7 @@
 
 use lensbench_core::analysis::{self, MtfMethod};
 use lensbench_core::huygens::{self, HuygensOpts};
+use lensbench_core::Waves;
 use lensbench_core::{psf, sweep, Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -118,7 +119,10 @@ impl Analysis for Mtf {
                 );
                 r
             } else {
-                MtfRow::of(i, analysis::mtf_with(s, f, w, p.n, &fs, method)?)
+                MtfRow::of(
+                    i,
+                    analysis::mtf_with(s, f, Waves::all_or(w), p.n, &fs, method)?,
+                )
             };
             v.push(row);
         }
@@ -203,7 +207,14 @@ impl Analysis for MtfFocus {
         let dz = sweep::steps_sym(p.range, p.steps);
         let (mut v, mut warn) = (Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
-            let m = sweep::through_focus_mtf(s, FieldSel::Index(i), w, p.n, &p.freqs, &dz);
+            let m = sweep::through_focus_mtf(
+                s,
+                FieldSel::Index(i),
+                Waves::all_or(w),
+                p.n,
+                &p.freqs,
+                &dz,
+            );
             for (k, &f) in p.freqs.iter().enumerate() {
                 for (j, &z) in dz.iter().enumerate() {
                     v.push(FocusRow {
@@ -297,7 +308,7 @@ impl Analysis for MtfField {
         let w = wave(s, p.wave)?;
         let ax = p.axis.core();
         let h = sweep::steps01(p.points);
-        let m = sweep::field_mtf(s, ax, &h, w, p.n, &p.freqs);
+        let m = sweep::field_mtf(s, ax, &h, Waves::all_or(w), p.n, &p.freqs);
         let mut v = Vec::new();
         for (k, &f) in p.freqs.iter().enumerate() {
             for (j, &hh) in h.iter().enumerate() {
@@ -381,7 +392,14 @@ impl Analysis for GeoMtf {
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
-            let m = psf::geometric_mtf(s, FieldSel::Index(i), w, p.n, &fs, p.diff_limit)?;
+            let m = psf::geometric_mtf(
+                s,
+                FieldSel::Index(i),
+                Waves::all_or(w),
+                p.n,
+                &fs,
+                p.diff_limit,
+            )?;
             v.push(MtfRow::of(i, m));
         }
         Ok(GeoMtfOut {
@@ -457,7 +475,7 @@ impl Analysis for HuygensMtf {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
             v.push(MtfRow::of(
                 i,
-                huygens::huygens_mtf(s, FieldSel::Index(i), w, o, &fs)?,
+                huygens::huygens_mtf(s, FieldSel::Index(i), Waves::all_or(w), o, &fs)?,
             ));
         }
         Ok(MtfOut {

@@ -28,6 +28,7 @@ use lensbench_core::psf;
 use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
@@ -120,7 +121,7 @@ fn through_focus_mtf_matches_opticstudio() {
             let m = sweep::through_focus_mtf(
                 &s,
                 FieldSel::Index(field - 1),
-                wave(&it["wave"]),
+                Waves::all_or(wave(&it["wave"])),
                 None,
                 &[fr[k - 1]],
                 &dz,
@@ -196,7 +197,14 @@ fn mtf_vs_field_matches_opticstudio() {
         let mut worst: f64 = 0.0;
         for it in fm["series"].as_array().unwrap() {
             let f = it["freq"].as_f64().unwrap();
-            let m = sweep::field_mtf(&s, FieldAxis::Y, &nodes, wave(&it["wave"]), None, &[f]);
+            let m = sweep::field_mtf(
+                &s,
+                FieldAxis::Y,
+                &nodes,
+                Waves::all_or(wave(&it["wave"])),
+                None,
+                &[f],
+            );
             let h = nums(&it["h"]);
             for (g, key) in [(&m.tan[0], "T"), (&m.sag[0], "S")] {
                 let gi: Vec<f64> = h.iter().map(|&t| natural_spline(&nodes, g, t)).collect();
@@ -261,13 +269,13 @@ fn rms_family_matches_opticstudio() {
                             c
                         };
                         let h: Vec<f64> = x.iter().map(|v| v / ny).collect();
-                        sweep::rms_vs_field(&s, FieldAxis::Y, &h, cw, o)
+                        sweep::rms_vs_field(&s, FieldAxis::Y, &h, Waves::all_or(cw), o)
                     }
                     "focus" => {
                         if data == "StrehlRatio" && w.is_none() {
                             continue;
                         }
-                        sweep::rms_vs_focus(&s, FieldSel::Index(ci), &x, w, o)
+                        sweep::rms_vs_focus(&s, FieldSel::Index(ci), &x, Waves::all_or(w), o)
                     }
                     "wavelength" => sweep::rms_vs_wavelength(&s, FieldSel::Index(ci), &x, o),
                     _ => panic!("{vs}"),
@@ -333,7 +341,7 @@ fn geometric_mtf_matches_opticstudio() {
             let m = psf::geometric_mtf(
                 &s,
                 FieldSel::Index(field - 1),
-                wave(&it["wave"]),
+                Waves::all_or(wave(&it["wave"])),
                 128,
                 &freqs,
                 dl,
@@ -377,7 +385,13 @@ fn fft_psf_matches_opticstudio() {
                 image,
                 delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
             };
-            let g = psf::psf(&s, FieldSel::Index(field - 1), wave(&it["wave"]), o).unwrap();
+            let g = psf::psf(
+                &s,
+                FieldSel::Index(field - 1),
+                Waves::all_or(wave(&it["wave"])),
+                o,
+            )
+            .unwrap();
             // OS の格子は x = (i − (N/2 − 1))·Δ、lensbench は (m − N/2)·Δ なので m = i + 1。
             // 全体の和で正規化してから OS の「和 / 最大」をかけて最大比にそろえる
             let sum: f64 = g.i.iter().flatten().sum();

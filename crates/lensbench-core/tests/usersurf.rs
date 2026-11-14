@@ -3,6 +3,7 @@
 use lensbench_core::plugin::{Config, Value};
 use lensbench_core::surface::SurfType;
 use lensbench_core::usersurf::{self, SurfaceInstance, SurfaceModel, UserSurf};
+use lensbench_core::Waves;
 use lensbench_core::{analysis, zmx, FieldSel, System};
 use std::sync::Arc;
 
@@ -69,7 +70,7 @@ fn image_height_follows_the_mapping_without_aberration() {
                 t.rays[0].xyz[1]
             );
             // 同じ方向の光線は 1 点に集まり（スポット 0）、OPD も 0
-            let sp = analysis::spot(&s, FieldSel::Index(i), None, 6).unwrap();
+            let sp = analysis::spot(&s, FieldSel::Index(i), Waves::All, 6).unwrap();
             assert!(sp.rms_chief < 1e-9, "{m} {deg}: {}", sp.rms_chief);
             let px: Vec<f64> = (0..9).map(|k| -0.8 + 0.2 * k as f64).collect();
             let py: Vec<f64> = px.iter().rev().cloned().collect();

@@ -14,6 +14,7 @@ use crate::glass;
 use crate::invalid;
 use crate::surface::SurfType;
 use crate::system::{FieldSel, FieldType, System};
+use crate::Waves;
 
 // ------------------------------------------------------------------------------------------ 系の変更
 /// 像面を dz [レンズ単位] ずらした系（像面の手前の面の厚さに dz を足す。+ は光の進む向きに遠ざける）
@@ -264,16 +265,17 @@ fn mtf_sweep(
 pub fn through_focus_mtf(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     n: Option<usize>,
     freqs: &[f64],
     dz: &[f64],
 ) -> MtfSweep {
+    let w = w.one();
     mtf_sweep(
         dz,
         freqs,
         |z| format!("ずらし {z}"),
-        |z| mtf(&defocus(s, z)?, field, w, n, freqs),
+        |z| mtf(&defocus(s, z)?, field, Waves::all_or(w), n, freqs),
     )
 }
 
@@ -302,16 +304,17 @@ pub fn field_mtf(
     s: &System,
     axis: FieldAxis,
     h: &[f64],
-    w: Option<usize>,
+    w: Waves,
     n: Option<usize>,
     freqs: &[f64],
 ) -> MtfSweep {
+    let w = w.one();
     let (s, warn) = without_vig(s);
     let mut r = mtf_sweep(
         h,
         freqs,
         |h| format!("視野 {h}"),
-        |h| mtf(&s, axis.sel(h), w, n, freqs),
+        |h| mtf(&s, axis.sel(h), Waves::all_or(w), n, freqs),
     );
     r.warnings.splice(0..0, warn);
     r
@@ -512,11 +515,12 @@ pub(crate) fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
 }
 
 /// 1 点の RMS（スポット半径・x・y、波面、ストレール比）。w None なら多色
-pub fn rms(s: &System, field: FieldSel, w: Option<usize>, o: RmsOpts) -> Result<Rms> {
+pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
+    let w = w.one();
     if o.rings == 0 {
         invalid!("リング数は 1 以上");
     }
-    let sp = spot(s, field, w, o.rings)?;
+    let sp = spot(s, field, Waves::all_or(w), o.rings)?;
     let (rx, ry) = match o.reference {
         RmsRef::Chief => sp.chief,
         RmsRef::Centroid => sp.centroid,
@@ -602,13 +606,8 @@ fn field_at_wave(s: &System, w: usize, o: RmsOpts) -> Result<std::borrow::Cow<'_
 }
 
 /// RMS vs Field: 正規化視野 h（axis の向き）ごと。ケラレ係数は使わない（OpticStudio と同じ）
-pub fn rms_vs_field(
-    s: &System,
-    axis: FieldAxis,
-    h: &[f64],
-    w: Option<usize>,
-    o: RmsOpts,
-) -> RmsSweep {
+pub fn rms_vs_field(s: &System, axis: FieldAxis, h: &[f64], w: Waves, o: RmsOpts) -> RmsSweep {
+    let w = w.one();
     let (s, warn) = without_vig(s);
     let s = match w {
         Some(w) => match field_at_wave(&s, w, o) {
@@ -621,23 +620,22 @@ pub fn rms_vs_field(
         },
         None => s,
     };
-    let mut r = rms_sweep(h, |h| format!("視野 {h}"), |h| rms(&s, axis.sel(h), w, o));
+    let mut r = rms_sweep(
+        h,
+        |h| format!("視野 {h}"),
+        |h| rms(&s, axis.sel(h), Waves::all_or(w), o),
+    );
     r.warnings.splice(0..0, warn);
     r
 }
 
 /// RMS vs Focus: 像面のずらし dz ごと
-pub fn rms_vs_focus(
-    s: &System,
-    field: FieldSel,
-    dz: &[f64],
-    w: Option<usize>,
-    o: RmsOpts,
-) -> RmsSweep {
+pub fn rms_vs_focus(s: &System, field: FieldSel, dz: &[f64], w: Waves, o: RmsOpts) -> RmsSweep {
+    let w = w.one();
     rms_sweep(
         dz,
         |z| format!("ずらし {z}"),
-        |z| rms(&defocus(s, z)?, field, w, o),
+        |z| rms(&defocus(s, z)?, field, Waves::all_or(w), o),
     )
 }
 
@@ -649,7 +647,7 @@ pub fn rms_vs_wavelength(s: &System, field: FieldSel, lams: &[f64], o: RmsOpts) 
         |l| {
             let (d, w) = with_wavelength(s, l)?;
             let d2: std::borrow::Cow<'_, System> = field_at_wave(&d, w, o)?;
-            rms(&d2, field, Some(w), o)
+            rms(&d2, field, Waves::One(w), o)
         },
     )
 }

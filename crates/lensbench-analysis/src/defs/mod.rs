@@ -6,6 +6,7 @@ mod basic;
 mod image;
 mod mtfs;
 
+use lensbench_core::Waves;
 use lensbench_core::{Error, Result, System};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -97,7 +98,7 @@ fn freqs_for(
             let m = lensbench_core::analysis::mtf(
                 s,
                 lensbench_core::FieldSel::Index(field),
-                w,
+                Waves::all_or(w),
                 Some(4),
                 &[],
             )?;

@@ -1,5 +1,6 @@
 //! スポット・波面・Zernike・ゴースト
 
+use lensbench_core::Waves;
 use std::path::PathBuf;
 
 use lensbench_core::analysis::{self, ZernKind};
@@ -72,7 +73,7 @@ impl Analysis for Spot {
         let w = wave(s, p.wave)?;
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
-            let sp = analysis::spot(s, FieldSel::Index(i), w, p.rings)?;
+            let sp = analysis::spot(s, FieldSel::Index(i), Waves::all_or(w), p.rings)?;
             v.push(SpotRow {
                 field: i + 1,
                 rms_centroid: sp.rms_centroid,

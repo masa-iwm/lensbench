@@ -22,6 +22,7 @@ use crate::error::Result;
 use crate::math::*;
 use crate::psf::{cell_frac, perp_slopes_of, Psf};
 use crate::system::{FieldSel, System};
+use crate::Waves;
 use crate::{invalid, notimpl};
 use std::f64::consts::PI;
 
@@ -113,7 +114,8 @@ type Sphere = Option<(V3, f64, f64)>;
 
 /// Huygens PSF。w None なら全波長を重みで足した多色。座標は像面の局所座標 (x, y)（中心 = 主波長の主光線の
 /// 像点）で、axes は像面の x̂・ŷ
-pub fn huygens_psf(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
+pub fn huygens_psf(s: &System, field: FieldSel, w: Waves, o: HuygensOpts) -> Result<Psf> {
+    let w = w.one();
     crate::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
         huygens_once(s, field, w, HuygensOpts { pupil: np, ..o })
     })
@@ -458,11 +460,12 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> (Vec<f64>, Vec<f64>) {
 pub fn huygens_mtf(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     o: HuygensOpts,
     freqs: &[f64],
 ) -> Result<Mtf> {
-    let p = huygens_psf(s, field, w, o)?;
+    let w = w.one();
+    let p = huygens_psf(s, field, Waves::all_or(w), o)?;
     let (tan, sag) = psf_mtf(&p, freqs);
     let jm = pupil_jacobian(s, field, s.primary)?;
     let lam = s.wavelengths[s.primary] * 1e-3;

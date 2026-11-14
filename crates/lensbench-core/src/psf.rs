@@ -16,6 +16,7 @@ use crate::error::Result;
 use crate::invalid;
 use crate::par::scoped;
 use crate::system::{FieldSel, System};
+use crate::Waves;
 
 /// 回折 PSF
 #[derive(Debug, Clone)]
@@ -209,7 +210,8 @@ fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
 }
 
 /// 回折 PSF。w None なら全波長を重みで足した多色（各波長の全強度を重みに比例させる）
-pub fn psf(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<Psf> {
+pub fn psf(s: &System, field: FieldSel, w: Waves, o: PsfOpts) -> Result<Psf> {
+    let w = w.one();
     retry_auto(o.pupil, PSF_PUPIL_CAP, |np| {
         psf_once(s, field, w, PsfOpts { pupil: np, ..o })
     })
@@ -468,11 +470,12 @@ pub fn diffraction_limit(v: f64) -> f64 {
 pub fn geometric_mtf(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     n: usize,
     freqs: &[f64],
     diff_limit: bool,
 ) -> Result<Mtf> {
+    let w = w.one();
     if n < 4 {
         invalid!("幾何 MTF の求積の点の数 {n} は 4 以上");
     }

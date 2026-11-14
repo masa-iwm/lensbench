@@ -24,6 +24,7 @@
 //! `pop` は系の視野で入力の場を作り、`ghost` は視野を使わない（入力なし）。`ghost` の膜は `Context` の膜（なければ
 //! 系の膜ファイル）を使う。
 
+use lensbench_core::Waves;
 use std::sync::Arc;
 
 use lensbench_core::analysis::{self, MtfMethod, ZernKind};
@@ -629,7 +630,7 @@ impl Prepared {
         check_wave(s, self.wave())?;
         Ok(match self {
             Prepared::Spot { wave, rings } => {
-                let r = analysis::spot(s, f, *wave, *rings)?;
+                let r = analysis::spot(s, f, Waves::all_or(*wave), *rings)?;
                 out(vec![
                     ("x", v1(r.x)?),
                     ("y", v1(r.y)?),
@@ -685,7 +686,7 @@ impl Prepared {
                 method,
             } => {
                 let fs = default_freqs(s, f, *wave, freqs)?;
-                let r = analysis::mtf_with(s, f, *wave, *n, &fs, *method)?;
+                let r = analysis::mtf_with(s, f, Waves::all_or(*wave), *n, &fs, *method)?;
                 out(vec![
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
@@ -694,7 +695,7 @@ impl Prepared {
                 ])
             }
             Prepared::Psf { wave, opts } => {
-                let r = psf::psf(s, f, *wave, *opts)?;
+                let r = psf::psf(s, f, Waves::all_or(*wave), *opts)?;
                 out(vec![
                     ("x", v1(r.x)?),
                     ("y", v1(r.y)?),
@@ -708,7 +709,7 @@ impl Prepared {
                 ])
             }
             Prepared::Rms { wave, opts } => {
-                let r = sweep::rms(s, f, *wave, *opts)?;
+                let r = sweep::rms(s, f, Waves::all_or(*wave), *opts)?;
                 out(vec![
                     ("spot", Array::scalar(r.spot)),
                     ("spot_x", Array::scalar(r.spot_x)),
@@ -724,7 +725,7 @@ impl Prepared {
                 diff_limit,
             } => {
                 let fs = default_freqs(s, f, *wave, freqs)?;
-                let r = psf::geometric_mtf(s, f, *wave, *n, &fs, *diff_limit)?;
+                let r = psf::geometric_mtf(s, f, Waves::all_or(*wave), *n, &fs, *diff_limit)?;
                 out(vec![
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
@@ -733,7 +734,7 @@ impl Prepared {
                 ])
             }
             Prepared::HuygensPsf { wave, opts } => {
-                let r = huygens::huygens_psf(s, f, *wave, *opts)?;
+                let r = huygens::huygens_psf(s, f, Waves::all_or(*wave), *opts)?;
                 out(vec![
                     ("x", v1(r.x)?),
                     ("y", v1(r.y)?),
@@ -748,7 +749,7 @@ impl Prepared {
             }
             Prepared::HuygensMtf { wave, freqs, opts } => {
                 let fs = default_freqs(s, f, *wave, freqs)?;
-                let r = huygens::huygens_mtf(s, f, *wave, *opts, &fs)?;
+                let r = huygens::huygens_mtf(s, f, Waves::all_or(*wave), *opts, &fs)?;
                 out(vec![
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
@@ -861,7 +862,7 @@ fn default_freqs(
     Ok(match freqs {
         Some(v) => v.clone(),
         None => {
-            let m = analysis::mtf(s, f, wave, Some(4), &[])?;
+            let m = analysis::mtf(s, f, Waves::all_or(wave), Some(4), &[])?;
             let c = m.cutoff.0.min(m.cutoff.1);
             (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
         }

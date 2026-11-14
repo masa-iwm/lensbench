@@ -1,6 +1,7 @@
 //! serve・watch: 外のプロセスから系を開き、間隔を変えて再解析を繰り返す。1 回の往復の時間も測る
 //! （`cargo test --release -p lensbench-cli --test it serve:: -- --nocapture` で表示）。
 
+use lensbench_core::Waves;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -199,7 +200,7 @@ fn loop_thickness() {
         let r = sv.call("analyze", json!({ "cmd": "spot", "field": 3 }));
         let got = r["spot"][0]["rms_centroid"].as_f64().unwrap();
         let s = base.with_params(&[(p, v)]).unwrap();
-        let want = analysis::spot(&s, FieldSel::Index(2), None, 6)
+        let want = analysis::spot(&s, FieldSel::Index(2), Waves::All, 6)
             .unwrap()
             .rms_centroid;
         assert!(close(got, want), "t = {v}: {got} {want}");
@@ -519,7 +520,7 @@ fn watch_file() {
     assert_eq!(so.lines().count(), 2, "{so}");
     let second: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
     let want = |s: &System| {
-        analysis::spot(s, FieldSel::Index(2), None, 6)
+        analysis::spot(s, FieldSel::Index(2), Waves::All, 6)
             .unwrap()
             .rms_centroid
     };

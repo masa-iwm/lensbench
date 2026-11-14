@@ -16,6 +16,7 @@ use crate::common::{glass_dirs, refs_dir};
 use lensbench_core::analysis;
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -51,7 +52,14 @@ fn worst(s: &lensbench_core::system::System, r: &Value) -> f64 {
         if skip.contains(&fi) {
             continue;
         }
-        let m = analysis::mtf(s, FieldSel::Index(fi as usize - 1), None, None, &freqs).unwrap();
+        let m = analysis::mtf(
+            s,
+            FieldSel::Index(fi as usize - 1),
+            Waves::All,
+            None,
+            &freqs,
+        )
+        .unwrap();
         for (got, want) in [(&m.tan, nums(&f["T"])), (&m.sag, nums(&f["S"]))] {
             for (g, w) in got.iter().zip(&want) {
                 worst = worst.max((g - w).abs());

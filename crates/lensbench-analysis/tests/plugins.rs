@@ -1,4 +1,5 @@
 //! 同梱の解析のプラグインは core の関数を直接呼んだ結果とビット一致し、視野をまとめた呼び出しはスレッド数によらない
+use lensbench_core::Waves;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -78,7 +79,7 @@ fn spot_wavefront_zernike_match_core() {
         &s,
         2.0,
     );
-    let r = analysis::spot(&s, FieldSel::Index(1), None, 4).unwrap();
+    let r = analysis::spot(&s, FieldSel::Index(1), Waves::All, 4).unwrap();
     assert_eq!(bits(get(&o, "x")), bits(&r.x));
     assert_eq!(get(&o, "rms_centroid"), &[r.rms_centroid]);
     let o = run(
@@ -121,7 +122,15 @@ fn mtf_and_psf_match_core() {
         ("method".into(), Value::Str("fft".into())),
     ]);
     let o = run("mtf", cfg, &s, 2.0);
-    let r = analysis::mtf_with(&s, FieldSel::Index(1), None, None, &fs, MtfMethod::Fft).unwrap();
+    let r = analysis::mtf_with(
+        &s,
+        FieldSel::Index(1),
+        Waves::All,
+        None,
+        &fs,
+        MtfMethod::Fft,
+    )
+    .unwrap();
     assert_eq!(bits(get(&o, "tan")), bits(&r.tan));
     assert_eq!(bits(get(&o, "sag")), bits(&r.sag));
     // 周波数を省くと CLI と同じ 21 点
@@ -137,7 +146,7 @@ fn mtf_and_psf_match_core() {
         image: 64,
         delta: None,
     };
-    let r = psf::psf(&s, FieldSel::Index(0), None, opts).unwrap();
+    let r = psf::psf(&s, FieldSel::Index(0), Waves::All, opts).unwrap();
     assert_eq!(o["i"].shape, vec![64, 64]);
     assert_eq!(bits(get(&o, "i")), bits(&r.i.concat()));
 }
@@ -182,7 +191,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         reference: RmsRef::Chief,
         ..Default::default()
     };
-    let r = sweep::rms(&s, FieldSel::Index(1), None, o2).unwrap();
+    let r = sweep::rms(&s, FieldSel::Index(1), Waves::All, o2).unwrap();
     assert_eq!(get(&o, "wfe"), &[r.wfe]);
     assert_eq!(get(&o, "spot"), &[r.spot]);
     let fs = vec![0.0, 20.0, 40.0];
@@ -191,7 +200,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         ("n".into(), Value::Num(64.0)),
     ]);
     let o = run("geo_mtf", cfg, &s, 1.0);
-    let r = psf::geometric_mtf(&s, FieldSel::Index(0), None, 64, &fs, false).unwrap();
+    let r = psf::geometric_mtf(&s, FieldSel::Index(0), Waves::All, 64, &fs, false).unwrap();
     assert_eq!(bits(get(&o, "tan")), bits(&r.tan));
     // Huygens PSF・MTF
     let cfg = Config::from([
@@ -205,12 +214,14 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         delta: None,
     };
     let o = run("huygens_psf", cfg.clone(), &s, 2.0);
-    let r = lensbench_core::huygens::huygens_psf(&s, FieldSel::Index(1), Some(0), ho).unwrap();
+    let r =
+        lensbench_core::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho).unwrap();
     assert_eq!(bits(get(&o, "i")), bits(&r.i.concat()));
     let mut cfg = cfg;
     cfg.insert("freqs".into(), Value::Nums(fs.clone()));
     let o = run("huygens_mtf", cfg, &s, 2.0);
-    let r = lensbench_core::huygens::huygens_mtf(&s, FieldSel::Index(1), Some(0), ho, &fs).unwrap();
+    let r = lensbench_core::huygens::huygens_mtf(&s, FieldSel::Index(1), Waves::One(0), ho, &fs)
+        .unwrap();
     assert_eq!(bits(get(&o, "sag")), bits(&r.sag));
     // POP: 絞りの後の場を 5 mm 伝搬
     let surf = s.stop();

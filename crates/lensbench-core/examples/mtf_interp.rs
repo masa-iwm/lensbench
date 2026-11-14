@@ -1,5 +1,6 @@
 //! MTF の補間（既定）と直接追跡の差と時間: `cargo run --release --example mtf_interp -- [系 ...]`
 //! 系は tests/refs の名前（既定は全系）。周波数は mtf.json の周波数（なければ遮断周波数の 0〜0.9 を 10 点）
+use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -31,16 +32,16 @@ fn main() {
         let s = zmx::load_with(&root.join(format!("tests/refs/{name}/system.zmx")), &opt).unwrap();
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let Ok(m0) = analysis::mtf(&s, f, Some(s.primary), Some(4), &[]) else {
+            let Ok(m0) = analysis::mtf(&s, f, Waves::One(s.primary), Some(4), &[]) else {
                 println!("{name} 視野 {fi}: 遮断周波数が求まらない");
                 continue;
             };
             let c = m0.cutoff.0.min(m0.cutoff.1);
             let freqs: Vec<f64> = (0..10).map(|k| c * 0.09 * k as f64).collect();
             let t0 = Instant::now();
-            let d = analysis::mtf_with(&s, f, None, fixed_n, &freqs, MtfMethod::Direct);
+            let d = analysis::mtf_with(&s, f, Waves::All, fixed_n, &freqs, MtfMethod::Direct);
             let t1 = Instant::now();
-            let i = analysis::mtf_with(&s, f, None, fixed_n, &freqs, MtfMethod::Interp);
+            let i = analysis::mtf_with(&s, f, Waves::All, fixed_n, &freqs, MtfMethod::Interp);
             let t2 = Instant::now();
             match (d, i) {
                 (Ok(d), Ok(i)) => {

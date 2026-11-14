@@ -1,5 +1,6 @@
 //! 解析ごとの時間（プロファイル用）: `cargo run --release --example profile -- [--threads N] [--glass-dir D] [系 ...]`
 //! 系は tests/refs の名前か .zmx のパス（既定 A0 A2 C0 D4）。環境変数 SKIP_AUTO があれば多色・点数自動の MTF を飛ばす
+use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -104,7 +105,9 @@ fn main() {
             time("trace 1 (chief)", || {
                 s.trace(f, &[0.0], &[0.0], None, None, false)
             });
-            time("spot (rings 6)", || analysis::spot(&s, f, None, 6).unwrap());
+            time("spot (rings 6)", || {
+                analysis::spot(&s, f, Waves::All, 6).unwrap()
+            });
             time("wavefront 64", || {
                 analysis::wavefront(&s, f, None, 64, false).unwrap()
             });
@@ -123,11 +126,11 @@ fn main() {
             });
             if std::env::var("SKIP_AUTO").is_err() {
                 time("mtf poly auto, 11 freq", || {
-                    analysis::mtf(&s, f, None, None, &freqs)
+                    analysis::mtf(&s, f, Waves::All, None, &freqs)
                 });
             }
             time("mtf mono n=64, 11 freq", || {
-                analysis::mtf(&s, f, Some(s.primary), Some(64), &freqs)
+                analysis::mtf(&s, f, Waves::One(s.primary), Some(64), &freqs)
             });
             let c = Coatings::for_system(&s).unwrap_or_default();
             let pols = [

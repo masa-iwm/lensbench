@@ -1,3 +1,4 @@
+use lensbench_core::Waves;
 use serde_json::json;
 
 use crate::registry::{Analyses, ParamTy};
@@ -67,7 +68,8 @@ fn every_builtin_runs_with_defaults() {
         .run_json(&cx, &json!({ "field": 2, "wave": 1 }))
         .unwrap();
     let sp =
-        lensbench_core::analysis::spot(&s, lensbench_core::FieldSel::Index(1), Some(0), 6).unwrap();
+        lensbench_core::analysis::spot(&s, lensbench_core::FieldSel::Index(1), Waves::One(0), 6)
+            .unwrap();
     assert_eq!(
         v["spot"][0]["rms_centroid"].as_f64().unwrap().to_bits(),
         sp.rms_centroid.to_bits()

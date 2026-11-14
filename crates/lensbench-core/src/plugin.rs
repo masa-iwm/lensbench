@@ -663,7 +663,12 @@ mod tests {
             let mut r = ArrayReader::new(inputs);
             let (_, f) = r.f64("field")?;
             r.finish()?;
-            let sp = crate::analysis::spot(s, crate::FieldSel::Index(f[0] as usize), None, self.0)?;
+            let sp = crate::analysis::spot(
+                s,
+                crate::FieldSel::Index(f[0] as usize),
+                crate::Waves::All,
+                self.0,
+            )?;
             Ok(Arrays::from([(
                 "rms".into(),
                 Array::scalar(sp.rms_centroid),
@@ -689,7 +694,8 @@ mod tests {
         let ctx = Context::with_system(&sys);
         let out = run_many(inst.as_ref(), &ctx, &inp);
         for (i, o) in out.iter().enumerate() {
-            let want = crate::analysis::spot(&sys, crate::FieldSel::Index(i), None, 6).unwrap();
+            let want = crate::analysis::spot(&sys, crate::FieldSel::Index(i), crate::Waves::All, 6)
+                .unwrap();
             assert_eq!(
                 o.as_ref().unwrap()["rms"].as_f64().unwrap(),
                 &[want.rms_centroid]

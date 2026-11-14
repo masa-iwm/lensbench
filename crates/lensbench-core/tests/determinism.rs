@@ -5,6 +5,7 @@ use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::{Aiming, FieldSel};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use lensbench_core::{with_threads, System};
 use std::path::PathBuf;
 
@@ -45,7 +46,7 @@ fn fingerprint(name: &str) -> String {
             out += &format!("{:?}{:?}{:?}{:?}{:?}", t.rays, t.p0, t.k0, t.opl_os, t.rec);
         }
         let fs = FieldSel::Index(f);
-        out += &format!("{:?}", analysis::spot(&s, fs, None, 6).unwrap());
+        out += &format!("{:?}", analysis::spot(&s, fs, Waves::All, 6).unwrap());
         let wf = analysis::wavefront(&s, fs, None, 64, false).unwrap();
         out += &format!("{:?}{:?}{:?}", wf.w, wf.pv, wf.rms);
         out += &format!(
@@ -54,7 +55,7 @@ fn fingerprint(name: &str) -> String {
         );
         out += &format!(
             "{:?}",
-            analysis::mtf(&s, fs, None, Some(32), &[0.0, 10.0, 25.0, 50.0]).unwrap()
+            analysis::mtf(&s, fs, Waves::All, Some(32), &[0.0, 10.0, 25.0, 50.0]).unwrap()
         );
     }
     let c = Coatings::for_system(&s).unwrap();

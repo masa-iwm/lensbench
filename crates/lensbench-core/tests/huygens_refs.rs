@@ -17,6 +17,7 @@ use crate::common::root;
 use lensbench_core::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
@@ -83,7 +84,13 @@ fn huygens_psf_matches_opticstudio() {
             image: nx,
             delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };
-        let p = huygens_psf(&s, FieldSel::Index(field - 1), wave(&it["wave"]), o).unwrap();
+        let p = huygens_psf(
+            &s,
+            FieldSel::Index(field - 1),
+            Waves::all_or(wave(&it["wave"])),
+            o,
+        )
+        .unwrap();
         let peak = it["os_peak"].as_f64().unwrap();
         let mut e: f64 = 0.0;
         for ((iy, ix), w) in want.indexed_iter() {
@@ -122,7 +129,14 @@ fn huygens_mtf_matches_opticstudio() {
             delta: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
         };
         let fs = nums(&it["freqs"]);
-        let m = huygens_mtf(&s, FieldSel::Index(field - 1), wave(&it["wave"]), o, &fs).unwrap();
+        let m = huygens_mtf(
+            &s,
+            FieldSel::Index(field - 1),
+            Waves::all_or(wave(&it["wave"])),
+            o,
+            &fs,
+        )
+        .unwrap();
         let d = |a: &[f64], b: &[f64]| {
             a.iter()
                 .zip(b)

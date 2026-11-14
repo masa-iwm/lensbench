@@ -3,6 +3,7 @@
 use lensbench_core::huygens::{self, HuygensOpts};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
+use lensbench_core::Waves;
 use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -165,7 +166,7 @@ impl Analysis for Rms {
                     return Err(Error::Invalid("vs field では field は使わない".into()));
                 }
                 let ax = p.axis.core();
-                let r = sweep::rms_vs_field(s, ax, &sweep::steps01(p.points), w, o);
+                let r = sweep::rms_vs_field(s, ax, &sweep::steps01(p.points), Waves::all_or(w), o);
                 for (x, q) in r.x.iter().zip(&r.rms) {
                     let mut e = RmsRow::of(q);
                     e.h = Some(*x);
@@ -180,7 +181,7 @@ impl Analysis for Rms {
                         s,
                         FieldSel::Index(i),
                         &sweep::steps_sym(p.range, p.points),
-                        w,
+                        Waves::all_or(w),
                         o,
                     );
                     for (x, q) in r.x.iter().zip(&r.rms) {
@@ -330,14 +331,14 @@ impl Analysis for Psf {
                     image: p.image,
                     delta: p.delta,
                 };
-                huygens::huygens_psf(s, FieldSel::Index(i), w, o)
+                huygens::huygens_psf(s, FieldSel::Index(i), Waves::all_or(w), o)
             } else {
                 let o = PsfOpts {
                     pupil: p.pupil,
                     image: p.image,
                     delta: p.delta,
                 };
-                psf::psf(s, FieldSel::Index(i), w, o)
+                psf::psf(s, FieldSel::Index(i), Waves::all_or(w), o)
             }?;
             axes.push(PsfAxes {
                 field: i + 1,

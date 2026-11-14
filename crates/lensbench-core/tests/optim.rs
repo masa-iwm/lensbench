@@ -7,6 +7,7 @@ use lensbench_core::optim::{
 };
 use lensbench_core::sweep::{rms, RmsOpts, RmsRef};
 use lensbench_core::zmx::{self, LoadOptions};
+use lensbench_core::Waves;
 use lensbench_core::{FieldSel, System};
 
 fn load(name: &str) -> System {
@@ -66,7 +67,7 @@ fn merit_matches_rms() {
                         reference,
                         ..Default::default()
                     };
-                    let want = rms(&s, FieldSel::Index(fi), wave, o).unwrap();
+                    let want = rms(&s, FieldSel::Index(fi), Waves::all_or(wave), o).unwrap();
                     for (kind, v) in [
                         (
                             TermKind::Spot {
@@ -390,7 +391,7 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\nSURF 5\n  TYPE STANDARD\n  CURV 
             let want = rms(
                 &base,
                 FieldSel::Index(1),
-                None,
+                Waves::All,
                 RmsOpts {
                     rings: 3,
                     reference,

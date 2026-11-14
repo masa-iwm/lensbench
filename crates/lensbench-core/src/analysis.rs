@@ -8,6 +8,7 @@ use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
 use crate::system::{FieldSel, System, Trace};
+use crate::Waves;
 use crate::{invalid, notimpl, par::scoped};
 
 /// n×n の格子のうち単位円内の点
@@ -200,8 +201,9 @@ pub struct Spot {
 
 /// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
 /// 腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
-pub fn spot(s: &System, field: FieldSel, w: Option<usize>, rings: usize) -> Result<Spot> {
-    spot_arms(s, field, w, rings, None)
+pub fn spot(s: &System, field: FieldSel, w: Waves, rings: usize) -> Result<Spot> {
+    let w = w.one();
+    spot_arms(s, field, Waves::all_or(w), rings, None)
 }
 
 /// [`spot`] で、求積の腕（角度の分割）の数 arms を指定する（None なら 4 rings + 2）。OpticStudio の RSCE・RSCH は
@@ -210,10 +212,11 @@ pub fn spot(s: &System, field: FieldSel, w: Option<usize>, rings: usize) -> Resu
 pub fn spot_arms(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     rings: usize,
     arms: Option<usize>,
 ) -> Result<Spot> {
+    let w = w.one();
     let (px, py, wts) = pupil_gauss(rings, arms);
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -1353,14 +1356,9 @@ fn wave_otf_fft(
 /// 直接求積する（OPD は [`MtfMethod`] の既定で瞳の格子の補間、FFT は [`MtfMethod::Fft`]）。周波数 ν の縞は、像空間の方向余弦で λν だけずれた
 /// 2 つの光線の干渉なので、正規化瞳では [`pupil_shift`] の δν ずらす（瞳から方向余弦への写像は線形とみなす）。w None なら全波長を重みで足した多色（複素 OTF の和、波長ごとに光量で規格化）。
 /// 重なりの積分は [`lens_quad`]（n は求積の点の数の目安、点は約 n² 個）
-pub fn mtf(
-    s: &System,
-    field: FieldSel,
-    w: Option<usize>,
-    n: Option<usize>,
-    freqs: &[f64],
-) -> Result<Mtf> {
-    mtf_with(s, field, w, n, freqs, MtfMethod::default())
+pub fn mtf(s: &System, field: FieldSel, w: Waves, n: Option<usize>, freqs: &[f64]) -> Result<Mtf> {
+    let w = w.one();
+    mtf_with(s, field, Waves::all_or(w), n, freqs, MtfMethod::default())
 }
 
 /// 1 波長の複素 OTF（光量で割る前）: (球欠, 子午, ずらさない瞳の光量 (球欠, 子午))。光量は向きごとに
@@ -1876,12 +1874,13 @@ fn check_n(n: Option<usize>) -> Result<()> {
 pub fn mtf_with(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     n: Option<usize>,
     freqs: &[f64],
     method: MtfMethod,
 ) -> Result<Mtf> {
-    mtf_only(s, field, w, n, freqs, method, None)
+    let w = w.one();
+    mtf_only(s, field, Waves::all_or(w), n, freqs, method, None)
 }
 
 /// [`mtf_with`] で、only Some(0) なら球欠、Some(1) なら子午だけを求める（もう一方の値は使えない。評価関数の
@@ -1889,12 +1888,13 @@ pub fn mtf_with(
 pub(crate) fn mtf_only(
     s: &System,
     field: FieldSel,
-    w: Option<usize>,
+    w: Waves,
     n: Option<usize>,
     freqs: &[f64],
     method: MtfMethod,
     only: Option<usize>,
 ) -> Result<Mtf> {
+    let w = w.one();
     check_n(n)?;
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -2353,7 +2353,7 @@ unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 fn gram_block_simd128(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
     use std::arch::wasm32::*;
-    assert!(ld % 4 == 0 && np % 4 == 0 && a.len() >= ld * np && g.len() >= n * n);
+    assert!(ld.is_multiple_of(4) && np.is_multiple_of(4) && a.len() >= ld * np && g.len() >= n * n);
     let base = a.as_ptr();
     // 安全: 列 k の p..p+2 は k < np、p + 2 ≤ ld なので a の中（上の assert）。v128_load は整列を求めない
     let ld2 = |k: usize, p: usize| unsafe { v128_load(base.add(k * ld + p) as *const v128) };
@@ -2729,7 +2729,7 @@ mod tests {
                 }
             }
             assert!(
-                mtf(&v, f, Some(v.primary), Some(16), &[0.0, 20.0]).is_ok(),
+                mtf(&v, f, Waves::One(v.primary), Some(16), &[0.0, 20.0]).is_ok(),
                 "field {k}"
             );
         }
@@ -2874,7 +2874,7 @@ mod tests {
         let s = crate::zmx::build(&raw, &Default::default(), &[], None).unwrap();
         let nc = 1.0 / (0.55e-3 * 10.0);
         let freqs: Vec<f64> = (0..10).map(|i| nc * i as f64 / 10.0).collect();
-        let m = mtf(&s, FieldSel::Index(0), None, Some(128), &freqs).unwrap();
+        let m = mtf(&s, FieldSel::Index(0), Waves::All, Some(128), &freqs).unwrap();
         // 遮断周波数は 2 sinθ / λ（sinθ = 5/√(100² + 5²)、F/# からの 1/(λF) より 0.12 % 低い）
         let sin = 5.0 / (100.0f64 * 100.0 + 25.0).sqrt();
         let c = 2.0 * sin / 0.55e-3;
@@ -2908,10 +2908,10 @@ mod tests {
             let fs = FieldSel::Index(f);
             let n = mtf_points(opd_slope_max(&s, fs, 0).unwrap());
             assert!(n >= SHIFT_MIN_N, "{n}");
-            let a = mtf(&s, fs, None, None, &freqs).unwrap();
-            let b = mtf(&s, fs, None, Some(n), &freqs).unwrap();
-            let t = mtf_only(&s, fs, None, None, &freqs, MtfMethod::Auto, Some(1)).unwrap();
-            let g = mtf_only(&s, fs, None, None, &freqs, MtfMethod::Auto, Some(0)).unwrap();
+            let a = mtf(&s, fs, Waves::All, None, &freqs).unwrap();
+            let b = mtf(&s, fs, Waves::All, Some(n), &freqs).unwrap();
+            let t = mtf_only(&s, fs, Waves::All, None, &freqs, MtfMethod::Auto, Some(1)).unwrap();
+            let g = mtf_only(&s, fs, Waves::All, None, &freqs, MtfMethod::Auto, Some(0)).unwrap();
             for k in 0..freqs.len() {
                 assert!(
                     (a.tan[k] - b.tan[k]).abs() < 1e-8,

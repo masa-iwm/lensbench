@@ -42,12 +42,12 @@
 use crate::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
 use crate::error::Result;
 use crate::fiber::FiberOpts;
-use crate::invalid;
 use crate::math::*;
 use crate::param::{Kind, Param};
 use crate::surface::SurfType;
 use crate::sweep::RmsRef;
 use crate::system::{FieldSel, System, Trace};
+use crate::{invalid, Waves};
 use rayon::prelude::*;
 use std::sync::Arc;
 
@@ -430,8 +430,7 @@ impl Term {
     }
 }
 
-/// 差分の +h の系と -h の系（前進差分では -h はなし）
-/// 差分の +h・−h の系（境界の外に出る・作れない側は None）
+/// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
 
 /// ヤコビアンの求め方
@@ -1226,13 +1225,14 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             dir,
             target,
         } => {
-            // 片方の向きだけの項はその向きだけ求める（値は両方求めたときと同じ）
             let only = match dir {
+                // 片方の向きだけの項はその向きだけ求める（値は両方求めたときと同じ）
                 MtfDir::Tan => Some(1),
                 MtfDir::Sag => Some(0),
                 MtfDir::Both => None,
             };
-            let m = mtf_only(s, *field, *wave, *n, &[*freq], MtfMethod::default(), only)?;
+            let (w, m0) = (Waves::all_or(*wave), MtfMethod::default());
+            let m = mtf_only(s, *field, w, *n, &[*freq], m0, only)?;
             let r = match dir {
                 MtfDir::Tan => vec![m.tan[0] - target],
                 MtfDir::Sag => vec![m.sag[0] - target],

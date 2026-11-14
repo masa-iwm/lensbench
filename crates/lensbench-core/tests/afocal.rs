@@ -4,6 +4,7 @@
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{AfocalUnit, FieldSel, System};
+use lensbench_core::Waves;
 use lensbench_core::{zmx, zmx_write};
 
 /// ケプラー型の望遠鏡（物体は無限遠、視野 0・0.5°）。afocal で FTYP の 7 番目、img で像面までの距離
@@ -128,8 +129,8 @@ fn spot_is_the_ray_angle() {
     let b = focused(REAL, F, 10.0);
     assert_eq!(a.image_unit(), "mrad");
     for f in 0..2 {
-        let sa = analysis::spot(&a, FieldSel::Index(f), None, 6).unwrap();
-        let sb = analysis::spot(&b, FieldSel::Index(f), None, 6).unwrap();
+        let sa = analysis::spot(&a, FieldSel::Index(f), Waves::All, 6).unwrap();
+        let sb = analysis::spot(&b, FieldSel::Index(f), Waves::All, 6).unwrap();
         assert_eq!(sa.x.len(), sb.x.len());
         for i in 0..sa.x.len() {
             let (x, y) = ((sb.x[i] / F).atan() * 1e3, (sb.y[i] / F).atan() * 1e3);
@@ -151,8 +152,8 @@ fn spot_is_the_ray_angle() {
     // 単位を度にすると値が 1 mrad / 1° 倍になる
     let mut d = a.clone();
     d.afocal_unit = AfocalUnit::Degrees;
-    let s1 = analysis::spot(&a, FieldSel::Index(1), None, 6).unwrap();
-    let s2 = analysis::spot(&d, FieldSel::Index(1), None, 6).unwrap();
+    let s1 = analysis::spot(&a, FieldSel::Index(1), Waves::All, 6).unwrap();
+    let s2 = analysis::spot(&d, FieldSel::Index(1), Waves::All, 6).unwrap();
     let k = 1e-3f64.to_degrees();
     assert!((s2.rms_chief - s1.rms_chief * k).abs() < 1e-12 * s1.rms_chief.max(1.0));
     assert_eq!(d.image_unit(), "deg");
@@ -163,7 +164,7 @@ fn spot_is_the_ray_angle() {
 #[test]
 fn mtf_is_per_angle() {
     let p = telescope(PARAXIAL, true, 20.0);
-    let m = analysis::mtf(&p, FieldSel::Index(0), None, None, &[0.0, 4.0]).unwrap();
+    let m = analysis::mtf(&p, FieldSel::Index(0), Waves::All, None, &[0.0, 4.0]).unwrap();
     assert!(
         (m.cutoff.0 - 5.0 / 0.55e-3 * 1e-3).abs() < 1e-6,
         "{:?}",
@@ -179,8 +180,8 @@ fn mtf_is_per_angle() {
     for f in 0..2 {
         let nu = [0.0, 1.0, 2.5, 5.0];
         let fm: Vec<f64> = nu.iter().map(|v| v / (F * 1e-3)).collect();
-        let ma = analysis::mtf(&a, FieldSel::Index(f), None, None, &nu).unwrap();
-        let mb = analysis::mtf(&b, FieldSel::Index(f), None, None, &fm).unwrap();
+        let ma = analysis::mtf(&a, FieldSel::Index(f), Waves::All, None, &nu).unwrap();
+        let mb = analysis::mtf(&b, FieldSel::Index(f), Waves::All, None, &fm).unwrap();
         for (k, v) in nu.iter().enumerate() {
             assert!(
                 (ma.tan[k] - mb.tan[k]).abs() < 2e-3 && (ma.sag[k] - mb.sag[k]).abs() < 2e-3,
@@ -191,8 +192,8 @@ fn mtf_is_per_angle() {
                 mb.sag[k]
             );
         }
-        let ga = psf::geometric_mtf(&a, FieldSel::Index(f), None, 32, &nu, false).unwrap();
-        let gb = psf::geometric_mtf(&b, FieldSel::Index(f), None, 32, &fm, false).unwrap();
+        let ga = psf::geometric_mtf(&a, FieldSel::Index(f), Waves::All, 32, &nu, false).unwrap();
+        let gb = psf::geometric_mtf(&b, FieldSel::Index(f), Waves::All, 32, &fm, false).unwrap();
         for k in 0..nu.len() {
             assert!(
                 (ga.tan[k] - gb.tan[k]).abs() < 2e-3,
@@ -210,8 +211,8 @@ fn psf_is_per_angle() {
     let a = telescope(PARAXIAL, true, 20.0);
     let b = focused(PARAXIAL, F, 10.0);
     let o = PsfOpts::default();
-    let pa = psf::psf(&a, FieldSel::Index(1), None, o).unwrap();
-    let pb = psf::psf(&b, FieldSel::Index(1), None, o).unwrap();
+    let pa = psf::psf(&a, FieldSel::Index(1), Waves::All, o).unwrap();
+    let pb = psf::psf(&b, FieldSel::Index(1), Waves::All, o).unwrap();
     let r = (pa.delta.0 * F * 1e-3 - pb.delta.0) / pb.delta.0;
     assert!(r.abs() < 2e-3, "間隔 {:?} {:?}", pa.delta, pb.delta);
     assert!(
@@ -315,14 +316,14 @@ fn matches_opticstudio() {
     let s = epd3();
     for (k, o) in OS_EPD3.iter().enumerate() {
         let f = FieldSel::Index(k + 1);
-        let sp = analysis::spot(&s, f, None, 6).unwrap();
+        let sp = analysis::spot(&s, f, Waves::All, 6).unwrap();
         assert!(
             (sp.chief.0 - o.chief[0]).abs() < 1e-6 && (sp.chief.1 - o.chief[1]).abs() < 1e-6,
             "視野 {}: {:?}",
             k + 2,
             sp.chief
         );
-        let m = analysis::mtf(&s, f, None, None, &OS_FREQS).unwrap();
+        let m = analysis::mtf(&s, f, Waves::All, None, &OS_FREQS).unwrap();
         for (i, &nu) in OS_FREQS.iter().enumerate() {
             let tol = if nu == 0.5 { 1e-2 } else { 4e-3 };
             assert!(
@@ -336,7 +337,7 @@ fn matches_opticstudio() {
                 o.sag[i]
             );
         }
-        let g = psf::geometric_mtf(&s, f, None, 64, &OS_FREQS[..3], false).unwrap();
+        let g = psf::geometric_mtf(&s, f, Waves::All, 64, &OS_FREQS[..3], false).unwrap();
         for i in 0..3 {
             assert!(
                 (g.tan[i] - o.geo_tan[i]).abs() < 1.5e-3
@@ -352,7 +353,7 @@ fn matches_opticstudio() {
             image: 256,
             delta: Some(0.0914374977),
         };
-        let p = psf::psf(&s, f, None, po).unwrap();
+        let p = psf::psf(&s, f, Waves::All, po).unwrap();
         assert!(
             (p.peak - o.psf_peak).abs() < 2e-2 * o.psf_peak,
             "PSF 視野 {}: {} {}",

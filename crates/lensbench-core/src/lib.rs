@@ -46,6 +46,7 @@ pub mod trig;
 pub mod units;
 pub mod usersurf;
 pub mod vfs;
+pub mod waves;
 pub mod zmx;
 pub mod zmx_write;
 pub mod zoom;
@@ -70,6 +71,7 @@ pub fn init_from_env() {
     }
 }
 pub use system::{FieldSel, RecSel, System};
+pub use waves::Waves;
 
 /// ライブラリの版。ビルド時に環境変数 LENSBENCH_VERSION があればその値（配布物のタグ名など）、
 /// 無ければ Cargo.toml の版。GUI の版の欄・CLI の --version・serve の ping などに出る。

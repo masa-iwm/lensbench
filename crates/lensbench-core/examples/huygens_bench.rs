@@ -1,5 +1,6 @@
 //! Huygens PSF の時間: `cargo run --release --example huygens_bench -- [系 ...]`（tests/refs の名前、既定 A0 D0）。
 //! 瞳/像の格子 64/128・128/128・256/256、視野 1、主波長
+use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -31,7 +32,7 @@ fn main() {
                 image,
                 delta: None,
             };
-            let p = huygens_psf(&s, FieldSel::Index(0), Some(s.primary), o).unwrap();
+            let p = huygens_psf(&s, FieldSel::Index(0), Waves::One(s.primary), o).unwrap();
             println!(
                 "{name} {pupil}/{image}: {:.3} s  peak {:.12}",
                 t0.elapsed().as_secs_f64(),
