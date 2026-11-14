@@ -7,6 +7,8 @@
 //! 置き場（vfs）の `/cad` に入れる（計算の Web Worker にも写り、詳しい形の描画に使う。#158）。
 
 use egui::{RichText, Ui};
+#[cfg(target_arch = "wasm32")]
+use lensbench_core::LockExt;
 use serde_json::Value;
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,12 +45,12 @@ static WEB_STORE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None)
 
 #[cfg(target_arch = "wasm32")]
 pub fn set_web_store(url: Option<String>) {
-    *WEB_STORE.lock().unwrap_or_else(|e| e.into_inner()) = url.filter(|u| !u.trim().is_empty());
+    *WEB_STORE.lock_ok() = url.filter(|u| !u.trim().is_empty());
 }
 
 #[cfg(target_arch = "wasm32")]
 fn web_store() -> Option<String> {
-    WEB_STORE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    WEB_STORE.lock_ok().clone()
 }
 
 /// Web 版: 置き場から品の STEP を取って vfs に入れ、serve の `cad_step` と同じ形の結果にする

@@ -3,6 +3,7 @@
 //! 分散式 1〜13、カタログ温度での空気に対する相対屈折率、系の温度・気圧への換算（カタログの dn/dT と
 //! 空気の屈折率による）。OpticStudio の INDX と 1e-15 で一致する。
 
+use crate::LockExt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -215,7 +216,7 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
     let stamp = crate::vfs::stamp(path)?;
     let key = crate::vfs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let cache = CACHE.get_or_init(Default::default);
-    if let Some((t, n, g)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+    if let Some((t, n, g)) = cache.lock_ok().get(&key) {
         if (*t, *n) == stamp {
             return Ok(g.clone());
         }
@@ -229,10 +230,7 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
         parse_agf(&txt, &cat)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?,
     );
-    cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(key, (stamp.0, stamp.1, g.clone()));
+    cache.lock_ok().insert(key, (stamp.0, stamp.1, g.clone()));
     Ok(g)
 }
 
@@ -354,7 +352,7 @@ pub fn load_catalogs_shared(
     static CACHE: OnceLock<Mutex<HashMap<Key, Entry>>> = OnceLock::new();
     let key: Key = (names.to_vec(), dirs.to_vec());
     let cache = CACHE.get_or_init(Default::default);
-    if let Some((files, g)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+    if let Some((files, g)) = cache.lock_ok().get(&key) {
         if files
             .iter()
             .all(|(p, st)| crate::vfs::stamp(p).is_ok_and(|s| s == *st))
@@ -404,10 +402,7 @@ pub fn load_catalogs_shared(
     }
     let out = Arc::new(out);
     if missing.is_empty() && complete {
-        cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(key, (files, out.clone()));
+        cache.lock_ok().insert(key, (files, out.clone()));
     }
     (out, missing)
 }

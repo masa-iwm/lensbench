@@ -32,11 +32,10 @@ fn main() {
         let s = zmx::load_with(&root.join(format!("tests/refs/{name}/system.zmx")), &opt).unwrap();
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let Ok(m0) = analysis::mtf(&s, f, Waves::One(s.primary), Some(4), &[]) else {
+            let Ok(c) = analysis::mtf_cutoff(&s, f, s.primary).map(|c| c.min()) else {
                 println!("{name} 視野 {fi}: 遮断周波数が求まらない");
                 continue;
             };
-            let c = m0.cutoff.0.min(m0.cutoff.1);
             let freqs: Vec<f64> = (0..10).map(|k| c * 0.09 * k as f64).collect();
             let t0 = Instant::now();
             let d = analysis::mtf_with(&s, f, Waves::All, fixed_n, &freqs, MtfMethod::Direct);

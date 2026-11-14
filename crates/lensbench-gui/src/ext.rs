@@ -4,6 +4,7 @@
 //! exe の入口で `lensbench_engine::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
 //! [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
 
+use lensbench_core::RwLockExt;
 use std::sync::RwLock;
 
 use serde_json::{Map, Value};
@@ -92,14 +93,14 @@ static DETECTORS: RwLock<Vec<Detector>> = RwLock::new(Vec::new());
 
 /// 検出器を足す（同じ kind は置き換える）
 pub fn register_detector(d: Detector) {
-    let mut v = DETECTORS.write().unwrap_or_else(|e| e.into_inner());
+    let mut v = DETECTORS.write_ok();
     v.retain(|x| x.kind != d.kind);
     v.push(d);
 }
 
 /// 足した検出器（足した順）
 pub fn detectors() -> Vec<Detector> {
-    DETECTORS.read().unwrap_or_else(|e| e.into_inner()).clone()
+    DETECTORS.read_ok().clone()
 }
 
 /// kind の検出器
@@ -109,14 +110,14 @@ pub fn detector(kind: &str) -> Option<Detector> {
 
 /// 解析を足す（同じ cmd は置き換える）
 pub fn register(a: Analysis) {
-    let mut v = ANALYSES.write().unwrap_or_else(|e| e.into_inner());
+    let mut v = ANALYSES.write_ok();
     v.retain(|x| x.cmd != a.cmd);
     v.push(a);
 }
 
 /// 足した解析（足した順）
 pub fn list() -> Vec<Analysis> {
-    ANALYSES.read().unwrap_or_else(|e| e.into_inner()).clone()
+    ANALYSES.read_ok().clone()
 }
 
 /// cmd の拡張の解析

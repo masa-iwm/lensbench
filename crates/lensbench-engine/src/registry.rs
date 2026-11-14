@@ -3,6 +3,7 @@
 //! （GUI 側の見せ方の登録は `lensbench_gui::ext`）で使える。設定は設定の型のスキーマから作り、系の読み方（別の構成・状態の系、
 //! プロジェクトファイル）は [`lensbench_analysis::Cx::source`] で引く。
 
+use lensbench_core::RwLockExt;
 use std::sync::{Arc, RwLock};
 
 use lensbench_analysis::{Analyses, Analysis};
@@ -55,26 +56,25 @@ pub fn register<A: Analysis>(a: A) -> Result<(), String> {
         return Err(format!("解析 {name} は同梱のものと同じ名前"));
     }
     EXTRA
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
+        .write_ok()
         .get_or_insert_with(Analyses::default)
         .add(a);
-    *ALL.write().unwrap_or_else(|e| e.into_inner()) = None;
+    *ALL.write_ok() = None;
     Ok(())
 }
 
 /// 解析の登録簿（同梱の解析と、足した拡張の解析）
 pub fn analyses() -> Arc<Analyses> {
-    if let Some(a) = ALL.read().unwrap_or_else(|e| e.into_inner()).clone() {
+    if let Some(a) = ALL.read_ok().clone() {
         return a;
     }
     let mut a = builtin_analyses();
-    if let Some(x) = EXTRA.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+    if let Some(x) = EXTRA.read_ok().as_ref() {
         for d in x.iter() {
             a.add_dyn(d.clone());
         }
     }
     let a = Arc::new(a);
-    *ALL.write().unwrap_or_else(|e| e.into_inner()) = Some(a.clone());
+    *ALL.write_ok() = Some(a.clone());
     a
 }

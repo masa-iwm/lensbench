@@ -1,6 +1,7 @@
 //! ユーザーカタログと機構部品の形、カタログのファイル（gzip を含む）の読み
 
 use super::*;
+use lensbench_core::LockExt;
 /// ユーザーカタログ（JSON）: 名前 → 保存した玉・ブロックの並び
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UserCatalog {
@@ -366,16 +367,13 @@ impl UserCatalog {
         };
         let key = lensbench_core::vfs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let cache = CACHE.get_or_init(Default::default);
-        if let Some((st, c)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+        if let Some((st, c)) = cache.lock_ok().get(&key) {
             if *st == stamp {
                 return Ok(c.clone());
             }
         }
         let c = Arc::new(UserCatalog::load(path)?);
-        cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(key, (stamp, c.clone()));
+        cache.lock_ok().insert(key, (stamp, c.clone()));
         Ok(c)
     }
     /// ないファイル（`.gz` を足した名前も無い）なら空のカタログ。`.json.gz` だけあれば、それを読む

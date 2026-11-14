@@ -6,6 +6,7 @@
 //! - 系は場に 1 つ。要求は場ごとに 1 つずつ順に処理する
 //! - 解析（`analyze`）は解析の登録簿の解析で、CLI のサブコマンドと同じ設定・同じ結果。系はファイルを読まず、読み込んだ系を使う
 
+use lensbench_core::LockExt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -218,7 +219,7 @@ impl Session {
     }
 
     fn served(&self) -> std::sync::MutexGuard<'_, Option<Served>> {
-        self.served.lock().unwrap_or_else(|e| e.into_inner())
+        self.served.lock_ok()
     }
 
     /// 読み込んだ系
@@ -641,14 +642,14 @@ fn dispatch(
     if let Some(r) = status(sess, method, params) {
         return r;
     }
-    let _g = sess.request.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = sess.request.lock_ok();
     // 中断の印: 呼び出し側（GUI の Worker）が置いた印があればそれを使う
     let tok = lensbench_core::par::current().cancel.unwrap_or_default();
-    *sess.running.lock().unwrap_or_else(|e| e.into_inner()) = Some(tok.clone());
+    *sess.running.lock_ok() = Some(tok.clone());
     struct Done<'a>(&'a Session);
     impl Drop for Done<'_> {
         fn drop(&mut self) {
-            *self.0.running.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *self.0.running.lock_ok() = None;
         }
     }
     let _d = Done(sess);
@@ -677,17 +678,13 @@ fn dispatch(
 fn status(sess: &Session, method: &str, p: &Value) -> Option<Result<Reply, RpcErr>> {
     let r = match method {
         "progress" => json!({
-            "running": sess.running.lock().unwrap_or_else(|e| e.into_inner()).is_some(),
+            "running": sess.running.lock_ok().is_some(),
             "optimize": sess.optimize_progress(),
             "tolerance": sess.tolerance_progress(),
             "swap": sess.swap_progress(),
         }),
         "cancel" => {
-            let t = sess
-                .running
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
+            let t = sess.running.lock_ok().clone();
             if let Some(t) = &t {
                 t.cancel();
             }

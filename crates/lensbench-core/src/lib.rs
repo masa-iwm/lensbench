@@ -40,7 +40,9 @@ pub mod semi;
 pub mod solve;
 pub mod surface;
 pub mod sweep;
+pub mod sync;
 pub mod system;
+pub mod tansag;
 pub mod trace;
 pub mod trig;
 pub mod units;
@@ -70,7 +72,9 @@ pub fn init_from_env() {
         });
     }
 }
+pub use sync::{LockExt, RwLockExt};
 pub use system::{FieldSel, RecSel, System};
+pub use tansag::TanSag;
 pub use waves::Waves;
 
 /// ライブラリの版。ビルド時に環境変数 LENSBENCH_VERSION があればその値（配布物のタグ名など）、

@@ -6,6 +6,7 @@
 //! .lbcat は lensbench のレンズカタログの束（[`encode_lbcat`]）: メーカーのカタログ（ZMF など）を取り込みのときに
 //! 1 回だけ変換したもの。実行時は解読せず、展開して読むだけ。
 
+use crate::RwLockExt;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -167,21 +168,13 @@ fn registered() -> &'static RwLock<Vec<Arc<dyn LensCatalogSource + Send + Sync>>
 /// プロセスで共通に使う形式を足す（同じ拡張子なら後から足したものを使う）。
 /// [`LensCatalog::load_registered`] と、それを使う CLI・GUI・Python のすべてに効く
 pub fn register_source(s: Arc<dyn LensCatalogSource + Send + Sync>) {
-    registered()
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .push(s);
+    registered().write_ok().push(s);
 }
 
 /// プロセスで共通に使う形式の一覧（足したものが先、最後に [`LbcatSource`]・[`ZmxFileSource`]）
 pub fn sources() -> Vec<Arc<dyn LensCatalogSource + Send + Sync>> {
-    let mut v: Vec<Arc<dyn LensCatalogSource + Send + Sync>> = registered()
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .rev()
-        .cloned()
-        .collect();
+    let mut v: Vec<Arc<dyn LensCatalogSource + Send + Sync>> =
+        registered().read_ok().iter().rev().cloned().collect();
     v.push(Arc::new(LbcatSource));
     v.push(Arc::new(ZmxFileSource));
     v

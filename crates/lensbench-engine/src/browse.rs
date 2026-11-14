@@ -1,5 +1,6 @@
 //! カタログを探すための一覧（ガラス・カタログレンズ）。serve の `glasses`・`lenses` と GUI のカタログブラウザが使う。
 
+use lensbench_core::LockExt;
 use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
@@ -208,15 +209,14 @@ static PREPARED: std::sync::Mutex<Prepared> = std::sync::Mutex::new(Vec::new());
 /// （[`lenses`] の結果の JSON。`.gz` も読める）を返す。Web 版で、同梱のメーカーのカタログの一覧をビルドのときに
 /// 作っておく（数万品を開くたびに読むと数秒かかる）。file が読めなければ、いつもどおり読む
 pub fn set_prepared(paths: Vec<PathBuf>, glass_dirs: Vec<PathBuf>, file: PathBuf) {
-    let mut p = PREPARED.lock().unwrap_or_else(|e| e.into_inner());
+    let mut p = PREPARED.lock_ok();
     p.retain(|x| x.0 != paths || x.1 != glass_dirs);
     p.push((paths, glass_dirs, file));
 }
 
 fn prepared(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Option<Value> {
     let file = PREPARED
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .lock_ok()
         .iter()
         .find(|x| x.0 == paths && x.1 == glass_dirs)
         .map(|x| x.2.clone())?;
@@ -231,7 +231,7 @@ pub fn lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String
     if let Some(v) = prepared(paths, glass_dirs) {
         return Ok(v);
     }
-    let dir = CACHE_DIR.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let dir = CACHE_DIR.lock_ok().clone();
     match dir {
         Some(d) => lenses_cached(paths, glass_dirs, &d),
         None => read_lenses(paths, glass_dirs),
@@ -298,7 +298,7 @@ static CACHE_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None
 /// [`lenses`] の一覧をこのフォルダに覚えておき、次に同じフォルダの並びで呼ばれ、中のファイルの更新時刻・
 /// 大きさが変わっていなければ読み直さない（GUI の設定のフォルダ。数万品のカタログを読むと数秒かかる）
 pub fn set_cache_dir(dir: Option<PathBuf>) {
-    *CACHE_DIR.lock().unwrap_or_else(|e| e.into_inner()) = dir;
+    *CACHE_DIR.lock_ok() = dir;
 }
 
 /// 一覧の元になるもの（フォルダの並び、中のファイル 2 階層まで、ガラスのファイル、このプログラム）の更新時刻・

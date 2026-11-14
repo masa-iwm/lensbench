@@ -8,6 +8,7 @@
 //!
 //! 外側でプロセス並列にするときは `with_threads(Some(1), ..)` で中を逐次にする（スレッドを作らない）。
 
+use crate::LockExt;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,10 +49,7 @@ pub fn sequential() -> bool {
 /// 一度作ったプールとそのスレッドはプロセスの終わりまで解放しない（使うスレッド数の種類だけ残る）
 fn pool(n: usize) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError> {
     static POOLS: OnceLock<Mutex<HashMap<usize, Arc<rayon::ThreadPool>>>> = OnceLock::new();
-    let mut m = POOLS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut m = POOLS.get_or_init(Default::default).lock_ok();
     if let Some(p) = m.get(&n) {
         return Ok(p.clone());
     }

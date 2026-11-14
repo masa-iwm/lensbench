@@ -5,6 +5,7 @@
 //!
 //! 検出器のブロックは最後のブロックだけに置け、面は足さない（像面に置く。前の空気のブロックが距離）。
 
+use lensbench_core::RwLockExt;
 use std::sync::RwLock;
 
 use serde_json::{Map, Value};
@@ -29,7 +30,7 @@ pub fn register(k: DetectorKind) -> Result<(), String> {
     if crate::BUILTIN_BLOCKS.contains(&k.name) || k.name.is_empty() {
         return Err(format!("検出器の種類の名前 {:?} は使えない", k.name));
     }
-    let mut v = KINDS.write().unwrap_or_else(|e| e.into_inner());
+    let mut v = KINDS.write_ok();
     v.retain(|x| x.name != k.name);
     v.push(k);
     Ok(())
@@ -37,15 +38,10 @@ pub fn register(k: DetectorKind) -> Result<(), String> {
 
 /// 名前の種類
 pub fn get(name: &str) -> Option<DetectorKind> {
-    KINDS
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .find(|k| k.name == name)
-        .copied()
+    KINDS.read_ok().iter().find(|k| k.name == name).copied()
 }
 
 /// 登録した種類（登録の順）
 pub fn list() -> Vec<DetectorKind> {
-    KINDS.read().unwrap_or_else(|e| e.into_inner()).clone()
+    KINDS.read_ok().clone()
 }

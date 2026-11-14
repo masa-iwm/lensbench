@@ -4,6 +4,7 @@
 //! （`plugins` の `params`、[`lensbench_core::plugin::ParamSpec`]）と同じ形の JSON。欄の値は文字列で持ち
 //! （並びの保存に入る）、空なら省く（解析・プラグインの既定）。計算のときに型に合わせて JSON の値にする。
 
+use lensbench_core::LockExt;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock};
 
@@ -323,10 +324,7 @@ pub fn exclusive_groups(specs: &[&ArgSpec]) -> Vec<Vec<usize>> {
 /// 解析 `cmd` の引数の一覧（CLI の定義から。プロセスの中で 1 度だけ作る）
 pub fn analysis_specs(cmd: &str) -> Vec<ArgSpec> {
     static CACHE: OnceLock<Mutex<HashMap<String, Vec<ArgSpec>>>> = OnceLock::new();
-    let mut c = CACHE
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut c = CACHE.get_or_init(Default::default).lock_ok();
     c.entry(cmd.to_string())
         .or_insert_with(|| {
             let mut v = lensbench_engine::params::analysis_args(cmd)

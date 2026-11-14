@@ -16,6 +16,7 @@
 //!
 //! 同梱のモデル `ideal_mapping`（[`IdealMapping`]）は、画角 θ → 像高 h の関係を与える理想レンズ。
 
+use crate::RwLockExt;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -148,19 +149,19 @@ fn table() -> &'static RwLock<BTreeMap<String, Arc<dyn SurfaceModel>>> {
 
 /// モデルを登録する（同じ名前は差し替える）。プロセスで共通
 pub fn register(m: Arc<dyn SurfaceModel>) {
-    let mut t = table().write().unwrap_or_else(|e| e.into_inner());
+    let mut t = table().write_ok();
     t.insert(m.name().to_string(), m);
 }
 
 /// 登録を外す（あれば true）
 pub fn unregister(name: &str) -> bool {
-    let mut t = table().write().unwrap_or_else(|e| e.into_inner());
+    let mut t = table().write_ok();
     t.remove(name).is_some()
 }
 
 /// 名前のモデル
 pub fn get(name: &str) -> Result<Arc<dyn SurfaceModel>> {
-    let t = table().read().unwrap_or_else(|e| e.into_inner());
+    let t = table().read_ok();
     match t.get(name) {
         Some(m) => Ok(m.clone()),
         None => invalid!(
@@ -172,7 +173,7 @@ pub fn get(name: &str) -> Result<Arc<dyn SurfaceModel>> {
 
 /// 登録のモデルの名前（名前の順）
 pub fn models() -> Vec<String> {
-    let t = table().read().unwrap_or_else(|e| e.into_inner());
+    let t = table().read_ok();
     t.keys().cloned().collect()
 }
 

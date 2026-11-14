@@ -4,6 +4,7 @@
 //! 並列はスレッドで（プロセスは使わない）。func の中の lensbench の追跡・解析は GIL を外すので、その間はほかの
 //! スレッドの func が進む。func が Python の計算ばかりなら並列にはならない（重い所は Rust 側へ の方針）。
 
+use lensbench_core::LockExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -325,7 +326,7 @@ fn run_batch<'py>(
     let cancel = AtomicBool::new(false);
     let last = Mutex::new(Instant::now() - std::time::Duration::from_secs(10));
     let report = |p: Progress| {
-        let mut g = last.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = last.lock_ok();
         let fin = p.done == p.total;
         if !fin && g.elapsed().as_secs_f64() < 1.0 {
             return;
@@ -341,10 +342,7 @@ fn run_batch<'py>(
                 let _ = d.set_item("elapsed", p.elapsed);
                 let _ = d.set_item("eta", p.eta);
                 if let Err(e) = cb.call1(py, (d,)) {
-                    first_err
-                        .lock()
-                        .unwrap_or_else(|x| x.into_inner())
-                        .get_or_insert(e);
+                    first_err.lock_ok().get_or_insert(e);
                     cancel.store(true, Ordering::Relaxed);
                 }
             });
@@ -361,10 +359,7 @@ fn run_batch<'py>(
     };
     let task = |i: usize, s: u64| -> lensbench_core::Result<String> {
         let fail = |e: PyErr| {
-            first_err
-                .lock()
-                .unwrap_or_else(|x| x.into_inner())
-                .get_or_insert(e);
+            first_err.lock_ok().get_or_insert(e);
             cancel.store(true, Ordering::Relaxed);
             lensbench_core::Error::Invalid("Python の例外".into())
         };
@@ -379,9 +374,7 @@ fn run_batch<'py>(
             let sys = sys.map_err(|e| fail(err(e)))?;
             let t = t.run_json(&sys, s).map_err(|e| fail(err(e)))?;
             if keep_mem {
-                mem.lock()
-                    .unwrap_or_else(|x| x.into_inner())
-                    .push((i, t.clone()));
+                mem.lock_ok().push((i, t.clone()));
             }
             return Ok(t);
         }
@@ -397,9 +390,7 @@ fn run_batch<'py>(
                 .map_err(fail)?
                 .to_string();
             if keep_mem {
-                mem.lock()
-                    .unwrap_or_else(|x| x.into_inner())
-                    .push((i, t.clone()));
+                mem.lock_ok().push((i, t.clone()));
             }
             Ok(t)
         })

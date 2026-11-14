@@ -16,6 +16,7 @@ use crate::interp2d::interp_weights;
 use crate::math::*;
 use crate::surface::{After, Bire, SurfType, Surface, Tilt};
 use crate::trace::{self, CryKind, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
+use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -1727,7 +1728,7 @@ impl System {
             }
         }
         let key = (x.to_bits(), y.to_bits());
-        if let Some(v) = self.cache.realh.lock().unwrap().get(&key) {
+        if let Some(v) = self.cache.realh.lock_ok().get(&key) {
             return Ok(*v);
         }
         // 初期値: 像面の位置なら近軸の像高から、ほかは軸上から
@@ -1818,7 +1819,7 @@ impl System {
             }
         }
         let s = spec(v);
-        self.cache.realh.lock().unwrap().insert(key, s);
+        self.cache.realh.lock_ok().insert(key, s);
         Ok(s)
     }
 

@@ -240,7 +240,7 @@ impl Plugin for Analysis {
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午"),
                     s2("sag", "球欠"),
-                    s2("cutoff", "(2,) [cycles/mm]"),
+                    s2("cutoff", "(2,) 子午・球欠 [cycles/mm]"),
                 ],
             ),
             Analysis::Psf => (
@@ -293,7 +293,7 @@ impl Plugin for Analysis {
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午"),
                     s2("sag", "球欠"),
-                    s2("cutoff", "(2,) [cycles/mm]"),
+                    s2("cutoff", "(2,) 子午・球欠 [cycles/mm]"),
                 ],
             ),
             Analysis::HuygensPsf => (
@@ -332,7 +332,7 @@ impl Plugin for Analysis {
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午（像面の y）"),
                     s2("sag", "球欠（像面の x）"),
-                    s2("cutoff", "(2,) [cycles/mm]"),
+                    s2("cutoff", "(2,) 子午・球欠 [cycles/mm]"),
                 ],
             ),
             Analysis::Pop => (
@@ -691,7 +691,7 @@ impl Prepared {
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
                     ("sag", v1(r.sag)?),
-                    ("cutoff", v1(vec![r.cutoff.0, r.cutoff.1])?),
+                    ("cutoff", v1(vec![r.cutoff.tan, r.cutoff.sag])?),
                 ])
             }
             Prepared::Psf { wave, opts } => {
@@ -730,7 +730,7 @@ impl Prepared {
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
                     ("sag", v1(r.sag)?),
-                    ("cutoff", v1(vec![r.cutoff.0, r.cutoff.1])?),
+                    ("cutoff", v1(vec![r.cutoff.tan, r.cutoff.sag])?),
                 ])
             }
             Prepared::HuygensPsf { wave, opts } => {
@@ -754,7 +754,7 @@ impl Prepared {
                     ("freqs", v1(r.freqs)?),
                     ("tan", v1(r.tan)?),
                     ("sag", v1(r.sag)?),
-                    ("cutoff", v1(vec![r.cutoff.0, r.cutoff.1])?),
+                    ("cutoff", v1(vec![r.cutoff.tan, r.cutoff.sag])?),
                 ])
             }
             Prepared::Pop {
@@ -862,8 +862,7 @@ fn default_freqs(
     Ok(match freqs {
         Some(v) => v.clone(),
         None => {
-            let m = analysis::mtf(s, f, Waves::all_or(wave), Some(4), &[])?;
-            let c = m.cutoff.0.min(m.cutoff.1);
+            let c = analysis::mtf_cutoff(s, f, wave.unwrap_or(s.primary))?.min();
             (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
         }
     })

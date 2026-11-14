@@ -92,8 +92,7 @@ fn perfect_lens_gives_diffraction_limit() {
     // MTF は回折限界から 2e-3 ほど動く（FFT の MTF は一次近似なので回折限界そのもの）
     let s = load("D0");
     let f = FieldSel::Index(0);
-    let m = analysis::mtf(&s, f, Waves::One(s.primary), None, &[]).unwrap();
-    let c = m.cutoff.0;
+    let c = analysis::mtf_cutoff(&s, f, s.primary).unwrap().sag;
     let fs: Vec<f64> = (0..=10).map(|k| 0.95 * c * k as f64 / 10.0).collect();
     let o = HuygensOpts {
         pupil: Some(128),
@@ -143,8 +142,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     }
     assert!(ex < 3e-3 && ey < 3e-3, "x {ex:.2e} y {ey:.2e}");
     // MTF: 像面の上の周波数 ν は主光線に垂直な面の ν / cos（子午）
-    let m = analysis::mtf(&s0, f, Waves::One(s.primary), None, &[]).unwrap();
-    let c = m.cutoff.0;
+    let c = analysis::mtf_cutoff(&s0, f, s.primary).unwrap().sag;
     let fs: Vec<f64> = (0..=8).map(|k| 0.9 * c * cs * k as f64 / 8.0).collect();
     let o = HuygensOpts {
         pupil: Some(128),

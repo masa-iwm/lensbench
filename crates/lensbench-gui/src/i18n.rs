@@ -5,6 +5,7 @@
 //! 表に無い文字列は日本語のまま出す（テスト `all_keys_translated` が、コードの tr・trf の文字列がすべて
 //! 表にあるかを確かめる）。数の書式は言語によらず同じ（小数点は「.」）。
 
+use lensbench_core::RwLockExt;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::OnceLock;
@@ -76,7 +77,7 @@ static EXTRA: std::sync::RwLock<Option<HashMap<&'static str, &'static str>>> =
 
 /// 英語の訳を足す（同梱の表にあるものは同梱の方を使う）
 pub fn add(pairs: &'static [(&'static str, &'static str)]) {
-    let mut g = EXTRA.write().unwrap_or_else(|e| e.into_inner());
+    let mut g = EXTRA.write_ok();
     let m = g.get_or_insert_with(HashMap::new);
     for (ja, en) in pairs {
         m.insert(ja, en);

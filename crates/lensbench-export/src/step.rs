@@ -211,7 +211,7 @@ fn interpolate_n(q: &[Vec<f64>]) -> (Vec<Vec<f64>>, Vec<f64>) {
     let mut b: Vec<Vec<f64>> = q.to_vec();
     for c in 0..m {
         let piv = (c..m)
-            .max_by(|&x, &y| a[x][c].abs().partial_cmp(&a[y][c].abs()).unwrap())
+            .max_by(|&x, &y| a[x][c].abs().total_cmp(&a[y][c].abs()))
             .unwrap();
         a.swap(c, piv);
         b.swap(c, piv);

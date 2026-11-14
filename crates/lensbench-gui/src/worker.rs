@@ -7,6 +7,7 @@
 //! 系（serve の状態）はそちらにあり、ファイルの置き場（[`lensbench_core::vfs`]）は要求・結果と一緒に互いに写す。
 //! 中断はできない（系が変われば、古い解析の結果は捨てる）。最適化などの進み具合・停止も Web では効かない。
 
+use lensbench_core::LockExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -254,14 +255,9 @@ impl Runner {
     fn run(&self, j: Job) -> Done {
         if self.cancels {
             // この要求の中断の印を置いてから、世代を確かめる（この後に系が変われば印が立つ）
-            *self.run_flag.lock().unwrap_or_else(|e| e.into_inner()) =
-                j.tag.skippable().then(CancelToken::new);
+            *self.run_flag.lock_ok() = j.tag.skippable().then(CancelToken::new);
         }
-        let token = self
-            .run_flag
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let token = self.run_flag.lock_ok().clone();
         if j.tag.skippable() && j.gen != self.cur.load(Ordering::Relaxed) {
             return Done {
                 tag: j.tag,
@@ -289,7 +285,7 @@ impl Runner {
         }
         let ms = t0.elapsed().as_secs_f64() * 1e3;
         if self.cancels {
-            *self.run_flag.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *self.run_flag.lock_ok() = None;
         }
         Done {
             tag: j.tag,
@@ -421,7 +417,7 @@ impl Worker {
     /// 待っている解析を捨て、回している解析には途中でやめるよう頼む（結果は [`Worker::poll`] で捨てる）。
     /// 系を変える要求（[`Tag::changes_system`]）を出すときは自動で呼ぶ
     pub fn drop_queued(&self) {
-        let r = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        let r = self.running.lock_ok();
         self.gen.fetch_add(1, Ordering::Relaxed);
         if let Some(t) = r.as_ref() {
             t.cancel();
@@ -502,7 +498,7 @@ pub mod entry {
     static CUR: std::sync::Mutex<(u32, Option<CancelToken>)> = std::sync::Mutex::new((0, None));
 
     fn cur() -> std::sync::MutexGuard<'static, (u32, Option<CancelToken>)> {
-        CUR.lock().unwrap_or_else(|e| e.into_inner())
+        CUR.lock_ok()
     }
 
     /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む

@@ -10,13 +10,13 @@
 //! 幾何 MTF は像面に届いた光線の位置の分布の特性関数 |Σ w exp(2πi ν x)| / Σ w（瞳の重なり求積と同じ
 //! Gauss-Legendre の求積で光線を選ぶ）。球欠は x、子午は y の周波数。
 
-use crate::analysis::{lens_quad, opd, pupil_jacobian, pupil_shift, LensGl};
+use crate::analysis::{lens_quad, mtf_cutoff, opd, pupil_jacobian, LensGl};
 use crate::coating::C64;
 use crate::error::Result;
 use crate::invalid;
 use crate::par::scoped;
 use crate::system::{FieldSel, System};
-use crate::Waves;
+use crate::{TanSag, Waves};
 
 /// 回折 PSF
 #[derive(Debug, Clone)]
@@ -506,15 +506,9 @@ pub fn geometric_mtf(
             invalid!("幾何 MTF: 有効な光線がない（すべてけられた）");
         }
         let cut = if diff_limit {
-            let jm = pupil_jacobian(s, field, wi)?;
-            let lam = s.wavelengths[wi] * 1e-3;
-            let c = |dir: usize| {
-                let (a, b) = pupil_shift(&jm, lam, dir);
-                2.0 / a.hypot(b)
-            };
-            (c(0), c(1))
+            mtf_cutoff(s, field, wi)?
         } else {
-            (f64::INFINITY, f64::INFINITY)
+            TanSag::new(f64::INFINITY, f64::INFINITY)
         };
         sets.push((k / e, pts, cut));
     }
@@ -547,7 +541,10 @@ pub fn geometric_mtf(
                 bw += C64::new((ph * y).cos(), (ph * y).sin()) * wq;
             }
             let (ds, dt) = if diff_limit {
-                (diffraction_limit(f / cut.0), diffraction_limit(f / cut.1))
+                (
+                    diffraction_limit(f / cut.sag),
+                    diffraction_limit(f / cut.tan),
+                )
             } else {
                 (1.0, 1.0)
             };
@@ -557,17 +554,11 @@ pub fn geometric_mtf(
         sag[q] = a.norm() / wsum;
         tan[q] = b.norm() / wsum;
     }
-    let jm = pupil_jacobian(s, field, s.primary)?;
-    let lam = s.wavelengths[s.primary] * 1e-3;
-    let cut = |dir: usize| {
-        let (a, b) = pupil_shift(&jm, lam, dir);
-        2.0 / a.hypot(b)
-    };
     Ok(Mtf {
         freqs: freqs.to_vec(),
         tan,
         sag,
-        cutoff: (cut(0), cut(1)),
+        cutoff: mtf_cutoff(s, field, w.unwrap_or(s.primary))?,
     })
 }
 

@@ -16,14 +16,14 @@
 //! Huygens MTF は Huygens PSF の像面の格子の上の離散フーリエ変換の絶対値（DC で 1）。像の格子が PSF を
 //! 覆いきれないと MTF は低周波で下がり、格子の間隔が粗いと高周波で折り返すので、格子は利用者が決める。
 
-use crate::analysis::{opd, pupil_jacobian, pupil_shift, Mtf};
+use crate::analysis::{mtf_cutoff, opd, pupil_jacobian, Mtf};
 use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
 use crate::psf::{cell_frac, perp_slopes_of, Psf};
 use crate::system::{FieldSel, System};
-use crate::Waves;
 use crate::{invalid, notimpl};
+use crate::{TanSag, Waves};
 use std::f64::consts::PI;
 
 /// Huygens PSF・MTF の設定
@@ -400,7 +400,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
 /// PSF の格子の離散フーリエ変換の絶対値（球欠 = x、子午 = y の周波数）。DC で 1。
 /// 格子の幅 W = N Δ の調和周波数 k / W で値を求め、その間は 4 点の Lagrange 補間で（調和周波数でない点で
 /// 直接変換すると、格子の端の打ち切りの影響が残る。OpticStudio の Huygens MTF も PSF の FFT）
-pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> (Vec<f64>, Vec<f64>) {
+pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
     // 周辺分布（x・y への射影）
     let mut mx = vec![0.0; p.x.len()];
     let mut my = vec![0.0; p.y.len()];
@@ -451,9 +451,10 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> (Vec<f64>, Vec<f64>) {
             })
             .collect()
     };
-    let sag = interp(&mx, &p.x, p.delta.0);
-    let tan = interp(&my, &p.y, p.delta.1);
-    (tan, sag)
+    TanSag {
+        tan: interp(&my, &p.y, p.delta.1),
+        sag: interp(&mx, &p.x, p.delta.0),
+    }
 }
 
 /// Huygens MTF（OpticStudio の Huygens MTF 相当）。周波数 [cycles/レンズ単位] は像面の上の x（球欠）・y（子午）
@@ -466,17 +467,11 @@ pub fn huygens_mtf(
 ) -> Result<Mtf> {
     let w = w.one();
     let p = huygens_psf(s, field, Waves::all_or(w), o)?;
-    let (tan, sag) = psf_mtf(&p, freqs);
-    let jm = pupil_jacobian(s, field, s.primary)?;
-    let lam = s.wavelengths[s.primary] * 1e-3;
-    let cut = |dir: usize| {
-        let (a, b) = pupil_shift(&jm, lam, dir);
-        2.0 / a.hypot(b)
-    };
+    let TanSag { tan, sag } = psf_mtf(&p, freqs);
     Ok(Mtf {
         freqs: freqs.to_vec(),
         tan,
         sag,
-        cutoff: (cut(0), cut(1)),
+        cutoff: mtf_cutoff(s, field, w.unwrap_or(s.primary))?,
     })
 }

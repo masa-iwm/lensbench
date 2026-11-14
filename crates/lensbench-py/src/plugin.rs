@@ -11,6 +11,7 @@
 //!
 //! 設定の値は数・文字列・数の並び。入力の配列は bool・complex・それ以外（float64 に直す）の 3 種類。
 
+use lensbench_core::RwLockExt;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::coating::C64;
@@ -32,11 +33,11 @@ fn register_builtin(reg: &mut Registry) {
 }
 
 fn read_registry() -> std::sync::RwLockReadGuard<'static, Registry> {
-    plugin::global().read().unwrap_or_else(|e| e.into_inner())
+    plugin::global().read_ok()
 }
 
 fn write_registry() -> std::sync::RwLockWriteGuard<'static, Registry> {
-    plugin::global().write().unwrap_or_else(|e| e.into_inner())
+    plugin::global().write_ok()
 }
 
 /// Python の値 → 設定の値

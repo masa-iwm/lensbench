@@ -294,7 +294,7 @@ fn geometric_mtf_basics() {
     for k in 0..FREQS.len() {
         assert!((g.tan[k] - g2.tan[k]).abs() < 1e-6 && (g.sag[k] - g2.sag[k]).abs() < 1e-6);
     }
-    let gd = psf::geometric_mtf(&s, f, Waves::All, 64, &[g.cutoff.0 * 1.5], true).unwrap();
+    let gd = psf::geometric_mtf(&s, f, Waves::All, 64, &[g.cutoff.sag * 1.5], true).unwrap();
     assert_eq!(gd.sag[0], 0.0);
     // 大きくぼかすと幾何 MTF は回折 MTF に近づく
     let d = sweep::defocus(&s, 0.3).unwrap();
@@ -327,11 +327,18 @@ fn mtf_waves_is_the_separate_mtfs() {
                     (&p.tan, &p.sag),
                     "{name} {fi}"
                 );
+                assert_eq!(mw.poly.cutoff, p.cutoff, "{name} {fi}");
                 assert_eq!(mw.waves.len(), s.wavelengths.len());
                 for (wi, m) in mw.waves.iter().enumerate() {
                     let o =
                         analysis::mtf_with(&s, f, Waves::One(wi), None, &FREQS, method).unwrap();
                     assert_eq!((&m.tan, &m.sag), (&o.tan, &o.sag), "{name} {fi} {wi}");
+                    // 遮断周波数はその波長の値（ANA-09。以前は常に主波長）
+                    assert_eq!(m.cutoff, o.cutoff, "{name} {fi} {wi}");
+                    let c = analysis::mtf_cutoff(&s, f, wi).unwrap();
+                    assert_eq!(o.cutoff, c, "{name} {fi} {wi}");
+                    let r = c.tan * s.wavelengths[wi] / (p.cutoff.tan * s.wavelengths[s.primary]);
+                    assert!((r - 1.0).abs() < 0.05, "{name} {fi} {wi} {r}");
                 }
             }
         }
@@ -382,8 +389,7 @@ fn fft_mtf_is_the_quadrature_mtf() {
         let s = load(name);
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let m0 = analysis::mtf(&s, f, Waves::One(s.primary), Some(4), &[]).unwrap();
-            let c = m0.cutoff.0.min(m0.cutoff.1);
+            let c = analysis::mtf_cutoff(&s, f, s.primary).unwrap().min();
             let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
             let a = analysis::mtf_with(&s, f, Waves::All, None, &freqs, MtfMethod::Interp).unwrap();
             let b = analysis::mtf_with(&s, f, Waves::All, None, &freqs, MtfMethod::Fft).unwrap();
@@ -403,8 +409,9 @@ fn auto_mtf_switches_to_fft_for_many_points() {
     use analysis::MtfMethod;
     let s = load("E0");
     let w = Some(s.primary);
-    let m0 = analysis::mtf(&s, FieldSel::Index(2), Waves::all_or(w), Some(4), &[]).unwrap();
-    let c = m0.cutoff.0.min(m0.cutoff.1);
+    let c = analysis::mtf_cutoff(&s, FieldSel::Index(2), s.primary)
+        .unwrap()
+        .min();
     let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
     let run = |fi: usize, n: Option<usize>, m: MtfMethod| {
         analysis::mtf_with(&s, FieldSel::Index(fi), Waves::all_or(w), n, &freqs, m).unwrap()

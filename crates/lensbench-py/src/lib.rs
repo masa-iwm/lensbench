@@ -33,12 +33,12 @@ use lensbench_core::system::{
     Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolTrace, Trace,
 };
 use lensbench_core::{analysis, huygens, optim, psf, sweep, with_threads, zmx, RecSel, System};
-use lensbench_core::{param::Param, Waves};
+use lensbench_core::{param::Param, RwLockExt, Waves};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyTuple};
+use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
 
 /// coatings= を省いたときの膜の実測表・モデル: 環境変数 LENSBENCH_COATINGS（OS のパス区切り、`lensbench run --coatings`）
 fn env_coatings() -> Vec<PathBuf> {
@@ -401,7 +401,8 @@ fn mtf_dict<'py>(py: Python<'py>, m: &analysis::Mtf) -> PyResult<Bound<'py, PyDi
     d.set_item("freqs", m.freqs.clone().into_pyarray(py))?;
     d.set_item("tangential", m.tan.clone().into_pyarray(py))?;
     d.set_item("sagittal", m.sag.clone().into_pyarray(py))?;
-    d.set_item("cutoff", m.cutoff)?;
+    let c = [("tangential", m.cutoff.tan), ("sagittal", m.cutoff.sag)];
+    d.set_item("cutoff", c.into_py_dict(py)?)?;
     Ok(d)
 }
 
@@ -441,9 +442,8 @@ fn rms_items<'py>(
 pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
     let n = s.wavelengths.len();
     if w == 0 || w > n {
-        return Err(PyIndexError::new_err(format!(
-            "波長 {w} はありません（1〜{n}）"
-        )));
+        let e = format!("波長 {w} はありません（1〜{n}）");
+        return Err(PyIndexError::new_err(e));
     }
     Ok(w - 1)
 }
@@ -550,7 +550,7 @@ fn surf_of(s: &System, a: SurfArg) -> PyResult<usize> {
 impl PySystem {
     /// 今の系（複製した Arc）
     pub fn sys(&self) -> Arc<System> {
-        self.sys.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.sys.read_ok().clone()
     }
 
     /// 系から作る（膜のファイル、膜を読んだもの）
@@ -564,17 +564,17 @@ impl PySystem {
 
     /// 読んだ膜（派生した系に引き継ぐ）
     pub fn coat_cell(&self) -> CoatCell {
-        self.coat.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.coat.read_ok().clone()
     }
 
     /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）。
     /// 膜の読み込みに関わる所が変われば、読んだ膜を捨てて次に要ったときに読み直す
     fn mutate<R>(&self, f: impl FnOnce(&mut System) -> lensbench_core::Result<R>) -> PyResult<R> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let mut n: System = (**g).clone();
         let r = f(&mut n).map_err(err)?;
         if coat_changed(&g, &n) {
-            *self.coat.write().unwrap_or_else(|e| e.into_inner()) = CoatCell::default();
+            *self.coat.write_ok() = CoatCell::default();
         }
         *g = Arc::new(n);
         Ok(r)
@@ -1622,7 +1622,7 @@ impl PySystem {
         spans: Vec<(usize, usize)>,
         pivot: (f64, f64, f64),
     ) -> PyResult<()> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let mut n = g.with_params(&[]).map_err(err)?;
         let sp: Vec<[usize; 2]> = spans.into_iter().map(|(a, b)| [a, b]).collect();
         n.define_unit(name, &sp, [pivot.0, pivot.1, pivot.2])
@@ -1633,7 +1633,7 @@ impl PySystem {
 
     /// 玉・群の回転の中心を変える
     fn set_unit_pivot(&self, name: &str, pivot: (f64, f64, f64)) -> PyResult<()> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let Some(u) = g.find_unit(name) else {
             return Err(PyValueError::new_err(format!("玉・群 {name} がない")));
         };
@@ -1654,7 +1654,7 @@ impl PySystem {
 
     /// パラメータを変える（系を作り直さない）。ピックアップ先は元の面に合わせて解き直す（ピックアップ先そのものは変えられない）
     fn set_param(&self, spec: &str, value: f64) -> PyResult<()> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let p = g.param(spec).map_err(err)?;
         let n = g.with_params(&[(p, value)]).map_err(err)?;
         *g = Arc::new(n);
@@ -1663,7 +1663,7 @@ impl PySystem {
 
     /// まとめて変える: {"3.t": 10.0, "5.dx": 0.01} か [("3.t", 10.0), ...]
     fn set_params(&self, changes: &Bound<'_, PyAny>) -> PyResult<()> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let c = parse_changes(&g, changes)?;
         let n = g.with_params(&c).map_err(err)?;
         *g = Arc::new(n);
@@ -1983,7 +1983,7 @@ impl PySystem {
         cond: Option<Bound<'_, PyTuple>>,
         fields: Option<Vec<(f64, f64)>>,
     ) -> PyResult<()> {
-        let mut g = self.sys.write().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.sys.write_ok();
         let ft = match (kind.to_ascii_lowercase().as_str(), &cond) {
             ("angle", None) => FieldType::Angle,
             ("object_height", None) => FieldType::ObjH,
@@ -2274,7 +2274,7 @@ impl PySystem {
     /// 多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "auto"（既定。"interp" で、n を省いて
     /// 求積の点数が 1024 を超え、周波数が 8 個以上なら "fft"）・"interp"（補間の求積）・"fft"（瞳関数の自己相関を FFT で全周波数まとめて。
     /// 周波数が多いとき速い、求積との差 1e-4 程度）・"direct"（確かめ用）。
-    /// 返す dict: freqs・tangential・sagittal（numpy）・cutoff（x・y の遮断周波数 [cycles/mm]）。
+    /// 返す dict: freqs・tangential・sagittal（numpy）・cutoff（tangential・sagittal の遮断周波数 [cycles/mm]、計算した波長。多色は主波長）。
     /// each_wave=True なら多色に加えて waves（波長ごとの dict のリスト。別々に求めるより速い）も返す（wave と一緒に使えない）
     #[pyo3(signature = (field, freqs, wave=None, n=None, threads=None, method="auto", each_wave=false))]
     #[allow(clippy::too_many_arguments)]

@@ -1,6 +1,7 @@
 //! 最適化・公差・ズーム軌跡・差し替え探索（走っている間の進み具合と止め方も）
 
 use super::*;
+use lensbench_core::LockExt;
 
 // ------------------------------------------------------------------------------------------ 最適化
 
@@ -13,11 +14,7 @@ pub(super) struct OptRun {
 impl Session {
     /// 走っている最適化の、反復ごとの評価関数の値（走っていなければ None）。同じプロセスから呼ぶ（GUI の進み具合）
     pub fn optimize_progress(&self) -> Option<Vec<f64>> {
-        self.opt_run
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .map(|r| r.history.clone())
+        self.opt_run.lock_ok().as_ref().map(|r| r.history.clone())
     }
 
     /// 走っている最適化を止める（次の反復の終わりで止まり、そこまでの結果を返す）。同じプロセスから呼ぶ
@@ -194,19 +191,14 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let m0 = prob.merit(&prob.x0()?)?;
     sess.opt_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.opt_run.lock().unwrap_or_else(|e| e.into_inner()) = Some(OptRun { history: vec![m0] });
+    *sess.opt_run.lock_ok() = Some(OptRun { history: vec![m0] });
     let r = optim::dls_with(&prob, &o, |pr| {
-        if let Some(run) = sess
-            .opt_run
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_mut()
-        {
+        if let Some(run) = sess.opt_run.lock_ok().as_mut() {
             run.history.push(pr.merit);
         }
         !sess.opt_cancel.load(std::sync::atomic::Ordering::SeqCst)
     });
-    *sess.opt_run.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *sess.opt_run.lock_ok() = None;
     let r = r?;
     let names: Vec<String> = prob
         .vars
@@ -268,7 +260,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 impl Session {
     /// 走っている公差のモンテカルロの (終えた評価, 評価の数)（感度の 2 × 公差の数 + 試行の数。走っていなければ None）
     pub fn tolerance_progress(&self) -> Option<(usize, usize)> {
-        *self.tol_run.lock().unwrap_or_else(|e| e.into_inner())
+        *self.tol_run.lock_ok()
     }
 
     /// 走っている公差のモンテカルロを止める（走っている試行は終わらせ、そこまでの結果を返す）。同じプロセスから呼ぶ
@@ -327,10 +319,10 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let oo = lensbench_design::tolerance::out_opts(&v).map_err(RpcErr::params)?;
     sess.tol_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.tol_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, 0));
+    *sess.tol_run.lock_ok() = Some((0, 0));
     let run = || {
         lensbench_design::montecarlo::run_with(&ms, |k, n| {
-            let mut g = sess.tol_run.lock().unwrap_or_else(|e| e.into_inner());
+            let mut g = sess.tol_run.lock_ok();
             // 並列の試行は終わる順が前後するので、大きい方を残す
             let k = g.map_or(k, |(d, _)| d.max(k));
             *g = Some((k, n));
@@ -341,7 +333,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         Some(t) => lensbench_core::with_threads(Some(t), run),
         None => run(),
     };
-    *sess.tol_run.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *sess.tol_run.lock_ok() = None;
     let r = r?;
     let mut out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
     out["notes"] = json!(notes);
@@ -451,7 +443,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 impl Session {
     /// 走っている差し替え探索の (終えた組, 組の数)（走っていなければ None）。同じプロセスから呼ぶ
     pub fn swap_progress(&self) -> Option<(usize, usize)> {
-        *self.swap_run.lock().unwrap_or_else(|e| e.into_inner())
+        *self.swap_run.lock_ok()
     }
 
     /// 走っている差し替え探索を止める（走っている組は終わらせ、そこまでの結果を返す）。同じプロセスから呼ぶ
@@ -547,9 +539,9 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let rows: Mutex<Vec<Value>> = Mutex::new(Vec::new());
     sess.swap_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.swap_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, n));
+    *sess.swap_run.lock_ok() = Some((0, n));
     let show = |pr: lensbench_core::runs::Progress| {
-        *sess.swap_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((pr.done, pr.total));
+        *sess.swap_run.lock_ok() = Some((pr.done, pr.total));
     };
     let o = lensbench_core::runs::RunOpts {
         threads: opt_usize(p, "threads")?,
@@ -561,13 +553,13 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let t0 = web_time::Instant::now();
     // 粗いふるい（prescreen）があれば残った組だけ
     let idx = s.screened(opt_usize(p, "threads")?);
-    *sess.swap_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, idx.len()));
+    *sess.swap_run.lock_ok() = Some((0, idx.len()));
     let r = lensbench_core::runs::run(idx.len(), 0, &o, |j, _| {
         let v = s.eval(idx[j]);
-        rows.lock().unwrap_or_else(|e| e.into_inner()).push(v);
+        rows.lock_ok().push(v);
         Ok("{}".into())
     });
-    *sess.swap_run.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    *sess.swap_run.lock_ok() = None;
     let sum = r?;
     let mut rows = rows.into_inner().unwrap_or_else(|e| e.into_inner());
     lensbench_design::swap::sort_results(&mut rows);

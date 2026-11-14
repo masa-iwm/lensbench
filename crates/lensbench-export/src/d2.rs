@@ -451,7 +451,7 @@ impl Raster {
                         xs.push(a[0] + (yy - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
                     }
                 }
-                xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                xs.sort_by(f64::total_cmp);
                 for p in xs.chunks(2) {
                     if p.len() < 2 {
                         break;

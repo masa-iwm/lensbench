@@ -42,10 +42,9 @@ fn main() {
         let mut ns = Vec::new();
         for fi in 0..s.fields.len() {
             let f = FieldSel::Index(fi);
-            let Ok(m0) = analysis::mtf(&s, f, Waves::One(s.primary), Some(4), &[]) else {
+            let Ok(c) = analysis::mtf_cutoff(&s, f, s.primary).map(|c| c.min()) else {
                 continue;
             };
-            let c = m0.cutoff.0.min(m0.cutoff.1);
             let freqs: Vec<f64> = (0..nf)
                 .map(|k| 0.95 * c * k as f64 / (nf - 1) as f64)
                 .collect();

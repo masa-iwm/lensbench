@@ -321,7 +321,7 @@ class System:
         多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "auto"（既定。"interp" で、n を省いて
         求積の点数が 1024 を超え、周波数が 8 個以上なら "fft"）・"interp"（補間の求積）・"fft"（瞳関数の自己相関を FFT で全周波数まとめて。
         周波数が多いとき速い、求積との差 1e-4 程度）・"direct"（確かめ用）。
-        返す dict: freqs・tangential・sagittal（numpy）・cutoff（x・y の遮断周波数 [cycles/mm]）。
+        返す dict: freqs・tangential・sagittal（numpy）・cutoff（tangential・sagittal の遮断周波数 [cycles/mm]、計算した波長。多色は主波長）。
         each_wave=True なら多色に加えて waves（波長ごとの dict のリスト。別々に求めるより速い）も返す（wave と一緒に使えない）
         """
 

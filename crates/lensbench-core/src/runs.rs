@@ -19,6 +19,7 @@
 use crate::error::{Error, Result};
 use crate::param::Param;
 use crate::system::System;
+use crate::LockExt;
 use crate::{invalid, par};
 use std::collections::HashSet;
 use std::io::Write;
@@ -625,21 +626,17 @@ where
                     if res.contains('\n') {
                         stop.store(true, Ordering::Relaxed);
                         failed
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
+                            .lock_ok()
                             .get_or_insert(Error::Invalid(format!("組 {i}: 結果に改行")));
                         return;
                     }
-                    let mut g = file.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut g = file.lock_ok();
                     if let Some(f) = g.as_mut() {
                         let w =
                             write_line(f, &format!("{{\"i\":{i},\"seed\":{s},\"result\":{res}}}"));
                         if let Err(e) = w {
                             stop.store(true, Ordering::Relaxed);
-                            failed
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .get_or_insert(Error::Io(e.to_string()));
+                            failed.lock_ok().get_or_insert(Error::Io(e.to_string()));
                             return;
                         }
                     }
@@ -660,8 +657,7 @@ where
                 Err(e) => {
                     stop.store(true, Ordering::Relaxed);
                     failed
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
+                        .lock_ok()
                         .get_or_insert(Error::Invalid(format!("組 {i}: {e}")));
                 }
             }

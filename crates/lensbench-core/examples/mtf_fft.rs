@@ -43,9 +43,9 @@ fn main() {
         ) {
             Ok(t) => serde_json::from_str(&t).unwrap(),
             Err(_) => {
-                let m0 = analysis::mtf(&s, FieldSel::Index(0), Waves::One(s.primary), Some(4), &[])
-                    .unwrap();
-                let c = m0.cutoff.0.min(m0.cutoff.1);
+                let c = analysis::mtf_cutoff(&s, FieldSel::Index(0), s.primary)
+                    .unwrap()
+                    .min();
                 let freqs: Vec<f64> = (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect();
                 let nan = vec![f64::NAN; freqs.len()];
                 let fields: Vec<Value> = (1..=s.fields.len())

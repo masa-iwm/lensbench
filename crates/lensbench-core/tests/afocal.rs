@@ -166,12 +166,12 @@ fn mtf_is_per_angle() {
     let p = telescope(PARAXIAL, true, 20.0);
     let m = analysis::mtf(&p, FieldSel::Index(0), Waves::All, None, &[0.0, 4.0]).unwrap();
     assert!(
-        (m.cutoff.0 - 5.0 / 0.55e-3 * 1e-3).abs() < 1e-6,
+        (m.cutoff.sag - 5.0 / 0.55e-3 * 1e-3).abs() < 1e-6,
         "{:?}",
         m.cutoff
     );
     assert!(
-        (m.tan[1] - psf::diffraction_limit(4.0 / m.cutoff.1)).abs() < 2e-3,
+        (m.tan[1] - psf::diffraction_limit(4.0 / m.cutoff.tan)).abs() < 2e-3,
         "{:?}",
         m.tan
     );

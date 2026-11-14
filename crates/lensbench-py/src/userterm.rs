@@ -6,6 +6,7 @@
 //! 残差の偏微分（形 (残差の数, len(names))、names は変数の名前）をそれで求める。
 //! 関数の例外は、最適化が終わったあとにそのまま投げ直す。
 
+use lensbench_core::LockExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -59,10 +60,7 @@ fn to_rows(r: &Bound<'_, PyAny>, k: usize, rows: Option<usize>) -> PyResult<Vec<
 impl PyUserTerm {
     fn fail(&self, e: PyErr) -> lensbench_core::Error {
         let msg = format!("利用者の項 {}: {e}", self.name);
-        self.error
-            .lock()
-            .unwrap_or_else(|x| x.into_inner())
-            .get_or_insert(e);
+        self.error.lock_ok().get_or_insert(e);
         lensbench_core::Error::Invalid(msg)
     }
     fn py_systems<'py>(
@@ -114,7 +112,7 @@ impl UserTerm for PyUserTerm {
 /// 最適化の後: 利用者の関数が例外を出していれば、最初のものを投げ直す
 pub(crate) fn raise_user_errors(us: &[Arc<PyUserTerm>]) -> PyResult<()> {
     for u in us {
-        if let Some(e) = u.error.lock().unwrap_or_else(|x| x.into_inner()).take() {
+        if let Some(e) = u.error.lock_ok().take() {
             return Err(e);
         }
     }

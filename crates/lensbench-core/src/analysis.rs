@@ -8,8 +8,7 @@ use crate::coating::C64;
 use crate::error::Result;
 use crate::math::*;
 use crate::system::{FieldSel, System, Trace};
-use crate::Waves;
-use crate::{invalid, notimpl, par::scoped};
+use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
 
 /// n×n の格子のうち単位円内の点
 pub fn pupil_grid(n: usize) -> (Vec<f64>, Vec<f64>) {
@@ -356,8 +355,8 @@ pub struct Mtf {
     pub freqs: Vec<f64>,
     pub tan: Vec<f64>,
     pub sag: Vec<f64>,
-    /// 回折限界の遮断周波数 [cycles/mm]（主波長、(x, y) 方向）
-    pub cutoff: (f64, f64),
+    /// 回折限界の遮断周波数 [cycles/mm]（計算した波長。多色は主波長。ほかの波長は [`mtf_cutoff`]）
+    pub cutoff: TanSag<f64>,
 }
 
 /// 単位円を ±d/2 ずらした 2 つの円の重なり（レンズ形）の求積: (ずらす向きの座標 t, 直交する座標 u, 重み)。
@@ -1830,19 +1829,19 @@ fn clipped_otf(
     Ok((sag, tan, (e0[0], e0[1])))
 }
 
-/// 遮断周波数（主波長、x・y）
-fn mtf_cutoff(s: &System, field: FieldSel) -> Result<(f64, f64)> {
-    let jm = pupil_jacobian(s, field, s.primary)?;
-    let lam = s.wavelengths[s.primary] * 1e-3;
+/// 波長 wave の回折限界の遮断周波数 [cycles/mm]（瞳を 2 だけずらす周波数。向き 0 が球欠 = x、1 が子午 = y）
+pub fn mtf_cutoff(s: &System, field: FieldSel, wave: usize) -> Result<TanSag<f64>> {
+    let jm = pupil_jacobian(s, field, wave)?;
+    let lam = s.wavelengths[wave] * 1e-3;
     let cut = |dir: usize| {
         let (sx, sy) = pupil_shift(&jm, lam, dir);
         2.0 / sx.hypot(sy)
     };
-    Ok((cut(0), cut(1)))
+    Ok(TanSag::new(cut(1), cut(0)))
 }
 
 /// 波長ごとの複素 OTF（[`wave_otf`] の結果）を重みで足して MTF にする
-fn mtf_sum(freqs: &[f64], otfs: &[(f64, &WaveOtf)], cutoff: (f64, f64)) -> Mtf {
+fn mtf_sum(freqs: &[f64], otfs: &[(f64, &WaveOtf)], cutoff: TanSag<f64>) -> Mtf {
     let mut tan = vec![C64::new(0.0, 0.0); freqs.len()];
     let mut sag = tan.clone();
     let mut wsum = 0.0;
@@ -1909,7 +1908,8 @@ pub(crate) fn mtf_only(
         otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only)?));
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
-    Ok(mtf_sum(freqs, &refs, mtf_cutoff(s, field)?))
+    let cut = mtf_cutoff(s, field, w.unwrap_or(s.primary))?;
+    Ok(mtf_sum(freqs, &refs, cut))
 }
 
 /// 多色と各波長の MTF（OpticStudio の表示と同じ組）
@@ -1930,10 +1930,10 @@ pub fn mtf_waves(
     method: MtfMethod,
 ) -> Result<MtfWaves> {
     check_n(n)?;
-    let cutoff = mtf_cutoff(s, field)?;
-    let mut otfs = Vec::new();
+    let (mut otfs, mut cuts) = (Vec::new(), Vec::new());
     for wi in 0..s.wavelengths.len() {
         otfs.push(wave_otf(s, field, wi, n, freqs, method, None)?);
+        cuts.push(mtf_cutoff(s, field, wi)?);
     }
     let multi = otfs.len() > 1;
     let poly: Vec<(f64, &_)> = otfs
@@ -1948,10 +1948,11 @@ pub fn mtf_waves(
         invalid!("MTF: 重みが正の波長がない");
     }
     Ok(MtfWaves {
-        poly: mtf_sum(freqs, &poly, cutoff),
+        poly: mtf_sum(freqs, &poly, cuts[s.primary]),
         waves: otfs
             .iter()
-            .map(|o| mtf_sum(freqs, &[(1.0, o)], cutoff))
+            .zip(cuts)
+            .map(|(o, c)| mtf_sum(freqs, &[(1.0, o)], c))
             .collect(),
     })
 }
@@ -2879,7 +2880,7 @@ mod tests {
         let sin = 5.0 / (100.0f64 * 100.0 + 25.0).sqrt();
         let c = 2.0 * sin / 0.55e-3;
         assert!(
-            (m.cutoff.0 - c).abs() / c < 1e-9 && (m.cutoff.1 - c).abs() / c < 1e-9,
+            (m.cutoff.sag - c).abs() / c < 1e-9 && (m.cutoff.tan - c).abs() / c < 1e-9,
             "{:?}",
             m.cutoff
         );

@@ -6,6 +6,7 @@
 //! `lb.run_many` などの模擬の組の関数に、Python を通さず Rust のまま回せるもの（[`NativeTask`]）を渡せるようにするには、
 //! [`register_native_task`] で Python の値から取り出す関数を登録する。
 
+use lensbench_core::RwLockExt;
 use std::sync::{Arc, RwLock};
 
 use lensbench_core::System;
@@ -29,11 +30,11 @@ static NATIVE: RwLock<Vec<NativeTaskFrom>> = RwLock::new(Vec::new());
 
 /// [`NativeTask`] を取り出す関数を足す
 pub fn register_native_task(f: NativeTaskFrom) {
-    NATIVE.write().unwrap_or_else(|e| e.into_inner()).push(f);
+    NATIVE.write_ok().push(f);
 }
 
 /// 登録した関数で値から [`NativeTask`] を取り出す（どれも合わなければ None）
 pub(crate) fn native_task(v: &Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>> {
-    let fs = NATIVE.read().unwrap_or_else(|e| e.into_inner()).clone();
+    let fs = NATIVE.read_ok().clone();
     fs.iter().find_map(|f| f(v))
 }

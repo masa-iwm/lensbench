@@ -145,7 +145,7 @@ fn obscured_and_clipped() {
                         let (es, et) = clipped_mtf(
                             obsc / 5.0,
                             cy,
-                            (2.0 * f / r.cutoff.0, 2.0 * f / r.cutoff.1),
+                            (2.0 * f / r.cutoff.sag, 2.0 * f / r.cutoff.tan),
                         );
                         let tol = if f == 0.0 { 1e-12 } else { 3e-4 };
                         assert!(

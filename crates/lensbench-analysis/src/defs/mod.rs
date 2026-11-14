@@ -6,7 +6,6 @@ mod basic;
 mod image;
 mod mtfs;
 
-use lensbench_core::Waves;
 use lensbench_core::{Error, Result, System};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -95,14 +94,8 @@ fn freqs_for(
     let top = match max_freq {
         Some(x) => x,
         None => {
-            let m = lensbench_core::analysis::mtf(
-                s,
-                lensbench_core::FieldSel::Index(field),
-                Waves::all_or(w),
-                Some(4),
-                &[],
-            )?;
-            0.95 * m.cutoff.0.min(m.cutoff.1)
+            let f = lensbench_core::FieldSel::Index(field);
+            0.95 * lensbench_core::analysis::mtf_cutoff(s, f, w.unwrap_or(s.primary))?.min()
         }
     };
     auto_freqs(top, freq_steps)
@@ -138,11 +131,18 @@ pub struct MtfRow {
     pub tangential: Vec<f64>,
     /// 球欠
     pub sagittal: Vec<f64>,
-    /// 回折限界の遮断周波数（x, y）
-    pub cutoff: [f64; 2],
+    /// 回折限界の遮断周波数 [cycles/mm]（計算した波長。多色は主波長）
+    pub cutoff: Cutoff,
     /// 波長ごと（mtf の each_wave）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub waves: Option<Vec<WaveMtf>>,
+}
+
+/// 子午・球欠の遮断周波数
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+pub struct Cutoff {
+    pub tangential: f64,
+    pub sagittal: f64,
 }
 
 /// 1 波長の MTF
@@ -161,7 +161,10 @@ impl MtfRow {
             freqs: m.freqs,
             tangential: m.tan,
             sagittal: m.sag,
-            cutoff: [m.cutoff.0, m.cutoff.1],
+            cutoff: Cutoff {
+                tangential: m.cutoff.tan,
+                sagittal: m.cutoff.sag,
+            },
             waves: None,
         }
     }

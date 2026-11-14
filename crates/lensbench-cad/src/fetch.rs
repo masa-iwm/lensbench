@@ -9,6 +9,7 @@
 //! 置き場を見て、配布元から取った STEP は置き場にも上げる。置き場の鍵はキャッシュのファイル名
 //! （`<品>-<URL のハッシュ>.step`）。`cad.step` の URL の無い品も、置き場に上げてあれば取れる。
 //! 口は `GET <url>/<鍵>`（無ければ 404）と `PUT <url>/<鍵>`（本文は STEP）だけ。
+use lensbench_core::LockExt;
 use lensbench_project::{catalog_fill, UserItem};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -207,13 +208,12 @@ static DEFAULT_STORE: std::sync::Mutex<Option<Store>> = std::sync::Mutex::new(No
 
 /// 組み込みの置き場（配る版がビルドのときに決めたもの）。設定・環境変数の無いときに使う
 pub fn set_default_store(s: Option<Store>) {
-    *DEFAULT_STORE.lock().unwrap_or_else(|e| e.into_inner()) =
-        s.filter(|s| !s.url.trim().is_empty());
+    *DEFAULT_STORE.lock_ok() = s.filter(|s| !s.url.trim().is_empty());
 }
 
 /// 置き場を決める（GUI の設定）。None・URL が空なら環境変数に戻す
 pub fn set_store(s: Option<Store>) {
-    *STORE.lock().unwrap_or_else(|e| e.into_inner()) = s.filter(|s| !s.url.trim().is_empty());
+    *STORE.lock_ok() = s.filter(|s| !s.url.trim().is_empty());
 }
 
 /// 今の置き場: [`set_store`] で決めたもの、無ければ環境変数 `LENSBENCH_CAD_STORE`（URL）・
@@ -224,16 +224,13 @@ pub fn set_store(s: Option<Store>) {
 pub fn store() -> Option<Store> {
     let env = |k: &str| std::env::var(k).unwrap_or_default().trim().to_string();
     resolve_store(
-        STORE.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        STORE.lock_ok().clone(),
         [
             env("LENSBENCH_CAD_STORE"),
             env("LENSBENCH_CAD_STORE_ID"),
             env("LENSBENCH_CAD_STORE_SECRET"),
         ],
-        DEFAULT_STORE
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone(),
+        DEFAULT_STORE.lock_ok().clone(),
     )
 }
 
@@ -267,10 +264,7 @@ fn resolve_store(set: Option<Store>, env: [String; 3], default: Option<Store>) -
 
 /// 組み込みの置き場があるか（GUI の欄の説明に使う）
 pub fn has_default_store() -> bool {
-    DEFAULT_STORE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .is_some()
+    DEFAULT_STORE.lock_ok().is_some()
 }
 
 // secret を出さない
