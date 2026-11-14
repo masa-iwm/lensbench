@@ -27,7 +27,7 @@ mod serve_ipc;
 mod watch;
 
 use lensbench_engine::load::{
-    coat_interfaces, index_list, load_file, plugins_json, save_value, AutoCoat, CoatInterfaces,
+    coat_interfaces, index_list, plugins_json, save_value, AutoCoat, CoatInterfaces,
 };
 use lensbench_engine::{builtin_plugins, provenance};
 
@@ -82,6 +82,7 @@ impl Common {
             cfg: self.cfg,
             state: self.state.clone(),
             path: self.path.clone(),
+            ..Default::default()
         }
     }
 }
@@ -572,17 +573,7 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
 }
 
 fn load(c: &Common) -> Result<System, String> {
-    let s = load_file(&c.spec()).map_err(|e| e.to_string())?;
-    for w in s
-        .dispersion_warnings()
-        .into_iter()
-        .chain(s.macro_warnings())
-        .chain(s.import_notes.iter().cloned())
-    {
-        eprintln!("注意: {w}");
-    }
-    provenance::set(&s);
-    Ok(s)
+    lensbench_engine::load::load_file_noted(&c.spec()).map_err(|e| e.to_string())
 }
 
 /// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id。.zmx・系ファイルなら空
@@ -1169,7 +1160,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
             let json_out = c.json;
             let step = (ms.trials + 2 * ms.tols.len()).div_ceil(20).max(1);
             let run = || {
-                lensbench_core::tolerance::run_with(&ms, |k, n| {
+                lensbench_design::montecarlo::run_with(&ms, |k, n| {
                     if !json_out && (k % step == 0 || k == n) {
                         eprintln!("{k} / {n}");
                     }
@@ -1190,7 +1181,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
                 let Some((_, t)) = worst else {
                     return Err("--save-worst: 追跡できた試行がない".into());
                 };
-                let cs = lensbench_core::tolerance::perturbed(&ms, &t.deltas).map_err(e)?;
+                let cs = lensbench_design::montecarlo::perturbed(&ms, &t.deltas).map_err(e)?;
                 let mut p = ms.problem.clone();
                 p.configs = cs;
                 let x = &t.eval.as_ref().unwrap().comp;
@@ -1761,7 +1752,7 @@ fn coatings(
 }
 
 fn coat_kinks(tables: &[PathBuf], only: &[String]) -> Result<Value, String> {
-    use lensbench_core::coat_fit::detect_kinks;
+    use lensbench_design::coat_fit::detect_kinks;
     let mut keys = Vec::new();
     // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
     let mut per: Vec<(String, Vec<f64>)> = Vec::new();
@@ -1822,7 +1813,7 @@ fn coat_model(
             .collect::<Result<_, _>>()?,
     };
     kinks.sort_by(f64::total_cmp);
-    use lensbench_core::coat_fit::{fit_model, format_models, FitOptions};
+    use lensbench_design::coat_fit::{fit_model, format_models, FitOptions};
     let mut all = Vec::new();
     for t in tables {
         let txt =
@@ -1918,7 +1909,7 @@ fn coat_model(
 }
 
 fn coat_compact(model: &std::path::Path, out: &std::path::Path) -> Result<Value, String> {
-    use lensbench_core::coat_fit::format_models_bin;
+    use lensbench_design::coat_fit::format_models_bin;
     let b = lensbench_core::vfs::read(model).map_err(|e| format!("{}: {e}", model.display()))?;
     let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
         coating::parse_models_bin(&b)
@@ -1961,8 +1952,8 @@ struct CoatDesignArgs<'a> {
 }
 
 /// 曲線の CSV を読む（[`Cmd::CoatDesign`] の列）
-fn read_targets(p: &std::path::Path) -> Result<Vec<lensbench_core::coat_design::Target>, String> {
-    use lensbench_core::coat_design::{Pol, Quantity, Target};
+fn read_targets(p: &std::path::Path) -> Result<Vec<lensbench_design::coat_design::Target>, String> {
+    use lensbench_design::coat_design::{Pol, Quantity, Target};
     let txt =
         lensbench_core::vfs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
     let mut lines = txt
@@ -2027,7 +2018,7 @@ fn read_targets(p: &std::path::Path) -> Result<Vec<lensbench_core::coat_design::
 }
 
 fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
-    use lensbench_core::coat_design::{fit_all, format_lbcs, pick, Material, Options};
+    use lensbench_design::coat_design::{fit_all, format_lbcs, pick, Material, Options};
     let mut ts = Vec::new();
     for p in a.targets {
         ts.extend(read_targets(p)?);
@@ -2128,7 +2119,7 @@ fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
     };
     let all = fit_all(&ts, &*sub, &o).map_err(|e| e.to_string())?;
     let d = pick(&all, a.slack).ok_or("当てはめられない")?;
-    let lay = |d: &lensbench_core::coat_design::Design| -> Vec<Value> {
+    let lay = |d: &lensbench_design::coat_design::Design| -> Vec<Value> {
         d.layers
             .iter()
             .map(|&(k, t)| json!({ "material": mats[k].name, "d_um": t }))

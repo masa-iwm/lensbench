@@ -945,8 +945,18 @@ impl Project {
     }
 }
 
+/// プロジェクトの JSON（`project["blocks"]`）で、id のブロック・群の JSON ポインタ（`/blocks/2/blocks/0` の形）。
+/// 入れ子のブロック・群も探す。id が空なら空
+pub fn block_pointers(blocks: &Value, id: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    if !id.is_empty() {
+        find_id(blocks, "/blocks", id, &mut out);
+    }
+    out
+}
+
 /// id が name の項目（blocks・groups の中）の JSON ポインタを集める
-pub fn find_id(v: &Value, path: &str, id: &str, out: &mut Vec<String>) {
+pub(crate) fn find_id(v: &Value, path: &str, id: &str, out: &mut Vec<String>) {
     let Some(a) = v.as_array() else { return };
     for (i, x) in a.iter().enumerate() {
         let p = format!("{path}/{i}");

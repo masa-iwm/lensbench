@@ -4,10 +4,10 @@
 //! 層の数ごとに乱数の初期値を何通りか試し、いちばん合うものを残す。同じ曲線を出す設計は一つではないので、
 //! 合わせた曲線（波長・角度・偏光）の外の量（位相、別の角度、硝材の側から入るとき）は元の膜と違いうる。
 //!
-//! 係数は [`crate::coating::stack`]（OpticStudio の約束、パワー規格化）で、R = |r|²、T = |t|²。
+//! 係数は [`lensbench_core::coating::stack`]（OpticStudio の約束、パワー規格化）で、R = |r|²、T = |t|²。
 
-use crate::coating::{interp, stack, C64};
-use crate::error::{Error, Result};
+use lensbench_core::coating::{interp, stack, C64};
+use lensbench_core::error::{Error, Result};
 
 /// 合わせる量
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,7 +412,7 @@ mod tests {
         );
         // 書いた膜ファイルを読むと同じ層になる
         let txt = format_lbcs("X", d, &o.materials, &[0, 1], "test");
-        let f = crate::coating::CoatingFile::parse(&txt).unwrap();
+        let f = lensbench_core::coating::CoatingFile::parse(&txt).unwrap();
         assert_eq!(f.coat["X"].len(), 2);
         assert!(f.coat["X"][0].absolute && f.mate.contains_key("H"));
     }

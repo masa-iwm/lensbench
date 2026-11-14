@@ -750,6 +750,7 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
         cfg: opt_usize(p, "cfg")?.unwrap_or(1),
         state: p["state"].as_str().map(str::to_string),
         path: p["path"].as_str().map(str::to_string),
+        names: lensbench_project::open::ArgNames::SERVE,
     })
 }
 

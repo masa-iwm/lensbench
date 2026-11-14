@@ -329,7 +329,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .store(false, std::sync::atomic::Ordering::SeqCst);
     *sess.tol_run.lock().unwrap_or_else(|e| e.into_inner()) = Some((0, 0));
     let run = || {
-        lensbench_core::tolerance::run_with(&ms, |k, n| {
+        lensbench_design::montecarlo::run_with(&ms, |k, n| {
             let mut g = sess.tol_run.lock().unwrap_or_else(|e| e.into_inner());
             // 並列の試行は終わる順が前後するので、大きい方を残す
             let k = g.map_or(k, |(d, _)| d.max(k));

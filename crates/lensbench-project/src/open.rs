@@ -21,9 +21,44 @@ pub struct OpenSpec<'a> {
     pub split_path: Option<&'a str>,
     /// .zmx の波長を置き換える [µm]
     pub wavelengths: Option<Vec<f64>>,
-    /// 誤りの文で引数を CLI の旗（`--cfg`・`--state`・`--path`）で書く。偽なら Python・serve の名前
-    /// （`cfg`・`state`・`split_path`）
-    pub cli_names: bool,
+    /// 誤りの文に書く引数の名前
+    pub names: ArgNames,
+}
+
+/// 誤りの文に書く引数（構成・状態・経路）の名前。呼ぶ側の書き方に合わせる
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ArgNames {
+    pub cfg: &'static str,
+    pub state: &'static str,
+    pub split_path: &'static str,
+}
+
+impl ArgNames {
+    /// CLI の旗
+    pub const CLI: ArgNames = ArgNames {
+        cfg: "--cfg",
+        state: "--state",
+        split_path: "--path",
+    };
+    /// serve の load の引数
+    pub const SERVE: ArgNames = ArgNames {
+        cfg: "cfg",
+        state: "state",
+        split_path: "path",
+    };
+    /// Python の System.load の引数
+    pub const PYTHON: ArgNames = ArgNames {
+        cfg: "cfg",
+        state: "state",
+        split_path: "split_path",
+    };
+}
+
+/// 既定は CLI の旗
+impl Default for ArgNames {
+    fn default() -> Self {
+        ArgNames::CLI
+    }
 }
 
 /// 読んだ系
@@ -39,11 +74,11 @@ pub struct Opened {
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む。
 /// ファイルが無い・読めないときは [`Error::Io`]、引数の組み合わせや中身の誤りは [`Error::Invalid`]
 pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
-    let (cfg, state, split) = if o.cli_names {
-        ("--cfg", "--state", "--path")
-    } else {
-        ("cfg", "state", "split_path")
-    };
+    let ArgNames {
+        cfg,
+        state,
+        split_path: split,
+    } = o.names;
     if o.cfg == 0 {
         return Err(Error::Invalid(format!("{cfg} は 1 以上")));
     }

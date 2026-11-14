@@ -375,7 +375,7 @@ mod tests {
         assert_eq!(t.len(), 3);
         assert_eq!(to_json(&t).unwrap().unwrap(), v);
         // 公差の計算が読める（条件が当たる）
-        let base = lensbench_core::tolerance::LensTol::preset("commercial").unwrap();
+        let base = lensbench_design::montecarlo::LensTol::preset("commercial").unwrap();
         let g = lensbench_design::tolerance::LensGeom {
             dia: 8.0,
             efl: 50.0,

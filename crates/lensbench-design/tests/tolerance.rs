@@ -1,8 +1,8 @@
 //! モンテカルロ公差の設定の JSON: 簡易設定の名前（ブロックの id）、カタログの玉の既定、上書き、誤りの検出
 
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::tolerance::Dist;
 use lensbench_core::System;
+use lensbench_design::montecarlo::Dist;
 use lensbench_design::tolerance::{
     catalog_vendors, compensators_csv, out_opts, result_json, reversed_lenses, spec_from_json,
     spec_from_json_with, tilt_pairs,
@@ -137,7 +137,7 @@ fn explicit_tols_compensators_and_result() {
     assert_eq!(m.problem.vars.len(), 1);
     // 既定の評価関数（視野 2 つ）＋ 足した項
     assert_eq!(m.problem.terms.len(), 3);
-    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let r = lensbench_design::montecarlo::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
     assert_eq!(out["trials"], 6);
     assert_eq!(out["sensitivity"].as_array().unwrap().len(), 2);
@@ -176,7 +176,7 @@ fn compensator_per_config() {
     let m = spec_from_json(&v, vec![s.clone(), s2.clone()], &HashMap::new()).unwrap();
     assert_eq!(m.problem.vars[0].configs, Some(vec![0]));
     assert_eq!(m.problem.vars[1].configs, Some(vec![1]));
-    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let r = lensbench_design::montecarlo::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
     assert_eq!(out["compensators"][1]["configs"], json!([2]));
     assert!(out["compensators"][0]["configs"] == json!([1]));
@@ -187,7 +187,7 @@ fn compensator_per_config() {
         json!({"compensators": [{"param": "G.shift", "configs": [3]}], "trials": 1}),
     ] {
         let e = spec_from_json(&bad, vec![s.clone(), s2.clone()], &HashMap::new()).and_then(|m| {
-            lensbench_core::tolerance::run(&m)
+            lensbench_design::montecarlo::run(&m)
                 .map_err(|e| e.to_string())
                 .map(|_| ())
         });
@@ -208,7 +208,7 @@ fn radial_pairs() {
         (m.tols[n - 2].dist, m.tols[n - 1].dist),
         (Dist::DiscX { normal: None }, Dist::DiscY { normal: None })
     );
-    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let r = lensbench_design::montecarlo::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
     assert!(out["tolerances"]
         .as_array()
@@ -235,7 +235,7 @@ fn radial_pairs() {
             Dist::DiscY { normal: Some(3.0) }
         )
     );
-    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let r = lensbench_design::montecarlo::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
     assert!(out["tolerances"]
         .as_array()
@@ -247,7 +247,7 @@ fn radial_pairs() {
                    "tols": [{"param": "L1.dx", "pm": 0.1, "dist": "disc_x:normal"},
                             {"param": "L1.dy", "pm": 0.1, "dist": "disc_y:normal"}]});
     let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
-    assert!(lensbench_core::tolerance::run(&m).is_ok());
+    assert!(lensbench_design::montecarlo::run(&m).is_ok());
     // 既定は組にしない
     let m = spec_from_json(&json!({}), vec![s], &HashMap::new()).unwrap();
     assert!(m
@@ -312,7 +312,7 @@ fn double_pass_lens_errors_on_both_passes() {
     for (i, t) in m.tols.iter().enumerate() {
         let mut d = vec![0.0; m.tols.len()];
         d[i] = t.hi;
-        let q = &lensbench_core::tolerance::perturbed(&m, &d).unwrap()[0];
+        let q = &lensbench_design::montecarlo::perturbed(&m, &d).unwrap()[0];
         for &(a, b) in &pairs {
             let (sa, sb, qa, qb) = (
                 &s.surfaces[a],
@@ -361,7 +361,7 @@ fn double_pass_lens_errors_on_both_passes() {
     let u = m.tols.iter().find(|t| t.label == "L2 偏心x").unwrap();
     assert_eq!(s.param_name(u.params[0]), "L2.dx");
     // 結果の JSON: 厚さの公差は戻りの面に -1
-    let r = lensbench_core::tolerance::run(&lensbench_core::tolerance::McSpec {
+    let r = lensbench_design::montecarlo::run(&lensbench_design::montecarlo::McSpec {
         trials: 2,
         ..m.clone()
     })
@@ -511,7 +511,7 @@ fn explicit_tol_scale() {
     let v = json!({"preset": "none", "tols": [{"params": ["1.t", "2.t"], "pm": 0.1, "scale": [1, -1]}]});
     let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
     assert_eq!(m.tols[0].scale, vec![1.0, -1.0]);
-    let q = &lensbench_core::tolerance::perturbed(&m, &[0.1]).unwrap()[0];
+    let q = &lensbench_design::montecarlo::perturbed(&m, &[0.1]).unwrap()[0];
     assert!((q.surfaces[1].t - s.surfaces[1].t - 0.1).abs() < 1e-12);
     assert!((q.surfaces[2].t - s.surfaces[2].t + 0.1).abs() < 1e-12);
     let bad =
@@ -530,7 +530,7 @@ fn compensator_values_tilt_magnitude_and_csv() {
         "percentiles": [50, 95],
     });
     let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
-    let r = lensbench_core::tolerance::run(&m).unwrap();
+    let r = lensbench_design::montecarlo::run(&m).unwrap();
     let out = result_json(&m, &r, &out_opts(&v).unwrap());
     let comps = out["compensators"].as_array().unwrap();
     assert_eq!(comps.len(), 3);

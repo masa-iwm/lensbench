@@ -621,7 +621,7 @@ pub const MODEL_BIN_QUANTUM_MIRROR: f64 = 1e-12;
 /// 刻み q の整数にし、β の方向に 3 階、波長の方向に 2 階の差分を取った残り（端は低い階の差分）を zigzag で u64 にし、
 /// [k][nw][nb] の順に並べてバイトの位ごとに分け（8 面）、deflate で縮める。
 /// 値は β にも波長にも滑らかなので残りが小さく、上の位のバイトがほとんど 0 になって縮む
-pub(crate) fn encode_values(v: &[f64], nw: usize, nb: usize, k: usize, q: f64) -> Result<Vec<u8>> {
+pub fn encode_values(v: &[f64], nw: usize, nb: usize, k: usize, q: f64) -> Result<Vec<u8>> {
     debug_assert_eq!(v.len(), nw * nb * k);
     let lim = (1u64 << 60) as f64;
     // [k][nw][nb] の整数

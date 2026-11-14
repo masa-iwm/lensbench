@@ -16,8 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
 
-use crate::coating::{CoatModel, Measured, MirrorModel, Spline, C64};
-use crate::{invalid, Result};
+use lensbench_core::coating::{CoatModel, Measured, MirrorModel, Spline, C64};
+use lensbench_core::{invalid, Result};
 
 /// 透過側の (n cos)² がこれより小さい点（すれすれ）は使わない
 pub const GRAZE: f64 = 1e-3;
@@ -429,14 +429,9 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
                     .collect(),
             );
         }
-        model.mirror = Some(MirrorModel {
-            n_ref: nr,
-            d: dm,
-            wavelengths: refm.wavelengths.clone(),
-            betas: bs,
-            r,
-            ..Default::default()
-        });
+        let mut m = MirrorModel::default();
+        (m.n_ref, m.d, m.wavelengths, m.betas, m.r) = (nr, dm, refm.wavelengths.clone(), bs, r);
+        model.mirror = Some(m);
     }
     let points = mfit.len();
     // 透過と鏡の波長の格子の、波数の間隔の最大
@@ -458,10 +453,10 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
     })
 }
 
-/// 膜のモデルをバイナリの形式（[`crate::coating::parse_models_bin`]）にする。値は 1e-9 刻みの整数にして縮める（元の値との差は 5e-10 以下）
+/// 膜のモデルをバイナリの形式（[`lensbench_core::coating::parse_models_bin`]）にする。値は 1e-9 刻みの整数にして縮める（元の値との差は 5e-10 以下）
 pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
-    use crate::coating::{encode_values, MODEL_BIN_QUANTUM, MODEL_BIN_QUANTUM_MIRROR};
-    let mut o = crate::coating::MODEL_BIN_HEADER.to_vec();
+    use lensbench_core::coating::{encode_values, MODEL_BIN_QUANTUM, MODEL_BIN_QUANTUM_MIRROR};
+    let mut o = lensbench_core::coating::MODEL_BIN_HEADER.to_vec();
     let block =
         |o: &mut Vec<u8>, v: &[f64], nw: usize, nb: usize, k: usize, q: f64| -> Result<()> {
             let c = encode_values(v, nw, nb, k, q)?;
@@ -541,7 +536,7 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
     let notes: Vec<&(&str, &CoatModel)> =
         entries.iter().filter(|(_, m)| !m.note.is_empty()).collect();
     if !notes.is_empty() {
-        o.extend_from_slice(crate::coating::MODEL_BIN_NOTES);
+        o.extend_from_slice(lensbench_core::coating::MODEL_BIN_NOTES);
         u32(&mut o, notes.len());
         for (name, m) in notes {
             o.extend_from_slice(&(name.len() as u16).to_le_bytes());
@@ -553,10 +548,10 @@ pub fn format_models_bin(entries: &[(&str, &CoatModel)]) -> Result<Vec<u8>> {
     Ok(o)
 }
 
-/// 膜のモデルをファイルの形式（[`crate::coating::parse_models`]）にする
+/// 膜のモデルをファイルの形式（[`lensbench_core::coating::parse_models`]）にする
 pub fn format_models(entries: &[(&str, &CoatModel)]) -> String {
     use std::fmt::Write;
-    let mut s = format!("{}\n", crate::coating::MODEL_HEADER);
+    let mut s = format!("{}\n", lensbench_core::coating::MODEL_HEADER);
     for (name, m) in entries {
         writeln!(s, "COAT {name}").unwrap();
         if !m.note.is_empty() {

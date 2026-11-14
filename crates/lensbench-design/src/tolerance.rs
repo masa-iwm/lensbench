@@ -1,5 +1,5 @@
 //! モンテカルロ公差の設定の JSON と、結果の JSON。CLI の `tolerance`・serve の `tolerance`・Python の
-//! `System.tolerance` で同じ形を使う。計算は [`lensbench_core::tolerance`]。
+//! `System.tolerance` で同じ形を使う。計算は [`crate::montecarlo`]。
 //!
 //! 設定（すべて省略可。省くと「一般」の公差の組をすべての玉に、ピントを補償子にせず、RMS 波面で 100 回）:
 //!
@@ -39,10 +39,10 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::montecarlo::{self as tolerance, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
 use lensbench_core::optim::{DefaultMerit, DlsOpts, Problem, Var};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::tolerance::{self, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
 use lensbench_core::System;
 use serde_json::{json, Map, Value};
 

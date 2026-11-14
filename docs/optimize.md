@@ -17,7 +17,7 @@
   局所座標での `q`: x・y・z・l・m・n、OpticStudio の REAX〜REAC 相当）・`opd`（1 本の光線の OPD [波]、OPDC 相当）・
   `zernike`（係数 [波]）・`coupling`（ファイバ結合効率）。視野・波長は 1 始まり（視野は `[hx, hy]` も可）、目標 `target` の
   既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・zernike・coupling）は `target` の代わりに
-  片側の条件 `min`（値 ≥ min なら残差 0）・`max`（値 ≤ max なら残差 0）を書ける。キーの一覧は `lensbench_project::merit`。結果の `terms` に足した項の前後の値。
+  片側の条件 `min`（値 ≥ min なら残差 0）・`max`（値 ≤ max なら残差 0）を書ける。キーの一覧は `lensbench_design::merit`。結果の `terms` に足した項の前後の値。
 - 光線（z を除く）・OPD の項はスポット・波面と同じく解析的に微分し、近軸量・Zernike・結合効率は差分。
 - Python で定義する項（UDOP 相当）: `System.optimize(vars, merit=None, terms=[{"type": "user", "fn": f}])`。`f(systems)` は
   System の list を受け取り、系ごとの残差を (系の数, 残差の数) の配列で返す。差分のヤコビアンではずらした系をまとめて

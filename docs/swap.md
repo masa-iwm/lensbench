@@ -30,5 +30,5 @@
 - 組の番号 `i` は所ごとの候補の番号の混合基数（最後の所が最も速く回る）。結果は組の番号だけで決まり、スレッド数によらない。
   `--out r.jsonl` で組ごとに一括実行の JSONL へ逐次書き出し、同じ探索（設定・プロジェクト・候補が同じ）の
   ファイルがあれば続きから回す（`--no-resume` で書き直す）。
-- 例: `examples/projects/P18_swap_two.json`。Rust は `lensbench_project::swap::SwapSearch`、Python は
+- 例: `examples/projects/P18_swap_two.json`。Rust は `lensbench_design::swap::SwapSearch`、Python は
   `lensbench.swap_search(project, spec, lens_catalogs=[…], out=…)`。

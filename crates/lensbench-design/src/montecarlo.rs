@@ -1,11 +1,11 @@
 //! モンテカルロ公差シミュレーション。
 //!
-//! 公差（[`Tol`]）は系のパラメータ（[`crate::param`] の [`Param`]: 厚さ・曲率半径・面の傾き偏心・屈折率のずれ・
+//! 公差（[`Tol`]）は系のパラメータ（[`lensbench_core::param`] の [`Param`]: 厚さ・曲率半径・面の傾き偏心・屈折率のずれ・
 //! 玉や群の偏心・傾き・移動など）のずれの範囲 [lo, hi] と分布。1 つの公差が複数のパラメータを同じ乱数で
 //! 動かしてもよい（例: 玉の焦点距離 ±1% を、玉のすべての曲率半径を同じ比で変えて表す）。`relative` なら
 //! ずれは今の値に対する比（r → r (1 + δ)）。
 //!
-//! 試行ごとに、すべての公差のずれを引いて系を作り、補償子（[`crate::optim::Var`]: ピント・群の位置など）を
+//! 試行ごとに、すべての公差のずれを引いて系を作り、補償子（[`lensbench_core::optim::Var`]: ピント・群の位置など）を
 //! 評価関数（[`Problem`] の項）で DLS により合わせ直して（[`McSpec::comp`]）、評価関数と項の値を記録する。
 //! 評価量は最適化と同じ項（RMS 波面・RMS スポット・MTF・近軸量・利用者の項 など）で表す。
 //! 項の値（[`Problem::term_values`]）は、目標のある項（MTF など）ではその量そのもの、スポット・波面では RMS。
@@ -26,13 +26,13 @@
 //!
 //! 簡易設定（[`simple`]）: 玉ごとの公差の組（[`LensTol`]、既定の組 [`LensTol::preset`]）から公差の並びを作る。
 
-use crate::error::Result;
-use crate::invalid;
-use crate::optim::{dls, DlsOpts, Problem};
-use crate::par::scoped;
-use crate::param::{Kind, Param};
-use crate::system::System;
-use crate::units::UnitKind;
+use lensbench_core::error::Result;
+use lensbench_core::invalid;
+use lensbench_core::optim::{dls, DlsOpts, Problem};
+use lensbench_core::par::scoped;
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::system::System;
+use lensbench_core::units::UnitKind;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -588,8 +588,8 @@ pub fn draw_trial(spec: &McSpec, i: usize) -> Vec<f64> {
 /// 分布（[`Dist::DiscX`]・[`Dist::DiscY`]、normal が None で一様・Some(cut) で 2 次元正規）にする。偏心・傾き・くさびの
 /// 大きさを公差以下にしたいときに。組にした数を返す
 pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
-    use crate::param::Kind as K;
-    use crate::units::UnitKind as U;
+    use lensbench_core::param::Kind as K;
+    use lensbench_core::units::UnitKind as U;
     let partner = |a: K| -> Option<K> {
         Some(match a {
             K::Dx => K::Dy,
@@ -630,7 +630,7 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
 }
 
 /// [`run`] で、試行・感度の評価が 1 つ終わるごとに progress(終わった数, 全体の数) を呼ぶ（false で止める）。
-/// 試行は並列に回す（[`crate::par::with_threads`] に従う）。progress は別のスレッドから呼ばれる
+/// 試行は並列に回す（[`lensbench_core::par::with_threads`] に従う）。progress は別のスレッドから呼ばれる
 pub fn run_with(
     spec: &McSpec,
     progress: impl Fn(usize, usize) -> bool + Sync + Send,
@@ -663,7 +663,7 @@ pub fn run_with(
             Err(e) => (deltas, None, Some(e.to_string())),
         }
     };
-    let seq = crate::par::sequential();
+    let seq = lensbench_core::par::sequential();
     // 感度: 公差ごとに lo と hi
     let sens_in: Vec<(usize, bool)> = (0..ns).map(|k| (k / 2, k % 2 == 1)).collect();
     let sens_one = |&(i, hi): &(usize, bool)| {
@@ -732,7 +732,7 @@ pub struct LensTol {
     pub tilt: f64,
     /// 玉の後の空気の間隔 [mm]（次に玉がある場合）
     pub space: f64,
-    /// くさびを玉の前の面に入れる（false は後ろの面）。前・後ろは玉のもとの向きで、裏返して置いた玉（[`crate::units::Unit::flipped`]）
+    /// くさびを玉の前の面に入れる（false は後ろの面）。前・後ろは玉のもとの向きで、裏返して置いた玉（[`lensbench_core::units::Unit::flipped`]）
     /// では系の中で光の通る順の逆（往復する玉は往きの範囲の順）
     pub wedge_first: bool,
 }

@@ -15,7 +15,7 @@
 （詳しくは `lensbench_core::coating::parse_models`）。`--table` と `Coatings::load_file` は 1 行目で LBCT と LBCM を見分ける。
 同じ境界に実測表があれば実測表を使う。
 
-モデルは `coat-model` で実測表から作る（`lensbench_core::coat_fit::fit_model`）。表には、屈折率だけのモデルガラス（`"n,0.0"`）を
+モデルは `coat-model` で実測表から作る（`lensbench_design::coat_fit::fit_model`）。表には、屈折率だけのモデルガラス（`"n,0.0"`）を
 媒質にした組を入れる: 透過は前の媒質 2 種以上（`AIR`・`1.85,0.0` など）× 後の媒質 2 種以上、鏡は `AIR|MIRROR` と `2.05,0.0|MIRROR`。
 波長ごとに特性行列を最小二乗で解き、`D`（OpticStudio の位相の厚さ）と `BMAX` を表から決める。
 波長の格子が膜の厚さに比べて粗いと（`coarse`）、波長の間で係数がずれる。必要な格子の目安は `wave_gap_needed`
@@ -23,7 +23,7 @@
 作ったモデルは測ったときの主波長でしか使えない。
 膜の材料の分散表は折れ線で補間されることがあり、その節の波長で係数の波長微分が跳ぶ（折れ目）。折れ目は
 `--kinks 0.45,0.5,...` で渡すと LBCM の `KINKS` 行に入り、波長の補間はそこをまたがない（折れ目の波長でも測っておく）。`--kinks` は表にある全部の膜に入るので、材料の違う膜は `--coat` で分けて作る。
-折れ目の波長は `lensbench coat-kinks 試しの表.ctab` で探せる（`lensbench_core::coat_fit::detect_kinks`）。空気から入る KEY を、
+折れ目の波長は `lensbench coat-kinks 試しの表.ctab` で探せる（`lensbench_design::coat_fit::detect_kinks`）。空気から入る KEY を、
 膜の厚さから決めた格子の 4 倍くらい細かい波長で測った表を渡すと、膜ごとに `--kinks` に渡せる形（`kinks_arg`）を出す。
 見逃しうるのは、傾きの跳びが小さい節、数点以内に近接した節、波長の格子が粗い長波長側の節で、鏡より透過の KEY の方が感度が高い
 （誤検出は確認した範囲ではない）。膜の材料がわかっていれば、その分散表の節を `--kinks` に足すのが確実。
@@ -97,7 +97,7 @@ lensbench coat-design curve.csv --name X --materials MGF2,TA2O5 --substrate N-BK
 - 材料は外側（入射側）から繰り返す順。膜ファイルの MATE か、ガラスカタログのガラス（ガラスなら `.lbcs` に MATE の表も書く）。
   基板は屈折率の数か、材料・ガラスの名前。
 - 層の数ごとに、乱数の初期値と、1 つ少ない層の数の最良に層を足したもの・2 つ少ない最良に別の材料の薄い層（針）を挟んだものから
-  Levenberg–Marquardt で厚さを合わせる（`lensbench_core::coat_design`）。いちばん合う RMS の (1 + `--slack`) 倍以内で
+  Levenberg–Marquardt で厚さを合わせる（`lensbench_design::coat_design`）。いちばん合う RMS の (1 + `--slack`) 倍以内で
   層のいちばん少ないものを選ぶ。JSON の `by_layers` に層の数ごとの RMS が出る。
 - 同じ曲線を出す設計は一つではない。合わせた曲線の外（位相、別の角度、別の基板、硝材の側から入るとき）は元の膜と違いうる。
   斜めの曲線（45° の s・p など）があれば足すと外れが減る。

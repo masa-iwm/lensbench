@@ -886,7 +886,7 @@ impl System {
 
     /// [`System::with_params`] で、自動の半直径を求め直さない（最適化・公差の差分など、半直径を使わない繰り返し用。
     /// 半直径は光線の追跡に効かない）
-    pub(crate) fn with_params_fast(&self, changes: &[(Param, f64)]) -> Result<System> {
+    pub fn with_params_fast(&self, changes: &[(Param, f64)]) -> Result<System> {
         let mut s = self.with_params_solve(changes, true)?;
         if s.semi_affects_trace() {
             s.update_semi();

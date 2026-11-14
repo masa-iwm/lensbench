@@ -309,6 +309,7 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
             cfg: a.cfg,
             state: a.state.clone(),
             path: a.path.clone(),
+            ..Default::default()
         };
         sess.open(spec, threads)?;
     }

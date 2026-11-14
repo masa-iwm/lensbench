@@ -1076,7 +1076,7 @@ impl PySystem {
                     state: state.as_deref(),
                     split_path: split_path.as_deref(),
                     wavelengths,
-                    cli_names: false,
+                    names: lensbench_project::open::ArgNames::PYTHON,
                 },
             )
         });
@@ -2562,7 +2562,7 @@ impl PySystem {
         let th = threads.or(oo.threads);
         let r = interruptible(py, |stop| {
             with_threads(th, || {
-                lensbench_core::tolerance::run_with(&ms, |_, _| !stop.load(Ordering::Relaxed))
+                lensbench_design::montecarlo::run_with(&ms, |_, _| !stop.load(Ordering::Relaxed))
             })
         })?;
         userterm::raise_user_errors(&users)?;

@@ -23,6 +23,8 @@ pub struct SysSpec {
     pub state: Option<String>,
     /// プロジェクトファイルのビームスプリッターの経路
     pub path: Option<String>,
+    /// 誤りの文に書く引数の名前（既定は CLI の旗。serve の load は [`lensbench_project::open::ArgNames::SERVE`]）
+    pub names: lensbench_project::open::ArgNames,
 }
 
 /// ファイルから系を読む（注意は標準誤差へ）。ファイルが無いときは種類 io の誤り
@@ -36,13 +38,29 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
             state: c.state.as_deref(),
             split_path: c.path.as_deref(),
             wavelengths: None,
-            cli_names: true,
+            names: c.names,
         },
     )?;
     for w in o.warnings {
         eprintln!("注意: {w}");
     }
     Ok(o.system)
+}
+
+/// [`load_file`] に、分散式・マクロ・取り込みの注意も標準誤差へ出し、結果の出どころ（[`crate::provenance`]）に
+/// 系を記録する（CLI の解析の系の読み方）
+pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    let s = load_file(c)?;
+    for w in s
+        .dispersion_warnings()
+        .into_iter()
+        .chain(s.macro_warnings())
+        .chain(s.import_notes.iter().cloned())
+    {
+        eprintln!("注意: {w}");
+    }
+    crate::provenance::set(&s);
+    Ok(s)
 }
 
 /// プロジェクトファイルの状態の名前（.zmx なら空）

@@ -24,7 +24,7 @@ use lensbench_core::optim::{
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::{glass, par, runs, zmx, System};
-use lensbench_project::{expand_gaps, find_id, Env, Gap, Project};
+use lensbench_project::{block_pointers, expand_gaps, Env, Gap, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -382,10 +382,7 @@ impl<'a> SwapSearch<'a> {
             if spec.slots[..k].iter().any(|x| x.block == sl.block) {
                 return Err(format!("所 {} が 2 回ある", sl.block));
             }
-            let mut hits = Vec::new();
-            if !sl.block.is_empty() {
-                find_id(&base["blocks"], "/blocks", &sl.block, &mut hits);
-            }
+            let hits = block_pointers(&base["blocks"], &sl.block);
             let ptr = match hits.as_slice() {
                 [x] => x.clone(),
                 [] => return Err(format!("ブロック {} がない", sl.block)),
