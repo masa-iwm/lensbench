@@ -463,6 +463,22 @@ pub trait Plugin: Send + Sync {
 pub trait Instance: Send + Sync {
     /// 入力から出力を作る（状態なし）
     fn run(&self, ctx: &Context<'_>, inputs: &Arrays) -> Result<Arrays>;
+
+    /// 線形化: [`Instance::run`] と同じ出力と、入力の微分 1 方向から出力の微分を作る [`Linear`]。多くの方向の微分を
+    /// 流すとき、解析を 1 回で済ませる口。既定は None（この口が無い。呼ぶ側は微分を run の入力に渡す）
+    fn linearize(
+        &self,
+        _ctx: &Context<'_>,
+        _inputs: &Arrays,
+    ) -> Result<Option<(Arrays, Box<dyn Linear + '_>)>> {
+        Ok(None)
+    }
+}
+
+/// [`Instance::linearize`] の線形の写像
+pub trait Linear: Send + Sync {
+    /// 入力の微分 1 方向（名前・形はプラグインの決めたもの）から出力の微分
+    fn apply(&self, d: &Arrays) -> Result<Arrays>;
 }
 
 /// 名前 → プラグイン

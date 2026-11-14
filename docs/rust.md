@@ -3,6 +3,8 @@
 - `lensbench_core::plugin`: 検出器・解析のプラグインの約束。`Plugin`（名前・種類・`prepare(&Config)`）と
   `Instance`（`run(&Context, &Arrays) -> Arrays`）を実装し、`Registry` に名前で登録する。`run` は状態を持たず、
   同じ `Instance` を複数スレッドから呼んでよい（`run_many`）。系を追跡するものは `Context` で系と膜を受け取る。
+  多くの方向の微分を流す解析は、任意の `linearize`（`run` と同じ出力と、入力の微分 1 方向から出力の微分を作る `Linear`）を
+  実装すると、呼ぶ側は解析を 1 回で済ませられる（既定は None）。
   同梱のプラグインはワークスペース内の crate（`lensbench-analysis`）で、CLI・Python に組み込む（`lensbench plugins`）
 - `lensbench_core::usersurf`: 利用者が定義する面の口。形は頂点の平面に限り、`SurfaceModel`（名前・`prepare(&Config)`）の
   `SurfaceInstance::deflect`（交点・入射方向 → 出射方向・OPD に足す光路長）と `paraxial_power`（近軸の屈折力）を実装して
