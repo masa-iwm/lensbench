@@ -22,6 +22,16 @@ API_VERSION: tuple[int, int]
 
 
 @final
+class CancelledError:
+    """計算を途中でやめた"""
+
+
+@final
+class Error:
+    """lensbench の誤りの基底（ValueError の子なので except ValueError でも拾える）"""
+
+
+@final
 class Grid:
     """掃引の格子: {"3.t": [10, 11, 12], "5.dx": [0, 0.01]} の直積（値そのもの）。番号は最初の軸が最も遅く変わる順"""
 
@@ -35,6 +45,11 @@ class Grid:
 
     def system(self, i: int) -> System:
         """i 番目の組の値を入れた系"""
+
+
+@final
+class InvalidError:
+    """値や構成が不正"""
 
 
 @final
@@ -64,6 +79,11 @@ class Plugin:
         """多数の入力（dict の並び）をまとめて呼ぶ → [dict, ...]。入力ごとに `threads` 本で並列（None は既定）、
         結果は入力の順でスレッド数によらない。どれかが誤りなら最初の誤りを出す
         """
+
+
+@final
+class ReadError:
+    """ファイルの読込の誤り"""
 
 
 @final
@@ -540,6 +560,11 @@ class System:
 
     def with_params(self, changes: Any) -> System:
         """変えた系を新しく返す（元の系は変えない。軽い複製）"""
+
+
+@final
+class UnsupportedError:
+    """対応していない機能を含む"""
 
 
 def _system_from_state(state: Any, coatings: Sequence[_StrPath]) -> System:

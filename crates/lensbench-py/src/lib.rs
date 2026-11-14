@@ -10,6 +10,7 @@
 //! 引き継がれず、止まる）。子で並列にしたいときは forkserver・spawn で子プロセスを作る。
 
 mod edit;
+mod errors;
 pub mod ext;
 mod fringe;
 mod plugin;
@@ -146,10 +147,7 @@ pub fn interruptible<R: Send>(
     })
 }
 
-/// 誤りを ValueError に
-pub fn err<E: ToString>(e: E) -> PyErr {
-    PyValueError::new_err(e.to_string())
-}
+pub use errors::{err, ErrSrc};
 
 /// 光学系（.zmx またはプロジェクトファイル .json から読む）
 #[pyclass(module = "lensbench", name = "System", frozen)]
@@ -3004,6 +3002,7 @@ fn lensbench(m: &Bound<'_, PyModule>) -> PyResult<()> {
 pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // threads= を省いた計算の既定（lensbench run --threads が渡す）
     lensbench_core::init_from_env();
+    errors::register(m)?;
     m.add_class::<PySystem>()?;
     m.add_function(wrap_pyfunction!(trace_many, m)?)?;
     m.add_function(wrap_pyfunction!(_system_from_state, m)?)?;

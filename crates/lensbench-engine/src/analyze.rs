@@ -77,7 +77,7 @@ pub(crate) fn run(
 fn analysis_err(e: lensbench_core::Error) -> RpcErr {
     match e {
         lensbench_core::Error::Invalid(m) => {
-            RpcErr::from(m.strip_prefix("不正: ").unwrap_or(&m).to_string())
+            RpcErr::from(m.strip_prefix("不正: ").unwrap_or(&m).to_string()).with_kind("invalid")
         }
         e => RpcErr::from(e),
     }

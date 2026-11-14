@@ -71,7 +71,8 @@
 
 ## エラー
 
-- 値・構成の誤りは `ValueError`、範囲外の番号は `IndexError`、型の誤りは `TypeError` です。
+- 計算の誤りは `lensbench.Error`（`ValueError` の子）です。種類ごとに `InvalidError`（値・構成が不正）・`UnsupportedError`（対応していない機能）・
+  `ReadError`（ファイルの読込）・`CancelledError`（中断した）に分かれます（どれも `lensbench.Error` の子）。範囲外の番号は `IndexError`、型の誤りは `TypeError` です。
 - 文は「種類: 内容」の形です（`不正:`・`未対応:`・`読込:`）。**面に関わるエラーには面の名札が付きます**:
   `面 番号(種類, 材料, 膜 名前, 「コメント」)`（空の項は省く）。例:
 

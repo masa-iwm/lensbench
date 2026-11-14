@@ -213,10 +213,7 @@ impl Session {
         bins: Vec<Bin>,
         threads: Option<usize>,
     ) -> Result<(Value, Vec<Bin>), CallError> {
-        dispatch(self, method, params, bins, threads).map_err(|e| CallError {
-            code: e.code,
-            message: e.msg,
-        })
+        dispatch(self, method, params, bins, threads).map_err(CallError::from)
     }
 
     fn served(&self) -> std::sync::MutexGuard<'_, Option<Served>> {
@@ -493,6 +490,8 @@ fn replay(
 pub(crate) struct RpcErr {
     code: i64,
     pub(crate) msg: String,
+    /// core の誤りの種類（[`lensbench_core::Error::kind`]。返す誤りの `data.kind`）
+    kind: Option<&'static str>,
 }
 
 impl RpcErr {
@@ -500,12 +499,21 @@ impl RpcErr {
         RpcErr {
             code: -32000,
             msg: m.into(),
+            kind: None,
+        }
+    }
+    /// core の誤りの種類を付ける（文を作り直したとき）
+    pub(crate) fn with_kind(self, k: &'static str) -> Self {
+        RpcErr {
+            kind: Some(k),
+            ..self
         }
     }
     pub(crate) fn params(m: impl Into<String>) -> Self {
         RpcErr {
             code: -32602,
             msg: m.into(),
+            kind: None,
         }
     }
 }
@@ -518,7 +526,20 @@ impl From<String> for RpcErr {
 
 impl From<lensbench_core::Error> for RpcErr {
     fn from(e: lensbench_core::Error) -> Self {
-        RpcErr::app(e.to_string())
+        RpcErr {
+            kind: Some(e.kind()),
+            ..RpcErr::app(e.to_string())
+        }
+    }
+}
+
+impl From<RpcErr> for CallError {
+    fn from(e: RpcErr) -> Self {
+        CallError {
+            code: e.code,
+            message: e.msg,
+            kind: e.kind.map(str::to_string),
+        }
     }
 }
 
@@ -700,6 +721,8 @@ fn status(sess: &Session, method: &str, p: &Value) -> Option<Result<Reply, RpcEr
 pub struct CallError {
     pub code: i64,
     pub message: String,
+    /// core の誤りの種類（`not_implemented`・`invalid`・`io`・`cancelled`。serve は `data.kind` に書く）
+    pub kind: Option<String>,
 }
 
 impl std::fmt::Display for CallError {
@@ -773,10 +796,7 @@ impl Session {
                     .collect();
                 (v, a)
             })
-            .map_err(|e| CallError {
-                code: e.code,
-                message: e.msg,
-            })
+            .map_err(CallError::from)
     }
 
     /// 系を読んで（`load` と同じ params）、そのレイアウト図（`layout` と同じ結果）を返す。読み込んだ系は変えず、
@@ -790,10 +810,7 @@ impl Session {
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
-            .map_err(|e| CallError {
-                code: e.code,
-                message: e.msg,
-            })
+            .map_err(CallError::from)
     }
 
     /// カタログの一覧（`glasses`・`lenses` と同じ params・結果）。読み込んだ系に関係なく、他の要求の順番も待たない。
@@ -811,10 +828,7 @@ impl Session {
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
-            .map_err(|e| CallError {
-                code: e.code,
-                message: e.msg,
-            })
+            .map_err(CallError::from)
     }
 
     pub fn browse(&self, method: &str, params: &Value) -> Result<Value, CallError> {
@@ -823,10 +837,7 @@ impl Session {
             browse_of(sess, method, params)
         }))
         .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
-        .map_err(|e| CallError {
-            code: e.code,
-            message: e.msg,
-        })
+        .map_err(CallError::from)
     }
 }
 
@@ -1204,10 +1215,12 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "" => Err(RpcErr {
             code: -32600,
             msg: "method がない".into(),
+            kind: None,
         }),
         m => Err(RpcErr {
             code: -32601,
             msg: format!("method {m} はない"),
+            kind: None,
         }),
     }
 }

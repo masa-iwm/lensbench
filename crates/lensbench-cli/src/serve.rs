@@ -396,6 +396,7 @@ fn connection(
             Some(e) => Err(CallError {
                 code: -32602,
                 message: e,
+                kind: None,
             }),
             None => sess.handle(&method, &params, m.bins, threads),
         };
@@ -417,7 +418,11 @@ fn connection(
                 write_msg(&mut w, h, &bins)?;
             }
             Err(e) => {
-                let h = json!({ "jsonrpc": "2.0", "id": id, "error": { "code": e.code, "message": e.message } });
+                let mut er = json!({ "code": e.code, "message": e.message });
+                if let Some(k) = e.kind {
+                    er["data"] = json!({ "kind": k });
+                }
+                let h = json!({ "jsonrpc": "2.0", "id": id, "error": er });
                 write_msg(&mut w, h, &[])?;
             }
         }

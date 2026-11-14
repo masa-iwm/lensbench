@@ -893,3 +893,13 @@ def test_coatings_reload_after_edit(tmp_path):
     b = s.trace(1, [0.0], [0.5], pol=True)
     # 膜 X（AR2 と違う 1 層）で透過が変わる
     assert not np.array_equal(a["jones"], b["jones"])
+
+
+def test_error_classes():
+    """誤りは lensbench.Error（ValueError の子）。core の誤りは種類ごとのクラス"""
+    s = lb.System.load(zmx("A5"), glass_dirs=GLASS)
+    assert issubclass(lb.InvalidError, lb.Error) and issubclass(lb.Error, ValueError)
+    with pytest.raises(lb.InvalidError):
+        s.set_param("99.t", 1.0)
+    with pytest.raises(ValueError):
+        s.set_param("99.t", 1.0)

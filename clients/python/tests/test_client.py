@@ -91,10 +91,12 @@ def test_echo_and_errors(lb):
     i = np.arange(10, dtype=np.int32)
     r = lb.echo(a=a, i=i)
     assert np.array_equal(r["a"], a) and np.array_equal(r["i"], i)
-    with pytest.raises(RpcError):
+    with pytest.raises(RpcError) as e:
         lb.set({"99.t": 1.0})
-    with pytest.raises(RpcError):
+    assert e.value.kind == "invalid"  # 計算の誤りの種類（error.data.kind）
+    with pytest.raises(RpcError) as e:
         lb.call("nothing")
+    assert e.value.kind is None
     assert lb.ping()["version"]
 
 
@@ -211,3 +213,28 @@ def test_plugin_complex_and_bool(lb):
     e = lb.echo(m=m, z=es)
     assert e["m"].dtype == np.bool_ and np.array_equal(e["m"], m)
     assert e["z"].dtype == np.complex128 and np.array_equal(e["z"], es)
+
+
+def test_progress_and_stop_from_another_connection(lb):
+    """長い公差を回している間に、別の接続から進み具合を読み、止める（そこまでの結果が返る）"""
+    import threading
+
+    with lb.another() as o:
+        assert o.progress()["running"] is False
+        assert o.cancel() is False
+        out = {}
+        t = threading.Thread(
+            target=lambda: out.setdefault("r", lb.call("tolerance", {"trials": 100000, "seed": 2, "sensitivity": False})[0])
+        )
+        t.start()
+        t0 = time.time()
+        while o.progress()["tolerance"] is None:
+            assert time.time() - t0 < 60, "進み具合が出ない"
+            time.sleep(0.01)
+        assert o.progress()["running"] is True
+        assert o.stop("tolerance") is True
+        t.join(60)
+        assert out["r"]["cancelled"] is True
+        assert o.progress()["running"] is False
+        with pytest.raises(RpcError):
+            o.stop("foo")

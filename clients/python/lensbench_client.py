@@ -40,12 +40,14 @@ _WIN = sys.platform == "win32"
 
 
 class RpcError(RuntimeError):
-    """サーバーが返したエラー（code は JSON-RPC のエラー番号）"""
+    """サーバーが返したエラー（code は JSON-RPC のエラー番号、kind は計算の誤りの種類
+    "invalid"・"not_implemented"・"io"・"cancelled"。それ以外は None）"""
 
-    def __init__(self, code: int, message: str):
+    def __init__(self, code: int, message: str, kind: str | None = None):
         super().__init__(f"{message} (code {code})")
         self.code = code
         self.message = message
+        self.kind = kind
 
 
 def _to_bytes(v):
@@ -97,6 +99,7 @@ class Client:
         self, host: str = "127.0.0.1", port: int = 7010, timeout: float | None = None, *, pipe: str | None = None
     ):
         """host・port の TCP か、pipe（serve --pipe の名前かパス）につなぐ"""
+        self._addr = {"host": host, "port": port, "timeout": timeout, "pipe": pipe}
         self._sock = None
         self._f = None
         if pipe is not None and _WIN:
@@ -251,7 +254,7 @@ class Client:
         self.elapsed_ms = h.get("elapsed_ms")
         if "error" in h:
             e = h["error"]
-            raise RpcError(e.get("code", -32000), e.get("message", ""))
+            raise RpcError(e.get("code", -32000), e.get("message", ""), (e.get("data") or {}).get("kind"))
         return h.get("result"), out
 
     def _send(self, data):
@@ -373,6 +376,25 @@ class Client:
         return self.analyze("fringe", **kw)
 
     # ---- 終わり ----
+
+    # ---- 進み具合・中断（処理している要求を待たずに答える。回している接続とは別の接続から送る） ----
+
+    def another(self) -> "Client":
+        """同じサーバーへの別の接続（長い要求を回している間に progress・cancel・stop を送るため）。閉じてもサーバーは止めない"""
+        a = self._addr
+        return Client(a["host"], a["port"], a["timeout"], pipe=a["pipe"])
+
+    def progress(self) -> dict:
+        """running（要求を処理しているか）・optimize（反復ごとの評価関数の値）・tolerance・swap（(終えた数, 全体の数)、走っていなければ None）"""
+        return self.call("progress")[0]
+
+    def cancel(self) -> bool:
+        """処理している解析に途中でやめるよう頼む（解析は「中断した」の誤りで返る）。最適化・公差・差し替え探索は stop で止める"""
+        return self.call("cancel")[0]
+
+    def stop(self, what: str) -> bool:
+        """最適化（"optimize"）・公差（"tolerance"）・差し替え探索（"swap"）を止め、そこまでの結果を返させる"""
+        return self.call("stop", {"what": what})[0]
 
     def shutdown(self):
         """サーバーを止める"""

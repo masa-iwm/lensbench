@@ -26,6 +26,16 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
+    /// 種類の名前（serve の誤りの `data.kind`・Python の例外のクラスに使う）: `not_implemented`・`invalid`・`io`・`cancelled`
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Error::NotImplemented(_) => "not_implemented",
+            Error::Invalid(_) => "invalid",
+            Error::Io(_) => "io",
+            Error::Cancelled => "cancelled",
+        }
+    }
+
     /// 文を前に足す（種類は変えない）。例: `e.at(sys.surf_label(j))` で「面 87(STANDARD, 膜 THORB): …」
     pub fn at(self, ctx: impl std::fmt::Display) -> Error {
         match self {

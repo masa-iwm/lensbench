@@ -52,6 +52,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 ```
 
 エラーは `{"error": {"code", "message"}}`（-32700 JSON が読めない、-32601 method がない、-32602 引数の誤り、-32000 解析の失敗）。
+計算の誤りには `data.kind`（`invalid` 値・構成が不正、`not_implemented` 対応していない機能、`io` 読込、`cancelled` 中断した）が付く（Python のクライアントは `RpcError.kind`）。
 
 ### method
 
@@ -59,7 +60,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | --- | --- | --- |
 | `ping` | | `version` |
 | `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
-| `cancel` | | 処理している要求に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る |
+| `cancel` | | 処理している要求に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
 | `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
 | `load` | `file`、`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`・`history`（省略可） | 系の概要（面の数・視野・波長など）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
 | `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
@@ -192,6 +193,7 @@ with Client.spawn("system.zmx", glass_dir=["catalogs"], threads=1) as lb:   # se
 
 `Client("127.0.0.1", 7010)` で動いている serve につなぐ（パイプは `Client(pipe="lb1")`）。
 `Client.spawn(..., pipe=True)` でパイプ、`lb.use_shm(128 << 20)` で共有メモリ（numpy が要る、`use_shm(0)` でやめる）。
+長い要求（`optimize`・`tolerance`・`swap`）を回している間は、`o = lb.another()` で別の接続を開いて `o.progress()`・`o.stop("tolerance")`・`o.cancel()` を送る（別のスレッドから）。
 `lb.fringe(...)` は `analyze("fringe", ...)` と同じ。`lb.plugin("spot", field=np.array(2.0))` でプラグインを呼ぶ
 （numpy の float64・complex128・bool はそのまま送る）。例: `examples/loop/serve_loop.py`（間隔を変えて再解析を繰り返し、往復の時間を出す。CI で回す）。
 
