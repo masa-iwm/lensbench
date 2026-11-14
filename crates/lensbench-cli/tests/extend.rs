@@ -57,7 +57,7 @@ fn registered_source_and_plugin() {
     )
     .unwrap();
     let call = |m: &str| {
-        lensbench_cli::serve::call(
+        lensbench_engine::call(
             m,
             &serde_json::json!({ "lens_catalog": [dir], "glass_dir": [root.join("tests/glass")] }),
             Some(1),
@@ -76,7 +76,7 @@ fn registered_source_and_plugin() {
     );
 
     plugin::global().write().unwrap().register(Arc::new(Echo));
-    let reg = lensbench_cli::builtin_plugins();
+    let reg = lensbench_engine::builtin_plugins();
     assert!(reg.get("test_ext_echo").is_ok());
     // 同梱の分も残る
     assert!(reg.get("geo_mtf").is_ok());

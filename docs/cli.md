@@ -48,7 +48,7 @@ lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 **終了コード**: 0 は成功、1 は実行の失敗（一部の品・膜の上げ・取り・読みの失敗も。結果は出したうえで 1）、
 2 は引数の誤り。`verify` の不一致も 1。`--save` の中身は `--json` の有無によらず同じ（画面の文字の出力だけ要点に絞る）。
 
-この CLI を組み込んだ exe（非公開版など）は、サブコマンドを足せる（`lensbench_cli::ext`）。足したサブコマンドも
+この CLI を組み込んだ exe（非公開版など）は、解析を足せる（`lensbench_engine::register`）。足したサブコマンドも
 `serve` の `analyze`・`watch`・GUI の解析で同じに使える。
 
 ## 例と出力

@@ -1,4 +1,4 @@
-//! 計算を GUI の外のスレッドで回す。要求は serve と同じ method・params（[`lensbench_cli::serve::call_arrays`]）。
+//! 計算を GUI の外のスレッドで回す。要求は serve と同じ method・params（[`lensbench_engine::call_arrays`]）。
 //!
 //! 要求は 1 本のスレッドで順に処理する（serve と同じく系はプロセスに 1 つで、要求は 1 つずつ）。
 //! 1 つの要求に複数の呼び出しをまとめられる（スポット図の視野・波長ごとの trace など）。終わると GUI を描き直させる。
@@ -14,7 +14,7 @@ use web_time::Instant;
 
 use serde_json::Value;
 
-pub use lensbench_cli::serve::Arrays;
+pub use lensbench_engine::Arrays;
 
 /// 要求の目的（結果をどこに入れるか）。u64 はパネルの番号
 #[derive(Debug, Clone, PartialEq)]
@@ -183,20 +183,20 @@ impl Kind {
 }
 
 fn main_call(m: &str, p: &Value, t: Option<usize>) -> Result<(Value, Arrays), String> {
-    lensbench_cli::serve::call_arrays(m, p, t).map_err(|e| e.message)
+    lensbench_engine::call_arrays(m, p, t).map_err(|e| e.message)
 }
 
 fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays), String> {
     match m {
-        "preview" => lensbench_cli::serve::preview_layout(&p["load"], &p["layout"])
+        "preview" => lensbench_engine::preview_layout(&p["load"], &p["layout"])
             .map(|v| (v, Vec::new()))
             .map_err(|e| e.message),
-        "glasses" | "lenses" => lensbench_cli::serve::browse(m, p)
+        "glasses" | "lenses" => lensbench_engine::browse(m, p)
             .map(|v| (v, Vec::new()))
             .map_err(|e| e.message),
         // ユーザーカタログの一覧・変更（読み込んだ系は要らない）
         "catalog_items" | "catalog_edit" | "catalog_fill" => {
-            lensbench_cli::serve::user_catalog_edit(m, p)
+            lensbench_engine::user_catalog_edit(m, p)
                 .map(|v| (v, Vec::new()))
                 .map_err(|e| e.message)
         }
@@ -411,13 +411,13 @@ impl Worker {
 }
 
 /// 最適化・公差・差し替え探索の進み具合と停止。ネイティブは同じプロセスの serve
-/// （[`lensbench_cli::serve::optimize_progress`] など）、Web 版は計算の Web Worker の見張りのスレッドに訊く
+/// （[`lensbench_engine::optimize_progress`] など）、Web 版は計算の Web Worker の見張りのスレッドに訊く
 /// （スレッドありの版だけ。1 スレッドの版では進み具合は出ず、止められない）
 pub mod progress {
     /// 最適化の反復ごとの評価関数の値（走っていなければ None）
     pub fn optimize() -> Option<Vec<f64>> {
         #[cfg(not(target_arch = "wasm32"))]
-        return lensbench_cli::serve::optimize_progress();
+        return lensbench_engine::optimize_progress();
         #[cfg(target_arch = "wasm32")]
         super::remote::PROGRESS
             .with(|p| serde_json::from_value(p.borrow()["optimize"].clone()).ok())
@@ -426,7 +426,7 @@ pub mod progress {
     /// 公差の（終えた数、全体の数）
     pub fn tolerance() -> Option<(usize, usize)> {
         #[cfg(not(target_arch = "wasm32"))]
-        return lensbench_cli::serve::tolerance_progress();
+        return lensbench_engine::tolerance_progress();
         #[cfg(target_arch = "wasm32")]
         super::remote::PROGRESS
             .with(|p| serde_json::from_value(p.borrow()["tolerance"].clone()).ok())
@@ -435,7 +435,7 @@ pub mod progress {
     /// 差し替え探索の（終えた数、全体の数）
     pub fn swap() -> Option<(usize, usize)> {
         #[cfg(not(target_arch = "wasm32"))]
-        return lensbench_cli::serve::swap_progress();
+        return lensbench_engine::swap_progress();
         #[cfg(target_arch = "wasm32")]
         super::remote::PROGRESS.with(|p| serde_json::from_value(p.borrow()["swap"].clone()).ok())
     }
@@ -444,9 +444,9 @@ pub mod progress {
     pub fn stop(what: &str) {
         #[cfg(not(target_arch = "wasm32"))]
         match what {
-            "optimize" => lensbench_cli::serve::optimize_cancel(),
-            "tolerance" => lensbench_cli::serve::tolerance_cancel(),
-            "swap" => lensbench_cli::serve::swap_cancel(),
+            "optimize" => lensbench_engine::optimize_cancel(),
+            "tolerance" => lensbench_engine::tolerance_cancel(),
+            "swap" => lensbench_engine::swap_cancel(),
             _ => {}
         }
         #[cfg(target_arch = "wasm32")]
@@ -496,9 +496,9 @@ pub mod entry {
             return;
         }
         match what {
-            "optimize" => lensbench_cli::serve::optimize_cancel(),
-            "tolerance" => lensbench_cli::serve::tolerance_cancel(),
-            "swap" => lensbench_cli::serve::swap_cancel(),
+            "optimize" => lensbench_engine::optimize_cancel(),
+            "tolerance" => lensbench_engine::tolerance_cancel(),
+            "swap" => lensbench_engine::swap_cancel(),
             _ => {}
         }
     }
@@ -506,9 +506,9 @@ pub mod entry {
     /// 見張りのスレッドから: 最適化・公差・差し替え探索の進み具合（[`super::progress`] の形の JSON）
     pub fn progress() -> String {
         serde_json::json!({
-            "optimize": lensbench_cli::serve::optimize_progress(),
-            "tolerance": lensbench_cli::serve::tolerance_progress(),
-            "swap": lensbench_cli::serve::swap_progress(),
+            "optimize": lensbench_engine::optimize_progress(),
+            "tolerance": lensbench_engine::tolerance_progress(),
+            "swap": lensbench_engine::swap_progress(),
         })
         .to_string()
     }

@@ -1,4 +1,4 @@
-//! lensbench の GUI。インストール不要の単一 exe。計算は serve と同じ API（[`lensbench_cli::serve::call`]）を
+//! lensbench の GUI。インストール不要の単一 exe。計算は serve と同じ API（[`lensbench_engine::call`]）を
 //! 同じプロセスの中で呼ぶ。
 //!
 //! ライブラリとしても使える: 別の exe（カタログの形式・プラグインを足した版）は、起動の最初に
@@ -106,7 +106,7 @@ pub fn main() -> std::process::ExitCode {
     builtin_glass::install(settings_dir.clone());
     lensbench_cad::detail::install_detail_loader();
     lensbench_cad::coat_remote::install();
-    lensbench_cli::set_lens_list_cache_dir(settings_dir);
+    lensbench_engine::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {
         // 通し確認は利用者の設定（窓の配置・残した状態）を読まず、書き換えもしない（公開 #236）
         persistence_path: if args.tour.is_some() {

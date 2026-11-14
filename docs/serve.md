@@ -98,15 +98,15 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `shutdown` | | サーバーを止める |
 
 - パラメータの名前は Python の `get_param`・`set_param` と同じ（`3.t`・`STOP.r`・`lens2.tx`・`G1.shift` など）
-- `analyze` の引数: 解析の登録簿の解析（info・spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf・
-  rays・pop・mech-check・elements・fringe と、`ext::register` で登録した解析）は
+- `analyze` で動くのは、解析の登録簿の解析（info・spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf・
+  rays・pop・mech-check・elements・fringe と、`ext::register` で登録した解析）と `coatings` だけ。
+  最適化・公差・差し替え・ズーム・レイアウトの書き出しは専用のメソッド（`optimize`・`tolerance`・`swap`・`zoom`・`layout_export`）で。
   設定の JSON をそのまま渡す。鍵は CLI の旗の `-` を `_` にしたもの（`-` のままでもよい）、値は型のまま（数・`true`・数の並びは配列・
   パスの並びは配列）。前の受け方の数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つのパスも受ける。`json` は読み飛ばす。
   知らない鍵・読めない値は要求の誤り（−32602）。引数の一覧と既定値は `analysis_args`。
-  ほかのサブコマンドは CLI の引数にする: キーの `_` は `-` に、`true` は旗、`false`・`null` は省く、数の並びはカンマでつなぎ、文字列の並びは旗を繰り返す。
   `{"cmd": "mtf", "field": 2, "freqs": [10, 20]}` は `lensbench mtf <系> --field 2 --freqs 10,20` と同じ。
   系の読み方（`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`）は `load` で選ぶ（`analyze` で与えると誤り）。
-  値がオブジェクトの設定（センサの設定など）は登録簿の解析だけが受ける（CLI では JSON の文字列で渡す）
+  値がオブジェクトの設定（センサの設定など）はオブジェクトのまま渡す（CLI では JSON の文字列で渡す）
 - `trace` の結果は最後の面（`last`、省くと像面）の局所座標、`global: true` なら大域座標。`err`・`vig` が 0 の光線が通った光線。
   `opl` は幾何的な光路長。コアの追跡とビット一致する
 - `edit` の操作（`op` と引数。面は番号か名前）: `insert_surface` at・surface（面の値: type comment t c r k asph cx material coating semi ignore
@@ -135,7 +135,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   結果の `notes` に書く。例: 構成 1 を読み込み、試料の腕だけの厚さを `set` すると、参照（構成 2）の厚さは変えない
 - `reload`・`load` で変更の記録も消える。変更がなければ CLI と同じ（ビット一致）
 - `"grid": true`（CLI の `--grid`）で結果に格子 `grid` も入れる（番号 j·nx + i、行 j は +y の向きで j = 0 が下、データの無い画素は null）。GUI の図はこれを使う
-- 拡張のサブコマンド（`lensbench_cli::ext`）は、読み込んだ後の変更を別に読んだ系に当てる口（`Served::replay`）で同じことができる
+- 拡張の解析（`lensbench_engine::register`）は、系の読み方（`Cx::source`）で別に読んだ系にも読み込んだ後の変更が当たる
 
 ### パイプ
 
@@ -164,13 +164,13 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 ### 同じプロセスから呼ぶ（GUI）
 
-`lensbench_cli::serve::preview_layout(load, layout)` は `load` と同じ params の系を読んで `layout` の結果を返す（構成の重ね描きも同じ。読み込んだ系は変えず、順番も待たない。GUI のレイアウト図の下書き）。
+`lensbench_engine::preview_layout(load, layout)` は `load` と同じ params の系を読んで `layout` の結果を返す（構成の重ね描きも同じ。読み込んだ系は変えず、順番も待たない。GUI のレイアウト図の下書き）。
 
-`lensbench_cli::serve::call(method, &params, threads)` は TCP の要求と同じ method・params・result を同じプロセスの中で処理する
-（系はプロセスに 1 つ、要求は 1 つずつ順に）。GUI（`crates/lensbench-gui`）はこれだけで計算する。bin の配列は使えない
+`lensbench_engine::Session::call(method, &params, threads)`（プロセスで共通の場は `lensbench_engine::call`）は TCP の要求と同じ method・params・result を同じプロセスの中で処理する
+（系は場に 1 つ、要求は場ごとに 1 つずつ順に。場は `Session::new()` でいくつでも作れる）。GUI（`crates/lensbench-gui`）は共通の場だけで計算する。bin の配列は使えない
 （`trace` の px・py は JSON の並びで渡す）。結果の配列は `call_arrays` で受け取る（名前と f64 の並び）。`shutdown` はプロセスを止めない。
 `optimize` を回している間は、別のスレッドから `optimize_progress()`（反復ごとの評価関数の値）で進み具合を読み、
-`optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す。TCP の要求からは止められない）。進み具合・中止はプロセスに 1 つなので、同じプロセスで 2 つの optimize を同時に回すと混ざる（GUI は 1 つずつ）。
+`optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す。TCP の要求からは止められない）。進み具合・中止は場ごと（`Session::optimize_progress` など。上の関数は共通の場のもの）。
 `swap` も同じく `swap_progress()`（終えた組と組の数）・`swap_cancel()`（走っている組は終わらせ、そこまでの結果を返す）。
 
 ### Python のクライアント

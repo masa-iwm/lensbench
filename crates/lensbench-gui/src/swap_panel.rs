@@ -2,8 +2,8 @@
 //! 設定を並べ、serve の `swap` で回して、評価関数の小さい順の組を表に出す。組合せの系なら、選んだ組を組合せに入れられる。
 //!
 //! 設定は `lensbench swap --spec` と同じ JSON（[`SwapPanel::spec`]）で、そのままファイルに保存・読込できる。
-//! 走っている間は [`lensbench_cli::serve::swap_progress`] で進み具合を読み、止めるのは
-//! [`lensbench_cli::serve::swap_cancel`]。
+//! 走っている間は [`lensbench_engine::swap_progress`] で進み具合を読み、止めるのは
+//! [`lensbench_engine::swap_cancel`]。
 //!
 //! 組合せの系では、空気に id を付けたプロジェクト（[`combo_project`]）を serve に渡す: 絞りの後の空気が `d0`、
 //! 要素 k（1 始まり）の後の空気が `dk`。

@@ -1124,7 +1124,7 @@ mod tests {
         assert_eq!(f["category"], "filter");
         // 補う（serve の catalog_fill）
         let out = fill.join("VEND.json");
-        let r = crate::serve::call(
+        let r = crate::session::call(
             "catalog_fill",
             &json!({
                 "catalog": src.join("V_incomplete.json").display().to_string(),
@@ -1137,7 +1137,7 @@ mod tests {
         assert_eq!(r["vendor"], "VEND");
         assert_eq!(r["specs"]["thickness"], json!(3.0));
         // 枠付きで仕様表の値も渡すと、食い違う寸法を notes に、有効径は仕様表の値に
-        let r = crate::serve::call(
+        let r = crate::session::call(
             "catalog_fill",
             &json!({
                 "catalog": src.join("V_incomplete.json").display().to_string(),
@@ -1164,7 +1164,7 @@ mod tests {
         );
         assert_eq!(r["specs"]["clear_aperture"], json!(21.0));
         // 足りない値が無ければ誤り
-        assert!(crate::serve::call(
+        assert!(crate::session::call(
             "catalog_fill",
             &json!({
                 "catalog": src.join("V_incomplete.json").display().to_string(),

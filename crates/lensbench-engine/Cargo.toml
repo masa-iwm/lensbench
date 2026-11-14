@@ -1,0 +1,25 @@
+[package]
+name = "lensbench-engine"
+description = "Execution layer of lensbench: the analysis registry, system loading and the serve session shared by the CLI, GUI, Web and Python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-analysis = { path = "../lensbench-analysis" }
+lensbench-project = { path = "../lensbench-project" }
+lensbench-export = { path = "../lensbench-export" }
+# 品の STEP を取る（serve の cad_step）
+lensbench-cad = { path = "../lensbench-cad" }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# 解析の登録簿に足す解析（defs/）の設定の型とスキーマ
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
+# 時計（wasm の std::time::Instant は使えない）
+web-time = "1"

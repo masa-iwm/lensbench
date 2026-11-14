@@ -329,7 +329,7 @@ pub fn analysis_specs(cmd: &str) -> Vec<ArgSpec> {
         .unwrap_or_else(|e| e.into_inner());
     c.entry(cmd.to_string())
         .or_insert_with(|| {
-            let mut v = lensbench_cli::arg_spec::analysis_args(cmd)
+            let mut v = lensbench_engine::params::analysis_args(cmd)
                 .map(|v| ArgSpec::parse_list(&Value::Array(v)))
                 .unwrap_or_default();
             for s in &mut v {

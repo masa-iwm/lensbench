@@ -2,21 +2,22 @@
 
 use lensbench_core::{Error, Result, System};
 
-use crate::Common;
+use crate::load::SysSpec;
 
 /// 読み込んだ後の変更（serve の set・edit）を別に読んだ系に当てる口（系, 説明に付ける名前, 当てなかった変更）
 pub(crate) type Replay<'a> =
     &'a dyn Fn(System, &str, &mut Vec<String>) -> std::result::Result<System, String>;
 
 /// 系のファイルの読み方
-pub(crate) struct FileSource<'a> {
-    pub c: &'a Common,
+pub struct FileSource<'a> {
+    pub c: &'a SysSpec,
     /// serve で読み込んだ後の変更を当てる（CLI は None）
     pub replay: Option<Replay<'a>>,
 }
 
+/// 読む所の誤りの文（`load_file` の「不正: …」は頭を重ねない）
 fn invalid(e: String) -> Error {
-    Error::Invalid(e)
+    Error::Invalid(e.strip_prefix("不正: ").map(str::to_string).unwrap_or(e))
 }
 
 impl lensbench_analysis::Source for FileSource<'_> {
@@ -28,13 +29,13 @@ impl lensbench_analysis::Source for FileSource<'_> {
             && !lensbench_project::sysfile::is_system_file(&self.c.file)
     }
     fn states(&self) -> Result<Vec<String>> {
-        Ok(crate::state_names(self.c))
+        Ok(crate::load::state_names(self.c))
     }
     fn state(&self) -> Option<String> {
         self.c.state.clone()
     }
     fn paths(&self) -> Result<Vec<String>> {
-        crate::split_paths(self.c).map_err(invalid)
+        crate::load::split_paths(self.c).map_err(invalid)
     }
     fn path(&self) -> Option<String> {
         self.c.path.clone()
@@ -51,14 +52,13 @@ impl lensbench_analysis::Source for FileSource<'_> {
                 (k, None)
             }
         };
-        let c = Common {
+        let c = SysSpec {
             cfg,
             state,
-            save: None,
             ..self.c.clone()
         };
         let s = match &v.wavelengths {
-            None => crate::load_file(&c).map_err(invalid)?,
+            None => crate::load::load_file(&c).map_err(invalid)?,
             Some(wl) => {
                 let zmx = c
                     .file

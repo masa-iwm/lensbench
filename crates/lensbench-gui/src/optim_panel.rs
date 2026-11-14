@@ -2,8 +2,8 @@
 //!
 //! 設定は serve の `optimize` の params と同じ JSON（[`OptPanel::params`]）で、そのままファイルに保存・読込できる。
 //! 項の種類とキーは `lensbench_project::merit`（CLI の `--term`）と同じ。走っている間は
-//! [`lensbench_cli::serve::optimize_progress`] で評価関数の履歴を読み、止めるのは
-//! [`lensbench_cli::serve::optimize_cancel`]。
+//! [`lensbench_engine::optimize_progress`] で評価関数の履歴を読み、止めるのは
+//! [`lensbench_engine::optimize_cancel`]。
 
 use egui::{RichText, Ui};
 use egui_plot::{Line, Plot};

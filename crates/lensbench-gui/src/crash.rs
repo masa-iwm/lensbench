@@ -1,6 +1,6 @@
 //! panic の記録（GAR-19）。リリースの exe はコンソールが無いので、panic の文・場所・バックトレース・版を設定の
 //! フォルダの `crash.log` に足し、画面のスレッドならメッセージの窓も出す。計算のスレッドの panic（serve が
-//! `catch_unwind` で受ける）は、文と場所を [`lensbench_cli::serve::note_panic`] に渡して「内部エラー: …」に載せる。
+//! `catch_unwind` で受ける）は、文と場所を [`lensbench_engine::note_panic`] に渡して「内部エラー: …」に載せる。
 //! Web 版はブラウザのコンソール（console.error）に出す。
 
 use std::panic::PanicHookInfo;
@@ -25,7 +25,7 @@ pub fn install(dir: Option<std::path::PathBuf>) {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let t = text(info);
-        lensbench_cli::serve::note_panic(&t);
+        lensbench_engine::note_panic(&t);
         let thread = std::thread::current();
         let name = thread.name().unwrap_or("?").to_string();
         let bt = std::backtrace::Backtrace::force_capture();
@@ -67,7 +67,7 @@ pub fn install(dir: Option<std::path::PathBuf>) {
 pub fn install() {
     std::panic::set_hook(Box::new(|info| {
         let t = text(info);
-        lensbench_cli::serve::note_panic(&t);
+        lensbench_engine::note_panic(&t);
         web_sys::console::error_1(&format!("lensbench panic: {t}").into());
     }));
 }

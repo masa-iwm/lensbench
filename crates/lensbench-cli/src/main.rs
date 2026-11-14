@@ -1,7 +1,8 @@
 //! lensbench のコマンドライン。視野・波長の番号は OpticStudio と同じく 1 始まり。
 //!
-//! この crate はライブラリでもある（GUI が serve と同じ API を同じプロセスで呼ぶため。[`serve::call`]）。
-//! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ。
+//! 引数の解釈・文字の出力・serve の要求を運ぶ道（TCP・パイプ）を持ち、解析・系の読み方・serve の場は lensbench-engine。
+//! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ（非公開版などは拡張の解析を
+//! [`lensbench_engine::register`] してから呼ぶ）。
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -9,31 +10,26 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use lensbench_core::catalog::LensCatalog;
-use lensbench_core::coating::{self, Coatings};
+use lensbench_core::coating;
 use lensbench_core::{glass, sweep, zmx, zmx_write, System};
-use lensbench_export::{d2, mesh, scene, table};
+use lensbench_export::{d2, mesh, scene};
 use serde_json::{json, Value};
 
 mod analysis_cmd;
-pub mod arg_spec;
-mod browse;
-/// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
-pub use browse::{
-    set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
-mod defs;
 pub mod ext;
-mod provenance;
 pub mod run;
 pub mod serve;
-mod serve_analyze;
 mod serve_ipc;
-mod source;
 mod watch;
+
+use lensbench_engine::load::{
+    coat_interfaces, index_list, load_file, plugins_json, save_value, AutoCoat, CoatInterfaces,
+};
+use lensbench_engine::{builtin_plugins, provenance};
 
 mod search_cmd;
 
@@ -74,6 +70,49 @@ pub struct Common {
     /// 結果を書き出すファイル（拡張子で csv・json・npz）
     #[arg(long)]
     pub save: Option<PathBuf>,
+}
+
+impl Common {
+    /// 系の読み方
+    pub fn spec(&self) -> lensbench_engine::SysSpec {
+        lensbench_engine::SysSpec {
+            file: self.file.clone(),
+            glass_dir: self.glass_dir.clone(),
+            lens_catalog: self.lens_catalog.clone(),
+            cfg: self.cfg,
+            state: self.state.clone(),
+            path: self.path.clone(),
+        }
+    }
+}
+
+/// 重ね描き・多重構成の書き出しで並べる構成
+#[derive(Args, Clone, Default)]
+pub(crate) struct ConfigSel {
+    /// .zmx の多重構成（1 始まり、カンマ区切り、all で全部）
+    #[arg(long)]
+    cfgs: Option<String>,
+    /// プロジェクトの状態（名前のカンマ区切り、all で全部）
+    #[arg(long)]
+    states: Option<String>,
+    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+    #[arg(long)]
+    paths: Option<String>,
+}
+
+impl ConfigSel {
+    fn overlay(&self) -> lensbench_engine::load::Overlay {
+        lensbench_engine::load::Overlay {
+            cfgs: self.cfgs.clone(),
+            states: self.states.clone(),
+            paths: self.paths.clone(),
+        }
+    }
+}
+
+/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
+fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, String> {
+    lensbench_engine::load::overlay_systems(&c.spec(), &l.overlay())
 }
 
 #[derive(Subcommand)]
@@ -504,139 +543,6 @@ struct LayoutArgs {
     unfold: bool,
 }
 
-/// 重ね描き・多重構成の書き出しで並べる構成
-#[derive(Args, Clone, Default)]
-pub(crate) struct ConfigSel {
-    /// .zmx の多重構成（1 始まり、カンマ区切り、all で全部）
-    #[arg(long)]
-    cfgs: Option<String>,
-    /// プロジェクトの状態（名前のカンマ区切り、all で全部）
-    #[arg(long)]
-    states: Option<String>,
-    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
-    #[arg(long)]
-    paths: Option<String>,
-}
-
-impl ConfigSel {
-    fn any(&self) -> bool {
-        self.cfgs.is_some() || self.states.is_some() || self.paths.is_some()
-    }
-}
-
-/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
-pub(crate) fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, String> {
-    if !l.any() {
-        return Ok(vec![(String::new(), load(c)?)]);
-    }
-    let is_json = c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"));
-    if let Some(v) = &l.cfgs {
-        if is_json {
-            return Err("--cfgs は .zmx だけ（プロジェクトは --states・--paths）".into());
-        }
-        let opt = zmx::LoadOptions {
-            catalog_dirs: c.glass_dir.clone(),
-            ..Default::default()
-        };
-        let txt = glass::read_text(&c.file).map_err(|x| format!("{}: {x}", c.file.display()))?;
-        let n = zmx::parse_text(&txt)
-            .map_err(|x| x.to_string())?
-            .configurations();
-        let ks: Vec<usize> = index_list(v, n, "構成")?
-            .into_iter()
-            .map(|k| k + 1)
-            .collect();
-        let ss = zmx::load_configs(&c.file, &opt, &ks).map_err(|x| x.to_string())?;
-        return Ok(ks.iter().map(|k| format!("C{k}")).zip(ss).collect());
-    }
-    if !is_json {
-        return Err(
-            "--states・--paths はプロジェクトファイル（.json）だけ（.zmx は --cfgs）".into(),
-        );
-    }
-    let txt = lensbench_core::vfs::read_to_string(&c.file)
-        .map_err(|x| format!("{}: {x}", c.file.display()))?;
-    let p = lensbench_project::Project::from_json(&txt)?;
-    let states: Vec<Option<String>> = match &l.states {
-        None => vec![c.state.clone()],
-        Some(v) if v.eq_ignore_ascii_case("all") => {
-            let n: Vec<Option<String>> = p
-                .state_names()
-                .into_iter()
-                .map(|x| Some(x.to_string()))
-                .collect();
-            if n.is_empty() {
-                return Err("プロジェクトに状態がない".into());
-            }
-            n
-        }
-        Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
-    };
-    let cat = LensCatalog::load_registered(&c.lens_catalog)?;
-    let look = |v: &str, q: &str| cat.zmx(v, q);
-    let env = lensbench_project::Env {
-        base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
-        glass_dirs: c.glass_dir.clone(),
-        catalog: Some(&look),
-    };
-    let mut out = Vec::new();
-    for st in &states {
-        let ps = match &st {
-            Some(n) => p.with_state(n)?,
-            None => p.clone(),
-        };
-        let paths: Vec<Option<String>> = match &l.paths {
-            None => vec![c.path.clone()],
-            Some(v) if v.eq_ignore_ascii_case("all") => {
-                let v = lensbench_project::paths(&ps, &env)?;
-                if v.is_empty() {
-                    return Err("プロジェクトにビームスプリッターがない".into());
-                }
-                v.into_iter().map(Some).collect()
-            }
-            Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
-        };
-        for pa in &paths {
-            let (s, warn) =
-                lensbench_project::expand_path(&ps, &env, pa.as_deref()).map_err(|x| match pa {
-                    Some(q) => format!("経路 {q}: {x}"),
-                    None => x,
-                })?;
-            for w in warn {
-                eprintln!("注意: {w}");
-            }
-            let mut name: Vec<&str> = Vec::new();
-            if l.states.is_some() {
-                name.extend(st.as_deref());
-            }
-            if l.paths.is_some() {
-                name.extend(pa.as_deref());
-            }
-            out.push((name.join("/"), s));
-        }
-    }
-    Ok(out)
-}
-
-/// "1,3" のような 1 始まりの番号の並びを 0 始まりにする。"all" は 0..n
-fn index_list(s: &str, n: usize, what: &str) -> Result<Vec<usize>, String> {
-    if s.eq_ignore_ascii_case("all") {
-        return Ok((0..n).collect());
-    }
-    s.split(',')
-        .map(|t| {
-            let k: usize = t.trim().parse().map_err(|_| format!("{what}の番号 {t}"))?;
-            if k == 0 || k > n {
-                return Err(format!("{what} {k} はありません（1〜{n}）"));
-            }
-            Ok(k - 1)
-        })
-        .collect()
-}
-
 /// 2D と 3D で既定の光線の並びが違う（2D は断面に乗る y 扇、3D は光束の形が分かる円周）
 fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Options, String> {
     let fan: scene::Fan = match &l.fan {
@@ -666,22 +572,15 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
 }
 
 fn load(c: &Common) -> Result<System, String> {
-    // serve で系を読み込んであれば、ファイルを読まずにその系を使う
-    let s = match serve::loaded() {
-        Some(s) => s,
-        None => {
-            let s = load_file(c)?;
-            for w in s
-                .dispersion_warnings()
-                .into_iter()
-                .chain(s.macro_warnings())
-                .chain(s.import_notes.iter().cloned())
-            {
-                eprintln!("注意: {w}");
-            }
-            s
-        }
-    };
+    let s = load_file(&c.spec())?;
+    for w in s
+        .dispersion_warnings()
+        .into_iter()
+        .chain(s.macro_warnings())
+        .chain(s.import_notes.iter().cloned())
+    {
+        eprintln!("注意: {w}");
+    }
     provenance::set(&s);
     Ok(s)
 }
@@ -710,98 +609,6 @@ fn tolerance_vendors(
                 lensbench_project::tolerance::reversed_lenses(&p),
             )
         })
-        .unwrap_or_default()
-}
-
-/// ファイルから系を読む
-fn load_file(c: &Common) -> Result<System, String> {
-    if c.cfg == 0 {
-        return Err("--cfg は 1 以上".into());
-    }
-    if lensbench_project::sysfile::is_system_file(&c.file) {
-        if c.cfg != 1 || c.state.is_some() {
-            return Err("系ファイルでは --cfg・--state は使えない".into());
-        }
-        let (s, _, warn) = lensbench_project::sysfile::load(&c.file)?;
-        for w in warn {
-            eprintln!("注意: {w}");
-        }
-        return Ok(s);
-    }
-    if c.file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-    {
-        if c.cfg != 1 {
-            return Err("プロジェクトファイルでは --cfg ではなく --state で状態を選ぶ".into());
-        }
-        let cat = LensCatalog::load_registered(&c.lens_catalog)?;
-        let look = |v: &str, p: &str| cat.zmx(v, p);
-        let (s, warn) = lensbench_project::load_path_report(
-            &c.file,
-            &c.glass_dir,
-            Some(&look),
-            c.state.as_deref(),
-            c.path.as_deref(),
-        )?;
-        for w in warn {
-            eprintln!("注意: {w}");
-        }
-        return Ok(s);
-    }
-    if c.state.is_some() {
-        return Err("--state はプロジェクトファイル（.json）だけ（.zmx は --cfg）".into());
-    }
-    if c.path.is_some() {
-        return Err("--path はプロジェクトファイル（.json）だけ".into());
-    }
-    let opt = zmx::LoadOptions {
-        cfg: c.cfg,
-        catalog_dirs: c.glass_dir.clone(),
-        ..Default::default()
-    };
-    zmx::load_with(&c.file, &opt).map_err(|e| e.to_string())
-}
-
-/// プロジェクトファイルの状態の名前（.zmx なら空）
-/// プロジェクトファイルのビームスプリッターの経路の一覧（.zmx・BS なしなら空）
-pub(crate) fn split_paths(c: &Common) -> Result<Vec<String>, String> {
-    if !c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-        || lensbench_project::sysfile::is_system_file(&c.file)
-    {
-        return Ok(Vec::new());
-    }
-    let t = lensbench_core::vfs::read_to_string(&c.file)
-        .map_err(|x| format!("{}: {x}", c.file.display()))?;
-    let mut p = lensbench_project::Project::from_json(&t)?;
-    if let Some(st) = &c.state {
-        p = p.with_state(st)?;
-    }
-    let cat = LensCatalog::load_registered(&c.lens_catalog)?;
-    let look = |v: &str, q: &str| cat.zmx(v, q);
-    let env = lensbench_project::Env {
-        base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
-        glass_dirs: c.glass_dir.clone(),
-        catalog: Some(&look),
-    };
-    lensbench_project::paths(&p, &env)
-}
-
-pub(crate) fn state_names(c: &Common) -> Vec<String> {
-    if !c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-    {
-        return Vec::new();
-    }
-    lensbench_core::vfs::read_to_string(&c.file)
-        .ok()
-        .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-        .map(|p| p.states.iter().map(|s| s.name.clone()).collect())
         .unwrap_or_default()
 }
 
@@ -845,23 +652,6 @@ fn brief(v: &Value) -> Value {
     }
 }
 
-/// --save: 解析の結果を書き出す（json はそのまま、csv・npz は表にして）
-pub(crate) fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
-    let json = p
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"));
-    if json {
-        let mut v = v.clone();
-        if let Some(o) = v.as_object_mut() {
-            o.insert("provenance".into(), provenance::value());
-        }
-        let s = serde_json::to_string_pretty(&v).unwrap();
-        lensbench_core::vfs::write(p, s + "\n").map_err(|x| format!("{}: {x}", p.display()))
-    } else {
-        table::from_json(v).save(p)
-    }
-}
-
 impl Cmd {
     /// 系のファイルを読む解析の共通の引数
     fn common_mut(&mut self) -> Option<&mut Common> {
@@ -875,40 +665,6 @@ impl Cmd {
         }
     }
 
-    /// 解析が読み書きするファイルのパスと、書き出しか（--save・--out・ghost の膜表など。serve で場所を確かめる）
-    fn paths_mut(&mut self) -> Vec<(&mut PathBuf, bool)> {
-        let (c, mut v): (Option<&mut Common>, Vec<(&mut PathBuf, bool)>) = match self {
-            Cmd::Layout { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
-            Cmd::Optimize {
-                c, out, terms_file, ..
-            } => (
-                Some(c),
-                out.iter_mut()
-                    .map(|p| (p, true))
-                    .chain(terms_file.iter_mut().map(|p| (p, false)))
-                    .collect(),
-            ),
-            Cmd::Tolerance {
-                c,
-                spec,
-                save_worst,
-                comp_csv,
-                ..
-            } => {
-                let mut v: Vec<_> = spec.iter_mut().map(|p| (p, false)).collect();
-                v.extend(save_worst.iter_mut().map(|p| (p, true)));
-                v.extend(comp_csv.iter_mut().map(|p| (p, true)));
-                (Some(c), v)
-            }
-            Cmd::Convert { c, out } => (Some(c), vec![(out, true)]),
-            other => (other.common_mut(), Vec::new()),
-        };
-        if let Some(p) = c.and_then(|c| c.save.as_mut()) {
-            v.push((p, true));
-        }
-        v
-    }
-
     /// 結果を書き出すファイル（登録簿の解析は自分の形で書くので除く）
     fn save(&self) -> Option<PathBuf> {
         match self {
@@ -920,35 +676,6 @@ impl Cmd {
             _ => None,
         }
     }
-}
-
-/// 同梱のプラグインを登録した表（exe に組み込む分）に、プロセスで共通の登録
-/// （[`lensbench_core::plugin::global`]、この CLI を組み込んだ exe が足した分）を重ねたもの
-pub fn builtin_plugins() -> lensbench_core::plugin::Registry {
-    lensbench_project::plugins::builtin()
-}
-
-pub(crate) fn plugins_json() -> Value {
-    let reg = builtin_plugins();
-    let pairs = |v: &[(String, String)]| -> Value {
-        v.iter()
-            .map(|(k, d)| json!({ "name": k, "doc": d }))
-            .collect()
-    };
-    let list: Vec<Value> = reg
-        .list()
-        .into_iter()
-        .filter_map(|(name, kind)| {
-            let pl = reg.get(&name).ok()?;
-            let s = pl.spec();
-            let params: Vec<Value> = pl.params().iter().map(arg_spec::param_json).collect();
-            Some(json!({
-                "name": name, "kind": kind.as_str(), "doc": s.doc, "needs_system": s.needs_system,
-                "config": pairs(&s.config), "params": params, "inputs": pairs(&s.inputs), "outputs": pairs(&s.outputs),
-            }))
-        })
-        .collect();
-    json!({ "plugins": list })
 }
 
 thread_local! {
@@ -1099,13 +826,8 @@ fn tolerance_brief(out: &Value) -> Value {
     out
 }
 
-/// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。serve・watch もこれを使う
+/// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。watch・ext::run_cli もこれを使う
 fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
-    execute_in(cmd)
-}
-
-/// [`execute`] を実行の場（serve の中か。拡張のサブコマンドに渡す）を与えて
-fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
     let e = |e: lensbench_core::Error| e.to_string();
     let save = cmd.save();
     provenance::clear();
@@ -1127,8 +849,8 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
                 .run_save(
                     &lensbench_analysis::Cx {
                         system: &s,
-                        source: Some(&source::FileSource {
-                            c: &a.c,
+                        source: Some(&lensbench_engine::source::FileSource {
+                            c: &a.c.spec(),
                             replay: None,
                         }),
                     },
@@ -1196,7 +918,7 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
             let systems = overlay_systems(&c, &l.sel)?;
             let color: d2::ColorBy = match &l.color {
                 Some(v) => v.parse()?,
-                None if l.sel.any() => d2::ColorBy::Config,
+                None if l.sel.overlay().any() => d2::ColorBy::Config,
                 None => d2::ColorBy::Field,
             };
             let offset = match &l.offset {
@@ -1355,7 +1077,7 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
             }
             // serve の中（--root・--allow-remote）なら zplm の file・macro_dirs の場所を確かめる
             for v in specs.iter_mut() {
-                serve::check_term_paths(v).map_err(|x| x.msg)?;
+                lensbench_engine::Files::Any.check_terms(v)?;
             }
             for (i, v) in specs.iter().enumerate() {
                 let t = lensbench_project::merit::term_from_json(v, &p.configs)
@@ -1438,7 +1160,7 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
                 v["seed"] = json!(n);
             }
             if let Some(t) = v.get_mut("terms") {
-                serve::check_term_paths(t).map_err(|x| x.msg)?;
+                lensbench_engine::Files::Any.check_terms(t)?;
             }
             let (vendors, reversed) = tolerance_vendors(&c);
             let ms = lensbench_project::tolerance::spec_from_json_with(
@@ -1597,7 +1319,7 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
                     .collect::<Result<_, _>>()?,
                 fits,
             };
-            let v = browse::search(&lens_catalog, &glass_dir, &q)?;
+            let v = lensbench_engine::browse::search(&lens_catalog, &glass_dir, &q)?;
             if !json {
                 print_catalog_table(&v);
                 return Ok((false, Value::Null));
@@ -1978,64 +1700,6 @@ fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
         save_value(p, &out)?;
     }
     Ok((json_out, out))
-}
-
-/// 膜の名前で自動で読んだ膜（膜, パス, 注記）
-type AutoCoat = (String, String, String);
-
-/// 系の膜の境界（[`coat_interfaces`]）
-pub(crate) struct CoatInterfaces {
-    /// 境界の並び（surface・key・kind・note）
-    pub list: Vec<Value>,
-    /// 実測表が要る境界の KEY
-    pub needs: Vec<String>,
-    /// 膜の名前で自動で読んだ膜
-    pub auto: Vec<AutoCoat>,
-}
-
-/// 系 s の膜の境界（[`coatings`] の 1 構成分）
-pub(crate) fn coat_interfaces(s: &System, tables: &[PathBuf]) -> Result<CoatInterfaces, String> {
-    let e = |e: lensbench_core::Error| e.to_string();
-    let mut c = Coatings::for_system(s).map_err(e)?;
-    for t in tables {
-        c.load_file(t).map_err(e)?;
-    }
-    let mut auto = Vec::new();
-    for (coat, p) in &c.auto {
-        let p = p.display().to_string();
-        // 注記: モデルの NOTE、近似の多層膜（.lbcs）なら近似の膜であること
-        let note = match c.models.get(coat) {
-            Some(m) => m.note.clone(),
-            None if p.to_ascii_lowercase().ends_with(".lbcs") => {
-                "近似の膜（分光の曲線に合わせた多層膜）".to_string()
-            }
-            None => String::new(),
-        };
-        auto.push((coat.clone(), p, note));
-    }
-    let (keys, _) = coating::media_keys(s);
-    let mut v = Vec::new();
-    let mut need = Vec::new();
-    for (j, k) in keys.iter().enumerate() {
-        let Some(k) = k else { continue };
-        let kind = c.kind(k);
-        let mut it = json!({ "surface": j, "key": k, "kind": kind.name() });
-        if kind == coating::CoatKind::Model {
-            let coat = k.split('|').next().unwrap_or("");
-            if let Some(m) = c.models.get(coat).filter(|m| !m.note.is_empty()) {
-                it["note"] = json!(m.note);
-            }
-        }
-        v.push(it);
-        if kind.needs_table() && !need.contains(k) {
-            need.push(k.clone());
-        }
-    }
-    Ok(CoatInterfaces {
-        list: v,
-        needs: need,
-        auto,
-    })
 }
 
 fn coatings(
@@ -2607,26 +2271,9 @@ fn negative_numbers(c: clap::Command) -> clap::Command {
         .mut_subcommands(negative_numbers)
 }
 
-/// 同梱の解析の登録簿（拡張の解析は除く）
-pub(crate) fn builtin_analyses() -> lensbench_analysis::Analyses {
-    let mut a = lensbench_analysis::Analyses::builtin().clone();
-    defs::register(&mut a);
-    a
-}
-
-/// 同梱のサブコマンド・解析の名前（拡張の解析は除く）
-pub(crate) fn builtin_names() -> Vec<String> {
-    use clap::CommandFactory;
-    Cli::command()
-        .get_subcommands()
-        .map(|c| c.get_name().to_string())
-        .chain(builtin_analyses().iter().map(|a| a.meta().name.to_string()))
-        .collect()
-}
-
 /// 解析の登録簿（同梱の解析と、exe の入口で足した拡張の解析）
 pub(crate) fn analyses() -> std::sync::Arc<lensbench_analysis::Analyses> {
-    ext::analyses()
+    lensbench_engine::analyses()
 }
 
 /// 解析の登録簿のサブコマンド（設定のスキーマから）

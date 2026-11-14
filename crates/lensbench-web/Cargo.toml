@@ -24,7 +24,7 @@ flate2 = "1"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-gui = { path = "../lensbench-gui" }
-lensbench-cli = { path = "../lensbench-cli" }
+lensbench-engine = { path = "../lensbench-engine" }
 lensbench-cad = { path = "../lensbench-cad" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

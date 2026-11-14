@@ -470,6 +470,18 @@ impl Preset {
 
 #[cfg(test)]
 mod tests {
+
+    /// 並べる解析はどれも設定の項目が引ける（欄が消えない。serve の analysis_args と同じ）
+    #[test]
+    fn every_listed_analysis_has_args() {
+        for (cmd, _, _) in ANALYSES {
+            assert!(
+                lensbench_engine::params::analysis_args(cmd).is_some(),
+                "{cmd}"
+            );
+        }
+    }
+
     use super::*;
 
     /// 別の窓から戻したパネルは、出す前と同じ所（並びの何番目・分けた側と割合）に戻る

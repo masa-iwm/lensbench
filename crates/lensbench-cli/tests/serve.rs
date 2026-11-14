@@ -226,6 +226,11 @@ fn loop_thickness() {
     assert!(sv
         .error("analyze", json!({ "cmd": "catalog-list" }))
         .contains("解析ではない"));
+    // 解析の値の誤りは文だけ（「不正: 」を付けない・重ねない）
+    let e = sv.error("analyze", json!({ "cmd": "mech-check" }));
+    assert!(e.starts_with("機構部品がない"), "{e}");
+    let e = sv.error("analyze", json!({ "cmd": "fringe", "beam1": "9" }));
+    assert!(!e.contains("不正"), "{e}");
     assert!(!sv
         .error("set", json!({ "values": { "99.t": 1.0 } }))
         .is_empty());
@@ -563,7 +568,6 @@ fn remote_does_not_touch_files() {
     deny(sv.error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] })));
     deny(sv.error("write", json!({ "path": "x.zmx" })));
     deny(sv.error("analyze", json!({ "cmd": "spot", "save": "out.json" })));
-    deny(sv.error("analyze", json!({ "cmd": "layout", "out": ["a.svg"] })));
     deny(sv.error("layout_export", json!({ "file": "a.svg" })));
     // 差し替え探索のプロジェクトは中のパスを確かめられないので受けない
     deny(sv.error(
@@ -642,23 +646,11 @@ fn root_limits_files() {
     let tol = json!({ "trials": 1, "merit": "none", "tols": [{"param": "1.t", "pm": 0.01}],
         "terms": [{"type": "zplm", "file": zp}] });
     outside(sv.error("tolerance", tol));
-    // analyze 経由の optimize の --terms・--term、tolerance の --set の terms も同じく確かめる
-    std::fs::write(dir.join("terms.json"), "[]").unwrap();
-    let tf = dir.join("terms.json").display().to_string();
-    outside(sv.error(
-        "analyze",
-        json!({ "cmd": "optimize", "var": ["3.t"], "terms": tf }),
-    ));
-    let zt = json!({"type": "zplm", "file": zp}).to_string();
-    outside(sv.error(
-        "analyze",
-        json!({ "cmd": "optimize", "var": ["3.t"], "merit": "none", "term": [zt] }),
-    ));
-    let set = json!({ "terms": [{"type": "zplm", "file": zp}] }).to_string();
-    outside(sv.error(
-        "analyze",
-        json!({ "cmd": "tolerance", "trials": 1, "set": [set] }),
-    ));
+    // optimize・tolerance・layout は analyze では受けない（専用のメソッドで）
+    for c in ["optimize", "tolerance", "layout"] {
+        let e = sv.error("analyze", json!({ "cmd": c }));
+        assert!(e.contains("解析ではない"), "{e}");
+    }
     sv.stop();
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -834,11 +826,11 @@ fn preview_layout_matches_load_and_layout() {
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
         "lens_catalog": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
     });
-    let pre = lensbench_cli::serve::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
-    lensbench_cli::serve::call("load", &load, None).unwrap();
-    let v = lensbench_cli::serve::call("layout", &json!({ "rays": 5 }), None).unwrap();
+    let pre = lensbench_engine::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
+    lensbench_engine::call("load", &load, None).unwrap();
+    let v = lensbench_engine::call("layout", &json!({ "rays": 5 }), None).unwrap();
     assert_eq!(pre, v);
-    assert!(lensbench_cli::serve::preview_layout(&json!({}), &json!({})).is_err());
+    assert!(lensbench_engine::preview_layout(&json!({}), &json!({})).is_err());
 }
 
 /// layout の見る面: xz 面は [z, x]。回転対称な玉の断面は yz 面と同じで、光線の扇の既定は x
@@ -849,9 +841,8 @@ fn layout_plane_xz() {
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
         "lens_catalog": [Path::new(ROOT).join("examples/lenses/LB").display().to_string()],
     });
-    let yz = lensbench_cli::serve::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
-    let xz =
-        lensbench_cli::serve::preview_layout(&load, &json!({ "rays": 5, "plane": "xz" })).unwrap();
+    let yz = lensbench_engine::preview_layout(&load, &json!({ "rays": 5 })).unwrap();
+    let xz = lensbench_engine::preview_layout(&load, &json!({ "rays": 5, "plane": "xz" })).unwrap();
     assert_eq!(yz["plane"], "yz");
     assert_eq!(xz["plane"], "xz");
     let close = |a: &Value, b: &Value| {
@@ -885,7 +876,7 @@ fn layout_plane_xz() {
             assert!(end_x(r).abs() < 1e-9, "{r}");
         }
     }
-    assert!(lensbench_cli::serve::preview_layout(&load, &json!({ "plane": "xy" })).is_err());
+    assert!(lensbench_engine::preview_layout(&load, &json!({ "plane": "xy" })).is_err());
 }
 
 /// layout の重ね描き: configs で BS の経路を知り、paths で重ねる。ずらすと構成 k の光線は k 倍ずれる
@@ -953,8 +944,7 @@ fn preview_layout_overlay() {
         "file": Path::new(ROOT).join("examples/projects/P16_twyman_green.json").display().to_string(),
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
-    let v =
-        lensbench_cli::serve::preview_layout(&load, &json!({ "rays": 3, "paths": "all" })).unwrap();
+    let v = lensbench_engine::preview_layout(&load, &json!({ "rays": 3, "paths": "all" })).unwrap();
     assert!(
         v["configs"].as_array().unwrap().len() >= 2,
         "{}",
@@ -970,7 +960,7 @@ fn layout_unfold_and_3d() {
         "file": Path::new(ROOT).join("examples/projects/P3_fold.json").display().to_string(),
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
-    let call = |o: Value| lensbench_cli::serve::preview_layout(&load, &o);
+    let call = |o: Value| lensbench_engine::preview_layout(&load, &o);
     let yz = call(json!({ "rays": 5 })).unwrap();
     let un = call(json!({ "rays": 5, "unfold": true })).unwrap();
     assert_eq!(un["unfold"], true);
@@ -1053,7 +1043,7 @@ fn layout_has_mechanics() {
         "file": Path::new(ROOT).join("examples/projects/P19_tube_cage.json").display().to_string(),
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
-    let call = |o: Value| lensbench_cli::serve::preview_layout(&load, &o).unwrap();
+    let call = |o: Value| lensbench_engine::preview_layout(&load, &o).unwrap();
     let v = call(json!({ "rays": 3 }));
     let ms = v["mechs"].as_array().unwrap();
     let names: Vec<&str> = ms.iter().map(|m| m["name"].as_str().unwrap()).collect();

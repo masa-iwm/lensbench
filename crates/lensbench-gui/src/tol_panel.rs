@@ -3,8 +3,8 @@
 //!
 //! 設定は `lensbench tolerance --spec` と同じ JSON（[`TolPanel::spec`]）で、そのままファイルに保存・読込できる。
 //! 補償子・評価関数・構成の欄は最適化のパネル（[`crate::optim_panel`]）と同じものを使う。
-//! 走っている間は [`lensbench_cli::serve::tolerance_progress`] で進み具合を読み、止めるのは
-//! [`lensbench_cli::serve::tolerance_cancel`]。
+//! 走っている間は [`lensbench_engine::tolerance_progress`] で進み具合を読み、止めるのは
+//! [`lensbench_engine::tolerance_cancel`]。
 
 use egui::{RichText, Ui};
 use egui_plot::{Line, Plot, PlotPoints};

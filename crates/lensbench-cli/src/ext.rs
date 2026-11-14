@@ -1,49 +1,7 @@
-//! 拡張の解析: この CLI を組み込んだ exe（非公開版など）が足す解析（解析の登録簿の [`lensbench_analysis::Analysis`]）。
-//!
-//! 足した解析は、同梱のものと同じく CLI のサブコマンド・`serve` の `analyze`・`watch`・GUI の解析（GUI 側の見せ方の登録は
-//! `lensbench_gui::ext`）で使える。引数は設定の型のスキーマから作り、系の読み方（別の構成・状態の系、プロジェクトファイル）は
-//! [`lensbench_analysis::Cx::source`] で引く。exe の入口で [`register`] してから [`crate::main`] を呼ぶ。
+//! 拡張の解析を CLI から使う: 足した解析（[`lensbench_engine::register`]）は同梱のものと同じく CLI のサブコマンドになる。
+//! [`run_cli`] はサブコマンドを 1 つ実行して結果の JSON を返す（試験・組み込み用）。
 
-use std::sync::{Arc, RwLock};
-
-use lensbench_analysis::{Analyses, Analysis};
 use serde_json::Value;
-
-static EXTRA: RwLock<Option<Analyses>> = RwLock::new(None);
-
-/// 同梱の解析と足した解析を並べた登録簿（足すと作り直す）
-static ALL: RwLock<Option<Arc<Analyses>>> = RwLock::new(None);
-
-/// 解析を足す（同じ名前は置き換える）。同梱のサブコマンド・解析と同じ名前は誤り
-pub fn register<A: Analysis>(a: A) -> Result<(), String> {
-    let name = a.meta().name;
-    if crate::builtin_names().iter().any(|n| n == name) {
-        return Err(format!("解析 {name} は同梱のものと同じ名前"));
-    }
-    EXTRA
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .get_or_insert_with(Analyses::default)
-        .add(a);
-    *ALL.write().unwrap_or_else(|e| e.into_inner()) = None;
-    Ok(())
-}
-
-/// 解析の登録簿（同梱の解析と、足した拡張の解析）
-pub(crate) fn analyses() -> Arc<Analyses> {
-    if let Some(a) = ALL.read().unwrap_or_else(|e| e.into_inner()).clone() {
-        return a;
-    }
-    let mut a = crate::builtin_analyses();
-    if let Some(x) = EXTRA.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
-        for d in x.iter() {
-            a.add_dyn(d.clone());
-        }
-    }
-    let a = Arc::new(a);
-    *ALL.write().unwrap_or_else(|e| e.into_inner()) = Some(a.clone());
-    a
-}
 
 /// コマンドラインの引数（先頭は exe の名前）でサブコマンドを 1 つ実行し、結果の JSON を返す（試験・組み込み用。
 /// 標準出力には出さない。--save は書く）
@@ -113,7 +71,7 @@ mod tests {
 
     #[test]
     fn ext_analysis_runs_in_cli_serve_and_arg_spec() {
-        super::register(Toy).unwrap();
+        lensbench_engine::register(Toy).unwrap();
         let zmx = format!("{ROOT}/tests/refs/A0/system.zmx");
         let glass = format!("{ROOT}/tests/glass");
         // CLI
@@ -138,7 +96,7 @@ mod tests {
         // 引数の誤りは clap の誤り
         assert!(super::run_cli(["lensbench", "toy-ext", &zmx, "--nope"]).is_err());
         // GUI の引数の欄: 選択は choice、オブジェクトは json、系の読み方の引数は出ない
-        let a = crate::arg_spec::analysis_args("toy-ext").unwrap();
+        let a = lensbench_engine::params::analysis_args("toy-ext").unwrap();
         let m = a.iter().find(|x| x["name"] == "mode").unwrap();
         assert_eq!(m["type"], "choice");
         assert_eq!(m["choices"], json!(["a", "b"]));
@@ -146,17 +104,40 @@ mod tests {
         assert_eq!(o["type"], "json");
         assert!(a.iter().all(|x| x["name"] != "glass_dir"));
         // serve の analyze: 読み込んだ系と読み方
-        crate::serve::call("load", &json!({ "file": zmx, "glass_dir": [glass] }), None).unwrap();
-        let r = crate::serve::call(
-            "analyze",
-            &json!({ "cmd": "toy-ext", "field": 1, "opt": { "x": [1, 2] } }),
-            None,
-        )
-        .unwrap();
+        let sv = lensbench_engine::Session::new();
+        sv.call("load", &json!({ "file": zmx, "glass_dir": [glass] }), None)
+            .unwrap();
+        let r = sv
+            .call(
+                "analyze",
+                &json!({ "cmd": "toy-ext", "field": 1, "opt": { "x": [1, 2] } }),
+                None,
+            )
+            .unwrap();
         assert_eq!(r["fields"], json!([0]));
         assert_eq!(r["opt"], json!({ "x": [1, 2] }));
-        // 同梱の名前は足せない
-        assert!(super::register(Named("spot")).is_err());
+        // 同梱の解析・CLI のサブコマンドの名前は足せない
+        assert!(lensbench_engine::register(Named("spot")).is_err());
+        assert!(lensbench_engine::register(Named("optimize")).is_err());
+    }
+
+    /// 拡張の解析が使えない名前の一覧（engine の RESERVED）は、登録簿の外の CLI のサブコマンドとちょうど同じ
+    #[test]
+    fn reserved_names_match_cli_subcommands() {
+        use clap::CommandFactory;
+        let builtin = lensbench_engine::builtin_analyses();
+        let mut cli: Vec<String> = crate::Cli::command()
+            .get_subcommands()
+            .map(|c| c.get_name().to_string())
+            .filter(|n| builtin.get(n).is_none())
+            .collect();
+        cli.sort();
+        let mut r: Vec<String> = lensbench_engine::registry::RESERVED
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
+        r.sort();
+        assert_eq!(cli, r);
     }
 
     /// 名前だけ違う試しの拡張

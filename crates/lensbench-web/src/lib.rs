@@ -30,7 +30,7 @@ pub struct Extra {
     pub lens_dirs: Vec<String>,
     /// 前もって作ったカタログの一覧（置き場のパス、`.json` か `.json.gz`。束に入れておく）。既定のフォルダの並び
     /// （見本の LB・LBP と lens_dirs、ガラスは見本と glass_dirs）で一覧を頼まれたら、読む代わりにこれを返す
-    /// （`lensbench_cli::set_prepared_lens_list`）。ビルドのときに `lensbench catalog-search --json` で作る
+    /// （`lensbench_engine::set_prepared_lens_list`）。ビルドのときに `lensbench catalog-search --json` で作る
     pub lens_index: Option<&'static str>,
     /// 品の STEP の共有の置き場の URL（例 `/cad`。同じサイトの口なら Access のログインがそのまま効く）。
     /// あれば、カタログの詳細から品の STEP を取り、3D・書き出しで機構部品を詳しい形で描ける（#158）
@@ -175,7 +175,7 @@ mod web {
         lens_dirs.extend(extra.lens_dirs.iter().cloned());
         if let Some(f) = extra.lens_index {
             let pb = |v: &[String]| v.iter().map(std::path::PathBuf::from).collect();
-            lensbench_cli::set_prepared_lens_list(pb(&lens_dirs), pb(&glass_dirs), f.into());
+            lensbench_engine::set_prepared_lens_list(pb(&lens_dirs), pb(&glass_dirs), f.into());
         }
         (glass_dirs, lens_dirs)
     }

@@ -99,7 +99,7 @@ fn step_is_fetched_once_and_cached() {
     .unwrap();
     let cache = dir.join("cache");
     let call = |item: &str| -> Result<Value, String> {
-        lensbench_cli::serve::call(
+        lensbench_engine::call(
             "cad_step",
             &json!({ "catalog": cat.to_str().unwrap(), "item": item, "cache": cache.to_str().unwrap() }),
             None,

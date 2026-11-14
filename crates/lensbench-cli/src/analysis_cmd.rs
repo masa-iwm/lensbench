@@ -169,25 +169,3 @@ pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> Result<AnalysisCmd, String>
         params: Value::Object(o),
     })
 }
-
-/// 設定の中のファイルのパス（書き出しか）。serve が場所を確かめて置き換える
-pub fn paths_mut<'a>(a: &dyn DynAnalysis, params: &'a mut Value) -> Vec<(&'a mut Value, bool)> {
-    let ps = a.params();
-    let Some(o) = params.as_object_mut() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for (k, v) in o.iter_mut() {
-        let Some(p) = ps.iter().find(|p| &p.name == k) else {
-            continue;
-        };
-        match (p.ty, v) {
-            (ParamTy::Path, v @ Value::String(_)) => out.push((v, p.write)),
-            (ParamTy::Paths, Value::Array(xs)) => {
-                out.extend(xs.iter_mut().map(|x| (x, p.write)));
-            }
-            _ => {}
-        }
-    }
-    out
-}

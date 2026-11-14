@@ -44,7 +44,8 @@ Windows の GUI の exe は CI の成果物 `lensbench-gui-windows` から取れ
 | `crates/lensbench-export` | 書き出し（レイアウトの 2D・3D・STEP、追跡結果の CSV・JSON・npz） |
 | `crates/lensbench-analysis` | 同梱のプラグイン（系を追跡する解析） |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
-| `crates/lensbench-cli` | コマンドライン（`lensbench`）。serve の API（`serve::call`）をライブラリとしても出す |
+| `crates/lensbench-engine` | 実行の層: 解析の登録簿・系の読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
+| `crates/lensbench-cli` | コマンドライン（`lensbench`）。引数の解釈と serve の要求を運ぶ道（TCP・パイプ） |
 | `crates/lensbench-gui` | GUI（`lensbench-gui`、eframe・egui）。計算は serve と同じ API をプロセス内で呼ぶ |
 | `crates/lensbench-py` | Python バインディング（pyo3・maturin、ワークスペースのメンバー） |
 | `clients/python` | `lensbench serve` の Python クライアント（標準ライブラリだけ） |

@@ -5222,7 +5222,7 @@ mod tests {
         let f = std::env::temp_dir().join(format!("lensbench-ap-{}.json", std::process::id()));
         lensbench_core::vfs::write(&f, proj.to_string()).unwrap();
         let gd = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass");
-        let v = lensbench_cli::serve::preview_layout(
+        let v = lensbench_engine::preview_layout(
             &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
             &json!({}),
         )
@@ -5351,7 +5351,7 @@ mod tests {
         let f = std::env::temp_dir().join(format!("lensbench-multi-{}.json", std::process::id()));
         lensbench_core::vfs::write(&f, proj.to_string()).unwrap();
         let gd = root.join("tests/glass");
-        let v = lensbench_cli::serve::preview_layout(
+        let v = lensbench_engine::preview_layout(
             &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
             &json!({}),
         )
@@ -5363,7 +5363,7 @@ mod tests {
         let mut sp = short.project();
         sp["glass_catalogs"] = json!(["SCHOTT"]);
         lensbench_core::vfs::write(&f, sp.to_string()).unwrap();
-        let v2 = lensbench_cli::serve::preview_layout(
+        let v2 = lensbench_engine::preview_layout(
             &json!({ "file": f.display().to_string(), "glass_dir": [gd.display().to_string()] }),
             &json!({}),
         );

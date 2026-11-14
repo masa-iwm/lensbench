@@ -1,7 +1,7 @@
 //! 拡張の解析（GUI の側）: この GUI を組み込んだ exe（非公開版など）が足す解析を、解析パネルの一覧・図・設定の欄に
-//! 載せる。計算は解析の登録簿に足した拡張の解析（`lensbench_cli::ext::register`）で、ここでは見せ方だけを登録する。
+//! 載せる。計算は解析の登録簿に足した拡張の解析（`lensbench_engine::register`）で、ここでは見せ方だけを登録する。
 //!
-//! exe の入口で `lensbench_cli::ext::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
+//! exe の入口で `lensbench_engine::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
 //! [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
 
 use std::sync::RwLock;
@@ -41,7 +41,7 @@ pub struct ObjectArg {
     pub title: &'static str,
     /// 欄の下の説明
     pub note: &'static str,
-    /// 項目（`lensbench_cli::arg_spec::param_json` と同じ形の JSON の並び）
+    /// 項目（`lensbench_engine::params::param_json` と同じ形の JSON の並び）
     pub specs: fn() -> Vec<Value>,
     /// 項目の組（名前の頭, 見出し）。並べた順に、頭が合う項目を組に入れる（どれにも合わない項目は最後の組の後に）
     pub groups: &'static [(&'static str, &'static str)],

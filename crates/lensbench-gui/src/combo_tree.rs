@@ -773,7 +773,7 @@ mod tests {
         let build = |c: &Combo| {
             lensbench_core::vfs::write(&f, c.project().to_string()).unwrap();
             let load = json!({ "file": f.display().to_string(), "glass_dir": [glass] });
-            lensbench_cli::serve::preview_layout(&load, &json!({}))
+            lensbench_engine::preview_layout(&load, &json!({}))
         };
         let mut c = twyman();
         c.object_distance = Some(100.0);

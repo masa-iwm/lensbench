@@ -1,13 +1,15 @@
 //! serve の swap（GUI）: CLI の swap と同じ結果、count_only、project で渡した組合せ。
 //! 系はプロセスに 1 つなので、別のテストの実行ファイルにしている。
 
+use lensbench_engine::Session;
 use serde_json::{json, Value};
 use std::path::Path;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-fn call(m: &str, p: Value) -> Value {
-    lensbench_cli::serve::call(m, &p, None).unwrap_or_else(|e| panic!("{m}: {}", e.message))
+fn call(sv: &Session, m: &str, p: Value) -> Value {
+    sv.call(m, &p, None)
+        .unwrap_or_else(|e| panic!("{m}: {}", e.message))
 }
 
 fn path(f: &str) -> String {
@@ -16,7 +18,9 @@ fn path(f: &str) -> String {
 
 #[test]
 fn swap_serve() {
+    let sv = Session::new();
     call(
+        &sv,
         "load",
         json!({
             "file": path("examples/projects/P18_swap_two.json"),
@@ -31,13 +35,13 @@ fn swap_serve() {
     });
     let mut c = spec.clone();
     c["count_only"] = json!(true);
-    let n = call("swap", c);
+    let n = call(&sv, "swap", c);
     let k = n["slots"][0].as_array().unwrap().len();
     assert!(k >= 2 && k % 2 == 0, "{n}");
     assert_eq!(n["count"], json!(k));
     assert!(n.get("results").is_none());
 
-    let r = call("swap", spec.clone());
+    let r = call(&sv, "swap", spec.clone());
     assert_eq!(r["count"], json!(k));
     assert_eq!(r["done"], json!(k));
     assert_eq!(r["cancelled"], json!(false));
@@ -47,7 +51,7 @@ fn swap_serve() {
         .map(|x| x["merit"].as_f64().unwrap_or(f64::INFINITY))
         .collect();
     assert!(m.windows(2).all(|w| w[0] <= w[1]), "{m:?}");
-    assert!(lensbench_cli::serve::swap_progress().is_none());
+    assert!(sv.swap_progress().is_none());
 
     // CLI（lensbench_project::swap）と同じ
     let p = lensbench_project::Project::from_json(
@@ -79,13 +83,13 @@ fn swap_serve() {
     let mut q = spec.clone();
     q["project"] = pv;
     q["top"] = json!(1);
-    let r2 = call("swap", q);
+    let r2 = call(&sv, "swap", q);
     assert_eq!(r2["results"].as_array().unwrap().len(), 1);
     assert_eq!(r2["done"], json!(k));
 
     // 間違い
     let bad = json!({"slots": [{"block": "nope"}]});
-    assert!(lensbench_cli::serve::call("swap", &bad, None).is_err());
+    assert!(sv.call("swap", &bad, None).is_err());
     let bad = json!({"slots": [{"block": "A"}], "extra": 1});
-    assert!(lensbench_cli::serve::call("swap", &bad, None).is_err());
+    assert!(sv.call("swap", &bad, None).is_err());
 }

@@ -11,7 +11,7 @@ autotests = false
 # src/main.rs はライブラリの根（下の [lib]）。実行ファイルとして自動で拾わない
 autobins = false
 
-# ライブラリの根は main.rs のまま（GUI が serve の API を呼ぶため lib にした。ファイル名を変えると他の変更と衝突しやすい）
+# ライブラリの根は main.rs のまま（ext::run_cli・serve の要求を運ぶ道を試験・非公開版の exe から呼ぶ）
 
 [lints]
 workspace = true
@@ -27,6 +27,8 @@ path = "src/bin/lensbench.rs"
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
+# 解析の登録簿・系の読み方・serve の場
+lensbench-engine = { path = "../lensbench-engine" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-export = { path = "../lensbench-export" }
 lensbench-verify = { path = "../lensbench-verify" }

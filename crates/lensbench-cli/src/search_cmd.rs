@@ -4,9 +4,6 @@ use std::path::PathBuf;
 
 use clap::Args;
 use lensbench_core::catalog::LensCatalog;
-use lensbench_core::optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
-use lensbench_core::sweep::RmsRef;
-use lensbench_core::zoom::{self, ZoomSpec};
 use lensbench_core::{zmx, System};
 use lensbench_project::swap::{SwapSearch, SwapSpec};
 use lensbench_project::{Env, Project};
@@ -91,18 +88,6 @@ fn is_json(p: &std::path::Path) -> bool {
         .is_some_and(|x| x.eq_ignore_ascii_case("json"))
 }
 
-fn stop_name(s: Stop) -> &'static str {
-    s.as_str()
-}
-
-fn num(x: f64) -> Value {
-    if x.is_finite() {
-        json!(x)
-    } else {
-        Value::Null
-    }
-}
-
 /// 状態ごとの系と、その名前
 fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
     let names: Option<Vec<String>> = a.states.as_ref().map(|s| {
@@ -161,122 +146,20 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
     }
 }
 
-fn parse_var(s: &System, v: &str) -> Result<(lensbench_core::param::Param, (f64, f64)), String> {
-    let (spec, range) = match v.split_once('=') {
-        Some((a, b)) => (a.trim(), Some(b)),
-        None => (v.trim(), None),
-    };
-    let p = s.param(spec).map_err(|e| e.to_string())?;
-    let mut b = (f64::NEG_INFINITY, f64::INFINITY);
-    if let Some(r) = range {
-        let (lo, hi) = r
-            .split_once(':')
-            .ok_or_else(|| format!("--var {v} の範囲は 下限:上限"))?;
-        let num = |t: &str, d: f64| -> Result<f64, String> {
-            if t.trim().is_empty() {
-                Ok(d)
-            } else {
-                t.trim()
-                    .parse()
-                    .map_err(|_| format!("--var {v} の範囲 {t}"))
-            }
-        };
-        b = (num(lo, b.0)?, num(hi, b.1)?);
-    }
-    Ok((p, b))
-}
-
 pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
     let (cs, names) = load_states(a)?;
-    zoom_systems(&cs, &names, a)
-}
-
-/// 読んだ状態の系でズーム軌跡を解く（a のファイル・状態の項目は使わない。serve の zoom からも）
-pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomArgs) -> Result<Value, String> {
-    let n = cs.len();
-    let (q, txt) = match (&a.efl, &a.pmag) {
-        (Some(t), _) => (ParaxQ::Efl, Some(t)),
-        (None, Some(t)) => (ParaxQ::Pmag, Some(t)),
-        (None, None) => (ParaxQ::Efl, None),
+    let o = lensbench_engine::zoom::ZoomOpts {
+        vars: a.vars.clone(),
+        efl: a.efl.clone(),
+        pmag: a.pmag.clone(),
+        steps: a.steps,
+        merit: a.merit.clone(),
+        reference: a.reference.clone(),
+        rings: a.rings,
+        iters: a.iters,
+        tol: a.tol,
     };
-    let targets: Vec<Option<f64>> = match txt {
-        None => vec![None; n],
-        Some(t) => t
-            .split(',')
-            .map(|x| {
-                let x = x.trim();
-                if x == "-" || x.is_empty() {
-                    Ok(None)
-                } else {
-                    x.parse()
-                        .map(Some)
-                        .map_err(|_| format!("目標 {x} が読めない"))
-                }
-            })
-            .collect::<Result<_, String>>()?,
-    };
-    if targets.len() != n {
-        return Err(format!(
-            "目標が {} 個（状態は {n} 個: {}）",
-            targets.len(),
-            names.join(", ")
-        ));
-    }
-    let mut moving = Vec::new();
-    let mut bounds = Vec::new();
-    for v in &a.vars {
-        let (p, b) = parse_var(&cs[0], v)?;
-        moving.push(p);
-        bounds.push(b);
-    }
-    let mut sp = ZoomSpec::new(moving, targets);
-    sp.bounds = bounds;
-    sp.q = q;
-    sp.steps = a.steps;
-    sp.rings = a.rings;
-    sp.target_tol = a.tol;
-    sp.merit = match a.merit.to_ascii_lowercase().as_str() {
-        "spot" => DefaultMerit::Spot,
-        "wavefront" | "wfe" => DefaultMerit::Wavefront,
-        m => return Err(format!("--merit {m}（spot・wavefront）")),
-    };
-    sp.reference = match a.reference.to_ascii_lowercase().as_str() {
-        "centroid" => RmsRef::Centroid,
-        "chief" => RmsRef::Chief,
-        r => return Err(format!("--ref {r}（centroid・chief）")),
-    };
-    sp.opts = DlsOpts {
-        max_iter: a.iters,
-        ..Default::default()
-    };
-    let r = zoom::solve(cs, &sp).map_err(|e| e.to_string())?;
-    let vnames: Vec<String> = sp.moving.iter().map(|&p| cs[0].param_name(p)).collect();
-    let path: Vec<Value> = r
-        .path
-        .iter()
-        .map(|p| {
-            let mut o = json!({
-                "pos": p.pos,
-                "state": p.state.map(|k| names[k].clone()),
-                "target": p.target,
-                q.name(): num(p.value),
-                "merit": num(p.merit),
-                "stop": stop_name(p.stop),
-                "iterations": p.iterations,
-            });
-            for (k, nm) in vnames.iter().enumerate() {
-                o[nm] = json!(p.x[k]);
-            }
-            o
-        })
-        .collect();
-    Ok(json!({
-        "quantity": q.name(),
-        "merit_kind": a.merit,
-        "vars": vnames,
-        "path": path,
-        "warnings": r.warnings,
-    }))
+    lensbench_engine::zoom::zoom_systems(&cs, &names, &o)
 }
 
 pub fn swap(a: &SwapArgs) -> Result<Value, String> {

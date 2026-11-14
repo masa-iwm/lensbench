@@ -2816,7 +2816,7 @@ mod tests {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let glass = root.join("tests/glass").display().to_string();
         let lb = root.join("examples/lenses/LB").display().to_string();
-        let call = |m: &str, p: Value| lensbench_cli::serve::call(m, &p, Some(1)).unwrap();
+        let call = |m: &str, p: Value| lensbench_engine::call(m, &p, Some(1)).unwrap();
         let g = parse_glasses(&call("glasses", json!({ "glass_dir": [glass] })));
         assert!(g.iter().any(|x| x.name == "N-BK7"));
         let l = parse_lenses(&call(
@@ -2856,7 +2856,7 @@ mod tests {
         let img = lay.image_surface().unwrap();
         let ray = |last: usize| {
             let p = json!({ "px": [0.0], "py": [1e-3], "hx": 0.0, "hy": 0.0, "last": last });
-            let (_, a) = lensbench_cli::serve::call_arrays("trace", &p, Some(1)).unwrap();
+            let (_, a) = lensbench_engine::call_arrays("trace", &p, Some(1)).unwrap();
             let g = |k: &str| a.iter().find(|x| x.0 == k).unwrap().1[0];
             (g("y"), g("z"), g("m"), g("n"))
         };
@@ -2880,7 +2880,7 @@ mod tests {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let glass = root.join("tests/glass").display().to_string();
         let lbp = root.join("examples/lenses/LBP").display().to_string();
-        let call = |m: &str, p: Value| lensbench_cli::serve::call(m, &p, Some(1));
+        let call = |m: &str, p: Value| lensbench_engine::call(m, &p, Some(1));
         let l = parse_lenses(
             &call(
                 "lenses",
@@ -2961,7 +2961,7 @@ mod tests {
             }
             lensbench_core::vfs::write(&f, pr.to_string()).unwrap();
             // serve の load は系を差し替える（ほかのテストと並ぶ）ので、系を変えない下書きの断面で確かめる
-            let lay = lensbench_cli::serve::preview_layout(
+            let lay = lensbench_engine::preview_layout(
                 &json!({ "file": f.display().to_string(), "glass_dir": [glass] }),
                 &json!({}),
             )
@@ -2977,7 +2977,7 @@ mod tests {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let glass = root.join("tests/glass").display().to_string();
         let lb = root.join("examples/lenses/LB").display().to_string();
-        let call = |m: &str, p: Value| lensbench_cli::serve::call(m, &p, Some(1));
+        let call = |m: &str, p: Value| lensbench_engine::call(m, &p, Some(1));
         let l = parse_lenses(
             &call(
                 "lenses",
@@ -2996,7 +2996,7 @@ mod tests {
             assert_eq!(negative_singlet(r), neg, "{part}: {} {}", r.efl, r.pieces);
             lensbench_core::vfs::write(&f, p.to_string()).unwrap();
             let mut lay = crate::combo::LayoutData::parse(
-                &lensbench_cli::serve::preview_layout(
+                &lensbench_engine::preview_layout(
                     &json!({ "file": f.display().to_string(), "glass_dir": [glass.clone()], "lens_catalog": [lb.clone()] }),
                     &json!({}),
                 )
@@ -3106,7 +3106,7 @@ mod preview_tilt_tests {
         let f = dir.join("p.json");
         lensbench_core::vfs::write(&f, p.to_string()).unwrap();
         let lay = crate::combo::LayoutData::parse(
-            &lensbench_cli::serve::preview_layout(
+            &lensbench_engine::preview_layout(
                 &json!({ "file": f.display().to_string(), "glass_dir": [glass] }),
                 &json!({ "rays": 5 }),
             )

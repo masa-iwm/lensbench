@@ -64,7 +64,7 @@ Worker が同じ wasm・同じ共有メモリの見張りのスレッド（`moni
 `vfs::temp_dir()`（wasm の `std::env::temp_dir` は panic）。保存先は `crate::files::FileDialog::save_file`、
 開くのは `crate::files::open(id, start, ..)`（Web 版は選び終わった後のフレームで返るので、毎フレーム同じ id で呼ぶ）。
 スレッドを作るときは wasm を分ける。計算の状態（serve の系など）は Web Worker の中にあるので、画面の側から
-`lensbench_cli::serve` を直に呼ばず `Worker` に要求を出す。CI の `web` ジョブ（wasm の clippy と起動確認）で
+`lensbench_engine` の場を直に呼ばず `Worker` に要求を出す。CI の `web` ジョブ（wasm の clippy と起動確認）で
 漏れが分かる。
 
 ## ビルド

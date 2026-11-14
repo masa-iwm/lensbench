@@ -1377,7 +1377,7 @@ mod tests {
         assert_eq!(bl[2]["stop"], true);
         lensbench_core::vfs::write(&f, p.to_string()).unwrap();
         let load = json!({ "file": f.display().to_string(), "glass_dir": [glass] });
-        let v = lensbench_cli::serve::preview_layout(&load, &json!({})).unwrap();
+        let v = lensbench_engine::preview_layout(&load, &json!({})).unwrap();
         let surfs = v["surfaces"].as_array().unwrap();
         let st = surfs.iter().position(|x| x["stop"] == true).unwrap();
         // 物体・玉 1 の 2 面のあと、玉 2 の前面
@@ -1407,7 +1407,7 @@ mod tests {
         let build = |c: &Combo| {
             lensbench_core::vfs::write(&f, c.project().to_string()).unwrap();
             let load = json!({ "file": f.display().to_string(), "glass_dir": [glass] });
-            lensbench_cli::serve::preview_layout(&load, &json!({}))
+            lensbench_engine::preview_layout(&load, &json!({}))
         };
         let mut base = Combo::default();
         let mut lens = Pick::new(ElemKind::Lens);

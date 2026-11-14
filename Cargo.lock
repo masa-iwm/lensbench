@@ -2763,6 +2763,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-cad",
  "lensbench-core",
+ "lensbench-engine",
  "lensbench-export",
  "lensbench-project",
  "lensbench-verify",
@@ -2794,6 +2795,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-engine"
+version = "0.4.0"
+dependencies = [
+ "lensbench-analysis",
+ "lensbench-cad",
+ "lensbench-core",
+ "lensbench-export",
+ "lensbench-project",
+ "schemars",
+ "serde",
+ "serde_json",
+ "web-time",
+]
+
+[[package]]
 name = "lensbench-export"
 version = "0.4.0"
 dependencies = [
@@ -2817,8 +2833,8 @@ dependencies = [
  "egui_plot",
  "js-sys",
  "lensbench-cad",
- "lensbench-cli",
  "lensbench-core",
+ "lensbench-engine",
  "lensbench-project",
  "mimalloc",
  "png 0.17.16",
@@ -2884,8 +2900,8 @@ dependencies = [
  "flate2",
  "js-sys",
  "lensbench-cad",
- "lensbench-cli",
  "lensbench-core",
+ "lensbench-engine",
  "lensbench-gui",
  "wasm-bindgen",
  "wasm-bindgen-futures",

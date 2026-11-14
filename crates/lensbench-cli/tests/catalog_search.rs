@@ -102,12 +102,12 @@ fn serve_search() {
         "kinds": ["splitter"],
         "specs": ["wavelength_nm=420..680"],
     });
-    let v = lensbench_cli::serve::browse("catalog_search", &p).unwrap();
+    let v = lensbench_engine::browse("catalog_search", &p).unwrap();
     assert_eq!(parts(&v), ["BS-127", "BSP-254", "PBS-127"]);
-    let v = lensbench_cli::serve::call("catalog_search", &p, Some(1)).unwrap();
+    let v = lensbench_engine::call("catalog_search", &p, Some(1)).unwrap();
     assert_eq!(parts(&v).len(), 3);
     let bad = json!({ "lens_catalog": [], "kinds": ["gizmo"] });
-    assert!(lensbench_cli::serve::browse("catalog_search", &bad).is_err());
+    assert!(lensbench_engine::browse("catalog_search", &bad).is_err());
 }
 
 /// 機構部品の検索と、機構のケラレ（mech-check）

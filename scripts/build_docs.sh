@@ -30,7 +30,7 @@ fi
 mdbook build -d "$PWD/$out"
 
 cargo doc --no-deps --lib -p lensbench-core -p lensbench-project -p lensbench-export -p lensbench-analysis \
-  -p lensbench-cli
+  -p lensbench-engine -p lensbench-cli
 mkdir -p "$out/api"
 rm -rf "$out/api/rust"
 cp -r target/doc "$out/api/rust"
