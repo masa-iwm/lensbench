@@ -5,6 +5,8 @@
 //! 変わった後に 1 間隔待って変化が止まってから解析する。
 //!
 //! - 結果（--save）は一時ファイルに書いてから名前を変えるので、読む側が書きかけを見ることはない
+//! - 見張るのは、系のファイル・--also のほか、解析の中で読んだファイル（プロジェクトが参照する .zmx・カタログ・ガラス・
+//!   マクロなど。回すたびに足す。フォルダは見ない）。CLI-30
 //! - 1 回ごとに 1 行の JSON を標準出力に出す（--status があれば同じ内容をそのファイルにも置き換えで書く）。
 //!   `run` は 1 からの通し番号で、読む側は番号が進んだら結果を読めばよい
 
@@ -14,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 use clap::Args;
 use serde_json::{json, Value};
 
-use super::{execute, print_out, Cli};
+use super::{execute, print_out, Cli, Cmd};
 
 #[derive(Args)]
 pub struct WatchArgs {
@@ -24,7 +26,7 @@ pub struct WatchArgs {
     /// この回数だけ解析したら終える（省くと止めるまで続ける）
     #[arg(long = "max-runs")]
     max_runs: Option<usize>,
-    /// 系のファイルのほかに見張るファイル（プロジェクトファイルが参照する .zmx など。複数可）
+    /// 系のファイルと解析の中で読んだファイルのほかに見張るファイル（複数可）
     #[arg(long)]
     also: Vec<PathBuf>,
     /// 1 回ごとの状態（run・ok・error・elapsed_ms）を書くファイル（JSON）
@@ -71,22 +73,39 @@ fn write_atomic(p: &Path, s: &str) -> Result<(), String> {
     std::fs::rename(&t, p).map_err(|e| format!("{}: {e}", p.display()))
 }
 
-/// 1 回解析する。返すのは (結果, 書き出したファイル)
-fn run_once(cmd: &[String]) -> Result<(bool, Value, Option<PathBuf>), String> {
-    let mut cli = parse(cmd)?;
-    let c = cli
-        .cmd
-        .common_mut()
-        .ok_or("watch できるのは系を読む解析だけ")?;
-    let save = c.save.clone();
-    if let Some(p) = &save {
-        c.save = Some(tmp_path(p));
+/// 系・プロジェクトのファイルと --save の欄（見張る・一時ファイルに書かせる）
+fn file_and_save(c: &mut Cmd) -> Option<(&Path, &mut Option<PathBuf>)> {
+    match c {
+        Cmd::Zoom(a) => Some((&a.file, &mut a.save)),
+        Cmd::Swap(a) => Some((&a.file, &mut a.save)),
+        c => c.common_mut().map(|c| (c.file.as_path(), &mut c.save)),
     }
-    let (json_out, out) = execute(cli.cmd)?;
-    if let Some(p) = &save {
-        std::fs::rename(tmp_path(p), p).map_err(|e| format!("{}: {e}", p.display()))?;
-    }
-    Ok((json_out, out, save))
+}
+
+/// 1 回解析する。返すのは (結果, 書き出したファイル) と、解析の中で読んだファイル
+#[allow(clippy::type_complexity)]
+fn run_once(cmd: &[String]) -> (Result<(bool, Value, Option<PathBuf>), String>, Vec<PathBuf>) {
+    let (r, read) = lensbench_core::vfs::recording(|| {
+        let mut cli = parse(cmd)?;
+        let save = match file_and_save(&mut cli.cmd) {
+            Some((_, s)) => {
+                let save = s.clone();
+                if let Some(p) = &save {
+                    *s = Some(tmp_path(p));
+                }
+                save
+            }
+            None => None,
+        };
+        let (json_out, out) = execute(cli.cmd)?;
+        if let Some(p) = &save {
+            std::fs::rename(tmp_path(p), p).map_err(|e| format!("{}: {e}", p.display()))?;
+        }
+        Ok((json_out, out, save))
+    });
+    // 書き出しと同じフォルダを見張ると書くたびに回り直すので、フォルダは除く
+    let files = read.into_iter().filter(|p| p.is_file()).collect();
+    (r, files)
 }
 
 pub fn watch(a: WatchArgs) -> Result<(), String> {
@@ -95,11 +114,10 @@ pub fn watch(a: WatchArgs) -> Result<(), String> {
     }
     // 引数の誤りは最初に知らせる
     let mut cli = parse(&a.cmd)?;
-    let c = cli
-        .cmd
-        .common_mut()
-        .ok_or("watch できるのは系を読む解析（spot・mtf など）だけ")?;
-    let mut files = vec![c.file.clone()];
+    let mut files: Vec<PathBuf> = file_and_save(&mut cli.cmd)
+        .map(|(f, _)| f.to_path_buf())
+        .into_iter()
+        .collect();
     files.extend(a.also.iter().cloned());
     let dt = Duration::from_secs_f64(a.interval);
     let mut last = stamp(&files);
@@ -107,7 +125,15 @@ pub fn watch(a: WatchArgs) -> Result<(), String> {
     loop {
         n += 1;
         let t0 = Instant::now();
-        let r = run_once(&a.cmd);
+        let (r, read) = run_once(&a.cmd);
+        let before = files.len();
+        for f in read {
+            if !files.contains(&f) {
+                files.push(f);
+            }
+        }
+        // 新しく見張るファイルは今の状態から
+        last.extend(stamp(&files[before..]));
         let ms = t0.elapsed().as_secs_f64() * 1e3;
         let st = match &r {
             Ok((_, _, w)) => json!({

@@ -86,6 +86,44 @@ fn roundtrip_all_refs() {
     }
 }
 
+/// 実数の欄を整数の書き方（`3`）で書いても読める（Python・手で書いた系ファイル）。誤りには欄の道が付く（IOO-32）
+#[test]
+fn integers_in_float_fields() {
+    fn ints(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Number(n) => {
+                if let Some(x) = n.as_f64().filter(|x| x.fract() == 0.0 && x.abs() < 1e15) {
+                    *v = serde_json::json!(x as i64);
+                }
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(ints),
+            serde_json::Value::Object(o) => o.values_mut().for_each(ints),
+            _ => {}
+        }
+    }
+    for name in ["A0", "B0"] {
+        let s = load(name);
+        let txt = sysfile::to_string(&s, &[]).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&txt).unwrap();
+        ints(&mut v["system"]);
+        let txt2 = v.to_string();
+        assert!(
+            txt2.contains("\"t\":0,") || txt2.contains("\"t\":0}"),
+            "{name}: 整数に書き直せていない"
+        );
+        let (t, meta, warn) = sysfile::from_str(&txt2).unwrap();
+        assert!(warn.is_empty(), "{name}: {warn:?}");
+        assert_eq!(meta.hash, sysfile::system_hash(&s).unwrap(), "{name}");
+        assert_eq!(rays(&s), rays(&t), "{name}");
+    }
+    let s = load("A0");
+    let mut v: serde_json::Value =
+        serde_json::from_str(&sysfile::to_string(&s, &[]).unwrap()).unwrap();
+    v["system"]["surfaces"][1]["t"] = serde_json::json!("x");
+    let e = sysfile::from_str(&v.to_string()).unwrap_err();
+    assert!(e.contains("surfaces[1].t"), "{e}");
+}
+
 /// 編集・パラメータ変更・ピックアップ・多重構成の表・玉も残る。違う系は違う hash
 #[test]
 fn edited_system_roundtrip() {

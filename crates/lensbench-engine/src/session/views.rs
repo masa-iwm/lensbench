@@ -27,9 +27,11 @@ pub struct UnitView {
     pub spans: Vec<[usize; 2]>,
     /// 読込で作った玉（lens1 …）
     pub auto: bool,
-    /// 剛体の動き dx dy tx ty tz [mm, deg]
+    /// 剛体の動き dx dy tx ty tz [mm, deg]（NaN は JSON の null）
+    #[serde(deserialize_with = "nan_for_null_5")]
     pub motion: [f64; 5],
     /// 群の移動 [mm]
+    #[serde(deserialize_with = "nan_for_null_1")]
     pub shift: f64,
     /// 範囲の中の媒質の dn・disp（媒質が無いか面ごとに違えば None）
     pub dn: Option<f64>,
@@ -81,6 +83,15 @@ fn nan_for_null<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::Error> {
     Ok(v.into_iter().map(|x| x.unwrap_or(f64::NAN)).collect())
 }
 
+fn nan_for_null_5<'de, D: Deserializer<'de>>(d: D) -> Result<[f64; 5], D::Error> {
+    let v = <[Option<f64>; 5]>::deserialize(d)?;
+    Ok(v.map(|x| x.unwrap_or(f64::NAN)))
+}
+
+fn nan_for_null_1<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
+    Ok(Option::<f64>::deserialize(d)?.unwrap_or(f64::NAN))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,6 +120,21 @@ mod tests {
         let back: ConfigTable = read(&v).unwrap();
         assert!(back.rows[0].values[1].is_nan());
         assert_eq!(back.rows[0].picks, t.rows[0].picks);
+    }
+
+    #[test]
+    fn unit_round_trips_nan() {
+        let u = UnitView {
+            name: "G".into(),
+            spans: vec![[1, 2]],
+            motion: [0.0, f64::NAN, 0.0, 0.0, 0.0],
+            shift: f64::INFINITY,
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&u).unwrap();
+        assert_eq!(v["shift"], json!(null));
+        let back: UnitView = read(&v).unwrap();
+        assert!(back.motion[1].is_nan() && back.shift.is_nan());
     }
 
     #[test]

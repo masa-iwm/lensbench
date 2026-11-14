@@ -237,7 +237,8 @@ Windows（CI の windows-latest、同じ日）: TCP 351 ms（通信 109 ms）、
 lensbench watch --status status.json -- spot system.zmx --glass-dir catalogs --json --save out.json
 ```
 
-- `--` の後は CLI と同じ解析のコマンド。最初に 1 回、その後は系のファイル（と `--also` のファイル）が変わるたびに実行する
+- `--` の後は CLI と同じ解析のコマンド（`zoom`・`swap`・`optimize`・`tolerance` も）。最初に 1 回、その後は見張るファイルが変わるたびに実行する
+- 見張るのは、系・プロジェクトのファイル、解析の中で読んだファイル（プロジェクトが参照する .zmx・レンズカタログ・ガラスのカタログ・マクロなど。回すたびに足す）、`--also` のファイル。フォルダは見ない（新しく置いたファイルは `--also` で）
 - 見張りは `--interval`（既定 0.5 s）ごとに更新時刻と大きさを見る。変わった後、変化が止まるまで 1 間隔待ってから読む（書きかけを読まない）
 - 結果（`--save`）と `--status` は一時ファイルに書いてから置き換えるので、読む側が書きかけを見ることはない
 - 1 回ごとに 1 行の JSON（`run`・`ok`・`error`・`elapsed_ms`・`written`）を標準出力と `--status` に出す。`run` は 1 からの通し番号で、

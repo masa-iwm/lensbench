@@ -23,6 +23,7 @@ pub mod catalog_spec;
 pub mod detectors;
 pub mod edit_ops;
 pub mod filter;
+mod lenient;
 pub mod open;
 pub mod schema;
 mod splitter;

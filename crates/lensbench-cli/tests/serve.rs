@@ -532,6 +532,51 @@ fn watch_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// watch: プロジェクトが参照する .zmx も、--also で並べなくても見張る（CLI-30）
+#[test]
+fn watch_follows_files_read_by_the_project() {
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("lensbench-watch-proj-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let zmx_path = dir.join("sys.zmx");
+    let base = core_system(&Path::new(ROOT).join(ZMX));
+    zmx_write::save(&zmx_path, &base).unwrap();
+    let mut proj: Value = serde_json::from_str(
+        &std::fs::read_to_string(Path::new(ROOT).join("examples/projects/P7_zmx_groups.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    proj["blocks"] = json!([{ "type": "zmx", "id": "A", "path": "sys.zmx" }]);
+    proj.as_object_mut().unwrap().remove("states");
+    let proj_path = dir.join("proj.json");
+    std::fs::write(&proj_path, proj.to_string()).unwrap();
+    let status = dir.join("status.json");
+    let g = Path::new(ROOT).join("tests/glass");
+    let mut child = exe()
+        .args(["watch", "--interval", "0.05", "--max-runs", "2", "--status"])
+        .arg(&status)
+        .args(["--", "spot"])
+        .arg(&proj_path)
+        .arg("--glass-dir")
+        .arg(&g)
+        .args(["--field", "1"])
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let st = wait_for(&status, |v| v["run"] == 1);
+    assert_eq!(st["ok"], true, "{st}");
+    let p = base.param("3.t").unwrap();
+    let changed = base
+        .with_params(&[(p, base.get_param(p).unwrap() + 0.5)])
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(20));
+    zmx_write::save(&zmx_path, &changed).unwrap();
+    let st = wait_for(&status, |v| v["run"] == 2);
+    assert_eq!(st["ok"], true, "{st}");
+    assert!(child.wait().unwrap().success());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// 要求をヘッダだけ送り、応答のヘッダを読む（配列のバイト列は送らない）
 fn send_head(sv: &mut Server, h: Value) -> Value {
     let mut out = serde_json::to_vec(&h).unwrap();

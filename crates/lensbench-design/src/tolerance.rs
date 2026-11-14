@@ -728,14 +728,26 @@ fn sorted(mut v: Vec<f64>) -> Vec<f64> {
 }
 
 /// 項の説明（"wavefront f1" など）
+/// 項の種類の名前（評価関数の JSON の type と同じ）。型の名前（Debug）から作らない（PRJ-11）
+fn kind_name(k: &lensbench_core::optim::TermKind) -> &'static str {
+    use lensbench_core::optim::TermKind as K;
+    match k {
+        K::Spot { .. } => "spot",
+        K::Wavefront { .. } => "wavefront",
+        K::Mtf { .. } => "mtf",
+        K::Paraxial { .. } => "paraxial",
+        K::Centroid { .. } => "centroid",
+        K::Ray { .. } => "ray",
+        K::Opd { .. } => "opd",
+        K::Zernike { .. } => "zernike",
+        K::Coupling { .. } => "coupling",
+        K::User(_) => "user",
+    }
+}
+
 fn term_label(p: &Problem, k: usize) -> String {
     let t = &p.terms[k];
-    let s = format!("{:?}", t.kind);
-    let name = s
-        .split([' ', '{', '('])
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let name = kind_name(&t.kind);
     if p.configs.len() > 1 {
         format!("{name} #{} (config {})", k + 1, t.config + 1)
     } else {

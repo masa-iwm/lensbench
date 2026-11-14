@@ -244,9 +244,7 @@ pub fn from_str(txt: &str) -> Result<(System, Meta, Vec<String>), String> {
         .unwrap_or("")
         .to_string();
     let c = from_json(sv).map_err(|e| format!("系ファイル: {e}"))?;
-    let sys: System = c
-        .deserialized()
-        .map_err(|e| format!("系ファイル: 系: {e}"))?;
+    let sys: System = crate::lenient::decode(c).map_err(|e| format!("系ファイル: system.{e}"))?;
     check(&sys)?;
     // hash は読み直した系から作り直す（数の書き方の違い・手での直しでは値が変わる）
     let hash_sys = system_hash(&sys)?;

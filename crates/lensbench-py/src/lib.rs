@@ -530,7 +530,8 @@ pub fn parse_changes(s: &System, c: &Bound<'_, PyAny>) -> PyResult<Vec<(Param, f
 }
 
 fn floats(a: &PyArrayLike1<'_, f64, AllowTypeChange>) -> Vec<f64> {
-    a.as_array().iter().copied().collect()
+    a.as_slice()
+        .map_or_else(|_| a.as_array().iter().copied().collect(), <[f64]>::to_vec)
 }
 
 /// 面を番号か名前で
@@ -609,30 +610,11 @@ struct Soa {
     rec: Vec<(&'static str, Vec<f64>)>,
 }
 
-type RayGet = fn(&Trace, usize) -> f64;
-
 /// 既定で返す列（最後の面の局所座標、光路長）
-const COLS: [(&str, RayGet); 9] = [
-    ("x", |t, i| t.rays[i].xyz[0]),
-    ("y", |t, i| t.rays[i].xyz[1]),
-    ("z", |t, i| t.rays[i].xyz[2]),
-    ("l", |t, i| t.rays[i].lmn[0]),
-    ("m", |t, i| t.rays[i].lmn[1]),
-    ("n", |t, i| t.rays[i].lmn[2]),
-    ("opl", |t, i| t.rays[i].opl),
-    ("opl_os", |t, i| t.opl_os[i]),
-    ("lens_opd", |t, i| t.rays[i].lens_opd),
-];
+const COLS: [&str; 9] = ["x", "y", "z", "l", "m", "n", "opl", "opl_os", "lens_opd"];
 
 /// globals=True で足す列（大域の位置・方向）
-const GLOBAL_COLS: [(&str, RayGet); 6] = [
-    ("gx", |t, i| t.rays[i].p[0]),
-    ("gy", |t, i| t.rays[i].p[1]),
-    ("gz", |t, i| t.rays[i].p[2]),
-    ("gl", |t, i| t.rays[i].k[0]),
-    ("gm", |t, i| t.rays[i].k[1]),
-    ("gn", |t, i| t.rays[i].k[2]),
-];
+const GLOBAL_COLS: [&str; 6] = ["gx", "gy", "gz", "gl", "gm", "gn"];
 
 type RecGet = fn(&lensbench_core::system::RecSurf, usize) -> f64;
 
@@ -652,16 +634,46 @@ const REC_COLS: [(&str, RecGet); 10] = [
 impl Soa {
     fn new(traces: &[Trace], n: usize, globals: bool, record: bool) -> Soa {
         let nw = traces.len();
-        let col = |g: RayGet| {
-            let mut v = Vec::with_capacity(nw * n);
-            for t in traces {
-                v.extend((0..n).map(|i| g(t, i)));
+        // 光線を 1 回だけ走査して全部の列を埋める（CLI-28）
+        let ng = if globals { GLOBAL_COLS.len() } else { 0 };
+        let mut cols: Vec<Vec<f64>> = (0..COLS.len() + ng)
+            .map(|_| Vec::with_capacity(nw * n))
+            .collect();
+        let mut err = Vec::with_capacity(nw * n);
+        let mut vig = Vec::with_capacity(nw * n);
+        let mut ok = Vec::with_capacity(nw * n);
+        for t in traces {
+            for (i, r) in t.rays.iter().enumerate().take(n) {
+                let v = [
+                    r.xyz[0],
+                    r.xyz[1],
+                    r.xyz[2],
+                    r.lmn[0],
+                    r.lmn[1],
+                    r.lmn[2],
+                    r.opl,
+                    t.opl_os[i],
+                    r.lens_opd,
+                ];
+                for (c, x) in cols.iter_mut().zip(v) {
+                    c.push(x);
+                }
+                if globals {
+                    let g = [r.p[0], r.p[1], r.p[2], r.k[0], r.k[1], r.k[2]];
+                    for (c, x) in cols[COLS.len()..].iter_mut().zip(g) {
+                        c.push(x);
+                    }
+                }
+                err.push(r.err as i32);
+                vig.push(r.vig as i32);
+                ok.push(t.ok(i));
             }
-            v
-        };
-        let mut f: Vec<_> = COLS.iter().map(|&(k, g)| (k, col(g), 1)).collect();
+        }
+        let names = COLS
+            .iter()
+            .chain(if globals { &GLOBAL_COLS[..] } else { &[] });
+        let mut f: Vec<_> = names.zip(cols).map(|(&k, v)| (k, v, 1)).collect();
         if globals {
-            f.extend(GLOBAL_COLS.iter().map(|&(k, g)| (k, col(g), 1)));
             let mut p0 = Vec::with_capacity(nw * n * 3);
             let mut k0 = Vec::with_capacity(nw * n * 3);
             for t in traces {
@@ -670,19 +682,6 @@ impl Soa {
             }
             f.push(("p0", p0, 3));
             f.push(("k0", k0, 3));
-        }
-        let ints = |g: fn(&Trace, usize) -> i32| {
-            let mut v = Vec::with_capacity(nw * n);
-            for t in traces {
-                v.extend((0..n).map(|i| g(t, i)));
-            }
-            v
-        };
-        let err = ints(|t, i| t.rays[i].err as i32);
-        let vig = ints(|t, i| t.rays[i].vig as i32);
-        let mut ok = Vec::with_capacity(nw * n);
-        for t in traces {
-            ok.extend((0..n).map(|i| t.ok(i)));
         }
         let rec_surf: Vec<i64> = traces
             .first()
