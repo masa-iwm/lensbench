@@ -21,13 +21,11 @@ __version__: str
 API_VERSION: tuple[int, int]
 
 
-@final
-class CancelledError:
+class CancelledError(Error):
     """計算を途中でやめた"""
 
 
-@final
-class Error:
+class Error(ValueError):
     """lensbench の誤りの基底（ValueError の子なので except ValueError でも拾える）"""
 
 
@@ -47,8 +45,7 @@ class Grid:
         """i 番目の組の値を入れた系"""
 
 
-@final
-class InvalidError:
+class InvalidError(Error):
     """値や構成が不正"""
 
 
@@ -81,8 +78,7 @@ class Plugin:
         """
 
 
-@final
-class ReadError:
+class ReadError(Error):
     """ファイルの読込の誤り"""
 
 
@@ -562,8 +558,7 @@ class System:
         """変えた系を新しく返す（元の系は変えない。軽い複製）"""
 
 
-@final
-class UnsupportedError:
+class UnsupportedError(Error):
     """対応していない機能を含む"""
 
 

@@ -195,7 +195,8 @@ impl Session {
 
     /// 系を読んで場に置く（起動の引数で与えた系。要求で与えたパスの扱いは当てない）
     pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> Result<(), String> {
-        let s = lensbench_core::with_threads(threads, || load_file(&spec))?;
+        let s = lensbench_core::with_threads(threads, || load_file(&spec))
+            .map_err(|e| e.to_string())?;
         store(self, s, spec);
         Ok(())
     }
@@ -1318,7 +1319,7 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
     for k in 1..=n {
         let mut c = spec.clone();
         c.cfg = k;
-        systems.push(load_file(&c).map_err(|e| RpcErr::app(format!("構成 {k}: {e}")))?);
+        systems.push(load_file(&c).map_err(|e| e.at(format!("構成 {k}")))?);
     }
     let m = systems[0].surfaces.len();
     if systems.iter().any(|s| s.surfaces.len() != m) {

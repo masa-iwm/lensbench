@@ -903,3 +903,14 @@ def test_error_classes():
         s.set_param("99.t", 1.0)
     with pytest.raises(ValueError):
         s.set_param("99.t", 1.0)
+
+
+def test_load_error_classes(tmp_path):
+    """System.load: 無いファイルは ReadError、引数の誤りは InvalidError"""
+    for f in ["nosuch.zmx", "nosuch.json"]:
+        with pytest.raises(lb.ReadError):
+            lb.System.load(str(tmp_path / f))
+    with pytest.raises(lb.InvalidError):
+        lb.System.load(zmx("A5"), glass_dirs=GLASS, cfg=0)
+    with pytest.raises(lb.InvalidError):
+        lb.System.load(zmx("A5"), glass_dirs=GLASS, state="x")

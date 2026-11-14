@@ -25,54 +25,23 @@ pub struct SysSpec {
     pub path: Option<String>,
 }
 
-/// ファイルから系を読む
-pub fn load_file(c: &SysSpec) -> Result<System, String> {
-    if c.cfg == 0 {
-        return Err("--cfg は 1 以上".into());
+/// ファイルから系を読む（注意は標準誤差へ）。ファイルが無いときは種類 io の誤り
+pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    let o = lensbench_project::open::open(
+        &c.file,
+        &lensbench_project::open::OpenSpec {
+            glass_dirs: &c.glass_dir,
+            lens_catalogs: &c.lens_catalog,
+            cfg: c.cfg,
+            state: c.state.as_deref(),
+            split_path: c.path.as_deref(),
+            wavelengths: None,
+        },
+    )?;
+    for w in o.warnings {
+        eprintln!("注意: {w}");
     }
-    if lensbench_project::sysfile::is_system_file(&c.file) {
-        if c.cfg != 1 || c.state.is_some() {
-            return Err("系ファイルでは --cfg・--state は使えない".into());
-        }
-        let (s, _, warn) = lensbench_project::sysfile::load(&c.file)?;
-        for w in warn {
-            eprintln!("注意: {w}");
-        }
-        return Ok(s);
-    }
-    if c.file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-    {
-        if c.cfg != 1 {
-            return Err("プロジェクトファイルでは --cfg ではなく --state で状態を選ぶ".into());
-        }
-        let cat = LensCatalog::load_registered(&c.lens_catalog)?;
-        let look = |v: &str, p: &str| cat.zmx(v, p);
-        let (s, warn) = lensbench_project::load_path_report(
-            &c.file,
-            &c.glass_dir,
-            Some(&look),
-            c.state.as_deref(),
-            c.path.as_deref(),
-        )?;
-        for w in warn {
-            eprintln!("注意: {w}");
-        }
-        return Ok(s);
-    }
-    if c.state.is_some() {
-        return Err("--state はプロジェクトファイル（.json）だけ（.zmx は --cfg）".into());
-    }
-    if c.path.is_some() {
-        return Err("--path はプロジェクトファイル（.json）だけ".into());
-    }
-    let opt = zmx::LoadOptions {
-        cfg: c.cfg,
-        catalog_dirs: c.glass_dir.clone(),
-        ..Default::default()
-    };
-    zmx::load_with(&c.file, &opt).map_err(|e| e.to_string())
+    Ok(o.system)
 }
 
 /// プロジェクトファイルの状態の名前（.zmx なら空）
@@ -138,7 +107,7 @@ impl Overlay {
 /// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
 pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>, String> {
     if !l.any() {
-        let s = load_file(c)?;
+        let s = load_file(c).map_err(|e| e.to_string())?;
         crate::provenance::set(&s);
         return Ok(vec![(String::new(), s)]);
     }

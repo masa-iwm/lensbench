@@ -95,3 +95,22 @@ def test_lensbench_run_example(tmp_path):
     bad.write_text("raise SystemExit(5)\n")
     r = subprocess.run([cli(), "run", "--python", sys.executable, str(bad)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 5
+
+
+def test_error_classes_type_check(tmp_path):
+    """型スタブの例外は BaseException の子として型検査が通る（except・raise）"""
+    pytest.importorskip("mypy")
+    p = tmp_path / "use_errors.py"
+    p.write_text(
+        "import lensbench as lb\n"
+        "def f() -> None:\n"
+        "    try:\n"
+        "        raise lb.ReadError('x')\n"
+        "    except lb.InvalidError as e:\n"
+        "        print(e)\n"
+        "    except lb.Error:\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    r = subprocess.run([sys.executable, "-m", "mypy", "--strict", str(p)], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout + r.stderr

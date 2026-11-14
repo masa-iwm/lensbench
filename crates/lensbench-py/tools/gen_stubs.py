@@ -295,6 +295,13 @@ def render(lb) -> str:
         o = getattr(lb, n)
         if isinstance(o, type):
             rs = py2rs.get(n, n)
+            if issubclass(o, BaseException):
+                # 例外: 親を書き、継承できるので @final は付けない
+                base = o.__bases__[0]
+                parent = base.__name__ if base.__module__ == "lensbench" else base.__qualname__
+                out += ["", "", f"class {n}({parent}):"]
+                out += doc_block(o.__doc__, "    ") or ["    ..."]
+                continue
             out += ["", "", "@final", f"class {n}:"]
             out += doc_block(o.__doc__, "    ")
             members = []

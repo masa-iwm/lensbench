@@ -333,6 +333,9 @@ fn undo_redo_history() {
     assert!(sv
         .error("load", json!({ "file": ZMX, "history": "x" }))
         .contains("history"));
+    // 無いファイルは誤りの種類 io（XCT-06）
+    let (h, _) = sv.call_bin("load", json!({ "file": "nosuch.zmx" }), &[]);
+    assert_eq!(h["error"]["data"]["kind"], "io", "{h}");
     sv.stop();
 }
 

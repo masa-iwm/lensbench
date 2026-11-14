@@ -24,6 +24,7 @@ pub mod detectors;
 pub mod edit_ops;
 pub mod filter;
 pub mod merit;
+pub mod open;
 pub mod plugin_term;
 pub mod plugins;
 pub mod schema;

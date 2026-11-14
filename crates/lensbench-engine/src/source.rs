@@ -58,7 +58,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
             ..self.c.clone()
         };
         let s = match &v.wavelengths {
-            None => crate::load::load_file(&c).map_err(invalid)?,
+            None => crate::load::load_file(&c)?,
             Some(wl) => {
                 let zmx = c
                     .file

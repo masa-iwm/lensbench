@@ -1064,57 +1064,26 @@ impl PySystem {
         wavelengths: Option<Vec<f64>>,
         split_path: Option<String>,
     ) -> PyResult<PySystem> {
-        if cfg == 0 {
-            return Err(PyValueError::new_err("cfg は 1 以上"));
-        }
         let glass_dirs = glass_dirs.unwrap_or_default();
         let lens_catalogs = lens_catalogs.unwrap_or_default();
-        let sys = py.detach(|| -> Result<(System, Vec<String>, Vec<PathBuf>), String> {
-            if lensbench_project::sysfile::is_system_file(&path) {
-                if cfg != 1 || state.is_some() || split_path.is_some() {
-                    return Err("系ファイルでは cfg・state・split_path は使えない".into());
-                }
-                let (s, m, w) = lensbench_project::sysfile::load(&path)?;
-                return Ok((s, w, m.coatings));
-            }
-            if path
-                .extension()
-                .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-            {
-                if cfg != 1 {
-                    return Err("プロジェクトファイルでは cfg ではなく state で状態を選ぶ".into());
-                }
-                if wavelengths.is_some() {
-                    return Err("wavelengths は .zmx だけ".into());
-                }
-                let cat = LensCatalog::load_registered(&lens_catalogs)?;
-                let look = |v: &str, p: &str| cat.zmx(v, p);
-                return lensbench_project::load_path_report(
-                    &path,
-                    &glass_dirs,
-                    Some(&look),
-                    state.as_deref(),
-                    split_path.as_deref(),
-                )
-                .map(|(s, w)| (s, w, Vec::new()));
-            }
-            if state.is_some() {
-                return Err("state はプロジェクトファイル（.json）だけ（.zmx は cfg）".into());
-            }
-            if split_path.is_some() {
-                return Err("split_path はプロジェクトファイル（.json）だけ".into());
-            }
-            let opt = zmx::LoadOptions {
-                cfg,
-                catalog_dirs: glass_dirs,
-                wavelengths,
-                ..Default::default()
-            };
-            zmx::load_with(&path, &opt)
-                .map(|s| (s, Vec::new(), Vec::new()))
-                .map_err(|e| e.to_string())
+        let o = py.detach(|| {
+            lensbench_project::open::open(
+                &path,
+                &lensbench_project::open::OpenSpec {
+                    glass_dirs: &glass_dirs,
+                    lens_catalogs: &lens_catalogs,
+                    cfg,
+                    state: state.as_deref(),
+                    split_path: split_path.as_deref(),
+                    wavelengths,
+                },
+            )
         });
-        let (mut sys, warn, saved_coatings) = sys.map_err(err)?;
+        let lensbench_project::open::Opened {
+            system: mut sys,
+            warnings: warn,
+            coatings: saved_coatings,
+        } = o.map_err(err)?;
         warn_all(py, &warn)?;
         if coating_file.is_some() {
             sys.coating_file = coating_file;

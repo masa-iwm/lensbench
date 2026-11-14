@@ -572,7 +572,7 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
 }
 
 fn load(c: &Common) -> Result<System, String> {
-    let s = load_file(&c.spec())?;
+    let s = load_file(&c.spec()).map_err(|e| e.to_string())?;
     for w in s
         .dispersion_warnings()
         .into_iter()
