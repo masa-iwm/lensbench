@@ -374,6 +374,9 @@ pub struct JonesGrid {
     /// [波長][光線] の、光路長を中心波長の着地点へ移した量 [mm]（`rays.l` に足してある。波長 0 は 0）。
     /// 引けば各波長の光線の着地点での値になる（追跡の照合用）
     pub landing: Vec<Vec<f64>>,
+    /// 無限遠物体で光線が 1 点に集まる面が見つからず、`rays.sx`・`sy` に瞳の座標の 1e-4 倍を入れた（モードの重みが
+    /// ほぼ一様になる）
+    pub mode_fallback: bool,
 }
 
 /// [`trace_path`] と同じ追跡で、入射の x・y の 2 つを追って Jones 行列にする。`surf` を指定すると、その面の
@@ -457,6 +460,7 @@ pub fn trace_jones(
         }
     }
     let t0 = t0.unwrap();
+    let mut mode_fallback = false;
     // ファイバ端の方向余弦
     if !sys.infinite() {
         let of = sys.object_frame();
@@ -489,6 +493,7 @@ pub fn trace_jones(
         }
         match fs {
             None => {
+                mode_fallback = true;
                 for (m, &q) in idx.iter().enumerate() {
                     r.sx[q] = 1e-4 * pxs[m];
                     r.sy[q] = 1e-4 * pys[m];
@@ -546,5 +551,6 @@ pub fn trace_jones(
         xf,
         yf,
         landing,
+        mode_fallback,
     })
 }
