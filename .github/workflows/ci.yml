@@ -125,6 +125,7 @@ jobs:
         shell: bash
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
+          retention-days: 7  # 既定 90 日だと 1 日 2〜3GB ずつ溜まる（Pages は直後に取るだけ）
           name: lensbench-gui-windows
           path: target/ci/lensbench-gui.exe
 
@@ -161,11 +162,13 @@ jobs:
       - run: scripts/build_docs.sh target/book
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
+          retention-days: 7  # 既定 90 日だと 1 日 2〜3GB ずつ溜まる（Pages は直後に取るだけ）
           name: site-book
           path: target/book
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
+          retention-days: 7  # 既定 90 日だと 1 日 2〜3GB ずつ溜まる（Pages は直後に取るだけ）
           name: gui-tour
           path: target/docs-gui-tour
 
@@ -253,6 +256,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
+          retention-days: 7  # 既定 90 日だと 1 日 2〜3GB ずつ溜まる（Pages は直後に取るだけ）
           name: lensbench-web
           path: |
             target/web
@@ -300,5 +304,6 @@ jobs:
       - run: python examples/loop/serve_loop.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
+          retention-days: 7  # 既定 90 日だと 1 日 2〜3GB ずつ溜まる（Pages は直後に取るだけ）
           name: wheel-${{ matrix.os }}
           path: dist/*.whl
