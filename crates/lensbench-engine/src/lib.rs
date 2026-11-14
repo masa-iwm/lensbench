@@ -5,6 +5,7 @@
 pub mod analyze;
 pub mod browse;
 pub mod defs;
+pub mod ext;
 pub mod load;
 pub mod params;
 pub mod provenance;
@@ -16,6 +17,7 @@ pub mod zoom;
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
 };
+pub use ext::Extensions;
 pub use load::{builtin_plugins, SysSpec};
 pub use registry::{analyses, builtin_analyses, register};
 pub use session::{
