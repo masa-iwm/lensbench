@@ -86,13 +86,14 @@ pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> Result<Vec<CatalogLen
         let n: usize = n
             .parse()
             .map_err(|_| format!("{part}: .zmx のバイト数 {n}"))?;
-        if o + n > b.len() {
-            return Err(format!("{part}: .zmx が途中で切れている"));
-        }
-        let zmx = std::str::from_utf8(&b[o..o + n])
+        let end = o
+            .checked_add(n)
+            .filter(|&e| e <= b.len())
+            .ok_or_else(|| format!("{part}: .zmx が途中で切れている"))?;
+        let zmx = std::str::from_utf8(&b[o..end])
             .map_err(|_| format!("{part}: .zmx が UTF-8 でない"))?
             .to_string();
-        o += n;
+        o = end;
         out.push(CatalogLens {
             vendor: vendor.clone(),
             part: part.clone(),
@@ -338,5 +339,9 @@ mod tests {
         assert_eq!(decode_lbcat(&one, "STEM").unwrap()[0].vendor, "STEM");
         assert!(encode_lbcat("A\tB", "x", &[]).is_err());
         assert!(decode_lbcat(b"not zlib", "x").is_err());
+        // 壊れた束（.zmx のバイト数が巨大）は誤りで返す（桁あふれで落ちない）
+        let bad = format!("LBCAT 1\tV\tS\nA\t1\t{}\n", usize::MAX);
+        let z = miniz_oxide::deflate::compress_to_vec_zlib(bad.as_bytes(), 6);
+        assert!(decode_lbcat(&z, "x").is_err());
     }
 }
