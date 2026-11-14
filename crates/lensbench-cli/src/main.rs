@@ -16,6 +16,8 @@ use lensbench_export::{d2, mesh, scene};
 use serde_json::{json, Value};
 
 mod analysis_cmd;
+mod coat_cmd;
+use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model};
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
@@ -118,7 +120,9 @@ fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, S
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 系を書き出す: 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。
+    /// 系を書き出す
+    ///
+    /// 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。
     /// 読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
     Convert {
         #[command(flatten)]
@@ -127,8 +131,10 @@ enum Cmd {
         #[arg(long, short)]
         out: PathBuf,
     },
-    /// 系を .zmx に書き出す（プロジェクトの展開など）。--paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx に
-    /// まとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
+    /// 系を .zmx に書き出す（プロジェクトの展開など）
+    ///
+    /// --paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。
+    /// 面の並びが違う分は IGNR で無視する）
     Zmx {
         #[command(flatten)]
         c: Common,
@@ -138,8 +144,10 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
-    /// 減衰最小二乗（DLS）で変数を最適化する。評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、
-    /// --term・--terms の項を足したもの。--out で最適化した系を .zmx に書き出す
+    /// 減衰最小二乗（DLS）で変数を最適化する
+    ///
+    /// 評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、--term・--terms の項を足したもの。
+    /// --out で最適化した系を .zmx に書き出す
     Optimize {
         #[command(flatten)]
         c: Common,
@@ -172,9 +180,11 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// モンテカルロ公差シミュレーション。玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と
-    /// 個別の公差で系をずらし、補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。
-    /// 設定は JSON（docs の公差の設定、--spec のファイルと --set の上書き）
+    /// モンテカルロ公差シミュレーション
+    ///
+    /// 玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と個別の公差で系をずらし、
+    /// 補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。設定は JSON（docs の公差の設定、
+    /// --spec のファイルと --set の上書き）
     Tolerance {
         #[command(flatten)]
         c: Common,
@@ -198,11 +208,15 @@ enum Cmd {
         #[arg(long = "comp-csv")]
         comp_csv: Option<PathBuf>,
     },
-    /// ズーム軌跡: 状態（プロジェクトの states か .zmx の構成）ごとに群の位置（--var）を解く。
-    /// 評価関数は像の RMS（全視野・多色）と、--efl・--pmag の目標。--steps で状態の間を継続法でたどる
+    /// ズーム軌跡
+    ///
+    /// 状態（プロジェクトの states か .zmx の構成）ごとに群の位置（--var）を解く。評価関数は像の RMS（全視野・多色）と、
+    /// --efl・--pmag の目標。--steps で状態の間を継続法でたどる
     Zoom(Box<search_cmd::ZoomArgs>),
-    /// カタログレンズの差し替え探索: --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、
-    /// 組ごとに変数（間隔など）を最適化して評価関数の小さい順に並べる
+    /// カタログレンズの差し替え探索
+    ///
+    /// --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）
+    /// を最適化して評価関数の小さい順に並べる
     Swap(Box<search_cmd::SwapArgs>),
     /// ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
     CatalogAdd {
@@ -236,9 +250,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// カタログの品を探す: レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で
-    /// 絞り込む。仕様は .json の品の `specs` と、同じメーカーの .json の `overlay`・`url_template` で足したもの
-    /// （efl・diameter・thickness は一覧の値でも比べられる）
+    /// カタログの品を探す
+    ///
+    /// レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で絞り込む。
+    /// 仕様は .json の品の `specs` と、
+    /// 同じメーカーの .json の `overlay`・`url_template` で足したもの（efl・diameter・thickness は一覧の値でも比べられる
+    /// ）
     CatalogSearch {
         /// レンズカタログ（ファイル・フォルダ、複数可）
         #[arg(required = true)]
@@ -268,16 +285,20 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 品の STEP（.step・.stp）を測る: 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品
-    /// （チューブ・ケージ板・マウント）は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+    /// 品の STEP（.step・.stp）を測る
+    ///
+    /// 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品（チューブ・ケージ板・マウント）
+    /// は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
     CatalogStep {
         #[arg(required = true)]
         files: Vec<PathBuf>,
         #[arg(long)]
         json: bool,
     },
-    /// 品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く。2 回目からはキャッシュを使う。
-    /// 取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
+    /// 品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く
+    ///
+    /// 2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、
+    /// カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
     CadStep {
         /// ユーザーカタログ
         #[arg(long)]
@@ -291,9 +312,13 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 手元の STEP を共有の置き場（環境変数 LENSBENCH_CAD_STORE。cad-step が配布元より先に見る所）に上げる。
-    /// --cache はキャッシュのフォルダの STEP をそのまま（ファイル名が鍵）、--catalog はフォルダの STEP をファイル名で品に当てて
-    /// （cad-step と同じ鍵）上げる。置き場にある鍵は上げない（--overwrite で上げ直す）
+    /// 手元の STEP を共有の置き場に上げる（保守用）
+    ///
+    /// 置き場は環境変数 LENSBENCH_CAD_STORE（cad-step が配布元より先に見る所）。--cache はキャッシュのフォルダの STEP をそのまま（ファイル名が鍵）、
+    /// --catalog はフォルダの STEP をファイル名で品に当てて（cad-step と同じ鍵）上げる。
+    /// 置き場にある鍵は上げない（--overwrite で上げ直す）
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CadUpload {
         /// キャッシュのフォルダの STEP を上げる（値を省くと cad-step の既定のキャッシュ）
         #[arg(long, num_args = 0..=1, conflicts_with = "catalog")]
@@ -318,8 +343,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に無いものを上げる。
-    /// 目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
+    /// 膜のモデルの目録を作り、共有の置き場に上げる（保守用）
+    ///
+    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に
+    /// 無いものを上げる。目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CoatUpload {
         /// 膜ファイル（COATING.DAT）と .lbcb のフォルダ
         dir: PathBuf,
@@ -332,8 +361,11 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 膜ファイルのフォルダの目録 lbcb-remote.json の膜のモデルを置き場からすべて取り、フォルダに <膜>.lbcb として置く
-    /// （Python など置き場を見ない使い方のため。ふつうは使う膜だけ自動で取る）
+    /// 目録 lbcb-remote.json の膜のモデルを置き場からすべて取る
+    ///
+    /// 膜ファイルのフォルダに <膜>.lbcb として置く（Python など置き場を見ない使い方のため。ふつうは使う膜だけ自動で取る）
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CoatFetch {
         dir: PathBuf,
         #[arg(long)]
@@ -345,7 +377,9 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 面の膜: 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
+    /// 面の膜の一覧
+    ///
+    /// 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
     Coatings {
         /// .zmx ファイル
         file: PathBuf,
@@ -359,8 +393,11 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 実測表（LBCT）から、波長方向の折れ目（膜の材料の分散表の節）を探す。
+    /// 実測表（LBCT）から、波長方向の折れ目（膜の材料の分散表の節）を探す
+    ///
     /// 波長の格子は膜の厚さから決めた格子の 4 倍くらい細かくして測っておく
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CoatKinks {
         /// 実測表（LBCT 形式、複数可）
         tables: Vec<PathBuf>,
@@ -371,8 +408,9 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// レイアウト（断面図・立体）と光線を書き出す。形式は --out の拡張子で決める:
-    /// 2D は svg・png・dxf、3D は gltf・glb・obj・stl、CAD 用は step（stp）
+    /// レイアウト（断面図・立体）と光線を書き出す
+    ///
+    /// 形式は --out の拡張子で決める:2D は svg・png・dxf、3D は gltf・glb・obj・stl、CAD 用は step（stp）
     Layout {
         #[command(flatten)]
         c: Common,
@@ -402,6 +440,8 @@ enum Cmd {
         mech_detail: bool,
     },
     /// 暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CoatModel {
         /// 実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
         tables: Vec<PathBuf>,
@@ -424,8 +464,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 膜のモデル（LBCM）を小さくする: バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。
-    /// 読むときは LBCM 2（テキスト）と同じに扱える
+    /// 膜のモデル（LBCM）を小さくする
+    ///
+    /// バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）
+    /// と同じに扱える
+    // 保守の道具は一覧の最後に
+    #[command(display_order = 900)]
     CoatCompact {
         /// 元のモデル（LBCM 2 か 3）
         model: PathBuf,
@@ -436,7 +480,8 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く。
+    /// 分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く
+    ///
     /// 曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。
     /// angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
     CoatDesign {
@@ -476,13 +521,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 系を読み込んだまま待ち受け、外から JSON-RPC で系の変更・解析を繰り返す（既定は 127.0.0.1 だけ）。
+    /// 系を読み込んだまま待ち受け、外から JSON-RPC で系の変更・解析を繰り返す（既定は 127.0.0.1 だけ）
+    ///
     /// 手順と書式は docs/serve.md
     Serve(serve::ServeArgs),
-    /// 系のファイルの更新を見張り、変わるたびに解析を実行して結果を書き出す。
+    /// 系のファイルの更新を見張り、変わるたびに解析を実行して結果を書き出す
+    ///
     /// 例: lensbench watch -- spot sys.zmx --json --save out.json
     Watch(watch::WatchArgs),
-    /// Python のスクリプトを画面なしで実行する（外の Python を起動し、ガラス・膜・スレッド数・出力先を渡す）。
+    /// Python のスクリプトを画面なしで実行する（外の Python を起動し、ガラス・膜・スレッド数・出力先を渡す）
+    ///
     /// 例: lensbench run --threads 4 --out result sweep.py -- --n 100。終了コードはスクリプトのもの
     Run(Box<run::RunArgs>),
     /// 同梱のプラグイン（検出器・解析）の一覧と入出力の説明
@@ -491,8 +539,9 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// プラグイン・解析部品を基準データと照合する。記述（*.verify.json）かそれを含むフォルダを与える。
-    /// 通らない照合があれば終了コード 1
+    /// プラグイン・解析部品を基準データと照合する
+    ///
+    /// 記述（*.verify.json）かそれを含むフォルダを与える。通らない照合があれば終了コード 1
     Verify {
         /// 記述のファイルかフォルダ（フォルダは下まで *.verify.json を探す）
         #[arg(required = true)]
@@ -1747,192 +1796,6 @@ fn coatings(
     }))
 }
 
-fn coat_kinks(tables: &[PathBuf], only: &[String]) -> Result<Value, String> {
-    use lensbench_design::coat_fit::detect_kinks;
-    let mut keys = Vec::new();
-    // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
-    let mut per: Vec<(String, Vec<f64>)> = Vec::new();
-    for t in tables {
-        let txt =
-            lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
-        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
-            let air = k.split('|').nth(1) == Some("AIR");
-            if (only.is_empty() && !air) || (!only.is_empty() && !only.contains(&k)) {
-                continue;
-            }
-            let ks = detect_kinks(&m);
-            let coat = k.split('|').next().unwrap_or("").to_string();
-            let i = match per.iter().position(|(c, _)| *c == coat) {
-                Some(i) => i,
-                None => {
-                    per.push((coat.clone(), Vec::new()));
-                    per.len() - 1
-                }
-            };
-            for kk in &ks {
-                if !per[i].1.iter().any(|&w| (w - kk.wl).abs() < 5e-4) {
-                    per[i].1.push(kk.wl);
-                }
-            }
-            keys.push(json!({
-                "key": k,
-                "wavelengths": m.wavelengths.len(),
-                "kinks": ks.iter().map(|k| json!({"wl_um": k.wl, "smooth": k.smooth, "kinked": k.kinked})).collect::<Vec<_>>(),
-            }));
-        }
-    }
-    let coats: Vec<Value> = per
-        .into_iter()
-        .map(|(c, mut w)| {
-            w.sort_by(f64::total_cmp);
-            // --kinks にそのまま渡せる形（0.1 nm に丸める）
-            let arg: Vec<String> = w.iter().map(|x| format!("{:.4}", x)).collect();
-            json!({ "coat": c, "kinks_um": w, "kinks_arg": arg.join(",") })
-        })
-        .collect();
-    Ok(json!({ "coats": coats, "keys": keys }))
-}
-
-fn coat_model(
-    tables: &[PathBuf],
-    out: &std::path::Path,
-    only: Option<&str>,
-    kinks: Option<&str>,
-    tol_psi: f64,
-    note: Option<&str>,
-) -> Result<Value, String> {
-    let mut kinks: Vec<f64> = match kinks {
-        None => Vec::new(),
-        Some(k) => k
-            .split(',')
-            .map(|x| x.trim().parse::<f64>().map_err(|_| format!("--kinks: {x}")))
-            .collect::<Result<_, _>>()?,
-    };
-    kinks.sort_by(f64::total_cmp);
-    use lensbench_design::coat_fit::{fit_model, format_models, FitOptions};
-    let mut all = Vec::new();
-    for t in tables {
-        let txt =
-            lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
-        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
-            // 同じ KEY は後の表で置き換える（渡す順で結果が変わらないように、混ぜない）
-            if let Some(i) = all.iter().position(|(a, _): &(String, _)| *a == k) {
-                eprintln!("warning: {k}: {} の表で置き換えた", t.display());
-                all.remove(i);
-            }
-            all.push((k, m));
-        }
-    }
-    let mut coats: Vec<String> = Vec::new();
-    for (k, _) in &all {
-        let c = k.split('|').next().unwrap_or("").to_string();
-        if !coats.contains(&c) {
-            coats.push(c);
-        }
-    }
-    if let Some(o) = only {
-        let want: Vec<&str> = o.split(',').collect();
-        coats.retain(|c| want.contains(&c.as_str()));
-    }
-    let opt = FitOptions {
-        tol_psi,
-        ..Default::default()
-    };
-    let mut models = Vec::new();
-    let mut rep = Vec::new();
-    for c in &coats {
-        let t: Vec<(&str, &coating::Measured)> = all
-            .iter()
-            .filter(|(k, _)| k.split('|').next() == Some(c.as_str()))
-            .map(|(k, m)| (k.as_str(), m))
-            .collect();
-        // モデルガラスの組がない膜などは飛ばして、ほかの膜は作る
-        let r = match fit_model(&t, &opt) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("warning: {c}: 飛ばした（{e}）");
-                rep.push(json!({ "coat": c, "skipped": e.to_string() }));
-                continue;
-            }
-        };
-        let mut r = r;
-        r.model.kinks = kinks.clone();
-        r.model.note = note.unwrap_or("").trim().to_string();
-        // 折れ目の波長で測っていないと、そこをはさむ区間の端は外挿になる
-        let unmeasured: Vec<f64> = kinks
-            .iter()
-            .copied()
-            .filter(|&k| {
-                let w = &r.model.wavelengths;
-                !w.is_empty()
-                    && (w[0] < k && k < w[w.len() - 1])
-                    && !w.iter().any(|&x| (x - k).abs() < 1e-9)
-            })
-            .collect();
-        if !unmeasured.is_empty() {
-            eprintln!("warning: {c}: 折れ目 {unmeasured:?} um の波長で測っていない（その付近は外挿になる）");
-        }
-        let coarse = r.wave_gap > r.wave_gap_needed;
-        if coarse {
-            eprintln!(
-                "warning: {c}: 波長の格子が粗い（波数の間隔 {:.4} > 目安 {:.4} [1/um]）。波長の間で係数がずれる",
-                r.wave_gap, r.wave_gap_needed
-            );
-        }
-        rep.push(json!({
-            "coat": c,
-            "d_um": r.model.d,
-            "bmax": r.model.bmax,
-            "mirror_d_um": r.model.mirror.as_ref().map(|m| m.d),
-            "wavelengths": r.model.wavelengths.len(),
-            "betas": r.model.betas.len(),
-            "points": r.points,
-            "residual_max": r.residual_max,
-            "wave_gap": r.wave_gap,
-            "wave_gap_needed": r.wave_gap_needed,
-            "coarse": coarse,
-            "kinks_unmeasured": unmeasured,
-        }));
-        models.push((c.clone(), r.model));
-    }
-    if models.is_empty() {
-        return Err("作れた膜のモデルがない".into());
-    }
-    let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
-    lensbench_core::vfs::write(out, format_models(&e))
-        .map_err(|x| format!("{}: {x}", out.display()))?;
-    Ok(json!({ "out": out.display().to_string(), "models": rep }))
-}
-
-fn coat_compact(model: &std::path::Path, out: &std::path::Path) -> Result<Value, String> {
-    use lensbench_design::coat_fit::format_models_bin;
-    let b = lensbench_core::vfs::read(model).map_err(|e| format!("{}: {e}", model.display()))?;
-    let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
-        coating::parse_models_bin(&b)
-    } else {
-        coating::parse_models(&String::from_utf8_lossy(&b))
-    }
-    .map_err(|e| format!("{}: {e}", model.display()))?;
-    let rep: Vec<Value> = models
-        .iter()
-        .map(|(name, m)| {
-            json!({
-                "coat": name,
-                "wavelengths": m.wavelengths.len(),
-                "betas": m.betas.len(),
-                "mirror_wavelengths": m.mirror.as_ref().map_or(0, |x| x.wavelengths.len()),
-                "mirror_betas": m.mirror.as_ref().map_or(0, |x| x.betas.len()),
-            })
-        })
-        .collect();
-    let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
-    let bytes = format_models_bin(&e).map_err(|x| x.to_string())?;
-    lensbench_core::vfs::write(out, &bytes).map_err(|x| format!("{}: {x}", out.display()))?;
-    Ok(
-        json!({ "out": out.display().to_string(), "bytes_in": b.len(), "bytes": bytes.len(), "models": rep }),
-    )
-}
-
 struct CoatDesignArgs<'a> {
     targets: &'a [PathBuf],
     name: &'a str,
@@ -1945,205 +1808,6 @@ struct CoatDesignArgs<'a> {
     d_max: f64,
     slack: f64,
     out: Option<&'a std::path::Path>,
-}
-
-/// 曲線の CSV を読む（[`Cmd::CoatDesign`] の列）
-fn read_targets(p: &std::path::Path) -> Result<Vec<lensbench_design::coat_design::Target>, String> {
-    use lensbench_design::coat_design::{Pol, Quantity, Target};
-    let txt =
-        lensbench_core::vfs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
-    let mut lines = txt
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'));
-    let head: Vec<String> = lines
-        .next()
-        .ok_or_else(|| format!("{}: 空", p.display()))?
-        .split(',')
-        .map(|x| x.trim().to_ascii_lowercase())
-        .collect();
-    let col = |n: &str| head.iter().position(|h| h == n);
-    let (wl, scale_wl) = match (col("wl_um"), col("wl_nm")) {
-        (Some(i), _) => (i, 1.0),
-        (None, Some(i)) => (i, 1e-3),
-        _ => return Err(format!("{}: 列 wl_um か wl_nm がない", p.display())),
-    };
-    let (val, scale_v) = match (col("value"), col("value_pct")) {
-        (Some(i), _) => (i, 1.0),
-        (None, Some(i)) => (i, 0.01),
-        _ => return Err(format!("{}: 列 value か value_pct がない", p.display())),
-    };
-    let (ang, pol, qty, w) = (col("angle_deg"), col("pol"), col("quantity"), col("weight"));
-    let mut v = Vec::new();
-    for (ln, l) in lines.enumerate() {
-        let c: Vec<&str> = l.split(',').map(str::trim).collect();
-        let num = |i: usize| -> Result<f64, String> {
-            c.get(i)
-                .and_then(|x| x.parse::<f64>().ok())
-                .ok_or_else(|| format!("{}: {} 行目の数値", p.display(), ln + 2))
-        };
-        let pol = match pol.and_then(|i| c.get(i)).map(|x| x.to_ascii_lowercase()) {
-            None => Pol::Avg,
-            Some(x) if x == "avg" || x.is_empty() => Pol::Avg,
-            Some(x) if x == "s" => Pol::S,
-            Some(x) if x == "p" => Pol::P,
-            Some(x) => return Err(format!("{}: 偏光 {x}（s・p・avg）", p.display())),
-        };
-        let q = match qty.and_then(|i| c.get(i)).map(|x| x.to_ascii_uppercase()) {
-            None => Quantity::R,
-            Some(x) if x == "R" || x.is_empty() => Quantity::R,
-            Some(x) if x == "T" => Quantity::T,
-            Some(x) => return Err(format!("{}: 量 {x}（R・T）", p.display())),
-        };
-        v.push(Target {
-            wl: num(wl)? * scale_wl,
-            angle_deg: match ang {
-                Some(i) => num(i)?,
-                None => 0.0,
-            },
-            pol,
-            q,
-            value: num(val)? * scale_v,
-            weight: match w {
-                Some(i) => num(i)?,
-                None => 1.0,
-            },
-        });
-    }
-    Ok(v)
-}
-
-fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
-    use lensbench_design::coat_design::{fit_all, format_lbcs, pick, Material, Options};
-    let mut ts = Vec::new();
-    for p in a.targets {
-        ts.extend(read_targets(p)?);
-    }
-    let file = match a.coating_file {
-        Some(p) => coating::CoatingFile::load(p).map_err(|e| e.to_string())?,
-        None => coating::CoatingFile::default(),
-    };
-    // ガラスカタログは必要になったときに全部読む
-    let mut glasses: Option<std::collections::HashMap<String, lensbench_core::glass::Glass>> = None;
-    let mut glass = |name: &str| -> Option<lensbench_core::glass::Glass> {
-        let g = glasses.get_or_insert_with(|| {
-            let mut m = std::collections::HashMap::new();
-            for d in lensbench_core::glass::catalog_dirs(a.glass_dir) {
-                for f in lensbench_core::vfs::read_dir(&d).unwrap_or_default() {
-                    if f.extension().is_some_and(|e| e.eq_ignore_ascii_case("agf")) {
-                        if let Ok(x) = lensbench_core::glass::load_agf(&f) {
-                            for (k, v) in x {
-                                m.entry(k).or_insert(v);
-                            }
-                        }
-                    }
-                }
-            }
-            m
-        });
-        g.get(name).cloned()
-    };
-    // 材料: 膜ファイルの MATE、なければガラス（0.2〜2.5 µm を 5 nm 刻みの表にして .lbcs に MATE も書く）
-    let mut mats = Vec::new();
-    let mut with_mate = Vec::new();
-    let mut lookup = |name: &str| -> Result<(Material, bool), String> {
-        if let Some(r) = file.mate.get(name) {
-            let mut rows = r.clone();
-            rows.sort_by(|x, y| x[0].total_cmp(&y[0]));
-            return Ok((
-                Material {
-                    name: name.into(),
-                    rows,
-                },
-                false,
-            ));
-        }
-        let g = glass(name)
-            .ok_or_else(|| format!("材料 {name} が膜ファイルにもガラスカタログにもない"))?;
-        let rows = (0..=460)
-            .map(|i| {
-                let wl = 0.2 + 0.005 * i as f64;
-                [wl, g.index(wl, 20.0, 1.0, false), 0.0]
-            })
-            .collect();
-        Ok((
-            Material {
-                name: name.into(),
-                rows,
-            },
-            true,
-        ))
-    };
-    for m in a.materials {
-        let (mat, from_glass) = lookup(m)?;
-        if from_glass {
-            with_mate.push(mats.len());
-        }
-        mats.push(mat);
-    }
-    let sub: Box<dyn Fn(f64) -> coating::C64> = match a.substrate.parse::<f64>() {
-        Ok(n) => Box::new(move |_| coating::C64::new(n, 0.0)),
-        Err(_) => {
-            let (m, _) = lookup(a.substrate)?;
-            Box::new(move |wl| m.index(wl))
-        }
-    };
-    let (lo, hi) = match a.layers.split_once("..") {
-        Some((x, y)) => (
-            x.trim()
-                .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?,
-            y.trim()
-                .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?,
-        ),
-        None => {
-            let n = a
-                .layers
-                .trim()
-                .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?;
-            (n, n)
-        }
-    };
-    let o = Options {
-        materials: mats.clone(),
-        layers: (lo, hi),
-        starts: a.starts,
-        d_max: a.d_max,
-        ..Default::default()
-    };
-    let all = fit_all(&ts, &*sub, &o).map_err(|e| e.to_string())?;
-    let d = pick(&all, a.slack).ok_or("当てはめられない")?;
-    let lay = |d: &lensbench_design::coat_design::Design| -> Vec<Value> {
-        d.layers
-            .iter()
-            .map(|&(k, t)| json!({ "material": mats[k].name, "d_um": t }))
-            .collect()
-    };
-    let mut written = None;
-    if let Some(out) = a.out {
-        let note = format!(
-            "近似の膜: lensbench coat-design で分光の曲線 {} 点に合わせた（RMS {:.3e}、最大 {:.3e}）。\n\
-             曲線の外（位相・別の角度・硝材の側から）は元の膜と違いうる",
-            ts.len(),
-            d.rms,
-            d.max_err
-        );
-        let txt = format_lbcs(a.name, d, &mats, &with_mate, &note);
-        lensbench_core::vfs::write(out, txt.as_bytes())
-            .map_err(|e| format!("{}: {e}", out.display()))?;
-        written = Some(out.display().to_string());
-    }
-    Ok(json!({
-        "name": a.name,
-        "points": ts.len(),
-        "layers": lay(d),
-        "rms": d.rms,
-        "max_err": d.max_err,
-        "by_layers": all.iter().map(|x| json!({ "layers": x.layers.len(), "rms": x.rms, "max_err": x.max_err })).collect::<Vec<_>>(),
-        "out": written,
-    }))
 }
 
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
