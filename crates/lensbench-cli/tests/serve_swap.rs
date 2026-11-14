@@ -73,7 +73,7 @@ fn swap_serve() {
         serde_json::from_value(spec.clone()).unwrap(),
     )
     .unwrap();
-    let want = s.run(None);
+    let want: Vec<serde_json::Value> = s.run(None).iter().map(|x| x.to_value()).collect();
     assert_eq!(rows[0]["i"], want[0]["i"]);
     assert_eq!(rows[0]["merit"], want[0]["merit"]);
 

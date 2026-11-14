@@ -179,7 +179,7 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
     assert_eq!(s.combo(0), [0, 0]);
     assert_eq!(s.combo(1), [0, 1]);
     assert_eq!(s.combo(2), [1, 0]);
-    let r = s.run(None);
+    let r = vals(s.run(None));
     assert_eq!(r.len(), s.count());
     let m: Vec<f64> = r.iter().filter_map(|x| x["merit"].as_f64()).collect();
     assert!(m.len() >= s.count() / 2, "{r:?}");
@@ -195,7 +195,7 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
         }
     }
     // スレッド数によらず同じ
-    let r1 = s.run(Some(1));
+    let r1 = vals(s.run(Some(1)));
     assert_eq!(r, r1);
     // 先頭の組を、差し替えたプロジェクトを直接最適化したものと比べる
     let best = &r[0];
@@ -257,9 +257,9 @@ fn prescreen_keeps_the_best_coarse_combinations_with_the_same_results() {
     // スレッド数によらない
     assert_eq!(idx, s.screened(Some(1)));
     // 残った組の結果は、ふるいなしの同じ組の結果と同じ
-    let r = s.run(None);
+    let r = vals(s.run(None));
     assert_eq!(r.len(), idx.len());
-    let rf = full.run(None);
+    let rf = vals(full.run(None));
     for x in &r {
         let y = rf.iter().find(|y| y["i"] == x["i"]).unwrap();
         assert_eq!(x, y);
@@ -279,7 +279,7 @@ fn efl_target() {
     sp.efl = Some(40.0);
     sp.iters = 40;
     let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
-    let r = s.run(None);
+    let r = vals(s.run(None));
     let best = &r[0];
     let efl = best["efl"].as_f64().unwrap();
     assert!((efl - 40.0).abs() < 0.05, "{best}");
@@ -292,7 +292,7 @@ fn efl_target() {
         spec(vec![slot("A")]),
     )
     .unwrap();
-    let x = s0.eval(0);
+    let x = s0.eval(0).to_value();
     assert_eq!(x["image_merit"], x["merit"]);
 }
 
@@ -303,12 +303,12 @@ fn run_to_file_and_resume() {
     let mut a = slot("A");
     a.filter.efl = [Some(40.0), None];
     let s = SwapSearch::new(&p, &env(dir.clone()), &c, spec(vec![a])).unwrap();
-    let mem = s.run(None);
+    let mem = vals(s.run(None));
     let tmp = std::env::temp_dir().join(format!("lb-swap-run-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let f = tmp.join("r.jsonl");
     let _ = std::fs::remove_file(&f);
-    let r = s.run_to(Some(&f), true, None, None).unwrap();
+    let r = s.run_to(Some(&f), true, None, None).map(vals).unwrap();
     assert_eq!(r, mem);
     // 最後の行を途中で切り、1 行消して再開すると、残りだけ回して同じ結果
     let txt = std::fs::read_to_string(&f).unwrap();
@@ -320,7 +320,10 @@ fn run_to_file_and_resume() {
     let cb = |pr: lensbench_core::runs::Progress| {
         ran.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
     };
-    let r2 = s.run_to(Some(&f), true, Some(1), Some(&cb)).unwrap();
+    let r2 = s
+        .run_to(Some(&f), true, Some(1), Some(&cb))
+        .map(vals)
+        .unwrap();
     assert_eq!(r2, mem);
     assert_eq!(ran.load(std::sync::atomic::Ordering::Relaxed), 1);
     // 設定が違えば頭が違い、再開できない（resume false なら書き直す）
@@ -330,7 +333,7 @@ fn run_to_file_and_resume() {
     sp.iters = 5;
     let s3 = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
     assert!(s3.run_to(Some(&f), true, None, None).is_err());
-    let r3 = s3.run_to(Some(&f), false, None, None).unwrap();
+    let r3 = s3.run_to(Some(&f), false, None, None).map(vals).unwrap();
     assert_eq!(r3.len(), s3.count());
 }
 
@@ -354,7 +357,7 @@ fn errors() {
     let mut sp = spec(vec![slot("A")]);
     sp.vars = vec!["nothere.t".into()];
     let s = SwapSearch::new(&p, &e, &c, sp).unwrap();
-    let r = s.eval(0);
+    let r = s.eval(0).to_value();
     assert!(r["error"].as_str().is_some(), "{r}");
 }
 
@@ -373,7 +376,7 @@ fn terms_with_bounds_and_starts() {
     };
     let run = |sp: SwapSpec, i: usize| {
         let s = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
-        s.eval(i)
+        s.eval(i).to_value()
     };
     let free = run(base.clone(), 0);
     let efl0 = free["efl"].as_f64().unwrap();
@@ -441,7 +444,7 @@ fn states_with_per_state_vars() {
     sp.iters = 20;
     let s = SwapSearch::new(&p, &env(dir.clone()), &c, sp.clone()).unwrap();
     assert!(s.count() > 0);
-    let r = s.eval(0);
+    let r = s.eval(0).to_value();
     assert!(r.get("error").is_none(), "{r}");
     let vars = r["vars"].as_array().unwrap();
     assert_eq!(vars.len(), 4, "{r}");
@@ -477,7 +480,7 @@ fn clear_aperture_terms_keep_rays_inside() {
     sp.clear_aperture = true;
     let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
     for i in 0..s.count() {
-        let r = s.eval(i);
+        let r = s.eval(i).to_value();
         if r.get("error").is_some() {
             continue;
         }
@@ -554,7 +557,7 @@ fn clear_aperture_with_fixed_semi_diameters() {
     let s = SwapSearch::new(&p, &env(pdir), &c, sp).unwrap();
     let mut ok = 0;
     for i in 0..s.count() {
-        let r = s.eval(i);
+        let r = s.eval(i).to_value();
         if r.get("error").is_none() {
             ok += 1;
             let (sys, pr) = s.problem(i).unwrap();
@@ -599,4 +602,9 @@ fn clear_aperture_with_fixed_semi_diameters() {
     }
     assert!(ok > 0);
     std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// 結果を JSON の値に（試験は鍵で見る）
+fn vals(v: Vec<lensbench_design::swap::SwapResult>) -> Vec<serde_json::Value> {
+    v.iter().map(|x| x.to_value()).collect()
 }

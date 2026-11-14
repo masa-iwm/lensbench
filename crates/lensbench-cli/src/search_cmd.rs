@@ -199,7 +199,7 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     if !a.json && a.out.is_some() {
         eprintln!();
     }
-    let failed = r.iter().filter(|x| x.get("error").is_some()).count();
+    let failed = r.iter().filter(|x| x.error.is_some()).count();
     if a.top > 0 {
         r.truncate(a.top);
     }

@@ -1503,6 +1503,12 @@ impl Core {
 
     fn take(&mut self, mut d: Done) {
         if d.tag == Tag::Refresh {
+            let n = d.replies.len();
+            if !d.skipped {
+                for (m, p) in refresh_calls().into_iter().skip(n) {
+                    self.worker.send(Tag::of_refresh(&m), &m, p);
+                }
+            }
             return d.split().into_iter().for_each(|d| self.take(d));
         }
         self.rev += 1;
@@ -2130,14 +2136,7 @@ impl Core {
 
     /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）
     fn refresh(&mut self) {
-        let calls = [
-            ("surface", json!({})),
-            ("config_table", json!({})),
-            // 要約は解けない系で誤りになりやすいので最後（途中の誤りで後ろの呼び出しは止まる）
-            ("analyze", json!({ "cmd": "info" })),
-        ];
-        let calls = calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect();
-        self.worker.send_batch(Tag::Refresh, calls);
+        self.worker.send_batch(Tag::Refresh, refresh_calls());
     }
 
     /// serve の結果の段の数と一覧を覚える
@@ -7078,6 +7077,16 @@ impl App {
             }
         }
     }
+}
+
+/// 系を変えた後に読み直す表（[`Tag::Refresh`]。途中の誤りで止まれば残りは 1 つずつ頼み直す）
+fn refresh_calls() -> Vec<(String, Value)> {
+    let calls = [
+        ("surface", json!({})),
+        ("config_table", json!({})),
+        ("analyze", json!({ "cmd": "info" })),
+    ];
+    calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect()
 }
 
 impl App {

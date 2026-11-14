@@ -705,32 +705,37 @@ impl<'a> SwapSearch<'a> {
         Ok((s, pr, n_image))
     }
 
-    /// 組 i を評価した結果の JSON（組 i だけから決まる）。評価できなければ error に理由
-    pub fn eval(&self, i: usize) -> Value {
-        let lenses: Vec<Value> = self
+    /// 組 i を評価した結果（組 i だけから決まる）。評価できなければ error に理由
+    pub fn eval(&self, i: usize) -> SwapResult {
+        let lenses = self
             .combo(i)
             .iter()
             .enumerate()
             .map(|(k, &c)| {
                 let pk = &self.picks[k][c];
-                json!({
-                    "block": self.spec.slots[k].block, "vendor": pk.lens.vendor, "part": pk.lens.part,
-                    "reversed": pk.reversed, "efl": num(pk.lens.efl), "diameter": num(pk.lens.diameter),
-                })
+                SwapLens {
+                    block: self.spec.slots[k].block.clone(),
+                    vendor: pk.lens.vendor.clone(),
+                    part: pk.lens.part.clone(),
+                    reversed: pk.reversed,
+                    efl: fin(pk.lens.efl),
+                    diameter: fin(pk.lens.diameter),
+                }
             })
             .collect();
-        let mut out = json!({ "i": i, "lenses": lenses });
-        match self.optimize(i) {
-            Ok(v) => out
-                .as_object_mut()
-                .unwrap()
-                .extend(v.as_object().unwrap().clone()),
-            Err(e) => out["error"] = json!(e),
+        let (fit, error) = match self.optimize(i) {
+            Ok(f) => (Some(f), None),
+            Err(e) => (None, Some(e)),
+        };
+        SwapResult {
+            i,
+            lenses,
+            fit,
+            error,
         }
-        out
     }
 
-    fn optimize(&self, i: usize) -> Result<Value, String> {
+    fn optimize(&self, i: usize) -> Result<SwapFit, String> {
         let (s, pr0, n_image) = self.problem_n(i)?;
         let (start, pr, r, names) = self.best_start(pr0)?;
         self.report(&s, n_image, start, pr, r, names)
@@ -838,7 +843,7 @@ impl<'a> SwapSearch<'a> {
         Ok((start, pr, r, names))
     }
 
-    /// 最適化の結果の JSON
+    /// 最適化の結果
     fn report(
         &self,
         s: &System,
@@ -847,31 +852,25 @@ impl<'a> SwapSearch<'a> {
         pr: Problem,
         r: optim::DlsResult,
         names: Vec<(String, Option<usize>)>,
-    ) -> Result<Value, String> {
+    ) -> Result<SwapFit, String> {
         let mut img = pr.clone();
         img.terms.truncate(n_image);
         let image_merit = img.merit(&r.x).map_err(|e| e.to_string())?;
-        let vars: Vec<Value> = pr
+        let vars = pr
             .vars
             .iter()
             .zip(&names)
             .enumerate()
-            .map(|(q, (v, (name, k)))| {
-                let mut o = json!({ "name": name, "param": s.param_name(v.param), "x0": r.x0[q], "x": r.x[q] });
-                if let Some(k) = k {
-                    o["state"] = json!(self.spec.states[*k]);
-                }
-                o
+            .map(|(q, (v, (name, k)))| SwapVar {
+                name: name.clone(),
+                param: s.param_name(v.param),
+                x0: fin(r.x0[q]),
+                x: fin(r.x[q]),
+                state: k.map(|k| self.spec.states[k].clone()),
             })
             .collect();
         let sys = &r.systems[0];
-        let mut out = json!({
-            "merit0": num(r.merit0), "merit": num(r.merit), "image_merit": num(image_merit),
-            "start": if self.spec.starts.is_empty() { Value::Null } else { json!(start) },
-            "stop": stop_name(r.stop),
-            "iterations": r.iterations, "vars": vars, "efl": num(sys.paraxial().efl),
-            "total_track": num((1..sys.image()).map(|j| sys.surfaces[j].t).sum::<f64>()),
-        });
+        let mut states = None;
         if !self.spec.states.is_empty() {
             // 状態ごとの像の評価関数と焦点距離
             let mut st = Vec::new();
@@ -879,11 +878,27 @@ impl<'a> SwapSearch<'a> {
                 let mut one = img.clone();
                 one.terms.retain(|t| t.config == k);
                 let m = one.merit(&r.x).map_err(|e| e.to_string())?;
-                st.push(json!({ "state": name, "image_merit": num(m), "efl": num(r.systems[k].paraxial().efl) }));
+                let efl = fin(r.systems[k].paraxial().efl);
+                st.push(SwapState {
+                    state: name.clone(),
+                    image_merit: fin(m),
+                    efl,
+                });
             }
-            out["states"] = json!(st);
+            states = Some(st);
         }
-        Ok(out)
+        Ok(SwapFit {
+            merit0: fin(r.merit0),
+            merit: fin(r.merit),
+            image_merit: fin(image_merit),
+            start: (!self.spec.starts.is_empty()).then_some(start),
+            stop: stop_name(r.stop).to_string(),
+            iterations: r.iterations,
+            vars,
+            efl: fin(sys.paraxial().efl),
+            total_track: fin((1..sys.image()).map(|j| sys.surfaces[j].t).sum::<f64>()),
+            states,
+        })
     }
 
     /// 一括実行の結果のファイルの頭: 版・設定・元のプロジェクトの hash・所ごとの候補。
@@ -916,7 +931,7 @@ impl<'a> SwapSearch<'a> {
         resume: bool,
         threads: Option<usize>,
         progress: Option<&(dyn Fn(runs::Progress) + Sync)>,
-    ) -> Result<Vec<Value>, String> {
+    ) -> Result<Vec<SwapResult>, String> {
         let Some(path) = out else {
             return Ok(self.run(threads));
         };
@@ -929,20 +944,23 @@ impl<'a> SwapSearch<'a> {
             cancel: None,
         };
         let idx = self.screened(threads);
-        runs::run(idx.len(), 0, &o, |j, _| Ok(self.eval(idx[j]).to_string()))
-            .map_err(|e| e.to_string())?;
+        runs::run(idx.len(), 0, &o, |j, _| {
+            serde_json::to_string(&self.eval(idx[j]))
+                .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
+        })
+        .map_err(|e| e.to_string())?;
         let (_, rows) = runs::read_results(path).map_err(|e| e.to_string())?;
         let mut v = rows
             .into_iter()
             .map(|(_, _, r)| serde_json::from_str(&r).map_err(|e| e.to_string()))
-            .collect::<Result<Vec<Value>, String>>()?;
+            .collect::<Result<Vec<SwapResult>, String>>()?;
         sort_results(&mut v);
         Ok(v)
     }
 
     /// すべての組を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
     /// threads は [`par::with_threads`] と同じ（None は外の指定を引き継ぐ）
-    pub fn run(&self, threads: Option<usize>) -> Vec<Value> {
+    pub fn run(&self, threads: Option<usize>) -> Vec<SwapResult> {
         let idx = self.screened(threads);
         let mut v = par::with_threads(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);
@@ -951,12 +969,89 @@ impl<'a> SwapSearch<'a> {
 }
 
 /// 評価関数の小さい順（評価できなかった組は後ろ）、同じなら番号の順
-pub fn sort_results(v: &mut [Value]) {
-    v.sort_by(|a, b| {
-        let m = |x: &Value| x["merit"].as_f64().unwrap_or(f64::INFINITY);
-        m(a).total_cmp(&m(b))
-            .then(a["i"].as_u64().cmp(&b["i"].as_u64()))
-    });
+pub fn sort_results(v: &mut [SwapResult]) {
+    v.sort_by(|a, b| a.merit().total_cmp(&b.merit()).then(a.i.cmp(&b.i)));
+}
+
+/// 差し替え探索の 1 組の結果（JSON はこの形。鍵の並びも同じ）
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapResult {
+    /// 組の番号（0 始まり）
+    pub i: usize,
+    pub lenses: Vec<SwapLens>,
+    /// 最適化の結果（評価できなければ None で error に理由）
+    #[serde(flatten, default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<SwapFit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl SwapResult {
+    /// 並べる評価関数（評価できなければ無限大）
+    pub fn merit(&self) -> f64 {
+        self.fit
+            .as_ref()
+            .and_then(|f| f.merit)
+            .unwrap_or(f64::INFINITY)
+    }
+
+    pub fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+}
+
+/// 組の所ごとの玉
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapLens {
+    pub block: String,
+    pub vendor: String,
+    pub part: String,
+    pub reversed: bool,
+    pub efl: Option<f64>,
+    pub diameter: Option<f64>,
+}
+
+/// 組を最適化した結果（数が有限でなければ None = JSON の null）
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapFit {
+    pub merit0: Option<f64>,
+    pub merit: Option<f64>,
+    /// 像の項だけの評価関数
+    pub image_merit: Option<f64>,
+    /// 採った出発点の番号（starts が無ければ None）
+    pub start: Option<usize>,
+    pub stop: String,
+    pub iterations: usize,
+    pub vars: Vec<SwapVar>,
+    pub efl: Option<f64>,
+    pub total_track: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub states: Option<Vec<SwapState>>,
+}
+
+/// 最適化した変数
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapVar {
+    pub name: String,
+    pub param: String,
+    pub x0: Option<f64>,
+    pub x: Option<f64>,
+    /// 状態ごとの変数の状態の名前
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
+/// 状態ごとの像の評価関数と焦点距離
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapState {
+    pub state: String,
+    pub image_merit: Option<f64>,
+    pub efl: Option<f64>,
+}
+
+/// 有限なら Some（JSON は数、そうでなければ null）
+fn fin(x: f64) -> Option<f64> {
+    x.is_finite().then_some(x)
 }
 
 /// 変数の書き方: id のある空気は `id.t`、ほかは [`System::param`]
@@ -984,14 +1079,6 @@ fn var_param(s: &System, gaps: &[Gap], spec: &str) -> Result<Param, String> {
         }
     }
     s.param(spec).map_err(|e| e.to_string())
-}
-
-fn num(x: f64) -> Value {
-    if x.is_finite() {
-        json!(x)
-    } else {
-        Value::Null
-    }
 }
 
 fn stop_name(s: Stop) -> &'static str {

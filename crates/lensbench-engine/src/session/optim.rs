@@ -568,7 +568,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     if p["count_only"].as_bool() == Some(true) {
         return Ok(json!({ "count": n, "slots": slots }));
     }
-    let rows: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+    let rows: Mutex<Vec<lensbench_design::swap::SwapResult>> = Mutex::new(Vec::new());
     sess.swap_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
     *sess.swap_run.lock_ok() = Some((0, n));
@@ -596,7 +596,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let mut rows = rows.into_inner().unwrap_or_else(|e| e.into_inner());
     lensbench_design::swap::sort_results(&mut rows);
     let done = rows.len();
-    let failed = rows.iter().filter(|x| x.get("error").is_some()).count();
+    let failed = rows.iter().filter(|x| x.error.is_some()).count();
     let top = opt_usize(p, "top")?.unwrap_or(50);
     if top > 0 {
         rows.truncate(top);

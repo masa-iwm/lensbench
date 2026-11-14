@@ -84,6 +84,15 @@ impl Tag {
         matches!(self, Tag::Analyze(_) | Tag::Rays(_))
     }
 
+    /// [`Tag::Refresh`] の呼び出しの結果の行き先
+    pub fn of_refresh(method: &str) -> Tag {
+        match method {
+            "surface" => Tag::Surfaces,
+            "config_table" => Tag::ConfigTable,
+            _ => Tag::Info,
+        }
+    }
+
     /// 長い計算（ネイティブは別のスレッドで回し、[`Worker::busy_core`]・[`Worker::busy_short`] に数えない）
     fn long(&self) -> bool {
         matches!(self, Tag::Optimize | Tag::Swap | Tag::Tolerance | Tag::Zoom)
@@ -151,11 +160,7 @@ impl Done {
         self.replies
             .into_iter()
             .map(|r| Done {
-                tag: match r.method.as_str() {
-                    "surface" => Tag::Surfaces,
-                    "config_table" => Tag::ConfigTable,
-                    _ => Tag::Info,
-                },
+                tag: Tag::of_refresh(&r.method),
                 replies: vec![r],
                 ms,
                 skipped: false,
