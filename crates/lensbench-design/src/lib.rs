@@ -16,4 +16,5 @@ pub mod plugin_term;
 pub mod plugins;
 pub mod schema;
 pub mod swap;
+pub mod term_spec;
 pub mod tolerance;

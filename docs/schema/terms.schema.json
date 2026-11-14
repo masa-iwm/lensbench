@@ -1,0 +1,1083 @@
+{
+  "$defs": {
+    "DirName": {
+      "description": "MTF の向き",
+      "oneOf": [
+        {
+          "const": "tan",
+          "description": "タンジェンシャル",
+          "type": "string"
+        },
+        {
+          "const": "sag",
+          "description": "サジタル",
+          "type": "string"
+        },
+        {
+          "const": "both",
+          "description": "両方（既定）",
+          "type": "string"
+        }
+      ]
+    },
+    "FieldRef": {
+      "anyOf": [
+        {
+          "description": "視野の番号（1 始まり）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "description": "正規化視野 [hx, hy]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      ],
+      "description": "視野: 番号（1 始まり）か正規化視野 [hx, hy]"
+    },
+    "MacroRef": {
+      "anyOf": [
+        {
+          "description": "番号（0〜99）",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "description": "名前",
+          "type": "string"
+        }
+      ],
+      "description": "zplm のマクロ: 番号 nn（ZPLnn.ZPL）か名前"
+    },
+    "Nums": {
+      "anyOf": [
+        {
+          "format": "double",
+          "type": "number"
+        },
+        {
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "数か数の並び"
+    },
+    "RefName": {
+      "description": "RMS の基準",
+      "oneOf": [
+        {
+          "const": "centroid",
+          "description": "重心（既定）",
+          "type": "string"
+        },
+        {
+          "const": "chief",
+          "description": "主光線",
+          "type": "string"
+        }
+      ]
+    },
+    "TermSpec": {
+      "description": "評価関数の 1 つの項（共通のキー weight・config・min・max を除いた形）",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "spot・wavefront の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "reference": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RefName"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rings": {
+              "description": "瞳の環の数（既定 3）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "spot",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号（1 始まり）。null・省略は多色",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "spot・wavefront の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "reference": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RefName"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rings": {
+              "description": "瞳の環の数（既定 3）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "wavefront",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号（1 始まり）。null・省略は多色",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "mtf の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "dir": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DirName"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "freq": {
+              "description": "周波数 [cycles/mm]",
+              "format": "double",
+              "type": "number"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "瞳の標本数",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（既定 1）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "mtf",
+              "type": "string"
+            },
+            "wave": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field",
+            "freq"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "paraxial の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "q": {
+              "description": "量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obna・isna、OpticStudio の名前も可）",
+              "type": "string"
+            },
+            "target": {
+              "description": "目標（target・min・max のどれかが要る）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "paraxial",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ray の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "px": {
+              "description": "正規化瞳座標（既定 0）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "py": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "q": {
+              "description": "量（x・y・z・l・m・n）",
+              "type": "string"
+            },
+            "surf": {
+              "description": "面の番号（物体 0、既定は像面）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "ray",
+              "type": "string"
+            },
+            "wave": {
+              "description": "波長の番号。null・省略は主波長",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field",
+            "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "centroid の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "q": {
+              "$ref": "#/$defs/Xy"
+            },
+            "rings": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標 [レンズ単位]",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "centroid",
+              "type": "string"
+            },
+            "wave": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field",
+            "q"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "opd の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "px": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "py": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標 [波]",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "opd",
+              "type": "string"
+            },
+            "wave": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "zernike の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "$ref": "#/$defs/FieldRef"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ZernName"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "n": {
+              "description": "格子（既定 64）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標 [波]",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "term": {
+              "description": "項の番号（1 始まり）",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "zernike",
+              "type": "string"
+            },
+            "wave": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "field",
+            "term"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "coupling の項",
+          "properties": {
+            "clip_stop": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "grid": {
+              "description": "格子（既定 101）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "na": {
+              "description": "送り・受けの NA（na_source・na_receiver が優先）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "na_max": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "na_receiver": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "na_source": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "receiver": {
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "source": {
+              "description": "送りのファイバの位置 [x, y]",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "target": {
+              "description": "目標（既定 1）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "coupling",
+              "type": "string"
+            },
+            "wave": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "zplm の項",
+          "properties": {
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "data": {
+              "description": "OPTRETURN の番号（既定 0）",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "default_dirs": {
+              "description": "false なら既定の場所（LENSBENCH_MACROS・今のフォルダ）を探さない",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "file": {
+              "description": ".ZPL のパス",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hx": {
+              "description": "PVHX・PVHY・PVPX・PVPY（既定 0）",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "hy": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "macro": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MacroRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "マクロの番号か名前（file とどちらか一方）"
+            },
+            "macro_dirs": {
+              "description": "マクロを探すフォルダの並び",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "px": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "py": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "target": {
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "zplm",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "plugin の項",
+          "properties": {
+            "args": {
+              "description": "設定 {\"名前\": 値}"
+            },
+            "config": {
+              "description": "構成の番号（1 始まり、既定 1）",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "field": {
+              "description": "inputs の field の略"
+            },
+            "index": {
+              "description": "その要素だけ",
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "inputs": {
+              "description": "入力 {\"名前\": 数か数の並び}"
+            },
+            "max": {
+              "description": "値 ≤ max なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "値 ≥ min なら残差 0（target の代わり、目標が 1 つの値の項だけ）",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "登録の名前",
+              "type": "string"
+            },
+            "output": {
+              "description": "出力の名前",
+              "type": "string"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Nums"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "目標（数か出力と同じ数の並び、既定 0）"
+            },
+            "type": {
+              "const": "plugin",
+              "type": "string"
+            },
+            "weight": {
+              "description": "重み（既定 1）",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "output"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "TermSpec"
+    },
+    "Xy": {
+      "description": "重心の向き",
+      "enum": [
+        "x",
+        "y"
+      ],
+      "type": "string"
+    },
+    "ZernName": {
+      "description": "Zernike の並び",
+      "oneOf": [
+        {
+          "const": "fringe",
+          "description": "Fringe（既定）",
+          "type": "string"
+        },
+        {
+          "const": "standard",
+          "description": "Standard",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/terms.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TermSpec"
+    },
+    {
+      "items": {
+        "$ref": "#/$defs/TermSpec"
+      },
+      "type": "array"
+    }
+  ],
+  "title": "lensbench 評価関数の項（1 つか並び）"
+}

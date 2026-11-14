@@ -20,13 +20,20 @@
 //!
 //! `zplm` のマクロを探す順: file、macro_dirs、系に読み込んだマクロ（.zmx のソルブのもの）、LENSBENCH_MACROS、今のフォルダ。
 //! `"default_dirs": false` なら最後の 2 つ（既定の場所）を探さない（serve が --root・--allow-remote のときに付ける）。
+//!
+//! 種類ごとのキーは [`crate::term_spec`] の型で読み、知らないキーは誤り。スキーマは `docs/schema/terms.schema.json`。
 
 use lensbench_core::analysis::ZernKind;
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::optim::{MtfDir, ParaxQ, RayQ, Side, Term, TermKind};
 use lensbench_core::sweep::RmsRef;
+use lensbench_core::zplm::ZplmTerm;
 use lensbench_core::{FieldSel, System};
-use serde_json::{Map, Value};
+use serde_json::Value;
+
+use crate::term_spec::{
+    DirName, FieldRef, MacroRef, Nums, RefName, TermSpec, Xy, ZernName, ZplmSpec,
+};
 
 /// 項の並び（配列か 1 つのオブジェクト）
 pub fn terms_from_json(v: &Value, configs: &[System]) -> Result<Vec<Term>, String> {
@@ -40,306 +47,103 @@ pub fn terms_from_json(v: &Value, configs: &[System]) -> Result<Vec<Term>, Strin
     }
 }
 
-struct Obj<'a> {
-    m: &'a Map<String, Value>,
-    used: Vec<&'static str>,
-}
-
-impl<'a> Obj<'a> {
-    fn get(&mut self, k: &'static str) -> Option<&'a Value> {
-        self.used.push(k);
-        self.m.get(k).filter(|v| !v.is_null())
-    }
-    fn f64_or(&mut self, k: &'static str, d: f64) -> Result<f64, String> {
-        match self.get(k) {
-            None => Ok(d),
-            Some(v) => v.as_f64().ok_or_else(|| format!("{k} は数（{v}）")),
-        }
-    }
-    fn f64_req(&mut self, k: &'static str) -> Result<f64, String> {
-        match self.get(k) {
-            None => Err(format!("{k} がない")),
-            Some(v) => v.as_f64().ok_or_else(|| format!("{k} は数（{v}）")),
-        }
-    }
-    fn usize_opt(&mut self, k: &'static str) -> Result<Option<usize>, String> {
-        match self.get(k) {
-            None => Ok(None),
-            Some(v) => v
-                .as_u64()
-                .map(|x| Some(x as usize))
-                .ok_or_else(|| format!("{k} は 0 以上の整数（{v}）")),
-        }
-    }
-    fn str_or(&mut self, k: &'static str, d: &'static str) -> Result<String, String> {
-        match self.get(k) {
-            None => Ok(d.to_string()),
-            Some(v) => v
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("{k} は文字列（{v}）")),
-        }
-    }
-    fn pair(&mut self, k: &'static str) -> Result<Option<[f64; 2]>, String> {
-        match self.get(k) {
-            None => Ok(None),
-            Some(v) => {
-                let a = v.as_array().filter(|a| a.len() == 2);
-                let p = a.and_then(|a| Some([a[0].as_f64()?, a[1].as_f64()?]));
-                p.map(Some).ok_or_else(|| format!("{k} は [x, y]（{v}）"))
-            }
-        }
-    }
-    fn bool_or(&mut self, k: &'static str, d: bool) -> Result<bool, String> {
-        match self.get(k) {
-            None => Ok(d),
-            Some(v) => v
-                .as_bool()
-                .ok_or_else(|| format!("{k} は true・false（{v}）")),
-        }
-    }
-    fn field(&mut self, s: &System) -> Result<FieldSel, String> {
-        match self.get("field") {
-            None => Err("field がない（番号か [hx, hy]）".into()),
-            Some(Value::Array(_)) => {
-                let [x, y] = self.pair("field")?.unwrap();
-                Ok(FieldSel::Norm(x, y))
-            }
-            Some(v) => {
-                let i = v
-                    .as_u64()
-                    .ok_or_else(|| format!("field は番号か [hx, hy]（{v}）"))?
-                    as usize;
-                if i == 0 || i > s.fields.len() {
-                    return Err(format!("視野 {i} はない（1〜{}）", s.fields.len()));
-                }
-                Ok(FieldSel::Index(i - 1))
-            }
-        }
-    }
-    fn wave(&mut self, s: &System) -> Result<Option<usize>, String> {
-        match self.usize_opt("wave")? {
-            None => Ok(None),
-            Some(w) if w >= 1 && w <= s.wavelengths.len() => Ok(Some(w - 1)),
-            Some(w) => Err(format!("波長 {w} はない（1〜{}）", s.wavelengths.len())),
-        }
-    }
-    fn reference(&mut self) -> Result<RmsRef, String> {
-        match self
-            .str_or("reference", "centroid")?
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "centroid" => Ok(RmsRef::Centroid),
-            "chief" => Ok(RmsRef::Chief),
-            r => Err(format!("reference は centroid か chief（{r}）")),
-        }
+fn field(f: FieldRef, s: &System) -> Result<FieldSel, String> {
+    match f {
+        FieldRef::Norm([x, y]) => Ok(FieldSel::Norm(x, y)),
+        FieldRef::Index(i) if i >= 1 && i <= s.fields.len() => Ok(FieldSel::Index(i - 1)),
+        FieldRef::Index(i) => Err(format!("視野 {i} はない（1〜{}）", s.fields.len())),
     }
 }
 
-/// 1 つの項
+fn wave(w: Option<usize>, s: &System) -> Result<Option<usize>, String> {
+    match w {
+        None => Ok(None),
+        Some(w) if w >= 1 && w <= s.wavelengths.len() => Ok(Some(w - 1)),
+        Some(w) => Err(format!("波長 {w} はない（1〜{}）", s.wavelengths.len())),
+    }
+}
+
+fn reference(r: Option<RefName>) -> RmsRef {
+    match r.unwrap_or_default() {
+        RefName::Centroid => RmsRef::Centroid,
+        RefName::Chief => RmsRef::Chief,
+    }
+}
+
+fn num(k: &str, v: &Value) -> Result<f64, String> {
+    v.as_f64().ok_or_else(|| format!("{k} は数（{v}）"))
+}
+
+/// 1 つの項。共通のキー（weight・config・min・max）を外し、残りを [`TermSpec`] で読む
 pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
-    let m0 = v
+    let mut m = v
         .as_object()
-        .ok_or_else(|| format!("項は {{\"type\": ...}} のオブジェクト（{v}）"))?;
+        .ok_or_else(|| format!("項は {{\"type\": ...}} のオブジェクト（{v}）"))?
+        .clone();
+    m.retain(|_, x| !x.is_null());
     // 片側の条件: "min"（値 ≥ min）・"max"（値 ≤ max）は target の代わりに書く
-    let mut m1 = m0.clone();
     let mut side = Side::Eq;
     for (k, sd) in [("min", Side::Min), ("max", Side::Max)] {
-        if let Some(b) = m1.remove(k).filter(|b| !b.is_null()) {
-            if side != Side::Eq || m0.get("target").is_some_and(|t| !t.is_null()) {
+        if let Some(b) = m.remove(k) {
+            if side != Side::Eq || m.contains_key("target") {
                 return Err("target・min・max はどれか 1 つ".into());
             }
-            m1.insert("target".into(), b);
+            m.insert("target".into(), b);
             side = sd;
         }
     }
-    let m = &m1;
-    let mut o = Obj {
-        m,
-        used: Vec::new(),
-    };
-    let ty = o.str_or("type", "")?.to_ascii_lowercase();
-    let weight = o.f64_or("weight", 1.0)?;
-    let config = match o.usize_opt("config")? {
+    let weight = m.remove("weight").map_or(Ok(1.0), |x| num("weight", &x))?;
+    let config = match m.remove("config").map(|c| c.as_u64().ok_or(c)) {
         None => 0,
-        Some(c) if c >= 1 && c <= configs.len() => c - 1,
-        Some(c) => return Err(format!("構成 {c} はない（1〜{}）", configs.len())),
+        Some(Ok(c)) if c >= 1 && c as usize <= configs.len() => c as usize - 1,
+        Some(Ok(c)) => return Err(format!("構成 {c} はない（1〜{}）", configs.len())),
+        Some(Err(c)) => return Err(format!("config は 1 以上の整数（{c}）")),
     };
-    let s = configs.get(config).ok_or("構成がない")?;
-    let kind = match ty.as_str() {
-        "spot" | "wavefront" | "wfe" => {
-            let field = o.field(s)?;
-            let wave = o.wave(s)?;
-            let rings = o.usize_opt("rings")?.unwrap_or(3);
-            let reference = o.reference()?;
-            if ty == "spot" {
-                TermKind::Spot {
-                    field,
-                    wave,
-                    rings,
-                    reference,
-                }
-            } else {
-                TermKind::Wavefront {
-                    field,
-                    wave,
-                    rings,
-                    reference,
-                }
-            }
-        }
-        "mtf" => TermKind::Mtf {
-            field: o.field(s)?,
-            wave: o.wave(s)?,
-            n: o.usize_opt("n")?,
-            freq: o.f64_req("freq")?,
-            dir: match o.str_or("dir", "both")?.to_ascii_lowercase().as_str() {
-                "tan" | "t" => MtfDir::Tan,
-                "sag" | "s" => MtfDir::Sag,
-                "both" => MtfDir::Both,
-                d => return Err(format!("dir は tan・sag・both（{d}）")),
-            },
-            target: o.f64_or("target", 1.0)?,
-        },
-        "paraxial" => TermKind::Paraxial {
-            q: ParaxQ::parse(&o.str_or("q", "")?).map_err(|e| e.to_string())?,
-            target: o.f64_req("target")?,
-        },
-        "ray" => TermKind::Ray {
-            field: o.field(s)?,
-            wave: o.wave(s)?,
-            px: o.f64_or("px", 0.0)?,
-            py: o.f64_or("py", 0.0)?,
-            surf: o.usize_opt("surf")?,
-            q: RayQ::parse(&o.str_or("q", "")?).map_err(|e| e.to_string())?,
-            target: o.f64_or("target", 0.0)?,
-        },
-        "centroid" => TermKind::Centroid {
-            field: o.field(s)?,
-            wave: o.wave(s)?,
-            rings: o.usize_opt("rings")?.unwrap_or(3),
-            y: match o.str_or("q", "")?.to_ascii_lowercase().as_str() {
-                "x" => false,
-                "y" => true,
-                q => return Err(format!("centroid の q は x か y（{q}）")),
-            },
-            target: o.f64_or("target", 0.0)?,
-        },
-        "opd" => TermKind::Opd {
-            field: o.field(s)?,
-            wave: o.wave(s)?,
-            px: o.f64_or("px", 0.0)?,
-            py: o.f64_or("py", 0.0)?,
-            target: o.f64_or("target", 0.0)?,
-        },
-        "zernike" => TermKind::Zernike {
-            field: o.field(s)?,
-            wave: o.wave(s)?,
-            kind: match o.str_or("kind", "fringe")?.to_ascii_lowercase().as_str() {
-                "fringe" => ZernKind::Fringe,
-                "standard" => ZernKind::Standard,
-                k => return Err(format!("kind は fringe か standard（{k}）")),
-            },
-            term: o.usize_opt("term")?.ok_or("term がない")?,
-            n: o.usize_opt("n")?.unwrap_or(64),
-            target: o.f64_or("target", 0.0)?,
-        },
-        "coupling" => {
-            let d = FiberOpts::default();
-            let na = o.f64_or("na", f64::NAN)?;
-            let pick = |x: f64, d: f64| if x.is_nan() { d } else { x };
-            let na_s = o.f64_or("na_source", f64::NAN)?;
-            let na_r = o.f64_or("na_receiver", f64::NAN)?;
-            let opts = FiberOpts {
-                na_source: pick(na_s, pick(na, d.na_source)),
-                na_receiver: pick(na_r, pick(na, d.na_receiver)),
-                source: o.pair("source")?.unwrap_or(d.source),
-                receiver: o.pair("receiver")?.unwrap_or(d.receiver),
-                grid: o.usize_opt("grid")?.unwrap_or(d.grid),
-                na_max: o.get("na_max").and_then(|v| v.as_f64()),
-                clip_stop: o.bool_or("clip_stop", d.clip_stop)?,
-            };
-            TermKind::Coupling {
-                wave: o.wave(s)?,
-                opts,
-                target: o.f64_or("target", 1.0)?,
-            }
-        }
-        "zplm" => {
-            let m = zplm_macro(&mut o, s)?;
-            let data = o.usize_opt("data")?.unwrap_or(0);
-            let pv = [
-                o.f64_or("hx", 0.0)?,
-                o.f64_or("hy", 0.0)?,
-                o.f64_or("px", 0.0)?,
-                o.f64_or("py", 0.0)?,
-            ];
-            let t = lensbench_core::zplm::ZplmTerm::new(&m, data, pv, o.f64_or("target", 0.0)?)
-                .map_err(|e| e.to_string())?;
-            TermKind::User(lensbench_core::optim::UserTermRef(std::sync::Arc::new(t)))
-        }
-        "plugin" => {
-            let name = o.str_or("name", "")?;
-            if name.is_empty() {
-                return Err("name（プラグインの名前）がない".into());
-            }
-            let args = crate::plugin_term::config_of(o.get("args"))?;
-            let mut inputs = crate::plugin_term::arrays_of(o.get("inputs"))?;
-            if let Some(f) = o.get("field") {
-                if inputs.contains_key("field") {
-                    return Err("field と inputs の field はどちらか一方".into());
-                }
-                inputs.insert("field".into(), crate::plugin_term::array_of("field", f)?);
-            }
-            let output = o.str_or("output", "")?;
-            if output.is_empty() {
-                return Err("output（出力の名前）がない".into());
-            }
-            let index = o.usize_opt("index")?;
-            let target = match o.get("target") {
-                None => vec![],
-                Some(Value::Array(a)) => a
-                    .iter()
-                    .map(|x| {
-                        x.as_f64()
-                            .ok_or_else(|| format!("target は数か数の並び（{x}）"))
-                    })
-                    .collect::<Result<_, _>>()?,
-                Some(v) => vec![v
-                    .as_f64()
-                    .ok_or_else(|| format!("target は数か数の並び（{v}）"))?],
-            };
-            let t = crate::plugin_term::PluginTerm::new(
-                &name, &args, inputs, &output, index, target, s,
-            )
-            .map_err(|e| e.to_string())?;
-            TermKind::User(lensbench_core::optim::UserTermRef(std::sync::Arc::new(t)))
-        }
-        "" => return Err("type がない".into()),
-        t => {
-            const TYPES: &str =
-                "spot・wavefront・mtf・paraxial・ray・opd・zernike・coupling・zplm・plugin";
-            return Err(format!("type {t}（{TYPES}）"));
-        }
-    };
-    if let Some(k) = m.keys().find(|k| !o.used.contains(&k.as_str())) {
-        return Err(format!("{ty} の項に使わないキー {k}"));
+    if let Some(Value::String(t)) = m.get_mut("type") {
+        *t = t.to_ascii_lowercase();
     }
-    if side != Side::Eq
-        && !matches!(
-            kind,
-            TermKind::Mtf {
-                dir: MtfDir::Tan | MtfDir::Sag,
-                ..
-            } | TermKind::Paraxial { .. }
-                | TermKind::Ray { .. }
-                | TermKind::Centroid { .. }
-                | TermKind::Opd { .. }
-                | TermKind::Zernike { .. }
-                | TermKind::Coupling { .. }
-        )
-    {
+    let ty = m
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    if ty.is_empty() {
+        return Err("type がない".into());
+    }
+    const TYPES: [&str; 12] = [
+        "spot",
+        "wavefront",
+        "wfe",
+        "mtf",
+        "paraxial",
+        "ray",
+        "centroid",
+        "opd",
+        "zernike",
+        "coupling",
+        "zplm",
+        "plugin",
+    ];
+    if !TYPES.contains(&ty.as_str()) {
+        return Err(format!("type {ty}（{}）", TYPES.join("・")));
+    }
+    let spec: TermSpec =
+        serde_json::from_value(Value::Object(m)).map_err(|e| format!("{ty} の項: {e}"))?;
+    let s = configs.get(config).ok_or("構成がない")?;
+    let kind = kind_of(spec, s)?;
+    let single = matches!(
+        kind,
+        TermKind::Mtf {
+            dir: MtfDir::Tan | MtfDir::Sag,
+            ..
+        } | TermKind::Paraxial { .. }
+            | TermKind::Ray { .. }
+            | TermKind::Centroid { .. }
+            | TermKind::Opd { .. }
+            | TermKind::Zernike { .. }
+            | TermKind::Coupling { .. }
+    );
+    if side != Side::Eq && !single {
         return Err(format!(
             "{ty} の項に min・max は使えない（目標が 1 つの値の項だけ）"
         ));
@@ -352,13 +156,138 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     })
 }
 
+/// 型にした項を core の項にする（番号の確かめ・既定値・マクロとプラグインの準備）
+fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
+    let user = |t: std::sync::Arc<dyn lensbench_core::optim::UserTerm>| {
+        TermKind::User(lensbench_core::optim::UserTermRef(t))
+    };
+    Ok(match spec {
+        TermSpec::Spot(r) => TermKind::Spot {
+            field: field(r.field, s)?,
+            wave: wave(r.wave, s)?,
+            rings: r.rings.unwrap_or(3),
+            reference: reference(r.reference),
+        },
+        TermSpec::Wavefront(r) => TermKind::Wavefront {
+            field: field(r.field, s)?,
+            wave: wave(r.wave, s)?,
+            rings: r.rings.unwrap_or(3),
+            reference: reference(r.reference),
+        },
+        TermSpec::Mtf(t) => TermKind::Mtf {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            n: t.n,
+            freq: t.freq,
+            dir: match t.dir.unwrap_or_default() {
+                DirName::Tan => MtfDir::Tan,
+                DirName::Sag => MtfDir::Sag,
+                DirName::Both => MtfDir::Both,
+            },
+            target: t.target.unwrap_or(1.0),
+        },
+        TermSpec::Paraxial(t) => TermKind::Paraxial {
+            q: ParaxQ::parse(&t.q).map_err(|e| e.to_string())?,
+            target: t
+                .target
+                .ok_or("paraxial の項に target（か min・max）がない")?,
+        },
+        TermSpec::Ray(t) => TermKind::Ray {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            px: t.px.unwrap_or(0.0),
+            py: t.py.unwrap_or(0.0),
+            surf: t.surf,
+            q: RayQ::parse(&t.q).map_err(|e| e.to_string())?,
+            target: t.target.unwrap_or(0.0),
+        },
+        TermSpec::Centroid(t) => TermKind::Centroid {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            rings: t.rings.unwrap_or(3),
+            y: matches!(t.q, Xy::Y),
+            target: t.target.unwrap_or(0.0),
+        },
+        TermSpec::Opd(t) => TermKind::Opd {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            px: t.px.unwrap_or(0.0),
+            py: t.py.unwrap_or(0.0),
+            target: t.target.unwrap_or(0.0),
+        },
+        TermSpec::Zernike(t) => TermKind::Zernike {
+            field: field(t.field, s)?,
+            wave: wave(t.wave, s)?,
+            kind: match t.kind.unwrap_or_default() {
+                ZernName::Fringe => ZernKind::Fringe,
+                ZernName::Standard => ZernKind::Standard,
+            },
+            term: t.term,
+            n: t.n.unwrap_or(64),
+            target: t.target.unwrap_or(0.0),
+        },
+        TermSpec::Coupling(t) => {
+            let d = FiberOpts::default();
+            let opts = FiberOpts {
+                na_source: t.na_source.or(t.na).unwrap_or(d.na_source),
+                na_receiver: t.na_receiver.or(t.na).unwrap_or(d.na_receiver),
+                source: t.source.unwrap_or(d.source),
+                receiver: t.receiver.unwrap_or(d.receiver),
+                grid: t.grid.unwrap_or(d.grid),
+                na_max: t.na_max,
+                clip_stop: t.clip_stop.unwrap_or(d.clip_stop),
+            };
+            TermKind::Coupling {
+                wave: wave(t.wave, s)?,
+                opts,
+                target: t.target.unwrap_or(1.0),
+            }
+        }
+        TermSpec::Zplm(t) => {
+            let m = zplm_macro(&t, s)?;
+            let pv = [t.hx, t.hy, t.px, t.py].map(|x| x.unwrap_or(0.0));
+            let data = t.data.unwrap_or(0);
+            let z =
+                ZplmTerm::new(&m, data, pv, t.target.unwrap_or(0.0)).map_err(|e| e.to_string())?;
+            user(std::sync::Arc::new(z))
+        }
+        TermSpec::Plugin(t) => {
+            if t.name.is_empty() {
+                return Err("name（プラグインの名前）がない".into());
+            }
+            let args = crate::plugin_term::config_of(t.args.as_ref())?;
+            let mut inputs = crate::plugin_term::arrays_of(t.inputs.as_ref())?;
+            if let Some(f) = &t.field {
+                if inputs.contains_key("field") {
+                    return Err("field と inputs の field はどちらか一方".into());
+                }
+                inputs.insert("field".into(), crate::plugin_term::array_of("field", f)?);
+            }
+            if t.output.is_empty() {
+                return Err("output（出力の名前）がない".into());
+            }
+            let target = match t.target {
+                None => vec![],
+                Some(Nums::One(x)) => vec![x],
+                Some(Nums::Many(v)) => v,
+            };
+            let p = crate::plugin_term::PluginTerm::new(
+                &t.name, &args, inputs, &t.output, t.index, target, s,
+            )
+            .map_err(|e| e.to_string())?;
+            user(std::sync::Arc::new(p))
+        }
+    })
+}
+
 /// zplm の項のマクロ（macro か file）を探して読む
-fn zplm_macro(o: &mut Obj, s: &System) -> Result<lensbench_core::zpl_solve::Macro, String> {
+fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Macro, String> {
     use lensbench_core::zpl_solve::{find_macro, macro_dirs, Macro};
     use std::path::{Path, PathBuf};
-    let defaults = o.bool_or("default_dirs", true)?;
-    if let Some(f) = o.get("file") {
-        let f = f.as_str().ok_or_else(|| format!("file は文字列（{f}）"))?;
+    if let Some(f) = &t.file {
+        if t.macro_.is_some() {
+            return Err("macro と file はどちらか一方".into());
+        }
         let p = Path::new(f);
         let src = lensbench_core::vfs::read(p).map_err(|e| format!("{f}: {e}"))?;
         let name = p
@@ -368,31 +297,15 @@ fn zplm_macro(o: &mut Obj, s: &System) -> Result<lensbench_core::zpl_solve::Macr
         let mut m =
             Macro::from_source(&name, &String::from_utf8_lossy(&src)).map_err(|e| e.to_string())?;
         m.path = p.to_path_buf();
-        if o.get("macro").is_some() {
-            return Err("macro と file はどちらか一方".into());
-        }
         return Ok(m);
     }
-    let name = match o.get("macro") {
+    let name = match &t.macro_ {
         None => return Err("macro（番号か名前）か file がない".into()),
-        Some(Value::String(n)) => n.clone(),
-        Some(v) => match v.as_u64() {
-            Some(n) if n <= 99 => format!("ZPL{n:02}"),
-            _ => return Err(format!("macro は 0〜99 の番号か名前（{v}）")),
-        },
+        Some(MacroRef::Name(n)) => n.clone(),
+        Some(MacroRef::No(n)) if *n <= 99 => format!("ZPL{n:02}"),
+        Some(MacroRef::No(n)) => return Err(format!("macro は 0〜99 の番号か名前（{n}）")),
     };
-    let mut extra: Vec<PathBuf> = vec![];
-    if let Some(d) = o.get("macro_dirs") {
-        let a = d
-            .as_array()
-            .ok_or_else(|| format!("macro_dirs はフォルダの並び（{d}）"))?;
-        for x in a {
-            extra.push(PathBuf::from(
-                x.as_str()
-                    .ok_or_else(|| format!("macro_dirs の要素は文字列（{x}）"))?,
-            ));
-        }
-    }
+    let extra: Vec<PathBuf> = t.macro_dirs.iter().flatten().map(PathBuf::from).collect();
     if !extra.is_empty() {
         if let Ok(m) = find_macro(&name, &extra) {
             return Ok(m);
@@ -401,7 +314,7 @@ fn zplm_macro(o: &mut Obj, s: &System) -> Result<lensbench_core::zpl_solve::Macr
     if let Some(m) = s.macros.iter().find(|m| m.name.eq_ignore_ascii_case(&name)) {
         return Ok(m.clone());
     }
-    if !defaults {
+    if !t.default_dirs.unwrap_or(true) {
         return find_macro(&name, &extra).map_err(|e| e.to_string());
     }
     let mut dirs = macro_dirs(&extra, None);

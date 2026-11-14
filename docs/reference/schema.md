@@ -9,5 +9,6 @@ lensbench が読み書きする JSON ファイルのスキーマです。ファ�
 | [system](../schema/system.schema.json) | 系ファイル（`lensbench convert` の .json） |
 | [user-catalog](../schema/user-catalog.schema.json) | ユーザーカタログ |
 | [swap](../schema/swap.schema.json) | 差し替え探索の `--spec` |
+| [terms](../schema/terms.schema.json) | 評価関数の項（`optimize --terms`、1 つか並び） |
 
-serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project -p lensbench-design --test it schema::` で作り直す（swap は lensbench-design）。
+serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project -p lensbench-design --test it schema::` で作り直す（swap・terms は lensbench-design）。

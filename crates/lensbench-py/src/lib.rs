@@ -2342,8 +2342,8 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let f = field_sel(&s, field)?;
-        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
-        let (fs, z) = (floats(&freqs), floats(&dz));
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?).weighted(&s);
+        let (w, fs, z) = (w.map_err(err)?, floats(&freqs), floats(&dz));
         let m =
             py.detach(|| with_threads(threads, || sweep::through_focus_mtf(&s, f, w, n, &fs, &z)));
         sweep_dict(py, "dz", &m)
@@ -2365,8 +2365,8 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let ax = field_axis(axis)?;
-        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?);
-        let (fs, hs) = (floats(&freqs), floats(&h));
+        let w = Waves::all_or(wave.map(|w| wave_index(&s, w)).transpose()?).weighted(&s);
+        let (w, fs, hs) = (w.map_err(err)?, floats(&freqs), floats(&h));
         let m = py.detach(|| with_threads(threads, || sweep::field_mtf(&s, ax, &hs, w, n, &fs)));
         let d = sweep_dict(py, "h", &m)?;
         let fv: Vec<f64> = hs.iter().map(|&x| ax.value(&s, x)).collect();

@@ -40,3 +40,50 @@ fn swap_accepts_schema_key() {
     bad["slot"] = Value::Null;
     assert!(!v.is_valid(&bad));
 }
+
+/// 評価関数の項: 例の並びがスキーマに合い、知らないキー・種類はスキーマでも読みでも誤り（PRJ-11）
+#[test]
+fn terms_schema_matches_reader() {
+    let v = jsonschema::validator_for(&schema::schema("terms").unwrap()).unwrap();
+    let ok: Value = serde_json::json!([
+        {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0.1, "weight": 2},
+        {"type": "mtf", "field": [0, 0.5], "freq": 30, "dir": "tan", "min": 0.3, "config": 1},
+        {"type": "zplm", "macro": 7, "data": 2, "macro_dirs": ["."]},
+        {"type": "paraxial", "q": "efl", "min": 351},
+        {"type": "plugin", "name": "rms", "field": 1, "output": "wfe", "args": {"rings": 4}}
+    ]);
+    let errs: Vec<String> = v.iter_errors(&ok).map(|e| e.to_string()).collect();
+    assert!(errs.is_empty(), "{}", errs.join("\n"));
+    assert!(v.is_valid(&ok[0]));
+    for bad in [
+        serde_json::json!({"type": "ray", "field": 1, "q": "y", "taget": 1}),
+        serde_json::json!({"type": "nope"}),
+        serde_json::json!({"type": "mtf", "field": 1}),
+    ] {
+        assert!(!v.is_valid(&bad), "{bad}");
+    }
+    let s = lensbench_core::zmx::load_with(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/refs/A0/system.zmx"),
+        &lensbench_core::zmx::LoadOptions {
+            cfg: 1,
+            catalog_dirs: vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass")],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let e = lensbench_design::merit::term_from_json(
+        &serde_json::json!({"type": "ray", "field": 1, "q": "y", "taget": 1}),
+        std::slice::from_ref(&s),
+    )
+    .unwrap_err();
+    assert!(e.starts_with("ray の項: unknown field `taget`"), "{e}");
+    // 値の綴りの誤りは種類の誤りにしない
+    let terms = |v: Value| lensbench_design::merit::term_from_json(&v, std::slice::from_ref(&s));
+    let e = terms(serde_json::json!({"type": "mtf", "field": 1, "freq": 30, "dir": "TAN"}))
+        .unwrap_err();
+    assert!(e.starts_with("mtf の項: unknown variant `TAN`"), "{e}");
+    let e = terms(serde_json::json!({"type": "nope"})).unwrap_err();
+    assert!(e.starts_with("type nope（spot・"), "{e}");
+    assert!(terms(serde_json::json!({"type": "paraxial", "q": "efl"})).is_err());
+    terms(serde_json::json!({"type": "paraxial", "q": "efl", "min": 351})).unwrap();
+}

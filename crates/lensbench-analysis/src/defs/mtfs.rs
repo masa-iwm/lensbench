@@ -204,6 +204,7 @@ impl Analysis for MtfFocus {
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;
+        Waves::all_or(w).weighted(s)?;
         let dz = sweep::steps_sym(p.range, p.points);
         let (mut v, mut warn) = (Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
@@ -308,7 +309,7 @@ impl Analysis for MtfField {
         let w = wave(s, p.wave)?;
         let ax = p.axis.core();
         let h = sweep::steps01(p.points);
-        let m = sweep::field_mtf(s, ax, &h, Waves::all_or(w), p.n, &p.freqs);
+        let m = sweep::field_mtf(s, ax, &h, Waves::all_or(w).weighted(s)?, p.n, &p.freqs);
         let mut v = Vec::new();
         for (k, &f) in p.freqs.iter().enumerate() {
             for (j, &hh) in h.iter().enumerate() {

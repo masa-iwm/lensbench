@@ -306,4 +306,7 @@ fn mtf_with_all_zero_weights_is_an_error() {
     );
     let e = r.err().map(|e| e.to_string()).unwrap_or_default();
     assert!(e.contains("重みのある波長がない"), "{e}");
+    // mtf-focus・mtf-field・Python の掃引が先に見る口（全点 NaN の掃引にしない）
+    assert!(lensbench_core::Waves::All.weighted(&s).is_err());
+    assert!(lensbench_core::Waves::One(0).weighted(&s).is_ok());
 }

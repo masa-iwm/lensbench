@@ -23,4 +23,12 @@ impl Waves {
             Waves::One(w) => Some(w),
         }
     }
+
+    /// 多色で重みのある波長が無ければ誤り（全点が NaN の掃引にしない、ANA-23）
+    pub fn weighted(self, s: &crate::system::System) -> crate::error::Result<Waves> {
+        if self == Waves::All && !s.weights.iter().any(|&w| w > 0.0) {
+            crate::invalid!("重みのある波長がない");
+        }
+        Ok(self)
+    }
 }
