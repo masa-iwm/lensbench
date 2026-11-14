@@ -56,6 +56,18 @@ fn extra() -> Extra {
 
 /// ファイルの束を解く: u32 の数、続けてファイルごとに（u32 の長さ＋パス（UTF-8）、u32 の長さ＋中身）。
 /// 数はすべてリトルエンディアン
+/// ファイルの束が gzip なら展開する（先頭が gzip の印でなければそのまま。置き場が `Content-Encoding: gzip` で
+/// 配って、ブラウザが先に展開した場合も読める）
+pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
+    if !b.starts_with(&[0x1f, 0x8b]) {
+        return Ok(b);
+    }
+    let mut out = Vec::with_capacity(b.len() * 4);
+    std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&b[..]), &mut out)
+        .map_err(|e| format!("gzip を展開できない: {e}"))?;
+    Ok(out)
+}
+
 pub fn unpack(b: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
     fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
         if b.len() < n {
@@ -100,6 +112,12 @@ mod tests {
         for n in 0..b.len() {
             assert!(super::unpack(&b[..n]).is_err());
         }
+        // gzip の束も、gzip でない束も同じ中身になる
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut gz, &b).unwrap();
+        assert_eq!(super::ungzip(gz.finish().unwrap()).unwrap(), b);
+        assert_eq!(super::ungzip(b.clone()).unwrap(), b);
+        assert!(super::ungzip(vec![0x1f, 0x8b, 0, 1]).is_err());
     }
 }
 
@@ -132,7 +150,8 @@ mod web {
             lensbench_core::vfs::insert(p, b).map_err(err)?;
         }
         for url in &extra.packs {
-            let b = fetch_bytes(url).await?;
+            let b = super::ungzip(fetch_bytes(url).await?)
+                .map_err(|e| JsValue::from_str(&format!("{url}: {e}")))?;
             for (p, d) in
                 super::unpack(&b).map_err(|e| JsValue::from_str(&format!("{url}: {e}")))?
             {

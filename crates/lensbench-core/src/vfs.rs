@@ -522,7 +522,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn write_atomic_replaces() {
-        let d = std::env::temp_dir().join(format!("lb-vfs-atomic-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("lb-vfs-write-atomic-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let p = d.join("cat.json");
         super::write_atomic(&p, "a").unwrap();

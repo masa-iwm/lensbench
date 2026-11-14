@@ -64,6 +64,88 @@ impl Rng {
     }
 }
 
+impl Rng {
+    /// Poisson 乱数（平均 30 未満は積の方法で厳密、以上は正規分布で近似して丸める）。平均が正でなければ 0
+    pub fn poisson(&mut self, lam: f64) -> f64 {
+        if !(lam > 0.0) {
+            return 0.0;
+        }
+        if lam < 30.0 {
+            let l = (-lam).exp();
+            let (mut k, mut p) = (0.0, 1.0);
+            loop {
+                p *= self.uniform();
+                if p <= l {
+                    return k;
+                }
+                k += 1.0;
+            }
+        }
+        (lam + lam.sqrt() * self.normal()).round().max(0.0)
+    }
+}
+
+// ------------------------------------------------------------------------------------------ 検出器の雑音
+/// 検出器の雑音と AD 変換（検出器の露光で共通）。値は電子数 [e⁻]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SensorNoise {
+    /// ショット雑音（Poisson）を足す
+    pub shot: bool,
+    /// 読み出し雑音 [e⁻ rms]
+    pub read: f64,
+    /// 飽和 [e⁻]（0 なら飽和しない）。AD 変換の全幅
+    pub full_well: f64,
+    /// AD 変換のビット数（0 なら丸めない）
+    pub bits: u32,
+}
+
+impl SensorNoise {
+    /// 何も足さない・丸めない
+    pub fn is_quiet(&self) -> bool {
+        !self.shot && self.read == 0.0 && self.full_well == 0.0
+    }
+
+    /// 値を確かめる
+    pub fn check(&self) -> Result<()> {
+        if !(self.read >= 0.0) || !(self.full_well >= 0.0) {
+            invalid!(
+                "読み出し雑音・飽和は 0 以上に（{}・{}）",
+                self.read,
+                self.full_well
+            );
+        }
+        if self.bits > 0 && !(self.full_well > 0.0) {
+            invalid!("AD 変換の bits には飽和 full_well が要る");
+        }
+        if self.bits > 32 {
+            invalid!("AD 変換のビット数は 32 まで（{}）", self.bits);
+        }
+        Ok(())
+    }
+
+    /// 1 画素の露光。`mu` は平均の電子数（背景を含む）。ショット雑音は Poisson（[`Rng::poisson`]）、読み出し雑音は
+    /// 正規分布。bits > 0 なら刻み q = full_well / 2^bits で round(e/q)（四捨五入）を 0〜2^bits − 1 に切って q 倍、
+    /// bits = 0 で full_well > 0 なら 0〜full_well に切る。値でない `mu` はそのまま返す（乱数は使わない）
+    pub fn expose(&self, mu: f64, rng: &mut Rng) -> f64 {
+        if !mu.is_finite() {
+            return mu;
+        }
+        let mut e = if self.shot { rng.poisson(mu) } else { mu };
+        if self.read > 0.0 {
+            e += self.read * rng.normal();
+        }
+        if self.bits > 0 {
+            let levels = 2f64.powi(self.bits as i32);
+            let q = self.full_well / levels;
+            (e / q).round().clamp(0.0, levels - 1.0) * q
+        } else if self.full_well > 0.0 {
+            e.clamp(0.0, self.full_well)
+        } else {
+            e
+        }
+    }
+}
+
 /// 標準正規分布の累積分布関数
 pub fn norm_cdf(x: f64) -> f64 {
     0.5 * erfc(-x / std::f64::consts::SQRT_2)
@@ -590,4 +672,59 @@ where
         ran: ran.into_inner(),
         cancelled: cancelled(),
     })
+}
+
+#[cfg(test)]
+mod noise_tests {
+    use super::*;
+
+    #[test]
+    fn poisson_has_the_right_mean_and_variance() {
+        for &lam in &[0.7, 12.0, 400.0] {
+            let mut r = Rng::new(7, 0);
+            let n = 40000;
+            let (mut s, mut s2) = (0.0, 0.0);
+            for _ in 0..n {
+                let v = r.poisson(lam);
+                assert_eq!(v, v.round());
+                s += v;
+                s2 += v * v;
+            }
+            let m = s / n as f64;
+            let var = s2 / n as f64 - m * m;
+            assert!(
+                (m - lam).abs() < 4.0 * (lam / n as f64).sqrt(),
+                "{lam}: {m}"
+            );
+            assert!((var / lam - 1.0).abs() < 0.05, "{lam}: {var}");
+        }
+    }
+
+    #[test]
+    fn adc_rounds_half_away_from_zero_and_clips() {
+        let q = 20000.0 / 4096.0;
+        let a = SensorNoise {
+            full_well: 20000.0,
+            bits: 12,
+            ..Default::default()
+        };
+        let mut r = Rng::new(1, 0);
+        assert_eq!(a.expose(2.5 * q, &mut r), 3.0 * q);
+        assert_eq!(a.expose(2.4 * q, &mut r), 2.0 * q);
+        assert_eq!(a.expose(-3.0, &mut r), 0.0);
+        assert_eq!(a.expose(1e9, &mut r), 4095.0 * q);
+        assert!(a.expose(f64::NAN, &mut r).is_nan());
+        let fw = SensorNoise {
+            full_well: 4.0,
+            ..Default::default()
+        };
+        assert_eq!(fw.expose(5.0, &mut r), 4.0);
+        assert!(SensorNoise::default().is_quiet());
+        assert!(SensorNoise {
+            bits: 8,
+            ..Default::default()
+        }
+        .check()
+        .is_err());
+    }
 }

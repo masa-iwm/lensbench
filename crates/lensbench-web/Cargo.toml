@@ -17,6 +17,10 @@ workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[dependencies]
+# ファイルの束（gzip）の展開（unpack_gz）
+flate2 = "1"
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-gui = { path = "../lensbench-gui" }

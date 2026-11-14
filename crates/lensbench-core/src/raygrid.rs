@@ -35,7 +35,8 @@ pub struct RayGrid {
     /// ファイバ端での方向余弦（モードの重みに使う）
     pub sx: Vec<f64>,
     pub sy: Vec<f64>,
-    /// [波長][光線] の光路長 [mm]（波長 0 = 中心）
+    /// [波長][光線] の光路長 [mm]（波長 0 = 中心）。どの波長も中心波長の検出面の着地点 (xs, ys) での値（[`trace_jones`] が
+    /// 波長ごとの着地点のずれを 1 次で直す）
     pub l: Vec<Vec<f64>>,
     /// 検出面の局所 x・y の場（中心波長、約束は exp(+i k L)）
     pub ex: Vec<C64>,
@@ -335,6 +336,9 @@ pub struct JonesGrid {
     /// 指定面の交点 [mm]（面を指定しないときは空。有効でない光線は NaN）
     pub xf: Vec<f64>,
     pub yf: Vec<f64>,
+    /// [波長][光線] の、光路長を中心波長の着地点へ移した量 [mm]（`rays.l` に足してある。波長 0 は 0）。
+    /// 引けば各波長の光線の着地点での値になる（追跡の照合用）
+    pub landing: Vec<Vec<f64>>,
 }
 
 /// [`trace_path`] と同じ追跡で、入射の x・y の 2 つを追って Jones 行列にする。`surf` を指定すると、その面の
@@ -385,6 +389,9 @@ pub fn trace_jones(
     }
     let phase = has_phase_terms(sys);
     let mut raw0 = vec![0.0; g * g];
+    // 中心波長の検出面の着地点の z（曲がった検出面でも 3 次元で直すため）
+    let mut zs0 = vec![0.0; g * g];
+    let mut landing = vec![vec![0.0; g * g]; nw];
     let mut t0 = None;
     for w in 0..nw {
         // 指定面の交点は中心波長の追跡で一緒に記録する（同じ光線をもう一度追わない）
@@ -403,13 +410,15 @@ pub fn trace_jones(
         } else {
             None
         };
+        // 像空間の屈折率（向きの符号は使わない）
+        let nimg = sys.image_index(w).abs();
         for (m, &q) in idx.iter().enumerate() {
             if !t.ok(m) {
                 good[q] = false;
                 continue;
             }
             let lraw = t.opl_os[m];
-            r.l[w][q] = match chief {
+            let mut l = match chief {
                 Some((craw, cpath)) => craw + (lraw + t.rays[m].lens_opd - cpath),
                 None => lraw,
             };
@@ -417,7 +426,17 @@ pub fn trace_jones(
                 raw0[q] = lraw;
                 r.xs[q] = t.rays[m].xyz[0];
                 r.ys[q] = t.rays[m].xyz[1];
+                zs0[q] = t.rays[m].xyz[2];
+            } else if good[q] {
+                // 波長 w の光線は中心波長の着地点 x0 とは別の点 x_w に着く（倍率の色収差）。格子の値は中心波長の
+                // 着地点の値なので、波面を 1 次で x0 へ移す: L_w(x0) = L_w(x_w) + n s_w·(x0 − x_w)（アイコナール）
+                let (p, d) = (t.rays[m].xyz, t.rays[m].lmn);
+                let dl = nimg
+                    * (d[0] * (r.xs[q] - p[0]) + d[1] * (r.ys[q] - p[1]) + d[2] * (zs0[q] - p[2]));
+                landing[w][q] = dl;
+                l += dl;
             }
+            r.l[w][q] = l;
         }
         if w == 0 {
             t0 = Some(t);
@@ -513,5 +532,6 @@ pub fn trace_jones(
         jones,
         xf,
         yf,
+        landing,
     })
 }
