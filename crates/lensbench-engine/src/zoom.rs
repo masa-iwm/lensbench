@@ -117,7 +117,7 @@ pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomOpts) -> Result<Val
     sp.reference = match a.reference.to_ascii_lowercase().as_str() {
         "centroid" => RmsRef::Centroid,
         "chief" => RmsRef::Chief,
-        r => return Err(format!("--ref {r}（centroid・chief）")),
+        r => return Err(format!("--reference {r}（centroid・chief）")),
     };
     sp.opts = DlsOpts {
         max_iter: a.iters,

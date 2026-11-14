@@ -33,7 +33,7 @@ def main():
                 exe = p
     zmx = os.path.join(ROOT, "tests", "refs", "A0", "system.zmx")
     glass = os.path.join(ROOT, "tests", "glass")
-    with Client.spawn(zmx, exe=exe, glass_dir=[glass], threads=1) as lb:
+    with Client.spawn(zmx, exe=exe, glass_dirs=[glass], threads=1) as lb:
         t0 = lb.get("3.t")
         print(f"系: {lb.system()['surfaces']} 面, 面 3 の厚さ {t0}")
 
@@ -89,7 +89,7 @@ def compare_transports(exe, zmx, glass):
     shm_ok = sys.platform in ("win32", "linux")
     for pipe in (False, True):
         for shm in (False, True) if shm_ok else (False,):
-            with Client.spawn(zmx, exe=exe, glass_dir=[glass], threads=1, pipe=pipe) as lb:
+            with Client.spawn(zmx, exe=exe, glass_dirs=[glass], threads=1, pipe=pipe) as lb:
                 if shm:
                     lb.use_shm(128 << 20)
                 lb.trace(px, py, field=2)

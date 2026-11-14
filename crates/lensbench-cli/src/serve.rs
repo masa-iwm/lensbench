@@ -37,8 +37,8 @@ pub struct ServeArgs {
     /// プロジェクトファイルの状態の名前
     #[arg(long)]
     state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（T・R の並び）
-    #[arg(long)]
+    /// プロジェクトファイルのビームスプリッターの経路（T・R の並び。旧名 --path）
+    #[arg(long = "beam-path", alias = "path")]
     path: Option<String>,
     /// 待ち受けるアドレス（既定 127.0.0.1。ほかのアドレスは --allow-remote が要る）
     #[arg(long, default_value = "127.0.0.1")]
@@ -49,8 +49,7 @@ pub struct ServeArgs {
     /// 選んだポートの番号を書くファイル（--port 0 と一緒に使う）
     #[arg(long = "port-file")]
     port_file: Option<PathBuf>,
-    /// localhost 以外からの接続を受ける（認証はないので信頼できるネットワークだけで）。
-    /// このときは要求でファイルを読み書きしない（--root を与えればその下だけ）
+    /// localhost 以外からの接続を受ける（認証はないので信頼できるネットワークだけで）。このときは要求でファイルを読み書きしない（--root を与えればその下だけ）
     #[arg(long = "allow-remote")]
     allow_remote: bool,
     /// 要求で読み書きするファイルをこのフォルダの下に限る（相対パスはここから）
@@ -59,8 +58,7 @@ pub struct ServeArgs {
     /// 1 つの要求の配列の合計の上限 [バイト]（超える要求は断って接続を閉じる）
     #[arg(long = "max-request-bytes", default_value_t = 2 << 30)]
     max_request_bytes: u64,
-    /// TCP の代わりにパイプで待ち受ける。Windows は名前付きパイプ（\\.\pipe\NAME、同じ PC だけ）、
-    /// ほかは NAME のパスの Unix ドメインソケット
+    /// TCP の代わりにパイプで待ち受ける。Windows は名前付きパイプ（\\.\pipe\NAME、同じ PC だけ）、ほかは NAME のパスの Unix ドメインソケット
     #[arg(long)]
     pipe: Option<String>,
 }
@@ -68,8 +66,7 @@ pub struct ServeArgs {
 /// 共有メモリを使ってよいか（--allow-remote では使わない）
 static SHM_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
-/// ヘッダの "bin" から配列の並びと大きさを読む
-/// 配列の名前・dtype・形・バイト数・共有メモリの位置
+/// ヘッダの "bin" から配列の並びと大きさを読む配列の名前・dtype・形・バイト数・共有メモリの位置
 type Layout = Vec<(String, String, Vec<usize>, usize, Option<u64>)>;
 
 fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {

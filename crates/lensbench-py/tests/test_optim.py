@@ -92,7 +92,7 @@ def _ray_y(systems):
     out = []
     for s in systems:
         # 波長 1
-        t = s.trace(1, [0.0, 0.0], [0.7, -0.7], wavelengths=[1])
+        t = s.trace(1, [0.0, 0.0], [0.7, -0.7], waves=[1])
         out.append(t["y"][0])
     return np.array(out)
 

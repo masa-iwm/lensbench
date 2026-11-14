@@ -13,9 +13,9 @@ pip install --find-links dist lensbench
 ```python
 import numpy as np, lensbench as lb
 s = lb.System.load("system.zmx", glass_dirs=["catalogs"], cfg=1)   # .json のプロジェクトファイルなら state=
-r = s.trace(2, px, py, wavelengths=[1, 2, 3], threads=1)          # 視野は番号（1 始まり）か (hx, hy)
+r = s.trace(2, px, py, waves=[1, 2, 3], threads=1)          # 視野は番号（1 始まり）か (hx, hy)
 r["x"], r["y"], r["opl"], r["ok"]                                 # 形は (波長, 光線)
-j = s.trace(2, px, py, wavelengths=[1], pol=True)["jones"]       # (光線, 2, 2) complex128
+j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) complex128
 ```
 
 - 番号は CLI と同じ（視野・波長は 1 始まり、面は OpticStudio の面番号）。結果は CLI（`rays --save`）とビット一致し、スレッド数にもよらない

@@ -244,7 +244,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         (_, "steps") => "ずらしの点の数",
         (_, "axis") => "視野を振る向き",
         (_, "vs") => "横軸",
-        (_, "ref") => "基準",
+        (_, "reference") => "基準",
         (_, "field_wave") => "視野を解析の波長で解く",
         (_, "huygens") => "Huygens PSF",
         (_, "pupil") => "瞳の格子の一辺",

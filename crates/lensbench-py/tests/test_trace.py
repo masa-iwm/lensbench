@@ -87,14 +87,14 @@ def test_threads_do_not_change_the_results():
 def test_wavelengths_last_and_record():
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
     px, py = grid(8)
-    r = s.trace((0.0, 0.5), px, py, wavelengths=[3, 1], last=5, record=True)
+    r = s.trace((0.0, 0.5), px, py, waves=[3, 1], last=5, record=True)
     assert list(r["wavelengths"]) == [3, 1] and r["last"] == 5
     assert (r["hx"], r["hy"]) == (0.0, 0.5)
     assert list(r["rec_surfaces"]) == [1, 2, 3, 4, 5]
     assert r["rec_x"].shape == (2, 5, len(px))
     # 最後に記録した面は last の面
     assert np.array_equal(r["rec_x"][:, -1], r["x"])
-    one = s.trace((0.0, 0.5), px, py, wavelengths=[1], last=5)
+    one = s.trace((0.0, 0.5), px, py, waves=[1], last=5)
     assert np.array_equal(one["opl"][0], r["opl"][1])
     assert "gx" not in r and "jones" not in r
 
@@ -113,16 +113,16 @@ def test_record_selected_surfaces():
     # 面が 1 つもなくても rec_* は (波長, 0, 光線) の空配列
     e = s.trace(2, px, py, record=[99])
     assert e["rec_surfaces"].shape == (0,) and e["rec_x"].shape == (3, 0, len(px))
-    g = s.trace(2, px, py, record=[3], grad=["2.t"], wavelengths=[1])
+    g = s.trace(2, px, py, record=[3], grad=["2.t"], waves=[1])
     assert list(g["rec_surfaces"]) == [3]
-    gf = s.trace(2, px, py, grad=["2.t"], wavelengths=[1])
+    gf = s.trace(2, px, py, grad=["2.t"], waves=[1])
     assert np.array_equal(g["grad"], gf["grad"], equal_nan=True)
 
 
 def test_jones():
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
     px, py = grid(16)
-    r = s.trace(4, px, py, wavelengths=[2], pol=True)
+    r = s.trace(4, px, py, waves=[2], pol=True)
     j = r["jones"]
     assert j.shape == (len(px), 2, 2) and j.dtype == np.complex128
     assert r["jones_wavelength"] == 2
@@ -133,7 +133,7 @@ def test_jones():
     assert abs(a[0, 1]) < 1e-12 and abs(a[1, 0]) < 1e-12
     assert np.all(np.isfinite(j[ok]))
     # 伝搬の位相: E ∝ exp(−ikL)
-    p = s.trace(4, px, py, wavelengths=[2], pol=2, pol_phase=True)["jones"]
+    p = s.trace(4, px, py, waves=[2], pol=2, pol_phase=True)["jones"]
     k = 2 * np.pi / (s.wavelengths[1] * 1e-3)
     ph = np.exp(-1j * k * r["opl"][0])[:, None, None]
     assert np.allclose(p[ok], (j * ph)[ok], rtol=1e-12, atol=1e-14)
@@ -145,7 +145,7 @@ def test_errors():
     with pytest.raises(IndexError):
         s.trace(9, z, z)
     with pytest.raises(IndexError):
-        s.trace(1, z, z, wavelengths=[0])
+        s.trace(1, z, z, waves=[0])
     with pytest.raises(IndexError):
         s.trace(1, z, z, last=99)
     with pytest.raises(ValueError):
@@ -265,7 +265,7 @@ def test_grad_matches_finite_difference_with_fixed_end_point():
     names = ["1.c", "3.t", "2.tx", "8.dx"]
     px, py = np.array([0.1, -0.4]), np.array([0.3, 0.2])
     w = s.primary
-    r = s.trace(2, px, py, wavelengths=[w], grad=names, record=True)
+    r = s.trace(2, px, py, waves=[w], grad=names, record=True)
     assert r["grad"].shape == (1, 2, len(names)) and r["grad_params"] == names
     obj = tuple(s.object_of(2))
     img = s.image
@@ -279,7 +279,7 @@ def test_grad_matches_finite_difference_with_fixed_end_point():
                 t = s.with_params({p: v + d})
                 sol = t.solve_ray("pupil", ("position", img, tgt), object=obj, pupil=(px[i], py[i]))
                 assert max(map(abs, sol["residual"])) < 1e-9
-                q = t.trace(None, [sol["pupil"][0]], [sol["pupil"][1]], wavelengths=[w], object=obj)
+                q = t.trace(None, [sol["pupil"][0]], [sol["pupil"][1]], waves=[w], object=obj)
                 o.append(q["opl"][0, 0])
             fd = (o[0] - o[1]) / (2 * h)
             assert abs(fd - r["grad"][0, i, j]) < 1e-6 * max(1.0, abs(fd)), (p, fd, r["grad"][0, i, j])
@@ -293,24 +293,24 @@ def test_land_grad_and_dz_match_finite_difference(dz):
     names = ["1.c", "3.t", "2.tx", "8.dx", "3.dn"]
     px, py = np.array([0.1, -0.4, 0.0]), np.array([0.3, 0.2, -0.6])
     w = s.primary
-    r = s.trace(2, px, py, wavelengths=[w], grad=names, land=True, dz=dz, globals=True)
+    r = s.trace(2, px, py, waves=[w], grad=names, land=True, dz=dz, globals=True)
     assert r["grad_land"].shape == (1, 3, len(names), 4)
     # 開始位置・方向を物体の座標系に直す（GLRS が面 9 なので、大域座標はパラメータで動く）
     e = np.vstack([np.zeros(3), np.eye(3)])
-    f = s.trace_rays(e, np.tile([0.0, 0.0, 1.0], (4, 1)), wavelengths=[w], globals=True)["p0"][0]
+    f = s.trace_rays(e, np.tile([0.0, 0.0, 1.0], (4, 1)), waves=[w], globals=True)["p0"][0]
     o, rm = f[0], (f[1:] - f[0]).T
     p0 = (r["p0"][0] - o) @ rm
     k0 = r["k0"][0] @ rm
     for j, p in enumerate(names):
         h = 1e-6 if p.endswith(".c") else 1e-5 if p.endswith(".dn") else 1e-4
         v = s.get_param(p)
-        q = [s.with_params({p: v + d}).trace_rays(p0, k0, wavelengths=[w], dz=dz) for d in (h, -h)]
+        q = [s.with_params({p: v + d}).trace_rays(p0, k0, waves=[w], dz=dz) for d in (h, -h)]
         for c, k in enumerate(["x", "y", "l", "m"]):
             fd = (q[0][k][0] - q[1][k][0]) / (2 * h)
             np.testing.assert_allclose(r["grad_land"][0, :, j, c], fd, rtol=1e-5, atol=1e-8, err_msg=f"{p} {k}")
     # dz: 平面までの延長と、その平面の x・y を固定した dOPL/dp（差分で解き直さず、ずらす前の値との関係で確かめる）
     if dz is not None:
-        b = s.trace(2, px, py, wavelengths=[w], grad=names, globals=True)
+        b = s.trace(2, px, py, waves=[w], grad=names, globals=True)
         tt = (dz - b["z"][0]) / b["n"][0]
         np.testing.assert_allclose(r["z"][0], dz, atol=1e-14)
         np.testing.assert_allclose(r["x"][0], b["x"][0] + tt * b["l"][0], atol=1e-12)
@@ -333,16 +333,16 @@ def test_land_grad_of_unit_params_matches_finite_difference():
     names = ["lens2.dx", "lens2.dy", "lens2.tx", "lens3.ty", "lens3.tz", "lens1.dn", "lens2.shift"]
     px, py = np.array([0.1, -0.4, 0.0]), np.array([0.3, 0.2, -0.6])
     w = s.primary
-    r = s.trace(2, px, py, wavelengths=[w], grad=names, land=True, globals=True)
+    r = s.trace(2, px, py, waves=[w], grad=names, land=True, globals=True)
     e = np.vstack([np.zeros(3), np.eye(3)])
-    f = s.trace_rays(e, np.tile([0.0, 0.0, 1.0], (4, 1)), wavelengths=[w], globals=True)["p0"][0]
+    f = s.trace_rays(e, np.tile([0.0, 0.0, 1.0], (4, 1)), waves=[w], globals=True)["p0"][0]
     o, rm = f[0], (f[1:] - f[0]).T
     p0 = (r["p0"][0] - o) @ rm
     k0 = r["k0"][0] @ rm
     for j, p in enumerate(names):
         h = 1e-5 if p.endswith(".dn") else 1e-4
         v = s.get_param(p)
-        q = [s.with_params({p: v + d}).trace_rays(p0, k0, wavelengths=[w]) for d in (h, -h)]
+        q = [s.with_params({p: v + d}).trace_rays(p0, k0, waves=[w]) for d in (h, -h)]
         for c, k in enumerate(["x", "y", "l", "m"]):
             fd = (q[0][k][0] - q[1][k][0]) / (2 * h)
             np.testing.assert_allclose(r["grad_land"][0, :, j, c], fd, rtol=1e-5, atol=1e-8, err_msg=f"{p} {k}")
@@ -442,8 +442,8 @@ def test_trace_rays_reproduces_pupil_trace(name):
     s = lb.System.load(zmx(name), glass_dirs=GLASS)
     px, py = grid(9)
     g = None if s.infinite else ["objy", "2.t"]
-    t = s.trace(2, px, py, wavelengths=[1], globals=True, record=True, grad=g)
-    r = s.trace_rays(t["p0"][0], t["k0"][0], wavelengths=[1], frame="global", record=True, grad=g)
+    t = s.trace(2, px, py, waves=[1], globals=True, record=True, grad=g)
+    r = s.trace_rays(t["p0"][0], t["k0"][0], waves=[1], frame="global", record=True, grad=g)
     ok = t["ok"][0]
     assert ok.sum() > 0
     assert np.array_equal(ok, r["ok"][0])
@@ -454,7 +454,7 @@ def test_trace_rays_reproduces_pupil_trace(name):
         # 物体の座標系（物体面の局所座標、この系では大域と平行）: 開始位置は物点
         y = s.object_of(2)[1]
         st = np.tile([0.0, y, 0.0], (len(px), 1))
-        r2 = s.trace_rays(st, t["k0"][0], wavelengths=[1])
+        r2 = s.trace_rays(st, t["k0"][0], waves=[1])
         assert np.allclose(t["x"][0][ok], r2["x"][0][ok], rtol=0, atol=1e-10)
         assert np.allclose(t["opl"][0][ok], r2["opl"][0][ok], rtol=0, atol=1e-10)
 
@@ -465,7 +465,7 @@ def test_trace_at_stop_points(name):
     s = lb.System.load(zmx(name), glass_dirs=GLASS)
     px, py = grid(7)
     xs, ys = 0.8 * px, 0.8 * py
-    r = s.trace(2, xs, ys, wavelengths=[1, 2], last=s.stop, pupil="stop")
+    r = s.trace(2, xs, ys, waves=[1, 2], last=s.stop, pupil="stop")
     ok = r["ok"]
     assert ok.mean() > 0.9
     assert np.abs(r["x"] - xs)[ok].max() < 1e-9
@@ -473,7 +473,7 @@ def test_trace_at_stop_points(name):
     with pytest.raises(ValueError):
         s.trace(2, xs, ys, pupil="bad")
     # 目標が NaN の光線は解けない扱い
-    r = s.trace(2, [np.nan, 0.0, 0.5], [0.0, np.nan, 0.0], wavelengths=[1], pupil="stop")
+    r = s.trace(2, [np.nan, 0.0, 0.5], [0.0, np.nan, 0.0], waves=[1], pupil="stop")
     assert r["ok"][0].tolist() == [False, False, True]
 
 
@@ -821,8 +821,8 @@ def test_pol_grid():
     """偏光の粗い格子＋補間: 全光線の偏光追跡に近く、位相・NaN の約束も同じ"""
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
     px, py = grid(41)
-    a = s.trace(4, px, py, wavelengths=[2], pol=2)
-    b = s.trace(4, px, py, wavelengths=[2], pol=2, pol_grid=25)
+    a = s.trace(4, px, py, waves=[2], pol=2)
+    b = s.trace(4, px, py, waves=[2], pol=2, pol_grid=25)
     assert b["pol_grid"] == (25, 25)
     assert b["pol_grid_missing"].shape == (0, 2) and not b["pol_grid_bad"].any()
     assert np.abs(a["jones"] - b["jones"]).max() < 1e-6
@@ -831,18 +831,18 @@ def test_pol_grid():
     g = -1 + 2 * np.arange(25) / 24
     gx, gy = np.meshgrid(g, g)
     m = gx**2 + gy**2 <= 1
-    c = s.trace(4, gx[m], gy[m], wavelengths=[2], pol=2)
-    d = s.trace(4, gx[m], gy[m], wavelengths=[2], pol=2, pol_grid=25)
+    c = s.trace(4, gx[m], gy[m], waves=[2], pol=2)
+    d = s.trace(4, gx[m], gy[m], waves=[2], pol=2, pol_grid=25)
     assert np.allclose(c["jones"], d["jones"], rtol=0, atol=1e-14)
     # 伝搬の位相は全光線の光路長で
-    p = s.trace(4, px, py, wavelengths=[2], pol=2, pol_phase=True, pol_grid=25)["jones"]
+    p = s.trace(4, px, py, waves=[2], pol=2, pol_phase=True, pol_grid=25)["jones"]
     k = 2 * np.pi / (s.wavelengths[1] * 1e-3)
     ph = np.exp(-1j * k * a["opl"][0])[:, None, None]
     assert np.allclose(p, b["jones"] * ph, rtol=1e-12, atol=1e-14)
     # 偏光の波長が wavelengths に無くても、dz があっても同じ
-    e = s.trace(4, px, py, wavelengths=[1], pol=2, pol_grid=25)
+    e = s.trace(4, px, py, waves=[1], pol=2, pol_grid=25)
     assert np.array_equal(e["jones"], b["jones"])
-    f = s.trace(4, px, py, wavelengths=[2], pol=2, pol_grid=25, dz=0.1)
+    f = s.trace(4, px, py, waves=[2], pol=2, pol_grid=25, dz=0.1)
     assert np.array_equal(f["jones"], b["jones"])
     # 止まった光線は NaN のまま
     q = s.trace(4, np.array([0.0, 5.0]), np.array([0.0, 0.0]), pol=True, pol_grid=25)
@@ -914,3 +914,26 @@ def test_load_error_classes(tmp_path):
         lb.System.load(zmx("A5"), glass_dirs=GLASS, cfg=0)
     with pytest.raises(lb.InvalidError):
         lb.System.load(zmx("A5"), glass_dirs=GLASS, state="x")
+
+
+def test_renamed_arguments_accept_old_names():
+    """CLI-17 で名前をそろえた引数（beam_path・waves・wave）は旧名（split_path・wavelengths・wavelength）も受ける"""
+    prj = str(ROOT / "examples" / "projects" / "P16_twyman_green.json")
+    paths = lb.System.beam_paths(prj, glass_dirs=GLASS)
+    with pytest.warns(DeprecationWarning, match="beam_paths"):
+        assert paths and paths == lb.System.split_paths(prj, glass_dirs=GLASS)
+    a = lb.System.load(prj, glass_dirs=GLASS, beam_path=paths[-1])
+    with pytest.warns(DeprecationWarning, match="split_path"):
+        b = lb.System.load(prj, glass_dirs=GLASS, split_path=paths[-1])
+    assert a.hash == b.hash
+    with pytest.raises(lb.InvalidError, match="beam_path"):
+        lb.System.load(prj, glass_dirs=GLASS, beam_path="T", split_path="T")
+    with pytest.raises(lb.InvalidError, match="beam_path"):
+        lb.System.load(zmx("A5"), glass_dirs=GLASS, beam_path="T")
+    s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
+    px, py = [0.0, 0.3], [0.5, -0.2]
+    with pytest.warns(DeprecationWarning, match="wavelengths"):
+        old = s.trace(1, px, py, wavelengths=[1])
+    np.testing.assert_array_equal(s.trace(1, px, py, waves=[1])["x"], old["x"])
+    with pytest.raises(lb.InvalidError, match="waves"):
+        s.trace(1, px, py, waves=[1], wavelengths=[1])

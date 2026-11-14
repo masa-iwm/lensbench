@@ -52,6 +52,11 @@ fn arg_of(p: &Param) -> Arg {
     let mut a = Arg::new(leak(p.name.clone()))
         .long(leak(flag_of(&p.name)))
         .help(help);
+    for (n, o) in lensbench_analysis::registry::OLD_PARAM_NAMES {
+        if *n == p.name {
+            a = a.alias(leak(flag_of(o)));
+        }
+    }
     a = match p.ty {
         ParamTy::Flag => a.action(ArgAction::SetTrue),
         ParamTy::Count => a.value_parser(clap::value_parser!(u64)),

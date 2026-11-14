@@ -68,19 +68,19 @@ impl ArgNames {
     pub const CLI: ArgNames = ArgNames {
         cfg: "--cfg",
         state: "--state",
-        split_path: "--path",
+        split_path: "--beam-path",
     };
     /// serve の load の引数
     pub const SERVE: ArgNames = ArgNames {
         cfg: "cfg",
         state: "state",
-        split_path: "path",
+        split_path: "beam_path",
     };
     /// Python の System.load の引数
     pub const PYTHON: ArgNames = ArgNames {
         cfg: "cfg",
         state: "state",
-        split_path: "split_path",
+        split_path: "beam_path",
     };
 }
 

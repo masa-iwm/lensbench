@@ -12,7 +12,7 @@ lensbench mtf      system.zmx --freqs 0,50,100 --wave 2
 lensbench mtf      system.zmx --max-freq 200 --freq-steps 40     # 周波数を省いたときの上限と分割数（既定は遮断周波数の 0.95 倍・20 等分）
 lensbench mtf-focus system.zmx --field 1 --freqs 50,100 --range 0.05 --steps 11
 lensbench mtf-field system.zmx --freqs 30,60 --points 11
-lensbench rms      system.zmx --vs field --points 11 --ref centroid
+lensbench rms      system.zmx --vs field --points 11 --reference centroid
 lensbench optimize system.zmx --var 8.t --var "6.c=0:0.05" --merit wavefront --out opt.zmx
 lensbench tolerance project.json --set '{"preset":"precision","compensators":["9.t"]}' --trials 500
 lensbench zoom     zoom.json --var G2.shift --var G3.shift --efl 95,110,130 --steps 3
@@ -35,8 +35,8 @@ lensbench coat-upload catalogs/coating                      # 膜のモデル（
 lensbench coat-kinks scan.ctab
 lensbench coat-model measured.ctab --out coat_models.lbcm --kinks 0.45,0.5
 lensbench layout   system.zmx --out layout.svg --out layout.png --out lens.glb --out lens.step
-lensbench layout   project.json --paths all --out paths.svg          # BS の経路を重ねて描く（--states・.zmx は --cfgs も）
-lensbench zmx      project.json --paths all --out paths.zmx          # 経路ごとに 1 構成の多重構成の .zmx
+lensbench layout   project.json --beam-paths all --out paths.svg     # BS の経路を重ねて描く（--states・.zmx は --cfgs も）
+lensbench zmx      project.json --beam-paths all --out paths.zmx     # 経路ごとに 1 構成の多重構成の .zmx
 lensbench rays     system.zmx --fan grid --rays 7 --save rays.npz
 lensbench zernike  system.zmx --save zernike.csv
 lensbench ghost    system.zmx --coatings coat_models.lbcm --out-dir ghosts

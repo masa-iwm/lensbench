@@ -155,6 +155,17 @@ impl ParamTy {
     }
 }
 
+/// 設定の項目の旧名（新しい名前, 旧名）。CLI の旗と serve・GUI の鍵は旧名も受ける（CLI-17）
+pub const OLD_PARAM_NAMES: &[(&str, &str)] = &[("reference", "ref")];
+
+/// 旧名なら新しい名前に（違えばそのまま）
+pub fn current_param_name(k: &str) -> &str {
+    OLD_PARAM_NAMES
+        .iter()
+        .find(|(_, o)| *o == k)
+        .map_or(k, |(n, _)| n)
+}
+
 /// 設定の 1 項目（スキーマから作る）
 #[derive(Debug, Clone)]
 pub struct Param {

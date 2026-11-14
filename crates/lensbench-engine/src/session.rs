@@ -735,6 +735,27 @@ impl std::fmt::Display for CallError {
 /// 結果の配列（`trace` の x・y・z・opl・err・vig など。名前と f64 の並び、整数も f64 にする）
 pub type Arrays = Vec<(String, Vec<f64>)>;
 
+/// 新しい名前か旧名の値（両方は誤り。無ければ null）と、使った鍵
+fn renamed_key<'a>(
+    p: &'a Value,
+    new: &'static str,
+    old: &'static str,
+) -> Result<(&'a Value, &'static str), RpcErr> {
+    match (&p[new], &p[old]) {
+        (Value::Null, Value::Null) => Ok((&Value::Null, new)),
+        (v, Value::Null) => Ok((v, new)),
+        (Value::Null, v) => Ok((v, old)),
+        _ => Err(RpcErr::params(format!(
+            "{new} と {old}（旧名）の両方は渡せない"
+        ))),
+    }
+}
+
+/// [`renamed_key`] の値だけ
+fn renamed<'a>(p: &'a Value, new: &'static str, old: &'static str) -> Result<&'a Value, RpcErr> {
+    renamed_key(p, new, old).map(|x| x.0)
+}
+
 /// load の params から系の読み方
 fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let file = p["file"]
@@ -743,13 +764,25 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let read_all = |v: Vec<PathBuf>| -> Result<Vec<PathBuf>, RpcErr> {
         v.iter().map(|x| sess.files.check_path(x, false)).collect()
     };
+    // 名前は Python と同じ（CLI-17）。旧名 glass_dir・lens_catalog・path も受ける
+    let glass = renamed(p, "glass_dirs", "glass_dir")?;
+    let lens = renamed(p, "lens_catalogs", "lens_catalog")?;
+    let (bp, bk) = renamed_key(p, "beam_path", "path")?;
+    let path = match bp {
+        Value::Null => None,
+        v => Some(
+            v.as_str()
+                .ok_or_else(|| RpcErr::params(format!("{bk} は文字列（BS の経路、例 \"TR\"）")))?
+                .to_string(),
+        ),
+    };
     Ok(LoadSpec {
         file: sess.files.check_path(Path::new(file), false)?,
-        glass_dir: read_all(str_list(&p["glass_dir"], "glass_dir")?)?,
-        lens_catalog: read_all(str_list(&p["lens_catalog"], "lens_catalog")?)?,
+        glass_dir: read_all(str_list(glass, "glass_dirs")?)?,
+        lens_catalog: read_all(str_list(lens, "lens_catalogs")?)?,
         cfg: opt_usize(p, "cfg")?.unwrap_or(1),
         state: p["state"].as_str().map(str::to_string),
-        path: p["path"].as_str().map(str::to_string),
+        path,
         names: lensbench_project::open::ArgNames::SERVE,
     })
 }

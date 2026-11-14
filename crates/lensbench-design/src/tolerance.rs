@@ -500,6 +500,7 @@ pub fn spec_from_json_with(
         "comp_iters",
         "merit",
         "rings",
+        "reference",
         "ref",
         "terms",
         "sensitivity",
@@ -624,10 +625,15 @@ pub fn spec_from_json_with(
         None => 3,
         Some(x) => x.as_u64().ok_or("rings は整数")? as usize,
     };
-    let reference = match get("ref").and_then(|x| x.as_str()).unwrap_or("centroid") {
+    // 名前は CLI・Python と同じ reference（CLI-17）。旧名 ref も受ける
+    let reference = match (get("reference"), get("ref")) {
+        (Some(_), Some(_)) => return Err("reference と ref（旧名）の両方は書けない".into()),
+        (a, b) => a.or(b),
+    };
+    let reference = match reference.and_then(|x| x.as_str()).unwrap_or("centroid") {
         "centroid" => RmsRef::Centroid,
         "chief" => RmsRef::Chief,
-        r => return Err(format!("ref {r}（centroid・chief）")),
+        r => return Err(format!("reference {r}（centroid・chief）")),
     };
     match get("merit").and_then(|x| x.as_str()).unwrap_or("wavefront") {
         "wavefront" | "wfe" => p.add_default(DefaultMerit::Wavefront, rings, reference),

@@ -53,8 +53,8 @@ pub struct RmsParams {
     pub range: f64,
     /// field の視野を振る向き（y か x）
     pub axis: Axis,
-    /// 基準: centroid（重心）か chief（主光線）
-    #[serde(rename = "ref")]
+    /// 基準: centroid（重心）か chief（主光線）（旧名 ref）
+    #[serde(alias = "ref")]
     pub reference: Reference,
     /// 瞳のガウス求積のリング数
     #[schemars(extend("x-min" = 1))]

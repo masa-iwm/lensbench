@@ -53,8 +53,7 @@ pub struct Common {
     /// ガラスカタログを探すフォルダ（複数可。LENSBENCH_GLASSCAT も使う）
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
-    /// プロジェクトファイルのカタログレンズ（"vendor"・"part"）を探すレンズカタログ（.zmx のファイル、または .zmx を
-    /// 入れたフォルダ。メーカーはフォルダの名前、型番はファイル名。複数可）
+    /// プロジェクトファイルのカタログレンズ（"vendor"・"part"）を探すレンズカタログ（.zmx のファイル、または .zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名。複数可）
     #[arg(long = "lens-catalog")]
     pub lens_catalog: Vec<PathBuf>,
     /// マルチコンフィグの番号（1 始まり）
@@ -63,8 +62,8 @@ pub struct Common {
     /// プロジェクトファイル（.json）の状態の名前（多重構成に当たる）
     #[arg(long)]
     pub state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm）
-    #[arg(long)]
+    /// プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm。旧名 --path）
+    #[arg(long = "beam-path", alias = "path")]
     pub path: Option<String>,
     /// JSON で出力する
     #[arg(long)]
@@ -98,8 +97,8 @@ pub(crate) struct ConfigSel {
     /// プロジェクトの状態（名前のカンマ区切り、all で全部）
     #[arg(long)]
     states: Option<String>,
-    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
-    #[arg(long)]
+    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部。旧名 --paths）
+    #[arg(long = "beam-paths", alias = "paths")]
     paths: Option<String>,
 }
 
@@ -122,8 +121,7 @@ fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, S
 enum Cmd {
     /// 系を書き出す
     ///
-    /// 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。
-    /// 読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
+    /// 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
     Convert {
         #[command(flatten)]
         c: Common,
@@ -133,8 +131,7 @@ enum Cmd {
     },
     /// 系を .zmx に書き出す（プロジェクトの展開など）
     ///
-    /// --paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。
-    /// 面の並びが違う分は IGNR で無視する）
+    /// --beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
     Zmx {
         #[command(flatten)]
         c: Common,
@@ -157,15 +154,14 @@ enum Cmd {
         /// 既定の評価関数: spot・wavefront・none（--term の項だけ）
         #[arg(long, default_value = "spot")]
         merit: String,
-        /// 足す項（JSON、例 '{"type":"paraxial","q":"efl","target":50,"weight":10}'。種類とキーは
-        /// docs の最適化の項を参照）。複数可
+        /// 足す項（JSON、例 '{"type":"paraxial","q":"efl","target":50,"weight":10}'。種類とキーはdocs の最適化の項を参照）。複数可
         #[arg(long = "term")]
         terms: Vec<String>,
         /// 足す項の JSON ファイル（項の配列）
         #[arg(long = "terms")]
         terms_file: Option<PathBuf>,
-        /// 基準: centroid（重心）か chief（主光線）
-        #[arg(long = "ref", default_value = "centroid")]
+        /// 基準: centroid（重心）か chief（主光線）（旧名 --ref）
+        #[arg(long = "reference", alias = "ref", default_value = "centroid")]
         reference: String,
         /// 瞳のガウス求積のリング数
         #[arg(long, default_value_t = 3)]
@@ -182,8 +178,7 @@ enum Cmd {
     },
     /// モンテカルロ公差シミュレーション
     ///
-    /// 玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と個別の公差で系をずらし、
-    /// 補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。設定は JSON（docs の公差の設定、
+    /// 玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と個別の公差で系をずらし、補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。設定は JSON（docs の公差の設定、
     /// --spec のファイルと --set の上書き）
     Tolerance {
         #[command(flatten)]
@@ -200,8 +195,7 @@ enum Cmd {
         /// 乱数の種（設定の seed より優先）
         #[arg(long)]
         seed: Option<u64>,
-        /// 評価関数が最も悪かった試行の系（補償の後）を書き出すファイル。.json は系ファイル（屈折率の公差も書ける）、
-        /// ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
+        /// 評価関数が最も悪かった試行の系（補償の後）を書き出すファイル。.json は系ファイル（屈折率の公差も書ける）、ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
         #[arg(long = "save-worst")]
         save_worst: Option<PathBuf>,
         /// 試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
@@ -215,8 +209,7 @@ enum Cmd {
     Zoom(Box<search_cmd::ZoomArgs>),
     /// カタログレンズの差し替え探索
     ///
-    /// --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）
-    /// を最適化して評価関数の小さい順に並べる
+    /// --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）を最適化して評価関数の小さい順に並べる
     Swap(Box<search_cmd::SwapArgs>),
     /// ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
     CatalogAdd {
@@ -252,10 +245,7 @@ enum Cmd {
     },
     /// カタログの品を探す
     ///
-    /// レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で絞り込む。
-    /// 仕様は .json の品の `specs` と、
-    /// 同じメーカーの .json の `overlay`・`url_template` で足したもの（efl・diameter・thickness は一覧の値でも比べられる
-    /// ）
+    /// レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で絞り込む。仕様は .json の品の `specs` と、同じメーカーの .json の `overlay`・`url_template` で足したもの（efl・diameter・thickness は一覧の値でも比べられる）
     CatalogSearch {
         /// レンズカタログ（ファイル・フォルダ、複数可）
         #[arg(required = true)]
@@ -272,8 +262,7 @@ enum Cmd {
         /// 型番・説明・タグ・仕様に含む語（空白で区切るとすべて含む）
         #[arg(long, default_value = "")]
         text: String,
-        /// 仕様の条件（複数可、すべて満たす）: `名前`（ある）、`名前=値`（数は一致、範囲の仕様は含む、文字列は含む）、
-        /// `名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
+        /// 仕様の条件（複数可、すべて満たす）: `名前`（ある）、`名前=値`（数は一致、範囲の仕様は含む、文字列は含む）、`名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
         #[arg(long, num_args = 1)]
         spec: Vec<String>,
         /// 径 [mm] の素子が入る機構部品（チューブ・マウント・ケージ板）だけ: 保持径が径以上で 0.25 mm より太くない
@@ -287,8 +276,7 @@ enum Cmd {
     },
     /// 品の STEP（.step・.stp）を測る
     ///
-    /// 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品（チューブ・ケージ板・マウント）
-    /// は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+    /// 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品（チューブ・ケージ板・マウント）は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
     CatalogStep {
         #[arg(required = true)]
         files: Vec<PathBuf>,
@@ -297,8 +285,7 @@ enum Cmd {
     },
     /// 品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く
     ///
-    /// 2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、
-    /// カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
+    /// 2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
     CadStep {
         /// ユーザーカタログ
         #[arg(long)]
@@ -315,8 +302,7 @@ enum Cmd {
     /// 手元の STEP を共有の置き場に上げる（保守用）
     ///
     /// 置き場は環境変数 LENSBENCH_CAD_STORE（cad-step が配布元より先に見る所）。--cache はキャッシュのフォルダの STEP をそのまま（ファイル名が鍵）、
-    /// --catalog はフォルダの STEP をファイル名で品に当てて（cad-step と同じ鍵）上げる。
-    /// 置き場にある鍵は上げない（--overwrite で上げ直す）
+    /// --catalog はフォルダの STEP をファイル名で品に当てて（cad-step と同じ鍵）上げる。置き場にある鍵は上げない（--overwrite で上げ直す）
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CadUpload {
@@ -345,8 +331,7 @@ enum Cmd {
     },
     /// 膜のモデルの目録を作り、共有の置き場に上げる（保守用）
     ///
-    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に
-    /// 無いものを上げる。目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
+    /// 膜ファイルのフォルダの膜のモデル（.lbcb）の目録 lbcb-remote.json を作り、共有の置き場（cad-step と同じ）に無いものを上げる。目録を膜ファイルの隣に置くと、フォルダに無い膜のモデルを置き場から取って使う（配る版で膜のモデルを外すため）
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatUpload {
@@ -434,8 +419,7 @@ enum Cmd {
         /// 光線を管にする半径 [mm]（3D。STL は省略時に場面の大きさの 0.1%）
         #[arg(long)]
         tube: Option<f64>,
-        /// 機構部品を、取った品の STEP の詳しい形で描く（3D の glTF・OBJ・STL と STEP。キャッシュに STEP の無い部品は
-        /// 簡易外形。STEP は lensbench cad-step で取る）
+        /// 機構部品を、取った品の STEP の詳しい形で描く（3D の glTF・OBJ・STL と STEP。キャッシュに STEP の無い部品は簡易外形。STEP は lensbench cad-step で取る）
         #[arg(long)]
         mech_detail: bool,
     },
@@ -466,8 +450,7 @@ enum Cmd {
     },
     /// 膜のモデル（LBCM）を小さくする
     ///
-    /// バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）
-    /// と同じに扱える
+    /// バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）と同じに扱える
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatCompact {
@@ -482,8 +465,7 @@ enum Cmd {
     },
     /// 分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く
     ///
-    /// 曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。
-    /// angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
+    /// 曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
     CoatDesign {
         /// 曲線の CSV（複数可）
         targets: Vec<PathBuf>,
@@ -1089,7 +1071,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
             let reference = match reference.to_ascii_lowercase().as_str() {
                 "centroid" => sweep::RmsRef::Centroid,
                 "chief" => sweep::RmsRef::Chief,
-                r => return Err(format!("--ref {r}（centroid・chief）")),
+                r => return Err(format!("--reference {r}（centroid・chief）")),
             };
             p.jac = optim::JacMode::parse(&jac)
                 .ok_or_else(|| format!("--jac {jac}（{}）", optim::JacMode::NAMES))?;
@@ -1881,8 +1863,7 @@ fn fmt(v: &Value) -> String {
     }
 }
 
-/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず
-/// 黙って終える（終了コード 0。ほかの panic はいつもどおり）
+/// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず黙って終える（終了コード 0。ほかの panic はいつもどおり）
 fn quiet_broken_pipe() {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -1901,8 +1882,7 @@ fn quiet_broken_pipe() {
     }));
 }
 
-/// コマンドラインの入口（`lensbench` の実行ファイル）
-/// clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
+/// コマンドラインの入口（`lensbench` の実行ファイル）clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command();

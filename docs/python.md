@@ -24,6 +24,10 @@
 
 ### 変更履歴
 
+- **1.2**: 引数の名前を CLI・serve とそろえた（用語の表は下の「引数の名前」）。旧名は `DeprecationWarning` を出して動き、
+  次の major 版で消す: `load`・`from_project` の `split_path` → `beam_path`、`System.split_paths` → `System.beam_paths`、
+  `trace`・`trace_rays`・`trace_many` の `wavelengths` → `waves`、`solve_ray` の `wavelength` → `wave`。
+  serve のクライアント（`lensbench_client`）は `glass_dir`・`lens_catalog` → `glass_dirs`・`lens_catalogs`、`trace` の `global_` → `globals`。
 - **1.1**: `verify()`・`verify_compare()`（照合試験の枠組み）を追加。
 - **1.0**: 今の API を 1.0 とする。`API_VERSION`・`run_settings()`・`progress()` を追加。
   `System.load` などの `coatings=` を省くと環境変数 `LENSBENCH_COATINGS` を使う。`threads=` を省くと
@@ -51,7 +55,28 @@
 - **視野・波長は 1 始まり**（OpticStudio・CLI と同じ）。`s.fields[f - 1]`・`s.wavelengths[w - 1]` のように Python の
   並びを引くときだけ 1 を引きます。
 - **面は OpticStudio の面番号**（物体面 0、像面 `s.image`）。多くの引数は面の名前（コメント）でも指定できます（`s.find_surface`）。
-- 返り値の配列の軸は `(波長, 光線)`、面の記録は `(波長, 面, 光線)` です（波長の軸は指定した `wavelengths` の順）。
+- 返り値の配列の軸は `(波長, 光線)`、面の記録は `(波長, 面, 光線)` です（波長の軸は指定した `waves` の順）。
+
+### 引数の名前
+
+Python・CLI・serve は同じ名前を使います（CLI は下線をハイフンにした旗）。並びを取る引数は Python・serve では複数形、
+CLI では単数形の旗を繰り返します。
+
+| 名前 | 意味 | Python | CLI | serve |
+| --- | --- | --- | --- | --- |
+| `wave` | 波長の番号 1 つ（1 始まり） | `wave=` | `--wave` | `wave` |
+| `waves` | 波長の番号の並び | `waves=` | — | `wave`（並び） |
+| `wavelengths` | 波長の値 [µm] の並び（系の波長を置き換える） | `load(wavelengths=)` | — | — |
+| `beam_path` | プロジェクトのビームスプリッターの経路（T・R） | `beam_path=` | `--beam-path` | `beam_path` |
+| `beam_paths` | 重ねる経路の並び（`all` で全部） | `System.beam_paths()` は一覧 | `--beam-paths` | `beam_paths`（layout） |
+| `glass_dirs` | ガラスカタログを探すフォルダ | `glass_dirs=` | `--glass-dir`（繰り返す） | `glass_dirs` |
+| `lens_catalogs` | レンズカタログ | `lens_catalogs=` | `--lens-catalog`（繰り返す） | `lens_catalogs` |
+| `reference` | RMS の基準（centroid・chief） | `reference=` | `--reference` | `reference` |
+
+旧名（`split_path`・`--path`・`path`、`wavelengths=`（番号）・`wavelength=`、`glass_dir`・`lens_catalog`（serve）、
+`--ref`・`ref`（公差の設定も））も今は受けます。Python では `DeprecationWarning` が出ます。
+解析の名前は CLI のサブコマンド（`geo-mtf`・`mtf-focus`・`mtf-field`）と Python のメソッド（`geometric_mtf`・
+`through_focus_mtf`・`field_mtf`）で違います（CLI-02 の登録簿でそろえる予定）。
 
 ### 座標
 

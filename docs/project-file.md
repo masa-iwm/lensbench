@@ -55,8 +55,8 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   `{"tp": 1, "ts": 0}`、反射は 1 − T）のどれか。ほかの面の膜は `ar`（既定）と `faces`（キューブは `a`〜`d`、平板は分けない面の
   `front`・`back`）。理想膜は `I.s=Ts,p=Tp` とも書ける（s・p で別の透過率）。`id` が要る。偏心・傾き・ON/OFF も付けられる（OFF は素通り）。
   - 口: A（入射）、B（透過）、C（反射）、D（C の反対。B から戻る光の反射）。透過は A↔B・C↔D、反射は A↔C・B↔D。
-  - 経路: BS を通る順の T・R（`TR` = 往きは透過、戻りは反射）。CLI は `--path`、プロジェクトは `"path"`（状態の `project` でも）、
-    省くと各 BS の `arm`（既定 t）。`info` が経路の一覧（`paths`）を出す。Python は `load(..., split_path="TR")`・`System.split_paths(path)`
+  - 経路: BS を通る順の T・R（`TR` = 往きは透過、戻りは反射）。CLI は `--beam-path`、プロジェクトは `"path"`（状態の `project` でも）、
+    省くと各 BS の `arm`（既定 t）。`info` が経路の一覧（`paths`）を出す。Python は `load(..., beam_path="TR")`・`System.beam_paths(path)`
   - 分岐 `t`・`r`・`d` は口 B・C・D の先のブロック（分岐のある BS は並びの最後）。分岐のない BS では、後ろのブロックが 1 回目に出た口に続く。
   - 鏡の `back` で戻って BS に来たら、経路の文字で口を選ぶ。A へ出れば前のブロックをさらに戻り、ほかの口へ出ればその口の分岐へ
     （分岐がなければ鏡の後のブロックへ）進む。強度・Jones には通った面の係数の積が入り、腕どうしの光路差もそのまま出る

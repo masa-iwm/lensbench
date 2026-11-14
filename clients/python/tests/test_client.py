@@ -35,7 +35,7 @@ def _exe():
 
 @pytest.fixture
 def lb():
-    with Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1) as c:
+    with Client.spawn(ZMX, exe=_exe(), glass_dirs=[GLASS], threads=1) as c:
         yield c
 
 
@@ -102,10 +102,10 @@ def test_echo_and_errors(lb):
 
 def test_reload_after_external_write(tmp_path):
     p = tmp_path / "sys.zmx"
-    with Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS]) as lb:
+    with Client.spawn(ZMX, exe=_exe(), glass_dirs=[GLASS]) as lb:
         lb.write(p)
     # 別アプリが書いた系を読み、変えて書き戻す → reload で取り込む
-    with Client.spawn(p, exe=_exe(), glass_dir=[GLASS]) as lb:
+    with Client.spawn(p, exe=_exe(), glass_dirs=[GLASS]) as lb:
         t0 = lb.get("3.t")
         lb.set({"3.t": t0 + 0.5})
         lb.write(p)
@@ -139,7 +139,7 @@ def test_watch(tmp_path):
         time.sleep(0.02)
     a = json.loads(out.read_text())
     time.sleep(0.05)
-    with Client.spawn(p, exe=exe, glass_dir=[GLASS]) as lb:
+    with Client.spawn(p, exe=exe, glass_dirs=[GLASS]) as lb:
         lb.set({"3.t": lb.get("3.t") + 0.3})
         lb.write(p)
     assert w.wait(timeout=60) == 0
@@ -184,7 +184,7 @@ def test_fringe_over_serve(tmp_path):
 def test_pipe_and_shared_memory(pipe):
     px = np.linspace(-1, 1, 200_001)
     py = 0.3 * px
-    with Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1, pipe=pipe) as lb:
+    with Client.spawn(ZMX, exe=_exe(), glass_dirs=[GLASS], threads=1, pipe=pipe) as lb:
         assert lb.ping()["version"]
         want = lb.trace(px, py, field=2)
         if sys.platform not in ("win32", "linux"):
@@ -238,3 +238,18 @@ def test_progress_and_stop_from_another_connection(lb):
         assert o.progress()["running"] is False
         with pytest.raises(RpcError):
             o.stop("foo")
+
+
+def test_old_argument_names_warn():
+    """CLI-17 で名前をそろえた引数の旧名（glass_dir・lens_catalog・global_）は DeprecationWarning で動く"""
+    with pytest.warns(DeprecationWarning, match="glass_dir"):
+        lb = Client.spawn(ZMX, exe=_exe(), glass_dir=[GLASS], threads=1)
+    with lb:
+        with pytest.warns(DeprecationWarning, match="glass_dir"):
+            lb.load(ZMX, glass_dir=[GLASS])
+        a = lb.trace([0.0], [0.5], field=1, globals=True)
+        with pytest.warns(DeprecationWarning, match="global_"):
+            b = lb.trace([0.0], [0.5], field=1, global_=True)
+        assert list(a["x"]) == list(b["x"])
+        with pytest.raises(ValueError):
+            lb.load(ZMX, glass_dirs=[GLASS], glass_dir=[GLASS])

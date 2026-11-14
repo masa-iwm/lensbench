@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(c[0]["name"], "table");
         assert_eq!(c[0]["repeat"], true);
         let rms = analysis_args("rms").unwrap();
-        let r = rms.iter().find(|a| a["name"] == "ref").unwrap();
+        let r = rms.iter().find(|a| a["name"] == "reference").unwrap();
         assert_eq!(r["default"], "centroid");
     }
 }

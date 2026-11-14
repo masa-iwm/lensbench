@@ -4,7 +4,7 @@
 
     from lensbench_client import Client
 
-    with Client.spawn("sys.zmx", glass_dir=["glass"], threads=1) as lb:
+    with Client.spawn("sys.zmx", glass_dirs=["glass"], threads=1) as lb:
         for t in [1.0, 1.2, 1.4]:
             lb.set({"3.t": t})
             print(t, lb.analyze("spot", field=1)["spot"][0]["rms_centroid"])
@@ -26,6 +26,7 @@ import socket
 import subprocess
 import sys
 import time
+import warnings
 from array import array
 
 try:  # numpy は無くてもよい
@@ -130,19 +131,25 @@ class Client:
         *,
         exe: str | os.PathLike | None = None,
         threads: int | None = None,
-        glass_dir=None,
-        lens_catalog=None,
+        glass_dirs=None,
+        lens_catalogs=None,
         cfg: int | None = None,
         state: str | None = None,
+        beam_path: str | None = None,
         args=(),
         startup_timeout: float = 30.0,
         pipe: bool | str = False,
+        glass_dir=None,
+        lens_catalog=None,
     ) -> "Client":
         """lensbench serve を空いているポートで起動してつなぐ。閉じる（close・with を抜ける）とサーバーも止める。
 
         exe を省くと環境変数 LENSBENCH_EXE、無ければ PATH の lensbench を使う。pipe=True（か名前・パス）なら
         TCP の代わりにパイプ（Windows は名前付きパイプ、ほかは一時フォルダの Unix ドメインソケット）でつなぐ。
+        glass_dir・lens_catalog は glass_dirs・lens_catalogs の旧名。
         """
+        glass_dirs = _renamed(glass_dirs, glass_dir, "glass_dirs", "glass_dir")
+        lens_catalogs = _renamed(lens_catalogs, lens_catalog, "lens_catalogs", "lens_catalog")
         exe = os.fspath(exe or os.environ.get("LENSBENCH_EXE") or "lensbench")
         cmd = [exe]
         if threads is not None:
@@ -159,14 +166,16 @@ class Client:
             cmd += ["serve", "--port", "0"]
         if file is not None:
             cmd.append(os.fspath(file))
-        for g in _paths(glass_dir):
+        for g in _paths(glass_dirs):
             cmd += ["--glass-dir", g]
-        for g in _paths(lens_catalog):
+        for g in _paths(lens_catalogs):
             cmd += ["--lens-catalog", g]
         if cfg is not None:
             cmd += ["--cfg", str(cfg)]
         if state is not None:
             cmd += ["--state", state]
+        if beam_path is not None:
+            cmd += ["--beam-path", beam_path]
         cmd += list(args)
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=None)
         line = _readline_timeout(p, startup_timeout)
@@ -287,13 +296,20 @@ class Client:
     def ping(self) -> dict:
         return self.call("ping")[0]
 
-    def load(self, file, *, cfg=None, state=None, glass_dir=None, lens_catalog=None) -> dict:
-        """系を読み込む（前の系と set で変えた値は捨てる）"""
-        p = {"file": os.fspath(file), "glass_dir": _paths(glass_dir), "lens_catalog": _paths(lens_catalog)}
+    def load(
+        self, file, *, cfg=None, state=None, beam_path=None, glass_dirs=None, lens_catalogs=None,
+        glass_dir=None, lens_catalog=None,
+    ) -> dict:
+        """系を読み込む（前の系と set で変えた値は捨てる）。glass_dir・lens_catalog は旧名"""
+        glass_dirs = _renamed(glass_dirs, glass_dir, "glass_dirs", "glass_dir")
+        lens_catalogs = _renamed(lens_catalogs, lens_catalog, "lens_catalogs", "lens_catalog")
+        p = {"file": os.fspath(file), "glass_dirs": _paths(glass_dirs), "lens_catalogs": _paths(lens_catalogs)}
         if cfg is not None:
             p["cfg"] = cfg
         if state is not None:
             p["state"] = state
+        if beam_path is not None:
+            p["beam_path"] = beam_path
         return self.call("load", p)[0]
 
     def reload(self) -> dict:
@@ -345,11 +361,18 @@ class Client:
     def info(self) -> dict:
         return self.analyze("info")
 
-    def trace(self, px, py, *, field=None, hx=None, hy=None, wave=None, last=None, global_=False) -> dict:
+    def trace(
+        self, px, py, *, field=None, hx=None, hy=None, wave=None, last=None, globals=False, global_=None
+    ) -> dict:
         """正規化瞳座標 (px, py) の光線を追う。field（1 始まり）か (hx, hy)、wave は 1 始まり（省くと主波長）。
-        返す dict: x y z l m n opl（最後の面の局所座標、global_ なら大域）、err vig（0 なら通った）と
-        rays・ok・hx・hy・wave・last"""
-        p = {"global": bool(global_)}
+        返す dict: x y z l m n opl（最後の面の局所座標、globals なら大域）、err vig（0 なら通った）と
+        rays・ok・hx・hy・wave・last。global_ は globals の旧名（lensbench.System.trace と同じ名前に）"""
+        if global_ is not None:
+            if globals:
+                raise ValueError("globals と global_（旧名）の両方は渡せない")
+            warnings.warn("global_ は globals の旧名（次の major 版で消す）", DeprecationWarning, stacklevel=2)
+            globals = global_
+        p = {"global": bool(globals)}
         for k, v in (("field", field), ("hx", hx), ("hy", hy), ("wave", wave), ("last", last)):
             if v is not None:
                 p[k] = v
@@ -450,6 +473,16 @@ def _open_win_pipe(name: str, timeout: float):
             if time.monotonic() - t0 > timeout:
                 raise
             time.sleep(0.01)
+
+
+def _renamed(new, old, nn: str, on: str):
+    """新しい名前か旧名の引数（両方は誤り）"""
+    if new is not None and old is not None:
+        raise ValueError(f"{nn} と {on}（旧名）の両方は渡せない")
+    if old is not None:
+        warnings.warn(f"{on} は {nn} の旧名（次の major 版で消す）", DeprecationWarning, stacklevel=3)
+        return old
+    return new
 
 
 def _paths(v) -> list:

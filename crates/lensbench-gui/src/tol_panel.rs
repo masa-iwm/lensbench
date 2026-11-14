@@ -310,7 +310,7 @@ impl TolPanel {
             }
         }
         if let Some(r) = op.get("reference") {
-            m.insert("ref".into(), r.clone());
+            m.insert("reference".into(), r.clone());
         }
         Ok(Value::Object(m))
     }
@@ -362,7 +362,7 @@ impl TolPanel {
         if m.get("merit").is_none() {
             op["merit"] = json!("wavefront");
         }
-        if let Some(x) = m.get("ref") {
+        if let Some(x) = m.get("reference").or_else(|| m.get("ref")) {
             op["reference"] = x.clone();
         }
         n.opt.set_params(&op)?;
@@ -463,7 +463,7 @@ impl TolPanel {
                         }
                     }
                 }
-                "compensators" | "merit" | "rings" | "terms" | "configs" | "ref" => {}
+                "compensators" | "merit" | "rings" | "terms" | "configs" | "reference" | "ref" => {}
                 _ => {
                     n.extra.insert(k.clone(), x.clone());
                 }

@@ -163,6 +163,18 @@ fn loop_thickness() {
         .contains("load"));
     let sum = sv.call("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }));
     assert_eq!(sum["image_surface"], 9);
+    // 名前は Python と同じ glass_dirs（旧名 glass_dir も受ける、両方は誤り。CLI-17）
+    let sum = sv.call(
+        "load",
+        json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
+    );
+    assert_eq!(sum["image_surface"], 9);
+    assert!(sv
+        .error(
+            "load",
+            json!({ "file": ZMX, "glass_dirs": ["tests/glass"], "glass_dir": ["tests/glass"] })
+        )
+        .contains("旧名"));
     let base = core_system(&Path::new(ROOT).join(ZMX));
     let p = base.param("3.t").unwrap();
     let t0 = sv.call("get", json!({ "param": "3.t" }))["value"]
@@ -789,7 +801,7 @@ fn layout_export_writes_formats() {
         ("a.glb", json!({ "unfold": true }), "glb"),
         (
             "a.step",
-            json!({ "paths": "all", "offset": [0, 0, 0] }),
+            json!({ "beam_paths": "all", "offset": [0, 0, 0] }),
             "step",
         ),
     ] {
@@ -901,14 +913,14 @@ fn layout_overlay_paths() {
     assert!(paths.len() >= 2, "{c}");
     let one = sv.call("layout", json!({ "rays": 3 }));
     assert_eq!(one["configs"], json!([]));
-    let v = sv.call("layout", json!({ "rays": 3, "paths": "all" }));
+    let v = sv.call("layout", json!({ "rays": 3, "beam_paths": "all" }));
     assert_eq!(v["configs"], json!(paths));
     let rays = v["rays"].as_array().unwrap();
     let ncfg = rays.iter().map(|r| r["cfg"].as_u64().unwrap()).max();
     assert_eq!(ncfg, Some(paths.len() as u64 - 1));
     // 並びで 2 つ選び、z に 50 mm ずらす
     let two = json!([paths[0], paths[1]]);
-    let a = sv.call("layout", json!({ "rays": 3, "paths": two }));
+    let a = sv.call("layout", json!({ "rays": 3, "beam_paths": two }));
     let b = sv.call(
         "layout",
         json!({ "rays": 3, "paths": two, "offset": [0, 0, 50] }),
@@ -926,7 +938,7 @@ fn layout_overlay_paths() {
         .error("layout", json!({ "cfgs": "all" }))
         .contains("cfgs"));
     assert!(sv
-        .error("layout", json!({ "paths": "all", "offset": [1, 2] }))
+        .error("layout", json!({ "beam_paths": "all", "offset": [1, 2] }))
         .contains("offset"));
     // 読み込んだ後の set は、ファイルから読み直した経路にも当てる
     let before = sv.call("layout", json!({ "rays": 3, "paths": [paths[0].clone()] }));
@@ -947,7 +959,8 @@ fn preview_layout_overlay() {
         "file": Path::new(ROOT).join("examples/projects/P16_twyman_green.json").display().to_string(),
         "glass_dir": [Path::new(ROOT).join("tests/glass").display().to_string()],
     });
-    let v = lensbench_engine::preview_layout(&load, &json!({ "rays": 3, "paths": "all" })).unwrap();
+    let v = lensbench_engine::preview_layout(&load, &json!({ "rays": 3, "beam_paths": "all" }))
+        .unwrap();
     assert!(
         v["configs"].as_array().unwrap().len() >= 2,
         "{}",

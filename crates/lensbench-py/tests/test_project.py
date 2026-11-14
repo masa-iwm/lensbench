@@ -28,7 +28,7 @@ PY = np.array([0.3, -0.2, 0.7])
 
 
 def rays(s):
-    return s.trace(2, PX, PY, wavelengths=[2])
+    return s.trace(2, PX, PY, waves=[2])
 
 
 def test_dict_and_string_give_the_same_system_as_the_zmx():

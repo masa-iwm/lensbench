@@ -167,8 +167,14 @@ pub(super) fn layout_scene(
 
 /// layout の構成の選び方（文字列か並び。"all" は全部）
 fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
-    let one = |k: &str| -> Result<Option<String>, RpcErr> {
-        match p.get(k) {
+    let one = |k: &'static str| -> Result<Option<String>, RpcErr> {
+        // BS の経路は load の beam_path に合わせて beam_paths（旧名 paths も受ける）
+        let v = if k == "beam_paths" {
+            Some(renamed(p, "beam_paths", "paths")?)
+        } else {
+            p.get(k)
+        };
+        match v {
             None | Some(Value::Null) => Ok(None),
             Some(Value::String(x)) => Ok(Some(x.clone())),
             Some(Value::Number(x)) => Ok(Some(x.to_string())),
@@ -189,7 +195,7 @@ fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
     Ok(crate::load::Overlay {
         cfgs: one("cfgs")?,
         states: one("states")?,
-        paths: one("paths")?,
+        paths: one("beam_paths")?,
     })
 }
 

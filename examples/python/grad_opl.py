@@ -16,7 +16,7 @@ def main() -> None:
     names = ["1.c", "3.t"]  # 面.種類（面 1 の曲率、面 3 の厚さ）。単位は 1/mm・mm
     px, py = np.array([0.1]), np.array([0.3])
     w = s.primary
-    r = s.trace(2, px, py, wavelengths=[w], grad=names)
+    r = s.trace(2, px, py, waves=[w], grad=names)
     obj = tuple(s.object_of(2))
     tgt = (float(r["x"][0, 0]), float(r["y"][0, 0]))
     for j, p in enumerate(names):
@@ -26,7 +26,7 @@ def main() -> None:
         for d in (h, -h):
             t = s.with_params({p: v + d})  # 元の系は変えない
             sol = t.solve_ray("pupil", ("position", s.image, tgt), object=obj, pupil=(px[0], py[0]))
-            q = t.trace(None, [sol["pupil"][0]], [sol["pupil"][1]], wavelengths=[w], object=obj)
+            q = t.trace(None, [sol["pupil"][0]], [sol["pupil"][1]], waves=[w], object=obj)
             o.append(float(q["opl"][0, 0]))
         fd = (o[0] - o[1]) / (2 * h)
         an = float(r["grad"][0, 0, j])

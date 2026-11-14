@@ -29,7 +29,7 @@ def main() -> None:
     rows = []
     for i, dt in enumerate(np.linspace(-a.span, a.span, a.n)):
         t = s.with_params({p: t0 + dt})  # 掃引の 1 点ごとに軽い複製
-        r = t.trace(1, px, py, wavelengths=[w])
+        r = t.trace(1, px, py, waves=[w])
         ok = r["ok"][0]
         x, y = r["x"][0, ok], r["y"][0, ok]
         rms = float(np.sqrt(np.mean((x - x.mean()) ** 2 + (y - y.mean()) ** 2)))

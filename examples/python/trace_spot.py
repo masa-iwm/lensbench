@@ -18,7 +18,7 @@ def main() -> None:
     w = s.primary  # 番号は 1 始まり（CLI・OpticStudio と同じ）
     print(f"{s.name}: 面 {s.surface_count} 個、絞り 面 {s.stop}、主波長 {s.wavelengths[w - 1]} µm")
     for f in range(1, len(s.fields) + 1):
-        r = s.trace(f, px, py, wavelengths=[w])
+        r = s.trace(f, px, py, waves=[w])
         # 返り値は numpy 配列の dict。形は (波長, 光線)。届かなかった光線は ok が False
         ok = r["ok"][0]
         x, y = r["x"][0, ok], r["y"][0, ok]

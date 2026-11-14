@@ -22,8 +22,7 @@ use serde_json::Value;
 
 #[derive(Args, Clone, Debug, Default)]
 pub struct RunArgs {
-    /// 設定ファイル（JSON: python・glass_dirs・coatings・threads・out・log・env）。相対パスはこのファイルから。
-    /// 引数で与えたものが優先する
+    /// 設定ファイル（JSON: python・glass_dirs・coatings・threads・out・log・env）。相対パスはこのファイルから。引数で与えたものが優先する
     #[arg(long)]
     pub config: Option<PathBuf>,
     /// 使う Python（省くと LENSBENCH_PYTHON、仮想環境（VIRTUAL_ENV）、PATH の python3・python・py の順）
@@ -194,9 +193,7 @@ pub fn resolve(a: &RunArgs, threads: Option<usize>) -> Result<Resolved, String> 
     Ok(r)
 }
 
-/// Python の指定（`--python`・`LENSBENCH_PYTHON`・設定の文字列）をコマンドと引数に分ける。
-/// 全体が在るファイルならそのまま 1 つのパス（`C:\Program Files\Python312\python.exe`）。
-/// ほかは空白で分け、"…"・'…' の中の空白は分けない（`"C:\Program Files\py.exe" -3`、`py -3`）
+/// Python の指定（`--python`・`LENSBENCH_PYTHON`・設定の文字列）をコマンドと引数に分ける。全体が在るファイルならそのまま 1 つのパス（`C:\Program Files\Python312\python.exe`）。ほかは空白で分け、"…"・'…' の中の空白は分けない（`"C:\Program Files\py.exe" -3`、`py -3`）
 pub fn split_command(s: &str) -> Vec<String> {
     let t = s.trim();
     if t.is_empty() {
@@ -278,8 +275,7 @@ fn join_paths(
 /// Python を起動できないときの終了コード（シェルの「コマンドがない」と同じ）
 pub const NO_PYTHON: i32 = 127;
 
-/// スクリプトを実行し、終了コードを返す（Python を起動できなければ [`NO_PYTHON`]）。
-/// on_line は行ごとに（出どころ・経過秒・行）で呼ばれる。設定・スクリプトの誤りは Err
+/// スクリプトを実行し、終了コードを返す（Python を起動できなければ [`NO_PYTHON`]）。on_line は行ごとに（出どころ・経過秒・行）で呼ばれる。設定・スクリプトの誤りは Err
 pub fn run_script(
     a: &RunArgs,
     r: &Resolved,

@@ -21,7 +21,7 @@ fn params_from_schema() {
     let rms = a.get("rms").unwrap().params();
     assert!(rms
         .iter()
-        .any(|p| p.name == "ref" && p.choices == ["centroid", "chief"]));
+        .any(|p| p.name == "reference" && p.choices == ["centroid", "chief"]));
     let g = a.get("ghost").unwrap().params();
     assert_eq!(
         g.iter().find(|p| p.name == "coatings").unwrap().ty,

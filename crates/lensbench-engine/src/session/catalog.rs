@@ -4,17 +4,18 @@ use super::*;
 
 /// カタログの一覧（`glasses`・`lenses`）
 pub(super) fn browse_of(sess: &Session, method: &str, p: &Value) -> Result<Value, RpcErr> {
-    let read_all = |k: &str| -> Result<Vec<PathBuf>, RpcErr> {
-        str_list(&p[k], k)?
+    // 名前は load と同じ（glass_dirs・lens_catalogs、旧名 glass_dir・lens_catalog も受ける）
+    let read_all = |k: &'static str, old: &'static str| -> Result<Vec<PathBuf>, RpcErr> {
+        str_list(renamed(p, k, old)?, k)?
             .iter()
             .map(|x| sess.files.check_path(x, false))
             .collect()
     };
-    let dirs = read_all("glass_dir")?;
+    let dirs = read_all("glass_dirs", "glass_dir")?;
     if method == "glasses" {
         return Ok(crate::browse::glasses(&dirs));
     }
-    let cat = read_all("lens_catalog")?;
+    let cat = read_all("lens_catalogs", "lens_catalog")?;
     if method == "catalog_search" {
         let q = catalog_query(p)?;
         return Ok(crate::browse::search(&cat, &dirs, &q)?);
