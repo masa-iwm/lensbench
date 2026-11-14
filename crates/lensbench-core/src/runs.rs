@@ -528,9 +528,13 @@ pub fn read_results(path: &Path) -> Result<(String, Vec<(usize, u64, String)>)> 
     Ok((h.to_string(), out))
 }
 
-/// 改行で終わった行だけ（書き途中で切れた最後の行は捨てる。行は 1 回の write_all で改行まで書く）
+/// 改行で終わった行だけ（書き途中で切れた最後の行は捨てる。行は 1 回の write_all で改行まで書く）。
+/// Windows のエディタで保存し直した CRLF のファイルも読めるよう、行末の \r は外す
 fn complete_lines(txt: &str) -> Vec<&str> {
-    let mut v: Vec<&str> = txt.split('\n').collect();
+    let mut v: Vec<&str> = txt
+        .split('\n')
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .collect();
     v.pop(); // 最後の改行の後（空）か、改行のない切れた行
     v
 }
@@ -677,6 +681,22 @@ where
 #[cfg(test)]
 mod noise_tests {
     use super::*;
+
+    #[test]
+    fn crlf_results_file_reads() {
+        // Windows のエディタで保存し直した CRLF のファイル（切れた最後の行は捨てる）
+        let dir = std::env::temp_dir().join(format!("lb_runs_crlf_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("r.jsonl");
+        let txt = format!(
+            "{MAGIC}{{\"a\":1}}}}\r\n{{\"i\":1,\"seed\":5,\"result\":2}}\r\n{{\"i\":0,\"seed\":4,\"result\":1}}\r\n{{\"i\":2,"
+        );
+        std::fs::write(&p, txt).unwrap();
+        let (h, rows) = read_results(&p).unwrap();
+        assert_eq!(h, "{\"a\":1}");
+        assert_eq!(rows, vec![(0, 4, "1".into()), (1, 5, "2".into())]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn poisson_has_the_right_mean_and_variance() {

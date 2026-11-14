@@ -108,7 +108,8 @@ def test_old_nan_lines_and_non_string_keys(tmp_path):
     lines = out.read_text(encoding="utf-8").splitlines()
     lines[1] = lines[1].replace('"v":0', '"v":NaN').replace('"v": 0', '"v": NaN')
     assert "NaN" in lines[1]
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Windows のエディタで保存し直したような CRLF で書く（どの OS でも同じ試験になるよう改行を指定）
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\r\n")
     h, rows = lb.read_batch(str(out))
     v = {x["i"]: x["result"]["v"] for x in rows}
     assert v[0] != v[0] and v[1] == 1
