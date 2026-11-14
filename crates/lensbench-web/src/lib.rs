@@ -54,8 +54,6 @@ fn extra() -> Extra {
         .unwrap_or_default()
 }
 
-/// ファイルの束を解く: u32 の数、続けてファイルごとに（u32 の長さ＋パス（UTF-8）、u32 の長さ＋中身）。
-/// 数はすべてリトルエンディアン
 /// ファイルの束が gzip なら展開する（先頭が gzip の印でなければそのまま。置き場が `Content-Encoding: gzip` で
 /// 配って、ブラウザが先に展開した場合も読める）
 pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
@@ -68,6 +66,8 @@ pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// ファイルの束を解く: u32 の数、続けてファイルごとに（u32 の長さ＋パス（UTF-8）、u32 の長さ＋中身）。
+/// 数はすべてリトルエンディアン
 pub fn unpack(b: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
     fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
         if b.len() < n {
