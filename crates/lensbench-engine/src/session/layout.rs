@@ -126,7 +126,7 @@ pub(super) fn layout_scene(
     // ファイルから読み直した構成にも、読み込んだ後の変更（set・edit）を当てる
     let log = sess.current_log();
     let mut notes = Vec::new();
-    let systems = crate::load::overlay_systems(&spec, &sel)?
+    let systems = crate::load::overlay_systems(spec, &sel)?
         .into_iter()
         .map(|(name, sy)| {
             let label = if name.is_empty() {

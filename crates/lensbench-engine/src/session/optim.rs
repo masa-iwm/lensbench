@@ -10,8 +10,8 @@ pub(super) struct OptRun {
     history: Vec<f64>,
 }
 
-/// 走っている最適化の、反復ごとの評価関数の値（走っていなければ None）。同じプロセスから呼ぶ（GUI の進み具合）
 impl Session {
+    /// 走っている最適化の、反復ごとの評価関数の値（走っていなければ None）。同じプロセスから呼ぶ（GUI の進み具合）
     pub fn optimize_progress(&self) -> Option<Vec<f64>> {
         self.opt_run
             .lock()
@@ -264,10 +264,9 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 
 // ------------------------------------------------------------------------------------ 公差
 
-/// 公差のモンテカルロの進み具合（同じプロセスの GUI が読む、[`tolerance_progress`]）
-
-/// 走っている公差のモンテカルロの (終えた評価, 評価の数)（感度の 2 × 公差の数 + 試行の数。走っていなければ None）
+// 公差のモンテカルロの進み具合（同じプロセスの GUI が読む、[`tolerance_progress`]）
 impl Session {
+    /// 走っている公差のモンテカルロの (終えた評価, 評価の数)（感度の 2 × 公差の数 + 試行の数。走っていなければ None）
     pub fn tolerance_progress(&self) -> Option<(usize, usize)> {
         *self.tol_run.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -448,10 +447,9 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 
 // ------------------------------------------------------------------------------------ 差し替え探索
 
-/// 差し替え探索の進み具合（同じプロセスの GUI が読む、[`swap_progress`]）
-
-/// 走っている差し替え探索の (終えた組, 組の数)（走っていなければ None）。同じプロセスから呼ぶ
+// 差し替え探索の進み具合（同じプロセスの GUI が読む、[`swap_progress`]）
 impl Session {
+    /// 走っている差し替え探索の (終えた組, 組の数)（走っていなければ None）。同じプロセスから呼ぶ
     pub fn swap_progress(&self) -> Option<(usize, usize)> {
         *self.swap_run.lock().unwrap_or_else(|e| e.into_inner())
     }
