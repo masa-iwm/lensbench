@@ -30,22 +30,21 @@ lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-export = { path = "../lensbench-export" }
 lensbench-verify = { path = "../lensbench-verify" }
+# 品の STEP を取る・測る・三角形にする（以前はこのクレートの cad.rs・cad_detail.rs・coat_remote.rs）
+lensbench-cad = { path = "../lensbench-cad" }
 clap = { version = "4", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 # 時計（wasm の std::time::Instant は使えない）
 web-time = "1"
-# 取った STEP を読んで三角形にする（cad_detail.rs の詳しい形、公開 #121。Web 版でも #158）
-truck-stepio = "0.3"
-truck-meshalgo = "0.4"
-# 置き場の STEP（gzip）を展開する（cad.rs・cad_detail.rs、Web 版でも）
-flate2 = "1"
 
 # wasm（Web 版）では使えないのでネイティブだけ
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # 大きな配列の確保を OS に返さず使い回す（Windows の既定のヒープは追跡ごとにページを取り直して遅い）
 mimalloc = { version = "0.1", default-features = false }
-# 品の STEP を公式の配布元から 1 件取る（cad.rs、公開 #120）。証明書は OS の信頼する証明書で確かめる
-ureq = { version = "3", features = ["platform-verifier"] }
+
+[dev-dependencies]
+# 試験で置き場の gzip・zip を作る
+flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）

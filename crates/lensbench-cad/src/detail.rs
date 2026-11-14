@@ -1,5 +1,5 @@
 //! 取った品の STEP を測る・詳しい形（三角形）にする（公開 #121）。ネイティブと Web 版の両方で使う
-//! （取る・上げるのは [`crate::cad`]、ネイティブだけ。Web 版は GUI が置き場から取って置き場（vfs）に入れる）。
+//! （取る・上げるのは [`crate`]、ネイティブだけ。Web 版は GUI が置き場から取って置き場（vfs）に入れる）。
 use lensbench_project::{catalog_fill, UserItem};
 
 /// STEP を catalog-step と同じ読み方で測り、品の簡易外形と比べる（測った寸法、食い違い・測れなかった理由）
@@ -16,11 +16,13 @@ pub fn measure(item: &UserItem, text: &[u8]) -> (Option<catalog_fill::StepSize>,
     }
 }
 
+#[cfg(feature = "mesh")]
 /// 詳しい形の三角形の細かさ [mm]（面からのずれの許し）
 const DETAIL_TOL_MM: f64 = 0.2;
 
 /// STEP の文字を部品の座標の三角形にする（[`catalog_fill::step_shell_poses`] の置き方で、殻ごとに三角形にして置く）。
 /// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
+#[cfg(feature = "mesh")]
 pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, String> {
     use truck_meshalgo::prelude::*;
     use truck_stepio::r#in::Table;
@@ -90,6 +92,7 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
     })
 }
 
+#[cfg(feature = "mesh")]
 /// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに 1 回だけ読んで覚える
 pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
     use std::collections::HashMap;
@@ -110,7 +113,9 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 }
 
 /// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
+/// （feature `mesh` が無ければ何もしない）
 pub fn install_detail_loader() {
+    #[cfg(feature = "mesh")]
     lensbench_export::detail::set_loader(load_detail);
 }
 

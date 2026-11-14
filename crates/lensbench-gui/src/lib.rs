@@ -104,11 +104,16 @@ pub fn main() -> std::process::ExitCode {
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
     builtin_glass::install(settings_dir.clone());
-    lensbench_cli::cad::install_detail_loader();
-    lensbench_cli::coat_remote::install();
+    lensbench_cad::detail::install_detail_loader();
+    lensbench_cad::coat_remote::install();
     lensbench_cli::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {
-        persistence_path: store.file.clone(),
+        // 通し確認は利用者の設定（窓の配置・残した状態）を読まず、書き換えもしない（公開 #236）
+        persistence_path: if args.tour.is_some() {
+            None
+        } else {
+            store.file.clone()
+        },
         viewport: egui::ViewportBuilder::default()
             .with_title("lensbench")
             .with_icon(app::icon())

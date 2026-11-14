@@ -561,7 +561,7 @@ fn coating_models_come_from_the_store_when_missing() {
     let idx: Value =
         serde_json::from_slice(&std::fs::read(coat.join("lbcb-remote.json")).unwrap()).unwrap();
     let h = idx["files"]["ZEC_R"].as_str().unwrap().to_string();
-    assert_eq!(h, lensbench_cli::coat_remote::hash_hex(lbcm.as_bytes()));
+    assert_eq!(h, lensbench_cad::coat_remote::hash_hex(lbcm.as_bytes()));
     assert!(db
         .lock()
         .unwrap()
@@ -582,7 +582,7 @@ fn coating_models_come_from_the_store_when_missing() {
     s.surfaces[j].coat = "zec_r".into();
     s.coating_file = Some(coat.join("COATING.DAT"));
     lensbench_project::catalog_fill::set_cad_cache_dir(dir.join("cache"));
-    lensbench_cli::cad::set_store(Some(lensbench_cli::cad::Store {
+    lensbench_cad::set_store(Some(lensbench_cad::Store {
         url: store_url.clone(),
         id: "tid".into(),
         secret: "tsecret".into(),
@@ -590,7 +590,7 @@ fn coating_models_come_from_the_store_when_missing() {
     }));
     // 口が無いうちは読めない
     assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
-    lensbench_cli::coat_remote::install();
+    lensbench_cad::coat_remote::install();
     let c = Coatings::for_system(&s).unwrap();
     assert_eq!(c.auto.len(), 1, "{:?}", c.auto);
     assert!(
@@ -604,7 +604,7 @@ fn coating_models_come_from_the_store_when_missing() {
         .unwrap()
         .insert(format!("coat/ZEC_R-{h}.lbcb"), b"LBCM 2\nCOAT X\n".to_vec());
     std::fs::remove_dir_all(dir.join("cache")).unwrap();
-    let e = lensbench_cli::coat_remote::fetch(lensbench_cli::cad::store().as_ref(), "ZEC_R", &h)
+    let e = lensbench_cad::coat_remote::fetch(lensbench_cad::store().as_ref(), "ZEC_R", &h)
         .unwrap_err();
     assert!(e.contains("目録と違う"), "{e}");
     db.lock()
@@ -635,15 +635,14 @@ fn xct14_read_only_store_reads_but_never_uploads() {
         "cad": { "step": format!("{vendor}/plate.step") },
     }))
     .unwrap();
-    let ro = lensbench_cli::cad::Store {
+    let ro = lensbench_cad::Store {
         url: store_url,
         id: "tid".into(),
         secret: "tsecret".into(),
         read_only: true,
     };
-    let r =
-        lensbench_cli::cad::fetch_item_with(&dir.join("c1"), "CP-RO", &item, Some(&ro)).unwrap();
-    assert_eq!(r.source, lensbench_cli::cad::Source::Vendor);
+    let r = lensbench_cad::fetch_item_with(&dir.join("c1"), "CP-RO", &item, Some(&ro)).unwrap();
+    assert_eq!(r.source, lensbench_cad::Source::Vendor);
     assert!(r.store_notes.is_empty(), "{:?}", r.store_notes);
     assert_eq!(hits.load(Ordering::SeqCst), 1);
     assert!(

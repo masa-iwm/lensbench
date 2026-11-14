@@ -5169,7 +5169,7 @@ impl App {
                 .unwrap_or_default()
         };
         if args.tour.is_some() {
-            s.lang = Lang::Ja;
+            crate::tour::prepare(&args, &mut s);
         } else {
             s.resolve_paths();
             // 初めてのポータブルで OS の場所の設定を取り込んだら、硝材・レンズのフォルダは exe の隣の catalogs/ に
@@ -5357,7 +5357,7 @@ impl App {
         }
         if let Some(d) = &args.tour {
             let _ = lensbench_core::vfs::create_dir_all(d);
-            app.tour = Some(Tour::new(d.clone()));
+            app.tour = Some(Tour::new(d.clone(), args.tour_timeout));
             if args.open.is_none() {
                 app.tour
                     .as_mut()
@@ -6612,7 +6612,8 @@ impl App {
                 }
                 if !t.acted {
                     t.acted = true;
-                    self.tour_act(ctx, t.step);
+                    let dir = t.dir.clone();
+                    self.tour_act(ctx, t.step, &dir);
                 } else {
                     t.request_shot(ctx);
                 }
@@ -6637,7 +6638,7 @@ impl App {
     }
 
     /// 通し確認の各段の操作
-    fn tour_act(&mut self, ctx: &egui::Context, step: Step) {
+    fn tour_act(&mut self, ctx: &egui::Context, step: Step, dir: &Path) {
         let spot = |k: &Kind| matches!(k, Kind::Analysis(a) if a.cmd == "spot");
         match step {
             Step::Open | Step::Done => {}
@@ -6703,8 +6704,7 @@ impl App {
             }
             Step::Zoom => {
                 // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
-                self.c
-                    .open(Path::new("examples/projects/P17_zoom_three_groups.json"));
+                self.c.open(&crate::tour::zoom_sample(dir));
                 let z = &mut self.c.zoom;
                 z.vars = ["G2.shift", "G3.shift"]
                     .map(|n| crate::zoom_panel::VarRow {

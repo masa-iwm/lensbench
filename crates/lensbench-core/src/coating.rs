@@ -1191,7 +1191,7 @@ pub type RemoteLoader = fn(&Path, &str) -> Option<PathBuf>;
 static REMOTE: std::sync::OnceLock<RemoteLoader> = std::sync::OnceLock::new();
 
 /// [`Coatings::load_dir_for`] がフォルダで膜のモデル・実測表を見つけられなかったときに呼ぶ口を決める
-/// （CLI・GUI の起動時。共有の置き場から取る、lensbench_cli::coat_remote）。1 回だけ
+/// （CLI・GUI の起動時。共有の置き場から取る、lensbench_cad::coat_remote）。1 回だけ
 pub fn set_remote_loader(f: RemoteLoader) {
     let _ = REMOTE.set(f);
 }

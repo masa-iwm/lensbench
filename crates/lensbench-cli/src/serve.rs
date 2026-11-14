@@ -1973,9 +1973,9 @@ fn cad_step(p: &Value) -> Result<Value, RpcErr> {
         let dir = match p["cache"].as_str().map(str::trim).filter(|x| !x.is_empty()) {
             Some(d) => check_path(Path::new(d), true)?,
             // 既定の場所も --root の中でなければ書かない
-            None => check_path(&crate::cad::default_cache_dir(), true)?,
+            None => check_path(&lensbench_cad::default_cache_dir(), true)?,
         };
-        crate::cad::fetch_item(&dir, name, it)
+        lensbench_cad::fetch_item(&dir, name, it)
             .map(|r| r.to_json())
             .map_err(|e| {
                 if it.url.is_empty() {

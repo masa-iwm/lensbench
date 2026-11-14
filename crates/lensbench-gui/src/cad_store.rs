@@ -1,11 +1,11 @@
-//! 品の STEP の共有の置き場の設定（アプリ版。`lensbench_cli::cad::Store`）と、カタログのフォルダの窓の欄
+//! 品の STEP の共有の置き場の設定（アプリ版。`lensbench_cad::Store`）と、カタログのフォルダの窓の欄
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::tr;
 #[cfg(not(target_arch = "wasm32"))]
 use egui::{RichText, Ui};
 use serde::{Deserialize, Serialize};
 
-/// 品の STEP の共有の置き場（`lensbench_cli::cad::Store`）。取るときは配布元より先に見て、配布元から取った STEP を上げる
+/// 品の STEP の共有の置き場（`lensbench_cad::Store`）。取るときは配布元より先に見て、配布元から取った STEP を上げる
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CadStore {
@@ -23,7 +23,7 @@ impl CadStore {
     /// 取るときに使う置き場に決める（アプリ版。URL が空なら環境変数か組み込みの置き場）
     pub fn apply(&self) {
         #[cfg(not(target_arch = "wasm32"))]
-        lensbench_cli::cad::set_store(Some(lensbench_cli::cad::Store {
+        lensbench_cad::set_store(Some(lensbench_cad::Store {
             url: self.url.trim().to_string(),
             id: self.id.trim().to_string(),
             secret: match self.secret.trim() {
@@ -69,7 +69,7 @@ pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
         .small()
         .weak(),
     );
-    if lensbench_cli::cad::has_default_store() && st.url.trim().is_empty() {
+    if lensbench_cad::has_default_store() && st.url.trim().is_empty() {
         ui.label(
             RichText::new(tr("空のときは、この版に組み込んだ置き場を使います。"))
                 .small()

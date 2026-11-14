@@ -1,12 +1,12 @@
 //! 膜のモデル（`.lbcb` など）を共有の置き場から取る（配る版がリリースの大きさを抑えるため、膜のモデルを外したとき）。
 //!
 //! 膜ファイルのフォルダに目録 `lbcb-remote.json`（`{"version": 1, "files": {"<膜の名前>": "<中身の FNV-1a 64 の 16 進>"}}`）
-//! を置くと、フォルダに無い膜のモデルを置き場（[`crate::cad::store`]、品の STEP と同じ口）の鍵
+//! を置くと、フォルダに無い膜のモデルを置き場（[`crate::store`]、品の STEP と同じ口）の鍵
 //! `coat/<膜の名前>-<ハッシュ>.lbcb` から取り、キャッシュ（品の STEP のキャッシュの隣の `coat`）に置いて読む。
 //! 中身のハッシュを確かめるので、作り直した膜は別の鍵になり、古いキャッシュを使わない。
 //! 目録と置き場への上げは `lensbench coat-upload`、まとめて取ってフォルダに置くのは `lensbench coat-fetch`
 //! （Python など、置き場を見ない使い方のため）。
-use crate::cad;
+use crate as cad;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

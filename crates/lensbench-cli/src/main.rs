@@ -20,15 +20,14 @@ use std::f64::consts::PI;
 
 pub mod arg_spec;
 mod browse;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod cad;
-pub mod cad_detail;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod coat_remote;
 /// カタログの一覧を覚えておくフォルダ・前もって作った一覧（GUI・Web 版が起動のときに決める）
 pub use browse::{
     set_cache_dir as set_lens_list_cache_dir, set_prepared as set_prepared_lens_list,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use lensbench_cad::detail as cad_detail;
+#[cfg(not(target_arch = "wasm32"))]
+use lensbench_cad::{self as cad, coat_remote};
 pub mod ext;
 pub mod run;
 pub mod serve;

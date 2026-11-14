@@ -1,0 +1,34 @@
+[package]
+name = "lensbench-cad"
+description = "Fetch, measure and mesh STEP files of catalog items for lensbench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["mesh"]
+# STEP を表示用の三角形にする（truck）。外すとビルドが軽くなる（詳しい形は描かない）
+mesh = ["dep:truck-stepio", "dep:truck-meshalgo", "dep:lensbench-export"]
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+lensbench-project = { path = "../lensbench-project" }
+lensbench-export = { path = "../lensbench-export", optional = true }
+# 置き場の STEP（gzip）を展開する（ネイティブと Web 版）
+flate2 = "1"
+# 取った STEP を読んで三角形にする（公開 #121、Web 版でも #158）
+truck-stepio = { version = "0.3", optional = true }
+# vtk（vtkio、将来のコンパイラで通らない nom 3・quick-xml 0.22 を引く）は使わないので外す（BLD-10）
+truck-meshalgo = { version = "0.4", optional = true, default-features = false, features = ["tessellation"] }
+
+# wasm（Web 版）では使えないのでネイティブだけ
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# 品の STEP を公式の配布元から 1 件取る（公開 #120）。証明書は OS の信頼する証明書で確かめる
+ureq = { version = "3", features = ["platform-verifier"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+serde_json = { version = "1", features = ["preserve_order"] }

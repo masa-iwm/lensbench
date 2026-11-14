@@ -15,7 +15,7 @@ use web_time::Instant;
 /// 通し確認が失敗したか（main が終了コードにする）
 pub static FAILED: AtomicBool = AtomicBool::new(false);
 
-/// 全体の時間の上限
+/// 全体の時間の上限の既定（`--tour-timeout` で変えられる。ソフト描画では足りないことがある、公開 #236）
 const TIMEOUT: Duration = Duration::from_secs(240);
 /// 計算が終わってから撮るまでに待つフレーム数（配置が落ち着くまで）
 const SETTLE: u32 = 6;
@@ -31,12 +31,14 @@ pub struct Args {
     pub samples: Vec<String>,
     /// 設定のファイル（省略で exe の隣のポータブルか OS の場所）
     pub settings: Option<PathBuf>,
+    /// 通し確認の時間の上限（省略で 240 秒）
+    pub tour_timeout: Option<Duration>,
     /// 起動時に出す知らせ（設定の取り込みなど）
     pub notice: Option<crate::portable::Notice>,
 }
 
 impl Args {
-    /// `[--tour DIR] [--glass-dir D]... [--lens-catalog D]... [--settings FILE] [系のファイル]`
+    /// `[--tour DIR] [--tour-timeout 秒] [--glass-dir D]... [--lens-catalog D]... [--settings FILE] [系のファイル]`
     pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
         let mut a = Args::default();
         let mut it = args.into_iter();
@@ -47,12 +49,41 @@ impl Args {
                 "--glass-dir" => a.glass_dirs.push(val("--glass-dir")?),
                 "--lens-catalog" => a.lens_dirs.push(val("--lens-catalog")?),
                 "--settings" => a.settings = Some(PathBuf::from(val("--settings")?)),
+                "--tour-timeout" => {
+                    let v = val("--tour-timeout")?;
+                    let sec: u64 = v
+                        .parse()
+                        .map_err(|_| format!("--tour-timeout の値 {v} は秒の整数でない"))?;
+                    a.tour_timeout = Some(Duration::from_secs(sec));
+                }
                 s if s.starts_with("--") => return Err(format!("{s} は知らない引数")),
                 _ => a.open = Some(PathBuf::from(x)),
             }
         }
         Ok(a)
     }
+}
+
+/// 通し確認の設定: 日本語、確かめる窓で止まらない（答えは「いいえ」）、引数でフォルダを渡さなければ通常の起動と
+/// 同じく exe の隣の catalogs/ を使う（配る版の確認、公開 #236）
+pub fn prepare(args: &Args, s: &mut crate::app::Settings) {
+    s.lang = crate::i18n::Lang::Ja;
+    crate::files::set_unattended(true);
+    if args.glass_dirs.is_empty() && args.lens_dirs.is_empty() {
+        if let Some(d) = crate::portable::exe_dir() {
+            (s.glass_dirs, s.lens_dirs) = crate::portable::default_catalogs(&d);
+        }
+    }
+}
+
+/// ズームの段の例の系（P17）。例のフォルダの無い配る版でも回るように、exe に埋めた系を出力先に書く（公開 #236）
+pub fn zoom_sample(dir: &Path) -> PathBuf {
+    let p = dir.join("P17_zoom_three_groups.json");
+    let _ = lensbench_core::vfs::write(
+        &p,
+        include_str!("../../../examples/projects/P17_zoom_three_groups.json"),
+    );
+    p
 }
 
 /// 1 段: 操作して、計算が終わったら撮る
@@ -167,14 +198,16 @@ pub struct Tour {
     shooting: bool,
     idle: u32,
     start: Instant,
+    timeout: Duration,
     pub errors: Vec<String>,
     pub shots: Vec<String>,
 }
 
 impl Tour {
-    pub fn new(dir: PathBuf) -> Tour {
+    pub fn new(dir: PathBuf, timeout: Option<Duration>) -> Tour {
         Tour {
             dir,
+            timeout: timeout.unwrap_or(TIMEOUT),
             step: Step::Open,
             acted: false,
             shooting: false,
@@ -196,7 +229,7 @@ impl Tour {
     }
 
     pub fn timed_out(&self) -> bool {
-        self.start.elapsed() > TIMEOUT
+        self.start.elapsed() > self.timeout
     }
 
     /// 撮影を頼む（一度だけ）

@@ -109,7 +109,7 @@ pub fn fetch_item_with(
     let mut source = Source::Cache;
     let mut store_notes = Vec::new();
     let text = if cached {
-        crate::cad_detail::gunzip(
+        crate::detail::gunzip(
             std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?,
             MAX_STEP,
         )
@@ -143,7 +143,7 @@ pub fn fetch_item_with(
                 step_bytes(download(url)?)?
             }
         };
-        write_cache(dir, &path, &crate::cad_detail::gzip(&b))?;
+        write_cache(dir, &path, &crate::detail::gzip(&b))?;
         if source == Source::Vendor {
             // 読み取り専用の置き場（配る exe に組み込んだ GET だけのトークン）には上げない
             if let Some(s) = store.filter(|s| !s.read_only) {
@@ -155,7 +155,7 @@ pub fn fetch_item_with(
         }
         b
     };
-    let (measured, notes) = measure(item, &text);
+    let (measured, notes) = crate::detail::measure(item, &text);
     Ok(CadStep {
         item: name.to_string(),
         url: url.to_string(),
@@ -401,7 +401,7 @@ impl Store {
         let is_step = key.ends_with(".step");
         let gz;
         let body = if is_step && !step.starts_with(&[0x1f, 0x8b]) {
-            gz = crate::cad_detail::gzip(step);
+            gz = crate::detail::gzip(step);
             &gz[..]
         } else {
             step
@@ -775,7 +775,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 /// 取った中身から STEP の文字を取り出す（gzip なら展開、zip なら中の最初の .step・.stp）。STEP でなければ Err
 /// （ログインの要るページの HTML など）
 pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
-    let b = crate::cad_detail::gunzip(b, MAX_STEP)?;
+    let b = crate::detail::gunzip(b, MAX_STEP)?;
     let b = if b.starts_with(b"PK\x03\x04") {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(b))
             .map_err(|e| format!("zip を読めない: {e}"))?;
@@ -813,8 +813,6 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
     Ok(b)
 }
 
-pub use crate::cad_detail::{detail_of_step, install_detail_loader, load_detail, measure};
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -833,7 +831,7 @@ mod tests {
             catalog_fill::cad_cache_find(&d, "X1", "u"),
             Some(p.with_extension(""))
         );
-        std::fs::write(&p, crate::cad_detail::gzip(b"ISO-10303-21;")).unwrap();
+        std::fs::write(&p, crate::detail::gzip(b"ISO-10303-21;")).unwrap();
         assert_eq!(catalog_fill::cad_cache_find(&d, "X1", "u"), Some(p.clone()));
         let gz = std::fs::read(&p).unwrap();
         assert_eq!(step_bytes(gz).unwrap(), b"ISO-10303-21;");

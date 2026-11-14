@@ -1,7 +1,7 @@
 //! カタログの品の詳しい形（公式の STEP）を 1 件だけ取る（公開 #120）。
 //!
 //! 品の一覧で選んだ品に `cad.step` があれば「詳しい形（STEP）を取る」ボタンを出し、押したときにその 1 ファイルだけを
-//! 裏のスレッドで取る（serve の `cad_step` と同じ [`lensbench_cli::cad`]）。キャッシュは設定のフォルダの `cad`。
+//! 裏のスレッドで取る（serve の `cad_step` と同じ [`lensbench_cad`]）。キャッシュは設定のフォルダの `cad`。
 //! 取れたら簡易外形との食い違いを示し、取れなければ品ページのリンクを出す（表示は簡易外形のまま）。
 //! Web 版は配布元からは取れない（CORS）。共有の置き場（[`set_web_store`]、同じサイトの口）があればそこから取り、
 //! 置き場（vfs）の `/cad` に入れる（計算の Web Worker にも写り、詳しい形の描画に使う。#158）。
@@ -34,7 +34,7 @@ fn cad_dir() -> PathBuf {
     CAD_DIR
         .get()
         .cloned()
-        .unwrap_or_else(lensbench_cli::cad::default_cache_dir)
+        .unwrap_or_else(lensbench_cad::default_cache_dir)
 }
 
 /// Web 版の共有の置き場の URL（例 `/cad`。別の入口が [`crate::set_web_cad_store`] で決める）
@@ -69,7 +69,7 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         catalog_fill::cad_cache_path(&catalog_fill::cad_cache_dir(), &name, &it.cad.step)
     });
     let text = if cached {
-        lensbench_cli::cad_detail::gunzip(
+        lensbench_cad::detail::gunzip(
             lensbench_core::vfs::read(&path).map_err(|e| e.to_string())?,
             512 << 20,
         )?
@@ -112,9 +112,8 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         let p: Promise = ab.call0(&r).map_err(js)?.dyn_into().map_err(js)?;
         let buf = JsFuture::from(p).await.map_err(js)?;
         // 置き場の STEP は gzip（展開してから STEP か確かめる）
-        let b =
-            lensbench_cli::cad_detail::gunzip(js_sys::Uint8Array::new(&buf).to_vec(), 512 << 20)
-                .map_err(|e| format!("{e}: {url}"))?;
+        let b = lensbench_cad::detail::gunzip(js_sys::Uint8Array::new(&buf).to_vec(), 512 << 20)
+            .map_err(|e| format!("{e}: {url}"))?;
         let head = String::from_utf8_lossy(&b[..b.len().min(256)]).to_ascii_uppercase();
         if !head
             .trim_start_matches('\u{feff}')
@@ -123,11 +122,11 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         {
             return Err(format!("置き場の中身が STEP でない: {url}"));
         }
-        lensbench_core::vfs::write(&path, lensbench_cli::cad_detail::gzip(&b))
+        lensbench_core::vfs::write(&path, lensbench_cad::detail::gzip(&b))
             .map_err(|e| e.to_string())?;
         b
     };
-    let (measured, notes) = lensbench_cli::cad_detail::measure(it, &text);
+    let (measured, notes) = lensbench_cad::detail::measure(it, &text);
     Ok(serde_json::json!({
         "item": name,
         "url": it.cad.step,
@@ -207,7 +206,7 @@ impl CadFetcher {
                             .items
                             .get(&key.1)
                             .ok_or_else(|| format!("{} に品 {} がない", key.0, key.1))?;
-                        lensbench_cli::cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
+                        lensbench_cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
                     });
                 done(key, r);
             });
@@ -232,7 +231,7 @@ impl CadFetcher {
         // STEP の URL の無い機構部品も、共有の置き場があれば置き場から取れる
         #[cfg(not(target_arch = "wasm32"))]
         let from_store =
-            step.is_empty() && r.raw.get("mech").is_some() && lensbench_cli::cad::store().is_some();
+            step.is_empty() && r.raw.get("mech").is_some() && lensbench_cad::store().is_some();
         #[cfg(target_arch = "wasm32")]
         let from_store = web_store().is_some() && r.raw.get("mech").is_some();
         if step.is_empty() && pdf.is_empty() && !from_store {

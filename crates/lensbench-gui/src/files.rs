@@ -140,15 +140,33 @@ pub fn set_ctx(ctx: &egui::Context) {
     let _ = ctx;
 }
 
+/// 人の答えを待たない運転（画面の通し確認 `--tour`）。確かめる窓は出さずに「いいえ」（CI の Linux で
+/// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない（公開 #236）
+static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 人の答えを待たない運転にする（[`confirm`] は「いいえ」、[`error_box`] は出さない）
+pub fn set_unattended(on: bool) {
+    UNATTENDED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn unattended() -> bool {
+    UNATTENDED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 「はい・いいえ」で確かめる（人の答えを待たない運転では聞かずに「いいえ」）
+pub fn confirm(title: &str, text: &str) -> bool {
+    !unattended() && confirm_os(title, text)
+}
+
 /// 「はい・いいえ」で確かめる
 #[cfg(target_os = "linux")]
-pub fn confirm(title: &str, text: &str) -> bool {
+fn confirm_os(title: &str, text: &str) -> bool {
     zenity::confirm(title, text)
 }
 
 /// 「はい・いいえ」で確かめる
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
-pub fn confirm(title: &str, text: &str) -> bool {
+fn confirm_os(title: &str, text: &str) -> bool {
     rfd::MessageDialog::new()
         .set_title(title)
         .set_description(text)
@@ -160,6 +178,9 @@ pub fn confirm(title: &str, text: &str) -> bool {
 /// エラーを窓で知らせる（Linux は zenity、無ければ何もしない）
 #[cfg(not(target_arch = "wasm32"))]
 pub fn error_box(title: &str, text: &str) {
+    if unattended() {
+        return;
+    }
     #[cfg(target_os = "linux")]
     zenity::error(title, text);
     #[cfg(not(target_os = "linux"))]
@@ -172,7 +193,7 @@ pub fn error_box(title: &str, text: &str) {
 
 /// 「はい・いいえ」で確かめる（ブラウザの confirm）
 #[cfg(target_arch = "wasm32")]
-pub fn confirm(_title: &str, text: &str) -> bool {
+fn confirm_os(_title: &str, text: &str) -> bool {
     web_sys::window()
         .and_then(|w| w.confirm_with_message(text).ok())
         .unwrap_or(false)

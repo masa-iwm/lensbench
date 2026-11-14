@@ -21,6 +21,7 @@ crate-type = ["cdylib", "rlib"]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-gui = { path = "../lensbench-gui" }
 lensbench-cli = { path = "../lensbench-cli" }
+lensbench-cad = { path = "../lensbench-cad" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }
