@@ -58,6 +58,20 @@ pub mod zplm;
 
 pub use error::{Error, Result};
 pub use par::with_threads;
+
+/// 環境変数から決める既定（CLI の起動・Python の import で呼ぶ）: スレッド数（LENSBENCH_THREADS、
+/// [`par::default_threads_from_env`]）。消した環境変数が設定されていれば標準エラーに 1 回注意を出す
+pub fn init_from_env() {
+    par::default_threads_from_env();
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    if std::env::var_os("LENSBENCH_FLOATING_CLIP").is_some() {
+        ONCE.call_once(|| {
+            eprintln!(
+                "注意: 環境変数 LENSBENCH_FLOATING_CLIP は使わなくなった（無視する）。浮動開口でけないようにするには系の設定 floating_clip を false にする"
+            )
+        });
+    }
+}
 pub use system::{FieldSel, RecSel, System};
 
 /// ライブラリの版。ビルド時に環境変数 LENSBENCH_VERSION があればその値（配布物のタグ名など）、

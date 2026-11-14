@@ -650,4 +650,8 @@ fn write_notes_list_dropped_items() {
             .any(|n| n.contains("曲率半径") && n.contains("面 3")),
         "{notes:?}"
     );
+    s.floating_clip = false;
+    assert!(zmx_write::write_notes(&s)
+        .iter()
+        .any(|n| n.contains("floating_clip")));
 }

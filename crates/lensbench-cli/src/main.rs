@@ -2325,6 +2325,7 @@ pub fn main() -> ExitCode {
             }
         };
     }
+    lensbench_core::init_from_env();
     match lensbench_core::with_threads(cli.threads, || run(cli)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(m) => {

@@ -10,7 +10,7 @@ python3 scripts/check_public.py --history
 ほかの実装と同じ系・光線数で比べるときは `cargo run --release --example bench -- system.zmx --rays 200000 --threads 4 --json`
 （瞳の点列は `examples/bench.rs` の xorshift64 で再現できる）。
 偏光なしの追跡と実光線エイミングは 16 本ずつまとめて追う（SIMD、x86_64 は AVX を実行時に選ぶ）。
-結果は 1 本ずつの追跡とビット単位で同じ（`tests/batch.rs`）。比較用に `lensbench_core::batch::set_enabled(false)` で切れる。
+結果は 1 本ずつの追跡とビット単位で同じ（`tests/batch.rs`）。比較用に `lensbench_core::par::with_batch(false, || ..)` の中では切れる（計算の文脈。作業のスレッドにも引き継ぐ）。
 実光線エイミングは 1024 本以上のとき、格子の光線から初期値を当てはめて解く。格子は入力の瞳座標の範囲に置くので、同じ瞳座標でも
 一度に追う光線の組（1024 本以上か未満か、座標の範囲）で結果がわずかに変わる（絞りでの位置はどちらも収束の許容差の範囲、tests/refs の像面で 2e-11 mm 以下。ビット単位の再現はスレッド数と
 まとめ追跡の有無についてで、光線の組についてではない）。

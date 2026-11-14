@@ -56,3 +56,40 @@ fn tolerance_serve() {
     );
     assert!(lensbench_engine::call("tolerance", &json!({"dist": "foo"}), None).is_err());
 }
+
+/// 進み具合・停止・中断は、処理している要求を待たずに別のスレッド（TCP の別の接続）から答える
+#[test]
+fn progress_and_stop_while_running() {
+    let sv = Session::new();
+    let zmx = Path::new(ROOT).join("tests/refs/C0/system.zmx");
+    let glass = Path::new(ROOT).join("tests/glass");
+    call(
+        &sv,
+        "load",
+        json!({ "file": zmx.display().to_string(), "glass_dir": [glass.display().to_string()] }),
+    );
+    // 何もしていない
+    let p = call(&sv, "progress", json!({}));
+    assert_eq!(p["running"], false);
+    assert_eq!(p["tolerance"], Value::Null);
+    assert_eq!(call(&sv, "cancel", json!({})), false);
+    assert!(sv.call("stop", &json!({"what": "foo"}), None).is_err());
+    let spec = json!({"trials": 100000, "seed": 2, "preset": "precision", "sensitivity": false});
+    std::thread::scope(|s| {
+        let h = s.spawn(|| call(&sv, "tolerance", spec.clone()));
+        let t0 = std::time::Instant::now();
+        loop {
+            let p = call(&sv, "progress", json!({}));
+            if p["tolerance"].is_array() {
+                assert_eq!(p["running"], true);
+                break;
+            }
+            assert!(t0.elapsed().as_secs() < 60, "進み具合が出ない");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(call(&sv, "stop", json!({"what": "tolerance"})), true);
+        let r = h.join().unwrap();
+        assert_eq!(r["cancelled"], true);
+    });
+    assert_eq!(call(&sv, "progress", json!({}))["running"], false);
+}

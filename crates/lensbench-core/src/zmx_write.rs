@@ -824,6 +824,12 @@ pub fn write_notes(s: &System) -> Vec<String> {
             s.mechanics.len()
         ));
     }
+    if !s.floating_clip {
+        out.push(
+            "浮動開口でけない設定（floating_clip: false）は .zmx に書けない（読み直すとける）"
+                .to_string(),
+        );
+    }
     out.extend(config_notes(s));
     if !out.is_empty() {
         out.push("欠けなく残すなら系ファイル（.json）に書く".to_string());

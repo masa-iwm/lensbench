@@ -149,6 +149,8 @@ pub struct Session {
     served: Mutex<Option<Served>>,
     /// 要求を 1 つずつ処理する
     request: Mutex<()>,
+    /// 処理している要求の中断の印（`cancel` で倒す）
+    running: Mutex<Option<lensbench_core::par::CancelToken>>,
     opt_run: Mutex<Option<OptRun>>,
     opt_cancel: AtomicBool,
     tol_run: Mutex<Option<(usize, usize)>>,
@@ -181,6 +183,7 @@ impl Session {
             files,
             served: Mutex::new(None),
             request: Mutex::new(()),
+            running: Mutex::new(None),
             opt_run: Mutex::new(None),
             opt_cancel: AtomicBool::new(false),
             tol_run: Mutex::new(None),
@@ -612,11 +615,25 @@ fn dispatch(
     bins: Vec<Bin>,
     threads: Option<usize>,
 ) -> Result<Reply, RpcErr> {
+    // 進み具合・中断・停止は、処理している要求を待たずに答える（別の接続から）
+    if let Some(r) = status(sess, method, params) {
+        return r;
+    }
     let _g = sess.request.lock().unwrap_or_else(|e| e.into_inner());
+    // 中断の印: 呼び出し側（GUI の Worker）が置いた印があればそれを使う
+    let tok = lensbench_core::par::current().cancel.unwrap_or_default();
+    *sess.running.lock().unwrap_or_else(|e| e.into_inner()) = Some(tok.clone());
+    struct Done<'a>(&'a Session);
+    impl Drop for Done<'_> {
+        fn drop(&mut self) {
+            *self.0.running.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
+    let _d = Done(sess);
     lensbench_core::with_threads(threads, || {
         LAST_PANIC.with(|l| l.borrow_mut().take());
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            handle(sess, method, params, bins)
+            lensbench_core::par::with_cancel(Some(&tok), || handle(sess, method, params, bins))
         }))
         .unwrap_or_else(|e| {
             // panic の hook（GUI の crash.rs）が残した文と場所。無ければ panic の文だけ
@@ -630,6 +647,52 @@ fn dispatch(
             }))
         })
     })
+}
+
+/// 処理している要求を待たない method: `progress`（最適化・公差・差し替え探索の進み具合と、要求を処理しているか）、
+/// `cancel`（処理している要求に途中でやめるよう頼む。解析は「中断した」の誤りで返る）、
+/// `stop`（`what` の最適化・公差・差し替え探索を止め、そこまでの結果を返させる）
+fn status(sess: &Session, method: &str, p: &Value) -> Option<Result<Reply, RpcErr>> {
+    let r = match method {
+        "progress" => json!({
+            "running": sess.running.lock().unwrap_or_else(|e| e.into_inner()).is_some(),
+            "optimize": sess.optimize_progress(),
+            "tolerance": sess.tolerance_progress(),
+            "swap": sess.swap_progress(),
+        }),
+        "cancel" => {
+            let t = sess
+                .running
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(t) = &t {
+                t.cancel();
+            }
+            json!(t.is_some())
+        }
+        "stop" => match p["what"].as_str() {
+            Some("optimize") => {
+                sess.optimize_cancel();
+                json!(true)
+            }
+            Some("tolerance") => {
+                sess.tolerance_cancel();
+                json!(true)
+            }
+            Some("swap") => {
+                sess.swap_cancel();
+                json!(true)
+            }
+            _ => {
+                return Some(Err(RpcErr::params(
+                    "stop の what は optimize・tolerance・swap のどれか",
+                )))
+            }
+        },
+        _ => return None,
+    };
+    Some(Ok((r, Vec::new())))
 }
 
 /// [`call`] のエラー（JSON-RPC の error と同じ code・message）

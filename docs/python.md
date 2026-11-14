@@ -27,7 +27,7 @@
 - **1.1**: `verify()`・`verify_compare()`（照合試験の枠組み）を追加。
 - **1.0**: 今の API を 1.0 とする。`API_VERSION`・`run_settings()`・`progress()` を追加。
   `System.load` などの `coatings=` を省くと環境変数 `LENSBENCH_COATINGS` を使う。`threads=` を省くと
-  環境変数 `LENSBENCH_THREADS` があればその数（CLI も同じ）。
+  環境変数 `LENSBENCH_THREADS` があればその数（import したときに読む。CLI は起動したときに読む）。
 
 ## 単位と座標の約束
 

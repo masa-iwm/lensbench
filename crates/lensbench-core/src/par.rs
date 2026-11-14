@@ -61,7 +61,7 @@ fn pool(n: usize) -> Result<Arc<rayon::ThreadPool>, rayon::ThreadPoolBuildError>
 }
 
 /// f を threads 本のスレッドで実行する。None は既定（外の指定を引き継ぐ: `with_threads(Some(1), ..)` の中なら逐次、
-/// 別の with_threads のプールの中ならそのプール。どちらでもなければ環境変数 LENSBENCH_THREADS があればその数、
+/// 別の with_threads のプールの中ならそのプール。どちらでもなければ [`set_default_threads`] の数があればその数、
 /// なければ rayon の大域プールで RAYON_NUM_THREADS が効く）、
 /// Some(1) は呼び出したスレッドで逐次、Some(0) は外の逐次の指定を外して既定に戻す。
 /// Some(n)（n ≥ 2）のプールは n ごとに作って使い回し、解放しない。
@@ -69,9 +69,9 @@ pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Sen
     match threads {
         // 既定は外の逐次の指定を打ち消さない（以前は with_threads_or_outer と分かれていた）
         None if sequential() => f(),
-        // 既定の数は環境変数 LENSBENCH_THREADS（`lensbench run --threads`）。別のプールの中ならそのプール
-        None if rayon::current_thread_index().is_none() && env_threads().is_some() => {
-            with_threads(env_threads(), f)
+        // 既定の数（CLI・Python が起動時に決める）。別のプールの中ならそのプール
+        None if rayon::current_thread_index().is_none() && default_threads().is_some() => {
+            with_threads(default_threads(), f)
         }
         None | Some(0) => with_flag(false, f),
         Some(1) => with_flag(true, f),
@@ -89,15 +89,27 @@ pub fn with_threads<R: Send>(threads: Option<usize>, f: impl FnOnce() -> R + Sen
     }
 }
 
-/// 環境変数 LENSBENCH_THREADS（1 以上の整数）。最初に読んだ値を使い続ける
-pub fn env_threads() -> Option<usize> {
-    static T: OnceLock<Option<usize>> = OnceLock::new();
-    *T.get_or_init(|| {
-        std::env::var("LENSBENCH_THREADS")
-            .ok()
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .filter(|&n| n > 0)
-    })
+/// 既定のスレッド数（0 は無し: rayon の大域プール）
+static DEFAULT_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// `with_threads(None, ..)` の既定のスレッド数を決める（None・0 で rayon の大域プール）。フロントエンド
+/// （CLI の `--threads`・Python の読込）が起動時に呼ぶ。core は環境変数を読まない
+pub fn set_default_threads(n: Option<usize>) {
+    DEFAULT_THREADS.store(n.unwrap_or(0), Ordering::Relaxed);
+}
+
+/// 既定のスレッド数（[`set_default_threads`]）
+pub fn default_threads() -> Option<usize> {
+    Some(DEFAULT_THREADS.load(Ordering::Relaxed)).filter(|&n| n > 0)
+}
+
+/// 既定のスレッド数を環境変数 LENSBENCH_THREADS（1 以上の整数。`lensbench run --threads` がスクリプトに渡す）
+/// から決める。CLI の起動・Python の import で呼ぶ（`--threads`・`threads=` を省いたときの数）
+pub fn default_threads_from_env() {
+    let n = std::env::var("LENSBENCH_THREADS")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok());
+    set_default_threads(n);
 }
 
 /// 呼び出したスレッドの逐次の指定を f の間だけ変える（panic でも戻す）

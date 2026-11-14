@@ -58,6 +58,9 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | method | params | result |
 | --- | --- | --- |
 | `ping` | | `version` |
+| `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
+| `cancel` | | 処理している要求に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る |
+| `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
 | `load` | `file`、`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`・`history`（省略可） | 系の概要（面の数・視野・波長など）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
 | `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
 | `system` | | 系の概要 |
@@ -170,7 +173,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 （系は場に 1 つ、要求は場ごとに 1 つずつ順に。場は `Session::new()` でいくつでも作れる）。GUI（`crates/lensbench-gui`）は共通の場だけで計算する。bin の配列は使えない
 （`trace` の px・py は JSON の並びで渡す）。結果の配列は `call_arrays` で受け取る（名前と f64 の並び）。`shutdown` はプロセスを止めない。
 `optimize` を回している間は、別のスレッドから `optimize_progress()`（反復ごとの評価関数の値）で進み具合を読み、
-`optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す。TCP の要求からは止められない）。進み具合・中止は場ごと（`Session::optimize_progress` など。上の関数は共通の場のもの）。
+`optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す）。TCP・パイプでは別の接続から `progress`・`stop` を送る。進み具合・中止は場ごと（`Session::optimize_progress` など。上の関数は共通の場のもの）。
 `swap` も同じく `swap_progress()`（終えた組と組の数）・`swap_cancel()`（走っている組は終わらせ、そこまでの結果を返す）。
 
 ### Python のクライアント

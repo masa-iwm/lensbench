@@ -72,7 +72,7 @@ fn run_settings<'py>(py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
     d.set_item("glass_dirs", paths("LENSBENCH_GLASSCAT"))?;
     d.set_item("coatings", paths("LENSBENCH_COATINGS"))?;
-    d.set_item("threads", lensbench_core::par::env_threads())?;
+    d.set_item("threads", lensbench_core::par::default_threads())?;
     d.set_item("out", opt("LENSBENCH_OUT"))?;
     d.set_item("log", opt("LENSBENCH_LOG"))?;
     let argv: Vec<String> = py.import("sys")?.getattr("argv")?.extract()?;
@@ -3002,6 +3002,8 @@ fn lensbench(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// `lensbench_core::catalog::register_source`・`lensbench_core::plugin::global` へ登録する
 /// （先に登録すると、同梱のプラグインと同じ名前は同梱のものに戻る）
 pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // threads= を省いた計算の既定（lensbench run --threads が渡す）
+    lensbench_core::init_from_env();
     m.add_class::<PySystem>()?;
     m.add_function(wrap_pyfunction!(trace_many, m)?)?;
     m.add_function(wrap_pyfunction!(_system_from_state, m)?)?;
