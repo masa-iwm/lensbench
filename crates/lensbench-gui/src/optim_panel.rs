@@ -246,6 +246,8 @@ pub struct OptPanel {
     pub error: Option<String>,
     /// 系に当てる前の値（元に戻す）
     pub undo: Option<Vec<(String, f64)>>,
+    /// 最適化を始めたときの系の世代（[`crate::app`] の sys_gen。変わっていれば結果を当てない）
+    pub gen: u64,
 }
 
 impl OptPanel {

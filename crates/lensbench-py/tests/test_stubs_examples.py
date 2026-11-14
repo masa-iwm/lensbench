@@ -114,3 +114,51 @@ def test_error_classes_type_check(tmp_path):
     )
     r = subprocess.run([sys.executable, "-m", "mypy", "--strict", str(p)], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _typed_dicts():
+    """lensbench.pyi の TypedDict: 名前 → (必ずある鍵, 条件で付く鍵)。…Base を継ぐ total=False のクラスは足し合わせる"""
+    import ast
+
+    tree = ast.parse((ROOT / "crates" / "lensbench-py" / "lensbench.pyi").read_text(encoding="utf-8"))
+    out = {}
+    for c in tree.body:
+        if not isinstance(c, ast.ClassDef):
+            continue
+        bases = [b.id for b in c.bases if isinstance(b, ast.Name)]
+        keys = {s.target.id for s in c.body if isinstance(s, ast.AnnAssign)}
+        if "TypedDict" in bases:
+            out[c.name] = (keys, set())
+        elif bases and bases[0] in out:
+            out[c.name] = (out[bases[0]][0], keys)
+    return out
+
+
+def test_result_typed_dicts_match_the_results():
+    """型スタブの結果の TypedDict（CLI-16）と、実際の結果の dict の鍵が合う"""
+    s = lb.System.load(str(ROOT / "tests" / "refs" / "A0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
+    td = _typed_dicts()
+    cases = [
+        ("_TraceResult", s.trace(1, [0.0], [0.0])),
+        ("_TraceResult", s.trace(1, [0.0], [0.0], record=True, pol=True, grad=["8.t"])),
+        ("_TraceResult", s.trace(1, [0.0], [0.0], globals=True, dz=0.1, grad=["8.t"], land=True)),
+        ("_TraceResult", s.trace(None, [0.0], [0.0], object=(0.0, 0.0, 1.0))),
+        ("_TraceResult", s.trace(1, [0.0, 0.5], [0.0, 0.2], pol=True, pol_grid=25)),
+        ("_TraceResult", s.trace_rays([[0.0, 0.0, 0.0]], [[0.0, 0.0, 1.0]], globals=True, dz=0.1)),
+        ("_MtfResult", s.mtf(1, [10, 20])),
+        ("_MtfResult", s.mtf(1, [10], each_wave=True)),
+        ("_MtfResult", s.geometric_mtf(1, [10])),
+        ("_MtfResult", s.huygens_mtf(1, [10])),
+        ("_ThroughFocusMtf", s.through_focus_mtf(1, [10], [0.0, 0.01])),
+        ("_FieldMtf", s.field_mtf([10], [0.0, 1.0])),
+        ("_PsfResult", s.psf(1)),
+        ("_PsfResult", s.huygens_psf(1)),
+        ("_Cardinal", s.cardinal()),
+        ("_OptimizeResult", s.optimize(["8.t"], iters=2)),
+        ("_TanSag", s.mtf(1, [10])["cutoff"]),
+    ]
+    for name, r in cases:
+        req, opt = td[name]
+        keys = set(r)
+        assert req <= keys, f"{name}: 無い鍵 {sorted(req - keys)}"
+        assert keys <= req | opt, f"{name}: 型スタブに無い鍵 {sorted(keys - req - opt)}"

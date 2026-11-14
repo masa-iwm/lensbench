@@ -109,6 +109,13 @@ CLI では単数形の旗を繰り返します。
 
 - 警告（分散式の範囲外、プロジェクトの読み替えなど）は Python の `warnings` で出ます。
 
+## 結果の型
+
+結果は dict です。主な結果（`trace`・`trace_rays`・`mtf`・`geometric_mtf`・`huygens_mtf`・`through_focus_mtf`・`field_mtf`・`psf`・
+`huygens_psf`・`cardinal`・`optimize`）は型スタブに鍵と型を書いてあり（`lensbench.pyi` の `_TraceResult` などの `TypedDict`）、
+エディタの補完と mypy の検査が効きます。実行時の型は dict のままです。オプションで付く鍵（`record=True` の `rec_x` など）は
+`total=False` の側にあります。
+
 ## 例題
 
 [`examples/python/`](https://github.com/masa-iwm/lensbench/tree/main/examples/python) にあります。リポジトリの中の公開のテスト用の系（`tests/refs/`）とガラス（`tests/glass/`）を使い、
@@ -181,3 +188,4 @@ python crates/lensbench-py/tools/gen_stubs.py --check  # 食い違えば 1
 ```
 
 Rust の型から決まらない引数・返り値は `Any` になります。意味の決まったものは `tools/gen_stubs.py` の `OVERRIDES` で与えます。
+結果の dict の鍵は `RESULTS` に書き、`tests/test_stubs_examples.py` が実際の結果と突き合わせます。

@@ -660,6 +660,8 @@ struct Core {
     zoom: crate::zoom_panel::ZoomPanel,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
+    /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
+    sys_gen: u64,
     /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
     relay: Option<bool>,
     /// 元のタブが計算中か（別のタブのパネル）
@@ -1501,6 +1503,9 @@ impl Core {
 
     fn take(&mut self, mut d: Done) {
         self.rev += 1;
+        if matches!(d.tag, Tag::Load | Tag::Set | Tag::Edit | Tag::History) {
+            self.sys_gen += 1;
+        }
         let ms = d.ms;
         if let Some((method, e)) = d.error() {
             let text = format!("{}: {}", method_label(method), plain_error(e));
@@ -2302,6 +2307,7 @@ impl Core {
                 Action::Run(p) => {
                     self.opt.running = true;
                     self.opt.result = None;
+                    self.opt.gen = self.sys_gen;
                     self.worker.send(Tag::Optimize, "optimize", p);
                 }
                 Action::Stop => crate::worker::progress::stop("optimize"),
@@ -2309,6 +2315,14 @@ impl Core {
                     let Some(r) = self.opt.result.clone() else {
                         continue;
                     };
+                    // 最適化の間・後に系が変わっていれば、古い系の値なので当てない（GAR-20）
+                    if self.opt.gen != self.sys_gen || self.worker.busy_core() {
+                        self.opt.error = Some(
+                            tr("最適化を始めた後に系が変わったので当てない（もう一度最適化する）")
+                                .to_string(),
+                        );
+                        continue;
+                    }
                     if self.apply_values(&op::result_values(&r, false)) {
                         self.opt.undo = Some(op::result_values(&r, true));
                     }
@@ -5290,6 +5304,7 @@ impl App {
                 swap_ids: Vec::new(),
                 swap_file: None,
                 rev: 0,
+                sys_gen: 0,
                 relay: None,
                 relay_busy: false,
                 browser,
@@ -6857,6 +6872,7 @@ impl App {
                 o.terms = vec![t];
                 if let Ok(p) = o.params() {
                     o.running = true;
+                    o.gen = self.c.sys_gen;
                     self.c.worker.send(Tag::Optimize, "optimize", p);
                 }
             }
@@ -7074,7 +7090,7 @@ impl App {
         let Some(r) = self.c.fig_rects.get(&id).copied() else {
             return;
         };
-        let Some(part) = crop_image(&img, r, ctx.pixels_per_point()) else {
+        let Some(part) = crate::image_util::crop_image(&img, r, ctx.pixels_per_point()) else {
             return;
         };
         if copy {
@@ -7092,7 +7108,7 @@ impl App {
         else {
             return;
         };
-        self.c.status = match png_bytes(&part)
+        self.c.status = match crate::image_util::png_bytes(&part)
             .and_then(|b| lensbench_core::vfs::write(&p, b).map_err(|e| e.to_string()))
         {
             Ok(()) => Status {
@@ -7787,40 +7803,6 @@ fn result_export_menu(ui: &mut Ui, cmd: &str, v: &Value, fig: bool) -> Option<Re
         }
     });
     out
-}
-
-/// 画面の写し（ColorImage）の矩形 r（画面の点）を切り出す
-fn crop_image(img: &egui::ColorImage, r: egui::Rect, ppp: f32) -> Option<egui::ColorImage> {
-    let [w, h] = img.size;
-    let x0 = ((r.left() * ppp).round().max(0.0) as usize).min(w);
-    let y0 = ((r.top() * ppp).round().max(0.0) as usize).min(h);
-    let x1 = ((r.right() * ppp).round().max(0.0) as usize).min(w);
-    let y1 = ((r.bottom() * ppp).round().max(0.0) as usize).min(h);
-    if x1 <= x0 || y1 <= y0 {
-        return None;
-    }
-    let mut px = Vec::with_capacity((x1 - x0) * (y1 - y0));
-    for y in y0..y1 {
-        px.extend_from_slice(&img.pixels[y * w + x0..y * w + x1]);
-    }
-    Some(egui::ColorImage {
-        size: [x1 - x0, y1 - y0],
-        pixels: px,
-    })
-}
-
-/// ColorImage を PNG のバイト列に
-fn png_bytes(img: &egui::ColorImage) -> Result<Vec<u8>, String> {
-    let mut buf = Vec::new();
-    {
-        let mut enc = png::Encoder::new(&mut buf, img.size[0] as u32, img.size[1] as u32);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        let mut w = enc.write_header().map_err(|e| e.to_string())?;
-        let raw: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
-        w.write_image_data(&raw).map_err(|e| e.to_string())?;
-    }
-    Ok(buf)
 }
 
 /// マニュアル（ドキュメントのサイト）の場所。非公開の版などは LENSBENCH_DOCS_URL で差し替える

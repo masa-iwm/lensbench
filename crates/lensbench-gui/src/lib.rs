@@ -25,6 +25,7 @@ mod files;
 mod fill;
 mod fonts;
 mod i18n;
+mod image_util;
 mod json_view;
 mod layout;
 mod layout_rays;

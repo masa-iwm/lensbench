@@ -3,7 +3,7 @@
 
 import os
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, final
+from typing import Any, TypedDict, final
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -19,6 +19,153 @@ _ObjectPoint = tuple[float, float] | Sequence[float]
 __version__: str
 #: Python API の版（互換を壊す変更で上がる。docs/python.md）
 API_VERSION: tuple[int, int]
+
+
+class _TanSag(TypedDict):
+    """子午・球欠の組"""
+    tangential: float
+    sagittal: float
+
+
+class _TraceResultBase(TypedDict):
+    """System.trace・trace_rays の結果（光線ごとの列）"""
+    x: NDArray[np.float64]
+    y: NDArray[np.float64]
+    z: NDArray[np.float64]
+    l: NDArray[np.float64]
+    m: NDArray[np.float64]
+    n: NDArray[np.float64]
+    opl: NDArray[np.float64]
+    opl_os: NDArray[np.float64]
+    lens_opd: NDArray[np.float64]
+    err: NDArray[np.int32]
+    vig: NDArray[np.int32]
+    ok: NDArray[np.bool_]
+    wavelengths: NDArray[np.int64]
+    last: int
+
+
+class _TraceResult(_TraceResultBase, total=False):
+    """条件で付く鍵"""
+    hx: float
+    hy: float
+    rec_surfaces: NDArray[np.int64]
+    rec_x: NDArray[np.float64]
+    rec_y: NDArray[np.float64]
+    rec_z: NDArray[np.float64]
+    rec_l: NDArray[np.float64]
+    rec_m: NDArray[np.float64]
+    rec_n: NDArray[np.float64]
+    rec_gx: NDArray[np.float64]
+    rec_gy: NDArray[np.float64]
+    rec_gz: NDArray[np.float64]
+    rec_opl: NDArray[np.float64]
+    jones: NDArray[np.complex128]
+    jones_z: NDArray[np.complex128]
+    jones_wavelength: int
+    grad: NDArray[np.float64]
+    grad_params: list[str]
+    grad_land: NDArray[np.float64]
+    gx: NDArray[np.float64]
+    gy: NDArray[np.float64]
+    gz: NDArray[np.float64]
+    gl: NDArray[np.float64]
+    gm: NDArray[np.float64]
+    gn: NDArray[np.float64]
+    p0: NDArray[np.float64]
+    k0: NDArray[np.float64]
+    dz: float
+    object: list[float]
+    pol_grid: tuple[int, int]
+    pol_grid_missing: NDArray[np.float64]
+    pol_grid_bad: NDArray[np.bool_]
+
+
+class _MtfResultBase(TypedDict):
+    """回折 MTF（mtf・geometric_mtf・huygens_mtf）。tangential・sagittal は [波長][周波数]（each_wave）か [周波数]"""
+    freqs: NDArray[np.float64]
+    tangential: NDArray[np.float64]
+    sagittal: NDArray[np.float64]
+    cutoff: _TanSag
+
+
+class _MtfResult(_MtfResultBase, total=False):
+    """条件で付く鍵"""
+    waves: list[int]
+    warnings: list[str]
+
+
+class _ThroughFocusMtf(TypedDict):
+    """スルーフォーカス MTF（[周波数][dz]）"""
+    freqs: NDArray[np.float64]
+    dz: NDArray[np.float64]
+    tangential: NDArray[np.float64]
+    sagittal: NDArray[np.float64]
+    warnings: list[str]
+
+
+class _FieldMtf(TypedDict):
+    """MTF vs 視野（[周波数][視野]）"""
+    freqs: NDArray[np.float64]
+    h: NDArray[np.float64]
+    tangential: NDArray[np.float64]
+    sagittal: NDArray[np.float64]
+    warnings: list[str]
+    field_value: NDArray[np.float64]
+
+
+class _PsfResult(TypedDict):
+    """PSF（psf・huygens_psf）。i は [y][x]、強度は収差のない同じ瞳の中心の値を 1"""
+    x: NDArray[np.float64]
+    y: NDArray[np.float64]
+    i: NDArray[np.float64]
+    center: tuple[float, float]
+    axes: list[list[float]]
+    delta: tuple[float, float]
+    peak: float
+    pupil: int
+    phase_step: float
+    enclosed: float
+    warnings: list[str]
+
+
+class _Cardinal(TypedDict):
+    """基点（距離は mm）"""
+    n_object: float
+    n_image: float
+    efl: float
+    f_object: float
+    f_image: float
+    focal_object: float
+    principal_object: float
+    anti_principal_object: float
+    nodal_object: float
+    anti_nodal_object: float
+    focal_image: float
+    principal_image: float
+    anti_principal_image: float
+    nodal_image: float
+    anti_nodal_image: float
+    bfl: float
+    ffl: float
+
+
+class _OptimizeResult(TypedDict):
+    """System.optimize の結果"""
+    system: System
+    names: list[str]
+    x0: list[float]
+    x: list[float]
+    merit0: float
+    merit: float
+    history: list[float]
+    iterations: int
+    evals: int
+    stop: str
+    note: str | None
+    inactive: list[str]
+    term_values0: list[float]
+    term_values: list[float]
 
 
 class CancelledError(Error):
@@ -140,7 +287,7 @@ class System:
         BS がなければ空。それぞれ `load(path, beam_path=経路)` で読む
         """
 
-    def cardinal(self, wave: int | None = None) -> dict[str, Any]:
+    def cardinal(self, wave: int | None = None) -> _Cardinal:
         """基点（OpticStudio の Cardinal Points 相当）。wave は波長の番号（1 始まり、省略で主波長）。
 
         面 1 から像面の手前の面までの近軸の系（Y-Z 面）。物体空間の位置は面 1 の頂点から、像空間の位置は像面の
@@ -181,7 +328,7 @@ class System:
         通る光を系の損失に数える（OpticStudio の FICL と同じ）。有限物体の系だけ
         """
 
-    def field_mtf(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None) -> dict[str, Any]:
+    def field_mtf(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None) -> _FieldMtf:
         """フィールド MTF: 正規化視野 h（0〜1、axis "y" か "x" の向き）ごとの回折 MTF。
         tangential・sagittal は (周波数, h) の配列、field_value は視野の値（系の単位）
         """
@@ -222,7 +369,7 @@ class System:
           値で固定し、warnings で知らせる
         """
 
-    def geometric_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None) -> dict[str, Any]:
+    def geometric_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None) -> _MtfResult:
         """幾何 MTF: 光線の位置の分布から。n は瞳の求積の点の数の目安、diff_limit なら回折限界の MTF をかける。
         返す dict は mtf と同じ形
         """
@@ -247,10 +394,10 @@ class System:
     def hash(self) -> str:
         """系の hash（"sha256:…"、系ファイルと同じ）。解析の結果に刻んで、後から同じ系か確かめる"""
 
-    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def huygens_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _MtfResult:
         """Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）。返す dict は mtf と同じ形"""
 
-    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def huygens_psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _PsfResult:
         """Huygens PSF: 射出瞳の参照球の各点からの 2 次波を像面の上で足す（傾いた像面・収差の大きい系向け）。
         返す dict は psf と同じ形で、x・y は中心 center からの像面の局所座標の差（axes は x̂・ŷ）
         """
@@ -316,7 +463,7 @@ class System:
         （既定の評価関数の項、terms の順）で、各項に重みの平方根を掛けたもの
         """
 
-    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "auto", each_wave: bool = False) -> dict[str, Any]:
+    def mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None, method: str = "auto", each_wave: bool = False) -> _MtfResult:
         """回折 MTF（CLI の mtf と同じ）。field は番号（1 始まり）か正規化視野 (hx, hy)、wave は波長の番号（省略で
         多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "auto"（既定。"interp" で、n を省いて
         求積の点数が 1024 を超え、周波数が 8 個以上なら "fft"）・"interp"（補間の求積）・"fft"（瞳関数の自己相関を FFT で全周波数まとめて。
@@ -331,7 +478,7 @@ class System:
     def object_of(self, field: _Field) -> list[float]:
         """視野（番号か (hx, hy)）の物体: 有限物体なら物点 (x, y) [mm]、無限遠なら方向 (l, m, n)"""
 
-    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None) -> dict[str, Any]:
+    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None) -> _OptimizeResult:
         """減衰最小二乗（DLS）で最適化した系を返す（元の系は変えない）。vars は変数の列で、各要素は "7.t" か
         ("7.t", 下限, 上限)（None で片側なし）。既定の評価関数 merit は "spot"（RMS スポット）か "wavefront"（RMS 波面）で、
         全視野（視野の重み）・多色。None なら terms の項だけ。jac は "auto"（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）か
@@ -358,7 +505,7 @@ class System:
     def primary(self) -> int:
         """主波長の番号（1 始まり）"""
 
-    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> dict[str, Any]:
+    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, delta: float | None = None, threads: int | None = None) -> _PsfResult:
         """回折 PSF: 瞳関数（MTF と同じ）の DFT。強度 i は (y, x) の配列で、収差のない同じ瞳の多色 PSF の中心を
         1 とする（peak はストレール比の目安）。x・y は主波長の主光線の像点 center からの、主光線に垂直な面の座標
         [レンズ単位]（OpticStudio の FFT PSF と同じ。向きは axes = [e1, e2]、像空間の単位ベクトル）。
@@ -417,7 +564,7 @@ class System:
     def set_param(self, spec: str, value: float) -> None:
         """パラメータを変える（系を作り直さない）。ピックアップ先は元の面に合わせて解き直す（ピックアップ先そのものは変えられない）"""
 
-    def set_params(self, changes: Any) -> None:
+    def set_params(self, changes: Mapping[str, float] | Sequence[tuple[str, float]]) -> None:
         """まとめて変える: {"3.t": 10.0, "5.dx": 0.01} か [("3.t", 10.0), ...]"""
 
     def set_stop(self, s: _Surf) -> None:
@@ -467,7 +614,7 @@ class System:
         pimh・pmag・totr・obna・isna）。主波長、変更後の系の値
         """
 
-    def through_focus_mtf(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None) -> dict[str, Any]:
+    def through_focus_mtf(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None) -> _ThroughFocusMtf:
         """スルーフォーカス MTF: 像面を dz [レンズ単位] ずつずらした回折 MTF（像面の手前の厚さを変える。
         厚さのソルブは解き直さない）。tangential・sagittal は (周波数, dz) の配列。計算できない点は NaN で、
         理由は warnings
@@ -493,7 +640,7 @@ class System:
         errors（samples が true なら試行ごとの deltas・eval も）
         """
 
-    def trace(self, field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | None = None, land: bool = False, pol_grid: Any = None) -> dict[str, Any]:
+    def trace(self, field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | ArrayLike | None = None, land: bool = False, pol_grid: Any = None) -> _TraceResult:
         """光線を追跡し、numpy 配列の dict を返す。
 
         - field: 視野の番号（1 始まり）か正規化視野 (hx, hy)。object を与えるときは None
@@ -536,7 +683,7 @@ class System:
         object なら object。record のとき rec_surfaces と rec_x … rec_opl（rec_gx・rec_gy・rec_gz は大域）
         """
 
-    def trace_rays(self, start: ArrayLike, direction: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: Any = ..., pol: Any = None, pol_phase: bool = False, globals: bool = False, frame: str = "object", grad: Sequence[str] | None = None, threads: int | None = None, dz: float | None = None, land: bool = False) -> dict[str, Any]:
+    def trace_rays(self, start: ArrayLike, direction: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, frame: str = "object", grad: Sequence[str] | None = None, threads: int | None = None, dz: float | ArrayLike | None = None, land: bool = False) -> _TraceResult:
         """開始位置と方向を直接与えて追跡する。返す dict は [`trace`] と同じ（hx・hy・object はない）。
 
         - start, direction: (光線, 3) の配列。方向は規格化する（0 ベクトルは止まった光線）。光路長は開始位置から
@@ -554,7 +701,7 @@ class System:
     @property
     def weights(self) -> list[float]: ...
 
-    def with_params(self, changes: Any) -> System:
+    def with_params(self, changes: Mapping[str, float] | Sequence[tuple[str, float]]) -> System:
         """変えた系を新しく返す（元の系は変えない。軽い複製）"""
 
 

@@ -38,6 +38,74 @@ OVERRIDES: dict[str, dict[str, str]] = {
     "run_batch": {"func": "Callable[..., Any]", "progress": "Callable[[int, int], Any] | None"},
 }
 
+F64 = "NDArray[np.float64]"
+# 結果の dict の形（TypedDict、CLI-16）。名前: (説明, 必ずある鍵, 条件で付く鍵)。鍵の一致は tests/test_stubs_examples.py で確かめる
+RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
+    "_TanSag": ("子午・球欠の組", {"tangential": "float", "sagittal": "float"}, {}),
+    "_TraceResult": (
+        "System.trace・trace_rays の結果（光線ごとの列）",
+        {**{k: F64 for k in ("x", "y", "z", "l", "m", "n", "opl", "opl_os", "lens_opd")},
+         "err": "NDArray[np.int32]", "vig": "NDArray[np.int32]", "ok": "NDArray[np.bool_]",
+         "wavelengths": "NDArray[np.int64]", "last": "int"},
+        {"hx": "float", "hy": "float", "rec_surfaces": "NDArray[np.int64]",
+         **{f"rec_{k}": F64 for k in ("x", "y", "z", "l", "m", "n", "gx", "gy", "gz", "opl")},
+         "jones": "NDArray[np.complex128]", "jones_z": "NDArray[np.complex128]", "jones_wavelength": "int",
+         "grad": F64, "grad_params": "list[str]", "grad_land": F64,
+         **{k: F64 for k in ("gx", "gy", "gz", "gl", "gm", "gn", "p0", "k0")}, "dz": "float",
+         "object": "list[float]", "pol_grid": "tuple[int, int]", "pol_grid_missing": F64,
+         "pol_grid_bad": "NDArray[np.bool_]"},
+    ),
+    "_MtfResult": (
+        "回折 MTF（mtf・geometric_mtf・huygens_mtf）。tangential・sagittal は [波長][周波数]（each_wave）か [周波数]",
+        {"freqs": F64, "tangential": F64, "sagittal": F64, "cutoff": "_TanSag"},
+        {"waves": "list[int]", "warnings": "list[str]"},
+    ),
+    "_ThroughFocusMtf": ("スルーフォーカス MTF（[周波数][dz]）",
+                         {"freqs": F64, "dz": F64, "tangential": F64, "sagittal": F64, "warnings": "list[str]"}, {}),
+    "_FieldMtf": ("MTF vs 視野（[周波数][視野]）",
+                  {"freqs": F64, "h": F64, "tangential": F64, "sagittal": F64, "warnings": "list[str]",
+                   "field_value": F64}, {}),
+    "_PsfResult": (
+        "PSF（psf・huygens_psf）。i は [y][x]、強度は収差のない同じ瞳の中心の値を 1",
+        {"x": F64, "y": F64, "i": F64, "center": "tuple[float, float]", "axes": "list[list[float]]",
+         "delta": "tuple[float, float]", "peak": "float", "pupil": "int", "phase_step": "float",
+         "enclosed": "float", "warnings": "list[str]"},
+        {},
+    ),
+    "_Cardinal": ("基点（距離は mm）", {k: "float" for k in (
+        "n_object", "n_image", "efl", "f_object", "f_image", "focal_object", "principal_object",
+        "anti_principal_object", "nodal_object", "anti_nodal_object", "focal_image", "principal_image",
+        "anti_principal_image", "nodal_image", "anti_nodal_image", "bfl", "ffl")}, {}),
+    "_OptimizeResult": (
+        "System.optimize の結果",
+        {"system": "System", "names": "list[str]", "x0": "list[float]", "x": "list[float]", "merit0": "float",
+         "merit": "float", "history": "list[float]", "iterations": "int", "evals": "int", "stop": "str",
+         "note": "str | None", "inactive": "list[str]", "term_values0": "list[float]", "term_values": "list[float]"},
+        {},
+    ),
+}
+RESULT_OF = {
+    "System.trace": "_TraceResult", "System.trace_rays": "_TraceResult", "System.mtf": "_MtfResult",
+    "System.geometric_mtf": "_MtfResult", "System.huygens_mtf": "_MtfResult",
+    "System.through_focus_mtf": "_ThroughFocusMtf", "System.field_mtf": "_FieldMtf", "System.psf": "_PsfResult",
+    "System.huygens_psf": "_PsfResult", "System.cardinal": "_Cardinal", "System.optimize": "_OptimizeResult",
+}
+for _k, _t in RESULT_OF.items():
+    OVERRIDES.setdefault(_k, {})["return"] = _t
+
+
+def render_results() -> list[str]:
+    out = []
+    for name, (doc, req, opt) in RESULTS.items():
+        base = name if not opt else f"{name}Base"
+        out += ["", "", f"class {base}(TypedDict):", f'    """{doc}"""']
+        out += [f"    {k}: {t}" for k, t in req.items()]
+        if opt:
+            out += ["", "", f"class {name}({base}, total=False):", '    """条件で付く鍵"""']
+            out += [f"    {k}: {t}" for k, t in opt.items()]
+    return out
+
+
 def _split_top(s: str, sep: str = ",") -> list[str]:
     out, depth, cur = [], 0, ""
     for ch in s:
@@ -228,7 +296,9 @@ def doc_block(doc: str | None, indent: str) -> list[str]:
 
 def render_fn(name: str, obj, key: str, fns, classes, indent: str, kind: str = "") -> list[str]:
     info = fns.get(key, {"args": {}, "ret": None})
-    ov = OVERRIDES.get(key, {})
+    # 上書きのキーは Python のクラス名（"System.trace"）。key は Rust の型名のことがある（"PySystem.trace"）
+    cls, _, meth = key.rpartition(".")
+    ov = OVERRIDES.get(key) or OVERRIDES.get(f"{classes.get(cls, cls)}.{meth}" if cls else key, {})
     parts = []
     if kind not in ("static", "module"):
         parts.append("cls" if name == "__new__" else "self")
@@ -269,7 +339,7 @@ def render(lb) -> str:
         "",
         "import os",
         "from collections.abc import Callable, Mapping, Sequence",
-        "from typing import Any, final",
+        "from typing import Any, TypedDict, final",
         "",
         "import numpy as np",
         "from numpy.typing import ArrayLike, NDArray",
@@ -286,6 +356,7 @@ def render(lb) -> str:
         "#: Python API の版（互換を壊す変更で上がる。docs/python.md）",
         "API_VERSION: tuple[int, int]",
     ]
+    out += render_results()
     names = sorted(n for n in dir(lb) if not n.startswith("__") and n not in ("API_VERSION",))
     consts = [n for n in names if not callable(getattr(lb, n)) and not inspect.ismodule(getattr(lb, n))]
     for n in consts:
