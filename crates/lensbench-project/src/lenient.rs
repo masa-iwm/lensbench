@@ -64,6 +64,11 @@ pub fn decode<T: DeserializeOwned>(v: C, root: &str) -> Result<T, String> {
     })
 }
 
+/// JSON の値を型に読む（[`decode`] と同じ。`{"$f": "inf"}` も受ける）。設定の JSON（公差など）の読みに使う
+pub fn from_json<T: DeserializeOwned>(v: &serde_json::Value, root: &str) -> Result<T, String> {
+    decode(crate::sysfile::from_json(v.clone())?, root)
+}
+
 struct Lenient(C);
 
 impl<'de> de::Deserializer<'de> for Lenient {

@@ -3,7 +3,7 @@
 `.json` のプロジェクトファイルは玉・空気・絞り・鏡・面の並び・.zmx の取り込み・群のブロックで系を組む（例は `examples/projects`）。
 
 JSON スキーマは `docs/schema/` にある: `project`（プロジェクトファイル）・`system`（系ファイル）・`user-catalog`（ユーザーカタログ）・
-`swap`（差し替え探索の `--spec`）・`terms`（評価関数の項）の `.schema.json`。どのファイルも先頭に
+`swap`（差し替え探索の `--spec`）・`terms`（評価関数の項）・`tolerance`（公差の `--spec`）の `.schema.json`。どのファイルも先頭に
 `"$schema": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/project.schema.json"` のように書くと、
 エディタ（VS Code など）で項目の補完・説明・検査が効く（lensbench は読むときに `$schema` を無視する）。スキーマは serde の型
 （`lensbench_project::schema`）から作り、テストで型とずれていないか・例題が合うかを確かめる。型を変えたら

@@ -21,7 +21,8 @@
 //! `zplm` のマクロを探す順: file、macro_dirs、系に読み込んだマクロ（.zmx のソルブのもの）、LENSBENCH_MACROS、今のフォルダ。
 //! `"default_dirs": false` なら最後の 2 つ（既定の場所）を探さない（serve が --root・--allow-remote のときに付ける）。
 //!
-//! 種類ごとのキーは [`crate::term_spec`] の型で読み、知らないキーは誤り。スキーマは `docs/schema/terms.schema.json`。
+//! 種類ごとのキーは [`crate::term_spec`] の型で読み、知らないキーは誤り。スキーマは `docs/schema/terms.schema.json`
+//! （正式な綴りだけ。読みが受ける別名 `wfe`・dir の `t`・`s`・大文字の `type` はスキーマには無い）。
 
 use lensbench_core::analysis::ZernKind;
 use lensbench_core::fiber::FiberOpts;
@@ -126,6 +127,11 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     ];
     if !TYPES.contains(&ty.as_str()) {
         return Err(format!("type {ty}（{}）", TYPES.join("・")));
+    }
+    if side != Side::Eq && ["spot", "wavefront", "wfe", "zplm", "plugin"].contains(&ty.as_str()) {
+        return Err(format!(
+            "{ty} の項に min・max は使えない（目標が 1 つの値の項だけ）"
+        ));
     }
     let spec: TermSpec =
         serde_json::from_value(Value::Object(m)).map_err(|e| format!("{ty} の項: {e}"))?;

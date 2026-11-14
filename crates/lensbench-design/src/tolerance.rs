@@ -1,6 +1,8 @@
 //! モンテカルロ公差の設定の JSON と、結果の JSON。CLI の `tolerance`・serve の `tolerance`・Python の
 //! `System.tolerance` で同じ形を使う。計算は [`crate::montecarlo`]。
 //!
+//! 設定は [`crate::tol_spec::TolSpec`] の型で読む（スキーマ `docs/schema/tolerance.schema.json`、知らないキーは誤り）。
+//!
 //! 設定（すべて省略可。省くと「一般」の公差の組をすべての玉に、ピントを補償子にせず、RMS 波面で 100 回）:
 //!
 //! | キー | 意味 |
@@ -44,7 +46,11 @@ use lensbench_core::optim::{DefaultMerit, DlsOpts, Problem, Var};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
+
+use crate::term_spec::RefName;
+use crate::tol_spec::{self, CatEntry, Face, MeritName, Radial, TolItem, TolSpec, VarSpec};
+use lensbench_project::lenient;
 
 use lensbench_project::{Block, LensSource, Project};
 
@@ -78,55 +84,32 @@ pub fn catalog_rule(
     g: LensGeom,
     what: &str,
 ) -> Result<Option<LensTol>, String> {
-    let (dia, efl) = (g.dia, g.efl);
-    let Value::Object(m) = v else {
-        return lens_tol_from(v, base, what);
-    };
-    let mut plain = m.clone();
-    let rules = plain.remove("rules");
-    let Some(mut t) = lens_tol_from(&Value::Object(plain), base, what)? else {
-        return Ok(None);
-    };
-    let Some(rules) = rules else {
-        return Ok(Some(t));
-    };
-    let rules = rules
-        .as_array()
-        .ok_or_else(|| format!("{what}.rules は並び"))?;
-    for (i, r) in rules.iter().enumerate() {
-        let w = format!("{what}.rules[{i}]");
-        let r = r.as_object().ok_or_else(|| format!("{w} はオブジェクト"))?;
-        let mut ok = true;
-        let mut fields = Map::new();
-        for (k, x) in r {
-            if k == "cemented" {
-                let c = x.as_bool().ok_or_else(|| format!("{w}.cemented は真偽"))?;
-                ok &= c == (g.glasses >= 2);
-                continue;
-            }
-            let (q, op) = match k.split_once('_') {
-                Some((q @ ("dia" | "efl"), op @ ("lt" | "le" | "gt" | "ge"))) => (q, op),
-                _ => {
-                    fields.insert(k.clone(), x.clone());
-                    continue;
+    let e: Option<CatEntry> = lenient::from_json(v, what)?;
+    cat_entry(e.as_ref(), base, g, what)
+}
+
+/// [`catalog_rule`] の型にした値
+fn cat_entry(
+    e: Option<&CatEntry>,
+    base: LensTol,
+    g: LensGeom,
+    what: &str,
+) -> Result<Option<LensTol>, String> {
+    Ok(match e {
+        None => None,
+        Some(CatEntry::Preset(p)) => {
+            Some(tol_spec::preset(p, base).map_err(|e| format!("{what}: {e}"))?)
+        }
+        Some(CatEntry::Fields(f)) => {
+            let mut t = f.apply(base);
+            for r in f.rules.iter().flatten() {
+                if r.matches(g.dia, g.efl, g.glasses) {
+                    t = r.fields().apply(t);
                 }
-            };
-            let lim = num(x, &format!("{w}.{k}"))?;
-            let val = if q == "dia" { dia } else { efl.abs() };
-            ok &= match op {
-                "lt" => val < lim,
-                "le" => val <= lim,
-                "gt" => val > lim,
-                _ => val >= lim,
-            };
+            }
+            Some(t)
         }
-        // 条件が合わなくても項目の名前は確かめる
-        let u = lens_tol_from(&Value::Object(fields), t, &w)?.unwrap_or(t);
-        if ok {
-            t = u;
-        }
-    }
-    Ok(Some(t))
+    })
 }
 
 /// 玉の形（[`catalog_rule`] の条件）
@@ -210,15 +193,6 @@ pub fn catalog_vendors(p: &Project) -> HashMap<String, String> {
     m
 }
 
-/// `wedge_face` の値: "back"（玉の後ろの面）→ false、"front"（前の面）→ true
-fn wedge_face(v: &Value, k: &str) -> Result<bool, String> {
-    match v.as_str().map(|x| x.trim().to_ascii_lowercase()) {
-        Some(x) if x == "back" => Ok(false),
-        Some(x) if x == "front" => Ok(true),
-        _ => Err(format!("{k} は \"back\" か \"front\"（{v}）")),
-    }
-}
-
 /// 裏返して置いた玉のブロックの id（`reversed` の玉。[`spec_from_json_with`] の reversed に渡す）
 pub fn reversed_lenses(p: &Project) -> HashSet<String> {
     fn walk(bs: &[Block], m: &mut HashSet<String>) {
@@ -239,77 +213,10 @@ pub fn reversed_lenses(p: &Project) -> HashSet<String> {
     m
 }
 
-fn num(v: &Value, k: &str) -> Result<f64, String> {
-    v.as_f64().ok_or_else(|| format!("{k} は数（{v}）"))
-}
-
-fn lens_tol_from(v: &Value, base: LensTol, what: &str) -> Result<Option<LensTol>, String> {
-    match v {
-        Value::Null => Ok(None),
-        Value::String(s) => LensTol::preset(s)
-            .map(|t| {
-                Some(LensTol {
-                    wedge_first: base.wedge_first,
-                    ..t
-                })
-            })
-            .map_err(|e| format!("{what}: {e}")),
-        Value::Object(m) => {
-            let mut t = base;
-            for (k, x) in m {
-                if k == "wedge_face" {
-                    t.wedge_first = wedge_face(x, &format!("{what}.{k}"))?;
-                    continue;
-                }
-                let f = num(x, &format!("{what}.{k}"))?;
-                match k.as_str() {
-                    "radius_rel" => t.radius_rel = f,
-                    "focal_rel" => t.focal_rel = f,
-                    "thickness" => t.thickness = f,
-                    "wedge" => t.wedge = f,
-                    "dn" => t.dn = f,
-                    "disp" => t.disp = f,
-                    "decenter" => t.decenter = f,
-                    "tilt" => t.tilt = f,
-                    "space" => t.space = f,
-                    _ => {
-                        return Err(format!(
-                            "{what}: 玉の公差の項目 {k}（radius_rel focal_rel thickness wedge wedge_face dn disp decenter tilt space）"
-                        ))
-                    }
-                }
-            }
-            Ok(Some(t))
-        }
-        _ => Err(format!("{what} はオブジェクト・組の名前・null（{v}）")),
-    }
-}
-
-fn group_tol_from(v: &Value, what: &str) -> Result<Option<GroupTol>, String> {
-    match v {
-        Value::Null => Ok(None),
-        Value::Object(m) => {
-            let mut g = GroupTol::default();
-            for (k, x) in m {
-                let f = num(x, &format!("{what}.{k}"))?;
-                match k.as_str() {
-                    "decenter" => g.decenter = f,
-                    "tilt" => g.tilt = f,
-                    "shift" => g.shift = f,
-                    _ => return Err(format!("{what}: 群の公差の項目 {k}（decenter tilt shift）")),
-                }
-            }
-            Ok(Some(g))
-        }
-        _ => Err(format!("{what} はオブジェクトか null（{v}）")),
-    }
-}
-
-/// "9.t"・"G1.shift=-1:1"・{"param", "lo", "hi"}
-fn var_from(v: &Value, s: &System) -> Result<Var, String> {
-    let mut configs = None;
-    let (spec, lo, hi) = match v {
-        Value::String(t) => match t.split_once('=') {
+/// "9.t"・"G1.shift=-1:1"・{"param", "lo", "hi", "configs"}
+fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
+    let (spec, lo, hi, configs) = match v {
+        VarSpec::Text(t) => match t.split_once('=') {
             Some((a, r)) => {
                 let (l, h) = r
                     .split_once(':')
@@ -323,55 +230,27 @@ fn var_from(v: &Value, s: &System) -> Result<Var, String> {
                             .map_err(|_| format!("補償子 {t} の範囲 {x}"))
                     }
                 };
-                (
-                    a.trim().to_string(),
-                    n(l, f64::NEG_INFINITY)?,
-                    n(h, f64::INFINITY)?,
-                )
+                let (l, h) = (n(l, f64::NEG_INFINITY)?, n(h, f64::INFINITY)?);
+                (a.trim().to_string(), l, h, None)
             }
-            None => (t.trim().to_string(), f64::NEG_INFINITY, f64::INFINITY),
+            None => (t.trim().to_string(), f64::NEG_INFINITY, f64::INFINITY, None),
         },
-        Value::Object(m) => {
-            let p = m
-                .get("param")
-                .and_then(|x| x.as_str())
-                .ok_or_else(|| format!("補償子 {v} に param がない"))?;
-            let g = |k: &str, d: f64| -> Result<f64, String> {
-                match m.get(k) {
-                    None | Some(Value::Null) => Ok(d),
-                    Some(x) => num(x, k),
-                }
-            };
-            if let Some(k) = m
-                .keys()
-                .find(|k| !["param", "lo", "hi", "configs"].contains(&k.as_str()))
-            {
-                return Err(format!("補償子 {p}: 項目 {k}（param lo hi configs）"));
-            }
-            if let Some(c) = m.get("configs").filter(|x| !x.is_null()) {
-                let a = c
-                    .as_array()
-                    .ok_or_else(|| format!("補償子 {p}: configs は構成の番号（1 から）の並び"))?;
-                let mut out = Vec::new();
-                for x in a {
-                    match x.as_u64() {
-                        Some(k) if k >= 1 => out.push(k as usize - 1),
-                        _ => {
-                            return Err(format!(
-                                "補償子 {p}: configs は構成の番号（1 から）の並び（{x}）"
-                            ))
-                        }
-                    }
-                }
-                configs = Some(out);
+        VarSpec::Obj(o) => {
+            if o.configs.iter().flatten().any(|&k| k == 0) {
+                return Err(format!(
+                    "補償子 {}: configs は構成の番号（1 から）の並び",
+                    o.param
+                ));
             }
             (
-                p.to_string(),
-                g("lo", f64::NEG_INFINITY)?,
-                g("hi", f64::INFINITY)?,
+                o.param.clone(),
+                o.lo.unwrap_or(f64::NEG_INFINITY),
+                o.hi.unwrap_or(f64::INFINITY),
+                o.configs
+                    .as_ref()
+                    .map(|c| c.iter().map(|k| k - 1).collect()),
             )
         }
-        _ => return Err(format!("補償子は文字列かオブジェクト（{v}）")),
     };
     let p = s.param(&spec).map_err(|e| e.to_string())?;
     let v = Var::new(p).bounds(lo, hi);
@@ -381,26 +260,10 @@ fn var_from(v: &Value, s: &System) -> Result<Var, String> {
     })
 }
 
-fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> {
-    let m = v
-        .as_object()
-        .ok_or_else(|| format!("公差 {i} はオブジェクト（{v}）"))?;
-    let known = [
-        "param", "params", "pm", "lo", "hi", "relative", "dist", "label", "scale",
-    ];
-    if let Some(k) = m.keys().find(|k| !known.contains(&k.as_str())) {
-        return Err(format!("公差 {i}: 項目 {k}（{}）", known.join(" ")));
-    }
-    let names: Vec<String> = match (m.get("param"), m.get("params")) {
-        (Some(Value::String(p)), None) => vec![p.clone()],
-        (None, Some(Value::Array(a))) => a
-            .iter()
-            .map(|x| {
-                x.as_str()
-                    .map(|t| t.to_string())
-                    .ok_or_else(|| format!("公差 {i}: params は文字列の並び"))
-            })
-            .collect::<Result<_, _>>()?,
+fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String> {
+    let names: Vec<String> = match (&m.param, &m.params) {
+        (Some(p), None) => vec![p.clone()],
+        (None, Some(a)) => a.clone(),
         _ => {
             return Err(format!(
                 "公差 {i}: param（文字列）か params（並び）のどちらか"
@@ -416,47 +279,46 @@ fn tol_from(v: &Value, s: &System, dist: Dist, i: usize) -> Result<Tol, String> 
         }
         params.push(s.param(n).map_err(|e| format!("公差 {i}: {e}"))?);
     }
-    let (lo, hi) = match (m.get("pm"), m.get("lo"), m.get("hi")) {
-        (Some(p), None, None) => {
-            let p = num(p, "pm")?.abs();
-            (-p, p)
-        }
-        (None, Some(l), Some(h)) => (num(l, "lo")?, num(h, "hi")?),
+    let (lo, hi) = match (m.pm, m.lo, m.hi) {
+        (Some(p), None, None) => (-p.abs(), p.abs()),
+        (None, Some(l), Some(h)) => (l, h),
         _ => return Err(format!("公差 {i}: pm か lo・hi の組")),
     };
-    let dist = match m.get("dist") {
-        None | Some(Value::Null) => dist,
-        Some(Value::String(d)) => Dist::parse(d).map_err(|e| format!("公差 {i}: {e}"))?,
-        Some(d) => return Err(format!("公差 {i}: dist は文字列（{d}）")),
+    let dist = match &m.dist {
+        None => dist,
+        Some(d) => Dist::parse(d).map_err(|e| format!("公差 {i}: {e}"))?,
     };
-    let relative = m.get("relative").and_then(|x| x.as_bool()).unwrap_or(false);
-    let label = m
-        .get("label")
-        .and_then(|x| x.as_str())
-        .map(|x| x.to_string())
-        .unwrap_or_else(|| names.join("+"));
-    let scale = match m.get("scale") {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(a)) if a.len() == params.len() => a
-            .iter()
-            .map(|x| num(x, "scale"))
-            .collect::<Result<Vec<_>, _>>()?,
-        Some(x) => {
-            return Err(format!(
-                "公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{x}）",
-                params.len()
-            ))
-        }
-    };
+    let scale = m.scale.clone().unwrap_or_default();
+    if !scale.is_empty() && scale.len() != params.len() {
+        return Err(format!(
+            "公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{} 個）",
+            params.len(),
+            scale.len()
+        ));
+    }
     Ok(Tol {
-        label,
+        label: m.label.clone().unwrap_or_else(|| names.join("+")),
         params,
         lo,
         hi,
-        relative,
+        relative: m.relative.unwrap_or(false),
         dist,
         scale,
     })
+}
+
+/// 設定の JSON を型に読む（null は空の設定）。誤りには欄の道が付く
+pub fn read_spec(v: &Value) -> Result<TolSpec, String> {
+    if v.is_null() {
+        return Ok(TolSpec::default());
+    }
+    if !v.is_object() {
+        return Err("公差の設定はオブジェクト".into());
+    }
+    if v.get("ref").is_some() {
+        return Err("公差の設定の ref は reference に名前を変えた".into());
+    }
+    lenient::from_json(v, "tolerance")
 }
 
 /// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）。
@@ -478,74 +340,33 @@ pub fn spec_from_json_with(
     vendors: &HashMap<String, String>,
     reversed: &HashSet<String>,
 ) -> Result<McSpec, String> {
-    let empty = Map::new();
-    let m = match v {
-        Value::Null => &empty,
-        Value::Object(m) => m,
-        _ => return Err("公差の設定はオブジェクト".into()),
-    };
-    let known = [
-        "trials",
-        "seed",
-        "dist",
-        "radial",
-        "preset",
-        "wedge_face",
-        "catalog",
-        "catalog_tols",
-        "lenses",
-        "groups",
-        "tols",
-        "compensators",
-        "comp_iters",
-        "merit",
-        "rings",
-        "reference",
-        "terms",
-        "sensitivity",
-        "percentiles",
-        "samples",
-        "threads",
-    ];
-    if m.contains_key("ref") {
-        return Err("公差の設定の ref は reference に名前を変えた".into());
-    }
-    if let Some(k) = m.keys().find(|k| !known.contains(&k.as_str())) {
-        return Err(format!("公差の設定の項目 {k}（{}）", known.join(" ")));
-    }
+    let m = read_spec(v)?;
     let s0 = configs.first().ok_or("構成がない")?.clone();
-    let get = |k: &str| m.get(k).filter(|x| !x.is_null());
-    let dist = match get("dist") {
+    let dist = match &m.dist {
         None => Dist::Normal { cut: 2.0 },
-        Some(Value::String(d)) => Dist::parse(d).map_err(|e| e.to_string())?,
-        Some(d) => return Err(format!("dist は文字列（{d}）")),
+        Some(d) => Dist::parse(d).map_err(|e| e.to_string())?,
     };
-    let mut base = match get("preset") {
-        None => LensTol::preset("commercial").unwrap(),
-        Some(Value::String(p)) => LensTol::preset(p).map_err(|e| e.to_string())?,
-        Some(p) => return Err(format!("preset は文字列（{p}）")),
-    };
+    let mut base =
+        LensTol::preset(m.preset.as_deref().unwrap_or("commercial")).map_err(|e| e.to_string())?;
     // ここでの wedge_first は玉のもとの向きで前の面か。系の面の順へは lens_fn で直す
-    if let Some(w) = get("wedge_face") {
-        base.wedge_first = wedge_face(w, "wedge_face")?;
+    if let Some(w) = m.wedge_face {
+        base.wedge_first = w == Face::Front;
     }
-    let use_catalog = get("catalog").and_then(|x| x.as_bool()).unwrap_or(true);
+    let use_catalog = m.catalog.unwrap_or(true);
     // メーカー名（大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほかのすべて）→ 公差
-    let mut cat_over: Vec<(String, Value)> = Vec::new();
-    if let Some(c) = get("catalog_tols") {
-        let c = c.as_object().ok_or("catalog_tols はオブジェクト")?;
-        for (k, x) in c {
-            cat_over.push((k.to_uppercase(), x.clone()));
-        }
-    }
-    let find_cat = |vd: &str| -> Option<&(String, Value)> {
+    let cat_over: Vec<(String, Option<CatEntry>)> = m
+        .catalog_tols
+        .iter()
+        .flatten()
+        .map(|(k, x)| (k.to_uppercase(), x.clone()))
+        .collect();
+    let find_cat = |vd: &str| -> Option<&(String, Option<CatEntry>)> {
         let u = vd.to_uppercase();
         cat_over
             .iter()
             .find(|(k, _)| k != "*" && u.contains(k.as_str()))
             .or_else(|| cat_over.iter().find(|(k, _)| k == "*"))
     };
-    let mut lens_over: HashMap<String, Option<LensTol>> = HashMap::new();
     let geom = lens_geometry(&s0);
     let lens_base = |name: &str| -> Result<LensTol, String> {
         match vendors.get(name).filter(|_| use_catalog) {
@@ -553,29 +374,28 @@ pub fn spec_from_json_with(
                 let g = geom.get(name).copied().unwrap_or(LensGeom::UNKNOWN);
                 let t = catalog_lens_tol(base);
                 match find_cat(vd) {
-                    Some((k, x)) => Ok(
-                        catalog_rule(x, t, g, &format!("catalog_tols.{k}"))?.unwrap_or_default()
-                    ),
+                    Some((k, x)) => {
+                        let w = format!("catalog_tols.{k}");
+                        Ok(cat_entry(x.as_ref(), t, g, &w)?.unwrap_or_default())
+                    }
                     None => Ok(t),
                 }
             }
             None => Ok(base),
         }
     };
-    if let Some(l) = get("lenses") {
-        let l = l.as_object().ok_or("lenses はオブジェクト")?;
-        for (k, x) in l {
-            let b = lens_base(k)?;
-            lens_over.insert(k.clone(), lens_tol_from(x, b, &format!("lenses.{k}"))?);
-        }
+    let mut lens_over: HashMap<String, Option<LensTol>> = HashMap::new();
+    for (k, x) in m.lenses.iter().flatten() {
+        let b = lens_base(k)?;
+        let t = x.as_ref().map(|x| x.apply(b)).transpose();
+        lens_over.insert(k.clone(), t.map_err(|e| format!("lenses.{k}: {e}"))?);
     }
-    let mut group_over: HashMap<String, Option<GroupTol>> = HashMap::new();
-    if let Some(g) = get("groups") {
-        let g = g.as_object().ok_or("groups はオブジェクト")?;
-        for (k, x) in g {
-            group_over.insert(k.clone(), group_tol_from(x, &format!("groups.{k}"))?);
-        }
-    }
+    let group_over: HashMap<String, Option<GroupTol>> = m
+        .groups
+        .iter()
+        .flatten()
+        .map(|(k, x)| (k.clone(), x.as_ref().map(|x| x.tol())))
+        .collect();
     // 名前の誤りを見つける
     for k in lens_over.keys().chain(group_over.keys()) {
         if s0.find_unit(k).is_none() {
@@ -607,51 +427,34 @@ pub fn spec_from_json_with(
     if let Some(e) = base_err.into_inner() {
         return Err(e);
     }
-    if let Some(t) = get("tols") {
-        let a = t.as_array().ok_or("tols は並び")?;
-        for (i, x) in a.iter().enumerate() {
-            tols.push(tol_from(x, &s0, dist, i + 1)?);
-        }
+    for (i, x) in m.tols.iter().flatten().enumerate() {
+        tols.push(tol_from(x, &s0, dist, i + 1)?);
     }
     let mut p = Problem::new(configs);
-    if let Some(c) = get("compensators") {
-        let a: Vec<Value> = match c {
-            Value::Array(a) => a.clone(),
-            x => vec![x.clone()],
-        };
-        for x in &a {
-            p.vars.push(var_from(x, &s0)?);
-        }
+    for x in m.compensators.iter().flat_map(|c| c.list()) {
+        p.vars.push(var_from(x, &s0)?);
     }
-    let rings = match get("rings") {
-        None => 3,
-        Some(x) => x.as_u64().ok_or("rings は整数")? as usize,
-    };
+    let rings = m.rings.unwrap_or(3);
     // 名前は CLI・Python と同じ reference（CLI-17）
-    let reference = match get("reference")
-        .and_then(|x| x.as_str())
-        .unwrap_or("centroid")
-    {
-        "centroid" => RmsRef::Centroid,
-        "chief" => RmsRef::Chief,
-        r => return Err(format!("reference {r}（centroid・chief）")),
+    let reference = match m.reference.unwrap_or_default() {
+        RefName::Centroid => RmsRef::Centroid,
+        RefName::Chief => RmsRef::Chief,
     };
-    match get("merit").and_then(|x| x.as_str()).unwrap_or("wavefront") {
-        "wavefront" | "wfe" => p.add_default(DefaultMerit::Wavefront, rings, reference),
-        "spot" => p.add_default(DefaultMerit::Spot, rings, reference),
-        "none" => {}
-        x => return Err(format!("merit {x}（wavefront・spot・none）")),
+    match m.merit.unwrap_or(MeritName::Wavefront) {
+        MeritName::Wavefront => p.add_default(DefaultMerit::Wavefront, rings, reference),
+        MeritName::Spot => p.add_default(DefaultMerit::Spot, rings, reference),
+        MeritName::None => {}
     }
-    if let Some(t) = get("terms") {
+    if let Some(t) = &m.terms {
         let ts = crate::merit::terms_from_json(t, &p.configs)?;
         p.terms.extend(ts);
     }
-    match get("radial") {
-        None | Some(Value::Bool(false)) => {}
-        Some(Value::Bool(true)) => {
+    match &m.radial {
+        None | Some(Radial::On(false)) => {}
+        Some(Radial::On(true)) => {
             tolerance::pair_disc(&mut tols, None);
         }
-        Some(Value::String(r)) => {
+        Some(Radial::Dist(r)) => {
             let normal = match Dist::parse(r) {
                 Ok(Dist::Uniform) => None,
                 Ok(Dist::Normal { cut }) => Some(cut),
@@ -663,28 +466,17 @@ pub fn spec_from_json_with(
             };
             tolerance::pair_disc(&mut tols, normal);
         }
-        Some(x) => {
-            return Err(format!(
-                "radial は true・false・uniform・normal・normal:σの数（{x}）"
-            ))
-        }
     }
     let mut spec = McSpec::new(p, tols);
-    if let Some(x) = get("trials") {
-        spec.trials = x.as_u64().ok_or("trials は 0 以上の整数")? as usize;
-    }
-    if let Some(x) = get("seed") {
-        spec.seed = x.as_u64().ok_or("seed は 0 以上の整数")?;
-    }
-    if let Some(x) = get("comp_iters") {
+    spec.trials = m.trials.unwrap_or(spec.trials);
+    spec.seed = m.seed.unwrap_or(spec.seed);
+    if let Some(x) = m.comp_iters {
         spec.comp = DlsOpts {
-            max_iter: x.as_u64().ok_or("comp_iters は整数")? as usize,
+            max_iter: x,
             ..spec.comp
         };
     }
-    if let Some(x) = get("sensitivity") {
-        spec.sensitivity = x.as_bool().ok_or("sensitivity は真偽")?;
-    }
+    spec.sensitivity = m.sensitivity.unwrap_or(spec.sensitivity);
     Ok(spec)
 }
 
@@ -696,19 +488,13 @@ pub struct OutOpts {
 }
 
 pub fn out_opts(v: &Value) -> Result<OutOpts, String> {
-    let g = |k: &str| v.get(k).filter(|x| !x.is_null());
-    let percentiles = match g("percentiles") {
-        None => vec![50.0, 80.0, 90.0, 95.0, 98.0],
-        Some(Value::Array(a)) => a
-            .iter()
-            .map(|x| num(x, "percentiles"))
-            .collect::<Result<_, _>>()?,
-        Some(x) => return Err(format!("percentiles は数の並び（{x}）")),
-    };
+    let m = read_spec(v)?;
     Ok(OutOpts {
-        percentiles,
-        samples: g("samples").and_then(|x| x.as_bool()).unwrap_or(false),
-        threads: g("threads").and_then(|x| x.as_u64()).map(|x| x as usize),
+        percentiles: m
+            .percentiles
+            .unwrap_or_else(|| vec![50.0, 80.0, 90.0, 95.0, 98.0]),
+        samples: m.samples.unwrap_or(false),
+        threads: m.threads,
     })
 }
 

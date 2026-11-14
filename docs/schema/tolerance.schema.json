@@ -1,0 +1,818 @@
+{
+  "$defs": {
+    "CatEntry": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/CatFields"
+        }
+      ],
+      "description": "メーカーの公差: 項目のオブジェクト（rules つき）か組の名前"
+    },
+    "CatFields": {
+      "additionalProperties": false,
+      "description": "メーカーの玉の公差と、外径・焦点距離の条件つきの上書き",
+      "properties": {
+        "decenter": {
+          "description": "偏心 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "disp": {
+          "description": "分散の相対変化",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dn": {
+          "description": "屈折率のずれ",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "focal_rel": {
+          "description": "焦点距離の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "radius_rel": {
+          "description": "曲率半径の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rules": {
+          "description": "前から順に、条件が合うものを当てる",
+          "items": {
+            "$ref": "#/$defs/Rule"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "space": {
+          "description": "後の空気の間隔 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "thickness": {
+          "description": "中心厚 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tilt": {
+          "description": "傾き [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge": {
+          "description": "くさび [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge_face": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Face"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Compensators": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VarSpec"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/VarSpec"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "補償子の 1 つか並び"
+    },
+    "Face": {
+      "description": "くさびを入れる面",
+      "oneOf": [
+        {
+          "const": "back",
+          "description": "玉の後ろの面",
+          "type": "string"
+        },
+        {
+          "const": "front",
+          "description": "前の面",
+          "type": "string"
+        }
+      ]
+    },
+    "GroupFields": {
+      "additionalProperties": false,
+      "description": "群の公差",
+      "properties": {
+        "decenter": {
+          "description": "偏心 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "shift": {
+          "description": "光軸方向のずれ [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tilt": {
+          "description": "傾き [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "LensEntry": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/LensFields"
+        }
+      ],
+      "description": "玉の公差: 項目のオブジェクトか組の名前"
+    },
+    "LensFields": {
+      "additionalProperties": false,
+      "description": "玉の公差（書いた項目だけ既定の組を上書き）",
+      "properties": {
+        "decenter": {
+          "description": "偏心 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "disp": {
+          "description": "分散の相対変化",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dn": {
+          "description": "屈折率のずれ",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "focal_rel": {
+          "description": "焦点距離の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "radius_rel": {
+          "description": "曲率半径の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "space": {
+          "description": "後の空気の間隔 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "thickness": {
+          "description": "中心厚 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tilt": {
+          "description": "傾き [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge": {
+          "description": "くさび [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge_face": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Face"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MeritName": {
+      "description": "既定の評価関数",
+      "oneOf": [
+        {
+          "enum": [
+            "wavefront",
+            "spot"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "none",
+          "description": "terms だけ",
+          "type": "string"
+        }
+      ]
+    },
+    "Radial": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "radial の値"
+    },
+    "RefName": {
+      "description": "RMS の基準",
+      "oneOf": [
+        {
+          "const": "centroid",
+          "description": "重心（既定）",
+          "type": "string"
+        },
+        {
+          "const": "chief",
+          "description": "主光線",
+          "type": "string"
+        }
+      ]
+    },
+    "Rule": {
+      "additionalProperties": false,
+      "description": "条件つきの上書き（条件がすべて合うとき。外径・焦点距離が分からないと合わない）",
+      "properties": {
+        "cemented": {
+          "description": "true は貼り合わせ（ガラス 2 枚以上）、false は単レンズ",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "decenter": {
+          "description": "偏心 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dia_ge": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dia_gt": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dia_le": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dia_lt": {
+          "description": "外径 [mm] < 値",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "disp": {
+          "description": "分散の相対変化",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dn": {
+          "description": "屈折率のずれ",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "efl_ge": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "efl_gt": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "efl_le": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "efl_lt": {
+          "description": "|焦点距離| [mm] < 値",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "focal_rel": {
+          "description": "焦点距離の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "radius_rel": {
+          "description": "曲率半径の比",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "space": {
+          "description": "後の空気の間隔 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "thickness": {
+          "description": "中心厚 [mm]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tilt": {
+          "description": "傾き [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge": {
+          "description": "くさび [deg]",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "wedge_face": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Face"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TolItem": {
+      "additionalProperties": false,
+      "description": "個別の公差",
+      "properties": {
+        "dist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hi": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lo": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "param": {
+          "description": "パラメータ（\"3.t\"・\"wave\" など。params とどちらか一方）",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "description": "パラメータの並び（同じずれを与える）",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "pm": {
+          "description": "±（lo・hi の代わり）",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "relative": {
+          "description": "比（false）",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "scale": {
+          "description": "パラメータごとにずれに掛ける数の並び",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "VarObj": {
+      "additionalProperties": false,
+      "description": "補償子のオブジェクト",
+      "properties": {
+        "configs": {
+          "description": "効く構成の番号（1 から）の並び。省くと全構成で同じ値",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "hi": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "lo": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "param": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "param"
+      ],
+      "type": "object"
+    },
+    "VarSpec": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/VarObj"
+        }
+      ],
+      "description": "補償子: \"9.t\"・\"G1.shift=-1:1\" か {\"param\", \"lo\", \"hi\", \"configs\"}"
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/tolerance.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "設定（すべて省略可）",
+  "properties": {
+    "$schema": {
+      "description": "このファイルのスキーマ（エディタの補完・検査用。読むときは無視する）",
+      "type": "string"
+    },
+    "catalog": {
+      "description": "カタログの玉はカタログの玉の公差を既定にする（true）",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "catalog_tols": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CatEntry"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "メーカーごとの公差 {\"メーカー\": 玉の公差と rules}（\"*\" はほか）",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "comp_iters": {
+      "description": "補償子の DLS の反復の上限（10）",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "compensators": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Compensators"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "補償子（1 つか並び）"
+    },
+    "dist": {
+      "description": "既定の分布（\"normal\"）: \"uniform\"・\"normal\"・\"normal:3\"・\"end\"",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "groups": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/GroupFields"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "群・ブロックの公差 {\"名前\": {\"decenter\", \"tilt\", \"shift\"} か null}",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "lenses": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LensEntry"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "玉ごとの上書き {\"名前\": 玉の公差 か 組の名前 か null（公差なし）}",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "merit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MeritName"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "評価関数（\"wavefront\"）"
+    },
+    "percentiles": {
+      "description": "出す百分位（[50, 80, 90, 95, 98]）",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "preset": {
+      "description": "玉の既定の公差の組: \"commercial\"・\"precision\"・\"high\"・\"none\"",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "radial": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Radial"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "偏心・傾き・くさびの x・y を組にして円の中で引く: true・false・\"uniform\"・\"normal\"・\"normal:σの数\""
+    },
+    "reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RefName"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rings": {
+      "description": "既定の評価関数の瞳のリング数（3）",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "samples": {
+      "description": "試行ごとのずれと値も返す（false）",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "seed": {
+      "description": "乱数の種（1）",
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "sensitivity": {
+      "description": "公差ごとの感度も求める（true）",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "terms": {
+      "description": "足す評価関数の項（terms.schema.json の形）"
+    },
+    "threads": {
+      "description": "スレッド数",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "tols": {
+      "description": "個別の公差の並び",
+      "items": {
+        "$ref": "#/$defs/TolItem"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "trials": {
+      "description": "試行の数（100）。0 なら感度だけ",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "wedge_face": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Face"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "くさびを入れる面（\"back\"）"
+    }
+  },
+  "title": "lensbench モンテカルロ公差の設定",
+  "type": "object"
+}

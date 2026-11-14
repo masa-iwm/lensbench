@@ -2503,6 +2503,8 @@ checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2799,6 +2801,7 @@ dependencies = [
 name = "lensbench-design"
 version = "0.4.0"
 dependencies = [
+ "indexmap",
  "jsonschema",
  "lensbench-analysis",
  "lensbench-core",
@@ -4846,6 +4849,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab508826f74a77ca9d5aba6ff19b522583ee3eaf28a19384ff3d0e5835fadf6e"
 dependencies = [
  "dyn-clone",
+ "indexmap",
  "ref-cast",
  "schemars_derive",
  "serde",

@@ -18,7 +18,8 @@ lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
-schemars = "1"
+schemars = { version = "1", features = ["indexmap2"] }
+indexmap = { version = "2", features = ["serde"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
 [dev-dependencies]

@@ -86,4 +86,46 @@ fn terms_schema_matches_reader() {
     assert!(e.starts_with("type nope（spot・"), "{e}");
     assert!(terms(serde_json::json!({"type": "paraxial", "q": "efl"})).is_err());
     terms(serde_json::json!({"type": "paraxial", "q": "efl", "min": 351})).unwrap();
+    let e = terms(serde_json::json!({"type": "spot", "field": 1, "min": 1})).unwrap_err();
+    assert!(e.contains("min・max は使えない"), "{e}");
+}
+
+/// 公差の設定: 例がスキーマに合い、知らないキーはスキーマでも読みでも誤りで、読みの誤りには欄の道が付く（PRJ-11）
+#[test]
+fn tolerance_schema_matches_reader() {
+    let v = jsonschema::validator_for(&schema::schema("tolerance").unwrap()).unwrap();
+    let ok = serde_json::json!({
+        "$schema": "s", "trials": 10, "dist": "uniform", "radial": "normal:3", "wedge_face": "front",
+        "catalog_tols": {"EDMUND": {"thickness": 0.1, "rules": [{"cemented": false, "dia_le": 12, "thickness": 0.05}]}, "*": "precision"},
+        "lenses": {"L1": {"tilt": 0.02}, "L2": null, "L3": "high"},
+        "groups": {"G1": {"decenter": 0.05}},
+        "tols": [{"param": "3.t", "pm": 0.1}, {"params": ["2.r", "3.r"], "lo": -1, "hi": 1, "scale": [1, -1]}],
+        "compensators": ["9.t", {"param": "G1.shift", "lo": -1, "hi": 1, "configs": [1]}],
+        "merit": "spot", "reference": "chief", "percentiles": [50, 90], "samples": true
+    });
+    let errs: Vec<String> = v.iter_errors(&ok).map(|e| e.to_string()).collect();
+    assert!(errs.is_empty(), "{}", errs.join("\n"));
+    lensbench_design::tolerance::read_spec(&ok).unwrap();
+    for (bad, path) in [
+        (
+            serde_json::json!({"trails": 10}),
+            "tolerance: unknown field `trails`",
+        ),
+        (
+            serde_json::json!({"lenses": {"L1": {"tlit": 1}}}),
+            "tolerance.lenses.L1: unknown field `tlit`",
+        ),
+        (
+            serde_json::json!({"catalog_tols": {"X": {"rules": [{"dia_lx": 1}]}}}),
+            "tolerance.catalog_tols.X: unknown field `dia_lx`",
+        ),
+        (
+            serde_json::json!({"tols": [{"param": "3.t", "pm": 0.1}, {"parm": "3.t"}]}),
+            "tolerance.tols[1]: unknown field `parm`",
+        ),
+    ] {
+        assert!(!v.is_valid(&bad), "{bad}");
+        let e = lensbench_design::tolerance::read_spec(&bad).unwrap_err();
+        assert!(e.starts_with(path), "{e}");
+    }
 }
