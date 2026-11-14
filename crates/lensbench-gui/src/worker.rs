@@ -74,6 +74,8 @@ pub enum Tag {
     History,
     /// 元に戻せる段の数を問い合わせる（serve の history。系を変えないので解析は止めない）
     HistoryDepth,
+    /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける、GAR-05）
+    Refresh,
 }
 
 impl Tag {
@@ -141,6 +143,25 @@ impl Done {
             Err(_) => Value::Null,
         };
         (r.params.take(), v)
+    }
+
+    /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info、config_table → ConfigTable）
+    pub fn split(self) -> Vec<Done> {
+        let (ms, gen) = (self.ms, self.gen);
+        self.replies
+            .into_iter()
+            .map(|r| Done {
+                tag: match r.method.as_str() {
+                    "surface" => Tag::Surfaces,
+                    "config_table" => Tag::ConfigTable,
+                    _ => Tag::Info,
+                },
+                replies: vec![r],
+                ms,
+                skipped: false,
+                gen,
+            })
+            .collect()
     }
 
     /// 最初のエラー

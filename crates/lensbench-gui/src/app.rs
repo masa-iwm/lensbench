@@ -1502,6 +1502,9 @@ impl Core {
     }
 
     fn take(&mut self, mut d: Done) {
+        if d.tag == Tag::Refresh {
+            return d.split().into_iter().for_each(|d| self.take(d));
+        }
         self.rev += 1;
         if matches!(d.tag, Tag::Load | Tag::Set | Tag::Edit | Tag::History) {
             self.sys_gen += 1;
@@ -1721,15 +1724,14 @@ impl Core {
                 }
                 // 値の変更（Set）も保存していない変更
                 self.ld_dirty = true;
-                // 値を変えたら要約と、開いている解析を計算し直す
-                self.worker.send(Tag::Surfaces, "surface", json!({}));
-                self.worker
-                    .send(Tag::Info, "analyze", json!({ "cmd": "info" }));
+                // 値を変えたら面の表・要約と、開いている解析を計算し直す
+                self.refresh();
                 self.worker
                     .send(Tag::Layout, "layout", self.layout_params());
                 self.rerun = Some(true);
             }
-            Tag::Write => {}
+            // take の頭で分けて回すので来ない
+            Tag::Write | Tag::Refresh => {}
             Tag::LayoutExport => {
                 text = trf(
                     "レイアウトを {} に書き出した",
@@ -1737,9 +1739,6 @@ impl Core {
                 );
             }
             Tag::Surfaces => {
-                // 面が変われば多重構成の表も読み直す
-                self.worker
-                    .send(Tag::ConfigTable, "config_table", json!({}));
                 self.oss.stale();
                 // 要約の面の数も今の系に（読み込み時のままにしない）
                 if let (Some(sum), Some(a)) = (self.summary.as_mut(), v["surfaces"].as_array()) {
@@ -2117,10 +2116,8 @@ impl Core {
         }
         self.file = new_file;
         self.summary = Some(v);
-        self.worker.send(Tag::Surfaces, "surface", json!({}));
         self.info = None;
-        self.worker
-            .send(Tag::Info, "analyze", json!({ "cmd": "info" }));
+        self.refresh();
         self.read_params();
         // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
         if !self.is_combo() {
@@ -2129,6 +2126,18 @@ impl Core {
         }
         self.worker.send(Tag::Configs, "configs", json!({}));
         self.rerun = Some(false);
+    }
+
+    /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）
+    fn refresh(&mut self) {
+        let calls = [
+            ("surface", json!({})),
+            ("config_table", json!({})),
+            // 要約は解けない系で誤りになりやすいので最後（途中の誤りで後ろの呼び出しは止まる）
+            ("analyze", json!({ "cmd": "info" })),
+        ];
+        let calls = calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect();
+        self.worker.send_batch(Tag::Refresh, calls);
     }
 
     /// serve の結果の段の数と一覧を覚える
