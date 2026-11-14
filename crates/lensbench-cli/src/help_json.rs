@@ -145,6 +145,14 @@ mod tests {
             .iter()
             .any(|a| a["long"] == "threads" && a["global"] == json!(true)));
         assert_eq!(v["exit_codes"][0]["code"], json!(0));
+        // 書き出し先の --out は手書きのサブコマンドも登録簿の解析も -o でも渡せる（CLI-14）
+        for s in subs {
+            for a in s["args"].as_array().unwrap() {
+                if a["long"] == "out" {
+                    assert_eq!(a["short"], json!("o"), "{}", s["name"]);
+                }
+            }
+        }
     }
 
     #[test]

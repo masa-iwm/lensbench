@@ -52,6 +52,10 @@ fn arg_of(p: &Param) -> Arg {
     let mut a = Arg::new(leak(p.name.clone()))
         .long(leak(flag_of(&p.name)))
         .help(help);
+    // 書き出し先は手書きのサブコマンドと同じく -o でも（CLI-14）
+    if p.name == "out" {
+        a = a.short('o');
+    }
     a = match p.ty {
         ParamTy::Flag => a.action(ArgAction::SetTrue),
         ParamTy::Count => a.value_parser(clap::value_parser!(u64)),
