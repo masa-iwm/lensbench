@@ -7,7 +7,7 @@
   `"radial": true` で、偏心・傾き・くさびの x・y を組にして円の中で一様に引く（大きさが公差以下。x・y 別々では角で √2 倍まで）。
   `"radial": "normal"`（`"normal:3"` で σ の数）なら、組を等方の 2 次元正規分布（σ = 公差 / σの数、既定 2）で引いて半径（公差）の外は
   引き直す。2 次元では半径 2σ の中は 86%・3σ で 98.9%（1 次元の 95%・99.7% と違う）。公差ごとには `disc_x:normal`・`disc_y:normal` の組。
-  設定は JSON（`--spec` のファイルと `--set` の上書き。キーの一覧は `lensbench_design::tolerance`、スキーマは [tolerance](schema/tolerance.schema.json)。知らないキーは誤りで、誤りの文に
+  設定は JSON（`--spec` のファイルと `--set` の上書き。キーの一覧は `lensbench_design::tolerance`、スキーマは [tolerance](schema/tolerance.schema.json)（正式な綴りだけで、`merit` の別名 `wfe` は載せていない）。知らないキーは誤りで、誤りの文に
   欄の道（`tolerance.lenses.L1: …`）が付く）。
 - 簡易設定: 玉ごと（玉モードの玉。名前はブロックの id か lens1 …）に公差の組 `preset`（`commercial` 一般・`precision` 精密・
   `high` 高精度）を当てる。組は曲率半径（比、面ごと）・中心厚・くさび（面の傾き）・屈折率・分散（アッベ数の比）・

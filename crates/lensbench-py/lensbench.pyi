@@ -733,7 +733,7 @@ def interferogram(beam1: System, beam2: System | None = None, field: _Field = ..
 
 
 def plugin_spec(name: str) -> dict[str, Any]:
-    """プラグインの説明 → {"name", "kind", "doc", "config", "inputs", "outputs"}"""
+    """プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"}"""
 
 
 def plugins() -> list[tuple[str, str]]:

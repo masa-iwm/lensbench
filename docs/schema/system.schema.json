@@ -3344,6 +3344,10 @@
           ]
         },
         {
+          "description": "真偽（[`ConfigReader::flag`]。0・1 の数も受ける）",
+          "type": "boolean"
+        },
+        {
           "type": "string"
         },
         {
@@ -3362,7 +3366,7 @@
           "type": "array"
         }
       ],
-      "description": "設定の値（系ファイルの JSON では数・文字列・数の並びをそのまま書く）"
+      "description": "設定の値（系ファイルの JSON では数・真偽・文字列・数の並びをそのまま書く）"
     },
     "VigInterp": {
       "description": "定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）",

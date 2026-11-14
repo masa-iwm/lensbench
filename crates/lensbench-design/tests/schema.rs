@@ -117,7 +117,7 @@ fn tolerance_schema_matches_reader() {
         ),
         (
             serde_json::json!({"catalog_tols": {"X": {"rules": [{"dia_lx": 1}]}}}),
-            "tolerance.catalog_tols.X: unknown field `dia_lx`",
+            "tolerance.catalog_tols.X: rules[0]: unknown field `dia_lx`",
         ),
         (
             serde_json::json!({"tols": [{"param": "3.t", "pm": 0.1}, {"parm": "3.t"}]}),

@@ -16,7 +16,8 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::coating::C64;
 use lensbench_core::plugin::{
-    self, Array, Arrays, Config, Context, Data, Instance, Kind, Plugin, Registry, Spec, Value,
+    self, Array, Arrays, Config, Context, Data, Instance, Kind, ParamType, Plugin, Registry, Spec,
+    Value,
 };
 use lensbench_core::{with_threads, Error};
 use numpy::ndarray::{ArrayD, IxDyn};
@@ -43,9 +44,7 @@ fn write_registry() -> std::sync::RwLockWriteGuard<'static, Registry> {
 /// Python の値 → 設定の値
 fn to_value(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Value> {
     if v.is_instance_of::<PyBool>() {
-        return Err(PyTypeError::new_err(format!(
-            "設定 {k} に bool は使えない（数か文字列に）"
-        )));
+        return Ok(Value::Bool(v.extract()?));
     }
     if let Ok(s) = v.cast::<PyString>() {
         return Ok(Value::Str(s.extract::<String>()?));
@@ -65,7 +64,7 @@ fn to_value(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Value> {
         }
     }
     Err(PyTypeError::new_err(format!(
-        "設定 {k} は数・文字列・数の並びに"
+        "設定 {k} は数・真偽・文字列・数の並びに"
     )))
 }
 
@@ -86,6 +85,7 @@ fn config_to_py<'py>(py: Python<'py>, c: &Config) -> PyResult<Bound<'py, PyDict>
     for (k, v) in c {
         match v {
             Value::Num(x) => d.set_item(k, x)?,
+            Value::Bool(b) => d.set_item(k, b)?,
             Value::Str(s) => d.set_item(k, s)?,
             Value::Nums(x) => d.set_item(k, x.clone())?,
         }
@@ -164,17 +164,35 @@ pub fn arrays_to_py<'py>(py: Python<'py>, a: &Arrays) -> PyResult<Bound<'py, PyD
     Ok(d)
 }
 
-fn spec_to_py<'py>(
-    py: Python<'py>,
-    name: &str,
-    kind: Kind,
-    s: &Spec,
-) -> PyResult<Bound<'py, PyDict>> {
+fn spec_to_py<'py>(py: Python<'py>, p: &dyn Plugin) -> PyResult<Bound<'py, PyDict>> {
+    let s = p.spec();
     let d = PyDict::new(py);
-    d.set_item("name", name)?;
-    d.set_item("kind", kind.as_str())?;
+    d.set_item("name", p.name())?;
+    d.set_item("kind", p.kind().as_str())?;
     d.set_item("doc", &s.doc)?;
-    d.set_item("config", s.config.clone())?;
+    // 設定の項目（名前・型・既定・単位・説明。選択肢は choices、並びの個数の上限は len）
+    let cfg = PyList::empty(py);
+    for q in p.params() {
+        let e = PyDict::new(py);
+        e.set_item("name", &q.name)?;
+        e.set_item("type", q.ty.as_str())?;
+        match &q.default {
+            None => e.set_item("default", py.None())?,
+            Some(v) => {
+                let c = config_to_py(py, &Config::from([("v".to_string(), v.clone())]))?;
+                e.set_item("default", c.get_item("v")?)?;
+            }
+        }
+        e.set_item("unit", &q.unit)?;
+        e.set_item("doc", &q.doc)?;
+        match &q.ty {
+            ParamType::Choice(c) => e.set_item("choices", c.clone())?,
+            ParamType::Nums { len: Some(n) } => e.set_item("len", n)?,
+            _ => {}
+        }
+        cfg.append(e)?;
+    }
+    d.set_item("config", cfg)?;
     d.set_item("inputs", s.inputs.clone())?;
     d.set_item("outputs", s.outputs.clone())?;
     d.set_item("needs_system", s.needs_system)?;
@@ -191,11 +209,11 @@ fn plugins() -> Vec<(String, &'static str)> {
         .collect()
 }
 
-/// プラグインの説明 → {"name", "kind", "doc", "config", "inputs", "outputs"}
+/// プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"}
 #[pyfunction]
 fn plugin_spec<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyDict>> {
     let p = read_registry().get(name).map_err(err)?;
-    spec_to_py(py, p.name(), p.kind(), &p.spec())
+    spec_to_py(py, p.as_ref())
 }
 
 /// Python の関数のプラグイン（試作用）。呼び出しのたびに GIL を取る

@@ -20,6 +20,15 @@ def test_builtin_analysis_listed():
     s = lb.plugin_spec("rms")
     assert s["kind"] == "analysis" and s["needs_system"]
     assert "field" in [k for k, _ in s["inputs"]]
+    # 設定の項目は型・既定つき（ANA-19）
+    cfg = {p["name"]: p for p in s["config"]}
+    assert cfg["rings"]["type"] == "count" and cfg["rings"]["default"] == 6
+    assert cfg["reference"]["choices"] == ["centroid", "chief"]
+    assert lb.plugin_spec("wavefront")["config"][2]["default"] is False
+    # 真偽は True・False（0・1 も）
+    w = lb.Plugin("wavefront", ref_primary=True, n=16).run(system=a0(), field=1)
+    w0 = lb.Plugin("wavefront", ref_primary=1, n=16).run(system=a0(), field=1)
+    assert w["rms"] == w0["rms"]
 
 
 def test_run_many_ordered_and_thread_independent():
@@ -92,8 +101,10 @@ def test_errors():
         lb.Plugin("no_such_plugin")
     with pytest.raises(ValueError):
         lb.Plugin("rms", ring=4)  # 綴りの誤り
+    with pytest.raises(ValueError):
+        lb.Plugin("rms", rings=True)  # 整数の項目に真偽
     with pytest.raises(TypeError):
-        lb.Plugin("rms", rings=True)
+        lb.Plugin("rms", rings={"a": 1})
     with pytest.raises(ValueError):
         lb.register_plugin("x", print, kind="surface")
     p = lb.Plugin("rms")

@@ -35,6 +35,7 @@ pub fn plugin_params(name: &str) -> Option<Vec<Value>> {
 pub fn param_json(p: &ParamSpec) -> Value {
     let val = |v: &PVal| match v {
         PVal::Num(x) => json!(x),
+        PVal::Bool(b) => json!(b),
         PVal::Str(s) => json!(s),
         PVal::Nums(v) => json!(v),
     };

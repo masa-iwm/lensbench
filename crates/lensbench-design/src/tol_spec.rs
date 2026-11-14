@@ -22,8 +22,14 @@ macro_rules! via_value {
     };
 }
 
+/// 中の欄の道つきで読む（「thickness: …」。外側の道は呼ぶ側が前に付ける）
 fn from<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, String> {
-    serde_json::from_value(v).map_err(|e| e.to_string())
+    lensbench_project::lenient::from_json(&v, "").map_err(|e| {
+        e.strip_prefix(": ")
+            .or_else(|| e.strip_prefix('.'))
+            .unwrap_or(&e)
+            .to_string()
+    })
 }
 
 /// 設定（すべて省略可）

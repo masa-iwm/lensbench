@@ -1,6 +1,6 @@
 //! 検出器・解析のプラグインの約束。
 //!
-//! プラグインは [`Plugin`] を実装し、名前で [`Registry`] に登録する。呼ぶ側は名前と設定（[`Config`]: 文字列・数・
+//! プラグインは [`Plugin`] を実装し、名前で [`Registry`] に登録する。呼ぶ側は名前と設定（[`Config`]: 数・真偽・文字列・
 //! 数の並びの小さな辞書）から [`Instance`] を作り、名前つきの配列（[`Arrays`]）を渡して名前つきの配列を受け取る。
 //!
 //! 約束:
@@ -46,7 +46,7 @@ impl Kind {
     }
 }
 
-/// 設定の値（系ファイルの JSON では数・文字列・数の並びをそのまま書く）
+/// 設定の値（系ファイルの JSON では数・真偽・文字列・数の並びをそのまま書く）
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
@@ -56,6 +56,8 @@ impl Kind {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Value {
     Num(f64),
+    /// 真偽（[`ConfigReader::flag`]。0・1 の数も受ける）
+    Bool(bool),
     Str(String),
     /// 数の並び（角度 4 個など）
     Nums(Vec<f64>),
@@ -94,6 +96,14 @@ impl<'a> ConfigReader<'a> {
         }
     }
 
+    /// 数（省けば None。NaN を「省略」の印にしない）
+    pub fn opt_num(&mut self, key: &str) -> Result<Option<f64>> {
+        if !self.cfg.contains_key(key) {
+            return Ok(None);
+        }
+        self.num(key, 0.0).map(Some)
+    }
+
     /// 文字列（省けば `default`）
     pub fn str(&mut self, key: &str, default: &str) -> Result<String> {
         match self.get(key) {
@@ -118,24 +128,28 @@ impl<'a> ConfigReader<'a> {
         Ok(self.opt_count(key)?.unwrap_or(default))
     }
 
-    /// 0 以上の整数（省けば None）
+    /// 0 以上の整数（省けば None。NaN を「省略」の印にしない）
     pub fn opt_count(&mut self, key: &str) -> Result<Option<usize>> {
-        let x = self.num(key, f64::NAN)?;
-        if x.is_nan() {
+        if !self.cfg.contains_key(key) {
             return Ok(None);
         }
+        let x = self.num(key, 0.0)?;
         if !(x >= 0.0) || x.fract() != 0.0 || x > u32::MAX as f64 {
             invalid!("設定 {key} は 0 以上の整数に（{x}）");
         }
         Ok(Some(x as usize))
     }
 
-    /// 0 か 1（省けば `default`）
+    /// 真偽（true・false か 0・1、省けば `default`）
     pub fn flag(&mut self, key: &str, default: bool) -> Result<bool> {
+        if let Some(Value::Bool(b)) = self.cfg.get(key) {
+            self.get(key);
+            return Ok(*b);
+        }
         match self.num(key, if default { 1.0 } else { 0.0 })? {
             0.0 => Ok(false),
             1.0 => Ok(true),
-            x => invalid!("設定 {key} は 0 か 1 に（{x}）"),
+            x => invalid!("設定 {key} は true・false（か 0・1）に（{x}）"),
         }
     }
 
@@ -344,13 +358,12 @@ pub fn check_wave(s: &System, w: Option<usize>) -> Result<()> {
     Ok(())
 }
 
-/// 入出力の名前・形の説明（一覧・ヘルプ用。呼び出しの確かめは [`Instance::run`] が行う）
+/// 入出力の名前・形の説明（一覧・ヘルプ用。呼び出しの確かめは [`Instance::run`] が行う）。設定の説明は
+/// [`Plugin::params`] だけに書く（型・既定・単位つき、ANA-19）
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spec {
     /// 1 行の説明
     pub doc: String,
-    /// 設定: (名前, 説明)
-    pub config: Vec<(String, String)>,
     /// 入力: (名前, 説明)
     pub inputs: Vec<(String, String)>,
     /// 出力: (名前, 説明)
@@ -366,7 +379,7 @@ pub enum ParamType {
     Num,
     /// 0 以上の整数
     Count,
-    /// 0 か 1（[`ConfigReader::flag`]）
+    /// 真偽（[`ConfigReader::flag`]。既定値は [`Value::Bool`]）
     Flag,
     /// 文字列
     Str,
@@ -451,7 +464,7 @@ pub trait Plugin: Send + Sync {
     fn spec(&self) -> Spec {
         Spec::default()
     }
-    /// 設定の項目の型・既定値（GUI の欄を作る。空なら [`Spec::config`] の名前と説明だけ）
+    /// 設定の項目の説明（名前・型・既定値・単位）。設定の説明はここだけ（一覧・GUI の欄・Python の plugin_spec）
     fn params(&self) -> Vec<ParamSpec> {
         Vec::new()
     }
@@ -622,6 +635,23 @@ mod tests {
         assert!(inst.run(&Context::default(), &a).is_err());
         assert!(Array::f64(vec![2, 2], vec![0.0; 3]).is_err());
         assert!(Kind::parse("x").is_err() && Kind::parse("detector").unwrap() == Kind::Detector);
+    }
+
+    /// 真偽は true・false か 0・1、整数の欄に NaN を書くと「省略」でなく誤り（ANA-19）
+    #[test]
+    fn flags_and_counts() {
+        let c = Config::from([
+            ("a".into(), Value::Bool(true)),
+            ("b".into(), Value::Num(0.0)),
+            ("n".into(), Value::Num(f64::NAN)),
+        ]);
+        let mut r = ConfigReader::new(&c);
+        assert!(r.flag("a", false).unwrap());
+        assert!(!r.flag("b", true).unwrap());
+        assert!(r.flag("z", true).unwrap());
+        assert!(r.opt_count("n").is_err());
+        assert_eq!(r.opt_count("m").unwrap(), None);
+        r.finish().unwrap();
     }
 
     #[test]

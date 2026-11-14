@@ -33,7 +33,7 @@ use lensbench_core::fringe::{self, PupilOpts};
 use lensbench_core::huygens::{self, HuygensOpts};
 use lensbench_core::plugin::{
     check_wave, field_sel, Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance,
-    Kind, Plugin, Registry, Spec,
+    Kind, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
 };
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::psf::{self, PsfOpts};
@@ -173,11 +173,9 @@ impl Plugin for Analysis {
     }
 
     fn spec(&self) -> Spec {
-        let wave = s2("wave", "波長の番号（1 始まり）");
-        let (doc, config, outputs) = match self {
+        let (doc, outputs) = match self {
             Analysis::Spot => (
                 "スポット（RMS・GEO 半径）",
-                vec![wave, s2("rings", "ガウス求積のリング数（6）")],
                 vec![
                     s2("x", "光線の位置 [mm]"),
                     s2("y", "光線の位置 [mm]"),
@@ -193,11 +191,6 @@ impl Plugin for Analysis {
             Analysis::Wavefront => (
                 "波面収差（主光線基準の OPD [波]）",
                 vec![
-                    wave,
-                    s2("n", "格子の一辺（64）"),
-                    s2("ref_primary", "1 なら主波長の主光線を基準（0: その波長の主光線。CLI・OpticStudio と同じ）"),
-                ],
-                vec![
                     s2("p", "格子の瞳座標 (n,)"),
                     s2("w", "OPD (n, n) [波]、外は NaN"),
                     s2("pv", "[波]"),
@@ -206,13 +199,6 @@ impl Plugin for Analysis {
             ),
             Analysis::Zernike => (
                 "Zernike 係数 [波]",
-                vec![
-                    wave,
-                    s2("kind", "standard か fringe"),
-                    s2("terms", "項数（37）"),
-                    s2("n", "格子の一辺（64）"),
-                    s2("ref_primary", "1 なら主波長の主光線を基準（0: その波長の主光線。CLI・OpticStudio と同じ）"),
-                ],
                 vec![
                     s2("coef", "係数 [波]"),
                     s2("pv", "[波]"),
@@ -228,15 +214,6 @@ impl Plugin for Analysis {
             Analysis::Mtf => (
                 "回折 MTF",
                 vec![
-                    wave,
-                    s2(
-                        "freqs",
-                        "周波数 [cycles/mm]（省けば遮断周波数の 0〜0.95 を 21 点）",
-                    ),
-                    s2("n", "瞳の格子の一辺（省けば自動）"),
-                    s2("method", "auto・interp・direct・fft"),
-                ],
-                vec![
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午"),
                     s2("sag", "球欠"),
@@ -245,12 +222,6 @@ impl Plugin for Analysis {
             ),
             Analysis::Psf => (
                 "FFT PSF",
-                vec![
-                    wave,
-                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
-                    s2("image", "像の格子の一辺（128）"),
-                    s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
-                ],
                 vec![
                     s2("x", "(image,) [mm]"),
                     s2("y", "(image,) [mm]"),
@@ -266,11 +237,6 @@ impl Plugin for Analysis {
             Analysis::Rms => (
                 "RMS スポット半径・波面収差・ストレール比",
                 vec![
-                    wave,
-                    s2("rings", "ガウス求積のリング数（6）"),
-                    s2("reference", "centroid か chief"),
-                ],
-                vec![
                     s2("spot", "[mm]"),
                     s2("spot_x", "[mm]"),
                     s2("spot_y", "[mm]"),
@@ -281,15 +247,6 @@ impl Plugin for Analysis {
             Analysis::GeoMtf => (
                 "幾何 MTF",
                 vec![
-                    wave,
-                    s2(
-                        "freqs",
-                        "周波数 [cycles/mm]（省けば遮断周波数の 0〜0.95 を 21 点）",
-                    ),
-                    s2("n", "求積の点の数（128）"),
-                    s2("diff_limit", "1 なら回折限界を掛ける（0）"),
-                ],
-                vec![
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午"),
                     s2("sag", "球欠"),
@@ -298,12 +255,6 @@ impl Plugin for Analysis {
             ),
             Analysis::HuygensPsf => (
                 "Huygens PSF（像面の上、参照球の各点からの 2 次波の和）",
-                vec![
-                    wave,
-                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
-                    s2("image", "像の格子の一辺（128）"),
-                    s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
-                ],
                 vec![
                     s2("x", "(image,) [mm]、像面の局所 x の center からの差"),
                     s2("y", "(image,) [mm]、像面の局所 y の center からの差"),
@@ -319,16 +270,6 @@ impl Plugin for Analysis {
             Analysis::HuygensMtf => (
                 "Huygens MTF（Huygens PSF のフーリエ変換）",
                 vec![
-                    wave,
-                    s2(
-                        "freqs",
-                        "周波数 [cycles/mm]（省けば遮断周波数の 0〜0.95 を 21 点）",
-                    ),
-                    s2("pupil", "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）"),
-                    s2("image", "像の格子の一辺（128）"),
-                    s2("delta", "像の格子の間隔 [mm]（省けば自動）"),
-                ],
-                vec![
                     s2("freqs", "[cycles/mm]"),
                     s2("tan", "子午（像面の y）"),
                     s2("sag", "球欠（像面の x）"),
@@ -337,20 +278,6 @@ impl Plugin for Analysis {
             ),
             Analysis::Pop => (
                 "簡易 POP（面の後の場を作り、距離か面まで伝搬）",
-                vec![
-                    wave,
-                    s2("surface", "場を作る面（必須）"),
-                    s2("dist", "伝搬の距離 [mm]（to と一方）"),
-                    s2("to", "伝搬の先の面（省けば surface + 1）"),
-                    s2("method", "auto・fresnel・angular・direct"),
-                    s2("rays", "瞳の格子の一辺の光線の数（65）"),
-                    s2("n", "入力の格子の一辺（256）"),
-                    s2("half", "入力の格子の半幅 [mm]"),
-                    s2("aperture", "1 なら面の開口で切る（1）"),
-                    s2("out_n", "出力の格子の一辺"),
-                    s2("out_half", "出力の格子の半幅 [mm]"),
-                    s2("out_center", "出力の格子の中心 (2,) [mm]"),
-                ],
                 vec![
                     s2("u", "出力の場 complex (ny, nx)（パイロットを除く）"),
                     s2("dx", "[mm]"),
@@ -375,10 +302,6 @@ impl Plugin for Analysis {
             Analysis::Ghost => (
                 "2 回反射のゴーストの一覧（近軸の量と強度の比）",
                 vec![
-                    s2("first", "最初の面（1）"),
-                    s2("last", "最後の面（省けば像面）"),
-                ],
-                vec![
                     s2("a", "1 回目の反射の面"),
                     s2("b", "2 回目の反射の面"),
                     s2("marginal_y", "[mm]"),
@@ -390,15 +313,6 @@ impl Plugin for Analysis {
             ),
             Analysis::Interferogram => (
                 "単色の干渉縞（瞳上、OpticStudio の Interferogram に当たる）: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2",
-                vec![
-                    wave,
-                    s2("n", "格子の一辺（64）"),
-                    s2("beam1", "光束 1 の構成（1）"),
-                    s2("beam2", "光束 2 の構成（2、0 で参照球）"),
-                    s2("scale", "OPD の差にかける数（1、ダブルパスは 2）"),
-                    s2("xtilt", "傾きの縞の数（瞳の直径あたり、0）"),
-                    s2("ytilt", "傾きの縞の数（瞳の直径あたり、0）"),
-                ],
                 vec![
                     s2("p", "格子の瞳座標 (n,)"),
                     s2("delta", "Δ (n, n) [波]、外は NaN"),
@@ -415,10 +329,152 @@ impl Plugin for Analysis {
         };
         Spec {
             doc: doc.into(),
-            config,
             inputs,
             outputs,
             needs_system: true,
+        }
+    }
+
+    fn params(&self) -> Vec<ParamSpec> {
+        use ParamType::{Choice, Count, Flag, Num, Nums};
+        let p = ParamSpec::new;
+        let n = |x: f64| Some(Value::Num(x));
+        let b = |x: bool| Some(Value::Bool(x));
+        let st = |x: &str| Some(Value::Str(x.into()));
+        let ch = |v: &[&str]| Choice(v.iter().map(|x| x.to_string()).collect());
+        let wave = || {
+            p(
+                "wave",
+                Count,
+                None,
+                "",
+                "波長の番号（1 始まり、省けば多色・主波長）",
+            )
+        };
+        let freqs = || {
+            p(
+                "freqs",
+                Nums { len: None },
+                None,
+                "cycles/mm",
+                "周波数（省けば遮断周波数の 0〜0.95 を 21 点）",
+            )
+        };
+        let refp = || {
+            p(
+                "ref_primary",
+                Flag,
+                b(false),
+                "",
+                "主波長の主光線を基準（false: その波長の主光線。CLI・OpticStudio と同じ）",
+            )
+        };
+        let pupil = || {
+            p(
+                "pupil",
+                Count,
+                None,
+                "",
+                "瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）",
+            )
+        };
+        let image = || p("image", Count, n(128.0), "", "像の格子の一辺");
+        let delta = || p("delta", Num, None, "mm", "像の格子の間隔（省けば自動）");
+        match self {
+            Analysis::Spot => vec![
+                wave(),
+                p("rings", Count, n(6.0), "", "ガウス求積のリング数"),
+            ],
+            Analysis::Wavefront => vec![wave(), p("n", Count, n(64.0), "", "格子の一辺"), refp()],
+            Analysis::Zernike => vec![
+                wave(),
+                p(
+                    "kind",
+                    ch(&["standard", "fringe"]),
+                    st("standard"),
+                    "",
+                    "並び",
+                ),
+                p("terms", Count, n(37.0), "", "項数"),
+                p("n", Count, n(64.0), "", "格子の一辺"),
+                refp(),
+            ],
+            Analysis::Mtf => vec![
+                wave(),
+                freqs(),
+                p("n", Count, None, "", "瞳の格子の一辺（省けば自動）"),
+                p(
+                    "method",
+                    ch(&["auto", "interp", "direct", "fft"]),
+                    st("auto"),
+                    "",
+                    "方式",
+                ),
+            ],
+            Analysis::Psf | Analysis::HuygensPsf => vec![wave(), pupil(), image(), delta()],
+            Analysis::Rms => vec![
+                wave(),
+                p("rings", Count, n(6.0), "", "ガウス求積のリング数"),
+                p(
+                    "reference",
+                    ch(&["centroid", "chief"]),
+                    st("centroid"),
+                    "",
+                    "基準",
+                ),
+            ],
+            Analysis::GeoMtf => vec![
+                wave(),
+                freqs(),
+                p("n", Count, n(128.0), "", "求積の点の数"),
+                p("diff_limit", Flag, b(false), "", "回折限界を掛ける"),
+            ],
+            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), delta()],
+            Analysis::Pop => vec![
+                wave(),
+                p("surface", Count, None, "", "場を作る面（必須）"),
+                p("dist", Num, None, "mm", "伝搬の距離（to とどちらか）"),
+                p("to", Count, None, "", "伝搬の先の面（省けば surface + 1）"),
+                p(
+                    "method",
+                    ch(&["auto", "fresnel", "angular", "direct"]),
+                    st("auto"),
+                    "",
+                    "方式",
+                ),
+                p("rays", Count, n(65.0), "", "瞳の格子の一辺の光線の数"),
+                p("n", Count, n(256.0), "", "入力の格子の一辺"),
+                p("half", Num, None, "mm", "入力の格子の半幅（省けば自動）"),
+                p("aperture", Flag, b(true), "", "面の開口で切る"),
+                p("out_n", Count, None, "", "出力の格子の一辺"),
+                p("out_half", Num, None, "mm", "出力の格子の半幅"),
+                p(
+                    "out_center",
+                    Nums { len: Some(2) },
+                    None,
+                    "mm",
+                    "出力の格子の中心 (x, y)",
+                ),
+            ],
+            Analysis::Ghost => vec![
+                p("first", Count, n(1.0), "", "最初の面"),
+                p("last", Count, None, "", "最後の面（省けば像面）"),
+            ],
+            Analysis::Interferogram => vec![
+                wave(),
+                p("n", Count, n(64.0), "", "格子の一辺"),
+                p("beam1", Count, n(1.0), "", "光束 1 の構成"),
+                p("beam2", Count, n(2.0), "", "光束 2 の構成（0 で参照球）"),
+                p(
+                    "scale",
+                    Num,
+                    n(1.0),
+                    "",
+                    "OPD の差にかける数（ダブルパスは 2）",
+                ),
+                p("xtilt", Num, n(0.0), "", "傾きの縞の数（瞳の直径あたり）"),
+                p("ytilt", Num, n(0.0), "", "傾きの縞の数（瞳の直径あたり）"),
+            ],
         }
     }
 
@@ -456,13 +512,13 @@ impl Plugin for Analysis {
             },
             Analysis::Psf => {
                 let d = PsfOpts::default();
-                let delta = r.num("delta", f64::NAN)?;
+                let delta = r.opt_num("delta")?;
                 Prepared::Psf {
                     wave,
                     opts: PsfOpts {
                         pupil: r.opt_count("pupil")?,
                         image: r.count("image", d.image)?,
-                        delta: (!delta.is_nan()).then_some(delta),
+                        delta,
                     },
                 }
             }
@@ -490,11 +546,11 @@ impl Plugin for Analysis {
             },
             Analysis::HuygensPsf | Analysis::HuygensMtf => {
                 let d = HuygensOpts::default();
-                let delta = r.num("delta", f64::NAN)?;
+                let delta = r.opt_num("delta")?;
                 let opts = HuygensOpts {
                     pupil: r.opt_count("pupil")?,
                     image: r.count("image", d.image)?,
-                    delta: (!delta.is_nan()).then_some(delta),
+                    delta,
                 };
                 if *self == Analysis::HuygensPsf {
                     Prepared::HuygensPsf { wave, opts }
@@ -582,8 +638,7 @@ impl Plugin for Analysis {
 }
 
 fn opt_num(r: &mut ConfigReader<'_>, key: &str) -> Result<Option<f64>> {
-    let x = r.num(key, f64::NAN)?;
-    Ok((!x.is_nan()).then_some(x))
+    r.opt_num(key)
 }
 
 fn zern_kind(s: &str) -> Result<ZernKind> {
