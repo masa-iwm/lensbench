@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{Color32, Key, Modifiers, RichText, Stroke, Ui};
 use egui_dock::{DockArea, NodeIndex, SurfaceIndex, TabViewer};
+use lensbench_engine::session::views;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -322,79 +323,6 @@ struct NewSnap {
     saved_combo: Option<Combo>,
     hist: (usize, usize),
     hist_list: (Vec<Value>, Vec<Value>),
-}
-
-/// serve の段の変更の名前（set はパラメータの説明、edit は操作）
-fn hist_label(v: &Value) -> String {
-    if let Some(f) = v["open"].as_str() {
-        return trf("{} を開く", &[&f]);
-    }
-    if let Some(f) = v["reload"].as_str() {
-        return trf("{} を読み直す", &[&f]);
-    }
-    if let Some(names) = v["set"].as_array() {
-        let d: Vec<String> = names
-            .iter()
-            .filter_map(Value::as_str)
-            .map(|n| {
-                let d = crate::param_pick::param_desc(n);
-                if d.is_empty() {
-                    n.to_string()
-                } else {
-                    d
-                }
-            })
-            .collect();
-        return match d.len() {
-            0 => tr("値の変更").into(),
-            1..=2 => d.join("、"),
-            n => trf("{} ほか {} 個", &[&d[0], &(n - 1)]),
-        };
-    }
-    let ops = v["edit"].as_array().cloned().unwrap_or_default();
-    let one = |o: &Value| -> String {
-        let s = o["surface"].as_u64().map(|x| x.to_string());
-        let op = o["op"].as_str().unwrap_or_default();
-        let what = match op {
-            "insert_surface" => tr("面を挿入"),
-            "delete_surface" => tr("面を削除"),
-            "set_surface" | "set_surface_data" => tr("面の値"),
-            "set_surface_type" => tr("面の種類"),
-            "set_material" => tr("硝材"),
-            "set_stop" => tr("絞り"),
-            "add_pickup" | "remove_pickup" => tr("ピックアップ"),
-            "add_solve" | "remove_solve" => tr("ソルブ"),
-            "set_system_data" => tr("系の設定"),
-            "set_param" => tr("値の変更"),
-            "define_unit" | "set_unit" | "remove_unit" => tr("玉・群"),
-            "add_mech" | "set_mech" | "remove_mech" => tr("機構部品"),
-            "set_config" => tr("構成の切り替え"),
-            o if o.contains("config") => tr("多重構成"),
-            _ => tr("編集"),
-        };
-        // 面の値の 1 項目なら、その項目の名前（面 8 の厚さ など）
-        if let (Some(s), Some([f])) = (&s, o["fields"].as_array().map(Vec::as_slice)) {
-            let short = match f.as_str().unwrap_or_default() {
-                "thickness" | "t" => "t",
-                "radius" | "r" => "r",
-                "curv" | "c" => "c",
-                "conic" | "k" => "k",
-                _ => "",
-            };
-            if !short.is_empty() {
-                return crate::param_pick::param_desc(&format!("{s}.{short}"));
-            }
-        }
-        match s {
-            Some(s) => trf("{}（面 {}）", &[&what, &s]),
-            None => what.to_string(),
-        }
-    };
-    match ops.len() {
-        0 => tr("編集").into(),
-        1 => one(&ops[0]),
-        n => trf("{} ほか {} 件", &[&one(&ops[0]), &(n - 1)]),
-    }
 }
 
 /// 組合せの変更の名前（要素の追加・削除・どの要素か・系の設定）
@@ -1750,7 +1678,10 @@ impl Core {
                 if let (Some(sum), Some(a)) = (self.summary.as_mut(), v["surfaces"].as_array()) {
                     sum["surfaces"] = json!(a.len());
                 }
-                let (rows, units) = lens_data::parse(&v);
+                let (rows, units) = match lens_data::parse(&v) {
+                    Ok(x) => x,
+                    Err(text) => return self.status = Status { text, error: true },
+                };
                 self.um.set_mechs(&v["mechanics"]);
                 self.ld_blocks = lens_data::tree(&units);
                 self.ld.insp.stale();
@@ -1798,10 +1729,10 @@ impl Core {
                 self.oss.set(&v);
                 return;
             }
-            Tag::ConfigTable => {
-                self.mc.table = Some(config_panel::parse(&v));
-                return;
-            }
+            Tag::ConfigTable => match config_panel::parse(&v) {
+                Ok(t) => return self.mc.table = Some(t),
+                Err(text) => return self.status = Status { text, error: true },
+            },
             Tag::ConfigDiff => {
                 self.mc.notes = v["notes"]
                     .as_array()
@@ -1906,13 +1837,15 @@ impl Core {
                 self.swap.running = false;
                 self.swap.error = None;
                 self.swap.inserted = None;
-                if v.get("results").is_some() {
+                let r = views::read::<lensbench_design::swap::SwapReply>(&v);
+                if r.as_ref().is_ok_and(|r| r.results.is_some()) {
                     text = trf(
                         "差し替え探索 完了（{} ms）",
                         &[&fmt_num((ms * 10.0).round() / 10.0)],
                     );
                 }
-                self.swap.result = Some(v);
+                (self.swap.result, self.swap.error) =
+                    r.map_or_else(|e| (None, Some(e)), |r| (Some(r), None));
             }
             Tag::Tolerance => {
                 self.tol.running = false;
@@ -2141,10 +2074,8 @@ impl Core {
 
     /// serve の結果の段の数と一覧を覚える
     fn take_history(&mut self, v: &Value) {
-        if let (Some(u), Some(r)) = (v["undo"].as_u64(), v["redo"].as_u64()) {
-            self.hist = (u as usize, r as usize);
-            let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
-            self.hist_list = (list("undo_list"), list("redo_list"));
+        if let Ok(h) = views::read::<views::HistoryView>(v) {
+            (self.hist, self.hist_list) = ((h.undo, h.redo), (h.undo_list, h.redo_list));
         }
     }
 
@@ -2170,7 +2101,7 @@ impl Core {
             return out;
         }
         let m = if back { l.len() } else { self.serve_redo() };
-        out.extend(l.iter().take(m).map(hist_label));
+        out.extend(l.iter().take(m).map(crate::hist_label::hist_label));
         if !back && self.new_redo.is_some() {
             out.push(tr("新規").into());
         }
@@ -2561,11 +2492,10 @@ impl Core {
                 }
                 Action::Stop => crate::worker::progress::stop("swap"),
                 Action::Insert(i) => {
-                    let Some(row) = self.swap.result.as_ref().and_then(|r| r["results"].get(i))
-                    else {
+                    let res = self.swap.result.as_ref().and_then(|r| r.results.as_ref());
+                    let Some(row) = res.and_then(|r| r.get(i)).cloned() else {
                         continue;
                     };
-                    let row = row.clone();
                     let before = self.browser.combo.clone();
                     match sp::insert_row(&mut self.browser.combo, &self.swap_ids, &row) {
                         Ok(()) => {
@@ -6941,7 +6871,7 @@ impl App {
                     .swap
                     .result
                     .as_ref()
-                    .and_then(|r| r["results"].get(0))
+                    .and_then(|r| r.results.as_ref()?.first())
                     .cloned();
                 let before = self.c.browser.combo.clone();
                 let r = row

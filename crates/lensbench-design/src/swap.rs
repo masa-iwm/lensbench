@@ -1000,6 +1000,62 @@ impl SwapResult {
     }
 }
 
+/// 差し替え探索の返事（serve の swap の結果。JSON はこの形で鍵の並びも同じ）。count_only なら
+/// count と slots だけ
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct SwapReply {
+    /// 組の数
+    pub count: usize,
+    /// 粗いふるいで残った組の数
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screened: Option<usize>,
+    /// 評価した組・失敗した組の数
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed: Option<usize>,
+    /// 途中で止めた
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancelled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<f64>,
+    /// 所ごとの候補
+    pub slots: Vec<Vec<SwapCand>>,
+    /// 評価関数の順に上位の組
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub results: Option<Vec<SwapResult>>,
+}
+
+/// 所の候補の玉
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SwapCand {
+    pub vendor: String,
+    pub part: String,
+    pub reversed: bool,
+    pub efl: Option<f64>,
+    pub diameter: Option<f64>,
+}
+
+impl SwapSearch<'_> {
+    /// 所ごとの候補（[`SwapReply::slots`]）
+    pub fn slots(&self) -> Vec<Vec<SwapCand>> {
+        self.picks
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .map(|k| SwapCand {
+                        vendor: k.lens.vendor.clone(),
+                        part: k.lens.part.clone(),
+                        reversed: k.reversed,
+                        efl: fin(k.lens.efl),
+                        diameter: fin(k.lens.diameter),
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
 /// 組の所ごとの玉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SwapLens {

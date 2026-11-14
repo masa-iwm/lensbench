@@ -11,6 +11,8 @@
 use egui::{RichText, Ui};
 use serde_json::{json, Value};
 
+use lensbench_design::swap::{SwapCand, SwapReply, SwapResult};
+
 use crate::combo::{Combo, ElemKind};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
@@ -98,7 +100,7 @@ pub struct SwapPanel {
     pub new_var: String,
     pub running: bool,
     /// serve の swap の結果（count_only なら組の数と候補だけ）
-    pub result: Option<Value>,
+    pub result: Option<SwapReply>,
     pub error: Option<String>,
     /// 組合せに入れた行（表で印を付ける）
     pub inserted: Option<usize>,
@@ -421,10 +423,10 @@ pub fn project_cands(p: &Value) -> Cands {
 
 /// 結果の行の組を組合せに入れる（玉の型番・向き、変数の間隔 dK.t）。`ids` は回したときの組合せの id。
 /// 入れられなければ理由
-pub fn insert_row(c: &mut Combo, ids: &[String], row: &Value) -> Result<(), String> {
+pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(), String> {
     let mut n = c.clone();
-    for l in row["lenses"].as_array().into_iter().flatten() {
-        let b = l["block"].as_str().unwrap_or_default();
+    for l in &row.lenses {
+        let b = &l.block;
         let k = ids
             .iter()
             .position(|x| x == b)
@@ -432,16 +434,16 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &Value) -> Result<(), Stri
             .ok_or_else(|| trf("組合せに {} がない（組合せを変えた後は回し直して）", &[&b]))?;
         let pk = &mut n.picks[k];
         pk.kind = ElemKind::Catalog;
-        pk.vendor = l["vendor"].as_str().unwrap_or_default().into();
-        pk.part = l["part"].as_str().unwrap_or_default().into();
-        pk.reversed = l["reversed"].as_bool().unwrap_or(false);
+        pk.vendor = l.vendor.clone();
+        pk.part = l.part.clone();
+        pk.reversed = l.reversed;
         // 面の上書き・面の操作は前の玉の面のもの
         pk.edits.clear();
         pk.ops.clear();
     }
-    for v in row["vars"].as_array().into_iter().flatten() {
-        let name = v["name"].as_str().unwrap_or_default();
-        let x = v["x"].as_f64().unwrap_or(f64::NAN);
+    for v in row.fit.iter().flat_map(|f| &f.vars) {
+        let name = &v.name;
+        let x = v.x.unwrap_or(f64::NAN);
         let k = name
             .strip_prefix('d')
             .and_then(|s| s.strip_suffix(".t"))
@@ -827,39 +829,29 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
     );
 }
 
-fn lens_text(l: &Value) -> String {
-    format!(
-        "{} {}{}",
-        l["vendor"].as_str().unwrap_or_default(),
-        l["part"].as_str().unwrap_or_default(),
-        if l["reversed"].as_bool() == Some(true) {
-            " ↺"
-        } else {
-            ""
-        }
-    )
+fn lens_text(vendor: &str, part: &str, reversed: bool) -> String {
+    format!("{vendor} {part}{}", if reversed { " ↺" } else { "" })
+}
+
+fn cand_text(l: &SwapCand) -> String {
+    lens_text(&l.vendor, &l.part, l.reversed)
 }
 
 fn result_ui(
     ui: &mut Ui,
     p: &mut SwapPanel,
     c: &Cands,
-    r: &Value,
+    r: &SwapReply,
     acts: &mut Vec<Action>,
     weak: egui::Color32,
 ) {
-    let count = r["count"].as_u64().unwrap_or(0);
-    let Some(rows) = r["results"].as_array() else {
+    let count = r.count;
+    let Some(rows) = &r.results else {
         // 数えただけ
-        let per: Vec<String> = r["slots"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|s| s.as_array().map_or(0, Vec::len).to_string())
-            .collect();
+        let per: Vec<String> = r.slots.iter().map(|s| s.len().to_string()).collect();
         ui.label(trf("組 {}（所ごとの候補 {}）", &[&count, &per.join(" × ")]));
-        for (k, s) in r["slots"].as_array().into_iter().flatten().enumerate() {
-            let names: Vec<String> = s.as_array().into_iter().flatten().map(lens_text).collect();
+        for (k, s) in r.slots.iter().enumerate() {
+            let names: Vec<String> = s.iter().map(cand_text).collect();
             let b = p.slots.get(k).map(|s| s.block.as_str()).unwrap_or("");
             egui::CollapsingHeader::new(format!("{b}: {}", names.len()))
                 .id_salt(("swap_cands", k))
@@ -873,10 +865,10 @@ fn result_ui(
         "組 {}（評価 {}、失敗 {}、{} 秒）{}",
         &[
             &count,
-            &r["done"],
-            &r["failed"],
-            &fmt_num((r["seconds"].as_f64().unwrap_or(0.0) * 10.0).round() / 10.0),
-            &if r["cancelled"] == json!(true) {
+            &r.done.unwrap_or(0),
+            &r.failed.unwrap_or(0),
+            &fmt_num((r.seconds.unwrap_or(0.0) * 10.0).round() / 10.0),
+            &if r.cancelled == Some(true) {
                 tr("・止めた")
             } else {
                 ""
@@ -886,11 +878,10 @@ fn result_ui(
     // 焦点距離の目標があれば、評価関数と像だけの値が違う
     let with_efl = rows
         .iter()
-        .any(|x| x.get("image_merit").is_some() && x["image_merit"] != x["merit"]);
-    let nvars = rows
-        .iter()
-        .find_map(|x| x["vars"].as_array().map(Vec::len))
-        .unwrap_or(0);
+        .filter_map(|x| x.fit.as_ref())
+        .any(|f| f.image_merit.is_some() && f.image_merit != f.merit);
+    let vars = rows.iter().find_map(|x| x.fit.as_ref().map(|f| &f.vars));
+    let nvars = vars.map_or(0, Vec::len);
     egui::ScrollArea::horizontal()
         .id_salt("swap_res_h")
         .show(ui, |ui| {
@@ -906,9 +897,7 @@ fn result_ui(
                 }
                 hs.push("EFL".into());
                 hs.push(tr("全長").into());
-                if let Some(v) = rows.iter().find_map(|x| x["vars"].as_array()) {
-                    hs.extend(v.iter().map(|x| text_of(&x["name"])));
-                }
+                hs.extend(vars.into_iter().flatten().map(|x| x.name.clone()));
                 for h in &hs {
                     ui.label(RichText::new(h).small().color(weak));
                 }
@@ -918,37 +907,40 @@ fn result_ui(
                     ui.label(format!("{}{mark}", i + 1));
                     if c.combo
                         && ui
-                            .add_enabled(
-                                x.get("error").is_none(),
-                                egui::Button::new(tr("入れる")).small(),
-                            )
+                            .add_enabled(x.error.is_none(), egui::Button::new(tr("入れる")).small())
                             .on_hover_text(tr("この組を組合せに入れる"))
                             .clicked()
                     {
                         acts.push(Action::Insert(i));
                     }
-                    let ls: Vec<String> = x["lenses"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(lens_text)
+                    let ls: Vec<String> = x
+                        .lenses
+                        .iter()
+                        .map(|l| lens_text(&l.vendor, &l.part, l.reversed))
                         .collect();
                     ui.label(ls.join(" / "));
-                    if let Some(e) = x["error"].as_str() {
-                        ui.label(RichText::new(e).small().color(weak));
-                        ui.end_row();
-                        continue;
-                    }
-                    let f = |k: &str| x[k].as_f64().unwrap_or(f64::NAN);
-                    let short = |v: f64| format!("{v:.4}");
-                    ui.monospace(format!("{:.4e}", f("merit")));
+                    let fit = match (&x.error, &x.fit) {
+                        (None, Some(f)) => f,
+                        (e, _) => {
+                            ui.label(
+                                RichText::new(e.as_deref().unwrap_or(""))
+                                    .small()
+                                    .color(weak),
+                            );
+                            ui.end_row();
+                            continue;
+                        }
+                    };
+                    let nan = |v: Option<f64>| v.unwrap_or(f64::NAN);
+                    let short = |v: Option<f64>| format!("{:.4}", nan(v));
+                    ui.monospace(format!("{:.4e}", nan(fit.merit)));
                     if with_efl {
-                        ui.monospace(format!("{:.4e}", f("image_merit")));
+                        ui.monospace(format!("{:.4e}", nan(fit.image_merit)));
                     }
-                    ui.monospace(short(f("efl")));
-                    ui.monospace(short(f("total_track")));
+                    ui.monospace(short(fit.efl));
+                    ui.monospace(short(fit.total_track));
                     for k in 0..nvars {
-                        ui.monospace(short(x["vars"][k]["x"].as_f64().unwrap_or(f64::NAN)));
+                        ui.monospace(short(fit.vars.get(k).and_then(|v| v.x)));
                     }
                     ui.end_row();
                 }
@@ -978,6 +970,18 @@ fn result_ui(
 mod tests {
     use super::*;
     use crate::combo::Pick;
+
+    /// 差し替え探索の 1 組（足りない鍵は既定で埋める）
+    fn swap_row(mut v: Value) -> SwapResult {
+        for (k, d) in [
+            ("i", json!(0)),
+            ("stop", json!("")),
+            ("iterations", json!(0)),
+        ] {
+            v[k] = d;
+        }
+        serde_json::from_value(v).unwrap()
+    }
 
     fn cat(v: &str, q: &str) -> Pick {
         let mut p = Pick::new(ElemKind::Catalog);
@@ -1073,10 +1077,10 @@ mod tests {
         assert_eq!(cands.blocks.len(), 2);
         assert_eq!(cands.gaps.last().unwrap().0, "d2");
         let ids = c.ids();
-        let row = json!({
+        let row = swap_row(json!({
             "lenses": [{"block": ids[1], "vendor": "LB", "part": "BCX-50", "reversed": true}],
-            "vars": [{"name": "d1.t", "x": 7.5}, {"name": "d2.t", "x": 40.0}],
-        });
+            "vars": [{"name": "d1.t", "param": "", "x": 7.5}, {"name": "d2.t", "param": "", "x": 40.0}],
+        }));
         let mut d = c.clone();
         insert_row(&mut d, &ids, &row).unwrap();
         assert_eq!(d.picks[1].part, "BCX-50");
@@ -1084,7 +1088,8 @@ mod tests {
         assert_eq!(d.picks[0].air, 7.5);
         assert_eq!(d.picks[1].air, 40.0);
         // 入れられない変数なら何も変えない
-        let bad = json!({"lenses": [], "vars": [{"name": "G2.shift", "x": 1.0}]});
+        let bad =
+            swap_row(json!({"lenses": [], "vars": [{"name": "G2.shift", "param": "", "x": 1.0}]}));
         let mut e = c.clone();
         assert!(insert_row(&mut e, &ids, &bad).is_err());
         assert_eq!(e.picks[0].air, 5.0);
@@ -1114,7 +1119,8 @@ mod tests {
         assert_eq!(last.0, "d3");
         assert!(last.1.contains(&ids[2]), "{}", last.1);
         let mut d = c.clone();
-        let row = json!({"lenses": [], "vars": [{"name": "d2.t", "x": 4.0}]});
+        let row =
+            swap_row(json!({"lenses": [], "vars": [{"name": "d2.t", "param": "", "x": 4.0}]}));
         insert_row(&mut d, &ids, &row).unwrap();
         assert_eq!(d.picks[1].air, 4.0);
     }

@@ -505,7 +505,7 @@ pub fn swap_cancel() {
 /// 読み込んだ系のガラス・レンズカタログのフォルダを使う。同じプロセスからは [`swap_progress`] で進み具合を読み、
 /// [`swap_cancel`] で止められる
 pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    use lensbench_design::swap::{SwapSearch, SwapSpec};
+    use lensbench_design::swap::{SwapReply, SwapSearch, SwapSpec};
     let (_, ls) = sess.current()?;
     let proj = match p.get("project").filter(|v| !v.is_null()) {
         // 中の zmx・カタログ・膜のパスを check_path で確かめられないので、要求のファイルを制限するときは断る
@@ -552,21 +552,14 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     };
     let s = SwapSearch::new(&proj, &env, &cat, spec)?;
     let n = s.count();
-    let slots: Vec<Value> = s
-        .picks
-        .iter()
-        .map(|v| {
-            json!(v
-                .iter()
-                .map(|k| json!({
-                    "vendor": k.lens.vendor, "part": k.lens.part, "reversed": k.reversed,
-                    "efl": k.lens.efl, "diameter": k.lens.diameter,
-                }))
-                .collect::<Vec<_>>())
-        })
-        .collect();
+    let slots = s.slots();
     if p["count_only"].as_bool() == Some(true) {
-        return Ok(json!({ "count": n, "slots": slots }));
+        let r = SwapReply {
+            count: n,
+            slots,
+            ..Default::default()
+        };
+        return Ok(json!(r));
     }
     let rows: Mutex<Vec<lensbench_design::swap::SwapResult>> = Mutex::new(Vec::new());
     sess.swap_cancel
@@ -601,14 +594,14 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     if top > 0 {
         rows.truncate(top);
     }
-    Ok(json!({
-        "count": n,
-        "screened": idx.len(),
-        "done": done,
-        "failed": failed,
-        "cancelled": sum.cancelled,
-        "seconds": t0.elapsed().as_secs_f64(),
-        "slots": slots,
-        "results": rows,
+    Ok(json!(SwapReply {
+        count: n,
+        screened: Some(idx.len()),
+        done: Some(done),
+        failed: Some(failed),
+        cancelled: Some(sum.cancelled),
+        seconds: Some(t0.elapsed().as_secs_f64()),
+        slots,
+        results: Some(rows),
     }))
 }

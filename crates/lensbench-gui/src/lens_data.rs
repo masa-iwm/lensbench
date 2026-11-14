@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 
 use egui::{Key, RichText, Sense, Ui};
 use egui_extras::{Column, TableBuilder};
+use lensbench_engine::session::views;
 use serde_json::{json, Map, Value};
 
 use crate::i18n::{tr, trf};
@@ -62,21 +63,8 @@ impl Row {
     }
 }
 
-/// 玉・群（serve の units）
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Unit {
-    pub name: String,
-    pub spans: Vec<[usize; 2]>,
-    /// 読込で作った玉（lens1 …）
-    pub auto: bool,
-    /// 剛体の動き dx dy tx ty tz [mm, deg]
-    pub motion: [f64; 5],
-    /// 群の移動 [mm]
-    pub shift: f64,
-    /// 範囲の中の媒質の dn・disp（媒質が無いか面ごとに違えば None）
-    pub dn: Option<f64>,
-    pub disp: Option<f64>,
-}
+/// 玉・群（serve の surface の units）
+pub use lensbench_engine::session::views::UnitView as Unit;
 
 /// JSON の数（inf は {"$f": "inf"}）
 fn num(v: &Value) -> f64 {
@@ -123,8 +111,8 @@ fn pickup_text(p: &Value) -> (String, String) {
     (what, t)
 }
 
-/// serve の `surface`（全部の面）の結果
-pub fn parse(v: &Value) -> (Vec<Row>, Vec<Unit>) {
+/// serve の `surface`（全部の面）の結果。玉・群は engine の型で読む（読めなければ誤り）
+pub fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
     let s = |x: &Value| x.as_str().unwrap_or_default().to_string();
     let rows = v["surfaces"]
         .as_array()
@@ -162,32 +150,8 @@ pub fn parse(v: &Value) -> (Vec<Row>, Vec<Unit>) {
                 .collect()
         })
         .unwrap_or_default();
-    let units = v["units"]
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|u| Unit {
-                    name: s(&u["name"]),
-                    spans: u["spans"]
-                        .as_array()
-                        .map(|x| {
-                            x.iter()
-                                .filter_map(|p| {
-                                    Some([p[0].as_u64()? as usize, p[1].as_u64()? as usize])
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                    auto: u["auto"] == true,
-                    motion: std::array::from_fn(|i| u["motion"][i].as_f64().unwrap_or(0.0)),
-                    shift: u["shift"].as_f64().unwrap_or(0.0),
-                    dn: u["dn"].as_f64(),
-                    disp: u["disp"].as_f64(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    (rows, units)
+    let units = views::read(&v["units"]).map_err(|e| format!("surface の units: {e}"))?;
+    Ok((rows, units))
 }
 
 /// 表のブロック（木の節）

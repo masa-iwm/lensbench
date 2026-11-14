@@ -11,7 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-lensbench-core = { path = "../lensbench-core" }
+lensbench-core = { path = "../lensbench-core", features = ["serde"] }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-design = { path = "../lensbench-design" }

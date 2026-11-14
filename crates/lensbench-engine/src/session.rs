@@ -331,6 +331,7 @@ mod layout;
 mod optim;
 mod proto;
 mod trace;
+pub mod views;
 pub use catalog::range_system;
 use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
 use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
@@ -429,10 +430,9 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
 
 /// 元に戻せる段・やり直せる段（`history_json`）
 fn history(sess: &Session) -> Value {
-    sess.served().as_ref().map_or_else(
-        || json!({ "undo": 0, "redo": 0, "undo_list": [], "redo_list": [] }),
-        history_json,
-    )
+    sess.served()
+        .as_ref()
+        .map_or_else(|| json!(views::HistoryView::default()), history_json)
 }
 
 /// 結果に段の数と一覧を足す
@@ -1099,19 +1099,22 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
                     }
                     // 玉・群（ブロック）の面の範囲も（GUI の面の表の階層）
                     // 玉・群の偏心・傾き（motion: dx dy tx ty tz）・移動 shift・媒質の dn・disp（面ごとに違えば null）
-                    let units: Vec<Value> = s
+                    let units: Vec<views::UnitView> = s
                         .units
                         .iter()
                         .enumerate()
                         .map(|(i, u)| {
                             let get =
                                 |k| s.get_param(lensbench_core::param::Param::unit(i, k)).ok();
-                            json!({
-                                "name": u.name, "spans": u.spans, "auto": u.auto,
-                                "motion": u.motion, "shift": u.shift,
-                                "dn": get(lensbench_core::units::UnitKind::Dn),
-                                "disp": get(lensbench_core::units::UnitKind::Disp),
-                            })
+                            views::UnitView {
+                                name: u.name.clone(),
+                                spans: u.spans.clone(),
+                                auto: u.auto,
+                                motion: u.motion,
+                                shift: u.shift,
+                                dn: get(lensbench_core::units::UnitKind::Dn),
+                                disp: get(lensbench_core::units::UnitKind::Disp),
+                            }
                         })
                         .collect();
                     // 機構部品（系ファイルの mechanics と同じ形、GUI の面の表で編集）
@@ -1154,17 +1157,15 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         }
         "config_table" => {
             let (s, spec) = sess.current()?;
-            let rows: Vec<Value> = s
+            let rows: Vec<views::ConfigRow> = s
                 .configs()
                 .map(|c| {
                     c.rows
                         .iter()
-                        .map(|r| {
-                            json!({
-                                "param": s.param_name(r.param), "values": r.values, "picks": r.picks.iter()
-                                    .map(|p| json!({ "k": p.k, "from": p.from, "scale": p.scale, "offset": p.offset }))
-                                    .collect::<Vec<_>>(),
-                            })
+                        .map(|r| views::ConfigRow {
+                            param: s.param_name(r.param),
+                            values: r.values.clone(),
+                            picks: r.picks.clone(),
                         })
                         .collect()
                 })
@@ -1179,13 +1180,14 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             } else {
                 1
             };
-            Ok((
-                json!({
-                    "n": n, "active": active, "rows": rows,
-                    "zmx_cfgs": zmx_cfgs, "zmx_cfg": spec.cfg,
-                }),
-                Vec::new(),
-            ))
+            let t = views::ConfigTable {
+                n,
+                active,
+                rows,
+                zmx_cfgs,
+                zmx_cfg: spec.cfg,
+            };
+            Ok((json!(t), Vec::new()))
         }
         // .zmx の多重構成を表にする edit の操作: 各構成を読み、構成で違うパラメータを行にする。
         // 表にできない違い（硝材・無視・面の数・半径以外の値）は notes に

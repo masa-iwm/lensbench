@@ -8,6 +8,8 @@ use egui::{Key, RichText, Sense, Ui};
 use egui_extras::{Column, TableBuilder};
 use serde_json::{json, Value};
 
+use lensbench_engine::session::views::{self, ConfigTable};
+
 use crate::i18n::{tr, trf};
 use crate::theme;
 
@@ -28,13 +30,7 @@ pub struct Table {
 }
 
 /// 構成のピックアップ: 構成 k（1 始まり）の値 = 構成 from の値 × scale + offset
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Pick {
-    pub k: usize,
-    pub from: usize,
-    pub scale: f64,
-    pub offset: f64,
-}
+pub use lensbench_engine::session::views::ConfigPick as Pick;
 
 impl Table {
     /// 行 i の構成 k（0 始まり）のピックアップ
@@ -43,50 +39,22 @@ impl Table {
     }
 }
 
-pub fn parse(v: &Value) -> Table {
-    let us = |k: &str| v[k].as_u64().unwrap_or(1).max(1) as usize;
-    Table {
-        n: us("n"),
-        active: us("active"),
-        rows: v["rows"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .map(|r| {
-                        let vals = r["values"]
-                            .as_array()
-                            .map(|x| x.iter().map(|y| y.as_f64().unwrap_or(f64::NAN)).collect())
-                            .unwrap_or_default();
-                        (r["param"].as_str().unwrap_or_default().to_string(), vals)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        picks: v["rows"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .map(|r| {
-                        r["picks"]
-                            .as_array()
-                            .map(|ps| {
-                                ps.iter()
-                                    .map(|p| Pick {
-                                        k: p["k"].as_u64().unwrap_or(0) as usize,
-                                        from: p["from"].as_u64().unwrap_or(0) as usize,
-                                        scale: p["scale"].as_f64().unwrap_or(1.0),
-                                        offset: p["offset"].as_f64().unwrap_or(0.0),
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        zmx_cfgs: us("zmx_cfgs"),
-        zmx_cfg: us("zmx_cfg"),
-    }
+/// serve の config_table の結果を読む（鍵が足りなければ誤り）
+pub fn parse(v: &Value) -> Result<Table, String> {
+    let t: ConfigTable = views::read(v).map_err(|e| format!("config_table: {e}"))?;
+    let (rows, picks) = t
+        .rows
+        .into_iter()
+        .map(|r| ((r.param, r.values), r.picks))
+        .unzip();
+    Ok(Table {
+        n: t.n.max(1),
+        active: t.active.max(1),
+        rows,
+        picks,
+        zmx_cfgs: t.zmx_cfgs.max(1),
+        zmx_cfg: t.zmx_cfg.max(1),
+    })
 }
 
 /// パネルの操作
@@ -927,8 +895,11 @@ mod tests {
     fn parse_and_cell() {
         let t = parse(&json!({
             "n": 2, "active": 2, "zmx_cfgs": 2, "zmx_cfg": 2,
-            "rows": [{ "param": "2.t", "values": [90.0, 80.0] }],
-        }));
+            "rows": [{ "param": "2.t", "values": [90.0, 80.0], "picks": [] }],
+        }))
+        .unwrap();
+        // 鍵が足りなければ黙って既定にせず誤り
+        assert!(parse(&json!({ "n": 2, "rows": [] })).is_err());
         assert_eq!((t.n, t.active, t.zmx_cfgs), (2, 2, 2));
         assert_eq!(t.rows[0], ("2.t".to_string(), vec![90.0, 80.0]));
         assert_eq!(
@@ -944,9 +915,11 @@ mod tests {
     #[test]
     fn config_ops_and_text() {
         let t = parse(&json!({
-            "n": 3, "active": 3,
-            "rows": [{ "param": "2.t", "values": [1.0, 2.0, 3.0] }, { "param": "G1.shift", "values": [0.0, 0.5, 1.0] }],
-        }));
+            "n": 3, "active": 3, "zmx_cfgs": 1, "zmx_cfg": 1,
+            "rows": [{ "param": "2.t", "values": [1.0, 2.0, 3.0], "picks": [] },
+                     { "param": "G1.shift", "values": [0.0, 0.5, 1.0], "picks": [] }],
+        }))
+        .unwrap();
         assert_eq!(t.pick(0, 1), None);
         assert_eq!(
             insert_op(2, 1, true),
@@ -954,9 +927,10 @@ mod tests {
         );
         assert_eq!(remove_op(3), json!({ "op": "remove_config", "k": 3 }));
         let t2 = parse(&json!({
-            "n": 2, "active": 1,
+            "n": 2, "active": 1, "zmx_cfgs": 1, "zmx_cfg": 1,
             "rows": [{ "param": "2.t", "values": [1.0, 2.0], "picks": [{ "k": 2, "from": 1, "scale": 2.0, "offset": 0.0 }] }],
-        }));
+        }))
+        .unwrap();
         assert_eq!(
             t2.pick(0, 1),
             Some(Pick {

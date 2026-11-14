@@ -34,11 +34,11 @@ pub(super) fn change_label(c: Option<&Change>) -> Value {
 /// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）
 pub(super) fn history_json(x: &Served) -> Value {
     let list = |v: &[Snap]| v.iter().rev().map(|s| s.what.clone()).collect::<Vec<_>>();
-    json!({
-        "undo": x.undo.len(),
-        "redo": x.redo.len(),
-        "undo_list": list(&x.undo),
-        "redo_list": list(&x.redo),
+    json!(super::views::HistoryView {
+        undo: x.undo.len(),
+        redo: x.redo.len(),
+        undo_list: list(&x.undo),
+        redo_list: list(&x.redo),
     })
 }
 

@@ -152,9 +152,12 @@ fn parse_surface_reply() {
             {"type": "STANDARD", "comment": "", "r": {"$f": "inf"}, "t": {"$f": "inf"}, "material": "", "coating": "", "semi": 0.0, "k": 0.0, "stop": false},
             {"type": "STANDARD", "comment": "front", "r": 50.0, "t": 4.0, "material": "N-BK7", "coating": "AR", "semi": 10.0, "k": -1.0, "stop": true},
         ],
-        "units": [{"name": "lens1", "spans": [[1, 2]], "auto": true}],
+        "units": [{"name": "lens1", "spans": [[1, 2]], "auto": true,
+                   "motion": [0.0, 0.0, 0.0, 0.0, 0.0], "shift": 0.0, "dn": null, "disp": null}],
     });
-    let (rows, units) = parse(&v);
+    let (rows, units) = parse(&v).unwrap();
+    // 玉・群の鍵が足りなければ黙って既定にせず誤り
+    assert!(parse(&json!({ "surfaces": [], "units": [{ "name": "lens1" }] })).is_err());
     assert_eq!(rows.len(), 2);
     assert!(rows[0].r.is_infinite());
     assert_eq!(Col::R.text(&rows[0]), "Infinity");
