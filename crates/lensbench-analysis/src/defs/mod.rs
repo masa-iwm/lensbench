@@ -28,7 +28,7 @@ pub fn register(a: &mut Analyses) {
 }
 
 /// 視野の番号（1 始まり、None で全視野）を 0 始まりの並びにする
-fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
+pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
     match field {
         None => Ok((0..s.fields.len()).collect()),
         Some(i) if i >= 1 && i <= s.fields.len() => Ok(vec![i - 1]),
@@ -40,7 +40,7 @@ fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
 }
 
 /// 波長の番号（1 始まり、None で多色）を 0 始まりにする
-fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
+pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
     match w {
         None => Ok(None),
         Some(i) if i >= 1 && i <= s.wavelengths.len() => Ok(Some(i - 1)),

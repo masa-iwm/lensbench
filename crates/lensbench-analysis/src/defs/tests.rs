@@ -47,7 +47,7 @@ fn a0() -> lensbench_core::System {
 #[test]
 fn every_builtin_runs_with_defaults() {
     let s = a0();
-    let cx = crate::registry::Cx { system: &s };
+    let cx = crate::registry::Cx::new(&s);
     for a in Analyses::builtin().iter() {
         let name = a.meta().name;
         let p = match name {
@@ -57,9 +57,8 @@ fn every_builtin_runs_with_defaults() {
             "huygens-mtf" => json!({ "field": 1, "image": 32, "freq_steps": 2 }),
             _ => json!({}),
         };
-        let v = a
-            .run_json(&cx, &p)
-            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let r = a.run_json(&cx, &p);
+        let v = r.unwrap_or_else(|e| panic!("{name}: {e}"));
         assert!(v.is_object(), "{name}");
     }
     let v = Analyses::builtin()
@@ -79,7 +78,7 @@ fn every_builtin_runs_with_defaults() {
 #[test]
 fn unknown_keys_and_types_are_errors() {
     let s = a0();
-    let cx = crate::registry::Cx { system: &s };
+    let cx = crate::registry::Cx::new(&s);
     let a = Analyses::builtin().get("spot").unwrap();
     let e = a
         .run_json(&cx, &json!({ "ringz": 3 }))

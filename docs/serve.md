@@ -98,15 +98,15 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `shutdown` | | サーバーを止める |
 
 - パラメータの名前は Python の `get_param`・`set_param` と同じ（`3.t`・`STOP.r`・`lens2.tx`・`G1.shift` など）
-- `analyze` の引数: 解析の登録簿の解析（spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf）は
+- `analyze` の引数: 解析の登録簿の解析（info・spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf・
+  rays・pop・mech-check・elements・fringe と、`ext::register` で登録した解析）は
   設定の JSON をそのまま渡す。鍵は CLI の旗の `-` を `_` にしたもの（`-` のままでもよい）、値は型のまま（数・`true`・数の並びは配列・
   パスの並びは配列）。前の受け方の数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つのパスも受ける。`json` は読み飛ばす。
   知らない鍵・読めない値は要求の誤り（−32602）。引数の一覧と既定値は `analysis_args`。
   ほかのサブコマンドは CLI の引数にする: キーの `_` は `-` に、`true` は旗、`false`・`null` は省く、数の並びはカンマでつなぎ、文字列の並びは旗を繰り返す。
   `{"cmd": "mtf", "field": 2, "freqs": [10, 20]}` は `lensbench mtf <系> --field 2 --freqs 10,20` と同じ。
   系の読み方（`cfg`・`state`・`path`・`glass_dir`・`lens_catalog`）は `load` で選ぶ（`analyze` で与えると誤り）。
-  値がオブジェクトの引数は JSON の文字列のまま `--<名前>-json` に渡す（拡張のサブコマンドのセンサの設定など:
-  `{"cmd": "camera", "sensor": {"pixel": 0.005}}` は `--sensor-json '{"pixel":0.005}'`）
+  値がオブジェクトの設定（センサの設定など）は登録簿の解析だけが受ける（CLI では JSON の文字列で渡す）
 - `trace` の結果は最後の面（`last`、省くと像面）の局所座標、`global: true` なら大域座標。`err`・`vig` が 0 の光線が通った光線。
   `opl` は幾何的な光路長。コアの追跡とビット一致する
 - `edit` の操作（`op` と引数。面は番号か名前）: `insert_surface` at・surface（面の値: type comment t c r k asph cx material coating semi ignore

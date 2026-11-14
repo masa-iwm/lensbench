@@ -2767,6 +2767,8 @@ dependencies = [
  "lensbench-project",
  "lensbench-verify",
  "mimalloc",
+ "schemars",
+ "serde",
  "serde_json",
  "web-time",
  "zip",

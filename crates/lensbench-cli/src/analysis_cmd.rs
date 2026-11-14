@@ -63,7 +63,9 @@ fn arg_of(p: &Param) -> Arg {
                 .map(|c| leak(c.clone()))
                 .collect::<Vec<_>>(),
         )),
-        ParamTy::Str | ParamTy::Nums => a.allow_hyphen_values(p.ty == ParamTy::Nums),
+        ParamTy::Str | ParamTy::Nums | ParamTy::Json => {
+            a.allow_hyphen_values(p.ty == ParamTy::Nums)
+        }
         ParamTy::Path => a.value_parser(clap::value_parser!(PathBuf)),
         ParamTy::Paths => a
             .value_parser(clap::value_parser!(PathBuf))
@@ -114,7 +116,18 @@ fn nums(s: &str, p: &Param) -> Result<Value, String> {
             ));
         }
     }
-    Ok(Value::from(v))
+    // 整数の並び（視野・面の番号）にも渡せるよう、整数の値は整数で（実数の並びは整数でも受ける）
+    Ok(Value::from(
+        v.into_iter()
+            .map(|x| {
+                if x.fract() == 0.0 && x.abs() < 9.0e15 {
+                    Value::from(x as i64)
+                } else {
+                    Value::from(x)
+                }
+            })
+            .collect::<Vec<_>>(),
+    ))
 }
 
 /// 解釈した引数から解析のサブコマンドを作る
@@ -132,6 +145,13 @@ pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> Result<AnalysisCmd, String>
                 m.get_one::<String>(id).map(|x| Value::from(x.clone()))
             }
             ParamTy::Nums => m.get_one::<String>(id).map(|x| nums(x, &p)).transpose()?,
+            ParamTy::Json => m
+                .get_one::<String>(id)
+                .map(|x| {
+                    serde_json::from_str::<Value>(x)
+                        .map_err(|e| format!("--{} の JSON が読めない: {e}", flag_of(&p.name)))
+                })
+                .transpose()?,
             ParamTy::Path => m
                 .get_one::<PathBuf>(id)
                 .map(|x| Value::from(x.display().to_string())),

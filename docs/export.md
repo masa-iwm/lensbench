@@ -27,9 +27,9 @@
     各構成の像面の位置 4e-13 mm・方向 1e-13・光路長 6e-11 mm（けられの有無も一致。無限遠の物体の軸外の視野の光路長は、数え始める面が
     違うので比べない）。多重構成の行は OpticStudio が書く形（値の後に `0 0 0 1 1 倍率 オフセット 0 "" 0`）。
     倍率を落とすと OpticStudio はエラーなしに値を読み違える
-- `rays`: 光線の面ごとの交点（局所・大域）・方向余弦・光路長・けられ（1 行 = 1 光線 × 1 面）。`--pupil "0,1;0.5,0"` で瞳座標を直接、
-  `--surface` で面を選ぶ。`--save` を省くと CSV を標準出力へ
-- `--save`（info・spot・wavefront・zernike・mtf・mtf-focus・mtf-field・rms・psf・geo-mtf・elements・layout）: 結果を `json`（そのまま）・`csv`・`npz`（表にし、配列は `coef_1`… の列に）で書き出す。
+- `rays`: 光線の面ごとの交点（局所・大域）・方向余弦・光路長・けられ（1 行 = 1 光線 × 1 面）。`--pupil 0,1,0.5,0`（px,py の組の並び）で
+  瞳座標を直接、`--surface` で面を選ぶ。`--all-waves` で全波長。`--save` の拡張子で csv・json・npz
+- `--save`（info・spot・wavefront・zernike・mtf・mtf-focus・mtf-field・rms・psf・geo-mtf・elements・mech-check・layout。rays・pop は自分の形で）: 結果を `json`（そのまま）・`csv`・`npz`（表にし、配列は `coef_1`… の列に）で書き出す。
   npz は列ごとの 1 次元配列（`numpy.load` で読める）
 
 `mtf` は回折 MTF（変調度、子午・球欠）。`--wave` を省くと多色（波長の重みで平均）、`--freqs` を省くと 0 から遮断周波数の

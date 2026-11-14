@@ -7,6 +7,7 @@
 //! 下線をハイフンにしたもの（`--max-freq`）。視野・波長の番号は 1 始まり。
 
 use std::marker::PhantomData;
+use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use lensbench_core::{Error, Result, System};
@@ -30,6 +31,63 @@ pub struct Meta {
 pub struct Cx<'a> {
     /// 解析する系（状態・構成・経路を当てたもの）
     pub system: &'a System,
+    /// 系の読み方（別の構成・状態の系、状態・経路の一覧）。系だけを渡すとき（Python・試験）は None
+    pub source: Option<&'a dyn Source>,
+}
+
+impl<'a> Cx<'a> {
+    /// 系だけの入力
+    pub fn new(system: &'a System) -> Cx<'a> {
+        Cx {
+            system,
+            source: None,
+        }
+    }
+
+    /// 系の読み方（無ければ誤り）
+    pub fn source(&self) -> Result<&'a dyn Source> {
+        self.source
+            .ok_or_else(|| Error::Invalid("この解析は系のファイル（読み方）が要る".into()))
+    }
+}
+
+/// 別に読む系の選び方（[`Source::load`]）
+#[derive(Debug, Clone, Default)]
+pub struct Variant {
+    /// 光束: .zmx は構成の番号（1 始まり）、プロジェクトは状態の名前。None で読み込んだ系と同じ構成・状態
+    pub beam: Option<String>,
+    /// 追跡する波長 [µm] に置き換えて読む（主波長は先頭。.zmx だけ）
+    pub wavelengths: Option<Vec<f64>>,
+}
+
+/// 系の読み方（CLI はコマンドラインの引数、serve は load で選んだもの）。干渉の 2 つの光束・系の一覧の解析が使う
+pub trait Source {
+    /// プロジェクトファイル（光束・状態を名前で選ぶ）か。.zmx・系ファイルなら false
+    fn is_project(&self) -> bool;
+    /// プロジェクトファイルの状態の名前（.zmx・系ファイルなら空）
+    fn states(&self) -> Result<Vec<String>>;
+    /// 選んだ状態
+    fn state(&self) -> Option<String>;
+    /// ビームスプリッターの経路の一覧（BS なし・.zmx なら空）
+    fn paths(&self) -> Result<Vec<String>>;
+    /// 選んだ経路
+    fn path(&self) -> Option<String>;
+    /// 別の読み方（光束・追跡する波長）で読んだ系。serve では読み込んだ後の変更（set・edit）も当て、当てなかった変更は notes に書く
+    fn load(&self, v: &Variant, notes: &mut Vec<String>) -> Result<System>;
+    /// 別の光束（.zmx は構成の番号、プロジェクトは状態の名前）で読んだ系（[`Source::load`]）
+    fn variant(&self, beam: &str, notes: &mut Vec<String>) -> Result<System> {
+        self.load(
+            &Variant {
+                beam: Some(beam.to_string()),
+                ..Default::default()
+            },
+            notes,
+        )
+    }
+    /// プロジェクトファイルの JSON の文字列（状態は当てない。.zmx・系ファイルなら None）
+    fn project_text(&self) -> Result<Option<String>>;
+    /// 系の hash（系ファイルの形の。結果・書き出しの provenance に刻む）
+    fn system_hash(&self, s: &System) -> Result<String>;
 }
 
 /// 解析の定義
@@ -40,6 +98,18 @@ pub trait Analysis: Send + Sync + 'static {
     type Output: Serialize + JsonSchema;
     fn meta(&self) -> Meta;
     fn run(&self, cx: &Cx<'_>, p: &Self::Params) -> Result<Self::Output>;
+    /// 結果を書き出す（拡張子で形式を自分で決める解析だけ。None なら呼び手が結果の JSON か表で書く）
+    fn save(&self, _out: &Self::Output, _path: &Path) -> Option<Result<Saved>> {
+        None
+    }
+}
+
+/// 解析が自分で決めた書き出し（[`Analysis::save`]）
+pub enum Saved {
+    /// 呼び手がこの値を JSON で書く（結果は書いた値に written を足したもの）
+    Json(Value),
+    /// 解析が書いた。この値を結果にする
+    Written(Value),
 }
 
 /// 設定の項目の型（GUI の欄・CLI の旗の受け方）
@@ -63,6 +133,8 @@ pub enum ParamTy {
     Path,
     /// ファイルのパスの並び（CLI は旗を繰り返す）
     Paths,
+    /// JSON のオブジェクト（センサの設定など。スキーマの `x-kind = "json"`。CLI は JSON の文字列、GUI は項目の欄）
+    Json,
 }
 
 impl ParamTy {
@@ -78,6 +150,7 @@ impl ParamTy {
             ParamTy::Nums => "nums",
             ParamTy::Path => "path",
             ParamTy::Paths => "path",
+            ParamTy::Json => "json",
         }
     }
 }
@@ -151,7 +224,17 @@ pub trait DynAnalysis: Send + Sync {
     /// 設定を読めるか確かめる（知らない鍵・型違いは誤り）。呼び手が要求の誤りと解析の誤りを分けるのに使う
     fn check_params(&self, params: &Value) -> Result<()>;
     /// 設定（JSON のオブジェクト。省いた鍵は既定値、知らない鍵は誤り）で解析し、結果を JSON で返す
-    fn run_json(&self, cx: &Cx<'_>, params: &Value) -> Result<Value>;
+    fn run_json(&self, cx: &Cx<'_>, params: &Value) -> Result<Value> {
+        Ok(self.run_save(cx, params, None)?.0)
+    }
+    /// [`DynAnalysis::run_json`] と同じに解析し、save があれば解析が決めた形で書き出す。
+    /// 返す組の 2 つ目は呼び手が書くもの（None なら書き終えた、または save なし）
+    fn run_save(
+        &self,
+        cx: &Cx<'_>,
+        params: &Value,
+        save: Option<&Path>,
+    ) -> Result<(Value, Option<Value>)>;
 }
 
 struct Erased<A: Analysis>(A, PhantomData<fn() -> A>);
@@ -190,11 +273,33 @@ impl<A: Analysis> DynAnalysis for Erased<A> {
     fn check_params(&self, params: &Value) -> Result<()> {
         self.parse(params).map(|_| ())
     }
-    fn run_json(&self, cx: &Cx<'_>, params: &Value) -> Result<Value> {
+    fn run_save(
+        &self,
+        cx: &Cx<'_>,
+        params: &Value,
+        save: Option<&Path>,
+    ) -> Result<(Value, Option<Value>)> {
         let p = self.parse(params)?;
         let out = self.0.run(cx, &p)?;
-        serde_json::to_value(out)
-            .map_err(|e| Error::Invalid(format!("{} の結果: {e}", self.0.meta().name)))
+        let json = |o: &A::Output| {
+            serde_json::to_value(o)
+                .map_err(|e| Error::Invalid(format!("{} の結果: {e}", self.0.meta().name)))
+        };
+        match save {
+            None => Ok((json(&out)?, None)),
+            Some(path) => match self.0.save(&out, path).transpose()? {
+                Some(Saved::Written(v)) => Ok((v, None)),
+                Some(Saved::Json(v)) => {
+                    let mut r = v.clone();
+                    r["written"] = Value::from(path.display().to_string());
+                    Ok((r, Some(v)))
+                }
+                None => {
+                    let v = json(&out)?;
+                    Ok((v.clone(), Some(v)))
+                }
+            },
+        }
     }
 }
 
@@ -263,7 +368,9 @@ pub fn params_of(schema: &Value, defaults: &Value) -> Vec<Param> {
             let ch = choices(s);
             let ext = |k: &str| s.get(k).and_then(Value::as_str).unwrap_or("").to_string();
             let item_ty = s.get("items").map(types).unwrap_or_default();
-            let ty = if ext("x-kind") == "path" {
+            let ty = if ext("x-kind") == "json" {
+                ParamTy::Json
+            } else if ext("x-kind") == "path" {
                 if t.contains(&"array") {
                     ParamTy::Paths
                 } else {
@@ -335,6 +442,13 @@ impl Analyses {
         let name = a.meta().name;
         self.list.retain(|x| x.meta().name != name);
         self.list.push(Arc::new(Erased(a, PhantomData)));
+    }
+
+    /// 型を消した解析を足す（同じ名前があれば置き換える）
+    pub fn add_dyn(&mut self, a: Arc<dyn DynAnalysis>) {
+        let name = a.meta().name;
+        self.list.retain(|x| x.meta().name != name);
+        self.list.push(a);
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn DynAnalysis>> {

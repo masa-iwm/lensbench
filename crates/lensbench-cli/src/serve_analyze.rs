@@ -51,11 +51,17 @@ pub(crate) fn run(
         let p = v.as_str().unwrap_or_default().to_string();
         *v = Value::from(check_path(Path::new(&p), write)?.display().to_string());
     }
-    let out = def.run_json(&lensbench_analysis::Cx { system: &sys }, &params)?;
-    if let Some(p) = &save {
+    let (out, to_save) = crate::serve::with_source(|src| {
+        let cx = lensbench_analysis::Cx {
+            system: &sys,
+            source: Some(src),
+        };
+        def.run_save(&cx, &params, save.as_deref())
+    })??;
+    if let (Some(p), Some(v)) = (&save, &to_save) {
         // 書き出しの provenance には今の系（編集も入る）の hash を刻む
         crate::provenance::set(&sys);
-        crate::save_value(p, &out)?;
+        crate::save_value(p, v)?;
     }
     Ok(out)
 }
@@ -83,6 +89,7 @@ fn loose(p: &Param, v: &Value) -> Value {
             .unwrap_or_else(|| v.clone()),
         (ParamTy::Nums, Value::Number(_)) => Value::from(vec![v.clone()]),
         (ParamTy::Paths, Value::String(_)) => Value::from(vec![v.clone()]),
+        (ParamTy::Json, Value::String(t)) => serde_json::from_str(t).unwrap_or_else(|_| v.clone()),
         _ => v.clone(),
     }
 }

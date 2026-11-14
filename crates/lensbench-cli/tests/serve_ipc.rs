@@ -53,9 +53,9 @@ fn tmp_dir(name: &str) -> PathBuf {
 }
 
 fn cli_json(args: &[&str]) -> Value {
-    let o = exe().args(args).output().unwrap();
+    let o = exe().args(args).arg("--json").output().unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    serde_json::from_slice(&o.stdout).unwrap()
+    strip_notes(serde_json::from_slice(&o.stdout).unwrap())
 }
 
 /// 配列の値（dtype と生のバイト列）

@@ -242,7 +242,7 @@ def examples() -> list[Example]:
     t = str(TMP.relative_to(ROOT))
     return [
         ("info", ["info", A0, *GLASS], 20, None, None),
-        ("spot", ["spot", A0, *GLASS], 16, plot_spot, ["rays", A0, *GLASS, "--fan", "grid", "--rays", "21", "--wave", "all", "--save", f"{t}/rays.npz"]),
+        ("spot", ["spot", A0, *GLASS], 16, plot_spot, ["rays", A0, *GLASS, "--fan", "grid", "--rays", "21", "--all-waves", "--save", f"{t}/rays.npz"]),
         ("mtf", ["mtf", A0, *GLASS, "--freqs", "0,25,50,75,100", "--field", "1"], 12, plot_mtf,
          ["mtf", A0, *GLASS, "--freqs", ",".join(str(v) for v in range(0, 161, 5)), "--json"]),
         ("mtf-field", ["mtf-field", A0, *GLASS, "--freqs", "20,40", "--points", "11", "--json"], 0, plot_mtf_field, None),

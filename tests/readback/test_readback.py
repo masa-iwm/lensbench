@@ -302,7 +302,7 @@ def test_ray_table_matches_opticstudio(name: str, tmp_path: Path) -> None:
     ref = load_ref(name)
     fi = field_index(ref)
     assert fi, "基準に系の視野がない"
-    pup = ";".join(f"{float(x)!r},{float(y)!r}" for x, y in ref.px_py)
+    pup = ",".join(f"{float(x)!r},{float(y)!r}" for x, y in ref.px_py)
     fields = ",".join(str(k) for k in fi.values())
     tabs = {}
     for ext in ("csv", "json"):

@@ -1,5 +1,5 @@
 //! 拡張の解析（GUI の側）: この GUI を組み込んだ exe（非公開版など）が足す解析を、解析パネルの一覧・図・設定の欄に
-//! 載せる。計算は CLI の拡張のサブコマンド（`lensbench_cli::ext`）で、ここでは見せ方だけを登録する。
+//! 載せる。計算は解析の登録簿に足した拡張の解析（`lensbench_cli::ext::register`）で、ここでは見せ方だけを登録する。
 //!
 //! exe の入口で `lensbench_cli::ext::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
 //! [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
@@ -31,11 +31,11 @@ pub struct Analysis {
     pub object: Option<ObjectArg>,
 }
 
-/// 設定のオブジェクトの欄: 項目（入れ子を「.」でつないだ名前）を欄に並べ、値は入れ子の JSON にして引数 `arg` に渡す
-/// （serve の analyze は `--<arg>-json` にする）。JSON のファイルに保存・読込できる
+/// 設定のオブジェクトの欄: 項目（入れ子を「.」でつないだ名前）を欄に並べ、値は入れ子の JSON にして引数 `arg`
+/// （解析の設定の JSON のオブジェクトの項目）に渡す。JSON のファイルに保存・読込できる
 #[derive(Clone, Copy)]
 pub struct ObjectArg {
-    /// 引数の名前（解析の引数の欄からは除く。ファイルで受ける同じ名前の引数も除く）
+    /// 引数の名前（解析の引数の欄からは除く。ファイルで受ける `<arg>_file` の引数も除く）
     pub arg: &'static str,
     /// 欄の見出し
     pub title: &'static str,
@@ -50,6 +50,11 @@ pub struct ObjectArg {
 }
 
 impl ObjectArg {
+    /// 解析の引数の欄から除く引数か（オブジェクトそのものと、ファイルで受ける `<arg>_file`）
+    pub fn covers(&self, name: &str) -> bool {
+        name == self.arg || name.strip_suffix("_file") == Some(self.arg)
+    }
+
     /// 欄の文字列（項目の名前 → 欄に書いた文字列、空の欄は省く）から、引数に渡す入れ子の JSON（GUI の欄と同じ変換）。
     /// `defaults` が真なら、書いていない項目も既定値で埋める
     pub fn json(

@@ -4037,7 +4037,7 @@ impl Core {
             .into_iter()
             // 結果の書き出し（save）は「JSON をコピー」で足りるので出さない
             // 設定のオブジェクトの引数（とそのファイル）は下の欄（JSON を読む）で
-            .filter(|s| s.name != "save" && !object.is_some_and(|o| s.name == o.arg))
+            .filter(|s| s.name != "save" && !object.is_some_and(|o| o.covers(&s.name)))
             .filter(|s| !(sel && (s.name == "field" || s.name == "wave")))
             .filter(|s| {
                 !(fig

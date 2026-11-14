@@ -38,19 +38,6 @@ enum Hint {
 const HINTS: &[(&str, &str, Hint)] = &[
     ("*", "freqs", Hint::Nums),
     ("*", "axis", Hint::Choice(&["y", "x"])),
-    ("fringe", "mode", Hint::Choice(&["pupil", "detector"])),
-    (
-        "fringe",
-        "quantity",
-        Hint::Choice(&[
-            "intensity",
-            "delta",
-            "opd",
-            "visibility",
-            "sample",
-            "reference",
-        ]),
-    ),
 ];
 
 /// 下限のある数の引数（サブコマンド（* は全部）, 引数の名前, 下限）。0 では結果が空になるもの
@@ -68,12 +55,11 @@ const MINS: &[(&str, &str, f64)] = &[
 /// サブコマンド `cmd` の引数（位置引数・系の読み方の引数を除く）。`cmd` が無ければ None
 pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
     // 解析の登録簿の解析は設定のスキーマから（clap の定義を走査しない）
-    if let Some(a) = crate::analyses().get(cmd) {
+    if let Some(a) = crate::analyses().get(cmd).cloned() {
         return Some(a.params().iter().map(|p| p.to_json()).collect());
     }
     let root = crate::cli_command();
     let sub = root.get_subcommands().find(|c| c.get_name() == cmd)?;
-    let ext_choices = crate::ext::get(cmd).map(|e| e.choices).unwrap_or_default();
     let mut out = Vec::new();
     let mut prev_doc = String::new();
     for a in sub.get_arguments() {
@@ -101,13 +87,7 @@ pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
         let hint = HINTS
             .iter()
             .find(|h| (h.0 == "*" || h.0 == cmd) && h.1 == key)
-            .map(|h| h.2)
-            .or_else(|| {
-                ext_choices
-                    .iter()
-                    .find(|c| c.0 == key)
-                    .map(|c| Hint::Choice(c.1))
-            });
+            .map(|h| h.2);
         if let Some(Hint::Choice(c)) = hint {
             choices = c.iter().map(|x| x.to_string()).collect();
         }
@@ -272,6 +252,8 @@ mod tests {
             "elements",
             "ghost",
             "mech-check",
+            "pop",
+            "rays",
         ];
         let all: Vec<(String, Value)> = cmds
             .iter()
@@ -297,10 +279,5 @@ mod tests {
         let rms = analysis_args("rms").unwrap();
         let r = rms.iter().find(|a| a["name"] == "ref").unwrap();
         assert_eq!(r["default"], "centroid");
-        // 説明を前の引数とまとめて書いたものは前の説明
-        let fr = analysis_args("fringe").unwrap();
-        let x = fr.iter().find(|a| a["name"] == "xtilt").unwrap();
-        let y = fr.iter().find(|a| a["name"] == "ytilt").unwrap();
-        assert_eq!(x["doc"], y["doc"]);
     }
 }

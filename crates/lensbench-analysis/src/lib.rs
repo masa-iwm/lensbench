@@ -9,4 +9,6 @@ pub mod plugins;
 pub mod registry;
 
 pub use plugins::{register, Analysis as PluginAnalysis, Prepared};
-pub use registry::{Analyses, Analysis, Cx, DynAnalysis, Meta, Param, ParamTy};
+pub use registry::{
+    Analyses, Analysis, Cx, DynAnalysis, Meta, Param, ParamTy, Saved, Source, Variant,
+};

@@ -24,8 +24,7 @@ use lensbench_core::{zmx_write, System};
 use lensbench_export::d2::Plane;
 use serde_json::{json, Map, Value};
 
-use super::{execute_in, ext, load_file, Cmd, Common};
-use crate::fringe_cmd::FringeArgs;
+use super::{execute_in, load_file, Common};
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -1547,10 +1546,8 @@ pub(crate) fn analysis_argv(p: &Map<String, Value>, file: &Path) -> Result<Vec<S
             }
         };
         match x {
-            // 設定のオブジェクト（センサの設定など）は JSON の文字列のまま `--<名前>-json` に
-            Value::Object(_) => {
-                v.push(format!("{flag}-json={x}"));
-            }
+            // 値がオブジェクトの設定を受けるのは解析の登録簿の解析だけ（設定の JSON をそのまま渡す）
+            Value::Object(_) => return Err(format!("{k} の値にオブジェクトは渡せない")),
             Value::Bool(true) => v.push(flag),
             Value::Bool(false) | Value::Null => {}
             // 値は `--flag=値` の 1 要素で積む（負の数・- で始まる文字列を旗と取り違えない）
@@ -1583,17 +1580,13 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
     if let Some(def) = m
         .get("cmd")
         .and_then(Value::as_str)
-        .and_then(|c| crate::analyses().get(c))
+        .and_then(|c| crate::analyses().get(c).cloned())
     {
         return crate::serve_analyze::run(def.as_ref(), m);
     }
     let argv = analysis_argv(m, &spec.file).map_err(RpcErr::params)?;
     let cli = crate::parse_cli(&argv).map_err(|e| RpcErr::params(e.render().to_string()))?;
     let mut cmd = cli.cmd;
-    if let Cmd::Fringe(a) = &mut cmd {
-        return interference_fringe(a, &spec);
-    }
-    let is_ext = matches!(cmd, Cmd::Ext(_));
     match cmd.common_mut() {
         Some(c) => {
             // 系の読み方は load のもの（解析が系のファイルを読み直す所、info の状態・経路の一覧などでも同じに読む）
@@ -1603,68 +1596,27 @@ fn analyze(p: &Value) -> Result<Value, RpcErr> {
             c.state = spec.state.clone();
             c.path = spec.path.clone();
         }
-        // 拡張のサブコマンドは系の読み方を Ctx から自分で読んでもよい
-        None if is_ext => {}
         None => return Err(RpcErr::params(format!("{} は系の解析ではない", argv[1]))),
     }
     // 解析が読み書きするファイル（--save・--out など）も要求で与えたパスなので確かめる
     for (q, write) in cmd.paths_mut() {
         *q = check_path(q, write)?;
     }
-    let srv = ServeCtx {
-        spec: spec.clone(),
-        log: current_log(),
-    };
-    let ctx = ext::Ctx { serve: Some(&srv) };
-    let (_, mut out) = execute_in(cmd, &ctx)?;
-    if argv[1] == "info" {
-        out["state"] = json!(spec.state);
-    }
-    Ok(out)
+    Ok(execute_in(cmd)?.1)
 }
 
-/// 拡張のサブコマンドに渡す、読み込んだ系（[`ext::Served`]）
-struct ServeCtx {
-    spec: LoadSpec,
-    log: Vec<Change>,
-}
-
-impl ext::Served for ServeCtx {
-    fn common(&self) -> Common {
-        self.spec.common()
-    }
-    fn check_path(&self, p: &Path, write: bool) -> Result<PathBuf, String> {
-        check_path(p, write).map_err(|e| e.msg)
-    }
-    fn replay(&self, s: System, label: &str, notes: &mut Vec<String>) -> Result<System, String> {
-        replay(s, &self.log, label, notes)
-    }
-}
-
-/// 単色の干渉縞（`fringe`）。光束の構成・状態はファイルから読み、読み込んだ後の変更（set・edit）を当てる
-fn interference_fringe(a: &mut FringeArgs, spec: &LoadSpec) -> Result<Value, RpcErr> {
-    a.glass_dir = spec.glass_dir.clone();
-    a.lens_catalog = spec.lens_catalog.clone();
-    a.path = spec.path.clone();
-    if let Some(q) = &mut a.out {
-        *q = check_path(q, true)?;
-    }
+/// 登録簿の解析に渡す系の読み方（load で選んだもの。別に読んだ系にも読み込んだ後の変更を当てる）で f を呼ぶ
+pub(crate) fn with_source<R>(
+    f: impl FnOnce(&dyn lensbench_analysis::Source) -> R,
+) -> Result<R, RpcErr> {
+    let (_, spec) = current()?;
     let log = current_log();
-    let notes = std::cell::RefCell::new(Vec::new());
-    let a: &FringeArgs = a;
-    let project = is_project(&spec.file);
-    let load = |b: &str| {
-        let s = crate::load_beam(a, b)?;
-        let beam = if project {
-            format!("状態 {b}")
-        } else {
-            format!("構成 {b}")
-        };
-        replay(s, &log, &beam, &mut notes.borrow_mut())
-    };
-    let mut out = crate::fringe_cmd::run(a, &load)?;
-    out["notes"] = json!(notes.into_inner());
-    Ok(out)
+    let c = spec.common();
+    let r = |s: System, l: &str, n: &mut Vec<String>| replay(s, &log, l, n);
+    Ok(f(&crate::source::FileSource {
+        c: &c,
+        replay: Some(&r),
+    }))
 }
 
 fn is_zmx(f: &Path) -> bool {
@@ -3453,12 +3405,11 @@ mod tests {
         }
     }
 
-    /// 設定のオブジェクト（GUI のセンサの欄など）は --<名前>-json の JSON 文字列になる（受けるのは拡張の
-    /// サブコマンド。tests/ext.rs）
+    /// 値がオブジェクトの設定は解析の登録簿の解析だけが受ける（引数の文字列にはしない）
     #[test]
-    fn object_arg_becomes_json_flag() {
+    fn object_arg_is_error() {
         let p = json!({ "cmd": "camera", "sensor": { "mla": { "pitch": [0.2, 0.2] } } });
-        let v = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap();
-        assert_eq!(v[3..], [r#"--sensor-json={"mla":{"pitch":[0.2,0.2]}}"#]);
+        let e = analysis_argv(p.as_object().unwrap(), Path::new("s.zmx")).unwrap_err();
+        assert!(e.contains("オブジェクト"), "{e}");
     }
 }

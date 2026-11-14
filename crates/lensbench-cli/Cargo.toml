@@ -34,6 +34,9 @@ lensbench-verify = { path = "../lensbench-verify" }
 lensbench-cad = { path = "../lensbench-cad" }
 clap = { version = "4", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# 解析の登録簿に足す解析（defs/）の設定の型とスキーマ
+serde = { version = "1", features = ["derive"] }
+schemars = "1"
 # 時計（wasm の std::time::Instant は使えない）
 web-time = "1"
 

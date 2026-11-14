@@ -320,7 +320,7 @@ fn rays_and_analysis_are_saved() {
         "--field",
         "2",
         "--pupil",
-        "0,0;0,1",
+        "0,0,0,1",
         "--surface",
         "9",
         "--save",

@@ -10,10 +10,9 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
-use lensbench_core::{elements, glass, pop, report, sweep, zmx, zmx_write, FieldSel, System};
+use lensbench_core::{glass, sweep, zmx, zmx_write, System};
 use lensbench_export::{d2, mesh, scene, table};
 use serde_json::{json, Value};
-use std::f64::consts::PI;
 
 mod analysis_cmd;
 pub mod arg_spec;
@@ -26,17 +25,17 @@ pub use browse::{
 use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
+mod defs;
 pub mod ext;
 mod provenance;
 pub mod run;
 pub mod serve;
 mod serve_analyze;
 mod serve_ipc;
+mod source;
 mod watch;
 
-mod fringe_cmd;
 mod search_cmd;
-use fringe_cmd::FringeArgs;
 
 #[derive(Parser)]
 #[command(name = "lensbench", version = lensbench_core::VERSION, about = "順次光線追跡と解析")]
@@ -77,26 +76,8 @@ pub struct Common {
     pub save: Option<PathBuf>,
 }
 
-/// 視野・波長の選択（1 始まり）
-#[derive(Args, Clone)]
-pub struct Sel {
-    /// 視野の番号（1 始まり、省略で全視野）
-    #[arg(long)]
-    pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
-    #[arg(long)]
-    pub wave: Option<usize>,
-}
-
-/// 拡張のサブコマンドを解釈したもの（[`Cmd::Ext`]）
-struct ExtCmd {
-    args: Box<dyn ext::Args>,
-}
-
 #[derive(Subcommand)]
 enum Cmd {
-    /// システムデータ（EFL、F 値、瞳など）
-    Info(Common),
     /// 系を書き出す: 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。
     /// 読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
     Convert {
@@ -116,17 +97,6 @@ enum Cmd {
         /// 書き出す .zmx
         #[arg(long)]
         out: PathBuf,
-    },
-    /// 玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す。--reverse で玉を反転し、--out で .zmx に書き出す
-    Elements {
-        #[command(flatten)]
-        c: Common,
-        /// 反転する玉の番号（1 始まり、玉だけを数える。カンマ区切り）
-        #[arg(long)]
-        reverse: Option<String>,
-        /// 組み直した系を書き出す .zmx
-        #[arg(long)]
-        out: Option<PathBuf>,
     },
     /// 減衰最小二乗（DLS）で変数を最適化する。評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、
     /// --term・--terms の項を足したもの。--out で最適化した系を .zmx に書き出す
@@ -194,11 +164,6 @@ enum Cmd {
     /// カタログレンズの差し替え探索: --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、
     /// 組ごとに変数（間隔など）を最適化して評価関数の小さい順に並べる
     Swap(Box<search_cmd::SwapArgs>),
-    /// 単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。--mode pupil は瞳上
-    /// （OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、
-    /// detector は像面上（光線を画素へ補間して場を足す）。--out の拡張子で csv（格子、行 = +y）・json（要約と格子）・
-    /// tif（16 bit、--float で 32 bit float）・png（16 bit）
-    Fringe(Box<FringeArgs>),
     /// ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
     CatalogAdd {
         /// ユーザーカタログのファイル
@@ -396,96 +361,6 @@ enum Cmd {
         #[arg(long)]
         mech_detail: bool,
     },
-    /// 簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 --dist
-    /// （省略で次の面の頂点面まで）伝えた照度。--save で格子（csv・npz）か全部（json）を書き出す
-    Pop {
-        #[command(flatten)]
-        c: Common,
-        /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で、間に平面のダミー面だけを挟んで
-        /// 像面まで伝えられる最後の面（--dist も --to もなければ像面まで伝える）。像面まで伝えられる面が無ければ、
-        /// 次の面まで伝えられる最後の面から次の面まで
-        #[arg(long)]
-        surf: Option<usize>,
-        /// 視野の番号（1 始まり、既定 1）
-        #[arg(long, default_value_t = 1)]
-        field: usize,
-        /// 波長の番号（1 始まり、省略で主波長）
-        #[arg(long)]
-        wave: Option<usize>,
-        /// 伝える距離 [mm]（伝搬の向きに測る）
-        #[arg(long)]
-        dist: Option<f64>,
-        /// 伝える先の面（間は平面のダミー面だけ）。--dist も --to もなければ次の面
-        #[arg(long)]
-        to: Option<usize>,
-        /// 方法: auto（既定。遠ければ fresnel、近ければ angular）、fresnel（Fresnel の積分、近軸）、
-        /// angular（角スペクトル、FFT）、direct（Rayleigh-Sommerfeld の積分、近似なし・遅い）
-        #[arg(long, default_value = "auto")]
-        method: String,
-        /// 瞳の格子の一辺の光線の数
-        #[arg(long, default_value_t = 65)]
-        rays: usize,
-        /// 入力の格子の一辺の標本の数
-        #[arg(long, default_value_t = 256)]
-        n: usize,
-        /// 入力の格子の半幅 [mm]（省略で光線と開口の範囲）
-        #[arg(long)]
-        half: Option<f64>,
-        /// 面の開口を掛けない
-        #[arg(long)]
-        no_aperture: bool,
-        /// 出力の格子の一辺の標本の数（省略で入力と同じ）
-        #[arg(long)]
-        out_n: Option<usize>,
-        /// 出力の格子の半幅 [mm]（省略で自動）
-        #[arg(long)]
-        out_half: Option<f64>,
-        /// 出力の格子の中心 "x,y" [mm]（省略で主光線の向きに進めた点）
-        #[arg(long, allow_hyphen_values = true)]
-        center: Option<String>,
-        /// 結果の JSON に出力の照度の格子も入れる（"grid_irradiance"、番号 j·nx + i、j は +y の向き。GUI の図）
-        #[arg(long)]
-        grid: bool,
-    },
-    /// 光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz に、
-    /// 省略すると CSV を標準出力へ
-    Rays {
-        #[command(flatten)]
-        c: Common,
-        /// 視野の番号（1 始まり、カンマ区切り、省略で全視野）
-        #[arg(long)]
-        field: Option<String>,
-        /// 波長の番号（1 始まり、カンマ区切り、all で全部、省略で主波長）
-        #[arg(long)]
-        wave: Option<String>,
-        /// 光線の並び（y・x・cross・grid・ring）
-        #[arg(long, default_value = "grid")]
-        fan: String,
-        /// 光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を足した n+1 本）
-        #[arg(long, default_value_t = 5)]
-        rays: usize,
-        /// 瞳座標を直接（"px,py;px,py;…"）。--fan・--rays より優先
-        #[arg(long)]
-        pupil: Option<String>,
-        /// 書く面（カンマ区切り、省略で全部）
-        #[arg(long)]
-        surface: Option<String>,
-    },
-    /// 機構部品（プロジェクトの mechanics）のケラレ: 瞳の格子の光線を追い、部品の穴（チューブの内径・
-    /// ケージ板やマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す
-    MechCheck {
-        #[command(flatten)]
-        c: Common,
-        /// 視野の番号（1 始まり、カンマ区切り、省略で全視野）
-        #[arg(long)]
-        field: Option<String>,
-        /// 波長の番号（1 始まり、カンマ区切り、all で全部、省略で全波長）
-        #[arg(long)]
-        wave: Option<String>,
-        /// 瞳の格子の一辺の本数（単位円の中の点を使う）
-        #[arg(long, default_value_t = 21)]
-        grid: usize,
-    },
     /// 暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
     CoatModel {
         /// 実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
@@ -589,9 +464,6 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// 拡張のサブコマンド（[`ext`]。clap の定義は [`cli_command`] が足す）
-    #[command(skip)]
-    Ext(ExtCmd),
     /// 解析の登録簿の解析（[`analysis_cmd`]。clap の定義は [`cli_command`] が設定のスキーマから足す）
     #[command(skip)]
     Analysis(Box<analysis_cmd::AnalysisCmd>),
@@ -891,46 +763,9 @@ fn load_file(c: &Common) -> Result<System, String> {
     zmx::load_with(&c.file, &opt).map_err(|e| e.to_string())
 }
 
-/// 単色の干渉縞の光束（.zmx は構成の番号、プロジェクトファイルは状態の名前）の系
-pub(crate) fn load_beam(a: &FringeArgs, beam: &str) -> Result<System, String> {
-    let project = a
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"));
-    let (cfg, state) = if project {
-        (1, Some(beam.to_string()))
-    } else {
-        let k: usize = beam
-            .trim()
-            .parse()
-            .map_err(|_| format!("光束 {beam}（.zmx では構成の番号、1 始まり）"))?;
-        (k, None)
-    };
-    let c = Common {
-        file: a.file.clone(),
-        glass_dir: a.glass_dir.clone(),
-        lens_catalog: a.lens_catalog.clone(),
-        cfg,
-        state,
-        path: a.path.clone(),
-        json: true,
-        save: None,
-    };
-    let s = load_file(&c)?;
-    for w in s
-        .dispersion_warnings()
-        .into_iter()
-        .chain(s.macro_warnings())
-        .chain(s.import_notes.iter().cloned())
-    {
-        eprintln!("注意: {w}");
-    }
-    Ok(s)
-}
-
 /// プロジェクトファイルの状態の名前（.zmx なら空）
 /// プロジェクトファイルのビームスプリッターの経路の一覧（.zmx・BS なしなら空）
-fn split_paths(c: &Common) -> Result<Vec<String>, String> {
+pub(crate) fn split_paths(c: &Common) -> Result<Vec<String>, String> {
     if !c
         .file
         .extension()
@@ -955,7 +790,7 @@ fn split_paths(c: &Common) -> Result<Vec<String>, String> {
     lensbench_project::paths(&p, &env)
 }
 
-fn state_names(c: &Common) -> Vec<String> {
+pub(crate) fn state_names(c: &Common) -> Vec<String> {
     if !c
         .file
         .extension()
@@ -968,25 +803,6 @@ fn state_names(c: &Common) -> Vec<String> {
         .and_then(|t| lensbench_project::Project::from_json(&t).ok())
         .map(|p| p.states.iter().map(|s| s.name.clone()).collect())
         .unwrap_or_default()
-}
-
-fn fields(s: &System, sel: &Sel) -> Result<Vec<usize>, String> {
-    match sel.field {
-        None => Ok((0..s.fields.len()).collect()),
-        Some(i) if i >= 1 && i <= s.fields.len() => Ok(vec![i - 1]),
-        Some(i) => Err(format!("視野 {i} はありません（1〜{}）", s.fields.len())),
-    }
-}
-
-fn wave(s: &System, sel: &Sel) -> Result<Option<usize>, String> {
-    match sel.wave {
-        None => Ok(None),
-        Some(i) if i >= 1 && i <= s.wavelengths.len() => Ok(Some(i - 1)),
-        Some(i) => Err(format!(
-            "波長 {i} はありません（1〜{}）",
-            s.wavelengths.len()
-        )),
-    }
 }
 
 /// カンマ区切りの数
@@ -1029,23 +845,6 @@ fn brief(v: &Value) -> Value {
     }
 }
 
-/// "px,py;px,py" の瞳座標
-fn parse_pupil(s: &str) -> Result<(Vec<f64>, Vec<f64>), String> {
-    let mut px = Vec::new();
-    let mut py = Vec::new();
-    for t in s.split(';').filter(|t| !t.trim().is_empty()) {
-        let (a, b) = t
-            .split_once(',')
-            .ok_or_else(|| format!("瞳座標 {t} は px,py"))?;
-        px.push(a.trim().parse::<f64>().map_err(|_| format!("瞳座標 {t}"))?);
-        py.push(b.trim().parse::<f64>().map_err(|_| format!("瞳座標 {t}"))?);
-    }
-    if px.is_empty() {
-        return Err("瞳座標がない".into());
-    }
-    Ok((px, py))
-}
-
 /// --save: 解析の結果を書き出す（json はそのまま、csv・npz は表にして）
 pub(crate) fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
     let json = p
@@ -1067,16 +866,10 @@ impl Cmd {
     /// 系のファイルを読む解析の共通の引数
     fn common_mut(&mut self) -> Option<&mut Common> {
         match self {
-            Cmd::Info(c)
-            | Cmd::Optimize { c, .. }
+            Cmd::Optimize { c, .. }
             | Cmd::Tolerance { c, .. }
-            | Cmd::Elements { c, .. }
             | Cmd::Convert { c, .. }
-            | Cmd::Layout { c, .. }
-            | Cmd::Pop { c, .. }
-            | Cmd::MechCheck { c, .. }
-            | Cmd::Rays { c, .. } => Some(c),
-            Cmd::Ext(e) => e.args.common_mut(),
+            | Cmd::Layout { c, .. } => Some(c),
             Cmd::Analysis(a) => Some(&mut a.c),
             _ => None,
         }
@@ -1086,7 +879,6 @@ impl Cmd {
     fn paths_mut(&mut self) -> Vec<(&mut PathBuf, bool)> {
         let (c, mut v): (Option<&mut Common>, Vec<(&mut PathBuf, bool)>) = match self {
             Cmd::Layout { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
-            Cmd::Elements { c, out, .. } => (Some(c), out.iter_mut().map(|p| (p, true)).collect()),
             Cmd::Optimize {
                 c, out, terms_file, ..
             } => (
@@ -1109,11 +901,6 @@ impl Cmd {
                 (Some(c), v)
             }
             Cmd::Convert { c, out } => (Some(c), vec![(out, true)]),
-            Cmd::Ext(e) => {
-                let v = e.args.paths_mut();
-                // 拡張の paths_mut は --save も含む
-                return v;
-            }
             other => (other.common_mut(), Vec::new()),
         };
         if let Some(p) = c.and_then(|c| c.save.as_mut()) {
@@ -1122,19 +909,14 @@ impl Cmd {
         v
     }
 
-    /// 結果を書き出すファイル（rays は自分で書くので除く）
+    /// 結果を書き出すファイル（登録簿の解析は自分の形で書くので除く）
     fn save(&self) -> Option<PathBuf> {
         match self {
-            Cmd::Info(c)
-            | Cmd::Optimize { c, .. }
-            | Cmd::Tolerance { c, .. }
-            | Cmd::Elements { c, .. }
-            | Cmd::MechCheck { c, .. }
-            | Cmd::Layout { c, .. } => c.save.clone(),
+            Cmd::Optimize { c, .. } | Cmd::Tolerance { c, .. } | Cmd::Layout { c, .. } => {
+                c.save.clone()
+            }
             Cmd::Zoom(a) => a.save.clone(),
             Cmd::Swap(a) => a.save.clone(),
-            Cmd::Ext(e) => e.args.common().and_then(|c| c.save.clone()),
-            Cmd::Analysis(a) => a.c.save.clone(),
             _ => None,
         }
     }
@@ -1263,74 +1045,6 @@ fn print_catalog_table(v: &Value) {
 }
 
 /// 結果を標準出力に出す
-/// 機構のケラレ（[`Cmd::MechCheck`]）
-fn mech_report(
-    s: &lensbench_core::System,
-    fields: &[usize],
-    waves: &[usize],
-    grid: usize,
-) -> Result<Value, String> {
-    if s.mechanics.is_empty() {
-        return Err("機構部品がない（プロジェクトの mechanics に書く）".into());
-    }
-    if grid < 2 {
-        return Err("--grid は 2 以上".into());
-    }
-    let (px, py) = lensbench_core::mech::pupil_grid(grid);
-    let v = lensbench_core::mech::vignetting(s, &s.mechanics, fields, waves, &px, &py)
-        .map_err(|e| e.to_string())?;
-    let pct = |n: usize, d: usize| {
-        if d == 0 {
-            0.0
-        } else {
-            100.0 * n as f64 / d as f64
-        }
-    };
-    let parts: Vec<Value> = s
-        .mechanics
-        .iter()
-        .enumerate()
-        .map(|(k, p)| {
-            let worst = v.iter().map(|r| pct(r.clipped[k], r.launched)).fold(0.0, f64::max);
-            let first = v.iter().map(|r| pct(r.first[k], r.launched)).fold(0.0, f64::max);
-            json!({
-                "name": p.name, "surface": p.surface,
-                "clipped_max_pct": worst, "first_max_pct": first,
-                "bores": p.bores.iter().map(|b| json!({"z0": b.z0, "z1": b.z1, "diameter": 2.0 * b.radius})).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    let rows: Vec<Value> = v
-        .iter()
-        .map(|r| {
-            json!({
-                "field": r.field + 1, "wave": r.wave + 1,
-                "rays": r.launched, "failed": r.failed,
-                "optical_pct": pct(r.optical, r.launched),
-                "passed_pct": pct(r.passed, r.launched),
-                "parts": s.mechanics.iter().enumerate().map(|(k, p)| json!({
-                    "name": p.name,
-                    "clipped_pct": pct(r.clipped[k], r.launched),
-                    "first_pct": pct(r.first[k], r.launched),
-                })).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    let fit: Vec<Value> = lensbench_core::mech::fit_check(s, &s.mechanics)
-        .map_err(|e| e.to_string())?
-        .iter()
-        .map(|f| {
-            json!({
-                "kind": f.kind, "error": f.error,
-                "part": s.mechanics[f.part].name,
-                "other": f.other.map(|o| s.mechanics[o].name.clone()),
-                "surface": f.surface, "value": f.value, "message": f.message,
-            })
-        })
-        .collect();
-    Ok(json!({ "pupil_rays": px.len(), "parts": parts, "results": rows, "fit": fit }))
-}
-
 fn print_out(json_out: bool, out: &Value) {
     if out.is_null() {
         return;
@@ -1387,11 +1101,11 @@ fn tolerance_brief(out: &Value) -> Value {
 
 /// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。serve・watch もこれを使う
 fn execute(cmd: Cmd) -> Result<(bool, Value), String> {
-    execute_in(cmd, &ext::Ctx::default())
+    execute_in(cmd)
 }
 
 /// [`execute`] を実行の場（serve の中か。拡張のサブコマンドに渡す）を与えて
-fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
+fn execute_in(cmd: Cmd) -> Result<(bool, Value), String> {
     let e = |e: lensbench_core::Error| e.to_string();
     let save = cmd.save();
     provenance::clear();
@@ -1403,18 +1117,31 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
         // 記述の中のパス（基準データ・系）を serve の --root で確かめられないので、コマンドラインからだけ
         Cmd::Verify { .. } => return Err("verify はコマンドラインからだけ使える".into()),
         Cmd::Plugins { json } => (json, plugins_json()),
-        Cmd::Ext(e) => e.args.run(ctx)?,
         Cmd::Analysis(a) => {
             let s = load(&a.c)?;
             let def = analyses()
                 .get(&a.name)
+                .cloned()
                 .ok_or_else(|| format!("解析 {} は無い", a.name))?;
-            let out = def
-                .run_json(&lensbench_analysis::Cx { system: &s }, &a.params)
+            let (out, to_save) = def
+                .run_save(
+                    &lensbench_analysis::Cx {
+                        system: &s,
+                        source: Some(&source::FileSource {
+                            c: &a.c,
+                            replay: None,
+                        }),
+                    },
+                    &a.params,
+                    a.c.save.as_deref(),
+                )
                 .map_err(e)?;
-            // 注意は結果の warnings にも入る。コマンドラインでは標準エラーにも出す
-            if ctx.serve.is_none() {
-                for w in out["warnings"].as_array().into_iter().flatten() {
+            if let (Some(p), Some(v)) = (&a.c.save, &to_save) {
+                save_value(p, v)?;
+            }
+            // 注意は結果の warnings・notes にも入る。コマンドラインでは標準エラーにも出す（serve は serve_analyze を通る）
+            for k in ["warnings", "notes"] {
+                for w in out[k].as_array().into_iter().flatten() {
                     if let Some(w) = w.as_str() {
                         eprintln!("注意: {w}");
                     }
@@ -1424,29 +1151,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
         }
         Cmd::Zoom(a) => (a.json, search_cmd::zoom(&a)?),
         Cmd::Swap(a) => (a.json, search_cmd::swap(&a)?),
-        Cmd::Fringe(a) => {
-            let ld = |b: &str| load_beam(&a, b);
-            (true, fringe_cmd::run(&a, &ld)?)
-        }
-        Cmd::Info(c) => {
-            let s = load(&c)?;
-            let d = report::system_data(&s);
-            (
-                c.json,
-                json!({
-                    "name": s.name, "wavelengths_um": s.wavelengths, "primary": s.primary + 1,
-                    "fields": s.fields.iter().map(|f| [f.x, f.y]).collect::<Vec<_>>(),
-                    "effl": d.effl, "epd": d.epdi, "enpp": d.enpp, "exp_diameter": d.expd,
-                    "expp": d.expp, "wfno": d.wfno, "paraxial_wfno": d.pwfn, "image_fno": d.isfn,
-                    "paraxial_image_height": d.pimh, "paraxial_mag": d.pmag,
-                    "total_track": d.totr, "object_na": d.obna, "image_na": d.isna,
-                    "states": state_names(&c), "state": c.state,
-                    "paths": split_paths(&c)?, "path": c.path,
-                    "lensbench": lensbench_core::VERSION,
-                    "system_hash": lensbench_project::sysfile::system_hash(&s)?,
-                }),
-            )
-        }
         Cmd::Convert { c, out } => {
             let s = load(&c)?;
             let zmx = out
@@ -1476,59 +1180,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     "file": out.display().to_string(),
                     "configs": systems.iter().map(|x| x.0.clone()).collect::<Vec<_>>(),
                 }),
-            )
-        }
-        Cmd::Elements { c, reverse, out } => {
-            let s = load(&c)?;
-            let mut els = elements::split(&s).map_err(e)?;
-            let lenses: Vec<usize> = (0..els.len())
-                .filter(|&i| els[i].kind == elements::Kind::Lens)
-                .collect();
-            if let Some(r) = reverse {
-                for t in r.split(',') {
-                    let k: usize = t.trim().parse().map_err(|_| format!("--reverse の {t}"))?;
-                    let i = *lenses
-                        .get(k.wrapping_sub(1))
-                        .ok_or_else(|| format!("玉 {k} はありません（1〜{}）", lenses.len()))?;
-                    els[i] = elements::reverse(&els[i]).map_err(e)?;
-                }
-            }
-            let a = elements::assemble(&s, &els).map_err(e)?;
-            if let Some(p) = &out {
-                warn_notes(zmx_write::save(p, &a).map_err(e)?);
-            }
-            let w = s.primary;
-            let mut nl = 0;
-            let v: Vec<Value> = els
-                .iter()
-                .map(|x| {
-                    let kind = match x.kind {
-                        elements::Kind::Lens => "lens",
-                        elements::Kind::Mirror => "mirror",
-                        elements::Kind::CoordBreak => "coordinate_break",
-                        elements::Kind::Surface => "surface",
-                        elements::Kind::Air => "air",
-                    };
-                    let mut o = json!({ "kind": kind });
-                    if x.kind == elements::Kind::Air {
-                        o["thickness"] = json!(x.t);
-                    } else {
-                        o["surfaces"] = json!([x.from, x.from + x.surfaces.len() - 1]);
-                    }
-                    if x.kind == elements::Kind::Lens {
-                        nl += 1;
-                        o["lens"] = json!(nl);
-                        o["materials"] = json!(x.materials());
-                        o["length"] = json!(x.length());
-                        o["efl"] = json!(x.efl(w));
-                        o["reversed"] = json!(x.reversed);
-                    }
-                    o
-                })
-                .collect();
-            (
-                c.json,
-                json!({ "elements": v, "efl": a.paraxial().efl, "written": out.map(|p| p.display().to_string()) }),
             )
         }
         Cmd::Layout {
@@ -1631,83 +1282,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                     "bounds_mm": [lo, hi],
                 }),
             )
-        }
-        Cmd::MechCheck {
-            c,
-            field,
-            wave,
-            grid,
-        } => {
-            let s = load(&c)?;
-            let fields = match field.as_deref() {
-                Some(v) => index_list(v, s.fields.len(), "視野")?,
-                None => (0..s.fields.len()).collect(),
-            };
-            let waves = match wave.as_deref() {
-                Some(v) => index_list(v, s.wavelengths.len(), "波長")?,
-                None => (0..s.wavelengths.len()).collect(),
-            };
-            (c.json, mech_report(&s, &fields, &waves, grid)?)
-        }
-        Cmd::Rays {
-            c,
-            field,
-            wave,
-            fan,
-            rays,
-            pupil,
-            surface,
-        } => {
-            let s = load(&c)?;
-            let (px, py) = match &pupil {
-                Some(p) => parse_pupil(p)?,
-                None => scene::pupil(fan.parse()?, rays),
-            };
-            let img = s.image();
-            let o = table::RayOptions {
-                fields: field
-                    .as_deref()
-                    .map(|v| index_list(v, s.fields.len(), "視野"))
-                    .transpose()?,
-                waves: wave
-                    .as_deref()
-                    .map(|v| index_list(v, s.wavelengths.len(), "波長"))
-                    .transpose()?,
-                px,
-                py,
-                surfaces: surface
-                    .as_deref()
-                    .map(|v| {
-                        v.split(',')
-                            .map(|t| {
-                                let j: usize =
-                                    t.trim().parse().map_err(|_| format!("面の番号 {t}"))?;
-                                if j == 0 || j > img {
-                                    return Err(format!("面 {j} は書けない（1〜{img}）"));
-                                }
-                                Ok(j)
-                            })
-                            .collect::<Result<Vec<_>, String>>()
-                    })
-                    .transpose()?,
-            };
-            let t = table::rays(&s, &o).map_err(e)?;
-            match &c.save {
-                Some(p) => {
-                    t.save(p)?;
-                    (
-                        c.json,
-                        json!({ "written": p.display().to_string(), "rows": t.rows() }),
-                    )
-                }
-                None if c.json => (true, t.to_json()),
-                None => {
-                    let mut o = std::io::stdout().lock();
-                    t.write_csv(&mut o).map_err(|x| x.to_string())?;
-                    // 表は書き出し済み（print_out は何も出さない）
-                    return Ok((false, Value::Null));
-                }
-            }
         }
         Cmd::Optimize {
             c,
@@ -2399,175 +1973,6 @@ fn execute_in(cmd: Cmd, ctx: &ext::Ctx) -> Result<(bool, Value), String> {
                 out: out.as_deref(),
             })?,
         ),
-        Cmd::Pop {
-            c,
-            surf,
-            field,
-            wave,
-            dist,
-            to,
-            method,
-            rays,
-            n,
-            half,
-            no_aperture,
-            out_n,
-            out_half,
-            center,
-            grid,
-        } => {
-            let s = load(&c)?;
-            // --surf を省くと、像面まで伝えられる最後の面（間は平面のダミー面だけで、距離が 0 でない面）から像面まで
-            let (surf, to) = match surf {
-                Some(j) => (j, to),
-                None => {
-                    let img = s.image();
-                    let ok = |j: usize, t: usize| {
-                        [1.0, -1.0]
-                            .iter()
-                            .any(|&dir| pop::distance_to(&s, j, t, dir).is_ok())
-                    };
-                    // 像面まで伝えられなければ（像面の手前に曲面など）、次の面まで伝えられる最後の面から次の面まで
-                    let (j, t) = match (1..img).rev().find(|&j| ok(j, img)) {
-                        Some(j) => (j, img),
-                        None => (1..img)
-                            .rev()
-                            .find(|&j| ok(j, j + 1))
-                            .map(|j| (j, j + 1))
-                            .ok_or("--surf を指定する（次の面まで伝えられる面がない）")?,
-                    };
-                    (j, to.or((dist.is_none()).then_some(t)))
-                }
-            };
-            let sel = Sel {
-                field: Some(field),
-                wave,
-            };
-            let fi = fields(&s, &sel)?[0];
-            let w = self::wave(&s, &sel)?;
-            let m = match method.as_str() {
-                "auto" => pop::PopMethod::Auto,
-                "fresnel" => pop::PopMethod::Fresnel,
-                "angular" => pop::PopMethod::Angular,
-                "direct" => pop::PopMethod::Direct,
-                x => return Err(format!("--method {x}（auto・fresnel・angular・direct）")),
-            };
-            let center = center
-                .as_deref()
-                .map(|v| -> Result<(f64, f64), String> {
-                    let p: Vec<f64> = v
-                        .split(',')
-                        .map(|t| t.trim().parse::<f64>().map_err(|_| format!("--center {v}")))
-                        .collect::<Result<_, _>>()?;
-                    match p[..] {
-                        [x, y] => Ok((x, y)),
-                        _ => Err(format!("--center は x,y（{v}）")),
-                    }
-                })
-                .transpose()?;
-            let o = pop::RayBeamOpts {
-                rays,
-                n,
-                half,
-                aperture: !no_aperture,
-                overfill: None,
-            };
-            let rb = pop::beam_from_rays(&s, FieldSel::Index(fi), w, surf, &o).map_err(e)?;
-            let b = &rb.beam;
-            let d = match (dist, to) {
-                (Some(d), None) => d,
-                (None, t) => {
-                    let t = t.unwrap_or(surf + 1);
-                    pop::distance_to(&s, surf, t, b.dir).map_err(e)?
-                }
-                _ => return Err("--dist と --to はどちらか".into()),
-            };
-            let out = pop::OutGrid {
-                n: out_n.map(|v| (v, v)),
-                half: out_half.map(|v| (v, v)),
-                center,
-            };
-            let p = pop::propagate(b, d, m, out).map_err(e)?;
-            let pb = &p.beam;
-            if p.kernel_step > PI / 2.0 {
-                eprintln!(
-                    "注意: 核の位相の標本の間の差が {:.2} rad（π/2 超え）。--n を増やすか --half・--out-half を狭める",
-                    p.kernel_step
-                );
-            }
-            if p.fresnel_error > 0.01 && p.method == pop::PopMethod::Fresnel {
-                eprintln!(
-                    "注意: Fresnel 近似で落とす位相が {:.2} rad。--method direct を使う",
-                    p.fresnel_error
-                );
-            }
-            let summary = |b: &pop::Beam| {
-                let (cx, cy) = b.centroid();
-                json!({
-                    "n": [b.nx, b.ny], "dx": b.dx, "dy": b.dy, "center": [b.x0, b.y0],
-                    "pilot": { "ax": b.pilot.ax, "ay": b.pilot.ay, "curv": b.pilot.curv },
-                    "power": b.power(), "peak": b.peak(), "centroid": [cx, cy],
-                    "rms_width": b.rms_width(), "phase_step": b.phase_step(),
-                })
-            };
-            let row = |b: &pop::Beam, j: usize| -> Vec<f64> {
-                (0..b.nx).map(|i| b.u[j * b.nx + i].norm_sqr()).collect()
-            };
-            let colm = |b: &pop::Beam, i: usize| -> Vec<f64> {
-                (0..b.ny).map(|j| b.u[j * b.nx + i].norm_sqr()).collect()
-            };
-            let mut v = json!({
-                "unit": "mm, W/mm² (power 1 in the pupil)",
-                "surface": surf, "field": field, "wavelength_um": b.wl * 1e3, "index": b.index,
-                "distance": d, "method": format!("{:?}", p.method).to_lowercase(), "rays_used": rb.used, "rays_traced": rb.traced,
-                "aperture": rb.aperture.map(|a| format!("{a:?}")),
-                "input": summary(b),
-                "output": summary(pb),
-                "kernel_step": p.kernel_step, "fresnel_error": p.fresnel_error,
-                "x": (0..pb.nx).map(|i| pb.x(i)).collect::<Vec<_>>(),
-                "irradiance_x": row(pb, pb.ny / 2),
-                "y": (0..pb.ny).map(|j| pb.y(j)).collect::<Vec<_>>(),
-                "irradiance_y": colm(pb, pb.nx / 2),
-            });
-            if grid {
-                v["grid_irradiance"] = json!(pb.irradiance());
-            }
-            if let Some(path) = &c.save {
-                let json_file = path
-                    .extension()
-                    .is_some_and(|x| x.eq_ignore_ascii_case("json"));
-                if json_file {
-                    v["grid"] = json!({
-                        "irradiance": pb.irradiance(),
-                        "phase": pb.u.iter().map(|c| c.arg()).collect::<Vec<_>>(),
-                    });
-                    save_value(path, &v)?;
-                } else {
-                    let mut t = table::Table::default();
-                    let (mut xs, mut ys, mut ir, mut ph) = (vec![], vec![], vec![], vec![]);
-                    for j in 0..pb.ny {
-                        for i in 0..pb.nx {
-                            xs.push(pb.x(i));
-                            ys.push(pb.y(j));
-                            ir.push(pb.u[j * pb.nx + i].norm_sqr());
-                            ph.push(pb.u[j * pb.nx + i].arg());
-                        }
-                    }
-                    t.cols.push(("x".into(), table::Col::F64(xs)));
-                    t.cols.push(("y".into(), table::Col::F64(ys)));
-                    t.cols.push(("irradiance".into(), table::Col::F64(ir)));
-                    t.cols.push(("phase".into(), table::Col::F64(ph)));
-                    t.meta.insert(
-                        "note".into(),
-                        json!("phase はパイロット（output.pilot）を除いた位相 [rad]"),
-                    );
-                    t.meta.insert("output".into(), v["output"].clone());
-                    t.save(path)?;
-                }
-                v["written"] = json!(path.display().to_string());
-            }
-            (c.json, v)
-        }
     };
     if let Some(p) = &save {
         save_value(p, &out)?;
@@ -3186,15 +2591,12 @@ fn quiet_broken_pipe() {
 }
 
 /// コマンドラインの入口（`lensbench` の実行ファイル）
-/// clap の定義に拡張のサブコマンド（[`ext::list`]）を足したもの
+/// clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command();
     for a in analysis_commands() {
-        c = c.subcommand(a.clone());
-    }
-    for e in ext::list() {
-        c = c.subcommand((e.command)().name(e.name));
+        c = c.subcommand(a);
     }
     negative_numbers(c)
 }
@@ -3205,33 +2607,37 @@ fn negative_numbers(c: clap::Command) -> clap::Command {
         .mut_subcommands(negative_numbers)
 }
 
-/// 同梱のサブコマンドの名前
-fn builtin_command_names() -> Vec<String> {
+/// 同梱の解析の登録簿（拡張の解析は除く）
+pub(crate) fn builtin_analyses() -> lensbench_analysis::Analyses {
+    let mut a = lensbench_analysis::Analyses::builtin().clone();
+    defs::register(&mut a);
+    a
+}
+
+/// 同梱のサブコマンド・解析の名前（拡張の解析は除く）
+pub(crate) fn builtin_names() -> Vec<String> {
     use clap::CommandFactory;
     Cli::command()
         .get_subcommands()
         .map(|c| c.get_name().to_string())
-        .chain(analyses().iter().map(|a| a.meta().name.to_string()))
+        .chain(builtin_analyses().iter().map(|a| a.meta().name.to_string()))
         .collect()
 }
 
-/// 解析の登録簿（同梱の解析）
-pub(crate) fn analyses() -> &'static lensbench_analysis::Analyses {
-    lensbench_analysis::Analyses::builtin()
+/// 解析の登録簿（同梱の解析と、exe の入口で足した拡張の解析）
+pub(crate) fn analyses() -> std::sync::Arc<lensbench_analysis::Analyses> {
+    ext::analyses()
 }
 
-/// 解析の登録簿のサブコマンド（設定のスキーマから 1 回だけ作る）
-fn analysis_commands() -> &'static [clap::Command] {
-    static C: std::sync::OnceLock<Vec<clap::Command>> = std::sync::OnceLock::new();
-    C.get_or_init(|| {
-        analyses()
-            .iter()
-            .map(|a| analysis_cmd::command(a.as_ref()))
-            .collect()
-    })
+/// 解析の登録簿のサブコマンド（設定のスキーマから）
+fn analysis_commands() -> Vec<clap::Command> {
+    analyses()
+        .iter()
+        .map(|a| analysis_cmd::command(a.as_ref()))
+        .collect()
 }
 
-/// 引数を解釈する（拡張のサブコマンドも）
+/// 引数を解釈する（解析の登録簿のサブコマンドも）
 fn parse_cli<I, T>(argv: I) -> Result<Cli, clap::Error>
 where
     I: IntoIterator<Item = T>,
@@ -3240,27 +2646,13 @@ where
     use clap::FromArgMatches;
     let m = cli_command().try_get_matches_from(argv)?;
     if let Some((name, sub)) = m.subcommand() {
-        if let Some(a) = analyses().get(name) {
+        if let Some(a) = analyses().get(name).cloned() {
             let threads = m.try_get_one::<usize>("threads").ok().flatten().copied();
             let cmd = analysis_cmd::parse(a.as_ref(), sub)
                 .map_err(|x| cli_command().error(clap::error::ErrorKind::ValueValidation, x))?;
             return Ok(Cli {
                 threads,
                 cmd: Cmd::Analysis(Box::new(cmd)),
-            });
-        }
-        if let Some(e) = ext::get(name) {
-            let threads = sub
-                .try_get_one::<usize>("threads")
-                .ok()
-                .flatten()
-                .or_else(|| m.try_get_one::<usize>("threads").ok().flatten())
-                .copied();
-            let args = (e.parse)(sub)
-                .map_err(|x| cli_command().error(clap::error::ErrorKind::ValueValidation, x))?;
-            return Ok(Cli {
-                threads,
-                cmd: Cmd::Ext(ExtCmd { args }),
             });
         }
     }

@@ -53,7 +53,7 @@ def test_matches_cli_bit_for_bit(name, tmp_path):
     s = lb.System.load(zmx(name), glass_dirs=GLASS)
     out = tmp_path / "rays.npz"
     subprocess.run(
-        [cli(), "rays", zmx(name), "--glass-dir", GLASS[0], "--wave", "all", "--field", "2",
+        [cli(), "rays", zmx(name), "--glass-dir", GLASS[0], "--all-waves", "--field", "2",
          "--fan", "grid", "--rays", "24", "--surface", str(s.image), "--save", str(out)],
         check=True,
         capture_output=True,

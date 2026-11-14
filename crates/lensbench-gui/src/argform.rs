@@ -219,6 +219,7 @@ fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
         ("rms", "points") => "横軸の点の数",
         ("fringe", "pupil") => "瞳の光線の格子",
         ("rays", "pupil") => "瞳座標",
+        (_, "all_waves") => "全波長",
         ("pop", "rays") => "瞳の光線の数",
         ("rays", "rays") => "光線の本数",
         ("fringe", "center") => "範囲の中心",
