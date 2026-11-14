@@ -336,7 +336,7 @@ impl Range {
         if self.min.is_none() && self.max.is_none() {
             return true;
         }
-        !x.is_nan() && self.min.map_or(true, |m| x >= m) && self.max.map_or(true, |m| x <= m)
+        !x.is_nan() && self.min.is_none_or(|m| x >= m) && self.max.is_none_or(|m| x <= m)
     }
 }
 
@@ -597,7 +597,7 @@ pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: boo
                     &q.text,
                     &[&r.vendor, &r.part, &g, &r.description, &tags, &sp],
                 )
-                && q.category.as_ref().map_or(true, |c| &r.category == c)
+                && q.category.as_ref().is_none_or(|c| &r.category == c)
                 && specs.iter().all(|f| f.matches(&r.raw))
                 && q.efl.contains(r.efl)
                 && q.diameter.contains(r.diameter)
@@ -611,10 +611,9 @@ pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: boo
                     3 => r.pieces >= 3,
                     n => r.pieces == n,
                 }
-                && q.kind.map_or(true, |k| r.kind == k)
-                && q.kind_group
-                    .map_or(true, |m| (r.kind == RowKind::Mech) == m)
-                && q.fit.as_ref().map_or(true, |f| match f.mode {
+                && q.kind.is_none_or(|k| r.kind == k)
+                && q.kind_group.is_none_or(|m| (r.kind == RowKind::Mech) == m)
+                && q.fit.as_ref().is_none_or(|f| match f.mode {
                     FitMode::MechFor => {
                         r.kind == RowKind::Mech
                             && lensbench_project::catalog_spec::fits_row(&r.raw, f.d)
@@ -1175,7 +1174,7 @@ impl Browser {
     /// メーカーと、一覧にある品の種類（選択肢）
     fn lens_meta(&mut self) -> (Vec<String>, KindChoices) {
         let key = self.lens_key();
-        if self.cache.lens_meta.as_ref().map_or(true, |c| c.0 != key) {
+        if self.cache.lens_meta.as_ref().is_none_or(|c| c.0 != key) {
             let mut vendors: Vec<String> = self.lenses.iter().map(|l| l.vendor.clone()).collect();
             vendors.sort();
             vendors.dedup();
@@ -1211,7 +1210,7 @@ impl Browser {
             .cache
             .lens_fit
             .as_ref()
-            .map_or(true, |c| c.0 != key || c.1 != sel)
+            .is_none_or(|c| c.0 != key || c.1 != sel)
         {
             let rows = &self.lenses;
             let fit = if r.kind == RowKind::Mech {
@@ -1242,7 +1241,7 @@ impl Browser {
 
     fn glass_cats(&mut self) -> Vec<String> {
         let key = self.glass_key();
-        if self.cache.glass_meta.as_ref().map_or(true, |c| c.0 != key) {
+        if self.cache.glass_meta.as_ref().is_none_or(|c| c.0 != key) {
             let mut cats: Vec<String> = self.glasses.iter().map(|g| g.catalog.clone()).collect();
             cats.sort();
             cats.dedup();

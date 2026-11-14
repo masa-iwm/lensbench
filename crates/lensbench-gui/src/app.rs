@@ -1499,7 +1499,7 @@ impl Core {
         }
     }
 
-    fn take(&mut self, d: Done) {
+    fn take(&mut self, mut d: Done) {
         self.rev += 1;
         let ms = d.ms;
         if let Some((method, e)) = d.error() {
@@ -1576,9 +1576,7 @@ impl Core {
                 &fmt_num((ms * 10.0).round() / 10.0),
             ],
         );
-        let (_, params, v) = d.first();
-        let v = v.cloned().unwrap_or(Value::Null);
-        let params = params.clone();
+        let (params, mut v) = d.take_first();
         match d.tag {
             Tag::Load => {
                 // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
@@ -1610,7 +1608,7 @@ impl Core {
                 } else {
                     None
                 };
-                r.params = params.clone();
+                r.params = params;
                 r.cmd = cmd;
                 r.value = Some(v);
                 r.ms = ms;
@@ -1692,8 +1690,8 @@ impl Core {
                 }
                 // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
                 // 面の表は変更あり
-                if let Some(l) = v.get("loaded") {
-                    self.on_loaded(l.clone());
+                if let Some(l) = v.get_mut("loaded") {
+                    self.on_loaded(l.take());
                     let top = &self.hist_list.0.first();
                     self.ld_dirty =
                         top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());

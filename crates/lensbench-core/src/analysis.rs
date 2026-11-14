@@ -283,7 +283,7 @@ pub fn spot_arms(
 
 /// 格子の一辺 n は 4 以上の偶数（中心の点 p = 0 を含み、端が瞳の縁になる）
 fn check_grid(n: usize) -> Result<()> {
-    if n < 4 || n % 2 != 0 {
+    if n < 4 || !n.is_multiple_of(2) {
         invalid!("格子の一辺 {n} は 4 以上の偶数にする");
     }
     Ok(())
@@ -1015,7 +1015,7 @@ fn shifted_rows(
     let nr = gl.gt.len() * 2;
     let row = |r: usize, buf: &mut [Vec<f64>; 5]| -> (C64, Vec<Miss>) {
         let (z, wz) = (gl.gt[r / 2], gl.wt[r / 2]);
-        let sgn = if r % 2 == 0 { 1.0 } else { -1.0 };
+        let sgn = if r.is_multiple_of(2) { 1.0 } else { -1.0 };
         let tau = 0.5 * (z + 1.0);
         let y = a * (1.0 - tau * tau);
         let dyq = 2.0 * a * tau * 0.5 * wz;
@@ -2168,15 +2168,15 @@ fn dot4(a: &[f64], b: &[f64]) -> f64 {
     let n = a.len().min(b.len());
     let (a, b) = (&a[..n], &b[..n]);
     let mut s = [0.0f64; 4];
-    let mut ca = a.chunks_exact(4);
-    let mut cb = b.chunks_exact(4);
-    for (x, y) in (&mut ca).zip(&mut cb) {
+    let (ca, ra) = a.as_chunks::<4>();
+    let (cb, rb) = b.as_chunks::<4>();
+    for (x, y) in ca.iter().zip(cb) {
         for k in 0..4 {
             s[k] += x[k] * y[k];
         }
     }
     let mut t = (s[0] + s[1]) + (s[2] + s[3]);
-    for (x, y) in ca.remainder().iter().zip(cb.remainder()) {
+    for (x, y) in ra.iter().zip(rb) {
         t += x * y;
     }
     t
@@ -2312,7 +2312,7 @@ fn gram_tiles<const TU: usize, const TW: usize>(
 #[target_feature(enable = "avx")]
 unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
     use std::arch::x86_64::*;
-    assert!(ld % 4 == 0 && np % 4 == 0 && a.len() >= ld * np && g.len() >= n * n);
+    assert!(ld.is_multiple_of(4) && np.is_multiple_of(4) && a.len() >= ld * np && g.len() >= n * n);
     let base = a.as_ptr();
     for bi in (0..np).step_by(4) {
         for bj in (0..bi + 4).step_by(2) {
@@ -2597,8 +2597,7 @@ pub fn zernike(
     };
     let (_, _, res) = zern_pass(&basis, &qx, &qy, &v, Some(&c));
     // 重心基準: 1・px・py の最小二乗（QR、列優先）
-    let mut q3: Vec<f64> = std::iter::repeat(1.0)
-        .take(m)
+    let mut q3: Vec<f64> = std::iter::repeat_n(1.0, m)
         .chain(qx.iter().copied())
         .chain(qy.iter().copied())
         .collect();

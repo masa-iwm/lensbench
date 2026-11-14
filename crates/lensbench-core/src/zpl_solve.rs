@@ -503,7 +503,7 @@ impl System {
                 }
                 self.changed()?;
                 let tol = 1e-14 * (1.0 + v.abs());
-                moved |= old.map_or(true, |o| (o - v).abs() > tol);
+                moved |= old.is_none_or(|o| (o - v).abs() > tol);
             }
         }
         Ok(moved)

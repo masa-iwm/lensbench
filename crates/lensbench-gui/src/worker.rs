@@ -121,6 +121,21 @@ impl Done {
         )
     }
 
+    /// 最初の呼び出しの params と結果を取り出す（深い複製をしない。GAR-08）。エラーなら結果は null。
+    /// 取り出した後の replies[0] の params・結果の値は null（method と配列は残る）。
+    /// 光線（Rays・Focus）は返事ごとの params・配列を見るので取り出さず、null を返す
+    pub fn take_first(&mut self) -> (Value, Value) {
+        if matches!(self.tag, Tag::Rays(_) | Tag::Focus) {
+            return (Value::Null, Value::Null);
+        }
+        let r = &mut self.replies[0];
+        let v = match &mut r.result {
+            Ok((v, _)) => v.take(),
+            Err(_) => Value::Null,
+        };
+        (r.params.take(), v)
+    }
+
     /// 最初のエラー
     pub fn error(&self) -> Option<(&str, &str)> {
         self.replies.iter().find_map(|r| {

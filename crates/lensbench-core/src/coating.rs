@@ -759,11 +759,8 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()) as usize)
         }
         fn f64s(&mut self, n: usize) -> Result<Vec<f64>> {
-            Ok(self
-                .take(8 * n)?
-                .chunks_exact(8)
-                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
-                .collect())
+            let (c, _) = self.take(8 * n)?.as_chunks::<8>();
+            Ok(c.iter().map(|c| f64::from_le_bytes(*c)).collect())
         }
         fn values(&mut self, nw: usize, nb: usize, k: usize) -> Result<Vec<f64>> {
             let q = self.f64s(1)?[0];
@@ -1282,7 +1279,7 @@ impl Coatings {
                 continue;
             };
             let name = stem.to_string_lossy().to_uppercase();
-            if found.get(&name).map_or(true, |(r, _)| rank < *r) {
+            if found.get(&name).is_none_or(|(r, _)| rank < *r) {
                 found.insert(name, (rank, p));
             }
         }

@@ -162,7 +162,9 @@ pub fn decode_text_enc(raw: &[u8]) -> (String, TextEncoding) {
     if raw.len() >= 2 && (raw[..2] == [0xff, 0xfe] || raw[..2] == [0xfe, 0xff]) {
         let le = raw[0] == 0xff;
         let u: Vec<u16> = raw[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| {
                 if le {
                     u16::from_le_bytes([c[0], c[1]])

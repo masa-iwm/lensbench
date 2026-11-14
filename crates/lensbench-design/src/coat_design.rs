@@ -299,7 +299,7 @@ pub fn fit_all(targets: &[Target], substrate: Substrate, o: &Options) -> Result<
         let mut best: Option<(Vec<f64>, f64)> = None;
         for d0 in seeds {
             let (d, c) = lm(targets, &pre, &mats, d0, o);
-            if best.as_ref().map_or(true, |b| c < b.1) {
+            if best.as_ref().is_none_or(|b| c < b.1) {
                 best = Some((d, c));
             }
         }

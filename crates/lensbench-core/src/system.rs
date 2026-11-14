@@ -3216,7 +3216,7 @@ impl System {
                 let v = [0.0, -span + 2.0 * span * i as f64 / m as f64];
                 let q = at(sp, v);
                 let e = q[0].hypot(q[1]);
-                if e.is_finite() && best.map_or(true, |b| e < b.0) {
+                if e.is_finite() && best.is_none_or(|b| e < b.0) {
                     best = Some((e, v));
                 }
             }

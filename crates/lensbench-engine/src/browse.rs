@@ -409,7 +409,7 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
     let refs: Vec<&lensbench_project::UserCatalog> = cats.iter().collect();
     for row in &mut out {
         lensbench_project::catalog_spec::apply_overlays(row, &refs);
-        if row.get("category").map_or(true, Value::is_null) {
+        if row.get("category").is_none_or(Value::is_null) {
             use lensbench_project::catalog_spec::{row_category, ItemKind};
             let k = ItemKind::parse(row_category(row)).unwrap_or(ItemKind::Other);
             row["category"] = json!(k.as_str());
@@ -853,7 +853,9 @@ mod tests {
                     let b =
                         lensbench_core::vfs::read(root().join("examples/lenses/LB/PCX-100.zmx"))?;
                     let u: Vec<u16> = b[2..]
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|c| u16::from_le_bytes([c[0], c[1]]))
                         .collect();
                     Ok::<_, std::io::Error>(String::from_utf16_lossy(&u))

@@ -866,7 +866,7 @@ fn then_offset(s: &str) -> Option<usize> {
             && up[i..].starts_with("THEN")
             && (i == 0 || !(b[i - 1] as char).is_alphanumeric() && b[i - 1] != b'_')
             && b.get(i + 4)
-                .map_or(true, |c| !(*c as char).is_alphanumeric() && *c != b'_')
+                .is_none_or(|c| !(*c as char).is_alphanumeric() && *c != b'_')
         {
             return Some(i + 4);
         }

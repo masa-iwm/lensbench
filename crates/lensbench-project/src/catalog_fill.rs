@@ -151,7 +151,7 @@ fn inch_after_number(r: &str) -> bool {
         while i < b.len() && b[i] == b' ' {
             i += 1;
         }
-        b[i..].starts_with(b"in") && b.get(i + 2).map_or(true, |c| !c.is_ascii_alphabetic())
+        b[i..].starts_with(b"in") && b.get(i + 2).is_none_or(|c| !c.is_ascii_alphabetic())
     })
 }
 
@@ -264,7 +264,7 @@ pub fn read_page(text: &str) -> PageRead {
             _ => 4,
         };
         if let Some(v) = &value {
-            if best[slot].as_ref().map_or(true, |(p, _)| prio < *p) {
+            if best[slot].as_ref().is_none_or(|(p, _)| prio < *p) {
                 best[slot] = Some((prio, v.clone()));
             }
         }

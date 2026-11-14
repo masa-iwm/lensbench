@@ -184,7 +184,7 @@ fn npy(c: &Col, scalar: bool) -> Vec<u8> {
                     d.extend_from_slice(&(ch as u32).to_le_bytes());
                     k += 1;
                 }
-                d.extend(std::iter::repeat(0u8).take((n - k) * 4));
+                d.extend(std::iter::repeat_n(0u8, (n - k) * 4));
             }
             (format!("<U{n}"), d)
         }

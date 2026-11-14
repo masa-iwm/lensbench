@@ -66,9 +66,16 @@ impl Scene3 {
                         k => Kind::Plate(k.to_string()),
                     },
                     surfaces: [us(&m["surfaces"][0]), us(&m["surfaces"][1])],
-                    pos: f.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect(),
+                    pos: f
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
+                        .map(|c| [c[0], c[1], c[2]])
+                        .collect(),
                     tris: t
-                        .chunks_exact(3)
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
                         .map(|c| [c[0], c[1], c[2]])
                         .filter(|c| c.iter().all(|&i| (i as usize) < n))
                         .collect(),

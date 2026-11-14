@@ -134,7 +134,7 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
                 if !(axis.iter().all(|v| v.is_finite()) && axis.iter().any(|v| *v != 0.0)) {
                     return Err("複屈折材の板の結晶軸 axis が 0 か数でない".into());
                 }
-                if q.glass.as_deref().map_or(true, |g| is_air(g.trim())) {
+                if q.glass.as_deref().is_none_or(|g| is_air(g.trim())) {
                     return Err("複屈折材の板の入口の面には glass（常光の材料）を書く".into());
                 }
                 lensbench_core::surface::Bire::In {

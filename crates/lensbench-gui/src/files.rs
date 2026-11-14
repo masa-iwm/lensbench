@@ -340,7 +340,7 @@ mod web {
                             .ends_with(&format!(".{}", e.to_ascii_lowercase()))
                     })
                     .unwrap_or(exts.len());
-                if first.as_ref().map_or(true, |(r, _)| rank < *r) {
+                if first.as_ref().is_none_or(|(r, _)| rank < *r) {
                     first = Some((rank, p));
                 }
             }

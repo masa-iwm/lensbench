@@ -81,7 +81,7 @@ impl Var {
         self
     }
     fn applies(&self, c: usize) -> bool {
-        self.configs.as_ref().map_or(true, |v| v.contains(&c))
+        self.configs.as_ref().is_none_or(|v| v.contains(&c))
     }
 }
 

@@ -325,7 +325,7 @@ fn cell_menu(
                 }
             });
         }
-        if st.pick_form.as_ref().map_or(true, |f| f.0 != (i, k)) {
+        if st.pick_form.as_ref().is_none_or(|f| f.0 != (i, k)) {
             let from = pick.map_or(if k == 0 { 2 } else { 1 }, |p| p.from);
             let (sc, of) = pick.map_or((1.0, 0.0), |p| (p.scale, p.offset));
             st.pick_form = Some(((i, k), from.to_string(), full(sc), full(of)));

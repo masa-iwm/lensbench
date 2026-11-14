@@ -895,7 +895,7 @@ fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
         Col::R => same_num(r.r),
         Col::T => same_num(r.t),
         Col::Conic => same_num(r.k),
-        Col::Par(i) => par_value(r, i).map_or(true, same_num),
+        Col::Par(i) => par_value(r, i).is_none_or(same_num),
         _ => text.trim() == col.text(r),
     };
     if same {
@@ -3641,7 +3641,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     }
     match st.cur.map(|x| x.0).filter(|&j| j < c.rows.len()) {
         Some(j) if folded(j).is_none() => {
-            if st.insp.data.as_ref().map_or(true, |d| d.0 != j) && st.insp.asked != Some(j) {
+            if st.insp.data.as_ref().is_none_or(|d| d.0 != j) && st.insp.asked != Some(j) {
                 st.insp.asked = Some(j);
                 acts.push(Act::NeedData(j));
             }

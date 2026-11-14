@@ -236,7 +236,7 @@ fn merge_overlay(obj: &mut Map<String, Value>, o: &Overlay) {
         obj.insert("description".into(), json!(o.description));
     }
     if let Some(k) = o.kind {
-        if obj.get("category").map_or(true, Value::is_null) {
+        if obj.get("category").is_none_or(Value::is_null) {
             obj.insert("category".into(), json!(k.as_str()));
         }
     }

@@ -95,15 +95,19 @@ impl Server {
                     "<f8" => {
                         let mut buf = vec![0u8; n * 8];
                         self.r.read_exact(&mut buf).unwrap();
-                        buf.chunks_exact(8)
-                            .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                        buf.as_chunks::<8>()
+                            .0
+                            .iter()
+                            .map(|c| f64::from_le_bytes(*c))
                             .collect()
                     }
                     "<i4" => {
                         let mut buf = vec![0u8; n * 4];
                         self.r.read_exact(&mut buf).unwrap();
-                        buf.chunks_exact(4)
-                            .map(|c| i32::from_le_bytes(c.try_into().unwrap()) as f64)
+                        buf.as_chunks::<4>()
+                            .0
+                            .iter()
+                            .map(|c| i32::from_le_bytes(*c) as f64)
                             .collect()
                     }
                     d => panic!("dtype {d}"),

@@ -67,7 +67,7 @@ pub fn interferogram(
     if !o.scale.is_finite() || !o.xtilt.is_finite() || !o.ytilt.is_finite() {
         invalid!("scale・xtilt・ytilt は有限の数");
     }
-    if o.n < 4 || o.n % 2 != 0 {
+    if o.n < 4 || !o.n.is_multiple_of(2) {
         invalid!("格子の一辺 {} は 4 以上の偶数", o.n);
     }
     let n = o.n;

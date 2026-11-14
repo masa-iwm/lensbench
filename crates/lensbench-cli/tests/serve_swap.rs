@@ -37,7 +37,7 @@ fn swap_serve() {
     c["count_only"] = json!(true);
     let n = call(&sv, "swap", c);
     let k = n["slots"][0].as_array().unwrap().len();
-    assert!(k >= 2 && k % 2 == 0, "{n}");
+    assert!(k >= 2 && k.is_multiple_of(2), "{n}");
     assert_eq!(n["count"], json!(k));
     assert!(n.get("results").is_none());
 

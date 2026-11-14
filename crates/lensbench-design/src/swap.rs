@@ -226,7 +226,7 @@ fn in_range(x: f64, r: &[Option<f64>; 2]) -> bool {
     if r[0].is_none() && r[1].is_none() {
         return true;
     }
-    x.is_finite() && r[0].map_or(true, |a| x >= a) && r[1].map_or(true, |b| x <= b)
+    x.is_finite() && r[0].is_none_or(|a| x >= a) && r[1].is_none_or(|b| x <= b)
 }
 
 /// レンズの要約（焦点距離・径・中心厚）。作れないレンズは None
@@ -240,7 +240,7 @@ fn vendor_indices(cat: &LensCatalog, f: &Filter) -> Vec<usize> {
         .enumerate()
         .filter(|(_, l)| {
             v.as_ref()
-                .map_or(true, |v| l.vendor.trim().to_uppercase() == *v)
+                .is_none_or(|v| l.vendor.trim().to_uppercase() == *v)
         })
         .map(|(i, _)| i)
         .collect()

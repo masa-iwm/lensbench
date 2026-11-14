@@ -220,7 +220,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let applicable: Vec<bool> = prob
         .vars
         .iter()
-        .map(|v| cur_idx.is_some_and(|c| v.configs.as_ref().map_or(true, |cs| cs.contains(&c))))
+        .map(|v| cur_idx.is_some_and(|c| v.configs.as_ref().is_none_or(|cs| cs.contains(&c))))
         .collect();
     let mut applied = false;
     if p["apply"].as_bool() == Some(true) {

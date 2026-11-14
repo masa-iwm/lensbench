@@ -732,7 +732,7 @@ pub fn detect_kinks(m: &Measured) -> Vec<Kink> {
             let q = x[i] - 2.0 * h + 4.0 * h * k as f64 / 800.0;
             if let Some((r1, r2)) = res(q) {
                 let (s1, s2) = (score(&r1), score(&r2));
-                if best.map_or(true, |b| s2 < b.0) {
+                if best.is_none_or(|b| s2 < b.0) {
                     best = Some((s2, q, s1));
                 }
             }

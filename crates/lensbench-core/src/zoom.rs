@@ -145,7 +145,7 @@ fn solve_point(
         iterations += r.iterations;
         tries += 1;
         let sys = &r.systems[0];
-        let ok = target.map_or(true, |t| {
+        let ok = target.is_none_or(|t| {
             (spec.q.value(sys) - t).abs() <= spec.target_tol * t.abs().max(f64::MIN_POSITIVE)
         });
         if ok || tries >= 4 {

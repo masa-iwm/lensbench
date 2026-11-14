@@ -513,7 +513,7 @@ pub fn write_gltf<W: Write>(
     let mut nodes: Vec<Value> = Vec::new();
     let mut mats: Vec<Value> = Vec::new();
     let mut add_view = |buf: &mut Vec<u8>, bytes: &[u8], target: u32| -> usize {
-        while buf.len() % 4 != 0 {
+        while !buf.len().is_multiple_of(4) {
             buf.push(0);
         }
         let off = buf.len();
@@ -590,7 +590,7 @@ pub fn write_gltf<W: Write>(
         );
         nodes.push(json!({"name": m.name, "mesh": meshes_j.len() - 1}));
     }
-    while buf.len() % 4 != 0 {
+    while !buf.len().is_multiple_of(4) {
         buf.push(0);
     }
     let mut doc = json!({
@@ -603,7 +603,7 @@ pub fn write_gltf<W: Write>(
     });
     if glb {
         let mut js = serde_json::to_vec(&doc).unwrap();
-        while js.len() % 4 != 0 {
+        while !js.len().is_multiple_of(4) {
             js.push(b' ');
         }
         let total = 12 + 8 + js.len() + 8 + buf.len();

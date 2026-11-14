@@ -13,11 +13,7 @@ rust-version = "1.100"
 
 # ワークスペース共通の lint（各クレートは [lints] workspace = true）。clippy の -D warnings は CI のコマンドライン
 [workspace.lints.clippy]
-# rustc 1.100 の clippy で増えた形の指摘。直すと各所に小さな変更が散って並行の作業と衝突するので、まとめて直すまで止める
-manual_is_multiple_of = "allow"
-unnecessary_map_or = "allow"
-chunks_exact_to_as_chunks = "allow"
-manual_repeat_n = "allow"
+# 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める（BLD-30）
 needless_range_loop = "allow"
 
 [profile.release]

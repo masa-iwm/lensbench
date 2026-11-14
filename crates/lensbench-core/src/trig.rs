@@ -251,10 +251,10 @@ unsafe fn cis_avx2(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
 fn cis_impl(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
     let n = phase.len().min(amp.len()).min(out.len());
     let (phase, amp, out) = (&phase[..n], &amp[..n], &mut out[..n]);
-    let mut pc = phase.chunks_exact(LANES);
-    let mut ac = amp.chunks_exact(LANES);
-    let mut oc = out.chunks_exact_mut(LANES);
-    for ((p, a), o) in (&mut pc).zip(&mut ac).zip(&mut oc) {
+    let (pc, pr) = phase.as_chunks::<LANES>();
+    let (ac, ar) = amp.as_chunks::<LANES>();
+    let (oc, or) = out.as_chunks_mut::<LANES>();
+    for ((p, a), o) in pc.iter().zip(ac).zip(oc.iter_mut()) {
         // 範囲外・NaN を含む組は libm で（`!(|x| <= MAX)` は NaN でも真）
         let ok = p.iter().fold(true, |ok, &x| ok & (x.abs() <= MAX_ARG_MED));
         if ok {
@@ -272,12 +272,7 @@ fn cis_impl(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
             }
         }
     }
-    for ((&p, &a), o) in pc
-        .remainder()
-        .iter()
-        .zip(ac.remainder())
-        .zip(oc.into_remainder())
-    {
+    for ((&p, &a), o) in pr.iter().zip(ar).zip(or.iter_mut()) {
         *o = if p.abs() <= MAX_ARG_MED {
             let (s, c) = sincos_poly(p);
             Complex64::new(a * c, a * s)

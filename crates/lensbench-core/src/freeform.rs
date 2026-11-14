@@ -114,13 +114,13 @@ pub fn zern_nm(j: usize, fringe: bool) -> (u32, u32, bool) {
         n += 1;
     }
     let k = j - n * (n + 1) / 2 - 1;
-    let m = if n % 2 == 0 {
+    let m = if n.is_multiple_of(2) {
         2 * k.div_ceil(2)
     } else {
         2 * (k / 2) + 1
     };
     // m > 0: j が偶数なら cos、奇数なら sin（Noll）
-    (n as u32, m as u32, m == 0 || j % 2 == 0)
+    (n as u32, m as u32, m == 0 || j.is_multiple_of(2))
 }
 
 /// R_n^m(ρ) = ρ^m P(ρ²) の P の係数（低い次数から、規格化の係数を掛けて）

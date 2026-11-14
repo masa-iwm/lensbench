@@ -1799,7 +1799,7 @@ impl LayoutData {
         let mut sp: Vec<[usize; 2]> = all
             .iter()
             .copied()
-            .filter(|s| after.map_or(true, |a| s[0] > a))
+            .filter(|s| after.is_none_or(|a| s[0] > a))
             .collect();
         if sp.is_empty() {
             return self.span(name);

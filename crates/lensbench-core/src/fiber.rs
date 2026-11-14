@@ -194,7 +194,7 @@ pub fn fiber_coupling(
     if s.infinite() {
         invalid!("ファイバ結合は有限物体の系だけ");
     }
-    if o.grid < 3 || o.grid % 2 == 0 {
+    if o.grid < 3 || o.grid.is_multiple_of(2) {
         invalid!("grid は 3 以上の奇数");
     }
     if !(o.na_source > 0.0 && o.na_receiver > 0.0) {

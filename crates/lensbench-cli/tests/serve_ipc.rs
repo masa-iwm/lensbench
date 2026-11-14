@@ -92,12 +92,16 @@ impl Arr {
     fn decode(dtype: &str, b: &[u8]) -> Arr {
         match dtype {
             "<f8" => Arr::F64(
-                b.chunks_exact(8)
-                    .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                b.as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|c| f64::from_le_bytes(*c))
                     .collect(),
             ),
             "<c16" => Arr::C64(
-                b.chunks_exact(16)
+                b.as_chunks::<16>()
+                    .0
+                    .iter()
                     .map(|c| {
                         C64::new(
                             f64::from_le_bytes(c[..8].try_into().unwrap()),
@@ -107,8 +111,10 @@ impl Arr {
                     .collect(),
             ),
             "<i4" => Arr::I32(
-                b.chunks_exact(4)
-                    .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+                b.as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| i32::from_le_bytes(*c))
                     .collect(),
             ),
             "|b1" => Arr::Bool(b.iter().map(|&x| x != 0).collect()),
