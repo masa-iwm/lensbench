@@ -76,3 +76,41 @@ def test_grid():
     assert len(g) == 6 and g.draw(4) == {"3.t": 2.0, "5.t": 4.0}
     r = lb.run_batch(lambda i, s, seed: [s.get_param("3.t"), s.get_param("5.t")], g, threads=2, progress=False)
     assert r == [[1.0, 3.0], [1.0, 4.0], [1.0, 5.0], [2.0, 3.0], [2.0, 4.0], [2.0, 5.0]]
+
+
+def test_numpy_values_and_nan_in_results(tmp_path):
+    # 結果に numpy の配列・スカラーを返せる（json モジュールを往復しない、CLI-20）。NaN は None になる
+    s = a0()
+    p = lb.Sampler(s, {"3.t": 0.01}, seed=1)
+
+    def f(i, s, seed):
+        return {"i": np.int64(i), "v": np.arange(3, dtype=np.float32), "bad": float("nan")}
+
+    r = lb.run_batch(f, p, n=3, out=str(tmp_path / "r.jsonl"), threads=1, progress=False,
+                     header={"b": np.int32(2), "a": [np.float64(1.5)]})
+    assert r[1] == {"i": 1, "v": [0.0, 1.0, 2.0], "bad": None}
+    h, rows = lb.read_batch(str(tmp_path / "r.jsonl"))
+    assert rows[2]["result"]["i"] == 2
+
+
+def test_old_nan_lines_and_non_string_keys(tmp_path):
+    # 旧版が書いた NaN・Infinity（JSON でない）の行も read_batch・再開で読める。dict のキーは json.dumps と同じく
+    # 文字列にする（int・float・bool・None）
+    s = a0()
+    p = lb.Sampler(s, {"3.t": 0.01}, seed=2)
+    out = tmp_path / "old.jsonl"
+
+    def f(i, s, seed):
+        return {"v": i, 3: "a", 1.5: "b", True: "c", None: "d"}
+
+    r = lb.run_batch(f, p, n=2, out=str(out), threads=1, progress=False)
+    assert r[0] == {"v": 0, "3": "a", "1.5": "b", "true": "c", "null": "d"}
+    lines = out.read_text(encoding="utf-8").splitlines()
+    lines[1] = lines[1].replace('"v":0', '"v":NaN').replace('"v": 0', '"v": NaN')
+    assert "NaN" in lines[1]
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    h, rows = lb.read_batch(str(out))
+    v = {x["i"]: x["result"]["v"] for x in rows}
+    assert v[0] != v[0] and v[1] == 1
+    r = lb.run_batch(f, p, n=3, out=str(out), threads=1, progress=False)
+    assert len(r) == 3 and r[2]["v"] == 2 and r[0]["v"] != r[0]["v"]

@@ -14,6 +14,7 @@ mod errors;
 pub mod ext;
 mod fringe;
 mod plugin;
+mod pyjson;
 mod runs;
 mod search;
 mod userterm;
@@ -1152,9 +1153,7 @@ impl PySystem {
         let txt: String = if let Ok(t) = project.extract::<String>() {
             t
         } else if project.cast::<PyDict>().is_ok() {
-            py.import("json")?
-                .call_method1("dumps", (project,))?
-                .extract()?
+            pyjson::from_py(project)?.to_string()
         } else {
             return Err(PyTypeError::new_err("project は JSON の文字列か dict"));
         };
@@ -2536,13 +2535,9 @@ impl PySystem {
         threads: Option<usize>,
         reversed: Option<Vec<String>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let json = py.import("json")?;
         let v: serde_json::Value = match &spec {
             None => serde_json::Value::Null,
-            Some(d) => {
-                let txt: String = json.call_method1("dumps", (d,))?.extract()?;
-                serde_json::from_str(&txt).map_err(|e| PyValueError::new_err(e.to_string()))?
-            }
+            Some(d) => pyjson::from_py(d)?,
         };
         let mut systems = vec![(*self.sys()).clone()];
         for c in configs.iter().flatten() {
@@ -2568,7 +2563,7 @@ impl PySystem {
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
-        json.call_method1("loads", (out.to_string(),))
+        pyjson::to_py(py, &out)
     }
 
     /// 最適化の評価関数の残差 r とヤコビアン J（[残差][変数]）を、今の変数の値で返す（反復は自前で回す使い方。

@@ -17,7 +17,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use crate::{err, PySystem};
+use crate::PySystem;
 
 pub(crate) struct PyUserTerm {
     name: String,
@@ -128,7 +128,6 @@ pub(crate) fn add_terms(
     terms: &Bound<'_, PyAny>,
     coat_files: &[PathBuf],
 ) -> PyResult<Vec<Arc<PyUserTerm>>> {
-    let dumps = py.import("json")?.getattr("dumps")?;
     let mut users = Vec::new();
     for (i, t) in terms.try_iter()?.enumerate() {
         let t = t?;
@@ -199,8 +198,7 @@ pub(crate) fn add_terms(
             });
             continue;
         }
-        let txt: String = dumps.call1((d,))?.extract()?;
-        let v: serde_json::Value = serde_json::from_str(&txt).map_err(err)?;
+        let v = crate::pyjson::from_py(d.as_any())?;
         let term = lensbench_design::merit::term_from_json(&v, &p.configs)
             .map_err(|e| PyValueError::new_err(format!("terms[{i}]: {e}")))?;
         p.terms.push(term);

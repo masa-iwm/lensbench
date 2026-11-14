@@ -22,11 +22,8 @@ fn invalid(e: String) -> Error {
 
 impl lensbench_analysis::Source for FileSource<'_> {
     fn is_project(&self) -> bool {
-        self.c
-            .file
-            .extension()
-            .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-            && !lensbench_project::sysfile::is_system_file(&self.c.file)
+        lensbench_project::open::FileKind::of(&self.c.file)
+            == lensbench_project::open::FileKind::Project
     }
     fn states(&self) -> Result<Vec<String>> {
         Ok(crate::load::state_names(self.c))

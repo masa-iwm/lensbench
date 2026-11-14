@@ -583,11 +583,7 @@ fn tolerance_vendors(
     std::collections::HashMap<String, String>,
     std::collections::HashSet<String>,
 ) {
-    if !c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-        || lensbench_project::sysfile::is_system_file(&c.file)
+    if lensbench_project::open::FileKind::of(&c.file) != lensbench_project::open::FileKind::Project
     {
         return Default::default();
     }

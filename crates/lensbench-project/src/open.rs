@@ -6,6 +6,36 @@ use std::path::{Path, PathBuf};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::{zmx, Error, System};
 
+/// 系のファイルの種類（拡張子と中身で決める）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileKind {
+    /// OpticStudio の .zmx（.json 以外はすべてこれとして読む）
+    Zmx,
+    /// プロジェクトファイル（ブロックで組む .json）
+    Project,
+    /// 系ファイル（lensbench 独自の .json、`"format": "lensbench-system"`）
+    SystemFile,
+}
+
+impl FileKind {
+    /// パスの種類。.json は中身を読んで系ファイルかを見る（読めなければプロジェクトとする）
+    pub fn of(path: &Path) -> FileKind {
+        if !is_json(path) {
+            FileKind::Zmx
+        } else if crate::sysfile::is_system_file(path) {
+            FileKind::SystemFile
+        } else {
+            FileKind::Project
+        }
+    }
+}
+
+/// 拡張子が .json か（大文字小文字を区別しない）
+pub fn is_json(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+}
+
 /// 読み方
 #[derive(Clone, Debug, Default)]
 pub struct OpenSpec<'a> {
@@ -91,7 +121,8 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
     if !lensbench_core::vfs::is_file(path) {
         return Err(Error::Io(format!("{}: ファイルが無い", path.display())));
     }
-    if crate::sysfile::is_system_file(path) {
+    let kind = FileKind::of(path);
+    if kind == FileKind::SystemFile {
         if o.cfg != 1 || o.state.is_some() || o.split_path.is_some() {
             return Err(Error::Invalid(format!(
                 "系ファイルでは {cfg}・{state}・{split} は使えない"
@@ -107,10 +138,7 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
             coatings: m.coatings,
         });
     }
-    if path
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-    {
+    if kind == FileKind::Project {
         if o.cfg != 1 {
             return Err(Error::Invalid(format!(
                 "プロジェクトファイルでは {cfg} ではなく {state} で状態を選ぶ"
@@ -190,6 +218,33 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(open(Path::new("x.zmx"), &o).unwrap_err().kind(), "invalid");
+    }
+
+    #[test]
+    fn file_kinds() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let prj = root.join("examples/projects/P10_catalog_four.json");
+        assert_eq!(FileKind::of(&prj), FileKind::Project);
+        assert_eq!(
+            FileKind::of(&root.join("tests/refs/A0/system.zmx")),
+            FileKind::Zmx
+        );
+        let a0 = lensbench_core::zmx::load_with(
+            &root.join("tests/refs/A0/system.zmx"),
+            &lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let s = crate::sysfile::to_string(&a0, &[]).unwrap();
+        let dir = std::env::temp_dir().join(format!("lb_open_kind_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("sys.JSON");
+        std::fs::write(&f, s).unwrap();
+        assert_eq!(FileKind::of(&f), FileKind::SystemFile);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

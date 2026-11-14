@@ -126,11 +126,11 @@ fn zoom<'py>(
 }
 
 /// JSON の文字列か dict を文字列に
-fn json_text(py: Python<'_>, v: &Bound<'_, PyAny>, what: &str) -> PyResult<String> {
+fn json_text(v: &Bound<'_, PyAny>, what: &str) -> PyResult<String> {
     if let Ok(t) = v.extract::<String>() {
         Ok(t)
     } else if v.cast::<PyDict>().is_ok() {
-        py.import("json")?.call_method1("dumps", (v,))?.extract()
+        Ok(crate::pyjson::from_py(v)?.to_string())
     } else {
         Err(PyTypeError::new_err(format!(
             "{what} は JSON の文字列か dict"
@@ -158,11 +158,11 @@ fn swap_search<'py>(
     out: Option<PathBuf>,
     resume: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let st = json_text(py, spec, "spec")?;
+    let st = json_text(spec, "spec")?;
     let glass_dirs = glass_dirs.unwrap_or_default();
     let lens_catalogs = lens_catalogs.unwrap_or_default();
     let out = py
-        .detach(|| -> Result<String, String> {
+        .detach(|| -> Result<serde_json::Value, String> {
             let txt = std::fs::read_to_string(&project)
                 .map_err(|e| format!("{}: {e}", project.display()))?;
             let p = Project::from_json(&txt)?;
@@ -185,10 +185,10 @@ fn swap_search<'py>(
             if top > 0 {
                 r.truncate(top);
             }
-            Ok(serde_json::to_string(&r).unwrap())
+            serde_json::to_value(&r).map_err(|e| e.to_string())
         })
         .map_err(err)?;
-    py.import("json")?.call_method1("loads", (out,))
+    crate::pyjson::to_py(py, &out)
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

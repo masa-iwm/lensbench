@@ -6,6 +6,7 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
 use lensbench_core::{glass, zmx, System};
 use lensbench_export::table;
+use lensbench_project::open::FileKind;
 use serde_json::{json, Value};
 
 /// 系の読み方（CLI の系の引数、serve の load。reload で同じ読み方を繰り返す）
@@ -63,15 +64,9 @@ pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
     Ok(s)
 }
 
-/// プロジェクトファイルの状態の名前（.zmx なら空）
-/// プロジェクトファイルのビームスプリッターの経路の一覧（.zmx・BS なしなら空）
+/// プロジェクトファイルのビームスプリッターの経路の一覧（.zmx・系ファイル・BS なしなら空）
 pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, String> {
-    if !c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-        || lensbench_project::sysfile::is_system_file(&c.file)
-    {
+    if FileKind::of(&c.file) != FileKind::Project {
         return Ok(Vec::new());
     }
     let t = lensbench_core::vfs::read_to_string(&c.file)
@@ -90,12 +85,9 @@ pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, String> {
     lensbench_project::paths(&p, &env)
 }
 
+/// プロジェクトファイルの状態の名前（.zmx・系ファイルなら空）
 pub fn state_names(c: &SysSpec) -> Vec<String> {
-    if !c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
-    {
+    if FileKind::of(&c.file) != FileKind::Project {
         return Vec::new();
     }
     lensbench_core::vfs::read_to_string(&c.file)
@@ -130,10 +122,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
         crate::provenance::set(&s);
         return Ok(vec![(String::new(), s)]);
     }
-    let is_json = c
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"));
+    let kind = FileKind::of(&c.file);
+    let is_json = kind != FileKind::Zmx;
+    if kind == FileKind::SystemFile {
+        return Err("系ファイルは構成を重ねて描けない（--cfgs・--states・--paths は .zmx・プロジェクトだけ）".into());
+    }
     if let Some(v) = &l.cfgs {
         if is_json {
             return Err("--cfgs は .zmx だけ（プロジェクトは --states・--paths）".into());

@@ -138,7 +138,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                 }
             };
             let (_, spec) = sess.current()?;
-            if !is_project(&spec.file) || lensbench_project::sysfile::is_system_file(&spec.file) {
+            if !is_project(&spec.file) {
                 return Err(RpcErr::app(
                     "catalog_add はプロジェクトファイル（組合せ）を読み込んだときだけ",
                 ));

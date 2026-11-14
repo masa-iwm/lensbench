@@ -196,12 +196,9 @@ fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
 /// 重ねて描ける構成: .zmx は構成の数、プロジェクトは状態の名前と BS の経路（今の状態で）
 pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
     let (_, spec) = sess.current()?;
-    let is_json = spec
-        .file
-        .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"));
-    if lensbench_project::sysfile::is_system_file(&spec.file) || !is_json {
-        let n = if is_json {
+    let kind = lensbench_project::open::FileKind::of(&spec.file);
+    if kind != lensbench_project::open::FileKind::Project {
+        let n = if kind == lensbench_project::open::FileKind::SystemFile {
             1
         } else {
             let txt = lensbench_core::glass::read_text(&spec.file)

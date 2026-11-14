@@ -622,6 +622,8 @@ def run_batch(func: Callable[..., Any], plan: Any, n: int | None = None, out: _S
       関数なら dict（done total ran elapsed eta）で呼ぶ
     - header: 頭に足す値（JSON にできる dict など。再開のときは同じに）
 
+    func の返り値は JSON にできる値（dict・list・数・文字列、numpy の配列・スカラーも可。NaN・inf は None になる）。
+
     返すのは番号の順の結果の list（out があればファイルから読み直したもの）。func が例外を出すと新しい組を始めず、
     走っている組が終わってから同じ例外を出す（書いた結果は残るので再開できる）。Ctrl-C でも同じ
     """

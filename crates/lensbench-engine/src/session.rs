@@ -1381,9 +1381,9 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
     Ok(json!({ "ops": ops, "notes": notes, "rows": ops.len() - 2 }))
 }
 
+/// プロジェクトファイル（系ファイルは含めない）
 fn is_project(f: &Path) -> bool {
-    f.extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+    lensbench_project::open::FileKind::of(f) == lensbench_project::open::FileKind::Project
 }
 
 /// 配列を JSON か bin から読む

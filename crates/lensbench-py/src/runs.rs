@@ -14,7 +14,7 @@ use lensbench_core::runs::{self, Dist, Grid, Plan, Progress, RunOpts, Sampler};
 use lensbench_core::System;
 use pyo3::exceptions::{PyKeyboardInterrupt, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyDict, PyList, PyTuple};
+use pyo3::types::{PyDict, PyList, PyTuple};
 
 use crate::{err, PySystem};
 
@@ -259,6 +259,8 @@ fn fmt_s(s: f64) -> String {
 ///   関数なら dict（done total ran elapsed eta）で呼ぶ
 /// - header: 頭に足す値（JSON にできる dict など。再開のときは同じに）
 ///
+/// func の返り値は JSON にできる値（dict・list・数・文字列、numpy の配列・スカラーも可。NaN・inf は None になる）。
+///
 /// 返すのは番号の順の結果の list（out があればファイルから読み直したもの）。func が例外を出すと新しい組を始めず、
 /// 走っている組が終わってから同じ例外を出す（書いた結果は残るので再開できる）。Ctrl-C でも同じ
 #[pyfunction]
@@ -293,19 +295,9 @@ fn run_batch<'py>(
         PlanKind::Sampler(s) => s.seed,
         PlanKind::Grid(_) => 0,
     };
-    let json = py.import("json")?;
     let extra: serde_json::Value = match &header {
         None => serde_json::Value::Null,
-        Some(h) => {
-            let t: String = json
-                .call_method(
-                    "dumps",
-                    (h,),
-                    Some(&[("sort_keys", true)].into_py_dict(py)?),
-                )?
-                .extract()?;
-            serde_json::from_str(&t).map_err(|e| PyValueError::new_err(format!("header: {e}")))?
-        }
+        Some(h) => crate::pyjson::sorted(crate::pyjson::from_py(h)?),
     };
     let hash = lensbench_project::sysfile::system_hash(&pb.base).map_err(err)?;
     let head = serde_json::json!({
@@ -319,7 +311,6 @@ fn run_batch<'py>(
     // 拡張が登録した Rust の模擬（crate::ext::NativeTask）なら Rust のまま回す（GIL を持たない）
     let native = crate::ext::native_task(&func);
     let func = func.unbind();
-    let dumps = json.getattr("dumps")?.unbind();
     let show = match &progress {
         None => true,
         Some(p) => p.is_truthy()?,
@@ -402,10 +393,9 @@ fn run_batch<'py>(
             };
             let ps = PySystem::new(sys, pb.coat_files.clone(), Default::default());
             let r = func.call1(py, (i, ps, s)).map_err(fail)?;
-            let t: String = dumps
-                .call1(py, (r,))
-                .and_then(|x| x.extract(py))
-                .map_err(fail)?;
+            let t = crate::pyjson::from_py_nan_null(r.bind(py))
+                .map_err(fail)?
+                .to_string();
             if keep_mem {
                 mem.lock()
                     .unwrap_or_else(|x| x.into_inner())
@@ -444,10 +434,9 @@ fn run_batch<'py>(
             v
         }
     };
-    let loads = json.getattr("loads")?;
     let l = PyList::empty(py);
     for (_, t) in rows {
-        l.append(loads.call1((t,))?)?;
+        l.append(crate::pyjson::loads(py, &t)?)?;
     }
     Ok(l)
 }
@@ -459,16 +448,15 @@ fn read_batch<'py>(
     path: PathBuf,
 ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyList>)> {
     let (h, rows) = runs::read_results(&path).map_err(err)?;
-    let loads = py.import("json")?.getattr("loads")?;
     let l = PyList::empty(py);
     for (i, s, r) in rows {
         let d = PyDict::new(py);
         d.set_item("i", i)?;
         d.set_item("seed", s)?;
-        d.set_item("result", loads.call1((r,))?)?;
+        d.set_item("result", crate::pyjson::loads(py, &r)?)?;
         l.append(d)?;
     }
-    Ok((loads.call1((h,))?, l))
+    Ok((crate::pyjson::loads(py, &h)?, l))
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

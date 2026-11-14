@@ -430,10 +430,9 @@ impl PyPlugin {
     }
 }
 
-/// serde の JSON → Python（json.loads を通す）
+/// serde の JSON → Python
 fn json_to_py<'py>(py: Python<'py>, v: &serde_json::Value) -> PyResult<Bound<'py, PyAny>> {
-    py.import("json")?
-        .call_method1("loads", (serde_json::to_string(v).map_err(err)?,))
+    crate::pyjson::to_py(py, v)
 }
 
 /// 照合: 記述（*.verify.json）かそれを含むフォルダ（1 つか並び）を、登録のプラグイン（同梱・`register_plugin` で
@@ -470,11 +469,7 @@ fn verify_compare<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let a = to_arrays(actual)?;
     let e = to_arrays(expected)?;
-    let c: String = py
-        .import("json")?
-        .call_method1("dumps", (checks,))?
-        .extract()?;
-    let c: serde_json::Value = serde_json::from_str(&c).map_err(err)?;
+    let c = crate::pyjson::from_py(checks.as_any())?;
     let c = lensbench_verify::checks_from_json(&c).map_err(PyValueError::new_err)?;
     let r = lensbench_verify::compare(&a, &e, &c).map_err(PyValueError::new_err)?;
     let v: Vec<serde_json::Value> = r.iter().map(|x| x.to_json()).collect();

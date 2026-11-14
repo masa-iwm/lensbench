@@ -106,3 +106,14 @@ def test_tolerance_ctrl_c_interrupts():
     assert p.returncode == 3, out
     assert "interrupted" in out
     assert time.monotonic() - t0 < 10
+
+
+def test_tolerance_spec_accepts_numpy_values():
+    # 設定に numpy の数・配列を入れられる（json.dumps を通さない、CLI-20）。NaN は誤り
+    s = lb.System.load(zmx("C0"), glass_dirs=GLASS)
+    spec = {"trials": np.int64(3), "seed": np.int32(5), "preset": "precision", "sensitivity": False,
+            "tols": [{"param": "lens1.dy", "pm": np.float64(0.05)}]}
+    r = s.tolerance(spec)
+    assert r["trials"] == 3
+    with pytest.raises(ValueError):
+        s.tolerance({"trials": float("nan")})

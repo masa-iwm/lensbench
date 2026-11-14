@@ -83,9 +83,9 @@ pub struct SwapArgs {
     pub save: Option<PathBuf>,
 }
 
-fn is_json(p: &std::path::Path) -> bool {
-    p.extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+/// プロジェクトファイル（系ファイルは状態を持たないので .zmx と同じに扱う）
+fn is_project(p: &std::path::Path) -> bool {
+    lensbench_project::open::FileKind::of(p) == lensbench_project::open::FileKind::Project
 }
 
 /// 状態ごとの系と、その名前
@@ -96,7 +96,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
             .filter(|t| !t.is_empty())
             .collect()
     });
-    if is_json(&a.file) {
+    if is_project(&a.file) {
         let txt = lensbench_core::vfs::read_to_string(&a.file)
             .map_err(|e| format!("{}: {e}", a.file.display()))?;
         let p = Project::from_json(&txt)?;
@@ -124,6 +124,10 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
             v.push(s);
         }
         Ok((v, names))
+    } else if lensbench_project::open::FileKind::of(&a.file)
+        == lensbench_project::open::FileKind::SystemFile
+    {
+        Err("系ファイルは構成・状態を持たない（.zmx かプロジェクトファイルを渡す）".into())
     } else {
         let cfgs: Vec<usize> = match &names {
             Some(n) => n
