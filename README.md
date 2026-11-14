@@ -20,7 +20,7 @@ target/release/lensbench spot tests/refs/A0/system.zmx --glass-dir tests/glass  
 target/release/lensbench-gui examples/projects/P8_catalog_two.json                 # GUI
 ```
 
-Windows の GUI の exe は CI の成果物 `lensbench-gui-windows` から取れる（Python の wheel も CI の成果物にある）。
+Windows の GUI の exe は CI の成果物 `lensbench-gui-windows` から取れる（Python の wheel も CI の成果物にある）。成果物は 7 日で消えるので、古い run からは取れない。
 
 ## ドキュメント
 

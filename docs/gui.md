@@ -9,7 +9,7 @@ cargo build --release -p lensbench-gui      # target/release/lensbench-gui(.exe)
 lensbench-gui system.zmx                    # 引数・窓へのドロップ・「ファイル > 開く」で系を開く
 ```
 
-Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` からも取れる。
+Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` からも取れる（成果物は 7 日で消える）。
 
 ![examples/projects/P8_catalog_two.json を開いたところ。左が系のパネル、右が解析のパネル（スポット・MTF・波面）](gen/gui/01_open.png)
 *examples/projects/P8_catalog_two.json を開いたところ。左が系のパネル、右が解析のパネル（スポット・MTF・波面）*
