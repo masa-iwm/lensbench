@@ -52,9 +52,16 @@ impl de::Error for Error {
     }
 }
 
-/// CBOR の値を型に読む（実数の欄は整数でもよい）
-pub fn decode<T: DeserializeOwned>(v: C) -> Result<T, String> {
-    T::deserialize(Lenient(v)).map_err(|e| e.to_string())
+/// CBOR の値を型に読む（実数の欄は整数でもよい）。誤りの文は「root.欄の道: 理由」（道が無ければ「root: 理由」）
+pub fn decode<T: DeserializeOwned>(v: C, root: &str) -> Result<T, String> {
+    T::deserialize(Lenient(v)).map_err(|e| {
+        let sep = match e.path.last() {
+            None => ": ",
+            Some(s) if s.starts_with('[') => "",
+            Some(_) => ".",
+        };
+        format!("{root}{sep}{e}")
+    })
 }
 
 struct Lenient(C);
@@ -238,21 +245,30 @@ mod tests {
 
     #[test]
     fn integers_in_float_fields_and_paths() {
-        let s: S = decode(c(serde_json::json!({
-            "t": 3, "n": 2, "v": [0, 2e-5, {"$f": "inf"}], "o": null, "e": {"B": {"x": 1}}
-        })))
+        let s: S = decode(
+            c(serde_json::json!({
+                "t": 3, "n": 2, "v": [0, 2e-5, {"$f": "inf"}], "o": null, "e": {"B": {"x": 1}}
+            })),
+            "s",
+        )
         .unwrap();
         assert_eq!((s.t, s.n, s.o), (3.0, 2, None));
         assert_eq!(s.v[..2], [0.0, 2e-5]);
         assert!(s.v[2].is_infinite());
         assert_eq!(s.e, E::B { x: 1.0 });
-        let a: E = decode(c(serde_json::json!("A"))).unwrap();
+        let a: E = decode(c(serde_json::json!("A")), "e").unwrap();
         assert_eq!(a, E::A);
-        let e = decode::<Vec<S>>(c(serde_json::json!([
-            { "t": 1, "n": 1, "v": [], "o": 1, "e": "A" },
-            { "t": "x", "n": 1, "v": [], "o": 1, "e": "A" },
-        ])))
+        let e = decode::<Vec<S>>(
+            c(serde_json::json!([
+                { "t": 1, "n": 1, "v": [], "o": 1, "e": "A" },
+                { "t": "x", "n": 1, "v": [], "o": 1, "e": "A" },
+            ])),
+            "v",
+        )
         .unwrap_err();
-        assert!(e.starts_with("[1].t: "), "{e}");
+        assert!(e.starts_with("v[1].t: "), "{e}");
+        // 一番外で足りない欄は道なし
+        let e = decode::<S>(c(serde_json::json!({})), "s").unwrap_err();
+        assert!(e.starts_with("s: missing field"), "{e}");
     }
 }

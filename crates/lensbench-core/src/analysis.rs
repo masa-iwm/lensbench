@@ -1895,17 +1895,16 @@ pub(crate) fn mtf_only(
 ) -> Result<Mtf> {
     let w = w.one();
     check_n(n)?;
-    let ws: Vec<usize> = match w {
-        None => (0..s.wavelengths.len()).collect(),
-        Some(w) => vec![w],
-    };
+    let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
     let mut otfs = Vec::new();
     for &wi in &ws {
         let wt = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
-        if !(wt > 0.0) {
-            continue;
+        if wt > 0.0 {
+            otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only)?));
         }
-        otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only)?));
+    }
+    if otfs.is_empty() {
+        crate::invalid!("重みのある波長がない"); // 重みの和 0 で割って NaN にしない（ANA-23）
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
     let cut = mtf_cutoff(s, field, w.unwrap_or(s.primary))?;

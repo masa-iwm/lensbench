@@ -175,3 +175,20 @@ fn rejects_bad_grids() {
     };
     assert!(huygens_psf(&s, FieldSel::Index(0), Waves::All, o).is_err());
 }
+
+/// 像の格子のナイキスト 1/(2Δ) を超える周波数は、折り返した値でなく NaN（ANA-24）
+#[test]
+fn huygens_mtf_above_nyquist_is_nan() {
+    let s = load("D0");
+    let f = FieldSel::Index(0);
+    let o = HuygensOpts {
+        pupil: Some(64),
+        image: 64,
+        delta: None,
+    };
+    let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    let ny = 0.5 / p.delta.0;
+    let h = huygens_mtf(&s, f, Waves::One(s.primary), o, &[0.5 * ny, 1.5 * ny]).unwrap();
+    assert!(h.sag[0].is_finite() && h.tan[0].is_finite());
+    assert!(h.sag[1].is_nan() && h.tan[1].is_nan(), "{:?}", h.sag);
+}

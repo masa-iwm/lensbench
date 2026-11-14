@@ -399,7 +399,8 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
 
 /// PSF の格子の離散フーリエ変換の絶対値（球欠 = x、子午 = y の周波数）。DC で 1。
 /// 格子の幅 W = N Δ の調和周波数 k / W で値を求め、その間は 4 点の Lagrange 補間で（調和周波数でない点で
-/// 直接変換すると、格子の端の打ち切りの影響が残る。OpticStudio の Huygens MTF も PSF の FFT）
+/// 直接変換すると、格子の端の打ち切りの影響が残る。OpticStudio の Huygens MTF も PSF の FFT）。
+/// 格子の間隔 Δ のナイキスト 1/(2Δ) を超える周波数は NaN
 pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
     // 周辺分布（x・y への射影）
     let mut mx = vec![0.0; p.x.len()];
@@ -430,6 +431,10 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
         freqs
             .iter()
             .map(|&f| {
+                // ナイキスト 1/(2Δ) を超える周波数は折り返した値になるので出さない（ANA-24）
+                if f.abs() > 0.5 / d * (1.0 + 1e-12) {
+                    return f64::NAN;
+                }
                 let t = f.abs() / df;
                 let k0 = t.round();
                 if (t - k0).abs() < 1e-9 {

@@ -407,8 +407,7 @@ pub(crate) fn set_surface_data(t: &mut System, j: usize, data: &Value) -> Result
     if m.contains_key("semi") && !m.contains_key("semi_auto") {
         o.insert("semi_auto".into(), Value::Bool(false));
     }
-    let mut d: Surface = crate::lenient::decode(crate::sysfile::from_json(v)?)
-        .map_err(|e| format!("面のデータ: {e}"))?;
+    let mut d: Surface = crate::lenient::decode(crate::sysfile::from_json(v)?, "面のデータ")?;
     d.mirror = d.mat.trim().eq_ignore_ascii_case("MIRROR");
     if d.mirror {
         d.mat = "MIRROR".into();
@@ -482,8 +481,7 @@ pub(crate) fn set_system_data(t: &mut System, data: &Value) -> Result<(), String
         let x = coerce(x.clone(), o.get(k), k, false);
         o.insert(k.clone(), x);
     }
-    let mut n: System = crate::lenient::decode(crate::sysfile::from_json(v)?)
-        .map_err(|e| format!("系のデータ: {e}"))?;
+    let mut n: System = crate::lenient::decode(crate::sysfile::from_json(v)?, "系のデータ")?;
     let nw = n.wavelengths.len();
     if nw == 0 {
         return Err("波長が無い".into());

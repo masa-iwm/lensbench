@@ -290,3 +290,20 @@ fn bad_inputs_are_errors() {
         );
     }
 }
+
+/// 多色の MTF で重みが全部 0 なら、NaN でなく誤り（ANA-23。psf・幾何 MTF と同じ）
+#[test]
+fn mtf_with_all_zero_weights_is_an_error() {
+    let mut s = load("A0");
+    assert!(s.wavelengths.len() > 1);
+    s.weights.iter_mut().for_each(|w| *w = 0.0);
+    let r = analysis::mtf(
+        &s,
+        FieldSel::Index(0),
+        lensbench_core::Waves::All,
+        None,
+        &[10.0],
+    );
+    let e = r.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(e.contains("重みのある波長がない"), "{e}");
+}
