@@ -68,6 +68,9 @@ pub struct Coupling {
     pub receiver: f64,
     /// 偏光込みの重なり C[出射 x/y][入射 x/y]（偏光込みで計算したときだけ）。位相は格子の中心の光線を基準にする
     pub jones: Option<[[C64; 2]; 2]>,
+    /// 格子の隣り合う点（どちらも円錐の中で受け側まで届いた点）の重なりの位相の差の最大 [rad]。π/2 を超えると
+    /// 位相の標本が足りず、結果が格子の点の数で変わる（grid を増やす）
+    pub phase_step: f64,
 }
 
 impl Coupling {
@@ -99,28 +102,37 @@ fn grad(f: &[f64], ok: &[bool], g: usize, d: f64, i: usize, j: usize, axis: usiz
     }
 }
 
-/// 系の絞りの重み（格子点ごと、0〜1）。絞り面に明示の開口があるか絞り半径がないときはすべて 1（追跡で止まる）。
-/// 絞り面での f = r/R − 1 とその格子の勾配から、境界までの符号つき距離（格子の単位）を出し、
-/// 境界を直線とみなして格子の 1 区画（中心が格子点の正方形）のうち内側の面積の割合をとる
-fn stop_weights(s: &System, w: usize, l: &Launch, g: usize, d: f64, inside: &[bool]) -> Vec<f64> {
+/// 系の絞りの円（半径・中心、絞り面の局所座標）。絞り面に明示の開口があるか絞り半径がないときは None（追跡で止まる）
+fn stop_circle(s: &System) -> Option<(f64, f64, f64)> {
     let st = s.stop();
-    let ones = vec![1.0; g * g];
     if !matches!(
         s.surfaces[st].ap,
         Aperture::None | Aperture::Floating { .. }
     ) {
-        return ones;
+        return None;
     }
-    let Some(Aperture::Circular { max, dx, dy, .. }) = crate::pop::surface_aperture(s, st) else {
-        return ones;
-    };
-    let t = s.trace_launch(l, w, Some(st), false);
-    let f: Vec<f64> = t
-        .rays
+    match crate::pop::surface_aperture(s, st) {
+        Some(Aperture::Circular { max, dx, dy, .. }) => Some((max, dx, dy)),
+        _ => None,
+    }
+}
+
+/// 系の絞りの重み（格子点ごと、0〜1）。xyz は格子点の光線の絞り面での交点（止まった光線は NaN）。
+/// 絞り面での f = r/R − 1 とその格子の勾配から、境界までの符号つき距離（格子の単位）を出し、
+/// 境界を直線とみなして格子の 1 区画（中心が格子点の正方形）のうち内側の面積の割合をとる
+fn stop_weights(
+    xyz: &[V3],
+    circle: (f64, f64, f64),
+    g: usize,
+    d: f64,
+    inside: &[bool],
+) -> Vec<f64> {
+    let (max, dx, dy) = circle;
+    let f: Vec<f64> = xyz
         .iter()
-        .map(|r| {
-            let v = (r.xyz[0] - dx).hypot(r.xyz[1] - dy) / max - 1.0;
-            if r.err == 0 && v.is_finite() {
+        .map(|p| {
+            let v = (p[0] - dx).hypot(p[1] - dy) / max - 1.0;
+            if v.is_finite() {
                 v
             } else {
                 f64::NAN
@@ -237,12 +249,20 @@ pub fn fiber_coupling(
         [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],
         [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
     ];
+    // 系の絞りの重みに使う絞り面の交点は、同じ追跡で記録する（絞り面までもう一度追わない）
+    let circle = if o.clip_stop { stop_circle(s) } else { None };
+    let st = [s.stop()];
+    let rec = if circle.is_some() {
+        RecSel::Surfs(&st)
+    } else {
+        RecSel::Off
+    };
     let (t, e): (Trace, Option<Vec<Vec<crate::trace::CV3>>>) = match coat {
         Some(c) => {
-            let p = s.trace_pol_launch(&launch, w, &pols, c, false, RecSel::Off)?;
+            let p = s.trace_pol_launch(&launch, w, &pols, c, false, rec)?;
             (p.trace, Some(p.e))
         }
-        None => (s.trace_launch(&launch, w, None, false), None),
+        None => (s.trace_launch(&launch, w, None, rec), None),
     };
     let ok0: Vec<bool> = (0..g * g)
         .map(|q| {
@@ -264,10 +284,19 @@ pub fn fiber_coupling(
             tt[q] = r.opl + r.lens_opd - n1 * dot(rel, r.lmn);
         }
     }
-    let wt = if o.clip_stop {
-        stop_weights(s, w, &launch, g, d, &inside)
-    } else {
-        vec![1.0; g * g]
+    let wt = match (circle, t.rec_at(st[0])) {
+        (Some(c), Some(r)) => stop_weights(&r.xyz, c, g, d, &inside),
+        // 絞り面が記録されない（無視する面）ときは、絞り面まで追い直す
+        (Some(c), None) => {
+            let ts = s.trace_launch(&launch, w, Some(st[0]), false);
+            let xyz: Vec<V3> = ts
+                .rays
+                .iter()
+                .map(|r| if r.err == 0 { r.xyz } else { [f64::NAN; 3] })
+                .collect();
+            stop_weights(&xyz, c, g, d, &inside)
+        }
+        (None, _) => vec![1.0; g * g],
     };
     let all = vec![true; g * g];
     let jac = |a: &[f64], b: &[f64], ok: &[bool], i: usize, j: usize| -> Option<f64> {
@@ -288,6 +317,24 @@ pub fn fiber_coupling(
             .collect();
         v.iter().sum::<f64>() / v.len().max(1) as f64
     };
+    // 隣り合う点の位相の差の最大（位相の標本の十分さ）
+    let mut phase_step: f64 = 0.0;
+    for i in 0..g {
+        for j in 0..g {
+            let q = i * g + j;
+            if !(inside[q] && ok0[q]) {
+                continue;
+            }
+            for r in [(i + 1 < g).then(|| q + g), (j + 1 < g).then(|| q + 1)]
+                .into_iter()
+                .flatten()
+            {
+                if inside[r] && ok0[r] {
+                    phase_step = phase_step.max((kw * (tt[r] - tt[q])).abs());
+                }
+            }
+        }
+    }
     // 格子点ごとの被積分量 [送り側の電力, 重なり, 偏光の重なり 4 つ]（受け側まで届いた点だけ）
     let mut val: Vec<Option<[C64; 6]>> = vec![None; g * g];
     let mut den = 0.0;
@@ -350,5 +397,6 @@ pub fn fiber_coupling(
         system: if den > 0.0 { sys / den } else { 0.0 },
         receiver: if sys > 0.0 { eta * den / sys } else { 0.0 },
         jones,
+        phase_step,
     })
 }

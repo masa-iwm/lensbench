@@ -151,3 +151,20 @@ SURF 2\n  TYPE PARAXIAL\n  PARM 1 50\n  PARM 2 1\n  DISZ 50\nSURF 3\n  TYPE STAN
         assert!((k.eta - 1.0).abs() < 5e-5 && (k.system - 1.0).abs() < 1e-12);
     }
 }
+
+#[test]
+fn phase_step_shows_undersampled_phase() {
+    // ピントが合っていれば位相はほぼ平ら、大きく外すと隣り合う点の位相の差が π/2 を超える
+    let o = FiberOpts {
+        grid: 31,
+        ..opts(0.1, 0.1)
+    };
+    let c = fiber_coupling(&relay(0.0), 0, &o, None).unwrap();
+    assert!(c.phase_step < 1e-6, "{}", c.phase_step);
+    let c = fiber_coupling(&relay(5.0), 0, &o, None).unwrap();
+    assert!(
+        c.phase_step > std::f64::consts::FRAC_PI_2,
+        "{}",
+        c.phase_step
+    );
+}

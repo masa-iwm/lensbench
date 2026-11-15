@@ -48,7 +48,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   引数は `trace` と同じで、結果は系ごとの `trace` とビット一致。系の単位でも並列にするので、系ごとの光線が少なくても
   コアを使い切る（4 コア・256 系・32〜1716 本で、系ごとの 1 スレッドの 2.2〜4.1 倍、系ごとに 4 スレッドで呼ぶときの 3.3〜5.9 倍）
 - 近軸量: `s.cardinal(wave=None)` で基点（OpticStudio の Cardinal Points 相当: 焦点・主点・反主点・節点・反節点、物体空間は面 1 から・像空間は像面から、媒質の中の焦点距離 `f_object`・`f_image`、空気換算の `efl`、`bfl`・`ffl`）、`s.system_data()` でシステムデータ（`effl`・`enpp`・`expp`・`wfno` など OpticStudio のオペランド名の小文字）。変更後の系の値
-- ファイバ結合: `s.fiber_coupling(na_source, na_receiver=None, wave=None, source=(0, 0), receiver=(0, 0), grid=101, pol=False, clip_stop=True)` → `eta`・`system`・`receiver`（pol=True なら膜込みの `jones` (2, 2)、入射偏光 e の結合は |jones @ e|²）。送り側は物点、受け側は像面の点の、遠視野 1/e² の NA のガウスモードで、受け側の方向空間で重なり積分をとる（有限物体の系）。系の絞りの外を通る光は既定で系の損失 `system` に数える（`clip_stop=False` で無視）
+- ファイバ結合: `s.fiber_coupling(na_source, na_receiver=None, wave=None, source=(0, 0), receiver=(0, 0), grid=101, pol=False, clip_stop=True)` → `eta`・`system`・`receiver`・`phase_step`（格子の隣り合う点の位相の差の最大 [rad]、π/2 を超えたら grid を増やす）（pol=True なら膜込みの `jones` (2, 2)、入射偏光 e の結合は |jones @ e|²）。送り側は物点、受け側は像面の点の、遠視野 1/e² の NA のガウスモードで、受け側の方向空間で重なり積分をとる（有限物体の系）。系の絞りの外を通る光は既定で系の損失 `system` に数える（`clip_stop=False` で無視）
 - 系ファイル: `s.save("x.json")` で lensbench 独自の JSON に欠けなく保存し（面・ガラスのデータ・パラメータの変更・ピックアップ・
   ソルブ・玉と群・多重構成の表・dn と disp・`coatings=` のパス）、`lb.System.load("x.json")` で読み直す（追跡はビット一致）。
   `s.to_json()`・`lb.System.from_json(txt)`、`s.hash`（系の SHA-256、同じ系なら同じ値。結果に刻んで後から確かめる）。

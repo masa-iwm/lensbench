@@ -6,7 +6,11 @@
 //! 2. [`propagate`]: 一様な媒質の中を、平行な平面まで距離 d だけ伝える。
 //!    - [`PopMethod::Fresnel`]: Fresnel 近似（近軸）の Huygens・Fresnel 積分。核が x・y に分かれるので
 //!      行列の積 2 回で求める（出力の格子は自由。O(N²M + NM²)）。
+//!    - [`PopMethod::Angular`] は角スペクトル（FFT。近い距離向き）。パイロットに曲率があればその球面に沿った座標で
+//!      近軸の伝達関数、なければ近似なしの伝達関数。出力の格子は入力の格子を (1 + κd) 倍したもの。
 //!    - [`PopMethod::Direct`]: Rayleigh-Sommerfeld の第 1 種の積分を直接（近似なし、O(N²M²)。小さな格子向け）。
+//!    - [`PopMethod::Auto`]（既定）は Fresnel の核が標本化できれば Fresnel（近似の誤差が大きく重すぎなければ
+//!      Direct）、できなければ角スペクトル。
 //!
 //! 場は「パイロット」（傾き a と曲率 κ の波面、[`Pilot`]）を除いた残りを格子に持つ: 全体の場は
 //! u(x, y)·exp(i k (a_x X + a_y Y + κ (X² + Y²)/2))（X = x − x0、k = 2π n/λ）。パイロットは解析的に扱うので、
@@ -480,7 +484,8 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
     let fy = planner.plan_fft_forward(py);
     let ix = planner.plan_fft_inverse(px);
     let iy = planner.plan_fft_inverse(py);
-    fft2(&mut a, px, py, &*fx, &*fy);
+    let mut work = Vec::new();
+    fft2(&mut a, px, py, &*fx, &*fy, &mut work);
     // 出力の中心のずれ（入力の中心から）
     let (sx, sy) = if exact {
         let cz = (1.0 - p.ax * p.ax - p.ay * p.ay).max(1e-12).sqrt();
@@ -530,7 +535,7 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
             *c *= C64::from_polar(1.0, ph);
         }
     }
-    ifft2(&mut a, px, py, &*ix, &*iy);
+    fft2(&mut a, px, py, &*ix, &*iy, &mut work);
     let norm = 1.0 / (px * py) as f64 / m;
     // 伝達関数の位相の、隣り合う周波数の間の差の最大（π を超えると回り込み）
     let fmx = 0.5 / b.dx;
@@ -588,37 +593,24 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
     })
 }
 
+/// 2 次元の FFT（順・逆は fx・fy の向き）。行ごとに fx、列ごとに fy（転置して行で）。t は転置の作業域
+/// （順と逆で使い回す）
 fn fft2(
     a: &mut [C64],
     px: usize,
     py: usize,
     fx: &dyn rustfft::Fft<f64>,
     fy: &dyn rustfft::Fft<f64>,
+    t: &mut Vec<C64>,
 ) {
     crate::par::for_each_chunk_mut(&mut a[..], px, |_, r| fx.process(r));
-    transpose_apply(a, px, py, fy);
-}
-
-fn ifft2(
-    a: &mut [C64],
-    px: usize,
-    py: usize,
-    ix: &dyn rustfft::Fft<f64>,
-    iy: &dyn rustfft::Fft<f64>,
-) {
-    crate::par::for_each_chunk_mut(&mut a[..], px, |_, r| ix.process(r));
-    transpose_apply(a, px, py, iy);
-}
-
-/// 列ごとに f を掛ける（転置して行で）
-fn transpose_apply(a: &mut [C64], px: usize, py: usize, f: &dyn rustfft::Fft<f64>) {
-    let mut t = vec![C64::new(0.0, 0.0); px * py];
+    t.resize(px * py, C64::new(0.0, 0.0));
     for j in 0..py {
         for i in 0..px {
             t[i * py + j] = a[j * px + i];
         }
     }
-    crate::par::for_each_chunk_mut(&mut t[..], py, |_, r| f.process(r));
+    crate::par::for_each_chunk_mut(&mut t[..], py, |_, r| fy.process(r));
     for j in 0..py {
         for i in 0..px {
             a[j * px + i] = t[i * py + j];
@@ -786,22 +778,28 @@ fn direct(b: &Beam, d: f64, o: &mut Beam) {
     let xo = |i: usize| x0 + (i as f64 - (nx as f64 - 1.0) / 2.0) * dx;
     let yo = |j: usize| y0 + (j as f64 - (ny as f64 - 1.0) / 2.0) * dy;
     let d2 = d * d;
+    let n = src.len();
     crate::par::for_each_chunk_mut(&mut o.u[..], nx, |j, row| {
         let y = yo(j);
+        // 位相因子は点ごとの from_polar の代わりに、入力の点についてまとめて cis_scaled で（Huygens PSF と同じ）
+        let (mut ph, mut amp, mut rr) = (vec![0.0; n], vec![0.0; n], vec![0.0; n]);
+        let mut e = vec![C64::new(0.0, 0.0); n];
         for (i, v) in row.iter_mut().enumerate() {
             let x = xo(i);
             let (xx, yy) = (x - x0, y - y0);
             let po = k * (pilot.ax * xx + pilot.ay * yy + 0.5 * pilot.curv * (xx * xx + yy * yy));
-            let mut s = C64::new(0.0, 0.0);
-            for &(sx, sy, c) in &src {
+            for (q, &(sx, sy, _)) in src.iter().enumerate() {
                 let (ex, ey) = (x - sx, y - sy);
-                let r2 = ex * ex + ey * ey + d2;
-                let r = r2.sqrt();
-                // (1/2π)(d/r)(1/r − ik) e^{ik(r − d)}/r
-                let ph = k * (r - d) - po;
-                let e = C64::from_polar(1.0, ph);
-                let f = C64::new(1.0 / r, -k) * (d / (r * r));
-                s += c * e * f;
+                let r = (ex * ex + ey * ey + d2).sqrt();
+                ph[q] = k * (r - d) - po;
+                amp[q] = d / (r * r);
+                rr[q] = r;
+            }
+            crate::trig::cis_scaled(&ph, &amp, &mut e);
+            // (1/2π)(d/r)(1/r − ik) e^{ik(r − d)}/r
+            let mut s = C64::new(0.0, 0.0);
+            for ((&(_, _, c), &eq), &r) in src.iter().zip(&e).zip(&rr) {
+                s += c * eq * C64::new(1.0 / r, -k);
             }
             *v = s / (2.0 * PI);
         }

@@ -148,6 +148,20 @@ fn tri_area(x: &[f64], y: &[f64], t: [usize; 3]) -> f64 {
 
 /// 光線の格子を画素の格子へ（瞳のセルごとに三角形 2 つ）。画素はその中心を含む最初の三角形の値を取る
 pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) -> PixelData {
+    rasterize_with(r, None, npx, x0, y0, dx, na).0
+}
+
+/// [`rasterize`] に、光線ごとの複素の値をもう 1 つ（`extra`、場の z 成分など）同じ三角形・同じ重みで補間して添える
+/// （1 回の走査で。`extra` が無ければ空の列）
+pub(crate) fn rasterize_with(
+    r: &RayGrid,
+    extra: Option<&[C64]>,
+    npx: usize,
+    x0: f64,
+    y0: f64,
+    dx: f64,
+    na: f64,
+) -> (PixelData, Vec<C64>) {
     let nw = r.l.len();
     let g = r.g;
     let mut tris = Vec::new();
@@ -194,26 +208,42 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
         }
         good.push((*t, w * a_d / a_s.abs(), j0 as usize, j1 as usize));
     }
+    // 行ごとに、その行に掛かる三角形の番号（good の順のまま）。行 × 三角形の総当たりを避ける
+    let mut start = vec![0usize; npx + 1];
+    for &(_, _, j0, j1) in &good {
+        for j in j0..=j1 {
+            start[j + 1] += 1;
+        }
+    }
+    for j in 0..npx {
+        start[j + 1] += start[j];
+    }
+    let mut fill = start.clone();
+    let mut by_row = vec![0usize; start[npx]];
+    for (k, &(_, _, j0, j1)) in good.iter().enumerate() {
+        for j in j0..=j1 {
+            by_row[fill[j]] = k;
+            fill[j] += 1;
+        }
+    }
     let n2 = npx * npx;
     let mut ok = vec![false; n2];
     let mut ii = vec![0.0; n2];
     let mut ll = vec![0.0; n2 * nw];
     let mut ex = vec![czero(); n2];
     let mut ey = vec![czero(); n2];
+    // 無いときも行ごとに分ける都合で同じ大きさを作り、返すときに捨てる
+    let mut ez = vec![czero(); n2];
     // 行ごとに並列。行の中では三角形を同じ順に見るので、最初に覆った三角形が勝つ（逐次と同じ結果）
+    type Cols<'a> = ((&'a mut [bool], &'a mut [f64]), &'a mut [f64]);
     type Row<'a> = (
         usize,
-        (
-            ((&'a mut [bool], &'a mut [f64]), &'a mut [f64]),
-            (&'a mut [C64], &'a mut [C64]),
-        ),
+        ((Cols<'a>, (&'a mut [C64], &'a mut [C64])), &'a mut [C64]),
     );
-    let row = |(j, (((okr, ir), lr), (exr, eyr))): Row| {
+    let row = |(j, ((((okr, ir), lr), (exr, eyr)), ezr)): Row| {
         let y = y0 + j as f64 * dx;
-        for &(t, irr, j0, j1) in &good {
-            if j < j0 || j > j1 {
-                continue;
-            }
+        for &k in &by_row[start[j]..start[j + 1]] {
+            let (t, irr, _, _) = good[k];
             let (xa, ya, xb, yb, xc, yc) = (
                 r.xs[t[0]], r.ys[t[0]], r.xs[t[1]], r.ys[t[1]], r.xs[t[2]], r.ys[t[2]],
             );
@@ -241,6 +271,9 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
                 }
                 exr[i] = r.ex[t[0]] * l1 + r.ex[t[1]] * l2 + r.ex[t[2]] * l3;
                 eyr[i] = r.ey[t[0]] * l1 + r.ey[t[1]] * l2 + r.ey[t[2]] * l3;
+                if let Some(z) = extra {
+                    ezr[i] = z[t[0]] * l1 + z[t[1]] * l2 + z[t[2]] * l3;
+                }
             }
         }
     };
@@ -250,6 +283,7 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
             .zip(ii.chunks_mut(npx))
             .zip(ll.chunks_mut(npx * nw))
             .zip(ex.chunks_mut(npx).zip(ey.chunks_mut(npx)))
+            .zip(ez.chunks_mut(npx))
             .enumerate()
             .for_each(row);
     } else {
@@ -257,6 +291,7 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
             .zip(ii.par_chunks_mut(npx))
             .zip(ll.par_chunks_mut(npx * nw))
             .zip(ex.par_chunks_mut(npx).zip(ey.par_chunks_mut(npx)))
+            .zip(ez.par_chunks_mut(npx))
             .enumerate()
             .for_each(scoped(row));
     }
@@ -268,7 +303,7 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
                 .copy_from_slice(&ll[j * npx * nw + w * npx..j * npx * nw + (w + 1) * npx]);
         }
     }
-    PixelData {
+    let p = PixelData {
         n: npx,
         x0,
         y0,
@@ -283,7 +318,8 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
         } else {
             fold as f64 / tris.len() as f64
         },
-    }
+    };
+    (p, if extra.is_some() { ez } else { Vec::new() })
 }
 
 // ---------------------------------------------------------------------------------------------------------------

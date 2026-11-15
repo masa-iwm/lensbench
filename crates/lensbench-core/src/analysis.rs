@@ -10,6 +10,10 @@ use crate::math::*;
 use crate::system::{FieldSel, System, Trace};
 use crate::{invalid, notimpl, par::scoped, TanSag, Waves};
 
+mod spot;
+pub(crate) use spot::spot_of;
+pub use spot::{spot, spot_arms, Spot};
+
 /// n×n の格子のうち単位円内の点
 pub fn pupil_grid(n: usize) -> (Vec<f64>, Vec<f64>) {
     let g: Vec<f64> = (0..n)
@@ -123,6 +127,18 @@ pub fn opd(
     w: Option<usize>,
     ref_primary: bool,
 ) -> Result<Opd> {
+    Ok(opd_chief(s, field, px, py, w, ref_primary)?.0)
+}
+
+/// [`opd`] と、参照球の中心に使った主光線の追跡（ref_primary なら主波長、でなければ波長 w）
+pub(crate) fn opd_chief(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    w: Option<usize>,
+    ref_primary: bool,
+) -> Result<(Opd, Trace)> {
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
         notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
     }
@@ -159,105 +175,7 @@ pub fn opd(
         .iter()
         .map(|x| (lc - (to_ref(s, w, pc, kc, x.xyz, x.lmn, x.opl) + x.lens_opd)) / wl)
         .collect();
-    Ok(Opd { trace: r, opd })
-}
-
-#[derive(Debug, Clone)]
-pub struct Spot {
-    pub x: Vec<f64>,
-    pub y: Vec<f64>,
-    pub wave: Vec<usize>,
-    pub weight: Vec<f64>,
-    pub centroid: (f64, f64),
-    pub chief: (f64, f64),
-    pub rms_centroid: f64,
-    pub rms_chief: f64,
-    pub geo: f64,
-}
-
-/// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
-/// 腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
-pub fn spot(s: &System, field: FieldSel, w: Waves, rings: usize) -> Result<Spot> {
-    let w = w.one();
-    spot_arms(s, field, Waves::all_or(w), rings, None)
-}
-
-/// [`spot`] で、求積の腕（角度の分割）の数 arms を指定する（None なら 4 rings + 2）。OpticStudio の RSCE・RSCH は
-/// 腕が 2 rings で、回転対称でない系（Zernike・Grid Sag など）では角度の求積が収束しきらず、腕を増やした値と
-/// 相対 1e-5〜1e-4 違う（Some(2 * rings) で OpticStudio と丸め誤差まで合う）
-pub fn spot_arms(
-    s: &System,
-    field: FieldSel,
-    w: Waves,
-    rings: usize,
-    arms: Option<usize>,
-) -> Result<Spot> {
-    let w = w.one();
-    let (px, py, wts) = pupil_gauss(rings, arms);
-    let ws: Vec<usize> = match w {
-        None => (0..s.wavelengths.len()).collect(),
-        Some(w) => vec![w],
-    };
-    let (mut x, mut y, mut wt, mut wv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    for &wi in &ws {
-        let r = s.try_trace(field, &px, &py, Some(wi), None, false)?;
-        for i in 0..px.len() {
-            if r.ok(i) {
-                let (a, b) = s.image_point(r.rays[i].xyz, r.rays[i].lmn);
-                x.push(a);
-                y.push(b);
-                // 単色は重みによらない（重み 0 の波長でも求める）
-                wt.push(wts[i] * if ws.len() == 1 { 1.0 } else { s.weights[wi] });
-                wv.push(wi);
-            }
-        }
-    }
-    let rc = s.try_trace(
-        field,
-        &[0.0],
-        &[0.0],
-        Some(w.unwrap_or(s.primary)),
-        None,
-        false,
-    )?;
-    let chief = if rc.traced(0) {
-        s.image_point(rc.rays[0].xyz, rc.rays[0].lmn)
-    } else {
-        (f64::NAN, f64::NAN)
-    };
-    let sw: f64 = wt.iter().sum();
-    if x.is_empty() || !(sw > 0.0) {
-        return Ok(Spot {
-            x,
-            y,
-            wave: wv,
-            weight: wt,
-            centroid: (f64::NAN, f64::NAN),
-            chief,
-            rms_centroid: f64::NAN,
-            rms_chief: f64::NAN,
-            geo: f64::NAN,
-        });
-    }
-    let avg = |v: &dyn Fn(usize) -> f64| (0..x.len()).map(|i| v(i) * wt[i]).sum::<f64>() / sw;
-    let cx = avg(&|i| x[i]);
-    let cy = avg(&|i| y[i]);
-    let (hx, hy) = chief;
-    let r2c = |i: usize| (x[i] - cx).powi(2) + (y[i] - cy).powi(2);
-    let rms_c = avg(&r2c).sqrt();
-    let rms_h = avg(&|i| (x[i] - hx).powi(2) + (y[i] - hy).powi(2)).sqrt();
-    let geo = (0..x.len()).map(r2c).fold(0.0, f64::max).sqrt();
-    Ok(Spot {
-        centroid: (cx, cy),
-        chief,
-        rms_centroid: rms_c,
-        rms_chief: rms_h,
-        geo,
-        x,
-        y,
-        wave: wv,
-        weight: wt,
-    })
+    Ok((Opd { trace: r, opd }, rp))
 }
 
 /// 格子の一辺 n は 4 以上の偶数（中心の点 p = 0 を含み、端が瞳の縁になる）

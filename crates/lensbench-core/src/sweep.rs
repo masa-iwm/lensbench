@@ -8,12 +8,12 @@
 //! 横軸のある点で計算できない（瞳の縁がけられる・光線が届かないなど）ときは、その点を NaN にして warnings に
 //! 理由を残し、ほかの点は続ける。
 
-use crate::analysis::{self, mtf, opd, pupil_gauss, spot};
+use crate::analysis::{self, mtf, pupil_gauss, Opd};
 use crate::error::Result;
 use crate::glass;
 use crate::invalid;
 use crate::surface::SurfType;
-use crate::system::{FieldSel, FieldType, System};
+use crate::system::{FieldSel, FieldType, System, Trace};
 use crate::Waves;
 
 // ------------------------------------------------------------------------------------------ 系の変更
@@ -385,25 +385,20 @@ impl Rms {
 ///   波長ごとのピストンと、全波長に共通の (L − Lc, M − Mc) の係数 [波]（Lc は主波長の主光線）を一緒に当てはめて除く。
 /// - アフォーカル（参照が平面波）の centroid は (L − Lc, M − Mc) の代わりに瞳座標 (px, py)（参照の平面を傾けた分）。
 ///
-/// 返すのは波長ごとの分散（ws の順）
-#[allow(clippy::too_many_arguments)]
+/// os は波長ごとの OPD と、参照に使った主光線の追跡（`analysis::opd_chief`、多色なら主波長の主光線）。
+/// 返すのは波長ごとの分散（os の順）
 fn wfe_var(
     s: &System,
-    field: FieldSel,
-    ws: &[usize],
-    poly: bool,
+    os: &[&(Opd, Trace)],
     px: &[f64],
     py: &[f64],
     wt: &[f64],
     r: RmsRef,
 ) -> Result<Vec<f64>> {
-    let nw = ws.len();
+    let nw = os.len();
     // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは波長の中で和 1）
     let mut rows: Vec<Vec<(f64, f64, f64, f64)>> = Vec::with_capacity(nw);
-    for &w in ws {
-        let o = opd(s, field, px, py, Some(w), poly)?;
-        let cw = if poly { s.primary } else { w };
-        let c = s.try_trace(field, &[0.0], &[0.0], Some(cw), None, false)?;
+    for &(o, c) in os {
         if !c.traced(0) {
             invalid!("the chief ray doesn't reach the image");
         }
@@ -521,7 +516,46 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     if o.rings == 0 {
         invalid!("the number of rings must be 1 or more");
     }
-    let sp = spot(s, field, Waves::all_or(w), o.rings)?;
+    let ws: Vec<usize> = match w {
+        None => (0..s.wavelengths.len()).collect(),
+        Some(w) => vec![w],
+    };
+    let ks: Vec<(usize, f64)> = ws
+        .iter()
+        .map(|&wi| (wi, if ws.len() == 1 { 1.0 } else { s.weights[wi] }))
+        .filter(|x| x.1 > 0.0)
+        .collect();
+    let wsum: f64 = ks.iter().map(|x| x.1).sum();
+    if !(wsum > 0.0) {
+        invalid!("no weighted wavelength");
+    }
+    // 同じ求積の点の追跡からスポットと OPD の両方を作る（スポットは重み 0 の波長も含め、その分は OPD を求めない）
+    let (px, py, wt) = pupil_gauss(o.rings, None);
+    let poly = w.is_none();
+    // OPD を求めた波長は Ok（OPD と参照の主光線）、重み 0 の波長は Err（スポット用の追跡だけ）
+    type Traced = std::result::Result<(Opd, Trace), Trace>;
+    let mut rs: Vec<(usize, Traced)> = Vec::with_capacity(ws.len());
+    for &wi in &ws {
+        rs.push(if ks.iter().any(|k| k.0 == wi) {
+            (
+                wi,
+                Ok(analysis::opd_chief(s, field, &px, &py, Some(wi), poly)?),
+            )
+        } else {
+            (
+                wi,
+                Err(s.try_trace(field, &px, &py, Some(wi), None, false)?),
+            )
+        });
+    }
+    let os: Vec<&(Opd, Trace)> = rs.iter().filter_map(|(_, r)| r.as_ref().ok()).collect();
+    // スポットの主光線は単色ならその波長、多色なら主波長（OPD の参照の主光線と同じ）
+    let rc = &os[0].1;
+    let tr: Vec<(usize, &Trace)> = rs
+        .iter()
+        .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.0.trace)))
+        .collect();
+    let sp = analysis::spot_of(s, &tr, &wt, rc);
     let (rx, ry) = match o.reference {
         RmsRef::Chief => sp.chief,
         RmsRef::Centroid => sp.centroid,
@@ -532,22 +566,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     };
     let sx = mom(&|i| (sp.x[i] - rx).powi(2));
     let sy = mom(&|i| (sp.y[i] - ry).powi(2));
-    let ws: Vec<usize> = match w {
-        None => (0..s.wavelengths.len()).collect(),
-        Some(w) => vec![w],
-    };
-    let (px, py, wt) = pupil_gauss(o.rings, None);
-    let ks: Vec<(usize, f64)> = ws
-        .iter()
-        .map(|&wi| (wi, if ws.len() == 1 { 1.0 } else { s.weights[wi] }))
-        .filter(|x| x.1 > 0.0)
-        .collect();
-    let wsum: f64 = ks.iter().map(|x| x.1).sum();
-    if !(wsum > 0.0) {
-        invalid!("no weighted wavelength");
-    }
-    let wl: Vec<usize> = ks.iter().map(|x| x.0).collect();
-    let vars = wfe_var(s, field, &wl, w.is_none(), &px, &py, &wt, o.reference)?;
+    let vars = wfe_var(s, &os, &px, &py, &wt, o.reference)?;
     let (mut var, mut st) = (0.0, 0.0);
     for (&(_, k), &v) in ks.iter().zip(&vars) {
         var += k * v;

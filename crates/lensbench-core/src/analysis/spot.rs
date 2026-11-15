@@ -1,0 +1,113 @@
+//! スポット（RMS 半径・重心・主光線）
+
+use super::pupil_gauss;
+use crate::error::Result;
+use crate::system::{FieldSel, System, Trace};
+use crate::Waves;
+
+#[derive(Debug, Clone)]
+pub struct Spot {
+    pub x: Vec<f64>,
+    pub y: Vec<f64>,
+    pub wave: Vec<usize>,
+    pub weight: Vec<f64>,
+    pub centroid: (f64, f64),
+    pub chief: (f64, f64),
+    pub rms_centroid: f64,
+    pub rms_chief: f64,
+    pub geo: f64,
+}
+
+/// スポット（w None なら全波長を重み付きで）。RMS は OpticStudio の RSCE・RSCH と同じ（ガウス求積、けられた光線は除く）。
+/// 腕の数は 4 rings + 2（[`spot_arms`] で指定できる）
+pub fn spot(s: &System, field: FieldSel, w: Waves, rings: usize) -> Result<Spot> {
+    let w = w.one();
+    spot_arms(s, field, Waves::all_or(w), rings, None)
+}
+
+/// [`spot`] で、求積の腕（角度の分割）の数 arms を指定する（None なら 4 rings + 2）。OpticStudio の RSCE・RSCH は
+/// 腕が 2 rings で、回転対称でない系（Zernike・Grid Sag など）では角度の求積が収束しきらず、腕を増やした値と
+/// 相対 1e-5〜1e-4 違う（Some(2 * rings) で OpticStudio と丸め誤差まで合う）
+pub fn spot_arms(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    rings: usize,
+    arms: Option<usize>,
+) -> Result<Spot> {
+    let w = w.one();
+    let (px, py, wts) = pupil_gauss(rings, arms);
+    let ws: Vec<usize> = match w {
+        None => (0..s.wavelengths.len()).collect(),
+        Some(w) => vec![w],
+    };
+    let mut rs = Vec::with_capacity(ws.len());
+    for &wi in &ws {
+        rs.push((wi, s.try_trace(field, &px, &py, Some(wi), None, false)?));
+    }
+    let rc = s.try_trace(
+        field,
+        &[0.0],
+        &[0.0],
+        Some(w.unwrap_or(s.primary)),
+        None,
+        false,
+    )?;
+    let rs: Vec<(usize, &Trace)> = rs.iter().map(|(wi, r)| (*wi, r)).collect();
+    Ok(spot_of(s, &rs, &wts, &rc))
+}
+
+/// 波長ごとの追跡 rs（求積の点、重み wts）と主光線の追跡 rc からスポットを作る（2 波長以上なら波長の重みもかける）
+pub(crate) fn spot_of(s: &System, rs: &[(usize, &Trace)], wts: &[f64], rc: &Trace) -> Spot {
+    let (mut x, mut y, mut wt, mut wv) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for &(wi, r) in rs {
+        for (i, &wq) in wts.iter().enumerate() {
+            if r.ok(i) {
+                let (a, b) = s.image_point(r.rays[i].xyz, r.rays[i].lmn);
+                x.push(a);
+                y.push(b);
+                // 単色は重みによらない（重み 0 の波長でも求める）
+                wt.push(wq * if rs.len() == 1 { 1.0 } else { s.weights[wi] });
+                wv.push(wi);
+            }
+        }
+    }
+    let chief = if rc.traced(0) {
+        s.image_point(rc.rays[0].xyz, rc.rays[0].lmn)
+    } else {
+        (f64::NAN, f64::NAN)
+    };
+    let sw: f64 = wt.iter().sum();
+    if x.is_empty() || !(sw > 0.0) {
+        return Spot {
+            x,
+            y,
+            wave: wv,
+            weight: wt,
+            centroid: (f64::NAN, f64::NAN),
+            chief,
+            rms_centroid: f64::NAN,
+            rms_chief: f64::NAN,
+            geo: f64::NAN,
+        };
+    }
+    let avg = |v: &dyn Fn(usize) -> f64| (0..x.len()).map(|i| v(i) * wt[i]).sum::<f64>() / sw;
+    let cx = avg(&|i| x[i]);
+    let cy = avg(&|i| y[i]);
+    let (hx, hy) = chief;
+    let r2c = |i: usize| (x[i] - cx).powi(2) + (y[i] - cy).powi(2);
+    let rms_c = avg(&r2c).sqrt();
+    let rms_h = avg(&|i| (x[i] - hx).powi(2) + (y[i] - hy).powi(2)).sqrt();
+    let geo = (0..x.len()).map(r2c).fold(0.0, f64::max).sqrt();
+    Spot {
+        centroid: (cx, cy),
+        chief,
+        rms_centroid: rms_c,
+        rms_chief: rms_h,
+        geo,
+        x,
+        y,
+        wave: wv,
+        weight: wt,
+    }
+}

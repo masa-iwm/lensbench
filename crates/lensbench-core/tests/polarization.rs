@@ -672,3 +672,26 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
     assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 偏光追跡の中の追跡は、同じ点の偏光なしの追跡とビット単位で同じ（干渉縞の検出器が偏光つきのとき
+/// 追跡を 1 回で済ませる根拠）
+#[test]
+fn polarized_trace_matches_the_plain_trace_bitwise() {
+    let s = a0();
+    let c = Coatings::for_system(&s).unwrap();
+    let n = 9;
+    let (mut px, mut py) = (Vec::new(), Vec::new());
+    for i in 0..n {
+        for j in 0..n {
+            px.push(-1.1 + 2.2 * i as f64 / (n - 1) as f64);
+            py.push(-1.1 + 2.2 * j as f64 / (n - 1) as f64);
+        }
+    }
+    for field in [FieldSel::Norm(0.0, 0.0), FieldSel::Norm(0.3, 0.7)] {
+        let t = s.try_trace(field, &px, &py, None, None, false).unwrap();
+        let p = s
+            .try_trace_pol_opts(field, &px, &py, None, &[X], &c, false)
+            .unwrap();
+        assert_eq!(format!("{t:?}"), format!("{:?}", p.trace));
+    }
+}

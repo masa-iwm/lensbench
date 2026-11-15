@@ -237,7 +237,21 @@ fn trace_grid(
     let pys: Vec<f64> = idx.iter().map(|&q| grid_p(g, q % g, q / g).1).collect();
     let mut r = RayGrid::new(g, 1);
     let mut e = vec![[C64::new(0.0, 0.0); 3]; g * g];
-    let t = sys.try_trace(field, &pxs, &pys, Some(w), None, false)?;
+    // 偏光つきなら偏光追跡の結果の追跡（同じ光線、ビット単位で同じ）を使い、同じ点を 2 回追わない
+    let pt = match pol {
+        Some((p, coat)) => {
+            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[p.jones()], coat, false)?)
+        }
+        None => None,
+    };
+    let plain;
+    let t = match &pt {
+        Some(pt) => &pt.trace,
+        None => {
+            plain = sys.try_trace(field, &pxs, &pys, Some(w), None, false)?;
+            &plain
+        }
+    };
     let phase = sys.surfaces.iter().any(|s| {
         !s.ignore
             && matches!(
@@ -253,12 +267,6 @@ fn trace_grid(
         c.rays[0].lens_opd
     } else {
         0.0
-    };
-    let pt = match pol {
-        Some((p, coat)) => {
-            Some(sys.try_trace_pol_opts(field, &pxs, &pys, Some(w), &[p.jones()], coat, false)?)
-        }
-        None => None,
     };
     for (m, &q) in idx.iter().enumerate() {
         if !t.ok(m) {
@@ -276,9 +284,6 @@ fn trace_grid(
         r.sy[q] = pys[m];
         e[q] = match &pt {
             Some(pt) => {
-                if !pt.trace.ok(m) {
-                    continue;
-                }
                 let v = pt.e[m][0];
                 // 伝搬の位相を除いた振幅の共役が exp(+i k L) の約束の場（raygrid::trace_jones と同じ）
                 [v[0].conj(), v[1].conj(), v[2].conj()]
@@ -297,7 +302,7 @@ fn grid_p(g: usize, ix: usize, iy: usize) -> (f64, f64) {
     )
 }
 
-/// 場の 3 成分を画素へ（x・y は rasterize の ex・ey、z は ex に入れ替えてもう一度）
+/// 場の 3 成分を画素へ（x・y は rasterize の ex・ey、z は同じ走査で添える）
 fn raster(
     r: &RayGrid,
     e: &[[C64; 3]],
@@ -309,12 +314,8 @@ fn raster(
     let mut a = r.clone();
     a.ex = e.iter().map(|v| v[0]).collect();
     a.ey = e.iter().map(|v| v[1]).collect();
-    let p = rg::rasterize(&a, npx, x0, y0, dx, f64::INFINITY);
-    let mut b = r.clone();
-    b.ex = e.iter().map(|v| v[2]).collect();
-    b.ey = vec![C64::new(0.0, 0.0); e.len()];
-    let pz = rg::rasterize(&b, npx, x0, y0, dx, f64::INFINITY);
-    (p, pz.ex)
+    let z: Vec<C64> = e.iter().map(|v| v[2]).collect();
+    rg::rasterize_with(&a, Some(&z), npx, x0, y0, dx, f64::INFINITY)
 }
 
 /// 試料（系 `sample`）と参照（`reference`）の 2 本の経路の像面上の干渉縞。視野 `field` と波長 `w`（None なら主波長）

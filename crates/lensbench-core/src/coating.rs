@@ -21,6 +21,9 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::path::{Path, PathBuf};
 
+mod spline;
+pub use spline::Spline;
+
 pub use num_complex::Complex64 as C64;
 
 use crate::glass;
@@ -1736,131 +1739,6 @@ pub fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
     ys[i] + t * (ys[i + 1] - ys[i])
 }
 
-/// 3 次スプライン（両端 not-a-knot、範囲外は端の多項式で外挿。scipy の CubicSpline と同じ）
-#[derive(Debug, Clone)]
-pub struct Spline {
-    x: Vec<f64>,
-    /// 区間ごとの係数（t = x − x_i の 3, 2, 1, 0 次）
-    c: Vec<[f64; 4]>,
-}
-
-impl Spline {
-    pub fn not_a_knot(x: &[f64], y: &[f64]) -> Option<Spline> {
-        let n = x.len();
-        if n < 2 || y.len() != n || x.windows(2).any(|w| !(w[0] < w[1])) {
-            return None;
-        }
-        let dx: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
-        let sl: Vec<f64> = (0..n - 1).map(|i| (y[i + 1] - y[i]) / dx[i]).collect();
-        // 各点の傾き s
-        let s: Vec<f64> = if n == 2 {
-            vec![sl[0], sl[0]]
-        } else if n == 3 {
-            // 放物線
-            let a = (sl[1] - sl[0]) / (x[2] - x[0]);
-            (0..3)
-                .map(|i| sl[0] + a * (2.0 * x[i] - x[0] - x[1]))
-                .collect()
-        } else {
-            // 三重対角の連立（行 0 と n−1 が not-a-knot）
-            let mut sub = vec![0.0; n];
-            let mut dia = vec![0.0; n];
-            let mut sup = vec![0.0; n];
-            let mut b = vec![0.0; n];
-            for i in 1..n - 1 {
-                sub[i] = dx[i];
-                dia[i] = 2.0 * (dx[i - 1] + dx[i]);
-                sup[i] = dx[i - 1];
-                b[i] = 3.0 * (dx[i] * sl[i - 1] + dx[i - 1] * sl[i]);
-            }
-            let d0 = x[2] - x[0];
-            dia[0] = dx[1];
-            sup[0] = d0;
-            b[0] = ((dx[0] + 2.0 * d0) * dx[1] * sl[0] + dx[0] * dx[0] * sl[1]) / d0;
-            let d1 = x[n - 1] - x[n - 3];
-            dia[n - 1] = dx[n - 3];
-            sub[n - 1] = d1;
-            b[n - 1] = (dx[n - 2] * dx[n - 2] * sl[n - 3]
-                + (2.0 * d1 + dx[n - 2]) * dx[n - 3] * sl[n - 2])
-                / d1;
-            solve_tridiag(&sub, &dia, &sup, &b)?
-        };
-        let c = (0..n - 1)
-            .map(|i| {
-                let t = (s[i] + s[i + 1] - 2.0 * sl[i]) / (dx[i] * dx[i]);
-                let q = (3.0 * sl[i] - 2.0 * s[i] - s[i + 1]) / dx[i];
-                [t, q, s[i], y[i]]
-            })
-            .collect();
-        Some(Spline { x: x.to_vec(), c })
-    }
-
-    pub fn eval(&self, v: f64) -> f64 {
-        if v.is_nan() {
-            return f64::NAN;
-        }
-        self.eval_at(self.locate(v), v)
-    }
-
-    /// v の区間の番号（[`Self::eval_at`] に渡す）
-    fn locate(&self, v: f64) -> usize {
-        let n = self.x.len();
-        self.x[1..n - 1].partition_point(|&a| a <= v)
-    }
-
-    /// 区間 i（節が同じか、このスプラインの節がその前の部分である別のスプラインで [`Self::locate`] したもの）での値。
-    /// 節が前の部分のときは最後の区間に丸める（区間を探し直したのと同じ）
-    fn eval_at(&self, i: usize, v: f64) -> f64 {
-        let i = i.min(self.c.len() - 1);
-        let t = v - self.x[i];
-        let [a, b, c, d] = self.c[i];
-        ((a * t + b) * t + c) * t + d
-    }
-}
-
-/// 三重対角の連立方程式（部分ピボット付きの消去。行 0 と n−1 の対角が小さくてもよいように）
-fn solve_tridiag(sub: &[f64], dia: &[f64], sup: &[f64], b: &[f64]) -> Option<Vec<f64>> {
-    // 一般の帯行列として小さな密行列で解く（点数は 100 程度まで）
-    let n = dia.len();
-    let mut a = vec![vec![0.0; n + 1]; n];
-    for i in 0..n {
-        a[i][i] = dia[i];
-        if i > 0 {
-            a[i][i - 1] = sub[i];
-        }
-        if i + 1 < n {
-            a[i][i + 1] = sup[i];
-        }
-        a[i][n] = b[i];
-    }
-    // 行 0 は (dia0, sup0)、行 n−1 は (sub, dia) の 2 要素。ピボット付きガウス消去
-    for col in 0..n {
-        let lim = (col + 3).min(n);
-        let p = (col..lim).max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))?;
-        if a[p][col] == 0.0 {
-            return None;
-        }
-        a.swap(col, p);
-        for r in col + 1..lim {
-            let f = a[r][col] / a[col][col];
-            if f != 0.0 {
-                for c in col..=n {
-                    a[r][c] -= f * a[col][c];
-                }
-            }
-        }
-    }
-    let mut x = vec![0.0; n];
-    for i in (0..n).rev() {
-        let mut v = a[i][n];
-        for c in i + 1..n {
-            v -= a[i][c] * x[c];
-        }
-        x[i] = v / a[i][i];
-    }
-    Some(x)
-}
-
 /// 理想膜の名前から (s, p) の強度透過率: `I.xx`（s・p 共通、`I.98` は 0.98）、`I.s=Ts,p=Tp`（s・p で別）
 pub fn ideal_t(coat: &str) -> Result<[f64; 2]> {
     let bad = || Error::Invalid(format!("ideal coating {coat} (I.xx or I.s=Ts,p=Tp)"));
@@ -2243,35 +2121,52 @@ impl Iface {
         if self.mirror {
             return self.eval_cos(c0);
         }
-        let mut f = self.clone();
-        match &mut f.kind {
+        match &self.kind {
             Kind::Fresnel { ns } => {
-                if let Some(n) = n2 {
-                    *ns = C64::new(n, 0.0);
-                }
-                if let Some(n) = n1 {
-                    f.n1 = n;
-                }
+                // 膜なしの境界はヒープを持たないので、置き換えた境界を作って同じ計算に通す
+                let f = Iface {
+                    kind: Kind::Fresnel {
+                        ns: n2.map_or(*ns, |n| C64::new(n, 0.0)),
+                    },
+                    mirror: false,
+                    n1: n1.unwrap_or(self.n1),
+                    wl: self.wl,
+                };
+                f.eval_cos(c0)
             }
-            Kind::Stack { ns, n_out, .. } => {
+            Kind::Stack {
+                layers,
+                ns,
+                n_out,
+                layer_phase,
+                front,
+            } => {
                 // n_out（位相の約束の外側の媒質）が板なら、それも置き換える（判定は置き換える前の値で）
-                let (out_is_2, out_is_1) = (ns.im == 0.0 && *n_out == ns.re, *n_out == f.n1);
+                let (out_is_2, out_is_1) = (ns.im == 0.0 && *n_out == ns.re, *n_out == self.n1);
+                let mut m = StackMedia {
+                    n1: self.n1,
+                    ns: *ns,
+                    n_out: *n_out,
+                };
                 if let Some(n) = n2 {
                     if out_is_2 {
-                        *n_out = n;
+                        m.n_out = n;
                     }
-                    *ns = C64::new(n, 0.0);
+                    m.ns = C64::new(n, 0.0);
                 }
                 if let Some(n) = n1 {
                     if out_is_1 {
-                        *n_out = n;
+                        m.n_out = n;
                     }
-                    f.n1 = n;
+                    m.n1 = n;
                 }
+                // eval_cos と同じ cos の丸め
+                let c0 = c0.clamp(0.0, 1.0);
+                let s0 = ((1.0 - c0) * (1.0 + c0)).sqrt();
+                stack_coef(m, layers, *layer_phase, *front, false, self.wl, s0, c0)
             }
-            _ => return self.eval_cos(c0),
+            _ => self.eval_cos(c0),
         }
-        f.eval_cos(c0)
     }
 
     /// 入射角 theta [rad] での (s, p): 透過、鏡では反射
@@ -2300,32 +2195,12 @@ impl Iface {
                 layer_phase,
                 front,
             } => {
-                let (rs, rp, ts, tp) = stack_sc(self.n1, layers, *ns, self.wl, s0, c0);
-                let k = 2.0 * PI / self.wl;
-                let d: f64 = layers.iter().map(|l| l.1).sum();
-                if mirror {
-                    let ph = if *front {
-                        C64::new(0.0, 2.0 * k * self.n1 * c0 * d).exp()
-                    } else {
-                        C64::new(1.0, 0.0)
-                    };
-                    [rs * ph, rp * ph]
-                } else {
-                    let b = self.n1 * s0;
-                    let co = (1.0 - (b / n_out) * (b / n_out)).max(0.0).sqrt();
-                    if co == 0.0 {
-                        // 膜の外側で全反射（光線の追跡ではその前に止まる）
-                        notimpl!("coating transmission: total reflection in the outer medium n = {n_out} (β = {b})");
-                    }
-                    let mut ph = d * n_out / co;
-                    // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
-                    for &(n, dj) in layers.iter().filter(|_| *layer_phase) {
-                        let q = C64::new(n.re * n.re - b * b, 0.0).sqrt();
-                        ph -= dj * (C64::new(b * b, 0.0) / q).re;
-                    }
-                    let ph = C64::new(0.0, k * ph).exp();
-                    [ts * ph, tp * ph]
-                }
+                let m = StackMedia {
+                    n1: self.n1,
+                    ns: *ns,
+                    n_out: *n_out,
+                };
+                stack_coef(m, layers, *layer_phase, *front, mirror, self.wl, s0, c0)?
             }
             Kind::Table {
                 name,
@@ -2420,9 +2295,9 @@ impl Iface {
                     let mut out = [C64::new(0.0, 0.0); 2];
                     for (pol, o) in out.iter_mut().enumerate() {
                         let s = &sp[pol];
-                        let m: Vec<C64> = (0..4)
-                            .map(|c| C64::new(s[2 * c].eval(x), s[2 * c + 1].eval(x)))
-                            .collect();
+                        let m: [C64; 4] = std::array::from_fn(|c| {
+                            C64::new(s[2 * c].eval(x), s[2 * c + 1].eval(x))
+                        });
                         let (m00, m10, m01, m11) = if *reverse {
                             (m[3], m[1], m[2], m[0])
                         } else {
@@ -2625,20 +2500,89 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
     (keys, before)
 }
 
+/// 膜ファイルの層の境界の媒質（前の媒質 n1、基板 ns、位相の約束の外側の媒質 n_out）
+#[derive(Clone, Copy)]
+struct StackMedia {
+    n1: f64,
+    ns: C64,
+    n_out: f64,
+}
+
+/// 膜ファイルの層の (s, p): 透過、mirror なら反射（[`Iface::eval_cos_media`] で媒質だけ置き換えて使う）
+#[allow(clippy::too_many_arguments)]
+fn stack_coef(
+    m: StackMedia,
+    layers: &[(C64, f64)],
+    layer_phase: bool,
+    front: bool,
+    mirror: bool,
+    wl: f64,
+    s0: f64,
+    c0: f64,
+) -> Result<[C64; 2]> {
+    let (rs, rp, ts, tp) = stack_sc(m.n1, layers, m.ns, wl, s0, c0);
+    let k = 2.0 * PI / wl;
+    let d: f64 = layers.iter().map(|l| l.1).sum();
+    if mirror {
+        let ph = if front {
+            C64::new(0.0, 2.0 * k * m.n1 * c0 * d).exp()
+        } else {
+            C64::new(1.0, 0.0)
+        };
+        Ok([rs * ph, rp * ph])
+    } else {
+        let b = m.n1 * s0;
+        let co = (1.0 - (b / m.n_out) * (b / m.n_out)).max(0.0).sqrt();
+        if co == 0.0 {
+            // 膜の外側で全反射（光線の追跡ではその前に止まる）
+            let n_out = m.n_out;
+            notimpl!(
+                "coating transmission: total reflection in the outer medium n = {n_out} (β = {b})"
+            );
+        }
+        let mut ph = d * m.n_out / co;
+        // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
+        for &(n, dj) in layers.iter().filter(|_| layer_phase) {
+            let q = C64::new(n.re * n.re - b * b, 0.0).sqrt();
+            ph -= dj * (C64::new(b * b, 0.0) / q).re;
+        }
+        let ph = C64::new(0.0, k * ph).exp();
+        Ok([ts * ph, tp * ph])
+    }
+}
+
 /// 媒質の内部透過率（厚さ 1 mm あたりの強度。IT データがない・波長が範囲外なら None）
 pub fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
     if g.it.is_empty() {
         return None;
     }
-    let mut it = g.it.clone();
-    it.sort_by(|a, b| a[0].total_cmp(&b[0]));
-    if !(it[0][0] <= wl && wl <= it[it.len() - 1][0]) {
+    // 多くは波長の順に並んでいるので、並んでいなければだけ並べ替えた写しを作る
+    let sorted;
+    let it: &[[f64; 3]] = if g.it.is_sorted_by(|a, b| a[0] <= b[0]) {
+        &g.it
+    } else {
+        let mut v = g.it.clone();
+        v.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        sorted = v;
+        &sorted
+    };
+    let n = it.len();
+    if !(it[0][0] <= wl && wl <= it[n - 1][0]) {
         return None;
     }
-    let xs: Vec<f64> = it.iter().map(|r| r[0]).collect();
-    let t: Vec<f64> = it.iter().map(|r| r[1]).collect();
-    let th: Vec<f64> = it.iter().map(|r| r[2]).collect();
-    Some(interp(wl, &xs, &t).powf(1.0 / interp(wl, &xs, &th)))
+    // interp と同じ線形補間（両端は端の値）を、内部透過率と厚さの 2 列で同じ区間について
+    let col = |k: usize| {
+        if n == 1 || wl <= it[0][0] {
+            return it[0][k];
+        }
+        if wl >= it[n - 1][0] {
+            return it[n - 1][k];
+        }
+        let i = it.partition_point(|r| r[0] <= wl) - 1;
+        let t = (wl - it[i][0]) / (it[i + 1][0] - it[i][0]);
+        it[i][k] + t * (it[i + 1][k] - it[i][k])
+    };
+    Some(col(1).powf(1.0 / col(2)))
 }
 
 #[cfg(test)]

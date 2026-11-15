@@ -1490,13 +1490,11 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 単一モードファイバへの結合効率（OpticStudio の FICL 相当）。送り側は物点 source（物体面の局所 [mm]）、
-    /// 受け側は像面の局所の点 receiver、どちらも遠視野の 1/e² の NA で決まるガウスモード（na_receiver を省くと
-    /// na_source と同じ）。物体空間の sin θ ≤ na_max（省略で min(3·NA/n, 0.999)）を grid × grid の方向で標本化し、
-    /// 受け側の方向空間で重なり積分をとる。返す dict: eta（結合効率）・system（受け側まで届いた送り側の電力の比）・
-    /// receiver（eta/system）。pol=True なら膜込みの偏光の重なり jones（(2, 2) complex、[出射 x/y, 入射 x/y]）も返し、
-    /// 入射偏光 e の結合は |jones @ e|²。clip_stop=True（既定）なら系の絞り（絞り面に開口がなければ絞り半径の円）の外を
-    /// 通る光を系の損失に数える（OpticStudio の FICL と同じ）。有限物体の系だけ
+    /// 単一モードファイバへの結合効率（OpticStudio の FICL 相当）。送り側は物点 source（物体面の局所 [mm]）、受け側は像面の局所の点 receiver、
+    /// どちらも遠視野の 1/e² の NA のガウスモード（na_receiver の省略は na_source）。物体空間の sin θ ≤ na_max（省略で min(3·NA/n, 0.999)）を
+    /// grid × grid の方向で標本化し、受け側の方向空間で重なり積分をとる。dict: eta（結合効率）・system（受け側まで届いた送り側の電力の比）・receiver（eta/system）・
+    /// phase_step（隣り合う格子点の位相の差の最大 [rad]、π/2 超なら grid を増やす）。pol=True なら膜込みの偏光の重なり jones（(2, 2) complex、[出射 x/y, 入射 x/y]、
+    /// 入射偏光 e の結合は |jones @ e|²）も。clip_stop=True（既定）なら系の絞り（開口がなければ絞り半径の円）の外を通る光を系の損失に数える（FICL と同じ）。有限物体の系だけ
     #[pyo3(signature = (na_source, na_receiver=None, wave=None, source=(0.0, 0.0), receiver=(0.0, 0.0), grid=101, na_max=None, pol=false, clip_stop=true))]
     #[allow(clippy::too_many_arguments)]
     fn fiber_coupling<'py>(
@@ -1534,6 +1532,7 @@ impl PySystem {
         d.set_item("eta", c.eta)?;
         d.set_item("system", c.system)?;
         d.set_item("receiver", c.receiver)?;
+        d.set_item("phase_step", c.phase_step)?;
         if let Some(j) = c.jones {
             let a = Array::from_shape_fn((2, 2), |(i, k)| j[i][k]);
             d.set_item("jones", a.into_pyarray(py))?;

@@ -822,7 +822,9 @@ impl Problem {
                 };
                 return Ok(Part { r, j, fd });
             }
-            let analytic: Vec<usize> = if self.jac == JacMode::Auto && supports_analytic(s, &t.kind)
+            let mut analytic: Vec<usize> = if self.jac == JacMode::Auto
+                && act.len() >= self.analytic_min
+                && supports_analytic(s, &t.kind)
             {
                 act.iter()
                     .copied()
@@ -834,11 +836,9 @@ impl Problem {
             } else {
                 Vec::new()
             };
-            let analytic = if analytic.len() < self.analytic_min {
-                Vec::new()
-            } else {
-                analytic
-            };
+            if analytic.len() < self.analytic_min {
+                analytic.clear();
+            }
             let ps: Vec<Param> = analytic.iter().map(|&q| self.vars[q].param).collect();
             let (r, ja, ok) = if ps.is_empty() {
                 (eval_term(s, &t.kind, None)?.0, None, false)
