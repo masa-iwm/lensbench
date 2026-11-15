@@ -170,6 +170,8 @@ impl AimFit {
         let node = |i: usize| -(std::f64::consts::PI * i as f64 / (GRID - 1) as f64).cos();
         let pts = (0..GRID)
             .flat_map(|j| (0..GRID).map(move |i| (i, j)))
+            // 範囲の矩形に内接する楕円の中だけ（瞳は円いので、角の点は絞り・面の外で解けず、反復の上限まで回っていた）
+            .filter(|&(i, j)| node(i).hypot(node(j)) <= 1.0 + 1e-9)
             .map(|(i, j)| [c[0] + hw[0] * node(i), c[1] + hw[1] * node(j)])
             .collect();
         Some((c, hw, pts))
