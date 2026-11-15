@@ -128,6 +128,7 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
     };
     let mut c = Ctx {
         env,
+        lens_cache: None,
         base: env.base.clone(),
         users: Vec::new(),
         sf: Vec::new(),

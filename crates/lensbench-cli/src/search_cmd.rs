@@ -191,10 +191,14 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     let s = SwapSearch::new(&p, &env, &cat, spec)?;
     let n = s.count();
     let t0 = web_time::Instant::now();
-    let show = |pr: lensbench_runs::Progress| {
+    let show = |st: lensbench_design::swap::SwapStage, pr: lensbench_runs::Progress| {
         if !a.json {
+            let what = match st {
+                lensbench_design::swap::SwapStage::Screen => "ふるい",
+                lensbench_design::swap::SwapStage::Main => "組",
+            };
             eprint!(
-                "\r組 {}/{}（残り {}）  ",
+                "\r{what} {}/{}（残り {}）  ",
                 pr.done,
                 pr.total,
                 pr.eta.map_or("?".into(), |e| format!("{e:.0} 秒"))

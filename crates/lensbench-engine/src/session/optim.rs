@@ -586,8 +586,8 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         ..Default::default()
     };
     let t0 = web_time::Instant::now();
-    // 粗いふるい（prescreen）があれば残った組だけ
-    let idx = s.screened(opt_usize(p, "threads")?);
+    // 粗いふるい（prescreen）があれば残った組だけ（ふるいの間も進み具合を出し、止められる）
+    let (idx, stopped) = s.screen(&o)?;
     *sess.swap_run.lock_ok() = Some((0, idx.len()));
     let r = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
         let v = s.eval(idx[j]);
@@ -609,7 +609,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         screened: Some(idx.len()),
         done: Some(done),
         failed: Some(failed),
-        cancelled: Some(sum.cancelled),
+        cancelled: Some(sum.cancelled || stopped),
         seconds: Some(t0.elapsed().as_secs_f64()),
         slots,
         results: Some(rows),

@@ -1,8 +1,18 @@
 //! ブロックごとの展開（玉・空気・絞り・鏡・面の並び・.zmx・ユーザーカタログ・群）。展開の途中の状態 `Ctx`
 
 use super::*;
+use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
 pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> Result<String, String>;
+
+/// カタログの玉の要素の使い回し（[`expand_gaps_cached`]）: (メーカー, 型番) → (玉, 玉の .zmx のガラス)。
+/// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。差し替え探索が組ごとに同じ .zmx を読み直さないため
+#[derive(Default)]
+pub struct LensCache {
+    map: std::sync::Mutex<HashMap<(String, String), CachedLens>>,
+}
+
+type CachedLens = std::sync::Arc<(Element, std::sync::Arc<HashMap<String, Glass>>)>;
 
 /// 展開の環境
 pub struct Env<'a> {
@@ -14,6 +24,7 @@ pub struct Env<'a> {
 
 pub(crate) struct Ctx<'a, 'b> {
     pub(crate) env: &'a Env<'b>,
+    pub(crate) lens_cache: Option<&'a LensCache>,
     /// 相対パスの基準（ユーザーカタログの項目の中ではカタログのフォルダ）
     pub(crate) base: PathBuf,
     /// 展開中のユーザーカタログの項目（正規化したパス, 項目）。循環を見つける
@@ -682,6 +693,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 pick_lens(&s, *lens).map_err(|e| format!("{zmx}: {e}"))
             }
             LensSource::Catalog { vendor, part } => {
+                let key = (vendor.clone(), part.clone());
+                let hit = self
+                    .lens_cache
+                    .and_then(|c| c.map.lock_ok().get(&key).cloned());
+                if let Some(h) = hit {
+                    self.add_glasses(&h.1);
+                    return Ok(h.0.clone());
+                }
                 let f = self.env.catalog.ok_or_else(|| {
                     format!("lens catalog {vendor} {part}: the catalog can't be read")
                 })?;
@@ -700,7 +719,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 .map_err(|e| format!("{vendor} {part}: {e}"))?;
                 self.merge_glasses(&s);
                 // カタログの玉は径が決まっているので半直径は固定（fixed_semi）
-                pick_lens(&s, 1).map_err(|e| format!("{vendor} {part}: {e}"))
+                let el = pick_lens(&s, 1).map_err(|e| format!("{vendor} {part}: {e}"))?;
+                if let Some(c) = self.lens_cache {
+                    let v = std::sync::Arc::new((el.clone(), s.glasses.clone()));
+                    c.map.lock_ok().insert(key, v);
+                }
+                Ok(el)
             }
             LensSource::Surfaces { surfaces } => {
                 if surfaces.len() < 2 {

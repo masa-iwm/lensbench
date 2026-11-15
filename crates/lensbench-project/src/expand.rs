@@ -257,7 +257,7 @@ pub fn expand(p: &Project, env: &Env) -> Result<System, String> {
 
 /// expand と同じ。展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の説明も返す
 pub fn expand_report(p: &Project, env: &Env) -> Result<(System, Vec<String>), String> {
-    expand_inner(p, env, p.path.as_deref(), false).map(|r| (r.0, r.1))
+    expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.1))
 }
 
 /// id のある空気のブロックが入る面: (id, 面番号, 向き)。[`expand_gaps`]
@@ -267,7 +267,16 @@ pub type Gap = (String, usize, f64);
 /// 向きは鏡の後（光が −z へ進む）で −1（面の厚さは −t）。往復で 2 回通る空気は 2 つ並ぶ。
 /// 面の厚さには、同じ面に入る他の空気・群の移動も足されている
 pub fn expand_gaps(p: &Project, env: &Env) -> Result<(System, Vec<Gap>), String> {
-    expand_inner(p, env, p.path.as_deref(), false).map(|r| (r.0, r.3))
+    expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.3))
+}
+
+/// [`expand_gaps`] で、カタログの玉を cache から使い回す（cache は同じ環境の展開の間だけで共有する）
+pub fn expand_gaps_cached(
+    p: &Project,
+    env: &Env,
+    cache: &LensCache,
+) -> Result<(System, Vec<Gap>), String> {
+    expand_inner(p, env, p.path.as_deref(), false, Some(cache)).map(|r| (r.0, r.3))
 }
 
 /// ビームスプリッターの経路 path（BS を通る順の T・R）を展開する。None ならプロジェクトの path
@@ -276,7 +285,7 @@ pub fn expand_path(
     env: &Env,
     path: Option<&str>,
 ) -> Result<(System, Vec<String>), String> {
-    expand_inner(p, env, path.or(p.path.as_deref()), false).map(|r| (r.0, r.1))
+    expand_inner(p, env, path.or(p.path.as_deref()), false, None).map(|r| (r.0, r.1))
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
@@ -285,7 +294,7 @@ pub fn paths(p: &Project, env: &Env) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
-        match expand_inner(p, env, Some(&q), true) {
+        match expand_inner(p, env, Some(&q), true, None) {
             Ok(_) => out.push(q),
             Err(e) if e == splitter::NEED => {
                 if out.len() + todo.len() > 1024 {
@@ -331,6 +340,7 @@ pub(crate) fn expand_inner(
     env: &Env,
     path: Option<&str>,
     strict: bool,
+    cache: Option<&LensCache>,
 ) -> Result<(System, Vec<String>, usize, Vec<Gap>), String> {
     {
         let mut ids = Vec::new();
@@ -361,6 +371,7 @@ pub(crate) fn expand_inner(
     }
     let mut c = Ctx {
         env,
+        lens_cache: cache,
         base: env.base.clone(),
         users: Vec::new(),
         sf: Vec::new(),

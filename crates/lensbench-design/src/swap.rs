@@ -20,11 +20,14 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
+use lensbench_core::sync::LockExt;
 use lensbench_core::{glass, par, zmx, System};
 use lensbench_optim::{
     DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
 };
-use lensbench_project::{block_pointers, expand_gaps, Env, Gap, Project};
+use lensbench_project::{
+    block_pointers, expand_gaps_cached, find_block_mut, Block, Env, Gap, LensSource, Project,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -383,13 +386,16 @@ pub struct Pick {
 
 /// 差し替え探索
 pub struct SwapSearch<'a> {
-    base: Value,
+    /// 差し替える前のプロジェクト（状態 spec.state を当てたもの）
+    base: Project,
+    /// base の JSON の hash（結果のファイルの頭）
+    base_hash: String,
+    /// カタログの玉の使い回し（組ごとに .zmx を読み直さない）
+    lenses: lensbench_project::LensCache,
     dir: PathBuf,
     glass_dirs: Vec<PathBuf>,
     cat: &'a LensCatalog,
     spec: SwapSpec,
-    /// 所ごとの候補の JSON ポインタ（ブロックの位置）
-    ptrs: Vec<String>,
     /// 所ごとの選び方
     pub picks: Vec<Vec<Pick>>,
 }
@@ -442,7 +448,6 @@ impl<'a> SwapSearch<'a> {
             all.dedup();
             fill_infos(cat, &all, &env.glass_dirs, &mut infos);
         }
-        let mut ptrs = Vec::new();
         let mut picks = Vec::new();
         for (k, sl) in spec.slots.iter().enumerate() {
             if spec.slots[..k].iter().any(|x| x.block == sl.block) {
@@ -507,15 +512,15 @@ impl<'a> SwapSearch<'a> {
                     });
                 }
             }
-            ptrs.push(ptr);
             picks.push(v);
         }
         let s = SwapSearch {
-            base,
+            base_hash: lensbench_project::sysfile::hash_value(&base),
+            base: p,
+            lenses: Default::default(),
             dir: env.base.clone(),
             glass_dirs: env.glass_dirs.clone(),
             cat,
-            ptrs,
             picks,
             spec,
         };
@@ -555,14 +560,22 @@ impl<'a> SwapSearch<'a> {
 
     /// 組 i で差し替えたプロジェクト
     pub fn project(&self, i: usize) -> Result<Project, String> {
-        let mut v = self.base.clone();
+        let mut p = self.base.clone();
         for (k, &c) in self.combo(i).iter().enumerate() {
             let pk = &self.picks[k][c];
-            let b = v.pointer_mut(&self.ptrs[k]).unwrap();
-            b["source"] = json!({ "vendor": pk.lens.vendor, "part": pk.lens.part });
-            b["reversed"] = json!(pk.reversed);
+            // new で id が 1 つだけの玉のブロックであることを確かめてある
+            if let Some(Block::Lens {
+                source, reversed, ..
+            }) = find_block_mut(&mut p.blocks, &self.spec.slots[k].block)
+            {
+                *source = LensSource::Catalog {
+                    vendor: pk.lens.vendor.clone(),
+                    part: pk.lens.part.clone(),
+                };
+                *reversed = pk.reversed;
+            }
         }
-        serde_json::from_value(v).map_err(|e| e.to_string())
+        Ok(p)
     }
 
     /// 組 i の系と、最適化の問題
@@ -588,12 +601,12 @@ impl<'a> SwapSearch<'a> {
         let mut systems = Vec::new();
         let mut gapss = Vec::new();
         if self.spec.states.is_empty() {
-            let (s, g) = expand_gaps(&p, &env)?;
+            let (s, g) = expand_gaps_cached(&p, &env, &self.lenses)?;
             systems.push(s);
             gapss.push(g);
         } else {
             for n in &self.spec.states {
-                let (s, g) = expand_gaps(&p.with_state(n)?, &env)?;
+                let (s, g) = expand_gaps_cached(&p.with_state(n)?, &env, &self.lenses)?;
                 systems.push(s);
                 gapss.push(g);
             }
@@ -753,22 +766,59 @@ impl<'a> SwapSearch<'a> {
 
     /// 二段目（今の評価）に回す組の番号（小さい順）。粗いふるいがなければ全組。threads は [`Self::run`] と同じ
     pub fn screened(&self, threads: Option<usize>) -> Vec<usize> {
-        let idx: Vec<usize> = (0..self.count()).collect();
-        let Some(pre) = &self.spec.prescreen else {
-            return idx;
+        let o = lensbench_runs::RunOpts {
+            threads,
+            ..Default::default()
         };
-        let m = par::with_threads(threads, || {
-            par::map(&idx, |&i| self.coarse_merit(i, pre.rings))
-        });
+        // ファイルに書かず止めもしなければ失敗しない（組ごとの失敗は None）
+        self.screen(&o).map(|x| x.0).unwrap_or_default()
+    }
+
+    /// [`Self::screened`] を一括実行（[`lensbench_runs::run`]）で回す: (二段目に回す組の番号, 止めたか)。
+    /// o.out があれば一段目の粗い評価関数を組ごとにそのファイルへ書き、o.resume なら同じ頭のファイルの続きから回す
+    /// （o.header は使わず、一段目の頭を書く）。o.progress・o.cancel は一段目に効く。止めたら番号は空
+    pub fn screen(&self, o: &lensbench_runs::RunOpts) -> Result<(Vec<usize>, bool), String> {
+        let n = self.count();
+        let Some(pre) = &self.spec.prescreen else {
+            return Ok(((0..n).collect(), false));
+        };
+        let vals = std::sync::Mutex::new(vec![None; n]);
+        let ro = lensbench_runs::RunOpts {
+            threads: o.threads,
+            out: o.out,
+            header: self.header_screen(),
+            resume: o.resume,
+            progress: o.progress,
+            cancel: o.cancel,
+        };
+        let sum = lensbench_runs::run(n, 0, &ro, |i, _| {
+            let v = self.coarse_merit(i, pre.rings);
+            vals.lock_ok()[i] = v;
+            serde_json::to_string(&v).map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
+        })
+        .map_err(|e| e.to_string())?;
+        if sum.cancelled {
+            return Ok((Vec::new(), true));
+        }
+        let mut m = vals.into_inner().unwrap_or_else(|e| e.into_inner());
+        if let Some(path) = o.out {
+            // 再開で飛ばした組は書いた値から
+            let (_, rows) = lensbench_runs::read_results(path).map_err(|e| e.to_string())?;
+            for (i, _, r) in rows {
+                if i < n {
+                    m[i] = serde_json::from_str::<Option<f64>>(&r).map_err(|e| e.to_string())?;
+                }
+            }
+        }
         let mut ok: Vec<(f64, usize)> = m
             .iter()
             .enumerate()
-            .filter_map(|(i, v)| v.map(|v| (v, i)))
+            .filter_map(|(i, v)| v.filter(|v| v.is_finite()).map(|v| (v, i)))
             .collect();
         ok.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         let mut keep: Vec<usize> = ok.into_iter().take(pre.keep).map(|x| x.1).collect();
         keep.sort_unstable();
-        keep
+        Ok((keep, false))
     }
 
     /// 出発点ごとに最適化して、評価関数の最も小さい解: (出発点の番号, 問題, 結果, 変数の (名前, 状態))
@@ -909,6 +959,20 @@ impl<'a> SwapSearch<'a> {
     /// 一括実行の結果のファイルの頭: 版・設定・元のプロジェクトの hash・所ごとの候補。
     /// 候補（カタログ）・設定・プロジェクトが変われば違う頭になり、再開できない
     pub fn header(&self) -> String {
+        self.header_value().to_string()
+    }
+
+    /// 粗いふるいの段の結果のファイルの頭（`keep` は一段目の値を変えないので含めない）
+    fn header_screen(&self) -> String {
+        let mut h = self.header_value();
+        h["kind"] = json!("swap-prescreen");
+        if let Some(p) = h["spec"]["prescreen"].as_object_mut() {
+            p.remove("keep");
+        }
+        h.to_string()
+    }
+
+    fn header_value(&self) -> Value {
         let picks: Vec<Vec<Value>> = self
             .picks
             .iter()
@@ -921,34 +985,49 @@ impl<'a> SwapSearch<'a> {
         json!({
             "lensbench": lensbench_core::VERSION,
             "kind": "swap",
-            "project_hash": lensbench_project::sysfile::hash_value(&self.base),
+            "project_hash": self.base_hash,
             "spec": serde_json::to_value(&self.spec).unwrap(),
             "picks": picks,
         })
-        .to_string()
     }
 
     /// [`run`](Self::run) と同じ。out があれば一括実行（[`lensbench_runs::run`]）で結果を 1 組ずつ
-    /// JSONL に書き出し、resume なら同じ頭のファイルの続きから回す（書いた組は飛ばす）。返り値はファイルの全部の組
+    /// JSONL に書き出し、resume なら同じ頭のファイルの続きから回す（書いた組は飛ばす）。返り値はファイルの全部の組。
+    /// 粗いふるいがあれば、一段目の値は [`screen_path`]`(out)` に書いて同じく続きから回す。progress は段（[`SwapStage`]）ごと
     pub fn run_to(
         &self,
         out: Option<&std::path::Path>,
         resume: bool,
         threads: Option<usize>,
-        progress: Option<&(dyn Fn(lensbench_runs::Progress) + Sync)>,
+        progress: Option<&(dyn Fn(SwapStage, lensbench_runs::Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
         let Some(path) = out else {
             return Ok(self.run(threads));
         };
+        let pre_path = screen_path(path);
+        let show_pre = |p| progress.map_or((), |f| f(SwapStage::Screen, p));
+        let show = |p| progress.map_or((), |f| f(SwapStage::Main, p));
+        let pre = lensbench_runs::RunOpts {
+            threads,
+            out: Some(&pre_path),
+            resume,
+            progress: Some(&show_pre),
+            ..Default::default()
+        };
+        let (idx, _) = self.screen(&pre)?;
+        let mut header = self.header_value();
+        if self.spec.prescreen.is_some() {
+            // 二段目の番号 j は残した組の j 番目。残した組が変われば続きから回せない
+            header["screened"] = json!(lensbench_project::sysfile::hash_value(&json!(idx)));
+        }
         let o = lensbench_runs::RunOpts {
             threads,
             out: Some(path),
-            header: self.header(),
+            header: header.to_string(),
             resume,
-            progress,
+            progress: Some(&show),
             cancel: None,
         };
-        let idx = self.screened(threads);
         lensbench_runs::run(idx.len(), 0, &o, |j, _| {
             serde_json::to_string(&self.eval(idx[j]))
                 .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
@@ -971,6 +1050,20 @@ impl<'a> SwapSearch<'a> {
         sort_results(&mut v);
         v
     }
+}
+
+/// 一括実行の段（[`SwapSearch::run_to`] の進み具合）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwapStage {
+    /// 粗いふるい（全組）
+    Screen,
+    /// 今の評価（残した組。ふるいがなければ全組）
+    Main,
+}
+
+/// 結果のファイル out に対する、粗いふるいの段の結果のファイル（`r.jsonl` なら `r.pre.jsonl`）
+pub fn screen_path(out: &std::path::Path) -> PathBuf {
+    out.with_extension("pre.jsonl")
 }
 
 /// 評価関数の小さい順（評価できなかった組は後ろ）、同じなら番号の順

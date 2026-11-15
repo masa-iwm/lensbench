@@ -269,6 +269,52 @@ fn prescreen_keeps_the_best_coarse_combinations_with_the_same_results() {
 }
 
 #[test]
+fn prescreen_is_written_and_resumed() {
+    use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+    let (p, dir) = project();
+    let c = cat();
+    let mut a = slot("A");
+    a.filter.efl = [Some(40.0), None];
+    a.flip = true;
+    let mut b = slot("B");
+    b.filter.efl = [Some(40.0), None];
+    let mut sp = spec(vec![a, b]);
+    sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 3 });
+    let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
+    let mem = vals(s.run(None));
+    let tmp = std::env::temp_dir().join(format!("lb-swap-pre-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let f = tmp.join("r.jsonl");
+    let pre = swap::screen_path(&f);
+    assert_eq!(pre, tmp.join("r.pre.jsonl"));
+    let _ = std::fs::remove_file(&f);
+    let _ = std::fs::remove_file(&pre);
+    let (screen, main) = (AtomicUsize::new(0), AtomicUsize::new(0));
+    let cb = |st: swap::SwapStage, pr: lensbench_runs::Progress| {
+        let c = if st == swap::SwapStage::Screen {
+            &screen
+        } else {
+            &main
+        };
+        c.store(pr.ran, Relaxed);
+    };
+    let r = s.run_to(Some(&f), true, None, Some(&cb)).map(vals).unwrap();
+    assert_eq!(r, mem);
+    assert_eq!(screen.load(Relaxed), s.count());
+    assert_eq!(main.load(Relaxed), 3);
+    let lines = std::fs::read_to_string(&pre).unwrap().lines().count();
+    assert_eq!(lines, 1 + s.count());
+    // 本番の結果を消して回し直すと、一段目は書いた値を使い、本番だけ回す
+    std::fs::remove_file(&f).unwrap();
+    screen.store(usize::MAX, Relaxed);
+    let r2 = s.run_to(Some(&f), true, None, Some(&cb)).map(vals).unwrap();
+    assert_eq!(r2, mem);
+    assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
+    assert_eq!(main.load(Relaxed), 3);
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn efl_target() {
     let (p, dir) = project();
     let c = cat();
@@ -317,7 +363,7 @@ fn run_to_file_and_resume() {
     let keep = lines[..lines.len() - 1].join("\n") + "\n" + &lines[lines.len() - 1][..10];
     std::fs::write(&f, keep).unwrap();
     let ran = std::sync::atomic::AtomicUsize::new(0);
-    let cb = |pr: lensbench_runs::Progress| {
+    let cb = |_: swap::SwapStage, pr: lensbench_runs::Progress| {
         ran.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
     };
     let r2 = s

@@ -968,6 +968,29 @@ pub fn block_pointers(blocks: &Value, id: &str) -> Vec<String> {
     out
 }
 
+/// id のブロック（群・BS の枝の中も、[`block_pointers`] と同じ順で最初のもの）
+pub fn find_block_mut<'x>(blocks: &'x mut [Block], id: &str) -> Option<&'x mut Block> {
+    if id.is_empty() {
+        return None;
+    }
+    for b in blocks {
+        if crate::blocks::block_id(b) == id {
+            return Some(b);
+        }
+        let kids: Vec<&mut Vec<Block>> = match b {
+            Block::Group { blocks, .. } => vec![blocks],
+            Block::Splitter { spec, .. } => vec![&mut spec.t, &mut spec.r, &mut spec.d],
+            _ => Vec::new(),
+        };
+        for k in kids {
+            if let Some(x) = find_block_mut(k, id) {
+                return Some(x);
+            }
+        }
+    }
+    None
+}
+
 /// id が name の項目（blocks・groups の中）の JSON ポインタを集める
 pub(crate) fn find_id(v: &Value, path: &str, id: &str, out: &mut Vec<String>) {
     let Some(a) = v.as_array() else { return };

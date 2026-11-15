@@ -62,6 +62,8 @@
 - `edit_ops::apply` は `&[EditOp]` を受ける（JSON は `edit_ops::parse` で読むか `apply_json`）。`Project::surface_ops` は
   `Vec<Value>` から `Vec<SurfaceOp>` に（型は `lensbench_project::edit_spec`）。
 - 差し替え探索 `SwapSearch::eval`・`run`・`run_to` の返り値は `serde_json::Value` から `SwapResult` に（`to_value()` で前と同じ JSON）。
+- `SwapSearch::run_to` の進み具合は段（`SwapStage::Screen`・`Main`）も受ける（`Fn(SwapStage, Progress)`）。粗いふるいがあれば
+  一段目の値を `screen_path(out)`（`r.pre.jsonl`）に書く。ふるいを止められる形は `SwapSearch::screen(&RunOpts)`。
 - 多色を受ける解析（spot・mtf・psf・huygens・sweep など）の波長の引数は `Option<usize>` から `Waves`（`All`・`One`）に。
   単色の解析（OPD・波面・Zernike・縞）は `Option<usize>` のまま（None は主波長）。
 - 追跡: panic する `System::trace` を消した（`try_trace` を使う）。`try_trace_rec`・`trace_launch_rec` は
