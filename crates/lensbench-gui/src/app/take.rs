@@ -118,6 +118,7 @@ impl Core {
             Tag::Info => self.info = Some(v),
             Tag::Analyze(id) => {
                 let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
+                let gen = self.rev;
                 let r = self.results.entry(id).or_default();
                 // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない（GUX-19）
                 r.prev = if r.cmd == cmd && r.params == params {
@@ -130,6 +131,7 @@ impl Core {
                 r.value = Some(v);
                 r.ms = ms;
                 r.error = None;
+                r.gen = gen;
             }
             Tag::Rays(id) => {
                 let rays = d

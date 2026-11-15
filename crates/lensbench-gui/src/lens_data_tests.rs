@@ -528,3 +528,123 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert_eq!(range_src("3", &b, 2).unwrap(), vec![3, 4]);
     assert!(range_src("x", &b, 2).is_err());
 }
+
+/// 表を egui の画面で回す: 1 フレームずつ入力（events）を渡し、出た Act を集める（画面の振る舞いの試験、
+/// GPN-29・GAR-07）
+fn drive(st: &mut LensData, rows: &[Row], frames: Vec<Vec<egui::Event>>) -> Vec<Act> {
+    let ctx = egui::Context::default();
+    let blocks: Vec<Block> = Vec::new();
+    let locked = BTreeSet::new();
+    let ro = |_: usize, _: Col| None;
+    let c = Ctx {
+        rows,
+        blocks: &blocks,
+        locked: &locked,
+        read_only: &ro,
+        combo: false,
+        unit_mech: None,
+        note: None,
+        config_n: 1,
+        config_rows: &[],
+        glasses: &[],
+        glasses_loaded: true,
+    };
+    let mut acts = Vec::new();
+    for events in frames {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1200.0, 700.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |u| {
+                acts.extend(super::ui(u, st, &c).0);
+            });
+        });
+    }
+    acts
+}
+
+fn key(k: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+fn sample_rows() -> Vec<Row> {
+    (0..5)
+        .map(|j| Row {
+            typ: "STANDARD".into(),
+            stop: j == 1,
+            t: 1.0 + j as f64,
+            ..Default::default()
+        })
+        .collect()
+}
+
+#[test]
+fn ui_typing_in_a_cell_then_enter_edits_it() {
+    let rows = sample_rows();
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let mut frames = vec![vec![egui::Event::Text("7".into())]];
+    frames.extend((0..3).map(|_| Vec::new()));
+    frames.push(vec![key(egui::Key::Enter)]);
+    frames.push(Vec::new());
+    let acts = drive(&mut st, &rows, frames);
+    assert!(
+        acts.iter().any(|a| matches!(a,
+            Act::Edit { j: 2, col: Col::T, value } if value.as_f64() == Some(7.0))),
+        "{acts:?}"
+    );
+    assert!(st.edit.is_none(), "書き換えを閉じる");
+}
+
+#[test]
+fn ui_paste_and_delete_keys() {
+    let rows = sample_rows();
+    // 貼り付け: 今のセルから下へ
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive(
+        &mut st,
+        &rows,
+        vec![vec![egui::Event::Paste("5\n6".into())]],
+    );
+    let edits: Vec<(usize, Option<f64>)> = acts
+        .iter()
+        .filter_map(|a| match a {
+            Act::Fields { j, fields } => Some((*j, fields.get("t").and_then(Value::as_f64))),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(edits, [(2, Some(5.0)), (3, Some(6.0))], "{acts:?}");
+    // 絞りの面だけを Delete で消すのは断る
+    let mut st = LensData {
+        active: true,
+        cur: Some((1, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive(
+        &mut st,
+        &rows,
+        vec![vec![key(egui::Key::Delete)], Vec::new()],
+    );
+    assert!(
+        acts.iter().any(|a| matches!(a, Act::Refused(_))),
+        "{acts:?}"
+    );
+}

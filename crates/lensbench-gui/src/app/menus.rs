@@ -340,17 +340,20 @@ impl App {
                             .clicked()
                         {
                             ui.close_menu();
-                            if crate::files::confirm(
+                            self.c.ask(
                                 "lensbench",
                                 tr("ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？"),
-                            ) {
-                                crate::web_store::clear();
-                                crate::web_store::prune_dirs(
-                                    &mut self.c.s.glass_dirs,
-                                    &mut self.c.s.lens_dirs,
-                                );
-                                self.c.refresh_catalog();
-                            }
+                                |c, yes| {
+                                    if yes {
+                                        crate::web_store::clear();
+                                        crate::web_store::prune_dirs(
+                                            &mut c.s.glass_dirs,
+                                            &mut c.s.lens_dirs,
+                                        );
+                                        c.refresh_catalog();
+                                    }
+                                },
+                            );
                         }
                     }
                     // ブラウザ（Web 版）では閉じられないので出さない
@@ -689,3 +692,19 @@ const HELP_PAGES: &[(&str, &str, &str)] = &[
     (n_("最適化"), "optimize.html", n_("評価関数・変数・DLS")),
     (n_("公差"), "tolerance.html", n_("モンテカルロ公差の設定")),
 ];
+
+/// パネルを外に出す操作の名前。Web 版はブラウザの別の窓（ポップアップ）に出し、元のタブで描いた画面を送って
+/// 別の窓で操作する（#137・GAR-10）
+pub(super) fn detach_label(web: bool) -> &'static str {
+    if web {
+        tr("別の窓に出す")
+    } else {
+        tr("別の窓に出す（別モニターへ）")
+    }
+}
+
+#[test]
+fn detach_label_web() {
+    assert_eq!(detach_label(true), "別の窓に出す");
+    assert_eq!(detach_label(false), "別の窓に出す（別モニターへ）");
+}

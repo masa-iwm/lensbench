@@ -68,14 +68,35 @@ pub fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
     }
 }
 
-/// 図を描く。描けない結果なら false（呼び手が表で見せる）
-pub fn show(ui: &mut Ui, id: u64, cmd: &str, v: &Value, prev: Option<&Value>) -> bool {
+/// 結果の世代 gen ごとに 1 度だけ作る（図の格子など。毎フレーム JSON から作り直さない、GPN-07）
+fn memo<T: Send + Sync + 'static>(
+    ui: &Ui,
+    key: impl std::hash::Hash,
+    gen: u64,
+    f: impl FnOnce() -> T,
+) -> std::sync::Arc<T> {
+    let id = ui.make_persistent_id(("memo", key));
+    if let Some((g, v)) = ui
+        .ctx()
+        .data(|d| d.get_temp::<(u64, std::sync::Arc<T>)>(id))
+    {
+        if g == gen {
+            return v;
+        }
+    }
+    let v = std::sync::Arc::new(f());
+    ui.ctx().data_mut(|d| d.insert_temp(id, (gen, v.clone())));
+    v
+}
+
+/// 図を描く。描けない結果なら false（呼び手が表で見せる）。gen は結果の世代（届くたびに変わる）
+pub fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, v: &Value, prev: Option<&Value>) -> bool {
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some_and(|f| f(ui, id, v));
     }
     match cmd {
-        "wavefront" => wavefront(ui, id, v),
-        "psf" => psf(ui, id, v),
+        "wavefront" => wavefront(ui, id, gen, v),
+        "psf" => psf(ui, id, gen, v),
         "zernike" => zernike(ui, id, v),
         "mtf-field" => mtf_field(ui, id, v, prev),
         "mtf-focus" => mtf_focus(ui, id, v, prev),
@@ -85,7 +106,7 @@ pub fn show(ui: &mut Ui, id: u64, cmd: &str, v: &Value, prev: Option<&Value>) ->
             true
         }
         "fringe" => interference(ui, id, v),
-        "pop" => pop(ui, id, v),
+        "pop" => pop(ui, id, gen, v),
         _ => false,
     }
 }
@@ -254,14 +275,17 @@ pub fn heatmap(
 ) {
     let id = ui.make_persistent_id(&salt);
     // 図の画像は値が変わったときだけ作り直す
+    // 毎フレーム全画素を通すので、SipHash ではなく 64 ビットずつ混ぜる軽いもの（GPN-07）
     let key = {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mix = |h: u64, x: u64| (h.rotate_left(5) ^ x).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+        let mut h = 0u64;
         for x in &g.v {
-            x.to_bits().hash(&mut h);
+            h = mix(h, x.to_bits());
         }
-        (g.w, g.h, c as u8, lo.to_bits(), hi.to_bits()).hash(&mut h);
-        h.finish()
+        for x in [g.w as u64, g.h as u64, c as u64, lo.to_bits(), hi.to_bits()] {
+            h = mix(h, x);
+        }
+        h
     };
     let tex = ui
         .ctx()
@@ -451,7 +475,7 @@ pub fn interferogram(g: &Grid, f: &FringeCfg) -> Grid {
     out
 }
 
-fn wavefront(ui: &mut Ui, id: u64, v: &Value) -> bool {
+fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
     let Some(items) = v["wavefront"].as_array() else {
         return false;
     };
@@ -460,7 +484,7 @@ fn wavefront(ui: &mut Ui, id: u64, v: &Value) -> bool {
     }
     let k = pick_field(ui, id, "wavefront", items);
     let it = &items[k];
-    let Some(g) = wavefront_grid(it) else {
+    let Some(g) = &*memo(ui, ("wf-grid", id, k), gen, || wavefront_grid(it)) else {
         ui.weak(tr("波面の格子が読めない"));
         return true;
     };
@@ -508,8 +532,17 @@ fn wavefront(ui: &mut Ui, id: u64, v: &Value) -> bool {
     let h = fig_height(ui, 8.0);
     let lab = (tr("瞳 x"), tr("瞳 y"));
     if f.on {
-        let fine = g.upsample((256 / g.w.max(1)).clamp(1, 8));
-        let ig = interferogram(&fine, &f);
+        // 縞の設定は鍵でなく世代に混ぜる（スライダーの値ごとに格子を残さない）
+        let fk = [f.scale, f.xtilt, f.ytilt].map(f64::to_bits);
+        let stamp = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (gen, fk).hash(&mut h);
+            h.finish()
+        };
+        let ig = memo(ui, ("wf-ifg", id, k), stamp, || {
+            interferogram(&g.upsample((256 / g.w.max(1)).clamp(1, 8)), &f)
+        });
         heatmap(
             ui,
             ("ifg", id),
@@ -525,7 +558,7 @@ fn wavefront(ui: &mut Ui, id: u64, v: &Value) -> bool {
         heatmap(
             ui,
             ("wf", id),
-            &g,
+            g,
             Cmap::CoolWarm,
             lo,
             hi,
@@ -647,14 +680,16 @@ pub fn crop_to_signal(g: &Grid, rel: f64) -> Grid {
     }
 }
 
-fn psf(ui: &mut Ui, id: u64, v: &Value) -> bool {
-    let grids = psf_grids(v);
+fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
+    let grids = memo(ui, ("psf-grids", id), gen, || psf_grids(v));
     if grids.is_empty() {
         return false;
     }
     let items: Vec<Value> = grids.iter().map(|(f, _)| json!({ "field": f })).collect();
     let k = pick_field(ui, id, "psf", &items);
-    let g = &crop_to_signal(&grids[k].1, 1e-2);
+    let g = &*memo(ui, ("psf-crop", id, k), gen, || {
+        crop_to_signal(&grids[k].1, 1e-2)
+    });
     let key = ui.make_persistent_id(("psf-log", id));
     let mut log: bool = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, false));
     let peak = g.range().map(|r| r.1).unwrap_or(1.0);
@@ -674,13 +709,16 @@ fn psf(ui: &mut Ui, id: u64, v: &Value) -> bool {
     let (xl, yl) = (format!("x [{unit}]"), format!("y [{unit}]"));
     let h = fig_height(ui, 8.0);
     if log {
-        let mut lg = g.clone();
         let floor = (peak * 1e-6).max(1e-300);
-        for x in lg.v.iter_mut() {
-            if x.is_finite() {
-                *x = x.max(floor).log10();
+        let lg = memo(ui, ("psf-log", id, k), gen, || {
+            let mut lg = g.clone();
+            for x in lg.v.iter_mut() {
+                if x.is_finite() {
+                    *x = x.max(floor).log10();
+                }
             }
-        }
+            lg
+        });
         let hi = peak.max(floor).log10();
         heatmap(
             ui,
@@ -1092,7 +1130,7 @@ pub fn pop_grid(v: &Value) -> Option<Grid> {
 }
 
 /// 簡易 POP: 出力の照度の図と、中心を通る x・y の断面
-fn pop(ui: &mut Ui, id: u64, v: &Value) -> bool {
+fn pop(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
     let xs = f64s(&v["x"]);
     let ys = f64s(&v["y"]);
     let ix = f64s(&v["irradiance_x"]);
@@ -1119,12 +1157,12 @@ fn pop(ui: &mut Ui, id: u64, v: &Value) -> bool {
         ),
     ));
     let h = (ui.available_height() * 0.55).clamp(160.0, 520.0);
-    if let Some(g) = pop_grid(v) {
+    if let Some(g) = &*memo(ui, ("pop-grid", id), gen, || pop_grid(v)) {
         let (lo, hi) = g.range().unwrap_or((0.0, 1.0));
         heatmap(
             ui,
             ("pop", id),
-            &g,
+            g,
             Cmap::Viridis,
             lo.min(0.0),
             hi,

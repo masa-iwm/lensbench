@@ -5,7 +5,8 @@
 //! 元のタブに返す。系・計算・パネルの状態は元のタブだけが持つ。
 //!
 //! 形（数はすべて little endian）: `LBF1`、テクスチャの設定の数 u32 と各設定（id、位置の有無と位置、大きさ、
-//! テクスチャの設定 4 バイト、RGBA）、消すテクスチャの数と id、網の数と各網（切り抜きの矩形、テクスチャ id、
+//! テクスチャの設定 4 バイト、画素の形 1 バイト（0: RGBA、1: フォントのアトラスの 1 バイト/画素。4 つの成分が
+//! 同じ値なので 1 つだけ送る、GAR-26）と画素）、消すテクスチャの数と id、網の数と各網（切り抜きの矩形、テクスチャ id、
 //! 頂点（位置・uv・色）、添え字）
 
 use egui::epaint::{
@@ -14,7 +15,7 @@ use egui::epaint::{
 };
 use egui::{Color32, ColorImage, Pos2, Rect};
 
-const MAGIC: &[u8; 4] = b"LBF1";
+const MAGIC: &[u8; 4] = b"LBF2";
 
 /// 受けた画面
 #[derive(Debug, Default)]
@@ -88,14 +89,15 @@ pub fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
         b.push(o.mipmap_mode.map_or(0, |f| 1 + filter_byte(f)));
         match &d.image {
             ImageData::Color(c) => {
+                b.push(0);
                 for p in &c.pixels {
                     b.extend_from_slice(&p.to_array());
                 }
             }
             ImageData::Font(f) => {
-                for p in f.srgba_pixels(None) {
-                    b.extend_from_slice(&p.to_array());
-                }
+                // 白の前乗算（r = g = b = a）なので a だけ
+                b.push(1);
+                b.extend(f.srgba_pixels(None).map(|p| p.a()));
             }
         }
     }
@@ -132,10 +134,14 @@ pub fn encode(delta: &TexturesDelta, prims: &[ClippedPrimitive]) -> Vec<u8> {
     b
 }
 
-/// 網の部分だけの指紋（同じ画面を送り直さない）
+/// 網の部分だけの指紋（同じ画面を送り直さない）。毎フレーム全頂点を通すので、SipHash ではなく
+/// 32 ビットずつ混ぜる軽いもの（FxHash と同じ式。見比べるだけで、悪意のある入力は無い。GAR-26）
 pub fn mesh_hash(prims: &[ClippedPrimitive]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
+    #[inline]
+    fn mix(h: u64, x: u32) -> u64 {
+        (h.rotate_left(5) ^ u64::from(x)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95)
+    }
+    let mut h = 0u64;
     for p in prims {
         if let Primitive::Mesh(m) = &p.primitive {
             for x in [
@@ -144,23 +150,26 @@ pub fn mesh_hash(prims: &[ClippedPrimitive]) -> u64 {
                 p.clip_rect.max.x,
                 p.clip_rect.max.y,
             ] {
-                x.to_bits().hash(&mut h);
+                h = mix(h, x.to_bits());
             }
-            m.texture_id.hash(&mut h);
-            m.indices.hash(&mut h);
+            let (k, n) = match m.texture_id {
+                TextureId::Managed(n) => (0, n),
+                TextureId::User(n) => (1, n),
+            };
+            h = mix(mix(mix(h, k), n as u32), (n >> 32) as u32);
+            h = mix(h, m.indices.len() as u32);
+            for &i in &m.indices {
+                h = mix(h, i);
+            }
             for v in &m.vertices {
-                (
-                    v.pos.x.to_bits(),
-                    v.pos.y.to_bits(),
-                    v.uv.x.to_bits(),
-                    v.uv.y.to_bits(),
-                )
-                    .hash(&mut h);
-                v.color.to_array().hash(&mut h);
+                for x in [v.pos.x, v.pos.y, v.uv.x, v.uv.y] {
+                    h = mix(h, x.to_bits());
+                }
+                h = mix(h, u32::from_le_bytes(v.color.to_array()));
             }
         }
     }
-    h.finish()
+    h
 }
 
 struct Rd<'a> {
@@ -227,8 +236,14 @@ pub fn decode(b: &[u8]) -> Result<Frame, String> {
             return Err("テクスチャが大きすぎる".into());
         }
         let mut pixels = Vec::with_capacity(w * h);
-        for _ in 0..w * h {
-            pixels.push(r.rgba()?);
+        if r.u8()? == 1 {
+            for &a in r.take(w * h)? {
+                pixels.push(Color32::from_rgba_premultiplied(a, a, a, a));
+            }
+        } else {
+            for _ in 0..w * h {
+                pixels.push(r.rgba()?);
+            }
         }
         f.set.push((
             id,
@@ -307,6 +322,11 @@ mod tests {
         let f = decode(&b).unwrap();
         assert_eq!(f.set.len(), out.textures_delta.set.len());
         assert_eq!(f.set[0].3.size, out.textures_delta.set[0].1.image.size());
+        // フォントのアトラスは 1 バイト/画素で送っても同じ色に戻る
+        if let ImageData::Font(font) = &out.textures_delta.set[0].1.image {
+            let want: Vec<Color32> = font.srgba_pixels(None).collect();
+            assert_eq!(f.set[0].3.pixels, want);
+        }
         let meshes: Vec<&Mesh> = prims
             .iter()
             .filter_map(|p| match &p.primitive {

@@ -4,10 +4,12 @@
 //! 計算はすべて serve と同じ method（load・analyze・get・set・write・trace・glasses・lenses）を [`Worker`] に頼む。
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
+mod ask;
 mod help;
 mod menus;
 mod status;
 mod take;
+mod to_combo;
 mod tour_steps;
 
 use std::collections::{BTreeSet, HashMap};
@@ -322,6 +324,8 @@ struct AnaRes {
     ms: f64,
     rays: Vec<SpotRays>,
     error: Option<String>,
+    /// 結果の世代（届くたびに変わる。図の格子を作り直す目安、GPN-07）
+    gen: u64,
 }
 
 /// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前
@@ -522,6 +526,8 @@ struct Core {
     folders_open: bool,
     help_open: bool,
     save_layout_open: bool,
+    /// 答えを待っている「はい・いいえ」の確かめ（[`Core::ask`]、GAR-24）
+    ask: Option<ask::Ask>,
     layout_name: String,
     /// 最後に組合せから作ったプロジェクト
     built: Option<Value>,
@@ -624,10 +630,6 @@ struct Core {
     param_sys_cache: std::cell::RefCell<Option<(u64, std::rc::Rc<crate::param_pick::Sys>)>>,
     /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
     sys_gen: u64,
-    /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
-    relay: Option<bool>,
-    /// 元のタブが計算中か（別のタブのパネル）
-    relay_busy: bool,
 }
 
 pub struct App {
@@ -645,12 +647,9 @@ pub struct App {
     /// 窓に送った OS のタイトルバーの有無（設定と違えば送り直す）
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     decorations: Option<bool>,
-    /// Web 版: 別のタブに出した解析のパネル（元のタブ）
+    /// Web 版: 別の窓に出したパネル（元のタブ）
     #[cfg(target_arch = "wasm32")]
     tabs: Option<crate::web_tabs::Tabs>,
-    /// Web 版: このタブが別のタブのパネルなら、その口と、届いたパネル
-    #[cfg(target_arch = "wasm32")]
-    child: Option<(crate::web_tabs::Child, Option<Pane>)>,
     /// Web 版: このタブが別の窓に出した解析以外のパネルなら、元のタブで描いた画面を受けて描く口（#137）
     #[cfg(target_arch = "wasm32")]
     viewer: Option<crate::web_tabs::Viewer>,
@@ -879,6 +878,11 @@ impl Core {
     /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
     /// 組合せに戻して系を作る（#129）
     fn open_doc(&mut self, p: &Path) {
+        self.open_doc_with(p, false);
+    }
+
+    /// [`Self::open_doc`]。asked は今の組合せを消してよいか聞いて「はい」だった
+    fn open_doc_with(&mut self, p: &Path, asked: bool) {
         self.combo_census = None;
         self.push_recent(&p.display().to_string());
         let is_json = p
@@ -893,11 +897,18 @@ impl Core {
                 if !self.browser.combo.picks.is_empty()
                     && self.browser.combo != c
                     && self.built_combo.as_ref() != Some(&self.browser.combo)
-                    && !crate::files::confirm(
+                    && !asked
+                {
+                    let p = p.to_path_buf();
+                    self.ask(
                         tr("開く"),
                         tr("今の組合せを消して、ファイルの組合せを開きますか？"),
-                    )
-                {
+                        move |c, yes| {
+                            if yes {
+                                c.open_doc_with(&p, true);
+                            }
+                        },
+                    );
                     return;
                 }
                 // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
@@ -1215,11 +1226,6 @@ impl Core {
         if self.summary.is_none() {
             return;
         }
-        // 別のタブのパネル: 元のタブに頼む
-        if let Some(r) = &mut self.relay {
-            *r = true;
-            return;
-        }
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
                 self.worker.send(Tag::Analyze(id), "analyze", p);
@@ -1475,76 +1481,6 @@ impl Core {
         self.info.as_ref().and_then(|i| i[k].as_f64())
     }
 
-    /// Web 版: 別のタブのパネルに送る設定・系の概要・結果
-    #[cfg(target_arch = "wasm32")]
-    fn tab_snapshot(&self, id: u64, cfg: &AnaCfg) -> Value {
-        let res = self.results.get(&id).map(|r| {
-            json!({
-                "cmd": r.cmd,
-                "value": r.value,
-                "prev": r.prev,
-                "ms": r.ms,
-                "error": r.error,
-                "rays": r.rays.iter().map(|x| json!([x.field, x.wave, x.x, x.y])).collect::<Vec<_>>(),
-            })
-        });
-        json!({
-            "cfg": cfg,
-            "file": self.file,
-            "summary": self.summary,
-            "info": self.info,
-            "res": res,
-            "busy": self.worker.busy(),
-        })
-    }
-
-    /// Web 版: 元のタブから届いた系の概要・結果を当てる（別のタブのパネル）
-    #[cfg(target_arch = "wasm32")]
-    fn apply_snapshot(&mut self, id: u64, v: &Value) {
-        // 結果・概要が変わった: rev を鍵にした写し（JSON の表示・変数の候補）を作り直させる
-        self.rev += 1;
-        let some = |x: &Value| (!x.is_null()).then(|| x.clone());
-        self.file = v["file"].as_str().map(PathBuf::from);
-        self.summary = some(&v["summary"]);
-        self.info = some(&v["info"]);
-        self.relay_busy = v["busy"].as_bool().unwrap_or(false);
-        let r = &v["res"];
-        if r.is_null() {
-            self.results.remove(&id);
-            return;
-        }
-        let rays = r["rays"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .map(|x| {
-                        let f = |k: usize| -> Vec<f64> {
-                            serde_json::from_value(x[k].clone()).unwrap_or_default()
-                        };
-                        plots::SpotRays {
-                            field: x[0].as_u64().unwrap_or(1) as usize,
-                            wave: x[1].as_u64().unwrap_or(1) as usize,
-                            x: f(2),
-                            y: f(3),
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        self.results.insert(
-            id,
-            AnaRes {
-                cmd: r["cmd"].as_str().unwrap_or_default().to_string(),
-                value: some(&r["value"]),
-                prev: some(&r["prev"]),
-                ms: r["ms"].as_f64().unwrap_or(0.0),
-                rays,
-                error: r["error"].as_str().map(String::from),
-                params: Value::Null,
-            },
-        );
-    }
-
     // ---- パネル ----
 
     fn pane_ui(&mut self, ui: &mut Ui, pane: &mut Pane) {
@@ -1745,25 +1681,6 @@ impl Core {
             self.worker
                 .send(Tag::History, m, json!({ "back": back, "steps": n }));
         }
-    }
-
-    /// 開いた系（組合せでない系）にカタログの要素を差し込む: 開いた系を組合せ（系の取り込み）にし、面 `after` の後の
-    /// 空気の間隔（None は系の後ろ）に置く。今の組合せに要素があれば置き換えてよいか聞く。差し込むことにしたら true
-    fn insert_into_open(&mut self, after: Option<usize>, pick: combo::Pick, n_old: usize) -> bool {
-        if n_old > 0
-            && !crate::files::confirm(
-                tr("開いた系に足す"),
-                &trf(
-                    "開いた系を組合せにして {} を足します。今の組合せ（{} 個の要素）は置き換わります。よいですか？",
-                    &[&pick.label(), &n_old],
-                ),
-            )
-        {
-            return false;
-        }
-        self.open_insert = Some((after, pick));
-        self.to_combo = Some(false);
-        true
     }
 
     /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（今のセルはブロックの最後の面）
@@ -2265,13 +2182,20 @@ impl Core {
                         "開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログの玉などを足せる",
                     ))
                     .clicked()
-                    && (self.browser.combo.picks.is_empty()
-                        || crate::files::confirm(
+                {
+                    if self.browser.combo.picks.is_empty() {
+                        self.to_combo = Some(false);
+                    } else {
+                        self.ask(
                             tr("組合せにする"),
                             tr("今の組合せを、開いた系を取り込んだ組合せに置き換えますか？"),
-                        ))
-                {
-                    self.to_combo = Some(false);
+                            |c, yes| {
+                                if yes {
+                                    c.to_combo = Some(false);
+                                }
+                            },
+                        );
+                    }
                 }
                 if !self.browser.combo.picks.is_empty()
                     && ui.button(tr("▶ 組合せの系を作る")).clicked()
@@ -2300,7 +2224,7 @@ impl Core {
                     // カタログの行を落とした間隔に差し込む（開いた系を組合せにして）
                     Some(combo::OpenAct::Drop { after, pick }) => {
                         let n = self.browser.combo.picks.len();
-                        self.insert_into_open(Some(after), *pick, n);
+                        self.insert_into_open(Some(after), *pick, n, |_, _| {});
                     }
                     None => {}
                 }
@@ -2549,7 +2473,7 @@ impl Core {
                     } else if self.file.is_some() {
                         if open_gap_ok(&self.ld_rows, after) {
                             let n = self.browser.combo.picks.len();
-                            self.insert_into_open(Some(after), *pick, n);
+                            self.insert_into_open(Some(after), *pick, n, |_, _| {});
                         } else {
                             self.fail(trf(
                                 "面 {} の後は空気の間隔でないので差し込めない",
@@ -2917,83 +2841,6 @@ impl Core {
         self.build_combo(self.browser.combo.project());
     }
 
-    /// 開いた系を組合せにする: 系の取り込み（zmx ブロック、.zmx も lensbench の .json も）1 つと、系の設定。keep は今の
-    /// 組合せの要素をその後ろに残す。系の設定がまだ無ければ読みに行き、届いた後の画面でもう一度呼ぶ（#135）
-    fn open_to_combo(&mut self, keep: bool) {
-        let Some(f) = self.file.clone().filter(|_| !self.is_combo()) else {
-            self.to_combo = None;
-            self.open_insert = None;
-            return;
-        };
-        let Some(d) = self.oss.data.clone() else {
-            if self.oss.want() {
-                self.worker.send(Tag::SysData, "system_data", json!({}));
-            }
-            return;
-        };
-        self.to_combo = None;
-        if self.ld_dirty
-            && !crate::files::confirm(
-                tr("組合せにする"),
-                tr("開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？"),
-            )
-        {
-            if keep {
-                // 足した要素は残し、開いた系はそのまま
-                self.built_combo = Some(self.browser.combo.clone());
-            }
-            self.open_insert = None;
-            return;
-        }
-        let obj_t = self.ld_rows.first().map_or(f64::INFINITY, |r| r.t);
-        let mut c = Combo {
-            name: f
-                .file_stem()
-                .map(|x| x.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            ..Default::default()
-        };
-        if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
-            self.fail(e);
-            if keep {
-                self.built_combo = Some(self.browser.combo.clone());
-            }
-            self.open_insert = None;
-            return;
-        }
-        let mut z = combo::Pick::new(combo::ElemKind::ZmxRange);
-        // 組合せは保存先から相対に読むので、開いた系は絶対パスで持つ（Web 版の置き場は初めから絶対）
-        z.path = std::path::absolute(&f).unwrap_or(f).display().to_string();
-        // 取り込みは像面の手前の面の厚さまで含むので、後の空気は 0
-        z.air = 0.0;
-        if let Some(cfg) = self
-            .summary
-            .as_ref()
-            .and_then(|s| s["cfg"].as_u64())
-            .filter(|&n| n > 1)
-        {
-            z.config = cfg as usize;
-        }
-        // 開いた系の玉・群（最上位のブロック）を取り込みの中の群として残す（取り込み全体が 1 つのブロックになり、
-        // その中に元の玉が並ぶ）
-        z.zgroups = open_groups(&self.ld_blocks);
-        match self.open_insert.take() {
-            Some((after, p)) => c.picks.extend(split_open(z, &self.ld_rows, after, p)),
-            None => c.picks.push(z),
-        }
-        if keep {
-            let old = std::mem::take(&mut self.browser.combo);
-            c.picks.extend(old.picks);
-            c.mechanics = old.mechanics;
-        }
-        self.browser.combo = c;
-        self.combo_view = combo::View::default();
-        self.combo_len_prev = self.browser.combo.picks.len();
-        self.doc_path = None;
-        self.info(tr("開いた系を組合せの要素にした（系の取り込み）"));
-        self.build_combo(self.browser.combo.project());
-    }
-
     /// 像面の前の面まで、軸上の細い光線を追う
     fn request_focus(&mut self) {
         let Some(img) = self.layout_data.as_ref().and_then(|d| d.image_surface()) else {
@@ -3073,16 +2920,18 @@ impl Core {
                         .cur
                         .map(|(j, _)| j)
                         .filter(|&j| open_gap_ok(&self.ld_rows, j));
-                    if self.insert_into_open(after, p, n_old) {
-                        self.browser.combo.remove_chain(k);
-                    } else {
-                        // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
-                        self.built_combo = Some(self.browser.combo.clone());
-                        self.combo_view.select(k);
-                        self.info(tr(
-                            "組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）",
-                        ));
-                    }
+                    self.insert_into_open(after, p, n_old, move |c, yes| {
+                        if yes {
+                            c.browser.combo.remove_chain(k);
+                        } else {
+                            // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
+                            c.built_combo = Some(c.browser.combo.clone());
+                            c.combo_view.select(k);
+                            c.info(tr(
+                                "組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）",
+                            ));
+                        }
+                    });
                 }
             } else {
                 self.combo_view.select(k);
@@ -3755,7 +3604,7 @@ impl Core {
         };
         let Some(r) = self.results.get(&id) else {
             ui.horizontal(|ui| view_row(ui, cfg));
-            if !self.worker.busy_short() && !self.relay_busy {
+            if !self.worker.busy_short() {
                 self.run(id, cfg);
             }
             return;
@@ -3827,7 +3676,9 @@ impl Core {
             let shown = egui::ScrollArea::vertical()
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
-                .show(ui, |ui| figures::show(ui, id, &r.cmd, v, r.prev.as_ref()))
+                .show(ui, |ui| {
+                    figures::show(ui, id, r.gen, &r.cmd, v, r.prev.as_ref())
+                })
                 .inner;
             if shown {
                 return;
@@ -4291,7 +4142,7 @@ impl TabViewer for Viewer<'_> {
     }
 
     fn context_menu(&mut self, ui: &mut Ui, tab: &mut Pane, _s: SurfaceIndex, _n: NodeIndex) {
-        let label = detach_label(cfg!(target_arch = "wasm32"));
+        let label = menus::detach_label(cfg!(target_arch = "wasm32"));
         if ui.button(label).clicked() {
             self.to_window.push(tab.id);
             ui.close_menu();
@@ -4483,12 +4334,11 @@ impl App {
                 rev: 0,
                 param_sys_cache: Default::default(),
                 sys_gen: 0,
-                relay: None,
-                relay_busy: false,
                 browser,
                 folders_open: false,
                 help_open: false,
                 save_layout_open: false,
+                ask: None,
                 layout_name: String::new(),
                 built: None,
                 doc_path: None,
@@ -4517,7 +4367,6 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             tabs: None,
             #[cfg(target_arch = "wasm32")]
-            child: None,
             #[cfg(target_arch = "wasm32")]
             viewer: None,
             #[cfg(target_arch = "wasm32")]
@@ -4527,15 +4376,10 @@ impl App {
         let panels = app.c.s.panels.clone();
         app.c.set_panels(&panels);
         app.apply_dock_translations();
-        // Web 版: 別のタブのパネルなら、計算しないで元のタブの結果を描く
+        // Web 版: 別の窓のパネルなら、計算しないで元のタブで描いた画面を受けて描く
         #[cfg(target_arch = "wasm32")]
         if let Some((id, sid)) = panel {
-            if crate::web_tabs::remote_of_location() {
-                app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
-                return app;
-            }
-            app.c.relay = Some(false);
-            app.child = Some((crate::web_tabs::Child::new(&cc.egui_ctx, id, sid), None));
+            app.viewer = Some(crate::web_tabs::Viewer::new(&cc.egui_ctx, id, sid));
             return app;
         }
         // Web 版: 別のタブ・窓に出していたパネルはドックに戻す（タブ・窓はクリックしないと開けない）
@@ -4734,8 +4578,8 @@ impl App {
         }
     }
 
-    /// Web 版（元のタブ）: 別の窓に出した解析のパネルを別のタブで開き、設定・結果をやりとりする。
-    /// タブを閉じたらドックに戻す
+    /// Web 版（元のタブ）: 別の窓に出したパネルを別の窓で開き、元のタブで描いた画面を送る（GAR-10）。
+    /// 窓を閉じたらドックに戻す
     #[cfg(target_arch = "wasm32")]
     fn web_tabs(&mut self, ctx: &egui::Context) {
         use crate::web_tabs::Ev;
@@ -4747,8 +4591,7 @@ impl App {
             .retain(|id, _| self.windows.iter().any(|w| w.pane.id == *id));
         for w in &self.windows {
             let id = w.pane.id;
-            let remote = !matches!(w.pane.kind, Kind::Analysis(_));
-            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, remote, w.size) {
+            if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, w.size) {
                 self.c.fail(tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します"));
             }
         }
@@ -4763,14 +4606,6 @@ impl App {
                         .or_insert_with(|| crate::web_tabs::Host::new(ctx))
                         .input(&v);
                 }
-                Ev::Cfg(id, cfg, run) => {
-                    if let Some(w) = self.windows.iter_mut().find(|w| w.pane.id == id) {
-                        w.pane.kind = Kind::Analysis(cfg.clone());
-                        if run {
-                            self.c.run(id, &cfg);
-                        }
-                    }
-                }
                 Ev::Gone(id) => {
                     self.hosts.remove(&id);
                     if let Some(k) = self.windows.iter().position(|w| w.pane.id == id) {
@@ -4781,16 +4616,7 @@ impl App {
                 }
             }
         }
-        let busy = self.c.worker.busy_short();
-        for w in &self.windows {
-            if let Kind::Analysis(cfg) = &w.pane.kind {
-                if t.stale(w.pane.id, self.c.rev, busy) {
-                    let snap = self.c.tab_snapshot(w.pane.id, cfg);
-                    t.send(w.pane.id, self.c.rev, busy, snap);
-                }
-            }
-        }
-        // 解析以外のパネル: 元のタブで描いて、変わった画面を送る
+        // 別の窓のパネル: 元のタブで描いて、変わった画面を送る（解析のパネルも同じ。GAR-10）
         let App {
             c, windows, hosts, ..
         } = self;
@@ -4799,7 +4625,7 @@ impl App {
             let Some(h) = hosts.get_mut(&id) else {
                 continue;
             };
-            if !t.is_open(id) || matches!(w.pane.kind, Kind::Analysis(_)) {
+            if !t.is_open(id) {
                 continue;
             }
             let pane = &mut w.pane;
@@ -4812,76 +4638,11 @@ impl App {
                 t.send_out(id, o);
             }
         }
+        // 画面を送らなかった窓にも、入力を受けたと返す（別の窓は返事が無いと「元のタブが止まった」と出す）
+        t.flush_acks();
         // 子のタブを閉じたのに気づく
         if t.any_open() {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
-        }
-    }
-
-    /// Web 版（別のタブのパネル）: 元のタブから届いた結果を描き、設定の変更・計算の依頼を返す
-    #[cfg(target_arch = "wasm32")]
-    fn child_update(&mut self, ctx: &egui::Context) {
-        let App { c, child, .. } = self;
-        let Some((ch, pane)) = child.as_mut() else {
-            return;
-        };
-        if let Some(v) = ch.poll(ctx, pane.is_some()) {
-            if pane.is_none() {
-                if let Ok(cfg) = serde_json::from_value::<AnaCfg>(v["cfg"].clone()) {
-                    ch.got(&cfg);
-                    *pane = Some(Pane {
-                        id: ch.id,
-                        kind: Kind::Analysis(cfg),
-                    });
-                }
-            }
-            c.apply_snapshot(ch.id, &v);
-        }
-        let title = pane.as_ref().map(|p| p.title()).unwrap_or_default();
-        crate::web_tabs::set_title(&format!("lensbench — {title}"));
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(&title).strong());
-                if let Some(f) = c.file.as_ref().and_then(|f| f.file_name()) {
-                    ui.label(RichText::new(f.to_string_lossy()).small().weak());
-                }
-                if ui.small_button(tr("元のタブに戻す")).clicked() {
-                    crate::web_tabs::close_this();
-                }
-            });
-            if ch.closed {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    tr("元のタブを閉じたので、このパネルは計算できません。この窓を閉じて、元のページを開き直してください。"),
-                );
-            }
-            if !ch.closed && ch.stalled(ctx) {
-                ui.label(
-                    RichText::new(tr("元のタブの返事を待っています。元のタブが見えていないと、ブラウザはそのタブを止めます。元のタブとこの窓を並べて使ってください。"))
-                        .small()
-                        .color(ui.visuals().warn_fg_color),
-                );
-            }
-            ui.separator();
-            match pane.as_mut() {
-                Some(p) => c.pane_ui(ui, p),
-                None => {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(tr("元のタブを待っています…"));
-                    });
-                }
-            }
-        });
-        if let Some(Pane {
-            kind: Kind::Analysis(cfg),
-            ..
-        }) = pane.as_ref()
-        {
-            let run = c.relay.replace(false) == Some(true);
-            if !ch.closed && ch.send(cfg, run) && run {
-                c.relay_busy = true;
-            }
         }
     }
 
@@ -5161,11 +4922,6 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(target_arch = "wasm32")]
-        if self.child.is_some() {
-            self.child_update(ctx);
-            return;
-        }
         #[cfg(target_arch = "wasm32")]
         if let Some(v) = self.viewer.as_mut() {
             v.update(ctx);
@@ -5491,6 +5247,7 @@ impl eframe::App for App {
         }
         self.c.fill_window(ctx);
         self.save_layout_window(ctx);
+        self.c.ask_ui(ctx);
         self.tour_frame(ctx);
     }
 
@@ -5503,7 +5260,7 @@ impl eframe::App for App {
 
     #[cfg(target_arch = "wasm32")]
     fn persist_egui_memory(&self) -> bool {
-        self.child.is_none()
+        self.viewer.is_none()
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -5512,7 +5269,7 @@ impl eframe::App for App {
         }
         // 別のタブのパネルは元のタブの設定を上書きしない
         #[cfg(target_arch = "wasm32")]
-        if self.child.is_some() || self.viewer.is_some() {
+        if self.viewer.is_some() {
             return;
         }
         self.c.s.combo = self.c.browser.combo.clone();
@@ -5702,22 +5459,6 @@ fn overlay_params() {
         serde_json::to_value(ViewPlane::Unfold).unwrap(),
         json!("unfold")
     );
-}
-
-/// パネルを外に出す操作の名前。Web 版は解析のパネルはブラウザの別のタブに、ほかは別の窓（ポップアップ）に出す。
-/// 解析以外は元のタブで描いた画面を送って、別の窓で操作する（#137）
-fn detach_label(web: bool) -> &'static str {
-    if web {
-        tr("別の窓に出す")
-    } else {
-        tr("別の窓に出す（別モニターへ）")
-    }
-}
-
-#[test]
-fn detach_label_web() {
-    assert_eq!(detach_label(true), "別の窓に出す");
-    assert_eq!(detach_label(false), "別の窓に出す（別モニターへ）");
 }
 
 /// 解析の結果のメニューから頼むこと

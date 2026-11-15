@@ -1611,3 +1611,5 @@ PV	PV
 PV（重心基準）	PV (centroid)
 当てはめの RMS	RMS of fit
 当てはめの最大の差	Max fit error
+元のタブが裏に回って止まっています（元のタブが見えていると動きます。窓を並べてください）	The main tab is in the background and paused (it runs while visible; place the windows side by side)
+元の窓を前へ	Bring main window to front

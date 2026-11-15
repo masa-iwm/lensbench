@@ -1,13 +1,16 @@
 //! Web 版: パネルをブラウザの別の窓（ポップアップ）に出す（ネイティブの「別の窓」の代わり）。
 //!
-//! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別のタブで開き、
-//!   そのタブ（[`Child`]）は計算しないで、元のタブから届く系の概要・結果を描くだけ
-//! - 受け渡しは BroadcastChannel（[`CHANNEL`]）の JSON の文字列。`sid` は元のタブごとの番号で、
-//!   同じページを 2 つ開いても混ざらない
-//!   - 子 → 元: `{sid, from, hello}`（始めたとき）、`{sid, from, cfg, run}`（設定を変えた・計算を頼む）、
-//!     `{sid, from, bye}`（閉じた）
-//!   - 元 → 子: `{sid, to, snap}`（設定・系の概要・結果）、`{sid, closed}`（元のタブを閉じた）
-//! - 子のタブを閉じると、パネルは元のタブのドックに戻る。元のタブを閉じると、子のタブにその知らせを出す
+//! - 元のタブ（[`Tabs`]）が系と計算を持ったまま。パネルは `?panel=<id>&main=<sid>` のページを別の窓で開く。
+//!   元のタブがそのパネルを別の egui の画面（[`Host`]）で描いて網を送り、別の窓（[`Viewer`]）は網を描いて
+//!   入力を返すだけ。解析のパネルもそれ以外も同じ 1 つの方式（GAR-10）
+//! - 受け渡しは BroadcastChannel（[`CHANNEL`]）。`sid` は元のタブごとの番号で、同じページを 2 つ開いても混ざらない
+//!   - 窓 → 元: `{sid, from, hello, input}`（始めたとき）、`{sid, from, input}`（入力・大きさ。ほかは 2 秒ごと）、
+//!     `{sid, from, bye}`（閉じた。pagehide で送る）
+//!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
+//!     `{sid, to, ack}`（入力を受けたが画面は変わらない）、`{sid, closed}`（元のタブを閉じた）
+//! - 元のタブが裏に回るとブラウザはその画面を止めるので、窓は返事が 1.5 秒より長く無ければその旨と
+//!   「元の窓を前へ」を出す
+//! - 窓を閉じると、パネルは元のタブのドックに戻る。元のタブを閉じると、窓にその知らせを出す
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,8 +19,6 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-
-use crate::layout::AnaCfg;
 
 /// BroadcastChannel の名前
 pub const CHANNEL: &str = "lensbench-panels";
@@ -126,8 +127,6 @@ fn now_ms() -> f64 {
 
 /// 元のタブで起きたこと
 pub enum Ev {
-    /// 子のタブで設定を変えた（run は計算を頼んだ）
-    Cfg(u64, AnaCfg, bool),
     /// 子のタブを閉じた（ドックに戻す）
     Gone(u64),
     /// 別の窓のパネル（解析以外）が始まった（画面を初めから送り直す）
@@ -138,12 +137,10 @@ pub enum Ev {
 
 struct Open {
     win: web_sys::Window,
-    /// 解析以外のパネル（元のタブで描いた画面を送る、[`Host`]）
-    remote: bool,
     /// 最後に知らせが届いた時刻 [ms]（開いた時刻から）
     seen: f64,
-    /// 最後に送った（結果の版、計算中か）
-    sent: Option<(u64, bool)>,
+    /// 入力を受けて、まだ何も返していない（[`Tabs::flush_acks`] で返す）
+    ack: bool,
 }
 
 /// 元のタブ: 別のタブに出したパネル
@@ -174,10 +171,9 @@ impl Tabs {
         !self.open.is_empty()
     }
 
-    /// パネル id を別のタブで開く。remote は解析以外のパネル（元のタブで描いた画面を受けて描くだけ）で、
-    /// 別の窓（ポップアップ）にする（同じ窓のタブだと元のタブが裏に回り、ブラウザが元のタブの画面を止めるため）。
-    /// ブラウザに止められたら false
-    pub fn open(&mut self, id: u64, remote: bool, size: [f32; 2]) -> bool {
+    /// パネル id を別の窓（ポップアップ）で開く（同じ窓のタブだと元のタブが裏に回り、ブラウザが元のタブの画面を
+    /// 止めるため）。ブラウザに止められたら false
+    pub fn open(&mut self, id: u64, size: [f32; 2]) -> bool {
         if self.chan.is_none() || self.blocked.contains(&id) {
             return false;
         }
@@ -186,12 +182,7 @@ impl Tabs {
         };
         let path = w.location().pathname().unwrap_or_default();
         let target = format!("lensbench-{}-{id}", self.sid);
-        // 解析も解析以外も同じ小さな別の窓に（解析は結果を受けて自分で描き、ほかは元のタブで描いた画面を受ける）
-        let url = format!(
-            "{path}?panel={id}&main={}{}",
-            self.sid,
-            if remote { "&remote=1" } else { "" }
-        );
+        let url = format!("{path}?panel={id}&main={}", self.sid);
         let [w0, h0] = size;
         let features = format!("popup=yes,width={},height={}", w0.round(), h0.round());
         let r = w.open_with_url_and_target_and_features(&url, &target, &features);
@@ -201,9 +192,8 @@ impl Tabs {
                     id,
                     Open {
                         win,
-                        remote,
                         seen: now_ms(),
-                        sent: None,
+                        ack: false,
                     },
                 );
                 true
@@ -229,31 +219,20 @@ impl Tabs {
                 if !self.open.contains_key(&id) {
                     continue;
                 }
-                let remote = self.open.get(&id).is_some_and(|o| o.remote);
                 if let Some(o) = self.open.get_mut(&id) {
                     o.seen = now_ms();
+                    o.ack = true;
+                }
+                if m["bye"].as_bool() == Some(true) {
+                    out.push(Ev::Gone(id));
+                    continue;
                 }
                 if m["hello"].as_bool() == Some(true) {
-                    // 始まった: 設定と結果を送り直す
-                    if let Some(o) = self.open.get_mut(&id) {
-                        o.sent = None;
-                    }
-                    if remote {
-                        out.push(Ev::Hello(id));
-                        if m["input"].is_object() {
-                            out.push(Ev::Input(id, m["input"].clone()));
-                        }
-                    }
-                } else if m["bye"].as_bool() == Some(true) {
-                    out.push(Ev::Gone(id));
-                } else if remote && m["input"].is_object() {
+                    // 始まった: 画面を初めから送り直す
+                    out.push(Ev::Hello(id));
+                }
+                if m["input"].is_object() {
                     out.push(Ev::Input(id, m["input"].clone()));
-                } else if let Ok(cfg) = serde_json::from_value(m["cfg"].clone()) {
-                    // 返事に送り直す（子のタブは返事を待っている）
-                    if let Some(o) = self.open.get_mut(&id) {
-                        o.sent = None;
-                    }
-                    out.push(Ev::Cfg(id, cfg, m["run"].as_bool() == Some(true)));
                 }
             }
         }
@@ -276,24 +255,11 @@ impl Tabs {
         out
     }
 
-    /// 送り直すか（結果の版 rev・計算中か busy が前に送ったものと違う）
-    pub fn stale(&self, id: u64, rev: u64, busy: bool) -> bool {
-        self.open
-            .get(&id)
-            .is_some_and(|o| o.sent != Some((rev, busy)))
-    }
-
-    /// 子のタブに設定・結果を送る
-    pub fn send(&mut self, id: u64, rev: u64, busy: bool, snap: Value) {
-        let (Some(c), Some(o)) = (&self.chan, self.open.get_mut(&id)) else {
-            return;
-        };
-        o.sent = Some((rev, busy));
-        c.post(&json!({ "sid": self.sid, "to": id, "snap": snap.to_string() }));
-    }
-
     /// 別の窓のパネルに画面（[`crate::remote_frame`] のバイト列）を送る
-    pub fn send_frame(&self, id: u64, frame: &[u8]) {
+    pub fn send_frame(&mut self, id: u64, frame: &[u8]) {
+        if let Some(o) = self.open.get_mut(&id) {
+            o.ack = false;
+        }
         if let Some(c) = &self.chan {
             let mut b = frame_head(&self.sid, id);
             b.extend_from_slice(frame);
@@ -302,9 +268,23 @@ impl Tabs {
     }
 
     /// 別の窓のパネルに画面の外の出力（カーソル・写した文字・IME の位置）を送る
-    pub fn send_out(&self, id: u64, out: Value) {
+    pub fn send_out(&mut self, id: u64, out: Value) {
+        if let Some(o) = self.open.get_mut(&id) {
+            o.ack = false;
+        }
         if let Some(c) = &self.chan {
             c.post(&json!({ "sid": self.sid, "to": id, "out": out }));
+        }
+    }
+
+    /// 入力を受けたのに画面も出力も送らなかった窓に、受けたことだけ返す（窓が「止まった」と出さないように）
+    pub fn flush_acks(&mut self) {
+        let Some(c) = &self.chan else {
+            return;
+        };
+        for (id, o) in self.open.iter_mut().filter(|(_, o)| o.ack) {
+            o.ack = false;
+            c.post(&json!({ "sid": self.sid, "to": id, "ack": true }));
         }
     }
 
@@ -320,110 +300,18 @@ impl Tabs {
     }
 }
 
-// ---- 別のタブ
-
-/// 別のタブのパネル
-pub struct Child {
-    chan: Option<Chan>,
-    pub id: u64,
-    sid: String,
-    /// 元のタブを閉じた
-    pub closed: bool,
-    /// 最後に送った設定
-    sent: Option<AnaCfg>,
-    /// 最後に hello を送った時刻 [ms]（設定が届くまで 1 秒ごと）
-    hello: f64,
-    /// 送ってから返事を待っている（送った時刻 [ms]）
-    waiting: Option<f64>,
-}
-
-impl Child {
-    pub fn new(ctx: &egui::Context, id: u64, sid: String) -> Child {
-        Child {
-            chan: Chan::new(ctx, json!({ "sid": sid, "from": id, "bye": true })),
-            id,
-            sid,
-            closed: false,
-            sent: None,
-            hello: f64::NEG_INFINITY,
-            waiting: None,
-        }
-    }
-
-    /// 元のタブから届いた設定・結果（最後の 1 つ）。has_pane が false なら届くまで hello を送る
-    pub fn poll(&mut self, ctx: &egui::Context, has_pane: bool) -> Option<Value> {
-        let c = self.chan.as_ref()?;
-        let mut snap = None;
-        for m in c.take() {
-            if m["sid"].as_str() != Some(&self.sid) {
-                continue;
-            }
-            if m["closed"].as_bool() == Some(true) {
-                self.closed = true;
-            } else if m["to"].as_u64() == Some(self.id) {
-                if let Some(v) = m["snap"]
-                    .as_str()
-                    .and_then(|s| serde_json::from_str(s).ok())
-                {
-                    snap = Some(v);
-                    self.waiting = None;
-                }
-            }
-        }
-        let t = now_ms();
-        if has_pane && !self.closed && t - self.hello >= 2000.0 {
-            // 閉じていないと元のタブに知らせる
-            self.hello = t;
-            c.post(&json!({ "sid": self.sid, "from": self.id, "beat": true }));
-        }
-        ctx.request_repaint_after(std::time::Duration::from_millis(2000));
-        if !has_pane && snap.is_none() && !self.closed {
-            if t - self.hello >= 1000.0 {
-                self.hello = t;
-                c.post(&json!({ "sid": self.sid, "from": self.id, "hello": true }));
-            }
-            ctx.request_repaint_after(std::time::Duration::from_millis(500));
-        }
-        snap
-    }
-
-    /// 設定が変わったか計算を頼むなら元のタブに送る。送ったら true
-    pub fn send(&mut self, cfg: &AnaCfg, run: bool) -> bool {
-        if !run && self.sent.as_ref() == Some(cfg) {
-            return false;
-        }
-        let Some(c) = &self.chan else {
-            return false;
-        };
-        self.sent = Some(cfg.clone());
-        c.post(&json!({ "sid": self.sid, "from": self.id, "cfg": cfg, "run": run }));
-        self.waiting.get_or_insert_with(now_ms);
-        true
-    }
-
-    /// 元のタブが返事をしない（1.5 秒より長く待っている）。ブラウザは見えていないタブの画面を
-    /// 回さないので、元のタブが同じ窓の裏にあると、表に出すまで計算しない
-    pub fn stalled(&self, ctx: &egui::Context) -> bool {
-        match self.waiting {
-            Some(t) if now_ms() - t > 1500.0 => true,
-            Some(_) => {
-                ctx.request_repaint_after(std::time::Duration::from_millis(500));
-                false
-            }
-            None => false,
-        }
-    }
-
-    /// 元のタブからの設定を受けた（送り返さない）
-    pub fn got(&mut self, cfg: &AnaCfg) {
-        self.sent = Some(cfg.clone());
-    }
-}
-
 /// この窓を閉じる（元のタブに戻す）
 pub fn close_this() {
     if let Some(w) = web_sys::window() {
         let _ = w.close();
+    }
+}
+
+/// この窓を開いた元のタブの窓を前に出す（ブラウザによっては効かない）
+fn focus_opener() {
+    let opener = web_sys::window().and_then(|w| w.opener().ok());
+    if let Some(o) = opener.and_then(|o| o.dyn_into::<web_sys::Window>().ok()) {
+        let _ = o.focus();
     }
 }
 
@@ -569,7 +457,8 @@ pub struct Viewer {
     tex: HashMap<egui::TextureId, egui::TextureId>,
     /// 次の画面の前に消すテクスチャ（描いた後に消す）
     free: Vec<egui::TextureId>,
-    meshes: Vec<(egui::Rect, egui::epaint::Mesh)>,
+    /// 届いた網（テクスチャ id はこのタブのものに替えて Arc で持ち、描くたびに複製しない。GAR-26）
+    meshes: Vec<(egui::Rect, std::sync::Arc<egui::epaint::Mesh>)>,
     cursor: egui::CursorIcon,
     ime: Option<egui::Rect>,
     last_rect: Option<egui::Rect>,
@@ -577,6 +466,8 @@ pub struct Viewer {
     hello: f64,
     got: bool,
     title: String,
+    /// 返事の無い入力を初めに送った時刻 [ms]（何か届いたら None）
+    waiting: Option<f64>,
 }
 
 impl Viewer {
@@ -595,6 +486,7 @@ impl Viewer {
             hello: f64::NEG_INFINITY,
             got: false,
             title: String::new(),
+            waiting: None,
         }
     }
 
@@ -617,6 +509,7 @@ impl Viewer {
                 continue;
             };
             self.got = true;
+            self.waiting = None;
             for (rid, pos, opt, img) in f.set {
                 match self.tex.get(&rid) {
                     Some(l) => tm
@@ -638,7 +531,15 @@ impl Viewer {
                     self.free.push(l);
                 }
             }
-            self.meshes = f.meshes;
+            let tex = &self.tex;
+            self.meshes = f
+                .meshes
+                .into_iter()
+                .filter_map(|(clip, mut m)| {
+                    m.texture_id = *tex.get(&m.texture_id)?;
+                    Some((clip, std::sync::Arc::new(m)))
+                })
+                .collect();
         }
         for m in c.take() {
             if m["sid"].as_str() != Some(&self.sid) {
@@ -647,6 +548,7 @@ impl Viewer {
             if m["closed"].as_bool() == Some(true) {
                 self.closed = true;
             } else if m["to"].as_u64() == Some(self.id) {
+                self.waiting = None;
                 let o = &m["out"];
                 if let Ok(cur) = serde_json::from_value(o["cursor"].clone()) {
                     self.cursor = cur;
@@ -667,12 +569,27 @@ impl Viewer {
                 }
             }
         }
-        // 上の帯: パネルの名前と「元のタブに戻す」（解析のパネルの別の窓と同じ）
+        // 元のタブの返事が 1.5 秒より長く無い: 裏に回って止まっている（ブラウザは見えないタブの画面を回さない）
+        let t0 = now_ms();
+        let stalled = !self.closed && self.got && self.waiting.is_some_and(|w| t0 - w > 1500.0);
+        // 上の帯: パネルの名前と「元のタブに戻す」
         egui::TopBottomPanel::top("remote-bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(&self.title).strong());
                 if ui.small_button(crate::i18n::tr("元のタブに戻す")).clicked() {
                     close_this();
+                }
+                if stalled {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::tr(
+                            "元のタブが裏に回って止まっています（元のタブが見えていると動きます。窓を並べてください）",
+                        ))
+                        .small()
+                        .color(crate::theme::warn(ui.visuals())),
+                    );
+                    if ui.small_button(crate::i18n::tr("元の窓を前へ")).clicked() {
+                        focus_opener();
+                    }
                 }
             });
         });
@@ -705,26 +622,26 @@ impl Viewer {
             if t - self.hello >= 1000.0 {
                 self.hello = t;
                 c.post(&json!({ "sid": self.sid, "from": self.id, "hello": true, "input": input }));
+                self.waiting.get_or_insert(t);
             }
             ctx.request_repaint_after(std::time::Duration::from_millis(300));
         } else if !events.is_empty() || self.last_rect != Some(rect) || t - self.hello >= 2000.0 {
             // 入力・大きさが変わったとき、ほかは 2 秒ごとに（元のタブが閉じていないとみるため）
             self.hello = t;
             c.post(&json!({ "sid": self.sid, "from": self.id, "input": input }));
+            self.waiting.get_or_insert(t);
         }
-        ctx.request_repaint_after(std::time::Duration::from_millis(2000));
+        // 返事を待っている間は、止まったと出すために早めに見直す
+        ctx.request_repaint_after(std::time::Duration::from_millis(
+            if self.waiting.is_some() { 500 } else { 2000 },
+        ));
         self.last_rect = Some(rect);
         // 元のタブで描いた画面
         let painter = ctx.layer_painter(egui::LayerId::background());
         for (clip, m) in &self.meshes {
-            let mut m = m.clone();
-            match self.tex.get(&m.texture_id) {
-                Some(l) => m.texture_id = *l,
-                None => continue,
-            }
             painter
                 .with_clip_rect(clip.intersect(rect))
-                .add(egui::Shape::mesh(m));
+                .add(egui::Shape::Mesh(m.clone()));
         }
         ctx.set_cursor_icon(self.cursor);
         if let Some(r) = self.ime {
@@ -747,13 +664,4 @@ impl Viewer {
             });
         }
     }
-}
-
-/// ページの URL に `&remote=1`（解析以外のパネルの別の窓）
-pub fn remote_of_location() -> bool {
-    web_sys::window()
-        .and_then(|w| w.location().search().ok())
-        .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok())
-        .and_then(|q| q.get("remote"))
-        .is_some_and(|r| r == "1")
 }

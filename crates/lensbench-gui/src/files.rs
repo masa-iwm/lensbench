@@ -144,35 +144,13 @@ pub fn set_ctx(ctx: &egui::Context) {
 /// zenity の無いときと同じ答え。巡回の段はこの答えで組んである）、エラーの窓は出さない（公開 #236）
 static UNATTENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 人の答えを待たない運転にする（[`confirm`] は「いいえ」、[`error_box`] は出さない）
+/// 人の答えを待たない運転にする（確かめ（`Core::ask`）は「いいえ」、[`error_box`] は出さない）
 pub fn set_unattended(on: bool) {
     UNATTENDED.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
-fn unattended() -> bool {
+pub(crate) fn unattended() -> bool {
     UNATTENDED.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-/// 「はい・いいえ」で確かめる（人の答えを待たない運転では聞かずに「いいえ」）
-pub fn confirm(title: &str, text: &str) -> bool {
-    !unattended() && confirm_os(title, text)
-}
-
-/// 「はい・いいえ」で確かめる
-#[cfg(target_os = "linux")]
-fn confirm_os(title: &str, text: &str) -> bool {
-    zenity::confirm(title, text)
-}
-
-/// 「はい・いいえ」で確かめる
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))]
-fn confirm_os(title: &str, text: &str) -> bool {
-    rfd::MessageDialog::new()
-        .set_title(title)
-        .set_description(text)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show()
-        == rfd::MessageDialogResult::Yes
 }
 
 /// エラーを窓で知らせる（Linux は zenity、無ければ何もしない）
@@ -189,14 +167,6 @@ pub fn error_box(title: &str, text: &str) {
         .set_title(title)
         .set_description(text)
         .show();
-}
-
-/// 「はい・いいえ」で確かめる（ブラウザの confirm）
-#[cfg(target_arch = "wasm32")]
-fn confirm_os(_title: &str, text: &str) -> bool {
-    web_sys::window()
-        .and_then(|w| w.confirm_with_message(text).ok())
-        .unwrap_or(false)
 }
 
 /// Linux: rfd の代わりに zenity（GTK の窓）を呼ぶ。zenity が無ければ何も選ばない（「いいえ」）。
@@ -257,22 +227,6 @@ mod zenity {
                 &format!("--text={text}"),
             ])
             .status();
-    }
-
-    /// zenity が無ければ「いいえ」（消す・上書きする側に倒さない）
-    pub fn confirm(title: &str, text: &str) -> bool {
-        let st = Command::new("zenity")
-            .args([
-                "--question",
-                "--no-markup",
-                &format!("--title={title}"),
-                &format!("--text={text}"),
-            ])
-            .status();
-        if let Err(e) = &st {
-            eprintln!("lensbench-gui: zenity を起こせない（{e}）。「{title}」は「いいえ」にする");
-        }
-        st.is_ok_and(|s| s.success())
     }
 }
 
