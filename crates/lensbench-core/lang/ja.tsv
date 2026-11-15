@@ -210,6 +210,7 @@ Huygens PSF: the chief ray is parallel to the image surface	Huygens PSF: 主光�
 Huygens PSF image grid spacing {d}	Huygens PSF の像のグリッドの間隔 {d}
 Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)	Huygens PSF: 像のグリッドの幅が瞳の標本の周期を超えます（波長 {}、瞳のグリッドを増やすか、像のグリッド・間隔を減らしてください）
 Huygens PSF: no valid rays (all vignetted)	Huygens PSF: 有効な光線がありません（すべてケラレました）
+Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts} image grid points (outside the surface shape); their intensity is NaN	Huygens PSF: 像のグリッドの {npts} 点のうち {off_surface} 点で像面の矢高が求まりません（面の形の外）。その点の強度は NaN
 no weighted wavelength	ウェイトのある波長がありません
 setting method must be auto, interp, direct or fft ({x})	設定 method は auto・interp・direct・fft に（{x}）
 setting reference must be centroid or chief ({x})	設定 reference は centroid か chief に（{x}）
@@ -684,9 +685,6 @@ the starting ray doesn't pass ({:?})	初期値の光線が通りません（{:?}
 ray solve: singular Jacobian (iteration {it}, residual {:e})	光線の解き: ヤコビアンが特異（反復 {it}、残差 {:e}）
 the ray solve doesn't converge (iteration {it}, residual {:e}, tolerance {:e})	光線の解きが収束しません（反復 {it}、残差 {:e}、許容 {:e}）
 image surface shift {dz}	像面のずらし {dz}
-surface {j}: the GRIN vertex is outside the profile range (wavelength {lam} µm)	面 {j}: GRIN の頂点が分布の範囲の外（波長 {lam} µm）
-surface {j}: the index of glass {mat} can't be rebuilt at wavelength {lam} µm (it doesn't match the system value)	面 {j}: 硝材 {mat} の屈折率を波長 {lam} µm で作り直せません（系の値と合いません）
-surface {j}: the index of material {mat} can't be made at wavelength {lam} µm	面 {j}: 材料 {mat} の屈折率を波長 {lam} µm で作れません
 wavelength {} = {lam} µm (there are {} wavelengths)	波長 {} = {lam} µm（波長は {} 個）
 wavelength {lam} µm	波長 {lam} µm
 the number of rings must be 1 or more	リング数は 1 以上

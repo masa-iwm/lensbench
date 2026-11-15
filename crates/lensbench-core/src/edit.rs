@@ -314,46 +314,6 @@ impl System {
         Ok(())
     }
 
-    /// 材料の屈折率（波長ごと、dn・disp をかける前）。空・AIR は 1、"nd,vd[,dpgf]" はモデルガラス、
-    /// ほかは系のガラス（[`System::add_glasses`] で足せる）
-    pub fn material_index(&self, mat: &str) -> Result<Vec<f64>> {
-        let m = mat.trim();
-        if m.is_empty() || m.eq_ignore_ascii_case("AIR") {
-            return Ok(vec![1.0; self.wavelengths.len()]);
-        }
-        if m.eq_ignore_ascii_case("MIRROR") {
-            invalid!("MIRROR is not a medium");
-        }
-        if let Some(g) = self.glasses.get(m) {
-            let (t, p, a) = (self.temperature, self.pressure, self.adjust_index);
-            return Ok(self
-                .wavelengths
-                .iter()
-                .map(|&l| g.index(l, t, p, a))
-                .collect());
-        }
-        let v: Vec<f64> = m
-            .split(',')
-            .map(|x| x.trim().parse::<f64>())
-            .collect::<std::result::Result<_, _>>()
-            .unwrap_or_default();
-        if (2..=3).contains(&v.len()) && v.iter().all(|x| x.is_finite()) && v[0] > 0.0 {
-            let (nd, vd, dp) = (v[0], v[1], v.get(2).copied().unwrap_or(0.0));
-            return Ok(self
-                .wavelengths
-                .iter()
-                .map(|&l| {
-                    if vd == 0.0 {
-                        nd
-                    } else {
-                        glass::model_index(nd, vd, dp, l)
-                    }
-                })
-                .collect());
-        }
-        invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)")
-    }
-
     /// ガラスを足す（同じ名前は置き換える）。屈折率は材料を設定したときに作る
     pub fn add_glasses(&mut self, g: HashMap<String, Glass>) {
         std::sync::Arc::make_mut(&mut self.glasses).extend(g);
@@ -365,59 +325,6 @@ impl System {
         let (g, missing) = glass::load_catalogs(names, &glass::catalog_dirs(dirs));
         self.add_glasses(g);
         missing
-    }
-
-    /// 材料の印 `n` が空の面（挿入した面・材料を変えた面）の屈折率を材料から作る。
-    /// GRIN の面は頂点の屈折率
-    pub(crate) fn refresh_media(&mut self) -> Result<()> {
-        for j in 0..self.surfaces.len() {
-            let d = &self.surfaces[j];
-            if !d.n.is_empty() || (j > 0 && (d.mirror || d.typ == SurfType::CoordBrk)) {
-                continue;
-            }
-            let base = if let Some(g) = &d.grin {
-                self.wavelengths
-                    .iter()
-                    .map(|&l| {
-                        g.vertex_index(l).ok_or_else(|| {
-                            crate::error::Error::Invalid(format!(
-                                "surface {j}: the GRIN vertex is outside the profile range"
-                            ))
-                        })
-                    })
-                    .collect::<Result<Vec<f64>>>()?
-            } else {
-                self.material_index(&d.mat)
-                    .map_err(|e| crate::error::Error::Invalid(format!("surface {j}: {e}")))?
-            };
-            let d = &mut self.surfaces[j];
-            d.n_base.clear();
-            d.n = base;
-            // 複屈折材の板の異常光の屈折率も材料（名前-E）から作り直す
-            if let Some(crate::surface::Bire::In { ne, .. }) = &mut d.bire {
-                ne.clear();
-            }
-        }
-        let nw = self.wavelengths.len();
-        for j in 0..self.surfaces.len() {
-            let d = &self.surfaces[j];
-            let Some(crate::surface::Bire::In { ne, .. }) = &d.bire else {
-                continue;
-            };
-            if ne.len() == nw {
-                continue;
-            }
-            let en = crate::surface::Bire::e_name(&d.mat);
-            let v = self.material_index(&en).map_err(|e| {
-                crate::error::Error::Invalid(format!(
-                    "surface {j}: extraordinary material {en} of the birefringent material: {e}"
-                ))
-            })?;
-            if let Some(crate::surface::Bire::In { ne, .. }) = &mut self.surfaces[j].bire {
-                *ne = v;
-            }
-        }
-        Ok(())
     }
 
     /// 鏡・座標ブレークの媒質を前の媒質（無視した面は飛ばす）にそろえる

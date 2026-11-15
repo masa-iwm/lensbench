@@ -193,3 +193,31 @@ fn huygens_mtf_above_nyquist_is_nan() {
     assert!(h.sag[0].is_finite() && h.tan[0].is_finite());
     assert!(h.sag[1].is_nan() && h.tan[1].is_nan(), "{:?}", h.sag);
 }
+
+/// 像面の形の外（矢高が求まらない）格子の点は平面として計算せず、強度を NaN にして注意を出す（ANA-24）
+#[test]
+fn huygens_points_outside_the_image_surface_are_nan() {
+    let mut s = load("D0");
+    let f = FieldSel::Index(0);
+    let o = HuygensOpts {
+        pupil: Some(64),
+        image: 64,
+        delta: None,
+    };
+    let p0 = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    // 半径が格子の幅の 1/4 の球面の像面: 格子の外側の点は球の外
+    let r = 16.0 * p0.delta.0;
+    let img = s.image();
+    s.surfaces[img].c = 1.0 / r;
+    s.changed().unwrap();
+    let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
+    let rows: Vec<&[f64]> = p.i.rows().collect();
+    assert!(rows[0][0].is_nan(), "{}", rows[0][0]);
+    assert!(rows[32][32].is_finite() && p.peak > 0.0);
+    assert!(
+        p.warnings.iter().any(|w| w.contains("intensity is NaN")),
+        "{:?}",
+        p.warnings
+    );
+    assert!(p.enclosed.is_finite());
+}

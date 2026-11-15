@@ -148,29 +148,19 @@ fn grin_lane<V: Lanes, const N: usize>(
         }
     }
     let cb = d.typ == SurfType::CoordBrk;
+    // 次の面は光線の後ろにもありうる（厚さ 0 の傾けた座標ブレーク、座標ブレークの後の負の厚さなど。
+    // [`crate::grin::propagate_to`]）
+    let kz = mv(&rr, loc.1)[2];
     let ex = if cb {
-        // 座標ブレークの面（平面 z = 0）は光線の後ろにもありうる（厚さ 0 の傾けた座標ブレークなど）。
-        // 均質な媒質と同じく、そのときは媒質の中を逆向きにたどって交点を求める（光路長は負）
         let fx = |q: V3| add(mv(&rr, q), tt)[2];
-        let back = fx(loc.0) * mv(&rr, loc.1)[2] > 0.0;
-        if back {
-            crate::grin::propagate(gm, lam, loc.0, scale(loc.1, -1.0), fx, g.max_len).map(|e| {
-                crate::grin::Exit {
-                    k: scale(e.k, -1.0),
-                    opl: -e.opl,
-                    ..e
-                }
-            })
-        } else {
-            crate::grin::propagate(gm, lam, loc.0, loc.1, fx, g.max_len)
-        }
+        crate::grin::propagate_to(gm, lam, loc.0, loc.1, fx, g.max_len, kz)
     } else {
         crate::grin::next_sag(d).and_then(|sg| {
             let fx = |q: V3| {
                 let q2 = add(mv(&rr, q), tt);
                 q2[2] - sg(q2[0], q2[1])
             };
-            crate::grin::propagate(gm, lam, loc.0, loc.1, fx, g.max_len)
+            crate::grin::propagate_to(gm, lam, loc.0, loc.1, fx, g.max_len, kz)
         })
     };
     let Some(e) = ex else {

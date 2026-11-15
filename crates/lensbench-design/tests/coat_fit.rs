@@ -17,8 +17,9 @@ fn a0() -> System {
 
 #[test]
 fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
+    use lensbench_core::coating::format_models;
     use lensbench_core::coating::{parse_models, CoatingFile, Measured};
-    use lensbench_design::coat_fit::{fit_model, format_models, FitOptions};
+    use lensbench_design::coat_fit::{fit_model, FitOptions};
     let s = a0();
     let txt = "MATE L\n0.4 1.38 0\n1.2 1.38 0\nMATE H\n0.4 2.1 0\n1.2 2.1 0\nMATE M\n0.4 0.5 -3.0\n1.2 0.5 -3.0\n\
                COAT AR2\nL 0.11 1\nH 0.06 1\nCOAT MIR\nL 0.1 1\nM 1.0 1\n\
@@ -142,8 +143,8 @@ fn coating_model_fitted_from_model_glass_tables_matches_the_stack() {
         rep.model.bmax
     );
     // バイナリ（LBCM 3）で書いて読み直すと、値は刻み（透過 1e-9、鏡 1e-12）の半分しか変わらず、係数もほぼ同じ
+    use lensbench_core::coating::format_models_bin;
     use lensbench_core::coating::{parse_models_bin, MODEL_BIN_HEADER};
-    use lensbench_design::coat_fit::format_models_bin;
     let bin = format_models_bin(&[("ZX", &rep.model)]).unwrap();
     assert!(bin.starts_with(MODEL_BIN_HEADER));
     assert!(bin.len() * 5 < txt.len(), "{} vs {}", bin.len(), txt.len());

@@ -148,7 +148,7 @@ fn added_wavelength_reproduces_the_system_indices() {
     for name in names() {
         let s = load(&name);
         for (w, &lam) in s.wavelengths.iter().enumerate() {
-            let (d, k) = sweep::with_wavelength(&s, lam).unwrap();
+            let (d, k) = s.with_wavelength(lam).unwrap();
             assert_eq!(k, s.wavelengths.len());
             for (j, sf) in d.surfaces.iter().enumerate() {
                 assert_eq!(sf.n[k], s.surfaces[j].n[w], "{name} 面 {j} 波長 {}", w + 1);

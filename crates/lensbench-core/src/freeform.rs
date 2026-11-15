@@ -35,7 +35,7 @@ pub struct ZernSag {
     /// Zernike の項の中心の偏心（Zern Decenter X・Y）[mm]。ρ・φ は (x − dx, y − dy) から
     pub dx: f64,
     pub dy: f64,
-    /// (m, cos か) ごとにまとめた ρ² の多項式（係数を掛けて足したもの、低い次数から）
+    /// (m, cos か) ごとにまとめた Jacobi 多項式 P_k^(0, m)(2ρ² − 1) の係数（項の係数と規格化を掛けたもの、k = (n − m)/2 の順）
     #[cfg_attr(feature = "serde", serde(skip))]
     groups: Vec<(u32, bool, Vec<f64>)>,
     /// m の最大
@@ -123,27 +123,46 @@ pub fn zern_nm(j: usize, fringe: bool) -> (u32, u32, bool) {
     (n as u32, m as u32, m == 0 || j.is_multiple_of(2))
 }
 
-/// R_n^m(ρ) = ρ^m P(ρ²) の P の係数（低い次数から、規格化の係数を掛けて）
-fn radial_poly(n: u32, m: u32, normalize: bool) -> Vec<f64> {
-    let h = ((n - m) / 2) as usize;
-    let fact = |k: u32| -> f64 { (1..=k).map(|v| v as f64).product() };
-    let nrm = if normalize {
-        if m == 0 {
-            ((n + 1) as f64).sqrt()
-        } else {
-            (2.0 * (n + 1) as f64).sqrt()
-        }
-    } else {
+/// 項 (n, m) の規格化の係数（Standard は √(n + 1)・√(2(n + 1))、Fringe は 1）
+fn radial_norm(n: u32, m: u32, normalize: bool) -> f64 {
+    if !normalize {
         1.0
-    };
-    let mut p = vec![0.0; h + 1];
-    for s in 0..=h as u32 {
-        // ρ^(n−2s) = ρ^m (ρ²)^(h−s)
-        let c = fact(n - s) / (fact(s) * fact((n + m) / 2 - s) * fact((n - m) / 2 - s));
-        let c = if s % 2 == 0 { c } else { -c };
-        p[h - s as usize] = c * nrm;
+    } else if m == 0 {
+        ((n + 1) as f64).sqrt()
+    } else {
+        (2.0 * (n + 1) as f64).sqrt()
     }
-    p
+}
+
+/// Σ_k a_k Q_k(x) と d/dx。Q_k = P_k^(0, m)（Jacobi 多項式）で、R_(m+2k)^m(ρ) = ρ^m Q_k(2ρ² − 1)。
+/// 3 項漸化式で求める（ρ² のべきの多項式に直すと係数が交互の符号で 1e5 台になり、ρ → 1 で桁落ちする）
+fn jacobi_sum(a: &[f64], m: u32, x: f64) -> (f64, f64) {
+    let b = m as f64;
+    let (mut q0, mut d0) = (1.0, 0.0);
+    let (mut s, mut ds) = (a[0], 0.0);
+    if a.len() == 1 {
+        return (s, ds);
+    }
+    // Q_1 = 1 + (m + 2)(x − 1)/2
+    let (mut q1, mut d1) = (1.0 + 0.5 * (b + 2.0) * (x - 1.0), 0.5 * (b + 2.0));
+    s += a[1] * q1;
+    ds += a[1] * d1;
+    for (k, &ak) in a.iter().enumerate().skip(2) {
+        // 2k(k + m)(2k + m − 2) Q_k = (2k + m − 1)[(2k + m)(2k + m − 2) x − m²] Q_(k−1)
+        //                              − 2(k − 1)(k + m − 1)(2k + m) Q_(k−2)
+        let k = k as f64;
+        let c = 2.0 * k + b;
+        let c0 = 2.0 * k * (k + b) * (c - 2.0);
+        let c1 = (c - 1.0) * c * (c - 2.0);
+        let c2 = -(c - 1.0) * b * b;
+        let c3 = 2.0 * (k - 1.0) * (k + b - 1.0) * c;
+        let q2 = ((c1 * x + c2) * q1 - c3 * q0) / c0;
+        let d2 = ((c1 * x + c2) * d1 + c1 * q1 - c3 * d0) / c0;
+        (q0, d0, q1, d1) = (q1, d1, q2, d2);
+        s += ak * q1;
+        ds += ak * d1;
+    }
+    (s, ds)
 }
 
 impl ZernSag {
@@ -170,7 +189,7 @@ impl ZernSag {
                 continue;
             }
             let (n, m, cs) = zern_nm(i + 1, self.fringe);
-            let p = radial_poly(n, m, !self.fringe);
+            let k = ((n - m) / 2) as usize;
             let e = match g.iter_mut().position(|e| e.0 == m && e.1 == cs) {
                 Some(k) => &mut g[k].2,
                 None => {
@@ -178,12 +197,10 @@ impl ZernSag {
                     &mut g.last_mut().unwrap().2
                 }
             };
-            if e.len() < p.len() {
-                e.resize(p.len(), 0.0);
+            if e.len() <= k {
+                e.resize(k + 1, 0.0);
             }
-            for (t, v) in p.iter().enumerate() {
-                e[t] += a * v;
-            }
+            e[k] += a * radial_norm(n, m, !self.fringe);
         }
         g.sort_by_key(|e| (e.0, !e.1));
         self.mmax = g.iter().map(|e| e.0).max().unwrap_or(0);
@@ -208,7 +225,10 @@ impl ZernSag {
     /// 項 j（1 から）だけの値（係数 1）と (∂/∂x, ∂/∂y)。感度 dz/dA_j に使う
     pub fn term(&self, j: usize, x: f64, y: f64) -> (f64, f64, f64) {
         let (n, m, cs) = zern_nm(j, self.fringe);
-        let g = [(m, cs, radial_poly(n, m, !self.fringe))];
+        let k = ((n - m) / 2) as usize;
+        let mut p = vec![0.0; k + 1];
+        p[k] = radial_norm(n, m, !self.fringe);
+        let g = [(m, cs, p)];
         eval_groups(&g, m, self.norm, self.extrapolate, x - self.dx, y - self.dy)
     }
 
@@ -260,12 +280,9 @@ fn eval_groups(
     let (mut z, mut zu, mut zv) = (0.0, 0.0, 0.0);
     for (m, cs, p) in groups {
         let m = *m as usize;
-        // P(ρ²) と P'(ρ²)
-        let (mut pv, mut dp) = (0.0, 0.0);
-        for &c in p.iter().rev() {
-            dp = dp * r2 + pv;
-            pv = pv * r2 + c;
-        }
+        // P(ρ²) = Σ a_k Q_k(2ρ² − 1) と dP/d(ρ²)
+        let (pv, dq) = jacobi_sum(p, m as u32, 2.0 * r2 - 1.0);
+        let dp = 2.0 * dq;
         // A = Re w^m（cos）か Im w^m（sin）、∂A/∂u・∂A/∂v
         let (a, au, av) = if m == 0 {
             (1.0, 0.0, 0.0)
@@ -754,6 +771,47 @@ mod tests {
     }
 
     #[test]
+    fn radial_terms_are_accurate_up_to_order_20() {
+        // 動径多項式 R_n^m（n ≤ 20、Standard の 231 項）の ρ^m を除いた部分を、整数の係数（u128 で厳密）の
+        // double-double の Horner と比べる。ρ² のべきで f64 の Horner にすると ρ → 1 で 3e-10 ずれた（KRN-24）
+        fn two_sum(a: f64, b: f64) -> (f64, f64) {
+            let s = a + b;
+            let bb = s - a;
+            (s, (a - (s - bb)) + (b - bb))
+        }
+        let fact = |q: u32| -> u128 { (1..=q as u128).product() };
+        let mut worst = 0.0f64;
+        for j in 1..=231 {
+            let (n, m, _) = zern_nm(j, false);
+            let k = ((n - m) / 2) as usize;
+            let mut a = vec![0.0; k + 1];
+            a[k] = 1.0;
+            for i in 0..=200 {
+                let r2 = i as f64 / 200.0;
+                let mut acc = (0.0f64, 0.0f64);
+                for t in (0..=k).rev() {
+                    let s = (k - t) as u32;
+                    let c = (fact(n - s)
+                        / (fact(s) * fact((n + m) / 2 - s) * fact((n - m) / 2 - s)))
+                        as f64;
+                    let c = if s.is_multiple_of(2) { c } else { -c };
+                    // acc = acc * r2 + c（double-double）
+                    let p = acc.0 * r2;
+                    let e = acc.0.mul_add(r2, -p) + acc.1 * r2;
+                    let (hi, lo) = two_sum(p, e);
+                    let (s1, e1) = two_sum(hi, c);
+                    acc = two_sum(s1, e1 + lo);
+                }
+                let exact = acc.0 + acc.1;
+                let (v, _) = jacobi_sum(&a, m, 2.0 * r2 - 1.0);
+                // 値の大きさ（ρ → 0 で m が大きいと C(k + m, k) 倍になる）に対する誤差
+                worst = worst.max((v - exact).abs() / exact.abs().max(1.0));
+            }
+        }
+        assert!(worst < 1e-13, "{worst:e}");
+    }
+
+    #[test]
     fn noll_and_fringe_order() {
         let noll: Vec<_> = (1..=11).map(|j| zern_nm(j, false)).collect();
         assert_eq!(
@@ -843,7 +901,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, &a)| a * z.term(i + 1, x, y).0)
                 .sum();
-            assert!((s - z.eval(x, y).0).abs() < 1e-10, "{s}");
+            assert!((s - z.eval(x, y).0).abs() < 1e-12, "{s}");
         }
     }
 

@@ -64,7 +64,8 @@ pub(crate) fn coat_model(
             .collect::<Result<_, _>>()?,
     };
     kinks.sort_by(f64::total_cmp);
-    use lensbench_design::coat_fit::{fit_model, format_models, FitOptions};
+    use lensbench_core::coating::format_models;
+    use lensbench_design::coat_fit::{fit_model, FitOptions};
     let mut all = Vec::new();
     for t in tables {
         let txt =
@@ -172,7 +173,7 @@ pub(crate) fn coat_compact(
     model: &std::path::Path,
     out: &std::path::Path,
 ) -> Result<Value, String> {
-    use lensbench_design::coat_fit::format_models_bin;
+    use lensbench_core::coating::format_models_bin;
     let b = lensbench_core::vfs::read(model).map_err(|e| format!("{}: {e}", model.display()))?;
     let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
         coating::parse_models_bin(&b)

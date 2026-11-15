@@ -333,9 +333,12 @@ fn unsupported_surface_after_the_medium_is_rejected() {
 /// ずらす前の光線を直線で進める近道（core focus.rs）は使わず、厚さを変えて追い直したのと同じ値
 #[test]
 fn rms_vs_focus_with_the_image_inside_grin() {
+    use lensbench_core::{sweep, Waves};
     let (mut s, _) = load("G9A");
     s.delete_surface(2).unwrap();
-    // GRIN の面と像面の間に何もしない座標ブレークを挟んだ系も（媒質は GRIN のまま）
+    // GRIN の面と像面の間に何もしない座標ブレークを挟んだ系も（媒質は GRIN のまま）。像面を手前へずらすと
+    // 座標ブレークの後ろの厚さが負になり、像面は媒質の中で光線の後ろにある（KRN-31: 前は射出瞳の補助の光線が
+    // 像面に届かず求まらなかった）
     let mut cb = s.clone();
     let im = cb.image();
     let d = lensbench_core::surface::Surface {
@@ -343,8 +346,22 @@ fn rms_vs_focus_with_the_image_inside_grin() {
         ..Default::default()
     };
     cb.insert_surface(im, d).unwrap();
-    for s in [s, cb] {
-        check_focus(&s);
+    check_focus(&s);
+    check_focus(&cb);
+    // 座標ブレークの有無で結果は変わらない（媒質の中の積分を座標ブレークで区切る分の差だけ）
+    let f = FieldSel::Index(s.fields.len() - 1);
+    for dz in [-0.5, 0.0, 0.5] {
+        let (a, b) = (
+            sweep::defocus(&s, dz).unwrap(),
+            sweep::defocus(&cb, dz).unwrap(),
+        );
+        let (ea, eb) = (a.exit_pupil(), b.exit_pupil());
+        assert!((ea - eb).abs() < 1e-9 * ea.abs(), "dz {dz}: EXPP {ea} {eb}");
+        let ra = sweep::rms(&a, f, Waves::All, Default::default()).unwrap();
+        let rb = sweep::rms(&b, f, Waves::All, Default::default()).unwrap();
+        for (x, y) in [(ra.spot, rb.spot), (ra.wfe, rb.wfe)] {
+            assert!((x - y).abs() < 1e-8 * x.abs(), "dz {dz}: {x} {y}");
+        }
     }
 }
 
@@ -354,13 +371,8 @@ fn check_focus(s: &System) {
     for dz in [-0.5, 0.5] {
         let r = sweep::rms_vs_focus(s, f, &[dz], Waves::All, Default::default());
         let d = sweep::defocus(s, dz).unwrap();
-        match sweep::rms(&d, f, Waves::All, Default::default()) {
-            Ok(a) => {
-                assert!(r.warnings.is_empty(), "{:?}", r.warnings);
-                assert_eq!((r.rms[0].spot, r.rms[0].wfe), (a.spot, a.wfe), "dz {dz}");
-            }
-            // 追い直しでも求まらない点（座標ブレークを挟んだ系の dz −0.5 は射出瞳が求まらない）は掃引でも NaN
-            Err(_) => assert!(r.rms[0].spot.is_nan() && !r.warnings.is_empty(), "dz {dz}"),
-        }
+        let a = sweep::rms(&d, f, Waves::All, Default::default()).unwrap();
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        assert_eq!((r.rms[0].spot, r.rms[0].wfe), (a.spot, a.wfe), "dz {dz}");
     }
 }

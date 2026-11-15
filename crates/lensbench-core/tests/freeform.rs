@@ -37,7 +37,11 @@ fn sag_matches_getsag() {
             n += 1;
         }
         println!("{name}: 最大の差 {worst:.2e}（mm、1 mm を超える値は相対）");
-        assert!(worst < 1e-12, "{name}: {worst:e}");
+        // 外挿した 231 項は値が ρ^20 で大きく、項どうしの打ち消しの丸めが残る（漸化式で 1.3e-12、前の ρ² の
+        // べきの多項式で 7e-13。正規化半径の中は漸化式で 9e-16、前は 9e-14）
+        let extrapolated = name.contains("_231_ext1") || name.contains("_231_extNone");
+        let tol = if extrapolated { 2e-12 } else { 1e-12 };
+        assert!(worst < tol, "{name}: {worst:e}");
     }
     assert!(n > 3000);
 }

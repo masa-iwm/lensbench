@@ -1,5 +1,5 @@
 //! 薄膜の物理の不変量（ANA-32 (d)）。OpticStudio の基準値に頼らない。吸収のない膜の R + T = 1・1/4 波長・
-//! 向きの相反性は coating.rs の単体試験と polarization.rs、k の符号の誤りを断るのは polarization.rs
+//! 向きの相反性は coating/tests.rs の単体試験と polarization.rs、k の符号の誤りを断るのは polarization.rs
 
 use lensbench_core::coating::stack;
 use num_complex::Complex64 as C64;

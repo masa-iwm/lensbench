@@ -11,9 +11,7 @@
 use crate::analysis::{self, mtf, pupil_gauss, Opd};
 use crate::error::Result;
 use crate::focus::{FocusBase, FocusShift};
-use crate::glass;
 use crate::invalid;
-use crate::surface::SurfType;
 use crate::system::{FieldSel, FieldType, System, Trace};
 use crate::Waves;
 use std::sync::Arc;
@@ -43,148 +41,6 @@ fn defocus_shared(s: &System, dz: f64, fb: Option<&Arc<FocusBase>>) -> Result<Sy
         });
     }
     Ok(d)
-}
-
-/// 面 j の後の媒質の、波長 lam [µm] での屈折率（dn・disp をかける前）。prev は前の媒質の値（鏡・座標ブレーク用）。
-/// 系の主波長の値と比べて、ガラスの温度の扱い（adjust）を系の値の作り方に合わせる
-fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
-    let d = &s.surfaces[j];
-    if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
-        return Ok(prev);
-    }
-    if let Some(g) = &d.grin {
-        return g.vertex_index(lam).ok_or_else(|| {
-            crate::error::Error::Invalid(format!(
-                "surface {j}: the GRIN vertex is outside the profile range (wavelength {lam} µm)"
-            ))
-        });
-    }
-    let mat = d.mat.trim();
-    if mat.is_empty() || mat.eq_ignore_ascii_case("AIR") {
-        return Ok(1.0);
-    }
-    let n0 = s.base_index(j, s.primary);
-    if let Some(g) = s.glasses.get(mat) {
-        let (t, p) = (s.temperature, s.pressure);
-        let wp = s.wavelengths[s.primary];
-        // 系の値と同じ作り方を選ぶ（.zmx は Adjust Index の設定、プロジェクトはカタログの値のまま）
-        for adjust in [s.adjust_index, !s.adjust_index] {
-            if (g.index(wp, t, p, adjust) - n0).abs() <= 1e-12 {
-                return Ok(g.index(lam, t, p, adjust));
-            }
-        }
-        invalid!("surface {j}: the index of glass {mat} can't be rebuilt at wavelength {lam} µm (it doesn't match the system value)");
-    }
-    // モデルガラス "nd,vd[,dpgf]"（vd = 0 は分散なし）
-    let v: Vec<f64> = mat
-        .split(',')
-        .map(|x| x.trim().parse::<f64>())
-        .collect::<std::result::Result<_, _>>()
-        .unwrap_or_default();
-    if (2..=3).contains(&v.len()) {
-        if v[1] == 0.0 {
-            return Ok(n0);
-        }
-        return Ok(glass::model_index(
-            v[0],
-            v[1],
-            v.get(2).copied().unwrap_or(0.0),
-            lam,
-        ));
-    }
-    let nb = |w: usize| s.base_index(j, w);
-    if (0..s.wavelengths.len()).all(|w| nb(w) == n0) {
-        return Ok(n0);
-    }
-    invalid!("surface {j}: the index of material {mat} can't be made at wavelength {lam} µm");
-}
-
-impl System {
-    /// 波長 i を lam [µm] に変える（(i, lam) の並び）。全媒質の屈折率（dn・disp をかける前の値と、複屈折材の異常光）を
-    /// 新しい波長で作り直す。作り方は元の系の値に合わせる（[`base_index_at`]）。dn・disp の反映
-    /// （[`System::update_indices`]）とキャッシュの扱いは呼ぶ側（[`System::set_params`]）で
-    pub(crate) fn set_wavelengths(&mut self, waves: &[(usize, f64)]) -> Result<()> {
-        let ns = self.surfaces.len();
-        let mut new: Vec<(usize, Vec<f64>)> = Vec::with_capacity(waves.len());
-        for &(i, lam) in waves {
-            if i >= self.wavelengths.len() || !(lam > 0.0) {
-                invalid!(
-                    "wavelength {} = {lam} µm (there are {} wavelengths)",
-                    i + 1,
-                    self.wavelengths.len()
-                );
-            }
-            let mut prev = 1.0;
-            let mut col = Vec::with_capacity(ns);
-            for j in 0..ns {
-                let n = base_index_at(self, j, prev, lam)?;
-                col.push(n);
-                if !self.surfaces[j].ignore || j == 0 {
-                    prev = n;
-                }
-            }
-            new.push((i, col));
-        }
-        for (i, col) in new {
-            for (j, n) in col.into_iter().enumerate() {
-                let d = &mut self.surfaces[j];
-                let v = if d.n_base.is_empty() {
-                    &mut d.n
-                } else {
-                    &mut d.n_base
-                };
-                if let Some(x) = v.get_mut(i) {
-                    *x = n;
-                }
-            }
-        }
-        for &(i, lam) in waves {
-            self.wavelengths[i] = lam;
-        }
-        // 複屈折材の異常光の屈折率は材料（名前-E）から作り直す
-        let mut bire = false;
-        for d in self.surfaces.iter_mut() {
-            if let Some(crate::surface::Bire::In { ne, .. }) = &mut d.bire {
-                ne.clear();
-                bire = true;
-            }
-        }
-        if bire {
-            self.refresh_media()?;
-        }
-        Ok(())
-    }
-}
-
-/// 波長 lam [µm] を末尾に重み 0 で足した系と、その波長の番号（0 始まり）。主波長・視野・エイミングは変えない
-pub fn with_wavelength(s: &System, lam: f64) -> Result<(System, usize)> {
-    if !(lam > 0.0) {
-        invalid!("wavelength {lam} µm");
-    }
-    let mut d = s.clone();
-    let mut prev = 1.0;
-    let mut add = Vec::with_capacity(d.surfaces.len());
-    for j in 0..d.surfaces.len() {
-        let n = base_index_at(s, j, prev, lam)?;
-        add.push(n);
-        if !s.surfaces[j].ignore || j == 0 {
-            prev = n;
-        }
-    }
-    for (j, n) in add.into_iter().enumerate() {
-        let sf = &mut d.surfaces[j];
-        if sf.n_base.is_empty() {
-            sf.n.push(n);
-        } else {
-            sf.n_base.push(n);
-            sf.n.push(f64::NAN);
-        }
-    }
-    d.wavelengths.push(lam);
-    d.weights.push(0.0);
-    d.update_indices();
-    d.changed()?;
-    Ok((d, s.wavelengths.len()))
 }
 
 // ------------------------------------------------------------------------------------------ 刻み
@@ -693,7 +549,7 @@ pub fn rms_vs_wavelength(s: &System, field: FieldSel, lams: &[f64], o: RmsOpts) 
         lams,
         |l| format!("wavelength {l} µm"),
         |l| {
-            let (d, w) = with_wavelength(s, l)?;
+            let (d, w) = s.with_wavelength(l)?;
             let d2: std::borrow::Cow<'_, System> = field_at_wave(&d, w, o)?;
             rms(&d2, field, Waves::One(w), o)
         },

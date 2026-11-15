@@ -405,7 +405,7 @@ fn wavelength_param_reindexes_media() {
             t.get_param(Param::new(0, Kind::Wave(w as u8))).unwrap(),
             s.wavelengths[w] + dl
         );
-        let (d, k) = lensbench_core::sweep::with_wavelength(&s, s.wavelengths[w] + dl).unwrap();
+        let (d, k) = s.with_wavelength(s.wavelengths[w] + dl).unwrap();
         for j in 0..s.surfaces.len() {
             let (a, b) = (t.surfaces[j].n[w], d.surfaces[j].n[k]);
             assert!((a - b).abs() < 1e-14, "面 {j} 波長 {w}: {a} {b}");

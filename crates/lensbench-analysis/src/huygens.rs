@@ -184,18 +184,22 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     let xs: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.0).collect();
     let ys: Vec<f64> = (0..ni).map(|m| (m as f64 - half) * delta.1).collect();
     let (cx, cy) = (pc[0], pc[1]);
-    // 像面の上の格子の点（局所座標、z は像面の矢高）
+    // 像面の上の格子の点（局所座標、z は像面の矢高）。矢高が求まらない点（像面の形の式の外）は z が NaN で、
+    // 強度も NaN（平面として計算しない。ANA-24）
     let img = &s.surfaces[s.image()];
     let pts: Vec<V3> = ys
         .iter()
         .flat_map(|&y| {
             xs.iter().map(move |&x| {
                 let (px, py) = (cx + x, cy + y);
-                let z = lensbench_core::freeform::sag_xy(img, px, py).0;
-                [px, py, if z.is_finite() { z } else { 0.0 }]
+                // 球の縁の外などでは矢高は端の値に丸めて有限のまま返り、傾きが NaN になる
+                let (z, zx, zy) = lensbench_core::freeform::sag_xy(img, px, py);
+                let on = z.is_finite() && zx.is_finite() && zy.is_finite();
+                [px, py, if on { z } else { f64::NAN }]
             })
         })
         .collect();
+    let off_surface = pts.iter().filter(|p| !p[2].is_finite()).count();
 
     let np = match o.pupil {
         Some(n) => n,
@@ -346,7 +350,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         let buf = || (Vec::new(), Vec::new(), Vec::new());
         // 像の点ごとに中断を確かめる（GUI で系が変わったとき。やめた点は NaN、あとで Cancelled を返す）
         let one = |p: &V3, b: &mut (Vec<f64>, Vec<f64>, Vec<C64>)| -> f64 {
-            if lensbench_core::par::cancelled() {
+            if lensbench_core::par::cancelled() || !p[2].is_finite() {
                 f64::NAN
             } else {
                 one(p, b)
@@ -371,9 +375,8 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         }
         // 格子に入った光量の割合: 全光量は FFT PSF と同じく Σf / |a b h²|（主光線に垂直な面で）。像面の上の
         // 1 点の面積は垂直な面では |k_z| 倍
-        encl +=
-            kw * iw.iter().sum::<f64>() * delta.0 * delta.1 * kc[2].abs() * (a * b * h * h).abs()
-                / sa;
+        let isum: f64 = iw.iter().filter(|v| v.is_finite()).sum();
+        encl += kw * isum * delta.0 * delta.1 * kc[2].abs() * (a * b * h * h).abs() / sa;
         nrm += kw * g;
         wsum += kw;
     }
@@ -386,6 +389,13 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         .collect();
     let peak = i.iter().flatten().cloned().fold(0.0, f64::max);
     let enclosed = encl / wsum;
+    let mut warnings = lensbench_core::psf::sampling_warnings("Huygens PSF", np, step, enclosed);
+    if off_surface > 0 {
+        warnings.push(format!(
+            "Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts} image grid points (outside the surface shape); their intensity is NaN",
+            npts = pts.len()
+        ));
+    }
     Ok(Psf {
         i: lensbench_core::grid::Grid2::from_rows(xs, ys, i),
         center: (cx, cy),
@@ -395,7 +405,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         pupil: np,
         phase_step: step,
         enclosed,
-        warnings: lensbench_core::psf::sampling_warnings("Huygens PSF", np, step, enclosed),
+        warnings,
     })
 }
 

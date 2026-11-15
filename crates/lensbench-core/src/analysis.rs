@@ -2149,10 +2149,6 @@ const ZCH: usize = 256;
 /// (s0 + s1) + (s2 + s3) で足す（和の順は列の組の大きさや CPU によらず同じ）。列の組（TU 列 × TW 列）ごとに
 /// 足すので、読み込み 1 回あたりの積和が多い
 #[inline(always)]
-#[cfg_attr(
-    all(target_arch = "wasm32", target_feature = "simd128"),
-    allow(dead_code) // simd128 では gram_block_simd128（試験で照合に使う）
-)]
 fn gram_tiles<const TU: usize, const TW: usize>(
     a: &[f64],
     ld: usize,
@@ -2162,17 +2158,19 @@ fn gram_tiles<const TU: usize, const TW: usize>(
 ) {
     const L: usize = 4;
     let h = ld / L;
-    let col = |k: usize| -> &[f64] { &a[k * ld..(k + 1) * ld] };
+    let col = |k: usize| -> &[[f64; L]] { a[k * ld..(k + 1) * ld].as_chunks::<L>().0 };
     for bi in (0..np).step_by(TU) {
-        let ci: [&[f64]; TU] = std::array::from_fn(|k| col(bi + k));
+        let ci: [&[[f64; L]]; TU] = std::array::from_fn(|k| col(bi + k));
         for bj in (0..bi + TU).step_by(TW) {
-            let cj: [&[f64]; TW] = std::array::from_fn(|k| col(bj + k));
+            let cj: [&[[f64; L]]; TW] = std::array::from_fn(|k| col(bj + k));
             let mut acc = [[[0.0f64; L]; TW]; TU];
+            // 長さを h に切りそろえておくと、下の添字の範囲の検査が消えてコンパイラが並べる（無いと 2 倍遅い）
+            let (ci, cj) = (ci.map(|c| &c[..h]), cj.map(|c| &c[..h]));
             for q in 0..h {
                 for u in 0..TU {
-                    let x = &ci[u][q * L..q * L + L];
+                    let x = &ci[u][q];
                     for w in 0..TW {
-                        let y = &cj[w][q * L..q * L + L];
+                        let y = &cj[w][q];
                         for l in 0..L {
                             acc[u][w][l] += x[l] * y[l];
                         }
@@ -2196,112 +2194,25 @@ fn gram_tiles<const TU: usize, const TW: usize>(
     }
 }
 
-/// [`gram_tiles`] と同じ計算を AVX の命令で（4 列 × 2 列の組、積と和は別の命令で FMA は使わないので値は同じ）
+/// [`gram_tiles`]。x86_64 で AVX があれば、同じ関数を AVX を使ってよいとしてコンパイルしたもの（4 列 × 2 列の組。
+/// コンパイラが 256 ビットのレジスタに並べる。wasm の simd128 はビルドの設定で同じく並ぶ）。積と和は別の命令で
+/// 順も同じなので、値はどれでも同じ
+fn gram_block(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if std::arch::is_x86_feature_detected!("avx") {
+            // 安全: AVX があることを上で確かめた
+            return unsafe { gram_block_avx(a, ld, np, n, g) };
+        }
+    }
+    gram_tiles::<2, 2>(a, ld, np, n, g)
+}
+
+/// [`gram_block`] の AVX を使ってよいとしてコンパイルしたもの
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
-unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
-    use std::arch::x86_64::*;
-    assert!(ld.is_multiple_of(4) && np.is_multiple_of(4) && a.len() >= ld * np && g.len() >= n * n);
-    let base = a.as_ptr();
-    for bi in (0..np).step_by(4) {
-        for bj in (0..bi + 4).step_by(2) {
-            let mut acc = [_mm256_setzero_pd(); 8];
-            let pi = [0, 1, 2, 3].map(|k| unsafe { base.add((bi + k) * ld) });
-            let pj = [0, 1].map(|k| unsafe { base.add((bj + k) * ld) });
-            for p in (0..ld).step_by(4) {
-                // 安全: 列 bi..bi+4、bj..bj+2 は np 列の中、p + 4 ≤ ld（上の assert）
-                let y0 = unsafe { _mm256_loadu_pd(pj[0].add(p)) };
-                let y1 = unsafe { _mm256_loadu_pd(pj[1].add(p)) };
-                for u in 0..4 {
-                    let x = unsafe { _mm256_loadu_pd(pi[u].add(p)) };
-                    acc[2 * u] = _mm256_add_pd(acc[2 * u], _mm256_mul_pd(x, y0));
-                    acc[2 * u + 1] = _mm256_add_pd(acc[2 * u + 1], _mm256_mul_pd(x, y1));
-                }
-            }
-            for u in 0..4 {
-                let i = bi + u;
-                if i >= n {
-                    break;
-                }
-                for w in 0..2 {
-                    let j = bj + w;
-                    if j > i {
-                        break;
-                    }
-                    let mut s = [0.0f64; 4];
-                    unsafe { _mm256_storeu_pd(s.as_mut_ptr(), acc[2 * u + w]) };
-                    g[i * n + j] = (s[0] + s[1]) + (s[2] + s[3]);
-                }
-            }
-        }
-    }
-}
-
-/// [`gram_tiles`] と同じ計算を wasm の simd128 で（4 列 × 2 列の組。128 ビットは 2 点なので、点を 4 つずつに
-/// 分けた 4 本の和を 2 つのレジスタに持つ。積と和は別の命令なので値は同じ）
-#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-fn gram_block_simd128(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
-    use std::arch::wasm32::*;
-    assert!(ld.is_multiple_of(4) && np.is_multiple_of(4) && a.len() >= ld * np && g.len() >= n * n);
-    let base = a.as_ptr();
-    // 安全: 列 k の p..p+2 は k < np、p + 2 ≤ ld なので a の中（上の assert）。v128_load は整列を求めない
-    let ld2 = |k: usize, p: usize| unsafe { v128_load(base.add(k * ld + p) as *const v128) };
-    for bi in (0..np).step_by(4) {
-        for bj in (0..bi + 4).step_by(2) {
-            // acc[u][w][h]: 点 4 つの組の中の 2h, 2h+1 番目
-            let mut acc = [[[f64x2_splat(0.0); 2]; 2]; 4];
-            for p in (0..ld).step_by(4) {
-                let y = [0, 1].map(|w| [ld2(bj + w, p), ld2(bj + w, p + 2)]);
-                for (u, au) in acc.iter_mut().enumerate() {
-                    let x = [ld2(bi + u, p), ld2(bi + u, p + 2)];
-                    for (w, aw) in au.iter_mut().enumerate() {
-                        for h in 0..2 {
-                            aw[h] = f64x2_add(aw[h], f64x2_mul(x[h], y[w][h]));
-                        }
-                    }
-                }
-            }
-            for (u, au) in acc.iter().enumerate() {
-                let i = bi + u;
-                if i >= n {
-                    break;
-                }
-                for (w, aw) in au.iter().enumerate() {
-                    let j = bj + w;
-                    if j > i {
-                        break;
-                    }
-                    let (s0, s1) = (
-                        f64x2_extract_lane::<0>(aw[0]),
-                        f64x2_extract_lane::<1>(aw[0]),
-                    );
-                    let (s2, s3) = (
-                        f64x2_extract_lane::<0>(aw[1]),
-                        f64x2_extract_lane::<1>(aw[1]),
-                    );
-                    g[i * n + j] = (s0 + s1) + (s2 + s3);
-                }
-            }
-        }
-    }
-}
-
-/// [`gram_tiles`]。AVX があれば 256 ビットの、wasm の simd128 なら 128 ビットのレジスタで
-/// （演算と順は同じなので値は同じ）
-fn gram_block(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
-    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-    gram_block_simd128(a, ld, np, n, g);
-    #[cfg(not(all(target_arch = "wasm32", target_feature = "simd128")))]
-    {
-        #[cfg(target_arch = "x86_64")]
-        {
-            if std::arch::is_x86_feature_detected!("avx") {
-                // 安全: AVX があることを上で確かめた
-                return unsafe { gram_block_avx(a, ld, np, n, g) };
-            }
-        }
-        gram_tiles::<2, 2>(a, ld, np, n, g)
-    }
+fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64]) {
+    gram_tiles::<4, 2>(a, ld, np, n, g)
 }
 
 /// Zernike の当てはめの 1 回分の和: 点の塊（ZCH 点）ごとに項を列優先で求め、残差 r = v − A c（c が None なら
@@ -2626,7 +2537,7 @@ mod tests {
 
     #[test]
     fn column_basis_and_gram_match_the_row_forms() {
-        // eval_cols は eval とビットまで同じ。AᵀA は AVX・simd128 の有無（gram_block と gram_tiles）で同じで、
+        // eval_cols は eval とビットまで同じ。AᵀA は AVX の有無・列の組の大きさ（gram_block と gram_tiles）で同じで、
         // 1 点ずつの外積の和と丸めの範囲で一致する
         let mut st = 7u64;
         let mut rnd = || {

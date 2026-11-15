@@ -434,6 +434,29 @@ pub(crate) fn propagate(
     propagate_with(g, lam, p, k, f, max_len, true)
 }
 
+/// [`propagate`] で、次の面が光線の後ろにある（f(p) と、方向の次の面の法線の成分 kz が同じ符号。座標ブレークの後の
+/// 負の厚さ・厚さ 0 の傾けた座標ブレークなど）ときは、均質な媒質と同じく媒質の中を逆向きにたどって交点を求める
+/// （光路長は負）
+pub(crate) fn propagate_to(
+    g: &Grin,
+    lam: f64,
+    p: V3,
+    k: V3,
+    f: impl Fn(V3) -> f64,
+    max_len: f64,
+    kz: f64,
+) -> Option<Exit> {
+    if f(p) * kz > 0.0 {
+        propagate(g, lam, p, scale(k, -1.0), f, max_len).map(|e| Exit {
+            k: scale(e.k, -1.0),
+            opl: -e.opl,
+            ..e
+        })
+    } else {
+        propagate(g, lam, p, k, f, max_len)
+    }
+}
+
 /// [`propagate`]。fast が false なら軸方向の分布の速い経路を使わない（試験で比べるため）
 fn propagate_with(
     g: &Grin,
@@ -467,7 +490,11 @@ fn propagate_with(
     let mut hs = g.step().min(hmax);
     let hmin = hmax * 1e-9;
     let mut len = 0.0;
-    for _ in 0..1_000_000 {
+    for i in 0..1_000_000u32 {
+        // 長い媒質（刻みが小さいまま進む光線）でも中断を見る（KRN-15 の印。光線は誤りになり、解析が中断を返す）
+        if i % 4096 == 4095 && crate::par::cancelled() {
+            return None;
+        }
         let h = hs / e.0;
         let (r2, t2, o, err) = step(g, lam, r, t, h, e)?;
         // 刻みの制御（5 次の誤差）

@@ -107,6 +107,10 @@
   （`use lensbench_core::prelude::*;`）。CLI のクレートの `error`・`run`・`serve` のモジュールは外に出さない。
 - 追跡のカーネルを 1 本にした（KRN-06・IOO-20）: `batch::Plan::new(sys, frames, w, last, floating_clip)` は面 1 から（`first` を取らない）。
   1 本ずつの追跡も同じカーネル（幅 1）。結果はビット単位で前と同じ。
+- 波長を足した系 `sweep::with_wavelength(&s, lam)` は `System::with_wavelength(lam)` に（ANA-28）。屈折率は材料から作り直す（ガラスの温度の補正は
+  系の Adjust Index の設定のまま。前は系の値に合う方を 2 通りから選んだ）。材料の屈折率を任意の波長で `System::material_index_at`。
+- 膜のモデルの書き出し `format_models`・`format_models_bin` は `lensbench_design::coat_fit` から `lensbench_core::coating` へ移した
+  （読みと同じ所。`coating` はモジュールのフォルダに分けた。ほかの公開の名前は変えない）（ANA-16）。
 
 - モンテカルロ公差の乱数・抽選・実行を一括実行と共通に（IOO-14）: `lensbench_design::montecarlo::Rng` を消した（乱数は
   `lensbench_runs::Rng`）。試行のずれは `McSpec::draws()`（`lensbench_runs::Draws`）で引き、公差ごとの分布は `Tol::sample_dist()`。
