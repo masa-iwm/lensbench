@@ -345,3 +345,79 @@ impl Term {
         }
     }
 }
+
+/// 項の値（[`Problem::term_values`]）。値の意味は項の種類で違う
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TermValue {
+    /// 目標のある項（MTF・近軸量・光線・OPD・Zernike・結合効率・重心）: 量そのもの
+    Quantity(f64),
+    /// 目標のない項（スポット・波面・利用者の項）: 残差の √Σr²（スポット・波面では RMS そのもの）
+    Rms(f64),
+}
+
+impl TermValue {
+    /// 数の値
+    pub fn value(self) -> f64 {
+        match self {
+            TermValue::Quantity(v) | TermValue::Rms(v) => v,
+        }
+    }
+    /// 出力用の種類の名前（`quantity`・`rms`）
+    pub fn kind_name(self) -> &'static str {
+        match self {
+            TermValue::Quantity(_) => "quantity",
+            TermValue::Rms(_) => "rms",
+        }
+    }
+}
+
+/// 項の光線の数（[`Problem::ray_counts`]）。波長ごとの瞳の光線を足したもの
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RayCounts {
+    /// 追跡した光線
+    pub total: usize,
+    /// 開口でけられた光線（評価関数から除く）
+    pub vignetted: usize,
+    /// 追跡が止まった光線（全反射・面に届かない）
+    pub stopped: usize,
+}
+
+impl Problem {
+    /// 瞳の光線を並べる項（スポット・波面・重心）の光線の数（けられた・止まった光線。ほかの項は None）。
+    /// 評価関数は光線がけられる・戻るたびに跳ぶので、開口の縁で最適化が振れるときの目安に
+    pub fn ray_counts(&self, x: &[f64]) -> Result<Vec<Option<RayCounts>>> {
+        let sys = self.systems(x)?;
+        map_maybe_par(&self.terms, |t| {
+            let (field, wave, rings) = match &t.kind {
+                TermKind::Spot {
+                    field, wave, rings, ..
+                }
+                | TermKind::Wavefront {
+                    field, wave, rings, ..
+                }
+                | TermKind::Centroid {
+                    field, wave, rings, ..
+                } => (*field, *wave, *rings),
+                _ => return Ok(None),
+            };
+            let s = &sys[t.config];
+            let pg = pupil_gauss_shared(rings);
+            let mut c = RayCounts::default();
+            for w in waves(s, wave) {
+                let tr = s.try_trace(field, &pg.0, &pg.1, Some(w), None, false)?;
+                c.total += tr.rays.len();
+                c.stopped += tr.rays.iter().filter(|r| r.err != 0).count();
+                c.vignetted += tr.rays.iter().filter(|r| r.err == 0 && r.vig != 0).count();
+            }
+            Ok(Some(c))
+        })
+    }
+}
+
+/// 項の残差（重みを掛ける前）から項の値
+pub(super) fn term_value(k: &TermKind, r: &[f64]) -> TermValue {
+    match k.target() {
+        Some(target) => TermValue::Quantity(r[0] + target),
+        None => TermValue::Rms(r.iter().map(|v| v * v).sum::<f64>().sqrt()),
+    }
+}

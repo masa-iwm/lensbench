@@ -464,3 +464,122 @@ fn optimizer_leaves_ineffective_vars() {
     assert!(r.inactive.contains(&0) && r.inactive.contains(&1));
     assert!(r.merit <= r.merit0);
 }
+
+/// 一歩の解き方（IOO-13）: QR（正規方程式を作らない）は Cholesky と同じ解に着く。勾配の判定・減衰を強めて一歩が
+/// 小さくなったときの止まり方
+#[test]
+fn dls_qr_and_stops() {
+    use lensbench_optim::Stop;
+    let s = load("A0");
+    let mut p = Problem::single(s.clone());
+    p.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+    for v in vars(&s) {
+        p.add_var(&v).unwrap();
+    }
+    let o = DlsOpts {
+        max_iter: 30,
+        ..Default::default()
+    };
+    let a = dls(&p, &o).unwrap();
+    let b = dls(&p, &DlsOpts { qr: true, ..o }).unwrap();
+    assert!(b.merit < b.merit0);
+    assert!(
+        (a.merit - b.merit).abs() < 1e-6 * a.merit,
+        "{} {}",
+        a.merit,
+        b.merit
+    );
+    // 余弦は 1 以下なので gtol = 1.1 は最初の反復で止まり、変数は動かない
+    let c = dls(&p, &DlsOpts { gtol: 1.1, ..o }).unwrap();
+    assert_eq!(c.stop, Stop::SmallGradient);
+    assert_eq!(c.x, c.x0);
+    assert_eq!(c.stop.as_str(), "small_gradient");
+    // 止まる理由が SmallStep なのは、減衰を強めずに求めた一歩が小さいときだけ（強めて小さくなったのは NoProgress）
+    let d = dls(&p, &DlsOpts { xtol: 1e300, ..o }).unwrap();
+    assert_eq!(d.stop, Stop::SmallStep);
+    assert_eq!(d.x, d.x0);
+}
+
+/// 有効制約法（IOO-13）: 範囲を出る変数を境界に固定して残りを解き直す。境界を守り、評価関数は減る
+#[test]
+fn dls_active_set_bounds() {
+    let s = load("A0");
+    let pf = s.param(&format!("{}.t", focus(&s))).unwrap();
+    let t0 = s.get_param(pf).unwrap();
+    let mut p = Problem::single(s.with_params(&[(pf, t0 + 0.5)]).unwrap());
+    p.vars.push(Var::new(pf).bounds(t0 + 0.2, t0 + 1.0));
+    let st = stop_of(&s);
+    p.add_var(&format!("{}.c", st + 1)).unwrap();
+    p.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+    for qr in [false, true] {
+        let o = DlsOpts {
+            active_set: true,
+            qr,
+            ..Default::default()
+        };
+        let r = dls(&p, &o).unwrap();
+        assert!(r.merit < r.merit0, "{qr}");
+        assert!(r.x[0] >= t0 + 0.2 && r.x[0] <= t0 + 1.0, "{qr} {}", r.x[0]);
+        // 焦点は下限に張り付く（自由ならもっと手前）
+        assert!((r.x[0] - (t0 + 0.2)).abs() < 1e-12, "{qr} {}", r.x[0]);
+    }
+}
+
+/// 境界にある変数の差分は範囲の内側の片側差分（IOO-30）: 下限なら前進、上限なら後退の差分と同じ列
+#[test]
+fn fd_at_bounds_is_one_sided() {
+    let s = load("A0");
+    let pf = s.param(&format!("{}.t", focus(&s))).unwrap();
+    let t0 = s.get_param(pf).unwrap();
+    for (lo, hi, sign) in [(t0, t0 + 1.0, 1.0), (t0 - 1.0, t0, -1.0)] {
+        let mut p = Problem::single(s.clone());
+        p.jac = JacMode::FiniteDiff;
+        p.vars.push(Var::new(pf).bounds(lo, hi));
+        p.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+        let (r, j) = p.jacobian(&[t0]).unwrap();
+        let h = p.fd_rel * t0.abs().max(1.0);
+        let rh = p.residuals(&[t0 + sign * h]).unwrap();
+        for i in 0..r.len() {
+            let want = sign * (rh[i] - r[i]) / h;
+            assert!(
+                (j[i] - want).abs() <= 1e-9 * (1.0 + want.abs()),
+                "{sign} {i}: {} {want}",
+                j[i]
+            );
+        }
+    }
+}
+
+/// 縮退した問題（IOO-30）: 同じパラメータの変数 2 つは誤り、残差が初めから 0 の問題は動かずに止まる
+#[test]
+fn degenerate_problems() {
+    use lensbench_optim::{ParaxQ, Stop};
+    let s = load("A0");
+    let mut p = Problem::single(s.clone());
+    p.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
+    p.add_var("2.c").unwrap();
+    p.add_var("2.c").unwrap();
+    assert!(p.check().is_err());
+    assert!(dls(&p, &DlsOpts::default()).is_err());
+    // 焦点距離の目標が今の値: 評価関数 0 から減らせない
+    let mut p = Problem::single(s.clone());
+    p.terms.push(Term {
+        side: Default::default(),
+        config: 0,
+        weight: 1.0,
+        kind: TermKind::Paraxial {
+            q: ParaxQ::Efl,
+            target: s.paraxial().efl,
+        },
+    });
+    p.add_var("2.c").unwrap();
+    let r = dls(&p, &DlsOpts::default()).unwrap();
+    assert_eq!(r.merit0, 0.0);
+    assert_eq!(r.merit, 0.0);
+    assert_eq!(r.x, r.x0);
+    assert!(
+        matches!(r.stop, Stop::NoProgress | Stop::SmallStep),
+        "{:?}",
+        r.stop
+    );
+}

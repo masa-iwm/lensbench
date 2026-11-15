@@ -2362,9 +2362,8 @@ impl PySystem {
     /// With g(system, names), the partial derivatives of the residuals (number of residuals, len(names)) are computed with it.
     ///
     /// Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
-    /// iterations, evals, stop ("converged", "small_step", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
-    /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values
-    /// (values per term of terms: the value for terms with a target, √Σr² for the others)
+    /// iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
+    /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others)
     #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None))]
     #[allow(clippy::too_many_arguments)]
     fn optimize<'py>(
@@ -2398,16 +2397,16 @@ impl PySystem {
         let r = interruptible(py, || with_threads(threads, || optim::dls(&p, &o)))?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
-        let tv = |x: &[f64]| -> PyResult<Vec<f64>> {
+        let pair = |t: &optim::TermValue| (t.value(), t.kind_name());
+        let tv = |x: &[f64]| -> PyResult<(Vec<f64>, Vec<&str>)> {
             let v = py
                 .detach(|| with_threads(threads, || p.term_values(x)))
                 .map_err(err);
             userterm::raise_user_errors(&users)?;
-            Ok(v?[n_default..].to_vec())
+            Ok(v?[n_default..].iter().map(pair).unzip())
         };
-        let (tv0, tv1) = (tv(&r.x0)?, tv(&r.x)?);
+        let ((tv0, _), (tv1, kinds)) = (tv(&r.x0)?, tv(&r.x)?);
         let d = PyDict::new(py);
-        let stop = r.stop.as_str();
         let names: Vec<String> = p.vars.iter().map(|v| s.param_name(v.param)).collect();
         let sys = r.systems.into_iter().next().unwrap();
         d.set_item(
@@ -2422,11 +2421,12 @@ impl PySystem {
         d.set_item("history", r.history)?;
         d.set_item("iterations", r.iterations)?;
         d.set_item("evals", r.evals)?;
-        d.set_item("stop", stop)?;
+        d.set_item("stop", r.stop.as_str())?;
         d.set_item("note", r.note)?;
         d.set_item("inactive", r.inactive)?;
         d.set_item("term_values0", tv0)?;
         d.set_item("term_values", tv1)?;
+        d.set_item("term_value_kinds", kinds)?;
         Ok(d)
     }
 

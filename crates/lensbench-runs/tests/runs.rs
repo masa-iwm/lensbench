@@ -214,3 +214,72 @@ fn run_stops_on_error() {
     assert!(rows.len() < 100);
     std::fs::remove_file(&f).unwrap();
 }
+
+/// 抽選の End・円の中の組（IOO-14・30）: 値の範囲・割合・形、組の約束の誤り
+#[test]
+fn draws_end_and_disc() {
+    use lensbench_runs::{Draws, Joint};
+    let disc = |normal| Dist::Disc {
+        center: 1.0,
+        radius: 2.0,
+        normal,
+    };
+    let d = Draws::new(
+        vec![
+            Dist::End { lo: -0.5, hi: 0.25 },
+            disc(None),
+            Dist::Disc {
+                center: 0.0,
+                radius: 0.5,
+                normal: None,
+            },
+        ],
+        None,
+        vec![Joint::Disc { x: 1, y: 2 }],
+        3,
+    )
+    .unwrap();
+    let n = 20000;
+    let v: Vec<Vec<f64>> = (0..n).map(|i| d.draw(i)).collect();
+    assert!(v.iter().all(|x| x[0] == -0.5 || x[0] == 0.25));
+    let lo = v.iter().filter(|x| x[0] == -0.5).count() as f64 / n as f64;
+    assert!((lo - 0.5).abs() < 0.02, "{lo}");
+    // 組は楕円（中心 (1, 0)、半径 (2, 0.5)）の中で一様: 正規化した |r|² の平均は 1/2、x・y は無相関
+    let (mut r2, mut sxy) = (0.0, 0.0);
+    for x in &v {
+        let (a, b) = ((x[1] - 1.0) / 2.0, x[2] / 0.5);
+        assert!(a * a + b * b <= 1.0 + 1e-12);
+        r2 += a * a + b * b;
+        sxy += a * b;
+    }
+    assert!((r2 / n as f64 - 0.5).abs() < 0.01, "{}", r2 / n as f64);
+    assert!((sxy / n as f64).abs() < 0.01);
+    // 同じ番号は同じ値、種が違えば違う
+    assert_eq!(d.draw(5), d.draw(5));
+    let d2 = Draws::new(d.dists().to_vec(), None, d.joints().to_vec(), 4).unwrap();
+    assert_ne!(d.draw(5), d2.draw(5));
+    // 組にしない円の中の分布・種類の違う組・同じ変数の重なり・範囲の外は誤り
+    let bad = |dists: Vec<Dist>, joints: Vec<Joint>| Draws::new(dists, None, joints, 1).is_err();
+    assert!(bad(vec![disc(None)], vec![]));
+    assert!(bad(
+        vec![disc(None), disc(Some(2.0))],
+        vec![Joint::Disc { x: 0, y: 1 }]
+    ));
+    assert!(bad(
+        vec![disc(None), disc(None)],
+        vec![Joint::Disc { x: 0, y: 0 }]
+    ));
+    assert!(bad(
+        vec![disc(None), disc(None), disc(None)],
+        vec![Joint::Disc { x: 0, y: 1 }, Joint::Disc { x: 1, y: 2 }]
+    ));
+    assert!(bad(
+        vec![disc(None), Dist::Fixed(0.0)],
+        vec![Joint::Disc { x: 0, y: 1 }]
+    ));
+    assert!(bad(vec![Dist::End { lo: 1.0, hi: 0.0 }], vec![]));
+    assert!(bad(
+        vec![disc(Some(0.0)), disc(Some(0.0))],
+        vec![Joint::Disc { x: 0, y: 1 }]
+    ));
+}

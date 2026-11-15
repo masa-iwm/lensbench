@@ -16,7 +16,9 @@
 //!   範囲の端が ±2σ）
 //! - `End`: lo か hi を半々（最悪側の組合せを見る）
 //!
-//! 乱数: 試行 i の乱数は種と i だけで決まる（SplitMix64）。並列に回しても、スレッド数によらず結果は同じになる。
+//! 抽選: 公差の分布は一括実行の枠組みの抽選（[`lensbench_runs::Draws`]、パラメータの掃引の [`lensbench_runs::Sampler`] と同じ
+//! 乱数・分布・円の中の組）で引く（[`McSpec::draws`]）。試行 i のずれは種と i だけで決まり、並列に回しても、スレッド数に
+//! よらず結果は同じになる。感度と試行の評価も一括実行の枠組み（[`lensbench_runs::run`]）で回す。
 //! 複数の構成（多重構成・ズームの各状態）は、同じずれをすべての構成に与える（同じ部品なので）。構成の間で
 //! 面の番号が同じであること（玉・群のパラメータは名前で付けた番号なので、玉・群の並びが同じであること）。
 //!
@@ -32,8 +34,10 @@ use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::System;
 use lensbench_core::units::UnitKind;
+use lensbench_core::LockExt;
 use lensbench_optim::{DlsOpts, Problem};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use lensbench_runs::{self as runs, Draws, Joint};
+use std::sync::Mutex;
 
 /// 分布
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -411,102 +415,52 @@ fn pearson(a: &[f64], b: &[f64]) -> f64 {
     }
 }
 
-// ------------------------------------------------------------------------------------------ 乱数
+// ------------------------------------------------------------------------------------------ 抽選
 
-/// SplitMix64 の出力の混ぜ関数
-fn fin(mut z: u64) -> u64 {
-    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    z ^ (z >> 31)
+impl Tol {
+    /// 抽選の分布（[`lensbench_runs::Dist`]。範囲 [lo, hi] の中心と半幅で表し直す）。円の中の分布は組の 1 成分
+    pub fn sample_dist(&self) -> runs::Dist {
+        let (c, h) = (0.5 * (self.lo + self.hi), 0.5 * (self.hi - self.lo));
+        match self.dist {
+            Dist::Uniform => runs::Dist::Uniform {
+                lo: self.lo,
+                hi: self.hi,
+            },
+            Dist::Normal { cut } => runs::Dist::TruncNormal {
+                mean: c,
+                sigma: h / cut,
+                cut,
+            },
+            Dist::End => runs::Dist::End {
+                lo: self.lo,
+                hi: self.hi,
+            },
+            Dist::DiscX { normal } | Dist::DiscY { normal } => runs::Dist::Disc {
+                center: c,
+                radius: h,
+                normal,
+            },
+        }
+    }
 }
 
-/// SplitMix64 の 1 段（種の混ぜ合わせ）
-fn splitmix(z: u64) -> u64 {
-    fin(z.wrapping_add(0x9e37_79b9_7f4a_7c15))
-}
-
-/// SplitMix64（試行ごとの乱数。外部の crate に頼らず、版によらず同じ列になる）
-#[derive(Debug, Clone)]
-pub struct Rng(u64);
-
-impl Rng {
-    /// 種 seed の試行 i の乱数
-    pub fn for_trial(seed: u64, i: u64) -> Rng {
-        // 種と試行の番号を混ぜ関数に通して状態の始点にする。以前は状態に i·γ（γ は SplitMix64 の 1 回の増分）を
-        // 足していたため、試行 i+1 の列が試行 i の列を 1 つずらしただけになっていた
-        Rng(splitmix(
-            splitmix(seed ^ 0x6a09_e667_f3bc_c909).wrapping_add(i),
-        ))
-    }
-    pub fn next_u64(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        fin(self.0)
-    }
-    /// [0, 1)
-    pub fn uniform(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
-    }
-    /// 標準正規（Box–Muller、1 回に 1 つ）
-    pub fn normal(&mut self) -> f64 {
-        let u1 = 1.0 - self.uniform(); // (0, 1]
-        let u2 = self.uniform();
-        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
-    }
-    /// 単位円の中で一様な点（半径 √u、方位一様）
-    pub fn disc(&mut self) -> (f64, f64) {
-        let r = self.uniform().sqrt();
-        let a = std::f64::consts::TAU * self.uniform();
-        (r * a.cos(), r * a.sin())
-    }
-    /// 単位円の中の点を、normal が None なら一様に、Some(cut) なら半径 1 が cut σ の等方の 2 次元正規分布を円で切ったもので。
-    /// 半径は切った分布の逆関数で引く（r²/σ² は平均 2 の指数分布: r² = −2σ² ln(1 − u (1 − e^{−cut²/2}))）、方位は一様
-    pub fn disc_dist(&mut self, normal: Option<f64>) -> (f64, f64) {
-        let Some(cut) = normal else {
-            return self.disc();
-        };
-        let u = self.uniform();
-        let p = -(-0.5 * cut * cut).exp_m1(); // 1 − e^{−cut²/2}
-        let r = ((-2.0 * (-u * p).ln_1p()).sqrt() / cut).min(1.0);
-        let a = std::f64::consts::TAU * self.uniform();
-        (r * a.cos(), r * a.sin())
-    }
-    /// 分布 d で [lo, hi] のずれを引く
-    pub fn draw(&mut self, d: Dist, lo: f64, hi: f64) -> f64 {
-        if lo == hi {
-            return lo;
-        }
-        match d {
-            Dist::Uniform => lo + (hi - lo) * self.uniform(),
-            Dist::End => {
-                if self.next_u64() >> 63 == 0 {
-                    lo
-                } else {
-                    hi
+impl McSpec {
+    /// 試行のずれの抽選（[`lensbench_runs::Draws`]）。隣り合う [`Dist::DiscX`]・[`Dist::DiscY`] を組にする
+    pub fn draws(&self) -> Result<Draws> {
+        let mut joints = Vec::new();
+        let mut k = 0;
+        while k < self.tols.len() {
+            if let (Dist::DiscX { normal }, Some(u)) = (self.tols[k].dist, self.tols.get(k + 1)) {
+                if u.dist == (Dist::DiscY { normal }) {
+                    joints.push(Joint::Disc { x: k, y: k + 1 });
+                    k += 2;
+                    continue;
                 }
             }
-            // 組でなく 1 つだけ引くときは、円の中の一様分布の片方の成分（周辺分布）
-            Dist::DiscX { normal } | Dist::DiscY { normal } => {
-                let (x, y) = self.disc_dist(normal);
-                let v = if matches!(d, Dist::DiscX { .. }) {
-                    x
-                } else {
-                    y
-                };
-                0.5 * (lo + hi) + 0.5 * (hi - lo) * v
-            }
-            Dist::Normal { cut } => {
-                let c = 0.5 * (lo + hi);
-                let h = 0.5 * (hi - lo);
-                // 切った正規分布（範囲の外は引き直す。cut が小さくても 1 回で入る確率は 2Φ(cut)−1）
-                for _ in 0..1000 {
-                    let z = self.normal();
-                    if z.abs() <= cut {
-                        return c + h * z / cut;
-                    }
-                }
-                c
-            }
+            k += 1;
         }
+        let dists = self.tols.iter().map(Tol::sample_dist).collect();
+        Draws::new(dists, None, joints, self.seed)
     }
 }
 
@@ -562,6 +516,7 @@ fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {
         p.x0()?
     };
     let (merit, terms) = p.merit_and_terms(&x)?;
+    let terms = terms.into_iter().map(|t| t.value()).collect();
     Ok(Eval {
         merit,
         terms,
@@ -572,27 +527,12 @@ fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {
 /// 評価の結果（追跡できなければ理由）
 type Outcome = std::result::Result<Eval, String>;
 
-/// 試行 i のずれ
-pub fn draw_trial(spec: &McSpec, i: usize) -> Vec<f64> {
-    let mut r = Rng::for_trial(spec.seed, i as u64);
-    let mut out = Vec::with_capacity(spec.tols.len());
-    let mut k = 0;
-    while k < spec.tols.len() {
-        let t = &spec.tols[k];
-        match (t.dist, spec.tols.get(k + 1)) {
-            (Dist::DiscX { normal }, Some(u)) if u.dist == Dist::DiscY { normal } => {
-                let (x, y) = r.disc_dist(normal);
-                out.push(0.5 * (t.lo + t.hi) + 0.5 * (t.hi - t.lo) * x);
-                out.push(0.5 * (u.lo + u.hi) + 0.5 * (u.hi - u.lo) * y);
-                k += 2;
-            }
-            _ => {
-                out.push(r.draw(t.dist, t.lo, t.hi));
-                k += 1;
-            }
-        }
-    }
-    out
+/// 評価 1 つの結果の置き場（評価しなかったものは None）
+type Slot = Mutex<Option<(Vec<f64>, Outcome)>>;
+
+/// 試行 i のずれ（[`McSpec::draws`] の i 番目。種と i だけで決まる）
+pub fn draw_trial(spec: &McSpec, i: usize) -> Result<Vec<f64>> {
+    Ok(spec.draws()?.draw(i))
 }
 
 /// 隣り合う x・y の公差の組（同じ面・玉・群の dx と dy、tx と ty。パラメータの数が同じもの）を、円の中の
@@ -638,59 +578,50 @@ pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
 /// モンテカルロを回す。試行は並列に回す（[`lensbench_core::par::with_threads`] に従う）。
 /// 試行・感度の評価が 1 つ終わるごとに、文脈の受け手（[`par::with_progress`]）へ [`par::Event::Count`] を別のスレッドから知らせる。
 /// 文脈の中断の印（[`par::with_cancel`]）が倒れたら新しい評価を始めず、そこまでの結果を返す（`cancelled`）
+/// 感度と試行は一括実行の枠組み（[`lensbench_runs::run`]、ファイルには書かない）で回す
 pub fn run(spec: &McSpec) -> Result<McResult> {
     spec.check()?;
+    let draws = spec.draws()?;
     let nominal = eval_problem(&spec.problem, &spec.comp, true)?;
-    let ns = if spec.sensitivity {
-        2 * spec.tols.len()
-    } else {
-        0
-    };
+    let nt = spec.tols.len();
+    let ns = if spec.sensitivity { 2 * nt } else { 0 };
     let total = ns + spec.trials;
-    let done = AtomicUsize::new(0);
-    let t0 = web_time::Instant::now();
-    let tick = || {
-        let k = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if par::reporting() {
-            let el = t0.elapsed().as_secs_f64();
-            par::report(&par::Event::Count(par::Count {
-                stage: "",
-                done: k,
-                total,
-                ran: k,
-                elapsed: el,
-                eta: Some(el / k as f64 * total.saturating_sub(k) as f64),
-            }));
+    // タスク k: k < ns は感度（公差 k/2 の lo・hi）、ほかは試行 k − ns
+    let deltas_of = |k: usize| -> Vec<f64> {
+        if k < ns {
+            let (i, hi) = (k / 2, k % 2 == 1);
+            let mut d = vec![0.0; nt];
+            d[i] = if hi { spec.tols[i].hi } else { spec.tols[i].lo };
+            d
+        } else {
+            draws.draw(k - ns)
         }
     };
-    // 止めた後の評価は None（結果に出さない。追跡できなかった評価とは別）。評価の途中で止めたもの（補償が途中）も出さない
-    let one = |deltas: Vec<f64>| -> Option<(Vec<f64>, Outcome)> {
-        if par::cancelled() {
-            return None;
-        }
+    // 止めた後の評価は None のまま（結果に出さない。追跡できなかった評価とは別）。評価の途中で止めたもの
+    // （補償が途中）も出さない
+    let out: Vec<Slot> = (0..total).map(|_| Mutex::new(None)).collect();
+    runs::run(total, spec.seed, &runs::RunOpts::default(), |k, _| {
+        let deltas = deltas_of(k);
         let r = evaluate(spec, &deltas);
         if par::cancelled() {
-            return None;
+            return Ok(String::new());
         }
-        tick();
-        Some(match r {
-            Ok(e) if e.merit.is_finite() => (deltas, Ok(e)),
-            Ok(_) => (deltas, Err("the merit function is not finite".into())),
-            Err(e) => (deltas, Err(e.to_string())),
-        })
-    };
-    // 感度: 公差ごとに lo と hi
-    let sens_in: Vec<(usize, bool)> = (0..ns).map(|k| (k / 2, k % 2 == 1)).collect();
-    let sens_one = |&(i, hi): &(usize, bool)| {
-        let mut d = vec![0.0; spec.tols.len()];
-        d[i] = if hi { spec.tols[i].hi } else { spec.tols[i].lo };
-        one(d)
-    };
-    let sens_out: Vec<_> = par::map(&sens_in, sens_one);
+        let r = match r {
+            Ok(e) if e.merit.is_finite() => Ok(e),
+            Ok(_) => Err("the merit function is not finite".into()),
+            Err(e) => Err(e.to_string()),
+        };
+        *out[k].lock_ok() = Some((deltas, r));
+        Ok(String::new())
+    })?;
+    let mut out: Vec<Option<(Vec<f64>, Outcome)>> = out
+        .into_iter()
+        .map(|m| m.into_inner().unwrap_or_else(|e| e.into_inner()))
+        .collect();
+    let trials_out = out.split_off(ns);
     // 止めて lo・hi のどちらかを評価しなかった公差は感度に出さない
-    let sensitivity: Vec<Sens> = (0..spec.tols.len())
-        .filter(|_| spec.sensitivity)
-        .filter_map(|i| match (&sens_out[2 * i], &sens_out[2 * i + 1]) {
+    let sensitivity: Vec<Sens> = (0..ns / 2)
+        .filter_map(|i| match (&out[2 * i], &out[2 * i + 1]) {
             (Some(lo), Some(hi)) => Some(Sens {
                 tol: i,
                 lo: lo.1.as_ref().ok().cloned(),
@@ -699,11 +630,7 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
             _ => None,
         })
         .collect();
-    let trial_one = |i: &usize| one(draw_trial(spec, *i));
-    let ids: Vec<usize> = (0..spec.trials).collect();
-    let out: Vec<_> = par::map(&ids, trial_one);
-    let cancelled = par::cancelled();
-    let trials = out
+    let trials = trials_out
         .into_iter()
         .flatten()
         .map(|(deltas, r)| {
@@ -722,7 +649,7 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
         nominal,
         trials,
         sensitivity,
-        cancelled,
+        cancelled: par::cancelled(),
     })
 }
 

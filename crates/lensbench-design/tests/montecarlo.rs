@@ -7,8 +7,9 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use lensbench_design::montecarlo::{self as tolerance, Dist, LensTol, McSpec, Rng, Tol};
+use lensbench_design::montecarlo::{self as tolerance, Dist, LensTol, McSpec, Tol};
 use lensbench_optim::{DefaultMerit, Problem, Var};
+use lensbench_runs::{Draws, Joint, Rng};
 
 fn load(name: &str) -> System {
     zmx::load_with(
@@ -28,52 +29,67 @@ fn problem(s: &System) -> Problem {
     p
 }
 
+/// 公差 1 つ（範囲 [lo, hi]、分布 d）の値を n 回（試行 0..n）引く
+fn draw_tol(d: Dist, lo: f64, hi: f64, n: usize) -> Vec<f64> {
+    let t = Tol {
+        lo,
+        hi,
+        dist: d,
+        ..Tol::pm("t", Param::new(1, Kind::Thick), 1.0)
+    };
+    let dr = Draws::new(vec![t.sample_dist()], None, Vec::new(), 7).unwrap();
+    (0..n).map(|i| dr.draw(i)[0]).collect()
+}
+
 #[test]
 fn distributions() {
     let n = 20000;
-    let mut r = Rng::for_trial(7, 0);
-    let u: Vec<f64> = (0..n).map(|_| r.draw(Dist::Uniform, -1.0, 3.0)).collect();
+    let u = draw_tol(Dist::Uniform, -1.0, 3.0, n);
     let st = tolerance::stats(&u, &[50.0]);
     assert!(st.min >= -1.0 && st.max < 3.0);
     assert!((st.mean - 1.0).abs() < 0.03, "{}", st.mean);
     // 一様分布の標準偏差 = 幅 / √12
     assert!((st.std - 4.0 / 12f64.sqrt()).abs() < 0.02, "{}", st.std);
-    let g: Vec<f64> = (0..n)
-        .map(|_| r.draw(Dist::Normal { cut: 2.0 }, -2.0, 2.0))
-        .collect();
+    let g = draw_tol(Dist::Normal { cut: 2.0 }, -2.0, 2.0, n);
     let st = tolerance::stats(&g, &[]);
     assert!(st.min >= -2.0 && st.max <= 2.0);
     assert!(st.mean.abs() < 0.03);
     // ±2σ で切った標準正規の標準偏差は 0.880
     assert!((st.std - 0.880).abs() < 0.02, "{}", st.std);
-    let e: Vec<f64> = (0..n).map(|_| r.draw(Dist::End, -0.5, 0.25)).collect();
+    // cut が小さくても範囲の中で偏らない（cut → 0 で一様に近づく。標準偏差 → 幅 / √12）
+    let g = draw_tol(Dist::Normal { cut: 0.05 }, -1.0, 1.0, n);
+    let st = tolerance::stats(&g, &[]);
+    assert!(st.min >= -1.0 && st.max <= 1.0 && st.mean.abs() < 0.03);
+    assert!((st.std - 2.0 / 12f64.sqrt()).abs() < 0.02, "{}", st.std);
+    let e = draw_tol(Dist::End, -0.5, 0.25, n);
     assert!(e.iter().all(|&x| x == -0.5 || x == 0.25));
     let lo = e.iter().filter(|&&x| x == -0.5).count() as f64 / n as f64;
     assert!((lo - 0.5).abs() < 0.02);
+    // 幅 0 は中心
+    assert!(draw_tol(Dist::Normal { cut: 2.0 }, 0.3, 0.3, 5)
+        .iter()
+        .all(|&x| x == 0.3));
     // 同じ種・番号は同じ列、番号が違えば違う列
-    assert_eq!(
-        Rng::for_trial(3, 5).next_u64(),
-        Rng::for_trial(3, 5).next_u64()
-    );
-    assert_ne!(
-        Rng::for_trial(3, 5).next_u64(),
-        Rng::for_trial(3, 6).next_u64()
-    );
+    assert_eq!(Rng::new(3, 5).next_u64(), Rng::new(3, 5).next_u64());
+    assert_ne!(Rng::new(3, 5).next_u64(), Rng::new(3, 6).next_u64());
 }
 
 /// 隣の試行の列が 1 つずらした同じ列にならない（試行 i の k 番目と試行 i+1 の k−1 番目の相関が小さい。以前の
 /// 作り方では値がそのまま一致していた）
 #[test]
 fn trials_independent() {
-    let (trials, k) = (2000u64, 8usize);
-    let seq = |i: u64| {
-        let mut r = Rng::for_trial(1, i);
-        (0..k).map(|_| r.uniform()).collect::<Vec<f64>>()
-    };
-    let all: Vec<Vec<f64>> = (0..trials).map(seq).collect();
+    let (trials, k) = (2000usize, 8usize);
+    let dr = Draws::new(
+        vec![lensbench_runs::Dist::Uniform { lo: 0.0, hi: 1.0 }; k],
+        None,
+        Vec::new(),
+        1,
+    )
+    .unwrap();
+    let all: Vec<Vec<f64>> = (0..trials).map(|i| dr.draw(i)).collect();
     for shift in 0..2usize {
         let (mut a, mut b) = (Vec::new(), Vec::new());
-        for i in 0..trials as usize - 1 {
+        for i in 0..trials - 1 {
             for j in shift..k {
                 a.push(all[i][j]);
                 b.push(all[i + 1][j - shift]);
@@ -87,6 +103,17 @@ fn trials_independent() {
         let vb: f64 = b.iter().map(|y| (y - mb).powi(2)).sum();
         let c = cov / (va * vb).sqrt();
         assert!(c.abs() < 0.05, "shift {shift}: {c}");
+    }
+    // 同じ試行の中の変数どうしも無相関
+    for j in 1..k {
+        let a: Vec<f64> = all.iter().map(|v| v[0]).collect();
+        let b: Vec<f64> = all.iter().map(|v| v[j]).collect();
+        let n = a.len() as f64;
+        let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+        let cov: f64 = a.iter().zip(&b).map(|(x, y)| (x - ma) * (y - mb)).sum();
+        let va: f64 = a.iter().map(|x| (x - ma).powi(2)).sum();
+        let vb: f64 = b.iter().map(|y| (y - mb).powi(2)).sum();
+        assert!((cov / (va * vb).sqrt()).abs() < 0.07, "0 と {j}");
     }
 }
 
@@ -239,7 +266,7 @@ fn disc_pairs() {
     let m = 4000;
     let mut outside_square = 0;
     for i in 0..m {
-        let d = tolerance::draw_trial(&spec, i);
+        let d = tolerance::draw_trial(&spec, i).unwrap();
         let (x, y) = (d[k] / a, d[k + 1] / b);
         assert!(x * x + y * y <= 1.0 + 1e-12);
         if x.abs() > 0.7 && y.abs() > 0.7 {
@@ -251,18 +278,22 @@ fn disc_pairs() {
     assert!((r2 / m as f64 - 0.5).abs() < 0.02, "{}", r2 / m as f64);
     // 同じ種なら同じ
     assert_eq!(
-        tolerance::draw_trial(&spec, 3),
-        tolerance::draw_trial(&spec, 3)
+        tolerance::draw_trial(&spec, 3).unwrap(),
+        tolerance::draw_trial(&spec, 3).unwrap()
     );
-    // 1 つだけ引く Rng::draw は周辺分布（範囲の中、平均 0）
-    let mut rng = Rng::for_trial(1, 0);
-    let v: Vec<f64> = (0..20000)
-        .map(|_| rng.draw(Dist::DiscX { normal: None }, -2.0, 2.0))
-        .collect();
-    let st = tolerance::stats(&v, &[]);
-    assert!(st.min >= -2.0 && st.max <= 2.0 && st.mean.abs() < 0.03);
-    // 円の中の x の標準偏差は 半径 / 2
-    assert!((st.std - 1.0).abs() < 0.02, "{}", st.std);
+    // 組にしない円の中の分布は引けない
+    let lone = Draws::new(
+        vec![lensbench_runs::Dist::Disc {
+            center: 0.0,
+            radius: 1.0,
+            normal: None,
+        }],
+        None,
+        Vec::new(),
+        1,
+    );
+    assert!(lone.is_err());
+    assert!(Draws::new(Vec::new(), None, vec![Joint::Disc { x: 0, y: 1 }], 1).is_err());
     // 組になっていないと誤り
     let mut bad = tols.clone();
     bad.swap(k, k + 1);
@@ -320,7 +351,7 @@ fn disc_normal_pairs() {
     let m = 20000;
     let (mut inner, mut sx, mut sy, mut sxy) = (0, 0.0, 0.0, 0.0);
     for i in 0..m {
-        let d = tolerance::draw_trial(&spec, i);
+        let d = tolerance::draw_trial(&spec, i).unwrap();
         let (x, y) = (d[k] / a, d[k + 1] / b);
         let r2 = x * x + y * y;
         assert!(r2 <= 1.0 + 1e-12);
@@ -342,22 +373,16 @@ fn disc_normal_pairs() {
     let er2 = 0.25 * 2.0 * (1.0 - 2.0 * e / (1.0 - e));
     assert!((vx + vy - er2).abs() < 0.01, "{} {er2}", vx + vy);
     // cut が小さくても偏らない（cut → 0 で円の中の一様、E[r²] → 1/2）
-    let mut rng = Rng::for_trial(2, 0);
+    let mut rng = Rng::new(2, 0);
     let m2: f64 = (0..20000)
         .map(|_| {
-            let (x, y) = rng.disc_dist(Some(0.05));
+            let (x, y) = lensbench_runs::disc_point(rng.uniform(), rng.uniform(), Some(0.05));
             assert!(x * x + y * y <= 1.0);
             x * x + y * y
         })
         .sum::<f64>()
         / 20000.0;
     assert!((m2 - 0.5).abs() < 0.01, "{m2}");
-    // 1 つだけ引くときも範囲の中
-    let mut rng = Rng::for_trial(1, 0);
-    for _ in 0..1000 {
-        let v = rng.draw(Dist::DiscY { normal: Some(2.0) }, -2.0, 2.0);
-        assert!(v.abs() <= 2.0);
-    }
 }
 
 /// 光源の波長のずれ（#163）: 波長のパラメータで全媒質の屈折率が新しい波長の値になる（波長を振る解析と同じ値）

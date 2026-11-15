@@ -71,6 +71,12 @@ fn dist_json(d: &Dist) -> serde_json::Value {
             json!({"trunc": {"mean": mean, "sigma": sigma, "cut": cut}})
         }
         Dist::Fixed(v) => json!({ "fixed": v }),
+        Dist::End { lo, hi } => json!({"end": {"lo": lo, "hi": hi}}),
+        Dist::Disc {
+            center,
+            radius,
+            normal,
+        } => json!({"disc": {"center": center, "radius": radius, "normal": normal}}),
     }
 }
 
@@ -177,7 +183,7 @@ impl PySampler {
     #[getter]
     fn seed(&self) -> u64 {
         match &self.0.plan {
-            PlanKind::Sampler(s) => s.seed,
+            PlanKind::Sampler(s) => s.draws.seed(),
             PlanKind::Grid(_) => 0,
         }
     }
@@ -291,7 +297,7 @@ fn run_batch<'py>(
         (None, None) => return Err(value_err("Sampler needs n")),
     };
     let seed = match &pb.plan {
-        PlanKind::Sampler(s) => s.seed,
+        PlanKind::Sampler(s) => s.draws.seed(),
         PlanKind::Grid(_) => 0,
     };
     let extra: serde_json::Value = match &header {

@@ -560,7 +560,24 @@ fn japanese_names_roundtrip() {
         1,
     );
     let (sj, _, _) = encoding_rs::SHIFT_JIS.encode(&txt);
-    for bytes in [txt.as_bytes().to_vec(), sj.into_owned()] {
+    // UTF-16（OpticStudio の既定）は BOM で LE・BE を見分ける
+    let utf16 = |be: bool| -> Vec<u8> {
+        let mut b = if be {
+            vec![0xfe, 0xff]
+        } else {
+            vec![0xff, 0xfe]
+        };
+        for u in txt.encode_utf16() {
+            b.extend(if be { u.to_be_bytes() } else { u.to_le_bytes() });
+        }
+        b
+    };
+    for bytes in [
+        txt.as_bytes().to_vec(),
+        sj.into_owned(),
+        utf16(false),
+        utf16(true),
+    ] {
         let t = lensbench_core::glass::decode_text(&bytes);
         let s = zmx::build(&zmx::parse_text(&t).unwrap(), &opt, &opt.catalog_dirs, None).unwrap();
         assert_eq!(s.name, "試験レンズ");

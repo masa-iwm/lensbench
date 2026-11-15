@@ -115,6 +115,9 @@ read noise and saturation must be 0 or more ({}, {})	読み出し雑音・飽和
 the AD conversion bits need a saturation full_well	AD 変換の bits には飽和 full_well が必要です
 the AD conversion bits must be at most 32 ({})	AD 変換のビット数は 32 まで（{}）
 distribution {self:?}	分布 {self:?}
+disc pair ({x}, {y}) of {n} variables	円の中の分布の組 ({x}, {y})（変数は {n} 個）
+disc pair ({x}, {y}): both must be disc distributions of the same kind	円の中の分布の組 ({x}, {y}): 両方とも同じ種類の円の中の分布にする
+variable {k}: a disc distribution needs its x/y partner	変数 {k}: 円の中の分布には x・y の相手が要ります
 size of the correlation matrix ({n} × {n})	相関行列の大きさ（{n} × {n}）
 diagonal {i} of the correlation matrix is not 1 ({})	相関行列の対角 {i} が 1 ではありません（{}）
 correlation matrix ({i}, {j}) is not symmetric or |ρ| > 1	相関行列 ({i}, {j}) が対称でないか |ρ| > 1
@@ -181,8 +184,9 @@ no parameters to move	動かすパラメータがありません
 {} targets for {n} states	目標の数 {}（状態は {n}）
 {} ranges for {} parameters	範囲の数 {}（動かすパラメータは {}）
 weight of the paraxial term {}	近軸量の項のウェイト {}
-state {}: {e}	状態 {}: {e}
-between states {} and {} at {f:.3}: {e}	状態 {} と {} の間 {f:.3}: {e}
+state {}: not solved ({e})	状態 {}: 解けませんでした（{e}）
+between states {} and {} at {f:.3}: not solved ({e})	状態 {} と {} の間 {f:.3}: 解けませんでした（{e}）
+points between states {} and {} were skipped (a state without a target was not solved)	状態 {} と {} の間の点は飛ばしました（目標のない状態が解けませんでした）
 ZPLM macro {}: value {v} of OPTRETURN {}	ZPLM のマクロ {}: OPTRETURN {} の値 {v}
 {name} takes no arguments	{name} は引数なし
 OPTRETURN number {n} (0 to {OPTRETURN_MAX})	OPTRETURN の番号 {n}（0〜{OPTRETURN_MAX}）

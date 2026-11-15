@@ -283,6 +283,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .collect();
     let tv0 = prob.term_values(&r.x0)?;
     let tv = prob.term_values(&r.x)?;
+    let rays = prob.ray_counts(&r.x)?;
     let stop = r.stop.as_str();
     // 読み込んだ系に当てられる変数（読み込んだ系の構成に効くもの）
     let applicable: Vec<bool> = prob
@@ -317,7 +318,19 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         }
     }
     let terms: Vec<Value> = (0..prob.terms.len())
-        .map(|i| json!({ "default": i < n_default, "value0": tv0[i], "value": tv[i] }))
+        .map(|i| {
+            let mut t = json!({
+                "default": i < n_default,
+                "value0": tv0[i].value(),
+                "value": tv[i].value(),
+                "value_kind": tv[i].kind_name(),
+            });
+            if let Some(c) = rays[i] {
+                t["rays"] =
+                    json!({ "total": c.total, "vignetted": c.vignetted, "stopped": c.stopped });
+            }
+            t
+        })
         .collect();
     Ok(json!({
         "names": names,

@@ -266,7 +266,8 @@ pub fn norm_ppf(p: f64) -> f64 {
 }
 
 // ------------------------------------------------------------------------------------------ 組の作り方
-/// 分布（公称値からのずれ）
+/// 分布（公称値からのずれ）。抽選（[`Draws`]）では、変数ごとに標準正規の値 z を引き（相関があれば混ぜてから）、
+/// 分布の逆関数で値にする（ガウスのコピュラ）。相関がなければ変数ごとに独立
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -275,21 +276,43 @@ pub enum Dist {
     Normal { mean: f64, sigma: f64 },
     /// 一様分布 [lo, hi]
     Uniform { lo: f64, hi: f64 },
-    /// 平均 ± cut·sigma で切った正規分布（公差の ±値を cut σ と見るときなど）
+    /// 平均 ± cut·sigma で切った正規分布（公差の ±値を cut σ と見るときなど）。逆関数法で引く
     TruncNormal { mean: f64, sigma: f64, cut: f64 },
     /// 定数（ずれを固定する。比べるときに）
     Fixed(f64),
+    /// lo か hi を半々（最悪側の組合せを見る）
+    End { lo: f64, hi: f64 },
+    /// 円（楕円）の中の分布の 1 成分: 中心 center・半径 radius。[`Joint::Disc`] で 2 つを組にして、
+    /// 組の (x, y) が円の中に入るように引く（偏心・傾きの大きさを公差以下にする）。`normal` が None なら円の中で一様、
+    /// Some(cut) なら半径が cut σ の等方の 2 次元正規分布を円で切ったもの。組にしないと使えない
+    Disc {
+        center: f64,
+        radius: f64,
+        normal: Option<f64>,
+    },
 }
 
 impl Dist {
     fn check(&self) -> Result<()> {
         let ok = match *self {
             Dist::Normal { mean, sigma } => mean.is_finite() && sigma.is_finite() && sigma >= 0.0,
-            Dist::Uniform { lo, hi } => lo.is_finite() && hi.is_finite() && lo <= hi,
+            Dist::Uniform { lo, hi } | Dist::End { lo, hi } => {
+                lo.is_finite() && hi.is_finite() && lo <= hi
+            }
             Dist::TruncNormal { mean, sigma, cut } => {
                 mean.is_finite() && sigma.is_finite() && sigma >= 0.0 && cut > 0.0
             }
             Dist::Fixed(v) => v.is_finite(),
+            Dist::Disc {
+                center,
+                radius,
+                normal,
+            } => {
+                center.is_finite()
+                    && radius.is_finite()
+                    && radius >= 0.0
+                    && normal.is_none_or(|c| c > 0.0)
+            }
         };
         if !ok {
             invalid!("distribution {self:?}");
@@ -297,7 +320,7 @@ impl Dist {
         Ok(())
     }
 
-    /// 標準正規の値 z（相関を入れた後）を、この分布の値にする（ガウスのコピュラ）
+    /// 標準正規の値 z（相関を入れた後）を、この分布の値にする（ガウスのコピュラ）。[`Dist::Disc`] は組で引く
     fn at_z(&self, z: f64) -> f64 {
         match *self {
             Dist::Normal { mean, sigma } => mean + sigma * z,
@@ -308,8 +331,40 @@ impl Dist {
                 mean + sigma * norm_ppf(p).clamp(-cut, cut)
             }
             Dist::Fixed(v) => v,
+            Dist::End { lo, hi } => {
+                if z < 0.0 {
+                    lo
+                } else {
+                    hi
+                }
+            }
+            Dist::Disc { center, .. } => center,
         }
     }
+}
+
+/// 2 つ以上の変数をまとめて引く分布
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum Joint {
+    /// 変数 x と y（どちらも同じ `normal` の [`Dist::Disc`]）を、円の中の 1 点の (x, y) として引く
+    Disc { x: usize, y: usize },
+}
+
+/// 単位円の中の点を、2 つの (0, 1) の一様乱数 u・v から引く。normal が None なら円の中で一様（半径 √u）、
+/// Some(cut) なら半径 1 が cut σ の等方の 2 次元正規分布を円で切ったもの（r²/σ² は平均 2 の指数分布の逆関数:
+/// r² = −2σ² ln(1 − u (1 − e^{−cut²/2}))）。方位は 2π v
+pub fn disc_point(u: f64, v: f64, normal: Option<f64>) -> (f64, f64) {
+    let r = match normal {
+        None => u.sqrt(),
+        Some(cut) => {
+            let p = -(-0.5 * cut * cut).exp_m1(); // 1 − e^{−cut²/2}
+            ((-2.0 * (-u * p).ln_1p()).sqrt() / cut).min(1.0)
+        }
+    };
+    let a = std::f64::consts::TAU * v;
+    (r * a.cos(), r * a.sin())
 }
 
 /// 組の作り方: i 番目の組のパラメータの値
@@ -320,15 +375,151 @@ pub trait Plan: Sync {
     fn changes(&self, i: usize, base: &System) -> Result<Vec<(Param, f64)>>;
 }
 
-/// 抽選: パラメータごとの分布と相関、乱数の種。値は公称値 + ずれ
+/// 抽選の本体: 変数ごとの分布・相関・組の分布と乱数の種から、i 番目の値の並びを作る（パラメータを持たない。
+/// 公差のモンテカルロ・[`Sampler`] が共通に使う）。i 番目の値は (種, i) だけで決まる
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Draws {
+    dists: Vec<Dist>,
+    /// 相関行列の下三角の Cholesky 分解（None は無相関）
+    chol: Option<Vec<Vec<f64>>>,
+    joints: Vec<Joint>,
+    seed: u64,
+}
+
+impl Draws {
+    /// corr は相関行列（dists と同じ順、対称・対角 1・正定値）。[`Dist::Disc`] の変数はちょうど 1 つの
+    /// [`Joint::Disc`] に入れる
+    pub fn new(
+        dists: Vec<Dist>,
+        corr: Option<Vec<Vec<f64>>>,
+        joints: Vec<Joint>,
+        seed: u64,
+    ) -> Result<Draws> {
+        for d in &dists {
+            d.check()?;
+        }
+        let n = dists.len();
+        let mut used = vec![false; n];
+        for j in &joints {
+            let Joint::Disc { x, y } = *j;
+            if x >= n || y >= n || x == y || used[x] || used[y] {
+                invalid!("disc pair ({x}, {y}) of {n} variables");
+            }
+            used[x] = true;
+            used[y] = true;
+            match (&dists[x], &dists[y]) {
+                (Dist::Disc { normal: a, .. }, Dist::Disc { normal: b, .. }) if a == b => {}
+                _ => invalid!(
+                    "disc pair ({x}, {y}): both must be disc distributions of the same kind"
+                ),
+            }
+        }
+        if let Some(k) = (0..n).find(|&k| matches!(dists[k], Dist::Disc { .. }) && !used[k]) {
+            invalid!("variable {k}: a disc distribution needs its x/y partner");
+        }
+        let chol = match corr {
+            None => None,
+            Some(c) => Some(cholesky(&c, n)?),
+        };
+        Ok(Draws {
+            dists,
+            chol,
+            joints,
+            seed,
+        })
+    }
+
+    pub fn dists(&self) -> &[Dist] {
+        &self.dists
+    }
+    pub fn joints(&self) -> &[Joint] {
+        &self.joints
+    }
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// i 番目の値（dists の順）
+    pub fn draw(&self, i: usize) -> Vec<f64> {
+        let mut r = Rng::new(self.seed, i);
+        let u: Vec<f64> = self.dists.iter().map(|_| r.normal()).collect();
+        let z: Vec<f64> = match &self.chol {
+            None => u,
+            Some(l) => (0..u.len())
+                .map(|a| (0..=a).map(|b| l[a][b] * u[b]).sum())
+                .collect(),
+        };
+        let mut out: Vec<f64> = self.dists.iter().zip(&z).map(|(d, &z)| d.at_z(z)).collect();
+        for j in &self.joints {
+            let Joint::Disc { x, y } = *j;
+            let (
+                Dist::Disc {
+                    center: cx,
+                    radius: rx,
+                    normal,
+                },
+                Dist::Disc {
+                    center: cy,
+                    radius: ry,
+                    ..
+                },
+            ) = (&self.dists[x], &self.dists[y])
+            else {
+                continue;
+            };
+            let (a, b) = disc_point(norm_cdf(z[x]), norm_cdf(z[y]), *normal);
+            out[x] = cx + rx * a;
+            out[y] = cy + ry * b;
+        }
+        out
+    }
+}
+
+/// 相関行列 c（n × n）の Cholesky 分解（下三角）
+fn cholesky(c: &[Vec<f64>], n: usize) -> Result<Vec<Vec<f64>>> {
+    if c.len() != n || c.iter().any(|r| r.len() != n) {
+        invalid!("size of the correlation matrix ({n} × {n})");
+    }
+    for i in 0..n {
+        if (c[i][i] - 1.0).abs() > 1e-12 {
+            invalid!(
+                "diagonal {i} of the correlation matrix is not 1 ({})",
+                c[i][i]
+            );
+        }
+        for j in 0..i {
+            if (c[i][j] - c[j][i]).abs() > 1e-12 || c[i][j].abs() > 1.0 {
+                invalid!("correlation matrix ({i}, {j}) is not symmetric or |ρ| > 1");
+            }
+        }
+    }
+    let mut l = vec![vec![0.0; n]; n];
+    for i in 0..n {
+        for j in 0..=i {
+            let s: f64 = (0..j).map(|k| l[i][k] * l[j][k]).sum();
+            if i == j {
+                let d = c[i][i] - s;
+                if d <= 1e-14 {
+                    invalid!("the correlation matrix is not positive definite");
+                }
+                l[i][j] = d.sqrt();
+            } else {
+                l[i][j] = (c[i][j] - s) / l[j][j];
+            }
+        }
+    }
+    Ok(l)
+}
+
+/// 抽選: パラメータごとの分布（[`Draws`]）。値は公称値 + ずれ
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Sampler {
-    pub vars: Vec<(Param, Dist)>,
-    /// 相関行列の下三角の Cholesky 分解（None は無相関）
-    chol: Option<Vec<Vec<f64>>>,
-    pub seed: u64,
+    pub params: Vec<Param>,
+    pub draws: Draws,
 }
 
 impl Sampler {
@@ -338,65 +529,26 @@ impl Sampler {
         corr: Option<Vec<Vec<f64>>>,
         seed: u64,
     ) -> Result<Sampler> {
-        for (_, d) in &vars {
-            d.check()?;
-        }
-        let n = vars.len();
-        let chol = match corr {
-            None => None,
-            Some(c) => {
-                if c.len() != n || c.iter().any(|r| r.len() != n) {
-                    invalid!("size of the correlation matrix ({n} × {n})");
-                }
-                for i in 0..n {
-                    if (c[i][i] - 1.0).abs() > 1e-12 {
-                        invalid!(
-                            "diagonal {i} of the correlation matrix is not 1 ({})",
-                            c[i][i]
-                        );
-                    }
-                    for j in 0..i {
-                        if (c[i][j] - c[j][i]).abs() > 1e-12 || c[i][j].abs() > 1.0 {
-                            invalid!("correlation matrix ({i}, {j}) is not symmetric or |ρ| > 1");
-                        }
-                    }
-                }
-                let mut l = vec![vec![0.0; n]; n];
-                for i in 0..n {
-                    for j in 0..=i {
-                        let s: f64 = (0..j).map(|k| l[i][k] * l[j][k]).sum();
-                        if i == j {
-                            let d = c[i][i] - s;
-                            if d <= 1e-14 {
-                                invalid!("the correlation matrix is not positive definite");
-                            }
-                            l[i][j] = d.sqrt();
-                        } else {
-                            l[i][j] = (c[i][j] - s) / l[j][j];
-                        }
-                    }
-                }
-                Some(l)
-            }
-        };
-        Ok(Sampler { vars, chol, seed })
+        Sampler::with_joints(vars, corr, Vec::new(), seed)
     }
 
-    /// i 番目の組のずれ（vars の順）
+    /// [`Self::new`] で、組の分布（[`Joint`]）も
+    pub fn with_joints(
+        vars: Vec<(Param, Dist)>,
+        corr: Option<Vec<Vec<f64>>>,
+        joints: Vec<Joint>,
+        seed: u64,
+    ) -> Result<Sampler> {
+        let (params, dists) = vars.into_iter().unzip();
+        Ok(Sampler {
+            params,
+            draws: Draws::new(dists, corr, joints, seed)?,
+        })
+    }
+
+    /// i 番目の組のずれ（params の順）
     pub fn draw(&self, i: usize) -> Vec<f64> {
-        let mut r = Rng::new(self.seed, i);
-        let u: Vec<f64> = self.vars.iter().map(|_| r.normal()).collect();
-        let z: Vec<f64> = match &self.chol {
-            None => u,
-            Some(l) => (0..u.len())
-                .map(|a| (0..=a).map(|b| l[a][b] * u[b]).sum())
-                .collect(),
-        };
-        self.vars
-            .iter()
-            .zip(z)
-            .map(|((_, d), z)| d.at_z(z))
-            .collect()
+        self.draws.draw(i)
     }
 }
 
@@ -406,10 +558,10 @@ impl Plan for Sampler {
     }
     fn changes(&self, i: usize, base: &System) -> Result<Vec<(Param, f64)>> {
         let d = self.draw(i);
-        self.vars
+        self.params
             .iter()
             .zip(d)
-            .map(|((p, _), x)| Ok((*p, base.get_param(*p)? + x)))
+            .map(|(p, x)| Ok((*p, base.get_param(*p)? + x)))
             .collect()
     }
 }

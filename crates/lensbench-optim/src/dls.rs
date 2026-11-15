@@ -50,6 +50,14 @@ impl Var {
 mod terms;
 pub use terms::*;
 
+#[path = "dls_lm.rs"]
+mod lm;
+pub use lm::*;
+
+#[path = "dls_jac.rs"]
+mod jac;
+use jac::{pupil_d, JacCache, PupilCache};
+
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
 
@@ -115,6 +123,9 @@ pub struct Problem {
     /// [`JacMode::Auto`] で解析的に求める列の最少の数（項ごと。これより少なければ中心差分）。
     /// 既定 16 は、11 面の系のスポットで解析的と中心差分の時間が並ぶ列の数。0 なら常に解析的
     pub analytic_min: usize,
+    /// 瞳の光線を並べる項（スポット・波面・重心）で、追跡が止まった光線（全反射・面に届かない）を、けられた光線と
+    /// 同じく除く（既定 false: 項が評価できない誤り）。除いた数は [`Problem::ray_counts`]
+    pub stopped_as_vignetted: bool,
 }
 
 /// 項の残差（重みを掛ける前）と、解析的に求めた列のヤコビアン（行優先 [行][params]）
@@ -130,6 +141,7 @@ impl Problem {
             fd_rel: 1e-6,
             fd_rel_noisy: 1e-3,
             analytic_min: 16,
+            stopped_as_vignetted: false,
         }
     }
 
@@ -143,6 +155,7 @@ impl Problem {
             fd_rel: self.fd_rel,
             fd_rel_noisy: self.fd_rel_noisy,
             analytic_min: self.analytic_min,
+            stopped_as_vignetted: self.stopped_as_vignetted,
         }
     }
 
@@ -398,7 +411,14 @@ impl Problem {
     pub fn residuals(&self, x: &[f64]) -> Result<Vec<f64>> {
         let sys = self.systems(x)?;
         let parts = map_maybe_par(&self.terms, |t| {
-            let mut r = eval_term(&sys[t.config], &t.kind, None)?.0;
+            let mut r = eval_term(
+                &sys[t.config],
+                &t.kind,
+                None,
+                None,
+                self.stopped_as_vignetted,
+            )?
+            .0;
             t.clamp(&mut r, None);
             let a = t.weight.sqrt();
             r.iter_mut().for_each(|v| *v *= a);
@@ -424,29 +444,36 @@ impl Problem {
         }
     }
 
-    /// 項ごとの評価関数の値（その項の √(Σ r² / 重み)。スポット・波面の項では RMS そのもの）
-    pub fn term_values(&self, x: &[f64]) -> Result<Vec<f64>> {
+    /// 項ごとの値: 目標のある項は量そのもの（[`TermValue::Quantity`]）、ない項は残差の √Σr²（[`TermValue::Rms`]。
+    /// スポット・波面の項では RMS そのもの）
+    pub fn term_values(&self, x: &[f64]) -> Result<Vec<TermValue>> {
         let sys = self.systems(x)?;
         map_maybe_par(&self.terms, |t| {
-            let r = eval_term(&sys[t.config], &t.kind, None)?.0;
-            let ss: f64 = r.iter().map(|v| v * v).sum();
-            Ok(match t.kind.target() {
-                Some(target) => r[0] + target,
-                None => ss.sqrt(),
-            })
+            let r = eval_term(
+                &sys[t.config],
+                &t.kind,
+                None,
+                None,
+                self.stopped_as_vignetted,
+            )?
+            .0;
+            Ok(term_value(&t.kind, &r))
         })
     }
 
     /// [`Self::merit`] と [`Self::term_values`]（系を 1 回作り、項を 1 回ずつ評価する。値はそれぞれと同じ）
-    pub fn merit_and_terms(&self, x: &[f64]) -> Result<(f64, Vec<f64>)> {
+    pub fn merit_and_terms(&self, x: &[f64]) -> Result<(f64, Vec<TermValue>)> {
         let sys = self.systems(x)?;
         let parts = map_maybe_par(&self.terms, |t| {
-            let r0 = eval_term(&sys[t.config], &t.kind, None)?.0;
-            let ss: f64 = r0.iter().map(|v| v * v).sum();
-            let v = match t.kind.target() {
-                Some(target) => r0[0] + target,
-                None => ss.sqrt(),
-            };
+            let r0 = eval_term(
+                &sys[t.config],
+                &t.kind,
+                None,
+                None,
+                self.stopped_as_vignetted,
+            )?
+            .0;
+            let v = term_value(&t.kind, &r0);
             let mut r = r0;
             t.clamp(&mut r, None);
             let a = t.weight.sqrt();
@@ -463,7 +490,7 @@ impl Problem {
         self.jacobian_checked(x)
     }
 
-    /// [`Self::jacobian`] で、[`Self::check`] を済ませた問題（[`dls_with`] は入口で 1 回だけ確かめる）
+    /// [`Self::jacobian`] で、[`Self::check`] を済ませた問題（[`dls`] は入口で 1 回だけ確かめる）
     pub(crate) fn jacobian_checked(&self, x: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
         let nv = self.vars.len();
         if x.len() != nv {
@@ -477,6 +504,7 @@ impl Problem {
             .zip(x)
             .map(|(v, &xv)| self.fd_rel * xv.abs().max(typical(v.param.kind)))
             .collect();
+        let cache = JacCache::new(self.configs.len(), nv);
         // 項ごと: 残差・解析的な列・差分が要る変数
         struct Part {
             r: Vec<f64>,
@@ -526,8 +554,15 @@ impl Problem {
                 act.iter()
                     .copied()
                     .filter(|&q| {
-                        !launch_moves(s, &t.kind, self.vars[q].param, x[q], steps[q])
-                            .unwrap_or(true)
+                        !cache.launch_moves(
+                            t.config,
+                            s,
+                            &t.kind,
+                            q,
+                            self.vars[q].param,
+                            x[q],
+                            steps[q],
+                        )
                     })
                     .collect()
             } else {
@@ -538,12 +573,26 @@ impl Problem {
             }
             let ps: Vec<Param> = analytic.iter().map(|&q| self.vars[q].param).collect();
             let (r, ja, ok) = if ps.is_empty() {
-                (eval_term(s, &t.kind, None)?.0, None, false)
+                (
+                    eval_term(s, &t.kind, None, None, self.stopped_as_vignetted)?.0,
+                    None,
+                    false,
+                )
             } else {
-                match eval_term(s, &t.kind, Some(&ps)) {
+                match eval_term(
+                    s,
+                    &t.kind,
+                    Some(&ps),
+                    Some(&cache.pupil[t.config]),
+                    self.stopped_as_vignetted,
+                ) {
                     Ok((r, j)) => (r, j, true),
                     // 解析的な微分に対応しない面など: すべて差分に
-                    Err(_) => (eval_term(s, &t.kind, None)?.0, None, false),
+                    Err(_) => (
+                        eval_term(s, &t.kind, None, None, self.stopped_as_vignetted)?.0,
+                        None,
+                        false,
+                    ),
                 }
             };
             let m = r.len();
@@ -565,70 +614,73 @@ impl Problem {
             .filter(|q| parts.iter().any(|p| p.fd.contains(q)))
             .collect();
         let forward = self.jac == JacMode::Forward;
-        let cols: Vec<Vec<(usize, Vec<f64>)>> = map_maybe_par(&fd_vars, |&q| {
-            let mut out = Vec::new();
-            // (構成, 刻みの種類) ごとの +h と -h の系（前進差分では -h はなし）
-            let mut cache: Vec<[Option<FdSystems>; 2]> = vec![[None, None]; self.configs.len()];
-            for (ti, t) in self.terms.iter().enumerate() {
-                if !parts[ti].fd.contains(&q) || matches!(t.kind, TermKind::User(_)) {
-                    continue;
-                }
-                let noisy = noisy_fd(&sys[t.config], &t.kind, self.vars[q].param.kind);
-                let h = steps[q]
-                    * if noisy {
-                        self.fd_rel_noisy / self.fd_rel
-                    } else {
-                        1.0
-                    };
-                let slot = &mut cache[t.config][noisy as usize];
-                let (lo, hi) = (self.vars[q].lo, self.vars[q].hi);
-                if slot.is_none() {
-                    // 境界の外へは出さない（厚さの下限 0 で x − h が負になるなど）。出る側・系が作れない側は片側差分に
-                    let up_ok = x[q] + h <= hi;
-                    let dn_ok = x[q] - h >= lo;
-                    let mk = |d: f64| {
-                        let mut xs = x.to_vec();
-                        xs[q] += d;
-                        self.system(t.config, &xs)
-                    };
-                    let sp = if up_ok { mk(h).ok() } else { None };
-                    // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
-                    let want_m = !(forward && !noisy && sp.is_some());
-                    let sm = if want_m && dn_ok { mk(-h).ok() } else { None };
-                    if sp.is_none() && sm.is_none() {
-                        // どちらの側も作れない: 元の誤りを返す
-                        mk(if up_ok { h } else { -h })?;
-                        lensbench_core::invalid!("no difference system (variable {})", q + 1);
+        let cols: Vec<Vec<(usize, Vec<f64>)>> =
+            map_maybe_par(&fd_vars, |&q| {
+                let mut out = Vec::new();
+                // (構成, 刻みの種類) ごとの +h と -h の系（前進差分では -h はなし）
+                let mut cache: Vec<[Option<FdSystems>; 2]> = vec![[None, None]; self.configs.len()];
+                for (ti, t) in self.terms.iter().enumerate() {
+                    if !parts[ti].fd.contains(&q) || matches!(t.kind, TermKind::User(_)) {
+                        continue;
                     }
-                    *slot = Some((sp, sm));
-                }
-                let (sp, sm) = slot.as_ref().unwrap();
-                let rp = match sp {
-                    Some(sp) => eval_term(sp, &t.kind, None).map(|v| v.0),
-                    None => Err(lensbench_core::Error::Invalid(String::new())),
-                };
-                let rm = match sm {
-                    Some(sm) => eval_term(sm, &t.kind, None).map(|v| v.0),
-                    None => Err(lensbench_core::Error::Invalid(String::new())),
-                };
-                let r0 = &parts[ti].r;
-                let d: Vec<f64> = match (rp, rm) {
-                    (Ok(rp), Ok(rm)) => rp
-                        .iter()
-                        .zip(&rm)
-                        .map(|(a, b)| (a - b) / (2.0 * h))
-                        .collect(),
-                    // 片側だけ: 元の系の残差（parts の r、重みを掛ける前）との差
-                    (Ok(rp), Err(_)) => rp.iter().zip(r0).map(|(a, b)| (a - b) / h).collect(),
-                    (Err(_), Ok(rm)) => r0.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
-                    (Err(e), Err(e2)) => {
-                        return Err(if sp.is_some() { e } else { e2 });
+                    let noisy = noisy_fd(&sys[t.config], &t.kind, self.vars[q].param.kind);
+                    let h = steps[q]
+                        * if noisy {
+                            self.fd_rel_noisy / self.fd_rel
+                        } else {
+                            1.0
+                        };
+                    let slot = &mut cache[t.config][noisy as usize];
+                    let (lo, hi) = (self.vars[q].lo, self.vars[q].hi);
+                    if slot.is_none() {
+                        // 境界の外へは出さない（厚さの下限 0 で x − h が負になるなど）。出る側・系が作れない側は片側差分に
+                        let up_ok = x[q] + h <= hi;
+                        let dn_ok = x[q] - h >= lo;
+                        let mk = |d: f64| {
+                            let mut xs = x.to_vec();
+                            xs[q] += d;
+                            self.system(t.config, &xs)
+                        };
+                        let sp = if up_ok { mk(h).ok() } else { None };
+                        // 刻みを大きく取る項（noisy）は前進差分だと誤差が大きいので中心差分のまま
+                        let want_m = !(forward && !noisy && sp.is_some());
+                        let sm = if want_m && dn_ok { mk(-h).ok() } else { None };
+                        if sp.is_none() && sm.is_none() {
+                            // どちらの側も作れない: 元の誤りを返す
+                            mk(if up_ok { h } else { -h })?;
+                            lensbench_core::invalid!("no difference system (variable {})", q + 1);
+                        }
+                        *slot = Some((sp, sm));
                     }
-                };
-                out.push((ti, d));
-            }
-            Ok(out)
-        })?;
+                    let (sp, sm) = slot.as_ref().unwrap();
+                    let rp = match sp {
+                        Some(sp) => eval_term(sp, &t.kind, None, None, self.stopped_as_vignetted)
+                            .map(|v| v.0),
+                        None => Err(lensbench_core::Error::Invalid(String::new())),
+                    };
+                    let rm = match sm {
+                        Some(sm) => eval_term(sm, &t.kind, None, None, self.stopped_as_vignetted)
+                            .map(|v| v.0),
+                        None => Err(lensbench_core::Error::Invalid(String::new())),
+                    };
+                    let r0 = &parts[ti].r;
+                    let d: Vec<f64> = match (rp, rm) {
+                        (Ok(rp), Ok(rm)) => rp
+                            .iter()
+                            .zip(&rm)
+                            .map(|(a, b)| (a - b) / (2.0 * h))
+                            .collect(),
+                        // 片側だけ: 元の系の残差（parts の r、重みを掛ける前）との差
+                        (Ok(rp), Err(_)) => rp.iter().zip(r0).map(|(a, b)| (a - b) / h).collect(),
+                        (Err(_), Ok(rm)) => r0.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
+                        (Err(e), Err(e2)) => {
+                            return Err(if sp.is_some() { e } else { e2 });
+                        }
+                    };
+                    out.push((ti, d));
+                }
+                Ok(out)
+            })?;
         let mut parts = parts;
         for (k, &q) in fd_vars.iter().enumerate() {
             for (ti, d) in &cols[k] {
@@ -800,35 +852,6 @@ fn launch_of(s: &System, field: FieldSel, w: usize) -> Result<Vec<f64>> {
     Ok(v)
 }
 
-/// 変数 p（値 v）を h ずらすと、項の光線の始め方が変わるか
-fn launch_moves(s: &System, k: &TermKind, p: Param, v: f64, h: f64) -> Result<bool> {
-    let (field, wave) = match k {
-        TermKind::Spot { field, wave, .. }
-        | TermKind::Wavefront { field, wave, .. }
-        | TermKind::Centroid { field, wave, .. }
-        | TermKind::Ray { field, wave, .. }
-        | TermKind::Opd { field, wave, .. } => (*field, *wave),
-        _ => return Ok(true),
-    };
-    let s2 = s.with_params_fast(&[(p, v + h)])?;
-    let mut ws = waves(s, wave);
-    if !ws.contains(&s.primary) {
-        ws.push(s.primary);
-    }
-    for w in ws {
-        let a = launch_of(s, field, w)?;
-        let b = launch_of(&s2, field, w)?;
-        let scale = a.iter().fold(1.0f64, |m, x| m.max(x.abs()));
-        if a.iter()
-            .zip(&b)
-            .any(|(x, y)| !((x - y).abs() <= 1e-12 * scale))
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 /// 追跡（止まった光線があればエラー）
 fn trace_ok(
     s: &System,
@@ -850,28 +873,51 @@ fn trace_ok(
     Ok(t)
 }
 
+/// 瞳の光線の追跡。keep なら止まった光線も残す（[`Trace::ok`] が偽なので、けられた光線と同じく除かれる）
+fn trace_pupil(
+    s: &System,
+    field: FieldSel,
+    px: &[f64],
+    py: &[f64],
+    w: usize,
+    record: bool,
+    keep: bool,
+) -> Result<Trace> {
+    if keep {
+        s.try_trace(field, px, py, Some(w), None, record)
+    } else {
+        trace_ok(s, field, px, py, w, record)
+    }
+}
+
 /// 項の残差（重みを掛ける前）。ps を与えると、その列の解析的なヤコビアンも
-fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> {
+fn eval_term(
+    s: &System,
+    k: &TermKind,
+    ps: Option<&[Param]>,
+    pc: Option<&PupilCache>,
+    keep: bool,
+) -> Result<TermOut> {
     match k {
         TermKind::Spot {
             field,
             wave,
             rings,
             reference,
-        } => spot_term(s, *field, *wave, *rings, *reference, ps),
+        } => spot_term(s, *field, *wave, *rings, *reference, ps, keep),
         TermKind::Centroid {
             field,
             wave,
             rings,
             y,
             target,
-        } => centroid_term(s, *field, *wave, *rings, *y, *target, ps),
+        } => centroid_term(s, *field, *wave, *rings, *y, *target, ps, keep),
         TermKind::Wavefront {
             field,
             wave,
             rings,
             reference,
-        } => wfe_term(s, *field, *wave, *rings, *reference, ps),
+        } => wfe_term(s, *field, *wave, *rings, *reference, ps, pc, keep),
         TermKind::Mtf {
             field,
             wave,
@@ -920,7 +966,7 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             px,
             py,
             target,
-        } => opd_term(s, *field, *wave, *px, *py, *target, ps),
+        } => opd_term(s, *field, *wave, *px, *py, *target, ps, pc),
         TermKind::Zernike {
             field,
             wave,
@@ -1007,6 +1053,7 @@ fn ray_term(
 }
 
 /// 1 本の光線の OPD の項（[`lensbench_core::analysis::opd`] の ref_primary = true と同じ値）
+#[allow(clippy::too_many_arguments)]
 fn opd_term(
     s: &System,
     field: FieldSel,
@@ -1015,6 +1062,7 @@ fn opd_term(
     py: f64,
     target: f64,
     ps: Option<&[Param]>,
+    pcache: Option<&PupilCache>,
 ) -> Result<TermOut> {
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
         invalid!("OPD reference {} (exit pupil or infinity only)", s.ropd);
@@ -1057,7 +1105,8 @@ fn opd_term(
     };
     let mut d = Vec::with_capacity(ps.len());
     for (q, &p) in ps.iter().enumerate() {
-        let (de, dn) = pupil_index_d(s, p, w)?;
+        let pd = pupil_d(s, p, pcache)?;
+        let (de, dn) = (pd.de, pd.dn(w));
         let (dpc, dkc, _) = ray_d(nr, kc, &glp[q * 4..q * 4 + 4], gop[q]);
         let (dqc, dkcw, doc) = ray_d(ni, c.lmn, &glc[q * 4..q * 4 + 4], goc[q]);
         let dlc = to_ref_d(
@@ -1079,31 +1128,6 @@ fn opd_term(
     Ok((vec![v - target], Some(d)))
 }
 
-/// 射出瞳の位置と像空間の屈折率（波長 w）の、パラメータ p での微分（中心差分）
-fn pupil_index_d(s: &System, p: Param, w: usize) -> Result<(f64, f64)> {
-    let v = s.get_param(p)?;
-    // 回転対称な系の射出瞳は近軸で滑らか。回転対称でない系は実光線の外挿で求めるので 1e-8 程度の
-    // 揺れがあり、刻みを大きめにする（中心差分なので、偏心 0 で近軸と実光線の求め方が切り替わる分も
-    // 打ち消し合う）
-    let at = |h: f64| -> Result<(System, System)> {
-        Ok((
-            s.with_params_fast(&[(p, v + h)])?,
-            s.with_params_fast(&[(p, v - h)])?,
-        ))
-    };
-    let sc = v.abs().max(typical(p.kind));
-    let mut h = 1e-6 * sc;
-    let (mut a, mut b) = at(h)?;
-    if !(a.symmetric() && b.symmetric()) {
-        h = 1e-3 * sc;
-        (a, b) = at(h)?;
-    }
-    Ok((
-        (a.exit_pupil() - b.exit_pupil()) / (2.0 * h),
-        (a.image_index(w) - b.image_index(w)) / (2.0 * h),
-    ))
-}
-
 fn spot_term(
     s: &System,
     field: FieldSel,
@@ -1111,6 +1135,7 @@ fn spot_term(
     rings: usize,
     reference: RmsRef,
     ps: Option<&[Param]>,
+    keep: bool,
 ) -> Result<TermOut> {
     let pg = pupil_gauss_shared(rings);
     let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
@@ -1121,7 +1146,7 @@ fn spot_term(
     let mut traces = Vec::with_capacity(ws.len());
     let mut grads = Vec::with_capacity(ws.len());
     for &w in &ws {
-        let t = trace_ok(s, field, px, py, w, rec)?;
+        let t = trace_pupil(s, field, px, py, w, rec, keep)?;
         if let Some(ps) = ps {
             grads.push(s.land_grad(&t, w, ps, None)?);
         }
@@ -1212,6 +1237,7 @@ fn spot_term(
 }
 
 /// 像面の光束の重心（スポットの項と同じ光線・重み）の x か y − target と、その解析的な微分
+#[allow(clippy::too_many_arguments)]
 fn centroid_term(
     s: &System,
     field: FieldSel,
@@ -1220,6 +1246,7 @@ fn centroid_term(
     y: bool,
     target: f64,
     ps: Option<&[Param]>,
+    keep: bool,
 ) -> Result<TermOut> {
     let pg = pupil_gauss_shared(rings);
     let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
@@ -1230,7 +1257,7 @@ fn centroid_term(
     let (mut sw, mut sc) = (0.0, 0.0);
     let mut dc = vec![0.0; np];
     for &w in &ws {
-        let t = trace_ok(s, field, px, py, w, ps.is_some())?;
+        let t = trace_pupil(s, field, px, py, w, ps.is_some(), keep)?;
         let g = match ps {
             Some(ps) => Some(s.land_grad(&t, w, ps, None)?),
             None => None,
@@ -1328,6 +1355,7 @@ fn ray_d(ni: f64, lmn: V3, g: &[f64], go: f64) -> (V3, V3, f64) {
     (dq, dk, go + ni * (lmn[0] * g[0] + lmn[1] * g[1]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn wfe_term(
     s: &System,
     field: FieldSel,
@@ -1335,6 +1363,8 @@ fn wfe_term(
     rings: usize,
     reference: RmsRef,
     ps: Option<&[Param]>,
+    pc: Option<&PupilCache>,
+    keep: bool,
 ) -> Result<TermOut> {
     let pg = pupil_gauss_shared(rings);
     let (px, py, wts) = (&pg.0, &pg.1, &pg.2);
@@ -1353,29 +1383,8 @@ fn wfe_term(
         Some(ps) => ps
             .iter()
             .map(|&p| {
-                let v = s.get_param(p)?;
-                // 回転対称な系の射出瞳は近軸で滑らか。回転対称でない系は実光線の外挿で求めるので 1e-8 程度の
-                // 揺れがあり、刻みを大きめにする（中心差分なので、偏心 0 で近軸と実光線の求め方が切り替わる分も
-                // 打ち消し合う）
-                let at = |h: f64| -> Result<(System, System)> {
-                    Ok((
-                        s.with_params_fast(&[(p, v + h)])?,
-                        s.with_params_fast(&[(p, v - h)])?,
-                    ))
-                };
-                let sc = v.abs().max(typical(p.kind));
-                let mut h = 1e-6 * sc;
-                let (mut a, mut b) = at(h)?;
-                if !(a.symmetric() && b.symmetric()) {
-                    h = 1e-3 * sc;
-                    (a, b) = at(h)?;
-                }
-                let de = (a.exit_pupil() - b.exit_pupil()) / (2.0 * h);
-                let dn: Vec<f64> = ws
-                    .iter()
-                    .map(|&w| (a.image_index(w) - b.image_index(w)) / (2.0 * h))
-                    .collect();
-                Ok((de, dn))
+                let pd = pupil_d(s, p, pc)?;
+                Ok((pd.de, ws.iter().map(|&w| pd.dn(w)).collect()))
             })
             .collect::<Result<_>>()?,
         None => Vec::new(),
@@ -1395,7 +1404,7 @@ fn wfe_term(
     // 微分（rows と同じ順）: dOPD・d(L − Lc)・d(M − Mc) [パラメータ]
     let mut drows: Vec<(Vec<f64>, Vec<f64>, Vec<f64>)> = Vec::new();
     for (k, &w) in ws.iter().enumerate() {
-        let t = trace_ok(s, field, px, py, w, rec)?;
+        let t = trace_pupil(s, field, px, py, w, rec, keep)?;
         let tc = trace_ok(s, field, &[0.0], &[0.0], w, rec)?;
         let wr = if poly { s.primary } else { w };
         let tp = if wr == w {
@@ -1554,391 +1563,4 @@ fn wfe_term(
         }
     }
     Ok((r, jac))
-}
-
-// ------------------------------------------------------------------------------------------ DLS
-
-/// DLS の設定
-#[derive(Debug, Clone, Copy)]
-pub struct DlsOpts {
-    /// 反復の上限
-    pub max_iter: usize,
-    /// 1 回の反復での評価関数（Σ r²）の相対的な減りがこれ未満で止める
-    pub ftol: f64,
-    /// 変数の変化（目安の大きさで割った値）の最大がこれ未満で止める
-    pub xtol: f64,
-    /// 減衰の初期値（JᵀJ の対角に対する比）
-    pub damping: f64,
-}
-
-impl Default for DlsOpts {
-    fn default() -> Self {
-        DlsOpts {
-            max_iter: 50,
-            ftol: 1e-10,
-            xtol: 1e-12,
-            damping: 1e-3,
-        }
-    }
-}
-
-/// 止まった理由
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Stop {
-    /// 評価関数がほとんど減らない
-    Converged,
-    /// 変数がほとんど動かない
-    SmallStep,
-    /// どの減衰でも評価関数が減らない（局所解）
-    NoProgress,
-    /// 反復の上限
-    MaxIter,
-    /// 呼び出し側が止めた
-    Cancelled,
-    /// 変数がない
-    NoVars,
-    /// 途中でヤコビアンが求まらなかった（差分の系が追跡できないなど。理由は [`DlsResult::note`]）。それまでの
-    /// 最良の x・系を返す
-    JacobianFailed,
-}
-
-impl Stop {
-    /// 出力用の名前
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Stop::Converged => "converged",
-            Stop::SmallStep => "small_step",
-            Stop::NoProgress => "no_progress",
-            Stop::MaxIter => "max_iter",
-            Stop::Cancelled => "cancelled",
-            Stop::NoVars => "no_vars",
-            Stop::JacobianFailed => "jacobian_failed",
-        }
-    }
-}
-
-/// 反復ごとの進み具合（[`dls`] が文脈の受け手へ知らせる）
-pub use lensbench_core::par::Iter as Progress;
-
-/// DLS の結果
-#[derive(Debug, Clone)]
-pub struct DlsResult {
-    pub x0: Vec<f64>,
-    pub x: Vec<f64>,
-    pub merit0: f64,
-    pub merit: f64,
-    /// 反復ごとの評価関数の値（初期値を含む）
-    pub history: Vec<f64>,
-    pub iterations: usize,
-    pub evals: usize,
-    pub stop: Stop,
-    /// 止まった理由の補足（[`Stop::JacobianFailed`] の誤りの文など）
-    pub note: Option<String>,
-    /// 最後の反復で評価関数に効かないとみなして動かさなかった変数の番号（0 始まり。差分の雑音しかない列）
-    pub inactive: Vec<usize>,
-    /// 最適化した系（構成ごと）
-    pub systems: Vec<System>,
-}
-
-/// 評価関数に効かない変数の判定: 目安の大きさだけ動かしたときの残差の変化 ‖J_q‖·目安 が残差の EFFECT_TOL 倍に
-/// 満たない変数は動かさない
-const EFFECT_TOL: f64 = 1e-9;
-
-/// この比（[`EFFECT_TOL`] と同じ量）より小さい列は、差分の丸めの雑音だけの列かを [`fd_noise`] で確かめる。
-/// 差分の刻みは目安の 1e-6 倍で、追跡の丸めによる雑音の列はこの比で 3e-8〜5e-6（A0 の空気の中の絞り面の曲率・
-/// 円錐係数で実測、波面の評価関数）。比だけで切ると、目安の大きさが合わない小さいレンズの高次の非球面係数など
-/// 本当に効く弱い変数まで外れるので、比は疑いの目安にだけ使う
-const SUSPECT_TOL: f64 = 1e-3;
-
-/// 変数 q の列 J_q が差分の雑音だけか: 刻みを 1000 倍にした中心差分の列と比べ、1/10 未満なら雑音（線形に効く
-/// 変数なら刻みによらず同じ列になり、雑音なら刻みに反比例して小さくなる）。以前はこの雑音の列が自由な変数になり、
-/// 減衰が効かずに大きく動いて（A0 の絞り面が R = −4.9 mm など）系に書かれた
-fn fd_noise(p: &Problem, x: &[f64], r: &[f64], j: &[f64], q: usize, scale: f64) -> bool {
-    let nv = x.len();
-    let h = 1e3 * p.fd_rel * scale;
-    let v = &p.vars[q];
-    let at = |d: f64| -> Option<Vec<f64>> {
-        let xv = x[q] + d;
-        if xv < v.lo || xv > v.hi {
-            return None;
-        }
-        let mut xs = x.to_vec();
-        xs[q] = xv;
-        p.residuals(&xs).ok().filter(|rr| rr.len() == r.len())
-    };
-    let big: Vec<f64> = match (at(h), at(-h)) {
-        (Some(rp), Some(rm)) => rp
-            .iter()
-            .zip(&rm)
-            .map(|(a, b)| (a - b) / (2.0 * h))
-            .collect(),
-        (Some(rp), None) => rp.iter().zip(r).map(|(a, b)| (a - b) / h).collect(),
-        (None, Some(rm)) => r.iter().zip(&rm).map(|(a, b)| (a - b) / h).collect(),
-        // 確かめられなければ今の列のまま
-        (None, None) => return false,
-    };
-    let n_small: f64 = (0..r.len())
-        .map(|i| j[i * nv + q].powi(2))
-        .sum::<f64>()
-        .sqrt();
-    let n_big: f64 = big.iter().map(|v| v * v).sum::<f64>().sqrt();
-    n_big < 0.1 * n_small
-}
-
-/// 減衰最小二乗で最適化する。反復が終わるたびに文脈の受け手（[`lensbench_core::par::with_progress`]）へ
-/// [`lensbench_core::par::Event::Iter`] で知らせ、文脈の中断の印（[`lensbench_core::par::with_cancel`]）が倒れたら
-/// その反復の終わり（ヤコビアンの途中なら、その前の反復の値）で止める（[`Stop::Cancelled`]）
-pub fn dls(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
-    dls_report(p, o)
-}
-
-/// [`dls`] を、より大きな計算の一部として回す（公差の補償子・差し替え探索・ズーム軌跡）: 反復の進み具合は知らせない
-/// （外の計算が自分の進み具合を知らせる）。中断の印は見る
-pub fn dls_inner(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
-    par::with_progress(None, || dls_report(p, o))
-}
-
-fn dls_report(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
-    p.check()?;
-    let nv = p.vars.len();
-    let x0 = p.x0()?;
-    let mut x: Vec<f64> = x0
-        .iter()
-        .zip(&p.vars)
-        .map(|(&v, var)| v.clamp(var.lo, var.hi))
-        .collect();
-    let mut evals = 0;
-    if nv == 0 {
-        let r = p.residuals(&x)?;
-        let m = p.merit_of(&r);
-        return Ok(DlsResult {
-            x0: x0.clone(),
-            x: x0,
-            merit0: m,
-            merit: m,
-            history: vec![m],
-            iterations: 0,
-            evals: 1,
-            stop: Stop::NoVars,
-            note: None,
-            inactive: Vec::new(),
-            systems: p.final_systems(&x)?,
-        });
-    }
-    let (mut r, mut j) = p.jacobian_checked(&x)?;
-    let mut f = dot_n(&r, &r);
-    let merit0 = p.merit_of(&r);
-    let mut history = vec![merit0];
-    let mut mu = o.damping;
-    let mut nu = 2.0;
-    let mut stop = Stop::MaxIter;
-    let mut note = None;
-    let mut inactive = Vec::new();
-    let mut iterations = 0;
-    let scale: Vec<f64> = p
-        .vars
-        .iter()
-        .zip(&x0)
-        .map(|(v, &xv)| xv.abs().max(typical(v.param.kind)))
-        .collect();
-    for it in 0..o.max_iter {
-        iterations = it + 1;
-        let m = r.len();
-        // A = JᵀJ, g = Jᵀr
-        let mut a = vec![0.0; nv * nv];
-        let mut g = vec![0.0; nv];
-        for i in 0..m {
-            let row = &j[i * nv..(i + 1) * nv];
-            for q in 0..nv {
-                g[q] += row[q] * r[i];
-                for s in 0..=q {
-                    a[q * nv + s] += row[q] * row[s];
-                }
-            }
-        }
-        for q in 0..nv {
-            for s in 0..q {
-                a[s * nv + q] = a[q * nv + s];
-            }
-        }
-        // 境界にあって外へ向かう変数と、評価関数にほとんど効かない変数（目安の大きさだけ動かしても残差の変化が
-        // 残差の 1e-9 未満。差分の丸め誤差だけの列で大きく動かさないため）は動かさない
-        let rn2 = f.sqrt();
-        inactive = (0..nv)
-            .filter(|&q| {
-                let ratio = a[q * nv + q].sqrt() * scale[q] / rn2.max(f64::MIN_POSITIVE);
-                !(ratio > EFFECT_TOL)
-                    || (ratio < SUSPECT_TOL && fd_noise(p, &x, &r, &j, q, scale[q]))
-            })
-            .collect();
-        evals += 2
-            * (0..nv)
-                .filter(|&q| {
-                    let ratio = a[q * nv + q].sqrt() * scale[q] / rn2.max(f64::MIN_POSITIVE);
-                    ratio > EFFECT_TOL && ratio < SUSPECT_TOL
-                })
-                .count();
-        let effective = |q: usize| !inactive.contains(&q);
-        let free: Vec<usize> = (0..nv)
-            .filter(|&q| {
-                let v = &p.vars[q];
-                !((x[q] <= v.lo && g[q] > 0.0) || (x[q] >= v.hi && g[q] < 0.0)) && effective(q)
-            })
-            .collect();
-        if free.is_empty() {
-            stop = Stop::NoProgress;
-            break;
-        }
-        let mut accepted = None;
-        for _ in 0..30 {
-            let nf = free.len();
-            let mut af = vec![0.0; nf * nf];
-            let mut bf = vec![0.0; nf];
-            for (u, &q) in free.iter().enumerate() {
-                bf[u] = -g[q];
-                for (w, &s) in free.iter().enumerate() {
-                    af[u * nf + w] = a[q * nv + s];
-                }
-                af[u * nf + u] += mu * a[q * nv + q];
-            }
-            let Some(d) = cholesky_solve(&mut af, &mut bf, nf) else {
-                mu *= nu;
-                nu *= 2.0;
-                continue;
-            };
-            let mut xn = x.clone();
-            for (u, &q) in free.iter().enumerate() {
-                xn[q] = (x[q] + d[u]).clamp(p.vars[q].lo, p.vars[q].hi);
-            }
-            let step: Vec<f64> = (0..nv).map(|q| xn[q] - x[q]).collect();
-            if step.iter().zip(&scale).all(|(s, c)| s.abs() <= o.xtol * c) {
-                stop = Stop::SmallStep;
-                break;
-            }
-            evals += 1;
-            let rn = match p.residuals(&xn) {
-                Ok(rn) => rn,
-                Err(_) => {
-                    mu *= nu;
-                    nu *= 2.0;
-                    continue;
-                }
-            };
-            let fn_ = dot_n(&rn, &rn);
-            // 予測される減り: −(2 gᵀδ + δᵀAδ)
-            let mut pred = 0.0;
-            for q in 0..nv {
-                let mut ad = 0.0;
-                for s in 0..nv {
-                    ad += a[q * nv + s] * step[s];
-                }
-                pred -= 2.0 * g[q] * step[q] + step[q] * ad;
-            }
-            if fn_.is_finite() && fn_ < f {
-                let rho = if pred > 0.0 { (f - fn_) / pred } else { 1.0 };
-                mu *= (1.0 - (2.0 * rho - 1.0).powi(3)).max(1.0 / 3.0);
-                nu = 2.0;
-                accepted = Some((xn, rn, fn_));
-                break;
-            }
-            mu *= nu;
-            nu *= 2.0;
-        }
-        let Some((xn, rn, fn_)) = accepted else {
-            if stop != Stop::SmallStep {
-                stop = Stop::NoProgress;
-            }
-            break;
-        };
-        let rel = (f - fn_) / f.max(f64::MIN_POSITIVE);
-        x = xn;
-        f = fn_;
-        r = rn;
-        history.push(p.merit_of(&r));
-        if par::reporting() {
-            par::report(&par::Event::Iter(Progress {
-                iter: iterations,
-                merit: history.last().copied().unwrap_or(f64::NAN),
-                x: x.clone(),
-                damping: mu,
-                evals,
-            }));
-        }
-        if par::cancelled() {
-            stop = Stop::Cancelled;
-            break;
-        }
-        if rel < o.ftol {
-            stop = Stop::Converged;
-            break;
-        }
-        if it + 1 < o.max_iter {
-            // 途中のヤコビアンの失敗は、それまでの改善を捨てずに止める
-            match p.jacobian_checked(&x) {
-                Ok(v) => (r, j) = v,
-                Err(Error::Cancelled) => {
-                    stop = Stop::Cancelled;
-                    break;
-                }
-                Err(e) => {
-                    stop = Stop::JacobianFailed;
-                    note = Some(e.to_string());
-                    break;
-                }
-            }
-        }
-    }
-    Ok(DlsResult {
-        x0,
-        merit0,
-        merit: p.merit_of(&r),
-        history,
-        iterations,
-        evals,
-        stop,
-        note,
-        inactive,
-        systems: p.final_systems(&x)?,
-        x,
-    })
-}
-
-fn dot_n(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b).map(|(x, y)| x * y).sum()
-}
-
-/// 対称正定値の n×n を Cholesky で解く（正定値でなければ None）
-fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
-    for c in 0..n {
-        let mut d = a[c * n + c];
-        for k in 0..c {
-            d -= a[c * n + k] * a[c * n + k];
-        }
-        if !(d > 0.0) {
-            return None;
-        }
-        let d = d.sqrt();
-        a[c * n + c] = d;
-        for rr in c + 1..n {
-            let mut v = a[rr * n + c];
-            for k in 0..c {
-                v -= a[rr * n + k] * a[c * n + k];
-            }
-            a[rr * n + c] = v / d;
-        }
-    }
-    let mut y = b.to_vec();
-    for i in 0..n {
-        for k in 0..i {
-            y[i] -= a[i * n + k] * y[k];
-        }
-        y[i] /= a[i * n + i];
-    }
-    for i in (0..n).rev() {
-        for k in i + 1..n {
-            y[i] -= a[k * n + i] * y[k];
-        }
-        y[i] /= a[i * n + i];
-    }
-    Some(y)
 }

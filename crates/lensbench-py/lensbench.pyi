@@ -166,6 +166,7 @@ class _OptimizeResult(TypedDict):
     inactive: list[str]
     term_values0: list[float]
     term_values: list[float]
+    term_value_kinds: list[str]
 
 
 class _Rms(TypedDict):
@@ -385,6 +386,7 @@ class _ZoomPoint(TypedDict):
     x: list[float]
     merit: float
     stop: str
+    error: str | None
     iterations: int
 
 
@@ -754,9 +756,8 @@ class System:
         With g(system, names), the partial derivatives of the residuals (number of residuals, len(names)) are computed with it.
 
         Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
-        iterations, evals, stop ("converged", "small_step", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
-        inactive (numbers of variables considered ineffective and not moved), term_values0, term_values
-        (values per term of terms: the value for terms with a target, √Σr² for the others)
+        iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
+        inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others)
         """
 
     def pickups(self) -> list[_Pickup]:
@@ -1092,6 +1093,6 @@ def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float
     The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
     the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
     Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
-    None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop, iterations), systems (solved system
+    None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
     per state), warnings
     """

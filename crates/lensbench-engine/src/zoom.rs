@@ -3,7 +3,7 @@
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
 use lensbench_optim::zoom::{self, ZoomSpec};
-use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
+use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ};
 use serde_json::{json, Value};
 
 /// ズーム軌跡の設定（CLI の旗・serve の params と同じ意味）
@@ -26,10 +26,6 @@ pub struct ZoomOpts {
     pub iters: usize,
     /// 目標との差の許し（目標に対する比）
     pub tol: f64,
-}
-
-fn stop_name(s: Stop) -> &'static str {
-    s.as_str()
 }
 
 fn num(x: f64) -> Value {
@@ -135,7 +131,8 @@ pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomOpts) -> Result<Val
                 "target": p.target,
                 q.name(): num(p.value),
                 "merit": num(p.merit),
-                "stop": stop_name(p.stop),
+                "stop": p.stop.as_str(),
+                "error": p.stop.error(),
                 "iterations": p.iterations,
             });
             for (k, nm) in vnames.iter().enumerate() {

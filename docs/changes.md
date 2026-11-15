@@ -56,6 +56,12 @@
 - 公差（`tolerance`・Python の `tolerance`）の結果の `label`（`tolerances`・`sensitivity`・`correlation`）は英語の名前に
   （例: `L1 偏心x` → `L1 decenter x`、`L1 厚さ1` → `L1 thickness 1`、`G1 群の偏心x` → `G1 group decenter x`、`焦点距離` → `focal length`、
   `後の間隔` → `space after`）。名前で項目を探すスクリプトは書き換えが要る。CLI の文字の出力と GUI は表示の言語で出す。
+- 最適化の止まった理由（`stop`）: 減衰を強めて一歩が小さくなったときは `small_step` でなく `no_progress`（進めない）に
+  （IOO-13）。`small_step` は減衰を強めずに求めた一歩が小さいときだけ。変数・評価関数の値は変わらない。
+- ズーム軌跡（`zoom`・serve の `zoom`・Python の `zoom`）は、1 点が解けなくても全体を誤りにせず、その点を `stop: "failed"`
+  （理由は `error`、変数は解き始めの値、近軸量・評価関数は `null`）として残して続け、`warnings` に出す（IOO-27）。中断は前どおり誤り。
+- モンテカルロ公差の乱数・抽選を一括実行（`lensbench_runs`）のものと共通にした（IOO-14）。同じ種でも試行のずれと統計は前の版と
+  違う（統計としては同じ分布。切った正規分布は棄却法から逆関数法に）。感度・公称の値は変わらない。
 
 ### 光学系
 - 共軸の面の間（前の面の後と次の面の前に傾き・座標ブレークがない区間）の座標の変換は、大域の座標の差でなく面の厚さそのものを
@@ -101,6 +107,22 @@
   （`use lensbench_core::prelude::*;`）。CLI のクレートの `error`・`run`・`serve` のモジュールは外に出さない。
 - 追跡のカーネルを 1 本にした（KRN-06・IOO-20）: `batch::Plan::new(sys, frames, w, last, floating_clip)` は面 1 から（`first` を取らない）。
   1 本ずつの追跡も同じカーネル（幅 1）。結果はビット単位で前と同じ。
+
+- モンテカルロ公差の乱数・抽選・実行を一括実行と共通に（IOO-14）: `lensbench_design::montecarlo::Rng` を消した（乱数は
+  `lensbench_runs::Rng`）。試行のずれは `McSpec::draws()`（`lensbench_runs::Draws`）で引き、公差ごとの分布は `Tol::sample_dist()`。
+  `draw_trial` は `Result<Vec<f64>>` を返す。`montecarlo::run` は感度と試行を `lensbench_runs::run` で回す。
+- DLS（IOO-13）: `DlsOpts` に `gtol`（勾配の判定、既定 0 で判定しない）・`qr`（一歩を QR で解く、既定 false）・`active_set`
+  （境界の有効制約法、既定 false）を足した（構造体を `..Default::default()` なしで書いていれば直す）。`Stop` に `SmallGradient`
+  （`small_gradient`）を足した。既定の値の結果は前と同じ。
+- ズーム軌跡（IOO-27）: `ZoomPoint::stop` は `PointStop`（`Solved(Stop)`・`Failed(String)`）。`zoom::solve` は点が解けなくても
+  `Err` を返さない（中断だけ `Err(Cancelled)`）。目標の満たし方 `ZoomSpec::method`（`TargetMethod::Penalty`（既定、前と同じ）・
+  `Lagrange`（拡大ラグランジュ法））を足した。
+- 最適化の項の値（IOO-28）: `Problem::term_values` は `Vec<TermValue>`、`merit_and_terms` は `(f64, Vec<TermValue>)` を返す
+  （`TermValue::Quantity`（目標のある項の量そのもの）・`Rms`（目標のない項の √Σr²）、数は `value()`）。`Problem` に
+  `stopped_as_vignetted`（止まった光線をけられた光線と同じく除く。既定 false）と `ray_counts` を足した。JSON・Python の数の
+  並びは前と同じで、値の意味を `value_kind`・`term_value_kinds` で足した。
+- `lensbench_runs::Sampler` は `params` と `draws: Draws` に（`vars`・`seed` の欄はなくした。種は `draws.seed()`）。`Dist` に
+  `End`（lo か hi を半々）と `Disc`（円の中の分布の 1 成分）、組の分布 `Joint::Disc` と `Sampler::with_joints` を足した。
 
 ### GUI
 - 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。

@@ -1055,7 +1055,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let ts: Vec<Value> = specs
                 .iter()
                 .enumerate()
-                .map(|(i, v)| json!({ "term": v, "value0": tv0[n_default + i], "value": tv[n_default + i] }))
+                .map(|(i, v)| json!({ "term": v, "value0": tv0[n_default + i].value(), "value": tv[n_default + i].value(), "value_kind": tv[n_default + i].kind_name() }))
                 .collect();
             (
                 c.json,

@@ -11,14 +11,31 @@
 //! 目標のない状態では、解いた後の近軸量の値を間の点の目標に使う。間の点の系は前の状態の系に変数の値を入れたもの
 //! （状態どうしが動かすパラメータのほかにも違うときは警告を返す）。
 //!
+//! 1 点が解けなかった（追跡できない系になったなど）ときは、その点を [`PointStop::Failed`] として残し（変数は解き始めの値、
+//! 近軸量・評価関数は NaN）、警告を足して残りの点を続ける。中断（[`lensbench_core::Error::Cancelled`]）だけは全体を止める。
+//!
+//! 目標の満たし方（[`TargetMethod`]）: 既定の [`TargetMethod::Penalty`] は上の重みを上げる方法。
+//! [`TargetMethod::Lagrange`] は拡大ラグランジュ法（重みは [`ZoomSpec::target_weight`] のまま、解いた近軸量と目標の差だけ
+//! 項の目標をずらして解き直す。重みを上げないので条件が悪くならず、目標に正確に合う）。
+//!
 //! 状態を持たないので、一括実行のタスクの中からも呼べる。
 
 use crate::{DefaultMerit, DlsOpts, ParaxQ, Problem, Stop, Term, TermKind, Var};
-use lensbench_core::error::Result;
+use lensbench_core::error::{Error, Result};
 use lensbench_core::invalid;
 use lensbench_core::param::Param;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::System;
+
+/// 近軸量の目標の満たし方
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TargetMethod {
+    /// 罰金: 近軸量の項の重みを、目標に届くまで 100 倍ずつ 3 回まで上げて解き直す
+    #[default]
+    Penalty,
+    /// 拡大ラグランジュ法: 重みはそのまま、解いた近軸量と目標の差だけ項の目標をずらして解き直す（最大 8 回）
+    Lagrange,
+}
 
 /// ズーム軌跡の設定
 #[derive(Debug, Clone)]
@@ -36,6 +53,8 @@ pub struct ZoomSpec {
     pub target_weight: f64,
     /// 近軸量の目標との差の許し（目標に対する比）
     pub target_tol: f64,
+    /// 目標の満たし方
+    pub method: TargetMethod,
     /// 像の項
     pub merit: DefaultMerit,
     pub rings: usize,
@@ -54,11 +73,38 @@ impl ZoomSpec {
             targets,
             target_weight: 10.0,
             target_tol: 1e-8,
+            method: TargetMethod::Penalty,
             merit: DefaultMerit::Spot,
             rings: 3,
             reference: RmsRef::Centroid,
             steps: 0,
             opts: DlsOpts::default(),
+        }
+    }
+}
+
+/// 1 点の止まり方
+#[derive(Debug, Clone, PartialEq)]
+pub enum PointStop {
+    /// 解いた（DLS の止まった理由）
+    Solved(Stop),
+    /// 解けなかった（理由）。点は解き始めの値のまま
+    Failed(String),
+}
+
+impl PointStop {
+    /// 出力用の名前（DLS の止まった理由か `failed`）
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PointStop::Solved(s) => s.as_str(),
+            PointStop::Failed(_) => "failed",
+        }
+    }
+    /// 解けなかった理由
+    pub fn error(&self) -> Option<&str> {
+        match self {
+            PointStop::Solved(_) => None,
+            PointStop::Failed(e) => Some(e),
         }
     }
 }
@@ -78,7 +124,7 @@ pub struct ZoomPoint {
     pub x: Vec<f64>,
     /// 像の項だけの評価関数の値（視野の重みで平均した RMS）
     pub merit: f64,
-    pub stop: Stop,
+    pub stop: PointStop,
     pub iterations: usize,
 }
 
@@ -125,7 +171,8 @@ fn problem(
     Ok((full, img))
 }
 
-/// 系 s（変数の初期値は s の値）で 1 点を解く
+/// 系 s（変数の初期値は s の値）で 1 点を解く。解けなければ [`PointStop::Failed`] の点（と s）を返し、
+/// 中断だけは誤りで返す
 fn solve_point(
     s: &System,
     spec: &ZoomSpec,
@@ -133,26 +180,67 @@ fn solve_point(
     state: Option<usize>,
     pos: f64,
 ) -> Result<(ZoomPoint, System)> {
-    // 近軸量の項の重みを、目標に届くまで 100 倍ずつ上げて解き直す（重みを初めから大きくすると条件が悪く、
-    // 反復が遅い）
+    match try_point(s, spec, target, state, pos) {
+        Ok(v) => Ok(v),
+        Err(Error::Cancelled) => Err(Error::Cancelled),
+        Err(e) => {
+            let x = spec
+                .moving
+                .iter()
+                .map(|&p| s.get_param(p))
+                .collect::<Result<Vec<f64>>>()?;
+            Ok((
+                ZoomPoint {
+                    state,
+                    pos,
+                    target,
+                    value: f64::NAN,
+                    x,
+                    merit: f64::NAN,
+                    stop: PointStop::Failed(e.to_string()),
+                    iterations: 0,
+                },
+                s.clone(),
+            ))
+        }
+    }
+}
+
+fn try_point(
+    s: &System,
+    spec: &ZoomSpec,
+    target: Option<f64>,
+    state: Option<usize>,
+    pos: f64,
+) -> Result<(ZoomPoint, System)> {
+    let lagrange = spec.method == TargetMethod::Lagrange;
+    // 罰金: 近軸量の項の重みを、目標に届くまで 100 倍ずつ上げて解き直す（重みを初めから大きくすると条件が悪く、
+    // 反復が遅い）。拡大ラグランジュ法: 重みはそのまま、目標との差だけ項の目標をずらす
     let mut w = spec.target_weight;
+    let mut shifted = target;
     let mut cur = s.clone();
     let mut iterations = 0;
     let mut tries = 0;
+    let max_tries = if lagrange { 9 } else { 4 };
     let (r, img) = loop {
-        let (full, img) = problem(&cur, spec, target, w)?;
+        let (full, img) = problem(&cur, spec, shifted, w)?;
         let r = crate::dls_inner(&full, &spec.opts)?;
         iterations += r.iterations;
         tries += 1;
         let sys = &r.systems[0];
+        let miss = target.map(|t| spec.q.value(sys) - t);
         let ok = target.is_none_or(|t| {
-            (spec.q.value(sys) - t).abs() <= spec.target_tol * t.abs().max(f64::MIN_POSITIVE)
+            miss.unwrap().abs() <= spec.target_tol * t.abs().max(f64::MIN_POSITIVE)
         });
-        if ok || tries >= 4 {
+        if ok || tries >= max_tries {
             break (r, img);
         }
         cur = sys.clone();
-        w *= 100.0;
+        if lagrange {
+            shifted = shifted.zip(miss).map(|(a, m)| a - m);
+        } else {
+            w *= 100.0;
+        }
     };
     let sys = r.systems.into_iter().next().unwrap();
     let merit = img.merit(&r.x)?;
@@ -164,7 +252,7 @@ fn solve_point(
             value: spec.q.value(&sys),
             x: r.x,
             merit,
-            stop: r.stop,
+            stop: PointStop::Solved(r.stop),
             iterations,
         },
         sys,
@@ -206,14 +294,17 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     let mut systems = Vec::with_capacity(n);
     for (k, s) in configs.iter().enumerate() {
         lensbench_core::par::check_cancel()?;
-        let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)
-            .map_err(|e| lensbench_core::error::Error::Invalid(format!("state {}: {e}", k + 1)))?;
+        let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)?;
         states.push(p);
         systems.push(sys);
     }
     let mut warnings = Vec::new();
     for p in &states {
         let k = p.state.unwrap();
+        if let Some(e) = p.stop.error() {
+            warnings.push(format!("state {}: not solved ({e})", k + 1));
+            continue;
+        }
         if let Some(t) = p.target {
             let rel = (p.value - t).abs() / t.abs().max(1e-300);
             if rel > spec.target_tol {
@@ -241,7 +332,8 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             .collect();
         let probe = systems[k].with_params(&ch)?;
         let (va, vb) = (spec.q.value(&probe), states[k + 1].value);
-        if (va - vb).abs() > 1e-9 * vb.abs().max(1.0) {
+        let solved = states[k].stop.error().is_none() && states[k + 1].stop.error().is_none();
+        if solved && (va - vb).abs() > 1e-9 * vb.abs().max(1.0) {
             warnings.push(format!(
                 "states {} and {} differ in more than the moved parameters (points between them were found with the system of state {})",
                 k + 1,
@@ -253,6 +345,15 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             states[k].target.unwrap_or(states[k].value),
             states[k + 1].target.unwrap_or(states[k + 1].value),
         );
+        if !(ta.is_finite() && tb.is_finite()) {
+            // 目標のない状態が解けなかった: 間の点の目標が決まらない
+            warnings.push(format!(
+                "points between states {} and {} were skipped (a state without a target was not solved)",
+                k + 1,
+                k + 2
+            ));
+            continue;
+        }
         let nx = spec.moving.len();
         let dx: Vec<f64> = (0..nx)
             .map(|q| (states[k + 1].x[q] - states[k].x[q]) / (spec.steps + 1) as f64)
@@ -272,14 +373,14 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             lensbench_core::par::check_cancel()?;
             let s0 = systems[k].with_params(&start)?;
             let pos = k as f64 + f;
-            let (p, _) =
-                solve_point(&s0, spec, Some(interp(ta, tb, f)), None, pos).map_err(|e| {
-                    lensbench_core::error::Error::Invalid(format!(
-                        "between states {} and {} at {f:.3}: {e}",
-                        k + 1,
-                        k + 2
-                    ))
-                })?;
+            let (p, _) = solve_point(&s0, spec, Some(interp(ta, tb, f)), None, pos)?;
+            if let Some(e) = p.stop.error() {
+                warnings.push(format!(
+                    "between states {} and {} at {f:.3}: not solved ({e})",
+                    k + 1,
+                    k + 2
+                ));
+            }
             x = p.x.clone();
             path.push(p);
         }

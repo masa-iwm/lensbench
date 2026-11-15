@@ -8,16 +8,12 @@ use lensbench_core::sweep::RmsRef;
 use lensbench_core::with_threads;
 use lensbench_design::swap::{SwapSearch, SwapSpec};
 use lensbench_optim::zoom::{self as zoom_core, ZoomSpec};
-use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
+use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ};
 use lensbench_project::{Env, Project};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::{err, PySystem, VarArg};
-
-fn stop_name(s: Stop) -> &'static str {
-    s.as_str()
-}
 
 fn merit_kind(m: &str) -> PyResult<DefaultMerit> {
     match m {
@@ -43,7 +39,7 @@ fn reference_kind(r: &str) -> PyResult<RmsRef> {
 /// The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
 /// the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
 /// Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
-/// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop, iterations), systems (solved system
+/// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
 /// per state), warnings
 #[pyfunction]
 #[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None))]
@@ -110,7 +106,8 @@ fn zoom<'py>(
         e.set_item("value", p.value)?;
         e.set_item("x", p.x.clone())?;
         e.set_item("merit", p.merit)?;
-        e.set_item("stop", stop_name(p.stop))?;
+        e.set_item("stop", p.stop.as_str())?;
+        e.set_item("error", p.stop.error())?;
         e.set_item("iterations", p.iterations)?;
         path.append(e)?;
     }

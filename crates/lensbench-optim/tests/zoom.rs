@@ -203,3 +203,69 @@ fn bounds_hold() {
         assert!(p.x[0] <= 3.0 && p.x[0] >= -10.0 && p.x[1] <= 30.0);
     }
 }
+
+/// 解けない状態があっても残りを続け、その点を failed として残す（IOO-27）
+#[test]
+fn failed_point_does_not_stop_the_track() {
+    use lensbench_core::param::{Kind, Param};
+    use lensbench_optim::zoom::PointStop;
+    let mut cs = states();
+    // 中間の状態の 1 面の曲率半径を、その面での近軸のマージナル光線の高さの半分に: 瞳の縁の光線が面に当たらず、
+    // 像の項が評価できない
+    let y1 = cs[1].paraxial().marginal.0[1].abs();
+    cs[1] = cs[1]
+        .with_params(&[(Param::new(1, Kind::Curv), 1.0 / (0.5 * y1))])
+        .unwrap();
+    let mut sp = spec(&cs[0], vec![Some(95.0), Some(110.0), Some(130.0)]);
+    sp.steps = 1;
+    let r = zoom::solve(&cs, &sp).unwrap();
+    assert!(matches!(r.states[1].stop, PointStop::Failed(_)));
+    assert_eq!(r.states[1].stop.as_str(), "failed");
+    assert!(r.states[1].value.is_nan() && r.states[1].merit.is_nan());
+    // 解けなかった点は解き始めの値のまま
+    let x0: Vec<f64> = sp
+        .moving
+        .iter()
+        .map(|&p| cs[1].get_param(p).unwrap())
+        .collect();
+    assert_eq!(r.states[1].x, x0);
+    for k in [0, 2] {
+        assert!(matches!(r.states[k].stop, PointStop::Solved(_)), "{k}");
+        let t = r.states[k].target.unwrap();
+        assert!((r.states[k].value - t).abs() < 1e-6 * t);
+    }
+    assert_eq!(r.path.len(), 5);
+    assert!(
+        r.warnings.iter().any(|w| w.contains("state 2: not solved")),
+        "{:?}",
+        r.warnings
+    );
+    // 中断は全体を止める
+    let tok = lensbench_core::par::CancelToken::new();
+    tok.cancel();
+    let e = lensbench_core::par::with_cancel(Some(&tok), || zoom::solve(&cs, &sp));
+    assert!(matches!(e, Err(lensbench_core::Error::Cancelled)));
+}
+
+/// 拡大ラグランジュ法: 重みを上げずに目標に合わせる（IOO-27）
+#[test]
+fn lagrange_reaches_targets() {
+    use lensbench_optim::zoom::TargetMethod;
+    let cs = states();
+    let mut sp = spec(&cs[0], vec![Some(95.0), Some(110.0), Some(130.0)]);
+    let pen = zoom::solve(&cs, &sp).unwrap();
+    sp.method = TargetMethod::Lagrange;
+    let lag = zoom::solve(&cs, &sp).unwrap();
+    assert!(lag.warnings.is_empty(), "{:?}", lag.warnings);
+    for (a, b) in pen.states.iter().zip(&lag.states) {
+        let t = b.target.unwrap();
+        assert!((b.value - t).abs() <= sp.target_tol * t, "{} {t}", b.value);
+        // 同じ解に近い（像の評価関数の差は小さい）
+        assert!(
+            (a.merit - b.merit).abs() < 1e-3 * a.merit,
+            "{} {}",
+            a.merit,
+            b.merit
+        );
+    }
+}

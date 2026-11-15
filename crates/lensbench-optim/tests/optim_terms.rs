@@ -148,7 +148,7 @@ fn ray_and_opd_values() {
                             target: 0.0,
                         },
                     );
-                    assert_eq!(p.term_values(&[]).unwrap()[0], v, "{name} {q:?}");
+                    assert_eq!(p.term_values(&[]).unwrap()[0].value(), v, "{name} {q:?}");
                 }
             }
             let o = opd(&s, field, &[px], &[py], Some(w), true).unwrap();
@@ -162,7 +162,7 @@ fn ray_and_opd_values() {
                     target: 0.0,
                 },
             );
-            let v = p.term_values(&[]).unwrap()[0];
+            let v = p.term_values(&[]).unwrap()[0].value();
             assert!((v - o.opd[0]).abs() <= 1e-12, "{name} OPD {v} {}", o.opd[0]);
         }
     }
@@ -227,7 +227,7 @@ fn paraxial_zernike_coupling_values() {
     ] {
         assert_eq!(ParaxQ::parse(q.name()).unwrap(), q);
         let p = one(&s, TermKind::Paraxial { q, target: 0.0 });
-        let got = p.term_values(&[]).unwrap()[0];
+        let got = p.term_values(&[]).unwrap()[0].value();
         assert!(got == v || (got.is_nan() && v.is_nan()), "{q:?} {got} {v}");
     }
     let field = FieldSel::Index(s.fields.len() - 1);
@@ -243,7 +243,7 @@ fn paraxial_zernike_coupling_values() {
             target: 0.0,
         },
     );
-    assert_eq!(p.term_values(&[]).unwrap()[0], z.coef[8]);
+    assert_eq!(p.term_values(&[]).unwrap()[0].value(), z.coef[8]);
 }
 
 #[test]
@@ -507,7 +507,7 @@ fn centroid_value_and_jacobian() {
                 target: 0.25,
             };
             let p = one(&s, kind.clone());
-            let got = p.term_values(&[]).unwrap()[0];
+            let got = p.term_values(&[]).unwrap()[0].value();
             assert!((got - v).abs() <= 1e-12, "{name} y={y}: {got} {v}");
             check_jac(name, &s, kind);
             check_jac(
@@ -523,4 +523,75 @@ fn centroid_value_and_jacobian() {
             );
         }
     }
+}
+
+/// 項の値の意味（IOO-28）: 目標のある項は量そのもの、ない項は RMS
+#[test]
+fn term_value_kinds() {
+    use lensbench_core::sweep::RmsRef;
+    use lensbench_optim::TermValue;
+    let s = load("A0");
+    let mut p = one(
+        &s,
+        TermKind::Spot {
+            field: FieldSel::Index(0),
+            wave: None,
+            rings: 3,
+            reference: RmsRef::Centroid,
+        },
+    );
+    p.terms.push(Term {
+        side: Default::default(),
+        config: 0,
+        weight: 1.0,
+        kind: TermKind::Paraxial {
+            q: ParaxQ::Efl,
+            target: 1.0,
+        },
+    });
+    let tv = p.term_values(&[]).unwrap();
+    assert!(matches!(tv[0], TermValue::Rms(v) if v > 0.0));
+    assert_eq!(tv[1], TermValue::Quantity(s.paraxial().efl));
+    assert_eq!((tv[0].kind_name(), tv[1].kind_name()), ("rms", "quantity"));
+    let (_, tv2) = p.merit_and_terms(&[]).unwrap();
+    assert_eq!(tv, tv2);
+}
+
+/// 止まった光線（面に届かない）: 既定は評価できない誤り、stopped_as_vignetted ではけられた光線と同じく除いて
+/// 評価し、数を ray_counts で出す（IOO-28）
+#[test]
+fn stopped_rays_as_vignetted() {
+    use lensbench_core::param::Kind;
+    use lensbench_core::sweep::RmsRef;
+    let s0 = load("A0");
+    // 1 面の曲率半径を、その面での近軸のマージナル光線の高さの 0.8 倍に: 瞳の縁の光線は面に当たらない
+    let y1 = s0.paraxial().marginal.0[1].abs();
+    assert!(y1 > 0.0);
+    let s = s0
+        .with_params(&[(Param::new(1, Kind::Curv), 1.0 / (0.8 * y1))])
+        .unwrap();
+    let spot = TermKind::Spot {
+        field: FieldSel::Index(0),
+        wave: None,
+        rings: 6,
+        reference: RmsRef::Centroid,
+    };
+    let mut p = one(&s, spot.clone());
+    assert!(p.merit(&[]).is_err());
+    let c = p.ray_counts(&[]).unwrap()[0].unwrap();
+    assert!(c.stopped > 0 && c.stopped < c.total, "{c:?}");
+    p.stopped_as_vignetted = true;
+    let m = p.merit(&[]).unwrap();
+    assert!(m.is_finite() && m > 0.0);
+    // 止まった光線のない系では、どちらでも同じ値
+    let mut q = one(&s0, spot);
+    let a = q.merit(&[]).unwrap();
+    q.stopped_as_vignetted = true;
+    assert_eq!(a, q.merit(&[]).unwrap());
+    assert_eq!(q.ray_counts(&[]).unwrap()[0].unwrap().stopped, 0);
+    // ヤコビアンも求まる
+    p.add_var(&format!("{}.t", s.image() - 1)).unwrap();
+    let (r, j) = p.jacobian(&[s.surfaces[s.image() - 1].t]).unwrap();
+    assert_eq!(r.len(), j.len());
+    assert!(j.iter().all(|v| v.is_finite()));
 }
