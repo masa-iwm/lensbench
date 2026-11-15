@@ -4028,7 +4028,7 @@ impl App {
                     built_combo,
                     ..Default::default()
                 },
-                _work: Default::default(),
+                _work: doc_loc::WorkDir::new(),
                 layout_data: None,
                 overlay: Overlay::default(),
                 rays_open: false,

@@ -31,9 +31,68 @@ pub(super) fn work_dir() -> PathBuf {
     d
 }
 
-/// 終わるときに [`work_dir`] を消す
-#[derive(Default)]
+/// 終わるときに [`work_dir`] を消す。作るときに、異常終了で残った前のプロセスのフォルダ（2 日より古いもの）を消す
 pub(super) struct WorkDir;
+
+impl WorkDir {
+    pub(super) fn new() -> WorkDir {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(root) = work_dir().parent() {
+            sweep(
+                root,
+                std::process::id(),
+                std::time::Duration::from_secs(2 * 86400),
+            );
+        }
+        WorkDir
+    }
+}
+
+/// root の下の、名前がプロセス id（数字だけ）で keep でなく、最後に書いてから max_age より古いフォルダを消す
+#[cfg(not(target_arch = "wasm32"))]
+fn sweep(root: &Path, keep: u32, max_age: std::time::Duration) {
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let name = e.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if pid != keep && old && e.path().is_dir() {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[test]
+fn sweep_removes_old_pid_dirs_only() {
+    let root = std::env::temp_dir().join(format!("lensbench-sweep-{}", std::process::id()));
+    for d in ["11", "22", "notes"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(root.join("33"), "file").unwrap();
+    // 古さ 0 なら自分（22）と数字でない名前・ファイル以外を消す
+    sweep(&root, 22, std::time::Duration::ZERO);
+    let left: std::collections::BTreeSet<String> = std::fs::read_dir(&root)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(left, ["22", "33", "notes"].map(String::from).into());
+    // 新しいものは消さない
+    std::fs::create_dir_all(root.join("44")).unwrap();
+    sweep(&root, 22, std::time::Duration::from_secs(3600));
+    assert!(root.join("44").is_dir());
+    let _ = std::fs::remove_dir_all(&root);
+}
 
 impl Drop for WorkDir {
     fn drop(&mut self) {

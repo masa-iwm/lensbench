@@ -1,0 +1,396 @@
+//! レイアウト図の当たり判定とクリック・ドラッグ・キーの試験（GPN-25・GPN-29）
+
+use super::*;
+
+fn sq(x0: f32, y0: f32, w: f32) -> Vec<Pos2> {
+    vec![
+        Pos2::new(x0, y0),
+        Pos2::new(x0 + w, y0),
+        Pos2::new(x0 + w, y0 + w),
+        Pos2::new(x0, y0 + w),
+    ]
+}
+
+/// 当たり判定は描かずに決まり、後に描くもの（BS → 玉 → 開口・絞り・名前）ほど上（GPN-25）
+#[test]
+fn hits_follow_paint_order() {
+    let ctx = egui::Context::default();
+    let _ = ctx.run(Default::default(), |ctx| {
+        let galley = ctx
+            .fonts(|f| f.layout_no_wrap("L1".into(), FontId::proportional(11.0), Color32::WHITE));
+        let mark = |k, kind, pos: Pos2, label: Rect| Mark {
+            k,
+            kind,
+            pos,
+            u: Vec2::X,
+            n: Vec2::new(0.0, -1.0),
+            r: 10.0,
+            ap: if kind == ElemKind::Aperture {
+                vec![(10.0, 20.0), (-20.0, -10.0)]
+            } else {
+                Vec::new()
+            },
+            label,
+            galley: galley.clone(),
+            sel: false,
+        };
+        let sc = Scene {
+            cubes: vec![Cube {
+                k: 0,
+                sq: sq(0.0, 0.0, 20.0),
+                diag: [Pos2::ZERO, Pos2::new(20.0, 20.0)],
+            }],
+            // 玉 1 は BS に重なる
+            bodies: vec![Body {
+                k: Some(1),
+                poly: sq(10.0, 0.0, 20.0),
+                mirror: false,
+                surfaces: [3, 4],
+            }],
+            hl: Vec::new(),
+            hl_vertex: None,
+            mechs: vec![("tube".into(), vec![sq(100.0, 0.0, 10.0)])],
+            stop: None,
+            marks: vec![
+                // 名前が玉 1 の上にある要素 2
+                mark(
+                    2,
+                    ElemKind::Lens,
+                    Pos2::new(60.0, 60.0),
+                    Rect::from_min_size(Pos2::new(25.0, 5.0), egui::vec2(10.0, 10.0)),
+                ),
+                mark(
+                    3,
+                    ElemKind::Aperture,
+                    Pos2::new(200.0, 100.0),
+                    Rect::from_min_size(Pos2::new(300.0, 300.0), egui::vec2(1.0, 1.0)),
+                ),
+                mark(
+                    4,
+                    ElemKind::Stop,
+                    Pos2::new(250.0, 100.0),
+                    Rect::from_min_size(Pos2::new(300.0, 300.0), egui::vec2(1.0, 1.0)),
+                ),
+            ],
+            dims: vec![Dim {
+                g: 7,
+                sel: false,
+                thin: [[Pos2::ZERO; 2]; 2],
+                seg: [Pos2::new(0.0, 200.0), Pos2::new(100.0, 200.0)],
+                dir: Vec2::X,
+                arrows: true,
+                text: Rect::from_min_size(Pos2::new(45.0, 185.0), egui::vec2(10.0, 12.0)),
+                galley: galley.clone(),
+            }],
+            sel: None,
+            axes: Vec::new(),
+            mids: Vec::new(),
+        };
+        let at = |x, y| hits(&sc, Some(Pos2::new(x, y)));
+        assert_eq!(hits(&sc, None), Hits::default());
+        assert_eq!(at(5.0, 10.0).el, Some(0));
+        let h = at(15.0, 10.0);
+        assert_eq!((h.el, h.surfs), (Some(1), Some([3, 4])));
+        let h = at(27.0, 10.0);
+        assert_eq!((h.el, h.surfs), (Some(2), Some([3, 4])));
+        assert_eq!(at(105.0, 5.0).mechs, vec![(0, 0)]);
+        // 開口: 光を遮る区間の上（n は上向き）と、区間の外（光が通る所）
+        assert_eq!(at(200.0, 85.0).el, Some(3));
+        assert_eq!(at(200.0, 100.0).el, None);
+        // 絞り: 面の線の近く（半径 + 14 まで）
+        assert_eq!(at(252.0, 78.0).el, Some(4));
+        assert_eq!(at(260.0, 100.0).el, None);
+        // 寸法: 数字の上は数字と線、線の近くは線だけ
+        let h = at(50.0, 190.0);
+        assert_eq!((h.num, h.dim), (Some(7), Some(7)));
+        let h = at(80.0, 204.0);
+        assert_eq!((h.num, h.dim), (None, Some(7)));
+        assert_eq!(at(80.0, 210.0).dim, None);
+    });
+}
+
+/// 図を画面無しで回す。組合せ（玉 2 枚、絞りから 5 mm・10 mm・20 mm）と、serve の layout の結果
+struct Fig {
+    ctx: egui::Context,
+    combo: Combo,
+    view: View,
+    d: LayoutData,
+    t: f64,
+}
+
+/// 1 フレームの後の画面の上の形（寸法の数字の位置を知るため）
+struct Shot {
+    sc: Scene,
+}
+
+impl Fig {
+    fn new() -> Fig {
+        let mut c = Combo {
+            epd: 4.0,
+            stop_gap: 5.0,
+            ..Default::default()
+        };
+        for air in [10.0, 20.0] {
+            let mut l = Pick::new(ElemKind::Lens);
+            l.air = air;
+            c.picks.push(l);
+        }
+        let mut proj = c.project();
+        proj["glass_catalogs"] = json!(["SCHOTT"]);
+        // 試験はスレッドで並べて回るので、ファイルは呼ぶたびに別の名前
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let f =
+            std::env::temp_dir().join(format!("lensbench-figtest-{}-{n}.json", std::process::id()));
+        lensbench_core::vfs::write(&f, proj.to_string()).unwrap();
+        let gd = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/glass");
+        let v = lensbench_engine::preview_layout(
+            &json!({ "file": f.display().to_string(), "glass_dirs": [gd.display().to_string()] }),
+            &json!({}),
+        )
+        .unwrap();
+        lensbench_core::vfs::remove_file(&f).ok();
+        let mut f = Fig {
+            ctx: egui::Context::default(),
+            combo: c,
+            view: View::default(),
+            d: LayoutData::parse(&v),
+            t: 0.0,
+        };
+        f.frame(Vec::new());
+        f
+    }
+
+    /// 1 フレーム回す（図と、レイアウトのパネルと同じく図のキー）
+    fn frame(&mut self, events: Vec<egui::Event>) -> Shot {
+        self.t += 0.05;
+        let modifiers = events
+            .iter()
+            .find_map(|e| match e {
+                egui::Event::Key { modifiers, .. } => Some(*modifiers),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(900.0, 500.0))),
+            time: Some(self.t),
+            modifiers,
+            events,
+            ..Default::default()
+        };
+        let (combo, view, d) = (&mut self.combo, &mut self.view, &self.d);
+        let mut shot = None;
+        let _ = self.ctx.run(raw, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let (rect, resp) =
+                    ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
+                let accent = Color32::from_rgb(10, 120, 250);
+                // レイアウトのパネル（combo::ui）と同じく、図にフォーカスがあるときだけ図のキー
+                if resp.clicked() || resp.drag_started() {
+                    resp.request_focus();
+                }
+                let focused = resp.has_focus();
+                figure(ui, rect, &resp, combo, d, view, accent);
+                if focused {
+                    ui.memory_mut(|m| {
+                        m.set_focus_lock_filter(
+                            resp.id,
+                            egui::EventFilter {
+                                tab: false,
+                                horizontal_arrows: true,
+                                vertical_arrows: true,
+                                escape: true,
+                            },
+                        )
+                    });
+                    keys(ui, combo, view);
+                }
+                let painter = ui.painter_at(rect);
+                let (xf, inner) = xform(ui, rect, &resp, combo, d, view).unwrap();
+                shot = Some(Shot {
+                    sc: scene(&painter, rect, inner, xf, combo, d, view, accent, accent),
+                });
+            });
+        });
+        shot.unwrap()
+    }
+
+    /// クリック（前のクリックと続けてダブルクリックにならないよう間をあける）
+    fn click(&mut self, p: Pos2) {
+        self.t += 1.0;
+        self.frame(vec![egui::Event::PointerMoved(p)]);
+        self.frame(button(p, true));
+        self.frame(button(p, false));
+    }
+
+    fn key(&mut self, key: Key, modifiers: Modifiers) {
+        self.frame(vec![egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }]);
+    }
+
+    fn mid(&self, k: usize) -> Pos2 {
+        self.view.mids[k].unwrap()
+    }
+
+    fn dim_text(&mut self, g: usize) -> Pos2 {
+        let sh = self.frame(Vec::new());
+        sh.sc.dims.iter().find(|d| d.g == g).unwrap().text.center()
+    }
+
+    /// 寸法線の上で数字から離れた所（線の 1/4）
+    fn dim_line(&mut self, g: usize) -> Pos2 {
+        let sh = self.frame(Vec::new());
+        let d = sh.sc.dims.iter().find(|d| d.g == g).unwrap();
+        let p = d.seg[0] + (d.seg[1] - d.seg[0]) / 4.0;
+        assert!(!d.text.expand(4.0).contains(p));
+        p
+    }
+}
+
+fn button(pos: Pos2, pressed: bool) -> Vec<egui::Event> {
+    vec![egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Modifiers::NONE,
+    }]
+}
+
+fn close(a: Option<f64>, b: f64) -> bool {
+    a.is_some_and(|a| (a - b).abs() < 1e-9)
+}
+
+/// クリックで要素・寸法を選ぶ、ダブルクリックで面の表を開く、何も無い所で外す（GPN-29）
+#[test]
+fn click_selects_and_double_click_opens() {
+    let mut f = Fig::new();
+    let m1 = f.mid(1);
+    f.click(m1);
+    assert_eq!((f.view.sel, f.view.dim), (Some(1), None));
+    // 寸法線（数字の外）は選ぶだけ
+    let on_line = f.dim_line(0);
+    f.click(on_line);
+    assert_eq!(
+        (f.view.sel, f.view.dim, f.view.edit.is_none()),
+        (None, Some(0), true)
+    );
+    f.click(Pos2::new(5.0, 5.0));
+    assert_eq!((f.view.sel, f.view.dim), (None, None));
+    // ダブルクリック
+    let m0 = f.mid(0);
+    f.click(m0);
+    f.frame(button(m0, true));
+    f.frame(button(m0, false));
+    assert_eq!((f.view.sel, f.view.open), (Some(0), Some(0)));
+}
+
+/// 寸法の数字をクリックして打ち、Enter で決める。負の値は欄を残し、Esc でやめる（GPN-10・GPN-29）
+#[test]
+fn dim_number_edit() {
+    let mut f = Fig::new();
+    let num = f.dim_text(0);
+    f.click(num);
+    assert_eq!(f.view.edit.as_ref().map(|e| e.0), Some(0));
+    f.frame(Vec::new());
+    f.frame(vec![egui::Event::Text("12.5".into())]);
+    f.key(Key::Enter, Modifiers::NONE);
+    f.frame(Vec::new());
+    assert!(f.view.edit.is_none());
+    assert!(close(gap_get(&f.combo, 0), 12.5));
+    // 負の値: 欄が残り、値は変えない
+    let num = f.dim_text(0);
+    f.click(num);
+    f.frame(Vec::new());
+    f.frame(vec![egui::Event::Text("-1".into())]);
+    f.key(Key::Enter, Modifiers::NONE);
+    f.frame(Vec::new());
+    assert!(f.view.edit.is_some());
+    assert!(close(gap_get(&f.combo, 0), 12.5));
+    f.key(Key::Escape, Modifiers::NONE);
+    f.frame(Vec::new());
+    f.frame(Vec::new());
+    assert!(f.view.edit.is_none());
+    assert!(close(gap_get(&f.combo, 0), 12.5));
+}
+
+/// 要素を光軸に沿ってドラッグすると前の間隔が増え後の間隔が減る（合計は変わらない）
+#[test]
+fn drag_moves_along_axis() {
+    let mut f = Fig::new();
+    let (g0, g1) = (f.combo.stop_gap, gap_get(&f.combo, 0).unwrap());
+    let p = f.mid(0);
+    f.frame(vec![egui::Event::PointerMoved(p)]);
+    f.frame(button(p, true));
+    for x in [10.0, 20.0, 30.0] {
+        f.frame(vec![egui::Event::PointerMoved(p + egui::vec2(x, 0.0))]);
+    }
+    f.frame(button(p + egui::vec2(30.0, 0.0), false));
+    assert_eq!(f.view.sel, Some(0));
+    let (a, b) = (f.combo.stop_gap, gap_get(&f.combo, 0).unwrap());
+    assert!(a > g0 + 0.1, "{g0} → {a}");
+    assert!(((a - g0) + (b - g1)).abs() < 1e-9, "{a} {b}");
+    assert!(f.view.drag0.is_none());
+}
+
+/// 図のキー: [ ] で選ぶ、矢印で動かす（Ctrl は 1、Alt は 0.01）、↑ で偏心・Shift+↑ で傾き、
+/// 寸法は ← → で変える・Enter で書き換え、Ctrl+L・R・Delete（GPN-29）
+#[test]
+fn figure_keys() {
+    let mut f = Fig::new();
+    let none = Modifiers::NONE;
+    // 図にフォーカスが無いとキーは効かない
+    f.key(Key::CloseBracket, none);
+    assert_eq!(f.view.sel, None);
+    f.click(Pos2::new(5.0, 5.0));
+    f.key(Key::CloseBracket, none);
+    assert_eq!(f.view.sel, Some(0));
+    f.key(Key::CloseBracket, none);
+    f.key(Key::CloseBracket, none);
+    assert_eq!(f.view.sel, Some(0));
+    f.key(Key::OpenBracket, none);
+    assert_eq!(f.view.sel, Some(1));
+    let g0 = gap_get(&f.combo, 0).unwrap();
+    f.key(Key::ArrowRight, none);
+    assert!(close(gap_get(&f.combo, 0), g0 + 0.1));
+    f.key(Key::ArrowLeft, Modifiers::COMMAND);
+    assert!(close(gap_get(&f.combo, 0), g0 - 0.9));
+    f.key(Key::ArrowRight, Modifiers::ALT);
+    assert!(close(gap_get(&f.combo, 0), g0 - 0.89));
+    f.key(Key::ArrowUp, none);
+    assert!((f.combo.picks[1].decenter[1] - 0.1).abs() < 1e-9);
+    f.key(Key::ArrowUp, Modifiers::SHIFT);
+    assert!((f.combo.picks[1].tilt[0] - 1.0).abs() < 1e-9);
+    f.key(Key::R, none);
+    assert!(f.combo.picks[1].reversed);
+    // ロックした要素は裏返さない（動かすのはできる）
+    f.key(Key::L, Modifiers::COMMAND);
+    assert!(f.combo.picks[1].locked);
+    f.key(Key::R, none);
+    assert!(f.combo.picks[1].reversed);
+    f.key(Key::L, Modifiers::COMMAND);
+    f.key(Key::Escape, none);
+    assert_eq!(f.view.sel, None);
+    // 寸法: 線をクリックして選び、→ で広げる、Enter でその場の書き換え
+    let on_line = f.dim_line(1);
+    f.click(on_line);
+    assert_eq!(f.view.dim, Some(1));
+    let v = gap_get(&f.combo, 1).unwrap();
+    f.key(Key::ArrowRight, none);
+    assert!(close(gap_get(&f.combo, 1), v + 0.1));
+    f.key(Key::Enter, none);
+    assert_eq!(f.view.edit.as_ref().map(|e| e.0), Some(1));
+    f.frame(Vec::new());
+    f.key(Key::Escape, none);
+    f.frame(Vec::new());
+    assert!(f.view.edit.is_none());
+    // 図にフォーカスを戻して Delete で外す
+    f.click(Pos2::new(5.0, 5.0));
+    f.key(Key::CloseBracket, none);
+    f.key(Key::Delete, none);
+    assert_eq!((f.combo.len(), f.view.sel), (1, None));
+}
