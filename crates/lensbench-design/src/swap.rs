@@ -488,7 +488,7 @@ impl<'a> SwapSearch<'a> {
                     )
                 } else {
                     format!(
-                        "所 {}: 候補がない（カタログ {} 品のうち、条件に合う品が 0）",
+                        "slot {}: no candidates (0 of the {} catalog items match the conditions)",
                         sl.block,
                         cat.len()
                     )
@@ -838,7 +838,7 @@ impl<'a> SwapSearch<'a> {
                         best = Some((k, pr, r));
                     }
                 }
-                Ok(_) => last_err = Some("評価関数が有限でない".to_string()),
+                Ok(_) => last_err = Some("the merit function is not finite".to_string()),
                 Err(e) => last_err = Some(e.to_string()),
             }
         }

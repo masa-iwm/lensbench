@@ -72,7 +72,13 @@ pub(crate) fn coat_model(
         for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
             // 同じ KEY は後の表で置き換える（渡す順で結果が変わらないように、混ぜない）
             if let Some(i) = all.iter().position(|(a, _): &(String, _)| *a == k) {
-                eprintln!("warning: {k}: {} の表で置き換えた", t.display());
+                eprintln!(
+                    "{}",
+                    lensbench_core::i18n::tr(&format!(
+                        "warning: {k}: replaced with the table in {}",
+                        t.display()
+                    ))
+                );
                 all.remove(i);
             }
             all.push((k, m));
@@ -105,7 +111,10 @@ pub(crate) fn coat_model(
         let r = match fit_model(&t, &opt) {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("warning: {c}: 飛ばした（{e}）");
+                eprintln!(
+                    "{}",
+                    lensbench_core::i18n::tr(&format!("warning: {c}: skipped ({e})"))
+                );
                 rep.push(json!({ "coat": c, "skipped": e.to_string() }));
                 continue;
             }
@@ -125,14 +134,14 @@ pub(crate) fn coat_model(
             })
             .collect();
         if !unmeasured.is_empty() {
-            eprintln!("warning: {c}: 折れ目 {unmeasured:?} um の波長で測っていない（その付近は外挿になる）");
+            eprintln!("{}", lensbench_core::i18n::tr(&format!("warning: {c}: not measured at the kink wavelengths {unmeasured:?} um (extrapolated near them)")));
         }
         let coarse = r.wave_gap > r.wave_gap_needed;
         if coarse {
-            eprintln!(
-                "warning: {c}: 波長の格子が粗い（波数の間隔 {:.4} > 目安 {:.4} [1/um]）。波長の間で係数がずれる",
-                r.wave_gap, r.wave_gap_needed
-            );
+            let (gap, need) = (r.wave_gap, r.wave_gap_needed);
+            eprintln!("{}", lensbench_core::i18n::tr(&format!(
+                "warning: {c}: the wavelength grid is coarse (wavenumber step {gap:.4} > guide {need:.4} [1/um]); coefficients shift between wavelengths"
+            )));
         }
         rep.push(json!({
             "coat": c,

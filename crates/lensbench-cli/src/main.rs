@@ -747,10 +747,10 @@ fn print_out(json_out: bool, out: &Value) {
         print_text(&mut w, &brief(&tolerance_brief(out)), 0)
     };
     // 読み手が先に閉じた（`| head` など）ときは黙って終える
-    if let Err(e) = r.and_then(|_| w.flush()) {
-        if e.kind() != std::io::ErrorKind::BrokenPipe {
-            eprintln!("lensbench: 出力: {e}");
-        }
+    let e = r.and_then(|_| w.flush()).err();
+    if let Some(e) = e.filter(|e| e.kind() != std::io::ErrorKind::BrokenPipe) {
+        let m = format!("lensbench: output: {e}");
+        eprintln!("{}", lensbench_core::i18n::tr(&m));
     }
 }
 
@@ -829,7 +829,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             for k in ["warnings", "notes"] {
                 for w in out[k].as_array().into_iter().flatten() {
                     if let Some(w) = w.as_str() {
-                        eprintln!("注意: {w}");
+                        eprintln!("{}", lensbench_core::i18n::warning(w));
                     }
                 }
             }
@@ -1083,7 +1083,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .map(|(q, v)| json!({ "name": s.param_name(v.param), "x0": r.x0[q], "x": r.x[q], "inactive": r.inactive.contains(&q) }))
                 .collect();
             if let Some(n) = &r.note {
-                eprintln!("注意: {n}");
+                eprintln!("{}", lensbench_core::i18n::warning(n));
             }
             // 足した項の値（最適化の前と後）
             let tv0 = p.term_values(&r.x0).map_err(e)?;
@@ -1667,6 +1667,6 @@ pub fn main() -> ExitCode {
 /// .zmx に書けなかったもの（[`zmx_write::write_notes`]）を標準エラーに出す
 fn warn_notes(notes: Vec<String>) {
     for n in notes {
-        eprintln!("注意: {n}");
+        eprintln!("{}", lensbench_core::i18n::warning(n));
     }
 }

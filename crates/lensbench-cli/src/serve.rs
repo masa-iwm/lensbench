@@ -200,7 +200,7 @@ pub(crate) fn read_msg(
             return Ok(None);
         }
         if line.last() != Some(&b'\n') && line.len() as u64 >= HEAD_MAX {
-            let e = format!("ヘッダの行が {HEAD_MAX} バイトを超えた");
+            let e = format!("a header line is longer than {HEAD_MAX} bytes");
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, e));
         }
         if line.iter().any(|c| !c.is_ascii_whitespace()) {
@@ -347,7 +347,10 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
             let r = BufReader::with_capacity(1 << 16, r);
             let w = BufWriter::with_capacity(1 << 16, w);
             if let Err(e) = connection(&sess, r, w, &*f, threads, limit) {
-                eprintln!("lensbench serve: 接続: {e}");
+                eprintln!(
+                    "{}",
+                    lensbench_core::i18n::tr(&format!("lensbench serve: connection: {e}"))
+                );
             }
         });
     }
@@ -369,7 +372,10 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
                 let sess = sess.clone();
                 std::thread::spawn(move || {
                     if let Err(e) = tcp_connection(&sess, c, threads, limit) {
-                        eprintln!("lensbench serve: 接続: {e}");
+                        eprintln!(
+                            "{}",
+                            lensbench_core::i18n::tr(&format!("lensbench serve: connection: {e}"))
+                        );
                     }
                 });
             }

@@ -321,7 +321,7 @@ fn interference_like_cli() {
     let got = c.call("analyze", params.clone());
     let notes = got["notes"].as_array().unwrap();
     assert_eq!(notes.len(), 1, "{notes:?}");
-    assert!(notes[0].as_str().unwrap().contains("構成 2"));
+    assert!(notes[0].as_str().unwrap().contains("configuration 2"));
     // 同じ値をファイルに書いた系の CLI と同じ（構成 1 の値だけ変わる）
     let f2 = d.join("two_cfg_changed.zmx");
     std::fs::write(&f2, TWO_CFG.replace("THIC 1 1 100.3", "THIC 1 1 100.5")).unwrap();

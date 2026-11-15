@@ -295,7 +295,9 @@ fn without_vig(s: &System) -> (std::borrow::Cow<'_, System>, Option<String>) {
     }
     (
         std::borrow::Cow::Owned(c),
-        Some("ケラレ係数は使わない（視野の掃引では OpticStudio と同じく無視）".into()),
+        Some(
+            "vignetting factors are not used (ignored in a field sweep, as in OpticStudio)".into(),
+        ),
     )
 }
 

@@ -149,7 +149,7 @@ impl Raw {
                         notimpl!("pupil apodization (GFAC {})", joined.join(" "));
                     }
                     out.push(format!(
-                        ".zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログの玉として読むので使わない",
+                        ".zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses",
                         joined.join(" / ")
                     ));
                 }
@@ -160,13 +160,13 @@ impl Raw {
                     continue;
                 }
                 out.push(format!(
-                    ".zmx の系の行 {k} {}（既定 {d} と違うが、lensbench は読まない）",
+                    ".zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)",
                     joined.join(" / ")
                 ));
                 continue;
             }
             out.push(format!(
-                ".zmx の系の行 {k} {} を読まずに飛ばした",
+                ".zmx system line {k} {} was skipped",
                 joined.join(" / ")
             ));
         }
@@ -419,7 +419,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "MEMA" => s.mema = true,
             k if HARMLESS.contains(&k) => {}
             k if legacy => raw.notes.push(format!(
-                "zmx の面 {}: 行 {k} を読まずに飛ばした（字下げのない古い .zmx）",
+                "zmx surface {}: line {k} was skipped (an old .zmx without indentation)",
                 s.n
             )),
             k => notimpl!("zmx surface {}: line {} is not supported", s.n, k),
@@ -1632,7 +1632,7 @@ pub fn build(
                 s.changed()?;
             }
             Err(why) => s.import_notes.push(format!(
-                "多重構成は構成 {cfg}（全 {ncfg}）だけを読んだ（{why} が多重構成の表で表せない）"
+                "only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)"
             )),
         }
     }
@@ -1674,7 +1674,7 @@ pub fn build(
                     _ => unreachable!(),
                 };
                 s.macro_notes.push(format!(
-                    "面 {} のマクロのソルブ {name} を外して、保存された値で固定した: 解き直せない（{e}）",
+                    "removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
                     q.surf
                 ));
             }
@@ -1682,9 +1682,9 @@ pub fn build(
             for q in &s.macro_parms {
                 let name = s.macros[q.id as usize].name.clone();
                 s.macro_notes.push(format!(
-                    "面 {} の{}のマクロのソルブ {name} を外して、保存された値で固定した: 解き直せない（{e}）",
+                    "removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
                     q.surf,
-                    q.col.label(q.parm)
+                    what = q.col.label(q.parm)
                 ));
             }
             s.macro_parms.clear();
@@ -1720,16 +1720,16 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                 .iter()
                 .map(|(p, n)| (T::Col(MacroCol::Parm, *p), n)),
         );
-        for (what, name) in todo {
-            let col = match &what {
-                T::Curv => "曲率".to_string(),
-                T::Thick => "厚さ".to_string(),
+        for (t, name) in todo {
+            let what = match &t {
+                T::Curv => "curvature".to_string(),
+                T::Thick => "thickness".to_string(),
                 T::Col(c, p) => c.label(*p),
             };
             let got = crate::zpl_solve::find_macro(name, &dirs).and_then(|m| {
-                if let T::Col(c, p) = &what {
+                if let T::Col(c, p) = &t {
                     if crate::param::pick_get(&s.surfaces[k], c.pick(*p)).is_none() {
-                        notimpl!("surface type {:?} {col}", s.surfaces[k].typ);
+                        notimpl!("surface type {:?} {what}", s.surfaces[k].typ);
                     }
                 }
                 s.run_macro(&m, k)?;
@@ -1748,11 +1748,11 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                             s.macros.len() - 1
                         }
                     } as u16;
-                    match what {
+                    match t {
                         T::Curv | T::Thick => s.solves.push(ThickSolve {
                             surf: k,
                             height: 0.0,
-                            kind: if matches!(what, T::Curv) {
+                            kind: if matches!(t, T::Curv) {
                                 SolveKind::MacroCurv(id)
                             } else {
                                 SolveKind::MacroThick(id)
@@ -1767,7 +1767,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                     }
                 }
                 Err(e) => s.macro_notes.push(format!(
-                    "面 {k} の{col}のマクロのソルブ {name} を外して、保存された値で固定した: {e}"
+                    "removed the {what} macro solve {name} of surface {k} and fixed the saved value: {e}"
                 )),
             }
         }

@@ -95,7 +95,7 @@ fn passes_settings_and_returns_the_exit_code() {
     let log = std::fs::read_to_string(d.join("res/run.log")).unwrap();
     assert!(log.contains("] out {\"args\""), "{log}");
     assert!(log.contains("] err lensbench:progress 1/2 half"), "{log}");
-    assert!(log.contains("終了コード 7"), "{log}");
+    assert!(log.contains("exit code 7"), "{log}");
     let err = String::from_utf8_lossy(&o.stderr);
     assert!(err.contains("lensbench:progress 1/2 half"), "{err}");
 }
@@ -157,7 +157,7 @@ fn missing_python_or_script_fails_with_a_clear_code() {
     std::fs::write(d.join("s.py"), "print(1)").unwrap();
     let o = lb(&d, &["run", "--python", "no-such-python-lensbench", "s.py"]);
     assert_eq!(o.status.code(), Some(127));
-    assert!(String::from_utf8_lossy(&o.stderr).contains("Python を起動できない"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("can't start Python"));
     let o = lb(&d, &["run", "no-such-script.py"]);
     assert_eq!(o.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&o.stderr).contains("no script"));

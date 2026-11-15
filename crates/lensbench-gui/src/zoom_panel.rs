@@ -433,7 +433,7 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
         .chain(r["notes"].as_array().into_iter().flatten())
     {
         ui.label(
-            RichText::new(w.as_str().unwrap_or_default())
+            RichText::new(lensbench_core::i18n::tr(w.as_str().unwrap_or_default()))
                 .small()
                 .color(weak),
         );

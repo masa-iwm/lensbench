@@ -181,7 +181,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             // 品はプロジェクトファイルの中身から作る（展開した系への set・edit はブロックへ戻せない）
             if !sess.current_log().is_empty() {
                 out["notes"] = json!([
-                    "読み込んだ後の変更（set・edit）は品に入らない（品はプロジェクトファイルから作る。変更を入れるには先に保存して読み直す）"
+                    "changes after loading (set, edit) are not in the item (items are made from the project file; save and reload first to include them)"
                 ]);
             }
             Ok(out)

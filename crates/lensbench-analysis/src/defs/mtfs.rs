@@ -227,7 +227,11 @@ impl Analysis for MtfFocus {
                     });
                 }
             }
-            warn.extend(m.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
+            warn.extend(
+                m.warnings
+                    .iter()
+                    .map(|x| format!("field {}: {e}", i + 1, e = x)),
+            );
         }
         Ok(MtfFocusOut {
             unit: freq_unit(s),

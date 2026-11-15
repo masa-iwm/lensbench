@@ -836,7 +836,7 @@ impl FillWin {
         );
         if let Some(n) = r.raw["notes"].as_array() {
             for x in n.iter().filter_map(Value::as_str) {
-                ui.weak(x);
+                ui.weak(lensbench_core::i18n::tr(x));
             }
         }
         ui.horizontal_wrapped(|ui| {

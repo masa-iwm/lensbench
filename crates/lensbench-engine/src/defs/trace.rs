@@ -349,13 +349,13 @@ impl Analysis for Pop {
         let mut warnings = Vec::new();
         if r.kernel_step > PI / 2.0 {
             warnings.push(format!(
-                "核の位相の標本の間の差が {:.2} rad（π/2 超え）。n を増やすか half・out_half を狭める",
+                "the kernel phase changes by {:.2} rad between samples (more than π/2); increase n or narrow half and out_half",
                 r.kernel_step
             ));
         }
         if r.fresnel_error > 0.01 && r.method == pop::PopMethod::Fresnel {
             warnings.push(format!(
-                "Fresnel 近似で落とす位相が {:.2} rad。method direct を使う",
+                "the Fresnel approximation drops {:.2} rad of phase; use method direct",
                 r.fresnel_error
             ));
         }

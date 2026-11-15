@@ -233,7 +233,7 @@ fn self_referencing_macro_is_dropped() {
     assert!(s.solves.iter().all(|q| q.surf != 2));
     let w = s.macro_warnings();
     assert!(
-        w.len() == 1 && w[0].contains("LB_GROW") && w[0].contains("解き直せない"),
+        w.len() == 1 && w[0].contains("LB_GROW") && w[0].contains("can't solve it again"),
         "{w:?}"
     );
     let _ = std::fs::remove_dir_all(&d);

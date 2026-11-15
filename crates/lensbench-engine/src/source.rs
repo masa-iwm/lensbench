@@ -85,10 +85,10 @@ impl lensbench_analysis::Source for FileSource<'_> {
             None => Ok(s),
             Some(r) => {
                 let label = match &v.beam {
-                    Some(b) if project => format!("状態 {b}"),
-                    Some(b) => format!("構成 {b}"),
-                    None if project => format!("状態 {}", c.state.as_deref().unwrap_or("既定")),
-                    None => format!("構成 {cfg}"),
+                    Some(b) if project => format!("state {b}"),
+                    Some(b) => format!("configuration {b}"),
+                    None if project => format!("state {}", c.state.as_deref().unwrap_or("default")),
+                    None => format!("configuration {cfg}"),
                 };
                 r(s, &label, notes).map_err(invalid)
             }

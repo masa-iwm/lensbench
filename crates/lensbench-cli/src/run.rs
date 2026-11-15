@@ -336,7 +336,7 @@ pub fn run_script(
                 child = Some((ch, cand.join(" ")));
                 break;
             }
-            Err(e) => tried.push(format!("{}（{e}）", cand.join(" "))),
+            Err(e) => tried.push(format!("{} ({e})", cand.join(" "))),
         }
     }
     let Some((mut child, py)) = child else {
@@ -344,28 +344,13 @@ pub fn run_script(
             Stream::Runner,
             0.0,
             &format!(
-                "lensbench run: Python を起動できない: {}。--python か環境変数 LENSBENCH_PYTHON で指定する",
-                tried.join("、")
+                "lensbench run: can't start Python: {}. Set it with --python or the environment variable LENSBENCH_PYTHON",
+                tried.join(", ")
             ),
         );
         return Ok(NO_PYTHON);
     };
-    on_line(
-        Stream::Runner,
-        0.0,
-        &format!(
-            "lensbench run: {}{}（Python: {py}{}{}）",
-            a.script.display(),
-            a.args.iter().map(|x| format!(" {x}")).collect::<String>(),
-            r.threads
-                .map(|n| format!("、スレッド {n}"))
-                .unwrap_or_default(),
-            r.out
-                .as_ref()
-                .map(|o| format!("、出力 {}", o.display()))
-                .unwrap_or_default(),
-        ),
-    );
+    on_line(Stream::Runner, 0.0, &run_header(a, r, &py));
     let (tx, rx) = mpsc::channel::<(Stream, String)>();
     let pump = |src: Box<dyn Read + Send>, s: Stream, tx: mpsc::Sender<(Stream, String)>| {
         std::thread::spawn(move || {
@@ -413,18 +398,34 @@ pub fn run_script(
         on_line(
             Stream::Runner,
             t0.elapsed().as_secs_f64(),
-            &format!("lensbench run: この Python（{py}）に lensbench が入っていない。pip install で wheel を入れるか、--python で入っている Python を指す"),
+            &format!("lensbench run: lensbench is not installed in this Python ({py}). Install the wheel with pip install, or point --python at a Python that has it"),
         );
     }
     on_line(
         Stream::Runner,
         t0.elapsed().as_secs_f64(),
         &format!(
-            "lensbench run: 終了コード {code}（{:.2} s）",
+            "lensbench run: exit code {code} ({:.2} s)",
             t0.elapsed().as_secs_f64()
         ),
     );
     Ok(code)
+}
+
+/// 始めの行（スクリプト・引数・Python・スレッド数・出力。表示の言語に訳せるよう、組み合わせごとに 1 つの文）
+fn run_header(a: &RunArgs, r: &Resolved, py: &str) -> String {
+    let cmd = std::iter::once(a.script.display().to_string())
+        .chain(a.args.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    match (r.threads, r.out.as_ref().map(|o| o.display())) {
+        (None, None) => format!("lensbench run: {cmd} (Python: {py})"),
+        (Some(n), None) => format!("lensbench run: {cmd} (Python: {py}, threads {n})"),
+        (None, Some(o)) => format!("lensbench run: {cmd} (Python: {py}, output {o})"),
+        (Some(n), Some(o)) => {
+            format!("lensbench run: {cmd} (Python: {py}, threads {n}, output {o})")
+        }
+    }
 }
 
 /// 終了コード。シグナルで止まった（unix）なら 128 + シグナルの番号、ほかに値がなければ 1
@@ -465,8 +466,12 @@ pub fn run(a: &RunArgs, threads: Option<usize>) -> Result<i32, String> {
             Stream::Stdout => {
                 let _ = writeln!(stdout.lock(), "{line}");
             }
-            Stream::Stderr | Stream::Runner => {
+            Stream::Stderr => {
                 let _ = writeln!(stderr.lock(), "{line}");
+            }
+            // lensbench run 自身の行は表示の言語に（記録は英語のまま）
+            Stream::Runner => {
+                let _ = writeln!(stderr.lock(), "{}", lensbench_core::i18n::tr(line));
             }
         }
         if let Some(f) = log.as_mut() {

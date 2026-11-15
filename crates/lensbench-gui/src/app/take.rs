@@ -316,7 +316,7 @@ impl Core {
                     .as_array()
                     .map(|a| {
                         a.iter()
-                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .filter_map(|x| x.as_str().map(lensbench_core::i18n::tr))
                             .collect()
                     })
                     .unwrap_or_default();

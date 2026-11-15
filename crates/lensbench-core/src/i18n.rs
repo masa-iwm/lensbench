@@ -313,6 +313,11 @@ pub fn tr(s: &str) -> String {
     }
 }
 
+/// A warning line for the terminal: "warning: …" in English, "注意: …" (translated) in Japanese
+pub fn warning(w: impl AsRef<str>) -> String {
+    tr(&format!("warning: {e}", e = w.as_ref()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +369,20 @@ mod tests {
         assert_eq!(
             translate("surface 3 can't be written (1 to 9)"),
             "面 3 は書けない（1〜9）"
+        );
+        // 注意の行: 「注意: 」を付け、中の文も訳す
+        assert_eq!(
+            translate("warning: removed multi-configuration row 3.t"),
+            "注意: 多重構成の行 3.t を外した"
+        );
+        // 札（{what}）も訳す: 「state 2」→「状態 2」
+        assert!(translate(
+            "state 2: 7.t differs from the loaded system (1, loaded system 2), so set is not applied"
+        )
+        .starts_with("状態 2: 7.t は"));
+        assert_eq!(
+            translate("lensbench run: a.py (Python: python3, threads 4)"),
+            "lensbench run: a.py（Python: python3、スレッド 4）"
         );
         // 空の一覧の括弧「()」は空の欄に当てる
         assert_eq!(translate("no state nosuch ()"), "状態 nosuch はない（）");

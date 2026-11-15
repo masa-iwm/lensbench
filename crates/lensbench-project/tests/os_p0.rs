@@ -46,7 +46,9 @@ fn expansion_keeps_the_pickups_and_the_solve_inside_the_range() {
     let (s, warn) = expanded();
     // 面 3 の曲率（元は面 2）と面 4 の厚さ（元は面 1）は範囲の外からなので値で固定
     assert_eq!(
-        warn.iter().filter(|w| w.contains("範囲の外")).count(),
+        warn.iter()
+            .filter(|w| w.contains("outside the range"))
+            .count(),
         2,
         "{warn:?}"
     );

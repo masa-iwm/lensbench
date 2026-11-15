@@ -897,7 +897,7 @@ impl System {
             for &l in &self.wavelengths {
                 if (l < lo || l > hi) && seen.insert((d.mat.clone(), l.to_bits())) {
                     out.push(format!(
-                        "面 {k} の材料 {}（{}）: 波長 {l} µm が分散式の範囲 {lo}〜{hi} µm の外（式を延ばして計算）",
+                        "surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)",
                         d.mat, g.catalog
                     ));
                 }
@@ -1033,19 +1033,19 @@ impl System {
     /// エラーに添える面の名札: 「面 j(種類, 材料, 膜 名前, 「コメント」)」。空の項は省く
     pub fn surf_label(&self, j: usize) -> String {
         let Some(d) = self.surfaces.get(j) else {
-            return format!("面 {j}");
+            return format!("surface {j}");
         };
         let mut parts = vec![crate::edit::surf_type_name(d.typ).to_string()];
         if !d.mat.is_empty() && d.mat != "-" {
             parts.push(d.mat.clone());
         }
         if !d.coat.is_empty() {
-            parts.push(format!("膜 {}", d.coat));
+            parts.push(format!("coating {}", d.coat));
         }
         if !d.comment.is_empty() {
             parts.push(format!("「{}」", d.comment));
         }
-        format!("面 {j}({})", parts.join(", "))
+        format!("surface {j}({})", parts.join(", "))
     }
 
     pub fn image(&self) -> usize {

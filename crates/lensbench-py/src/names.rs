@@ -42,7 +42,7 @@ pub(crate) fn warn_all(py: Python<'_>, warn: &[String]) -> PyResult<()> {
     }
     let w = py.import("warnings")?;
     for m in warn {
-        w.call_method1("warn", (m.as_str(),))?;
+        w.call_method1("warn", (lensbench_core::i18n::tr(m),))?;
     }
     Ok(())
 }

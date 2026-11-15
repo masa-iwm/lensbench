@@ -134,7 +134,7 @@ fn measured_tables_are_used_for_unknown_coatings() {
     // 表がなければ止める。エラーには面の番号・種類・材料・膜の名前が入る
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c);
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
-    let label = format!("面 {j}(STANDARD, {}, 膜 ZEC1)", s.surfaces[j].mat);
+    let label = format!("surface {j}(STANDARD, {}, coating ZEC1)", s.surfaces[j].mat);
     assert_eq!(s.surf_label(j), label);
     assert!(r.unwrap_err().to_string().contains(&label));
     let key = format!("ZEC1|AIR|{}", s.surfaces[j].mat);
@@ -272,7 +272,7 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     // 光線ごとのエラーにも面の名札が付く
     let m = r.unwrap_err().to_string();
     assert!(
-        m.contains(&format!("面 {j}(STANDARD, ")) && m.contains("膜 ZEC1"),
+        m.contains(&format!("surface {j}(STANDARD, ")) && m.contains("coating ZEC1"),
         "{m}"
     );
 }

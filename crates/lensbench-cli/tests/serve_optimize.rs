@@ -130,7 +130,7 @@ fn optimize_does_not_block_and_skips_stale_apply() {
         if r["applied"] == json!(false) {
             // 当てなかった: 後から入れた値が残り、注意が付く
             assert_eq!(now, json!(v));
-            assert!(r["notes"].to_string().contains("系が変わった"), "{r}");
+            assert!(r["notes"].to_string().contains("system changed"), "{r}");
             skipped = true;
             break;
         }

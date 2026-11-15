@@ -348,12 +348,9 @@ fn run_batch<'py>(
         } else if show {
             let pc = 100.0 * p.done as f64 / p.total.max(1) as f64;
             let eta = p.eta.map(fmt_s).unwrap_or_else(|| "?".into());
-            eprintln!(
-                "lensbench: {}/{} ({pc:.1}%) 経過 {} 残り {eta}",
-                p.done,
-                p.total,
-                fmt_s(p.elapsed)
-            );
+            let (done, total, el) = (p.done, p.total, fmt_s(p.elapsed));
+            let line = format!("lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}");
+            eprintln!("{}", lensbench_core::i18n::tr(&line));
         }
     };
     let task = |i: usize, s: u64| -> lensbench_core::Result<String> {

@@ -252,7 +252,7 @@ pub fn from_str(txt: &str) -> Result<(System, Meta, Vec<String>), String> {
     let hash_sys = system_hash(&sys)?;
     if !hash.is_empty() && hash != hash_now && hash != hash_sys {
         warn.push(format!(
-            "系ファイルの hash が中身と合わない（書いた後に直した？ 記録 {hash}、今 {hash_sys}）"
+            "the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})"
         ));
     }
     let coatings = match o.get("coatings") {

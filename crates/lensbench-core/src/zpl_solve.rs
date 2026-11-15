@@ -455,9 +455,9 @@ impl MacroCol {
     /// 列の名前（警告用）
     pub fn label(self, parm: u8) -> String {
         match self {
-            MacroCol::Parm => format!("パラメータ {parm}"),
-            MacroCol::Conic => "円錐係数".into(),
-            MacroCol::Semi => "半直径".into(),
+            MacroCol::Parm => format!("parameter {parm}"),
+            MacroCol::Conic => "conic".into(),
+            MacroCol::Semi => "semi-diameter".into(),
         }
     }
 }

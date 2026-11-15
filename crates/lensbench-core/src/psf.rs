@@ -105,12 +105,12 @@ pub fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64) -> Vec
     let mut w = Vec::new();
     if step > PHASE_STEP_WARN {
         w.push(format!(
-            "{what}: 瞳の隣り合う標本の位相差が最大 {step:.2} rad（瞳の格子 {np}）。π/2 を超えると値が瞳の格子で変わる（瞳の格子を増やす）"
+            "{what}: the phase changes by up to {step:.2} rad between neighboring pupil samples (pupil grid {np}); above π/2 the value depends on the pupil grid (increase the pupil grid)"
         ));
     }
     if enclosed < ENCLOSED_WARN {
         w.push(format!(
-            "{what}: 像の格子に入った光量が全体の {:.1} %。格子が PSF を覆えていない（像の格子・間隔を増やす）",
+            "{what}: the image grid holds {:.1} % of the light; the grid does not cover the PSF (increase the image grid or spacing)",
             enclosed * 100.0
         ));
     }

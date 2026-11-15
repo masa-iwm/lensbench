@@ -655,7 +655,7 @@ fn write_notes_list_dropped_items() {
     assert!(
         notes
             .iter()
-            .any(|n| n.contains("曲率半径") && n.contains("面 3")),
+            .any(|n| n.contains("radius of curvature") && n.contains("surface 3")),
         "{notes:?}"
     );
     s.floating_clip = false;

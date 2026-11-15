@@ -43,7 +43,7 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
         },
     )?;
     for w in o.warnings {
-        eprintln!("注意: {w}");
+        eprintln!("{}", lensbench_core::i18n::warning(&w));
     }
     Ok(o.system)
 }
@@ -58,7 +58,7 @@ pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
         .chain(s.macro_warnings())
         .chain(s.import_notes.iter().cloned())
     {
-        eprintln!("注意: {w}");
+        eprintln!("{}", lensbench_core::i18n::warning(&w));
     }
     crate::provenance::set(&s);
     Ok(s)
@@ -200,7 +200,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
                     None => x,
                 })?;
             for w in warn {
-                eprintln!("注意: {w}");
+                eprintln!("{}", lensbench_core::i18n::warning(&w));
             }
             let mut name: Vec<&str> = Vec::new();
             if l.states.is_some() {
@@ -306,7 +306,7 @@ pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> Result<CoatInterfaces,
         let note = match c.models.get(coat) {
             Some(m) => m.note.clone(),
             None if p.to_ascii_lowercase().ends_with(".lbcs") => {
-                "近似の膜（分光の曲線に合わせた多層膜）".to_string()
+                "approximate coating (a multilayer fitted to the spectral curve)".to_string()
             }
             None => String::new(),
         };

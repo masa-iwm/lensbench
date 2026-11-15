@@ -601,7 +601,7 @@ pub(crate) fn expand_inner(
             || (off_ref && *adj != e.adjust_index)
         {
             warn.push(format!(
-                "{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違う。屈折率はプロジェクトの環境で計算する（environment で変える）",
+                "{path}: the .zmx environment ({t} °C, {pr} atm) differs from the project environment ({} °C, {} atm); indices are computed in the project environment (change it with environment)",
                 e.temperature_c, e.pressure_atm
             ));
         }
@@ -764,12 +764,16 @@ pub(crate) fn place_mechanics(
                 (Some(a), Some(b)) => {
                     if a.thread != b.thread || a.male == b.male {
                         let kind = |t: &ThreadEnd| {
-                            format!("{} の{}", t.thread, if t.male { "オス" } else { "メス" })
+                            if t.male {
+                                format!("{} male", t.thread)
+                            } else {
+                                format!("{} female", t.thread)
+                            }
                         };
                         warn.push(format!(
-                            "{tag}: {prev_name} の後ろの端（{}）と、{name} の前の端（{}）のねじが合わない",
-                            kind(a),
-                            kind(b)
+                            "{tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match",
+                            why = kind(a),
+                            hint = kind(b)
                         ));
                         0.0
                     } else if b.male {
@@ -800,7 +804,7 @@ pub(crate) fn place_mechanics(
                     Some(x) => part0.holds.extend(
                         (x.1 + 1..=x.2 + 1).filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk),
                     ),
-                    None => warn.push(format!("{tag}: holds のブロック {b} が無い")),
+                    None => warn.push(format!("{tag}: no block {b} for holds")),
                 }
             }
             part0.step = step_file;
@@ -869,7 +873,7 @@ pub(crate) fn place_mechanics(
                 Some(x) => part.holds.extend(
                     (x.1 + 1..=x.2 + 1).filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk),
                 ),
-                None => warn.push(format!("{tag}: holds のブロック {b} が無い")),
+                None => warn.push(format!("{tag}: no block {b} for holds")),
             }
         }
         part.step = step_file;
@@ -889,7 +893,7 @@ pub(crate) fn place_frames(
 ) -> Vec<lensbench_core::mech::MechPart> {
     let mut out = Vec::new();
     for (name, f, a, b) in frames {
-        let tag = format!("{name} の枠");
+        let tag = format!("{name} mount");
         if let Err(e) = f.validate() {
             warn.push(format!("{tag}: {e} (not placed)"));
             continue;
@@ -958,7 +962,7 @@ pub(crate) fn apply_surface_ops(
         match e {
             Some(e) => out.push(e),
             None => warn.push(format!(
-                "surface_ops {}: ブロック {} が無いので {} を当てない",
+                "surface_ops {}: block {} not found, so {} is not applied",
                 k + 1,
                 missing.unwrap_or_default(),
                 op.name()
@@ -1009,7 +1013,7 @@ pub(crate) fn apply_surface_edits(
             .collect();
         let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
             warn.push(format!(
-                "surface_edits: ブロック {} が無いので面 {} の上書きを当てない",
+                "surface_edits: block {} not found, so the override of surface {} is not applied",
                 e.block, e.surface
             ));
             continue;
@@ -1165,7 +1169,7 @@ pub(crate) fn keep_pickups(
             };
             let Some(&src) = src else {
                 warn.push(format!(
-                    "{path}: 面 {} の {:?} は範囲の外の面 {} からのピックアップ（値で固定）",
+                    "{path}: surface {} {:?} is a pickup from surface {} outside the range (fixed to the value)",
                     q.dst, q.what, q.src
                 ));
                 continue;
@@ -1206,12 +1210,12 @@ pub(crate) fn keep_pickups(
                     // 向きから決めた組と違う符号で値が合った（元の値が 0 だと符号を区別できない）
                     s.pickups.push(cands[k]);
                     warn.push(format!(
-                        "{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めた（倍率 {}・ずれ {}）。意図どおりか確かめる",
+                        "{path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended",
                         q.dst, q.what, q.src, cands[k].scale, cands[k].offset
                     ));
                 }
                 None => warn.push(format!(
-                    "{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わった（値で固定）",
+                    "{path}: the value relation of surface {} {:?} (from surface {}) changed in the expansion (fixed to the value)",
                     q.dst, q.what, q.src
                 )),
             }
@@ -1266,7 +1270,7 @@ pub(crate) fn keep_pickups(
                 });
             } else {
                 warn.push(format!(
-                    "{}: 面 {} のソルブ（{:?}）は、関わる面が範囲の外か離れている（値で固定）",
+                    "{}: the solve of surface {} ({:?}) involves surfaces outside the range or far away (fixed to the value)",
                     z.path, q.surf, q.kind
                 ));
             }
@@ -1286,9 +1290,13 @@ pub(crate) fn keep_pickups(
         for (q, b) in s.solves.iter().zip(before) {
             let a = val(s, q);
             if (a - b).abs() > 1e-9 * (1.0 + b.abs()) {
-                let what = if q.kind.is_curv() { "曲率" } else { "厚さ" };
+                let what = if q.kind.is_curv() {
+                    "curvature"
+                } else {
+                    "thickness"
+                };
                 warn.push(format!(
-                    "面 {} の{what}をソルブ（{:?}、値 {}）で解き直した: {b} → {a}",
+                    "solved the {what} of surface {} again with the solve ({:?}, value {}): {b} → {a}",
                     q.surf, q.kind, q.height
                 ));
             }

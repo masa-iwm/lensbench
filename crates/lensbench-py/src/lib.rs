@@ -432,7 +432,7 @@ fn rms_items<'py>(
 pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
     let n = s.wavelengths.len();
     if w == 0 || w > n {
-        let e = format!("波長 {w} はありません（1〜{n}）");
+        let e = format!("no wavelength {w} (1 to {n})");
         return Err(index_err(e));
     }
     Ok(w - 1)

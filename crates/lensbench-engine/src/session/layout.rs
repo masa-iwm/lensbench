@@ -130,7 +130,7 @@ pub(super) fn layout_scene(
         .into_iter()
         .map(|(name, sy)| {
             let label = if name.is_empty() {
-                "構成".to_string()
+                "configuration".to_string()
             } else {
                 name.clone()
             };

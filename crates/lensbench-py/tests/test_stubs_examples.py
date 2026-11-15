@@ -56,7 +56,7 @@ def test_surface_label_in_errors():
     s.set_surface(j, coating="NOSUCHCOAT")
     with pytest.raises(ValueError) as e:
         s.trace(1, [0.0], [0.0], pol=True)
-    assert f"面 {j}(STANDARD, {mat}, 膜 NOSUCHCOAT)" in str(e.value), str(e.value)
+    assert f"surface {j}(STANDARD, {mat}, coating NOSUCHCOAT)" in str(e.value), str(e.value)
 
 
 @pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
@@ -175,7 +175,10 @@ def test_builtin_errors_are_translated_in_japanese():
         "    except (IndexError, ValueError) as e:\n"
         "        print(type(e).__name__, e)\n"
     )
-    env = dict(os.environ, LENSBENCH_LANG="ja")
-    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+    # Windows の子プロセスの標準出力は既定で cp1252 なので、UTF-8 にそろえる
+    env = dict(os.environ, LENSBENCH_LANG="ja", PYTHONIOENCODING="utf-8")
+    out = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, encoding="utf-8", check=True
+    ).stdout
     assert "IndexError 視野 99 は" in out, out
     assert "ValueError 分布" in out and "nosuch" in out, out

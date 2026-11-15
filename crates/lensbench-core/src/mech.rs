@@ -263,7 +263,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     surface: Some(*j),
                     value: worst,
                     message: format!(
-                        "面 {j} の縁（半径 {semi:.3}）が {} の壁に {worst:.3} mm 当たる",
+                        "the edge of surface {j} (radius {semi:.3}) hits the wall of {} by {worst:.3} mm",
                         part.name
                     ),
                 });
@@ -290,7 +290,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     surface: Some(*j),
                     value: out_by,
                     message: format!(
-                        "保持する面 {j} が {} の外に {out_by:.3} mm はみ出す（部品の長さ {:.3}）",
+                        "held surface {j} sticks out of {} by {out_by:.3} mm (part length {:.3})",
                         part.name,
                         hi - lo
                     ),
@@ -306,7 +306,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     surface: Some(*j),
                     value: gap,
                     message: format!(
-                        "面 {j}（直径 {:.3}）は {} の保持径 {:.3} より細い（アダプタが要る）",
+                        "surface {j} (diameter {:.3}) is smaller than {}, whose holding diameter is {:.3} (needs an adapter)",
                         2.0 * semi,
                         part.name,
                         2.0 * part.hold_radius
@@ -342,7 +342,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     other: Some(b),
                     surface: None,
                     value: 0.0,
-                    message: format!("{} と {} が重なる", parts[a].name, parts[b].name),
+                    message: format!("{} and {} overlap", parts[a].name, parts[b].name),
                 });
             }
         }
@@ -395,7 +395,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     surface: None,
                     value: (parts[b].rod_spacing - parts[a].rod_spacing).abs(),
                     message: format!(
-                        "{} と {} のロッドの間隔が違う（{:.3} と {:.3}）",
+                        "the rod spacing of {} and {} differs ({:.3} and {:.3})",
                         parts[a].name, parts[b].name, parts[a].rod_spacing, parts[b].rod_spacing
                     ),
                 });
@@ -409,7 +409,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
             surface: None,
             value: zmax - zmin,
             message: format!(
-                "ケージ（{}）のロッドは {:.3} mm 以上（間隔 {:.3}）",
+                "the rods of the cage ({}) need {:.3} mm or more (spacing {:.3})",
                 group
                     .iter()
                     .map(|&b| parts[b].name.as_str())

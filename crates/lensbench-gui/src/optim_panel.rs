@@ -983,7 +983,7 @@ fn result_ui(
     }
     for n in r["notes"].as_array().into_iter().flatten() {
         ui.label(
-            RichText::new(n.as_str().unwrap_or_default())
+            RichText::new(lensbench_core::i18n::tr(n.as_str().unwrap_or_default()))
                 .small()
                 .color(weak),
         );

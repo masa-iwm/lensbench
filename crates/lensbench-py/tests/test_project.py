@@ -98,7 +98,7 @@ def test_pickups_outside_the_range_warn(tmp_path):
         "fields": {"type": "angle", "points": [[0, 0]]},
         "blocks": [{"type": "stop"}, {"type": "air", "t": 2}, {"type": "zmx", "path": "t.zmx", "from": 3}],
     }
-    with pytest.warns(UserWarning, match="範囲の外"):
+    with pytest.warns(UserWarning, match="outside the range"):
         lb.System.from_project(p, base=str(tmp_path))
     p["blocks"] = [{"type": "zmx", "path": "t.zmx"}]
     with warnings.catch_warnings():

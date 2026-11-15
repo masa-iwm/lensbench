@@ -218,7 +218,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             let rel = (p.value - t).abs() / t.abs().max(1e-300);
             if rel > spec.target_tol {
                 warnings.push(format!(
-                    "状態 {}: {} が目標に届かない（{} / 目標 {t}）",
+                    "state {}: {} does not reach the target ({} / target {t})",
                     k + 1,
                     spec.q.name(),
                     p.value
@@ -243,7 +243,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
         let (va, vb) = (spec.q.value(&probe), states[k + 1].value);
         if (va - vb).abs() > 1e-9 * vb.abs().max(1.0) {
             warnings.push(format!(
-                "状態 {} と {} は動かすパラメータのほかにも違う（間の点は状態 {} の系で求めた）",
+                "states {} and {} differ in more than the moved parameters (points between them were found with the system of state {})",
                 k + 1,
                 k + 2,
                 k + 1

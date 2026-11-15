@@ -257,7 +257,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
     }
     let nope = || {
         format!(
-            "ブロック {id}: 面の表で変えた値を焼き込めるのは玉だけ（ほかは変更を戻してから保存）"
+            "block {id}: only lenses can bake in values changed in the surface table (undo the changes on others before saving)"
         )
     };
     let b = find(&mut item.blocks, id).ok_or_else(nope)?;

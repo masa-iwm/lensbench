@@ -63,7 +63,7 @@ pub fn init_from_env() {
     if std::env::var_os("LENSBENCH_FLOATING_CLIP").is_some() {
         ONCE.call_once(|| {
             eprintln!(
-                "注意: 環境変数 LENSBENCH_FLOATING_CLIP は使わなくなった（無視する）。浮動開口でけないようにするには系の設定 floating_clip を false にする"
+                "warning: the environment variable LENSBENCH_FLOATING_CLIP is no longer used (ignored). To keep floating apertures from clipping, set the system setting floating_clip to false"
             )
         });
     }

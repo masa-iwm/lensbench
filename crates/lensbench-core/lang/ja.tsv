@@ -42,6 +42,24 @@ has fewer than 2 measured wavelengths between the kinks (KINKS) around it	をは
 is outside the range ({a} to {b} µm)	が範囲（{a}〜{b} µm）の外
 has no wavelength data	の波長のデータがない
 
+state {b}	状態 {b}
+configuration {b}	構成 {b}
+state {}	状態 {}
+default	既定
+coating {}	膜 {}
+surface {j}({})	面 {j}({})
+tilt and decenter before the surface	面の前の傾き偏心
+coating	膜
+radius of curvature	曲率半径
+none	なし
+curvature	曲率
+thickness	厚さ
+parameter {parm}	パラメータ {parm}
+conic	円錐係数
+semi-diameter	半直径
+stop	絞り
+ignore	無視
+glass	硝材
 # command line (lensbench-cli)
 See the arguments with lensbench <command> --help	引数の一覧は lensbench <コマンド> --help
 Check the file name and location (relative paths are from the current folder)	ファイルの名前と場所を確かめる（相対パスは今のフォルダから）
@@ -505,7 +523,7 @@ system aperture type {satp}	系の絞りタイプ {satp}
 field type {t}	視野タイプ {t}
 ray aiming {r}	光線エイミング {r}
 UNIT Afocal Mode Units {u}	UNIT の Afocal Mode Units {u}
-surface type {:?} {col}	面タイプ {:?} の {col}
+surface type {:?} {what}	面タイプ {:?} の {what}
 surface {j}: no material pickup source surface {src}	面 {j}: 材料のピックアップ元の面 {src} がない
 surface {k}: material pickups go round in a loop	面 {k}: 材料のピックアップが循環している
 thickness pickups don't converge (a loop?)	厚さのピックアップが収束しない（循環？）
@@ -1450,3 +1468,95 @@ can't {what} the store ({st}; check the Access service token): {}	置き場に{w
 can't {what} the store ({st}): {}	置き場に{what}ない（{st}）: {}
 can't upload to the store (over {mb} MB even gzipped): {u}	置き場に上げられない（{mb} MB 超、gzip にしても）: {u}
 can't upload to the store (over {mb} MB): {u}	置き場に上げられない（{mb} MB 超）: {u}
+
+# warnings and notes
+lensbench run: {cmd} (Python: {py})	lensbench run: {cmd}（Python: {py}）
+lensbench run: {cmd} (Python: {py}, threads {n})	lensbench run: {cmd}（Python: {py}、スレッド {n}）
+lensbench run: {cmd} (Python: {py}, output {o})	lensbench run: {cmd}（Python: {py}、出力 {o}）
+lensbench run: {cmd} (Python: {py}, threads {n}, output {o})	lensbench run: {cmd}（Python: {py}、スレッド {n}、出力 {o}）
+{} male	{} のオス
+{} female	{} のメス
+approximate coating (a multilayer fitted to the spectral curve)	近似の膜（分光の曲線に合わせた多層膜）
+{what}: {name} differs from the loaded system ({now}, loaded system {before}), so set is not applied	{what}: {name} は読み込んだ系と値が違う（{now}、読み込んだ系 {before}）ので set を当てない
+surface {j}: {what} differs by configuration (can't tabulate)	面 {j}: {what}が構成で違う（表にできない）
+wavelengths differ by configuration (can't tabulate)	波長が構成で違う（表にできない）
+fields differ by configuration (can't tabulate)	視野が構成で違う（表にできない）
+the kernel phase changes by {:.2} rad between samples (more than π/2); increase n or narrow half and out_half	核の位相の標本の間の差が {:.2} rad（π/2 超え）。n を増やすか half・out_half を狭める
+the Fresnel approximation drops {:.2} rad of phase; use method direct	Fresnel 近似で落とす位相が {:.2} rad。method direct を使う
+the system changed during the optimization, so the result was not applied to it	最適化の間に系が変わったので、結果を系に当てなかった
+changes after loading (set, edit) are not in the item (items are made from the project file; save and reload first to include them)	読み込んだ後の変更（set・edit）は品に入らない（品はプロジェクトファイルから作る。変更を入れるには先に保存して読み直す）
+the merit function is not finite	評価関数が有限でない
+slot {}: no candidates (0 of the {} catalog items match the conditions)	所 {}: 候補がない（カタログ {} 品のうち、条件に合う品が 0）
+{name} has no STEP URL (cad.step) and is not in the store	{name} に STEP の URL（cad.step）がなく、置き場にもない
+state {}: {} does not reach the target ({} / target {t})	状態 {}: {} が目標に届かない（{} / 目標 {t}）
+states {} and {} differ in more than the moved parameters (points between them were found with the system of state {})	状態 {} と {} は動かすパラメータのほかにも違う（間の点は状態 {} の系で求めた）
+a header line is longer than {HEAD_MAX} bytes	ヘッダの行が {HEAD_MAX} バイトを超えた
+lensbench serve: connection: {e}	lensbench serve: 接続: {e}
+lensbench: output: {e}	lensbench: 出力: {e}
+warning: {k}: replaced with the table in {}	注意: {k}: {} の表で置き換えた
+warning: {c}: skipped ({e})	注意: {c}: 飛ばした（{e}）
+warning: {c}: not measured at the kink wavelengths {unmeasured:?} um (extrapolated near them)	注意: {c}: 折れ目 {unmeasured:?} um の波長で測っていない（その付近は外挿になる）
+warning: {c}: the wavelength grid is coarse (wavenumber step {gap:.4} > guide {need:.4} [1/um]); coefficients shift between wavelengths	注意: {c}: 波長の格子が粗い（波数の間隔 {gap:.4} > 目安 {need:.4} [1/um]）。波長の間で係数がずれる
+lensbench run: can't start Python: {}. Set it with --python or the environment variable LENSBENCH_PYTHON	lensbench run: Python を起動できない: {}。--python か環境変数 LENSBENCH_PYTHON で指定する
+lensbench run: lensbench is not installed in this Python ({py}). Install the wheel with pip install, or point --python at a Python that has it	lensbench run: この Python（{py}）に lensbench が入っていない。pip install で wheel を入れるか、--python で入っている Python を指す
+lensbench run: exit code {code} ({:.2} s)	lensbench run: 終了コード {code}（{:.2} s）
+user term {}: {e}	利用者の項 {}: {e}
+lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}	lensbench: {done}/{total} ({pc:.1}%) 経過 {el} 残り {eta}
+no wavelength {w} (1 to {n})	波長 {w} はありません（1〜{n}）
+vignetting factors are not used (ignored in a field sweep, as in OpticStudio)	ケラレ係数は使わない（視野の掃引では OpticStudio と同じく無視）
+removed the pickup of surface {} {:?} (from surface {} {:?})	面 {} の {:?} のピックアップ（元 面 {} の {:?}）を外した
+removed the solve of surface {} {} ({:?})	面 {} の {} のソルブ（{:?}）を外した
+removed lens or group {} (its surfaces are gone)	玉・群 {} を外した（面が無くなった）
+removed multi-configuration row {}	多重構成の行 {} を外した
+removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外した（置く面 {j} を消した）
+the global coordinate reference surface {j} was deleted, so it is now surface 1	大域座標の基準面 {j} を消したので面 1 にした
+warning: the environment variable LENSBENCH_FLOATING_CLIP is no longer used (ignored). To keep floating apertures from clipping, set the system setting floating_clip to false	注意: 環境変数 LENSBENCH_FLOATING_CLIP は使わなくなった（無視する）。浮動開口でけないようにするには系の設定 floating_clip を false にする
+.zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses	.zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログの玉として読むので使わない
+.zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx の系の行 {k} {}（既定 {d} と違うが、lensbench は読まない）
+.zmx system line {k} {} was skipped	.zmx の系の行 {k} {} を読まずに飛ばした
+zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばした（字下げのない古い .zmx）
+only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)	多重構成は構成 {cfg}（全 {ncfg}）だけを読んだ（{why} が多重構成の表で表せない）
+removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} のマクロのソルブ {name} を外して、保存された値で固定した: 解き直せない（{e}）
+surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)	面 {k} の材料 {}（{}）: 波長 {l} µm が分散式の範囲 {lo}〜{hi} µm の外（式を延ばして計算）
+{what}: the phase changes by up to {step:.2} rad between neighboring pupil samples (pupil grid {np}); above π/2 the value depends on the pupil grid (increase the pupil grid)	{what}: 瞳の隣り合う標本の位相差が最大 {step:.2} rad（瞳の格子 {np}）。π/2 を超えると値が瞳の格子で変わる（瞳の格子を増やす）
+{what}: the image grid holds {:.1} % of the light; the grid does not cover the PSF (increase the image grid or spacing)	{what}: 像の格子に入った光量が全体の {:.1} %。格子が PSF を覆えていない（像の格子・間隔を増やす）
+the multi-configuration table of a system with moved lenses or groups can't be written to .zmx (the surface numbers change)	玉・群を動かした系の多重構成の表は .zmx に書けない（面の番号が変わる）
+multi-configuration row {} can't be written to .zmx	多重構成の行 {} は .zmx に書けない
+only the values of the configuration pickups of multi-configuration row {} were written	多重構成の行 {} の構成のピックアップは値だけ書いた
+lens and group moves were written as coordinate breaks (the surface numbers change)	玉・群の動きは座標ブレークに展開して書いた（面の番号が変わる）
+the {what} pickup of surface {} (from surface {}) can't be written to .zmx, so only the value was written	面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書いた
+{} mechanical parts can't be written to .zmx	機構部品 {} 個は .zmx に書けない
+the setting that floating apertures don't clip (floating_clip: false) can't be written to .zmx (they clip when read back)	浮動開口でけない設定（floating_clip: false）は .zmx に書けない（読み直すとける）
+write a system file (.json) to keep everything	欠けなく残すなら系ファイル（.json）に書く
+the number of lines	行の数
+the edge of surface {j} (radius {semi:.3}) hits the wall of {} by {worst:.3} mm	面 {j} の縁（半径 {semi:.3}）が {} の壁に {worst:.3} mm 当たる
+held surface {j} sticks out of {} by {out_by:.3} mm (part length {:.3})	保持する面 {j} が {} の外に {out_by:.3} mm はみ出す（部品の長さ {:.3}）
+surface {j} (diameter {:.3}) is smaller than {}, whose holding diameter is {:.3} (needs an adapter)	面 {j}（直径 {:.3}）は {} の保持径 {:.3} より細い（アダプタが要る）
+{} and {} overlap	{} と {} が重なる
+the rod spacing of {} and {} differs ({:.3} and {:.3})	{} と {} のロッドの間隔が違う（{:.3} と {:.3}）
+the rods of the cage ({}) need {:.3} mm or more (spacing {:.3})	ケージ（{}）のロッドは {:.3} mm 以上（間隔 {:.3}）
+pbs tp and ts must be 0 to 1	pbs の tp・ts は 0〜1
+no {k} in faces (faces that can take a coating: {})	faces の {k} はない（膜を付けられる面: {}）
+cube angle must be [±45, 0] or [0, ±45]	キューブの angle は [±45, 0] か [0, ±45]
+a cube needs size (the edge length)	キューブの size（一辺）が要る
+a cube needs glass	キューブの glass が要る
+a plate needs thickness	平板の thickness が要る
+a plate needs glass	平板の glass が要る
+block {id}: only lenses can bake in values changed in the surface table (undo the changes on others before saving)	ブロック {id}: 面の表で変えた値を焼き込めるのは玉だけ（ほかは変更を戻してから保存）
+{path}: the .zmx environment ({t} °C, {pr} atm) differs from the project environment ({} °C, {} atm); indices are computed in the project environment (change it with environment)	{path}: .zmx の環境（{t} °C・{pr} atm）はプロジェクトの環境（{} °C・{} atm）と違う。屈折率はプロジェクトの環境で計算する（environment で変える）
+{tag}: the threads of the back end of {prev_name} ({why}) and the front end of {name} ({hint}) don't match	{tag}: {prev_name} の後ろの端（{why}）と、{name} の前の端（{hint}）のねじが合わない
+{tag}: no block {b} for holds	{tag}: holds のブロック {b} が無い
+{name} mount	{name} の枠
+surface_ops {}: block {} not found, so {} is not applied	surface_ops {}: ブロック {} が無いので {} を当てない
+surface_edits: block {} not found, so the override of surface {} is not applied	surface_edits: ブロック {} が無いので面 {} の上書きを当てない
+{path}: surface {} {:?} is a pickup from surface {} outside the range (fixed to the value)	{path}: 面 {} の {:?} は範囲の外の面 {} からのピックアップ（値で固定）
+{path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended	{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めた（倍率 {}・ずれ {}）。意図どおりか確かめる
+{path}: the value relation of surface {} {:?} (from surface {}) changed in the expansion (fixed to the value)	{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わった（値で固定）
+{}: the solve of surface {} ({:?}) involves surfaces outside the range or far away (fixed to the value)	{}: 面 {} のソルブ（{:?}）は、関わる面が範囲の外か離れている（値で固定）
+solved the {what} of surface {} again with the solve ({:?}, value {}): {b} → {a}	面 {} の{what}をソルブ（{:?}、値 {}）で解き直した: {b} → {a}
+the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})	系ファイルの hash が中身と合わない（書いた後に直した？ 記録 {hash}、今 {hash_sys}）
+removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} の{what}のマクロのソルブ {name} を外して、保存された値で固定した: 解き直せない（{e}）
+removed the {what} macro solve {name} of surface {k} and fixed the saved value: {e}	面 {k} の{what}のマクロのソルブ {name} を外して、保存された値で固定した: {e}
+warning: {e}	注意: {e}
+field {}: {e}	視野 {}: {e}
+fiber coupling: the phase changes by {:.2} rad between neighboring grid points (more than π/2); increase grid	ファイバ結合: 隣り合う格子点の位相差が {:.2} rad（π/2 超え）。grid を増やす

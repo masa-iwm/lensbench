@@ -264,7 +264,7 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
     )
     .unwrap();
     let e = blocks_item(&q, &env, &["S".into(), "L1".into()], "").unwrap_err();
-    assert!(e.contains("玉だけ"), "{e}");
+    assert!(e.contains("only lenses"), "{e}");
 }
 
 /// 焼き込みで面の開口・玉の中の座標ブレークが残り、書けない値（面の前後の傾き偏心）は誤り（のレビュー）

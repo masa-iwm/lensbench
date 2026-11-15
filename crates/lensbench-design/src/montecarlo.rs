@@ -669,7 +669,11 @@ pub fn run_with(
         tick();
         match r {
             Ok(e) if e.merit.is_finite() => (deltas, Some(e), None),
-            Ok(_) => (deltas, None, Some("評価関数が有限でない".into())),
+            Ok(_) => (
+                deltas,
+                None,
+                Some("the merit function is not finite".into()),
+            ),
             Err(e) => (deltas, None, Some(e.to_string())),
         }
     };

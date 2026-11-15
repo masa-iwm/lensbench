@@ -218,7 +218,7 @@ impl SplitterSpec {
         }
         if let Some(p) = &self.pbs {
             if !(0.0..=1.0).contains(&p.tp) || !(0.0..=1.0).contains(&p.ts) {
-                return e("pbs の tp・ts は 0〜1");
+                return e("pbs tp and ts must be 0 to 1");
             }
         }
         let names: &[&str] = match self.form {
@@ -231,9 +231,9 @@ impl SplitterSpec {
         };
         if let Some(k) = self.faces.keys().find(|k| !names.contains(&k.as_str())) {
             return e(&format!(
-                "faces の {k} はない（膜を付けられる面: {}）",
+                "no {k} in faces (faces that can take a coating: {})",
                 if names.is_empty() {
-                    "なし".to_string()
+                    "none".to_string()
                 } else {
                     names.join(", ")
                 }
@@ -244,21 +244,21 @@ impl SplitterSpec {
                 let [tx, ty] = self.angle;
                 let ok = (tx.abs() == 45.0 && ty == 0.0) || (ty.abs() == 45.0 && tx == 0.0);
                 if !ok {
-                    return e("キューブの angle は [±45, 0] か [0, ±45]");
+                    return e("cube angle must be [±45, 0] or [0, ±45]");
                 }
                 if self.size.is_nan() || self.size <= 0.0 {
-                    return e("キューブの size（一辺）が要る");
+                    return e("a cube needs size (the edge length)");
                 }
                 if self.glass.is_empty() {
-                    return e("キューブの glass が要る");
+                    return e("a cube needs glass");
                 }
             }
             SplitForm::Plate => {
                 if self.thickness.is_nan() || self.thickness <= 0.0 {
-                    return e("平板の thickness が要る");
+                    return e("a plate needs thickness");
                 }
                 if self.glass.is_empty() {
-                    return e("平板の glass が要る");
+                    return e("a plate needs glass");
                 }
             }
             SplitForm::Ideal => {}

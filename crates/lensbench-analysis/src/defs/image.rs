@@ -190,7 +190,11 @@ impl Analysis for Rms {
                         e.field = Some(i + 1);
                         v.push(e);
                     }
-                    warn.extend(r.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
+                    warn.extend(
+                        r.warnings
+                            .iter()
+                            .map(|x| format!("field {}: {e}", i + 1, e = x)),
+                    );
                 }
             }
             Vs::Wavelength => {
@@ -206,7 +210,11 @@ impl Analysis for Rms {
                         e.field = Some(i + 1);
                         v.push(e);
                     }
-                    warn.extend(r.warnings.iter().map(|x| format!("視野 {}: {x}", i + 1)));
+                    warn.extend(
+                        r.warnings
+                            .iter()
+                            .map(|x| format!("field {}: {e}", i + 1, e = x)),
+                    );
                 }
             }
         }
@@ -356,7 +364,11 @@ impl Analysis for Psf {
                     });
                 }
             }
-            warn.extend(r.warnings.iter().map(|m| format!("視野 {}: {m}", i + 1)));
+            warn.extend(
+                r.warnings
+                    .iter()
+                    .map(|m| format!("field {}: {e}", i + 1, e = m)),
+            );
             samp.push(PsfSampling {
                 field: i + 1,
                 pupil: r.pupil,

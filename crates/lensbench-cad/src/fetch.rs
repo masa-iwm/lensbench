@@ -133,7 +133,7 @@ pub fn fetch_item_with(
                 b
             }
             None if url.is_empty() => {
-                let mut e = format!("{name} に STEP の URL（cad.step）がなく、置き場にもない");
+                let mut e = format!("{name} has no STEP URL (cad.step) and is not in the store");
                 for n in &store_notes {
                     e.push_str(&format!("（{n}）"));
                 }

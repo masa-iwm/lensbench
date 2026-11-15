@@ -25,7 +25,7 @@ pub(super) fn apply_pending(sess: &Session, p: PendingApply, v: &mut Value) {
         v["applied"] = json!(false);
         if let Some(n) = v["notes"].as_array_mut() {
             n.push(json!(
-                "最適化の間に系が変わったので、結果を系に当てなかった"
+                "the system changed during the optimization, so the result was not applied to it"
             ));
         }
     }
@@ -92,9 +92,9 @@ pub(super) fn config_system(
     }
     let s = load_file(&sp)?;
     let beam = if is_project(&spec.file) {
-        format!("状態 {b}")
+        format!("state {b}")
     } else {
-        format!("構成 {b}")
+        format!("configuration {b}")
     };
     Ok(replay(s, log, &beam, notes)?)
 }

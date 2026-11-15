@@ -303,8 +303,11 @@ impl CadFetcher {
                     });
                     for n in v["store_notes"].as_array().into_iter().flatten() {
                         ui.label(
-                            RichText::new(trf("置き場: {}", &[&n.as_str().unwrap_or("")]))
-                                .color(ui.visuals().warn_fg_color),
+                            RichText::new(trf(
+                                "置き場: {}",
+                                &[&lensbench_core::i18n::tr(n.as_str().unwrap_or_default())],
+                            ))
+                            .color(ui.visuals().warn_fg_color),
                         );
                     }
                     let notes: Vec<&str> = v["notes"]
@@ -316,8 +319,11 @@ impl CadFetcher {
                     }
                     for n in notes {
                         ui.label(
-                            RichText::new(trf("簡易外形と違う: {}", &[&n]))
-                                .color(ui.visuals().warn_fg_color),
+                            RichText::new(trf(
+                                "簡易外形と違う: {}",
+                                &[&lensbench_core::i18n::tr(n)],
+                            ))
+                            .color(ui.visuals().warn_fg_color),
                         );
                     }
                 }

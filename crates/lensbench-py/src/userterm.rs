@@ -59,7 +59,7 @@ fn to_rows(r: &Bound<'_, PyAny>, k: usize, rows: Option<usize>) -> PyResult<Vec<
 
 impl PyUserTerm {
     fn fail(&self, e: PyErr) -> lensbench_core::Error {
-        let msg = format!("利用者の項 {}: {e}", self.name);
+        let msg = format!("user term {}: {e}", self.name);
         self.error.lock_ok().get_or_insert(e);
         lensbench_core::Error::Invalid(msg)
     }

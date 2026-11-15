@@ -1180,7 +1180,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         let used = p.src == j || p.dst == j;
         if used {
             notes.push(format!(
-                "面 {} の {:?} のピックアップ（元 面 {} の {:?}）を外した",
+                "removed the pickup of surface {} {:?} (from surface {} {:?})",
                 p.dst,
                 p.what,
                 p.src,
@@ -1193,7 +1193,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         let used = q.surf == j || q.kind.other_surface() == Some(j);
         if used {
             notes.push(format!(
-                "面 {} の {} のソルブ（{:?}）を外した",
+                "removed the solve of surface {} {} ({:?})",
                 q.surf,
                 q.kind.param_kind().name(),
                 q.kind
@@ -1218,7 +1218,10 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
             true
         });
         if u.spans.is_empty() {
-            notes.push(format!("玉・群 {} を外した（面が無くなった）", u.name));
+            notes.push(format!(
+                "removed lens or group {} (its surfaces are gone)",
+                u.name
+            ));
             unit_map.push(None);
         } else {
             unit_map.push(Some(kept.len()));
@@ -1234,7 +1237,10 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
                 _ => r.param.surf == j,
             };
             if used {
-                notes.push(format!("多重構成の行 {} を外した", r.param.name()));
+                notes.push(format!(
+                    "removed multi-configuration row {}",
+                    r.param.name()
+                ));
             }
             !used
         });
@@ -1251,7 +1257,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         m.holds.retain(|&h| h != j);
         if m.surface == j {
             notes.push(format!(
-                "機構部品 {} を外した（置く面 {j} を消した）",
+                "removed mechanical part {} (its surface {j} was deleted)",
                 m.name
             ));
             return false;
@@ -1259,7 +1265,9 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         true
     });
     if s.glrs == j {
-        notes.push(format!("大域座標の基準面 {j} を消したので面 1 にした"));
+        notes.push(format!(
+            "the global coordinate reference surface {j} was deleted, so it is now surface 1"
+        ));
         s.glrs = 1;
     }
     notes

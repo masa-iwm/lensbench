@@ -119,7 +119,10 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
                 None,
             )?;
             for w in warn {
-                eprintln!("注意: 状態 {n}: {w}");
+                eprintln!(
+                    "{}",
+                    lensbench_core::i18n::warning(format!("state {n}: {w}"))
+                );
             }
             v.push(s);
         }

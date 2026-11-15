@@ -350,7 +350,10 @@ impl System {
             c.rows.retain(|r| {
                 let used = matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf == u;
                 if used {
-                    notes.push(format!("多重構成の行 {} を外した", r.param.name()));
+                    notes.push(format!(
+                        "removed multi-configuration row {}",
+                        r.param.name()
+                    ));
                 }
                 !used
             });

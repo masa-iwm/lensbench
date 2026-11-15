@@ -772,20 +772,20 @@ fn config_notes(s: &System) -> Vec<String> {
     };
     if s.units.iter().any(|u| u.moved()) {
         return vec![
-            "玉・群を動かした系の多重構成の表は .zmx に書けない（面の番号が変わる）".to_string(),
+            "the multi-configuration table of a system with moved lenses or groups can't be written to .zmx (the surface numbers change)".to_string(),
         ];
     }
     let mut out = Vec::new();
     for r in &c.rows {
         if config_op(s, r.param).is_none() {
             out.push(format!(
-                "多重構成の行 {} は .zmx に書けない",
+                "multi-configuration row {} can't be written to .zmx",
                 r.param.name()
             ));
         }
         if !r.picks.is_empty() {
             out.push(format!(
-                "多重構成の行 {} の構成のピックアップは値だけ書いた",
+                "only the values of the configuration pickups of multi-configuration row {} were written",
                 r.param.name()
             ));
         }
@@ -809,35 +809,38 @@ pub fn save(path: &Path, s: &System) -> Result<Vec<String>> {
 pub fn write_notes(s: &System) -> Vec<String> {
     let mut out = Vec::new();
     if s.units.iter().any(|u| u.moved()) {
-        out.push("玉・群の動きは座標ブレークに展開して書いた（面の番号が変わる）".to_string());
+        out.push(
+            "lens and group moves were written as coordinate breaks (the surface numbers change)"
+                .to_string(),
+        );
     }
     for q in &s.pickups {
         let what = match q.what {
-            PickKind::Before(_) => "面の前の傾き偏心",
-            PickKind::Coating => "膜",
-            PickKind::Radius => "曲率半径",
+            PickKind::Before(_) => "tilt and decenter before the surface",
+            PickKind::Coating => "coating",
+            PickKind::Radius => "radius of curvature",
             _ => continue,
         };
         out.push(format!(
-            "面 {} の{what}のピックアップ（元の面 {}）は .zmx に書けないので値だけ書いた",
+            "the {what} pickup of surface {} (from surface {}) can't be written to .zmx, so only the value was written",
             q.dst, q.src
         ));
     }
     if !s.mechanics.is_empty() {
         out.push(format!(
-            "機構部品 {} 個は .zmx に書けない",
+            "{} mechanical parts can't be written to .zmx",
             s.mechanics.len()
         ));
     }
     if !s.floating_clip {
         out.push(
-            "浮動開口でけない設定（floating_clip: false）は .zmx に書けない（読み直すとける）"
+            "the setting that floating apertures don't clip (floating_clip: false) can't be written to .zmx (they clip when read back)"
                 .to_string(),
         );
     }
     out.extend(config_notes(s));
     if !out.is_empty() {
-        out.push("欠けなく残すなら系ファイル（.json）に書く".to_string());
+        out.push("write a system file (.json) to keep everything".to_string());
     }
     out
 }
@@ -1000,7 +1003,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
                 .zip(&h0)
                 .find(|(a, b)| a != b)
                 .map(|(a, _)| a.clone())
-                .unwrap_or_else(|| "行の数".into());
+                .unwrap_or_else(|| "the number of lines".into());
             notimpl!(
                 "configuration {} system values differ from configuration 1 ({d})",
                 i + 1

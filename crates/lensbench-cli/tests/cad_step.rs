@@ -450,7 +450,7 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         &dir.join("c4"),
         "tsecret",
     );
-    assert!(!ok && e.contains("置き場にもない"), "{e}");
+    assert!(!ok && e.contains("not in the store"), "{e}");
     let up = dir.join("vendor-files");
     std::fs::create_dir_all(&up).unwrap();
     std::fs::write(up.join("CP-N_ttn0001-e0w.step"), &step).unwrap();

@@ -485,7 +485,8 @@ fn replay(
                         ch.push((q, *value));
                     } else {
                         let n = format!(
-                            "{beam}: {name} は読み込んだ系と値が違う（{now}、読み込んだ系 {before}）ので set を当てない"
+                            "{what}: {name} differs from the loaded system ({now}, loaded system {before}), so set is not applied",
+                            what = beam
                         );
                         if !notes.contains(&n) {
                             notes.push(n);
@@ -1424,17 +1425,19 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
             let a = f(&systems[0]);
             systems.iter().any(|s| f(s) != a)
         };
-        if differs(&|s| s.surfaces[j].mat.clone()) {
-            notes.push(format!("面 {j}: 硝材が構成で違う（表にできない）"));
-        }
-        if differs(&|s| s.surfaces[j].ignore.to_string()) {
-            notes.push(format!("面 {j}: 無視が構成で違う（表にできない）"));
-        }
-        if differs(&|s| format!("{:?}", s.surfaces[j].semi)) {
-            notes.push(format!("面 {j}: 半径が構成で違う（表にできない）"));
-        }
-        if differs(&|s| s.surfaces[j].stop.to_string()) {
-            notes.push(format!("面 {j}: 絞りが構成で違う（表にできない）"));
+        type Get = fn(&lensbench_core::surface::Surface) -> String;
+        let checks: [(&str, Get); 4] = [
+            ("glass", |d| d.mat.clone()),
+            ("ignore", |d| d.ignore.to_string()),
+            ("semi-diameter", |d| format!("{:?}", d.semi)),
+            ("stop", |d| d.stop.to_string()),
+        ];
+        for (what, f) in checks {
+            if differs(&|s| f(&s.surfaces[j])) {
+                notes.push(format!(
+                    "surface {j}: {what} differs by configuration (can't tabulate)"
+                ));
+            }
         }
     }
     let differs_sys = |f: &dyn Fn(&System) -> String| {
@@ -1442,10 +1445,10 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
         systems.iter().any(|s| f(s) != a)
     };
     if differs_sys(&|s| format!("{:?}", s.wavelengths)) {
-        notes.push("波長が構成で違う（表にできない）".into());
+        notes.push("wavelengths differ by configuration (can't tabulate)".into());
     }
     if differs_sys(&|s| format!("{:?}", s.fields)) {
-        notes.push("視野が構成で違う（表にできない）".into());
+        notes.push("fields differ by configuration (can't tabulate)".into());
     }
     ops.push(json!({ "op": "set_config", "k": spec.cfg.clamp(1, n) }));
     Ok(json!({ "ops": ops, "notes": notes, "rows": ops.len() - 2 }))

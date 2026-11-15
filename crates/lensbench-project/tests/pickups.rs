@@ -96,7 +96,7 @@ fn out_of_range_is_fixed_with_a_warning() {
         r#"[{"type": "stop", "semi": 4}, {"type": "air", "t": 1}, {"type": "zmx", "path": "t.zmx", "from": 3, "to": 7}]"#,
     );
     assert_eq!(warn.len(), 4, "{warn:?}");
-    assert!(warn.iter().all(|w| w.contains("範囲の外")));
+    assert!(warn.iter().all(|w| w.contains("outside the range")));
     // 座標ブレーク 6 ← 3 と、厚さ 5 ← 4 は残り、追従する
     assert_eq!(s.pickups.len(), 3, "{:?}", s.pickups);
     let q = s
@@ -140,7 +140,10 @@ fn broken_relation_is_fixed() {
     let (s, warn) = project(
         r#"[{"type": "zmx", "path": "t.zmx", "groups": [{"name": "G", "from": 4, "to": 5, "shift": 0.7}]}]"#,
     );
-    assert!(warn.iter().any(|w| w.contains("値の関係")), "{warn:?}");
+    assert!(
+        warn.iter().any(|w| w.contains("value relation")),
+        "{warn:?}"
+    );
     for q in &s.pickups {
         assert!(q.holds(&s));
     }
@@ -154,7 +157,10 @@ fn after_a_tilted_return_mirror() {
            {"type": "air", "t": 2}, {"type": "zmx", "path": "t.zmx", "from": 3, "to": 7}]"#,
     );
     assert_eq!(warn.len(), 4, "{warn:?}");
-    assert!(warn.iter().all(|w| w.contains("範囲の外")), "{warn:?}");
+    assert!(
+        warn.iter().all(|w| w.contains("outside the range")),
+        "{warn:?}"
+    );
     assert_eq!(s.pickups.len(), 3, "{:?}", s.pickups);
     use lensbench_core::param::PickKind;
     use lensbench_core::surface::SurfType;
