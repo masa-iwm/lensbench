@@ -5,6 +5,27 @@ use super::*;
 /// 頼んでからこれだけたっても返らなければ「計算中」を重ねる（速い解析でちらつかせない）
 const BUSY_AFTER: f64 = 0.25;
 
+/// 解析パネルの結果
+#[derive(Default)]
+pub(super) struct AnaRes {
+    pub(super) cmd: String,
+    /// 結果を出したときの引数（設定を変えただけなら前の結果は出さない）
+    pub(super) params: Value,
+    pub(super) value: Option<Value>,
+    /// 値を変える前の結果（同じ解析のとき）
+    pub(super) prev: Option<Value>,
+    pub(super) ms: f64,
+    pub(super) rays: Vec<SpotRays>,
+    /// 光線の世代（届いたときの rev。スポット図の中心・縮尺を作り直す目安、GPN-07）
+    pub(super) rays_gen: u64,
+    pub(super) error: Option<String>,
+    /// 結果の世代（届くたびに変わる。図の格子を作り直す目安、GPN-07）
+    pub(super) gen: u64,
+    /// 返事を待っている要求の数と、待ち始めた時刻（GUX-27）
+    pub(super) inflight: u32,
+    pub(super) since: Option<web_time::Instant>,
+}
+
 impl Core {
     /// 解析を頼んだ（返事が来るまで「計算中」）
     pub(super) fn ana_sent(&mut self, id: u64) {
@@ -130,7 +151,7 @@ impl Core {
             egui::ScrollArea::vertical()
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
-                .show(ui, |ui| plots::mtf(ui, v, r.prev.as_ref(), id));
+                .show(ui, |ui| plots::mtf(ui, v, r.prev.as_ref(), id, r.gen));
             return;
         }
         // スポット以外の図（描けない結果なら表）
@@ -157,7 +178,7 @@ impl Core {
                         primary: self.primary(),
                         wfno: self.info_num("wfno"),
                     };
-                    plots::spot(ui, &r.rays, v, r.prev.as_ref(), &sys);
+                    plots::spot(ui, &r.rays, r.rays_gen, v, r.prev.as_ref(), &sys);
                     ui.separator();
                     json_view::show(ui, v);
                 } else if cfg.view == View::Json {

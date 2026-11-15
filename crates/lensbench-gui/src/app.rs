@@ -15,6 +15,7 @@ mod sys_copy;
 mod tick;
 use doc_loc::DocLoc;
 use panels::Panels;
+use result::AnaRes;
 use sys_copy::SysCopy;
 mod take;
 mod to_combo;
@@ -284,25 +285,6 @@ struct MissingGlass {
     model: Option<PathBuf>,
     /// 代用を続けた回数（止まらないときの上限）
     tries: usize,
-}
-
-/// 解析パネルの結果
-#[derive(Default)]
-struct AnaRes {
-    cmd: String,
-    /// 結果を出したときの引数（設定を変えただけなら前の結果は出さない）
-    params: Value,
-    value: Option<Value>,
-    /// 値を変える前の結果（同じ解析のとき）
-    prev: Option<Value>,
-    ms: f64,
-    rays: Vec<SpotRays>,
-    error: Option<String>,
-    /// 結果の世代（届くたびに変わる。図の格子を作り直す目安、GPN-07）
-    gen: u64,
-    /// 返事を待っている要求の数と、待ち始めた時刻（GUX-27）
-    inflight: u32,
-    since: Option<web_time::Instant>,
 }
 
 /// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前

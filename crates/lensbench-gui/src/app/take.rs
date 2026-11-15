@@ -144,7 +144,10 @@ impl Core {
                         Some(plots::rays_from(f, w, a))
                     })
                     .collect();
-                self.results.entry(id).or_default().rays = rays;
+                let r = self.results.entry(id).or_default();
+                r.rays = rays;
+                // 要求ごとに進む rev（パネルの結果を消した後も前の世代と重ならない）
+                r.rays_gen = self.rev;
                 return;
             }
             Tag::Glasses => {

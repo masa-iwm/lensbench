@@ -133,14 +133,11 @@ fn spot_view(
 }
 
 /// スポット図。点は µm、中心は各視野の主波長の重心（無ければ全体の重心）
-pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>, sys: &SysInfo) {
+/// 視野の番号（昇順）・視野ごとの中心・全視野で共通の縮尺（中心からの最大の距離 mm）
+fn spot_scale(rays: &[SpotRays], primary: usize) -> (Vec<usize>, Vec<(f64, f64)>, f64) {
     let mut fields: Vec<usize> = rays.iter().map(|r| r.field).collect();
     fields.sort();
     fields.dedup();
-    if fields.is_empty() {
-        ui.weak(tr("光線を追跡しています…"));
-        return;
-    }
     // 視野ごとの中心と、全視野で共通の縮尺
     let centers: Vec<(f64, f64)> = fields
         .iter()
@@ -149,7 +146,7 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                 let (mut sx, mut sy, mut n) = (0.0, 0.0, 0usize);
                 for r in rays
                     .iter()
-                    .filter(|r| r.field == f && (!only_primary || r.wave == sys.primary))
+                    .filter(|r| r.field == f && (!only_primary || r.wave == primary))
                 {
                     for i in 0..r.x.len() {
                         sx += r.x[i];
@@ -168,6 +165,26 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
         for i in 0..r.x.len() {
             rmax = rmax.max(((r.x[i] - c.0).powi(2) + (r.y[i] - c.1).powi(2)).sqrt());
         }
+    }
+    (fields, centers, rmax)
+}
+
+/// スポット図。rays_gen は光線の世代（届くたびに変わる。中心・縮尺はそのときだけ求める、GPN-07）
+pub fn spot(
+    ui: &mut Ui,
+    rays: &[SpotRays],
+    rays_gen: u64,
+    result: &Value,
+    prev: Option<&Value>,
+    sys: &SysInfo,
+) {
+    let scale = crate::figures::memo(ui, ("spot-scale", sys.primary), rays_gen, || {
+        spot_scale(rays, sys.primary)
+    });
+    let (fields, centers, rmax) = (&scale.0, &scale.1, scale.2);
+    if fields.is_empty() {
+        ui.weak(tr("光線を追跡しています…"));
+        return;
     }
     let airy_um = sys.wfno.map(|f| {
         1.22 * sys
@@ -327,12 +344,13 @@ pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
 }
 
 /// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
-pub fn mtf(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64) {
-    mtf_curves(ui, result, prev, id, "mtf");
+pub fn mtf(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, gen: u64) {
+    mtf_curves(ui, result, prev, id, gen, "mtf");
 }
 
-/// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）
-pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, key: &str) {
+/// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
+/// （曲線はそのときだけ JSON から作る、GPN-07）
+pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, gen: u64, key: &str) {
     let Some(curves) = result[key].as_array() else {
         ui.weak(tr("MTF の結果がない"));
         return;
@@ -359,7 +377,10 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
         }
         out
     };
-    let now = lines(result);
+    let both = crate::figures::memo(ui, ("mtf-lines", key, id), gen, || {
+        (lines(result), prev.map(lines).unwrap_or_default())
+    });
+    let (now, prev_lines) = (&both.0, &both.1);
     // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない、GUX-19）
     let show_prev_id = egui::Id::new(("mtf-show-prev", key, id));
     let mut show_prev: bool = ui.data(|d| d.get_temp(show_prev_id)).unwrap_or(true);
@@ -369,14 +390,14 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
         .filter(|x| x.is_finite())
         .fold(f64::NEG_INFINITY, f64::max);
     let before: Vec<(usize, &str, Vec<[f64; 2]>)> = if show_prev {
-        prev.map(lines)
-            .unwrap_or_default()
-            .into_iter()
+        prev_lines
+            .iter()
             .map(|(f, k, p)| {
                 (
-                    f,
-                    k,
-                    p.into_iter()
+                    *f,
+                    *k,
+                    p.iter()
+                        .copied()
                         .filter(|q| q[0] <= xmax * (1.0 + 1e-9))
                         .collect(),
                 )
@@ -415,7 +436,7 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
                     .width(1.0_f32),
             );
         }
-        for (f, k, pts) in now {
+        for &(f, k, ref pts) in now.iter() {
             let t = k == "tangential";
             let name = if t {
                 trf("視野 {} 子午", &[&f])
@@ -423,9 +444,9 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
                 trf("視野 {} 球欠", &[&f])
             };
             let color = theme::series(f.saturating_sub(1));
-            reg.push(crate::plot_tools::Series::new(name.clone(), color, &pts));
+            reg.push(crate::plot_tools::Series::new(name.clone(), color, pts));
             p.line(
-                Line::new(pts)
+                Line::new(pts.clone())
                     .color(color)
                     .style(if t {
                         LineStyle::Solid

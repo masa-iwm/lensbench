@@ -69,7 +69,7 @@ pub fn default_freqs(cutoff: Option<f64>) -> Vec<f64> {
 }
 
 /// 結果の世代 gen ごとに 1 度だけ作る（図の格子など。毎フレーム JSON から作り直さない、GPN-07）
-fn memo<T: Send + Sync + 'static>(
+pub(crate) fn memo<T: Send + Sync + 'static>(
     ui: &Ui,
     key: impl std::hash::Hash,
     gen: u64,
@@ -102,7 +102,7 @@ pub fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, v: &Value, prev: Option<&
         "mtf-focus" => mtf_focus(ui, id, v, prev),
         "rms" => rms(ui, id, v, prev),
         "geo-mtf" => {
-            crate::plots::mtf_curves(ui, v, prev, id, "geometric_mtf");
+            crate::plots::mtf_curves(ui, v, prev, id, gen, "geometric_mtf");
             true
         }
         "interference" => interference(ui, id, v),
