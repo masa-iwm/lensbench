@@ -54,6 +54,11 @@ fn num(v: &Value) -> Option<f64> {
     }
 }
 
+/// 面（番号か名前）の系の面の番号。プロジェクトの glrs も引く
+pub(crate) fn surf_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
+    surf(s, v, what)
+}
+
 fn surf(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
     match v {
         Ref::Index(j) => Some(*j)

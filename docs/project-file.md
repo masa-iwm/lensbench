@@ -42,6 +42,10 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   条件は `{"cond": "position", "surface": 面}`（面での位置。像面なら実像高と同じ）、`{"cond": "dir_sum", "s1": 面, "s2": 面}`
   （2 面での方向余弦 l・m の和。法線入射で戻る主光線なら 0）、`dir_diff`（差）。面は番号か名前。パラメータを変えると解き直す。
   .zmx には書けない（OpticStudio にない）。Python は `s.set_field_type("solve", ("dirsum", 1, 6), fields=[(0, 0)])`
+- 視野の正規化は `fields.norm`（`radial` 既定・`rect`、.zmx の FTYP の正規化と同じ）。ケラレ係数は `fields.vignetting` に視野ごとの
+  `[VDX, VDY, VCX, VCY, VAN]`（VAN は度、省略した視野は 0。.zmx の VDXN〜VANN と同じ）。
+- 大域座標の基準の面（.zmx の GLRS、書き出し・3D の座標の原点）は `"glrs"`。ブロックの面 `{"block": "L1", "surface": 0}`（数え方は
+  `surface_edits` と同じ）か、展開した系の面の番号か名前。省略で面 1
 - 像空間をアフォーカルにするには `"afocal": "mr"`（角度の単位 `ur`・`mr`・`rr`・`as`・`am`・`dg`。.zmx の Afocal Image Space と同じ）。
   物体側テレセントリックは `"telecentric": true`（有限の `object_distance`、開口は `na` か `cone`、エイミングなし）。どちらも状態の `project` で変えられる。
 - 半直径を固定した面（浮動開口）の外の光線をけないようにするには `"floating_clip": false`（既定はける。OpticStudio と同じ）。

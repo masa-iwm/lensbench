@@ -1182,6 +1182,21 @@
         }
       ]
     },
+    "FieldNormSpec": {
+      "description": "視野の正規化（[`FieldsSpec::norm`]）",
+      "oneOf": [
+        {
+          "const": "radial",
+          "description": "半径（最も遠い視野が 1）",
+          "type": "string"
+        },
+        {
+          "const": "rect",
+          "description": "矩形（x・y の最大がそれぞれ 1）",
+          "type": "string"
+        }
+      ]
+    },
     "FieldSolveSpec": {
       "description": "条件で定める視野の条件。面は番号か名前（面のコメント）",
       "oneOf": [
@@ -1248,6 +1263,10 @@
     },
     "FieldsSpec": {
       "properties": {
+        "norm": {
+          "$ref": "#/$defs/FieldNormSpec",
+          "description": "視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）"
+        },
         "points": {
           "description": "視野の (x, y)",
           "items": {
@@ -1275,6 +1294,19 @@
         "type": {
           "$ref": "#/$defs/FieldKind",
           "default": "angle"
+        },
+        "vignetting": {
+          "description": "視野ごとのケラレ係数 [VDX, VDY, VCX, VCY, VAN]（.zmx の VDXN〜VANN、VAN は度）。省略した視野は 0",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "type": "array"
+          },
+          "type": "array"
         },
         "weights": {
           "default": [],
@@ -2540,6 +2572,17 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "glrs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BlockRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "大域座標の基準の面（.zmx の GLRS。書き出し・3D の座標の原点）。ブロックの面 `{\"block\": id, \"surface\": i}` か、\n展開した系の面の番号か名前。省略で面 1"
     },
     "gui": {
       "description": "GUI が自分の編集の状態（組合せの表など）を残す欄。展開には使わない"

@@ -59,11 +59,13 @@ mod blocks;
 mod catalog;
 mod expand;
 mod model;
+mod zmx_wrap;
 pub use back::*;
 pub use blocks::*;
 pub use catalog::*;
 pub use expand::*;
 pub use model::*;
+pub use zmx_wrap::{same_system, zmx_project};
 
 /// プロジェクトファイルを読んで展開する
 pub fn load(

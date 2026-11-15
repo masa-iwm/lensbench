@@ -159,9 +159,15 @@ fn unknown_keys_are_errors() {
     let t = base("", "").replace(r#""glass": "N-BK7""#, r#""glas": "N-BK7""#);
     let e = lensbench_project::Project::from_json(&t).unwrap_err();
     assert!(e.contains("glas"), "{e}");
+    // 中身がすべて既定の欄の中の綴りの違いも
+    let e =
+        lensbench_project::Project::from_json(&base(r#""environment": {"temprature_c": 25},"#, ""))
+            .unwrap_err();
+    assert!(e.contains("environment/temprature_c"), "{e}");
     // 既定値をわざわざ書いたもの（書き戻しでは省かれる）は通す
     lensbench_project::Project::from_json(&base(
-        r#""telecentric": false, "surface_edits": [], "path": null,"#,
+        r#""telecentric": false, "surface_edits": [], "path": null,
+            "environment": {"temperature_c": 20, "pressure_atm": 1, "adjust_index": false},"#,
         r#""reversed": false, "on": true, "decenter": [0, 0],"#,
     ))
     .unwrap();

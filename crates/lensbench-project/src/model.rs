@@ -63,6 +63,29 @@ pub struct FieldsSpec {
     /// type = solve のときの条件
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub solve: Option<FieldSolveSpec>,
+    /// 視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）
+    #[serde(default, skip_serializing_if = "FieldNormSpec::is_radial")]
+    pub norm: FieldNormSpec,
+    /// 視野ごとのケラレ係数 [VDX, VDY, VCX, VCY, VAN]（.zmx の VDXN〜VANN、VAN は度）。省略した視野は 0
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vignetting: Vec<[f64; 5]>,
+}
+
+/// 視野の正規化（[`FieldsSpec::norm`]）
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldNormSpec {
+    /// 半径（最も遠い視野が 1）
+    #[default]
+    Radial,
+    /// 矩形（x・y の最大がそれぞれ 1）
+    Rect,
+}
+
+impl FieldNormSpec {
+    fn is_radial(&self) -> bool {
+        *self == FieldNormSpec::Radial
+    }
 }
 
 impl Default for FieldsSpec {
@@ -72,6 +95,8 @@ impl Default for FieldsSpec {
             points: vec![[0.0, 0.0]],
             weights: Vec::new(),
             solve: None,
+            norm: FieldNormSpec::Radial,
+            vignetting: Vec::new(),
         }
     }
 }
@@ -819,6 +844,10 @@ pub struct Project {
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,
+    /// 大域座標の基準の面（.zmx の GLRS。書き出し・3D の座標の原点）。ブロックの面 `{"block": id, "surface": i}` か、
+    /// 展開した系の面の番号か名前。省略で面 1
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glrs: Option<BlockRef>,
     /// 温度・気圧（ガラスの屈折率の計算）。省略で 20 °C・1 atm・補正なし
     #[serde(default, skip_serializing_if = "Environment::is_default")]
     pub environment: Environment,
@@ -1042,23 +1071,53 @@ pub fn unknown_keys<T: serde::de::DeserializeOwned + Serialize>(
     };
     let mut miss = Vec::new();
     walk(input, &out, &mut Vec::new(), &mut miss);
-    miss.into_iter()
-        .filter(|p| {
-            let mut probe = input.clone();
-            let mut at = &mut probe;
-            for k in p {
-                at = match at {
-                    Value::Object(m) => m.get_mut(k).expect("walk で見たキー"),
-                    Value::Array(a) => &mut a[k.parse::<usize>().expect("添字")],
-                    _ => unreachable!(),
-                };
-            }
-            *at = serde_json::json!({ "\u{1}lensbench_probe": [true] });
-            serde_json::from_value::<T>(probe)
-                .ok()
-                .and_then(|t| serde_json::to_value(t).ok())
-                .is_some_and(|v| v == out)
+    // 読まれないキーは、どんな値に替えても読めて同じになる。中身がすべて既定の構造体（書き出しで省くもの）は
+    // 知らないキーだけの表としても読めてしまうので、型の違う値（文字列）でも試す
+    let ignored = |p: &[String], junk: Value| {
+        let mut probe = input.clone();
+        let mut at = &mut probe;
+        for k in p {
+            at = match at {
+                Value::Object(m) => m.get_mut(k).expect("walk で見たキー"),
+                Value::Array(a) => &mut a[k.parse::<usize>().expect("添字")],
+                _ => unreachable!(),
+            };
+        }
+        *at = junk;
+        serde_json::from_value::<T>(probe)
+            .ok()
+            .and_then(|t| serde_json::to_value(t).ok())
+            .is_some_and(|v| v == out)
+    };
+    fn at<'a>(v: &'a Value, p: &[String]) -> Option<&'a Value> {
+        p.iter().try_fold(v, |v, k| match v {
+            Value::Object(m) => m.get(k),
+            Value::Array(a) => a.get(k.parse::<usize>().ok()?),
+            _ => None,
         })
-        .map(|p| p.join("/"))
-        .collect()
+    }
+    // 読むキーが書き出しに無い（既定なので省いた）ときは、中のキーを同じように調べる（既定の欄の中の綴りの違い）
+    fn check(
+        p: Vec<String>,
+        input: &Value,
+        ignored: &dyn Fn(&[String], Value) -> bool,
+        found: &mut Vec<Vec<String>>,
+    ) {
+        if ignored(&p, serde_json::json!({ "\u{1}lensbench_probe": [true] }))
+            && ignored(&p, Value::from("\u{1}lensbench_probe"))
+        {
+            found.push(p);
+        } else if let Some(Value::Object(m)) = at(input, &p) {
+            for k in m.keys() {
+                let mut c = p.clone();
+                c.push(k.clone());
+                check(c, input, ignored, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for p in miss {
+        check(p, input, &ignored, &mut found);
+    }
+    found.into_iter().map(|p| p.join("/")).collect()
 }

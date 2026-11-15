@@ -528,6 +528,13 @@ pub(crate) fn expand_inner(
         // 面の名前は展開した後で引く
         FieldKind::Solve => FieldType::Angle,
     };
+    if p.fields.vignetting.len() > p.fields.points.len() {
+        return Err(format!(
+            "fields: {} vignetting rows for {} fields",
+            p.fields.vignetting.len(),
+            p.fields.points.len()
+        ));
+    }
     let fields: Vec<Field> = p
         .fields
         .points
@@ -536,6 +543,9 @@ pub(crate) fn expand_inner(
         .map(|(i, q)| {
             let mut f = Field::xy(q[0], q[1]);
             f.w = p.fields.weights.get(i).copied().unwrap_or(1.0);
+            if let Some(&[vdx, vdy, vcx, vcy, van]) = p.fields.vignetting.get(i) {
+                (f.vdx, f.vdy, f.vcx, f.vcy, f.van) = (vdx, vdy, vcx, vcy, van);
+            }
             f
         })
         .collect();
@@ -551,7 +561,10 @@ pub(crate) fn expand_inner(
         p.primary - 1,
         fields,
         ft,
-        FieldNorm::Radial,
+        match p.fields.norm {
+            FieldNormSpec::Radial => FieldNorm::Radial,
+            FieldNormSpec::Rect => FieldNorm::Rect,
+        },
         (ap, p.aperture.value),
         p.telecentric,
         aim,
@@ -660,6 +673,22 @@ pub(crate) fn expand_inner(
         return Err("0 stops (no set_stop block in surface_ops; exactly one is needed)".into());
     }
     warn.extend(w);
+    if let Some(r) = &p.glrs {
+        match r {
+            BlockRef::Sys(r) => s.glrs = edit_ops::surf_of(&s, r, "glrs")?,
+            BlockRef::Block(f) => {
+                match block_face(&s, &f.block, f.surface, &c.spans, &c.back_spans)
+                    .map_err(|x| format!("glrs: {x}"))?
+                {
+                    Some(j) => s.glrs = j,
+                    None => warn.push(format!(
+                        "glrs: block {} not found, so the global reference stays at surface {}",
+                        f.block, s.glrs
+                    )),
+                }
+            }
+        }
+    }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
     s.mechanics = place_mechanics(
