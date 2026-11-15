@@ -1,6 +1,6 @@
-//! 単色の干渉縞（`lensbench_core::fringe`）を Python から使う。
+//! 単色の干渉縞（`lensbench_core::interference`）を Python から使う。
 
-use lensbench_core::fringe::{self as core, DetectorOpts, Polarized, PupilOpts};
+use lensbench_core::interference::{self as core, DetectorOpts, Polarized, PupilOpts};
 use lensbench_core::raygrid::InputPol;
 use lensbench_core::with_threads;
 use numpy::ndarray::Array2;
@@ -70,7 +70,7 @@ fn interferogram<'py>(
     sample_power=1.0, reference_power=1.0, delay=0.0, polarized=false, sample_input="x", reference_input="x",
     threads=None))]
 #[allow(clippy::too_many_arguments)]
-fn fringe_detector<'py>(
+fn interference_detector<'py>(
     py: Python<'py>,
     sample: PyRef<'py, PySystem>,
     reference: PyRef<'py, PySystem>,
@@ -140,6 +140,6 @@ fn fringe_detector<'py>(
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(interferogram, m)?)?;
-    m.add_function(wrap_pyfunction!(fringe_detector, m)?)?;
+    m.add_function(wrap_pyfunction!(interference_detector, m)?)?;
     Ok(())
 }

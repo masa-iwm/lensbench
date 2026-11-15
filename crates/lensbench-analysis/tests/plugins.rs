@@ -266,7 +266,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
 
 #[test]
 fn interferogram_matches_core_with_the_configurations() {
-    use lensbench_core::fringe::{self, PupilOpts};
+    use lensbench_core::interference::{self, PupilOpts};
     use lensbench_core::param::{Kind, Param};
     let mut s = (*sys()).clone();
     let im = s.image();
@@ -289,7 +289,7 @@ fn interferogram_matches_core_with_the_configurations() {
     };
     let c1 = s.config(1).unwrap();
     let c2 = s.config(2).unwrap();
-    let r = fringe::interferogram(&c1, Some(&c2), FieldSel::Index(1), None, &opts).unwrap();
+    let r = interference::interferogram(&c1, Some(&c2), FieldSel::Index(1), None, &opts).unwrap();
     assert_eq!(bits(get(&o, "delta")), bits(&r.delta.concat()));
     assert_eq!(bits(get(&o, "intensity")), bits(&r.intensity.concat()));
     assert!(r.pv > 0.1, "{}", r.pv);
@@ -299,7 +299,8 @@ fn interferogram_matches_core_with_the_configurations() {
         ("beam2".into(), Value::Num(0.0)),
     ]);
     let o = run("interferogram", cfg, &s, 1.0);
-    let w = fringe::opd_grid(&c1, FieldSel::Index(0), None, &fringe::pupil_grid(32)).unwrap();
+    let w = interference::opd_grid(&c1, FieldSel::Index(0), None, &interference::pupil_grid(32))
+        .unwrap();
     assert_eq!(bits(get(&o, "delta")), bits(&w.concat()));
 }
 

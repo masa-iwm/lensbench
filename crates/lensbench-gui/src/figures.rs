@@ -29,7 +29,7 @@ pub fn has_figure(cmd: &str) -> bool {
             | "mtf-field"
             | "mtf-focus"
             | "rms"
-            | "fringe"
+            | "interference"
             | "pop"
     )
 }
@@ -45,7 +45,7 @@ pub fn figure_params(cmd: &str, m: &mut Map<String, Value>, cutoff: Option<f64>,
         "wavefront" if figure => {
             m.entry("map").or_insert(json!(true));
         }
-        "fringe" | "pop" if figure => {
+        "interference" | "pop" if figure => {
             m.entry("grid").or_insert(json!(true));
         }
         // 周波数が要る解析は遮断周波数の 1/10・1/4・1/2（無ければ 10・20・40）
@@ -105,7 +105,7 @@ pub fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, v: &Value, prev: Option<&
             crate::plots::mtf_curves(ui, v, prev, id, "geometric_mtf");
             true
         }
-        "fringe" => interference(ui, id, v),
+        "interference" => interference(ui, id, v),
         "pop" => pop(ui, id, gen, v),
         _ => false,
     }
@@ -488,7 +488,7 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
         ui.weak(tr("波面の格子が読めない"));
         return true;
     };
-    let key = ui.make_persistent_id(("fringe", id));
+    let key = ui.make_persistent_id(("interference", id));
     let mut f: FringeCfg = ui.ctx().data_mut(|d| *d.get_temp_mut_or_default(key));
     ui.horizontal_wrapped(|ui| {
         ui.selectable_value(&mut f.on, false, tr("波面"));
@@ -1053,9 +1053,9 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
     true
 }
 
-// ------------------------------------------------------------------------------------- 干渉（fringe・拡張の干渉の図）
+// ------------------------------------------------------------------------------------- 干渉（interference・拡張の干渉の図）
 
-/// 干渉の JSON（fringe と同じ形: nx・ny・grid（番号 j·nx + i、j = 0 が下）・mode・pupil_min・pupil_step・
+/// 干渉の JSON（interference と同じ形: nx・ny・grid（番号 j·nx + i、j = 0 が下）・mode・pupil_min・pupil_step・
 /// top_left_pixel_center_mm・pixel_mm）から格子を作る（行 0 = 上）。座標は mm（瞳上の縞は正規化瞳座標）
 pub fn interference_grid(v: &Value) -> Option<Grid> {
     let nx = v["nx"].as_u64()? as usize;
@@ -1091,7 +1091,7 @@ pub fn interference_grid(v: &Value) -> Option<Grid> {
 }
 
 /// 量の色の表（符号のある量は青→赤、縞の強度は白黒、ほかは紺→黄）。gray_intensity は quantity が intensity
-/// のとき白黒にするか（fringe）。quantity を書かない結果は強度で白黒
+/// のとき白黒にするか（interference）。quantity を書かない結果は強度で白黒
 fn interference_cmap(v: &Value, gray_intensity: bool) -> Cmap {
     let q = v["quantity"].as_str().unwrap_or("intensity");
     match q {
@@ -1218,7 +1218,7 @@ fn interference(ui: &mut Ui, id: u64, v: &Value) -> bool {
             &[&q, &n("visibility_mean")],
         )
     };
-    interference_view(ui, ("fringe", id), v, &info, true)
+    interference_view(ui, ("interference", id), v, &info, true)
 }
 
 /// 干渉の図（[`interference_grid`] の形の JSON）。info は図の上の説明、gray_intensity は強度を白黒にするか。
@@ -1283,9 +1283,9 @@ mod tests {
         assert_eq!(m["freqs"], json!([5]));
         assert_eq!(default_freqs(Some(325.4)), vec![33.0, 81.0, 160.0]);
         assert_eq!(default_freqs(None), vec![10.0, 20.0, 40.0]);
-        assert!(has_figure("fringe") && !has_figure("info"));
+        assert!(has_figure("interference") && !has_figure("info"));
         let mut m = Map::new();
-        figure_params("fringe", &mut m, None, true);
+        figure_params("interference", &mut m, None, true);
         assert_eq!(m["grid"], json!(true));
     }
 

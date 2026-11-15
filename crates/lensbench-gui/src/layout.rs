@@ -22,7 +22,7 @@ pub const ANALYSES: &[(&str, &str, bool)] = &[
     ("huygens-mtf", "Huygens MTF", true),
     ("mtf-field", n_("フィールド MTF"), false),
     ("mtf-focus", n_("スルーフォーカス MTF"), true),
-    ("fringe", n_("干渉縞（2 光束）"), true),
+    ("interference", n_("干渉縞（2 光束）"), true),
     ("pop", n_("簡易 POP"), true),
     ("rays", n_("光線の表"), false),
     ("coatings", n_("膜の境界"), false),
@@ -56,7 +56,7 @@ pub fn analysis_help(cmd: &str) -> Option<&'static str> {
         "huygens-mtf" => "Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）",
         "mtf-field" => "フィールド MTF: 正規化視野 0〜1 に対する MTF（周波数ごと）",
         "mtf-focus" => "スルーフォーカス MTF: 像面をずらしたときの MTF",
-        "fringe" => "干渉縞（2 光束）: 2 つの構成か状態の光を重ねた縞",
+        "interference" => "干渉縞（2 光束）: 2 つの構成か状態の光を重ねた縞",
         "pop" => "簡易 POP: 光線から作った場を伝えた照度",
         "rays" => "光線の表: 面ごとの交点・方向・光路長",
         "coatings" => "膜の境界: 全構成の境界（膜・前後の媒質）と扱い",
@@ -82,7 +82,7 @@ pub fn analysis_group(cmd: &str) -> &'static str {
     match cmd {
         "spot" | "wavefront" | "zernike" | "rms" => "像の質",
         "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF・PSF",
-        "fringe" | "pop" => "干渉・伝搬",
+        "interference" | "pop" => "干渉・伝搬",
         "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "表・系",
         _ => "追加の解析",
     }

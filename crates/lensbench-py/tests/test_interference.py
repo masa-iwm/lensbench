@@ -58,13 +58,13 @@ def test_pupil_interferogram_is_the_difference_of_wavefronts(tmp_path):
     assert r0["pv"] < 1e-9
 
 
-def test_detector_fringe_same_path_is_bright_and_delay_darkens(tmp_path):
+def test_detector_interference_same_path_is_bright_and_delay_darkens(tmp_path):
     _, b = systems(tmp_path)
-    r = lb.fringe_detector(b, b, npx=16, center=(0.0, 0.0), width=0.008, pupil=33)
+    r = lb.interference_detector(b, b, npx=16, center=(0.0, 0.0), width=0.008, pupil=33)
     both = r["ok_sample"] & r["ok_reference"]
     assert both.sum() > 20
     np.testing.assert_allclose(r["visibility"][both], 1.0, atol=1e-12)
     np.testing.assert_allclose(r["intensity"][both], 4 * r["i_sample"][both], rtol=1e-9)
-    r2 = lb.fringe_detector(b, b, npx=16, center=(0.0, 0.0), width=0.008, pupil=33, delay=0.55e-3 / 2)
+    r2 = lb.interference_detector(b, b, npx=16, center=(0.0, 0.0), width=0.008, pupil=33, delay=0.55e-3 / 2)
     assert np.all(np.abs(r2["intensity"][both]) < 1e-9 * r2["i_sample"][both])
     assert r["x"].shape == (16,) and abs(r["wavelength"] - 0.55) < 1e-15

@@ -90,7 +90,7 @@ mod tests {
             "huygens-mtf",
             "mtf-field",
             "mtf-focus",
-            "fringe",
+            "interference",
             "info",
             "elements",
             "ghost",

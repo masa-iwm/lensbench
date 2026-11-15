@@ -104,15 +104,15 @@ RMS スポット半径・RMS 波面収差を視野・フォーカス・波長に
 
 {{#include gen/rms.md}}
 
-### 波面収差（wavefront）と干渉縞（fringe）
+### 波面収差（wavefront）と干渉縞（interference）
 
 主光線基準の OPD の P-V・RMS [波]。
 
 {{#include gen/wavefront.md}}
 
-`fringe --beam2 ref` で参照球との干渉縞（瞳の上、OpticStudio の Interferogram に当たる）。
+`interference --beam2 ref` で参照球との干渉縞（瞳の上、OpticStudio の Interferogram に当たる）。
 
-{{#include gen/fringe.md}}
+{{#include gen/interference.md}}
 
 ### Zernike 係数（zernike）
 

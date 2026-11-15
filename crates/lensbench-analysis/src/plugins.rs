@@ -30,7 +30,7 @@ use std::sync::Arc;
 use crate::huygens::{self, HuygensOpts};
 use lensbench_core::analysis::{self, MtfMethod, ZernKind};
 use lensbench_core::coating::Coatings;
-use lensbench_core::fringe::{self, PupilOpts};
+use lensbench_core::interference::{self, PupilOpts};
 use lensbench_core::plugin::{
     check_wave, field_sel, Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance,
     Kind, OutputSpec, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
@@ -865,7 +865,7 @@ impl Prepared {
                 } else {
                     Some(s.config(*beam2)?)
                 };
-                let r = fringe::interferogram(&s1, s2.as_ref(), f, *wave, opts)?;
+                let r = interference::interferogram(&s1, s2.as_ref(), f, *wave, opts)?;
                 out(vec![
                     ("p", v1(r.p)?),
                     ("delta", rows(&r.delta)?),

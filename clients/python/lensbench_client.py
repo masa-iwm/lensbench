@@ -394,9 +394,9 @@ class Client:
         res, arr = self.call("plugin", {"name": name, "config": config or {}}, inputs)
         return arr
 
-    def fringe(self, **kw) -> dict:
-        """単色の干渉縞（CLI の fringe と同じ引数・結果）。光束は beam1・beam2"""
-        return self.analyze("fringe", **kw)
+    def interference(self, **kw) -> dict:
+        """単色の干渉縞（CLI の interference と同じ引数・結果）。光束は beam1・beam2"""
+        return self.analyze("interference", **kw)
 
     # ---- 終わり ----
 

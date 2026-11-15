@@ -1,4 +1,4 @@
-//! serve の残り: 干渉の解析（fringe）・プラグイン・パイプ・共有メモリ。
+//! serve の残り: 干渉の解析（interference）・プラグイン・パイプ・共有メモリ。
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -286,10 +286,10 @@ fn strip_notes(mut v: Value) -> Value {
     v
 }
 
-/// 完了条件: serve の fringe は CLI と同じ結果。set の変更は両方の光束に当て、構成で値が違うパラメータは当てない
+/// 完了条件: serve の interference は CLI と同じ結果。set の変更は両方の光束に当て、構成で値が違うパラメータは当てない
 #[test]
 fn interference_like_cli() {
-    let d = tmp_dir("fringe");
+    let d = tmp_dir("interference");
     let f = d.join("two_cfg.zmx");
     std::fs::write(&f, TWO_CFG).unwrap();
     let fs = f.to_str().unwrap();
@@ -297,21 +297,21 @@ fn interference_like_cli() {
     let mut c = sv.tcp();
 
     let fr = ["--n", "16", "--beam1", "1", "--beam2", "2"];
-    let mut args = vec!["fringe", fs];
+    let mut args = vec!["interference", fs];
     args.extend(fr);
     let want_f = cli_json(&args);
-    let params = json!({ "cmd": "fringe", "n": 16, "beam1": "1", "beam2": "2" });
+    let params = json!({ "cmd": "interference", "n": 16, "beam1": "1", "beam2": "2" });
     let got_f = c.call("analyze", params.clone());
     assert_eq!(got_f["notes"], json!([]));
     assert_eq!(strip_notes(got_f), want_f);
 
     // grid: 格子も結果に入れる（GUI の図）。CLI の --grid と同じ
-    let mut args = vec!["fringe", fs];
+    let mut args = vec!["interference", fs];
     args.extend(fr);
     args.push("--grid");
     let got_fg = strip_notes(c.call(
         "analyze",
-        json!({ "cmd": "fringe", "n": 16, "beam1": "1", "beam2": "2", "grid": true }),
+        json!({ "cmd": "interference", "n": 16, "beam1": "1", "beam2": "2", "grid": true }),
     ));
     assert_eq!(got_fg, cli_json(&args));
     assert_eq!(got_fg["grid"].as_array().unwrap().len(), 16 * 16);
@@ -325,7 +325,7 @@ fn interference_like_cli() {
     // 同じ値をファイルに書いた系の CLI と同じ（構成 1 の値だけ変わる）
     let f2 = d.join("two_cfg_changed.zmx");
     std::fs::write(&f2, TWO_CFG.replace("THIC 1 1 100.3", "THIC 1 1 100.5")).unwrap();
-    let mut args = vec!["fringe", f2.to_str().unwrap()];
+    let mut args = vec!["interference", f2.to_str().unwrap()];
     args.extend(fr);
     assert_eq!(strip_notes(got), cli_json(&args));
     // 戻すと CLI と同じ

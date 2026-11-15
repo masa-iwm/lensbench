@@ -713,7 +713,7 @@ def _system_from_state(state: Any, coatings: Sequence[_StrPath]) -> System:
     """pickle から系を作り直す（[`PySystem::__reduce__`] の対）"""
 
 
-def fringe_detector(sample: System, reference: System, field: _Field = ..., wave: int | None = None, pupil: int = 65, npx: int = 256, center: tuple[float, float] | None = None, width: float | None = None, sample_power: float = 1.0, reference_power: float = 1.0, delay: float = 0.0, polarized: bool = False, sample_input: str = "x", reference_input: str = "x", threads: int | None = None) -> dict[str, Any]:
+def interference_detector(sample: System, reference: System, field: _Field = ..., wave: int | None = None, pupil: int = 65, npx: int = 256, center: tuple[float, float] | None = None, width: float | None = None, sample_power: float = 1.0, reference_power: float = 1.0, delay: float = 0.0, polarized: bool = False, sample_input: str = "x", reference_input: str = "x", threads: int | None = None) -> dict[str, Any]:
     """像面上の干渉縞: 試料（sample）と参照（reference）の 2 本の経路の光線の格子（瞳 pupil²、一様に照らす）を像面の
     画素（npx²、中心 center = (x, y)・一辺 width [mm]、省略で 2 つが届く範囲）へ補間し、場を足す。
     polarized なら偏光追跡の場（入射偏光 sample_input・reference_input、膜は試料の系の膜）で重ねる。

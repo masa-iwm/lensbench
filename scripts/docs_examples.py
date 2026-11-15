@@ -165,7 +165,7 @@ def plot_zernike(out: str, png: Path) -> None:
 
 
 def plot_grid(path: Path, title: str, cmap: str = "gray") -> Callable[[str, Path], None]:
-    """fringe の json の grid（行 = +y）を画像に"""
+    """interference の json の grid（行 = +y）を画像に"""
 
     def p(_: str, png: Path) -> None:
         d = json.loads(path.read_text(encoding="utf-8"))
@@ -250,8 +250,8 @@ def examples() -> list[Example]:
          plot_mtf_focus, None),
         ("rms", ["rms", A0, *GLASS, "--vs", "field", "--points", "11", "--json"], 0, plot_rms, None),
         ("wavefront", ["wavefront", A0, *GLASS, "--n", "64"], 14, None, None),
-        ("fringe", ["fringe", A0, *GLASS, "--beam1", "1", "--beam2", "ref", "--field", "3", "--n", "160", "--out", f"{t}/fringe.json"], 12,
-         plot_grid(TMP / "fringe.json", "interferogram (field 3 vs. reference sphere)"), None),
+        ("interference", ["interference", A0, *GLASS, "--beam1", "1", "--beam2", "ref", "--field", "3", "--n", "160", "--out", f"{t}/interference.json"], 12,
+         plot_grid(TMP / "interference.json", "interferogram (field 3 vs. reference sphere)"), None),
         ("zernike", ["zernike", A0, *GLASS, "--kind", "fringe", "--terms", "16", "--field", "1"], 10, plot_zernike,
          ["zernike", A0, *GLASS, "--kind", "fringe", "--terms", "16", "--json"]),
         ("psf", ["psf", A0, *GLASS, "--field", "2", "--pupil", "64", "--image", "128", "--save", f"{t}/psf.npz"], 3, plot_psf, None),

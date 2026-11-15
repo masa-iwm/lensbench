@@ -12,7 +12,7 @@
 mod edit;
 mod errors;
 pub mod ext;
-mod fringe;
+mod interference;
 mod names;
 use names::warn_all;
 mod plugin;
@@ -2924,7 +2924,7 @@ pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(_system_from_state, m)?)?;
     m.add_function(wrap_pyfunction!(run_settings, m)?)?;
     m.add_function(wrap_pyfunction!(progress, m)?)?;
-    fringe::register(m)?;
+    interference::register(m)?;
     plugin::register(m)?;
     runs::register(m)?;
     search::register(m)?;

@@ -169,14 +169,14 @@ TWO_CFG = TWO_CFG[TWO_CFG.index('const TWO_CFG: &str = "') + len('const TWO_CFG:
 TWO_CFG = TWO_CFG[: TWO_CFG.index('";')]
 
 
-def test_fringe_over_serve(tmp_path):
+def test_interference_over_serve(tmp_path):
     p = tmp_path / "two_cfg.zmx"
     p.write_text(TWO_CFG)
     with Client.spawn(p, exe=_exe(), threads=1) as lb:
-        f = lb.fringe(n=16)
+        f = lb.interference(n=16)
         assert f["nx"] == 16 and f["pv_waves"] > 0 and f["notes"] == []
         lb.set({"1.t": 100.5})  # 構成 1 だけの値
-        f = lb.fringe(n=16)
+        f = lb.interference(n=16)
         assert len(f["notes"]) == 1
 
 

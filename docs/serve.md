@@ -107,7 +107,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 - パラメータの名前は Python の `get_param`・`set_param` と同じ（`3.t`・`STOP.r`・`lens2.tx`・`G1.shift` など）
 - `analyze` で動くのは、解析の登録簿の解析（info・spot・wavefront・zernike・ghost・mtf・mtf-focus・mtf-field・geo-mtf・huygens-mtf・rms・psf・
-  rays・pop・mech-check・elements・fringe と、`ext::register` で登録した解析）と `coatings` だけ。
+  rays・pop・mech-check・elements・interference と、`ext::register` で登録した解析）と `coatings` だけ。
   最適化・公差・差し替え・ズーム・レイアウトの書き出しは専用のメソッド（`optimize`・`tolerance`・`swap`・`zoom`・`layout_export`）で。
   設定の JSON をそのまま渡す。鍵は CLI の旗の `-` を `_` にしたもの（`-` のままでもよい）、値は型のまま（数・`true`・数の並びは配列・
   パスの並びは配列）。前の受け方の数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つのパスも受ける。`json` は読み飛ばす。
@@ -131,12 +131,12 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 `glasses`・`lenses`・`catalog_search` は読み込んだ系と関係なく使える（GUI のカタログブラウザ）。
 
-### 干渉の解析（fringe）
+### 干渉の解析（interference）
 
-`analyze` の `cmd` に `fringe`（単色の干渉縞）を渡すと、CLI と同じ引数・同じ結果を返す。
+`analyze` の `cmd` に `interference`（単色の干渉縞）を渡すと、CLI と同じ引数・同じ結果を返す。
 
 ```json
-{"method": "analyze", "params": {"cmd": "fringe", "beam1": "1", "beam2": "2", "mode": "detector"}}
+{"method": "analyze", "params": {"cmd": "interference", "beam1": "1", "beam2": "2", "mode": "detector"}}
 ```
 
 - 2 つの光束は `load` の `cfg`・`state` によらず、`beam1`・`beam2`（構成の番号か状態の名前）で選ぶ。
@@ -201,7 +201,7 @@ with Client.spawn("system.zmx", glass_dirs=["catalogs"], threads=1) as lb:   # s
 `Client.spawn(..., pipe=True)` でパイプ、`lb.use_shm(128 << 20)` で共有メモリ（numpy が要る、`use_shm(0)` でやめる）。
 長い要求（`optimize`・`tolerance`・`swap`）を回している間は、`o = lb.another()` で別の接続を開いて `o.progress()`・`o.stop("tolerance")`・`o.cancel()` を送る（別のスレッドから）。
 表にない method も `lb.history()`・`lb.undo(steps=1)` のように名前で呼べる（キーワード引数が params、結果は `result`。名前は `describe` の `methods` で確かめる）。
-`lb.fringe(...)` は `analyze("fringe", ...)` と同じ。`lb.plugin("spot", field=np.array(2.0))` でプラグインを呼ぶ
+`lb.interference(...)` は `analyze("interference", ...)` と同じ。`lb.plugin("spot", field=np.array(2.0))` でプラグインを呼ぶ
 （numpy の float64・complex128・bool はそのまま送る）。例: `examples/loop/serve_loop.py`（間隔を変えて再解析を繰り返し、往復の時間を出す。CI で回す）。
 
 ### 往復の時間

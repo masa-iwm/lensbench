@@ -3192,7 +3192,7 @@ impl Core {
                 !(fig
                     && matches!(
                         (cfg.cmd.as_str(), s.name.as_str()),
-                        ("wavefront", "map") | ("fringe" | "pop", "grid")
+                        ("wavefront", "map") | ("interference" | "pop", "grid")
                     ))
             })
             .map(|mut s| {
@@ -3584,7 +3584,7 @@ impl Core {
             || cfg.field != before.field
             || cfg.wave != before.wave
             || (cfg.view != before.view
-                && (matches!(cfg.cmd.as_str(), "spot" | "wavefront" | "fringe" | "pop")
+                && (matches!(&*cfg.cmd, "spot" | "wavefront" | "interference" | "pop")
                     || crate::ext::get(&cfg.cmd).is_some_and(|a| a.figure_params.is_some())))
         {
             self.run(id, cfg);

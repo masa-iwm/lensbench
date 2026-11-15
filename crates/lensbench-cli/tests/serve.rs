@@ -247,7 +247,7 @@ fn loop_thickness() {
     // 解析の値の誤りは文だけ（「不正: 」を付けない・重ねない）
     let e = sv.error("analyze", json!({ "cmd": "mech-check" }));
     assert!(e.starts_with("no mechanical parts"), "{e}");
-    let e = sv.error("analyze", json!({ "cmd": "fringe", "beam1": "9" }));
+    let e = sv.error("analyze", json!({ "cmd": "interference", "beam1": "9" }));
     assert!(!e.contains("不正") && !e.contains("invalid:"), "{e}");
     assert!(!sv
         .error("set", json!({ "values": { "99.t": 1.0 } }))

@@ -1,9 +1,9 @@
-//! 単色の干渉縞（core の `fringe`）・系の一覧（info）。2 つの光束・状態の一覧は系の読み方（[`lensbench_analysis::Source`]）から
+//! 単色の干渉縞（core の `interference`）・系の一覧（info）。2 つの光束・状態の一覧は系の読み方（[`lensbench_analysis::Source`]）から
 
 use std::path::{Path, PathBuf};
 
 use lensbench_core::coating::Coatings;
-use lensbench_core::fringe::{self, DetectorOpts, Polarized, PupilOpts};
+use lensbench_core::interference::{self, DetectorOpts, Polarized, PupilOpts};
 use lensbench_core::raygrid::InputPol;
 use lensbench_core::{report, Error, FieldSel, Result};
 use lensbench_export::image::{self, ImageFormat};
@@ -54,12 +54,12 @@ impl Analysis for Info {
     }
 }
 
-// -------------------------------------------------------------------------------------- fringe
+// -------------------------------------------------------------------------------------- interference
 
 /// 干渉縞を求める所
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum FringeMode {
+pub enum InterferenceMode {
     /// 瞳上（OpticStudio の Interferogram に当たる）
     #[default]
     Pupil,
@@ -102,13 +102,13 @@ impl Quantity {
 /// 干渉縞の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct FringeParams {
+pub struct InterferenceParams {
     /// 光束 1（試料）: .zmx は構成の番号（1 始まり）、プロジェクトファイルは状態の名前
     pub beam1: String,
     /// 光束 2（参照）: 同上。0 か ref で参照球（mode pupil だけ）
     pub beam2: String,
     /// 瞳上か像面上か
-    pub mode: FringeMode,
+    pub mode: InterferenceMode,
     /// 視野の番号（1 始まり）
     #[schemars(extend("x-min" = 1))]
     pub field: usize,
@@ -159,12 +159,12 @@ pub struct FringeParams {
     pub grid: bool,
 }
 
-impl Default for FringeParams {
+impl Default for InterferenceParams {
     fn default() -> Self {
-        FringeParams {
+        InterferenceParams {
             beam1: "1".into(),
             beam2: "2".into(),
-            mode: FringeMode::Pupil,
+            mode: InterferenceMode::Pupil,
             field: 1,
             wave: None,
             n: 64,
@@ -196,14 +196,14 @@ fn reference_sphere(b: &str) -> bool {
     )
 }
 
-pub struct Fringe;
+pub struct Interference;
 
-impl Analysis for Fringe {
-    type Params = FringeParams;
+impl Analysis for Interference {
+    type Params = InterferenceParams;
     type Output = Value;
     fn meta(&self) -> Meta {
         Meta {
-            name: "fringe",
+            name: "interference",
             about: "単色の干渉縞: 2 つの構成か状態の光を重ねる",
             help: "単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。mode pupil は瞳上\
                    （OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、\
@@ -211,7 +211,7 @@ impl Analysis for Fringe {
                    tif（16 bit、float で 32 bit float）・png（16 bit）",
         }
     }
-    fn run(&self, cx: &Cx<'_>, a: &FringeParams) -> Result<Value> {
+    fn run(&self, cx: &Cx<'_>, a: &InterferenceParams) -> Result<Value> {
         let src = cx.source()?;
         let mut notes = Vec::new();
         let s1 = src.variant(&a.beam1, &mut notes)?;
@@ -231,14 +231,14 @@ impl Analysis for Fringe {
         let w = wave(&s1, a.wave)?;
         let q = a.quantity.name();
         let (grid, n, mut summary) = match a.mode {
-            FringeMode::Pupil => {
+            InterferenceMode::Pupil => {
                 let o = PupilOpts {
                     n: a.n,
                     scale: a.scale,
                     xtilt: a.xtilt,
                     ytilt: a.ytilt,
                 };
-                let r = fringe::interferogram(&s1, s2.as_ref(), field, w, &o)?;
+                let r = interference::interferogram(&s1, s2.as_ref(), field, w, &o)?;
                 let n = r.p.len();
                 let grid: Vec<f64> = match a.quantity {
                     Quantity::Intensity => r.intensity.concat(),
@@ -258,7 +258,7 @@ impl Analysis for Fringe {
                 });
                 (grid, n, summary)
             }
-            FringeMode::Detector => {
+            InterferenceMode::Detector => {
                 let Some(s2) = s2 else {
                     return Err(Error::Invalid(
                         "mode detector では beam2 に構成か状態を指定する".into(),
@@ -284,7 +284,7 @@ impl Analysis for Fringe {
                 } else {
                     None
                 };
-                let r = fringe::detector(&s1, &s2, field, w, &o, pol)?;
+                let r = interference::detector(&s1, &s2, field, w, &o, pol)?;
                 let grid: Vec<f64> = match a.quantity {
                     Quantity::Intensity => r.intensity.clone(),
                     Quantity::Opd => r.opd.clone(),
