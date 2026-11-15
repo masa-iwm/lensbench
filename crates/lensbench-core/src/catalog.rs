@@ -19,7 +19,7 @@ pub struct CatalogLens {
 }
 
 /// .lbcat の形式の版
-pub const LBCAT_VERSION: u32 = 1;
+pub(crate) const LBCAT_VERSION: u32 = 1;
 
 /// レンズカタログの束 .lbcat のバイト列。zlib で圧縮した UTF-8 の文で、1 行目が
 /// `LBCAT <版>\t<メーカー>\t<変換元>`、続いてレンズごとに `<型番>\t<焦点距離>\t<.zmx のバイト数>` の行と .zmx の本文

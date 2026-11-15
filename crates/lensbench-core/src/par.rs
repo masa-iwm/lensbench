@@ -105,7 +105,7 @@ static DEFAULT_THREADS: std::sync::atomic::AtomicUsize = std::sync::atomic::Atom
 
 /// `with_threads(None, ..)` の既定のスレッド数を決める（None・0 で rayon の大域プール）。フロントエンド
 /// （CLI の `--threads`・Python の読込）が起動時に呼ぶ。core は環境変数を読まない
-pub fn set_default_threads(n: Option<usize>) {
+pub(crate) fn set_default_threads(n: Option<usize>) {
     DEFAULT_THREADS.store(n.unwrap_or(0), Ordering::Relaxed);
 }
 
@@ -116,7 +116,7 @@ pub fn default_threads() -> Option<usize> {
 
 /// 既定のスレッド数を環境変数 LENSBENCH_THREADS（1 以上の整数。`lensbench run --threads` がスクリプトに渡す）
 /// から決める。CLI の起動・Python の import で呼ぶ（`--threads`・`threads=` を省いたときの数）
-pub fn default_threads_from_env() {
+pub(crate) fn default_threads_from_env() {
     let n = std::env::var("LENSBENCH_THREADS")
         .ok()
         .and_then(|s| s.trim().parse::<usize>().ok());
@@ -146,7 +146,7 @@ pub fn current_threads() -> usize {
 
 /// a を n 個ずつに分けた塊のそれぞれに f(番号, 塊) をかける（逐次の指定の中では逐次）。
 /// 塊ごとに独立に計算するので、スレッド数によらず結果は同じ
-pub fn for_each_chunk_mut<T: Send>(
+pub(crate) fn for_each_chunk_mut<T: Send>(
     a: &mut [T],
     n: usize,
     f: impl Fn(usize, &mut [T]) + Sync + Send,
@@ -294,7 +294,7 @@ pub(crate) fn current_fs() -> Option<Arc<dyn crate::vfs::Fs>> {
 }
 
 /// まとめ追跡を使ってよいか（[`with_batch`]）
-pub fn batch_enabled() -> bool {
+pub(crate) fn batch_enabled() -> bool {
     CTX.with(|x| !x.borrow().no_batch)
 }
 

@@ -2,6 +2,9 @@
 //!
 //! 外部のレンズカタログ（ZMF など）の読込は [`catalog::LensCatalogSource`] を実装した
 //! 別クレートから差し込む。公開版にはその実装を含めない。
+//!
+//! ライブラリとして使うときの入口は [`prelude`]（系の読込・追跡・主な解析・結果の型）。それ以外の `pub` のモジュールは
+//! 上の層のクレート（analysis・project・engine など）と拡張のための口で、安定の度合いは低い（XCT-22）。
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方。
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -55,6 +58,23 @@ pub mod zmx;
 pub mod zmx_write;
 pub mod zpl;
 pub mod zpl_solve;
+
+/// ライブラリとして使うときの主な口（`use lensbench_core::prelude::*;`）。系を読む（[`zmx::load_with`]）→
+/// 追跡する（[`System::try_trace`]・[`TraceOpts`]）→ 解析する（[`analysis`]・[`psf`]）の流れに要るもの
+pub mod prelude {
+    pub use crate::analysis::{self, Mtf, Wavefront};
+    pub use crate::error::{Error, Result};
+    pub use crate::ext::{self, Ext};
+    pub use crate::grid::Grid2;
+    pub use crate::par::{with_threads, CancelToken};
+    pub use crate::psf::{self, Psf, PsfOpts};
+    pub use crate::system::{FieldSel, RecSel, System, TraceOpts};
+    pub use crate::tansag::TanSag;
+    pub use crate::vfs;
+    pub use crate::waves::Waves;
+    pub use crate::zmx::{self, LoadOptions};
+    pub use crate::{init_from_env, report};
+}
 
 pub use error::{Error, Result};
 pub use par::with_threads;

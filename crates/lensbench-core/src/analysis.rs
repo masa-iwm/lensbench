@@ -1128,7 +1128,7 @@ const SHIFT_FAC: f64 = 8.0;
 /// [`MtfMethod::Auto`] が FFT に切り替える求積の点数 n（自動で決めた値がこれを超えるとき）。求積は点が n² 個で
 /// 周波数ごとに足すので、E0・E1 の軸外（OPD の傾き 600〜700 波、n が 2000 超）は FFT の 4 倍ほど遅い。
 /// FFT の瞳の標本は 2n（上限 [`FFT_MAX`]）で、求積との差は E0・E1 で 7e-5 以下
-pub const AUTO_FFT_N: usize = 1024;
+pub(crate) const AUTO_FFT_N: usize = 1024;
 
 /// [`MtfMethod::Auto`] が FFT に切り替える周波数の数の下限。求積は周波数ごとに時間がかかり、FFT は周波数の数に
 /// よらない。n が [`AUTO_FFT_N`] を超える系では、周波数がおよそ 7 個で時間が並ぶ（E1: 2 個で求積 1.8 s・FFT 3.0 s、

@@ -16,10 +16,10 @@ use lensbench_export::{d2, mesh, scene};
 use serde_json::{json, Value};
 
 mod analysis_cmd;
-pub mod error;
+mod error;
 mod help_json;
 mod text_out;
-pub use error::AppError;
+pub(crate) use error::AppError;
 mod coat_cmd;
 use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
@@ -27,8 +27,8 @@ use lensbench_cad::detail as cad_detail;
 #[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
 pub mod ext;
-pub mod run;
-pub mod serve;
+mod run;
+mod serve;
 mod serve_ipc;
 mod watch;
 

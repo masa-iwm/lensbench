@@ -443,7 +443,7 @@ fn wall_points(p: &MechPart, n: usize) -> Vec<V3> {
 }
 
 /// 部品の座標の 2 点 a・b を結ぶ線分が穴の外に出るか
-pub fn segment_clipped(a: V3, b: V3, bore: &Bore) -> bool {
+pub(crate) fn segment_clipped(a: V3, b: V3, bore: &Bore) -> bool {
     let (z0, z1) = (bore.z0.min(bore.z1), bore.z0.max(bore.z1));
     let dz = b[2] - a[2];
     // z の範囲に入る助変数の区間 [t0, t1]

@@ -24,7 +24,7 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-pub const ENPP_MAX: f64 = 1e10;
+pub(crate) const ENPP_MAX: f64 = 1e10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

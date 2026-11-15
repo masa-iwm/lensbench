@@ -1134,7 +1134,7 @@ pub fn beam_from_rays(
 }
 
 /// 面 j の開口（浮動の開口は除く。絞り面で開口がなければ絞り半径の円）
-pub fn surface_aperture(s: &System, j: usize) -> Option<Aperture> {
+pub(crate) fn surface_aperture(s: &System, j: usize) -> Option<Aperture> {
     match s.surfaces[j].ap {
         Aperture::None | Aperture::Floating { .. } => {
             if j == s.stop() {

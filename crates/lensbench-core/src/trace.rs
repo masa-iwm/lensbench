@@ -10,7 +10,7 @@ use crate::system::{Frame, Frames, Rel, System};
 use crate::Error;
 
 /// 複素の 3 次元ベクトル（電場）
-pub type CV3 = [C64; 3];
+pub(crate) type CV3 = [C64; 3];
 
 /// 偏光追跡での面ごとの処理（波長ごとに用意する）
 #[derive(Debug, Clone)]
@@ -65,7 +65,7 @@ pub enum CryKind {
 
 /// 板の中を進む光線の結晶軸（今の面の局所座標）と、板の中の長さ
 #[derive(Debug, Clone, Copy)]
-pub struct CryState {
+pub(crate) struct CryState {
     pub mode: u8,
     pub axis: V3,
     pub no: f64,
@@ -109,7 +109,7 @@ fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
 }
 
 /// 1 本の光線の偏光の状態: 電場（偏光の入力ごと、今いる面の局所座標）
-pub struct PolRay<'a> {
+pub(crate) struct PolRay<'a> {
     pub e: Vec<CV3>,
     pub surf: &'a [PolSurf],
     /// 係数を求められなかったとき（膜の表の範囲外など）。電場は NaN にする
@@ -367,7 +367,7 @@ pub(crate) fn newton_tol(s: f64, z: f64) -> f64 {
 }
 
 /// 追跡の内側で面ごとの記録を受け取る（k は無視しない面の通し番号）
-pub trait RecSink {
+pub(crate) trait RecSink {
     fn put(&mut self, k: usize, e: RecEntry);
     /// 通し番号 k の記録を受け取るか（受け取らない面は記録の値を作らない。既定は全面）
     #[inline(always)]
@@ -728,7 +728,7 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
 /// 大域の位置 p・方向 k、光路長 opl の光線を、面 first の直前から面 last まで、波長 w で追跡する。
 /// rec には無視しない面ごとに 1 つずつ（first..=last の順に）書く（足りる長さを渡す）
 #[allow(clippy::too_many_arguments)]
-pub fn trace_ray(
+pub(crate) fn trace_ray(
     sys: &System,
     fr: &Frames,
     w: usize,
@@ -741,36 +741,6 @@ pub fn trace_ray(
     rec: Option<&mut [RecEntry]>,
 ) -> RayOut {
     trace_core(sys, fr, w, p, k, opl, first, last, floating_clip, rec, None)
-}
-
-/// trace_ray に偏光を加えたもの（電場 pol.e を面ごとに更新する）
-#[allow(clippy::too_many_arguments)]
-pub fn trace_ray_pol(
-    sys: &System,
-    fr: &Frames,
-    w: usize,
-    p: V3,
-    k: V3,
-    opl: f64,
-    first: usize,
-    last: usize,
-    floating_clip: bool,
-    rec: Option<&mut [RecEntry]>,
-    pol: &mut PolRay,
-) -> RayOut {
-    trace_core(
-        sys,
-        fr,
-        w,
-        p,
-        k,
-        opl,
-        first,
-        last,
-        floating_clip,
-        rec,
-        Some(pol),
-    )
 }
 
 /// 交点の求め方（面ごとに前計算する。[`surf_kind`]）

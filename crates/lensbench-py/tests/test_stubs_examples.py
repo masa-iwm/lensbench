@@ -1,5 +1,6 @@
 """型スタブ・版・例題・lensbench run の Python 側"""
 
+import json
 import os
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import lensbench as lb
+from test_trace import RELAY_ZMX
 
 ROOT = Path(__file__).resolve().parents[3]
 EXAMPLES = sorted((ROOT / "examples" / "python").glob("[!_]*.py"))
@@ -134,10 +136,16 @@ def _typed_dicts():
     return out
 
 
-def test_result_typed_dicts_match_the_results():
+def test_result_typed_dicts_match_the_results(tmp_path):
     """型スタブの結果の TypedDict（CLI-16）と、実際の結果の dict の鍵が合う"""
     s = lb.System.load(str(ROOT / "tests" / "refs" / "A0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
     td = _typed_dicts()
+    b0 = lb.System.load(str(ROOT / "tests" / "refs" / "B0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
+    (tmp_path / "relay.zmx").write_text(RELAY_ZMX)
+    relay = lb.System.load(str(tmp_path / "relay.zmx"))
+    p19 = ROOT / "examples" / "projects" / "P19_tube_cage.json"
+    mech = lb.System.load(str(p19), glass_dirs=[str(ROOT / "tests" / "glass")]).mech_check(grid=5)
+    zoom = lb.zoom([s], ["8.t"], iters=1)
     cases = [
         ("_TraceResult", s.trace(1, [0.0], [0.0])),
         ("_TraceResult", s.trace(1, [0.0], [0.0], record=True, pol=True, grad=["8.t"])),
@@ -156,7 +164,42 @@ def test_result_typed_dicts_match_the_results():
         ("_Cardinal", s.cardinal()),
         ("_OptimizeResult", s.optimize(["8.t"], iters=2)),
         ("_TanSag", s.mtf(1, [10])["cutoff"]),
+        ("_Rms", s.rms(1)),
+        ("_RmsSweep", s.rms(1, vs="focus", x=[0.0, 0.01])),
+        ("_RmsSweep", s.rms(vs="field", x=[0.0, 1.0])),
+        ("_SystemData", s.system_data()),
+        ("_Surface", s.surface(1)),
+        ("_SolveRay", b0.solve_ray("object", ("position", b0.image, (0.0, -1.0)), field=2)),
+        ("_FiberCoupling", relay.fiber_coupling(0.1)),
+        ("_FiberCoupling", relay.fiber_coupling(0.1, pol=True)),
+        ("_MechCheck", mech),
+        ("_MechPart", mech["parts"][0]),
+        ("_MechBore", mech["parts"][0]["bores"][0]),
+        ("_MechResult", mech["results"][0]),
+        ("_MechResultPart", mech["results"][0]["parts"][0]),
+        ("_Interferogram", lb.interferogram(s, n=8)),
+        ("_InterferenceDetector", lb.interference_detector(s, s, pupil=9, npx=8)),
+        ("_PluginSpec", lb.plugin_spec("rms")),
+        ("_PluginOutput", lb.plugin_spec("psf")["outputs"][0]),
+        ("_RunSettings", lb.run_settings()),
+        ("_Zoom", zoom),
+        ("_ZoomPoint", zoom["path"][0]),
     ]
+    e = lb.System.load(str(ROOT / "tests" / "refs" / "A0" / "system.zmx"), glass_dirs=[str(ROOT / "tests" / "glass")])
+    e.add_pickup(3, 2, "before0", -1.0)
+    e.add_pickup(4, 2, "after0", src_what="before0")
+    cases += [("_Pickup", q) for q in e.pickups()] + [("_Solve", q) for q in e.solves()]
+    cases += [("_Unit", q) for q in e.units()]
+    cases += [("_TraceResult", r) for r in lb.trace_many([s, e], 1, [0.0], [0.0])]
+    assert e.pickups() and e.solves() and e.units()
+    cases += [("_PluginParam", q) for name in lb.plugins() for q in lb.plugin_spec(name[0])["config"]]
+    # 筒の内径を細くして収まりの検査の行を出す（test_mech.py の test_fit と同じ）
+    pj = json.loads(p19.read_text())
+    pj["mechanics"] = [{"name": "narrow", "mech": {"bores": [{"z0": 0, "z1": 40, "diameter": 20}], "outer_diameter": 30},
+                        "at": {"block": "stop"}}]
+    fit = lb.System.from_project(pj, base=str(p19.parent), glass_dirs=[str(ROOT / "tests" / "glass")]).mech_check(grid=5)
+    assert fit["fit"]
+    cases += [("_MechFit", f) for f in fit["fit"]]
     for name, r in cases:
         req, opt = td[name]
         keys = set(r)

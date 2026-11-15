@@ -18,10 +18,10 @@
 use num_complex::Complex64;
 
 /// 多項式で計算する |φ| の上限（q·(π/2 の上位 33 ビット) が丸めなしになる範囲）。
-pub const MAX_ARG: f64 = 1.0e6;
+pub(crate) const MAX_ARG: f64 = 1.0e6;
 
 /// 4 つに分けた簡約で多項式を使う |φ| の上限（q < 2^28 で q·(24 ビットの項) が丸めなし）。
-pub const MAX_ARG_MED: f64 = 2.0e8;
+pub(crate) const MAX_ARG_MED: f64 = 2.0e8;
 
 const INV_PIO2: f64 = std::f64::consts::FRAC_2_PI;
 // π/2 を最も近い 24 ビットずつに分けた値（4 つ目は残りの倍精度）。和と π/2 の差は 5e-40

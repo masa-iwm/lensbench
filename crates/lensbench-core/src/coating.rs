@@ -33,13 +33,13 @@ use crate::{invalid, notimpl, Error, Result};
 
 /// TABLE 膜で垂直入射とみなす範囲（1 − cosθ。OpticStudio 26.1 で境界が 0.008102°〜0.008104° の間、
 /// 1 − cosθ = 1e-8 の 0.0081029° と合う）
-pub const TABLE_NORMAL: f64 = 1e-8;
+pub(crate) const TABLE_NORMAL: f64 = 1e-8;
 
 /// 膜の材料の表の k の、誤りにしない正の値の上限（標準の膜ファイルの数値の誤差を許す）
 const MATE_K_POS_TOL: f64 = 1e-6;
 
 /// 膜なしの鏡の基板
-pub const MIRROR_N: C64 = C64::new(0.7, -7.0);
+pub(crate) const MIRROR_N: C64 = C64::new(0.7, -7.0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
@@ -227,7 +227,7 @@ impl CoatKind {
 type Pending = (String, Vec<(f64, Vec<(f64, [C64; 2])>)>);
 
 /// 実測表のファイル形式の 1 行目
-pub const MEASURED_HEADER: &str = "LBCT 1";
+pub(crate) const MEASURED_HEADER: &str = "LBCT 1";
 
 /// 実測表のファイル（テキスト、UTF-8）を読む。
 ///
@@ -1192,7 +1192,7 @@ pub enum TableNormal {
 }
 
 /// フォルダに無い膜のモデルを取る口（膜ファイルのフォルダ、膜の名前）→ 取ったファイル（`.lbcb` など）
-pub type RemoteLoader = fn(&Path, &str) -> Option<PathBuf>;
+pub(crate) type RemoteLoader = fn(&Path, &str) -> Option<PathBuf>;
 
 static REMOTE: std::sync::OnceLock<RemoteLoader> = std::sync::OnceLock::new();
 
@@ -1740,7 +1740,7 @@ pub fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
 }
 
 /// 理想膜の名前から (s, p) の強度透過率: `I.xx`（s・p 共通、`I.98` は 0.98）、`I.s=Ts,p=Tp`（s・p で別）
-pub fn ideal_t(coat: &str) -> Result<[f64; 2]> {
+pub(crate) fn ideal_t(coat: &str) -> Result<[f64; 2]> {
     let bad = || Error::Invalid(format!("ideal coating {coat} (I.xx or I.s=Ts,p=Tp)"));
     let rest = coat.strip_prefix("I.").ok_or_else(bad)?;
     let v = if rest.contains('=') {
@@ -2552,7 +2552,7 @@ fn stack_coef(
 }
 
 /// 媒質の内部透過率（厚さ 1 mm あたりの強度。IT データがない・波長が範囲外なら None）
-pub fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
+pub(crate) fn internal_t(g: &glass::Glass, wl: f64) -> Option<f64> {
     if g.it.is_empty() {
         return None;
     }

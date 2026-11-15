@@ -94,14 +94,14 @@ pub fn rot(ax: usize, a_deg: f64) -> M3 {
 
 /// 2×2 の連立 J v = e の解（J は行優先 [a, b, c, d]）。特異なら非有限
 #[inline]
-pub fn solve2(j: [f64; 4], e: [f64; 2]) -> [f64; 2] {
+pub(crate) fn solve2(j: [f64; 4], e: [f64; 2]) -> [f64; 2] {
     let [a, b, c, d] = j;
     let det = a * d - b * c;
     [(d * e[0] - b * e[1]) / det, (-c * e[0] + a * e[1]) / det]
 }
 
 /// [`rot`] の角 [deg] による微分
-pub fn drot(ax: usize, a_deg: f64) -> M3 {
+pub(crate) fn drot(ax: usize, a_deg: f64) -> M3 {
     let a = a_deg.to_radians();
     let (s, c) = a.sin_cos();
     let k = std::f64::consts::PI / 180.0;

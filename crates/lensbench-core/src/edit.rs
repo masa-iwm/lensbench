@@ -129,7 +129,7 @@ pub fn surf_type_parse(s: &str) -> Result<SurfType> {
 }
 
 /// 面タイプの .zmx の名前
-pub fn surf_type_name(t: SurfType) -> &'static str {
+pub(crate) fn surf_type_name(t: SurfType) -> &'static str {
     match t {
         SurfType::Standard => "STANDARD",
         SurfType::EvenAsph => "EVENASPH",

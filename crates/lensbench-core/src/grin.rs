@@ -317,7 +317,7 @@ fn poly_d(c: &[f64], x: f64) -> (f64, f64) {
 }
 
 /// Gradient 9 の面の形 z = 標準面 + x tan α + y tan β と (∂z/∂x, ∂z/∂y)
-pub fn grad9_sag(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
+pub(crate) fn grad9_sag(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
     let (z, dz) = sag(d.c, d.k, &[], x * x + y * y);
     let t = match d.grin.as_deref().map(|g| &g.kind) {
         Some(GrinKind::Grad9 { tan, .. }) => *tan,
@@ -331,7 +331,7 @@ pub fn grad9_sag(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
 }
 
 /// Gradient 9 の形に傾きの項があるか
-pub fn grad9_tilted(d: &Surface) -> bool {
+pub(crate) fn grad9_tilted(d: &Surface) -> bool {
     matches!(d.grin.as_deref().map(|g| &g.kind), Some(GrinKind::Grad9 { tan, .. }) if tan[0] != 0.0 || tan[1] != 0.0)
 }
 
@@ -725,7 +725,7 @@ fn cross(
 
 /// GRIN の材料のデータ（PROFILE.GRD・SGRIN.DAT・GRADIENT_9.DAT）
 #[derive(Debug, Clone, Default)]
-pub struct GrinData {
+pub(crate) struct GrinData {
     pub profiles: HashMap<String, GradiumProfile>,
     pub sgrin: HashMap<String, Sgrin>,
     pub grad9: HashMap<String, Grad9Mat>,
@@ -749,7 +749,7 @@ fn lines(txt: &str) -> Vec<&str> {
 }
 
 /// PROFILE.GRD（13 行の組: 名前 分散の名前 z_max 密度 未使用、n_0 … n_11）
-pub fn parse_grd(txt: &str, file: &str) -> Result<HashMap<String, GradiumProfile>> {
+pub(crate) fn parse_grd(txt: &str, file: &str) -> Result<HashMap<String, GradiumProfile>> {
     let ls = lines(txt);
     let mut out = HashMap::new();
     for b in ls.chunks(13) {
@@ -785,7 +785,7 @@ pub fn parse_grd(txt: &str, file: &str) -> Result<HashMap<String, GradiumProfile
 }
 
 /// SGRIN.DAT（10 行の組: 名前、λmin λmax、λref、K_MAX L_MAX、K1j、K2j、K3j、L1j、L2j、L3j）
-pub fn parse_sgrin(txt: &str) -> Result<HashMap<String, Sgrin>> {
+pub(crate) fn parse_sgrin(txt: &str) -> Result<HashMap<String, Sgrin>> {
     let ls = lines(txt);
     let mut out = HashMap::new();
     for b in ls.chunks(10) {
@@ -825,7 +825,7 @@ pub fn parse_sgrin(txt: &str) -> Result<HashMap<String, Sgrin>> {
 }
 
 /// GRADIENT_9.DAT（6 行の組: 名前、B、C、K0、K1、K2）
-pub fn parse_grad9(txt: &str) -> Result<HashMap<String, Grad9Mat>> {
+pub(crate) fn parse_grad9(txt: &str) -> Result<HashMap<String, Grad9Mat>> {
     let ls = lines(txt);
     let mut out = HashMap::new();
     for b in ls.chunks(6) {

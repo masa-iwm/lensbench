@@ -643,7 +643,7 @@ pub fn sag_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
 ///   OpticStudio は頂点の ∂²z/∂y² を矢高の差分（刻み 1e-2 mm 程度）で求めるらしく、円錐係数・r^4 以上の項・
 ///   双一次の折れ目の分だけ違う（EFFL で相対 1e-9〜1e-8、頂点が格子点に乗る双一次では大きく違う。
 ///   OpticStudio との照合）。ここでは差分を使わない厳密な値にしている
-pub fn paraxial_curv(d: &Surface) -> f64 {
+pub(crate) fn paraxial_curv(d: &Surface) -> f64 {
     match d.typ {
         // r² の項（β_2）を足す
         SurfType::OddAsph => return d.c + 2.0 * d.asph.get(1).copied().unwrap_or(0.0),
@@ -687,7 +687,7 @@ fn conic_isect(c: f64, k: f64, pl: V3, kl: V3, sig: f64) -> f64 {
 
 /// 形 f(x, y) = (z, ∂z/∂x, ∂z/∂y) の面との交点までの距離（頂点面上の pl から方向 kl に）。
 /// 初期値は二次曲面（c・k）との交点、その後ニュートン法。収束しなければ true も返す
-pub fn isect_with(
+pub(crate) fn isect_with(
     c: f64,
     k: f64,
     pl: V3,
@@ -710,7 +710,7 @@ pub fn isect_with(
 }
 
 /// [`is_freeform`] の面との交点までの距離
-pub fn isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
+pub(crate) fn isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
     isect_with(d.c, d.k, pl, kl, sig, |x, y| sag_xy(d, x, y))
 }
 

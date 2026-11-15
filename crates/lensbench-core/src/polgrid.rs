@@ -18,11 +18,11 @@ use crate::system::{Launch, RecSel, System};
 use crate::{invalid, Result};
 
 /// 格子点ごとの値の数（Jones 4 + z 成分 2）
-pub const NV: usize = 6;
+pub(crate) const NV: usize = 6;
 
 /// 欠けた格子点から何点の範囲のセルの光線を補間しないか（スプラインは大域なので、埋めた値の影響は
 /// 1 点離れるごとに約 0.27 倍に減る。2 点で 4×4 の近傍の外側にもう 1 点の余裕）
-pub const BAD_MARGIN: usize = 2;
+pub(crate) const BAD_MARGIN: usize = 2;
 
 /// 補間に使う 1 軸の格子の点数の下限（not-a-knot のスプラインに 4 点要る）
 pub const MIN_POINTS: usize = 4;

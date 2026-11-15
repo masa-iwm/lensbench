@@ -67,7 +67,7 @@ pub struct UserSurf {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct UserSurfSpec {
+pub(crate) struct UserSurfSpec {
     /// モデルの名前（同梱は ideal_mapping）
     pub model: String,
     /// 設定（数・文字列・数の並び）
@@ -150,7 +150,7 @@ impl UserSurf {
 /// `equisolid`（2 f sin(θ/2)、等立体角）・`stereographic`（2 f tan(θ/2)、立体射影）・`poly`・`table`、既定 `tan`）、
 /// `coef`（poly: h = f (θ + c₁ θ³ + c₂ θ⁵ + …) の c₁, c₂, …）、`theta_deg`・`height`（table: θ [deg]（0 から増える）と
 /// h [mm] の表、区分 3 次エルミート（PCHIP）で補間、範囲の外は光線を落とす）。
-pub struct IdealMapping;
+pub(crate) struct IdealMapping;
 
 #[derive(Debug, Clone)]
 enum Mapping {
@@ -233,7 +233,7 @@ impl Pchip {
 
 /// 設定の決まった [`IdealMapping`]
 #[derive(Debug, Clone)]
-pub struct IdealMappingInst {
+pub(crate) struct IdealMappingInst {
     f: f64,
     map: Mapping,
 }

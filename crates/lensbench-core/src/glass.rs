@@ -140,7 +140,7 @@ pub fn read_text(path: &Path) -> std::io::Result<String> {
 
 /// 読んだテキストの文字コード
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextEncoding {
+pub(crate) enum TextEncoding {
     /// UTF-16（BOM で LE・BE を判定。OpticStudio の .zmx）
     Utf16,
     /// UTF-8（BOM の有無を問わない）。ASCII だけのファイルもこれ
@@ -159,7 +159,7 @@ pub fn decode_text(raw: &[u8]) -> String {
 }
 
 /// [`decode_text`] と同じで、判定した文字コードも返す
-pub fn decode_text_enc(raw: &[u8]) -> (String, TextEncoding) {
+pub(crate) fn decode_text_enc(raw: &[u8]) -> (String, TextEncoding) {
     if raw.len() >= 2 && (raw[..2] == [0xff, 0xfe] || raw[..2] == [0xfe, 0xff]) {
         let le = raw[0] == 0xff;
         let u: Vec<u16> = raw[2..]
@@ -203,7 +203,7 @@ pub fn load_agf(path: &Path) -> std::io::Result<HashMap<String, Glass>> {
 }
 
 /// [`load_agf`] と同じだが、使い回しの結果をそのまま共有して返す（写さない）
-pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass>>> {
+pub(crate) fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass>>> {
     type Cache = HashMap<
         PathBuf,
         (
@@ -423,7 +423,7 @@ pub fn load_catalogs_shared(
 
 /// [`load_catalogs_shared`] の見つからない・読めなかったカタログを、ガラスが無いときの誤りに添える文にする
 /// （空なら空。読めなかった理由が「カタログにない」の誤りに出るように、XCT-01）
-pub fn missing_note(missing: &[String]) -> String {
+pub(crate) fn missing_note(missing: &[String]) -> String {
     if missing.is_empty() {
         String::new()
     } else {

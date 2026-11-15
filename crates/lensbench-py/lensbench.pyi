@@ -168,6 +168,269 @@ class _OptimizeResult(TypedDict):
     term_values: list[float]
 
 
+class _Rms(TypedDict):
+    """System.rms の 1 点の結果（vs なし）"""
+    spot: float
+    spot_x: float
+    spot_y: float
+    wfe: float
+    strehl: float
+
+
+class _RmsSweep(TypedDict):
+    """System.rms の vs（field・focus・wavelength）の結果（x の点ごと）"""
+    x: NDArray[np.float64]
+    spot: NDArray[np.float64]
+    spot_x: NDArray[np.float64]
+    spot_y: NDArray[np.float64]
+    wfe: NDArray[np.float64]
+    strehl: NDArray[np.float64]
+    warnings: list[str]
+
+
+class _SystemData(TypedDict):
+    """近軸の系のデータ（OpticStudio の System Data の略号）"""
+    effl: float
+    epdi: float
+    enpp: float
+    expd: float
+    expp: float
+    wfno: float
+    pwfn: float
+    isfn: float
+    pimh: float
+    pmag: float
+    totr: float
+    obna: float
+    isna: float
+
+
+class _Surface(TypedDict):
+    """System.surface の面の値（insert_surface・set_surface のキーワードと同じ名前）"""
+    type: str
+    comment: str
+    t: float
+    c: float
+    r: float
+    k: float
+    asph: list[float]
+    cx: float
+    material: str
+    mirror: bool
+    coating: str
+    semi: float
+    semi_auto: bool
+    stop: bool
+    ignore: bool
+    aperture: dict[str, Any] | None
+    cb: list[float]
+    cb_order: float
+    focal: float
+    jones: list[float]
+    dn: float
+    disp: float
+    n: list[float]
+
+
+class _FiberCouplingBase(TypedDict):
+    """System.fiber_coupling の結果（jones は pol=True のときだけ）"""
+    eta: float
+    system: float
+    receiver: float
+    phase_step: float
+
+
+class _FiberCoupling(_FiberCouplingBase, total=False):
+    """条件で付く鍵"""
+    jones: NDArray[np.complex128]
+
+
+class _MechBore(TypedDict):
+    """機構部品の穴（mm）"""
+    z0: float
+    z1: float
+    diameter: float
+
+
+class _MechPart(TypedDict):
+    """機構部品ごとの蹴られの最大（%）"""
+    name: str
+    surface: int
+    clipped_max_pct: float
+    first_max_pct: float
+    bores: list[_MechBore]
+
+
+class _MechResultPart(TypedDict):
+    """視野・波長ごとの部品の蹴られ（%）"""
+    name: str
+    clipped_pct: float
+    first_pct: float
+
+
+class _MechResult(TypedDict):
+    """視野・波長ごとの蹴られ（field・wave は 1 始まり）"""
+    field: int
+    wave: int
+    rays: int
+    failed: int
+    optical_pct: float
+    passed_pct: float
+    parts: list[_MechResultPart]
+
+
+class _MechFit(TypedDict):
+    """機構部品の収まりの検査（error が False なら注意）"""
+    kind: str
+    error: bool
+    part: str
+    other: str | None
+    surface: int | None
+    value: float
+    message: str
+
+
+class _MechCheck(TypedDict):
+    """System.mech_check の結果"""
+    pupil_rays: int
+    parts: list[_MechPart]
+    results: list[_MechResult]
+    fit: list[_MechFit]
+
+
+class _SolveRay(TypedDict):
+    """System.solve_ray の結果"""
+    object: list[float]
+    pupil: tuple[float, float]
+    residual: tuple[float, float]
+    iterations: int
+
+
+class _Interferogram(TypedDict):
+    """interferogram の結果（delta・intensity は [y][x]、p は瞳座標）"""
+    p: NDArray[np.float64]
+    delta: NDArray[np.float64]
+    intensity: NDArray[np.float64]
+    pv: float
+    rms: float
+
+
+class _InterferenceDetector(TypedDict):
+    """interference_detector の結果（画素の値は [y][x]）"""
+    x: NDArray[np.float64]
+    y: NDArray[np.float64]
+    intensity: NDArray[np.float64]
+    i_sample: NDArray[np.float64]
+    i_reference: NDArray[np.float64]
+    opd: NDArray[np.float64]
+    visibility: NDArray[np.float64]
+    ok_sample: NDArray[np.bool_]
+    ok_reference: NDArray[np.bool_]
+    wavelength: float
+    fold: tuple[float, float]
+
+
+class _PluginParamBase(TypedDict):
+    """プラグインの設定の項目（choices は選択肢の型、len は並びの個数の上限があるとき）"""
+    name: str
+    type: str
+    default: Any
+    unit: str
+    doc: str
+
+
+class _PluginParam(_PluginParamBase, total=False):
+    """条件で付く鍵"""
+    choices: list[str]
+    len: int
+
+
+class _PluginOutput(TypedDict):
+    """プラグインの出力の説明"""
+    name: str
+    dtype: str
+    shape: str
+    unit: str
+    doc: str
+
+
+class _PluginSpec(TypedDict):
+    """plugin_spec の結果"""
+    name: str
+    kind: str
+    doc: str
+    config: list[_PluginParam]
+    inputs: list[str]
+    outputs: list[_PluginOutput]
+    needs_system: bool
+
+
+class _RunSettings(TypedDict):
+    """run_settings の結果（lensbench run の下で回すときの設定）"""
+    glass_dirs: list[str]
+    coatings: list[str]
+    threads: int | None
+    out: str | None
+    log: str | None
+    args: list[str]
+    under_run: bool
+
+
+class _ZoomPoint(TypedDict):
+    """ズーム軌跡の点（state は状態の番号 0 始まり、間の点は None）"""
+    pos: float
+    state: int | None
+    target: float | None
+    value: float
+    x: list[float]
+    merit: float
+    stop: str
+    iterations: int
+
+
+class _Unit(TypedDict):
+    """玉・群（spans は面の範囲 (始め, 終わり)、motion は dx dy tx ty tz）"""
+    name: str
+    spans: list[tuple[int, int]]
+    pivot: list[float]
+    motion: list[float]
+    shift: float
+    auto: bool
+
+
+class _PickupBase(TypedDict):
+    """ピックアップ（src_what は元の量が what と違うときだけ）"""
+    dst: int
+    src: int
+    what: str
+    scale: float
+    offset: float
+
+
+class _Pickup(_PickupBase, total=False):
+    """条件で付く鍵"""
+    src_what: str
+
+
+class _Solve(TypedDict):
+    """ソルブ（what は "t" 厚さか "c" 曲率、other は相手の面）"""
+    surf: int
+    what: str
+    kind: str
+    value: float
+    param: float
+    other: int | None
+
+
+class _Zoom(TypedDict):
+    """zoom の結果"""
+    quantity: str
+    names: list[str]
+    path: list[_ZoomPoint]
+    systems: list[System]
+    warnings: list[str]
+
+
 class CancelledError(Error):
     """計算を途中でやめた"""
 
@@ -318,7 +581,7 @@ class System:
     def dispersion_warnings(self) -> list[str]:
         """分散式の有効範囲（AGF の LD）の外の波長で屈折率を求めている材料の警告（式を延ばして計算している）"""
 
-    def fiber_coupling(self, na_source: float, na_receiver: float | None = None, wave: int | None = None, source: tuple[float, float] = ..., receiver: tuple[float, float] = ..., grid: int = 101, na_max: float | None = None, pol: bool = False, clip_stop: bool = True) -> dict[str, Any]:
+    def fiber_coupling(self, na_source: float, na_receiver: float | None = None, wave: int | None = None, source: tuple[float, float] = ..., receiver: tuple[float, float] = ..., grid: int = 101, na_max: float | None = None, pol: bool = False, clip_stop: bool = True) -> _FiberCoupling:
         """単一モードファイバへの結合効率（OpticStudio の FICL 相当）。送り側は物点 source（物体面の局所 [mm]）、受け側は像面の局所の点 receiver、
         どちらも遠視野の 1/e² の NA のガウスモード（na_receiver の省略は na_source）。物体空間の sin θ ≤ na_max（省略で min(3·NA/n, 0.999)）を
         grid × grid の方向で標本化し、受け側の方向空間で重なり積分をとる。dict: eta（結合効率）・system（受け側まで届いた送り側の電力の比）・receiver（eta/system）・
@@ -442,7 +705,7 @@ class System:
     def macro_warnings(self) -> list[str]:
         """ZPL Macro Solve のうち、解かずに保存された値で固定したもの（マクロがない・対応していない命令など）の理由"""
 
-    def mech_check(self, fields: Sequence[int] | None = None, waves: Sequence[int] | None = None, grid: int = 21) -> dict[str, Any]:
+    def mech_check(self, fields: Sequence[int] | None = None, waves: Sequence[int] | None = None, grid: int = 21) -> _MechCheck:
         """機構部品（プロジェクトの mechanics）のケラレ。CLI の `mech-check` と同じ。
 
         瞳の正方格子（一辺 grid 本）の単位円の中の光線を、視野 fields・波長 waves（どちらも 1 始まり、省略で全部）
@@ -496,7 +759,7 @@ class System:
         （terms の項ごとの値: 目標のある項は値、ほかは √Σr²）
         """
 
-    def pickups(self) -> list[dict[str, Any]]:
+    def pickups(self) -> list[_Pickup]:
         """ピックアップの一覧: dst・src・what（c t k p1〜 before0〜4 after0〜4 など）・scale・offset の dict。元の量が what と違えば src_what も"""
 
     @property
@@ -525,7 +788,7 @@ class System:
     def remove_solve(self, surf: _Surf, what: str = "t") -> None:
         """面 surf の what（"t" 厚さ / "c" 曲率）のソルブを外す（値は今のまま）"""
 
-    def rms(self, field: _Field | None = None, vs: str | None = None, x: ArrayLike | None = None, wave: int | None = None, axis: str = "y", reference: str = "centroid", rings: int = 6, threads: int | None = None, field_wave: bool = False) -> dict[str, Any]:
+    def rms(self, field: _Field | None = None, vs: str | None = None, x: ArrayLike | None = None, wave: int | None = None, axis: str = "y", reference: str = "centroid", rings: int = 6, threads: int | None = None, field_wave: bool = False) -> _Rms | _RmsSweep:
         """RMS: スポット半径（spot・spot_x・spot_y [レンズ単位]）、波面収差 wfe [波]、ストレール比の近似
         strehl = exp(−(2π wfe)²)。横軸 vs は "field"（x は正規化視野、axis の向き）・"focus"（x は像面のずらし）・
         "wavelength"（x は波長 [µm]、単色）・None（1 点、field の値）。reference は "centroid" か "chief"、
@@ -577,7 +840,7 @@ class System:
     def set_unit_pivot(self, name: str, pivot: tuple[float, float, float]) -> None:
         """玉・群の回転の中心を変える"""
 
-    def solve_ray(self, unknown: str, residual: Any, object: _ObjectPoint | None = None, field: _Field | None = None, pupil: tuple[float, float] = ..., wave: int | None = None, tol: float = 1e-12, max_iter: int = 50) -> dict[str, Any]:
+    def solve_ray(self, unknown: str, residual: Any, object: _ObjectPoint | None = None, field: _Field | None = None, pupil: tuple[float, float] = ..., wave: int | None = None, tol: float = 1e-12, max_iter: int = 50) -> _SolveRay:
         """未知数 2 つ・残差 2 つの実光線を Newton 法で解く。
 
         - unknown: "object"（物点の x・y [mm]、有限物体）か "pupil"（瞳座標 px・py）
@@ -591,14 +854,14 @@ class System:
         返す dict: object、pupil、residual、iterations（そのまま trace(None, [px], [py], object=...) に渡せる）
         """
 
-    def solves(self) -> list[dict[str, Any]]:
+    def solves(self) -> list[_Solve]:
         """ソルブの一覧: surf・what（"t" 厚さ / "c" 曲率）・kind（種類の名前）・value・param・other の dict"""
 
     @property
     def stop(self) -> int:
         """絞りの面番号"""
 
-    def surface(self, s: _Surf) -> dict[str, Any]:
+    def surface(self, s: _Surf) -> _Surface:
         """面 s の値の dict（type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order
         focal jones dn disp n）。r は曲率半径（平面は inf）、aperture は dict か None
         """
@@ -607,7 +870,7 @@ class System:
     def surface_count(self) -> int:
         """面の数（物体面と像面を含む）"""
 
-    def system_data(self) -> dict[str, Any]:
+    def system_data(self) -> _SystemData:
         """システムデータ（OpticStudio のオペランド名の小文字: effl・epdi・enpp・expd・expp・wfno・pwfn・isfn・
         pimh・pmag・totr・obna・isna）。主波長、変更後の系の値
         """
@@ -689,7 +952,7 @@ class System:
         - ほかの引数は trace と同じ。grad の objx・objy は開始位置を物体面と一緒に動かした微分
         """
 
-    def units(self) -> list[dict[str, Any]]:
+    def units(self) -> list[_Unit]:
         """玉・群の一覧: name・spans（面の範囲 [最初, 最後] の並び）・pivot・motion（dx dy tx ty tz）・shift・auto の dict"""
 
     @property
@@ -711,7 +974,7 @@ def _system_from_state(state: Any, coatings: Sequence[_StrPath]) -> System:
     """pickle から系を作り直す（[`PySystem::__reduce__`] の対）"""
 
 
-def interference_detector(sample: System, reference: System, field: _Field = ..., wave: int | None = None, pupil: int = 65, npx: int = 256, center: tuple[float, float] | None = None, width: float | None = None, sample_power: float = 1.0, reference_power: float = 1.0, delay: float = 0.0, polarized: bool = False, sample_input: str = "x", reference_input: str = "x", threads: int | None = None) -> dict[str, Any]:
+def interference_detector(sample: System, reference: System, field: _Field = ..., wave: int | None = None, pupil: int = 65, npx: int = 256, center: tuple[float, float] | None = None, width: float | None = None, sample_power: float = 1.0, reference_power: float = 1.0, delay: float = 0.0, polarized: bool = False, sample_input: str = "x", reference_input: str = "x", threads: int | None = None) -> _InterferenceDetector:
     """像面上の干渉縞: 試料（sample）と参照（reference）の 2 本の経路の光線の格子（瞳 pupil²、一様に照らす）を像面の
     画素（npx²、中心 center = (x, y)・一辺 width [mm]、省略で 2 つが届く範囲）へ補間し、場を足す。
     polarized なら偏光追跡の場（入射偏光 sample_input・reference_input、膜は試料の系の膜）で重ねる。
@@ -720,7 +983,7 @@ def interference_detector(sample: System, reference: System, field: _Field = ...
     """
 
 
-def interferogram(beam1: System, beam2: System | None = None, field: _Field = ..., wave: int | None = None, n: int = 64, scale: float = 1.0, xtilt: float = 0.0, ytilt: float = 0.0, threads: int | None = None) -> dict[str, Any]:
+def interferogram(beam1: System, beam2: System | None = None, field: _Field = ..., wave: int | None = None, n: int = 64, scale: float = 1.0, xtilt: float = 0.0, ytilt: float = 0.0, threads: int | None = None) -> _Interferogram:
     """瞳上の干渉縞（OpticStudio の Interferogram に当たる）: 光束 1（beam1）と光束 2（beam2、None なら参照球）の
     波面（それぞれの主光線・参照球に対する OPD [波]）を同じ正規化瞳座標で引き、
     Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2（傾きは瞳の直径あたりの縞の数）、強度 (1 + cos 2πΔ)/2。多重構成なら `System.config(k)` の系を渡す。
@@ -730,7 +993,7 @@ def interferogram(beam1: System, beam2: System | None = None, field: _Field = ..
     """
 
 
-def plugin_spec(name: str) -> dict[str, Any]:
+def plugin_spec(name: str) -> _PluginSpec:
     """プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"（出力の名前・型・形・単位の dict の並び）}"""
 
 
@@ -774,7 +1037,7 @@ def run_batch(func: Callable[..., Any], plan: Any, n: int | None = None, out: _S
     """
 
 
-def run_settings() -> dict[str, Any]:
+def run_settings() -> _RunSettings:
     """`lensbench run`が渡す設定。どれも環境変数から読み、無ければ空か None
 
     - glass_dirs: ガラスカタログを探すフォルダ（LENSBENCH_GLASSCAT。System.load などは自分でも読む）
@@ -797,7 +1060,7 @@ def swap_search(project: _StrPath, spec: Any, glass_dirs: Sequence[_StrPath] | N
     """
 
 
-def trace_many(systems: Sequence[System], field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | ArrayLike | None = None, land: bool = False) -> list[dict[str, Any]]:
+def trace_many(systems: Sequence[System], field: _Field | None, px: ArrayLike, py: ArrayLike, waves: Sequence[int] | None = None, last: int | None = None, record: bool | Sequence[int] = ..., pol: bool | int | None = None, pol_phase: bool = False, globals: bool = False, object: _ObjectPoint | None = None, grad: Sequence[str] | None = None, threads: int | None = None, pupil: str = "normalized", dz: float | ArrayLike | None = None, land: bool = False) -> list[_TraceResult]:
     """多数の系を 1 回の呼び出しでまとめて追跡する。返すのは系ごとの dict の list で、
     それぞれ `systems[i].trace(field, px, py, ...)` と同じビット（スレッド数にもよらない）。
 
@@ -824,7 +1087,7 @@ def verify_compare(actual: Mapping[str, Any], expected: Mapping[str, Any], check
     """
 
 
-def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None) -> dict[str, Any]:
+def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None) -> _Zoom:
     """ズーム軌跡: 状態（systems、ズーム位置ごとの系。同じ形の系）ごとに vars（"G2.shift" か
     ("G2.shift", 下限, 上限)）を解く。評価関数は像の RMS（merit: "spot"・"wavefront"、全視野・多色）と、
     efl か pmag の目標（状態ごとの値の list、None は目標なし）。steps は隣り合う状態の間にとる点の数（継続法）。

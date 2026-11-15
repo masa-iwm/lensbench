@@ -48,11 +48,11 @@ pub fn write(s: &System) -> Result<String> {
 
 /// 系に書いた膜の表（[`System::coat_tables`]）を書き出すときの膜ファイルの名前（[`write`] の既定。[`save`] は
 /// `.zmx` の名前から決める）
-pub const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
+pub(crate) const DEFAULT_COAT_FILE: &str = "lensbench_coat.dat";
 
 /// [`write`] で、系に書いた膜の表を `coat_file` の名前の膜ファイルに書く前提で COFN を書く（膜ファイルの中身は
 /// [`coating_dat`]）。表を使う面がなければ `coat_file` は使わない
-pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
+pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     if s.units.iter().any(|u| u.moved()) {
         // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
         // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）

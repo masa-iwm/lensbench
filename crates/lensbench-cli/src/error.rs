@@ -59,16 +59,6 @@ impl AppError {
         }
     }
 
-    /// 種類の名前（core の誤りは [`CoreError::kind`] と同じ。ほかは `usage`・`io`・`failed`）
-    pub fn kind(&self) -> &'static str {
-        match self {
-            AppError::Usage(_) => "usage",
-            AppError::Io(_) => "io",
-            AppError::Core(e) => e.kind(),
-            AppError::Failed(_) => "failed",
-        }
-    }
-
     /// 次の手の案内（無ければ None）。ガラスが無いときの案内は core の文に入っている
     pub fn hint(&self) -> Option<String> {
         let h = match self {
@@ -172,10 +162,10 @@ mod tests {
     }
 
     #[test]
-    fn core_message_and_kind_are_kept() {
+    fn core_message_and_code_are_kept() {
         let e = AppError::from(CoreError::Invalid("surface 3".into()));
         assert_eq!(e.to_string(), "invalid: surface 3");
-        assert_eq!(e.kind(), "invalid");
+        assert_eq!(e.exit_code(), 1);
         assert!(AppError::usage("x").hint().unwrap().contains("--help"));
     }
 }

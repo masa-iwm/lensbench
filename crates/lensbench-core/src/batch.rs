@@ -29,7 +29,7 @@ pub const L: usize = 8;
 
 /// n 本の追跡をまとめて追うか（少ない本数は 1 本ずつの方が速い）。まとめ追跡は
 /// [`crate::par::with_batch`] で切れる（結果は同じビットなので、切り分け・比較のためだけに使う）
-pub fn use_for(n: usize) -> bool {
+pub(crate) fn use_for(n: usize) -> bool {
     n >= L / 4 && crate::par::batch_enabled()
 }
 
@@ -312,7 +312,7 @@ impl<'a> Plan<'a> {
 }
 
 /// 面ごとの記録を光線ごとに受け取る（lane は組の中の番号、k は無視しない面の通し番号）
-pub trait LaneSink {
+pub(crate) trait LaneSink {
     fn put(&mut self, lane: usize, k: usize, e: RecEntry);
     /// 無視しない面の通し番号 k の記録を受け取るか（受け取らない面は記録の値を作らない。既定は全面）
     #[inline(always)]
@@ -322,7 +322,7 @@ pub trait LaneSink {
 }
 
 /// 記録しない
-pub struct NoRec;
+pub(crate) struct NoRec;
 impl LaneSink for NoRec {
     #[inline(always)]
     fn put(&mut self, _: usize, _: usize, _: RecEntry) {}
@@ -330,7 +330,7 @@ impl LaneSink for NoRec {
 
 /// L 本の光線（大域の位置 p・方向 k、光路長 0）を plan のとおりに追跡する。
 /// 結果は光線ごとに [`trace::trace_ray`] と同じビット
-pub fn trace_lanes<R: LaneSink>(
+pub(crate) fn trace_lanes<R: LaneSink>(
     plan: &Plan,
     p: &[V3; L],
     k: &[V3; L],
@@ -340,7 +340,7 @@ pub fn trace_lanes<R: LaneSink>(
 }
 
 /// L 本の光線の偏光の状態（[`trace::PolRay`] の L 本分）
-pub struct PolLanes<'a> {
+pub(crate) struct PolLanes<'a> {
     /// 電場（光線 l の偏光の入力 q は `e[l * np + q]`、今いる面の局所座標）
     pub e: Vec<CV3>,
     /// 偏光の入力の数
@@ -351,8 +351,8 @@ pub struct PolLanes<'a> {
 }
 
 /// [`trace_lanes`] に偏光を加えたもの（電場 pol.e を面ごとに更新する）。plan は
-/// [`Plan::supports_pol`] を満たすこと。結果は光線ごとに [`trace::trace_ray_pol`] と同じビット
-pub fn trace_lanes_pol<R: LaneSink>(
+/// [`Plan::supports_pol`] を満たすこと。結果は光線ごとに 偏光つきの 1 本ずつの追跡（`trace_core` に電場を渡したもの）と同じビット
+pub(crate) fn trace_lanes_pol<R: LaneSink>(
     plan: &Plan,
     p: &[V3; L],
     k: &[V3; L],

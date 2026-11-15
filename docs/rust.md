@@ -1,4 +1,31 @@
-# ライブラリ（Rust）: パラメータ変更・光路長の微分・光線の解き
+# ライブラリ（Rust）
+
+## 入口: 読む・追跡する・解析する
+
+`use lensbench_core::prelude::*;` で主な口がそろう。それ以外の `pub` のモジュールは上の層のクレートと拡張のための口で、
+版の間で変わりやすい。
+
+```rust,ignore
+use lensbench_core::prelude::*;
+
+lensbench_core::init_from_env(); // LENSBENCH_GLASSCAT・LENSBENCH_THREADS など（使わないなら呼ばなくてよい）
+let opt = LoadOptions { catalog_dirs: vec!["glass".into()], ..Default::default() };
+let sys = zmx::load_with("lens.zmx".as_ref(), &opt)?;
+// 視野 1 の瞳座標 (px, py) の光線（Trace.rays の各光線に像面の位置・光路長・けられ）
+let t = sys.try_trace(FieldSel::Index(0), &[0.0, 0.5], &[0.0, 0.5], None, None, false)?;
+// 回折 MTF（多色）・PSF（2 次元の結果は Grid2: 座標 x()・y() と行優先の data()、psf.i[iy][ix]）
+let m = analysis::mtf(&sys, FieldSel::Index(0), Waves::All, None, &[10.0, 50.0])?;
+let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
+// 近軸量（EFL・瞳など）は report::cardinal、波面は analysis::wavefront、Zernike は analysis::zernike
+```
+
+- 計算ごとの設定は文脈で渡す: スレッド数 `with_threads(Some(n), || ..)`、中断 `par::with_cancel(Some(&token), || ..)`、
+  拡張の表（カタログの形式・面のモデル・プラグイン）`ext::with(Arc<Ext>, || ..)`、ファイルの口
+  `vfs::with(Arc<dyn vfs::Fs>, || ..)`（`vfs::MemFs` に入れたファイルから系を読める）。どれも並列の作業のスレッドへ引き継ぐ。
+- プロジェクト（玉・群・カタログのレンズを組む系）は `lensbench_project::open`、CLI・serve と同じ解析の呼び出しは
+  `lensbench_engine::Session`。
+
+## パラメータ変更・光路長の微分・光線の解き
 
 - `lensbench_core::plugin`: 検出器・解析のプラグインの約束。`Plugin`（名前・種類・`prepare(&Config)`）と
   `Instance`（`run(&Context, &Arrays) -> Arrays`）を実装し、`Registry` に名前で登録する。`run` は状態を持たず、
