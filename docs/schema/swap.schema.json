@@ -1,5 +1,26 @@
 {
   "$defs": {
+    "Beam": {
+      "additionalProperties": false,
+      "description": "所ごとのビーム探索の設定（[`SwapSpec::beam`]）",
+      "properties": {
+        "passes": {
+          "default": 2,
+          "description": "所を一巡する回数の上限（残す選び方が巡回の前後で変わらなければその前に止める）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "default": 20,
+          "description": "所ごとに残す選び方の数",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Filter": {
       "additionalProperties": false,
       "description": "候補の絞り込み（省いた条件は絞らない）",
@@ -188,6 +209,17 @@
       "description": "このファイルのスキーマ（エディタの補完・検査用。読むときは無視する）",
       "type": "string"
     },
+    "beam": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Beam"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "所ごとのビーム探索（省けば全組の総当たり）: 全組でなく、所を 1 つずつ候補を全部試して評価関数の小さい\n`width` 通りを残しながら進む。評価する組の数は全組の積でなく、およそ `width` × 候補の数の和 × 巡回の数。\n総当たりの最良を見落とすことがある。`prescreen` とは同時に使えない"
+    },
     "clear_aperture": {
       "default": false,
       "description": "有効径の条件: 差し替える玉の各面で、各視野の瞳の縁の実光線（主波長、瞳の上下左右）が面の半径\n（カタログの玉の半直径）の内側にあることを片側の条件の項として足す（重みは像の項の重みの合計の 1e6 倍）",
@@ -216,7 +248,7 @@
     },
     "max_count": {
       "default": 100000,
-      "description": "組の数の上限（大きすぎる探索を誤って始めないため）",
+      "description": "組の数の上限（大きすぎる探索を誤って始めないため。ビーム探索では評価する組の数の見込み）",
       "format": "uint",
       "minimum": 0,
       "type": "integer"

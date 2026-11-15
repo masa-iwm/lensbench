@@ -280,6 +280,7 @@ fn prescreen_is_written_and_resumed() {
     b.filter.efl = [Some(40.0), None];
     let mut sp = spec(vec![a, b]);
     sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 3 });
+    let s_spec = sp.clone();
     let s = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
     let mem = vals(s.run(None));
     let tmp = std::env::temp_dir().join(format!("lb-swap-pre-{}", std::process::id()));
@@ -311,7 +312,75 @@ fn prescreen_is_written_and_resumed() {
     assert_eq!(r2, mem);
     assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
     assert_eq!(main.load(Relaxed), 3);
+    // keep を変えると二段目は続きから回せない（誤りの文は二段目だけ回し直す方法を言う）。r.jsonl を消せば一段目は使い回す
+    let (p2, dir2) = project();
+    let mut sp = s_spec.clone();
+    sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 4 });
+    let s4 = SwapSearch::new(&p2, &env(dir2), &c, sp).unwrap();
+    let e = s4.run_to(Some(&f), true, None, Some(&cb)).unwrap_err();
+    assert!(e.contains("rerun only the second stage"), "{e}");
+    std::fs::remove_file(&f).unwrap();
+    screen.store(usize::MAX, Relaxed);
+    let r4 = s4.run_to(Some(&f), true, None, Some(&cb)).unwrap();
+    assert_eq!(r4.len(), 4);
+    assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn beam_search_finds_the_best_with_fewer_evaluations() {
+    let (p, dir) = project();
+    let c = cat();
+    let mut a = slot("A");
+    a.flip = true;
+    let mut b = slot("B");
+    b.flip = true;
+    let full =
+        SwapSearch::new(&p, &env(dir.clone()), &c, spec(vec![a.clone(), b.clone()])).unwrap();
+    let rf = vals(full.run(None));
+    let mut sp = spec(vec![a.clone(), b.clone()]);
+    sp.beam = Some(swap::Beam {
+        width: 2,
+        passes: 2,
+    });
+    let s = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
+    assert!(s.uses_beam());
+    let (r, evaluated, stopped) = s.beam_run(None, None, None);
+    assert!(!stopped);
+    let n = full.count();
+    assert!(evaluated < n, "{evaluated} {n}");
+    let r = vals(r);
+    assert!(!r.is_empty() && r.len() < n);
+    // 各組の結果は総当たりのその組の結果と同じ。最良も同じ（この例では）
+    for x in &r {
+        assert_eq!(x, rf.iter().find(|y| y["i"] == x["i"]).unwrap());
+    }
+    assert_eq!(r[0], rf[0]);
+    // スレッド数によらない。run・run_to もビーム探索
+    let (r1, e1, _) = s.beam_run(Some(1), None, None);
+    assert_eq!(vals(r1), r);
+    assert_eq!(e1, evaluated);
+    assert_eq!(vals(s.run(None)), r);
+    let tmp = std::env::temp_dir().join(format!("lb-swap-beam-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let f = tmp.join("r.jsonl");
+    assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
+    assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
+    let _ = std::fs::remove_dir_all(&tmp);
+    // ふるいとは同時に使えない・幅 0 は誤り
+    let mut sp = spec(vec![a.clone(), b.clone()]);
+    sp.beam = Some(swap::Beam {
+        width: 2,
+        passes: 2,
+    });
+    sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 3 });
+    assert!(SwapSearch::new(&p, &env(dir.clone()), &c, sp).is_err());
+    let mut sp = spec(vec![a, b]);
+    sp.beam = Some(swap::Beam {
+        width: 0,
+        passes: 2,
+    });
+    assert!(SwapSearch::new(&p, &env(dir), &c, sp).is_err());
 }
 
 #[test]

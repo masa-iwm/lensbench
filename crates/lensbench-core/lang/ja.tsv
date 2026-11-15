@@ -124,6 +124,7 @@ set {i} ({n} sets)	組 {i}（{n} 組）
 {}: not a batch result file	{}: 一括実行の結果のファイルでない
 line break in the batch header (make it one line of JSON)	一括実行の頭に改行（1 行の JSON に）
 {}: the header differs (results of another calculation; stop resume or use another file)	{}: 頭が違う（別の計算の結果。resume をやめるか別のファイルに）
+{}; the prescreen results in {} are still valid: remove {} (keep {}) to rerun only the second stage	{}。一段目の結果 {} はそのまま使える: {} を消して（{} は残して）回すと二段目だけ回し直す
 set {i}: line break in the result	組 {i}: 結果に改行
 set {i}: {e}	組 {i}: {e}
 

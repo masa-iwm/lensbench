@@ -2818,6 +2818,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "web-time",
 ]
 
 [[package]]

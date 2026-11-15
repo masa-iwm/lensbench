@@ -98,7 +98,7 @@ pub struct SwapSpec {
     /// 状態（None なら変更なし）
     #[serde(default)]
     pub state: Option<String>,
-    /// 組の数の上限（大きすぎる探索を誤って始めないため）
+    /// 組の数の上限（大きすぎる探索を誤って始めないため。ビーム探索では評価する組の数の見込み）
     #[serde(default = "max_count")]
     pub max_count: usize,
     /// 評価関数に足す項（`optimize --term` と同じ JSON。片側の条件 `min`・`max` も）。
@@ -132,6 +132,11 @@ pub struct SwapSpec {
     /// 最適化し直す。残した組の結果はふるいなしと同じ。残さなかった組は結果に出ない
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prescreen: Option<Prescreen>,
+    /// 所ごとのビーム探索（省けば全組の総当たり）: 全組でなく、所を 1 つずつ候補を全部試して評価関数の小さい
+    /// `width` 通りを残しながら進む。評価する組の数は全組の積でなく、およそ `width` × 候補の数の和 × 巡回の数。
+    /// 総当たりの最良を見落とすことがある。`prescreen` とは同時に使えない
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beam: Option<Beam>,
 }
 
 /// 評価関数（[`SwapSpec::merit`]）
@@ -231,6 +236,10 @@ pub struct Prescreen {
     #[serde(default = "thousand")]
     pub keep: usize,
 }
+
+#[path = "swap_beam.rs"]
+mod beam;
+pub use beam::Beam;
 
 fn three() -> usize {
     3
@@ -435,6 +444,14 @@ impl<'a> SwapSearch<'a> {
                 return Err("prescreen rings and keep must be 1 or more".into());
             }
         }
+        if let Some(b) = &spec.beam {
+            if spec.prescreen.is_some() {
+                return Err("beam and prescreen can't be used together".into());
+            }
+            if b.width == 0 || b.passes == 0 {
+                return Err("beam width and passes must be 1 or more".into());
+            }
+        }
         // 候補の要約は所の間で使い回す（絞り込みの所が使うレンズをまとめて 1 回だけ、並列に作る）
         let slot_idx: Vec<Option<Vec<usize>>> = spec
             .slots
@@ -524,7 +541,11 @@ impl<'a> SwapSearch<'a> {
             picks,
             spec,
         };
-        let n = s.count_checked();
+        // ビーム探索なら評価する組の数の見込み（組の番号は全組の積で数えるので、積もあふれてはいけない）
+        let n = match &s.spec.beam {
+            Some(_) => s.count_checked().and_then(|_| s.beam_estimate()),
+            None => s.count_checked(),
+        };
         match n {
             Some(n) if n <= s.spec.max_count => Ok(s),
             _ => Err(format!(
@@ -560,8 +581,19 @@ impl<'a> SwapSearch<'a> {
 
     /// 組 i で差し替えたプロジェクト
     pub fn project(&self, i: usize) -> Result<Project, String> {
+        self.project_of(&self.assign(i))
+    }
+
+    /// 組 i の所ごとの選び方（[`Self::combo`] をすべて Some に）
+    fn assign(&self, i: usize) -> Vec<Option<usize>> {
+        self.combo(i).into_iter().map(Some).collect()
+    }
+
+    /// 所ごとの選び方 a（None の所はプロジェクトの玉のまま）で差し替えたプロジェクト
+    fn project_of(&self, a: &[Option<usize>]) -> Result<Project, String> {
         let mut p = self.base.clone();
-        for (k, &c) in self.combo(i).iter().enumerate() {
+        for (k, c) in a.iter().enumerate() {
+            let Some(c) = *c else { continue };
             let pk = &self.picks[k][c];
             // new で id が 1 つだけの玉のブロックであることを確かめてある
             if let Some(Block::Lens {
@@ -585,12 +617,16 @@ impl<'a> SwapSearch<'a> {
 
     /// [`Self::problem`] と、像の項（既定の評価関数）の数
     fn problem_n(&self, i: usize) -> Result<(System, Problem, usize), String> {
-        self.problem_rings(i, self.spec.rings)
+        self.problem_of(&self.assign(i), self.spec.rings)
     }
 
-    /// [`Self::problem_n`] の評価関数のリング数を rings にしたもの
-    fn problem_rings(&self, i: usize, rings: usize) -> Result<(System, Problem, usize), String> {
-        let p = self.project(i)?;
+    /// 選び方 a（[`Self::project_of`]）の [`Self::problem_n`] で、評価関数のリング数を rings にしたもの
+    fn problem_of(
+        &self,
+        a: &[Option<usize>],
+        rings: usize,
+    ) -> Result<(System, Problem, usize), String> {
+        let p = self.project_of(a)?;
         let look = |v: &str, q: &str| self.cat.zmx(v, q);
         let env = Env {
             base: self.dir.clone(),
@@ -723,6 +759,11 @@ impl<'a> SwapSearch<'a> {
 
     /// 組 i を評価した結果（組 i だけから決まる）。評価できなければ error に理由
     pub fn eval(&self, i: usize) -> SwapResult {
+        self.result(i, self.optimize(&self.assign(i)))
+    }
+
+    /// 組 i の最適化の結果 fit を [`SwapResult`] に
+    fn result(&self, i: usize, fit: Result<SwapFit, String>) -> SwapResult {
         let lenses = self
             .combo(i)
             .iter()
@@ -739,7 +780,7 @@ impl<'a> SwapSearch<'a> {
                 }
             })
             .collect();
-        let (fit, error) = match self.optimize(i) {
+        let (fit, error) = match fit {
             Ok(f) => (Some(f), None),
             Err(e) => (None, Some(e)),
         };
@@ -751,15 +792,15 @@ impl<'a> SwapSearch<'a> {
         }
     }
 
-    fn optimize(&self, i: usize) -> Result<SwapFit, String> {
-        let (s, pr0, n_image) = self.problem_n(i)?;
+    fn optimize(&self, a: &[Option<usize>]) -> Result<SwapFit, String> {
+        let (s, pr0, n_image) = self.problem_of(a, self.spec.rings)?;
         let (start, pr, r, names) = self.best_start(pr0)?;
         self.report(&s, n_image, start, pr, r, names)
     }
 
     /// 粗いふるいの評価関数（リング数 `prescreen.rings` で最適化した値。評価できなければ None）
     fn coarse_merit(&self, i: usize, rings: usize) -> Option<f64> {
-        let (_, pr0, _) = self.problem_rings(i, rings).ok()?;
+        let (_, pr0, _) = self.problem_of(&self.assign(i), rings).ok()?;
         let (_, _, r, _) = self.best_start(pr0).ok()?;
         r.merit.is_finite().then_some(r.merit)
     }
@@ -1001,6 +1042,9 @@ impl<'a> SwapSearch<'a> {
         threads: Option<usize>,
         progress: Option<&(dyn Fn(SwapStage, lensbench_runs::Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
+        if self.spec.beam.is_some() {
+            return self.beam_to(out, threads, progress);
+        }
         let Some(path) = out else {
             return Ok(self.run(threads));
         };
@@ -1032,7 +1076,21 @@ impl<'a> SwapSearch<'a> {
             serde_json::to_string(&self.eval(idx[j]))
                 .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let e = e.to_string();
+            // 残した組が変わった（keep を変えたなど）: 一段目の結果はそのまま使える
+            if self.spec.prescreen.is_some() && pre_path.exists() && e.contains("the header differs") {
+                format!(
+                    "{}; the prescreen results in {} are still valid: remove {} (keep {}) to rerun only the second stage",
+                    e,
+                    pre_path.display(),
+                    path.display(),
+                    pre_path.display()
+                )
+            } else {
+                e
+            }
+        })?;
         let (_, rows) = lensbench_runs::read_results(path).map_err(|e| e.to_string())?;
         let mut v = rows
             .into_iter()
@@ -1042,9 +1100,12 @@ impl<'a> SwapSearch<'a> {
         Ok(v)
     }
 
-    /// すべての組を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
+    /// すべての組（ビーム探索なら [`Self::beam_run`] で評価した組）を並列に評価し、評価関数の小さい順に並べる（評価できなかった組は後ろ、番号の順）。
     /// threads は [`par::with_threads`] と同じ（None は外の指定を引き継ぐ）
     pub fn run(&self, threads: Option<usize>) -> Vec<SwapResult> {
+        if self.spec.beam.is_some() {
+            return self.beam_run(threads, None, None).0;
+        }
         let idx = self.screened(threads);
         let mut v = par::with_threads(threads, || par::map(&idx, |&i| self.eval(i)));
         sort_results(&mut v);

@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 schemars = { version = "1", features = ["indexmap2"] }
 indexmap = { version = "2", features = ["serde"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+web-time = "1"
 
 [dev-dependencies]
 jsonschema = { version = "0.60", default-features = false }

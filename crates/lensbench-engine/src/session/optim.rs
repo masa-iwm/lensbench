@@ -586,18 +586,27 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         ..Default::default()
     };
     let t0 = web_time::Instant::now();
-    // 粗いふるい（prescreen）があれば残った組だけ（ふるいの間も進み具合を出し、止められる）
-    let (idx, stopped) = s.screen(&o)?;
-    *sess.swap_run.lock_ok() = Some((0, idx.len()));
-    let r = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
-        let v = s.eval(idx[j]);
-        rows.lock_ok().push(v);
-        Ok("{}".into())
-    });
-    *sess.swap_run.lock_ok() = None;
-    let sum = r?;
-    let mut rows = rows.into_inner().unwrap_or_else(|e| e.into_inner());
-    lensbench_design::swap::sort_results(&mut rows);
+    let (mut rows, screened, cancelled) = if s.uses_beam() {
+        // 所ごとのビーム探索: 評価したすべての所を選んだ組（screened はその数）
+        let (v, _, stopped) = s.beam_run(o.threads, Some(&show), Some(&sess.swap_cancel));
+        *sess.swap_run.lock_ok() = None;
+        let k = v.len();
+        (v, k, stopped)
+    } else {
+        // 粗いふるい（prescreen）があれば残った組だけ（ふるいの間も進み具合を出し、止められる）
+        let (idx, stopped) = s.screen(&o)?;
+        *sess.swap_run.lock_ok() = Some((0, idx.len()));
+        let r = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
+            let v = s.eval(idx[j]);
+            rows.lock_ok().push(v);
+            Ok("{}".into())
+        });
+        *sess.swap_run.lock_ok() = None;
+        let sum = r?;
+        let mut rows = std::mem::take(&mut *rows.lock_ok());
+        lensbench_design::swap::sort_results(&mut rows);
+        (rows, idx.len(), sum.cancelled || stopped)
+    };
     let done = rows.len();
     let failed = rows.iter().filter(|x| x.error.is_some()).count();
     let top = opt_usize(p, "top")?.unwrap_or(50);
@@ -606,10 +615,10 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     }
     Ok(json!(SwapReply {
         count: n,
-        screened: Some(idx.len()),
+        screened: Some(screened),
         done: Some(done),
         failed: Some(failed),
-        cancelled: Some(sum.cancelled || stopped),
+        cancelled: Some(cancelled),
         seconds: Some(t0.elapsed().as_secs_f64()),
         slots,
         results: Some(rows),
