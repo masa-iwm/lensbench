@@ -105,7 +105,7 @@ pub struct TolPanel {
     /// 補償子（vars）・評価関数（merit・terms）・構成（configs）
     pub opt: OptPanel,
     pub running: bool,
-    pub result: Option<Value>,
+    pub result: Option<std::sync::Arc<Value>>,
     pub error: Option<String>,
     /// 結果の補償子の分布の図: 選んだ補償子（補償子、続いて傾きの大きさ）と、累積分布で出すか（false はヒストグラム）
     pub comp_sel: usize,
@@ -534,7 +534,7 @@ pub fn ui(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if ui.button(tr("結果を保存…")).clicked() {
-                            acts.push(Action::SaveResult(r.clone()));
+                            acts.push(Action::SaveResult((*r).clone()));
                         }
                         let has_comp = r["compensators"].as_array().is_some_and(|a| !a.is_empty());
                         if ui

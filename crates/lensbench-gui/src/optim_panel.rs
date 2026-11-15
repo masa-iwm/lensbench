@@ -242,7 +242,7 @@ pub struct OptPanel {
     pub new_term: String,
     pub running: bool,
     /// serve の optimize の結果
-    pub result: Option<Value>,
+    pub result: Option<std::sync::Arc<Value>>,
     pub error: Option<String>,
     /// 系に当てる前の値（元に戻す）
     pub undo: Option<Vec<(String, f64)>>,

@@ -57,6 +57,36 @@ impl App {
             }
             Cmd::Folders => self.c.folders_open = true,
             Cmd::Help => self.c.help_open = true,
+            Cmd::RunOpt => {
+                self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
+                if !self.c.opt.running {
+                    match self.c.opt.params() {
+                        Ok(p) => {
+                            self.c.opt.error = None;
+                            self.c.opt.running = true;
+                            self.c.opt.result = None;
+                            self.c.opt.gen = self.c.sys_gen;
+                            self.c.worker.send(Tag::Optimize, "optimize", p);
+                        }
+                        Err(e) => self.c.opt.error = Some(e),
+                    }
+                }
+            }
+            Cmd::RunTol => {
+                self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
+                if !self.c.tol.running {
+                    match self.c.tol.spec() {
+                        Ok(p) => {
+                            self.c.tol.error = None;
+                            self.c.tol.running = true;
+                            self.c.tol.result = None;
+                            self.c.worker.send(Tag::Tolerance, "tolerance", p);
+                        }
+                        Err(e) => self.c.tol.error = Some(e),
+                    }
+                }
+            }
+            Cmd::FocusImage => self.c.request_focus(),
         }
     }
 
@@ -92,6 +122,26 @@ impl App {
             Cmd::Undo(false, 1),
         );
         push(tr("系を読み直す").into(), "reload", Cmd::Reload);
+        // 実行系（GUX-16）。設定はそれぞれのパネルのまま
+        if self.c.summary.is_some() {
+            push(
+                tr("最適化する（今の設定で）").into(),
+                "run optimize opt",
+                Cmd::RunOpt,
+            );
+            push(
+                tr("公差を回す（今の設定で）").into(),
+                "run tolerance tol monte carlo",
+                Cmd::RunTol,
+            );
+        }
+        if self.c.is_combo() && self.c.layout_data.is_some() {
+            push(
+                tr("像面を近軸の焦点へ").into(),
+                "focus image paraxial",
+                Cmd::FocusImage,
+            );
+        }
         push(
             tr("開いている解析をすべて計算し直す").into(),
             "run all f5",

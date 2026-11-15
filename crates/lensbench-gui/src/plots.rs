@@ -105,6 +105,33 @@ pub fn fmt_sig(x: f64, n: i32) -> String {
     fmt_num((x * k).round() / k)
 }
 
+/// スポット図の拡大・移動を 1 つの枠の操作で更新する。`s0` は倍率 1 の px/µm
+fn spot_view(
+    ui: &Ui,
+    resp: &egui::Response,
+    view: (f32, egui::Vec2),
+    s0: f32,
+) -> (f32, egui::Vec2) {
+    let pz = crate::widgets::pan_zoom(ui, resp, true);
+    if pz.reset {
+        return (1.0, egui::Vec2::ZERO);
+    }
+    let (mut z, mut off) = view;
+    // 画面の px の差を µm に（y は上が正）
+    let to_um = |v: egui::Vec2, z: f32| egui::vec2(v.x, -v.y) / (s0 * z);
+    off -= to_um(pz.pan, z);
+    if let Some(p) = pz.at {
+        let d = p - resp.rect.center();
+        let under = off + to_um(d, z);
+        z = (z * pz.zoom).clamp(1.0, 1e4);
+        off = under - to_um(d, z);
+    }
+    if z <= 1.0 + 1e-4 {
+        off = egui::Vec2::ZERO;
+    }
+    (z, off)
+}
+
 /// スポット図。点は µm、中心は各視野の主波長の重心（無ければ全体の重心）
 pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>, sys: &SysInfo) {
     let mut fields: Vec<usize> = rays.iter().map(|r| r.field).collect();
@@ -157,11 +184,20 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
     let cols = ((avail / 150.0).floor() as usize).clamp(1, n.max(1));
     let cell = ((avail - 8.0 * cols as f32) / cols as f32).clamp(90.0, 260.0);
     let vis = ui.visuals().clone();
+    // 拡大・移動（全視野で共通。倍率と中心のずれ µm）。ホイール＝拡大、右・中ドラッグ＝移動、
+    // ダブルクリック・Home＝全体（GPN-09）
+    let view_id = ui.make_persistent_id("spot-view");
+    let mut view: (f32, egui::Vec2) = ui
+        .data(|d| d.get_temp(view_id))
+        .unwrap_or((1.0, egui::Vec2::ZERO));
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new(trf("枠の半幅 {} µm", &[&fmt_sig(half_um, 3)]))
-                .small()
-                .color(theme::weak_text(&vis)),
+            RichText::new(trf(
+                "枠の半幅 {} µm",
+                &[&fmt_sig(half_um / view.0 as f64, 3)],
+            ))
+            .small()
+            .color(theme::weak_text(&vis)),
         );
         if let Some(a) = airy_um {
             ui.label(
@@ -189,11 +225,15 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
             for (k, &f) in fields.iter().enumerate() {
                 ui.vertical(|ui| {
                     let (resp, painter) =
-                        ui.allocate_painter(egui::vec2(cell, cell), Sense::hover());
+                        ui.allocate_painter(egui::vec2(cell, cell), Sense::click_and_drag());
                     let rect = resp.rect;
                     painter.rect_filled(rect, 8.0, vis.extreme_bg_color);
-                    let c = rect.center();
-                    let s = (cell / 2.0 - 4.0) / half_um as f32;
+                    let painter = painter.with_clip_rect(rect.intersect(ui.clip_rect()));
+                    let s0 = (cell / 2.0 - 4.0) / half_um as f32;
+                    view = spot_view(ui, &resp, view, s0);
+                    let s = s0 * view.0;
+                    // 拡大の中心（重心から view.1 µm ずれた所）を枠の中央に
+                    let c = rect.center() - egui::vec2(view.1.x, -view.1.y) * s;
                     let grid = vis.widgets.noninteractive.bg_stroke.color;
                     painter.line_segment(
                         [
@@ -224,7 +264,6 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                         ));
                     }
                     let cc = centers[k];
-                    let painter = painter.with_clip_rect(rect);
                     for r in rays.iter().filter(|r| r.field == f) {
                         let col = theme::wave_color(
                             sys.waves_um.get(r.wave - 1).copied().unwrap_or(0.55),
@@ -237,6 +276,15 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                             );
                             painter.circle_filled(p, 1.3, col);
                         }
+                    }
+                    // 指した所の座標（重心から µm）
+                    if let Some(p) = resp.hover_pos() {
+                        let d = (p - c) / s;
+                        resp.clone().on_hover_text_at_pointer(format!(
+                            "x {} µm, y {} µm",
+                            fmt_sig(d.x as f64, 3),
+                            fmt_sig(-d.y as f64, 3)
+                        ));
                     }
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(field_namer(ui)(f)).color(theme::weak_text(&vis)));
@@ -261,6 +309,7 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                 }
             }
         });
+    ui.data_mut(|d| d.insert_temp(view_id, view));
 }
 
 /// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）

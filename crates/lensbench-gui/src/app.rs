@@ -7,6 +7,7 @@
 mod ask;
 mod help;
 mod menus;
+mod result;
 mod status;
 mod take;
 mod to_combo;
@@ -326,6 +327,9 @@ struct AnaRes {
     error: Option<String>,
     /// 結果の世代（届くたびに変わる。図の格子を作り直す目安、GPN-07）
     gen: u64,
+    /// 返事を待っている要求の数と、待ち始めた時刻（GUX-27）
+    inflight: u32,
+    since: Option<web_time::Instant>,
 }
 
 /// 組合せの元に戻す・やり直す段（組合せの系の変更は GUI の組合せのデータなので、ここで積む）。段ごとに変更の名前
@@ -489,6 +493,10 @@ enum Cmd {
     Lang(Lang),
     Folders,
     Help,
+    /// 最適化を今の設定で回す・公差を回す・像面を近軸の焦点へ（パレットの実行系、GUX-16）
+    RunOpt,
+    RunTol,
+    FocusImage,
 }
 
 /// パネルの外の状態（パネルの中から触る）
@@ -528,6 +536,8 @@ struct Core {
     save_layout_open: bool,
     /// 答えを待っている「はい・いいえ」の確かめ（[`Core::ask`]、GAR-24）
     ask: Option<ask::Ask>,
+    /// Web 版: 今描いている別の窓のパネル（確かめをその窓に出す）
+    drawing_in: Option<u64>,
     layout_name: String,
     /// 最後に組合せから作ったプロジェクト
     built: Option<Value>,
@@ -1229,6 +1239,7 @@ impl Core {
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
                 self.worker.send(Tag::Analyze(id), "analyze", p);
+                self.ana_sent(id);
                 self.info(trf(
                     "{} を計算しています…",
                     &[&layout::analysis_label(&cfg.cmd)],
@@ -3591,148 +3602,6 @@ impl Core {
         }
     }
 
-    /// 解析の結果（見せ方の選択・時間・書き出しと、図・表・JSON）
-    fn result_ui(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
-        let weak = theme::weak_text(ui.visuals());
-        let view_row = |ui: &mut Ui, cfg: &mut AnaCfg| {
-            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
-                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
-            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
-                .on_hover_text(tr("結果を表と木で見る"));
-            ui.selectable_value(&mut cfg.view, View::Json, "JSON")
-                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
-        };
-        let Some(r) = self.results.get(&id) else {
-            ui.horizontal(|ui| view_row(ui, cfg));
-            if !self.worker.busy_short() {
-                self.run(id, cfg);
-            }
-            return;
-        };
-        if let Some(e) = &r.error {
-            ui.colored_label(ui.visuals().error_fg_color, e);
-        }
-        let Some(v) = &r.value else {
-            ui.horizontal(|ui| view_row(ui, cfg));
-            ui.spinner();
-            return;
-        };
-        ui.horizontal(|ui| {
-            view_row(ui, cfg);
-            ui.separator();
-            ui.label(
-                RichText::new(format!("{} ms", fmt_num((r.ms * 10.0).round() / 10.0)))
-                    .small()
-                    .color(weak),
-            );
-            if r.cmd != cfg.cmd {
-                ui.label(RichText::new(tr("（前の解析の結果）")).small().color(weak));
-            }
-            let fig_now = cfg.view == View::Figure && figures::has_figure(&r.cmd);
-            match result_export_menu(ui, &r.cmd, v, fig_now) {
-                Some(ResOut::Shot(copy)) => {
-                    self.shot = Some((id, copy, r.cmd.clone()));
-                    ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
-                }
-                Some(ResOut::Error(e)) => {
-                    self.status = Status {
-                        text: e,
-                        error: true,
-                    }
-                }
-                None => {}
-            }
-        });
-        // 図の矩形（画像にするときに切り出す）
-        self.fig_rects.insert(id, ui.available_rect_before_wrap());
-        let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
-        // MTF の凡例に出す視野の座標
-        let coords: Vec<String> = self
-            .summary
-            .as_ref()
-            .and_then(|s| s["fields"].as_array().cloned())
-            .unwrap_or_default()
-            .iter()
-            .map(|f| {
-                format!(
-                    "({}, {})",
-                    fmt_num(f[0].as_f64().unwrap_or(0.0)),
-                    fmt_num(f[1].as_f64().unwrap_or(0.0))
-                )
-            })
-            .collect();
-        ui.data_mut(|d| d.insert_temp(egui::Id::new(plots::FIELD_LABELS), coords));
-        // 図はパネルの残りに合わせるが最低の高さがあるので、パネルが低いときは縦にスクロールして見る
-        if fig && (r.cmd == "mtf" || r.cmd == "huygens-mtf") {
-            egui::ScrollArea::vertical()
-                .id_salt(("fig", id))
-                .auto_shrink([false, false])
-                .show(ui, |ui| plots::mtf(ui, v, r.prev.as_ref(), id));
-            return;
-        }
-        // スポット以外の図（描けない結果なら表）
-        if fig && r.cmd != "spot" {
-            let shown = egui::ScrollArea::vertical()
-                .id_salt(("fig", id))
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    figures::show(ui, id, r.gen, &r.cmd, v, r.prev.as_ref())
-                })
-                .inner;
-            if shown {
-                return;
-            }
-        }
-        egui::ScrollArea::both()
-            .id_salt(("res", id))
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                if fig && r.cmd == "spot" {
-                    let waves = self.waves_um();
-                    let sys = SysInfo {
-                        waves_um: &waves,
-                        primary: self.primary(),
-                        wfno: self.info_num("wfno"),
-                    };
-                    plots::spot(ui, &r.rays, v, r.prev.as_ref(), &sys);
-                    ui.separator();
-                    json_view::show(ui, v);
-                } else if cfg.view == View::Json {
-                    // 文字列は結果が変わったときだけ作る。大きい結果は頭だけ見せる（全文はコピー・保存で、GAR-09）
-                    let key = egui::Id::new(("res-json", id));
-                    let t = match ui.data(|d| d.get_temp::<(u64, std::sync::Arc<String>)>(key)) {
-                        Some((r, t)) if r == self.rev => t,
-                        _ => {
-                            let mut s = serde_json::to_string_pretty(v).unwrap_or_default();
-                            if s.len() > JSON_VIEW_MAX {
-                                let mut cut = JSON_VIEW_MAX;
-                                while !s.is_char_boundary(cut) {
-                                    cut -= 1;
-                                }
-                                s.truncate(cut);
-                                s.push('\n');
-                                s.push_str(&trf(
-                                    "…（長いので {} 字で切った。全文は「コピー」「保存」で）",
-                                    &[&JSON_VIEW_MAX],
-                                ));
-                            }
-                            let t = std::sync::Arc::new(s);
-                            ui.data_mut(|d| d.insert_temp(key, (self.rev, t.clone())));
-                            t
-                        }
-                    };
-                    ui.add(
-                        egui::TextEdit::multiline(&mut t.as_str())
-                            .code_editor()
-                            .desired_width(f32::INFINITY),
-                    );
-                } else {
-                    json_view::show(ui, v);
-                }
-            });
-    }
-
     fn folders_window(&mut self, ctx: &egui::Context) {
         let mut open = self.folders_open;
         let mut changed = false;
@@ -4339,6 +4208,7 @@ impl App {
                 help_open: false,
                 save_layout_open: false,
                 ask: None,
+                drawing_in: None,
                 layout_name: String::new(),
                 built: None,
                 doc_path: None,
@@ -4630,7 +4500,15 @@ impl App {
             }
             let pane = &mut w.pane;
             h.title = pane.title();
-            let (frame, out) = h.frame(ctx, |ui| c.pane_ui(ui, pane));
+            let (frame, out) = h.frame(ctx, |ui| {
+                c.drawing_in = Some(id);
+                c.pane_ui(ui, pane);
+                c.drawing_in = None;
+                // この窓で出た確かめはこの窓に出す
+                if c.ask_from() == Some(id) {
+                    c.ask_ui(ui.ctx());
+                }
+            });
             if let Some(f) = frame {
                 t.send_frame(id, &f);
             }
@@ -4930,11 +4808,17 @@ impl eframe::App for App {
         // Web 版: 選び終わったファイルを開く・書かれたファイルをダウンロードにする
         self.c.pick_and_open_when(false);
         crate::files::flush_downloads();
+        if crate::files::take_failed() {
+            self.c.fail(tr("ファイルを選ぶ窓を出せませんでした（Linux は zenity が要ります）。ファイルは窓に落としても開けます"));
+        }
         // Web 版: 読み込んだファイル・ユーザーカタログをブラウザに残す
         #[cfg(target_arch = "wasm32")]
         crate::web_store::flush();
         let mut redo = Vec::new();
         while let Some(d) = self.c.worker.poll() {
+            if let Tag::Analyze(id) = d.tag {
+                self.c.ana_back(id);
+            }
             if !d.skipped {
                 self.c.take(d);
             } else if let Tag::Analyze(id) | Tag::Rays(id) = d.tag {
@@ -5247,7 +5131,17 @@ impl eframe::App for App {
         }
         self.c.fill_window(ctx);
         self.save_layout_window(ctx);
-        self.c.ask_ui(ctx);
+        // 別の窓で出た確かめはその窓に出す（窓が閉じていれば本体に）
+        #[cfg(target_arch = "wasm32")]
+        let elsewhere = self.c.ask_from().is_some_and(|id| {
+            self.windows.iter().any(|w| w.pane.id == id)
+                && self.tabs.as_ref().is_some_and(|t| t.is_open(id))
+        });
+        #[cfg(not(target_arch = "wasm32"))]
+        let elsewhere = false;
+        if !elsewhere {
+            self.c.ask_ui(ctx);
+        }
         self.tour_frame(ctx);
     }
 

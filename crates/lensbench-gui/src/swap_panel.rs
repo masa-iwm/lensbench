@@ -100,7 +100,7 @@ pub struct SwapPanel {
     pub new_var: String,
     pub running: bool,
     /// serve の swap の結果（count_only なら組の数と候補だけ）
-    pub result: Option<SwapReply>,
+    pub result: Option<std::sync::Arc<SwapReply>>,
     pub error: Option<String>,
     /// 組合せに入れた行（表で印を付ける）
     pub inserted: Option<usize>,

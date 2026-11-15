@@ -14,6 +14,9 @@ pub(super) struct Ask {
     then: Then,
     /// 作ったフレームか（そのフレームの Enter は答えに取らない）
     fresh: bool,
+    /// Web 版: 確かめを出した別の窓のパネル（その窓に出す）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    from: Option<u64>,
 }
 
 impl Core {
@@ -36,7 +39,14 @@ impl Core {
             text: text.to_string(),
             then: Box::new(then),
             fresh: true,
+            from: self.drawing_in,
         });
+    }
+
+    /// 答えを待っている確かめを出した別の窓のパネル
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(super) fn ask_from(&self) -> Option<u64> {
+        self.ask.as_ref().and_then(|a| a.from)
     }
 
     /// 確かめの窓（すべてのパネルを描いた後に呼ぶ）

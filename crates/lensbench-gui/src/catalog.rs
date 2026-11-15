@@ -639,6 +639,8 @@ pub struct ListCache {
     lens_fit: Option<(ListKey, usize, Arc<[usize]>)>,
     glass_meta: Option<(ListKey, Arc<[String]>)>,
     glass_idx: Option<(ListKey, GlassFilter, Arc<[usize]>)>,
+    /// 選んだ行の写し（毎フレーム LensRow を複製しない、GPN-24）
+    lens_picked: Option<(ListKey, usize, Arc<LensRow>)>,
 }
 
 /// カタログレンズの一覧の列
@@ -1050,6 +1052,20 @@ impl Browser {
         self.cache.glass_gen += 1;
     }
 
+    /// 選んだ行（一覧か選択が変わったときだけ写す）
+    fn lens_picked(&mut self) -> Option<Arc<LensRow>> {
+        let i = self.lens_sel?;
+        let key = self.lens_key();
+        if let Some((k, j, r)) = &self.cache.lens_picked {
+            if *k == key && *j == i {
+                return Some(r.clone());
+            }
+        }
+        let r = Arc::new(self.lenses.get(i)?.clone());
+        self.cache.lens_picked = Some((key, i, r.clone()));
+        Some(r)
+    }
+
     fn lens_key(&self) -> ListKey {
         (self.cache.lens_gen, self.lenses.len())
     }
@@ -1322,7 +1338,7 @@ impl Browser {
         let idx = self.lens_idx();
         // 件数と選んだ品の詳細（1 行目）、選んだ品の操作（2 行目）。選んでも表が動かないよう高さを決め、
         // 長ければ横にスクロール（右の組合せ・図に重ならない）
-        let picked = self.lens_sel.and_then(|i| self.lenses.get(i)).cloned();
+        let picked = self.lens_picked();
         egui::ScrollArea::horizontal()
             .id_salt("lens_detail")
             .show(ui, |ui| {
@@ -2962,62 +2978,4 @@ mod tests {
 }
 
 #[cfg(test)]
-mod preview_tilt_tests {
-    use super::*;
-    use serde_json::json;
-
-    /// 45° の平面鏡のプレビュー: 絞りは鏡の手前の端より前、光線は絞りを通ってから鏡で折れる（#130）
-    #[test]
-    fn tilted_mirror_preview_stop_before_mirror() {
-        let r = LensRow {
-            vendor: "V".into(),
-            part: "M".into(),
-            efl: f64::INFINITY,
-            diameter: 25.4,
-            thickness: 6.35,
-            mirror: Some((f64::INFINITY, 0.0)),
-            ..Default::default()
-        };
-        let p = preview_project(&r);
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let glass = root.join("tests/glass").display().to_string();
-        let dir =
-            std::env::temp_dir().join(format!("lensbench-gui-mirprev-{}", std::process::id()));
-        lensbench_core::vfs::create_dir_all(&dir).unwrap();
-        let f = dir.join("p.json");
-        lensbench_core::vfs::write(&f, p.to_string()).unwrap();
-        let lay = crate::combo::LayoutData::parse(
-            &lensbench_engine::preview_layout(
-                &json!({ "file": f.display().to_string(), "glass_dirs": [glass] }),
-                &json!({ "rays": 5 }),
-            )
-            .unwrap(),
-        );
-        std::fs::remove_dir_all(&dir).ok();
-        assert!(!lay.rays.is_empty());
-        // 光線は z = 0（絞り）から +z へ進んでから折れる（絞りより前で鏡に当たらない）
-        for (_, pts) in &lay.rays {
-            assert!(pts[1][0] > 0.5, "{pts:?}");
-        }
-    }
-
-    /// カタログの玉は既定でロック、鏡・BS はロックしない（#123）
-    #[test]
-    fn catalog_lens_locked_by_default() {
-        let lens = LensRow {
-            vendor: "V".into(),
-            part: "L".into(),
-            efl: 50.0,
-            diameter: 25.4,
-            thickness: 3.0,
-            pieces: 1,
-            ..Default::default()
-        };
-        assert!(pick_from(&lens).locked);
-        let mirror = LensRow {
-            mirror: Some((f64::INFINITY, 0.0)),
-            ..lens
-        };
-        assert!(!pick_from(&mirror).locked);
-    }
-}
+mod preview_tilt_tests;

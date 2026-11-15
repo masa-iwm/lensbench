@@ -1613,3 +1613,7 @@ PV（重心基準）	PV (centroid)
 当てはめの最大の差	Max fit error
 元のタブが裏に回って止まっています（元のタブが見えていると動きます。窓を並べてください）	The main tab is in the background and paused (it runs while visible; place the windows side by side)
 元の窓を前へ	Bring main window to front
+ファイルを選ぶ窓を出せませんでした（Linux は zenity が要ります）。ファイルは窓に落としても開けます	Could not open the file dialog (Linux needs zenity). You can also drop files onto the window
+公差を回す（今の設定で）	Run tolerancing (current settings)
+最適化する（今の設定で）	Optimize (current settings)
+計算しています…	Computing…

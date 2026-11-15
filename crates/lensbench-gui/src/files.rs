@@ -115,6 +115,15 @@ pub fn open_folder(id: &str, start: bool, dialog: impl FnOnce() -> FileDialog) -
     }
 }
 
+/// ファイルを選ぶ窓が出せなかった（やめたのとは別、GUX-26）。[`take_failed`] で読んで戻す
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+static FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 前に呼んでから、ファイルを選ぶ窓が出せなかったことがあったか（読むと戻る）
+pub fn take_failed() -> bool {
+    FAILED.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// 窓に落としたファイルのパス（wasm は中身を `/uploads/` に入れてそのパス）
 pub fn dropped(f: &egui::DroppedFile) -> Option<PathBuf> {
     if let Some(p) = &f.path {
@@ -184,9 +193,16 @@ mod zenity {
                     .to_string();
                 (!s.is_empty()).then_some(s)
             }
-            Ok(_) => None,
+            // 1 はやめた（キャンセル）。それ以外は窓が出せなかった（画面が無いなど）
+            Ok(o) => {
+                if o.status.code() != Some(1) {
+                    super::FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                None
+            }
             Err(e) => {
                 eprintln!("lensbench-gui: zenity を起こせない（{e}）。ファイルは窓に落として開く");
+                super::FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
                 None
             }
         }

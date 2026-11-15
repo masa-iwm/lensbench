@@ -408,7 +408,7 @@ impl Core {
                     "最適化 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.opt.result = Some(v);
+                self.opt.result = Some(std::sync::Arc::new(v));
             }
             Tag::Swap => {
                 self.swap.running = false;
@@ -421,8 +421,10 @@ impl Core {
                         &[&fmt_num((ms * 10.0).round() / 10.0)],
                     );
                 }
-                (self.swap.result, self.swap.error) =
-                    r.map_or_else(|e| (None, Some(e)), |r| (Some(r), None));
+                (self.swap.result, self.swap.error) = r.map_or_else(
+                    |e| (None, Some(e)),
+                    |r| (Some(std::sync::Arc::new(r)), None),
+                );
             }
             Tag::Tolerance => {
                 self.tol.running = false;
@@ -431,7 +433,7 @@ impl Core {
                     "公差 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.tol.result = Some(v);
+                self.tol.result = Some(std::sync::Arc::new(v));
             }
             Tag::Zoom => {
                 self.zoom.running = false;
