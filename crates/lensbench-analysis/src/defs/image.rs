@@ -41,26 +41,26 @@ pub enum Reference {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct RmsParams {
-    /// 視野の番号（1 始まり、省略で全視野。vs field では使わない）
+    /// Field number (from 1; all fields if omitted; not used with vs field)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色。vs wavelength では使わない）
+    /// Wavelength number (from 1; polychromatic if omitted; not used with vs wavelength)
     pub wave: Option<usize>,
-    /// 横軸: field（正規化視野 0〜1）、focus（像面のずらし ±range）、wavelength（系の波長の最小〜最大、単色）
+    /// Horizontal axis: field (normalized field 0 to 1), focus (image shift ±range), wavelength (system wavelength minimum to maximum, monochromatic)
     pub vs: Vs,
-    /// 横軸の点数
+    /// Number of points on the horizontal axis
     #[schemars(extend("x-min" = 1))]
     pub points: usize,
-    /// focus のずらしの範囲 ±range [レンズ単位]
+    /// Shift range of focus ±range [lens units]
     pub range: f64,
-    /// field の視野を振る向き（y か x）
+    /// Field direction for field (y or x)
     pub axis: Axis,
-    /// 基準: centroid（重心）か chief（主光線）
+    /// Reference: centroid or chief (chief ray)
     pub reference: Reference,
-    /// 瞳のガウス求積のリング数
+    /// Number of rings of the Gaussian pupil quadrature
     #[schemars(extend("x-min" = 1))]
     pub rings: usize,
-    /// 単色の field・wavelength の掃引で、実像高（と条件で定める視野）の視野を解析の波長の主光線で解く
-    /// （OpticStudio の単色の RMS vs Field・vs Wavelength と同じ。省くと主波長で解く）
+    /// In monochromatic field and wavelength sweeps, solve fields given by real image height (and fields defined by conditions) with the chief ray of the analysis wavelength
+    /// (Same as OpticStudio's monochromatic RMS vs Field and vs Wavelength; solved at the primary wavelength if omitted)
     pub field_wave: bool,
 }
 
@@ -144,7 +144,7 @@ impl Analysis for Rms {
     fn meta(&self) -> Meta {
         Meta {
             name: "rms",
-            about: "RMS（スポット半径・x・y、波面、ストレール比の近似）を視野・フォーカス・波長に対して",
+            about: "RMS (spot radius, x, y, wavefront, approximate Strehl ratio) against field, focus or wavelength",
             help: "",
         }
     }
@@ -235,18 +235,18 @@ impl Analysis for Rms {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct PsfParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// Huygens PSF（像面の上。傾いた像面・収差の大きい系向け、FFT より遅い）
+    /// Huygens PSF (on the image surface; for tilted image surfaces and strongly aberrated systems; slower than FFT)
     pub huygens: bool,
-    /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
+    /// Pupil grid side (automatic if omitted: large enough that neighboring samples differ by π/2 or less in phase)
     pub pupil: Option<usize>,
-    /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）
+    /// Image grid side (up to twice the pupil grid at the default spacing)
     #[schemars(extend("x-min" = 1))]
     pub image: usize,
-    /// 像の格子の間隔 [レンズ単位、アフォーカル像空間では角度の単位]（省くと 1 / (2 × 遮断周波数)）
+    /// Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)
     pub delta: Option<f64>,
 }
 
@@ -321,10 +321,8 @@ impl Analysis for Psf {
     fn meta(&self) -> Meta {
         Meta {
             name: "psf",
-            about: "回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色",
-            help: "回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色。\
-                   huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す。座標は像面の局所座標）。\
-                   x・y は主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）",
+            about: "Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted",
+            help: "Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface; coordinates are the local image surface coordinates). x and y are coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &PsfParams) -> Result<PsfOut> {

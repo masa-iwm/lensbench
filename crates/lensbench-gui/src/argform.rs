@@ -40,12 +40,14 @@ pub struct ArgSpec {
 
 impl ArgSpec {
     pub fn parse(v: &Value) -> Option<ArgSpec> {
+        let doc = v["doc"].as_str().unwrap_or_default();
         Some(ArgSpec {
             name: v["name"].as_str()?.to_string(),
             ty: v["type"].as_str().unwrap_or("str").to_string(),
             default: v["default"].clone(),
             unit: v["unit"].as_str().unwrap_or_default().to_string(),
-            doc: v["doc"].as_str().unwrap_or_default().to_string(),
+            // 解析の設定の説明は英語が元。表示の言語に訳す（XCT-20）
+            doc: lensbench_core::i18n::tr(doc),
             choices: v["choices"]
                 .as_array()
                 .map(|a| {

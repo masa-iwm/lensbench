@@ -77,8 +77,39 @@ fn command_json(c: &mut Command) -> Value {
     })
 }
 
-/// clap の定義の JSON（版・終了コードの表も）
-pub fn help_json(mut c: Command) -> Value {
+/// help を `f` で訳す（about・long_about・引数の help・long_help、入れ子のサブコマンドも。XCT-20）
+pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Command {
+    if let Some(t) = c.get_about().map(|x| f(&x.to_string())) {
+        c = c.about(t);
+    }
+    if let Some(t) = c.get_long_about().map(|x| f(&x.to_string())) {
+        c = c.long_about(t);
+    }
+    let ids: Vec<clap::Id> = c.get_arguments().map(|a| a.get_id().clone()).collect();
+    for id in ids {
+        c = c.mut_arg(id, |mut a| {
+            if let Some(t) = a.get_help().map(|x| f(&x.to_string())) {
+                a = a.help(t);
+            }
+            if let Some(t) = a.get_long_help().map(|x| f(&x.to_string())) {
+                a = a.long_help(t);
+            }
+            a
+        });
+    }
+    let subs: Vec<String> = c
+        .get_subcommands()
+        .map(|s| s.get_name().to_string())
+        .collect();
+    for n in subs {
+        c = c.mut_subcommand(n, |s| localize(s, f));
+    }
+    c
+}
+
+/// clap の定義の JSON（版・終了コードの表も）。マニュアルの CLI のページは日本語なので help を表で訳す（訳した後の日本語はそのまま）
+pub fn help_json(c: Command) -> Value {
+    let mut c = localize(c, &lensbench_core::i18n::translate_lines);
     c.build();
     let mut v = command_json(&mut c);
     // exe の入口で足した解析（非公開版など、lensbench_engine::register）の印。非公開版のマニュアルは足した分だけ載せる

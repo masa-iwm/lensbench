@@ -29,7 +29,7 @@ impl Analysis for Info {
     fn meta(&self) -> Meta {
         Meta {
             name: "info",
-            about: "システムデータ（EFL、F 値、瞳など）",
+            about: "System data (EFL, F-number, pupils, etc.)",
             help: "",
         }
     }
@@ -103,59 +103,59 @@ impl Quantity {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct InterferenceParams {
-    /// 光束 1（試料）: .zmx は構成の番号（1 始まり）、プロジェクトファイルは状態の名前
+    /// Beam 1 (sample): a configuration number (from 1) for .zmx, a state name for a project file
     pub beam1: String,
-    /// 光束 2（参照）: 同上。0 か ref で参照球（mode pupil だけ）
+    /// Beam 2 (reference): the same; 0 or ref for the reference sphere (mode pupil only)
     pub beam2: String,
-    /// 瞳上か像面上か
+    /// On the pupil or on the image surface
     pub mode: InterferenceMode,
-    /// 視野の番号（1 始まり）
+    /// Field number (from 1)
     #[schemars(extend("x-min" = 1))]
     pub field: usize,
-    /// 波長の番号（1 始まり、省略で主波長）
+    /// Wavelength number (from 1; the primary wavelength if omitted)
     pub wave: Option<usize>,
-    /// 瞳上: 格子の一辺（4 以上の偶数）
+    /// Pupil: grid side (an even number 4 or more)
     #[schemars(extend("x-min" = 4))]
     pub n: usize,
-    /// 瞳上: OPD の差にかける数（ダブルパスなら 2）
+    /// Pupil: factor on the OPD difference (2 for a double pass)
     pub scale: f64,
-    /// 瞳上: x の傾きの縞の数（瞳の直径あたり）
+    /// Pupil: number of x tilt fringes (per pupil diameter)
     pub xtilt: f64,
-    /// 瞳上: y の傾きの縞の数（瞳の直径あたり）
+    /// Pupil: number of y tilt fringes (per pupil diameter)
     pub ytilt: f64,
-    /// 像面上: 瞳の光線の格子の一辺
+    /// Image: side of the pupil ray grid
     #[schemars(extend("x-min" = 2))]
     pub pupil: usize,
-    /// 像面上: 画素の数（一辺）
+    /// Image: number of pixels (on a side)
     #[schemars(extend("x-min" = 1))]
     pub npx: usize,
-    /// 像面上: 範囲の中心 x,y（省略で 2 つの光束が届く範囲の中心）
+    /// Image: center x,y of the area (the center of the area reached by both beams if omitted)
     #[schemars(length(min = 2, max = 2), extend("x-unit" = "mm"))]
     pub center: Option<Vec<f64>>,
-    /// 像面上: 範囲の一辺（省略で 2 つの光束が届く範囲を覆う）
+    /// Image: side of the area (covers the area reached by both beams if omitted)
     #[schemars(extend("x-unit" = "mm"))]
     pub width: Option<f64>,
-    /// 像面上: 試料の強度にかける数
+    /// Image: factor on the sample intensity
     pub sample_power: f64,
-    /// 像面上: 参照の強度にかける数
+    /// Image: factor on the reference intensity
     pub reference_power: f64,
-    /// 像面上: 参照の経路に足す光路長
+    /// Image: optical path added to the reference path
     #[schemars(extend("x-unit" = "mm"))]
     pub delay: f64,
-    /// 像面上: 偏光追跡の場で重ねる（入射偏光は sample_input・reference_input、膜は系の膜ファイル）
+    /// Image: overlay the fields of a polarization trace (input polarizations sample_input and reference_input; coatings from the system's coating files)
     pub polarized: bool,
-    /// 像面上: 試料の入射偏光（x・y・45・rcp・lcp など）
+    /// Image: input polarization of the sample (x, y, 45, rcp, lcp, etc.)
     pub sample_input: String,
-    /// 像面上: 参照の入射偏光
+    /// Image: input polarization of the reference
     pub reference_input: String,
-    /// 書き出す量: 瞳上は intensity・delta、像面上は intensity・opd・visibility・sample・reference
+    /// Quantity to write: intensity or delta on the pupil; intensity, opd, visibility, sample or reference on the image
     pub quantity: Quantity,
-    /// 書き出すファイル（csv・json・tif・png）
+    /// File to write (csv, json, tif or png)
     #[schemars(extend("x-kind" = "path", "x-write" = true))]
     pub out: Option<PathBuf>,
-    /// tif を 32 bit float で
+    /// Write tif as 32-bit float
     pub float: bool,
-    /// 結果に格子も入れる（grid、番号 j·nx + i、行 j は +y の向き（j = 0 が下）、データの無い画素は null）
+    /// Also include the grid in the result (grid, index j·nx + i, row j along +y (j = 0 at the bottom), null for pixels without data)
     pub grid: bool,
 }
 
@@ -204,11 +204,8 @@ impl Analysis for Interference {
     fn meta(&self) -> Meta {
         Meta {
             name: "interference",
-            about: "単色の干渉縞: 2 つの構成か状態の光を重ねる",
-            help: "単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。mode pupil は瞳上\
-                   （OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、\
-                   detector は像面上（光線を画素へ補間して場を足す）。out の拡張子で csv（格子、行 = +y）・json（要約と格子）・\
-                   tif（16 bit、float で 32 bit float）・png（16 bit）",
+            about: "Monochromatic interferogram: overlay the light of two configurations or states",
+            help: "Monochromatic interferogram: overlay the light of two configurations (.zmx) or states (project file). mode pupil is on the pupil (like OpticStudio's Interferogram: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2, I = (1 + cos 2πΔ)/2), detector is on the image surface (rays interpolated to pixels and fields summed). The out extension gives csv (grid, row = +y), json (summary and grid), tif (16 bit; 32-bit float with float) or png (16 bit)",
         }
     }
     fn run(&self, cx: &Cx<'_>, a: &InterferenceParams) -> Result<Value> {

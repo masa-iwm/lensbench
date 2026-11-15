@@ -47,7 +47,7 @@ fn default_text(p: &Param) -> Option<String> {
 fn arg_of(p: &Param) -> Arg {
     let mut help = p.doc.clone();
     if !p.unit.is_empty() && !help.contains(&p.unit) {
-        help = format!("{help} [{}]", p.unit);
+        help = format!("{e} [{unit}]", e = help, unit = p.unit);
     }
     let mut a = Arg::new(leak(p.name.clone()))
         .long(leak(flag_of(&p.name)))

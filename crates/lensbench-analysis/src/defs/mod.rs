@@ -122,7 +122,7 @@ impl Axis {
 /// 回折 MTF の 1 視野（mtf・geo-mtf・huygens-mtf の共通の形）
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct MtfRow {
-    /// 視野の番号（1 始まり）
+    /// Field number (from 1)
     pub field: usize,
     pub freqs: Vec<f64>,
     /// 子午

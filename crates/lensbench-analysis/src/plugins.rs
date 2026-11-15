@@ -175,7 +175,7 @@ impl Plugin for Analysis {
     fn spec(&self) -> Spec {
         let (doc, outputs) = match self {
             Analysis::Spot => (
-                "スポット（RMS・GEO 半径）",
+                "Spot (RMS and GEO radius)",
                 vec![
                     OutputSpec::from_doc("x", "光線の位置 [mm]"),
                     OutputSpec::from_doc("y", "光線の位置 [mm]"),
@@ -198,7 +198,7 @@ impl Plugin for Analysis {
                 ],
             ),
             Analysis::Zernike => (
-                "Zernike 係数 [波]",
+                "Zernike coefficients [waves]",
                 vec![
                     OutputSpec::from_doc("coef", "係数 [波]"),
                     OutputSpec::from_doc("pv", "[波]"),
@@ -383,9 +383,15 @@ impl Plugin for Analysis {
         match self {
             Analysis::Spot => vec![
                 wave(),
-                p("rings", Count, n(6.0), "", "ガウス求積のリング数"),
+                p(
+                    "rings",
+                    Count,
+                    n(6.0),
+                    "",
+                    "Number of rings of the Gaussian quadrature",
+                ),
             ],
-            Analysis::Wavefront => vec![wave(), p("n", Count, n(64.0), "", "格子の一辺"), refp()],
+            Analysis::Wavefront => vec![wave(), p("n", Count, n(64.0), "", "Grid side"), refp()],
             Analysis::Zernike => vec![
                 wave(),
                 p(
@@ -395,8 +401,8 @@ impl Plugin for Analysis {
                     "",
                     "並び",
                 ),
-                p("terms", Count, n(37.0), "", "項数"),
-                p("n", Count, n(64.0), "", "格子の一辺"),
+                p("terms", Count, n(37.0), "", "Number of terms"),
+                p("n", Count, n(64.0), "", "Grid side"),
                 refp(),
             ],
             Analysis::Mtf => vec![
@@ -414,7 +420,13 @@ impl Plugin for Analysis {
             Analysis::Psf | Analysis::HuygensPsf => vec![wave(), pupil(), image(), delta()],
             Analysis::Rms => vec![
                 wave(),
-                p("rings", Count, n(6.0), "", "ガウス求積のリング数"),
+                p(
+                    "rings",
+                    Count,
+                    n(6.0),
+                    "",
+                    "Number of rings of the Gaussian quadrature",
+                ),
                 p(
                     "reference",
                     ch(&["centroid", "chief"]),
@@ -442,7 +454,13 @@ impl Plugin for Analysis {
                     "",
                     "方式",
                 ),
-                p("rays", Count, n(65.0), "", "瞳の格子の一辺の光線の数"),
+                p(
+                    "rays",
+                    Count,
+                    n(65.0),
+                    "",
+                    "Number of rays on a side of the pupil grid",
+                ),
                 p("n", Count, n(256.0), "", "入力の格子の一辺"),
                 p("half", Num, None, "mm", "入力の格子の半幅（省けば自動）"),
                 p("aperture", Flag, b(true), "", "面の開口で切る"),
@@ -462,7 +480,7 @@ impl Plugin for Analysis {
             ],
             Analysis::Interferogram => vec![
                 wave(),
-                p("n", Count, n(64.0), "", "格子の一辺"),
+                p("n", Count, n(64.0), "", "Grid side"),
                 p("beam1", Count, n(1.0), "", "光束 1 の構成"),
                 p("beam2", Count, n(2.0), "", "光束 2 の構成（0 で参照球）"),
                 p(

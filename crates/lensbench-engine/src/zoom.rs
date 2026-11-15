@@ -11,20 +11,20 @@ use serde_json::{json, Value};
 pub struct ZoomOpts {
     /// 状態ごとに解くパラメータ（"G2.shift"・"7.t"、範囲は "G2.shift=-5:20"）
     pub vars: Vec<String>,
-    /// 状態ごとの焦点距離の目標（カンマで、状態の数だけ。"-" は目標なし）
+    /// Focal length targets per state (comma-separated, one per state; "-" for no target)
     pub efl: Option<String>,
     /// 状態ごとの近軸倍率の目標
     pub pmag: Option<String>,
-    /// 隣り合う状態の間にとる点の数
+    /// Number of points between neighboring states
     pub steps: usize,
-    /// 像の評価関数: spot か wavefront
+    /// Image merit: spot or wavefront
     pub merit: String,
-    /// 基準: centroid か chief
+    /// Reference: centroid or chief
     pub reference: String,
     pub rings: usize,
-    /// 1 点の反復の上限
+    /// Maximum iterations per point
     pub iters: usize,
-    /// 目標との差の許し（目標に対する比）
+    /// Tolerance from the target (relative to the target)
     pub tol: f64,
 }
 

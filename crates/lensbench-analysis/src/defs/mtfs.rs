@@ -31,22 +31,22 @@ pub enum MtfHow {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MtfParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと 0 から上限（max_freq、既定は遮断周波数の 0.95 倍）までの freq_steps 等分
+    /// Frequencies [cycles/mm; cycles per angle unit in afocal image space]. If omitted, freq_steps equal steps from 0 to the limit (max_freq, 0.95 times the cutoff by default)
     pub freqs: Option<Vec<f64>>,
-    /// 周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
+    /// Upper limit when frequencies are omitted [cycles/mm; cycles per angle unit in afocal image space]. 0.95 times the cutoff if omitted
     pub max_freq: Option<f64>,
-    /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+    /// Number of steps when frequencies are omitted (equal steps from 0 to the limit; steps + 1 points)
     #[schemars(extend("x-min" = 1))]
     pub freq_steps: usize,
-    /// 瞳の重なりの求積の点の数の目安（点は約 n² 個）。省くと OPD の傾きから自動で決める
+    /// Approximate number of quadrature points for the pupil overlap (about n² points). Chosen automatically from the OPD slope if omitted
     pub n: Option<usize>,
-    /// 求め方: auto・interp・direct・fft
+    /// Method: auto, interp, direct or fft
     pub method: MtfHow,
-    /// 多色に加えて波長ごとの MTF も出す（"waves"。波長ごとの計算を使い回すので別々に求めるより速い）。wave とは一緒に使えない
+    /// Also output the MTF of each wavelength besides the polychromatic one ("waves"; faster than separate runs because the per-wavelength computation is reused). Can't be used with wave
     pub each_wave: bool,
 }
 
@@ -83,7 +83,7 @@ impl Analysis for Mtf {
     fn meta(&self) -> Meta {
         Meta {
             name: "mtf",
-            about: "回折 MTF（変調度、子午・球欠）。wave を省くと多色",
+            about: "Diffraction MTF (modulation, tangential and sagittal). Polychromatic if wave is omitted",
             help: "",
         }
     }
@@ -140,18 +140,18 @@ impl Analysis for Mtf {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MtfFocusParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（必須）
+    /// Frequency [cycles/mm; cycles per angle unit in afocal image space] (required)
     pub freqs: Vec<f64>,
-    /// 像面のずらしの範囲 ±range [レンズ単位]
+    /// Image shift range ±range [lens units]
     pub range: f64,
-    /// ずらしの点数（−range から +range まで）
+    /// Number of shift points (from −range to +range)
     #[schemars(extend("x-min" = 1))]
     pub points: usize,
-    /// 瞳の重なりの求積の点の数の目安（mtf と同じ。省くと自動）
+    /// Approximate number of quadrature points for the pupil overlap (as in mtf; automatic if omitted)
     pub n: Option<usize>,
 }
 
@@ -194,7 +194,7 @@ impl Analysis for MtfFocus {
     fn meta(&self) -> Meta {
         Meta {
             name: "mtf-focus",
-            about: "スルーフォーカス MTF（像面を ±range で points 点ずらした回折 MTF）。wave を省くと多色",
+            about: "Through-focus MTF (diffraction MTF with the image shifted over ±range in points steps). Polychromatic if wave is omitted",
             help: "",
         }
     }
@@ -247,16 +247,16 @@ impl Analysis for MtfFocus {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MtfFieldParams {
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（必須）
+    /// Frequency [cycles/mm; cycles per angle unit in afocal image space] (required)
     pub freqs: Vec<f64>,
-    /// 視野の点数（正規化視野 0 から 1 まで）
+    /// Number of field points (normalized field 0 to 1)
     #[schemars(extend("x-min" = 1))]
     pub points: usize,
-    /// 視野を振る向き（y か x）
+    /// Field direction (y or x)
     pub axis: Axis,
-    /// 瞳の重なりの求積の点の数の目安（mtf と同じ。省くと自動）
+    /// Approximate number of quadrature points for the pupil overlap (as in mtf; automatic if omitted)
     pub n: Option<usize>,
 }
 
@@ -301,7 +301,7 @@ impl Analysis for MtfField {
         Meta {
             name: "mtf-field",
             about:
-                "フィールド MTF（正規化視野 0〜1 を points 点で刻んだ回折 MTF）。wave を省くと多色",
+                "Field MTF (diffraction MTF at points steps of the normalized field 0 to 1). Polychromatic if wave is omitted",
             help: "",
         }
     }
@@ -340,21 +340,21 @@ impl Analysis for MtfField {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct GeoMtfParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと 0 から上限（max_freq、既定は遮断周波数の 0.95 倍）までの freq_steps 等分
+    /// Frequencies [cycles/mm; cycles per angle unit in afocal image space]. If omitted, freq_steps equal steps from 0 to the limit (max_freq, 0.95 times the cutoff by default)
     pub freqs: Option<Vec<f64>>,
-    /// 周波数を省いたときの上限。省くと遮断周波数の 0.95 倍
+    /// Upper limit when frequencies are omitted. 0.95 times the cutoff if omitted
     pub max_freq: Option<f64>,
-    /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+    /// Number of steps when frequencies are omitted (equal steps from 0 to the limit; steps + 1 points)
     #[schemars(extend("x-min" = 1))]
     pub freq_steps: usize,
-    /// 瞳の求積の点の数の目安（点は約 n² 個）
+    /// Approximate number of pupil quadrature points (about n² points)
     #[schemars(extend("x-min" = 4))]
     pub n: usize,
-    /// 回折限界の MTF をかける
+    /// Multiply by the diffraction-limited MTF
     pub diff_limit: bool,
 }
 
@@ -387,7 +387,7 @@ impl Analysis for GeoMtf {
     fn meta(&self) -> Meta {
         Meta {
             name: "geo-mtf",
-            about: "幾何 MTF（光線の位置の分布から）。wave を省くと多色",
+            about: "Geometric MTF (from the distribution of ray positions). Polychromatic if wave is omitted",
             help: "",
         }
     }
@@ -420,23 +420,23 @@ impl Analysis for GeoMtf {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct HuygensMtfParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 周波数 [cycles/mm]。省くと 0 から上限（max_freq、既定は遮断周波数の 0.95 倍）までの freq_steps 等分
+    /// Frequencies [cycles/mm]. If omitted, freq_steps equal steps from 0 to the limit (max_freq, 0.95 times the cutoff by default)
     pub freqs: Option<Vec<f64>>,
-    /// 周波数を省いたときの上限 [cycles/mm]。省くと遮断周波数の 0.95 倍
+    /// Upper limit when frequencies are omitted [cycles/mm]. 0.95 times the cutoff if omitted
     pub max_freq: Option<f64>,
-    /// 周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+    /// Number of steps when frequencies are omitted (equal steps from 0 to the limit; steps + 1 points)
     #[schemars(extend("x-min" = 1))]
     pub freq_steps: usize,
-    /// 瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
+    /// Pupil grid side (automatic if omitted: large enough that neighboring samples differ by π/2 or less in phase)
     pub pupil: Option<usize>,
-    /// 像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）。PSF を覆いきれないと低周波の MTF が下がる
+    /// Image grid side (up to twice the pupil grid at the default spacing). If it doesn't cover the PSF, the low-frequency MTF drops
     #[schemars(extend("x-min" = 1))]
     pub image: usize,
-    /// 像の格子の間隔 [mm]（省くと 1 / (2 × 遮断周波数)）
+    /// Image grid spacing [mm] (1 / (2 × cutoff) if omitted)
     pub delta: Option<f64>,
 }
 
@@ -463,7 +463,7 @@ impl Analysis for HuygensMtf {
     fn meta(&self) -> Meta {
         Meta {
             name: "huygens-mtf",
-            about: "Huygens MTF（Huygens PSF のフーリエ変換、像面の上の周波数）。wave を省くと多色。出力は mtf と同じ形",
+            about: "Huygens MTF (Fourier transform of the Huygens PSF, frequencies on the image surface). Polychromatic if wave is omitted. The output has the same form as mtf",
             help: "",
         }
     }

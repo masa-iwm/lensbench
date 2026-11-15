@@ -313,6 +313,20 @@ pub fn tr(s: &str) -> String {
     }
 }
 
+/// Japanese of a text of several lines (help): each line is translated on its own (lines with no entry stay)
+pub fn translate_lines(s: &str) -> String {
+    s.split('\n').map(translate).collect::<Vec<_>>().join("\n")
+}
+
+/// [`translate_lines`] in the current language (help text)
+pub fn tr_lines(s: &str) -> String {
+    if is_ja() {
+        translate_lines(s)
+    } else {
+        s.to_string()
+    }
+}
+
 /// A warning line for the terminal: "warning: …" in English, "注意: …" (translated) in Japanese
 pub fn warning(w: impl AsRef<str>) -> String {
     tr(&format!("warning: {e}", e = w.as_ref()))

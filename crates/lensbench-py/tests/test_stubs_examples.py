@@ -89,7 +89,7 @@ def test_lensbench_run_example(tmp_path):
     rows = (out / "param_sweep.csv").read_text().splitlines()
     assert len(rows) == 4
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert "lensbench:progress 3/3" in log and "終了コード 0" in log
+    assert "lensbench:progress 3/3" in log and "exit code 0" in log
     # スクリプトが失敗すれば終了コードで分かる
     bad = tmp_path / "bad.py"
     bad.write_text("raise SystemExit(5)\n")

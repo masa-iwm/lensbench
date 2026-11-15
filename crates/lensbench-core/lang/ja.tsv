@@ -1561,3 +1561,293 @@ removed the {what} macro solve {name} of surface {k} and fixed the saved value: 
 warning: {e}	注意: {e}
 field {}: {e}	視野 {}: {e}
 fiber coupling: the phase changes by {:.2} rad between neighboring grid points (more than π/2); increase grid	ファイバ結合: 隣り合う格子点の位相差が {:.2} rad（π/2 超え）。grid を増やす
+
+# command line help (lensbench --help, help --json)
+{e} [{unit}]	{e} [{unit}]
+Sequential ray tracing and analysis	順次光線追跡と解析
+Number of threads for tracing and analysis (1 runs serially; if omitted, LENSBENCH_THREADS, otherwise RAYON_NUM_THREADS on all cores). Results do not depend on the thread count	追跡・解析のスレッド数（1 で逐次。省くと LENSBENCH_THREADS、なければ全コアで RAYON_NUM_THREADS が効く）。結果はスレッド数によらず同じ
+Write the system	系を書き出す
+A .json extension writes a system file (the complete lensbench format), .zmx writes .zmx. Reads .zmx, projects and system files (with --state and --cfg applied)	拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
+A .zmx file, or a project file (.json) built from blocks	.zmx ファイル、またはブロックで組んだプロジェクトファイル（.json）
+Folders to search for glass catalogs (more than one allowed; LENSBENCH_GLASSCAT is also used)	ガラスカタログを探すフォルダ（複数可。LENSBENCH_GLASSCAT も使う）
+Lens catalogs for the catalog lenses ("vendor", "part") of a project file (.zmx files, or folders of .zmx; the folder name is the maker and the file name is the part number; more than one allowed)	プロジェクトファイルのカタログレンズ（"vendor"・"part"）を探すレンズカタログ（.zmx のファイル、または .zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名。複数可）
+Multi-configuration number (from 1)	マルチコンフィグの番号（1 始まり）
+State name of a project file (.json) (like a multi-configuration)	プロジェクトファイル（.json）の状態の名前（多重構成に当たる）
+Beam splitter path of a project file (T and R in the order the BSs are passed, e.g. TR; if omitted, the project's path and each BS's arm)	プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm）
+Output JSON	JSON で出力する
+Print JSON	JSON で出す
+File to write the result to (csv, json or npz by extension)	結果を書き出すファイル（拡張子で csv・json・npz）
+File to write (.json or .zmx)	書き出すファイル（.json か .zmx）
+Write the system to .zmx (an expanded project, etc.)	系を .zmx に書き出す（プロジェクトの展開など）
+With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)	--beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
+.zmx multi-configurations (from 1, comma-separated, all for every one)	.zmx の多重構成（1 始まり、カンマ区切り、all で全部）
+Project states (comma-separated names, all for every one)	プロジェクトの状態（名前のカンマ区切り、all で全部）
+Beam splitter paths (comma-separated strings of T and R, all for every possible path)	ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+.zmx to write	書き出す .zmx
+Optimize variables with damped least squares (DLS)	減衰最小二乗（DLS）で変数を最適化する
+The merit function is the RMS spot or RMS wavefront over all fields (field weights) and wavelengths, plus the terms of --term and --terms. --out writes the optimized system to .zmx	評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、--term・--terms の項を足したもの。 --out で最適化した系を .zmx に書き出す
+Variables ("7.t", "lens2.tx", "G1.shift", etc.; a range is "7.t=0.5:3", one-sided "7.t=0.5:" or "7.t=:3"). More than one allowed	変数（"7.t"・"lens2.tx"・"G1.shift" など。範囲は "7.t=0.5:3"、片側は "7.t=0.5:" "7.t=:3"）。複数可
+Default merit function: spot, wavefront or none (only the --term terms)	既定の評価関数: spot・wavefront・none（--term の項だけ）
+Terms to add (JSON, e.g. '{"type":"paraxial","q":"efl","target":50,"weight":10}'; see the optimization terms in the docs for kinds and keys). More than one allowed	足す項（JSON、例 '{"type":"paraxial","q":"efl","target":50,"weight":10}'。種類とキーはdocs の最適化の項を参照）。複数可
+JSON file of terms to add (an array of terms)	足す項の JSON ファイル（項の配列）
+Reference: centroid or chief (chief ray)	基準: centroid（重心）か chief（主光線）
+Number of rings of the Gaussian pupil quadrature	瞳のガウス求積のリング数
+Maximum number of iterations	反復の上限
+Jacobian: auto (analytic for terms with 16 or more analytic columns, central differences for fewer), fd (all central differences) or forward (all forward differences)	ヤコビアン: auto（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）・fd（すべて中心差分）・forward（すべて前進差分）
+.zmx to write the optimized system to	最適化した系を書き出す .zmx
+Monte Carlo tolerance simulation	モンテカルロ公差シミュレーション
+Perturb the system with per-lens tolerance sets (commercial by default; makers' tolerances for catalog lenses) and individual tolerances, re-adjust the compensators, and give the distribution and sensitivity of the merit function (RMS wavefront, spot, MTF, etc.). Settings are JSON (tolerance settings in the docs; the --spec file and --set overrides)	玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と個別の公差で系をずらし、補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。設定は JSON（docs の公差の設定、 --spec のファイルと --set の上書き）
+Settings JSON file	設定の JSON ファイル
+Settings override (a JSON object, e.g. '{"preset":"precision","compensators":["9.t"]}'). More than one allowed	設定の上書き（JSON のオブジェクト、例 '{"preset":"precision","compensators":["9.t"]}'）。複数可
+Number of trials (takes precedence over trials in the settings)	試行の数（設定の trials より優先）
+Random seed (takes precedence over seed in the settings)	乱数の種（設定の seed より優先）
+File to write the system of the trial with the worst merit (after compensation) to. .json writes a system file (index tolerances included), others .zmx (index and dispersion shifts can't be written to .zmx)	評価関数が最も悪かった試行の系（補償の後）を書き出すファイル。.json は系ファイル（屈折率の公差も書ける）、ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
+CSV file to write the compensators of each trial to (with the merit and the size of the x and y tilt pair [arcmin])	試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
+Zoom trajectory	ズーム軌跡
+Solve the group positions (--var) for each state (the project's states or the .zmx configurations). The merit is the image RMS (all fields, all wavelengths) and the --efl and --pmag targets. --steps follows the path between states by continuation	状態（プロジェクトの states か .zmx の構成）ごとに群の位置（--var）を解く。評価関数は像の RMS（全視野・多色）と、 --efl・--pmag の目標。--steps で状態の間を継続法でたどる
+.zmx (each multi-configuration is a state) or a project file (.json, states are the states)	.zmx（多重構成の各構成が状態）か、プロジェクトファイル（.json、states が状態）
+States, comma-separated (state names for a project, configuration numbers for .zmx). All if omitted	状態（プロジェクトなら状態の名前、.zmx なら構成の番号）をカンマで並べる。省くとすべて
+Parameters to solve for each state ("G2.shift", "7.t"; a range is "G2.shift=-5:20"). More than one allowed	状態ごとに解くパラメータ（"G2.shift"・"7.t"、範囲は "G2.shift=-5:20"）。複数可
+Focal length targets per state (comma-separated, one per state; "-" for no target)	状態ごとの焦点距離の目標（カンマで、状態の数だけ。"-" は目標なし）
+Paraxial magnification targets per state (finite object; written like --efl)	状態ごとの近軸倍率の目標（有限物体。書き方は --efl と同じ）
+Number of points between neighboring states	隣り合う状態の間にとる点の数
+Image merit: spot or wavefront	像の評価関数: spot か wavefront
+Reference: centroid or chief	基準: centroid か chief
+Maximum iterations per point	1 点の反復の上限
+Tolerance from the target (relative to the target)	目標との差の許し（目標に対する比）
+Write the result (json, csv or npz; csv and npz are the trajectory table)	結果を書き出す（json・csv・npz。csv・npz は軌跡の表）
+Catalog lens swap search	カタログレンズの差し替え探索
+Run the combinations that replace the --spec slots (lens blocks) with candidates in parallel, optimize the variables (spacings, etc.) for each, and sort them by merit	--spec の所（玉のブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）を最適化して評価関数の小さい順に並べる
+Project file (.json)	プロジェクトファイル（.json）
+Swap search settings (JSON: slots, vars, merit, iters, state, etc.)	差し替え探索の設定（JSON: slots・vars・merit・iters・state など）
+State (takes precedence over state in the settings)	状態（設定の state より優先）
+JSONL to write each combination's result to as it goes (the batch run format). Continues if a file of the same search exists	組ごとの結果を逐次書き出す JSONL（一括実行の形）。同じ探索のファイルがあれば続きから回す
+Rewrite the --out file instead of continuing from it	--out のファイルがあっても続きからにせず書き直す
+Number of combinations to output (in order of merit). 0 for all	出力する組の数（評価関数の小さい順）。0 ならすべて
+Write the result (json, csv or npz)	結果を書き出す（json・csv・npz）
+Save a lens or block to a user catalog (JSON) (the file is created if missing)	ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
+User catalog file	ユーザーカタログのファイル
+Item name	項目の名前
+Name of the item	品の名前
+A .zmx or project file to take the lens from (with --lens), or a project file (with --block)	玉を取る .zmx かプロジェクトファイル（--lens と）、またはプロジェクトファイル（--block と）
+Lens number (from 1, counting only lenses; the .zmx or project split in lens mode)	玉の番号（1 始まり、玉だけを数える。.zmx・プロジェクトを玉モードで分けたもの）
+Project block ids (two give the range between them in the top-level list; surface table changes in surface_edits are baked in)	プロジェクトのブロックの id（2 つ渡すと最上位の並びのその間の範囲。面の表の変更 surface_edits は焼き込む）
+Lens catalogs to search for the project's catalog lenses (same as info, etc.)	プロジェクトのカタログレンズを探すレンズカタログ（info などと同じ）
+.zmx multi-configuration number	.zmx のマルチコンフィグの番号
+Replace an item of the same name	同じ名前の項目を置き換える
+Search catalog items	カタログの品を探す
+Filter the items of lens catalogs (ZMF, .zmx, lensbench .json) by kind, maker, words and specs. Specs are the items' `specs` in .json plus those added by `overlay` and `url_template` in a .json of the same maker (efl, diameter and thickness can also be compared with the listed values)	レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で絞り込む。仕様は .json の品の `specs` と、同じメーカーの .json の `overlay`・`url_template` で足したもの（efl・diameter・thickness は一覧の値でも比べられる）
+Lens catalogs (files or folders, more than one allowed)	レンズカタログ（ファイル・フォルダ、複数可）
+Folders to search for glass catalogs (used to find lens focal lengths)	ガラスカタログを探すフォルダ（玉の焦点距離を求めるのに使う）
+Item kinds (lens, mirror, splitter, polarizer, waveplate, window, filter, prism, other; more than one allowed)	品の種類（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、複数可）
+Maker (contains; case, spaces and symbols are ignored)	メーカー（含む。大文字小文字・空白・記号は無視）
+Words in the part number, description, tags or specs (separated by spaces, all must be present)	型番・説明・タグ・仕様に含む語（空白で区切るとすべて含む）
+Spec conditions (more than one allowed, all must hold): `name` (present), `name=value` (numbers equal, range specs contain, strings contain), `name=a..b`, `name>=value`, `<=`, `>`, `<` (range specs by overlap). E.g. `wavelength_nm=633`, `extinction_ratio>=1000`	仕様の条件（複数可、すべて満たす）: `名前`（ある）、`名前=値`（数は一致、範囲の仕様は含む、文字列は含む）、`名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
+Only mechanical parts (tubes, mounts, cage plates) that hold an element of diameter [mm]: holding diameter at least the diameter and no more than 0.25 mm larger	径 [mm] の素子が入る機構部品（チューブ・マウント・ケージ板）だけ: 保持径が径以上で 0.25 mm より太くない
+List the specs with fixed names	名前の決まった仕様の一覧を出す
+Measure an item's STEP (.step, .stp)	品の STEP（.step・.stp）を測る
+Thickness and diameter; glass and frame (`frame`) for mounted items; mechanical parts without glass (tubes, cage plates, mounts) as a whole frame (`mech`; `frame` with the bore, length, outer diameter, threads, rod spacing and the element held)	厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品（チューブ・ケージ板・マウント）は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+Fetch one detailed STEP of an item from its official source (the item's `cad.step`) and put it in the cache	品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く
+From the second time the cache is used. The fetched STEP is measured like catalog-step and differences from the catalog's simple outline (`mech` length, outer diameter and shape) are shown	2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
+User catalog	ユーザーカタログ
+Cache folder (if omitted, the environment variable LENSBENCH_CAD_CACHE, otherwise lensbench/cad in the OS settings location)	キャッシュのフォルダ（省略で環境変数 LENSBENCH_CAD_CACHE、なければ OS の設定の場所の lensbench/cad）
+List the items of a user catalog	ユーザーカタログの項目の一覧
+List the coatings of the surfaces	面の膜の一覧
+Interfaces (coating|medium before|medium after) of all configurations and how they are handled. Also shows the interfaces that need a measured table (encrypted coatings, etc.)	全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
+.zmx file	.zmx ファイル
+Folders to search for glass catalogs (more than one allowed)	ガラスカタログを探すフォルダ（複数可）
+Measured coating tables and models (more than one allowed; same as --coatings of ghost and the analyses)	膜の実測表・モデル（複数可。ghost・解析の --coatings と同じ）
+Write the layout (section or 3D) and rays	レイアウト（断面図・立体）と光線を書き出す
+The format is chosen by the --out extension: 2D svg, png or dxf; 3D gltf, glb, obj or stl; step (stp) for CAD	形式は --out の拡張子で決める:2D は svg・png・dxf、3D は gltf・glb・obj・stl、CAD 用は step（stp）
+Field numbers (from 1, comma-separated; all fields if omitted)	視野の番号（1 始まり、カンマ区切り、省略で全視野）
+Wavelength numbers (from 1, comma-separated, all for every one; the primary wavelength if omitted)	波長の番号（1 始まり、カンマ区切り、all で全部、省略で主波長）
+Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)	光線の並び（y・x・cross・grid・ring）。省略で 2D は y、3D・STEP は ring（主光線と瞳の縁）
+Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1). If omitted, 7 for y, 12 for ring	光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を足した n+1 本）。省略で y は 7、ring は 12
+First surface to draw (if omitted, the object surface when a finite object is near, otherwise surface 1)	描き始める面（省略で、有限の物体が近ければ物体面、ほかは面 1）
+Last surface to draw (the image surface if omitted)	描き終える面（省略で像面）
+Ray colors (field, wave, cfg; cfg is per overlaid configuration). If omitted, cfg when overlaying, otherwise field	光線の色分け（field・wave・cfg。cfg は重ね描きの構成ごと）。省略で、重ね描きなら cfg、ほかは field
+Offset per configuration dx,dy,dz [mm] (configuration k is shifted k times; same as the OpticStudio layout offset; overlaid by default)	構成ごとにずらす量 dx,dy,dz [mm]（構成 k は k 倍。OpticStudio のレイアウトのオフセットと同じ。既定は重ねる）
+Unfold along the light path (lay the sections after mirrors and BSs along the extension of the axis before the fold; 2D output only)	光路に沿って展開する（鏡・BS で折れた後の区間を、折れる前の光軸の延長に並べ直す。2D の書き出しだけ）
+Files to write (more than one allowed)	書き出すファイル（複数可）
+2D projection plane (yz or xz)	2D の投影面（yz か xz）
+PNG width [px]	PNG の横幅 [px]
+Number of divisions around (3D) and of surface lines (2D)	周方向の分割数（3D）・面の線の分割数（2D）
+Number of radial divisions (3D)	半径方向の分割数（3D）
+Radius of the ray tubes [mm] (3D; for STL, 0.1% of the scene size if omitted)	光線を管にする半径 [mm]（3D。STL は省略時に場面の大きさの 0.1%）
+Draw mechanical parts with the detailed shape of their fetched STEP (3D glTF, OBJ, STL and STEP; parts with no STEP in the cache get the simple outline; fetch STEPs with lensbench cad-step)	機構部品を、取った品の STEP の詳しい形で描く（3D の glTF・OBJ・STL と STEP。キャッシュに STEP の無い部品は簡易外形。STEP は lensbench cad-step で取る）
+Fit a multilayer to a spectral curve (reflectance, transmittance) and write an approximate coating (`.lbcs`, the coating file format)	分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く
+The curves are CSV (columns wl_um or wl_nm, angle_deg, pol (s, p, avg), quantity (R, T), value or value_pct, weight; angle_deg, pol, quantity and weight default to 0, avg, R and 1). Put in a coating file folder, it is used by the coating name	曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
+Curve CSVs (more than one allowed)	曲線の CSV（複数可）
+Coating name (the COAT name to write)	膜の名前（書く COAT の名前）
+Materials (repeated from the outside, e.g. MGF2,TA2O5): MATE of a coating file, or glasses of a glass catalog	材料（外側から繰り返す順、例 MGF2,TA2O5）。膜ファイルの MATE か、ガラスカタログのガラス
+Substrate: an index, or a MATE or glass name of a coating file	基板: 屈折率の数か、膜ファイルの MATE・ガラスの名前
+Coating files to search for materials (COATING.DAT format)	材料を探す膜ファイル（COATING.DAT 形式）
+Numbers of layers to try (e.g. 1..12)	試す層の数（例 1..12）
+Number of starting points per number of layers	層の数ごとの初期値の数
+Maximum layer thickness [µm]	層の厚さの上限 [µm]
+Choose the fewest layers within (1 + slack) times the best RMS	いちばん合う RMS の (1 + slack) 倍以内で層のいちばん少ないものを選ぶ
+Approximate coating to write (.lbcs)	書き出す近似の膜（.lbcs）
+Keep the system loaded and wait, repeating system changes and analyses over JSON-RPC from outside (127.0.0.1 only by default)	系を読み込んだまま待ち受け、外から JSON-RPC で系の変更・解析を繰り返す（既定は 127.0.0.1 だけ）
+Steps and format: docs/serve.md	手順と書式は docs/serve.md
+System to load first (.zmx or a project file .json; load it with load if omitted)	最初に読み込む系（.zmx かプロジェクトファイル .json。省くと load で読む）
+Lens catalogs to search for the catalog lenses of a project file (more than one allowed)	プロジェクトファイルのカタログレンズを探すレンズカタログ（複数可）
+State name of a project file	プロジェクトファイルの状態の名前
+Beam splitter path of a project file (a string of T and R)	プロジェクトファイルのビームスプリッターの経路（T・R の並び）
+Address to listen on (127.0.0.1 by default; other addresses need --allow-remote)	待ち受けるアドレス（既定 127.0.0.1。ほかのアドレスは --allow-remote が要る）
+Port to listen on (0 picks a free port). The chosen port is printed on the first line	待ち受けるポート（0 で空いているポートを選ぶ）。選んだポートは最初の行に出す
+File to write the chosen port number to (use with --port 0)	選んだポートの番号を書くファイル（--port 0 と一緒に使う）
+Accept connections from other than localhost (there is no authentication, so only on trusted networks). Requests then don't read or write files (only under --root if given)	localhost 以外からの接続を受ける（認証はないので信頼できるネットワークだけで）。このときは要求でファイルを読み書きしない（--root を与えればその下だけ）
+Limit files read and written by requests to this folder (relative paths are from here)	要求で読み書きするファイルをこのフォルダの下に限る（相対パスはここから）
+Limit on the total size of the arrays in one request [bytes] (larger requests are refused and the connection closed)	1 つの要求の配列の合計の上限 [バイト]（超える要求は断って接続を閉じる）
+Listen on a pipe instead of TCP: a named pipe on Windows (\\.\pipe\NAME, same PC only), elsewhere a Unix domain socket at the path NAME	TCP の代わりにパイプで待ち受ける。Windows は名前付きパイプ（\\.\pipe\NAME、同じ PC だけ）、ほかは NAME のパスの Unix ドメインソケット
+Watch the system file and run the analysis and write the result each time it changes	系のファイルの更新を見張り、変わるたびに解析を実行して結果を書き出す
+Example: lensbench watch -- spot sys.zmx --json --save out.json	例: lensbench watch -- spot sys.zmx --json --save out.json
+Polling interval [s]	見張る間隔 [s]
+Stop after this many analyses (runs until stopped if omitted)	この回数だけ解析したら終える（省くと止めるまで続ける）
+Other files to watch besides the system file and the files read by the analysis (more than one allowed)	系のファイルと解析の中で読んだファイルのほかに見張るファイル（複数可）
+File to write the status of each run (run, ok, error, elapsed_ms) to (JSON)	1 回ごとの状態（run・ok・error・elapsed_ms）を書くファイル（JSON）
+Print the whole result to standard output (by default a one-line status only; the whole result if --save is not given)	結果の全体を標準出力に出す（既定は 1 行の状態だけ。--save がなければ全体を出す）
+Analysis to run (after --, written as on the CLI, e.g. -- spot sys.zmx --save out.json)	実行する解析（-- の後に CLI と同じ書き方。例: -- spot sys.zmx --save out.json）
+Run a Python script without the GUI (starts an outside Python and passes glasses, coatings, thread count and output folder)	Python のスクリプトを画面なしで実行する（外の Python を起動し、ガラス・膜・スレッド数・出力先を渡す）
+Example: lensbench run --threads 4 --out result sweep.py -- --n 100. The exit code is the script's	例: lensbench run --threads 4 --out result sweep.py -- --n 100。終了コードはスクリプトのもの
+Settings file (JSON: python, glass_dirs, coatings, threads, out, log, env). Relative paths are from this file. Arguments take precedence	設定ファイル（JSON: python・glass_dirs・coatings・threads・out・log・env）。相対パスはこのファイルから。引数で与えたものが優先する
+Python to use (if omitted, LENSBENCH_PYTHON, the virtual environment (VIRTUAL_ENV), then python3, python and py on PATH)	使う Python（省くと LENSBENCH_PYTHON、仮想環境（VIRTUAL_ENV）、PATH の python3・python・py の順）
+Folders to search for glass catalogs (more than one allowed; added before the current LENSBENCH_GLASSCAT)	ガラスカタログを探すフォルダ（複数可。今の LENSBENCH_GLASSCAT の前に足す）
+Measured coating table and model files (more than one allowed; used when coatings= of System.load is omitted)	膜の実測表・モデルのファイル（複数可。System.load の coatings= を省いたときに使う）
+Output folder (created if missing; the script gets it with run_settings()["out"])	出力先のフォルダ（無ければ作る。スクリプトは run_settings()["out"] で受け取る）
+Log file (if omitted, <out>/run.log when --out is given, otherwise none)	ログのファイル（省くと --out があれば <out>/run.log、なければ書かない）
+Don't write a log file	ログのファイルを書かない
+Python script to run	実行する Python スクリプト
+Arguments for the script (sys.argv[1:])	スクリプトに渡す引数（sys.argv[1:]）
+List the bundled plugins (detectors, analyses) and describe their inputs and outputs	同梱のプラグイン（検出器・解析）の一覧と入出力の説明
+Check plugins and analysis parts against reference data	プラグイン・解析部品を基準データと照合する
+Give a description (*.verify.json) or a folder containing them. Exit code 1 if any check fails	記述（*.verify.json）かそれを含むフォルダを与える。通らない照合があれば終了コード 1
+Description file or folder (folders are searched all the way down for *.verify.json)	記述のファイルかフォルダ（フォルダは下まで *.verify.json を探す）
+Skip checks with ci: false (run only locally)	ci: false の照合（手元でだけ回す）を飛ばす
+Spot (RMS and GEO radius)	スポット（RMS・GEO 半径）
+Field number (from 1; all fields if omitted)	視野の番号（1 始まり、省略で全視野）
+Wavelength number (from 1; polychromatic if omitted)	波長の番号（1 始まり、省略で多色）
+Number of rings of the Gaussian quadrature	ガウス求積のリング数
+Wavefront aberration (OPD relative to the chief ray, P-V and RMS [waves])	波面収差（主光線基準の OPD、P-V・RMS [波]）
+Grid side	格子の一辺
+Also output the wavefront grid ("p": normalized pupil coordinates, "map": W[iy][ix], null outside the pupil or when vignetted; the GUI wavefront map)	波面の格子も出す（"p": 正規化瞳座標、"map": W[iy][ix]、瞳の外・けられは null。GUI の波面図）
+Zernike coefficients [waves]	Zernike 係数 [波]
+standard or fringe	standard または fringe
+Number of terms	項数
+Ghosts (double reflections): focus position, blur at the image and intensity ratio	ゴースト（2 回反射）の一覧: 焦点の位置・像面でのぼけ・強度の比
+First surface to reflect at	反射させる最初の面
+Last surface to reflect at (the image surface if omitted; the image surface reflects only when it has a coating)	反射させる最後の面（省略で像面。像面は膜があるときだけ反射させる）
+Measured coating tables (LBCT) and models (LBCM) (more than one allowed)	膜の実測表（LBCT）・モデル（LBCM）のファイル（複数可）
+Folder to write the expanded ghost systems to (ghost_a_b.zmx)	展開したゴーストの系を書くフォルダ（ghost_a_b.zmx）
+Diffraction MTF (modulation, tangential and sagittal). Polychromatic if wave is omitted	回折 MTF（変調度、子午・球欠）。wave を省くと多色
+Frequencies [cycles/mm; cycles per angle unit in afocal image space]. If omitted, freq_steps equal steps from 0 to the limit (max_freq, 0.95 times the cutoff by default)	周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと 0 から上限（max_freq、既定は遮断周波数の 0.95 倍）までの freq_steps 等分
+Upper limit when frequencies are omitted [cycles/mm; cycles per angle unit in afocal image space]. 0.95 times the cutoff if omitted	周波数を省いたときの上限 [cycles/mm、アフォーカル像空間では cycles/角度の単位]。省くと遮断周波数の 0.95 倍
+Number of steps when frequencies are omitted (equal steps from 0 to the limit; steps + 1 points)	周波数を省いたときの分割数（0 から上限までを等分。点は分割数 + 1 個）
+Approximate number of quadrature points for the pupil overlap (about n² points). Chosen automatically from the OPD slope if omitted	瞳の重なりの求積の点の数の目安（点は約 n² 個）。省くと OPD の傾きから自動で決める
+Method: auto, interp, direct or fft	求め方: auto・interp・direct・fft
+Also output the MTF of each wavelength besides the polychromatic one ("waves"; faster than separate runs because the per-wavelength computation is reused). Can't be used with wave	多色に加えて波長ごとの MTF も出す（"waves"。波長ごとの計算を使い回すので別々に求めるより速い）。wave とは一緒に使えない
+Through-focus MTF (diffraction MTF with the image shifted over ±range in points steps). Polychromatic if wave is omitted	スルーフォーカス MTF（像面を ±range で points 点ずらした回折 MTF）。wave を省くと多色
+Frequency [cycles/mm; cycles per angle unit in afocal image space] (required)	周波数 [cycles/mm、アフォーカル像空間では cycles/角度の単位]（必須）
+Image shift range ±range [lens units]	像面のずらしの範囲 ±range [レンズ単位]
+Number of shift points (from −range to +range)	ずらしの点数（−range から +range まで）
+Approximate number of quadrature points for the pupil overlap (as in mtf; automatic if omitted)	瞳の重なりの求積の点の数の目安（mtf と同じ。省くと自動）
+Field MTF (diffraction MTF at points steps of the normalized field 0 to 1). Polychromatic if wave is omitted	フィールド MTF（正規化視野 0〜1 を points 点で刻んだ回折 MTF）。wave を省くと多色
+Number of field points (normalized field 0 to 1)	視野の点数（正規化視野 0 から 1 まで）
+Field direction (y or x)	視野を振る向き（y か x）
+Geometric MTF (from the distribution of ray positions). Polychromatic if wave is omitted	幾何 MTF（光線の位置の分布から）。wave を省くと多色
+Upper limit when frequencies are omitted. 0.95 times the cutoff if omitted	周波数を省いたときの上限。省くと遮断周波数の 0.95 倍
+Approximate number of pupil quadrature points (about n² points)	瞳の求積の点の数の目安（点は約 n² 個）
+Multiply by the diffraction-limited MTF	回折限界の MTF をかける
+Huygens MTF (Fourier transform of the Huygens PSF, frequencies on the image surface). Polychromatic if wave is omitted. The output has the same form as mtf	Huygens MTF（Huygens PSF のフーリエ変換、像面の上の周波数）。wave を省くと多色。出力は mtf と同じ形
+Frequencies [cycles/mm]. If omitted, freq_steps equal steps from 0 to the limit (max_freq, 0.95 times the cutoff by default)	周波数 [cycles/mm]。省くと 0 から上限（max_freq、既定は遮断周波数の 0.95 倍）までの freq_steps 等分
+Upper limit when frequencies are omitted [cycles/mm]. 0.95 times the cutoff if omitted	周波数を省いたときの上限 [cycles/mm]。省くと遮断周波数の 0.95 倍
+Pupil grid side (automatic if omitted: large enough that neighboring samples differ by π/2 or less in phase)	瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下になる大きさ）
+Image grid side (up to twice the pupil grid at the default spacing). If it doesn't cover the PSF, the low-frequency MTF drops	像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）。PSF を覆いきれないと低周波の MTF が下がる
+Image grid spacing [mm] (1 / (2 × cutoff) if omitted)	像の格子の間隔 [mm]（省くと 1 / (2 × 遮断周波数)）
+RMS (spot radius, x, y, wavefront, approximate Strehl ratio) against field, focus or wavelength	RMS（スポット半径・x・y、波面、ストレール比の近似）を視野・フォーカス・波長に対して
+Field number (from 1; all fields if omitted; not used with vs field)	視野の番号（1 始まり、省略で全視野。vs field では使わない）
+Wavelength number (from 1; polychromatic if omitted; not used with vs wavelength)	波長の番号（1 始まり、省略で多色。vs wavelength では使わない）
+Horizontal axis: field (normalized field 0 to 1), focus (image shift ±range), wavelength (system wavelength minimum to maximum, monochromatic)	横軸: field（正規化視野 0〜1）、focus（像面のずらし ±range）、wavelength（系の波長の最小〜最大、単色）
+Number of points on the horizontal axis	横軸の点数
+Shift range of focus ±range [lens units]	focus のずらしの範囲 ±range [レンズ単位]
+Field direction for field (y or x)	field の視野を振る向き（y か x）
+In monochromatic field and wavelength sweeps, solve fields given by real image height (and fields defined by conditions) with the chief ray of the analysis wavelength	単色の field・wavelength の掃引で、実像高（と条件で定める視野）の視野を解析の波長の主光線で解く
+(Same as OpticStudio's monochromatic RMS vs Field and vs Wavelength; solved at the primary wavelength if omitted)	（OpticStudio の単色の RMS vs Field・vs Wavelength と同じ。省くと主波長で解く）
+Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted	回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色
+Huygens PSF (on the image surface; for tilted image surfaces and strongly aberrated systems; slower than FFT)	Huygens PSF（像面の上。傾いた像面・収差の大きい系向け、FFT より遅い）
+Image grid side (up to twice the pupil grid at the default spacing)	像の格子の一辺（間隔が既定なら瞳の格子の 2 倍まで）
+Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)	像の格子の間隔 [レンズ単位、アフォーカル像空間では角度の単位]（省くと 1 / (2 × 遮断周波数)）
+System data (EFL, F-number, pupils, etc.)	システムデータ（EFL、F 値、瞳など）
+Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface)	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）
+Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface). --save writes csv, json or npz	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz に書き出す
+Wavelength numbers (from 1, comma-separated; the primary wavelength if omitted)	波長の番号（1 始まり、カンマ区切り、省略で主波長）
+All wavelengths (takes precedence over wave)	全波長（wave より優先）
+Ray pattern	光線の並び
+Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1)	光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を足した n+1 本）
+Pupil coordinates directly (px,py,px,py,…). Takes precedence over fan and rays	瞳座標を直接（px,py,px,py,…）。fan・rays より優先
+Surfaces to write (comma-separated; all if omitted)	書く面（カンマ区切り、省略で全部）
+Simple POP: irradiance of a field built from rays, propagated in a uniform medium	簡易 POP: 光線から作った場を一様な媒質の中で伝えた照度
+Surface to build the field at (from 1; in the medium after it, on the tangent plane). If omitted, with only plane dummy surfaces in between	場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で、間に平面のダミー面だけを挟んで
+The last surface that can be propagated to the image (propagates to the image if neither dist nor to is given)	像面まで伝えられる最後の面（dist も to もなければ像面まで伝える）
+Field number (from 1)	視野の番号（1 始まり）
+Wavelength number (from 1; the primary wavelength if omitted)	波長の番号（1 始まり、省略で主波長）
+Surface to propagate to (only plane dummy surfaces in between). The next surface if neither dist nor to is given	伝える先の面（間は平面のダミー面だけ）。dist も to もなければ次の面
+Method	方法
+Number of rays on a side of the pupil grid	瞳の格子の一辺の光線の数
+Number of samples on a side of the input grid	入力の格子の一辺の標本の数
+Don't apply the surface aperture	面の開口を掛けない
+Number of samples on a side of the output grid (same as the input if omitted)	出力の格子の一辺の標本の数（省略で入力と同じ）
+Also include the output irradiance grid in the result (grid_irradiance, index j·nx + i, j along +y)	結果に出力の照度の格子も入れる（grid_irradiance、番号 j·nx + i、j は +y の向き）
+Mechanical part vignetting: fraction of rays outside the part bores	機構部品のケラレ: 部品の穴の外に出た光線の割合
+Wavelength numbers (from 1, comma-separated; all wavelengths if omitted)	波長の番号（1 始まり、カンマ区切り、省略で全波長）
+Rays on a side of the pupil grid (points inside the unit circle are used)	瞳の格子の一辺の本数（単位円の中の点を使う）
+Lens mode: show the system split into lenses, mirrors, coordinate breaks, other surfaces and air spaces	玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す
+Lens mode: show the system split into lenses, mirrors, coordinate breaks, other surfaces and air spaces. reverse flips lenses and out writes .zmx	玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す。reverse で玉を反転し、out で .zmx に書き出す
+Lens numbers to flip (from 1, comma-separated)	反転する玉の番号（1 始まり、カンマ区切り）
+.zmx to write the rebuilt system to	組み直した系を書き出す .zmx
+Monochromatic interferogram: overlay the light of two configurations or states	単色の干渉縞: 2 つの構成か状態の光を重ねる
+Beam 1 (sample): a configuration number (from 1) for .zmx, a state name for a project file	光束 1（試料）: .zmx は構成の番号（1 始まり）、プロジェクトファイルは状態の名前
+Beam 2 (reference): the same; 0 or ref for the reference sphere (mode pupil only)	光束 2（参照）: 同上。0 か ref で参照球（mode pupil だけ）
+On the pupil or on the image surface	瞳上か像面上か
+Pupil: grid side (an even number 4 or more)	瞳上: 格子の一辺（4 以上の偶数）
+Pupil: factor on the OPD difference (2 for a double pass)	瞳上: OPD の差にかける数（ダブルパスなら 2）
+Pupil: number of x tilt fringes (per pupil diameter)	瞳上: x の傾きの縞の数（瞳の直径あたり）
+Pupil: number of y tilt fringes (per pupil diameter)	瞳上: y の傾きの縞の数（瞳の直径あたり）
+Image: side of the pupil ray grid	像面上: 瞳の光線の格子の一辺
+Image: number of pixels (on a side)	像面上: 画素の数（一辺）
+Image: factor on the sample intensity	像面上: 試料の強度にかける数
+Image: factor on the reference intensity	像面上: 参照の強度にかける数
+Image: overlay the fields of a polarization trace (input polarizations sample_input and reference_input; coatings from the system's coating files)	像面上: 偏光追跡の場で重ねる（入射偏光は sample_input・reference_input、膜は系の膜ファイル）
+Image: input polarization of the sample (x, y, 45, rcp, lcp, etc.)	像面上: 試料の入射偏光（x・y・45・rcp・lcp など）
+Image: input polarization of the reference	像面上: 参照の入射偏光
+Quantity to write: intensity or delta on the pupil; intensity, opd, visibility, sample or reference on the image	書き出す量: 瞳上は intensity・delta、像面上は intensity・opd・visibility・sample・reference
+File to write (csv, json, tif or png)	書き出すファイル（csv・json・tif・png）
+Write tif as 32-bit float	tif を 32 bit float で
+Also include the grid in the result (grid, index j·nx + i, row j along +y (j = 0 at the bottom), null for pixels without data)	結果に格子も入れる（grid、番号 j·nx + i、行 j は +y の向き（j = 0 が下）、データの無い画素は null）
+Find the kinks along wavelength (nodes of the dispersion tables of the coating materials) from measured tables (LBCT)	実測表（LBCT）から、波長方向の折れ目（膜の材料の分散表の節）を探す
+Measure the wavelength grid about 4 times finer than the grid chosen from the coating thickness	波長の格子は膜の厚さから決めた格子の 4 倍くらい細かくして測っておく
+Measured tables (LBCT format, more than one allowed)	実測表（LBCT 形式、複数可）
+KEYs to check (can be given more than once; by default the transmission from air and the mirror KEYs; on the glass side the residual is large at high β and detection is weak)	調べる KEY（複数回指定できる。既定は空気から入る透過と鏡の KEY。硝材側は高い β の列で残差が大きく、検出が鈍い）
+Make an encrypted coating model (LBCM 2) from measured tables (LBCT) taken with a set of model glasses	暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
+Measured tables (LBCT format, more than one allowed; for the same KEY the later table is used)	実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
+LBCM file to write	書き出す LBCM ファイル
+Coatings to make (comma-separated; all in the tables by default)	作る膜（カンマ区切り、既定は表にある全部）
+Kinks along wavelength [µm] (comma-separated): nodes of the dispersion tables of the coating materials. Interpolation doesn't cross these points	波長方向の折れ目 [µm]（カンマ区切り）。膜の材料の分散表の節。補間はこの点をまたがない
+Upper limit of the ψ interpolation error that sets BMAX [rad]	BMAX を決める ψ の補間誤差の上限 [rad]
+Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)	モデルに入れる注記（NOTE。`lensbench coatings` に出る。短い測定から作った近似のモデルの印など）
+Make a coating model (LBCM) smaller	膜のモデル（LBCM）を小さくする
+Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)	バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）と同じに扱える
+Original model (LBCM 2 or 3)	元のモデル（LBCM 2 か 3）
+Model to write (LBCM 3)	書き出すモデル（LBCM 3）
+Distance to propagate (measured along the propagation direction)	伝える距離（伝搬の向きに測る）
+Half width of the input grid (the extent of the rays and aperture if omitted)	入力の格子の半幅（省略で光線と開口の範囲）
+Half width of the output grid (automatic if omitted)	出力の格子の半幅（省略で自動）
+Center x,y of the output grid (the point advanced along the chief ray if omitted)	出力の格子の中心 x,y（省略で主光線の向きに進めた点）
+Image: center x,y of the area (the center of the area reached by both beams if omitted)	像面上: 範囲の中心 x,y（省略で 2 つの光束が届く範囲の中心）
+Image: side of the area (covers the area reached by both beams if omitted)	像面上: 範囲の一辺（省略で 2 つの光束が届く範囲を覆う）
+Image: optical path added to the reference path	像面上: 参照の経路に足す光路長
+List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out_dir writes the expanded systems to .zmx	ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧: 近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（膜込み）。out_dir で展開した系を .zmx に書く
+Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface; coordinates are the local image surface coordinates). x and y are coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)	回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色。huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す。座標は像面の局所座標）。x・y は主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）
+Simple POP: build a field from rays on the tangent plane of a surface (with the surface aperture applied) and propagate it in a uniform medium over the distance dist (to the vertex plane of the next surface if omitted); the irradiance. --save writes the grid (csv, npz) or everything (json)	簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 dist （省略で次の面の頂点面まで）伝えた照度。--save で格子（csv・npz）か全部（json）を書き出す
+Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength	機構部品（プロジェクトの mechanics）のケラレ: 瞳の格子の光線を追い、部品の穴（チューブの内径・ケージ板やマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す
+Monochromatic interferogram: overlay the light of two configurations (.zmx) or states (project file). mode pupil is on the pupil (like OpticStudio's Interferogram: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2, I = (1 + cos 2πΔ)/2), detector is on the image surface (rays interpolated to pixels and fields summed). The out extension gives csv (grid, row = +y), json (summary and grid), tif (16 bit; 32-bit float with float) or png (16 bit)	単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。mode pupil は瞳上（OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、detector は像面上（光線を画素へ補間して場を足す）。out の拡張子で csv（格子、行 = +y）・json（要約と格子）・tif（16 bit、float で 32 bit float）・png（16 bit）

@@ -10,7 +10,7 @@ use serde_json::Value;
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy)]
 #[serde(untagged)]
 pub enum FieldRef {
-    /// 視野の番号（1 始まり）
+    /// Field number (from 1)
     Index(usize),
     /// 正規化視野 [hx, hy]
     Norm([f64; 2]),

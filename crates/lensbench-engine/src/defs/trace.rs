@@ -31,7 +31,7 @@ fn indices(v: &Option<Vec<usize>>, n: usize, what: &str) -> Result<Option<Vec<us
 
 // ---------------------------------------------------------------------------------------- rays
 
-/// 光線の並び
+/// Ray pattern
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Fan {
@@ -64,20 +64,20 @@ impl Fan {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct RaysParams {
-    /// 視野の番号（1 始まり、カンマ区切り、省略で全視野）
+    /// Field numbers (from 1, comma-separated; all fields if omitted)
     pub field: Option<Vec<usize>>,
-    /// 波長の番号（1 始まり、カンマ区切り、省略で主波長）
+    /// Wavelength numbers (from 1, comma-separated; the primary wavelength if omitted)
     pub wave: Option<Vec<usize>>,
-    /// 全波長（wave より優先）
+    /// All wavelengths (takes precedence over wave)
     pub all_waves: bool,
-    /// 光線の並び
+    /// Ray pattern
     pub fan: Fan,
-    /// 光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を足した n+1 本）
+    /// Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1)
     #[schemars(extend("x-min" = 1))]
     pub rays: usize,
-    /// 瞳座標を直接（px,py,px,py,…）。fan・rays より優先
+    /// Pupil coordinates directly (px,py,px,py,…). Takes precedence over fan and rays
     pub pupil: Option<Vec<f64>>,
-    /// 書く面（カンマ区切り、省略で全部）
+    /// Surfaces to write (comma-separated; all if omitted)
     pub surface: Option<Vec<usize>>,
 }
 
@@ -123,8 +123,8 @@ impl Analysis for Rays {
     fn meta(&self) -> Meta {
         Meta {
             name: "rays",
-            about: "光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）",
-            help: "光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz に書き出す",
+            about: "Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface)",
+            help: "Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface). --save writes csv, json or npz",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &RaysParams) -> Result<RaysOut> {
@@ -192,41 +192,41 @@ pub enum PopHow {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct PopParams {
-    /// 場を作る面（1 始まり。その面の後の媒質の中、接平面の上）。省略で、間に平面のダミー面だけを挟んで
-    /// 像面まで伝えられる最後の面（dist も to もなければ像面まで伝える）
+    /// Surface to build the field at (from 1; in the medium after it, on the tangent plane). If omitted, with only plane dummy surfaces in between
+    /// The last surface that can be propagated to the image (propagates to the image if neither dist nor to is given)
     pub surf: Option<usize>,
-    /// 視野の番号（1 始まり）
+    /// Field number (from 1)
     #[schemars(extend("x-min" = 1))]
     pub field: usize,
-    /// 波長の番号（1 始まり、省略で主波長）
+    /// Wavelength number (from 1; the primary wavelength if omitted)
     pub wave: Option<usize>,
-    /// 伝える距離（伝搬の向きに測る）
+    /// Distance to propagate (measured along the propagation direction)
     #[schemars(extend("x-unit" = "mm"))]
     pub dist: Option<f64>,
-    /// 伝える先の面（間は平面のダミー面だけ）。dist も to もなければ次の面
+    /// Surface to propagate to (only plane dummy surfaces in between). The next surface if neither dist nor to is given
     pub to: Option<usize>,
-    /// 方法
+    /// Method
     pub method: PopHow,
-    /// 瞳の格子の一辺の光線の数
+    /// Number of rays on a side of the pupil grid
     #[schemars(extend("x-min" = 2))]
     pub rays: usize,
-    /// 入力の格子の一辺の標本の数
+    /// Number of samples on a side of the input grid
     #[schemars(extend("x-min" = 2))]
     pub n: usize,
-    /// 入力の格子の半幅（省略で光線と開口の範囲）
+    /// Half width of the input grid (the extent of the rays and aperture if omitted)
     #[schemars(extend("x-unit" = "mm"))]
     pub half: Option<f64>,
-    /// 面の開口を掛けない
+    /// Don't apply the surface aperture
     pub no_aperture: bool,
-    /// 出力の格子の一辺の標本の数（省略で入力と同じ）
+    /// Number of samples on a side of the output grid (same as the input if omitted)
     pub out_n: Option<usize>,
-    /// 出力の格子の半幅（省略で自動）
+    /// Half width of the output grid (automatic if omitted)
     #[schemars(extend("x-unit" = "mm"))]
     pub out_half: Option<f64>,
-    /// 出力の格子の中心 x,y（省略で主光線の向きに進めた点）
+    /// Center x,y of the output grid (the point advanced along the chief ray if omitted)
     #[schemars(length(min = 2, max = 2), extend("x-unit" = "mm"))]
     pub center: Option<Vec<f64>>,
-    /// 結果に出力の照度の格子も入れる（grid_irradiance、番号 j·nx + i、j は +y の向き）
+    /// Also include the output irradiance grid in the result (grid_irradiance, index j·nx + i, j along +y)
     pub grid: bool,
 }
 
@@ -306,9 +306,8 @@ impl Analysis for Pop {
     fn meta(&self) -> Meta {
         Meta {
             name: "pop",
-            about: "簡易 POP: 光線から作った場を一様な媒質の中で伝えた照度",
-            help: "簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 dist \
-                   （省略で次の面の頂点面まで）伝えた照度。--save で格子（csv・npz）か全部（json）を書き出す",
+            about: "Simple POP: irradiance of a field built from rays, propagated in a uniform medium",
+            help: "Simple POP: build a field from rays on the tangent plane of a surface (with the surface aperture applied) and propagate it in a uniform medium over the distance dist (to the vertex plane of the next surface if omitted); the irradiance. --save writes the grid (csv, npz) or everything (json)",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &PopParams) -> Result<PopOut> {
@@ -437,11 +436,11 @@ impl Analysis for Pop {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct MechCheckParams {
-    /// 視野の番号（1 始まり、カンマ区切り、省略で全視野）
+    /// Field numbers (from 1, comma-separated; all fields if omitted)
     pub field: Option<Vec<usize>>,
-    /// 波長の番号（1 始まり、カンマ区切り、省略で全波長）
+    /// Wavelength numbers (from 1, comma-separated; all wavelengths if omitted)
     pub wave: Option<Vec<usize>>,
-    /// 瞳の格子の一辺の本数（単位円の中の点を使う）
+    /// Rays on a side of the pupil grid (points inside the unit circle are used)
     #[schemars(extend("x-min" = 2))]
     pub grid: usize,
 }
@@ -464,9 +463,8 @@ impl Analysis for MechCheck {
     fn meta(&self) -> Meta {
         Meta {
             name: "mech-check",
-            about: "機構部品のケラレ: 部品の穴の外に出た光線の割合",
-            help: "機構部品（プロジェクトの mechanics）のケラレ: 瞳の格子の光線を追い、部品の穴（チューブの内径・\
-                   ケージ板やマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す",
+            about: "Mechanical part vignetting: fraction of rays outside the part bores",
+            help: "Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &MechCheckParams) -> Result<Value> {
@@ -543,9 +541,9 @@ impl Analysis for MechCheck {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ElementsParams {
-    /// 反転する玉の番号（1 始まり、カンマ区切り）
+    /// Lens numbers to flip (from 1, comma-separated)
     pub reverse: Option<Vec<usize>>,
-    /// 組み直した系を書き出す .zmx
+    /// .zmx to write the rebuilt system to
     #[schemars(extend("x-kind" = "path", "x-write" = true))]
     pub out: Option<PathBuf>,
 }
@@ -558,8 +556,8 @@ impl Analysis for Elements {
     fn meta(&self) -> Meta {
         Meta {
             name: "elements",
-            about: "玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す",
-            help: "玉モード: 系を玉・鏡・座標ブレーク・その他の面と空気間隔に分けて示す。reverse で玉を反転し、out で .zmx に書き出す",
+            about: "Lens mode: show the system split into lenses, mirrors, coordinate breaks, other surfaces and air spaces",
+            help: "Lens mode: show the system split into lenses, mirrors, coordinate breaks, other surfaces and air spaces. reverse flips lenses and out writes .zmx",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &ElementsParams) -> Result<Value> {

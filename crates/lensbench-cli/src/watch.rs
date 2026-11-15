@@ -20,22 +20,22 @@ use super::{execute, print_out, Cli, Cmd};
 
 #[derive(Args)]
 pub struct WatchArgs {
-    /// 見張る間隔 [s]
+    /// Polling interval [s]
     #[arg(long, default_value_t = 0.5)]
     interval: f64,
-    /// この回数だけ解析したら終える（省くと止めるまで続ける）
+    /// Stop after this many analyses (runs until stopped if omitted)
     #[arg(long = "max-runs")]
     max_runs: Option<usize>,
-    /// 系のファイルと解析の中で読んだファイルのほかに見張るファイル（複数可）
+    /// Other files to watch besides the system file and the files read by the analysis (more than one allowed)
     #[arg(long)]
     also: Vec<PathBuf>,
-    /// 1 回ごとの状態（run・ok・error・elapsed_ms）を書くファイル（JSON）
+    /// File to write the status of each run (run, ok, error, elapsed_ms) to (JSON)
     #[arg(long)]
     status: Option<PathBuf>,
-    /// 結果の全体を標準出力に出す（既定は 1 行の状態だけ。--save がなければ全体を出す）
+    /// Print the whole result to standard output (by default a one-line status only; the whole result if --save is not given)
     #[arg(long)]
     print: bool,
-    /// 実行する解析（-- の後に CLI と同じ書き方。例: -- spot sys.zmx --save out.json）
+    /// Analysis to run (after --, written as on the CLI, e.g. -- spot sys.zmx --save out.json)
     #[arg(last = true, required = true, num_args = 1..)]
     cmd: Vec<String>,
 }

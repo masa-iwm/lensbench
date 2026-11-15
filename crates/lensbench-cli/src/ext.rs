@@ -36,7 +36,7 @@ mod tests {
     #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
     #[serde(default, deny_unknown_fields)]
     struct ToyParams {
-        /// 視野の番号（1 始まり、省略で全視野）
+        /// Field number (from 1; all fields if omitted)
         field: Option<usize>,
         /// 試しの選択
         mode: Mode,

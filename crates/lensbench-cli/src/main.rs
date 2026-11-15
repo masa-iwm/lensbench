@@ -39,9 +39,9 @@ mod clap_ja;
 mod search_cmd;
 
 #[derive(Parser)]
-#[command(name = "lensbench", version = lensbench_core::VERSION, about = "順次光線追跡と解析")]
+#[command(name = "lensbench", version = lensbench_core::VERSION, about = "Sequential ray tracing and analysis")]
 struct Cli {
-    /// 追跡・解析のスレッド数（1 で逐次。省くと LENSBENCH_THREADS、なければ全コアで RAYON_NUM_THREADS が効く）。結果はスレッド数によらず同じ
+    /// Number of threads for tracing and analysis (1 runs serially; if omitted, LENSBENCH_THREADS, otherwise RAYON_NUM_THREADS on all cores). Results do not depend on the thread count
     #[arg(long, global = true)]
     threads: Option<usize>,
     #[command(subcommand)]
@@ -51,27 +51,27 @@ struct Cli {
 /// 系を読む解析の共通の引数（拡張のサブコマンドも `#[command(flatten)]` で使う、[`ext`]）
 #[derive(Args, Clone)]
 pub struct Common {
-    /// .zmx ファイル、またはブロックで組んだプロジェクトファイル（.json）
+    /// A .zmx file, or a project file (.json) built from blocks
     pub file: PathBuf,
-    /// ガラスカタログを探すフォルダ（複数可。LENSBENCH_GLASSCAT も使う）
+    /// Folders to search for glass catalogs (more than one allowed; LENSBENCH_GLASSCAT is also used)
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
-    /// プロジェクトファイルのカタログレンズ（"vendor"・"part"）を探すレンズカタログ（.zmx のファイル、または .zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名。複数可）
+    /// Lens catalogs for the catalog lenses ("vendor", "part") of a project file (.zmx files, or folders of .zmx; the folder name is the maker and the file name is the part number; more than one allowed)
     #[arg(long = "lens-catalog")]
     pub lens_catalog: Vec<PathBuf>,
-    /// マルチコンフィグの番号（1 始まり）
+    /// Multi-configuration number (from 1)
     #[arg(long, default_value_t = 1)]
     pub cfg: usize,
-    /// プロジェクトファイル（.json）の状態の名前（多重構成に当たる）
+    /// State name of a project file (.json) (like a multi-configuration)
     #[arg(long)]
     pub state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 TR。省略でプロジェクトの path・各 BS の arm）
+    /// Beam splitter path of a project file (T and R in the order the BSs are passed, e.g. TR; if omitted, the project's path and each BS's arm)
     #[arg(long = "beam-path")]
     pub path: Option<String>,
-    /// JSON で出力する
+    /// Output JSON
     #[arg(long)]
     pub json: bool,
-    /// 結果を書き出すファイル（拡張子で csv・json・npz）
+    /// File to write the result to (csv, json or npz by extension)
     #[arg(long)]
     pub save: Option<PathBuf>,
 }
@@ -94,13 +94,13 @@ impl Common {
 /// 重ね描き・多重構成の書き出しで並べる構成
 #[derive(Args, Clone, Default)]
 pub(crate) struct ConfigSel {
-    /// .zmx の多重構成（1 始まり、カンマ区切り、all で全部）
+    /// .zmx multi-configurations (from 1, comma-separated, all for every one)
     #[arg(long)]
     cfgs: Option<String>,
-    /// プロジェクトの状態（名前のカンマ区切り、all で全部）
+    /// Project states (comma-separated names, all for every one)
     #[arg(long)]
     states: Option<String>,
-    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+    /// Beam splitter paths (comma-separated strings of T and R, all for every possible path)
     #[arg(long = "beam-paths")]
     paths: Option<String>,
 }
@@ -122,362 +122,359 @@ fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, S
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 系を書き出す
+    /// Write the system
     ///
-    /// 拡張子 .json なら系ファイル（欠けのない lensbench の形式）、.zmx なら .zmx。読むのは .zmx・プロジェクト・系ファイル（--state・--cfg を当てた系）
+    /// A .json extension writes a system file (the complete lensbench format), .zmx writes .zmx. Reads .zmx, projects and system files (with --state and --cfg applied)
     Convert {
         #[command(flatten)]
         c: Common,
-        /// 書き出すファイル（.json か .zmx）
+        /// File to write (.json or .zmx)
         #[arg(long, short)]
         out: PathBuf,
     },
-    /// 系を .zmx に書き出す（プロジェクトの展開など）
+    /// Write the system to .zmx (an expanded project, etc.)
     ///
-    /// --beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）
+    /// With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)
     Zmx {
         #[command(flatten)]
         c: Common,
         #[command(flatten)]
         sel: ConfigSel,
-        /// 書き出す .zmx
+        /// .zmx to write
         #[arg(long, short)]
         out: PathBuf,
     },
-    /// 減衰最小二乗（DLS）で変数を最適化する
+    /// Optimize variables with damped least squares (DLS)
     ///
-    /// 評価関数は全視野（視野の重み）・多色の RMS スポットか RMS 波面に、--term・--terms の項を足したもの。
-    /// --out で最適化した系を .zmx に書き出す
+    /// The merit function is the RMS spot or RMS wavefront over all fields (field weights) and wavelengths, plus the terms of --term and --terms. --out writes the optimized system to .zmx
     Optimize {
         #[command(flatten)]
         c: Common,
-        /// 変数（"7.t"・"lens2.tx"・"G1.shift" など。範囲は "7.t=0.5:3"、片側は "7.t=0.5:" "7.t=:3"）。複数可
+        /// Variables ("7.t", "lens2.tx", "G1.shift", etc.; a range is "7.t=0.5:3", one-sided "7.t=0.5:" or "7.t=:3"). More than one allowed
         #[arg(long = "var", required = true)]
         vars: Vec<String>,
-        /// 既定の評価関数: spot・wavefront・none（--term の項だけ）
+        /// Default merit function: spot, wavefront or none (only the --term terms)
         #[arg(long, default_value = "spot")]
         merit: String,
-        /// 足す項（JSON、例 '{"type":"paraxial","q":"efl","target":50,"weight":10}'。種類とキーはdocs の最適化の項を参照）。複数可
+        /// Terms to add (JSON, e.g. '{"type":"paraxial","q":"efl","target":50,"weight":10}'; see the optimization terms in the docs for kinds and keys). More than one allowed
         #[arg(long = "term")]
         terms: Vec<String>,
-        /// 足す項の JSON ファイル（項の配列）
+        /// JSON file of terms to add (an array of terms)
         #[arg(long = "terms")]
         terms_file: Option<PathBuf>,
-        /// 基準: centroid（重心）か chief（主光線）
+        /// Reference: centroid or chief (chief ray)
         #[arg(long = "reference", default_value = "centroid")]
         reference: String,
-        /// 瞳のガウス求積のリング数
+        /// Number of rings of the Gaussian pupil quadrature
         #[arg(long, default_value_t = 3)]
         rings: usize,
-        /// 反復の上限
+        /// Maximum number of iterations
         #[arg(long, default_value_t = 50)]
         iters: usize,
-        /// ヤコビアン: auto（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）・fd（すべて中心差分）・forward（すべて前進差分）
+        /// Jacobian: auto (analytic for terms with 16 or more analytic columns, central differences for fewer), fd (all central differences) or forward (all forward differences)
         #[arg(long, default_value = "auto")]
         jac: String,
-        /// 最適化した系を書き出す .zmx
+        /// .zmx to write the optimized system to
         #[arg(long, short)]
         out: Option<PathBuf>,
     },
-    /// モンテカルロ公差シミュレーション
+    /// Monte Carlo tolerance simulation
     ///
-    /// 玉ごとの公差の組（既定は一般の組、カタログの玉はメーカーの公差）と個別の公差で系をずらし、補償子を合わせ直して評価関数（RMS 波面・スポット・MTF など）の分布と感度を出す。設定は JSON（docs の公差の設定、
-    /// --spec のファイルと --set の上書き）
+    /// Perturb the system with per-lens tolerance sets (commercial by default; makers' tolerances for catalog lenses) and individual tolerances, re-adjust the compensators, and give the distribution and sensitivity of the merit function (RMS wavefront, spot, MTF, etc.). Settings are JSON (tolerance settings in the docs; the --spec file and --set overrides)
     Tolerance {
         #[command(flatten)]
         c: Common,
-        /// 設定の JSON ファイル
+        /// Settings JSON file
         #[arg(long)]
         spec: Option<PathBuf>,
-        /// 設定の上書き（JSON のオブジェクト、例 '{"preset":"precision","compensators":["9.t"]}'）。複数可
+        /// Settings override (a JSON object, e.g. '{"preset":"precision","compensators":["9.t"]}'). More than one allowed
         #[arg(long = "set")]
         set: Vec<String>,
-        /// 試行の数（設定の trials より優先）
+        /// Number of trials (takes precedence over trials in the settings)
         #[arg(long)]
         trials: Option<usize>,
-        /// 乱数の種（設定の seed より優先）
+        /// Random seed (takes precedence over seed in the settings)
         #[arg(long)]
         seed: Option<u64>,
-        /// 評価関数が最も悪かった試行の系（補償の後）を書き出すファイル。.json は系ファイル（屈折率の公差も書ける）、ほかは .zmx（屈折率・分散のずれは .zmx に書けない）
+        /// File to write the system of the trial with the worst merit (after compensation) to. .json writes a system file (index tolerances included), others .zmx (index and dispersion shifts can't be written to .zmx)
         #[arg(long, short)]
         out: Option<PathBuf>,
-        /// 試行ごとの補償子（と評価関数・傾きの x・y の組の大きさ [分]）を書き出す CSV ファイル
+        /// CSV file to write the compensators of each trial to (with the merit and the size of the x and y tilt pair [arcmin])
         #[arg(long = "comp-csv")]
         comp_csv: Option<PathBuf>,
     },
-    /// ズーム軌跡
+    /// Zoom trajectory
     ///
-    /// 状態（プロジェクトの states か .zmx の構成）ごとに群の位置（--var）を解く。評価関数は像の RMS（全視野・多色）と、
-    /// --efl・--pmag の目標。--steps で状態の間を継続法でたどる
+    /// Solve the group positions (--var) for each state (the project's states or the .zmx configurations). The merit is the image RMS (all fields, all wavelengths) and the --efl and --pmag targets. --steps follows the path between states by continuation
     Zoom(Box<search_cmd::ZoomArgs>),
-    /// カタログレンズの差し替え探索
+    /// Catalog lens swap search
     ///
-    /// --spec の所（玉のブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）を最適化して評価関数の小さい順に並べる
+    /// Run the combinations that replace the --spec slots (lens blocks) with candidates in parallel, optimize the variables (spacings, etc.) for each, and sort them by merit
     Swap(Box<search_cmd::SwapArgs>),
-    /// ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
+    /// Save a lens or block to a user catalog (JSON) (the file is created if missing)
     CatalogAdd {
-        /// ユーザーカタログのファイル
+        /// User catalog file
         catalog: PathBuf,
-        /// 項目の名前
+        /// Item name
         #[arg(long)]
         name: String,
-        /// 玉を取る .zmx かプロジェクトファイル（--lens と）、またはプロジェクトファイル（--block と）
+        /// A .zmx or project file to take the lens from (with --lens), or a project file (with --block)
         #[arg(long)]
         from: PathBuf,
-        /// 玉の番号（1 始まり、玉だけを数える。.zmx・プロジェクトを玉モードで分けたもの）
+        /// Lens number (from 1, counting only lenses; the .zmx or project split in lens mode)
         #[arg(long)]
         lens: Option<usize>,
-        /// プロジェクトのブロックの id（2 つ渡すと最上位の並びのその間の範囲。面の表の変更 surface_edits は焼き込む）
+        /// Project block ids (two give the range between them in the top-level list; surface table changes in surface_edits are baked in)
         #[arg(long, num_args = 1)]
         block: Vec<String>,
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
-        /// プロジェクトのカタログレンズを探すレンズカタログ（info などと同じ）
+        /// Lens catalogs to search for the project's catalog lenses (same as info, etc.)
         #[arg(long = "lens-catalog")]
         lens_catalog: Vec<PathBuf>,
-        /// .zmx のマルチコンフィグの番号
+        /// .zmx multi-configuration number
         #[arg(long, default_value_t = 1)]
         cfg: usize,
         #[arg(long, default_value = "")]
         description: String,
-        /// 同じ名前の項目を置き換える
+        /// Replace an item of the same name
         #[arg(long)]
         replace: bool,
         #[arg(long)]
         json: bool,
     },
-    /// カタログの品を探す
+    /// Search catalog items
     ///
-    /// レンズカタログ（ZMF・.zmx・lensbench 形式の .json）の品を、種類・メーカー・語・仕様で絞り込む。仕様は .json の品の `specs` と、同じメーカーの .json の `overlay`・`url_template` で足したもの（efl・diameter・thickness は一覧の値でも比べられる）
+    /// Filter the items of lens catalogs (ZMF, .zmx, lensbench .json) by kind, maker, words and specs. Specs are the items' `specs` in .json plus those added by `overlay` and `url_template` in a .json of the same maker (efl, diameter and thickness can also be compared with the listed values)
     CatalogSearch {
-        /// レンズカタログ（ファイル・フォルダ、複数可）
+        /// Lens catalogs (files or folders, more than one allowed)
         #[arg(required = true)]
         lens_catalog: Vec<PathBuf>,
-        /// ガラスカタログを探すフォルダ（玉の焦点距離を求めるのに使う）
+        /// Folders to search for glass catalogs (used to find lens focal lengths)
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
-        /// 品の種類（lens・mirror・splitter・polarizer・waveplate・window・filter・prism・other、複数可）
+        /// Item kinds (lens, mirror, splitter, polarizer, waveplate, window, filter, prism, other; more than one allowed)
         #[arg(long, num_args = 1)]
         kind: Vec<String>,
-        /// メーカー（含む。大文字小文字・空白・記号は無視）
+        /// Maker (contains; case, spaces and symbols are ignored)
         #[arg(long, default_value = "")]
         vendor: String,
-        /// 型番・説明・タグ・仕様に含む語（空白で区切るとすべて含む）
+        /// Words in the part number, description, tags or specs (separated by spaces, all must be present)
         #[arg(long, default_value = "")]
         text: String,
-        /// 仕様の条件（複数可、すべて満たす）: `名前`（ある）、`名前=値`（数は一致、範囲の仕様は含む、文字列は含む）、`名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
+        /// Spec conditions (more than one allowed, all must hold): `name` (present), `name=value` (numbers equal, range specs contain, strings contain), `name=a..b`, `name>=value`, `<=`, `>`, `<` (range specs by overlap). E.g. `wavelength_nm=633`, `extinction_ratio>=1000`
         #[arg(long, num_args = 1)]
         spec: Vec<String>,
-        /// 径 [mm] の素子が入る機構部品（チューブ・マウント・ケージ板）だけ: 保持径が径以上で 0.25 mm より太くない
+        /// Only mechanical parts (tubes, mounts, cage plates) that hold an element of diameter [mm]: holding diameter at least the diameter and no more than 0.25 mm larger
         #[arg(long)]
         fits: Option<f64>,
-        /// 名前の決まった仕様の一覧を出す
+        /// List the specs with fixed names
         #[arg(long)]
         list_specs: bool,
         #[arg(long)]
         json: bool,
     },
-    /// 品の STEP（.step・.stp）を測る
+    /// Measure an item's STEP (.step, .stp)
     ///
-    /// 厚さ・径、枠付きの品はガラスと枠（`frame`）、ガラスの無い機構部品（チューブ・ケージ板・マウント）は全体を枠として（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+    /// Thickness and diameter; glass and frame (`frame`) for mounted items; mechanical parts without glass (tubes, cage plates, mounts) as a whole frame (`mech`; `frame` with the bore, length, outer diameter, threads, rod spacing and the element held)
     CatalogStep {
         #[arg(required = true)]
         files: Vec<PathBuf>,
         #[arg(long)]
         json: bool,
     },
-    /// 品の詳しい形の STEP を公式の配布元（品の `cad.step`）から 1 件だけ取り、キャッシュに置く
+    /// Fetch one detailed STEP of an item from its official source (the item's `cad.step`) and put it in the cache
     ///
-    /// 2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
+    /// From the second time the cache is used. The fetched STEP is measured like catalog-step and differences from the catalog's simple outline (`mech` length, outer diameter and shape) are shown
     CadStep {
-        /// ユーザーカタログ
+        /// User catalog
         #[arg(long)]
         catalog: PathBuf,
-        /// 品の名前
+        /// Name of the item
         #[arg(long)]
         item: String,
-        /// キャッシュのフォルダ（省略で環境変数 LENSBENCH_CAD_CACHE、なければ OS の設定の場所の lensbench/cad）
+        /// Cache folder (if omitted, the environment variable LENSBENCH_CAD_CACHE, otherwise lensbench/cad in the OS settings location)
         #[arg(long)]
         cache: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },
-    /// ユーザーカタログの項目の一覧
+    /// List the items of a user catalog
     CatalogList {
         catalog: PathBuf,
         #[arg(long)]
         json: bool,
     },
-    /// 面の膜の一覧
+    /// List the coatings of the surfaces
     ///
-    /// 全コンフィグの境界（膜|前の媒質|後の媒質）と扱い。実測表が要る境界（暗号化された膜など）も示す
+    /// Interfaces (coating|medium before|medium after) of all configurations and how they are handled. Also shows the interfaces that need a measured table (encrypted coatings, etc.)
     Coatings {
-        /// .zmx ファイル
+        /// .zmx file
         file: PathBuf,
-        /// ガラスカタログを探すフォルダ（複数可）
+        /// Folders to search for glass catalogs (more than one allowed)
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
-        /// 膜の実測表・モデル（複数可。ghost・解析の --coatings と同じ）
+        /// Measured coating tables and models (more than one allowed; same as --coatings of ghost and the analyses)
         #[arg(long)]
         coatings: Vec<PathBuf>,
-        /// JSON で出力する
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
-    /// 実測表（LBCT）から、波長方向の折れ目（膜の材料の分散表の節）を探す
+    /// Find the kinks along wavelength (nodes of the dispersion tables of the coating materials) from measured tables (LBCT)
     ///
-    /// 波長の格子は膜の厚さから決めた格子の 4 倍くらい細かくして測っておく
+    /// Measure the wavelength grid about 4 times finer than the grid chosen from the coating thickness
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatKinks {
-        /// 実測表（LBCT 形式、複数可）
+        /// Measured tables (LBCT format, more than one allowed)
         tables: Vec<PathBuf>,
-        /// 調べる KEY（複数回指定できる。既定は空気から入る透過と鏡の KEY。硝材側は高い β の列で残差が大きく、検出が鈍い）
+        /// KEYs to check (can be given more than once; by default the transmission from air and the mirror KEYs; on the glass side the residual is large at high β and detection is weak)
         #[arg(long)]
         key: Vec<String>,
-        /// JSON で出力する
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
-    /// レイアウト（断面図・立体）と光線を書き出す
+    /// Write the layout (section or 3D) and rays
     ///
-    /// 形式は --out の拡張子で決める:2D は svg・png・dxf、3D は gltf・glb・obj・stl、CAD 用は step（stp）
+    /// The format is chosen by the --out extension: 2D svg, png or dxf; 3D gltf, glb, obj or stl; step (stp) for CAD
     Layout {
         #[command(flatten)]
         c: Common,
         #[command(flatten)]
         l: LayoutArgs,
-        /// 書き出すファイル（複数可）
+        /// Files to write (more than one allowed)
         #[arg(long, short, required = true)]
         out: Vec<PathBuf>,
-        /// 2D の投影面（yz か xz）
+        /// 2D projection plane (yz or xz)
         #[arg(long, default_value = "yz")]
         plane: String,
-        /// PNG の横幅 [px]
+        /// PNG width [px]
         #[arg(long, default_value_t = 1600)]
         width: u32,
-        /// 周方向の分割数（3D）・面の線の分割数（2D）
+        /// Number of divisions around (3D) and of surface lines (2D)
         #[arg(long, default_value_t = 64)]
         segments: usize,
-        /// 半径方向の分割数（3D）
+        /// Number of radial divisions (3D)
         #[arg(long, default_value_t = 16)]
         rings: usize,
-        /// 光線を管にする半径 [mm]（3D。STL は省略時に場面の大きさの 0.1%）
+        /// Radius of the ray tubes [mm] (3D; for STL, 0.1% of the scene size if omitted)
         #[arg(long)]
         tube: Option<f64>,
-        /// 機構部品を、取った品の STEP の詳しい形で描く（3D の glTF・OBJ・STL と STEP。キャッシュに STEP の無い部品は簡易外形。STEP は lensbench cad-step で取る）
+        /// Draw mechanical parts with the detailed shape of their fetched STEP (3D glTF, OBJ, STL and STEP; parts with no STEP in the cache get the simple outline; fetch STEPs with lensbench cad-step)
         #[arg(long)]
         mech_detail: bool,
     },
-    /// 暗号化された膜のモデル（LBCM 2）を、モデルガラスの組で測った実測表（LBCT）から作る
+    /// Make an encrypted coating model (LBCM 2) from measured tables (LBCT) taken with a set of model glasses
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatModel {
-        /// 実測表（LBCT 形式、複数可。同じ KEY は後の表のものを使う）
+        /// Measured tables (LBCT format, more than one allowed; for the same KEY the later table is used)
         tables: Vec<PathBuf>,
-        /// 書き出す LBCM ファイル
+        /// LBCM file to write
         #[arg(long, short)]
         out: PathBuf,
-        /// 作る膜（カンマ区切り、既定は表にある全部）
+        /// Coatings to make (comma-separated; all in the tables by default)
         #[arg(long)]
         coat: Option<String>,
-        /// 波長方向の折れ目 [µm]（カンマ区切り）。膜の材料の分散表の節。補間はこの点をまたがない
+        /// Kinks along wavelength [µm] (comma-separated): nodes of the dispersion tables of the coating materials. Interpolation doesn't cross these points
         #[arg(long)]
         kinks: Option<String>,
-        /// BMAX を決める ψ の補間誤差の上限 [rad]
+        /// Upper limit of the ψ interpolation error that sets BMAX [rad]
         #[arg(long, default_value_t = 1e-4)]
         tol_psi: f64,
-        /// モデルに入れる注記（NOTE。`lensbench coatings` に出る。短い測定から作った近似のモデルの印など）
+        /// Note to put in the model (NOTE; shown by `lensbench coatings`; e.g. a mark for an approximate model made from a short measurement)
         #[arg(long)]
         note: Option<String>,
-        /// JSON で出力する
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
-    /// 膜のモデル（LBCM）を小さくする
+    /// Make a coating model (LBCM) smaller
     ///
-    /// バイナリ（LBCM 3、値を 1e-9 刻み・鏡は 1e-12 刻みの整数にして縮めたもの）で書く。読むときは LBCM 2（テキスト）と同じに扱える
+    /// Write binary (LBCM 3: values packed as integers in steps of 1e-9, 1e-12 for mirrors). Read the same as LBCM 2 (text)
     // 保守の道具は一覧の最後に
     #[command(display_order = 900)]
     CoatCompact {
-        /// 元のモデル（LBCM 2 か 3）
+        /// Original model (LBCM 2 or 3)
         model: PathBuf,
-        /// 書き出すモデル（LBCM 3）
+        /// Model to write (LBCM 3)
         #[arg(long, short)]
         out: PathBuf,
-        /// JSON で出力する
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
-    /// 分光の曲線（反射率・透過率）に合う多層膜を当てはめ、近似の膜（`.lbcs`、膜ファイルの形式）を書く
+    /// Fit a multilayer to a spectral curve (reflectance, transmittance) and write an approximate coating (`.lbcs`, the coating file format)
     ///
-    /// 曲線は CSV（列 wl_um か wl_nm、angle_deg、pol（s・p・avg）、quantity（R・T）、value か value_pct、weight。angle_deg・pol・quantity・weight は省けば 0・avg・R・1）。膜ファイルのフォルダに置くと膜の名前で使われる
+    /// The curves are CSV (columns wl_um or wl_nm, angle_deg, pol (s, p, avg), quantity (R, T), value or value_pct, weight; angle_deg, pol, quantity and weight default to 0, avg, R and 1). Put in a coating file folder, it is used by the coating name
     CoatDesign {
-        /// 曲線の CSV（複数可）
+        /// Curve CSVs (more than one allowed)
         targets: Vec<PathBuf>,
-        /// 膜の名前（書く COAT の名前）
+        /// Coating name (the COAT name to write)
         #[arg(long)]
         name: String,
-        /// 材料（外側から繰り返す順、例 MGF2,TA2O5）。膜ファイルの MATE か、ガラスカタログのガラス
+        /// Materials (repeated from the outside, e.g. MGF2,TA2O5): MATE of a coating file, or glasses of a glass catalog
         #[arg(long, value_delimiter = ',')]
         materials: Vec<String>,
-        /// 基板: 屈折率の数か、膜ファイルの MATE・ガラスの名前
+        /// Substrate: an index, or a MATE or glass name of a coating file
         #[arg(long)]
         substrate: String,
-        /// 材料を探す膜ファイル（COATING.DAT 形式）
+        /// Coating files to search for materials (COATING.DAT format)
         #[arg(long = "coating-file")]
         coating_file: Option<PathBuf>,
-        /// ガラスカタログを探すフォルダ（複数可）
+        /// Folders to search for glass catalogs (more than one allowed)
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
-        /// 試す層の数（例 1..12）
+        /// Numbers of layers to try (e.g. 1..12)
         #[arg(long, default_value = "1..12")]
         layers: String,
-        /// 層の数ごとの初期値の数
+        /// Number of starting points per number of layers
         #[arg(long, default_value_t = 20)]
         starts: usize,
-        /// 層の厚さの上限 [µm]
+        /// Maximum layer thickness [µm]
         #[arg(long = "d-max", default_value_t = 0.6)]
         d_max: f64,
-        /// いちばん合う RMS の (1 + slack) 倍以内で層のいちばん少ないものを選ぶ
+        /// Choose the fewest layers within (1 + slack) times the best RMS
         #[arg(long, default_value_t = 0.1)]
         slack: f64,
-        /// 書き出す近似の膜（.lbcs）
+        /// Approximate coating to write (.lbcs)
         #[arg(long, short)]
         out: Option<PathBuf>,
-        /// JSON で出力する
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
-    /// 系を読み込んだまま待ち受け、外から JSON-RPC で系の変更・解析を繰り返す（既定は 127.0.0.1 だけ）
+    /// Keep the system loaded and wait, repeating system changes and analyses over JSON-RPC from outside (127.0.0.1 only by default)
     ///
-    /// 手順と書式は docs/serve.md
+    /// Steps and format: docs/serve.md
     Serve(serve::ServeArgs),
-    /// 系のファイルの更新を見張り、変わるたびに解析を実行して結果を書き出す
+    /// Watch the system file and run the analysis and write the result each time it changes
     ///
-    /// 例: lensbench watch -- spot sys.zmx --json --save out.json
+    /// Example: lensbench watch -- spot sys.zmx --json --save out.json
     Watch(watch::WatchArgs),
-    /// Python のスクリプトを画面なしで実行する（外の Python を起動し、ガラス・膜・スレッド数・出力先を渡す）
+    /// Run a Python script without the GUI (starts an outside Python and passes glasses, coatings, thread count and output folder)
     ///
-    /// 例: lensbench run --threads 4 --out result sweep.py -- --n 100。終了コードはスクリプトのもの
+    /// Example: lensbench run --threads 4 --out result sweep.py -- --n 100. The exit code is the script's
     Run(Box<run::RunArgs>),
-    /// 同梱のプラグイン（検出器・解析）の一覧と入出力の説明
+    /// List the bundled plugins (detectors, analyses) and describe their inputs and outputs
     Plugins {
-        /// JSON で出す
+        /// Print JSON
         #[arg(long)]
         json: bool,
     },
-    /// プラグイン・解析部品を基準データと照合する
+    /// Check plugins and analysis parts against reference data
     ///
-    /// 記述（*.verify.json）かそれを含むフォルダを与える。通らない照合があれば終了コード 1
+    /// Give a description (*.verify.json) or a folder containing them. Exit code 1 if any check fails
     Verify {
-        /// 記述のファイルかフォルダ（フォルダは下まで *.verify.json を探す）
+        /// Description file or folder (folders are searched all the way down for *.verify.json)
         #[arg(required = true)]
         paths: Vec<PathBuf>,
-        /// ci: false の照合（手元でだけ回す）を飛ばす
+        /// Skip checks with ci: false (run only locally)
         #[arg(long)]
         ci: bool,
-        /// JSON で出す
+        /// Print JSON
         #[arg(long)]
         json: bool,
     },
@@ -489,34 +486,34 @@ enum Cmd {
 /// レイアウトの光線の選び方
 #[derive(Args)]
 struct LayoutArgs {
-    /// 視野の番号（1 始まり、カンマ区切り、省略で全視野）
+    /// Field numbers (from 1, comma-separated; all fields if omitted)
     #[arg(long)]
     field: Option<String>,
-    /// 波長の番号（1 始まり、カンマ区切り、all で全部、省略で主波長）
+    /// Wavelength numbers (from 1, comma-separated, all for every one; the primary wavelength if omitted)
     #[arg(long)]
     wave: Option<String>,
-    /// 光線の並び（y・x・cross・grid・ring）。省略で 2D は y、3D・STEP は ring（主光線と瞳の縁）
+    /// Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)
     #[arg(long)]
     fan: Option<String>,
-    /// 光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を足した n+1 本）。省略で y は 7、ring は 12
+    /// Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1). If omitted, 7 for y, 12 for ring
     #[arg(long)]
     rays: Option<usize>,
-    /// 描き始める面（省略で、有限の物体が近ければ物体面、ほかは面 1）
+    /// First surface to draw (if omitted, the object surface when a finite object is near, otherwise surface 1)
     #[arg(long)]
     first: Option<usize>,
-    /// 描き終える面（省略で像面）
+    /// Last surface to draw (the image surface if omitted)
     #[arg(long)]
     last: Option<usize>,
-    /// 光線の色分け（field・wave・cfg。cfg は重ね描きの構成ごと）。省略で、重ね描きなら cfg、ほかは field
+    /// Ray colors (field, wave, cfg; cfg is per overlaid configuration). If omitted, cfg when overlaying, otherwise field
     #[arg(long)]
     color: Option<String>,
     /// 重ね描きする構成
     #[command(flatten)]
     sel: ConfigSel,
-    /// 構成ごとにずらす量 dx,dy,dz [mm]（構成 k は k 倍。OpticStudio のレイアウトのオフセットと同じ。既定は重ねる）
+    /// Offset per configuration dx,dy,dz [mm] (configuration k is shifted k times; same as the OpticStudio layout offset; overlaid by default)
     #[arg(long, allow_hyphen_values = true)]
     offset: Option<String>,
-    /// 光路に沿って展開する（鏡・BS で折れた後の区間を、折れる前の光軸の延長に並べ直す。2D の書き出しだけ）
+    /// Unfold along the light path (lay the sections after mirrors and BSs along the extension of the axis before the fold; 2D output only)
     #[arg(long)]
     unfold: bool,
 }
@@ -1577,14 +1574,15 @@ fn quiet_broken_pipe() {
     }));
 }
 
-/// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足したもの
+/// コマンドラインの入口（`lensbench` の実行ファイル）。clap の定義に解析の登録簿のサブコマンド（拡張の解析 [`ext::register`] も）を足し、
+/// help（英語が元）を表示の言語に訳したもの（XCT-20）
 fn cli_command() -> clap::Command {
     use clap::CommandFactory;
     let mut c = Cli::command().after_long_help(error::exit_code_help());
     for a in analysis_commands() {
         c = c.subcommand(a);
     }
-    negative_numbers(c)
+    help_json::localize(negative_numbers(c), &lensbench_core::i18n::tr_lines)
 }
 
 /// `--dist -5`・`--pmag -0.5` のような負の数を値として受ける（入れ子のサブコマンドも）

@@ -18,11 +18,11 @@ use crate::registry::{Analysis, Cx, Meta};
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct SpotParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// ガウス求積のリング数
+    /// Number of rings of the Gaussian quadrature
     #[schemars(extend("x-min" = 1))]
     pub rings: usize,
 }
@@ -64,7 +64,7 @@ impl Analysis for Spot {
     fn meta(&self) -> Meta {
         Meta {
             name: "spot",
-            about: "スポット（RMS・GEO 半径）",
+            about: "Spot (RMS and GEO radius)",
             help: "",
         }
     }
@@ -96,14 +96,14 @@ impl Analysis for Spot {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct WavefrontParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// 格子の一辺
+    /// Grid side
     #[schemars(extend("x-min" = 1))]
     pub n: usize,
-    /// 波面の格子も出す（"p": 正規化瞳座標、"map": W[iy][ix]、瞳の外・けられは null。GUI の波面図）
+    /// Also output the wavefront grid ("p": normalized pupil coordinates, "map": W[iy][ix], null outside the pupil or when vignetted; the GUI wavefront map)
     pub map: bool,
 }
 
@@ -147,7 +147,7 @@ impl Analysis for Wavefront {
     fn meta(&self) -> Meta {
         Meta {
             name: "wavefront",
-            about: "波面収差（主光線基準の OPD、P-V・RMS [波]）",
+            about: "Wavefront aberration (OPD relative to the chief ray, P-V and RMS [waves])",
             help: "",
         }
     }
@@ -190,16 +190,16 @@ pub enum ZKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ZernikeParams {
-    /// 視野の番号（1 始まり、省略で全視野）
+    /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
-    /// 波長の番号（1 始まり、省略で多色）
+    /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
-    /// standard または fringe
+    /// standard or fringe
     pub kind: ZKind,
-    /// 項数
+    /// Number of terms
     #[schemars(extend("x-min" = 1))]
     pub terms: usize,
-    /// 格子の一辺
+    /// Grid side
     #[schemars(extend("x-min" = 1))]
     pub n: usize,
 }
@@ -245,7 +245,7 @@ impl Analysis for Zernike {
     fn meta(&self) -> Meta {
         Meta {
             name: "zernike",
-            about: "Zernike 係数 [波]",
+            about: "Zernike coefficients [waves]",
             help: "",
         }
     }
@@ -288,14 +288,14 @@ impl Analysis for Zernike {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct GhostParams {
-    /// 反射させる最初の面
+    /// First surface to reflect at
     pub first: usize,
-    /// 反射させる最後の面（省略で像面。像面は膜があるときだけ反射させる）
+    /// Last surface to reflect at (the image surface if omitted; the image surface reflects only when it has a coating)
     pub last: Option<usize>,
-    /// 膜の実測表（LBCT）・モデル（LBCM）のファイル（複数可）
+    /// Measured coating tables (LBCT) and models (LBCM) (more than one allowed)
     #[schemars(extend("x-kind" = "path"))]
     pub coatings: Vec<PathBuf>,
-    /// 展開したゴーストの系を書くフォルダ（ghost_a_b.zmx）
+    /// Folder to write the expanded ghost systems to (ghost_a_b.zmx)
     #[schemars(extend("x-kind" = "path", "x-write" = true))]
     pub out_dir: Option<PathBuf>,
 }
@@ -351,9 +351,8 @@ impl Analysis for Ghost {
     fn meta(&self) -> Meta {
         Meta {
             name: "ghost",
-            about: "ゴースト（2 回反射）の一覧: 焦点の位置・像面でのぼけ・強度の比",
-            help: "ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧: \
-                   近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（膜込み）。out_dir で展開した系を .zmx に書く",
+            about: "Ghosts (double reflections): focus position, blur at the image and intensity ratio",
+            help: "List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out_dir writes the expanded systems to .zmx",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &GhostParams) -> Result<GhostOut> {

@@ -22,30 +22,30 @@ use serde_json::Value;
 
 #[derive(Args, Clone, Debug, Default)]
 pub struct RunArgs {
-    /// 設定ファイル（JSON: python・glass_dirs・coatings・threads・out・log・env）。相対パスはこのファイルから。引数で与えたものが優先する
+    /// Settings file (JSON: python, glass_dirs, coatings, threads, out, log, env). Relative paths are from this file. Arguments take precedence
     #[arg(long)]
     pub config: Option<PathBuf>,
-    /// 使う Python（省くと LENSBENCH_PYTHON、仮想環境（VIRTUAL_ENV）、PATH の python3・python・py の順）
+    /// Python to use (if omitted, LENSBENCH_PYTHON, the virtual environment (VIRTUAL_ENV), then python3, python and py on PATH)
     #[arg(long)]
     pub python: Option<String>,
-    /// ガラスカタログを探すフォルダ（複数可。今の LENSBENCH_GLASSCAT の前に足す）
+    /// Folders to search for glass catalogs (more than one allowed; added before the current LENSBENCH_GLASSCAT)
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
-    /// 膜の実測表・モデルのファイル（複数可。System.load の coatings= を省いたときに使う）
+    /// Measured coating table and model files (more than one allowed; used when coatings= of System.load is omitted)
     #[arg(long)]
     pub coatings: Vec<PathBuf>,
-    /// 出力先のフォルダ（無ければ作る。スクリプトは run_settings()["out"] で受け取る）
+    /// Output folder (created if missing; the script gets it with run_settings()["out"])
     #[arg(long, short)]
     pub out: Option<PathBuf>,
-    /// ログのファイル（省くと --out があれば <out>/run.log、なければ書かない）
+    /// Log file (if omitted, <out>/run.log when --out is given, otherwise none)
     #[arg(long)]
     pub log: Option<PathBuf>,
-    /// ログのファイルを書かない
+    /// Don't write a log file
     #[arg(long = "no-log")]
     pub no_log: bool,
-    /// 実行する Python スクリプト
+    /// Python script to run
     pub script: PathBuf,
-    /// スクリプトに渡す引数（sys.argv[1:]）
+    /// Arguments for the script (sys.argv[1:])
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub args: Vec<String>,
 }

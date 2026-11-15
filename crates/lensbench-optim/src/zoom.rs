@@ -40,7 +40,7 @@ pub struct ZoomSpec {
     pub merit: DefaultMerit,
     pub rings: usize,
     pub reference: RmsRef,
-    /// 隣り合う状態の間にとる点の数
+    /// Number of points between neighboring states
     pub steps: usize,
     pub opts: DlsOpts,
 }

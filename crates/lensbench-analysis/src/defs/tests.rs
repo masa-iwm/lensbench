@@ -18,7 +18,7 @@ fn params_from_schema() {
     assert_eq!(get("method").ty, ParamTy::Choice);
     assert_eq!(get("method").choices, ["auto", "interp", "direct", "fft"]);
     assert_eq!(get("each_wave").ty, ParamTy::Flag);
-    assert!(get("max_freq").doc.contains("上限"));
+    assert!(get("max_freq").doc.starts_with("Upper limit"));
     let rms = a.get("rms").unwrap().params();
     assert!(rms
         .iter()

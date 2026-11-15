@@ -23,42 +23,42 @@ use serde_json::{json, Value};
 
 #[derive(Args)]
 pub struct ServeArgs {
-    /// 最初に読み込む系（.zmx かプロジェクトファイル .json。省くと load で読む）
+    /// System to load first (.zmx or a project file .json; load it with load if omitted)
     file: Option<PathBuf>,
-    /// ガラスカタログを探すフォルダ（複数可）
+    /// Folders to search for glass catalogs (more than one allowed)
     #[arg(long = "glass-dir")]
     glass_dir: Vec<PathBuf>,
-    /// プロジェクトファイルのカタログレンズを探すレンズカタログ（複数可）
+    /// Lens catalogs to search for the catalog lenses of a project file (more than one allowed)
     #[arg(long = "lens-catalog")]
     lens_catalog: Vec<PathBuf>,
-    /// マルチコンフィグの番号（1 始まり）
+    /// Multi-configuration number (from 1)
     #[arg(long, default_value_t = 1)]
     cfg: usize,
-    /// プロジェクトファイルの状態の名前
+    /// State name of a project file
     #[arg(long)]
     state: Option<String>,
-    /// プロジェクトファイルのビームスプリッターの経路（T・R の並び）
+    /// Beam splitter path of a project file (a string of T and R)
     #[arg(long = "beam-path")]
     path: Option<String>,
-    /// 待ち受けるアドレス（既定 127.0.0.1。ほかのアドレスは --allow-remote が要る）
+    /// Address to listen on (127.0.0.1 by default; other addresses need --allow-remote)
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
-    /// 待ち受けるポート（0 で空いているポートを選ぶ）。選んだポートは最初の行に出す
+    /// Port to listen on (0 picks a free port). The chosen port is printed on the first line
     #[arg(long, default_value_t = 7010)]
     port: u16,
-    /// 選んだポートの番号を書くファイル（--port 0 と一緒に使う）
+    /// File to write the chosen port number to (use with --port 0)
     #[arg(long = "port-file")]
     port_file: Option<PathBuf>,
-    /// localhost 以外からの接続を受ける（認証はないので信頼できるネットワークだけで）。このときは要求でファイルを読み書きしない（--root を与えればその下だけ）
+    /// Accept connections from other than localhost (there is no authentication, so only on trusted networks). Requests then don't read or write files (only under --root if given)
     #[arg(long = "allow-remote")]
     allow_remote: bool,
-    /// 要求で読み書きするファイルをこのフォルダの下に限る（相対パスはここから）
+    /// Limit files read and written by requests to this folder (relative paths are from here)
     #[arg(long)]
     root: Option<PathBuf>,
-    /// 1 つの要求の配列の合計の上限 [バイト]（超える要求は断って接続を閉じる）
+    /// Limit on the total size of the arrays in one request [bytes] (larger requests are refused and the connection closed)
     #[arg(long = "max-request-bytes", default_value_t = 2 << 30)]
     max_request_bytes: u64,
-    /// TCP の代わりにパイプで待ち受ける。Windows は名前付きパイプ（\\.\pipe\NAME、同じ PC だけ）、ほかは NAME のパスの Unix ドメインソケット
+    /// Listen on a pipe instead of TCP: a named pipe on Windows (\\.\pipe\NAME, same PC only), elsewhere a Unix domain socket at the path NAME
     #[arg(long)]
     pipe: Option<String>,
 }

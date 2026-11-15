@@ -29,7 +29,7 @@ pub const MIRROR_REF: &str = "2.05,0.0";
 pub struct FitOptions {
     /// D を探す範囲の上限 [µm]
     pub d_max: f64,
-    /// BMAX を決める ψ の補間誤差の上限 [rad]
+    /// Upper limit of the ψ interpolation error that sets BMAX [rad]
     pub tol_psi: f64,
 }
 

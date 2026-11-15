@@ -20,7 +20,7 @@ pub struct SysSpec {
     pub lens_catalog: Vec<PathBuf>,
     /// .zmx の多重構成の番号（1 始まり）
     pub cfg: usize,
-    /// プロジェクトファイルの状態の名前
+    /// State name of a project file
     pub state: Option<String>,
     /// プロジェクトファイルのビームスプリッターの経路
     pub path: Option<String>,
@@ -100,11 +100,11 @@ pub fn state_names(c: &SysSpec) -> Vec<String> {
 /// 重ね描き・多重構成の書き出しで並べる構成
 #[derive(Clone, Default, Debug)]
 pub struct Overlay {
-    /// .zmx の多重構成（1 始まり、カンマ区切り、all で全部）
+    /// .zmx multi-configurations (from 1, comma-separated, all for every one)
     pub cfgs: Option<String>,
-    /// プロジェクトの状態（名前のカンマ区切り、all で全部）
+    /// Project states (comma-separated names, all for every one)
     pub states: Option<String>,
-    /// ビームスプリッターの経路（T・R の文字列のカンマ区切り、all でとれる経路の全部）
+    /// Beam splitter paths (comma-separated strings of T and R, all for every possible path)
     pub paths: Option<String>,
 }
 

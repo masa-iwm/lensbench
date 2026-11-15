@@ -11,74 +11,74 @@ use serde_json::{json, Value};
 
 #[derive(Args)]
 pub struct ZoomArgs {
-    /// .zmx（多重構成の各構成が状態）か、プロジェクトファイル（.json、states が状態）
+    /// .zmx (each multi-configuration is a state) or a project file (.json, states are the states)
     pub file: PathBuf,
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
     #[arg(long = "lens-catalog")]
     pub lens_catalog: Vec<PathBuf>,
-    /// 状態（プロジェクトなら状態の名前、.zmx なら構成の番号）をカンマで並べる。省くとすべて
+    /// States, comma-separated (state names for a project, configuration numbers for .zmx). All if omitted
     #[arg(long)]
     pub states: Option<String>,
-    /// 状態ごとに解くパラメータ（"G2.shift"・"7.t"、範囲は "G2.shift=-5:20"）。複数可
+    /// Parameters to solve for each state ("G2.shift", "7.t"; a range is "G2.shift=-5:20"). More than one allowed
     #[arg(long = "var", required = true)]
     pub vars: Vec<String>,
-    /// 状態ごとの焦点距離の目標（カンマで、状態の数だけ。"-" は目標なし）
+    /// Focal length targets per state (comma-separated, one per state; "-" for no target)
     #[arg(long, conflicts_with = "pmag", allow_hyphen_values = true)]
     pub efl: Option<String>,
-    /// 状態ごとの近軸倍率の目標（有限物体。書き方は --efl と同じ）
+    /// Paraxial magnification targets per state (finite object; written like --efl)
     #[arg(long, allow_hyphen_values = true)]
     pub pmag: Option<String>,
-    /// 隣り合う状態の間にとる点の数
+    /// Number of points between neighboring states
     #[arg(long, default_value_t = 0)]
     pub steps: usize,
-    /// 像の評価関数: spot か wavefront
+    /// Image merit: spot or wavefront
     #[arg(long, default_value = "spot")]
     pub merit: String,
-    /// 基準: centroid か chief
+    /// Reference: centroid or chief
     #[arg(long = "reference", default_value = "centroid")]
     pub reference: String,
     #[arg(long, default_value_t = 3)]
     pub rings: usize,
-    /// 1 点の反復の上限
+    /// Maximum iterations per point
     #[arg(long, default_value_t = 50)]
     pub iters: usize,
-    /// 目標との差の許し（目標に対する比）
+    /// Tolerance from the target (relative to the target)
     #[arg(long, default_value_t = 1e-8)]
     pub tol: f64,
     #[arg(long)]
     pub json: bool,
-    /// 結果を書き出す（json・csv・npz。csv・npz は軌跡の表）
+    /// Write the result (json, csv or npz; csv and npz are the trajectory table)
     #[arg(long)]
     pub save: Option<PathBuf>,
 }
 
 #[derive(Args)]
 pub struct SwapArgs {
-    /// プロジェクトファイル（.json）
+    /// Project file (.json)
     pub file: PathBuf,
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
     #[arg(long = "lens-catalog", required = true)]
     pub lens_catalog: Vec<PathBuf>,
-    /// 差し替え探索の設定（JSON: slots・vars・merit・iters・state など）
+    /// Swap search settings (JSON: slots, vars, merit, iters, state, etc.)
     #[arg(long)]
     pub spec: PathBuf,
-    /// 状態（設定の state より優先）
+    /// State (takes precedence over state in the settings)
     #[arg(long)]
     pub state: Option<String>,
-    /// 組ごとの結果を逐次書き出す JSONL（一括実行の形）。同じ探索のファイルがあれば続きから回す
+    /// JSONL to write each combination's result to as it goes (the batch run format). Continues if a file of the same search exists
     #[arg(long, short)]
     pub out: Option<PathBuf>,
-    /// --out のファイルがあっても続きからにせず書き直す
+    /// Rewrite the --out file instead of continuing from it
     #[arg(long = "no-resume")]
     pub no_resume: bool,
-    /// 出力する組の数（評価関数の小さい順）。0 ならすべて
+    /// Number of combinations to output (in order of merit). 0 for all
     #[arg(long, default_value_t = 20)]
     pub top: usize,
     #[arg(long)]
     pub json: bool,
-    /// 結果を書き出す（json・csv・npz）
+    /// Write the result (json, csv or npz)
     #[arg(long)]
     pub save: Option<PathBuf>,
 }
