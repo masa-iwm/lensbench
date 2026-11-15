@@ -10,6 +10,8 @@ pub(super) struct DocLoc {
     pub(super) file: Option<PathBuf>,
     /// 今の系（組合せ）を保存するファイル（開いた・保存したプロジェクトの .json。Ctrl+S の書き先）
     pub(super) doc_path: Option<PathBuf>,
+    /// 保存先の無い組合せを作った元のファイル（.zmx から作った組合せ）。題名・保存の既定の名前に使う
+    pub(super) doc_from: Option<PathBuf>,
     /// 組合せの系のファイル（開いている系が組合せか）
     pub(super) combo_path: Option<PathBuf>,
     /// 最後に組合せから作ったプロジェクト
@@ -99,4 +101,29 @@ impl Drop for WorkDir {
         #[cfg(not(target_arch = "wasm32"))]
         let _ = std::fs::remove_dir_all(work_dir());
     }
+}
+
+impl DocLoc {
+    /// 題名に出すファイル（組合せは保存先か作った元、開いた系はそのファイル）
+    pub(super) fn shown(&self, combo: bool) -> Option<&PathBuf> {
+        if combo {
+            self.doc_path.as_ref().or(self.doc_from.as_ref())
+        } else {
+            self.file.as_ref()
+        }
+    }
+}
+
+/// .zmx から作った組合せは、保存するまで元のファイルの名前を出す
+#[test]
+fn shown_falls_back_to_the_source() {
+    let mut l = DocLoc {
+        file: Some("/tmp/w/combo.json".into()),
+        doc_from: Some("/d/a.zmx".into()),
+        ..Default::default()
+    };
+    assert_eq!(l.shown(true), Some(&PathBuf::from("/d/a.zmx")));
+    assert_eq!(l.shown(false), Some(&PathBuf::from("/tmp/w/combo.json")));
+    l.doc_path = Some("/d/a.json".into());
+    assert_eq!(l.shown(true), Some(&PathBuf::from("/d/a.json")));
 }

@@ -64,6 +64,7 @@ impl Core {
             // .zmx から作った組合せは .zmx に上書きしない（保存でプロジェクトの書き先を選ばせる）
             let from_zmx = v.is_some_and(|v| v["zmx"] == json!(true));
             self.loc.doc_path = (!from_zmx).then(|| p.to_path_buf());
+            self.loc.doc_from = from_zmx.then(|| p.to_path_buf());
             self.build_combo(self.doc.combo.project());
             return;
         }
@@ -72,6 +73,7 @@ impl Core {
         self.loc.doc_path = v
             .is_some_and(|v| v["blocks"] != json!(true) && v["zmx"] != json!(true))
             .then(|| p.to_path_buf());
+        self.loc.doc_from = None;
         self.open(p);
     }
 }

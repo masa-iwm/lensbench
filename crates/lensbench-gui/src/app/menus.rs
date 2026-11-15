@@ -605,11 +605,7 @@ impl App {
                     ui.label(RichText::new(version()).small().color(weak));
                 });
             }
-            let shown = if self.c.is_combo() {
-                self.c.loc.doc_path.clone()
-            } else {
-                self.c.loc.file.clone()
-            };
+            let shown = self.c.loc.shown(self.c.is_combo()).cloned();
             let dirty = self.c.dirty();
             if shown.is_some() || dirty {
                 let name = shown

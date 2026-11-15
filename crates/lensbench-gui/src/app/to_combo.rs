@@ -116,6 +116,7 @@ impl Core {
         self.p.combo_view = combo::View::default();
         self.combo_len_prev = self.doc.combo.picks.len();
         self.loc.doc_path = None;
+        self.loc.doc_from = None;
         self.info(tr(
             "Made the opened system an element of the combination (system import)",
         ));

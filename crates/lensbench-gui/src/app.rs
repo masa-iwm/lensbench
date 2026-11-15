@@ -807,7 +807,7 @@ impl Core {
         self.loc.built = None;
         self.loc.built_combo = None;
         self.loc.combo_path = None;
-        self.loc.doc_path = None;
+        (self.loc.doc_path, self.loc.doc_from) = (None, None);
         self.layout_data = None;
         self.overlay = Overlay::default();
         self.load_stale = false;
@@ -1166,11 +1166,8 @@ impl Core {
         let path = match keep {
             Some(p) => p,
             None => {
-                let name = self
-                    .loc
-                    .doc_path
-                    .as_ref()
-                    .or(if combo { None } else { self.loc.file.as_ref() })
+                let name = (self.loc.doc_path.as_ref())
+                    .or(self.loc.shown(combo))
                     .and_then(|f| f.file_stem())
                     .map(|x| x.to_string_lossy().into_owned())
                     .filter(|x| !x.is_empty())
@@ -1218,6 +1215,7 @@ impl Core {
             };
         } else {
             self.loc.doc_path = Some(path.clone());
+            self.loc.doc_from = None;
             self.worker.send(
                 Tag::Save,
                 "save",
@@ -3568,7 +3566,7 @@ impl Core {
             return;
         }
         m.model = Some(dst.clone());
-        self.loc.doc_path = None;
+        (self.loc.doc_path, self.loc.doc_from) = (None, None);
         self.open(&dst);
     }
 
@@ -4613,11 +4611,7 @@ impl eframe::App for App {
             }
         }
         // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
-        let shown = if self.c.is_combo() {
-            self.c.loc.doc_path.as_ref()
-        } else {
-            self.c.loc.file.as_ref()
-        };
+        let shown = self.c.loc.shown(self.c.is_combo());
         let mark = if self.c.dirty() { "● " } else { "" };
         let title = match shown {
             Some(f) => format!(
