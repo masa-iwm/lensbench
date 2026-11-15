@@ -359,6 +359,13 @@ pub struct RecEntry {
     pub p: V3,
 }
 
+/// 交点のニュートン法を止める刻みの大きさ: 1e-14 mm か、距離 s・矢高 z の丸め（8 ulp）の大きい方。
+/// 矢高が数十 mm の大きな面では q[2] − z の丸めが 1e-14 を超え、収束しても 60 反復まで回っていた（KRN-13）
+#[inline(always)]
+pub(crate) fn newton_tol(s: f64, z: f64) -> f64 {
+    (8.0 * f64::EPSILON * (s.abs() + z.abs())).max(1e-14)
+}
+
 /// 追跡の内側で面ごとの記録を受け取る（k は無視しない面の通し番号）
 pub trait RecSink {
     fn put(&mut self, k: usize, e: RecEntry);
@@ -600,7 +607,7 @@ pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, boo
             let (z, zx, zy) = sag_toroidal(c, kc, &d.asph, d.cx, q[0], q[1]);
             ds = (q[2] - z) / (kl[2] - zx * kl[0] - zy * kl[1]);
             s -= ds;
-            if !(ds.abs() > 1e-14) {
+            if !(ds.abs() > crate::trace::newton_tol(s, z)) {
                 break;
             }
         }
@@ -1081,7 +1088,7 @@ pub(crate) fn trace_core<R: RecSink + ?Sized>(
                         let (z, dz) = sag(c, kc, &d.asph, r2);
                         ds = (q[2] - z) / (kl[2] - 2.0 * dz * (q[0] * kl[0] + q[1] * kl[1]));
                         s -= ds;
-                        if !(ds.abs() > 1e-14) {
+                        if !(ds.abs() > crate::trace::newton_tol(s, z)) {
                             break;
                         }
                     }

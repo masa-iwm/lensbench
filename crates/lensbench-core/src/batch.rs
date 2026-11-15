@@ -728,7 +728,10 @@ fn run<R: LaneSink>(
                     let dn = (q[2] - z) / (kl[2] - 2.0 * dz * (q[0] * kl[0] + q[1] * kl[1]));
                     ds = sel(act, dn, ds);
                     s = sel(act, s - dn, s);
-                    act = act & dn.abs().gt(1e-14);
+                    // 止める刻みは trace::newton_tol と同じ（1e-14 か s・z の丸めの 8 ulp の大きい方）
+                    let t = (s.abs() + z.abs()) * F::splat(8.0 * f64::EPSILON);
+                    let tol = sel(t.gt(1e-14), t, F::splat(1e-14));
+                    act = act & dn.abs().gt(tol);
                 }
                 // !(|ds| <= 1e-10)（NaN も）
                 err = sel(newton & !ds.abs().le(1e-10), jf, err);

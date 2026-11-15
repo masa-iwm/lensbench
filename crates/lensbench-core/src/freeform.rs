@@ -702,7 +702,7 @@ pub fn isect_with(
         let (z, zx, zy) = f(q[0], q[1]);
         ds = (q[2] - z) / (kl[2] - zx * kl[0] - zy * kl[1]);
         s -= ds;
-        if !(ds.abs() > 1e-14) {
+        if !(ds.abs() > crate::trace::newton_tol(s, z)) {
             break;
         }
     }
