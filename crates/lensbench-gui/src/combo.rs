@@ -24,6 +24,7 @@ mod figure;
 mod mech;
 mod raw;
 mod sys_extra;
+mod write_face;
 mod zgroup;
 pub use ap_shape::ApShape;
 pub use detector::DetectorPick;
@@ -613,17 +614,6 @@ impl Pick {
             _ => {}
         }
         p
-    }
-
-    /// 面の値の上書きを足す（同じ面・同じ値の前の上書きは置き換える）
-    pub fn set_edit(&mut self, surface: usize, field: &str, value: Value) {
-        self.edits
-            .retain(|e| !(e.surface == surface && e.field == field));
-        self.edits.push(SurfEdit {
-            surface,
-            field: field.into(),
-            value,
-        });
     }
 
     /// BS の分ける面の分け方

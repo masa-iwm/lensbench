@@ -2220,7 +2220,7 @@ impl Core {
         Some((k, (a..j).filter(|&i| !rows[i].is_cb()).count()))
     }
 
-    /// 組合せの系の面 j の値 key を、組合せの要素に当てる（要素の最後の面の厚さは後の空気、ほかは面の上書き）
+    /// 組合せの系の面 j の値 key を、組合せの要素に当てる（要素の最後の面の厚さは後の空気、ほかは要素の中身か面の上書き）
     fn combo_surface_edit(
         &mut self,
         spans: &[Option<[usize; 2]>],
@@ -2255,7 +2255,7 @@ impl Core {
                 let a = spans[k].map(|s| s[0]).unwrap_or(j);
                 let rel = (a..j).filter(|&i| !rows[i].is_cb()).count();
                 if let Some(p) = self.doc.combo.el_mut(k) {
-                    p.set_edit(rel, key, value);
+                    p.write_face(rel, key, value);
                 }
             }
             _ => {
