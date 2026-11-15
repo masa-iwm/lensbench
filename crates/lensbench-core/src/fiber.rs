@@ -74,6 +74,16 @@ pub struct Coupling {
 }
 
 impl Coupling {
+    /// 位相の標本が足りないときの注意（[`Self::phase_step`] が π/2 を超えたとき）
+    pub fn warning(&self) -> Option<String> {
+        (self.phase_step > std::f64::consts::FRAC_PI_2).then(|| {
+            format!(
+                "fiber coupling: the phase changes by {:.2} rad between neighboring grid points (more than π/2); increase grid",
+                self.phase_step
+            )
+        })
+    }
+
     /// 入射偏光 e（送り側の局所 x・y）の結合効率 |C e|²（偏光込みで計算したときだけ）
     pub fn eta_pol(&self, e: [C64; 2]) -> Option<f64> {
         let c = self.jones?;

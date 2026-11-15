@@ -374,18 +374,20 @@ pub fn survey(
         Ok(p)
     };
     let main = power(sys);
-    let mut out = Vec::new();
-    for (a, b) in pairs(sys, first, last) {
+    // 組どうしは独立なので並列に（順と、最初の誤りは逐次と同じ）
+    let ps = pairs(sys, first, last);
+    crate::par::map(&ps, |&(a, b)| {
         let g = ghost_system(sys, a, b)?;
         let intensity = match (&main, power(&g.sys)) {
             (Ok(m), Ok(p)) => Ok(p / m),
             (Err(e), _) => Err(format!("the original system: {e}")),
             (_, Err(e)) => Err(e),
         };
-        out.push(GhostInfo {
+        Ok(GhostInfo {
             par: paraxial(&g),
             intensity,
-        });
-    }
-    Ok(out)
+        })
+    })
+    .into_iter()
+    .collect()
 }

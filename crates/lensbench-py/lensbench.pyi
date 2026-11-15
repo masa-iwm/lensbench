@@ -322,7 +322,7 @@ class System:
         """単一モードファイバへの結合効率（OpticStudio の FICL 相当）。送り側は物点 source（物体面の局所 [mm]）、受け側は像面の局所の点 receiver、
         どちらも遠視野の 1/e² の NA のガウスモード（na_receiver の省略は na_source）。物体空間の sin θ ≤ na_max（省略で min(3·NA/n, 0.999)）を
         grid × grid の方向で標本化し、受け側の方向空間で重なり積分をとる。dict: eta（結合効率）・system（受け側まで届いた送り側の電力の比）・receiver（eta/system）・
-        phase_step（隣り合う格子点の位相の差の最大 [rad]、π/2 超なら grid を増やす）。pol=True なら膜込みの偏光の重なり jones（(2, 2) complex、[出射 x/y, 入射 x/y]、
+        phase_step（隣り合う格子点の位相の差の最大 [rad]、π/2 超なら警告。grid を増やす）。pol=True なら膜込みの偏光の重なり jones（(2, 2) complex、[出射 x/y, 入射 x/y]、
         入射偏光 e の結合は |jones @ e|²）も。clip_stop=True（既定）なら系の絞り（開口がなければ絞り半径の円）の外を通る光を系の損失に数える（FICL と同じ）。有限物体の系だけ
         """
 

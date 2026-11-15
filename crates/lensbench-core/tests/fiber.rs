@@ -161,10 +161,12 @@ fn phase_step_shows_undersampled_phase() {
     };
     let c = fiber_coupling(&relay(0.0), 0, &o, None).unwrap();
     assert!(c.phase_step < 1e-6, "{}", c.phase_step);
+    assert!(c.warning().is_none());
     let c = fiber_coupling(&relay(5.0), 0, &o, None).unwrap();
     assert!(
         c.phase_step > std::f64::consts::FRAC_PI_2,
         "{}",
         c.phase_step
     );
+    assert!(c.warning().is_some_and(|w| w.contains("increase grid")));
 }
