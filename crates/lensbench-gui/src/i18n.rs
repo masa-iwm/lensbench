@@ -122,10 +122,21 @@ mod tests {
 
     /// ソースの tr("…")・trf("…") の文字列（1 行に書いたもの）
     fn keys_in_source() -> Vec<String> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        // src の下を全部（app/ などの下のフォルダも）
+        let mut files = Vec::new();
+        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(d) = dirs.pop() {
+            for e in std::fs::read_dir(d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    dirs.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    files.push(p);
+                }
+            }
+        }
         let mut keys = Vec::new();
-        for e in std::fs::read_dir(dir).unwrap() {
-            let path = e.unwrap().path();
+        for path in files {
             // この表の説明（コメント）は除く
             if path.ends_with("i18n.rs") {
                 continue;

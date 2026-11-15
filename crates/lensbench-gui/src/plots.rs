@@ -239,9 +239,7 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                         }
                     }
                     ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(trf("視野 {}", &[&f])).color(theme::weak_text(&vis)),
-                        );
+                        ui.label(RichText::new(field_namer(ui)(f)).color(theme::weak_text(&vis)));
                         if let Some(rms) = spot_rms(result, f) {
                             let um = rms * 1e3;
                             ui.label(
@@ -265,6 +263,17 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
 
 /// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）
 pub const FIELD_LABELS: &str = "lensbench-field-labels";
+
+/// 視野の名前「視野 2 (0, 14)」を作る関数（座標が分かれば添える、GUX-28）。視野の番号は 1 から
+pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
+    let coords: Vec<String> = ui
+        .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
+        .unwrap_or_default();
+    move |f| match f.checked_sub(1).and_then(|i| coords.get(i)) {
+        Some(c) => trf("視野 {} {}", &[&f, c]),
+        None => trf("視野 {}", &[&f]),
+    }
+}
 
 /// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
 pub fn mtf(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64) {
@@ -345,15 +354,7 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ke
         })
         .x_axis_label(unit.clone())
         .y_axis_label("MTF");
-    let coords: Vec<String> = ui
-        .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
-        .unwrap_or_default();
-    let field_label = |f: usize| -> String {
-        match coords.get(f.wrapping_sub(1)) {
-            Some(c) => trf("視野 {} {}", &[&f, c]),
-            None => trf("視野 {}", &[&f]),
-        }
-    };
+    let field_label = field_namer(ui);
     crate::plot_tools::show(ui, plot, &unit, |p, reg| {
         for (f, _k, pts) in before {
             p.line(

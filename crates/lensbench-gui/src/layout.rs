@@ -177,6 +177,13 @@ pub enum Kind {
     Zoom,
 }
 
+impl Kind {
+    /// 1 枚だけ置くパネル（解析のほかは全部）。足す操作は、あれば表に出す（GUX-16）
+    pub fn single(&self) -> bool {
+        !matches!(self, Kind::Analysis(_))
+    }
+}
+
 /// 1 つのパネル。id で見分ける
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pane {

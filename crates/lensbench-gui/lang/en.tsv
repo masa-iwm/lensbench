@@ -36,7 +36,7 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 キーボード操作	Keyboard shortcuts
 キーボード操作の一覧	Keyboard shortcuts
 キーボード操作の一覧（F1）	Keyboard shortcuts (F1)
-コマンドパレット（操作・解析・パネル・並びを名前で探す）	Command palette (find actions, analyses, panels and layouts by name)
+コマンドパレット（操作・解析・パネル・並びを名前で探す）	Command palette (find actions, analyses, panels and workspaces by name)
 パネル	Panels
 パネルの中の入力欄・ボタンを順に移る	Move between fields and buttons in a panel
 パネルはタブを引きずって並べ替え・分割・フロートできます。タブを右クリックすると別の窓（別モニター）に出せます。	Drag a tab to reorder, split or float panels. Right-click a tab to move it to a separate window (another monitor).
@@ -53,14 +53,14 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 上限	Max
 下限	Min
 並び	Layout
-並び: {}	Layout: {}
-並び「{}」を保存	Saved layout "{}"
-今の並びを保存	Save current layout
-今の並びを保存…	Save current layout…
+並び: {}	Workspace: {}
+並び「{}」を保存	Saved workspace "{}"
+今の並びを保存	Save current workspace
+今の並びを保存…	Save current workspace…
 作動 F 値	Working F/#
 保存	Save
-保存した並び	Saved layouts
-保存した並び: {}	Saved layout: {}
+保存した並び	Saved workspaces
+保存した並び: {}	Saved workspace: {}
 値を変えると、開いている解析をすぐ計算し直します（↑↓ キーでも動かせます）	Changing a value recomputes the open analyses right away (↑↓ keys also work)
 値を変える前との差	Difference from before the change
 像空間 NA	Image space NA
@@ -71,7 +71,7 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 入射瞳径 [mm]	Entrance pupil diameter [mm]
 全視野	All fields
 全長	Total track
-初期の並び	Preset layouts
+初期の並び	Preset workspaces
 別の窓に出す（別モニターへ）	Move to separate window (another monitor)
 厚さ	Thickness
 反転	Reverse
@@ -84,7 +84,7 @@ nd・νd はカタログ温度の分散式から。表の行か図の点をク�
 径	Dia.
 径 [mm]	Diameter [mm]
 後の空気	Air after
-操作・解析・パネル・並びを探す	Search actions, analyses, panels, layouts
+操作・解析・パネル・並びを探す	Search actions, analyses, panels, workspaces
 日本語のフォントが見つからない	No Japanese font found
 明るい	Light
 暗い	Dark
@@ -1591,3 +1591,10 @@ BS の分ける面の向きを逆に	Flip the splitting surface of the BS
 半直径を固定した面の外の光線をける	Vignette rays outside fixed semi-diameters
 浮動開口（.zmx の FLAP など）。外すと半直径でけらない（半直径でけらない従来のモデルと比べるとき）	Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)
 最適化を始めた後に系が変わったので当てない（もう一度最適化する）	The system changed after the optimization started, so the result was not applied (optimize again)
+パネルを出す: {}	Show panel: {}
+解析を足す	Add analysis
+1 枚だけのパネル。あれば表に出す	Single panel; brings it to the front if already open
+画面の配置	Workspace
+見本を書き出せない: {}	Cannot write the samples: {}
+系ファイル（.json）として保存…（Ctrl+S）	Save as system file (.json)…(Ctrl+S)
+…（長いので {} 字で切った。全文は「コピー」「保存」で）	… (truncated at {} characters; use Copy or Save for the full text)

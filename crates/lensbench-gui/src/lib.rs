@@ -40,6 +40,8 @@ mod plots;
 mod portable;
 #[cfg(any(target_arch = "wasm32", test))]
 mod remote_frame;
+#[cfg(not(target_arch = "wasm32"))]
+mod samples;
 mod split;
 mod surf_edit;
 mod swap_panel;
@@ -108,6 +110,7 @@ pub fn main() -> std::process::ExitCode {
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
     builtin_glass::install(settings_dir.clone());
+    samples::install(settings_dir.clone());
     lensbench_cad::detail::install_detail_loader();
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);

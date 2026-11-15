@@ -35,6 +35,69 @@ fn main() {
         hash.unwrap_or_default()
     );
     icon();
+    samples();
+}
+
+fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>, keep: &dyn Fn(&Path) -> bool) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut v: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+    v.sort();
+    for p in v {
+        if p.is_dir() {
+            walk(&p, out, keep);
+        } else if keep(&p) {
+            out.push(p);
+        }
+    }
+}
+
+/// アプリ版に同梱する見本（例題の組合せ・プロジェクトとそのレンズ、tests/refs の系、公開用ガラス）の一覧。
+/// Web 版は lensbench-web が同じものを置き場に入れるので、ここでは空にする（GUX-26）
+fn samples() {
+    let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("samples.rs");
+    let mut src =
+        String::from("/// (リポジトリの中のパス, 中身)\npub static FILES: &[(&str, &[u8])] = &[\n");
+    if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
+        let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let ext = |e: &'static str| {
+            move |p: &Path| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(e))
+        };
+        let mut files = Vec::new();
+        walk(&root.join("examples/combos"), &mut files, &ext("json"));
+        walk(&root.join("examples/projects"), &mut files, &ext("json"));
+        walk(&root.join("examples/lenses"), &mut files, &|_| true);
+        walk(&root.join("tests/refs"), &mut files, &|p| {
+            p.file_name().is_some_and(|x| x == "system.zmx")
+        });
+        walk(&root.join("tests/glass"), &mut files, &ext("agf"));
+        for f in &files {
+            let rel = f
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            src.push_str(&format!(
+                "    ({rel:?}, include_bytes!({:?})),\n",
+                f.display().to_string()
+            ));
+        }
+        for d in [
+            "examples/combos",
+            "examples/projects",
+            "examples/lenses",
+            "tests/refs",
+            "tests/glass",
+        ] {
+            println!("cargo:rerun-if-changed={}", root.join(d).display());
+        }
+    }
+    src.push_str("];\n");
+    std::fs::write(out, src).unwrap();
 }
 
 /// exe のアイコン（assets/icon.ico、元は icon.svg）

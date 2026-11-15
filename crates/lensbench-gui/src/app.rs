@@ -4,6 +4,12 @@
 //! 計算はすべて serve と同じ method（load・analyze・get・set・write・trace・glasses・lenses）を [`Worker`] に頼む。
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
+mod help;
+mod menus;
+mod status;
+mod take;
+mod tour_steps;
+
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -194,6 +200,9 @@ struct Status {
     text: String,
     error: bool,
 }
+
+/// 結果の JSON の表示で見せる長さ（字数。これより長い分は切る）
+const JSON_VIEW_MAX: usize = 200_000;
 
 /// serve の要求の名前を画面の言葉に（状態の行、GUX-06）
 fn method_label(m: &str) -> String {
@@ -475,6 +484,8 @@ struct Core {
     /// カタログの玉の断面を頼んだ行
     preview_req: Option<usize>,
     status: Status,
+    /// 下の行の誤りを出した要求とその文（同じ要求がうまくいったら消す、GUX-27）
+    status_err: Option<(Tag, String)>,
     /// 読み込んだ系のファイル
     file: Option<PathBuf>,
     /// load の結果（系の概要）
@@ -591,6 +602,8 @@ struct Core {
     zoom: crate::zoom_panel::ZoomPanel,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
+    /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す、GAR-09）
+    param_sys_cache: std::cell::RefCell<Option<(u64, std::rc::Rc<crate::param_pick::Sys>)>>,
     /// 系を変える要求（読込・値の変更・編集・元に戻す）の返事を受け取った回数（最適化の結果を当ててよいか）
     sys_gen: u64,
     /// Web 版の別のタブのパネル: 計算は元のタブに頼む（Some(頼むか)）。None はふつうのパネル
@@ -1090,7 +1103,19 @@ impl Core {
     }
 
     /// パラメータの名前の欄の補完・階層選択の候補（面・玉・群・波長の数）
-    fn param_sys(&self) -> crate::param_pick::Sys {
+    /// 変数名の補完の候補を作る系の面・玉・群（6 つのパネルが毎フレーム呼ぶので rev ごとに 1 回だけ作る、GAR-09）
+    fn param_sys(&self) -> std::rc::Rc<crate::param_pick::Sys> {
+        if let Some((r, s)) = &*self.param_sys_cache.borrow() {
+            if *r == self.rev {
+                return s.clone();
+            }
+        }
+        let s = std::rc::Rc::new(self.build_param_sys());
+        *self.param_sys_cache.borrow_mut() = Some((self.rev, s.clone()));
+        s
+    }
+
+    fn build_param_sys(&self) -> crate::param_pick::Sys {
         crate::param_pick::Sys {
             surfs: self
                 .ld_rows
@@ -1109,13 +1134,12 @@ impl Core {
     }
 
     fn waves_um(&self) -> Vec<f64> {
+        // 配列を複製せずに読む（GAR-09）
         self.summary
             .as_ref()
-            .and_then(|s| s["wavelengths_um"].as_array().cloned())
+            .and_then(|s| s["wavelengths_um"].as_array())
+            .map(|a| a.iter().filter_map(Value::as_f64).collect())
             .unwrap_or_default()
-            .iter()
-            .filter_map(Value::as_f64)
-            .collect()
     }
 
     fn primary(&self) -> usize {
@@ -1432,446 +1456,6 @@ impl Core {
         }
     }
 
-    fn take(&mut self, mut d: Done) {
-        if d.tag == Tag::Refresh {
-            let n = d.replies.len();
-            if !d.skipped {
-                for (m, p) in refresh_calls().into_iter().skip(n) {
-                    self.worker.send(Tag::of_refresh(&m), &m, p);
-                }
-            }
-            return d.split().into_iter().for_each(|d| self.take(d));
-        }
-        self.rev += 1;
-        if matches!(d.tag, Tag::Load | Tag::Set | Tag::Edit | Tag::History) {
-            self.sys_gen += 1;
-        }
-        let ms = d.ms;
-        if let Some((method, e)) = d.error() {
-            let text = format!("{}: {}", method_label(method), plain_error(e));
-            match &d.tag {
-                Tag::Analyze(id) | Tag::Rays(id) => {
-                    self.results.entry(*id).or_default().error = Some(e.to_string());
-                }
-                Tag::Get => {
-                    if let Some(p) = d.replies[0].params["param"].as_str() {
-                        self.param_vals.remove(p);
-                    }
-                }
-                // 断られた変更は欄から消す（系の値を読み直す）
-                Tag::Edit => {
-                    self.oss = Default::default();
-                    self.ld.insp.stale();
-                }
-                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）
-                Tag::Load => {
-                    if let Some(f) = d.replies[0].params["file"].as_str() {
-                        let f = f.to_string();
-                        self.s.recent.retain(|x| x != &f);
-                        if let Some(name) = missing_glass_name(e) {
-                            let m = self.missing_glass.get_or_insert_with(Default::default);
-                            let same = m
-                                .model
-                                .as_ref()
-                                .is_some_and(|p| p.display().to_string() == f);
-                            if !same {
-                                *m = MissingGlass {
-                                    file: PathBuf::from(&f),
-                                    ..Default::default()
-                                };
-                            }
-                            if !m.names.contains(&name) {
-                                m.names.push(name);
-                            }
-                            if same && m.tries < 64 {
-                                // 代用した写しにまだ無いガラスがある: それも代用して読み直す
-                                self.open_model_glass();
-                                return;
-                            }
-                        }
-                    }
-                }
-                Tag::UserCatalog => self.cat_save.note = Some((e.to_string(), true)),
-                Tag::CatalogFill => self.fill.failed(e),
-                Tag::Optimize => {
-                    self.opt.running = false;
-                    self.opt.error = Some(e.to_string());
-                }
-                Tag::Swap => {
-                    self.swap.running = false;
-                    self.swap.error = Some(e.to_string());
-                }
-                Tag::Tolerance => {
-                    self.tol.running = false;
-                    self.tol.error = Some(e.to_string());
-                }
-                Tag::Zoom => {
-                    self.zoom.running = false;
-                    self.zoom.error = Some(e.to_string());
-                }
-                _ => {}
-            }
-            self.status = Status { text, error: true };
-            return;
-        }
-        let mut text = trf(
-            "{} 完了（{} ms）",
-            &[
-                &method_label(&d.replies[0].method),
-                &fmt_num((ms * 10.0).round() / 10.0),
-            ],
-        );
-        let (params, mut v) = d.take_first();
-        match d.tag {
-            Tag::Load => {
-                // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
-                self.hist = (0, 0);
-                self.hist_list = Default::default();
-                self.take_history(&v);
-                self.new_undo = None;
-                self.new_redo = None;
-                if d.replies[0].method == "reload" {
-                    text = tr("読み直した（Ctrl+Z で戻す）").into();
-                }
-                if let Some(m) = self.missing_glass.take() {
-                    if m.model.is_some() {
-                        text = trf(
-                            "ガラス {} をモデルガラス（nd・νd）で代用して開いた（元のファイルは変えていない。保存は名前を付けて）",
-                            &[&m.names.join("・")],
-                        );
-                    }
-                }
-                self.on_loaded(v);
-            }
-            Tag::Info => self.info = Some(v),
-            Tag::Analyze(id) => {
-                let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
-                let r = self.results.entry(id).or_default();
-                // 前の結果は同じ解析・同じ設定のとき（系を変えたときの差）だけ。設定を変えたら出さない（GUX-19）
-                r.prev = if r.cmd == cmd && r.params == params {
-                    r.value.take()
-                } else {
-                    None
-                };
-                r.params = params;
-                r.cmd = cmd;
-                r.value = Some(v);
-                r.ms = ms;
-                r.error = None;
-            }
-            Tag::Rays(id) => {
-                let rays = d
-                    .replies
-                    .iter()
-                    .filter_map(|r| {
-                        let (_, a) = r.result.as_ref().ok()?;
-                        let f = r.params["field"].as_u64()? as usize;
-                        let w = r.params["wave"].as_u64()? as usize;
-                        Some(plots::rays_from(f, w, a))
-                    })
-                    .collect();
-                self.results.entry(id).or_default().rays = rays;
-                return;
-            }
-            Tag::Glasses => {
-                self.browser.set_glasses(catalog::parse_glasses(&v));
-                self.browser.glass_sel = None;
-                self.ld_glasses = self
-                    .browser
-                    .glasses
-                    .iter()
-                    .map(|g| lens_data::GlassChoice {
-                        name: g.name.clone(),
-                        desc: format!("{}  nd {:.5}  νd {:.2}", g.catalog, g.nd, g.vd),
-                    })
-                    .collect();
-                text = trf("ガラス {} 種", &[&self.browser.glasses.len()]);
-            }
-            Tag::Lenses => {
-                self.browser.set_lenses(catalog::parse_lenses(&v));
-                self.browser.lens_sel = None;
-                // 前のカタログの断面は捨てる（同じ番号の行でも別の玉。作りかけの結果も受け取らない）
-                self.browser.preview = None;
-                self.preview_req = None;
-                let bad = self
-                    .browser
-                    .lenses
-                    .iter()
-                    .filter(|l| l.error.is_some())
-                    .count();
-                text = if bad > 0 {
-                    trf(
-                        "カタログレンズ {} 枚、うち {} 枚は読めない（{} ms）",
-                        &[&self.browser.lenses.len(), &bad, &fmt_num(ms.round())],
-                    )
-                } else {
-                    trf(
-                        "カタログレンズ {} 枚（{} ms）",
-                        &[&self.browser.lenses.len(), &fmt_num(ms.round())],
-                    )
-                };
-            }
-            Tag::Get => {
-                if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
-                    self.param_vals.insert(p.to_string(), x);
-                    if !self.s.params.iter().any(|q| q == p) {
-                        self.s.params.push(p.to_string());
-                    }
-                }
-                return;
-            }
-            Tag::HistoryDepth => {
-                self.take_history(&v);
-                return;
-            }
-            Tag::Set | Tag::Edit | Tag::History => {
-                self.take_history(&v);
-                if d.tag != Tag::History {
-                    self.new_redo = None;
-                }
-                if d.tag == Tag::History && std::mem::take(&mut self.redo_new_pending) {
-                    self.new_system();
-                    return;
-                }
-                // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
-                // 面の表は変更あり
-                if let Some(l) = v.get_mut("loaded") {
-                    self.on_loaded(l.take());
-                    let top = &self.hist_list.0.first();
-                    self.ld_dirty =
-                        top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
-                    self.status = Status {
-                        text: tr(if params["back"].as_bool() == Some(true) {
-                            "元に戻した"
-                        } else {
-                            "やり直した"
-                        })
-                        .into(),
-                        error: false,
-                    };
-                    return;
-                }
-                if d.tag == Tag::History {
-                    text = tr(if params["back"].as_bool() == Some(true) {
-                        "元に戻した"
-                    } else {
-                        "やり直した"
-                    })
-                    .into();
-                }
-                // 値の変更（Set）も保存していない変更
-                self.ld_dirty = true;
-                // 値を変えたら面の表・要約と、開いている解析を計算し直す
-                self.refresh();
-                self.worker
-                    .send(Tag::Layout, "layout", self.layout_params());
-                self.rerun = Some(true);
-            }
-            // take の頭で分けて回すので来ない
-            Tag::Write | Tag::Refresh => {}
-            Tag::LayoutExport => {
-                text = trf(
-                    "レイアウトを {} に書き出した",
-                    &[&v["written"].as_str().unwrap_or_default()],
-                );
-            }
-            Tag::Surfaces => {
-                self.oss.stale();
-                // 要約の面の数も今の系に（読み込み時のままにしない）
-                if let (Some(sum), Some(a)) = (self.summary.as_mut(), v["surfaces"].as_array()) {
-                    sum["surfaces"] = json!(a.len());
-                }
-                let (rows, units) = match lens_data::parse(&v) {
-                    Ok(x) => x,
-                    Err(text) => return self.status = Status { text, error: true },
-                };
-                self.um.set_mechs(&v["mechanics"]);
-                self.ld_blocks = lens_data::tree(&units);
-                self.ld.insp.stale();
-                self.ld_rows = rows;
-                self.ld_units = units;
-                // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる（GUX-01）
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    let mats: Vec<&str> =
-                        self.ld_rows.iter().map(|r| r.material.as_str()).collect();
-                    let used = crate::builtin_glass::used(&mats, &agf_names(&self.s.glass_dirs));
-                    if !used.is_empty() && !self.status.error {
-                        self.status = Status {
-                            text: trf(
-                                "ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます",
-                                &[&used.join("・")],
-                            ),
-                            error: false,
-                        };
-                    }
-                }
-                return;
-            }
-            Tag::SurfData(j) => {
-                self.ld.insp.set(j, v);
-                return;
-            }
-            Tag::SysData => {
-                // 要約の視野・波長も今の系に
-                if let Some(sum) = self.summary.as_mut() {
-                    let d = &v["data"];
-                    if let Some(f) = d["fields"].as_array() {
-                        sum["fields"] = json!(f
-                            .iter()
-                            .map(|f| [f["x"].as_f64(), f["y"].as_f64()])
-                            .collect::<Vec<_>>());
-                    }
-                    if d["wavelengths"].is_array() {
-                        sum["wavelengths_um"] = d["wavelengths"].clone();
-                    }
-                    if let Some(p) = d["primary"].as_u64() {
-                        sum["primary"] = json!(p + 1);
-                    }
-                }
-                self.oss.set(&v);
-                return;
-            }
-            Tag::ConfigTable => match config_panel::parse(&v) {
-                Ok(t) => return self.mc.table = Some(t),
-                Err(text) => return self.status = Status { text, error: true },
-            },
-            Tag::ConfigDiff => {
-                self.mc.notes = v["notes"]
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|x| x.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let ops = v["ops"].clone();
-                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                text = trf("多重構成の表に {} 行を取り込んだ", &[&v["rows"]]);
-            }
-            Tag::SaveRange => {
-                text = trf(
-                    "{} に書き出し",
-                    &[&params["path"].as_str().unwrap_or_default()],
-                );
-            }
-            Tag::Save => {
-                self.ld_dirty = false;
-                text = trf("{} に保存", &[&params["path"].as_str().unwrap_or_default()]);
-            }
-            Tag::Layout => {
-                self.layout_data = Some(combo::LayoutData::parse(&v));
-                return;
-            }
-            Tag::LensPreview(_) => return,
-            Tag::Focus => {
-                self.focus_from(&d);
-                return;
-            }
-            Tag::UserCatalog => {
-                let (method, _, _) = d.first();
-                self.cat_save.take(&v);
-                text = match method {
-                    "catalog_add" => trf(
-                        "{} に {} を保存",
-                        &[
-                            &v["catalog"].as_str().unwrap_or_default(),
-                            &v["added"].as_str().unwrap_or_default(),
-                        ],
-                    ),
-                    "catalog_edit" => trf(
-                        "{} を書き換え",
-                        &[&v["catalog"].as_str().unwrap_or_default()],
-                    ),
-                    _ => text,
-                };
-                // Web 版: ブラウザに残すユーザーカタログのフォルダは、最初に保存したときにレンズのフォルダに足す
-                #[cfg(target_arch = "wasm32")]
-                if method == "catalog_add" {
-                    let d = crate::web_store::USER_CATALOGS.to_string();
-                    if v["catalog"].as_str().is_some_and(|c| c.starts_with(&d))
-                        && !self.s.lens_dirs.contains(&d)
-                    {
-                        self.s.lens_dirs.push(d);
-                    }
-                }
-                if method != "catalog_items" {
-                    self.cat_save.note = Some((text.clone(), false));
-                    // カタログブラウザに並ぶカタログなら一覧を読み直す
-                    self.refresh_catalog();
-                }
-            }
-            Tag::CatalogFill => {
-                self.fill.done(&v);
-                text = trf(
-                    "{} {} を補って {} に保存",
-                    &[
-                        &v["vendor"].as_str().unwrap_or_default(),
-                        &v["item"].as_str().unwrap_or_default(),
-                        &v["catalog"].as_str().unwrap_or_default(),
-                    ],
-                );
-                // 補足のカタログのフォルダをレンズのフォルダに足し、一覧を読み直す
-                if let Some(d) = crate::fill::fill_dir() {
-                    let d = d.display().to_string();
-                    if !self.s.lens_dirs.contains(&d) {
-                        self.s.lens_dirs.push(d);
-                    }
-                }
-                self.refresh_catalog();
-            }
-            Tag::Configs => {
-                self.overlay.update(&v);
-                return;
-            }
-            Tag::Optimize => {
-                self.opt.running = false;
-                self.opt.error = None;
-                self.opt.undo = None;
-                // 結果を系に当てたら元に戻す段が増える
-                self.worker.send(Tag::HistoryDepth, "history", json!({}));
-                text = trf(
-                    "最適化 完了（{} ms）",
-                    &[&fmt_num((ms * 10.0).round() / 10.0)],
-                );
-                self.opt.result = Some(v);
-            }
-            Tag::Swap => {
-                self.swap.running = false;
-                self.swap.error = None;
-                self.swap.inserted = None;
-                let r = views::read::<lensbench_design::swap::SwapReply>(&v);
-                if r.as_ref().is_ok_and(|r| r.results.is_some()) {
-                    text = trf(
-                        "差し替え探索 完了（{} ms）",
-                        &[&fmt_num((ms * 10.0).round() / 10.0)],
-                    );
-                }
-                (self.swap.result, self.swap.error) =
-                    r.map_or_else(|e| (None, Some(e)), |r| (Some(r), None));
-            }
-            Tag::Tolerance => {
-                self.tol.running = false;
-                self.tol.error = None;
-                text = trf(
-                    "公差 完了（{} ms）",
-                    &[&fmt_num((ms * 10.0).round() / 10.0)],
-                );
-                self.tol.result = Some(v);
-            }
-            Tag::Zoom => {
-                self.zoom.running = false;
-                self.zoom.error = None;
-                text = trf(
-                    "ズーム軌跡 完了（{} ms）",
-                    &[&fmt_num((ms * 10.0).round() / 10.0)],
-                );
-                self.zoom.result = Some(v);
-            }
-        }
-        self.status = Status { text, error: false };
-    }
-
     /// 値の変更を送る（計算中なら終わってからまとめて）
     /// 値の変更を送る。解析でない要求（読み込み・前の値の変更）を待っている間だけ待つ。解析が回っている間は
     /// 送れば中断する（Set は系を変える）が、動かし続けると解析が 1 つも出ないので 250 ms に 1 回まで（GAR-06）
@@ -1922,6 +1506,8 @@ impl Core {
     /// Web 版: 元のタブから届いた系の概要・結果を当てる（別のタブのパネル）
     #[cfg(target_arch = "wasm32")]
     fn apply_snapshot(&mut self, id: u64, v: &Value) {
+        // 結果・概要が変わった: rev を鍵にした写し（JSON の表示・変数の候補）を作り直させる
+        self.rev += 1;
         let some = |x: &Value| (!x.is_null()).then(|| x.clone());
         self.file = v["file"].as_str().map(PathBuf::from);
         self.summary = some(&v["summary"]);
@@ -2072,7 +1658,7 @@ impl Core {
 
     /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）
     fn refresh(&mut self) {
-        self.worker.send_batch(Tag::Refresh, refresh_calls());
+        self.worker.send_batch(Tag::Refresh, take::refresh_calls());
     }
 
     /// serve の結果の段の数と一覧を覚える
@@ -4366,9 +3952,31 @@ impl Core {
                     ui.separator();
                     json_view::show(ui, v);
                 } else if cfg.view == View::Json {
-                    let mut t = serde_json::to_string_pretty(v).unwrap_or_default();
+                    // 文字列は結果が変わったときだけ作る。大きい結果は頭だけ見せる（全文はコピー・保存で、GAR-09）
+                    let key = egui::Id::new(("res-json", id));
+                    let t = match ui.data(|d| d.get_temp::<(u64, std::sync::Arc<String>)>(key)) {
+                        Some((r, t)) if r == self.rev => t,
+                        _ => {
+                            let mut s = serde_json::to_string_pretty(v).unwrap_or_default();
+                            if s.len() > JSON_VIEW_MAX {
+                                let mut cut = JSON_VIEW_MAX;
+                                while !s.is_char_boundary(cut) {
+                                    cut -= 1;
+                                }
+                                s.truncate(cut);
+                                s.push('\n');
+                                s.push_str(&trf(
+                                    "…（長いので {} 字で切った。全文は「コピー」「保存」で）",
+                                    &[&JSON_VIEW_MAX],
+                                ));
+                            }
+                            let t = std::sync::Arc::new(s);
+                            ui.data_mut(|d| d.insert_temp(key, (self.rev, t.clone())));
+                            t
+                        }
+                    };
                     ui.add(
-                        egui::TextEdit::multiline(&mut t)
+                        egui::TextEdit::multiline(&mut t.as_str())
                             .code_editor()
                             .desired_width(f32::INFINITY),
                     );
@@ -4594,102 +4202,6 @@ impl Core {
         if let Some(p) = self.fill.window(ctx) {
             self.preview.send(Tag::CatalogFill, "catalog_fill", p);
         }
-    }
-
-    fn help_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.help_open;
-        // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール、GUX-22）
-        let screen = ctx.screen_rect();
-        egui::Window::new(tr("キーボード操作"))
-            .open(&mut open)
-            .default_width(460.0)
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(screen.center())
-            .max_height(screen.height() * 0.8)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                egui::Grid::new("keys").striped(true).show(ui, |ui| {
-                    for (k, v) in [
-                        ("Ctrl+K", tr("コマンドパレット（操作・解析・パネル・並びを名前で探す）")),
-                        ("Ctrl+N", tr("新規（組合せを空にする）")),
-                        ("Ctrl+O", tr("系のファイルを開く")),
-                        ("F5", tr("開いている解析をすべて計算し直す")),
-                        ("Ctrl+R", tr("系を読み直す（変えた値を捨てる）")),
-                        ("Ctrl+Z", tr("系の変更を元に戻す（100 段まで。入力欄の中では欄の文字）")),
-                        ("Ctrl+Y / Ctrl+Shift+Z", tr("元に戻した変更をやり直す")),
-                        ("Ctrl+Tab", tr("次のパネルへ（Shift で前へ）")),
-                        ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
-                        ("Enter / Space", tr("ボタンを押す・選ぶ")),
-                        ("↑ ↓", tr("数の欄で値を増減（パラメータ・解析の設定は解析をすぐ計算し直す）")),
-                        ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）。レンズデータの表を使っているときは全部の行を選ぶ")),
-                        ("Enter", tr("解析の設定の欄: 打った値で計算し直す")),
-                        (tr("文字"), tr("解析の種類の一覧: 打って絞り込む（Enter で最初の候補）")),
-                        ("F1", tr("この一覧")),
-                        ("Esc", tr("パレット・窓を閉じる")),
-                    ] {
-                        ui.label(RichText::new(k).monospace().strong());
-                        ui.label(v);
-                        ui.end_row();
-                    }
-                });
-                for (title, keys) in [
-                    (
-                        tr("レンズデータ"),
-                        vec![
-                            ("← → ↑ ↓ / Tab", tr("セルを移る（Shift+↑ ↓・Shift+クリックで行の範囲）")),
-                            ("Enter / F2", tr("書き換え（文字を打っても始まる）。Enter で決め、Esc で取り消し")),
-                            ("Insert", tr("今の面の前に面を挿入")),
-                            ("Alt+Insert", tr("今の面の後に面を挿入")),
-                            ("Delete", tr("選んだ面を消す")),
-                            ("Ctrl+C", tr("選んだ行をタブ区切りでコピー")),
-                            ("Ctrl+V", tr("今のセルから上書きで貼り付け")),
-                            ("Ctrl+Shift+V", tr("写した行の数だけ面を挿入して貼り付け")),
-                            ("Shift+F10", tr("右クリックの欄")),
-                            ("Ctrl+L", tr("ブロックのロック")),
-                            ("Enter / Backspace", tr("ブロックの中へ・外へ")),
-                        ],
-                    ),
-                    (
-                        tr("多重構成"),
-                        vec![
-                            ("← → ↑ ↓ / Tab", tr("セルを移る")),
-                            ("Enter / F2", tr("書き換え（文字を打っても始まる）")),
-                            ("Delete", tr("選んだ行を消す（列の見出しを選んでいれば構成を消す）")),
-                            ("Ctrl+C / Ctrl+V", tr("行のコピー・上書きで貼り付け")),
-                            ("Shift+F10", tr("右クリックの欄")),
-                        ],
-                    ),
-                    (
-                        tr("レイアウト図（組合せ）"),
-                        vec![
-                            ("[ ]", tr("前・次の要素を選ぶ")),
-                            ("← →", tr("光軸に沿って動かす（寸法を選んでいればその間隔）。Ctrl で 10 倍、Alt で 1/10")),
-                            ("↑ ↓", tr("偏心（Shift で傾き）")),
-                            ("R", tr("反転")),
-                            ("F", tr("BS の分ける面の向きを逆に")),
-                            ("L", tr("ロック")),
-                            ("Delete", tr("外す（Ctrl+Z で戻す）")),
-                            ("Esc", tr("選ぶのをやめる")),
-                        ],
-                    ),
-                ] {
-                    ui.separator();
-                    ui.strong(title);
-                    egui::Grid::new(("keys", title)).striped(true).show(ui, |ui| {
-                        for (k, v) in keys {
-                            ui.label(RichText::new(k).monospace().strong());
-                            ui.label(v);
-                            ui.end_row();
-                        }
-                    });
-                }
-                ui.separator();
-                ui.label(
-                    RichText::new(tr("パネルはタブを引きずって並べ替え・分割・フロートできます。タブを右クリックすると別の窓（別モニター）に出せます。")).small(),
-                );
-                });
-            });
-        self.help_open = open;
     }
 }
 
@@ -5039,7 +4551,7 @@ impl App {
         let mut app = App {
             c: Core {
                 s,
-                samples: args.samples.clone(),
+                samples: menus::samples(&args),
                 worker,
                 preview,
                 load_stale: false,
@@ -5048,6 +4560,7 @@ impl App {
                     text: args.notice.as_ref().map(|n| n.text()).unwrap_or_default(),
                     error: false,
                 },
+                status_err: None,
                 file: None,
                 summary: None,
                 info: None,
@@ -5094,6 +4607,7 @@ impl App {
                 swap_ids: Vec::new(),
                 swap_file: None,
                 rev: 0,
+                param_sys_cache: Default::default(),
                 sys_gen: 0,
                 relay: None,
                 relay_busy: false,
@@ -5500,745 +5014,6 @@ impl App {
         }
     }
 
-    fn exec(&mut self, ctx: &egui::Context, cmd: Cmd) {
-        match cmd {
-            Cmd::New => self.c.new_system(),
-            Cmd::Undo(back, n) => self.c.undo(back, n),
-            Cmd::Open => self.c.pick_and_open(),
-            Cmd::Recent(f) => self.c.open_doc(Path::new(&f)),
-            Cmd::Reload => self.c.reload(),
-            Cmd::RunAll => self.run_all(false),
-            Cmd::WriteZmx => self.c.write_zmx(),
-            Cmd::Save(as_new) => self.c.save(as_new),
-            Cmd::Add(k) => {
-                let id = self.add_pane(k);
-                self.focus(id);
-            }
-            Cmd::Focus(id) => self.focus(id),
-            Cmd::FocusKind(k) => {
-                let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
-                let id = match self.pane_of(same) {
-                    Some(id) => id,
-                    None => self.add_pane(k),
-                };
-                self.focus(id);
-            }
-            Cmd::ToWindow(id) => self.detach(id),
-            Cmd::Preset(p) => self.set_layout(p.build()),
-            Cmd::Layout(i) => {
-                if let Some((_, l)) = self.c.s.layouts.get(i) {
-                    let l = l.clone();
-                    self.set_layout(l);
-                }
-            }
-            Cmd::SaveLayout => {
-                self.c.save_layout_open = true;
-            }
-            Cmd::Theme(m) => {
-                self.c.s.look.mode = m;
-                theme::apply(ctx, &self.c.s.look);
-            }
-            Cmd::Accent(i) => {
-                self.c.s.look.accent = theme::ACCENTS[i % theme::ACCENTS.len()];
-                theme::apply(ctx, &self.c.s.look);
-            }
-            Cmd::Lang(l) => {
-                self.c.s.lang = l;
-                i18n::set(l);
-                self.apply_dock_translations();
-            }
-            Cmd::Folders => self.c.folders_open = true,
-            Cmd::Help => self.c.help_open = true,
-        }
-    }
-
-    /// パレットの項目
-    fn palette_items(&self) -> Vec<Item<Cmd>> {
-        let mut v = Vec::new();
-        let mut push = |label: String, hint: &str, cmd: Cmd| {
-            v.push(Item {
-                label,
-                hint: hint.into(),
-                danger: matches!(cmd, Cmd::New | Cmd::Reload),
-                cmd,
-            })
-        };
-        push(
-            tr("新規（組合せを空にする）").into(),
-            "new ctrl+n",
-            Cmd::New,
-        );
-        push(
-            tr("系のファイルを開く…").into(),
-            "open file ctrl+o",
-            Cmd::Open,
-        );
-        push(
-            tr("元に戻す（Ctrl+Z）").into(),
-            "undo ctrl+z",
-            Cmd::Undo(true, 1),
-        );
-        push(
-            tr("やり直す（Ctrl+Y）").into(),
-            "redo ctrl+y ctrl+shift+z",
-            Cmd::Undo(false, 1),
-        );
-        push(tr("系を読み直す").into(), "reload", Cmd::Reload);
-        push(
-            tr("開いている解析をすべて計算し直す").into(),
-            "run all f5",
-            Cmd::RunAll,
-        );
-        push(
-            tr(".zmx に書き出す…").into(),
-            "write zmx export",
-            Cmd::WriteZmx,
-        );
-        push(tr("保存（Ctrl+S）").into(), "save ctrl+s", Cmd::Save(false));
-        push(
-            tr("名前を付けて保存…（Ctrl+Shift+S）").into(),
-            "save as ctrl+shift+s",
-            Cmd::Save(true),
-        );
-        for k in add_kinds() {
-            let t = Pane {
-                id: 0,
-                kind: k.clone(),
-            }
-            .title();
-            let hint = match &k {
-                Kind::Analysis(a) => format!("add panel {}", a.cmd),
-                Kind::System => "add panel system".into(),
-                Kind::Catalog => "add panel catalog".into(),
-                Kind::Layout => "add panel layout combo".into(),
-                Kind::LensData => "add panel lens data surfaces table".into(),
-                Kind::MultiConfig => "add panel multi configuration editor mce".into(),
-                Kind::Optimize => "add panel optimize optimization merit function dls".into(),
-                Kind::Swap => "add panel swap search catalog lens replace".into(),
-                Kind::Tolerance => "add panel tolerance monte carlo sensitivity".into(),
-                Kind::Zoom => "add panel zoom cam track states focal length".into(),
-                Kind::SysSettings => {
-                    "add panel system settings aperture field wavelength aiming".into()
-                }
-            };
-            push(trf("パネルを足す: {}", &[&t]), &hint, Cmd::Add(k));
-        }
-        for (_, p) in self.dock.iter_all_tabs() {
-            let name = match &p.kind {
-                Kind::Analysis(a) => a.cmd.clone(),
-                Kind::System => "system".into(),
-                Kind::Catalog => "catalog".into(),
-                Kind::Layout => "layout".into(),
-                Kind::LensData => "lens data".into(),
-                Kind::MultiConfig => "multi configuration".into(),
-                Kind::Optimize => "optimize".into(),
-                Kind::Swap => "swap".into(),
-                Kind::Tolerance => "tolerance".into(),
-                Kind::Zoom => "zoom".into(),
-                Kind::SysSettings => "settings".into(),
-            };
-            push(
-                trf("パネルへ移る: {}", &[&p.title()]),
-                &format!("go focus panel {name}"),
-                Cmd::Focus(p.id),
-            );
-            push(
-                format!(
-                    "{}: {}",
-                    detach_label(cfg!(target_arch = "wasm32")),
-                    p.title()
-                ),
-                &format!("window monitor detach {name}"),
-                Cmd::ToWindow(p.id),
-            );
-        }
-        for p in Preset::ALL {
-            push(
-                trf("並び: {}", &[&p.label()]),
-                "layout preset",
-                Cmd::Preset(p),
-            );
-        }
-        for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
-            push(
-                trf("保存した並び: {}", &[n]),
-                "layout saved",
-                Cmd::Layout(i),
-            );
-        }
-        push(tr("今の並びを保存…").into(), "save layout", Cmd::SaveLayout);
-        push(
-            tr("配色: 暗い").into(),
-            "theme dark",
-            Cmd::Theme(Mode::Dark),
-        );
-        push(
-            tr("配色: 明るい").into(),
-            "theme light",
-            Cmd::Theme(Mode::Light),
-        );
-        push(
-            tr("配色: OS に合わせる").into(),
-            "theme system",
-            Cmd::Theme(Mode::System),
-        );
-        for i in 0..theme::ACCENTS.len() {
-            push(
-                trf("アクセント色 {}", &[&(i + 1)]),
-                "accent color",
-                Cmd::Accent(i),
-            );
-        }
-        for l in Lang::ALL {
-            push(trf("言語: {}", &[&l.label()]), "language", Cmd::Lang(l));
-        }
-        push(
-            tr("カタログのフォルダ…").into(),
-            "folders settings",
-            Cmd::Folders,
-        );
-        push(tr("キーボード操作の一覧").into(), "help keys f1", Cmd::Help);
-        for f in &self.c.s.recent {
-            push(
-                trf("最近のファイル: {}", &[f]),
-                "recent",
-                Cmd::Recent(f.clone()),
-            );
-        }
-        v
-    }
-
-    /// 上の帯: ロゴ、ファイル、メニュー、探す、元に戻す、計算
-    fn header(&mut self, ctx: &egui::Context, ui: &mut Ui) {
-        let accent = theme::accent(&self.c.s.look);
-        let weak = theme::weak_text(ui.visuals());
-        let mut cmd = None;
-        ui.horizontal(|ui| {
-            ui.set_min_height(36.0);
-            logo(ui, 26.0, accent);
-            ui.label(RichText::new("lensbench").strong().size(15.0).color(accent));
-            {
-                ui.menu_button(tr("ファイル"), |ui| {
-                    if ui.button(tr("新規（Ctrl+N）")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::New);
-                    }
-                    if ui.button(tr("開く…（Ctrl+O）")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Open);
-                    }
-                    if !self.c.samples.is_empty() {
-                        ui.menu_button(tr("見本"), |ui| {
-                            // 組合せ・プロジェクト・.zmx の系の間に区切り
-                            let group = |f: &str| {
-                                if f.contains("/examples/combos/") {
-                                    0
-                                } else if f.ends_with(".json") {
-                                    1
-                                } else {
-                                    2
-                                }
-                            };
-                            let mut last = None;
-                            for f in &self.c.samples {
-                                let g = group(f);
-                                if last.is_some_and(|l| l != g) {
-                                    ui.separator();
-                                }
-                                if last != Some(g) && g == 0 {
-                                    ui.weak(tr("組合せ（開くと組合せに戻る）"));
-                                }
-                                last = Some(g);
-                                let name = sample_name(f);
-                                if ui.button(name).on_hover_text(f).clicked() {
-                                    ui.close_menu();
-                                    cmd = Some(Cmd::Recent(f.clone()));
-                                }
-                            }
-                        });
-                    }
-                    ui.menu_button(tr("最近のファイル"), |ui| {
-                        if self.c.s.recent.is_empty() {
-                            ui.label(tr("（なし）"));
-                        }
-                        for f in &self.c.s.recent {
-                            if ui.button(f).clicked() {
-                                ui.close_menu();
-                                cmd = Some(Cmd::Recent(f.clone()));
-                            }
-                        }
-                    });
-                    if ui
-                        .add_enabled(
-                            self.c.file.is_some(),
-                            egui::Button::new(tr("読み直す（Ctrl+R）")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Reload);
-                    }
-                    ui.separator();
-                    if ui
-                        .add_enabled(
-                            self.c.summary.is_some(),
-                            egui::Button::new(tr(".zmx に書き出す…")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::WriteZmx);
-                    }
-                    let can_save = self.c.file.is_some() || !self.c.browser.combo.picks.is_empty();
-                    if ui
-                        .add_enabled(can_save, egui::Button::new(tr("保存（Ctrl+S）")))
-                        .on_hover_text(tr(
-                            "組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに",
-                        ))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Save(false));
-                    }
-                    if ui
-                        .add_enabled(
-                            can_save,
-                            egui::Button::new(tr("名前を付けて保存…（Ctrl+Shift+S）")),
-                        )
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Save(true));
-                    }
-                    ui.separator();
-                    if ui.button(tr("カタログのフォルダ…")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Folders);
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let (n, b) = crate::web_store::usage();
-                        if ui
-                            .add_enabled(
-                                n > 0,
-                                egui::Button::new(trf(
-                                    "ブラウザに残したファイルを消す（{} 個、{} MB）…",
-                                    &[&n, &format!("{:.1}", b as f64 / 1e6)],
-                                )),
-                            )
-                            .on_hover_text(tr(
-                                "読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る",
-                            ))
-                            .clicked()
-                        {
-                            ui.close_menu();
-                            if crate::files::confirm(
-                                "lensbench",
-                                tr("ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？"),
-                            ) {
-                                crate::web_store::clear();
-                                crate::web_store::prune_dirs(
-                                    &mut self.c.s.glass_dirs,
-                                    &mut self.c.s.lens_dirs,
-                                );
-                                self.c.refresh_catalog();
-                            }
-                        }
-                    }
-                    // ブラウザ（Web 版）では閉じられないので出さない
-                    if cfg!(not(target_arch = "wasm32")) {
-                        ui.separator();
-                        if ui.button(tr("終了")).clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    }
-                });
-                ui.menu_button(tr("編集"), |ui| {
-                    let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
-                    if ui
-                        .add_enabled(u, egui::Button::new(tr("元に戻す（Ctrl+Z）")))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Undo(true, 1));
-                    }
-                    if ui
-                        .add_enabled(r, egui::Button::new(tr("やり直す（Ctrl+Y）")))
-                        .clicked()
-                    {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Undo(false, 1));
-                    }
-                    // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
-                    for (back, title) in [(true, tr("ここまで元に戻す")), (false, tr("ここまでやり直す"))] {
-                        let list = self.c.undo_list(back);
-                        ui.add_enabled_ui(!list.is_empty(), |ui| {
-                            ui.menu_button(title, |ui| {
-                                egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                                    for (i, l) in list.iter().enumerate() {
-                                        if ui.button(format!("{}. {l}", i + 1)).clicked() {
-                                            ui.close_menu();
-                                            cmd = Some(Cmd::Undo(back, i + 1));
-                                        }
-                                    }
-                                });
-                            });
-                        });
-                    }
-                    ui.label(
-                        RichText::new(tr(
-                            "系の変更（面の表・多重構成・最適化の結果・組合せ）と、系を開く・読み直す・新規を 100 段まで",
-                        ))
-                        .small()
-                        .weak(),
-                    );
-                });
-                ui.menu_button(tr("パネル"), |ui| {
-                    for k in add_kinds() {
-                        let t = Pane {
-                            id: 0,
-                            kind: k.clone(),
-                        }
-                        .title();
-                        if ui.button(trf("＋ {}", &[&t])).clicked() {
-                            ui.close_menu();
-                            cmd = Some(Cmd::Add(k));
-                        }
-                    }
-                });
-                ui.menu_button(tr("並び"), |ui| {
-                    ui.label(RichText::new(tr("初期の並び")).small().color(weak));
-                    for p in Preset::ALL {
-                        if ui.button(p.label()).clicked() {
-                            ui.close_menu();
-                            cmd = Some(Cmd::Preset(p));
-                        }
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(tr("保存した並び")).small().color(weak));
-                    if self.c.s.layouts.is_empty() {
-                        ui.label(tr("（なし）"));
-                    }
-                    let mut del = None;
-                    for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if ui.button(n).clicked() {
-                                ui.close_menu();
-                                cmd = Some(Cmd::Layout(i));
-                            }
-                            if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
-                                del = Some(i);
-                            }
-                        });
-                    }
-                    if let Some(i) = del {
-                        self.c.s.layouts.remove(i);
-                    }
-                    ui.separator();
-                    if ui.button(tr("今の並びを保存…")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::SaveLayout);
-                    }
-                });
-                ui.menu_button(tr("表示"), |ui| {
-                    ui.label(RichText::new(tr("配色")).small().color(weak));
-                    for (m, l) in [
-                        (Mode::Dark, tr("暗い")),
-                        (Mode::Light, tr("明るい")),
-                        (Mode::System, tr("OS に合わせる")),
-                    ] {
-                        if ui.radio(self.c.s.look.mode == m, l).clicked() {
-                            cmd = Some(Cmd::Theme(m));
-                        }
-                    }
-                    ui.label(RichText::new(tr("アクセント色")).small().color(weak));
-                    ui.horizontal(|ui| {
-                        for (i, a) in theme::ACCENTS.iter().enumerate() {
-                            let c = Color32::from_rgb(a[0], a[1], a[2]);
-                            let on = self.c.s.look.accent == *a;
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(if on { "●" } else { "○" })
-                                            .color(c)
-                                            .size(18.0),
-                                    )
-                                    .frame(false),
-                                )
-                                .clicked()
-                            {
-                                cmd = Some(Cmd::Accent(i));
-                            }
-                        }
-                        let mut c = Color32::from_rgb(
-                            self.c.s.look.accent[0],
-                            self.c.s.look.accent[1],
-                            self.c.s.look.accent[2],
-                        );
-                        if ui.color_edit_button_srgba(&mut c).changed() {
-                            self.c.s.look.accent = [c.r(), c.g(), c.b()];
-                            theme::apply(ctx, &self.c.s.look);
-                        }
-                    });
-                    if cfg!(not(target_arch = "wasm32")) {
-                        ui.checkbox(&mut self.c.s.os_titlebar, tr("OS のタイトルバーを使う"))
-                            .on_hover_text(tr(
-                                "外すと上の帯をタイトルバーにする（ドラッグで移動、ダブルクリックで最大化、縁で大きさを変える）",
-                            ));
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(tr("言語")).small().color(weak));
-                    for l in Lang::ALL {
-                        if ui.radio(self.c.s.lang == l, l.label()).clicked() {
-                            cmd = Some(Cmd::Lang(l));
-                        }
-                    }
-                    ui.separator();
-                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Help);
-                    }
-                });
-                ui.menu_button(tr("ヘルプ"), |ui| {
-                    for (label, page, tip) in HELP_PAGES {
-                        if ui
-                            .button(tr(label))
-                            .on_hover_text(tr(tip))
-                            .clicked()
-                        {
-                            ui.close_menu();
-                            ctx.open_url(egui::OpenUrl::new_tab(docs_url(page)));
-                        }
-                    }
-                    ui.separator();
-                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
-                        ui.close_menu();
-                        cmd = Some(Cmd::Help);
-                    }
-                    ui.separator();
-                    ui.label(RichText::new(version()).small().color(weak));
-                });
-            }
-            let shown = if self.c.is_combo() {
-                self.c.doc_path.clone()
-            } else {
-                self.c.file.clone()
-            };
-            let dirty = self.c.dirty();
-            if shown.is_some() || dirty {
-                let name = shown
-                    .as_ref()
-                    .and_then(|f| f.file_name())
-                    .map(|x| x.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| tr("（未保存）").to_string());
-                let mark = if dirty { " ●" } else { "" };
-                let r = ui.label(RichText::new(format!("{name}{mark}")).strong());
-                let tip = shown.map(|f| f.display().to_string()).unwrap_or_default();
-                if dirty {
-                    r.on_hover_text(format!("{tip}\n{}", tr("● 保存していない変更がある（Ctrl+S で保存）")));
-                } else {
-                    r.on_hover_text(tip);
-                }
-            }
-            let custom = crate::chrome::custom(self.c.s.os_titlebar);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if custom {
-                    crate::chrome::window_buttons(ui);
-                }
-                let run = egui::Button::new(
-                    RichText::new(tr("▶ 計算（F5）"))
-                        .strong()
-                        .color(Color32::from_rgb(6, 18, 28)),
-                )
-                .fill(accent)
-                .min_size(egui::vec2(0.0, 28.0));
-                if ui.add_enabled(self.c.summary.is_some(), run).clicked() {
-                    cmd = Some(Cmd::RunAll);
-                }
-                // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー、GAR-15）。押すと何を戻すかをホバーで
-                for (back, icon, key) in [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")] {
-                    let next = self.c.undo_list(back).into_iter().next();
-                    let tip = match (&next, back) {
-                        (Some(n), true) => trf("元に戻す（{}）: {}", &[&key, n]),
-                        (Some(n), false) => trf("やり直す（{}）: {}", &[&key, n]),
-                        (None, true) => tr("元に戻す段は無い").to_string(),
-                        (None, false) => tr("やり直す段は無い").to_string(),
-                    };
-                    if ui
-                        .add_enabled(
-                            self.c.can_undo(back),
-                            egui::Button::new(RichText::new(crate::fonts::glyph_or(ui, icon[0], icon[1])).size(16.0))
-                                .min_size(egui::vec2(28.0, 28.0)),
-                        )
-                        .on_hover_text(tip.clone())
-                        .on_disabled_hover_text(tip)
-                        .clicked()
-                    {
-                        cmd = Some(Cmd::Undo(back, 1));
-                    }
-                }
-                // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない、GUX-03）
-                let room = ui.available_width() - 8.0;
-                let label = if room >= 300.0 {
-                    format!("🔍  {}    Ctrl K", tr("解析・パネル・操作を探す"))
-                } else if room >= 150.0 {
-                    format!("🔍  {}", tr("探す"))
-                } else {
-                    "🔍".to_string()
-                };
-                let search = egui::Button::new(RichText::new(label).color(weak))
-                    .min_size(egui::vec2(room.clamp(28.0, 300.0), 28.0));
-                let r = ui.add(search).on_hover_text(tr("解析・パネル・操作を探す（Ctrl+K）"));
-                self.palette.anchor = Some(r.rect);
-                if r.clicked() {
-                    self.palette.show();
-                }
-                if custom {
-                    crate::chrome::drag_area(ui);
-                }
-            });
-        });
-        if let Some(c) = cmd {
-            self.exec(ctx, c);
-        }
-    }
-
-    /// 下の状態の行: 状態、面・視野・波長の数、焦点距離・F 値・NA・全長・像高、版
-    fn status_bar(&mut self, ui: &mut Ui) {
-        let weak = theme::weak_text(ui.visuals());
-        ui.horizontal(|ui| {
-            let busy = self.c.worker.busy();
-            let (dot, col) = if busy {
-                ("●", Color32::from_rgb(0xF2, 0xC9, 0x4C))
-            } else if self.c.status.error {
-                ("●", Color32::from_rgb(0xFF, 0x7A, 0x6B))
-            } else {
-                ("●", Color32::from_rgb(0x8F, 0xD1, 0x9E))
-            };
-            ui.label(RichText::new(dot).color(col));
-            if busy {
-                ui.spinner();
-            }
-            let text = if self.c.status.text.is_empty() {
-                tr("準備完了").to_string()
-            } else {
-                self.c.status.text.clone()
-            };
-            // 履歴（直近 20 件。クリックで全文と履歴を開く）
-            if !self.c.status.text.is_empty()
-                && self.c.status_log.last().map(|x| &x.0) != Some(&self.c.status.text)
-            {
-                self.c
-                    .status_log
-                    .push((self.c.status.text.clone(), self.c.status.error));
-                if self.c.status_log.len() > 20 {
-                    self.c.status_log.remove(0);
-                }
-            }
-            // 左の文は右の数値に重ねない: 前のフレームの右の幅を引いた所で切る（GUX-06）
-            let right_w: f32 = ui
-                .data(|d| d.get_temp(egui::Id::new("status-right-w")))
-                .unwrap_or(320.0);
-            let room = (ui.available_width() - right_w - 180.0).max(80.0);
-            let rich = if self.c.status.error {
-                RichText::new(text.clone()).color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
-            } else {
-                RichText::new(text.clone()).color(weak)
-            };
-            let r = ui
-                .scope(|ui| {
-                    ui.set_max_width(room);
-                    ui.add(
-                        egui::Label::new(rich)
-                            .truncate()
-                            .sense(egui::Sense::click()),
-                    )
-                })
-                .inner
-                .on_hover_text(tr("クリックで全文と履歴"));
-            if r.clicked() {
-                self.c.status_log_open = !self.c.status_log_open;
-            }
-            if let Some(s) = &self.c.summary {
-                ui.separator();
-                ui.label(
-                    RichText::new(trf(
-                        "{} 面 · {} 視野 · {} 波長",
-                        &[&s["surfaces"], &self.c.n_fields(), &self.c.waves_um().len()],
-                    ))
-                    .color(weak),
-                );
-            }
-            let right = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add(
-                        egui::Label::new(RichText::new(version()).small().color(weak))
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_text(tr("クリックで版をコピー"))
-                    .clicked()
-                {
-                    ui.ctx().copy_text(version());
-                }
-                if self.c.font.is_none() && i18n::is_ja() {
-                    ui.label(
-                        RichText::new(tr("日本語のフォントが見つからない"))
-                            .small()
-                            .color(weak),
-                    );
-                }
-                if self.c.info.is_some() {
-                    let n = |k: &str, d: f64| {
-                        self.c
-                            .info_num(k)
-                            .map(|x| fmt_num((x * d).round() / d))
-                            .unwrap_or("—".into())
-                    };
-                    let items = [
-                        (tr("像高"), n("paraxial_image_height", 1e3), "mm"),
-                        (tr("全長"), n("total_track", 1e2), "mm"),
-                        ("NA", n("image_na", 1e4), ""),
-                        ("F/#", n("wfno", 1e2), ""),
-                        ("EFFL", n("effl", 1e3), "mm"),
-                    ];
-                    for (k, v, u) in items {
-                        ui.label(RichText::new(format!("{v} {u}")).monospace());
-                        ui.label(RichText::new(k).color(weak));
-                        ui.add_space(6.0);
-                    }
-                }
-                ui.min_rect().width()
-            });
-            let w = right.inner;
-            ui.data_mut(|d| d.insert_temp(egui::Id::new("status-right-w"), w));
-        });
-        if self.c.status_log_open {
-            let mut open = true;
-            egui::Window::new(tr("状態の履歴"))
-                .open(&mut open)
-                .default_width(560.0)
-                .max_height(ui.ctx().screen_rect().height() * 0.6)
-                .show(ui.ctx(), |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for (t, err) in self.c.status_log.iter().rev() {
-                            let rt = RichText::new(t);
-                            let rt = if *err {
-                                rt.color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
-                            } else {
-                                rt
-                            };
-                            ui.add(egui::Label::new(rt).wrap());
-                            ui.separator();
-                        }
-                    });
-                    if ui.button(tr("全文をコピー")).clicked() {
-                        ui.ctx().copy_text(self.c.status.text.clone());
-                    }
-                });
-            self.c.status_log_open = open;
-        }
-    }
-
     fn save_layout_window(&mut self, ctx: &egui::Context) {
         if !self.c.save_layout_open {
             return;
@@ -6393,482 +5168,12 @@ impl App {
         self.windows = wins;
     }
 
-    /// 通し確認を 1 フレーム進める
-    fn tour_frame(&mut self, ctx: &egui::Context) {
-        let Some(mut t) = self.tour.take() else {
-            return;
-        };
-        ctx.request_repaint();
-        let busy = self.c.worker.busy();
-        if t.timed_out() {
-            t.errors.push(format!("{} で時間切れ", t.step.name()));
-            t.step = Step::Done;
-        }
-        if t.step != Step::Done {
-            if t.take_shot(ctx) {
-                // 撮れた。次の段へ
-            } else if t.ready(busy) {
-                if self.c.status.error {
-                    t.errors
-                        .push(format!("{}: {}", t.step.name(), self.c.status.text));
-                    self.c.status.error = false;
-                }
-                if !t.acted {
-                    t.acted = true;
-                    let dir = t.dir.clone();
-                    self.tour_act(ctx, t.step, &dir);
-                } else {
-                    t.request_shot(ctx);
-                }
-            }
-        }
-        if t.step == Step::Done {
-            t.finish();
-            // 通し確認は保存していない変更があっても聞かずに閉じる（ここで tour を外すので close_guard の tour の除外は
-            // 効かない）
-            self.c.close_ok = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        } else {
-            self.tour = Some(t);
-        }
-    }
-
     fn pane_of(&self, f: impl Fn(&Kind) -> bool) -> Option<u64> {
         self.dock
             .iter_all_tabs()
             .find(|(_, p)| f(&p.kind))
             .map(|(_, p)| p.id)
     }
-
-    /// 通し確認の各段の操作
-    fn tour_act(&mut self, ctx: &egui::Context, step: Step, dir: &Path) {
-        let spot = |k: &Kind| matches!(k, Kind::Analysis(a) if a.cmd == "spot");
-        match step {
-            Step::Open | Step::Done => {}
-            Step::Analysis => self.run_all(false),
-            Step::States => {
-                // 干渉計の組合せに状態を足し、状態だけの系の値（物体距離）と経路（参照の腕）にする
-                let c = &mut self.c.browser.combo;
-                c.states = vec!["参照".into()];
-                c.state = Some("参照".into());
-                let mut s = c.snap();
-                s.object_distance = Some(200.0);
-                c.state_sys.insert("参照".into(), s);
-                c.state_path.insert("参照".into(), "RR".into());
-                let p = c.project();
-                self.c.build_combo(p);
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
-            }
-            Step::Coatings => {
-                // 膜（フィルタ）の定義: バンドパスを定義して BS の膜にし、系の設定の膜の欄を開いて見せる
-                let c = &mut self.c.browser.combo;
-                c.coatings.insert(
-                    "BP633".into(),
-                    lensbench_project::filter::CoatSpec::Bandpass {
-                        center_nm: 633.0,
-                        fwhm_nm: 10.0,
-                        ideal: lensbench_project::filter::Ideal {
-                            t: 0.9,
-                            od: 4.0,
-                            width_nm: None,
-                            neff: 2.0,
-                            absorptive: false,
-                        },
-                    },
-                );
-                let p = c.project();
-                self.c.build_combo(p);
-                crate::coat_defs::focus(ctx);
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
-            }
-            Step::Units => {
-                // 開いた系（P17）に群 G23（群 2・3）を足し、機構部品（筒）を置いて、群 G2 の設定と欄を見せる
-                let u = |n: &str| {
-                    self.c
-                        .ld_units
-                        .iter()
-                        .find(|u| u.name == n)
-                        .map(|u| u.spans.clone())
-                };
-                let mut ops = Vec::new();
-                if let (Some(a), Some(b)) = (u("G2"), u("G3")) {
-                    ops.push(json!({ "op": "define_unit", "name": "G23", "spans": [[a[0][0], b[0][1]]] }));
-                }
-                ops.push(json!({ "op": "add_mech", "part": {
-                    "name": "tube", "surface": 1, "offset": [0.0, 0.0, -2.0],
-                    "bores": [{ "z0": 0.0, "z1": 40.0, "radius": 15.0 }], "outer_radius": 18.0,
-                }}));
-                self.c.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                self.c.ld.scope.clear();
-                self.c.ld.sel = Some("G2".into());
-                self.c.ld.block_view = Some("G2".into());
-                self.c.um_open = true;
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
-            }
-            Step::Zoom => {
-                // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
-                self.c.open(&crate::tour::zoom_sample(dir));
-                let z = &mut self.c.zoom;
-                z.vars = ["G2.shift", "G3.shift"]
-                    .map(|n| crate::zoom_panel::VarRow {
-                        name: n.into(),
-                        ..Default::default()
-                    })
-                    .to_vec();
-                z.steps = 2;
-                let cands: Vec<crate::zoom_panel::Cand> =
-                    [("wide", "140"), ("mid", "160"), ("tele", "175")]
-                        .map(|(n, t)| {
-                            z.states.insert(
-                                n.into(),
-                                crate::zoom_panel::StateRow {
-                                    on: true,
-                                    target: t.into(),
-                                },
-                            );
-                            (false, n.to_string())
-                        })
-                        .to_vec();
-                match z.params(&cands) {
-                    Ok(p) => {
-                        z.running = true;
-                        self.c.worker.send(Tag::Zoom, "zoom", p);
-                    }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
-                }
-                self.exec(ctx, Cmd::FocusKind(Kind::Zoom));
-            }
-            Step::Pop => {
-                // 簡易 POP のパネルを足して計算する（像面の前の面から像面まで）
-                let cfg = AnaCfg::new("pop");
-                let id = self.add_pane(Kind::Analysis(cfg.clone()));
-                self.focus(id);
-                self.c.run(id, &cfg);
-            }
-            Step::Catalog => {
-                if let Some(id) = self.pane_of(|k| matches!(k, Kind::Catalog)) {
-                    self.focus(id);
-                }
-                self.c.browser.tab = catalog::Tab::Lenses;
-                self.c.refresh_catalog();
-            }
-            Step::Combo => {
-                // 正のレンズを焦点距離の短い順に 2 枚
-                let b = &mut self.c.browser;
-                let mut pos: Vec<catalog::LensRow> = b
-                    .lenses
-                    .iter()
-                    .filter(|l| l.error.is_none() && l.efl > 0.0)
-                    .cloned()
-                    .collect();
-                pos.sort_by(|a, b| a.efl.total_cmp(&b.efl));
-                b.combo.picks.clear();
-                for l in pos.iter().take(2) {
-                    b.add_pick(l);
-                }
-                if let Some(p) = b.combo.picks.first_mut() {
-                    p.air = 3.0;
-                }
-                b.lens_sel = b.lenses.iter().position(|l| Some(l) == pos.first());
-            }
-            Step::Build => {
-                let p = self.c.browser.combo.project();
-                self.c.build_combo(p);
-            }
-            Step::Layout => {
-                // レイアウト図: 2 枚目を選び、1 枚目の後の空気の寸法を選ぶ
-                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
-                // 1 枚目の後の空気の寸法を、その場で書き換えるところ
-                self.c.combo_view.start_edit(&mut self.c.browser.combo, 0);
-            }
-            Step::Layout3d => {
-                // 3D 表示: 2 枚目を選んだまま
-                self.c.combo_view.select(1);
-                self.c.s.view_plane = ViewPlane::D3;
-                self.c.request_layout();
-            }
-            Step::LensData => {
-                // 面の表: 1 枚目の玉の前の面の半径を表から変え（組合せの面の上書きで作り直す）、その玉に入る
-                self.c.combo_view.select(0);
-                let ids = self.c.browser.combo.span_ids();
-                let spans = lens_data::elem_spans(
-                    &ids,
-                    &self.c.ld_units,
-                    self.c.browser.combo.lead_stop(),
-                    &self.c.ld_rows,
-                );
-                if let Some(Some([a, _])) = spans.first().copied() {
-                    self.c.combo_surface_edit(&spans, a, "semi", json!(6.0));
-                    if !self.c.s.auto_build {
-                        let p = self.c.browser.combo.project();
-                        self.c.build_combo(p);
-                    }
-                }
-                // 最上位で 1 枚目の玉（ブロック）を選び、ブロックの設定（要素の設定）を出す
-                self.c.s.ld_detail = true;
-                if let Some(id) = ids.first() {
-                    self.c.ld.scope.clear();
-                    self.c.ld.sel = Some(id.clone());
-                    self.c.ld.cur = None;
-                }
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
-            }
-            Step::LensDataTree => {
-                // 折りたたみ表示: 1 枚目の玉をその場で開き、中の面を選ぶ
-                let ids = self.c.browser.combo.span_ids();
-                self.c.s.ld_tree = true;
-                self.c.ld.scope.clear();
-                if let Some(id) = ids.first() {
-                    self.c.ld.open.insert(id.clone());
-                    self.c.ld.sel = Some(id.clone());
-                    let first = self
-                        .c
-                        .ld_blocks
-                        .iter()
-                        .find(|b| &b.name == id)
-                        .and_then(|b| b.surfs.first().copied());
-                    self.c.ld.cur = first.map(|j| (j, lens_data::Col::R));
-                }
-                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
-            }
-            Step::ComboSpot => {
-                // 面の表の表示・見る面を戻す
-                self.c.s.ld_tree = false;
-                self.c.s.ld_detail = false;
-                self.c.ld.open.clear();
-                self.c.s.view_plane = ViewPlane::Yz;
-                self.c.request_layout();
-                if let Some(id) = self.pane_of(spot) {
-                    self.focus(id);
-                }
-            }
-            Step::Optimize => {
-                // 最適化: 像面の前の間隔を変数に、既定の RMS スポットと縁の光線の項で回す
-                self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
-                let img = self.c.ld_rows.len().saturating_sub(1);
-                let o = &mut self.c.opt;
-                o.vars = vec![crate::optim_panel::VarRow {
-                    name: format!("{}.t", img.saturating_sub(1)),
-                    lo: "0".into(),
-                    ..Default::default()
-                }];
-                let mut t = crate::optim_panel::TermRow::new("ray");
-                t.weight = "0.1".into();
-                o.terms = vec![t];
-                if let Ok(p) = o.params() {
-                    o.running = true;
-                    o.gen = self.c.sys_gen;
-                    self.c.worker.send(Tag::Optimize, "optimize", p);
-                }
-            }
-            Step::OptApply => {
-                // 結果を組合せに当てる（後の空気が変わり、系を作り直して解析も計算し直す）
-                match self.c.opt.result.clone() {
-                    Some(r) => {
-                        let v = crate::optim_panel::result_values(&r, false);
-                        if self.c.apply_values(&v) {
-                            self.c.opt.undo = Some(crate::optim_panel::result_values(&r, true));
-                        }
-                    }
-                    None => {
-                        self.c.status = Status {
-                            text: "最適化の結果がない".into(),
-                            error: true,
-                        }
-                    }
-                }
-            }
-            Step::Swap => {
-                // 差し替え探索: 2 枚目をカタログの全部（裏返しも）で差し替え、間の空気と像面までを最適化
-                self.exec(ctx, Cmd::FocusKind(Kind::Swap));
-                let (proj, cands) = crate::swap_panel::combo_project(&self.c.browser.combo);
-                let sw = &mut self.c.swap;
-                sw.slots = cands
-                    .blocks
-                    .iter()
-                    .skip(1)
-                    .take(1)
-                    .map(|b| crate::swap_panel::SlotRow {
-                        block: b.0.clone(),
-                        flip: true,
-                        ..Default::default()
-                    })
-                    .collect();
-                let n = self.c.browser.combo.picks.len();
-                sw.vars = [(1, "0.5"), (n, "1")]
-                    .iter()
-                    .map(|(k, lo)| crate::swap_panel::VarRow {
-                        name: format!("d{k}.t"),
-                        lo: lo.to_string(),
-                        hi: String::new(),
-                    })
-                    .collect();
-                if let Ok(mut v) = sw.spec() {
-                    v["project"] = proj;
-                    v["top"] = json!(sw.top);
-                    sw.running = true;
-                    self.c.swap_ids = self.c.browser.combo.ids();
-                    self.c.worker.send(Tag::Swap, "swap", v);
-                }
-            }
-            Step::SwapInsert => {
-                // 1 位の組を組合せに入れる（系を作り直して解析も計算し直す）
-                let row = self
-                    .c
-                    .swap
-                    .result
-                    .as_ref()
-                    .and_then(|r| r.results.as_ref()?.first())
-                    .cloned();
-                let before = self.c.browser.combo.clone();
-                let r = row
-                    .ok_or_else(|| "差し替え探索の結果がない".to_string())
-                    .and_then(|row| {
-                        crate::swap_panel::insert_row(
-                            &mut self.c.browser.combo,
-                            &self.c.swap_ids,
-                            &row,
-                        )
-                    });
-                match r {
-                    Ok(()) => {
-                        self.c.swap.undo = Some(before);
-                        self.c.swap.inserted = Some(0);
-                        let p = self.c.browser.combo.project();
-                        self.c.build_combo(p);
-                    }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
-                }
-            }
-            Step::Tolerance => {
-                // モンテカルロ公差: 精密の組、像面の前の間隔を補償子に、30 回
-                self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
-                let img = self.c.ld_rows.len().saturating_sub(1);
-                let t = &mut self.c.tol;
-                t.trials = 30;
-                t.preset = "precision".into();
-                // カタログの玉の公差: どのメーカーも中心厚 ±0.05 mm、外径 10 mm 未満は焦点距離 ±1%
-                t.catalog_tols = crate::tol_catalog::from_json(&serde_json::json!({
-                    "*": { "thickness": 0.05, "rules": [{ "dia_lt": 10, "focal_rel": 0.01 }] }
-                }))
-                .unwrap_or_default();
-                t.percentiles = "50, 90, 98".into();
-                t.opt.vars = vec![crate::optim_panel::VarRow {
-                    name: format!("{}.t", img.saturating_sub(1)),
-                    ..Default::default()
-                }];
-                match t.spec() {
-                    Ok(p) => {
-                        t.running = true;
-                        self.c.worker.send(Tag::Tolerance, "tolerance", p);
-                    }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
-                }
-            }
-            Step::Param => {
-                // 1 枚目の後の空気を少し動かす（解析は自動で計算し直し、前との差が出る）
-                self.c.s.params = vec!["1.t".into()];
-                self.c.read_params();
-                self.c.pending_set.insert("1.t".into(), 2.5);
-            }
-            Step::Glasses => {
-                if let Some(id) = self.pane_of(|k| matches!(k, Kind::Catalog)) {
-                    self.focus(id);
-                }
-                let b = &mut self.c.browser;
-                b.tab = catalog::Tab::Glasses;
-                b.glass_sel = (!b.glasses.is_empty()).then_some(0);
-                // アッベ図は選んだガラスの辺りを 3 倍に（目盛りが範囲に合うかを見る）
-                b.glass_view = catalog::MapView::FULL;
-                if let Some(g) = b.glass_sel.and_then(|i| b.glasses.get(i)) {
-                    if g.vd.is_finite() && g.nd.is_finite() {
-                        let (vd, nd) = (g.vd, g.nd);
-                        b.glass_view.zoom(vd, nd, 3.0);
-                    }
-                }
-            }
-            Step::Window => {
-                // MTF を別の窓に出す（本体の画面では MTF が消え、スポットが表に出る）
-                if let Some(id) = self.pane_of(|k| matches!(k, Kind::Analysis(a) if a.cmd == "mtf"))
-                {
-                    self.detach(id);
-                }
-                if let Some(id) = self.pane_of(spot) {
-                    self.focus(id);
-                }
-            }
-            Step::Palette => {
-                self.palette.show();
-                self.palette.query = "spot".into();
-            }
-            Step::English => {
-                self.palette.open = false;
-                self.exec(ctx, Cmd::Lang(Lang::En));
-                self.exec(ctx, Cmd::Theme(Mode::Light));
-            }
-            Step::Settings => {
-                // 系の設定のパネル: 視野に重み、波長を 1 つ足し、エイミングを実光線に（系は自動で作り直す）
-                self.exec(ctx, Cmd::Lang(Lang::Ja));
-                self.exec(ctx, Cmd::Theme(Mode::Dark));
-                self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
-                let c = &mut self.c.browser.combo;
-                if let Some(f) = c.fields.last_mut() {
-                    f.w = 0.5;
-                }
-                c.waves.push(crate::sysset::WavePt { um: 0.55, w: 2.0 });
-                c.aiming = crate::sysset::Aiming::Real;
-            }
-            Step::Interferometer => {
-                // BS の分岐で組んだ Twyman-Green。経路 TR（試験の腕を往復して口 D へ）で、BS を選ぶ
-                let mut c = combo::Combo::twyman_green();
-                c.path = "TR".into();
-                c.object_distance = Some(100.0);
-                c.field_kind = crate::sysset::FieldKind::ObjectHeight;
-                c.fields = [0.0, 0.5].map(crate::sysset::FieldPt::y).to_vec();
-                c.aperture = crate::sysset::ApKind::Na;
-                c.ap_value = 0.02;
-                c.waves = vec![crate::sysset::WavePt::um(0.6328)];
-                c.primary = 1;
-                self.c.browser.combo = c;
-                // 参照の腕（RR）も重ねて描く。光線は視野 1 の十字で、光線・書き出しの設定の欄も開いて見せる
-                self.c.overlay.items = ["TR", "RR"]
-                    .map(|x| ("paths", x.to_string(), true))
-                    .to_vec();
-                self.c.s.rays.fields = vec![1];
-                self.c.s.rays.fan = "cross".into();
-                self.c.rays_open = true;
-                let p = self.c.browser.combo.project();
-                self.c.build_combo(p);
-                self.c.combo_view.select(1);
-                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
-            }
-        }
-    }
-}
-
-/// 系を変えた後に読み直す表（[`Tag::Refresh`]。途中の誤りで止まれば残りは 1 つずつ頼み直す）
-fn refresh_calls() -> Vec<(String, Value)> {
-    let calls = [
-        ("surface", json!({})),
-        ("config_table", json!({})),
-        ("analyze", json!({ "cmd": "info" })),
-    ];
-    calls.into_iter().map(|(m, p)| (m.to_string(), p)).collect()
 }
 
 impl App {
@@ -7283,6 +5588,14 @@ impl eframe::App for App {
                 });
         }
         for (s, n, k) in added {
+            // 1 枚だけのパネルがもうあれば、2 枚目を作らず表に出す（GUX-16）
+            if k.single() {
+                let same = |x: &Kind| std::mem::discriminant(x) == std::mem::discriminant(&k);
+                if let Some(id) = self.pane_of(same) {
+                    self.focus(id);
+                    continue;
+                }
+            }
             let id = self.c.new_id();
             self.dock.set_focused_node_and_surface((s, n));
             self.dock.push_to_focused_leaf(Pane { id, kind: k });
@@ -7294,9 +5607,12 @@ impl eframe::App for App {
         #[cfg(target_arch = "wasm32")]
         self.web_tabs(ctx);
         self.os_windows(ctx);
-        let items = self.palette_items();
-        if let Some(cmd) = self.palette.ui(ctx, &items) {
-            self.exec(ctx, cmd);
+        // 項目はパレットを開いているときだけ作る（GAR-09）
+        if self.palette.open {
+            let items = self.palette_items();
+            if let Some(cmd) = self.palette.ui(ctx, &items) {
+                self.exec(ctx, cmd);
+            }
         }
         for cmd in std::mem::take(&mut self.c.cmds) {
             self.exec(ctx, cmd);
@@ -7365,7 +5681,8 @@ pub struct Overlay {
 
 impl Overlay {
     /// serve の configs の結果から。前に選んでいた名前は選んだまま
-    pub fn update(&mut self, v: &Value) {
+    /// 選べる構成を読み直す。選んでいたものが無くなったら true（レイアウトを頼み直す）
+    pub fn update(&mut self, v: &Value) -> bool {
         let was: Vec<(&str, String)> = self
             .items
             .iter()
@@ -7397,6 +5714,7 @@ impl Overlay {
                 (k, x, on)
             })
             .collect();
+        self.items.iter().filter(|x| x.2).count() != was.len()
     }
 
     /// [`Self::params`] に見る面を足したもの。ずらす量の縦は見る面の縦（xz 面なら x）

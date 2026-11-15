@@ -23,6 +23,9 @@ pub struct Request {
 /// 計算の側から戻る結果（呼び出しごと。エラーで止めたらそこまで）
 #[derive(Debug, PartialEq)]
 pub struct Response {
+    /// 答えた要求の番号（[`Request::id`]。要求が読めなかったときは 0）。画面の側は待っている要求の番号と
+    /// 合わない返事を捨てる（GAR-27）
+    pub id: u32,
     pub results: Vec<Result<(Value, Arrays), String>>,
     pub ms: f64,
     pub files: Files,
@@ -146,6 +149,7 @@ impl Request {
 impl Response {
     pub fn encode(&self) -> Vec<u8> {
         let mut w = W::default();
+        w.u32(self.id as usize);
         w.f64(self.ms);
         w.u32(self.results.len());
         for x in &self.results {
@@ -174,6 +178,7 @@ impl Response {
 
     pub fn decode(b: &[u8]) -> Result<Response, String> {
         let mut r = R(b);
+        let id = r.u32()? as u32;
         let ms = r.f64()?;
         let n = r.u32()?;
         let mut results = Vec::with_capacity(n.min(1 << 16));
@@ -197,7 +202,12 @@ impl Response {
             results.push(Ok((v, arrays)));
         }
         let files = r.files()?;
-        Ok(Response { results, ms, files })
+        Ok(Response {
+            id,
+            results,
+            ms,
+            files,
+        })
     }
 }
 
@@ -233,6 +243,7 @@ mod tests {
         assert_eq!(Request::decode(&q2.encode()).unwrap(), q2);
 
         let a = Response {
+            id: 7,
             results: vec![
                 Ok((
                     json!({"ok": true}),

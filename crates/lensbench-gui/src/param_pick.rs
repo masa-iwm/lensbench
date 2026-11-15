@@ -183,8 +183,10 @@ pub fn names(sys: &Sys, set: Set) -> Vec<(String, String)> {
         .collect()
 }
 
-/// 打った文字に合う候補（前方一致を先に、次に名前・説明の部分一致）。多すぎるときは先頭だけ
-pub fn complete(all: Vec<(String, String)>, text: &str) -> Vec<(String, String)> {
+/// 打った文字に合う候補（前方一致を先に、次に名前・説明の部分一致）。多すぎるときは先頭だけ。
+/// 画面は小文字を先に作った [`complete_lower`] を使う（これは試験の基準）
+#[cfg(test)]
+fn complete(all: Vec<(String, String)>, text: &str) -> Vec<(String, String)> {
     let q = text.trim().to_lowercase();
     if q.is_empty() {
         return Vec::new();
@@ -196,6 +198,73 @@ pub fn complete(all: Vec<(String, String)>, text: &str) -> Vec<(String, String)>
             head.push((n, d));
         } else if l.contains(&q) || d.to_lowercase().contains(&q) {
             rest.push((n, d));
+        }
+    }
+    head.extend(rest);
+    head.truncate(200);
+    head
+}
+
+/// 候補の一覧（名前・説明と、その小文字）。系が変わったときだけ作り直す
+type Cands = std::sync::Arc<Vec<(String, String, String, String)>>;
+
+/// 打った文字に合う候補。候補の一覧は系（と言語）が変わったときだけ、絞り込みは打った文字が変わったときだけ
+/// 作り直す（フォーカス中に毎フレーム全候補を作らない、GPN-27）
+fn cached_complete(
+    ui: &Ui,
+    sid: egui::Id,
+    sys: &Sys,
+    set: Set,
+    text: &str,
+) -> std::sync::Arc<Vec<(String, String)>> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    sys.surfs.hash(&mut h);
+    sys.units.hash(&mut h);
+    sys.waves.hash(&mut h);
+    format!("{set:?}").hash(&mut h);
+    crate::i18n::is_ja().hash(&mut h);
+    let key = h.finish();
+    let (cid, mid) = (sid.with("cands"), sid.with("matches"));
+    let cands = match ui.data(|d| d.get_temp::<(u64, Cands)>(cid)) {
+        Some((k, c)) if k == key => c,
+        _ => {
+            let c: Cands = std::sync::Arc::new(
+                names(sys, set)
+                    .into_iter()
+                    .map(|(n, d)| {
+                        let (ln, ld) = (n.to_lowercase(), d.to_lowercase());
+                        (n, d, ln, ld)
+                    })
+                    .collect(),
+            );
+            ui.data_mut(|d| d.insert_temp(cid, (key, c.clone())));
+            c
+        }
+    };
+    type Matches = (u64, String, std::sync::Arc<Vec<(String, String)>>);
+    if let Some((k, t, m)) = ui.data(|d| d.get_temp::<Matches>(mid)) {
+        if k == key && t == text {
+            return m;
+        }
+    }
+    let m = std::sync::Arc::new(complete_lower(&cands, text));
+    ui.data_mut(|d| d.insert_temp::<Matches>(mid, (key, text.to_string(), m.clone())));
+    m
+}
+
+/// [`complete`] と同じ規則で、小文字を作ってある候補から
+fn complete_lower(all: &[(String, String, String, String)], text: &str) -> Vec<(String, String)> {
+    let q = text.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let (mut head, mut rest) = (Vec::new(), Vec::new());
+    for (n, d, ln, ld) in all {
+        if ln.starts_with(&q) {
+            head.push((n.clone(), d.clone()));
+        } else if rest.len() < 200 && (ln.contains(&q) || ld.contains(&q)) {
+            rest.push((n.clone(), d.clone()));
         }
     }
     head.extend(rest);
@@ -234,7 +303,7 @@ pub fn edit(
     let enter = resp.lost_focus() && ui.input(|x| x.key_pressed(Key::Enter));
     let mut chosen = enter;
     if resp.has_focus() || enter {
-        let m = complete(names(sys, set), s);
+        let m = cached_complete(ui, sid, sys, set, s);
         let exact = m.iter().any(|x| x.0.eq_ignore_ascii_case(s.trim()));
         if resp.changed() || st.pick >= m.len() {
             st.pick = 0;
@@ -260,19 +329,24 @@ pub fn edit(
                 .show(ui.ctx(), |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
                         ui.set_min_width(240.0);
-                        egui::ScrollArea::vertical()
-                            .max_height(240.0)
-                            .show(ui, |ui| {
-                                for (k, (n, d)) in m.iter().enumerate() {
-                                    let r = ui.selectable_label(k == st.pick, format!("{n}  {d}"));
-                                    if k == st.pick && (up || down) {
-                                        r.scroll_to_me(None);
-                                    }
-                                    if r.clicked() {
-                                        clicked = Some(n.clone());
-                                    }
+                        // 見える行だけ描く（GPN-27）。↑↓ で選んだ行が見えるように位置を合わせる
+                        let row_h = ui.text_style_height(&egui::TextStyle::Body)
+                            + ui.spacing().item_spacing.y;
+                        let mut area = egui::ScrollArea::vertical().max_height(240.0);
+                        if up || down {
+                            area = area.vertical_scroll_offset(
+                                (st.pick as f32 * row_h - 240.0 * 0.5).max(0.0),
+                            );
+                        }
+                        area.show_rows(ui, row_h, m.len(), |ui, range| {
+                            for k in range {
+                                let (n, d) = &m[k];
+                                let r = ui.selectable_label(k == st.pick, format!("{n}  {d}"));
+                                if r.clicked() {
+                                    clicked = Some(n.clone());
                                 }
-                            });
+                            }
+                        });
                     });
                 });
             if let Some(n) = clicked {
@@ -423,6 +497,19 @@ mod tests {
             ],
             units: vec!["G1".into()],
             waves: 2,
+        }
+    }
+
+    /// 小文字を先に作った絞り込みは、前の complete と同じ結果（GPN-27）
+    #[test]
+    fn complete_lower_matches_complete() {
+        let all = names(&sys(), Set::Any);
+        let low: Vec<_> = all
+            .iter()
+            .map(|(n, d)| (n.clone(), d.clone(), n.to_lowercase(), d.to_lowercase()))
+            .collect();
+        for t in ["", "1", "1.", "G", "wave", "k", "thick", "zz"] {
+            assert_eq!(complete_lower(&low, t), complete(all.clone(), t), "{t}");
         }
     }
 

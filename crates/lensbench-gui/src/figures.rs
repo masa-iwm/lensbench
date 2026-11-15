@@ -352,6 +352,7 @@ pub fn f64s(v: &Value) -> Vec<f64> {
 
 /// 視野の選び（全視野の結果のとき）。選んだ項目の位置を返す
 pub fn pick_field(ui: &mut Ui, id: u64, what: &str, items: &[Value]) -> usize {
+    let fname = crate::plots::field_namer(ui);
     let key = ui.make_persistent_id(("fig-field", id, what));
     let mut k: usize = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, 0usize));
     if k >= items.len() {
@@ -361,7 +362,7 @@ pub fn pick_field(ui: &mut Ui, id: u64, what: &str, items: &[Value]) -> usize {
         ui.horizontal_wrapped(|ui| {
             for (i, it) in items.iter().enumerate() {
                 let f = it["field"].as_u64().unwrap_or(i as u64 + 1);
-                ui.selectable_value(&mut k, i, trf("視野 {}", &[&f]));
+                ui.selectable_value(&mut k, i, fname(f as usize));
             }
         });
         ui.ctx().data_mut(|d| d.insert_temp(key, k));
@@ -710,6 +711,7 @@ fn psf(ui: &mut Ui, id: u64, v: &Value) -> bool {
 
 /// Zernike 係数の棒（視野ごとに色、項の番号は 1 始まり）
 fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
+    let fname = crate::plots::field_namer(ui);
     let Some(items) = v["zernike"].as_array() else {
         return false;
     };
@@ -748,7 +750,7 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
                 .collect();
             BarChart::new(bars)
                 .color(theme::series(f.saturating_sub(1) as usize))
-                .name(trf("視野 {}", &[&f]))
+                .name(fname(f as usize))
         })
         .collect();
     Plot::new(("zern", id))
@@ -927,6 +929,7 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
 
 /// RMS の掃引（視野・フォーカス・波長）。量はスポット [µm]・波面 [波]・Strehl から選ぶ
 fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
+    let fname = crate::plots::field_namer(ui);
     let Some(_) = v["rms"].as_array() else {
         return false;
     };
@@ -993,7 +996,7 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         for (f, pts) in now {
             reg.push(crate::plot_tools::Series::new(
                 if f > 0 {
-                    trf("視野 {}", &[&f])
+                    fname(f as usize)
                 } else {
                     String::new()
                 },
@@ -1004,7 +1007,7 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
                 .color(theme::series(f.saturating_sub(1) as usize))
                 .width(1.6_f32);
             if f > 0 {
-                l = l.name(trf("視野 {}", &[&f]));
+                l = l.name(fname(f as usize));
             }
             p.line(l);
         }

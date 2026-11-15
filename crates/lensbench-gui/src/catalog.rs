@@ -7,6 +7,11 @@
 use egui::{Color32, RichText, Sense, Ui};
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use serde_json::{json, Value};
+mod filter;
+
+use std::sync::Arc;
+
+pub use filter::{filter_glasses, filter_lenses};
 
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
@@ -340,15 +345,6 @@ impl Range {
     }
 }
 
-/// 文字列の絞り込み: 空白で区切った語がすべて（大文字・小文字を区別せず）どこかに含まれる
-fn text_match(query: &str, fields: &[&str]) -> bool {
-    let hay: Vec<String> = fields.iter().map(|x| x.to_lowercase()).collect();
-    query.split_whitespace().all(|w| {
-        let w = w.to_lowercase();
-        hay.iter().any(|h| h.contains(&w))
-    })
-}
-
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LensFilter {
     pub text: String,
@@ -570,107 +566,12 @@ pub enum LensSort {
     Thickness,
 }
 
-pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: bool) -> Vec<usize> {
-    // 読めない仕様の条件は無視する（欄の横に誤りを出す）
-    let specs = parse_spec_filters(&q.spec).unwrap_or_default();
-    let mut v: Vec<usize> = (0..rows.len())
-        .filter(|&i| {
-            let r = &rows[i];
-            let g = r.glasses.join(" ");
-            let tags = r.raw["tags"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(Value::as_str)
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_default();
-            let sp = r
-                .specs()
-                .iter()
-                .map(|(_, v)| spec_text("", v))
-                .collect::<Vec<_>>()
-                .join(" ");
-            (q.vendor.is_empty() || r.vendor == q.vendor)
-                && text_match(
-                    &q.text,
-                    &[&r.vendor, &r.part, &g, &r.description, &tags, &sp],
-                )
-                && q.category.as_ref().is_none_or(|c| &r.category == c)
-                && specs.iter().all(|f| f.matches(&r.raw))
-                && q.efl.contains(r.efl)
-                && q.diameter.contains(r.diameter)
-                && match q.sign {
-                    Sign::Any => true,
-                    Sign::Positive => r.efl > 0.0,
-                    Sign::Negative => r.efl < 0.0,
-                }
-                && match q.pieces {
-                    0 => true,
-                    3 => r.pieces >= 3,
-                    n => r.pieces == n,
-                }
-                && q.kind.is_none_or(|k| r.kind == k)
-                && q.kind_group.is_none_or(|m| (r.kind == RowKind::Mech) == m)
-                && q.fit.as_ref().is_none_or(|f| match f.mode {
-                    FitMode::MechFor => {
-                        r.kind == RowKind::Mech
-                            && lensbench_project::catalog_spec::fits_row(&r.raw, f.d)
-                    }
-                    FitMode::OpticsFor => {
-                        r.kind != RowKind::Mech
-                            && r.diameter.is_finite()
-                            && fits_hold(f.d, r.diameter)
-                    }
-                })
-        })
-        .collect();
-    let key = |i: &usize| {
-        let r = &rows[*i];
-        match sort {
-            LensSort::Vendor | LensSort::Part => 0.0,
-            LensSort::Efl => r.efl,
-            LensSort::Diameter => r.diameter,
-            LensSort::Thickness => r.thickness,
-        }
-    };
-    v.sort_by(|a, b| {
-        let o = match sort {
-            LensSort::Vendor => {
-                (&rows[*a].vendor, &rows[*a].part).cmp(&(&rows[*b].vendor, &rows[*b].part))
-            }
-            LensSort::Part => rows[*a].part.cmp(&rows[*b].part),
-            // NaN は最後
-            _ => key(a).total_cmp(&key(b)),
-        };
-        if desc {
-            o.reverse()
-        } else {
-            o
-        }
-    });
-    v
-}
-
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GlassFilter {
     pub text: String,
     pub catalog: String,
     pub nd: Range,
     pub vd: Range,
-}
-
-pub fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
-    (0..rows.len())
-        .filter(|&i| {
-            let r = &rows[i];
-            (q.catalog.is_empty() || r.catalog == q.catalog)
-                && text_match(&q.text, &[&r.name, &r.catalog])
-                && q.nd.contains(r.nd)
-                && q.vd.contains(r.vd)
-        })
-        .collect()
 }
 
 pub use crate::combo::{Combo, Pick};
@@ -739,20 +640,21 @@ pub struct Browser {
 /// 一覧の版（入れ替えた回数、件数）
 type ListKey = (u64, usize);
 /// 条件・並べ方と、その結果の行の番号
-type LensIdx = (ListKey, LensFilter, LensSort, bool, Vec<usize>);
+type LensIdx = (ListKey, LensFilter, LensSort, bool, Arc<[usize]>);
 
-/// [`Browser`] の一覧から作るもの。`gen` は一覧を入れ替えた回数（[`Browser::set_lenses`]）
+/// [`Browser`] の一覧から作るもの。`gen` は一覧を入れ替えた回数（[`Browser::set_lenses`]）。
+/// 毎フレーム渡すので中身は Arc（複製しない、GPN-24）
 #[derive(Default)]
 pub struct ListCache {
     lens_gen: u64,
     glass_gen: u64,
     /// メーカー・品の種類の選択肢
-    lens_meta: Option<(ListKey, Vec<String>, KindChoices)>,
+    lens_meta: Option<(ListKey, Arc<[String]>, Arc<KindChoices>)>,
     lens_idx: Option<LensIdx>,
     /// 選んだ行と対応する品（素子なら入る機構部品、機構部品なら入る素子。行の番号）
-    lens_fit: Option<(ListKey, usize, Vec<usize>)>,
-    glass_meta: Option<(ListKey, Vec<String>)>,
-    glass_idx: Option<(ListKey, GlassFilter, Vec<usize>)>,
+    lens_fit: Option<(ListKey, usize, Arc<[usize]>)>,
+    glass_meta: Option<(ListKey, Arc<[String]>)>,
+    glass_idx: Option<(ListKey, GlassFilter, Arc<[usize]>)>,
 }
 
 /// カタログレンズの一覧の列
@@ -1172,20 +1074,21 @@ impl Browser {
     }
 
     /// メーカーと、一覧にある品の種類（選択肢）
-    fn lens_meta(&mut self) -> (Vec<String>, KindChoices) {
+    fn lens_meta(&mut self) -> (Arc<[String]>, Arc<KindChoices>) {
         let key = self.lens_key();
         if self.cache.lens_meta.as_ref().is_none_or(|c| c.0 != key) {
             let mut vendors: Vec<String> = self.lenses.iter().map(|l| l.vendor.clone()).collect();
             vendors.sort();
             vendors.dedup();
-            self.cache.lens_meta = Some((key, vendors, KindChoices::of(&self.lenses)));
+            self.cache.lens_meta =
+                Some((key, vendors.into(), Arc::new(KindChoices::of(&self.lenses))));
         }
         let c = self.cache.lens_meta.as_ref().unwrap();
         (c.1.clone(), c.2.clone())
     }
 
     /// 絞り込んで並べた行の番号
-    fn lens_idx(&mut self) -> Vec<usize> {
+    fn lens_idx(&mut self) -> Arc<[usize]> {
         let key = self.lens_key();
         let hit = self.cache.lens_idx.as_ref().is_some_and(|c| {
             c.0 == key && c.1 == self.lens_q && c.2 == self.lens_sort && c.3 == self.lens_desc
@@ -1197,14 +1100,14 @@ impl Browser {
                 self.lens_q.clone(),
                 self.lens_sort,
                 self.lens_desc,
-                idx,
+                idx.into(),
             ));
         }
         self.cache.lens_idx.as_ref().unwrap().4.clone()
     }
 
     /// 行 `sel`（品 `r`）と対応する品の行: 機構部品なら保持径に入る素子、素子ならその径が入る機構部品
-    fn lens_fit(&mut self, sel: usize, r: &LensRow) -> Vec<usize> {
+    fn lens_fit(&mut self, sel: usize, r: &LensRow) -> Arc<[usize]> {
         let key = self.lens_key();
         if self
             .cache
@@ -1234,23 +1137,23 @@ impl Browser {
                     })
                     .collect()
             };
-            self.cache.lens_fit = Some((key, sel, fit));
+            self.cache.lens_fit = Some((key, sel, fit.into()));
         }
         self.cache.lens_fit.as_ref().unwrap().2.clone()
     }
 
-    fn glass_cats(&mut self) -> Vec<String> {
+    fn glass_cats(&mut self) -> Arc<[String]> {
         let key = self.glass_key();
         if self.cache.glass_meta.as_ref().is_none_or(|c| c.0 != key) {
             let mut cats: Vec<String> = self.glasses.iter().map(|g| g.catalog.clone()).collect();
             cats.sort();
             cats.dedup();
-            self.cache.glass_meta = Some((key, cats));
+            self.cache.glass_meta = Some((key, cats.into()));
         }
         self.cache.glass_meta.as_ref().unwrap().1.clone()
     }
 
-    fn glass_idx(&mut self) -> Vec<usize> {
+    fn glass_idx(&mut self) -> Arc<[usize]> {
         let key = self.glass_key();
         let hit = self
             .cache
@@ -1259,7 +1162,7 @@ impl Browser {
             .is_some_and(|c| c.0 == key && c.1 == self.glass_q);
         if !hit {
             let idx = filter_glasses(&self.glasses, &self.glass_q);
-            self.cache.glass_idx = Some((key, self.glass_q.clone(), idx));
+            self.cache.glass_idx = Some((key, self.glass_q.clone(), idx.into()));
         }
         self.cache.glass_idx.as_ref().unwrap().2.clone()
     }
@@ -1382,7 +1285,7 @@ impl Browser {
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut q.vendor, String::new(), tr("すべてのメーカー"));
-                    for v in &vendors {
+                    for v in vendors.iter() {
                         ui.selectable_value(&mut q.vendor, v.clone(), v);
                     }
                 });
@@ -1650,8 +1553,8 @@ impl Browser {
         }
         let fit: Vec<&LensRow> = self
             .lens_fit(self.lens_sel.unwrap_or(usize::MAX), r)
-            .into_iter()
-            .filter_map(|i| self.lenses.get(i))
+            .iter()
+            .filter_map(|&i| self.lenses.get(i))
             .collect();
         if fit.is_empty() {
             ui.weak(tr("入る機構部品なし")).on_hover_text(tr(
@@ -1954,7 +1857,7 @@ impl Browser {
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut q.catalog, String::new(), tr("すべてのカタログ"));
-                    for v in &cats {
+                    for v in cats.iter() {
                         ui.selectable_value(&mut q.catalog, v.clone(), v);
                     }
                 });
@@ -2493,29 +2396,29 @@ mod tests {
             lens("LB", "A", 50.0, 25.4),
             lens("TL", "B", -30.0, 12.7),
         ]);
-        assert_eq!(b.lens_idx(), vec![0, 1]);
-        assert_eq!(b.lens_meta().0, ["LB", "TL"]);
+        assert_eq!(*b.lens_idx(), [0, 1]);
+        assert_eq!(*b.lens_meta().0, ["LB", "TL"]);
         b.lens_q.sign = Sign::Negative;
-        assert_eq!(b.lens_idx(), vec![1]);
+        assert_eq!(*b.lens_idx(), [1]);
         b.lens_q.sign = Sign::Any;
         b.lens_sort = LensSort::Efl;
-        assert_eq!(b.lens_idx(), vec![1, 0]);
+        assert_eq!(*b.lens_idx(), [1, 0]);
         b.lens_desc = true;
-        assert_eq!(b.lens_idx(), vec![0, 1]);
+        assert_eq!(*b.lens_idx(), [0, 1]);
         // 同じ件数の別の一覧に入れ替えても作り直す
         b.set_lenses(vec![lens("ZZ", "C", 10.0, 5.0), lens("ZZ", "D", 20.0, 5.0)]);
-        assert_eq!(b.lens_idx(), vec![1, 0]);
-        assert_eq!(b.lens_meta().0, ["ZZ"]);
+        assert_eq!(*b.lens_idx(), [1, 0]);
+        assert_eq!(*b.lens_meta().0, ["ZZ"]);
         let g = |name: &str, catalog: &str| GlassRow {
             name: name.into(),
             catalog: catalog.into(),
             ..Default::default()
         };
         b.set_glasses(vec![g("N-BK7", "SCHOTT"), g("S-BSL7", "OHARA")]);
-        assert_eq!(b.glass_cats(), ["OHARA", "SCHOTT"]);
-        assert_eq!(b.glass_idx(), vec![0, 1]);
+        assert_eq!(*b.glass_cats(), ["OHARA", "SCHOTT"]);
+        assert_eq!(*b.glass_idx(), [0, 1]);
         b.glass_q.catalog = "OHARA".into();
-        assert_eq!(b.glass_idx(), vec![1]);
+        assert_eq!(*b.glass_idx(), [1]);
     }
 
     /// ダブルクリックで足す玉は、図で選んでいる要素の直後へ（続けて足すとその後ろへ）
@@ -2674,12 +2577,12 @@ mod tests {
         // 選んだ品と対応する品（キャッシュ）: 素子なら入る機構部品、機構部品なら入る素子
         let mut c = Browser::default();
         c.set_lenses(rows.clone());
-        assert_eq!(c.lens_fit(0, &rows[0]), vec![2]);
-        assert_eq!(c.lens_fit(3, &rows[3]), vec![1]);
-        assert_eq!(c.lens_fit(2, &rows[2]), vec![0]);
+        assert_eq!(*c.lens_fit(0, &rows[0]), [2]);
+        assert_eq!(*c.lens_fit(3, &rows[3]), [1]);
+        assert_eq!(*c.lens_fit(2, &rows[2]), [0]);
         let k = c.lens_meta().1;
         assert_eq!(
-            (k.optics, k.mech, k.has_mech),
+            (k.optics.clone(), k.mech.clone(), k.has_mech),
             (vec!["lens"], vec!["tube"], true)
         );
         // 組合せの玉に合わせて足すと、その玉に置いて保持し座に合わせる

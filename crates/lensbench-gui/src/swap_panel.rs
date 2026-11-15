@@ -66,7 +66,7 @@ pub struct Cands {
     /// プロジェクトの状態の名前（複数の状態で同時に評価するときに選ぶ）
     pub states: Vec<String>,
     /// 名前の欄の補完の候補（開いた系の玉・群）
-    pub sys: crate::param_pick::Sys,
+    pub sys: std::rc::Rc<crate::param_pick::Sys>,
 }
 
 pub struct SwapPanel {

@@ -519,7 +519,7 @@ pub struct Cands<'a> {
     /// 組合せの系（面の値は t・r・k だけ組合せに当てられる）
     pub combo: bool,
     /// 名前の欄の補完の候補
-    pub sys: crate::param_pick::Sys,
+    pub sys: std::rc::Rc<crate::param_pick::Sys>,
     /// 面の表の行（変数の今の値を出す、GUX-21）
     pub rows: &'a [crate::lens_data::Row],
 }

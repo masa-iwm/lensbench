@@ -133,7 +133,7 @@ impl RaySet {
             nums_ui(ui, &mut self.waves, n_waves, tr("主波長"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("並び"));
+            ui.label(tr("光線の並び"));
             combo(ui, "lr_fan", &mut self.fan, FANS);
             ui.label(tr("本数"));
             zero_auto(ui, &mut self.rays, 1..=200);

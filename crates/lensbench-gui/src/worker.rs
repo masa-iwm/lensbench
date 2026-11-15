@@ -84,6 +84,29 @@ impl Tag {
         matches!(self, Tag::Analyze(_) | Tag::Rays(_))
     }
 
+    /// 利用者の操作でなく、画面が自分で頼む要求（解析・一覧・表の読み直し）。うまくいっても下の行の文を
+    /// 上書きしない（「元に戻した」が続く解析の完了で消えない、GUX-27）
+    pub fn quiet(&self) -> bool {
+        matches!(
+            self,
+            Tag::Info
+                | Tag::Analyze(_)
+                | Tag::Rays(_)
+                | Tag::Glasses
+                | Tag::Lenses
+                | Tag::Get
+                | Tag::Layout
+                | Tag::LensPreview(_)
+                | Tag::Surfaces
+                | Tag::SurfData(_)
+                | Tag::SysData
+                | Tag::ConfigTable
+                | Tag::Configs
+                | Tag::HistoryDepth
+                | Tag::Refresh
+        )
+    }
+
     /// [`Tag::Refresh`] の呼び出しの結果の行き先
     pub fn of_refresh(method: &str) -> Tag {
         match method {
@@ -610,6 +633,7 @@ pub mod entry {
             Ok(q) => q,
             Err(e) => {
                 return Response {
+                    id: 0,
                     results: vec![Err(e)],
                     ms: 0.0,
                     files: Vec::new(),
@@ -647,7 +671,13 @@ pub mod entry {
             .into_iter()
             .map(|(p, b, _)| (p, b))
             .collect();
-        Response { results, ms, files }.encode()
+        Response {
+            id: q.id,
+            results,
+            ms,
+            files,
+        }
+        .encode()
     }
 }
 
@@ -940,11 +970,17 @@ mod remote {
         }
 
         fn receive(&mut self, msg: Result<Vec<u8>, String>) {
+            let resp = msg.and_then(|b| Response::decode(&b));
+            // 待っている要求の返事でないもの（エラーで先に片づけた要求の遅れた返事など）は捨てる（GAR-27）
+            if let Ok(r) = &resp {
+                if r.id != 0 && (self.inflight.is_none() || r.id != self.inflight_id) {
+                    return;
+                }
+            }
             if matches!(self.kind, Kind::Main) {
                 RUNNING.with(|r| r.set(0));
                 PROGRESS.with(|p| *p.borrow_mut() = Value::Null);
             }
-            let resp = msg.and_then(|b| Response::decode(&b));
             let Some(j) = self.inflight.take() else {
                 // 要求を待っていないときのエラー（起動の失敗など）: 止めて、次の要求で作り直す
                 if let Err(e) = resp {

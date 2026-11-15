@@ -3521,7 +3521,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
         }
     });
     // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
-    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, weak));
+    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, k, weak));
     let is_bs = p.kind == ElemKind::Splitter;
     if is_bs {
         ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
@@ -3736,8 +3736,8 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
     }
 }
 
-/// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値
-pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
+/// 要素の ON/OFF・OFF の残し方・鏡の往路を戻る。状態 st を選んでいれば ON/OFF と後の空気はその状態の値。k は欄の id（GPN-18）
+pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
     if p.kind.has_on() {
         let mut on = p.on_in(st);
         let hint = match st {
@@ -3753,7 +3753,7 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, weak: Color32) {
             }
         }
         if p.kind.has_off_mode() {
-            egui::ComboBox::from_id_salt(("off_mode", p as *const Pick as usize))
+            egui::ComboBox::from_id_salt(("off_mode", k))
                 .selected_text(if p.off_air {
                     tr("OFF は空気で残す")
                 } else {
@@ -3901,7 +3901,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
             num(ui, "R", &mut p.r1, " mm");
             place_ui(ui, p, st, &[], &[0, 1]);
             num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
-            coat_edit(ui, &mut p.coat, weak);
+            coat_edit(ui, &mut p.coat, k, weak);
             ui.checkbox(&mut p.back, tr("往路を戻る")).on_hover_text(tr(
                 "鏡で反射した光が来た道を戻る（ダブルパス・干渉計の腕の端）。BS の分岐の中なら、戻った光は BS で分かれる",
             ));
@@ -3991,7 +3991,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                             .prefix("T "),
                     );
                 }
-                BsSplit::Coat => coat_edit(ui, &mut p.coat, weak),
+                BsSplit::Coat => coat_edit(ui, &mut p.coat, k, weak),
                 BsSplit::Pbs => {
                     ui.add(
                         egui::DragValue::new(&mut p.pbs[0])
@@ -4036,7 +4036,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
 }
 
 /// 膜の名前の欄（鏡・BS の分ける面）
-fn coat_edit(ui: &mut Ui, coat: &mut String, weak: Color32) {
+fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: Color32) {
     ui.label(RichText::new(tr("膜")).color(weak));
     ui.add(
         egui::TextEdit::singleline(coat)
@@ -4049,7 +4049,7 @@ fn coat_edit(ui: &mut Ui, coat: &mut String, weak: Color32) {
     // 系の設定で定義した膜から選ぶ
     let names = crate::coat_defs::names(ui.ctx());
     if !names.is_empty() {
-        egui::ComboBox::from_id_salt(("coat_pick", coat as *const String as usize))
+        egui::ComboBox::from_id_salt(("coat_pick", k))
             .selected_text("▼")
             .width(24.0)
             .show_ui(ui, |ui| {
@@ -4225,7 +4225,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                 }
             }
         });
-        onoff_ui(ui, p, st, weak);
+        onoff_ui(ui, p, st, k, weak);
         if ui
             .add_enabled(can_prev, egui::Button::new("◀"))
             .on_hover_text(tr("前へ"))
