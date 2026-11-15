@@ -110,7 +110,7 @@ fn run_once(cmd: &[String]) -> (Result<(bool, Value, Option<PathBuf>), String>, 
 
 pub fn watch(a: WatchArgs) -> Result<(), crate::AppError> {
     if a.interval.is_nan() || a.interval <= 0.0 {
-        return Err(crate::AppError::usage("--interval は正"));
+        return Err(crate::AppError::usage("--interval must be positive"));
     }
     // 引数の誤りは最初に知らせる
     let mut cli = parse(&a.cmd).map_err(crate::AppError::usage)?;

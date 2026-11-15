@@ -3,10 +3,8 @@
 
 # kinds of errors
 cancelled	中断した
-invalid	不正
-not supported	未対応
 
-# places
+# words used inside other messages
 surface {}	面 {}
 
 # command line (lensbench-cli)
@@ -176,3 +174,24 @@ no lens {k} (1 to {})	玉 {k} はありません（1〜{}）
 surfaces to write {from} to {to} (1 to {})	書き出す面 {from}〜{to}（1〜{}）
 beam {b} (a configuration number in .zmx, from 1)	光束 {b}（.zmx では構成の番号、1 始まり）
 only .zmx can be read with replaced trace wavelengths	追跡する波長を置き換えて読めるのは .zmx だけ
+
+# cli
+can't read the number of {what} ({x})	{what} の数が読めない（{x}）
+{what} is empty	{what} が空
+--offset takes 3 values dx,dy,dz	--offset は dx,dy,dz の 3 つ
+{}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp	{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか
+--unfold is only for 2D (svg, png, dxf)	--unfold は 2D（svg・png・dxf）だけ
+--var {v} range is min:max	--var {v} の範囲は 下限:上限
+--var {v} range {t}	--var {v} の範囲 {t}
+--merit {m} (spot, wavefront, none)	--merit {m}（spot・wavefront・none）
+--reference {r} (centroid, chief)	--reference {r}（centroid・chief）
+--set {t} must be an object	--set {t} はオブジェクト
+item {name} already exists (use --replace to replace it)	項目 {name} はもうある（置き換えは --replace）
+--block takes 1 or 2 values (the first and last of the range)	--block は 1 つか 2 つ（範囲の最初と最後）
+give one of --lens and --block	--lens か --block のどちらか 1 つ
+--kind: unknown kind {k}	--kind: 知らない種類 {k}
+--interval must be positive	--interval は正
+
+# py
+Python plugin: {e}	Python のプラグイン: {e}
+Python exception	Python の例外

@@ -361,7 +361,7 @@ fn run_batch<'py>(
         let fail = |e: PyErr| {
             first_err.lock_ok().get_or_insert(e);
             cancel.store(true, Ordering::Relaxed);
-            lensbench_core::Error::Invalid("Python の例外".into())
+            lensbench_core::Error::Invalid("Python exception".into())
         };
         // 系は GIL なしで作る
         let sys = pb

@@ -584,11 +584,11 @@ fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, AppError> {
         .map(|x| {
             x.trim()
                 .parse::<f64>()
-                .map_err(|_| AppError::usage(format!("{what} の数が読めない（{x}）")))
+                .map_err(|_| AppError::usage(format!("can't read the number of {what} ({x})")))
         })
         .collect::<Result<_, _>>()?;
     if v.is_empty() {
-        return Err(AppError::usage(format!("{what} が空")));
+        return Err(AppError::usage(format!("{what} is empty")));
     }
     Ok(v)
 }
@@ -890,7 +890,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 Some(v) => {
                     let x = parse_list(v, "--offset")?;
                     if x.len() != 3 {
-                        return Err(AppError::usage("--offset は dx,dy,dz の 3 つ"));
+                        return Err(AppError::usage("--offset takes 3 values dx,dy,dz"));
                     }
                     [x[0], x[1], x[2]]
                 }
@@ -914,14 +914,14 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .map(|p| {
                     lensbench_export::LayoutFormat::from_path(p).ok_or_else(|| {
                         AppError::usage(format!(
-                            "{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか",
+                            "{}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp",
                             p.display()
                         ))
                     })
                 })
                 .collect::<Result<Vec<_>, AppError>>()?;
             if l.unfold && fmts.iter().any(|f| !f.is_2d()) {
-                return Err(AppError::usage("--unfold は 2D（svg・png・dxf）だけ"));
+                return Err(AppError::usage("--unfold is only for 2D (svg, png, dxf)"));
             }
             let mut scenes: [Option<scene::Scene>; 2] = [None, None];
             for f in &fmts {
@@ -994,14 +994,14 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 if let Some(r) = range {
                     let (lo, hi) = r
                         .split_once(':')
-                        .ok_or_else(|| AppError::usage(format!("--var {v} の範囲は 下限:上限")))?;
+                        .ok_or_else(|| AppError::usage(format!("--var {v} range is min:max")))?;
                     let num = |t: &str, d: f64| -> Result<f64, AppError> {
                         if t.trim().is_empty() {
                             Ok(d)
                         } else {
                             t.trim()
                                 .parse()
-                                .map_err(|_| AppError::usage(format!("--var {v} の範囲 {t}")))
+                                .map_err(|_| AppError::usage(format!("--var {v} range {t}")))
                         }
                     };
                     var = var.bounds(num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
@@ -1014,7 +1014,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 "none" => None,
                 m => {
                     return Err(AppError::usage(format!(
-                        "--merit {m}（spot・wavefront・none）"
+                        "--merit {m} (spot, wavefront, none)"
                     )))
                 }
             };
@@ -1023,7 +1023,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 "chief" => sweep::RmsRef::Chief,
                 r => {
                     return Err(AppError::usage(format!(
-                        "--reference {r}（centroid・chief）"
+                        "--reference {r} (centroid, chief)"
                     )))
                 }
             };
@@ -1123,7 +1123,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 let o: Value = serde_json::from_str(t)
                     .map_err(|x| AppError::usage(format!("--set {t}: {x}")))?;
                 let Value::Object(o) = o else {
-                    return Err(AppError::usage(format!("--set {t} はオブジェクト")));
+                    return Err(AppError::usage(format!("--set {t} must be an object")));
                 };
                 let m = v.as_object_mut().ok_or("設定はオブジェクト")?;
                 m.extend(o);
@@ -1206,12 +1206,12 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
             if cat.items.contains_key(&name) && !replace {
                 return Err(AppError::usage(format!(
-                    "項目 {name} はもうある（置き換えは --replace）"
+                    "item {name} already exists (use --replace to replace it)"
                 )));
             }
             if block.len() > 2 {
                 return Err(AppError::usage(
-                    "--block は 1 つか 2 つ（範囲の最初と最後）",
+                    "--block takes 1 or 2 values (the first and last of the range)",
                 ));
             }
             let item = match (lens, block.is_empty()) {
@@ -1241,7 +1241,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     };
                     lensbench_project::blocks_item(&p, &env, &block, &description)?
                 }
-                _ => return Err(AppError::usage("--lens か --block のどちらか 1 つ")),
+                _ => return Err(AppError::usage("give one of --lens and --block")),
             };
             // 読み直して足す（品を作る間にほかで足した品を消さない）
             let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
@@ -1286,7 +1286,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     .iter()
                     .map(|k| {
                         ItemKind::parse(k)
-                            .ok_or_else(|| AppError::usage(format!("--kind: 知らない種類 {k}")))
+                            .ok_or_else(|| AppError::usage(format!("--kind: unknown kind {k}")))
                     })
                     .collect::<Result<_, _>>()?,
                 vendor,

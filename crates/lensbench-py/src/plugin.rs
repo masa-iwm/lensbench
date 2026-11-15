@@ -290,7 +290,7 @@ impl Instance for PyFuncInstance {
                 .map_err(|_| PyTypeError::new_err("プラグインの関数は dict を返すこと"))?;
             to_arrays(d)
         })
-        .map_err(|e| Error::Invalid(format!("Python のプラグイン: {e}")))
+        .map_err(|e| Error::Invalid(format!("Python plugin: {e}")))
     }
 }
 

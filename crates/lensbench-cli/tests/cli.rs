@@ -303,7 +303,7 @@ fn layout_writes_every_format() {
     // 知らない拡張子
     let bad = dir.join("a.xyz").display().to_string();
     let (ok, _, err) = run(&["layout", ZMX, "--glass-dir", "tests/glass", "--out", &bad]);
-    assert!(!ok && err.contains("拡張子"));
+    assert!(!ok && err.contains("extension"));
     std::fs::remove_dir_all(&dir).ok();
 }
 

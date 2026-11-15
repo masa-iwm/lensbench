@@ -2,7 +2,8 @@
 # crates/lensbench-py（Python の拡張モジュール）はワークスペースのメンバー。cargo build・clippy・test でも maturin と
 # 同じく libpython をリンクしない（Python の開発用ファイルが無くてもビルドできる）
 PYO3_BUILD_EXTENSION_MODULE = "1"
-# テストの誤りの文は英語（元の文）で比べる（OS の言語によらない。i18n.rs、XCT-20）
+# テストの誤りの文は英語（元の文）で比べる（OS の言語によらない。i18n.rs、XCT-20）。cargo run にも効くので、
+# 日本語の表示を見るときは LENSBENCH_LANG=ja を付けて実行する
 LENSBENCH_LANG = "en"
 
 # Windows は同梱の rust-lld でリンクする（MSVC の link.exe より速い。CI・配る exe と同じ。#66 で release の GUI を確かめた）

@@ -5,12 +5,15 @@
 //!   (Japanese if it starts with `ja`, English otherwise).
 //! - Translation: `lang/ja.tsv` holds `English template<TAB>Japanese template`. A `{...}` in the English
 //!   template matches any text, and the same `{...}` in the Japanese template is replaced by that text
-//!   (identical tokens such as `{}` are taken in order). A message that is not in the table is split at
+//!   (identical tokens such as `{}` are taken in order). Only a nested message in `{e}` is translated again;
+//!   other slot values (names, numbers, file names) are kept as they are. When several lines match, the one with the most
+//!   literal text wins. A message that is not in the table is split at
 //!   `": "` and each part is translated (the context added by [`crate::Error::at`]); text with no match stays as is.
-//! - New messages: write them in English and add the Japanese line to `lang/ja.tsv`.
+//! - New messages: write them in English and add the Japanese line to `lang/ja.tsv`. Crates outside this
+//!   repository's public part keep their own table and add it with [`add_table`].
 
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 /// Message language
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,18 +109,68 @@ struct Entry {
 
 const JA: &str = include_str!("../lang/ja.tsv");
 
-fn table() -> &'static [Entry] {
-    static T: OnceLock<Vec<Entry>> = OnceLock::new();
-    T.get_or_init(|| {
-        JA.lines()
-            .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
-            .filter_map(|l| l.split_once('\t'))
-            .map(|(en, ja)| Entry {
-                en: pieces(en),
-                ja: pieces(ja),
-            })
-            .collect()
-    })
+fn entries(text: &str) -> impl Iterator<Item = Entry> + '_ {
+    text.lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(en, ja)| Entry {
+            en: pieces(en),
+            ja: pieces(ja),
+        })
+}
+
+/// The table: `lang/ja.tsv` and the tables added with [`add_table`]
+fn table() -> &'static RwLock<Vec<Entry>> {
+    static T: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
+    T.get_or_init(|| RwLock::new(entries(JA).collect()))
+}
+
+/// Add a table of the same format as `lang/ja.tsv` (an exe that adds plugins adds the Japanese of their
+/// messages at start-up). Check it with [`check_table`] in a test
+pub fn add_table(text: &'static str) {
+    table()
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(entries(text));
+}
+
+/// Check a table: each line has a tab, the same `{…}` in English and Japanese, unnamed `{}` in the same
+/// order, and no two slots side by side. The errors name the line
+pub fn check_table(text: &str) -> Result<(), String> {
+    for (n, l) in text.lines().enumerate() {
+        if l.trim().is_empty() || l.starts_with('#') {
+            continue;
+        }
+        let at = |m: &str| format!("line {}: {m}: {l}", n + 1);
+        let (en, ja) = l.split_once('\t').ok_or_else(|| at("no tab"))?;
+        let slots = |t: &str, unnamed: bool| {
+            let mut v: Vec<String> = pieces(t)
+                .into_iter()
+                .filter_map(|p| match p {
+                    Piece::Slot(s) if !unnamed || s == "{}" || s.starts_with("{:") => Some(s),
+                    _ => None,
+                })
+                .collect();
+            if !unnamed {
+                v.sort();
+            }
+            v
+        };
+        if slots(en, false) != slots(ja, false) {
+            return Err(at("different slots"));
+        }
+        // 名前の無い {}・{:..} は引数の順に埋まるので、英語と日本語で順を変えない
+        if slots(en, true) != slots(ja, true) {
+            return Err(at("unnamed slots in a different order"));
+        }
+        if pieces(en)
+            .windows(2)
+            .any(|w| matches!(w, [Piece::Slot(_), Piece::Slot(_)]))
+        {
+            return Err(at("two slots side by side can't be matched"));
+        }
+    }
+    Ok(())
 }
 
 /// Match `s` against the pieces `p` (anchored at both ends); the slots' text in order
@@ -125,7 +178,7 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
     match p.split_first() {
         None => s.is_empty().then(Vec::new),
         Some((Piece::Text(t), rest)) => matches(rest, s.strip_prefix(t.as_str())?),
-        Some((Piece::Slot(_), rest)) => {
+        Some((Piece::Slot(name), rest)) => {
             // shortest slot text first; a slot never takes an empty string
             let next = match rest.first() {
                 Some(Piece::Text(t)) => Some(t.as_str()),
@@ -140,11 +193,16 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
                 None if rest.is_empty() => vec![s.len()],
                 None => s.char_indices().map(|(i, _)| i).skip(1).collect(),
             };
-            ends.into_iter().filter(|&i| i > 0).find_map(|i| {
-                let mut v = matches(rest, &s[i..])?;
-                v.insert(0, s[..i].to_string());
-                Some(v)
-            })
+            // 値の欄は「: 」を跨がない（跨ぐのは入れ子の誤り {e} だけ。「surface 3: cancelled」は「surface {}」に
+            // 当てず、「: 」で分けて訳す）
+            let nested = name == "{e}";
+            ends.into_iter()
+                .filter(|&i| i > 0 && (nested || !s[..i].contains(": ")))
+                .find_map(|i| {
+                    let mut v = matches(rest, &s[i..])?;
+                    v.insert(0, s[..i].to_string());
+                    Some(v)
+                })
         }
     }
 }
@@ -172,7 +230,13 @@ fn fill(e: &Entry, vals: Vec<String>) -> String {
                 match i {
                     Some(i) => {
                         used[i] = true;
-                        out.push_str(&translate(&vals[i]));
+                        // 入れ子の誤りの文（`{e}`）だけ訳す。名前・数などの値はそのまま（ファイル名
+                        // 「surface 3.zmx」を「面 3.zmx」にしない）
+                        if s == "{e}" {
+                            out.push_str(&translate(&vals[i]));
+                        } else {
+                            out.push_str(&vals[i]);
+                        }
                     }
                     None => out.push_str(s),
                 }
@@ -182,11 +246,24 @@ fn fill(e: &Entry, vals: Vec<String>) -> String {
     out
 }
 
-/// Translate one English message into Japanese with the table (None if no entry matches)
+/// Literal text length of a template (a longer one is more specific)
+fn literal_len(p: &[Piece]) -> usize {
+    p.iter()
+        .map(|x| match x {
+            Piece::Text(t) => t.len(),
+            Piece::Slot(_) => 0,
+        })
+        .sum()
+}
+
+/// Translate one English message into Japanese with the table (None if no entry matches). When several
+/// entries match, the one with the most literal text wins (`input {}` loses to `input {key} must be …`)
 fn lookup(s: &str) -> Option<String> {
-    table()
-        .iter()
-        .find_map(|e| matches(&e.en, s).map(|v| fill(e, v)))
+    let t = table().read().unwrap_or_else(|e| e.into_inner());
+    t.iter()
+        .filter_map(|e| matches(&e.en, s).map(|v| (literal_len(&e.en), e, v)))
+        .max_by_key(|(n, _, _)| *n)
+        .map(|(_, e, v)| fill(e, v))
 }
 
 /// The Japanese of an English message (the whole message, otherwise each `": "`-separated part)
@@ -237,44 +314,30 @@ mod tests {
 
     #[test]
     fn every_line_has_the_same_slots() {
-        for (n, l) in JA.lines().enumerate() {
-            if l.trim().is_empty() || l.starts_with('#') {
-                continue;
-            }
-            let (en, ja) = l
-                .split_once('\t')
-                .unwrap_or_else(|| panic!("lang/ja.tsv line {}: no tab", n + 1));
-            let slots = |t: &str| {
-                let mut v: Vec<String> = pieces(t)
-                    .into_iter()
-                    .filter_map(|p| match p {
-                        Piece::Slot(s) => Some(s),
-                        Piece::Text(_) => None,
-                    })
-                    .collect();
-                v.sort();
-                v
-            };
-            assert_eq!(slots(en), slots(ja), "lang/ja.tsv line {}: {l}", n + 1);
-            assert!(
-                !pieces(en)
-                    .windows(2)
-                    .any(|w| matches!(w, [Piece::Slot(_), Piece::Slot(_)])),
-                "lang/ja.tsv line {}: two slots side by side can't be matched",
-                n + 1
-            );
-        }
+        check_table(JA).unwrap_or_else(|e| panic!("lang/ja.tsv {e}"));
+        assert!(check_table("a {} b {:.3}\tA {:.3} B {}").is_err());
+        assert!(check_table("a {}{}\tA {}{}").is_err());
     }
 
     #[test]
     fn kinds_are_translated() {
-        assert_eq!(translate("invalid"), "不正");
+        assert_eq!(translate("cancelled"), "中断した");
         assert_eq!(
-            translate("surface 3: invalid"),
-            "面 3: 不正",
+            translate("surface 3: cancelled"),
+            "面 3: 中断した",
             "context parts are translated one by one"
         );
-        // 表の行（埋めた値も訳す）
+        // 埋めた値は訳さない（入れ子の誤り {e} だけ訳す）
+        assert_eq!(
+            translate("surface 3.zmx: no such file"),
+            "surface 3.zmx: ファイルが無い"
+        );
+        assert_eq!(translate("set 2: surface 3"), "組 2: 面 3");
+        // 表の行。短い型の「surface {}」より長い型が勝つ
+        assert_eq!(
+            translate("surface 3 can't be written (1 to 9)"),
+            "面 3 は書けない（1〜9）"
+        );
         assert_eq!(
             translate("set 3: no wavelength 2 (1 to 1)"),
             "組 3: 波長 2 はありません（1〜1）"
