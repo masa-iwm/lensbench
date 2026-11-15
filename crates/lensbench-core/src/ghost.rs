@@ -87,16 +87,16 @@ fn plain(d: &Surface) -> bool {
 pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     let ok = reflecting_surfaces(sys);
     if !(b < a) {
-        invalid!("ゴースト: 先に反射する面 {a} は後で反射する面 {b} より後ろ（b < a）");
+        invalid!("ghost: the first reflecting surface {a} is after the second one {b} (b < a)");
     }
     if let Some(j) =
         (1..sys.surfaces.len()).find(|&j| !sys.surfaces[j].ignore && sys.surfaces[j].grin.is_some())
     {
-        crate::notimpl!("ゴースト: GRIN の媒質（面 {j}）を含む系");
+        crate::notimpl!("ghost: a system with a GRIN medium (surface {j})");
     }
     let img = sys.image();
     if b == img {
-        invalid!("ゴースト: 像面は先に反射する面 a にだけなれる");
+        invalid!("ghost: the image surface can only be the first reflecting surface a");
     }
     // 像面は膜がなくても a にできる（反射の係数は膜なしの境界のもの）
     let image_ok = |k: usize| {
@@ -115,7 +115,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     for k in [a, b] {
         if !ok.contains(&k) && !image_ok(k) {
             invalid!(
-                "ゴースト: 面 {k} は反射する面にできない（境界のない面・鏡・座標ブレークなど）"
+                "ghost: surface {k} can't be a reflecting surface (no interface, mirror, coordinate break, etc.)"
             );
         }
     }
@@ -361,7 +361,7 @@ pub fn survey(
             .map_err(|e| e.to_string())?;
         let r = &t.trace.rays[0];
         if r.err != 0 {
-            return Err(format!("主光線が面 {} で止まる", r.err));
+            return Err(format!("the chief ray stops at surface {}", r.err));
         }
         let p: f64 = t.e[0]
             .iter()
@@ -369,7 +369,7 @@ pub fn survey(
             .sum::<f64>()
             / 2.0;
         if !p.is_finite() {
-            return Err("偏光の係数が求められない".into());
+            return Err("the polarization coefficients can't be found".into());
         }
         Ok(p)
     };
@@ -379,7 +379,7 @@ pub fn survey(
         let g = ghost_system(sys, a, b)?;
         let intensity = match (&main, power(&g.sys)) {
             (Ok(m), Ok(p)) => Ok(p / m),
-            (Err(e), _) => Err(format!("元の系: {e}")),
+            (Err(e), _) => Err(format!("the original system: {e}")),
             (_, Err(e)) => Err(e),
         };
         out.push(GhostInfo {

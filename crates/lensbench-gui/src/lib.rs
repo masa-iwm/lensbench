@@ -32,6 +32,7 @@ mod json_view;
 mod layout;
 mod layout_rays;
 mod lens_data;
+mod missing_glass;
 mod open_sysset;
 mod optim_panel;
 mod palette;

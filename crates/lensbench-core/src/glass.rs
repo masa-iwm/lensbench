@@ -252,14 +252,14 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
         if t.is_empty() {
             continue;
         }
-        let at = |what: &str| format!("{cat}.AGF の {} 行目（{what}）", ln + 1);
+        let at = |what: &str| format!("{cat}.AGF line {} ({what})", ln + 1);
         let f = |s: &str| -> crate::Result<f64> {
             // 欠けた値を "-" と書くカタログがある（0 とみなす）
             if s == "-" {
                 return Ok(0.0);
             }
             s.parse::<f64>()
-                .map_err(|_| Error::Invalid(format!("{}: 数として読めない値 {s:?}", at(t[0]))))
+                .map_err(|_| Error::Invalid(format!("{}: value {s:?} is not a number", at(t[0]))))
         };
         let nums = |v: &[&str]| v.iter().map(|v| f(v)).collect::<crate::Result<Vec<f64>>>();
         match t[0] {
@@ -268,7 +268,7 @@ pub fn parse_agf(txt: &str, cat: &str) -> crate::Result<HashMap<String, Glass>> 
                 let x = f(t[2])?;
                 if x.fract() != 0.0 || !(1.0..=13.0).contains(&x) {
                     return Err(Error::NotImplemented(format!(
-                        "{}: ガラス {} の分散式 {} は未対応（1〜13）",
+                        "{}: glass {} dispersion formula {} is not supported (1 to 13)",
                         at("NM"),
                         t[1],
                         t[2]
@@ -388,7 +388,7 @@ pub fn load_catalogs_shared(
                         (Err(err), _) | (_, Err(err)) => {
                             // 読めなかったカタログは理由つきで「見つからない」に入れる（黙って飛ばさない）
                             complete = false;
-                            missing.push(format!("{name}（{err}）"));
+                            missing.push(format!("{name} ({err})"));
                         }
                     }
                     found = true;
@@ -413,16 +413,14 @@ pub fn missing_note(missing: &[String]) -> String {
     if missing.is_empty() {
         String::new()
     } else {
-        format!(
-            "（見つからない・読めなかったカタログ: {}）",
-            missing.join(", ")
-        )
+        let e = missing.join(", ");
+        format!(" (catalogs not found or unreadable: {e})")
     }
 }
 
 /// ガラスがカタログに無いときの文の後ろに足す案内（CLI-14）
 pub const DIRS_HINT: &str =
-    "。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡す";
+    ". Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT";
 
 /// ガラスの検索パス: 引数、環境変数 LENSBENCH_GLASSCAT（OS のパス区切り）。
 pub fn catalog_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
@@ -502,7 +500,7 @@ mod tests {
             );
         }
         let e = parse_agf("NM G 2 0 1.5 60\nCD 1.0 x 0.2\n", "T").unwrap_err();
-        assert!(e.to_string().contains("2 行目"), "{e}");
+        assert!(e.to_string().contains("line 2"), "{e}");
         // 手で組んだ未対応の式は panic せず NaN
         let mut g = parse_agf(&format!("NM G 2 0 1.5 60\n{ok}"), "T")
             .unwrap()
@@ -526,7 +524,18 @@ mod tests {
         .unwrap();
         let e = crate::zmx::load(&zmx).unwrap_err().to_string();
         let _ = std::fs::remove_dir_all(&d);
-        assert!(e.contains("カタログにない"), "{e}");
-        assert!(e.contains("BADCAT") && e.contains("分散式 99"), "{e}");
+        assert!(e.contains("is not in the catalogs"), "{e}");
+        assert!(
+            e.contains("BADCAT") && e.contains("dispersion formula 99"),
+            "{e}"
+        );
+        // 日本語の表示: 添え書き（{why}）まで訳す
+        let ja = crate::i18n::translate(e.strip_prefix("invalid: ").unwrap_or(&e));
+        assert!(ja.contains("ガラス G（面 1）がカタログにない"), "{ja}");
+        assert!(
+            ja.contains("（見つからない・読めなかったカタログ: BADCAT"),
+            "{ja}"
+        );
+        assert!(ja.ends_with("環境変数 LENSBENCH_GLASSCAT で渡す"), "{ja}");
     }
 }

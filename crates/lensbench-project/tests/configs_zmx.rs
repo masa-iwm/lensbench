@@ -134,7 +134,7 @@ fn different_system_values_are_refused() {
     let mut b = expand_path(&p, &env(), Some("RT")).unwrap().0;
     b.wavelengths[0] = 0.55;
     let e = zmx_write::write_configs(&[a, b]).unwrap_err().to_string();
-    assert!(e.contains("構成 2"), "{e}");
+    assert!(e.contains("configuration 2"), "{e}");
 }
 
 #[path = "../examples/bs_configs.rs"]

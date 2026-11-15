@@ -231,6 +231,6 @@ fn edit_ops_schema_matches_reader() {
         let x: Value = serde_json::from_str(&format!("[{bad}]")).unwrap();
         assert!(!v.is_valid(&x), "スキーマが通した: {bad}");
         let e = edit_ops::parse(&x).unwrap_err();
-        assert!(e.starts_with("操作 1"), "{e}");
+        assert!(e.starts_with("operation 1"), "{e}");
     }
 }

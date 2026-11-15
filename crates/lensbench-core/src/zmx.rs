@@ -146,7 +146,7 @@ impl Raw {
                     .is_some_and(|x| !matches!(fv(x), Ok(v) if v == 0.0))
                 {
                     if !catalog {
-                        notimpl!("瞳のアポダイゼーション（GFAC {}）", joined.join(" "));
+                        notimpl!("pupil apodization (GFAC {})", joined.join(" "));
                     }
                     out.push(format!(
                         ".zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログの玉として読むので使わない",
@@ -179,7 +179,7 @@ fn fv(v: &str) -> Result<f64> {
         return Ok(f64::INFINITY);
     }
     v.parse::<f64>()
-        .map_err(|_| Error::Invalid(format!("数値ではない: {v}")))
+        .map_err(|_| Error::Invalid(format!("not a number: {v}")))
 }
 
 fn mce_line(line: &str) -> Option<(String, i64, i64, String, Vec<String>)> {
@@ -247,10 +247,10 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             continue;
         }
         if in_mce {
-            match mce_line(line) {
-                Some(m) => raw.mce.push(m),
-                None => invalid!("zmx の多重構成の行を読めない: {}", line.trim()),
-            }
+            let Some(m) = mce_line(line) else {
+                invalid!("can't read the zmx multi-configuration line: {line}");
+            };
+            raw.mce.push(m);
             continue;
         }
         let Some(ci) = cur.filter(|_| legacy || line.starts_with("  ")) else {
@@ -309,11 +309,11 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "GARR" => {
                 let v = nums()?;
                 if v.len() < 5 {
-                    invalid!("面 {}: GARR の値が足りない", s.n);
+                    invalid!("surface {}: too few GARR values", s.n);
                 }
                 let g = |i: usize| v.get(i).copied().unwrap_or(0.0);
                 s.garr.push((
-                    count_in(v[0], "GARR の番号", 0, MAX_GRID)?,
+                    count_in(v[0], "GARR number", 0, MAX_GRID)?,
                     [g(1), g(2), g(3), g(4), g(5)],
                 ));
             }
@@ -326,12 +326,8 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 s.glas = Some(t.get(1).unwrap_or(&"").to_string());
                 // ソルブ 4 は Offset（#10 Δnd、#11 Δvd、OpticStudio 2026 R1.01 で実測）。ずれの式を確かめていないので止める
                 if t.get(2) == Some(&"4") && (num(10)? != 0.0 || num(11)? != 0.0) {
-                    notimpl!(
-                        "zmx の面 {}: 材料の Offset ソルブ（Δnd {}、Δvd {}）",
-                        s.n,
-                        num(10)?,
-                        num(11)?
-                    );
+                    let (surf, dnd, dvd) = (s.n, num(10)?, num(11)?);
+                    notimpl!("zmx surface {surf}: material Offset solve (Δnd {dnd}, Δvd {dvd})");
                 }
                 if t.get(2) == Some(&"2") {
                     s.glas_pickup = Some(surf_no(num(3)?)?);
@@ -366,7 +362,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                         s.cmacro = Some(macro_name(s.n, line)?);
                         None
                     }
-                    c => notimpl!("zmx の面 {}: 曲率のソルブ {c}", s.n),
+                    c => notimpl!("zmx surface {}: curvature solve {c}", s.n),
                 };
             }
             "CONI" => s.coni = Some(num(1)?),
@@ -376,7 +372,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "PZPL" => {
                 let n = num(1)?;
                 if !(0.0..=255.0).contains(&n) || n.fract() != 0.0 {
-                    invalid!("zmx の面 {}: PZPL のパラメータの番号 {n}", s.n);
+                    invalid!("zmx surface {}: PZPL parameter number {n}", s.n);
                 }
                 s.pmacros.push((n as u8, macro_name(s.n, line)?));
             }
@@ -409,7 +405,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                     v.get(1).copied().unwrap_or(0.0),
                 );
                 if !(w >= 0.0) || !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
-                    invalid!("zmx の面 {}: スパイダーの腕の幅 {w}・本数 {n}", s.n);
+                    invalid!("zmx surface {}: spider arm width {w}, {n} arms", s.n);
                 }
                 s.spid = Some(v);
             }
@@ -426,7 +422,7 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                 "zmx の面 {}: 行 {k} を読まずに飛ばした（字下げのない古い .zmx）",
                 s.n
             )),
-            k => notimpl!("zmx の面 {}: 行 {} は未対応", s.n, k),
+            k => notimpl!("zmx surface {}: line {} is not supported", s.n, k),
         }
     }
     raw.check_counts()?;
@@ -444,7 +440,7 @@ const MAX_GRID: usize = 16_000_000;
 /// メモリ確保の暴走・panic になっていた）
 fn count_in(v: f64, what: &str, lo: usize, hi: usize) -> Result<usize> {
     if !(v.fract() == 0.0 && v >= lo as f64 && v <= hi as f64) {
-        invalid!("{what} {v}（{lo}〜{hi} の整数）");
+        invalid!("{what} {v} (an integer {lo} to {hi})");
     }
     Ok(v as usize)
 }
@@ -458,7 +454,7 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         "CM" => 10.0,
         "IN" => 25.4,
         "METER" | "M" => 1000.0,
-        u => notimpl!("レンズ単位 {u}（mm・cm・in・m）"),
+        u => notimpl!("lens unit {u} (mm, cm, in, m)"),
     };
     // 光線エイミングの瞳のずらし（RAIM の 5〜7 番目、長さ。lensbench の書く RAIM 0 種類 1 1 0 0 0 … の 0 0 0）は換算を確かめていないので止める
     if let Some(a) = raw.sysl.get("RAIM").and_then(|v| v.first()) {
@@ -467,7 +463,7 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
             .take(3)
             .any(|x| fv(x).unwrap_or(0.0) != 0.0)
         {
-            notimpl!("レンズ単位 {unit} の光線エイミングの瞳のずらし");
+            notimpl!("ray aiming pupil shift in lens unit {unit}");
         }
     }
     let mut r = raw.clone();
@@ -491,15 +487,15 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
             parm.insert(
                 i,
                 v * parm_scale(&typ, i, f)
-                    .map_err(|e| e.at(format!("面 {k}: レンズ単位 {unit}")))?,
+                    .map_err(|e| e.at(format!("surface {k}: lens unit {unit}")))?,
             );
         }
         sf.parm = parm;
         if !sf.xdat.is_empty() || sf.gdat.is_some() {
-            notimpl!("面 {k}: レンズ単位 {unit} の拡張データ");
+            notimpl!("surface {k}: extra data in lens unit {unit}");
         }
         if sf.ppar.values().any(|p| p.2 != 0.0) {
-            notimpl!("面 {k}: レンズ単位 {unit} のパラメータのピックアップのオフセット");
+            notimpl!("surface {k}: parameter pickup offset in lens unit {unit}");
         }
         if let Some(p) = sf.pzup.as_mut() {
             p.2 *= f;
@@ -605,10 +601,10 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
                     usize::try_from(*p1).ok().and_then(|k| typs.get(k)),
                     rest.get(1).and_then(|x| x.parse::<i64>().ok()),
                 ) else {
-                    invalid!("多重構成の PRAM {p1}: 面か PARM の番号が不正");
+                    invalid!("multi-configuration PRAM {p1}: bad surface or PARM number");
                 };
                 parm_scale(typ, i, f)
-                    .map_err(|e| e.at(format!("多重構成の PRAM {p1}: レンズ単位 {unit}")))?
+                    .map_err(|e| e.at(format!("multi-configuration PRAM {p1}: lens unit {unit}")))?
             }
             "XFIE" | "YFIE" | "IGNR" | "STPS" | "WAVE" | "GLSS" | "MCOM" | "CWGT" | "CONN"
             | "SATP" | "TELE" | "MOFF" | "LTTL" => 1.0,
@@ -727,7 +723,7 @@ fn parm_scale(typ: &str, i: i64, f: f64) -> Result<f64> {
                 1.0
             }
         }
-        t => notimpl!("面タイプ {t} のパラメータの単位の換算"),
+        t => notimpl!("unit conversion of the parameters of surface type {t}"),
     })
 }
 
@@ -735,14 +731,14 @@ fn parm_scale(typ: &str, i: i64, f: f64) -> Result<f64> {
 fn macro_name(n: i64, line: &str) -> Result<String> {
     match (line.find('"'), line.rfind('"')) {
         (Some(a), Some(b)) if b > a + 1 => Ok(line[a + 1..b].to_string()),
-        _ => invalid!("zmx の面 {n}: マクロのソルブの名前がない"),
+        _ => invalid!("zmx surface {n}: no macro solve name"),
     }
 }
 
 /// 面の番号の欄
 fn surf_no(v: f64) -> Result<usize> {
     if v < 0.0 || v.fract() != 0.0 {
-        invalid!("面の番号 {v}");
+        invalid!("surface number {v}");
     }
     Ok(v as usize)
 }
@@ -751,7 +747,7 @@ fn surf_no(v: f64) -> Result<usize> {
 fn pick_col(n: i64, key: &str, col: f64, dst: PickKind) -> Result<Option<PickKind>> {
     match PickKind::from_column(col as i64, dst).filter(|_| col.fract() == 0.0) {
         Some(f) => Ok(f),
-        None => notimpl!("zmx の面 {n}: {key} のピックアップの列 {col}"),
+        None => notimpl!("zmx surface {n}: pickup column {col} of {key}"),
     }
 }
 
@@ -763,7 +759,7 @@ fn sys_str<'a>(raw: &'a Raw, key: &str, i: usize) -> Option<&'a str> {
 fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> Result<f64> {
     match sys_str(raw, key, i) {
         None => Ok(default),
-        Some(v) => fv(v).map_err(|e| e.at(format!("zmx の {key} の {} 番目の値", i + 1))),
+        Some(v) => fv(v).map_err(|e| e.at(format!("zmx {key} value {}", i + 1))),
     }
 }
 
@@ -791,22 +787,22 @@ impl Raw {
     fn check_counts(&self) -> Result<()> {
         count_in(
             sys_f(self, "MNUM", 0, 1.0)?,
-            "zmx の構成の数 MNUM",
+            "number of zmx configurations MNUM",
             1,
             MAX_CONFIGS,
         )?;
         if let Some(v) = self.sysl.get("FTYP").and_then(|v| v.first()) {
             if v.is_empty() {
-                invalid!("zmx の FTYP に値がない");
+                invalid!("the zmx FTYP has no value");
             }
             for x in v {
-                fv(x).map_err(|e| e.at("zmx の FTYP"))?;
+                fv(x).map_err(|e| e.at("zmx FTYP"))?;
             }
             if let Some(x) = v.get(2) {
-                count_in(fv(x)?, "zmx の視野の数（FTYP の 3 番目）", 1, MAX_FIELDS)?;
+                count_in(fv(x)?, "zmx field count (FTYP 3)", 1, MAX_FIELDS)?;
             }
             if let Some(x) = v.get(3) {
-                count_in(fv(x)?, "zmx の波長の数（FTYP の 4 番目）", 1, MAX_WAVES)?;
+                count_in(fv(x)?, "zmx wavelength count (FTYP 4)", 1, MAX_WAVES)?;
             }
         }
         Ok(())
@@ -905,7 +901,7 @@ pub fn load_configs(path: &Path, opt: &LoadOptions, cfgs: &[usize]) -> Result<Ve
     cfgs.iter()
         .map(|&c| {
             if c == 0 {
-                invalid!("構成は 1 始まり（0）");
+                invalid!("configurations start at 1 (0)");
             }
             let o = LoadOptions {
                 cfg: c,
@@ -925,7 +921,7 @@ pub fn build(
     let cfg = opt.cfg.max(1) as i64;
     let mode = sys_str(raw, "MODE", 0).unwrap_or("SEQ");
     if mode != "SEQ" {
-        notimpl!("モード {mode}（順次のみ）");
+        notimpl!("mode {mode} (sequential only)");
     }
     let unit = sys_str(raw, "UNIT", 0).unwrap_or("MM");
     let scaled;
@@ -936,18 +932,18 @@ pub fn build(
         &scaled
     };
     if raw.sysl.contains_key("AFOC") && sys_f(raw, "AFOC", 0, 0.0)? != 0.0 {
-        notimpl!("無焦点の像空間");
+        notimpl!("afocal image space");
     }
     let ncfg = count_in(
         sys_f(raw, "MNUM", 0, 1.0)?,
-        "zmx の構成の数 MNUM",
+        "number of zmx configurations MNUM",
         1,
         MAX_CONFIGS,
     )? as i64;
     // 以前の lensbench の書き出し: 半直径は固定として読む（[`Raw::legacy_lensbench`]）
     let legacy = raw.legacy_lensbench();
     if !(1..=ncfg).contains(&cfg) {
-        invalid!("構成 {cfg}（全 {ncfg}）");
+        invalid!("configuration {cfg} ({ncfg} in all)");
     }
     // この構成の多重構成の値。扱わないオペランドは構成で変わってはいけない
     let mut ops: HashMap<(String, i64), String> = HashMap::new();
@@ -966,7 +962,7 @@ pub fn build(
     }
     for ((op, p1, _), vs) in &vals {
         if !MCE_HANDLED.contains(&op.as_str()) && vs.len() > 1 {
-            notimpl!("多重構成のオペランド {op} {p1} が構成で変わる");
+            notimpl!("multi-configuration operand {op} {p1} changes between configurations");
         }
     }
     let fop = |op: &str, p1: i64, default: f64| -> f64 {
@@ -1022,7 +1018,7 @@ pub fn build(
     for i in 1..=nw as i64 {
         let (l, w) = *wav
             .get(&i)
-            .ok_or_else(|| Error::Invalid(format!("波長 {i} がない")))?;
+            .ok_or_else(|| Error::Invalid(format!("no wavelength {i}")))?;
         wl.push(fop("WAVE", i, l));
         wwt.push(w);
     }
@@ -1032,12 +1028,13 @@ pub fn build(
     }
     let primary = count_in(
         sys_f(raw, "PWAV", 0, 1.0)?,
-        "zmx の主波長 PWAV",
+        "zmx primary wavelength PWAV",
         1,
         MAX_WAVES,
     )? - 1;
     if primary >= wl.len() {
-        invalid!("主波長 {}（波長は {} 個）", primary + 1, wl.len());
+        let (pw, nw) = (primary + 1, wl.len());
+        invalid!("primary wavelength {pw} (there are {nw} wavelengths)");
     }
     // ガラス。見つからない・読めなかったカタログ（理由つき）は、ガラスが無いときの誤りに添える（XCT-01）
     let (glasses, cat_missing): (std::sync::Arc<HashMap<String, Glass>>, _) = match &opt.glasses {
@@ -1073,26 +1070,26 @@ pub fn build(
         .chain(r.ppar.values().map(|p| p.0))
         {
             if src >= ns {
-                invalid!("面 {k}: ピックアップ元の面 {src} がない");
+                invalid!("surface {k}: no pickup source surface {src}");
             }
         }
         if r.tsolve.is_some() || r.tmacro.is_some() {
             if k == 0 || k + 1 >= ns {
-                notimpl!("面 {k}: 物体面・像面の厚さのソルブ");
+                notimpl!("surface {k}: thickness solve on the object or image surface");
             }
             if ops.contains_key(&("THIC".to_string(), k as i64)) {
-                notimpl!("面 {k}: 厚さのソルブと多重構成の THIC");
+                notimpl!("surface {k}: thickness solve and a multi-configuration THIC");
             }
             if r.pzup.is_some() {
-                invalid!("面 {k}: 厚さにソルブとピックアップの両方");
+                invalid!("surface {k}: both a solve and a pickup on the thickness");
             }
         }
         if r.csolve.is_some() || r.cmacro.is_some() {
             if k == 0 || k + 1 >= ns {
-                notimpl!("面 {k}: 物体面・像面の曲率のソルブ");
+                notimpl!("surface {k}: curvature solve on the object or image surface");
             }
             if ops.contains_key(&("CRVT".to_string(), k as i64)) {
-                notimpl!("面 {k}: 曲率のソルブと多重構成の CRVT");
+                notimpl!("surface {k}: curvature solve and a multi-configuration CRVT");
             }
         }
     }
@@ -1105,7 +1102,7 @@ pub fn build(
                 usize::try_from(*p1).ok().filter(|&k| k < ns),
                 rest.get(1).and_then(|x| x.parse::<i64>().ok()),
             ) else {
-                invalid!("多重構成の PRAM {p1}: 面か PARM の番号が不正");
+                invalid!("multi-configuration PRAM {p1}: bad surface or PARM number");
             };
             parm[k].insert(p, fv(v)?);
         }
@@ -1132,7 +1129,7 @@ pub fn build(
         }
     }
     if !settled {
-        invalid!("パラメータのピックアップが収束しない（循環？）");
+        invalid!("parameter pickups don't converge (a loop?)");
     }
     let mats = materials(raw, &ops)?;
     let stop_default = raw.surfs.iter().position(|s| s.stop).unwrap_or(1) as f64;
@@ -1174,7 +1171,7 @@ pub fn build(
             "IRREGULA" => SurfType::Irregular,
             // 複屈折材の板の入口・出口は形は標準面（偏光の位相は Surface::bire）
             "BIRE__IN" | "BIRE_OUT" => SurfType::Standard,
-            _ => notimpl!("面 {k}: 面タイプ {name}"),
+            _ => notimpl!("surface {k}: surface type {name}"),
         };
         let (mut mat, model) = mats[k].clone();
         if let Some((nd, vd, dp)) = model {
@@ -1214,14 +1211,14 @@ pub fn build(
             let mode = p(1);
             // Mode 1・3 は異常光の道（屈折が違う）で未対応
             if !(mode == 0.0 || mode == 2.0) {
-                notimpl!("面 {k}: Birefringent In の Mode {mode}（0 と 2 だけ）");
+                notimpl!("surface {k}: Birefringent In Mode {mode} (only 0 and 2)");
             }
             if s.xdat.get(&1).copied().unwrap_or(0.0) != 0.0 {
-                notimpl!("面 {k}: Birefringent In の Gradient Mode");
+                notimpl!("surface {k}: Birefringent In Gradient Mode");
             }
             let axis = [p(2), p(3), p(4)];
             if !(axis.iter().map(|v| v * v).sum::<f64>() > 0.0) {
-                invalid!("面 {k}: Birefringent In の結晶軸が 0");
+                invalid!("surface {k}: Birefringent In crystal axis is 0");
             }
             d.bire = Some(crate::surface::Bire::In {
                 mode: mode as u8,
@@ -1248,10 +1245,10 @@ pub fn build(
                 d.opd_mode = p(2) as i32;
                 // 0・1 は基準 D0〜D3 で OpticStudio と一致を確認済み。それ以外は未確認
                 if !(0..=1).contains(&d.opd_mode) {
-                    notimpl!("理想レンズ（面 {k}）の OPD モード {}", d.opd_mode);
+                    notimpl!("paraxial lens (surface {k}) OPD mode {}", d.opd_mode);
                 }
                 if d.focal == 0.0 {
-                    invalid!("理想レンズ（面 {k}）の焦点距離が 0");
+                    invalid!("paraxial lens (surface {k}) focal length is 0");
                 }
             }
             SurfType::ZernikeStd | SurfType::ZernikeFringe | SurfType::GridSag => {
@@ -1261,11 +1258,11 @@ pub fn build(
                 // PARM 0 は回折次数。XDAT 1 は項の数、2 は正規化半径、k+2 は ρ^{2k} の係数 [rad]
                 let nt = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nt < 0.0 || nt.fract() != 0.0 || nt > 240.0 {
-                    invalid!("面 {k}: Binary 2 の項の数 {nt}");
+                    invalid!("surface {k}: {nt} Binary 2 terms");
                 }
                 let norm = s.xdat.get(&2).copied().unwrap_or(1.0);
                 if norm <= 0.0 {
-                    invalid!("面 {k}: Binary 2 の正規化半径 {norm}");
+                    invalid!("surface {k}: Binary 2 normalization radius {norm}");
                 }
                 let coef = (0..nt as i64)
                     .map(|j| s.xdat.get(&(j + 3)).copied().unwrap_or(0.0))
@@ -1278,7 +1275,7 @@ pub fn build(
             }
             SurfType::Gradium | SurfType::Gradient9 => {
                 if mat.eq_ignore_ascii_case("MIRROR") {
-                    notimpl!("面 {k}: GRIN の面の鏡");
+                    notimpl!("surface {k}: mirror on a GRIN surface");
                 }
                 let gd = grin_data.as_ref().expect("GRIN のデータは読込済み");
                 let g = if typ == SurfType::Gradium {
@@ -1286,7 +1283,7 @@ pub fn build(
                     // 4〜7 dx dy tx ty、8 端の扱い
                     let cap = p(8);
                     if !(0.0..=3.0).contains(&cap) || cap.fract() != 0.0 {
-                        invalid!("面 {k}: Gradium の端の扱い {cap}");
+                        invalid!("surface {k}: Gradium end handling {cap}");
                     }
                     gd.gradium(&mat, p(2), [p(4), p(5), p(6), p(7)], cap as u8, p(1))?
                 } else {
@@ -1298,7 +1295,7 @@ pub fn build(
                 // XDAT 1 は項の数、2・3 は屈折の面の曲率・円錐係数、k+3 は y^{2k} の係数
                 let nt = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nt < 0.0 || nt.fract() != 0.0 || nt > 240.0 {
-                    invalid!("面 {k}: Cylinder Fresnel の項の数 {nt}");
+                    invalid!("surface {k}: {nt} Cylinder Fresnel terms");
                 }
                 let coef = (0..nt as i64)
                     .map(|j| s.xdat.get(&(j + 4)).copied().unwrap_or(0.0))
@@ -1344,16 +1341,16 @@ pub fn build(
                 d.asph = (2..=8).map(p).collect();
                 let nz = s.xdat.get(&1).copied().unwrap_or(0.0);
                 if nz != 0.0 {
-                    notimpl!("面 {k}: トロイダル面の Zernike の項（{nz} 項）");
+                    notimpl!("surface {k}: Zernike terms on a toroidal surface ({nz} terms)");
                 }
             } else if typ == SurfType::Standard
                 && d.bire.is_none()
                 && parm[k].values().any(|&v| v != 0.0)
             {
-                notimpl!("面 {k}: 標準面にパラメータ");
+                notimpl!("surface {k}: parameters on a standard surface");
             }
             if typ == SurfType::Jones && d.c != 0.0 {
-                notimpl!("曲面の Jones 行列面 {k}");
+                notimpl!("Jones matrix surface {k} on a curved surface");
             }
         }
         after_picks.push(tilts(s, &mut d, k)?);
@@ -1365,7 +1362,7 @@ pub fn build(
             wl.iter()
                 .map(|&l| {
                     g.vertex_index(l).ok_or_else(|| {
-                        Error::Invalid(format!("面 {k}: GRIN の頂点が分布の範囲の外"))
+                        Error::Invalid(format!("surface {k}: the GRIN vertex is out of range"))
                     })
                 })
                 .collect::<Result<Vec<f64>>>()?
@@ -1380,8 +1377,9 @@ pub fn build(
                     .collect()
             }
         } else {
-            let miss = || Error::Invalid(format!("ガラス {mat}（面 {k}）がカタログにない{why}"));
-            let g = glasses.get(&mat).ok_or_else(miss)?;
+            let Some(g) = glasses.get(&mat) else {
+                invalid!("glass {mat} (surface {k}) is not in the catalogs{why}");
+            };
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
         d.n = n.clone();
@@ -1389,7 +1387,7 @@ pub fn build(
             let en = crate::surface::Bire::e_name(&mat);
             let g = glasses.get(&en).ok_or_else(|| {
                 Error::Invalid(format!(
-                    "複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない{why}"
+                    "extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}"
                 ))
             })?;
             *ne = wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect();
@@ -1419,7 +1417,7 @@ pub fn build(
         for k in 0..ns {
             if let Some((src, sc, off, None)) = raw.surfs[k].pkup {
                 if src >= ns {
-                    invalid!("面 {k}: 円錐係数のピックアップ元の面 {src} がない");
+                    invalid!("surface {k}: no conic pickup source surface {src}");
                 }
                 let v = sc * sf[src].k + off;
                 if v != sf[k].k {
@@ -1434,7 +1432,7 @@ pub fn build(
         }
     }
     if !settled {
-        invalid!("円錐係数のピックアップが収束しない（循環？）");
+        invalid!("conic pickups don't converge (a loop?)");
     }
     // ピックアップのつながりを系に残す（パラメータを変えたときに解決し直す）。
     // 元か先の面タイプにそのパラメータがなければ、読込の値だけにする
@@ -1499,7 +1497,7 @@ pub fn build(
         3 => ApertureKind::Float,
         4 => ApertureKind::Pwfn,
         5 => ApertureKind::Cone,
-        _ => notimpl!("系の絞りタイプ {satp}"),
+        _ => notimpl!("system aperture type {satp}"),
     };
     // OpticStudio 2026 R1 は読込で、半直径を固定した玉の面（前か後ろがガラス）で開口のない面に浮動開口（FLAP）を足してける
     // （空気どうしの面には足さない）。MEMA の行があっても足す（2026-11-09 に FLAP の行を消したファイルで確かめた。
@@ -1528,7 +1526,7 @@ pub fn build(
         1 => FieldType::ObjH,
         2 => FieldType::ParH,
         3 => FieldType::RealH,
-        t => notimpl!("視野タイプ {t}"),
+        t => notimpl!("field type {t}"),
     };
     let nf = *ftyp.get(2).unwrap_or(&1) as usize;
     let col = |key: &str, default: f64| -> Vec<f64> {
@@ -1568,11 +1566,11 @@ pub fn build(
         0 => Aiming::Off,
         1 => Aiming::Paraxial,
         2 => Aiming::Real,
-        r => notimpl!("光線エイミング {r}"),
+        r => notimpl!("ray aiming {r}"),
     };
     let glrs = count_in(
         sys_f(raw, "GLRS", 0, 1.0)?,
-        "zmx の GLRS",
+        "zmx GLRS",
         0,
         raw.surfs.len().max(1),
     )?;
@@ -1619,7 +1617,7 @@ pub fn build(
     if let Some(u) = sys_str(raw, "UNIT", 5) {
         match crate::system::AfocalUnit::from_code(u) {
             Some(a) => s.afocal_unit = a,
-            None if s.afocal => invalid!("UNIT の Afocal Mode Units {u}"),
+            None if s.afocal => invalid!("UNIT Afocal Mode Units {u}"),
             None => {}
         }
     }
@@ -1731,7 +1729,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
             let got = crate::zpl_solve::find_macro(name, &dirs).and_then(|m| {
                 if let T::Col(c, p) = &what {
                     if crate::param::pick_get(&s.surfaces[k], c.pick(*p)).is_none() {
-                        notimpl!("面タイプ {:?} の {col}", s.surfaces[k].typ);
+                        notimpl!("surface type {:?} {col}", s.surfaces[k].typ);
                     }
                 }
                 s.run_macro(&m, k)?;
@@ -1800,12 +1798,12 @@ fn materials(raw: &Raw, ops: &HashMap<(String, i64), String>) -> Result<Vec<Mate
                 match picked {
                     None => return Ok(own(j)),
                     Some(src) if src >= ns => {
-                        invalid!("面 {j}: 材料のピックアップ元の面 {src} がない")
+                        invalid!("surface {j}: no material pickup source surface {src}")
                     }
                     Some(src) => j = src,
                 }
             }
-            invalid!("面 {k}: 材料のピックアップが循環している")
+            invalid!("surface {k}: material pickups go round in a loop")
         })
         .collect()
 }
@@ -1827,7 +1825,7 @@ fn thickness_pickups(raw: &Raw, th: &mut [f64]) -> Result<()> {
             return Ok(());
         }
     }
-    invalid!("厚さのピックアップが収束しない（循環？）")
+    invalid!("thickness pickups don't converge (a loop?)")
 }
 
 fn aperture_type(raw: &Raw) -> Result<i64> {
@@ -1869,10 +1867,10 @@ fn tilts(s: &RawSurf, d: &mut Surface, k: usize) -> Result<Option<(usize, bool)>
         let vals = [g(3), g(4), g(5), g(6), g(7)];
         let any = vals.iter().any(|&x| x != 0.0);
         if d.typ == SurfType::CoordBrk && any {
-            notimpl!("面 {k}: 座標ブレークの面の傾き偏心");
+            notimpl!("surface {k}: surface tilt or decenter on a coordinate break");
         }
         if order != 0 && order != 1 {
-            notimpl!("面 {k}: 傾き偏心の順序 {order}");
+            notimpl!("surface {k}: tilt and decenter order {order}");
         }
         let t = Tilt {
             d: vals,
@@ -1900,13 +1898,13 @@ fn tilts(s: &RawSurf, d: &mut Surface, k: usize) -> Result<Option<(usize, bool)>
                 m if m >= 1 => {
                     let off = ((m - 1) / 2) as usize;
                     if off > k {
-                        invalid!("面 {k}: 面の後の傾き偏心のピックアップ元の面（モード {m}）");
+                        invalid!("surface {k}: pickup source surface of the tilt and decenter after the surface (mode {m})");
                     }
                     pick = Some((k - off, m % 2 == 0));
                 }
-                _ => notimpl!("面 {k}: 面の後の傾き偏心のモード {mode}"),
+                _ => notimpl!("surface {k}: tilt and decenter after the surface, mode {mode}"),
             },
-            _ => notimpl!("面 {k}: SCBD {which}"),
+            _ => notimpl!("surface {k}: SCBD {which}"),
         }
     }
     Ok(pick)
@@ -1982,13 +1980,13 @@ fn freeform_surface(
     let fringe = typ == SurfType::ZernikeFringe;
     let nterm = s.xdat.get(&1).copied().unwrap_or(0.0);
     if nterm < 0.0 || nterm.fract() != 0.0 || nterm as usize > ZernSag::max_terms(fringe) {
-        invalid!("面 {k}: Zernike の項の数 {nterm}");
+        invalid!("surface {k}: {nterm} Zernike terms");
     }
     let nterm = nterm as usize;
     if nterm > 0 {
         let norm = s.xdat.get(&2).copied().unwrap_or(100.0);
         if !(norm > 0.0) {
-            invalid!("面 {k}: Zernike の正規化半径 {norm}");
+            invalid!("surface {k}: Zernike normalization radius {norm}");
         }
         let coef = (1..=nterm)
             .map(|j| s.xdat.get(&(j as i64 + 2)).copied().unwrap_or(0.0))
@@ -2004,38 +2002,39 @@ fn freeform_surface(
     }
     if typ == SurfType::GridSag {
         let Some(h) = &s.gdat else {
-            invalid!("面 {k}: Grid Sag の格子（GDAT）がない");
+            invalid!("surface {k}: no Grid Sag grid (GDAT)");
         };
         let g = |i: usize| h.get(i).copied().unwrap_or(0.0);
         let (nx, ny) = (
             count_in(
                 g(0),
-                &format!("面 {k}: Grid Sag の格子の列の数"),
+                &format!("surface {k}: Grid Sag grid columns"),
                 2,
                 MAX_GRID,
             )?,
             count_in(
                 g(1),
-                &format!("面 {k}: Grid Sag の格子の行の数"),
+                &format!("surface {k}: Grid Sag grid rows"),
                 2,
                 MAX_GRID,
             )?,
         );
         if nx.saturating_mul(ny) > MAX_GRID {
-            invalid!("面 {k}: Grid Sag の格子 {nx}×{ny}（点は {MAX_GRID} まで）");
+            invalid!("surface {k}: Grid Sag grid {nx}×{ny} (up to {MAX_GRID} points)");
         }
         if !(g(2) > 0.0 && g(3) > 0.0) {
-            invalid!("面 {k}: Grid Sag の格子 {nx}×{ny}、間隔 {} {}", g(2), g(3));
+            let (dx, dy) = (g(2), g(3));
+            invalid!("surface {k}: Grid Sag grid {nx}×{ny}, spacing {dx} {dy}");
         }
         if g(6) != 0.0 {
-            notimpl!("面 {k}: Grid Sag の格子の単位 {}（mm 以外）", g(6));
+            notimpl!("surface {k}: Grid Sag grid unit {} (not mm)", g(6));
         }
         let mut z = vec![[0.0; 4]; nx * ny];
         let mut nodata = vec![false; nx * ny];
         let mut seen = vec![false; nx * ny];
         for &(i, v) in &s.garr {
             if i >= nx * ny {
-                invalid!("面 {k}: GARR の番号 {i}（格子は {nx}×{ny}）");
+                invalid!("surface {k}: GARR number {i} (the grid is {nx}×{ny})");
             }
             let kk = (ny - 1 - i / nx) * nx + i % nx;
             z[kk] = [v[0], v[1], v[2], v[3]];
@@ -2044,14 +2043,14 @@ fn freeform_surface(
         }
         if seen.iter().any(|&b| !b) {
             invalid!(
-                "面 {k}: GARR の点が足りない（{} / {}）",
+                "surface {k}: too few GARR points ({} / {})",
                 s.garr.len(),
                 nx * ny
             );
         }
         let interp = p(0);
         if interp != 0.0 && interp != 1.0 {
-            notimpl!("面 {k}: Grid Sag の補間 {interp}");
+            notimpl!("surface {k}: Grid Sag interpolation {interp}");
         }
         d.grid = Some(Arc::new(GridSag {
             nx,

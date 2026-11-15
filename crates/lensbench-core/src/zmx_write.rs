@@ -111,7 +111,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
         FieldType::ParH => 2,
         FieldType::RealH => 3,
         FieldType::Solve(c) => {
-            notimpl!("条件で定める視野（{c:?}）は .zmx に書けない（OpticStudio にない）")
+            notimpl!("a field set by a condition ({c:?}) can't be written to .zmx (OpticStudio has none)")
         }
     };
     let nf = s.fields.len();
@@ -191,13 +191,13 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
     for (k, d) in s.surfaces.iter().enumerate() {
         if d.dn != 0.0 || d.disp != 0.0 {
             notimpl!(
-                "面 {k}: 屈折率のずれ（dn {}、disp {}）は .zmx に書けない",
+                "surface {k}: an index offset (dn {}, disp {}) can't be written to .zmx",
                 d.dn,
                 d.disp
             );
         }
         if d.typ == SurfType::User && !d.ignore {
-            notimpl!("面 {k}: 利用者定義の面は .zmx に書けない（OpticStudio にない）");
+            notimpl!("surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)");
         }
         w(&mut o, format!("SURF {k}"));
         let typ = match d.typ {
@@ -224,7 +224,9 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
         // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）
         let bire = match (&d.bire, d.typ) {
             (Some(b), SurfType::Standard) => Some(b),
-            (Some(_), t) => notimpl!("面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）"),
+            (Some(_), t) => {
+                notimpl!("surface {k}: the birefringent plate surface is {t:?} (standard only)")
+            }
             (None, _) => None,
         };
         match bire {
@@ -325,7 +327,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::Binary2 => {
                 // PARM 0 は回折次数、1〜8 は r^2〜r^16。XDAT 1 は項の数、2 は正規化半径、k+2 は ρ^{2k} の係数
                 let Some(b) = &d.bin2 else {
-                    notimpl!("面 {k}: Binary 2 の位相がない");
+                    notimpl!("surface {k}: no Binary 2 phase");
                 };
                 w(&mut o, format!("  PARM 0 {}", f(b.order)));
                 for (i, a) in d.asph.iter().enumerate() {
@@ -340,7 +342,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             SurfType::CylFresnel => {
                 // PARM 1〜8 は基板の y^2〜y^16。XDAT 1 は項の数、2・3 は屈折の面の曲率・円錐係数、k+3 は y^{2k} の係数
                 let Some(cf) = &d.cylf else {
-                    notimpl!("面 {k}: Cylinder Fresnel の面がない");
+                    notimpl!("surface {k}: no Cylinder Fresnel surface");
                 };
                 for (i, a) in d.asph.iter().enumerate() {
                     w(&mut o, format!("  PARM {} {}", i + 1, f(*a)));
@@ -356,7 +358,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 // GRINSUR8: PARM 0 素材の厚さ、1 Δt、2 Δz、3 頂点の基準の屈折率（表示用）、4〜7 dx dy tx ty、8 端の扱い。
                 // GRINSUR9: PARM 1 Δt、2 tan α、3 tan β。分布・材料の名前は GLAS
                 let Some(g) = &d.grin else {
-                    notimpl!("面 {k}: GRIN の分布がない");
+                    notimpl!("surface {k}: no GRIN profile");
                 };
                 match &g.kind {
                     crate::grin::GrinKind::Gradium {
@@ -429,10 +431,10 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     (None, None) => 1.0,
                 };
                 if d.typ == SurfType::GridSag && z.is_some_and(|z| !z.extrapolate) {
-                    notimpl!("面 {k}: Grid Sag の Zernike の項は外挿しかない");
+                    notimpl!("surface {k}: the Grid Sag Zernike terms can only be extrapolated");
                 }
                 if d.asph.len() > 8 {
-                    notimpl!("面 {k}: r^18 以上の項");
+                    notimpl!("surface {k}: terms of r^18 or higher");
                 }
                 w(&mut o, format!("  PARM 0 {}", f(p0)));
                 for i in 0..8 {
@@ -457,7 +459,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 }
                 if d.typ == SurfType::GridSag {
                     let Some(g) = &d.grid else {
-                        notimpl!("面 {k}: Grid Sag の格子がない");
+                        notimpl!("surface {k}: no Grid Sag grid");
                     };
                     w(&mut o, format!("  FIMP {}", d.grid_file));
                     w(
@@ -595,7 +597,10 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 // モデルガラス（分散なし）: 屈折率は面の後の媒質の値
                 let nd = d.n.first().copied().unwrap_or(f64::NAN);
                 if d.n.iter().any(|&v| v != nd) {
-                    notimpl!("面 {k}: カタログにないガラス {} の書き出し", d.mat);
+                    notimpl!(
+                        "surface {k}: writing glass {} that is not in the catalogs",
+                        d.mat
+                    );
                 }
                 w(
                     &mut o,
@@ -889,7 +894,7 @@ pub fn coating_dat(s: &System) -> Result<Option<String>> {
     names.sort();
     for k in names {
         if k.is_empty() || k.chars().any(|c| c.is_whitespace() || !c.is_ascii()) {
-            notimpl!("膜の名前 {k:?}: 空白・ASCII 以外の文字のある名前は膜ファイルに書けない");
+            notimpl!("coating name {k:?}: a name with spaces or non-ASCII characters can't go in a coating file");
         }
         let _ = write!(o, "TABLE {k}\r\n");
         for (a, rows) in same_wavelengths(&s.coat_tables[k]) {
@@ -948,7 +953,7 @@ pub fn write_configs(systems: &[System]) -> Result<String> {
 /// [`write_configs`] の本体。まとめた系（膜の表は全部の系の表を合わせる）も返す
 fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, System)> {
     if systems.is_empty() {
-        crate::invalid!("書き出す系がない");
+        crate::invalid!("no system to write");
     }
     if systems.len() == 1 {
         return Ok((write_as(&systems[0], coat_file)?, systems[0].clone()));
@@ -956,10 +961,13 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     let mut ss: Vec<System> = Vec::with_capacity(systems.len());
     for (i, s) in systems.iter().enumerate() {
         if s.configs.is_some() {
-            notimpl!("構成 {}: 多重構成の表を持つ系はまとめられない", i + 1);
+            notimpl!(
+                "configuration {}: systems with a multi-configuration table can't be merged",
+                i + 1
+            );
         }
         if let crate::system::FieldType::Solve(_) = s.field_type {
-            notimpl!("条件で定める視野は .zmx に書けない");
+            notimpl!("a field set by a condition can't be written to .zmx");
         }
         let mut t = if s.units.iter().any(|u| u.moved()) {
             s.flatten_units()?
@@ -993,7 +1001,10 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
                 .find(|(a, b)| a != b)
                 .map(|(a, _)| a.clone())
                 .unwrap_or_else(|| "行の数".into());
-            notimpl!("構成 {} の系の値が構成 1 と違う（{d}）", i + 1);
+            notimpl!(
+                "configuration {} system values differ from configuration 1 ({d})",
+                i + 1
+            );
         }
     }
     // 同じ先頭の面（物体面から、どの系でも像面の手前まで）。厚さだけの違いは多重構成の THIC にする
@@ -1026,11 +1037,11 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         })
         .collect();
     if np == 0 {
-        notimpl!("物体面が構成で違う");
+        notimpl!("the object surface differs between configurations");
     }
     let glrs = ss[0].glrs;
     if ss.iter().any(|s| s.glrs != glrs) || glrs >= np {
-        notimpl!("大域座標の基準面が構成ごとの面にある");
+        notimpl!("the global coordinate reference surface is on a per-configuration surface");
     }
     // 像面: 半径のほかは同じ
     let img_key = |s: &System| {
@@ -1039,7 +1050,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         key(&d)
     };
     if ss.iter().any(|s| img_key(s) != img_key(&ss[0])) {
-        notimpl!("像面（半径のほか）が構成で違う");
+        notimpl!("the image surface (other than its radius) differs between configurations");
     }
     let mut surfs: Vec<crate::surface::Surface> = ss[0].surfaces[..np].to_vec();
     // 系ごとの残りの面の番号（まとめた系の番号）と、絞りの面
@@ -1085,7 +1096,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         }
         for (k, t) in &s.coat_tables {
             if m.coat_tables.get(k).is_some_and(|u| u != t) {
-                notimpl!("膜の表 {k} が構成で違う");
+                notimpl!("coating table {k} differs between configurations");
             }
             m.coat_tables.entry(k.clone()).or_insert_with(|| t.clone());
         }

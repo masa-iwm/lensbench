@@ -140,11 +140,11 @@ pub fn air_after(s: &System) -> Vec<bool> {
 pub fn split(s: &System) -> Result<Vec<Element>> {
     let air = air_after(s);
     if !air[0] {
-        invalid!("物体空間が空気でない系は玉に分けない");
+        invalid!("a system whose object space is not air is not split into lenses");
     }
     let ima = s.image();
     if !air[ima - 1] {
-        invalid!("像空間が空気でない系は玉に分けない");
+        invalid!("a system whose image space is not air is not split into lenses");
     }
     let sf = &s.surfaces;
     let mut out = Vec::new();
@@ -186,7 +186,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
 /// 玉を前後反転する（y 軸のまわりに 180° 回した向き: 曲率・非球面・x の偏心の符号が反転）
 pub fn reverse(e: &Element) -> Result<Element> {
     if e.kind != Kind::Lens {
-        invalid!("反転できるのは玉だけ");
+        invalid!("only a lens can be reversed");
     }
     if e.surfaces
         .iter()
@@ -198,7 +198,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
         .iter()
         .any(|s| s.before.is_some() || !matches!(s.after, crate::surface::After::None))
     {
-        invalid!("面の傾き・偏心がある玉は反転しない");
+        invalid!("a lens with surface tilts or decenters is not reversed");
     }
     let n = e.surfaces.len();
     let mut v = Vec::with_capacity(n);
@@ -208,7 +208,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
         s.cx = -s.cx;
         s.asph.iter_mut().for_each(|a| *a = -*a);
         if s.typ == SurfType::Jones {
-            invalid!("Jones 面のある玉は反転しない");
+            invalid!("a lens with a Jones surface is not reversed");
         }
         s.ap = match s.ap {
             Aperture::Circular { min, max, dx, dy } => Aperture::Circular {
@@ -243,7 +243,9 @@ pub fn reverse(e: &Element) -> Result<Element> {
                 dy,
             } => {
                 if arms % 2 == 1 {
-                    invalid!("腕が奇数本のスパイダー開口のある玉は反転しない");
+                    invalid!(
+                        "a lens with a spider aperture of an odd number of arms is not reversed"
+                    );
                 }
                 Aperture::Spider {
                     width,
@@ -276,7 +278,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
 }
 
 fn notimpl_rev() -> Result<()> {
-    crate::notimpl!("鏡・座標ブレークを含む玉の反転")
+    crate::notimpl!("reversing a lens with a mirror or coordinate break")
 }
 
 /// 要素の並びを面の列に戻した系（物体面・像面と系のデータは base のもの）
@@ -299,7 +301,7 @@ pub fn assemble(base: &System, els: &[Element]) -> Result<System> {
     s.solves.clear();
     s.units.clear();
     if !s.surfaces.iter().any(|d| d.stop) {
-        invalid!("組み直した系に絞りがない");
+        invalid!("the rebuilt system has no stop");
     }
     s.changed()?;
     s.units = s.lens_units();

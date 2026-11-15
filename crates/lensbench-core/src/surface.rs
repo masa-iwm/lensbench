@@ -323,7 +323,7 @@ impl Retarder {
             let ename = format!("{}-E", p.material);
             let (Some(o), Some(e)) = (glasses.get(&p.material), glasses.get(&ename)) else {
                 return Err(format!(
-                    "複屈折材 {} の常光 {} と異常光 {ename} のガラスがカタログにない",
+                    "birefringent material {}: the ordinary glass {} or extraordinary glass {ename} is not in the catalogs",
                     p.material, p.material
                 ));
             };
@@ -332,20 +332,23 @@ impl Retarder {
             let dn = p.dn(self.wl0);
             if !(dn.is_finite() && dn != 0.0) {
                 return Err(format!(
-                    "複屈折材 {} の設計波長 {} µm の ne − no が {dn}",
+                    "ne − no of birefringent material {} at the design wavelength {} µm is {dn}",
                     p.material, self.wl0
                 ));
             }
             if p.thickness == 0.0 {
                 if n != 1 {
-                    return Err("板が 2 枚以上の波長板は板ごとに厚さを書く".into());
+                    return Err(
+                        "write a thickness for each plate of a waveplate with 2 or more plates"
+                            .into(),
+                    );
                 }
                 // d [mm] = (order + retardance)·λ0 / |Δn(λ0)|
                 p.thickness = (self.order as f64 + self.retardance) * self.wl0 * 1e-3 / dn.abs();
             }
             if !(p.thickness > 0.0 && p.thickness.is_finite()) {
                 return Err(format!(
-                    "複屈折材 {} の板の厚さ {}",
+                    "birefringent material {} plate thickness {}",
                     p.material, p.thickness
                 ));
             }

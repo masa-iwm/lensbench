@@ -326,7 +326,7 @@ impl System {
         match p.kind {
             Kind::ObjX | Kind::ObjY => {
                 if self.infinite() {
-                    invalid!("無限遠物体で物点の移動 {}", p.kind.name());
+                    invalid!("object shift {} with an object at infinity", p.kind.name());
                 }
                 pp.d0 = if p.kind == Kind::ObjX {
                     [1.0, 0.0, 0.0]
@@ -335,17 +335,17 @@ impl System {
                 };
             }
             Kind::Wave(_) => {
-                invalid!("波長 {} の微分はない", p.kind.name());
+                invalid!("no derivative by wavelength {}", p.kind.name());
             }
             Kind::Unit(k) if k.motion_index().is_none() => {
                 invalid!(
-                    "内部エラー: 玉・群の {} は面のパラメータに展開してから",
+                    "internal error: lens or group {} must be expanded to surface parameters first",
                     k.name()
                 );
             }
             Kind::Thick | Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz | Kind::Unit(_) => {
                 if p.kind == Kind::Thick && p.surf == 0 && self.infinite() {
-                    invalid!("無限遠物体の物体距離");
+                    invalid!("object distance of an object at infinity");
                 }
                 let fr = raw_frames_d(self, p);
                 for (j, f) in fr.iter().enumerate() {
@@ -491,7 +491,7 @@ impl System {
     ) -> Result<Vec<f64>> {
         let linear_unit = |p: &Param| p.kind.is_unit() && !p.kind.is_unit_motion();
         if !self.macro_parms.is_empty() {
-            crate::notimpl!("パラメータの ZPL マクロのソルブがある系の解析的な微分");
+            crate::notimpl!("analytic derivatives of a system with ZPL macro solves on parameters");
         }
         if self.pickups.is_empty() && self.solves.is_empty() && !params.iter().any(linear_unit) {
             return raw(params);
@@ -535,12 +535,14 @@ impl System {
         let np = params.len();
         let all = (1..=t.last).filter(|&j| !self.surfaces[j].ignore).count();
         if n > 0 && t.rec.len() != all {
-            invalid!("dOPL/dp には全面の記録（record）つきの追跡が要る");
+            invalid!("dOPL/dp needs a trace that records all surfaces (record)");
         }
         for j in 1..=t.last {
             let d = &self.surfaces[j];
             if !d.ignore && matches!(d.typ, SurfType::Paraxial | SurfType::User) {
-                notimpl!("理想レンズ・利用者定義の面（面 {j}）を通る光線の dOPL/dp");
+                notimpl!(
+                    "dOPL/dp of rays through a paraxial lens or user-defined surface (surface {j})"
+                );
             }
             if !d.ignore
                 && matches!(
@@ -552,7 +554,7 @@ impl System {
                         | SurfType::Gradient9
                 )
             {
-                notimpl!("面 {j}（{:?}）を通る光線の dOPL/dp", d.typ);
+                notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ);
             }
         }
         let owner = self.medium_owner();

@@ -28,16 +28,16 @@ pub const LBCAT_VERSION: u32 = 1;
 pub fn encode_lbcat(vendor: &str, source: &str, lenses: &[CatalogLens]) -> Result<Vec<u8>, String> {
     let clean = |what: &str, s: &str| {
         if s.contains(['\t', '\n', '\r']) {
-            Err(format!("{what} {s:?} にタブ・改行がある"))
+            Err(format!("{what} {s:?} has a tab or line break"))
         } else {
             Ok(())
         }
     };
-    clean("メーカー", vendor)?;
-    clean("変換元", source)?;
+    clean("maker", vendor)?;
+    clean("source", source)?;
     let mut out = format!("LBCAT {LBCAT_VERSION}\t{vendor}\t{source}\n").into_bytes();
     for l in lenses {
-        clean("型番", &l.part)?;
+        clean("part number", &l.part)?;
         let efl = if l.efl.is_finite() {
             format!("{:?}", l.efl)
         } else {
@@ -52,14 +52,14 @@ pub fn encode_lbcat(vendor: &str, source: &str, lenses: &[CatalogLens]) -> Resul
 /// [`encode_lbcat`] のバイト列を読む。メーカーは束の値（空なら `default_vendor`）
 pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> Result<Vec<CatalogLens>, String> {
     let b = miniz_oxide::inflate::decompress_to_vec_zlib(bytes)
-        .map_err(|e| format!("展開できない（{:?}）", e.status))?;
+        .map_err(|e| format!("can't be inflated ({:?})", e.status))?;
     let mut o = 0usize;
     let line = |o: &mut usize| -> Result<&str, String> {
         let end = b[*o..]
             .iter()
             .position(|&c| c == b'\n')
-            .ok_or("行が途中で切れている")?;
-        let s = std::str::from_utf8(&b[*o..*o + end]).map_err(|_| "UTF-8 でない行")?;
+            .ok_or("a line is cut short")?;
+        let s = std::str::from_utf8(&b[*o..*o + end]).map_err(|_| "a line is not UTF-8")?;
         *o += end + 1;
         Ok(s)
     };
@@ -67,9 +67,11 @@ pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> Result<Vec<CatalogLen
     let ver: u32 = head[0]
         .strip_prefix("LBCAT ")
         .and_then(|v| v.parse().ok())
-        .ok_or("lensbench のレンズカタログの束でない")?;
+        .ok_or("not a lensbench lens catalog bundle")?;
     if ver == 0 || ver > LBCAT_VERSION {
-        return Err(format!("形式の版 {ver} は読めない（{LBCAT_VERSION} まで）"));
+        return Err(format!(
+            "format version {ver} can't be read (up to {LBCAT_VERSION})"
+        ));
     }
     let vendor = match head.get(1) {
         Some(v) if !v.trim().is_empty() => v.clone(),
@@ -80,19 +82,19 @@ pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> Result<Vec<CatalogLen
         let f: Vec<String> = line(&mut o)?.split('\t').map(str::to_string).collect();
         let [part, efl, n] = &f[..] else {
             return Err(format!(
-                "レンズの行の欄が 3 つでない（{} 本目）",
+                "a lens line doesn't have 3 fields (lens {})",
                 out.len() + 1
             ));
         };
         let n: usize = n
             .parse()
-            .map_err(|_| format!("{part}: .zmx のバイト数 {n}"))?;
+            .map_err(|_| format!("{part}: .zmx byte count {n}"))?;
         let end = o
             .checked_add(n)
             .filter(|&e| e <= b.len())
-            .ok_or_else(|| format!("{part}: .zmx が途中で切れている"))?;
+            .ok_or_else(|| format!("{part}: the .zmx is cut short"))?;
         let zmx = std::str::from_utf8(&b[o..end])
-            .map_err(|_| format!("{part}: .zmx が UTF-8 でない"))?
+            .map_err(|_| format!("{part}: the .zmx is not UTF-8"))?
             .to_string();
         o = end;
         out.push(CatalogLens {
@@ -239,7 +241,12 @@ impl LensCatalog {
                         }
                     }
                     None if crate::vfs::is_dir(p) => {} // フォルダの中の関係のないファイルは飛ばす
-                    None => return Err(format!("{}: 読めない形式のレンズカタログ", f.display())),
+                    None => {
+                        return Err(format!(
+                            "{}: a lens catalog in a format that can't be read",
+                            f.display()
+                        ))
+                    }
                 }
             }
         }
@@ -281,7 +288,7 @@ impl LensCatalog {
     pub fn zmx(&self, vendor: &str, part: &str) -> Result<String, String> {
         self.get(vendor, part)
             .map(|l| l.zmx.clone())
-            .ok_or_else(|| format!("レンズカタログに {vendor} {part} がない"))
+            .ok_or_else(|| format!("no {vendor} {part} in the lens catalogs"))
     }
 
     pub fn lenses(&self) -> &[CatalogLens] {

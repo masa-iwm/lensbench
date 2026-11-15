@@ -735,7 +735,7 @@ fn nums(line: &str) -> Result<Vec<f64>> {
     line.split_whitespace()
         .map(|v| {
             v.parse::<f64>()
-                .map_err(|_| Error::Invalid(format!("GRIN のデータの数 {v:?}")))
+                .map_err(|_| Error::Invalid(format!("GRIN data count {v:?}")))
         })
         .collect()
 }
@@ -754,21 +754,21 @@ pub fn parse_grd(txt: &str, file: &str) -> Result<HashMap<String, GradiumProfile
     let mut out = HashMap::new();
     for b in ls.chunks(13) {
         if b.len() < 13 {
-            invalid!("GRD の組の行が足りない（{}）", b[0]);
+            invalid!("too few GRD set lines ({})", b[0]);
         }
         let h: Vec<&str> = b[0].split_whitespace().collect();
         if h.len() < 3 {
-            invalid!("GRD の見出しの行 {:?}", b[0]);
+            invalid!("GRD header line {:?}", b[0]);
         }
         let zmax: f64 = h[2]
             .parse()
-            .map_err(|_| Error::Invalid(format!("GRD の z_max {:?}", h[2])))?;
+            .map_err(|_| Error::Invalid(format!("GRD z_max {:?}", h[2])))?;
         let mut coef = Vec::with_capacity(12);
         for l in &b[1..] {
             coef.extend(nums(l)?);
         }
         if coef.len() != 12 || !(zmax > 0.0) {
-            invalid!("GRD の組 {}", h[0]);
+            invalid!("GRD set {}", h[0]);
         }
         out.insert(
             h[0].to_string(),
@@ -790,21 +790,21 @@ pub fn parse_sgrin(txt: &str) -> Result<HashMap<String, Sgrin>> {
     let mut out = HashMap::new();
     for b in ls.chunks(10) {
         if b.len() < 10 {
-            invalid!("SGRIN の組の行が足りない（{}）", b[0]);
+            invalid!("too few SGRIN set lines ({})", b[0]);
         }
         let name = b[0].split_whitespace().next().unwrap_or("").to_string();
         let r = nums(b[1])?;
         let lref = nums(b[2])?;
         let m = nums(b[3])?;
         if r.len() < 2 || lref.is_empty() || m.len() < 2 {
-            invalid!("SGRIN の組 {name}");
+            invalid!("SGRIN set {name}");
         }
         let (km, lm) = (m[0] as usize, m[1] as usize);
         let row = |i: usize, n: usize| -> Result<Vec<f64>> {
             let v = nums(b[i])?;
             if v.len() != n {
                 invalid!(
-                    "SGRIN の組 {name} の {} 行目（{} 個、{n} 個のはず）",
+                    "SGRIN set {name} line {} ({} values, should be {n})",
                     i + 1,
                     v.len()
                 );
@@ -830,7 +830,7 @@ pub fn parse_grad9(txt: &str) -> Result<HashMap<String, Grad9Mat>> {
     let mut out = HashMap::new();
     for b in ls.chunks(6) {
         if b.len() < 6 {
-            invalid!("GRADIENT_9 の組の行が足りない（{}）", b[0]);
+            invalid!("too few GRADIENT_9 set lines ({})", b[0]);
         }
         let v: Vec<f64> = b[1..]
             .iter()
@@ -891,20 +891,21 @@ impl GrinData {
 
     /// Gradium の媒質（分布の名前 name）
     pub fn gradium(&self, name: &str, dz: f64, dec: [f64; 4], cap: u8, dt: f64) -> Result<Grin> {
-        let prof = self.profiles.get(name).ok_or_else(|| {
-            Error::Invalid(format!("Gradium の分布 {name} がない（PROFILE.GRD）"))
-        })?;
+        let prof = self
+            .profiles
+            .get(name)
+            .ok_or_else(|| Error::Invalid(format!("no Gradium profile {name} (PROFILE.GRD)")))?;
         let disp = self.sgrin.get(&prof.family).ok_or_else(|| {
             Error::Invalid(format!(
-                "Gradium の分布 {name} の分散 {} がない（SGRIN.DAT）",
+                "no dispersion {} for Gradium profile {name} (SGRIN.DAT)",
                 prof.family
             ))
         })?;
         if cap > 3 {
-            invalid!("Gradium の端の扱い {cap}");
+            invalid!("Gradium end handling {cap}");
         }
         if dec[2] * dec[2] + dec[3] * dec[3] >= 1.0 {
-            invalid!("Gradium の分布の軸の傾き {} {}", dec[2], dec[3]);
+            invalid!("Gradium profile axis tilt {} {}", dec[2], dec[3]);
         }
         Ok(Grin {
             kind: GrinKind::Gradium {
@@ -921,7 +922,7 @@ impl GrinData {
     /// Gradient 9 の媒質（材料 name）
     pub fn grad9(&self, name: &str, tan: [f64; 2], dt: f64) -> Result<Grin> {
         let mat = self.grad9.get(name).ok_or_else(|| {
-            Error::Invalid(format!("Gradient 9 の材料 {name} がない（GRADIENT_9.DAT）"))
+            Error::Invalid(format!("no Gradient 9 material {name} (GRADIENT_9.DAT)"))
         })?;
         Ok(Grin {
             kind: GrinKind::Grad9 { mat: *mat, tan },

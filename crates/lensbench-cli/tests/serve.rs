@@ -714,7 +714,7 @@ fn root_limits_files() {
         term(json!({"type": "zplm", "macro": 2, "macro_dirs": [d]})),
     ));
     let e = sv.error("optimize", term(json!({"type": "zplm", "macro": 1})));
-    assert!(e.contains("見つからない"), "{e}");
+    assert!(e.contains("not found"), "{e}");
     let tol = json!({ "trials": 1, "merit": "none", "tols": [{"param": "1.t", "pm": 0.01}],
         "terms": [{"type": "zplm", "file": zp}] });
     outside(sv.error("tolerance", tol));
@@ -757,7 +757,7 @@ fn edit_and_save() {
         "edit",
         json!({ "ops": [{"op": "delete_surface", "surface": "D"}, {"op": "nope"}] }),
     );
-    assert!(e.contains("操作 2"), "{e}");
+    assert!(e.contains("operation 2"), "{e}");
     assert_eq!(
         sv.call("surface", json!({ "surface": "D" }))["surface"],
         json!(1)

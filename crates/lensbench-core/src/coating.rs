@@ -58,9 +58,9 @@ pub struct CoatingFile {
     pub table: HashMap<String, Table>,
 }
 
-fn num(s: &str, what: &str) -> Result<f64> {
+fn num(s: &str, name: &str) -> Result<f64> {
     s.parse::<f64>()
-        .map_err(|_| Error::Invalid(format!("膜ファイル: {what} の数値 {s}")))
+        .map_err(|_| Error::Invalid(format!("coating file: {name} number {s}")))
 }
 
 impl CoatingFile {
@@ -110,7 +110,7 @@ impl CoatingFile {
                         Cur::None => {}
                         Cur::Mate(name) => {
                             if t.len() < 2 {
-                                invalid!("膜ファイル: 材料 {name} の行 {line}");
+                                invalid!("coating file: material {name} line {line}");
                             }
                             let k = if t.len() > 2 { num(t[2], name)? } else { 0.0 };
                             let row = [num(t[0], name)?, num(t[1], name)?, k];
@@ -118,7 +118,7 @@ impl CoatingFile {
                         }
                         Cur::Coat(name) => {
                             if t.len() < 2 {
-                                invalid!("膜ファイル: 膜 {name} の行 {line}");
+                                invalid!("coating file: coating {name} line {line}");
                             }
                             let flag = if t.len() > 2 {
                                 num(t[2], name)? as i64
@@ -132,31 +132,33 @@ impl CoatingFile {
                             };
                             f.coat.get_mut(name.as_str()).unwrap().push(l);
                         }
-                        Cur::Table(name, ang) => match t[0] {
-                            "ANGL" if t.len() >= 2 => {
-                                let a = num(t[1], name)?;
-                                let v = tables.get_mut(name.as_str()).unwrap();
-                                v.retain(|(b, _)| *b != a);
-                                v.push((a, Vec::new()));
-                                *ang = Some(a);
-                            }
-                            "WAVE" => {
-                                let Some(a) = *ang else {
-                                    invalid!("膜ファイル: 表 {name} の最初の ANGL より前に WAVE");
-                                };
-                                // 波長 Rs Rp Ts Tp に位相 4 つが続く（位相は省略すると 0）
-                                if t.len() < 6 {
-                                    invalid!("膜ファイル: 表 {name} の行 {line}");
+                        Cur::Table(name, ang) => {
+                            match t[0] {
+                                "ANGL" if t.len() >= 2 => {
+                                    let a = num(t[1], name)?;
+                                    let v = tables.get_mut(name.as_str()).unwrap();
+                                    v.retain(|(b, _)| *b != a);
+                                    v.push((a, Vec::new()));
+                                    *ang = Some(a);
                                 }
-                                let mut row = [0.0; 9];
-                                for i in 0..(t.len() - 1).min(9) {
-                                    row[i] = num(t[i + 1], name)?;
+                                "WAVE" => {
+                                    let Some(a) = *ang else {
+                                        invalid!("coating file: WAVE before the first ANGL of table {name}");
+                                    };
+                                    // 波長 Rs Rp Ts Tp に位相 4 つが続く（位相は省略すると 0）
+                                    if t.len() < 6 {
+                                        invalid!("coating file: table {name} line {line}");
+                                    }
+                                    let mut row = [0.0; 9];
+                                    for i in 0..(t.len() - 1).min(9) {
+                                        row[i] = num(t[i + 1], name)?;
+                                    }
+                                    let v = tables.get_mut(name.as_str()).unwrap();
+                                    v.iter_mut().find(|(b, _)| *b == a).unwrap().1.push(row);
                                 }
-                                let v = tables.get_mut(name.as_str()).unwrap();
-                                v.iter_mut().find(|(b, _)| *b == a).unwrap().1.push(row);
+                                _ => {}
                             }
-                            _ => {}
-                        },
+                        }
                     }
                 }
             }
@@ -249,17 +251,17 @@ pub fn parse_measured(txt: &str) -> Result<Vec<(String, Measured)>> {
             return Ok(());
         };
         if waves.is_empty() || waves.iter().any(|w| w.1.is_empty()) {
-            invalid!("実測表 {key} にデータがない");
+            invalid!("measured table {key} has no data");
         }
         let angles: Vec<f64> = waves[0].1.iter().map(|r| r.0).collect();
         if waves
             .iter()
             .any(|w| w.1.iter().map(|r| r.0).ne(angles.iter().copied()))
         {
-            invalid!("実測表 {key}: 波長ごとに角度の並びが違う");
+            invalid!("measured table {key}: the angles differ between wavelengths");
         }
         if out.iter().any(|(k, _)| *k == key) {
-            invalid!("実測表 {key} が 2 回ある");
+            invalid!("measured table {key} appears twice");
         }
         let m = Measured {
             wavelengths: waves.iter().map(|w| w.0).collect(),
@@ -279,38 +281,39 @@ pub fn parse_measured(txt: &str) -> Result<Vec<(String, Measured)>> {
         }
         if !header {
             if line != MEASURED_HEADER {
-                invalid!("実測表の 1 行目が {MEASURED_HEADER} でない");
+                invalid!("line 1 of the measured table is not {MEASURED_HEADER}");
             }
             header = true;
             continue;
         }
         let n = |s: &str| -> Result<f64> {
             s.parse::<f64>()
-                .map_err(|_| Error::Invalid(format!("実測表の {} 行目の数値 {s}", ln + 1)))
+                .map_err(|_| Error::Invalid(format!("measured table line {} number {s}", ln + 1)))
         };
         if let Some(k) = line.strip_prefix("KEY ") {
             finish(cur.take(), &mut out)?;
             cur = Some((k.trim().to_string(), Vec::new()));
         } else if let Some(w) = line.strip_prefix("WAVE ") {
             let Some(c) = cur.as_mut() else {
-                invalid!("実測表の {} 行目: KEY より前に WAVE", ln + 1);
+                invalid!("measured table line {}: WAVE before KEY", ln + 1);
             };
             c.1.push((n(w.trim())?, Vec::new()));
         } else {
             let t: Vec<&str> = line.split_whitespace().collect();
             let Some(w) = cur.as_mut().and_then(|c| c.1.last_mut()) else {
-                invalid!("実測表の {} 行目: WAVE より前にデータ", ln + 1);
+                invalid!("measured table line {}: data before WAVE", ln + 1);
             };
             if t.len() != 5 {
+                let line = ln + 1;
                 invalid!(
-                    "実測表の {} 行目: 角度と係数 4 つ（Re s Im s Re p Im p）",
-                    ln + 1
+                    "measured table line {line}: an angle and 4 coefficients (Re s Im s Re p Im p)"
                 );
             }
             let a = n(t[0])?;
             if let Some(&(b, _)) = w.1.last() {
                 if !(a > b) {
-                    invalid!("実測表の {} 行目: 角度が昇順でない", ln + 1);
+                    let line = ln + 1;
+                    invalid!("measured table line {line}: the angles are not ascending");
                 }
             }
             let v = [C64::new(n(t[1])?, n(t[2])?), C64::new(n(t[3])?, n(t[4])?)];
@@ -318,7 +321,7 @@ pub fn parse_measured(txt: &str) -> Result<Vec<(String, Measured)>> {
         }
     }
     if !header {
-        invalid!("実測表が空");
+        invalid!("the measured table is empty");
     }
     finish(cur, &mut out)?;
     Ok(out)
@@ -457,13 +460,13 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
         if w.iter()
             .any(|x| x.1.iter().map(|r| r.0).ne(b.iter().copied()))
         {
-            invalid!("膜のモデル {name}: 波長ごとに β の並びが違う");
+            invalid!("coating model {name}: the β values differ between wavelengths");
         }
         if b.len() < 4 || w.iter().any(|x| x.1.is_empty()) {
-            invalid!("膜のモデル {name}: β の点が足りない（4 点以上）");
+            invalid!("coating model {name}: too few β points (4 or more)");
         }
         if w.windows(2).any(|x| !(x[0].0 < x[1].0)) {
-            invalid!("膜のモデル {name}: 波長が昇順でない");
+            invalid!("coating model {name}: the wavelengths are not ascending");
         }
         Ok(b)
     }
@@ -471,11 +474,11 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
         let Some(mut c) = cur else { return Ok(()) };
         let name = c.name.clone();
         if c.t.is_empty() && c.r.is_empty() {
-            invalid!("膜のモデル {name} にデータがない");
+            invalid!("coating model {name} has no data");
         }
         if !c.t.is_empty() {
             let (Some(d), Some(bmax)) = (c.d, c.bmax) else {
-                invalid!("膜のモデル {name}: 透過には D と BMAX が要る");
+                invalid!("coating model {name}: transmission needs D and BMAX");
             };
             c.model.d = d;
             c.model.bmax = bmax;
@@ -492,7 +495,7 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
         }
         if let Some(m) = c.model.mirror.as_mut() {
             if c.r.is_empty() {
-                invalid!("膜のモデル {name}: MIRROR にデータがない");
+                invalid!("coating model {name}: MIRROR has no data");
             }
             m.betas = same_betas(&name, &c.r)?;
             m.wavelengths = c.r.iter().map(|w| w.0).collect();
@@ -502,7 +505,7 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                     .collect();
         }
         if out.iter().any(|(k, _)| *k == name) {
-            invalid!("膜のモデル {name} が 2 回ある");
+            invalid!("coating model {name} appears twice");
         }
         out.push((name, c.model));
         Ok(())
@@ -517,20 +520,20 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
         }
         if !header {
             if line != MODEL_HEADER {
-                invalid!("膜のモデルの 1 行目が {MODEL_HEADER} でない");
+                invalid!("line 1 of the coating model is not {MODEL_HEADER}");
             }
             header = true;
             continue;
         }
         let n = |s: &str| -> Result<f64> {
             s.parse::<f64>()
-                .map_err(|_| Error::Invalid(format!("膜のモデルの {} 行目の数値 {s}", ln + 1)))
+                .map_err(|_| Error::Invalid(format!("coating model line {} number {s}", ln + 1)))
         };
         let t: Vec<&str> = line.split_whitespace().collect();
         if t[0] == "COAT" {
             finish(cur.take(), &mut out)?;
             if t.len() != 2 {
-                invalid!("膜のモデルの {} 行目: COAT 名前", ln + 1);
+                invalid!("coating model line {}: COAT name", ln + 1);
             }
             cur = Some(Cur {
                 name: t[1].to_string(),
@@ -539,7 +542,7 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
             continue;
         }
         let Some(c) = cur.as_mut() else {
-            invalid!("膜のモデルの {} 行目: COAT より前", ln + 1);
+            invalid!("coating model line {}: before COAT", ln + 1);
         };
         match t[0] {
             "D" | "BMAX" if t.len() == 2 && !c.in_mirror => {
@@ -583,20 +586,22 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
                     c.t.last().map(|w| w.1.last().map(|r| r.0))
                 };
                 let Some(prev) = prev else {
-                    invalid!("膜のモデルの {} 行目: WAVE より前にデータ", ln + 1);
+                    invalid!("coating model line {}: data before WAVE", ln + 1);
                 };
                 if prev.is_some_and(|p| !(b > p)) {
-                    invalid!("膜のモデルの {} 行目: β が昇順でない", ln + 1);
+                    invalid!("coating model line {}: β is not ascending", ln + 1);
                 }
                 let z = |i: usize| C64::new(v[i], v[i + 1]);
                 if c.in_mirror {
                     if v.len() != 5 {
-                        invalid!("膜のモデルの {} 行目: 鏡は β と係数 4 つ", ln + 1);
+                        let line = ln + 1;
+                        invalid!("coating model line {line}: a mirror has β and 4 coefficients");
                     }
                     c.r.last_mut().unwrap().1.push((b, [z(1), z(3)]));
                 } else {
                     if v.len() != 19 {
-                        invalid!("膜のモデルの {} 行目: 透過は β と 18 列", ln + 1);
+                        let line = ln + 1;
+                        invalid!("coating model line {line}: transmission has β and 18 columns");
                     }
                     let m = [[z(1), z(3), z(5), z(7)], [z(10), z(12), z(14), z(16)]];
                     c.t.last_mut().unwrap().1.push((b, (m, [v[9], v[18]])));
@@ -605,7 +610,7 @@ pub fn parse_models(txt: &str) -> Result<Vec<(String, CoatModel)>> {
         }
     }
     if !header {
-        invalid!("膜のモデルが空");
+        invalid!("the coating model is empty");
     }
     finish(cur, &mut out)?;
     Ok(out)
@@ -631,10 +636,8 @@ pub fn encode_values(v: &[f64], nw: usize, nb: usize, k: usize, q: f64) -> Resul
             for f in 0..k {
                 let y = v[(w * nb + j) * k + f] / q;
                 if !(y.abs() < lim) {
-                    invalid!(
-                        "膜のモデルの値 {} が LBCM 3 で持てない（有限で、絶対値が刻み {q} の 2^60 倍より小さいこと）",
-                        y * q
-                    );
+                    let v = y * q;
+                    invalid!("coating model value {v} doesn't fit LBCM 3 (it must be finite and under 2^60 times the step {q})");
                 }
                 x[(f * nw + w) * nb + j] = y.round() as i64;
             }
@@ -691,12 +694,13 @@ fn undiff_lines(x: &mut [i64], lines: &[(usize, usize, usize)], order: usize) {
 fn decode_values(c: &[u8], nw: usize, nb: usize, k: usize, q: f64) -> Result<Vec<f64>> {
     let n = match nw.checked_mul(nb).and_then(|x| x.checked_mul(k)) {
         Some(n) if n.checked_mul(8).is_some() => n,
-        _ => invalid!("膜のモデル（LBCM 3）の波長・β の数が大きすぎる"),
+        _ => invalid!("too many wavelengths or β values in the coating model (LBCM 3)"),
     };
-    let planes = miniz_oxide::inflate::decompress_to_vec_with_limit(c, 8 * n)
-        .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の値の塊を展開できない".into()))?;
+    let planes = miniz_oxide::inflate::decompress_to_vec_with_limit(c, 8 * n).map_err(|_| {
+        Error::Invalid("the value block of the coating model (LBCM 3) can't be inflated".into())
+    })?;
     if planes.len() != 8 * n {
-        invalid!("膜のモデル（LBCM 3）の値の数が合わない");
+        invalid!("the coating model (LBCM 3) has the wrong number of values");
     }
     let mut x: Vec<i64> = (0..n)
         .map(|t| {
@@ -744,7 +748,7 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
     impl Rd<'_> {
         fn take(&mut self, n: usize) -> Result<&[u8]> {
             if self.p + n > self.b.len() {
-                invalid!("膜のモデル（LBCM 3）が途中で切れている");
+                invalid!("the coating model (LBCM 3) is cut short");
             }
             self.p += n;
             Ok(&self.b[self.p - n..self.p])
@@ -765,7 +769,7 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         fn values(&mut self, nw: usize, nb: usize, k: usize) -> Result<Vec<f64>> {
             let q = self.f64s(1)?[0];
             if !(q > 0.0 && q.is_finite()) {
-                invalid!("膜のモデル（LBCM 3）の値の刻みが正でない");
+                invalid!("the value step of the coating model (LBCM 3) is not positive");
             }
             let len = self.u32()?;
             decode_values(self.take(len)?, nw, nb, k, q)
@@ -776,12 +780,12 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             || w.windows(2).any(|x| !(x[0] < x[1]))
             || b.windows(2).any(|x| !(x[0] < x[1]))
         {
-            invalid!("膜のモデル {name}: 波長か β が昇順でない、または β が 4 点より少ない");
+            invalid!("coating model {name}: the wavelengths or β are not ascending, or there are fewer than 4 β points");
         }
         Ok(())
     }
     if !b.starts_with(MODEL_BIN_HEADER) {
-        invalid!("膜のモデルの先頭が LBCM 3 でない");
+        invalid!("the coating model doesn't start with LBCM 3");
     }
     let mut r = Rd {
         b,
@@ -792,15 +796,16 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
     let mut out: Vec<(String, CoatModel)> = Vec::new();
     for _ in 0..nc {
         let ln = r.u16()? as usize;
-        let name = String::from_utf8(r.take(ln)?.to_vec())
-            .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の名前が UTF-8 でない".into()))?;
+        let name = String::from_utf8(r.take(ln)?.to_vec()).map_err(|_| {
+            Error::Invalid("a name in the coating model (LBCM 3) is not UTF-8".into())
+        })?;
         let mut m = CoatModel {
             d: r.f64s(1)?[0],
             bmax: r.f64s(1)?[0],
             ..Default::default()
         };
         if !(m.d.is_finite() && m.bmax.is_finite()) {
-            invalid!("膜のモデル {name}: D か BMAX が有限でない");
+            invalid!("coating model {name}: D or BMAX is not finite");
         }
         let nk = r.u32()?;
         m.kinks = r.f64s(nk)?;
@@ -835,12 +840,12 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
         let has_mirror = match r.u8()? {
             0 => false,
             1 => true,
-            x => invalid!("膜のモデル {name}: 鏡の有無の値 {x} が 0 か 1 でない"),
+            x => invalid!("coating model {name}: the mirror flag {x} is not 0 or 1"),
         };
         if has_mirror {
             let h = r.f64s(2)?;
             if !(h[0].is_finite() && h[1].is_finite()) {
-                invalid!("膜のモデル {name}: 鏡の基準の屈折率か D_m が有限でない");
+                invalid!("coating model {name}: the mirror reference index or D_m is not finite");
             }
             let (nw, nb) = (r.u32()?, r.u32()?);
             let wavelengths = r.f64s(nw)?;
@@ -866,10 +871,10 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
                 ..Default::default()
             });
         } else if nw == 0 {
-            invalid!("膜のモデル {name} にデータがない");
+            invalid!("coating model {name} has no data");
         }
         if out.iter().any(|(k, _)| *k == name) {
-            invalid!("膜のモデル {name} が 2 回ある");
+            invalid!("coating model {name} appears twice");
         }
         out.push((name, m));
     }
@@ -881,16 +886,17 @@ pub fn parse_models_bin(b: &[u8]) -> Result<Vec<(String, CoatModel)>> {
             let ln = r.u16()? as usize;
             let name = String::from_utf8_lossy(r.take(ln)?).to_string();
             let ln = r.u32()?;
-            let note = String::from_utf8(r.take(ln)?.to_vec())
-                .map_err(|_| Error::Invalid("膜のモデル（LBCM 3）の注記が UTF-8 でない".into()))?;
+            let note = String::from_utf8(r.take(ln)?.to_vec()).map_err(|_| {
+                Error::Invalid("the notes of the coating model (LBCM 3) are not UTF-8".into())
+            })?;
             match out.iter_mut().find(|(k, _)| *k == name) {
                 Some((_, m)) => m.note = note,
-                None => invalid!("膜のモデル（LBCM 3）の注記の膜 {name} がない"),
+                None => invalid!("no coating {name} for the notes of the coating model (LBCM 3)"),
             }
         }
     }
     if r.p != b.len() {
-        invalid!("膜のモデル（LBCM 3）の後ろに余分なデータがある");
+        invalid!("extra data after the coating model (LBCM 3)");
     }
     Ok(out)
 }
@@ -1118,10 +1124,10 @@ fn mirror_branch(b2: &[f64], r: &[[C64; 2]]) -> Option<MirrorBranch> {
 fn out_of_waves(wls: &[f64], wl: f64) -> String {
     match (wls.first(), wls.last()) {
         (Some(&a), Some(&b)) if a - 1e-9 <= wl && wl <= b + 1e-9 => {
-            "をはさむ折れ目（KINKS）の間に、測った波長が 2 つ以上ない".to_string()
+            "has fewer than 2 measured wavelengths between the kinks (KINKS) around it".to_string()
         }
-        (Some(&a), Some(&b)) => format!("が範囲（{a}〜{b} µm）の外"),
-        _ => "の波長のデータがない".to_string(),
+        (Some(&a), Some(&b)) => format!("is outside the range ({a} to {b} µm)"),
+        _ => "has no wavelength data".to_string(),
     }
 }
 
@@ -1129,7 +1135,7 @@ fn out_of_waves(wls: &[f64], wl: f64) -> String {
 fn beta_spline(name: &str, b2: &[f64], ys: &[f64]) -> Result<Spline> {
     match Spline::not_a_knot(b2, ys) {
         Some(s) => Ok(s),
-        None => invalid!("膜のモデル {name}: β の補間ができない"),
+        None => invalid!("coating model {name}: β can't be interpolated"),
     }
 }
 
@@ -1309,10 +1315,8 @@ impl Coatings {
                     .find(|(n, _)| n.eq_ignore_ascii_case(coat))
                     .map(|(_, l)| l.clone())
                 else {
-                    invalid!(
-                        "{}: 膜 {coat} の COAT がない（ファイル名と中の膜の名前が違う）",
-                        p.display()
-                    );
+                    let path = p.display();
+                    invalid!("{path}: no COAT for coating {coat} (the file name and the coating name inside differ)");
                 };
                 for (m, rows) in f.mate {
                     self.file.mate.entry(m).or_insert(rows);
@@ -1343,10 +1347,8 @@ impl Coatings {
                 }
             }
             if !hit {
-                invalid!(
-                    "{}: 膜 {coat} のモデル・実測表がない（ファイル名と中の膜の名前が違う）",
-                    p.display()
-                );
+                let path = p.display();
+                invalid!("{path}: no model or measured table for coating {coat} (the file name and the coating name inside differ)");
             }
             self.auto.push((coat.to_string(), p.clone()));
             n += 1;
@@ -1358,10 +1360,10 @@ impl Coatings {
         if m.data.len() != m.wavelengths.len()
             || m.data.iter().any(|r| r.len() != m.angles_deg.len())
         {
-            invalid!("実測表 {key} の大きさ");
+            invalid!("size of measured table {key}");
         }
         if m.angles_deg.windows(2).any(|w| !(w[0] < w[1])) {
-            invalid!("実測表 {key} の角度が昇順でない");
+            invalid!("the angles of measured table {key} are not ascending");
         }
         self.measured.insert(key.to_string(), m);
         Ok(())
@@ -1402,7 +1404,7 @@ impl Coatings {
             parse_models_bin(&b)
         } else {
             std::str::from_utf8(&b)
-                .map_err(|_| Error::Invalid("UTF-8 でない".into()))
+                .map_err(|_| Error::Invalid("not UTF-8".into()))
                 .and_then(parse_models)
         }
         .map_err(|e| match e {
@@ -1484,7 +1486,7 @@ impl Coatings {
     fn mat_n(&self, sys: &System, name: &str, wl: f64) -> Result<C64> {
         if let Some(m) = self.file.mate.get(name) {
             if m.is_empty() {
-                invalid!("膜の材料 {name} にデータがない");
+                invalid!("coating material {name} has no data");
             }
             let xs: Vec<f64> = m.iter().map(|r| r[0]).collect();
             // 表の中は隣の 2 行の線形、外は近い方の端の行の値（外挿しない）。OpticStudio 2026 R1.01 と同じ
@@ -1497,7 +1499,7 @@ impl Coatings {
             // あるので（赤外の端の行など）、それより大きい正の k だけを誤りにする（値はそのまま使う）
             let kk = interp(wl, &xs, &k);
             if kk > MATE_K_POS_TOL {
-                invalid!("膜の材料 {name} の k が正（波長 {wl} µm で {kk}）。吸収は k < 0 で書く");
+                invalid!("coating material {name} has a positive k ({kk} at {wl} µm); write absorption as k < 0");
             }
             return Ok(C64::new(interp(wl, &xs, &n), interp(wl, &xs, &k)));
         }
@@ -1506,7 +1508,9 @@ impl Coatings {
                 g.index(wl, sys.temperature, sys.pressure, sys.adjust_index),
                 0.0,
             )),
-            None => invalid!("膜の材料 {name} が膜ファイルにもガラスカタログにもない"),
+            None => invalid!(
+                "coating material {name} is neither in the coating file nor in the glass catalogs"
+            ),
         }
     }
 
@@ -1531,7 +1535,7 @@ impl Coatings {
             let mut vals: [Vec<f64>; 8] = Default::default();
             for (a, rows) in tab {
                 if rows.is_empty() {
-                    invalid!("膜の表 {coat} の角度 {a} に行がない");
+                    invalid!("coating table {coat} has no row for angle {a}");
                 }
                 let xs: Vec<f64> = rows.iter().map(|r| r[0]).collect();
                 for c in 0..8 {
@@ -1632,7 +1636,7 @@ impl Coatings {
         } else {
             // 実測表・モデル: 暗号化された膜
             if reflect && !self.models.contains_key(coat) {
-                notimpl!("膜 {coat}（境界 {key}）: 反射の係数には特性行列モデルが要る（実測表は透過だけ）");
+                notimpl!("coating {coat} (interface {key}): reflection coefficients need a characteristic matrix model (a measured table is transmission only)");
             }
             let Some(m) = self.measured.get(key).filter(|_| !reflect) else {
                 return match self.models.get(coat) {
@@ -1652,15 +1656,13 @@ impl Coatings {
                         wl,
                     }),
                     None => notimpl!(
-                        "膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もモデルもない（暗号化された膜？）"
+                        "coating {coat} (interface {key}): not in the coating file, and no measured table or model (an encrypted coating?)"
                     ),
                 };
             };
             let Some(w) = m.wavelengths.iter().position(|&v| (v - wl).abs() <= 1e-9) else {
-                notimpl!(
-                    "膜の実測表 {key} に波長 {wl} µm がない（表は {:?}）",
-                    m.wavelengths
-                );
+                let have = &m.wavelengths;
+                notimpl!("measured coating table {key} has no wavelength {wl} µm (the table has {have:?})");
             };
             // 屈折角の余弦のスプライン（0 付近で角度に偶、全反射の平方根の振舞いもこれに線形）。鏡では入射角の余弦
             let r = if mirror { 1.0 } else { n1 / n2 };
@@ -1679,7 +1681,7 @@ impl Coatings {
             let sp = [0, 1, 2, 3].map(|c| Spline::not_a_knot(&xs, &ys[c]));
             let sp = match sp {
                 [Some(a), Some(b), Some(c), Some(d)] => [a, b, c, d],
-                _ => invalid!("膜の実測表 {key}: 補間できる点が足りない"),
+                _ => invalid!("measured coating table {key}: too few points to interpolate"),
             };
             Kind::Measured {
                 key: key.to_string(),
@@ -1861,7 +1863,7 @@ fn solve_tridiag(sub: &[f64], dia: &[f64], sup: &[f64], b: &[f64]) -> Option<Vec
 
 /// 理想膜の名前から (s, p) の強度透過率: `I.xx`（s・p 共通、`I.98` は 0.98）、`I.s=Ts,p=Tp`（s・p で別）
 pub fn ideal_t(coat: &str) -> Result<[f64; 2]> {
-    let bad = || Error::Invalid(format!("理想膜 {coat}（I.xx か I.s=Ts,p=Tp）"));
+    let bad = || Error::Invalid(format!("ideal coating {coat} (I.xx or I.s=Ts,p=Tp)"));
     let rest = coat.strip_prefix("I.").ok_or_else(bad)?;
     let v = if rest.contains('=') {
         let (mut ts, mut tp) = (None, None);
@@ -2012,13 +2014,11 @@ fn prepare_model(
     let range = |b: &[f64]| (b[0] * b[0], b[b.len() - 1] * b[b.len() - 1]);
     if mirror {
         let Some(m) = &md.mirror else {
-            notimpl!("膜のモデル {name} に鏡のデータがない");
+            notimpl!("coating model {name} has no mirror data");
         };
         let Some((s0, e0)) = wave_segment(&m.wavelengths, wl, &md.kinks) else {
-            notimpl!(
-                "膜のモデル {name}（鏡）: 波長 {wl} µm {}",
-                out_of_waves(&m.wavelengths, wl)
-            );
+            let why = out_of_waves(&m.wavelengths, wl);
+            notimpl!("coating model {name} (mirror): wavelength {wl} µm {why}");
         };
         // 波数の昇順に並べた点で補間する（波長は昇順なので逆順）
         let xs: Vec<f64> = (s0..e0).rev().map(|i| 1.0 / m.wavelengths[i]).collect();
@@ -2126,13 +2126,11 @@ fn prepare_model(
         });
     }
     if !md.has_transmit() {
-        notimpl!("膜のモデル {name} に透過のデータがない");
+        notimpl!("coating model {name} has no transmission data");
     }
     let Some((i, w)) = wave_weights(&md.wavelengths, wl, &md.kinks) else {
-        notimpl!(
-            "膜のモデル {name}: 波長 {wl} µm {}",
-            out_of_waves(&md.wavelengths, wl)
-        );
+        let why = out_of_waves(&md.wavelengths, wl);
+        notimpl!("coating model {name}: wavelength {wl} µm {why}");
     };
     let b2: Vec<f64> = md.betas.iter().map(|b| b * b).collect();
     let mut sp: Vec<[Spline; 9]> = Vec::new();
@@ -2163,7 +2161,7 @@ fn prepare_model(
                 // ψ は BMAX までの点だけで（その先は層の屈折率で発散する）
                 let m = md.betas.partition_point(|&b| b <= md.bmax + 1e-12);
                 if m < 4 {
-                    invalid!("膜のモデル {name}: BMAX までの β の点が足りない（4 点以上）");
+                    invalid!("coating model {name}: too few β points up to BMAX (4 or more)");
                 }
                 v.push(beta_spline(name, &b2[..m], &ys[..m])?);
             } else {
@@ -2317,7 +2315,7 @@ impl Iface {
                     let co = (1.0 - (b / n_out) * (b / n_out)).max(0.0).sqrt();
                     if co == 0.0 {
                         // 膜の外側で全反射（光線の追跡ではその前に止まる）
-                        notimpl!("膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）");
+                        notimpl!("coating transmission: total reflection in the outer medium n = {n_out} (β = {b})");
                     }
                     let mut ph = d * n_out / co;
                     // q_j は層の屈折率の実部で（吸収のある層も OpticStudio はそうしている。金属薄膜の透過で照合）
@@ -2354,11 +2352,11 @@ impl Iface {
                     let (lo, hi) = (angs[0], *angs.last().unwrap());
                     if deg.is_finite() && (deg > hi + 1e-9 || deg < lo - 1e-9) {
                         let what = if out.is_some() {
-                            "出る側の屈折角"
+                            "exit refraction angle"
                         } else {
-                            "入射角"
+                            "incidence angle"
                         };
-                        notimpl!("膜の表 {name}: {what} {deg:.4} deg が表の範囲 {lo}〜{hi} の外");
+                        notimpl!("coating table {name}: {what} {deg:.4} deg is outside the table range {lo} to {hi}");
                     }
                 }
                 let v = |k: usize| interp(x, xc, &vals[k]);
@@ -2383,7 +2381,7 @@ impl Iface {
                     let deg = c0.clamp(-1.0, 1.0).acos().to_degrees();
                     if deg.is_finite() && deg > max_deg + 1e-12_f64.to_degrees() {
                         notimpl!(
-                            "膜 {key}: 入射角 {deg:.4} deg が実測表の範囲（0〜{max_deg} deg）の外"
+                            "coating {key}: incidence angle {deg:.4} deg is outside the measured table range (0 to {max_deg} deg)"
                         );
                     }
                 }
@@ -2410,10 +2408,8 @@ impl Iface {
                 let x = b * b;
                 if *reflect {
                     if x < b2.0 - 1e-12 || x > b2.1 + 1e-12 {
-                        notimpl!(
-                            "膜のモデル {name}（反射）: β = {b:.4} がモデルの範囲（β ≤ {:.4}）の外",
-                            b2.1.sqrt()
-                        );
+                        let top = b2.1.sqrt();
+                        notimpl!("coating model {name} (reflection): β = {b:.4} is outside the model range (β ≤ {top:.4})");
                     }
                     let k = 2.0 * PI / self.wl;
                     let ph = if *reverse {
@@ -2440,10 +2436,8 @@ impl Iface {
                     return Ok(out);
                 }
                 if (*layer_phase && b > bmax + 1e-12) || x < b2.0 - 1e-12 || x > b2.1 + 1e-12 {
-                    notimpl!(
-                        "膜のモデル {name}: β = {b:.4} がモデルの範囲（β ≤ {:.4}、BMAX {bmax}）の外",
-                        b2.1.sqrt()
-                    );
+                    let top = b2.1.sqrt();
+                    notimpl!("coating model {name}: β = {b:.4} is outside the model range (β ≤ {top:.4}, BMAX {bmax})");
                 }
                 if n2 * n2 <= x {
                     // 後ろの媒質で全反射（光線の追跡ではその前に止まる）
@@ -2452,7 +2446,7 @@ impl Iface {
                 let n_out = if *reverse { *n2 } else { self.n1 };
                 let co = (1.0 - x / (n_out * n_out)).max(0.0).sqrt();
                 if co == 0.0 {
-                    notimpl!("膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）");
+                    notimpl!("coating transmission: total reflection in the outer medium n = {n_out} (β = {b})");
                 }
                 let k = 2.0 * PI / self.wl;
                 let ph = C64::new(0.0, k * d * n_out / co).exp();
@@ -2494,18 +2488,13 @@ impl Iface {
                 let x = b * b;
                 let (lo, hi) = (b2[0], b2[b2.len() - 1]);
                 if x < lo - 1e-12 || x > hi + 1e-12 {
-                    notimpl!(
-                        "膜のモデル {name}（鏡）: β = {b:.4} がモデルの範囲（β ≤ {:.4}）の外",
-                        hi.sqrt()
-                    );
+                    let top = hi.sqrt();
+                    notimpl!("coating model {name} (mirror): β = {b:.4} is outside the model range (β ≤ {top:.4})");
                 }
                 if let Some((a, c)) = band {
                     if *a <= x && x <= *c {
-                        notimpl!(
-                            "膜のモデル {name}（鏡）: β = {b:.5} は膜の外の媒質で全反射に変わる点（β {:.5}〜{:.5}）のそばで、測った点が足りず値が決まらない",
-                            a.sqrt(),
-                            c.sqrt()
-                        );
+                        let (lo, hi) = (a.sqrt(), c.sqrt());
+                        notimpl!("coating model {name} (mirror): β = {b:.5} is near where the outer medium turns to total reflection (β {lo:.5} to {hi:.5}); too few measured points to set the value");
                     }
                 }
                 let k = 2.0 * PI / self.wl;

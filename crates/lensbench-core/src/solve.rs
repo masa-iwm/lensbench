@@ -87,15 +87,18 @@ impl System {
         };
         for &j in &needs {
             if j == 0 || j > self.image() || self.surfaces[j].ignore {
-                invalid!("残差の面 {j}（無視しない面 1〜{}）", self.image());
+                invalid!(
+                    "residual surface {j} (surfaces not ignored, 1 to {})",
+                    self.image()
+                );
             }
         }
         if prob.unknown == Unknown::Object && !matches!(prob.object, ObjSpec::Point(_)) {
-            invalid!("物点を未知数にするのは有限物体だけ");
+            invalid!("only a finite object can be an unknown");
         }
         let w = prob.wave;
         if w >= self.wavelengths.len() {
-            invalid!("波長 {w}");
+            invalid!("wavelength {w}");
         }
         let start = match (prob.unknown, prob.object) {
             (Unknown::Object, ObjSpec::Point(p)) => p,
@@ -139,7 +142,7 @@ impl System {
         let mut u = start;
         let (mut t, mut r) = run(u);
         if !norm(r).is_finite() {
-            invalid!("初期値の光線が通らない（{:?}）", prob.unknown);
+            invalid!("the starting ray doesn't pass ({:?})", prob.unknown);
         }
         let mut it = 0;
         while it < prob.max_iter && !(norm(r) <= prob.tol) {
@@ -165,7 +168,7 @@ impl System {
             ];
             if !(du[0].is_finite() && du[1].is_finite()) {
                 return Err(Error::Invalid(format!(
-                    "光線の解き: ヤコビアンが特異（反復 {it}、残差 {:e}）",
+                    "ray solve: singular Jacobian (iteration {it}, residual {:e})",
                     norm(r)
                 )));
             }
@@ -190,7 +193,7 @@ impl System {
         }
         if !(norm(r) <= prob.tol) {
             invalid!(
-                "光線の解きが収束しない（反復 {it}、残差 {:e}、許容 {:e}）",
+                "the ray solve doesn't converge (iteration {it}, residual {:e}, tolerance {:e})",
                 norm(r),
                 prob.tol
             );

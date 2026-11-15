@@ -51,13 +51,13 @@ impl Value {
     fn num(&self, line: usize) -> Result<f64> {
         match self {
             Value::Num(x) => Ok(*x),
-            Value::Str(_) => Err(err(line, "数が要るところに文字列")),
+            Value::Str(_) => Err(err(line, "a string where a number is needed")),
         }
     }
     fn str(&self, line: usize) -> Result<&str> {
         match self {
             Value::Str(s) => Ok(s),
-            Value::Num(_) => Err(err(line, "文字列が要るところに数")),
+            Value::Num(_) => Err(err(line, "a number where a string is needed")),
         }
     }
 }
@@ -90,11 +90,11 @@ impl Host for NoHost {
     }
 }
 
-fn err(line: usize, msg: impl std::fmt::Display) -> Error {
-    Error::Invalid(format!("ZPL の {line} 行目: {msg}"))
+fn err(line: usize, e: impl std::fmt::Display) -> Error {
+    Error::Invalid(format!("ZPL line {line}: {e}"))
 }
-fn unsupported(line: usize, msg: impl std::fmt::Display) -> Error {
-    Error::NotImplemented(format!("ZPL の {line} 行目: {msg}"))
+fn unsupported(line: usize, e: impl std::fmt::Display) -> Error {
+    Error::NotImplemented(format!("ZPL line {line}: {e}"))
 }
 
 // ---------------------------------------------------------------- 字句
@@ -126,7 +126,7 @@ fn lex(src: &str, line: usize) -> Result<Vec<Tok>> {
         } else if ch == '"' {
             let j = (i + 1..c.len())
                 .find(|&j| c[j] == '"')
-                .ok_or_else(|| err(line, "文字列が閉じていない"))?;
+                .ok_or_else(|| err(line, "the string is not closed"))?;
             out.push(Tok::Str(c[i + 1..j].iter().collect()));
             i = j + 1;
         } else if ch.is_ascii_digit()
@@ -147,7 +147,7 @@ fn lex(src: &str, line: usize) -> Result<Vec<Tok>> {
             }
             let s: String = c[i..j].iter().collect();
             out.push(Tok::Num(
-                s.parse().map_err(|_| err(line, format!("数 {s}")))?,
+                s.parse().map_err(|_| err(line, format!("number {s}")))?,
             ));
             i = j;
         } else if ch.is_alphabetic() || ch == '_' || ch == '$' {
@@ -172,7 +172,7 @@ fn lex(src: &str, line: usize) -> Result<Vec<Tok>> {
             let op = OPS
                 .iter()
                 .find(|o| rest.starts_with(**o))
-                .ok_or_else(|| err(line, format!("字 {ch:?}")))?;
+                .ok_or_else(|| err(line, format!("character {ch:?}")))?;
             out.push(Tok::Op(op));
             i += op.len();
         }
@@ -230,7 +230,7 @@ impl Parser<'_> {
         if self.eat_op(op) {
             Ok(())
         } else {
-            Err(err(self.line, format!("{op} が要る")))
+            Err(err(self.line, format!("{op} is needed")))
         }
     }
     fn done(&self) -> bool {
@@ -242,7 +242,7 @@ impl Parser<'_> {
         if self.depth > MAX_EXPR_DEPTH {
             return Err(err(
                 self.line,
-                format!("式の入れ子が深すぎる（{MAX_EXPR_DEPTH} まで）"),
+                format!("expressions nested too deep (up to {MAX_EXPR_DEPTH})"),
             ));
         }
         let r = self.expr_in(min);
@@ -268,7 +268,7 @@ impl Parser<'_> {
         if self.depth > MAX_EXPR_DEPTH {
             return Err(err(
                 self.line,
-                format!("式の入れ子が深すぎる（{MAX_EXPR_DEPTH} まで）"),
+                format!("expressions nested too deep (up to {MAX_EXPR_DEPTH})"),
             ));
         }
         let r = self.unary_in();
@@ -320,8 +320,8 @@ impl Parser<'_> {
                     Ok(Expr::Var(name))
                 }
             }
-            Some(t) => Err(err(line, format!("式の途中に {t:?}"))),
-            None => Err(err(line, "式が要る")),
+            Some(t) => Err(err(line, format!("{t:?} in the middle of an expression"))),
+            None => Err(err(line, "an expression is needed")),
         }
     }
 
@@ -343,7 +343,10 @@ impl Parser<'_> {
     fn end(&self) -> Result<()> {
         match self.peek() {
             None => Ok(()),
-            Some(t) => Err(err(self.line, format!("行の終わりに余分な {t:?}"))),
+            Some(t) => Err(err(
+                self.line,
+                format!("extra {t:?} at the end of the line"),
+            )),
         }
     }
 }
@@ -447,7 +450,7 @@ impl Program {
                     if t.is_empty() {
                         return Ok(());
                     }
-                    return Err(err(line, "行の始めは名前でなければならない"));
+                    return Err(err(line, "a line must start with a name"));
                 };
                 if head == "REM" {
                     return Ok(());
@@ -484,20 +487,20 @@ impl Program {
                                 }
                                 .whole()?;
                                 let body =
-                                    &s[then_offset(s).ok_or_else(|| err(line, "THEN の後"))?..];
+                                    &s[then_offset(s).ok_or_else(|| err(line, "after THEN"))?..];
                                 let sub = Program::parse_inner(body, false)
-                                    .map_err(|e| e.at(format!("ZPL の {line} 行目の THEN の後")))?;
+                                    .map_err(|e| e.at(format!("ZPL line {line} after THEN")))?;
                                 if sub.ops.len() != 1
                                     || !sub.labels.is_empty()
                                     || !sub.subs.is_empty()
                                     || sub.nfor > 0
                                 {
-                                    return Err(err(line, "THEN の後は 1 つの文"));
+                                    return Err(err(line, "only one statement after THEN"));
                                 }
                                 push(&mut p, Op::JumpIfNot(c, at + 2));
                                 let op = sub.ops.into_iter().next().unwrap();
                                 if matches!(op, Op::JumpIfNot(..)) {
-                                    return Err(unsupported(line, "THEN の後の IF"));
+                                    return Err(unsupported(line, "IF after THEN"));
                                 }
                                 push(&mut p, op);
                             }
@@ -521,7 +524,7 @@ impl Program {
                                     o => o,
                                 };
                             }
-                            _ => return Err(err(line, "対になる IF のない ELSE")),
+                            _ => return Err(err(line, "ELSE without a matching IF")),
                         }
                     }
                     "ENDIF" => {
@@ -538,13 +541,15 @@ impl Program {
                                 }
                                 push(&mut p, Op::Nop);
                             }
-                            _ => return Err(err(line, "対になる IF のない ENDIF")),
+                            _ => return Err(err(line, "ENDIF without a matching IF")),
                         }
                     }
                     "FOR" => {
                         let v = match ps.t.get(1) {
                             Some(Tok::Id(v)) if !v.ends_with('$') => v.clone(),
-                            _ => return Err(err(line, "FOR の後は数の変数")),
+                            _ => {
+                                return Err(err(line, "FOR must be followed by a number variable"))
+                            }
                         };
                         ps.i = 2;
                         ps.expect_op(",")?;
@@ -552,7 +557,7 @@ impl Program {
                         ps.end()?;
                         let [a, b, c]: [Expr; 3] = a
                             .try_into()
-                            .map_err(|_| err(line, "FOR 変数, 始め, 終わり, 増分"))?;
+                            .map_err(|_| err(line, "FOR variable, start, end, step"))?;
                         let n = p.nfor;
                         p.nfor += 1;
                         push(&mut p, Op::ForInit(v.clone(), a, b, c, n));
@@ -565,32 +570,42 @@ impl Program {
                                 match ps.t.get(1) {
                                     None => {}
                                     Some(Tok::Id(w)) if *w == v && ps.t.len() == 2 => {}
-                                    _ => return Err(err(line, format!("NEXT の後は {v}"))),
+                                    _ => {
+                                        return Err(err(
+                                            line,
+                                            format!("NEXT must be followed by {v}"),
+                                        ))
+                                    }
                                 }
                                 push(&mut p, Op::ForNext(n, body));
                             }
-                            _ => return Err(err(line, "対になる FOR のない NEXT")),
+                            _ => return Err(err(line, "NEXT without a matching FOR")),
                         }
                     }
                     "LABEL" | "GOTO" | "GOSUB" | "SUB" => {
                         let name = match (&t.get(1), t.len()) {
                             (Some(Tok::Id(x)), 2) => x.clone(),
                             (Some(Tok::Num(x)), 2) => format!("{x}"),
-                            _ => return Err(err(line, format!("{head} の後は名前か番号 1 つ"))),
+                            _ => {
+                                return Err(err(
+                                    line,
+                                    format!("{head} must be followed by one name or number"),
+                                ))
+                            }
                         };
                         match head.as_str() {
                             "LABEL" => {
                                 if p.labels.insert(name.clone(), at).is_some() {
-                                    return Err(err(line, format!("札 {name} が 2 つある")));
+                                    return Err(err(line, format!("label {name} appears twice")));
                                 }
                                 push(&mut p, Op::Nop);
                             }
                             "SUB" => {
                                 if !open.is_empty() {
-                                    return Err(err(line, "IF・FOR の中の SUB"));
+                                    return Err(err(line, "SUB inside IF or FOR"));
                                 }
                                 if p.subs.insert(name.clone(), at + 1).is_some() {
-                                    return Err(err(line, format!("SUB {name} が 2 つある")));
+                                    return Err(err(line, format!("SUB {name} appears twice")));
                                 }
                                 push(&mut p, Op::FallIntoSub);
                             }
@@ -650,7 +665,7 @@ impl Program {
                 if let Some(name) = c.strip_prefix("\u{0}GOTO ") {
                     self.ops[k] = match self.labels.get(name) {
                         Some(&to) => Op::Jump(to),
-                        None => Op::Fail(err(self.lines[k], format!("札 {name} がない"))),
+                        None => Op::Fail(err(self.lines[k], format!("no label {name}"))),
                     };
                 }
             }
@@ -658,7 +673,7 @@ impl Program {
         for k in 0..self.ops.len() {
             if let Op::Gosub(n) = &self.ops[k] {
                 if !self.subs.contains_key(n) {
-                    self.ops[k] = Op::Fail(err(self.lines[k], format!("SUB {n} がない")));
+                    self.ops[k] = Op::Fail(err(self.lines[k], format!("no SUB {n}")));
                 }
             }
         }
@@ -738,14 +753,14 @@ impl Program {
             if steps > MAX_STEPS {
                 return Err(Stop::Limit(err(
                     line,
-                    format!("命令の数が {MAX_STEPS} を超えた（終わらない繰り返し？）"),
+                    format!("over {MAX_STEPS} statements (an endless loop?)"),
                 )));
             }
             #[cfg(not(target_arch = "wasm32"))]
             if steps % 4096 == 0 && t0.elapsed().as_secs_f64() > MAX_SECS {
                 return Err(Stop::Limit(err(
                     line,
-                    format!("{MAX_SECS} 秒を超えた（終わらない繰り返し？）"),
+                    format!("over {MAX_SECS} seconds (an endless loop?)"),
                 )));
             }
             let mut ev = Eval {
@@ -758,7 +773,9 @@ impl Program {
                     let v = ev.expr(e)?;
                     match (name.ends_with('$'), &v) {
                         (true, Value::Str(_)) | (false, Value::Num(_)) => {}
-                        _ => return Err(err(line, format!("{name} に入れる値の種類が違う")).into()),
+                        _ => {
+                            return Err(err(line, format!("wrong kind of value for {name}")).into())
+                        }
                     }
                     vars.0.insert(name.clone(), v);
                 }
@@ -786,7 +803,7 @@ impl Program {
                     if (dir == 1 && !(c > 0.0)) || (dir == -1 && !(c < 0.0)) {
                         return Err(Stop::Keep(err(
                             line,
-                            format!("FOR の増分 {c} の向きが {a} → {b} と合わない"),
+                            format!("FOR step {c} doesn't go the way of {a} → {b}"),
                         )));
                     }
                     fors[*n] = (b, c, dir);
@@ -811,7 +828,7 @@ impl Program {
                 }
                 Op::Gosub(name) => {
                     if stack.len() >= MAX_DEPTH {
-                        return Err(err(line, "GOSUB の入れ子が深すぎる").into());
+                        return Err(err(line, "GOSUB nested too deep").into());
                     }
                     stack.push(pc + 1);
                     pc = self.subs[name];
@@ -822,7 +839,7 @@ impl Program {
                         pc = r;
                         continue;
                     }
-                    None => return Err(err(line, "GOSUB の外の RETURN").into()),
+                    None => return Err(err(line, "RETURN outside GOSUB").into()),
                 },
                 Op::End => break,
                 // SUB に流れ込むと終わる（OpticStudio 26.1.1 で実測: それまでの値が入る）
@@ -836,12 +853,12 @@ impl Program {
                     match host.command(name, &a) {
                         Some(r) => {
                             if let Flow::Abort(why) =
-                                r.map_err(|e| e.at(format!("ZPL の {line} 行目")))?
+                                r.map_err(|e| e.at(format!("ZPL line {line}")))?
                             {
                                 return Err(Stop::Abort(err(line, why)));
                             }
                         }
-                        None => return Err(unsupported(line, format!("命令 {name}")).into()),
+                        None => return Err(unsupported(line, format!("statement {name}")).into()),
                     }
                 }
                 Op::Nop => {}
@@ -917,7 +934,7 @@ impl Eval<'_> {
                 .0
                 .get(n)
                 .cloned()
-                .ok_or_else(|| err(line, format!("変数 {n} にまだ値を入れていない")))?,
+                .ok_or_else(|| err(line, format!("variable {n} has no value yet")))?,
             Expr::Neg(a) => Value::Num(-self.expr(a)?.num(line)?),
             Expr::Not(a) => Value::Num(b(self.expr(a)?.num(line)? == 0.0)),
             Expr::Bin(op, a, c) => {
@@ -960,8 +977,8 @@ impl Eval<'_> {
                     return Ok(v);
                 }
                 match self.host.function(name, &a) {
-                    Some(r) => r.map_err(|e| e.at(format!("ZPL の {line} 行目")))?,
-                    None => return Err(unsupported(line, format!("関数 {name}"))),
+                    Some(r) => r.map_err(|e| e.at(format!("ZPL line {line}")))?,
+                    None => return Err(unsupported(line, format!("function {name}"))),
                 }
             }
         })
@@ -981,7 +998,7 @@ fn builtin(name: &str, a: &[Value], line: usize) -> Result<Option<Value>> {
     let one = |f: fn(f64) -> f64| -> Result<Option<Value>> {
         match a {
             [x] => Ok(Some(Value::Num(f(x.num(line)?)))),
-            _ => Err(err(line, format!("{name} の引数は 1 つ"))),
+            _ => Err(err(line, format!("{name} takes one argument"))),
         }
     };
     // 範囲外の引数のときの値（OpticStudio 26.1.1 で実測）: or の値を返す（None は引数をそのまま）
@@ -991,7 +1008,7 @@ fn builtin(name: &str, a: &[Value], line: usize) -> Result<Option<Value>> {
                 let x = x.num(line)?;
                 Ok(Some(Value::Num(if ok(x) { f(x) } else { or.unwrap_or(x) })))
             }
-            _ => Err(err(line, format!("{name} の引数は 1 つ"))),
+            _ => Err(err(line, format!("{name} takes one argument"))),
         }
     };
     match name {
@@ -1021,7 +1038,7 @@ fn builtin(name: &str, a: &[Value], line: usize) -> Result<Option<Value>> {
         "SQRT" => dom(|x| x >= 0.0, f64::sqrt, None),
         "POWR" => match a {
             [x, y] => Ok(Some(Value::Num(x.num(line)?.abs().powf(y.num(line)?)))),
-            _ => Err(err(line, "POWR の引数は 2 つ")),
+            _ => Err(err(line, "POWR takes two arguments")),
         },
         _ => Ok(None),
     }

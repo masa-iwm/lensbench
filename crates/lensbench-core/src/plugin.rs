@@ -41,7 +41,7 @@ impl Kind {
         match s {
             "detector" => Ok(Kind::Detector),
             "analysis" => Ok(Kind::Analysis),
-            _ => invalid!("プラグインの種類は detector か analysis（{s}）"),
+            _ => invalid!("plugin kind must be detector or analysis ({s})"),
         }
     }
 }
@@ -92,7 +92,7 @@ impl<'a> ConfigReader<'a> {
             None => Ok(default),
             Some(Value::Num(x)) => Ok(*x),
             Some(Value::Nums(v)) if v.len() == 1 => Ok(v[0]),
-            Some(v) => invalid!("設定 {key} は数に（{v:?}）"),
+            Some(v) => invalid!("setting {key} must be a number ({v:?})"),
         }
     }
 
@@ -103,7 +103,7 @@ impl<'a> ConfigReader<'a> {
         }
         let x = self.num(key, 0.0)?;
         if x.is_nan() {
-            invalid!("設定 {key} に NaN（省くときは書かない）");
+            invalid!("setting {key} is NaN (leave it out to omit it)");
         }
         Ok(Some(x))
     }
@@ -113,7 +113,7 @@ impl<'a> ConfigReader<'a> {
         match self.get(key) {
             None => Ok(default.to_string()),
             Some(Value::Str(s)) => Ok(s.clone()),
-            Some(v) => invalid!("設定 {key} は文字列に（{v:?}）"),
+            Some(v) => invalid!("setting {key} must be a string ({v:?})"),
         }
     }
 
@@ -123,7 +123,7 @@ impl<'a> ConfigReader<'a> {
             None => Ok(None),
             Some(Value::Num(x)) => Ok(Some(vec![*x])),
             Some(Value::Nums(v)) => Ok(Some(v.clone())),
-            Some(v) => invalid!("設定 {key} は数の並びに（{v:?}）"),
+            Some(v) => invalid!("setting {key} must be a list of numbers ({v:?})"),
         }
     }
 
@@ -139,7 +139,7 @@ impl<'a> ConfigReader<'a> {
         }
         let x = self.num(key, 0.0)?;
         if !(x >= 0.0) || x.fract() != 0.0 || x > u32::MAX as f64 {
-            invalid!("設定 {key} は 0 以上の整数に（{x}）");
+            invalid!("setting {key} must be an integer 0 or more ({x})");
         }
         Ok(Some(x as usize))
     }
@@ -153,14 +153,14 @@ impl<'a> ConfigReader<'a> {
         match self.num(key, if default { 1.0 } else { 0.0 })? {
             0.0 => Ok(false),
             1.0 => Ok(true),
-            x => invalid!("設定 {key} は true・false（か 0・1）に（{x}）"),
+            x => invalid!("setting {key} must be true or false (or 0 or 1) ({x})"),
         }
     }
 
     /// 波長の番号（1 始まり、省けば None）→ 0 始まり
     pub fn wave(&mut self, key: &str) -> Result<Option<usize>> {
         match self.opt_count(key)? {
-            Some(0) => invalid!("設定 {key} は 1 始まり"),
+            Some(0) => invalid!("setting {key} starts at 1"),
             w => Ok(w.map(|w| w - 1)),
         }
     }
@@ -174,7 +174,7 @@ impl<'a> ConfigReader<'a> {
             .filter(|k| !self.used.contains(k))
             .collect();
         if !unknown.is_empty() {
-            invalid!("知らない設定: {}", unknown.join(", "));
+            invalid!("unknown setting: {}", unknown.join(", "));
         }
         Ok(())
     }
@@ -222,7 +222,10 @@ impl Array {
     pub fn new(shape: Vec<usize>, data: Data) -> Result<Self> {
         let n: usize = shape.iter().product();
         if n != data.len() {
-            invalid!("配列の形 {shape:?} と値の数 {} が合わない", data.len());
+            invalid!(
+                "array shape {shape:?} doesn't match the {} values",
+                data.len()
+            );
         }
         Ok(Self { shape, data })
     }
@@ -297,7 +300,7 @@ impl<'a> ArrayReader<'a> {
     pub fn req(&mut self, key: &str) -> Result<&'a Array> {
         match self.opt(key) {
             Some(a) => Ok(a),
-            None => invalid!("入力 {key} がない"),
+            None => invalid!("no input {key}"),
         }
     }
 
@@ -306,7 +309,7 @@ impl<'a> ArrayReader<'a> {
         let a = self.req(key)?;
         match a.as_f64() {
             Some(v) => Ok((&a.shape, v)),
-            None => invalid!("入力 {key} は float64 に（{}）", a.data.dtype()),
+            None => invalid!("input {key} must be float64 ({})", a.data.dtype()),
         }
     }
 
@@ -315,7 +318,7 @@ impl<'a> ArrayReader<'a> {
         let a = self.req(key)?;
         match a.as_c64() {
             Some(v) => Ok((&a.shape, v)),
-            None => invalid!("入力 {key} は complex128 に（{}）", a.data.dtype()),
+            None => invalid!("input {key} must be complex128 ({})", a.data.dtype()),
         }
     }
 
@@ -328,7 +331,7 @@ impl<'a> ArrayReader<'a> {
             .filter(|k| !self.used.contains(k))
             .collect();
         if !unknown.is_empty() {
-            invalid!("知らない入力: {}", unknown.join(", "));
+            invalid!("unknown input: {}", unknown.join(", "));
         }
         Ok(())
     }
@@ -337,18 +340,18 @@ impl<'a> ArrayReader<'a> {
 /// 視野の入力: 数 1 つなら番号（1 始まり）、2 個なら正規化視野 (hx, hy)
 pub fn field_sel(s: &System, a: &Array) -> Result<crate::FieldSel> {
     let Some(v) = a.as_f64() else {
-        invalid!("視野は数に");
+        invalid!("the field must be a number");
     };
     match v {
         [i] => {
             let n = s.fields.len();
             if i.fract() != 0.0 || *i < 1.0 || *i > n as f64 {
-                invalid!("視野は 1〜{n}（{i}）");
+                invalid!("the field must be 1 to {n} ({i})");
             }
             Ok(crate::FieldSel::Index(*i as usize - 1))
         }
         [hx, hy] => Ok(crate::FieldSel::Norm(*hx, *hy)),
-        _ => invalid!("視野は数 1 つか 2 個に（{} 個）", v.len()),
+        _ => invalid!("the field must be one or two numbers ({} values)", v.len()),
     }
 }
 
@@ -356,7 +359,11 @@ pub fn field_sel(s: &System, a: &Array) -> Result<crate::FieldSel> {
 pub fn check_wave(s: &System, w: Option<usize>) -> Result<()> {
     if let Some(w) = w {
         if w >= s.wavelengths.len() {
-            invalid!("波長は 1〜{}（{}）", s.wavelengths.len(), w + 1);
+            invalid!(
+                "the wavelength must be 1 to {} ({})",
+                s.wavelengths.len(),
+                w + 1
+            );
         }
     }
     Ok(())
@@ -423,11 +430,14 @@ impl OutputSpec {
                         })
             });
             if !ok {
-                return Err(format!("{n}: 形 {s}"));
+                return Err(format!("{n}: shape {s}"));
             }
         }
         if self.doc.contains('[') || self.doc.contains(']') {
-            return Err(format!("{n}: 説明に角括弧 {}", self.doc));
+            return Err(format!(
+                "{n}: square brackets in the description {}",
+                self.doc
+            ));
         }
         Ok(())
     }
@@ -572,7 +582,7 @@ impl<'a> Context<'a> {
     pub fn system(&self) -> Result<&'a System> {
         match self.system {
             Some(s) => Ok(s),
-            None => invalid!("このプラグインには系が要る"),
+            None => invalid!("this plugin needs a system"),
         }
     }
 }
@@ -641,7 +651,7 @@ impl Registry {
         match self.map.get(name) {
             Some(p) => Ok(p.clone()),
             None => invalid!(
-                "プラグイン {name} はない（登録: {}）",
+                "no plugin {name} (registered: {})",
                 self.map.keys().cloned().collect::<Vec<_>>().join(", ")
             ),
         }

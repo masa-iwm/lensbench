@@ -73,14 +73,14 @@ fn errors() {
 #[test]
 fn cfg_out_of_range() {
     let (ok, _, err) = run(&["info", ZMX, "--glass-dir", "tests/glass", "--cfg", "2"]);
-    assert!(!ok && err.contains("構成 2"), "{err}");
+    assert!(!ok && err.contains("configuration 2"), "{err}");
 }
 
 #[test]
 fn small_grid_is_an_error() {
     for cmd in ["zernike", "wavefront"] {
         let (ok, _, err) = run(&[cmd, ZMX, "--glass-dir", "tests/glass", "--n", "3"]);
-        assert!(!ok && err.contains("4 以上の偶数"), "{cmd}: {err}");
+        assert!(!ok && err.contains("even number 4 or more"), "{cmd}: {err}");
     }
 }
 

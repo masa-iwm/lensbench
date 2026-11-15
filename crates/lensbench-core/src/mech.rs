@@ -79,7 +79,7 @@ impl MechPart {
         let fr = s.frames();
         let Some(f) = fr.surf.get(self.surface).copied().flatten() else {
             return Err(Error::Invalid(format!(
-                "機構 {}: 面 {} の座標がない（物体面・無視する面・範囲外）",
+                "mechanism {}: no coordinates of surface {} (object, ignored or out of range)",
                 self.name, self.surface
             )));
         };

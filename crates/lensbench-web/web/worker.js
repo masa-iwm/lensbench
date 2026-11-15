@@ -45,7 +45,8 @@ async function handle(data) {
     if (failed) throw new Error("wasm を読み込めない: " + failed);
     if (typeof data === "number") {
       await lb.worker_init(data);
-      if (mt && data === 0) {
+      // 上の位（0x80）は誤りの文の言語。受ける要求は下の位（0: serve と同じ）
+      if (mt && (data & 0x7f) === 0) {
         try {
           await lb.initThreadPool(Math.max(1, Math.min(navigator.hardwareConcurrency || 4, 16)));
           lb.threads_ready();

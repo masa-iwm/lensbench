@@ -52,7 +52,7 @@ pub struct Macro {
 impl Macro {
     /// 文 src を直に与えたマクロ（ファイルなし。テスト・埋め込み用）
     pub fn from_source(name: &str, src: &str) -> Result<Macro> {
-        let prog = Program::parse(src).map_err(|e| e.at(format!("マクロ {name}")))?;
+        let prog = Program::parse(src).map_err(|e| e.at(format!("macro {name}")))?;
         Ok(Macro {
             name: name.to_string(),
             source: src.to_string(),
@@ -66,7 +66,7 @@ impl Macro {
             return Ok(p.clone());
         }
         let p = Arc::new(
-            Program::parse(&self.source).map_err(|e| e.at(format!("マクロ {}", self.name)))?,
+            Program::parse(&self.source).map_err(|e| e.at(format!("macro {}", self.name)))?,
         );
         Ok(self.prog.get_or_init(|| p).clone())
     }
@@ -123,7 +123,7 @@ pub fn find_macro(name: &str, dirs: &[PathBuf]) -> Result<Macro> {
         }
     }
     Err(Error::Io(format!(
-        "マクロ {want} が見つからない（{} か所を探した）",
+        "macro {want} not found (looked in {} places)",
         dirs.len()
     )))
 }
@@ -174,23 +174,23 @@ impl<'a> SysHost<'a> {
     /// 切り捨て）がない、ならマクロを止めて値を変えない
     fn raytrace(&mut self, a: &[Value]) -> Result<Flow> {
         if !(4..=5).contains(&a.len()) {
-            crate::notimpl!("RAYTRACE の引数 {} 個（4 か 5 個だけ）", a.len());
+            crate::notimpl!("RAYTRACE has {} arguments (only 4 or 5)", a.len());
         }
         let mut x = [0.0; 5];
         for (i, v) in a.iter().enumerate() {
             match v {
                 Value::Num(v) => x[i] = *v,
-                _ => crate::invalid!("RAYTRACE の引数は数"),
+                _ => crate::invalid!("RAYTRACE arguments must be numbers"),
             }
         }
         if let Some(v) = x[..4].iter().find(|v| !(v.abs() <= 1.0)) {
-            return Ok(Flow::Abort(format!("RAYTRACE の座標 {v} が 1 を超える")));
+            return Ok(Flow::Abort(format!("RAYTRACE coordinate {v} is over 1")));
         }
         let s = self.sys;
         let w = if a.len() == 5 {
             let w = x[4].trunc();
             if !(w >= 1.0 && w as usize <= s.wavelengths.len()) {
-                return Ok(Flow::Abort(format!("RAYTRACE の波長の番号 {}", x[4])));
+                return Ok(Flow::Abort(format!("RAYTRACE wavelength number {}", x[4])));
             }
             w as usize - 1
         } else {
@@ -301,11 +301,11 @@ impl SysHost<'_> {
     fn surf_arg(&self, a: &[Value], name: &str) -> Result<usize> {
         let k = match a {
             [Value::Num(x)] => *x,
-            _ => return Err(Error::Invalid(format!("{name} の引数は面の番号 1 つ"))),
+            _ => return Err(Error::Invalid(format!("{name} takes one surface number"))),
         };
         let k = k.trunc();
         if k < 0.0 || k as usize >= self.sys.surfaces.len() {
-            return Err(Error::Invalid(format!("{name}({k}): 面がない")));
+            return Err(Error::Invalid(format!("{name}({k}): no such surface")));
         }
         Ok(k as usize)
     }
@@ -323,7 +323,7 @@ impl Host for SysHost<'_> {
             "SOSO" => match a {
                 [Value::Num(x)] if *x == 0.0 => num(self.surf as f64),
                 _ => Some(Err(Error::NotImplemented(format!(
-                    "SOSO の引数 {a:?}（0 だけ）"
+                    "SOSO argument {a:?} (only 0)"
                 )))),
             },
             "CURV" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].c))),
@@ -332,7 +332,9 @@ impl Host for SysHost<'_> {
             "SDIA" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].semi))),
             // 曲率半径（平面は未対応: OpticStudio の値を確かめていない）
             "RADI" => Some(surf(self).and_then(|k| match s.surfaces[k].c {
-                0.0 => Err(Error::NotImplemented(format!("平面（面 {k}）の RADI"))),
+                0.0 => Err(Error::NotImplemented(format!(
+                    "RADI of a flat surface (surface {k})"
+                ))),
                 c => Ok(Value::Num(1.0 / c)),
             })),
             "RAYX" | "RAYY" | "RAYZ" | "RAYL" | "RAYM" | "RAYN" | "RANX" | "RANY" | "RANZ"
@@ -369,10 +371,10 @@ impl Host for SysHost<'_> {
                         crate::param::surf_parm(d, *n as u8)
                             .or(std0)
                             .map(Value::Num)
-                            .ok_or_else(|| Error::NotImplemented(format!("面 {k} の PARM {n}")))
+                            .ok_or_else(|| Error::NotImplemented(format!("surface {k} PARM {n}")))
                     }
                 }
-                _ => Err(Error::Invalid("PARM の引数は (番号, 面)".into())),
+                _ => Err(Error::Invalid("PARM takes (number, surface)".into())),
             }),
             "NSUR" if a.is_empty() => num((s.surfaces.len() - 1) as f64),
             "NWAV" if a.is_empty() => num(s.wavelengths.len() as f64),
@@ -387,9 +389,9 @@ impl Host for SysHost<'_> {
                         _ => s.fields.get(i).map(|f| f.y),
                     }
                     .map(Value::Num)
-                    .ok_or_else(|| Error::Invalid(format!("{name}({}) がない", i + 1)))
+                    .ok_or_else(|| Error::Invalid(format!("no {name}({})", i + 1)))
                 }
-                _ => Err(Error::Invalid(format!("{name} の引数は番号 1 つ"))),
+                _ => Err(Error::Invalid(format!("{name} takes one number"))),
             }),
             _ => None,
         };
@@ -466,7 +468,7 @@ impl System {
         let o = m
             .program()?
             .solve(&mut SysHost::new(self, surf))
-            .map_err(|e| e.at(format!("面 {surf} のマクロ {}", m.name)))?;
+            .map_err(|e| e.at(format!("surface {surf} macro {}", m.name)))?;
         Ok(o.value)
     }
 
@@ -479,7 +481,7 @@ impl System {
                 continue;
             }
             let Some(m) = self.macros.get(q.id as usize) else {
-                crate::invalid!("面 {}: マクロ {} がない", q.surf, q.id);
+                crate::invalid!("surface {}: no macro {}", q.surf, q.id);
             };
             let Some(mut v) = self.run_macro(m, q.surf)? else {
                 continue;
@@ -493,7 +495,7 @@ impl System {
             if old != Some(v) {
                 if !crate::param::pick_set(&mut self.surfaces[q.surf], what, v) {
                     crate::notimpl!(
-                        "面 {} の{}にマクロの値を入れる",
+                        "putting a macro value into surface {} {}",
                         q.surf,
                         q.col.label(q.parm)
                     );

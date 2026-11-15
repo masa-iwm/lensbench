@@ -5,8 +5,9 @@
 //!   (Japanese if it starts with `ja`, English otherwise).
 //! - Translation: `lang/ja.tsv` holds `English template<TAB>Japanese template`. A `{...}` in the English
 //!   template matches any text, and the same `{...}` in the Japanese template is replaced by that text
-//!   (identical tokens such as `{}` are taken in order). Only a nested message in `{e}` is translated again;
-//!   other slot values (names, numbers, file names) are kept as they are. When several lines match, the one with the most
+//!   (identical tokens such as `{}` are taken in order). Only the text slots `{e}` (a nested message),
+//!   `{why}`・`{hint}` (an added note) and `{what}` (a label) are translated again; other slot values (names,
+//!   numbers, file names) are kept as they are. Only `{e}` and `{why}` may hold `": "`. When several lines match, the one with the most
 //!   literal text wins. A message that is not in the table is split at
 //!   `": "` and each part is translated (the context added by [`crate::Error::at`]); text with no match stays as is.
 //! - New messages: write them in English and add the Japanese line to `lang/ja.tsv`. Crates outside this
@@ -193,11 +194,20 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
                 None if rest.is_empty() => vec![s.len()],
                 None => s.char_indices().map(|(i, _)| i).skip(1).collect(),
             };
-            // 値の欄は「: 」を跨がない（跨ぐのは入れ子の誤り {e} だけ。「surface 3: cancelled」は「surface {}」に
+            // 値の欄は「: 」を跨がない（跨ぐのは入れ子の誤り {e} と添え書き {why} だけ。「surface 3: cancelled」は「surface {}」に
             // 当てず、「: 」で分けて訳す）
-            let nested = name == "{e}";
+            let nested = name == "{e}" || name == "{why}";
+            // ラベルの欄（{what}・{hint}）は句（「incidence angle」）が入るので長い方から。ほかは短い方から
+            let mut ends = ends;
+            if matches!(name.to_ascii_lowercase().as_str(), "{what}" | "{hint}") {
+                ends.reverse();
+            }
             ends.into_iter()
-                .filter(|&i| i > 0 && (nested || !s[..i].contains(": ")))
+                .filter(|&i| {
+                    let colon =
+                        s[..i].contains(": ") || (s[..i].ends_with(':') && s[i..].starts_with(' '));
+                    i > 0 && (nested || !colon)
+                })
                 .find_map(|i| {
                     let mut v = matches(rest, &s[i..])?;
                     v.insert(0, s[..i].to_string());
@@ -205,6 +215,14 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
                 })
         }
     }
+}
+
+/// A slot whose text is itself a message to translate: `{e}`, `{why}`, `{hint}`, `{what}` (any case)
+fn is_text_slot(s: &str) -> bool {
+    matches!(
+        s.to_ascii_lowercase().as_str(),
+        "{e}" | "{why}" | "{hint}" | "{what}"
+    )
 }
 
 /// Fill the Japanese template with the slot texts (by slot token, in order for repeated tokens)
@@ -230,9 +248,9 @@ fn fill(e: &Entry, vals: Vec<String>) -> String {
                 match i {
                     Some(i) => {
                         used[i] = true;
-                        // 入れ子の誤りの文（`{e}`）だけ訳す。名前・数などの値はそのまま（ファイル名
-                        // 「surface 3.zmx」を「面 3.zmx」にしない）
-                        if s == "{e}" {
+                        // 文の欄（`{e}`・`{why}`・`{hint}`・`{what}`）だけ訳す。名前・数などの値はそのまま
+                        // （ファイル名「surface 3.zmx」を「面 3.zmx」にしない）
+                        if is_text_slot(s) {
                             out.push_str(&translate(&vals[i]));
                         } else {
                             out.push_str(&vals[i]);
@@ -345,6 +363,21 @@ mod tests {
         assert_eq!(
             translate("the ray stopped (wavelength 1, pupil (0.000, 1.000), surface 4)"),
             "光線が止まった（波長 1、瞳 (0.000, 1.000)、面 4）"
+        );
+        // ラベルの欄 {what} に 2 語以上の句（#381 のレビュー）
+        assert_eq!(
+            translate("surface 3: Grid Sag grid columns 1 (an integer 2 to 16000000)"),
+            "面 3: Grid Sag の格子の列の数 1（2〜16000000 の整数）"
+        );
+        assert_eq!(
+            translate("number of zmx configurations MNUM 1.5 (an integer 1 to 1000)"),
+            "zmx の構成の数 MNUM 1.5（1〜1000 の整数）"
+        );
+        assert_eq!(
+            translate(
+                "coating table AR: incidence angle 95.0000 deg is outside the table range 0 to 89"
+            ),
+            "膜の表 AR: 入射角 95.0000 deg が表の範囲 0〜89 の外"
         );
     }
 }

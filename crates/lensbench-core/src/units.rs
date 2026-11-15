@@ -60,7 +60,7 @@ impl UnitKind {
             "shift" => UnitKind::Shift,
             "dn" => UnitKind::Dn,
             "disp" => UnitKind::Disp,
-            _ => invalid!("玉・群のパラメータの種類 {s}（dx dy tx ty tz shift dn disp）"),
+            _ => invalid!("lens or group parameter type {s} (dx dy tx ty tz shift dn disp)"),
         })
     }
 
@@ -229,17 +229,19 @@ impl System {
     ) -> Result<usize> {
         let name = name.trim();
         if name.is_empty() || name.contains('.') || name.parse::<usize>().is_ok() {
-            invalid!("玉・群の名前 {name:?}（空・数字だけ・「.」を含む名前は使えない）");
+            invalid!(
+                "lens or group name {name:?} (a name can't be empty, only digits, or contain '.')"
+            );
         }
         if spans.is_empty() {
-            invalid!("玉・群 {name} の範囲がない");
+            invalid!("lens or group {name} has no range");
         }
         let ima = self.image();
         let mut sp = spans.to_vec();
         for s in &sp {
             if s[0] == 0 || s[0] > s[1] || s[1] >= ima {
                 invalid!(
-                    "玉・群 {name} の範囲 {s:?}（面 1〜{} の中で 最初 ≤ 最後）",
+                    "lens or group {name} range {s:?} (first ≤ last within surfaces 1 to {})",
                     ima - 1
                 );
             }
@@ -247,15 +249,19 @@ impl System {
         sp.sort();
         for w in sp.windows(2) {
             if w[1][0] <= w[0][1] {
-                invalid!("玉・群 {name} の範囲 {:?} と {:?} が重なる", w[0], w[1]);
+                invalid!(
+                    "ranges {:?} and {:?} of lens or group {name} overlap",
+                    w[0],
+                    w[1]
+                );
             }
         }
         if !pivot.iter().all(|v| v.is_finite()) {
-            invalid!("玉・群 {name} の回転の中心 {pivot:?}");
+            invalid!("pivot {pivot:?} of lens or group {name}");
         }
         if let Some(i) = self.find_unit(name) {
             if !self.units[i].auto {
-                invalid!("玉・群 {name} は定義済み");
+                invalid!("lens or group {name} is already defined");
             }
             self.units.remove(i);
         }
@@ -266,7 +272,7 @@ impl System {
                     let nested = (a[0] <= b[0] && b[1] <= a[1]) || (b[0] <= a[0] && a[1] <= b[1]);
                     if !apart && !nested {
                         invalid!(
-                            "玉・群 {name} の範囲 {a:?} が {} の範囲 {b:?} と一部だけ重なる",
+                            "range {a:?} of lens or group {name} partly overlaps range {b:?} of {}",
                             u.name
                         );
                     }
@@ -291,13 +297,15 @@ impl System {
     pub fn rename_unit(&mut self, u: usize, name: &str) -> Result<()> {
         let name = name.trim();
         if u >= self.units.len() {
-            invalid!("玉・群 {u}");
+            invalid!("lens or group {u}");
         }
         if name.is_empty() || name.contains('.') || name.parse::<usize>().is_ok() {
-            invalid!("玉・群の名前 {name:?}（空・数字だけ・「.」を含む名前は使えない）");
+            invalid!(
+                "lens or group name {name:?} (a name can't be empty, only digits, or contain '.')"
+            );
         }
         if self.find_unit(name).is_some_and(|i| i != u) {
-            invalid!("玉・群 {name} は定義済み");
+            invalid!("lens or group {name} is already defined");
         }
         self.units[u].name = name.to_string();
         self.units[u].auto = false;
@@ -307,11 +315,11 @@ impl System {
     /// 玉・群の範囲を変える（並びの位置・名前・回転の中心はそのまま）。動き・移動が 0 の玉・群だけ
     pub fn set_unit_spans(&mut self, u: usize, spans: &[[usize; 2]]) -> Result<()> {
         let Some(cur) = self.units.get(u).cloned() else {
-            invalid!("玉・群 {u}");
+            invalid!("lens or group {u}");
         };
         if cur.moved() || cur.shift != 0.0 {
             invalid!(
-                "玉・群 {} は動かしてある（動き・移動を 0 にしてから範囲を変える）",
+                "lens or group {} is moved (set the motion and shift to 0 before changing the range)",
                 cur.name
             );
         }
@@ -329,11 +337,11 @@ impl System {
     /// 玉・群を外す（多重構成の表のその玉・群の行も外す）。動き・移動が 0 の玉・群だけ。説明を返す
     pub fn remove_unit(&mut self, u: usize) -> Result<Vec<String>> {
         let Some(cur) = self.units.get(u).cloned() else {
-            invalid!("玉・群 {u}");
+            invalid!("lens or group {u}");
         };
         if cur.moved() || cur.shift != 0.0 {
             invalid!(
-                "玉・群 {} は動かしてある（動き・移動を 0 にしてから外す）",
+                "lens or group {} is moved (set the motion and shift to 0 before removing it)",
                 cur.name
             );
         }
@@ -360,7 +368,7 @@ impl System {
     /// 回転の中心を変える
     pub fn set_unit_pivot(&mut self, u: usize, pivot: [f64; 3]) -> Result<()> {
         if u >= self.units.len() || !pivot.iter().all(|v| v.is_finite()) {
-            invalid!("玉・群 {u} の回転の中心 {pivot:?}");
+            invalid!("pivot {pivot:?} of lens or group {u}");
         }
         self.units[u].pivot = pivot;
         self.invalidate_frames();
@@ -419,7 +427,10 @@ impl System {
             let (r, t) = unit.local();
             let first = unit.spans[0];
             let Some(e0) = fr.entry[u][0] else {
-                invalid!("玉・群 {} の入口の座標系がない", unit.name);
+                invalid!(
+                    "no entrance coordinate system for lens or group {}",
+                    unit.name
+                );
             };
             let (c, q) = global(&e0, &r, t);
             // 後ろの範囲から入れる（前の範囲の番号がずれない）
@@ -429,7 +440,7 @@ impl System {
             for (k, [a, b]) in spans {
                 let Some(e) = fr.entry[u][k] else {
                     invalid!(
-                        "玉・群 {} の範囲 {:?} の入口の座標系がない",
+                        "no entrance coordinate system for lens or group {} range {:?}",
                         unit.name,
                         [a, b]
                     );
@@ -440,7 +451,7 @@ impl System {
                 let t2 = mtv(&e.r, sub(add(c, mv(&q, e.o)), e.o));
                 if k > 0 && !close_m(&r2, &r) {
                     notimpl!(
-                        "玉・群 {} の範囲 {:?}: 入口の向きが最初の範囲 {:?} と違う（座標ブレークにできない）",
+                        "lens or group {} range {:?}: the entrance direction differs from the first range {:?} (no coordinate break can do it)",
                         unit.name,
                         [a, b],
                         first
@@ -448,7 +459,7 @@ impl System {
                 }
                 // 範囲の中を通る変換（入口 → 最後の面の後）K: x → Rk x + k
                 let Some(fb) = fr.post[b] else {
-                    invalid!("面 {b} の座標系がない");
+                    invalid!("no coordinate system for surface {b}");
                 };
                 let rk = mm(&et, &fb.r);
                 let k_ = mtv(&e.r, sub(fb.o, e.o));
@@ -459,7 +470,7 @@ impl System {
                 let u_ = mtv(&rk, sub(mv(&rt, sub(k_, t2)), k_));
                 let Some(bang) = euler_xyz(&ru) else {
                     notimpl!(
-                        "玉・群 {} の範囲 {:?}: 戻りの回転を座標ブレークの角にできない",
+                        "lens or group {} range {:?}: the return rotation can't be made into coordinate break angles",
                         unit.name,
                         [a, b]
                     );

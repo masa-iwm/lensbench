@@ -14,7 +14,7 @@ impl System {
         };
         for &j in &surfs {
             if j == 0 || j > img_s || self.surfaces[j].ignore {
-                invalid!("視野の条件の面 {j}（無視しない面 1〜{img_s}）");
+                invalid!("field condition surface {j} (surfaces not ignored, 1 to {img_s})");
             }
         }
         let wave = self.field_wave.unwrap_or(self.primary);
@@ -98,9 +98,11 @@ impl System {
         if !(e < 1e-9 * x.abs().max(y.abs()).max(1.0)) {
             match c {
                 FieldCond::Position { surf } if surf == img_s => {
-                    invalid!("実像高の視野 ({x}, {y}): 届く実主光線がない（{e} ずれる）")
+                    invalid!("real image height field ({x}, {y}): no real chief ray reaches it (off by {e})")
                 }
-                _ => invalid!("条件 {c:?} の視野 ({x}, {y}): 解けない（{e} ずれる）"),
+                _ => {
+                    invalid!("field ({x}, {y}) with condition {c:?}: can't be solved (off by {e})")
+                }
             }
         }
         let s = spec(v);

@@ -76,7 +76,7 @@ fn missing_or_unsupported_macro_keeps_saved_value() {
         "unsup",
         &[("LBGSD", "GETSYSTEMDATA 1\nSOLVERETURN VEC1(2)\n")],
     );
-    for (name, why) in [("NOSUCH", "見つからない"), ("LBGSD", "GETSYSTEMDATA")] {
+    for (name, why) in [("NOSUCH", "not found"), ("LBGSD", "GETSYSTEMDATA")] {
         let s = load(&singlet(name, -0.0123), &d);
         assert_eq!(s.surfaces[2].c, -0.0123, "{name}");
         assert!(s.solves.iter().all(|q| q.surf != 2), "{name}");
@@ -371,7 +371,7 @@ fn runaway_and_deep_macros_do_not_hang_or_crash() {
     assert!(t0.elapsed().as_secs_f64() < 10.0);
     assert_eq!(s.surfaces[2].c, -0.0123);
     let w = s.macro_warnings();
-    assert!(w.len() == 1 && w[0].contains("超えた"), "{w:?}");
+    assert!(w.len() == 1 && w[0].contains("over "), "{w:?}");
     let s = load(&singlet("LBDEEP", -0.0123), &d);
     assert_eq!(s.surfaces[2].c, 0.0);
     let _ = std::fs::remove_dir_all(&d);

@@ -111,7 +111,7 @@ impl RayGrid {
             || self.ex.len() != n
             || self.ey.len() != n
         {
-            invalid!("光線の格子の大きさが合わない（G = {}）", self.g);
+            invalid!("the ray grid size doesn't match (G = {})", self.g);
         }
         Ok(())
     }
@@ -325,7 +325,7 @@ impl InputPol {
             "-" | "circ-" | "circular-" | "lcp" => InputPol::CircularMinus,
             _ => match t.parse::<f64>() {
                 Ok(d) => InputPol::Angle(d),
-                Err(_) => invalid!("入射偏光 {s}（x・y・角度 [deg]・circ+・circ-）"),
+                Err(_) => invalid!("input polarization {s} (x, y, angle [deg], circ+, circ-)"),
             },
         })
     }
@@ -391,14 +391,14 @@ pub fn trace_jones(
 ) -> Result<JonesGrid> {
     if let Some(s) = surf {
         if s == 0 || s > sys.image() {
-            invalid!("面 {s} が範囲外（1〜{}）", sys.image());
+            invalid!("surface {s} is out of range (1 to {})", sys.image());
         }
     }
     if g < 2 {
-        invalid!("瞳の格子は 2 以上");
+        invalid!("the pupil grid must be 2 or more");
     }
     if sys.primary != 0 {
-        invalid!("主波長は中心波長（波長 1）に");
+        invalid!("the primary wavelength must be the center wavelength (wavelength 1)");
     }
     let nw = sys.wavelengths.len();
     let mut r = RayGrid::new(g, nw);
@@ -439,7 +439,7 @@ pub fn trace_jones(
         let chief = if phase {
             let c = sys.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
             if !c.traced(0) {
-                invalid!("主光線がセンサに届かない");
+                invalid!("the chief ray doesn't reach the sensor");
             }
             Some((c.opl_os[0], c.opl_os[0] + c.rays[0].lens_opd))
         } else {

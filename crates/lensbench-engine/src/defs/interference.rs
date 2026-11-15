@@ -222,7 +222,7 @@ impl Analysis for Interference {
         };
         if a.field == 0 || a.field > s1.fields.len() {
             return Err(Error::Invalid(format!(
-                "視野 {} はありません（1〜{}）",
+                "no field {} (1 to {})",
                 a.field,
                 s1.fields.len()
             )));
@@ -245,7 +245,7 @@ impl Analysis for Interference {
                     Quantity::Delta => r.delta.concat(),
                     _ => {
                         return Err(Error::Invalid(format!(
-                            "quantity {q}（瞳上は intensity・delta）"
+                            "quantity {q} (on the pupil: intensity, delta)"
                         )))
                     }
                 };
@@ -261,7 +261,7 @@ impl Analysis for Interference {
             InterferenceMode::Detector => {
                 let Some(s2) = s2 else {
                     return Err(Error::Invalid(
-                        "mode detector では beam2 に構成か状態を指定する".into(),
+                        "mode detector needs a configuration or state for beam2".into(),
                     ));
                 };
                 let o = DetectorOpts {
@@ -293,7 +293,7 @@ impl Analysis for Interference {
                     Quantity::Reference => r.i_reference.clone(),
                     Quantity::Delta => {
                         return Err(Error::Invalid(format!(
-                            "quantity {q}（像面上は intensity・opd・visibility・sample・reference）"
+                            "quantity {q} (on the image: intensity, opd, visibility, sample, reference)"
                         )))
                     }
                 };
@@ -373,7 +373,7 @@ pub(crate) fn write_grid(
         }
         _ => {
             let fmt = ImageFormat::from_path(p, float).ok_or_else(|| {
-                Error::Invalid(format!("out の拡張子 {ext}（csv・json・tif・png）"))
+                Error::Invalid(format!("out extension {ext} (csv, json, tif, png)"))
             })?;
             let (lo, hi) = image::data_range(grid);
             let mut side = summary.clone();

@@ -68,7 +68,7 @@ impl TryFrom<ZernSagData> for ZernSag {
     fn try_from(d: ZernSagData) -> Result<ZernSag, String> {
         let max = ZernSag::max_terms(d.fringe);
         if d.coef.len() > max {
-            return Err(format!("Zernike の項が {} 個（上限 {max}）", d.coef.len()));
+            return Err(format!("{} Zernike terms (at most {max})", d.coef.len()));
         }
         let mut z = ZernSag::new(d.fringe, d.norm, d.coef, d.extrapolate);
         z.dx = d.dx;
@@ -389,24 +389,24 @@ impl GridSag {
             .filter(|l| !l.is_empty() && !l.starts_with('!'));
         let head: Vec<f64> = lines
             .next()
-            .ok_or("空のファイル")?
+            .ok_or("empty file")?
             .split_whitespace()
             .map(|v| v.parse::<f64>().map_err(|e| format!("{v}: {e}")))
             .collect::<Result<_, _>>()?;
         if head.len() < 4 {
-            return Err("1 行目は nx ny delx dely unitflag xdec ydec".into());
+            return Err("line 1 must be nx ny delx dely unitflag xdec ydec".into());
         }
         // 点の数は 1〜2^24 の整数（負・小数・巨大な値で確保があふれない）
         let count = |v: f64, what: &str| -> Result<usize, String> {
             if v.fract() == 0.0 && (1.0..=16_777_216.0).contains(&v) {
                 Ok(v as usize)
             } else {
-                Err(format!("{what} {v} は 1〜16777216 の整数にする"))
+                Err(format!("{what} {v} must be an integer 1 to 16777216"))
             }
         };
         let (nx, ny) = (count(head[0], "nx")?, count(head[1], "ny")?);
         if nx * ny > 16_777_216 {
-            return Err(format!("点の数 {nx}×{ny} が多すぎる（16777216 まで）"));
+            return Err(format!("too many points {nx}×{ny} (up to 16777216)"));
         }
         let unit = head.get(4).copied().unwrap_or(0.0) as i32;
         let sc = match unit {
@@ -414,14 +414,14 @@ impl GridSag {
             1 => 10.0,
             2 => 25.4,
             3 => 1000.0,
-            u => return Err(format!("単位の番号 {u}")),
+            u => return Err(format!("unit number {u}")),
         };
         let mut z = vec![[0.0; 4]; nx * ny];
         let mut nodata = vec![false; nx * ny];
         for r in 0..nx * ny {
             let l = lines
                 .next()
-                .ok_or_else(|| format!("点が足りない（{r} / {}）", nx * ny))?;
+                .ok_or_else(|| format!("too few points ({r} / {})", nx * ny))?;
             let v: Vec<f64> = l
                 .split_whitespace()
                 .map(|v| v.parse::<f64>().map_err(|e| format!("{v}: {e}")))
@@ -749,7 +749,7 @@ mod tests {
             let e = serde_json::from_str::<ZernSag>(&serde_json::to_string(&big).unwrap())
                 .unwrap_err()
                 .to_string();
-            assert!(e.contains("上限"), "{e}");
+            assert!(e.contains("at most"), "{e}");
         }
     }
 

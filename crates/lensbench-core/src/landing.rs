@@ -236,12 +236,12 @@ impl System {
         let sf = &self.surfaces;
         let all = (1..=t.last).filter(|&j| !sf[j].ignore).count();
         if n > 0 && t.rec.len() != all {
-            invalid!("着地点の微分には全面の記録（record）つきの追跡が要る");
+            invalid!("landing derivatives need a trace that records all surfaces (record)");
         }
         for j in 1..=t.last {
             let d = &sf[j];
             if !d.ignore && matches!(d.typ, SurfType::Paraxial | SurfType::User) {
-                notimpl!("理想レンズ・利用者定義の面（面 {j}）を通る光線の着地点の微分");
+                notimpl!("landing derivatives of rays through a paraxial lens or user-defined surface (surface {j})");
             }
             if !d.ignore
                 && matches!(
@@ -253,7 +253,10 @@ impl System {
                         | SurfType::Gradient9
                 )
             {
-                notimpl!("面 {j}（{:?}）を通る光線の着地点の微分", d.typ);
+                notimpl!(
+                    "landing derivatives of rays through surface {j} ({:?})",
+                    d.typ
+                );
             }
         }
         for p in params {
@@ -264,7 +267,7 @@ impl System {
                 )
             {
                 notimpl!(
-                    "トロイダル面（面 {}）の形のパラメータの着地点の微分",
+                    "landing derivatives of the shape parameters of a toroidal surface (surface {})",
                     p.surf
                 );
             }
@@ -279,7 +282,7 @@ impl System {
             return Ok(vec![0.0; n * np * NY]);
         }
         if ns == 0 {
-            invalid!("着地点の微分: 追跡する面がない");
+            invalid!("landing derivatives: no surface to trace");
         }
         let fr = self.frames();
         let base = raw_frames_d(self, Param::new(0, Kind::Dn));
@@ -708,7 +711,7 @@ impl System {
     /// 返り値は光線ごとの進んだ道のり（止まった光線は NaN）
     pub fn shift_end(&self, t: &mut Trace, w: usize, dz: f64) -> Result<Vec<f64>> {
         if !dz.is_finite() {
-            invalid!("dz が有限でない（{dz}）");
+            invalid!("dz is not finite ({dz})");
         }
         let j = t.last;
         let d = &self.surfaces[j];
@@ -718,7 +721,7 @@ impl System {
             d.n[w]
         };
         let Some(f) = self.frames().surf[j] else {
-            invalid!("面 {j} は無視する面");
+            invalid!("surface {j} is ignored");
         };
         let mut ts = Vec::with_capacity(t.rays.len());
         for (i, r) in t.rays.iter_mut().enumerate() {
@@ -775,7 +778,7 @@ impl System {
         };
         let j = t.last;
         if rl.surf != j {
-            invalid!("dz つきの dOPL/dp には最後の面までの全面の記録が要る");
+            invalid!("dOPL/dp with dz needs a record of all surfaces up to the last");
         }
         let owner = self.medium_owner();
         let d = &self.surfaces[j];

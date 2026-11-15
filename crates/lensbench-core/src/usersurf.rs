@@ -165,7 +165,7 @@ pub fn get(name: &str) -> Result<Arc<dyn SurfaceModel>> {
     match t.get(name) {
         Some(m) => Ok(m.clone()),
         None => invalid!(
-            "利用者定義の面のモデル {name} はない（登録: {}）",
+            "no user-defined surface model {name} (registered: {})",
             t.keys().cloned().collect::<Vec<_>>().join(", ")
         ),
     }
@@ -219,10 +219,10 @@ impl Pchip {
     fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Pchip> {
         let n = x.len();
         if n < 2 || y.len() != n {
-            invalid!("表の theta_deg・height は同じ長さの 2 点以上に");
+            invalid!("the table theta_deg and height need 2 or more points of the same length");
         }
         if x.windows(2).any(|w| !(w[1] > w[0])) || !x.iter().chain(&y).all(|v| v.is_finite()) {
-            invalid!("表の theta_deg は増える順の有限の値に");
+            invalid!("the table theta_deg must be ascending finite values");
         }
         let h: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
         let s: Vec<f64> = (0..n - 1).map(|i| (y[i + 1] - y[i]) / h[i]).collect();
@@ -370,7 +370,7 @@ impl SurfaceModel for IdealMapping {
         let mut r = ConfigReader::new(config);
         let f = r.num("f", f64::NAN)?;
         if !f.is_finite() || f == 0.0 {
-            invalid!("ideal_mapping の f は 0 以外の有限の値に（{f}）");
+            invalid!("ideal_mapping f must be finite and not 0 ({f})");
         }
         let kind = r.str("mapping", "tan")?;
         let coef = r.nums("coef")?;
@@ -379,7 +379,7 @@ impl SurfaceModel for IdealMapping {
         r.finish()?;
         let unused = |what: &str, v: bool| -> Result<()> {
             if v {
-                invalid!("ideal_mapping の {what} は mapping = {kind} では使わない");
+                invalid!("ideal_mapping {what} is not used with mapping = {kind}");
             }
             Ok(())
         };
@@ -397,22 +397,26 @@ impl SurfaceModel for IdealMapping {
             "poly" => Mapping::Poly(coef.unwrap_or_default()),
             "table" => {
                 let (Some(t), Some(h)) = (th, hh) else {
-                    invalid!("mapping = table には theta_deg と height が要る");
+                    invalid!("mapping = table needs theta_deg and height");
                 };
                 if t[0] != 0.0 || h[0] != 0.0 {
-                    invalid!("表は θ = 0・h = 0 から始める（{} deg, {} mm）", t[0], h[0]);
+                    invalid!(
+                        "the table must start at θ = 0, h = 0 ({} deg, {} mm)",
+                        t[0],
+                        h[0]
+                    );
                 }
                 let p = Pchip::new(t, h)?;
                 if !(p.d[0] != 0.0) || p.d[0].signum() != f.signum() {
                     invalid!(
-                        "表の θ = 0 の傾き（{} mm/deg）は f と同じ符号の 0 以外に",
+                        "the table slope at θ = 0 ({} mm/deg) must be non-zero with the same sign as f",
                         p.d[0]
                     );
                 }
                 Mapping::Table(p)
             }
             k => invalid!(
-                "mapping は tan・theta・sin・equisolid・stereographic・poly・table に（{k}）"
+                "mapping must be tan, theta, sin, equisolid, stereographic, poly or table ({k})"
             ),
         };
         Ok(Arc::new(IdealMappingInst { f, map }))

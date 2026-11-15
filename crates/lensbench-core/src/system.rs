@@ -967,23 +967,23 @@ impl System {
     pub fn check(&self) -> Result<()> {
         let sf = &self.surfaces;
         if sf.len() < 3 {
-            invalid!("面が少なすぎる（{}）", sf.len());
+            invalid!("too few surfaces ({})", sf.len());
         }
         if self.telecentric && !sf[0].t.is_finite() {
-            notimpl!("無限遠物体で物体側テレセントリック");
+            notimpl!("object-space telecentric with an object at infinity");
         }
         if self.telecentric && self.aiming != Aiming::Off {
-            notimpl!("物体側テレセントリックで光線エイミング");
+            notimpl!("ray aiming with object-space telecentric");
         }
         if !sf[0].t.is_finite() && self.field_type == FieldType::ObjH {
-            invalid!("無限遠物体で物体高の視野");
+            invalid!("object height field with an object at infinity");
         }
         if self.telecentric && !matches!(self.aperture.0, ApertureKind::Na | ApertureKind::Cone) {
-            invalid!("物体側テレセントリックには物体側 NA かコーン角の絞りが要る");
+            invalid!("object-space telecentric needs an object-space NA or cone angle aperture");
         }
         let st = self.stop();
         if st == 0 || st >= sf.len() - 1 {
-            invalid!("絞り面 {st}");
+            invalid!("stop surface {st}");
         }
         // 非球面の項を使わない面タイプに項が残っていれば誤り（交点・法線・近軸で解釈が食い違う）
         for (j, d) in sf.iter().enumerate() {
@@ -992,10 +992,8 @@ impl System {
                 SurfType::Standard | SurfType::Gradium | SurfType::Gradient9
             ) && d.has_asph()
             {
-                invalid!(
-                    "面 {j}（{:?}）に非球面の係数がある（偶数次非球面などの型にするか、係数を消す）",
-                    d.typ
-                );
+                let typ = d.typ;
+                invalid!("surface {j} ({typ:?}) has asphere coefficients (use a type such as even asphere, or remove them)");
             }
         }
         // GRIN の媒質の次の面（座標ブレークは通して、その次）は交点を求められる面タイプに限る
@@ -1010,7 +1008,8 @@ impl System {
                 .find(|(_, e)| !e.ignore && e.typ != SurfType::CoordBrk)
             {
                 if !crate::grin::next_ok(e.typ) {
-                    notimpl!("面 {j} の GRIN の媒質の次の面 {k}（{:?}）", e.typ);
+                    let typ = e.typ;
+                    notimpl!("surface {k} ({typ:?}) after the GRIN medium of surface {j}");
                 }
             }
         }
@@ -1596,11 +1595,12 @@ impl System {
     /// 視野の指定の正規化座標。視野・波長の番号が範囲の外なら誤り（入力で落ちない）
     pub(crate) fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
         if w >= self.wavelengths.len() {
-            invalid!("波長の番号 {}（全 {}）", w + 1, self.wavelengths.len());
+            let (wn, nw) = (w + 1, self.wavelengths.len());
+            invalid!("wavelength number {wn} ({nw} in all)");
         }
         match field {
             FieldSel::Index(i) if i >= self.fields.len() => {
-                invalid!("視野の番号 {}（全 {}）", i + 1, self.fields.len())
+                invalid!("field number {} ({} in all)", i + 1, self.fields.len())
             }
             FieldSel::Index(i) => Ok(self.hxhy(i)),
             FieldSel::Norm(a, b) => Ok((a, b)),
@@ -1639,7 +1639,7 @@ impl System {
             return Ok([0.0; 5]);
         }
         if !(hx.is_finite() && hy.is_finite()) {
-            invalid!("視野 ({hx}, {hy}) のケラレ係数");
+            invalid!("vignetting factors of field ({hx}, {hy})");
         }
         // 物理座標（正規化の値の 0 は割り算のための 1 にせず 0 のまま）
         let max_x = self.fields.iter().map(|f| f.x.abs()).fold(0.0, f64::max);
@@ -1742,7 +1742,7 @@ impl System {
             if self.field_type == FieldType::Angle {
                 let c = x.to_radians().cos() * y.to_radians().cos();
                 if c == 0.0 || !c.is_finite() {
-                    notimpl!("角度の視野 ({x}°, {y}°): ちょうど 90° の視野");
+                    notimpl!("angle field ({x}°, {y}°): a field of exactly 90°");
                 }
                 if c < 0.0 {
                     return Ok(ObjSpec::Dir(normalize([-tx, -ty, -1.0])));
@@ -2432,13 +2432,13 @@ impl System {
                     Some(Bire::In { mode, axis, ne }) => {
                         if !matches!(mode, 0 | 2) {
                             return Err(Error::Invalid(format!(
-                                "{}: 複屈折材の板の Mode {mode} は未対応（0 と 2 だけ）",
+                                "{}: birefringent plate Mode {mode} is not supported (only 0 and 2)",
                                 self.surf_label(j)
                             )));
                         }
                         let ne = ne.get(w).copied().ok_or_else(|| {
                             Error::Invalid(format!(
-                                "{}: 異常光 {} の屈折率がない",
+                                "{}: no index for the extraordinary material {}",
                                 self.surf_label(j),
                                 Bire::e_name(&d.mat)
                             ))
@@ -3305,28 +3305,28 @@ impl System {
         for (j, d) in self.surfaces.iter().enumerate() {
             if d.typ == SurfType::User && !d.ignore {
                 if d.user.is_none() {
-                    invalid!("利用者定義の面（面 {j}）にモデル（user）がない");
+                    invalid!("user-defined surface (surface {j}) has no model (user)");
                 }
                 let w = self.primary;
                 let (nb, na) = (self.index_before(j, w), d.n[w]);
                 if nb != 1.0 || na != 1.0 || d.mirror {
-                    notimpl!("空気以外の中・鏡の利用者定義の面（面 {j}: {nb} → {na}）");
+                    notimpl!("user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})");
                 }
             }
             if d.typ == SurfType::Paraxial && !d.ignore {
                 let w = self.primary;
                 let (nb, na) = (self.index_before(j, w), d.n[w]);
                 if nb != 1.0 || na != 1.0 {
-                    notimpl!("空気以外の中の理想レンズ（面 {j}: {nb} → {na}）");
+                    notimpl!("paraxial lens in a medium other than air (surface {j}: {nb} → {na})");
                 }
                 let z = self.lens_conjugate(j);
                 if z.is_finite() && z.abs() <= 1e12 && 1.0 / d.focal + 1.0 / z == 0.0 {
-                    notimpl!("理想レンズが物体を無限遠に結像する（OPD）");
+                    notimpl!("the paraxial lens images the object to infinity (OPD)");
                 }
             }
         }
         if self.surfaces[0].before.is_some() || self.surfaces[0].after != After::None {
-            notimpl!("物体面の傾き偏心");
+            notimpl!("tilt or decenter of the object surface");
         }
         Ok(())
     }

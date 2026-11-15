@@ -6,6 +6,26 @@ cancelled	中断した
 
 # words used inside other messages
 surface {}	面 {}
+. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡す
+ (catalogs not found or unreadable: {e}). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	（見つからない・読めなかったカタログ: {e}）。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡す
+exit refraction angle	出る側の屈折角
+incidence angle	入射角
+GARR number	GARR の番号
+zmx field count (FTYP 3)	zmx の視野の数（FTYP の 3 番目）
+zmx wavelength count (FTYP 4)	zmx の波長の数（FTYP の 4 番目）
+number of zmx configurations MNUM	zmx の構成の数 MNUM
+zmx primary wavelength PWAV	zmx の主波長 PWAV
+zmx GLRS	zmx の GLRS
+Grid Sag grid columns	Grid Sag の格子の列の数
+Grid Sag grid rows	Grid Sag の格子の行の数
+total reflection	で全反射
+missed	に当たらない
+maker	メーカー
+source	変換元
+part number	型番
+has fewer than 2 measured wavelengths between the kinks (KINKS) around it	をはさむ折れ目（KINKS）の間に、測った波長が 2 つ以上ない
+is outside the range ({a} to {b} µm)	が範囲（{a}〜{b} µm）の外
+has no wavelength data	の波長のデータがない
 
 # command line (lensbench-cli)
 See the arguments with lensbench <command> --help	引数の一覧は lensbench <コマンド> --help
@@ -42,6 +62,10 @@ no configurations to overlay	重ねる構成がない
 surface {j} can't be written (1 to {img})	面 {j} は書けない（1〜{img}）
 
 # project
+ops must be a list of operations	ops は操作の並び
+operation {} ({name}): {e}	操作 {} ({name}): {e}
+operation {}: {e}	操作 {}: {e}
+surface {j}: glass {} is not in the catalogs{HINT}	面 {j}: ガラス {} がカタログにない{HINT}
 no lens {k} ({} lenses)	玉 {k} はない（{} 個）
 {cfg} must be 1 or more	{cfg} は 1 以上
 {}: a folder (give a system file)	{}: フォルダ（系のファイルを渡す）
@@ -195,3 +219,594 @@ give one of --lens and --block	--lens か --block のどちらか 1 つ
 # py
 Python plugin: {e}	Python のプラグイン: {e}
 Python exception	Python の例外
+
+# core (edit, param)
+surface type {s}	面タイプ {s}
+changing to surface type {} (it needs shape data; read it from a .zmx)	面タイプ {} への変更（形のデータが要る。.zmx から読む）
+surface value {name} must be a number	面の値 {name} は数
+surface value {name} must be a list of numbers	面の値 {name} は数の並び
+surface value {name} has {n} items ({} items)	面の値 {name} は {n} 個（{} 個）
+surface value {name} = {v:?}	面の値 {name} = {v:?}
+surface value {name} must be a string	面の値 {name} は文字列
+surface value {name} must be true or false	面の値 {name} は真偽
+too few surfaces ({ns})	面が少なすぎる（{ns}）
+there must be exactly one stop surface	絞り面がちょうど 1 つでない
+surface {j}: material {} on a coordinate break	面 {j}: 座標ブレークに材料 {}
+Jones matrix surface {j} on a curved surface	曲面の Jones 行列面 {j}
+surface {j} thickness {}	面 {j} の厚さ {}
+surface {j} {name} = {v}	面 {j} の {name} = {v}
+surface {j}: {} refractive indices ({nw} wavelengths)	面 {j}: 屈折率の数 {}（波長 {nw}）
+global coordinate reference surface {} ({ns} surfaces)	大域座標の基準面 {}（面 {ns} 個）
+MIRROR is not a medium	MIRROR は媒質でない
+no glass {m} (add catalogs: add_glasses, add_glass_catalogs)	ガラス {m} がない（カタログを足す: add_glasses・add_glass_catalogs）
+surface {k}: the GRIN vertex is out of range	面 {k}: GRIN の頂点が分布の範囲の外
+surface {j}: the GRIN vertex is outside the profile range	面 {j}: GRIN の頂点が分布の範囲の外
+surface {j}: {e}	面 {j}: {e}
+surface {j}: extraordinary material {en} of the birefringent material: {e}	面 {j}: 複屈折材の異常光の材料 {en}: {e}
+position {at} to insert a surface (1 to {})	面を入れる位置 {at}（1〜{}）
+make the inserted surface the stop with set_stop	入れる面を絞りにするのは set_stop で
+surface {j} (surfaces are 0 to {})	面 {j}（面は 0〜{}）
+surface {j} (surfaces are 0 to {last})	面 {j}（面は 0〜{last}）
+surface {j} (surfaces are 0 to {last})	面 {j}（面は 0〜{last}）
+surface value name {name} ({})	面の値の名前 {name}（{}）
+surface {j} {name} is a pickup from surface {}	面 {j} の {name} は面 {} からのピックアップ
+surface {j} {name} is set by a solve	面 {j} の {name} はソルブで決まる
+surface {j} thickness {t}	面 {j} の厚さ {t}
+the object and image surfaces can't be ignored	物体面・像面は無視できない
+surface value aperture	面の値 aperture
+surface {j} is not a coordinate break (cb)	面 {j} は座標ブレークでない（cb）
+cb_order must be 0 or 1 ({o})	cb_order は 0 か 1（{o}）
+surface {j} is a mirror or a coordinate break ({name})	面 {j} は鏡か座標ブレーク（{name}）
+surface {j} to delete (1 to {})	消す面 {j}（1〜{}）
+surface {j} is the stop (make another surface the stop with set_stop first)	面 {j} は絞り（先に set_stop で別の面を絞りにする）
+surface {j} is used by the field setting (change the field type first)	面 {j} は視野の条件に使っている（先に視野の種類を変える）
+stop surface {j} (1 to {})	絞り面 {j}（1〜{}）
+surface {j}	面 {j}
+surface {j} (image or stop) can't be a coordinate break	面 {j}（像面・絞り）を座標ブレークにはできない
+the object surface can't be a mirror	物体面を鏡にはできない
+surface {j}: material {mat} on a coordinate break	面 {j}: 座標ブレークに材料 {mat}
+pickup surfaces (from {}, to {})	ピックアップの面（元 {}、先 {}）
+pickup scale {} and offset {}	ピックアップの倍率 {}・オフセット {}
+surface {} {:?} is set by a solve (remove_solve first)	面 {} の {:?} はソルブで決まる（先に remove_solve）
+the pickup value is not finite (from surface {} {v})	ピックアップの値が有限でない（面 {} から {v}）
+no pickup of {what:?} on surface {dst}	面 {dst} の {what:?} のピックアップは無い
+solve surface {} (1 to {})	ソルブの面 {}（1〜{}）
+solve value {}	ソルブの値 {}
+surface {} {} is set by a pickup (remove_pickup first)	面 {} の {} はピックアップで決まる（先に remove_pickup）
+no solve of {} on surface {surf}	面 {surf} の {} のソルブは無い
+0 configurations	構成の数 0
+only one configuration (set_config_count first)	構成が 1 つ（先に set_config_count）
+{} values ({} configurations)	値の数 {}（構成 {}）
+{} can't go in the table (field points, wavelengths)	{} は表に入れられない（物点・波長）
+position {at} to insert a configuration (1 to {})	構成を挿入する位置 {at}（1〜{}）
+configuration {from} (1 to {})	構成 {from}（1〜{}）
+only one configuration	構成が 1 つ
+configuration {k} (1 to {})	構成 {k}（1〜{}）
+configuration pickup {from} → {k} (1 to {n}, another configuration)	構成のピックアップ {from} → {k}（1〜{n}、別の構成）
+configuration pickup scale or offset	構成のピックアップの倍率・ずれ
+no row {} in the table	表に {} の行は無い
+configuration pickups go round in a loop ({k})	構成のピックアップが循環する（{k}）
+no pickup on {} configuration {k}	{} の構成 {k} のピックアップは無い
+configuration {k} (there is one configuration)	構成 {k}（構成は 1 つ）
+multi-configuration table ({} configurations, now {})	多重構成の表（構成 {}、今 {}）
+multi-configuration row {} has {} values	多重構成の行 {} の値の数 {}
+multi-configuration row {} pickup {} → {}	多重構成の行 {} のピックアップ {} → {}
+solve {n} needs another surface (other)	ソルブ {n} には別の面（other）が要る
+macro number {param}	マクロの番号 {param}
+solve type {name} ({})	ソルブの種類 {name}（{}）
+pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)	ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）
+parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1..)	パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜）
+no surface named {t}	名前 {t} の面がない
+several surfaces are named {t} ({hits:?}); use the number	名前 {t} の面が複数ある（{hits:?}）。番号で指定する
+parameter {s} (write surface.type, e.g. 3.t)	パラメータ {s}（面.種類 の形で、例 3.t）
+no lens or group named {}	名前 {} の玉・群がない
+{t} is the name of a surface and of a lens or group (write unit:{t}.{k} or surf:{t}.{k})	{t} は面の名前でも玉・群の名前でもある（unit:{t}.{k} か surf:{t}.{k} で指す）
+{kind} (there are {nw} wavelengths)	{kind}（波長は {nw} 個）
+lens or group {} ({} of them)	玉・群 {}（{} 個）
+lens or group {unit} has no medium (glass) inside ({medium})	玉・群 {unit} の中に媒質（ガラス）がない（{medium}）
+surface {j} ({:?}) {}	面 {j}（{:?}）の {}
+surface {j} is not an even asphere ({})	面 {j} は偶数次非球面でない（{}）
+asphere coefficient {}	非球面の係数 {}
+surface {j} Zernike term {n} is over the limit	面 {j} の Zernike の項 {n} は上限を超える
+surface {j} is not a Zernike Sag surface ({})	面 {j} は Zernike Sag の面でない（{}）
+tilt or decenter of the object surface	物体面の傾き偏心
+surface {j} is a mirror or a coordinate break (the medium is surface {kind} before it)	面 {j} は鏡か座標ブレーク（媒質は前の面の {kind}）
+thickness of the image surface	像面の厚さ
+field point {kind} is not system data (it is a trace input)	物点 {kind} は系のデータでない（追跡の入力）
+lens or group {unit}: medium {medium} differs between surfaces ({v:?})	玉・群 {unit} の媒質の {medium} が面ごとに違う（{v:?}）
+{name} becomes {now} by a pickup and doesn't match {v} of the lens or group change	{name} はピックアップで {now} になり、玉・群の変更の {v} と合わない
+{} is set by a solve ({:?})	{} はソルブ（{:?}）で決まる
+{name} is a pickup from surface {src} (scale {scale}, offset {offset}); change the source surface	{name} は面 {src} からのピックアップ（倍率 {scale}、オフセット {offset}）。元の面を変える
+no pickup surface (from {}, to {})	ピックアップの面（元 {}、先 {}）がない
+material or coating pickups don't converge (a loop?)	材料・膜のピックアップが収束しない（循環？）
+surface {} {:?} can't be picked up	面 {} の {:?} はピックアップできない
+surface {} {:?} can't take a pickup	面 {} の {:?} にピックアップできない
+pickups don't converge (a loop?)	ピックアップが収束しない（循環？）
+pickups go round in a loop	ピックアップが循環している
+derivative of surface {dst} {what:?} (a pickup target)	面 {dst} の {what:?}（ピックアップ先）の微分
+surface {surf}: solve on the object or image surface (or a missing surface)	面 {surf}: 物体面・像面（またはない面）のソルブ
+surface {}: no reference surface {o} for the solve	面 {}: ソルブの基準の面 {o} がない
+surface {}: both a solve and a pickup ({:?})	面 {}: ソルブとピックアップの両方（{:?}）
+surface {}: curvature solve on a coordinate break	面 {}: 座標ブレークの曲率のソルブ
+surface {surf}: the position solve refers to the object surface	面 {surf}: 位置ソルブの基準が物体面
+the solve doesn't converge	ソルブが収束しない
+the solve residual is not finite	ソルブの残差が有限でない
+the solve target doesn't change with the solved value (no derivative)	ソルブの条件がソルブの量で変わらない（微分が求まらない）
+chief ray solve with field type {t:?}	視野の種類 {t:?} での主光線のソルブ
+solve distance across a mirror or a tilt or decenter (surface {j})	鏡・傾き偏心（面 {j}）をまたぐソルブの距離
+edge thickness solve on surface {j} ({:?})	面 {j}（{:?}）のコバ厚のソルブ
+surface {k}: the position solve thickness is not finite (sum from surface {f})	面 {k}: 位置ソルブの厚さが有限でない（面 {f} からの和）
+surface {k}: compensator solve referring to itself	面 {k}: 自分を基準にした補償のソルブ
+surface {k}: center of curvature solve on the later surface {s0}	面 {k}: 後ろの面 {s0} の曲率中心のソルブ
+surface {k}: no macro {i} ({} in all)	面 {k}: マクロ {i} がない（全 {}）
+surface {k}: solve {:?} can't be solved ({v})	面 {k}: ソルブ {:?} が解けない（{v}）
+surface {k}: ray curvature solve on a mirror or a surface after a mirror	面 {k}: 鏡・鏡の後の面の光線の曲率のソルブ
+curvature solve on surface {k} ({:?})	面 {k}（{:?}）の曲率のソルブ
+surface {k}: the ray height is 0, so the curvature solve can't be solved	面 {k}: 光線の高さが 0 で曲率のソルブが解けない
+surface {k}: the same index on both sides, so the ray angle solve can't be solved	面 {k}: 前後の屈折率が同じで光線の傾きのソルブが解けない
+surface {k}: F/# 0 solve	面 {k}: F/# 0 のソルブ
+surface {k}: surface pair of the lens power solve (surfaces {a} and {b})	面 {k}: 玉のパワーのソルブの組（面 {a}・{b}）
+lens power solve on a lens with surface {j} ({:?})	面 {j}（{:?}）を含む玉のパワーのソルブ
+surface {k}: pupil position solve on a surface before the stop	面 {k}: 絞りより前の面の瞳の位置のソルブ
+surface {k}: the chief ray is parallel to the axis (thickness solve)	面 {k}: 主光線が光軸に平行で厚さのソルブが解けない
+surface {k}: the marginal ray is parallel to the axis (thickness solve)	面 {k}: マージナル光線が光軸に平行で厚さのソルブが解けない
+surface {k}: real ray height thickness solve next to a mirror, tilt or decenter, coordinate break or ignored surface	面 {k}: 鏡・傾き偏心・座標ブレーク・無視する面の隣の実光線の高さの厚さのソルブ
+surface {k}: the real ray (pupil zone {zone}) doesn't pass, so the thickness solve can't be solved	面 {k}: 実光線（瞳の帯 {zone}）が通らず厚さのソルブが解けない
+surface {k}: the real ray height doesn't change with thickness, so the thickness solve can't be solved	面 {k}: 実光線の高さが厚さで変わらず厚さのソルブが解けない
+surface {k}: OPD thickness solve on a mirror or coordinate break	面 {k}: 鏡・座標ブレークの OPD の厚さのソルブ
+surface {k}: OPD thickness solve on the image surface	面 {k}: 像面の OPD の厚さのソルブ
+surface {k}: another solve doesn't converge inside the OPD thickness solve	面 {k}: OPD の厚さのソルブの中でほかのソルブが収束しない
+surface {k}: the real ray (pupil zone {zone}) doesn't pass, so the OPD thickness solve can't be solved	面 {k}: 実光線（瞳の帯 {zone}）が通らず OPD の厚さのソルブが解けない
+surface {k}: the OPD doesn't change with thickness, so the OPD thickness solve can't be solved	面 {k}: OPD が厚さで変わらず OPD の厚さのソルブが解けない
+surface {k}: the thickness solve doesn't converge	面 {k}: 厚さのソルブが収束しない
+
+# core (coating, zmx)
+coating file: {name} number {s}	膜ファイル: {name} の数値 {s}
+coating file: material {name} line {line}	膜ファイル: 材料 {name} の行 {line}
+coating file: coating {name} line {line}	膜ファイル: 膜 {name} の行 {line}
+coating file: WAVE before the first ANGL of table {name}	膜ファイル: 表 {name} の最初の ANGL より前に WAVE
+coating file: table {name} line {line}	膜ファイル: 表 {name} の行 {line}
+measured table {key} has no data	実測表 {key} にデータがない
+measured table {key}: the angles differ between wavelengths	実測表 {key}: 波長ごとに角度の並びが違う
+measured table {key} appears twice	実測表 {key} が 2 回ある
+line 1 of the measured table is not {MEASURED_HEADER}	実測表の 1 行目が {MEASURED_HEADER} でない
+measured table line {} number {s}	実測表の {} 行目の数値 {s}
+measured table line {}: WAVE before KEY	実測表の {} 行目: KEY より前に WAVE
+measured table line {}: data before WAVE	実測表の {} 行目: WAVE より前にデータ
+measured table line {line}: an angle and 4 coefficients (Re s Im s Re p Im p)	実測表の {line} 行目: 角度と係数 4 つ（Re s Im s Re p Im p）
+measured table line {line}: the angles are not ascending	実測表の {line} 行目: 角度が昇順でない
+the measured table is empty	実測表が空
+coating model {name}: the β values differ between wavelengths	膜のモデル {name}: 波長ごとに β の並びが違う
+coating model {name}: too few β points (4 or more)	膜のモデル {name}: β の点が足りない（4 点以上）
+coating model {name}: the wavelengths are not ascending	膜のモデル {name}: 波長が昇順でない
+coating model {name} has no data	膜のモデル {name} にデータがない
+coating model {name}: transmission needs D and BMAX	膜のモデル {name}: 透過には D と BMAX が要る
+coating model {name}: MIRROR has no data	膜のモデル {name}: MIRROR にデータがない
+coating model {name} appears twice	膜のモデル {name} が 2 回ある
+line 1 of the coating model is not {MODEL_HEADER}	膜のモデルの 1 行目が {MODEL_HEADER} でない
+coating model line {} number {s}	膜のモデルの {} 行目の数値 {s}
+coating model line {}: COAT name	膜のモデルの {} 行目: COAT 名前
+coating model line {}: before COAT	膜のモデルの {} 行目: COAT より前
+coating model line {}: data before WAVE	膜のモデルの {} 行目: WAVE より前にデータ
+coating model line {}: β is not ascending	膜のモデルの {} 行目: β が昇順でない
+coating model line {line}: a mirror has β and 4 coefficients	膜のモデルの {line} 行目: 鏡は β と係数 4 つ
+coating model line {line}: transmission has β and 18 columns	膜のモデルの {line} 行目: 透過は β と 18 列
+the coating model is empty	膜のモデルが空
+coating model value {v} doesn't fit LBCM 3 (it must be finite and under 2^60 times the step {q})	膜のモデルの値 {v} が LBCM 3 で持てない（有限で、絶対値が刻み {q} の 2^60 倍より小さいこと）
+too many wavelengths or β values in the coating model (LBCM 3)	膜のモデル（LBCM 3）の波長・β の数が大きすぎる
+the value block of the coating model (LBCM 3) can't be inflated	膜のモデル（LBCM 3）の値の塊を展開できない
+the coating model (LBCM 3) has the wrong number of values	膜のモデル（LBCM 3）の値の数が合わない
+the coating model (LBCM 3) is cut short	膜のモデル（LBCM 3）が途中で切れている
+the value step of the coating model (LBCM 3) is not positive	膜のモデル（LBCM 3）の値の刻みが正でない
+coating model {name}: the wavelengths or β are not ascending, or there are fewer than 4 β points	膜のモデル {name}: 波長か β が昇順でない、または β が 4 点より少ない
+the coating model doesn't start with LBCM 3	膜のモデルの先頭が LBCM 3 でない
+a name in the coating model (LBCM 3) is not UTF-8	膜のモデル（LBCM 3）の名前が UTF-8 でない
+coating model {name}: D or BMAX is not finite	膜のモデル {name}: D か BMAX が有限でない
+coating model {name}: the mirror flag {x} is not 0 or 1	膜のモデル {name}: 鏡の有無の値 {x} が 0 か 1 でない
+coating model {name}: the mirror reference index or D_m is not finite	膜のモデル {name}: 鏡の基準の屈折率か D_m が有限でない
+the notes of the coating model (LBCM 3) are not UTF-8	膜のモデル（LBCM 3）の注記が UTF-8 でない
+no coating {name} for the notes of the coating model (LBCM 3)	膜のモデル（LBCM 3）の注記の膜 {name} がない
+extra data after the coating model (LBCM 3)	膜のモデル（LBCM 3）の後ろに余分なデータがある
+coating model {name}: β can't be interpolated	膜のモデル {name}: β の補間ができない
+{path}: no COAT for coating {coat} (the file name and the coating name inside differ)	{path}: 膜 {coat} の COAT がない（ファイル名と中の膜の名前が違う）
+{path}: no model or measured table for coating {coat} (the file name and the coating name inside differ)	{path}: 膜 {coat} のモデル・実測表がない（ファイル名と中の膜の名前が違う）
+size of measured table {key}	実測表 {key} の大きさ
+the angles of measured table {key} are not ascending	実測表 {key} の角度が昇順でない
+not UTF-8	UTF-8 でない
+coating material {name} has no data	膜の材料 {name} にデータがない
+coating material {name} has a positive k ({kk} at {wl} µm); write absorption as k < 0	膜の材料 {name} の k が正（波長 {wl} µm で {kk}）。吸収は k < 0 で書く
+coating material {name} is neither in the coating file nor in the glass catalogs	膜の材料 {name} が膜ファイルにもガラスカタログにもない
+coating table {coat} has no row for angle {a}	膜の表 {coat} の角度 {a} に行がない
+coating {coat} (interface {key}): reflection coefficients need a characteristic matrix model (a measured table is transmission only)	膜 {coat}（境界 {key}）: 反射の係数には特性行列モデルが要る（実測表は透過だけ）
+coating {coat} (interface {key}): not in the coating file, and no measured table or model (an encrypted coating?)	膜 {coat}（境界 {key}）: 膜ファイルになく、実測表もモデルもない（暗号化された膜？）
+measured coating table {key} has no wavelength {wl} µm (the table has {have:?})	膜の実測表 {key} に波長 {wl} µm がない（表は {have:?}）
+measured coating table {key}: too few points to interpolate	膜の実測表 {key}: 補間できる点が足りない
+ideal coating {coat} (I.xx or I.s=Ts,p=Tp)	理想膜 {coat}（I.xx か I.s=Ts,p=Tp）
+coating model {name} has no mirror data	膜のモデル {name} に鏡のデータがない
+coating model {name} (mirror): wavelength {wl} µm {why}	膜のモデル {name}（鏡）: 波長 {wl} µm {why}
+coating model {name} has no transmission data	膜のモデル {name} に透過のデータがない
+coating model {name}: wavelength {wl} µm {why}	膜のモデル {name}: 波長 {wl} µm {why}
+coating model {name}: too few β points up to BMAX (4 or more)	膜のモデル {name}: BMAX までの β の点が足りない（4 点以上）
+coating transmission: total reflection in the outer medium n = {n_out} (β = {b})	膜の透過: 外側の媒質 n = {n_out} で全反射（β = {b}）
+coating table {name}: {what} {deg:.4} deg is outside the table range {lo} to {hi}	膜の表 {name}: {what} {deg:.4} deg が表の範囲 {lo}〜{hi} の外
+coating {key}: incidence angle {deg:.4} deg is outside the measured table range (0 to {max_deg} deg)	膜 {key}: 入射角 {deg:.4} deg が実測表の範囲（0〜{max_deg} deg）の外
+coating model {name} (reflection): β = {b:.4} is outside the model range (β ≤ {top:.4})	膜のモデル {name}（反射）: β = {b:.4} がモデルの範囲（β ≤ {top:.4}）の外
+coating model {name}: β = {b:.4} is outside the model range (β ≤ {top:.4}, BMAX {bmax})	膜のモデル {name}: β = {b:.4} がモデルの範囲（β ≤ {top:.4}、BMAX {bmax}）の外
+coating model {name} (mirror): β = {b:.4} is outside the model range (β ≤ {top:.4})	膜のモデル {name}（鏡）: β = {b:.4} がモデルの範囲（β ≤ {top:.4}）の外
+coating model {name} (mirror): β = {b:.5} is near where the outer medium turns to total reflection (β {lo:.5} to {hi:.5}); too few measured points to set the value	膜のモデル {name}（鏡）: β = {b:.5} は膜の外の媒質で全反射に変わる点（β {lo:.5}〜{hi:.5}）のそばで、測った点が足りず値が決まらない
+pupil apodization (GFAC {})	瞳のアポダイゼーション（GFAC {}）
+not a number: {v}	数値ではない: {v}
+can't read the zmx multi-configuration line: {line}	zmx の多重構成の行を読めない: {line}
+surface {}: too few GARR values	面 {}: GARR の値が足りない
+zmx surface {surf}: material Offset solve (Δnd {dnd}, Δvd {dvd})	zmx の面 {surf}: 材料の Offset ソルブ（Δnd {dnd}、Δvd {dvd}）
+zmx surface {}: curvature solve {c}	zmx の面 {}: 曲率のソルブ {c}
+zmx surface {}: PZPL parameter number {n}	zmx の面 {}: PZPL のパラメータの番号 {n}
+zmx surface {}: spider arm width {w}, {n} arms	zmx の面 {}: スパイダーの腕の幅 {w}・本数 {n}
+zmx surface {}: line {} is not supported	zmx の面 {}: 行 {} は未対応
+{what} {v} (an integer {lo} to {hi})	{what} {v}（{lo}〜{hi} の整数）
+lens unit {u} (mm, cm, in, m)	レンズ単位 {u}（mm・cm・in・m）
+ray aiming pupil shift in lens unit {unit}	レンズ単位 {unit} の光線エイミングの瞳のずらし
+surface {k}: extra data in lens unit {unit}	面 {k}: レンズ単位 {unit} の拡張データ
+surface {k}: parameter pickup offset in lens unit {unit}	面 {k}: レンズ単位 {unit} のパラメータのピックアップのオフセット
+multi-configuration PRAM {p1}: bad surface or PARM number	多重構成の PRAM {p1}: 面か PARM の番号が不正
+unit conversion of the parameters of surface type {t}	面タイプ {t} のパラメータの単位の換算
+zmx surface {n}: no macro solve name	zmx の面 {n}: マクロのソルブの名前がない
+surface number {v}	面の番号 {v}
+zmx surface {n}: pickup column {col} of {key}	zmx の面 {n}: {key} のピックアップの列 {col}
+the zmx FTYP has no value	zmx の FTYP に値がない
+configurations start at 1 (0)	構成は 1 始まり（0）
+mode {mode} (sequential only)	モード {mode}（順次のみ）
+afocal image space	無焦点の像空間
+configuration {cfg} ({ncfg} in all)	構成 {cfg}（全 {ncfg}）
+multi-configuration operand {op} {p1} changes between configurations	多重構成のオペランド {op} {p1} が構成で変わる
+no wavelength {i}	波長 {i} がない
+primary wavelength {pw} (there are {nw} wavelengths)	主波長 {pw}（波長は {nw} 個）
+surface {k}: no pickup source surface {src}	面 {k}: ピックアップ元の面 {src} がない
+surface {k}: thickness solve on the object or image surface	面 {k}: 物体面・像面の厚さのソルブ
+surface {k}: thickness solve and a multi-configuration THIC	面 {k}: 厚さのソルブと多重構成の THIC
+surface {k}: both a solve and a pickup on the thickness	面 {k}: 厚さにソルブとピックアップの両方
+surface {k}: curvature solve on the object or image surface	面 {k}: 物体面・像面の曲率のソルブ
+surface {k}: curvature solve and a multi-configuration CRVT	面 {k}: 曲率のソルブと多重構成の CRVT
+parameter pickups don't converge (a loop?)	パラメータのピックアップが収束しない（循環？）
+surface {k}: surface type {name}	面 {k}: 面タイプ {name}
+surface {k}: Birefringent In Mode {mode} (only 0 and 2)	面 {k}: Birefringent In の Mode {mode}（0 と 2 だけ）
+surface {k}: Birefringent In Gradient Mode	面 {k}: Birefringent In の Gradient Mode
+surface {k}: Birefringent In crystal axis is 0	面 {k}: Birefringent In の結晶軸が 0
+paraxial lens (surface {k}) OPD mode {}	理想レンズ（面 {k}）の OPD モード {}
+paraxial lens (surface {k}) focal length is 0	理想レンズ（面 {k}）の焦点距離が 0
+surface {k}: {nt} Binary 2 terms	面 {k}: Binary 2 の項の数 {nt}
+surface {k}: Binary 2 normalization radius {norm}	面 {k}: Binary 2 の正規化半径 {norm}
+surface {k}: mirror on a GRIN surface	面 {k}: GRIN の面の鏡
+surface {k}: Gradium end handling {cap}	面 {k}: Gradium の端の扱い {cap}
+surface {k}: {nt} Cylinder Fresnel terms	面 {k}: Cylinder Fresnel の項の数 {nt}
+surface {k}: Zernike terms on a toroidal surface ({nz} terms)	面 {k}: トロイダル面の Zernike の項（{nz} 項）
+surface {k}: parameters on a standard surface	面 {k}: 標準面にパラメータ
+Jones matrix surface {k} on a curved surface	曲面の Jones 行列面 {k}
+glass {mat} (surface {k}) is not in the catalogs{why}	ガラス {mat}（面 {k}）がカタログにない{why}
+extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}	複屈折材 {mat} の異常光のガラス {en}（面 {k}）がカタログにない{why}
+surface {k}: no conic pickup source surface {src}	面 {k}: 円錐係数のピックアップ元の面 {src} がない
+conic pickups don't converge (a loop?)	円錐係数のピックアップが収束しない（循環？）
+system aperture type {satp}	系の絞りタイプ {satp}
+field type {t}	視野タイプ {t}
+ray aiming {r}	光線エイミング {r}
+UNIT Afocal Mode Units {u}	UNIT の Afocal Mode Units {u}
+surface type {:?} {col}	面タイプ {:?} の {col}
+surface {j}: no material pickup source surface {src}	面 {j}: 材料のピックアップ元の面 {src} がない
+surface {k}: material pickups go round in a loop	面 {k}: 材料のピックアップが循環している
+thickness pickups don't converge (a loop?)	厚さのピックアップが収束しない（循環？）
+surface {k}: surface tilt or decenter on a coordinate break	面 {k}: 座標ブレークの面の傾き偏心
+surface {k}: tilt and decenter order {order}	面 {k}: 傾き偏心の順序 {order}
+surface {k}: pickup source surface of the tilt and decenter after the surface (mode {m})	面 {k}: 面の後の傾き偏心のピックアップ元の面（モード {m}）
+surface {k}: tilt and decenter after the surface, mode {mode}	面 {k}: 面の後の傾き偏心のモード {mode}
+surface {k}: SCBD {which}	面 {k}: SCBD {which}
+surface {k}: {nterm} Zernike terms	面 {k}: Zernike の項の数 {nterm}
+surface {k}: Zernike normalization radius {norm}	面 {k}: Zernike の正規化半径 {norm}
+surface {k}: no Grid Sag grid (GDAT)	面 {k}: Grid Sag の格子（GDAT）がない
+surface {k}: Grid Sag grid {nx}×{ny} (up to {MAX_GRID} points)	面 {k}: Grid Sag の格子 {nx}×{ny}（点は {MAX_GRID} まで）
+surface {k}: Grid Sag grid {nx}×{ny}, spacing {dx} {dy}	面 {k}: Grid Sag の格子 {nx}×{ny}、間隔 {dx} {dy}
+surface {k}: Grid Sag grid unit {} (not mm)	面 {k}: Grid Sag の格子の単位 {}（mm 以外）
+surface {k}: GARR number {i} (the grid is {nx}×{ny})	面 {k}: GARR の番号 {i}（格子は {nx}×{ny}）
+surface {k}: too few GARR points ({} / {})	面 {k}: GARR の点が足りない（{} / {}）
+surface {k}: Grid Sag interpolation {interp}	面 {k}: Grid Sag の補間 {interp}
+a field set by a condition ({c:?}) can't be written to .zmx (OpticStudio has none)	条件で定める視野（{c:?}）は .zmx に書けない（OpticStudio にない）
+surface {k}: an index offset (dn {}, disp {}) can't be written to .zmx	面 {k}: 屈折率のずれ（dn {}、disp {}）は .zmx に書けない
+surface {k}: a user-defined surface can't be written to .zmx (OpticStudio has none)	面 {k}: 利用者定義の面は .zmx に書けない（OpticStudio にない）
+surface {k}: the birefringent plate surface is {t:?} (standard only)	面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）
+surface {k}: no Binary 2 phase	面 {k}: Binary 2 の位相がない
+surface {k}: no Cylinder Fresnel surface	面 {k}: Cylinder Fresnel の面がない
+surface {k}: no GRIN profile	面 {k}: GRIN の分布がない
+surface {k}: the Grid Sag Zernike terms can only be extrapolated	面 {k}: Grid Sag の Zernike の項は外挿しかない
+surface {k}: terms of r^18 or higher	面 {k}: r^18 以上の項
+surface {k}: no Grid Sag grid	面 {k}: Grid Sag の格子がない
+surface {k}: writing glass {} that is not in the catalogs	面 {k}: カタログにないガラス {} の書き出し
+coating name {k:?}: a name with spaces or non-ASCII characters can't go in a coating file	膜の名前 {k:?}: 空白・ASCII 以外の文字のある名前は膜ファイルに書けない
+no system to write	書き出す系がない
+configuration {}: systems with a multi-configuration table can't be merged	構成 {}: 多重構成の表を持つ系はまとめられない
+a field set by a condition can't be written to .zmx	条件で定める視野は .zmx に書けない
+configuration {} system values differ from configuration 1 ({d})	構成 {} の系の値が構成 1 と違う（{d}）
+the object surface differs between configurations	物体面が構成で違う
+the global coordinate reference surface is on a per-configuration surface	大域座標の基準面が構成ごとの面にある
+the image surface (other than its radius) differs between configurations	像面（半径のほか）が構成で違う
+coating table {k} differs between configurations	膜の表 {k} が構成で違う
+
+# core (analyses, units, plugins)
+the exit pupil can't be found (the pupil helper rays can't be solved); no OPD reference	射出瞳が求められない（瞳の算出の補助の光線が解けない）。OPD の基準が決められない
+the chief ray (wavelength {}) doesn't reach the image (surface {}, {why}); no OPD reference	主光線（波長 {}）が像面に届かない（面 {}{why}）。OPD の基準が決められない
+grid side {n} must be an even number 4 or more	格子の一辺 {n} は 4 以上の偶数にする
+MTF: the image space aperture is 0 (afocal?)	MTF: 像空間の開口が 0（アフォーカル？）
+MTF: the chief ray doesn't reach the image (the pupil size can't be set)	MTF: 主光線が像面に届かない（瞳の大きさが決められない）
+MTF: rays on the pupil axes are vignetted (the pupil size can't be set)	MTF: 瞳の軸の上の光線がけられる（瞳の大きさが決められない）
+MTF: the beam width of the afocal image space is 0	MTF: アフォーカル像空間のビームの幅が 0
+MTF: rays inside the pupil are vignetted too (the pupil size can't be set)	MTF: 瞳の内側の光線もけられる（瞳の大きさが決められない）
+MTF: no valid rays (all vignetted)	MTF: 有効な光線がない（すべてけられた）
+MTF pupil grid {n} must be 4 or more	MTF の瞳の格子 {n} は 4 以上にする
+MTF: no wavelength with positive weight	MTF: 重みが正の波長がない
+{nterms} terms (Fringe 1 to 37, Standard 1 to 2016)	項数 {nterms}（Fringe は 1〜37、Standard は 1〜2016）
+{} valid rays are fewer than {} terms	有効な光線 {} 本が項数 {} より少ない
+a system whose object space is not air is not split into lenses	物体空間が空気でない系は玉に分けない
+a system whose image space is not air is not split into lenses	像空間が空気でない系は玉に分けない
+only a lens can be reversed	反転できるのは玉だけ
+a lens with surface tilts or decenters is not reversed	面の傾き・偏心がある玉は反転しない
+a lens with a Jones surface is not reversed	Jones 面のある玉は反転しない
+a lens with a spider aperture of an odd number of arms is not reversed	腕が奇数本のスパイダー開口のある玉は反転しない
+reversing a lens with a mirror or coordinate break	鏡・座標ブレークを含む玉の反転
+the rebuilt system has no stop	組み直した系に絞りがない
+object shift {} with an object at infinity	無限遠物体で物点の移動 {}
+no derivative by wavelength {}	波長 {} の微分はない
+internal error: lens or group {} must be expanded to surface parameters first	内部エラー: 玉・群の {} は面のパラメータに展開してから
+object distance of an object at infinity	無限遠物体の物体距離
+analytic derivatives of a system with ZPL macro solves on parameters	パラメータの ZPL マクロのソルブがある系の解析的な微分
+dOPL/dp needs a trace that records all surfaces (record)	dOPL/dp には全面の記録（record）つきの追跡が要る
+dOPL/dp of rays through a paraxial lens or user-defined surface (surface {j})	理想レンズ・利用者定義の面（面 {j}）を通る光線の dOPL/dp
+dOPL/dp of rays through surface {j} ({:?})	面 {j}（{:?}）を通る光線の dOPL/dp
+fiber coupling needs a finite object	ファイバ結合は有限物体の系だけ
+grid must be an odd number 3 or more	grid は 3 以上の奇数
+NA must be positive	NA は正
+no wavelength {w}	波長 {w} がない
+na_max must be between 0 and 1	na_max は 0 と 1 の間
+ghost: the first reflecting surface {a} is after the second one {b} (b < a)	ゴースト: 先に反射する面 {a} は後で反射する面 {b} より後ろ（b < a）
+ghost: a system with a GRIN medium (surface {j})	ゴースト: GRIN の媒質（面 {j}）を含む系
+ghost: the image surface can only be the first reflecting surface a	ゴースト: 像面は先に反射する面 a にだけなれる
+ghost: surface {k} can't be a reflecting surface (no interface, mirror, coordinate break, etc.)	ゴースト: 面 {k} は反射する面にできない（境界のない面・鏡・座標ブレークなど）
+{}: value {s:?} is not a number	{}: 数として読めない値 {s:?}
+{}: glass {} dispersion formula {} is not supported (1 to 13)	{}: ガラス {} の分散式 {} は未対応（1〜13）
+GRIN data count {v:?}	GRIN のデータの数 {v:?}
+too few GRD set lines ({})	GRD の組の行が足りない（{}）
+GRD header line {:?}	GRD の見出しの行 {:?}
+GRD z_max {:?}	GRD の z_max {:?}
+GRD set {}	GRD の組 {}
+too few SGRIN set lines ({})	SGRIN の組の行が足りない（{}）
+SGRIN set {name}	SGRIN の組 {name}
+SGRIN set {name} line {} ({} values, should be {n})	SGRIN の組 {name} の {} 行目（{} 個、{n} 個のはず）
+too few GRADIENT_9 set lines ({})	GRADIENT_9 の組の行が足りない（{}）
+no Gradium profile {name} (PROFILE.GRD)	Gradium の分布 {name} がない（PROFILE.GRD）
+no dispersion {} for Gradium profile {name} (SGRIN.DAT)	Gradium の分布 {name} の分散 {} がない（SGRIN.DAT）
+Gradium end handling {cap}	Gradium の端の扱い {cap}
+Gradium profile axis tilt {} {}	Gradium の分布の軸の傾き {} {}
+no Gradient 9 material {name} (GRADIENT_9.DAT)	Gradient 9 の材料 {name} がない（GRADIENT_9.DAT）
+landing derivatives need a trace that records all surfaces (record)	着地点の微分には全面の記録（record）つきの追跡が要る
+landing derivatives of rays through a paraxial lens or user-defined surface (surface {j})	理想レンズ・利用者定義の面（面 {j}）を通る光線の着地点の微分
+landing derivatives of rays through surface {j} ({:?})	面 {j}（{:?}）を通る光線の着地点の微分
+landing derivatives of the shape parameters of a toroidal surface (surface {})	トロイダル面（面 {}）の形のパラメータの着地点の微分
+landing derivatives: no surface to trace	着地点の微分: 追跡する面がない
+dz is not finite ({dz})	dz が有限でない（{dz}）
+surface {j} is ignored	面 {j} は無視する面
+dOPL/dp with dz needs a record of all surfaces up to the last	dz つきの dOPL/dp には最後の面までの全面の記録が要る
+mechanism {}: no coordinates of surface {} (object, ignored or out of range)	機構 {}: 面 {} の座標がない（物体面・無視する面・範囲外）
+plugin kind must be detector or analysis ({s})	プラグインの種類は detector か analysis（{s}）
+setting {key} must be a number ({v:?})	設定 {key} は数に（{v:?}）
+setting {key} is NaN (leave it out to omit it)	設定 {key} に NaN（省くときは書かない）
+setting {key} must be a string ({v:?})	設定 {key} は文字列に（{v:?}）
+setting {key} must be a list of numbers ({v:?})	設定 {key} は数の並びに（{v:?}）
+setting {key} must be an integer 0 or more ({x})	設定 {key} は 0 以上の整数に（{x}）
+setting {key} must be true or false (or 0 or 1) ({x})	設定 {key} は true・false（か 0・1）に（{x}）
+setting {key} starts at 1	設定 {key} は 1 始まり
+unknown setting: {}	知らない設定: {}
+array shape {shape:?} doesn't match the {} values	配列の形 {shape:?} と値の数 {} が合わない
+no input {key}	入力 {key} がない
+input {key} must be float64 ({})	入力 {key} は float64 に（{}）
+input {key} must be complex128 ({})	入力 {key} は complex128 に（{}）
+unknown input: {}	知らない入力: {}
+the field must be a number	視野は数に
+the field must be 1 to {n} ({i})	視野は 1〜{n}（{i}）
+the field must be one or two numbers ({} values)	視野は数 1 つか 2 個に（{} 個）
+the wavelength must be 1 to {} ({})	波長は 1〜{}（{}）
+this plugin needs a system	このプラグインには系が要る
+no plugin {name} (registered: {})	プラグイン {name} はない（登録: {}）
+the polarization grid needs {MIN_POINTS} points or more on each axis ({nx} × {ny})	偏光の格子は各軸 {MIN_POINTS} 点以上（{nx} × {ny}）
+the polarization grid is only for rays started in pupil coordinates (normalized, signed)	偏光の格子は瞳座標（normalized・signed）で始める光線だけ
+no point of the polarization grid passes	偏光の格子の点がどれも通らない
+propagation distance {d}	伝搬の距離 {d}
+the Rayleigh-Sommerfeld integral is forward only (d > 0)	Rayleigh-Sommerfeld の積分は前向き（d > 0）だけ
+the output grid has 0 samples	出力の格子の標本が 0
+angular spectrum: use the Fresnel integral at a focal plane (1 + κd = {m})	角スペクトル: 焦点の面（1 + κd = {m}）には Fresnel の積分を使う
+surface {j} (1 to the image)	面 {j}（1〜像面）
+too few rays reach surface {j} ({used})	面 {j} に届く光線が少ない（{used} 本）
+surface {to} must come after surface {j} (up to the image)	面 {to} は面 {j} より後の面（〜像面）
+surface {q} between surfaces {j} and {to} (only flat dummy surfaces may be between)	面 {j} と面 {to} の間の面 {q}（間は平面のダミー面だけ）
+surface {to} is not ahead in the propagation direction (distance {t})	面 {to} は伝搬の向きの後ろにない（距離 {t}）
+the PSF pupil grid {:?} must be 4 or more and the image grid {ni} 2 or more	PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上
+PSF: the chief ray is parallel to the image surface	PSF: 主光線が像面に平行
+PSF image grid spacing {d}	PSF の像の格子の間隔 {d}
+PSF: the image grid is wider than the period of the pupil sampling (wavelength {}; add pupil grid points or reduce the image grid or spacing)	PSF: 像の格子の幅が瞳の標本の周期を超える（波長 {}、瞳の格子を増やすか、像の格子・間隔を減らす）
+PSF: no valid rays (all vignetted)	PSF: 有効な光線がない（すべてけられた）
+geometric MTF needs 4 or more quadrature points ({n})	幾何 MTF の求積の点の数 {n} は 4 以上
+geometric MTF: no valid rays (all vignetted)	幾何 MTF: 有効な光線がない（すべてけられた）
+the ray grid size doesn't match (G = {})	光線の格子の大きさが合わない（G = {}）
+input polarization {s} (x, y, angle [deg], circ+, circ-)	入射偏光 {s}（x・y・角度 [deg]・circ+・circ-）
+surface {s} is out of range (1 to {})	面 {s} が範囲外（1〜{}）
+the pupil grid must be 2 or more	瞳の格子は 2 以上
+the primary wavelength must be the center wavelength (wavelength 1)	主波長は中心波長（波長 1）に
+the chief ray doesn't reach the sensor	主光線がセンサに届かない
+residual surface {j} (surfaces not ignored, 1 to {})	残差の面 {j}（無視しない面 1〜{}）
+only a finite object can be an unknown	物点を未知数にするのは有限物体だけ
+wavelength {w}	波長 {w}
+the starting ray doesn't pass ({:?})	初期値の光線が通らない（{:?}）
+ray solve: singular Jacobian (iteration {it}, residual {:e})	光線の解き: ヤコビアンが特異（反復 {it}、残差 {:e}）
+the ray solve doesn't converge (iteration {it}, residual {:e}, tolerance {:e})	光線の解きが収束しない（反復 {it}、残差 {:e}、許容 {:e}）
+image surface shift {dz}	像面のずらし {dz}
+surface {j}: the GRIN vertex is outside the profile range (wavelength {lam} µm)	面 {j}: GRIN の頂点が分布の範囲の外（波長 {lam} µm）
+surface {j}: the index of glass {mat} can't be rebuilt at wavelength {lam} µm (it doesn't match the system value)	面 {j}: ガラス {mat} の屈折率を波長 {lam} µm で作り直せない（系の値と合わない）
+surface {j}: the index of material {mat} can't be made at wavelength {lam} µm	面 {j}: 材料 {mat} の屈折率を波長 {lam} µm で作れない
+wavelength {} = {lam} µm (there are {} wavelengths)	波長 {} = {lam} µm（波長は {} 個）
+wavelength {lam} µm	波長 {lam} µm
+the number of rings must be 1 or more	リング数は 1 以上
+too few surfaces ({})	面が少なすぎる（{}）
+object-space telecentric with an object at infinity	無限遠物体で物体側テレセントリック
+ray aiming with object-space telecentric	物体側テレセントリックで光線エイミング
+object height field with an object at infinity	無限遠物体で物体高の視野
+object-space telecentric needs an object-space NA or cone angle aperture	物体側テレセントリックには物体側 NA かコーン角の絞りが要る
+stop surface {st}	絞り面 {st}
+surface {j} ({typ:?}) has asphere coefficients (use a type such as even asphere, or remove them)	面 {j}（{typ:?}）に非球面の係数がある（偶数次非球面などの型にするか、係数を消す）
+surface {k} ({typ:?}) after the GRIN medium of surface {j}	面 {j} の GRIN の媒質の次の面 {k}（{typ:?}）
+wavelength number {wn} ({nw} in all)	波長の番号 {wn}（全 {nw}）
+field number {} ({} in all)	視野の番号 {}（全 {}）
+vignetting factors of field ({hx}, {hy})	視野 ({hx}, {hy}) のケラレ係数
+angle field ({x}°, {y}°): a field of exactly 90°	角度の視野 ({x}°, {y}°): ちょうど 90° の視野
+{}: birefringent plate Mode {mode} is not supported (only 0 and 2)	{}: 複屈折材の板の Mode {mode} は未対応（0 と 2 だけ）
+{}: no index for the extraordinary material {}	{}: 異常光 {} の屈折率がない
+user-defined surface (surface {j}) has no model (user)	利用者定義の面（面 {j}）にモデル（user）がない
+user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})	空気以外の中・鏡の利用者定義の面（面 {j}: {nb} → {na}）
+paraxial lens in a medium other than air (surface {j}: {nb} → {na})	空気以外の中の理想レンズ（面 {j}: {nb} → {na}）
+the paraxial lens images the object to infinity (OPD)	理想レンズが物体を無限遠に結像する（OPD）
+field condition surface {j} (surfaces not ignored, 1 to {img_s})	視野の条件の面 {j}（無視しない面 1〜{img_s}）
+real image height field ({x}, {y}): no real chief ray reaches it (off by {e})	実像高の視野 ({x}, {y}): 届く実主光線がない（{e} ずれる）
+field ({x}, {y}) with condition {c:?}: can't be solved (off by {e})	条件 {c:?} の視野 ({x}, {y}): 解けない（{e} ずれる）
+lens or group parameter type {s} (dx dy tx ty tz shift dn disp)	玉・群のパラメータの種類 {s}（dx dy tx ty tz shift dn disp）
+lens or group name {name:?} (a name can't be empty, only digits, or contain '.')	玉・群の名前 {name:?}（空・数字だけ・「.」を含む名前は使えない）
+lens or group {name} has no range	玉・群 {name} の範囲がない
+lens or group {name} range {s:?} (first ≤ last within surfaces 1 to {})	玉・群 {name} の範囲 {s:?}（面 1〜{} の中で 最初 ≤ 最後）
+ranges {:?} and {:?} of lens or group {name} overlap	玉・群 {name} の範囲 {:?} と {:?} が重なる
+pivot {pivot:?} of lens or group {name}	玉・群 {name} の回転の中心 {pivot:?}
+lens or group {name} is already defined	玉・群 {name} は定義済み
+range {a:?} of lens or group {name} partly overlaps range {b:?} of {}	玉・群 {name} の範囲 {a:?} が {} の範囲 {b:?} と一部だけ重なる
+lens or group {u}	玉・群 {u}
+lens or group {} is moved (set the motion and shift to 0 before changing the range)	玉・群 {} は動かしてある（動き・移動を 0 にしてから範囲を変える）
+lens or group {} is moved (set the motion and shift to 0 before removing it)	玉・群 {} は動かしてある（動き・移動を 0 にしてから外す）
+pivot {pivot:?} of lens or group {u}	玉・群 {u} の回転の中心 {pivot:?}
+no entrance coordinate system for lens or group {}	玉・群 {} の入口の座標系がない
+no entrance coordinate system for lens or group {} range {:?}	玉・群 {} の範囲 {:?} の入口の座標系がない
+lens or group {} range {:?}: the entrance direction differs from the first range {:?} (no coordinate break can do it)	玉・群 {} の範囲 {:?}: 入口の向きが最初の範囲 {:?} と違う（座標ブレークにできない）
+no coordinate system for surface {b}	面 {b} の座標系がない
+lens or group {} range {:?}: the return rotation can't be made into coordinate break angles	玉・群 {} の範囲 {:?}: 戻りの回転を座標ブレークの角にできない
+no user-defined surface model {name} (registered: {})	利用者定義の面のモデル {name} はない（登録: {}）
+the table theta_deg and height need 2 or more points of the same length	表の theta_deg・height は同じ長さの 2 点以上に
+the table theta_deg must be ascending finite values	表の theta_deg は増える順の有限の値に
+ideal_mapping f must be finite and not 0 ({f})	ideal_mapping の f は 0 以外の有限の値に（{f}）
+ideal_mapping {what} is not used with mapping = {kind}	ideal_mapping の {what} は mapping = {kind} では使わない
+mapping = table needs theta_deg and height	mapping = table には theta_deg と height が要る
+the table must start at θ = 0, h = 0 ({} deg, {} mm)	表は θ = 0・h = 0 から始める（{} deg, {} mm）
+the table slope at θ = 0 ({} mm/deg) must be non-zero with the same sign as f	表の θ = 0 の傾き（{} mm/deg）は f と同じ符号の 0 以外に
+mapping must be tan, theta, sin, equisolid, stereographic, poly or table ({k})	mapping は tan・theta・sin・equisolid・stereographic・poly・table に（{k}）
+ZPL line {line}: {e}	ZPL の {line} 行目: {e}
+macro {want} not found (looked in {} places)	マクロ {want} が見つからない（{} か所を探した）
+RAYTRACE has {} arguments (only 4 or 5)	RAYTRACE の引数 {} 個（4 か 5 個だけ）
+RAYTRACE arguments must be numbers	RAYTRACE の引数は数
+{name} takes one surface number	{name} の引数は面の番号 1 つ
+{name}({k}): no such surface	{name}({k}): 面がない
+SOSO argument {a:?} (only 0)	SOSO の引数 {a:?}（0 だけ）
+RADI of a flat surface (surface {k})	平面（面 {k}）の RADI
+surface {k} PARM {n}	面 {k} の PARM {n}
+PARM takes (number, surface)	PARM の引数は (番号, 面)
+no {name}({})	{name}({}) がない
+{name} takes one number	{name} の引数は番号 1 つ
+surface {}: no macro {}	面 {}: マクロ {} がない
+putting a macro value into surface {} {}	面 {} の{}にマクロの値を入れる
+
+# core (catalogs, ZPL, others)
+{what} {s:?} has a tab or line break	{what} {s:?} にタブ・改行がある
+can't be inflated ({:?})	展開できない（{:?}）
+a line is cut short	行が途中で切れている
+a line is not UTF-8	UTF-8 でない行
+not a lensbench lens catalog bundle	lensbench のレンズカタログの束でない
+format version {ver} can't be read (up to {LBCAT_VERSION})	形式の版 {ver} は読めない（{LBCAT_VERSION} まで）
+a lens line doesn't have 3 fields (lens {})	レンズの行の欄が 3 つでない（{} 本目）
+{part}: .zmx byte count {n}	{part}: .zmx のバイト数 {n}
+{part}: the .zmx is cut short	{part}: .zmx が途中で切れている
+{part}: the .zmx is not UTF-8	{part}: .zmx が UTF-8 でない
+{}: a lens catalog in a format that can't be read	{}: 読めない形式のレンズカタログ
+no {vendor} {part} in the lens catalogs	レンズカタログに {vendor} {part} がない
+{} Zernike terms (at most {max})	Zernike の項が {} 個（上限 {max}）
+empty file	空のファイル
+line 1 must be nx ny delx dely unitflag xdec ydec	1 行目は nx ny delx dely unitflag xdec ydec
+{what} {v} must be an integer 1 to 16777216	{what} {v} は 1〜16777216 の整数にする
+too many points {nx}×{ny} (up to 16777216)	点の数 {nx}×{ny} が多すぎる（16777216 まで）
+unit number {u}	単位の番号 {u}
+too few points ({r} / {})	点が足りない（{r} / {}）
+the chief ray stops at surface {}	主光線が面 {} で止まる
+the polarization coefficients can't be found	偏光の係数が求められない
+the original system: {e}	元の系: {e}
+{cat}.AGF line {} ({what})	{cat}.AGF の {} 行目（{what}）
+{n}: shape {s}	{n}: 形 {s}
+{n}: square brackets in the description {}	{n}: 説明に角括弧 {}
+birefringent material {}: the ordinary glass {} or extraordinary glass {ename} is not in the catalogs	複屈折材 {} の常光 {} と異常光 {ename} のガラスがカタログにない
+ne − no of birefringent material {} at the design wavelength {} µm is {dn}	複屈折材 {} の設計波長 {} µm の ne − no が {dn}
+write a thickness for each plate of a waveplate with 2 or more plates	板が 2 枚以上の波長板は板ごとに厚さを書く
+birefringent material {} plate thickness {}	複屈折材 {} の板の厚さ {}
+no file name	ファイル名が無い
+surface {k}: lens unit {unit}	面 {k}: レンズ単位 {unit}
+multi-configuration PRAM {p1}: lens unit {unit}	多重構成の PRAM {p1}: レンズ単位 {unit}
+zmx {key} value {}	zmx の {key} の {} 番目の値
+zmx FTYP	zmx の FTYP
+macro {name}	マクロ {name}
+macro {}	マクロ {}
+RAYTRACE coordinate {v} is over 1	RAYTRACE の座標 {v} が 1 を超える
+RAYTRACE wavelength number {}	RAYTRACE の波長の番号 {}
+surface {surf} macro {}	面 {surf} のマクロ {}
+a string where a number is needed	数が要るところに文字列
+a number where a string is needed	文字列が要るところに数
+the string is not closed	文字列が閉じていない
+number {s}	数 {s}
+character {ch:?}	字 {ch:?}
+{op} is needed	{op} が要る
+expressions nested too deep (up to {MAX_EXPR_DEPTH})	式の入れ子が深すぎる（{MAX_EXPR_DEPTH} まで）
+{t:?} in the middle of an expression	式の途中に {t:?}
+an expression is needed	式が要る
+extra {t:?} at the end of the line	行の終わりに余分な {t:?}
+a line must start with a name	行の始めは名前でなければならない
+after THEN	THEN の後
+ZPL line {line} after THEN	ZPL の {line} 行目の THEN の後
+only one statement after THEN	THEN の後は 1 つの文
+IF after THEN	THEN の後の IF
+ELSE without a matching IF	対になる IF のない ELSE
+ENDIF without a matching IF	対になる IF のない ENDIF
+FOR must be followed by a number variable	FOR の後は数の変数
+FOR variable, start, end, step	FOR 変数, 始め, 終わり, 増分
+NEXT must be followed by {v}	NEXT の後は {v}
+NEXT without a matching FOR	対になる FOR のない NEXT
+{head} must be followed by one name or number	{head} の後は名前か番号 1 つ
+label {name} appears twice	札 {name} が 2 つある
+SUB inside IF or FOR	IF・FOR の中の SUB
+SUB {name} appears twice	SUB {name} が 2 つある
+no label {name}	札 {name} がない
+no SUB {n}	SUB {n} がない
+over {MAX_STEPS} statements (an endless loop?)	命令の数が {MAX_STEPS} を超えた（終わらない繰り返し？）
+over {MAX_SECS} seconds (an endless loop?)	{MAX_SECS} 秒を超えた（終わらない繰り返し？）
+wrong kind of value for {name}	{name} に入れる値の種類が違う
+FOR step {c} doesn't go the way of {a} → {b}	FOR の増分 {c} の向きが {a} → {b} と合わない
+GOSUB nested too deep	GOSUB の入れ子が深すぎる
+RETURN outside GOSUB	GOSUB の外の RETURN
+ZPL line {line}	ZPL の {line} 行目
+statement {name}	命令 {name}
+variable {n} has no value yet	変数 {n} にまだ値を入れていない
+function {name}	関数 {name}
+{name} takes one argument	{name} の引数は 1 つ
+POWR takes two arguments	POWR の引数は 2 つ
+
+# core (interference)
+scale, xtilt and ytilt must be finite numbers	scale・xtilt・ytilt は有限の数
+grid side {} must be an even number 4 or more	格子の一辺 {} は 4 以上の偶数
+no point where the two beams overlap	2 つの光束が重なる点がない
+the number of pixels must be 1 or more	画素の数は 1 以上
+intensity weights must be 0 or more and delay finite	強度の重みは 0 以上、delay は有限の数
+the wavelength number is out of range	波長の番号が範囲外
+the sample and reference wavelengths differ ({} µm, {} µm)	試料と参照の波長が違う（{} µm・{} µm）
+no ray reaches the image	像面に届く光線がない
+detector width {wd} mm	検出面の幅 {wd} mm
+
+# engine (interference)
+no field {} (1 to {})	視野 {} はありません（1〜{}）
+quantity {q} (on the pupil: intensity, delta)	quantity {q}（瞳上は intensity・delta）
+mode detector needs a configuration or state for beam2	mode detector では beam2 に構成か状態を指定する
+quantity {q} (on the image: intensity, opd, visibility, sample, reference)	quantity {q}（像面上は intensity・opd・visibility・sample・reference）
+out extension {ext} (csv, json, tif, png)	out の拡張子 {ext}（csv・json・tif・png）

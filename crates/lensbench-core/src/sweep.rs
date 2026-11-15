@@ -20,7 +20,7 @@ use crate::Waves;
 /// 像面を dz [レンズ単位] ずらした系（像面の手前の面の厚さに dz を足す。+ は光の進む向きに遠ざける）
 pub fn defocus(s: &System, dz: f64) -> Result<System> {
     if !dz.is_finite() {
-        invalid!("像面のずらし {dz}");
+        invalid!("image surface shift {dz}");
     }
     let mut d = s.clone();
     if dz != 0.0 {
@@ -41,7 +41,7 @@ fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
     if let Some(g) = &d.grin {
         return g.vertex_index(lam).ok_or_else(|| {
             crate::error::Error::Invalid(format!(
-                "面 {j}: GRIN の頂点が分布の範囲の外（波長 {lam} µm）"
+                "surface {j}: the GRIN vertex is outside the profile range (wavelength {lam} µm)"
             ))
         });
     }
@@ -59,7 +59,7 @@ fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
                 return Ok(g.index(lam, t, p, adjust));
             }
         }
-        invalid!("面 {j}: ガラス {mat} の屈折率を波長 {lam} µm で作り直せない（系の値と合わない）");
+        invalid!("surface {j}: the index of glass {mat} can't be rebuilt at wavelength {lam} µm (it doesn't match the system value)");
     }
     // モデルガラス "nd,vd[,dpgf]"（vd = 0 は分散なし）
     let v: Vec<f64> = mat
@@ -82,7 +82,7 @@ fn base_index_at(s: &System, j: usize, prev: f64, lam: f64) -> Result<f64> {
     if (0..s.wavelengths.len()).all(|w| nb(w) == n0) {
         return Ok(n0);
     }
-    invalid!("面 {j}: 材料 {mat} の屈折率を波長 {lam} µm で作れない");
+    invalid!("surface {j}: the index of material {mat} can't be made at wavelength {lam} µm");
 }
 
 impl System {
@@ -95,7 +95,7 @@ impl System {
         for &(i, lam) in waves {
             if i >= self.wavelengths.len() || !(lam > 0.0) {
                 invalid!(
-                    "波長 {} = {lam} µm（波長は {} 個）",
+                    "wavelength {} = {lam} µm (there are {} wavelengths)",
                     i + 1,
                     self.wavelengths.len()
                 );
@@ -145,7 +145,7 @@ impl System {
 /// 波長 lam [µm] を末尾に重み 0 で足した系と、その波長の番号（0 始まり）。主波長・視野・エイミングは変えない
 pub fn with_wavelength(s: &System, lam: f64) -> Result<(System, usize)> {
     if !(lam > 0.0) {
-        invalid!("波長 {lam} µm");
+        invalid!("wavelength {lam} µm");
     }
     let mut d = s.clone();
     let mut prev = 1.0;
@@ -405,7 +405,7 @@ fn wfe_var(
         let cw = if poly { s.primary } else { w };
         let c = s.try_trace(field, &[0.0], &[0.0], Some(cw), None, false)?;
         if !c.traced(0) {
-            invalid!("主光線が像面に届かない");
+            invalid!("the chief ray doesn't reach the image");
         }
         let (lc, mc) = (c.rays[0].lmn[0], c.rays[0].lmn[1]);
         let idx: Vec<usize> = (0..px.len())
@@ -413,7 +413,7 @@ fn wfe_var(
             .collect();
         let sw: f64 = idx.iter().map(|&i| wt[i]).sum();
         if idx.is_empty() || !(sw > 0.0) {
-            invalid!("有効な光線がない（すべてけられた）");
+            invalid!("no valid rays (all vignetted)");
         }
         rows.push(
             idx.iter()
@@ -519,7 +519,7 @@ pub fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
 pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     let w = w.one();
     if o.rings == 0 {
-        invalid!("リング数は 1 以上");
+        invalid!("the number of rings must be 1 or more");
     }
     let sp = spot(s, field, Waves::all_or(w), o.rings)?;
     let (rx, ry) = match o.reference {
@@ -544,7 +544,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
         .collect();
     let wsum: f64 = ks.iter().map(|x| x.1).sum();
     if !(wsum > 0.0) {
-        invalid!("重みのある波長がない");
+        invalid!("no weighted wavelength");
     }
     let wl: Vec<usize> = ks.iter().map(|x| x.0).collect();
     let vars = wfe_var(s, field, &wl, w.is_none(), &px, &py, &wt, o.reference)?;

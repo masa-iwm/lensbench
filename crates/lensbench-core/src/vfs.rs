@@ -36,7 +36,7 @@ mod imp {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let name = p
             .file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ファイル名が無い"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file name"))?;
         let mut tmp_name = std::ffi::OsString::from(".");
         tmp_name.push(name);
         tmp_name.push(format!(
@@ -65,7 +65,7 @@ mod imp {
         };
         let name = p
             .file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ファイル名が無い"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no file name"))?;
         let mut tmp_name = std::ffi::OsString::from(".");
         tmp_name.push(name);
         tmp_name.push(format!(".{}.tmp", std::process::id()));
@@ -153,7 +153,7 @@ mod mem {
     fn not_found(p: &Path) -> io::Error {
         io::Error::new(
             io::ErrorKind::NotFound,
-            format!("{}: ファイルが無い", p.display()),
+            format!("{}: no such file", p.display()),
         )
     }
 

@@ -192,22 +192,22 @@ pub fn fiber_coupling(
     coat: Option<&Coatings>,
 ) -> Result<Coupling> {
     if s.infinite() {
-        invalid!("ファイバ結合は有限物体の系だけ");
+        invalid!("fiber coupling needs a finite object");
     }
     if o.grid < 3 || o.grid.is_multiple_of(2) {
-        invalid!("grid は 3 以上の奇数");
+        invalid!("grid must be an odd number 3 or more");
     }
     if !(o.na_source > 0.0 && o.na_receiver > 0.0) {
-        invalid!("NA は正");
+        invalid!("NA must be positive");
     }
     if w >= s.wavelengths.len() {
-        invalid!("波長 {w} がない");
+        invalid!("no wavelength {w}");
     }
     let n0 = s.surfaces[0].n[w];
     let n1 = s.image_index(w);
     let smax = o.na_max.unwrap_or((3.0 * o.na_source / n0).min(0.999));
     if !(smax > 0.0 && smax < 1.0) {
-        invalid!("na_max は 0 と 1 の間");
+        invalid!("na_max must be between 0 and 1");
     }
     let tmax = smax / (1.0 - smax * smax).sqrt();
     let g = o.grid;

@@ -233,7 +233,7 @@ impl Kind {
         }
     }
 
-    /// Web Worker へ渡す番号
+    /// Web Worker へ渡す番号（`entry::init`）。言語の位 `LANG_JA` は足さない
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn code(self) -> u8 {
         match self {
@@ -565,6 +565,10 @@ pub mod progress {
     }
 }
 
+/// Worker に渡す番号の上の位: 誤りの文を日本語で（[`lensbench_core::i18n`]）
+#[cfg(target_arch = "wasm32")]
+const LANG_JA: u8 = 0x80;
+
 /// Web Worker の中（計算の側）。lensbench-web の `worker_init`・`worker_call` から呼ぶ
 #[cfg(target_arch = "wasm32")]
 pub mod entry {
@@ -577,10 +581,15 @@ pub mod entry {
         static KIND: Cell<u8> = const { Cell::new(0) };
     }
 
-    /// 何を受けるか（[`Kind::code`]）
-    pub fn init(kind: u8) {
+    /// 何を受けるか（[`Kind::code`]、上の位 [`LANG_JA`] は誤りの文の言語）
+    pub fn init(code: u8) {
         crate::crash::install();
-        KIND.with(|k| k.set(kind));
+        lensbench_core::i18n::set_lang(if code & LANG_JA != 0 {
+            lensbench_core::i18n::Lang::Ja
+        } else {
+            lensbench_core::i18n::Lang::En
+        });
+        KIND.with(|k| k.set(code & !LANG_JA));
     }
 
     /// 回している要求の番号（0 は無し）。計算のスレッドと見張りのスレッド（[`cancel`]・[`stop`]、
@@ -877,7 +886,13 @@ mod remote {
             });
             w.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
             w.set_onerror(Some(on_error.as_ref().unchecked_ref()));
-            let _ = w.post_message(&JsValue::from(self.kind.code()));
+            // 誤りの文の言語も渡す（Worker は GUI の言語の設定を知らない、XCT-20）
+            let lang = if lensbench_core::i18n::is_ja() {
+                LANG_JA
+            } else {
+                0
+            };
+            let _ = w.post_message(&JsValue::from(self.kind.code() | lang));
             self.live = Some(Live {
                 w,
                 _on_message: on_message,

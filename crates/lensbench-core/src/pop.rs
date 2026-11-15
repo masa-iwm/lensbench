@@ -292,7 +292,7 @@ pub struct Prop {
 /// 一様な媒質の中を、伝搬の向きに距離 d [mm] だけ進めた平行な平面の場
 pub fn propagate(b: &Beam, d: f64, method: PopMethod, out: OutGrid) -> Result<Prop> {
     if !(d.is_finite() && d != 0.0) {
-        invalid!("伝搬の距離 {d}");
+        invalid!("propagation distance {d}");
     }
     match method {
         PopMethod::Auto => {
@@ -329,7 +329,7 @@ const AUTO_DIRECT_COST: f64 = 2e9;
 /// Fresnel・Rayleigh-Sommerfeld の積分（dry なら格子と診断だけ）
 fn integral(b: &Beam, d: f64, method: PopMethod, out: OutGrid, dry: bool) -> Result<Prop> {
     if method == PopMethod::Direct && d < 0.0 {
-        invalid!("Rayleigh-Sommerfeld の積分は前向き（d > 0）だけ");
+        invalid!("the Rayleigh-Sommerfeld integral is forward only (d > 0)");
     }
     let lam = b.wl / b.index;
     let k = b.k();
@@ -351,7 +351,7 @@ fn integral(b: &Beam, d: f64, method: PopMethod, out: OutGrid, dry: bool) -> Res
     let (cx, cy) = out.center.unwrap_or(g);
     let (nx2, ny2) = out.n.unwrap_or((b.nx, b.ny));
     if nx2 == 0 || ny2 == 0 {
-        invalid!("出力の格子の標本が 0");
+        invalid!("the output grid has 0 samples");
     }
     let half = out.half.unwrap_or_else(|| {
         // 入力の格子の中で場のある範囲から
@@ -458,7 +458,7 @@ fn angular(b: &Beam, d: f64, out: OutGrid) -> Result<Prop> {
     let p = b.pilot;
     let m = 1.0 + p.curv * d;
     if m.abs() < 1e-3 {
-        invalid!("角スペクトル: 焦点の面（1 + κd = {m}）には Fresnel の積分を使う");
+        invalid!("angular spectrum: use the Fresnel integral at a focal plane (1 + κd = {m})");
     }
     let exact = p.curv == 0.0;
     let dp = d / m;
@@ -866,10 +866,10 @@ pub fn beam_from_rays(
 ) -> Result<RayBeam> {
     let w = w.unwrap_or(s.primary);
     if j == 0 || j > s.image() {
-        invalid!("面 {j}（1〜像面）");
+        invalid!("surface {j} (1 to the image)");
     }
     if s.surfaces[j].ignore {
-        invalid!("面 {j} は無視する面");
+        invalid!("surface {j} is ignored");
     }
     let nr = o.rays.max(5);
     let ap = if o.aperture {
@@ -911,7 +911,7 @@ pub fn beam_from_rays(
     }
     let used = ok.iter().filter(|&&v| v).count();
     if used < 10 {
-        invalid!("面 {j} に届く光線が少ない（{used} 本）");
+        invalid!("too few rays reach surface {j} ({used})");
     }
     let dir = kz.signum();
     // 中心: 主光線（瞳の中心）、届かなければ重心
@@ -1171,7 +1171,7 @@ fn aperture_reach(a: Aperture, xc: f64, yc: f64) -> f64 {
 /// 面 j の後の空間を、次の面（間はすべて平面のダミー面で媒質が同じ）の頂点面まで進む距離（伝搬の向きに測る）
 pub fn distance_to(s: &System, j: usize, to: usize, dir: f64) -> Result<f64> {
     if to <= j || to > s.image() {
-        invalid!("面 {to} は面 {j} より後の面（〜像面）");
+        invalid!("surface {to} must come after surface {j} (up to the image)");
     }
     let mut t = 0.0;
     for q in j..to {
@@ -1183,7 +1183,7 @@ pub fn distance_to(s: &System, j: usize, to: usize, dir: f64) -> Result<f64> {
                 && d.before.is_none()
                 && d.mat == s.surfaces[j].mat;
             if !plain {
-                notimpl!("面 {j} と面 {to} の間の面 {q}（間は平面のダミー面だけ）");
+                notimpl!("surface {q} between surfaces {j} and {to} (only flat dummy surfaces may be between)");
             }
         }
         if !d.ignore {
@@ -1192,7 +1192,7 @@ pub fn distance_to(s: &System, j: usize, to: usize, dir: f64) -> Result<f64> {
     }
     let dd = t * dir;
     if !(dd > 0.0) {
-        invalid!("面 {to} は伝搬の向きの後ろにない（距離 {t}）");
+        invalid!("surface {to} is not ahead in the propagation direction (distance {t})");
     }
     Ok(dd)
 }

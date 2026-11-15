@@ -254,7 +254,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
-            "PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上",
+            "the PSF pupil grid {:?} must be 4 or more and the image grid {ni} 2 or more",
             o.pupil
         );
     }
@@ -271,7 +271,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         ((f64::NAN, f64::NAN), [0.0, 0.0, 1.0])
     };
     if !(kc[2].abs() > 1e-9) {
-        invalid!("PSF: 主光線が像面に平行");
+        invalid!("PSF: the chief ray is parallel to the image surface");
     }
     let (e1, e2) = perp_basis(kc);
     // 遮断周波数（x・y）の、使う波長のうちの最大（短い波長）
@@ -287,7 +287,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     }
     let delta = match o.delta {
         Some(d) if d > 0.0 => (d, d),
-        Some(d) => invalid!("PSF の像の格子の間隔 {d}"),
+        Some(d) => invalid!("PSF image grid spacing {d}"),
         None => (0.5 / cut.0, 0.5 / cut.1),
     };
     let half = (ni / 2) as f64;
@@ -343,7 +343,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
             || ni as f64 * delta.1 * b.abs() * h > 1.0 + 1e-9
         {
             invalid!(
-                "PSF: 像の格子の幅が瞳の標本の周期を超える（波長 {}、瞳の格子を増やすか、像の格子・間隔を減らす）",
+                "PSF: the image grid is wider than the period of the pupil sampling (wavelength {}; add pupil grid points or reduce the image grid or spacing)",
                 wi + 1
             );
         }
@@ -359,7 +359,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
             }
         }
         if !(sa > 0.0) {
-            invalid!("PSF: 有効な光線がない（すべてけられた）");
+            invalid!("PSF: no valid rays (all vignetted)");
         }
         let w_ok: Vec<(usize, usize, f64)> = cells
             .iter()
@@ -433,7 +433,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         wsum += k;
     }
     if !(wsum > 0.0) {
-        invalid!("重みのある波長がない");
+        invalid!("no weighted wavelength");
     }
     for r in tot.iter_mut() {
         for v in r.iter_mut() {
@@ -483,7 +483,7 @@ pub fn geometric_mtf(
 ) -> Result<Mtf> {
     let w = w.one();
     if n < 4 {
-        invalid!("幾何 MTF の求積の点の数 {n} は 4 以上");
+        invalid!("geometric MTF needs 4 or more quadrature points ({n})");
     }
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -509,7 +509,7 @@ pub fn geometric_mtf(
             .collect();
         let e: f64 = pts.iter().map(|p| p.2).sum();
         if pts.is_empty() || !(e > 0.0) {
-            invalid!("幾何 MTF: 有効な光線がない（すべてけられた）");
+            invalid!("geometric MTF: no valid rays (all vignetted)");
         }
         let cut = if diff_limit {
             mtf_cutoff(s, field, wi)?
@@ -523,7 +523,7 @@ pub fn geometric_mtf(
         .map(|x| x.0 * x.1.iter().map(|p| p.2).sum::<f64>())
         .sum();
     if sets.is_empty() || !(wsum > 0.0) {
-        invalid!("重みのある波長がない");
+        invalid!("no weighted wavelength");
     }
     // 全波長の光線をまとめたスポットの特性関数（位置は全体の重心から測る。絶対値には効かない）
     let (mut mx, mut my) = (0.0, 0.0);

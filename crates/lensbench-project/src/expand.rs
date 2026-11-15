@@ -447,11 +447,17 @@ pub(crate) fn expand_inner(
                 .collect()
         } else if let Some(&n0) = d.n.first() {
             if d.n.iter().any(|&v| v != n0) {
-                return Err(format!("面 {j}: ガラス {} がカタログにない{HINT}", d.mat));
+                return Err(format!(
+                    "surface {j}: glass {} is not in the catalogs{HINT}",
+                    d.mat
+                ));
             }
             vec![n0; wl.len()]
         } else {
-            return Err(format!("面 {j}: ガラス {} がカタログにない{HINT}", d.mat));
+            return Err(format!(
+                "surface {j}: glass {} is not in the catalogs{HINT}",
+                d.mat
+            ));
         };
         d.n = n.clone();
         prev = n;

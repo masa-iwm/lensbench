@@ -101,7 +101,7 @@ impl Kind {
                         return Ok(Kind::Asph(n / 2 - 1));
                     }
                 }
-                invalid!("パラメータの種類 {s}（c r k a2〜a16 z1〜z231 t dx dy tx ty tz dn disp objx objy wave1〜）")
+                invalid!("parameter type {s} (c r k a2..a16 z1..z231 t dx dy tx ty tz dn disp objx objy wave1..)")
             }
         })
     }
@@ -659,7 +659,8 @@ impl System {
         let t = target.trim();
         if let Ok(j) = t.parse::<usize>() {
             if j >= self.surfaces.len() {
-                invalid!("面 {j}（面は 0〜{}）", self.surfaces.len() - 1);
+                let last = self.surfaces.len() - 1;
+                invalid!("surface {j} (surfaces are 0 to {last})");
             }
             return Ok(j);
         }
@@ -668,8 +669,8 @@ impl System {
             .collect();
         match hits.as_slice() {
             [j] => Ok(*j),
-            [] => invalid!("名前 {t} の面がない"),
-            _ => invalid!("名前 {t} の面が複数ある（{hits:?}）。番号で指定する"),
+            [] => invalid!("no surface named {t}"),
+            _ => invalid!("several surfaces are named {t} ({hits:?}); use the number"),
         }
     }
 
@@ -685,7 +686,7 @@ impl System {
             }
         }
         let Some((t, k)) = s.rsplit_once('.') else {
-            invalid!("パラメータ {s}（面.種類 の形で、例 3.t）");
+            invalid!("parameter {s} (write surface.type, e.g. 3.t)");
         };
         let (t, force) = if let Some(x) = t.strip_prefix("unit:") {
             (x, Some(true))
@@ -700,14 +701,12 @@ impl System {
             self.find_unit(t)
         };
         if force == Some(true) && unit.is_none() {
-            invalid!("名前 {} の玉・群がない", t.trim());
+            invalid!("no lens or group named {}", t.trim());
         }
         if let Some(u) = unit {
             if force.is_none() && self.find_surface(t).is_ok() {
-                invalid!(
-                    "{} は面の名前でも玉・群の名前でもある（unit:{0}.{k} か surf:{0}.{k} で指す）",
-                    t.trim()
-                );
+                let t = t.trim();
+                invalid!("{t} is the name of a surface and of a lens or group (write unit:{t}.{k} or surf:{t}.{k})");
             }
             let p = Param::unit(u, UnitKind::parse(k)?);
             self.check_param(p)?;
@@ -738,57 +737,57 @@ impl System {
         }
         if let Kind::Wave(i) = p.kind {
             if i as usize >= self.wavelengths.len() {
-                invalid!("{}（波長は {} 個）", p.kind.name(), self.wavelengths.len());
+                let (kind, nw) = (p.kind.name(), self.wavelengths.len());
+                invalid!("{kind} (there are {nw} wavelengths)");
             }
             return Ok(());
         }
         if let Kind::Unit(k) = p.kind {
             let Some(u) = self.units.get(p.surf) else {
-                invalid!("玉・群 {}（{} 個）", p.surf, self.units.len());
+                invalid!("lens or group {} ({} of them)", p.surf, self.units.len());
             };
             if matches!(k, UnitKind::Dn | UnitKind::Disp) && self.unit_media(p.surf).is_empty() {
-                invalid!(
-                    "玉・群 {} の中に媒質（ガラス）がない（{}）",
-                    u.name,
-                    k.name()
-                );
+                let (unit, medium) = (&u.name, k.name());
+                invalid!("lens or group {unit} has no medium (glass) inside ({medium})");
             }
             return Ok(());
         }
         let j = p.surf;
         if j >= self.surfaces.len() {
-            invalid!("面 {j}（面は 0〜{}）", self.surfaces.len() - 1);
+            let last = self.surfaces.len() - 1;
+            invalid!("surface {j} (surfaces are 0 to {last})");
         }
         let d = &self.surfaces[j];
         let curved = matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
             || crate::freeform::is_freeform(d.typ);
         match p.kind {
             Kind::Curv | Kind::Radius | Kind::Conic if j == 0 || !curved => {
-                invalid!("面 {j}（{:?}）の {}", d.typ, p.kind.name());
+                invalid!("surface {j} ({:?}) {}", d.typ, p.kind.name());
             }
             Kind::Asph(i) => {
                 if d.typ != SurfType::EvenAsph && !crate::freeform::is_freeform(d.typ) {
-                    invalid!("面 {j} は偶数次非球面でない（{}）", p.kind.name());
+                    invalid!("surface {j} is not an even asphere ({})", p.kind.name());
                 }
                 if i >= 8 {
-                    invalid!("非球面の係数 {}", p.kind.name());
+                    invalid!("asphere coefficient {}", p.kind.name());
                 }
             }
             Kind::Zern(n) => match &d.zern {
                 Some(z) if (n as usize) <= crate::freeform::ZernSag::max_terms(z.fringe) => {}
-                Some(_) => invalid!("面 {j} の Zernike の項 {n} は上限を超える"),
-                None => invalid!("面 {j} は Zernike Sag の面でない（{}）", p.kind.name()),
+                Some(_) => invalid!("surface {j} Zernike term {n} is over the limit"),
+                None => invalid!(
+                    "surface {j} is not a Zernike Sag surface ({})",
+                    p.kind.name()
+                ),
             },
             Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz if j == 0 => {
-                notimpl!("物体面の傾き偏心");
+                notimpl!("tilt or decenter of the object surface");
             }
             Kind::Dn | Kind::Disp if d.mirror || d.typ == SurfType::CoordBrk => {
-                invalid!(
-                    "面 {j} は鏡か座標ブレーク（媒質は前の面の {}）",
-                    p.kind.name()
-                );
+                let kind = p.kind.name();
+                invalid!("surface {j} is a mirror or a coordinate break (the medium is surface {kind} before it)");
             }
-            Kind::Thick if j == self.image() => invalid!("像面の厚さ"),
+            Kind::Thick if j == self.image() => invalid!("thickness of the image surface"),
             _ => {}
         }
         Ok(())
@@ -798,7 +797,8 @@ impl System {
     pub fn get_param(&self, p: Param) -> Result<f64> {
         self.check_param(p)?;
         if p.kind.is_object() {
-            invalid!("物点 {} は系のデータでない（追跡の入力）", p.kind.name());
+            let kind = p.kind.name();
+            invalid!("field point {kind} is not system data (it is a trace input)");
         }
         if let Kind::Wave(i) = p.kind {
             return Ok(self.wavelengths[i as usize]);
@@ -824,11 +824,8 @@ impl System {
                         })
                         .collect();
                     if v.iter().any(|&x| x != v[0]) {
-                        invalid!(
-                            "玉・群 {} の媒質の {} が面ごとに違う（{v:?}）",
-                            u.name,
-                            k.name()
-                        );
+                        let (unit, medium) = (&u.name, k.name());
+                        invalid!("lens or group {unit}: medium {medium} differs between surfaces ({v:?})");
                     }
                     v[0]
                 }
@@ -918,10 +915,8 @@ impl System {
         for &(p, v) in &picked {
             let now = s.get_param(p)?;
             if (now - v).abs() > 1e-12 * (1.0 + v.abs()) {
-                invalid!(
-                    "{} はピックアップで {now} になり、玉・群の変更の {v} と合わない",
-                    p.name()
-                );
+                let name = p.name();
+                invalid!("{name} becomes {now} by a pickup and doesn't match {v} of the lens or group change");
             }
         }
         // 傾き・偏心だけの変更で近軸量を残せて、ソルブが近軸量と面の形・厚さだけで決まり既に解けていれば、
@@ -1074,7 +1069,8 @@ impl System {
         for &(p, v) in changes {
             self.check_param(p)?;
             if p.kind.is_object() {
-                invalid!("物点 {} は系のデータでない（追跡の入力）", p.kind.name());
+                let kind = p.kind.name();
+                invalid!("field point {kind} is not system data (it is a trace input)");
             }
             if !v.is_finite() && !(p.kind == Kind::Thick && p.surf == 0) {
                 invalid!("{} = {v}", p.name());
@@ -1096,16 +1092,11 @@ impl System {
                 _ => None,
             };
             if let Some(q) = q {
-                invalid!("{} はソルブ（{:?}）で決まる", p.name(), q.kind);
+                invalid!("{} is set by a solve ({:?})", p.name(), q.kind);
             }
             if let Some(pk) = self.pickup_of(p) {
-                invalid!(
-                    "{} は面 {} からのピックアップ（倍率 {}、オフセット {}）。元の面を変える",
-                    p.name(),
-                    pk.src,
-                    pk.scale,
-                    pk.offset
-                );
+                let (name, src, scale, offset) = (p.name(), pk.src, pk.scale, pk.offset);
+                invalid!("{name} is a pickup from surface {src} (scale {scale}, offset {offset}); change the source surface");
             }
         }
         let mut index = false;
@@ -1206,7 +1197,7 @@ impl System {
             for i in 0..self.pickups.len() {
                 let q = self.pickups[i];
                 if q.src >= ns || q.dst >= ns {
-                    invalid!("ピックアップの面（元 {}、先 {}）がない", q.src, q.dst);
+                    invalid!("no pickup surface (from {}, to {})", q.src, q.dst);
                 }
                 match q.what {
                     PickKind::Dn => {
@@ -1240,7 +1231,7 @@ impl System {
                 return Ok(());
             }
         }
-        invalid!("材料・膜のピックアップが収束しない（循環？）")
+        invalid!("material or coating pickups don't converge (a loop?)")
     }
 
     /// ピックアップを解決する（元の面が後ろにあっても、連なっていてもよい）。循環して収まらなければエラー
@@ -1248,7 +1239,7 @@ impl System {
         let ns = self.surfaces.len();
         for q in &self.pickups {
             if q.src >= ns || q.dst >= ns {
-                invalid!("ピックアップの面（元 {}、先 {}）がない", q.src, q.dst);
+                invalid!("no pickup surface (from {}, to {})", q.src, q.dst);
             }
         }
         for _ in 0..=ns {
@@ -1256,7 +1247,7 @@ impl System {
             for i in 0..self.pickups.len() {
                 let q = self.pickups[i];
                 let Some(v) = q.value(&self.surfaces[q.src]) else {
-                    invalid!("面 {} の {:?} はピックアップできない", q.src, q.source());
+                    invalid!("surface {} {:?} can't be picked up", q.src, q.source());
                 };
                 let d = &mut self.surfaces[q.dst];
                 let before = pick_get(d, q.what);
@@ -1284,7 +1275,7 @@ impl System {
                     }
                     let d = &mut self.surfaces[q.dst];
                     if !ok {
-                        invalid!("面 {} の {:?} にピックアップできない", q.dst, q.what);
+                        invalid!("surface {} {:?} can't take a pickup", q.dst, q.what);
                     }
                     // 書くと丸まる量（トロイダルの回転半径、整数の値）もあるので、書いた後の値で比べる
                     changed |= pick_get(d, q.what) != before;
@@ -1294,7 +1285,7 @@ impl System {
                 return Ok(());
             }
         }
-        invalid!("ピックアップが収束しない（循環？）")
+        invalid!("pickups don't converge (a loop?)")
     }
 
     /// パラメータ p を動かしたときに一緒に動くパラメータと、その倍率 d(先)/d(p)（p 自身を含む）。
@@ -1326,7 +1317,7 @@ impl System {
         while let Some((q, f)) = stack.pop() {
             depth += 1;
             if depth > 64 * self.surfaces.len() {
-                invalid!("ピックアップが循環している");
+                invalid!("pickups go round in a loop");
             }
             let Some(what) = pick_kind(&self.surfaces[q.surf], q.kind) else {
                 continue;
@@ -1340,7 +1331,8 @@ impl System {
             }) {
                 let d = &self.surfaces[pk.dst];
                 let Some(kind) = kind_of_pick(d, pk.what) else {
-                    notimpl!("面 {} の {:?}（ピックアップ先）の微分", pk.dst, pk.what);
+                    let (dst, what) = (pk.dst, pk.what);
+                    notimpl!("derivative of surface {dst} {what:?} (a pickup target)");
                 };
                 let r = (
                     Param::new(pk.dst, kind),
@@ -1435,11 +1427,14 @@ impl System {
                 PickKind::Thick
             };
             if q.surf == 0 || q.surf + 1 >= ns {
-                invalid!("面 {}: 物体面・像面（またはない面）のソルブ", q.surf);
+                let surf = q.surf;
+                invalid!(
+                    "surface {surf}: solve on the object or image surface (or a missing surface)"
+                );
             }
             if let Some(o) = q.kind.other_surface() {
                 if o >= ns {
-                    invalid!("面 {}: ソルブの基準の面 {o} がない", q.surf);
+                    invalid!("surface {}: no reference surface {o} for the solve", q.surf);
                 }
             }
             if self
@@ -1447,13 +1442,14 @@ impl System {
                 .iter()
                 .any(|p| p.dst == q.surf && p.what == what)
             {
-                invalid!("面 {}: ソルブとピックアップの両方（{:?}）", q.surf, what);
+                invalid!("surface {}: both a solve and a pickup ({:?})", q.surf, what);
             }
             if q.kind.is_curv() && self.surfaces[q.surf].typ == SurfType::CoordBrk {
-                invalid!("面 {}: 座標ブレークの曲率のソルブ", q.surf);
+                invalid!("surface {}: curvature solve on a coordinate break", q.surf);
             }
             if q.kind == SolveKind::Position(0) {
-                invalid!("面 {}: 位置ソルブの基準が物体面", q.surf);
+                let surf = q.surf;
+                invalid!("surface {surf}: the position solve refers to the object surface");
             }
         }
         let solves: Vec<ThickSolve> = self
@@ -1477,7 +1473,7 @@ impl System {
                 return Ok(());
             }
         }
-        invalid!("ソルブが収束しない")
+        invalid!("the solve doesn't converge")
     }
 
     /// 解くソルブ（無視する面のものを除く、解く順）
@@ -1534,7 +1530,7 @@ impl System {
                 .map(|q| s.solve_residual(q))
                 .collect::<Result<_>>()?;
             if r.iter().any(|x| !x.is_finite()) {
-                invalid!("ソルブの残差が有限でない");
+                invalid!("the solve residual is not finite");
             }
             Ok(r)
         };
@@ -1559,7 +1555,7 @@ impl System {
         }
         let lu = Lu::new(js, ns).ok_or_else(|| {
             crate::error::Error::Invalid(
-                "ソルブの条件がソルブの量で変わらない（微分が求まらない）".into(),
+                "the solve target doesn't change with the solved value (no derivative)".into(),
             )
         })?;
         ps.iter()
@@ -1586,7 +1582,7 @@ impl System {
             crate::system::FieldType::Angle => ny.to_radians().tan(),
             crate::system::FieldType::ObjH => ny,
             crate::system::FieldType::ParH => ny / self.paraxial().chief_parimage_per_unit,
-            t => notimpl!("視野の種類 {t:?} での主光線のソルブ"),
+            t => notimpl!("chief ray solve with field type {t:?}"),
         })
     }
 
@@ -1623,7 +1619,7 @@ impl System {
                 || d.before.is_some()
                 || matches!(d.after, After::Tilt(_));
             if d.mirror || tilted {
-                notimpl!("鏡・傾き偏心（面 {j}）をまたぐソルブの距離");
+                notimpl!("solve distance across a mirror or a tilt or decenter (surface {j})");
             }
             z += d.t;
         }
@@ -1694,7 +1690,7 @@ impl System {
                         x.typ,
                         SurfType::Standard | SurfType::EvenAsph | SurfType::OddAsph
                     ) {
-                        notimpl!("面 {j}（{:?}）のコバ厚のソルブ", x.typ);
+                        notimpl!("edge thickness solve on surface {j} ({:?})", x.typ);
                     }
                 }
                 let r = if r == 0.0 { d.semi } else { r };
@@ -1714,19 +1710,19 @@ impl System {
                 let rest = if f <= k { f..k } else { k + 1..f };
                 let t = h - self.surfaces[rest].iter().map(|d| d.t).sum::<f64>();
                 if !t.is_finite() {
-                    invalid!("面 {k}: 位置ソルブの厚さが有限でない（面 {f} からの和）");
+                    invalid!("surface {k}: the position solve thickness is not finite (sum from surface {f})");
                 }
                 Some(t)
             }
             SolveKind::Compensator(s0) => {
                 if s0 == k {
-                    invalid!("面 {k}: 自分を基準にした補償のソルブ");
+                    invalid!("surface {k}: compensator solve referring to itself");
                 }
                 Some(h - self.surfaces[s0].t)
             }
             SolveKind::CenterOfCurvature(s0) => {
                 if s0 > k {
-                    notimpl!("面 {k}: 後ろの面 {s0} の曲率中心のソルブ");
+                    notimpl!("surface {k}: center of curvature solve on the later surface {s0}");
                 }
                 Some(radius(self.surfaces[s0].c) - self.axial(s0, k)?)
             }
@@ -1752,7 +1748,7 @@ impl System {
             SolveKind::ElementPower => Some(self.element_power_curv(k, h)?),
             SolveKind::MacroCurv(i) | SolveKind::MacroThick(i) => {
                 let Some(m) = self.macros.get(i as usize) else {
-                    invalid!("面 {k}: マクロ {i} がない（全 {}）", self.macros.len());
+                    invalid!("surface {k}: no macro {i} ({} in all)", self.macros.len());
                 };
                 // 値を入れずに止まったマクロ（OpticStudio は値を変えない）は今の値のまま
                 Some(self.run_macro(m, k)?.unwrap_or(self.solved_value(q)))
@@ -1761,7 +1757,7 @@ impl System {
         };
         let v = closed.unwrap();
         if !v.is_finite() {
-            invalid!("面 {k}: ソルブ {:?} が解けない（{v}）", q.kind);
+            invalid!("surface {k}: solve {:?} can't be solved ({v})", q.kind);
         }
         Ok(v)
     }
@@ -1771,13 +1767,13 @@ impl System {
         let k = q.surf;
         let d = &self.surfaces[k];
         if d.mirror || self.surfaces[1..k].iter().any(|x| x.mirror && !x.ignore) {
-            notimpl!("面 {k}: 鏡・鏡の後の面の光線の曲率のソルブ");
+            notimpl!("surface {k}: ray curvature solve on a mirror or a surface after a mirror");
         }
         if !matches!(
             d.typ,
             SurfType::Standard | SurfType::EvenAsph | SurfType::Toroidal
         ) {
-            notimpl!("面 {k}（{:?}）の曲率のソルブ", d.typ);
+            notimpl!("curvature solve on surface {k} ({:?})", d.typ);
         }
         let pw = self.primary;
         let par = self.paraxial();
@@ -1795,17 +1791,17 @@ impl System {
             0.0
         };
         if y == 0.0 {
-            invalid!("面 {k}: 光線の高さが 0 で曲率のソルブが解けない");
+            invalid!("surface {k}: the ray height is 0, so the curvature solve can't be solved");
         }
         let ce = match q.kind {
             // n′u′ = n u − y c (n′ − n)
             SolveKind::MarginalAngle | SolveKind::ChiefAngle | SolveKind::FNumber => {
                 if n2 == n {
-                    invalid!("面 {k}: 前後の屈折率が同じで光線の傾きのソルブが解けない");
+                    invalid!("surface {k}: the same index on both sides, so the ray angle solve can't be solved");
                 }
                 let a = if q.kind == SolveKind::FNumber {
                     if q.height == 0.0 {
-                        invalid!("面 {k}: F/# 0 のソルブ");
+                        invalid!("surface {k}: F/# 0 solve");
                     }
                     -1.0 / (2.0 * q.height)
                 } else {
@@ -1826,12 +1822,12 @@ impl System {
         let pw = self.primary;
         let (a, b) = (self.prev_live(k), k);
         if a == 0 {
-            invalid!("面 {k}: 玉のパワーのソルブの組（面 {a}・{b}）");
+            invalid!("surface {k}: surface pair of the lens power solve (surfaces {a} and {b})");
         }
         for j in [a, b] {
             let d = &self.surfaces[j];
             if d.mirror || !matches!(d.typ, SurfType::Standard | SurfType::EvenAsph) {
-                notimpl!("面 {j}（{:?}）を含む玉のパワーのソルブ", d.typ);
+                notimpl!("lens power solve on a lens with surface {j} ({:?})", d.typ);
             }
         }
         let n0 = self.index_before(a, pw);
@@ -1870,24 +1866,22 @@ impl System {
         let chief = q.kind != SolveKind::MarginalHeight;
         if q.kind == SolveKind::PupilPosition && k < self.stop() {
             // OpticStudio は絞りより前の面では厚さを 0 にする（意味のある位置がない）
-            notimpl!("面 {k}: 絞りより前の面の瞳の位置のソルブ");
+            notimpl!("surface {k}: pupil position solve on a surface before the stop");
         }
         // 面 k の厚さを t にした系で、次の面での光線の高さ − 目標と、高さの t への傾き（t を固定した近似）
         let eval = |s: &mut System, t: f64| -> Result<(f64, f64)> {
             s.put_solved(k, false, t)?;
             s.paraxial_height_residual(q)
         };
-        let what = if chief {
-            "主光線"
-        } else {
-            "マージナル光線"
-        };
         // 前の値に関わらず厚さ 0 から解く（解きの値が前の値の最後の桁で変わらないように）
         let old = self.surfaces[k].t;
         let (f0, du) = eval(self, 0.0)?;
         if !(du.abs() > 0.0) || !f0.is_finite() {
             self.put_solved(k, false, old)?;
-            invalid!("面 {k}: {what}が光軸に平行で厚さのソルブが解けない");
+            if chief {
+                invalid!("surface {k}: the chief ray is parallel to the axis (thickness solve)");
+            }
+            invalid!("surface {k}: the marginal ray is parallel to the axis (thickness solve)");
         }
         let t = self.secant(k, 0.0, f0, -f0 / du, |s, t| Ok(eval(s, t)?.0))?;
         self.finish_thick(k, old, t)
@@ -1932,7 +1926,7 @@ impl System {
             || n.ignore
         {
             notimpl!(
-                "面 {k}: 鏡・傾き偏心・座標ブレーク・無視する面の隣の実光線の高さの厚さのソルブ"
+                "surface {k}: real ray height thickness solve next to a mirror, tilt or decenter, coordinate break or ignored surface"
             );
         }
         let eval = |s: &mut System, t: f64| -> Result<f64> {
@@ -1945,7 +1939,7 @@ impl System {
         let f0 = eval(self, t0)?;
         if !f0.is_finite() {
             self.put_solved(k, false, old)?;
-            invalid!("面 {k}: 実光線（瞳の帯 {zone}）が通らず厚さのソルブが解けない");
+            invalid!("surface {k}: the real ray (pupil zone {zone}) doesn't pass, so the thickness solve can't be solved");
         }
         // 初めの傾きは差分で
         let dt = 1e-6;
@@ -1953,7 +1947,7 @@ impl System {
         let slope = (f1 - f0) / dt;
         if !(slope.abs() > 0.0) {
             self.put_solved(k, false, old)?;
-            invalid!("面 {k}: 実光線の高さが厚さで変わらず厚さのソルブが解けない");
+            invalid!("surface {k}: the real ray height doesn't change with thickness, so the thickness solve can't be solved");
         }
         let t = self.secant(k, t0, f0, t0 - f0 / slope, eval)?;
         self.finish_thick(k, old, t)
@@ -1986,10 +1980,10 @@ impl System {
     /// OPD のソルブどうしは外の繰り返し（[`System::solve_thickness`]）で揃える
     fn solve_opd(&mut self, k: usize, opd: f64, zone: f64) -> Result<bool> {
         if self.surfaces[k].mirror || self.surfaces[k].typ == SurfType::CoordBrk {
-            notimpl!("面 {k}: 鏡・座標ブレークの OPD の厚さのソルブ");
+            notimpl!("surface {k}: OPD thickness solve on a mirror or coordinate break");
         }
         if k + 1 >= self.surfaces.len() {
-            invalid!("面 {k}: 像面の OPD の厚さのソルブ");
+            invalid!("surface {k}: OPD thickness solve on the image surface");
         }
         let others: Vec<ThickSolve> = self
             .active_solves()
@@ -2014,7 +2008,7 @@ impl System {
                     }
                 }
                 if !done {
-                    invalid!("面 {k}: OPD の厚さのソルブの中でほかのソルブが収束しない");
+                    invalid!("surface {k}: another solve doesn't converge inside the OPD thickness solve");
                 }
             }
             s.opd_residual(opd, zone)
@@ -2023,7 +2017,7 @@ impl System {
         let f0 = eval(self, old)?;
         if !f0.is_finite() {
             self.put_solved(k, false, old)?;
-            invalid!("面 {k}: 実光線（瞳の帯 {zone}）が通らず OPD の厚さのソルブが解けない");
+            invalid!("surface {k}: the real ray (pupil zone {zone}) doesn't pass, so the OPD thickness solve can't be solved");
         }
         // OPD は光路長の差なので丸めの揺れ（1e-11 波ほど）がある。揺れの中なら解けているとして動かさない
         // （動かすと外の繰り返しが揺れで止まらない）
@@ -2035,7 +2029,7 @@ impl System {
         let slope = (f1 - f0) / dt;
         if !(slope.abs() > 0.0) || !slope.is_finite() {
             self.put_solved(k, false, old)?;
-            invalid!("面 {k}: OPD が厚さで変わらず OPD の厚さのソルブが解けない");
+            invalid!("surface {k}: the OPD doesn't change with thickness, so the OPD thickness solve can't be solved");
         }
         let t = self.secant(k, old, f0, old - f0 / slope, eval)?;
         self.finish_thick(k, old, t)
@@ -2092,7 +2086,7 @@ impl System {
             }
         }
         if !done {
-            invalid!("面 {k}: 厚さのソルブが収束しない");
+            invalid!("surface {k}: the thickness solve doesn't converge");
         }
         Ok(t1)
     }

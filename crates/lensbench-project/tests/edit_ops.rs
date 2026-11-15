@@ -49,7 +49,7 @@ fn ops_apply_in_order_and_all_or_nothing() {
             {"op": "set_material", "surface": 1, "material": "NO-SUCH"},
         ]),
     );
-    assert!(r.unwrap_err().starts_with("操作 2:"));
+    assert!(r.unwrap_err().starts_with("operation 2:"));
     assert_eq!(s.surfaces.len(), before);
     assert!(edit_ops::apply_json(&mut s, &json!([{"op": "nope"}])).is_err());
 }
@@ -252,7 +252,7 @@ fn unit_ops() {
     .unwrap();
     let e =
         edit_ops::apply_json(&mut s, &json!([{"op": "remove_unit", "unit": "G1"}])).unwrap_err();
-    assert!(e.contains("動か"), "{e}");
+    assert!(e.contains("is moved"), "{e}");
     edit_ops::apply_json(
         &mut s,
         &json!([

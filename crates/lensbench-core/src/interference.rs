@@ -65,10 +65,10 @@ pub fn interferogram(
     o: &PupilOpts,
 ) -> Result<Interferogram> {
     if !o.scale.is_finite() || !o.xtilt.is_finite() || !o.ytilt.is_finite() {
-        invalid!("scale・xtilt・ytilt は有限の数");
+        invalid!("scale, xtilt and ytilt must be finite numbers");
     }
     if o.n < 4 || !o.n.is_multiple_of(2) {
-        invalid!("格子の一辺 {} は 4 以上の偶数", o.n);
+        invalid!("grid side {} must be an even number 4 or more", o.n);
     }
     let n = o.n;
     let p = pupil_grid(n);
@@ -98,7 +98,7 @@ pub fn interferogram(
         }
     }
     if v.is_empty() {
-        invalid!("2 つの光束が重なる点がない");
+        invalid!("no point where the two beams overlap");
     }
     let (pv, rms) = pv_rms(&v);
     Ok(Interferogram {
@@ -248,7 +248,7 @@ fn trace_grid(
     let c_lens = if phase {
         let c = sys.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
         if !c.traced(0) {
-            invalid!("主光線が像面に届かない");
+            invalid!("the chief ray doesn't reach the image");
         }
         c.rays[0].lens_opd
     } else {
@@ -328,23 +328,23 @@ pub fn detector(
     pol: Option<Polarized>,
 ) -> Result<DetectorFringe> {
     if o.pupil < 2 {
-        invalid!("瞳の格子は 2 以上");
+        invalid!("the pupil grid must be 2 or more");
     }
     if o.npx < 1 {
-        invalid!("画素の数は 1 以上");
+        invalid!("the number of pixels must be 1 or more");
     }
     if !(o.sample_power >= 0.0 && o.reference_power >= 0.0) || !o.delay.is_finite() {
-        invalid!("強度の重みは 0 以上、delay は有限の数");
+        invalid!("intensity weights must be 0 or more and delay finite");
     }
     let ws = w.unwrap_or(sample.primary);
     let wr = w.unwrap_or(reference.primary);
     if ws >= sample.wavelengths.len() || wr >= reference.wavelengths.len() {
-        invalid!("波長の番号が範囲外");
+        invalid!("the wavelength number is out of range");
     }
     let lam = sample.wavelengths[ws];
     if (reference.wavelengths[wr] - lam).abs() > 1e-12 * lam {
         invalid!(
-            "試料と参照の波長が違う（{} µm・{} µm）",
+            "the sample and reference wavelengths differ ({} µm, {} µm)",
             lam,
             reference.wavelengths[wr]
         );
@@ -371,7 +371,7 @@ pub fn detector(
             }
         }
         if x0 > x1 {
-            invalid!("像面に届く光線がない");
+            invalid!("no ray reaches the image");
         }
         let c = o.center.unwrap_or((0.5 * (x0 + x1), 0.5 * (y0 + y1)));
         let wd = o.width.unwrap_or_else(|| {
@@ -385,7 +385,7 @@ pub fn detector(
         (c.0, c.1, wd)
     };
     if !(wd > 0.0) {
-        invalid!("検出面の幅 {wd} mm");
+        invalid!("detector width {wd} mm");
     }
     let n = o.npx;
     let dx = if n > 1 { wd / (n - 1) as f64 } else { wd };

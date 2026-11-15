@@ -124,7 +124,7 @@ pub fn surf_type_parse(s: &str) -> Result<SurfType> {
         "TILTSURF" | "TILTED" => SurfType::TiltSurf,
         "IRREGULA" | "IRREGULAR" => SurfType::Irregular,
         "USER" => SurfType::User,
-        _ => invalid!("面タイプ {s}"),
+        _ => invalid!("surface type {s}"),
     })
 }
 
@@ -165,7 +165,7 @@ fn type_data_ok(d: &Surface) -> Result<()> {
     };
     if !ok {
         notimpl!(
-            "面タイプ {} への変更（形のデータが要る。.zmx から読む）",
+            "changing to surface type {} (it needs shape data; read it from a .zmx)",
             surf_type_name(d.typ)
         );
     }
@@ -215,35 +215,35 @@ impl SurfValue {
     fn num(&self, name: &str) -> Result<f64> {
         match self {
             SurfValue::Num(v) => Ok(*v),
-            _ => invalid!("面の値 {name} は数"),
+            _ => invalid!("surface value {name} must be a number"),
         }
     }
     fn nums(&self, name: &str, n: Option<usize>) -> Result<Vec<f64>> {
         let v = match self {
             SurfValue::Nums(v) => v.clone(),
             SurfValue::Num(x) if n.is_none() => vec![*x],
-            _ => invalid!("面の値 {name} は数の並び"),
+            _ => invalid!("surface value {name} must be a list of numbers"),
         };
         if let Some(n) = n {
             if v.len() != n {
-                invalid!("面の値 {name} は {n} 個（{} 個）", v.len());
+                invalid!("surface value {name} has {n} items ({} items)", v.len());
             }
         }
         if v.iter().any(|x| !x.is_finite()) {
-            invalid!("面の値 {name} = {v:?}");
+            invalid!("surface value {name} = {v:?}");
         }
         Ok(v)
     }
     fn text(&self, name: &str) -> Result<String> {
         match self {
             SurfValue::Text(v) => Ok(v.clone()),
-            _ => invalid!("面の値 {name} は文字列"),
+            _ => invalid!("surface value {name} must be a string"),
         }
     }
     fn flag(&self, name: &str) -> Result<bool> {
         match self {
             SurfValue::Bool(v) => Ok(*v),
-            _ => invalid!("面の値 {name} は真偽"),
+            _ => invalid!("surface value {name} must be true or false"),
         }
     }
 }
@@ -264,34 +264,40 @@ impl System {
         self.invalidate_frames();
         let ns = self.surfaces.len();
         if ns < 3 {
-            invalid!("面が少なすぎる（{ns}）");
+            invalid!("too few surfaces ({ns})");
         }
         if self.surfaces.iter().filter(|d| d.stop).count() != 1 {
-            invalid!("絞り面がちょうど 1 つでない");
+            invalid!("there must be exactly one stop surface");
         }
         let nw = self.wavelengths.len();
         for (j, d) in self.surfaces.iter().enumerate() {
             type_data_ok(d)?;
             if d.typ == SurfType::CoordBrk && (d.mirror || !no_material(&d.mat)) {
-                invalid!("面 {j}: 座標ブレークに材料 {}", d.mat);
+                invalid!("surface {j}: material {} on a coordinate break", d.mat);
             }
             if d.typ == SurfType::Jones && d.c != 0.0 {
-                notimpl!("曲面の Jones 行列面 {j}");
+                notimpl!("Jones matrix surface {j} on a curved surface");
             }
             if j > 0 && !d.t.is_finite() {
-                invalid!("面 {j} の厚さ {}", d.t);
+                invalid!("surface {j} thickness {}", d.t);
             }
             for (name, v) in [("c", d.c), ("k", d.k), ("semi", d.semi)] {
                 if !v.is_finite() {
-                    invalid!("面 {j} の {name} = {v}");
+                    invalid!("surface {j} {name} = {v}");
                 }
             }
             if !d.n.is_empty() && d.n.len() != nw {
-                invalid!("面 {j}: 屈折率の数 {}（波長 {nw}）", d.n.len());
+                invalid!(
+                    "surface {j}: {} refractive indices ({nw} wavelengths)",
+                    d.n.len()
+                );
             }
         }
         if self.glrs >= ns {
-            invalid!("大域座標の基準面 {}（面 {ns} 個）", self.glrs);
+            invalid!(
+                "global coordinate reference surface {} ({ns} surfaces)",
+                self.glrs
+            );
         }
         self.pick_names()?;
         self.refresh_media()?;
@@ -316,7 +322,7 @@ impl System {
             return Ok(vec![1.0; self.wavelengths.len()]);
         }
         if m.eq_ignore_ascii_case("MIRROR") {
-            invalid!("MIRROR は媒質でない");
+            invalid!("MIRROR is not a medium");
         }
         if let Some(g) = self.glasses.get(m) {
             let (t, p, a) = (self.temperature, self.pressure, self.adjust_index);
@@ -345,7 +351,7 @@ impl System {
                 })
                 .collect());
         }
-        invalid!("ガラス {m} がない（カタログを足す: add_glasses・add_glass_catalogs）")
+        invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)")
     }
 
     /// ガラスを足す（同じ名前は置き換える）。屈折率は材料を設定したときに作る
@@ -375,14 +381,14 @@ impl System {
                     .map(|&l| {
                         g.vertex_index(l).ok_or_else(|| {
                             crate::error::Error::Invalid(format!(
-                                "面 {j}: GRIN の頂点が分布の範囲の外"
+                                "surface {j}: the GRIN vertex is outside the profile range"
                             ))
                         })
                     })
                     .collect::<Result<Vec<f64>>>()?
             } else {
                 self.material_index(&d.mat)
-                    .map_err(|e| crate::error::Error::Invalid(format!("面 {j}: {e}")))?
+                    .map_err(|e| crate::error::Error::Invalid(format!("surface {j}: {e}")))?
             };
             let d = &mut self.surfaces[j];
             d.n_base.clear();
@@ -403,7 +409,9 @@ impl System {
             }
             let en = crate::surface::Bire::e_name(&d.mat);
             let v = self.material_index(&en).map_err(|e| {
-                crate::error::Error::Invalid(format!("面 {j}: 複屈折材の異常光の材料 {en}: {e}"))
+                crate::error::Error::Invalid(format!(
+                    "surface {j}: extraordinary material {en} of the birefringent material: {e}"
+                ))
             })?;
             if let Some(crate::surface::Bire::In { ne, .. }) = &mut self.surfaces[j].bire {
                 *ne = v;
@@ -431,10 +439,10 @@ impl System {
     /// 面 at の前に面 d を入れる（at は 1〜像面）。d.n が空なら材料から屈折率を作る
     pub fn insert_surface(&mut self, at: usize, d: Surface) -> Result<()> {
         if at == 0 || at > self.image() {
-            invalid!("面を入れる位置 {at}（1〜{}）", self.image());
+            invalid!("position {at} to insert a surface (1 to {})", self.image());
         }
         if d.stop {
-            invalid!("入れる面を絞りにするのは set_stop で");
+            invalid!("make the inserted surface the stop with set_stop");
         }
         self.edit(|s| {
             let mut d = d;
@@ -451,11 +459,11 @@ impl System {
     /// 厚さのソルブ・ピックアップで決まる値は変えられない。material は [`System::set_material`] と同じ
     pub fn set_surface_fields(&mut self, j: usize, fields: &[(String, SurfValue)]) -> Result<()> {
         if j > self.image() {
-            invalid!("面 {j}（面は 0〜{}）", self.image());
+            invalid!("surface {j} (surfaces are 0 to {})", self.image());
         }
         for (name, _) in fields {
             if !SURF_FIELDS.contains(&name.as_str()) {
-                invalid!("面の値の名前 {name}（{}）", SURF_FIELDS.join(" "));
+                invalid!("surface value name {name} ({})", SURF_FIELDS.join(" "));
             }
             let kind = match name.as_str() {
                 "c" | "r" => Some(Kind::Curv),
@@ -465,7 +473,7 @@ impl System {
             };
             if let Some(k) = kind {
                 if let Some(pk) = self.pickup_of(Param::new(j, k)) {
-                    invalid!("面 {j} の {name} は面 {} からのピックアップ", pk.src);
+                    invalid!("surface {j} {name} is a pickup from surface {}", pk.src);
                 }
             }
             let direct = |w: PickKind| match name.as_str() {
@@ -478,7 +486,7 @@ impl System {
                 _ => false,
             };
             if let Some(pk) = self.pickups.iter().find(|q| q.dst == j && direct(q.what)) {
-                invalid!("面 {j} の {name} は面 {} からのピックアップ", pk.src);
+                invalid!("surface {j} {name} is a pickup from surface {}", pk.src);
             }
             if let Some(k) = kind {
                 if self
@@ -486,7 +494,7 @@ impl System {
                     .iter()
                     .any(|q| q.surf == j && q.kind.param_kind() == k)
                 {
-                    invalid!("面 {j} の {name} はソルブで決まる");
+                    invalid!("surface {j} {name} is set by a solve");
                 }
             }
         }
@@ -509,7 +517,7 @@ impl System {
                         if j == 0 && t.is_infinite() && t > 0.0 {
                             d.t = t;
                         } else if !t.is_finite() {
-                            invalid!("面 {j} の厚さ {t}");
+                            invalid!("surface {j} thickness {t}");
                         } else {
                             d.t = t;
                         }
@@ -540,17 +548,17 @@ impl System {
                     "semi_auto" => d.semi_auto = v.flag(name)?,
                     "ignore" => {
                         if j == 0 || j == last {
-                            invalid!("物体面・像面は無視できない");
+                            invalid!("the object and image surfaces can't be ignored");
                         }
                         d.ignore = v.flag(name)?
                     }
                     "aperture" => match v {
                         SurfValue::Aperture(a) => d.ap = *a,
-                        _ => invalid!("面の値 aperture"),
+                        _ => invalid!("surface value aperture"),
                     },
                     "cb" => {
                         if d.typ != SurfType::CoordBrk {
-                            invalid!("面 {j} は座標ブレークでない（cb）");
+                            invalid!("surface {j} is not a coordinate break (cb)");
                         }
                         let v = v.nums(name, Some(5))?;
                         d.cb.copy_from_slice(&v);
@@ -558,7 +566,7 @@ impl System {
                     "cb_order" => {
                         let o = v.num(name)?;
                         if o != 0.0 && o != 1.0 {
-                            invalid!("cb_order は 0 か 1（{o}）");
+                            invalid!("cb_order must be 0 or 1 ({o})");
                         }
                         d.cb_order = o as u8;
                     }
@@ -570,7 +578,7 @@ impl System {
                     }
                     "dn" | "disp" => {
                         if d.mirror || d.typ == SurfType::CoordBrk {
-                            invalid!("面 {j} は鏡か座標ブレーク（{name}）");
+                            invalid!("surface {j} is a mirror or a coordinate break ({name})");
                         }
                         let x = v.num(name)?;
                         if name == "dn" {
@@ -594,7 +602,7 @@ impl System {
     /// 面 j の値（名前は [`SURF_FIELDS`] と "mirror"・"stop"・"n"）
     pub fn surface_fields(&self, j: usize) -> Result<Vec<(&'static str, SurfValue)>> {
         let Some(d) = self.surfaces.get(j) else {
-            invalid!("面 {j}（面は 0〜{}）", self.image());
+            invalid!("surface {j} (surfaces are 0 to {})", self.image());
         };
         use SurfValue::*;
         Ok(vec![
@@ -627,10 +635,10 @@ impl System {
     /// 面 j（1〜像面の 1 つ前）を消す。消した面を参照するピックアップ・ソルブ・多重構成の行は外し、その説明を返す
     pub fn delete_surface(&mut self, j: usize) -> Result<Vec<String>> {
         if j == 0 || j >= self.image() {
-            invalid!("消す面 {j}（1〜{}）", self.image() - 1);
+            invalid!("surface {j} to delete (1 to {})", self.image() - 1);
         }
         if self.surfaces[j].stop {
-            invalid!("面 {j} は絞り（先に set_stop で別の面を絞りにする）");
+            invalid!("surface {j} is the stop (make another surface the stop with set_stop first)");
         }
         if let FieldType::Solve(c) = self.field_type {
             let used = match c {
@@ -638,7 +646,7 @@ impl System {
                 FieldCond::DirSum { s1, s2 } | FieldCond::DirDiff { s1, s2 } => s1 == j || s2 == j,
             };
             if used {
-                invalid!("面 {j} は視野の条件に使っている（先に視野の種類を変える）");
+                invalid!("surface {j} is used by the field setting (change the field type first)");
             }
         }
         let mut notes = Vec::new();
@@ -654,7 +662,7 @@ impl System {
     /// 面 j を絞りにする
     pub fn set_stop(&mut self, j: usize) -> Result<()> {
         if j == 0 || j >= self.image() {
-            invalid!("絞り面 {j}（1〜{}）", self.image() - 1);
+            invalid!("stop surface {j} (1 to {})", self.image() - 1);
         }
         self.edit(|s| {
             for (k, d) in s.surfaces.iter_mut().enumerate() {
@@ -668,10 +676,10 @@ impl System {
     /// 新しい種類に無いものを 0 に戻す。形のデータの要る種類（Zernike・Grid Sag など）は、その面がすでに持つときだけ
     pub fn set_surface_type(&mut self, j: usize, typ: SurfType) -> Result<()> {
         if j == 0 || j > self.image() {
-            invalid!("面 {j}");
+            invalid!("surface {j}");
         }
         if typ == SurfType::CoordBrk && (j == self.image() || self.surfaces[j].stop) {
-            invalid!("面 {j}（像面・絞り）を座標ブレークにはできない");
+            invalid!("surface {j} (image or stop) can't be a coordinate break");
         }
         self.edit(|s| {
             let d = &mut s.surfaces[j];
@@ -716,16 +724,16 @@ impl System {
     /// 面 j の材料（ガラス名・"nd,vd[,dpgf]"・空か AIR・MIRROR）を変える。dn・disp は残す
     pub fn set_material(&mut self, j: usize, mat: &str) -> Result<()> {
         if j > self.image() {
-            invalid!("面 {j}");
+            invalid!("surface {j}");
         }
         let mirror = mat.trim().eq_ignore_ascii_case("MIRROR");
         if j == 0 && mirror {
-            invalid!("物体面を鏡にはできない");
+            invalid!("the object surface can't be a mirror");
         }
         self.edit(|s| {
             let d = &mut s.surfaces[j];
             if d.typ == SurfType::CoordBrk && !no_material(mat) {
-                invalid!("面 {j}: 座標ブレークに材料 {mat}");
+                invalid!("surface {j}: material {mat} on a coordinate break");
             }
             d.mirror = mirror;
             d.mat = if mirror {
@@ -746,7 +754,7 @@ impl System {
     /// 面 j の膜（膜ファイルの名前、空で無し）
     pub fn set_coating(&mut self, j: usize, coat: &str) -> Result<()> {
         if j > self.image() {
-            invalid!("面 {j}");
+            invalid!("surface {j}");
         }
         self.edit(|s| {
             s.surfaces[j].coat = coat.trim().to_string();
@@ -757,7 +765,7 @@ impl System {
     /// 面 j の開口（[`Aperture::None`] で無し）
     pub fn set_aperture(&mut self, j: usize, ap: Aperture) -> Result<()> {
         if j > self.image() {
-            invalid!("面 {j}");
+            invalid!("surface {j}");
         }
         self.edit(|s| {
             s.surfaces[j].ap = ap;
@@ -770,10 +778,10 @@ impl System {
     pub fn add_pickup(&mut self, p: Pickup) -> Result<()> {
         let ns = self.surfaces.len();
         if p.src >= ns || p.dst >= ns || p.src == p.dst {
-            invalid!("ピックアップの面（元 {}、先 {}）", p.src, p.dst);
+            invalid!("pickup surfaces (from {}, to {})", p.src, p.dst);
         }
         if !p.scale.is_finite() || !p.offset.is_finite() {
-            invalid!("ピックアップの倍率 {}・オフセット {}", p.scale, p.offset);
+            invalid!("pickup scale {} and offset {}", p.scale, p.offset);
         }
         if let Some(k) = solve_kind_of(p.what) {
             if self
@@ -782,7 +790,7 @@ impl System {
                 .any(|q| q.surf == p.dst && q.kind.param_kind() == k)
             {
                 invalid!(
-                    "面 {} の {:?} はソルブで決まる（先に remove_solve）",
+                    "surface {} {:?} is set by a solve (remove_solve first)",
                     p.dst,
                     p.what
                 );
@@ -790,7 +798,10 @@ impl System {
         }
         if let Some(v) = p.value(&self.surfaces[p.src]) {
             if !v.is_finite() {
-                invalid!("ピックアップの値が有限でない（面 {} から {v}）", p.src);
+                invalid!(
+                    "the pickup value is not finite (from surface {} {v})",
+                    p.src
+                );
             }
         }
         self.edit(|s| {
@@ -803,7 +814,7 @@ impl System {
     /// 面 dst の量 what のピックアップを外す（値は今の値のまま残る）。無ければエラー
     pub fn remove_pickup(&mut self, dst: usize, what: crate::param::PickKind) -> Result<()> {
         if !self.pickups.iter().any(|q| q.dst == dst && q.what == what) {
-            invalid!("面 {dst} の {what:?} のピックアップは無い");
+            invalid!("no pickup of {what:?} on surface {dst}");
         }
         self.edit(|s| {
             s.pickups.retain(|q| !(q.dst == dst && q.what == what));
@@ -815,12 +826,12 @@ impl System {
     pub fn add_solve(&mut self, q: ThickSolve) -> Result<()> {
         let ns = self.surfaces.len();
         if q.surf == 0 || q.surf + 1 >= ns || q.kind.other_surface().is_some_and(|f| f >= ns) {
-            invalid!("ソルブの面 {}（1〜{}）", q.surf, ns - 2);
+            invalid!("solve surface {} (1 to {})", q.surf, ns - 2);
         }
         let pk = q.kind.param_kind();
         self.check_param(Param::new(q.surf, pk))?;
         if !q.height.is_finite() {
-            invalid!("ソルブの値 {}", q.height);
+            invalid!("solve value {}", q.height);
         }
         if self
             .pickups
@@ -828,7 +839,7 @@ impl System {
             .any(|p| p.dst == q.surf && solve_kind_of(p.what) == Some(pk))
         {
             invalid!(
-                "面 {} の {} はピックアップで決まる（先に remove_pickup）",
+                "surface {} {} is set by a pickup (remove_pickup first)",
                 q.surf,
                 pk.name()
             );
@@ -845,7 +856,7 @@ impl System {
     pub fn remove_solve(&mut self, surf: usize, kind: Kind) -> Result<()> {
         let hit = |x: &ThickSolve| x.surf == surf && x.kind.param_kind() == kind;
         if !self.solves.iter().any(hit) {
-            invalid!("面 {surf} の {} のソルブは無い", kind.name());
+            invalid!("no solve of {} on surface {surf}", kind.name());
         }
         self.edit(|s| {
             s.solves.retain(|x| !hit(x));
@@ -862,7 +873,7 @@ impl System {
     /// 構成の数を n にする（増やした構成の値は今の値。1 で表を消す）。今の構成が n を超えたら 1 にする
     pub fn set_config_count(&mut self, n: usize) -> Result<()> {
         if n == 0 {
-            invalid!("構成の数 0");
+            invalid!("0 configurations");
         }
         if n == 1 {
             self.configs = None;
@@ -897,14 +908,17 @@ impl System {
     /// 表に行を足す（同じパラメータの行は置き換える）。values の長さは構成の数。今の構成の値を系に入れる
     pub fn set_config_row(&mut self, p: Param, values: Vec<f64>) -> Result<()> {
         let Some(c) = &self.configs else {
-            invalid!("構成が 1 つ（先に set_config_count）");
+            invalid!("only one configuration (set_config_count first)");
         };
         if values.len() != c.n {
-            invalid!("値の数 {}（構成 {}）", values.len(), c.n);
+            invalid!("{} values ({} configurations)", values.len(), c.n);
         }
         self.check_param(p)?;
         if p.kind.is_global() {
-            invalid!("{} は表に入れられない（物点・波長）", p.name());
+            invalid!(
+                "{} can't go in the table (field points, wavelengths)",
+                p.name()
+            );
         }
         let mut c = c.clone();
         // ピックアップは残す（ピックアップの構成の値を変えたら、その構成のピックアップは外す）
@@ -959,10 +973,10 @@ impl System {
             rows: Vec::new(),
         });
         if at == 0 || at > c.n + 1 {
-            invalid!("構成を挿入する位置 {at}（1〜{}）", c.n + 1);
+            invalid!("position {at} to insert a configuration (1 to {})", c.n + 1);
         }
         if from == 0 || from > c.n {
-            invalid!("構成 {from}（1〜{}）", c.n);
+            invalid!("configuration {from} (1 to {})", c.n);
         }
         let shift = |k: usize| if k >= at { k + 1 } else { k };
         let src = shift(from);
@@ -995,10 +1009,10 @@ impl System {
     /// 次の構成（最後なら前）を系に入れる。構成が 1 つになったら表を消す（残った構成の値は系に入る）
     pub fn remove_config(&mut self, k: usize) -> Result<()> {
         let Some(mut c) = self.configs.clone() else {
-            invalid!("構成が 1 つ");
+            invalid!("only one configuration");
         };
         if k == 0 || k > c.n {
-            invalid!("構成 {k}（1〜{}）", c.n);
+            invalid!("configuration {k} (1 to {})", c.n);
         }
         let shift = |j: usize| if j > k { j - 1 } else { j };
         for r in c.rows.iter_mut() {
@@ -1035,18 +1049,18 @@ impl System {
         offset: f64,
     ) -> Result<()> {
         let Some(c) = &self.configs else {
-            invalid!("構成が 1 つ");
+            invalid!("only one configuration");
         };
         let n = c.n;
         if k == 0 || k > n || from == 0 || from > n || k == from {
-            invalid!("構成のピックアップ {from} → {k}（1〜{n}、別の構成）");
+            invalid!("configuration pickup {from} → {k} (1 to {n}, another configuration)");
         }
         if !scale.is_finite() || !offset.is_finite() {
-            invalid!("構成のピックアップの倍率・ずれ");
+            invalid!("configuration pickup scale or offset");
         }
         let mut c = c.clone();
         let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
-            invalid!("表に {} の行は無い", p.name());
+            invalid!("no row {} in the table", p.name());
         };
         let mut picks = r.picks.clone();
         picks.retain(|q| q.k != k);
@@ -1060,7 +1074,9 @@ impl System {
         let mut at = from;
         for _ in 0..=picks.len() {
             match picks.iter().find(|q| q.k == at) {
-                Some(q) if q.from == k => invalid!("構成のピックアップが循環する（{k}）"),
+                Some(q) if q.from == k => {
+                    invalid!("configuration pickups go round in a loop ({k})")
+                }
                 Some(q) => at = q.from,
                 None => break,
             }
@@ -1077,15 +1093,15 @@ impl System {
     /// 表の行 p の構成 k のピックアップを外す（値は今のまま）
     pub fn remove_config_pickup(&mut self, p: Param, k: usize) -> Result<()> {
         let Some(c) = &mut self.configs else {
-            invalid!("構成が 1 つ");
+            invalid!("only one configuration");
         };
         let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
-            invalid!("表に {} の行は無い", p.name());
+            invalid!("no row {} in the table", p.name());
         };
         let n0 = r.picks.len();
         r.picks.retain(|q| q.k != k);
         if r.picks.len() == n0 {
-            invalid!("{} の構成 {k} のピックアップは無い", p.name());
+            invalid!("no pickup on {} configuration {k}", p.name());
         }
         Ok(())
     }
@@ -1093,12 +1109,12 @@ impl System {
     /// 表の行（パラメータ p）を消す。系の値は今のまま
     pub fn remove_config_row(&mut self, p: Param) -> Result<()> {
         let Some(c) = &mut self.configs else {
-            invalid!("構成が 1 つ");
+            invalid!("only one configuration");
         };
         let n0 = c.rows.len();
         c.rows.retain(|r| r.param != p);
         if c.rows.len() == n0 {
-            invalid!("表に {} の行は無い", p.name());
+            invalid!("no row {} in the table", p.name());
         }
         Ok(())
     }
@@ -1109,10 +1125,10 @@ impl System {
             if k == 1 {
                 return Ok(self.clone());
             }
-            invalid!("構成 {k}（構成は 1 つ）");
+            invalid!("configuration {k} (there is one configuration)");
         };
         if k == 0 || k > c.n {
-            invalid!("構成 {k}（1〜{}）", c.n);
+            invalid!("configuration {k} (1 to {})", c.n);
         }
         let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[k - 1])).collect();
         let mut s = self.with_params(&ch)?;
@@ -1127,12 +1143,16 @@ impl System {
             return Ok(());
         };
         if c.n < 2 || c.active == 0 || c.active > c.n {
-            invalid!("多重構成の表（構成 {}、今 {}）", c.n, c.active);
+            invalid!(
+                "multi-configuration table ({} configurations, now {})",
+                c.n,
+                c.active
+            );
         }
         for r in &c.rows {
             if r.values.len() != c.n {
                 invalid!(
-                    "多重構成の行 {} の値の数 {}",
+                    "multi-configuration row {} has {} values",
                     r.param.name(),
                     r.values.len()
                 );
@@ -1141,7 +1161,7 @@ impl System {
             for p in &r.picks {
                 if p.k == 0 || p.k > c.n || p.from == 0 || p.from > c.n || p.k == p.from {
                     invalid!(
-                        "多重構成の行 {} のピックアップ {} → {}",
+                        "multi-configuration row {} pickup {} → {}",
                         r.param.name(),
                         p.from,
                         p.k
@@ -1345,7 +1365,7 @@ pub fn solve_kind_parse(
     let need = || -> Result<usize> {
         match other {
             Some(s) => Ok(s),
-            None => invalid!("ソルブ {n} には別の面（other）が要る"),
+            None => invalid!("solve {n} needs another surface (other)"),
         }
     };
     Ok(match n.as_str() {
@@ -1371,7 +1391,7 @@ pub fn solve_kind_parse(
         // 新しく選ぶ種類の一覧（SOLVE_KINDS）には入れない
         "macro_curv" | "macro_thick" => {
             if !(param >= 0.0 && param.fract() == 0.0 && param <= u16::MAX as f64) {
-                invalid!("マクロの番号 {param}");
+                invalid!("macro number {param}");
             }
             if n == "macro_curv" {
                 K::MacroCurv(param as u16)
@@ -1379,7 +1399,7 @@ pub fn solve_kind_parse(
                 K::MacroThick(param as u16)
             }
         }
-        _ => invalid!("ソルブの種類 {name}（{}）", SOLVE_KINDS.join(" ")),
+        _ => invalid!("solve type {name} ({})", SOLVE_KINDS.join(" ")),
     })
 }
 
@@ -1434,7 +1454,9 @@ pub fn pick_kind_parse(s: &str) -> Result<crate::param::PickKind> {
             } else if let Some(i) = num("parm").or_else(|| num("p")) {
                 PickKind::Parm(i)
             } else {
-                invalid!("ピックアップの量 {s}（c r t k p1〜 dn disp semi coating before0〜4 after0〜4）")
+                invalid!(
+                    "pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)"
+                )
             }
         }
     })

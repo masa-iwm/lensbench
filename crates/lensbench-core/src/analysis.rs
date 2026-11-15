@@ -124,11 +124,11 @@ pub fn opd(
     ref_primary: bool,
 ) -> Result<Opd> {
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
-        notimpl!("OPD の基準 {}（射出瞳・無限遠のみ）", s.ropd);
+        notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
     }
     if !s.afocal && s.ropd != 1 && s.exit_pupil().is_nan() {
         invalid!(
-            "射出瞳が求められない（瞳の算出の補助の光線が解けない）。OPD の基準が決められない"
+            "the exit pupil can't be found (the pupil helper rays can't be solved); no OPD reference"
         );
     }
     let w = w.unwrap_or(s.primary);
@@ -142,13 +142,9 @@ pub fn opd(
     for (t, wi) in [(&rc, w), (&rp, s.primary)] {
         let c = &t.rays[0];
         if c.err != 0 {
-            let why = if c.tir {
-                "で全反射"
-            } else {
-                "に当たらない"
-            };
+            let why = if c.tir { "total reflection" } else { "missed" };
             invalid!(
-                "主光線（波長 {}）が像面に届かない（面 {}{why}）。OPD の基準が決められない",
+                "the chief ray (wavelength {}) doesn't reach the image (surface {}, {why}); no OPD reference",
                 wi + 1,
                 c.err
             );
@@ -267,7 +263,7 @@ pub fn spot_arms(
 /// 格子の一辺 n は 4 以上の偶数（中心の点 p = 0 を含み、端が瞳の縁になる）
 fn check_grid(n: usize) -> Result<()> {
     if n < 4 || !n.is_multiple_of(2) {
-        invalid!("格子の一辺 {n} は 4 以上の偶数にする");
+        invalid!("grid side {n} must be an even number 4 or more");
     }
     Ok(())
 }
@@ -315,7 +311,7 @@ pub fn wavefront(
         }
     }
     if v.is_empty() {
-        invalid!("有効な光線がない（すべてけられた）");
+        invalid!("no valid rays (all vignetted)");
     }
     let mean = v.iter().sum::<f64>() / v.len() as f64;
     let rms = (v.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / v.len() as f64).sqrt();
@@ -425,7 +421,7 @@ pub fn pupil_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]
         pupil_jacobian_inner(s, field, w)?
     };
     if !(jm[0][0].abs() > 1e-12 && jm[1][1].abs() > 1e-12) {
-        notimpl!("MTF: 像空間の開口が 0（アフォーカル？）");
+        notimpl!("MTF: the image space aperture is 0 (afocal?)");
     }
     Ok(jm)
 }
@@ -448,7 +444,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
     }
     let r = s.try_trace(field, &px, &py, Some(w), None, false)?;
     if !r.traced(0) {
-        notimpl!("MTF: 主光線が像面に届かない（瞳の大きさが決められない）");
+        notimpl!("MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
     }
     let (q0, k0) = (r.rays[0].xyz, r.rays[0].lmn);
     // 射出瞳の位置で主光線に垂直な平面（OPD の基準の平面、[`to_ref`]）まで光線を延ばした点の、主光線からの差。
@@ -482,7 +478,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
         let k = |ia: usize, neg: bool| 1 + axis * 2 * A.len() + 2 * ia + neg as usize;
         let Some(ia) = (0..A.len()).find(|&ia| r.traced(k(ia, false)) && r.traced(k(ia, true)))
         else {
-            notimpl!("MTF: 瞳の軸の上の光線がけられる（瞳の大きさが決められない）");
+            notimpl!("MTF: rays on the pupil axes are vignetted (the pupil size can't be set)");
         };
         let (p, m) = (perp(k(ia, false)), perp(k(ia, true)));
         let h = 2.0 * A[ia];
@@ -490,7 +486,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
     }
     let jm = [[col[0][0], col[1][0]], [col[0][1], col[1][1]]];
     if !(jm[0][0].abs() > 1e-12 && jm[1][1].abs() > 1e-12) {
-        notimpl!("MTF: アフォーカル像空間のビームの幅が 0");
+        notimpl!("MTF: the beam width of the afocal image space is 0");
     }
     Ok(jm)
 }
@@ -521,14 +517,18 @@ fn pupil_jacobian_inner(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 
             [(p[0] - m[0]) / h, (p[1] - m[1]) / h]
         } else {
             if !r.traced(0) {
-                notimpl!("MTF: 主光線が像面に届かない（瞳の大きさが決められない）");
+                notimpl!(
+                    "MTF: the chief ray doesn't reach the image (the pupil size can't be set)"
+                );
             }
             let o = lm(0);
             let one = (0..A.len())
                 .flat_map(|ia| [(ia, false), (ia, true)])
                 .find(|&(ia, neg)| r.traced(k(ia, neg)));
             let Some((ia, neg)) = one else {
-                notimpl!("MTF: 瞳の内側の光線もけられる（瞳の大きさが決められない）");
+                notimpl!(
+                    "MTF: rays inside the pupil are vignetted too (the pupil size can't be set)"
+                );
             };
             let p = lm(k(ia, neg));
             let h = if neg { -A[ia] } else { A[ia] };
@@ -1298,7 +1298,7 @@ fn wave_otf_fft(
         .collect();
     drop(wv);
     if !(e0 > 0.0) {
-        invalid!("MTF: 有効な光線がない（すべてけられた）");
+        invalid!("MTF: no valid rays (all vignetted)");
     }
     let l = (2 * ns).next_power_of_two();
     // 球欠: 行（x の向き）の自己相関、子午: 列（y の向き）
@@ -1429,7 +1429,7 @@ fn wave_otf(
             .map(|i| w0[i])
             .sum();
         if !(e0 > 0.0) {
-            invalid!("MTF: 有効な光線がない（すべてけられた）");
+            invalid!("MTF: no valid rays (all vignetted)");
         }
         // 瞳が開口・遮蔽で切れている（けられた点がある）なら縁に合わせた求積にする
         if o0.iter().any(|v| !v.is_finite()) {
@@ -1742,7 +1742,7 @@ fn clipped_otf(
             .map(|(sg, &w)| w * sg.iter().map(|(a, b)| b - a).sum::<f64>())
             .sum();
         if !(e0[dir] > 0.0) {
-            invalid!("MTF: 有効な光線がない（すべてけられた）");
+            invalid!("MTF: no valid rays (all vignetted)");
         }
     }
     if sym {
@@ -1845,7 +1845,7 @@ fn mtf_sum(freqs: &[f64], otfs: &[(f64, &WaveOtf)], cutoff: TanSag<f64>) -> Mtf 
 fn check_n(n: Option<usize>) -> Result<()> {
     if let Some(n) = n {
         if n < 4 {
-            invalid!("MTF の瞳の格子 {n} は 4 以上にする");
+            invalid!("MTF pupil grid {n} must be 4 or more");
         }
     }
     Ok(())
@@ -1887,7 +1887,7 @@ pub fn mtf_only(
         }
     }
     if otfs.is_empty() {
-        crate::invalid!("重みのある波長がない"); // 重みの和 0 で割って NaN にしない（ANA-23）
+        crate::invalid!("no weighted wavelength"); // 重みの和 0 で割って NaN にしない（ANA-23）
     }
     let refs: Vec<(f64, &_)> = otfs.iter().map(|(wt, o)| (*wt, o)).collect();
     let cut = mtf_cutoff(s, field, w.unwrap_or(s.primary))?;
@@ -1927,7 +1927,7 @@ pub fn mtf_waves(
         })
         .collect();
     if poly.is_empty() {
-        invalid!("MTF: 重みが正の波長がない");
+        invalid!("MTF: no wavelength with positive weight");
     }
     Ok(MtfWaves {
         poly: mtf_sum(freqs, &poly, cuts[s.primary]),
@@ -2522,7 +2522,7 @@ pub fn zernike(
 ) -> Result<Zernike> {
     check_grid(n)?;
     if nterms == 0 || (kind == ZernKind::Fringe && nterms > 37) || nterms > 2016 {
-        invalid!("項数 {nterms}（Fringe は 1〜37、Standard は 1〜2016）");
+        invalid!("{nterms} terms (Fringe 1 to 37, Standard 1 to 2016)");
     }
     let g = wavefront_grid(n);
     let (mut px, mut py) = (Vec::new(), Vec::new());
@@ -2546,7 +2546,7 @@ pub fn zernike(
         }
     }
     if v.len() < nm.len().max(3) {
-        invalid!("有効な光線 {} 本が項数 {} より少ない", v.len(), nm.len());
+        invalid!("{} valid rays are fewer than {} terms", v.len(), nm.len());
     }
     // 正規方程式 (AᵀA) c = Aᵀv を点の塊ごとに足し（塊の分け方と足す順は固定なので、値はスレッド数によらない）、
     // Cholesky で解いて残差で 1 回補正する（Zernike の項は円の上でほぼ直交なので条件数は小さい）

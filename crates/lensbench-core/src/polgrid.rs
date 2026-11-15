@@ -63,7 +63,7 @@ impl PolGrid {
         ny: usize,
     ) -> Result<PolGrid> {
         if nx < MIN_POINTS || ny < MIN_POINTS {
-            invalid!("偏光の格子は各軸 {MIN_POINTS} 点以上（{nx} × {ny}）");
+            invalid!("the polarization grid needs {MIN_POINTS} points or more on each axis ({nx} × {ny})");
         }
         let (ax, ay) = (axis(nx), axis(ny));
         let mut gx = Vec::with_capacity(nx * ny);
@@ -89,7 +89,7 @@ impl PolGrid {
                 vig,
                 hxy,
             },
-            _ => invalid!("偏光の格子は瞳座標（normalized・signed）で始める光線だけ"),
+            _ => invalid!("the polarization grid is only for rays started in pupil coordinates (normalized, signed)"),
         };
         let x = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
         let y = [C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
@@ -107,7 +107,7 @@ impl PolGrid {
             }
         }
         if !good.iter().any(|&g| g) {
-            invalid!("偏光の格子の点がどれも通らない");
+            invalid!("no point of the polarization grid passes");
         }
         let inside = |k: usize| gx[k] * gx[k] + gy[k] * gy[k] <= 1.0 + 1e-12;
         let missing: Vec<usize> = (0..n).filter(|&k| !good[k] && inside(k)).collect();

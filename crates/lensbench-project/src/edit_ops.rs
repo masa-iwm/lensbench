@@ -495,14 +495,14 @@ pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<
 /// 操作の列の JSON を読む（知らない操作・キーは誤り。誤りの文の頭に操作の番号）
 pub fn parse(ops: &Value) -> Result<Vec<EditOp>, String> {
     let Some(list) = ops.as_array() else {
-        return Err("ops は操作の並び".into());
+        return Err("ops must be a list of operations".into());
     };
     list.iter()
         .enumerate()
         .map(|(i, o)| {
             EditOp::deserialize(o).map_err(|e| {
                 let name = o.get("op").and_then(Value::as_str).unwrap_or("?");
-                format!("操作 {} ({name}): {e}", i + 1)
+                format!("operation {} ({name}): {e}", i + 1)
             })
         })
         .collect()
@@ -518,7 +518,7 @@ pub fn apply(s: &mut System, ops: &[EditOp]) -> Result<Vec<String>, String> {
     let mut t = s.clone();
     let mut notes = Vec::new();
     for (i, op) in ops.iter().enumerate() {
-        let at = |e: String| format!("操作 {}: {e}", i + 1);
+        let at = |e: String| format!("operation {}: {e}", i + 1);
         apply_one(&mut t, op, &mut notes).map_err(at)?;
         // 表の操作でなければ、変えた値を表の今の構成の列にも
         if !op.is_config() {

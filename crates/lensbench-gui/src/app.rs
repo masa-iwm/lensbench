@@ -35,6 +35,7 @@ use crate::i18n::{self, n_, tr, trf, Lang};
 use crate::json_view::{self, fmt_num};
 use crate::layout::{self, AnaCfg, Kind, Layout, OsWin, Pane, Preset, View};
 use crate::lens_data;
+use crate::missing_glass::{missing_glass_name, model_glass_zmx};
 use crate::open_sysset;
 use crate::palette::{Item, Palette};
 use crate::plots::{self, SpotRays, SysInfo};
@@ -251,14 +252,18 @@ fn method_label(m: &str) -> String {
 fn plain_error(e: &str) -> String {
     let mut t = e.to_string();
     // 編集の操作の番号（1 つだけ送ったときは要らない）
-    if let Some(rest) = t.strip_prefix("操作 1: ") {
-        t = rest.to_string();
+    for p in ["操作 1: ", "operation 1: "] {
+        if let Some(rest) = t.strip_prefix(p) {
+            t = rest.to_string();
+        }
     }
     t = t.replace("不正: ", "").replace("invalid: ", "");
-    t.replace(
-        "（カタログを足す: add_glasses・add_glass_catalogs）",
-        tr("（ファイル > カタログのフォルダ… でガラスカタログを足す）"),
-    )
+    let add = tr("（ファイル > カタログのフォルダ… でガラスカタログを足す）");
+    t.replace("（カタログを足す: add_glasses・add_glass_catalogs）", add)
+        .replace(
+            " (add catalogs: add_glasses, add_glass_catalogs)",
+            &format!(" {add}"),
+        )
 }
 
 /// カタログに無いガラスで開けなかった系（GUX-01）
@@ -272,45 +277,6 @@ struct MissingGlass {
     model: Option<PathBuf>,
     /// 代用を続けた回数（止まらないときの上限）
     tries: usize,
-}
-
-/// エラーの文から、カタログに無いガラスの名前（「ガラス N-SK16（面 1）がカタログにない」など）
-fn missing_glass_name(e: &str) -> Option<String> {
-    let i = e.find("ガラス ")? + "ガラス ".len();
-    let rest = &e[i..];
-    let end = rest.find(['（', ' ', '）'])?;
-    let tail = &rest[end..];
-    (tail.contains("がカタログにない") || tail.contains("がない")).then(|| rest[..end].to_string())
-}
-
-/// .zmx の GLAS の行のうち names のガラスを、行にある nd・νd のモデルガラス（___BLANK、ソルブ 1）に替える。
-/// 替えた名前（nd が無い行は替えない）
-fn model_glass_zmx(text: &str, names: &[String]) -> (String, Vec<String>) {
-    let mut done = Vec::new();
-    let mut out = String::with_capacity(text.len());
-    for line in text.lines() {
-        let t: Vec<&str> = line.split_whitespace().collect();
-        let hit = t.first() == Some(&"GLAS")
-            && t.get(1)
-                .is_some_and(|n| names.iter().any(|x| x.eq_ignore_ascii_case(n)))
-            && t.get(2) != Some(&"2")
-            && t.get(4)
-                .and_then(|x| x.parse::<f64>().ok())
-                .is_some_and(|nd| nd > 1.0);
-        if hit {
-            let mut u: Vec<String> = t.iter().map(|x| x.to_string()).collect();
-            done.push(u[1].clone());
-            u[1] = "___BLANK".into();
-            u[2] = "1".into();
-            let indent = &line[..line.len() - line.trim_start().len()];
-            out.push_str(indent);
-            out.push_str(&u.join(" "));
-        } else {
-            out.push_str(line);
-        }
-        out.push('\n');
-    }
-    (out, done)
 }
 
 /// 解析パネルの結果
@@ -5675,30 +5641,5 @@ mod open_insert_tests {
             2
         );
         assert_eq!(split_open(z, &rows, None, p).len(), 2);
-    }
-}
-
-#[cfg(test)]
-mod missing_glass_tests {
-    use super::*;
-
-    /// エラーの文から無いガラスの名前を取り、.zmx の GLAS の行をモデルガラスに替える（GUX-01）
-    #[test]
-    fn model_glass_substitution() {
-        assert_eq!(
-            missing_glass_name("load: 不正: ガラス N-SK16（面 1）がカタログにない").as_deref(),
-            Some("N-SK16")
-        );
-        assert_eq!(
-            missing_glass_name("edit: 面 3: 不正: ガラス XYZ9 がない（…）").as_deref(),
-            Some("XYZ9")
-        );
-        assert_eq!(missing_glass_name("ほかのエラー"), None);
-        let z = "SURF 1\n  GLAS N-SK16 0 0 1.62041 60.32 0 0 0 0 0 0\nSURF 2\n  GLAS F2 2 1 0 0\n";
-        let (out, done) = model_glass_zmx(z, &["N-SK16".into(), "F2".into()]);
-        assert_eq!(done, vec!["N-SK16".to_string()]);
-        assert!(out.contains("  GLAS ___BLANK 1 0 1.62041 60.32"));
-        // ピックアップ（ソルブ 2）は替えない
-        assert!(out.contains("GLAS F2 2 1 0 0"));
     }
 }
