@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 mod analysis_cmd;
 pub mod error;
 mod help_json;
+mod text_out;
 pub use error::AppError;
 mod coat_cmd;
 use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
@@ -227,6 +228,7 @@ enum Cmd {
         /// Project block ids (two give the range between them in the top-level list; surface table changes in surface_edits are baked in)
         #[arg(long, num_args = 1)]
         block: Vec<String>,
+        /// Folders to search for glass catalogs (more than one allowed)
         #[arg(long = "glass-dir")]
         glass_dir: Vec<PathBuf>,
         /// Lens catalogs to search for the project's catalog lenses (same as info, etc.)
@@ -235,11 +237,13 @@ enum Cmd {
         /// .zmx multi-configuration number
         #[arg(long, default_value_t = 1)]
         cfg: usize,
+        /// Description of the item
         #[arg(long, default_value = "")]
         description: String,
         /// Replace an item of the same name
         #[arg(long)]
         replace: bool,
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
@@ -271,6 +275,7 @@ enum Cmd {
         /// List the specs with fixed names
         #[arg(long)]
         list_specs: bool,
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
@@ -278,8 +283,10 @@ enum Cmd {
     ///
     /// Thickness and diameter; glass and frame (`frame`) for mounted items; mechanical parts without glass (tubes, cage plates, mounts) as a whole frame (`mech`; `frame` with the bore, length, outer diameter, threads, rod spacing and the element held)
     CatalogStep {
+        /// STEP files to measure (.step, .stp)
         #[arg(required = true)]
         files: Vec<PathBuf>,
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
@@ -296,12 +303,15 @@ enum Cmd {
         /// Cache folder (if omitted, the environment variable LENSBENCH_CAD_CACHE, otherwise lensbench/cad in the OS settings location)
         #[arg(long)]
         cache: Option<PathBuf>,
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
     /// List the items of a user catalog
     CatalogList {
+        /// User catalog file
         catalog: PathBuf,
+        /// Output JSON
         #[arg(long)]
         json: bool,
     },
@@ -741,7 +751,7 @@ fn print_out(json_out: bool, out: &Value) {
     let r = if json_out {
         writeln!(w, "{}", serde_json::to_string_pretty(out).unwrap())
     } else {
-        print_text(&mut w, &brief(&tolerance_brief(out)), 0)
+        text_out::print_text(&mut w, &brief(&tolerance_brief(out)), 0)
     };
     // 読み手が先に閉じた（`| head` など）ときは黙って終える
     let e = r.and_then(|_| w.flush()).err();
@@ -1482,77 +1492,6 @@ struct CoatDesignArgs<'a> {
     d_max: f64,
     slack: f64,
     out: Option<&'a std::path::Path>,
-}
-
-/// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
-fn print_text(w: &mut dyn std::io::Write, v: &Value, ind: usize) -> std::io::Result<()> {
-    let pad = "  ".repeat(ind);
-    match v {
-        Value::Object(m) => {
-            for (k, x) in m {
-                match x {
-                    Value::Object(_) | Value::Array(_) if !is_flat(x) => {
-                        writeln!(w, "{pad}{k}:")?;
-                        print_text(w, x, ind + 1)?;
-                    }
-                    _ => writeln!(w, "{pad}{k}: {}", fmt(x))?,
-                }
-            }
-        }
-        Value::Array(a) => {
-            for x in a {
-                writeln!(w, "{pad}-")?;
-                print_text(w, x, ind + 1)?;
-            }
-        }
-        _ => writeln!(w, "{pad}{}", fmt(v))?,
-    }
-    Ok(())
-}
-
-fn is_flat(v: &Value) -> bool {
-    match v {
-        Value::Array(a) => a.iter().all(|x| x.is_number() || is_flat_pair(x)),
-        _ => false,
-    }
-}
-
-fn is_flat_pair(v: &Value) -> bool {
-    matches!(v, Value::Array(a) if a.iter().all(Value::is_number))
-}
-
-/// 数の表示: 有効 6 桁。ふつうの大きさ（1e-4 〜 1e6）は小数で、ほかは指数で
-fn fmt_f64(f: f64) -> String {
-    if f == 0.0 || !f.is_finite() {
-        return format!("{f}");
-    }
-    let a = f.abs();
-    if (1e-4..1e6).contains(&a) {
-        let digits = (5 - a.log10().floor() as i32).max(0) as usize;
-        let t = format!("{f:.digits$}");
-        if t.contains('.') {
-            t.trim_end_matches('0').trim_end_matches('.').to_string()
-        } else {
-            t
-        }
-    } else {
-        format!("{f:.5e}")
-    }
-}
-
-fn fmt(v: &Value) -> String {
-    match v {
-        Value::Number(n) => {
-            if n.is_i64() || n.is_u64() {
-                n.to_string()
-            } else {
-                fmt_f64(n.as_f64().unwrap_or(0.0))
-            }
-        }
-        Value::Array(a) => format!("[{}]", a.iter().map(fmt).collect::<Vec<_>>().join(", ")),
-        Value::String(s) => s.clone(),
-        _ => v.to_string(),
-    }
 }
 
 /// 標準出力の読み手が先に閉じた（`lensbench … | head`）ときの println! の panic は、backtrace を出さず黙って終える（終了コード 0。ほかの panic はいつもどおり）

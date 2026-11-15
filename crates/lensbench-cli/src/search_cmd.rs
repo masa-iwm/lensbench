@@ -13,8 +13,10 @@ use serde_json::{json, Value};
 pub struct ZoomArgs {
     /// .zmx (each multi-configuration is a state) or a project file (.json, states are the states)
     pub file: PathBuf,
+    /// Folders to search for glass catalogs (more than one allowed; LENSBENCH_GLASSCAT is also used)
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
+    /// Lens catalogs for the catalog lenses ("vendor", "part") of a project file (.zmx files, or folders of .zmx; the folder name is the maker and the file name is the part number; more than one allowed)
     #[arg(long = "lens-catalog")]
     pub lens_catalog: Vec<PathBuf>,
     /// States, comma-separated (state names for a project, configuration numbers for .zmx). All if omitted
@@ -38,6 +40,7 @@ pub struct ZoomArgs {
     /// Reference: centroid or chief
     #[arg(long = "reference", default_value = "centroid")]
     pub reference: String,
+    /// Number of rings of the Gaussian pupil quadrature
     #[arg(long, default_value_t = 3)]
     pub rings: usize,
     /// Maximum iterations per point
@@ -46,6 +49,7 @@ pub struct ZoomArgs {
     /// Tolerance from the target (relative to the target)
     #[arg(long, default_value_t = 1e-8)]
     pub tol: f64,
+    /// Output JSON
     #[arg(long)]
     pub json: bool,
     /// Write the result (json, csv or npz; csv and npz are the trajectory table)
@@ -57,8 +61,10 @@ pub struct ZoomArgs {
 pub struct SwapArgs {
     /// Project file (.json)
     pub file: PathBuf,
+    /// Folders to search for glass catalogs (more than one allowed; LENSBENCH_GLASSCAT is also used)
     #[arg(long = "glass-dir")]
     pub glass_dir: Vec<PathBuf>,
+    /// Lens catalogs for the catalog lenses ("vendor", "part") of a project file (.zmx files, or folders of .zmx; the folder name is the maker and the file name is the part number; more than one allowed)
     #[arg(long = "lens-catalog", required = true)]
     pub lens_catalog: Vec<PathBuf>,
     /// Swap search settings (JSON: slots, vars, merit, iters, state, etc.)
@@ -76,6 +82,7 @@ pub struct SwapArgs {
     /// Number of combinations to output (in order of merit). 0 for all
     #[arg(long, default_value_t = 20)]
     pub top: usize,
+    /// Output JSON
     #[arg(long)]
     pub json: bool,
     /// Write the result (json, csv or npz)

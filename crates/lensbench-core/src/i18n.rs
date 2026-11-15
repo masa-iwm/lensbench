@@ -13,6 +13,7 @@
 //! - New messages: write them in English and add the Japanese line to `lang/ja.tsv`. Crates outside this
 //!   repository's public part keep their own table and add it with [`add_table`].
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{OnceLock, RwLock};
 
@@ -133,6 +134,24 @@ pub fn add_table(text: &'static str) {
         .write()
         .unwrap_or_else(|e| e.into_inner())
         .extend(entries(text));
+    whole_lines()
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(lines(text));
+}
+
+fn lines(text: &str) -> impl Iterator<Item = (String, String)> + '_ {
+    text.lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(en, ja)| (en.to_string(), ja.to_string()))
+}
+
+/// The table by whole English line for [`translate_doc`] (later lines win). The help of every command is
+/// translated at each start, so this is a hash lookup rather than a pass over the templates
+fn whole_lines() -> &'static RwLock<HashMap<String, String>> {
+    static T: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
+    T.get_or_init(|| RwLock::new(lines(JA).collect()))
 }
 
 /// Check a table: each line has a tab, the same `{…}` in English and Japanese, unnamed `{}` in the same
@@ -316,16 +335,8 @@ pub fn tr(s: &str) -> String {
 /// The Japanese of a line only when a table line is exactly that text (descriptions: an
 /// English text with no line of its own must not be taken apart by message templates such as `surface {}`)
 fn exact(s: &str) -> Option<String> {
-    let t = table().read().unwrap_or_else(|e| e.into_inner());
-    let text = |v: &[Piece]| -> String {
-        v.iter()
-            .map(|p| match p {
-                Piece::Text(x) | Piece::Slot(x) => x.as_str(),
-            })
-            .collect()
-    };
-    let e = t.iter().rev().find(|e| text(&e.en) == s)?;
-    Some(text(&e.ja))
+    let t = whole_lines().read().unwrap_or_else(|e| e.into_inner());
+    t.get(s).cloned()
 }
 
 /// Japanese of a description of several lines (help, analysis settings): each line from its own table line

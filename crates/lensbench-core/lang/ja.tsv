@@ -1632,6 +1632,8 @@ Number of combinations to output (in order of merit). 0 for all	出力する組�
 Write the result (json, csv or npz)	結果を書き出す（json・csv・npz）
 Save a lens or block to a user catalog (JSON) (the file is created if missing)	ユーザーカタログ（JSON）に玉かブロックを保存する（ファイルがなければ作る）
 User catalog file	ユーザーカタログのファイル
+Description of the item	品の説明
+STEP files to measure (.step, .stp)	測る STEP ファイル（.step・.stp）
 Item name	項目の名前
 Name of the item	品の名前
 A .zmx or project file to take the lens from (with --lens), or a project file (with --block)	玉を取る .zmx かプロジェクトファイル（--lens と）、またはプロジェクトファイル（--block と）
