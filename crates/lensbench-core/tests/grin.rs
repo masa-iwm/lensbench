@@ -328,3 +328,39 @@ fn unsupported_surface_after_the_medium_is_rejected() {
     let e = a.changed().unwrap_err().to_string();
     assert!(e.contains("GRIN"), "{e}");
 }
+
+/// 像面が GRIN の媒質の中にある系（G9A から面 2 を抜いた系）のスルーフォーカス: 像面の手前で光線が曲がるので、
+/// ずらす前の光線を直線で進める近道（core focus.rs）は使わず、厚さを変えて追い直したのと同じ値
+#[test]
+fn rms_vs_focus_with_the_image_inside_grin() {
+    let (mut s, _) = load("G9A");
+    s.delete_surface(2).unwrap();
+    // GRIN の面と像面の間に何もしない座標ブレークを挟んだ系も（媒質は GRIN のまま）
+    let mut cb = s.clone();
+    let im = cb.image();
+    let d = lensbench_core::surface::Surface {
+        typ: lensbench_core::surface::SurfType::CoordBrk,
+        ..Default::default()
+    };
+    cb.insert_surface(im, d).unwrap();
+    for s in [s, cb] {
+        check_focus(&s);
+    }
+}
+
+fn check_focus(s: &System) {
+    use lensbench_core::{sweep, Waves};
+    let f = FieldSel::Index(s.fields.len() - 1);
+    for dz in [-0.5, 0.5] {
+        let r = sweep::rms_vs_focus(s, f, &[dz], Waves::All, Default::default());
+        let d = sweep::defocus(s, dz).unwrap();
+        match sweep::rms(&d, f, Waves::All, Default::default()) {
+            Ok(a) => {
+                assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+                assert_eq!((r.rms[0].spot, r.rms[0].wfe), (a.spot, a.wfe), "dz {dz}");
+            }
+            // 追い直しでも求まらない点（座標ブレークを挟んだ系の dz −0.5 は射出瞳が求まらない）は掃引でも NaN
+            Err(_) => assert!(r.rms[0].spot.is_nan() && !r.warnings.is_empty(), "dz {dz}"),
+        }
+    }
+}

@@ -10,11 +10,13 @@
 
 use crate::analysis::{self, mtf, pupil_gauss, Opd};
 use crate::error::Result;
+use crate::focus::{FocusBase, FocusShift};
 use crate::glass;
 use crate::invalid;
 use crate::surface::SurfType;
 use crate::system::{FieldSel, FieldType, System, Trace};
 use crate::Waves;
+use std::sync::Arc;
 
 // ------------------------------------------------------------------------------------------ 系の変更
 /// 像面を dz [レンズ単位] ずらした系（像面の手前の面の厚さに dz を足す。+ は光の進む向きに遠ざける）
@@ -27,6 +29,18 @@ pub fn defocus(s: &System, dz: f64) -> Result<System> {
         let j = d.image() - 1;
         d.surfaces[j].t += dz;
         d.changed()?;
+    }
+    Ok(d)
+}
+
+/// [`defocus`] で、掃引の点で共有する光線の表 fb（[`crate::focus`]、使えない系は None）から追う系
+fn defocus_shared(s: &System, dz: f64, fb: Option<&Arc<FocusBase>>) -> Result<System> {
+    let mut d = defocus(s, dz)?;
+    if let Some(z) = fb.and_then(|fb| fb.shift_of(&d)) {
+        d.set_focus(FocusShift {
+            base: fb.unwrap().clone(),
+            z,
+        });
     }
     Ok(d)
 }
@@ -271,11 +285,15 @@ pub fn through_focus_mtf(
     dz: &[f64],
 ) -> MtfSweep {
     let w = w.one();
+    let fb = FocusBase::new(s);
     mtf_sweep(
         dz,
         freqs,
         |z| format!("shift {z}"),
-        |z| mtf(&defocus(s, z)?, field, Waves::all_or(w), n, freqs),
+        |z| {
+            let d = defocus_shared(s, z, fb.as_ref())?;
+            mtf(&d, field, Waves::all_or(w), n, freqs)
+        },
     )
 }
 
@@ -654,10 +672,18 @@ pub fn rms_vs_field(s: &System, axis: FieldAxis, h: &[f64], w: Waves, o: RmsOpts
 /// RMS vs Focus: 像面のずらし dz ごと
 pub fn rms_vs_focus(s: &System, field: FieldSel, dz: &[f64], w: Waves, o: RmsOpts) -> RmsSweep {
     let w = w.one();
+    let fb = FocusBase::new(s);
     rms_sweep(
         dz,
         |z| format!("shift {z}"),
-        |z| rms(&defocus(s, z)?, field, Waves::all_or(w), o),
+        |z| {
+            rms(
+                &defocus_shared(s, z, fb.as_ref())?,
+                field,
+                Waves::all_or(w),
+                o,
+            )
+        },
     )
 }
 

@@ -45,15 +45,17 @@ fn through_focus_at_zero_is_the_mtf() {
             assert_eq!(t.tan[k][1], m.tan[k], "{name}");
             assert_eq!(t.sag[k][1], m.sag[k], "{name}");
         }
-        // ずらしは像面の手前の厚さを変えたのと同じ
-        let mut d = s.clone();
-        let j = d.image() - 1;
-        d.surfaces[j].t += 0.01;
-        d.changed().unwrap();
+        // ずらしは像面の手前の厚さを変えたのと同じ（ずらす前の光線を像面まで進めるので丸めの差だけ）
+        let d = sweep::defocus(&s, 0.01).unwrap();
         let md = analysis::mtf(&d, f, Waves::All, None, &FREQS).unwrap();
         for k in 0..FREQS.len() {
-            assert_eq!(t.tan[k][2], md.tan[k], "{name}");
+            assert!((t.tan[k][2] - md.tan[k]).abs() < 1e-10, "{name}");
+            assert!((t.sag[k][2] - md.sag[k]).abs() < 1e-10, "{name}");
         }
+        let r = sweep::rms_vs_focus(&s, f, &[0.01], Waves::All, Default::default());
+        let a = sweep::rms(&d, f, Waves::All, Default::default()).unwrap();
+        assert!((r.rms[0].spot - a.spot).abs() < 1e-12 * a.spot, "{name}");
+        assert!((r.rms[0].wfe - a.wfe).abs() < 1e-9, "{name}");
     }
 }
 

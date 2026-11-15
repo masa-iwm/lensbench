@@ -19,6 +19,7 @@ pub mod elements;
 pub mod ext;
 pub mod fermat;
 pub mod fiber;
+mod focus;
 pub mod freeform;
 pub mod ghost;
 pub mod glass;

@@ -602,6 +602,8 @@ struct Cache {
     kinds: OnceLock<Vec<crate::trace::SurfKind>>,
     /// 面ごとの空間の進む向き（[`crate::trace::space_signs`]、追跡の内側で光線ごとに作らないため）。面の並びで決まる
     signs: OnceLock<Vec<f64>>,
+    /// 像面だけをずらした系の追跡の共有の表（[`crate::focus`]。changed() で外れる）
+    pub(crate) focus: Option<crate::focus::FocusShift>,
 }
 
 /// これ以上の本数で並列に追う
@@ -1019,6 +1021,11 @@ impl System {
     /// キャッシュを捨てる（系のデータの確かめはしない）
     pub(crate) fn invalidate_frames(&mut self) {
         self.cache = Cache::default();
+    }
+
+    /// 像面だけをずらした系の追跡に共有の表を使う（[`crate::sweep::defocus_shared`]）
+    pub(crate) fn set_focus(&mut self, f: crate::focus::FocusShift) {
+        self.cache.focus = Some(f);
     }
 
     /// 面や系のデータを書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てる）
@@ -3270,6 +3277,10 @@ impl System {
     ) -> Result<Trace> {
         let w = w.unwrap_or(self.primary);
         let (hx, hy) = self.field_sel_norm(field, w)?;
+        let rec = rec.into();
+        if let (Some(f), None, RecSel::Off) = (&self.cache.focus, last, &rec) {
+            return f.trace(self, field, (hx, hy), px, py, w);
+        }
         let spec = self.object_spec(hx, hy)?;
         let vig = self.vig_factors(hx, hy)?;
         let l = Launch::Pupil {
