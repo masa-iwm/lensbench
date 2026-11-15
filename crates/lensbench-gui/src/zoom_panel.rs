@@ -79,18 +79,6 @@ impl Default for ZoomPanel {
     }
 }
 
-fn num(t: &str, what: &str) -> Result<Option<f64>, String> {
-    let t = t.trim();
-    if t.is_empty() {
-        return Ok(None);
-    }
-    t.parse::<f64>()
-        .ok()
-        .filter(|x| x.is_finite())
-        .map(Some)
-        .ok_or_else(|| trf("{} の値 {} が数でない", &[&what, &t]))
-}
-
 /// 設定に残す欄（走らせた結果・走行中は残さない、GPN-14）
 #[derive(Serialize, Deserialize)]
 struct Saved {
@@ -159,7 +147,7 @@ impl ZoomPanel {
             } else {
                 json!(name)
             });
-            targets.push(num(&row.target, name)?);
+            targets.push(crate::widgets::parse_num(&row.target, name)?);
         }
         if configs.is_empty() {
             return Err(tr("状態を 1 つ以上選んでください").into());
@@ -171,10 +159,10 @@ impl ZoomPanel {
                 continue;
             }
             let mut o = json!({ "name": n });
-            if let Some(x) = num(&v.lo, n)? {
+            if let Some(x) = crate::widgets::parse_num(&v.lo, n)? {
                 o["lo"] = json!(x);
             }
-            if let Some(x) = num(&v.hi, n)? {
+            if let Some(x) = crate::widgets::parse_num(&v.hi, n)? {
                 o["hi"] = json!(x);
             }
             vars.push(o);

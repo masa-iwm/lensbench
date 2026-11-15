@@ -64,4 +64,6 @@
   `lensbench_design::{montecarlo, coat_fit, coat_design}` に移した。
 
 ### GUI
+- 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。
+- 既定の組合せの名前は画面の言語で付く（英語の画面では Catalog lens combination）。
 - CAD の置き場の Secret は保存しない（環境変数 `LENSBENCH_CAD_STORE_SECRET`）。

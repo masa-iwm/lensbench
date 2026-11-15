@@ -4,16 +4,18 @@
 //! `"type": "lens"` の `source` に vendor・part）にして `load` で読む。系の中の面を直す編集は
 //! 系の編集の上に作る。
 
-use egui::{Color32, RichText, Sense, Ui};
+use crate::theme;
+use egui::{RichText, Sense, Ui};
 use egui_extras::{Column, Size, StripBuilder, TableBuilder};
 use serde_json::{json, Value};
 mod filter;
+pub use filter::CATEGORIES;
 
 use std::sync::Arc;
 
 pub use filter::{filter_glasses, filter_lenses};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -60,24 +62,6 @@ pub struct LensRow {
     /// serve の行のまま（仕様 `specs`・タグ `tags` と、仕様での絞り込みに使う）
     pub raw: Value,
 }
-
-/// 品の種類の選択肢（serve の `category`、表示名）
-pub const CATEGORIES: &[(&str, &str)] = &[
-    ("lens", "レンズ"),
-    ("mirror", "鏡"),
-    ("splitter", "BS"),
-    ("polarizer", "偏光子"),
-    ("waveplate", "波長板"),
-    ("window", "ウィンドウ"),
-    ("filter", "フィルター"),
-    ("prism", "プリズム"),
-    ("tube", "チューブ"),
-    ("cage_plate", "ケージ板"),
-    ("mount", "マウント"),
-    ("rod", "ロッド"),
-    ("adapter", "アダプタ"),
-    ("other", "その他"),
-];
 
 /// 仕様の値を短く（範囲は a–b、単位つき）
 pub fn spec_text(name: &str, v: &Value) -> String {
@@ -1010,7 +994,8 @@ fn lens_cell(ui: &mut Ui, c: LensCol, r: &LensRow) {
         LensCol::Thickness => num_cell(ui, r.thickness),
         LensCol::Glass => {
             if let Some(e) = &r.error {
-                ui.colored_label(Color32::RED, e).on_hover_text(e);
+                ui.colored_label(theme::error(ui.visuals()), e)
+                    .on_hover_text(e);
             } else if r.is_incomplete() {
                 ui.colored_label(
                     ui.visuals().warn_fg_color,
@@ -1317,7 +1302,7 @@ impl Browser {
                 "仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000",
             ));
             if let Err(e) = parse_spec_filters(&q.spec) {
-                ui.colored_label(Color32::RED, e);
+                ui.colored_label(theme::error(ui.visuals()), e);
             }
             // 玉と機構部品の対応での絞り込み（「入る機構部品」「入る素子」から）
             if let Some(f) = &q.fit {
@@ -1378,7 +1363,7 @@ impl Browser {
                     ui.set_min_height(24.0);
                     let Some(r) = &picked else { return };
                     if let Some(e) = &r.error {
-                        ui.colored_label(Color32::RED, e);
+                        ui.colored_label(theme::error(ui.visuals()), e);
                     } else if r.is_incomplete() {
                         ui.colored_label(
                             ui.visuals().warn_fg_color,
@@ -1716,7 +1701,7 @@ impl Browser {
             ui.label(RichText::new(c.settings_summary()).small().weak());
         });
         for p in c.settings_problems() {
-            ui.label(RichText::new(format!("⚠ {p}")).color(Color32::from_rgb(220, 80, 60)));
+            ui.label(RichText::new(format!("⚠ {p}")).color(theme::error(ui.visuals())));
         }
         ui.separator();
         let ids: Vec<String> = c.ids().into_iter().filter(|x| !x.is_empty()).collect();
@@ -1878,9 +1863,9 @@ impl Browser {
                     ui.label(trf("{} / {} 種", &[&idx.len(), &self.glasses.len()]));
                     ui.separator();
                     let Some(g) = picked else {
-                        ui.weak(tr(tr(
+                        ui.weak(tr(
                             "nd・νd はカタログ温度の分散式から。表の行か図の点をクリックで選びます",
-                        )));
+                        ));
                         return;
                     };
                     ui.label(RichText::new(format!("{} ({})", g.name, g.catalog)).strong());
@@ -2185,7 +2170,7 @@ fn ticks(lo: f64, hi: f64, n: usize) -> (Vec<f64>, usize) {
 }
 
 /// ガラスマップ（横 νd（右ほど小さい）、縦 nd）。クリックした点に一番近いガラスを返す。
-/// ホイールで拡大・縮小、ドラッグで移動、ダブルクリックで全体表示
+/// ホイールで拡大・縮小、ドラッグで移動、ダブルクリック・Home で全体表示
 fn glass_map(
     ui: &mut Ui,
     view: &mut MapView,
@@ -2203,29 +2188,23 @@ fn glass_map(
         r.min + egui::vec2(40.0, 22.0),
         r.max - egui::vec2(12.0, 32.0),
     );
-    // 操作（描く前に範囲を決める）
-    if resp.double_clicked() {
+    // 操作（描く前に範囲を決める）。操作はほかの図と同じ（widgets::pan_zoom）。左ドラッグでも移動する
+    let pz = crate::widgets::pan_zoom(ui, &resp, true);
+    if pz.reset {
         *view = MapView::FULL;
     } else {
-        if resp.dragged() {
-            let d = resp.drag_delta();
+        if pz.pan != egui::Vec2::ZERO {
+            let d = pz.pan;
             view.pan(
                 -(d.x / rect.width()) as f64 * (view.vd1 - view.vd0),
                 (d.y / rect.height()) as f64 * (view.nd1 - view.nd0),
             );
         }
-        if let Some(p) = resp.hover_pos() {
-            let (scroll, zoom) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-            let factor = (scroll as f64 * 0.003).exp() * zoom as f64;
-            if (factor - 1.0).abs() > 1e-6 {
-                let vd =
-                    view.vd0 + ((p.x - rect.left()) / rect.width()) as f64 * (view.vd1 - view.vd0);
-                let nd = view.nd0
-                    + ((rect.bottom() - p.y) / rect.height()) as f64 * (view.nd1 - view.nd0);
-                view.zoom(vd, nd, factor);
-                // 外側の表などをスクロールさせない
-                ui.input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
-            }
+        if let Some(p) = pz.at {
+            let vd = view.vd0 + ((p.x - rect.left()) / rect.width()) as f64 * (view.vd1 - view.vd0);
+            let nd =
+                view.nd0 + ((rect.bottom() - p.y) / rect.height()) as f64 * (view.nd1 - view.nd0);
+            view.zoom(vd, nd, pz.zoom as f64);
         }
     }
     let MapView { vd0, vd1, nd0, nd1 } = *view;
@@ -2297,7 +2276,7 @@ fn glass_map(
     }
     if let Some(g) = sel.and_then(|i| rows.get(i)) {
         if g.nd.is_finite() && g.vd.is_finite() {
-            painter.circle_stroke(to(g.vd, g.nd), 5.0, (2.0, Color32::from_rgb(230, 80, 40)));
+            painter.circle_stroke(to(g.vd, g.nd), 5.0, (2.0, theme::highlight(ui.visuals())));
         }
     }
     let near = |p: egui::Pos2| {

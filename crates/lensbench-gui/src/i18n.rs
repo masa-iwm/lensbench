@@ -84,6 +84,12 @@ pub fn add(pairs: &'static [(&'static str, &'static str)]) {
     }
 }
 
+/// 訳す文字列の印（表に置く日本語。表示するときに `tr` で引く）。何もしないで返す。
+/// 網羅の試験は `tr("…")`・`trf("…")` と同じくこの中の文字列も拾う（GAR-21・GPN-21）
+pub const fn n_(ja: &'static str) -> &'static str {
+    ja
+}
+
 /// 今の言語の文字列
 pub fn tr(ja: &'static str) -> &'static str {
     if is_ja() {
@@ -142,7 +148,7 @@ mod tests {
                 continue;
             }
             let src = lensbench_core::vfs::read_to_string(path).unwrap();
-            for pat in ["tr(", "trf("] {
+            for pat in ["tr(", "trf(", "n_("] {
                 let mut s = src.as_str();
                 while let Some(i) = s.find(pat) {
                     // 識別子の途中（str( など）は除く
@@ -151,31 +157,70 @@ mod tests {
                     if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
                         continue;
                     }
-                    // rustfmt で折り返した trf(\n "…") も拾う。文字列で始まらない呼び出しは除く
-                    let t = s.trim_start();
-                    let Some(rest) = t.strip_prefix('"') else {
-                        continue;
-                    };
-                    let s2 = rest;
-                    let mut k = String::new();
-                    let mut chars = s2.chars();
+                    // 引数（括弧の対まで）の中の文字列を全部拾う。rustfmt で折り返した trf(\n "…") と
+                    // tr(if c { "…" } else { "…" }) も。trf の 2 つ目からの引数は表示する値なので、
+                    // 文字列で始まる呼び出しは初めの文字列だけ
+                    let first_only = s.trim_start().starts_with('"');
+                    let mut depth = 1;
+                    let mut chars = s.chars().peekable();
                     while let Some(c) = chars.next() {
                         match c {
-                            '"' => break,
-                            '\\' => match chars.next() {
-                                Some('n') => k.push('\n'),
-                                Some(x) => k.push(x),
-                                None => {}
-                            },
-                            _ => k.push(c),
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            '\'' => {
+                                // 文字（'"' など）。寿命の印 'a は 1 字で閉じないので読み飛ばさない
+                                let mut look = chars.clone();
+                                let c1 = look.next();
+                                let c2 = look.next();
+                                if c1 == Some('\\') {
+                                    while chars.next().is_some_and(|x| x != '\'') {}
+                                } else if c2 == Some('\'') {
+                                    chars.next();
+                                    chars.next();
+                                }
+                            }
+                            '"' => {
+                                let mut k = String::new();
+                                while let Some(c) = chars.next() {
+                                    match c {
+                                        '"' => break,
+                                        '\\' => match chars.next() {
+                                            Some('n') => k.push('\n'),
+                                            Some('t') => k.push('\t'),
+                                            // 行の終わりの \ は次の行の頭の空白ごと読み飛ばす
+                                            Some('\n') => {
+                                                while chars
+                                                    .peek()
+                                                    .is_some_and(|c| c.is_whitespace())
+                                                {
+                                                    chars.next();
+                                                }
+                                            }
+                                            Some(x) => k.push(x),
+                                            None => {}
+                                        },
+                                        _ => k.push(c),
+                                    }
+                                }
+                                keys.push(k);
+                                if first_only {
+                                    break;
+                                }
+                            }
+                            _ => {}
                         }
                     }
-                    keys.push(k);
                 }
             }
         }
         // 解析の名前の表（tr で引く）
         keys.extend(crate::layout::ANALYSES.iter().map(|a| a.1.to_string()));
+        keys.extend(crate::layout::TOOLS.iter().map(|t| t.title.to_string()));
         keys.extend(crate::layout_rays::LABELS.iter().map(|a| a.to_string()));
         keys.extend(crate::coat_defs::LABELS.iter().map(|a| a.to_string()));
         keys.extend(crate::tol_catalog::FIELDS.iter().map(|a| a.1.to_string()));

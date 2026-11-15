@@ -7,7 +7,7 @@
 use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::theme;
 
 /// 欄の状態
@@ -50,20 +50,24 @@ impl State {
 }
 
 const FIELD_TYPES: [(&str, &str); 4] = [
-    ("Angle", "角度"),
-    ("ObjH", "物体高"),
-    ("ParH", "近軸像高"),
-    ("RealH", "実像高"),
+    ("Angle", n_("角度")),
+    ("ObjH", n_("物体高")),
+    ("ParH", n_("近軸像高")),
+    ("RealH", n_("実像高")),
 ];
 const APERTURES: [(&str, &str, &str); 6] = [
-    ("Epd", "入射瞳径", " mm"),
-    ("FNum", "像空間 F 値", ""),
-    ("Na", "物体空間 NA", ""),
-    ("Float", "絞りの径で決まる", " mm"),
-    ("Pwfn", "近軸作動 F 値", ""),
-    ("Cone", "物体の円錐角", "°"),
+    ("Epd", n_("入射瞳径"), " mm"),
+    ("FNum", n_("像空間 F 値"), ""),
+    ("Na", n_("物体空間 NA"), ""),
+    ("Float", n_("絞りの径で決まる"), " mm"),
+    ("Pwfn", n_("近軸作動 F 値"), ""),
+    ("Cone", n_("物体の円錐角"), "°"),
 ];
-const AIMING: [(&str, &str); 3] = [("Off", "なし"), ("Paraxial", "近軸"), ("Real", "実光線")];
+const AIMING: [(&str, &str); 3] = [
+    ("Off", n_("なし")),
+    ("Paraxial", n_("近軸")),
+    ("Real", n_("実光線")),
+];
 const AFOCAL_UNITS: [&str; 6] = [
     "Microradians",
     "Milliradians",

@@ -2,6 +2,24 @@
 
 use super::*;
 
+/// 品の種類の選択肢（serve の `category`、表示名）
+pub const CATEGORIES: &[(&str, &str)] = &[
+    ("lens", n_("レンズ")),
+    ("mirror", n_("鏡")),
+    ("splitter", "BS"),
+    ("polarizer", n_("偏光子")),
+    ("waveplate", n_("波長板")),
+    ("window", n_("ウィンドウ")),
+    ("filter", n_("フィルター")),
+    ("prism", n_("プリズム")),
+    ("tube", n_("チューブ")),
+    ("cage_plate", n_("ケージ板")),
+    ("mount", n_("マウント")),
+    ("rod", n_("ロッド")),
+    ("adapter", n_("アダプタ")),
+    ("other", n_("その他")),
+];
+
 /// 品の検索の対象の文字列（メーカー・品番・ガラス・説明・タグ・仕様を小文字で 1 本に）
 fn lens_search_text(r: &LensRow) -> String {
     let mut h = format!(

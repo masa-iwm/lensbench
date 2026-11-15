@@ -8,28 +8,28 @@ use std::collections::BTreeMap;
 use egui_dock::{DockState, NodeIndex};
 use serde::{Deserialize, Serialize};
 
-use crate::i18n::tr;
+use crate::i18n::{n_, tr};
 
 /// 解析の種類（serve の analyze の cmd）、表示名、視野・波長を選べるか
 pub const ANALYSES: &[(&str, &str, bool)] = &[
-    ("spot", "スポット", true),
-    ("mtf", "回折 MTF", true),
-    ("wavefront", "波面収差", true),
-    ("zernike", "Zernike 係数", true),
+    ("spot", n_("スポット"), true),
+    ("mtf", n_("回折 MTF"), true),
+    ("wavefront", n_("波面収差"), true),
+    ("zernike", n_("Zernike 係数"), true),
     ("rms", "RMS", true),
-    ("psf", "回折 PSF", true),
-    ("geo-mtf", "幾何 MTF", true),
+    ("psf", n_("回折 PSF"), true),
+    ("geo-mtf", n_("幾何 MTF"), true),
     ("huygens-mtf", "Huygens MTF", true),
-    ("mtf-field", "フィールド MTF", false),
-    ("mtf-focus", "スルーフォーカス MTF", true),
-    ("fringe", "干渉縞（2 光束）", true),
-    ("pop", "簡易 POP", true),
-    ("rays", "光線の表", false),
-    ("coatings", "膜の境界", false),
-    ("info", "システムデータ", false),
-    ("elements", "玉モード", false),
-    ("ghost", "ゴースト", false),
-    ("mech-check", "機構のケラレ", false),
+    ("mtf-field", n_("フィールド MTF"), false),
+    ("mtf-focus", n_("スルーフォーカス MTF"), true),
+    ("fringe", n_("干渉縞（2 光束）"), true),
+    ("pop", n_("簡易 POP"), true),
+    ("rays", n_("光線の表"), false),
+    ("coatings", n_("膜の境界"), false),
+    ("info", n_("システムデータ"), false),
+    ("elements", n_("玉モード"), false),
+    ("ghost", n_("ゴースト"), false),
+    ("mech-check", n_("機構のケラレ"), false),
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
@@ -69,7 +69,13 @@ pub fn analysis_help(cmd: &str) -> Option<&'static str> {
 }
 
 /// 解析の群の並び
-pub const ANALYSIS_GROUPS: &[&str] = &["像の質", "MTF・PSF", "干渉・伝搬", "表・系", "追加の解析"];
+pub const ANALYSIS_GROUPS: &[&str] = &[
+    n_("像の質"),
+    n_("MTF・PSF"),
+    n_("干渉・伝搬"),
+    n_("表・系"),
+    n_("追加の解析"),
+];
 
 /// 解析の群（一覧の見出し、日本語。表示は tr で）。拡張の解析は「追加の解析」
 pub fn analysis_group(cmd: &str) -> &'static str {
@@ -182,7 +188,87 @@ impl Kind {
     pub fn single(&self) -> bool {
         !matches!(self, Kind::Analysis(_))
     }
+
+    /// 解析でないパネルの定義（解析は None）
+    pub fn tool(&self) -> Option<&'static Tool> {
+        TOOLS.iter().find(|t| t.kind == *self)
+    }
 }
+
+/// 解析でないパネル（1 枚だけ）の定義。メニュー・パレット・タブの名前はここから作る（GAR-16）
+pub struct Tool {
+    pub kind: Kind,
+    /// 名前（tr の鍵）
+    pub title: &'static str,
+    /// パレットで引く英語の語（パネルを出す）
+    pub keywords: &'static str,
+    /// パレットで引く英語の名前（開いているパネルへ移る）
+    pub name: &'static str,
+}
+
+/// 解析でないパネルの一覧（メニューの順）
+pub const TOOLS: &[Tool] = &[
+    Tool {
+        kind: Kind::System,
+        title: n_("系"),
+        keywords: "system",
+        name: "system",
+    },
+    Tool {
+        kind: Kind::Catalog,
+        title: n_("カタログ"),
+        keywords: "catalog",
+        name: "catalog",
+    },
+    Tool {
+        kind: Kind::Layout,
+        title: n_("レイアウト"),
+        keywords: "layout combo",
+        name: "layout",
+    },
+    Tool {
+        kind: Kind::SysSettings,
+        title: n_("系の設定"),
+        keywords: "system settings aperture field wavelength aiming",
+        name: "settings",
+    },
+    Tool {
+        kind: Kind::LensData,
+        title: n_("レンズデータ"),
+        keywords: "lens data surfaces table",
+        name: "lens data",
+    },
+    Tool {
+        kind: Kind::MultiConfig,
+        title: n_("多重構成"),
+        keywords: "multi configuration editor mce",
+        name: "multi configuration",
+    },
+    Tool {
+        kind: Kind::Optimize,
+        title: n_("最適化"),
+        keywords: "optimize optimization merit function dls",
+        name: "optimize",
+    },
+    Tool {
+        kind: Kind::Swap,
+        title: n_("差し替え探索"),
+        keywords: "swap search catalog lens replace",
+        name: "swap",
+    },
+    Tool {
+        kind: Kind::Tolerance,
+        title: n_("公差"),
+        keywords: "tolerance monte carlo sensitivity",
+        name: "tolerance",
+    },
+    Tool {
+        kind: Kind::Zoom,
+        title: n_("ズーム軌跡"),
+        keywords: "zoom cam track states focal length",
+        name: "zoom",
+    },
+];
 
 /// 1 つのパネル。id で見分ける
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,17 +286,11 @@ impl PartialEq for Pane {
 impl Pane {
     pub fn title(&self) -> String {
         match &self.kind {
-            Kind::System => tr("系").into(),
-            Kind::Catalog => tr("カタログ").into(),
-            Kind::Layout => tr("レイアウト").into(),
-            Kind::LensData => tr("レンズデータ").into(),
-            Kind::MultiConfig => tr("多重構成").into(),
-            Kind::Optimize => tr("最適化").into(),
-            Kind::Swap => tr("差し替え探索").into(),
-            Kind::Tolerance => tr("公差").into(),
-            Kind::Zoom => tr("ズーム軌跡").into(),
-            Kind::SysSettings => tr("系の設定").into(),
             Kind::Analysis(a) => analysis_label(&a.cmd),
+            k => k
+                .tool()
+                .map(|t| tr(t.title).to_string())
+                .unwrap_or_default(),
         }
     }
 }

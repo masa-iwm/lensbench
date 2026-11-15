@@ -113,6 +113,56 @@ pub fn weak_text(v: &Visuals) -> Color32 {
     }
 }
 
+/// 誤りの文字・印（GPN-22: 色は場所ごとに書かずここから取る）
+pub fn error(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0xFF7A6B)
+    } else {
+        rgb(0xC0392B)
+    }
+}
+
+/// 注意（計算中・確かめてほしい値）
+pub fn warn(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0xF2C94C)
+    } else {
+        rgb(0x9A6A00)
+    }
+}
+
+/// うまくいった・準備ができた
+pub fn ok(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0x8FD19E)
+    } else {
+        rgb(0x2E7D32)
+    }
+}
+
+/// 前の結果より良い（小さい）差
+pub fn better(v: &Visuals) -> Color32 {
+    ok(v)
+}
+
+/// 前の結果より悪い（大きい）差。誤りの赤とは別の橙にする
+pub fn worse(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0xFF9F43)
+    } else {
+        rgb(0xB85C00)
+    }
+}
+
+/// 図の上で選んだものの強調（面の縁・ガラスマップの点）
+pub fn highlight(v: &Visuals) -> Color32 {
+    if v.dark_mode {
+        rgb(0xFF8A3D)
+    } else {
+        rgb(0xE06C00)
+    }
+}
+
 pub fn apply(ctx: &egui::Context, look: &Look) {
     let a = Color32::from_rgb(look.accent[0], look.accent[1], look.accent[2]);
     for (theme, mut v) in [(Theme::Dark, dark(a)), (Theme::Light, light(a))] {

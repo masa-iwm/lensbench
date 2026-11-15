@@ -149,16 +149,6 @@ fn num_text(v: &Value) -> String {
     }
 }
 
-fn num(s: &str, what: &str) -> Result<Option<f64>, String> {
-    let t = s.trim();
-    if t.is_empty() {
-        return Ok(None);
-    }
-    t.parse::<f64>()
-        .map(Some)
-        .map_err(|_| trf("{} の値 {} が数でない", &[&what, &t]))
-}
-
 impl SwapPanel {
     /// `lensbench swap --spec` の JSON（保存するファイルと同じ）
     pub fn spec(&self) -> Result<Value, String> {
@@ -169,8 +159,8 @@ impl SwapPanel {
             }
             let b = s.block.trim();
             let mut f = json!({
-                "efl": [num(&s.efl[0], b)?, num(&s.efl[1], b)?],
-                "diameter": [num(&s.dia[0], b)?, num(&s.dia[1], b)?],
+                "efl": [crate::widgets::parse_num(&s.efl[0], b)?, crate::widgets::parse_num(&s.efl[1], b)?],
+                "diameter": [crate::widgets::parse_num(&s.dia[0], b)?, crate::widgets::parse_num(&s.dia[1], b)?],
             });
             if !s.vendor.trim().is_empty() {
                 f["vendor"] = json!(s.vendor.trim());
@@ -183,8 +173,8 @@ impl SwapPanel {
             if n.is_empty() {
                 continue;
             }
-            let lo = num(&v.lo, n)?;
-            let hi = num(&v.hi, n)?;
+            let lo = crate::widgets::parse_num(&v.lo, n)?;
+            let hi = crate::widgets::parse_num(&v.hi, n)?;
             vars.push(json!(if lo.is_none() && hi.is_none() {
                 n.to_string()
             } else {
@@ -204,7 +194,7 @@ impl SwapPanel {
         if self.pre {
             p["prescreen"] = json!({ "rings": self.pre_rings, "keep": self.pre_keep });
         }
-        if let Some(e) = num(&self.efl, tr("焦点距離の目標"))? {
+        if let Some(e) = crate::widgets::parse_num(&self.efl, tr("焦点距離の目標"))? {
             p["efl"] = json!(e);
         }
         let terms = terms_json(&self.terms)?;

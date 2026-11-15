@@ -137,12 +137,7 @@ impl App {
                         z.running = true;
                         self.c.worker.send(Tag::Zoom, "zoom", p);
                     }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
+                    Err(e) => self.c.fail(e),
                 }
                 self.exec(ctx, Cmd::FocusKind(Kind::Zoom));
             }
@@ -278,12 +273,7 @@ impl App {
                             self.c.opt.undo = Some(crate::optim_panel::result_values(&r, true));
                         }
                     }
-                    None => {
-                        self.c.status = Status {
-                            text: "最適化の結果がない".into(),
-                            error: true,
-                        }
-                    }
+                    None => self.c.fail("最適化の結果がない"),
                 }
             }
             Step::Swap => {
@@ -345,12 +335,7 @@ impl App {
                         let p = self.c.browser.combo.project();
                         self.c.build_combo(p);
                     }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
+                    Err(e) => self.c.fail(e),
                 }
             }
             Step::Tolerance => {
@@ -375,12 +360,7 @@ impl App {
                         t.running = true;
                         self.c.worker.send(Tag::Tolerance, "tolerance", p);
                     }
-                    Err(e) => {
-                        self.c.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
+                    Err(e) => self.c.fail(e),
                 }
             }
             Step::Param => {

@@ -78,16 +78,16 @@ fn spot_rms(v: &Value, field: usize) -> Option<f64> {
         .as_f64()
 }
 
-fn delta_text(now: f64, prev: Option<f64>) -> Option<(String, Color32)> {
+fn delta_text(vis: &egui::Visuals, now: f64, prev: Option<f64>) -> Option<(String, Color32)> {
     let p = prev?;
     let d = now - p;
     if d.abs() < 1e-12 * now.abs().max(1e-300) {
         return None;
     }
     let col = if d < 0.0 {
-        Color32::from_rgb(0x8F, 0xD1, 0x9E)
+        theme::better(vis)
     } else {
-        Color32::from_rgb(0xFF, 0x9F, 0x43)
+        theme::worse(vis)
     };
     Some((
         format!("{}{}", if d > 0.0 { "+" } else { "" }, fmt_sig(d, 3)),
@@ -245,9 +245,11 @@ pub fn spot(ui: &mut Ui, rays: &[SpotRays], result: &Value, prev: Option<&Value>
                             ui.label(
                                 RichText::new(format!("RMS {} µm", fmt_sig(um, 3))).monospace(),
                             );
-                            if let Some((t, col)) =
-                                delta_text(um, prev.and_then(|p| spot_rms(p, f)).map(|x| x * 1e3))
-                            {
+                            if let Some((t, col)) = delta_text(
+                                &vis,
+                                um,
+                                prev.and_then(|p| spot_rms(p, f)).map(|x| x * 1e3),
+                            ) {
                                 ui.label(RichText::new(t).small().color(col))
                                     .on_hover_text(tr("値を変える前との差"));
                             }

@@ -58,6 +58,7 @@ mod web_store;
 mod web_tabs;
 #[cfg(all(windows, feature = "webview"))]
 mod webview;
+mod widgets;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
 mod worker;

@@ -83,7 +83,7 @@ impl Core {
                 _ => {}
             }
             self.status_err = Some((d.tag.clone(), text.clone()));
-            self.status = Status { text, error: true };
+            self.fail(text);
             return;
         }
         let mut text = trf(
@@ -205,6 +205,7 @@ impl Core {
                     self.new_system();
                     return;
                 }
+                let back = params["back"].as_bool() == Some(true);
                 // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
                 // 面の表は変更あり
                 if let Some(l) = v.get_mut("loaded") {
@@ -212,19 +213,15 @@ impl Core {
                     let top = &self.hist_list.0.first();
                     self.ld_dirty =
                         top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
-                    self.status = Status {
-                        text: tr(if params["back"].as_bool() == Some(true) {
-                            "元に戻した"
-                        } else {
-                            "やり直した"
-                        })
-                        .into(),
-                        error: false,
-                    };
+                    self.info(tr(if back {
+                        "元に戻した"
+                    } else {
+                        "やり直した"
+                    }));
                     return;
                 }
                 if d.tag == Tag::History {
-                    text = tr(if params["back"].as_bool() == Some(true) {
+                    text = tr(if back {
                         "元に戻した"
                     } else {
                         "やり直した"
@@ -255,7 +252,7 @@ impl Core {
                 }
                 let (rows, units) = match lens_data::parse(&v) {
                     Ok(x) => x,
-                    Err(text) => return self.status = Status { text, error: true },
+                    Err(text) => return self.fail(text),
                 };
                 self.um.set_mechs(&v["mechanics"]);
                 self.ld_blocks = lens_data::tree(&units);
@@ -269,13 +266,10 @@ impl Core {
                         self.ld_rows.iter().map(|r| r.material.as_str()).collect();
                     let used = crate::builtin_glass::used(&mats, &agf_names(&self.s.glass_dirs));
                     if !used.is_empty() && !self.status.error {
-                        self.status = Status {
-                            text: trf(
+                        self.info(trf(
                                 "ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます",
                                 &[&used.join("・")],
-                            ),
-                            error: false,
-                        };
+                            ));
                     }
                 }
                 return;
@@ -306,7 +300,7 @@ impl Core {
             }
             Tag::ConfigTable => match config_panel::parse(&v) {
                 Ok(t) => return self.mc.table = Some(t),
-                Err(text) => return self.status = Status { text, error: true },
+                Err(text) => return self.fail(text),
             },
             Tag::ConfigDiff => {
                 self.mc.notes = v["notes"]
@@ -455,7 +449,7 @@ impl Core {
     pub(super) fn set_done_status(&mut self, tag: &Tag, text: String) {
         if !tag.quiet() {
             self.status_err = None;
-            self.status = Status { text, error: false };
+            self.info(text);
             return;
         }
         if self.status_err.as_ref().is_some_and(|(t, _)| t == tag) {

@@ -201,7 +201,7 @@ Huygens MTF	Huygens MTF
 前へ	Earlier
 半径	Radius
 反射側へ進む	Follow reflected arm
-図の要素をクリックで選び、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選んで Enter）でその場で入力、寸法線のクリックは選ぶだけ。キーは [ ] で選ぶ、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ で傾き、R で反転、F で BS の反射を逆向きに、Delete で外す、L でロック。	Click an element to select it, drag sideways to move it along the axis (Shift: decenter vertically). Click a dimension's value (or select it and press Enter) to type a new value; click the line to just select it. Keys: [ ] select, ← → move, ↑ ↓ decenter, Shift+↑ ↓ tilt, R reverse, F flip the BS reflection, Delete remove, L lock.
+図の要素をクリックで選び、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選んで Enter）でその場で入力、寸法線のクリックは選ぶだけ。キーは [ ] で選ぶ、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ で傾き、R で反転、F で BS の反射を逆向きに、Delete で外す、Ctrl+L でロック。	Click an element to select it, drag sideways to move it along the axis (Shift: decenter vertically). Click a dimension's value (or select it and press Enter) to type a new value; click the line to just select it. Keys: [ ] select, ← → move, ↑ ↓ decenter, Shift+↑ ↓ tilt, R reverse, F flip the BS reflection, Delete remove, Ctrl+L lock.
 変えたらすぐ作り直す	Rebuild on every change
 平板	Plate
 後へ	Later
@@ -219,7 +219,7 @@ Huygens MTF	Huygens MTF
 ＋ {}…	+ {}…
 軸上の光線が像面の前の面まで届かない	The on-axis ray does not reach the surface before the image
 ロック	Lock
-ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）	A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with L)
+ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（Ctrl+L でも切り替え）	A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)
 「▶ 系を作る」でレイアウト図が出ます	Press "▶ Build system" to see the layout
 クリックで版をコピー	Click to copy the version
 鏡: R = {} mm、f = {} mm、径 {} mm	Mirror: R = {} mm, f = {} mm, diameter {} mm
@@ -1598,3 +1598,16 @@ BS の分ける面の向きを逆に	Flip the splitting surface of the BS
 見本を書き出せない: {}	Cannot write the samples: {}
 系ファイル（.json）として保存…（Ctrl+S）	Save as system file (.json)…(Ctrl+S)
 …（長いので {} 字で切った。全文は「コピー」「保存」で）	… (truncated at {} characters; use Copy or Save for the full text)
+絞りの面は消せない（先に絞りを別の面へ移す）	The stop surface cannot be deleted (move the stop to another surface first)
+絞りの径で決まる	Float by stop size
+カタログレンズの組合せ	Catalog lens combination
+視野の番号	Field #
+波長の番号	Wave #
+GEO 半径	GEO radius
+ストレール比	Strehl ratio
+RMS（重心基準）	RMS (centroid)
+RMS（主光線基準）	RMS (chief ray)
+PV	PV
+PV（重心基準）	PV (centroid)
+当てはめの RMS	RMS of fit
+当てはめの最大の差	Max fit error

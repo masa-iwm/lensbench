@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::lens_data::Act;
 use crate::theme;
 
@@ -45,15 +45,15 @@ pub fn zmx_type(typ: &str) -> &'static str {
 
 /// JSON で書き換える面のデータの項目（名前、表示名）
 const JSON_ITEMS: &[(&str, &str)] = &[
-    ("ap", "開口"),
-    ("before", "前の傾き偏心"),
-    ("after", "後の傾き偏心"),
-    ("zern", "Zernike の項"),
-    ("grid", "Grid Sag の格子"),
-    ("bin2", "Binary 2 の位相"),
+    ("ap", n_("開口")),
+    ("before", n_("前の傾き偏心")),
+    ("after", n_("後の傾き偏心")),
+    ("zern", n_("Zernike の項")),
+    ("grid", n_("Grid Sag の格子")),
+    ("bin2", n_("Binary 2 の位相")),
     ("cylf", "Cylinder Fresnel"),
-    ("grin", "屈折率分布（GRIN）"),
-    ("user", "利用者定義の面"),
+    ("grin", n_("屈折率分布（GRIN）")),
+    ("user", n_("利用者定義の面")),
 ];
 
 /// 面の設定の状態
@@ -144,18 +144,6 @@ pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
     out
 }
 
-/// JSON の数（inf は {"$f": "inf"}）
-fn num(v: &Value) -> Option<f64> {
-    if let Some(x) = v.as_f64() {
-        return Some(x);
-    }
-    match v.get("$f").and_then(Value::as_str) {
-        Some("inf") => Some(f64::INFINITY),
-        Some("-inf") => Some(f64::NEG_INFINITY),
-        _ => None,
-    }
-}
-
 /// 書き換え用の数の文字（丸めない）
 pub fn full(x: f64) -> String {
     if x.is_infinite() {
@@ -169,7 +157,7 @@ fn nums_text(v: &Value) -> String {
     v.as_array()
         .map(|a| {
             a.iter()
-                .map(|x| num(x).map(full).unwrap_or_default())
+                .map(|x| crate::widgets::json_num(x).map(full).unwrap_or_default())
                 .collect::<Vec<_>>()
                 .join(", ")
         })

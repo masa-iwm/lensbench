@@ -1,7 +1,7 @@
 //! 解析の結果（JSON）を見る。値の並んだオブジェクトの並び（視野ごとのスポットなど）は表に、ほかは木にする。
 //! 図が入るまでの、どの解析にも使える表示。
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use egui::{CollapsingHeader, RichText, Ui};
 use serde_json::Value;
 
@@ -20,6 +20,60 @@ pub fn fmt_num(x: f64) -> String {
         let s = format!("{x:.6}");
         let s = s.trim_end_matches('0');
         s.trim_end_matches('.').to_string()
+    }
+}
+
+/// 表の列の名前と、結果の `unit`（位置・長さの単位、波など）で数える列か（GUX-20）。ここに無い鍵はそのまま出す
+const COLS: &[(&str, &str, bool)] = &[
+    ("field", n_("視野の番号"), false),
+    ("wave", n_("波長の番号"), false),
+    ("rms_centroid", n_("RMS（重心基準）"), true),
+    ("rms_chief", n_("RMS（主光線基準）"), true),
+    ("geo", n_("GEO 半径"), true),
+    ("centroid", n_("重心"), true),
+    ("chief", n_("主光線"), true),
+    ("pv", n_("PV"), true),
+    ("pv_centroid", n_("PV（重心基準）"), true),
+    ("rms", n_("RMS"), true),
+    ("rms_fit", n_("当てはめの RMS"), true),
+    ("max_fit", n_("当てはめの最大の差"), true),
+    ("strehl", n_("ストレール比"), false),
+];
+
+/// 値の見せ方: 単位の倍率（mm の結果は µm で出す）と見出しの単位
+#[derive(Clone, Copy)]
+struct Units<'a> {
+    unit: Option<&'a str>,
+}
+
+impl Units<'_> {
+    /// 鍵の名前・単位・倍率。単位を持たない鍵は倍率 1
+    fn of(&self, key: &str) -> (String, f64) {
+        let Some(&(_, name, in_unit)) = COLS.iter().find(|c| c.0 == key) else {
+            return (key.to_string(), 1.0);
+        };
+        let name = tr(name);
+        match (in_unit, self.unit) {
+            (true, Some("mm")) => (format!("{name} [µm]"), 1e3),
+            (true, Some("waves")) => (format!("{name} [{}]", tr("波")), 1.0),
+            (true, Some(u)) => (format!("{name} [{u}]"), 1.0),
+            _ => (name.to_string(), 1.0),
+        }
+    }
+}
+
+/// 単位を持つ値（位置・長さ）に倍率を掛ける（数と数の並び）。計算の丸めの残り（1e-12 より小さい）は 0 にする。
+/// 単位の無い値（係数・比など）は小さくてもそのまま
+fn scaled(v: &Value, k: f64) -> Value {
+    if k == 1.0 {
+        return v.clone();
+    }
+    match v {
+        Value::Number(n) => n.as_f64().map_or(v.clone(), |x| {
+            Value::from(if x.abs() < 1e-12 { 0.0 } else { x * k })
+        }),
+        Value::Array(a) => Value::Array(a.iter().map(|x| scaled(x, k)).collect()),
+        _ => v.clone(),
     }
 }
 
@@ -64,10 +118,13 @@ fn table_columns(a: &[Value]) -> Option<Vec<String>> {
 }
 
 pub fn show(ui: &mut Ui, v: &Value) {
-    show_value(ui, tr("結果"), v, 0);
+    let u = Units {
+        unit: v["unit"].as_str(),
+    };
+    show_value(ui, u, tr("結果"), v, 0);
 }
 
-fn show_value(ui: &mut Ui, name: &str, v: &Value, depth: usize) {
+fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
     if let Some(s) = inline(v) {
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(name).strong());
@@ -83,10 +140,10 @@ fn show_value(ui: &mut Ui, name: &str, v: &Value, depth: usize) {
                 .default_open(depth < 2)
                 .show(ui, |ui| {
                     if let Some(cols) = table_columns(a) {
-                        table(ui, id, &cols, a);
+                        table(ui, u, id, &cols, a);
                     } else {
                         for (i, x) in a.iter().enumerate().take(MAX_ROWS) {
-                            show_value(ui, &format!("{}", i + 1), x, depth + 1);
+                            show_value(ui, u, &format!("{}", i + 1), x, depth + 1);
                         }
                         if a.len() > MAX_ROWS {
                             ui.label(trf("…（全 {} 個）", &[&a.len()]));
@@ -100,7 +157,14 @@ fn show_value(ui: &mut Ui, name: &str, v: &Value, depth: usize) {
                 .default_open(depth < 2)
                 .show(ui, |ui| {
                     for (k, x) in o {
-                        show_value(ui, k, x, depth + 1);
+                        // 名前・単位は 1 行の値（数・数の並び）にだけ。中に並びやオブジェクトを持つ鍵
+                        // （rms の結果の rms など）は、中の値の単位がそろわないのでそのまま
+                        if inline(x).is_some() {
+                            let (name, f) = u.of(k);
+                            show_value(ui, u, &name, &scaled(x, f), depth + 1);
+                        } else {
+                            show_value(ui, u, k, x, depth + 1);
+                        }
                     }
                 });
         }
@@ -110,7 +174,8 @@ fn show_value(ui: &mut Ui, name: &str, v: &Value, depth: usize) {
 
 /// 一様なオブジェクトの並びを表に。見える行だけ描くので行の上限は無い。見出しのクリックで並べ替え、
 /// 数は右寄せ（GPN-16）
-fn table(ui: &mut Ui, id: egui::Id, cols: &[String], rows: &[Value]) {
+fn table(ui: &mut Ui, u: Units, id: egui::Id, cols: &[String], rows: &[Value]) {
+    let heads: Vec<(String, f64)> = cols.iter().map(|c| u.of(c)).collect();
     use egui_extras::{Column, TableBuilder};
     // 並べ替え（列の番号、逆順）
     let sort_id = id.with("sort");
@@ -150,6 +215,7 @@ fn table(ui: &mut Ui, id: egui::Id, cols: &[String], rows: &[Value]) {
                 ui.strong("#");
             });
             for (k, c) in cols.iter().enumerate() {
+                let head = &heads[k].0;
                 h.col(|ui| {
                     let mark = match sort {
                         Some((s, false)) if s == k => " ▲",
@@ -158,10 +224,10 @@ fn table(ui: &mut Ui, id: egui::Id, cols: &[String], rows: &[Value]) {
                     };
                     if ui
                         .add(
-                            egui::Label::new(RichText::new(format!("{c}{mark}")).strong())
+                            egui::Label::new(RichText::new(format!("{head}{mark}")).strong())
                                 .sense(egui::Sense::click()),
                         )
-                        .on_hover_text(tr("クリックで並べ替え"))
+                        .on_hover_text(format!("{c}\n{}", tr("クリックで並べ替え")))
                         .clicked()
                     {
                         sort = match sort {
@@ -180,9 +246,10 @@ fn table(ui: &mut Ui, id: egui::Id, cols: &[String], rows: &[Value]) {
                 row.col(|ui| {
                     ui.label(format!("{}", i + 1));
                 });
-                for c in cols {
+                for (c, (_, f)) in cols.iter().zip(&heads) {
                     row.col(|ui| {
-                        let v = r.get(c);
+                        let v = r.get(c).map(|x| scaled(x, *f));
+                        let v = v.as_ref();
                         let text = v.and_then(inline).unwrap_or_default();
                         if v.is_some_and(Value::is_number) {
                             ui.with_layout(
@@ -212,6 +279,24 @@ mod tests {
         assert_eq!(fmt_num(2.0), "2");
         assert_eq!(fmt_num(33.124650689903426), "33.124651");
         assert_eq!(fmt_num(4e-10), "4.00000e-10");
+    }
+
+    #[test]
+    fn spot_columns_in_um() {
+        let u = Units { unit: Some("mm") };
+        let (name, f) = u.of("rms_centroid");
+        assert!(name.ends_with("[µm]"), "{name}");
+        assert_eq!(f, 1e3);
+        assert_eq!(u.of("field").1, 1.0);
+        assert_eq!(u.of("whatever"), ("whatever".to_string(), 1.0));
+        assert_eq!(scaled(&json!([0.001, 0.002]), 1e3), json!([1.0, 2.0]));
+        assert_eq!(inline(&scaled(&json!(-3.4e-17), 1e3)).as_deref(), Some("0"));
+        // 単位の無い値は小さくても 0 にしない
+        assert_eq!(inline(&json!(4e-13)), Some("4.00000e-13".into()));
+        let w = Units {
+            unit: Some("waves"),
+        };
+        assert_eq!(w.of("rms").1, 1.0);
     }
 
     #[test]

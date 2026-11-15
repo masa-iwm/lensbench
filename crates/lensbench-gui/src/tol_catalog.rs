@@ -5,20 +5,20 @@
 use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 
 /// 玉の公差の項目（名前、表示名、単位）
 pub const FIELDS: [(&str, &str, &str); 9] = [
-    ("radius_rel", "曲率半径", "比"),
-    ("focal_rel", "焦点距離", "比"),
-    ("thickness", "中心厚", "mm"),
-    ("wedge", "くさび", "°"),
-    ("dn", "屈折率", ""),
-    ("disp", "分散", "比"),
-    ("decenter", "偏心", "mm"),
-    ("tilt", "傾き", "°"),
-    ("space", "後の間隔", "mm"),
+    ("radius_rel", n_("曲率半径"), n_("比")),
+    ("focal_rel", n_("焦点距離"), n_("比")),
+    ("thickness", n_("中心厚"), "mm"),
+    ("wedge", n_("くさび"), "°"),
+    ("dn", n_("屈折率"), ""),
+    ("disp", n_("分散"), n_("比")),
+    ("decenter", n_("偏心"), "mm"),
+    ("tilt", n_("傾き"), "°"),
+    ("space", n_("後の間隔"), "mm"),
 ];
 
 /// 下限・上限の比べ方
@@ -54,19 +54,9 @@ fn num_text(v: &Value) -> String {
     v.as_f64().map(fmt_num).unwrap_or_default()
 }
 
-fn parse(s: &str, what: &str) -> Result<Option<f64>, String> {
-    let t = s.trim();
-    if t.is_empty() {
-        return Ok(None);
-    }
-    t.parse::<f64>()
-        .map(Some)
-        .map_err(|_| trf("{} の値 {} が数でない", &[&what, &t]))
-}
-
 fn put_fields(o: &mut Map<String, Value>, f: &[String; 9], what: &str) -> Result<(), String> {
     for (i, (k, _, _)) in FIELDS.iter().enumerate() {
-        if let Some(x) = parse(&f[i], &format!("{what} {k}"))? {
+        if let Some(x) = crate::widgets::parse_num(&f[i], &format!("{what} {k}"))? {
             o.insert(k.to_string(), num_val(x));
         }
     }
@@ -110,7 +100,7 @@ pub fn to_json(v: &[VendorTol]) -> Result<Option<Value>, String> {
                 ("efl", &r.efl_lo),
                 ("efl", &r.efl_hi),
             ] {
-                if let Some(x) = parse(val, &format!("{what} {q}"))? {
+                if let Some(x) = crate::widgets::parse_num(val, &format!("{what} {q}"))? {
                     ro.insert(format!("{q}_{op}"), num_val(x));
                 }
             }

@@ -114,20 +114,12 @@ impl App {
                 kind: k.clone(),
             }
             .title();
-            let hint = match &k {
-                Kind::Analysis(a) => format!("add panel {}", a.cmd),
-                Kind::System => "add panel system".into(),
-                Kind::Catalog => "add panel catalog".into(),
-                Kind::Layout => "add panel layout combo".into(),
-                Kind::LensData => "add panel lens data surfaces table".into(),
-                Kind::MultiConfig => "add panel multi configuration editor mce".into(),
-                Kind::Optimize => "add panel optimize optimization merit function dls".into(),
-                Kind::Swap => "add panel swap search catalog lens replace".into(),
-                Kind::Tolerance => "add panel tolerance monte carlo sensitivity".into(),
-                Kind::Zoom => "add panel zoom cam track states focal length".into(),
-                Kind::SysSettings => {
-                    "add panel system settings aperture field wavelength aiming".into()
-                }
+            let hint = match k.tool() {
+                Some(t) => format!("add panel {}", t.keywords),
+                None => match &k {
+                    Kind::Analysis(a) => format!("add panel {}", a.cmd),
+                    _ => String::new(),
+                },
             };
             let label = if k.single() {
                 trf("パネルを出す: {}", &[&t])
@@ -137,18 +129,10 @@ impl App {
             push(label, &hint, Cmd::Add(k));
         }
         for (_, p) in self.dock.iter_all_tabs() {
-            let name = match &p.kind {
-                Kind::Analysis(a) => a.cmd.clone(),
-                Kind::System => "system".into(),
-                Kind::Catalog => "catalog".into(),
-                Kind::Layout => "layout".into(),
-                Kind::LensData => "lens data".into(),
-                Kind::MultiConfig => "multi configuration".into(),
-                Kind::Optimize => "optimize".into(),
-                Kind::Swap => "swap".into(),
-                Kind::Tolerance => "tolerance".into(),
-                Kind::Zoom => "zoom".into(),
-                Kind::SysSettings => "settings".into(),
+            let name = match (&p.kind, p.kind.tool()) {
+                (Kind::Analysis(a), _) => a.cmd.clone(),
+                (_, Some(t)) => t.name.to_string(),
+                _ => String::new(),
             };
             push(
                 trf("パネルへ移る: {}", &[&p.title()]),
@@ -677,12 +661,31 @@ impl Core {
                     }
                 }
                 Err(e) => {
-                    self.status = Status {
-                        text: trf("見本を書き出せない: {}", &[&e]),
-                        error: true,
-                    };
+                    self.fail(trf("見本を書き出せない: {}", &[&e]));
                 }
             }
         }
     }
 }
+
+/// ヘルプのメニューのページ（名前、マニュアルの中のページ、説明）
+const HELP_PAGES: &[(&str, &str, &str)] = &[
+    (n_("マニュアル"), "", n_("使い方の目次（ブラウザで開く）")),
+    (
+        n_("GUI の使い方"),
+        "gui.html",
+        n_("画面・パネルの使い方（図つき）"),
+    ),
+    (
+        n_("解析と CLI"),
+        "cli.html",
+        n_("解析の種類と引数、出力の例"),
+    ),
+    (
+        n_("プロジェクトファイル"),
+        "project-file.html",
+        n_("ブロックで系を組む JSON（状態・群・BS）"),
+    ),
+    (n_("最適化"), "optimize.html", n_("評価関数・変数・DLS")),
+    (n_("公差"), "tolerance.html", n_("モンテカルロ公差の設定")),
+];

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use crate::combo_tree::Loc;
 pub use crate::combo_tree::{Branch, Gap};
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, WavePt};
 use crate::theme;
@@ -1296,7 +1296,7 @@ pub struct ZGroup {
 impl Default for Combo {
     fn default() -> Self {
         Combo {
-            name: "カタログレンズの組合せ".into(),
+            name: tr("カタログレンズの組合せ").into(),
             picks: Vec::new(),
             mechanics: Vec::new(),
             aperture: ApKind::Epd,
@@ -2436,7 +2436,7 @@ fn insert(combo: &mut Combo, view: &mut View, p: Pick) {
 }
 
 /// キーボード: [ ] で要素を選ぶ、← → で光軸に沿って動かす（寸法を選んでいればその間隔）、↑ ↓ で偏心、
-/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Esc で選ぶのをやめる。Ctrl で 10 倍、Alt で 1/10
+/// Shift+↑ ↓ で傾き、R で反転、Delete で外す、Ctrl+L でロック（表と同じ、GPN-15）、Esc でやめる。Ctrl で 10 倍、Alt で 1/10
 fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
     let n = combo.len();
     // 経路に沿った要素（ロックしていない）。ロックは中身だけを止め、動かすのはできる
@@ -2523,12 +2523,12 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     }
                 }
             }
-            Key::L => {
+            Key::L if m.command => {
                 if let Some(p) = view.sel.and_then(|k| combo.el_mut(k)) {
                     p.locked = !p.locked;
                 }
             }
-            Key::R => {
+            Key::R if m.is_none() => {
                 if let Some(p) = view
                     .sel
                     .filter(|&k| free(combo, k))
@@ -2537,7 +2537,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     p.reversed = !p.reversed;
                 }
             }
-            Key::F => {
+            Key::F if m.is_none() => {
                 if let Some(p) = view
                     .sel
                     .filter(|&k| free(combo, k))
@@ -2547,7 +2547,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     p.bs_flip = !p.bs_flip;
                 }
             }
-            Key::Delete | Key::Backspace => {
+            Key::Delete => {
                 // 外すのは中身だけのロック（カタログの玉の既定）でもできる。「位置も」ロックした要素は外さない
                 if let Some(k) = view
                     .sel
@@ -3455,7 +3455,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
         ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
         ui.label(RichText::new(p.kind.label()).color(weak));
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
+            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（Ctrl+L でも切り替え）",
         ));
         if p.locked {
             ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(
@@ -3537,10 +3537,10 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
 }
 
 const ROLES: [(&str, &str); 4] = [
-    ("", "役割なし"),
-    ("zoom", "ズーム"),
-    ("focus", "フォーカス"),
-    ("fixed", "固定"),
+    ("", n_("役割なし")),
+    ("zoom", n_("ズーム")),
+    ("focus", n_("フォーカス")),
+    ("fixed", n_("固定")),
 ];
 
 fn role_combo(ui: &mut Ui, id: impl std::hash::Hash, role: &mut String) {
@@ -3801,8 +3801,8 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
 fn place_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, dec: &[usize], tilt: &[usize]) {
     let was = p.place_in(st);
     let mut pl = was;
-    const DEC: [&str; 2] = ["偏心 x", "偏心 y"];
-    const TILT: [&str; 3] = ["傾き x", "傾き y", "傾き z"];
+    const DEC: [&str; 2] = [n_("偏心 x"), n_("偏心 y")];
+    const TILT: [&str; 3] = [n_("傾き x"), n_("傾き y"), n_("傾き z")];
     for &i in dec {
         num(ui, tr(DEC[i]), &mut pl.decenter[i], " mm");
     }
@@ -4115,7 +4115,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     }
     let Some(k) = view.sel.filter(|&k| k < n) else {
         ui.label(
-            RichText::new(tr("図の要素をクリックで選び、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選んで Enter）でその場で入力、寸法線のクリックは選ぶだけ。キーは [ ] で選ぶ、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ で傾き、R で反転、F で BS の反射を逆向きに、Delete で外す、L でロック。"))
+            RichText::new(tr("図の要素をクリックで選び、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選んで Enter）でその場で入力、寸法線のクリックは選ぶだけ。キーは [ ] で選ぶ、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ で傾き、R で反転、F で BS の反射を逆向きに、Delete で外す、Ctrl+L でロック。"))
                 .small()
                 .color(weak),
         );
@@ -4188,7 +4188,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             }
         }
         ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（L キーでも切り替え）",
+            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（Ctrl+L でも切り替え）",
         ));
         if p.locked {
             ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(

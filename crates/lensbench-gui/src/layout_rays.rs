@@ -5,38 +5,38 @@ use egui::Ui;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::i18n::tr;
+use crate::i18n::{n_, tr};
 
 /// 光線の並び（serve の fan。空は既定: 2D は見る面の向きの扇、3D は ring）
 const FANS: &[(&str, &str)] = &[
-    ("", "既定"),
-    ("y", "y の扇"),
-    ("x", "x の扇"),
-    ("cross", "十字"),
-    ("grid", "格子"),
-    ("ring", "周（ring）"),
+    ("", n_("既定")),
+    ("y", n_("y の扇")),
+    ("x", n_("x の扇")),
+    ("cross", n_("十字")),
+    ("grid", n_("格子")),
+    ("ring", n_("周（ring）")),
 ];
 
 /// 色分け（空は既定: 重ね描きなら構成ごと、ほかは視野ごと）
 const COLORS: &[(&str, &str)] = &[
-    ("", "既定"),
-    ("field", "視野"),
-    ("wave", "波長"),
-    ("cfg", "構成"),
+    ("", n_("既定")),
+    ("field", n_("視野")),
+    ("wave", n_("波長")),
+    ("cfg", n_("構成")),
 ];
 
 /// 表の表示名（翻訳の検査用）
 #[cfg(test)]
 pub const LABELS: [&str; 9] = [
-    "既定",
-    "y の扇",
-    "x の扇",
-    "十字",
-    "格子",
-    "周（ring）",
-    "視野",
-    "波長",
-    "構成",
+    n_("既定"),
+    n_("y の扇"),
+    n_("x の扇"),
+    n_("十字"),
+    n_("格子"),
+    n_("周（ring）"),
+    n_("視野"),
+    n_("波長"),
+    n_("構成"),
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

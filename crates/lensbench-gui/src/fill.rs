@@ -923,7 +923,7 @@ impl FillWin {
                     }
                 }
                 Err(e) => {
-                    ui.colored_label(Color32::RED, e);
+                    ui.colored_label(crate::theme::error(ui.visuals()), e);
                 }
             }
         }
@@ -1017,14 +1017,14 @@ impl FillWin {
         });
         if out.is_none() {
             ui.colored_label(
-                Color32::RED,
+                crate::theme::error(ui.visuals()),
                 tr("補足のカタログを置く設定のフォルダがありません"),
             );
         }
         if let Some((n, err)) = &self.note {
             ui.colored_label(
                 if *err {
-                    Color32::RED
+                    crate::theme::error(ui.visuals())
                 } else {
                     ui.visuals().text_color()
                 },

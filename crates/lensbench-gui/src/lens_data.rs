@@ -9,14 +9,20 @@
 //! 値の変更は [`Act::Edit`] で GUI に返す（開いた系は serve の `edit`、組合せの系は組合せの要素の値と面の上書き）。
 //! ロックしたブロック（と、その中のブロック）の面は変えられない。
 
+mod names;
+mod strip;
+pub use names::TYPE_NAMES;
+
 use std::collections::BTreeSet;
+
+use strip::{strip_ui, StripCtx, StripOut};
 
 use egui::{Key, RichText, Sense, Ui};
 use egui_extras::{Column, TableBuilder};
 use lensbench_engine::session::views;
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 use crate::theme;
 
@@ -66,16 +72,9 @@ impl Row {
 /// 玉・群（serve の surface の units）
 pub use lensbench_engine::session::views::UnitView as Unit;
 
-/// JSON の数（inf は {"$f": "inf"}）
+/// JSON の数（inf は {"$f": "inf"}。数でなければ NaN）
 fn num(v: &Value) -> f64 {
-    if let Some(x) = v.as_f64() {
-        return x;
-    }
-    match v.get("$f").and_then(Value::as_str) {
-        Some("inf") => f64::INFINITY,
-        Some("-inf") => f64::NEG_INFINITY,
-        _ => f64::NAN,
-    }
+    crate::widgets::json_num(v).unwrap_or(f64::NAN)
 }
 
 fn nums(v: &Value) -> Vec<f64> {
@@ -241,25 +240,6 @@ pub enum Col {
 /// パラメータの列の数の上限
 pub const MAX_PAR: u8 = 8;
 
-/// 面タイプの名前と説明（種類の列の候補）
-pub const TYPE_NAMES: &[(&str, &str)] = &[
-    ("STANDARD", "標準"),
-    ("EVENASPH", "偶数次非球面"),
-    ("COORDBRK", "座標ブレーク"),
-    ("PARAXIAL", "近軸レンズ"),
-    ("TOROIDAL", "トロイダル"),
-    ("JONESMAT", "Jones 行列"),
-    ("SZERNSAG", "Zernike（Standard）"),
-    ("FZERNSAG", "Zernike（Fringe）"),
-    ("GRID_SAG", "Grid Sag"),
-    ("FRESNELS", "フレネル"),
-    ("CFRESNEL", "円柱フレネル"),
-    ("BINARY_2", "Binary 2"),
-    ("GRINSUR8", "GRIN（Gradium）"),
-    ("GRINSUR9", "GRIN（Gradient 9）"),
-    ("USER", "利用者定義"),
-];
-
 /// 種類の列に打った文字に合う面タイプ（前方一致を先に、次に名前・説明の部分一致）
 pub fn type_matches(s: &str) -> Vec<&'static str> {
     let q = s.trim().to_uppercase();
@@ -282,27 +262,41 @@ pub fn type_matches(s: &str) -> Vec<&'static str> {
 
 /// 非球面の係数の名前（r² … r¹⁶）
 const ASPH_LABELS: [&str; 8] = [
-    "r² の係数",
-    "r⁴ の係数",
-    "r⁶ の係数",
-    "r⁸ の係数",
-    "r¹⁰ の係数",
-    "r¹² の係数",
-    "r¹⁴ の係数",
-    "r¹⁶ の係数",
+    n_("r² の係数"),
+    n_("r⁴ の係数"),
+    n_("r⁶ の係数"),
+    n_("r⁸ の係数"),
+    n_("r¹⁰ の係数"),
+    n_("r¹² の係数"),
+    n_("r¹⁴ の係数"),
+    n_("r¹⁶ の係数"),
 ];
 const TOR_LABELS: [&str; 7] = [
-    "y² の係数",
-    "y⁴ の係数",
-    "y⁶ の係数",
-    "y⁸ の係数",
-    "y¹⁰ の係数",
-    "y¹² の係数",
-    "y¹⁴ の係数",
+    n_("y² の係数"),
+    n_("y⁴ の係数"),
+    n_("y⁶ の係数"),
+    n_("y⁸ の係数"),
+    n_("y¹⁰ の係数"),
+    n_("y¹² の係数"),
+    n_("y¹⁴ の係数"),
 ];
-const CB_LABELS: [&str; 6] = ["偏心 X", "偏心 Y", "傾き X", "傾き Y", "傾き Z", "順序"];
+const CB_LABELS: [&str; 6] = [
+    n_("偏心 X"),
+    n_("偏心 Y"),
+    n_("傾き X"),
+    n_("傾き Y"),
+    n_("傾き Z"),
+    n_("順序"),
+];
 const JONES_LABELS: [&str; 8] = [
-    "A 実", "A 虚", "B 実", "B 虚", "C 実", "C 虚", "D 実", "D 虚",
+    n_("A 実"),
+    n_("A 虚"),
+    n_("B 実"),
+    n_("B 虚"),
+    n_("C 実"),
+    n_("C 虚"),
+    n_("D 実"),
+    n_("D 虚"),
 ];
 
 /// レンズデータの左の帯のアイコン
@@ -810,6 +804,22 @@ struct RowMenu {
     paste: Option<bool>,
 }
 
+impl RowMenu {
+    /// 右クリックの欄（4 か所）の結果をこのフレームの操作に足す。何か選んだら true（GPN-03）
+    fn merge(&mut self, m: RowMenu) -> bool {
+        let any = !m.acts.is_empty() || m.insert || m.delete || m.detail || m.paste.is_some();
+        self.acts.extend(m.acts);
+        self.insert |= m.insert;
+        self.insert_before |= m.insert_before;
+        if m.paste.is_some() {
+            self.paste = m.paste;
+        }
+        self.delete |= m.delete;
+        self.detail |= m.detail;
+        any
+    }
+}
+
 /// 硝材の欄の文字を入れられるか: 空・AIR・MIRROR、nd,νd[,ΔPgF] のモデルガラス、カタログのガラス、表で使っている
 /// ガラス。カタログをまだ読んでいなければ serve に任せる
 fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), String> {
@@ -838,6 +848,10 @@ fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), 
 
 /// 書き換えた文字を、面 j（今の値 r）の列 col の変更に（今と同じなら None）
 fn commit_act(r: &Row, j: usize, col: Col, text: &str) -> Option<Act> {
+    // パラメータの列を空で決めたら変えない（焦点距離・非球面係数などに 0 を入れない、GPN-30）
+    if matches!(col, Col::Par(_)) && text.trim().is_empty() {
+        return None;
+    }
     let v = match col.parse(text) {
         Ok(v) => v,
         Err(e) => return Some(Act::Refused(e)),
@@ -1639,6 +1653,8 @@ fn popup(ui: &mut Ui, r: &egui::Response, id: &str, add: impl FnOnce(&mut Ui)) {
 pub struct LensData {
     /// 右クリックの貼り付けを頼んだ（Some(true) は面を挿入して）。次の Paste で使う
     paste_insert: Option<bool>,
+    /// 貼り付けを頼んだ画面の回（届かなければ数回で忘れる。次の Ctrl+V が挿入にならない、GPN-30）
+    paste_asked: u64,
     /// 入っているブロックの名前（外から順。空は系の全部）
     pub scope: Vec<String>,
     /// 選んだブロック
@@ -1823,9 +1839,16 @@ fn lines_of(
     open: &dyn Fn(usize) -> bool,
     depth: usize,
 ) -> Vec<Line> {
-    let child_of = |j: usize| {
-        (0..blocks.len()).find(|&i| blocks[i].parent == scope && blocks[i].surfs.contains(&j))
-    };
+    // 面 → 直下のブロック（最初のもの）。面ごとに全ブロックを探さない（GPN-23）
+    let mut owner: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (i, b) in blocks.iter().enumerate().rev() {
+        if b.parent == scope {
+            for &j in &b.surfs {
+                owner.insert(j, i);
+            }
+        }
+    }
+    let child_of = |j: usize| owner.get(&j).copied();
     let mut v = Vec::new();
     for (key, f) in fold_lines(surfs, child_of) {
         match f {
@@ -1928,7 +1951,10 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let is_open = |i: usize| tree && open_set.contains(&c.blocks[i].name);
     let lines = lines_of(c.blocks, scope, &surfs, &is_open, 0);
     let rows: Vec<usize> = lines.iter().map(|l| l.key).collect();
-    let line = |j: usize| lines.iter().find(|l| l.key == j);
+    // 面 → 行（行ごとに何度も引くので表にする、GPN-23）
+    let line_ix: std::collections::HashMap<usize, usize> =
+        lines.iter().enumerate().map(|(i, l)| (l.key, i)).collect();
+    let line = |j: usize| line_ix.get(&j).map(|&i| &lines[i]);
     let folded = |j: usize| line(j).and_then(|l| l.fold);
     // 面 j の行の属するブロック（選ぶ・入る・開くブロック）
     let child_of = |j: usize| line(j).and_then(|l| l.blk);
@@ -1951,26 +1977,21 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     // 開く・たたむ（折りたたみ表示）
     let mut toggle: Option<String> = None;
     // 今の階層の中のブロック（全部開く・たたむ）
+    let scope_surfs: BTreeSet<usize> = surfs.iter().copied().collect();
     let inside: Vec<String> = c
         .blocks
         .iter()
         .enumerate()
         .filter(|&(i, b)| match scope {
-            Some(s) => i != s && b.surfs.iter().all(|x| c.blocks[s].surfs.contains(x)),
+            Some(s) => i != s && b.surfs.iter().all(|x| scope_surfs.contains(x)),
             None => true,
         })
         .map(|(_, b)| b.name.clone())
         .collect();
 
     // 左端の縦の帯: 階層・ブロック・面の挿入削除・詳細設定・玉群・保存のアイコン。押したときだけ中身（一覧・ドロップダウン）を出す
-    let mut go: Option<usize> = None;
-    let mut enter: Option<String> = None;
-    let (mut ins_btn, mut del_btn) = (false, false);
-    let mut export_btn = false;
-    // 挿入は今の面の前（Insert・＋）。後は Alt+Insert・右クリックの「後に」
-    let mut ins_before = false;
-    // 右クリックの「貼り付け」（Some(true) は面を挿入して）。クリップボードは次のフレームの Paste で届く
-    let mut menu_paste: Option<bool> = None;
+    // 右クリックの欄・帯のボタン・キーで決めた操作（足す・消す・貼る・詳細設定）。帯の分は strip_ui から
+    let mut so = StripOut::default();
     let full = ui.available_rect_before_wrap();
     ui.allocate_rect(full, Sense::hover());
     // 幅があるときは帯のアイコンに字も出す（絵だけでは意味が分からない、GUX-24）
@@ -2000,265 +2021,30 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             .max_rect(body_r)
             .layout(egui::Layout::top_down(egui::Align::Min)),
     );
-    {
-        let ui = &mut strip;
-        ui.spacing_mut().item_spacing.y = 4.0;
-        let icon = |ui: &mut Ui, t: &str, on: bool| -> egui::Response {
-            // 記号がフォントに無ければ（豆腐 □ になる）字だけにする
-            let has = ui.fonts(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
-            let (text, w) = match icon_label(t).filter(|_| wide || !has) {
-                Some(l) if !has => (RichText::new(tr(l)).size(11.0), strip_w.max(40.0) - 4.0),
-                Some(l) => (
-                    RichText::new(format!("{t} {}", tr(l))).size(12.0),
-                    strip_w - 4.0,
-                ),
-                None => (RichText::new(t).size(15.0), 26.0),
-            };
-            ui.add(
-                egui::Button::new(text)
-                    .selected(on)
-                    .min_size(egui::vec2(w, 26.0)),
-            )
-        };
-        // 階層: 系と全部のブロックの入れ子の一覧（クリックでそのブロックに入る）と、表示の切り替え
-        let here = st.scope.last().cloned();
-        let hint = match &here {
-            Some(n) => trf(
-                "階層: {}（クリックで一覧・表示の切り替え。Backspace で 1 つ上へ）",
-                &[n],
-            ),
-            None => tr("階層: 系の全部の面（クリックで一覧・表示の切り替え）").to_string(),
-        };
-        let r = icon(ui, "🗀", here.is_some()).on_hover_text(hint);
-        popup(ui, &r, "ld_scope", |ui| {
-            ui.label(RichText::new(tr("階層")).strong());
-            if ui
-                .selectable_label(st.scope.is_empty(), tr("系（全部の面）"))
-                .clicked()
-            {
-                go = Some(0);
-                ui.memory_mut(|m| m.close_popup());
-            }
-            for (i, b) in c.blocks.iter().enumerate() {
-                let mut depth = 0;
-                let mut p = b.parent;
-                while let Some(q) = p {
-                    depth += 1;
-                    p = c.blocks[q].parent;
-                }
-                let lk = block_locked(c.blocks, c.locked, i);
-                ui.horizontal(|ui| {
-                    ui.add_space(12.0 * (depth + 1) as f32);
-                    let text = if lk {
-                        format!("■ {}", b.name)
-                    } else {
-                        b.name.clone()
-                    };
-                    let in_path = st.scope.contains(&b.name);
-                    let mut rt = RichText::new(text);
-                    if in_path {
-                        rt = rt.strong();
-                    }
-                    if ui
-                        .selectable_label(here.as_deref() == Some(b.name.as_str()), rt)
-                        .on_hover_text(trf(
-                            "面 {}〜{}（クリックで中へ）",
-                            &[&b.surfs[0], &b.surfs[b.surfs.len() - 1]],
-                        ))
-                        .clicked()
-                    {
-                        enter = Some(b.name.clone());
-                        ui.memory_mut(|m| m.close_popup());
-                    }
-                });
-            }
-            ui.separator();
-            ui.label(RichText::new(tr("表示")).strong());
-            ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(!st.tree, tr("階層"))
-                    .on_hover_text(tr(
-                        "ブロックを 1 行にたたみ、ダブルクリックで中に入って面を変える",
-                    ))
-                    .clicked()
-                {
-                    st.tree = false;
-                }
-                if ui
-                    .selectable_label(st.tree, tr("折りたたみ"))
-                    .on_hover_text(tr(
-                        "ブロックをその場で開いて（▶/▼）、中に入らずに面を変える",
-                    ))
-                    .clicked()
-                {
-                    st.tree = true;
-                }
-            });
-            if st.tree && !inside.is_empty() {
-                ui.horizontal(|ui| {
-                    if ui.small_button(tr("全部開く")).clicked() {
-                        st.open.extend(inside.iter().cloned());
-                    }
-                    if ui.small_button(tr("全部たたむ")).clicked() {
-                        for n in &inside {
-                            st.open.remove(n);
-                        }
-                    }
-                });
-            }
-        });
-        // 全部開く・全部たたむを帯に常に出す（折りたたみ表示のとき）
-        if st.tree && !inside.is_empty() {
-            let all_open = inside.iter().all(|n| st.open.contains(n));
-            let (t, tip) = if all_open {
-                ("▶", tr("全部たたむ（ブロックを 1 行に）"))
-            } else {
-                ("▼", tr("全部開く（面を全部見せる）"))
-            };
-            if icon(ui, t, false).on_hover_text(tip).clicked() {
-                if all_open {
-                    for n in &inside {
-                        st.open.remove(n);
-                    }
-                } else {
-                    st.open.extend(inside.iter().cloned());
-                }
-            }
-        }
-        // ブロック: 今の階層の直下のブロックのドロップダウンと、選んだブロックのロック・開く・中へ
-        if !children.is_empty() || st.sel.is_some() {
-            let hint = match &st.sel {
-                Some(n) => trf("ブロック: {}（クリックで選ぶ・ロック・中へ）", &[n]),
-                None => tr("ブロック（クリックで選ぶ・ロック・中へ）").to_string(),
-            };
-            let r = icon(ui, "▦", st.sel.is_some()).on_hover_text(hint);
-            popup(ui, &r, "ld_block", |ui| {
-                ui.label(RichText::new(tr("ブロック")).strong());
-                for &i in &children {
-                    let b = &c.blocks[i];
-                    let lk = block_locked(c.blocks, c.locked, i);
-                    let text = if lk {
-                        format!("■ {}", b.name)
-                    } else {
-                        b.name.clone()
-                    };
-                    let r = ui
-                        .selectable_label(st.sel.as_deref() == Some(b.name.as_str()), text)
-                        .on_hover_text(trf(
-                            "面 {}〜{}",
-                            &[&b.surfs[0], &b.surfs[b.surfs.len() - 1]],
-                        ));
-                    if r.clicked() {
-                        st.sel = Some(b.name.clone());
-                        acts.push(Act::Select(st.sel.clone()));
-                    }
-                }
-                if let Some(name) = st.sel.clone() {
-                    ui.separator();
-                    let mut lk = c.locked.contains(&name);
-                    if ui
-                        .checkbox(&mut lk, trf("{} をロック", &[&name]))
-                        .on_hover_text(tr(
-                            "ロックしたブロック（と中のブロック）の面は変えられない（Ctrl+L でも切り替え）",
-                        ))
-                        .changed()
-                    {
-                        acts.push(Act::Lock(name.clone(), lk));
-                    }
-                    ui.horizontal(|ui| {
-                        if tree {
-                            let label = if st.open.contains(&name) {
-                                tr("たたむ")
-                            } else {
-                                tr("開く")
-                            };
-                            if ui
-                                .button(label)
-                                .on_hover_text(tr("ダブルクリック・Enter でも"))
-                                .clicked()
-                            {
-                                toggle = Some(name.clone());
-                                ui.memory_mut(|m| m.close_popup());
-                            }
-                        }
-                        if ui
-                            .button(tr("中へ"))
-                            .on_hover_text(if tree {
-                                tr("ブロックの中だけを見る")
-                            } else {
-                                tr("ダブルクリック・Ctrl+Enter でも")
-                            })
-                            .clicked()
-                        {
-                            enter = Some(name.clone());
-                            ui.memory_mut(|m| m.close_popup());
-                        }
-                    });
-                }
-            });
-        }
-        // 選び方: ブロック単位（面を選ぶとそのブロックも選んでハイライト）・面単位（選んだ面だけ）
-        let (t, hint) = if st.by_surface {
-            (
-                "▭",
-                tr("選び方: 面単位（選んだ面だけをハイライト）。クリックでブロック単位に"),
-            )
-        } else {
-            (
-                "▣",
-                tr("選び方: ブロック単位（面を選ぶとそのブロック全体を選ぶ）。クリックで面単位に"),
-            )
-        };
-        if icon(ui, t, st.by_surface).on_hover_text(hint).clicked() {
-            st.by_surface = !st.by_surface;
-            if st.by_surface {
-                st.sel = None;
-                acts.push(Act::Select(None));
-            }
-        }
-        ui.separator();
-        // 面の挿入・削除（開いた系だけ。Insert・Delete キー・右クリックでも）
-        if !c.combo {
-            if icon(ui, "＋", false)
-                .on_hover_text(tr("選んだ行の前に面を挿入（Insert。後は Alt+Insert）"))
-                .clicked()
-            {
-                ins_btn = true;
-                ins_before = true;
-            }
-            del_btn |= icon(ui, "－", false)
-                .on_hover_text(tr("選んだ面を消す（Delete）"))
-                .clicked();
-        }
-        // 表の下の詳細設定（標準的な設定は表で。開口・傾き偏心・形のデータ・ブロックの設定は詳細で）
-        if icon(ui, "⚙", st.detail)
-            .on_hover_text(tr(
-                "表の下に面の詳細設定（開口・前後の傾き偏心・形のデータ・全項目 JSON）とブロックの設定を出す。面の番号のダブルクリックでも",
-            ))
-            .clicked()
-        {
-            st.detail = !st.detail;
-        }
-        if let Some(on) = c.unit_mech {
-            if icon(ui, "⊞", on)
-                .on_hover_text(tr(
-                    "面の範囲で玉・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選んでいる面から始まる",
-                ))
-                .clicked()
-            {
-                acts.push(Act::UnitMech);
-            }
-        }
-        // 選んだ面の範囲（玉・群）だけを系ファイルに書き出す（系全体の保存はファイルのメニュー・Ctrl+S）
-        export_btn |= icon(ui, "📤", false)
-            .on_hover_text(tr(
-                "選んだ面の範囲（玉・群）だけを系ファイルに書き出す…（Shift で範囲を選ぶ。系全体の保存はファイル → 保存）",
-            ))
-            .clicked();
-        if let Some(note) = c.note {
-            ui.label(RichText::new("ℹ").size(15.0).color(weak))
-                .on_hover_text(note);
-        }
+    strip_ui(
+        &mut strip,
+        st,
+        c,
+        &StripCtx {
+            inside: &inside,
+            wide,
+            strip_w,
+            weak,
+            children: &children,
+            tree,
+        },
+        &mut so,
+        &mut acts,
+    );
+    let StripOut {
+        go,
+        mut enter,
+        export_btn,
+        toggle: strip_toggle,
+        mut fx,
+    } = so;
+    if strip_toggle.is_some() {
+        toggle = strip_toggle;
     }
     let ui = &mut body;
     if let Some(n) = go {
@@ -2267,7 +2053,6 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         st.edit = None;
     }
 
-    let mut menu_acts: Vec<Act> = Vec::new();
     // 表
     // 書き換えを始めるセル（面、列、打った文字。None は今の値を全部選んで）
     let mut start: Option<(usize, Col, Option<String>)> = None;
@@ -2276,7 +2061,6 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     let mut after: Option<(i32, i32)> = None;
     let mut cancel = false;
     let mut clicked_any = false;
-    let mut open_detail = false;
     let mut cur_pos: Option<egui::Pos2> = None;
     // 横に見える所へスクロールする今のセル（表の中の縦のスクロールは横の行き先を捨てるので、外の横のスクロールで）
     let mut hscroll_to: Option<egui::Rect> = None;
@@ -2483,7 +2267,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                 click_to(st, j, col, shift_down, keep);
                             }
                             if resp.double_clicked() {
-                                open_detail = true;
+                                fx.detail = true;
                             }
                             let row_ro = lock.as_ref().map(|n| trf("{} はロック中", &[n]));
                             resp.context_menu(|ui| {
@@ -2500,14 +2284,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     c.rows,
                                     c.blocks,
                                 );
-                                menu_acts.extend(m.acts);
-                                ins_btn |= m.insert;
-                                    ins_before |= m.insert_before;
-                                if let Some(p) = m.paste {
-                                    menu_paste = Some(p);
-                                }
-                                del_btn |= m.delete;
-                                open_detail |= m.detail;
+                                fx.merge(m);
                             });
                         });
                         row.col(|ui| {
@@ -2540,14 +2317,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                         c.rows,
                                         c.blocks,
                                     );
-                                    menu_acts.extend(m.acts);
-                                    ins_btn |= m.insert;
-                                    ins_before |= m.insert_before;
-                                    if let Some(p) = m.paste {
-                                        menu_paste = Some(p);
-                                    }
-                                    del_btn |= m.delete;
-                                    open_detail |= m.detail;
+                                    fx.merge(m);
                                 });
                             }
                             let (depth, heads) =
@@ -3001,7 +2771,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                 let row_ro = lock.as_ref().map(|n| trf("{} はロック中", &[n]));
                                 resp.context_menu(|ui| {
                                     if ro.is_none() {
-                                        menu_acts.extend(cell_menu(
+                                        fx.acts.extend(cell_menu(
                                             ui,
                                             &mut st.menu,
                                             j,
@@ -3025,14 +2795,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                                     c.rows,
                                     c.blocks,
                                 );
-                                    menu_acts.extend(m.acts);
-                                    ins_btn |= m.insert;
-                                    ins_before |= m.insert_before;
-                                    if let Some(p) = m.paste {
-                                        menu_paste = Some(p);
-                                    }
-                                    del_btn |= m.delete;
-                                    open_detail |= m.detail;
+                                    fx.merge(m);
                                 });
                             });
                         }
@@ -3092,11 +2855,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         st.edit = None;
         st.active = true;
     }
-    if !menu_acts.is_empty() {
+    if !fx.acts.is_empty() {
         st.active = true;
     }
-    acts.append(&mut menu_acts);
-    if open_detail {
+    acts.append(&mut fx.acts);
+    if fx.detail {
         st.detail = true;
     }
     if clicked_any {
@@ -3138,9 +2901,9 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             }
             (k, sh, i.key_pressed(Key::Delete))
         });
-        ins_btn |= ins_k;
-        ins_before |= ins_shift;
-        del_btn |= del_k;
+        fx.insert |= ins_k;
+        fx.insert_before |= ins_shift;
+        fx.delete |= del_k;
         let (up, down, left, right, enter_k, f2, back, esc, ctrl, lkey) = ui.input(|i| {
             (
                 i.key_pressed(Key::ArrowUp),
@@ -3179,6 +2942,9 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
             }
         }
         // Ctrl+Shift+V・右クリックの「挿入して貼り付け」は面を挿入して（右クリックは次のフレームの Paste まで覚える）
+        if st.paste_insert.is_some() && ui.ctx().cumulative_pass_nr() > st.paste_asked + 30 {
+            st.paste_insert = None;
+        }
         let insert_paste = ui.input(|i| i.modifiers.shift) || st.paste_insert == Some(true);
         if paste.is_some() {
             st.paste_insert = None;
@@ -3351,19 +3117,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                             c.rows,
                             c.blocks,
                         );
-                        done |= !m.acts.is_empty()
-                            || m.insert
-                            || m.delete
-                            || m.detail
-                            || m.paste.is_some();
-                        acts.extend(m.acts);
-                        ins_btn |= m.insert;
-                        ins_before |= m.insert_before;
-                        if let Some(p) = m.paste {
-                            menu_paste = Some(p);
-                        }
-                        del_btn |= m.delete;
-                        open_detail |= m.detail;
+                        done |= fx.merge(m);
                     });
                 });
             let fresh = std::mem::take(&mut st.kbd_fresh);
@@ -3374,9 +3128,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 st.kbd_menu = None;
                 st.active = true;
             }
-            if open_detail {
+            if fx.detail {
                 st.detail = true;
             }
+            // キーボードの欄で選んだ操作（表の右クリックの分は上で渡した）
+            acts.append(&mut fx.acts);
         }
     }
     // 選んだ範囲の書き出し（物体面・像面は除く）
@@ -3389,7 +3145,7 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         }
     }
     // 面の挿入・削除（serve の edit の insert_surface・delete_surface）
-    if ins_btn || del_btn {
+    if fx.insert || fx.delete {
         let cur = st.cur.map(|x| x.0).or(rows.first().copied());
         match cur {
             _ if c.combo => acts.push(Act::Refused(
@@ -3402,14 +3158,14 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                 let lock = locked_at(c.blocks, c.locked, first);
                 if let Some(n) = lock {
                     acts.push(Act::Refused(trf("{} はロック中", &[&n])));
-                } else if ins_btn {
+                } else if fx.insert {
                     // 後に: たたんだブロックの行はブロックの最後の面の後。像面の後には足せないので像面の前
-                    let at = if ins_before {
+                    let at = if fx.insert_before {
                         first.max(1)
                     } else {
                         (j + 1).min(last).max(1)
                     };
-                    let after = !ins_before && at == j + 1;
+                    let after = !fx.insert_before && at == j + 1;
                     let mut ops = vec![
                         serde_json::json!({ "op": "insert_surface", "at": at, "surface": {} }),
                     ];
@@ -3452,6 +3208,11 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
                     ));
                 } else if j == 0 || j + 1 == c.rows.len() {
                     acts.push(Act::Refused(tr("物体面・像面は消せない").into()));
+                } else if c.rows[j].stop {
+                    // 範囲で消すときと同じく絞りの面は残す（GPN-15）
+                    acts.push(Act::Refused(
+                        tr("絞りの面は消せない（先に絞りを別の面へ移す）").into(),
+                    ));
                 } else {
                     acts.push(Act::Ops(vec![
                         serde_json::json!({ "op": "delete_surface", "surface": j }),
@@ -3552,8 +3313,9 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
         st.active = true;
     }
     // 右クリックの貼り付け: クリップボードを頼み、次のフレームの Paste で貼る
-    if let Some(p) = menu_paste {
+    if let Some(p) = fx.paste {
         st.paste_insert = Some(p);
+        st.paste_asked = ui.ctx().cumulative_pass_nr();
         st.active = true;
         ui.ctx()
             .send_viewport_cmd(egui::ViewportCommand::RequestPaste);

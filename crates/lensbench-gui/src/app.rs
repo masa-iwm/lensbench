@@ -28,7 +28,7 @@ use crate::catsave::CatSave;
 use crate::combo;
 use crate::config_panel;
 use crate::figures;
-use crate::i18n::{self, tr, trf, Lang};
+use crate::i18n::{self, n_, tr, trf, Lang};
 use crate::json_view::{self, fmt_num};
 use crate::layout::{self, AnaCfg, Kind, Layout, OsWin, Pane, Preset, View};
 use crate::lens_data;
@@ -199,6 +199,24 @@ impl Default for Settings {
 struct Status {
     text: String,
     error: bool,
+}
+
+impl Core {
+    /// 下の行に知らせを出す（利用者の操作の結果、GAR-16）
+    fn info(&mut self, text: impl Into<String>) {
+        self.status = Status {
+            text: text.into(),
+            error: false,
+        };
+    }
+
+    /// 下の行に誤りを出す（GAR-16）
+    fn fail(&mut self, text: impl Into<String>) {
+        self.status = Status {
+            text: text.into(),
+            error: true,
+        };
+    }
 }
 
 /// 結果の JSON の表示で見せる長さ（字数。これより長い分は切る）
@@ -920,10 +938,7 @@ impl Core {
             }
         );
         self.worker.send(Tag::Load, "load", params);
-        self.status = Status {
-            text: trf("{} を読んでいます…", &[&file]),
-            error: false,
-        };
+        self.info(trf("{} を読んでいます…", &[&file]));
     }
 
     fn load_params(&self, p: &Path) -> Value {
@@ -992,10 +1007,7 @@ impl Core {
             r.prev = None;
             r.error = None;
         }
-        self.status = Status {
-            text: tr("新規（Ctrl+Z で戻す）").to_string(),
-            error: false,
-        };
+        self.info(tr("新規（Ctrl+Z で戻す）"));
     }
 
     /// 読み直す。開いた系は前の系を段に積む（読み直すを元に戻せる）。組合せの系は組合せから作り直す
@@ -1009,20 +1021,14 @@ impl Core {
         }
         self.worker
             .send(Tag::Load, "reload", json!({ "history": "push" }));
-        self.status = Status {
-            text: trf("{} を読んでいます…", &[&f.display()]),
-            error: false,
-        };
+        self.info(trf("{} を読んでいます…", &[&f.display()]));
     }
 
     /// 新規を元に戻す（back）・やり直す
     fn undo_new(&mut self, back: bool) {
         if !back {
             self.new_system();
-            self.status = Status {
-                text: tr("やり直した").into(),
-                error: false,
-            };
+            self.info(tr("やり直した"));
             return;
         }
         let Some(n) = self.new_undo.take() else {
@@ -1045,10 +1051,7 @@ impl Core {
             self.file = n.file;
             self.ld_dirty = n.ld_dirty;
         }
-        self.status = Status {
-            text: tr("元に戻した").into(),
-            error: false,
-        };
+        self.info(tr("元に戻した"));
     }
 
     /// 系のファイルを選んで開く。start のフレームで選び始める（Web 版は選び終わった後のフレームで開くので、
@@ -1220,17 +1223,14 @@ impl Core {
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
                 self.worker.send(Tag::Analyze(id), "analyze", p);
-                self.status = Status {
-                    text: trf("{} を計算しています…", &[&layout::analysis_label(&cfg.cmd)]),
-                    error: false,
-                };
+                self.info(trf(
+                    "{} を計算しています…",
+                    &[&layout::analysis_label(&cfg.cmd)],
+                ));
             }
             Err(e) => {
                 self.results.entry(id).or_default().error = Some(e.clone());
-                self.status = Status {
-                    text: e,
-                    error: true,
-                };
+                self.fail(e);
                 return;
             }
         }
@@ -1327,12 +1327,7 @@ impl Core {
                     self.open(&path);
                 }
             }
-            Err(e) => {
-                self.status = Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                }
-            }
+            Err(e) => self.fail(format!("{}: {e}", path.display())),
         }
     }
 
@@ -1724,27 +1719,17 @@ impl Core {
                     if !self.s.auto_build {
                         self.build_combo(self.browser.combo.project());
                     }
-                    self.status = Status {
-                        text: tr(if back {
-                            "元に戻した"
-                        } else {
-                            "やり直した"
-                        })
-                        .into(),
-                        error: false,
-                    };
+                    self.info(tr(if back {
+                        "元に戻した"
+                    } else {
+                        "やり直した"
+                    }));
                 }
-                None => {
-                    self.status = Status {
-                        text: tr(if back {
-                            "元に戻す変更がない"
-                        } else {
-                            "やり直す変更がない"
-                        })
-                        .into(),
-                        error: false,
-                    }
-                }
+                None => self.info(tr(if back {
+                    "元に戻す変更がない"
+                } else {
+                    "やり直す変更がない"
+                })),
             }
             return;
         }
@@ -1891,10 +1876,7 @@ impl Core {
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
                 .and_then(|v| self.opt.set_params(&v));
             if let Err(e) = r {
-                self.status = Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                };
+                self.fail(format!("{}: {e}", path.display()));
             }
         }
     }
@@ -1999,10 +1981,7 @@ impl Core {
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
                 .and_then(|v| self.tol.set_spec(&v));
             if let Err(e) = r {
-                self.status = Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                };
+                self.fail(format!("{}: {e}", path.display()));
             }
         }
     }
@@ -2096,12 +2075,7 @@ impl Core {
                                 self.build_combo(self.browser.combo.project());
                             }
                         }
-                        Err(e) => {
-                            self.status = Status {
-                                text: e,
-                                error: true,
-                            }
-                        }
+                        Err(e) => self.fail(e),
                     }
                 }
                 Action::Undo => {
@@ -2144,10 +2118,7 @@ impl Core {
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
                 .and_then(|v| self.swap.set_spec(&v));
             if let Err(e) = r {
-                self.status = Status {
-                    text: format!("{}: {e}", path.display()),
-                    error: true,
-                };
+                self.fail(format!("{}: {e}", path.display()));
             }
         }
     }
@@ -2168,13 +2139,10 @@ impl Core {
             match crate::optim_panel::combo_edit(n, *x) {
                 Ok(e) => edits.push(e),
                 Err(n) => {
-                    self.status = Status {
-                        text: trf(
-                            "変数 {} は組合せに当てられない（面の厚さ・曲率半径・コーニックだけ）",
-                            &[&n],
-                        ),
-                        error: true,
-                    };
+                    self.fail(trf(
+                        "変数 {} は組合せに当てられない（面の厚さ・曲率半径・コーニックだけ）",
+                        &[&n],
+                    ));
                     return false;
                 }
             }
@@ -2499,12 +2467,7 @@ impl Core {
                                     p.locked = on;
                                 }
                             }
-                            None => {
-                                self.status = Status {
-                                    text: tr("組合せでは要素ごとにロックする").into(),
-                                    error: true,
-                                }
-                            }
+                            None => self.fail(tr("組合せでは要素ごとにロックする")),
                         }
                     } else {
                         if on {
@@ -2550,12 +2513,7 @@ impl Core {
                         }
                     }
                 }
-                Act::Refused(why) => {
-                    self.status = Status {
-                        text: why,
-                        error: true,
-                    }
-                }
+                Act::Refused(why) => self.fail(why),
                 Act::Edit { j, col, value } => {
                     let mut fields = Map::new();
                     fields.insert(col.field().into(), value);
@@ -2573,12 +2531,7 @@ impl Core {
                                     self.build_combo(self.browser.combo.project());
                                 }
                             }
-                            Err(e) => {
-                                self.status = Status {
-                                    text: e,
-                                    error: true,
-                                }
-                            }
+                            Err(e) => self.fail(e),
                         }
                     } else {
                         self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
@@ -2598,13 +2551,10 @@ impl Core {
                             let n = self.browser.combo.picks.len();
                             self.insert_into_open(Some(after), *pick, n);
                         } else {
-                            self.status = Status {
-                                text: trf(
-                                    "面 {} の後は空気の間隔でないので差し込めない",
-                                    &[&after],
-                                ),
-                                error: true,
-                            };
+                            self.fail(trf(
+                                "面 {} の後は空気の間隔でないので差し込めない",
+                                &[&after],
+                            ));
                         }
                     }
                 }
@@ -2625,10 +2575,7 @@ impl Core {
                         }
                     }
                     self.cmds.push(Cmd::FocusKind(Kind::Optimize));
-                    self.status = Status {
-                        text: trf("{} を最適化の変数に足した", &[&name]),
-                        error: false,
-                    };
+                    self.info(trf("{} を最適化の変数に足した", &[&name]));
                 }
                 Act::NeedData(j) => {
                     self.worker
@@ -2697,10 +2644,7 @@ impl Core {
         } else {
             t.active + 1
         };
-        self.status = Status {
-            text: trf("構成 {} / {}", &[&k, &t.n]),
-            error: false,
-        };
+        self.info(trf("構成 {} / {}", &[&k, &t.n]));
         self.worker.send(
             Tag::Edit,
             "edit",
@@ -2721,12 +2665,7 @@ impl Core {
                 config_panel::Act::Import => {
                     self.worker.send(Tag::ConfigDiff, "config_diff", json!({}));
                 }
-                config_panel::Act::Refused(why) => {
-                    self.status = Status {
-                        text: why,
-                        error: true,
-                    }
-                }
+                config_panel::Act::Refused(why) => self.fail(why),
             }
         }
     }
@@ -2910,19 +2849,13 @@ impl Core {
                 // 要素の最後の面の厚さ = 後の空気（鏡の後は符号が逆）
                 let air = if rows[j].t < 0.0 { -x } else { x };
                 if air < 0.0 {
-                    self.status = Status {
-                        text: tr("間隔は 0 以上").into(),
-                        error: true,
-                    };
+                    self.fail(tr("間隔は 0 以上"));
                     return false;
                 }
                 match self.browser.combo.gap_after(k) {
                     Some(v) => *v = air,
                     None => {
-                        self.status = Status {
-                            text: tr("この値は変えられない").into(),
-                            error: true,
-                        };
+                        self.fail(tr("この値は変えられない"));
                         return false;
                     }
                 }
@@ -2935,10 +2868,7 @@ impl Core {
                 }
             }
             _ => {
-                self.status = Status {
-                    text: tr("この値は変えられない").into(),
-                    error: true,
-                };
+                self.fail(tr("この値は変えられない"));
                 return false;
             }
         }
@@ -3024,10 +2954,7 @@ impl Core {
             ..Default::default()
         };
         if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
-            self.status = Status {
-                text: e,
-                error: true,
-            };
+            self.fail(e);
             if keep {
                 self.built_combo = Some(self.browser.combo.clone());
             }
@@ -3063,10 +2990,7 @@ impl Core {
         self.combo_view = combo::View::default();
         self.combo_len_prev = self.browser.combo.picks.len();
         self.doc_path = None;
-        self.status = Status {
-            text: tr("開いた系を組合せの要素にした（系の取り込み）").into(),
-            error: false,
-        };
+        self.info(tr("開いた系を組合せの要素にした（系の取り込み）"));
         self.build_combo(self.browser.combo.project());
     }
 
@@ -3100,10 +3024,7 @@ impl Core {
         };
         // 止まった・けられた光線の値は使わない
         if get("err").unwrap_or(1.0) != 0.0 || get("vig").unwrap_or(1.0) != 0.0 {
-            self.status = Status {
-                text: tr("軸上の光線が像面の前の面まで届かない").into(),
-                error: true,
-            };
+            self.fail(tr("軸上の光線が像面の前の面まで届かない"));
             return;
         }
         match combo::paraxial_focus(y, z, m, n) {
@@ -3111,23 +3032,15 @@ impl Core {
                 if let Some(v) = self.browser.combo.image_gap() {
                     *v = t;
                 }
-                self.status = Status {
-                    text: trf(
-                        "像面を近軸の焦点へ（最後の空気 {} mm）",
-                        &[&fmt_num((t * 1e4).round() / 1e4)],
-                    ),
-                    error: false,
-                };
+                self.info(trf(
+                    "像面を近軸の焦点へ（最後の空気 {} mm）",
+                    &[&fmt_num((t * 1e4).round() / 1e4)],
+                ));
                 if !self.s.auto_build {
                     self.build_combo(self.browser.combo.project());
                 }
             }
-            None => {
-                self.status = Status {
-                    text: tr("軸上の光線が軸と交わらない（焦点が無い）").into(),
-                    error: true,
-                }
-            }
+            None => self.fail(tr("軸上の光線が軸と交わらない（焦点が無い）")),
         }
     }
 
@@ -3166,10 +3079,9 @@ impl Core {
                         // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
                         self.built_combo = Some(self.browser.combo.clone());
                         self.combo_view.select(k);
-                        self.status = Status {
-                            text: tr("組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）").into(),
-                            error: false,
-                        };
+                        self.info(tr(
+                            "組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）",
+                        ));
                     }
                 }
             } else {
@@ -3571,21 +3483,13 @@ impl Core {
                                 cfg.sensor = f;
                                 changed = true;
                             } else {
-                                self.status = Status {
-                                    text: trf(
-                                        "{}: 知らない項目 {}",
-                                        &[&p.display(), &unknown.join(", ")],
-                                    ),
-                                    error: true,
-                                };
+                                self.fail(trf(
+                                    "{}: 知らない項目 {}",
+                                    &[&p.display(), &unknown.join(", ")],
+                                ));
                             }
                         }
-                        Err(e) => {
-                            self.status = Status {
-                                text: format!("{}: {e}", p.display()),
-                                error: true,
-                            }
-                        }
+                        Err(e) => self.fail(format!("{}: {e}", p.display())),
                     }
                 }
             }
@@ -3600,19 +3504,11 @@ impl Core {
                             let t = serde_json::to_string_pretty(&argform::nest(&m))
                                 .unwrap_or_default();
                             if let Err(e) = lensbench_core::vfs::write(&p, t + "\n") {
-                                self.status = Status {
-                                    text: format!("{}: {e}", p.display()),
-                                    error: true,
-                                };
+                                self.fail(format!("{}: {e}", p.display()));
                             }
                         }
                     }
-                    Err(e) => {
-                        self.status = Status {
-                            text: e,
-                            error: true,
-                        }
-                    }
+                    Err(e) => self.fail(e),
                 }
             }
         });
@@ -4105,23 +4001,18 @@ impl Core {
         let text = match lensbench_core::vfs::read(&src) {
             Ok(b) => lensbench_core::glass::decode_text(&b),
             Err(e) => {
-                self.status = Status {
-                    text: format!("{}: {e}", src.display()),
-                    error: true,
-                };
+                self.fail(format!("{}: {e}", src.display()));
                 self.missing_glass = None;
                 return;
             }
         };
         let (out, done) = model_glass_zmx(&text, &m.names);
         if done.is_empty() {
-            self.status = Status {
-                text: trf(
-                    "ガラス {} は nd・νd が書かれていないので代用できない",
-                    &[&m.names.join("・")],
-                ),
-                error: true,
-            };
+            let text = trf(
+                "ガラス {} は nd・νd が書かれていないので代用できない",
+                &[&m.names.join("・")],
+            );
+            self.fail(text);
             self.missing_glass = None;
             return;
         }
@@ -4138,10 +4029,7 @@ impl Core {
             .unwrap_or_else(|| "system.zmx".into());
         let dst = dir.join(name);
         if let Err(e) = lensbench_core::vfs::write(&dst, out.as_bytes()) {
-            self.status = Status {
-                text: format!("{}: {e}", dst.display()),
-                error: true,
-            };
+            self.fail(format!("{}: {e}", dst.display()));
             self.missing_glass = None;
             return;
         }
@@ -4172,10 +4060,7 @@ impl Core {
             self.fill.start(r);
         }
         if let Some(e) = self.auto_fill.take_timing_error() {
-            self.status = Status {
-                text: e,
-                error: true,
-            };
+            self.fail(e);
         }
         // 補う窓が開いている間は裏で読まない
         if !self.fill.open {
@@ -4330,7 +4215,7 @@ fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>) -> bool {
             ui.label(if ok {
                 RichText::new(d)
             } else {
-                RichText::new(trf("{}（見つからない）", &[d])).color(Color32::RED)
+                RichText::new(trf("{}（見つからない）", &[d])).color(theme::error(ui.visuals()))
             });
         });
     }
@@ -4450,18 +4335,7 @@ fn version() -> String {
 
 /// 足せるパネル
 fn add_kinds() -> Vec<Kind> {
-    let mut v = vec![
-        Kind::System,
-        Kind::Catalog,
-        Kind::Layout,
-        Kind::SysSettings,
-        Kind::LensData,
-        Kind::MultiConfig,
-        Kind::Optimize,
-        Kind::Swap,
-        Kind::Tolerance,
-        Kind::Zoom,
-    ];
+    let mut v: Vec<Kind> = layout::TOOLS.iter().map(|t| t.kind.clone()).collect();
     v.extend(
         layout::analyses()
             .iter()
@@ -4875,10 +4749,7 @@ impl App {
             let id = w.pane.id;
             let remote = !matches!(w.pane.kind, Kind::Analysis(_));
             if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, remote, w.size) {
-                self.c.status = Status {
-                    text: tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します").into(),
-                    error: true,
-                };
+                self.c.fail(tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します"));
             }
         }
         for e in t.events() {
@@ -5038,10 +4909,7 @@ impl App {
                     } else {
                         self.c.s.layouts.push((name.clone(), l));
                     }
-                    self.c.status = Status {
-                        text: trf("並び「{}」を保存", &[&name]),
-                        error: false,
-                    };
+                    self.c.info(trf("並び「{}」を保存", &[&name]));
                     done = true;
                 }
             });
@@ -5200,10 +5068,7 @@ impl App {
         };
         if copy {
             ctx.copy_image(part);
-            self.c.status = Status {
-                text: tr("図を画像で写した").into(),
-                error: false,
-            };
+            self.c.info(tr("図を画像で写した"));
             return;
         }
         let Some(p) = crate::files::FileDialog::new()
@@ -5373,13 +5238,10 @@ impl eframe::App for App {
         let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
         let dropped = self.c.browser.combo.drop_stale_edits();
         if dropped > 0 {
-            self.c.status = Status {
-                text: trf(
-                    "要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）",
-                    &[&dropped],
-                ),
-                error: false,
-            };
+            self.c.info(trf(
+                "要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）",
+                &[&dropped],
+            ));
         }
         // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない、GPN-20）
         let census = self.c.browser.combo.census();
@@ -5395,10 +5257,8 @@ impl eframe::App for App {
             .collect();
             // 新規・開くで組合せごと入れ替えたときは出さない
             if !lost.is_empty() && census[0] > 0 && dropped == 0 {
-                self.c.status = Status {
-                    text: trf("{} を外しました（Ctrl+Z で戻す）", &[&lost.join("・")]),
-                    error: false,
-                };
+                self.c
+                    .info(trf("{} を外しました（Ctrl+Z で戻す）", &[&lost.join("・")]));
             }
         }
         self.c.combo_hist.track(&self.c.browser.combo, busy);
@@ -5928,20 +5788,6 @@ const DOCS_URL: &str = match option_env!("LENSBENCH_DOCS_URL") {
     Some(u) => u,
     None => "https://masa-iwm.github.io/lensbench/",
 };
-
-/// ヘルプのメニューのページ（名前、マニュアルの中のページ、説明）
-const HELP_PAGES: &[(&str, &str, &str)] = &[
-    ("マニュアル", "", "使い方の目次（ブラウザで開く）"),
-    ("GUI の使い方", "gui.html", "画面・パネルの使い方（図つき）"),
-    ("解析と CLI", "cli.html", "解析の種類と引数、出力の例"),
-    (
-        "プロジェクトファイル",
-        "project-file.html",
-        "ブロックで系を組む JSON（状態・群・BS）",
-    ),
-    ("最適化", "optimize.html", "評価関数・変数・DLS"),
-    ("公差", "tolerance.html", "モンテカルロ公差の設定"),
-];
 
 /// マニュアルのページの URL
 fn docs_url(page: &str) -> String {

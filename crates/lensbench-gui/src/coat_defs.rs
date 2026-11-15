@@ -7,7 +7,7 @@ use egui::{RichText, Ui};
 use egui_plot::{Legend, Line, LineStyle, Plot};
 use lensbench_project::filter::{CoatSpec, Ideal};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::theme;
 
 /// 膜の欄で選べる名前を、描画のたびに置く所（[`set_names`]・[`names`]）
@@ -39,25 +39,25 @@ pub fn names(ctx: &egui::Context) -> Vec<String> {
 
 /// 種類の名前（serde の type）と表示名
 const KINDS: &[(&str, &str)] = &[
-    ("longpass", "ロングパス"),
-    ("shortpass", "ショートパス"),
-    ("bandpass", "バンドパス"),
-    ("notch", "ノッチ"),
+    ("longpass", n_("ロングパス")),
+    ("shortpass", n_("ショートパス")),
+    ("bandpass", n_("バンドパス")),
+    ("notch", n_("ノッチ")),
     ("nd", "ND"),
-    ("curve", "波長ごとの透過"),
-    ("table", "表（角度・波長ごと）"),
+    ("curve", n_("波長ごとの透過")),
+    ("table", n_("表（角度・波長ごと）")),
 ];
 
 /// 表示名の表（翻訳の検査用）
 #[cfg(test)]
 pub const LABELS: [&str; 7] = [
-    "ロングパス",
-    "ショートパス",
-    "バンドパス",
-    "ノッチ",
+    n_("ロングパス"),
+    n_("ショートパス"),
+    n_("バンドパス"),
+    n_("ノッチ"),
     "ND",
-    "波長ごとの透過",
-    "表（角度・波長ごと）",
+    n_("波長ごとの透過"),
+    n_("表（角度・波長ごと）"),
 ];
 
 fn ideal() -> Ideal {

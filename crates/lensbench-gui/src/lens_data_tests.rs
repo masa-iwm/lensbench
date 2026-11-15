@@ -315,6 +315,13 @@ fn commit_only_changed_values() {
         commit_act(&cb, 2, Col::Par(4), "10"),
         Some(Act::Fields { j: 2, .. })
     ));
+    // パラメータの列を空で決めても 0 を入れない（GPN-30）
+    let cb1 = Row {
+        cb: vec![0.0, 0.0, 0.0, 3.0, 0.0],
+        ..cb.clone()
+    };
+    assert_eq!(commit_act(&cb1, 2, Col::Par(4), ""), None);
+    assert_eq!(commit_act(&cb1, 2, Col::Par(4), "  "), None);
 }
 
 #[test]

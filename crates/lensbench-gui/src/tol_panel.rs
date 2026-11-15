@@ -10,7 +10,7 @@ use egui::{RichText, Ui};
 use egui_plot::{Line, Plot, PlotPoints};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{tr, trf};
+use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
 use crate::optim_panel::{self as op, section, small_edit, text_of, OptPanel};
 use crate::param_pick::{self as pp, Set};
@@ -18,17 +18,17 @@ use crate::theme;
 
 /// 公差の組の選択肢（"" は既定 = 全体の組）
 const PRESETS: [(&str, &str); 5] = [
-    ("commercial", "一般"),
-    ("precision", "精密"),
-    ("high", "高精度"),
-    ("none", "なし"),
-    ("", "既定"),
+    ("commercial", n_("一般")),
+    ("precision", n_("精密")),
+    ("high", n_("高精度")),
+    ("none", n_("なし")),
+    ("", n_("既定")),
 ];
 
 const DISTS: [(&str, &str); 3] = [
-    ("normal", "正規（±2σ）"),
-    ("uniform", "一様"),
-    ("end", "端（±の端）"),
+    ("normal", n_("正規（±2σ）")),
+    ("uniform", n_("一様")),
+    ("end", n_("端（±の端）")),
 ];
 
 fn preset_label(k: &str) -> &'static str {
@@ -147,16 +147,6 @@ impl Default for TolPanel {
     }
 }
 
-fn num(s: &str, what: &str) -> Result<Option<f64>, String> {
-    let t = s.trim();
-    if t.is_empty() {
-        return Ok(None);
-    }
-    t.parse::<f64>()
-        .map(Some)
-        .map_err(|_| trf("{} の値 {} が数でない", &[&what, &t]))
-}
-
 impl TolPanel {
     /// serve の tolerance の params（保存するファイルと同じ。configs も入る）
     pub fn spec(&self) -> Result<Value, String> {
@@ -253,7 +243,7 @@ impl TolPanel {
                 ("tilt", &g.tilt),
                 ("shift", &g.shift),
             ] {
-                if let Some(x) = num(v, &format!("{n} {k}"))? {
+                if let Some(x) = crate::widgets::parse_num(v, &format!("{n} {k}"))? {
                     o.insert(k.into(), json!(x));
                 }
             }
@@ -273,7 +263,8 @@ impl TolPanel {
             if p.is_empty() {
                 continue;
             }
-            let pm = num(&t.pm, p)?.ok_or_else(|| trf("{} の ± がない", &[&p]))?;
+            let pm =
+                crate::widgets::parse_num(&t.pm, p)?.ok_or_else(|| trf("{} の ± がない", &[&p]))?;
             let mut o = json!({ "param": p, "pm": pm });
             if !t.dist.is_empty() {
                 o["dist"] = json!(t.dist);

@@ -11,11 +11,11 @@ impl App {
             let row_w = ui.available_width();
             let busy = self.c.worker.busy();
             let (dot, col) = if busy {
-                ("●", Color32::from_rgb(0xF2, 0xC9, 0x4C))
+                ("●", theme::warn(ui.visuals()))
             } else if self.c.status.error {
-                ("●", Color32::from_rgb(0xFF, 0x7A, 0x6B))
+                ("●", theme::error(ui.visuals()))
             } else {
-                ("●", Color32::from_rgb(0x8F, 0xD1, 0x9E))
+                ("●", theme::ok(ui.visuals()))
             };
             ui.label(RichText::new(dot).color(col));
             if busy {
@@ -43,7 +43,7 @@ impl App {
                 .unwrap_or(320.0);
             let room = (ui.available_width() - right_w - 180.0).max(80.0);
             let rich = if self.c.status.error {
-                RichText::new(text.clone()).color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
+                RichText::new(text.clone()).color(theme::error(ui.visuals()))
             } else {
                 RichText::new(text.clone()).color(weak)
             };
@@ -157,7 +157,7 @@ impl App {
                         for (t, err) in self.c.status_log.iter().rev() {
                             let rt = RichText::new(t);
                             let rt = if *err {
-                                rt.color(Color32::from_rgb(0xFF, 0x7A, 0x6B))
+                                rt.color(theme::error(ui.visuals()))
                             } else {
                                 rt
                             };
