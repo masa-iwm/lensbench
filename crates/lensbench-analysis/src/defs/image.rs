@@ -352,12 +352,12 @@ impl Analysis for Psf {
                 e1: r.axes[0],
                 e2: r.axes[1],
             });
-            for (iy, row) in r.i.iter().enumerate() {
+            for (iy, row) in r.i.rows().enumerate() {
                 for (ix, val) in row.iter().enumerate() {
                     v.push(PsfPoint {
                         field: i + 1,
-                        x: r.x[ix],
-                        y: r.y[iy],
+                        x: r.i.x()[ix],
+                        y: r.i.y()[iy],
                         i: *val,
                     });
                 }

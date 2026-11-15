@@ -193,9 +193,8 @@ pub fn wavefront_grid(n: usize) -> Vec<f64> {
 }
 
 pub struct Wavefront {
-    pub p: Vec<f64>,
-    /// W[iy][ix]（瞳の外・けられは NaN）
-    pub w: Vec<Vec<f64>>,
+    /// 波面 [波]（行優先、行 = y。座標は正規化瞳、x・y 共通の [`wavefront_grid`]。瞳の外・けられは NaN）
+    pub w: crate::grid::Grid2,
     pub pv: f64,
     pub rms: f64,
 }
@@ -236,8 +235,7 @@ pub fn wavefront(
     let pv =
         v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min);
     Ok(Wavefront {
-        p: g,
-        w: ww,
+        w: crate::grid::Grid2::from_rows(g.clone(), g, ww),
         pv,
         rms,
     })

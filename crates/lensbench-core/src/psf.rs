@@ -13,6 +13,7 @@
 use crate::analysis::{lens_quad, mtf_cutoff, opd, pupil_jacobian, LensGl};
 use crate::coating::C64;
 use crate::error::Result;
+use crate::grid::Grid2;
 use crate::invalid;
 use crate::par::scoped;
 use crate::system::{FieldSel, System};
@@ -21,12 +22,10 @@ use crate::{TanSag, Waves};
 /// 回折 PSF
 #[derive(Debug, Clone)]
 pub struct Psf {
-    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、主光線に垂直な面の e1・e2 に沿う）。x[m] = (m − M/2)·delta.0。
+    /// 強度（行優先、行 = y）。収差のない同じ瞳（けられ込み）の多色 PSF の中心の値を 1 とする（ピークはストレール比）。
+    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、主光線に垂直な面の e1・e2 に沿う）は `i.x()[m] = (m − M/2)·delta.0`。
     /// アフォーカル像空間では向きの角度 [System::afocal_unit]（atan(l/n)・atan(m/n) の主光線との差、center・delta も同じ）
-    pub x: Vec<f64>,
-    pub y: Vec<f64>,
-    /// 強度 I[iy][ix]。収差のない同じ瞳（けられ込み）の多色 PSF の中心の値を 1 とする（ピークはストレール比）
-    pub i: Vec<Vec<f64>>,
+    pub i: Grid2,
     /// 主波長の主光線の像点（像面の局所座標）
     pub center: (f64, f64),
     pub delta: (f64, f64),
@@ -443,9 +442,7 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     let peak = tot.iter().flatten().cloned().fold(0.0, f64::max);
     let enclosed = encl / wsum;
     Ok(Psf {
-        x: xs,
-        y: ys,
-        i: tot,
+        i: Grid2::from_rows(xs, ys, tot),
         center,
         delta,
         axes: [e1, e2],

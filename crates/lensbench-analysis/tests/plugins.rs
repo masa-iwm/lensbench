@@ -93,7 +93,7 @@ fn spot_wavefront_zernike_match_core() {
     );
     let r = analysis::wavefront(&s, FieldSel::Index(1), Some(0), 32, false).unwrap();
     assert_eq!(o["w"].shape, vec![32, 32]);
-    assert_eq!(bits(get(&o, "w")), bits(&r.w.concat()));
+    assert_eq!(bits(get(&o, "w")), bits(r.w.data()));
     let cfg = Config::from([
         ("kind".into(), Value::Str("fringe".into())),
         ("terms".into(), Value::Num(16.0)),
@@ -148,7 +148,7 @@ fn mtf_and_psf_match_core() {
     };
     let r = psf::psf(&s, FieldSel::Index(0), Waves::All, opts).unwrap();
     assert_eq!(o["i"].shape, vec![64, 64]);
-    assert_eq!(bits(get(&o, "i")), bits(&r.i.concat()));
+    assert_eq!(bits(get(&o, "i")), bits(r.i.data()));
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
     let o = run("huygens_psf", cfg.clone(), &s, 2.0);
     let r = lensbench_analysis::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho)
         .unwrap();
-    assert_eq!(bits(get(&o, "i")), bits(&r.i.concat()));
+    assert_eq!(bits(get(&o, "i")), bits(r.i.data()));
     let mut cfg = cfg;
     cfg.insert("freqs".into(), Value::Nums(fs.clone()));
     let o = run("huygens_mtf", cfg, &s, 2.0);
@@ -290,8 +290,8 @@ fn interferogram_matches_core_with_the_configurations() {
     let c1 = s.config(1).unwrap();
     let c2 = s.config(2).unwrap();
     let r = interference::interferogram(&c1, Some(&c2), FieldSel::Index(1), None, &opts).unwrap();
-    assert_eq!(bits(get(&o, "delta")), bits(&r.delta.concat()));
-    assert_eq!(bits(get(&o, "intensity")), bits(&r.intensity.concat()));
+    assert_eq!(bits(get(&o, "delta")), bits(r.delta.data()));
+    assert_eq!(bits(get(&o, "intensity")), bits(r.intensity.data()));
     assert!(r.pv > 0.1, "{}", r.pv);
     // beam2 = 0 は参照球
     let cfg = Config::from([

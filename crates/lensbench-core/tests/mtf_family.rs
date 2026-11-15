@@ -210,9 +210,9 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
             (v[0] - k[0] * v[2] / k[2], v[1] - k[1] * v[2] / k[2])
         };
         let (mut sx, mut sy, mut sw) = (0.0, 0.0, 0.0);
-        for (iy, row) in p.i.iter().enumerate() {
+        for (iy, row) in p.i.rows().enumerate() {
             for (ix, v) in row.iter().enumerate() {
-                let (x, y) = img(&p, p.x[ix], p.y[iy]);
+                let (x, y) = img(&p, p.i.x()[ix], p.i.y()[iy]);
                 sx += v * x;
                 sy += v * y;
                 sw += v;
@@ -240,13 +240,13 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
         .unwrap();
         let fr = [10.0, 30.0, 60.0];
         let m = analysis::mtf(&s, f, Waves::One(w), None, &fr).unwrap();
-        let tot: f64 = p.i.iter().flatten().sum();
+        let tot: f64 = p.i.data().iter().sum();
         for (k, &nu) in fr.iter().enumerate() {
             // MTF の周波数は瞳の軸に沿う（J の対角）ので、像面の y に直した格子の y で
             let (mut re, mut im) = (0.0, 0.0);
-            for (iy, row) in p.i.iter().enumerate() {
+            for (iy, row) in p.i.rows().enumerate() {
                 let ry: f64 = row.iter().sum();
-                let y = img(&p, 0.0, p.y[iy]).1;
+                let y = img(&p, 0.0, p.i.y()[iy]).1;
                 let ph = -2.0 * std::f64::consts::PI * nu * y;
                 re += ry * ph.cos();
                 im += ry * ph.sin();

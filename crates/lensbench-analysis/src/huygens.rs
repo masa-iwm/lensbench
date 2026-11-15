@@ -387,9 +387,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     let peak = i.iter().flatten().cloned().fold(0.0, f64::max);
     let enclosed = encl / wsum;
     Ok(Psf {
-        x: xs,
-        y: ys,
-        i,
+        i: lensbench_core::grid::Grid2::from_rows(xs, ys, i),
         center: (cx, cy),
         delta,
         axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
@@ -407,9 +405,9 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
 /// 格子の間隔 Δ のナイキスト 1/(2Δ) を超える周波数は NaN
 pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
     // 周辺分布（x・y への射影）
-    let mut mx = vec![0.0; p.x.len()];
-    let mut my = vec![0.0; p.y.len()];
-    for (iy, row) in p.i.iter().enumerate() {
+    let mut mx = vec![0.0; p.i.nx()];
+    let mut my = vec![0.0; p.i.ny()];
+    for (iy, row) in p.i.rows().enumerate() {
         for (ix, v) in row.iter().enumerate() {
             mx[ix] += v;
             my[iy] += v;
@@ -461,8 +459,8 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
             .collect()
     };
     TanSag {
-        tan: interp(&my, &p.y, p.delta.1),
-        sag: interp(&mx, &p.x, p.delta.0),
+        tan: interp(&my, p.i.y(), p.delta.1),
+        sag: interp(&mx, p.i.x(), p.delta.0),
     }
 }
 

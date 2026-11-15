@@ -24,6 +24,7 @@
 //! `pop` は系の視野で入力の場を作り、`ghost` は視野を使わない（入力なし）。`ghost` の膜は `Context` の膜（なければ
 //! 系の膜ファイル）を使う。
 
+use lensbench_core::grid::Grid2;
 use lensbench_core::Waves;
 use std::sync::Arc;
 
@@ -750,9 +751,9 @@ fn v1(v: Vec<f64>) -> Result<Array> {
     Array::f64(vec![v.len()], v)
 }
 
-fn rows(v: &[Vec<f64>]) -> Result<Array> {
-    let n = v.first().map_or(0, Vec::len);
-    Array::f64(vec![v.len(), n], v.concat())
+/// 2 次元の格子の値 → 形 (ny, nx) の配列（行優先のまま写す）
+fn grid(g: &Grid2) -> Result<Array> {
+    Array::f64(vec![g.ny(), g.nx()], g.data().to_vec())
 }
 
 fn out(items: Vec<(&str, Array)>) -> Arrays {
@@ -805,8 +806,8 @@ impl Prepared {
             } => {
                 let r = analysis::wavefront(s, f, *wave, *n, *ref_primary)?;
                 out(vec![
-                    ("p", v1(r.p)?),
-                    ("w", rows(&r.w)?),
+                    ("p", v1(r.w.x().to_vec())?),
+                    ("w", grid(&r.w)?),
                     ("pv", Array::scalar(r.pv)),
                     ("rms", Array::scalar(r.rms)),
                 ])
@@ -849,9 +850,9 @@ impl Prepared {
             Prepared::Psf { wave, opts } => {
                 let r = psf::psf(s, f, Waves::all_or(*wave), *opts)?;
                 out(vec![
-                    ("x", v1(r.x)?),
-                    ("y", v1(r.y)?),
-                    ("i", rows(&r.i)?),
+                    ("x", v1(r.i.x().to_vec())?),
+                    ("y", v1(r.i.y().to_vec())?),
+                    ("i", grid(&r.i)?),
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
@@ -888,9 +889,9 @@ impl Prepared {
             Prepared::HuygensPsf { wave, opts } => {
                 let r = huygens::huygens_psf(s, f, Waves::all_or(*wave), *opts)?;
                 out(vec![
-                    ("x", v1(r.x)?),
-                    ("y", v1(r.y)?),
-                    ("i", rows(&r.i)?),
+                    ("x", v1(r.i.x().to_vec())?),
+                    ("y", v1(r.i.y().to_vec())?),
+                    ("i", grid(&r.i)?),
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
@@ -962,9 +963,9 @@ impl Prepared {
                 };
                 let r = interference::interferogram(&s1, s2.as_ref(), f, *wave, opts)?;
                 out(vec![
-                    ("p", v1(r.p)?),
-                    ("delta", rows(&r.delta)?),
-                    ("intensity", rows(&r.intensity)?),
+                    ("p", v1(r.delta.x().to_vec())?),
+                    ("delta", grid(&r.delta)?),
+                    ("intensity", grid(&r.intensity)?),
                     ("pv", Array::scalar(r.pv)),
                     ("rms", Array::scalar(r.rms)),
                 ])

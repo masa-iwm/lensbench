@@ -61,9 +61,9 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
 /// 格子の座標は主光線に垂直な面の上（軸上では像面と同じ）
 fn psf_mtf(p: &Psf, f: f64) -> (f64, f64) {
     let (mut sx, mut sy, mut tot) = ((0.0, 0.0), (0.0, 0.0), 0.0);
-    for (iy, row) in p.i.iter().enumerate() {
+    for (iy, row) in p.i.rows().enumerate() {
         for (ix, &v) in row.iter().enumerate() {
-            let (ax, ay) = (2.0 * PI * f * p.x[ix], 2.0 * PI * f * p.y[iy]);
+            let (ax, ay) = (2.0 * PI * f * p.i.x()[ix], 2.0 * PI * f * p.i.y()[iy]);
             sx.0 += v * ax.cos();
             sx.1 += v * ax.sin();
             sy.0 += v * ay.cos();
@@ -117,11 +117,11 @@ fn obscured_huygens_matches_fft_psf() {
     let f0 = FieldSel::Index(0);
     let f = psf::psf(&s, f0, Waves::All, PsfOpts::default()).unwrap();
     let h = huygens_psf(&s, f0, Waves::All, HuygensOpts::default()).unwrap();
-    assert_eq!(f.x, h.x);
+    assert_eq!(f.i.x(), h.i.x());
     let d =
-        f.i.iter()
-            .flatten()
-            .zip(h.i.iter().flatten())
+        f.i.data()
+            .iter()
+            .zip(h.i.data())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0, f64::max);
     assert!(d < 2e-3, "{d:.2e}");

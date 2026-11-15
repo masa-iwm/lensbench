@@ -3,6 +3,7 @@
 
 use lensbench_analysis::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
 use lensbench_core::analysis;
+use lensbench_core::grid::Grid2;
 use lensbench_core::psf::{self, diffraction_limit, PsfOpts};
 use lensbench_core::surface::{SurfType, Surface};
 use lensbench_core::system::{FieldSel, System};
@@ -38,10 +39,10 @@ fn tilt_image(s: &System, deg: f64) -> System {
     t
 }
 
-fn max_abs_diff(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
-    a.iter()
-        .flatten()
-        .zip(b.iter().flatten())
+fn max_abs_diff(a: &Grid2, b: &Grid2) -> f64 {
+    a.data()
+        .iter()
+        .zip(b.data())
         .map(|(x, y)| (x - y).abs())
         .fold(0.0, f64::max)
 }
@@ -60,7 +61,7 @@ fn on_axis_matches_fft_psf() {
                 HuygensOpts::default(),
             )
             .unwrap();
-            assert_eq!(f.x, h.x);
+            assert_eq!(f.i.x(), h.i.x());
             let d = max_abs_diff(&f.i, &h.i);
             assert!(d < tol, "{name} {w:?}: {d:.2e}");
             assert!(

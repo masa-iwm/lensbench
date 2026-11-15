@@ -23,6 +23,7 @@ mod focus;
 pub mod freeform;
 pub mod ghost;
 pub mod glass;
+pub mod grid;
 pub mod grin;
 pub mod i18n;
 pub mod interference;

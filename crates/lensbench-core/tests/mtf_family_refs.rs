@@ -394,12 +394,14 @@ fn fft_psf_matches_opticstudio() {
             .unwrap();
             // OS の格子は x = (i − (N/2 − 1))·Δ、lensbench は (m − N/2)·Δ なので m = i + 1。
             // 全体の和で正規化してから OS の「和 / 最大」をかけて最大比にそろえる
-            let sum: f64 = g.i.iter().flatten().sum();
+            let sum: f64 = g.i.data().iter().sum();
             let scale = it["sum_over_max"].as_f64().unwrap() / sum;
             let (cy, cx) = want.dim();
             let i0 = image / 2 - 1 - cy / 2 + 1;
             let j0 = image / 2 - 1 - cx / 2 + 1;
-            assert!((g.x[j0] * 1e3 - it["x0_um"].as_f64().unwrap()).abs() < 1e-6 * image as f64);
+            assert!(
+                (g.i.x()[j0] * 1e3 - it["x0_um"].as_f64().unwrap()).abs() < 1e-6 * image as f64
+            );
             let mut e: f64 = 0.0;
             for i in 0..cy {
                 for j in 0..cx {

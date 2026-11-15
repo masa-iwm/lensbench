@@ -44,12 +44,10 @@ impl Default for PupilOpts {
 /// 瞳上の干渉縞
 #[derive(Debug, Clone)]
 pub struct Interferogram {
-    /// 格子の正規化瞳座標（x・y 共通）
-    pub p: Vec<f64>,
-    /// Δ [波]（[iy][ix]、どちらかの光束が通らない点は NaN）
-    pub delta: Vec<Vec<f64>>,
-    /// 縞の強度 (1 + cos 2πΔ) / 2（外は NaN）
-    pub intensity: Vec<Vec<f64>>,
+    /// Δ [波]（行優先、行 = y。座標は正規化瞳で x・y 共通。どちらかの光束が通らない点は NaN）
+    pub delta: crate::grid::Grid2,
+    /// 縞の強度 (1 + cos 2πΔ) / 2（座標は delta と同じ、外は NaN）
+    pub intensity: crate::grid::Grid2,
     /// scale·(W1 − W2) の P-V・RMS [波]（傾きの縞は含めない。OpticStudio の Peak to Valley と同じ）
     pub pv: f64,
     pub rms: f64,
@@ -102,9 +100,8 @@ pub fn interferogram(
     }
     let (pv, rms) = pv_rms(&v);
     Ok(Interferogram {
-        p,
-        delta,
-        intensity: inten,
+        delta: crate::grid::Grid2::from_rows(p.clone(), p.clone(), delta),
+        intensity: crate::grid::Grid2::from_rows(p.clone(), p, inten),
         pv,
         rms,
     })
@@ -486,12 +483,13 @@ mod tests {
         };
         let r = interferogram(&s, Some(&s), FieldSel::Index(1), None, &o).unwrap();
         let mut seen = 0;
-        for (iy, row) in r.delta.iter().enumerate() {
+        let p = r.delta.x();
+        for (iy, row) in r.delta.rows().enumerate() {
             for (ix, &d) in row.iter().enumerate() {
                 if d.is_finite() {
                     seen += 1;
                     assert!(
-                        (d - 0.5 * (3.0 * r.p[ix] - r.p[iy])).abs() < 1e-12,
+                        (d - 0.5 * (3.0 * p[ix] - p[iy])).abs() < 1e-12,
                         "{iy} {ix} {d}"
                     );
                 }

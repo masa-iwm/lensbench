@@ -162,8 +162,8 @@ impl Analysis for Wavefront {
                 field: i + 1,
                 pv: wf.pv,
                 rms: wf.rms,
-                p: p.map.then(|| wf.p.clone()),
-                map: p.map.then_some(wf.w),
+                p: p.map.then(|| wf.w.x().to_vec()),
+                map: p.map.then(|| wf.w.to_rows()),
             });
         }
         Ok(WavefrontOut {

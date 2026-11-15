@@ -236,10 +236,11 @@ impl Analysis for Interference {
                     ytilt: a.ytilt,
                 };
                 let r = interference::interferogram(&s1, s2.as_ref(), field, w, &o)?;
-                let n = r.p.len();
+                let p = r.delta.x().to_vec();
+                let n = p.len();
                 let grid: Vec<f64> = match a.quantity {
-                    Quantity::Intensity => r.intensity.concat(),
-                    Quantity::Delta => r.delta.concat(),
+                    Quantity::Intensity => r.intensity.data().to_vec(),
+                    Quantity::Delta => r.delta.data().to_vec(),
                     _ => {
                         return Err(Error::Invalid(format!(
                             "quantity {q} (on the pupil: intensity, delta)"
@@ -248,7 +249,7 @@ impl Analysis for Interference {
                 };
                 let summary = json!({
                     "mode": "pupil", "quantity": q, "nx": n, "ny": n,
-                    "pupil_min": r.p[0], "pupil_step": r.p[1] - r.p[0],
+                    "pupil_min": p[0], "pupil_step": p[1] - p[0],
                     "beam1": a.beam1, "beam2": s2.as_ref().map(|_| a.beam2.clone()),
                     "scale": a.scale, "xtilt": a.xtilt, "ytilt": a.ytilt,
                     "pv_waves": r.pv, "rms_waves": r.rms,

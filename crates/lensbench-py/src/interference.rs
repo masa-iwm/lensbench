@@ -49,12 +49,10 @@ fn interferogram<'py>(
             })
         })
         .map_err(err)?;
-    let m = r.p.len();
-    let grid = |g: &Vec<Vec<f64>>| Array2::from_shape_fn((m, m), |(iy, ix)| g[iy][ix]);
     let d = PyDict::new(py);
-    d.set_item("p", r.p.clone().into_pyarray(py))?;
-    d.set_item("delta", grid(&r.delta).into_pyarray(py))?;
-    d.set_item("intensity", grid(&r.intensity).into_pyarray(py))?;
+    d.set_item("p", r.delta.x().to_vec().into_pyarray(py))?;
+    d.set_item("delta", grid_array(r.delta).into_pyarray(py))?;
+    d.set_item("intensity", grid_array(r.intensity).into_pyarray(py))?;
     d.set_item("pv", r.pv)?;
     d.set_item("rms", r.rms)?;
     Ok(d)
@@ -142,4 +140,11 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(interferogram, m)?)?;
     m.add_function(wrap_pyfunction!(interference_detector, m)?)?;
     Ok(())
+}
+
+/// 2 次元の格子の値 → 形 (ny, nx) の配列（行優先の並びをそのまま使う）
+pub(crate) fn grid_array(g: lensbench_core::grid::Grid2) -> numpy::ndarray::Array2<f64> {
+    let (ny, nx) = (g.ny(), g.nx());
+    let (_, _, data) = g.into_parts();
+    numpy::ndarray::Array2::from_shape_vec((ny, nx), data).expect("Grid2 は ny × nx")
 }

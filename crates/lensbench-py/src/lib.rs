@@ -2649,13 +2649,10 @@ impl PySystem {
         let p = py
             .detach(|| with_threads(threads, || psf::psf(&s, f, w, o)))
             .map_err(err)?;
-        let ny = p.i.len();
-        let nx = p.x.len();
-        let a = Array::from_shape_fn((ny, nx), |(iy, ix)| p.i[iy][ix]);
         let d = PyDict::new(py);
-        d.set_item("x", p.x.into_pyarray(py))?;
-        d.set_item("y", p.y.into_pyarray(py))?;
-        d.set_item("i", a.into_pyarray(py))?;
+        d.set_item("x", p.i.x().to_vec().into_pyarray(py))?;
+        d.set_item("y", p.i.y().to_vec().into_pyarray(py))?;
+        d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
         d.set_item("center", p.center)?;
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
@@ -2716,13 +2713,10 @@ impl PySystem {
         let p = py
             .detach(|| with_threads(threads, || huygens::huygens_psf(&s, f, w, o)))
             .map_err(err)?;
-        let ny = p.i.len();
-        let nx = p.x.len();
-        let a = Array::from_shape_fn((ny, nx), |(iy, ix)| p.i[iy][ix]);
         let d = PyDict::new(py);
-        d.set_item("x", p.x.into_pyarray(py))?;
-        d.set_item("y", p.y.into_pyarray(py))?;
-        d.set_item("i", a.into_pyarray(py))?;
+        d.set_item("x", p.i.x().to_vec().into_pyarray(py))?;
+        d.set_item("y", p.i.y().to_vec().into_pyarray(py))?;
+        d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
         d.set_item("center", p.center)?;
         d.set_item("axes", p.axes)?;
         d.set_item("delta", p.delta)?;
