@@ -15,7 +15,7 @@
 //! （例: `lensbench-analysis`）。Python からのコールバックも同じ [`Plugin`] として登録できる。
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::Arc;
 
 use crate::coating::{Coatings, C64};
 use crate::{invalid, Result, System};
@@ -675,13 +675,6 @@ impl Registry {
     pub fn prepare(&self, name: &str, config: &Config) -> Result<Box<dyn Instance>> {
         self.get(name)?.prepare(config)
     }
-}
-
-/// プロセスで共通の登録（Python から使う。Rust からは [`Registry`] を自分で持ってもよい）。
-/// CLI・GUI も同梱の分にこの登録を足して使うので、別の exe に組み込むときは起動の最初にここへ登録する
-pub fn global() -> &'static RwLock<Registry> {
-    static G: OnceLock<RwLock<Registry>> = OnceLock::new();
-    G.get_or_init(Default::default)
 }
 
 /// 同じ準備で多数の入力を呼ぶ（入力ごとに独立、スレッド数は [`crate::with_threads`] に従う）。

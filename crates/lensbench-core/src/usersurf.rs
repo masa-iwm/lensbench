@@ -1,7 +1,7 @@
 //! 利用者が定義する面の口。
 //!
 //! 面の形は頂点の平面（z = 0、理想レンズと同じ）に限り、光線の曲げ方と光路長（位相）だけを利用者が決める。
-//! [`SurfaceModel`] を実装して [`register`] で名前を登録し、面の種類 [`crate::surface::SurfType::User`] の面に
+//! [`SurfaceModel`] を実装して拡張の表（[`crate::ext::Ext::add_surface_model`]）に足し、面の種類 [`crate::surface::SurfType::User`] の面に
 //! `user = {"model": 名前, "config": {…}}`（[`UserSurf`]）を与える。設定は検出器・解析のプラグインと同じ
 //! 数・文字列・数の並びの小さな辞書（[`crate::plugin::Config`]）。
 //!
@@ -16,9 +16,7 @@
 //!
 //! 同梱のモデル `ideal_mapping`（[`IdealMapping`]）は、画角 θ → 像高 h の関係を与える理想レンズ。
 
-use crate::RwLockExt;
-use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::Arc;
 
 use crate::math::{dot, norm, scale, sub, V3};
 use crate::plugin::{Config, ConfigReader, ParamSpec, ParamType, Value};
@@ -119,9 +117,9 @@ impl PartialEq for UserSurf {
 }
 
 impl UserSurf {
-    /// 登録のモデル `model` を設定 `config` で準備する
+    /// 今の拡張の表（[`crate::ext::current`]）のモデル `model` を設定 `config` で準備する
     pub fn new(model: &str, config: Config) -> Result<UserSurf> {
-        let m = get(model)?;
+        let m = crate::ext::current().surface_model(model)?;
         let inst = m.prepare(&config)?;
         Ok(UserSurf {
             model: model.to_string(),
@@ -133,48 +131,6 @@ impl UserSurf {
     pub fn instance(&self) -> &dyn SurfaceInstance {
         self.inst.as_ref()
     }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// 登録
-
-fn table() -> &'static RwLock<BTreeMap<String, Arc<dyn SurfaceModel>>> {
-    static T: OnceLock<RwLock<BTreeMap<String, Arc<dyn SurfaceModel>>>> = OnceLock::new();
-    T.get_or_init(|| {
-        let mut m: BTreeMap<String, Arc<dyn SurfaceModel>> = BTreeMap::new();
-        m.insert("ideal_mapping".into(), Arc::new(IdealMapping));
-        RwLock::new(m)
-    })
-}
-
-/// モデルを登録する（同じ名前は差し替える）。プロセスで共通
-pub fn register(m: Arc<dyn SurfaceModel>) {
-    let mut t = table().write_ok();
-    t.insert(m.name().to_string(), m);
-}
-
-/// 登録を外す（あれば true）
-pub fn unregister(name: &str) -> bool {
-    let mut t = table().write_ok();
-    t.remove(name).is_some()
-}
-
-/// 名前のモデル
-pub fn get(name: &str) -> Result<Arc<dyn SurfaceModel>> {
-    let t = table().read_ok();
-    match t.get(name) {
-        Some(m) => Ok(m.clone()),
-        None => invalid!(
-            "no user-defined surface model {name} (registered: {})",
-            t.keys().cloned().collect::<Vec<_>>().join(", ")
-        ),
-    }
-}
-
-/// 登録のモデルの名前（名前の順）
-pub fn models() -> Vec<String> {
-    let t = table().read_ok();
-    t.keys().cloned().collect()
 }
 
 // ---------------------------------------------------------------------------------------------------------------

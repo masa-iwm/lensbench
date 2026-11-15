@@ -75,7 +75,7 @@ pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, String> {
     if let Some(st) = &c.state {
         p = p.with_state(st)?;
     }
-    let cat = LensCatalog::load_registered(&c.lens_catalog)?;
+    let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
         base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
@@ -169,7 +169,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
         }
         Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
     };
-    let cat = LensCatalog::load_registered(&c.lens_catalog)?;
+    let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
         base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
@@ -248,8 +248,8 @@ pub fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
     }
 }
 
-/// 同梱のプラグインを登録した表（exe に組み込む分）に、プロセスで共通の登録
-/// （[`lensbench_core::plugin::global`]、この CLI を組み込んだ exe が足した分）を重ねたもの
+/// 同梱のプラグインを登録した表（exe に組み込む分）に、今の拡張の表
+/// （[`lensbench_core::ext::current`]、この CLI を組み込んだ exe が足した分）のプラグインを重ねたもの
 pub fn builtin_plugins() -> lensbench_core::plugin::Registry {
     lensbench_design::plugins::builtin()
 }

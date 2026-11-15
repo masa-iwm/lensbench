@@ -1,8 +1,9 @@
 //! 利用者定義の面: 画角 → 像高を与える理想レンズ `ideal_mapping` を、f 50 の理想レンズの系に置いて追う
 
+use lensbench_core::ext::{self, Ext};
 use lensbench_core::plugin::{Config, Value};
 use lensbench_core::surface::SurfType;
-use lensbench_core::usersurf::{self, SurfaceInstance, SurfaceModel, UserSurf};
+use lensbench_core::usersurf::{SurfaceInstance, SurfaceModel, UserSurf};
 use lensbench_core::Waves;
 use lensbench_core::{analysis, zmx, FieldSel, System};
 use std::sync::Arc;
@@ -139,8 +140,16 @@ impl SurfaceInstance for PlateInst {
 
 #[test]
 fn user_registered_model() {
-    usersurf::register(Arc::new(Plate));
-    assert!(usersurf::models().contains(&"test_plate".to_string()));
+    // 表は計算ごとの値で渡す（ほかの試験・既定の表には漏れない）
+    let mut e = Ext::default();
+    e.add_surface_model(Arc::new(Plate));
+    assert!(e.surface_models().contains(&"test_plate".to_string()));
+    assert!(UserSurf::new("test_plate", Config::new()).is_err());
+    ext::with(Arc::new(e), user_model_traces);
+    assert!(UserSurf::new("test_plate", Config::new()).is_err());
+}
+
+fn user_model_traces() {
     let mut s = paraxial();
     // 理想レンズの直後に位相板（間隔 0）を足す代わりに、像面の手前の面を位相板にする
     s.surfaces[2].typ = SurfType::User;
@@ -157,5 +166,4 @@ fn user_registered_model() {
     assert!(
         (t.rays[0].lens_opd - t0.rays[0].lens_opd - 1e-3 * t0.rays[0].xyz[1].powi(2)).abs() < 1e-15
     );
-    assert!(usersurf::unregister("test_plate"));
 }

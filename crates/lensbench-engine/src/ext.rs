@@ -4,14 +4,15 @@
 //! [`Extensions`] に集め、入口で 1 回 [`Extensions::install`] する。足す側のクレートは `Extensions` を返す関数を
 //! 1 つ持てばよく、入口は呼ぶ順を気にしなくてよい。GUI の見せ方（図・欄）は `lensbench_gui::ext` で別に足す。
 //!
-//! 今はプロセスで共通の表（`plugin::global`・`catalog::register_source`・`usersurf::register`・
-//! `detectors::register`・[`crate::register`]）へ入れる。表を値として計算に渡す形は後で（XCT-07 の残り）
+//! core の分（プラグイン・カタログの形式・面のモデル）は値の表 [`lensbench_core::ext::Ext`] になる
+//! （[`Extensions::core_ext`]。計算ごとに `lensbench_core::ext::with` で渡せる）。install はそれをプロセスの既定に
+//! 重ねる。検出器のブロック・解析はまだプロセスで共通の表（`detectors::register`・[`crate::register`]）
 
 use lensbench_analysis::Analysis;
 use lensbench_core::catalog::LensCatalogSource;
+use lensbench_core::ext::Ext;
 use lensbench_core::plugin::Registry;
 use lensbench_core::usersurf::SurfaceModel;
-use lensbench_core::RwLockExt;
 use lensbench_project::detectors::DetectorKind;
 use std::sync::Arc;
 
@@ -72,22 +73,30 @@ impl Extensions {
         self
     }
 
-    /// プロセスで共通の表に入れる（何度呼んでもよい。同じ名前は置き換える）。名前が組み込みと重なれば誤り
+    /// core の分（プラグイン・カタログの形式・面のモデル）の表（同梱の分の上に足したもの）
+    pub fn core_ext(&self) -> Ext {
+        let mut e = Ext::default();
+        self.add_core(&mut e);
+        e
+    }
+
+    fn add_core(&self, e: &mut Ext) {
+        for s in &self.sources {
+            e.add_catalog_source(s.clone());
+        }
+        for m in &self.surfaces {
+            e.add_surface_model(m.clone());
+        }
+        for f in &self.plugins {
+            f(e.plugins_mut());
+        }
+    }
+
+    /// プロセスの既定に入れる（何度呼んでもよい。同じ名前は置き換える）。名前が組み込みと重なれば誤り
     pub fn install(self) -> Result<(), String> {
-        for s in self.sources {
-            lensbench_core::catalog::register_source(s);
-        }
-        for m in self.surfaces {
-            lensbench_core::usersurf::register(m);
-        }
+        lensbench_core::ext::update_default(|e| self.add_core(e));
         for k in self.detectors {
             lensbench_project::detectors::register(k)?;
-        }
-        {
-            let mut g = lensbench_core::plugin::global().write_ok();
-            for f in &self.plugins {
-                f(&mut g);
-            }
         }
         for a in self.analyses {
             a()?;
@@ -107,7 +116,7 @@ mod tests {
         fn extensions(&self) -> &[&str] {
             &["lbext-test"]
         }
-        fn load(&self, _: &Path) -> Result<Vec<CatalogLens>, String> {
+        fn load(&self, _: &Path) -> lensbench_core::Result<Vec<CatalogLens>> {
             Ok(Vec::new())
         }
     }
@@ -125,7 +134,8 @@ mod tests {
         let b = Extensions::new().detector(k("ext-test-detector"));
         a.merge(b).install().unwrap();
         let has = |e: &str| {
-            lensbench_core::catalog::sources()
+            lensbench_core::ext::current()
+                .catalog_sources()
                 .iter()
                 .any(|s| s.extensions() == [e])
         };

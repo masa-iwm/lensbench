@@ -1,11 +1,12 @@
-//! 別の exe に組み込むときの差し込み口: プロセスで共通に登録したカタログの形式・プラグインが、
-//! CLI（と、同じ API を呼ぶ GUI）に効くこと
+//! 別の exe に組み込むときの差し込み口: 拡張の表（`lensbench_core::ext::Ext`）に足したカタログの形式・プラグインが、
+//! CLI（と、同じ API を呼ぶ GUI）に効くこと。表は計算ごとに渡すので、ほかの試験には漏れない
 
 use std::path::Path;
 use std::sync::Arc;
 
-use lensbench_core::catalog::{self, CatalogLens, LensCatalogSource};
-use lensbench_core::plugin::{self, Arrays, Config, Context, Instance, Kind, Plugin};
+use lensbench_core::catalog::{CatalogLens, LensCatalogSource};
+use lensbench_core::ext::{self, Ext};
+use lensbench_core::plugin::{Arrays, Config, Context, Instance, Kind, Plugin};
 
 /// 中身が .zmx の本文で、拡張子だけ違う形式（メーカーは "EXT" 固定）
 struct ExtSource;
@@ -14,8 +15,9 @@ impl LensCatalogSource for ExtSource {
     fn extensions(&self) -> &[&str] {
         &["lbext"]
     }
-    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>, String> {
-        let zmx = lensbench_core::glass::read_text(path).map_err(|e| e.to_string())?;
+    fn load(&self, path: &Path) -> lensbench_core::Result<Vec<CatalogLens>> {
+        let zmx = lensbench_core::glass::read_text(path)
+            .map_err(|e| lensbench_core::Error::Io(e.to_string()))?;
         Ok(vec![CatalogLens {
             vendor: "EXT".into(),
             part: path.file_stem().unwrap().to_string_lossy().into_owned(),
@@ -64,22 +66,30 @@ fn registered_source_and_plugin() {
         )
     };
 
-    // 登録前は .lbext を飛ばす（フォルダの中の関係のないファイル）
+    // 表に無ければ .lbext を飛ばす（フォルダの中の関係のないファイル）
     let before = call("lenses").unwrap().to_string();
     assert!(!before.contains("EXT"), "{before}");
 
-    catalog::register_source(Arc::new(ExtSource));
-    let after = call("lenses").unwrap().to_string();
-    assert!(
-        after.contains("\"EXT\"") && after.contains("BCX-50"),
-        "{after}"
-    );
-
-    plugin::global().write().unwrap().register(Arc::new(Echo));
-    let reg = lensbench_engine::builtin_plugins();
-    assert!(reg.get("test_ext_echo").is_ok());
-    // 同梱の分も残る
-    assert!(reg.get("geo_mtf").is_ok());
+    let mut e = Ext::default();
+    e.add_catalog_source(Arc::new(ExtSource));
+    e.plugins_mut().register(Arc::new(Echo));
+    ext::with(Arc::new(e), || {
+        let after = call("lenses").unwrap().to_string();
+        assert!(
+            after.contains("\"EXT\"") && after.contains("BCX-50"),
+            "{after}"
+        );
+        let reg = lensbench_engine::builtin_plugins();
+        assert!(reg.get("test_ext_echo").is_ok());
+        // 同梱の分も残る
+        assert!(reg.get("geo_mtf").is_ok());
+    });
+    // 表の外には漏れない
+    let again = call("lenses").unwrap().to_string();
+    assert!(!again.contains("EXT"), "{again}");
+    assert!(lensbench_engine::builtin_plugins()
+        .get("test_ext_echo")
+        .is_err());
 
     std::fs::remove_dir_all(&dir).ok();
 }

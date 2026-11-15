@@ -1138,7 +1138,7 @@ impl PySystem {
         let glass_dirs = glass_dirs.unwrap_or_default();
         let lens_catalogs = lens_catalogs.unwrap_or_default();
         let r = py.detach(|| -> Result<(System, Vec<String>), String> {
-            let cat = LensCatalog::load_registered(&lens_catalogs)?;
+            let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
             let look = |v: &str, p: &str| cat.zmx(v, p);
             lensbench_project::expand_json_path(
                 &txt,
@@ -2888,7 +2888,7 @@ fn lensbench(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// モジュールに関数・クラスを足す。別の拡張モジュールに組み込むときは、その側の `#[pymodule]` でこれを呼んでから
-/// `lensbench_core::catalog::register_source`・`lensbench_core::plugin::global` へ登録する
+/// 拡張の表の既定（`lensbench_core::ext::update_default`、`lensbench_engine::Extensions::install`）へ足す
 /// （先に登録すると、同梱のプラグインと同じ名前は同梱のものに戻る）
 pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // threads= を省いた計算の既定（lensbench run --threads が渡す）

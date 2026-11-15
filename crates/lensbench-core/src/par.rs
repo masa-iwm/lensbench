@@ -1,4 +1,5 @@
-//! 並列の制御: 呼び出しごとのスレッド数と、計算の文脈（[`Ctx`]: 中断の印 [`CancelToken`]・まとめ追跡の切り替え）。
+//! 並列の制御: 呼び出しごとのスレッド数と、計算の文脈（[`Ctx`]: 中断の印 [`CancelToken`]・まとめ追跡の切り替え・
+//! 拡張の表）。
 //!
 //! 文脈は呼び出したスレッドに置き（[`with_cancel`]・[`with_batch`]）、このモジュールの並列は作業のスレッドへ引き継ぐ。
 //! プロセスの大域には置かないので、同じプロセスで同時に回る別の計算（GUI の下書き・serve の別の接続）に響かない。
@@ -205,6 +206,8 @@ pub struct Ctx {
     pub cancel: Option<CancelToken>,
     /// まとめ追跡（`batch`）を使わない（[`with_batch`]。結果は同じビットなので切り分け・比較のためだけ）
     pub no_batch: bool,
+    /// 拡張の表（[`crate::ext::with`]）。None はプロセスの既定
+    pub ext: Option<Arc<crate::ext::Ext>>,
 }
 
 thread_local! {
@@ -247,6 +250,20 @@ pub fn with_batch<R>(on: bool, f: impl FnOnce() -> R) -> R {
         ..current()
     };
     with_ctx(&c, f)
+}
+
+/// f を拡張の表 e の下で回す（[`crate::ext::with`]）
+pub(crate) fn with_ext<R>(e: Arc<crate::ext::Ext>, f: impl FnOnce() -> R) -> R {
+    let c = Ctx {
+        ext: Some(e),
+        ..current()
+    };
+    with_ctx(&c, f)
+}
+
+/// 文脈で渡した拡張の表
+pub(crate) fn current_ext() -> Option<Arc<crate::ext::Ext>> {
+    CTX.with(|x| x.borrow().ext.clone())
 }
 
 /// まとめ追跡を使ってよいか（[`with_batch`]）

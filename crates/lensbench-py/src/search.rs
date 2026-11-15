@@ -165,7 +165,7 @@ fn swap_search<'py>(
                 .map_err(|e| format!("{}: {e}", project.display()))?;
             let p = Project::from_json(&txt)?;
             let spec = SwapSpec::from_json(&st)?;
-            let cat = LensCatalog::load_registered(&lens_catalogs)?;
+            let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
             let base = project
                 .parent()
                 .map(|p| p.to_path_buf())

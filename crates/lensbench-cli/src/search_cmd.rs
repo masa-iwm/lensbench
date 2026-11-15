@@ -114,7 +114,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
         if names.is_empty() {
             return Err("the project has no states (states)".into());
         }
-        let cat = LensCatalog::load_registered(&a.lens_catalog)?;
+        let cat = LensCatalog::load_registered(&a.lens_catalog).map_err(|e| e.to_string())?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let mut v = Vec::new();
         for n in &names {
@@ -189,7 +189,7 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     if a.state.is_some() {
         spec.state = a.state.clone();
     }
-    let cat = LensCatalog::load_registered(&a.lens_catalog)?;
+    let cat = LensCatalog::load_registered(&a.lens_catalog).map_err(|e| e.to_string())?;
     let env = Env {
         base: a.file.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
         glass_dirs: a.glass_dir.clone(),

@@ -16,6 +16,7 @@ pub mod catalog;
 pub mod coating;
 pub mod edit;
 pub mod elements;
+pub mod ext;
 pub mod fermat;
 pub mod fiber;
 pub mod freeform;

@@ -8,7 +8,8 @@
   同梱のプラグインはワークスペース内の crate（`lensbench-analysis`）で、CLI・Python に組み込む（`lensbench plugins`）
 - `lensbench_core::usersurf`: 利用者が定義する面の口。形は頂点の平面に限り、`SurfaceModel`（名前・`prepare(&Config)`）の
   `SurfaceInstance::deflect`（交点・入射方向 → 出射方向・OPD に足す光路長）と `paraxial_power`（近軸の屈折力）を実装して
-  `usersurf::register` で登録する。面は種類 `USER` に `user = {"model": 名前, "config": {…}}`（系ファイル・`set_surface_data`・GUI の
+  拡張の表 `lensbench_core::ext::Ext` に `add_surface_model` で足す（`ext::with` で計算ごとに渡す、
+  または `ext::set_default`・`update_default` でプロセスの既定にする。カタログの形式・プラグインも同じ表）。面は種類 `USER` に `user = {"model": 名前, "config": {…}}`（系ファイル・`set_surface_data`・GUI の
   「利用者定義の面」）。偏光は理想レンズと同じく方向の変化の最小の回転、dOPL/dp・着地点の微分は未対応、.zmx には書けない、前後は空気。
   同梱のモデル `ideal_mapping`: 画角 θ → 像高 h を与える理想レンズ（`f`、`mapping` = `tan`（f tan θ、理想レンズとビット同じ）・`theta`（f θ）・
   `sin`（f sin θ）・`equisolid`（2f sin(θ/2)）・`stereographic`（2f tan(θ/2)）・`poly`（h = f(θ + c₁θ³ + c₂θ⁵ + …)、`coef`）・

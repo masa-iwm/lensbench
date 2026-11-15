@@ -230,8 +230,20 @@ pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass
         parse_agf(&txt, &cat)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?,
     );
-    cache.lock_ok().insert(key, (stamp.0, stamp.1, g.clone()));
+    let mut c = cache.lock_ok();
+    bound_cache(&mut c);
+    c.insert(key, (stamp.0, stamp.1, g.clone()));
     Ok(g)
+}
+
+/// 読込の使い回しの表の大きさの上限（KRN-15。長く動く serve・GUI でフォルダ・カタログの組を変え続けても
+/// 増え続けない）。超えたら空にする（次から読み直すだけで、結果は変わらない）
+const CACHE_MAX: usize = 64;
+
+fn bound_cache<K, V>(c: &mut HashMap<K, V>) {
+    if c.len() >= CACHE_MAX {
+        c.clear();
+    }
 }
 
 /// AGF の本文を読む。分散式の番号が 1〜13 でない・数として読めない欄はその場で誤りにする（以前は読込を通り、追跡で
@@ -402,7 +414,9 @@ pub fn load_catalogs_shared(
     }
     let out = Arc::new(out);
     if missing.is_empty() && complete {
-        cache.lock_ok().insert(key, (files, out.clone()));
+        let mut c = cache.lock_ok();
+        bound_cache(&mut c);
+        c.insert(key, (files, out.clone()));
     }
     (out, missing)
 }

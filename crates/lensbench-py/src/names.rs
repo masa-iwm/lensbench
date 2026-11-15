@@ -23,7 +23,7 @@ pub(crate) fn beam_paths_of(
         if let Some(st) = &state {
             p = p.with_state(st)?;
         }
-        let cat = LensCatalog::load_registered(&lens_catalogs)?;
+        let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let env = lensbench_project::Env {
             base: path.parent().map(|x| x.to_path_buf()).unwrap_or_default(),

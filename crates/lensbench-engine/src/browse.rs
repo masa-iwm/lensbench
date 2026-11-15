@@ -370,7 +370,7 @@ fn cache_key(
 }
 
 fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
-    let cat = LensCatalog::load_registered(paths)?;
+    let cat = LensCatalog::load_registered(paths).map_err(|e| e.to_string())?;
     let mut cache = GlassCache::new();
     let mut out: Vec<Value> = cat
         .lenses()

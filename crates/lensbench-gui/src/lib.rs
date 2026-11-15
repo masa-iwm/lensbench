@@ -2,7 +2,7 @@
 //! 同じプロセスの中で呼ぶ。
 //!
 //! ライブラリとしても使える: 別の exe（カタログの形式・プラグインを足した版）は、起動の最初に
-//! [`lensbench_core::catalog::register_source`]・[`lensbench_core::plugin::global`] へ登録してから [`main`] を呼ぶ。
+//! `lensbench_engine::Extensions` の install（拡張の表 [`lensbench_core::ext`] の既定に足す）をしてから [`main`] を呼ぶ。
 
 mod app;
 mod argform;

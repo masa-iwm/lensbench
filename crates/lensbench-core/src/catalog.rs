@@ -1,14 +1,13 @@
 //! レンズカタログの差し込み口。
 //!
-//! CLI・GUI・Python が読む形式は [`register_source`] で足せる（既定は .zmx と .lbcat）。別の exe に組み込むときは、
-//! 起動の最初に登録してから CLI・GUI の入口を呼ぶ。
+//! CLI・GUI・Python が読む形式は拡張の表（[`crate::ext::Ext::add_catalog_source`]）で足せる（既定は .zmx と
+//! .lbcat）。別の exe に組み込むときは、起動の最初に表を決めてから CLI・GUI の入口を呼ぶ。
 //!
 //! .lbcat は lensbench のレンズカタログの束（[`encode_lbcat`]）: メーカーのカタログ（ZMF など）を取り込みのときに
 //! 1 回だけ変換したもの。実行時は解読せず、展開して読むだけ。
 
-use crate::RwLockExt;
+use crate::error::{Error, Result};
 use std::path::Path;
-use std::sync::{Arc, OnceLock, RwLock};
 
 /// カタログ中の 1 レンズ（面データは .zmx 断片のまま持つ）。
 #[derive(Debug, Clone)]
@@ -25,7 +24,11 @@ pub const LBCAT_VERSION: u32 = 1;
 /// レンズカタログの束 .lbcat のバイト列。zlib で圧縮した UTF-8 の文で、1 行目が
 /// `LBCAT <版>\t<メーカー>\t<変換元>`、続いてレンズごとに `<型番>\t<焦点距離>\t<.zmx のバイト数>` の行と .zmx の本文
 /// （そのバイト数ちょうど）。焦点距離が数でないレンズは `nan`。型番・メーカー・変換元にタブ・改行は使えない
-pub fn encode_lbcat(vendor: &str, source: &str, lenses: &[CatalogLens]) -> Result<Vec<u8>, String> {
+pub fn encode_lbcat(
+    vendor: &str,
+    source: &str,
+    lenses: &[CatalogLens],
+) -> std::result::Result<Vec<u8>, String> {
     let clean = |what: &str, s: &str| {
         if s.contains(['\t', '\n', '\r']) {
             Err(format!("{what} {s:?} has a tab or line break"))
@@ -50,11 +53,14 @@ pub fn encode_lbcat(vendor: &str, source: &str, lenses: &[CatalogLens]) -> Resul
 }
 
 /// [`encode_lbcat`] のバイト列を読む。メーカーは束の値（空なら `default_vendor`）
-pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> Result<Vec<CatalogLens>, String> {
+pub fn decode_lbcat(
+    bytes: &[u8],
+    default_vendor: &str,
+) -> std::result::Result<Vec<CatalogLens>, String> {
     let b = miniz_oxide::inflate::decompress_to_vec_zlib(bytes)
         .map_err(|e| format!("can't be inflated ({:?})", e.status))?;
     let mut o = 0usize;
-    let line = |o: &mut usize| -> Result<&str, String> {
+    let line = |o: &mut usize| -> std::result::Result<&str, String> {
         let end = b[*o..]
             .iter()
             .position(|&c| c == b'\n')
@@ -114,13 +120,13 @@ impl LensCatalogSource for LbcatSource {
     fn extensions(&self) -> &[&str] {
         &["lbcat"]
     }
-    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>, String> {
-        let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>> {
+        let bytes = crate::vfs::read(path).map_err(|e| io_err(path, e))?;
         let stem = path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        decode_lbcat(&bytes, &stem).map_err(|e| format!("{}: {e}", path.display()))
+        decode_lbcat(&bytes, &stem).map_err(|e| io_err(path, e))
     }
 }
 
@@ -128,8 +134,13 @@ impl LensCatalogSource for LbcatSource {
 pub trait LensCatalogSource {
     /// この実装が読める拡張子（小文字、ドットなし）。
     fn extensions(&self) -> &[&str];
-    /// ファイルを読み、レンズの一覧を返す。
-    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>, String>;
+    /// ファイルを読み、レンズの一覧を返す（読めなければ `Error::Io`、中身の誤りは `Error::Invalid` など）。
+    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>>;
+}
+
+/// path を読めなかった誤り（`<path>: <理由>`）
+fn io_err(path: &Path, e: impl std::fmt::Display) -> Error {
+    Error::Io(format!("{}: {e}", path.display()))
 }
 
 /// .zmx 1 つを 1 レンズとするカタログ（自作のレンズや、カタログから書き出したレンズ）。
@@ -140,8 +151,8 @@ impl LensCatalogSource for ZmxFileSource {
     fn extensions(&self) -> &[&str] {
         &["zmx"]
     }
-    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>, String> {
-        let zmx = crate::glass::read_text(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    fn load(&self, path: &Path) -> Result<Vec<CatalogLens>> {
+        let zmx = crate::glass::read_text(path).map_err(|e| io_err(path, e))?;
         let name = |p: Option<&Path>| {
             p.and_then(|p| p.file_name())
                 .map(|s| s.to_string_lossy().into_owned())
@@ -162,26 +173,6 @@ impl LensCatalogSource for ZmxFileSource {
     }
 }
 
-fn registered() -> &'static RwLock<Vec<Arc<dyn LensCatalogSource + Send + Sync>>> {
-    static G: OnceLock<RwLock<Vec<Arc<dyn LensCatalogSource + Send + Sync>>>> = OnceLock::new();
-    G.get_or_init(Default::default)
-}
-
-/// プロセスで共通に使う形式を足す（同じ拡張子なら後から足したものを使う）。
-/// [`LensCatalog::load_registered`] と、それを使う CLI・GUI・Python のすべてに効く
-pub fn register_source(s: Arc<dyn LensCatalogSource + Send + Sync>) {
-    registered().write_ok().push(s);
-}
-
-/// プロセスで共通に使う形式の一覧（足したものが先、最後に [`LbcatSource`]・[`ZmxFileSource`]）
-pub fn sources() -> Vec<Arc<dyn LensCatalogSource + Send + Sync>> {
-    let mut v: Vec<Arc<dyn LensCatalogSource + Send + Sync>> =
-        registered().read_ok().iter().rev().cloned().collect();
-    v.push(Arc::new(LbcatSource));
-    v.push(Arc::new(ZmxFileSource));
-    v
-}
-
 /// 読み込んだレンズカタログの集まり。メーカー・型番は大文字・小文字を区別しない。
 #[derive(Debug, Clone, Default)]
 pub struct LensCatalog {
@@ -195,12 +186,12 @@ impl LensCatalog {
     pub fn load(
         paths: &[std::path::PathBuf],
         sources: &[&dyn LensCatalogSource],
-    ) -> Result<LensCatalog, String> {
+    ) -> Result<LensCatalog> {
         let mut c = LensCatalog::default();
         for p in paths {
             let mut files = Vec::new();
             if crate::vfs::is_dir(p) {
-                let rd = crate::vfs::read_dir(p).map_err(|e| format!("{}: {e}", p.display()))?;
+                let rd = crate::vfs::read_dir(p).map_err(|e| io_err(p, e))?;
                 let known = |f: &std::path::PathBuf| {
                     let ext = f
                         .extension()
@@ -242,10 +233,10 @@ impl LensCatalog {
                     }
                     None if crate::vfs::is_dir(p) => {} // フォルダの中の関係のないファイルは飛ばす
                     None => {
-                        return Err(format!(
+                        return Err(Error::Invalid(format!(
                             "{}: a lens catalog in a format that can't be read",
                             f.display()
-                        ))
+                        )))
                     }
                 }
             }
@@ -253,9 +244,9 @@ impl LensCatalog {
         Ok(c)
     }
 
-    /// [`load`](Self::load) を、プロセスで共通の形式（[`sources`]）で
-    pub fn load_registered(paths: &[std::path::PathBuf]) -> Result<LensCatalog, String> {
-        let src = sources();
+    /// [`load`](Self::load) を、今の拡張の表の形式（[`crate::ext::current`]）で
+    pub fn load_registered(paths: &[std::path::PathBuf]) -> Result<LensCatalog> {
+        let src = crate::ext::current().catalog_sources();
         let refs: Vec<&dyn LensCatalogSource> = src
             .iter()
             .map(|s| s.as_ref() as &dyn LensCatalogSource)
@@ -285,7 +276,7 @@ impl LensCatalog {
     }
 
     /// (メーカー, 型番) → .zmx の本文（プロジェクトの展開に渡す形）
-    pub fn zmx(&self, vendor: &str, part: &str) -> Result<String, String> {
+    pub fn zmx(&self, vendor: &str, part: &str) -> std::result::Result<String, String> {
         self.get(vendor, part)
             .map(|l| l.zmx.clone())
             .ok_or_else(|| format!("no {vendor} {part} in the lens catalogs"))

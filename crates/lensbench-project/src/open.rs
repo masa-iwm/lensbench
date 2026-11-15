@@ -147,7 +147,7 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
         if o.wavelengths.is_some() {
             return Err(Error::Invalid("wavelengths is only for .zmx".into()));
         }
-        let cat = LensCatalog::load_registered(o.lens_catalogs).map_err(invalid)?;
+        let cat = LensCatalog::load_registered(o.lens_catalogs)?;
         let look = |v: &str, p: &str| cat.zmx(v, p);
         let (system, warnings) =
             crate::load_path_report(path, o.glass_dirs, Some(&look), o.state, o.split_path)

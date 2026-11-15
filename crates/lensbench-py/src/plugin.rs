@@ -12,7 +12,6 @@
 //! 設定の値は数・文字列・数の並び。入力の配列は bool・complex・それ以外（float64 に直す）の 3 種類。
 
 use crate::errors::{type_err, value_err};
-use lensbench_core::RwLockExt;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::coating::C64;
@@ -33,12 +32,14 @@ fn register_builtin(reg: &mut Registry) {
     lensbench_analysis::register(reg);
 }
 
-fn read_registry() -> std::sync::RwLockReadGuard<'static, Registry> {
-    plugin::global().read_ok()
+/// 今の拡張の表のプラグイン（写し。中身は Arc なので軽い）
+fn read_registry() -> Registry {
+    lensbench_core::ext::current().plugins().clone()
 }
 
-fn write_registry() -> std::sync::RwLockWriteGuard<'static, Registry> {
-    plugin::global().write_ok()
+/// プロセスの既定の拡張の表のプラグインを f で変える（置き直す前に始まった計算は前の表のまま）
+fn write_registry<R>(f: impl FnOnce(&mut Registry) -> R) -> R {
+    lensbench_core::ext::update_default(|e| f(e.plugins_mut()))
 }
 
 /// Python の値 → 設定の値
@@ -314,20 +315,21 @@ fn register_plugin(
         .ok()
         .and_then(|d| d.extract::<String>().ok())
         .unwrap_or_default();
-    write_registry().register(Arc::new(PyFuncPlugin {
+    let p = Arc::new(PyFuncPlugin {
         name,
         kind,
         func: func.clone().unbind(),
         doc,
         needs_system,
-    }));
+    });
+    write_registry(|r| r.register(p));
     Ok(())
 }
 
 /// 登録を外す（あれば True）
 #[pyfunction]
 fn unregister_plugin(name: &str) -> bool {
-    write_registry().unregister(name)
+    write_registry(|r| r.unregister(name))
 }
 
 /// 設定の決まったプラグイン。`Plugin(name, **config)`。`run(**inputs)` → dict、
@@ -479,7 +481,7 @@ fn verify<'py>(
         Ok(p) => vec![p],
         Err(_) => paths.extract()?,
     };
-    let reg = read_registry().clone();
+    let reg = read_registry();
     let opt = lensbench_verify::Options { ci_only: ci };
     let reps = py
         .detach(|| lensbench_verify::run_paths(&ps, &reg, &opt))
@@ -507,7 +509,7 @@ fn verify_compare<'py>(
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    register_builtin(&mut write_registry());
+    write_registry(register_builtin);
     m.add_function(wrap_pyfunction!(verify, m)?)?;
     m.add_function(wrap_pyfunction!(verify_compare, m)?)?;
     m.add_class::<PyPlugin>()?;
