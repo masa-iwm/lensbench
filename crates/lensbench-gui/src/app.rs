@@ -6,6 +6,7 @@
 
 mod ask;
 mod doc_loc;
+mod folders;
 mod help;
 mod menus;
 mod panels;
@@ -461,8 +462,8 @@ struct Core {
     s: Settings,
     /// ファイルメニューの「見本」（Web 版の同梱の系）
     samples: Vec<String>,
-    /// 硝材のフォルダ（の並び）と、そこにある AGF の名前（系の設定の硝材カタログの候補）
-    agf_names: (Vec<String>, Vec<String>),
+    /// カタログのフォルダの様子（AGF の名前・見つからないフォルダ）
+    folders: folders::Folders,
     worker: Worker,
     /// 組合せのレイアウト図だけを先に作る（解析の順番を待たない）
     preview: Worker,
@@ -661,37 +662,6 @@ fn glass_dirs(v: &[String]) -> Value {
     return crate::builtin_glass::dirs(v);
     #[cfg(target_arch = "wasm32")]
     dirs(v)
-}
-
-/// フォルダの並びにある AGF の名前（拡張子なし、重なりは前のもの、名前の順）
-fn agf_names(dirs: &[String]) -> Vec<String> {
-    let mut v: Vec<String> = Vec::new();
-    for d in dirs {
-        let Ok(rd) = lensbench_core::vfs::read_dir(d) else {
-            continue;
-        };
-        for p in rd {
-            if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("agf")) {
-                if let Some(n) = p.file_stem().and_then(|x| x.to_str()) {
-                    if !v.iter().any(|x| x.eq_ignore_ascii_case(n)) {
-                        v.push(n.to_string());
-                    }
-                }
-            }
-        }
-    }
-    v.sort_by_key(|x| x.to_ascii_uppercase());
-    v
-}
-
-#[test]
-fn agf_names_of_test_glass() {
-    let d = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/glass").to_string();
-    let v = agf_names(&[d.clone(), d]);
-    assert!(v.iter().any(|x| x == "SCHOTT"), "{v:?}");
-    let mut w = v.clone();
-    w.dedup();
-    assert_eq!(v, w);
 }
 
 /// 組合せを同梱したプロジェクト（`gui.combo` に組合せ。系の計算は残りのプロジェクトで、CLI でも開ける）
@@ -1008,6 +978,7 @@ impl Core {
     }
 
     fn refresh_catalog(&mut self) {
+        self.folders.stale();
         // 系の解析の順番を待たない（下書きの worker で読む）
         self.preview.send(
             Tag::Glasses,
@@ -2015,9 +1986,7 @@ impl Core {
 
     /// 組合せの系の設定
     fn sysset_ui(&mut self, ui: &mut Ui) {
-        if self.agf_names.0 != self.s.glass_dirs {
-            self.agf_names = (self.s.glass_dirs.clone(), agf_names(&self.s.glass_dirs));
-        }
+        self.ask_folders();
         if self.loc.file.is_some() && !self.is_combo() {
             // 開いた系の設定。組合せの設定はその下にたたむ
             if self.p.oss.want() {
@@ -2042,12 +2011,12 @@ impl Core {
                         .id_salt("combo_sysset")
                         .default_open(false)
                         .show(ui, |ui| {
-                            crate::sysset::ui(ui, &mut self.doc.combo, &self.agf_names.1)
+                            crate::sysset::ui(ui, &mut self.doc.combo, &self.folders.agf)
                         });
                 });
             return;
         }
-        let cats = &self.agf_names.1;
+        let cats = &self.folders.agf;
         egui::ScrollArea::vertical()
             .id_salt("sysset_scroll")
             .show(ui, |ui| crate::sysset::ui(ui, &mut self.doc.combo, cats));
@@ -3525,6 +3494,7 @@ impl Core {
     }
 
     fn folders_window(&mut self, ctx: &egui::Context) {
+        self.ask_folders();
         let mut open = self.folders_open;
         let mut changed = false;
         egui::Window::new(tr("カタログのフォルダ"))
@@ -3535,12 +3505,14 @@ impl Core {
                     ui,
                     tr("ガラスカタログ（.AGF のフォルダ）"),
                     &mut self.s.glass_dirs,
+                    &self.folders.missing,
                 );
                 ui.separator();
                 changed |= dir_list(
                     ui,
                     tr("レンズカタログ（.zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名）"),
                     &mut self.s.lens_dirs,
+                    &self.folders.missing,
                 );
                 ui.separator();
                 ui.label(
@@ -3845,7 +3817,8 @@ fn combo_read_only(
     None
 }
 
-fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>) -> bool {
+/// missing は見つからないフォルダ（下書きの Worker が調べた分、[`Core::ask_folders`]）
+fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>, missing: &[String]) -> bool {
     let mut changed = false;
     ui.label(RichText::new(title).strong());
     let mut remove = None;
@@ -3854,8 +3827,7 @@ fn dir_list(ui: &mut Ui, title: &str, dirs: &mut Vec<String>) -> bool {
             if ui.button("✖").on_hover_text(tr("外す")).clicked() {
                 remove = Some(i);
             }
-            let ok = lensbench_core::vfs::is_dir(d);
-            ui.label(if ok {
+            ui.label(if !missing.contains(d) {
                 RichText::new(d)
             } else {
                 RichText::new(trf("{}（見つからない）", &[d])).color(theme::error(ui.visuals()))
@@ -4120,7 +4092,7 @@ impl App {
                 layout_data: None,
                 overlay: Overlay::default(),
                 rays_open: false,
-                agf_names: Default::default(),
+                folders: Default::default(),
                 combo_sel_prev: None,
                 to_combo: None,
                 open_insert: None,

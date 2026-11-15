@@ -54,8 +54,11 @@ impl App {
                 continue;
             }
             // 失敗は系の読み込みの方で出す
-            match (&d.tag, d.first().2) {
+            let (_, params, r) = d.first();
+            match (&d.tag, r) {
                 (Tag::Layout, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
+                (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
+                (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r),
                 // カタログの玉の断面（読めなければ空の図）
                 // 頼んだ行の結果だけ受け取る（カタログを読み直す前に頼んだ分は捨てる）
                 (Tag::LensPreview(i), r) if self.c.preview_req == Some(*i) => {
@@ -67,6 +70,10 @@ impl App {
                 }
                 _ => {}
             }
+        }
+        // 取った品の STEP と簡易外形の照合（Web 版。品の載ったカタログは下書きの Worker が持つ、GAR-11）
+        for p in self.c.browser.cad.take_measure() {
+            self.c.preview.send(Tag::CadMeasure, "cad_measure", p);
         }
         // 組合せを動かしている間は解析を待たせ、系の作り直しとレイアウト図を先に回す
         let settle = std::time::Duration::from_millis(350);

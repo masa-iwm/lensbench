@@ -21,8 +21,9 @@ pub struct Extra {
     /// 置き場に入れるファイル（パス、中身）。画面と計算の Web Worker の両方に入れる
     pub files: Vec<(&'static str, &'static [u8])>,
     /// 起動のときに読んで置き場に入れる、ファイルの束（ページからの相対の URL）。大きいデータを wasm に
-    /// 入れずに配る（Cloudflare Pages は 1 ファイル 25 MiB まで）。画面と計算の Web Worker がそれぞれ読む
-    /// （2 回目からはブラウザのキャッシュ）。束の形は [`unpack`]
+    /// 入れずに配る（Cloudflare Pages は 1 ファイル 25 MiB まで）。計算の Web Worker（serve と同じ要求・下書き）が
+    /// それぞれ読む（2 回目からはブラウザのキャッシュ）。画面はカタログを読まない（一覧・フォルダの様子・STEP の
+    /// 照合は下書きの Worker に頼む）ので読まない（GAR-11）。束の形は [`unpack`]
     pub packs: Vec<&'static str>,
     /// 硝材のフォルダ（置き場のパス）
     pub glass_dirs: Vec<String>,
@@ -143,11 +144,15 @@ mod web {
         Ok(js_sys::Uint8Array::new(&buf).to_vec())
     }
 
-    /// 同梱のファイル・足したファイル・ファイルの束を置き場に入れる
-    async fn insert_all(extra: &super::Extra) -> Result<(), JsValue> {
+    /// 同梱のファイル・足したファイルを置き場に入れる。packs はファイルの束も（計算の Web Worker だけ。画面は
+    /// カタログを読まないので要らない、GAR-11）
+    async fn insert_all(extra: &super::Extra, packs: bool) -> Result<(), JsValue> {
         let err = |e: std::io::Error| JsValue::from_str(&e.to_string());
         for (p, b) in FILES.iter().chain(extra.files.iter()) {
             lensbench_core::vfs::insert(p, b).map_err(err)?;
+        }
+        if !packs {
+            return Ok(());
         }
         for url in &extra.packs {
             let b = super::ungzip(fetch_bytes(url).await?)
@@ -165,8 +170,9 @@ mod web {
     #[cfg(feature = "gui")]
     const FIRST: &str = "/lensbench/tests/refs/A0/system.zmx";
 
-    /// 既定のフォルダの並び（ガラス、レンズカタログ）。前もって作った一覧があれば、この並びで登録する
-    fn default_dirs(extra: &super::Extra) -> (Vec<String>, Vec<String>) {
+    /// 既定のフォルダの並び（ガラス、レンズカタログ）。prepare は前もって作った一覧があれば、この並びで登録する
+    /// （計算の Web Worker だけ）
+    fn default_dirs(extra: &super::Extra, prepare: bool) -> (Vec<String>, Vec<String>) {
         let mut glass_dirs = vec!["/lensbench/tests/glass".to_string()];
         glass_dirs.extend(extra.glass_dirs.iter().cloned());
         let mut lens_dirs = vec![
@@ -174,7 +180,7 @@ mod web {
             "/lensbench/examples/lenses/LBP".to_string(),
         ];
         lens_dirs.extend(extra.lens_dirs.iter().cloned());
-        if let Some(f) = extra.lens_index {
+        if let Some(f) = extra.lens_index.filter(|_| prepare) {
             let pb = |v: &[String]| v.iter().map(std::path::PathBuf::from).collect();
             lensbench_engine::set_prepared_lens_list(pb(&lens_dirs), pb(&glass_dirs), f.into());
         }
@@ -186,8 +192,8 @@ mod web {
     #[wasm_bindgen]
     pub async fn worker_init(kind: u8) -> Result<(), JsValue> {
         let extra = super::extra();
-        insert_all(&extra).await?;
-        default_dirs(&extra);
+        insert_all(&extra, true).await?;
+        default_dirs(&extra, true);
         // 機構部品の詳しい形（置き場から取って vfs の /cad に入れた STEP）を描けるように
         lensbench_cad::detail::install_detail_loader();
         lensbench_gui::web_worker::init(kind);
@@ -245,7 +251,7 @@ mod web {
         let extra = super::extra();
         // 別のタブのパネル（計算しない）には同梱のデータは要らない
         if !lensbench_gui::web_panel() {
-            insert_all(&extra).await?;
+            insert_all(&extra, false).await?;
         }
         if let Some(f) = font {
             lensbench_core::vfs::insert(lensbench_gui::WEB_FONT, f)
@@ -268,7 +274,7 @@ mod web {
             })
             .map(String::from)
             .collect();
-        let (glass_dirs, lens_dirs) = default_dirs(&extra);
+        let (glass_dirs, lens_dirs) = default_dirs(&extra, false);
         lensbench_gui::set_web_cad_store(extra.cad_store.map(String::from));
         lensbench_cad::detail::install_detail_loader();
         let args = lensbench_gui::Args {

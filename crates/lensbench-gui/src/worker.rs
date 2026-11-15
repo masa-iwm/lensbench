@@ -76,6 +76,10 @@ pub enum Tag {
     HistoryDepth,
     /// 系を変えた後の表の読み直し（面の表・要約・多重構成の表を 1 つの要求で。[`Done::split`] で分ける、GAR-05）
     Refresh,
+    /// カタログのフォルダの様子（下書きの folders。AGF の名前・見つからないフォルダ）
+    Folders,
+    /// 取った品の STEP と簡易外形の照合（下書きの cad_measure、Web 版）
+    CadMeasure,
 }
 
 impl Tag {
@@ -104,6 +108,7 @@ impl Tag {
                 | Tag::Configs
                 | Tag::HistoryDepth
                 | Tag::Refresh
+                | Tag::Folders
         )
     }
 
@@ -272,8 +277,72 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
                 .map(|v| (v, Vec::new()))
                 .map_err(|e| e.message)
         }
+        // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる、GAR-11）
+        "folders" => Ok((folders(p), Vec::new())),
+        "cad_measure" => crate::cad_fetch::measure_call(p).map(|v| (v, Vec::new())),
         _ => Err(format!("{m} は下書きでは使えない")),
     }
+}
+
+/// `folders` {glass_dirs, lens_dirs}: {agf: ガラスのフォルダの AGF の名前, missing: 見つからないフォルダ}
+fn folders(p: &Value) -> Value {
+    let list = |k: &str| -> Vec<String> {
+        p[k].as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let (glass, lens) = (list("glass_dirs"), list("lens_dirs"));
+    let missing: Vec<&String> = glass
+        .iter()
+        .chain(&lens)
+        .filter(|d| !lensbench_core::vfs::is_dir(d))
+        .collect();
+    serde_json::json!({ "agf": agf_names(&glass), "missing": missing })
+}
+
+/// フォルダの並びにある AGF の名前（拡張子なし、重なりは前のもの、名前の順）
+pub(crate) fn agf_names(dirs: &[String]) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for d in dirs {
+        let Ok(rd) = lensbench_core::vfs::read_dir(d) else {
+            continue;
+        };
+        for p in rd {
+            if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("agf")) {
+                if let Some(n) = p.file_stem().and_then(|x| x.to_str()) {
+                    if !v.iter().any(|x| x.eq_ignore_ascii_case(n)) {
+                        v.push(n.to_string());
+                    }
+                }
+            }
+        }
+    }
+    v.sort_by_key(|x| x.to_ascii_uppercase());
+    v
+}
+
+#[test]
+fn folders_of_test_glass() {
+    let d = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/glass").to_string();
+    let v = folders(&serde_json::json!({
+        "glass_dirs": [d.clone(), d],
+        "lens_dirs": ["/no/such/dir"],
+    }));
+    let agf: Vec<&str> = v["agf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(agf.contains(&"SCHOTT"), "{v}");
+    let mut w = agf.clone();
+    w.dedup();
+    assert_eq!(agf, w);
+    assert_eq!(v["missing"], serde_json::json!(["/no/such/dir"]));
 }
 
 pub struct Worker {
@@ -363,7 +432,7 @@ impl Worker {
         Self::with_call(threads, repaint, true, Kind::Main)
     }
 
-    /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit` だけを受ける。serve の系・順番待ちとは
+    /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit`・`folders`・`cad_measure` だけを受ける。serve の系・順番待ちとは
     /// 別に回すので、解析を回している間も図とカタログが出る）
     pub fn preview(repaint: impl Fn() + Send + Sync + 'static) -> Worker {
         Self::with_call(None, repaint, false, Kind::Preview)

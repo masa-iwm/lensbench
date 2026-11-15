@@ -273,7 +273,10 @@ impl Core {
                         .iter()
                         .map(|r| r.material.as_str())
                         .collect();
-                    let used = crate::builtin_glass::used(&mats, &agf_names(&self.s.glass_dirs));
+                    let used = crate::builtin_glass::used(
+                        &mats,
+                        &crate::worker::agf_names(&self.s.glass_dirs),
+                    );
                     if !used.is_empty() && !self.status.error {
                         self.info(trf(
                                 "ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます",
@@ -340,7 +343,8 @@ impl Core {
                 self.set_done_status(&d.tag, String::new());
                 return;
             }
-            Tag::LensPreview(_) => return,
+            // 下書きの Worker の分（tick で受け取る）
+            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure => return,
             Tag::Focus => {
                 self.focus_from(&d);
                 return;

@@ -117,6 +117,11 @@ index.html と worker.js が決める。
   `navigator.hardwareConcurrency`（16 まで）本作る。下書きの Worker は `worker/` のまま逐次。
   `mt/` を読めないか、スレッドを作れない（`initThreadPool` が失敗する）ときは、Worker が `worker/` に戻して 1 スレッドで回す
 
+画面はカタログのファイルを読まない。カタログの一覧（`glasses`・`lenses`）・フォルダの様子（`folders`、ガラスのフォルダの
+AGF の名前と見つからないフォルダ）・品の STEP と簡易外形の照合（`cad_measure`）は下書きの Worker に頼む。別の入口が
+足すファイルの束（`Extra::packs`、非公開版のメーカーのデータ）は 2 つの計算の Worker だけが読み、画面は読まない。
+画面と Worker の置き場は、変わったファイルだけを要求・返事と一緒に渡し合う。
+
 URL に `?st` を付けると 1 スレッドの版になる（比べるとき）。4 コアで P9 の MTF が 104 秒 → 31 秒（11/09）。
 Web では `with_threads(Some(n))` も大域のプールを使う（スレッドを足せない）。
 

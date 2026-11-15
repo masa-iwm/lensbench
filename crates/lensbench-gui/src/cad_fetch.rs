@@ -53,29 +53,26 @@ fn web_store() -> Option<String> {
     WEB_STORE.lock_ok().clone()
 }
 
-/// Web 版: 置き場から品の STEP を取って vfs に入れ、serve の `cad_step` と同じ形の結果にする
+/// Web 版: 置き場から品の STEP を取って vfs に入れる。簡易外形との照合は、品の載ったカタログを持つ下書きの Worker
+/// で行う（画面はメーカーのデータを持たない、GAR-11）。返すのはその要求（[`measure_call`]）の引数。
+/// step は品の `cad.step`（一覧の行にある。キャッシュのファイル名に使う）
 #[cfg(target_arch = "wasm32")]
-async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value, String> {
+async fn web_fetch(
+    store: String,
+    catalog: String,
+    name: String,
+    step: String,
+) -> Result<Value, String> {
     use js_sys::{Function, Promise, Reflect};
+    use lensbench_project::catalog_fill;
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
-    let cat = lensbench_project::UserCatalog::load(std::path::Path::new(&catalog))?;
-    let it = cat
-        .items
-        .get(&name)
-        .ok_or_else(|| format!("{catalog} に品 {name} がない"))?;
-    use lensbench_project::catalog_fill;
-    let found = catalog_fill::cad_cache_find(&catalog_fill::cad_cache_dir(), &name, &it.cad.step);
+    let found = catalog_fill::cad_cache_find(&catalog_fill::cad_cache_dir(), &name, &step);
     let cached = found.is_some();
     let path = found.unwrap_or_else(|| {
-        catalog_fill::cad_cache_path(&catalog_fill::cad_cache_dir(), &name, &it.cad.step)
+        catalog_fill::cad_cache_path(&catalog_fill::cad_cache_dir(), &name, &step)
     });
-    let text = if cached {
-        lensbench_cad::detail::gunzip(
-            lensbench_core::vfs::read(&path).map_err(|e| e.to_string())?,
-            512 << 20,
-        )?
-    } else {
+    if !cached {
         // 置き場の鍵はキャッシュのファイル名から .gz を除いたもの
         let key = path
             .file_name()
@@ -126,19 +123,48 @@ async fn web_fetch(store: String, catalog: String, name: String) -> Result<Value
         }
         lensbench_core::vfs::write(&path, lensbench_cad::detail::gzip(&b))
             .map_err(|e| e.to_string())?;
-        b
-    };
-    let (measured, notes) = lensbench_cad::detail::measure(it, &text);
+    }
+    let path = path.display().to_string();
     Ok(serde_json::json!({
+        "catalog": catalog,
         "item": name,
-        "url": it.cad.step,
-        "path": path.display().to_string(),
-        "cached": cached,
-        "source": if cached { "cache" } else { "store" },
-        "store_notes": [],
-        "measured": measured.as_ref().map(|m| serde_json::to_value(m).unwrap_or_default()),
-        "notes": notes,
+        "path": path,
+        "base": {
+            "item": name,
+            "url": step,
+            "path": path,
+            "cached": cached,
+            "source": if cached { "cache" } else { "store" },
+            "store_notes": [],
+        },
     }))
+}
+
+/// 下書きの Worker の `cad_measure` {catalog, item, path, base}: 置き場に入れた STEP（gzip）を品の簡易外形と照らし、
+/// base に measured・notes を足して serve の `cad_step` と同じ形の結果にする
+pub fn measure_call(p: &Value) -> Result<Value, String> {
+    let s = |k: &str| {
+        p[k].as_str()
+            .ok_or_else(|| format!("cad_measure needs {k}"))
+    };
+    let (catalog, name, path) = (s("catalog")?, s("item")?, s("path")?);
+    let cat = lensbench_project::UserCatalog::load(std::path::Path::new(catalog))
+        .map_err(|e| e.to_string())?;
+    let it = cat
+        .items
+        .get(name)
+        .ok_or_else(|| format!("{catalog} に品 {name} がない"))?;
+    let text = lensbench_cad::detail::gunzip(
+        lensbench_core::vfs::read(path).map_err(|e| format!("{path}: {e}"))?,
+        512 << 20,
+    )?;
+    let (measured, notes) = lensbench_cad::detail::measure(it, &text);
+    let mut v = p["base"].clone();
+    v["measured"] = measured
+        .and_then(|m| serde_json::to_value(m).ok())
+        .unwrap_or(Value::Null);
+    v["notes"] = serde_json::json!(notes);
+    Ok(v)
 }
 
 /// 品の取得の状態
@@ -154,8 +180,18 @@ pub enum CadState {
 #[derive(Default)]
 pub struct CadFetcher {
     pub state: HashMap<(String, String), CadState>,
-    rx: Option<std::sync::mpsc::Receiver<((String, String), CadState)>>,
-    tx: Option<std::sync::mpsc::Sender<((String, String), CadState)>>,
+    rx: Option<std::sync::mpsc::Receiver<((String, String), Msg)>>,
+    tx: Option<std::sync::mpsc::Sender<((String, String), Msg)>>,
+    /// 下書きの Worker に頼む照合（[`measure_call`] の引数、Web 版）。[`CadFetcher::take_measure`] で出す
+    measure: Vec<Value>,
+}
+
+/// 裏の取得から届くもの
+enum Msg {
+    State(CadState),
+    /// 取り終えた。照合を下書きの Worker に頼む（Web 版）
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    Measure(Value),
 }
 
 /// 行の品のカタログのファイルと名前（lensbench 形式のカタログの品だけ）
@@ -170,14 +206,38 @@ impl CadFetcher {
     /// 終わった取得の結果を受け取る
     pub fn poll(&mut self) {
         if let Some(rx) = &self.rx {
-            while let Ok((k, s)) = rx.try_recv() {
-                self.state.insert(k, s);
+            while let Ok((k, m)) = rx.try_recv() {
+                match m {
+                    Msg::State(s) => {
+                        self.state.insert(k, s);
+                    }
+                    Msg::Measure(p) => self.measure.push(p),
+                }
             }
         }
     }
 
+    /// 下書きの Worker に頼む照合（`cad_measure` の引数）。毎フレーム呼ぶ
+    pub fn take_measure(&mut self) -> Vec<Value> {
+        self.poll();
+        std::mem::take(&mut self.measure)
+    }
+
+    /// 照合の結果（下書きの Worker の `cad_measure`）を受け取る
+    pub fn measured(&mut self, params: &Value, r: Result<&Value, &str>) {
+        let (Some(c), Some(n)) = (params["catalog"].as_str(), params["item"].as_str()) else {
+            return;
+        };
+        let s = match r {
+            Ok(v) => CadState::Done(v.clone()),
+            Err(e) => CadState::Failed(e.to_string()),
+        };
+        self.state.insert((c.to_string(), n.to_string()), s);
+    }
+
     /// 選んだ品の 1 件だけを裏で取る（Web 版は置き場から非同期に）
-    fn start(&mut self, ctx: &egui::Context, key: (String, String)) {
+    /// step は品の `cad.step`
+    fn start(&mut self, ctx: &egui::Context, key: (String, String), step: String) {
         if matches!(self.state.get(&key), Some(CadState::Pending)) {
             return;
         }
@@ -190,15 +250,18 @@ impl CadFetcher {
         self.state.insert(key.clone(), CadState::Pending);
         let ctx = ctx.clone();
         let done = move |key, r: Result<Value, String>| {
-            let s = match r {
-                Ok(v) => CadState::Done(v),
-                Err(e) => CadState::Failed(e),
+            let m = match r {
+                // Web 版は取り終えたら照合へ（結果はまだ Pending のまま）
+                Ok(v) if cfg!(target_arch = "wasm32") => Msg::Measure(v),
+                Ok(v) => Msg::State(CadState::Done(v)),
+                Err(e) => Msg::State(CadState::Failed(e)),
             };
-            let _ = tx.send((key, s));
+            let _ = tx.send((key, m));
             ctx.request_repaint();
         };
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let _ = step;
             let dir = cad_dir();
             std::thread::spawn(move || {
                 let r = lensbench_project::UserCatalog::load(std::path::Path::new(&key.0))
@@ -220,7 +283,7 @@ impl CadFetcher {
                 return;
             };
             wasm_bindgen_futures::spawn_local(async move {
-                let r = web_fetch(store, key.0.clone(), key.1.clone()).await;
+                let r = web_fetch(store, key.0.clone(), key.1.clone(), step).await;
                 done(key, r);
             });
         }
@@ -270,7 +333,7 @@ impl CadFetcher {
                             ))
                             .clicked()
                         {
-                            self.start(ui.ctx(), key.clone());
+                            self.start(ui.ctx(), key.clone(), step.clone());
                         }
                     }
                 }
