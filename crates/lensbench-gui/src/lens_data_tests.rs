@@ -532,14 +532,23 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
 /// 表を egui の画面で回す: 1 フレームずつ入力（events）を渡し、出た Act を集める（画面の振る舞いの試験、
 /// GPN-29・GAR-07）
 fn drive(st: &mut LensData, rows: &[Row], frames: Vec<Vec<egui::Event>>) -> Vec<Act> {
+    drive_with(st, rows, &[], &BTreeSet::new(), frames)
+}
+
+/// [`drive`]。ブロック（玉・群）とロックを渡す
+fn drive_with(
+    st: &mut LensData,
+    rows: &[Row],
+    blocks: &[Block],
+    locked: &BTreeSet<String>,
+    frames: Vec<Vec<egui::Event>>,
+) -> Vec<Act> {
     let ctx = egui::Context::default();
-    let blocks: Vec<Block> = Vec::new();
-    let locked = BTreeSet::new();
     let ro = |_: usize, _: Col| None;
     let c = Ctx {
         rows,
-        blocks: &blocks,
-        locked: &locked,
+        blocks,
+        locked,
         read_only: &ro,
         combo: false,
         unit_mech: None,
@@ -551,7 +560,16 @@ fn drive(st: &mut LensData, rows: &[Row], frames: Vec<Vec<egui::Event>>) -> Vec<
     };
     let mut acts = Vec::new();
     for events in frames {
+        // 修飾キーは押しているキーのもの（表は i.modifiers を見る）
+        let modifiers = events
+            .iter()
+            .find_map(|e| match e {
+                egui::Event::Key { modifiers, .. } => Some(*modifiers),
+                _ => None,
+            })
+            .unwrap_or_default();
         let input = egui::RawInput {
+            modifiers,
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
                 egui::vec2(1200.0, 700.0),
@@ -647,4 +665,286 @@ fn ui_paste_and_delete_keys() {
         acts.iter().any(|a| matches!(a, Act::Refused(_))),
         "{acts:?}"
     );
+}
+
+fn key_mod(k: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+    egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    }
+}
+
+/// 6 面（0〜5）の表と、面 2〜3 の玉 L1
+fn rows_and_lens() -> (Vec<Row>, Vec<Block>) {
+    let rows: Vec<Row> = (0..6)
+        .map(|j| Row {
+            typ: "STANDARD".into(),
+            stop: j == 1,
+            t: 1.0 + j as f64,
+            ..Default::default()
+        })
+        .collect();
+    let blocks = vec![Block {
+        name: "L1".into(),
+        surfs: vec![2, 3],
+        parent: None,
+    }];
+    (rows, blocks)
+}
+
+#[test]
+fn ui_arrow_keys_move_the_cell_and_select_the_block() {
+    let rows = sample_rows();
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    drive(
+        &mut st,
+        &rows,
+        vec![vec![key(egui::Key::ArrowDown)], Vec::new()],
+    );
+    assert_eq!(st.cur, Some((3, Col::T)));
+    drive(
+        &mut st,
+        &rows,
+        vec![vec![key(egui::Key::ArrowLeft)], Vec::new()],
+    );
+    assert_eq!(st.cur, Some((3, Col::R)), "厚さの左は曲率半径");
+    drive(
+        &mut st,
+        &rows,
+        vec![vec![key(egui::Key::Escape)], Vec::new()],
+    );
+    assert_eq!(st.cur, None, "Esc で選びをやめる");
+    // ブロックの中の面へ動くと、ブロックを選ぶ（面単位の選択でなければ）
+    let (rows, blocks) = rows_and_lens();
+    let mut st = LensData {
+        active: true,
+        tree: true,
+        cur: Some((1, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &BTreeSet::new(),
+        vec![Vec::new(), vec![key(egui::Key::ArrowDown)], Vec::new()],
+    );
+    assert_eq!(st.cur, Some((2, Col::T)));
+    assert!(
+        acts.iter()
+            .any(|a| matches!(a, Act::Select(Some(n)) if n == "L1")),
+        "{acts:?}"
+    );
+}
+
+#[test]
+fn ui_shift_arrows_select_a_range_and_delete_removes_it_from_the_back() {
+    let rows = sample_rows();
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let shift = egui::Modifiers::SHIFT;
+    let acts = drive(
+        &mut st,
+        &rows,
+        vec![
+            vec![key_mod(egui::Key::ArrowDown, shift)],
+            Vec::new(),
+            vec![key(egui::Key::Delete)],
+            Vec::new(),
+        ],
+    );
+    let ops: Vec<&Value> = acts
+        .iter()
+        .filter_map(|a| match a {
+            Act::Ops(v) => Some(v),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(
+        ops,
+        [
+            &json!({ "op": "delete_surface", "surface": 3 }),
+            &json!({ "op": "delete_surface", "surface": 2 }),
+        ],
+        "{acts:?}"
+    );
+}
+
+#[test]
+fn ui_insert_key_adds_a_surface_after_and_alt_insert_before() {
+    let rows = sample_rows();
+    let ops_of = |acts: &[Act]| -> Vec<Value> {
+        acts.iter()
+            .filter_map(|a| match a {
+                Act::Ops(v) => Some(v.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
+    };
+    // Insert は前に（OpticStudio と同じ）
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive(
+        &mut st,
+        &rows,
+        vec![vec![key(egui::Key::Insert)], Vec::new()],
+    );
+    assert_eq!(
+        ops_of(&acts),
+        [json!({ "op": "insert_surface", "at": 2, "surface": {} })],
+        "{acts:?}"
+    );
+    // Alt+Insert は後に
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive(
+        &mut st,
+        &rows,
+        vec![
+            vec![key_mod(egui::Key::Insert, egui::Modifiers::ALT)],
+            Vec::new(),
+        ],
+    );
+    assert_eq!(
+        ops_of(&acts),
+        [json!({ "op": "insert_surface", "at": 3, "surface": {} })],
+        "{acts:?}"
+    );
+}
+
+#[test]
+fn ui_escape_cancels_editing_without_an_edit() {
+    let rows = sample_rows();
+    let mut st = LensData {
+        active: true,
+        cur: Some((2, Col::T)),
+        ..Default::default()
+    };
+    let mut frames = vec![vec![egui::Event::Text("9".into())]];
+    frames.extend((0..3).map(|_| Vec::new()));
+    frames.push(vec![key(egui::Key::Escape)]);
+    frames.push(Vec::new());
+    let acts = drive(&mut st, &rows, frames);
+    assert!(st.edit.is_none(), "Esc で書き換えを閉じる");
+    assert!(
+        !acts.iter().any(|a| matches!(a, Act::Edit { .. })),
+        "{acts:?}"
+    );
+}
+
+#[test]
+fn ui_locked_block_refuses_typing_but_ctrl_l_unlocks() {
+    let (rows, blocks) = rows_and_lens();
+    let locked: BTreeSet<String> = ["L1".to_string()].into();
+    let mut st = LensData {
+        active: true,
+        tree: true,
+        cur: Some((2, Col::R)),
+        sel: Some("L1".into()),
+        ..Default::default()
+    };
+    let acts = drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &locked,
+        vec![Vec::new(), vec![egui::Event::Text("5".into())], Vec::new()],
+    );
+    assert!(
+        acts.iter().any(|a| matches!(a, Act::Refused(_))),
+        "ロックしたブロックの面は打てない: {acts:?}"
+    );
+    assert!(st.edit.is_none());
+    let acts = drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &locked,
+        vec![
+            vec![key_mod(egui::Key::L, egui::Modifiers::COMMAND)],
+            Vec::new(),
+        ],
+    );
+    assert!(
+        acts.iter()
+            .any(|a| matches!(a, Act::Lock(n, false) if n == "L1")),
+        "{acts:?}"
+    );
+}
+
+#[test]
+fn ui_enter_on_a_folded_block_opens_it_and_ctrl_enter_folds_it_again() {
+    let (rows, blocks) = rows_and_lens();
+    // 折りたたみ表示でたたんだ L1 の行（鍵は最後の面 3）で Enter → 開く
+    let mut st = LensData {
+        active: true,
+        tree: true,
+        cur: Some((3, Col::R)),
+        ..Default::default()
+    };
+    st.seen.insert("L1".into());
+    let none = BTreeSet::new();
+    drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &none,
+        vec![vec![key(egui::Key::Enter)], Vec::new()],
+    );
+    assert!(st.open.contains("L1"), "Enter で開く");
+    // 開いた L1 の中の面で Ctrl+Enter → たたむ（今のセルはたたんだ行へ）
+    st.cur = Some((2, Col::R));
+    drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &none,
+        vec![
+            vec![key_mod(egui::Key::Enter, egui::Modifiers::COMMAND)],
+            Vec::new(),
+        ],
+    );
+    assert!(!st.open.contains("L1"), "Ctrl+Enter でたたむ");
+    assert_eq!(st.cur.map(|x| x.0), Some(3));
+    // ブロックに入る表示では Enter で中へ
+    let mut st = LensData {
+        active: true,
+        cur: Some((3, Col::R)),
+        ..Default::default()
+    };
+    drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &none,
+        vec![vec![key(egui::Key::Enter)], Vec::new()],
+    );
+    assert_eq!(st.scope, vec!["L1".to_string()], "Enter で中へ");
+    drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &none,
+        vec![vec![key(egui::Key::Backspace)], Vec::new()],
+    );
+    assert!(st.scope.is_empty(), "Backspace で外へ");
+    assert_eq!(st.sel.as_deref(), Some("L1"), "出たブロックを選ぶ");
 }
