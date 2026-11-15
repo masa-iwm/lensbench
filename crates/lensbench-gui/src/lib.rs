@@ -55,6 +55,8 @@ mod tour;
 mod unit_mech;
 mod view3d;
 #[cfg(target_arch = "wasm32")]
+mod web_bg;
+#[cfg(target_arch = "wasm32")]
 mod web_store;
 #[cfg(target_arch = "wasm32")]
 mod web_tabs;
@@ -194,7 +196,38 @@ async fn run_web(
         .start(
             canvas,
             eframe::WebOptions::default(),
-            Box::new(move |cc| Ok(Box::new(app::App::new(cc, args)))),
+            Box::new(move |cc| {
+                let panel = web_panel();
+                let a = std::rc::Rc::new(std::cell::RefCell::new(app::App::new(cc, args)));
+                // 元のタブ: 裏に回っている間も別の窓のパネルを動かす（#237）
+                if !panel {
+                    web_bg::install(std::rc::Rc::downgrade(&a), cc.egui_ctx.clone());
+                }
+                Ok(Box::new(Shell(a)))
+            }),
         )
         .await
+}
+
+/// eframe に渡す画面。中身は [`web_bg`] とも分け合う（裏に回ったタブで別の窓の分を描く）
+#[cfg(target_arch = "wasm32")]
+struct Shell(std::rc::Rc<std::cell::RefCell<app::App>>);
+
+#[cfg(target_arch = "wasm32")]
+impl eframe::App for Shell {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.0.borrow_mut().update(ctx, frame);
+    }
+
+    fn auto_save_interval(&self) -> std::time::Duration {
+        self.0.borrow().auto_save_interval()
+    }
+
+    fn persist_egui_memory(&self) -> bool {
+        self.0.borrow().persist_egui_memory()
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        self.0.borrow_mut().save(storage);
+    }
 }

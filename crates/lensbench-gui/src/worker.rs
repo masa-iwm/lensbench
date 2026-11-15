@@ -818,7 +818,11 @@ mod remote {
                 threads,
                 jobs,
                 done,
-                repaint: Rc::from(repaint),
+                // 元のタブが裏に回っていても、結果を受けて別の窓のパネルを描き直す（#237）
+                repaint: Rc::new(move || {
+                    repaint();
+                    crate::web_bg::kick();
+                }),
                 live: None,
                 inbox: Rc::default(),
                 inflight: None,

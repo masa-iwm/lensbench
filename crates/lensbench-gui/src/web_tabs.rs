@@ -8,8 +8,9 @@
 //!     `{sid, from, bye}`（閉じた。pagehide で送る）
 //!   - 元 → 窓: 網のバイト列（[`crate::remote_frame`]）、`{sid, to, out}`（カーソル・写した文字など）、
 //!     `{sid, to, ack}`（入力を受けたが画面は変わらない）、`{sid, closed}`（元のタブを閉じた）
-//! - 元のタブが裏に回るとブラウザはその画面を止めるので、窓は返事が 1.5 秒より長く無ければその旨と
-//!   「元の窓を前へ」を出す
+//! - 元のタブが裏に回るとブラウザはその画面（requestAnimationFrame）を止めるが、メッセージは届くので、
+//!   別の窓の入力・計算の結果を合図に元のタブが描いて送る（[`crate::web_bg`]、#237）。それでも返事が
+//!   3 秒より長く無ければ（ブラウザがタブごと止めたときなど）、窓にその旨と「元の窓を前へ」を出す
 //! - 窓を閉じると、パネルは元のタブのドックに戻る。元のタブを閉じると、窓にその知らせを出す
 
 use std::cell::RefCell;
@@ -53,6 +54,8 @@ impl Chan {
             if let Some(v) = d.as_string().and_then(|s| serde_json::from_str(&s).ok()) {
                 i.borrow_mut().push(v);
                 c.request_repaint();
+                // 元のタブが裏に回っていても、別の窓の入力で描く（#237。別の窓のタブでは何もしない）
+                crate::web_bg::kick();
             } else if d.is_instance_of::<js_sys::Uint8Array>()
                 || d.is_instance_of::<js_sys::ArrayBuffer>()
             {
@@ -277,6 +280,14 @@ impl Tabs {
         }
     }
 
+    /// 元のタブが裏に回っている間: 別の窓に、ms のあとに入力（空でも）を送って合図するよう頼む（#237）。
+    /// 動き続けるもの（計算中の印など）で回り続けないよう、100 ms より短くはしない
+    pub fn send_again(&mut self, id: u64, ms: f64) {
+        if let Some(c) = &self.chan {
+            c.post(&json!({ "sid": self.sid, "to": id, "again": ms.max(100.0) }));
+        }
+    }
+
     /// 入力を受けたのに画面も出力も送らなかった窓に、受けたことだけ返す（窓が「止まった」と出さないように）
     pub fn flush_acks(&mut self) {
         let Some(c) = &self.chan else {
@@ -339,6 +350,8 @@ pub struct Host {
     last_out: Value,
     /// パネルの名前（別の窓の上の帯と窓の名前に出す）
     pub title: String,
+    /// このパネルの egui が頼んだ描き直しまでの時間 [ms]（一番短いもの。[`Host::take_again`]）
+    again: std::sync::Arc<std::sync::Mutex<Option<f64>>>,
 }
 
 impl Host {
@@ -346,7 +359,15 @@ impl Host {
         let ctx = egui::Context::default();
         crate::fonts::install(&ctx);
         let m = main.clone();
-        ctx.set_request_repaint_callback(move |info| m.request_repaint_after(info.delay));
+        let again: std::sync::Arc<std::sync::Mutex<Option<f64>>> = Default::default();
+        let a = again.clone();
+        ctx.set_request_repaint_callback(move |info| {
+            m.request_repaint_after(info.delay);
+            let d = info.delay.as_secs_f64() * 1e3;
+            if let Ok(mut a) = a.lock() {
+                *a = Some(a.map_or(d, |x| x.min(d)));
+            }
+        });
         Host {
             ctx,
             events: Vec::new(),
@@ -357,7 +378,14 @@ impl Host {
             sized: false,
             last_out: Value::Null,
             title: String::new(),
+            again,
         }
+    }
+
+    /// このパネルの egui が描き直しを頼んでいれば、その時間 [ms]（取ると消える）。元のタブが裏に回っている間は
+    /// 元のタブの画面（rAF）が回らないので、別の窓にこの時間のあとの合図を頼む（[`Tabs::send_again`]、#237）
+    pub fn take_again(&self) -> Option<f64> {
+        self.again.lock().ok().and_then(|mut a| a.take())
     }
 
     /// 別の窓の入力（{events, rect: [x0, y0, x1, y1], ppp, mods}）
@@ -468,6 +496,8 @@ pub struct Viewer {
     title: String,
     /// 返事の無い入力を初めに送った時刻 [ms]（何か届いたら None）
     waiting: Option<f64>,
+    /// この時刻 [ms] を過ぎたら入力を送る（裏に回った元のタブが描き直しの合図を頼んだ、[`Tabs::send_again`]）
+    poke: Option<f64>,
 }
 
 impl Viewer {
@@ -487,6 +517,7 @@ impl Viewer {
             got: false,
             title: String::new(),
             waiting: None,
+            poke: None,
         }
     }
 
@@ -549,6 +580,11 @@ impl Viewer {
                 self.closed = true;
             } else if m["to"].as_u64() == Some(self.id) {
                 self.waiting = None;
+                if let Some(ms) = m["again"].as_f64() {
+                    let at = now_ms() + ms;
+                    self.poke = Some(self.poke.map_or(at, |p| p.min(at)));
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(ms / 1e3));
+                }
                 let o = &m["out"];
                 if let Ok(cur) = serde_json::from_value(o["cursor"].clone()) {
                     self.cursor = cur;
@@ -569,9 +605,9 @@ impl Viewer {
                 }
             }
         }
-        // 元のタブの返事が 1.5 秒より長く無い: 裏に回って止まっている（ブラウザは見えないタブの画面を回さない）
+        // 元のタブの返事が 3 秒より長く無い: 止まっている（裏に回っても描くが、ブラウザがタブごと止めることがある）
         let t0 = now_ms();
-        let stalled = !self.closed && self.got && self.waiting.is_some_and(|w| t0 - w > 1500.0);
+        let stalled = !self.closed && self.got && self.waiting.is_some_and(|w| t0 - w > 3000.0);
         // 上の帯: パネルの名前と「元のタブに戻す」
         egui::TopBottomPanel::top("remote-bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -582,7 +618,7 @@ impl Viewer {
                 if stalled {
                     ui.label(
                         egui::RichText::new(crate::i18n::tr(
-                            "元のタブが裏に回って止まっています（元のタブが見えていると動きます。窓を並べてください）",
+                            "元のタブから返事がありません（ブラウザが元のタブを止めたかもしれません。元の窓を前に出すと動きます）",
                         ))
                         .small()
                         .color(crate::theme::warn(ui.visuals())),
@@ -625,16 +661,24 @@ impl Viewer {
                 self.waiting.get_or_insert(t);
             }
             ctx.request_repaint_after(std::time::Duration::from_millis(300));
-        } else if !events.is_empty() || self.last_rect != Some(rect) || t - self.hello >= 2000.0 {
+        } else if !events.is_empty()
+            || self.last_rect != Some(rect)
+            || t - self.hello >= 2000.0
+            || self.poke.is_some_and(|p| t >= p)
+        {
+            self.poke = None;
             // 入力・大きさが変わったとき、ほかは 2 秒ごとに（元のタブが閉じていないとみるため）
             self.hello = t;
             c.post(&json!({ "sid": self.sid, "from": self.id, "input": input }));
             self.waiting.get_or_insert(t);
         }
-        // 返事を待っている間は、止まったと出すために早めに見直す
+        // 返事を待っている間は、止まったと出すために早めに見直す。合図を頼まれていればその時刻に
         ctx.request_repaint_after(std::time::Duration::from_millis(
             if self.waiting.is_some() { 500 } else { 2000 },
         ));
+        if let Some(p) = self.poke {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64((p - t).max(0.0) / 1e3));
+        }
         self.last_rect = Some(rect);
         // 元のタブで描いた画面
         let painter = ctx.layer_painter(egui::LayerId::background());
