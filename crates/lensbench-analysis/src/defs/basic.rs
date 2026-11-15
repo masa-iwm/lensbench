@@ -255,7 +255,9 @@ impl Analysis for Zernike {
             ZKind::Fringe => ZernKind::Fringe,
         };
         if k == ZernKind::Fringe && p.terms > 37 {
-            return Err(lensbench_core::Error::Invalid("Fringe は 37 項まで".into()));
+            return Err(lensbench_core::Error::Invalid(
+                "Fringe has at most 37 terms".into(),
+            ));
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;

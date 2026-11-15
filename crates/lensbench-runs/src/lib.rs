@@ -113,16 +113,16 @@ impl SensorNoise {
     pub fn check(&self) -> Result<()> {
         if !(self.read >= 0.0) || !(self.full_well >= 0.0) {
             invalid!(
-                "読み出し雑音・飽和は 0 以上に（{}・{}）",
+                "read noise and saturation must be 0 or more ({}, {})",
                 self.read,
                 self.full_well
             );
         }
         if self.bits > 0 && !(self.full_well > 0.0) {
-            invalid!("AD 変換の bits には飽和 full_well が要る");
+            invalid!("the AD conversion bits need a saturation full_well");
         }
         if self.bits > 32 {
-            invalid!("AD 変換のビット数は 32 まで（{}）", self.bits);
+            invalid!("the AD conversion bits must be at most 32 ({})", self.bits);
         }
         Ok(())
     }
@@ -292,7 +292,7 @@ impl Dist {
             Dist::Fixed(v) => v.is_finite(),
         };
         if !ok {
-            invalid!("分布 {self:?}");
+            invalid!("distribution {self:?}");
         }
         Ok(())
     }
@@ -346,15 +346,18 @@ impl Sampler {
             None => None,
             Some(c) => {
                 if c.len() != n || c.iter().any(|r| r.len() != n) {
-                    invalid!("相関行列の大きさ（{n} × {n}）");
+                    invalid!("size of the correlation matrix ({n} × {n})");
                 }
                 for i in 0..n {
                     if (c[i][i] - 1.0).abs() > 1e-12 {
-                        invalid!("相関行列の対角 {i} が 1 でない（{}）", c[i][i]);
+                        invalid!(
+                            "diagonal {i} of the correlation matrix is not 1 ({})",
+                            c[i][i]
+                        );
                     }
                     for j in 0..i {
                         if (c[i][j] - c[j][i]).abs() > 1e-12 || c[i][j].abs() > 1.0 {
-                            invalid!("相関行列 ({i}, {j}) が対称でないか |ρ| > 1");
+                            invalid!("correlation matrix ({i}, {j}) is not symmetric or |ρ| > 1");
                         }
                     }
                 }
@@ -365,7 +368,7 @@ impl Sampler {
                         if i == j {
                             let d = c[i][i] - s;
                             if d <= 1e-14 {
-                                invalid!("相関行列が正定値でない");
+                                invalid!("the correlation matrix is not positive definite");
                             }
                             l[i][j] = d.sqrt();
                         } else {
@@ -425,7 +428,7 @@ impl Grid {
             .iter()
             .any(|(_, v)| v.is_empty() || v.iter().any(|x| !x.is_finite()))
         {
-            invalid!("掃引の軸に値がないか、有限でない値");
+            invalid!("a sweep axis has no values or a non-finite value");
         }
         Ok(Grid { axes })
     }
@@ -448,7 +451,7 @@ impl Plan for Grid {
     fn changes(&self, i: usize, _base: &System) -> Result<Vec<(Param, f64)>> {
         if let Some(n) = self.count() {
             if i >= n {
-                invalid!("組 {i}（{n} 組）");
+                invalid!("set {i} ({n} sets)");
             }
         }
         Ok(self
@@ -514,10 +517,10 @@ pub fn read_results(path: &Path) -> Result<(String, Vec<(usize, u64, String)>)> 
     let mut lines = complete_lines(&txt).into_iter();
     let head = match lines.next() {
         Some(l) => l,
-        None => invalid!("{}: 空のファイル", path.display()),
+        None => invalid!("{}: empty file", path.display()),
     };
     let Some(h) = head.strip_prefix(MAGIC).and_then(|x| x.strip_suffix('}')) else {
-        invalid!("{}: 一括実行の結果のファイルでない", path.display());
+        invalid!("{}: not a batch result file", path.display());
     };
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -568,7 +571,7 @@ where
     F: Fn(usize, u64) -> Result<String> + Sync,
 {
     if opts.header.contains('\n') || opts.header.contains('\r') {
-        invalid!("一括実行の頭に改行（1 行の JSON に）");
+        invalid!("line break in the batch header (make it one line of JSON)");
     }
     let mut done: HashSet<usize> = HashSet::new();
     let mut file: Option<std::fs::File> = None;
@@ -578,7 +581,7 @@ where
             let (h, rows) = read_results(p)?;
             if h != opts.header {
                 invalid!(
-                    "{}: 頭が違う（別の計算の結果。resume をやめるか別のファイルに）",
+                    "{}: the header differs (results of another calculation; stop resume or use another file)",
                     p.display()
                 );
             }
@@ -628,9 +631,9 @@ where
                 Ok(res) => {
                     if res.contains('\n') {
                         stop.store(true, Ordering::Relaxed);
-                        failed
-                            .lock_ok()
-                            .get_or_insert(Error::Invalid(format!("組 {i}: 結果に改行")));
+                        failed.lock_ok().get_or_insert(Error::Invalid(format!(
+                            "set {i}: line break in the result"
+                        )));
                         return;
                     }
                     let mut g = file.lock_ok();
@@ -661,7 +664,7 @@ where
                     stop.store(true, Ordering::Relaxed);
                     failed
                         .lock_ok()
-                        .get_or_insert(Error::Invalid(format!("組 {i}: {e}")));
+                        .get_or_insert(Error::Invalid(format!("set {i}: {e}")));
                 }
             }
         });

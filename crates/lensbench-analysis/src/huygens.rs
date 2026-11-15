@@ -131,15 +131,15 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
-            "Huygens PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上",
+            "Huygens PSF pupil grid {:?} must be 4 or more and image grid {ni} 2 or more",
             o.pupil
         );
     }
     if s.afocal {
-        notimpl!("Huygens PSF: アフォーカル像空間（FFT PSF を使う）");
+        notimpl!("Huygens PSF: afocal image space (use the FFT PSF)");
     }
     if s.ropd != 1 && s.ropd != 2 {
-        notimpl!("OPD の基準 {}（射出瞳・無限遠のみ）", s.ropd);
+        notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
     }
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
@@ -147,11 +147,11 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     };
     let c = s.try_trace(field, &[0.0], &[0.0], Some(s.primary), None, false)?;
     if !c.traced(0) {
-        invalid!("Huygens PSF: 主波長の主光線が追跡できない");
+        invalid!("Huygens PSF: can't trace the chief ray of the primary wavelength");
     }
     let (pc, kc) = (c.rays[0].xyz, c.rays[0].lmn);
     if !(kc[2].abs() > 1e-9) {
-        invalid!("Huygens PSF: 主光線が像面に平行");
+        invalid!("Huygens PSF: the chief ray is parallel to the image surface");
     }
     // 参照球（OPD の to_ref と同じ）
     let expp = s.exit_pupil();
@@ -177,7 +177,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     }
     let delta = match o.delta {
         Some(d) if d > 0.0 => (d, d),
-        Some(d) => invalid!("Huygens PSF の像の格子の間隔 {d}"),
+        Some(d) => invalid!("Huygens PSF image grid spacing {d}"),
         None => (0.5 / cut.0, 0.5 / cut.1),
     };
     let half = (ni / 2) as f64;
@@ -239,7 +239,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
             || ni as f64 * delta.1 * b.abs() * h > 1.0 + 1e-9
         {
             invalid!(
-                "Huygens PSF: 像の格子の幅が瞳の標本の周期を超える（波長 {}、瞳の格子を増やすか、像の格子・間隔を減らす）",
+                "Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)",
                 wi + 1
             );
         }
@@ -285,7 +285,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
             sa += f;
         }
         if !(sa > 0.0) {
-            invalid!("Huygens PSF: 有効な光線がない（すべてけられた）");
+            invalid!("Huygens PSF: no valid rays (all vignetted)");
         }
         let w_ok: Vec<(usize, usize, f64)> = (0..cells.len())
             .filter(|&i| op.ok(i) && op.opd[i].is_finite())
@@ -378,7 +378,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         wsum += kw;
     }
     if !(wsum > 0.0) {
-        invalid!("重みのある波長がない");
+        invalid!("no weighted wavelength");
     }
     let i: Vec<Vec<f64>> = tot
         .chunks(ni)

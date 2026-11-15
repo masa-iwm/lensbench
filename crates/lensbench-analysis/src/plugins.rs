@@ -507,7 +507,7 @@ impl Plugin for Analysis {
                     "interp" => MtfMethod::Interp,
                     "direct" => MtfMethod::Direct,
                     "fft" => MtfMethod::Fft,
-                    x => invalid!("設定 method は auto・interp・direct・fft に（{x}）"),
+                    x => invalid!("setting method must be auto, interp, direct or fft ({x})"),
                 },
             },
             Analysis::Psf => {
@@ -533,7 +533,7 @@ impl Plugin for Analysis {
                     {
                         "centroid" => RmsRef::Centroid,
                         "chief" => RmsRef::Chief,
-                        x => invalid!("設定 reference は centroid か chief に（{x}）"),
+                        x => invalid!("setting reference must be centroid or chief ({x})"),
                     },
                     ..Default::default()
                 },
@@ -564,19 +564,19 @@ impl Plugin for Analysis {
             }
             Analysis::Pop => {
                 let Some(surface) = r.opt_count("surface")? else {
-                    invalid!("設定 surface（場を作る面）が要る");
+                    invalid!("setting surface (the surface that makes the field) is needed");
                 };
                 let dist = opt_num(&mut r, "dist")?;
                 let to = r.opt_count("to")?;
                 if dist.is_some() && to.is_some() {
-                    invalid!("設定 dist と to はどちらか");
+                    invalid!("give only one of the settings dist and to");
                 }
                 let method = match r.str("method", "auto")?.as_str() {
                     "auto" => PopMethod::Auto,
                     "fresnel" => PopMethod::Fresnel,
                     "angular" => PopMethod::Angular,
                     "direct" => PopMethod::Direct,
-                    x => invalid!("設定 method は auto・fresnel・angular・direct に（{x}）"),
+                    x => invalid!("setting method must be auto, fresnel, angular or direct ({x})"),
                 };
                 let d = RayBeamOpts::default();
                 let opts = RayBeamOpts {
@@ -592,7 +592,9 @@ impl Plugin for Analysis {
                     center: match r.nums("out_center")? {
                         None => None,
                         Some(v) if v.len() == 2 => Some((v[0], v[1])),
-                        Some(v) => invalid!("設定 out_center は 2 個に（{} 個）", v.len()),
+                        Some(v) => {
+                            invalid!("setting out_center needs 2 values ({} values)", v.len())
+                        }
                     },
                 };
                 Prepared::Pop {
@@ -607,7 +609,7 @@ impl Plugin for Analysis {
             }
             Analysis::Ghost => {
                 if wave.is_some() {
-                    invalid!("ghost に wave は使えない（主波長で求める）");
+                    invalid!("wave can't be used with ghost (computed at the primary wavelength)");
                 }
                 Prepared::Ghost {
                     first: r.count("first", 1)?,
@@ -617,7 +619,7 @@ impl Plugin for Analysis {
             Analysis::Interferogram => {
                 let beam1 = r.count("beam1", 1)?;
                 if beam1 == 0 {
-                    invalid!("設定 beam1 は 1 以上（構成の番号）");
+                    invalid!("setting beam1 must be 1 or more (a configuration number)");
                 }
                 Prepared::Interferogram {
                     wave,
@@ -645,7 +647,7 @@ fn zern_kind(s: &str) -> Result<ZernKind> {
     match s.to_ascii_lowercase().as_str() {
         "standard" => Ok(ZernKind::Standard),
         "fringe" => Ok(ZernKind::Fringe),
-        x => invalid!("設定 kind は standard か fringe に（{x}）"),
+        x => invalid!("setting kind must be standard or fringe ({x})"),
     }
 }
 
@@ -872,14 +874,14 @@ impl Prepared {
                     ("rms", Array::scalar(r.rms)),
                 ])
             }
-            Prepared::Ghost { .. } => invalid!("ghost は視野を使わない"),
+            Prepared::Ghost { .. } => invalid!("ghost doesn't use fields"),
         })
     }
 
     /// ghost: first..=last の面の全部の組
     fn ghost(&self, s: &System, coat: Option<&Coatings>) -> Result<Arrays> {
         let Prepared::Ghost { first, last } = self else {
-            invalid!("ghost ではない");
+            invalid!("not a ghost");
         };
         let last = last.unwrap_or(s.image());
         let own;

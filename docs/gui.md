@@ -280,7 +280,7 @@ Windows の exe は CI（windows-latest）の成果物 `lensbench-gui-windows` �
 | | Ctrl+C / Ctrl+V | 行のコピー / 貼り付け（上書き） |
 | | Shift+F10 | 右クリックの欄 |
 | | Ctrl+A / Ctrl+Shift+A | 次 / 前の構成を系に入れる（どのパネルでも） |
-- 「表示」で配色（暗い・明るい・OS に合わせる）とアクセント色、言語（日本語・英語、既定は OS の言語）。
+- 「表示」で配色（暗い・明るい・OS に合わせる）とアクセント色、言語（日本語・英語、既定は OS の言語。計算側の誤りの文も同じ言語）。
   画面の文字列は `crates/lensbench-gui/lang/`（言語を足すときは表を足す）
 - 「ファイル > カタログのフォルダ」でガラス（.AGF）とレンズ（.zmx のフォルダ）の場所を決める。設定と並びは次に開いたときも使う
 - 設定の保存先: 既定は OS の場所（Windows `%APPDATA%\lensbench\data\app.ron`、Linux `~/.local/share/lensbench/app.ron`）。

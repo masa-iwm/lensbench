@@ -35,7 +35,7 @@ use lensbench_engine::load::{
     coat_interfaces, index_list, plugins_json, save_value, AutoCoat, CoatInterfaces,
 };
 use lensbench_engine::{builtin_plugins, provenance};
-
+mod clap_ja;
 mod search_cmd;
 
 #[derive(Parser)]
@@ -1636,7 +1636,7 @@ pub fn main() -> ExitCode {
         print_out(true, &help_json::help_json(cli_command()));
         return ExitCode::SUCCESS;
     }
-    let cli = parse_cli(argv).unwrap_or_else(|e| e.exit());
+    let cli = parse_cli(argv).unwrap_or_else(|e| clap_ja::fail(e));
     // 機構部品の詳しい形（取った STEP）を描けるように
     #[cfg(not(target_arch = "wasm32"))]
     cad_detail::install_detail_loader();

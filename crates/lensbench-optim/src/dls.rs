@@ -151,7 +151,7 @@ impl RayQ {
             "l" | "reaa" => RayQ::L,
             "m" | "reab" => RayQ::M,
             "n" | "reac" => RayQ::N,
-            _ => invalid!("光線の量 {s}（x・y・z・l・m・n）"),
+            _ => invalid!("ray quantity {s} (x, y, z, l, m, n)"),
         })
     }
     pub fn name(&self) -> &'static str {
@@ -222,7 +222,7 @@ impl ParaxQ {
             "epdi" => ParaxQ::Epd,
             _ => match ParaxQ::ALL.iter().find(|q| q.name() == t) {
                 Some(q) => *q,
-                None => invalid!("近軸量 {s}（{}）", ParaxQ::ALL.map(|q| q.name()).join("・")),
+                None => invalid!("paraxial {s} ({})", ParaxQ::ALL.map(|q| q.name()).join(",")),
             },
         })
     }
@@ -305,7 +305,7 @@ impl UserTermRef {
         let v = self.0.eval(systems)?;
         if v.len() != systems.len() {
             invalid!(
-                "利用者の項 {}: 系 {} 個に結果 {} 個",
+                "user term {}: {} results for {} systems",
                 self.0.name(),
                 systems.len(),
                 v.len()
@@ -314,14 +314,14 @@ impl UserTermRef {
         for r in &v {
             if r.len() != self.0.rows() {
                 invalid!(
-                    "利用者の項 {}: 残差 {} 個（{} 個のはず）",
+                    "user term {}: {} residuals (expected {})",
                     self.0.name(),
                     r.len(),
                     self.0.rows()
                 );
             }
             if r.iter().any(|x| !x.is_finite()) {
-                invalid!("利用者の項 {}: 有限でない残差", self.0.name());
+                invalid!("user term {}: non-finite residual", self.0.name());
             }
         }
         Ok(v)
@@ -483,7 +483,7 @@ impl Problem {
     pub fn add_var(&mut self, spec: &str) -> Result<&mut Var> {
         let p = self.configs.first().map(|s| s.param(spec));
         let Some(p) = p else {
-            invalid!("構成がない");
+            invalid!("no configurations");
         };
         self.vars.push(Var::new(p?));
         Ok(self.vars.last_mut().unwrap())
@@ -525,20 +525,20 @@ impl Problem {
     /// 問題の確かめ（構成・変数・項の番号と値）
     pub fn check(&self) -> Result<()> {
         if self.configs.is_empty() {
-            invalid!("構成がない");
+            invalid!("no configurations");
         }
         if self.terms.is_empty() {
-            invalid!("評価関数の項がない");
+            invalid!("no merit function terms");
         }
         for (q, v) in self.vars.iter().enumerate() {
             if v.param.kind.is_object() {
-                invalid!("変数 {q}: 物点の移動は系のデータでない");
+                invalid!("variable {q}: moving the object point is not system data");
             }
             if v.param.kind.is_wave() {
-                invalid!("変数 {q}: 波長は変数にできない（公差の項目だけ）");
+                invalid!("variable {q}: the wavelength is a tolerance item only");
             }
             if !(v.lo <= v.hi) {
-                invalid!("変数 {q}: 範囲 [{}, {}]", v.lo, v.hi);
+                invalid!("variable {q}: range [{}, {}]", v.lo, v.hi);
             }
             let mut any = false;
             for (c, s) in self.configs.iter().enumerate() {
@@ -548,21 +548,21 @@ impl Problem {
                 }
             }
             if !any {
-                invalid!("変数 {q}: 効く構成がない");
+                invalid!("variable {q}: no configuration it acts on");
             }
             if self.vars[..q]
                 .iter()
                 .any(|u| u.param == v.param && overlap(u, v))
             {
-                invalid!("変数 {q}: 同じパラメータが重なる構成で 2 回");
+                invalid!("variable {q}: the same parameter twice in overlapping configurations");
             }
         }
         for (i, t) in self.terms.iter().enumerate() {
             let Some(s) = self.configs.get(t.config) else {
-                invalid!("項 {i}: 構成 {}（{} 個）", t.config, self.configs.len());
+                invalid!("term {i}: config {} (of {})", t.config, self.configs.len());
             };
             if !(t.weight >= 0.0) {
-                invalid!("項 {i}: 重み {}", t.weight);
+                invalid!("term {i}: weight {}", t.weight);
             }
             let (field, wave) = match &t.kind {
                 TermKind::Spot {
@@ -575,7 +575,7 @@ impl Problem {
                     field, wave, rings, ..
                 } => {
                     if *rings == 0 {
-                        invalid!("項 {i}: リング数は 1 以上");
+                        invalid!("term {i}: the number of rings must be 1 or more");
                     }
                     (*field, *wave)
                 }
@@ -583,16 +583,16 @@ impl Problem {
                     field, wave, freq, ..
                 } => {
                     if !(*freq >= 0.0) {
-                        invalid!("項 {i}: 周波数 {freq}");
+                        invalid!("term {i}: frequency {freq}");
                     }
                     (*field, *wave)
                 }
                 TermKind::Paraxial { q, target } => {
                     if !target.is_finite() {
-                        invalid!("項 {i}: {} の目標 {target}", q.name());
+                        invalid!("term {i}: target {target} of {}", q.name());
                     }
                     if !q.value(s).is_finite() {
-                        invalid!("項 {i}: 系の {} が有限でない", q.name());
+                        invalid!("term {i}: {} of the system is not finite", q.name());
                     }
                     continue;
                 }
@@ -601,7 +601,7 @@ impl Problem {
                 } => {
                     if let Some(j) = surf {
                         if *j == 0 || *j > s.image() {
-                            invalid!("項 {i}: 面 {j}（1〜{}）", s.image());
+                            invalid!("term {i}: surface {j} (1 to {})", s.image());
                         }
                     }
                     (*field, Some(wave.unwrap_or(s.primary)))
@@ -617,45 +617,45 @@ impl Problem {
                 } => {
                     let max = if *kind == ZernKind::Fringe { 37 } else { 2016 };
                     if *term == 0 || *term > max {
-                        invalid!("項 {i}: Zernike の項 {term}（1〜{max}）");
+                        invalid!("term {i}: Zernike term {term} (1 to {max})");
                     }
                     if *n < 8 {
-                        invalid!("項 {i}: Zernike の格子 {n}");
+                        invalid!("term {i}: Zernike grid {n}");
                     }
                     (*field, Some(wave.unwrap_or(s.primary)))
                 }
                 TermKind::Coupling { wave, .. } => {
                     if s.infinite() {
-                        invalid!("項 {i}: ファイバ結合は有限物体の系だけ");
+                        invalid!("term {i}: fiber coupling is only for finite-object systems");
                     }
                     (FieldSel::Norm(0.0, 0.0), Some(wave.unwrap_or(s.primary)))
                 }
                 TermKind::User(u) => {
                     if u.0.rows() == 0 {
-                        invalid!("項 {i}: 利用者の項 {} の残差が 0 個", u.0.name());
+                        invalid!("term {i}: user term {} has 0 residuals", u.0.name());
                     }
                     continue;
                 }
             };
             if let Some(tg) = t.kind.target() {
                 if !tg.is_finite() {
-                    invalid!("項 {i}: 目標 {tg}");
+                    invalid!("term {i}: target {tg}");
                 }
             } else if t.side != Side::Eq {
-                invalid!("項 {i}: 片側の条件（min・max）は目標のある項だけ");
+                invalid!("term {i}: min and max need a term with a target");
             }
             if let FieldSel::Index(f) = field {
                 if f >= s.fields.len() {
-                    invalid!("項 {i}: 視野 {f}（{} 個）", s.fields.len());
+                    invalid!("term {i}: field {f} (of {})", s.fields.len());
                 }
             }
             if let Some(w) = wave {
                 if w >= s.wavelengths.len() {
-                    invalid!("項 {i}: 波長 {w}（{} 個）", s.wavelengths.len());
+                    invalid!("term {i}: wavelength {w} (of {})", s.wavelengths.len());
                 }
             }
             if wave.is_none() && waves(s, None).is_empty() {
-                invalid!("項 {i}: 重みのある波長がない");
+                invalid!("term {i}: no weighted wavelength");
             }
         }
         Ok(())
@@ -686,7 +686,7 @@ impl Problem {
 
     fn system(&self, c: usize, x: &[f64]) -> Result<System> {
         if x.len() != self.vars.len() {
-            invalid!("変数の値 {} 個（変数は {} 個）", x.len(), self.vars.len());
+            invalid!("{} values for {} variables", x.len(), self.vars.len());
         }
         let ch: Vec<(Param, f64)> = self
             .vars
@@ -770,7 +770,7 @@ impl Problem {
         self.check()?;
         let nv = self.vars.len();
         if x.len() != nv {
-            invalid!("変数の値 {} 個（変数は {nv} 個）", x.len());
+            invalid!("{} values for {nv} variables", x.len());
         }
         let sys = self.systems(x)?;
         let rows = self.term_rows();
@@ -805,7 +805,7 @@ impl Problem {
                     Some(g) => {
                         if g.len() != m * ps.len() {
                             invalid!(
-                                "利用者の項 {}: 微分 {} 個（{m}×{} のはず）",
+                                "user term {}: {} derivatives (expected {m}×{})",
                                 u.0.name(),
                                 g.len(),
                                 ps.len()
@@ -901,7 +901,7 @@ impl Problem {
                     if sp.is_none() && sm.is_none() {
                         // どちらの側も作れない: 元の誤りを返す
                         mk(if up_ok { h } else { -h })?;
-                        lensbench_core::invalid!("差分の系を作れない（変数 {}）", q + 1);
+                        lensbench_core::invalid!("no difference system (variable {})", q + 1);
                     }
                     *slot = Some((sp, sm));
                 }
@@ -1147,7 +1147,7 @@ fn trace_ok(
     let t = s.try_trace(field, px, py, Some(w), None, record)?;
     if let Some(i) = t.rays.iter().position(|r| r.err != 0) {
         invalid!(
-            "光線が止まった（波長 {w}、瞳 ({:.3}, {:.3})、面 {}）",
+            "the ray stopped (wavelength {w}, pupil ({:.3}, {:.3}), surface {})",
             px[i],
             py[i],
             t.rays[i].err
@@ -1200,14 +1200,14 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
                 MtfDir::Both => vec![m.tan[0] - target, m.sag[0] - target],
             };
             if r.iter().any(|v| !v.is_finite()) {
-                invalid!("MTF を計算できない");
+                invalid!("can't compute the MTF");
             }
             Ok((r, None))
         }
         TermKind::Paraxial { q, target } => {
             let v = q.value(s);
             if !v.is_finite() {
-                invalid!("系の {} が有限でない", q.name());
+                invalid!("{} of the system is not finite", q.name());
             }
             Ok((vec![v - target], None))
         }
@@ -1238,7 +1238,7 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             let z = lensbench_core::analysis::zernike(s, *field, *wave, *kind, *term, *n, false)?;
             let v = z.coef[term - 1];
             if !v.is_finite() {
-                invalid!("Zernike 係数を計算できない");
+                invalid!("can't compute the Zernike coefficients");
             }
             Ok((vec![v - target], None))
         }
@@ -1246,7 +1246,7 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             let c =
                 lensbench_core::fiber::fiber_coupling(s, wave.unwrap_or(s.primary), opts, None)?;
             if !c.eta.is_finite() {
-                invalid!("結合効率を計算できない");
+                invalid!("can't compute the coupling efficiency");
             }
             Ok((vec![c.eta - target], None))
         }
@@ -1273,7 +1273,7 @@ fn ray_term(
     let x = &t.rays[0];
     if x.err != 0 {
         invalid!(
-            "光線が止まった（波長 {w}、瞳 ({px:.3}, {py:.3})、面 {}）",
+            "the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})",
             x.err
         );
     }
@@ -1302,11 +1302,11 @@ fn ray_term(
                 })
                 .collect();
             if d.iter().any(|v| !v.is_finite()) {
-                invalid!("光線の微分を求められない");
+                invalid!("can't find the ray derivatives");
             }
             Some(d)
         }
-        Some(_) => invalid!("光線の z は差分"),
+        Some(_) => invalid!("z of a ray is by differences"),
         None => None,
     };
     Ok((vec![v - target], jac))
@@ -1323,7 +1323,7 @@ fn opd_term(
     ps: Option<&[Param]>,
 ) -> Result<TermOut> {
     if !s.afocal && s.ropd != 1 && s.ropd != 2 {
-        invalid!("OPD の基準 {}（射出瞳・無限遠のみ）", s.ropd);
+        invalid!("OPD reference {} (exit pupil or infinity only)", s.ropd);
     }
     let w = wave.unwrap_or(s.primary);
     let rec = ps.is_some();
@@ -1342,13 +1342,13 @@ fn opd_term(
     let lc = to_ref(s, w, pc, kc, c.xyz, c.lmn, c.opl) + c.lens_opd;
     let v = (lc - (to_ref(s, w, pc, kc, x.xyz, x.lmn, x.opl) + x.lens_opd)) / wl;
     if !v.is_finite() {
-        invalid!("OPD を計算できない");
+        invalid!("can't compute the OPD");
     }
     let Some(ps) = ps else {
         return Ok((vec![v - target], None));
     };
     if [x, c, &tp.rays[0]].iter().any(|r| r.lens_opd != 0.0) {
-        invalid!("理想レンズの系");
+        invalid!("a system with an ideal lens");
     }
     let ni = s.image_index(w);
     let nr = s.image_index(wr);
@@ -1380,7 +1380,7 @@ fn opd_term(
         d.push((dlc - dl) / wl);
     }
     if d.iter().any(|v| !v.is_finite()) {
-        invalid!("OPD の微分を求められない");
+        invalid!("can't find the OPD derivatives");
     }
     Ok((vec![v - target], Some(d)))
 }
@@ -1445,7 +1445,7 @@ fn spot_term(
     }
     let sw: f64 = wt.iter().sum();
     if !(sw > 0.0) {
-        invalid!("有効な光線がない（すべてけられた）");
+        invalid!("no valid rays (all vignetted)");
     }
     let xy = |k: usize, i: usize| (traces[k].rays[i].xyz[0], traces[k].rays[i].xyz[1]);
     // 基準とその微分
@@ -1479,7 +1479,7 @@ fn spot_term(
             let wc = wave.unwrap_or(s.primary);
             let t = trace_ok(s, field, &[0.0], &[0.0], wc, rec)?;
             if !t.traced(0) {
-                invalid!("主光線が像面に届かない");
+                invalid!("the chief ray doesn't reach the image");
             }
             let mut dc = vec![[0.0; 2]; np];
             if let Some(ps) = ps {
@@ -1557,7 +1557,7 @@ fn centroid_term(
         }
     }
     if !(sw > 0.0) {
-        invalid!("有効な光線がない（すべてけられた）");
+        invalid!("no valid rays (all vignetted)");
     }
     let j = ps.map(|_| dc.iter().map(|d| d / sw).collect());
     Ok((vec![sc / sw - target], j))
@@ -1721,7 +1721,7 @@ fn wfe_term(
         let idx: Vec<usize> = (0..n).filter(|&i| t.ok(i) && opd[i].is_finite()).collect();
         let sw: f64 = idx.iter().map(|&i| wts[i]).sum();
         if idx.is_empty() || !(sw > 0.0) {
-            invalid!("有効な光線がない（すべてけられた）");
+            invalid!("no valid rays (all vignetted)");
         }
         for &i in &idx {
             let x = &t.rays[i];
@@ -1740,7 +1740,7 @@ fn wfe_term(
                 .chain(&tp.rays)
                 .any(|x| x.lens_opd != 0.0)
             {
-                invalid!("理想レンズの系");
+                invalid!("a system with an ideal lens");
             }
             let ni = s.image_index(w);
             let gl = s.land_grad(&t, w, ps, None)?;

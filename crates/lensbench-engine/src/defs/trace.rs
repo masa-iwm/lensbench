@@ -21,7 +21,7 @@ fn indices(v: &Option<Vec<usize>>, n: usize, what: &str) -> Result<Option<Vec<us
                     if i >= 1 && i <= n {
                         Ok(i - 1)
                     } else {
-                        Err(Error::Invalid(format!("{what} {i} はありません（1〜{n}）")))
+                        Err(Error::Invalid(format!("no {what} {i} (1 to {n})")))
                     }
                 })
                 .collect()
@@ -133,7 +133,7 @@ impl Analysis for Rays {
             Some(v) => {
                 if v.is_empty() || v.len() % 2 != 0 {
                     return Err(Error::Invalid(
-                        "pupil は px,py の組の並び（数が偶数）".into(),
+                        "pupil is a list of px,py pairs (an even count)".into(),
                     ));
                 }
                 v.chunks(2).map(|c| (c[0], c[1])).unzip()
@@ -142,7 +142,9 @@ impl Analysis for Rays {
         };
         let img = s.image();
         if let Some(j) = p.surface.iter().flatten().find(|&&j| j == 0 || j > img) {
-            return Err(Error::Invalid(format!("面 {j} は書けない（1〜{img}）")));
+            return Err(Error::Invalid(format!(
+                "surface {j} can't be written (1 to {img})"
+            )));
         }
         let waves = if p.all_waves {
             Some((0..s.wavelengths.len()).collect())
@@ -290,7 +292,7 @@ fn pop_surfaces(
             .find(|&j| ok(j, j + 1))
             .map(|j| (j, j + 1))
             .ok_or_else(|| {
-                Error::Invalid("surf を指定する（次の面まで伝えられる面がない）".into())
+                Error::Invalid("give surf (no surface to propagate to the next one)".into())
             })?,
     };
     Ok((j, to.or(dist.is_none().then_some(t))))
@@ -335,7 +337,7 @@ impl Analysis for Pop {
         let d = match (p.dist, to) {
             (Some(d), None) => d,
             (None, t) => pop::distance_to(s, surf, t.unwrap_or(surf + 1), b.dir)?,
-            _ => return Err(Error::Invalid("dist と to はどちらか".into())),
+            _ => return Err(Error::Invalid("give only one of dist and to".into())),
         };
         let out = pop::OutGrid {
             n: p.out_n.map(|v| (v, v)),
@@ -471,11 +473,11 @@ impl Analysis for MechCheck {
         let s = cx.system;
         if s.mechanics.is_empty() {
             return Err(Error::Invalid(
-                "機構部品がない（プロジェクトの mechanics に書く）".into(),
+                "no mechanical parts (write them in the project's mechanics)".into(),
             ));
         }
         if p.grid < 2 {
-            return Err(Error::Invalid("grid は 2 以上".into()));
+            return Err(Error::Invalid("grid must be 2 or more".into()));
         }
         let all = |n: usize| (0..n).collect::<Vec<_>>();
         let fields = indices(&p.field, s.fields.len(), "視野")?.unwrap_or(all(s.fields.len()));
@@ -567,9 +569,9 @@ impl Analysis for Elements {
             .filter(|&i| els[i].kind == elements::Kind::Lens)
             .collect();
         for &k in p.reverse.iter().flatten() {
-            let i = *lenses.get(k.wrapping_sub(1)).ok_or_else(|| {
-                Error::Invalid(format!("玉 {k} はありません（1〜{}）", lenses.len()))
-            })?;
+            let i = *lenses
+                .get(k.wrapping_sub(1))
+                .ok_or_else(|| Error::Invalid(format!("no lens {k} (1 to {})", lenses.len())))?;
             els[i] = elements::reverse(&els[i])?;
         }
         let a = elements::assemble(s, &els)?;

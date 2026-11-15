@@ -70,24 +70,27 @@ impl AppError {
     }
 
     /// 次の手の案内（無ければ None）。ガラスが無いときの案内は core の文に入っている
-    pub fn hint(&self) -> Option<&'static str> {
-        match self {
-            AppError::Usage(_) => Some("引数の一覧は lensbench <コマンド> --help"),
+    pub fn hint(&self) -> Option<String> {
+        let h = match self {
+            AppError::Usage(_) => "See the arguments with lensbench <command> --help",
             AppError::Io(_) | AppError::Core(CoreError::Io(_)) => {
-                Some("ファイルの名前と場所を確かめる（相対パスは今のフォルダから）")
+                "Check the file name and location (relative paths are from the current folder)"
             }
             AppError::Core(CoreError::NotImplemented(_)) => {
-                Some("対応している面・項目はマニュアルの「.zmx の読込」（zmx.md）にある")
+                "The supported surfaces and items are in the manual (Reading .zmx files, zmx.md)"
             }
-            _ => None,
-        }
+            _ => return None,
+        };
+        Some(lensbench_core::i18n::tr(h))
     }
 }
 
 impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AppError::Usage(s) | AppError::Io(s) | AppError::Failed(s) => f.write_str(s),
+            AppError::Usage(s) | AppError::Io(s) | AppError::Failed(s) => {
+                f.write_str(&lensbench_core::i18n::tr(s))
+            }
             AppError::Core(e) => write!(f, "{e}"),
         }
     }
@@ -113,11 +116,16 @@ impl From<&str> for AppError {
     }
 }
 
-/// 誤りを標準エラーに出す（`lensbench: <文>` と、案内があれば `  案内: <案内>`）
+/// 誤りを標準エラーに出す（`lensbench: <文>` と、案内があれば `  hint: <案内>`、日本語の表示は `  案内: `）
 pub fn report(prefix: &str, e: &AppError) {
     eprintln!("{prefix}: {e}");
     if let Some(h) = e.hint() {
-        eprintln!("  案内: {h}");
+        let label = if lensbench_core::i18n::is_ja() {
+            "案内"
+        } else {
+            "hint"
+        };
+        eprintln!("  {label}: {h}");
     }
 }
 
@@ -164,8 +172,8 @@ mod tests {
 
     #[test]
     fn core_message_and_kind_are_kept() {
-        let e = AppError::from(CoreError::Invalid("面 3".into()));
-        assert_eq!(e.to_string(), "不正: 面 3");
+        let e = AppError::from(CoreError::Invalid("surface 3".into()));
+        assert_eq!(e.to_string(), "invalid: surface 3");
         assert_eq!(e.kind(), "invalid");
         assert!(AppError::usage("x").hint().unwrap().contains("--help"));
     }

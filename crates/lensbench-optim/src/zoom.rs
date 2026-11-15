@@ -184,30 +184,30 @@ fn interp(a: f64, b: f64, f: f64) -> f64 {
 pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     let n = configs.len();
     if n == 0 {
-        invalid!("状態がない");
+        invalid!("no states");
     }
     if spec.moving.is_empty() {
-        invalid!("動かすパラメータがない");
+        invalid!("no parameters to move");
     }
     if spec.targets.len() != n {
-        invalid!("目標の数 {}（状態は {n}）", spec.targets.len());
+        invalid!("{} targets for {n} states", spec.targets.len());
     }
     if !spec.bounds.is_empty() && spec.bounds.len() != spec.moving.len() {
         invalid!(
-            "範囲の数 {}（動かすパラメータは {}）",
+            "{} ranges for {} parameters",
             spec.bounds.len(),
             spec.moving.len()
         );
     }
     if !(spec.target_weight > 0.0) {
-        invalid!("近軸量の項の重み {}", spec.target_weight);
+        invalid!("weight of the paraxial term {}", spec.target_weight);
     }
     let mut states = Vec::with_capacity(n);
     let mut systems = Vec::with_capacity(n);
     for (k, s) in configs.iter().enumerate() {
         lensbench_core::par::check_cancel()?;
         let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)
-            .map_err(|e| lensbench_core::error::Error::Invalid(format!("状態 {}: {e}", k + 1)))?;
+            .map_err(|e| lensbench_core::error::Error::Invalid(format!("state {}: {e}", k + 1)))?;
         states.push(p);
         systems.push(sys);
     }
@@ -275,7 +275,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             let (p, _) =
                 solve_point(&s0, spec, Some(interp(ta, tb, f)), None, pos).map_err(|e| {
                     lensbench_core::error::Error::Invalid(format!(
-                        "状態 {} と {} の間 {f:.3}: {e}",
+                        "between states {} and {} at {f:.3}: {e}",
                         k + 1,
                         k + 2
                     ))

@@ -80,9 +80,10 @@ pub(crate) fn run(
 /// 解析の誤り。値の誤り（Invalid）は文だけ（CLI の解析の頃と同じ。系を読んだ所の「不正: 」も重ねない）
 fn analysis_err(e: lensbench_core::Error) -> RpcErr {
     match e {
-        lensbench_core::Error::Invalid(m) => {
-            RpcErr::from(m.strip_prefix("不正: ").unwrap_or(&m).to_string()).with_kind("invalid")
-        }
+        lensbench_core::Error::Invalid(m) => RpcErr::from(lensbench_core::i18n::tr(
+            lensbench_core::error::strip_invalid(&m),
+        ))
+        .with_kind("invalid"),
         e => RpcErr::from(e),
     }
 }

@@ -1,0 +1,178 @@
+# Japanese of the English messages (English template<TAB>Japanese template). See src/i18n.rs.
+# {…} matches any text in English and is put at the same {…} in Japanese. Keep the lines sorted by topic.
+
+# kinds of errors
+cancelled	中断した
+invalid	不正
+not supported	未対応
+
+# places
+surface {}	面 {}
+
+# command line (lensbench-cli)
+See the arguments with lensbench <command> --help	引数の一覧は lensbench <コマンド> --help
+Check the file name and location (relative paths are from the current folder)	ファイルの名前と場所を確かめる（相対パスは今のフォルダから）
+The supported surfaces and items are in the manual (Reading .zmx files, zmx.md)	対応している面・項目はマニュアルの「.zmx の読込」（zmx.md）にある
+
+# design
+no points to fit	合わせる点がない
+no materials	材料がない
+coating fit: not enough model-glass pairs for transmission (2 or more front media and a back model glass)	膜の当てはめ: 透過のモデルガラスの組が足りない（前の媒質 2 種以上・後のモデルガラス）
+coating fit: not enough β common to all wavelengths ({} points)	膜の当てはめ: 全波長で共通の β が足りない（{} 点）
+distribution {s} (disc_x, disc_x:normal, disc_x:normal:<number of σ>, and the same for y)	分布 {s}（disc_x・disc_x:normal・disc_x:normal:σの数、y も同じ）
+distribution {s} (uniform, normal, normal:<number of σ>, end, or a disc_x and disc_y pair)	分布 {s}（uniform・normal・normal:σの数・end・disc_x と disc_y の組）
+tolerance {i} ({}): no parameter	公差 {i}（{}）: パラメータがない
+tolerance {i} ({}): scale has {} values (the parameters are {})	公差 {i}（{}）: scale は {} 個（パラメータは {} 個）
+tolerance {i} ({}): range [{}, {}]	公差 {i}（{}）: 範囲 [{}, {}]
+tolerance {i} ({}): a distribution in a circle puts y (disc_y) of the same distribution right after x (disc_x)	公差 {i}（{}）: 円の中の分布は x（disc_x）のすぐ後に同じ分布の y（disc_y）を置く組
+tolerance {i} ({}): number of σ of the normal distribution {cut}	公差 {i}（{}）: 正規分布の σ の数 {cut}
+tolerance {i} ({}): moving the object point is not system data	公差 {i}（{}）: 物点の移動は系のデータでない
+tolerance {i} ({}): {} is set by a pickup (give it to the source surface)	公差 {i}（{}）: {} はピックアップで決まる（元の面に与える）
+{} offsets (the tolerances are {})	ずれ {} 個（公差は {} 個）
+tolerance set {n} (commercial, precision, high, none)	公差の組 {n}（commercial・precision・high・none）
+{}: target has {n} values (the output has {})	{}: target {n} 個（出力は {} 個）
+{}: no output {} ({})	{}: 出力 {} がない（{}）
+{}: the output is not real	{}: 出力が実数でない
+{}: index {i} (the output has {} elements)	{}: index {i}（要素は {} 個）
+{}: output has {} values (expected {})	{}: 出力 {} 個（{} 個のはず）
+
+# export
+no field {} (1 to {nf})	視野 {} はありません（1〜{nf}）
+no wavelength {} (1 to {nw})	波長 {} はありません（1〜{nw}）
+an object at infinity can't be drawn from the object surface (draw from surface 1)	無限遠の物体は物体面から描けない（面 1 から）
+no configurations to overlay	重ねる構成がない
+surface {j} can't be written (1 to {img})	面 {j} は書けない（1〜{img}）
+
+# project
+no lens {k} ({} lenses)	玉 {k} はない（{} 個）
+{cfg} must be 1 or more	{cfg} は 1 以上
+{}: a folder (give a system file)	{}: フォルダ（系のファイルを渡す）
+{}: no such file	{}: ファイルが無い
+{cfg}, {state} and {split} can't be used with a system file	系ファイルでは {cfg}・{state}・{split} は使えない
+wavelengths is only for .zmx	wavelengths は .zmx だけ
+choose the state with {state}, not {cfg}, in a project file	プロジェクトファイルでは {cfg} ではなく {state} で状態を選ぶ
+{state} is only for project files (.json) (.zmx uses {cfg})	{state} はプロジェクトファイル（.json）だけ（.zmx は {cfg}）
+{split} is only for project files (.json)	{split} はプロジェクトファイル（.json）だけ
+
+# runs
+read noise and saturation must be 0 or more ({}, {})	読み出し雑音・飽和は 0 以上に（{}・{}）
+the AD conversion bits need a saturation full_well	AD 変換の bits には飽和 full_well が要る
+the AD conversion bits must be at most 32 ({})	AD 変換のビット数は 32 まで（{}）
+distribution {self:?}	分布 {self:?}
+size of the correlation matrix ({n} × {n})	相関行列の大きさ（{n} × {n}）
+diagonal {i} of the correlation matrix is not 1 ({})	相関行列の対角 {i} が 1 でない（{}）
+correlation matrix ({i}, {j}) is not symmetric or |ρ| > 1	相関行列 ({i}, {j}) が対称でないか |ρ| > 1
+the correlation matrix is not positive definite	相関行列が正定値でない
+a sweep axis has no values or a non-finite value	掃引の軸に値がないか、有限でない値
+set {i} ({n} sets)	組 {i}（{n} 組）
+{}: empty file	{}: 空のファイル
+{}: not a batch result file	{}: 一括実行の結果のファイルでない
+line break in the batch header (make it one line of JSON)	一括実行の頭に改行（1 行の JSON に）
+{}: the header differs (results of another calculation; stop resume or use another file)	{}: 頭が違う（別の計算の結果。resume をやめるか別のファイルに）
+set {i}: line break in the result	組 {i}: 結果に改行
+set {i}: {e}	組 {i}: {e}
+
+# optim
+ray quantity {s} (x, y, z, l, m, n)	光線の量 {s}（x・y・z・l・m・n）
+paraxial {s} ({})	近軸量 {s}（{}）
+user term {}: {} results for {} systems	利用者の項 {}: 系 {} 個に結果 {} 個
+user term {}: {} residuals (expected {})	利用者の項 {}: 残差 {} 個（{} 個のはず）
+user term {}: non-finite residual	利用者の項 {}: 有限でない残差
+no configurations	構成がない
+no merit function terms	評価関数の項がない
+variable {q}: moving the object point is not system data	変数 {q}: 物点の移動は系のデータでない
+variable {q}: the wavelength is a tolerance item only	変数 {q}: 波長は変数にできない（公差の項目だけ）
+variable {q}: range [{}, {}]	変数 {q}: 範囲 [{}, {}]
+variable {q}: no configuration it acts on	変数 {q}: 効く構成がない
+variable {q}: the same parameter twice in overlapping configurations	変数 {q}: 同じパラメータが重なる構成で 2 回
+term {i}: config {} (of {})	項 {i}: 構成 {}（{} 個）
+term {i}: weight {}	項 {i}: 重み {}
+term {i}: the number of rings must be 1 or more	項 {i}: リング数は 1 以上
+term {i}: frequency {freq}	項 {i}: 周波数 {freq}
+term {i}: target {target} of {}	項 {i}: {} の目標 {target}
+term {i}: {} of the system is not finite	項 {i}: 系の {} が有限でない
+term {i}: surface {j} (1 to {})	項 {i}: 面 {j}（1〜{}）
+term {i}: Zernike term {term} (1 to {max})	項 {i}: Zernike の項 {term}（1〜{max}）
+term {i}: Zernike grid {n}	項 {i}: Zernike の格子 {n}
+term {i}: fiber coupling is only for finite-object systems	項 {i}: ファイバ結合は有限物体の系だけ
+term {i}: user term {} has 0 residuals	項 {i}: 利用者の項 {} の残差が 0 個
+term {i}: target {tg}	項 {i}: 目標 {tg}
+term {i}: min and max need a term with a target	項 {i}: 片側の条件（min・max）は目標のある項だけ
+term {i}: field {f} (of {})	項 {i}: 視野 {f}（{} 個）
+term {i}: wavelength {w} (of {})	項 {i}: 波長 {w}（{} 個）
+term {i}: no weighted wavelength	項 {i}: 重みのある波長がない
+{} values for {} variables	変数の値 {} 個（変数は {} 個）
+{} values for {nv} variables	変数の値 {} 個（変数は {nv} 個）
+user term {}: {} derivatives (expected {m}×{})	利用者の項 {}: 微分 {} 個（{m}×{} のはず）
+no difference system (variable {})	差分の系を作れない（変数 {}）
+the ray stopped (wavelength {w}, pupil ({:.3}, {:.3}), surface {})	光線が止まった（波長 {w}、瞳 ({:.3}, {:.3})、面 {}）
+can't compute the MTF	MTF を計算できない
+{} of the system is not finite	系の {} が有限でない
+can't compute the Zernike coefficients	Zernike 係数を計算できない
+can't compute the coupling efficiency	結合効率を計算できない
+the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})	光線が止まった（波長 {w}、瞳 ({px:.3}, {py:.3})、面 {}）
+can't find the ray derivatives	光線の微分を求められない
+z of a ray is by differences	光線の z は差分
+OPD reference {} (exit pupil or infinity only)	OPD の基準 {}（射出瞳・無限遠のみ）
+can't compute the OPD	OPD を計算できない
+a system with an ideal lens	理想レンズの系
+can't find the OPD derivatives	OPD の微分を求められない
+no valid rays (all vignetted)	有効な光線がない（すべてけられた）
+the chief ray doesn't reach the image	主光線が像面に届かない
+no states	状態がない
+no parameters to move	動かすパラメータがない
+{} targets for {n} states	目標の数 {}（状態は {n}）
+{} ranges for {} parameters	範囲の数 {}（動かすパラメータは {}）
+weight of the paraxial term {}	近軸量の項の重み {}
+state {}: {e}	状態 {}: {e}
+between states {} and {} at {f:.3}: {e}	状態 {} と {} の間 {f:.3}: {e}
+ZPLM macro {}: value {v} of OPTRETURN {}	ZPLM のマクロ {}: OPTRETURN {} の値 {v}
+{name} takes no arguments	{name} は引数なし
+OPTRETURN number {n} (0 to {OPTRETURN_MAX})	OPTRETURN の番号 {n}（0〜{OPTRETURN_MAX}）
+OPTRETURN takes (number, value)	OPTRETURN の引数は (番号, 値)
+
+# analysis
+Fringe has at most 37 terms	Fringe は 37 項まで
+field is not used with vs field	vs field では field は使わない
+wave is not used with vs wavelength	vs wavelength では wave は使わない
+no field {i} (1 to {})	視野 {i} はありません（1〜{}）
+no wavelength {i} (1 to {})	波長 {i} はありません（1〜{}）
+max_freq must be positive ({top})	max_freq は正の数（{top}）
+freq_steps must be 1 or more	freq_steps は 1 以上
+freqs and max_freq can't be used together	freqs と max_freq は一緒に使えない
+each_wave can't be used with wave	each_wave は wave と一緒に使えない
+freqs (frequencies) are needed	freqs（周波数）が要る
+Huygens PSF pupil grid {:?} must be 4 or more and image grid {ni} 2 or more	Huygens PSF の瞳の格子 {:?} は 4 以上、像の格子 {ni} は 2 以上
+Huygens PSF: afocal image space (use the FFT PSF)	Huygens PSF: アフォーカル像空間（FFT PSF を使う）
+Huygens PSF: can't trace the chief ray of the primary wavelength	Huygens PSF: 主波長の主光線が追跡できない
+Huygens PSF: the chief ray is parallel to the image surface	Huygens PSF: 主光線が像面に平行
+Huygens PSF image grid spacing {d}	Huygens PSF の像の格子の間隔 {d}
+Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)	Huygens PSF: 像の格子の幅が瞳の標本の周期を超える（波長 {}、瞳の格子を増やすか、像の格子・間隔を減らす）
+Huygens PSF: no valid rays (all vignetted)	Huygens PSF: 有効な光線がない（すべてけられた）
+no weighted wavelength	重みのある波長がない
+setting method must be auto, interp, direct or fft ({x})	設定 method は auto・interp・direct・fft に（{x}）
+setting reference must be centroid or chief ({x})	設定 reference は centroid か chief に（{x}）
+setting surface (the surface that makes the field) is needed	設定 surface（場を作る面）が要る
+give only one of the settings dist and to	設定 dist と to はどちらか
+setting method must be auto, fresnel, angular or direct ({x})	設定 method は auto・fresnel・angular・direct に（{x}）
+setting out_center needs 2 values ({} values)	設定 out_center は 2 個に（{} 個）
+wave can't be used with ghost (computed at the primary wavelength)	ghost に wave は使えない（主波長で求める）
+setting beam1 must be 1 or more (a configuration number)	設定 beam1 は 1 以上（構成の番号）
+setting kind must be standard or fringe ({x})	設定 kind は standard か fringe に（{x}）
+ghost doesn't use fields	ghost は視野を使わない
+not a ghost	ghost ではない
+this analysis needs the system file (how to read it)	この解析は系のファイル（読み方）が要る
+settings of {}: {e}	{} の設定: {e}
+results of {}: {e}	{} の結果: {e}
+
+# engine
+no {what} {i} (1 to {n})	{what} {i} はありません（1〜{n}）
+pupil is a list of px,py pairs (an even count)	pupil は px,py の組の並び（数が偶数）
+give surf (no surface to propagate to the next one)	surf を指定する（次の面まで伝えられる面がない）
+give only one of dist and to	dist と to はどちらか
+no mechanical parts (write them in the project's mechanics)	機構部品がない（プロジェクトの mechanics に書く）
+grid must be 2 or more	grid は 2 以上
+no lens {k} (1 to {})	玉 {k} はありません（1〜{}）
+surfaces to write {from} to {to} (1 to {})	書き出す面 {from}〜{to}（1〜{}）
+beam {b} (a configuration number in .zmx, from 1)	光束 {b}（.zmx では構成の番号、1 始まり）
+only .zmx can be read with replaced trace wavelengths	追跡する波長を置き換えて読めるのは .zmx だけ

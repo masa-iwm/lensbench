@@ -73,7 +73,7 @@ impl ZplmTerm {
             .unwrap_or(0.0);
         if !v.is_finite() {
             lensbench_core::invalid!(
-                "ZPLM のマクロ {}: OPTRETURN {} の値 {v}",
+                "ZPLM macro {}: value {v} of OPTRETURN {}",
                 self.macro_name,
                 self.data
             );
@@ -115,7 +115,7 @@ impl Host for ZplmHost<'_> {
         Some(if a.is_empty() {
             Ok(Value::Num(self.pv[k]))
         } else {
-            Err(Error::Invalid(format!("{name} は引数なし")))
+            Err(Error::Invalid(format!("{name} takes no arguments")))
         })
     }
 
@@ -131,11 +131,11 @@ impl Host for ZplmHost<'_> {
                     Ok(Flow::Go)
                 } else {
                     Err(Error::Invalid(format!(
-                        "OPTRETURN の番号 {n}（0〜{OPTRETURN_MAX}）"
+                        "OPTRETURN number {n} (0 to {OPTRETURN_MAX})"
                     )))
                 }
             }
-            _ => Err(Error::Invalid("OPTRETURN の引数は (番号, 値)".into())),
+            _ => Err(Error::Invalid("OPTRETURN takes (number, value)".into())),
         })
     }
 }

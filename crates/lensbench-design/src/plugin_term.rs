@@ -47,7 +47,7 @@ impl PluginTerm {
             n if n == t.rows => target,
             n => {
                 return Err(Error::Invalid(format!(
-                    "{}: target {n} 個（出力は {} 個）",
+                    "{}: target has {n} values (the output has {})",
                     t.label, t.rows
                 )))
             }
@@ -61,7 +61,7 @@ impl PluginTerm {
         let out = self.inst.run(&Context::with_system(&sys), &self.inputs)?;
         let a = out.get(&self.output).ok_or_else(|| {
             Error::Invalid(format!(
-                "{}: 出力 {} がない（{}）",
+                "{}: no output {} ({})",
                 self.label,
                 self.output,
                 out.keys().cloned().collect::<Vec<_>>().join("・")
@@ -69,12 +69,12 @@ impl PluginTerm {
         })?;
         let v = a
             .as_f64()
-            .ok_or_else(|| Error::Invalid(format!("{}: 出力が実数でない", self.label)))?;
+            .ok_or_else(|| Error::Invalid(format!("{}: the output is not real", self.label)))?;
         Ok(match self.index {
             None => v.to_vec(),
             Some(i) => vec![*v.get(i).ok_or_else(|| {
                 Error::Invalid(format!(
-                    "{}: index {i}（要素は {} 個）",
+                    "{}: index {i} (the output has {} elements)",
                     self.label,
                     v.len()
                 ))
@@ -96,7 +96,7 @@ impl UserTerm for PluginTerm {
             let v = self.values(s)?;
             if v.len() != self.rows {
                 return Err(Error::Invalid(format!(
-                    "{}: 出力 {} 個（{} 個のはず）",
+                    "{}: output has {} values (expected {})",
                     self.label,
                     v.len(),
                     self.rows

@@ -17,7 +17,7 @@ pub struct FileSource<'a> {
 
 /// 読む所の誤りの文（`load_file` の「不正: …」は頭を重ねない）
 fn invalid(e: String) -> Error {
-    Error::Invalid(e.strip_prefix("不正: ").map(str::to_string).unwrap_or(e))
+    Error::Invalid(lensbench_core::error::strip_invalid(&e).to_string())
 }
 
 impl lensbench_analysis::Source for FileSource<'_> {
@@ -44,7 +44,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
             (Some(b), true) => (1, Some(b.clone())),
             (Some(b), false) => {
                 let k: usize = b.trim().parse().map_err(|_| {
-                    Error::Invalid(format!("光束 {b}（.zmx では構成の番号、1 始まり）"))
+                    Error::Invalid(format!("beam {b} (a configuration number in .zmx, from 1)"))
                 })?;
                 (k, None)
             }
@@ -63,7 +63,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     .is_some_and(|x| x.eq_ignore_ascii_case("zmx"));
                 if !zmx {
                     return Err(Error::Invalid(
-                        "追跡する波長を置き換えて読めるのは .zmx だけ".into(),
+                        "only .zmx can be read with replaced trace wavelengths".into(),
                     ));
                 }
                 let opt = lensbench_core::zmx::LoadOptions {

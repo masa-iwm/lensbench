@@ -40,8 +40,8 @@ mod tests {
             };
             let r = d.run_json(&cx, &p);
             match name {
-                "mech-check" => assert!(r.unwrap_err().to_string().contains("機構部品がない")),
-                "fringe" => assert!(r.unwrap_err().to_string().contains("読み方")),
+                "mech-check" => assert!(r.unwrap_err().to_string().contains("no mechanical parts")),
+                "fringe" => assert!(r.unwrap_err().to_string().contains("system file")),
                 _ => {
                     let v = r.unwrap_or_else(|e| panic!("{name}: {e}"));
                     assert!(v.is_object(), "{name}");

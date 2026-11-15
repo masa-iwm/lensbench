@@ -244,7 +244,7 @@ fn fit_transmit(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<(f64, Fi
     let pts: BTreeSet<(i64, i64)> = full.keys().map(|k| (k.0, k.1)).collect();
     if pts.is_empty() {
         invalid!(
-            "膜の当てはめ: 透過のモデルガラスの組が足りない（前の媒質 2 種以上・後のモデルガラス）"
+            "coating fit: not enough model-glass pairs for transmission (2 or more front media and a back model glass)"
         );
     }
     let step = (pts.len() / 150).max(1);
@@ -361,7 +361,7 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
     let betas: Vec<i64> = betas.unwrap_or_default().into_iter().collect();
     if betas.len() < 4 {
         invalid!(
-            "膜の当てはめ: 全波長で共通の β が足りない（{} 点）",
+            "coating fit: not enough β common to all wavelengths ({} points)",
             betas.len()
         );
     }

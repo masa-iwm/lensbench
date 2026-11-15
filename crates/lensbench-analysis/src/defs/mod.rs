@@ -33,7 +33,7 @@ pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
         None => Ok((0..s.fields.len()).collect()),
         Some(i) if i >= 1 && i <= s.fields.len() => Ok(vec![i - 1]),
         Some(i) => Err(Error::Invalid(format!(
-            "視野 {i} はありません（1〜{}）",
+            "no field {i} (1 to {})",
             s.fields.len()
         ))),
     }
@@ -45,7 +45,7 @@ pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
         None => Ok(None),
         Some(i) if i >= 1 && i <= s.wavelengths.len() => Ok(Some(i - 1)),
         Some(i) => Err(Error::Invalid(format!(
-            "波長 {i} はありません（1〜{}）",
+            "no wavelength {i} (1 to {})",
             s.wavelengths.len()
         ))),
     }
@@ -64,10 +64,10 @@ fn freq_unit(s: &System) -> String {
 /// 0 から top までを steps 等分した周波数
 fn auto_freqs(top: f64, steps: usize) -> Result<Vec<f64>> {
     if !(top.is_finite() && top > 0.0) {
-        return Err(Error::Invalid(format!("max_freq は正の数（{top}）")));
+        return Err(Error::Invalid(format!("max_freq must be positive ({top})")));
     }
     if steps == 0 {
-        return Err(Error::Invalid("freq_steps は 1 以上".into()));
+        return Err(Error::Invalid("freq_steps must be 1 or more".into()));
     }
     Ok((0..=steps).map(|k| top * k as f64 / steps as f64).collect())
 }
@@ -83,7 +83,9 @@ fn freqs_for(
 ) -> Result<Vec<f64>> {
     if let Some(f) = freqs {
         if max_freq.is_some() {
-            return Err(Error::Invalid("freqs と max_freq は一緒に使えない".into()));
+            return Err(Error::Invalid(
+                "freqs and max_freq can't be used together".into(),
+            ));
         }
         return Ok(f.clone());
     }

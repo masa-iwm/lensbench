@@ -328,14 +328,11 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
     let fields = o.fields.clone().unwrap_or_else(|| (0..nf).collect());
     let waves = o.waves.clone().unwrap_or_else(|| vec![s.primary]);
     if let Some(&i) = fields.iter().find(|&&i| i >= nf) {
-        return Err(Error::Invalid(format!(
-            "視野 {} はありません（1〜{nf}）",
-            i + 1
-        )));
+        return Err(Error::Invalid(format!("no field {} (1 to {nf})", i + 1)));
     }
     if let Some(&i) = waves.iter().find(|&&i| i >= nw) {
         return Err(Error::Invalid(format!(
-            "波長 {} はありません（1〜{nw}）",
+            "no wavelength {} (1 to {nw})",
             i + 1
         )));
     }
@@ -345,7 +342,9 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
         Some(v) => v.clone(),
     };
     if let Some(&j) = surfs.iter().find(|&&j| j == 0 || j > img) {
-        return Err(Error::Invalid(format!("面 {j} は書けない（1〜{img}）")));
+        return Err(Error::Invalid(format!(
+            "surface {j} can't be written (1 to {img})"
+        )));
     }
     let last = *surfs.iter().max().unwrap_or(&img);
     let mut c_f = Vec::new();

@@ -75,7 +75,7 @@ impl Dist {
                             Ok(Dist::Normal { cut }) => Some(cut),
                             Ok(Dist::Uniform) => None,
                             _ => invalid!(
-                                "分布 {s}（disc_x・disc_x:normal・disc_x:normal:σの数、y も同じ）"
+                                "distribution {s} (disc_x, disc_x:normal, disc_x:normal:<number of σ>, and the same for y)"
                             ),
                         };
                         return Ok(if y {
@@ -94,7 +94,7 @@ impl Dist {
                         return Ok(Dist::Normal { cut: c });
                     }
                 }
-                invalid!("分布 {s}（uniform・normal・normal:σの数・end・disc_x と disc_y の組）")
+                invalid!("distribution {s} (uniform, normal, normal:<number of σ>, end, or a disc_x and disc_y pair)")
             }
         })
     }
@@ -190,18 +190,18 @@ impl McSpec {
         self.problem.check()?;
         for (i, t) in self.tols.iter().enumerate() {
             if t.params.is_empty() {
-                invalid!("公差 {i}（{}）: パラメータがない", t.label);
+                invalid!("tolerance {i} ({}): no parameter", t.label);
             }
             if !t.scale.is_empty() && t.scale.len() != t.params.len() {
                 invalid!(
-                    "公差 {i}（{}）: scale は {} 個（パラメータは {} 個）",
+                    "tolerance {i} ({}): scale has {} values (the parameters are {})",
                     t.label,
                     t.scale.len(),
                     t.params.len()
                 );
             }
             if !(t.lo.is_finite() && t.hi.is_finite() && t.lo <= t.hi) {
-                invalid!("公差 {i}（{}）: 範囲 [{}, {}]", t.label, t.lo, t.hi);
+                invalid!("tolerance {i} ({}): range [{}, {}]", t.label, t.lo, t.hi);
             }
             let prev = i.checked_sub(1).map(|j| self.tols[j].dist);
             let next = self.tols.get(i + 1).map(|u| u.dist);
@@ -212,7 +212,7 @@ impl McSpec {
             };
             if bad {
                 invalid!(
-                    "公差 {i}（{}）: 円の中の分布は x（disc_x）のすぐ後に同じ分布の y（disc_y）を置く組",
+                    "tolerance {i} ({}): a distribution in a circle puts y (disc_y) of the same distribution right after x (disc_x)",
                     t.label
                 );
             }
@@ -221,18 +221,24 @@ impl McSpec {
             | Dist::DiscY { normal: Some(cut) } = t.dist
             {
                 if !(cut > 0.0) {
-                    invalid!("公差 {i}（{}）: 正規分布の σ の数 {cut}", t.label);
+                    invalid!(
+                        "tolerance {i} ({}): number of σ of the normal distribution {cut}",
+                        t.label
+                    );
                 }
             }
             for p in &t.params {
                 if p.kind.is_object() {
-                    invalid!("公差 {i}（{}）: 物点の移動は系のデータでない", t.label);
+                    invalid!(
+                        "tolerance {i} ({}): moving the object point is not system data",
+                        t.label
+                    );
                 }
                 for s in &self.problem.configs {
                     s.check_param(*p)?;
                     if s.pickup_of(*p).is_some() {
                         invalid!(
-                            "公差 {i}（{}）: {} はピックアップで決まる（元の面に与える）",
+                            "tolerance {i} ({}): {} is set by a pickup (give it to the source surface)",
                             t.label,
                             s.param_name(*p)
                         );
@@ -510,7 +516,11 @@ impl Rng {
 /// ずれ deltas を与えた構成
 pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
     if deltas.len() != spec.tols.len() {
-        invalid!("ずれ {} 個（公差は {} 個）", deltas.len(), spec.tols.len());
+        invalid!(
+            "{} offsets (the tolerances are {})",
+            deltas.len(),
+            spec.tols.len()
+        );
     }
     spec.problem
         .configs
@@ -781,7 +791,7 @@ impl LensTol {
                 wedge_first: false,
             },
             "none" => LensTol::default(),
-            n => invalid!("公差の組 {n}（commercial・precision・high・none）"),
+            n => invalid!("tolerance set {n} (commercial, precision, high, none)"),
         })
     }
 }

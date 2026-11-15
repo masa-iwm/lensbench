@@ -50,6 +50,12 @@ pub fn set(l: Lang) {
         x => x,
     };
     CURRENT.store(if l == Lang::En { 1 } else { 0 }, Ordering::Relaxed);
+    // 計算側の誤りの文も同じ言語に（XCT-20）
+    lensbench_core::i18n::set_lang(if l == Lang::En {
+        lensbench_core::i18n::Lang::En
+    } else {
+        lensbench_core::i18n::Lang::Ja
+    });
 }
 
 /// 今の言語は日本語か

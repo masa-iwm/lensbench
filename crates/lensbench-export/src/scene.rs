@@ -746,10 +746,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         Some(v) => v.clone(),
     };
     if let Some(&i) = fields.iter().find(|&&i| i >= nf) {
-        return Err(Error::Invalid(format!(
-            "視野 {} はありません（1〜{nf}）",
-            i + 1
-        )));
+        return Err(Error::Invalid(format!("no field {} (1 to {nf})", i + 1)));
     }
     let nw = s.wavelengths.len();
     let waves: Vec<usize> = match &opt.waves {
@@ -758,7 +755,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
     };
     if let Some(&i) = waves.iter().find(|&&i| i >= nw) {
         return Err(Error::Invalid(format!(
-            "波長 {} はありません（1〜{nw}）",
+            "no wavelength {} (1 to {nw})",
             i + 1
         )));
     }
@@ -780,7 +777,8 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
     };
     if first == 0 && s.infinite() {
         return Err(Error::Invalid(
-            "無限遠の物体は物体面から描けない（面 1 から）".into(),
+            "an object at infinity can't be drawn from the object surface (draw from surface 1)"
+                .into(),
         ));
     }
 
@@ -1115,7 +1113,7 @@ impl Solid {
 /// 光線の [`RayPath::cfg`] は構成の番号、立体・面の名前の頭に構成の名前を付ける（構成が 2 つ以上のとき）
 pub fn overlay(parts: Vec<(String, Scene)>, offset: V3) -> Result<Scene> {
     if parts.is_empty() {
-        return Err(Error::Invalid("重ねる構成がない".into()));
+        return Err(Error::Invalid("no configurations to overlay".into()));
     }
     let many = parts.len() > 1;
     let mut out = Scene {

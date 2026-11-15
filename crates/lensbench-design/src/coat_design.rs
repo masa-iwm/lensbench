@@ -240,10 +240,10 @@ impl Rng {
 /// 層の数ごとの最良（層の数の昇順）。最後の要素がいちばん層の多いもの
 pub fn fit_all(targets: &[Target], substrate: Substrate, o: &Options) -> Result<Vec<Design>> {
     if targets.is_empty() {
-        return Err(Error::Invalid("合わせる点がない".into()));
+        return Err(Error::Invalid("no points to fit".into()));
     }
     if o.materials.is_empty() {
-        return Err(Error::Invalid("材料がない".into()));
+        return Err(Error::Invalid("no materials".into()));
     }
     let (lo, hi) = (o.layers.0.max(1), o.layers.1.max(o.layers.0.max(1)));
     let pre = Prep {

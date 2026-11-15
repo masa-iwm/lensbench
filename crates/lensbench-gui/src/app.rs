@@ -251,7 +251,7 @@ fn plain_error(e: &str) -> String {
     if let Some(rest) = t.strip_prefix("操作 1: ") {
         t = rest.to_string();
     }
-    t = t.replace("不正: ", "");
+    t = t.replace("不正: ", "").replace("invalid: ", "");
     t.replace(
         "（カタログを足す: add_glasses・add_glass_catalogs）",
         tr("（ファイル > カタログのフォルダ… でガラスカタログを足す）"),

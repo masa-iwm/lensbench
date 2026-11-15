@@ -229,7 +229,7 @@ pub(crate) fn pick_lens(s: &System, k: usize) -> lensbench_core::Result<Element>
     match lenses.get(k.wrapping_sub(1)) {
         Some(e) => Ok((*e).clone()),
         None => Err(lensbench_core::Error::Invalid(format!(
-            "玉 {k} はない（{} 個）",
+            "no lens {k} ({} lenses)",
             lenses.len()
         ))),
     }

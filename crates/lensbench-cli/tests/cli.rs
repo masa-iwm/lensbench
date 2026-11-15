@@ -67,7 +67,7 @@ fn errors() {
     let (ok, _, err) = run(&["spot", ZMX]);
     assert!(!ok && err.contains("N-SK16"), "{err}");
     let (ok, _, err) = run(&["spot", ZMX, "--glass-dir", "tests/glass", "--field", "9"]);
-    assert!(!ok && err.contains("視野 9"), "{err}");
+    assert!(!ok && err.contains("field 9"), "{err}");
 }
 
 #[test]
@@ -670,7 +670,7 @@ fn tolerance_monte_carlo() {
         "--set",
         r#"{"preset":"x"}"#,
     ]);
-    assert!(!ok && err.contains("公差の組"), "{err}");
+    assert!(!ok && err.contains("tolerance set"), "{err}");
 }
 
 /// --save の中身は --json の有無によらず同じ全体（画面用の間引きは表示だけ）
@@ -837,11 +837,12 @@ fn mtf_max_freq_steps() {
 #[test]
 fn exit_codes_by_kind() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let code = |args: &[&str]| {
+    let code_in = |lang: &str, args: &[&str]| {
         let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
             .current_dir(root)
             .args(args)
             .env_remove("LENSBENCH_GLASSCAT")
+            .env("LENSBENCH_LANG", lang)
             .output()
             .unwrap();
         (
@@ -849,8 +850,17 @@ fn exit_codes_by_kind() {
             String::from_utf8_lossy(&o.stderr).into_owned(),
         )
     };
-    // 引数の誤り（clap・値の検査）は 2
-    assert_eq!(code(&["spot", ZMX, "--bogus"]).0, Some(2));
+    let code = |args: &[&str]| code_in("en", args);
+    // 引数の誤り（clap・値の検査）は 2。clap の誤りは英語、日本語の表示では訳す（XCT-20）
+    let (c, err) = code(&["spot", ZMX, "--bogus"]);
+    assert_eq!(c, Some(2), "{err}");
+    assert!(err.contains("unexpected argument '--bogus'"), "{err}");
+    let (c, err) = code_in("ja", &["spot", ZMX, "--bogus"]);
+    assert_eq!(c, Some(2), "{err}");
+    assert!(
+        err.contains("知らない引数 --bogus") && err.contains("案内:"),
+        "{err}"
+    );
     let (c, err) = code(&[
         "optimize",
         ZMX,
@@ -862,11 +872,11 @@ fn exit_codes_by_kind() {
         "x",
     ]);
     assert_eq!(c, Some(2), "{err}");
-    assert!(err.contains("案内:") && err.contains("--help"), "{err}");
+    assert!(err.contains("hint:") && err.contains("--help"), "{err}");
     // ファイルが無いのは 3
     let (c, err) = code(&["info", "no/such.zmx"]);
     assert_eq!(c, Some(3), "{err}");
-    assert!(err.contains("案内:"), "{err}");
+    assert!(err.contains("hint:"), "{err}");
     // 未対応は 4
     let dir = std::env::temp_dir().join(format!("lb-exit-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

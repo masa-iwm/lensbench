@@ -110,26 +110,26 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
         split_path: split,
     } = o.names;
     if o.cfg == 0 {
-        return Err(Error::Invalid(format!("{cfg} は 1 以上")));
+        return Err(Error::Invalid(format!("{cfg} must be 1 or more")));
     }
     if lensbench_core::vfs::is_dir(path) {
         return Err(Error::Io(format!(
-            "{}: フォルダ（系のファイルを渡す）",
+            "{}: a folder (give a system file)",
             path.display()
         )));
     }
     if !lensbench_core::vfs::is_file(path) {
-        return Err(Error::Io(format!("{}: ファイルが無い", path.display())));
+        return Err(Error::Io(format!("{}: no such file", path.display())));
     }
     let kind = FileKind::of(path);
     if kind == FileKind::SystemFile {
         if o.cfg != 1 || o.state.is_some() || o.split_path.is_some() {
             return Err(Error::Invalid(format!(
-                "系ファイルでは {cfg}・{state}・{split} は使えない"
+                "{cfg}, {state} and {split} can't be used with a system file"
             )));
         }
         if o.wavelengths.is_some() {
-            return Err(Error::Invalid("wavelengths は .zmx だけ".into()));
+            return Err(Error::Invalid("wavelengths is only for .zmx".into()));
         }
         let (system, m, warnings) = crate::sysfile::load(path).map_err(invalid)?;
         return Ok(Opened {
@@ -141,11 +141,11 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
     if kind == FileKind::Project {
         if o.cfg != 1 {
             return Err(Error::Invalid(format!(
-                "プロジェクトファイルでは {cfg} ではなく {state} で状態を選ぶ"
+                "choose the state with {state}, not {cfg}, in a project file"
             )));
         }
         if o.wavelengths.is_some() {
-            return Err(Error::Invalid("wavelengths は .zmx だけ".into()));
+            return Err(Error::Invalid("wavelengths is only for .zmx".into()));
         }
         let cat = LensCatalog::load_registered(o.lens_catalogs).map_err(invalid)?;
         let look = |v: &str, p: &str| cat.zmx(v, p);
@@ -160,12 +160,12 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
     }
     if o.state.is_some() {
         return Err(Error::Invalid(format!(
-            "{state} はプロジェクトファイル（.json）だけ（.zmx は {cfg}）"
+            "{state} is only for project files (.json) (.zmx uses {cfg})"
         )));
     }
     if o.split_path.is_some() {
         return Err(Error::Invalid(format!(
-            "{split} はプロジェクトファイル（.json）だけ"
+            "{split} is only for project files (.json)"
         )));
     }
     let opt = zmx::LoadOptions {
@@ -183,16 +183,7 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
 
 /// 文字列の誤りを [`Error::Invalid`] に（core の誤りを文字列にしたものは前置きを外す）
 fn invalid(e: String) -> Error {
-    for (p, k) in [
-        ("不正: ", Error::Invalid as fn(String) -> Error),
-        ("読込: ", Error::Io),
-        ("未対応: ", Error::NotImplemented),
-    ] {
-        if let Some(s) = e.strip_prefix(p) {
-            return k(s.to_string());
-        }
-    }
-    Error::Invalid(e)
+    lensbench_core::error::parse_display(&e).unwrap_or(Error::Invalid(e))
 }
 
 #[cfg(test)]
@@ -255,6 +246,6 @@ mod tests {
         };
         let e = open(Path::new("."), &o).unwrap_err();
         assert_eq!(e.kind(), "io");
-        assert!(e.to_string().contains("フォルダ"), "{e}");
+        assert!(e.to_string().contains("a folder"), "{e}");
     }
 }

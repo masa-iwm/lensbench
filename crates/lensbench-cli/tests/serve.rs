@@ -246,9 +246,9 @@ fn loop_thickness() {
         .contains("解析ではない"));
     // 解析の値の誤りは文だけ（「不正: 」を付けない・重ねない）
     let e = sv.error("analyze", json!({ "cmd": "mech-check" }));
-    assert!(e.starts_with("機構部品がない"), "{e}");
+    assert!(e.starts_with("no mechanical parts"), "{e}");
     let e = sv.error("analyze", json!({ "cmd": "fringe", "beam1": "9" }));
-    assert!(!e.contains("不正"), "{e}");
+    assert!(!e.contains("不正") && !e.contains("invalid:"), "{e}");
     assert!(!sv
         .error("set", json!({ "values": { "99.t": 1.0 } }))
         .is_empty());
@@ -795,7 +795,7 @@ fn edit_and_save() {
             "save_range",
             json!({ "path": q.to_str().unwrap(), "from": 0, "to": 1 })
         )
-        .contains("書き出す面"));
+        .contains("surfaces to write"));
     sv.stop();
     std::fs::remove_dir_all(&dir).unwrap();
 }

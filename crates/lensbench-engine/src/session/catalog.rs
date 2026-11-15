@@ -69,7 +69,7 @@ pub fn range_system(s: &System, from: usize, to: usize) -> lensbench_core::error
     let img = s.image();
     if from == 0 || from > to || to >= img {
         return Err(lensbench_core::error::Error::Invalid(format!(
-            "書き出す面 {from}〜{to}（1〜{}）",
+            "surfaces to write {from} to {to} (1 to {})",
             img - 1
         )));
     }

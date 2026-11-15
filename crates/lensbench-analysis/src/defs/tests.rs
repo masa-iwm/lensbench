@@ -91,5 +91,5 @@ fn unknown_keys_and_types_are_errors() {
         .run_json(&cx, &json!({ "rings": "x" }))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("spot の設定"), "{e}");
+    assert!(e.contains("settings of spot"), "{e}");
 }

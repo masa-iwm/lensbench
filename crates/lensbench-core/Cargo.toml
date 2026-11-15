@@ -23,6 +23,10 @@ rayon = "1"
 serde = { version = "1", features = ["derive"], optional = true }
 schemars = { version = "1", optional = true }
 
+# OS の言語（誤りの文の言語の既定、i18n.rs）。wasm は GUI が言語を決める
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sys-locale = "0.3"
+
 [features]
 # System などを serde で書き出し・読み直す（Python の pickle に使う）
 serde = ["dep:serde", "serde/rc", "num-complex/serde"]

@@ -22,6 +22,7 @@ pub mod fringe;
 pub mod ghost;
 pub mod glass;
 pub mod grin;
+pub mod i18n;
 mod interp2d;
 pub mod landing;
 pub mod mech;

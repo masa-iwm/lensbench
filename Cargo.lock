@@ -2800,6 +2800,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sys-locale",
 ]
 
 [[package]]

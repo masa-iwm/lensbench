@@ -46,8 +46,9 @@ impl<'a> Cx<'a> {
 
     /// 系の読み方（無ければ誤り）
     pub fn source(&self) -> Result<&'a dyn Source> {
-        self.source
-            .ok_or_else(|| Error::Invalid("この解析は系のファイル（読み方）が要る".into()))
+        self.source.ok_or_else(|| {
+            Error::Invalid("this analysis needs the system file (how to read it)".into())
+        })
     }
 }
 
@@ -255,7 +256,7 @@ impl<A: Analysis> Erased<A> {
         match params {
             Value::Null => Ok(A::Params::default()),
             v => serde_json::from_value(v.clone())
-                .map_err(|e| Error::Invalid(format!("{} の設定: {e}", self.0.meta().name))),
+                .map_err(|e| Error::Invalid(format!("settings of {}: {e}", self.0.meta().name))),
         }
     }
 }
@@ -294,7 +295,7 @@ impl<A: Analysis> DynAnalysis for Erased<A> {
         let out = self.0.run(cx, &p)?;
         let json = |o: &A::Output| {
             serde_json::to_value(o)
-                .map_err(|e| Error::Invalid(format!("{} の結果: {e}", self.0.meta().name)))
+                .map_err(|e| Error::Invalid(format!("results of {}: {e}", self.0.meta().name)))
         };
         match save {
             None => Ok((json(&out)?, None)),

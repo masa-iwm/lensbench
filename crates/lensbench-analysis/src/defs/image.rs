@@ -163,7 +163,7 @@ impl Analysis for Rms {
         match p.vs {
             Vs::Field => {
                 if p.field.is_some() {
-                    return Err(Error::Invalid("vs field では field は使わない".into()));
+                    return Err(Error::Invalid("field is not used with vs field".into()));
                 }
                 let ax = p.axis.core();
                 let r = sweep::rms_vs_field(s, ax, &sweep::steps01(p.points), Waves::all_or(w), o);
@@ -195,7 +195,7 @@ impl Analysis for Rms {
             }
             Vs::Wavelength => {
                 if p.wave.is_some() {
-                    return Err(Error::Invalid("vs wavelength では wave は使わない".into()));
+                    return Err(Error::Invalid("wave is not used with vs wavelength".into()));
                 }
                 let lams = sweep::wavelength_steps(s, p.points);
                 for i in fields(s, p.field)? {

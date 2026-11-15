@@ -91,7 +91,7 @@ impl Analysis for Mtf {
         let s = cx.system;
         let w = wave(s, p.wave)?;
         if p.each_wave && w.is_some() {
-            return Err(Error::Invalid("each_wave は wave と一緒に使えない".into()));
+            return Err(Error::Invalid("each_wave can't be used with wave".into()));
         }
         let method = match p.method {
             MtfHow::Auto => MtfMethod::Auto,
@@ -200,7 +200,7 @@ impl Analysis for MtfFocus {
     }
     fn run(&self, cx: &Cx<'_>, p: &MtfFocusParams) -> Result<MtfFocusOut> {
         if p.freqs.is_empty() {
-            return Err(Error::Invalid("freqs（周波数）が要る".into()));
+            return Err(Error::Invalid("freqs (frequencies) are needed".into()));
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;
@@ -303,7 +303,7 @@ impl Analysis for MtfField {
     }
     fn run(&self, cx: &Cx<'_>, p: &MtfFieldParams) -> Result<MtfFieldOut> {
         if p.freqs.is_empty() {
-            return Err(Error::Invalid("freqs（周波数）が要る".into()));
+            return Err(Error::Invalid("freqs (frequencies) are needed".into()));
         }
         let s = cx.system;
         let w = wave(s, p.wave)?;
