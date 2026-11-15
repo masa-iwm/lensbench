@@ -9,6 +9,7 @@ mod doc_loc;
 mod folders;
 mod help;
 mod menus;
+mod open_doc;
 mod panels;
 mod result;
 mod status;
@@ -770,67 +771,6 @@ impl Core {
     fn new_id(&mut self) -> u64 {
         self.next_id += 1;
         self.next_id
-    }
-
-    /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
-    /// 組合せに戻して系を作る（#129）
-    fn open_doc(&mut self, p: &Path) {
-        self.open_doc_with(p, false);
-    }
-
-    /// [`Self::open_doc`]。asked は今の組合せを消してよいか聞いて「はい」だった
-    fn open_doc_with(&mut self, p: &Path, asked: bool) {
-        self.combo_census = None;
-        self.push_recent(&p.display().to_string());
-        let is_json = p
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("json"));
-        let v = is_json
-            .then(|| lensbench_core::vfs::read(p).ok())
-            .flatten()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
-        {
-            if let Some(c) = v.as_ref().and_then(combo_of_project) {
-                if !self.doc.combo.picks.is_empty()
-                    && self.doc.combo != c
-                    && self.loc.built_combo.as_ref() != Some(&self.doc.combo)
-                    && !asked
-                {
-                    let p = p.to_path_buf();
-                    self.ask(
-                        tr("開く"),
-                        tr("今の組合せを消して、ファイルの組合せを開きますか？"),
-                        move |c, yes| {
-                            if yes {
-                                c.open_doc_with(&p, true);
-                            }
-                        },
-                    );
-                    return;
-                }
-                // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
-                // 付ける前を持つと、開いただけで未保存になる
-                let mut c = c;
-                c.drop_stale_edits();
-                self.loc.saved_combo = Some(c.clone());
-                if let Some(g) = v.as_ref().and_then(|v| v.get("gui")) {
-                    self.set_panels(g);
-                }
-                self.doc.combo = c;
-                // 別の組合せ: 元に戻す段は空から
-                self.combo_hist = Default::default();
-                self.p.combo_view = combo::View::default();
-                self.loc.doc_path = Some(p.to_path_buf());
-                self.build_combo(self.doc.combo.project());
-                return;
-            }
-        }
-        // 系ファイル（面の並び）だけはその場に上書きする。ブロックで書いたプロジェクトは、保存すると面の並びに
-        // なるので書き先を選ばせる
-        self.loc.doc_path = v
-            .is_some_and(|v| v.get("blocks").is_none())
-            .then(|| p.to_path_buf());
-        self.open(p);
     }
 
     /// 系のファイル（.zmx・プロジェクトの .json）を読む

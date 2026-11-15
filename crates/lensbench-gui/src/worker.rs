@@ -80,6 +80,8 @@ pub enum Tag {
     Folders,
     /// 取った品の STEP と簡易外形の照合（下書きの cad_measure、Web 版）
     CadMeasure,
+    /// 開くプロジェクトの .json の gui・blocks を見る（下書きの doc_peek）。true は今の組合せを消してよいと聞いた後
+    OpenDoc(bool),
 }
 
 impl Tag {
@@ -280,8 +282,43 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
         // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる、GAR-11）
         "folders" => Ok((folders(p), Vec::new())),
         "cad_measure" => crate::cad_fetch::measure_call(p).map(|v| (v, Vec::new())),
+        // 開くファイルが組合せを同梱しているか（画面のスレッドで丸ごと読まない、GAR-30）
+        "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())),
         _ => Err(format!("{m} は下書きでは使えない")),
     }
+}
+
+/// 下書きの Worker の `doc_peek` {file}: プロジェクトの .json の `gui`（組合せ・パネルの設定）と、ブロックで
+/// 書いたか（`blocks`）。系の中身は返さない
+fn doc_peek(p: &Value) -> Result<Value, String> {
+    let f = p["file"].as_str().ok_or("doc_peek needs file")?;
+    let b = lensbench_core::vfs::read(f).map_err(|e| format!("{f}: {e}"))?;
+    let v: Value = serde_json::from_slice(&b).map_err(|e| format!("{f}: {e}"))?;
+    Ok(serde_json::json!({
+        "gui": v.get("gui").cloned().unwrap_or(Value::Null),
+        "blocks": v.get("blocks").is_some(),
+    }))
+}
+
+#[test]
+fn doc_peek_reads_gui_and_blocks() {
+    let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui-doc-peek");
+    lensbench_core::vfs::create_dir_all(&dir).unwrap();
+    let f = dir.join("p.json");
+    lensbench_core::vfs::write(&f, r#"{"blocks": [], "gui": {"combo": {"name": "x"}}}"#).unwrap();
+    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({ "gui": { "combo": { "name": "x" } }, "blocks": true })
+    );
+    lensbench_core::vfs::write(&f, r#"{"surfaces": []}"#).unwrap();
+    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
+    assert_eq!(v, serde_json::json!({ "gui": null, "blocks": false }));
+    assert!(
+        doc_peek(&serde_json::json!({ "file": dir.join("none.json").display().to_string() }))
+            .is_err()
+    );
+    lensbench_core::vfs::remove_file(&f).ok();
 }
 
 /// `folders` {glass_dirs, lens_dirs}: {agf: ガラスのフォルダの AGF の名前, missing: 見つからないフォルダ}
@@ -432,7 +469,7 @@ impl Worker {
         Self::with_call(threads, repaint, true, Kind::Main)
     }
 
-    /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit`・`folders`・`cad_measure` だけを受ける。serve の系・順番待ちとは
+    /// レイアウト図の下書きとカタログの一覧用（`preview`・`glasses`・`lenses`・`catalog_items`・`catalog_edit`・`folders`・`cad_measure`・`doc_peek` だけを受ける。serve の系・順番待ちとは
     /// 別に回すので、解析を回している間も図とカタログが出る）
     pub fn preview(repaint: impl Fn() + Send + Sync + 'static) -> Worker {
         Self::with_call(None, repaint, false, Kind::Preview)

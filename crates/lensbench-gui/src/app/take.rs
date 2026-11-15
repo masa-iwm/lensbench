@@ -344,7 +344,7 @@ impl Core {
                 return;
             }
             // 下書きの Worker の分（tick で受け取る）
-            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure => return,
+            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc(_) => return,
             Tag::Focus => {
                 self.focus_from(&d);
                 return;

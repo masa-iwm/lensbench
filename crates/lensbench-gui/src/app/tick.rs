@@ -59,6 +59,13 @@ impl App {
                 (Tag::Layout, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
                 (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
                 (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r),
+                // 読めないファイルは系の読み込みの方で誤りを出す
+                (Tag::OpenDoc(asked), r) => {
+                    if let Some(f) = params["file"].as_str() {
+                        let f = PathBuf::from(f);
+                        self.c.open_doc_peeked(&f, *asked, r.ok());
+                    }
+                }
                 // カタログの玉の断面（読めなければ空の図）
                 // 頼んだ行の結果だけ受け取る（カタログを読み直す前に頼んだ分は捨てる）
                 (Tag::LensPreview(i), r) if self.c.preview_req == Some(*i) => {
