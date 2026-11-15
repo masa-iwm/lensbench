@@ -817,7 +817,8 @@ impl<'a> SwapSearch<'a> {
 
     /// [`Self::screened`] を一括実行（[`lensbench_runs::run`]）で回す: (二段目に回す組の番号, 止めたか)。
     /// o.out があれば一段目の粗い評価関数を組ごとにそのファイルへ書き、o.resume なら同じ頭のファイルの続きから回す
-    /// （o.header は使わず、一段目の頭を書く）。o.progress・o.cancel は一段目に効く。止めたら番号は空
+    /// （o.header・o.stage は使わず、一段目の頭を書く）。進み具合は段 `"screen"` で文脈の受け手へ知らせ、文脈の中断の印で止める。
+    /// 止めたら番号は空
     pub fn screen(&self, o: &lensbench_runs::RunOpts) -> Result<(Vec<usize>, bool), String> {
         let n = self.count();
         let Some(pre) = &self.spec.prescreen else {
@@ -829,8 +830,7 @@ impl<'a> SwapSearch<'a> {
             out: o.out,
             header: self.header_screen(),
             resume: o.resume,
-            progress: o.progress,
-            cancel: o.cancel,
+            stage: SwapStage::Screen.name(),
         };
         let sum = lensbench_runs::run(n, 0, &ro, |i, _| {
             let v = self.coarse_merit(i, pre.rings);
@@ -919,7 +919,7 @@ impl<'a> SwapSearch<'a> {
                     *c = c.with_params(sv).map_err(|e| e.to_string())?;
                 }
             }
-            match lensbench_optim::dls(&pr, &o) {
+            match lensbench_optim::dls_inner(&pr, &o) {
                 Ok(r) if r.merit.is_finite() => {
                     let better = match &best {
                         None => true,
@@ -1034,28 +1034,25 @@ impl<'a> SwapSearch<'a> {
 
     /// [`run`](Self::run) と同じ。out があれば一括実行（[`lensbench_runs::run`]）で結果を 1 組ずつ
     /// JSONL に書き出し、resume なら同じ頭のファイルの続きから回す（書いた組は飛ばす）。返り値はファイルの全部の組。
-    /// 粗いふるいがあれば、一段目の値は [`screen_path`]`(out)` に書いて同じく続きから回す。progress は段（[`SwapStage`]）ごと
+    /// 粗いふるいがあれば、一段目の値は [`screen_path`]`(out)` に書いて同じく続きから回す。
+    /// 進み具合は文脈の受け手（[`par::with_progress`]）へ、段（[`SwapStage::name`]）を付けて知らせる
     pub fn run_to(
         &self,
         out: Option<&std::path::Path>,
         resume: bool,
         threads: Option<usize>,
-        progress: Option<&(dyn Fn(SwapStage, lensbench_runs::Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
         if self.spec.beam.is_some() {
-            return self.beam_to(out, threads, progress);
+            return self.beam_to(out, threads);
         }
         let Some(path) = out else {
             return Ok(self.run(threads));
         };
         let pre_path = screen_path(path);
-        let show_pre = |p| progress.map_or((), |f| f(SwapStage::Screen, p));
-        let show = |p| progress.map_or((), |f| f(SwapStage::Main, p));
         let pre = lensbench_runs::RunOpts {
             threads,
             out: Some(&pre_path),
             resume,
-            progress: Some(&show_pre),
             ..Default::default()
         };
         let (idx, _) = self.screen(&pre)?;
@@ -1069,8 +1066,7 @@ impl<'a> SwapSearch<'a> {
             out: Some(path),
             header: header.to_string(),
             resume,
-            progress: Some(&show),
-            cancel: None,
+            stage: SwapStage::Main.name(),
         };
         lensbench_runs::run(idx.len(), 0, &o, |j, _| {
             serde_json::to_string(&self.eval(idx[j]))
@@ -1104,7 +1100,7 @@ impl<'a> SwapSearch<'a> {
     /// threads は [`par::with_threads`] と同じ（None は外の指定を引き継ぐ）
     pub fn run(&self, threads: Option<usize>) -> Vec<SwapResult> {
         if self.spec.beam.is_some() {
-            return self.beam_run(threads, None, None).0;
+            return self.beam_run(threads).0;
         }
         let idx = self.screened(threads);
         let mut v = par::with_threads(threads, || par::map(&idx, |&i| self.eval(i)));
@@ -1120,6 +1116,16 @@ pub enum SwapStage {
     Screen,
     /// 今の評価（残した組。ふるいがなければ全組）
     Main,
+}
+
+impl SwapStage {
+    /// 進み具合の段の名前（[`lensbench_core::par::Count::stage`]）: `"screen"`・`"main"`
+    pub fn name(self) -> &'static str {
+        match self {
+            SwapStage::Screen => "screen",
+            SwapStage::Main => "main",
+        }
+    }
 }
 
 /// 結果のファイル out に対する、粗いふるいの段の結果のファイル（`r.jsonl` なら `r.pre.jsonl`）

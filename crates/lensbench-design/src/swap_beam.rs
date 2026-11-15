@@ -10,7 +10,7 @@
 use super::*;
 use lensbench_runs::Progress;
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 所ごとのビーム探索の設定（[`SwapSpec::beam`]）
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -57,12 +57,11 @@ impl SwapSearch<'_> {
 
     /// ビーム探索（[`SwapSpec::beam`] がなければ全組の総当たり [`Self::run`]）:
     /// (すべての所を選んだ組の結果（評価関数の小さい順）, 最適化した選び方の数, 止めたか, 結果が空のときの理由)。
-    /// progress の `total` は評価する数の見込みの上限（[`Self::beam_estimate`]）。cancel が true になったら新しい評価を始めない
+    /// 進み具合は文脈の受け手（[`par::with_progress`]）へ段 `"main"` の [`par::Event::Count`] で知らせ、`total` は評価する数の
+    /// 見込みの上限（[`Self::beam_estimate`]）。文脈の中断の印（[`par::with_cancel`]）が倒れたら新しい評価を始めない
     pub fn beam_run(
         &self,
         threads: Option<usize>,
-        progress: Option<&(dyn Fn(Progress) + Sync)>,
-        cancel: Option<&AtomicBool>,
     ) -> (Vec<SwapResult>, usize, bool, Option<String>) {
         let Some(b) = &self.spec.beam else {
             let v = self.run(threads);
@@ -72,7 +71,7 @@ impl SwapSearch<'_> {
         let total = self.beam_estimate().unwrap_or(usize::MAX);
         let t0 = web_time::Instant::now();
         let done = AtomicUsize::new(0);
-        let stop = || cancel.is_some_and(|c| c.load(Ordering::Relaxed));
+        let stop = par::cancelled;
         let mut merit: HashMap<Assign, f64> = HashMap::new();
         let mut full: HashMap<usize, SwapResult> = HashMap::new();
         let mut beams: Vec<Assign> = vec![vec![None; self.picks.len()]];
@@ -101,16 +100,17 @@ impl SwapSearch<'_> {
                         }
                         let r = self.optimize(a);
                         let d = done.fetch_add(1, Ordering::Relaxed) + 1;
-                        if let Some(cb) = progress {
+                        if par::reporting() {
                             let el = t0.elapsed().as_secs_f64();
-                            cb(Progress {
+                            par::report(&par::Event::Count(Progress {
+                                stage: SwapStage::Main.name(),
                                 done: d,
                                 total,
                                 ran: d,
                                 elapsed: el,
                                 eta: (d > 0)
                                     .then(|| el / d as f64 * total.saturating_sub(d) as f64),
-                            });
+                            }));
                         }
                         Some(r)
                     })
@@ -167,10 +167,8 @@ impl SwapSearch<'_> {
         &self,
         out: Option<&std::path::Path>,
         threads: Option<usize>,
-        progress: Option<&(dyn Fn(SwapStage, Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
-        let show = |p| progress.map_or((), |f| f(SwapStage::Main, p));
-        let (v, _, _, why) = self.beam_run(threads, Some(&show), None);
+        let (v, _, _, why) = self.beam_run(threads);
         if let Some(e) = why {
             return Err(e);
         }
@@ -182,9 +180,12 @@ impl SwapSearch<'_> {
                 resume: false,
                 ..Default::default()
             };
-            lensbench_runs::run(v.len(), 0, &o, |j, _| {
-                serde_json::to_string(&v[j])
-                    .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
+            // 書き出しは進み具合に数えない
+            par::with_progress(None, || {
+                lensbench_runs::run(v.len(), 0, &o, |j, _| {
+                    serde_json::to_string(&v[j])
+                        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
+                })
             })
             .map_err(|e| e.to_string())?;
         }

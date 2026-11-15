@@ -7,13 +7,12 @@
 use crate::errors::value_err;
 use lensbench_core::LockExt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use lensbench_core::param::Param;
 use lensbench_core::System;
-use lensbench_runs::{Dist, Grid, Plan, Progress, RunOpts, Sampler};
+use lensbench_runs::{Dist, Grid, Plan, RunOpts, Sampler};
 use pyo3::exceptions::PyKeyboardInterrupt;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
@@ -321,42 +320,49 @@ fn run_batch<'py>(
         .map(|p| p.clone().unbind());
     let mem: Mutex<Vec<(usize, String)>> = Mutex::new(Vec::new());
     let keep_mem = out.is_none();
-    let first_err: Mutex<Option<PyErr>> = Mutex::new(None);
-    let cancel = AtomicBool::new(false);
-    let last = Mutex::new(Instant::now() - std::time::Duration::from_secs(10));
-    let report = |p: Progress| {
-        let mut g = last.lock_ok();
-        let fin = p.done == p.total;
-        if !fin && g.elapsed().as_secs_f64() < 1.0 {
-            return;
-        }
-        *g = Instant::now();
-        drop(g);
-        if let Some(cb) = &cb_py {
-            Python::attach(|py| {
-                let d = PyDict::new(py);
-                let _ = d.set_item("done", p.done);
-                let _ = d.set_item("total", p.total);
-                let _ = d.set_item("ran", p.ran);
-                let _ = d.set_item("elapsed", p.elapsed);
-                let _ = d.set_item("eta", p.eta);
-                if let Err(e) = cb.call1(py, (d,)) {
-                    first_err.lock_ok().get_or_insert(e);
-                    cancel.store(true, Ordering::Relaxed);
-                }
-            });
-        } else if show {
-            let pc = 100.0 * p.done as f64 / p.total.max(1) as f64;
-            let eta = p.eta.map(fmt_s).unwrap_or_else(|| "?".into());
-            let (done, total, el) = (p.done, p.total, fmt_s(p.elapsed));
-            let line = format!("lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}");
-            eprintln!("{}", lensbench_core::i18n::tr(&line));
-        }
-    };
+    let first_err: Arc<Mutex<Option<PyErr>>> = Arc::default();
+    let cancel = lensbench_core::par::CancelToken::new();
+    let report: Option<lensbench_core::par::ProgressFn> = (show || cb_py.is_some()).then(|| {
+        let last = Mutex::new(Instant::now() - std::time::Duration::from_secs(10));
+        let (first_err, cancel) = (first_err.clone(), cancel.clone());
+        let f: lensbench_core::par::ProgressFn = Arc::new(move |e| {
+            let lensbench_core::par::Event::Count(p) = e else {
+                return;
+            };
+            let mut g = last.lock_ok();
+            let fin = p.done == p.total;
+            if !fin && g.elapsed().as_secs_f64() < 1.0 {
+                return;
+            }
+            *g = Instant::now();
+            drop(g);
+            if let Some(cb) = &cb_py {
+                Python::attach(|py| {
+                    let d = PyDict::new(py);
+                    let _ = d.set_item("done", p.done);
+                    let _ = d.set_item("total", p.total);
+                    let _ = d.set_item("ran", p.ran);
+                    let _ = d.set_item("elapsed", p.elapsed);
+                    let _ = d.set_item("eta", p.eta);
+                    if let Err(e) = cb.call1(py, (d,)) {
+                        first_err.lock_ok().get_or_insert(e);
+                        cancel.cancel();
+                    }
+                });
+            } else {
+                let pc = 100.0 * p.done as f64 / p.total.max(1) as f64;
+                let eta = p.eta.map(fmt_s).unwrap_or_else(|| "?".into());
+                let (done, total, el) = (p.done, p.total, fmt_s(p.elapsed));
+                let line = format!("lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}");
+                eprintln!("{}", lensbench_core::i18n::tr(&line));
+            }
+        });
+        f
+    });
     let task = |i: usize, s: u64| -> lensbench_core::Result<String> {
         let fail = |e: PyErr| {
             first_err.lock_ok().get_or_insert(e);
-            cancel.store(true, Ordering::Relaxed);
+            cancel.cancel();
             lensbench_core::Error::Invalid("Python exception".into())
         };
         // 系は GIL なしで作る
@@ -396,11 +402,14 @@ fn run_batch<'py>(
         out: out.as_deref(),
         header: head,
         resume,
-        progress: Some(&report),
-        cancel: Some(&cancel),
+        ..Default::default()
     };
-    let res = py.detach(|| lensbench_runs::run(n, seed, &opts, task));
-    if let Some(e) = first_err.into_inner().unwrap_or_else(|x| x.into_inner()) {
+    let res = py.detach(|| {
+        lensbench_core::par::with_cancel(Some(&cancel), || {
+            lensbench_core::par::with_progress(report, || lensbench_runs::run(n, seed, &opts, task))
+        })
+    });
+    if let Some(e) = first_err.lock_ok().take() {
         return Err(e);
     }
     let sum = res.map_err(err)?;

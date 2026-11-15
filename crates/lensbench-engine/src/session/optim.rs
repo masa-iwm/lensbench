@@ -31,10 +31,61 @@ pub(super) fn apply_pending(sess: &Session, p: PendingApply, v: &mut Value) {
     }
 }
 
-/// 最適化の進み具合（同じプロセスの GUI が読む、[`optimize_progress`]）
-pub(super) struct OptRun {
-    /// 反復ごとの評価関数の値（初期値を含む）
+/// 走っている長い計算（最適化・公差・差し替え探索）の進み具合と中断の印（同じプロセスの GUI・serve の `progress` が読む）。
+/// 計算は印 `token` と、ここへ書く受け手を文脈（[`lensbench_core::par::Ctx`]）に置いて回す（[`run_job`]）
+#[derive(Default)]
+pub(crate) struct Job {
+    /// この計算だけを止める印（要求の印の子。要求の `cancel` でも止まる）
+    token: lensbench_core::par::CancelToken,
+    /// 反復ごとの評価関数の値（最適化。初期値を含む）
     history: Vec<f64>,
+    /// 今の段の (段の名前, 終えた数, 全体の数)（公差・差し替え探索）
+    count: Option<(&'static str, usize, usize)>,
+}
+
+/// 走っている長い計算の置き場（走っていなければ None）
+pub(crate) type JobSlot = Arc<Mutex<Option<Job>>>;
+
+/// f を、置き場 slot に job を置いた長い計算として回す: 文脈の中断の印を job の印（今の印の子）に、進み具合の受け手を
+/// slot へ書く関数にする。終われば slot を空にする
+fn run_job<R>(slot: &JobSlot, job: Job, f: impl FnOnce() -> R) -> R {
+    use lensbench_core::par::{self, Event};
+    let token = par::current_cancel().map_or_else(Default::default, |t| t.child());
+    *slot.lock_ok() = Some(Job {
+        token: token.clone(),
+        ..job
+    });
+    let s = slot.clone();
+    let p: par::ProgressFn = Arc::new(move |e| {
+        if let Some(j) = s.lock_ok().as_mut() {
+            match e {
+                Event::Iter(i) => j.history.push(i.merit),
+                Event::Count(c) => {
+                    // 並列の作業は終わる順が前後するので、同じ段なら大きい方を残す
+                    let d = match j.count {
+                        Some((st, d, _)) if st == c.stage => d.max(c.done),
+                        _ => c.done,
+                    };
+                    j.count = Some((c.stage, d, c.total));
+                }
+            }
+        }
+    });
+    struct Clear<'a>(&'a JobSlot);
+    impl Drop for Clear<'_> {
+        fn drop(&mut self) {
+            *self.0.lock_ok() = None;
+        }
+    }
+    let _c = Clear(slot);
+    par::with_cancel(Some(&token), || par::with_progress(Some(p), f))
+}
+
+/// 置き場 slot の計算を止める（走っていなければ何もしない）
+fn stop_job(slot: &JobSlot) {
+    if let Some(j) = slot.lock_ok().as_ref() {
+        j.token.cancel();
+    }
 }
 
 impl Session {
@@ -45,8 +96,7 @@ impl Session {
 
     /// 走っている最適化を止める（次の反復の終わりで止まり、そこまでの結果を返す）。同じプロセスから呼ぶ
     pub fn optimize_cancel(&self) {
-        self.opt_cancel
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        stop_job(&self.opt_run);
     }
 }
 
@@ -221,17 +271,11 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         ..Default::default()
     };
     let m0 = prob.merit(&prob.x0()?)?;
-    sess.opt_cancel
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.opt_run.lock_ok() = Some(OptRun { history: vec![m0] });
-    let r = optim::dls_with(&prob, &o, |pr| {
-        if let Some(run) = sess.opt_run.lock_ok().as_mut() {
-            run.history.push(pr.merit);
-        }
-        !sess.opt_cancel.load(std::sync::atomic::Ordering::SeqCst)
-    });
-    *sess.opt_run.lock_ok() = None;
-    let r = r?;
+    let job = Job {
+        history: vec![m0],
+        ..Default::default()
+    };
+    let r = run_job(&sess.opt_run, job, || optim::dls(&prob, &o))?;
     let names: Vec<String> = prob
         .vars
         .iter()
@@ -298,13 +342,12 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 impl Session {
     /// 走っている公差のモンテカルロの (終えた評価, 評価の数)（感度の 2 × 公差の数 + 試行の数。走っていなければ None）
     pub fn tolerance_progress(&self) -> Option<(usize, usize)> {
-        *self.tol_run.lock_ok()
+        count_of(&self.tol_run)
     }
 
     /// 走っている公差のモンテカルロを止める（走っている試行は終わらせ、そこまでの結果を返す）。同じプロセスから呼ぶ
     pub fn tolerance_cancel(&self) {
-        self.tol_cancel
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        stop_job(&self.tol_run);
     }
 }
 
@@ -355,24 +398,17 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let ms = lensbench_design::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
         .map_err(RpcErr::params)?;
     let oo = lensbench_design::tolerance::out_opts(&v).map_err(RpcErr::params)?;
-    sess.tol_cancel
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.tol_run.lock_ok() = Some((0, 0));
-    let run = || {
-        lensbench_design::montecarlo::run_with(&ms, |k, n| {
-            let mut g = sess.tol_run.lock_ok();
-            // 並列の試行は終わる順が前後するので、大きい方を残す
-            let k = g.map_or(k, |(d, _)| d.max(k));
-            *g = Some((k, n));
-            !sess.tol_cancel.load(std::sync::atomic::Ordering::SeqCst)
-        })
+    let job = Job {
+        count: Some(("", 0, 0)),
+        ..Default::default()
     };
-    let r = match oo.threads {
-        Some(t) => lensbench_core::with_threads(Some(t), run),
-        None => run(),
-    };
-    *sess.tol_run.lock_ok() = None;
-    let r = r?;
+    let r = run_job(&sess.tol_run, job, || {
+        let run = || lensbench_design::montecarlo::run(&ms);
+        match oo.threads {
+            Some(t) => lensbench_core::with_threads(Some(t), run),
+            None => run(),
+        }
+    })?;
     let mut out = lensbench_design::tolerance::result_json(&ms, &r, &oo);
     out["notes"] = json!(notes);
     Ok(out)
@@ -485,14 +521,20 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 impl Session {
     /// 走っている差し替え探索の (終えた組, 組の数)（走っていなければ None）。同じプロセスから呼ぶ
     pub fn swap_progress(&self) -> Option<(usize, usize)> {
-        *self.swap_run.lock_ok()
+        count_of(&self.swap_run)
     }
 
     /// 走っている差し替え探索を止める（走っている組は終わらせ、そこまでの結果を返す）。同じプロセスから呼ぶ
     pub fn swap_cancel(&self) {
-        self.swap_cancel
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        stop_job(&self.swap_run);
     }
+}
+
+/// 置き場の計算の (終えた数, 全体の数)（走っていなければ None）
+fn count_of(slot: &JobSlot) -> Option<(usize, usize)> {
+    slot.lock_ok()
+        .as_ref()
+        .map(|j| j.count.map_or((0, 0), |(_, d, n)| (d, n)))
 }
 
 /// [`global`] の場の [`Session::swap_progress`]
@@ -572,44 +614,42 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         return Ok(json!(r));
     }
     let rows: Mutex<Vec<lensbench_design::swap::SwapResult>> = Mutex::new(Vec::new());
-    sess.swap_cancel
-        .store(false, std::sync::atomic::Ordering::SeqCst);
-    *sess.swap_run.lock_ok() = Some((0, n));
-    let show = |pr: lensbench_runs::Progress| {
-        *sess.swap_run.lock_ok() = Some((pr.done, pr.total));
-    };
     let o = lensbench_runs::RunOpts {
         threads: opt_usize(p, "threads")?,
-        progress: Some(&show),
-        cancel: Some(&sess.swap_cancel),
         header: "{}".into(),
+        stage: lensbench_design::swap::SwapStage::Main.name(),
         ..Default::default()
     };
     let t0 = web_time::Instant::now();
-    let (mut rows, screened, cancelled) = if s.uses_beam() {
-        // 所ごとのビーム探索: 評価したすべての所を選んだ組（screened はその数）
-        let (v, _, stopped, why) = s.beam_run(o.threads, Some(&show), Some(&sess.swap_cancel));
-        *sess.swap_run.lock_ok() = None;
-        if let Some(e) = why {
-            return Err(e.into());
-        }
-        let k = v.len();
-        (v, k, stopped)
-    } else {
-        // 粗いふるい（prescreen）があれば残った組だけ（ふるいの間も進み具合を出し、止められる）
-        let (idx, stopped) = s.screen(&o)?;
-        *sess.swap_run.lock_ok() = Some((0, idx.len()));
-        let r = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
-            let v = s.eval(idx[j]);
-            rows.lock_ok().push(v);
-            Ok("{}".into())
-        });
-        *sess.swap_run.lock_ok() = None;
-        let sum = r?;
-        let mut rows = std::mem::take(&mut *rows.lock_ok());
-        lensbench_design::swap::sort_results(&mut rows);
-        (rows, idx.len(), sum.cancelled || stopped)
+    let job = Job {
+        count: Some((lensbench_design::swap::SwapStage::Main.name(), 0, n)),
+        ..Default::default()
     };
+    let (mut rows, screened, cancelled) = run_job(&sess.swap_run, job, || {
+        if s.uses_beam() {
+            // 所ごとのビーム探索: 評価したすべての所を選んだ組（screened はその数）
+            let (v, _, stopped, why) = s.beam_run(o.threads);
+            if let Some(e) = why {
+                return Err(RpcErr::from(e));
+            }
+            let k = v.len();
+            Ok((v, k, stopped))
+        } else {
+            // 粗いふるい（prescreen）があれば残った組だけ（ふるいの間も進み具合を出し、止められる）
+            let (idx, stopped) = s.screen(&o)?;
+            if let Some(j) = sess.swap_run.lock_ok().as_mut() {
+                j.count = Some((o.stage, 0, idx.len()));
+            }
+            let sum = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
+                let v = s.eval(idx[j]);
+                rows.lock_ok().push(v);
+                Ok("{}".into())
+            })?;
+            let mut rows = std::mem::take(&mut *rows.lock_ok());
+            lensbench_design::swap::sort_results(&mut rows);
+            Ok((rows, idx.len(), sum.cancelled || stopped))
+        }
+    })?;
     let done = rows.len();
     let failed = rows.iter().filter(|x| x.error.is_some()).count();
     let top = opt_usize(p, "top")?.unwrap_or(50);

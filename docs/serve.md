@@ -182,6 +182,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 `optimize` を回している間は、別のスレッドから `optimize_progress()`（反復ごとの評価関数の値）で進み具合を読み、
 `optimize_cancel()` で止められる（`tolerance` も同じく `tolerance_progress()`・`tolerance_cancel()`）（その反復までの結果を返す）。TCP・パイプでは別の接続から `progress`・`stop` を送る。進み具合・中止は場ごと（`Session::optimize_progress` など。上の関数は共通の場のもの）。
 `swap` も同じく `swap_progress()`（終えた組と組の数）・`swap_cancel()`（走っている組は終わらせ、そこまでの結果を返す）。
+`cancel`（処理している要求の中断）でも、走っている最適化・公差・差し替え探索はそこまでの結果を返す。
+Rust から計算を直に呼ぶときの進み具合・中断の口は `lensbench_core::par` の `with_progress`（`Event` を受ける関数）と `with_cancel`（中断の印）。
 
 ### Python のクライアント
 

@@ -1,8 +1,9 @@
 //! 一括実行: 組の作り方（抽選・相関・格子）、並列・逐次書き出し・再開・進み具合。
 
+use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_runs::{Dist, Grid, Plan, RunOpts, Sampler};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 #[test]
@@ -122,23 +123,29 @@ fn run_writes_resumes_and_matches_threads() {
         Ok(format!("{{\"sq\":{},\"s\":{}}}", i * i, s % 1000))
     };
     // 途中で止める（7 個終えたら cancel）
-    let cancel = AtomicBool::new(false);
-    let k = AtomicUsize::new(0);
-    let cb = |pr: lensbench_runs::Progress| {
+    let cancel = par::CancelToken::new();
+    let k = std::sync::Arc::new(AtomicUsize::new(0));
+    let (c2, k2) = (cancel.clone(), k.clone());
+    let cb: par::ProgressFn = std::sync::Arc::new(move |e| {
+        let par::Event::Count(pr) = e else {
+            panic!("{e:?}")
+        };
         assert!(pr.done <= pr.total);
-        if k.fetch_add(1, Ordering::Relaxed) + 1 >= 7 {
-            cancel.store(true, Ordering::Relaxed);
+        if k2.fetch_add(1, Ordering::Relaxed) + 1 >= 7 {
+            c2.cancel();
         }
-    };
+    });
     let opts = RunOpts {
         threads: Some(1),
         out: Some(&f),
         header: "{\"what\":\"test\"}".into(),
         resume: true,
-        progress: Some(&cb),
-        cancel: Some(&cancel),
+        ..Default::default()
     };
-    let r = lensbench_runs::run(30, 5, &opts, task).unwrap();
+    let r = par::with_cancel(Some(&cancel), || {
+        par::with_progress(Some(cb), || lensbench_runs::run(30, 5, &opts, task))
+    })
+    .unwrap();
     assert!(r.cancelled && r.ran == 7, "{r:?}");
     // 最後の行を途中で切る（書いている途中で止まった）
     let mut txt = std::fs::read_to_string(&f).unwrap();

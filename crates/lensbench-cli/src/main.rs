@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 mod analysis_cmd;
 mod error;
 mod help_json;
+mod progress;
 mod text_out;
 pub(crate) use error::AppError;
 mod coat_cmd;
@@ -1035,20 +1036,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 max_iter: iters,
                 ..Default::default()
             };
-            let json = c.json;
-            let r = optim::dls_with(&p, &o, |pr| {
-                if !json {
-                    eprintln!(
-                        "{}",
-                        lensbench_core::i18n::tr(&format!(
-                            "iteration {:>3}: merit {:.9e}",
-                            pr.iter, pr.merit
-                        ))
-                    );
-                }
-                true
-            })
-            .map_err(e)?;
+            let r = progress::with(c.json, || optim::dls(&p, &o)).map_err(e)?;
             if let Some(path) = &out {
                 warn_notes(zmx_write::save(path, &r.systems[0]).map_err(e)?);
             }
@@ -1118,16 +1106,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let ms =
                 lensbench_design::tolerance::spec_from_json_with(&v, vec![s], &vendors, &reversed)?;
             let oo = lensbench_design::tolerance::out_opts(&v)?;
-            let json_out = c.json;
-            let step = (ms.trials + 2 * ms.tols.len()).div_ceil(20).max(1);
-            let run = || {
-                lensbench_design::montecarlo::run_with(&ms, |k, n| {
-                    if !json_out && (k % step == 0 || k == n) {
-                        eprintln!("{k} / {n}");
-                    }
-                    true
-                })
-            };
+            let run = || progress::with(c.json, || lensbench_design::montecarlo::run(&ms));
             let r = match oo.threads {
                 Some(t) => lensbench_core::with_threads(Some(t), run),
                 None => run(),
@@ -1165,7 +1144,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 let csv = lensbench_design::tolerance::compensators_csv(&out)?;
                 lensbench_core::vfs::write(path, csv).map_err(AppError::io_at(path))?;
             }
-            (json_out, out)
+            (c.json, out)
         }
         Cmd::CatalogAdd {
             catalog,

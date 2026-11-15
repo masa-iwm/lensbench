@@ -1,6 +1,7 @@
 //! カタログレンズの差し替え探索
 
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
+use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_design::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
@@ -290,16 +291,26 @@ fn prescreen_is_written_and_resumed() {
     assert_eq!(pre, tmp.join("r.pre.jsonl"));
     let _ = std::fs::remove_file(&f);
     let _ = std::fs::remove_file(&pre);
-    let (screen, main) = (AtomicUsize::new(0), AtomicUsize::new(0));
-    let cb = |st: swap::SwapStage, pr: lensbench_runs::Progress| {
-        let c = if st == swap::SwapStage::Screen {
-            &screen
+    let (screen, main) = (
+        std::sync::Arc::new(AtomicUsize::new(0)),
+        std::sync::Arc::new(AtomicUsize::new(0)),
+    );
+    let (sc, mc) = (screen.clone(), main.clone());
+    let cb: par::ProgressFn = std::sync::Arc::new(move |e| {
+        let par::Event::Count(pr) = e else { return };
+        let c = if pr.stage == swap::SwapStage::Screen.name() {
+            &sc
         } else {
-            &main
+            &mc
         };
         c.store(pr.ran, Relaxed);
+    });
+    let with_cb = |f: &dyn Fn() -> Result<Vec<swap::SwapResult>, String>| {
+        par::with_progress(Some(cb.clone()), f)
     };
-    let r = s.run_to(Some(&f), true, None, Some(&cb)).map(vals).unwrap();
+    let r = with_cb(&|| s.run_to(Some(&f), true, None))
+        .map(vals)
+        .unwrap();
     assert_eq!(r, mem);
     assert_eq!(screen.load(Relaxed), s.count());
     assert_eq!(main.load(Relaxed), 3);
@@ -308,7 +319,9 @@ fn prescreen_is_written_and_resumed() {
     // 本番の結果を消して回し直すと、一段目は書いた値を使い、本番だけ回す
     std::fs::remove_file(&f).unwrap();
     screen.store(usize::MAX, Relaxed);
-    let r2 = s.run_to(Some(&f), true, None, Some(&cb)).map(vals).unwrap();
+    let r2 = with_cb(&|| s.run_to(Some(&f), true, None))
+        .map(vals)
+        .unwrap();
     assert_eq!(r2, mem);
     assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
     assert_eq!(main.load(Relaxed), 3);
@@ -317,11 +330,11 @@ fn prescreen_is_written_and_resumed() {
     let mut sp = s_spec.clone();
     sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 4 });
     let s4 = SwapSearch::new(&p2, &env(dir2), &c, sp).unwrap();
-    let e = s4.run_to(Some(&f), true, None, Some(&cb)).unwrap_err();
+    let e = with_cb(&|| s4.run_to(Some(&f), true, None)).unwrap_err();
     assert!(e.contains("rerun only the second stage"), "{e}");
     std::fs::remove_file(&f).unwrap();
     screen.store(usize::MAX, Relaxed);
-    let r4 = s4.run_to(Some(&f), true, None, Some(&cb)).unwrap();
+    let r4 = with_cb(&|| s4.run_to(Some(&f), true, None)).unwrap();
     assert_eq!(r4.len(), 4);
     assert_eq!(screen.load(Relaxed), usize::MAX, "一段目は回さない");
     let _ = std::fs::remove_dir_all(&tmp);
@@ -345,7 +358,7 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     });
     let s = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
     assert!(s.uses_beam());
-    let (r, evaluated, stopped, why) = s.beam_run(None, None, None);
+    let (r, evaluated, stopped, why) = s.beam_run(None);
     assert!(why.is_none());
     assert!(!stopped);
     let n = full.count();
@@ -358,15 +371,15 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     }
     assert_eq!(r[0], rf[0]);
     // スレッド数によらない。run・run_to もビーム探索
-    let (r1, e1, _, _) = s.beam_run(Some(1), None, None);
+    let (r1, e1, _, _) = s.beam_run(Some(1));
     assert_eq!(vals(r1), r);
     assert_eq!(e1, evaluated);
     assert_eq!(vals(s.run(None)), r);
     let tmp = std::env::temp_dir().join(format!("lb-swap-beam-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let f = tmp.join("r.jsonl");
-    assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
-    assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
+    assert_eq!(s.run_to(Some(&f), true, None).map(vals).unwrap(), r);
+    assert_eq!(s.run_to(Some(&f), true, None).map(vals).unwrap(), r);
     let _ = std::fs::remove_dir_all(&tmp);
     // 最初の所でどの候補も評価できなければ、結果は空で理由を返す（run_to は誤り）
     let mut sp = spec(vec![a.clone(), b.clone()]);
@@ -376,11 +389,11 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
         passes: 2,
     });
     let s5 = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
-    let (r5, _, _, why) = s5.beam_run(None, None, None);
+    let (r5, _, _, why) = s5.beam_run(None);
     assert!(r5.is_empty());
     let why = why.unwrap();
     assert!(why.contains("no candidate of place A"), "{why}");
-    assert_eq!(s5.run_to(None, true, None, None).unwrap_err(), why);
+    assert_eq!(s5.run_to(None, true, None).unwrap_err(), why);
     // ふるいとは同時に使えない・幅 0 は誤り
     let mut sp = spec(vec![a.clone(), b.clone()]);
     sp.beam = Some(swap::Beam {
@@ -437,7 +450,7 @@ fn run_to_file_and_resume() {
     std::fs::create_dir_all(&tmp).unwrap();
     let f = tmp.join("r.jsonl");
     let _ = std::fs::remove_file(&f);
-    let r = s.run_to(Some(&f), true, None, None).map(vals).unwrap();
+    let r = s.run_to(Some(&f), true, None).map(vals).unwrap();
     assert_eq!(r, mem);
     // 最後の行を途中で切り、1 行消して再開すると、残りだけ回して同じ結果
     let txt = std::fs::read_to_string(&f).unwrap();
@@ -445,12 +458,14 @@ fn run_to_file_and_resume() {
     assert_eq!(lines.len(), 1 + s.count());
     let keep = lines[..lines.len() - 1].join("\n") + "\n" + &lines[lines.len() - 1][..10];
     std::fs::write(&f, keep).unwrap();
-    let ran = std::sync::atomic::AtomicUsize::new(0);
-    let cb = |_: swap::SwapStage, pr: lensbench_runs::Progress| {
-        ran.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
-    };
-    let r2 = s
-        .run_to(Some(&f), true, Some(1), Some(&cb))
+    let ran = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let r2c = ran.clone();
+    let cb: par::ProgressFn = std::sync::Arc::new(move |e| {
+        if let par::Event::Count(pr) = e {
+            r2c.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+    let r2 = par::with_progress(Some(cb), || s.run_to(Some(&f), true, Some(1)))
         .map(vals)
         .unwrap();
     assert_eq!(r2, mem);
@@ -461,8 +476,8 @@ fn run_to_file_and_resume() {
     let mut sp = spec(vec![b]);
     sp.iters = 5;
     let s3 = SwapSearch::new(&p, &env(dir), &c, sp).unwrap();
-    assert!(s3.run_to(Some(&f), true, None, None).is_err());
-    let r3 = s3.run_to(Some(&f), false, None, None).map(vals).unwrap();
+    assert!(s3.run_to(Some(&f), true, None).is_err());
+    let r3 = s3.run_to(Some(&f), false, None).map(vals).unwrap();
     assert_eq!(r3.len(), s3.count());
 }
 

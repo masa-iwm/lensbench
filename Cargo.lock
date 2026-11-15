@@ -2814,7 +2814,6 @@ dependencies = [
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",
- "rayon",
  "schemars",
  "serde",
  "serde_json",
@@ -2889,7 +2888,6 @@ version = "0.4.0"
 dependencies = [
  "lensbench-core",
  "lensbench-project",
- "rayon",
 ]
 
 [[package]]

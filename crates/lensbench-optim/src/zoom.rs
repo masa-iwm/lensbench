@@ -141,7 +141,7 @@ fn solve_point(
     let mut tries = 0;
     let (r, img) = loop {
         let (full, img) = problem(&cur, spec, target, w)?;
-        let r = crate::dls(&full, &spec.opts)?;
+        let r = crate::dls_inner(&full, &spec.opts)?;
         iterations += r.iterations;
         tries += 1;
         let sys = &r.systems[0];

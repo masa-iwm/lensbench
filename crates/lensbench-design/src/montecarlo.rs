@@ -28,13 +28,12 @@
 
 use lensbench_core::error::Result;
 use lensbench_core::invalid;
-use lensbench_core::par::scoped;
+use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::System;
 use lensbench_core::units::UnitKind;
-use lensbench_optim::{dls, DlsOpts, Problem};
-use rayon::prelude::*;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use lensbench_optim::{DlsOpts, Problem};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// 分布
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -558,7 +557,7 @@ pub fn evaluate(spec: &McSpec, deltas: &[f64]) -> Result<Eval> {
 
 fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {
     let x = if compensate && !p.vars.is_empty() {
-        dls(p, o)?.x
+        lensbench_optim::dls_inner(p, o)?.x
     } else {
         p.x0()?
     };
@@ -636,17 +635,10 @@ pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
     n
 }
 
-/// モンテカルロを回す
+/// モンテカルロを回す。試行は並列に回す（[`lensbench_core::par::with_threads`] に従う）。
+/// 試行・感度の評価が 1 つ終わるごとに、文脈の受け手（[`par::with_progress`]）へ [`par::Event::Count`] を別のスレッドから知らせる。
+/// 文脈の中断の印（[`par::with_cancel`]）が倒れたら新しい評価を始めず、そこまでの結果を返す（`cancelled`）
 pub fn run(spec: &McSpec) -> Result<McResult> {
-    run_with(spec, |_, _| true)
-}
-
-/// [`run`] で、試行・感度の評価が 1 つ終わるごとに progress(終わった数, 全体の数) を呼ぶ（false で止める）。
-/// 試行は並列に回す（[`lensbench_core::par::with_threads`] に従う）。progress は別のスレッドから呼ばれる
-pub fn run_with(
-    spec: &McSpec,
-    progress: impl Fn(usize, usize) -> bool + Sync + Send,
-) -> Result<McResult> {
     spec.check()?;
     let nominal = eval_problem(&spec.problem, &spec.comp, true)?;
     let ns = if spec.sensitivity {
@@ -656,19 +648,30 @@ pub fn run_with(
     };
     let total = ns + spec.trials;
     let done = AtomicUsize::new(0);
-    let stop = AtomicBool::new(false);
+    let t0 = web_time::Instant::now();
     let tick = || {
         let k = done.fetch_add(1, Ordering::Relaxed) + 1;
-        if !progress(k, total) {
-            stop.store(true, Ordering::Relaxed);
+        if par::reporting() {
+            let el = t0.elapsed().as_secs_f64();
+            par::report(&par::Event::Count(par::Count {
+                stage: "",
+                done: k,
+                total,
+                ran: k,
+                elapsed: el,
+                eta: Some(el / k as f64 * total.saturating_sub(k) as f64),
+            }));
         }
     };
-    // 止めた後の評価は None（結果に出さない。追跡できなかった評価とは別）
+    // 止めた後の評価は None（結果に出さない。追跡できなかった評価とは別）。評価の途中で止めたもの（補償が途中）も出さない
     let one = |deltas: Vec<f64>| -> Option<(Vec<f64>, Outcome)> {
-        if stop.load(Ordering::Relaxed) {
+        if par::cancelled() {
             return None;
         }
         let r = evaluate(spec, &deltas);
+        if par::cancelled() {
+            return None;
+        }
         tick();
         Some(match r {
             Ok(e) if e.merit.is_finite() => (deltas, Ok(e)),
@@ -676,7 +679,6 @@ pub fn run_with(
             Err(e) => (deltas, Err(e.to_string())),
         })
     };
-    let seq = lensbench_core::par::sequential();
     // 感度: 公差ごとに lo と hi
     let sens_in: Vec<(usize, bool)> = (0..ns).map(|k| (k / 2, k % 2 == 1)).collect();
     let sens_one = |&(i, hi): &(usize, bool)| {
@@ -684,11 +686,7 @@ pub fn run_with(
         d[i] = if hi { spec.tols[i].hi } else { spec.tols[i].lo };
         one(d)
     };
-    let sens_out: Vec<_> = if seq {
-        sens_in.iter().map(sens_one).collect()
-    } else {
-        sens_in.par_iter().map(scoped(sens_one)).collect()
-    };
+    let sens_out: Vec<_> = par::map(&sens_in, sens_one);
     // 止めて lo・hi のどちらかを評価しなかった公差は感度に出さない
     let sensitivity: Vec<Sens> = (0..spec.tols.len())
         .filter(|_| spec.sensitivity)
@@ -703,12 +701,8 @@ pub fn run_with(
         .collect();
     let trial_one = |i: &usize| one(draw_trial(spec, *i));
     let ids: Vec<usize> = (0..spec.trials).collect();
-    let out: Vec<_> = if seq {
-        ids.iter().map(trial_one).collect()
-    } else {
-        ids.par_iter().map(scoped(trial_one)).collect()
-    };
-    let cancelled = stop.load(Ordering::Relaxed);
+    let out: Vec<_> = par::map(&ids, trial_one);
+    let cancelled = par::cancelled();
     let trials = out
         .into_iter()
         .flatten()

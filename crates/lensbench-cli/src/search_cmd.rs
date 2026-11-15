@@ -198,18 +198,7 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     let s = SwapSearch::new(&p, &env, &cat, spec)?;
     let n = s.count();
     let t0 = web_time::Instant::now();
-    let show = |st: lensbench_design::swap::SwapStage, pr: lensbench_runs::Progress| {
-        if !a.json {
-            let what = match st {
-                lensbench_design::swap::SwapStage::Screen => "screening",
-                lensbench_design::swap::SwapStage::Main => "combinations",
-            };
-            let eta = pr.eta.map_or("?".into(), |e| format!("{e:.0}"));
-            let m = format!("{what} {}/{} ({} s left)", pr.done, pr.total, eta);
-            eprint!("\r{}  ", lensbench_core::i18n::tr(&m));
-        }
-    };
-    let mut r = s.run_to(a.out.as_deref(), !a.no_resume, None, Some(&show))?;
+    let mut r = crate::progress::with(a.json, || s.run_to(a.out.as_deref(), !a.no_resume, None))?;
     if !a.json && a.out.is_some() {
         eprintln!();
     }

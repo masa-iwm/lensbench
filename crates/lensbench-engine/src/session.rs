@@ -9,7 +9,6 @@
 use lensbench_core::{LockExt, RwLockExt};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
@@ -157,12 +156,10 @@ pub struct Session {
     pending_apply: Mutex<Option<PendingApply>>,
     /// 処理している要求の中断の印（`cancel` で全部倒す）
     running: Mutex<Vec<lensbench_core::par::CancelToken>>,
-    opt_run: Mutex<Option<OptRun>>,
-    opt_cancel: AtomicBool,
-    tol_run: Mutex<Option<(usize, usize)>>,
-    tol_cancel: AtomicBool,
-    swap_run: Mutex<Option<(usize, usize)>>,
-    swap_cancel: AtomicBool,
+    /// 走っている最適化・公差・差し替え探索の進み具合と中断の印（[`optim::Job`]）
+    opt_run: optim::JobSlot,
+    tol_run: optim::JobSlot,
+    swap_run: optim::JobSlot,
 }
 
 impl Default for Session {
@@ -192,12 +189,9 @@ impl Session {
             long: Mutex::new(()),
             pending_apply: Mutex::new(None),
             running: Mutex::new(Vec::new()),
-            opt_run: Mutex::new(None),
-            opt_cancel: AtomicBool::new(false),
-            tol_run: Mutex::new(None),
-            tol_cancel: AtomicBool::new(false),
-            swap_run: Mutex::new(None),
-            swap_cancel: AtomicBool::new(false),
+            opt_run: Default::default(),
+            tol_run: Default::default(),
+            swap_run: Default::default(),
         }
     }
 
@@ -336,7 +330,7 @@ pub use catalog::range_system;
 use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
 use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
 use layout::{configs, layout, layout_export, layout_with};
-use optim::{apply_pending, optimize, swap, tolerance, zoom, OptRun, PendingApply};
+use optim::{apply_pending, optimize, swap, tolerance, zoom, PendingApply};
 pub use optim::{
     optimize_cancel, optimize_progress, swap_cancel, swap_progress, tolerance_cancel,
     tolerance_progress,

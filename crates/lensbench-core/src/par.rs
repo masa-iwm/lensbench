@@ -174,30 +174,85 @@ pub fn map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync + Send) -> 
 }
 
 /// 計算の中断の印。計算（要求）ごとに作って [`with_cancel`] で渡し、別のスレッドから [`CancelToken::cancel`] で倒す。
-/// 印は計算ごとなので、同じプロセスで同時に回っている別の計算は止めない
+/// 印は計算ごとなので、同じプロセスで同時に回っている別の計算は止めない。
+/// [`CancelToken::child`] で作った子の印は、親が倒れても倒れたとみなす（serve の要求の中で回す最適化など）
 #[derive(Clone, Debug, Default)]
-pub struct CancelToken(Arc<AtomicBool>);
+pub struct CancelToken {
+    flag: Arc<AtomicBool>,
+    parent: Option<Arc<CancelToken>>,
+}
 
 impl CancelToken {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// この印で回っている計算に、区切りのよい所でやめるよう頼む（[`check_cancel`] が `Error::Cancelled` を返す）
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Relaxed);
+    /// 子の印: 自分を倒しても親は倒れないが、親が倒れれば子も倒れたとみなす
+    pub fn child(&self) -> Self {
+        Self {
+            flag: Arc::default(),
+            parent: Some(Arc::new(self.clone())),
+        }
     }
 
-    /// 中断を頼まれたか
+    /// この印で回っている計算に、区切りのよい所でやめるよう頼む（[`check_cancel`] が `Error::Cancelled` を返す）
+    pub fn cancel(&self) {
+        self.flag.store(true, Ordering::Relaxed);
+    }
+
+    /// 中断を頼まれたか（親の印も見る）
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
+        self.flag.load(Ordering::Relaxed) || self.parent.as_ref().is_some_and(|p| p.is_cancelled())
     }
 
     /// 同じ印か（写しも同じ印）
     pub fn same(&self, o: &CancelToken) -> bool {
-        Arc::ptr_eq(&self.0, &o.0)
+        Arc::ptr_eq(&self.flag, &o.flag)
     }
 }
+
+/// 長い計算の進み具合の知らせ（[`report`]）。受け手は [`with_progress`] で文脈に渡す
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+    /// 反復の計算（最適化）の 1 回が終わった
+    Iter(Iter),
+    /// 数で数えられる作業（公差の試行・runs のタスク・差し替え探索の組）が 1 つ終わった
+    Count(Count),
+}
+
+/// 反復の計算の進み具合（[`Event::Iter`]）
+#[derive(Clone, Debug, PartialEq)]
+pub struct Iter {
+    /// 終わった反復の番号（1 始まり）
+    pub iter: usize,
+    /// 評価関数の値
+    pub merit: f64,
+    /// 変数の値
+    pub x: Vec<f64>,
+    /// 減衰の係数
+    pub damping: f64,
+    /// 残差を評価した回数（ヤコビアンの分を除く）
+    pub evals: usize,
+}
+
+/// 数で数えられる作業の進み具合（[`Event::Count`]）
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Count {
+    /// 段の名前（`""` は段の無い作業。差し替え探索は `"screen"`・`"main"`）
+    pub stage: &'static str,
+    /// 終わった数（再開で飛ばした分を含む）
+    pub done: usize,
+    pub total: usize,
+    /// この実行で終えた数
+    pub ran: usize,
+    /// この実行の経過（秒）
+    pub elapsed: f64,
+    /// 残りの見込み（秒。この実行の速さから。まだ分からなければ None）
+    pub eta: Option<f64>,
+}
+
+/// 進み具合の受け手（別のスレッドから呼ばれる）
+pub type ProgressFn = Arc<dyn Fn(&Event) + Send + Sync>;
 
 /// 計算の文脈（呼び出したスレッドに置き、このモジュールの並列が作業のスレッドへ引き継ぐ）
 #[derive(Clone, Default)]
@@ -210,6 +265,8 @@ pub struct Ctx {
     pub ext: Option<Arc<crate::ext::Ext>>,
     /// ファイルの口（[`crate::vfs::with`]）。None はプロセスの既定
     pub fs: Option<Arc<dyn crate::vfs::Fs>>,
+    /// 進み具合の受け手（[`with_progress`]）。None は知らせない
+    pub progress: Option<ProgressFn>,
 }
 
 impl std::fmt::Debug for Ctx {
@@ -219,6 +276,7 @@ impl std::fmt::Debug for Ctx {
             .field("no_batch", &self.no_batch)
             .field("ext", &self.ext)
             .field("fs", &self.fs.as_ref().map(|_| "..."))
+            .field("progress", &self.progress.as_ref().map(|_| "..."))
             .finish()
     }
 }
@@ -254,6 +312,29 @@ pub fn with_cancel<R>(t: Option<&CancelToken>, f: impl FnOnce() -> R) -> R {
         ..current()
     };
     with_ctx(&c, f)
+}
+
+/// f を進み具合の受け手 p の下で回す（文脈のほかの項目は引き継ぐ）。この中の [`report`] は p を呼ぶ。
+/// 最適化（[`Event::Iter`]）・公差・runs・差し替え探索（[`Event::Count`]）が知らせる。中断は [`with_cancel`] の印で頼む
+pub fn with_progress<R>(p: Option<ProgressFn>, f: impl FnOnce() -> R) -> R {
+    let c = Ctx {
+        progress: p,
+        ..current()
+    };
+    with_ctx(&c, f)
+}
+
+/// 進み具合を文脈の受け手（[`with_progress`]）に知らせる（受け手が無ければ何もしない）
+pub fn report(e: &Event) {
+    let p = CTX.with(|x| x.borrow().progress.clone());
+    if let Some(p) = p {
+        p(e);
+    }
+}
+
+/// 文脈に進み具合の受け手があるか（知らせを作るのが重いとき、無ければ作らない）
+pub fn reporting() -> bool {
+    CTX.with(|x| x.borrow().progress.is_some())
 }
 
 /// f をまとめ追跡あり（on）・なしで回す（文脈のほかの項目は引き継ぐ）
@@ -304,6 +385,11 @@ pub fn scoped<A, R>(f: impl Fn(A) -> R + Sync + Send) -> impl Fn(A) -> R + Sync 
     move |a| with_ctx(&c, || f(a))
 }
 
+/// 文脈の中断の印（[`with_cancel`]。無ければ None）。長い計算の中で自分だけ止められる子の印を作るとき（[`CancelToken::child`]）
+pub fn current_cancel() -> Option<CancelToken> {
+    CTX.with(|x| x.borrow().cancel.clone())
+}
+
 /// 中断を頼まれているか（印の無い計算は頼まれない）
 pub fn cancelled() -> bool {
     CTX.with(|x| {
@@ -345,6 +431,40 @@ mod cancel_tests {
         });
         // 印の外は頼まれない
         assert!(!cancelled());
+    }
+
+    /// 子の印は親が倒れると倒れ、子を倒しても親は倒れない。進み具合は作業のスレッドからも受け手に届く
+    #[test]
+    fn child_token_and_progress() {
+        let a = CancelToken::new();
+        let c = a.child();
+        assert!(!c.is_cancelled());
+        c.cancel();
+        assert!(c.is_cancelled() && !a.is_cancelled());
+        let c2 = a.child();
+        a.cancel();
+        assert!(c2.is_cancelled());
+        let n = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let n2 = n.clone();
+        let p: ProgressFn = Arc::new(move |_| {
+            n2.fetch_add(1, Ordering::Relaxed);
+        });
+        with_progress(Some(p), || {
+            with_threads(Some(3), || {
+                map(&[1, 2, 3, 4], |_| {
+                    report(&Event::Count(Count {
+                        stage: "",
+                        done: 1,
+                        total: 4,
+                        ran: 1,
+                        elapsed: 0.0,
+                        eta: None,
+                    }))
+                })
+            })
+        });
+        assert_eq!(n.load(Ordering::Relaxed), 4);
+        assert!(!reporting());
     }
 
     /// まとめ追跡の切り替えも文脈で、作業のスレッドに引き継ぎ、外では既定（使う）に戻る

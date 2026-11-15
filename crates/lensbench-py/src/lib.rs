@@ -23,7 +23,7 @@ mod search;
 mod userterm;
 
 use std::path::PathBuf;
-use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
@@ -106,19 +106,16 @@ fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResul
 
 /// Run a long calculation in another thread and watch for Ctrl-C (signals) in the calling thread (Python's main thread).
 /// When a signal comes, set stop, wait for the calculation to end and return an exception such as KeyboardInterrupt.
-/// The calculation checks stop at each iteration or trial and stops (the progress hooks of optim::dls_with and tolerance::run_with)
-pub fn interruptible<R: Send>(
-    py: Python<'_>,
-    f: impl FnOnce(&AtomicBool) -> R + Send,
-) -> PyResult<R> {
-    let stop = AtomicBool::new(false);
+/// The calculation runs under a cancel token (lensbench_core::par::with_cancel) and stops at the next check (each iteration or trial)
+pub fn interruptible<R: Send>(py: Python<'_>, f: impl FnOnce() -> R + Send) -> PyResult<R> {
+    let stop = lensbench_core::par::CancelToken::new();
     std::thread::scope(|sc| {
         let (tx, rx) = std::sync::mpsc::channel();
-        let stop = &stop;
+        let t = stop.clone();
         sc.spawn(move || {
             // 受け手が先に去っていても（例外で返った後）送りの失敗は気にしない
             let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                || f(stop),
+                || lensbench_core::par::with_cancel(Some(&t), f),
             )));
         });
         let tick = std::time::Duration::from_millis(100);
@@ -138,7 +135,7 @@ pub fn interruptible<R: Send>(
                 }
             }
             if let Err(e) = py.check_signals() {
-                stop.store(true, Ordering::Relaxed);
+                stop.cancel();
                 // 計算が stop を見て止まるのを待つ（scope の終わりで join する）
                 let r = rx.take().unwrap();
                 let _ = py.detach(move || r.recv());
@@ -2398,11 +2395,7 @@ impl PySystem {
             max_iter: iters,
             ..Default::default()
         };
-        let r = interruptible(py, |stop| {
-            with_threads(threads, || {
-                optim::dls_with(&p, &o, |_| !stop.load(Ordering::Relaxed))
-            })
-        })?;
+        let r = interruptible(py, || with_threads(threads, || optim::dls(&p, &o)))?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
         let tv = |x: &[f64]| -> PyResult<Vec<f64>> {
@@ -2483,10 +2476,8 @@ impl PySystem {
             None => Vec::new(),
         };
         let th = threads.or(oo.threads);
-        let r = interruptible(py, |stop| {
-            with_threads(th, || {
-                lensbench_design::montecarlo::run_with(&ms, |_, _| !stop.load(Ordering::Relaxed))
-            })
+        let r = interruptible(py, || {
+            with_threads(th, || lensbench_design::montecarlo::run(&ms))
         })?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;

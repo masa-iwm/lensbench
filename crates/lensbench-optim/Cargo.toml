@@ -14,7 +14,6 @@ workspace = true
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
-rayon = "1"
 
 [dev-dependencies]
 # ズーム軌跡の試験はプロジェクトの例題（3 群ズーム）から状態の系を作る

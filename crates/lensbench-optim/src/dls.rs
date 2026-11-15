@@ -1,15 +1,15 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
 use crate::pupil::pupil_gauss_shared;
 use lensbench_core::analysis::{mtf_only, to_ref, MtfMethod, ZernKind};
-use lensbench_core::error::Result;
+use lensbench_core::error::{Error, Result};
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::math::*;
+use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::surface::SurfType;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::{FieldSel, System, Trace};
 use lensbench_core::{invalid, Waves};
-use rayon::prelude::*;
 use std::sync::Arc;
 
 /// 最適化の変数
@@ -720,15 +720,12 @@ fn typical(k: Kind) -> f64 {
     }
 }
 
+/// v のそれぞれに f をかける（[`par::map`]。誤りがあれば最初の誤り）
 fn map_maybe_par<T: Sync, R: Send>(
     v: &[T],
     f: impl Fn(&T) -> Result<R> + Sync + Send,
 ) -> Result<Vec<R>> {
-    if v.len() > 1 && !lensbench_core::par::sequential() {
-        v.par_iter().map(lensbench_core::par::scoped(f)).collect()
-    } else {
-        v.iter().map(f).collect()
-    }
+    par::map(v, f).into_iter().collect()
 }
 
 /// 項で使う波長（単色はその波長、多色は重みのある波長）
@@ -1620,16 +1617,8 @@ impl Stop {
     }
 }
 
-/// 反復ごとの進み具合
-#[derive(Debug, Clone)]
-pub struct Progress {
-    pub iter: usize,
-    pub merit: f64,
-    pub x: Vec<f64>,
-    pub damping: f64,
-    /// 残差を評価した回数（ヤコビアンの分を除く）
-    pub evals: usize,
-}
+/// 反復ごとの進み具合（[`dls`] が文脈の受け手へ知らせる）
+pub use lensbench_core::par::Iter as Progress;
 
 /// DLS の結果
 #[derive(Debug, Clone)]
@@ -1696,17 +1685,20 @@ fn fd_noise(p: &Problem, x: &[f64], r: &[f64], j: &[f64], q: usize, scale: f64) 
     n_big < 0.1 * n_small
 }
 
-/// 減衰最小二乗で最適化する
+/// 減衰最小二乗で最適化する。反復が終わるたびに文脈の受け手（[`lensbench_core::par::with_progress`]）へ
+/// [`lensbench_core::par::Event::Iter`] で知らせ、文脈の中断の印（[`lensbench_core::par::with_cancel`]）が倒れたら
+/// その反復の終わり（ヤコビアンの途中なら、その前の反復の値）で止める（[`Stop::Cancelled`]）
 pub fn dls(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
-    dls_with(p, o, |_| true)
+    dls_report(p, o)
 }
 
-/// [`dls`] で、反復ごとに progress を呼ぶ（false を返すと止める）
-pub fn dls_with(
-    p: &Problem,
-    o: &DlsOpts,
-    mut progress: impl FnMut(&Progress) -> bool,
-) -> Result<DlsResult> {
+/// [`dls`] を、より大きな計算の一部として回す（公差の補償子・差し替え探索・ズーム軌跡）: 反復の進み具合は知らせない
+/// （外の計算が自分の進み具合を知らせる）。中断の印は見る
+pub fn dls_inner(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
+    par::with_progress(None, || dls_report(p, o))
+}
+
+fn dls_report(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
     p.check()?;
     let nv = p.vars.len();
     let x0 = p.x0()?;
@@ -1863,14 +1855,16 @@ pub fn dls_with(
         f = fn_;
         r = rn;
         history.push(p.merit_of(&r));
-        let pr = Progress {
-            iter: iterations,
-            merit: *history.last().unwrap(),
-            x: x.clone(),
-            damping: mu,
-            evals,
-        };
-        if !progress(&pr) {
+        if par::reporting() {
+            par::report(&par::Event::Iter(Progress {
+                iter: iterations,
+                merit: history.last().copied().unwrap_or(f64::NAN),
+                x: x.clone(),
+                damping: mu,
+                evals,
+            }));
+        }
+        if par::cancelled() {
             stop = Stop::Cancelled;
             break;
         }
@@ -1882,6 +1876,10 @@ pub fn dls_with(
             // 途中のヤコビアンの失敗は、それまでの改善を捨てずに止める
             match p.jacobian_checked(&x) {
                 Ok(v) => (r, j) = v,
+                Err(Error::Cancelled) => {
+                    stop = Stop::Cancelled;
+                    break;
+                }
                 Err(e) => {
                     stop = Stop::JacobianFailed;
                     note = Some(e.to_string());

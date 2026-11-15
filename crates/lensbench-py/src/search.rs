@@ -179,7 +179,7 @@ fn swap_search<'py>(
                 };
                 SwapSearch::new(&p, &env, &cat, spec)
             })?;
-            let mut r = s.run_to(out.as_deref(), resume, threads, None)?;
+            let mut r = s.run_to(out.as_deref(), resume, threads)?;
             if top > 0 {
                 r.truncate(top);
             }

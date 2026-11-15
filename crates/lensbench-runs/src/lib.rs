@@ -464,19 +464,9 @@ impl Plan for Grid {
 }
 
 // ------------------------------------------------------------------------------------------ 実行
-/// 進み具合
-#[derive(Debug, Clone, Copy)]
-pub struct Progress {
-    /// 終わった数（再開で飛ばした分を含む）
-    pub done: usize,
-    pub total: usize,
-    /// この実行で終えた数
-    pub ran: usize,
-    /// この実行の経過（秒）
-    pub elapsed: f64,
-    /// 残りの見込み（秒。この実行の速さから。まだ分からなければ None）
-    pub eta: Option<f64>,
-}
+/// 進み具合（[`run`] がタスクを 1 つ終えるたびに、文脈の受け手 [`lensbench_core::par::with_progress`] へ
+/// [`lensbench_core::par::Event::Count`] で知らせる）
+pub use lensbench_core::par::Count as Progress;
 
 /// 実行の設定
 #[derive(Default)]
@@ -489,10 +479,8 @@ pub struct RunOpts<'a> {
     pub header: String,
     /// 同じ頭のファイルがあれば続きから（false なら書き直す）
     pub resume: bool,
-    /// 進み具合（タスクが終わるたびに、ワーカーのスレッドから呼ぶ）
-    pub progress: Option<&'a (dyn Fn(Progress) + Sync)>,
-    /// true になったら新しいタスクを始めない（走っているものは終わらせる）
-    pub cancel: Option<&'a AtomicBool>,
+    /// 進み具合の段の名前（[`Progress::stage`]。`""` は段なし）
+    pub stage: &'static str,
 }
 
 /// 実行の結果
@@ -565,7 +553,9 @@ fn parse_line(l: &str) -> Option<(usize, u64, String)> {
 }
 
 /// タスク task(i, タスクの種) を i = 0..n で回す（再開なら終わった番号を飛ばす）。結果は JSON の値の文字列で返す。
-/// タスクが失敗したら新しいタスクを始めず、走っているものが終わってから最初のエラーを返す（書いた結果は残る）
+/// タスクが失敗したら新しいタスクを始めず、走っているものが終わってから最初のエラーを返す（書いた結果は残る）。
+/// 進み具合は文脈の受け手（[`lensbench_core::par::with_progress`]）へ、タスクが終わるたびにワーカーのスレッドから知らせる。
+/// 文脈の中断の印（[`lensbench_core::par::with_cancel`]）が倒れたら新しいタスクを始めない（走っているものは終わらせる）
 pub fn run<F>(n: usize, seed: u64, opts: &RunOpts, task: F) -> Result<RunSummary>
 where
     F: Fn(usize, u64) -> Result<String> + Sync,
@@ -620,7 +610,7 @@ where
     let stop = AtomicBool::new(false);
     let ran = AtomicUsize::new(0);
     let t0 = Instant::now();
-    let cancelled = || opts.cancel.is_some_and(|c| c.load(Ordering::Relaxed));
+    let cancelled = par::cancelled;
     par::with_threads(opts.threads, || {
         let _ = par::map(&todo, |&i| {
             if stop.load(Ordering::Relaxed) || cancelled() {
@@ -648,16 +638,17 @@ where
                     }
                     let k = ran.fetch_add(1, Ordering::Relaxed) + 1;
                     drop(g);
-                    if let Some(cb) = opts.progress {
+                    if par::reporting() {
                         let el = t0.elapsed().as_secs_f64();
                         let left = todo.len() - k.min(todo.len());
-                        cb(Progress {
+                        par::report(&par::Event::Count(Progress {
+                            stage: opts.stage,
                             done: skipped + k,
                             total: n,
                             ran: k,
                             elapsed: el,
                             eta: (k > 0).then(|| el / k as f64 * left as f64),
-                        });
+                        }));
                     }
                 }
                 Err(e) => {
