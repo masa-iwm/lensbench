@@ -302,3 +302,58 @@ fn interferogram_matches_core_with_the_configurations() {
     let w = fringe::opd_grid(&c1, FieldSel::Index(0), None, &fringe::pupil_grid(32)).unwrap();
     assert_eq!(bits(get(&o, "delta")), bits(&w.concat()));
 }
+
+/// 説明の出力（名前・型）が実際の出力と合う（ANA-19）
+#[test]
+fn declared_outputs_match_the_run() {
+    let s = sys();
+    let small = |k: &str, x: f64| (k.to_string(), Value::Num(x));
+    let cases: Vec<(&str, Config)> = vec![
+        ("spot", Config::new()),
+        ("wavefront", Config::from([small("n", 16.0)])),
+        ("zernike", Config::from([small("n", 16.0)])),
+        ("mtf", Config::from([small("n", 32.0)])),
+        (
+            "psf",
+            Config::from([small("pupil", 32.0), small("image", 32.0)]),
+        ),
+        ("rms", Config::new()),
+        ("geo_mtf", Config::from([small("n", 32.0)])),
+        (
+            "huygens_psf",
+            Config::from([small("pupil", 16.0), small("image", 16.0)]),
+        ),
+        (
+            "huygens_mtf",
+            Config::from([small("pupil", 16.0), small("image", 16.0)]),
+        ),
+        (
+            "pop",
+            Config::from([
+                small("surface", s.stop() as f64),
+                small("wave", 1.0),
+                small("rays", 17.0),
+                small("n", 32.0),
+                small("dist", 5.0),
+            ]),
+        ),
+    ];
+    let r = reg();
+    for (name, cfg) in cases {
+        let o = run(name, cfg, &s, 1.0);
+        let spec = r.get(name).unwrap().spec();
+        for d in &spec.outputs {
+            let a = o
+                .get(&d.name)
+                .unwrap_or_else(|| panic!("{name}: 出力 {} が無い", d.name));
+            assert_eq!(a.data.dtype(), d.dtype, "{name}.{}", d.name);
+            d.check().unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        for k in o.keys() {
+            assert!(
+                spec.outputs.iter().any(|d| &d.name == k),
+                "{name}: 説明に無い出力 {k}"
+            );
+        }
+    }
+}

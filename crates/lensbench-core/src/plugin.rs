@@ -96,12 +96,16 @@ impl<'a> ConfigReader<'a> {
         }
     }
 
-    /// 数（省けば None。NaN を「省略」の印にしない）
+    /// 数（省けば None）。NaN は「省略」の印にせず誤り（省くときは書かない）
     pub fn opt_num(&mut self, key: &str) -> Result<Option<f64>> {
         if !self.cfg.contains_key(key) {
             return Ok(None);
         }
-        self.num(key, 0.0).map(Some)
+        let x = self.num(key, 0.0)?;
+        if x.is_nan() {
+            invalid!("設定 {key} に NaN（省くときは書かない）");
+        }
+        Ok(Some(x))
     }
 
     /// 文字列（省けば `default`）
@@ -366,10 +370,128 @@ pub struct Spec {
     pub doc: String,
     /// 入力: (名前, 説明)
     pub inputs: Vec<(String, String)>,
-    /// 出力: (名前, 説明)
-    pub outputs: Vec<(String, String)>,
+    /// 出力（名前・型・形・単位・説明）
+    pub outputs: Vec<OutputSpec>,
     /// 系（[`Context::system`]）が要るか
     pub needs_system: bool,
+}
+
+/// 出力の 1 つの配列の説明（ANA-19）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OutputSpec {
+    pub name: String,
+    /// 要素の型: "float64"・"complex128"・"bool"
+    pub dtype: String,
+    /// 形（"(2,)"・"(n, n)" など。1 つの値は "()"、決まった形が無ければ空）
+    pub shape: String,
+    /// 単位（mm・波 など。無ければ空）
+    pub unit: String,
+    pub doc: String,
+}
+
+impl OutputSpec {
+    pub fn new(name: &str, dtype: &str, shape: &str, unit: &str, doc: &str) -> Self {
+        OutputSpec {
+            name: name.into(),
+            dtype: dtype.into(),
+            shape: shape.into(),
+            unit: unit.into(),
+            doc: doc.into(),
+        }
+    }
+
+    /// 形が読めるか（dtype が 3 種のどれか、形は空か「()」か「(n, *形)」のような ASCII の名前・数をカンマでつないだもの、
+    /// 説明に角括弧が残っていない）。誤りは名前つきの文
+    pub fn check(&self) -> std::result::Result<(), String> {
+        let n = &self.name;
+        if !matches!(self.dtype.as_str(), "float64" | "complex128" | "bool") {
+            return Err(format!("{n}: dtype {}", self.dtype));
+        }
+        let s = self.shape.as_str();
+        if !s.is_empty() && s != "()" {
+            let inner = s.strip_prefix('(').and_then(|x| x.strip_suffix(')'));
+            let ok = inner.is_some_and(|x| {
+                x.contains(',')
+                    && x.split(',')
+                        .map(str::trim)
+                        .filter(|d| !d.is_empty())
+                        .all(|d| {
+                            let d = d.trim_start_matches('*');
+                            !d.is_empty()
+                                && d != "0"
+                                && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        })
+            });
+            if !ok {
+                return Err(format!("{n}: 形 {s}"));
+            }
+        }
+        if self.doc.contains('[') || self.doc.contains(']') {
+            return Err(format!("{n}: 説明に角括弧 {}", self.doc));
+        }
+        Ok(())
+    }
+
+    /// 説明の文から型・形・単位を取り出す: 「complex」「complex128」「bool」の語で型（無ければ float64）、カンマを含む
+    /// 最後の括弧（「(n, n)」）か「scalar」で形、最後の角括弧（「[mm]」）で単位。残りが説明
+    pub fn from_doc(name: &str, desc: &str) -> Self {
+        let mut d = desc.to_string();
+        let mut take = |pat: &str| -> bool {
+            match d.find(pat) {
+                Some(i) => {
+                    d.replace_range(i..i + pat.len(), "");
+                    true
+                }
+                None => false,
+            }
+        };
+        let dtype = if take("complex128") || take("complex") {
+            "complex128"
+        } else if take("bool") {
+            "bool"
+        } else {
+            take("float64");
+            "float64"
+        };
+        let mut unit = String::new();
+        if let (Some(a), Some(b)) = (d.rfind('['), d.rfind(']')) {
+            if a < b {
+                unit = d[a + '['.len_utf8()..b].trim().to_string();
+                d.replace_range(a..b + ']'.len_utf8(), "");
+            }
+        }
+        let mut shape = String::new();
+        let (mut from, mut last) = (0, None);
+        while let Some(a) = d[from..].find('(').map(|i| i + from) {
+            let Some(b) = d[a..].find(')').map(|i| i + a) else {
+                break;
+            };
+            if d[a..b].contains(',') {
+                last = Some((a, b));
+            }
+            from = b;
+        }
+        if let Some((a, b)) = last {
+            shape = d[a..=b].to_string();
+            d.replace_range(a..=b, "");
+        }
+        if shape.is_empty() && d.contains("scalar") {
+            shape = "()".into();
+            d = d.replacen("scalar", "", 1);
+        }
+        let d = d.split_whitespace().collect::<Vec<_>>().join(" ");
+        let doc = d
+            .replace(" 、", "、")
+            .trim_matches(|c: char| c == '、' || c == ',' || c.is_whitespace())
+            .to_string();
+        OutputSpec {
+            name: name.into(),
+            dtype: dtype.into(),
+            shape,
+            unit,
+            doc,
+        }
+    }
 }
 
 /// 設定の項目の型（GUI の欄を作る）
@@ -637,6 +759,37 @@ mod tests {
         assert!(Kind::parse("x").is_err() && Kind::parse("detector").unwrap() == Kind::Detector);
     }
 
+    /// 出力の説明の文から型・形・単位を取り出す
+    #[test]
+    fn output_spec_from_doc() {
+        let o = OutputSpec::from_doc("w", "OPD (n, n) [波]、外は NaN");
+        assert_eq!(
+            (
+                o.dtype.as_str(),
+                o.shape.as_str(),
+                o.unit.as_str(),
+                o.doc.as_str()
+            ),
+            ("float64", "(n, n)", "波", "OPD、外は NaN")
+        );
+        let o = OutputSpec::from_doc("c", "complex128 (4, n)（spectral）");
+        assert_eq!(
+            (o.dtype.as_str(), o.shape.as_str(), o.doc.as_str()),
+            ("complex128", "(4, n)", "（spectral）")
+        );
+        let o = OutputSpec::from_doc("z4", "scalar mm");
+        assert_eq!((o.shape.as_str(), o.doc.as_str()), ("()", "mm"));
+        let o = OutputSpec::from_doc("index", "番号 (i, j) (n, 2)");
+        assert_eq!(
+            (o.shape.as_str(), o.doc.as_str()),
+            ("(n, 2)", "番号 (i, j)")
+        );
+        let o = OutputSpec::from_doc("used", "復元に使ったか (n,) bool");
+        assert_eq!((o.dtype.as_str(), o.shape.as_str()), ("bool", "(n,)"));
+        let o = OutputSpec::from_doc("pilot", "(ax, ay, curv)");
+        assert_eq!(o.shape, "(ax, ay, curv)");
+    }
+
     /// 真偽は true・false か 0・1、整数の欄に NaN を書くと「省略」でなく誤り（ANA-19）
     #[test]
     fn flags_and_counts() {
@@ -650,6 +803,7 @@ mod tests {
         assert!(!r.flag("b", true).unwrap());
         assert!(r.flag("z", true).unwrap());
         assert!(r.opt_count("n").is_err());
+        assert!(r.opt_num("n").is_err());
         assert_eq!(r.opt_count("m").unwrap(), None);
         r.finish().unwrap();
     }

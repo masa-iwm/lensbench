@@ -194,7 +194,18 @@ fn spec_to_py<'py>(py: Python<'py>, p: &dyn Plugin) -> PyResult<Bound<'py, PyDic
     }
     d.set_item("config", cfg)?;
     d.set_item("inputs", s.inputs.clone())?;
-    d.set_item("outputs", s.outputs.clone())?;
+    // 出力（名前・型・形・単位・説明の dict の並び）
+    let outs = PyList::empty(py);
+    for o in &s.outputs {
+        let e = PyDict::new(py);
+        e.set_item("name", &o.name)?;
+        e.set_item("dtype", &o.dtype)?;
+        e.set_item("shape", &o.shape)?;
+        e.set_item("unit", &o.unit)?;
+        e.set_item("doc", &o.doc)?;
+        outs.append(e)?;
+    }
+    d.set_item("outputs", outs)?;
     d.set_item("needs_system", s.needs_system)?;
     Ok(d)
 }
@@ -209,7 +220,7 @@ fn plugins() -> Vec<(String, &'static str)> {
         .collect()
 }
 
-/// プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"}
+/// プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"（出力の名前・型・形・単位の dict の並び）}
 #[pyfunction]
 fn plugin_spec<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyDict>> {
     let p = read_registry().get(name).map_err(err)?;

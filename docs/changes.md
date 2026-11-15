@@ -21,8 +21,9 @@
 - プラグインの約束（ANA-19）: 設定の説明は `Plugin::params()` だけ（`Spec::config` を消した）。同梱の解析も型・既定・単位つきの
   項目を持つ。Python の `plugin_spec(name)["config"]` は (名前, 説明) の組でなく項目の dict（name・type・default・unit・doc・choices・len）
   の並び、serve の `plugins` の各プラグインから `config` を消した（`params` だけ）。設定の値に真偽（true・false）を足し、真偽の項目は
-  true・false か 0・1 を受ける（Python は True・False がそのまま渡る。前は bool を誤りにした）。数・整数の項目に NaN を書くと「省略」
-  でなく誤り。
+  true・false か 0・1 を受ける（Python は True・False がそのまま渡る。前は bool を誤りにした）。省略できる数・整数の項目に NaN を書くと
+  「省略」でなく誤り。出力の説明も名前・型（float64・complex128・bool）・形・単位つき（`Spec::outputs` は `OutputSpec` の並び）で、
+  Python の `plugin_spec(name)["outputs"]` と serve の `plugins` の `outputs` は dict の並び。
 - 公差の設定（`tolerance --spec`）も型で読む（スキーマ `tolerance.schema.json`）。`wedge_face` は小文字の `back`・`front` だけ、
   `relative`・`catalog`・`samples` などの真偽に真偽でない値は誤り（前は無視）。誤りの文は欄の道つきの serde のもの
   （例「tolerance.lenses.L1: unknown field `tlit`, …」）。先頭の `$schema` は受ける。

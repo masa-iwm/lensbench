@@ -270,7 +270,9 @@ pub fn plugins_json() -> Value {
             let params: Vec<Value> = pl.params().iter().map(crate::params::param_json).collect();
             Some(json!({
                 "name": name, "kind": kind.as_str(), "doc": s.doc, "needs_system": s.needs_system,
-                "params": params, "inputs": pairs(&s.inputs), "outputs": pairs(&s.outputs),
+                "params": params, "inputs": pairs(&s.inputs), "outputs": s.outputs.iter().map(|o| json!({
+                    "name": o.name, "dtype": o.dtype, "shape": o.shape, "unit": o.unit, "doc": o.doc,
+                })).collect::<Vec<_>>(),
             }))
         })
         .collect();

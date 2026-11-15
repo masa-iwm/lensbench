@@ -25,6 +25,10 @@ def test_builtin_analysis_listed():
     assert cfg["rings"]["type"] == "count" and cfg["rings"]["default"] == 6
     assert cfg["reference"]["choices"] == ["centroid", "chief"]
     assert lb.plugin_spec("wavefront")["config"][2]["default"] is False
+    # 出力は名前・型・形・単位つき
+    out = {o["name"]: o for o in lb.plugin_spec("psf")["outputs"]}
+    assert out["i"]["dtype"] == "float64" and out["i"]["shape"] == "(image, image)"
+    assert out["center"]["unit"] == "mm"
     # 真偽は True・False（0・1 も）
     w = lb.Plugin("wavefront", ref_primary=True, n=16).run(system=a0(), field=1)
     w0 = lb.Plugin("wavefront", ref_primary=1, n=16).run(system=a0(), field=1)
