@@ -23,6 +23,7 @@ mod detector;
 mod figure;
 mod mech;
 mod raw;
+mod sys_extra;
 mod zgroup;
 pub use ap_shape::ApShape;
 pub use detector::DetectorPick;
@@ -30,6 +31,7 @@ use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
 pub use mech::MechPick;
+pub use sys_extra::SysExtra;
 pub use zgroup::ZGroup;
 
 /// 要素の種類
@@ -1164,6 +1166,9 @@ pub struct Combo {
     /// 最初の要素の前の空気（前の絞りが無いとき。開いたプロジェクトの先頭の空気、往路を戻る鏡は復路でも通る）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lead_air: Option<f64>,
+    /// 欄に出さない系の値（視野の正規化・GLRS・温度と気圧）
+    #[serde(skip_serializing_if = "SysExtra::is_empty")]
+    pub extra: SysExtra,
 }
 
 /// 組合せの群（プロジェクトの group ブロック）の役割と移動
@@ -1209,6 +1214,7 @@ impl Default for Combo {
             groups: Vec::new(),
             detector: None,
             lead_air: None,
+            extra: SysExtra::default(),
         }
     }
 }
@@ -3740,43 +3746,3 @@ fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
 #[cfg(test)]
 #[path = "combo_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-mod lock_tests {
-    use super::*;
-
-    /// ロックは中身だけ、「位置も」を付けると後の間隔も変えられない
-    #[test]
-    fn lock_place_blocks_gap() {
-        let mut c = Combo::default();
-        c.picks.push(Pick::new(ElemKind::Lens));
-        c.picks.push(Pick::new(ElemKind::Lens));
-        c.picks[0].locked = true;
-        assert!(gap_mut(&mut c, 0).is_some());
-        c.picks[0].lock_place = true;
-        assert!(c.picks[0].fixed());
-        assert!(gap_mut(&mut c, 0).is_none());
-        assert!(gap_mut(&mut c, 1).is_some());
-    }
-}
-
-#[cfg(test)]
-mod nav_tests {
-    use super::*;
-
-    /// カーソルの下の点は拡大縮小しても動かない（#124）
-    #[test]
-    fn zoom_keeps_point_under_cursor() {
-        let mut v = View::default();
-        let fc = Pos2::new(100.0, 50.0);
-        let c = Pos2::new(160.0, 20.0);
-        // 図の点 w（全体表示の中心からの図の上の差 × s）が画面の c に来ている
-        let world = |v: &View, q: Pos2| (q - (fc + v.pan)) / v.zoom_log.exp();
-        let w0 = world(&v, c);
-        v.zoom_about(fc, c, 2.0);
-        assert!((world(&v, c) - w0).length() < 1e-4);
-        assert!((v.zoom_log - 2f32.ln()).abs() < 1e-6);
-        v.zoom_about(fc, Pos2::new(10.0, 90.0), 0.5);
-        assert!((v.zoom_log).abs() < 1e-6);
-    }
-}

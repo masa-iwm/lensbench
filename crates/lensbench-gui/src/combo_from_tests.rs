@@ -226,3 +226,80 @@ fn raw_blocks_build_the_same() {
     assert!(a == b, "{}", super::first_diff(&a, &b, ""));
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// 試験用の .zmx は、像面を傾けた C0・C1 と多重構成のもの以外が組合せになり、組合せから作った系が元と同じ。
+/// 玉の表（units）は同じ玉に、要素の id の群（.zmx の全体）が 1 つ加わるだけ
+#[test]
+fn zmx_files_become_combos() {
+    let gd = vec![root().join("tests/glass")];
+    let mut files: Vec<_> = std::fs::read_dir(root().join("tests/refs"))
+        .unwrap()
+        .map(|e| e.unwrap().path().join("system.zmx"))
+        .filter(|p| p.exists())
+        .collect();
+    files.sort();
+    let (mut ok, mut no) = (Vec::new(), Vec::new());
+    for f in &files {
+        let name = f
+            .parent()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let c = match Combo::from_zmx(f, &gd, &[]) {
+            Ok(c) => c,
+            Err(e) => {
+                no.push(format!("{name}: {e}"));
+                continue;
+            }
+        };
+        assert_eq!(c.picks.len(), 1, "{name}");
+        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");
+        let o = lensbench_project::open::OpenSpec {
+            glass_dirs: &gd,
+            cfg: 1,
+            ..Default::default()
+        };
+        let s = lensbench_project::open::open(f, &o).unwrap().system;
+        let base = f.parent().unwrap();
+        let (t, _) =
+            lensbench_project::expand_json(&c.project().to_string(), base, &gd, None, None)
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        lensbench_project::same_system(&s, &t).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let units = |s: &lensbench_core::System| {
+            s.units
+                .iter()
+                .map(|u| (u.name.clone(), u.spans.clone()))
+                .collect::<Vec<_>>()
+        };
+        let (got, want) = (units(&t), units(&s));
+        assert_eq!(got[..got.len() - 1], want[..], "{name}");
+        assert_eq!(
+            got[got.len() - 1].1,
+            vec![[1, s.surfaces.len() - 2]],
+            "{name}"
+        );
+        ok.push(name);
+    }
+    assert!(ok.len() >= 30, "{ok:?} {no:?}");
+    // 作業フォルダからの相対パスで開いても（GUI の引数）
+    let rel = Path::new("../../tests/refs/A0/system.zmx");
+    let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
+    assert!(
+        Path::new(&c.picks[0].path).is_absolute(),
+        "{}",
+        c.picks[0].path
+    );
+    // A0 の GLRS 8 はブロックの面で持つ（前に要素を足しても同じ面）
+    assert_eq!(c.picks[0].id, lensbench_project::ZMX_ID);
+    assert_eq!(c.extra.glrs, Some(json!({ "block": "zmx", "surface": 7 })));
+    assert!(
+        no.iter()
+            .all(|e| e.starts_with("C0") || e.starts_with("C1")),
+        "{no:?}"
+    );
+    for n in ["A0", "A6", "F2"] {
+        assert!(ok.iter().any(|x| x == n), "{n}: {no:?}");
+    }
+}

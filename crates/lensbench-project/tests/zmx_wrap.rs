@@ -57,6 +57,10 @@ fn zmx_project_refuses_what_it_cannot_write() {
         },
     )
     .unwrap();
+    let mut m = s.clone();
+    m.set_config_count(2).unwrap();
+    let e = lensbench_project::zmx_project(&m, "x.zmx").unwrap_err();
+    assert!(e.contains("configurations"), "{e}");
     s.field_type =
         lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
             surf: 3,

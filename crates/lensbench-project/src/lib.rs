@@ -65,7 +65,7 @@ pub use blocks::*;
 pub use catalog::*;
 pub use expand::*;
 pub use model::*;
-pub use zmx_wrap::{same_system, zmx_project};
+pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};
 
 /// プロジェクトファイルを読んで展開する
 pub fn load(

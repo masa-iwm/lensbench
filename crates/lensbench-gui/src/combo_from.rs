@@ -1,9 +1,10 @@
 //! プロジェクトの .json（ブロックで書いた系）を組合せにする（文書モデルの 1 段目、GAR-02・GUX-11）。
 //! 組合せから作り直したプロジェクトが元と同じ（[`canon`] で比べる）ときだけ組合せにする。違えば誤りを返し、
-//! 呼ぶ側は今までどおり系として開く
+//! 呼ぶ側は今までどおり系として開く。.zmx は zmx ブロック 1 つのプロジェクトにして、作り直した系が元の系と
+//! 同じときだけ組合せにする（文書モデルの 2 段目）
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
@@ -17,6 +18,29 @@ use lensbench_project::{ApertureType, FieldSolveSpec, FieldsSpec, Project};
 type R<T> = Result<T, String>;
 
 impl Combo {
+    /// .zmx（構成 1 つだけ）を、まるごと取り込む要素 1 つの組合せにする。プロジェクトで書けない設定（多重構成・
+    /// 像面の傾きなど）があり、作り直した系が元と違えば誤り
+    pub fn from_zmx(f: &Path, glass_dirs: &[PathBuf], lens_catalogs: &[PathBuf]) -> R<Combo> {
+        // 組合せの系は一時のフォルダに書いて読むので、パスは作業フォルダから絶対にしておく
+        let f = &absolute(f);
+        let o = lensbench_project::open::OpenSpec {
+            glass_dirs,
+            lens_catalogs,
+            cfg: 1,
+            ..Default::default()
+        };
+        let s = lensbench_project::open::open(f, &o)
+            .map_err(|e| e.to_string())?
+            .system;
+        // ブロックのパスはファイルの名前だけ（プロジェクトの相対パスはフォルダ base から）
+        let name = f.file_name().ok_or("no file name")?.to_string_lossy();
+        let p = lensbench_project::zmx_project(&s, &name)?;
+        let base = f.parent().unwrap_or(Path::new(""));
+        let (t, _) = lensbench_project::expand_json(&p.to_string(), base, glass_dirs, None, None)?;
+        lensbench_project::same_system(&s, &t)?;
+        Combo::from_project(&p, base)
+    }
+
     /// プロジェクトの JSON（`gui` は見ない）を組合せにする。相対パスは base から。組合せで同じ系を書けなければ誤り
     pub fn from_project(v: &Value, base: &Path) -> R<Combo> {
         let mut v = v.clone();
@@ -27,9 +51,6 @@ impl Combo {
         move_state_off(&mut v);
         // ふつうの読込と同じ検査（知らないキー・検出器）。黙って落とさない
         let p = Project::from_json(&v.to_string())?;
-        if p.environment != lensbench_project::Environment::default() {
-            return Err("environment".into());
-        }
         let mut c = Combo {
             name: p.name.clone(),
             glass_catalogs: p.glass_catalogs.clone(),
@@ -247,9 +268,8 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
         .iter()
         .enumerate()
         .map(|(i, p)| FieldPt {
-            x: p[0],
-            y: p[1],
-            w: fs.weights.get(i).copied().unwrap_or(1.0),
+            vig: fs.vignetting.get(i).copied().unwrap_or_default(),
+            ..FieldPt::xyw(p[0], p[1], fs.weights.get(i).copied().unwrap_or(1.0))
         })
         .collect();
     c.field_solve = match fs.solve {
@@ -280,6 +300,7 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
     };
     c.afocal = v["afocal"].as_str().map(str::to_string);
     c.floating_clip = v["floating_clip"].as_bool().unwrap_or(true);
+    c.extra = crate::combo::SysExtra::read(v)?;
     Ok(())
 }
 
@@ -899,6 +920,18 @@ fn canon(v: &Value) -> R<Value> {
     {
         v["fields"]["weights"] = json!([]);
     }
+    // ケラレ係数は書かない視野が 0、全部 0 なら書かないのと同じ
+    let n = v["fields"]["points"].as_array().map_or(0, Vec::len);
+    if let Some(vg) = v["fields"]["vignetting"].as_array_mut() {
+        vg.resize(n.max(vg.len()), json!([0.0, 0.0, 0.0, 0.0, 0.0]));
+        if vg
+            .iter()
+            .flat_map(|r| r.as_array().into_iter().flatten())
+            .all(|x| x.as_f64() == Some(0.0))
+        {
+            vg.clear();
+        }
+    }
     // 面の上書きは 1 項目ずつ、ブロック・面・項目の順に（同じ項目の順は残す）
     if let Some(es) = v["surface_edits"].as_array() {
         let mut one: Vec<Value> = es
@@ -983,3 +1016,11 @@ fn first_diff(a: &Value, b: &Value, at: &str) -> String {
 #[cfg(test)]
 #[path = "combo_from_tests.rs"]
 mod tests;
+
+/// 作業フォルダからの相対パスを絶対パスにする（Web 版などで作業フォルダが無ければそのまま）
+pub(crate) fn absolute(p: &Path) -> PathBuf {
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    std::env::current_dir().map_or_else(|_| p.to_path_buf(), |d| d.join(p))
+}

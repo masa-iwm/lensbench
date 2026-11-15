@@ -17,16 +17,13 @@ impl Core {
         let is_json = p
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("json"));
-        if is_json {
-            // 続きは答え（{gui, blocks}）を受けて [`Self::open_doc_peeked`]
-            self.preview.send(
-                Tag::OpenDoc(asked),
-                "doc_peek",
-                json!({ "file": p.display().to_string() }),
-            );
-            return;
+        // 続きは答え（{gui, blocks}。.zmx は組合せにできたら combo）を受けて [`Self::open_doc_peeked`]
+        let mut q = json!({ "file": p.display().to_string() });
+        if !is_json {
+            q["glass_dirs"] = glass_dirs(&self.s.glass_dirs);
+            q["lens_catalogs"] = dirs(&self.s.lens_dirs);
         }
-        self.open_doc_peeked(p, asked, None);
+        self.preview.send(Tag::OpenDoc(asked), "doc_peek", q);
     }
 
     /// [`Self::open_doc_with`] の続き。v は下書きの Worker の `doc_peek` の答え（{gui, blocks}。.zmx・読めない
@@ -64,14 +61,16 @@ impl Core {
             // 別の組合せ: 元に戻す段は空から
             self.combo_hist = Default::default();
             self.p.combo_view = combo::View::default();
-            self.loc.doc_path = Some(p.to_path_buf());
+            // .zmx から作った組合せは .zmx に上書きしない（保存でプロジェクトの書き先を選ばせる）
+            let from_zmx = v.is_some_and(|v| v["zmx"] == json!(true));
+            self.loc.doc_path = (!from_zmx).then(|| p.to_path_buf());
             self.build_combo(self.doc.combo.project());
             return;
         }
         // 系ファイル（面の並び）だけはその場に上書きする。ブロックで書いたプロジェクトは、保存すると面の並びに
         // なるので書き先を選ばせる
         self.loc.doc_path = v
-            .is_some_and(|v| v["blocks"] != json!(true))
+            .is_some_and(|v| v["blocks"] != json!(true) && v["zmx"] != json!(true))
             .then(|| p.to_path_buf());
         self.open(p);
     }

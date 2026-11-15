@@ -4,6 +4,9 @@
 use super::*;
 use serde_json::json;
 
+/// [`zmx_project`] の zmx ブロックの id（GLRS をブロックの面で書くとき）
+pub const ZMX_ID: &str = "zmx";
+
 /// 系 s（`path` の .zmx を構成 1 で読んだもの）の設定と、`path` をまるごと取り込む zmx ブロック 1 つのプロジェクト。
 /// プロジェクトで書けない設定（多重構成・条件で定める視野）があれば誤り
 pub fn zmx_project(s: &System, path: &str) -> Result<Value, String> {
@@ -69,7 +72,15 @@ pub fn zmx_project(s: &System, path: &str) -> Result<Value, String> {
     if !s.floating_clip {
         p["floating_clip"] = json!(false);
     }
-    if s.glrs != 1 {
+    // GLRS はブロックの面で書く（前に要素を足しても同じ面を指す）。ブロックの面は座標ブレークを数えないので、
+    // 座標ブレーク・物体面・像面は系の面の番号のまま
+    let image = s.surfaces.len().saturating_sub(1);
+    let cb = |j: usize| s.surfaces[j].typ == SurfType::CoordBrk;
+    if (1..image).contains(&s.glrs) && !cb(s.glrs) {
+        p["blocks"][0]["id"] = json!(ZMX_ID);
+        let k = (1..s.glrs).filter(|&j| !cb(j)).count();
+        p["glrs"] = json!({ "block": ZMX_ID, "surface": k });
+    } else if s.glrs != 1 {
         p["glrs"] = json!(s.glrs);
     }
     if s.temperature != 20.0 || s.pressure != 1.0 || s.adjust_index {

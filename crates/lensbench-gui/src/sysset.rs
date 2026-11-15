@@ -13,6 +13,9 @@ use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::theme;
 
+mod pts;
+pub use pts::{FieldPt, WavePt};
+
 /// 開口の種類（プロジェクトの `aperture.type`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -204,82 +207,6 @@ impl Aiming {
     }
 }
 
-/// 視野の点（x, y と重み）。古い保存の数（視野角 y）も読む
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(from = "FieldIn")]
-pub struct FieldPt {
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-}
-
-impl FieldPt {
-    pub fn y(y: f64) -> FieldPt {
-        FieldPt { x: 0.0, y, w: 1.0 }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum FieldIn {
-    Y(f64),
-    Pt {
-        #[serde(default)]
-        x: f64,
-        #[serde(default)]
-        y: f64,
-        #[serde(default = "one")]
-        w: f64,
-    },
-}
-
-impl From<FieldIn> for FieldPt {
-    fn from(v: FieldIn) -> FieldPt {
-        match v {
-            FieldIn::Y(y) => FieldPt::y(y),
-            FieldIn::Pt { x, y, w } => FieldPt { x, y, w },
-        }
-    }
-}
-
-/// 波長 [µm] と重み。古い保存の数（波長だけ）も読む
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(from = "WaveIn")]
-pub struct WavePt {
-    pub um: f64,
-    pub w: f64,
-}
-
-impl WavePt {
-    pub fn um(um: f64) -> WavePt {
-        WavePt { um, w: 1.0 }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WaveIn {
-    Um(f64),
-    Pt {
-        um: f64,
-        #[serde(default = "one")]
-        w: f64,
-    },
-}
-
-impl From<WaveIn> for WavePt {
-    fn from(v: WaveIn) -> WavePt {
-        match v {
-            WaveIn::Um(um) => WavePt::um(um),
-            WaveIn::Pt { um, w } => WavePt { um, w },
-        }
-    }
-}
-
-fn one() -> f64 {
-    1.0
-}
-
 const AFOCAL_UNITS: [AfocalUnit; 6] = [
     AfocalUnit::Microradians,
     AfocalUnit::Milliradians,
@@ -379,6 +306,8 @@ impl Combo {
                         x: f["x"].as_f64().unwrap_or(0.0),
                         y: f["y"].as_f64().unwrap_or(0.0),
                         w: f["w"].as_f64().unwrap_or(1.0),
+                        vig: ["vdx", "vdy", "vcx", "vcy", "van"]
+                            .map(|k| f[k].as_f64().unwrap_or(0.0)),
                     })
                     .collect()
             })
@@ -549,6 +478,9 @@ impl Combo {
         if self.fields.iter().any(|p| p.w != 1.0) {
             f["weights"] = json!(self.fields.iter().map(|p| p.w).collect::<Vec<_>>());
         }
+        if self.fields.iter().any(FieldPt::has_vig) {
+            f["vignetting"] = json!(self.fields.iter().map(|p| p.vig).collect::<Vec<_>>());
+        }
         if self.field_kind == FieldKind::Solve {
             f["solve"] = self.field_solve.json();
         }
@@ -569,6 +501,7 @@ impl Combo {
         v["primary"] = json!(self.primary.clamp(1, self.waves.len().max(1)));
         v["aperture"] = self.aperture_json();
         v["fields"] = self.fields_json();
+        self.extra.put(v);
         if let Some(d) = self.object_distance {
             v["object_distance"] = json!(d);
             if self.telecentric {
@@ -1059,7 +992,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         let next = c
             .fields
             .last()
-            .map_or(FieldPt::y(0.0), |f| FieldPt { y: f.y + 1.0, ..*f });
+            .map_or(FieldPt::y(0.0), |f| FieldPt::xyw(f.x, f.y + 1.0, f.w));
         c.fields.push(next);
     }
     ui.separator();
@@ -1293,11 +1226,7 @@ mod tests {
             aperture: ApKind::Fnum,
             ap_value: 4.0,
             field_kind: FieldKind::ObjectHeight,
-            fields: vec![FieldPt {
-                x: 1.0,
-                y: 2.0,
-                w: 0.5,
-            }],
+            fields: vec![FieldPt::xyw(1.0, 2.0, 0.5)],
             waves: vec![WavePt { um: 0.6, w: 2.0 }],
             primary: 3,
             object_distance: Some(50.0),
