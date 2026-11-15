@@ -109,9 +109,18 @@ impl App {
                 self.c.um_open = true;
                 self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
+            Step::UndoOpen => {
+                // 開いた系の中の段より先まで戻す: 開く前の組合せ（干渉計）に戻る
+                let n = self.c.undo_list(true).len();
+                self.c.undo(true, n);
+                self.exec(ctx, Cmd::FocusKind(Kind::Layout));
+            }
             Step::Zoom => {
                 // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
-                self.c.open(&crate::tour::zoom_sample(dir));
+                // 前の組合せは文書の段に積む（最後の段で元に戻す）
+                let p = crate::tour::zoom_sample(dir);
+                let _ = self.c.push_doc(trf("Open {}", &[&"P17"]));
+                self.c.open(&p);
                 let z = &mut self.c.p.zoom;
                 z.vars = ["G2.shift", "G3.shift"]
                     .map(|n| crate::zoom_panel::VarRow {

@@ -60,10 +60,10 @@ impl App {
                 (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
                 (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r),
                 // 読めないファイルは系の読み込みの方で誤りを出す
-                (Tag::OpenDoc(asked), r) => {
+                (Tag::OpenDoc, r) => {
                     if let Some(f) = params["file"].as_str() {
                         let f = PathBuf::from(f);
-                        self.c.open_doc_peeked(&f, *asked, r.ok());
+                        self.c.open_doc_peeked(&f, r.ok());
                     }
                 }
                 // カタログの玉の断面（読めなければ空の図）

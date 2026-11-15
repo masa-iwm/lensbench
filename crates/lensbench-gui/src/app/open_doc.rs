@@ -6,12 +6,8 @@ use super::*;
 impl Core {
     /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
     /// 組合せに戻して系を作る（#129）。同梱していないブロックのプロジェクトも、組合せで書ければ組合せにする（GUX-11）
+    /// 開く前の文書は元に戻す段に積む（確かめずに替え、元に戻せる）
     pub(super) fn open_doc(&mut self, p: &Path) {
-        self.open_doc_with(p, false);
-    }
-
-    /// [`Self::open_doc`]。asked は今の組合せを消してよいか聞いて「はい」だった
-    pub(super) fn open_doc_with(&mut self, p: &Path, asked: bool) {
         self.combo_census = None;
         self.push_recent(&p.display().to_string());
         let is_json = p
@@ -23,32 +19,20 @@ impl Core {
             q["glass_dirs"] = glass_dirs(&self.s.glass_dirs);
             q["lens_catalogs"] = dirs(&self.s.lens_dirs);
         }
-        self.preview.send(Tag::OpenDoc(asked), "doc_peek", q);
+        self.preview.send(Tag::OpenDoc, "doc_peek", q);
     }
 
-    /// [`Self::open_doc_with`] の続き。v は下書きの Worker の `doc_peek` の答え（{gui, blocks}。.zmx・読めない
+    /// [`Self::open_doc`] の続き。v は下書きの Worker の `doc_peek` の答え（{gui, blocks}。.zmx・読めない
     /// ファイルは None）
-    pub(super) fn open_doc_peeked(&mut self, p: &Path, asked: bool, v: Option<&Value>) {
+    pub(super) fn open_doc_peeked(&mut self, p: &Path, v: Option<&Value>) {
         // 同梱の組合せか、ブロックから作った組合せ（doc_peek の combo、文書モデル 1 段目）
         let made = |v: &Value| serde_json::from_value(v.get("combo")?.clone()).ok();
+        let name = p
+            .file_name()
+            .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into());
+        self.flush_set();
+        self.docs.opening = self.push_doc(trf("Open {}", &[&name]));
         if let Some(c) = v.and_then(|v| combo_of_project(v).or_else(|| made(v))) {
-            if !self.doc.combo.picks.is_empty()
-                && self.doc.combo != c
-                && self.loc.built_combo.as_ref() != Some(&self.doc.combo)
-                && !asked
-            {
-                let p = p.to_path_buf();
-                self.ask(
-                    tr("Expand"),
-                    tr("Discard the current combination and open the one in the file?"),
-                    move |c, yes| {
-                        if yes {
-                            c.open_doc_with(&p, true);
-                        }
-                    },
-                );
-                return;
-            }
             // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
             // 付ける前を持つと、開いただけで未保存になる
             let mut c = c;

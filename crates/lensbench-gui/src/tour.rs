@@ -96,6 +96,7 @@ pub enum Step {
     Coatings,
     Zoom,
     Units,
+    UndoOpen,
     Catalog,
     Combo,
     Build,
@@ -120,7 +121,7 @@ pub enum Step {
 }
 
 impl Step {
-    const ORDER: [Step; 28] = [
+    const ORDER: [Step; 29] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -148,6 +149,7 @@ impl Step {
         Step::Coatings,
         Step::Zoom,
         Step::Units,
+        Step::UndoOpen,
         Step::Done,
     ];
 
@@ -180,6 +182,7 @@ impl Step {
             Step::Coatings => "17_coatings",
             Step::Zoom => "18_zoom",
             Step::Units => "19_units",
+            Step::UndoOpen => "20_undo_open",
             Step::Done => "done",
         }
     }
@@ -330,6 +333,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 27);
+        assert_eq!(n, 28);
     }
 }

@@ -34,8 +34,12 @@ impl Core {
                     self.p.oss = Default::default();
                     self.p.ld.insp.stale();
                 }
-                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）
+                // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）。ほかの理由で
+                // 読めなければ開く前の文書に戻す
                 Tag::Load => {
+                    if missing_glass_name(e).is_none() {
+                        self.revert_open();
+                    }
                     if let Some(f) = d.replies[0].params["file"].as_str() {
                         let f = f.to_string();
                         self.s.recent.retain(|x| x != &f);
@@ -96,12 +100,11 @@ impl Core {
         let (params, mut v) = d.take_first();
         match d.tag {
             Tag::Load => {
+                self.docs.opening = false;
                 // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
                 self.sys.hist = (0, 0);
                 self.sys.hist_list = Default::default();
                 self.take_history(&v);
-                self.new_undo = None;
-                self.new_redo = None;
                 if d.replies[0].method == "reload" {
                     text = tr("Reloaded (Ctrl+Z to undo)").into();
                 }
@@ -203,11 +206,7 @@ impl Core {
             Tag::Set | Tag::Edit | Tag::History => {
                 self.take_history(&v);
                 if d.tag != Tag::History {
-                    self.new_redo = None;
-                }
-                if d.tag == Tag::History && std::mem::take(&mut self.redo_new_pending) {
-                    self.new_system();
-                    return;
+                    self.docs.edited();
                 }
                 let back = params["back"].as_bool() == Some(true);
                 // 開く・読み直すを戻した: 戻した系を開いたときと同じく表・解析を出し直す。読んだままの系でなければ
@@ -217,6 +216,8 @@ impl Core {
                     let top = &self.sys.hist_list.0.first();
                     self.loc.ld_dirty =
                         top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
+                    // 前の文書へ戻した: 写しの欄（組合せ・保存先・変更あり）を当てる
+                    self.take_pending_doc();
                     self.info(tr(if back { "Undone" } else { "Redone" }));
                     return;
                 }
@@ -341,7 +342,7 @@ impl Core {
                 return;
             }
             // 下書きの Worker の分（tick で受け取る）
-            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc(_) => return,
+            Tag::LensPreview(_) | Tag::Folders | Tag::CadMeasure | Tag::OpenDoc => return,
             Tag::Focus => {
                 self.focus_from(&d);
                 return;

@@ -1175,7 +1175,6 @@ System data: focal length, F-number, pupils, image height, etc.	システムデ�
 Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps	レンズモード: 系をレンズ・ミラー・座標ブレーク・空気間隔に分けて示す
 Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces	ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比
 Mechanical vignetting: share of rays outside the mechanical apertures	機構のケラレ: 機構部品の穴の外に出た光線の割合
-Discard the current combination and open the one in the file?	今の組合せを削除して、ファイルの組合せを開きますか？
 Save (Ctrl+S)	保存（Ctrl+S）
 Save As… (Ctrl+Shift+S)	名前を付けて保存…（Ctrl+Shift+S）
 A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file	組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻ります）。開いた系は系ファイルに

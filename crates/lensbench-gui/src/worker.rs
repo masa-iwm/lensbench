@@ -80,8 +80,8 @@ pub enum Tag {
     Folders,
     /// 取った品の STEP と簡易外形の照合（下書きの cad_measure、Web 版）
     CadMeasure,
-    /// 開くプロジェクトの .json の gui・blocks を見る（下書きの doc_peek）。true は今の組合せを消してよいと聞いた後
-    OpenDoc(bool),
+    /// 開くプロジェクトの .json の gui・blocks を見る（下書きの doc_peek）
+    OpenDoc,
 }
 
 impl Tag {

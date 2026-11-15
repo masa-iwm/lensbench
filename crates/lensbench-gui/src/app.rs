@@ -9,7 +9,7 @@ mod doc_loc;
 mod folders;
 mod help;
 mod history;
-use history::{ComboHist, NewSnap};
+use history::{ComboHist, DocHist};
 mod menus;
 mod open_doc;
 mod panels;
@@ -386,12 +386,8 @@ struct Core {
     combo_edit: Option<web_time::Instant>,
     /// 組合せの元に戻す・やり直す
     combo_hist: ComboHist,
-    /// 新規の前の状態（新規を元に戻す）と、新規をやり直せるか
-    new_undo: Option<NewSnap>,
-    /// 新規を戻したときの serve のやり直す段の数（それより下の段は新規の前のもので、やり直さない）
-    new_redo: Option<usize>,
-    /// serve のやり直しの後に新規をやり直す（一覧で新規より先まで選んだ）
-    redo_new_pending: bool,
+    /// 文書を替えた段（新規・開く）の元に戻す・やり直す
+    docs: DocHist,
     /// 玉・群・機構部品の欄を開く（通し確認）
     um_open: bool,
     /// レンズデータの硝材の候補（ガラスカタログを読んだときに作る）
@@ -869,8 +865,6 @@ impl Core {
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
     fn build_combo(&mut self, project: Value) {
-        // 組合せを変えたら、新規はやり直さない
-        self.new_redo = None;
         let dir = doc_loc::work_dir();
         let name: String = self
             .doc
@@ -3634,9 +3628,7 @@ impl App {
                 rerun: None,
                 combo_edit: None,
                 combo_hist: Default::default(),
-                new_undo: None,
-                new_redo: None,
-                redo_new_pending: false,
+                docs: Default::default(),
                 um_open: false,
                 ld_glasses: Vec::new(),
                 close_ask: false,
