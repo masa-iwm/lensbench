@@ -64,29 +64,56 @@ pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
                 v
             })
     };
-    ui.vertical(|ui| {
-        ui.label(
-            RichText::new(tr(
-                "Kept as written in the file (the combination has no fields for it). Edit the JSON of the block:",
-            ))
-            .weak(),
-        );
-        let r = ui.add(
-            egui::TextEdit::multiline(&mut text)
-                .code_editor()
-                .desired_rows(4)
-                .desired_width(f32::INFINITY),
-        );
-        match block(&text) {
-            Some(v) if r.changed() => p.extra = v,
-            // 外で変わった（元に戻すなど）: 書き直す
-            Some(v) if !r.has_focus() && v != p.extra => text = now,
-            Some(_) => {}
-            None => {
-                ui.colored_label(ui.visuals().error_fg_color, tr("Not a block (JSON with \"type\", no branches)"));
+    // 欄はパネルの下に隠れやすいので、JSON は別の窓で直す（GPN-17 で要素の欄を 1 つにするまで）
+    let open_id = id.with("open");
+    let mut open: bool = ui.data_mut(|d| d.get_temp(open_id)).unwrap_or(false);
+    ui.label(
+        RichText::new(tr(
+            "Kept as written in the file (the combination has no fields for it)",
+        ))
+        .weak(),
+    );
+    if ui.button(tr("Edit JSON…")).clicked() {
+        open = true;
+    }
+    let mut keep = open;
+    egui::Window::new(p.raw_label())
+        .id(id.with("win"))
+        .open(&mut keep)
+        .default_size([420.0, 260.0])
+        .resizable(true)
+        .collapsible(false)
+        .show(ui.ctx(), |ui| {
+            ui.label(RichText::new(tr("Edit the JSON of the block:")).weak());
+            let r = egui::ScrollArea::vertical()
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut text)
+                            .id(id.with("text"))
+                            .code_editor()
+                            .desired_rows(10)
+                            .desired_width(f32::INFINITY),
+                    )
+                })
+                .inner;
+            match block(&text) {
+                Some(v) if r.changed() => p.extra = v,
+                // 外で変わった（元に戻すなど）: 書き直す
+                Some(v) if !r.has_focus() && v != p.extra => text = now.clone(),
+                Some(_) => {}
+                None => {
+                    ui.colored_label(
+                        ui.visuals().error_fg_color,
+                        tr("Not a block (JSON with \"type\", no branches)"),
+                    );
+                }
             }
-        }
-    });
+        });
+    // 窓を閉じている間は今の中身に合わせる
+    if !keep {
+        text = now;
+    }
+    ui.data_mut(|d| d.insert_temp(open_id, keep));
     ui.data_mut(|d| d.insert_temp(id, text));
 }
 
@@ -105,5 +132,60 @@ mod tests {
         assert!(!Pick::raw(&json!({ "type": "zmx", "path": "a.zmx", "stop": false })).is_stop());
         assert!(Pick::raw(&json!({ "type": "zmx", "path": "a.zmx" })).is_stop());
         assert_eq!(p.label(), "Block (lens)");
+    }
+
+    /// 窓の JSON を書き換えると要素に入る。読めない JSON は入れない。外で変わったら欄を書き直す
+    #[test]
+    fn raw_window_edits() {
+        let ctx = egui::Context::default();
+        let mut p = Pick::raw(&json!({ "type": "stop", "semi": 1.0 }));
+        let mut base = egui::Id::NULL;
+        let mut t = 0.0;
+        let mut frame = |p: &mut Pick, events: Vec<egui::Event>, base: &mut egui::Id| {
+            t += 1.0;
+            let input = egui::RawInput {
+                events,
+                time: Some(t),
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 900.0),
+                )),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    *base = ui.id().with(("raw", 0usize));
+                    raw_fields(ui, p, 0)
+                });
+            });
+        };
+        frame(&mut p, vec![], &mut base);
+        ctx.data_mut(|d| d.insert_temp(base.with("open"), true));
+        frame(&mut p, vec![], &mut base);
+        let text_id = base.with("text");
+        ctx.memory_mut(|m| m.request_focus(text_id));
+        frame(&mut p, vec![], &mut base);
+        let select_all = egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::COMMAND,
+        };
+        let typed = |s: &str| vec![select_all.clone(), egui::Event::Text(s.into())];
+        frame(&mut p, typed(r#"{"type": "stop", "semi": 2.5}"#), &mut base);
+        assert_eq!(p.extra, json!({ "type": "stop", "semi": 2.5 }));
+        // 読めない JSON・分岐のある BS は入れない
+        frame(&mut p, typed(r#"{"semi": 3}"#), &mut base);
+        assert_eq!(p.extra["semi"], 2.5);
+        frame(&mut p, typed(r#"{"type": "splitter", "t": []}"#), &mut base);
+        assert_eq!(p.extra["type"], "stop");
+        // 外で変わった（元に戻す）: 欄を離れていれば書き直す
+        frame(&mut p, typed(r#"{"type": "stop", "semi": 2.5}"#), &mut base);
+        ctx.memory_mut(|m| m.surrender_focus(text_id));
+        p.extra = json!({ "type": "stop", "semi": 1.0 });
+        frame(&mut p, vec![], &mut base);
+        let text: String = ctx.data_mut(|d| d.get_temp(base).unwrap());
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), p.extra);
     }
 }
