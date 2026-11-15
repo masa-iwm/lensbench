@@ -1,4 +1,4 @@
-// lensbench の計算を回す Web Worker。中は画面と同じ wasm で、受け渡しはバイト列
+// lensbench の計算を回す Web Worker。中は計算用の wasm（worker/。画面の wasm とは別）で、受け渡しはバイト列
 // （lensbench-gui の wire.rs）。最初のメッセージ（数）で何を受けるかを決める。
 // URL に ?mt があれば、スレッドありの版（mt/）を読み、serve と同じ要求を受ける Worker（0）は
 // rayon のスレッドを作る（ページが cross-origin isolated のときだけ index.html が付ける）。
@@ -18,7 +18,7 @@ async function load() {
       mt = false;
     }
   }
-  lb = await import("./lensbench_web.js");
+  lb = await import("./worker/lensbench_web.js");
   await lb.default();
 }
 
@@ -54,7 +54,7 @@ async function handle(data) {
         } catch (e) {
           console.warn("スレッドを作れないので 1 スレッドの版に戻す", e);
           mt = false;
-          lb = await import("./lensbench_web.js");
+          lb = await import("./worker/lensbench_web.js");
           await lb.default();
           await lb.worker_init(data);
         }

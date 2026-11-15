@@ -220,6 +220,10 @@ jobs:
         with:
           tool: wasm-bindgen-cli@${{ env.WASM_BINDGEN }}
       - run: cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web -p lensbench-gui -- -D warnings
+      # 画面用・計算用の wasm は feature を片方だけにして作る（scripts/build_web.sh、GAR-11）。片方だけでも通るか
+      - run: |
+          cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web --no-default-features --features gui -- -D warnings
+          cargo clippy --locked --target wasm32-unknown-unknown -p lensbench-web --no-default-features --features worker -- -D warnings
       # simd128 の経路（AᵀA の gram_block_simd128 など）: core を wasm32-wasip1 ＋ simd128 で検査（#28）
       - run: cargo clippy --locked -p lensbench-core --target wasm32-wasip1 --all-targets -- -D warnings
         env:

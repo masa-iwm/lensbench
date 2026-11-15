@@ -162,6 +162,7 @@ mod web {
     }
 
     /// 起動時に開く見本
+    #[cfg(feature = "gui")]
     const FIRST: &str = "/lensbench/tests/refs/A0/system.zmx";
 
     /// 既定のフォルダの並び（ガラス、レンズカタログ）。前もって作った一覧があれば、この並びで登録する
@@ -180,6 +181,7 @@ mod web {
         (glass_dirs, lens_dirs)
     }
 
+    #[cfg(feature = "worker")]
     /// Web Worker の中で始める（`worker.js`）。kind は受ける要求（0: serve と同じ、1: 下書き）
     #[wasm_bindgen]
     pub async fn worker_init(kind: u8) -> Result<(), JsValue> {
@@ -192,6 +194,7 @@ mod web {
         Ok(())
     }
 
+    #[cfg(feature = "worker")]
     /// 並列: rayon のプールを作り終えた（これより後の計算は並列に回す）
     #[cfg(feature = "threads")]
     #[wasm_bindgen]
@@ -199,12 +202,14 @@ mod web {
         lensbench_core::par::set_pool_ready();
     }
 
+    #[cfg(feature = "worker")]
     /// Web Worker の中で要求を回す（受け渡しの形は lensbench-gui の wire.rs）
     #[wasm_bindgen]
     pub fn worker_call(req: &[u8]) -> Vec<u8> {
         lensbench_gui::web_worker::call(req)
     }
 
+    #[cfg(feature = "worker")]
     /// 並列: 見張りのスレッド（`monitor.js`）を同じ wasm・同じメモリで始めるための [module, memory]
     #[cfg(feature = "threads")]
     #[wasm_bindgen]
@@ -212,24 +217,28 @@ mod web {
         js_sys::Array::of2(&wasm_bindgen::module(), &wasm_bindgen::memory())
     }
 
+    #[cfg(feature = "worker")]
     /// 見張りのスレッドから: 要求 id を回していれば、解析に途中でやめるよう頼む
     #[wasm_bindgen]
     pub fn monitor_cancel(id: u32) {
         lensbench_gui::web_worker::cancel(id);
     }
 
+    #[cfg(feature = "worker")]
     /// 見張りのスレッドから: 要求 id を回していれば、最適化・公差・差し替え探索を止める
     #[wasm_bindgen]
     pub fn monitor_stop(id: u32, what: &str) {
         lensbench_gui::web_worker::stop(id, what);
     }
 
+    #[cfg(feature = "worker")]
     /// 見張りのスレッドから: 最適化・公差・差し替え探索の進み具合（JSON）
     #[wasm_bindgen]
     pub fn monitor_progress() -> String {
         lensbench_gui::web_worker::progress()
     }
 
+    #[cfg(feature = "gui")]
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {

@@ -103,15 +103,17 @@ Settings → Pages → Build and deployment → Source を「GitHub Actions」�
 GitHub Pages は COOP/COEP のヘッダーを付けられないので、index.html がヘッダーを付け直す Service Worker
 （`coi.js`）を入れて 1 回だけ読み直す。それでも cross-origin isolated にならなければ 1 スレッドの版で動く。
 
-## 2 つの版
+## 3 つの wasm
 
-`scripts/build_web.sh` は 2 つ作る。どちらを使うかは index.html と worker.js が決める。
+`scripts/build_web.sh` は wasm を 3 つ作る。画面用と計算用は別の wasm で、`lensbench-web` の feature
+（`gui`・`worker`）で分ける。片方だけにすると、使わない側のコードがリンクで落ちる。どちらを使うかは
+index.html と worker.js が決める。
 
-- そのまま（stable）: どこでも動く 1 スレッドの版
-- `mt/`（nightly、atomics・共有メモリ）: 計算の Web Worker（serve と同じ要求を受ける方）が rayon のスレッドを
-  `navigator.hardwareConcurrency`（16 まで）本作る。`mt/` を読むのは計算の Worker だけで、画面のスレッドは
-  そのままの版を読む（画面は逐次で足りる）。下書きの Worker も逐次のまま。
-  `mt/` を読めないか、スレッドを作れない（`initThreadPool` が失敗する）ときは、Worker がそのままの版に戻して 1 スレッドで回す
+- そのまま（stable、`gui`）: 画面（index.html）。JS の口 `start` だけ
+- `worker/`（stable、`worker`）: 計算の Web Worker の 1 スレッドの版。どこでも動く
+- `mt/`（nightly、atomics・共有メモリ、`worker`）: 計算の Web Worker（serve と同じ要求を受ける方）が rayon のスレッドを
+  `navigator.hardwareConcurrency`（16 まで）本作る。下書きの Worker は `worker/` のまま逐次。
+  `mt/` を読めないか、スレッドを作れない（`initThreadPool` が失敗する）ときは、Worker が `worker/` に戻して 1 スレッドで回す
 
 URL に `?st` を付けると 1 スレッドの版になる（比べるとき）。4 コアで P9 の MTF が 104 秒 → 31 秒（11/09）。
 Web では `with_threads(Some(n))` も大域のプールを使う（スレッドを足せない）。
@@ -119,7 +121,7 @@ Web では `with_threads(Some(n))` も大域のプールを使う（スレッド
 ## 速さ
 
 `scripts/web_bench.mjs` が、同じマシンでネイティブ（`lensbench serve`、1 スレッドと全コア）と Web 版（Chromium の中の
-計算の Worker、そのままの版と `mt/`）に同じ要求を渡して、解析 1 回の時間を比べる（受け渡しと描画は含まない）。
+計算の Worker、`worker/` と `mt/`）に同じ要求を渡して、解析 1 回の時間を比べる（受け渡しと描画は含まない）。
 
 ```sh
 cargo build --release -p lensbench-cli

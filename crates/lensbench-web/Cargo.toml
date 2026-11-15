@@ -33,5 +33,11 @@ js-sys = "0.3"
 wasm-bindgen-rayon = { version = "1.3", optional = true }
 
 [features]
+# wasm を画面用（gui: JS の口 start）と計算の Web Worker 用（worker: worker_*・monitor_*）に分けて作る（GAR-11）。
+# 片方だけにすると、使わない側のコード（画面なら計算、Worker なら egui の描画）がリンクで落ちて小さくなる。
+# 既定は両方（cargo check・clippy・1 つの wasm で試すとき）。scripts/build_web.sh は分けて作る
+default = ["gui", "worker"]
+gui = []
+worker = []
 # 並列: Web Worker の中で rayon のスレッドを使う。nightly と atomics のビルドが要る（scripts/build_web.sh）
-threads = ["dep:wasm-bindgen-rayon"]
+threads = ["worker", "dep:wasm-bindgen-rayon"]

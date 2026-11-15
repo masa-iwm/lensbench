@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Web 版をビルドして配る形のフォルダ（既定 target/web）を作る。docs/web.md
 #
-# 2 つ作る:
-# - そのまま（stable）: どこでも動く 1 スレッドの版
-# - mt/（nightly、atomics）: 計算の Web Worker の中で rayon のスレッドを使う版。ページが
+# wasm は画面用と計算用に分ける（lensbench-web の feature gui・worker、GAR-11）。3 つ作る:
+# - そのまま（stable、gui）: 画面（index.html）。計算のコードは入らない
+# - worker/（stable、worker）: 計算の Web Worker の 1 スレッドの版。どこでも動く
+# - mt/（nightly、atomics、worker）: 計算の Web Worker の中で rayon のスレッドを使う版。ページが
 #   cross-origin isolated（COOP/COEP のヘッダー）のときだけ使う（index.html・worker.js が選ぶ）
-# どちらも simd128 を使う。THREADS=0 で mt/ を作らない
+# どれも simd128 を使う。THREADS=0 で mt/ を作らない
 #
 # 要るもの: rustup の wasm32-unknown-unknown、mt/ には nightly（$NIGHTLY）と rust-src、
 # wasm-bindgen-cli（Cargo.lock の wasm-bindgen と同じ版）、python3 と fonttools（日本語フォントを作る）。
@@ -32,11 +33,16 @@ bindgen() { # wasm 出力先
   [ "$n" -lt $((25 * 1048576)) ] || { echo "wasm が 25 MiB を超える" >&2; exit 1; }
 }
 
-RUSTFLAGS="-C target-feature=+simd128" \
-  cargo build --profile "$PROFILE" --target wasm32-unknown-unknown -p lensbench-web
+st() { # feature 出力先（同じ target に続けて作るので、作るたびに bindgen へ回す）
+  RUSTFLAGS="-C target-feature=+simd128" \
+    cargo build --profile "$PROFILE" --target wasm32-unknown-unknown -p lensbench-web \
+    --no-default-features --features "$1"
+  bindgen "target/wasm32-unknown-unknown/$PROFILE/lensbench_web.wasm" "$2"
+}
 rm -rf "$OUT"
 mkdir -p "$OUT/fonts"
-bindgen "target/wasm32-unknown-unknown/$PROFILE/lensbench_web.wasm" "$OUT"
+st gui "$OUT"
+st worker "$OUT/worker"
 if [ "$THREADS" != 0 ]; then
   # 共有メモリ（外から渡す）とスレッドごとの TLS の口。上限は 4 GiB（既定のままだと足りない）
   L="-C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=4294967296"
@@ -44,7 +50,7 @@ if [ "$THREADS" != 0 ]; then
   L="$L -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base"
   RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+simd128 $L" \
     cargo "+$NIGHTLY" build --profile "$PROFILE" --target wasm32-unknown-unknown -p lensbench-web \
-    --features threads -Z build-std=panic_abort,std --target-dir target/mt
+    --no-default-features --features threads -Z build-std=panic_abort,std --target-dir target/mt
   bindgen "target/mt/wasm32-unknown-unknown/$PROFILE/lensbench_web.wasm" "$OUT/mt"
   # wasm-bindgen-rayon のスレッドの補助は '../../..'（バンドラ向け）で本体を読むので、ファイルを名指しにする
   H=$(find "$OUT/mt/snippets" -name workerHelpers.js)
