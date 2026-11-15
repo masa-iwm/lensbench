@@ -1,10 +1,10 @@
 //! カタログレンズの差し替え探索
 
 use lensbench_core::catalog::{LensCatalog, ZmxFileSource};
-use lensbench_core::optim::{self, DefaultMerit, DlsOpts};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_design::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
+use lensbench_optim::{DefaultMerit, DlsOpts};
 use lensbench_project::{expand, expand_gaps, Env, Project};
 use std::path::PathBuf;
 
@@ -208,15 +208,15 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
     };
     let (sys, gaps) = expand_gaps(&q, &e).unwrap();
     assert_eq!(gaps[1].1, sys.image() - 1);
-    let mut pr = optim::Problem::single(sys.clone());
+    let mut pr = lensbench_optim::Problem::single(sys.clone());
     pr.vars
-        .push(optim::Var::new(Param::new(gaps[0].1, Kind::Thick)).bounds(0.5, 20.0));
+        .push(lensbench_optim::Var::new(Param::new(gaps[0].1, Kind::Thick)).bounds(0.5, 20.0));
     pr.vars
-        .push(optim::Var::new(Param::new(gaps[1].1, Kind::Thick)).bounds(1.0, 200.0));
+        .push(lensbench_optim::Var::new(Param::new(gaps[1].1, Kind::Thick)).bounds(1.0, 200.0));
     pr.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
     // 差し替え探索の既定のヤコビアン（jac "forward"）と同じ
-    pr.jac = optim::JacMode::Forward;
-    let d = optim::dls(
+    pr.jac = lensbench_optim::JacMode::Forward;
+    let d = lensbench_optim::dls(
         &pr,
         &DlsOpts {
             max_iter: 20,
@@ -317,7 +317,7 @@ fn run_to_file_and_resume() {
     let keep = lines[..lines.len() - 1].join("\n") + "\n" + &lines[lines.len() - 1][..10];
     std::fs::write(&f, keep).unwrap();
     let ran = std::sync::atomic::AtomicUsize::new(0);
-    let cb = |pr: lensbench_core::runs::Progress| {
+    let cb = |pr: lensbench_runs::Progress| {
         ran.store(pr.ran, std::sync::atomic::Ordering::Relaxed);
     };
     let r2 = s

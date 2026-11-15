@@ -74,11 +74,11 @@ pub fn pupil_gauss(rings: usize, arms: Option<usize>) -> (Vec<f64>, Vec<f64>, Ve
 }
 
 /// 瞳のガウス求積の点（px, py, 重み）
-pub(crate) type PupilPts = (Vec<f64>, Vec<f64>, Vec<f64>);
+pub type PupilPts = (Vec<f64>, Vec<f64>, Vec<f64>);
 
 /// [`pupil_gauss`]（arms は既定）を、スレッドごとに覚えて使い回す。
 /// 評価関数（最適化・差し替え探索）は項ごと・反復ごとに同じ点を何度も使うため。値は [`pupil_gauss`] と同じ
-pub(crate) fn pupil_gauss_shared(rings: usize) -> std::rc::Rc<PupilPts> {
+pub fn pupil_gauss_shared(rings: usize) -> std::rc::Rc<PupilPts> {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
@@ -105,7 +105,7 @@ impl Opd {
     }
 }
 
-pub(crate) fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f64) -> f64 {
+pub fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f64) -> f64 {
     let ni = s.image_index(w);
     let expp = s.exit_pupil();
     if s.afocal {
@@ -424,7 +424,7 @@ pub(crate) fn lens_area(gl: &LensGl) -> f64 {
 /// 瞳の縁の光線の差で見積もる。これらは基準の光線なので開口・遮蔽は無視する（OpticStudio と同じ）。
 /// 縁の光線が像面まで届かない（面を外れるなど）視野では、軸ごとに内側の点（±0.75, ±0.5, ±0.25）の
 /// 差で、それも届かないなら主光線との片側の差で見積もる
-pub(crate) fn pupil_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2]> {
+pub fn pupil_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2]> {
     if s.afocal {
         return afocal_jacobian(s, field, w);
     }
@@ -1884,7 +1884,7 @@ pub fn mtf_with(
 
 /// [`mtf_with`] で、only Some(0) なら球欠、Some(1) なら子午だけを求める（もう一方の値は使えない。評価関数の
 /// 片方の向きの項用。けられのある系・FFT では両方求める）
-pub(crate) fn mtf_only(
+pub fn mtf_only(
     s: &System,
     field: FieldSel,
     w: Waves,

@@ -65,7 +65,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   ```
   i 番目の組は (種, i) だけで決まる（スレッド数・再開・順序によらない）。相関はガウスのコピュラ（周辺分布はそのまま）。
   同じファイルに同じ計算（頭が同じ）なら終わった組を飛ばす。func の中の lensbench の追跡・解析は GIL を外すので並列に進む
-  （Python の計算ばかりの func は並列にならない）。Rust からは `lensbench_core::runs`（`Sampler`・`Grid`・`run`）
+  （Python の計算ばかりの func は並列にならない）。Rust からは `lensbench_runs`（`Sampler`・`Grid`・`run`）
 - pickle: `pickle.dumps(s)` で系を系ファイルの JSON のバイト列にし、別プロセスで作り直せる（パラメータ変更・ピックアップ・ガラス・照準・視野の種類を含め、追跡はビット一致）。膜ファイルと `coatings=` の表は同じパスから読み直す（同じ計算機向け）
 - 多重構成をまとめて: `cs = lb.System.load_configs("x.zmx", configs=None)`（省くと全構成、ファイルは 1 回だけ読む）→
   `lb.trace_many(cs, None, px, py, object=物点)` で同じ物点・同じ瞳の格子で全構成を一度に追跡（絞りの径の切替 APMX・APER なども構成どおり）

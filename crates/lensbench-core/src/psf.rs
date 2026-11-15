@@ -54,7 +54,7 @@ pub const ENCLOSED_WARN: f64 = 0.95;
 /// 瞳の格子の一辺の自動の値: 隣り合う標本の位相差が [`PHASE_STEP_WARN`] 以下になるよう OPD の傾きの最大 g
 /// [波 / 半径] から n ≥ 8g（標本の間隔 2/n で位相差 2π·g·2/n ≤ π/2）。64〜cap。加えて像の格子の幅が瞳の標本の
 /// 周期を超えない大きさ（need）以上
-pub(crate) fn auto_pupil(
+pub fn auto_pupil(
     s: &System,
     field: FieldSel,
     ws: &[usize],
@@ -74,7 +74,7 @@ pub(crate) fn auto_pupil(
 }
 
 /// 瞳の格子 (ix, iy) の OPD [波]（使えない標本は NaN）から、隣り合う標本の位相差の最大 [rad]
-pub(crate) fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
+pub fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
     let mut g = vec![f64::NAN; np * np];
     for &(ix, iy, v) in w {
         g[iy * np + ix] = v;
@@ -98,7 +98,7 @@ pub(crate) fn phase_step(np: usize, w: &[(usize, usize, f64)]) -> f64 {
 }
 
 /// 標本不足・格子の外の光量の注意の文
-pub(crate) fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64) -> Vec<String> {
+pub fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64) -> Vec<String> {
     let mut w = Vec::new();
     if step > PHASE_STEP_WARN {
         w.push(format!(
@@ -139,7 +139,7 @@ impl Default for PsfOpts {
 }
 
 /// 瞳の区間 [a, a + h]² の単位円内の面積の割合（8×8 の小区間の中心で数える）と、円内の部分の中心の近似
-pub(crate) fn cell_frac(cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
+pub fn cell_frac(cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
     let r0 = cx.hypot(cy);
     let half = 0.5 * h * std::f64::consts::SQRT_2;
     if r0 + half <= 1.0 {
@@ -188,7 +188,7 @@ fn perp_basis(k: [f64; 3]) -> ([f64; 3], [f64; 3]) {
 /// 瞳の px・py の向きの、主光線に垂直な面での光線の向きの傾き (∂d/∂px·e1, ∂d/∂py·e2)。
 /// J = ∂(L, M)/∂(px, py) から ∂N = −(L ∂L + M ∂M)/N（主光線で）。アフォーカル像空間では J がすでに
 /// 角度の座標（atan(l/n)・atan(m/n)）の値なので、対角をそのまま使う
-pub(crate) fn perp_slopes_of(s: &System, jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
+pub fn perp_slopes_of(s: &System, jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
     if s.afocal {
         (jm[0][0], jm[1][1])
     } else {
@@ -223,7 +223,7 @@ const PSF_PUPIL_CAP: usize = 2048;
 /// 瞳の格子が自動（pupil = None）なら、見積もりで求めた結果の位相差が [`PHASE_STEP_WARN`] を超えたとき、超えた比の
 /// 1.2 倍に格子を増やして求め直す（上限 cap まで、3 回まで）。見積もり（33×33 の OPD の傾き）は格子の上の差より少し
 /// 小さく出るため
-pub(crate) fn retry_auto(
+pub fn retry_auto(
     pupil: Option<usize>,
     cap: usize,
     run: impl Fn(Option<usize>) -> Result<Psf>,

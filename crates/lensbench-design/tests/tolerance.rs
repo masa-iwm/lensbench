@@ -567,9 +567,9 @@ fn compensator_values_tilt_magnitude_and_csv() {
     let names = vec!["5.tx".to_string(), "5.ty".to_string(), "G.tx".to_string()];
     let p = s.param("5.tx").unwrap();
     let vars = vec![
-        lensbench_core::optim::Var::new(p),
-        lensbench_core::optim::Var::new(p).in_configs(vec![0]),
-        lensbench_core::optim::Var::new(p),
+        lensbench_optim::Var::new(p),
+        lensbench_optim::Var::new(p).in_configs(vec![0]),
+        lensbench_optim::Var::new(p),
     ];
     assert!(tilt_pairs(&vars, &names).is_empty());
     assert_eq!(tilt_pairs(&vars[..1], &names[..1]).len(), 0);

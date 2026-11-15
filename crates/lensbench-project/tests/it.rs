@@ -23,7 +23,6 @@ mod surface_ops;
 mod sysfile;
 mod units;
 mod usersurf;
-mod zoom;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）
 #[test]

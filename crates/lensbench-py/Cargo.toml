@@ -30,6 +30,8 @@ default = ["module"]
 module = []
 
 [dependencies]
+lensbench-runs = { path = "../lensbench-runs" }
+lensbench-optim = { path = "../lensbench-optim" }
 lensbench-core = { path = "../lensbench-core", features = ["serde"] }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }

@@ -1,6 +1,6 @@
 //! RMS の掃引・PSF
 
-use lensbench_core::huygens::{self, HuygensOpts};
+use crate::huygens::{self, HuygensOpts};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::Waves;

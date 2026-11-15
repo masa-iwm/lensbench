@@ -3,12 +3,12 @@
 fn root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
-use lensbench_core::optim::{DefaultMerit, Problem, Var};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
 use lensbench_design::montecarlo::{self as tolerance, Dist, LensTol, McSpec, Rng, Tol};
+use lensbench_optim::{DefaultMerit, Problem, Var};
 
 fn load(name: &str) -> System {
     zmx::load_with(

@@ -1,7 +1,7 @@
 //! ズーム軌跡: 状態として並べたズーム位置ごとに、群の位置（移動・間隔）を解き、状態の間を細かくたどる。
 //!
 //! 状態ごとに、動かすパラメータ（[`ZoomSpec::moving`]。`G2.shift` などの群の移動や間隔）を変数にして、
-//! [`crate::optim`] の減衰最小二乗で解く。評価関数は既定の像の項（全視野・多色の RMS スポットか RMS 波面）と、
+//! [`crate`] の減衰最小二乗で解く。評価関数は既定の像の項（全視野・多色の RMS スポットか RMS 波面）と、
 //! 目標があれば近軸量（焦点距離か倍率、[`ParaxQ`]）の項。近軸量の項の重みは、像の項の重みの合計の
 //! [`ZoomSpec::target_weight`] 倍から始め、目標との差が [`ZoomSpec::target_tol`] に収まるまで上げて解き直す
 //! （目標をほぼ拘束として満たす。重みを初めから大きくすると条件が悪く反復が遅い）。
@@ -13,12 +13,12 @@
 //!
 //! 状態を持たないので、一括実行のタスクの中からも呼べる。
 
-use crate::error::Result;
-use crate::invalid;
-use crate::optim::{self, DefaultMerit, DlsOpts, ParaxQ, Problem, Stop, Term, TermKind, Var};
-use crate::param::Param;
-use crate::sweep::RmsRef;
-use crate::system::System;
+use crate::{DefaultMerit, DlsOpts, ParaxQ, Problem, Stop, Term, TermKind, Var};
+use lensbench_core::error::Result;
+use lensbench_core::invalid;
+use lensbench_core::param::Param;
+use lensbench_core::sweep::RmsRef;
+use lensbench_core::system::System;
 
 /// ズーム軌跡の設定
 #[derive(Debug, Clone)]
@@ -141,7 +141,7 @@ fn solve_point(
     let mut tries = 0;
     let (r, img) = loop {
         let (full, img) = problem(&cur, spec, target, w)?;
-        let r = optim::dls(&full, &spec.opts)?;
+        let r = crate::dls(&full, &spec.opts)?;
         iterations += r.iterations;
         tries += 1;
         let sys = &r.systems[0];
@@ -205,9 +205,9 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     let mut states = Vec::with_capacity(n);
     let mut systems = Vec::with_capacity(n);
     for (k, s) in configs.iter().enumerate() {
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)
-            .map_err(|e| crate::error::Error::Invalid(format!("状態 {}: {e}", k + 1)))?;
+            .map_err(|e| lensbench_core::error::Error::Invalid(format!("状態 {}: {e}", k + 1)))?;
         states.push(p);
         systems.push(sys);
     }
@@ -269,12 +269,12 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
                     (spec.moving[q], v)
                 })
                 .collect();
-            crate::par::check_cancel()?;
+            lensbench_core::par::check_cancel()?;
             let s0 = systems[k].with_params(&start)?;
             let pos = k as f64 + f;
             let (p, _) =
                 solve_point(&s0, spec, Some(interp(ta, tb, f)), None, pos).map_err(|e| {
-                    crate::error::Error::Invalid(format!(
+                    lensbench_core::error::Error::Invalid(format!(
                         "状態 {} と {} の間 {f:.3}: {e}",
                         k + 1,
                         k + 2

@@ -1,4 +1,4 @@
-//! ZPL（OpticStudio のマクロ言語）の小さな解釈系。ZPL Macro Solveと評価関数の ZPLM の項（[`crate::zplm`]）で使う。
+//! ZPL（OpticStudio のマクロ言語）の小さな解釈系。ZPL Macro Solveと評価関数の ZPLM の項（lensbench-optim の `zplm`）で使う。
 //!
 //! 対応する範囲:
 //! - 数の変数と文字列の変数（名前の最後が `$`）、代入（`x = 式`）。大文字・小文字は区別しない

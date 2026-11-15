@@ -1,53 +1,14 @@
-//! 減衰最小二乗（DLS、Levenberg–Marquardt）による最適化。
-//!
-//! 変数は系のパラメータ（[`crate::param`] の [`Param`]: 間隔・傾き・偏心・曲率・玉や群の動きなど）。
-//! 評価関数は残差の二乗和 Σ r²。項（[`Term`]）ごとに残差の並びを作り、重みの平方根を掛ける。
-//! 評価関数の値（[`Problem::merit`]）は √(Σ r² / Σ 重み)。既定の項（スポット・波面の RMS）では
-//! 項ごとの Σ r² が 重み × RMS² になるので、視野の重みで平均した RMS になる（OpticStudio の既定の評価関数と同じ形）。
-//!
-//! 項:
-//! - [`TermKind::Spot`]: RMS スポット半径。光線ごとの (x − 基準, y − 基準) を残差にする（ガウス求積、
-//!   [`crate::sweep::rms`] と同じ光線・重み・基準）
-//! - [`TermKind::Wavefront`]: RMS 波面収差 [波]。光線ごとの OPD から、ピストン（重心基準なら方向余弦の差に比例する項も）を
-//!   除いたもの（[`crate::sweep::rms`] と同じ定義）
-//! - [`TermKind::Mtf`]: 1 つの周波数の MTF と目標の差
-//! - [`TermKind::Paraxial`]: 近軸量（焦点距離・倍率・瞳・F ナンバーなど、[`ParaxQ`]）と目標の差
-//! - [`TermKind::Centroid`]: 瞳の光線の像面の位置の重心（x か y）と目標の差（光線はスポットの項と同じ、解析的な微分）
-//! - [`TermKind::Ray`]: 1 本の実光線の、面の局所座標での位置・方向余弦と目標の差（OpticStudio の REAX〜REAC 相当）
-//! - [`TermKind::Opd`]: 1 本の光線の OPD [波] と目標の差（参照球は主波長の主光線、OpticStudio の OPDC 相当）
-//! - [`TermKind::Zernike`]: OPD の Zernike 係数 [波] と目標の差（[`crate::analysis::zernike`]）
-//! - [`TermKind::Coupling`]（単一モードファイバへの結合効率と目標の差、[`crate::fiber::fiber_coupling`]）
-//! - [`TermKind::User`]: 利用者が定義する項（[`UserTerm`]。Python の関数など）。系の並びをまとめて評価する
-//!
-//! 項は JSON でも書ける（`lensbench_design::merit`、CLI の `--term`・Python の `terms=`）。
-//!
-//! 光線の項の残差は、けられた光線を 0 にする（RMS から除くのと同じ）。追跡が止まった光線（全反射・面に届かない）が
-//! あると評価できない（エラー。最適化ではその一歩を捨てて減衰を強める）。
-//!
-//! ヤコビアン（[`Problem::jacobian`]）は、スポット・波面・光線・OPD では解析的な微分を使う: 着地点の微分
-//! [`System::land_grad`]と光路長の微分 [`System::opl_grad`]。開始の光線を固定した微分なので、
-//! 変数で光線の始め方（物体側の開始位置・方向。入射瞳・エイミング・視野の定義で決まる）が変わる列は、
-//! 中心差分にする（変数ごとに、少しずらした系の開始の光線を比べて判定する）。波面の参照球の半径（射出瞳の位置）と
-//! 像空間の屈折率の変化は、近軸の量の差分で足す。像面が平面でない系の波面・OPD と、光線の z、MTF・近軸量・
-//! Zernike・結合効率は差分にする。利用者の項は、微分を返す関数（[`UserTerm::grad`]）があればそれを使い、
-//! なければ差分の系をまとめて 1 回で評価する（[`UserTerm::eval`]）。
-//! 差分は変数ごとに並列に、項は項ごとに並列に計算する（[`crate::par::with_threads`] に従う）。
-//!
-//! 境界（[`Var::lo`]・[`Var::hi`]）は、一歩ごとに変数を範囲に切り詰め、境界にあって外へ向かう変数はその一歩では動かさない。
-//!
-//! 複数の構成（[`Problem::configs`]、多重構成・ズームの各状態）を同時に扱える。変数ごとに効く構成を選べる
-//! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
-//! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
+//! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
 
-use crate::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
-use crate::error::Result;
-use crate::fiber::FiberOpts;
-use crate::math::*;
-use crate::param::{Kind, Param};
-use crate::surface::SurfType;
-use crate::sweep::RmsRef;
-use crate::system::{FieldSel, System, Trace};
-use crate::{invalid, Waves};
+use lensbench_core::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
+use lensbench_core::error::Result;
+use lensbench_core::fiber::FiberOpts;
+use lensbench_core::math::*;
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::surface::SurfType;
+use lensbench_core::sweep::RmsRef;
+use lensbench_core::system::{FieldSel, System, Trace};
+use lensbench_core::{invalid, Waves};
 use rayon::prelude::*;
 use std::sync::Arc;
 
@@ -111,7 +72,7 @@ pub enum TermKind {
         rings: usize,
         reference: RmsRef,
     },
-    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`crate::analysis::mtf`]）
+    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_core::analysis::mtf`]）
     Mtf {
         field: FieldSel,
         wave: Option<usize>,
@@ -142,7 +103,7 @@ pub enum TermKind {
         q: RayQ,
         target: f64,
     },
-    /// 1 本の光線の OPD [波] − target（[`crate::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
+    /// 1 本の光線の OPD [波] − target（[`lensbench_core::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
     Opd {
         field: FieldSel,
         wave: Option<usize>,
@@ -150,7 +111,7 @@ pub enum TermKind {
         py: f64,
         target: f64,
     },
-    /// Zernike 係数 [波] − target（[`crate::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり
+    /// Zernike 係数 [波] − target（[`lensbench_core::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり
     Zernike {
         field: FieldSel,
         wave: Option<usize>,
@@ -159,7 +120,7 @@ pub enum TermKind {
         n: usize,
         target: f64,
     },
-    /// 単一モードファイバへの結合効率（偏光なし）− target（[`crate::fiber::fiber_coupling`]、有限物体の系）
+    /// 単一モードファイバへの結合効率（偏光なし）− target（[`lensbench_core::fiber::fiber_coupling`]、有限物体の系）
     Coupling {
         wave: Option<usize>,
         opts: FiberOpts,
@@ -205,7 +166,7 @@ impl RayQ {
     }
 }
 
-/// 近軸量など系全体の量（[`TermKind::Paraxial`]）。値は [`crate::report::system_data`]（OpticStudio の
+/// 近軸量など系全体の量（[`TermKind::Paraxial`]）。値は [`lensbench_core::report::system_data`]（OpticStudio の
 /// System Data と同じ定義、名前は OpticStudio の演算子に合わせる）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParaxQ {
@@ -295,7 +256,7 @@ impl ParaxQ {
             ParaxQ::Isfn => return p.isfn,
             _ => {}
         }
-        let d = crate::report::system_data(s);
+        let d = lensbench_core::report::system_data(s);
         match self {
             ParaxQ::Expd => d.expd,
             ParaxQ::Wfno => d.wfno,
@@ -940,18 +901,18 @@ impl Problem {
                     if sp.is_none() && sm.is_none() {
                         // どちらの側も作れない: 元の誤りを返す
                         mk(if up_ok { h } else { -h })?;
-                        crate::invalid!("差分の系を作れない（変数 {}）", q + 1);
+                        lensbench_core::invalid!("差分の系を作れない（変数 {}）", q + 1);
                     }
                     *slot = Some((sp, sm));
                 }
                 let (sp, sm) = slot.as_ref().unwrap();
                 let rp = match sp {
                     Some(sp) => eval_term(sp, &t.kind, None).map(|v| v.0),
-                    None => Err(crate::Error::Invalid(String::new())),
+                    None => Err(lensbench_core::Error::Invalid(String::new())),
                 };
                 let rm = match sm {
                     Some(sm) => eval_term(sm, &t.kind, None).map(|v| v.0),
-                    None => Err(crate::Error::Invalid(String::new())),
+                    None => Err(lensbench_core::Error::Invalid(String::new())),
                 };
                 let r0 = &parts[ti].r;
                 let d: Vec<f64> = match (rp, rm) {
@@ -1066,8 +1027,8 @@ fn map_maybe_par<T: Sync, R: Send>(
     v: &[T],
     f: impl Fn(&T) -> Result<R> + Sync + Send,
 ) -> Result<Vec<R>> {
-    if v.len() > 1 && !crate::par::sequential() {
-        v.par_iter().map(crate::par::scoped(f)).collect()
+    if v.len() > 1 && !lensbench_core::par::sequential() {
+        v.par_iter().map(lensbench_core::par::scoped(f)).collect()
     } else {
         v.iter().map(f).collect()
     }
@@ -1274,7 +1235,7 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             n,
             target,
         } => {
-            let z = crate::analysis::zernike(s, *field, *wave, *kind, *term, *n, false)?;
+            let z = lensbench_core::analysis::zernike(s, *field, *wave, *kind, *term, *n, false)?;
             let v = z.coef[term - 1];
             if !v.is_finite() {
                 invalid!("Zernike 係数を計算できない");
@@ -1282,7 +1243,8 @@ fn eval_term(s: &System, k: &TermKind, ps: Option<&[Param]>) -> Result<TermOut> 
             Ok((vec![v - target], None))
         }
         TermKind::Coupling { wave, opts, target } => {
-            let c = crate::fiber::fiber_coupling(s, wave.unwrap_or(s.primary), opts, None)?;
+            let c =
+                lensbench_core::fiber::fiber_coupling(s, wave.unwrap_or(s.primary), opts, None)?;
             if !c.eta.is_finite() {
                 invalid!("結合効率を計算できない");
             }
@@ -1350,7 +1312,7 @@ fn ray_term(
     Ok((vec![v - target], jac))
 }
 
-/// 1 本の光線の OPD の項（[`crate::analysis::opd`] の ref_primary = true と同じ値）
+/// 1 本の光線の OPD の項（[`lensbench_core::analysis::opd`] の ref_primary = true と同じ値）
 fn opd_term(
     s: &System,
     field: FieldSel,
@@ -1601,7 +1563,7 @@ fn centroid_term(
     Ok((vec![sc / sw - target], j))
 }
 
-/// to_ref（[`crate::analysis`]）の値の微分。d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
+/// to_ref（[`lensbench_core::analysis`]）の値の微分。d は (dpc, dkc, dq, dk, dopl, dni, dexpp)
 #[allow(clippy::too_many_arguments)]
 fn to_ref_d(
     s: &System,
@@ -1855,7 +1817,7 @@ fn wfe_term(
             }
         }
     }
-    let cf = crate::sweep::solve(g.clone(), v);
+    let cf = lensbench_core::sweep::solve(g.clone(), v);
     let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
     let e: Vec<f64> = rows
         .iter()
@@ -1891,7 +1853,7 @@ fn wfe_term(
                     rhs[nw + 1] += row.5 * drows[j].2[q] * e[j];
                 }
             }
-            let dc = crate::sweep::solve(g.clone(), rhs);
+            let dc = lensbench_core::sweep::solve(g.clone(), rhs);
             for (j, row) in rows.iter().enumerate() {
                 jm[(row.0 * n + row.1) * np + q] = amp[j] * (u[j] - dot(&bs[j], &dc));
             }

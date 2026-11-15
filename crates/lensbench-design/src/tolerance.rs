@@ -42,10 +42,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::montecarlo::{self as tolerance, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
-use lensbench_core::optim::{DefaultMerit, DlsOpts, Problem, Var};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
+use lensbench_optim::{DefaultMerit, DlsOpts, Problem, Var};
 use serde_json::{json, Value};
 
 use crate::term_spec::RefName;
@@ -515,8 +515,8 @@ fn sorted(mut v: Vec<f64>) -> Vec<f64> {
 
 /// 項の説明（"wavefront f1" など）
 /// 項の種類の名前（評価関数の JSON の type と同じ）。型の名前（Debug）から作らない（PRJ-11）
-fn kind_name(k: &lensbench_core::optim::TermKind) -> &'static str {
-    use lensbench_core::optim::TermKind as K;
+fn kind_name(k: &lensbench_optim::TermKind) -> &'static str {
+    use lensbench_optim::TermKind as K;
     match k {
         K::Spot { .. } => "spot",
         K::Wavefront { .. } => "wavefront",

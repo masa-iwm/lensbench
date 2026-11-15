@@ -2,13 +2,11 @@
 //! ずらした系が元の性能まで戻ること。
 
 use crate::common::root;
-use lensbench_core::optim::{
-    dls, DefaultMerit, DlsOpts, JacMode, MtfDir, Problem, Term, TermKind, Var,
-};
 use lensbench_core::sweep::{rms, RmsOpts, RmsRef};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::Waves;
 use lensbench_core::{FieldSel, System};
+use lensbench_optim::{dls, DefaultMerit, DlsOpts, JacMode, MtfDir, Problem, Term, TermKind, Var};
 
 fn load(name: &str) -> System {
     zmx::load_with(
@@ -446,4 +444,23 @@ fn auto_uses_fd_for_few_columns() {
     p.analytic_min = 0;
     let (_, jz) = p.jacobian(&x).unwrap();
     assert_ne!(jz, jf);
+}
+
+/// 評価関数に効かない変数（前後とも空気の絞り面の曲率・円錐係数）は動かさない。以前は差分の雑音の列で大きく
+/// 動き（R = −4.9 mm など）、そのまま系に書かれた
+#[test]
+fn optimizer_leaves_ineffective_vars() {
+    let s = load("A0");
+    let stop = s.stop();
+    assert!(s.surfaces[stop].mat.is_empty() && s.surfaces[stop - 1].mat.is_empty());
+    let mut p = Problem::single(s.clone());
+    p.add_default(DefaultMerit::Wavefront, 3, RmsRef::Centroid);
+    for name in [format!("{stop}.c"), format!("{stop}.k"), "2.t".to_string()] {
+        p.add_var(&name).unwrap();
+    }
+    let r = dls(&p, &DlsOpts::default()).unwrap();
+    assert_eq!(r.x[0], r.x0[0], "{}.c", stop);
+    assert_eq!(r.x[1], r.x0[1], "{}.k", stop);
+    assert!(r.inactive.contains(&0) && r.inactive.contains(&1));
+    assert!(r.merit <= r.merit0);
 }

@@ -1,0 +1,29 @@
+[package]
+name = "lensbench-runs"
+description = "Batch runs of lensbench: sampled or gridded parameter sets run in parallel with resumable JSONL output, plus the shared random numbers and sensor noise"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+# 結合テストは下の [[test]]（tests/it.rs）にまとめる
+autotests = false
+
+[lints]
+workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+# 時計（ネイティブは std::time::Instant そのまま。wasm の std::time::Instant は使えない）
+web-time = "1"
+serde = { version = "1", features = ["derive"], optional = true }
+schemars = { version = "1", optional = true }
+
+[features]
+# 分布・組の作り方（Dist・Sampler・Grid）を serde で書き出し・読み直す（core の serde・schema と同じ約束）
+serde = ["dep:serde", "lensbench-core/serde"]
+schema = ["serde", "dep:schemars", "lensbench-core/schema"]
+
+[[test]]
+name = "it"
+path = "tests/it.rs"

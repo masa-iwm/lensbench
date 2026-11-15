@@ -10,9 +10,9 @@ use lensbench_core::LockExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use lensbench_core::optim::{Problem, Term, TermKind, UserTerm, UserTermRef};
 use lensbench_core::param::Param;
 use lensbench_core::System;
+use lensbench_optim::{Problem, Term, TermKind, UserTerm, UserTermRef};
 use numpy::{PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

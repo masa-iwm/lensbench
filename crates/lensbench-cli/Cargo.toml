@@ -25,6 +25,8 @@ name = "lensbench"
 path = "src/bin/lensbench.rs"
 
 [dependencies]
+lensbench-runs = { path = "../lensbench-runs" }
+lensbench-optim = { path = "../lensbench-optim" }
 lensbench-core = { path = "../lensbench-core" }
 lensbench-analysis = { path = "../lensbench-analysis" }
 # 解析の登録簿・系の読み方・serve の場

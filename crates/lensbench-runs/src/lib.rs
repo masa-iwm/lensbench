@@ -4,7 +4,7 @@
 //! - 組の作り方 [`Plan`]: [`Sampler`]（分布・相関・乱数の種からの抽選。値は公称値からのずれ）と [`Grid`]（掃引の格子、値そのもの）。
 //!   i 番目の組は (種, i) だけで決まるので、スレッド数・再開・実行の順によらず同じ値になる。
 //! - タスクごとの種 [`sub_seed`]: (種, i) から作る。タスクの中の雑音などに使う。
-//! - 実行 [`run`]: 未完了の番号を rayon のプール（[`crate::with_threads`]）で並列に回す。タスクの中の並列（追跡など）は
+//! - 実行 [`run`]: 未完了の番号を rayon のプール（[`lensbench_core::with_threads`]）で並列に回す。タスクの中の並列（追跡など）は
 //!   入れ子のまま使える。結果は JSON の 1 行ずつ（JSONL）で、終わった順に書いて 1 行ごとに flush する。
 //! - 再開: 同じ頭（1 行目）のファイルがあれば、書き終わった番号を飛ばす（途中で切れた最後の行は捨てる）。
 //!   頭は呼び出し側が作る JSON（版・系の hash・種・組の作り方など）で、違えばエラー（別の計算を混ぜない）。
@@ -16,11 +16,14 @@
 //! {"i":2,"seed":456,"result":{…}}
 //! ```
 
-use crate::error::{Error, Result};
-use crate::param::Param;
-use crate::system::System;
-use crate::LockExt;
-use crate::{invalid, par};
+// NaN を弾く比較（!(x > 0.0)）を core と同じく使う
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
+use lensbench_core::error::{Error, Result};
+use lensbench_core::param::Param;
+use lensbench_core::system::System;
+use lensbench_core::LockExt;
+use lensbench_core::{invalid, par};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
@@ -475,7 +478,7 @@ pub struct Progress {
 /// 実行の設定
 #[derive(Default)]
 pub struct RunOpts<'a> {
-    /// スレッド数（[`crate::par::with_threads`] と同じ。None は既定、逐次の指定の中では逐次）
+    /// スレッド数（[`lensbench_core::par::with_threads`] と同じ。None は既定、逐次の指定の中では逐次）
     pub threads: Option<usize>,
     /// 結果のファイル（JSONL）。None なら書かない
     pub out: Option<&'a Path>,

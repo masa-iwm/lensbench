@@ -1,6 +1,6 @@
 //! 評価関数の項としての ZPL マクロ（OpticStudio の ZPLM オペランド）。
 //!
-//! マクロは系を読み（[`crate::zpl_solve::SysHost`] と同じ関数・命令: CURV・THIC・RAYTRACE・RAYX など）、
+//! マクロは系を読み（[`lensbench_core::zpl_solve::SysHost`] と同じ関数・命令: CURV・THIC・RAYTRACE・RAYX など）、
 //! `OPTRETURN n, 値`（n は 0〜50）で値を返す。項の値は `OPTRETURN data` の値 − target。
 //! `PVHX()`・`PVHY()`・`PVPX()`・`PVPY()` は項の hx・hy・px・py を返す（OpticStudio で ZPLM の行の Hx・Hy・Px・Py を読む関数）。
 //!
@@ -15,11 +15,11 @@
 
 use std::sync::Arc;
 
-use crate::error::{Error, Result};
-use crate::optim::UserTerm;
-use crate::system::System;
-use crate::zpl::{Flow, Host, Program, Value, Vars};
-use crate::zpl_solve::{Macro, SysHost};
+use crate::UserTerm;
+use lensbench_core::error::{Error, Result};
+use lensbench_core::system::System;
+use lensbench_core::zpl::{Flow, Host, Program, Value, Vars};
+use lensbench_core::zpl_solve::{Macro, SysHost};
 
 /// OPTRETURN の番号の上限（OpticStudio と同じ 0〜50）
 pub const OPTRETURN_MAX: usize = 50;
@@ -72,7 +72,7 @@ impl ZplmTerm {
             .flatten()
             .unwrap_or(0.0);
         if !v.is_finite() {
-            crate::invalid!(
+            lensbench_core::invalid!(
                 "ZPLM のマクロ {}: OPTRETURN {} の値 {v}",
                 self.macro_name,
                 self.data
@@ -91,7 +91,7 @@ impl UserTerm for ZplmTerm {
     }
     fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
         // par::map は `--threads 1`（with_threads(Some(1), ..)）の中で逐次
-        crate::par::map(systems, |s| Ok(vec![self.value(s)? - self.target]))
+        lensbench_core::par::map(systems, |s| Ok(vec![self.value(s)? - self.target]))
             .into_iter()
             .collect()
     }

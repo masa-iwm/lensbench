@@ -5,7 +5,7 @@
 //! 動かしてもよい（例: 玉の焦点距離 ±1% を、玉のすべての曲率半径を同じ比で変えて表す）。`relative` なら
 //! ずれは今の値に対する比（r → r (1 + δ)）。
 //!
-//! 試行ごとに、すべての公差のずれを引いて系を作り、補償子（[`lensbench_core::optim::Var`]: ピント・群の位置など）を
+//! 試行ごとに、すべての公差のずれを引いて系を作り、補償子（[`lensbench_optim::Var`]: ピント・群の位置など）を
 //! 評価関数（[`Problem`] の項）で DLS により合わせ直して（[`McSpec::comp`]）、評価関数と項の値を記録する。
 //! 評価量は最適化と同じ項（RMS 波面・RMS スポット・MTF・近軸量・利用者の項 など）で表す。
 //! 項の値（[`Problem::term_values`]）は、目標のある項（MTF など）ではその量そのもの、スポット・波面では RMS。
@@ -28,11 +28,11 @@
 
 use lensbench_core::error::Result;
 use lensbench_core::invalid;
-use lensbench_core::optim::{dls, DlsOpts, Problem};
 use lensbench_core::par::scoped;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::system::System;
 use lensbench_core::units::UnitKind;
+use lensbench_optim::{dls, DlsOpts, Problem};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

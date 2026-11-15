@@ -1038,7 +1038,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             jac,
             out,
         } => {
-            use lensbench_core::optim;
+            use lensbench_optim as optim;
             let s = load(&c)?;
             let mut p = optim::Problem::single(s.clone());
             for v in &vars {

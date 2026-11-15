@@ -185,7 +185,7 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     let s = SwapSearch::new(&p, &env, &cat, spec)?;
     let n = s.count();
     let t0 = web_time::Instant::now();
-    let show = |pr: lensbench_core::runs::Progress| {
+    let show = |pr: lensbench_runs::Progress| {
         if !a.json {
             eprint!(
                 "\r組 {}/{}（残り {}）  ",

@@ -1,10 +1,10 @@
 //! ZPLM の項: マクロの OPTRETURN の値を評価関数の項にする。
 
-use lensbench_core::optim::UserTerm;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::zpl_solve::Macro;
-use lensbench_core::zplm::ZplmTerm;
 use lensbench_core::FieldSel;
+use lensbench_optim::zplm::ZplmTerm;
+use lensbench_optim::UserTerm;
 
 const SINGLET: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 3 1 0 0 0\n\

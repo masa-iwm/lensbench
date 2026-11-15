@@ -61,7 +61,7 @@ impl Macro {
         })
     }
 
-    pub(crate) fn program(&self) -> Result<Arc<Program>> {
+    pub fn program(&self) -> Result<Arc<Program>> {
         if let Some(p) = self.prog.get() {
             return Ok(p.clone());
         }

@@ -18,8 +18,6 @@ mod fiber;
 mod freeform;
 mod ghost;
 mod grin;
-mod huygens;
-mod huygens_refs;
 mod invariants;
 mod landing;
 mod launch;
@@ -29,15 +27,12 @@ mod mtf_family_refs;
 mod mtf_refs;
 mod obsc_mtf;
 mod opd_solve_os;
-mod optim;
-mod optim_terms;
 mod params;
 mod pickups;
 mod polarization;
 mod pop;
 mod pop_os;
 mod record_sel;
-mod runs;
 mod semi_auto;
 mod spider;
 mod surftypes;
@@ -51,7 +46,6 @@ mod zmx_roundtrip;
 mod zmx_solves;
 mod zmx_solves2;
 mod zpl_solve;
-mod zplm;
 
 /// tests/ の .rs が全部上の一覧にある（autotests = false なので、足し忘れると黙って回らなくなる）
 #[test]

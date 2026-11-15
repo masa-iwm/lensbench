@@ -6,6 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# 結合テストは下の [[test]]（tests/it.rs）にまとめる
+autotests = false
 
 
 [lints]
@@ -17,3 +19,16 @@ lensbench-core = { path = "../lensbench-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 schemars = "1"
+rayon = "1"
+
+[dev-dependencies]
+ndarray = "0.16"
+ndarray-npy = "0.9"
+
+# 速さを測る examples だけ。wasm の試験（wasm32-wasip1）では C を作れないので外す
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+mimalloc = { version = "0.1", default-features = false }
+
+[[test]]
+name = "it"
+path = "tests/it.rs"

@@ -27,10 +27,10 @@
 use lensbench_core::Waves;
 use std::sync::Arc;
 
+use crate::huygens::{self, HuygensOpts};
 use lensbench_core::analysis::{self, MtfMethod, ZernKind};
 use lensbench_core::coating::Coatings;
 use lensbench_core::fringe::{self, PupilOpts};
-use lensbench_core::huygens::{self, HuygensOpts};
 use lensbench_core::plugin::{
     check_wave, field_sel, Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance,
     Kind, ParamSpec, ParamType, Plugin, Registry, Spec, Value,

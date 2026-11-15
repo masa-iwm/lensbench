@@ -108,7 +108,7 @@ pub(super) fn config_system(
 ///
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
 pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    use lensbench_core::optim;
+    use lensbench_optim as optim;
     let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
     let (systems, cur_idx) = match p.get("configs").and_then(Value::as_array) {
@@ -565,10 +565,10 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     sess.swap_cancel
         .store(false, std::sync::atomic::Ordering::SeqCst);
     *sess.swap_run.lock_ok() = Some((0, n));
-    let show = |pr: lensbench_core::runs::Progress| {
+    let show = |pr: lensbench_runs::Progress| {
         *sess.swap_run.lock_ok() = Some((pr.done, pr.total));
     };
-    let o = lensbench_core::runs::RunOpts {
+    let o = lensbench_runs::RunOpts {
         threads: opt_usize(p, "threads")?,
         progress: Some(&show),
         cancel: Some(&sess.swap_cancel),
@@ -579,7 +579,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     // 粗いふるい（prescreen）があれば残った組だけ
     let idx = s.screened(opt_usize(p, "threads")?);
     *sess.swap_run.lock_ok() = Some((0, idx.len()));
-    let r = lensbench_core::runs::run(idx.len(), 0, &o, |j, _| {
+    let r = lensbench_runs::run(idx.len(), 0, &o, |j, _| {
         let v = s.eval(idx[j]);
         rows.lock_ok().push(v);
         Ok("{}".into())

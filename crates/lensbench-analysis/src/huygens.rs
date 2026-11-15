@@ -1,6 +1,6 @@
 //! Huygens PSF・Huygens MTF（OpticStudio の Huygens PSF・Huygens MTF 相当）。
 //!
-//! FFT の PSF（[`crate::psf::psf`]）は瞳から主光線に垂直な面への写像を一次（対角）で近似するが、Huygens は
+//! FFT の PSF（[`lensbench_core::psf::psf`]）は瞳から主光線に垂直な面への写像を一次（対角）で近似するが、Huygens は
 //! 射出瞳の参照球（OPD の基準と同じ。ROPD「無限遠」・射出瞳が無限遠なら主光線に垂直な平面）の上の各点を
 //! 2 次波源とし、像面（傾き・曲率を含む像面そのもの）の格子の各点まで素直に足し合わせる:
 //!
@@ -16,14 +16,17 @@
 //! Huygens MTF は Huygens PSF の像面の格子の上の離散フーリエ変換の絶対値（DC で 1）。像の格子が PSF を
 //! 覆いきれないと MTF は低周波で下がり、格子の間隔が粗いと高周波で折り返すので、格子は利用者が決める。
 
-use crate::analysis::{mtf_cutoff, opd, pupil_jacobian, Mtf};
-use crate::coating::C64;
-use crate::error::Result;
-use crate::math::*;
-use crate::psf::{cell_frac, perp_slopes_of, Psf};
-use crate::system::{FieldSel, System};
-use crate::{invalid, notimpl};
-use crate::{TanSag, Waves};
+// NaN を弾く比較（!(x > 0.0)）を core と同じく使う
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
+use lensbench_core::analysis::{mtf_cutoff, opd, pupil_jacobian, Mtf};
+use lensbench_core::coating::C64;
+use lensbench_core::error::Result;
+use lensbench_core::math::*;
+use lensbench_core::psf::{cell_frac, perp_slopes_of, Psf};
+use lensbench_core::system::{FieldSel, System};
+use lensbench_core::{invalid, notimpl};
+use lensbench_core::{TanSag, Waves};
 use std::f64::consts::PI;
 
 /// Huygens PSF・MTF の設定
@@ -116,7 +119,7 @@ type Sphere = Option<(V3, f64, f64)>;
 /// 像点）で、axes は像面の x̂・ŷ
 pub fn huygens_psf(s: &System, field: FieldSel, w: Waves, o: HuygensOpts) -> Result<Psf> {
     let w = w.one();
-    crate::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
+    lensbench_core::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
         huygens_once(s, field, w, HuygensOpts { pupil: np, ..o })
     })
 }
@@ -188,7 +191,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         .flat_map(|&y| {
             xs.iter().map(move |&x| {
                 let (px, py) = (cx + x, cy + y);
-                let z = crate::freeform::sag_xy(img, px, py).0;
+                let z = lensbench_core::freeform::sag_xy(img, px, py).0;
                 [px, py, if z.is_finite() { z } else { 0.0 }]
             })
         })
@@ -203,7 +206,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
                 .filter(|&wi| ws.len() == 1 || s.weights[wi] > 0.0)
                 .collect();
             let need = (ni as f64 * (delta.0 * cut.0).max(delta.1 * cut.1)).ceil() as usize;
-            crate::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
+            lensbench_core::psf::auto_pupil(s, field, &ws, need, HUYGENS_PUPIL_CAP)?
         }
     };
     // 瞳の格子（FFT PSF と同じ区間の中心）
@@ -288,7 +291,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
             .filter(|&i| op.ok(i) && op.opd[i].is_finite())
             .map(|i| (cell_ix[i].0, cell_ix[i].1, op.opd[i]))
             .collect();
-        step = step.max(crate::psf::phase_step(np, &w_ok));
+        step = step.max(lensbench_core::psf::phase_step(np, &w_ok));
         // 光源を成分ごとの配列に（像の 1 点の内側のループをベクトル化し、位相因子をまとめて求める）
         let (qx, qy, qz): (Vec<f64>, Vec<f64>, Vec<f64>) = (
             src.iter().map(|q| q.q[0]).collect(),
@@ -337,29 +340,30 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
                     }
                 }
             }
-            crate::trig::cis_scaled(ph, amp, z);
+            lensbench_core::trig::cis_scaled(ph, amp, z);
             z.iter().fold(C64::new(0.0, 0.0), |u, &v| u + v).norm_sqr()
         };
         let buf = || (Vec::new(), Vec::new(), Vec::new());
         // 像の点ごとに中断を確かめる（GUI で系が変わったとき。やめた点は NaN、あとで Cancelled を返す）
         let one = |p: &V3, b: &mut (Vec<f64>, Vec<f64>, Vec<C64>)| -> f64 {
-            if crate::par::cancelled() {
+            if lensbench_core::par::cancelled() {
                 f64::NAN
             } else {
                 one(p, b)
             }
         };
-        let iw: Vec<f64> = if pts.len() * src.len() >= 1 << 18 && !crate::par::sequential() {
+        let iw: Vec<f64> = if pts.len() * src.len() >= 1 << 18 && !lensbench_core::par::sequential()
+        {
             use rayon::prelude::*;
-            let cx = crate::par::current();
+            let cx = lensbench_core::par::current();
             pts.par_iter()
-                .map_init(buf, |b, p| crate::par::with_ctx(&cx, || one(p, b)))
+                .map_init(buf, |b, p| lensbench_core::par::with_ctx(&cx, || one(p, b)))
                 .collect()
         } else {
             let mut b = buf();
             pts.iter().map(|p| one(p, &mut b)).collect()
         };
-        crate::par::check_cancel()?;
+        lensbench_core::par::check_cancel()?;
         // 各波長で収差なしの中心が 1（|Σ f|²）、全強度の重み G = Σf |a b| h²（FFT PSF と同じ）
         let g = sa * (a * b * h * h).abs();
         for (t, v) in tot.iter_mut().zip(&iw) {
@@ -393,7 +397,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         pupil: np,
         phase_step: step,
         enclosed,
-        warnings: crate::psf::sampling_warnings("Huygens PSF", np, step, enclosed),
+        warnings: lensbench_core::psf::sampling_warnings("Huygens PSF", np, step, enclosed),
     })
 }
 

@@ -1,9 +1,9 @@
 //! ズーム軌跡: 状態ごとに群の移動を解き、焦点距離の目標と像のピントを満たすか
 
-use lensbench_core::optim::{self, DefaultMerit, ParaxQ};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::zoom::{self, ZoomSpec};
 use lensbench_core::System;
+use lensbench_optim::zoom::{self, ZoomSpec};
+use lensbench_optim::{DefaultMerit, ParaxQ};
 use lensbench_project::{expand_state, Env, Project};
 use std::path::PathBuf;
 
@@ -32,7 +32,7 @@ fn spec(s: &System, targets: Vec<Option<f64>>) -> ZoomSpec {
 
 /// 像の項だけの評価関数（視野の重みで平均した RMS スポット）
 fn image_merit(s: &System) -> f64 {
-    let mut q = optim::Problem::single(s.clone());
+    let mut q = lensbench_optim::Problem::single(s.clone());
     q.add_default(DefaultMerit::Spot, 3, RmsRef::Centroid);
     q.merit(&[]).unwrap()
 }

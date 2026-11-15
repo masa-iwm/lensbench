@@ -1,5 +1,5 @@
 //! カタログレンズの差し替え探索: プロジェクトの玉のブロックを、焦点距離・径で絞ったカタログの候補で
-//! 差し替えた組を並列に回し、組ごとに間隔（空気・群の移動）を減衰最小二乗（[`lensbench_core::optim`]）で
+//! 差し替えた組を並列に回し、組ごとに間隔（空気・群の移動）を減衰最小二乗（[`lensbench_optim`]）で
 //! 最適化して、評価関数の小さい順に並べる。
 //!
 //! - 差し替える所（[`Slot`]）: 玉のブロックの id と、候補（型番の並びか、メーカー・焦点距離・径の範囲）。
@@ -9,7 +9,7 @@
 //!   `d1.t=0.5:40`。
 //! - 組の番号 i（0 から [`SwapSearch::count`] 未満）は、差し替える所ごとの候補の番号を並べた混合基数
 //!   （最後の所が最も速く回る）。[`SwapSearch::eval`] は組 i だけから決まる JSON を返す。
-//!   [`SwapSearch::run_to`] は一括実行（[`lensbench_core::runs`]）で組ごとに JSONL へ書き出し、途中から再開できる。
+//!   [`SwapSearch::run_to`] は一括実行（[`lensbench_runs`]）で組ごとに JSONL へ書き出し、途中から再開できる。
 //!
 //! 評価関数は既定の像の項（全視野・多色の RMS スポットか RMS 波面）。[`SwapSpec::efl`] で系の焦点距離の目標も足せる
 //! （そのときの `merit` は目標の項を含む。像だけの値は `image_merit`）。
@@ -18,12 +18,12 @@
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::elements::{self, Kind as EKind};
-use lensbench_core::optim::{
-    self, DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
-};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::{glass, par, runs, zmx, System};
+use lensbench_core::{glass, par, zmx, System};
+use lensbench_optim::{
+    DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
+};
 use lensbench_project::{block_pointers, expand_gaps, Env, Gap, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -186,11 +186,11 @@ impl SwapRef {
 }
 
 impl SwapJac {
-    fn core(self) -> optim::JacMode {
+    fn core(self) -> lensbench_optim::JacMode {
         match self {
-            SwapJac::Forward => optim::JacMode::Forward,
-            SwapJac::Fd => optim::JacMode::FiniteDiff,
-            SwapJac::Auto => optim::JacMode::Auto,
+            SwapJac::Forward => lensbench_optim::JacMode::Forward,
+            SwapJac::Fd => lensbench_optim::JacMode::FiniteDiff,
+            SwapJac::Auto => lensbench_optim::JacMode::Auto,
         }
     }
 }
@@ -777,7 +777,7 @@ impl<'a> SwapSearch<'a> {
         (
             usize,
             Problem,
-            optim::DlsResult,
+            lensbench_optim::DlsResult,
             Vec<(String, Option<usize>)>,
         ),
         String,
@@ -800,7 +800,7 @@ impl<'a> SwapSearch<'a> {
         } else {
             self.spec.starts.iter().collect()
         };
-        let mut best: Option<(usize, Problem, optim::DlsResult)> = None;
+        let mut best: Option<(usize, Problem, lensbench_optim::DlsResult)> = None;
         let mut last_err = None;
         for (k, st) in starts.iter().enumerate() {
             let mut pr = pr0.clone();
@@ -823,7 +823,7 @@ impl<'a> SwapSearch<'a> {
                     *c = c.with_params(sv).map_err(|e| e.to_string())?;
                 }
             }
-            match optim::dls(&pr, &o) {
+            match lensbench_optim::dls(&pr, &o) {
                 Ok(r) if r.merit.is_finite() => {
                     let better = match &best {
                         None => true,
@@ -850,7 +850,7 @@ impl<'a> SwapSearch<'a> {
         n_image: usize,
         start: usize,
         pr: Problem,
-        r: optim::DlsResult,
+        r: lensbench_optim::DlsResult,
         names: Vec<(String, Option<usize>)>,
     ) -> Result<SwapFit, String> {
         let mut img = pr.clone();
@@ -923,19 +923,19 @@ impl<'a> SwapSearch<'a> {
         .to_string()
     }
 
-    /// [`run`](Self::run) と同じ。out があれば一括実行（[`lensbench_core::runs::run`]）で結果を 1 組ずつ
+    /// [`run`](Self::run) と同じ。out があれば一括実行（[`lensbench_runs::run`]）で結果を 1 組ずつ
     /// JSONL に書き出し、resume なら同じ頭のファイルの続きから回す（書いた組は飛ばす）。返り値はファイルの全部の組
     pub fn run_to(
         &self,
         out: Option<&std::path::Path>,
         resume: bool,
         threads: Option<usize>,
-        progress: Option<&(dyn Fn(runs::Progress) + Sync)>,
+        progress: Option<&(dyn Fn(lensbench_runs::Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
         let Some(path) = out else {
             return Ok(self.run(threads));
         };
-        let o = runs::RunOpts {
+        let o = lensbench_runs::RunOpts {
             threads,
             out: Some(path),
             header: self.header(),
@@ -944,12 +944,12 @@ impl<'a> SwapSearch<'a> {
             cancel: None,
         };
         let idx = self.screened(threads);
-        runs::run(idx.len(), 0, &o, |j, _| {
+        lensbench_runs::run(idx.len(), 0, &o, |j, _| {
             serde_json::to_string(&self.eval(idx[j]))
                 .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
         })
         .map_err(|e| e.to_string())?;
-        let (_, rows) = runs::read_results(path).map_err(|e| e.to_string())?;
+        let (_, rows) = lensbench_runs::read_results(path).map_err(|e| e.to_string())?;
         let mut v = rows
             .into_iter()
             .map(|(_, _, r)| serde_json::from_str(&r).map_err(|e| e.to_string()))

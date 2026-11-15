@@ -4,7 +4,7 @@ use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use lensbench_core::huygens::{huygens_psf, HuygensOpts};
+use lensbench_analysis::huygens::{huygens_psf, HuygensOpts};
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::FieldSel;
 

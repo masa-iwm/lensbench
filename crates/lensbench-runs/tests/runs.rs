@@ -1,7 +1,7 @@
 //! 一括実行: 組の作り方（抽選・相関・格子）、並列・逐次書き出し・再開・進み具合。
 
 use lensbench_core::param::{Kind, Param};
-use lensbench_core::runs::{self, Dist, Grid, Plan, RunOpts, Sampler};
+use lensbench_runs::{Dist, Grid, Plan, RunOpts, Sampler};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -18,12 +18,12 @@ fn normal_cdf_and_ppf() {
         (5.0, 0.9999997133484281),
     ];
     for (x, p) in refs {
-        let c = runs::norm_cdf(x);
+        let c = lensbench_runs::norm_cdf(x);
         assert!(
             (c - p).abs() <= 1e-15 * p.max(1e-300) + 1e-16,
             "Φ({x}) = {c} ≠ {p}"
         );
-        let back = runs::norm_ppf(p);
+        let back = lensbench_runs::norm_ppf(p);
         assert!(
             (back - x).abs() < 1e-9 * (1.0 + x.abs()),
             "Φ⁻¹({p}) = {back}"
@@ -124,7 +124,7 @@ fn run_writes_resumes_and_matches_threads() {
     // 途中で止める（7 個終えたら cancel）
     let cancel = AtomicBool::new(false);
     let k = AtomicUsize::new(0);
-    let cb = |pr: runs::Progress| {
+    let cb = |pr: lensbench_runs::Progress| {
         assert!(pr.done <= pr.total);
         if k.fetch_add(1, Ordering::Relaxed) + 1 >= 7 {
             cancel.store(true, Ordering::Relaxed);
@@ -138,7 +138,7 @@ fn run_writes_resumes_and_matches_threads() {
         progress: Some(&cb),
         cancel: Some(&cancel),
     };
-    let r = runs::run(30, 5, &opts, task).unwrap();
+    let r = lensbench_runs::run(30, 5, &opts, task).unwrap();
     assert!(r.cancelled && r.ran == 7, "{r:?}");
     // 最後の行を途中で切る（書いている途中で止まった）
     let mut txt = std::fs::read_to_string(&f).unwrap();
@@ -154,35 +154,35 @@ fn run_writes_resumes_and_matches_threads() {
         resume: true,
         ..Default::default()
     };
-    let r = runs::run(30, 5, &opts, |i, s| {
+    let r = lensbench_runs::run(30, 5, &opts, |i, s| {
         seen.lock().unwrap().push(i);
         task(i, s)
     })
     .unwrap();
     assert_eq!((r.skipped, r.ran), (7, 23));
     assert!(seen.lock().unwrap().iter().all(|&i| i >= 7));
-    let (h, rows) = runs::read_results(&f).unwrap();
+    let (h, rows) = lensbench_runs::read_results(&f).unwrap();
     assert_eq!(h, "{\"what\":\"test\"}");
     assert_eq!(rows.len(), 30);
     for (i, s, res) in &rows {
-        assert_eq!(*s, runs::sub_seed(5, *i));
+        assert_eq!(*s, lensbench_runs::sub_seed(5, *i));
         assert_eq!(*res, format!("{{\"sq\":{},\"s\":{}}}", i * i, s % 1000));
     }
     // 全部終わっていれば何もしない
-    let r = runs::run(30, 5, &opts, task).unwrap();
+    let r = lensbench_runs::run(30, 5, &opts, task).unwrap();
     assert_eq!((r.skipped, r.ran), (30, 0));
     // 頭が違えば再開しない
     let o2 = RunOpts {
         header: "{\"what\":\"other\"}".into(),
         ..opts
     };
-    assert!(runs::run(30, 5, &o2, task).is_err());
+    assert!(lensbench_runs::run(30, 5, &o2, task).is_err());
     // 頭に改行は書けない
     let o3 = RunOpts {
         header: "{\"a\":\n1}".into(),
         ..opts
     };
-    assert!(runs::run(1, 5, &o3, task).is_err());
+    assert!(lensbench_runs::run(1, 5, &o3, task).is_err());
     std::fs::remove_file(&f).unwrap();
 }
 
@@ -195,7 +195,7 @@ fn run_stops_on_error() {
         header: "{}".into(),
         ..Default::default()
     };
-    let e = runs::run(100, 0, &opts, |i, _| {
+    let e = lensbench_runs::run(100, 0, &opts, |i, _| {
         if i == 3 {
             Err(lensbench_core::Error::Invalid("だめ".into()))
         } else {
@@ -203,7 +203,7 @@ fn run_stops_on_error() {
         }
     });
     assert!(e.unwrap_err().to_string().contains("組 3"));
-    let (_, rows) = runs::read_results(&f).unwrap();
+    let (_, rows) = lensbench_runs::read_results(&f).unwrap();
     assert!(rows.len() < 100);
     std::fs::remove_file(&f).unwrap();
 }

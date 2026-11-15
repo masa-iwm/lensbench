@@ -41,9 +41,11 @@ Windows の GUI の exe は CI の成果物 `lensbench-gui-windows` から取れ
 |---|---|
 | `crates/lensbench-core` | 光線追跡・解析のライブラリ |
 | `crates/lensbench-project` | ブロックで組むプロジェクトファイルと面への展開 |
+| `crates/lensbench-runs` | 一括実行（公差・モンテカルロ・掃引を並列に回し、JSONL に書いて途中から再開）、共通の乱数と検出器の雑音 |
+| `crates/lensbench-optim` | 減衰最小二乗の最適化（評価関数の項・ZPL マクロの項 ZPLM）とズーム軌跡 |
 | `crates/lensbench-design` | 評価関数の項・モンテカルロ公差・差し替え探索（設定と結果の JSON、公差の計算）、膜のモデルの当てはめと設計 |
 | `crates/lensbench-export` | 書き出し（レイアウトの 2D・3D・STEP、追跡結果の CSV・JSON・npz） |
-| `crates/lensbench-analysis` | 同梱のプラグイン（系を追跡する解析） |
+| `crates/lensbench-analysis` | 同梱のプラグイン（系を追跡する解析）、Huygens PSF・MTF の計算 |
 | `crates/lensbench-verify` | 照合試験の枠組み（`lensbench verify`） |
 | `crates/lensbench-engine` | 実行の層: 解析の登録簿・系の読み方・serve の場（`Session::call`）。CLI・GUI・Web 版が使う |
 | `crates/lensbench-cli` | コマンドライン（`lensbench`）。引数の解釈と serve の要求を運ぶ道（TCP・パイプ） |

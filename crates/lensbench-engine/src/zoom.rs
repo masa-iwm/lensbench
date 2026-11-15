@@ -1,9 +1,9 @@
 //! ズーム軌跡（CLI の `zoom`・serve の `zoom`）
 
-use lensbench_core::optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::zoom::{self, ZoomSpec};
 use lensbench_core::System;
+use lensbench_optim::zoom::{self, ZoomSpec};
+use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
 use serde_json::{json, Value};
 
 /// ズーム軌跡の設定（CLI の旗・serve の params と同じ意味）

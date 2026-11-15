@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use lensbench_core::optim::UserTerm;
 use lensbench_core::plugin::{Array, Arrays, Config, Context, Instance, Value as PValue};
 use lensbench_core::{Error, Result, System};
+use lensbench_optim::UserTerm;
 use serde_json::Value;
 
 pub struct PluginTerm {

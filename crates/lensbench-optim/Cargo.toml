@@ -1,0 +1,25 @@
+[package]
+name = "lensbench-optim"
+description = "Damped least squares optimization of lensbench: merit terms, ZPL macro terms (ZPLM) and zoom tracks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+# 結合テストは下の [[test]]（tests/it.rs）にまとめる
+autotests = false
+
+[lints]
+workspace = true
+
+[dependencies]
+lensbench-core = { path = "../lensbench-core" }
+rayon = "1"
+
+[dev-dependencies]
+# ズーム軌跡の試験はプロジェクトの例題（3 群ズーム）から状態の系を作る
+lensbench-project = { path = "../lensbench-project" }
+
+[[test]]
+name = "it"
+path = "tests/it.rs"

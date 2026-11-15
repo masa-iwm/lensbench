@@ -22,8 +22,7 @@ mod search;
 mod userterm;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, OnceLock, RwLock};
 
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
@@ -32,13 +31,14 @@ use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
     Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, PolTrace, Trace,
 };
-use lensbench_core::{analysis, huygens, optim, psf, sweep, with_threads, zmx, RecSel, System};
+use lensbench_core::{analysis, psf, sweep, with_threads, zmx, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
+use {lensbench_analysis::huygens, lensbench_optim as optim};
 
 /// coatings= を省いたときの膜の実測表・モデル: 環境変数 LENSBENCH_COATINGS（OS のパス区切り、`lensbench run --coatings`）
 fn env_coatings() -> Vec<PathBuf> {

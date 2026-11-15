@@ -26,10 +26,10 @@
 
 use lensbench_core::analysis::ZernKind;
 use lensbench_core::fiber::FiberOpts;
-use lensbench_core::optim::{MtfDir, ParaxQ, RayQ, Side, Term, TermKind};
 use lensbench_core::sweep::RmsRef;
-use lensbench_core::zplm::ZplmTerm;
 use lensbench_core::{FieldSel, System};
+use lensbench_optim::zplm::ZplmTerm;
+use lensbench_optim::{MtfDir, ParaxQ, RayQ, Side, Term, TermKind};
 use serde_json::Value;
 
 use crate::term_spec::{
@@ -164,8 +164,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
 
 /// 型にした項を core の項にする（番号の確かめ・既定値・マクロとプラグインの準備）
 fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
-    let user = |t: std::sync::Arc<dyn lensbench_core::optim::UserTerm>| {
-        TermKind::User(lensbench_core::optim::UserTermRef(t))
+    let user = |t: std::sync::Arc<dyn lensbench_optim::UserTerm>| {
+        TermKind::User(lensbench_optim::UserTermRef(t))
     };
     Ok(match spec {
         TermSpec::Spot(r) => TermKind::Spot {
@@ -390,7 +390,7 @@ mod tests {
             }
         ));
         assert!(matches!(t[5].kind, TermKind::Mtf { target, .. } if target == 1.0));
-        let mut p = lensbench_core::optim::Problem::single(s.clone());
+        let mut p = lensbench_optim::Problem::single(s.clone());
         p.terms = t;
         p.check().unwrap();
         // 間違い
@@ -423,7 +423,7 @@ mod tests {
         ]);
         let t = terms_from_json(&v, std::slice::from_ref(&s)).unwrap();
         assert_eq!(t[0].weight, 3.0);
-        let mut p = lensbench_core::optim::Problem::single(s.clone());
+        let mut p = lensbench_optim::Problem::single(s.clone());
         p.terms = t;
         p.check().unwrap();
         let r = p.residuals(&[]).unwrap();
@@ -453,7 +453,7 @@ mod tests {
             {"type": "plugin", "name": "zernike", "field": 1, "output": "coef", "args": {"terms": 9}, "index": 3}
         ]);
         let t = terms_from_json(&v, std::slice::from_ref(&s)).unwrap();
-        let mut p = lensbench_core::optim::Problem::single(s.clone());
+        let mut p = lensbench_optim::Problem::single(s.clone());
         p.terms = t;
         p.check().unwrap();
         let r = p.residuals(&[]).unwrap();

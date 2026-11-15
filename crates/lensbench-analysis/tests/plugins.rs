@@ -208,20 +208,21 @@ fn rms_geo_mtf_pop_ghost_match_core() {
         ("pupil".into(), Value::Num(16.0)),
         ("image".into(), Value::Num(16.0)),
     ]);
-    let ho = lensbench_core::huygens::HuygensOpts {
+    let ho = lensbench_analysis::huygens::HuygensOpts {
         pupil: Some(16),
         image: 16,
         delta: None,
     };
     let o = run("huygens_psf", cfg.clone(), &s, 2.0);
-    let r =
-        lensbench_core::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho).unwrap();
+    let r = lensbench_analysis::huygens::huygens_psf(&s, FieldSel::Index(1), Waves::One(0), ho)
+        .unwrap();
     assert_eq!(bits(get(&o, "i")), bits(&r.i.concat()));
     let mut cfg = cfg;
     cfg.insert("freqs".into(), Value::Nums(fs.clone()));
     let o = run("huygens_mtf", cfg, &s, 2.0);
-    let r = lensbench_core::huygens::huygens_mtf(&s, FieldSel::Index(1), Waves::One(0), ho, &fs)
-        .unwrap();
+    let r =
+        lensbench_analysis::huygens::huygens_mtf(&s, FieldSel::Index(1), Waves::One(0), ho, &fs)
+            .unwrap();
     assert_eq!(bits(get(&o, "sag")), bits(&r.sag));
     // POP: 絞りの後の場を 5 mm 伝搬
     let surf = s.stop();

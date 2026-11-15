@@ -20,8 +20,6 @@ encoding_rs = "0.8"
 num-complex = "0.4"
 rustfft = "6"
 rayon = "1"
-# 時計（ネイティブは std::time::Instant そのまま。wasm の std::time::Instant は使えない）
-web-time = "1"
 serde = { version = "1", features = ["derive"], optional = true }
 schemars = { version = "1", optional = true }
 

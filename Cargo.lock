@@ -2736,6 +2736,10 @@ name = "lensbench-analysis"
 version = "0.4.0"
 dependencies = [
  "lensbench-core",
+ "mimalloc",
+ "ndarray",
+ "ndarray-npy",
+ "rayon",
  "schemars",
  "serde",
  "serde_json",
@@ -2768,7 +2772,9 @@ dependencies = [
  "lensbench-design",
  "lensbench-engine",
  "lensbench-export",
+ "lensbench-optim",
  "lensbench-project",
+ "lensbench-runs",
  "lensbench-verify",
  "mimalloc",
  "schemars",
@@ -2794,7 +2800,6 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "web-time",
 ]
 
 [[package]]
@@ -2805,7 +2810,9 @@ dependencies = [
  "jsonschema",
  "lensbench-analysis",
  "lensbench-core",
+ "lensbench-optim",
  "lensbench-project",
+ "lensbench-runs",
  "rayon",
  "schemars",
  "serde",
@@ -2821,7 +2828,9 @@ dependencies = [
  "lensbench-core",
  "lensbench-design",
  "lensbench-export",
+ "lensbench-optim",
  "lensbench-project",
+ "lensbench-runs",
  "schemars",
  "serde",
  "serde_json",
@@ -2873,6 +2882,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-optim"
+version = "0.4.0"
+dependencies = [
+ "lensbench-core",
+ "lensbench-project",
+ "rayon",
+]
+
+[[package]]
 name = "lensbench-project"
 version = "0.4.0"
 dependencies = [
@@ -2894,12 +2912,24 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-core",
  "lensbench-design",
+ "lensbench-optim",
  "lensbench-project",
+ "lensbench-runs",
  "lensbench-verify",
  "mimalloc",
  "numpy",
  "pyo3",
  "serde_json",
+]
+
+[[package]]
+name = "lensbench-runs"
+version = "0.4.0"
+dependencies = [
+ "lensbench-core",
+ "schemars",
+ "serde",
+ "web-time",
 ]
 
 [[package]]

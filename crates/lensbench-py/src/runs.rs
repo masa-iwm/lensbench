@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use lensbench_core::param::Param;
-use lensbench_core::runs::{self, Dist, Grid, Plan, Progress, RunOpts, Sampler};
 use lensbench_core::System;
+use lensbench_runs::{Dist, Grid, Plan, Progress, RunOpts, Sampler};
 use pyo3::exceptions::{PyKeyboardInterrupt, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
@@ -403,7 +403,7 @@ fn run_batch<'py>(
         progress: Some(&report),
         cancel: Some(&cancel),
     };
-    let res = py.detach(|| runs::run(n, seed, &opts, task));
+    let res = py.detach(|| lensbench_runs::run(n, seed, &opts, task));
     if let Some(e) = first_err.into_inner().unwrap_or_else(|x| x.into_inner()) {
         return Err(e);
     }
@@ -412,7 +412,7 @@ fn run_batch<'py>(
         return Err(PyKeyboardInterrupt::new_err("一括実行を止めた"));
     }
     let rows: Vec<(usize, String)> = match &out {
-        Some(p) => runs::read_results(p)
+        Some(p) => lensbench_runs::read_results(p)
             .map_err(err)?
             .1
             .into_iter()
@@ -438,7 +438,7 @@ fn read_batch<'py>(
     py: Python<'py>,
     path: PathBuf,
 ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyList>)> {
-    let (h, rows) = runs::read_results(&path).map_err(err)?;
+    let (h, rows) = lensbench_runs::read_results(&path).map_err(err)?;
     let l = PyList::empty(py);
     for (i, s, r) in rows {
         let d = PyDict::new(py);

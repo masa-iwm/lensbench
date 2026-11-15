@@ -4,12 +4,12 @@
 use crate::common::root;
 use lensbench_core::analysis::{opd, zernike, ZernKind};
 use lensbench_core::fiber::FiberOpts;
-use lensbench_core::optim::{
-    dls, DlsOpts, JacMode, ParaxQ, Problem, RayQ, Stop, Term, TermKind, UserTerm, UserTermRef,
-};
 use lensbench_core::param::Param;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::{FieldSel, Result, System};
+use lensbench_optim::{
+    dls, DlsOpts, JacMode, ParaxQ, Problem, RayQ, Stop, Term, TermKind, UserTerm, UserTermRef,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
