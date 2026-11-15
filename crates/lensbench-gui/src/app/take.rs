@@ -26,13 +26,13 @@ impl Core {
                 }
                 Tag::Get => {
                     if let Some(p) = d.replies[0].params["param"].as_str() {
-                        self.param_vals.remove(p);
+                        self.sys.param_vals.remove(p);
                     }
                 }
                 // 断られた変更は欄から消す（系の値を読み直す）
                 Tag::Edit => {
-                    self.oss = Default::default();
-                    self.ld.insp.stale();
+                    self.p.oss = Default::default();
+                    self.p.ld.insp.stale();
                 }
                 // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）
                 Tag::Load => {
@@ -62,23 +62,23 @@ impl Core {
                         }
                     }
                 }
-                Tag::UserCatalog => self.cat_save.note = Some((e.to_string(), true)),
-                Tag::CatalogFill => self.fill.failed(e),
+                Tag::UserCatalog => self.p.cat_save.note = Some((e.to_string(), true)),
+                Tag::CatalogFill => self.p.fill.failed(e),
                 Tag::Optimize => {
-                    self.opt.running = false;
-                    self.opt.error = Some(e.to_string());
+                    self.p.opt.running = false;
+                    self.p.opt.error = Some(e.to_string());
                 }
                 Tag::Swap => {
-                    self.swap.running = false;
-                    self.swap.error = Some(e.to_string());
+                    self.p.swap.running = false;
+                    self.p.swap.error = Some(e.to_string());
                 }
                 Tag::Tolerance => {
-                    self.tol.running = false;
-                    self.tol.error = Some(e.to_string());
+                    self.p.tol.running = false;
+                    self.p.tol.error = Some(e.to_string());
                 }
                 Tag::Zoom => {
-                    self.zoom.running = false;
-                    self.zoom.error = Some(e.to_string());
+                    self.p.zoom.running = false;
+                    self.p.zoom.error = Some(e.to_string());
                 }
                 _ => {}
             }
@@ -97,8 +97,8 @@ impl Core {
         match d.tag {
             Tag::Load => {
                 // 開く・読み直すで段を積んだときは段の数と一覧が付く（無ければ段は空）
-                self.hist = (0, 0);
-                self.hist_list = Default::default();
+                self.sys.hist = (0, 0);
+                self.sys.hist_list = Default::default();
                 self.take_history(&v);
                 self.new_undo = None;
                 self.new_redo = None;
@@ -115,7 +115,7 @@ impl Core {
                 }
                 self.on_loaded(v);
             }
-            Tag::Info => self.info = Some(v),
+            Tag::Info => self.sys.info = Some(v),
             Tag::Analyze(id) => {
                 let cmd = params["cmd"].as_str().unwrap_or_default().to_string();
                 let gen = self.rev;
@@ -186,7 +186,7 @@ impl Core {
             }
             Tag::Get => {
                 if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
-                    self.param_vals.insert(p.to_string(), x);
+                    self.sys.param_vals.insert(p.to_string(), x);
                     if !self.s.params.iter().any(|q| q == p) {
                         self.s.params.push(p.to_string());
                     }
@@ -211,8 +211,8 @@ impl Core {
                 // 面の表は変更あり
                 if let Some(l) = v.get_mut("loaded") {
                     self.on_loaded(l.take());
-                    let top = &self.hist_list.0.first();
-                    self.ld_dirty =
+                    let top = &self.sys.hist_list.0.first();
+                    self.loc.ld_dirty =
                         top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
                     self.info(tr(if back {
                         "元に戻した"
@@ -230,7 +230,7 @@ impl Core {
                     .into();
                 }
                 // 値の変更（Set）も保存していない変更
-                self.ld_dirty = true;
+                self.loc.ld_dirty = true;
                 // 値を変えたら面の表・要約と、開いている解析を計算し直す
                 self.refresh();
                 self.worker
@@ -246,25 +246,30 @@ impl Core {
                 );
             }
             Tag::Surfaces => {
-                self.oss.stale();
+                self.p.oss.stale();
                 // 要約の面の数も今の系に（読み込み時のままにしない）
-                if let (Some(sum), Some(a)) = (self.summary.as_mut(), v["surfaces"].as_array()) {
+                if let (Some(sum), Some(a)) = (self.sys.summary.as_mut(), v["surfaces"].as_array())
+                {
                     sum["surfaces"] = json!(a.len());
                 }
                 let (rows, units) = match lens_data::parse(&v) {
                     Ok(x) => x,
                     Err(text) => return self.fail(text),
                 };
-                self.um.set_mechs(&v["mechanics"]);
-                self.ld_blocks = lens_data::tree(&units);
-                self.ld.insp.stale();
-                self.ld_rows = rows;
-                self.ld_units = units;
+                self.p.um.set_mechs(&v["mechanics"]);
+                self.sys.ld_blocks = lens_data::tree(&units);
+                self.p.ld.insp.stale();
+                self.sys.ld_rows = rows;
+                self.sys.ld_units = units;
                 // 同梱のカタログ（屈折率だけ）から取ったガラスがあれば知らせる（GUX-01）
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let mats: Vec<&str> =
-                        self.ld_rows.iter().map(|r| r.material.as_str()).collect();
+                    let mats: Vec<&str> = self
+                        .sys
+                        .ld_rows
+                        .iter()
+                        .map(|r| r.material.as_str())
+                        .collect();
                     let used = crate::builtin_glass::used(&mats, &agf_names(&self.s.glass_dirs));
                     if !used.is_empty() && !self.status.error {
                         self.info(trf(
@@ -276,12 +281,12 @@ impl Core {
                 return;
             }
             Tag::SurfData(j) => {
-                self.ld.insp.set(j, v);
+                self.p.ld.insp.set(j, v);
                 return;
             }
             Tag::SysData => {
                 // 要約の視野・波長も今の系に
-                if let Some(sum) = self.summary.as_mut() {
+                if let Some(sum) = self.sys.summary.as_mut() {
                     let d = &v["data"];
                     if let Some(f) = d["fields"].as_array() {
                         sum["fields"] = json!(f
@@ -296,15 +301,15 @@ impl Core {
                         sum["primary"] = json!(p + 1);
                     }
                 }
-                self.oss.set(&v);
+                self.p.oss.set(&v);
                 return;
             }
             Tag::ConfigTable => match config_panel::parse(&v) {
-                Ok(t) => return self.mc.table = Some(t),
+                Ok(t) => return self.p.mc.table = Some(t),
                 Err(text) => return self.fail(text),
             },
             Tag::ConfigDiff => {
-                self.mc.notes = v["notes"]
+                self.p.mc.notes = v["notes"]
                     .as_array()
                     .map(|a| {
                         a.iter()
@@ -323,7 +328,7 @@ impl Core {
                 );
             }
             Tag::Save => {
-                self.ld_dirty = false;
+                self.loc.ld_dirty = false;
                 text = trf("{} に保存", &[&params["path"].as_str().unwrap_or_default()]);
             }
             Tag::Layout => {
@@ -339,7 +344,7 @@ impl Core {
             }
             Tag::UserCatalog => {
                 let (method, _, _) = d.first();
-                self.cat_save.take(&v);
+                self.p.cat_save.take(&v);
                 text = match method {
                     "catalog_add" => trf(
                         "{} に {} を保存",
@@ -365,13 +370,13 @@ impl Core {
                     }
                 }
                 if method != "catalog_items" {
-                    self.cat_save.note = Some((text.clone(), false));
+                    self.p.cat_save.note = Some((text.clone(), false));
                     // カタログブラウザに並ぶカタログなら一覧を読み直す
                     self.refresh_catalog();
                 }
             }
             Tag::CatalogFill => {
-                self.fill.done(&v);
+                self.p.fill.done(&v);
                 text = trf(
                     "{} {} を補って {} に保存",
                     &[
@@ -398,21 +403,21 @@ impl Core {
                 return;
             }
             Tag::Optimize => {
-                self.opt.running = false;
-                self.opt.error = None;
-                self.opt.undo = None;
+                self.p.opt.running = false;
+                self.p.opt.error = None;
+                self.p.opt.undo = None;
                 // 結果を系に当てたら元に戻す段が増える
                 self.worker.send(Tag::HistoryDepth, "history", json!({}));
                 text = trf(
                     "最適化 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.opt.result = Some(std::sync::Arc::new(v));
+                self.p.opt.result = Some(std::sync::Arc::new(v));
             }
             Tag::Swap => {
-                self.swap.running = false;
-                self.swap.error = None;
-                self.swap.inserted = None;
+                self.p.swap.running = false;
+                self.p.swap.error = None;
+                self.p.swap.inserted = None;
                 let r = views::read::<lensbench_design::swap::SwapReply>(&v);
                 if r.as_ref().is_ok_and(|r| r.results.is_some()) {
                     text = trf(
@@ -420,28 +425,28 @@ impl Core {
                         &[&fmt_num((ms * 10.0).round() / 10.0)],
                     );
                 }
-                (self.swap.result, self.swap.error) = r.map_or_else(
+                (self.p.swap.result, self.p.swap.error) = r.map_or_else(
                     |e| (None, Some(e)),
                     |r| (Some(std::sync::Arc::new(r)), None),
                 );
             }
             Tag::Tolerance => {
-                self.tol.running = false;
-                self.tol.error = None;
+                self.p.tol.running = false;
+                self.p.tol.error = None;
                 text = trf(
                     "公差 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.tol.result = Some(std::sync::Arc::new(v));
+                self.p.tol.result = Some(std::sync::Arc::new(v));
             }
             Tag::Zoom => {
-                self.zoom.running = false;
-                self.zoom.error = None;
+                self.p.zoom.running = false;
+                self.p.zoom.error = None;
                 text = trf(
                     "ズーム軌跡 完了（{} ms）",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.zoom.result = Some(v);
+                self.p.zoom.result = Some(v);
             }
         }
         self.set_done_status(&d.tag, text);

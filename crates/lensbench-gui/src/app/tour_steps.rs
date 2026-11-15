@@ -88,6 +88,7 @@ impl App {
                 // 開いた系（P17）に群 G23（群 2・3）を足し、機構部品（筒）を置いて、群 G2 の設定と欄を見せる
                 let u = |n: &str| {
                     self.c
+                        .sys
                         .ld_units
                         .iter()
                         .find(|u| u.name == n)
@@ -102,16 +103,16 @@ impl App {
                     "bores": [{ "z0": 0.0, "z1": 40.0, "radius": 15.0 }], "outer_radius": 18.0,
                 }}));
                 self.c.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                self.c.ld.scope.clear();
-                self.c.ld.sel = Some("G2".into());
-                self.c.ld.block_view = Some("G2".into());
+                self.c.p.ld.scope.clear();
+                self.c.p.ld.sel = Some("G2".into());
+                self.c.p.ld.block_view = Some("G2".into());
                 self.c.um_open = true;
                 self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
             Step::Zoom => {
                 // 3 群のズーム（例の P17）を開き、群 2・3 の移動で焦点距離 140・160・175 mm に合わせ、間を 2 点ずつたどる
                 self.c.open(&crate::tour::zoom_sample(dir));
-                let z = &mut self.c.zoom;
+                let z = &mut self.c.p.zoom;
                 z.vars = ["G2.shift", "G3.shift"]
                     .map(|n| crate::zoom_panel::VarRow {
                         name: n.into(),
@@ -183,23 +184,23 @@ impl App {
                 // レイアウト図: 2 枚目を選び、1 枚目の後の空気の寸法を選ぶ
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
                 // 1 枚目の後の空気の寸法を、その場で書き換えるところ
-                self.c.combo_view.start_edit(&mut self.c.doc.combo, 0);
+                self.c.p.combo_view.start_edit(&mut self.c.doc.combo, 0);
             }
             Step::Layout3d => {
                 // 3D 表示: 2 枚目を選んだまま
-                self.c.combo_view.select(1);
+                self.c.p.combo_view.select(1);
                 self.c.s.view_plane = ViewPlane::D3;
                 self.c.request_layout();
             }
             Step::LensData => {
                 // 面の表: 1 枚目の玉の前の面の半径を表から変え（組合せの面の上書きで作り直す）、その玉に入る
-                self.c.combo_view.select(0);
+                self.c.p.combo_view.select(0);
                 let ids = self.c.doc.combo.span_ids();
                 let spans = lens_data::elem_spans(
                     &ids,
-                    &self.c.ld_units,
+                    &self.c.sys.ld_units,
                     self.c.doc.combo.lead_stop(),
-                    &self.c.ld_rows,
+                    &self.c.sys.ld_rows,
                 );
                 if let Some(Some([a, _])) = spans.first().copied() {
                     self.c.combo_surface_edit(&spans, a, "semi", json!(6.0));
@@ -209,37 +210,38 @@ impl App {
                     }
                 }
                 // 最上位で 1 枚目の玉（ブロック）を選び、ブロックの設定（要素の設定）を出す
-                self.c.ld.detail = true;
+                self.c.p.ld.detail = true;
                 if let Some(id) = ids.first() {
-                    self.c.ld.scope.clear();
-                    self.c.ld.sel = Some(id.clone());
-                    self.c.ld.cur = None;
+                    self.c.p.ld.scope.clear();
+                    self.c.p.ld.sel = Some(id.clone());
+                    self.c.p.ld.cur = None;
                 }
                 self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
             Step::LensDataTree => {
                 // 折りたたみ表示: 1 枚目の玉をその場で開き、中の面を選ぶ
                 let ids = self.c.doc.combo.span_ids();
-                self.c.ld.tree = true;
-                self.c.ld.scope.clear();
+                self.c.p.ld.tree = true;
+                self.c.p.ld.scope.clear();
                 if let Some(id) = ids.first() {
-                    self.c.ld.open.insert(id.clone());
-                    self.c.ld.sel = Some(id.clone());
+                    self.c.p.ld.open.insert(id.clone());
+                    self.c.p.ld.sel = Some(id.clone());
                     let first = self
                         .c
+                        .sys
                         .ld_blocks
                         .iter()
                         .find(|b| &b.name == id)
                         .and_then(|b| b.surfs.first().copied());
-                    self.c.ld.cur = first.map(|j| (j, lens_data::Col::R));
+                    self.c.p.ld.cur = first.map(|j| (j, lens_data::Col::R));
                 }
                 self.exec(ctx, Cmd::FocusKind(Kind::LensData));
             }
             Step::ComboSpot => {
                 // 面の表の表示・見る面を戻す
-                self.c.ld.tree = false;
-                self.c.ld.detail = false;
-                self.c.ld.open.clear();
+                self.c.p.ld.tree = false;
+                self.c.p.ld.detail = false;
+                self.c.p.ld.open.clear();
                 self.c.s.view_plane = ViewPlane::Yz;
                 self.c.request_layout();
                 if let Some(id) = self.pane_of(spot) {
@@ -249,8 +251,8 @@ impl App {
             Step::Optimize => {
                 // 最適化: 像面の前の間隔を変数に、既定の RMS スポットと縁の光線の項で回す
                 self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
-                let img = self.c.ld_rows.len().saturating_sub(1);
-                let o = &mut self.c.opt;
+                let img = self.c.sys.ld_rows.len().saturating_sub(1);
+                let o = &mut self.c.p.opt;
                 o.vars = vec![crate::optim_panel::VarRow {
                     name: format!("{}.t", img.saturating_sub(1)),
                     lo: "0".into(),
@@ -267,11 +269,11 @@ impl App {
             }
             Step::OptApply => {
                 // 結果を組合せに当てる（後の空気が変わり、系を作り直して解析も計算し直す）
-                match self.c.opt.result.clone() {
+                match self.c.p.opt.result.clone() {
                     Some(r) => {
                         let v = crate::optim_panel::result_values(&r, false);
                         if self.c.apply_values(&v) {
-                            self.c.opt.undo = Some(crate::optim_panel::result_values(&r, true));
+                            self.c.p.opt.undo = Some(crate::optim_panel::result_values(&r, true));
                         }
                     }
                     None => self.c.fail("最適化の結果がない"),
@@ -281,7 +283,7 @@ impl App {
                 // 差し替え探索: 2 枚目をカタログの全部（裏返しも）で差し替え、間の空気と像面までを最適化
                 self.exec(ctx, Cmd::FocusKind(Kind::Swap));
                 let (proj, cands) = crate::swap_panel::combo_project(&self.c.doc.combo);
-                let sw = &mut self.c.swap;
+                let sw = &mut self.c.p.swap;
                 sw.slots = cands
                     .blocks
                     .iter()
@@ -314,6 +316,7 @@ impl App {
                 // 1 位の組を組合せに入れる（系を作り直して解析も計算し直す）
                 let row = self
                     .c
+                    .p
                     .swap
                     .result
                     .as_ref()
@@ -327,8 +330,8 @@ impl App {
                     });
                 match r {
                     Ok(()) => {
-                        self.c.swap.undo = Some(before);
-                        self.c.swap.inserted = Some(0);
+                        self.c.p.swap.undo = Some(before);
+                        self.c.p.swap.inserted = Some(0);
                         let p = self.c.doc.combo.project();
                         self.c.build_combo(p);
                     }
@@ -338,8 +341,8 @@ impl App {
             Step::Tolerance => {
                 // モンテカルロ公差: 精密の組、像面の前の間隔を補償子に、30 回
                 self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
-                let img = self.c.ld_rows.len().saturating_sub(1);
-                let t = &mut self.c.tol;
+                let img = self.c.sys.ld_rows.len().saturating_sub(1);
+                let t = &mut self.c.p.tol;
                 t.trials = 30;
                 t.preset = "precision".into();
                 // カタログの玉の公差: どのメーカーも中心厚 ±0.05 mm、外径 10 mm 未満は焦点距離 ±1%
@@ -434,7 +437,7 @@ impl App {
                 self.c.rays_open = true;
                 let p = self.c.doc.combo.project();
                 self.c.build_combo(p);
-                self.c.combo_view.select(1);
+                self.c.p.combo_view.select(1);
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
             }
         }

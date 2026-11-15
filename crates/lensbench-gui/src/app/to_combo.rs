@@ -40,19 +40,19 @@ impl Core {
 
     /// [`Self::open_to_combo`]。asked は保存していない変更を捨ててよいか聞いて「はい」だった
     pub(super) fn open_to_combo_with(&mut self, keep: bool, asked: bool) {
-        let Some(f) = self.file.clone().filter(|_| !self.is_combo()) else {
+        let Some(f) = self.loc.file.clone().filter(|_| !self.is_combo()) else {
             self.to_combo = None;
             self.open_insert = None;
             return;
         };
-        let Some(d) = self.oss.data.clone() else {
-            if self.oss.want() {
+        let Some(d) = self.p.oss.data.clone() else {
+            if self.p.oss.want() {
                 self.worker.send(Tag::SysData, "system_data", json!({}));
             }
             return;
         };
         self.to_combo = None;
-        if self.ld_dirty && !asked {
+        if self.loc.ld_dirty && !asked {
             self.ask(
                 tr("組合せにする"),
                 tr("開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？"),
@@ -63,14 +63,14 @@ impl Core {
                     }
                     if keep {
                         // 足した要素は残し、開いた系はそのまま
-                        c.built_combo = Some(c.doc.combo.clone());
+                        c.loc.built_combo = Some(c.doc.combo.clone());
                     }
                     c.open_insert = None;
                 },
             );
             return;
         }
-        let obj_t = self.ld_rows.first().map_or(f64::INFINITY, |r| r.t);
+        let obj_t = self.sys.ld_rows.first().map_or(f64::INFINITY, |r| r.t);
         let mut c = Combo {
             name: f
                 .file_stem()
@@ -81,7 +81,7 @@ impl Core {
         if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
             self.fail(e);
             if keep {
-                self.built_combo = Some(self.doc.combo.clone());
+                self.loc.built_combo = Some(self.doc.combo.clone());
             }
             self.open_insert = None;
             return;
@@ -92,6 +92,7 @@ impl Core {
         // 取り込みは像面の手前の面の厚さまで含むので、後の空気は 0
         z.air = 0.0;
         if let Some(cfg) = self
+            .sys
             .summary
             .as_ref()
             .and_then(|s| s["cfg"].as_u64())
@@ -101,9 +102,9 @@ impl Core {
         }
         // 開いた系の玉・群（最上位のブロック）を取り込みの中の群として残す（取り込み全体が 1 つのブロックになり、
         // その中に元の玉が並ぶ）
-        z.zgroups = open_groups(&self.ld_blocks);
+        z.zgroups = open_groups(&self.sys.ld_blocks);
         match self.open_insert.take() {
-            Some((after, p)) => c.picks.extend(split_open(z, &self.ld_rows, after, p)),
+            Some((after, p)) => c.picks.extend(split_open(z, &self.sys.ld_rows, after, p)),
             None => c.picks.push(z),
         }
         if keep {
@@ -112,9 +113,9 @@ impl Core {
             c.mechanics = old.mechanics;
         }
         self.doc.combo = c;
-        self.combo_view = combo::View::default();
+        self.p.combo_view = combo::View::default();
         self.combo_len_prev = self.doc.combo.picks.len();
-        self.doc_path = None;
+        self.loc.doc_path = None;
         self.info(tr("開いた系を組合せの要素にした（系の取り込み）"));
         self.build_combo(self.doc.combo.project());
     }

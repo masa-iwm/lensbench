@@ -5,10 +5,16 @@
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
 mod ask;
+mod doc_loc;
 mod help;
 mod menus;
+mod panels;
 mod result;
 mod status;
+mod sys_copy;
+use doc_loc::DocLoc;
+use panels::Panels;
+use sys_copy::SysCopy;
 mod take;
 mod to_combo;
 mod tour_steps;
@@ -467,6 +473,8 @@ enum Cmd {
 
 /// パネルの外の状態（パネルの中から触る）
 struct Core {
+    /// パネルの状態（GAR-01）
+    p: Panels,
     s: Settings,
     /// ファイルメニューの「見本」（Web 版の同梱の系）
     samples: Vec<String>,
@@ -482,15 +490,11 @@ struct Core {
     status: Status,
     /// 下の行の誤りを出した要求とその文（同じ要求がうまくいったら消す、GUX-27）
     status_err: Option<(Tag, String)>,
-    /// 読み込んだ系のファイル
-    file: Option<PathBuf>,
-    /// load の結果（系の概要）
-    summary: Option<Value>,
-    /// info の結果
-    info: Option<Value>,
+    /// 文書の所在（開いた系のファイル・保存先・最後に作った組合せ、GAR-01）
+    loc: DocLoc,
+    /// serve の系の写し（概要・面の表・元に戻す段など、GAR-01）
+    sys: SysCopy,
     results: HashMap<u64, AnaRes>,
-    /// パラメータの今の値
-    param_vals: HashMap<String, f64>,
     new_param: String,
     /// まだ送っていない値の変更（計算中に動かした分はまとめて送る）
     pending_set: std::collections::BTreeMap<String, f64>,
@@ -507,21 +511,12 @@ struct Core {
     /// Web 版: 今描いている別の窓のパネル（確かめをその窓に出す）
     drawing_in: Option<u64>,
     layout_name: String,
-    /// 最後に組合せから作ったプロジェクト
-    built: Option<Value>,
-    /// 今の系（組合せ）を保存するファイル（開いた・保存したプロジェクトの .json。Ctrl+S の書き先）
-    doc_path: Option<PathBuf>,
-    /// 最後に系を作った組合せ（今の組合せと違えば作り直す）
-    built_combo: Option<Combo>,
-    /// 組合せの系のファイル（開いている系が組合せか）
-    combo_path: Option<PathBuf>,
     /// 組合せのレイアウト図（serve の layout）
     layout_data: Option<combo::LayoutData>,
     /// レイアウト図に重ねる構成
     overlay: Overlay,
     /// レイアウトの光線・書き出しの設定の欄を次の描画で開く（通し確認）
     rays_open: bool,
-    combo_view: combo::View,
     /// 前の画面で図で選んでいた要素（図で選び直したかを見る）
     combo_sel_prev: Option<usize>,
     /// 開いた系を組合せ（系の取り込み 1 つ）にする（系の設定を待っている）。true は今の組合せの要素を後ろに残す（#135）
@@ -536,10 +531,6 @@ struct Core {
     cmds: Vec<Cmd>,
     /// 最後に組合せを変えて系を作り直した時刻（動かしている間は解析を待たせる）
     combo_edit: Option<web_time::Instant>,
-    /// 開いた系の元に戻せる段・やり直せる段の数（serve の set・edit・undo・redo の結果）
-    hist: (usize, usize),
-    /// その段の変更（serve の undo_list・redo_list）
-    hist_list: (Vec<Value>, Vec<Value>),
     /// 組合せの元に戻す・やり直す
     combo_hist: ComboHist,
     /// 新規の前の状態（新規を元に戻す）と、新規をやり直せるか
@@ -548,21 +539,10 @@ struct Core {
     new_redo: Option<usize>,
     /// serve のやり直しの後に新規をやり直す（一覧で新規より先まで選んだ）
     redo_new_pending: bool,
-    /// 面の表: 状態、面の値、玉・群、木
-    ld: lens_data::LensData,
-    ld_rows: Vec<lens_data::Row>,
-    ld_units: Vec<lens_data::Unit>,
-    /// 開いた系の玉・群・機構部品の欄
-    um: crate::unit_mech::Edits,
     /// 玉・群・機構部品の欄を開く（通し確認）
     um_open: bool,
-    ld_blocks: Vec<lens_data::Block>,
     /// レンズデータの硝材の候補（ガラスカタログを読んだときに作る）
     ld_glasses: Vec<lens_data::GlassChoice>,
-    /// 開いた系を面の表で変えて、まだ保存していない
-    ld_dirty: bool,
-    /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり、GUX-02）
-    saved_combo: Option<Combo>,
     /// 閉じる前に「保存しますか」を聞いている
     close_ask: bool,
     /// 前の画面の組合せの要素・状態・面の上書きの数
@@ -582,26 +562,11 @@ struct Core {
     close_ok: bool,
     /// 保存が終わったら閉じる
     close_pending: bool,
-    /// 多重構成の表
-    mc: config_panel::State,
-    /// 開いた系の系の設定
-    oss: open_sysset::State,
-    /// 組合せの要素をユーザーカタログに保存する窓
-    cat_save: CatSave,
-    /// 未完のカタログ品を補う窓
-    fill: crate::fill::FillWin,
     /// 未完のカタログ品を、行を選んだら裏で補う
     auto_fill: crate::fill::AutoFill,
-    /// 最適化のパネル
-    opt: crate::optim_panel::OptPanel,
-    /// 差し替え探索のパネルと、回したときの組合せの id
-    swap: crate::swap_panel::SwapPanel,
     swap_ids: Vec<String>,
     /// 開いたプロジェクトの玉・間隔（ファイルと、その中の候補）
     swap_file: Option<(PathBuf, crate::swap_panel::Cands)>,
-    /// モンテカルロ公差のパネル
-    tol: crate::tol_panel::TolPanel,
-    zoom: crate::zoom_panel::ZoomPanel,
     /// 結果・系の概要を受け取った回数（Web 版の別のタブに送り直す目安）
     rev: u64,
     /// [`Core::param_sys`] の写し（rev が変わったときだけ作り直す、GAR-09）
@@ -765,12 +730,13 @@ impl Core {
     /// 空のパネルは入れない（GPN-14）
     fn panels_value(&self) -> Value {
         let mut v = serde_json::Map::new();
-        if self.opt.vars.iter().any(|x| !x.name.trim().is_empty()) || !self.opt.terms.is_empty() {
-            if let Ok(p) = self.opt.params() {
+        if self.p.opt.vars.iter().any(|x| !x.name.trim().is_empty()) || !self.p.opt.terms.is_empty()
+        {
+            if let Ok(p) = self.p.opt.params() {
                 v.insert("optimize".into(), p);
             }
         }
-        if let Ok(p) = self.tol.spec() {
+        if let Ok(p) = self.p.tol.spec() {
             if p != crate::tol_panel::TolPanel::default()
                 .spec()
                 .unwrap_or(Value::Null)
@@ -778,7 +744,7 @@ impl Core {
                 v.insert("tolerance".into(), p);
             }
         }
-        if let Ok(p) = self.swap.spec() {
+        if let Ok(p) = self.p.swap.spec() {
             if p != crate::swap_panel::SwapPanel::default()
                 .spec()
                 .unwrap_or(Value::Null)
@@ -786,7 +752,7 @@ impl Core {
                 v.insert("swap".into(), p);
             }
         }
-        if let Some(p) = self.zoom.saved() {
+        if let Some(p) = self.p.zoom.saved() {
             v.insert("zoom".into(), p);
         }
         if v.is_empty() {
@@ -799,37 +765,39 @@ impl Core {
     /// [`Core::panels_value`] をパネルに戻す（読めない項目は飛ばす）
     fn set_panels(&mut self, v: &Value) {
         if let Some(p) = v.get("optimize") {
-            let _ = self.opt.set_params(p);
+            let _ = self.p.opt.set_params(p);
         }
         if let Some(p) = v.get("tolerance") {
-            let _ = self.tol.set_spec(p);
+            let _ = self.p.tol.set_spec(p);
         }
         if let Some(p) = v.get("swap") {
-            let _ = self.swap.set_spec(p);
+            let _ = self.p.swap.set_spec(p);
         }
         if let Some(p) = v.get("zoom") {
-            self.zoom.restore(p);
+            self.p.zoom.restore(p);
         }
     }
 
     /// 保存していない変更がある（組合せは最後に保存・開いたものと違う、開いた系は面の表・値を変えた）
     fn dirty(&self) -> bool {
-        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
+        let combo =
+            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
         if combo {
-            match &self.saved_combo {
+            match &self.loc.saved_combo {
                 Some(c) => c != &self.doc.combo,
                 None => !self.doc.combo.picks.is_empty(),
             }
         } else {
-            self.ld_dirty
+            self.loc.ld_dirty
         }
     }
 
     /// 閉じると失う変更がある。一度もファイルに保存・ファイルから開いていない組合せは設定に残り、次に起動したときに
     /// 戻るので失わない（毎回の閉じる確認を出さない）
     fn close_loses(&self) -> bool {
-        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
-        if combo && self.saved_combo.is_none() {
+        let combo =
+            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
+        if combo && self.loc.saved_combo.is_none() {
             return false;
         }
         self.dirty()
@@ -872,7 +840,7 @@ impl Core {
             if let Some(c) = v.as_ref().and_then(combo_of_project) {
                 if !self.doc.combo.picks.is_empty()
                     && self.doc.combo != c
-                    && self.built_combo.as_ref() != Some(&self.doc.combo)
+                    && self.loc.built_combo.as_ref() != Some(&self.doc.combo)
                     && !asked
                 {
                     let p = p.to_path_buf();
@@ -891,22 +859,22 @@ impl Core {
                 // 付ける前を持つと、開いただけで未保存になる
                 let mut c = c;
                 c.drop_stale_edits();
-                self.saved_combo = Some(c.clone());
+                self.loc.saved_combo = Some(c.clone());
                 if let Some(g) = v.as_ref().and_then(|v| v.get("gui")) {
                     self.set_panels(g);
                 }
                 self.doc.combo = c;
                 // 別の組合せ: 元に戻す段は空から
                 self.combo_hist = Default::default();
-                self.combo_view = combo::View::default();
-                self.doc_path = Some(p.to_path_buf());
+                self.p.combo_view = combo::View::default();
+                self.loc.doc_path = Some(p.to_path_buf());
                 self.build_combo(self.doc.combo.project());
                 return;
             }
         }
         // 系ファイル（面の並び）だけはその場に上書きする。ブロックで書いたプロジェクトは、保存すると面の並びに
         // なるので書き先を選ばせる
-        self.doc_path = v
+        self.loc.doc_path = v
             .is_some_and(|v| v.get("blocks").is_none())
             .then(|| p.to_path_buf());
         self.open(p);
@@ -918,7 +886,7 @@ impl Core {
         let mut params = self.load_params(p);
         // 開く前の系は serve の段に積む（開くを元に戻せる）。組合せの作り直しは組合せの段で戻すので積まない
         params["history"] = json!(
-            if self.is_combo() && self.combo_path.as_deref() == Some(p) {
+            if self.is_combo() && self.loc.combo_path.as_deref() == Some(p) {
                 "keep"
             } else {
                 "push"
@@ -935,7 +903,7 @@ impl Core {
             "lens_catalogs": dirs(&self.s.lens_dirs),
         });
         // 組合せの今の状態
-        if self.combo_path.as_deref() == Some(p) {
+        if self.loc.combo_path.as_deref() == Some(p) {
             if let Some(st) = self.doc.combo.active_state() {
                 v["state"] = json!(st);
             }
@@ -946,7 +914,7 @@ impl Core {
     /// 新規: 組合せと開いている系を空にする（前の状態は新規を元に戻す段に。確かめずに空にし、元に戻せる）
     fn new_system(&mut self) {
         // すでに空なら何もしない（新規の前の状態を空で上書きしない）
-        if self.summary.is_none() && self.doc.combo.picks.is_empty() {
+        if self.sys.summary.is_none() && self.doc.combo.picks.is_empty() {
             return;
         }
         self.new_undo = Some(NewSnap {
@@ -957,37 +925,37 @@ impl Core {
                 h.redo.clear();
                 h
             },
-            file: self.file.take(),
-            summary: self.summary.take(),
-            built: self.built.take(),
-            built_combo: self.built_combo.take(),
-            combo_path: self.combo_path.take(),
-            doc_path: self.doc_path.take(),
-            ld_dirty: self.ld_dirty,
-            saved_combo: self.saved_combo.take(),
-            hist: std::mem::take(&mut self.hist),
-            hist_list: std::mem::take(&mut self.hist_list),
+            file: self.loc.file.take(),
+            summary: self.sys.summary.take(),
+            built: self.loc.built.take(),
+            built_combo: self.loc.built_combo.take(),
+            combo_path: self.loc.combo_path.take(),
+            doc_path: self.loc.doc_path.take(),
+            ld_dirty: self.loc.ld_dirty,
+            saved_combo: self.loc.saved_combo.take(),
+            hist: std::mem::take(&mut self.sys.hist),
+            hist_list: std::mem::take(&mut self.sys.hist_list),
         });
         self.new_redo = None;
-        self.combo_view = combo::View::default();
-        self.summary = None;
-        self.info = None;
+        self.p.combo_view = combo::View::default();
+        self.sys.summary = None;
+        self.sys.info = None;
         self.rev += 1;
-        self.built = None;
-        self.built_combo = None;
-        self.combo_path = None;
-        self.doc_path = None;
+        self.loc.built = None;
+        self.loc.built_combo = None;
+        self.loc.combo_path = None;
+        self.loc.doc_path = None;
         self.layout_data = None;
         self.overlay = Overlay::default();
         self.load_stale = false;
-        self.ld.reset();
-        self.ld_rows.clear();
-        self.ld_units.clear();
-        self.ld_blocks.clear();
-        self.ld_dirty = false;
-        self.mc = Default::default();
-        self.oss = Default::default();
-        self.param_vals.clear();
+        self.p.ld.reset();
+        self.sys.ld_rows.clear();
+        self.sys.ld_units.clear();
+        self.sys.ld_blocks.clear();
+        self.loc.ld_dirty = false;
+        self.p.mc = Default::default();
+        self.p.oss = Default::default();
+        self.sys.param_vals.clear();
         self.pending_set.clear();
         for r in self.results.values_mut() {
             r.value = None;
@@ -999,7 +967,7 @@ impl Core {
 
     /// 読み直す。開いた系は前の系を段に積む（読み直すを元に戻せる）。組合せの系は組合せから作り直す
     fn reload(&mut self) {
-        let Some(f) = self.file.clone() else {
+        let Some(f) = self.loc.file.clone() else {
             return;
         };
         if self.is_combo() {
@@ -1024,19 +992,19 @@ impl Core {
         self.doc.combo = n.combo;
         self.combo_hist = n.combo_hist;
         self.combo_len_prev = self.doc.combo.picks.len();
-        self.built = n.built;
-        self.built_combo = n.built_combo;
-        self.combo_path = n.combo_path;
-        self.doc_path = n.doc_path;
-        self.saved_combo = n.saved_combo;
-        self.hist = n.hist;
-        self.hist_list = n.hist_list;
-        self.new_redo = Some(self.hist.1);
+        self.loc.built = n.built;
+        self.loc.built_combo = n.built_combo;
+        self.loc.combo_path = n.combo_path;
+        self.loc.doc_path = n.doc_path;
+        self.loc.saved_combo = n.saved_combo;
+        self.sys.hist = n.hist;
+        self.sys.hist_list = n.hist_list;
+        self.new_redo = Some(self.sys.hist.1);
         if let Some(sum) = n.summary {
             // serve には新規の前の系が残っている（読み直さずに表・解析を出し直す）
             self.on_loaded(sum);
-            self.file = n.file;
-            self.ld_dirty = n.ld_dirty;
+            self.loc.file = n.file;
+            self.loc.ld_dirty = n.ld_dirty;
         }
         self.info(tr("元に戻した"));
     }
@@ -1086,7 +1054,8 @@ impl Core {
     }
 
     fn n_fields(&self) -> usize {
-        self.summary
+        self.sys
+            .summary
             .as_ref()
             .and_then(|s| s["fields"].as_array().map(Vec::len))
             .unwrap_or(0)
@@ -1108,6 +1077,7 @@ impl Core {
     fn build_param_sys(&self) -> crate::param_pick::Sys {
         crate::param_pick::Sys {
             surfs: self
+                .sys
                 .ld_rows
                 .iter()
                 .map(|r| {
@@ -1118,14 +1088,15 @@ impl Core {
                     )
                 })
                 .collect(),
-            units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
+            units: self.sys.ld_units.iter().map(|u| u.name.clone()).collect(),
             waves: self.waves_um().len(),
         }
     }
 
     fn waves_um(&self) -> Vec<f64> {
         // 配列を複製せずに読む（GAR-09）
-        self.summary
+        self.sys
+            .summary
             .as_ref()
             .and_then(|s| s["wavelengths_um"].as_array())
             .map(|a| a.iter().filter_map(Value::as_f64).collect())
@@ -1133,7 +1104,8 @@ impl Core {
     }
 
     fn primary(&self) -> usize {
-        self.summary
+        self.sys
+            .summary
             .as_ref()
             .and_then(|s| s["primary"].as_u64())
             .unwrap_or(1) as usize
@@ -1199,7 +1171,7 @@ impl Core {
 
     /// 解析パネルを計算する（スポットの図なら光線も追跡する）
     fn run(&mut self, id: u64, cfg: &AnaCfg) {
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             return;
         }
         match Self::analysis_params(cfg, self.cutoff()) {
@@ -1276,7 +1248,7 @@ impl Core {
             }
         ));
         // 失敗しても同じ組合せを毎フレーム書き直さない
-        self.built_combo = Some(self.doc.combo.clone());
+        self.loc.built_combo = Some(self.doc.combo.clone());
         // 別の名前に書いてから置き換える（系の読み込みが書きかけのファイルを読まないように）
         let tmp = path.with_extension("json.tmp");
         let res = lensbench_core::vfs::create_dir_all(&dir)
@@ -1295,8 +1267,8 @@ impl Core {
             });
         match res {
             Ok(()) => {
-                self.built = Some(project);
-                self.combo_path = Some(path.clone());
+                self.loc.built = Some(project);
+                self.loc.combo_path = Some(path.clone());
                 // 図は下書きで先に。系の読み込みは、前の読み込みが終わってから最新のファイルを読む
                 self.preview.send(
                     Tag::Layout,
@@ -1318,22 +1290,24 @@ impl Core {
     /// 開いた系は系ファイル（.json）に書く。書き先は開いた・前に保存した .json（.zmx から開いた系・Web 版・
     /// as_new は書き先を選ぶ）（#129）
     fn save(&mut self, as_new: bool) {
-        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
-        if !combo && self.file.is_none() {
+        let combo =
+            self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
+        if !combo && self.loc.file.is_none() {
             return;
         }
         let keep = if as_new || cfg!(target_arch = "wasm32") {
             None
         } else {
-            self.doc_path.clone()
+            self.loc.doc_path.clone()
         };
         let path = match keep {
             Some(p) => p,
             None => {
                 let name = self
+                    .loc
                     .doc_path
                     .as_ref()
-                    .or(if combo { None } else { self.file.as_ref() })
+                    .or(if combo { None } else { self.loc.file.as_ref() })
                     .and_then(|f| f.file_stem())
                     .map(|x| x.to_string_lossy().into_owned())
                     .filter(|x| !x.is_empty())
@@ -1366,8 +1340,8 @@ impl Core {
             );
             self.status = match r {
                 Ok(()) => {
-                    self.doc_path = Some(path.clone());
-                    self.saved_combo = Some(self.doc.combo.clone());
+                    self.loc.doc_path = Some(path.clone());
+                    self.loc.saved_combo = Some(self.doc.combo.clone());
                     self.push_recent(&path.display().to_string());
                     Status {
                         text: trf("{} に保存", &[&path.display()]),
@@ -1380,7 +1354,7 @@ impl Core {
                 },
             };
         } else {
-            self.doc_path = Some(path.clone());
+            self.loc.doc_path = Some(path.clone());
             self.worker.send(
                 Tag::Save,
                 "save",
@@ -1392,6 +1366,7 @@ impl Core {
     /// レイアウトを書き出す（形式は拡張子）。今の見る面・重ねた構成で。2D は断面、3D は立体
     fn export_layout(&mut self) {
         let base = self
+            .loc
             .file
             .as_ref()
             .and_then(|f| f.file_stem())
@@ -1454,7 +1429,7 @@ impl Core {
     }
 
     fn info_num(&self, k: &str) -> Option<f64> {
-        self.info.as_ref().and_then(|i| i[k].as_f64())
+        self.sys.info.as_ref().and_then(|i| i[k].as_f64())
     }
 
     // ---- パネル ----
@@ -1479,7 +1454,7 @@ impl Core {
     /// 開いている系は組合せから作ったものか
     /// レイアウト図を描き直す（重ねる構成を変えたとき）。組合せの系は下書きで
     fn request_layout(&mut self) {
-        match (&self.combo_path, self.is_combo()) {
+        match (&self.loc.combo_path, self.is_combo()) {
             (Some(path), true) => {
                 let load = self.load_params(path);
                 self.preview.send(
@@ -1502,9 +1477,9 @@ impl Core {
         if self.is_combo() && self.combo_hist.can(&self.doc.combo, back) {
             return true;
         }
-        if self.summary.is_some() {
+        if self.sys.summary.is_some() {
             if back {
-                self.hist.0 > 0
+                self.sys.hist.0 > 0
             } else {
                 self.serve_redo() > 0
             }
@@ -1515,7 +1490,7 @@ impl Core {
 
     /// 新規の直後（元に戻す）・新規を戻した直後（やり直す）なら Some（戻せるか）。それ以外は None
     fn new_undo_step(&self, back: bool) -> Option<bool> {
-        if self.summary.is_none() && self.doc.combo.picks.is_empty() {
+        if self.sys.summary.is_none() && self.doc.combo.picks.is_empty() {
             return Some(back && self.new_undo.is_some());
         }
         (!back
@@ -1527,13 +1502,13 @@ impl Core {
 
     /// serve のやり直せる段の数（新規を戻した後は、新規の前の段を除く）
     fn serve_redo(&self) -> usize {
-        self.hist.1.saturating_sub(self.new_redo.unwrap_or(0))
+        self.sys.hist.1.saturating_sub(self.new_redo.unwrap_or(0))
     }
 
     /// 系を読んだ（開いた・読み直した・それを戻した）後: ファイル名・概要を置き、面の表・解析を読み直す
     fn on_loaded(&mut self, v: Value) {
         let new_file = v["file"].as_str().map(PathBuf::from);
-        if new_file != self.file {
+        if new_file != self.loc.file {
             // 別の系: 前との差は出さない
             for r in self.results.values_mut() {
                 r.value = None;
@@ -1541,17 +1516,17 @@ impl Core {
             }
         }
         // 読み直した系には面の表の変更は無い。別の系なら階層・選択・ロックも戻す（組合せの作り直しは同じ系）
-        self.ld_dirty = false;
-        if new_file != self.file {
-            self.ld.reset();
+        self.loc.ld_dirty = false;
+        if new_file != self.loc.file {
+            self.p.ld.reset();
             let key = new_file.as_ref().map(|f| f.display().to_string());
-            self.ld.locked = key
+            self.p.ld.locked = key
                 .and_then(|k| self.s.locked.get(&k).cloned())
                 .unwrap_or_default();
         }
-        self.file = new_file;
-        self.summary = Some(v);
-        self.info = None;
+        self.loc.file = new_file;
+        self.sys.summary = Some(v);
+        self.sys.info = None;
         self.refresh();
         self.read_params();
         // 組合せの図は下書きで作る（ここで作ると、動かしている途中の古い図に戻ることがある）
@@ -1571,7 +1546,7 @@ impl Core {
     /// serve の結果の段の数と一覧を覚える
     fn take_history(&mut self, v: &Value) {
         if let Ok(h) = views::read::<views::HistoryView>(v) {
-            (self.hist, self.hist_list) = ((h.undo, h.redo), (h.undo_list, h.redo_list));
+            (self.sys.hist, self.sys.hist_list) = ((h.undo, h.redo), (h.undo_list, h.redo_list));
         }
     }
 
@@ -1589,9 +1564,9 @@ impl Core {
             Vec::new()
         };
         let l = if back {
-            &self.hist_list.0
+            &self.sys.hist_list.0
         } else {
-            &self.hist_list.1
+            &self.sys.hist_list.1
         };
         if self.is_combo() && !out.is_empty() && !back {
             return out;
@@ -1645,7 +1620,7 @@ impl Core {
             }
             return;
         }
-        if self.summary.is_some() {
+        if self.sys.summary.is_some() {
             self.flush_set();
             let mut n = n;
             if !back && self.new_redo.is_some() && n > self.serve_redo() {
@@ -1661,80 +1636,81 @@ impl Core {
 
     /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（今のセルはブロックの最後の面）
     fn select_ld_surface(&mut self, j: usize) {
-        self.ld.scope.clear();
+        self.p.ld.scope.clear();
         let top = self
+            .sys
             .ld_blocks
             .iter()
             .find(|b| b.parent.is_none() && b.surfs.contains(&j));
         match top {
             Some(b) => {
-                self.ld.sel = Some(b.name.clone());
+                self.p.ld.sel = Some(b.name.clone());
                 // ブロックの最後の面（たたんだ行の鍵。続けて足すとブロックの後に入る）
                 let last = b.surfs.last().copied().unwrap_or(j);
-                self.ld.cur = Some((last, lens_data::Col::R));
+                self.p.ld.cur = Some((last, lens_data::Col::R));
             }
             None => {
-                self.ld.sel = None;
-                self.ld.cur = Some((j, lens_data::Col::R));
+                self.p.ld.sel = None;
+                self.p.ld.cur = Some((j, lens_data::Col::R));
             }
         }
     }
 
     fn is_combo(&self) -> bool {
-        self.file.is_some() && self.file == self.combo_path
+        self.loc.file.is_some() && self.loc.file == self.loc.combo_path
     }
 
     /// 最適化
     fn optimize_ui(&mut self, ui: &mut Ui) {
         use crate::optim_panel::{self as op, Action};
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr("系を開くか、組合せで系を作ると最適化できます。"));
             return;
         }
         let is_combo = self.is_combo();
         let cands = op::Cands {
-            units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
+            units: self.sys.ld_units.iter().map(|u| u.name.clone()).collect(),
             combo: is_combo,
             sys: self.param_sys(),
-            rows: &self.ld_rows,
+            rows: &self.sys.ld_rows,
         };
-        let progress = if self.opt.running {
+        let progress = if self.p.opt.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(150));
             crate::worker::progress::optimize()
         } else {
             None
         };
-        let acts = op::ui(ui, &mut self.opt, &cands, progress.as_deref());
+        let acts = op::ui(ui, &mut self.p.opt, &cands, progress.as_deref());
         let mut load = false;
         for a in acts {
             match a {
                 Action::Run(p) => {
-                    self.opt.running = true;
-                    self.opt.result = None;
-                    self.opt.gen = self.sys_gen;
+                    self.p.opt.running = true;
+                    self.p.opt.result = None;
+                    self.p.opt.gen = self.sys_gen;
                     self.worker.send(Tag::Optimize, "optimize", p);
                 }
                 Action::Stop => crate::worker::progress::stop("optimize"),
                 Action::Apply => {
-                    let Some(r) = self.opt.result.clone() else {
+                    let Some(r) = self.p.opt.result.clone() else {
                         continue;
                     };
                     // 最適化の間・後に系が変わっていれば、古い系の値なので当てない（GAR-20）
-                    if self.opt.gen != self.sys_gen || self.worker.busy_core() {
-                        self.opt.error = Some(
+                    if self.p.opt.gen != self.sys_gen || self.worker.busy_core() {
+                        self.p.opt.error = Some(
                             tr("最適化を始めた後に系が変わったので当てない（もう一度最適化する）")
                                 .to_string(),
                         );
                         continue;
                     }
                     if self.apply_values(&op::result_values(&r, false)) {
-                        self.opt.undo = Some(op::result_values(&r, true));
+                        self.p.opt.undo = Some(op::result_values(&r, true));
                     }
                 }
                 Action::Undo => {
-                    if let Some(u) = self.opt.undo.take() {
+                    if let Some(u) = self.p.opt.undo.take() {
                         self.apply_values(&u);
                     }
                 }
@@ -1767,7 +1743,7 @@ impl Core {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
-                .and_then(|v| self.opt.set_params(&v));
+                .and_then(|v| self.p.opt.set_params(&v));
             if let Err(e) = r {
                 self.fail(format!("{}: {e}", path.display()));
             }
@@ -1786,16 +1762,16 @@ impl Core {
     }
 
     fn zoom_ui(&mut self, ui: &mut Ui) {
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr("系を開くとズーム軌跡を解けます。"));
             return;
         }
         let cands = self.zoom_cands();
         let sys = self.param_sys();
-        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.zoom, &cands, &sys) {
-            self.zoom.running = true;
-            self.zoom.result = None;
+        if let Some(p) = crate::zoom_panel::ui(ui, &mut self.p.zoom, &cands, &sys) {
+            self.p.zoom.running = true;
+            self.p.zoom.result = None;
             self.worker.send(Tag::Zoom, "zoom", p);
         }
     }
@@ -1822,32 +1798,32 @@ impl Core {
 
     fn tolerance_ui(&mut self, ui: &mut Ui) {
         use crate::tol_panel::{self as tp, Action};
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr("系を開くか、組合せで系を作ると公差を回せます。"));
             return;
         }
         let cands = crate::optim_panel::Cands {
-            units: self.ld_units.iter().map(|u| u.name.clone()).collect(),
+            units: self.sys.ld_units.iter().map(|u| u.name.clone()).collect(),
             // 補償子は系の中で動かすだけ（組合せに当てない）ので、面の値の種類を絞らない
             combo: false,
             sys: self.param_sys(),
-            rows: &self.ld_rows,
+            rows: &self.sys.ld_rows,
         };
-        let progress = if self.tol.running {
+        let progress = if self.p.tol.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(200));
             Some(crate::worker::progress::tolerance().unwrap_or((0, 0)))
         } else {
             None
         };
-        let acts = tp::ui(ui, &mut self.tol, &cands, progress);
+        let acts = tp::ui(ui, &mut self.p.tol, &cands, progress);
         let mut load = false;
         for a in acts {
             match a {
                 Action::Run(p) => {
-                    self.tol.running = true;
-                    self.tol.result = None;
+                    self.p.tol.running = true;
+                    self.p.tol.result = None;
                     self.worker.send(Tag::Tolerance, "tolerance", p);
                 }
                 Action::Stop => crate::worker::progress::stop("tolerance"),
@@ -1872,7 +1848,7 @@ impl Core {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
-                .and_then(|v| self.tol.set_spec(&v));
+                .and_then(|v| self.p.tol.set_spec(&v));
             if let Err(e) = r {
                 self.fail(format!("{}: {e}", path.display()));
             }
@@ -1882,7 +1858,7 @@ impl Core {
     /// 差し替え探索
     fn swap_ui(&mut self, ui: &mut Ui) {
         use crate::swap_panel::{self as sp, Action};
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             ui.add_space(8.0);
             ui.label(tr(
                 "組合せで系を作るか、玉のブロックを持つプロジェクトを開くと差し替え探索ができます。",
@@ -1894,7 +1870,7 @@ impl Core {
             let (p, c) = sp::combo_project(&self.doc.combo);
             (Some(p), c)
         } else {
-            let f = self.file.clone().unwrap_or_default();
+            let f = self.loc.file.clone().unwrap_or_default();
             if self.swap_file.as_ref().map(|x| &x.0) != Some(&f) {
                 let c = lensbench_core::vfs::read_to_string(&f)
                     .ok()
@@ -1919,7 +1895,7 @@ impl Core {
                 .map(|x| x.1.clone())
                 .collect()
         };
-        let progress = if self.swap.running {
+        let progress = if self.p.swap.running {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(150));
             crate::worker::progress::swap()
@@ -1927,7 +1903,7 @@ impl Core {
             None
         };
         cands.sys = self.param_sys();
-        let acts = sp::ui(ui, &mut self.swap, &cands, progress);
+        let acts = sp::ui(ui, &mut self.p.swap, &cands, progress);
         if !is_combo {
             if let Some(x) = self.swap_file.as_mut() {
                 x.1 = cands;
@@ -1937,7 +1913,7 @@ impl Core {
         for a in acts {
             let count = matches!(a, Action::Count(_));
             match a {
-                Action::Run(_) | Action::Count(_) if self.swap.running => {}
+                Action::Run(_) | Action::Count(_) if self.p.swap.running => {}
                 Action::Run(mut v) | Action::Count(mut v) => {
                     if count {
                         v["count_only"] = json!(true);
@@ -1945,25 +1921,25 @@ impl Core {
                     if let Some(p) = &project {
                         v["project"] = p.clone();
                     }
-                    v["top"] = json!(self.swap.top);
+                    v["top"] = json!(self.p.swap.top);
                     self.swap_ids = self.doc.combo.ids();
-                    self.swap.running = true;
-                    self.swap.result = None;
+                    self.p.swap.running = true;
+                    self.p.swap.result = None;
                     self.worker.send(Tag::Swap, "swap", v);
                 }
                 Action::Stop => crate::worker::progress::stop("swap"),
                 Action::Insert(i) => {
-                    let res = self.swap.result.as_ref().and_then(|r| r.results.as_ref());
+                    let res = self.p.swap.result.as_ref().and_then(|r| r.results.as_ref());
                     let Some(row) = res.and_then(|r| r.get(i)).cloned() else {
                         continue;
                     };
                     let before = self.doc.combo.clone();
                     match sp::insert_row(&mut self.doc.combo, &self.swap_ids, &row) {
                         Ok(()) => {
-                            if self.swap.undo.is_none() {
-                                self.swap.undo = Some(before);
+                            if self.p.swap.undo.is_none() {
+                                self.p.swap.undo = Some(before);
                             }
-                            self.swap.inserted = Some(i);
+                            self.p.swap.inserted = Some(i);
                             if !self.s.auto_build {
                                 self.build_combo(self.doc.combo.project());
                             }
@@ -1972,9 +1948,9 @@ impl Core {
                     }
                 }
                 Action::Undo => {
-                    if let Some(c) = self.swap.undo.take() {
+                    if let Some(c) = self.p.swap.undo.take() {
                         self.doc.combo = c;
-                        self.swap.inserted = None;
+                        self.p.swap.inserted = None;
                         if !self.s.auto_build {
                             self.build_combo(self.doc.combo.project());
                         }
@@ -2009,7 +1985,7 @@ impl Core {
             let r = lensbench_core::vfs::read_to_string(&path)
                 .map_err(|e| e.to_string())
                 .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
-                .and_then(|v| self.swap.set_spec(&v));
+                .and_then(|v| self.p.swap.set_spec(&v));
             if let Err(e) = r {
                 self.fail(format!("{}: {e}", path.display()));
             }
@@ -2042,7 +2018,7 @@ impl Core {
         }
         let ids = self.doc.combo.span_ids();
         let lead = self.doc.combo.lead_stop();
-        let spans = lens_data::elem_spans(&ids, &self.ld_units, lead, &self.ld_rows);
+        let spans = lens_data::elem_spans(&ids, &self.sys.ld_units, lead, &self.sys.ld_rows);
         for (j, key, value) in edits {
             if !self.combo_surface_edit(&spans, j, key, value) {
                 return false;
@@ -2059,12 +2035,12 @@ impl Core {
         if self.agf_names.0 != self.s.glass_dirs {
             self.agf_names = (self.s.glass_dirs.clone(), agf_names(&self.s.glass_dirs));
         }
-        if self.file.is_some() && !self.is_combo() {
+        if self.loc.file.is_some() && !self.is_combo() {
             // 開いた系の設定。組合せの設定はその下にたたむ
-            if self.oss.want() {
+            if self.p.oss.want() {
                 self.worker.send(Tag::SysData, "system_data", json!({}));
             }
-            let ns = self.ld_rows.len();
+            let ns = self.sys.ld_rows.len();
             egui::ScrollArea::vertical()
                 .id_salt("sysset_scroll")
                 .show(ui, |ui| {
@@ -2075,7 +2051,7 @@ impl Core {
                         .small()
                         .weak(),
                     );
-                    if let Some(op) = open_sysset::ui(ui, &mut self.oss, ns) {
+                    if let Some(op) = open_sysset::ui(ui, &mut self.p.oss, ns) {
                         self.worker.send(Tag::Edit, "edit", json!({ "ops": [op] }));
                     }
                     ui.add_space(8.0);
@@ -2100,7 +2076,7 @@ impl Core {
         // 開いた系の図の下の欄（図と分けたとき）
         let mut below: Option<Ui> = None;
         let accent = theme::accent(&self.s.look);
-        if self.file.is_some() {
+        if self.loc.file.is_some() {
             let mut changed = false;
             ui.horizontal(|ui| {
                 ui.label(tr("見る面"));
@@ -2145,7 +2121,7 @@ impl Core {
                 self.request_layout();
             }
         }
-        if self.file.is_some() && !is_combo {
+        if self.loc.file.is_some() && !is_combo {
             ui.horizontal_wrapped(|ui| {
                 ui.weak(tr(
                     "開いている系は組合せから作ったものではありません（図は見るだけ）。",
@@ -2183,7 +2159,7 @@ impl Core {
             if let Some(d) = &self.layout_data {
                 let (mut top, b) = split::two(ui, "open_layout", (0.55, 0.55), 80.0);
                 let h = top.available_height();
-                let hl = self.ld.cur.map(|x| x.0);
+                let hl = self.p.ld.cur.map(|x| x.0);
                 let clicked = combo::view_only(
                     &mut top,
                     d,
@@ -2222,8 +2198,8 @@ impl Core {
             .map(|x| x.1.clone())
             .collect();
         // 面の表で選んだ面を図で目立たせる（#125）
-        self.combo_view.hl_surf = if is_combo {
-            self.ld.cur.map(|x| x.0)
+        self.p.combo_view.hl_surf = if is_combo {
+            self.p.ld.cur.map(|x| x.0)
         } else {
             None
         };
@@ -2231,7 +2207,7 @@ impl Core {
             ui,
             &mut self.doc.combo,
             data,
-            &mut self.combo_view,
+            &mut self.p.combo_view,
             &mut self.s.auto_build,
             self.worker.busy_short(),
             accent,
@@ -2242,9 +2218,9 @@ impl Core {
             Some(combo::Act::Build) => self.build_combo(self.doc.combo.project()),
             Some(combo::Act::Focus) => self.request_focus(),
             Some(combo::Act::SaveToCatalog(k)) => {
-                self.cat_save.open_for(k, &self.doc.combo);
-                let c = self.cat_save.catalog.trim().to_string();
-                if !c.is_empty() && self.cat_save.listed != c {
+                self.p.cat_save.open_for(k, &self.doc.combo);
+                let c = self.p.cat_save.catalog.trim().to_string();
+                if !c.is_empty() && self.p.cat_save.listed != c {
                     self.preview
                         .send(Tag::UserCatalog, "catalog_items", json!({ "catalog": c }));
                 }
@@ -2252,10 +2228,10 @@ impl Core {
             Some(combo::Act::Open(k)) => {
                 if let Some(id) = self.doc.combo.ids().get(k) {
                     // 面の表がまだ前の系なら、木に無い名前は入れない（最上位で選ぶ）
-                    self.ld.scope.clear();
-                    self.ld.enter(&self.ld_blocks, id);
-                    if self.ld.scope.is_empty() {
-                        self.ld.sel = Some(id.clone());
+                    self.p.ld.scope.clear();
+                    self.p.ld.enter(&self.sys.ld_blocks, id);
+                    if self.p.ld.scope.is_empty() {
+                        self.p.ld.sel = Some(id.clone());
                     }
                 }
                 self.cmds.push(Cmd::FocusKind(Kind::LensData));
@@ -2267,7 +2243,7 @@ impl Core {
     /// 面の表: 開いた系は serve の edit で変え、組合せの系は組合せ（要素の後の空気・面の上書き）を変えて作り直す
     fn lens_data_ui(&mut self, ui: &mut Ui) {
         use lens_data::{Act, Col};
-        if self.summary.is_none() || self.ld_rows.is_empty() {
+        if self.sys.summary.is_none() || self.sys.ld_rows.is_empty() {
             ui.add_space(8.0);
             ui.label(tr("系を開くか、組合せで系を作ると、面の表が出ます。"));
             return;
@@ -2279,9 +2255,9 @@ impl Core {
             Vec::new()
         };
         // 組合せ: 図で選んだ要素を表でも選ぶ（最上位のとき）
-        if is_combo && self.ld.scope.is_empty() {
-            if let Some(k) = self.combo_view.sel {
-                self.ld.sel = ids.get(k).cloned();
+        if is_combo && self.p.ld.scope.is_empty() {
+            if let Some(k) = self.p.combo_view.sel {
+                self.p.ld.sel = ids.get(k).cloned();
             }
         }
         // 今の経路に沿った要素（分岐の無い組合せは並びそのもの）
@@ -2293,46 +2269,47 @@ impl Core {
                 .map(|(i, _)| i.clone())
                 .collect()
         } else {
-            self.ld.locked.clone()
+            self.p.ld.locked.clone()
         };
         let lead = self.doc.combo.lead_stop();
         let spans = if is_combo {
             let live = self.doc.combo.span_ids();
-            lens_data::elem_spans(&live, &self.ld_units, lead, &self.ld_rows)
+            lens_data::elem_spans(&live, &self.sys.ld_units, lead, &self.sys.ld_rows)
         } else {
             Vec::new()
         };
         // 図で別の要素を選んだら、その要素の外の今の面は外す（図の目立たせと表を合わせる）
-        if is_combo && self.combo_view.sel != self.combo_sel_prev {
-            if let (Some(k), Some((j, _))) = (self.combo_view.sel, self.ld.cur) {
+        if is_combo && self.p.combo_view.sel != self.combo_sel_prev {
+            if let (Some(k), Some((j, _))) = (self.p.combo_view.sel, self.p.ld.cur) {
                 let inside = spans
                     .get(k)
                     .copied()
                     .flatten()
                     .is_some_and(|s| s[0] <= j && j <= s[1]);
                 if !inside {
-                    self.ld.cur = None;
+                    self.p.ld.cur = None;
                 }
             }
         }
-        self.combo_sel_prev = self.combo_view.sel;
-        let rows = &self.ld_rows;
+        self.combo_sel_prev = self.p.combo_view.sel;
+        let rows = &self.sys.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {
             combo_read_only(is_combo, rows, &spans, picks, lead, j, col)
         };
         let cfg_rows: Vec<String> = self
+            .p
             .mc
             .table
             .as_ref()
             .map(|t| t.rows.iter().map(|r| r.0.clone()).collect())
             .unwrap_or_default();
         let ctx = lens_data::Ctx {
-            config_n: self.mc.table.as_ref().map_or(1, |t| t.n),
+            config_n: self.p.mc.table.as_ref().map_or(1, |t| t.n),
             config_rows: &cfg_rows,
             glasses: &self.ld_glasses,
             glasses_loaded: self.browser.loaded && !self.browser.glasses_pending,
             rows,
-            blocks: &self.ld_blocks,
+            blocks: &self.sys.ld_blocks,
             locked: &locked,
             read_only: &read_only,
             combo: is_combo,
@@ -2341,13 +2318,13 @@ impl Core {
                 "組合せの系: 変えた値は組合せの要素に残ります（後の空気は要素の間隔、ほかは面の上書き）。偏心・傾き・BS は要素の設定で。",
             )),
         };
-        let (acts, mut bottom) = lens_data::ui(ui, &mut self.ld, &ctx);
+        let (acts, mut bottom) = lens_data::ui(ui, &mut self.p.ld, &ctx);
         for a in acts {
             match a {
                 Act::Select(name) => {
-                    if is_combo && self.ld.scope.is_empty() {
+                    if is_combo && self.p.ld.scope.is_empty() {
                         if let Some(k) = name.and_then(|n| ids.iter().position(|i| *i == n)) {
-                            self.combo_view.select(k);
+                            self.p.combo_view.select(k);
                         }
                     }
                 }
@@ -2363,22 +2340,23 @@ impl Core {
                         }
                     } else {
                         if on {
-                            self.ld.locked.insert(name);
+                            self.p.ld.locked.insert(name);
                         } else {
-                            self.ld.locked.remove(&name);
+                            self.p.ld.locked.remove(&name);
                         }
                         // ファイルごとに設定へ残す（空になったら消す、GPN-14）
-                        if let Some(f) = self.file.as_ref().map(|f| f.display().to_string()) {
-                            if self.ld.locked.is_empty() {
+                        if let Some(f) = self.loc.file.as_ref().map(|f| f.display().to_string()) {
+                            if self.p.ld.locked.is_empty() {
                                 self.s.locked.remove(&f);
                             } else {
-                                self.s.locked.insert(f, self.ld.locked.clone());
+                                self.s.locked.insert(f, self.p.ld.locked.clone());
                             }
                         }
                     }
                 }
                 Act::ExportRange([a, b]) => {
                     let stem = self
+                        .loc
                         .file
                         .as_ref()
                         .and_then(|f| f.file_stem())
@@ -2399,9 +2377,9 @@ impl Core {
                 Act::UnitMech => {
                     self.um_open = !self.um_open;
                     // 範囲の欄が空なら、選んでいる面から
-                    if self.um_open && self.um.new_spans.trim().is_empty() {
-                        if let Some((j, _)) = self.ld.cur {
-                            self.um.new_spans = j.to_string();
+                    if self.um_open && self.p.um.new_spans.trim().is_empty() {
+                        if let Some((j, _)) = self.p.ld.cur {
+                            self.p.um.new_spans = j.to_string();
                         }
                     }
                 }
@@ -2437,9 +2415,9 @@ impl Core {
                             .rposition(|s| s.is_some_and(|s| s[0] <= after))
                             .map_or(0, |k| k + 1);
                         let k = combo::insert_pick(&mut self.doc.combo, at, *pick);
-                        self.combo_view.select(k);
-                    } else if self.file.is_some() {
-                        if open_gap_ok(&self.ld_rows, after) {
+                        self.p.combo_view.select(k);
+                    } else if self.loc.file.is_some() {
+                        if open_gap_ok(&self.sys.ld_rows, after) {
                             let n = self.doc.combo.picks.len();
                             self.insert_into_open(Some(after), *pick, n, |_, _| {});
                         } else {
@@ -2456,11 +2434,17 @@ impl Core {
                     }
                 }
                 Act::OptVar(name) => {
-                    if !self.opt.vars.iter().any(|v| v.name.trim() == name) {
+                    if !self.p.opt.vars.iter().any(|v| v.name.trim() == name) {
                         // 空の行があればそこに入れる
-                        match self.opt.vars.iter_mut().find(|v| v.name.trim().is_empty()) {
+                        match self
+                            .p
+                            .opt
+                            .vars
+                            .iter_mut()
+                            .find(|v| v.name.trim().is_empty())
+                        {
                             Some(v) => v.name = name.clone(),
-                            None => self.opt.vars.push(crate::optim_panel::VarRow {
+                            None => self.p.opt.vars.push(crate::optim_panel::VarRow {
                                 name: name.clone(),
                                 ..Default::default()
                             }),
@@ -2477,7 +2461,7 @@ impl Core {
         }
         // ブロックの設定（組合せは要素の設定、開いた系は玉・群の偏心・傾き・移動・dn・disp）と、
         // 開いた系の玉・群を足す・機構部品の欄（同じスクロールの中）
-        let view = self.ld.block_view.clone();
+        let view = self.p.ld.block_view.clone();
         if view.is_some() {
             egui::ScrollArea::vertical()
                 .id_salt("block_edit")
@@ -2503,7 +2487,7 @@ impl Core {
         // 開いた系の玉・群を足す・機構部品は別の小窓（面の表の下では、面の設定の欄に押し出されて見えないことがあった、#136）
         if !is_combo && self.um_open {
             let mut open = true;
-            let n = self.ld_rows.len();
+            let n = self.sys.ld_rows.len();
             let mut ops = Vec::new();
             egui::Window::new(tr("玉・群・機構部品"))
                 .id(egui::Id::new("unit_mech_win"))
@@ -2511,7 +2495,7 @@ impl Core {
                 .default_width(380.0)
                 .vscroll(true)
                 .show(ui.ctx(), |ui| {
-                    ops = crate::unit_mech::ui(ui, &mut self.um, n);
+                    ops = crate::unit_mech::ui(ui, &mut self.p.um, n);
                 });
             if !ops.is_empty() {
                 self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
@@ -2522,7 +2506,7 @@ impl Core {
 
     /// 多重構成の次（back なら前）の構成を系に入れる（Ctrl+A・Ctrl+Shift+A、最後の次は最初）
     fn cycle_config(&mut self, back: bool) {
-        let Some(t) = self.mc.table.as_ref().filter(|t| t.n > 1) else {
+        let Some(t) = self.p.mc.table.as_ref().filter(|t| t.n > 1) else {
             return;
         };
         let k = if back {
@@ -2548,10 +2532,10 @@ impl Core {
     fn config_ui(&mut self, ui: &mut Ui) {
         let combo = self.is_combo();
         let cands = self.param_sys();
-        for a in config_panel::ui(ui, &mut self.mc, combo, &cands) {
+        for a in config_panel::ui(ui, &mut self.p.mc, combo, &cands) {
             match a {
                 config_panel::Act::Ops(ops) => {
-                    self.mc.notes.clear();
+                    self.p.mc.notes.clear();
                     self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
                 }
                 config_panel::Act::Import => {
@@ -2565,17 +2549,17 @@ impl Core {
     /// 開いた系の玉・群の設定（serve の set の `名前.dx` など）
     fn unit_settings(&mut self, ui: &mut Ui, name: &str) {
         // 名前・範囲を変える・外す（serve の edit）
-        if let Some(u) = self.ld_units.iter().find(|u| u.name == name) {
+        if let Some(u) = self.sys.ld_units.iter().find(|u| u.name == name) {
             let moved = u.motion.iter().any(|&x| x != 0.0) || u.shift != 0.0;
             let spans = u.spans.clone();
-            let ops = crate::unit_mech::unit_ui(ui, &mut self.um, name, &spans, moved);
+            let ops = crate::unit_mech::unit_ui(ui, &mut self.p.um, name, &spans, moved);
             for op in &ops {
                 match op["op"].as_str() {
-                    Some("remove_unit") => self.ld.block_view = None,
+                    Some("remove_unit") => self.p.ld.block_view = None,
                     _ => {
                         if let Some(n) = op["name"].as_str() {
-                            self.ld.block_view = Some(n.to_string());
-                            self.ld.sel = Some(n.to_string());
+                            self.p.ld.block_view = Some(n.to_string());
+                            self.p.ld.sel = Some(n.to_string());
                         }
                     }
                 }
@@ -2584,15 +2568,16 @@ impl Core {
                 self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
             }
         }
-        let Some(u) = self.ld_units.iter_mut().find(|u| u.name == name) else {
+        let Some(u) = self.sys.ld_units.iter_mut().find(|u| u.name == name) else {
             return;
         };
         let weak = theme::weak_text(ui.visuals());
         let locked = self
+            .sys
             .ld_blocks
             .iter()
             .position(|b| b.name == name)
-            .is_some_and(|i| lens_data::block_locked(&self.ld_blocks, &self.ld.locked, i));
+            .is_some_and(|i| lens_data::block_locked(&self.sys.ld_blocks, &self.p.ld.locked, i));
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(name).strong());
             let spans = u
@@ -2714,7 +2699,7 @@ impl Core {
             .iter()
             .position(|s| s.is_some_and(|s| s[0] <= j && j <= s[1]))?;
         let a = spans[k]?[0];
-        let rows = &self.ld_rows;
+        let rows = &self.sys.ld_rows;
         if !rows.get(j).is_some_and(|r| !r.is_cb()) {
             return None;
         }
@@ -2729,7 +2714,7 @@ impl Core {
         key: &str,
         value: Value,
     ) -> bool {
-        let rows = &self.ld_rows;
+        let rows = &self.sys.ld_rows;
         let k = spans
             .iter()
             .position(|s| s.is_some_and(|s| s[0] <= j && j <= s[1]));
@@ -2773,12 +2758,13 @@ impl Core {
         // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
         // 置き換わらないように、#135）
         let n = self.doc.combo.picks.len();
-        if self.file.is_some()
+        if self.loc.file.is_some()
             && !self.is_combo()
             && self.to_combo.is_none()
             && self.combo_len_prev == 0
             && n > 0
             && !self
+                .loc
                 .built_combo
                 .as_ref()
                 .is_some_and(|b| !b.picks.is_empty())
@@ -2792,7 +2778,7 @@ impl Core {
         }
         if self.load_stale && !self.worker.busy_core() {
             self.load_stale = false;
-            if let Some(p) = self.combo_path.clone() {
+            if let Some(p) = self.loc.combo_path.clone() {
                 self.worker.drop_queued();
                 self.open(&p);
             }
@@ -2800,7 +2786,7 @@ impl Core {
         if !self.s.auto_build
             || self.preview.busy()
             || self.doc.combo.picks.is_empty()
-            || self.built_combo.as_ref() == Some(&self.doc.combo)
+            || self.loc.built_combo.as_ref() == Some(&self.doc.combo)
             || !self.doc.combo.settings_problems().is_empty()
         {
             return;
@@ -2864,7 +2850,7 @@ impl Core {
             self.refresh_catalog();
         }
         // ダブルクリックで足す玉は、組合せで選んでいる要素の直後へ
-        self.doc.insert_after = self.combo_view.sel.filter(|&k| k < self.doc.combo.len());
+        self.doc.insert_after = self.p.combo_view.sel.filter(|&k| k < self.doc.combo.len());
         self.browser.lens_hide.clone_from(&self.s.lens_hide);
         let n_old = self.doc.combo.picks.len();
         let act = self.browser.ui(
@@ -2875,7 +2861,7 @@ impl Core {
         );
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
         if let Some(k) = self.doc.added.take() {
-            if self.file.is_some() && !self.is_combo() {
+            if self.loc.file.is_some() && !self.is_combo() {
                 // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直し（GUX-10）は要らない。立てたままだと
                 // 組合せにした後に開いた系の像面までの距離を書き換える
                 self.doc.refocus = false;
@@ -2884,17 +2870,18 @@ impl Core {
                 // 系に置き換わっていた
                 if let Some(p) = self.doc.combo.el(k).cloned() {
                     let after = self
+                        .p
                         .ld
                         .cur
                         .map(|(j, _)| j)
-                        .filter(|&j| open_gap_ok(&self.ld_rows, j));
+                        .filter(|&j| open_gap_ok(&self.sys.ld_rows, j));
                     self.insert_into_open(after, p, n_old, move |c, yes| {
                         if yes {
                             c.doc.combo.remove_chain(k);
                         } else {
                             // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
-                            c.built_combo = Some(c.doc.combo.clone());
-                            c.combo_view.select(k);
+                            c.loc.built_combo = Some(c.doc.combo.clone());
+                            c.p.combo_view.select(k);
                             c.info(tr(
                                 "組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）",
                             ));
@@ -2902,7 +2889,7 @@ impl Core {
                     });
                 }
             } else {
-                self.combo_view.select(k);
+                self.p.combo_view.select(k);
             }
         }
         self.lens_preview();
@@ -2953,7 +2940,7 @@ impl Core {
     /// 系の要約（大きな数）とパラメータ
     fn system_ui(&mut self, ui: &mut Ui) {
         let weak = theme::weak_text(ui.visuals());
-        let Some(sum) = self.summary.clone() else {
+        let Some(sum) = self.sys.summary.clone() else {
             ui.add_space(8.0);
             ui.label(tr(
                 "系のファイル（.zmx・プロジェクトの .json）を開くか、窓に落とします。",
@@ -3088,13 +3075,13 @@ impl Core {
             for (i, p) in self.s.params.clone().iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(p).monospace());
-                    match self.param_vals.get(p).copied() {
+                    match self.sys.param_vals.get(p).copied() {
                         Some(mut x) => {
                             let step = (x.abs() * 1e-3).max(1e-3);
                             let r =
                                 ui.add(egui::DragValue::new(&mut x).speed(step).max_decimals(8));
                             if r.changed() {
-                                self.param_vals.insert(p.clone(), x);
+                                self.sys.param_vals.insert(p.clone(), x);
                                 self.pending_set.insert(p.clone(), x);
                             }
                         }
@@ -3109,7 +3096,7 @@ impl Core {
             }
             if let Some(i) = remove {
                 let p = self.s.params.remove(i);
-                self.param_vals.remove(&p);
+                self.sys.param_vals.remove(&p);
             }
             ui.horizontal(|ui| {
                 let sys = self.param_sys();
@@ -3448,13 +3435,14 @@ impl Core {
     }
 
     fn analysis_ui(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
-        if self.summary.is_none() {
+        if self.sys.summary.is_none() {
             ui.weak(tr("系を開くと解析できます。"));
             return;
         }
         let nf = self.n_fields();
         let waves = self.waves_um();
         let fields: Vec<String> = self
+            .sys
             .summary
             .as_ref()
             .and_then(|s| s["fields"].as_array().cloned())
@@ -3711,14 +3699,15 @@ impl Core {
             return;
         }
         m.model = Some(dst.clone());
-        self.doc_path = None;
+        self.loc.doc_path = None;
         self.open(&dst);
     }
 
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
     fn cat_save_window(&mut self, ctx: &egui::Context) {
-        let ready = self.is_combo() && self.built_combo.as_ref() == Some(&self.doc.combo);
+        let ready = self.is_combo() && self.loc.built_combo.as_ref() == Some(&self.doc.combo);
         let req = self
+            .p
             .cat_save
             .window(ctx, &self.doc.combo, &self.browser.lenses, ready);
         if let Some((method, p)) = req {
@@ -3734,13 +3723,13 @@ impl Core {
     fn fill_window(&mut self, ctx: &egui::Context) {
         if let Some(r) = self.browser.fill_req.take() {
             self.auto_fill.forget(&r.part);
-            self.fill.start(r);
+            self.p.fill.start(r);
         }
         if let Some(e) = self.auto_fill.take_timing_error() {
             self.fail(e);
         }
         // 補う窓が開いている間は裏で読まない
-        if !self.fill.open {
+        if !self.p.fill.open {
             let sel = self
                 .browser
                 .lens_sel
@@ -3753,15 +3742,15 @@ impl Core {
                 #[cfg(all(windows, feature = "webview"))]
                 Some(crate::fill::AutoOut::Show(b)) => {
                     let (r, child, text) = *b;
-                    self.fill.adopt(r, child, text);
+                    self.p.fill.adopt(r, child, text);
                 }
                 None => {}
             }
         }
-        if !self.fill.open {
+        if !self.p.fill.open {
             return;
         }
-        if let Some(p) = self.fill.window(ctx) {
+        if let Some(p) = self.p.fill.window(ctx) {
             self.preview.send(Tag::CatalogFill, "catalog_fill", p);
         }
     }
@@ -4110,30 +4099,19 @@ impl App {
                     error: false,
                 },
                 status_err: None,
-                file: None,
-                summary: None,
-                info: None,
+                sys: Default::default(),
+                p: Panels::default(),
                 results: HashMap::new(),
-                param_vals: HashMap::new(),
                 new_param: String::new(),
                 pending_set: Default::default(),
                 rerun: None,
                 combo_edit: None,
-                hist: (0, 0),
-                hist_list: Default::default(),
                 combo_hist: Default::default(),
                 new_undo: None,
                 new_redo: None,
                 redo_new_pending: false,
-                ld: Default::default(),
-                ld_rows: Vec::new(),
-                ld_units: Vec::new(),
-                um: Default::default(),
                 um_open: false,
-                ld_blocks: Vec::new(),
                 ld_glasses: Vec::new(),
-                ld_dirty: false,
-                saved_combo: None,
                 close_ask: false,
                 combo_census: None,
                 missing_glass: None,
@@ -4144,15 +4122,7 @@ impl App {
                 status_log_open: false,
                 close_ok: false,
                 close_pending: false,
-                mc: Default::default(),
-                oss: Default::default(),
-                cat_save: CatSave::default(),
-                fill: Default::default(),
                 auto_fill: Default::default(),
-                opt: crate::optim_panel::OptPanel::new(),
-                swap: Default::default(),
-                tol: Default::default(),
-                zoom: Default::default(),
                 swap_ids: Vec::new(),
                 swap_file: None,
                 rev: 0,
@@ -4166,15 +4136,14 @@ impl App {
                 ask: None,
                 drawing_in: None,
                 layout_name: String::new(),
-                built: None,
-                doc_path: None,
-                built_combo,
-                combo_path: None,
+                loc: DocLoc {
+                    built_combo,
+                    ..Default::default()
+                },
                 layout_data: None,
                 overlay: Overlay::default(),
                 rays_open: false,
                 agf_names: Default::default(),
-                combo_view: Default::default(),
                 combo_sel_prev: None,
                 to_combo: None,
                 open_insert: None,
@@ -4202,9 +4171,9 @@ impl App {
         let panels = app.c.s.panels.clone();
         app.c.set_panels(&panels);
         // レンズデータの見せ方は表の状態が持ち、設定には保存するときだけ写す（GPN-28）
-        app.c.ld.tree = app.c.s.ld_tree;
-        app.c.ld.detail = app.c.s.ld_detail;
-        app.c.ld.by_surface = app.c.s.ld_by_surface;
+        app.c.p.ld.tree = app.c.s.ld_tree;
+        app.c.p.ld.detail = app.c.s.ld_detail;
+        app.c.p.ld.by_surface = app.c.s.ld_by_surface;
         app.apply_dock_translations();
         // Web 版: 別の窓のパネルなら、計算しないで元のタブで描いた画面を受けて描く
         #[cfg(target_arch = "wasm32")]
@@ -4865,7 +4834,7 @@ impl eframe::App for App {
         // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ（GUX-10）
         if self.c.doc.refocus
             && self.c.is_combo()
-            && self.c.built_combo.as_ref() == Some(&self.c.doc.combo)
+            && self.c.loc.built_combo.as_ref() == Some(&self.c.doc.combo)
             && self.c.layout_data.is_some()
             && !self.c.worker.busy_short()
         {
@@ -4958,9 +4927,9 @@ impl eframe::App for App {
         }
         // 組合せの系は保存したプロジェクトの名前（一時ファイルの名前は出さない）
         let shown = if self.c.is_combo() {
-            self.c.doc_path.as_ref()
+            self.c.loc.doc_path.as_ref()
         } else {
-            self.c.file.as_ref()
+            self.c.loc.file.as_ref()
         };
         let mark = if self.c.dirty() { "● " } else { "" };
         let title = match shown {
@@ -5086,7 +5055,7 @@ impl eframe::App for App {
         if self.c.help_open {
             self.c.help_window(ctx);
         }
-        if self.c.cat_save.open {
+        if self.c.p.cat_save.open {
             self.c.cat_save_window(ctx);
         }
         self.c.fill_window(ctx);
@@ -5127,9 +5096,9 @@ impl eframe::App for App {
             return;
         }
         self.c.s.combo = self.c.doc.combo.clone();
-        self.c.s.ld_tree = self.c.ld.tree;
-        self.c.s.ld_detail = self.c.ld.detail;
-        self.c.s.ld_by_surface = self.c.ld.by_surface;
+        self.c.s.ld_tree = self.c.p.ld.tree;
+        self.c.s.ld_detail = self.c.p.ld.detail;
+        self.c.s.ld_by_surface = self.c.p.ld.by_surface;
         self.c.s.panels = self.c.panels_value();
         self.c.s.layout = Some(self.layout());
         // ポータブル: 設定のフォルダの中のパスは相対で書く

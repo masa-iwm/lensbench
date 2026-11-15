@@ -1,0 +1,23 @@
+//! serve の系の写し（GAR-01 の 1 段目）。serve から読んだ結果で、GUI はこれを見て描く。
+//! 書き換えるのは返事を受けたとき（[`Core::take`]）と、系を開き直す・新規にするときだけ
+
+use super::*;
+
+/// serve の系の写し
+#[derive(Default)]
+pub(super) struct SysCopy {
+    /// load の結果（系の概要）
+    pub(super) summary: Option<Value>,
+    /// info の結果
+    pub(super) info: Option<Value>,
+    /// パラメータの今の値
+    pub(super) param_vals: HashMap<String, f64>,
+    /// 面の表の行・玉と群・ブロック
+    pub(super) ld_rows: Vec<lens_data::Row>,
+    pub(super) ld_units: Vec<lens_data::Unit>,
+    pub(super) ld_blocks: Vec<lens_data::Block>,
+    /// 開いた系の元に戻せる段・やり直せる段の数（serve の set・edit・undo・redo の結果）
+    pub(super) hist: (usize, usize),
+    /// その段の変更（serve の undo_list・redo_list）
+    pub(super) hist_list: (Vec<Value>, Vec<Value>),
+}

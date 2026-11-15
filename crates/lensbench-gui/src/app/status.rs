@@ -82,7 +82,7 @@ impl App {
                 // 系の数値と面・視野・波長の数。左の状態の文に 260 px を残し、入らない分は大事でない方から出さない
                 // （系のパネルと同じ名前にして長くなったので、狭い窓で重ならないように。GUX-28）
                 let mut parts: Vec<(String, String)> = Vec::new();
-                if self.c.info.is_some() {
+                if self.c.sys.info.is_some() {
                     let n = |k: &str, d: f64| {
                         self.c
                             .info_num(k)
@@ -100,7 +100,7 @@ impl App {
                         parts.push((k.to_string(), format!("{v}{u}")));
                     }
                 }
-                if let Some(s) = &self.c.summary {
+                if let Some(s) = &self.c.sys.summary {
                     parts.push((
                         trf(
                             "{} 面 · {} 視野 · {} 波長",

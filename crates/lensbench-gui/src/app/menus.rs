@@ -59,30 +59,30 @@ impl App {
             Cmd::Help => self.c.help_open = true,
             Cmd::RunOpt => {
                 self.exec(ctx, Cmd::FocusKind(Kind::Optimize));
-                if !self.c.opt.running {
-                    match self.c.opt.params() {
+                if !self.c.p.opt.running {
+                    match self.c.p.opt.params() {
                         Ok(p) => {
-                            self.c.opt.error = None;
-                            self.c.opt.running = true;
-                            self.c.opt.result = None;
-                            self.c.opt.gen = self.c.sys_gen;
+                            self.c.p.opt.error = None;
+                            self.c.p.opt.running = true;
+                            self.c.p.opt.result = None;
+                            self.c.p.opt.gen = self.c.sys_gen;
                             self.c.worker.send(Tag::Optimize, "optimize", p);
                         }
-                        Err(e) => self.c.opt.error = Some(e),
+                        Err(e) => self.c.p.opt.error = Some(e),
                     }
                 }
             }
             Cmd::RunTol => {
                 self.exec(ctx, Cmd::FocusKind(Kind::Tolerance));
-                if !self.c.tol.running {
-                    match self.c.tol.spec() {
+                if !self.c.p.tol.running {
+                    match self.c.p.tol.spec() {
                         Ok(p) => {
-                            self.c.tol.error = None;
-                            self.c.tol.running = true;
-                            self.c.tol.result = None;
+                            self.c.p.tol.error = None;
+                            self.c.p.tol.running = true;
+                            self.c.p.tol.result = None;
                             self.c.worker.send(Tag::Tolerance, "tolerance", p);
                         }
-                        Err(e) => self.c.tol.error = Some(e),
+                        Err(e) => self.c.p.tol.error = Some(e),
                     }
                 }
             }
@@ -123,7 +123,7 @@ impl App {
         );
         push(tr("系を読み直す").into(), "reload", Cmd::Reload);
         // 実行系（GUX-16）。設定はそれぞれのパネルのまま
-        if self.c.summary.is_some() {
+        if self.c.sys.summary.is_some() {
             push(
                 tr("最適化する（今の設定で）").into(),
                 "run optimize opt",
@@ -317,7 +317,7 @@ impl App {
                     });
                     if ui
                         .add_enabled(
-                            self.c.file.is_some(),
+                            self.c.loc.file.is_some(),
                             egui::Button::new(tr("読み直す（Ctrl+R）")),
                         )
                         .clicked()
@@ -328,7 +328,7 @@ impl App {
                     ui.separator();
                     if ui
                         .add_enabled(
-                            self.c.summary.is_some(),
+                            self.c.sys.summary.is_some(),
                             egui::Button::new(tr(".zmx に書き出す…")),
                         )
                         .clicked()
@@ -336,11 +336,11 @@ impl App {
                         ui.close_menu();
                         cmd = Some(Cmd::WriteZmx);
                     }
-                    let can_save = self.c.file.is_some() || !self.c.doc.combo.picks.is_empty();
+                    let can_save = self.c.loc.file.is_some() || !self.c.doc.combo.picks.is_empty();
                     // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す（GUX-26）
                     let zmx = !self.c.is_combo()
-                        && self.c.doc_path.is_none()
-                        && self.c.file.as_ref().is_some_and(|f| {
+                        && self.c.loc.doc_path.is_none()
+                        && self.c.loc.file.as_ref().is_some_and(|f| {
                             f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"))
                         });
                     let save_label = if zmx {
@@ -602,9 +602,9 @@ impl App {
                 });
             }
             let shown = if self.c.is_combo() {
-                self.c.doc_path.clone()
+                self.c.loc.doc_path.clone()
             } else {
-                self.c.file.clone()
+                self.c.loc.file.clone()
             };
             let dirty = self.c.dirty();
             if shown.is_some() || dirty {
@@ -634,7 +634,7 @@ impl App {
                 )
                 .fill(accent)
                 .min_size(egui::vec2(0.0, 28.0));
-                if ui.add_enabled(self.c.summary.is_some(), run).clicked() {
+                if ui.add_enabled(self.c.sys.summary.is_some(), run).clicked() {
                     cmd = Some(Cmd::RunAll);
                 }
                 // 1 段の元に戻す・やり直す（読み直すはファイルのメニュー、GAR-15）。押すと何を戻すかをホバーで

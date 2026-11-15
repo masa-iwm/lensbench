@@ -110,6 +110,7 @@ impl Core {
         let fig = cfg.view == View::Figure && figures::has_figure(&r.cmd);
         // MTF の凡例に出す視野の座標
         let coords: Vec<String> = self
+            .sys
             .summary
             .as_ref()
             .and_then(|s| s["fields"].as_array().cloned())

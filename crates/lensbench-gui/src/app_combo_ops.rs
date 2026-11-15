@@ -18,8 +18,8 @@ impl Core {
         // 前の絞りが出入りすると面の番号がずれるので、選んだ面も合わせる
         let lead1 = self.doc.combo.lead_stop();
         if lead0 != lead1 {
-            if let Some((j, c)) = self.ld.cur {
-                self.ld.cur = Some(if lead1 {
+            if let Some((j, c)) = self.p.ld.cur {
+                self.p.ld.cur = Some(if lead1 {
                     (j + 1, c)
                 } else {
                     (j.saturating_sub(1), c)
@@ -92,7 +92,7 @@ impl Core {
                         }
                         // 前の絞り（要素の外）に戻す
                         None if lead
-                            && self.ld_rows.get(j).is_some_and(|r| r.comment == "STOP") =>
+                            && self.sys.ld_rows.get(j).is_some_and(|r| r.comment == "STOP") =>
                         {
                             self.doc.combo.set_stop_face(None)
                         }
