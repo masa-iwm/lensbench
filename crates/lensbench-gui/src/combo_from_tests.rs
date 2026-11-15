@@ -69,10 +69,35 @@ fn refuses_what_it_cannot_write() {
     let stop = json!({ "type": "stop", "semi": 2 });
     let air = json!({ "type": "air", "t": 10 });
     assert!(with(json!([stop, air, lens, air])).is_ok());
-    // 非球面の係数は組合せの欄に無い
+    // 非球面の係数は組合せの欄に無い: ブロックをそのまま持つ要素に（id も残る）
     let mut asph = lens.clone();
     asph["source"]["surfaces"][0]["asph"] = json!([0.0, 1e-5]);
-    assert!(with(json!([stop, air, asph, air])).is_err());
+    let c = with(json!([stop, air, asph, air])).unwrap();
+    assert_eq!(c.picks[0].kind, ElemKind::Raw);
+    assert_eq!(c.picks[0].id, "A");
+    assert_eq!(c.picks[0].extra["source"]["surfaces"][0]["asph"][1], 1e-5);
+    // 前面を絞りにしたブロックは絞り（前の絞りを置かない）
+    let mut sasph = asph.clone();
+    sasph["stop"] = json!(true);
+    assert!(!with(json!([air, sasph, air])).unwrap().lead_stop());
+    // 鏡の開口も
+    let m =
+        json!({ "type": "mirror", "semi": 5, "aperture": { "type": "rect", "hx": 3, "hy": 2 } });
+    assert_eq!(
+        with(json!([stop, air, m, air])).unwrap().picks[0].kind,
+        ElemKind::Raw
+    );
+    // 分岐のある BS を要素の欄で書けない（口の最初の空気に id）: そのまま持たず、組合せにしない
+    let dir = root().join("examples/projects");
+    let mut tg: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("P16_twyman_green.json")).unwrap())
+            .unwrap();
+    assert!(Combo::from_project(&tg, &dir).is_ok());
+    tg["blocks"][2]["t"][0]["id"] = json!("arm");
+    assert!(Combo::from_project(&tg, &dir).is_err());
+    // 入れ子の群は組合せにしない
+    let nest = json!({ "type": "group", "id": "G", "blocks": [{ "type": "group", "id": "H", "blocks": [lens] }] });
+    assert!(with(json!([stop, air, nest, air])).is_err());
     // 最後の要素の後に空気が無い: 空気 0 と同じ
     assert_eq!(with(json!([stop, air, lens])).unwrap().picks[0].air, 0.0);
     // 先頭の空気（前の絞りが無い系）は組合せの前の空気に
@@ -166,5 +191,38 @@ fn examples_build_the_same() {
         n += 1;
     }
     assert_eq!(n, 18);
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// ブロックをそのまま持つ要素の系は、元のファイルと同じ図になる
+#[test]
+fn raw_blocks_build_the_same() {
+    let r = root();
+    let tmp =
+        lensbench_core::vfs::temp_dir().join(format!("lensbench-combo-raw-{}", std::process::id()));
+    lensbench_core::vfs::create_dir_all(&tmp).unwrap();
+    let v = json!({ "wavelengths": [{ "um": 0.55 }], "aperture": { "type": "epd", "value": 4 },
+        "fields": { "points": [[0, 0], [0, 2]] }, "blocks": [
+        { "type": "stop", "semi": 2 }, { "type": "air", "t": 5 },
+        { "type": "lens", "id": "ASPH", "source": { "surfaces": [
+            { "radius": 30, "t": 4, "glass": "N-BK7", "semi": 6, "asph": [0, -2e-5] },
+            { "radius": -40, "semi": 6 }] }, "tilt": [0.5, 0, 0] },
+        { "type": "air", "t": 20 },
+        { "type": "mirror", "semi": 8, "tilt": [10, 0], "aperture": { "type": "rect", "hx": 6, "hy": 4 } },
+        { "type": "air", "t": 30 }] });
+    let c = Combo::from_project(&v, &tmp).unwrap();
+    let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
+    assert_eq!(kinds, [ElemKind::Raw, ElemKind::Raw]);
+    let build = |name: &str, x: &Value| {
+        let f = tmp.join(name);
+        lensbench_core::vfs::write(&f, x.to_string()).unwrap();
+        let load = json!({ "file": f.display().to_string(),
+            "glass_dirs": [r.join("tests/glass").display().to_string()] });
+        let mut v = lensbench_engine::preview_layout(&load, &json!({})).unwrap();
+        v.as_object_mut().map(|o| o.remove("units"));
+        v
+    };
+    let (a, b) = (build("a.json", &v), build("b.json", &c.project()));
+    assert!(a == b, "{}", super::first_diff(&a, &b, ""));
     let _ = std::fs::remove_dir_all(&tmp);
 }

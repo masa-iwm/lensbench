@@ -18,10 +18,13 @@ use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, WavePt};
 use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
+mod ap_shape;
 mod detector;
 mod figure;
 mod mech;
+mod raw;
 mod zgroup;
+pub use ap_shape::ApShape;
 pub use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
@@ -54,6 +57,8 @@ pub enum ElemKind {
     Surfaces,
     /// .zmx の面の範囲をまるごと取り込む（zmx ブロック）
     ZmxRange,
+    /// 組合せの欄で書けないブロックを、そのまま持つ（開いたプロジェクトのブロック。中身は extra）
+    Raw,
 }
 
 /// 面の並びの面の種類
@@ -204,35 +209,6 @@ impl SurfRow {
     }
 }
 
-/// 開口・遮蔽の形
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApShape {
-    /// 円の開口（内径があれば輪帯）
-    #[default]
-    Circle,
-    /// 矩形の開口
-    Rect,
-    /// 楕円の開口
-    Ellipse,
-    /// 円の遮蔽（内径〜外径を遮る）
-    Obscuration,
-    /// スパイダー（中心から外へ伸びる幅の腕を遮る。.zmx の SPID）
-    Spider,
-}
-
-impl ApShape {
-    pub fn label(self) -> &'static str {
-        match self {
-            ApShape::Circle => tr("Circular aperture"),
-            ApShape::Rect => tr("Rectangular aperture"),
-            ApShape::Ellipse => tr("Elliptical aperture"),
-            ApShape::Obscuration => tr("Circular obscuration"),
-            ApShape::Spider => tr("Spider"),
-        }
-    }
-}
-
 impl ElemKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -246,11 +222,12 @@ impl ElemKind {
             ElemKind::Aperture => tr("Aperture / obscuration"),
             ElemKind::Surfaces => tr("Surfaces"),
             ElemKind::ZmxRange => tr(".zmx import"),
+            ElemKind::Raw => tr("Block (as written)"),
         }
     }
-    /// ON/OFF を持つ（絞りは無い）
+    /// ON/OFF を持つ（絞りは無い。そのまま持つブロックは中身の on）
     pub fn has_on(self) -> bool {
-        self != ElemKind::Stop
+        !matches!(self, ElemKind::Stop | ElemKind::Raw)
     }
     /// OFF の残し方（詰める・空気）を選べる（鏡は長さが無い）
     pub fn has_off_mode(self) -> bool {
@@ -269,6 +246,7 @@ impl ElemKind {
             ElemKind::Aperture => "AP",
             ElemKind::Surfaces => "S",
             ElemKind::ZmxRange => "ZX",
+            ElemKind::Raw => "B",
         }
     }
 }
@@ -575,6 +553,7 @@ impl Pick {
     pub fn is_stop(&self) -> bool {
         match self.kind {
             ElemKind::Stop => true,
+            ElemKind::Raw => self.raw_is_stop(),
             ElemKind::ZmxRange => self.stop_front && self.range_has_stop(),
             _ => self.stop_front && self.can_stop_front(),
         }
@@ -815,6 +794,7 @@ impl Pick {
                 format!("{} {}", self.vendor, self.part)
             }
             ElemKind::Aperture => self.ap.label().to_string(),
+            ElemKind::Raw => self.raw_label(),
             ElemKind::ZmxRange => {
                 let f = std::path::Path::new(&self.path)
                     .file_name()
@@ -886,6 +866,7 @@ impl Pick {
     /// ブロック（id 付き）
     pub fn block(&self, id: &str) -> Value {
         let mut b = match self.kind {
+            ElemKind::Raw => return self.raw_block(id),
             // lensbench 形式のカタログの玉（ユーザーカタログの項目）
             ElemKind::Catalog if !self.path.is_empty() => json!({
                 "type": "user", "id": id, "catalog": self.path, "item": self.part,
@@ -3123,6 +3104,7 @@ fn kind_fields(
                 ));
         }
         ElemKind::Catalog => {}
+        ElemKind::Raw => raw::raw_fields(ui, p, k),
     }
     if p.kind == ElemKind::ZmxRange {
         if p.range_has_stop() {

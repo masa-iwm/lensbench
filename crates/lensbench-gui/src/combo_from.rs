@@ -355,8 +355,11 @@ fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> 
                 });
                 out.extend(inner);
             }
+            Some(t) if !lensbench_project::BUILTIN_BLOCKS.contains(&t) => {
+                return Err(format!("block {t:?}"));
+            }
             _ => {
-                let mut p = elem(b, groups)?;
+                let mut p = elem_or_raw(b, groups)?;
                 p.group = group.to_string();
                 out.push((p, None));
             }
@@ -375,6 +378,38 @@ fn place(b: &Value, p: &mut Pick) {
 
 fn semi(v: &Value) -> (f64, bool) {
     (f(v, 0.0), v == "auto")
+}
+
+/// 分岐のある BS のブロック（口の先 t・r・d を持つ）
+pub(crate) fn is_branched_bs(b: &Value) -> bool {
+    b["type"] == "splitter" && ["t", "r", "d"].iter().any(|k| b.get(*k).is_some())
+}
+
+/// 要素のブロック 1 つ。組合せの欄で同じブロックを書けなければ、ブロックをそのまま持つ要素に
+fn elem_or_raw(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
+    let same = |p: &Pick| -> bool {
+        let one = |v: Value| -> Option<Value> {
+            let mut v = v;
+            v.as_object_mut()?.remove("id");
+            let x: lensbench_project::Block = serde_json::from_value(v).ok()?;
+            let mut x = serde_json::to_value(x).ok()?;
+            norm(&mut x);
+            Some(x)
+        };
+        let a = one(b.clone());
+        a.is_some() && a == one(p.block(""))
+    };
+    match elem(b, groups) {
+        // 分岐した BS は口の先を並びで持つので、ブロック 1 つでは比べない（全体で比べる）
+        Ok(p) if p.kind == ElemKind::Splitter || same(&p) => Ok(p),
+        // 分岐のある BS はそのまま持てない（後に要素を置けない。口の先は並びで持つ）
+        r if is_branched_bs(b) => r,
+        _ => {
+            let mut p = Pick::raw(b);
+            p.id = s(&b["id"]);
+            Ok(p)
+        }
+    }
 }
 
 /// 要素のブロック 1 つ
