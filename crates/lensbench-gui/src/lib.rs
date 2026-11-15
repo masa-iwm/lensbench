@@ -16,6 +16,7 @@ mod chrome;
 mod coat_defs;
 mod combo;
 mod combo_doc;
+mod combo_from;
 mod combo_tree;
 mod config_panel;
 mod crash;

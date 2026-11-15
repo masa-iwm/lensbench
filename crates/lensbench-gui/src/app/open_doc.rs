@@ -5,7 +5,7 @@ use super::*;
 
 impl Core {
     /// 利用者が選んだ系のファイルを開く（最近のファイルに足す）。組合せを同梱したプロジェクト（`gui.combo`）は
-    /// 組合せに戻して系を作る（#129）
+    /// 組合せに戻して系を作る（#129）。同梱していないブロックのプロジェクトも、組合せで書ければ組合せにする（GUX-11）
     pub(super) fn open_doc(&mut self, p: &Path) {
         self.open_doc_with(p, false);
     }
@@ -32,7 +32,9 @@ impl Core {
     /// [`Self::open_doc_with`] の続き。v は下書きの Worker の `doc_peek` の答え（{gui, blocks}。.zmx・読めない
     /// ファイルは None）
     pub(super) fn open_doc_peeked(&mut self, p: &Path, asked: bool, v: Option<&Value>) {
-        if let Some(c) = v.and_then(combo_of_project) {
+        // 同梱の組合せか、ブロックから作った組合せ（doc_peek の combo、文書モデル 1 段目）
+        let made = |v: &Value| serde_json::from_value(v.get("combo")?.clone()).ok();
+        if let Some(c) = v.and_then(|v| combo_of_project(v).or_else(|| made(v))) {
             if !self.doc.combo.picks.is_empty()
                 && self.doc.combo != c
                 && self.loc.built_combo.as_ref() != Some(&self.doc.combo)

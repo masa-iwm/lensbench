@@ -19,9 +19,11 @@ use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 mod figure;
+mod mech;
 use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
+pub use mech::MechPick;
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -267,64 +269,6 @@ impl ElemKind {
     }
 }
 
-/// 組合せに置く機構部品: カタログの品を、要素（ブロック id）の面に置く
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct MechPick {
-    pub name: String,
-    /// ユーザーカタログのファイル（絶対パス）と品の名前
-    pub catalog: String,
-    pub item: String,
-    /// 置く要素のブロック id（空なら系の面 1）と、その要素の面（0 始まり）
-    pub at: String,
-    pub face: usize,
-    /// 置いた面の局所座標でのずれ [mm] と傾き [deg]
-    pub offset: [f64; 3],
-    pub tilt: [f64; 2],
-    /// 保持する要素のブロック id
-    pub holds: Vec<String>,
-    /// 部品の座を保持する要素の前面に合わせて置く（置く要素・面の代わり）
-    pub seat: bool,
-    /// 前の機構部品（名前）の後ろの端につなぐ（置く要素・面・座の代わり。z はそこからのずれ）
-    pub after: String,
-    /// 裏返して置く（光が部品の z の大きい端から入る）
-    pub reversed: bool,
-}
-
-impl MechPick {
-    /// プロジェクトの mechanics の項目
-    pub fn json(&self) -> Value {
-        let at = if self.at.is_empty() {
-            json!({ "surface": 1 })
-        } else {
-            json!({ "block": self.at, "surface": self.face })
-        };
-        if !self.after.is_empty() {
-            let mut v = json!({ "name": self.name, "catalog": self.catalog, "item": self.item,
-                "after": self.after, "offset": self.offset });
-            if !self.holds.is_empty() {
-                v["holds"] = json!(self.holds);
-            }
-            if self.reversed {
-                v["reversed"] = json!(true);
-            }
-            return v;
-        }
-        let mut v = json!({ "name": self.name, "catalog": self.catalog, "item": self.item, "at": at,
-            "offset": self.offset, "tilt": self.tilt });
-        if !self.holds.is_empty() {
-            v["holds"] = json!(self.holds);
-            if self.seat {
-                v["seat"] = json!(true);
-            }
-        }
-        if self.reversed {
-            v["reversed"] = json!(true);
-        }
-        v
-    }
-}
-
 /// 組合せの 1 つの要素（項目は種類ごとに使うものだけ。古い保存（vendor・part・reversed・air）も読める）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -430,6 +374,11 @@ pub struct Pick {
     /// edits・ops を付けたときの面の並びの印（[`Pick::surf_sig`]）。面の数・順・元が変わったら上書きを外す
     #[serde(skip_serializing_if = "String::is_empty")]
     pub edits_for: String,
+    /// ブロックの id・後の空気の id（開いたプロジェクトの id を残す。空なら種類から付ける、[`Combo::ids_all`]）
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub air_id: String,
 }
 
 /// BS の形
@@ -556,6 +505,8 @@ impl Default for Pick {
             group: String::new(),
             zgroups: Vec::new(),
             edits_for: String::new(),
+            id: String::new(),
+            air_id: String::new(),
         }
     }
 }
@@ -1458,8 +1409,8 @@ impl Combo {
                 if let Some(&on) = p.state_on.get(n).filter(|_| p.kind.has_on()) {
                     set.insert(id.clone(), json!({ "on": on }));
                 }
-                if let Some(&t) = p.state_air.get(n) {
-                    set.insert(format!("{id}_air"), json!({ "t": t }));
+                if let (Some(&t), Some(a)) = (p.state_air.get(n), p.air_name(&id)) {
+                    set.insert(a, json!({ "t": t }));
                 }
                 if let Some(pl) = p.state_place.get(n).filter(|_| p.has_state_place()) {
                     let e = set.entry(id.clone()).or_insert_with(|| json!({}));

@@ -289,15 +289,25 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
 }
 
 /// 下書きの Worker の `doc_peek` {file}: プロジェクトの .json の `gui`（組合せ・パネルの設定）と、ブロックで
-/// 書いたか（`blocks`）。系の中身は返さない
+/// 書いたか（`blocks`）。組合せを同梱していないブロックのプロジェクトで、組合せで同じ系を書ければその組合せ（`combo`）
 fn doc_peek(p: &Value) -> Result<Value, String> {
     let f = p["file"].as_str().ok_or("doc_peek needs file")?;
     let b = lensbench_core::vfs::read(f).map_err(|e| format!("{f}: {e}"))?;
     let v: Value = serde_json::from_slice(&b).map_err(|e| format!("{f}: {e}"))?;
-    Ok(serde_json::json!({
+    let mut out = serde_json::json!({
         "gui": v.get("gui").cloned().unwrap_or(Value::Null),
         "blocks": v.get("blocks").is_some(),
-    }))
+    });
+    // 組合せを同梱していないブロックのプロジェクトは、組合せで書ければ組合せにする（文書モデル 1 段目、GUX-11）
+    if v.get("blocks").is_some() && v.pointer("/gui/combo").is_none() {
+        let base = std::path::Path::new(f)
+            .parent()
+            .unwrap_or(std::path::Path::new(""));
+        if let Ok(c) = crate::combo::Combo::from_project(&v, base) {
+            out["combo"] = serde_json::to_value(c).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(out)
 }
 
 #[test]
@@ -311,6 +321,17 @@ fn doc_peek_reads_gui_and_blocks() {
         v,
         serde_json::json!({ "gui": { "combo": { "name": "x" } }, "blocks": true })
     );
+    // 組合せを同梱していないブロックのプロジェクト: 組合せで書ければ combo
+    let ex = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects");
+    let peek = |n: &str| {
+        let f = ex.join(n).display().to_string();
+        doc_peek(&serde_json::json!({ "file": f })).unwrap()
+    };
+    assert_eq!(
+        peek("P8_catalog_two.json")["combo"]["picks"][0]["part"],
+        "PCX-100"
+    );
+    assert!(peek("P4_double_pass.json").get("combo").is_none());
     lensbench_core::vfs::write(&f, r#"{"surfaces": []}"#).unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
     assert_eq!(v, serde_json::json!({ "gui": null, "blocks": false }));

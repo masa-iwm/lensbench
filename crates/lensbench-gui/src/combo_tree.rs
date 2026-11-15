@@ -296,8 +296,22 @@ impl Combo {
     /// 木の全部の要素で重ならない
     pub fn ids_all(&self) -> Vec<(Loc, String)> {
         let mut ids: Vec<(Loc, String)> = Vec::new();
-        for loc in self.all() {
+        // 要素が持つ id（開いたプロジェクトの id）は先に取っておく。重なれば前の要素だけ
+        let locs = self.all();
+        let mut taken = std::collections::BTreeSet::new();
+        let fixed: Vec<bool> = locs
+            .iter()
+            .map(|l| {
+                let p = self.get(l).expect("all の場所");
+                !p.id.is_empty() && taken.insert(p.id.clone())
+            })
+            .collect();
+        for (loc, fixed) in locs.into_iter().zip(fixed) {
             let p = self.get(&loc).expect("all の場所");
+            if fixed {
+                ids.push((loc, p.id.clone()));
+                continue;
+            }
             let base = if p.kind == ElemKind::Catalog && !p.part.is_empty() {
                 p.part.clone()
             } else {
@@ -310,7 +324,7 @@ impl Combo {
             } else {
                 base.clone()
             };
-            while ids.iter().any(|x| x.1 == id) {
+            while taken.contains(&id) || ids.iter().any(|x| x.1 == id) {
                 k += 1;
                 id = if numbered {
                     format!("{base}{k}")
@@ -573,6 +587,17 @@ impl Combo {
     }
 }
 
+impl Pick {
+    /// 後の空気のブロックの id（持っている id か、状態で変える空気なら「要素の id_air」）
+    pub fn air_name(&self, id: &str) -> Option<String> {
+        if !self.air_id.is_empty() {
+            Some(self.air_id.clone())
+        } else {
+            (!self.state_air.is_empty()).then(|| format!("{id}_air"))
+        }
+    }
+}
+
 /// 木からブロックを作るときの共通の値
 struct Cx<'a> {
     id_of: &'a dyn Fn(&[usize]) -> String,
@@ -619,9 +644,8 @@ fn go(
             continue;
         }
         let mut air = json!({ "type": "air", "t": p.air });
-        // 状態で変える空気には id を付ける
-        if !p.state_air.is_empty() {
-            air["id"] = json!(format!("{id}_air"));
+        if let Some(a) = p.air_name(&id) {
+            air["id"] = json!(a);
         }
         let g = p.group.trim();
         let g = if g.is_empty() || cx.names.iter().any(|n| n == g) {
