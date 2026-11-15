@@ -54,6 +54,14 @@ impl Combo {
                 rest = tail;
             }
         }
+        // 先頭の空気（前の絞りが無い系。往路を戻る鏡は復路でも通るので、物体距離には移さない）
+        if let Some((a, tail)) = rest
+            .split_first()
+            .filter(|(a, _)| a["type"] == "air" && no_id(a))
+        {
+            c.lead_air = Some(f(&a["t"], 0.0));
+            rest = tail;
+        }
         c.picks = list(rest, false, &mut c.groups)?;
         refs_unique(&c, &v)?;
         states(&mut c, &p)?;
@@ -296,6 +304,8 @@ fn list(bs: &[Value], branch: bool, groups: &mut Vec<GroupDef>) -> R<Vec<Pick>> 
                 p.air = t;
                 p.air_id = id;
             }
+            // 最上位の最後の要素の後に空気が無い: 空気 0 と同じ（[`canon`]）
+            (false, None) if !branch && k + 1 == n => p.air = 0.0,
             _ => return Err(format!("air after {}", p.id)),
         }
         out.push(p);
@@ -433,15 +443,15 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
             p.config = b["config"].as_u64().unwrap_or(1) as usize;
             p.stop_front = b["stop"].as_bool().unwrap_or(true);
             for g in b["groups"].as_array().into_iter().flatten() {
+                // 基本の移動・置き方は組合せの欄に無い（比べると違うので組合せにしない）
                 let (id, name) = (s(&g["id"]), s(&g["name"]));
-                if id != name {
-                    return Err(format!("zmx group {id} {name}"));
-                }
                 p.zgroups.push(ZGroup {
                     from: g["from"].as_u64().unwrap_or(0) as usize,
                     to: g["to"].as_u64().unwrap_or(0) as usize,
+                    id: if id == name.trim() { String::new() } else { id },
                     name,
                     role: s(&g["role"]),
+                    ..ZGroup::default()
                 });
             }
             p
@@ -617,6 +627,21 @@ fn find<'a>(ps: &'a mut [Pick], id: &str) -> Option<&'a mut Pick> {
     None
 }
 
+/// .zmx の取り込みの中の群を id で
+fn find_zgroup<'a>(ps: &'a mut [Pick], id: &str) -> Option<&'a mut ZGroup> {
+    for p in ps {
+        if let Some(i) = p.zgroups.iter().position(|g| g.key() == id) {
+            return p.zgroups.get_mut(i);
+        }
+        for b in p.ports.iter_mut() {
+            if let Some(x) = find_zgroup(&mut b.picks, id) {
+                return Some(x);
+            }
+        }
+    }
+    None
+}
+
 /// 後の空気の id で要素を
 fn find_air<'a>(ps: &'a mut [Pick], id: &str) -> Option<&'a mut Pick> {
     for p in ps {
@@ -667,6 +692,25 @@ fn states(c: &mut Combo, p: &Project) -> R<()> {
                     match k.as_str() {
                         "shift" => {
                             g.state_shift.insert(n.clone(), f(x, 0.0));
+                        }
+                        _ => return Err(format!("state {n} {id} {k}")),
+                    }
+                }
+                continue;
+            }
+            if let Some(g) = find_zgroup(&mut c.picks, id) {
+                for (k, x) in set {
+                    match k.as_str() {
+                        "shift" => {
+                            g.state_shift.insert(n.clone(), f(x, 0.0));
+                        }
+                        "decenter" | "tilt" => {
+                            let e = g.state_place.entry(n.clone()).or_default();
+                            if k == "decenter" {
+                                e.decenter = arr(x);
+                            } else {
+                                e.tilt = arr(x);
+                            }
                         }
                         _ => return Err(format!("state {n} {id} {k}")),
                     }
@@ -801,6 +845,15 @@ fn canon(v: &Value) -> R<Value> {
     }
     if let Some(bs) = v.get_mut("blocks") {
         strip_ids(bs);
+    }
+    // 最後の空気 0（id 無し）は書かないのと同じ（最後の面の厚さに 0 を足す）
+    if let Some(bs) = v.get_mut("blocks").and_then(Value::as_array_mut) {
+        if bs
+            .last()
+            .is_some_and(|b| b["type"] == "air" && no_id(b) && f(&b["t"], 1.0) == 0.0)
+        {
+            bs.pop();
+        }
     }
     let p: Project = serde_json::from_value(v).map_err(|e| e.to_string())?;
     let mut v = serde_json::to_value(&p).map_err(|e| e.to_string())?;

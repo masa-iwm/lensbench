@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::combo::{Combo, ElemKind, GroupDef, Pick};
+use crate::i18n::tr;
 
 /// BS の口の先の並び
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -596,6 +597,28 @@ impl Pick {
             (!self.state_air.is_empty()).then(|| format!("{id}_air"))
         }
     }
+}
+
+/// 系の設定の、最初の要素の前の空気の欄（開いたプロジェクトの先頭の空気を持つときだけ）
+pub(crate) fn lead_air_row(ui: &mut egui::Ui, c: &mut Combo) {
+    if c.lead_stop() {
+        return;
+    }
+    let Some(mut t) = c.lead_air else {
+        return;
+    };
+    ui.label(tr("Air before the first element"));
+    ui.horizontal(|ui| {
+        ui.add(egui::DragValue::new(&mut t).speed(0.5).max_decimals(4).suffix(" mm"))
+            .on_hover_text(tr(
+                "Air between the object and the first element (a returning mirror also passes it on the way back)",
+            ));
+        c.lead_air = Some(t);
+        if ui.small_button(tr("Remove")).clicked() {
+            c.lead_air = None;
+        }
+    });
+    ui.end_row();
 }
 
 /// 木からブロックを作るときの共通の値

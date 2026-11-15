@@ -18,12 +18,16 @@ use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, WavePt};
 use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
+mod detector;
 mod figure;
 mod mech;
+mod zgroup;
+pub use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
 use figure::{cube_of_prism, inside};
 pub use mech::MechPick;
+pub use zgroup::ZGroup;
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -940,22 +944,7 @@ impl Pick {
                 if !self.is_stop() {
                     b["stop"] = json!(false);
                 }
-                let gs: Vec<Value> = self
-                    .zgroups
-                    .iter()
-                    .filter(|g| g.from > 0 && g.to >= g.from)
-                    .map(|g| {
-                        let mut v = json!({ "from": g.from, "to": g.to });
-                        if !g.name.trim().is_empty() {
-                            v["id"] = json!(g.name.trim());
-                            v["name"] = json!(g.name.trim());
-                        }
-                        if !g.role.is_empty() {
-                            v["role"] = json!(g.role);
-                        }
-                        v
-                    })
-                    .collect();
+                let gs: Vec<Value> = self.zgroups.iter().filter_map(ZGroup::json).collect();
                 if !gs.is_empty() {
                     b["groups"] = Value::Array(gs);
                 }
@@ -1191,39 +1180,9 @@ pub struct Combo {
     pub groups: Vec<GroupDef>,
     /// 最後に置く検出器（拡張の検出器のブロック、[`crate::ext::Detector`]）
     pub detector: Option<DetectorPick>,
-}
-
-/// 組合せの最後の検出器のブロック: 種類と、欄の文字列（項目の名前 → 欄に書いた文字列、空は既定）
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct DetectorPick {
-    pub kind: String,
-    pub vals: BTreeMap<String, String>,
-}
-
-impl DetectorPick {
-    /// プロジェクトのブロック（{"type": kind, 項目…}）。種類が登録されていなければ欄の値をそのまま入れ子に
-    pub fn block(&self) -> Result<Value, String> {
-        let mut v = match crate::ext::detector(&self.kind) {
-            Some(d) => d.object.json(&self.vals, false)?,
-            None => crate::argform::nest(
-                &self
-                    .vals
-                    .iter()
-                    .filter(|(_, t)| !t.trim().is_empty())
-                    .map(|(k, t)| {
-                        let x = serde_json::from_str(t).unwrap_or_else(|_| json!(t));
-                        (k.clone(), x)
-                    })
-                    .collect(),
-            ),
-        };
-        if !v.is_object() {
-            v = json!({});
-        }
-        v["type"] = json!(self.kind);
-        Ok(v)
-    }
+    /// 最初の要素の前の空気（前の絞りが無いとき。開いたプロジェクトの先頭の空気、往路を戻る鏡は復路でも通る）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lead_air: Option<f64>,
 }
 
 /// 組合せの群（プロジェクトの group ブロック）の役割と移動
@@ -1237,16 +1196,6 @@ pub struct GroupDef {
     pub shift: f64,
     /// 状態ごとの移動
     pub state_shift: BTreeMap<String, f64>,
-}
-
-/// .zmx の取り込みの中の群（プロジェクトの zmx の groups）
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct ZGroup {
-    pub from: usize,
-    pub to: usize,
-    pub name: String,
-    pub role: String,
 }
 
 impl Default for Combo {
@@ -1278,6 +1227,7 @@ impl Default for Combo {
             coatings: BTreeMap::new(),
             groups: Vec::new(),
             detector: None,
+            lead_air: None,
         }
     }
 }
@@ -1394,6 +1344,8 @@ impl Combo {
         if self.lead_stop() {
             blocks.push(json!({ "type": "stop", "semi": self.epd / 2.0 }));
             blocks.push(json!({ "type": "air", "t": self.stop_gap }));
+        } else if let Some(t) = self.lead_air {
+            blocks.push(json!({ "type": "air", "t": t }));
         }
         let grouped = self.blocks(&mut blocks, &mut edits);
         // 面の絞り・ソルブ・ピックアップと状態
@@ -1420,6 +1372,18 @@ impl Combo {
                         e["decenter"] = json!(pl.decenter);
                         e["tilt"] = json!(pl.tilt);
                     }
+                }
+            }
+        }
+        for g in self
+            .all()
+            .iter()
+            .filter_map(|l| self.get(l))
+            .flat_map(|p| &p.zgroups)
+        {
+            for (n, set) in states.iter_mut() {
+                if let Some(m) = g.state_set(n) {
+                    set.insert(g.key().to_string(), Value::Object(m));
                 }
             }
         }

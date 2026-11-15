@@ -3639,7 +3639,7 @@ pub(crate) fn open_groups(blocks: &[lens_data::Block]) -> Vec<combo::ZGroup> {
                 from,
                 to,
                 name: b.name.clone(),
-                role: String::new(),
+                ..Default::default()
             })
         })
         .collect()

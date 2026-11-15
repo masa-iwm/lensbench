@@ -1546,3 +1546,5 @@ Computation stopped (reopen the system): {}	計算が止まりました（系を
 Cannot start the Web Worker: {}	Web Worker を開始できません: {}
 Web Worker error	Web Worker のエラー
 Cannot send to the Web Worker: {}	Web Worker に渡せません: {}
+Air before the first element	最初の要素の前の空気
+Air between the object and the first element (a returning mirror also passes it on the way back)	物体と最初の要素の間の空気（往路を戻る鏡は復路でもここを通る）

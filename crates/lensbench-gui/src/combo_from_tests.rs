@@ -73,10 +73,17 @@ fn refuses_what_it_cannot_write() {
     let mut asph = lens.clone();
     asph["source"]["surfaces"][0]["asph"] = json!([0.0, 1e-5]);
     assert!(with(json!([stop, air, asph, air])).is_err());
-    // 最後の要素の後に空気が無い
-    assert!(with(json!([stop, air, lens])).is_err());
-    // 先頭の空気
-    assert!(with(json!([air, stop, air, lens, air])).is_err());
+    // 最後の要素の後に空気が無い: 空気 0 と同じ
+    assert_eq!(with(json!([stop, air, lens])).unwrap().picks[0].air, 0.0);
+    // 先頭の空気（前の絞りが無い系）は組合せの前の空気に
+    let mut stopped = lens.clone();
+    stopped["stop"] = json!(true);
+    assert_eq!(
+        with(json!([air, stopped, air])).unwrap().lead_air,
+        Some(10.0)
+    );
+    // 空気が続く
+    assert!(with(json!([stop, air, lens, air, air])).is_err());
     // 知らないキー（ふつうの読込と同じく誤り）
     let mut typo = lens.clone();
     typo["reversd"] = json!(true);
@@ -122,10 +129,13 @@ fn examples_build_the_same() {
     let tmp = lensbench_core::vfs::temp_dir()
         .join(format!("lensbench-combo-from-{}", std::process::id()));
     lensbench_core::vfs::create_dir_all(&tmp).unwrap();
-    let build = |f: &Path| {
-        let load = json!({ "file": f.display().to_string(),
+    let build = |f: &Path, st: Option<&String>| {
+        let mut load = json!({ "file": f.display().to_string(),
             "glass_dirs": [r.join("tests/glass").display().to_string()],
             "lens_catalogs": [r.join("examples/lenses/LB").display().to_string()] });
+        if let Some(st) = st {
+            load["state"] = json!(st);
+        }
         lensbench_engine::preview_layout(&load, &json!({})).map_err(|e| format!("{e:?}"))
     };
     let mut n = 0;
@@ -137,16 +147,24 @@ fn examples_build_the_same() {
         };
         let g = tmp.join("combo.json");
         lensbench_core::vfs::write(&g, c.project().to_string()).unwrap();
-        let (a, b) = (build(&f), build(&g));
-        assert!(a.is_ok(), "{}: {:?}", f.display(), a);
-        // 玉の単位（units）は id の無かった要素に組合せが id を付けるので増える。系の面・図は同じ
-        let (mut a, mut b) = (a.unwrap(), b.unwrap());
-        for x in [&mut a, &mut b] {
-            x.as_object_mut().map(|o| o.remove("units"));
+        // 基本と各状態
+        for st in std::iter::once(None).chain(c.states.iter().map(Some)) {
+            let (a, b) = (build(&f, st), build(&g, st));
+            assert!(a.is_ok(), "{} {st:?}: {:?}", f.display(), a);
+            // 玉の単位（units）は id の無かった要素に組合せが id を付けるので増える。系の面・図は同じ
+            let (mut a, mut b) = (a.unwrap(), b.unwrap());
+            for x in [&mut a, &mut b] {
+                x.as_object_mut().map(|o| o.remove("units"));
+            }
+            assert!(
+                a == b,
+                "{} {st:?}: {}",
+                f.display(),
+                super::first_diff(&a, &b, "")
+            );
         }
-        assert!(a == b, "{}: {}", f.display(), super::first_diff(&a, &b, ""));
         n += 1;
     }
-    assert!(n >= 10, "{n}");
+    assert_eq!(n, 18);
     let _ = std::fs::remove_dir_all(&tmp);
 }

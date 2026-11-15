@@ -926,6 +926,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                 }
             });
             ui.end_row();
+            crate::combo_tree::lead_air_row(ui, c);
             if c.object_distance.is_some() {
                 ui.label("");
                 ui.checkbox(&mut c.telecentric, tr("Telecentric in object space"));

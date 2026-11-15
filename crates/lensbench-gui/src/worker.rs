@@ -331,7 +331,13 @@ fn doc_peek_reads_gui_and_blocks() {
         peek("P8_catalog_two.json")["combo"]["picks"][0]["part"],
         "PCX-100"
     );
-    assert!(peek("P4_double_pass.json").get("combo").is_none());
+    // 組合せで書けない（非球面の係数）なら combo は無い
+    lensbench_core::vfs::write(&f, r#"{"wavelengths": [{"um": 0.55}], "aperture": {"type": "epd", "value": 2},
+        "blocks": [{"type": "lens", "stop": true, "source": {"surfaces": [
+            {"radius": 20, "t": 3, "glass": "N-BK7", "asph": [0, 1e-5]}, {"radius": -20}]}}, {"type": "air", "t": 9}]}"#)
+    .unwrap();
+    let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
+    assert!(v.get("combo").is_none());
     lensbench_core::vfs::write(&f, r#"{"surfaces": []}"#).unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
     assert_eq!(v, serde_json::json!({ "gui": null, "blocks": false }));
