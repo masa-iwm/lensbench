@@ -531,6 +531,8 @@ struct Core {
     /// 開いている解析をすべて計算し直す（true は live の解析だけ）
     rerun: Option<bool>,
     browser: Browser,
+    /// 組合せ（GUI が持つ文書）と、カタログから足す位置（GPN-28）
+    doc: crate::combo_doc::ComboDoc,
     folders_open: bool,
     help_open: bool,
     save_layout_open: bool,
@@ -846,12 +848,11 @@ impl Core {
 
     /// 保存していない変更がある（組合せは最後に保存・開いたものと違う、開いた系は面の表・値を変えた）
     fn dirty(&self) -> bool {
-        let combo =
-            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
         if combo {
             match &self.saved_combo {
-                Some(c) => c != &self.browser.combo,
-                None => !self.browser.combo.picks.is_empty(),
+                Some(c) => c != &self.doc.combo,
+                None => !self.doc.combo.picks.is_empty(),
             }
         } else {
             self.ld_dirty
@@ -861,8 +862,7 @@ impl Core {
     /// 閉じると失う変更がある。一度もファイルに保存・ファイルから開いていない組合せは設定に残り、次に起動したときに
     /// 戻るので失わない（毎回の閉じる確認を出さない）
     fn close_loses(&self) -> bool {
-        let combo =
-            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
         if combo && self.saved_combo.is_none() {
             return false;
         }
@@ -904,9 +904,9 @@ impl Core {
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
         {
             if let Some(c) = v.as_ref().and_then(combo_of_project) {
-                if !self.browser.combo.picks.is_empty()
-                    && self.browser.combo != c
-                    && self.built_combo.as_ref() != Some(&self.browser.combo)
+                if !self.doc.combo.picks.is_empty()
+                    && self.doc.combo != c
+                    && self.built_combo.as_ref() != Some(&self.doc.combo)
                     && !asked
                 {
                     let p = p.to_path_buf();
@@ -929,12 +929,12 @@ impl Core {
                 if let Some(g) = v.as_ref().and_then(|v| v.get("gui")) {
                     self.set_panels(g);
                 }
-                self.browser.combo = c;
+                self.doc.combo = c;
                 // 別の組合せ: 元に戻す段は空から
                 self.combo_hist = Default::default();
                 self.combo_view = combo::View::default();
                 self.doc_path = Some(p.to_path_buf());
-                self.build_combo(self.browser.combo.project());
+                self.build_combo(self.doc.combo.project());
                 return;
             }
         }
@@ -970,7 +970,7 @@ impl Core {
         });
         // 組合せの今の状態
         if self.combo_path.as_deref() == Some(p) {
-            if let Some(st) = self.browser.combo.active_state() {
+            if let Some(st) = self.doc.combo.active_state() {
                 v["state"] = json!(st);
             }
         }
@@ -980,11 +980,11 @@ impl Core {
     /// 新規: 組合せと開いている系を空にする（前の状態は新規を元に戻す段に。確かめずに空にし、元に戻せる）
     fn new_system(&mut self) {
         // すでに空なら何もしない（新規の前の状態を空で上書きしない）
-        if self.summary.is_none() && self.browser.combo.picks.is_empty() {
+        if self.summary.is_none() && self.doc.combo.picks.is_empty() {
             return;
         }
         self.new_undo = Some(NewSnap {
-            combo: std::mem::take(&mut self.browser.combo),
+            combo: std::mem::take(&mut self.doc.combo),
             combo_hist: {
                 // 新規の前のやり直す段は捨てる（新規の後にやり直すと順がおかしくなる）
                 let mut h = std::mem::take(&mut self.combo_hist);
@@ -1055,9 +1055,9 @@ impl Core {
         let Some(n) = self.new_undo.take() else {
             return;
         };
-        self.browser.combo = n.combo;
+        self.doc.combo = n.combo;
         self.combo_hist = n.combo_hist;
-        self.combo_len_prev = self.browser.combo.picks.len();
+        self.combo_len_prev = self.doc.combo.picks.len();
         self.built = n.built;
         self.built_combo = n.built_combo;
         self.combo_path = n.combo_path;
@@ -1289,7 +1289,7 @@ impl Core {
         self.new_redo = None;
         let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui");
         let name: String = self
-            .browser
+            .doc
             .combo
             .name
             .chars()
@@ -1310,7 +1310,7 @@ impl Core {
             }
         ));
         // 失敗しても同じ組合せを毎フレーム書き直さない
-        self.built_combo = Some(self.browser.combo.clone());
+        self.built_combo = Some(self.doc.combo.clone());
         // 別の名前に書いてから置き換える（系の読み込みが書きかけのファイルを読まないように）
         let tmp = path.with_extension("json.tmp");
         let res = lensbench_core::vfs::create_dir_all(&dir)
@@ -1352,8 +1352,7 @@ impl Core {
     /// 開いた系は系ファイル（.json）に書く。書き先は開いた・前に保存した .json（.zmx から開いた系・Web 版・
     /// as_new は書き先を選ぶ）（#129）
     fn save(&mut self, as_new: bool) {
-        let combo =
-            self.is_combo() || (self.file.is_none() && !self.browser.combo.picks.is_empty());
+        let combo = self.is_combo() || (self.file.is_none() && !self.doc.combo.picks.is_empty());
         if !combo && self.file.is_none() {
             return;
         }
@@ -1373,7 +1372,7 @@ impl Core {
                     .map(|x| x.to_string_lossy().into_owned())
                     .filter(|x| !x.is_empty())
                     .or_else(|| {
-                        let n = self.browser.combo.name.trim();
+                        let n = self.doc.combo.name.trim();
                         (combo && !n.is_empty()).then(|| n.to_string())
                     })
                     .unwrap_or_else(|| "project".into());
@@ -1388,7 +1387,7 @@ impl Core {
             }
         };
         if combo {
-            let mut v = project_with_combo(&self.browser.combo);
+            let mut v = project_with_combo(&self.doc.combo);
             let panels = self.panels_value();
             if let Some(o) = panels.as_object() {
                 for (k, x) in o {
@@ -1402,7 +1401,7 @@ impl Core {
             self.status = match r {
                 Ok(()) => {
                     self.doc_path = Some(path.clone());
-                    self.saved_combo = Some(self.browser.combo.clone());
+                    self.saved_combo = Some(self.doc.combo.clone());
                     self.push_recent(&path.display().to_string());
                     Status {
                         text: trf("{} に保存", &[&path.display()]),
@@ -1534,7 +1533,7 @@ impl Core {
         if let Some(n) = self.new_undo_step(back) {
             return n;
         }
-        if self.is_combo() && self.combo_hist.can(&self.browser.combo, back) {
+        if self.is_combo() && self.combo_hist.can(&self.doc.combo, back) {
             return true;
         }
         if self.summary.is_some() {
@@ -1550,13 +1549,13 @@ impl Core {
 
     /// 新規の直後（元に戻す）・新規を戻した直後（やり直す）なら Some（戻せるか）。それ以外は None
     fn new_undo_step(&self, back: bool) -> Option<bool> {
-        if self.summary.is_none() && self.browser.combo.picks.is_empty() {
+        if self.summary.is_none() && self.doc.combo.picks.is_empty() {
             return Some(back && self.new_undo.is_some());
         }
         (!back
             && self.new_redo.is_some()
             && self.serve_redo() == 0
-            && !self.combo_hist.can(&self.browser.combo, false))
+            && !self.combo_hist.can(&self.doc.combo, false))
         .then_some(true)
     }
 
@@ -1660,11 +1659,11 @@ impl Core {
                 self.undo(back, n - k);
                 return;
             }
-            match self.combo_hist.step(&self.browser.combo, back, n) {
+            match self.combo_hist.step(&self.doc.combo, back, n) {
                 Some(c) => {
-                    self.browser.combo = c;
+                    self.doc.combo = c;
                     if !self.s.auto_build {
-                        self.build_combo(self.browser.combo.project());
+                        self.build_combo(self.doc.combo.project());
                     }
                     self.info(tr(if back {
                         "元に戻した"
@@ -1926,7 +1925,7 @@ impl Core {
         }
         let is_combo = self.is_combo();
         let (project, mut cands) = if is_combo {
-            let (p, c) = sp::combo_project(&self.browser.combo);
+            let (p, c) = sp::combo_project(&self.doc.combo);
             (Some(p), c)
         } else {
             let f = self.file.clone().unwrap_or_default();
@@ -1945,7 +1944,7 @@ impl Core {
         };
         // 同時に評価できる状態（組合せは組合せの状態、開いたプロジェクトは読み込んだ系の状態）
         cands.states = if is_combo {
-            self.browser.combo.states.clone()
+            self.doc.combo.states.clone()
         } else {
             self.overlay
                 .items
@@ -1981,7 +1980,7 @@ impl Core {
                         v["project"] = p.clone();
                     }
                     v["top"] = json!(self.swap.top);
-                    self.swap_ids = self.browser.combo.ids();
+                    self.swap_ids = self.doc.combo.ids();
                     self.swap.running = true;
                     self.swap.result = None;
                     self.worker.send(Tag::Swap, "swap", v);
@@ -1992,15 +1991,15 @@ impl Core {
                     let Some(row) = res.and_then(|r| r.get(i)).cloned() else {
                         continue;
                     };
-                    let before = self.browser.combo.clone();
-                    match sp::insert_row(&mut self.browser.combo, &self.swap_ids, &row) {
+                    let before = self.doc.combo.clone();
+                    match sp::insert_row(&mut self.doc.combo, &self.swap_ids, &row) {
                         Ok(()) => {
                             if self.swap.undo.is_none() {
                                 self.swap.undo = Some(before);
                             }
                             self.swap.inserted = Some(i);
                             if !self.s.auto_build {
-                                self.build_combo(self.browser.combo.project());
+                                self.build_combo(self.doc.combo.project());
                             }
                         }
                         Err(e) => self.fail(e),
@@ -2008,10 +2007,10 @@ impl Core {
                 }
                 Action::Undo => {
                     if let Some(c) = self.swap.undo.take() {
-                        self.browser.combo = c;
+                        self.doc.combo = c;
                         self.swap.inserted = None;
                         if !self.s.auto_build {
-                            self.build_combo(self.browser.combo.project());
+                            self.build_combo(self.doc.combo.project());
                         }
                     }
                 }
@@ -2075,8 +2074,8 @@ impl Core {
                 }
             }
         }
-        let ids = self.browser.combo.span_ids();
-        let lead = self.browser.combo.lead_stop();
+        let ids = self.doc.combo.span_ids();
+        let lead = self.doc.combo.lead_stop();
         let spans = lens_data::elem_spans(&ids, &self.ld_units, lead, &self.ld_rows);
         for (j, key, value) in edits {
             if !self.combo_surface_edit(&spans, j, key, value) {
@@ -2084,7 +2083,7 @@ impl Core {
             }
         }
         if !self.s.auto_build {
-            self.build_combo(self.browser.combo.project());
+            self.build_combo(self.doc.combo.project());
         }
         true
     }
@@ -2118,7 +2117,7 @@ impl Core {
                         .id_salt("combo_sysset")
                         .default_open(false)
                         .show(ui, |ui| {
-                            crate::sysset::ui(ui, &mut self.browser.combo, &self.agf_names.1)
+                            crate::sysset::ui(ui, &mut self.doc.combo, &self.agf_names.1)
                         });
                 });
             return;
@@ -2126,9 +2125,7 @@ impl Core {
         let cats = &self.agf_names.1;
         egui::ScrollArea::vertical()
             .id_salt("sysset_scroll")
-            .show(ui, |ui| {
-                crate::sysset::ui(ui, &mut self.browser.combo, cats)
-            });
+            .show(ui, |ui| crate::sysset::ui(ui, &mut self.doc.combo, cats));
     }
 
     /// 組合せのレイアウト図と要素の操作
@@ -2194,7 +2191,7 @@ impl Core {
                     ))
                     .clicked()
                 {
-                    if self.browser.combo.picks.is_empty() {
+                    if self.doc.combo.picks.is_empty() {
                         self.to_combo = Some(false);
                     } else {
                         self.ask(
@@ -2208,10 +2205,10 @@ impl Core {
                         );
                     }
                 }
-                if !self.browser.combo.picks.is_empty()
+                if !self.doc.combo.picks.is_empty()
                     && ui.button(tr("▶ 組合せの系を作る")).clicked()
                 {
-                    self.build_combo(self.browser.combo.project());
+                    self.build_combo(self.doc.combo.project());
                 }
             });
             // 開いている系のレイアウト図（組合せと同じ描き方）
@@ -2234,7 +2231,7 @@ impl Core {
                     Some(combo::OpenAct::Clicked([a, _])) => self.select_ld_surface(a),
                     // カタログの行を落とした間隔に差し込む（開いた系を組合せにして）
                     Some(combo::OpenAct::Drop { after, pick }) => {
-                        let n = self.browser.combo.picks.len();
+                        let n = self.doc.combo.picks.len();
                         self.insert_into_open(Some(after), *pick, n, |_, _| {});
                     }
                     None => {}
@@ -2266,7 +2263,7 @@ impl Core {
         };
         let act = combo::ui(
             ui,
-            &mut self.browser.combo,
+            &mut self.doc.combo,
             data,
             &mut self.combo_view,
             &mut self.s.auto_build,
@@ -2276,10 +2273,10 @@ impl Core {
         );
         match act {
             Some(combo::Act::Catalog) => self.cmds.push(Cmd::FocusKind(Kind::Catalog)),
-            Some(combo::Act::Build) => self.build_combo(self.browser.combo.project()),
+            Some(combo::Act::Build) => self.build_combo(self.doc.combo.project()),
             Some(combo::Act::Focus) => self.request_focus(),
             Some(combo::Act::SaveToCatalog(k)) => {
-                self.cat_save.open_for(k, &self.browser.combo);
+                self.cat_save.open_for(k, &self.doc.combo);
                 let c = self.cat_save.catalog.trim().to_string();
                 if !c.is_empty() && self.cat_save.listed != c {
                     self.preview
@@ -2287,7 +2284,7 @@ impl Core {
                 }
             }
             Some(combo::Act::Open(k)) => {
-                if let Some(id) = self.browser.combo.ids().get(k) {
+                if let Some(id) = self.doc.combo.ids().get(k) {
                     // 面の表がまだ前の系なら、木に無い名前は入れない（最上位で選ぶ）
                     self.ld.scope.clear();
                     self.ld.enter(&self.ld_blocks, id);
@@ -2311,7 +2308,7 @@ impl Core {
         }
         let is_combo = self.is_combo();
         let ids = if is_combo {
-            self.browser.combo.ids()
+            self.doc.combo.ids()
         } else {
             Vec::new()
         };
@@ -2322,7 +2319,7 @@ impl Core {
             }
         }
         // 今の経路に沿った要素（分岐の無い組合せは並びそのもの）
-        let picks = &self.browser.combo.chain_picks();
+        let picks = &self.doc.combo.chain_picks();
         let locked: BTreeSet<String> = if is_combo {
             ids.iter()
                 .zip(picks)
@@ -2332,9 +2329,9 @@ impl Core {
         } else {
             self.ld.locked.clone()
         };
-        let lead = self.browser.combo.lead_stop();
+        let lead = self.doc.combo.lead_stop();
         let spans = if is_combo {
-            let live = self.browser.combo.span_ids();
+            let live = self.doc.combo.span_ids();
             lens_data::elem_spans(&live, &self.ld_units, lead, &self.ld_rows)
         } else {
             Vec::new()
@@ -2378,13 +2375,7 @@ impl Core {
                 "組合せの系: 変えた値は組合せの要素に残ります（後の空気は要素の間隔、ほかは面の上書き）。偏心・傾き・BS は要素の設定で。",
             )),
         };
-        self.ld.tree = self.s.ld_tree;
-        self.ld.detail = self.s.ld_detail;
-        self.ld.by_surface = self.s.ld_by_surface;
         let (acts, mut bottom) = lens_data::ui(ui, &mut self.ld, &ctx);
-        self.s.ld_tree = self.ld.tree;
-        self.s.ld_detail = self.ld.detail;
-        self.s.ld_by_surface = self.ld.by_surface;
         for a in acts {
             match a {
                 Act::Select(name) => {
@@ -2398,7 +2389,7 @@ impl Core {
                     if is_combo {
                         match ids.iter().position(|i| *i == name) {
                             Some(k) => {
-                                if let Some(p) = self.browser.combo.el_mut(k) {
+                                if let Some(p) = self.doc.combo.el_mut(k) {
                                     p.locked = on;
                                 }
                             }
@@ -2463,7 +2454,7 @@ impl Core {
                         match self.combo_ops(&spans, &ids, &ops) {
                             Ok(()) => {
                                 if !self.s.auto_build {
-                                    self.build_combo(self.browser.combo.project());
+                                    self.build_combo(self.doc.combo.project());
                                 }
                             }
                             Err(e) => self.fail(e),
@@ -2479,11 +2470,11 @@ impl Core {
                             .iter()
                             .rposition(|s| s.is_some_and(|s| s[0] <= after))
                             .map_or(0, |k| k + 1);
-                        let k = combo::insert_pick(&mut self.browser.combo, at, *pick);
+                        let k = combo::insert_pick(&mut self.doc.combo, at, *pick);
                         self.combo_view.select(k);
                     } else if self.file.is_some() {
                         if open_gap_ok(&self.ld_rows, after) {
-                            let n = self.browser.combo.picks.len();
+                            let n = self.doc.combo.picks.len();
                             self.insert_into_open(Some(after), *pick, n, |_, _| {});
                         } else {
                             self.fail(trf(
@@ -2529,7 +2520,7 @@ impl Core {
                     if let Some(name) = &view {
                         if is_combo {
                             match ids.iter().position(|i| i == name) {
-                                Some(k) => combo::block_settings(ui, &mut self.browser.combo, k),
+                                Some(k) => combo::block_settings(ui, &mut self.doc.combo, k),
                                 None => {
                                     ui.weak(trf(
                                         "{} は組合せの要素でない（設定は要素を選んで）",
@@ -2747,7 +2738,7 @@ impl Core {
             }
         }
         if !self.s.auto_build {
-            self.build_combo(self.browser.combo.project());
+            self.build_combo(self.doc.combo.project());
         }
     }
 
@@ -2779,7 +2770,7 @@ impl Core {
         let x = value.as_f64();
         match (k, key, x) {
             // 前の絞りの厚さ = 絞りから最初の要素まで
-            (None, "t", Some(x)) if x >= 0.0 && rows[j].stop => self.browser.combo.stop_gap = x,
+            (None, "t", Some(x)) if x >= 0.0 && rows[j].stop => self.doc.combo.stop_gap = x,
             (Some(k), "t", Some(x)) if spans[k].is_some_and(|s| s[1] == j) => {
                 // 要素の最後の面の厚さ = 後の空気（鏡の後は符号が逆）
                 let air = if rows[j].t < 0.0 { -x } else { x };
@@ -2787,7 +2778,7 @@ impl Core {
                     self.fail(tr("間隔は 0 以上"));
                     return false;
                 }
-                match self.browser.combo.gap_after(k) {
+                match self.doc.combo.gap_after(k) {
                     Some(v) => *v = air,
                     None => {
                         self.fail(tr("この値は変えられない"));
@@ -2798,7 +2789,7 @@ impl Core {
             (Some(k), _, _) => {
                 let a = spans[k].map(|s| s[0]).unwrap_or(j);
                 let rel = (a..j).filter(|&i| !rows[i].is_cb()).count();
-                if let Some(p) = self.browser.combo.el_mut(k) {
+                if let Some(p) = self.doc.combo.el_mut(k) {
                     p.set_edit(rel, key, value);
                 }
             }
@@ -2815,7 +2806,7 @@ impl Core {
     fn auto_build(&mut self) {
         // 組合せでない系を開いたまま空の組合せに要素を足したら、開いた系を組合せの先頭に取り込む（足した玉だけの系に
         // 置き換わらないように、#135）
-        let n = self.browser.combo.picks.len();
+        let n = self.doc.combo.picks.len();
         if self.file.is_some()
             && !self.is_combo()
             && self.to_combo.is_none()
@@ -2842,14 +2833,14 @@ impl Core {
         }
         if !self.s.auto_build
             || self.preview.busy()
-            || self.browser.combo.picks.is_empty()
-            || self.built_combo.as_ref() == Some(&self.browser.combo)
-            || !self.browser.combo.settings_problems().is_empty()
+            || self.doc.combo.picks.is_empty()
+            || self.built_combo.as_ref() == Some(&self.doc.combo)
+            || !self.doc.combo.settings_problems().is_empty()
         {
             return;
         }
         self.combo_edit = Some(web_time::Instant::now());
-        self.build_combo(self.browser.combo.project());
+        self.build_combo(self.doc.combo.project());
     }
 
     /// 像面の前の面まで、軸上の細い光線を追う
@@ -2887,7 +2878,7 @@ impl Core {
         }
         match combo::paraxial_focus(y, z, m, n) {
             Some(t) => {
-                if let Some(v) = self.browser.combo.image_gap() {
+                if let Some(v) = self.doc.combo.image_gap() {
                     *v = t;
                 }
                 self.info(trf(
@@ -2895,7 +2886,7 @@ impl Core {
                     &[&fmt_num((t * 1e4).round() / 1e4)],
                 ));
                 if !self.s.auto_build {
-                    self.build_combo(self.browser.combo.project());
+                    self.build_combo(self.doc.combo.project());
                 }
             }
             None => self.fail(tr("軸上の光線が軸と交わらない（焦点が無い）")),
@@ -2907,25 +2898,25 @@ impl Core {
             self.refresh_catalog();
         }
         // ダブルクリックで足す玉は、組合せで選んでいる要素の直後へ
-        self.browser.insert_after = self
-            .combo_view
-            .sel
-            .filter(|&k| k < self.browser.combo.len());
+        self.doc.insert_after = self.combo_view.sel.filter(|&k| k < self.doc.combo.len());
         self.browser.lens_hide.clone_from(&self.s.lens_hide);
-        let n_old = self.browser.combo.picks.len();
-        let act = self
-            .browser
-            .ui(ui, self.s.glass_dirs.len(), self.s.lens_dirs.len());
+        let n_old = self.doc.combo.picks.len();
+        let act = self.browser.ui(
+            ui,
+            &mut self.doc,
+            self.s.glass_dirs.len(),
+            self.s.lens_dirs.len(),
+        );
         self.s.lens_hide.clone_from(&self.browser.lens_hide);
-        if let Some(k) = self.browser.added.take() {
+        if let Some(k) = self.doc.added.take() {
             if self.file.is_some() && !self.is_combo() {
                 // 開いた系へ足すときは、組合せの末尾に足したときの像面の合わせ直し（GUX-10）は要らない。立てたままだと
                 // 組合せにした後に開いた系の像面までの距離を書き換える
-                self.browser.refocus = false;
+                self.doc.refocus = false;
                 // 組合せでない系を開いているときは開いた系に足す: レンズデータで選んでいる面の後（空気の間隔なら）、
                 // 無ければ系の後ろ。以前は前の組合せが残っていると、足した玉は前の組合せに入り、開いた系が前の組合せの
                 // 系に置き換わっていた
-                if let Some(p) = self.browser.combo.el(k).cloned() {
+                if let Some(p) = self.doc.combo.el(k).cloned() {
                     let after = self
                         .ld
                         .cur
@@ -2933,10 +2924,10 @@ impl Core {
                         .filter(|&j| open_gap_ok(&self.ld_rows, j));
                     self.insert_into_open(after, p, n_old, move |c, yes| {
                         if yes {
-                            c.browser.combo.remove_chain(k);
+                            c.doc.combo.remove_chain(k);
                         } else {
                             // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
-                            c.built_combo = Some(c.browser.combo.clone());
+                            c.built_combo = Some(c.doc.combo.clone());
                             c.combo_view.select(k);
                             c.info(tr(
                                 "組合せに足した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）",
@@ -3760,10 +3751,10 @@ impl Core {
 
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
     fn cat_save_window(&mut self, ctx: &egui::Context) {
-        let ready = self.is_combo() && self.built_combo.as_ref() == Some(&self.browser.combo);
+        let ready = self.is_combo() && self.built_combo.as_ref() == Some(&self.doc.combo);
         let req = self
             .cat_save
-            .window(ctx, &self.browser.combo, &self.browser.lenses, ready);
+            .window(ctx, &self.doc.combo, &self.browser.lenses, ready);
         if let Some((method, p)) = req {
             if method == "catalog_add" {
                 self.worker.send(Tag::UserCatalog, method, p);
@@ -4134,10 +4125,8 @@ impl App {
                 Worker::preview(move || ctx2.request_repaint()),
             )
         };
-        let browser = Browser {
-            combo: s.combo.clone(),
-            ..Default::default()
-        };
+        let browser = Browser::default();
+        let doc = crate::combo_doc::ComboDoc::new(s.combo.clone());
         // 系のファイルを指定して開いたときは、前の組合せを作り直さない（指定が無ければ前の組合せで系を作る）
         let built_combo = args.open.is_some().then(|| s.combo.clone());
         let lay = s.layout.take().unwrap_or_else(|| Preset::Analysis.build());
@@ -4204,6 +4193,7 @@ impl App {
                 param_sys_cache: Default::default(),
                 sys_gen: 0,
                 browser,
+                doc,
                 folders_open: false,
                 help_open: false,
                 save_layout_open: false,
@@ -4245,6 +4235,10 @@ impl App {
         // 前に閉じたときの最適化・公差・差し替えの設定（GPN-14）
         let panels = app.c.s.panels.clone();
         app.c.set_panels(&panels);
+        // レンズデータの見せ方は表の状態が持ち、設定には保存するときだけ写す（GPN-28）
+        app.c.ld.tree = app.c.s.ld_tree;
+        app.c.ld.detail = app.c.s.ld_detail;
+        app.c.ld.by_surface = app.c.s.ld_by_surface;
         app.apply_dock_translations();
         // Web 版: 別の窓のパネルなら、計算しないで元のタブで描いた画面を受けて描く
         #[cfg(target_arch = "wasm32")]
@@ -4876,7 +4870,7 @@ impl eframe::App for App {
         }
         self.c.flush_set();
         let busy = ctx.input(|i| i.pointer.any_down()) || ctx.memory(|m| m.focused().is_some());
-        let dropped = self.c.browser.combo.drop_stale_edits();
+        let dropped = self.c.doc.combo.drop_stale_edits();
         if dropped > 0 {
             self.c.info(trf(
                 "要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）",
@@ -4884,7 +4878,7 @@ impl eframe::App for App {
             ));
         }
         // 消す操作（要素・状態・面の上書き）の後は、戻し方を状態の行に出す（確認の窓は出さない、GPN-20）
-        let census = self.c.browser.combo.census();
+        let census = self.c.doc.combo.census();
         if let Some(prev) = self.c.combo_census.replace(census) {
             let lost: Vec<String> = [
                 (prev[0].saturating_sub(census[0]), tr("要素 {} 個")),
@@ -4901,15 +4895,15 @@ impl eframe::App for App {
                     .info(trf("{} を外しました（Ctrl+Z で戻す）", &[&lost.join("・")]));
             }
         }
-        self.c.combo_hist.track(&self.c.browser.combo, busy);
+        self.c.combo_hist.track(&self.c.doc.combo, busy);
         // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ（GUX-10）
-        if self.c.browser.refocus
+        if self.c.doc.refocus
             && self.c.is_combo()
-            && self.c.built_combo.as_ref() == Some(&self.c.browser.combo)
+            && self.c.built_combo.as_ref() == Some(&self.c.doc.combo)
             && self.c.layout_data.is_some()
             && !self.c.worker.busy_short()
         {
-            self.c.browser.refocus = false;
+            self.c.doc.refocus = false;
             self.c.request_focus();
         }
         self.c.auto_build();
@@ -5166,7 +5160,10 @@ impl eframe::App for App {
         if self.viewer.is_some() {
             return;
         }
-        self.c.s.combo = self.c.browser.combo.clone();
+        self.c.s.combo = self.c.doc.combo.clone();
+        self.c.s.ld_tree = self.c.ld.tree;
+        self.c.s.ld_detail = self.c.ld.detail;
+        self.c.s.ld_by_surface = self.c.ld.by_surface;
         self.c.s.panels = self.c.panels_value();
         self.c.s.layout = Some(self.layout());
         // ポータブル: 設定のフォルダの中のパスは相対で書く

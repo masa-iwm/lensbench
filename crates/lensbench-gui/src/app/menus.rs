@@ -336,7 +336,7 @@ impl App {
                         ui.close_menu();
                         cmd = Some(Cmd::WriteZmx);
                     }
-                    let can_save = self.c.file.is_some() || !self.c.browser.combo.picks.is_empty();
+                    let can_save = self.c.file.is_some() || !self.c.doc.combo.picks.is_empty();
                     // 開いた .zmx は系ファイル（.json）に保存する（.zmx は上書きしない）ことを名前で示す（GUX-26）
                     let zmx = !self.c.is_combo()
                         && self.c.doc_path.is_none()

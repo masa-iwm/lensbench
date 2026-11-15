@@ -1164,10 +1164,11 @@ mod tests {
     #[test]
     fn incomplete_row_is_not_placed() {
         let mut b = crate::catalog::Browser::default();
+        let mut d = crate::catalog::ComboDoc::default();
         let r = row(&["thickness"]);
         assert!(r.is_incomplete() && !r.placeable());
-        b.add_pick(&r);
-        assert_eq!(b.combo.len(), 0);
+        b.add_pick(&mut d, &r);
+        assert_eq!(d.combo.len(), 0);
         assert_eq!(b.fill_req.as_ref().map(|x| x.part.as_str()), Some("F-1"));
     }
 }

@@ -559,6 +559,7 @@ pub struct GlassFilter {
 }
 
 pub use crate::combo::{Combo, Pick};
+pub use crate::combo_doc::ComboDoc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tab {
@@ -595,18 +596,11 @@ pub struct Browser {
 
     /// ガラスマップの見えている範囲
     pub glass_view: MapView,
-    pub combo: Combo,
     /// 一覧を一度でも読んだか
     pub loaded: bool,
     /// 読み込み中の一覧（頼んで返事を待っている。0 件と見分ける）
     pub lenses_pending: bool,
     pub glasses_pending: bool,
-    /// 足す玉をこの要素の直後へ（組合せの図で選んでいる要素。無ければ後ろ）
-    pub insert_after: Option<usize>,
-    /// 足した玉の番号（図で選ぶ）
-    pub added: Option<usize>,
-    /// 最後に玉を足した: 系ができたら像面を近軸の焦点へ動かす（GUX-10）
-    pub refocus: bool,
     /// 選んだ玉の断面（行の番号と serve の layout）
     pub preview: Option<(usize, crate::combo::LayoutData)>,
     /// 補う窓で開く未完の品（足そうとした行）
@@ -1041,13 +1035,27 @@ fn num_cell(ui: &mut Ui, x: f64) {
 
 impl Browser {
     /// カタログレンズの一覧を入れ替える（絞り込みの結果を作り直させる）
+    /// 一覧を入れ替える。選んでいた品は (メーカー, 型番) で探し直す（無ければ外す。GPN-28）
     pub fn set_lenses(&mut self, v: Vec<LensRow>) {
+        let key = self
+            .lens_sel
+            .and_then(|i| self.lenses.get(i))
+            .map(|r| (r.vendor.clone(), r.part.clone()));
+        self.lens_sel =
+            key.and_then(|(vd, pt)| v.iter().position(|r| r.vendor == vd && r.part == pt));
         self.lenses = v;
         self.cache.lens_gen += 1;
     }
 
     /// ガラスの一覧を入れ替える
+    /// 一覧を入れ替える。選んでいたガラスは (カタログ, 名前) で探し直す（GPN-28）
     pub fn set_glasses(&mut self, v: Vec<GlassRow>) {
+        let key = self
+            .glass_sel
+            .and_then(|i| self.glasses.get(i))
+            .map(|g| (g.catalog.clone(), g.name.clone()));
+        self.glass_sel =
+            key.and_then(|(c, n)| v.iter().position(|g| g.catalog == c && g.name == n));
         self.glasses = v;
         self.cache.glass_gen += 1;
     }
@@ -1168,7 +1176,13 @@ impl Browser {
         self.cache.glass_idx.as_ref().unwrap().2.clone()
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, n_glass_dirs: usize, n_lens_dirs: usize) -> Option<Action> {
+    pub fn ui(
+        &mut self,
+        ui: &mut Ui,
+        doc: &mut ComboDoc,
+        n_glass_dirs: usize,
+        n_lens_dirs: usize,
+    ) -> Option<Action> {
         let mut act = None;
         ui.horizontal(|ui| {
             ui.selectable_value(
@@ -1216,7 +1230,7 @@ impl Browser {
                 } else if n_lens_dirs == 0 && self.lenses.is_empty() {
                     ui.label(tr("レンズカタログのフォルダ（.zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名）を「フォルダ…」で足してください。"));
                 }
-                if let Some(a) = self.lens_ui(ui) {
+                if let Some(a) = self.lens_ui(ui, doc) {
                     act = Some(a);
                 }
             }
@@ -1235,7 +1249,7 @@ impl Browser {
         act
     }
 
-    fn lens_ui(&mut self, ui: &mut Ui) -> Option<Action> {
+    fn lens_ui(&mut self, ui: &mut Ui, doc: &mut ComboDoc) -> Option<Action> {
         let mut act = None;
         // 右に組合せ、左に一覧（狭ければ上に一覧、下に組合せ）
         let w = ui.available_width();
@@ -1247,13 +1261,13 @@ impl Browser {
             builder.size(Size::relative(0.45))
         };
         let mut cells = |mut strip: egui_extras::Strip| {
-            strip.cell(|ui| self.lens_list(ui));
+            strip.cell(|ui| self.lens_list(ui, doc));
             strip.cell(|ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("combo_scroll")
                     .show(ui, |ui| {
                         ui.add_space(2.0);
-                        if let Some(a) = self.combo_ui(ui) {
+                        if let Some(a) = self.combo_ui(ui, doc) {
                             act = Some(a);
                         }
                     });
@@ -1267,7 +1281,7 @@ impl Browser {
         act
     }
 
-    fn lens_list(&mut self, ui: &mut Ui) {
+    fn lens_list(&mut self, ui: &mut Ui, doc: &mut ComboDoc) {
         let (vendors, kinds) = self.lens_meta();
         let q = &mut self.lens_q;
         // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
@@ -1392,12 +1406,12 @@ impl Browser {
                             .on_hover_text(tr("品ページを開き、仕様表か STEP から足りない値を入れます（ダブルクリックでも）"))
                             .clicked()
                         {
-                            self.add_pick(r);
+                            self.add_pick(doc, r);
                         }
                     } else if ui.button(tr("➕ 組合せに足す")).clicked() {
-                        self.add_pick(r);
+                        self.add_pick(doc, r);
                     }
-                    self.fit_ui(ui, r);
+                    self.fit_ui(ui, doc, r);
                     let specs = r.specs();
                     if !specs.is_empty() || !r.description.is_empty() {
                         ui.menu_button(tr("仕様…"), |ui| spec_table(ui, r));
@@ -1492,7 +1506,7 @@ impl Browser {
         }
         if let Some(i) = add {
             let r = self.lenses[i].clone();
-            self.add_pick(&r);
+            self.add_pick(doc, &r);
         }
     }
 
@@ -1524,7 +1538,7 @@ impl Browser {
     }
 
     /// 玉と機構部品の対応: 素子の行は「入る機構部品」、機構部品の行は「入る素子」
-    fn fit_ui(&mut self, ui: &mut Ui, r: &LensRow) {
+    fn fit_ui(&mut self, ui: &mut Ui, doc: &mut ComboDoc, r: &LensRow) {
         if r.kind == RowKind::Mech {
             let Some(h) = hold_diameter(r) else { return };
             let n = self.lens_fit(self.lens_sel.unwrap_or(usize::MAX), r).len();
@@ -1600,104 +1614,31 @@ impl Browser {
             self.lens_q.kind_group = None;
         }
         if let Some(m) = add {
-            self.add_mech_for(&m, r);
+            self.add_mech_for(doc, &m, r);
         }
     }
 
-    /// 素子 `lens` に合わせて機構部品を足す: 組合せにその素子があれば、そこに置いて保持する
-    pub fn add_mech_for(&mut self, mech: &LensRow, lens: &LensRow) {
-        let chain = self.combo.chain_picks();
-        let same = |p: &crate::combo::Pick| {
-            p.kind == crate::combo::ElemKind::Catalog
-                && p.vendor == lens.vendor
-                && p.part == lens.part
-        };
-        // 同じ玉が 2 つ以上あれば、選んでいる方を優先
-        let k = self
-            .insert_after
-            .filter(|&k| chain.get(k).is_some_and(same))
-            .or_else(|| chain.iter().position(same));
-        let keep = self.insert_after;
-        if k.is_some() {
-            self.insert_after = k;
+    /// 素子 `lens` に合わせて機構部品を足す（[`ComboDoc::add_mech_for`]）
+    pub fn add_mech_for(&mut self, doc: &mut ComboDoc, mech: &LensRow, lens: &LensRow) {
+        if mech.is_incomplete() {
+            self.fill_req = Some(mech.clone());
+            return;
         }
-        self.add_pick(mech);
-        self.insert_after = keep;
+        doc.add_mech_for(mech, lens, &self.lenses);
     }
 
-    pub fn add_pick(&mut self, r: &LensRow) {
-        // 未完の品は置かず、補う窓を開く
+    /// 組合せに足す。未完の品は置かず、補う窓を開く
+    pub fn add_pick(&mut self, doc: &mut ComboDoc, r: &LensRow) {
         if r.is_incomplete() {
             self.fill_req = Some(r.clone());
             return;
         }
-        // 機構部品は要素の並びでなく「機構部品」へ（選んでいる要素に置く）
-        if r.kind == RowKind::Mech {
-            let ids = self.combo.ids();
-            let at = self
-                .insert_after
-                .and_then(|k| ids.get(k).cloned())
-                .or_else(|| ids.iter().find(|x| !x.is_empty()).cloned())
-                .unwrap_or_default();
-            // 名前は組合せの中で別々に（つなぐ相手を名前で選ぶので）
-            let mut name = r.part.clone();
-            let mut n = 2;
-            while self.combo.mechanics.iter().any(|m| m.name == name) {
-                name = format!("{} {n}", r.part);
-                n += 1;
-            }
-            // 置く要素がカタログの玉で、その径が部品の保持径に入るなら、その玉を保持して座に合わせる
-            let held = ids
-                .iter()
-                .position(|x| !at.is_empty() && *x == at)
-                .and_then(|k| self.combo.el(k))
-                .filter(|p| p.kind == crate::combo::ElemKind::Catalog)
-                .and_then(|p| {
-                    self.lenses.iter().find(|l| {
-                        l.vendor == p.vendor && l.part == p.part && l.kind != RowKind::Mech
-                    })
-                })
-                .is_some_and(|l| lensbench_project::catalog_spec::fits_row(&r.raw, l.diameter));
-            self.combo.mechanics.push(crate::combo::MechPick {
-                name,
-                catalog: r.source.clone().unwrap_or_default(),
-                item: r.part.clone(),
-                holds: if held { vec![at.clone()] } else { Vec::new() },
-                seat: held,
-                at,
-                ..Default::default()
-            });
-            return;
-        }
-        let at = self.insert_after.map_or(self.combo.len(), |k| k + 1);
-        let n = self.combo.len();
-        let at = if at >= n && n > 0 {
-            // 最後に足す: 前の最後の要素の後（像面までだった空気）は小さな間隔にし、足した玉の後の空気は
-            // 系ができたら近軸の焦点まで（2 枚目で像面が遠くに残って像が崩れない、GUX-10）
-            let chain = self.combo.chain();
-            if let Some(g) = chain.last().and_then(|s| s.after.clone()) {
-                if matches!(g, crate::combo_tree::Gap::Air(_)) {
-                    if let Some(v) = self.combo.gap(&g) {
-                        *v = 5.0;
-                    }
-                }
-            }
-            self.refocus = true;
-            self.combo.insert_chain_with(at, pick_from(r), false)
-        } else {
-            if n == 0 {
-                self.refocus = true;
-            }
-            crate::combo::insert_pick(&mut self.combo, at, pick_from(r))
-        };
-        // 続けて足すと、足した玉の後ろへ
-        self.insert_after = Some(at);
-        self.added = Some(at);
+        doc.add_row(r, &self.lenses);
     }
 
-    fn combo_ui(&mut self, ui: &mut Ui) -> Option<Action> {
+    fn combo_ui(&mut self, ui: &mut Ui, doc: &mut ComboDoc) -> Option<Action> {
         let mut act = None;
-        let c = &mut self.combo;
+        let c = &mut doc.combo;
         ui.heading(tr("組合せ"));
         ui.label(tr("一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。一覧は光の進む順（字下げは BS の分岐の先）。"));
         ui.horizontal(|ui| {
@@ -2420,23 +2361,24 @@ mod tests {
     #[test]
     fn add_pick_goes_after_selected() {
         let mut b = Browser::default();
+        let mut d = ComboDoc::default();
         for p in ["A", "B", "C"] {
-            b.add_pick(&lens("LB", p, 50.0, 25.4));
+            b.add_pick(&mut d, &lens("LB", p, 50.0, 25.4));
         }
-        b.insert_after = None;
-        let order = |b: &Browser| {
-            b.combo
+        d.insert_after = None;
+        let order = |d: &ComboDoc| {
+            d.combo
                 .picks
                 .iter()
                 .map(|p| p.part.clone())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(order(&b), ["A", "B", "C"]);
-        b.insert_after = Some(0);
-        b.add_pick(&lens("LB", "X", 50.0, 25.4));
-        b.add_pick(&lens("LB", "Y", 50.0, 25.4));
-        assert_eq!(order(&b), ["A", "X", "Y", "B", "C"]);
-        assert_eq!(b.added, Some(2));
+        assert_eq!(order(&d), ["A", "B", "C"]);
+        d.insert_after = Some(0);
+        b.add_pick(&mut d, &lens("LB", "X", 50.0, 25.4));
+        b.add_pick(&mut d, &lens("LB", "Y", 50.0, 25.4));
+        assert_eq!(order(&d), ["A", "X", "Y", "B", "C"]);
+        assert_eq!(d.added, Some(2));
     }
 
     /// カタログの鏡は鏡のブロック（型番・曲率半径・径）として組合せに入る
@@ -2449,11 +2391,12 @@ mod tests {
         let rows = parse_lenses(&v);
         assert_eq!(rows[0].mirror, Some((-200.0, -1.0)));
         let mut b = Browser::default();
-        b.add_pick(&rows[0]);
-        let p = &b.combo.picks[0];
+        let mut d = ComboDoc::default();
+        b.add_pick(&mut d, &rows[0]);
+        let p = &d.combo.picks[0];
         assert_eq!(p.kind, crate::combo::ElemKind::Mirror);
         assert_eq!(p.label(), "TL CM254-100");
-        let blocks = b.combo.project()["blocks"].clone();
+        let blocks = d.combo.project()["blocks"].clone();
         let m = blocks
             .as_array()
             .unwrap()
@@ -2585,18 +2528,19 @@ mod tests {
             lenses: rows.clone(),
             ..Default::default()
         };
-        b.add_pick(&rows[1]);
-        b.add_pick(&rows[0]);
-        b.add_mech_for(&rows[2], &rows[0]);
-        let mp = &b.combo.mechanics[0];
+        let mut d = ComboDoc::default();
+        b.add_pick(&mut d, &rows[1]);
+        b.add_pick(&mut d, &rows[0]);
+        b.add_mech_for(&mut d, &rows[2], &rows[0]);
+        let mp = &d.combo.mechanics[0];
         assert_eq!(
             (mp.at.as_str(), mp.holds.clone(), mp.seat),
             ("L25", vec!["L25".to_string()], true)
         );
         // 入らない玉の所に置くときは保持しない
-        b.insert_after = Some(0);
-        b.add_pick(&rows[2]);
-        let mp = &b.combo.mechanics[1];
+        d.insert_after = Some(0);
+        b.add_pick(&mut d, &rows[2]);
+        let mp = &d.combo.mechanics[1];
         assert_eq!(
             (mp.at.as_str(), mp.holds.is_empty(), mp.seat),
             ("L12", true, false)
@@ -2613,23 +2557,24 @@ mod tests {
         let rows = parse_lenses(&v);
         assert_eq!(rows[0].kind, RowKind::Mech);
         let mut b = Browser::default();
-        b.add_pick(&lens("LB", "A", 50.0, 25.4));
-        b.add_pick(&lens("LB", "B", 50.0, 25.4));
-        b.insert_after = Some(1);
-        b.add_pick(&rows[0]);
-        assert_eq!(b.combo.picks.len(), 2);
-        let m = &mut b.combo.mechanics[0];
+        let mut d = ComboDoc::default();
+        b.add_pick(&mut d, &lens("LB", "A", 50.0, 25.4));
+        b.add_pick(&mut d, &lens("LB", "B", 50.0, 25.4));
+        d.insert_after = Some(1);
+        b.add_pick(&mut d, &rows[0]);
+        assert_eq!(d.combo.picks.len(), 2);
+        let m = &mut d.combo.mechanics[0];
         assert_eq!((m.item.as_str(), m.at.as_str()), ("SM1L10", "B"));
         m.holds = vec!["A".into()];
-        let p = b.combo.project();
+        let p = d.combo.project();
         let j = &p["mechanics"][0];
         assert_eq!(j["catalog"], "/c/items/tl_mech.json");
         assert_eq!(j["at"], json!({ "block": "B", "surface": 0 }));
         assert_eq!(j["holds"], json!(["A"]));
         // 置く要素が空なら系の面 1、保持なしなら holds は出さない
-        b.combo.mechanics[0].at.clear();
-        b.combo.mechanics[0].holds.clear();
-        let j = &b.combo.project()["mechanics"][0];
+        d.combo.mechanics[0].at.clear();
+        d.combo.mechanics[0].holds.clear();
+        let j = &d.combo.project()["mechanics"][0];
         assert_eq!(j["at"], json!({ "surface": 1 }));
         assert!(j.get("holds").is_none());
         // 消した要素の id は古い id
@@ -2726,18 +2671,19 @@ mod tests {
             lenses: l,
             ..Default::default()
         };
+        let mut d = ComboDoc::default();
         let pcx = b
             .lenses
             .iter()
             .find(|x| x.part == "PCX-100")
             .unwrap()
             .clone();
-        b.add_pick(&pcx);
-        assert_eq!(b.combo.picks[0].air, (pcx.efl * 1e3).round() / 1e3);
+        b.add_pick(&mut d, &pcx);
+        assert_eq!(d.combo.picks[0].air, (pcx.efl * 1e3).round() / 1e3);
         let dir = std::env::temp_dir().join(format!("lensbench-gui-test-{}", std::process::id()));
         lensbench_core::vfs::create_dir_all(&dir).unwrap();
         let f = dir.join("combo.json");
-        lensbench_core::vfs::write(&f, b.combo.project().to_string()).unwrap();
+        lensbench_core::vfs::write(&f, d.combo.project().to_string()).unwrap();
         let s = call(
             "load",
             json!({ "file": f.display().to_string(), "glass_dirs": [glass], "lens_catalogs": [lb] }),
@@ -2761,8 +2707,8 @@ mod tests {
         let t = crate::combo::paraxial_focus(y, z, m, n).unwrap();
         // 平凸の後ろの焦点はほぼ焦点距離（主点のずれの分だけ短い）
         assert!(t > 0.9 * pcx.efl && t < pcx.efl, "{t}");
-        b.combo.picks[0].air = t;
-        lensbench_core::vfs::write(&f, b.combo.project().to_string()).unwrap();
+        d.combo.picks[0].air = t;
+        lensbench_core::vfs::write(&f, d.combo.project().to_string()).unwrap();
         call(
             "load",
             json!({ "file": f.display().to_string(), "glass_dirs": [glass], "lens_catalogs": [lb] }),
@@ -2979,3 +2925,5 @@ mod tests {
 
 #[cfg(test)]
 mod preview_tilt_tests;
+#[cfg(test)]
+mod sel_tests;

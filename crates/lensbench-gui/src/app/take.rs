@@ -149,7 +149,6 @@ impl Core {
             }
             Tag::Glasses => {
                 self.browser.set_glasses(catalog::parse_glasses(&v));
-                self.browser.glass_sel = None;
                 self.ld_glasses = self
                     .browser
                     .glasses
@@ -162,9 +161,9 @@ impl Core {
                 text = trf("ガラス {} 種", &[&self.browser.glasses.len()]);
             }
             Tag::Lenses => {
+                // 選んでいた品は一覧の中で探し直す（set_lenses）。断面は捨てて頼み直す
+                // （同じ番号の行でも別の玉かもしれない。作りかけの結果も受け取らない）
                 self.browser.set_lenses(catalog::parse_lenses(&v));
-                self.browser.lens_sel = None;
-                // 前のカタログの断面は捨てる（同じ番号の行でも別の玉。作りかけの結果も受け取らない）
                 self.browser.preview = None;
                 self.preview_req = None;
                 let bad = self

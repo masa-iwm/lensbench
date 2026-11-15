@@ -10,16 +10,6 @@ use lensbench_project::filter::{CoatSpec, Ideal};
 use crate::i18n::{n_, tr, trf};
 use crate::theme;
 
-/// 膜の欄で選べる名前を、描画のたびに置く所（[`set_names`]・[`names`]）
-fn names_id() -> egui::Id {
-    egui::Id::new("lensbench_coat_names")
-}
-
-/// 膜の欄（鏡・BS など）で選べる、定義した膜の名前を置く
-pub fn set_names(ctx: &egui::Context, names: Vec<String>) {
-    ctx.data_mut(|d| d.insert_temp(names_id(), names));
-}
-
 /// 次の描画で膜の定義の欄を開いて見せる（通し確認）
 pub fn focus(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("lensbench_coat_focus"), true));
@@ -29,12 +19,6 @@ pub fn focus(ctx: &egui::Context) {
 pub fn take_focus(ctx: &egui::Context) -> bool {
     ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("lensbench_coat_focus")))
         .unwrap_or(false)
-}
-
-/// 定義した膜の名前
-pub fn names(ctx: &egui::Context) -> Vec<String> {
-    ctx.data(|d| d.get_temp::<Vec<String>>(names_id()))
-        .unwrap_or_default()
 }
 
 /// 種類の名前（serde の type）と表示名
@@ -501,6 +485,34 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
                 );
             }
         });
+}
+
+/// 膜の名前の欄（鏡・BS の分ける面）
+pub fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: egui::Color32, coats: &[String]) {
+    ui.label(RichText::new(tr("膜")).color(weak));
+    ui.add(
+        egui::TextEdit::singleline(coat)
+            .hint_text(tr("膜なし"))
+            .desired_width(70.0),
+    )
+    .on_hover_text(tr(
+        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま",
+    ));
+    // 系の設定で定義した膜から選ぶ
+    if !coats.is_empty() {
+        egui::ComboBox::from_id_salt(("coat_pick", k))
+            .selected_text("▼")
+            .width(24.0)
+            .show_ui(ui, |ui| {
+                for n in coats {
+                    if ui.selectable_label(coat == n, n.as_str()).clicked() {
+                        *coat = n.clone();
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tr("定義した膜から選ぶ"));
+    }
 }
 
 #[cfg(test)]

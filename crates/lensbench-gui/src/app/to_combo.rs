@@ -63,7 +63,7 @@ impl Core {
                     }
                     if keep {
                         // 足した要素は残し、開いた系はそのまま
-                        c.built_combo = Some(c.browser.combo.clone());
+                        c.built_combo = Some(c.doc.combo.clone());
                     }
                     c.open_insert = None;
                 },
@@ -81,7 +81,7 @@ impl Core {
         if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
             self.fail(e);
             if keep {
-                self.built_combo = Some(self.browser.combo.clone());
+                self.built_combo = Some(self.doc.combo.clone());
             }
             self.open_insert = None;
             return;
@@ -107,15 +107,15 @@ impl Core {
             None => c.picks.push(z),
         }
         if keep {
-            let old = std::mem::take(&mut self.browser.combo);
+            let old = std::mem::take(&mut self.doc.combo);
             c.picks.extend(old.picks);
             c.mechanics = old.mechanics;
         }
-        self.browser.combo = c;
+        self.doc.combo = c;
         self.combo_view = combo::View::default();
-        self.combo_len_prev = self.browser.combo.picks.len();
+        self.combo_len_prev = self.doc.combo.picks.len();
         self.doc_path = None;
         self.info(tr("開いた系を組合せの要素にした（系の取り込み）"));
-        self.build_combo(self.browser.combo.project());
+        self.build_combo(self.doc.combo.project());
     }
 }

@@ -13,10 +13,10 @@ impl Core {
         ids: &[String],
         ops: &[Value],
     ) -> Result<(), String> {
-        let lead0 = self.browser.combo.lead_stop();
+        let lead0 = self.doc.combo.lead_stop();
         let r = self.combo_ops_inner(spans, ids, ops);
         // 前の絞りが出入りすると面の番号がずれるので、選んだ面も合わせる
-        let lead1 = self.browser.combo.lead_stop();
+        let lead1 = self.doc.combo.lead_stop();
         if lead0 != lead1 {
             if let Some((j, c)) = self.ld.cur {
                 self.ld.cur = Some(if lead1 {
@@ -39,7 +39,7 @@ impl Core {
         for op in ops {
             // 絞りをやめる（GUI だけの操作）
             if op["op"] == "unset_stop" {
-                self.browser.combo.set_stop_face(None);
+                self.doc.combo.set_stop_face(None);
                 continue;
             }
             let name = op["op"].as_str().unwrap_or_default().to_string();
@@ -50,7 +50,7 @@ impl Core {
                     Ref::Name(_) => None,
                 }
                 .ok_or_else(outside)?;
-                if self.browser.combo.el(k).is_some_and(|p| p.locked) {
+                if self.doc.combo.el(k).is_some_and(|p| p.locked) {
                     return Err(tr("ロックした要素は変えられない").into());
                 }
                 Ok((k, i))
@@ -74,14 +74,14 @@ impl Core {
                         Ref::Index(j) => j,
                         Ref::Name(_) => return Err(outside()),
                     };
-                    let c = &self.browser.combo;
+                    let c = &self.doc.combo;
                     let lead = c
                         .all()
                         .iter()
                         .all(|l| !c.get(l).is_some_and(|p| p.kind == combo::ElemKind::Stop));
                     match self.combo_face(spans, j) {
                         Some((k, i)) => {
-                            let c = &mut self.browser.combo;
+                            let c = &mut self.doc.combo;
                             if c.el(k).is_some_and(|p| p.kind == combo::ElemKind::Stop) {
                                 // 絞りの要素そのもの
                                 c.set_stop_face(None);
@@ -94,7 +94,7 @@ impl Core {
                         None if lead
                             && self.ld_rows.get(j).is_some_and(|r| r.comment == "STOP") =>
                         {
-                            self.browser.combo.set_stop_face(None)
+                            self.doc.combo.set_stop_face(None)
                         }
                         None => return Err(outside()),
                     }
@@ -109,7 +109,7 @@ impl Core {
                         param: o.param,
                     };
                     let c = o.is_curv();
-                    let Some(p) = self.browser.combo.el_mut(k) else {
+                    let Some(p) = self.doc.combo.el_mut(k) else {
                         return Err(outside());
                     };
                     p.ops.retain(|q| {
@@ -120,7 +120,7 @@ impl Core {
                 EditOp::RemoveSolve { surface, what } => {
                     let (k, i) = face(&surface)?;
                     let c = what == SolveWhat::C;
-                    self.browser
+                    self.doc
                         .combo
                         .el_mut(k)
                         .ok_or_else(outside)?
@@ -139,7 +139,7 @@ impl Core {
                         offset: o.offset,
                         from: o.from,
                     };
-                    let Some(p) = self.browser.combo.el_mut(k) else {
+                    let Some(p) = self.doc.combo.el_mut(k) else {
                         return Err(outside());
                     };
                     p.ops.retain(|q| {
@@ -149,7 +149,7 @@ impl Core {
                 }
                 EditOp::RemovePickup { dst, what } => {
                     let (k, i) = face(&dst)?;
-                    self.browser
+                    self.doc
                         .combo
                         .el_mut(k)
                         .ok_or_else(outside)?

@@ -2015,7 +2015,6 @@ pub fn ui(
     let mut act = None;
     let weak = theme::weak_text(ui.visuals());
     combo.normalize();
-    crate::coat_defs::set_names(ui.ctx(), combo.coatings.keys().cloned().collect());
     // 要素のパレット
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(tr("足す")).small().color(weak));
@@ -2076,8 +2075,10 @@ pub fn ui(
         {
             act = Some(Act::Focus);
         }
+        // 経路を変えたら、選んでいた要素を新しい経路の中で探し直す（無ければ外す。GPN-28）
+        let sel_id = view.sel.and_then(|k| combo.ids().get(k).cloned());
         if path_select(ui, combo, paths) {
-            view.sel = None;
+            view.sel = sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id));
             view.dim = None;
         }
         ui.checkbox(auto, tr("変えたらすぐ作り直す"));
@@ -3447,6 +3448,8 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     let air_gap = matches!(step.after, Some(Gap::Air(_)));
     let st = combo.active_state().map(str::to_string);
     let st = st.as_deref();
+    // 膜の欄で選べる、系の設定で定義した膜の名前
+    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
     let Some(p) = combo.get_mut(&step.loc) else {
         return;
     };
@@ -3485,7 +3488,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気は「位置も」で止める。ON/OFF はいつも変えられる
     let locked = p.locked;
     ui.add_enabled_ui(!locked, |ui| {
-        ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak));
+        ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak, &coats));
         if p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2 {
             surf_table(ui, p, k, weak);
         }
@@ -3849,7 +3852,14 @@ fn num_in(ui: &mut Ui, label: &str, v: &mut f64, unit: &str, min: f64) {
 }
 
 /// 要素の種類ごとの欄（寸法・ガラス・膜など）
-fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Color32) {
+fn kind_fields(
+    ui: &mut Ui,
+    p: &mut Pick,
+    st: Option<&str>,
+    k: usize,
+    weak: Color32,
+    coats: &[String],
+) {
     match p.kind {
         ElemKind::Lens if p.surfs.len() >= 2 => {
             ui.label(RichText::new(trf("{} 面（下の表）", &[&p.surfs.len()])).color(weak));
@@ -3901,7 +3911,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
             num(ui, "R", &mut p.r1, " mm");
             place_ui(ui, p, st, &[], &[0, 1]);
             num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
-            coat_edit(ui, &mut p.coat, k, weak);
+            crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
             ui.checkbox(&mut p.back, tr("往路を戻る")).on_hover_text(tr(
                 "鏡で反射した光が来た道を戻る（ダブルパス・干渉計の腕の端）。BS の分岐の中なら、戻った光は BS で分かれる",
             ));
@@ -3991,7 +4001,7 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
                             .prefix("T "),
                     );
                 }
-                BsSplit::Coat => coat_edit(ui, &mut p.coat, k, weak),
+                BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats),
                 BsSplit::Pbs => {
                     ui.add(
                         egui::DragValue::new(&mut p.pbs[0])
@@ -4032,35 +4042,6 @@ fn kind_fields(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Colo
     } else if p.can_stop_front() {
         ui.checkbox(&mut p.stop_front, tr("前面を絞りに"))
             .on_hover_text(tr("玉の前の面を絞りにする（絞りは系に 1 つだけ）"));
-    }
-}
-
-/// 膜の名前の欄（鏡・BS の分ける面）
-fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: Color32) {
-    ui.label(RichText::new(tr("膜")).color(weak));
-    ui.add(
-        egui::TextEdit::singleline(coat)
-            .hint_text(tr("膜なし"))
-            .desired_width(70.0),
-    )
-    .on_hover_text(tr(
-        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま",
-    ));
-    // 系の設定で定義した膜から選ぶ
-    let names = crate::coat_defs::names(ui.ctx());
-    if !names.is_empty() {
-        egui::ComboBox::from_id_salt(("coat_pick", k))
-            .selected_text("▼")
-            .width(24.0)
-            .show_ui(ui, |ui| {
-                for n in names {
-                    if ui.selectable_label(*coat == n, n.as_str()).clicked() {
-                        *coat = n;
-                    }
-                }
-            })
-            .response
-            .on_hover_text(tr("定義した膜から選ぶ"));
     }
 }
 
@@ -4131,6 +4112,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     let mut open = None;
     let st = combo.active_state().map(str::to_string);
     let st = st.as_deref();
+    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
     let air_gap = matches!(step.after, Some(Gap::Air(_)));
     let p = combo.get_mut(&step.loc)?;
     let locked = p.locked;
@@ -4196,7 +4178,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             ));
         }
         ui.add_enabled_ui(!p.locked, |ui| {
-            kind_fields(ui, p, st, k, weak);
+            kind_fields(ui, p, st, k, weak, &coats);
             if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
                 ui.checkbox(&mut p.reversed, tr("反転"));
             }

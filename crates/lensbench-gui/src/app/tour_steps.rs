@@ -51,7 +51,7 @@ impl App {
             Step::Analysis => self.run_all(false),
             Step::States => {
                 // 干渉計の組合せに状態を足し、状態だけの系の値（物体距離）と経路（参照の腕）にする
-                let c = &mut self.c.browser.combo;
+                let c = &mut self.c.doc.combo;
                 c.states = vec!["参照".into()];
                 c.state = Some("参照".into());
                 let mut s = c.snap();
@@ -64,7 +64,7 @@ impl App {
             }
             Step::Coatings => {
                 // 膜（フィルタ）の定義: バンドパスを定義して BS の膜にし、系の設定の膜の欄を開いて見せる
-                let c = &mut self.c.browser.combo;
+                let c = &mut self.c.doc.combo;
                 c.coatings.insert(
                     "BP633".into(),
                     lensbench_project::filter::CoatSpec::Bandpass {
@@ -165,24 +165,25 @@ impl App {
                     .cloned()
                     .collect();
                 pos.sort_by(|a, b| a.efl.total_cmp(&b.efl));
-                b.combo.picks.clear();
+                let d = &mut self.c.doc;
+                d.combo.picks.clear();
                 for l in pos.iter().take(2) {
-                    b.add_pick(l);
+                    b.add_pick(d, l);
                 }
-                if let Some(p) = b.combo.picks.first_mut() {
+                if let Some(p) = d.combo.picks.first_mut() {
                     p.air = 3.0;
                 }
                 b.lens_sel = b.lenses.iter().position(|l| Some(l) == pos.first());
             }
             Step::Build => {
-                let p = self.c.browser.combo.project();
+                let p = self.c.doc.combo.project();
                 self.c.build_combo(p);
             }
             Step::Layout => {
                 // レイアウト図: 2 枚目を選び、1 枚目の後の空気の寸法を選ぶ
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
                 // 1 枚目の後の空気の寸法を、その場で書き換えるところ
-                self.c.combo_view.start_edit(&mut self.c.browser.combo, 0);
+                self.c.combo_view.start_edit(&mut self.c.doc.combo, 0);
             }
             Step::Layout3d => {
                 // 3D 表示: 2 枚目を選んだまま
@@ -193,22 +194,22 @@ impl App {
             Step::LensData => {
                 // 面の表: 1 枚目の玉の前の面の半径を表から変え（組合せの面の上書きで作り直す）、その玉に入る
                 self.c.combo_view.select(0);
-                let ids = self.c.browser.combo.span_ids();
+                let ids = self.c.doc.combo.span_ids();
                 let spans = lens_data::elem_spans(
                     &ids,
                     &self.c.ld_units,
-                    self.c.browser.combo.lead_stop(),
+                    self.c.doc.combo.lead_stop(),
                     &self.c.ld_rows,
                 );
                 if let Some(Some([a, _])) = spans.first().copied() {
                     self.c.combo_surface_edit(&spans, a, "semi", json!(6.0));
                     if !self.c.s.auto_build {
-                        let p = self.c.browser.combo.project();
+                        let p = self.c.doc.combo.project();
                         self.c.build_combo(p);
                     }
                 }
                 // 最上位で 1 枚目の玉（ブロック）を選び、ブロックの設定（要素の設定）を出す
-                self.c.s.ld_detail = true;
+                self.c.ld.detail = true;
                 if let Some(id) = ids.first() {
                     self.c.ld.scope.clear();
                     self.c.ld.sel = Some(id.clone());
@@ -218,8 +219,8 @@ impl App {
             }
             Step::LensDataTree => {
                 // 折りたたみ表示: 1 枚目の玉をその場で開き、中の面を選ぶ
-                let ids = self.c.browser.combo.span_ids();
-                self.c.s.ld_tree = true;
+                let ids = self.c.doc.combo.span_ids();
+                self.c.ld.tree = true;
                 self.c.ld.scope.clear();
                 if let Some(id) = ids.first() {
                     self.c.ld.open.insert(id.clone());
@@ -236,8 +237,8 @@ impl App {
             }
             Step::ComboSpot => {
                 // 面の表の表示・見る面を戻す
-                self.c.s.ld_tree = false;
-                self.c.s.ld_detail = false;
+                self.c.ld.tree = false;
+                self.c.ld.detail = false;
                 self.c.ld.open.clear();
                 self.c.s.view_plane = ViewPlane::Yz;
                 self.c.request_layout();
@@ -279,7 +280,7 @@ impl App {
             Step::Swap => {
                 // 差し替え探索: 2 枚目をカタログの全部（裏返しも）で差し替え、間の空気と像面までを最適化
                 self.exec(ctx, Cmd::FocusKind(Kind::Swap));
-                let (proj, cands) = crate::swap_panel::combo_project(&self.c.browser.combo);
+                let (proj, cands) = crate::swap_panel::combo_project(&self.c.doc.combo);
                 let sw = &mut self.c.swap;
                 sw.slots = cands
                     .blocks
@@ -292,7 +293,7 @@ impl App {
                         ..Default::default()
                     })
                     .collect();
-                let n = self.c.browser.combo.picks.len();
+                let n = self.c.doc.combo.picks.len();
                 sw.vars = [(1, "0.5"), (n, "1")]
                     .iter()
                     .map(|(k, lo)| crate::swap_panel::VarRow {
@@ -305,7 +306,7 @@ impl App {
                     v["project"] = proj;
                     v["top"] = json!(sw.top);
                     sw.running = true;
-                    self.c.swap_ids = self.c.browser.combo.ids();
+                    self.c.swap_ids = self.c.doc.combo.ids();
                     self.c.worker.send(Tag::Swap, "swap", v);
                 }
             }
@@ -318,21 +319,17 @@ impl App {
                     .as_ref()
                     .and_then(|r| r.results.as_ref()?.first())
                     .cloned();
-                let before = self.c.browser.combo.clone();
+                let before = self.c.doc.combo.clone();
                 let r = row
                     .ok_or_else(|| "差し替え探索の結果がない".to_string())
                     .and_then(|row| {
-                        crate::swap_panel::insert_row(
-                            &mut self.c.browser.combo,
-                            &self.c.swap_ids,
-                            &row,
-                        )
+                        crate::swap_panel::insert_row(&mut self.c.doc.combo, &self.c.swap_ids, &row)
                     });
                 match r {
                     Ok(()) => {
                         self.c.swap.undo = Some(before);
                         self.c.swap.inserted = Some(0);
-                        let p = self.c.browser.combo.project();
+                        let p = self.c.doc.combo.project();
                         self.c.build_combo(p);
                     }
                     Err(e) => self.c.fail(e),
@@ -409,7 +406,7 @@ impl App {
                 self.exec(ctx, Cmd::Lang(Lang::Ja));
                 self.exec(ctx, Cmd::Theme(Mode::Dark));
                 self.exec(ctx, Cmd::FocusKind(Kind::SysSettings));
-                let c = &mut self.c.browser.combo;
+                let c = &mut self.c.doc.combo;
                 if let Some(f) = c.fields.last_mut() {
                     f.w = 0.5;
                 }
@@ -427,7 +424,7 @@ impl App {
                 c.ap_value = 0.02;
                 c.waves = vec![crate::sysset::WavePt::um(0.6328)];
                 c.primary = 1;
-                self.c.browser.combo = c;
+                self.c.doc.combo = c;
                 // 参照の腕（RR）も重ねて描く。光線は視野 1 の十字で、光線・書き出しの設定の欄も開いて見せる
                 self.c.overlay.items = ["TR", "RR"]
                     .map(|x| ("paths", x.to_string(), true))
@@ -435,7 +432,7 @@ impl App {
                 self.c.s.rays.fields = vec![1];
                 self.c.s.rays.fan = "cross".into();
                 self.c.rays_open = true;
-                let p = self.c.browser.combo.project();
+                let p = self.c.doc.combo.project();
                 self.c.build_combo(p);
                 self.c.combo_view.select(1);
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
