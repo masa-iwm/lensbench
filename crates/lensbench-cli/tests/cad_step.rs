@@ -132,11 +132,11 @@ fn step_is_fetched_once_and_cached() {
         .collect();
     assert_eq!(notes.len(), 2, "{b}");
     assert!(
-        notes[0].starts_with("外径: カタログ 30 mm、STEP 40.64 mm"),
+        notes[0].starts_with("outer diameter: catalog 30 mm, STEP 40.64 mm"),
         "{notes:?}"
     );
     assert!(
-        notes[1].starts_with("外形: カタログ 丸、STEP 角"),
+        notes[1].starts_with("outline: catalog round, STEP square"),
         "{notes:?}"
     );
     assert_eq!(hits.load(Ordering::SeqCst), 2);

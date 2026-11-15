@@ -1161,11 +1161,11 @@ mod tests {
             .unwrap()
             .iter()
             .filter_map(Value::as_str)
-            .filter(|n| n.contains("STEP") && n.contains("仕様表"))
+            .filter(|n| n.contains("STEP") && n.contains("spec table"))
             .collect();
         assert_eq!(
             notes,
-            ["ガラスの厚さ: STEP 3 mm、仕様表 2 mm（差 1 mm）"],
+            ["glass thickness: STEP 3 mm, spec table 2 mm (difference 1 mm)"],
             "{r}"
         );
         assert_eq!(r["specs"]["clear_aperture"], json!(21.0));

@@ -2009,3 +2009,46 @@ Measured coating tables (LBCT format, more than one allowed)	膜の実測表（L
 {name} group tilt y	{name} 群の傾きy
 {name} group shift	{name} 群の移動
 {name} shift	{name} 移動
+
+# catalog filling and STEP measurement notes
+glass thickness	ガラスの厚さ
+glass diameter	ガラスの径
+mount thickness	枠の厚さ
+mount outer diameter	枠の外径
+{what}: STEP {} mm, spec table {} mm (difference {} mm)	{what}: STEP {} mm、仕様表 {} mm（差 {} mm）
+the mechanical dimensions can't be measured from the STEP (it has glass, no bore, or the like)	STEP から機構部品の寸法を測れない（ガラスがある・穴が無いなど）
+{what}: catalog {} mm, STEP {} mm (difference {} mm)	{what}: カタログ {} mm、STEP {} mm（差 {} mm）
+outline: catalog round, STEP round	外形: カタログ 丸、STEP 丸
+outline: catalog round, STEP square	外形: カタログ 丸、STEP 角
+outline: catalog square, STEP round	外形: カタログ 角、STEP 丸
+outline: catalog square, STEP square	外形: カタログ 角、STEP 角
+the spec table of the product page	品ページの仕様表
+the STEP of the product page	品ページの STEP
+the user input	ユーザーの入力
+no substrate glass is given, so blocks use N-BK7 instead	基板「なし」の硝材が分からないので blocks は N-BK7 で代用
+the glass of substrate "{material}" is unknown, so blocks use N-BK7 instead	基板「{material}」の硝材が分からないので blocks は N-BK7 で代用
+the glass ({} to {} mm) sticks out of the mount length {len} mm	ガラス（{} 〜 {} mm）が枠の長さ {len} mm からはみ出す
+the seat in the mount isn't in the spec table, so the glass is placed at the middle of the mount	枠の座の位置は仕様表から分からないので、ガラスを枠の中央に置いた
+split the mount from {what}: length {} mm, outer diameter {} mm, smallest inner diameter {} mm	枠を{what}で分けた: 長さ {} mm、外径 {} mm、最小の内径 {} mm
+the thickness and diameter	厚さ・径
+the thickness	厚さ
+the diameter	径
+filled {what} from {e} ({checked})	{what}を{e}で補った（{checked}）
+measured {} solids ({} glass, {} mount) placed as in the assembly	立体 {} 個（ガラス {}・枠 {}）を組立の置き方どおりに置いて測った
+glass thickness {} mm and diameter {} mm, mount length {} mm, outer diameter {} mm and smallest inner diameter (clear aperture) {} mm, glass front {} mm from the mount end	ガラスは厚さ {} mm・径 {} mm、枠は長さ {} mm・外径 {} mm・最小の内径（クリア開口）{} mm、ガラスの前面は枠の端から {} mm
+the glass and mount are one solid, so the glass is taken between the faces that block the optical axis, and its diameter is the visible one (the part hidden by the mount is unknown)	ガラスと枠が 1 つの立体なので、光軸をふさぐ面の間をガラスとし、ガラスの径は見えている径（枠に隠れた部分は分からない）
+measured {} solids ({} with a bore) as the mount of a mechanical part without glass	ガラスの無い機構部品として、立体 {} 個（穴のある立体 {}）を枠として測った
+length {} mm, outer diameter {} mm (side of the cage plate), rod spacing {} mm, smallest inner diameter (clear aperture) {} mm	長さ {} mm・外径 {} mm（ケージ板の一辺）・ロッドの間隔 {} mm・最小の内径（クリア開口）{} mm
+length {} mm, outer diameter {} mm, smallest inner diameter (clear aperture) {} mm	長さ {} mm・外径 {} mm・最小の内径（クリア開口）{} mm
+inner thread {thread} (for elements of diameter {} mm)	内側のねじ {thread}（入る素子の径 {} mm）
+the seat is the mount end (not known from the STEP)	座の位置は枠の端（STEP から分からない）
+the seat is the bore step narrower than the held element	座の位置は保持する素子より細い穴の段
+the seat is the face behind the retaining ring	座の位置は止め輪の奥の面
+the supplied retaining ring (inner diameter {ds} mm) moves with the element, so it isn't part of the mount	付属の止め輪 1 個（内径 {ds} mm）は素子に合わせて動かすので枠に含めない
+the {n} supplied retaining rings (inner diameter {ds} mm) move with the element, so they aren't part of the mount	付属の止め輪 {n} 個（内径 {ds} mm）は素子に合わせて動かすので枠に含めない
+largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis	円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり
+{} solids, largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis	立体 {} 個、円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり
+no circles, so a box of {} vertices (along the coordinate axes)	円が無いので頂点 {} 個の箱（座標軸の向き）
+clear aperture	有効径
+length	長さ
+outer diameter	外径

@@ -408,22 +408,22 @@ impl SpecCmp {
     /// 項目の名前（ユーザーに見せる）
     pub fn label(&self) -> &'static str {
         match self.key {
-            "thickness" => "ガラスの厚さ",
-            "diameter" => "ガラスの径",
-            "mount_thickness" => "枠の厚さ",
-            "mount_diameter" => "枠の外径",
-            _ => "有効径",
+            "thickness" => "glass thickness",
+            "diameter" => "glass diameter",
+            "mount_thickness" => "mount thickness",
+            "mount_diameter" => "mount outer diameter",
+            _ => "clear aperture",
         }
     }
 
     /// 食い違いの説明（保存する品の notes に書く）
     pub fn note(&self) -> String {
         format!(
-            "{}: STEP {} mm、仕様表 {} mm（差 {} mm）",
-            self.label(),
+            "{what}: STEP {} mm, spec table {} mm (difference {} mm)",
             round6(self.step),
             round6(self.spec),
-            round6(self.step - self.spec)
+            round6(self.step - self.spec),
+            what = self.label(),
         )
     }
 }
@@ -528,26 +528,32 @@ pub struct RetainingRing {
 pub fn cad_check(mech: &crate::MechSpec, s: &StepSize) -> Vec<String> {
     let mut v = Vec::new();
     let Some(f) = s.frame.as_ref().filter(|_| s.mech) else {
-        return vec!["STEP から機構部品の寸法を測れない（ガラスがある・穴が無いなど）".into()];
+        return vec!["the mechanical dimensions can't be measured from the STEP (it has glass, no bore, or the like)".into()];
     };
     for (label, cat, step) in [
-        ("長さ", mech.length, f.length),
-        ("外径", mech.outer_diameter, f.outer_diameter),
+        ("length", mech.length, f.length),
+        ("outer diameter", mech.outer_diameter, f.outer_diameter),
     ] {
         if cat > 0.0 && (cat - step).abs() > SPEC_TOL {
             v.push(format!(
-                "{label}: カタログ {cat} mm、STEP {step} mm（差 {} mm）",
-                round6(step - cat)
+                "{what}: catalog {} mm, STEP {} mm (difference {} mm)",
+                cat,
+                step,
+                round6(step - cat),
+                what = label,
             ));
         }
     }
     if mech.outline != f.outline {
-        let n = |o: crate::MechOutline| if o.is_round() { "丸" } else { "角" };
-        v.push(format!(
-            "外形: カタログ {}、STEP {}",
-            n(mech.outline),
-            n(f.outline)
-        ));
+        v.push(
+            match (mech.outline.is_round(), f.outline.is_round()) {
+                (true, true) => "outline: catalog round, STEP round",
+                (true, false) => "outline: catalog round, STEP square",
+                (false, true) => "outline: catalog square, STEP round",
+                (false, false) => "outline: catalog square, STEP square",
+            }
+            .to_string(),
+        );
     }
     v
 }
@@ -723,9 +729,9 @@ impl FillFrom {
     }
     fn text(self) -> &'static str {
         match self {
-            FillFrom::Page => "品ページの仕様表",
-            FillFrom::Step => "品ページの STEP",
-            FillFrom::Manual => "ユーザーの入力",
+            FillFrom::Page => "the spec table of the product page",
+            FillFrom::Step => "the STEP of the product page",
+            FillFrom::Manual => "the user input",
         }
     }
 }
@@ -810,14 +816,13 @@ pub fn complete(
         let t = t.ok_or("no thickness (thickness)")?;
         let (glass, cat, sub) = material_glass(&material);
         if sub {
-            it.notes.push(format!(
-                "基板「{}」の硝材が分からないので blocks は N-BK7 で代用",
-                if material.is_empty() {
-                    "なし"
-                } else {
-                    &material
-                }
-            ));
+            it.notes.push(if material.is_empty() {
+                "no substrate glass is given, so blocks use N-BK7 instead".to_string()
+            } else {
+                format!(
+                    "the glass of substrate \"{material}\" is unknown, so blocks use N-BK7 instead"
+                )
+            });
         }
         if !it.glass_catalogs.iter().any(|c| c == cat) {
             it.glass_catalogs.push(cat.to_string());
@@ -852,7 +857,7 @@ pub fn complete(
             };
             if h.seat_z < 0.0 || h.seat_z + t > len + 1e-6 {
                 it.notes.push(format!(
-                    "ガラス（{} 〜 {} mm）が枠の長さ {len} mm からはみ出す",
+                    "the glass ({} to {} mm) sticks out of the mount length {len} mm",
                     h.seat_z,
                     h.seat_z + t
                 ));
@@ -860,26 +865,27 @@ pub fn complete(
         }
         if from == FillFrom::Page {
             it.notes
-                .push("枠の座の位置は仕様表から分からないので、ガラスを枠の中央に置いた".into());
+                .push("the seat in the mount isn't in the spec table, so the glass is placed at the middle of the mount".into());
         }
         it.notes.push(format!(
-            "枠を{}で分けた: 長さ {} mm、外径 {} mm、最小の内径 {} mm",
-            from.text(),
+            "split the mount from {what}: length {} mm, outer diameter {} mm, smallest inner diameter {} mm",
             f.length,
             f.outer_diameter,
-            round6(clear)
+            round6(clear),
+            what = from.text(),
         ));
         it.frame = Some(f);
     }
-    let names: Vec<&str> = item
-        .missing
-        .iter()
-        .map(|m| if m == "thickness" { "厚さ" } else { "径" })
-        .collect();
+    let thick = item.missing.iter().any(|m| m == "thickness");
+    let dia = item.missing.iter().any(|m| m != "thickness");
+    let what = match (thick, dia) {
+        (true, true) => "the thickness and diameter",
+        (true, false) => "the thickness",
+        _ => "the diameter",
+    };
     it.notes.push(format!(
-        "{}を{}で補った（{checked}）",
-        names.join("・"),
-        from.text()
+        "filled {what} from {e} ({checked})",
+        e = from.text()
     ));
     if from != FillFrom::Manual && !it.url.is_empty() {
         it.source = it.url.clone();
@@ -898,9 +904,9 @@ pub fn complete(
             None => "—".into(),
         };
         it.description = format!(
-            "{}{}径 {d} mm、厚さ {} mm",
+            "{}{}diameter {d} mm, thickness {} mm",
             it.title,
-            if it.title.is_empty() { "" } else { "、" },
+            if it.title.is_empty() { "" } else { ", " },
             t.map_or("—".into(), |x| format!("{x}")),
         );
     }
@@ -995,7 +1001,8 @@ mod tests {
         let c = spec_check(Some(2.0), Some(23.9), Some(&f), false, &big);
         assert!(!c[3].ok());
         assert!(
-            c[3].note().contains("有効径: STEP 21.209 mm、仕様表 22 mm"),
+            c[3].note()
+                .contains("clear aperture: STEP 21.209 mm, spec table 22 mm"),
             "{}",
             c[3].note()
         );
@@ -1091,7 +1098,11 @@ mod tests {
         let c = complete(&it, Some(2.0), None, Some(f), FillFrom::Page, "").unwrap();
         assert_eq!(c.frame.as_ref().unwrap().length, 3.5);
         assert_eq!(c.specs["clear_aperture"], json!(21.0));
-        assert!(c.notes.iter().any(|n| n.contains("中央")), "{:?}", c.notes);
+        assert!(
+            c.notes.iter().any(|n| n.contains("middle of the mount")),
+            "{:?}",
+            c.notes
+        );
         // はみ出すガラスは注記
         let c = complete(
             &it,
@@ -1103,7 +1114,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            c.notes.iter().any(|n| n.contains("はみ出す")),
+            c.notes.iter().any(|n| n.contains("sticks out")),
             "{:?}",
             c.notes
         );
@@ -1201,7 +1212,7 @@ mod tests {
         assert_eq!(c.glass_catalogs, vec!["SCHOTT"]);
         assert_eq!(c.source, "https://example.com/p/1");
         assert_eq!(c.checked, "2026-11-10");
-        assert!(c.notes.iter().any(|n| n.contains("N-BK7 で代用")));
+        assert!(c.notes.iter().any(|n| n.contains("use N-BK7 instead")));
         let b = serde_json::to_value(&c.blocks[0]).unwrap();
         assert_eq!(b["type"], "lens");
         // 鏡は平面鏡、径だけ
@@ -1258,7 +1269,7 @@ mod tests {
         let b = serde_json::to_value(&c.blocks[0]).unwrap();
         assert_eq!(b["aperture"]["hx"], json!(5.0));
         assert_eq!(b["aperture"]["hy"], json!(10.0));
-        assert!(c.notes.iter().all(|n| !n.contains("代用")));
+        assert!(c.notes.iter().all(|n| !n.contains("N-BK7 instead")));
     }
 
     #[test]

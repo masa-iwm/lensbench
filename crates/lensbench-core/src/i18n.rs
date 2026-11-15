@@ -340,13 +340,21 @@ fn lookup_in(t: &RwLock<Vec<Entry>>, s: &str) -> Option<String> {
         .map(|(_, e, v)| fill(e, v))
 }
 
-/// The Japanese of an English message (the whole message, otherwise each `": "`-separated part)
+/// The Japanese of an English message (the whole message, otherwise each `": "`-separated part,
+/// otherwise, when every sentence has a line, each sentence: a note of several sentences joined by `". "`
+/// becomes sentences joined by "。")
 pub fn translate(s: &str) -> String {
     if let Some(t) = lookup(s) {
         return t;
     }
     match s.split_once(": ") {
         Some((a, b)) => format!("{}: {}", translate(a), translate(b)),
+        // 文ごとに表の行があるときだけ（英語の文が混ざったまま「。」でつながない）
+        None if s.contains(". ") => s
+            .split(". ")
+            .map(lookup)
+            .collect::<Option<Vec<_>>>()
+            .map_or_else(|| s.to_string(), |v| v.join("。")),
         None => s.to_string(),
     }
 }
@@ -465,6 +473,21 @@ mod tests {
         assert_eq!(translate_item("L1 R2"), "L1 R2");
         // 項目名の型は誤りの文の経路では使わない（先頭が何でも当たるので）
         assert_eq!(translate("no such glass index 3"), "no such glass index 3");
+    }
+
+    #[test]
+    fn notes_of_several_sentences() {
+        assert_eq!(
+            translate("the seat is the mount end (not known from the STEP). inner thread SM1 (for elements of diameter 25.4 mm)"),
+            "座の位置は枠の端（STEP から分からない）。内側のねじ SM1（入る素子の径 25.4 mm）"
+        );
+        // 訳の無い文が混ざれば英語のまま
+        let s = "the seat is the mount end (not known from the STEP). no such sentence";
+        assert_eq!(translate(s), s);
+        assert_eq!(
+            translate("outer diameter: catalog 30 mm, STEP 40.64 mm (difference 10.64 mm)"),
+            "外径: カタログ 30 mm、STEP 40.64 mm（差 10.64 mm）"
+        );
     }
 
     #[test]

@@ -929,6 +929,9 @@ fn fmt(x: f64) -> String {
 
 use crate::catalog_fill::RetainingRing;
 
+#[path = "step_notes.rs"]
+mod notes;
+
 /// ケージのロッドの間隔の規格 [mm]（16・30・60 は Thorlabs、26.87 は Edmund の 25・30 mm のケージ（ロッドの円の
 /// 直径 38 mm））
 const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
@@ -1432,23 +1435,18 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         return Ok(Measure {
             thickness: sc(g1 - g0),
             diameter: json!(sc(2.0 * gr)),
-            note: format!(
-                "立体 {} 個（ガラス {}・枠 {}）を組立の置き方どおりに置いて測った。ガラスは厚さ {} mm・径 {} mm、\
-枠は長さ {} mm・外径 {} mm・最小の内径（クリア開口）{} mm、ガラスの前面は枠の端から {} mm",
-                sols.len() - merged,
-                glass.len(),
-                rings.len(),
-                fmt(sc(g1 - g0)),
-                fmt(sc(2.0 * gr)),
-                fmt(frame.length),
-                fmt(frame.outer_diameter),
-                fmt(clear),
-                fmt(sc(g0 - all0)),
-            ) + if merged > 0 {
-                "。ガラスと枠が 1 つの立体なので、光軸をふさぐ面の間をガラスとし、ガラスの径は見えている径（枠に隠れた部分は分からない）"
-            } else {
-                ""
-            },
+            note: notes::glass_mount(
+                [sols.len() - merged, glass.len(), rings.len()],
+                [
+                    sc(g1 - g0),
+                    sc(2.0 * gr),
+                    frame.length,
+                    frame.outer_diameter,
+                    clear,
+                    sc(g0 - all0),
+                ],
+                merged > 0,
+            ),
             frame: Some(frame),
             merged: merged > 0,
             mech: false,
@@ -1753,42 +1751,21 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             return Ok(Measure {
                 thickness: frame.length,
                 diameter: json!(frame.outer_diameter),
-                note: format!(
-                    "ガラスの無い機構部品として、立体 {} 個（穴のある立体 {rings_n}）を枠として測った。長さ {} mm・外径 {} mm{}・最小の内径（クリア開口）{} mm{}。座の位置は{}",
-                    keep.len(),
-                    fmt(frame.length),
-                    fmt(frame.outer_diameter),
-                    if rods.is_some() {
-                        format!("（ケージ板の一辺）・ロッドの間隔 {} mm", fmt(frame.rod_spacing))
-                    } else {
-                        String::new()
-                    },
-                    fmt(clear),
-                    if thread.is_empty() {
-                        String::new()
-                    } else {
-                        format!("・内側のねじ {thread}（入る素子の径 {} mm）", fmt(frame.holds.map_or(0.0, |h| h.diameter)))
-                    },
+                note: notes::mech(
+                    (keep.len(), rings_n),
+                    &frame,
+                    rods.is_some(),
+                    clear,
+                    &thread,
                     if seat <= 0.0 {
-                        "枠の端（STEP から分からない）"
+                        notes::Seat::End
                     } else if seat == shoulder {
-                        "保持する素子より細い穴の段"
+                        notes::Seat::Step
                     } else {
-                        "止め輪の奥の面"
-                    }
-                ) + &if retaining.is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        "。付属の止め輪 {} 個（内径 {} mm）は素子に合わせて動かすので枠に含めない",
-                        retaining.len(),
-                        retaining
-                            .iter()
-                            .map(|r| fmt(r.inner_diameter))
-                            .collect::<Vec<_>>()
-                            .join("・")
-                    )
-                },
+                        notes::Seat::Ring
+                    },
+                    &retaining,
+                ),
                 frame: Some(frame),
                 merged: false,
                 mech: true,
@@ -1847,20 +1824,25 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
     if t.is_nan() || t <= 0.0 {
         return Err("no thickness along the circle axis in the STEP".into());
     }
-    let solids = if geos.is_empty() {
-        String::new()
-    } else {
-        format!("立体 {} 個、", geos.len())
-    };
     Ok(Measure {
         thickness: sc(t),
         diameter: json!(sc(2.0 * r)),
-        note: format!(
-            "{solids}円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり",
-            all.circles.len(),
-            par.len(),
-            all.verts.len()
-        ),
+        note: if geos.is_empty() {
+            format!(
+                "largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis",
+                all.circles.len(),
+                par.len(),
+                all.verts.len()
+            )
+        } else {
+            format!(
+                "{} solids, largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis",
+                geos.len(),
+                all.circles.len(),
+                par.len(),
+                all.verts.len()
+            )
+        },
         frame: None,
         merged: false,
         mech: false,
@@ -1949,7 +1931,10 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
     Ok(Measure {
         thickness: sc(ext[0]),
         diameter: d,
-        note: format!("円が無いので頂点 {} 個の箱（座標軸の向き）", pts.len()),
+        note: format!(
+            "no circles, so a box of {} vertices (along the coordinate axes)",
+            pts.len()
+        ),
         frame: None,
         merged: false,
         mech: false,
@@ -2060,7 +2045,7 @@ mod tests {
         let b: Vec<[f64; 3]> = f.bores.iter().map(|b| [b.z0, b.z1, b.diameter]).collect();
         assert_eq!(b, vec![[0.0, 6.3, 21.0]]);
         assert_eq!(f.holds.unwrap().seat_z, 0.5);
-        assert!(s.note.contains("1 つの立体"), "{}", s.note);
+        assert!(s.note.contains("one solid"), "{}", s.note);
     }
 
     /// ガラスの無い機構部品: SM1 のねじ（内径 1.035 in）のチューブ（端に内径 24 の段、付属の止め輪つき）と、30 mm ケージ板（一辺 40.64、ロッドの穴 4 つ）
@@ -2094,7 +2079,7 @@ mod tests {
         assert_eq!(f.thread, "SM1");
         // 座は、保持する素子（25.4）より細い z 0〜2 の穴の段
         assert_eq!(f.holds.map(|h| (h.diameter, h.seat_z)), Some((25.4, 2.0)));
-        assert!(s.note.contains("細い穴の段"), "{}", s.note);
+        assert!(s.note.contains("bore step narrower"), "{}", s.note);
         // 後ろの端は SM1 のメス（z 2〜10 の内壁）、前の端はねじでない
         assert_eq!(f.front_thread, None);
         let b = f.back_thread.clone().unwrap();
@@ -2108,7 +2093,11 @@ mod tests {
             (r.z0, r.z1, r.inner_diameter, r.outer_diameter),
             (8.0, 10.0, 22.9108, 26.2)
         );
-        assert!(s.note.contains("止め輪 1 個"), "{}", s.note);
+        assert!(
+            s.note.contains("the supplied retaining ring ("),
+            "{}",
+            s.note
+        );
         // ケージ板: 角の頂点 8 つ、光軸の穴（内径 22.9）、ロッドの穴（内径 6）が ±15 mm に 4 つ
         let mut d = String::from(
             "ISO-10303-21;\nDATA;\n#1=DIRECTION('',(0.,0.,1.));\n#2=DIRECTION('',(1.,0.,0.));\n\
@@ -2174,7 +2163,7 @@ mod tests {
         assert_eq!(f.outline, crate::MechOutline::Square);
         assert_eq!(f.thread, "");
         assert_eq!(f.holds.unwrap().diameter, 22.9);
-        assert!(s.note.contains("ケージ板"), "{}", s.note);
+        assert!(s.note.contains("cage plate"), "{}", s.note);
     }
 
     /// 手元の STEP を測って見る（`LB_STEP_FILES` に ; 区切りのパス）

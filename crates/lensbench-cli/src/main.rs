@@ -1315,7 +1315,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                                 true => format!("  thickness {t} mm, diameter {d}"),
                                 false => format!("  thickness {t} mm, diameter {d}, with frame"),
                             });
-                            println!("  {}", x["note"].as_str().unwrap_or(""));
+                            text_out::say(&format!("  {}", x["note"].as_str().unwrap_or("")));
                         }
                     }
                 }
@@ -1359,7 +1359,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                         text_out::say(&format!("  store: {n}"));
                     }
                     if let Some(m) = &r.measured {
-                        println!("  {}", m.note);
+                        text_out::say(&format!("  {}", m.note));
                     }
                     if r.notes.is_empty() {
                         text_out::say("  matches the simple outline");
