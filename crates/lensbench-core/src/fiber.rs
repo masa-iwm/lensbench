@@ -22,7 +22,7 @@ use crate::error::Result;
 use crate::invalid;
 use crate::math::*;
 use crate::surface::Aperture;
-use crate::system::{Launch, System, Trace};
+use crate::system::{Launch, RecSel, System, Trace};
 
 /// 結合の計算の設定
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -239,7 +239,7 @@ pub fn fiber_coupling(
     ];
     let (t, e): (Trace, Option<Vec<Vec<crate::trace::CV3>>>) = match coat {
         Some(c) => {
-            let p = s.trace_pol_launch(&launch, w, &pols, c, false)?;
+            let p = s.trace_pol_launch(&launch, w, &pols, c, false, RecSel::Off)?;
             (p.trace, Some(p.e))
         }
         None => (s.trace_launch(&launch, w, None, false), None),

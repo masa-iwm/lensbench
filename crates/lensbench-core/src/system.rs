@@ -1594,7 +1594,7 @@ impl System {
 
     /// 視野 i の正規化視野
     /// 視野の指定の正規化座標。視野・波長の番号が範囲の外なら誤り（入力で落ちない）
-    fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
+    pub(crate) fn field_sel_norm(&self, field: FieldSel, w: usize) -> Result<(f64, f64)> {
         if w >= self.wavelengths.len() {
             invalid!("波長の番号 {}（全 {}）", w + 1, self.wavelengths.len());
         }
@@ -1980,18 +1980,18 @@ impl System {
         self.trace_launch_inner(l, w, last, rec.into(), None).0
     }
 
-    /// 光線の始め方 l での偏光追跡（[`Self::trace_pol_spec`] と同じ約束）
-    pub fn trace_pol_launch(
+    /// 光線の始め方 l での偏光追跡（[`Self::trace_pol_spec`] と同じ約束）。rec で面の交点も記録する
+    pub fn trace_pol_launch<'r>(
         &self,
         l: &Launch,
         w: usize,
         pols: &[[C64; 2]],
         coat: &Coatings,
         phase: bool,
+        rec: RecSel<'r>,
     ) -> Result<PolTrace> {
         let ps = self.pol_surfaces(w, coat)?;
-        let (t, e, err) =
-            self.trace_launch_inner(l, w, None, RecSel::Off, Some((pols, &ps, phase)));
+        let (t, e, err) = self.trace_launch_inner(l, w, None, rec, Some((pols, &ps, phase)));
         if let Some(e) = err {
             return Err(e);
         }

@@ -13,7 +13,7 @@ use crate::coating::{Coatings, C64};
 use crate::math::V3;
 use crate::par::scoped;
 use crate::surface::SurfType;
-use crate::system::{FieldSel, RecSel, System};
+use crate::system::{FieldSel, Launch, RecSel, System};
 use crate::{invalid, Result};
 use rayon::prelude::*;
 
@@ -412,11 +412,29 @@ pub fn trace_jones(
     let mut zs0 = vec![0.0; g * g];
     let mut landing = vec![vec![0.0; g * g]; nw];
     let mut t0 = None;
+    // 中心波長は偏光追跡 1 回で光線と場を得る（同じ光線を通常の追跡でもう一度追わない）。指定面の交点も一緒に
+    // 記録する。物体・ケラレ係数は try_trace と同じ
+    let (hx, hy) = sys.field_sel_norm(field, 0)?;
+    let launch = Launch::Pupil {
+        spec: sys.object_spec(hx, hy)?,
+        signed: false,
+        px: &pxs,
+        py: &pys,
+        vig: Some(sys.vig_factors(hx, hy)?),
+        hxy: Some((hx, hy)),
+    };
+    let surfs = surf.map(|s| [s]);
+    let rec = surfs.as_ref().map_or(RecSel::Off, |s| RecSel::Surfs(s));
+    let pols = [[C64::new(1.0, 0.0), czero()], [czero(), C64::new(1.0, 0.0)]];
+    let pt = sys.trace_pol_launch(&launch, 0, &pols, coat, false, rec)?;
+    let (mut center, pol_e) = (Some(pt.trace), pt.e);
     for w in 0..nw {
-        // 指定面の交点は中心波長の追跡で一緒に記録する（同じ光線をもう一度追わない）
-        let t = match (w, surf) {
-            (0, Some(s)) => sys.try_trace(field, &pxs, &pys, Some(w), None, RecSel::Surfs(&[s]))?,
-            _ => sys.try_trace(field, &pxs, &pys, Some(w), None, false)?,
+        let t = match center.take() {
+            Some(mut t) => {
+                t.hx_hy = (hx, hy);
+                t
+            }
+            None => sys.try_trace(field, &pxs, &pys, Some(w), None, false)?,
         };
         let chief = if phase {
             let c = sys.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
@@ -515,15 +533,13 @@ pub fn trace_jones(
     }
     // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)）の共役が
     // exp(+i k L) の約束の場
-    let pols = [[C64::new(1.0, 0.0), czero()], [czero(), C64::new(1.0, 0.0)]];
-    let pt = sys.try_trace_pol_opts(field, &pxs, &pys, Some(0), &pols, coat, false)?;
     let mut jones = vec![[[czero(); 2]; 2]; g * g];
     for (m, &q) in idx.iter().enumerate() {
-        if !pt.trace.ok(m) || !good[q] {
+        if !t0.ok(m) || !good[q] {
             good[q] = false;
             continue;
         }
-        for (b, pol) in pt.e[m].iter().enumerate().take(2) {
+        for (b, pol) in pol_e[m].iter().enumerate().take(2) {
             jones[q][0][b] = pol[0].conj();
             jones[q][1][b] = pol[1].conj();
         }
