@@ -3,6 +3,7 @@
 //! （足し忘れは `every_test_file_is_listed` が落とす）。1 ファイルだけ回すときは `cargo test --test it <モジュール名>::`。
 
 mod common;
+mod consistency;
 mod huygens;
 mod huygens_refs;
 mod obsc_mtf;

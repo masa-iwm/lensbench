@@ -37,6 +37,7 @@ mod semi_auto;
 mod spider;
 mod surftypes;
 mod surftypes_os;
+mod thinfilm;
 mod units;
 mod usersurf;
 mod vig_interp;
