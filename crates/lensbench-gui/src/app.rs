@@ -774,37 +774,6 @@ impl Core {
         self.next_id
     }
 
-    /// 系のファイル（.zmx・プロジェクトの .json）を読む
-    fn open(&mut self, p: &Path) {
-        let file = p.display().to_string();
-        let mut params = self.load_params(p);
-        // 開く前の系は serve の段に積む（開くを元に戻せる）。組合せの作り直しは組合せの段で戻すので積まない
-        params["history"] = json!(
-            if self.is_combo() && self.loc.combo_path.as_deref() == Some(p) {
-                "keep"
-            } else {
-                "push"
-            }
-        );
-        self.worker.send(Tag::Load, "load", params);
-        self.info(trf("{} を読んでいます…", &[&file]));
-    }
-
-    fn load_params(&self, p: &Path) -> Value {
-        let mut v = json!({
-            "file": p.display().to_string(),
-            "glass_dirs": glass_dirs(&self.s.glass_dirs),
-            "lens_catalogs": dirs(&self.s.lens_dirs),
-        });
-        // 組合せの今の状態
-        if self.loc.combo_path.as_deref() == Some(p) {
-            if let Some(st) = self.doc.combo.active_state() {
-                v["state"] = json!(st);
-            }
-        }
-        v
-    }
-
     /// 新規: 組合せと開いている系を空にする（前の状態は新規を元に戻す段に。確かめずに空にし、元に戻せる）
     fn new_system(&mut self) {
         // すでに空なら何もしない（新規の前の状態を空で上書きしない）

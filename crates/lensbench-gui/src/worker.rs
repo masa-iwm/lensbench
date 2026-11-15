@@ -393,6 +393,9 @@ pub struct Worker {
     pending_core: usize,
     /// そのうち長い要求
     pending_long: usize,
+    /// 系の読み込みなどを待っている間に出された長い要求（別のスレッドで回るので、先に出した系の変更が
+    /// 終わるまで渡さない。渡すと前の系で計算してしまう）
+    held: Vec<Job>,
     gen: Arc<AtomicU64>,
     /// 回している解析の中断の印（[`CancelToken`]。解析でない要求・下書きの Worker では None）。
     /// 印は要求ごとに作るので、最適化などの中の解析や別の Worker の計算は止めない
@@ -543,6 +546,7 @@ impl Worker {
             pending: 0,
             pending_core: 0,
             pending_long: 0,
+            held: Vec::new(),
             gen,
             running,
             #[cfg(target_arch = "wasm32")]
@@ -569,16 +573,40 @@ impl Worker {
             self.drop_queued();
         }
         let gen = self.gen.load(Ordering::Relaxed);
+        let job = Job { tag, calls, gen };
+        if long && self.tx_long.is_some() && (self.pending_core > 0 || !self.held.is_empty()) {
+            self.held.push(job);
+            self.pending += 1;
+            self.pending_long += 1;
+            return;
+        }
         let tx = self.tx_long.as_ref().filter(|_| long).unwrap_or(&self.tx);
-        if tx.send(Job { tag, calls, gen }).is_ok() {
+        if tx.send(job).is_ok() {
             self.pending += 1;
             self.pending_core += core as usize;
             self.pending_long += long as usize;
         }
     }
 
+    /// 待たせた長い要求を、系の変更が終わったら渡す（渡せなかった分は数えない）
+    fn release_held(&mut self) {
+        if self.pending_core > 0 || self.held.is_empty() {
+            return;
+        }
+        let Some(tx) = self.tx_long.as_ref() else {
+            return;
+        };
+        for job in self.held.drain(..) {
+            if tx.send(job).is_err() {
+                self.pending -= 1;
+                self.pending_long -= 1;
+            }
+        }
+    }
+
     /// 終わった要求（無ければ None）
     pub fn poll(&mut self) -> Option<Done> {
+        self.release_held();
         // wasm: Web Worker の結果を受け取り、空いていれば次の要求を渡す
         #[cfg(target_arch = "wasm32")]
         self.remote.pump(self.gen.load(Ordering::Relaxed));
@@ -1172,6 +1200,7 @@ mod tests {
     use std::time::Duration;
 
     static STARTED: AtomicBool = AtomicBool::new(false);
+    static LOADED: AtomicBool = AtomicBool::new(false);
 
     /// 中断を頼まれるまで回る解析（"spin"）と、すぐ終わる要求
     fn fake(m: &str, _p: &Value, _t: Option<usize>) -> Result<(Value, Arrays), String> {
@@ -1185,6 +1214,14 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(1));
             }
             return Err("cancelled".into());
+        }
+        // 時間のかかる系の読み込みと、それが終わっていたかを返す要求
+        if m == "slowload" {
+            std::thread::sleep(Duration::from_millis(100));
+            LOADED.store(true, Ordering::SeqCst);
+        }
+        if m == "loaded" {
+            return Ok((Value::from(LOADED.load(Ordering::SeqCst)), Vec::new()));
         }
         Ok((Value::from(m), Vec::new()))
     }
@@ -1243,6 +1280,15 @@ mod tests {
         assert_eq!(tags, vec![Tag::Set, Tag::Analyze(4), Tag::Optimize]);
         assert!(!d[2].skipped);
         assert_eq!(d[2].first().2, Ok(&Value::from("timeout")));
+        assert!(!w.busy());
+        // 系の読み込みの直後に出した長い要求は、読み込みが終わってから回る（前の系で計算しない）
+        w.send(Tag::Load, "slowload", Value::Null);
+        w.send(Tag::Zoom, "loaded", Value::Null);
+        assert!(w.busy_core() && w.busy());
+        let d = wait_all(&mut w, 2);
+        let tags: Vec<Tag> = d.iter().map(|d| d.tag.clone()).collect();
+        assert_eq!(tags, vec![Tag::Load, Tag::Zoom]);
+        assert_eq!(d[1].first().2, Ok(&Value::from(true)));
         assert!(!w.busy());
     }
 }

@@ -74,3 +74,38 @@ impl Core {
         self.open(p);
     }
 }
+
+impl Core {
+    /// 系のファイル（.zmx・プロジェクトの .json）を読む
+    pub(super) fn open(&mut self, p: &Path) {
+        let file = p.display().to_string();
+        // 別のファイルを開いたら、待たせていた組合せの読み直しはやめる（後から組合せで上書きしない）
+        self.load_stale &= self.loc.combo_path.as_deref() == Some(p);
+        let mut params = self.load_params(p);
+        // 開く前の系は serve の段に積む（開くを元に戻せる）。組合せの作り直しは組合せの段で戻すので積まない
+        params["history"] = json!(
+            if self.is_combo() && self.loc.combo_path.as_deref() == Some(p) {
+                "keep"
+            } else {
+                "push"
+            }
+        );
+        self.worker.send(Tag::Load, "load", params);
+        self.info(trf("{} を読んでいます…", &[&file]));
+    }
+
+    pub(super) fn load_params(&self, p: &Path) -> Value {
+        let mut v = json!({
+            "file": p.display().to_string(),
+            "glass_dirs": glass_dirs(&self.s.glass_dirs),
+            "lens_catalogs": dirs(&self.s.lens_dirs),
+        });
+        // 組合せの今の状態
+        if self.loc.combo_path.as_deref() == Some(p) {
+            if let Some(st) = self.doc.combo.active_state() {
+                v["state"] = json!(st);
+            }
+        }
+        v
+    }
+}
