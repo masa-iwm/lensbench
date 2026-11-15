@@ -43,7 +43,7 @@ impl Args {
         let mut a = Args::default();
         let mut it = args.into_iter();
         while let Some(x) = it.next() {
-            let mut val = |k: &str| it.next().ok_or(format!("{k} の後に値がない"));
+            let mut val = |k: &str| it.next().ok_or(format!("{k} needs a value"));
             match x.as_str() {
                 "--tour" => a.tour = Some(PathBuf::from(val("--tour")?)),
                 "--glass-dir" => a.glass_dirs.push(val("--glass-dir")?),
@@ -51,12 +51,12 @@ impl Args {
                 "--settings" => a.settings = Some(PathBuf::from(val("--settings")?)),
                 "--tour-timeout" => {
                     let v = val("--tour-timeout")?;
-                    let sec: u64 = v
-                        .parse()
-                        .map_err(|_| format!("--tour-timeout の値 {v} は秒の整数でない"))?;
+                    let sec: u64 = v.parse().map_err(|_| {
+                        format!("--tour-timeout {v} is not a whole number of seconds")
+                    })?;
                     a.tour_timeout = Some(Duration::from_secs(sec));
                 }
-                s if s.starts_with("--") => return Err(format!("{s} は知らない引数")),
+                s if s.starts_with("--") => return Err(format!("unknown argument {s}")),
                 _ => a.open = Some(PathBuf::from(x)),
             }
         }

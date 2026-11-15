@@ -79,7 +79,9 @@ async fn web_fetch(
             .map(|f| f.to_string_lossy().trim_end_matches(".gz").to_string())
             .unwrap_or_default();
         let url = format!("{}/{}", store.trim_end_matches('/'), key);
-        let js = |e: wasm_bindgen::JsValue| format!("置き場を読めない（{url}）: {e:?}");
+        let js = |e: wasm_bindgen::JsValue| {
+            trf("Cannot read the store ({}): {}", &[&url, &format!("{e:?}")])
+        };
         let g = js_sys::global();
         let f: Function = Reflect::get(&g, &"fetch".into())
             .map_err(js)?
@@ -97,12 +99,12 @@ async fn web_fetch(
             .unwrap_or(0.0) as u32;
         if st == 404 {
             return Err(tr(
-                "置き場にこの品の STEP がありません（アプリ版で取ると置き場に上がります）",
+                "This item's STEP is not in the store (fetching it in the desktop app uploads it)",
             )
             .to_string());
         }
         if st != 200 {
-            return Err(format!("置き場を読めない（{st}）: {url}"));
+            return Err(trf("Cannot read the store ({}): {}", &[&st, &url]));
         }
         let ab: Function = Reflect::get(&r, &"arrayBuffer".into())
             .map_err(js)?
@@ -119,7 +121,7 @@ async fn web_fetch(
             .trim_start()
             .starts_with("ISO-10303-21")
         {
-            return Err(format!("置き場の中身が STEP でない: {url}"));
+            return Err(trf("The stored file is not STEP: {}", &[&url]));
         }
         lensbench_core::vfs::write(&path, lensbench_cad::detail::gzip(&b))
             .map_err(|e| e.to_string())?;
@@ -153,7 +155,7 @@ pub fn measure_call(p: &Value) -> Result<Value, String> {
     let it = cat
         .items
         .get(name)
-        .ok_or_else(|| format!("{catalog} に品 {name} がない"))?;
+        .ok_or_else(|| trf("{} has no item {}", &[&catalog, &name]))?;
     let text = lensbench_cad::detail::gunzip(
         lensbench_core::vfs::read(path).map_err(|e| format!("{path}: {e}"))?,
         512 << 20,
@@ -270,7 +272,7 @@ impl CadFetcher {
                         let it = cat
                             .items
                             .get(&key.1)
-                            .ok_or_else(|| format!("{} に品 {} がない", key.0, key.1))?;
+                            .ok_or_else(|| trf("{} has no item {}", &[&key.0, &key.1]))?;
                         lensbench_cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
                     });
                 done(key, r);
@@ -279,7 +281,7 @@ impl CadFetcher {
         #[cfg(target_arch = "wasm32")]
         {
             let Some(store) = web_store() else {
-                done(key, Err(tr("置き場がありません").to_string()));
+                done(key, Err(tr("No store is set").to_string()));
                 return;
             };
             wasm_bindgen_futures::spawn_local(async move {
@@ -305,14 +307,14 @@ impl CadFetcher {
         // 折り返さない（カタログの詳細の横スクロールの行の中で、折り返すと見えない所に縦に積まれて行が高くなる）
         ui.horizontal(|ui| {
             if !pdf.is_empty() {
-                ui.add(egui::Hyperlink::from_label_and_url(tr("📄 図面（PDF）"), pdf.as_str()).open_in_new_tab(true));
+                ui.add(egui::Hyperlink::from_label_and_url(tr("📄 Drawing (PDF)"), pdf.as_str()).open_in_new_tab(true));
             }
             if step.is_empty() && !from_store {
                 return;
             }
             #[cfg(target_arch = "wasm32")]
             if !step.is_empty() {
-                ui.add(egui::Hyperlink::from_label_and_url(tr("STEP（公式）"), step.as_str()).open_in_new_tab(true));
+                ui.add(egui::Hyperlink::from_label_and_url(tr("STEP (official)"), step.as_str()).open_in_new_tab(true));
             }
             if !from_store && cfg!(target_arch = "wasm32") {
                 return;
@@ -322,14 +324,14 @@ impl CadFetcher {
                 match st {
                     Some(CadState::Pending) => {
                         ui.spinner();
-                        ui.label(tr("STEP を取っています…"));
+                        ui.label(tr("Fetching the STEP…"));
                     }
                     _ => {
                         if ui
-                            .button(tr("📥 詳しい形（STEP）を取る"))
+                            .button(tr("📥 Fetch detailed shape (STEP)"))
                             .on_hover_text(format!(
                                 "{}\n{step}",
-                                tr("この品の STEP を 1 件だけ取り、設定のフォルダにキャッシュします（2 回目からはキャッシュ）。置き場があれば先に置き場を見て、配布元から取ったら置き場にも上げます")
+                                tr("Fetch only this item's STEP and cache it in the settings folder (the cache is used from the second time). If a shared store is set, it is checked first, and a STEP fetched from the vendor is also uploaded to it")
                             ))
                             .clicked()
                         {
@@ -350,16 +352,16 @@ impl CadFetcher {
                             &[
                                 &path,
                                 &match v["source"].as_str() {
-                                    Some("cache") => tr("（キャッシュ）"),
-                                    Some("store") => tr("（置き場から）"),
-                                    Some("vendor_uploaded") => tr("（置き場にも上げました）"),
+                                    Some("cache") => tr(" (cached)"),
+                                    Some("store") => tr(" (from the store)"),
+                                    Some("vendor_uploaded") => tr(" (also uploaded to the store)"),
                                     _ => "",
                                 },
                             ],
                         ))
-                        .on_hover_text(tr("右クリックでパスを写す"));
+                        .on_hover_text(tr("Right-click to copy the path"));
                     l.context_menu(|ui| {
-                        if ui.button(tr("パスを写す")).clicked() {
+                        if ui.button(tr("Copy path")).clicked() {
                             ui.ctx().copy_text(path.to_string());
                             ui.close_menu();
                         }
@@ -367,7 +369,7 @@ impl CadFetcher {
                     for n in v["store_notes"].as_array().into_iter().flatten() {
                         ui.label(
                             RichText::new(trf(
-                                "置き場: {}",
+                                "Store: {}",
                                 &[&lensbench_core::i18n::tr(n.as_str().unwrap_or_default())],
                             ))
                             .color(ui.visuals().warn_fg_color),
@@ -378,12 +380,14 @@ impl CadFetcher {
                         .map(|a| a.iter().filter_map(Value::as_str).collect())
                         .unwrap_or_default();
                     if notes.is_empty() {
-                        ui.label(tr("簡易外形と合います（長さ・外径・外形の形）"));
+                        ui.label(tr(
+                            "Matches the simple outline (length, outer size and shape)",
+                        ));
                     }
                     for n in notes {
                         ui.label(
                             RichText::new(trf(
-                                "簡易外形と違う: {}",
+                                "Differs from the simple outline: {}",
                                 &[&lensbench_core::i18n::tr(n)],
                             ))
                             .color(ui.visuals().warn_fg_color),
@@ -393,7 +397,7 @@ impl CadFetcher {
                 CadState::Failed(e) => {
                     ui.label(
                         RichText::new(trf(
-                            "STEP を取れませんでした（簡易外形で描きます）: {}",
+                            "Could not fetch the STEP (drawing the simple outline): {}",
                             &[e],
                         ))
                         .color(ui.visuals().warn_fg_color),
@@ -401,7 +405,7 @@ impl CadFetcher {
                     if !r.url.is_empty() {
                         ui.add(
                             egui::Hyperlink::from_label_and_url(
-                                tr("品ページを開く"),
+                                tr("Open the product page"),
                                 r.url.as_str(),
                             )
                             .open_in_new_tab(true),

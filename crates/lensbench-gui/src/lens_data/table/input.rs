@@ -84,7 +84,7 @@ pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: 
         let first = v.folded(j).map_or(j, |(_, a)| a);
         if !c.combo {
             if let Some(n) = locked_at(c.blocks, c.locked, first) {
-                out.acts.push(Act::Refused(trf("{} はロック中", &[&n])));
+                out.acts.push(Act::Refused(trf("{} is locked", &[&n])));
             } else {
                 out.acts.extend(insert_paste_acts(
                     c.rows,
@@ -271,7 +271,7 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
         {
             Some([a, b]) if a <= b => out.acts.push(Act::ExportRange([a, b])),
             _ => out.acts.push(Act::Refused(
-                tr("書き出す面を選んでください（物体面・像面は除く）").into(),
+                tr("Select the surfaces to export (not the object or image surface)").into(),
             )),
         }
     }
@@ -280,7 +280,8 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
         let cur = st.cur.map(|x| x.0).or(v.keys.first().copied());
         match cur {
             _ if c.combo => out.acts.push(Act::Refused(
-                tr("組合せの系では面を足し引きできない（要素で）").into(),
+                tr("Surfaces cannot be added or removed in a combination system (use elements)")
+                    .into(),
             )),
             None => {}
             Some(j) => {
@@ -288,7 +289,7 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                 let first = v.folded(j).map_or(j, |(_, a)| a);
                 let lock = locked_at(c.blocks, c.locked, first);
                 if let Some(n) = lock {
-                    out.acts.push(Act::Refused(trf("{} はロック中", &[&n])));
+                    out.acts.push(Act::Refused(trf("{} is locked", &[&n])));
                 } else if out.fx.insert {
                     // 後に: たたんだブロックの行はブロックの最後の面の後。像面の後には足せないので像面の前
                     let at = if out.fx.insert_before {
@@ -321,8 +322,9 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                         .collect();
                     del.sort_unstable_by(|a, b| b.cmp(a));
                     if del.is_empty() {
-                        out.acts
-                            .push(Act::Refused(tr("選んだ範囲に消せる面が無い").into()));
+                        out.acts.push(Act::Refused(
+                            tr("No deletable surface in the selection").into(),
+                        ));
                     } else {
                         out.acts.push(Act::Ops(
                             del.iter()
@@ -337,15 +339,16 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                     }
                 } else if v.folded(j).is_some() {
                     out.acts.push(Act::Refused(
-                        tr("ブロックの行は消せない（中に入って面を消す）").into(),
+                        tr("A block row cannot be deleted (go into it and delete surfaces)").into(),
                     ));
                 } else if j == 0 || j + 1 == c.rows.len() {
-                    out.acts
-                        .push(Act::Refused(tr("物体面・像面は消せない").into()));
+                    out.acts.push(Act::Refused(
+                        tr("The object and image surfaces cannot be deleted").into(),
+                    ));
                 } else if c.rows[j].stop {
                     // 範囲で消すときと同じく絞りの面は残す（GPN-15）
                     out.acts.push(Act::Refused(
-                        tr("絞りの面は消せない（先に絞りを別の面へ移す）").into(),
+                        tr("The stop surface cannot be deleted (move the stop to another surface first)").into(),
                     ));
                 } else {
                     out.acts.push(Act::Ops(vec![

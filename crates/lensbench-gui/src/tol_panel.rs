@@ -18,17 +18,17 @@ use crate::theme;
 
 /// 公差の組の選択肢（"" は既定 = 全体の組）
 const PRESETS: [(&str, &str); 5] = [
-    ("commercial", n_("一般")),
-    ("precision", n_("精密")),
-    ("high", n_("高精度")),
-    ("none", n_("なし")),
-    ("", n_("既定")),
+    ("commercial", n_("Commercial")),
+    ("precision", n_("Precision")),
+    ("high", n_("High")),
+    ("none", n_("Off")),
+    ("", n_("Default")),
 ];
 
 const DISTS: [(&str, &str); 3] = [
-    ("normal", n_("正規（±2σ）")),
-    ("uniform", n_("一様")),
-    ("end", n_("端（±の端）")),
+    ("normal", n_("Normal (±2σ)")),
+    ("uniform", n_("Uniform")),
+    ("end", n_("End (± limits)")),
 ];
 
 fn preset_label(k: &str) -> &'static str {
@@ -186,7 +186,7 @@ impl TolPanel {
                 t.parse::<f64>()
                     .ok()
                     .filter(|x| (0.0..=100.0).contains(x))
-                    .ok_or_else(|| trf("百分位 {} が 0〜100 の数でない", &[&t]))
+                    .ok_or_else(|| trf("Percentile {} is not a number from 0 to 100", &[&t]))
             })
             .collect::<Result<Vec<_>, _>>()?;
         if pc.is_empty() {
@@ -264,7 +264,7 @@ impl TolPanel {
                 continue;
             }
             let pm =
-                crate::widgets::parse_num(&t.pm, p)?.ok_or_else(|| trf("{} の ± がない", &[&p]))?;
+                crate::widgets::parse_num(&t.pm, p)?.ok_or_else(|| trf("{} has no ±", &[&p]))?;
             let mut o = json!({ "param": p, "pm": pm });
             if !t.dist.is_empty() {
                 o["dist"] = json!(t.dist);
@@ -308,7 +308,7 @@ impl TolPanel {
 
     /// 保存したファイル（spec と同じ形）から
     pub fn set_spec(&mut self, v: &Value) -> Result<(), String> {
-        let m = v.as_object().ok_or(tr("設定がオブジェクトでない"))?;
+        let m = v.as_object().ok_or(tr("Settings are not an object"))?;
         let mut n = TolPanel::default();
         // 最適化のパネルの欄（vars・merit・terms・configs）
         let mut op = json!({});
@@ -360,8 +360,8 @@ impl TolPanel {
         n.opt.set_params(&op)?;
         for (k, x) in m {
             match k.as_str() {
-                "trials" => n.trials = x.as_u64().ok_or(tr("trials が整数でない"))? as usize,
-                "seed" => n.seed = x.as_u64().ok_or(tr("seed が整数でない"))?,
+                "trials" => n.trials = x.as_u64().ok_or(tr("trials is not an integer"))? as usize,
+                "seed" => n.seed = x.as_u64().ok_or(tr("seed is not an integer"))?,
                 "dist" => n.dist = x.as_str().unwrap_or("normal").into(),
                 "radial" => match x.as_str() {
                     Some(d) => {
@@ -482,7 +482,7 @@ pub fn ui(
     egui::ScrollArea::vertical().id_salt("tol_scroll").show(ui, |ui| {
         ui.horizontal(|ui| {
             if p.running {
-                if ui.button(tr("止める")).clicked() {
+                if ui.button(tr("Stop")).clicked() {
                     acts.push(Action::Stop);
                 }
                 ui.spinner();
@@ -492,7 +492,7 @@ pub fn ui(
                 let r = ui
                     .add_enabled(
                         check.is_ok(),
-                        egui::Button::new(RichText::new(tr("公差を回す")).strong()),
+                        egui::Button::new(RichText::new(tr("Run tolerancing")).strong()),
                     )
                     .on_disabled_hover_text(check.clone().err().unwrap_or_default());
                 if let Err(e) = &check {
@@ -510,13 +510,13 @@ pub fn ui(
                 }
             }
             ui.add_enabled_ui(!p.running, |ui| {
-                if ui.button(tr("設定を保存…")).clicked() {
+                if ui.button(tr("Save settings…")).clicked() {
                     match p.spec() {
                         Ok(v) => acts.push(Action::Save(v)),
                         Err(e) => p.error = Some(e),
                     }
                 }
-                if ui.button(tr("設定を読む…")).clicked() {
+                if ui.button(tr("Load settings…")).clicked() {
                     acts.push(Action::Load);
                 }
             });
@@ -528,18 +528,18 @@ pub fn ui(
             let f = if n > 0 { k as f32 / n as f32 } else { 0.0 };
             ui.add(egui::ProgressBar::new(f).text(format!("{k} / {n}")));
         } else if let Some(r) = p.result.clone() {
-            egui::CollapsingHeader::new(RichText::new(tr("結果")).strong())
+            egui::CollapsingHeader::new(RichText::new(tr("Result")).strong())
                 .id_salt("tol_result")
                 .default_open(true)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        if ui.button(tr("結果を保存…")).clicked() {
+                        if ui.button(tr("Save results…")).clicked() {
                             acts.push(Action::SaveResult((*r).clone()));
                         }
                         let has_comp = r["compensators"].as_array().is_some_and(|a| !a.is_empty());
                         if ui
-                            .add_enabled(has_comp, egui::Button::new(tr("補償子の CSV…")))
-                            .on_hover_text(tr("試行ごとの評価関数・補償子・傾きの大きさ [分]"))
+                            .add_enabled(has_comp, egui::Button::new(tr("Compensator CSV…")))
+                            .on_hover_text(tr("Merit, compensators and tilt magnitudes [arcmin] for each trial"))
                             .clicked()
                         {
                             match lensbench_design::tolerance::compensators_csv(&r) {
@@ -549,7 +549,7 @@ pub fn ui(
                         }
                         if r.get("samples").is_none() {
                             ui.label(
-                                RichText::new(tr("試行ごとのずれは「設定」の samples を入れて回すと結果に入ります"))
+                                RichText::new(tr("Turn on samples under Settings to include each trial's perturbations in the results"))
                                     .small()
                                     .color(weak),
                             );
@@ -560,17 +560,17 @@ pub fn ui(
         }
         ui.separator();
         ui.add_enabled_ui(!p.running, |ui| {
-            section(ui, "tol_set_sec", tr("公差"), |ui| tol_ui(ui, p, c, weak));
-            section(ui, "tol_comp_sec", tr("補償子"), |ui| {
+            section(ui, "tol_set_sec", tr("Tolerance"), |ui| tol_ui(ui, p, c, weak));
+            section(ui, "tol_comp_sec", tr("Compensators"), |ui| {
                 op::vars_ui(ui, &mut p.opt, c, weak);
                 ui.label(
-                    RichText::new(tr("試行ごとに、補償子を評価関数で合わせ直します（ピントの間隔・群の移動など）。"))
+                    RichText::new(tr("For each trial, compensators are re-fitted on the merit function (focus gap, group shift, etc.)."))
                         .small()
                         .color(weak),
                 );
             });
-            section(ui, "tol_merit_sec", tr("評価関数"), |ui| op::merit_ui(ui, &mut p.opt, weak));
-            section(ui, "tol_run_sec", tr("設定"), |ui| run_ui(ui, p, weak));
+            section(ui, "tol_merit_sec", tr("Merit function"), |ui| op::merit_ui(ui, &mut p.opt, weak));
+            section(ui, "tol_run_sec", tr("Settings"), |ui| run_ui(ui, p, weak));
         });
     });
     acts
@@ -578,30 +578,30 @@ pub fn ui(
 
 fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("玉の公差の組"));
+        ui.label(tr("Lens tolerance set"));
         for (k, l) in PRESETS.iter().take(4) {
             ui.selectable_value(&mut p.preset, k.to_string(), tr(l));
         }
     });
     ui.checkbox(
         &mut p.catalog,
-        tr("カタログの玉はカタログの玉の公差（設定の catalog_tols、なければ中心厚 ±0.1 mm・焦点距離 ±2%・芯取り 5′）"),
+        tr("Catalog lenses use catalog tolerances (catalog_tols in the settings; otherwise center thickness ±0.1 mm, focal length ±2%, centration 5′)"),
     );
     ui.label(
         RichText::new(tr(
-            "組は曲率半径・中心厚・くさび・屈折率・分散・玉の偏心と傾き・玉の後の間隔（一般: ±0.2%・±0.15 mm・3′・±0.001・±1%・±0.1 mm・3′・±0.1 mm）。",
+            "A set covers radius, center thickness, wedge, index, dispersion, lens decenter and tilt, and the air gap after the lens (commercial: ±0.2%, ±0.15 mm, 3′, ±0.001, ±1%, ±0.1 mm, 3′, ±0.1 mm).",
         ))
         .small()
         .color(weak),
     );
     if p.catalog {
-        egui::CollapsingHeader::new(tr("メーカーごとのカタログの玉の公差"))
+        egui::CollapsingHeader::new(tr("Catalog lens tolerances by vendor"))
             .id_salt("tol_catalog_tols")
             .default_open(!p.catalog_tols.is_empty())
             .show(ui, |ui| {
                 if p.extra.contains_key("catalog_tols") {
                     ui.label(
-                        RichText::new(tr("読んだ catalog_tols は欄で表せないので、そのまま使います（ここで足すと置き換えます）。"))
+                        RichText::new(tr("The loaded catalog_tols cannot be shown in these fields, so it is used as is (adding here replaces it)."))
                             .small()
                             .color(weak),
                     );
@@ -614,7 +614,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             });
     }
     ui.horizontal(|ui| {
-        ui.label(tr("分布"));
+        ui.label(tr("Distribution"));
         for (k, l) in DISTS {
             ui.selectable_value(&mut p.dist, k.to_string(), tr(l));
         }
@@ -622,7 +622,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     // チェックの文が長いので、選択は次の行に字下げして置く（折り返しの中の入れ子で縦 1 文字に崩れない、GUX-13）
     ui.checkbox(
         &mut p.radial,
-        tr("偏心・傾き・くさびは x・y を組にして円の中で（大きさが公差以下）"),
+        tr("Pair x/y of decenters, tilts and wedges within a circle (magnitude at most the tolerance)"),
     );
     ui.horizontal(|ui| {
         ui.add_space(24.0);
@@ -630,7 +630,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         if ui
             .add_enabled(
                 on,
-                egui::SelectableLabel::new(p.radial_dist == "uniform", tr("一様")),
+                egui::SelectableLabel::new(p.radial_dist == "uniform", tr("Uniform")),
             )
             .clicked()
         {
@@ -639,10 +639,10 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         if ui
             .add_enabled(
                 on,
-                egui::SelectableLabel::new(p.radial_dist == "normal", tr("正規（半径 2σ）")),
+                egui::SelectableLabel::new(p.radial_dist == "normal", tr("Normal (radius 2σ)")),
             )
             .on_hover_text(tr(
-                "等方の 2 次元正規分布を円で切ったもの。半径 2σ の中は 86%",
+                "Isotropic 2D normal truncated at the circle; 86% fall within 2σ",
             ))
             .clicked()
         {
@@ -650,16 +650,16 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         }
     });
     ui.horizontal(|ui| {
-        ui.label(tr("くさびの面"));
-        ui.selectable_value(&mut p.wedge_front, false, tr("後ろの面"));
-        ui.selectable_value(&mut p.wedge_front, true, tr("前の面"));
+        ui.label(tr("Wedge face"));
+        ui.selectable_value(&mut p.wedge_front, false, tr("Back face"));
+        ui.selectable_value(&mut p.wedge_front, true, tr("Front face"));
     })
     .response
     .on_hover_text(tr(
-        "前・後ろは玉のもとの向き（カタログ・.zmx の向き）。裏返して置いた玉や鏡で往復する玉でも同じ面",
+        "Front/back refer to the lens's own orientation (as in the catalog or .zmx). The same face is used for reversed lenses and lenses traversed twice via a mirror",
     ));
     // 玉ごとの組
-    ui.label(RichText::new(tr("玉ごとの組")).strong());
+    ui.label(RichText::new(tr("Set per lens")).strong());
     let mut del = None;
     for (i, l) in p.lenses.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -672,7 +672,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
                         ui.selectable_value(&mut l.preset, k.to_string(), tr(lb));
                     }
                 });
-            if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+            if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                 del = Some(i);
             }
         });
@@ -680,7 +680,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     if let Some(i) = del {
         p.lenses.remove(i);
     }
-    ui.menu_button(tr("玉を足す"), |ui| {
+    ui.menu_button(tr("Add lens"), |ui| {
         for u in &c.units {
             if ui.button(u).clicked() {
                 p.lenses.push(LensRow {
@@ -692,7 +692,12 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         }
     });
     // 群・ブロック
-    ui.label(RichText::new(tr("群・ブロックの公差（偏心 mm・傾き deg・移動 mm）")).strong());
+    ui.label(
+        RichText::new(tr(
+            "Group/block tolerances (decenter mm, tilt deg, shift mm)",
+        ))
+        .strong(),
+    );
     let mut del = None;
     egui::Grid::new("tol_groups")
         .striped(true)
@@ -700,10 +705,10 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         .show(ui, |ui| {
             for (i, g) in p.groups.iter_mut().enumerate() {
                 pp::edit(ui, &mut g.name, 70.0, "G1", &c.sys, Set::Units);
-                small_edit(ui, &mut g.decenter, 55.0, tr("偏心"));
-                small_edit(ui, &mut g.tilt, 55.0, tr("傾き"));
-                small_edit(ui, &mut g.shift, 55.0, tr("移動"));
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                small_edit(ui, &mut g.decenter, 55.0, tr("Decenter"));
+                small_edit(ui, &mut g.tilt, 55.0, tr("Tilt"));
+                small_edit(ui, &mut g.shift, 55.0, tr("Shift"));
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -712,7 +717,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     if let Some(i) = del {
         p.groups.remove(i);
     }
-    ui.menu_button(tr("群を足す"), |ui| {
+    ui.menu_button(tr("Add group"), |ui| {
         for u in &c.units {
             if ui.button(u).clicked() {
                 p.groups.push(GroupRow {
@@ -724,7 +729,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         }
     });
     // 個別の公差
-    ui.label(RichText::new(tr("個別の公差（面ごと）")).strong());
+    ui.label(RichText::new(tr("Individual tolerances (per surface)")).strong());
     let mut del = None;
     egui::Grid::new("tol_tols")
         .striped(true)
@@ -737,20 +742,20 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
                 small_edit(ui, &mut t.pm, 60.0, "±");
                 egui::ComboBox::from_id_salt(("tol_dist", i))
                     .selected_text(if t.dist.is_empty() {
-                        tr("既定")
+                        tr("Default")
                     } else {
                         dist_label(&t.dist)
                     })
                     .width(80.0)
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.dist, String::new(), tr("既定"));
+                        ui.selectable_value(&mut t.dist, String::new(), tr("Default"));
                         for (k, l) in DISTS {
                             ui.selectable_value(&mut t.dist, k.to_string(), tr(l));
                         }
                     });
-                ui.checkbox(&mut t.relative, tr("比"))
-                    .on_hover_text(tr("± を今の値に対する比にする（0.01 = ±1%）"));
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                ui.checkbox(&mut t.relative, tr("Ratio"))
+                    .on_hover_text(tr("Make ± a ratio of the current value (0.01 = ±1%)"));
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -760,13 +765,13 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         p.tols.remove(i);
     }
     ui.horizontal(|ui| {
-        if ui.button(tr("個別の公差を足す")).clicked() {
+        if ui.button(tr("Add a tolerance")).clicked() {
             p.tols.push(TolRow::default());
         }
         if ui
-            .button(tr("波長のずれを足す"))
+            .button(tr("Add wavelength shift"))
             .on_hover_text(tr(
-                "光源の波長のずれ（± µm、すべての波長を同じだけずらす。wave1 などは 1 つの波長だけ）",
+                "Source wavelength shift (± µm, all wavelengths shifted by the same amount; wave1 etc. for a single wavelength)",
             ))
             .clicked()
         {
@@ -780,7 +785,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     if !p.extra.is_empty() {
         ui.label(
             RichText::new(trf(
-                "欄のない設定（そのまま使う）: {}",
+                "Settings without fields (used as is): {}",
                 &[&p.extra.keys().cloned().collect::<Vec<_>>().join(", ")],
             ))
             .small()
@@ -791,26 +796,29 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
 
 fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("試行の数"));
+        ui.label(tr("Trials"));
         ui.add(egui::DragValue::new(&mut p.trials).range(0..=1_000_000));
-        ui.label(tr("乱数の種"));
+        ui.label(tr("Random seed"));
         ui.add(egui::DragValue::new(&mut p.seed));
     });
     ui.horizontal(|ui| {
-        ui.label(tr("補償子の反復"));
+        ui.label(tr("Compensator iterations"));
         ui.add(egui::DragValue::new(&mut p.comp_iters).range(1..=200));
-        ui.checkbox(&mut p.sensitivity, tr("感度（公差ごとに ± の端）も求める"));
+        ui.checkbox(
+            &mut p.sensitivity,
+            tr("Also compute sensitivities (each tolerance at its limits)"),
+        );
     });
     ui.horizontal(|ui| {
-        ui.label(tr("百分位"));
+        ui.label(tr("Percentiles"));
         small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
-        ui.label(tr("スレッド数"));
+        ui.label(tr("Threads"));
         ui.add(
             egui::DragValue::new(&mut p.threads)
                 .range(0..=256)
                 .custom_formatter(|v, _| {
                     if v < 0.5 {
-                        tr("自動").to_string()
+                        tr("Auto").to_string()
                     } else {
                         format!("{v:.0}")
                     }
@@ -819,14 +827,14 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
     });
     ui.checkbox(
         &mut p.samples,
-        tr("試行ごとのずれと評価を結果に入れる（samples）"),
+        tr("Include each trial's deltas and evaluation in the result (samples)"),
     );
     ui.horizontal(|ui| {
-        ui.label(tr("構成"));
-        small_edit(ui, &mut p.opt.configs, 160.0, tr("開いている系だけ"));
+        ui.label(tr("Config"));
+        small_edit(ui, &mut p.opt.configs, 160.0, tr("Open system only"));
     });
     ui.label(
-        RichText::new(tr("同じ種なら同じ結果になります（スレッド数によらない）。構成を並べると、同じずれをすべての構成に与えます。"))
+        RichText::new(tr("The same seed gives the same result (regardless of thread count). With several configurations, the same deviations are applied to all of them."))
             .small()
             .color(weak),
     );
@@ -907,7 +915,7 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
     if ds.is_empty() {
         return;
     }
-    ui.label(RichText::new(tr("補償子")).strong());
+    ui.label(RichText::new(tr("Compensators")).strong());
     let pcts: Vec<String> = ds[0].stats["percentiles"]
         .as_array()
         .into_iter()
@@ -919,12 +927,12 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
         .show(ui, |ui| {
             egui::Grid::new("tol_comps").striped(true).show(ui, |ui| {
                 for h in [
-                    tr("名前"),
-                    tr("公称"),
-                    tr("平均"),
-                    tr("標準偏差"),
-                    tr("最小"),
-                    tr("最大"),
+                    tr("Name"),
+                    tr("Nominal"),
+                    tr("Mean"),
+                    tr("Std. dev."),
+                    tr("Min"),
+                    tr("Max"),
                 ] {
                     ui.label(RichText::new(h).small().color(weak));
                 }
@@ -951,7 +959,7 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
     {
         ui.label(
             RichText::new(tr(
-                "「.tilt [′]」は同じ玉・群・面の傾き tx・ty の組の大きさ √(tx² + ty²)（分）。",
+                "\".tilt [′]\" is the magnitude √(tx² + ty²) of the tilt pair tx, ty of the same lens, group or surface (arcmin).",
             ))
             .small()
             .color(weak),
@@ -969,8 +977,8 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
                     ui.selectable_value(sel, i, d.name.as_str());
                 }
             });
-        ui.selectable_value(cdf, false, tr("ヒストグラム"));
-        ui.selectable_value(cdf, true, tr("累積分布"));
+        ui.selectable_value(cdf, false, tr("Histogram"));
+        ui.selectable_value(cdf, true, tr("Cumulative distribution"));
     });
     let d = &ds[*sel];
     let nom = d.nominal.as_f64();
@@ -987,10 +995,10 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
             .enumerate()
             .map(|(i, &x)| [x, 100.0 * (i + 1) as f64 / n])
             .collect();
-        plot.y_axis_label(tr("累積 [%]")).show(ui, |pu| {
-            pu.line(Line::new(pts).name(tr("累積分布")));
+        plot.y_axis_label(tr("Cumulative [%]")).show(ui, |pu| {
+            pu.line(Line::new(pts).name(tr("Cumulative distribution")));
             if let Some(x) = nom {
-                pu.vline(egui_plot::VLine::new(x).name(tr("公称")));
+                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
             }
         });
     } else {
@@ -998,10 +1006,10 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
             .into_iter()
             .map(|(x0, w, c)| egui_plot::Bar::new(x0 + w / 2.0, c as f64).width(w))
             .collect();
-        plot.y_axis_label(tr("試行の数")).show(ui, |pu| {
-            pu.bar_chart(egui_plot::BarChart::new(bars).name(tr("ヒストグラム")));
+        plot.y_axis_label(tr("Trials")).show(ui, |pu| {
+            pu.bar_chart(egui_plot::BarChart::new(bars).name(tr("Histogram")));
             if let Some(x) = nom {
-                pu.vline(egui_plot::VLine::new(x).name(tr("公称")));
+                pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
             }
         });
     }
@@ -1009,18 +1017,18 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
 
 fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: egui::Color32) {
     ui.label(trf(
-        "試行 {}（追跡できなかった {}）、種 {}",
+        "{} trials ({} failed to trace), seed {}",
         &[&r["trials"], &r["failed"], &r["seed"]],
     ));
     if r["cancelled"].as_bool() == Some(true) {
-        ui.label(RichText::new(tr("途中で止めた（終わった試行だけ）")).color(weak));
+        ui.label(RichText::new(tr("Stopped (finished trials only)")).color(weak));
     }
     for e in r["errors"].as_array().into_iter().flatten() {
         ui.colored_label(ui.visuals().warn_fg_color, text_of(e));
     }
     // 統計の表（評価関数と項）
     let mut rows: Vec<(String, Value, Value)> = vec![(
-        tr("評価関数").into(),
+        tr("Merit function").into(),
         r["nominal"]["merit"].clone(),
         r["merit"].clone(),
     )];
@@ -1041,7 +1049,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
         .id_salt("tol_stats_h")
         .show(ui, |ui| {
             egui::Grid::new("tol_stats").striped(true).show(ui, |ui| {
-                for h in ["", tr("公称"), tr("平均"), tr("標準偏差"), tr("最大")] {
+                for h in ["", tr("Nominal"), tr("Mean"), tr("Std. dev."), tr("Max")] {
                     ui.label(RichText::new(h).small().color(weak));
                 }
                 for p in &pcts {
@@ -1064,7 +1072,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
     if let Some(e) = r["rss_estimate"].as_f64() {
         ui.label(
             RichText::new(trf(
-                "感度からの見積り（公称 + √Σ 変化²）: {}",
+                "Estimate from sensitivities (nominal + √Σ change²): {}",
                 &[&fmt_num(e)],
             ))
             .small()
@@ -1088,13 +1096,13 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
         let nom = r["nominal"]["merit"].as_f64();
         Plot::new("tol_cdf")
             .height(180.0)
-            .x_axis_label(tr("評価関数"))
-            .y_axis_label(tr("累積 [%]"))
+            .x_axis_label(tr("Merit function"))
+            .y_axis_label(tr("Cumulative [%]"))
             .allow_scroll(false)
             .show(ui, |pu| {
-                pu.line(Line::new(pts).name(tr("累積分布")));
+                pu.line(Line::new(pts).name(tr("Cumulative distribution")));
                 if let Some(x) = nom {
-                    pu.vline(egui_plot::VLine::new(x).name(tr("公称")));
+                    pu.vline(egui_plot::VLine::new(x).name(tr("Nominal")));
                 }
             });
     }
@@ -1102,47 +1110,53 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
     // 感度（悪い順）
     let sens = r["sensitivity"].as_array().cloned().unwrap_or_default();
     if !sens.is_empty() {
-        egui::CollapsingHeader::new(RichText::new(tr("寄与の大きい項目（感度、悪い順）")).strong())
-            .id_salt("tol_sens")
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::Grid::new("tol_sens_g").striped(true).show(ui, |ui| {
-                    for h in [
-                        tr("公差"),
-                        tr("下限"),
-                        tr("上限"),
-                        tr("変化（下限）"),
-                        tr("変化（上限）"),
-                    ] {
-                        ui.label(RichText::new(h).small().color(weak));
-                    }
+        egui::CollapsingHeader::new(
+            RichText::new(tr("Largest contributors (sensitivity, worst first)")).strong(),
+        )
+        .id_salt("tol_sens")
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::Grid::new("tol_sens_g").striped(true).show(ui, |ui| {
+                for h in [
+                    tr("Tolerance"),
+                    tr("Min"),
+                    tr("Max"),
+                    tr("Change (min)"),
+                    tr("Change (max)"),
+                ] {
+                    ui.label(RichText::new(h).small().color(weak));
+                }
+                ui.end_row();
+                for s in sens.iter().take(20) {
+                    ui.label(item_name(&s["label"]));
+                    ui.label(f(&s["lo"]));
+                    ui.label(f(&s["hi"]));
+                    ui.label(f(&s["change_lo"]));
+                    ui.label(f(&s["change_hi"]));
                     ui.end_row();
-                    for s in sens.iter().take(20) {
-                        ui.label(item_name(&s["label"]));
-                        ui.label(f(&s["lo"]));
-                        ui.label(f(&s["hi"]));
-                        ui.label(f(&s["change_lo"]));
-                        ui.label(f(&s["change_hi"]));
-                        ui.end_row();
-                    }
-                });
-                if sens.len() > 20 {
-                    ui.label(
-                        RichText::new(trf("ほか {} 項目", &[&(sens.len() - 20)]))
-                            .small()
-                            .color(weak),
-                    );
                 }
             });
+            if sens.len() > 20 {
+                ui.label(
+                    RichText::new(trf("{} more items", &[&(sens.len() - 20)]))
+                        .small()
+                        .color(weak),
+                );
+            }
+        });
     }
     let corr = r["correlation"].as_array().cloned().unwrap_or_default();
     if corr.iter().any(|c| c["r"].is_number()) {
-        egui::CollapsingHeader::new(RichText::new(tr("試行との相関")).strong())
+        egui::CollapsingHeader::new(RichText::new(tr("Correlation with trials")).strong())
             .id_salt("tol_corr")
             .default_open(false)
             .show(ui, |ui| {
                 egui::Grid::new("tol_corr_g").striped(true).show(ui, |ui| {
-                    for h in [tr("公差"), tr("ずれとの相関"), tr("|ずれ| との相関")] {
+                    for h in [
+                        tr("Tolerance"),
+                        tr("Correlation with deviation"),
+                        tr("Correlation with |deviation|"),
+                    ] {
                         ui.label(RichText::new(h).small().color(weak));
                     }
                     ui.end_row();

@@ -25,19 +25,19 @@ pub fn fmt_num(x: f64) -> String {
 
 /// 表の列の名前と、結果の `unit`（位置・長さの単位、波など）で数える列か（GUX-20）。ここに無い鍵はそのまま出す
 const COLS: &[(&str, &str, bool)] = &[
-    ("field", n_("視野の番号"), false),
-    ("wave", n_("波長の番号"), false),
-    ("rms_centroid", n_("RMS（重心基準）"), true),
-    ("rms_chief", n_("RMS（主光線基準）"), true),
-    ("geo", n_("GEO 半径"), true),
-    ("centroid", n_("重心"), true),
-    ("chief", n_("主光線"), true),
+    ("field", n_("Field #"), false),
+    ("wave", n_("Wave #"), false),
+    ("rms_centroid", n_("RMS (centroid)"), true),
+    ("rms_chief", n_("RMS (chief ray)"), true),
+    ("geo", n_("GEO radius"), true),
+    ("centroid", n_("Centroid"), true),
+    ("chief", n_("Chief ray"), true),
     ("pv", n_("PV"), true),
-    ("pv_centroid", n_("PV（重心基準）"), true),
+    ("pv_centroid", n_("PV (centroid)"), true),
     ("rms", n_("RMS"), true),
-    ("rms_fit", n_("当てはめの RMS"), true),
-    ("max_fit", n_("当てはめの最大の差"), true),
-    ("strehl", n_("ストレール比"), false),
+    ("rms_fit", n_("RMS of fit"), true),
+    ("max_fit", n_("Max fit error"), true),
+    ("strehl", n_("Strehl ratio"), false),
 ];
 
 /// 値の見せ方: 単位の倍率（mm の結果は µm で出す）と見出しの単位
@@ -55,7 +55,7 @@ impl Units<'_> {
         let name = tr(name);
         match (in_unit, self.unit) {
             (true, Some("mm")) => (format!("{name} [µm]"), 1e3),
-            (true, Some("waves")) => (format!("{name} [{}]", tr("波")), 1.0),
+            (true, Some("waves")) => (format!("{name} [{}]", tr("waves")), 1.0),
             (true, Some(u)) => (format!("{name} [{u}]"), 1.0),
             _ => (name.to_string(), 1.0),
         }
@@ -81,7 +81,7 @@ fn scaled(v: &Value, k: f64) -> Value {
 fn inline(v: &Value) -> Option<String> {
     match v {
         Value::Null => Some("—".into()),
-        Value::Bool(b) => Some(if *b { tr("はい") } else { tr("いいえ") }.into()),
+        Value::Bool(b) => Some(if *b { tr("yes") } else { tr("no") }.into()),
         Value::Number(n) => Some(n.as_f64().map(fmt_num).unwrap_or_else(|| n.to_string())),
         Value::String(s) => Some(s.clone()),
         Value::Array(a) if a.iter().all(|x| x.is_number() || x.is_null()) => {
@@ -91,7 +91,7 @@ fn inline(v: &Value) -> Option<String> {
                 .map(|x| inline(x).unwrap())
                 .collect();
             if a.len() > MAX_NUMS {
-                s.push(trf("…（全 {} 個）", &[&a.len()]));
+                s.push(trf("… ({} in all)", &[&a.len()]));
             }
             Some(format!("[{}]", s.join(", ")))
         }
@@ -121,7 +121,7 @@ pub fn show(ui: &mut Ui, v: &Value) {
     let u = Units {
         unit: v["unit"].as_str(),
     };
-    show_value(ui, u, tr("結果"), v, 0);
+    show_value(ui, u, tr("Result"), v, 0);
 }
 
 fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
@@ -135,7 +135,7 @@ fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
     let id = ui.id().with((name, depth));
     match v {
         Value::Array(a) => {
-            CollapsingHeader::new(trf("{}（{} 個）", &[&name, &a.len()]))
+            CollapsingHeader::new(trf("{} ({})", &[&name, &a.len()]))
                 .id_salt(id)
                 .default_open(depth < 2)
                 .show(ui, |ui| {
@@ -146,7 +146,7 @@ fn show_value(ui: &mut Ui, u: Units, name: &str, v: &Value, depth: usize) {
                             show_value(ui, u, &format!("{}", i + 1), x, depth + 1);
                         }
                         if a.len() > MAX_ROWS {
-                            ui.label(trf("…（全 {} 個）", &[&a.len()]));
+                            ui.label(trf("… ({} in all)", &[&a.len()]));
                         }
                     }
                 });
@@ -227,7 +227,7 @@ fn table(ui: &mut Ui, u: Units, id: egui::Id, cols: &[String], rows: &[Value]) {
                             egui::Label::new(RichText::new(format!("{head}{mark}")).strong())
                                 .sense(egui::Sense::click()),
                         )
-                        .on_hover_text(format!("{c}\n{}", tr("クリックで並べ替え")))
+                        .on_hover_text(format!("{c}\n{}", tr("Click to sort")))
                         .clicked()
                     {
                         sort = match sort {

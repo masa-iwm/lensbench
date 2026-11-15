@@ -45,15 +45,15 @@ pub fn zmx_type(typ: &str) -> &'static str {
 
 /// JSON で書き換える面のデータの項目（名前、表示名）
 const JSON_ITEMS: &[(&str, &str)] = &[
-    ("ap", n_("開口")),
-    ("before", n_("前の傾き偏心")),
-    ("after", n_("後の傾き偏心")),
-    ("zern", n_("Zernike の項")),
-    ("grid", n_("Grid Sag の格子")),
-    ("bin2", n_("Binary 2 の位相")),
+    ("ap", n_("Aperture")),
+    ("before", n_("Tilt/decenter before")),
+    ("after", n_("Tilt/decenter after")),
+    ("zern", n_("Zernike terms")),
+    ("grid", n_("Grid Sag grid")),
+    ("bin2", n_("Binary 2 phase")),
     ("cylf", "Cylinder Fresnel"),
-    ("grin", n_("屈折率分布（GRIN）")),
-    ("user", n_("利用者定義の面")),
+    ("grin", n_("Gradient index (GRIN)")),
+    ("user", n_("User-defined surface")),
 ];
 
 /// 面の設定の状態
@@ -101,18 +101,18 @@ pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
     let mut out = None;
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
-            for (i, l) in [tr("なし"), tr("入口"), tr("出口")].iter().enumerate() {
+            for (i, l) in [tr("Off"), tr("In"), tr("Out")].iter().enumerate() {
                 ui.selectable_value(&mut k, i, *l);
             }
         });
         let mut changed = k != kind;
         if k == 1 {
             ui.horizontal_wrapped(|ui| {
-                ui.label(tr("モード"));
-                for (m, l) in [(2, tr("波長板（2）")), (0, tr("常光だけ（0）"))] {
+                ui.label(tr("Mode"));
+                for (m, l) in [(2, tr("Wave plate (2)")), (0, tr("Ordinary only (0)"))] {
                     changed |= ui.selectable_value(&mut mode, m, l).changed();
                 }
-                ui.label(tr("結晶軸"));
+                ui.label(tr("Crystal axis"));
                 for (i, a) in axis.iter_mut().enumerate() {
                     changed |= ui
                         .add(
@@ -126,7 +126,7 @@ pub fn bire_ui(ui: &mut Ui, dj: usize, cur: &Value) -> Option<Value> {
             });
             ui.label(
                 RichText::new(trf(
-                    "面 {} の後の材料が常光、材料名-E が異常光（カタログに要る）。出口の面と組で使う",
+                    "The material after surface {} is the ordinary ray and material-E the extraordinary ray (must be in the catalog). Use with an Out surface.",
                     &[&dj],
                 ))
                 .small()
@@ -173,7 +173,7 @@ pub fn parse_nums(s: &str) -> Result<Vec<f64>, String> {
                 .parse::<f64>()
                 .ok()
                 .filter(|v| v.is_finite())
-                .ok_or_else(|| trf("{} は数ではない", &[&x.trim()]))
+                .ok_or_else(|| trf("{} is not a number", &[&x.trim()]))
         })
         .collect()
 }
@@ -199,14 +199,14 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
     let mut acts = Vec::new();
     let weak = theme::weak_text(ui.visuals());
     let Some((dj, v)) = st.data.clone().filter(|(dj, _)| *dj == j) else {
-        ui.weak(tr("面の値を読んでいます…"));
+        ui.weak(tr("Reading the surface…"));
         return acts;
     };
     let d = &v["data"];
     let typ = d["typ"].as_str().unwrap_or("Standard");
     let ztyp = zmx_type(typ);
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(trf("面 {} の詳細設定", &[&dj])).strong());
+        ui.label(RichText::new(trf("Surface {} details", &[&dj])).strong());
         ui.label(RichText::new(ztyp).small().color(weak));
         if let Some(why) = &read_only {
             ui.label(RichText::new(why).color(ui.visuals().warn_fg_color));
@@ -239,7 +239,7 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
                     | "TiltSurf"
             );
             if !in_table && (asph_used || d["asph"].as_array().is_some_and(|a| !a.is_empty())) {
-                let name = tr("非球面 r², r⁴, …");
+                let name = tr("Asphere r², r⁴, …");
                 label(ui, name);
                 if let Some(t) = text_field(ui, bufs, "asph", nums_text(&d["asph"]), 260.0) {
                     match parse_nums(&t) {
@@ -280,7 +280,7 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
         });
     ui.label(
         RichText::new(tr(
-            "Enter・欄の外のクリックで決める。開口は \"None\" か {\"Circular\": {\"min\": 0, \"max\": 5, \"dx\": 0, \"dy\": 0}}、傾き偏心は {\"d\": [dx, dy, tx, ty, tz], \"order\": 0}（後は \"None\"・\"Reverse\"・{\"Tilt\": …}）",
+            "Press Enter or click outside to apply. Aperture is \"None\" or {\"Circular\": {\"min\": 0, \"max\": 5, \"dx\": 0, \"dy\": 0}}; tilt/decenter is {\"d\": [dx, dy, tx, ty, tz], \"order\": 0} (after: \"None\", \"Reverse\" or {\"Tilt\": …})",
         ))
         .small()
         .color(weak),
@@ -288,7 +288,7 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
 
     // 全項目（JSON）
     ui.separator();
-    egui::CollapsingHeader::new(tr("全項目（JSON）"))
+    egui::CollapsingHeader::new(tr("All fields (JSON)"))
         .id_salt(("surf_all", dj))
         .show(ui, |ui| {
             let mut pretty = d.clone();
@@ -308,8 +308,8 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
             let (apply, reset) = ui
                 .horizontal(|ui| {
                     (
-                        ui.button(tr("適用")).clicked(),
-                        ui.button(tr("元に戻す")).clicked(),
+                        ui.button(tr("Apply")).clicked(),
+                        ui.button(tr("Revert")).clicked(),
                     )
                 })
                 .inner;
@@ -322,7 +322,7 @@ pub fn ui(ui: &mut Ui, st: &mut Inspector, j: usize, read_only: Option<String>) 
                             }
                         }
                     }
-                    Ok(_) => err = Some(tr("全項目は {項目: 値}").into()),
+                    Ok(_) => err = Some(tr("All fields must be {field: value}").into()),
                     Err(e) => err = Some(e.to_string()),
                 }
             }

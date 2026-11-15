@@ -103,12 +103,12 @@ impl LensRow {
         self.missing()
             .iter()
             .map(|m| match m.as_str() {
-                "thickness" => tr("厚さ"),
-                "diameter" => tr("径"),
+                "thickness" => tr("Thickness"),
+                "diameter" => tr("Dia."),
                 x => x,
             })
             .collect::<Vec<_>>()
-            .join(tr("・"))
+            .join(tr(", "))
     }
     /// 置けない理由（誤り・未完の品）
     pub fn placeable(&self) -> bool {
@@ -147,7 +147,7 @@ impl LensRow {
                 out.push(format!("{k} {}", spec_text(k, v)));
             }
         }
-        out.join("、")
+        out.join(crate::i18n::tr(", "))
     }
 }
 
@@ -251,12 +251,12 @@ fn link_button(ui: &mut Ui, url: &str) {
     if url.is_empty() {
         return;
     }
-    let b = ui.button(tr("🔗 製品ページ")).on_hover_text(url);
+    let b = ui.button(tr("🔗 Product page")).on_hover_text(url);
     if b.clicked() {
         ui.ctx().open_url(egui::OpenUrl::new_tab(url));
     }
     b.context_menu(|ui| {
-        if ui.button(tr("リンクを写す")).clicked() {
+        if ui.button(tr("Copy link")).clicked() {
             ui.ctx().copy_text(url.to_string());
             ui.close_menu();
         }
@@ -280,7 +280,7 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
         });
     if let Some(t) = r.raw["tags"].as_array().filter(|a| !a.is_empty()) {
         let t: Vec<&str> = t.iter().filter_map(Value::as_str).collect();
-        ui.label(trf("タグ {}", &[&t.join(", ")]));
+        ui.label(trf("Tags {}", &[&t.join(", ")]));
     }
     // 枠付きの品: 置くと枠が機構部品として付く
     if let Some(f) = r.raw.get("frame").filter(|f| f.is_object()) {
@@ -294,7 +294,7 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
             })
             .filter(|x| x.is_finite());
         ui.label(trf(
-            "枠付き: 枠の長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）",
+            "Mounted: mount length {} mm, outer diameter {} mm, smallest bore {} mm (added as a mechanical part when placed)",
             &[
                 &num(&f["length"]),
                 &num(&f["outer_diameter"]),
@@ -303,11 +303,11 @@ fn spec_table(ui: &mut Ui, r: &LensRow) {
         ));
     }
     if !r.spec_source.is_empty() || !r.checked.is_empty() {
-        ui.weak(trf("出典 {}（{}）", &[&r.spec_source, &r.checked]));
+        ui.weak(trf("Source {} ({})", &[&r.spec_source, &r.checked]));
     }
     if !r.url.is_empty() {
         ui.add(
-            egui::Hyperlink::from_label_and_url(tr("製品ページ"), r.url.as_str())
+            egui::Hyperlink::from_label_and_url(tr("Product page"), r.url.as_str())
                 .open_in_new_tab(true),
         );
     }
@@ -422,13 +422,13 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
             .find(|(c, _)| *c == k)
             .map_or(k.to_string(), |(_, n)| tr(n).to_string())
     };
-    let mech_all = tr("機構部品（すべて）");
-    let optics_all = tr("光学素子（すべて）");
+    let mech_all = tr("Mechanics (all)");
+    let optics_all = tr("Optics (all)");
     let selected = match (&q.category, q.kind_group) {
         (Some(c), _) => name(c),
         (None, Some(true)) => mech_all.to_string(),
         (None, Some(false)) => optics_all.to_string(),
-        (None, None) => tr("すべて").to_string(),
+        (None, None) => tr("All").to_string(),
     };
     let has_mech = kinds.has_mech;
     egui::ComboBox::from_id_salt("category")
@@ -442,7 +442,7 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
                     q.kind_group = if cat.is_some() { None } else { group };
                 }
             };
-            pick(ui, None, None, tr("すべて").to_string());
+            pick(ui, None, None, tr("All").to_string());
             if has_mech {
                 pick(ui, None, Some(false), optics_all.to_string());
                 pick(ui, None, Some(true), mech_all.to_string());
@@ -456,9 +456,9 @@ fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
                 ui.separator();
                 if has_mech {
                     ui.weak(if mech {
-                        tr("機構部品")
+                        tr("Mechanical parts")
                     } else {
-                        tr("光学素子")
+                        tr("Optics")
                     });
                 }
                 for &k in ks {
@@ -482,37 +482,37 @@ fn row_detail(r: &LensRow) -> String {
         let od = fmt_num(m["outer_diameter"].as_f64().unwrap_or(0.0));
         let mut t = if m["outline"] == "square" {
             trf(
-                "機構部品: 長さ {} mm、角（一辺 {} mm）",
+                "Mechanical part: length {} mm, square (side {} mm)",
                 &[&fmt_num(r.thickness), &od],
             )
         } else {
             trf(
-                "機構部品: 長さ {} mm、丸（外径 {} mm）",
+                "Mechanical part: length {} mm, round (outer diameter {} mm)",
                 &[&fmt_num(r.thickness), &od],
             )
         };
         if let Some(h) = hold_diameter(r) {
-            t.push_str(&trf("、保持径 {} mm", &[&fmt_num(h)]));
+            t.push_str(&trf(", holding diameter {} mm", &[&fmt_num(h)]));
         }
         return t;
     }
     if let Some((radius, _)) = r.mirror {
         let mut t = if radius == 0.0 {
-            trf("平面鏡: 径 {} mm", &[&fmt_num(r.diameter)])
+            trf("Flat mirror: dia. {} mm", &[&fmt_num(r.diameter)])
         } else {
             trf(
-                "鏡: R = {} mm、f = {} mm、径 {} mm",
+                "Mirror: R = {} mm, f = {} mm, diameter {} mm",
                 &[&fmt_num(radius), &fmt_num(r.efl), &fmt_num(r.diameter)],
             )
         };
         if !r.coat.is_empty() {
             t.push_str("  ");
-            t.push_str(&trf("膜 {}", &[&r.coat]));
+            t.push_str(&trf("coating {}", &[&r.coat]));
         }
         return t;
     }
     trf(
-        "f = {} mm、径 {} mm、厚さ {} mm、{} 枚、ガラス {}",
+        "f = {} mm, diameter {} mm, thickness {} mm, {} element(s), glass {}",
         &[
             &fmt_num(r.efl),
             &fmt_num(r.diameter),
@@ -675,13 +675,13 @@ impl LensCol {
 
     fn label(self) -> &'static str {
         match self {
-            LensCol::Vendor => tr("メーカー"),
-            LensCol::Part => tr("型番"),
-            LensCol::Efl => tr("焦点距離"),
-            LensCol::Diameter => tr("径"),
-            LensCol::Thickness => tr("厚さ"),
-            LensCol::Glass => tr("ガラス"),
-            LensCol::Spec => tr("仕様"),
+            LensCol::Vendor => tr("Vendor"),
+            LensCol::Part => tr("Part"),
+            LensCol::Efl => tr("Focal length"),
+            LensCol::Diameter => tr("Dia."),
+            LensCol::Thickness => tr("Thickness"),
+            LensCol::Glass => tr("Glass"),
+            LensCol::Spec => tr("Specs"),
         }
     }
 
@@ -836,8 +836,8 @@ fn stale_id(id: &str, ids: &[String]) -> bool {
 
 /// 組合せの機構部品: 置く要素・面・ずれ・保持する要素。部品はカタログの機構部品の行から足す
 fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
-    ui.label(RichText::new(tr("機構部品")).strong()).on_hover_text(tr(
-        "チューブ・ケージ板など。カタログの機構部品の行を足すと、選んでいる要素に置きます。ケラレは解析の「機構のケラレ」で見ます",
+    ui.label(RichText::new(tr("Mechanical parts")).strong()).on_hover_text(tr(
+        "Tubes, cage plates and so on. Adding a mechanical part row from the catalog places it at the selected element. Check vignetting with the \"Mechanical vignetting\" analysis",
     ));
     let mut remove = None;
     let names: Vec<String> = ms.iter().map(|m| m.name.clone()).collect();
@@ -848,7 +848,7 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
             for (k, m) in ms.iter_mut().enumerate() {
                 ui.add(egui::TextEdit::singleline(&mut m.name).desired_width(90.0))
                     .on_hover_text(&m.item);
-                let none = tr("（面 1）").to_string();
+                let none = tr("(surface 1)").to_string();
                 // 消した・名前の変わった要素は ⚠ を付けて選び直してもらう
                 let show = |id: &str| {
                     if stale_id(id, ids) {
@@ -857,9 +857,9 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                         id.to_string()
                     }
                 };
-                let gone = tr("要素が無い（消したか名前が変わった）。選び直してください");
+                let gone = tr("The element is gone (removed or renamed). Choose it again");
                 // 置く所: 要素か、前の機構部品の後ろ（つなぐ）
-                let after_text = |n: &str| trf("{} の後ろにつなぐ", &[&n]);
+                let after_text = |n: &str| trf("Connect after {}", &[&n]);
                 let prev = &names[..k];
                 let stale_after = !m.after.is_empty() && !prev.contains(&m.after);
                 egui::ComboBox::from_id_salt(("mech-at", k))
@@ -897,32 +897,32 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                     .on_hover_text(if stale_id(&m.at, ids) || stale_after {
                         gone
                     } else if !m.after.is_empty() {
-                        tr("前の部品の後ろの端につなぎます。両方の端にねじがあれば、合うか確かめ、オスのねじの分だけ重ねます")
+                        tr("Connects to the back end of the earlier part. If both ends have threads, checks that they mate and overlaps by the male thread length")
                     } else {
-                        tr("置く要素")
+                        tr("Element to place at")
                     });
                 ui.horizontal(|ui| {
-                    ui.label(tr("面"));
+                    ui.label(tr("Surface"));
                     ui.add(egui::DragValue::new(&mut m.face).range(0..=99))
-                        .on_hover_text(tr("要素の何番目の面に置くか（0 始まり）"));
+                        .on_hover_text(tr("Which surface of the element to place at (0-based)"));
                     ui.label("z");
                     ui.add(
                         egui::DragValue::new(&mut m.offset[2])
                             .speed(0.1)
                             .suffix(" mm"),
                     )
-                    .on_hover_text(tr("置いた面から光の進む向きへのずれ"));
+                    .on_hover_text(tr("Offset from the placement surface along the light direction"));
                 });
                 let held = m.holds.first().cloned().unwrap_or_default();
                 let mut sel = held.clone();
                 egui::ComboBox::from_id_salt(("mech-holds", k))
                     .selected_text(if sel.is_empty() {
-                        tr("保持なし").to_string()
+                        tr("Holds nothing").to_string()
                     } else {
                         show(&sel)
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut sel, String::new(), tr("保持なし"));
+                        ui.selectable_value(&mut sel, String::new(), tr("Holds nothing"));
                         for id in ids {
                             ui.selectable_value(&mut sel, id.clone(), id);
                         }
@@ -931,7 +931,7 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                     .on_hover_text(if stale_id(&held, ids) {
                         gone
                     } else {
-                        tr("部品が保持する要素（はみ出し・保持径を確かめる）")
+                        tr("Elements the part holds (checks protrusion and hold diameter)")
                     });
                 if sel != held {
                     m.holds = if sel.is_empty() {
@@ -941,12 +941,12 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
                     };
                 }
                 ui.vertical(|ui| {
-                    ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("座に合わせる")))
-                        .on_hover_text(tr("部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）"));
-                    ui.checkbox(&mut m.reversed, tr("裏返す"))
-                        .on_hover_text(tr("部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）"));
+                    ui.add_enabled(!m.holds.is_empty() && m.after.is_empty(), egui::Checkbox::new(&mut m.seat, tr("Seat on element")))
+                        .on_hover_text(tr("Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)"));
+                    ui.checkbox(&mut m.reversed, tr("Reverse"))
+                        .on_hover_text(tr("Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)"));
                 });
-                if ui.button("✖").on_hover_text(tr("外す")).clicked() {
+                if ui.button("✖").on_hover_text(tr("Remove")).clicked() {
                     remove = Some(k);
                 }
                 ui.end_row();
@@ -961,14 +961,14 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
 fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64), speed: f64) {
     ui.label(label);
     let mut on = r.min.is_some();
-    if ui.checkbox(&mut on, tr("下限")).changed() {
+    if ui.checkbox(&mut on, tr("Min")).changed() {
         r.min = on.then_some(default.0);
     }
     if let Some(m) = r.min.as_mut() {
         ui.add(egui::DragValue::new(m).speed(speed));
     }
     let mut on = r.max.is_some();
-    if ui.checkbox(&mut on, tr("上限")).changed() {
+    if ui.checkbox(&mut on, tr("Max")).changed() {
         r.max = on.then_some(default.1);
     }
     if let Some(m) = r.max.as_mut() {
@@ -995,13 +995,13 @@ fn lens_cell(ui: &mut Ui, c: LensCol, r: &LensRow) {
             } else if r.is_incomplete() {
                 ui.colored_label(
                     ui.visuals().warn_fg_color,
-                    trf("⚠ 未完（{}）", &[&r.missing_text()]),
+                    trf("⚠ Incomplete ({})", &[&r.missing_text()]),
                 )
-                .on_hover_text(tr("ダブルクリックで品ページから補います"));
+                .on_hover_text(tr("Double-click to complete it from the product page"));
             } else if r.kind == RowKind::Splitter {
                 text(ui, &format!("BS {}", r.glasses.join(" / ")));
             } else if r.mirror.is_some() {
-                ui.label(tr("鏡"));
+                ui.label(tr("Mirror"));
             } else {
                 let k = CATEGORIES
                     .iter()
@@ -1189,27 +1189,27 @@ impl Browser {
                 &mut self.tab,
                 Tab::Lenses,
                 if self.lenses_pending {
-                    tr("カタログレンズ（読み込み中…）").to_string()
+                    tr("Catalog lenses (loading…)").to_string()
                 } else {
-                    trf("カタログレンズ（{}）", &[&self.lenses.len()])
+                    trf("Catalog lenses ({})", &[&self.lenses.len()])
                 },
             );
             ui.selectable_value(
                 &mut self.tab,
                 Tab::Glasses,
                 if self.glasses_pending {
-                    tr("ガラス（読み込み中…）").to_string()
+                    tr("Glasses (loading…)").to_string()
                 } else {
-                    trf("ガラス（{}）", &[&self.glasses.len()])
+                    trf("Glasses ({})", &[&self.glasses.len()])
                 },
             );
             ui.separator();
-            if ui.button(tr("⟳ 読み直す")).clicked() {
+            if ui.button(tr("⟳ Reload")).clicked() {
                 act = Some(Action::Refresh);
             }
             if ui
                 .button(trf(
-                    "フォルダ…（ガラス {}・レンズ {}）",
+                    "Folders… (glass {}, lens {})",
                     &[&n_glass_dirs, &n_lens_dirs],
                 ))
                 .clicked()
@@ -1224,11 +1224,11 @@ impl Browser {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label(tr(
-                            "カタログレンズを読み込んでいます（数万枚あると数十秒かかります）",
+                            "Loading catalog lenses (tens of thousands of lenses take tens of seconds)",
                         ));
                     });
                 } else if n_lens_dirs == 0 && self.lenses.is_empty() {
-                    ui.label(tr("レンズカタログのフォルダ（.zmx を入れたフォルダ。メーカーはフォルダの名前、型番はファイル名）を「フォルダ…」で足してください。"));
+                    ui.label(tr("Add lens catalog folders (folders of .zmx files; the folder name is the vendor, the file name the part number) with \"Folders…\"."));
                 }
                 if let Some(a) = self.lens_ui(ui, doc) {
                     act = Some(a);
@@ -1238,10 +1238,10 @@ impl Browser {
                 if self.glasses_pending {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(tr("ガラスカタログを読み込んでいます"));
+                        ui.label(tr("Loading glass catalogs"));
                     });
                 } else if n_glass_dirs == 0 && self.glasses.is_empty() {
-                    ui.label(tr("ガラスカタログ（.AGF）のフォルダを「フォルダ…」で足してください（環境変数 LENSBENCH_GLASSCAT も使います）。"));
+                    ui.label(tr("Add glass catalog (.AGF) folders with \"Folders…\" (LENSBENCH_GLASSCAT is also used)."));
                 }
                 self.glass_ui(ui);
             }
@@ -1286,50 +1286,50 @@ impl Browser {
         let q = &mut self.lens_q;
         // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("検索"));
+            ui.label(tr("Search"));
             ui.add(
                 egui::TextEdit::singleline(&mut q.text)
-                    .hint_text(tr("型番・メーカー・ガラス"))
+                    .hint_text(tr("Part, vendor, glass"))
                     .desired_width(160.0),
             );
             egui::ComboBox::from_id_salt("vendor")
                 .selected_text(if q.vendor.is_empty() {
-                    tr("すべてのメーカー")
+                    tr("All vendors")
                 } else {
                     &q.vendor
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut q.vendor, String::new(), tr("すべてのメーカー"));
+                    ui.selectable_value(&mut q.vendor, String::new(), tr("All vendors"));
                     for v in vendors.iter() {
                         ui.selectable_value(&mut q.vendor, v.clone(), v);
                     }
                 });
-            ui.label(tr("種類"));
+            ui.label(tr("Type"));
             kind_combo(ui, q, &kinds);
             ui.separator();
-            ui.selectable_value(&mut q.sign, Sign::Any, tr("正負とも"));
-            ui.selectable_value(&mut q.sign, Sign::Positive, tr("正"));
-            ui.selectable_value(&mut q.sign, Sign::Negative, tr("負"));
+            ui.selectable_value(&mut q.sign, Sign::Any, tr("Both signs"));
+            ui.selectable_value(&mut q.sign, Sign::Positive, tr("Positive"));
+            ui.selectable_value(&mut q.sign, Sign::Negative, tr("Negative"));
             ui.separator();
-            ui.label(tr("枚数"));
-            ui.selectable_value(&mut q.pieces, 0, tr("すべて"));
+            ui.label(tr("Lens count"));
+            ui.selectable_value(&mut q.pieces, 0, tr("All"));
             ui.selectable_value(&mut q.pieces, 1, "1");
             ui.selectable_value(&mut q.pieces, 2, "2");
             ui.selectable_value(&mut q.pieces, 3, "3+");
         });
         ui.horizontal_wrapped(|ui| {
-            range_ui(ui, tr("焦点距離 [mm]"), &mut q.efl, (10.0, 100.0), 1.0);
+            range_ui(ui, tr("Focal length [mm]"), &mut q.efl, (10.0, 100.0), 1.0);
             ui.separator();
-            range_ui(ui, tr("径 [mm]"), &mut q.diameter, (5.0, 25.4), 0.5);
+            range_ui(ui, tr("Diameter [mm]"), &mut q.diameter, (5.0, 25.4), 0.5);
             ui.separator();
-            ui.label(tr("仕様"));
+            ui.label(tr("Specs"));
             ui.add(
                 egui::TextEdit::singleline(&mut q.spec)
-                    .hint_text(tr("例 wavelength_nm=633"))
+                    .hint_text(tr("e.g. wavelength_nm=633"))
                     .desired_width(160.0),
             )
             .on_hover_text(tr(
-                "仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000",
+                "Spec conditions (space separated, all must hold): name (present), name=value (numbers equal, range specs contain, strings contain), name=a..b, name>=value, <=, >, <. efl, diameter and thickness also compare the list values. Example: wavelength_nm=633 extinction_ratio>=1000",
             ));
             if let Err(e) = parse_spec_filters(&q.spec) {
                 ui.colored_label(theme::error(ui.visuals()), lensbench_core::i18n::tr(&e));
@@ -1337,12 +1337,12 @@ impl Browser {
             // 玉と機構部品の対応での絞り込み（「入る機構部品」「入る素子」から）
             if let Some(f) = &q.fit {
                 let text = match f.mode {
-                    FitMode::MechFor => trf("{}（径 {} mm）が入る機構部品", &[&f.label, &fmt_num(f.d)]),
-                    FitMode::OpticsFor => trf("{}（保持径 {} mm）に入る素子", &[&f.label, &fmt_num(f.d)]),
+                    FitMode::MechFor => trf("Mechanics that hold {} (diameter {} mm)", &[&f.label, &fmt_num(f.d)]),
+                    FitMode::OpticsFor => trf("Optics that fit {} (holding diameter {} mm)", &[&f.label, &fmt_num(f.d)]),
                 };
                 if ui
                     .button(format!("{text}  ✖"))
-                    .on_hover_text(tr("この絞り込みを外します"))
+                    .on_hover_text(tr("Remove this filter"))
                     .clicked()
                 {
                     q.fit = None;
@@ -1358,9 +1358,9 @@ impl Browser {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.set_min_height(24.0);
-                    ui.label(trf("{} / {} 枚", &[&idx.len(), &self.lenses.len()]));
+                    ui.label(trf("{} / {} lenses", &[&idx.len(), &self.lenses.len()]));
                     let hide = &mut self.lens_hide;
-                    ui.menu_button(tr("列…"), |ui| {
+                    ui.menu_button(tr("Columns…"), |ui| {
                         for c in LensCol::ALL {
                             let mut on = !hide.iter().any(|h| h == c.key());
                             let resp = ui.add_enabled(
@@ -1376,10 +1376,12 @@ impl Browser {
                         }
                     })
                     .response
-                    .on_hover_text(tr("一覧に出す列を選びます"));
+                    .on_hover_text(tr("Choose the columns shown in the list"));
                     ui.separator();
                     let Some(r) = &picked else {
-                        ui.weak(tr("行をクリックで選び、ダブルクリックで組合せに足します"));
+                        ui.weak(tr(
+                            "Click a row to select it, double-click to add it to the combination",
+                        ));
                         return;
                     };
                     ui.label(RichText::new(format!("{} {}", r.vendor, r.part)).strong());
@@ -1397,24 +1399,24 @@ impl Browser {
                     } else if r.is_incomplete() {
                         ui.colored_label(
                             ui.visuals().warn_fg_color,
-                            trf("未完の品: {} が無いので置けません", &[&r.missing_text()]),
+                            trf("Incomplete part: cannot be placed without {}", &[&r.missing_text()]),
                         );
                     }
                     if r.is_incomplete() {
                         if ui
-                            .button(tr("🌐 品ページから補う…"))
-                            .on_hover_text(tr("品ページを開き、仕様表か STEP から足りない値を入れます（ダブルクリックでも）"))
+                            .button(tr("🌐 Complete from product page…"))
+                            .on_hover_text(tr("Opens the product page and fills the missing values from the spec table or STEP (also by double-click)"))
                             .clicked()
                         {
                             self.add_pick(doc, r);
                         }
-                    } else if ui.button(tr("➕ 組合せに足す")).clicked() {
+                    } else if ui.button(tr("➕ Add to combination")).clicked() {
                         self.add_pick(doc, r);
                     }
                     self.fit_ui(ui, doc, r);
                     let specs = r.specs();
                     if !specs.is_empty() || !r.description.is_empty() {
-                        ui.menu_button(tr("仕様…"), |ui| spec_table(ui, r));
+                        ui.menu_button(tr("Specs…"), |ui| spec_table(ui, r));
                     }
                     link_button(ui, &r.url);
                     self.cad.poll();
@@ -1516,7 +1518,9 @@ impl Browser {
         // 選んでいないときも同じ高さを取る（1 回目のクリックで表が下へずれてダブルクリックが外れない、GUX-09）
         let Some(i) = self.lens_sel else {
             ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
-                ui.centered_and_justified(|ui| ui.weak(tr("行を選ぶと断面が出ます")));
+                ui.centered_and_justified(|ui| {
+                    ui.weak(tr("Select a row to see its cross-section"))
+                });
             });
             return;
         };
@@ -1531,7 +1535,7 @@ impl Browser {
             }
             _ => {
                 ui.allocate_ui(egui::vec2(ui.available_width(), h), |ui| {
-                    ui.centered_and_justified(|ui| ui.weak(tr("断面を作っています…")));
+                    ui.centered_and_justified(|ui| ui.weak(tr("Building the cross-section…")));
                 });
             }
         }
@@ -1543,9 +1547,9 @@ impl Browser {
             let Some(h) = hold_diameter(r) else { return };
             let n = self.lens_fit(self.lens_sel.unwrap_or(usize::MAX), r).len();
             if ui
-                .add_enabled(n > 0, egui::Button::new(trf("入る素子（{}）で絞る", &[&n])))
+                .add_enabled(n > 0, egui::Button::new(trf("Filter fitting optics ({})", &[&n])))
                 .on_hover_text(trf(
-                    "保持径 {} mm に入る径（{} mm 細いものまで）の玉・鏡などだけを一覧に出します",
+                    "Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)",
                     &[
                         &fmt_num(h),
                         &fmt_num(lensbench_project::catalog_spec::FIT_TOL),
@@ -1572,17 +1576,17 @@ impl Browser {
             .filter_map(|&i| self.lenses.get(i))
             .collect();
         if fit.is_empty() {
-            ui.weak(tr("入る機構部品なし")).on_hover_text(tr(
-                "カタログの機構部品に、この径が入る保持径のものがありません",
+            ui.weak(tr("No fitting mechanics")).on_hover_text(tr(
+                "No catalog mechanics has a holding diameter this item fits",
             ));
             return;
         }
         let mut add = None;
         let mut filter = false;
-        ui.menu_button(trf("入る機構部品（{}）…", &[&fit.len()]), |ui| {
+        ui.menu_button(trf("Fitting mechanical parts ({})…", &[&fit.len()]), |ui| {
             if ui
-                .button(tr("🔍 一覧でこれだけ見る"))
-                .on_hover_text(tr("一覧をこの品が入る機構部品だけに絞ります（絞り込みは欄の ✖ で外す）"))
+                .button(tr("🔍 Show only these in the list"))
+                .on_hover_text(tr("Show only the mechanics this item fits (remove the filter with ✖ next to the fields)"))
                 .clicked()
             {
                 filter = true;
@@ -1603,7 +1607,7 @@ impl Browser {
             });
         })
         .response
-        .on_hover_text(tr("この品の径が入るチューブ・マウント・ケージ板。選ぶと組合せの機構部品に足します（組合せにこの品があれば、それを保持して座に合わせます）"));
+        .on_hover_text(tr("Tubes, mounts and cage plates that this item's diameter fits. Picking one adds it to the combination's mechanics (if this item is in the combination, it holds it and seats it)"));
         if filter {
             self.lens_q.fit = Some(FitFilter {
                 mode: FitMode::MechFor,
@@ -1639,17 +1643,17 @@ impl Browser {
     fn combo_ui(&mut self, ui: &mut Ui, doc: &mut ComboDoc) -> Option<Action> {
         let mut act = None;
         let c = &mut doc.combo;
-        ui.heading(tr("組合せ"));
-        ui.label(tr("一覧の行をダブルクリック（または「組合せに足す」）で、レイアウト図で選んでいる要素の直後（無ければ後ろ）に足します。一覧は光の進む順（字下げは BS の分岐の先）。"));
+        ui.heading(tr("Combination"));
+        ui.label(tr("Double-click a row in the list (or \"Add to combination\") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch)."));
         ui.horizontal(|ui| {
-            ui.label(tr("名前"));
+            ui.label(tr("Name"));
             ui.text_edit_singleline(&mut c.name);
         });
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button(tr("⚙ 系の設定"))
+                .button(tr("⚙ System settings"))
                 .on_hover_text(tr(
-                    "開口・視野・波長と重み・エイミング・物体距離・絞りの位置など",
+                    "Aperture, fields, wavelengths and weights, ray aiming, object distance, stop position, and more",
                 ))
                 .clicked()
             {
@@ -1688,7 +1692,7 @@ impl Browser {
                             ui.label(if p.is_branched() {
                                 // 分岐の先は組合せの図・要素の設定で
                                 trf(
-                                    "{}. {}（分岐）",
+                                    "{}. {} (branched)",
                                     &[&format!("{indent}{}", k + 1), &p.label()],
                                 )
                             } else {
@@ -1704,18 +1708,18 @@ impl Browser {
                             {
                                 ui.add_enabled(
                                     !p.locked,
-                                    egui::Checkbox::new(&mut p.reversed, tr("反転")),
+                                    egui::Checkbox::new(&mut p.reversed, tr("Reverse")),
                                 )
-                                .on_hover_text(tr("レンズを裏返して置く"));
+                                .on_hover_text(tr("Place the lens reversed"));
                             } else {
                                 ui.label("");
                             }
                             ui.horizontal(|ui| {
                                 if air_gap {
                                     ui.label(if k + 1 == n {
-                                        tr("像面まで")
+                                        tr("To image")
                                     } else {
-                                        tr("後の空気")
+                                        tr("Air after")
                                     });
                                     let fixed = p.fixed();
                                     let air = p.air_mut(st);
@@ -1737,7 +1741,7 @@ impl Browser {
                                 }
                                 if ui
                                     .button("✖")
-                                    .on_hover_text(tr("外す（Ctrl+Z で戻す）"))
+                                    .on_hover_text(tr("Remove (Ctrl+Z to undo)"))
                                     .clicked()
                                 {
                                     op = Some((k, 0));
@@ -1763,16 +1767,18 @@ impl Browser {
             if ui
                 .add_enabled(
                     ok,
-                    egui::Button::new(RichText::new(tr("▶ この組合せで系を作る")).strong()),
+                    egui::Button::new(
+                        RichText::new(tr("▶ Build a system from this combination")).strong(),
+                    ),
                 )
-                .on_hover_text(tr("プロジェクトファイル（.json）に書いて読み込みます"))
+                .on_hover_text(tr("Writes a project file (.json) and loads it"))
                 .clicked()
             {
                 act = Some(Action::Build(c.project()));
             }
             if ui
-                .add_enabled(!c.picks.is_empty(), egui::Button::new(tr("空にする")))
-                .on_hover_text(tr("新規（Ctrl+N）と同じ。Ctrl+Z で戻す"))
+                .add_enabled(!c.picks.is_empty(), egui::Button::new(tr("Clear")))
+                .on_hover_text(tr("Same as New (Ctrl+N). Ctrl+Z to undo"))
                 .clicked()
             {
                 act = Some(Action::New);
@@ -1785,20 +1791,20 @@ impl Browser {
         let cats = self.glass_cats();
         let q = &mut self.glass_q;
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("検索"));
+            ui.label(tr("Search"));
             ui.add(
                 egui::TextEdit::singleline(&mut q.text)
-                    .hint_text(tr("ガラス名"))
+                    .hint_text(tr("Glass name"))
                     .desired_width(140.0),
             );
             egui::ComboBox::from_id_salt("glass_cat")
                 .selected_text(if q.catalog.is_empty() {
-                    tr("すべてのカタログ")
+                    tr("All catalogs")
                 } else {
                     &q.catalog
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut q.catalog, String::new(), tr("すべてのカタログ"));
+                    ui.selectable_value(&mut q.catalog, String::new(), tr("All catalogs"));
                     for v in cats.iter() {
                         ui.selectable_value(&mut q.catalog, v.clone(), v);
                     }
@@ -1817,11 +1823,11 @@ impl Browser {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.set_min_height(24.0);
-                    ui.label(trf("{} / {} 種", &[&idx.len(), &self.glasses.len()]));
+                    ui.label(trf("{} / {} glasses", &[&idx.len(), &self.glasses.len()]));
                     ui.separator();
                     let Some(g) = picked else {
                         ui.weak(tr(
-                            "nd・νd はカタログ温度の分散式から。表の行か図の点をクリックで選びます",
+                            "nd and νd come from the dispersion formula at the catalog temperature. Click a row or a point on the map to select",
                         ));
                         return;
                     };
@@ -1831,10 +1837,10 @@ impl Browser {
                         fmt_num((g.nd * 1e5).round() / 1e5),
                         fmt_num((g.vd * 1e2).round() / 1e2),
                         g.range
-                            .map(|r| trf("、波長 {}–{} µm", &[&fmt_num(r[0]), &fmt_num(r[1])]))
+                            .map(|r| trf(", wavelength {}–{} µm", &[&fmt_num(r[0]), &fmt_num(r[1])]))
                             .unwrap_or_default()
                     ));
-                    if ui.button(tr("名前をコピー")).clicked() {
+                    if ui.button(tr("Copy name")).clicked() {
                         ui.ctx().copy_text(g.name.clone());
                     }
                 });
@@ -1885,7 +1891,13 @@ impl Browser {
             .column(Column::initial(60.0))
             .column(Column::remainder())
             .header(22.0, |mut h| {
-                for t in [tr("ガラス"), tr("カタログ"), "nd", "νd", tr("波長 [µm]")] {
+                for t in [
+                    tr("Glass"),
+                    tr("Catalog"),
+                    "nd",
+                    "νd",
+                    tr("Wavelengths [µm]"),
+                ] {
                     h.col(|ui| {
                         ui.strong(t);
                     });
@@ -1983,17 +1995,17 @@ fn splitter_detail(r: &LensRow) -> String {
     let sp = r.splitter.clone().unwrap_or_default();
     let form = sp["form"].as_str().unwrap_or("cube");
     let size = if form == "cube" {
-        trf("キューブ 一辺 {} mm", &[&fmt_num(r.diameter)])
+        trf("cube, side {} mm", &[&fmt_num(r.diameter)])
     } else if form == "plate" {
         trf(
-            "平板 厚さ {} mm、径 {} mm",
+            "plate, thickness {} mm, dia. {} mm",
             &[&fmt_num(r.thickness), &fmt_num(r.diameter)],
         )
     } else {
-        tr("理想の面").to_string()
+        tr("ideal surface").to_string()
     };
     let split = if !r.coat.is_empty() {
-        trf("膜 {}", &[&r.coat])
+        trf("coating {}", &[&r.coat])
     } else if sp["pbs"].is_object() {
         "PBS".to_string()
     } else {
@@ -2001,12 +2013,12 @@ fn splitter_detail(r: &LensRow) -> String {
     };
     let mut v = vec![size, split];
     if !r.glasses.is_empty() {
-        v.push(trf("ガラス {}", &[&r.glasses.join(" / ")]));
+        v.push(trf("glass {}", &[&r.glasses.join(" / ")]));
     }
     if let Some(ar) = sp["ar"].as_str().filter(|a| !a.is_empty()) {
         v.push(trf("AR {}", &[&ar]));
     }
-    format!("BS: {}", v.join(tr("、")))
+    format!("BS: {}", v.join(tr(", ")))
 }
 
 /// ガラスマップの見えている範囲（νd は vd0 が左。左ほど大きい）
@@ -2217,7 +2229,7 @@ fn glass_map(
         painter.text(
             rect.left_top() + egui::vec2(16.0, -6.0),
             egui::Align2::LEFT_BOTTOM,
-            tr("ダブルクリックで全体表示"),
+            tr("Double-click for full view"),
             font,
             axis,
         );
@@ -2769,7 +2781,7 @@ mod tests {
         assert_eq!(bs.url, "https://example.com/lb/bs-127");
         assert_eq!(bs.category, "splitter");
         assert!(
-            bs.spec_summary().starts_with("50:50、400–700 nm"),
+            bs.spec_summary().starts_with("50:50, 400–700 nm"),
             "{}",
             bs.spec_summary()
         );

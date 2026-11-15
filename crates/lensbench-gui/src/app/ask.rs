@@ -63,11 +63,11 @@ impl Core {
             ui.label(&a.text);
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                let yes = ui.button(tr("はい"));
+                let yes = ui.button(tr("yes"));
                 if yes.clicked() || (!fresh && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
                     answer = Some(true);
                 }
-                if ui.button(tr("いいえ")).clicked() {
+                if ui.button(tr("no")).clicked() {
                     answer = Some(false);
                 }
             });

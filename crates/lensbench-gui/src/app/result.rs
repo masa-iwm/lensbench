@@ -69,7 +69,7 @@ impl Core {
                 egui::Rect::from_center_size(c, egui::vec2(28.0, 28.0)),
                 egui::Spinner::new().size(28.0),
             )
-            .on_hover_text(tr("計算しています…"));
+            .on_hover_text(tr("Computing…"));
         }
     }
 
@@ -77,12 +77,14 @@ impl Core {
     fn result_body(&mut self, ui: &mut Ui, id: u64, cfg: &mut AnaCfg) {
         let weak = theme::weak_text(ui.visuals());
         let view_row = |ui: &mut Ui, cfg: &mut AnaCfg| {
-            ui.selectable_value(&mut cfg.view, View::Figure, tr("図"))
-                .on_hover_text(tr("結果を図で見る（図の無い解析は表）"));
-            ui.selectable_value(&mut cfg.view, View::Table, tr("表"))
-                .on_hover_text(tr("結果を表と木で見る"));
+            ui.selectable_value(&mut cfg.view, View::Figure, tr("Figure"))
+                .on_hover_text(tr(
+                    "Show the result as a figure (a table if there is no figure)",
+                ));
+            ui.selectable_value(&mut cfg.view, View::Table, tr("Table"))
+                .on_hover_text(tr("Show the result as tables and a tree"));
             ui.selectable_value(&mut cfg.view, View::Json, "JSON")
-                .on_hover_text(tr("結果の JSON をそのまま見る（CLI の --json と同じ形）"));
+                .on_hover_text(tr("Show the raw result JSON (same as the CLI --json)"));
         };
         let Some(r) = self.results.get(&id) else {
             ui.horizontal(|ui| view_row(ui, cfg));
@@ -108,7 +110,11 @@ impl Core {
                     .color(weak),
             );
             if r.cmd != cfg.cmd {
-                ui.label(RichText::new(tr("（前の解析の結果）")).small().color(weak));
+                ui.label(
+                    RichText::new(tr("(result of the previous analysis)"))
+                        .small()
+                        .color(weak),
+                );
             }
             let fig_now = cfg.view == View::Figure && figures::has_figure(&r.cmd);
             match result_export_menu(ui, &r.cmd, v, fig_now) {
@@ -206,7 +212,7 @@ impl Core {
                                 s.truncate(cut);
                                 s.push('\n');
                                 s.push_str(&trf(
-                                    "…（長いので {} 字で切った。全文は「コピー」「保存」で）",
+                                    "… (truncated at {} characters; use Copy or Save for the full text)",
                                     &[&JSON_VIEW_MAX],
                                 ));
                             }

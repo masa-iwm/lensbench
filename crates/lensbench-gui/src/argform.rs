@@ -98,7 +98,7 @@ impl ArgSpec {
             doc_unit(&self.doc).unwrap_or_default()
         };
         match u.as_str() {
-            "レンズ単位" => tr("レンズ単位").to_string(),
+            "レンズ単位" => tr("lens units").to_string(),
             _ if !u.is_ascii() && !u.contains('µ') && !crate::i18n::is_ja() => String::new(),
             _ => u,
         }
@@ -121,7 +121,7 @@ impl ArgSpec {
         if t.is_empty() {
             return Ok(None);
         }
-        let bad = || trf("{}: 値 {} が読めない", &[&self.name, &t]);
+        let bad = || trf("{}: cannot read the value {}", &[&self.name, &t]);
         let num = |s: &str| -> Result<f64, String> {
             s.trim()
                 .parse::<f64>()
@@ -135,7 +135,7 @@ impl ArgSpec {
         }
         if let (Some(m), Some(x)) = (self.min, v.as_f64()) {
             if x < m {
-                return Err(trf("{} は {} 以上", &[&self.name, &m]));
+                return Err(trf("{} must be at least {}", &[&self.name, &m]));
             }
         }
         Ok(Some(v))
@@ -162,14 +162,14 @@ impl ArgSpec {
             "count" => {
                 let x = num(t)?;
                 if x < 0.0 || x.fract() != 0.0 {
-                    return Err(trf("{} は 0 以上の整数", &[&self.name]));
+                    return Err(trf("{} must be a non-negative integer", &[&self.name]));
                 }
                 json!(x as u64)
             }
             "int" => {
                 let x = num(t)?;
                 if x.fract() != 0.0 {
-                    return Err(trf("{} は整数", &[&self.name]));
+                    return Err(trf("{} must be an integer", &[&self.name]));
                 }
                 json!(x as i64)
             }
@@ -180,7 +180,7 @@ impl ArgSpec {
                 }
                 match self.len {
                     Some(n) if v.len() > n => {
-                        return Err(trf("{} は {} 個まで", &[&self.name, &n]))
+                        return Err(trf("{} takes at most {} values", &[&self.name, &n]))
                     }
                     // x・y 共通（設定の JSON は 2 個が要る）
                     Some(2) if v.len() == 1 => Value::Array(vec![num_json(v[0]); 2]),
@@ -214,79 +214,79 @@ fn doc_unit(doc: &str) -> Option<String> {
 /// 解析の引数の短い名前（日本語の鍵）。`cmd` ごとに違うものを先に
 fn analysis_label(cmd: &str, name: &str) -> Option<&'static str> {
     Some(match (cmd, name) {
-        ("mtf" | "mtf-focus" | "mtf-field" | "geo-mtf", "n") => "求積点の数",
-        ("wavefront" | "zernike", "n") => "格子の一辺",
-        ("interference", "n") => "瞳の格子の一辺",
-        ("pop", "n") => "入力の標本の数",
-        ("mtf-field", "points") => "視野の点の数",
-        ("rms", "points") => "横軸の点の数",
-        ("interference", "pupil") => "瞳の光線の格子",
-        ("rays", "pupil") => "瞳座標",
-        (_, "all_waves") => "全波長",
-        ("pop", "rays") => "瞳の光線の数",
-        ("rays", "rays") => "光線の本数",
-        ("interference", "center") => "範囲の中心",
-        ("pop", "center") => "出力の中心",
-        ("interference", "width") => "範囲の一辺",
-        ("mech-check", "grid") => "瞳の格子の一辺",
-        ("elements", "out") => "組み直した系の書き出し",
-        (_, "field") => "視野",
-        (_, "wave") => "波長",
-        (_, "freqs") => "周波数",
-        (_, "max_freq") => "周波数の上限",
-        (_, "freq_steps") => "周波数の分割数",
-        (_, "rings") => "リング数",
-        (_, "map") => "波面の格子も出す",
-        (_, "kind") => "種類",
-        (_, "terms") => "項数",
-        (_, "direct") => "直接追跡",
+        ("mtf" | "mtf-focus" | "mtf-field" | "geo-mtf", "n") => "Quadrature points",
+        ("wavefront" | "zernike", "n") => "Grid size",
+        ("interference", "n") => "Pupil grid",
+        ("pop", "n") => "Input samples",
+        ("mtf-field", "points") => "Field points",
+        ("rms", "points") => "Points",
+        ("interference", "pupil") => "Pupil ray grid",
+        ("rays", "pupil") => "Pupil coordinates",
+        (_, "all_waves") => "All wavelengths",
+        ("pop", "rays") => "Pupil rays",
+        ("rays", "rays") => "Rays",
+        ("interference", "center") => "Area center",
+        ("pop", "center") => "Output center",
+        ("interference", "width") => "Area width",
+        ("mech-check", "grid") => "Pupil grid",
+        ("elements", "out") => "Write rebuilt system",
+        (_, "field") => "Fields",
+        (_, "wave") => "Wavelengths",
+        (_, "freqs") => "Frequencies",
+        (_, "max_freq") => "Max frequency",
+        (_, "freq_steps") => "Frequency steps",
+        (_, "rings") => "Rings",
+        (_, "map") => "Include wavefront grid",
+        (_, "kind") => "Type",
+        (_, "terms") => "Terms",
+        (_, "direct") => "Direct trace",
         (_, "fft") => "FFT",
-        (_, "interp") => "補間",
-        (_, "each_wave") => "波長ごとも出す",
-        (_, "range") => "ずらしの範囲 ±",
-        ("mtf-focus", "points") => "ずらしの点の数",
-        (_, "axis") => "視野を振る向き",
-        (_, "vs") => "横軸",
-        (_, "reference") => "基準",
-        (_, "field_wave") => "視野を解析の波長で解く",
+        (_, "interp") => "Interpolated",
+        (_, "each_wave") => "Also per wavelength",
+        (_, "range") => "Defocus range ±",
+        ("mtf-focus", "points") => "Defocus steps",
+        (_, "axis") => "Field direction",
+        (_, "vs") => "X axis",
+        (_, "reference") => "Reference",
+        (_, "field_wave") => "Solve field at analysis wavelength",
         (_, "huygens") => "Huygens PSF",
-        (_, "pupil") => "瞳の格子の一辺",
-        (_, "image") => "像の格子の一辺",
-        (_, "delta") => "像の格子の間隔",
-        (_, "diff_limit") => "回折限界をかける",
-        (_, "beam1") => "光束 1（試料）",
-        (_, "beam2") => "光束 2（参照）",
-        (_, "mode") => "重ねる所",
-        (_, "scale") => "OPD の差の倍率",
-        (_, "xtilt") => "x の傾きの縞",
-        (_, "ytilt") => "y の傾きの縞",
-        (_, "npx") => "画素の数",
-        (_, "sample_power") => "試料の強度の倍率",
-        (_, "reference_power") => "参照の強度の倍率",
-        (_, "delay") => "参照の光路長",
-        (_, "polarized") => "偏光追跡で重ねる",
-        (_, "sample_input") => "試料の入射偏光",
-        (_, "reference_input") => "参照の入射偏光",
-        (_, "quantity") => "量",
-        (_, "out") => "書き出すファイル",
-        (_, "float") => "tif を float で",
-        (_, "grid") => "格子も出す",
-        (_, "surf") => "場を作る面",
-        (_, "dist") => "伝える距離",
-        (_, "to") => "伝える先の面",
-        (_, "method") => "方法",
-        (_, "half") => "入力の半幅",
-        (_, "no_aperture") => "開口を掛けない",
-        (_, "out_n") => "出力の標本の数",
-        (_, "out_half") => "出力の半幅",
-        (_, "fan") => "光線の並び",
-        (_, "surface") => "書く面",
-        (_, "first") => "最初の面",
-        (_, "last") => "最後の面",
-        (_, "coatings") => "膜のファイル",
-        (_, "out_dir") => "系を書くフォルダ",
-        (_, "reverse") => "反転する玉",
-        (_, "table") => "膜の実測表",
+        (_, "pupil") => "Pupil grid",
+        (_, "image") => "Image grid",
+        (_, "delta") => "Image grid spacing",
+        (_, "diff_limit") => "Apply diffraction limit",
+        (_, "beam1") => "Beam 1 (sample)",
+        (_, "beam2") => "Beam 2 (reference)",
+        (_, "mode") => "Where to overlap",
+        (_, "scale") => "OPD difference scale",
+        (_, "xtilt") => "x tilt fringes",
+        (_, "ytilt") => "y tilt fringes",
+        (_, "npx") => "Pixels",
+        (_, "sample_power") => "Sample power",
+        (_, "reference_power") => "Reference power",
+        (_, "delay") => "Reference delay",
+        (_, "polarized") => "Polarized overlap",
+        (_, "sample_input") => "Sample input polarization",
+        (_, "reference_input") => "Reference input polarization",
+        (_, "quantity") => "Quantity",
+        (_, "out") => "Output file",
+        (_, "float") => "Float tif",
+        (_, "grid") => "Include grid",
+        (_, "surf") => "Field surface",
+        (_, "dist") => "Distance",
+        (_, "to") => "To surface",
+        (_, "method") => "Method",
+        (_, "half") => "Input half width",
+        (_, "no_aperture") => "No aperture",
+        (_, "out_n") => "Output samples",
+        (_, "out_half") => "Output half width",
+        (_, "fan") => "Ray pattern",
+        (_, "surface") => "Output surfaces",
+        (_, "first") => "First surface",
+        (_, "last") => "Last surface",
+        (_, "coatings") => "Coating files",
+        (_, "out_dir") => "Output folder",
+        (_, "reverse") => "Elements to reverse",
+        (_, "table") => "Measured coating tables",
         _ => return None,
     })
 }
@@ -498,7 +498,7 @@ pub fn form(
                     let r = ui.label(label);
                     if s.required {
                         ui.label(RichText::new("*").color(ui.visuals().warn_fg_color))
-                            .on_hover_text(tr("省けない値"));
+                            .on_hover_text(tr("Required value"));
                     }
                     r.on_hover_ui(|ui| tip(ui, s));
                 });
@@ -524,9 +524,9 @@ pub fn form(
                             let def = s.default_text();
                             let shown = if t.trim().is_empty() {
                                 if def.is_empty() {
-                                    tr("（既定）").to_string()
+                                    tr("(default)").to_string()
                                 } else {
-                                    trf("{}（既定）", &[&def])
+                                    trf("{} (default)", &[&def])
                                 }
                             } else {
                                 t.clone()
@@ -534,7 +534,7 @@ pub fn form(
                             egui::ComboBox::from_id_salt(("argchoice", salt, &s.name))
                                 .selected_text(shown)
                                 .show_ui(ui, |ui| {
-                                    if ui.selectable_label(t.is_empty(), tr("（既定）")).clicked()
+                                    if ui.selectable_label(t.is_empty(), tr("(default)")).clicked()
                                     {
                                         t.clear();
                                         changed = true;
@@ -550,10 +550,10 @@ pub fn form(
                         _ => {
                             let hint = match (s.default_text(), s.ty.as_str()) {
                                 (d, _) if !d.is_empty() => d,
-                                (_, "nums") if s.required => tr("a, b, …（必須）").to_string(),
-                                (_, "nums") => tr("自動（a, b, …）").to_string(),
-                                _ if s.required => tr("必須").to_string(),
-                                _ => tr("自動").to_string(),
+                                (_, "nums") if s.required => tr("a, b, … (required)").to_string(),
+                                (_, "nums") => tr("Auto (a, b, …)").to_string(),
+                                _ if s.required => tr("required").to_string(),
+                                _ => tr("Auto").to_string(),
                             };
                             let w = if s.ty == "path" || s.ty == "str" || s.ty == "nums" {
                                 180.0
@@ -584,7 +584,7 @@ pub fn form(
                             }
                             let r = if num {
                                 r.on_hover_text(tr(
-                                    "↑↓ で増減（整数は 1、実数は書いた最後の桁の 1）",
+                                    "↑↓ steps the value (1 for integers, the last typed digit for decimals)",
                                 ))
                             } else {
                                 r
@@ -600,7 +600,7 @@ pub fn form(
                             if s.ty == "path" {
                                 let start = ui
                                     .small_button("…")
-                                    .on_hover_text(tr("ファイルを選ぶ"))
+                                    .on_hover_text(tr("Choose a file"))
                                     .clicked();
                                 // 欄ごとに区別する（ui.id() は兄弟の Ui で同じになる）
                                 let key = format!(
@@ -643,7 +643,7 @@ fn tip(ui: &mut Ui, s: &ArgSpec) {
     }
     let d = s.default_text();
     if !d.is_empty() {
-        ui.label(trf("既定: {}", &[&d]));
+        ui.label(trf("Default: {}", &[&d]));
     }
 }
 
@@ -652,7 +652,7 @@ fn reset_button(ui: &mut Ui, set: bool) -> bool {
         set,
         egui::Button::new(RichText::new("↺").small()).frame(false),
     )
-    .on_hover_text(tr("既定に戻す"))
+    .on_hover_text(tr("Reset to default"))
     .clicked()
 }
 
@@ -670,23 +670,23 @@ fn choice_group(
             .is_some_and(|t| t == "true" || t == "1")
     });
     let r = ui.label(if on.is_some() {
-        RichText::new(tr("方式")).strong()
+        RichText::new(tr("Method")).strong()
     } else {
-        RichText::new(tr("方式"))
+        RichText::new(tr("Method"))
     });
     r.on_hover_ui(|ui| {
-        ui.label(tr("どれか 1 つ（一緒には使えない）"));
+        ui.label(tr("Pick one (they can't be combined)"));
         for &k in g {
             ui.separator();
             tip(ui, specs[k]);
         }
     });
-    let shown = on.map_or_else(|| tr("自動（既定）").to_string(), |k| specs[k].title());
+    let shown = on.map_or_else(|| tr("Auto (default)").to_string(), |k| specs[k].title());
     egui::ComboBox::from_id_salt(("argexcl", salt, &specs[g[0]].name))
         .selected_text(shown)
         .show_ui(ui, |ui| {
             if ui
-                .selectable_label(on.is_none(), tr("自動（既定）"))
+                .selectable_label(on.is_none(), tr("Auto (default)"))
                 .clicked()
             {
                 for &k in g {

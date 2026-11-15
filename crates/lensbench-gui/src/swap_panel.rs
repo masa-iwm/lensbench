@@ -194,7 +194,7 @@ impl SwapPanel {
         if self.pre {
             p["prescreen"] = json!({ "rings": self.pre_rings, "keep": self.pre_keep });
         }
-        if let Some(e) = crate::widgets::parse_num(&self.efl, tr("焦点距離の目標"))? {
+        if let Some(e) = crate::widgets::parse_num(&self.efl, tr("Target focal length"))? {
             p["efl"] = json!(e);
         }
         let terms = terms_json(&self.terms)?;
@@ -230,7 +230,7 @@ impl SwapPanel {
     pub fn set_spec(&mut self, p: &Value) -> Result<(), String> {
         let o = p
             .as_object()
-            .ok_or_else(|| tr("差し替え探索の設定がオブジェクトでない").to_string())?;
+            .ok_or_else(|| tr("Swap search settings are not an object").to_string())?;
         let mut n = SwapPanel {
             top: self.top,
             ..Default::default()
@@ -296,7 +296,7 @@ impl SwapPanel {
                 "jac" => n.jac = v.as_str().unwrap_or("forward").into(),
                 // GUI では今の系の状態を使う
                 "state" => {}
-                k => return Err(trf("差し替え探索の設定のキー {}", &[&k])),
+                k => return Err(trf("Unknown key in swap search settings: {}", &[&k])),
             }
         }
         *self = n;
@@ -315,11 +315,11 @@ pub fn parse_starts(s: &str) -> Result<Vec<serde_json::Map<String, Value>>, Stri
         for kv in line.split(',').map(str::trim).filter(|x| !x.is_empty()) {
             let (k, v) = kv
                 .split_once('=')
-                .ok_or_else(|| trf("出発点 {} は 名前=値", &[&kv]))?;
+                .ok_or_else(|| trf("Start {} must be name=value", &[&kv]))?;
             let x: f64 = v
                 .trim()
                 .parse()
-                .map_err(|_| trf("出発点 {} の値が数でない", &[&kv]))?;
+                .map_err(|_| trf("The value of start {} is not a number", &[&kv]))?;
             o.insert(k.trim().to_string(), json!(x));
         }
         out.push(o);
@@ -367,11 +367,11 @@ pub fn combo_project(c: &Combo) -> (Value, Cands) {
             let id = format!("d{k}");
             b["id"] = json!(id);
             let desc = if k == 0 {
-                tr("絞り → 最初の要素").to_string()
+                tr("Stop → first element").to_string()
             } else if k == n {
-                trf("{} → 像面", &[&ids[k - 1]])
+                trf("{} → image", &[&ids[k - 1]])
             } else {
-                trf("{} の後", &[&ids[k - 1]])
+                trf("after {}", &[&ids[k - 1]])
             };
             cands.gaps.push((id, desc));
         }
@@ -421,7 +421,12 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(),
             .iter()
             .position(|x| x == b)
             .filter(|&k| k < n.picks.len())
-            .ok_or_else(|| trf("組合せに {} がない（組合せを変えた後は回し直して）", &[&b]))?;
+            .ok_or_else(|| {
+                trf(
+                    "{} is not in the combination (run again after changing the combination)",
+                    &[&b],
+                )
+            })?;
         let pk = &mut n.picks[k];
         pk.kind = ElemKind::Catalog;
         pk.vendor = l.vendor.clone();
@@ -439,7 +444,12 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(),
             .and_then(|s| s.strip_suffix(".t"))
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|&k| k <= n.picks.len() && x.is_finite())
-            .ok_or_else(|| trf("変数 {} は組合せに入れられない（間隔 dK.t だけ）", &[&name]))?;
+            .ok_or_else(|| {
+                trf(
+                    "Variable {} cannot be put into the combination (only gaps dK.t)",
+                    &[&name],
+                )
+            })?;
         if k == 0 {
             n.stop_gap = x;
         } else {
@@ -464,7 +474,7 @@ pub fn ui(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 if p.running {
-                    if ui.button(tr("止める")).clicked() {
+                    if ui.button(tr("Stop")).clicked() {
                         acts.push(Action::Stop);
                     }
                     ui.spinner();
@@ -472,9 +482,9 @@ pub fn ui(
                     let ok = p.slots.iter().any(|s| !s.block.trim().is_empty());
                     let run = ui.add_enabled(
                         ok,
-                        egui::Button::new(RichText::new(tr("探索する")).strong()),
+                        egui::Button::new(RichText::new(tr("Run search")).strong()),
                     );
-                    let count = ui.add_enabled(ok, egui::Button::new(tr("組の数を数える")));
+                    let count = ui.add_enabled(ok, egui::Button::new(tr("Count sets")));
                     for (r, f) in [
                         (run, Action::Run as fn(Value) -> Action),
                         (count, Action::Count),
@@ -491,13 +501,13 @@ pub fn ui(
                     }
                 }
                 ui.add_enabled_ui(!p.running, |ui| {
-                    if ui.button(tr("設定を保存…")).clicked() {
+                    if ui.button(tr("Save settings…")).clicked() {
                         match p.spec() {
                             Ok(v) => acts.push(Action::Save(v)),
                             Err(e) => p.error = Some(e),
                         }
                     }
-                    if ui.button(tr("設定を読む…")).clicked() {
+                    if ui.button(tr("Load settings…")).clicked() {
                         acts.push(Action::Load);
                     }
                 });
@@ -508,32 +518,29 @@ pub fn ui(
             if let Some((d, n)) = progress {
                 ui.add(
                     egui::ProgressBar::new(if n > 0 { d as f32 / n as f32 } else { 0.0 })
-                        .text(trf("組 {}/{}", &[&d, &n])),
+                        .text(trf("Set {}/{}", &[&d, &n])),
                 );
             } else if let Some(r) = p.result.clone() {
-                egui::CollapsingHeader::new(RichText::new(tr("結果")).strong())
+                egui::CollapsingHeader::new(RichText::new(tr("Result")).strong())
                     .id_salt("swap_result")
                     .default_open(true)
                     .show(ui, |ui| result_ui(ui, p, c, &r, &mut acts, weak));
             }
             ui.separator();
             ui.add_enabled_ui(!p.running, |ui| {
-                section(ui, "swap_slots_sec", tr("差し替える玉"), |ui| {
+                section(ui, "swap_slots_sec", tr("Lenses to swap"), |ui| {
                     slots_ui(ui, p, c, weak)
                 });
-                section(
-                    ui,
-                    "swap_vars_sec",
-                    tr("組ごとに最適化する間隔"),
-                    |ui| vars_ui(ui, p, c, weak),
-                );
-                section(ui, "swap_terms_sec", tr("評価関数に足す項"), |ui| {
+                section(ui, "swap_vars_sec", tr("Gaps optimized per set"), |ui| {
+                    vars_ui(ui, p, c, weak)
+                });
+                section(ui, "swap_terms_sec", tr("Extra merit terms"), |ui| {
                     terms_ui(ui, "swap", &mut p.terms, &mut p.new_term, weak);
                 });
-                section(ui, "swap_states_sec", tr("出発点・状態"), |ui| {
+                section(ui, "swap_states_sec", tr("Starts and states"), |ui| {
                     starts_states_ui(ui, p, c, weak)
                 });
-                section(ui, "swap_settings_sec", tr("設定"), |ui| {
+                section(ui, "swap_settings_sec", tr("Settings"), |ui| {
                     settings_ui(ui, p, weak)
                 });
             });
@@ -545,7 +552,7 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     if c.blocks.is_empty() {
         ui.label(
             RichText::new(tr(
-                "差し替えられる玉がありません（カタログの玉を組合せに入れるか、id のある玉のブロックを持つプロジェクトを開いて）。",
+                "No lens can be swapped (add catalog lenses to the combination, or open a project with lens blocks that have ids).",
             ))
             .small()
             .color(weak),
@@ -557,11 +564,11 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
         .num_columns(7)
         .show(ui, |ui| {
             for h in [
-                tr("玉"),
-                tr("メーカー"),
-                tr("焦点距離 [mm]"),
-                tr("径 [mm]"),
-                tr("裏返しも"),
+                tr("Lens"),
+                tr("Vendor"),
+                tr("Focal length [mm]"),
+                tr("Diameter [mm]"),
+                tr("Flip too"),
                 "",
             ] {
                 ui.label(RichText::new(h).small().color(weak));
@@ -582,7 +589,7 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
                             ui.selectable_value(&mut s.block, id.clone(), format!("{id}  {d}"));
                         }
                     });
-                small_edit(ui, &mut s.vendor, 60.0, tr("すべて"));
+                small_edit(ui, &mut s.vendor, 60.0, tr("All"));
                 ui.horizontal(|ui| {
                     small_edit(ui, &mut s.efl[0], 44.0, "−∞");
                     ui.label("–");
@@ -594,8 +601,8 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
                     small_edit(ui, &mut s.dia[1], 36.0, "∞");
                 });
                 ui.checkbox(&mut s.flip, "")
-                    .on_hover_text(tr("向きを両方試す（組の数が 2 倍）"));
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                    .on_hover_text(tr("Try both orientations (doubles the number of sets)"));
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -610,7 +617,7 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
         .filter(|b| !p.slots.iter().any(|s| s.block == b.0))
         .collect();
     if ui
-        .add_enabled(!free.is_empty(), egui::Button::new(tr("玉を足す")))
+        .add_enabled(!free.is_empty(), egui::Button::new(tr("Add lens")))
         .clicked()
     {
         p.slots.push(SlotRow {
@@ -620,7 +627,7 @@ fn slots_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     }
     ui.label(
         RichText::new(tr(
-            "候補はカタログの玉を焦点距離・径・メーカーで絞ったものです（空の欄は絞らない、焦点距離は負も可）。",
+            "Candidates are catalog lenses filtered by focal length, diameter and vendor (empty fields do not filter; focal length may be negative).",
         ))
         .small()
         .color(weak),
@@ -634,7 +641,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
         .striped(true)
         .num_columns(4)
         .show(ui, |ui| {
-            for h in [tr("名前"), tr("下限"), tr("上限"), ""] {
+            for h in [tr("Name"), tr("Min"), tr("Max"), ""] {
                 ui.label(RichText::new(h).small().color(weak));
             }
             ui.end_row();
@@ -652,7 +659,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
                 });
                 small_edit(ui, &mut v.lo, 50.0, "−∞");
                 small_edit(ui, &mut v.hi, 50.0, "∞");
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -662,8 +669,8 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
         p.vars.remove(i);
     }
     ui.horizontal(|ui| {
-        let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t・G2.shift"), &c.sys, set);
-        if (ui.button(tr("足す")).clicked() || enter) && !p.new_var.trim().is_empty() {
+        let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t, G2.shift"), &c.sys, set);
+        if (ui.button(tr("Add")).clicked() || enter) && !p.new_var.trim().is_empty() {
             p.vars.push(VarRow {
                 name: p.new_var.trim().into(),
                 lo: "0".into(),
@@ -671,7 +678,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
             });
             p.new_var.clear();
         }
-        ui.menu_button(tr("間隔から足す"), |ui| {
+        ui.menu_button(tr("Add from gaps"), |ui| {
             for (id, d) in &c.gaps {
                 let name = format!("{id}.t");
                 let have = p.vars.iter().any(|v| v.name == name);
@@ -692,7 +699,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     if c.combo {
         ui.label(
             RichText::new(tr(
-                "組合せの間隔は d0（絞りの後）・d1（1 つ目の要素の後）… です。組合せに入れられるのは間隔だけです。",
+                "Combination gaps are d0 (after the stop), d1 (after the first element), ... Only gaps can be put back into the combination.",
             ))
             .small()
             .color(weak),
@@ -701,7 +708,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
 }
 
 fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
-    ui.label(tr("出発点（1 行に 1 つ）"));
+    ui.label(tr("Starting points (one per line)"));
     ui.add(
         egui::TextEdit::multiline(&mut p.starts)
             .desired_rows(2)
@@ -710,7 +717,7 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
     );
     ui.label(
         RichText::new(tr(
-            "組ごとにすべての出発点から最適化し、評価関数の最も小さい解を採ります（書かない変数はプロジェクトの値、空なら 1 回）。",
+            "Each combination is optimized from every starting point and the best solution is kept (unlisted variables use the project values; empty means one run).",
         ))
         .small()
         .color(weak),
@@ -719,7 +726,7 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
     if c.states.is_empty() {
         ui.label(
             RichText::new(tr(
-                "状態のあるプロジェクトでは、複数の状態で同時に評価できます。",
+                "In a project with states, several states can be evaluated together.",
             ))
             .small()
             .color(weak),
@@ -727,7 +734,7 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
         return;
     }
     ui.horizontal_wrapped(|ui| {
-        ui.label(tr("同時に評価する状態"));
+        ui.label(tr("States evaluated together"));
         for s in &c.states {
             let mut on = p.states.contains(s);
             if ui.checkbox(&mut on, s).changed() {
@@ -744,13 +751,13 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
     });
     ui.add_enabled_ui(!p.states.is_empty(), |ui| {
         ui.horizontal(|ui| {
-            ui.label(tr("状態ごとに解く変数"));
+            ui.label(tr("Per-state variables"));
             small_edit(ui, &mut p.state_vars, 160.0, "G2.shift, d3.t");
         });
     });
     ui.label(
         RichText::new(tr(
-            "状態を選ぶと、組ごとに選んだ状態を同時に最適化します（評価関数は全状態の像の項。項の構成はこの並びの番号）。間隔の変数は全状態で共通、状態ごとに解く変数は状態ごとの値。",
+            "With states selected, each combination is optimized over all of them together (the merit is the image terms of every state; term configs are indices in this list). Space variables are shared; per-state variables get a value for each state.",
         ))
         .small()
         .color(weak),
@@ -759,60 +766,60 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
 
 fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("評価関数"));
-        for (k, l) in [("spot", tr("RMS スポット")), ("wavefront", tr("RMS 波面"))] {
+        ui.label(tr("Merit function"));
+        for (k, l) in [("spot", tr("RMS spot")), ("wavefront", tr("RMS wavefront"))] {
             ui.selectable_value(&mut p.merit, k.to_string(), l);
         }
-        ui.label(tr("基準"));
-        for (k, l) in [("centroid", tr("重心")), ("chief", tr("主光線"))] {
+        ui.label(tr("Reference"));
+        for (k, l) in [("centroid", tr("Centroid")), ("chief", tr("Chief ray"))] {
             ui.selectable_value(&mut p.reference, k.to_string(), l);
         }
     });
     ui.horizontal(|ui| {
-        ui.label(tr("リング数"));
+        ui.label(tr("Rings"));
         ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
-        ui.label(tr("組ごとの反復"));
+        ui.label(tr("Iterations per set"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=1000));
     });
     ui.horizontal(|ui| {
-        ui.label(tr("焦点距離の目標"));
-        small_edit(ui, &mut p.efl, 60.0, tr("なし"));
-        ui.label(tr("組の上限"));
+        ui.label(tr("Target focal length"));
+        small_edit(ui, &mut p.efl, 60.0, tr("Off"));
+        ui.label(tr("Max sets"));
         ui.add(egui::DragValue::new(&mut p.max_count).range(1..=10_000_000));
-        ui.label(tr("表の行"));
+        ui.label(tr("Table rows"));
         ui.add(egui::DragValue::new(&mut p.top).range(0..=10_000))
-            .on_hover_text(tr("0 はすべて"));
+            .on_hover_text(tr("0 = all"));
     });
     ui.horizontal(|ui| {
-        ui.checkbox(&mut p.clear_aperture, tr("有効径の条件"))
+        ui.checkbox(&mut p.clear_aperture, tr("Clear aperture condition"))
             .on_hover_text(tr(
-            "差し替える玉の各面で、各視野の瞳の縁の光線が玉の半径の内側にあることを条件にします",
+            "Require the pupil-edge rays of every field to stay inside the radius on each surface of the swapped lenses",
         ));
         ui.separator();
-        ui.label(tr("微分"));
+        ui.label(tr("Derivatives"));
         for (k, l) in [
-            ("forward", tr("すべて前進差分")),
-            ("fd", tr("すべて差分")),
-            ("auto", tr("解析的（できる所）")),
+            ("forward", tr("All forward differences")),
+            ("fd", tr("All finite differences")),
+            ("auto", tr("Analytic (where possible)")),
         ] {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });
     ui.horizontal(|ui| {
-        ui.checkbox(&mut p.pre, tr("粗いふるい"))
+        ui.checkbox(&mut p.pre, tr("Coarse prescreen"))
             .on_hover_text(tr(
-                "全組を少ないリング数で最適化し、評価関数の小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）",
+                "Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)",
             ));
         ui.add_enabled_ui(p.pre, |ui| {
-            ui.label(tr("リング数"));
+            ui.label(tr("Rings"));
             ui.add(egui::DragValue::new(&mut p.pre_rings).range(1..=20));
-            ui.label(tr("残す組"));
+            ui.label(tr("Keep"));
             ui.add(egui::DragValue::new(&mut p.pre_keep).range(1..=10_000_000));
         });
     });
     ui.label(
         RichText::new(tr(
-            "組ごとに間隔を減衰最小二乗で最適化し、評価関数の小さい順に並べます。焦点距離の目標を入れると評価関数に足します。",
+            "Gaps are optimized per set by damped least squares and the sets are sorted by merit. A target focal length is added to the merit function.",
         ))
         .small()
         .color(weak),
@@ -839,27 +846,30 @@ fn result_ui(
     let Some(rows) = &r.results else {
         // 数えただけ
         let per: Vec<String> = r.slots.iter().map(|s| s.len().to_string()).collect();
-        ui.label(trf("組 {}（所ごとの候補 {}）", &[&count, &per.join(" × ")]));
+        ui.label(trf(
+            "{} sets (candidates per lens {})",
+            &[&count, &per.join(" × ")],
+        ));
         for (k, s) in r.slots.iter().enumerate() {
             let names: Vec<String> = s.iter().map(cand_text).collect();
             let b = p.slots.get(k).map(|s| s.block.as_str()).unwrap_or("");
             egui::CollapsingHeader::new(format!("{b}: {}", names.len()))
                 .id_salt(("swap_cands", k))
                 .show(ui, |ui| {
-                    ui.label(RichText::new(names.join("、")).small());
+                    ui.label(RichText::new(names.join(crate::i18n::tr(", "))).small());
                 });
         }
         return;
     };
     ui.label(trf(
-        "組 {}（評価 {}、失敗 {}、{} 秒）{}",
+        "{} sets ({} evaluated, {} failed, {} s){}",
         &[
             &count,
             &r.done.unwrap_or(0),
             &r.failed.unwrap_or(0),
             &fmt_num((r.seconds.unwrap_or(0.0) * 10.0).round() / 10.0),
             &if r.cancelled == Some(true) {
-                tr("・止めた")
+                tr(", stopped")
             } else {
                 ""
             },
@@ -876,17 +886,17 @@ fn result_ui(
         .id_salt("swap_res_h")
         .show(ui, |ui| {
             egui::Grid::new("swap_res").striped(true).show(ui, |ui| {
-                let mut hs = vec![tr("順位").to_string()];
+                let mut hs = vec![tr("Rank").to_string()];
                 if c.combo {
                     hs.push(String::new());
                 }
-                hs.push(tr("玉").into());
-                hs.push(tr("評価関数").into());
+                hs.push(tr("Lens").into());
+                hs.push(tr("Merit function").into());
                 if with_efl {
-                    hs.push(tr("像の評価").into());
+                    hs.push(tr("Image merit").into());
                 }
                 hs.push("EFL".into());
-                hs.push(tr("全長").into());
+                hs.push(tr("Total track").into());
                 hs.extend(vars.into_iter().flatten().map(|x| x.name.clone()));
                 for h in &hs {
                     ui.label(RichText::new(h).small().color(weak));
@@ -897,8 +907,8 @@ fn result_ui(
                     ui.label(format!("{}{mark}", i + 1));
                     if c.combo
                         && ui
-                            .add_enabled(x.error.is_none(), egui::Button::new(tr("入れる")).small())
-                            .on_hover_text(tr("この組を組合せに入れる"))
+                            .add_enabled(x.error.is_none(), egui::Button::new(tr("Use")).small())
+                            .on_hover_text(tr("Put this set into the combination"))
                             .clicked()
                     {
                         acts.push(Action::Insert(i));
@@ -939,7 +949,7 @@ fn result_ui(
     ui.horizontal(|ui| {
         if c.combo {
             if ui
-                .add_enabled(p.undo.is_some(), egui::Button::new(tr("入れる前に戻す")))
+                .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo use")))
                 .clicked()
             {
                 acts.push(Action::Undo);
@@ -947,7 +957,7 @@ fn result_ui(
         } else {
             ui.label(
                 RichText::new(tr(
-                    "組合せの系なら、選んだ組を組合せに入れられます（プロジェクトのファイルでは結果を見るだけ）。",
+                    "For a combination, a chosen set can be put into it (for a project file the results are view only).",
                 ))
                 .small()
                 .color(weak),

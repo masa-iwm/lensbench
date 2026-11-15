@@ -1,14 +1,23 @@
 //! カタログに無いガラスで開けなかった系を、モデルガラスで代用して開く（GUX-01）
 
-/// エラーの文から、カタログに無いガラスの名前（「ガラス N-SK16（面 1）がカタログにない」、英語の表示では
+/// エラーの文から、カタログに無いガラスの名前（「硝材 N-SK16（面 1）がカタログにありません」、英語の表示では
 /// "glass N-SK16 (surface 1) is not in the catalogs"・"no glass XYZ9 (…)" など）
 pub(crate) fn missing_glass_name(e: &str) -> Option<String> {
-    if let Some(i) = e.find("ガラス ") {
-        let rest = &e[i + "ガラス ".len()..];
-        let end = rest.find(['（', ' ', '）'])?;
-        let tail = &rest[end..];
-        return (tail.contains("がカタログにない") || tail.contains("がない"))
+    for word in ["硝材 ", "ガラス "] {
+        if let Some(i) = e.find(word) {
+            let rest = &e[i + word.len()..];
+            let end = rest.find(['（', ' ', '）'])?;
+            let tail = &rest[end..];
+            return [
+                "がカタログにありません",
+                "がありません",
+                "がカタログにない",
+                "がない",
+            ]
+            .iter()
+            .any(|t| tail.contains(t))
             .then(|| rest[..end].to_string());
+        }
     }
     // 「glass 名前 (surface 1) is not in the catalogs」は終わりの句の手前から探す（前置きのファイル名に
     // glass があっても取り違えない）。「no glass 名前 (…)」は no glass の後
@@ -59,11 +68,11 @@ mod tests {
     #[test]
     fn model_glass_substitution() {
         assert_eq!(
-            missing_glass_name("load: 不正: ガラス N-SK16（面 1）がカタログにない").as_deref(),
+            missing_glass_name("load: 硝材 N-SK16（面 1）がカタログにありません").as_deref(),
             Some("N-SK16")
         );
         assert_eq!(
-            missing_glass_name("edit: 面 3: 不正: ガラス XYZ9 がない（…）").as_deref(),
+            missing_glass_name("edit: 面 3: 硝材 XYZ9 がありません（…）").as_deref(),
             Some("XYZ9")
         );
         assert_eq!(missing_glass_name("ほかのエラー"), None);

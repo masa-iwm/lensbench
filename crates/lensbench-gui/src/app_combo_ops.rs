@@ -35,7 +35,7 @@ impl Core {
         ids: &[String],
         ops: &[Value],
     ) -> Result<(), String> {
-        let outside = || tr("組合せの要素の外の面").to_string();
+        let outside = || tr("Surface outside the combination elements").to_string();
         for op in ops {
             // 絞りをやめる（GUI だけの操作）
             if op["op"] == "unset_stop" {
@@ -51,7 +51,7 @@ impl Core {
                 }
                 .ok_or_else(outside)?;
                 if self.doc.combo.el(k).is_some_and(|p| p.locked) {
-                    return Err(tr("ロックした要素は変えられない").into());
+                    return Err(tr("A locked element cannot be changed").into());
                 }
                 Ok((k, i))
             };
@@ -158,7 +158,7 @@ impl Core {
                             !matches!(q, SurfaceOp::AddPickup(q) if q.dst == here(i) && q.what == what)
                         });
                 }
-                _ => return Err(trf("組合せの系では {} は使えない", &[&name])),
+                _ => return Err(trf("{} is not available in a combination", &[&name])),
             }
         }
         Ok(())

@@ -1,9 +1,10 @@
 //! 画面の文字列の言語（国際化）。
 //!
-//! コードには日本語の文字列を書き、[`tr`]・[`trf`] で今の言語の文字列にする。日本語の文字列が鍵で、
-//! ほかの言語は `lang/` の表（1 行 1 つ、`日本語<TAB>訳`）。言語を足すときは表を 1 つ足し、[`Lang`] に並べる。
-//! 表に無い文字列は日本語のまま出す（テスト `all_keys_translated` が、コードの tr・trf の文字列がすべて
+//! コードには英語の文字列を書き、[`tr`]・[`trf`] で今の言語の文字列にする。英語の文字列が鍵で、
+//! ほかの言語は `lang/` の表（1 行 1 つ、`English<TAB>訳`）。言語を足すときは表を 1 つ足し、[`Lang`] に並べる。
+//! 表に無い文字列は英語のまま出す（テスト `all_keys_translated` が、コードの tr・trf の文字列がすべて
 //! 表にあるかを確かめる）。数の書式は言語によらず同じ（小数点は「.」）。
+//! 日本語の訳語は OpticStudio の日本語版で広く使われる言い回し（カタカナ語を含む）に合わせる。
 
 use lensbench_core::RwLockExt;
 use std::collections::HashMap;
@@ -33,8 +34,8 @@ impl Lang {
     pub const ALL: [Lang; 3] = [Lang::Auto, Lang::Ja, Lang::En];
 }
 
-/// 表の言語（Auto を解いた後）。0 日本語、1 英語
-static CURRENT: AtomicU8 = AtomicU8::new(0);
+/// 表の言語（Auto を解いた後）。0 日本語、1 英語（既定。テストも英語で動く）
+static CURRENT: AtomicU8 = AtomicU8::new(1);
 
 /// 言語を選ぶ（Auto は OS の言語。日本語でなければ英語）
 pub fn set(l: Lang) {
@@ -63,7 +64,7 @@ pub fn is_ja() -> bool {
     CURRENT.load(Ordering::Relaxed) == 0
 }
 
-const EN: &str = include_str!("../lang/en.tsv");
+const JA: &str = include_str!("../lang/ja.tsv");
 
 fn table(src: &'static str) -> HashMap<&'static str, &'static str> {
     src.lines()
@@ -72,48 +73,48 @@ fn table(src: &'static str) -> HashMap<&'static str, &'static str> {
         .collect()
 }
 
-fn en() -> &'static HashMap<&'static str, &'static str> {
+fn ja() -> &'static HashMap<&'static str, &'static str> {
     static T: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
-    T.get_or_init(|| table(EN))
+    T.get_or_init(|| table(JA))
 }
 
-/// 拡張が足した英語の訳（[`crate::ext::translations`]）
+/// 拡張が足した日本語の訳（[`crate::ext::translations`]）
 static EXTRA: std::sync::RwLock<Option<HashMap<&'static str, &'static str>>> =
     std::sync::RwLock::new(None);
 
-/// 英語の訳を足す（同梱の表にあるものは同梱の方を使う）
+/// 日本語の訳を足す（`(English, 日本語)`。同梱の表にあるものは同梱の方を使う）
 pub fn add(pairs: &'static [(&'static str, &'static str)]) {
     let mut g = EXTRA.write_ok();
     let m = g.get_or_insert_with(HashMap::new);
-    for (ja, en) in pairs {
-        m.insert(ja, en);
+    for (en, ja) in pairs {
+        m.insert(en, ja);
     }
 }
 
-/// 訳す文字列の印（表に置く日本語。表示するときに `tr` で引く）。何もしないで返す。
+/// 訳す文字列の印（表の鍵の英語。表示するときに `tr` で引く）。何もしないで返す。
 /// 網羅の試験は `tr("…")`・`trf("…")` と同じくこの中の文字列も拾う（GAR-21・GPN-21）
-pub const fn n_(ja: &'static str) -> &'static str {
-    ja
+pub const fn n_(en: &'static str) -> &'static str {
+    en
 }
 
 /// 今の言語の文字列
-pub fn tr(ja: &'static str) -> &'static str {
-    if is_ja() {
-        return ja;
+pub fn tr(en: &'static str) -> &'static str {
+    if !is_ja() {
+        return en;
     }
-    if let Some(e) = en().get(ja) {
-        return e;
+    if let Some(j) = ja().get(en) {
+        return j;
     }
     EXTRA
         .read()
         .ok()
-        .and_then(|g| g.as_ref().and_then(|m| m.get(ja).copied()))
-        .unwrap_or(ja)
+        .and_then(|g| g.as_ref().and_then(|m| m.get(en).copied()))
+        .unwrap_or(en)
 }
 
 /// 今の言語の文字列の `{}` を順に引数で埋める
-pub fn trf(ja: &'static str, args: &[&dyn std::fmt::Display]) -> String {
-    let t = tr(ja);
+pub fn trf(en: &'static str, args: &[&dyn std::fmt::Display]) -> String {
+    let t = tr(en);
     let mut out = String::with_capacity(t.len() + 16);
     let mut it = args.iter();
     let mut rest = t;
@@ -238,12 +239,12 @@ mod tests {
 
     #[test]
     fn all_keys_translated() {
-        let t = table(EN);
+        let t = table(JA);
         // 衝突の印が残っていない（表の読み方は TAB の無い行を読み飛ばすので、ここで見る）
-        for l in EN.lines() {
+        for l in JA.lines() {
             assert!(
                 !(l.starts_with("<<<<<<<") || l.starts_with(">>>>>>>") || l == "======="),
-                "lang/en.tsv に衝突の印: {l}"
+                "lang/ja.tsv に衝突の印: {l}"
             );
         }
         let keys = keys_in_source();
@@ -252,8 +253,16 @@ mod tests {
             .iter()
             .filter(|k| !t.contains_key(k.as_str()))
             .collect();
-        assert!(missing.is_empty(), "lang/en.tsv に無い: {missing:#?}");
-        // 表の訳の {} の数は日本語と同じ
+        assert!(missing.is_empty(), "lang/ja.tsv に無い: {missing:#?}");
+        // 鍵の英語に日本語の文字が無い（訳し忘れの日本語を鍵にしない）
+        for k in &keys {
+            assert!(
+                !k.chars()
+                    .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}')),
+                "鍵が日本語: {k}"
+            );
+        }
+        // 表の訳の {} の数は英語と同じ
         for (k, v) in &t {
             assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "{k}");
         }
@@ -262,6 +271,9 @@ mod tests {
     #[test]
     fn format() {
         CURRENT.store(0, Ordering::Relaxed);
-        assert_eq!(trf("{} / {} 枚", &[&3, &5]), "3 / 5 枚");
+        let s = trf("{} / {} lenses", &[&3, &5]);
+        CURRENT.store(1, Ordering::Relaxed);
+        assert_eq!(s, "3 / 5 枚");
+        assert_eq!(trf("{} / {} lenses", &[&3, &5]), "3 / 5 lenses");
     }
 }

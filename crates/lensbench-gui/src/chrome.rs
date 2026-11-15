@@ -79,18 +79,18 @@ fn glyph_button(ui: &mut Ui, g: Glyph, tip: &str) -> egui::Response {
 pub fn window_buttons(ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-    if glyph_button(ui, Glyph::Close, crate::i18n::tr("閉じる")).clicked() {
+    if glyph_button(ui, Glyph::Close, crate::i18n::tr("Close")).clicked() {
         ctx.send_viewport_cmd(ViewportCommand::Close);
     }
     let (g, tip) = if max {
-        (Glyph::Restore, crate::i18n::tr("元のサイズに戻す"))
+        (Glyph::Restore, crate::i18n::tr("Restore"))
     } else {
-        (Glyph::Maximize, crate::i18n::tr("最大化"))
+        (Glyph::Maximize, crate::i18n::tr("Maximize"))
     };
     if glyph_button(ui, g, tip).clicked() {
         ctx.send_viewport_cmd(ViewportCommand::Maximized(!max));
     }
-    if glyph_button(ui, Glyph::Minimize, crate::i18n::tr("最小化")).clicked() {
+    if glyph_button(ui, Glyph::Minimize, crate::i18n::tr("Minimize")).clicked() {
         ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
     }
     ui.separator();

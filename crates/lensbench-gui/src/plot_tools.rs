@@ -60,21 +60,21 @@ pub fn show(
     let mut cmd = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
-        if ui.small_button("＋").on_hover_text(tr("拡大")).clicked() {
+        if ui.small_button("＋").on_hover_text(tr("Zoom in")).clicked() {
             cmd = Some(Cmd::Zoom(1.25));
         }
-        if ui.small_button("－").on_hover_text(tr("縮小")).clicked() {
+        if ui.small_button("－").on_hover_text(tr("Zoom out")).clicked() {
             cmd = Some(Cmd::Zoom(0.8));
         }
         if ui
-            .small_button(tr("全体"))
-            .on_hover_text(tr("全体を表示（ダブルクリックでも）"))
+            .small_button(tr("Fit"))
+            .on_hover_text(tr("Fit all (also double-click)"))
             .clicked()
         {
             cmd = Some(Cmd::Reset);
         }
         ui.label(RichText::new("ⓘ").small().color(weak)).on_hover_text(tr(
-            "ドラッグで移動、Ctrl（Mac は ⌘）＋ホイールかピンチで拡大縮小、右ドラッグで囲んだ所を拡大、ダブルクリックで全体",
+            "Drag to pan, Ctrl (⌘ on Mac) + wheel or pinch to zoom, right-drag a box to zoom in, double-click to fit",
         ));
     });
     let mut series = Vec::new();

@@ -201,7 +201,7 @@ mod zenity {
                 None
             }
             Err(e) => {
-                eprintln!("lensbench-gui: zenity を起こせない（{e}）。ファイルは窓に落として開く");
+                eprintln!("lensbench-gui: cannot start zenity ({e}); drop files on the window to open them");
                 super::FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
                 None
             }

@@ -7,7 +7,7 @@ impl Core {
         let mut open = self.help_open;
         // 画面の中央に、高さは画面の 8 割まで（上の帯に重ねず、下が切れない。中はスクロール、GUX-22）
         let screen = ctx.screen_rect();
-        egui::Window::new(tr("キーボード操作"))
+        egui::Window::new(tr("Keyboard shortcuts"))
             .open(&mut open)
             .default_width(460.0)
             .pivot(egui::Align2::CENTER_CENTER)
@@ -17,22 +17,22 @@ impl Core {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                 egui::Grid::new("keys").striped(true).show(ui, |ui| {
                     for (k, v) in [
-                        ("Ctrl+K", tr("コマンドパレット（操作・解析・パネル・並びを名前で探す）")),
-                        ("Ctrl+N", tr("新規（組合せを空にする）")),
-                        ("Ctrl+O", tr("系のファイルを開く")),
-                        ("F5", tr("開いている解析をすべて計算し直す")),
-                        ("Ctrl+R", tr("系を読み直す（変えた値を捨てる）")),
-                        ("Ctrl+Z", tr("系の変更を元に戻す（100 段まで。入力欄の中では欄の文字）")),
-                        ("Ctrl+Y / Ctrl+Shift+Z", tr("元に戻した変更をやり直す")),
-                        ("Ctrl+Tab", tr("次のパネルへ（Shift で前へ）")),
-                        ("Tab / Shift+Tab", tr("パネルの中の入力欄・ボタンを順に移る")),
-                        ("Enter / Space", tr("ボタンを押す・選ぶ")),
-                        ("↑ ↓", tr("数の欄で値を増減（パラメータ・解析の設定は解析をすぐ計算し直す）")),
-                        ("Ctrl+A", tr("多重構成の次の構成（Shift で前へ）。レンズデータの表を使っているときは全部の行を選ぶ")),
-                        ("Enter", tr("解析の設定の欄: 打った値で計算し直す")),
-                        (tr("文字"), tr("解析の種類の一覧: 打って絞り込む（Enter で最初の候補）")),
-                        ("F1", tr("この一覧")),
-                        ("Esc", tr("パレット・窓を閉じる")),
+                        ("Ctrl+K", tr("Command palette (find actions, analyses, panels and workspaces by name)")),
+                        ("Ctrl+N", tr("New (clear the combination)")),
+                        ("Ctrl+O", tr("Open a system file")),
+                        ("F5", tr("Recompute all open analyses")),
+                        ("Ctrl+R", tr("Reload the system (discard changed values)")),
+                        ("Ctrl+Z", tr("Undo a system change (up to 100 steps; inside a text box, its text)")),
+                        ("Ctrl+Y / Ctrl+Shift+Z", tr("Redo the undone change")),
+                        ("Ctrl+Tab", tr("Next panel (Shift for previous)")),
+                        ("Tab / Shift+Tab", tr("Move between fields and buttons in a panel")),
+                        ("Enter / Space", tr("Press a button / select")),
+                        ("↑ ↓", tr("Step a number field (parameters and analysis settings recompute right away)")),
+                        ("Ctrl+A", tr("Next multi-configuration (Shift: previous). In the Lens Data table, selects all rows")),
+                        ("Enter", tr("Analysis settings: recompute with the typed value")),
+                        (tr("Letters"), tr("Analysis list: type to filter (Enter picks the first match)")),
+                        ("F1", tr("This list")),
+                        ("Esc", tr("Close the palette or a window")),
                     ] {
                         ui.label(RichText::new(k).monospace().strong());
                         ui.label(v);
@@ -41,42 +41,42 @@ impl Core {
                 });
                 for (title, keys) in [
                     (
-                        tr("レンズデータ"),
+                        tr("Lens Data"),
                         vec![
-                            ("← → ↑ ↓ / Tab", tr("セルを移る（Shift+↑ ↓・Shift+クリックで行の範囲）")),
-                            ("Enter / F2", tr("書き換え（文字を打っても始まる）。Enter で決め、Esc で取り消し")),
-                            ("Insert", tr("今の面の前に面を挿入")),
-                            ("Alt+Insert", tr("今の面の後に面を挿入")),
-                            ("Delete", tr("選んだ面を消す")),
-                            ("Ctrl+C", tr("選んだ行をタブ区切りでコピー")),
-                            ("Ctrl+V", tr("今のセルから上書きで貼り付け")),
-                            ("Ctrl+Shift+V", tr("写した行の数だけ面を挿入して貼り付け")),
-                            ("Shift+F10", tr("右クリックの欄")),
-                            ("Ctrl+L", tr("ブロックのロック")),
-                            ("Enter / Backspace", tr("ブロックの中へ・外へ")),
+                            ("← → ↑ ↓ / Tab", tr("Move between cells (Shift+↑ ↓ / Shift+click select a row range)")),
+                            ("Enter / F2", tr("Edit (typing also starts editing). Enter commits, Esc cancels")),
+                            ("Insert", tr("Insert a surface before the current one")),
+                            ("Alt+Insert", tr("Insert a surface after the current one")),
+                            ("Delete", tr("Delete the selected surfaces")),
+                            ("Ctrl+C", tr("Copy selected rows as tab-separated text")),
+                            ("Ctrl+V", tr("Paste over cells from the current one")),
+                            ("Ctrl+Shift+V", tr("Insert as many surfaces as copied rows and paste")),
+                            ("Shift+F10", tr("Right-click menu")),
+                            ("Ctrl+L", tr("Lock a block")),
+                            ("Enter / Backspace", tr("Enter / leave a block")),
                         ],
                     ),
                     (
-                        tr("多重構成"),
+                        tr("Multi-Config"),
                         vec![
-                            ("← → ↑ ↓ / Tab", tr("セルを移る")),
-                            ("Enter / F2", tr("書き換え（文字を打っても始まる）")),
-                            ("Delete", tr("選んだ行を消す（列の見出しを選んでいれば構成を消す）")),
-                            ("Ctrl+C / Ctrl+V", tr("行のコピー・上書きで貼り付け")),
-                            ("Shift+F10", tr("右クリックの欄")),
+                            ("← → ↑ ↓ / Tab", tr("Move between cells")),
+                            ("Enter / F2", tr("Edit (typing also starts editing)")),
+                            ("Delete", tr("Delete the selected row (or the configuration if a column header is selected)")),
+                            ("Ctrl+C / Ctrl+V", tr("Copy rows / paste over")),
+                            ("Shift+F10", tr("Right-click menu")),
                         ],
                     ),
                     (
-                        tr("レイアウト図（組合せ）"),
+                        tr("Layout figure (combination)"),
                         vec![
-                            ("[ ]", tr("前・次の要素を選ぶ")),
-                            ("← →", tr("光軸に沿って動かす（寸法を選んでいればその間隔）。Ctrl で 10 倍、Alt で 1/10")),
-                            ("↑ ↓", tr("偏心（Shift で傾き）")),
-                            ("R", tr("反転")),
-                            ("F", tr("BS の分ける面の向きを逆に")),
-                            ("Ctrl+L", tr("ロック")),
-                            ("Delete", tr("外す（Ctrl+Z で戻す）")),
-                            ("Esc", tr("選ぶのをやめる")),
+                            ("[ ]", tr("Select the previous / next element")),
+                            ("← →", tr("Move along the axis (the selected gap if a dimension is selected). Ctrl ×10, Alt ×1/10")),
+                            ("↑ ↓", tr("Decenter (Shift: tilt)")),
+                            ("R", tr("Reverse")),
+                            ("F", tr("Flip the splitting surface of the BS")),
+                            ("Ctrl+L", tr("Lock")),
+                            ("Delete", tr("Remove (Ctrl+Z to undo)")),
+                            ("Esc", tr("Deselect")),
                         ],
                     ),
                 ] {
@@ -92,7 +92,7 @@ impl Core {
                 }
                 ui.separator();
                 ui.label(
-                    RichText::new(tr("パネルはタブを引きずって並べ替え・分割・フロートできます。タブを右クリックすると別の窓（別モニター）に出せます。")).small(),
+                    RichText::new(tr("Drag a tab to reorder, split or float panels. Right-click a tab to move it to a separate window (another monitor).")).small(),
                 );
                 });
             });

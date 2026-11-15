@@ -71,11 +71,11 @@ pub enum SurfKind {
 impl SurfKind {
     pub fn label(self) -> &'static str {
         match self {
-            SurfKind::Standard => tr("面"),
-            SurfKind::Jones => tr("Jones 行列"),
-            SurfKind::Coordbrk => tr("座標ブレーク"),
-            SurfKind::Polarizer => tr("偏光子"),
-            SurfKind::Waveplate => tr("波長板"),
+            SurfKind::Standard => tr("Surface"),
+            SurfKind::Jones => tr("Jones matrix"),
+            SurfKind::Coordbrk => tr("Coordinate break"),
+            SurfKind::Polarizer => tr("Polarizer"),
+            SurfKind::Waveplate => tr("Waveplate"),
         }
     }
 }
@@ -220,11 +220,11 @@ pub enum ApShape {
 impl ApShape {
     pub fn label(self) -> &'static str {
         match self {
-            ApShape::Circle => tr("円の開口"),
-            ApShape::Rect => tr("矩形の開口"),
-            ApShape::Ellipse => tr("楕円の開口"),
-            ApShape::Obscuration => tr("円の遮蔽"),
-            ApShape::Spider => tr("スパイダー"),
+            ApShape::Circle => tr("Circular aperture"),
+            ApShape::Rect => tr("Rectangular aperture"),
+            ApShape::Ellipse => tr("Elliptical aperture"),
+            ApShape::Obscuration => tr("Circular obscuration"),
+            ApShape::Spider => tr("Spider"),
         }
     }
 }
@@ -232,16 +232,16 @@ impl ApShape {
 impl ElemKind {
     pub fn label(self) -> &'static str {
         match self {
-            ElemKind::Catalog => tr("カタログの玉"),
-            ElemKind::Lens => tr("自作の玉"),
-            ElemKind::Plate => tr("平板"),
-            ElemKind::Mirror => tr("鏡"),
-            ElemKind::Stop => tr("絞り"),
-            ElemKind::Splitter => tr("ビームスプリッター"),
-            ElemKind::Zmx => tr(".zmx の玉"),
-            ElemKind::Aperture => tr("開口・遮蔽"),
-            ElemKind::Surfaces => tr("面の並び"),
-            ElemKind::ZmxRange => tr(".zmx の取り込み"),
+            ElemKind::Catalog => tr("catalog element"),
+            ElemKind::Lens => tr("Custom lens"),
+            ElemKind::Plate => tr("Plate"),
+            ElemKind::Mirror => tr("Mirror"),
+            ElemKind::Stop => tr("Aperture stop"),
+            ElemKind::Splitter => tr("Beam splitter"),
+            ElemKind::Zmx => tr("Element from .zmx"),
+            ElemKind::Aperture => tr("Aperture / obscuration"),
+            ElemKind::Surfaces => tr("Surfaces"),
+            ElemKind::ZmxRange => tr(".zmx import"),
         }
     }
     /// ON/OFF を持つ（絞りは無い）
@@ -397,9 +397,9 @@ pub enum BsForm {
 impl BsForm {
     pub fn label(self) -> &'static str {
         match self {
-            BsForm::Cube => tr("キューブ"),
-            BsForm::Plate => tr("平板"),
-            BsForm::Ideal => tr("理想の面"),
+            BsForm::Cube => tr("Cube"),
+            BsForm::Plate => tr("Plate"),
+            BsForm::Ideal => tr("ideal surface"),
         }
     }
     fn key(self) -> &'static str {
@@ -434,9 +434,9 @@ pub enum BsSplit {
 impl BsSplit {
     pub fn label(self) -> &'static str {
         match self {
-            BsSplit::Ratio => tr("分岐比"),
-            BsSplit::Coat => tr("膜"),
-            BsSplit::Pbs => tr("理想の PBS"),
+            BsSplit::Ratio => tr("Split ratio"),
+            BsSplit::Coat => tr("Coating"),
+            BsSplit::Pbs => tr("Ideal PBS"),
         }
     }
 }
@@ -1252,7 +1252,7 @@ pub struct ZGroup {
 impl Default for Combo {
     fn default() -> Self {
         Combo {
-            name: tr("カタログレンズの組合せ").into(),
+            name: tr("Catalog lens combination").into(),
             picks: Vec::new(),
             mechanics: Vec::new(),
             aperture: ApKind::Epd,
@@ -1973,11 +1973,11 @@ pub fn ui(
     combo.normalize();
     // 要素のパレット
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("足す")).small().color(weak));
+        ui.label(RichText::new(tr("Add")).small().color(weak));
         if ui
-            .button(trf("＋ {}…", &[&tr("カタログの玉")]))
+            .button(trf("+ {}…", &[&tr("catalog element")]))
             .on_hover_text(tr(
-                "カタログのパネルで行をダブルクリック、またはレイアウト図へドラッグ",
+                "Double-click a row in the catalog panel, or drag it onto the layout",
             ))
             .clicked()
         {
@@ -1992,19 +1992,19 @@ pub fn ui(
             ElemKind::Splitter,
             ElemKind::Surfaces,
         ] {
-            if ui.button(trf("＋ {}", &[&k.label()])).clicked() {
+            if ui.button(trf("+ {}", &[&k.label()])).clicked() {
                 insert(combo, view, Pick::new(k));
             }
         }
         for (kind, hint) in [
-            (ElemKind::Zmx, tr(".zmx の k 番目の玉")),
+            (ElemKind::Zmx, tr("The k-th lens of a .zmx")),
             (
                 ElemKind::ZmxRange,
-                tr(".zmx の面の範囲（既定は面 1〜像面の手前）をまるごと入れる（測定系の中の被検レンズなど）"),
+                tr("Insert a range of .zmx surfaces as is (default: surface 1 to the one before the image), e.g. a lens under test inside a measurement setup"),
             ),
         ] {
             let start = ui
-                .button(trf("＋ {}…", &[&kind.label()]))
+                .button(trf("+ {}…", &[&kind.label()]))
                 .on_hover_text(hint)
                 .clicked();
             let key = format!("combo-zmx-{:?}", kind);
@@ -2012,7 +2012,7 @@ pub fn ui(
                 if let Some(p) = crate::files::open(&key, start, || {
                     // lensbench の系（系ファイル・プロジェクトの .json）も取り込める（#132）
                     crate::files::FileDialog::new()
-                        .add_filter(tr("系（.zmx・.json）"), &["zmx", "json"])
+                        .add_filter(tr("System (.zmx / .json)"), &["zmx", "json"])
                 }) {
                     let mut e = Pick::new(kind);
                     e.path = p.display().to_string();
@@ -2024,9 +2024,9 @@ pub fn ui(
         if ui
             .add_enabled(
                 !combo.is_empty(),
-                egui::Button::new(tr("像面を近軸の焦点へ")),
+                egui::Button::new(tr("Image at paraxial focus")),
             )
-            .on_hover_text(tr("最後の空気を、軸上の細い光線が軸と交わる所までにする"))
+            .on_hover_text(tr("Set the last air gap to where a thin on-axis ray crosses the axis"))
             .clicked()
         {
             act = Some(Act::Focus);
@@ -2037,8 +2037,8 @@ pub fn ui(
             view.sel = sel_id.and_then(|id| combo.ids().iter().position(|x| *x == id));
             view.dim = None;
         }
-        ui.checkbox(auto, tr("変えたらすぐ作り直す"));
-        if (!*auto || (data.is_none() && !building)) && ui.button(tr("▶ 系を作る")).clicked()
+        ui.checkbox(auto, tr("Rebuild on every change"));
+        if (!*auto || (data.is_none() && !building)) && ui.button(tr("▶ Build system")).clicked()
         {
             act = Some(Act::Build);
         }
@@ -2051,7 +2051,7 @@ pub fn ui(
     if combo.picks.is_empty() {
         let r = ui
             .weak(tr(
-                "要素を足すと、ここにレイアウト図が出ます（光は左から右へ）。",
+                "Add elements to see the layout here (light travels left to right).",
             ))
             .union(ui.allocate_response(ui.available_size(), Sense::hover()));
         if let Some(p) = r.dnd_release_payload::<DropPick>() {
@@ -2098,9 +2098,9 @@ pub fn ui(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             if building {
-                tr("系を作っています…")
+                tr("Building the system…")
             } else {
-                tr("「▶ 系を作る」でレイアウト図が出ます")
+                tr("Press \"▶ Build system\" to see the layout")
             },
             egui::FontId::proportional(14.0),
             weak,
@@ -2170,17 +2170,17 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
     };
     let was = path.clone();
     ui.separator();
-    ui.label(RichText::new(tr("経路")).color(theme::weak_text(ui.visuals())))
-        .on_hover_text(tr("BS を通る順の透過 T・反射 R（足りない文字は各 BS の既定の口）。図・解析はこの経路。ほかの経路は「重ねる構成」で重ねて描ける"));
+    ui.label(RichText::new(tr("Path")).color(theme::weak_text(ui.visuals())))
+        .on_hover_text(tr("Transmit T / reflect R at each BS in the order passed (missing letters use each BS's default port). The figure and analyses use this path; other paths can be drawn with \"Overlay configurations\""));
     let shown = if path.is_empty() {
-        tr("既定").to_string()
+        tr("Default").to_string()
     } else {
         path.clone()
     };
     egui::ComboBox::from_id_salt("combo_path")
         .selected_text(shown)
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut path, String::new(), tr("既定"));
+            ui.selectable_value(&mut path, String::new(), tr("Default"));
             for p in paths {
                 ui.selectable_value(&mut path, p.clone(), p.as_str());
             }
@@ -2199,8 +2199,8 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
         let own = combo.state_path.contains_key(n);
         if own {
             if ui
-                .small_button(tr("基本の経路に"))
-                .on_hover_text(trf("状態 {} で変えた経路をやめる", &[n]))
+                .small_button(tr("Use the base path"))
+                .on_hover_text(trf("Drop the path changed in state {}", &[n]))
                 .clicked()
             {
                 combo.state_path.remove(n);
@@ -2208,11 +2208,11 @@ fn path_select(ui: &mut Ui, combo: &mut Combo, paths: &[String]) -> bool {
             }
         } else {
             ui.label(
-                RichText::new(tr("（基本と同じ）"))
+                RichText::new(tr("(same as base)"))
                     .small()
                     .color(theme::weak_text(ui.visuals())),
             )
-            .on_hover_text(trf("変えると状態 {} だけの経路になる", &[n]));
+            .on_hover_text(trf("Changing it makes a path for state {} only", &[n]));
         }
     }
     if path == was {
@@ -2285,7 +2285,7 @@ pub fn view_only(
                     p.text(
                         Pos2::new(x + 4.0, rect.top() + 10.0),
                         egui::Align2::LEFT_TOP,
-                        trf("面 {} の後に差し込む", &[&a]),
+                        trf("Insert after surface {}", &[&a]),
                         egui::FontId::proportional(12.0),
                         accent,
                     );
@@ -2560,26 +2560,26 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
         ui.label(RichText::new(p.kind.label()).color(weak));
-        ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（Ctrl+L でも切り替え）",
+        ui.checkbox(&mut p.locked, tr("Lock")).on_hover_text(tr(
+            "A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)",
         ));
         if p.locked {
-            ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(
-                "位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする",
+            ui.checkbox(&mut p.lock_place, tr("Position too")).on_hover_text(tr(
+                "Also lock the position (drag, keys, decenter, tilt) and the air after",
             ));
         }
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
                 RichText::new(trf(
-                    "面の表で変えた値 {} 件",
+                    "{} values changed in Lens Data",
                     &[&(p.edits.len() + p.ops.len())],
                 ))
                 .color(ui.visuals().warn_fg_color),
             );
             if ui
-                .add_enabled(!p.locked, egui::Button::new(tr("元に戻す")))
+                .add_enabled(!p.locked, egui::Button::new(tr("Revert")))
                 .on_hover_text(tr(
-                    "面の表で変えた値をやめる（絞り・ソルブ・ピックアップも）",
+                    "Drop the values changed in the surface table (including stop, solves and pickups)",
                 ))
                 .clicked()
             {
@@ -2602,7 +2602,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
                 if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx)
                     && !(p.kind == ElemKind::Catalog && !p.path.is_empty())
                 {
-                    ui.add_enabled(!locked, egui::Checkbox::new(&mut p.reversed, tr("反転")));
+                    ui.add_enabled(!locked, egui::Checkbox::new(&mut p.reversed, tr("Reverse")));
                 }
                 place_ui(ui, p, st, &[0, 1], &[0, 1, 2]);
             });
@@ -2613,9 +2613,9 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
                 num(
                     ui,
                     if last {
-                        tr("像面まで")
+                        tr("To image")
                     } else {
-                        tr("後の空気")
+                        tr("Air after")
                     },
                     &mut air,
                     " mm",
@@ -2643,10 +2643,10 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
 }
 
 const ROLES: [(&str, &str); 4] = [
-    ("", n_("役割なし")),
-    ("zoom", n_("ズーム")),
-    ("focus", n_("フォーカス")),
-    ("fixed", n_("固定")),
+    ("", n_("No role")),
+    ("zoom", n_("Zoom")),
+    ("focus", n_("Focus")),
+    ("fixed", n_("Fixed")),
 ];
 
 fn role_combo(ui: &mut Ui, id: impl std::hash::Hash, role: &mut String) {
@@ -2665,33 +2665,33 @@ fn role_combo(ui: &mut Ui, id: impl std::hash::Hash, role: &mut String) {
 
 /// .zmx の取り込みの玉モードの群（玉の境を手で直す）
 fn zgroups_ui(ui: &mut Ui, p: &mut Pick, weak: Color32) {
-    ui.label(RichText::new(tr("玉の群")).color(weak))
+    ui.label(RichText::new(tr("Lens groups")).color(weak))
         .on_hover_text(tr(
-        ".zmx の面 from〜to をまとめて 1 つの群（玉・群のパラメータ）にする。無ければ玉ごとに自動",
+        "Group .zmx surfaces from–to into one group (lens/group parameters). Without groups, one per lens automatically",
     ));
     let mut remove = None;
     for (i, g) in p.zgroups.iter_mut().enumerate() {
         ui.add(
             egui::DragValue::new(&mut g.from)
                 .range(1..=9999)
-                .prefix(tr("面 ")),
+                .prefix(tr("Surface ")),
         );
         ui.label("〜");
         ui.add(egui::DragValue::new(&mut g.to).range(1..=9999));
         ui.add(
             egui::TextEdit::singleline(&mut g.name)
-                .hint_text(tr("名前"))
+                .hint_text(tr("Name"))
                 .desired_width(50.0),
         );
         role_combo(ui, ("zg_role", p.path.as_str(), i), &mut g.role);
-        if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
+        if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
             remove = Some(i);
         }
     }
     if let Some(i) = remove {
         p.zgroups.remove(i);
     }
-    if ui.small_button(tr("＋ 群")).clicked() {
+    if ui.small_button(tr("+ Group")).clicked() {
         let from = p.zgroups.last().map_or(p.range[0].max(1), |g| g.to + 1);
         p.zgroups.push(ZGroup {
             from,
@@ -2723,12 +2723,15 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) 
         return;
     }
     let st = combo.active_state().map(str::to_string);
-    ui.label(RichText::new(tr("群")).small().color(weak));
+    ui.label(RichText::new(tr("Group")).small().color(weak));
     for n in names {
         if ids.contains(&n) {
             ui.label(
-                RichText::new(trf("{} は要素の名前と同じ（群にしない）", &[&n]))
-                    .color(ui.visuals().warn_fg_color),
+                RichText::new(trf(
+                    "{} is the same as an element name (not grouped)",
+                    &[&n],
+                ))
+                .color(ui.visuals().warn_fg_color),
             );
             continue;
         }
@@ -2750,10 +2753,12 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) 
             egui::DragValue::new(&mut x)
                 .speed(0.05)
                 .max_decimals(4)
-                .prefix(tr("移動 "))
+                .prefix(tr("Shift "))
                 .suffix(" mm"),
         )
-        .on_hover_text(tr("光の進む向きが正。前の間隔に足し、後の間隔から引く"));
+        .on_hover_text(tr(
+            "Positive along the light. Added to the gap before and subtracted from the gap after",
+        ));
         if x != cur {
             match st.as_deref() {
                 Some(s) => {
@@ -2769,30 +2774,30 @@ fn groups_ui(ui: &mut Ui, combo: &mut Combo, weak: Color32, only: Option<&str>) 
 /// 状態（多重構成に当たるプロジェクトの states）を選ぶ・足す・消す。状態を選ぶと、要素の ON/OFF と
 /// 後の空気（図の寸法・要素の設定）はその状態の値を変える
 fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
-    ui.label(RichText::new(tr("状態")).small().color(weak));
+    ui.label(RichText::new(tr("State")).small().color(weak));
     let cur = combo.active_state().map(str::to_string);
     egui::ComboBox::from_id_salt("combo_state")
-        .selected_text(cur.clone().unwrap_or_else(|| tr("基本").into()))
+        .selected_text(cur.clone().unwrap_or_else(|| tr("Base").into()))
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut combo.state, None, tr("基本"));
+            ui.selectable_value(&mut combo.state, None, tr("Base"));
             for n in combo.states.clone() {
                 ui.selectable_value(&mut combo.state, Some(n.clone()), n);
             }
         })
         .response
         .on_hover_text(tr(
-            "状態ごとに要素の ON/OFF・後の空気・偏心・傾き、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系",
+            "Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected",
         ));
     let r = ui.add(
         egui::TextEdit::singleline(&mut view.new_state)
-            .hint_text(tr("状態の名前"))
+            .hint_text(tr("State name"))
             .desired_width(90.0),
     );
     let name = view.new_state.trim().to_string();
     let ok = !name.is_empty() && !combo.states.contains(&name);
     let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
     if (ui
-        .add_enabled(ok, egui::Button::new(tr("＋ 状態")))
+        .add_enabled(ok, egui::Button::new(tr("+ State")))
         .clicked()
         || (enter && ok))
         && ok
@@ -2804,7 +2809,7 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
     if let Some(n) = cur {
         if ui
             .button("✖")
-            .on_hover_text(trf("状態 {} を消す", &[&n]))
+            .on_hover_text(trf("Delete state {}", &[&n]))
             .clicked()
         {
             combo.states.retain(|s| *s != n);
@@ -2832,7 +2837,9 @@ fn states_ui(ui: &mut Ui, combo: &mut Combo, view: &mut View, weak: Color32) {
         for k in off {
             if ui
                 .selectable_label(view.sel == Some(k), combo.picks[k].label())
-                .on_hover_text(tr("OFF の要素を選ぶ（下の設定で ON に戻せる）"))
+                .on_hover_text(tr(
+                    "Select an OFF element (turn it back ON in the settings below)",
+                ))
                 .clicked()
             {
                 view.sel = Some(k);
@@ -2847,8 +2854,13 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
     if p.kind.has_on() {
         let mut on = p.on_in(st);
         let hint = match st {
-            Some(n) => trf("状態 {} での ON/OFF（OFF の要素は系に入らない）", &[&n]),
-            None => tr("OFF の要素は系に入らない（光学系の出し入れ）").to_string(),
+            Some(n) => trf(
+                "ON/OFF in state {} (an OFF element is left out of the system)",
+                &[&n],
+            ),
+            None => {
+                tr("An OFF element is left out of the system (insert/remove optics)").to_string()
+            }
         };
         if ui.checkbox(&mut on, "ON").on_hover_text(hint).changed() {
             match st {
@@ -2861,25 +2873,25 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
         if p.kind.has_off_mode() {
             egui::ComboBox::from_id_salt(("off_mode", k))
                 .selected_text(if p.off_air {
-                    tr("OFF は空気で残す")
+                    tr("OFF leaves air")
                 } else {
-                    tr("OFF は詰める")
+                    tr("OFF collapses")
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut p.off_air, false, tr("OFF は詰める"));
-                    ui.selectable_value(&mut p.off_air, true, tr("OFF は空気で残す"));
+                    ui.selectable_value(&mut p.off_air, false, tr("OFF collapses"));
+                    ui.selectable_value(&mut p.off_air, true, tr("OFF leaves air"));
                 });
         }
     }
     // 群
-    ui.label(RichText::new(tr("群")).color(weak));
+    ui.label(RichText::new(tr("Group")).color(weak));
     ui.add(
         egui::TextEdit::singleline(&mut p.group)
-            .hint_text(tr("なし"))
+            .hint_text(tr("Off"))
             .desired_width(60.0),
     )
     .on_hover_text(tr(
-        "続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）",
+        "Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)",
     ));
     if p.kind == ElemKind::ZmxRange {
         zgroups_ui(ui, p, weak);
@@ -2888,13 +2900,15 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
         let own = p.has_state_values(n);
         if own {
             ui.label(
-                RichText::new(trf("状態 {} の値", &[&n]))
+                RichText::new(trf("Values of state {}", &[&n]))
                     .small()
                     .color(weak),
             );
             if ui
-                .small_button(tr("基本の値に"))
-                .on_hover_text(tr("この状態で変えた ON/OFF・後の空気・偏心・傾きをやめる"))
+                .small_button(tr("Use base values"))
+                .on_hover_text(tr(
+                    "Drop the ON/OFF, following air, decenter and tilt changed in this state",
+                ))
                 .clicked()
             {
                 p.clear_state(n);
@@ -2907,8 +2921,8 @@ pub fn onoff_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, k: usize, weak: Col
 fn place_ui(ui: &mut Ui, p: &mut Pick, st: Option<&str>, dec: &[usize], tilt: &[usize]) {
     let was = p.place_in(st);
     let mut pl = was;
-    const DEC: [&str; 2] = [n_("偏心 x"), n_("偏心 y")];
-    const TILT: [&str; 3] = [n_("傾き x"), n_("傾き y"), n_("傾き z")];
+    const DEC: [&str; 2] = [n_("Decenter x"), n_("Decenter y")];
+    const TILT: [&str; 3] = [n_("Tilt x"), n_("Tilt y"), n_("Tilt z")];
     for &i in dec {
         num(ui, tr(DEC[i]), &mut pl.decenter[i], " mm");
     }
@@ -2965,18 +2979,22 @@ fn kind_fields(
 ) {
     match p.kind {
         ElemKind::Lens if p.surfs.len() >= 2 => {
-            ui.label(RichText::new(trf("{} 面（下の表）", &[&p.surfs.len()])).color(weak));
+            ui.label(
+                RichText::new(trf("{} surfaces (table below)", &[&p.surfs.len()])).color(weak),
+            );
         }
         ElemKind::Lens => {
             num(ui, "R1", &mut p.r1, " mm");
             num(ui, "R2", &mut p.r2, " mm");
-            num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0);
-            ui.label(RichText::new(tr("ガラス")).color(weak));
+            num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0);
+            ui.label(RichText::new(tr("Glass")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             semi_edit(ui, &mut p.semi, &mut p.semi_auto);
             if ui
-                .button(tr("＋ 面"))
-                .on_hover_text(tr("面を足して貼り合わせ・3 枚玉などにする（面の表で編集）"))
+                .button(tr("+ Surface"))
+                .on_hover_text(tr(
+                    "Add surfaces for a cemented doublet, triplet, etc. (edit in the table)",
+                ))
                 .clicked()
             {
                 let mut rows = p.lens_rows();
@@ -2991,35 +3009,37 @@ fn kind_fields(
             }
         }
         ElemKind::Surfaces => {
-            ui.label(RichText::new(trf("{} 面（下の表）", &[&p.surfs.len()])).color(weak));
+            ui.label(
+                RichText::new(trf("{} surfaces (table below)", &[&p.surfs.len()])).color(weak),
+            );
         }
         ElemKind::ZmxRange => {
-            ui.label(RichText::new(tr("面")).color(weak));
+            ui.label(RichText::new(tr("Surface")).color(weak));
             ui.add(egui::DragValue::new(&mut p.range[0]).range(0..=9999))
-                .on_hover_text(tr("取り込む最初の面（0 は面 1）"));
+                .on_hover_text(tr("First surface to import (0 is surface 1)"));
             ui.label("〜");
             ui.add(egui::DragValue::new(&mut p.range[1]).range(0..=9999))
-                .on_hover_text(tr("取り込む最後の面（0 は像面の手前）"));
-            ui.label(RichText::new(tr("構成")).color(weak));
+                .on_hover_text(tr("Last surface to import (0 is the one before the image)"));
+            ui.label(RichText::new(tr("Config")).color(weak));
             ui.add(egui::DragValue::new(&mut p.config).range(1..=999))
-                .on_hover_text(tr(".zmx のマルチコンフィグの番号"));
+                .on_hover_text(tr("Multi-configuration number of the .zmx"));
         }
         ElemKind::Plate => {
-            num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0);
-            ui.label(RichText::new(tr("ガラス")).color(weak));
+            num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0);
+            ui.label(RichText::new(tr("Glass")).color(weak));
             ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             semi_edit(ui, &mut p.semi, &mut p.semi_auto);
         }
         ElemKind::Mirror => {
             num(ui, "R", &mut p.r1, " mm");
             place_ui(ui, p, st, &[], &[0, 1]);
-            num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
+            num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
             crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats);
-            ui.checkbox(&mut p.back, tr("往路を戻る")).on_hover_text(tr(
-                "鏡で反射した光が来た道を戻る（ダブルパス・干渉計の腕の端）。BS の分岐の中なら、戻った光は BS で分かれる",
+            ui.checkbox(&mut p.back, tr("Return along the path")).on_hover_text(tr(
+                "Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS",
             ));
         }
-        ElemKind::Stop => num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001),
+        ElemKind::Stop => num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001),
         ElemKind::Aperture => {
             egui::ComboBox::from_id_salt(("ap_shape", k))
                 .selected_text(p.ap.label())
@@ -3036,24 +3056,24 @@ fn kind_fields(
                 });
             match p.ap {
                 ApShape::Circle | ApShape::Obscuration => {
-                    num_in(ui, tr("内側の半径"), &mut p.ap_min, " mm", 0.0);
-                    num_in(ui, tr("外側の半径"), &mut p.semi, " mm", 0.001);
+                    num_in(ui, tr("Inner radius"), &mut p.ap_min, " mm", 0.0);
+                    num_in(ui, tr("Outer radius"), &mut p.semi, " mm", 0.001);
                 }
                 ApShape::Rect | ApShape::Ellipse => {
-                    num_in(ui, tr("半幅 x"), &mut p.ap_half[0], " mm", 0.001);
-                    num_in(ui, tr("半幅 y"), &mut p.ap_half[1], " mm", 0.001);
+                    num_in(ui, tr("Half width x"), &mut p.ap_half[0], " mm", 0.001);
+                    num_in(ui, tr("Half width y"), &mut p.ap_half[1], " mm", 0.001);
                 }
                 ApShape::Spider => {
-                    num_in(ui, tr("腕の幅（全幅）"), &mut p.spider_width, " mm", 0.0);
+                    num_in(ui, tr("Arm width (full)"), &mut p.spider_width, " mm", 0.0);
                     let mut n = p.spider_arms as f64;
-                    num(ui, tr("腕の本数"), &mut n, "");
+                    num(ui, tr("Number of arms"), &mut n, "");
                     p.spider_arms = n.round().clamp(1.0, 360.0) as u32;
                     // 腕は無限に伸びる。図ではこの半径まで描く
-                    num_in(ui, tr("図の半径"), &mut p.semi, " mm", 0.001);
+                    num_in(ui, tr("Drawn radius"), &mut p.semi, " mm", 0.001);
                 }
             }
-            num(ui, tr("偏心 x"), &mut p.decenter[0], " mm");
-            num(ui, tr("偏心 y"), &mut p.decenter[1], " mm");
+            num(ui, tr("Decenter x"), &mut p.decenter[0], " mm");
+            num(ui, tr("Decenter y"), &mut p.decenter[1], " mm");
         }
         ElemKind::Splitter => {
             let was = p.form;
@@ -3073,16 +3093,16 @@ fn kind_fields(
                 }
             }
             match p.form {
-                BsForm::Cube => num_in(ui, tr("一辺"), &mut p.t, " mm", 0.001),
-                BsForm::Plate => num_in(ui, tr("厚さ"), &mut p.t, " mm", 0.0),
+                BsForm::Cube => num_in(ui, tr("Size"), &mut p.t, " mm", 0.001),
+                BsForm::Plate => num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0),
                 BsForm::Ideal => {}
             }
             if p.form != BsForm::Ideal {
-                ui.label(RichText::new(tr("ガラス")).color(weak));
+                ui.label(RichText::new(tr("Glass")).color(weak));
                 ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             }
             if p.form != BsForm::Cube {
-                num_in(ui, tr("半径"), &mut p.semi, " mm", 0.001);
+                num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
             }
             let mut mode = p.split_mode();
             egui::ComboBox::from_id_salt(("bs_split", k))
@@ -3093,7 +3113,7 @@ fn kind_fields(
                     }
                 })
                 .response
-                .on_hover_text(tr("分ける面: 偏光によらない分岐比・膜・理想の偏光 BS"));
+                .on_hover_text(tr("Splitting face: polarization-independent ratio, coating, or ideal polarizing BS"));
             p.split = Some(mode);
             match mode {
                 BsSplit::Ratio => {
@@ -3120,31 +3140,39 @@ fn kind_fields(
                     );
                 }
             }
-            ui.checkbox(&mut p.arm_r, tr("反射側へ進む"))
-                .on_hover_text(tr("経路の文字が足りないときに進む口（既定は透過）"));
-            ui.checkbox(&mut p.bs_flip, tr("反射を逆向きに"))
-                .on_hover_text(tr("分ける面の向きを入れ替え、反射を反対側へ出す（F キー）"));
+            ui.checkbox(&mut p.arm_r, tr("Follow reflected arm"))
+                .on_hover_text(tr(
+                    "Port to take when the path has no letter for this BS (default: transmitted)",
+                ));
+            ui.checkbox(&mut p.bs_flip, tr("Flip reflection"))
+                .on_hover_text(tr(
+                    "Swap the split face so the reflection goes to the other side (F key)",
+                ));
         }
         ElemKind::Zmx => {
-            ui.label(RichText::new(tr("何番目の玉")).color(weak));
+            ui.label(RichText::new(tr("Element no.")).color(weak));
             ui.add(egui::DragValue::new(&mut p.lens).range(1..=999));
-            ui.label(RichText::new(tr("構成")).color(weak));
+            ui.label(RichText::new(tr("Config")).color(weak));
             ui.add(egui::DragValue::new(&mut p.config).range(1..=999))
-                .on_hover_text(tr(".zmx のマルチコンフィグの何番目から玉を取るか"));
+                .on_hover_text(tr(
+                    "Which multi-configuration of the .zmx to take the lens from",
+                ));
         }
         ElemKind::Catalog => {}
     }
     if p.kind == ElemKind::ZmxRange {
         if p.range_has_stop() {
-            ui.checkbox(&mut p.stop_front, tr(".zmx の絞りを使う")).on_hover_text(tr(
-                "取り込む面の絞りを系の絞りにする。外すと、絞りは自動の絞り・絞りの要素になる（絞りは系に 1 つだけ）",
+            ui.checkbox(&mut p.stop_front, tr("Use the .zmx stop")).on_hover_text(tr(
+                "Make the stop of the imported surfaces the system stop. When off, the stop is the automatic stop or a stop element (one stop per system)",
             ));
         } else {
-            ui.label(RichText::new(tr("範囲に .zmx の絞りの面が無い")).color(weak));
+            ui.label(RichText::new(tr("The range has no .zmx stop surface")).color(weak));
         }
     } else if p.can_stop_front() {
-        ui.checkbox(&mut p.stop_front, tr("前面を絞りに"))
-            .on_hover_text(tr("玉の前の面を絞りにする（絞りは系に 1 つだけ）"));
+        ui.checkbox(&mut p.stop_front, tr("Front is stop"))
+            .on_hover_text(tr(
+                "Make the front surface of the lens the stop (only one stop per system)",
+            ));
     }
 }
 
@@ -3160,9 +3188,9 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             return None;
         }
         let name = if g == STOP_GAP {
-            tr("絞り → 最初の要素").to_string()
+            tr("Stop → first element").to_string()
         } else if g + 1 == n {
-            trf("{} → 像面", &[&els[g].label()])
+            trf("{} → image", &[&els[g].label()])
         } else {
             trf("{} → {}", &[&els[g].label(), &els[g + 1].label()])
         };
@@ -3173,7 +3201,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         let mut x = v0;
         let v = &mut x;
         ui.horizontal(|ui| {
-            ui.label(RichText::new(tr("間隔")).color(weak));
+            ui.label(RichText::new(tr("Gap")).color(weak));
             ui.label(RichText::new(name).strong());
             ui.add(
                 egui::DragValue::new(v)
@@ -3191,7 +3219,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             }
         }
         ui.label(
-            RichText::new(tr("← → でも動かせます（Ctrl で 1 mm、Alt で 0.01 mm）"))
+            RichText::new(tr("← → also move it (Ctrl: 1 mm, Alt: 0.01 mm)"))
                 .small()
                 .color(weak),
         );
@@ -3199,7 +3227,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     }
     let Some(k) = view.sel.filter(|&k| k < n) else {
         ui.label(
-            RichText::new(tr("図の要素をクリックで選び、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選んで Enter）でその場で入力、寸法線のクリックは選ぶだけ。キーは [ ] で選ぶ、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ で傾き、R で反転、F で BS の反射を逆向きに、Delete で外す、Ctrl+L でロック。"))
+            RichText::new(tr("Click an element to select it, drag sideways to move it along the axis (Shift: decenter vertically). Click a dimension's value (or select it and press Enter) to type a new value; click the line to just select it. Keys: [ ] select, ← → move, ↑ ↓ decenter, Shift+↑ ↓ tilt, R reverse, F flip the BS reflection, Delete remove, Ctrl+L lock."))
                 .small()
                 .color(weak),
         );
@@ -3222,21 +3250,21 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
         if !where_.is_empty() {
-            ui.label(RichText::new(trf("（{} の先）", &[&where_])).color(weak))
-                .on_hover_text(tr("BS の口の先の並びの要素"));
+            ui.label(RichText::new(trf("(beyond {})", &[&where_])).color(weak))
+                .on_hover_text(tr("An element in the row beyond a BS port"));
         }
         if ui
-            .button(tr("面の表"))
+            .button(tr("Lens Data"))
             .on_hover_text(tr(
-                "この要素の面をレンズデータの表で見る・変える（図の要素のダブルクリックでも）",
+                "View and edit this element's surfaces in the Lens Data table (or double-click the element in the figure)",
             ))
             .clicked()
         {
             open = Some(k);
         }
         if ui
-            .button(tr("📚 カタログに保存"))
-            .on_hover_text(tr("この要素（か範囲）をユーザーカタログの項目にする"))
+            .button(tr("📚 Save to catalog"))
+            .on_hover_text(tr("Save this element (or a range) as an item of a user catalog"))
             .clicked()
         {
             view.save = Some(k);
@@ -3244,7 +3272,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
                 RichText::new(trf(
-                    "面の表で変えた値 {} 件",
+                    "{} values changed in Lens Data",
                     &[&(p.edits.len() + p.ops.len())],
                 ))
                 .color(ui.visuals().warn_fg_color),
@@ -3262,9 +3290,9 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                     .join("\n"),
             );
             if ui
-                .add_enabled(!p.locked, egui::Button::new(tr("元に戻す")))
+                .add_enabled(!p.locked, egui::Button::new(tr("Revert")))
                 .on_hover_text(tr(
-                    "面の表で変えた値をやめる（絞り・ソルブ・ピックアップも）",
+                    "Drop the values changed in the surface table (including stop, solves and pickups)",
                 ))
                 .clicked()
             {
@@ -3272,18 +3300,18 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                 p.ops.clear();
             }
         }
-        ui.checkbox(&mut p.locked, tr("ロック")).on_hover_text(tr(
-            "ロックした要素は中身（面・硝材・反転など）を変えられない。位置・後の空気は変えられる（Ctrl+L でも切り替え）",
+        ui.checkbox(&mut p.locked, tr("Lock")).on_hover_text(tr(
+            "A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)",
         ));
         if p.locked {
-            ui.checkbox(&mut p.lock_place, tr("位置も")).on_hover_text(tr(
-                "位置（図のドラッグ・キー・偏心・傾き）と後の空気も変えられないようにする",
+            ui.checkbox(&mut p.lock_place, tr("Position too")).on_hover_text(tr(
+                "Also lock the position (drag, keys, decenter, tilt) and the air after",
             ));
         }
         ui.add_enabled_ui(!p.locked, |ui| {
             kind_fields(ui, p, st, k, weak, &coats);
             if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
-                ui.checkbox(&mut p.reversed, tr("反転"));
+                ui.checkbox(&mut p.reversed, tr("Reverse"));
             }
         });
         ui.add_enabled_ui(!p.fixed(), |ui| {
@@ -3298,9 +3326,9 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                 num(
                     ui,
                     if k + 1 == n {
-                        tr("像面まで")
+                        tr("To image")
                     } else {
-                        tr("後の空気")
+                        tr("Air after")
                     },
                     &mut air,
                     " mm",
@@ -3313,19 +3341,19 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         onoff_ui(ui, p, st, k, weak);
         if ui
             .add_enabled(can_prev, egui::Button::new("◀"))
-            .on_hover_text(tr("前へ"))
+            .on_hover_text(tr("Earlier"))
             .clicked()
         {
             swap = Some(-1);
         }
         if ui
             .add_enabled(can_next, egui::Button::new("▶"))
-            .on_hover_text(tr("後へ"))
+            .on_hover_text(tr("Later"))
             .clicked()
         {
             swap = Some(1);
         }
-        if ui.button("✖").on_hover_text(tr("外す")).clicked() {
+        if ui.button("✖").on_hover_text(tr("Remove")).clicked() {
             remove = true;
         }
     });
@@ -3358,40 +3386,40 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
     };
     ui.horizontal_wrapped(|ui| {
         if p.form != BsForm::Cube {
-            num(ui, tr("分ける面の傾き x"), &mut p.bs_angle[0], "°");
-            num(ui, tr("傾き y"), &mut p.bs_angle[1], "°");
+            num(ui, tr("Splitting face tilt x"), &mut p.bs_angle[0], "°");
+            num(ui, tr("Tilt y"), &mut p.bs_angle[1], "°");
         }
         if p.form == BsForm::Plate {
-            num(ui, tr("くさび x"), &mut p.wedge[0], "°");
-            num(ui, tr("くさび y"), &mut p.wedge[1], "°");
-            ui.checkbox(&mut p.split_back, tr("裏の面で分ける"));
+            num(ui, tr("Wedge x"), &mut p.wedge[0], "°");
+            num(ui, tr("Wedge y"), &mut p.wedge[1], "°");
+            ui.checkbox(&mut p.split_back, tr("Split at the back face"));
         }
         if p.form != BsForm::Ideal {
-            ui.label(RichText::new(tr("ほかの面の膜")).color(weak));
+            ui.label(RichText::new(tr("Other faces' coating")).color(weak));
             ui.add(
                 egui::TextEdit::singleline(&mut p.ar)
-                    .hint_text(tr("膜なし"))
+                    .hint_text(tr("no coating"))
                     .desired_width(70.0),
             )
-            .on_hover_text(tr("分ける面以外の面の膜の既定（面ごとの膜が無い面）"));
+            .on_hover_text(tr("Default coating of faces other than the splitting face (faces without their own coating)"));
             for f in p.form.faces() {
                 let name = match *f {
-                    "front" => tr("表"),
-                    "back" => tr("裏"),
+                    "front" => tr("Table"),
+                    "back" => tr("Back"),
                     x => x,
                 };
-                ui.label(RichText::new(trf("面 {}", &[&name])).color(weak));
+                ui.label(RichText::new(trf("Surface {}", &[&name])).color(weak));
                 let mut v = p.faces.get(*f).cloned().unwrap_or_default();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut v)
-                            .hint_text(tr("既定"))
+                            .hint_text(tr("Default"))
                             .desired_width(56.0),
                     )
                     .on_hover_text(if p.form == BsForm::Cube {
-                        tr("キューブの面 a（A の口）・b（B）・c（C）・d（D）の膜。空ならほかの面の膜")
+                        tr("Coating of cube face a (port A), b (B), c (C), d (D). Empty uses the other faces' coating")
                     } else {
-                        tr("平板の表・裏の膜（分ける面には付かない）。空ならほかの面の膜")
+                        tr("Coating of the plate's front/back (not applied to the splitting face). Empty uses the other faces' coating")
                     })
                     .changed()
                 {
@@ -3408,8 +3436,8 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
     let mut branched = p.branched;
     ui.horizontal_wrapped(|ui| {
         if ui
-            .checkbox(&mut branched, tr("口の先に並べる（分岐）"))
-            .on_hover_text(tr("口 B（透過）・C（反射）・D（B から戻る光の反射）の先に、それぞれ要素を並べる。干渉計の腕など。BS は並びの最後になり、後ろの要素は今の口の先へ移る"))
+            .checkbox(&mut branched, tr("Elements beyond ports (branch)"))
+            .on_hover_text(tr("Place elements beyond port B (transmitted), C (reflected) and D (reflection of light returning from B), e.g. interferometer arms. The BS becomes the last in its row and the elements after it move beyond the current port"))
             .changed()
         {
             combo.set_branched(loc, branched);
@@ -3422,9 +3450,9 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
         return;
     }
     let names = [
-        tr("口 B（透過）の先"),
-        tr("口 C（反射）の先"),
-        tr("口 D（戻りの反射）の先"),
+        tr("Beyond port B (transmitted)"),
+        tr("Beyond port C (reflected)"),
+        tr("Beyond port D (returning reflection)"),
     ];
     let mut del: Option<(usize, usize)> = None;
     for (port, name) in names.iter().enumerate() {
@@ -3436,19 +3464,19 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
                     .speed(0.05)
                     .range(0.0..=1e5)
                     .max_decimals(4)
-                    .prefix(format!("{} ", tr("空気")))
+                    .prefix(format!("{} ", tr("air")))
                     .suffix(" mm"),
             )
-            .on_hover_text(tr("口から最初の要素まで（要素が無ければ像面まで）"));
+            .on_hover_text(tr("From the port to the first element (to the image plane if there is none)"));
             for (j, e) in b.picks.iter().enumerate() {
                 ui.label("→");
                 let mut l = e.label();
                 if e.kind == ElemKind::Mirror && e.back {
-                    l = trf("{}（戻る）", &[&l]);
+                    l = trf("{} (returns)", &[&l]);
                 }
                 if ui
                     .small_button(format!("{l} ✖"))
-                    .on_hover_text(tr("外す"))
+                    .on_hover_text(tr("Remove"))
                     .clicked()
                 {
                     del = Some((port, j));
@@ -3477,7 +3505,7 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
             })
             .response
             .on_hover_text(tr(
-                "この口の先の最後に要素を足す（図で選んで設定するには、経路をこの口へ）",
+                "Add an element at the end of this port's row (to select and edit it in the figure, set the path through this port)",
             ));
         });
     }
@@ -3544,12 +3572,12 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
         .show(ui, |ui| {
             for h in [
                 "#",
-                if lens { "" } else { tr("種類") },
+                if lens { "" } else { tr("Type") },
                 "R",
-                tr("コーニック"),
-                tr("厚さ"),
-                tr("ガラス"),
-                tr("半径"),
+                tr("Conic"),
+                tr("Thickness"),
+                tr("Glass"),
+                tr("Semi-diameter"),
                 "",
             ] {
                 ui.label(RichText::new(h).small().color(weak));
@@ -3580,20 +3608,20 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                         drag(ui, &mut r.radius);
                         drag(ui, &mut r.conic);
                         if last_lens {
-                            ui.label(RichText::new(tr("（後の空気）")).small().color(weak));
+                            ui.label(RichText::new(tr("(air after)")).small().color(weak));
                             ui.label("");
                         } else {
                             drag(ui, &mut r.t);
                             ui.add(
                                 egui::TextEdit::singleline(&mut r.glass)
                                     .desired_width(70.0)
-                                    .hint_text(tr("空気")),
+                                    .hint_text(tr("air")),
                             );
                         }
                         ui.horizontal(|ui| {
                             ui.add_enabled(!r.semi_auto, egui::DragValue::new(&mut r.semi).speed(0.1));
-                            ui.checkbox(&mut r.semi_auto, tr("自動"))
-                                .on_hover_text(tr("半径を全視野・全波長の光線から求める"));
+                            ui.checkbox(&mut r.semi_auto, tr("Auto"))
+                                .on_hover_text(tr("Compute the semi-diameter from rays of all fields and wavelengths"));
                         });
                     }
                     SurfKind::Jones => {
@@ -3620,16 +3648,16 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                     }
                     SurfKind::Polarizer => {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(tr("透過軸")).small().color(weak));
+                            ui.label(RichText::new(tr("Transmission axis")).small().color(weak));
                             ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
-                            ui.label(RichText::new(tr("消光比")).small().color(weak));
+                            ui.label(RichText::new(tr("Extinction")).small().color(weak));
                             ui.add(
                                 egui::DragValue::new(&mut r.extinction_ratio)
                                     .speed(10.0)
                                     .range(0.0..=f64::MAX),
                             )
-                            .on_hover_text(tr("0 は無限（直交の向きを通さない）"));
-                            ui.label(RichText::new(tr("透過率")).small().color(weak));
+                            .on_hover_text(tr("0 means infinite (blocks the orthogonal direction)"));
+                            ui.label(RichText::new(tr("Transmittance")).small().color(weak));
                             ui.add(
                                 egui::DragValue::new(&mut r.transmittance)
                                     .speed(0.01)
@@ -3643,25 +3671,25 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                     }
                     SurfKind::Waveplate => {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(tr("遅延")).small().color(weak));
+                            ui.label(RichText::new(tr("Retardance")).small().color(weak));
                             ui.add(
                                 egui::DragValue::new(&mut r.retardance)
                                     .speed(0.01)
                                     .suffix(" λ"),
                             );
-                            ui.label(RichText::new(tr("設計波長")).small().color(weak));
+                            ui.label(RichText::new(tr("Design wavelength")).small().color(weak));
                             ui.add(
                                 egui::DragValue::new(&mut r.wavelength_um)
                                     .speed(0.001)
                                     .range(0.01..=100.0)
                                     .suffix(" µm"),
                             );
-                            ui.label(RichText::new(tr("速い軸")).small().color(weak));
+                            ui.label(RichText::new(tr("Fast axis")).small().color(weak));
                             ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
-                            ui.label(RichText::new(tr("次数")).small().color(weak));
+                            ui.label(RichText::new(tr("Order")).small().color(weak));
                             ui.add(egui::DragValue::new(&mut r.wp_order).speed(0.1));
-                            ui.label(RichText::new(tr("複屈折材")).small().color(weak))
-                                .on_hover_text(tr("常光はこの名前、異常光は名前-E のガラス（空なら理想の遅延）。2 つ目があれば速い軸を直交させた 2 材の組"));
+                            ui.label(RichText::new(tr("Birefringent material")).small().color(weak))
+                                .on_hover_text(tr("Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes"));
                             ui.add(egui::TextEdit::singleline(&mut r.wp_material).desired_width(70.0));
                             ui.add(
                                 egui::DragValue::new(&mut r.wp_thickness)
@@ -3669,7 +3697,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                                     .range(0.0..=100.0)
                                     .suffix(" mm"),
                             )
-                            .on_hover_text(tr("0 は設計波長の遅延から決める（1 材のとき）"));
+                            .on_hover_text(tr("0 derives the thickness from the design retardance (single material)"));
                             ui.label("+");
                             ui.add(egui::TextEdit::singleline(&mut r.wp_material2).desired_width(70.0));
                             ui.add(
@@ -3691,7 +3719,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                                 drag(ui, &mut r.cb[j]);
                             }
                             let mut tf = r.order == 1;
-                            if ui.checkbox(&mut tf, tr("傾けてから偏心")).changed() {
+                            if ui.checkbox(&mut tf, tr("Tilt then decenter")).changed() {
                                 r.order = tf as u8;
                             }
                         });
@@ -3704,7 +3732,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                 ui.horizontal(|ui| {
                     if ui
                         .small_button("＋")
-                        .on_hover_text(tr("後に面を足す"))
+                        .on_hover_text(tr("Add a surface after"))
                         .clicked()
                     {
                         add = Some(i + 1);
@@ -3712,7 +3740,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                     let min = if lens { 2 } else { 1 };
                     if ui
                         .add_enabled(n > min, egui::Button::new("✖").small())
-                        .on_hover_text(tr("面を消す"))
+                        .on_hover_text(tr("Remove surface"))
                         .clicked()
                     {
                         del = Some(i);
@@ -3755,9 +3783,12 @@ fn semi_json(semi: f64, auto: bool) -> Value {
 
 /// 自作の玉・平板の半径の欄と自動の切り替え
 fn semi_edit(ui: &mut egui::Ui, semi: &mut f64, auto: &mut bool) {
-    ui.add_enabled_ui(!*auto, |ui| num_in(ui, tr("半径"), semi, " mm", 0.001));
-    ui.checkbox(auto, tr("自動"))
-        .on_hover_text(tr("半径を全視野・全波長の光線から求める"));
+    ui.add_enabled_ui(!*auto, |ui| {
+        num_in(ui, tr("Semi-diameter"), semi, " mm", 0.001)
+    });
+    ui.checkbox(auto, tr("Auto")).on_hover_text(tr(
+        "Compute the semi-diameter from rays of all fields and wavelengths",
+    ));
 }
 
 #[cfg(test)]

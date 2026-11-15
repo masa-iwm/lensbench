@@ -10,15 +10,15 @@ use crate::json_view::fmt_num;
 
 /// 玉の公差の項目（名前、表示名、単位）
 pub const FIELDS: [(&str, &str, &str); 9] = [
-    ("radius_rel", n_("曲率半径"), n_("比")),
-    ("focal_rel", n_("焦点距離"), n_("比")),
-    ("thickness", n_("中心厚"), "mm"),
-    ("wedge", n_("くさび"), "°"),
-    ("dn", n_("屈折率"), ""),
-    ("disp", n_("分散"), n_("比")),
-    ("decenter", n_("偏心"), "mm"),
-    ("tilt", n_("傾き"), "°"),
-    ("space", n_("後の間隔"), "mm"),
+    ("radius_rel", n_("Radius"), n_("Ratio")),
+    ("focal_rel", n_("Focal length"), n_("Ratio")),
+    ("thickness", n_("Center thickness"), "mm"),
+    ("wedge", n_("Wedge"), "°"),
+    ("dn", n_("Index"), ""),
+    ("disp", n_("Dispersion"), n_("Ratio")),
+    ("decenter", n_("Decenter"), "mm"),
+    ("tilt", n_("Tilt"), "°"),
+    ("space", n_("Space after"), "mm"),
 ];
 
 /// 下限・上限の比べ方
@@ -239,7 +239,7 @@ pub fn ui(
 ) {
     ui.label(
         RichText::new(tr(
-            "メーカーごとのカタログの玉の公差（catalog_tols）。名前はブロックのメーカー名に含まれれば合う（大文字小文字は区別しない、* はほか）。空の欄は既定の値。条件の行は前から順に、合うものの値で上書き",
+            "Catalog lens tolerances by vendor (catalog_tols). A name matches if the block's vendor contains it (case-insensitive; * is any other). Empty cells use the defaults. Condition rows apply in order; each match overrides the values.",
         ))
         .small()
         .color(weak),
@@ -251,11 +251,11 @@ pub fn ui(
             ui.add(
                 egui::TextEdit::singleline(&mut t.vendor)
                     .desired_width(90.0)
-                    .hint_text(tr("メーカー")),
+                    .hint_text(tr("Vendor")),
             );
             egui::ComboBox::from_id_salt(("tc_preset", i))
                 .selected_text(if t.preset.is_empty() {
-                    tr("項目で書く").to_string()
+                    tr("By item").to_string()
                 } else {
                     presets
                         .iter()
@@ -263,12 +263,12 @@ pub fn ui(
                         .map_or(t.preset.clone(), |p| tr(p.1).to_string())
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut t.preset, String::new(), tr("項目で書く"));
+                    ui.selectable_value(&mut t.preset, String::new(), tr("By item"));
                     for (k, l) in presets.iter().filter(|p| !p.0.is_empty()) {
                         ui.selectable_value(&mut t.preset, k.to_string(), tr(l));
                     }
                 });
-            if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+            if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                 del = Some(i);
             }
         });
@@ -292,13 +292,13 @@ pub fn ui(
                     );
                 }
                 ui.end_row();
-                ui.label(tr("既定"));
+                ui.label(tr("Default"));
                 for f in t.fields.iter_mut() {
                     cell(ui, f);
                 }
                 ui.end_row();
                 for (j, r) in t.rules.iter_mut().enumerate() {
-                    ui.label(trf("条件 {}", &[&(j + 1)]));
+                    ui.label(trf("Condition {}", &[&(j + 1)]));
                     for f in r.fields.iter_mut() {
                         cell(ui, f);
                     }
@@ -311,40 +311,40 @@ pub fn ui(
         for (j, r) in t.rules.iter_mut().enumerate() {
             ui.horizontal_wrapped(|ui| {
                 ui.label(
-                    RichText::new(trf("条件 {}", &[&(j + 1)]))
+                    RichText::new(trf("Condition {}", &[&(j + 1)]))
                         .small()
                         .color(weak),
                 );
-                ui.label(tr("外径"));
+                ui.label(tr("Diameter"));
                 bound(ui, ("tc_dl", i, j), &mut r.dia_lo, &LO_OPS);
                 bound(ui, ("tc_dh", i, j), &mut r.dia_hi, &HI_OPS);
-                ui.label(tr("|焦点距離|"));
+                ui.label(tr("|Focal length|"));
                 bound(ui, ("tc_el", i, j), &mut r.efl_lo, &LO_OPS);
                 bound(ui, ("tc_eh", i, j), &mut r.efl_hi, &HI_OPS);
                 egui::ComboBox::from_id_salt(("tc_cem", i, j))
                     .selected_text(match r.cemented {
-                        None => tr("玉の種類を問わない"),
-                        Some(true) => tr("貼り合わせ"),
-                        Some(false) => tr("単レンズ"),
+                        None => tr("Any lens type"),
+                        Some(true) => tr("Cemented"),
+                        Some(false) => tr("Singlet"),
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut r.cemented, None, tr("玉の種類を問わない"));
-                        ui.selectable_value(&mut r.cemented, Some(true), tr("貼り合わせ"));
-                        ui.selectable_value(&mut r.cemented, Some(false), tr("単レンズ"));
+                        ui.selectable_value(&mut r.cemented, None, tr("Any lens type"));
+                        ui.selectable_value(&mut r.cemented, Some(true), tr("Cemented"));
+                        ui.selectable_value(&mut r.cemented, Some(false), tr("Singlet"));
                     });
             });
         }
         if let Some(j) = rdel {
             t.rules.remove(j);
         }
-        if ui.small_button(tr("＋ 条件")).clicked() {
+        if ui.small_button(tr("＋ Condition")).clicked() {
             t.rules.push(Rule::default());
         }
     }
     if let Some(i) = del {
         v.remove(i);
     }
-    if ui.button(tr("＋ メーカー")).clicked() {
+    if ui.button(tr("＋ Vendor")).clicked() {
         v.push(VendorTol::default());
     }
 }

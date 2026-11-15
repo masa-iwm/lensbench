@@ -612,18 +612,18 @@ impl Viewer {
         egui::TopBottomPanel::top("remote-bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(&self.title).strong());
-                if ui.small_button(crate::i18n::tr("元のタブに戻す")).clicked() {
+                if ui.small_button(crate::i18n::tr("Back to the main tab")).clicked() {
                     close_this();
                 }
                 if stalled {
                     ui.label(
                         egui::RichText::new(crate::i18n::tr(
-                            "元のタブから返事がありません（ブラウザが元のタブを止めたかもしれません。元の窓を前に出すと動きます）",
+                            "No reply from the main tab (the browser may have paused it; bring the main window to the front)",
                         ))
                         .small()
                         .color(crate::theme::warn(ui.visuals())),
                     );
-                    if ui.small_button(crate::i18n::tr("元の窓を前へ")).clicked() {
+                    if ui.small_button(crate::i18n::tr("Bring main window to front")).clicked() {
                         focus_opener();
                     }
                 }
@@ -700,9 +700,9 @@ impl Viewer {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.centered_and_justified(|ui| {
                     ui.label(if self.closed {
-                        crate::i18n::tr("元のタブを閉じたので、このパネルは使えません。この窓を閉じてください。")
+                        crate::i18n::tr("The main tab was closed, so this panel cannot be used. Please close this window.")
                     } else {
-                        crate::i18n::tr("元のタブを待っています…")
+                        crate::i18n::tr("Waiting for the main tab…")
                     })
                 });
             });

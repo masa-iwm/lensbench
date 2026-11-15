@@ -41,7 +41,7 @@ impl CadStore {
 /// 品の STEP の共有の置き場の欄（カタログのフォルダの窓）。変えたらすぐ使う
 #[cfg(not(target_arch = "wasm32"))]
 pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
-    ui.label(tr("品の STEP の置き場（共有）"));
+    ui.label(tr("Shared store for item STEP files"));
     let before = st.clone();
     egui::Grid::new("cad_store").num_columns(2).show(ui, |ui| {
         ui.label(tr("URL"));
@@ -64,14 +64,14 @@ pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
     });
     ui.label(
         RichText::new(tr(
-            "品の STEP を取るとき、配布元より先にここを見ます。配布元から取った STEP はここにも上げます。Client ID・Secret は Cloudflare Access のサービストークン（守っていない口なら空）。空の URL は環境変数 LENSBENCH_CAD_STORE を使います。Secret は設定ファイルに保存しません（起動のたびに入れるか、環境変数 LENSBENCH_CAD_STORE_SECRET に置く）。",
+            "When fetching an item's STEP, this is checked before the vendor. STEP files fetched from the vendor are also uploaded here. Client ID and Secret are a Cloudflare Access service token (leave empty for an unprotected endpoint). An empty URL uses the LENSBENCH_CAD_STORE environment variable. The Secret is not saved in the settings file (enter it each time, or set the LENSBENCH_CAD_STORE_SECRET environment variable).",
         ))
         .small()
         .weak(),
     );
     if lensbench_cad::has_default_store() && st.url.trim().is_empty() {
         ui.label(
-            RichText::new(tr("空のときは、この版に組み込んだ置き場を使います。"))
+            RichText::new(tr("When empty, the store built into this edition is used."))
                 .small()
                 .weak(),
         );

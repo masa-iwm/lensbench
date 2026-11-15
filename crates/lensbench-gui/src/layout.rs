@@ -12,24 +12,24 @@ use crate::i18n::{n_, tr};
 
 /// 解析の種類（serve の analyze の cmd）、表示名、視野・波長を選べるか
 pub const ANALYSES: &[(&str, &str, bool)] = &[
-    ("spot", n_("スポット"), true),
-    ("mtf", n_("回折 MTF"), true),
-    ("wavefront", n_("波面収差"), true),
-    ("zernike", n_("Zernike 係数"), true),
+    ("spot", n_("Spot"), true),
+    ("mtf", n_("Diffraction MTF"), true),
+    ("wavefront", n_("Wavefront Map"), true),
+    ("zernike", n_("Zernike coefficients"), true),
     ("rms", "RMS", true),
-    ("psf", n_("回折 PSF"), true),
-    ("geo-mtf", n_("幾何 MTF"), true),
+    ("psf", n_("Diffraction PSF"), true),
+    ("geo-mtf", n_("Geometric MTF"), true),
     ("huygens-mtf", "Huygens MTF", true),
-    ("mtf-field", n_("フィールド MTF"), false),
-    ("mtf-focus", n_("スルーフォーカス MTF"), true),
-    ("interference", n_("干渉縞（2 光束）"), true),
-    ("pop", n_("簡易 POP"), true),
-    ("rays", n_("光線の表"), false),
-    ("coatings", n_("膜の境界"), false),
-    ("info", n_("システムデータ"), false),
-    ("elements", n_("玉モード"), false),
-    ("ghost", n_("ゴースト"), false),
-    ("mech-check", n_("機構のケラレ"), false),
+    ("mtf-field", n_("MTF vs field"), false),
+    ("mtf-focus", n_("Through-focus MTF"), true),
+    ("interference", n_("Two-beam fringes"), true),
+    ("pop", n_("Simple POP"), true),
+    ("rays", n_("Ray table"), false),
+    ("coatings", n_("Coating interfaces"), false),
+    ("info", n_("System data"), false),
+    ("elements", n_("Element mode"), false),
+    ("ghost", n_("Ghosts"), false),
+    ("mech-check", n_("Mechanical vignetting"), false),
 ];
 
 /// 解析の一覧（同梱の [`ANALYSES`] と拡張の解析 [`crate::ext`]）: (cmd, 表示名（日本語）, 視野・波長を選べるか)
@@ -46,45 +46,45 @@ pub fn analyses() -> Vec<(&'static str, &'static str, bool)> {
 /// 解析の説明（ツールチップ、日本語。表示は tr で）。無ければ None
 pub fn analysis_help(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "spot" => "スポットダイアグラム: 像面での光線の位置と RMS・GEO 半径",
-        "mtf" => "回折 MTF: 周波数ごとの変調度（子午・球欠）。瞳関数の自己相関から",
-        "wavefront" => "波面収差: 主光線基準の OPD の地図と P-V・RMS [波]",
-        "zernike" => "Zernike 係数 [波]（波面を Zernike 多項式で当てはめた係数）",
-        "rms" => "RMS（スポット半径・波面・Strehl の近似）を視野・フォーカス・波長に対して",
-        "psf" => "回折 PSF: 瞳関数の DFT。強度は収差のない同じ瞳の中心を 1 とする",
-        "geo-mtf" => "幾何 MTF: 光線の位置の分布から求めた MTF",
-        "huygens-mtf" => "Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）",
-        "mtf-field" => "フィールド MTF: 正規化視野 0〜1 に対する MTF（周波数ごと）",
-        "mtf-focus" => "スルーフォーカス MTF: 像面をずらしたときの MTF",
-        "interference" => "干渉縞（2 光束）: 2 つの構成か状態の光を重ねた縞",
-        "pop" => "簡易 POP: 光線から作った場を伝えた照度",
-        "rays" => "光線の表: 面ごとの交点・方向・光路長",
-        "coatings" => "膜の境界: 全構成の境界（膜・前後の媒質）と扱い",
-        "info" => "システムデータ: 焦点距離・F 値・瞳・像高など",
-        "elements" => "玉モード: 系を玉・鏡・座標ブレーク・空気間隔に分けて示す",
-        "ghost" => "ゴースト: 2 回反射の近軸の焦点の位置・像面でのぼけと強度の比",
-        "mech-check" => "機構のケラレ: 機構部品の穴の外に出た光線の割合",
+        "spot" => "Spot diagram: ray positions on the image and RMS/GEO radius",
+        "mtf" => "Diffraction MTF: modulation per frequency (tangential/sagittal), from the pupil autocorrelation",
+        "wavefront" => "Wavefront: OPD map referenced to the chief ray, with P-V and RMS [waves]",
+        "zernike" => "Zernike coefficients [waves] (fit of the wavefront)",
+        "rms" => "RMS (spot radius, wavefront, approximate Strehl) versus field, focus or wavelength",
+        "psf" => "Diffraction PSF: DFT of the pupil function, normalized to the aberration-free peak",
+        "geo-mtf" => "Geometric MTF: MTF from the ray position distribution",
+        "huygens-mtf" => "Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface)",
+        "mtf-field" => "Field MTF: MTF versus normalized field 0–1 (per frequency)",
+        "mtf-focus" => "Through-focus MTF: MTF as the image plane shifts",
+        "interference" => "Two-beam fringes: overlap of two configurations or states",
+        "pop" => "Simple POP: irradiance of a field built from rays and propagated",
+        "rays" => "Ray table: intersections, directions and optical path per surface",
+        "coatings" => "Coating boundaries: every boundary (coating, media) and how it is handled",
+        "info" => "System data: focal length, F-number, pupils, image height, etc.",
+        "elements" => "Lens mode: the system split into lenses, mirrors, coordinate breaks and air gaps",
+        "ghost" => "Ghosts: paraxial focus, blur at the image and intensity ratio of double bounces",
+        "mech-check" => "Mechanical vignetting: share of rays outside the mechanical apertures",
         _ => return None,
     })
 }
 
 /// 解析の群の並び
 pub const ANALYSIS_GROUPS: &[&str] = &[
-    n_("像の質"),
-    n_("MTF・PSF"),
-    n_("干渉・伝搬"),
-    n_("表・系"),
-    n_("追加の解析"),
+    n_("Image quality"),
+    n_("MTF / PSF"),
+    n_("Interference / propagation"),
+    n_("Tables / system"),
+    n_("Extra analyses"),
 ];
 
 /// 解析の群（一覧の見出し、日本語。表示は tr で）。拡張の解析は「追加の解析」
 pub fn analysis_group(cmd: &str) -> &'static str {
     match cmd {
-        "spot" | "wavefront" | "zernike" | "rms" => "像の質",
-        "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF・PSF",
-        "interference" | "pop" => "干渉・伝搬",
-        "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "表・系",
-        _ => "追加の解析",
+        "spot" | "wavefront" | "zernike" | "rms" => "Image quality",
+        "mtf" | "geo-mtf" | "huygens-mtf" | "mtf-field" | "mtf-focus" | "psf" => "MTF / PSF",
+        "interference" | "pop" => "Interference / propagation",
+        "rays" | "coatings" | "info" | "elements" | "ghost" | "mech-check" => "Tables / system",
+        _ => "Extra analyses",
     }
 }
 
@@ -213,61 +213,61 @@ pub struct Tool {
 pub const TOOLS: &[Tool] = &[
     Tool {
         kind: Kind::System,
-        title: n_("系"),
+        title: n_("System"),
         keywords: "system",
         name: "system",
     },
     Tool {
         kind: Kind::Catalog,
-        title: n_("カタログ"),
+        title: n_("Catalog"),
         keywords: "catalog",
         name: "catalog",
     },
     Tool {
         kind: Kind::Layout,
-        title: n_("レイアウト"),
+        title: n_("Layout"),
         keywords: "layout combo",
         name: "layout",
     },
     Tool {
         kind: Kind::SysSettings,
-        title: n_("系の設定"),
+        title: n_("System settings"),
         keywords: "system settings aperture field wavelength aiming",
         name: "settings",
     },
     Tool {
         kind: Kind::LensData,
-        title: n_("レンズデータ"),
+        title: n_("Lens Data"),
         keywords: "lens data surfaces table",
         name: "lens data",
     },
     Tool {
         kind: Kind::MultiConfig,
-        title: n_("多重構成"),
+        title: n_("Multi-Config"),
         keywords: "multi configuration editor mce",
         name: "multi configuration",
     },
     Tool {
         kind: Kind::Optimize,
-        title: n_("最適化"),
+        title: n_("Optimize"),
         keywords: "optimize optimization merit function dls",
         name: "optimize",
     },
     Tool {
         kind: Kind::Swap,
-        title: n_("差し替え探索"),
+        title: n_("Swap search"),
         keywords: "swap search catalog lens replace",
         name: "swap",
     },
     Tool {
         kind: Kind::Tolerance,
-        title: n_("公差"),
+        title: n_("Tolerance"),
         keywords: "tolerance monte carlo sensitivity",
         name: "tolerance",
     },
     Tool {
         kind: Kind::Zoom,
-        title: n_("ズーム軌跡"),
+        title: n_("Zoom track"),
         keywords: "zoom cam track states focal length",
         name: "zoom",
     },
@@ -476,9 +476,9 @@ impl Preset {
 
     pub fn label(self) -> &'static str {
         match self {
-            Preset::Analysis => tr("解析中心"),
-            Preset::Catalog => tr("カタログと組合せ"),
-            Preset::TwoScreens => tr("2 画面（解析を別の窓に）"),
+            Preset::Analysis => tr("Analysis-focused"),
+            Preset::Catalog => tr("Catalog and combination"),
+            Preset::TwoScreens => tr("Two screens (analyses in separate windows)"),
         }
     }
 

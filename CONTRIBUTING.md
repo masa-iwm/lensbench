@@ -7,7 +7,10 @@
 
 - 識別子（型・関数・変数・JSON の鍵・CLI のオプション）は英語。略さずに書く（`object_distance`、`paraxial_image_height`）。
 - コメント・doc コメント・ドキュメント（`docs/`）は日本語。
-- 誤り・CLI の説明の文は英語を元にし、日本語の訳を付ける（切り替えの仕組みは作っている途中。それまでは周りの書き方に合わせる）。
+- 画面（GUI）・誤り・CLI の説明の文は英語を元にし、日本語の訳を表に付ける。GUI は `tr("…")` の英語が鍵で訳は
+  `crates/lensbench-gui/lang/ja.tsv`、誤りの文の訳は `crates/lensbench-core/lang/ja.tsv`。
+- 日本語の訳語は OpticStudio の日本語版などで広く使われる言い回し（カタカナ語を含む）に揃え、どの表でも同じ語にする。
+  用語集は `crates/lensbench-core/lang/glossary.tsv`（使わない語 → 使う語）。状態・誤りの文の文末は「〜ません」の形。
 
 ## 名前
 

@@ -102,59 +102,59 @@ impl App {
             })
         };
         push(
-            tr("新規（組合せを空にする）").into(),
+            tr("New (clear the combination)").into(),
             "new ctrl+n",
             Cmd::New,
         );
         push(
-            tr("系のファイルを開く…").into(),
+            tr("Open a system file…").into(),
             "open file ctrl+o",
             Cmd::Open,
         );
         push(
-            tr("元に戻す（Ctrl+Z）").into(),
+            tr("Undo (Ctrl+Z)").into(),
             "undo ctrl+z",
             Cmd::Undo(true, 1),
         );
         push(
-            tr("やり直す（Ctrl+Y）").into(),
+            tr("Redo (Ctrl+Y)").into(),
             "redo ctrl+y ctrl+shift+z",
             Cmd::Undo(false, 1),
         );
-        push(tr("系を読み直す").into(), "reload", Cmd::Reload);
+        push(tr("Reload the system").into(), "reload", Cmd::Reload);
         // 実行系（GUX-16）。設定はそれぞれのパネルのまま
         if self.c.sys.summary.is_some() {
             push(
-                tr("最適化する（今の設定で）").into(),
+                tr("Optimize (current settings)").into(),
                 "run optimize opt",
                 Cmd::RunOpt,
             );
             push(
-                tr("公差を回す（今の設定で）").into(),
+                tr("Run tolerancing (current settings)").into(),
                 "run tolerance tol monte carlo",
                 Cmd::RunTol,
             );
         }
         if self.c.is_combo() && self.c.layout_data.is_some() {
             push(
-                tr("像面を近軸の焦点へ").into(),
+                tr("Image at paraxial focus").into(),
                 "focus image paraxial",
                 Cmd::FocusImage,
             );
         }
         push(
-            tr("開いている解析をすべて計算し直す").into(),
+            tr("Recompute all open analyses").into(),
             "run all f5",
             Cmd::RunAll,
         );
         push(
-            tr(".zmx に書き出す…").into(),
+            tr("Export to .zmx…").into(),
             "write zmx export",
             Cmd::WriteZmx,
         );
-        push(tr("保存（Ctrl+S）").into(), "save ctrl+s", Cmd::Save(false));
+        push(tr("Save (Ctrl+S)").into(), "save ctrl+s", Cmd::Save(false));
         push(
-            tr("名前を付けて保存…（Ctrl+Shift+S）").into(),
+            tr("Save As… (Ctrl+Shift+S)").into(),
             "save as ctrl+shift+s",
             Cmd::Save(true),
         );
@@ -172,9 +172,9 @@ impl App {
                 },
             };
             let label = if k.single() {
-                trf("パネルを出す: {}", &[&t])
+                trf("Show panel: {}", &[&t])
             } else {
-                trf("パネルを足す: {}", &[&t])
+                trf("Add panel: {}", &[&t])
             };
             push(label, &hint, Cmd::Add(k));
         }
@@ -185,7 +185,7 @@ impl App {
                 _ => String::new(),
             };
             push(
-                trf("パネルへ移る: {}", &[&p.title()]),
+                trf("Go to panel: {}", &[&p.title()]),
                 &format!("go focus panel {name}"),
                 Cmd::Focus(p.id),
             );
@@ -201,53 +201,57 @@ impl App {
         }
         for p in Preset::ALL {
             push(
-                trf("並び: {}", &[&p.label()]),
+                trf("Workspace: {}", &[&p.label()]),
                 "layout preset",
                 Cmd::Preset(p),
             );
         }
         for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
             push(
-                trf("保存した並び: {}", &[n]),
+                trf("Saved workspace: {}", &[n]),
                 "layout saved",
                 Cmd::Layout(i),
             );
         }
-        push(tr("今の並びを保存…").into(), "save layout", Cmd::SaveLayout);
         push(
-            tr("配色: 暗い").into(),
+            tr("Save current workspace…").into(),
+            "save layout",
+            Cmd::SaveLayout,
+        );
+        push(
+            tr("Theme: dark").into(),
             "theme dark",
             Cmd::Theme(Mode::Dark),
         );
         push(
-            tr("配色: 明るい").into(),
+            tr("Theme: light").into(),
             "theme light",
             Cmd::Theme(Mode::Light),
         );
         push(
-            tr("配色: OS に合わせる").into(),
+            tr("Theme: follow the OS").into(),
             "theme system",
             Cmd::Theme(Mode::System),
         );
         for i in 0..theme::ACCENTS.len() {
             push(
-                trf("アクセント色 {}", &[&(i + 1)]),
+                trf("Accent color {}", &[&(i + 1)]),
                 "accent color",
                 Cmd::Accent(i),
             );
         }
         for l in Lang::ALL {
-            push(trf("言語: {}", &[&l.label()]), "language", Cmd::Lang(l));
+            push(trf("Language: {}", &[&l.label()]), "language", Cmd::Lang(l));
         }
         push(
-            tr("カタログのフォルダ…").into(),
+            tr("Catalog folders…").into(),
             "folders settings",
             Cmd::Folders,
         );
-        push(tr("キーボード操作の一覧").into(), "help keys f1", Cmd::Help);
+        push(tr("Keyboard shortcuts").into(), "help keys f1", Cmd::Help);
         for f in &self.c.s.recent {
             push(
-                trf("最近のファイル: {}", &[f]),
+                trf("Recent file: {}", &[f]),
                 "recent",
                 Cmd::Recent(f.clone()),
             );
@@ -265,17 +269,17 @@ impl App {
             logo(ui, 26.0, accent);
             ui.label(RichText::new("lensbench").strong().size(15.0).color(accent));
             {
-                ui.menu_button(tr("ファイル"), |ui| {
-                    if ui.button(tr("新規（Ctrl+N）")).clicked() {
+                ui.menu_button(tr("File"), |ui| {
+                    if ui.button(tr("New (Ctrl+N)")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::New);
                     }
-                    if ui.button(tr("開く…（Ctrl+O）")).clicked() {
+                    if ui.button(tr("Open… (Ctrl+O)")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::Open);
                     }
                     if !self.c.samples.is_empty() {
-                        ui.menu_button(tr("見本"), |ui| {
+                        ui.menu_button(tr("Samples"), |ui| {
                             // 組合せ・プロジェクト・.zmx の系の間に区切り
                             let group = |f: &str| {
                                 if f.contains("/examples/combos/") {
@@ -293,7 +297,7 @@ impl App {
                                     ui.separator();
                                 }
                                 if last != Some(g) && g == 0 {
-                                    ui.weak(tr("組合せ（開くと組合せに戻る）"));
+                                    ui.weak(tr("Combinations (open as a combination)"));
                                 }
                                 last = Some(g);
                                 let name = sample_name(f);
@@ -304,9 +308,9 @@ impl App {
                             }
                         });
                     }
-                    ui.menu_button(tr("最近のファイル"), |ui| {
+                    ui.menu_button(tr("Recent files"), |ui| {
                         if self.c.s.recent.is_empty() {
-                            ui.label(tr("（なし）"));
+                            ui.label(tr("(none)"));
                         }
                         for f in &self.c.s.recent {
                             if ui.button(f).clicked() {
@@ -318,7 +322,7 @@ impl App {
                     if ui
                         .add_enabled(
                             self.c.loc.file.is_some(),
-                            egui::Button::new(tr("読み直す（Ctrl+R）")),
+                            egui::Button::new(tr("Reload (Ctrl+R)")),
                         )
                         .clicked()
                     {
@@ -329,7 +333,7 @@ impl App {
                     if ui
                         .add_enabled(
                             self.c.sys.summary.is_some(),
-                            egui::Button::new(tr(".zmx に書き出す…")),
+                            egui::Button::new(tr("Export to .zmx…")),
                         )
                         .clicked()
                     {
@@ -344,14 +348,14 @@ impl App {
                             f.extension().is_some_and(|x| x.eq_ignore_ascii_case("zmx"))
                         });
                     let save_label = if zmx {
-                        tr("系ファイル（.json）として保存…（Ctrl+S）")
+                        tr("Save as system file (.json)…(Ctrl+S)")
                     } else {
-                        tr("保存（Ctrl+S）")
+                        tr("Save (Ctrl+S)")
                     };
                     if ui
                         .add_enabled(can_save, egui::Button::new(save_label))
                         .on_hover_text(tr(
-                            "組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに",
+                            "A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file",
                         ))
                         .clicked()
                     {
@@ -361,7 +365,7 @@ impl App {
                     if ui
                         .add_enabled(
                             can_save,
-                            egui::Button::new(tr("名前を付けて保存…（Ctrl+Shift+S）")),
+                            egui::Button::new(tr("Save As… (Ctrl+Shift+S)")),
                         )
                         .clicked()
                     {
@@ -369,7 +373,7 @@ impl App {
                         cmd = Some(Cmd::Save(true));
                     }
                     ui.separator();
-                    if ui.button(tr("カタログのフォルダ…")).clicked() {
+                    if ui.button(tr("Catalog folders…")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::Folders);
                     }
@@ -380,19 +384,19 @@ impl App {
                             .add_enabled(
                                 n > 0,
                                 egui::Button::new(trf(
-                                    "ブラウザに残したファイルを消す（{} 個、{} MB）…",
+                                    "Clear files kept in the browser ({} files, {} MB)…",
                                     &[&n, &format!("{:.1}", b as f64 / 1e6)],
                                 )),
                             )
                             .on_hover_text(tr(
-                                "読み込んだファイルとユーザーカタログは、ページを閉じてもブラウザに残る",
+                                "Loaded files and user catalogs stay in the browser after the page is closed",
                             ))
                             .clicked()
                         {
                             ui.close_menu();
                             self.c.ask(
                                 "lensbench",
-                                tr("ブラウザに残した、読み込んだファイルとユーザーカタログを全部消します。よろしいですか？"),
+                                tr("Delete all loaded files and user catalogs kept in the browser?"),
                                 |c, yes| {
                                     if yes {
                                         crate::web_store::clear();
@@ -409,29 +413,29 @@ impl App {
                     // ブラウザ（Web 版）では閉じられないので出さない
                     if cfg!(not(target_arch = "wasm32")) {
                         ui.separator();
-                        if ui.button(tr("終了")).clicked() {
+                        if ui.button(tr("Quit")).clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     }
                 });
-                ui.menu_button(tr("編集"), |ui| {
+                ui.menu_button(tr("Edit"), |ui| {
                     let (u, r) = (self.c.can_undo(true), self.c.can_undo(false));
                     if ui
-                        .add_enabled(u, egui::Button::new(tr("元に戻す（Ctrl+Z）")))
+                        .add_enabled(u, egui::Button::new(tr("Undo (Ctrl+Z)")))
                         .clicked()
                     {
                         ui.close_menu();
                         cmd = Some(Cmd::Undo(true, 1));
                     }
                     if ui
-                        .add_enabled(r, egui::Button::new(tr("やり直す（Ctrl+Y）")))
+                        .add_enabled(r, egui::Button::new(tr("Redo (Ctrl+Y)")))
                         .clicked()
                     {
                         ui.close_menu();
                         cmd = Some(Cmd::Undo(false, 1));
                     }
                     // 段の一覧: 選んだ段まで（その段を含めて）まとめて戻す・やり直す
-                    for (back, title) in [(true, tr("ここまで元に戻す")), (false, tr("ここまでやり直す"))] {
+                    for (back, title) in [(true, tr("Undo up to")), (false, tr("Redo up to"))] {
                         let list = self.c.undo_list(back);
                         ui.add_enabled_ui(!list.is_empty(), |ui| {
                             ui.menu_button(title, |ui| {
@@ -448,14 +452,14 @@ impl App {
                     }
                     ui.label(
                         RichText::new(tr(
-                            "系の変更（面の表・多重構成・最適化の結果・組合せ）と、系を開く・読み直す・新規を 100 段まで",
+                            "System changes (lens data, multi-config, optimization results, combination) and open, reload and new, up to 100 steps",
                         ))
                         .small()
                         .weak(),
                     );
                 });
                 // 1 枚だけのパネルは「出す」（あれば表に）、解析は「足す」を下の段に分ける（GUX-16）
-                ui.menu_button(tr("パネル"), |ui| {
+                ui.menu_button(tr("Panels"), |ui| {
                     let (single, many): (Vec<Kind>, Vec<Kind>) =
                         add_kinds().into_iter().partition(Kind::single);
                     for k in single {
@@ -466,7 +470,7 @@ impl App {
                         .title();
                         if ui
                             .button(t)
-                            .on_hover_text(tr("1 枚だけのパネル。あれば表に出す"))
+                            .on_hover_text(tr("Single panel; brings it to the front if already open"))
                             .clicked()
                         {
                             ui.close_menu();
@@ -474,22 +478,22 @@ impl App {
                         }
                     }
                     ui.separator();
-                    ui.menu_button(tr("解析を足す"), |ui| {
+                    ui.menu_button(tr("Add analysis"), |ui| {
                         for k in many {
                             let t = Pane {
                                 id: 0,
                                 kind: k.clone(),
                             }
                             .title();
-                            if ui.button(trf("＋ {}", &[&t])).clicked() {
+                            if ui.button(trf("+ {}", &[&t])).clicked() {
                                 ui.close_menu();
                                 cmd = Some(Cmd::Add(k));
                             }
                         }
                     });
                 });
-                ui.menu_button(tr("画面の配置"), |ui| {
-                    ui.label(RichText::new(tr("初期の並び")).small().color(weak));
+                ui.menu_button(tr("Workspace"), |ui| {
+                    ui.label(RichText::new(tr("Preset workspaces")).small().color(weak));
                     for p in Preset::ALL {
                         if ui.button(p.label()).clicked() {
                             ui.close_menu();
@@ -497,9 +501,9 @@ impl App {
                         }
                     }
                     ui.separator();
-                    ui.label(RichText::new(tr("保存した並び")).small().color(weak));
+                    ui.label(RichText::new(tr("Saved workspaces")).small().color(weak));
                     if self.c.s.layouts.is_empty() {
-                        ui.label(tr("（なし）"));
+                        ui.label(tr("(none)"));
                     }
                     let mut del = None;
                     for (i, (n, _)) in self.c.s.layouts.iter().enumerate() {
@@ -508,7 +512,7 @@ impl App {
                                 ui.close_menu();
                                 cmd = Some(Cmd::Layout(i));
                             }
-                            if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                            if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                                 del = Some(i);
                             }
                         });
@@ -517,23 +521,23 @@ impl App {
                         self.c.s.layouts.remove(i);
                     }
                     ui.separator();
-                    if ui.button(tr("今の並びを保存…")).clicked() {
+                    if ui.button(tr("Save current workspace…")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::SaveLayout);
                     }
                 });
-                ui.menu_button(tr("表示"), |ui| {
-                    ui.label(RichText::new(tr("配色")).small().color(weak));
+                ui.menu_button(tr("View"), |ui| {
+                    ui.label(RichText::new(tr("Theme")).small().color(weak));
                     for (m, l) in [
-                        (Mode::Dark, tr("暗い")),
-                        (Mode::Light, tr("明るい")),
-                        (Mode::System, tr("OS に合わせる")),
+                        (Mode::Dark, tr("Dark")),
+                        (Mode::Light, tr("Light")),
+                        (Mode::System, tr("Follow the OS")),
                     ] {
                         if ui.radio(self.c.s.look.mode == m, l).clicked() {
                             cmd = Some(Cmd::Theme(m));
                         }
                     }
-                    ui.label(RichText::new(tr("アクセント色")).small().color(weak));
+                    ui.label(RichText::new(tr("Accent color")).small().color(weak));
                     ui.horizontal(|ui| {
                         for (i, a) in theme::ACCENTS.iter().enumerate() {
                             let c = Color32::from_rgb(a[0], a[1], a[2]);
@@ -563,25 +567,25 @@ impl App {
                         }
                     });
                     if cfg!(not(target_arch = "wasm32")) {
-                        ui.checkbox(&mut self.c.s.os_titlebar, tr("OS のタイトルバーを使う"))
+                        ui.checkbox(&mut self.c.s.os_titlebar, tr("Use the OS title bar"))
                             .on_hover_text(tr(
-                                "外すと上の帯をタイトルバーにする（ドラッグで移動、ダブルクリックで最大化、縁で大きさを変える）",
+                                "When off, the top bar acts as the title bar (drag to move, double-click to maximize, drag edges to resize)",
                             ));
                     }
                     ui.separator();
-                    ui.label(RichText::new(tr("言語")).small().color(weak));
+                    ui.label(RichText::new(tr("Language")).small().color(weak));
                     for l in Lang::ALL {
                         if ui.radio(self.c.s.lang == l, l.label()).clicked() {
                             cmd = Some(Cmd::Lang(l));
                         }
                     }
                     ui.separator();
-                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
+                    if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::Help);
                     }
                 });
-                ui.menu_button(tr("ヘルプ"), |ui| {
+                ui.menu_button(tr("Help"), |ui| {
                     for (label, page, tip) in HELP_PAGES {
                         if ui
                             .button(tr(label))
@@ -593,7 +597,7 @@ impl App {
                         }
                     }
                     ui.separator();
-                    if ui.button(tr("キーボード操作の一覧（F1）")).clicked() {
+                    if ui.button(tr("Keyboard shortcuts (F1)")).clicked() {
                         ui.close_menu();
                         cmd = Some(Cmd::Help);
                     }
@@ -612,12 +616,12 @@ impl App {
                     .as_ref()
                     .and_then(|f| f.file_name())
                     .map(|x| x.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| tr("（未保存）").to_string());
+                    .unwrap_or_else(|| tr("(unsaved)").to_string());
                 let mark = if dirty { " ●" } else { "" };
                 let r = ui.label(RichText::new(format!("{name}{mark}")).strong());
                 let tip = shown.map(|f| f.display().to_string()).unwrap_or_default();
                 if dirty {
-                    r.on_hover_text(format!("{tip}\n{}", tr("● 保存していない変更がある（Ctrl+S で保存）")));
+                    r.on_hover_text(format!("{tip}\n{}", tr("● Unsaved changes (Ctrl+S to save)")));
                 } else {
                     r.on_hover_text(tip);
                 }
@@ -628,7 +632,7 @@ impl App {
                     crate::chrome::window_buttons(ui);
                 }
                 let run = egui::Button::new(
-                    RichText::new(tr("▶ 計算（F5）"))
+                    RichText::new(tr("▶ Compute (F5)"))
                         .strong()
                         .color(Color32::from_rgb(6, 18, 28)),
                 )
@@ -641,10 +645,10 @@ impl App {
                 for (back, icon, key) in [(false, ["↷", ">"], "Ctrl+Y"), (true, ["↶", "<"], "Ctrl+Z")] {
                     let next = self.c.undo_list(back).into_iter().next();
                     let tip = match (&next, back) {
-                        (Some(n), true) => trf("元に戻す（{}）: {}", &[&key, n]),
-                        (Some(n), false) => trf("やり直す（{}）: {}", &[&key, n]),
-                        (None, true) => tr("元に戻す段は無い").to_string(),
-                        (None, false) => tr("やり直す段は無い").to_string(),
+                        (Some(n), true) => trf("Undo ({}): {}", &[&key, n]),
+                        (Some(n), false) => trf("Redo ({}): {}", &[&key, n]),
+                        (None, true) => tr("Nothing to undo").to_string(),
+                        (None, false) => tr("Nothing to redo").to_string(),
                     };
                     if ui
                         .add_enabled(
@@ -662,15 +666,15 @@ impl App {
                 // 探す欄は残りの幅に合わせて縮める（狭ければ 🔍 だけ。左のメニューに重ねない、GUX-03）
                 let room = ui.available_width() - 8.0;
                 let label = if room >= 300.0 {
-                    format!("🔍  {}    Ctrl K", tr("解析・パネル・操作を探す"))
+                    format!("🔍  {}    Ctrl K", tr("Search analyses, panels, actions"))
                 } else if room >= 150.0 {
-                    format!("🔍  {}", tr("探す"))
+                    format!("🔍  {}", tr("Search"))
                 } else {
                     "🔍".to_string()
                 };
                 let search = egui::Button::new(RichText::new(label).color(weak))
                     .min_size(egui::vec2(room.clamp(28.0, 300.0), 28.0));
-                let r = ui.add(search).on_hover_text(tr("解析・パネル・操作を探す（Ctrl+K）"));
+                let r = ui.add(search).on_hover_text(tr("Search analyses, panels and commands (Ctrl+K)"));
                 self.palette.anchor = Some(r.rect);
                 if r.clicked() {
                     self.palette.show();
@@ -714,7 +718,7 @@ impl Core {
                     }
                 }
                 Err(e) => {
-                    self.fail(trf("見本を書き出せない: {}", &[&e]));
+                    self.fail(trf("Cannot write the samples: {}", &[&e]));
                 }
             }
         }
@@ -723,38 +727,53 @@ impl Core {
 
 /// ヘルプのメニューのページ（名前、マニュアルの中のページ、説明）
 const HELP_PAGES: &[(&str, &str, &str)] = &[
-    (n_("マニュアル"), "", n_("使い方の目次（ブラウザで開く）")),
     (
-        n_("GUI の使い方"),
+        n_("Manual"),
+        "",
+        n_("Table of contents (opens in the browser)"),
+    ),
+    (
+        n_("Using the GUI"),
         "gui.html",
-        n_("画面・パネルの使い方（図つき）"),
+        n_("Screens and panels, with pictures"),
     ),
     (
-        n_("解析と CLI"),
+        n_("Analyses and CLI"),
         "cli.html",
-        n_("解析の種類と引数、出力の例"),
+        n_("Analysis types, arguments and example outputs"),
     ),
     (
-        n_("プロジェクトファイル"),
+        n_("Project file"),
         "project-file.html",
-        n_("ブロックで系を組む JSON（状態・群・BS）"),
+        n_("Building systems from blocks in JSON (states, groups, beam splitters)"),
     ),
-    (n_("最適化"), "optimize.html", n_("評価関数・変数・DLS")),
-    (n_("公差"), "tolerance.html", n_("モンテカルロ公差の設定")),
+    (
+        n_("Optimize"),
+        "optimize.html",
+        n_("Merit function, variables and DLS"),
+    ),
+    (
+        n_("Tolerance"),
+        "tolerance.html",
+        n_("Monte Carlo tolerancing settings"),
+    ),
 ];
 
 /// パネルを外に出す操作の名前。Web 版はブラウザの別の窓（ポップアップ）に出し、元のタブで描いた画面を送って
 /// 別の窓で操作する（#137・GAR-10）
 pub(super) fn detach_label(web: bool) -> &'static str {
     if web {
-        tr("別の窓に出す")
+        tr("Move to another window")
     } else {
-        tr("別の窓に出す（別モニターへ）")
+        tr("Move to separate window (another monitor)")
     }
 }
 
 #[test]
 fn detach_label_web() {
-    assert_eq!(detach_label(true), "別の窓に出す");
-    assert_eq!(detach_label(false), "別の窓に出す（別モニターへ）");
+    assert_eq!(detach_label(true), "Move to another window");
+    assert_eq!(
+        detach_label(false),
+        "Move to separate window (another monitor)"
+    );
 }

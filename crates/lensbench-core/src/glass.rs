@@ -568,7 +568,7 @@ mod tests {
         );
         // 日本語の表示: 添え書き（{why}）まで訳す
         let ja = crate::i18n::translate(e.strip_prefix("invalid: ").unwrap_or(&e));
-        assert!(ja.contains("ガラス G（面 1）がカタログにない"), "{ja}");
+        assert!(ja.contains("硝材 G（面 1）がカタログにありません"), "{ja}");
         assert!(
             ja.contains("（見つからない・読めなかったカタログ: BADCAT"),
             "{ja}"

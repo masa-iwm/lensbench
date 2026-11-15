@@ -184,7 +184,7 @@ pub fn spot(
     });
     let (fields, centers, rmax) = (&scale.0, &scale.1, scale.2);
     if fields.is_empty() {
-        ui.weak(tr("光線を追跡しています…"));
+        ui.weak(tr("Tracing rays…"));
         return;
     }
     let airy_um = sys.wfno.map(|f| {
@@ -208,7 +208,7 @@ pub fn spot(
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(trf(
-                "枠の半幅 {} µm",
+                "Half width of a box {} µm",
                 &[&fmt_sig(half_um / view.0 as f64, 3)],
             ))
             .small()
@@ -216,7 +216,7 @@ pub fn spot(
         );
         if let Some(a) = airy_um {
             ui.label(
-                RichText::new(trf("破線の円は Airy 半径 {} µm", &[&fmt_sig(a, 3)]))
+                RichText::new(trf("Dashed circle: Airy radius {} µm", &[&fmt_sig(a, 3)]))
                     .small()
                     .color(theme::weak_text(&vis)),
             );
@@ -314,7 +314,7 @@ pub fn spot(
                                 prev.and_then(|p| spot_rms(p, f)).map(|x| x * 1e3),
                             ) {
                                 ui.label(RichText::new(t).small().color(col))
-                                    .on_hover_text(tr("値を変える前との差"));
+                                    .on_hover_text(tr("Difference from before the change"));
                             }
                         }
                     });
@@ -336,8 +336,8 @@ pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
         .data(|d| d.get_temp(egui::Id::new(FIELD_LABELS)))
         .unwrap_or_default();
     move |f| match f.checked_sub(1).and_then(|i| coords.get(i)) {
-        Some(c) => trf("視野 {} {}", &[&f, c]),
-        None => trf("視野 {}", &[&f]),
+        Some(c) => trf("Field {} {}", &[&f, c]),
+        None => trf("Field {}", &[&f]),
     }
 }
 
@@ -365,7 +365,7 @@ pub fn mtf_curves(
     show_prev: &mut bool,
 ) {
     let Some(curves) = result[key].as_array() else {
-        ui.weak(tr("MTF の結果がない"));
+        ui.weak(tr("No MTF result"));
         return;
     };
     let unit = result["unit"].as_str().unwrap_or("cycles/mm").to_string();
@@ -450,9 +450,9 @@ pub fn mtf_curves(
         for &(f, k, ref pts) in now.iter() {
             let t = k == "tangential";
             let name = if t {
-                trf("視野 {} 子午", &[&f])
+                trf("Field {} tangential", &[&f])
             } else {
-                trf("視野 {} 球欠", &[&f])
+                trf("Field {} sagittal", &[&f])
             };
             let color = theme::series(f.saturating_sub(1));
             reg.push(crate::plot_tools::Series::new(name.clone(), color, pts));
@@ -488,9 +488,9 @@ pub fn mtf_curves(
     };
     ui.horizontal_wrapped(|ui| {
         sample(ui, weak, false, false);
-        ui.label(RichText::new(tr("子午")).small().color(weak));
+        ui.label(RichText::new(tr("tangential")).small().color(weak));
         sample(ui, weak, true, false);
-        ui.label(RichText::new(tr("球欠")).small().color(weak));
+        ui.label(RichText::new(tr("sagittal")).small().color(weak));
         ui.add_space(8.0);
         for f in &fields {
             let (r, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), Sense::hover());
@@ -504,7 +504,7 @@ pub fn mtf_curves(
             sample(ui, weak, false, true);
             ui.checkbox(
                 show_prev,
-                RichText::new(tr("前の結果（系を変える前）")).small(),
+                RichText::new(tr("Previous result (before the system change)")).small(),
             );
         });
     }

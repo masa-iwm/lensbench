@@ -195,7 +195,7 @@ fn element_spans_fill_unnamed_elements() {
 fn type_column_matches_by_prefix_then_description() {
     assert_eq!(type_matches("ev")[0], "EVENASPH");
     assert_eq!(type_matches("co")[0], "COORDBRK");
-    assert!(type_matches("非球面").contains(&"EVENASPH"));
+    assert!(type_matches("asphere").contains(&"EVENASPH"));
     assert_eq!(type_matches("").len(), TYPE_NAMES.len());
     assert!(type_matches("xyz").is_empty());
     assert_eq!(Col::Type.parse("st"), Ok(json!("STANDARD")));

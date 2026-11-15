@@ -414,7 +414,7 @@ pub fn show(
     painter.text(
         rect.right_bottom() - Vec2::new(10.0, 8.0),
         egui::Align2::RIGHT_BOTTOM,
-        tr("ドラッグで回す・Shift か右ドラッグで動かす・ホイールで拡大・ダブルクリックで戻す"),
+        tr("Drag to rotate, Shift- or right-drag to pan, wheel to zoom, double-click to reset"),
         egui::FontId::proportional(10.5),
         weak,
     );

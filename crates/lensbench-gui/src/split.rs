@@ -52,9 +52,7 @@ pub fn two(ui: &mut Ui, id: impl std::hash::Hash, frac: (f32, f32), min: f32) ->
         a = (frac * len).clamp(lo, len - lo);
         ui.data_mut(|m| m.remove::<f32>(key));
     }
-    let resp = resp.on_hover_text(crate::i18n::tr(
-        "ドラッグで大きさを変える（ダブルクリックで元に戻す）",
-    ));
+    let resp = resp.on_hover_text(crate::i18n::tr("Drag to resize (double-click to reset)"));
     if resp.hovered() || resp.dragged() {
         ui.ctx().set_cursor_icon(if side {
             CursorIcon::ResizeHorizontal

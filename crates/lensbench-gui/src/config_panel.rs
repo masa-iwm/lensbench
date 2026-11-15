@@ -123,7 +123,7 @@ fn parse_num(t: &str) -> Result<f64, String> {
     match t.to_ascii_lowercase().as_str() {
         "inf" | "infinity" => Ok(f64::INFINITY),
         "-inf" | "-infinity" => Ok(f64::NEG_INFINITY),
-        _ => t.parse().map_err(|_| trf("数でない: {}", &[&t])),
+        _ => t.parse().map_err(|_| trf("Not a number: {}", &[&t])),
     }
 }
 
@@ -155,16 +155,22 @@ fn remove_op(k: usize) -> Value {
 /// 構成の挿入の選択肢（構成 k の前後、ピックアップ付き）。選んだ操作を返す
 fn insert_menu(ui: &mut Ui, k: usize) -> Option<Value> {
     let mut op = None;
-    if ui.button(trf("構成 {} の前に構成を挿入", &[&k])).clicked() {
+    if ui
+        .button(trf("Insert a configuration before configuration {}", &[&k]))
+        .clicked()
+    {
         op = Some(insert_op(k, k, false));
     }
-    if ui.button(trf("構成 {} の後に構成を挿入", &[&k])).clicked() {
+    if ui
+        .button(trf("Insert a configuration after configuration {}", &[&k]))
+        .clicked()
+    {
         op = Some(insert_op(k + 1, k, false));
     }
     if ui
-        .button(trf("構成 {} の前にピックアップ付きで挿入", &[&k]))
+        .button(trf("Insert with pickups before configuration {}", &[&k]))
         .on_hover_text(trf(
-            "新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）",
+            "Every row of the new configuration picks up configuration {} (follows when the source changes)",
             &[&k],
         ))
         .clicked()
@@ -172,9 +178,9 @@ fn insert_menu(ui: &mut Ui, k: usize) -> Option<Value> {
         op = Some(insert_op(k, k, true));
     }
     if ui
-        .button(trf("構成 {} の後にピックアップ付きで挿入", &[&k]))
+        .button(trf("Insert with pickups after configuration {}", &[&k]))
         .on_hover_text(trf(
-            "新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）",
+            "Every row of the new configuration picks up configuration {} (follows when the source changes)",
             &[&k],
         ))
         .clicked()
@@ -254,12 +260,15 @@ fn cell_menu(
     let name = &t.rows[i].0;
     let v = t.rows[i].1.get(k).copied().unwrap_or(f64::NAN);
     let pick = t.pick(i, k);
-    if ui.button(tr("書き換える（F2）")).clicked() {
+    if ui.button(tr("Edit (F2)")).clicked() {
         *start = Some((i, k, None));
         ui.close_menu();
     }
     if ui
-        .add_enabled(t.n > 1, egui::Button::new(tr("この値を全部の構成に")))
+        .add_enabled(
+            t.n > 1,
+            egui::Button::new(tr("Use this value in all configurations")),
+        )
         .clicked()
     {
         menu_ops.push(json!({
@@ -269,7 +278,7 @@ fn cell_menu(
     }
     if k + 1 != t.active
         && ui
-            .button(trf("構成 {} を系に入れる", &[&(k + 1)]))
+            .button(trf("Apply configuration {} to the system", &[&(k + 1)]))
             .clicked()
     {
         menu_ops.push(json!({ "op": "set_config", "k": k + 1 }));
@@ -278,14 +287,14 @@ fn cell_menu(
     // 構成のピックアップ
     if t.n > 1 {
         ui.separator();
-        ui.label(RichText::new(tr("ピックアップ")).strong());
+        ui.label(RichText::new(tr("Pickups")).strong());
         if let Some(p) = pick {
             ui.horizontal(|ui| {
                 ui.label(trf(
-                    "構成 {} × {} + {}",
+                    "Configuration {} × {} + {}",
                     &[&p.from, &full(p.scale), &full(p.offset)],
                 ));
-                if ui.small_button(tr("外す")).clicked() {
+                if ui.small_button(tr("Remove")).clicked() {
                     menu_ops.push(json!({
                         "op": "remove_config_pickup", "param": name, "k": k + 1,
                     }));
@@ -300,14 +309,14 @@ fn cell_menu(
         }
         if let Some(f) = st.pick_form.as_mut() {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(tr("元の構成")).color(weak));
+                ui.label(RichText::new(tr("Source config")).color(weak));
                 ui.add(egui::TextEdit::singleline(&mut f.1).desired_width(30.0));
-                ui.label(RichText::new(tr("倍率")).color(weak));
+                ui.label(RichText::new(tr("Scale")).color(weak));
                 ui.add(egui::TextEdit::singleline(&mut f.2).desired_width(50.0));
-                ui.label(RichText::new(tr("ずれ")).color(weak));
+                ui.label(RichText::new(tr("Offset")).color(weak));
                 ui.add(egui::TextEdit::singleline(&mut f.3).desired_width(50.0));
             });
-            if ui.button(tr("+ ピックアップにする")).clicked() {
+            if ui.button(tr("+ Make pickup")).clicked() {
                 match (
                     f.1.trim().parse::<usize>(),
                     parse_num(&f.2),
@@ -318,7 +327,7 @@ fn cell_menu(
                         "from": from, "scale": sc, "offset": of,
                     })),
                     _ => acts.push(Act::Refused(
-                        tr("ピックアップの元の構成・倍率・ずれは数で").into(),
+                        tr("Pickup source configuration, scale and offset must be numbers").into(),
                     )),
                 }
                 ui.close_menu();
@@ -326,12 +335,12 @@ fn cell_menu(
         }
     }
     ui.separator();
-    if ui.button(tr("行をコピー（Ctrl+C）")).clicked() {
+    if ui.button(tr("Copy row (Ctrl+C)")).clicked() {
         ui.ctx().copy_text(copy_text(t, &[i]));
         st.kbd_menu = None;
         ui.close_menu();
     }
-    if ui.button(tr("行を消す（Delete）")).clicked() {
+    if ui.button(tr("Delete row (Delete)")).clicked() {
         *remove = Some(i);
         ui.close_menu();
     }
@@ -343,7 +352,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     let accent = ui.visuals().selection.stroke.color;
     let Some(t) = st.table.clone() else {
         ui.add_space(8.0);
-        ui.label(tr("系を開くと、多重構成の表が出ます。"));
+        ui.label(tr("Open a system to see its multi-configuration table."));
         return acts;
     };
     if st.cur.is_some_and(|(i, k)| i >= t.rows.len() || k >= t.n) {
@@ -353,7 +362,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     if combo {
         ui.label(
             RichText::new(tr(
-                "組合せの系は作り直すと表が消えます。組合せの構成はプロジェクトの状態（states）で扱います。表を使うには系ファイルに保存して開いてください。",
+                "A combination system loses the table when rebuilt. Combination configurations are project states. To use the table, save to a system file and open it.",
             ))
             .small()
             .color(weak),
@@ -361,12 +370,12 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     }
     // 構成の数・今の構成
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("構成")).color(weak));
+        ui.label(RichText::new(tr("Config")).color(weak));
         for k in 1..=t.n {
             if ui
                 .selectable_label(k == t.active, k.to_string())
                 .on_hover_text(tr(
-                    "この構成の値を系に入れる（解析・図・面の表が追従）。Ctrl+A で次、Ctrl+Shift+A で前の構成",
+                    "Apply this configuration to the system (analyses, plots and lens data follow). Ctrl+A: next, Ctrl+Shift+A: previous",
                 ))
                 .clicked()
                 && k != t.active
@@ -389,7 +398,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
             ui,
             &mut st.new_param,
             150.0,
-            "3.t・2.c・STOP.k・G1.shift",
+            "3.t, 2.c, STOP.k, G1.shift",
             cands,
             Set::Config,
         );
@@ -400,15 +409,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
             ui,
             cands,
             Set::Config,
-            tr("パラメータを面・玉・群から選んで行を挿入"),
+            tr("Choose a parameter from surfaces / lenses / groups and insert the row"),
         ) {
             st.new_param = n;
             enter = true;
         }
         let add = ui
-            .button(tr("行を挿入"))
+            .button(tr("Insert row"))
             .on_hover_text(tr(
-                "左の名前のパラメータを表に足す（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも足せる",
+                "Add the parameter named on the left (names as in Python / serve set; every configuration starts from the current value). Also available from \"Make a multi-config row\" in the lens data cell right-click menu",
             ))
             .clicked();
         if add && st.new_param.trim().is_empty() {
@@ -427,26 +436,26 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
             }
         })
         .response
-        .on_hover_text(tr("構成の挿入（前・後、ピックアップ付き）"));
+        .on_hover_text(tr("Insert a configuration (before / after, with pickups)"));
         ui.separator();
         let cur_row = st.cur.map(|c| c.0);
         if ui
-            .add_enabled(cur_row.is_some(), egui::Button::new(tr("行を削除")))
-            .on_hover_text(tr("選んだ行を表から消す（系の値は今のまま）。Delete キーでも"))
+            .add_enabled(cur_row.is_some(), egui::Button::new(tr("Delete row")))
+            .on_hover_text(tr("Remove the selected row from the table (system values stay). Also with the Delete key"))
             .clicked()
         {
             bar_remove = cur_row;
         }
         ui.menu_button("▼", |ui| {
             if ui
-                .add_enabled(t.n > 1, egui::Button::new(trf("構成 {} を削除", &[&refk])))
+                .add_enabled(t.n > 1, egui::Button::new(trf("Delete configuration {}", &[&refk])))
                 .clicked()
             {
                 bar_ops.push(remove_op(refk));
                 ui.close_menu();
             }
             if ui
-                .add_enabled(t.n > 1, egui::Button::new(tr("最後の構成を削除")))
+                .add_enabled(t.n > 1, egui::Button::new(tr("Delete the last configuration")))
                 .clicked()
             {
                 bar_ops.push(remove_op(t.n));
@@ -454,7 +463,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
             }
         })
         .response
-        .on_hover_text(tr("構成の削除（列の見出しをクリックして選び Delete でも）"));
+        .on_hover_text(tr("Delete a configuration (or select its column header and press Delete)"));
         let d = param_desc(&st.new_param);
         if !d.is_empty() {
             ui.label(RichText::new(d).small().color(weak));
@@ -463,13 +472,13 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     if t.zmx_cfgs > 1 && t.rows.is_empty() {
         ui.horizontal_wrapped(|ui| {
             ui.label(trf(
-                "この .zmx は {} 個の構成を持ち、構成 {} を読んでいます。",
+                "This .zmx has {} configurations; configuration {} is loaded.",
                 &[&t.zmx_cfgs, &t.zmx_cfg],
             ));
             if ui
-                .button(tr("表に取り込む"))
+                .button(tr("Import into table"))
                 .on_hover_text(tr(
-                    "各構成を読み、構成で違う値（曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp）を表の行にする",
+                    "Read each configuration and make a row for every value that differs (curvature, conic, thickness, asphere, tilt/decenter, dn, disp)",
                 ))
                 .clicked()
             {
@@ -508,18 +517,18 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                 .column(Column::exact(24.0))
                 .header(22.0, |mut h| {
                     h.col(|ui| {
-                        ui.strong(tr("パラメータ"));
+                        ui.strong(tr("Parameters"));
                     });
                     for k in 1..=t.n {
                         h.col(|ui| {
-                            let rt = RichText::new(trf("構成 {}", &[&k])).strong();
+                            let rt = RichText::new(trf("Config {}", &[&k])).strong();
                             let r = ui.interact(ui.max_rect(), ui.id().with("mce_head"), Sense::click());
                             if st.sel_col == Some(k - 1) {
                                 ui.painter().rect_filled(ui.max_rect(), 2.0, ui.visuals().selection.bg_fill);
                             }
                             ui.label(if k == t.active { rt.color(accent) } else { rt });
                             let r = r.on_hover_text(tr(
-                                "クリックで列を選ぶ（Delete で構成を削除）。ダブルクリックでこの構成を系に入れる。右クリックで挿入・削除",
+                                "Click to select the column (Delete removes the configuration). Double-click to apply it. Right-click to insert or delete",
                             ));
                             if r.clicked() || r.secondary_clicked() {
                                 clicked_any = true;
@@ -530,7 +539,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 acts.push(Act::Ops(vec![json!({ "op": "set_config", "k": k })]));
                             }
                             r.context_menu(|ui| {
-                                if ui.button(tr("この構成を系に入れる")).clicked() {
+                                if ui.button(tr("Apply this configuration to the system")).clicked() {
                                     menu_ops.push(json!({ "op": "set_config", "k": k }));
                                     ui.close_menu();
                                 }
@@ -540,7 +549,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 }
                                 ui.separator();
                                 if ui
-                                    .add_enabled(t.n > 1, egui::Button::new(tr("この構成を消す（Delete）")))
+                                    .add_enabled(t.n > 1, egui::Button::new(tr("Delete this configuration (Delete)")))
                                     .clicked()
                                 {
                                     menu_ops.push(remove_op(k));
@@ -567,7 +576,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 st.sel_col = None;
                             }
                             r.context_menu(|ui| {
-                                if ui.button(tr("行を消す（系の値は今のまま）")).clicked() {
+                                if ui.button(tr("Remove the row (the system keeps its current values)")).clicked() {
                                     remove = Some(i);
                                     ui.close_menu();
                                 }
@@ -637,7 +646,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                                 // セル全体でクリックを受ける（文字の外でも）
                                 let hover = match pick {
                                     Some(p) => trf(
-                                        "{}（構成 {} × {} + {} のピックアップ）",
+                                        "{} (pickup: configuration {} × {} + {})",
                                         &[&full(v), &p.from, &full(p.scale), &full(p.offset)],
                                     ),
                                     None => full(v),
@@ -693,7 +702,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         row.col(|ui| {
                             if ui
                                 .small_button("✖")
-                                .on_hover_text(tr("行を消す（系の値は今のまま）"))
+                                .on_hover_text(tr("Remove the row (the system keeps its current values)"))
                                 .clicked()
                             {
                                 remove = Some(i);
@@ -878,7 +887,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     if t.n < 2 && t.zmx_cfgs < 2 {
         ui.label(
             RichText::new(tr(
-                "構成は 1 つです。挿入の ▼ で構成を足すか、行を挿入すると構成 2 つの表になります。",
+                "There is one configuration. Add one from the insert ▼, or insert a row to make a two-configuration table.",
             ))
             .small()
             .color(weak),
@@ -954,7 +963,7 @@ mod tests {
             vec![json!({ "op": "set_config_row", "param": "2.t", "values": [1.0, 5.0, 6.0] })]
         );
         assert!(paste_ops(&t, 0, 0, "1\tx").is_err());
-        assert_eq!(param_desc("3.t"), "面 3 の厚さ");
-        assert_eq!(param_desc("G1.shift"), "G1 の移動");
+        assert_eq!(param_desc("3.t"), "Surface 3 Thickness");
+        assert_eq!(param_desc("G1.shift"), "G1 Shift");
     }
 }

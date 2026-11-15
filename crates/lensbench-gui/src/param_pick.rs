@@ -37,33 +37,35 @@ pub fn param_desc(name: &str) -> String {
     let Some((who, k)) = name.trim().rsplit_once('.') else {
         let n = name.trim();
         return match n {
-            "objx" => tr("物体の位置 X").into(),
-            "objy" => tr("物体の位置 Y").into(),
-            _ if n.starts_with("wave") => trf("波長 {}", &[&&n[4..]]),
+            "objx" => tr("Object position X").into(),
+            "objy" => tr("Object position Y").into(),
+            _ if n.starts_with("wave") => trf("Wave {}", &[&&n[4..]]),
             _ => String::new(),
         };
     };
     let what = match k.to_ascii_lowercase().as_str() {
-        "c" => tr("曲率").to_string(),
-        "r" => tr("曲率半径").into(),
-        "k" => tr("コーニック").into(),
-        "t" => tr("厚さ").into(),
-        "dx" => tr("偏心 X").into(),
-        "dy" => tr("偏心 Y").into(),
-        "tx" => tr("傾き X").into(),
-        "ty" => tr("傾き Y").into(),
-        "tz" => tr("傾き Z").into(),
-        "dn" => tr("屈折率のずれ").into(),
-        "disp" => tr("分散の変化").into(),
-        "shift" => tr("移動").into(),
-        a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => trf("r^{} の係数", &[&&a[1..]]),
+        "c" => tr("Curvature").to_string(),
+        "r" => tr("Radius").into(),
+        "k" => tr("Conic").into(),
+        "t" => tr("Thickness").into(),
+        "dx" => tr("Decenter X").into(),
+        "dy" => tr("Decenter Y").into(),
+        "tx" => tr("Tilt X").into(),
+        "ty" => tr("Tilt Y").into(),
+        "tz" => tr("Tilt Z").into(),
+        "dn" => tr("index offset").into(),
+        "disp" => tr("dispersion change").into(),
+        "shift" => tr("Shift").into(),
+        a if a.starts_with('a') && a[1..].parse::<u8>().is_ok() => {
+            trf("r^{} coefficient", &[&&a[1..]])
+        }
         z if z.starts_with('z') && z[1..].parse::<u16>().is_ok() => trf("Zernike {}", &[&&z[1..]]),
         _ => return String::new(),
     };
     if who.trim().parse::<usize>().is_ok() {
-        trf("面 {} の{}", &[&who.trim(), &what])
+        trf("Surface {} {}", &[&who.trim(), &what])
     } else {
-        trf("{} の{}", &[&who.trim(), &what])
+        trf("{} {}", &[&who.trim(), &what])
     }
 }
 
@@ -379,7 +381,7 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
     };
     if let Set::Swap { gaps } = set {
         if !gaps.is_empty() {
-            ui.menu_button(tr("間隔"), |ui| {
+            ui.menu_button(tr("Gap"), |ui| {
                 for (id, d) in gaps {
                     let n = format!("{id}.t");
                     pick(ui, &n, format!("{n}  {d}"));
@@ -395,7 +397,7 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
     }
     let any_surf = (0..sys.surfs.len()).any(|j| !surf_kinds(sys, j, set).is_empty());
     if any_surf {
-        ui.menu_button(tr("面"), |ui| {
+        ui.menu_button(tr("Surface"), |ui| {
             egui::ScrollArea::vertical()
                 .max_height(400.0)
                 .show(ui, |ui| {
@@ -426,7 +428,7 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
     let uk = unit_kinds(set);
     if !uk.is_empty() {
         ui.add_enabled_ui(!sys.units.is_empty(), |ui| {
-            ui.menu_button(tr("玉・群"), |ui| {
+            ui.menu_button(tr("Lenses / groups"), |ui| {
                 for u in &sys.units {
                     ui.menu_button(u, |ui| {
                         for k in uk {
@@ -439,14 +441,14 @@ pub fn menu(ui: &mut Ui, sys: &Sys, set: Set) -> Option<String> {
         });
     }
     if matches!(set, Set::Config | Set::Any) {
-        ui.menu_button(tr("物体の位置"), |ui| {
+        ui.menu_button(tr("object position"), |ui| {
             for n in ["objx", "objy"] {
                 pick(ui, n, format!("{n}  {}", param_desc(n)));
             }
         });
     }
     if matches!(set, Set::Any) && sys.waves > 0 {
-        ui.menu_button(tr("波長"), |ui| {
+        ui.menu_button(tr("Wavelengths"), |ui| {
             for i in 1..=sys.waves {
                 let n = format!("wave{i}");
                 pick(ui, &n, format!("{n}  {}", param_desc(&n)));
@@ -473,7 +475,7 @@ pub fn edit_pick(
     set: Set,
 ) -> (Response, bool) {
     let (resp, mut chosen) = edit(ui, s, width, hint, sys, set);
-    if let Some(n) = menu_button(ui, sys, set, tr("面・玉・群から選ぶ")) {
+    if let Some(n) = menu_button(ui, sys, set, tr("Pick from surfaces, lenses and groups")) {
         *s = n;
         chosen = true;
     }
@@ -577,8 +579,8 @@ mod tests {
         assert_eq!(c("g1.s"), vec!["G1.shift".to_string()]);
         assert_eq!(c("2.t")[..2], ["2.t".to_string(), "2.tx".to_string()]);
         assert!(c("").is_empty());
-        assert_eq!(param_desc("3.t"), "面 3 の厚さ");
-        assert_eq!(param_desc("G1.shift"), "G1 の移動");
-        assert_eq!(param_desc("wave2"), "波長 2");
+        assert_eq!(param_desc("3.t"), "Surface 3 Thickness");
+        assert_eq!(param_desc("G1.shift"), "G1 Shift");
+        assert_eq!(param_desc("wave2"), "Wave 2");
     }
 }

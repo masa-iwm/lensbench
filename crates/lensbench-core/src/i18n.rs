@@ -433,10 +433,10 @@ mod tests {
     fn templates_match_and_fill() {
         let e = entry(
             "glass {name} is not in the catalogs (surface {s})",
-            "ガラス {name} がカタログにない（面 {s}）",
+            "硝材 {name} がカタログにありません（面 {s}）",
         );
         let v = matches(&e.en, "glass N-SK16 is not in the catalogs (surface 1)").unwrap();
-        assert_eq!(fill(&e, v), "ガラス N-SK16 がカタログにない（面 1）");
+        assert_eq!(fill(&e, v), "硝材 N-SK16 がカタログにありません（面 1）");
         // repeated {} in order, reordered in Japanese by name is not possible, but order is kept
         let e = entry("{} must be at most {}", "{} は {} 以下に");
         let v = matches(&e.en, "rings must be at most 50").unwrap();
@@ -469,7 +469,7 @@ mod tests {
     fn tolerance_item_names() {
         assert_eq!(translate_item("L1 group decenter x"), "L1 群の偏心x");
         assert_eq!(translate_item("L1 decenter x"), "L1 偏心x");
-        assert_eq!(translate_item("lens 2 thickness 3"), "lens 2 厚さ3");
+        assert_eq!(translate_item("lens 2 thickness 3"), "lens 2 厚み3");
         assert_eq!(translate_item("L1 R2"), "L1 R2");
         // 項目名の型は誤りの文の経路では使わない（先頭が何でも当たるので）
         assert_eq!(translate("no such glass index 3"), "no such glass index 3");
@@ -479,7 +479,7 @@ mod tests {
     fn notes_of_several_sentences() {
         assert_eq!(
             translate("the seat is the mount end (not known from the STEP). inner thread SM1 (for elements of diameter 25.4 mm)"),
-            "座の位置は枠の端（STEP から分からない）。内側のねじ SM1（入る素子の径 25.4 mm）"
+            "座の位置はマウントの端（STEP から分からない）。内側のねじ SM1（入る素子の径 25.4 mm）"
         );
         // 訳の無い文が混ざれば英語のまま
         let s = "the seat is the mount end (not known from the STEP). no such sentence";
@@ -499,7 +499,7 @@ mod tests {
     fn surface_label_coating_is_translated() {
         assert_eq!(
             translate("surface 3(STANDARD, N-BK7, coating AR, 「L1」)"),
-            "面 3(STANDARD, N-BK7, 膜 AR, 「L1」)"
+            "面 3(STANDARD, N-BK7, コーティング AR, 「L1」)"
         );
         assert_eq!(translate("surface 2(STANDARD)"), "面 2(STANDARD)");
     }
@@ -515,13 +515,13 @@ mod tests {
         // 埋めた値は訳さない（入れ子の誤り {e} だけ訳す）
         assert_eq!(
             translate("surface 3.zmx: no such file"),
-            "surface 3.zmx: ファイルが無い"
+            "surface 3.zmx: ファイルがありません"
         );
         assert_eq!(translate("set 2: surface 3"), "組 2: 面 3");
         // 表の行。短い型の「surface {}」より長い型が勝つ
         assert_eq!(
             translate("surface 3 can't be written (1 to 9)"),
-            "面 3 は書けない（1〜9）"
+            "面 3 は書けません（1〜9）"
         );
         // 注意の行: 「注意: 」を付け、中の文も訳す
         assert_eq!(
@@ -538,7 +538,10 @@ mod tests {
             "lensbench run: a.py（Python: python3、スレッド 4）"
         );
         // 空の一覧の括弧「()」は空の欄に当てる
-        assert_eq!(translate("no state nosuch ()"), "状態 nosuch はない（）");
+        assert_eq!(
+            translate("no state nosuch ()"),
+            "状態 nosuch はありません（）"
+        );
         assert_eq!(
             translate("set 3: no wavelength 2 (1 to 1)"),
             "組 3: 波長 2 はありません（1〜1）"
@@ -550,7 +553,7 @@ mod tests {
         // ラベルの欄 {what} に 2 語以上の句（#381 のレビュー）
         assert_eq!(
             translate("surface 3: Grid Sag grid columns 1 (an integer 2 to 16000000)"),
-            "面 3: Grid Sag の格子の列の数 1（2〜16000000 の整数）"
+            "面 3: Grid Sag のグリッドの列の数 1（2〜16000000 の整数）"
         );
         assert_eq!(
             translate("number of zmx configurations MNUM 1.5 (an integer 1 to 1000)"),
@@ -560,7 +563,7 @@ mod tests {
             translate(
                 "coating table AR: incidence angle 95.0000 deg is outside the table range 0 to 89"
             ),
-            "膜の表 AR: 入射角 95.0000 deg が表の範囲 0〜89 の外"
+            "コーティングの表 AR: 入射角 95.0000 deg が表の範囲 0〜89 の外"
         );
     }
 }

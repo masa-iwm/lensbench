@@ -52,7 +52,7 @@ fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, vi
         let r = ui
             .interact(b, resp.id.with("fit"), Sense::click())
             .on_hover_text(crate::i18n::tr(
-                "全体を表示（Home・何も無い所のダブルクリックでも）",
+                "Fit all (also Home, or double-click an empty spot)",
             ));
         let w = ui.style().interact(&r);
         let p = ui.painter_at(rect);
@@ -66,7 +66,7 @@ fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, vi
         p.text(
             b.center(),
             Align2::CENTER_CENTER,
-            crate::i18n::tr("全体"),
+            crate::i18n::tr("Fit"),
             FontId::proportional(12.0),
             w.text_color(),
         );
@@ -460,7 +460,7 @@ fn scene(
             (Pos2::new(pos.x + r + 10.0, pos.y), Align2::LEFT_CENTER)
         };
         let text = if p.locked {
-            format!("{} [{}]", p.label(), tr("ロック"))
+            format!("{} [{}]", p.label(), tr("Lock"))
         } else {
             p.label()
         };
@@ -1043,7 +1043,7 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
                     egui::Stroke::new(1.5_f32, ui.visuals().error_fg_color),
                     egui::StrokeKind::Outside,
                 );
-                te.on_hover_text(tr("0 以上の数（Esc でやめる）"));
+                te.on_hover_text(tr("A number ≥ 0 (Esc to cancel)"));
             }
         } else {
             done = Some((*g, None));

@@ -141,17 +141,17 @@ fn keys(ty: &str) -> &'static [(&'static str, KeyKind)] {
 /// 種類の説明（ツールチップ）
 fn type_hint(ty: &str) -> &'static str {
     match ty {
-        "spot" => tr("RMS スポット半径（視野・波長、空の波長は多色）"),
-        "wavefront" => tr("RMS 波面収差 [波]"),
-        "mtf" => tr("MTF − 目標（既定の目標 1）"),
-        "paraxial" => tr("近軸量など系全体の量 − 目標（System Data と同じ値）"),
-        "ray" => tr("1 本の実光線の面の局所座標での位置・方向余弦 − 目標（REAX〜REAC 相当）"),
-        "centroid" => tr("像面の光束の重心の x か y − 目標（スポットの項と同じ光線。鏡の傾きで像点を合わせる補償など）"),
-        "opd" => tr("1 本の光線の OPD [波] − 目標（OPDC 相当）"),
-        "zernike" => tr("Zernike 係数 [波] − 目標"),
-        "coupling" => tr("ファイバ結合効率 − 目標（既定の目標 1、有限物体）"),
-        "plugin" => tr("登録したプラグインの出力 output − 目標（name は rms・zernike など、args は設定の JSON 例 {\"rings\": 4}、index は出力の要素）"),
-        "zplm" => tr("ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番号 nn = ZPLnn.ZPL か名前、file は .ZPL のパス、macro_dirs は探すフォルダを ; で区切る）"),
+        "spot" => tr("RMS spot radius (field, wavelength; empty wavelength = polychromatic)"),
+        "wavefront" => tr("RMS wavefront error [waves]"),
+        "mtf" => tr("MTF − target (default target 1)"),
+        "paraxial" => tr("System quantity such as a paraxial value − target (same values as System Data)"),
+        "ray" => tr("Position / direction cosine of one real ray in the surface's local coordinates − target (like REAX–REAC)"),
+        "centroid" => tr("x or y of the beam centroid on the image − target (same rays as the spot term; e.g. a compensator that centres the returned spot with a mirror tilt)"),
+        "opd" => tr("OPD of one ray [waves] − target (like OPDC)"),
+        "zernike" => tr("Zernike coefficient [waves] − target"),
+        "coupling" => tr("Fiber coupling efficiency − target (default target 1, finite object)"),
+        "plugin" => tr("Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {\"rings\": 4}; index picks one element)"),
+        "zplm" => tr("Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)"),
         _ => "",
     }
 }
@@ -272,7 +272,7 @@ impl OptPanel {
             }
             t.parse::<f64>()
                 .map(Some)
-                .map_err(|_| trf("{} の値 {} が数でない", &[&what, &t]))
+                .map_err(|_| trf("Value of {} is not a number: {}", &[&what, &t]))
         };
         let mut vars = Vec::new();
         for v in &self.vars {
@@ -296,7 +296,7 @@ impl OptPanel {
         }
         let mut terms = Vec::new();
         for (i, t) in self.terms.iter().enumerate() {
-            terms.push(term_json(t).map_err(|e| trf("項 {}: {}", &[&(i + 1), &e]))?);
+            terms.push(term_json(t).map_err(|e| trf("Term {}: {}", &[&(i + 1), &e]))?);
         }
         let mut p = json!({
             "vars": vars,
@@ -377,10 +377,10 @@ pub(crate) fn term_rows(v: &Value) -> Result<Vec<TermRow>, String> {
         for (i, t) in v.as_array().into_iter().flatten().enumerate() {
             let o = t
                 .as_object()
-                .ok_or_else(|| trf("項 {} がオブジェクトでない", &[&(i + 1)]))?;
+                .ok_or_else(|| trf("Term {} is not an object", &[&(i + 1)]))?;
             let ty = o.get("type").and_then(Value::as_str).unwrap_or_default();
             if !TERM_TYPES.contains(&ty) {
-                return Err(trf("項 {} の種類 {}", &[&(i + 1), &ty]));
+                return Err(trf("Term {} has type {}", &[&(i + 1), &ty]));
             }
             let mut r = TermRow {
                 ty: ty.into(),
@@ -412,7 +412,7 @@ pub(crate) fn terms_json(terms: &[TermRow]) -> Result<Vec<Value>, String> {
     terms
         .iter()
         .enumerate()
-        .map(|(i, t)| term_json(t).map_err(|e| trf("項 {}: {}", &[&(i + 1), &e])))
+        .map(|(i, t)| term_json(t).map_err(|e| trf("Term {}: {}", &[&(i + 1), &e])))
         .collect()
 }
 
@@ -433,7 +433,7 @@ fn int_list(s: &str) -> Result<Vec<u64>, String> {
         .filter(|x| !x.is_empty())
         .map(|x| {
             x.parse::<u64>()
-                .map_err(|_| trf("構成の番号 {} が整数でない", &[&x]))
+                .map_err(|_| trf("Configuration number {} is not an integer", &[&x]))
         })
         .collect()
 }
@@ -462,7 +462,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
             .find(|(a, _)| a == k)
             .map(|x| x.1)
             .unwrap_or(KeyKind::Num);
-        let bad = || trf("{} の値 {}", &[k, &v]);
+        let bad = || trf("Value of {}: {}", &[k, &v]);
         let x = match kind {
             KeyKind::Num => json!(v.parse::<f64>().map_err(|_| bad())?),
             KeyKind::Int => json!(v.parse::<u64>().map_err(|_| bad())?),
@@ -497,7 +497,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
             "weight".into(),
             json!(w
                 .parse::<f64>()
-                .map_err(|_| trf("重み {} が数でない", &[&w]))?),
+                .map_err(|_| trf("Weight {} is not a number", &[&w]))?),
         );
     }
     if !t.config.trim().is_empty() {
@@ -506,7 +506,7 @@ fn term_json(t: &TermRow) -> Result<Value, String> {
             "config".into(),
             json!(c
                 .parse::<u64>()
-                .map_err(|_| trf("構成の番号 {} が整数でない", &[&c]))?),
+                .map_err(|_| trf("Configuration number {} is not an integer", &[&c]))?),
         );
     }
     Ok(Value::Object(o))
@@ -557,7 +557,7 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 if p.running {
-                    if ui.button(tr("止める")).clicked() {
+                    if ui.button(tr("Stop")).clicked() {
                         acts.push(Action::Stop);
                     }
                     ui.spinner();
@@ -567,17 +567,17 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                     let run = ui
                         .add_enabled(
                             check.is_ok(),
-                            egui::Button::new(RichText::new(tr("最適化する")).strong()),
+                            egui::Button::new(RichText::new(tr("Optimize")).strong()),
                         )
                         .on_disabled_hover_text(if no_var {
-                            tr("変数を 1 つ以上足す（下の「変数」の表に 4.t のような名前、または […] から選ぶ）").to_string()
+                            tr("Add at least one variable (a name like 4.t in the Variables table below, or pick with […])").to_string()
                         } else {
                             check.clone().err().unwrap_or_default()
                         });
                     // 押せない理由を横にも出す（GUX-21）
                     if no_var {
                         ui.label(
-                            RichText::new(tr("変数を 1 つ以上足すと押せる"))
+                            RichText::new(tr("Add at least one variable to enable"))
                                 .small()
                                 .color(ui.visuals().warn_fg_color),
                         );
@@ -599,13 +599,13 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                     }
                 }
                 ui.add_enabled_ui(!p.running, |ui| {
-                    if ui.button(tr("設定を保存…")).clicked() {
+                    if ui.button(tr("Save settings…")).clicked() {
                         match p.params() {
                             Ok(v) => acts.push(Action::Save(v)),
                             Err(e) => p.error = Some(e),
                         }
                     }
-                    if ui.button(tr("設定を読む…")).clicked() {
+                    if ui.button(tr("Load settings…")).clicked() {
                         acts.push(Action::Load);
                     }
                 });
@@ -615,7 +615,7 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
             }
             if let Some(h) = progress {
                 ui.label(trf(
-                    "反復 {}: 評価関数 {}",
+                    "Iteration {}: merit {}",
                     &[
                         &(h.len().saturating_sub(1)),
                         &fmt_g(*h.last().unwrap_or(&f64::NAN)),
@@ -623,20 +623,20 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                 ));
                 history_plot(ui, h);
             } else if let Some(r) = p.result.clone() {
-                egui::CollapsingHeader::new(RichText::new(tr("結果")).strong())
+                egui::CollapsingHeader::new(RichText::new(tr("Result")).strong())
                     .id_salt("opt_result")
                     .default_open(true)
                     .show(ui, |ui| result_ui(ui, p, &r, &mut acts, weak));
             }
             ui.separator();
             ui.add_enabled_ui(!p.running, |ui| {
-                section(ui, "opt_vars_sec", tr("変数"), |ui| {
+                section(ui, "opt_vars_sec", tr("Variables"), |ui| {
                     vars_ui(ui, p, c, weak)
                 });
-                section(ui, "opt_merit_sec", tr("評価関数"), |ui| {
+                section(ui, "opt_merit_sec", tr("Merit function"), |ui| {
                     merit_ui(ui, p, weak)
                 });
-                section(ui, "opt_settings_sec", tr("設定"), |ui| {
+                section(ui, "opt_settings_sec", tr("Settings"), |ui| {
                     settings_ui(ui, p, weak)
                 });
             });
@@ -666,12 +666,12 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
         .striped(true)
         .num_columns(if multi { 6 } else { 5 })
         .show(ui, |ui| {
-            ui.label(RichText::new(tr("名前")).small().color(weak));
-            ui.label(RichText::new(tr("今の値")).small().color(weak));
-            ui.label(RichText::new(tr("下限")).small().color(weak));
-            ui.label(RichText::new(tr("上限")).small().color(weak));
+            ui.label(RichText::new(tr("Name")).small().color(weak));
+            ui.label(RichText::new(tr("Current")).small().color(weak));
+            ui.label(RichText::new(tr("Min")).small().color(weak));
+            ui.label(RichText::new(tr("Max")).small().color(weak));
             if multi {
-                ui.label(RichText::new(tr("構成")).small().color(weak));
+                ui.label(RichText::new(tr("Config")).small().color(weak));
             }
             ui.label("");
             ui.end_row();
@@ -684,10 +684,11 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
                 small_edit(ui, &mut v.lo, 60.0, "−∞");
                 small_edit(ui, &mut v.hi, 60.0, "∞");
                 if multi {
-                    small_edit(ui, &mut v.configs, 50.0, tr("すべて"))
-                        .on_hover_text(tr("効く構成の番号（カンマ区切り、空はすべて）"));
+                    small_edit(ui, &mut v.configs, 50.0, tr("All")).on_hover_text(tr(
+                        "Configurations it applies to (comma separated, empty = all)",
+                    ));
                 }
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -701,17 +702,21 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
             ui,
             &mut p.new_var,
             110.0,
-            tr("7.t・lens2.tx など"),
+            tr("7.t, lens2.tx, …"),
             &c.sys,
             set,
         );
-        if let Some(n) = pp::menu_button(ui, &c.sys, set, tr("面・玉・群から選んで足す"))
-        {
+        if let Some(n) = pp::menu_button(
+            ui,
+            &c.sys,
+            set,
+            tr("Pick from surfaces, lenses and groups and add"),
+        ) {
             p.new_var = n;
             enter = true;
         }
         let name = p.new_var.trim().to_string();
-        if (ui.button(tr("足す")).clicked() || enter) && !name.is_empty() {
+        if (ui.button(tr("Add")).clicked() || enter) && !name.is_empty() {
             if !p.vars.iter().any(|v| v.name == name) {
                 p.vars.push(VarRow {
                     name,
@@ -724,7 +729,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
     if c.combo {
         ui.label(
             RichText::new(tr(
-                "組合せの系: 結果を組合せに当てられるのは面の厚さ（間隔）・曲率半径・コーニックだけです。",
+                "Combination: only surface thickness (gaps), radius and conic can be applied back to the combination.",
             ))
             .small()
             .color(weak),
@@ -734,28 +739,30 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
 
 pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("既定"));
+        ui.label(tr("Default"));
         for (k, l) in [
-            ("spot", tr("RMS スポット")),
-            ("wavefront", tr("RMS 波面")),
-            ("none", tr("なし")),
+            ("spot", tr("RMS spot")),
+            ("wavefront", tr("RMS wavefront")),
+            ("none", tr("Off")),
         ] {
             ui.selectable_value(&mut p.merit, k.to_string(), l);
         }
     });
     if p.merit != "none" {
         ui.horizontal(|ui| {
-            ui.label(tr("リング数"));
+            ui.label(tr("Rings"));
             ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
-            ui.label(tr("基準"));
-            for (k, l) in [("centroid", tr("重心")), ("chief", tr("主光線"))] {
+            ui.label(tr("Reference"));
+            for (k, l) in [("centroid", tr("Centroid")), ("chief", tr("Chief ray"))] {
                 ui.selectable_value(&mut p.reference, k.to_string(), l);
             }
         });
         ui.label(
-            RichText::new(tr("全視野（視野の重み）・多色の RMS を項にします。"))
-                .small()
-                .color(weak),
+            RichText::new(tr(
+                "Adds the polychromatic RMS of every field (field weights) as terms.",
+            ))
+            .small()
+            .color(weak),
         );
     }
     terms_ui(ui, "opt", &mut p.terms, &mut p.new_term, weak);
@@ -825,11 +832,11 @@ pub(crate) fn terms_ui(
                             t.set(k, &v);
                         }
                     }
-                    ui.label(RichText::new(tr("重み")).small().color(weak));
+                    ui.label(RichText::new(tr("Weight")).small().color(weak));
                     small_edit(ui, &mut t.weight, 40.0, "1");
-                    ui.label(RichText::new(tr("構成")).small().color(weak));
+                    ui.label(RichText::new(tr("Config")).small().color(weak));
                     small_edit(ui, &mut t.config, 30.0, "1");
-                    if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                    if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                         del = Some(i);
                     }
                 });
@@ -848,13 +855,13 @@ pub(crate) fn terms_ui(
                         .on_hover_text(type_hint(ty));
                 }
             });
-        if ui.button(tr("項を足す")).clicked() {
+        if ui.button(tr("Add term")).clicked() {
             terms.push(TermRow::new(new_term));
         }
     });
     ui.label(
         RichText::new(tr(
-            "視野・波長・構成は 1 始まり（視野は「hx, hy」も可）、面は面の番号。空の欄は既定の値。",
+            "Fields, wavelengths and configurations start at 1 (a field can also be \"hx, hy\"); surfaces are surface numbers. Empty boxes use the default.",
         ))
         .small()
         .color(weak),
@@ -863,24 +870,24 @@ pub(crate) fn terms_ui(
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("反復の上限"));
+        ui.label(tr("Max iterations"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=10000));
-        ui.label(tr("微分"));
+        ui.label(tr("Derivatives"));
         for (k, l) in [
-            ("auto", tr("解析的（できる所）")),
-            ("fd", tr("すべて差分")),
-            ("forward", tr("すべて前進差分")),
+            ("auto", tr("Analytic (where possible)")),
+            ("fd", tr("All finite differences")),
+            ("forward", tr("All forward differences")),
         ] {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });
     ui.horizontal(|ui| {
-        ui.label(tr("構成"));
-        small_edit(ui, &mut p.configs, 160.0, tr("開いている系だけ"));
+        ui.label(tr("Config"));
+        small_edit(ui, &mut p.configs, 160.0, tr("Open system only"));
     });
     ui.label(
         RichText::new(tr(
-            "構成を同時に扱うときは .zmx の構成番号か状態の名前をカンマで並べます（項・変数の構成の番号はこの並びの順）。",
+            "To optimize several configurations together, list .zmx configuration numbers or state names separated by commas (configuration numbers of terms and variables follow this order).",
         ))
         .small()
         .color(weak),
@@ -896,20 +903,20 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
         .collect();
     Plot::new("opt_history")
         .height(140.0)
-        .x_axis_label(tr("反復"))
-        .y_axis_label(tr("評価関数（log10）"))
+        .x_axis_label(tr("Iteration"))
+        .y_axis_label(tr("Merit (log10)"))
         .allow_scroll(false)
         .show(ui, |pu| pu.line(Line::new(pts)));
 }
 
 fn stop_label(s: &str) -> &'static str {
     match s {
-        "converged" => tr("収束した"),
-        "small_step" => tr("変数がほとんど動かない"),
-        "no_progress" => tr("これ以上減らない（局所解）"),
-        "max_iter" => tr("反復の上限"),
-        "cancelled" => tr("止めた"),
-        "no_vars" => tr("変数がない"),
+        "converged" => tr("Converged"),
+        "small_step" => tr("Variables barely move"),
+        "no_progress" => tr("No further decrease (local minimum)"),
+        "max_iter" => tr("Max iterations"),
+        "cancelled" => tr("Stopped"),
+        "no_vars" => tr("No variables"),
         _ => "",
     }
 }
@@ -923,7 +930,7 @@ fn result_ui(
 ) {
     let f = |k: &str| r[k].as_f64().unwrap_or(f64::NAN);
     ui.label(trf(
-        "評価関数 {} → {}（反復 {}、{}）",
+        "Merit {} → {} ({} iterations, {})",
         &[
             &fmt_g(f("merit0")),
             &fmt_g(f("merit")),
@@ -942,9 +949,9 @@ fn result_ui(
     egui::Grid::new("opt_res_vars")
         .striped(true)
         .show(ui, |ui| {
-            ui.label(RichText::new(tr("変数")).small().color(weak));
-            ui.label(RichText::new(tr("前")).small().color(weak));
-            ui.label(RichText::new(tr("後")).small().color(weak));
+            ui.label(RichText::new(tr("Variables")).small().color(weak));
+            ui.label(RichText::new(tr("Before")).small().color(weak));
+            ui.label(RichText::new(tr("After")).small().color(weak));
             ui.end_row();
             for (i, n) in names.iter().enumerate() {
                 ui.label(*n);
@@ -952,7 +959,7 @@ fn result_ui(
                 ui.monospace(fmt_num(r["x"][i].as_f64().unwrap_or(f64::NAN)));
                 if r["applicable"][i] == json!(false) {
                     ui.label(
-                        RichText::new(tr("開いている系の構成には効かない"))
+                        RichText::new(tr("Does not apply to the open system's configuration"))
                             .small()
                             .color(weak),
                     );
@@ -968,9 +975,9 @@ fn result_ui(
         egui::Grid::new("opt_res_terms")
             .striped(true)
             .show(ui, |ui| {
-                ui.label(RichText::new(tr("項")).small().color(weak));
-                ui.label(RichText::new(tr("前")).small().color(weak));
-                ui.label(RichText::new(tr("後")).small().color(weak));
+                ui.label(RichText::new(tr("Term")).small().color(weak));
+                ui.label(RichText::new(tr("Before")).small().color(weak));
+                ui.label(RichText::new(tr("After")).small().color(weak));
                 ui.end_row();
                 for (i, t) in extra.iter().enumerate() {
                     let ty = p.terms.get(i).map(|t| t.ty.as_str()).unwrap_or("");
@@ -990,14 +997,16 @@ fn result_ui(
     }
     ui.horizontal(|ui| {
         if ui
-            .button(tr("系に反映"))
-            .on_hover_text(tr("最適化した値を開いている系（組合せ）に当てる"))
+            .button(tr("Apply to system"))
+            .on_hover_text(tr(
+                "Apply the optimized values to the open system (combination)",
+            ))
             .clicked()
         {
             acts.push(Action::Apply);
         }
         if ui
-            .add_enabled(p.undo.is_some(), egui::Button::new(tr("反映を元に戻す")))
+            .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo apply")))
             .clicked()
         {
             acts.push(Action::Undo);

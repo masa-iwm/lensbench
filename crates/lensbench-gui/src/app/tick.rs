@@ -11,7 +11,7 @@ impl App {
         self.c.pick_and_open_when(false);
         crate::files::flush_downloads();
         if crate::files::take_failed() {
-            self.c.fail(tr("ファイルを選ぶ窓を出せませんでした（Linux は zenity が要ります）。ファイルは窓に落としても開けます"));
+            self.c.fail(tr("Could not open the file dialog (Linux needs zenity). You can also drop files onto the window"));
         }
         // Web 版: 読み込んだファイル・ユーザーカタログをブラウザに残す
         #[cfg(target_arch = "wasm32")]
@@ -95,7 +95,7 @@ impl App {
         let dropped = self.c.doc.combo.drop_stale_edits();
         if dropped > 0 {
             self.c.info(trf(
-                "要素の面が変わったので、面の表で変えた値 {} 件を外しました（Ctrl+Z で戻す）",
+                "The element's surfaces changed, so {} values changed in Lens Data were dropped (Ctrl+Z to undo)",
                 &[&dropped],
             ));
         }
@@ -103,9 +103,12 @@ impl App {
         let census = self.c.doc.combo.census();
         if let Some(prev) = self.c.combo_census.replace(census) {
             let lost: Vec<String> = [
-                (prev[0].saturating_sub(census[0]), tr("要素 {} 個")),
-                (prev[1].saturating_sub(census[1]), tr("状態 {} 個")),
-                (prev[2].saturating_sub(census[2]), tr("面の上書き {} 件")),
+                (prev[0].saturating_sub(census[0]), tr("{} elements")),
+                (prev[1].saturating_sub(census[1]), tr("{} states")),
+                (
+                    prev[2].saturating_sub(census[2]),
+                    tr("{} surface overrides"),
+                ),
             ]
             .iter()
             .filter(|(n, _)| *n > 0)
@@ -113,8 +116,10 @@ impl App {
             .collect();
             // 新規・開くで組合せごと入れ替えたときは出さない
             if !lost.is_empty() && census[0] > 0 && dropped == 0 {
-                self.c
-                    .info(trf("{} を外しました（Ctrl+Z で戻す）", &[&lost.join("・")]));
+                self.c.info(trf(
+                    "Removed {} (Ctrl+Z to undo)",
+                    &[&lost.join(crate::i18n::tr(", "))],
+                ));
             }
         }
         self.c.combo_hist.track(&self.c.doc.combo, busy);
@@ -157,7 +162,7 @@ impl App {
         for w in &self.windows {
             let id = w.pane.id;
             if !t.is_open(id) && !t.blocked.contains(&id) && !t.open(id, w.size) {
-                self.c.fail(tr("ブラウザが別のタブ・窓を開くのを止めました（ポップアップを許すと、パネルを別のタブ・窓に出せます）。本体の中の窓に出します"));
+                self.c.fail(tr("The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page"));
             }
         }
         for e in t.events() {

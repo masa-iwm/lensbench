@@ -97,7 +97,7 @@ impl CatSave {
     ) -> Option<Req> {
         let mut open = self.open;
         let mut req = None;
-        egui::Window::new(tr("ユーザーカタログに保存"))
+        egui::Window::new(tr("Save to a user catalog"))
             .open(&mut open)
             .default_width(480.0)
             .show(ctx, |ui| req = self.ui(ui, combo, rows, ready));
@@ -109,7 +109,7 @@ impl CatSave {
         let weak = theme::weak_text(ui.visuals());
         let n = combo.picks.len();
         if n == 0 {
-            ui.weak(tr("組合せに要素がありません"));
+            ui.weak(tr("The combination has no elements"));
             return None;
         }
         self.from = self.from.min(n - 1);
@@ -120,7 +120,7 @@ impl CatSave {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                ui.label(RichText::new(tr("要素")).color(weak));
+                ui.label(RichText::new(tr("Elements")).color(weak));
                 ui.horizontal(|ui| {
                     egui::ComboBox::from_id_salt("catsave_from")
                         .selected_text(label(self.from))
@@ -139,11 +139,11 @@ impl CatSave {
                         });
                 });
                 ui.end_row();
-                ui.label(RichText::new(tr("カタログ")).color(weak));
+                ui.label(RichText::new(tr("Catalog")).color(weak));
                 ui.horizontal(|ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.catalog)
-                            .hint_text(tr("ユーザーカタログの .json"))
+                            .hint_text(tr("User catalog .json"))
                             .desired_width(260.0),
                     );
                     // レンズカタログのフォルダにある lensbench 形式のカタログ
@@ -163,7 +163,7 @@ impl CatSave {
                                 }
                             })
                             .response
-                            .on_hover_text(tr("カタログブラウザに並んでいるユーザーカタログ"));
+                            .on_hover_text(tr("User catalogs listed in the catalog browser"));
                     }
                     // Web 版: ユーザーカタログはブラウザに残すフォルダ（/user/catalogs）に置く
                     #[cfg(target_arch = "wasm32")]
@@ -178,7 +178,7 @@ impl CatSave {
                                 lensbench_core::vfs::is_file(&cat),
                                 egui::Button::new("⬇").small(),
                             )
-                            .on_hover_text(tr("カタログのファイルをダウンロードする"))
+                            .on_hover_text(tr("Download the catalog file"))
                             .clicked()
                         {
                             if let (Ok(b), Some(n)) =
@@ -194,7 +194,7 @@ impl CatSave {
                     #[cfg(not(target_arch = "wasm32"))]
                     if ui
                         .small_button("…")
-                        .on_hover_text(tr("新しいカタログか既存のカタログを選ぶ"))
+                        .on_hover_text(tr("Choose a new or an existing catalog"))
                         .clicked()
                     {
                         if let Some(p) = crate::files::FileDialog::new()
@@ -207,15 +207,15 @@ impl CatSave {
                     }
                 });
                 ui.end_row();
-                ui.label(RichText::new(tr("名前")).color(weak));
+                ui.label(RichText::new(tr("Name")).color(weak));
                 ui.text_edit_singleline(&mut self.name);
                 ui.end_row();
-                ui.label(RichText::new(tr("説明")).color(weak));
+                ui.label(RichText::new(tr("Description")).color(weak));
                 ui.text_edit_singleline(&mut self.description);
                 ui.end_row();
-                ui.label(RichText::new(tr("メーカー")).color(weak))
+                ui.label(RichText::new(tr("Vendor")).color(weak))
                     .on_hover_text(tr(
-                        "カタログブラウザに出すメーカー（空ならファイルのあるフォルダの名前）",
+                        "Vendor shown in the catalog browser (empty: the name of the folder of the file)",
                     ));
                 ui.text_edit_singleline(&mut self.vendor);
                 ui.end_row();
@@ -224,7 +224,7 @@ impl CatSave {
         let exists = self.listed == cat && self.items.iter().any(|i| i.name == self.name.trim());
         ui.horizontal(|ui| {
             if exists {
-                ui.checkbox(&mut self.replace, tr("同じ名前の項目を置き換える"));
+                ui.checkbox(&mut self.replace, tr("Replace the item with the same name"));
             }
             let ok = ready
                 && !cat.is_empty()
@@ -237,8 +237,10 @@ impl CatSave {
                 vec![&ids[self.from], &ids[self.to]]
             };
             if ui
-                .add_enabled(ok, egui::Button::new(tr("💾 保存")))
-                .on_hover_text(tr("面の表で変えた値は玉の面に焼き込みます"))
+                .add_enabled(ok, egui::Button::new(tr("💾 Save")))
+                .on_hover_text(tr(
+                    "Values changed in the surface table are baked into the lens surfaces",
+                ))
                 .clicked()
             {
                 req = Some((
@@ -250,7 +252,7 @@ impl CatSave {
                     }),
                 ));
             }
-            if !cat.is_empty() && ui.button(tr("一覧を読む")).clicked() {
+            if !cat.is_empty() && ui.button(tr("List items")).clicked() {
                 req = Some(("catalog_items", json!({ "catalog": cat })));
             }
         });
@@ -265,7 +267,7 @@ impl CatSave {
         if !ready {
             ui.colored_label(
                 ui.visuals().warn_fg_color,
-                tr("組合せの系を作り直してから保存できます（自動で作り直すか「▶ 系を作る」）"),
+                tr("Rebuild the system of the combination before saving (automatic rebuild or ▶ Build system)"),
             );
         }
         let edits: usize = combo.picks[self.from..=self.to]
@@ -275,7 +277,7 @@ impl CatSave {
         if edits > 0 {
             ui.label(
                 RichText::new(trf(
-                    "面の表で変えた値 {} 件を焼き込みます（玉だけ）",
+                    "{} values changed in the surface table will be baked in (lenses only)",
                     &[&edits],
                 ))
                 .small()
@@ -285,7 +287,7 @@ impl CatSave {
         // 読んだカタログの項目: 名前・説明の変更と削除
         if self.listed == cat && !cat.is_empty() {
             ui.separator();
-            ui.label(RichText::new(trf("{} の項目（{} 個）", &[&cat, &self.items.len()])).strong());
+            ui.label(RichText::new(trf("Items of {} ({})", &[&cat, &self.items.len()])).strong());
             egui::ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .max_height(220.0)
@@ -296,17 +298,17 @@ impl CatSave {
                                 [130.0, 20.0],
                                 egui::TextEdit::singleline(&mut it.new_name),
                             )
-                            .on_hover_text(tr("名前"));
+                            .on_hover_text(tr("Name"));
                             ui.add_sized(
                                 [170.0, 20.0],
-                                egui::TextEdit::singleline(&mut it.new_desc).hint_text(tr("説明")),
+                                egui::TextEdit::singleline(&mut it.new_desc).hint_text(tr("Description")),
                             );
-                            ui.label(RichText::new(trf("{} ブロック", &[&it.blocks])).small().color(weak));
+                            ui.label(RichText::new(trf("{} blocks", &[&it.blocks])).small().color(weak));
                             let changed = it.new_name.trim() != it.name || it.new_desc != it.description;
                             if ui
                                 .add_enabled(
                                     changed && !it.new_name.trim().is_empty(),
-                                    egui::Button::new(tr("変更")),
+                                    egui::Button::new(tr("Change")),
                                 )
                                 .clicked()
                             {
@@ -318,7 +320,7 @@ impl CatSave {
                             }
                             if self.confirm_delete.as_deref() == Some(it.name.as_str()) {
                                 if ui
-                                    .button(RichText::new(tr("本当に消す")).color(ui.visuals().error_fg_color))
+                                    .button(RichText::new(tr("Really delete")).color(ui.visuals().error_fg_color))
                                     .clicked()
                                 {
                                     req = Some((
@@ -326,7 +328,7 @@ impl CatSave {
                                         json!({ "catalog": cat, "name": it.name, "delete": true }),
                                     ));
                                 }
-                            } else if ui.button("🗑").on_hover_text(tr("項目を消す")).clicked() {
+                            } else if ui.button("🗑").on_hover_text(tr("Delete the item")).clicked() {
                                 self.confirm_delete = Some(it.name.clone());
                             }
                         });

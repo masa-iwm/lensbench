@@ -95,7 +95,7 @@ fn solve_text(q: &Value) -> (String, String) {
         fmt_num(num(&q["value"]))
     );
     if let Some(o) = q["other"].as_u64() {
-        t += &trf("（面 {}）", &[&o]);
+        t += &trf("(surface {})", &[&o]);
     }
     (what, t)
 }
@@ -106,7 +106,7 @@ fn pickup_text(p: &Value) -> (String, String) {
     let t = format!(
         "{} × {} {} + {}",
         fmt_num(num(&p["scale"])),
-        trf("面 {}", &[&p["src"]]),
+        trf("Surface {}", &[&p["src"]]),
         p["from"].as_str().unwrap_or(&what),
         fmt_num(num(&p["offset"])),
     );
@@ -152,7 +152,7 @@ pub fn parse(v: &Value) -> Result<(Vec<Row>, Vec<Unit>), String> {
                 .collect()
         })
         .unwrap_or_default();
-    let units = views::read(&v["units"]).map_err(|e| format!("surface の units: {e}"))?;
+    let units = views::read(&v["units"]).map_err(|e| format!("surface units: {e}"))?;
     Ok((rows, units))
 }
 
@@ -265,41 +265,41 @@ pub fn type_matches(s: &str) -> Vec<&'static str> {
 
 /// 非球面の係数の名前（r² … r¹⁶）
 const ASPH_LABELS: [&str; 8] = [
-    n_("r² の係数"),
-    n_("r⁴ の係数"),
-    n_("r⁶ の係数"),
-    n_("r⁸ の係数"),
-    n_("r¹⁰ の係数"),
-    n_("r¹² の係数"),
-    n_("r¹⁴ の係数"),
-    n_("r¹⁶ の係数"),
+    n_("r² coeff"),
+    n_("r⁴ coeff"),
+    n_("r⁶ coeff"),
+    n_("r⁸ coeff"),
+    n_("r¹⁰ coeff"),
+    n_("r¹² coeff"),
+    n_("r¹⁴ coeff"),
+    n_("r¹⁶ coeff"),
 ];
 const TOR_LABELS: [&str; 7] = [
-    n_("y² の係数"),
-    n_("y⁴ の係数"),
-    n_("y⁶ の係数"),
-    n_("y⁸ の係数"),
-    n_("y¹⁰ の係数"),
-    n_("y¹² の係数"),
-    n_("y¹⁴ の係数"),
+    n_("y² coeff"),
+    n_("y⁴ coeff"),
+    n_("y⁶ coeff"),
+    n_("y⁸ coeff"),
+    n_("y¹⁰ coeff"),
+    n_("y¹² coeff"),
+    n_("y¹⁴ coeff"),
 ];
 const CB_LABELS: [&str; 6] = [
-    n_("偏心 X"),
-    n_("偏心 Y"),
-    n_("傾き X"),
-    n_("傾き Y"),
-    n_("傾き Z"),
-    n_("順序"),
+    n_("Decenter X"),
+    n_("Decenter Y"),
+    n_("Tilt X"),
+    n_("Tilt Y"),
+    n_("Tilt Z"),
+    n_("Sequence"),
 ];
 const JONES_LABELS: [&str; 8] = [
-    n_("A 実"),
-    n_("A 虚"),
-    n_("B 実"),
-    n_("B 虚"),
-    n_("C 実"),
-    n_("C 虚"),
-    n_("D 実"),
-    n_("D 虚"),
+    n_("A re"),
+    n_("A im"),
+    n_("B re"),
+    n_("B im"),
+    n_("C re"),
+    n_("C im"),
+    n_("D re"),
+    n_("D im"),
 ];
 
 /// レンズデータの左の帯のアイコン
@@ -308,15 +308,15 @@ const ICONS: [&str; 11] = ["🗀", "▶", "▼", "▦", "▣", "▭", "＋", "�
 /// レンズデータの左の帯のアイコンの字（帯の幅があるとき、GUX-24）
 fn icon_label(t: &str) -> Option<&'static str> {
     Some(match t {
-        "🗀" => "階層",
-        "▶" | "▼" => "開閉",
-        "▦" => "ブロック",
-        "▣" | "▭" => "選び方",
-        "＋" => "挿入",
-        "－" => "削除",
-        "⚙" => "詳細",
-        "⊞" => "玉・群",
-        "📤" => "書き出し",
+        "🗀" => "Drill-down",
+        "▶" | "▼" => "Fold",
+        "▦" => "Blocks",
+        "▣" | "▭" => "Select",
+        "＋" => "Insert",
+        "－" => "Delete",
+        "⚙" => "Details",
+        "⊞" => "Lenses / groups",
+        "📤" => "Export",
         _ => return None,
     })
 }
@@ -326,21 +326,21 @@ fn icon_label(t: &str) -> Option<&'static str> {
 pub fn labels() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = TYPE_NAMES.iter().map(|x| x.1).collect();
     v.extend([
-        "階層",
-        "開閉",
-        "ブロック",
-        "選び方",
-        "挿入",
-        "削除",
-        "詳細",
-        "玉・群",
-        "書き出し",
+        "Drill-down",
+        "Fold",
+        "Blocks",
+        "Select",
+        "Insert",
+        "Delete",
+        "Details",
+        "Lenses / groups",
+        "Export",
     ]);
     v.extend(ASPH_LABELS);
     v.extend(TOR_LABELS);
     v.extend(CB_LABELS);
     v.extend(JONES_LABELS);
-    v.extend(["回転半径", "焦点距離"]);
+    v.extend(["Radius of rotation", "Focal length"]);
     v
 }
 
@@ -349,10 +349,10 @@ pub fn par_label(typ: &str, i: u8) -> Option<&'static str> {
     let i = i as usize;
     let l = match typ {
         "EVENASPH" | "FRESNELS" | "CFRESNEL" | "BINARY_2" => ASPH_LABELS.get(i.checked_sub(1)?)?,
-        "TOROIDAL" if i == 1 => "回転半径",
+        "TOROIDAL" if i == 1 => "Radius of rotation",
         "TOROIDAL" => TOR_LABELS.get(i.checked_sub(2)?)?,
         "COORDBRK" => CB_LABELS.get(i.checked_sub(1)?)?,
-        "PARAXIAL" if i == 1 => "焦点距離",
+        "PARAXIAL" if i == 1 => "Focal length",
         "JONESMAT" => JONES_LABELS.get(i.checked_sub(1)?)?,
         _ => return None,
     };
@@ -414,7 +414,7 @@ pub fn par_fields(r: &Row, i: u8, v: f64) -> Result<Map<String, Value>, String> 
         }
         "COORDBRK" if i == 6 => {
             if v != 0.0 && v != 1.0 {
-                return Err(tr("順序は 0（偏心してから傾ける）か 1（傾けてから偏心）").into());
+                return Err(tr("Order is 0 (decenter then tilt) or 1 (tilt then decenter)").into());
             }
             f.insert("cb_order".into(), json!(v));
         }
@@ -469,18 +469,18 @@ impl Col {
     /// 見出し（パラメータは今の面のタイプの名前、無ければ番号）
     fn header(self, typ: Option<&str>) -> String {
         match self {
-            Col::Type => tr("種類").into(),
-            Col::Comment => tr("コメント").into(),
-            Col::R => tr("曲率半径").into(),
-            Col::T => tr("厚さ").into(),
-            Col::Material => tr("硝材").into(),
-            Col::Coating => tr("膜").into(),
-            Col::Semi => tr("半径").into(),
-            Col::Conic => tr("コーニック").into(),
+            Col::Type => tr("Type").into(),
+            Col::Comment => tr("Comment").into(),
+            Col::R => tr("Radius").into(),
+            Col::T => tr("Thickness").into(),
+            Col::Material => tr("Material").into(),
+            Col::Coating => tr("Coating").into(),
+            Col::Semi => tr("Semi-diameter").into(),
+            Col::Conic => tr("Conic").into(),
             Col::Par(i) => typ
                 .and_then(|t| par_label(t, i))
                 .map(String::from)
-                .unwrap_or_else(|| trf("パラメータ {}", &[&i])),
+                .unwrap_or_else(|| trf("Par {}", &[&i])),
         }
     }
 
@@ -525,14 +525,14 @@ impl Col {
     pub fn solved(self, r: &Row) -> Option<(char, String)> {
         if let Some(w) = self.solve_what() {
             if let Some((_, t)) = r.solves.iter().find(|s| s.0 == w) {
-                return Some(('S', trf("ソルブ: {}", &[t])));
+                return Some(('S', trf("Solve: {}", &[t])));
             }
         }
         let pw = self.pick_what()?;
         r.pickups
             .iter()
             .find(|p| p.0 == pw || (self == Col::R && p.0 == "c"))
-            .map(|(_, t)| ('P', trf("ピックアップ: {}", &[t])))
+            .map(|(_, t)| ('P', trf("Pickup: {}", &[t])))
     }
 
     pub fn text(self, r: &Row) -> String {
@@ -553,7 +553,7 @@ impl Col {
             Col::Material => r.material.clone(),
             Col::Coating => r.coating.clone(),
             // 自動は値の後ろに印（入力欄に auto と書くと自動、数を書くと固定）
-            Col::Semi if r.semi_auto => format!("{} ({})", n(r.semi), tr("自動")),
+            Col::Semi if r.semi_auto => format!("{} ({})", n(r.semi), tr("Auto")),
             Col::Semi => n(r.semi),
             Col::Conic => n(r.k),
             Col::Par(i) => par_value(r, i).map(n).unwrap_or_default(),
@@ -592,8 +592,8 @@ impl Col {
             Col::Type => type_matches(s)
                 .first()
                 .map(|t| json!(t))
-                .ok_or_else(|| trf("{} という面タイプは無い", &[&s])),
-            Col::Semi if s.eq_ignore_ascii_case("auto") || s == "自動" || s == tr("自動") => {
+                .ok_or_else(|| trf("No surface type named {}", &[&s])),
+            Col::Semi if s.eq_ignore_ascii_case("auto") || s == "Auto" || s == tr("Auto") => {
                 Ok(json!("auto"))
             }
             Col::R | Col::Par(_)
@@ -608,7 +608,7 @@ impl Col {
                 .ok()
                 .filter(|x| x.is_finite())
                 .map(|x| json!(x))
-                .ok_or_else(|| trf("{} は数ではない", &[&s])),
+                .ok_or_else(|| trf("{} is not a number", &[&s])),
         }
     }
 
@@ -723,13 +723,13 @@ fn list_choices(
                 .iter()
                 .filter(|u| !u.eq_ignore_ascii_case("MIRROR"))
                 .filter(|u| !glasses.iter().any(|g| g.name.eq_ignore_ascii_case(u)))
-                .map(|u| (u.clone(), tr("この系で使用").to_string()))
+                .map(|u| (u.clone(), tr("used in this system").to_string()))
                 .collect();
             let all = extra
                 .into_iter()
                 .chain(std::iter::once((
                     "MIRROR".to_string(),
-                    tr("鏡").to_string(),
+                    tr("Mirror").to_string(),
                 )))
                 .chain(glasses.iter().map(|g| (g.name.clone(), g.desc.clone())));
             if !filter {
@@ -844,7 +844,7 @@ fn material_ok(text: &str, glasses: &[GlassChoice], rows: &[Row]) -> Result<(), 
         return Ok(());
     }
     Err(trf(
-        "ガラス {} がカタログにない（モデルガラスは 1.5,60 のように nd,νd で。カタログはファイル > カタログのフォルダ…）",
+        "Glass {} is not in the catalogs (write a model glass as nd,νd like 1.5,60; add catalogs in File > Catalog folders…)",
         &[&m],
     ))
 }
@@ -926,11 +926,11 @@ fn cell_menu(
         )
     };
     if let Some(w) = col.solve_what() {
-        ui.label(RichText::new(tr("ソルブ")).strong());
+        ui.label(RichText::new(tr("Solves")).strong());
         if let Some((_, t)) = r.solves.iter().find(|s| s.0 == w) {
             ui.horizontal(|ui| {
                 ui.label(t);
-                if ui.small_button(tr("外す")).clicked() {
+                if ui.small_button(tr("Remove")).clicked() {
                     ops.push(json!({ "op": "remove_solve", "surface": j, "what": w }));
                 }
             });
@@ -943,7 +943,7 @@ fn cell_menu(
         if !kinds.contains(&m.kind.as_str()) {
             m.kind = kinds.first().copied().unwrap_or_default().into();
         }
-        ui.menu_button(trf("種類: {}", &[&m.kind]), |ui| {
+        ui.menu_button(trf("Kind: {}", &[&m.kind]), |ui| {
             for k in &kinds {
                 if ui.selectable_label(m.kind == *k, *k).clicked() {
                     m.kind = k.to_string();
@@ -951,11 +951,11 @@ fn cell_menu(
             }
         });
         ui.horizontal(|ui| {
-            field(ui, tr("値"), &mut m.val, "0", 60.0);
+            field(ui, tr("Value"), &mut m.val, "0", 60.0);
             field(ui, "param", &mut m.param, "", 50.0);
-            field(ui, tr("別の面"), &mut m.other, "", 40.0);
+            field(ui, tr("Other surface"), &mut m.other, "", 40.0);
         });
-        if ui.button(tr("＋ ソルブにする")).clicked() {
+        if ui.button(tr("+ Make solve")).clicked() {
             let mut op = json!({ "op": "add_solve", "surface": j, "kind": m.kind });
             let f = |s: &str| s.trim().parse::<f64>().ok();
             if let Some(x) = f(&m.val) {
@@ -974,7 +974,7 @@ fn cell_menu(
     let picked_mat = r.pickups.iter().any(|p| p.0 == "dn");
     if let Some(w) = col.pick_what() {
         let set = col.pick_set();
-        ui.label(RichText::new(tr("ピックアップ")).strong());
+        ui.label(RichText::new(tr("Pickups")).strong());
         let now: Vec<&(String, String)> = r
             .pickups
             .iter()
@@ -983,7 +983,7 @@ fn cell_menu(
         for (_, t) in &now {
             ui.horizontal(|ui| {
                 ui.label(t);
-                if ui.small_button(tr("外す")).clicked() {
+                if ui.small_button(tr("Remove")).clicked() {
                     // 硝材は dn・disp の組を外す
                     for p in r
                         .pickups
@@ -998,20 +998,20 @@ fn cell_menu(
         // 硝材・膜は名前を写すだけ（倍率・オフセットは使わない）
         let named = matches!(col, Col::Material | Col::Coating);
         ui.horizontal(|ui| {
-            field(ui, tr("元の面"), &mut m.src, "", 40.0);
+            field(ui, tr("Source surface"), &mut m.src, "", 40.0);
             if !named {
-                field(ui, tr("倍率"), &mut m.scale, "1", 50.0);
-                field(ui, tr("オフセット"), &mut m.offset, "0", 50.0);
+                field(ui, tr("Scale"), &mut m.scale, "1", 50.0);
+                field(ui, tr("Offset"), &mut m.offset, "0", 50.0);
             }
         });
         if col == Col::Material {
             ui.label(
-                RichText::new(tr("元の面の硝材（dn・disp も）に追従する"))
+                RichText::new(tr("Follows the source surface's material (and dn, disp)"))
                     .small()
                     .color(weak),
             );
         }
-        if ui.button(tr("＋ ピックアップにする")).clicked() {
+        if ui.button(tr("+ Make pickup")).clicked() {
             match m.src.trim().parse::<usize>() {
                 Ok(src) => {
                     let f = |x: &str, d: f64| x.trim().parse::<f64>().unwrap_or(d);
@@ -1028,7 +1028,7 @@ fn cell_menu(
                     }
                 }
                 Err(_) => acts.push(Act::Refused(
-                    tr("ピックアップには元の面の番号が要る").into(),
+                    tr("A pickup needs the source surface number").into(),
                 )),
             }
         }
@@ -1036,15 +1036,15 @@ fn cell_menu(
     }
     // 硝材の追加設定: 屈折率のずれ・分散の変化・複屈折（鏡・座標ブレークには無い）
     if col == Col::Material && !r.is_cb() && !r.material.eq_ignore_ascii_case("MIRROR") {
-        ui.label(RichText::new(tr("屈折率")).strong());
+        ui.label(RichText::new(tr("Index")).strong());
         let mut fields = Map::new();
         ui.add_enabled_ui(!picked_mat, |ui| {
             egui::Grid::new(("ld_index", j))
                 .num_columns(2)
                 .show(ui, |ui| {
                     for (key, name, cur, buf) in [
-                        ("dn", tr("屈折率のずれ dn"), r.dn, &mut m.dn),
-                        ("disp", tr("分散の変化 disp"), r.disp, &mut m.disp),
+                        ("dn", tr("Index offset dn"), r.dn, &mut m.dn),
+                        ("disp", tr("Dispersion change disp"), r.disp, &mut m.disp),
                     ] {
                         ui.label(RichText::new(name).color(weak));
                         let resp = ui.add(egui::TextEdit::singleline(buf).desired_width(110.0));
@@ -1054,9 +1054,8 @@ fn cell_menu(
                                     fields.insert(key.into(), json!(v));
                                 }
                                 Some(_) => {}
-                                None => {
-                                    acts.push(Act::Refused(trf("{} は数ではない", &[&buf.trim()])))
-                                }
+                                None => acts
+                                    .push(Act::Refused(trf("{} is not a number", &[&buf.trim()]))),
                             }
                         }
                         ui.end_row();
@@ -1065,9 +1064,11 @@ fn cell_menu(
         });
         if picked_mat {
             ui.label(
-                RichText::new(tr("硝材のピックアップ中（dn・disp も元の面から）"))
-                    .small()
-                    .color(weak),
+                RichText::new(tr(
+                    "Material is picked up (dn and disp come from the source too)",
+                ))
+                .small()
+                .color(weak),
             );
         }
         if !fields.is_empty() {
@@ -1075,7 +1076,7 @@ fn cell_menu(
         }
         // 複屈折材の板の入口・出口（開いた系の標準面。組合せは要素の波長板で）
         if (!combo && r.typ == "STANDARD") || bire.is_some_and(|b| !b.is_null()) {
-            ui.label(RichText::new(tr("複屈折")).color(weak));
+            ui.label(RichText::new(tr("Birefringence")).color(weak));
             match bire {
                 Some(b) => {
                     if let Some(nb) = crate::surf_edit::bire_ui(ui, j, b) {
@@ -1085,7 +1086,7 @@ fn cell_menu(
                     }
                 }
                 None => {
-                    ui.weak(tr("面の値を読んでいます…"));
+                    ui.weak(tr("Reading the surface…"));
                 }
             }
         }
@@ -1097,9 +1098,9 @@ fn cell_menu(
         let resp = ui.add_enabled(
             !have,
             egui::Button::new(if have {
-                trf("多重構成の行 {} あり", &[&name])
+                trf("Multi-config row {} exists", &[&name])
             } else {
-                trf("多重構成の行にする（{}）", &[&name])
+                trf("Make a multi-config row ({})", &[&name])
             }),
         );
         if resp.clicked() {
@@ -1111,8 +1112,10 @@ fn cell_menu(
         // 最適化の変数にする（硝材の dn は除く）
         if col != Col::Material
             && ui
-                .button(trf("最適化の変数にする（{}）", &[&name]))
-                .on_hover_text(tr("最適化のパネルの変数の表に足して、パネルを出す"))
+                .button(trf("Make an optimization variable ({})", &[&name]))
+                .on_hover_text(tr(
+                    "Adds it to the Variables table of the Optimize panel and shows the panel",
+                ))
                 .clicked()
         {
             acts.push(Act::OptVar(name.clone()));
@@ -1370,7 +1373,9 @@ fn paste_acts(
         }
     }
     if skipped > 0 && acts.is_empty() {
-        acts.push(Act::Refused(tr("貼り付け先は変えられないセル").into()));
+        acts.push(Act::Refused(
+            tr("The paste target cells cannot be changed").into(),
+        ));
     }
     acts
 }
@@ -1379,7 +1384,7 @@ fn paste_acts(
 fn range_src(text: &str, blocks: &[Block], n: usize) -> Result<Vec<usize>, String> {
     let t = text.trim();
     if t.is_empty() {
-        return Err(tr("ピックアップの元（面の番号・範囲・ブロック名）が要る").into());
+        return Err(tr("A pickup source (surface number, range or block name) is needed").into());
     }
     if let Some(b) = blocks.iter().find(|b| b.name == t) {
         return Ok(b.surfs.clone());
@@ -1395,7 +1400,7 @@ fn range_src(text: &str, blocks: &[Block], n: usize) -> Result<Vec<usize>, Strin
     match num(t) {
         Some(s) => Ok((s..s + n).collect()),
         None => Err(trf(
-            "ピックアップの元 {} がわからない（面の番号・3-5・ブロック名）",
+            "Unknown pickup source {} (surface number, 3-5 or block name)",
             &[&t],
         )),
     }
@@ -1412,17 +1417,20 @@ pub fn range_pick_ops(
 ) -> Result<Vec<Value>, String> {
     let n = dst.len();
     if n == 0 || n != src.len() {
-        return Err(trf("面の数が違う（先 {}、元 {}）", &[&n, &src.len()]));
+        return Err(trf(
+            "Surface counts differ (target {}, source {})",
+            &[&n, &src.len()],
+        ));
     }
     if let Some(k) = dst.iter().chain(src).find(|&&k| k >= rows.len()) {
-        return Err(trf("面 {} は無い", &[k]));
+        return Err(trf("No surface {}", &[k]));
     }
     if dst.iter().any(|d| src.contains(d)) {
-        return Err(tr("ピックアップの先と元の面が重なっている").into());
+        return Err(tr("Pickup target and source surfaces overlap").into());
     }
     let rev = mode != RangePick::Same;
     if rev && dst.iter().chain(src).any(|&k| rows[k].is_cb()) {
-        return Err(tr("座標ブレークを含む範囲は逆向きにピックアップできない").into());
+        return Err(tr("A range with coordinate breaks cannot be picked up reversed").into());
     }
     let pick = |w: &str, d: usize, s: usize, sc: f64| json!({ "op": "add_pickup", "dst": d, "src": s, "what": w, "scale": sc, "offset": 0.0 });
     let flip = if mode == RangePick::Flip { -1.0 } else { 1.0 };
@@ -1488,22 +1496,22 @@ fn row_menu(
         if r.stop {
             // 組合せでは外せる（前の絞り・絞りの要素に戻す）。開いた系は別の面を絞りにすると外れる
             if combo {
-                if ui.button(tr("絞りを外す")).clicked() {
+                if ui.button(tr("Remove stop")).clicked() {
                     m.acts
                         .push(Act::Ops(vec![json!({ "op": "unset_stop", "surface": j })]));
                 }
             } else {
                 ui.add_enabled(
                     false,
-                    egui::Button::new(tr("絞り（別の面を絞りにすると外れる）")),
+                    egui::Button::new(tr("Stop (make another surface the stop to move it)")),
                 );
             }
-        } else if ui.button(tr("この面を絞りにする")).clicked() {
+        } else if ui.button(tr("Make this surface the stop")).clicked() {
             m.acts
                 .push(Act::Ops(vec![json!({ "op": "set_stop", "surface": j })]));
         }
         let mut ig = r.ignore;
-        if ui.checkbox(&mut ig, tr("この面を無視")).changed() {
+        if ui.checkbox(&mut ig, tr("Ignore this surface")).changed() {
             let mut fields = Map::new();
             fields.insert("ignore".into(), json!(ig));
             m.acts.push(Act::Fields { j, fields });
@@ -1511,15 +1519,15 @@ fn row_menu(
     });
     if !combo {
         ui.separator();
-        m.insert_before = ui.button(tr("前に面を挿入（Insert）")).clicked();
-        m.insert = ui.button(tr("後に面を挿入（Alt+Insert）")).clicked();
-        if ui.button(tr("貼り付け（上書き、Ctrl+V）")).clicked() {
+        m.insert_before = ui.button(tr("Insert surface before (Insert)")).clicked();
+        m.insert = ui.button(tr("Insert surface after (Alt+Insert)")).clicked();
+        if ui.button(tr("Paste (overwrite, Ctrl+V)")).clicked() {
             m.paste = Some(false);
         }
         if ui
-            .button(tr("前に面を挿入して貼り付け（Ctrl+Shift+V）"))
+            .button(tr("Insert surfaces before and paste (Ctrl+Shift+V)"))
             .on_hover_text(tr(
-                "写した行の数だけ面を挿入してから値を書く（OpticStudio の Paste Surfaces）",
+                "Insert as many surfaces as copied rows, then write the values (like OpticStudio's Paste Surfaces)",
             ))
             .clicked()
         {
@@ -1529,7 +1537,7 @@ fn row_menu(
         m.delete = ui
             .add_enabled(
                 !edge && !r.stop,
-                egui::Button::new(tr("この面を削除（Delete）")),
+                egui::Button::new(tr("Delete this surface (Delete)")),
             )
             .clicked();
     }
@@ -1537,17 +1545,23 @@ fn row_menu(
     if !combo {
         ui.separator();
         let span = span.unwrap_or([j, j]);
-        ui.label(RichText::new(trf("面 {}〜{} で玉・群を作る", &[&span[0], &span[1]])).strong());
+        ui.label(
+            RichText::new(trf(
+                "Make a lens/group from surfaces {}–{}",
+                &[&span[0], &span[1]],
+            ))
+            .strong(),
+        );
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut cm.unit_name)
-                    .hint_text(tr("名前（G1 など）"))
+                    .hint_text(tr("Name (G1 etc.)"))
                     .desired_width(110.0),
             );
             if ui
                 .add_enabled(
                     !cm.unit_name.trim().is_empty(),
-                    egui::Button::new(tr("作る")),
+                    egui::Button::new(tr("Create")),
                 )
                 .clicked()
             {
@@ -1559,7 +1573,7 @@ fn row_menu(
         });
         if let Some(b) = block {
             if ui
-                .button(trf("ブロック {} を外す（面は残す）", &[&b]))
+                .button(trf("Remove block {} (keep surfaces)", &[&b]))
                 .clicked()
             {
                 m.acts
@@ -1569,9 +1583,11 @@ fn row_menu(
     } else {
         ui.separator();
         ui.label(
-            RichText::new(tr("組合せの群は要素の設定の「群」で"))
-                .small()
-                .color(theme::weak_text(ui.visuals())),
+            RichText::new(tr(
+                "Groups in a combination are set in the element settings (Group)",
+            ))
+            .small()
+            .color(theme::weak_text(ui.visuals())),
         );
     }
     // 面・玉・群としてのピックアップ（選んだ範囲の面を、別の面・範囲・ブロックから。反転・戻りの向きも）
@@ -1580,10 +1596,10 @@ fn row_menu(
     let dst: Vec<usize> = (span[0]..=span[1]).collect();
     ui.label(
         RichText::new(if dst.len() == 1 {
-            trf("面 {} を面としてピックアップ", &[&j])
+            trf("Pick up surface {} as a surface", &[&j])
         } else {
             trf(
-                "面 {}〜{} を玉・群としてピックアップ",
+                "Pick up surfaces {}–{} as a lens/group",
                 &[&span[0], &span[1]],
             )
         })
@@ -1593,10 +1609,10 @@ fn row_menu(
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut cm.rp_src)
-                    .hint_text(tr("元: 面の番号・3-5・ブロック名"))
+                    .hint_text(tr("Source: surface, 3-5 or block"))
                     .desired_width(150.0),
             );
-            if ui.button(tr("ピックアップ")).clicked() {
+            if ui.button(tr("Pickups")).clicked() {
                 let r = range_src(&cm.rp_src, blocks, dst.len())
                     .and_then(|src| range_pick_ops(rows, &dst, &src, cm.rp_mode));
                 m.acts.push(match r {
@@ -1607,16 +1623,16 @@ fn row_menu(
         });
         ui.horizontal(|ui| {
             for (v, l, h) in [
-                (RangePick::Same, tr("同じ向き"), tr("元と同じ値")),
+                (RangePick::Same, tr("Same"), tr("Same values as the source")),
                 (
                     RangePick::Flip,
-                    tr("反転"),
-                    tr("向きを変えた玉: 面の順を逆に、曲率・非球面の符号を変える（厚さはそのまま）"),
+                    tr("Reverse"),
+                    tr("Turned-around lens: reverse surface order, negate curvature and aspheric terms (thickness unchanged)"),
                 ),
                 (
                     RangePick::Return,
-                    tr("戻り"),
-                    tr("鏡の後の戻り（ダブルパス）: 面の順を逆に、曲率はそのまま、厚さの符号を変える"),
+                    tr("Return"),
+                    tr("Return pass after a mirror (double pass): reverse surface order, keep curvature, negate thickness"),
                 ),
             ] {
                 ui.selectable_value(&mut cm.rp_mode, v, l).on_hover_text(h);
@@ -1625,7 +1641,7 @@ fn row_menu(
     });
     ui.separator();
     m.detail = ui
-        .button(tr("詳細設定（開口・傾き偏心・形のデータ）"))
+        .button(tr("Details (aperture, tilt/decenter, shape data)"))
         .clicked();
     if !m.acts.is_empty() || m.insert || m.delete || m.detail {
         ui.close_menu();

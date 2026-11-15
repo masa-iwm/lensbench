@@ -9,34 +9,34 @@ use crate::i18n::{n_, tr};
 
 /// 光線の並び（serve の fan。空は既定: 2D は見る面の向きの扇、3D は ring）
 const FANS: &[(&str, &str)] = &[
-    ("", n_("既定")),
-    ("y", n_("y の扇")),
-    ("x", n_("x の扇")),
-    ("cross", n_("十字")),
-    ("grid", n_("格子")),
-    ("ring", n_("周（ring）")),
+    ("", n_("Default")),
+    ("y", n_("y fan")),
+    ("x", n_("x fan")),
+    ("cross", n_("Cross")),
+    ("grid", n_("Grid")),
+    ("ring", n_("Ring")),
 ];
 
 /// 色分け（空は既定: 重ね描きなら構成ごと、ほかは視野ごと）
 const COLORS: &[(&str, &str)] = &[
-    ("", n_("既定")),
-    ("field", n_("視野")),
-    ("wave", n_("波長")),
-    ("cfg", n_("構成")),
+    ("", n_("Default")),
+    ("field", n_("Fields")),
+    ("wave", n_("Wavelengths")),
+    ("cfg", n_("Config")),
 ];
 
 /// 表の表示名（翻訳の検査用）
 #[cfg(test)]
 pub const LABELS: [&str; 9] = [
-    n_("既定"),
-    n_("y の扇"),
-    n_("x の扇"),
-    n_("十字"),
-    n_("格子"),
-    n_("周（ring）"),
-    n_("視野"),
-    n_("波長"),
-    n_("構成"),
+    n_("Default"),
+    n_("y fan"),
+    n_("x fan"),
+    n_("Cross"),
+    n_("Grid"),
+    n_("Ring"),
+    n_("Fields"),
+    n_("Wavelengths"),
+    n_("Config"),
 ];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -126,52 +126,52 @@ impl RaySet {
     pub fn ui(&mut self, ui: &mut Ui, n_fields: usize, n_waves: usize) -> bool {
         let before = self.clone();
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("視野"));
-            nums_ui(ui, &mut self.fields, n_fields, tr("全視野"));
+            ui.label(tr("Fields"));
+            nums_ui(ui, &mut self.fields, n_fields, tr("All fields"));
             ui.separator();
-            ui.label(tr("波長"));
-            nums_ui(ui, &mut self.waves, n_waves, tr("主波長"));
+            ui.label(tr("Wavelengths"));
+            nums_ui(ui, &mut self.waves, n_waves, tr("Primary wavelength"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("光線の並び"));
+            ui.label(tr("Ray pattern"));
             combo(ui, "lr_fan", &mut self.fan, FANS);
-            ui.label(tr("本数"));
+            ui.label(tr("Rays"));
             zero_auto(ui, &mut self.rays, 1..=200);
             ui.separator();
-            ui.label(tr("描く面"));
+            ui.label(tr("Surfaces drawn"));
             zero_auto(ui, &mut self.first, 0..=9999);
             ui.label("–");
             zero_auto(ui, &mut self.last, 0..=9999);
             ui.separator();
-            ui.label(tr("色分け"));
+            ui.label(tr("Color by"));
             combo(ui, "lr_color", &mut self.color, COLORS);
             ui.separator();
             #[cfg(not(target_arch = "wasm32"))]
-            ui.checkbox(&mut self.mech_detail, tr("機構部品を詳しい形で"))
-                .on_hover_text(tr("カタログの品の STEP を取ってあれば（カタログの詳細の「詳しい形（STEP）を取る」）、3D の表示と書き出しで機構部品をその形で描きます。無い部品は簡易外形のまま"));
+            ui.checkbox(&mut self.mech_detail, tr("Detailed mech shapes"))
+                .on_hover_text(tr("If the catalog item's STEP has been fetched (\"Fetch detailed shape (STEP)\" in the catalog details), mechanical parts are drawn with that shape in the 3D view and exports. Parts without it keep the simple outline"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.weak(tr("書き出し"));
-            ui.label(tr("PNG の横幅 [px]"));
+            ui.weak(tr("Export"));
+            ui.label(tr("PNG width [px]"));
             zero_auto(ui, &mut self.width, 100..=20000);
-            ui.label(tr("分割数（周・面の線）"));
+            ui.label(tr("Segments (circumference, surface lines)"));
             zero_auto(ui, &mut self.segments, 4..=1024);
-            ui.label(tr("分割数（3D の半径）"));
+            ui.label(tr("Segments (3D radial)"));
             zero_auto(ui, &mut self.rings, 1..=256);
-            ui.label(tr("光線の管の半径 [mm]"));
+            ui.label(tr("Ray tube radius [mm]"));
             ui.add(
                 egui::DragValue::new(&mut self.tube)
                     .range(0.0..=100.0)
                     .speed(0.01)
                     .custom_formatter(|x, _| {
                         if x <= 0.0 {
-                            tr("既定").to_string()
+                            tr("Default").to_string()
                         } else {
                             format!("{x}")
                         }
                     }),
             );
-            if !self.is_default() && ui.small_button(tr("既定に戻す")).clicked() {
+            if !self.is_default() && ui.small_button(tr("Reset to default")).clicked() {
                 *self = RaySet::default();
             }
         });
@@ -218,7 +218,7 @@ fn zero_auto(ui: &mut Ui, x: &mut usize, range: std::ops::RangeInclusive<usize>)
             .speed(1.0)
             .custom_formatter(|v, _| {
                 if v < 0.5 {
-                    tr("既定").to_string()
+                    tr("Default").to_string()
                 } else {
                     format!("{v:.0}")
                 }

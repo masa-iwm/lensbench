@@ -68,7 +68,7 @@ struct R<'a>(&'a [u8]);
 impl<'a> R<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
         if self.0.len() < n {
-            return Err("受け渡しのデータが途中で切れている".into());
+            return Err("the message data is truncated".into());
         }
         let (a, b) = self.0.split_at(n);
         self.0 = b;

@@ -182,7 +182,7 @@ impl Rd<'_> {
         let s = self
             .b
             .get(self.i..self.i + n)
-            .ok_or_else(|| "画面のデータが途中で切れている".to_string())?;
+            .ok_or_else(|| "the frame data is truncated".to_string())?;
         self.i += n;
         Ok(s)
     }
@@ -212,7 +212,7 @@ impl Rd<'_> {
 
 pub fn decode(b: &[u8]) -> Result<Frame, String> {
     if b.get(..4) != Some(MAGIC.as_slice()) {
-        return Err("画面のデータではない".into());
+        return Err("not frame data".into());
     }
     let mut r = Rd { b, i: 4 };
     let mut f = Frame::default();
@@ -233,7 +233,7 @@ pub fn decode(b: &[u8]) -> Result<Frame, String> {
             k => Some(byte_filter(k - 1)),
         };
         if w.saturating_mul(h) > 64 << 20 {
-            return Err("テクスチャが大きすぎる".into());
+            return Err("the texture is too large".into());
         }
         let mut pixels = Vec::with_capacity(w * h);
         if r.u8()? == 1 {
@@ -279,7 +279,7 @@ pub fn decode(b: &[u8]) -> Result<Frame, String> {
         for _ in 0..ni {
             let i = r.u32()?;
             if i as usize >= nv {
-                return Err("網の添え字が頂点の外".into());
+                return Err("a mesh index is outside the vertices".into());
             }
             m.indices.push(i);
         }

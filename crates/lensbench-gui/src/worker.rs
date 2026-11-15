@@ -284,7 +284,7 @@ fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays),
         "cad_measure" => crate::cad_fetch::measure_call(p).map(|v| (v, Vec::new())),
         // 開くファイルが組合せを同梱しているか（画面のスレッドで丸ごと読まない、GAR-30）
         "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())),
-        _ => Err(format!("{m} は下書きでは使えない")),
+        _ => Err(format!("{m} is not available for drafts")),
     }
 }
 
@@ -543,7 +543,7 @@ impl Worker {
                             }
                         }
                     })
-                    .expect("計算のスレッドを作れない");
+                    .expect("cannot start the computation thread");
             };
             let long = cancels.then(|| {
                 let (tx, jobs) = channel::<Job>();
@@ -1006,9 +1006,10 @@ mod remote {
             let w = match web_sys::Worker::new_with_options(&url, &opts) {
                 Ok(w) => w,
                 Err(e) => {
-                    self.inbox
-                        .borrow_mut()
-                        .push_back(Err(format!("Web Worker を作れない: {e:?}")));
+                    self.inbox.borrow_mut().push_back(Err(crate::i18n::trf(
+                        "Cannot start the Web Worker: {}",
+                        &[&format!("{e:?}")],
+                    )));
                     return;
                 }
             };
@@ -1039,7 +1040,7 @@ mod remote {
                 let m = e
                     .dyn_ref::<web_sys::ErrorEvent>()
                     .map(|e| e.message())
-                    .unwrap_or_else(|| "Web Worker のエラー".into());
+                    .unwrap_or_else(|| crate::i18n::tr("Web Worker error").into());
                 inbox.borrow_mut().push_back(Err(m));
                 repaint();
             });
@@ -1129,9 +1130,10 @@ mod remote {
                 .w
                 .post_message_with_transfer(&a, &js_sys::Array::of1(&a.buffer()))
             {
-                self.inbox
-                    .borrow_mut()
-                    .push_back(Err(format!("Web Worker に渡せない: {e:?}")));
+                self.inbox.borrow_mut().push_back(Err(crate::i18n::trf(
+                    "Cannot send to the Web Worker: {}",
+                    &[&format!("{e:?}")],
+                )));
             }
             self.inflight = Some(j);
         }
@@ -1175,8 +1177,9 @@ mod remote {
                     // 計算の側が止まった（panic など）。系は失われるので、次の要求で作り直す
                     self.stop();
                     (
-                        vec![Err(format!(
-                            "計算が止まりました（系を開き直してください）: {e}"
+                        vec![Err(crate::i18n::trf(
+                            "Computation stopped (reopen the system): {}",
+                            &[&e],
                         ))],
                         0.0,
                     )

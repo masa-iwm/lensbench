@@ -87,7 +87,7 @@ impl Core {
             return;
         }
         let mut text = trf(
-            "{} 完了（{} ms）",
+            "{} done ({} ms)",
             &[
                 &method_label(&d.replies[0].method),
                 &fmt_num((ms * 10.0).round() / 10.0),
@@ -103,13 +103,13 @@ impl Core {
                 self.new_undo = None;
                 self.new_redo = None;
                 if d.replies[0].method == "reload" {
-                    text = tr("読み直した（Ctrl+Z で戻す）").into();
+                    text = tr("Reloaded (Ctrl+Z to undo)").into();
                 }
                 if let Some(m) = self.missing_glass.take() {
                     if m.model.is_some() {
                         text = trf(
-                            "ガラス {} をモデルガラス（nd・νd）で代用して開いた（元のファイルは変えていない。保存は名前を付けて）",
-                            &[&m.names.join("・")],
+                            "Opened with model glasses (nd, νd) in place of {} (the original file is unchanged; use Save As)",
+                            &[&m.names.join(crate::i18n::tr(", "))],
                         );
                     }
                 }
@@ -161,7 +161,7 @@ impl Core {
                         desc: format!("{}  nd {:.5}  νd {:.2}", g.catalog, g.nd, g.vd),
                     })
                     .collect();
-                text = trf("ガラス {} 種", &[&self.browser.glasses.len()]);
+                text = trf("{} glasses", &[&self.browser.glasses.len()]);
             }
             Tag::Lenses => {
                 // 選んでいた品は一覧の中で探し直す（set_lenses）。断面は捨てて頼み直す
@@ -177,12 +177,12 @@ impl Core {
                     .count();
                 text = if bad > 0 {
                     trf(
-                        "カタログレンズ {} 枚、うち {} 枚は読めない（{} ms）",
+                        "{} catalog lenses, {} unreadable ({} ms)",
                         &[&self.browser.lenses.len(), &bad, &fmt_num(ms.round())],
                     )
                 } else {
                     trf(
-                        "カタログレンズ {} 枚（{} ms）",
+                        "{} catalog lenses ({} ms)",
                         &[&self.browser.lenses.len(), &fmt_num(ms.round())],
                     )
                 };
@@ -217,20 +217,11 @@ impl Core {
                     let top = &self.sys.hist_list.0.first();
                     self.loc.ld_dirty =
                         top.is_some_and(|t| t.get("open").is_none() && t.get("reload").is_none());
-                    self.info(tr(if back {
-                        "元に戻した"
-                    } else {
-                        "やり直した"
-                    }));
+                    self.info(tr(if back { "Undone" } else { "Redone" }));
                     return;
                 }
                 if d.tag == Tag::History {
-                    text = tr(if back {
-                        "元に戻した"
-                    } else {
-                        "やり直した"
-                    })
-                    .into();
+                    text = tr(if back { "Undone" } else { "Redone" }).into();
                 }
                 // 値の変更（Set）も保存していない変更
                 self.loc.ld_dirty = true;
@@ -244,7 +235,7 @@ impl Core {
             Tag::Write | Tag::Refresh => {}
             Tag::LayoutExport => {
                 text = trf(
-                    "レイアウトを {} に書き出した",
+                    "Exported the layout to {}",
                     &[&v["written"].as_str().unwrap_or_default()],
                 );
             }
@@ -279,8 +270,8 @@ impl Core {
                     );
                     if !used.is_empty() && !self.status.error {
                         self.info(trf(
-                                "ガラス {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で足せます",
-                                &[&used.join("・")],
+                                "Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…",
+                                &[&used.join(crate::i18n::tr(", "))],
                             ));
                     }
                 }
@@ -325,17 +316,23 @@ impl Core {
                     .unwrap_or_default();
                 let ops = v["ops"].clone();
                 self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
-                text = trf("多重構成の表に {} 行を取り込んだ", &[&v["rows"]]);
+                text = trf(
+                    "Imported {} rows into the multi-configuration table",
+                    &[&v["rows"]],
+                );
             }
             Tag::SaveRange => {
                 text = trf(
-                    "{} に書き出し",
+                    "Exported to {}",
                     &[&params["path"].as_str().unwrap_or_default()],
                 );
             }
             Tag::Save => {
                 self.loc.ld_dirty = false;
-                text = trf("{} に保存", &[&params["path"].as_str().unwrap_or_default()]);
+                text = trf(
+                    "Saved to {}",
+                    &[&params["path"].as_str().unwrap_or_default()],
+                );
             }
             Tag::Layout => {
                 self.layout_data = Some(combo::LayoutData::parse(&v));
@@ -354,16 +351,15 @@ impl Core {
                 self.p.cat_save.take(&v);
                 text = match method {
                     "catalog_add" => trf(
-                        "{} に {} を保存",
+                        "Saved to {}: {}",
                         &[
                             &v["catalog"].as_str().unwrap_or_default(),
                             &v["added"].as_str().unwrap_or_default(),
                         ],
                     ),
-                    "catalog_edit" => trf(
-                        "{} を書き換え",
-                        &[&v["catalog"].as_str().unwrap_or_default()],
-                    ),
+                    "catalog_edit" => {
+                        trf("Updated {}", &[&v["catalog"].as_str().unwrap_or_default()])
+                    }
                     _ => text,
                 };
                 // Web 版: ブラウザに残すユーザーカタログのフォルダは、最初に保存したときにレンズのフォルダに足す
@@ -385,7 +381,7 @@ impl Core {
             Tag::CatalogFill => {
                 self.p.fill.done(&v);
                 text = trf(
-                    "{} {} を補って {} に保存",
+                    "Completed {} {} and saved to {}",
                     &[
                         &v["vendor"].as_str().unwrap_or_default(),
                         &v["item"].as_str().unwrap_or_default(),
@@ -416,7 +412,7 @@ impl Core {
                 // 結果を系に当てたら元に戻す段が増える
                 self.worker.send(Tag::HistoryDepth, "history", json!({}));
                 text = trf(
-                    "最適化 完了（{} ms）",
+                    "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
                 self.p.opt.result = Some(std::sync::Arc::new(v));
@@ -428,7 +424,7 @@ impl Core {
                 let r = views::read::<lensbench_design::swap::SwapReply>(&v);
                 if r.as_ref().is_ok_and(|r| r.results.is_some()) {
                     text = trf(
-                        "差し替え探索 完了（{} ms）",
+                        "Swap search done ({} ms)",
                         &[&fmt_num((ms * 10.0).round() / 10.0)],
                     );
                 }
@@ -441,7 +437,7 @@ impl Core {
                 self.p.tol.running = false;
                 self.p.tol.error = None;
                 text = trf(
-                    "公差 完了（{} ms）",
+                    "Tolerance done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
                 self.p.tol.result = Some(std::sync::Arc::new(v));
@@ -450,7 +446,7 @@ impl Core {
                 self.p.zoom.running = false;
                 self.p.zoom.error = None;
                 text = trf(
-                    "ズーム軌跡 完了（{} ms）",
+                    "Zoom track done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
                 self.p.zoom.result = Some(v);

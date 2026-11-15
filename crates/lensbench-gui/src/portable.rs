@@ -38,9 +38,11 @@ pub enum Notice {
 impl Notice {
     pub fn text(&self) -> String {
         match self {
-            Notice::Imported(p) => crate::i18n::trf("{} の設定を取り込みました", &[&p.display()]),
+            Notice::Imported(p) => {
+                crate::i18n::trf("Imported the settings from {}", &[&p.display()])
+            }
             Notice::ReadOnly(p) => crate::i18n::trf(
-                "{} に書けないので、設定は OS の場所に保存します",
+                "Cannot write to {}; settings are saved in the OS location",
                 &[&p.display()],
             ),
         }

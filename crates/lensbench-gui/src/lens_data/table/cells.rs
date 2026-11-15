@@ -37,10 +37,10 @@ pub(super) fn num_cell(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
     let resp = ui.interact(ui.max_rect(), ui.id().with("ld_num"), Sense::click());
     ui.label(rt);
     let resp = if r.ignore {
-        resp.on_hover_text(tr("この面は無視（光線が通らない）"))
+        resp.on_hover_text(tr("This surface is ignored (rays skip it)"))
     } else {
         resp.on_hover_text(tr(
-            "右クリック・Shift+F10 で絞り・無視・挿入・削除、ダブルクリックで詳細設定",
+            "Right-click or Shift+F10 for stop, ignore, insert, delete; double-click for details",
         ))
     };
     if resp.clicked() || resp.secondary_clicked() {
@@ -111,9 +111,9 @@ pub(super) fn block_cell(
             ),
         };
         let hint = match (v.tree, opened) {
-            (false, _) => tr("ダブルクリックで中へ"),
-            (true, true) => tr("クリックでたたむ"),
-            (true, false) => tr("クリックで開く"),
+            (false, _) => tr("Double-click to enter"),
+            (true, true) => tr("Click to collapse"),
+            (true, false) => tr("Click to expand"),
         };
         let r = ui
             .add(
@@ -168,9 +168,9 @@ fn fold_cell(
     a: usize,
 ) {
     let text = match col {
-        Col::Type => tr("ブロック").to_string(),
+        Col::Type => tr("Blocks").to_string(),
         Col::Comment => trf(
-            "{} 面",
+            "{} surfaces",
             &[&c.blocks[i]
                 .surfs
                 .iter()
@@ -238,7 +238,7 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, v: &View, out: &mut Out, j: 
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.colored_label(
                         ui.visuals().error_fg_color,
-                        format!("⚠ {why}（Esc で取り消し）"),
+                        trf("⚠ {} (Esc to cancel)", &[&why]),
                     );
                 });
             });
@@ -331,11 +331,11 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, v: &View, out: &mut Out, j: 
                                                     ui.set_min_width(if col == Col::Material { 300.0 } else { 220.0 });
                                                     if m.is_empty() {
                                                         ui.weak(if col == Col::Type {
-                                                            tr("合う面タイプが無い")
+                                                            tr("No matching surface type")
                                                         } else if c.glasses.is_empty() && !c.glasses_loaded {
-                                                            tr("ガラスカタログを読んでいます…（名前・1.5,60 のようなモデルガラスは打って Enter）")
+                                                            tr("Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)")
                                                         } else {
-                                                            tr("合うガラスが無い（カタログに無い名前は入れられない。モデルガラスは 1.5,60 のように nd,νd で）")
+                                                            tr("No matching glass (names not in the catalogs are refused; write a model glass as nd,νd like 1.5,60)")
                                                         });
                                                         return;
                                                     }
@@ -365,7 +365,7 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, v: &View, out: &mut Out, j: 
                                                     });
                                                     if col == Col::Material {
                                                         ui.label(
-                                                            RichText::new(trf("{} 件。打って絞る（名前・カタログ・nd）", &[&m.len()]))
+                                                            RichText::new(trf("{} items. Type to filter (name, catalog, nd)", &[&m.len()]))
                                                                 .small()
                                                                 .color(v.weak),
                                                         );
@@ -465,7 +465,7 @@ fn value_cell(
                 egui::FontId::proportional(8.0),
                 v.weak,
             );
-            if b.on_hover_text(tr("候補から選ぶ（打つと絞り込む）"))
+            if b.on_hover_text(tr("Choose from the list (type to filter)"))
                 .clicked()
             {
                 drop_open = true;
@@ -500,9 +500,9 @@ fn value_cell(
             let b = match (&solved, can) {
                 (Some((_, why)), _) => b.on_hover_text(why.as_str()),
                 (None, true) if col == Col::Material => {
-                    b.on_hover_text(tr("ピックアップ・屈折率のずれ・分散・複屈折"))
+                    b.on_hover_text(tr("Pickup, index offset, dispersion, birefringence"))
                 }
-                (None, true) => b.on_hover_text(tr("ソルブ・ピックアップ")),
+                (None, true) => b.on_hover_text(tr("Solve / pickup")),
                 _ => b,
             };
             if b.clicked() {

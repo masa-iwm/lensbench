@@ -150,7 +150,7 @@ impl ZoomPanel {
             targets.push(crate::widgets::parse_num(&row.target, name)?);
         }
         if configs.is_empty() {
-            return Err(tr("状態を 1 つ以上選んでください").into());
+            return Err(tr("Select at least one state").into());
         }
         let mut vars = Vec::new();
         for v in &self.vars {
@@ -168,7 +168,7 @@ impl ZoomPanel {
             vars.push(o);
         }
         if vars.is_empty() {
-            return Err(tr("解くパラメータ（G2.shift・7.t など）を足してください").into());
+            return Err(tr("Add parameters to solve (G2.shift, 7.t, etc.)").into());
         }
         let mut p = json!({
             "configs": configs,
@@ -197,9 +197,9 @@ pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Opti
             ui.horizontal(|ui| {
                 if p.running {
                     ui.spinner();
-                    ui.label(tr("解いています…"));
+                    ui.label(tr("Solving…"));
                 } else if ui
-                    .button(RichText::new(tr("軌跡を解く")).strong())
+                    .button(RichText::new(tr("Solve track")).strong())
                     .clicked()
                 {
                     match p.params(cands) {
@@ -215,17 +215,17 @@ pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Opti
                 ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
             }
             if let Some(r) = &p.result {
-                section(ui, "zoom_result_sec", tr("結果"), |ui| {
+                section(ui, "zoom_result_sec", tr("Result"), |ui| {
                     result_ui(ui, r, weak)
                 });
             }
-            section(ui, "zoom_states_sec", tr("状態と目標"), |ui| {
+            section(ui, "zoom_states_sec", tr("States and targets"), |ui| {
                 states_ui(ui, p, cands, weak)
             });
-            section(ui, "zoom_vars_sec", tr("解くパラメータ"), |ui| {
+            section(ui, "zoom_vars_sec", tr("Parameters to solve"), |ui| {
                 vars_ui(ui, p, sys, weak)
             });
-            section(ui, "zoom_run_sec", tr("設定"), |ui| run_ui(ui, p, weak));
+            section(ui, "zoom_run_sec", tr("Settings"), |ui| run_ui(ui, p, weak));
         });
     run
 }
@@ -234,7 +234,7 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
     if cands.is_empty() {
         ui.label(
             RichText::new(tr(
-                "状態（プロジェクトの states か .zmx の多重構成）のある系を開くと、状態ごとに解けます。",
+                "Open a system with states (project states or .zmx configurations) to solve each state.",
             ))
             .small()
             .color(weak),
@@ -242,9 +242,9 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
         return;
     }
     ui.horizontal(|ui| {
-        ui.label(tr("目標"));
-        ui.selectable_value(&mut p.pmag, false, tr("焦点距離 [mm]"));
-        ui.selectable_value(&mut p.pmag, true, tr("近軸倍率"));
+        ui.label(tr("Target"));
+        ui.selectable_value(&mut p.pmag, false, tr("Focal length [mm]"));
+        ui.selectable_value(&mut p.pmag, true, tr("Paraxial magnification"));
     });
     egui::Grid::new("zoom_states")
         .striped(true)
@@ -253,20 +253,20 @@ fn states_ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], weak: egui::Color32
             for (is_cfg, name) in cands {
                 let row = p.states.entry(name.clone()).or_default();
                 let label = if *is_cfg {
-                    trf("構成 {}", &[name])
+                    trf("Config {}", &[name])
                 } else {
                     name.clone()
                 };
                 ui.checkbox(&mut row.on, label);
                 ui.add_enabled_ui(row.on, |ui| {
-                    small_edit(ui, &mut row.target, 80.0, tr("目標なし"));
+                    small_edit(ui, &mut row.target, 80.0, tr("No target"));
                 });
                 ui.end_row();
             }
         });
     ui.label(
         RichText::new(tr(
-            "選んだ状態を並びの順に解きます。目標が空の状態は像だけで解きます（目標がすべて空なら像だけ）。",
+            "The selected states are solved in order. A state with an empty target is solved for the image only.",
         ))
         .small()
         .color(weak),
@@ -291,9 +291,9 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
                         Set::Var { combo: false },
                     );
                 });
-                small_edit(ui, &mut v.lo, 60.0, tr("下限"));
-                small_edit(ui, &mut v.hi, 60.0, tr("上限"));
-                if ui.small_button("✖").on_hover_text(tr("消す")).clicked() {
+                small_edit(ui, &mut v.lo, 60.0, tr("Min"));
+                small_edit(ui, &mut v.hi, 60.0, tr("Max"));
+                if ui.small_button("✖").on_hover_text(tr("Delete")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -303,11 +303,11 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
         p.vars.remove(i);
     }
     ui.horizontal(|ui| {
-        if ui.button(tr("パラメータを足す")).clicked() {
+        if ui.button(tr("Add parameter")).clicked() {
             p.vars.push(VarRow::default());
         }
         if !units.is_empty() {
-            ui.menu_button(tr("群の移動を足す"), |ui| {
+            ui.menu_button(tr("Add group shift"), |ui| {
                 for u in units {
                     if ui.button(format!("{u}.shift")).clicked() {
                         p.vars.push(VarRow {
@@ -322,7 +322,7 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
     });
     ui.label(
         RichText::new(tr(
-            "群の移動（G2.shift）や面の後の間隔（7.t）など。状態ごとに減衰最小二乗で解きます。",
+            "Group shifts (G2.shift), spaces after surfaces (7.t), etc. Each state is solved by damped least squares.",
         ))
         .small()
         .color(weak),
@@ -331,25 +331,25 @@ fn vars_ui(ui: &mut Ui, p: &mut ZoomPanel, sys: &pp::Sys, weak: egui::Color32) {
 
 fn run_ui(ui: &mut Ui, p: &mut ZoomPanel, weak: egui::Color32) {
     ui.horizontal(|ui| {
-        ui.label(tr("間の点の数"));
+        ui.label(tr("Points between states"));
         ui.add(egui::DragValue::new(&mut p.steps).range(0..=100));
-        ui.label(tr("反復の上限"));
+        ui.label(tr("Max iterations"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=1000));
     });
     ui.horizontal(|ui| {
-        ui.label(tr("像の評価"));
-        ui.selectable_value(&mut p.merit, "spot".into(), tr("スポット"));
-        ui.selectable_value(&mut p.merit, "wavefront".into(), tr("波面"));
+        ui.label(tr("Image merit"));
+        ui.selectable_value(&mut p.merit, "spot".into(), tr("Spot"));
+        ui.selectable_value(&mut p.merit, "wavefront".into(), tr("Wavefront"));
         ui.separator();
-        ui.label(tr("基準"));
-        ui.selectable_value(&mut p.reference, "centroid".into(), tr("重心"));
-        ui.selectable_value(&mut p.reference, "chief".into(), tr("主光線"));
+        ui.label(tr("Reference"));
+        ui.selectable_value(&mut p.reference, "centroid".into(), tr("Centroid"));
+        ui.selectable_value(&mut p.reference, "chief".into(), tr("Chief ray"));
         ui.separator();
-        ui.label(tr("瞳の輪"));
+        ui.label(tr("Pupil rings"));
         ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
     });
     ui.horizontal(|ui| {
-        ui.label(tr("目標との差の許し（比）"));
+        ui.label(tr("Target tolerance (relative)"));
         ui.add(
             egui::DragValue::new(&mut p.tol)
                 .range(1e-14..=1e-2)
@@ -360,7 +360,7 @@ fn run_ui(ui: &mut Ui, p: &mut ZoomPanel, weak: egui::Color32) {
     });
     ui.label(
         RichText::new(tr(
-            "間の点は隣り合う状態の間を継続法でたどります（目標は等比に）。",
+            "Points between adjacent states are traced by continuation (targets change geometrically).",
         ))
         .small()
         .color(weak),
@@ -384,18 +384,18 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
                 .striped(true)
                 .num_columns(4 + vars.len())
                 .show(ui, |ui| {
-                    ui.strong(tr("位置"));
-                    ui.strong(tr("状態"));
-                    ui.strong(tr("目標"));
+                    ui.strong(tr("Position"));
+                    ui.strong(tr("State"));
+                    ui.strong(tr("Target"));
                     ui.strong(if q == "pmag" {
-                        tr("近軸倍率")
+                        tr("Paraxial magnification")
                     } else {
-                        tr("焦点距離")
+                        tr("Focal length")
                     });
                     for v in &vars {
                         ui.strong(v);
                     }
-                    ui.strong(tr("像の評価"));
+                    ui.strong(tr("Image merit"));
                     ui.end_row();
                     for pt in &path {
                         ui.label(f(&pt["pos"]));
@@ -414,7 +414,7 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
     Plot::new("zoom_plot")
         .height(180.0)
         .legend(Legend::default())
-        .x_axis_label(tr("位置（状態の番号、0 始まり）"))
+        .x_axis_label(tr("Position (state index, from 0)"))
         .show(ui, |pu| {
             for (i, v) in vars.iter().enumerate() {
                 let pts: Vec<[f64; 2]> = path

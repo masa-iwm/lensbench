@@ -40,7 +40,7 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     let Some(url) =
         get("--webview").filter(|u| u.starts_with("https://") || u.starts_with("http://"))
     else {
-        eprintln!("--webview には http(s) の URL");
+        eprintln!("--webview needs an http(s) URL");
         return std::process::ExitCode::FAILURE;
     };
     let dl = get("--download-dir")
@@ -73,7 +73,7 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("窓を作れない: {e}");
+            eprintln!("cannot create the window: {e}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -106,7 +106,7 @@ pub fn run(args: &[String]) -> std::process::ExitCode {
     let webview = match webview {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("WebView を作れない（WebView2 Runtime が要る）: {e}");
+            eprintln!("cannot create the WebView (WebView2 Runtime is required): {e}");
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -169,7 +169,7 @@ impl Child {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| e.to_string())?;
-        let out = proc.stdout.take().ok_or("標準出力が無い")?;
+        let out = proc.stdout.take().ok_or("no standard output")?;
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             for line in std::io::BufReader::new(out).lines() {

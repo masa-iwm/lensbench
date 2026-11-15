@@ -34,7 +34,7 @@ pub fn install(dir: Option<std::path::PathBuf>) {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let entry = format!(
-            "=== lensbench {} panic（スレッド {name}、UNIX 時刻 {when}）\n{t}\n{bt}\n",
+            "=== lensbench {} panic (thread {name}, UNIX time {when})\n{t}\n{bt}\n",
             env!("CARGO_PKG_VERSION")
         );
         if let Some(d) = &dir {

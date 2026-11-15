@@ -43,12 +43,12 @@ impl ApKind {
     ];
     pub fn label(self) -> &'static str {
         match self {
-            ApKind::Epd => tr("入射瞳径"),
-            ApKind::Fnum => tr("像空間 F 値"),
-            ApKind::Na => tr("物体空間 NA"),
-            ApKind::Float => tr("絞りの径で決める"),
-            ApKind::Pwfn => tr("近軸作動 F 値"),
-            ApKind::Cone => tr("物体の円錐角"),
+            ApKind::Epd => tr("Entrance pupil diameter"),
+            ApKind::Fnum => tr("Image space F/#"),
+            ApKind::Na => tr("Object space NA"),
+            ApKind::Float => tr("Float by stop size"),
+            ApKind::Pwfn => tr("Paraxial working F/#"),
+            ApKind::Cone => tr("Object cone angle"),
         }
     }
     fn key(self) -> &'static str {
@@ -108,11 +108,11 @@ impl FieldKind {
     ];
     pub fn label(self) -> &'static str {
         match self {
-            FieldKind::Angle => tr("角度"),
-            FieldKind::ObjectHeight => tr("物体高"),
-            FieldKind::ParaxialImageHeight => tr("近軸像高"),
-            FieldKind::RealImageHeight => tr("実像高"),
-            FieldKind::Solve => tr("条件で定める視野"),
+            FieldKind::Angle => tr("Angle"),
+            FieldKind::ObjectHeight => tr("Object height"),
+            FieldKind::ParaxialImageHeight => tr("Paraxial image height"),
+            FieldKind::RealImageHeight => tr("Real image height"),
+            FieldKind::Solve => tr("Field by condition (solve)"),
         }
     }
     fn key(self) -> &'static str {
@@ -150,9 +150,9 @@ impl SolveCond {
     const ALL: [SolveCond; 3] = [SolveCond::Position, SolveCond::DirSum, SolveCond::DirDiff];
     fn label(self) -> &'static str {
         match self {
-            SolveCond::Position => tr("面での位置"),
-            SolveCond::DirSum => tr("2 面の方向余弦の和"),
-            SolveCond::DirDiff => tr("2 面の方向余弦の差"),
+            SolveCond::Position => tr("Position at a surface"),
+            SolveCond::DirSum => tr("Sum of direction cosines at 2 surfaces"),
+            SolveCond::DirDiff => tr("Difference of direction cosines at 2 surfaces"),
         }
     }
 }
@@ -190,9 +190,9 @@ impl Aiming {
     const ALL: [Aiming; 3] = [Aiming::Off, Aiming::Paraxial, Aiming::Real];
     fn label(self) -> &'static str {
         match self {
-            Aiming::Off => tr("なし"),
-            Aiming::Paraxial => tr("近軸"),
-            Aiming::Real => tr("実光線"),
+            Aiming::Off => tr("Off"),
+            Aiming::Paraxial => tr("Paraxial"),
+            Aiming::Real => tr("Real"),
         }
     }
     fn key(self) -> &'static str {
@@ -290,7 +290,7 @@ const AFOCAL_UNITS: [AfocalUnit; 6] = [
 ];
 
 /// 浮動開口の欄の説明
-pub const FLOATING_CLIP_HINT: &str = "浮動開口（.zmx の FLAP など）。外すと半直径でけらない（半直径でけらない従来のモデルと比べるとき）";
+pub const FLOATING_CLIP_HINT: &str = "Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)";
 
 /// 状態ごとに変えられる系の値（プロジェクトの状態の `project`）。絞りの位置・硝材カタログは全部の状態で共通
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -344,7 +344,7 @@ impl Combo {
             .map(|a| a.iter().filter_map(Value::as_f64).collect())
             .unwrap_or_default();
         if wl.is_empty() {
-            return Err(tr("系の波長が読めない").into());
+            return Err(tr("Cannot read the system wavelengths").into());
         }
         let ws: Vec<f64> = d["weights"]
             .as_array()
@@ -364,7 +364,12 @@ impl Combo {
             Some("ObjH") => FieldKind::ObjectHeight,
             Some("ParH") => FieldKind::ParaxialImageHeight,
             Some("RealH") => FieldKind::RealImageHeight,
-            _ => return Err(tr("条件で定める視野の系は、組合せの設定に移せない").into()),
+            _ => {
+                return Err(tr(
+                    "A system with solved fields cannot be moved to combination settings",
+                )
+                .into())
+            }
         };
         self.fields = d["fields"]
             .as_array()
@@ -387,7 +392,7 @@ impl Combo {
             Some("Float") => ApKind::Float,
             Some("Pwfn") => ApKind::Pwfn,
             Some("Cone") => ApKind::Cone,
-            _ => return Err(tr("系の開口が読めない").into()),
+            _ => return Err(tr("Cannot read the system aperture").into()),
         };
         if self.aperture == ApKind::Epd {
             self.epd = val;
@@ -594,15 +599,15 @@ impl Combo {
     pub fn settings_summary(&self) -> String {
         let ap = match self.aperture {
             ApKind::Epd => format!("EPD {} mm", fmt_num(self.epd)),
-            ApKind::Float => format!("{} {} mm", tr("絞りの径"), fmt_num(self.epd)),
+            ApKind::Float => format!("{} {} mm", tr("Stop diameter"), fmt_num(self.epd)),
             k => format!("{} {}{}", k.label(), fmt_num(self.ap_value), k.unit()),
         };
         let obj = match self.object_distance {
-            None => tr("無限遠").to_string(),
-            Some(d) => format!("{} {} mm", tr("物体"), fmt_num(d)),
+            None => tr("Infinity").to_string(),
+            Some(d) => format!("{} {} mm", tr("Object"), fmt_num(d)),
         };
         trf(
-            "{} · {} {} 点 · 波長 {} · {}",
+            "{} · {} {} points · {} wavelengths · {}",
             &[
                 &ap,
                 &self.field_kind.label(),
@@ -617,29 +622,31 @@ impl Combo {
     pub fn settings_problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(Err(e)) = self.detector.as_ref().map(|d| d.block()) {
-            out.push(trf("検出器の設定: {}", &[&e]));
+            out.push(trf("Detector settings: {}", &[&e]));
         }
         if self.waves.is_empty() {
-            out.push(tr("波長が無い").to_string());
+            out.push(tr("No wavelengths").to_string());
         }
         if self.fields.is_empty() {
-            out.push(tr("視野が無い").to_string());
+            out.push(tr("No fields").to_string());
         }
         if self.object_distance.is_none() {
             if self.aperture.needs_finite() {
-                out.push(tr("この開口の種類は物体が有限のときだけ").to_string());
+                out.push(tr("This aperture type needs a finite object").to_string());
             }
             if self.field_kind == FieldKind::ObjectHeight {
-                out.push(tr("物体高の視野は物体が有限のときだけ").to_string());
+                out.push(tr("Object-height fields need a finite object").to_string());
             }
         }
         if self.telecentric && self.object_distance.is_some() {
             if self.aiming != Aiming::Off {
-                out.push(tr("物体側テレセントリックではエイミングを使えない").to_string());
+                out.push(
+                    tr("Ray aiming cannot be used with object-space telecentricity").to_string(),
+                );
             }
             if !self.aperture.needs_finite() {
                 out.push(
-                    tr("物体側テレセントリックの開口は物体空間 NA か物体の円錐角").to_string(),
+                    tr("Object-space telecentricity needs an object space NA or object cone angle aperture").to_string(),
                 );
             }
         }
@@ -648,10 +655,10 @@ impl Combo {
                 || (self.field_solve.cond != SolveCond::Position
                     && self.field_solve.s2.trim().is_empty()))
         {
-            out.push(tr("条件で定める視野の面を入れる").to_string());
+            out.push(tr("Enter the surfaces for the field condition").to_string());
         }
         if let StopAt::Many(ks) = self.stop_at() {
-            out.push(trf("絞りの要素が {} 個（1 つだけにする）", &[&ks.len()]));
+            out.push(trf("{} stop elements (keep only one)", &[&ks.len()]));
         }
         out
     }
@@ -671,8 +678,8 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
         .as_ref()
         .and_then(|d| crate::ext::detector(&d.kind))
     {
-        Some(d) => format!("{} ({})", tr("検出器"), tr(d.object.title)),
-        None => tr("検出器").to_string(),
+        Some(d) => format!("{} ({})", tr("Detector"), tr(d.object.title)),
+        None => tr("Detector").to_string(),
     };
     egui::CollapsingHeader::new(RichText::new(head).strong())
         .id_salt(id.with("detector"))
@@ -680,7 +687,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
             let weak = theme::weak_text(ui.visuals());
             let cur = c.detector.as_ref().map(|d| d.kind.clone());
             ui.horizontal_wrapped(|ui| {
-                if ui.selectable_label(cur.is_none(), tr("なし")).clicked() {
+                if ui.selectable_label(cur.is_none(), tr("Off")).clicked() {
                     c.detector = None;
                 }
                 for d in &kinds {
@@ -698,7 +705,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
             });
             ui.label(
                 RichText::new(tr(
-                    "像面に置く検出器のブロック（プロジェクトの最後のブロック、最後の空気が検出器までの距離）。空の欄は既定値",
+                    "Detector block at the image surface (the last block of the project; the last air is the distance to the detector). Empty fields use the defaults",
                 ))
                 .small()
                 .color(weak),
@@ -707,7 +714,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
                 return;
             };
             let Some(kind) = crate::ext::detector(&d.kind) else {
-                ui.label(trf("検出器 {} はこの版で使えない（設定はそのまま残す）", &[&d.kind]));
+                ui.label(trf("Detector {} is not available in this build (its settings are kept)", &[&d.kind]));
                 return;
             };
             let specs = crate::argform::object_specs(&kind.object);
@@ -731,7 +738,7 @@ fn detector_ui(ui: &mut Ui, c: &mut Combo, id: egui::Id) {
                 if g.is_empty() {
                     continue;
                 }
-                egui::CollapsingHeader::new(if title.is_empty() { tr("そのほか") } else { tr(title) })
+                egui::CollapsingHeader::new(if title.is_empty() { tr("Others") } else { tr(title) })
                     .id_salt(id.with(("detector_group", title)))
                     .show(ui, |ui| {
                         crate::argform::form(ui, ("detector", title), &g, &mut d.vals);
@@ -750,9 +757,9 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     let weak = theme::weak_text(ui.visuals());
     let mut own = c.state_sys.contains_key(&n);
     let r = ui
-        .checkbox(&mut own, trf("状態 {} だけの値にする", &[&n]))
+        .checkbox(&mut own, trf("Use values for state {} only", &[&n]))
         .on_hover_text(tr(
-            "開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）",
+            "Change the aperture, fields, wavelengths, object distance, telecentricity, aiming and afocal mode for this state only (stop position and glass catalogs are shared by all states)",
         ));
     if r.changed() {
         if own {
@@ -763,7 +770,7 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     }
     let Some(snap) = c.state_sys.get(&n).cloned() else {
         ui.label(
-            RichText::new(trf("状態 {} も基本の値を使う", &[&n]))
+            RichText::new(trf("State {} uses the base values too", &[&n]))
                 .small()
                 .color(weak),
         );
@@ -792,7 +799,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            ui.label(tr("開口の種類"));
+            ui.label(tr("Aperture type"));
             let before = c.aperture;
             egui::ComboBox::from_id_salt(id.with("apk"))
                 .selected_text(c.aperture.label())
@@ -819,9 +826,9 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
             let lead = c.lead_stop();
             if c.aperture == ApKind::Epd || lead {
                 ui.label(match c.aperture {
-                    ApKind::Epd => tr("入射瞳径 [mm]"),
-                    ApKind::Float => tr("絞りの径 [mm]"),
-                    _ => tr("絞りの径（図だけ）[mm]"),
+                    ApKind::Epd => tr("Entrance pupil diameter [mm]"),
+                    ApKind::Float => tr("Stop diameter [mm]"),
+                    _ => tr("Stop diameter (drawing only) [mm]"),
                 });
                 ui.add(
                     egui::DragValue::new(&mut c.epd)
@@ -835,11 +842,11 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     // 絞りの位置
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("絞り")).strong());
+        ui.label(RichText::new(tr("Aperture stop")).strong());
         match c.stop_at() {
             StopAt::Lead => {
-                ui.label(tr("最初の要素の前（自動）"));
-                ui.label(tr("間隔"));
+                ui.label(tr("Before the first element (automatic)"));
+                ui.label(tr("Gap"));
                 ui.add(
                     egui::DragValue::new(&mut c.stop_gap)
                         .speed(0.1)
@@ -847,9 +854,9 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                         .suffix(" mm"),
                 );
                 if ui
-                    .button(tr("絞りを要素にする"))
+                    .button(tr("Make the stop an element"))
                     .on_hover_text(tr(
-                        "並びの先頭に「絞り」の要素を置く。図でドラッグして好きな位置へ動かせる",
+                        "Put a \"Stop\" element at the head of the sequence. Drag it in the figure to move it anywhere",
                     ))
                     .clicked()
                 {
@@ -863,12 +870,12 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                     .and_then(|l| c.get(l))
                     .map(|p| p.label())
                     .unwrap_or_default();
-                ui.label(trf("{} 番目の要素「{}」", &[&(k + 1), &label]));
+                ui.label(trf("Element {}: \"{}\"", &[&(k + 1), &label]));
             }
             StopAt::Many(ks) => {
                 let s: Vec<String> = ks.iter().map(|k| (k + 1).to_string()).collect();
                 ui.label(
-                    RichText::new(trf("{} 番目の要素（1 つだけにする）", &[&s.join(", ")]))
+                    RichText::new(trf("Elements {} (keep only one)", &[&s.join(", ")]))
                         .color(Color32::RED),
                 );
             }
@@ -876,14 +883,14 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     });
     ui.label(
         RichText::new(tr(
-            "絞りは要素パレットの「絞り」を並びの好きな所に置くとそこになる。置かなければ最初の要素の前に自動で置く。",
+            "Place a \"Stop\" from the element palette anywhere in the sequence to set the stop there. Without one, a stop is placed automatically before the first element.",
         ))
         .small()
         .color(weak),
     );
     if c.aperture == ApKind::Float && !c.lead_stop() {
         ui.label(
-            RichText::new(tr("開口は絞りの要素の半径で決まる"))
+            RichText::new(tr("The aperture is set by the stop element's radius"))
                 .small()
                 .color(weak),
         );
@@ -895,11 +902,11 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         .num_columns(2)
         .spacing([8.0, 4.0])
         .show(ui, |ui| {
-            ui.label(tr("物体"));
+            ui.label(tr("Object"));
             ui.horizontal(|ui| {
                 let mut finite = c.object_distance.is_some();
-                ui.radio_value(&mut finite, false, tr("無限遠"));
-                ui.radio_value(&mut finite, true, tr("有限"));
+                ui.radio_value(&mut finite, false, tr("Infinity"));
+                ui.radio_value(&mut finite, true, tr("Finite"));
                 match (finite, c.object_distance) {
                     (true, None) => c.object_distance = Some(100.0),
                     (false, Some(_)) => c.object_distance = None,
@@ -913,26 +920,28 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                             .max_decimals(4)
                             .suffix(" mm"),
                     )
-                    .on_hover_text(tr("物体面から最初の要素（前の絞り）まで"));
+                    .on_hover_text(tr(
+                        "From the object surface to the first element (or the leading stop)",
+                    ));
                 }
             });
             ui.end_row();
             if c.object_distance.is_some() {
                 ui.label("");
-                ui.checkbox(&mut c.telecentric, tr("物体側テレセントリック"));
+                ui.checkbox(&mut c.telecentric, tr("Telecentric in object space"));
                 ui.end_row();
             }
-            ui.label(tr("光線エイミング"));
+            ui.label(tr("Ray aiming"));
             ui.horizontal(|ui| {
                 for a in Aiming::ALL {
                     ui.radio_value(&mut c.aiming, a, a.label());
                 }
             });
             ui.end_row();
-            ui.label(tr("像空間"));
+            ui.label(tr("Image space"));
             ui.horizontal(|ui| {
                 let mut on = c.afocal.is_some();
-                if ui.checkbox(&mut on, tr("アフォーカル")).changed() {
+                if ui.checkbox(&mut on, tr("Afocal")).changed() {
                     c.afocal = on.then(|| AfocalUnit::default().code().to_ascii_lowercase());
                 }
                 if let Some(code) = c.afocal.as_mut() {
@@ -952,7 +961,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
             ui.label("");
             ui.checkbox(
                 &mut c.floating_clip,
-                tr("半直径を固定した面の外の光線をける"),
+                tr("Vignette rays outside fixed semi-diameters"),
             )
             .on_hover_text(tr(FLOATING_CLIP_HINT));
             ui.end_row();
@@ -961,7 +970,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
 
     // 視野
     ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("視野")).strong());
+        ui.label(RichText::new(tr("Fields")).strong());
         egui::ComboBox::from_id_salt(id.with("fk"))
             .selected_text(c.field_kind.label())
             .show_ui(ui, |ui| {
@@ -980,24 +989,24 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                     }
                 });
             let two = c.field_solve.cond != SolveCond::Position;
-            ui.label(if two { tr("面 1") } else { tr("面") });
+            ui.label(if two { tr("Surface 1") } else { tr("Surface") });
             ui.add(
                 egui::TextEdit::singleline(&mut c.field_solve.s1)
-                    .hint_text(tr("番号か名前"))
+                    .hint_text(tr("number or name"))
                     .desired_width(70.0),
             );
             if two {
-                ui.label(tr("面 2"));
+                ui.label(tr("Surface 2"));
                 ui.add(
                     egui::TextEdit::singleline(&mut c.field_solve.s2)
-                        .hint_text(tr("番号か名前"))
+                        .hint_text(tr("number or name"))
                         .desired_width(70.0),
                 );
             }
         });
         ui.label(
             RichText::new(tr(
-                "主波長の主光線が条件の値（下の x・y）になる物体を解く。.zmx には書けない",
+                "Solves the object so the primary-wavelength chief ray meets the condition (x, y below). Cannot be written to .zmx",
             ))
             .small()
             .color(weak),
@@ -1013,7 +1022,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
             ui.label(RichText::new("#").color(weak));
             ui.label(RichText::new("x").color(weak));
             ui.label(RichText::new("y").color(weak));
-            ui.label(RichText::new(tr("重み")).color(weak));
+            ui.label(RichText::new(tr("Weight")).color(weak));
             ui.label("");
             ui.end_row();
             for (i, f) in c.fields.iter_mut().enumerate() {
@@ -1036,7 +1045,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                         .range(0.0..=1e6)
                         .max_decimals(4),
                 );
-                if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
+                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -1045,7 +1054,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     if let Some(i) = del {
         c.fields.remove(i);
     }
-    if ui.small_button(tr("＋ 視野を足す")).clicked() {
+    if ui.small_button(tr("+ Add field")).clicked() {
         let next = c
             .fields
             .last()
@@ -1055,7 +1064,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     ui.separator();
 
     // 波長
-    ui.label(RichText::new(tr("波長")).strong());
+    ui.label(RichText::new(tr("Wavelengths")).strong());
     let mut del = None;
     egui::Grid::new(id.with("waves"))
         .num_columns(5)
@@ -1063,9 +1072,9 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         .spacing([6.0, 2.0])
         .show(ui, |ui| {
             ui.label(RichText::new("#").color(weak));
-            ui.label(RichText::new(tr("波長 [µm]")).color(weak));
-            ui.label(RichText::new(tr("重み")).color(weak));
-            ui.label(RichText::new(tr("主")).color(weak));
+            ui.label(RichText::new(tr("Wavelengths [µm]")).color(weak));
+            ui.label(RichText::new(tr("Weight")).color(weak));
+            ui.label(RichText::new(tr("Primary")).color(weak));
             ui.label("");
             ui.end_row();
             for (i, w) in c.waves.iter_mut().enumerate() {
@@ -1083,7 +1092,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
                         .max_decimals(4),
                 );
                 ui.radio_value(&mut c.primary, i + 1, "");
-                if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
+                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
                     del = Some(i);
                 }
                 ui.end_row();
@@ -1096,11 +1105,11 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
         }
     }
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button(tr("＋ 波長を足す")).clicked() {
+        if ui.small_button(tr("+ Add wavelength")).clicked() {
             let next = c.waves.last().map_or(0.5875618, |w| w.um + 0.05);
             c.waves.push(WavePt::um(next));
         }
-        ui.label(RichText::new(tr("よく使う組:")).small().color(weak));
+        ui.label(RichText::new(tr("Presets:")).small().color(weak));
         for (name, set) in PRESETS {
             if ui.small_button(*name).clicked() {
                 c.waves = set.iter().map(|&u| WavePt::um(u)).collect();
@@ -1120,9 +1129,13 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     // 膜（フィルタ）の定義（プロジェクトの coatings）
     ui.add_space(6.0);
     let head = if c.coatings.is_empty() {
-        tr("膜（フィルタ）の定義").to_string()
+        tr("Coating (filter) definitions").to_string()
     } else {
-        format!("{} ({})", tr("膜（フィルタ）の定義"), c.coatings.len())
+        format!(
+            "{} ({})",
+            tr("Coating (filter) definitions"),
+            c.coatings.len()
+        )
     };
     // 通し確認では開いて見せる（[`crate::coat_defs::focus`]）
     let focus = crate::coat_defs::take_focus(ui.ctx());
@@ -1141,7 +1154,7 @@ fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
 /// 硝材カタログ: 前ほど優先。硝材のフォルダの AGF から足す・外す・順を変える
 fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("硝材カタログ")).strong());
+        ui.label(RichText::new(tr("Glass catalogs")).strong());
         let n = c.glass_catalogs.len();
         let (mut up, mut del) = (None, None);
         for (i, name) in c.glass_catalogs.iter().enumerate() {
@@ -1153,14 +1166,14 @@ fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32)
                 t
             })
             .on_hover_text(if missing {
-                tr("硝材のフォルダに無い")
+                tr("Not in the glass folders")
             } else {
-                tr("前ほど優先")
+                tr("Earlier ones take precedence")
             });
-            if i > 0 && ui.small_button("◀").on_hover_text(tr("前へ")).clicked() {
+            if i > 0 && ui.small_button("◀").on_hover_text(tr("Earlier")).clicked() {
                 up = Some(i);
             }
-            if ui.small_button("✖").on_hover_text(tr("外す")).clicked() {
+            if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
                 del = Some(i);
             }
             if i + 1 < n {
@@ -1178,7 +1191,7 @@ fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32)
             .filter(|x| !c.glass_catalogs.iter().any(|y| y.eq_ignore_ascii_case(x)))
             .collect();
         if !rest.is_empty() {
-            ui.menu_button(tr("＋ 足す"), |ui| {
+            ui.menu_button(tr("+ Add"), |ui| {
                 for x in rest {
                     if ui.button(x.as_str()).clicked() {
                         c.glass_catalogs.push(x.clone());
@@ -1190,7 +1203,7 @@ fn glass_catalogs_ui(ui: &mut Ui, c: &mut Combo, cats: &[String], weak: Color32)
     });
     ui.label(
         RichText::new(tr(
-            "自作の玉・平板・BS のガラスを引くカタログ（前ほど優先）。空なら SCHOTT。候補は設定の硝材のフォルダの AGF",
+            "Catalogs for the glass of custom lenses, plates and beam splitters (earlier ones first; SCHOTT if empty). Choices are the AGF files in the glass folders",
         ))
         .small()
         .color(weak),
@@ -1307,7 +1320,7 @@ mod tests {
         assert!(c
             .settings_problems()
             .iter()
-            .any(|s| s.contains("テレセントリック")));
+            .any(|s| s.contains("telecentric")));
         // 既定の組合せは項目を増やさない
         let d = Combo::default().project();
         for k in ["object_distance", "telecentric", "aiming", "afocal"] {

@@ -6,10 +6,10 @@ use crate::i18n::{tr, trf};
 /// serve の段の変更の名前（set はパラメータの説明、edit は操作）
 pub fn hist_label(v: &Value) -> String {
     if let Some(f) = v["open"].as_str() {
-        return trf("{} を開く", &[&f]);
+        return trf("Open {}", &[&f]);
     }
     if let Some(f) = v["reload"].as_str() {
-        return trf("{} を読み直す", &[&f]);
+        return trf("Reload {}", &[&f]);
     }
     if let Some(names) = v["set"].as_array() {
         let d: Vec<String> = names
@@ -25,9 +25,9 @@ pub fn hist_label(v: &Value) -> String {
             })
             .collect();
         return match d.len() {
-            0 => tr("値の変更").into(),
-            1..=2 => d.join("、"),
-            n => trf("{} ほか {} 個", &[&d[0], &(n - 1)]),
+            0 => tr("Value change").into(),
+            1..=2 => d.join(crate::i18n::tr(", ")),
+            n => trf("{} and {} more", &[&d[0], &(n - 1)]),
         };
     }
     let ops = v["edit"].as_array().cloned().unwrap_or_default();
@@ -35,21 +35,21 @@ pub fn hist_label(v: &Value) -> String {
         let s = o["surface"].as_u64().map(|x| x.to_string());
         let op = o["op"].as_str().unwrap_or_default();
         let what = match op {
-            "insert_surface" => tr("面を挿入"),
-            "delete_surface" => tr("面を削除"),
-            "set_surface" | "set_surface_data" => tr("面の値"),
-            "set_surface_type" => tr("面の種類"),
-            "set_material" => tr("硝材"),
-            "set_stop" => tr("絞り"),
-            "add_pickup" | "remove_pickup" => tr("ピックアップ"),
-            "add_solve" | "remove_solve" => tr("ソルブ"),
-            "set_system_data" => tr("系の設定"),
-            "set_param" => tr("値の変更"),
-            "define_unit" | "set_unit" | "remove_unit" => tr("玉・群"),
-            "add_mech" | "set_mech" | "remove_mech" => tr("機構部品"),
-            "set_config" => tr("構成の切り替え"),
-            o if o.contains("config") => tr("多重構成"),
-            _ => tr("編集"),
+            "insert_surface" => tr("Insert surface"),
+            "delete_surface" => tr("Delete surface"),
+            "set_surface" | "set_surface_data" => tr("Surface values"),
+            "set_surface_type" => tr("Surface type"),
+            "set_material" => tr("Material"),
+            "set_stop" => tr("Aperture stop"),
+            "add_pickup" | "remove_pickup" => tr("Pickups"),
+            "add_solve" | "remove_solve" => tr("Solves"),
+            "set_system_data" => tr("System settings"),
+            "set_param" => tr("Value change"),
+            "define_unit" | "set_unit" | "remove_unit" => tr("Lenses / groups"),
+            "add_mech" | "set_mech" | "remove_mech" => tr("Mechanical parts"),
+            "set_config" => tr("Switch configuration"),
+            o if o.contains("config") => tr("Multi-Config"),
+            _ => tr("Edit"),
         };
         // 面の値の 1 項目なら、その項目の名前（面 8 の厚さ など）
         if let (Some(s), Some([f])) = (&s, o["fields"].as_array().map(Vec::as_slice)) {
@@ -65,13 +65,13 @@ pub fn hist_label(v: &Value) -> String {
             }
         }
         match s {
-            Some(s) => trf("{}（面 {}）", &[&what, &s]),
+            Some(s) => trf("{} (surface {})", &[&what, &s]),
             None => what.to_string(),
         }
     };
     match ops.len() {
-        0 => tr("編集").into(),
+        0 => tr("Edit").into(),
         1 => one(&ops[0]),
-        n => trf("{} ほか {} 件", &[&one(&ops[0]), &(n - 1)]),
+        n => trf("{} and {} more", &[&one(&ops[0]), &(n - 1)]),
     }
 }

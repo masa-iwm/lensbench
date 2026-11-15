@@ -114,7 +114,7 @@ impl Palette {
                     ui.set_width(width);
                     let r = ui.add(
                         egui::TextEdit::singleline(&mut self.query)
-                            .hint_text(tr("操作・解析・パネル・並びを探す"))
+                            .hint_text(tr("Search actions, analyses, panels, workspaces"))
                             .desired_width(f32::INFINITY),
                     );
                     if self.focus {
@@ -129,7 +129,7 @@ impl Palette {
                         .max_height(360.0)
                         .show(ui, |ui| {
                             if hits.is_empty() {
-                                ui.weak(tr("見つからない"));
+                                ui.weak(tr("Nothing found"));
                             }
                             for (k, it) in hits.iter().enumerate() {
                                 let on = k == self.sel;
@@ -143,7 +143,7 @@ impl Palette {
                                 }
                             }
                         });
-                    ui.weak(tr("↑↓ で選ぶ · Enter で実行 · Esc で閉じる"));
+                    ui.weak(tr("↑↓ select · Enter run · Esc close"));
                 });
             });
         if chosen.is_some() {
@@ -171,23 +171,23 @@ mod tests {
             cmd: l.to_string(),
             danger,
         };
-        let items = vec![it("新規", true), it("開く", false), it("保存", false)];
+        let items = vec![it("New", true), it("Expand", false), it("Save", false)];
         let o: Vec<&str> = order(&items, "", &[])
             .iter()
             .map(|i| i.label.as_str())
             .collect();
-        assert_eq!(o, ["開く", "保存", "新規"]);
-        let o: Vec<&str> = order(&items, "", &["保存".into()])
+        assert_eq!(o, ["Expand", "Save", "New"]);
+        let o: Vec<&str> = order(&items, "", &["Save".into()])
             .iter()
             .map(|i| i.label.as_str())
             .collect();
-        assert_eq!(o, ["保存", "開く", "新規"]);
+        assert_eq!(o, ["Save", "Expand", "New"]);
         // 打ったときは一覧の順のまま
-        let o: Vec<&str> = order(&items, "新", &[])
+        let o: Vec<&str> = order(&items, "Ne", &[])
             .iter()
             .map(|i| i.label.as_str())
             .collect();
-        assert_eq!(o, ["新規"]);
+        assert_eq!(o, ["New"]);
     }
 
     #[test]

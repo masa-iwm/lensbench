@@ -22,7 +22,7 @@ impl App {
                 ui.spinner();
             }
             let text = if self.c.status.text.is_empty() {
-                tr("準備完了").to_string()
+                tr("Ready").to_string()
             } else {
                 self.c.status.text.clone()
             };
@@ -57,7 +57,7 @@ impl App {
                     )
                 })
                 .inner
-                .on_hover_text(tr("クリックで全文と履歴"));
+                .on_hover_text(tr("Click for the full text and history"));
             if r.clicked() {
                 self.c.status_log_open = !self.c.status_log_open;
             }
@@ -67,14 +67,14 @@ impl App {
                         egui::Label::new(RichText::new(version()).small().color(weak))
                             .sense(egui::Sense::click()),
                     )
-                    .on_hover_text(tr("クリックで版をコピー"))
+                    .on_hover_text(tr("Click to copy the version"))
                     .clicked()
                 {
                     ui.ctx().copy_text(version());
                 }
                 if self.c.font.is_none() && i18n::is_ja() {
                     ui.label(
-                        RichText::new(tr("日本語のフォントが見つからない"))
+                        RichText::new(tr("No Japanese font found"))
                             .small()
                             .color(weak),
                     );
@@ -91,11 +91,15 @@ impl App {
                     };
                     // 大事な順
                     for (k, v, u) in [
-                        (tr("焦点距離"), n("effl", 1e3), " mm"),
-                        (tr("作動 F 値"), n("wfno", 1e2), ""),
-                        (tr("像空間 NA"), n("image_na", 1e4), ""),
-                        (tr("全長"), n("total_track", 1e2), " mm"),
-                        (tr("近軸像高"), n("paraxial_image_height", 1e3), " mm"),
+                        (tr("Focal length"), n("effl", 1e3), " mm"),
+                        (tr("Working F/#"), n("wfno", 1e2), ""),
+                        (tr("Image space NA"), n("image_na", 1e4), ""),
+                        (tr("Total track"), n("total_track", 1e2), " mm"),
+                        (
+                            tr("Paraxial image height"),
+                            n("paraxial_image_height", 1e3),
+                            " mm",
+                        ),
                     ] {
                         parts.push((k.to_string(), format!("{v}{u}")));
                     }
@@ -103,7 +107,7 @@ impl App {
                 if let Some(s) = &self.c.sys.summary {
                     parts.push((
                         trf(
-                            "{} 面 · {} 視野 · {} 波長",
+                            "{} surfaces · {} fields · {} wavelengths",
                             &[&s["surfaces"], &self.c.n_fields(), &self.c.waves_um().len()],
                         ),
                         String::new(),
@@ -148,7 +152,7 @@ impl App {
         });
         if self.c.status_log_open {
             let mut open = true;
-            egui::Window::new(tr("状態の履歴"))
+            egui::Window::new(tr("Status history"))
                 .open(&mut open)
                 .default_width(560.0)
                 .max_height(ui.ctx().screen_rect().height() * 0.6)
@@ -165,7 +169,7 @@ impl App {
                             ui.separator();
                         }
                     });
-                    if ui.button(tr("全文をコピー")).clicked() {
+                    if ui.button(tr("Copy full text")).clicked() {
                         ui.ctx().copy_text(self.c.status.text.clone());
                     }
                 });

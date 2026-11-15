@@ -50,23 +50,23 @@ impl State {
 }
 
 const FIELD_TYPES: [(&str, &str); 4] = [
-    ("Angle", n_("角度")),
-    ("ObjH", n_("物体高")),
-    ("ParH", n_("近軸像高")),
-    ("RealH", n_("実像高")),
+    ("Angle", n_("Angle")),
+    ("ObjH", n_("Object height")),
+    ("ParH", n_("Paraxial image height")),
+    ("RealH", n_("Real image height")),
 ];
 const APERTURES: [(&str, &str, &str); 6] = [
-    ("Epd", n_("入射瞳径"), " mm"),
-    ("FNum", n_("像空間 F 値"), ""),
-    ("Na", n_("物体空間 NA"), ""),
-    ("Float", n_("絞りの径で決まる"), " mm"),
-    ("Pwfn", n_("近軸作動 F 値"), ""),
-    ("Cone", n_("物体の円錐角"), "°"),
+    ("Epd", n_("Entrance pupil diameter"), " mm"),
+    ("FNum", n_("Image space F/#"), ""),
+    ("Na", n_("Object space NA"), ""),
+    ("Float", n_("Float by stop size"), " mm"),
+    ("Pwfn", n_("Paraxial working F/#"), ""),
+    ("Cone", n_("Object cone angle"), "°"),
 ];
 const AIMING: [(&str, &str); 3] = [
-    ("Off", n_("なし")),
-    ("Paraxial", n_("近軸")),
-    ("Real", n_("実光線")),
+    ("Off", n_("Off")),
+    ("Paraxial", n_("Paraxial")),
+    ("Real", n_("Real")),
 ];
 const AFOCAL_UNITS: [&str; 6] = [
     "Microradians",
@@ -98,7 +98,7 @@ fn drag(ui: &mut Ui, v: &mut f64, speed: f64, suffix: &str, busy: &mut bool) -> 
 pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
     let weak = theme::weak_text(ui.visuals());
     let Some(d) = st.data.as_mut() else {
-        ui.weak(tr("読み込み中…"));
+        ui.weak(tr("Loading…"));
         return None;
     };
     let id = ui.id().with("open_sysset");
@@ -107,7 +107,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
 
     // 名前
     ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("名前")).color(weak));
+        ui.label(RichText::new(tr("Name")).color(weak));
         let mut name = d["name"].as_str().unwrap_or_default().to_string();
         let r = ui.add(egui::TextEdit::singleline(&mut name).desired_width(240.0));
         busy |= r.has_focus();
@@ -119,7 +119,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
 
     // 開口
     ui.separator();
-    ui.strong(tr("開口"));
+    ui.strong(tr("Aperture"));
     ui.horizontal_wrapped(|ui| {
         let ap = d["aperture"].as_array().cloned().unwrap_or_default();
         let mut kind = ap
@@ -151,7 +151,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
         let mut tele = d["telecentric"].as_bool().unwrap_or(false);
         if ui
-            .checkbox(&mut tele, tr("物体側テレセントリック"))
+            .checkbox(&mut tele, tr("Telecentric in object space"))
             .changed()
         {
             d.insert("telecentric".into(), json!(tele));
@@ -159,7 +159,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
         let mut clip = d["floating_clip"].as_bool().unwrap_or(true);
         if ui
-            .checkbox(&mut clip, tr("半直径を固定した面の外の光線をける"))
+            .checkbox(&mut clip, tr("Vignette rays outside fixed semi-diameters"))
             .on_hover_text(tr(crate::sysset::FLOATING_CLIP_HINT))
             .changed()
         {
@@ -168,7 +168,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
     });
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("光線エイミング")).color(weak));
+        ui.label(RichText::new(tr("Ray aiming")).color(weak));
         let mut a = d["aiming"].as_str().unwrap_or("Off").to_string();
         for (k, l) in AIMING {
             if ui.radio_value(&mut a, k.to_string(), tr(l)).changed() {
@@ -178,7 +178,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
         ui.separator();
         let mut af = d["afocal"].as_bool().unwrap_or(false);
-        if ui.checkbox(&mut af, tr("アフォーカル")).changed() {
+        if ui.checkbox(&mut af, tr("Afocal")).changed() {
             d.insert("afocal".into(), json!(af));
             changed.push("afocal");
         }
@@ -205,7 +205,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
     // 視野
     ui.separator();
     ui.horizontal_wrapped(|ui| {
-        ui.strong(tr("視野"));
+        ui.strong(tr("Fields"));
         let ft = d["field_type"].clone();
         match ft.as_str() {
             Some(cur) => {
@@ -228,14 +228,14 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
             }
             None => {
                 // 条件で定める視野（面の番号の条件）。形は JSON で見せる
-                ui.label(RichText::new(trf("条件で定める視野 {}", &[&ft])).color(weak));
+                ui.label(RichText::new(trf("Field by condition {}", &[&ft])).color(weak));
             }
         }
         let mut norm = d["field_norm"].as_str().unwrap_or("Radial").to_string();
         let before = norm.clone();
-        ui.label(RichText::new(tr("正規化")).color(weak));
-        ui.radio_value(&mut norm, "Radial".into(), tr("半径"));
-        ui.radio_value(&mut norm, "Rect".into(), tr("矩形"));
+        ui.label(RichText::new(tr("Normalization")).color(weak));
+        ui.radio_value(&mut norm, "Radial".into(), tr("Radial"));
+        ui.radio_value(&mut norm, "Rect".into(), tr("Rectangular"));
         if norm != before {
             d.insert("field_norm".into(), json!(norm));
             changed.push("field_norm");
@@ -252,7 +252,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         .spacing([6.0, 3.0])
         .striped(true)
         .show(ui, |ui| {
-            for h in ["#", "x", "y", tr("重み")] {
+            for h in ["#", "x", "y", tr("Weight")] {
                 ui.label(RichText::new(h).color(weak));
             }
             for h in VIGNETTING {
@@ -270,7 +270,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
                 }
                 if ui
                     .add(egui::Button::new("✖").small())
-                    .on_hover_text(tr("外す"))
+                    .on_hover_text(tr("Remove"))
                     .clicked()
                 {
                     remove = Some(i);
@@ -282,7 +282,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         fields.remove(i);
         fch = true;
     }
-    if ui.button(tr("＋ 視野を足す")).clicked() {
+    if ui.button(tr("+ Add field")).clicked() {
         let mut f = fields.last().cloned().unwrap_or_default();
         for k in ["x", "y"].into_iter().chain(VIGNETTING) {
             f.insert(k.into(), json!(0.0));
@@ -301,7 +301,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
 
     // 波長
     ui.separator();
-    ui.strong(tr("波長"));
+    ui.strong(tr("Wavelengths"));
     let mut wl: Vec<f64> = d["wavelengths"]
         .as_array()
         .map(|a| a.iter().map(num).collect())
@@ -319,7 +319,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         .spacing([6.0, 3.0])
         .striped(true)
         .show(ui, |ui| {
-            for h in ["#", tr("波長 [µm]"), tr("重み"), tr("主")] {
+            for h in ["#", tr("Wavelengths [µm]"), tr("Weight"), tr("Primary")] {
                 ui.label(RichText::new(h).color(weak));
             }
             ui.end_row();
@@ -337,7 +337,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
                 }
                 if ui
                     .add(egui::Button::new("✖").small())
-                    .on_hover_text(tr("外す"))
+                    .on_hover_text(tr("Remove"))
                     .clicked()
                 {
                     wremove = Some(i);
@@ -353,7 +353,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
         wch = true;
     }
-    if ui.button(tr("＋ 波長を足す")).clicked() {
+    if ui.button(tr("+ Add wavelength")).clicked() {
         wl.push(wl.last().copied().unwrap_or(0.55));
         wt.push(1.0);
         wch = true;
@@ -370,15 +370,15 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
 
     // 環境
     ui.separator();
-    ui.strong(tr("環境"));
+    ui.strong(tr("Environment"));
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("温度")).color(weak));
+        ui.label(RichText::new(tr("Temperature")).color(weak));
         let mut t = num(&d["temperature"]);
         if drag(ui, &mut t, 0.1, " °C", &mut busy) {
             d.insert("temperature".into(), json!(t));
             changed.push("temperature");
         }
-        ui.label(RichText::new(tr("気圧")).color(weak));
+        ui.label(RichText::new(tr("Pressure")).color(weak));
         let mut p = num(&d["pressure"]);
         if drag(ui, &mut p, 0.01, " atm", &mut busy) {
             d.insert("pressure".into(), json!(p));
@@ -386,7 +386,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
         let mut adj = d["adjust_index"].as_bool().unwrap_or(false);
         if ui
-            .checkbox(&mut adj, tr("屈折率を温度・気圧で補正"))
+            .checkbox(&mut adj, tr("Adjust index to temperature and pressure"))
             .changed()
         {
             d.insert("adjust_index".into(), json!(adj));
@@ -397,7 +397,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
     // 座標・OPD・膜
     ui.separator();
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("大域座標の基準面 (GLRS)")).color(weak));
+        ui.label(RichText::new(tr("Global coordinate reference (GLRS)")).color(weak));
         let mut g = d["glrs"].as_u64().unwrap_or(0) as usize;
         let r = ui.add(egui::DragValue::new(&mut g).range(0..=ns.saturating_sub(1)));
         busy |= r.dragged() || r.has_focus();
@@ -405,7 +405,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
             d.insert("glrs".into(), json!(g));
             changed.push("glrs");
         }
-        ui.label(RichText::new(tr("OPD の基準 (ROPD)")).color(weak));
+        ui.label(RichText::new(tr("OPD reference (ROPD)")).color(weak));
         let mut ro = d["ropd"].as_i64().unwrap_or(0);
         let r = ui.add(egui::DragValue::new(&mut ro).range(-1..=4));
         busy |= r.dragged() || r.has_focus();
@@ -415,11 +415,11 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         }
     });
     ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("膜ファイル")).color(weak));
+        ui.label(RichText::new(tr("Coating file")).color(weak));
         let mut f = d["coating_file"].as_str().unwrap_or_default().to_string();
         let r = ui.add(
             egui::TextEdit::singleline(&mut f)
-                .hint_text(tr("なし（COATING.DAT など）"))
+                .hint_text(tr("None (e.g. COATING.DAT)"))
                 .desired_width(280.0),
         );
         busy |= r.has_focus();

@@ -23,25 +23,25 @@ pub fn take_focus(ctx: &egui::Context) -> bool {
 
 /// 種類の名前（serde の type）と表示名
 const KINDS: &[(&str, &str)] = &[
-    ("longpass", n_("ロングパス")),
-    ("shortpass", n_("ショートパス")),
-    ("bandpass", n_("バンドパス")),
-    ("notch", n_("ノッチ")),
+    ("longpass", n_("Longpass")),
+    ("shortpass", n_("Shortpass")),
+    ("bandpass", n_("Bandpass")),
+    ("notch", n_("Notch")),
     ("nd", "ND"),
-    ("curve", n_("波長ごとの透過")),
-    ("table", n_("表（角度・波長ごと）")),
+    ("curve", n_("Transmission per wavelength")),
+    ("table", n_("Table (per angle and wavelength)")),
 ];
 
 /// 表示名の表（翻訳の検査用）
 #[cfg(test)]
 pub const LABELS: [&str; 7] = [
-    n_("ロングパス"),
-    n_("ショートパス"),
-    n_("バンドパス"),
-    n_("ノッチ"),
+    n_("Longpass"),
+    n_("Shortpass"),
+    n_("Bandpass"),
+    n_("Notch"),
     "ND",
-    n_("波長ごとの透過"),
-    n_("表（角度・波長ごと）"),
+    n_("Transmission per wavelength"),
+    n_("Table (per angle and wavelength)"),
 ];
 
 fn ideal() -> Ideal {
@@ -124,7 +124,7 @@ pub fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
     let before = coatings.clone();
     ui.label(
         RichText::new(tr(
-            "名前を鏡・BS の膜の欄、面の表の膜（coating）に書いて使う。膜ファイル・ユーザーカタログの同じ名前より優先",
+            "Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs",
         ))
         .small()
         .color(weak),
@@ -137,7 +137,7 @@ pub fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
         ui.horizontal_wrapped(|ui| {
             let mut n = name.clone();
             ui.add(egui::TextEdit::singleline(&mut n).desired_width(90.0))
-                .on_hover_text(tr("膜の名前"));
+                .on_hover_text(tr("Coating name"));
             if n != *name && !n.trim().is_empty() {
                 rename = Some((name.clone(), n.trim().to_string()));
             }
@@ -155,7 +155,7 @@ pub fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
             }
             if ui
                 .small_button("✖")
-                .on_hover_text(tr("この膜を消す"))
+                .on_hover_text(tr("Delete this coating"))
                 .clicked()
             {
                 remove = Some(name.clone());
@@ -175,7 +175,7 @@ pub fn ui(ui: &mut Ui, coatings: &mut BTreeMap<String, CoatSpec>) -> bool {
         }
     }
     ui.separator();
-    if ui.button(tr("＋ 膜を足す")).clicked() {
+    if ui.button(tr("＋ Add coating")).clicked() {
         let mut k = 1;
         while coatings.contains_key(&format!("FILTER{k}")) {
             k += 1;
@@ -202,30 +202,30 @@ fn num(ui: &mut Ui, label: &str, v: &mut f64, range: std::ops::RangeInclusive<f6
 }
 
 fn ideal_fields(ui: &mut Ui, i: &mut Ideal) {
-    num(ui, tr("帯域内の透過"), &mut i.t, 0.0..=1.0, 0.005);
-    num(ui, tr("帯域外の OD"), &mut i.od, 0.0..=12.0, 0.05);
+    num(ui, tr("In-band transmission"), &mut i.t, 0.0..=1.0, 0.005);
+    num(ui, tr("Out-of-band OD"), &mut i.od, 0.0..=12.0, 0.05);
     let mut auto = i.width_nm.is_none();
     if ui
-        .checkbox(&mut auto, tr("エッジ幅は自動"))
+        .checkbox(&mut auto, tr("Automatic edge width"))
         .on_hover_text(tr(
-            "透過が 10 % から 90 % までの幅。自動はエッジ波長の 1 %、帯域フィルタは半値全幅の 10 %",
+            "Width from 10 % to 90 % transmission. Automatic is 1 % of the edge wavelength, or 10 % of the FWHM for band filters",
         ))
         .changed()
     {
         i.width_nm = if auto { None } else { Some(5.0) };
     }
     if let Some(w) = &mut i.width_nm {
-        num(ui, tr("エッジ幅 [nm]"), w, 0.01..=1000.0, 0.1);
+        num(ui, tr("Edge width [nm]"), w, 0.01..=1000.0, 0.1);
     }
-    num(ui, tr("実効屈折率"), &mut i.neff, 1.0..=5.0, 0.01);
-    ui.checkbox(&mut i.absorptive, tr("吸収型（反射 0）"));
+    num(ui, tr("Effective index"), &mut i.neff, 1.0..=5.0, 0.01);
+    ui.checkbox(&mut i.absorptive, tr("Absorptive (no reflection)"));
 }
 
 fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
     match spec {
         CoatSpec::Longpass { edge_nm, ideal } | CoatSpec::Shortpass { edge_nm, ideal } => {
             ui.horizontal_wrapped(|ui| {
-                num(ui, tr("エッジ [nm]"), edge_nm, 1.0..=5000.0, 1.0);
+                num(ui, tr("Edge [nm]"), edge_nm, 1.0..=5000.0, 1.0);
                 ideal_fields(ui, ideal);
             });
         }
@@ -240,15 +240,15 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
             ideal,
         } => {
             ui.horizontal_wrapped(|ui| {
-                num(ui, tr("中心 [nm]"), center_nm, 1.0..=5000.0, 1.0);
-                num(ui, tr("半値全幅 [nm]"), fwhm_nm, 0.01..=5000.0, 0.5);
+                num(ui, tr("Center [nm]"), center_nm, 1.0..=5000.0, 1.0);
+                num(ui, tr("FWHM [nm]"), fwhm_nm, 0.01..=5000.0, 0.5);
                 ideal_fields(ui, ideal);
             });
         }
         CoatSpec::Nd { od, absorptive } => {
             ui.horizontal_wrapped(|ui| {
                 num(ui, "OD", od, 0.0..=12.0, 0.05);
-                ui.checkbox(absorptive, tr("吸収型（反射 0）"));
+                ui.checkbox(absorptive, tr("Absorptive (no reflection)"));
             });
         }
         CoatSpec::Curve {
@@ -263,9 +263,9 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                 .num_columns(4)
                 .spacing([6.0, 2.0])
                 .show(ui, |ui| {
-                    ui.label(tr("波長 [nm]"));
-                    ui.label(tr("透過"));
-                    ui.label(tr("反射"));
+                    ui.label(tr("Wavelength [nm]"));
+                    ui.label(tr("Transmission"));
+                    ui.label(tr("Reflection"));
                     ui.end_row();
                     for i in 0..wavelengths_nm.len().min(t.len()) {
                         ui.add(
@@ -303,7 +303,7 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                 }
             }
             ui.horizontal(|ui| {
-                if ui.small_button(tr("＋ 行")).clicked() {
+                if ui.small_button(tr("＋ Row")).clicked() {
                     let l = wavelengths_nm.last().copied().unwrap_or(500.0) + 50.0;
                     let tt = t.last().copied().unwrap_or(0.9);
                     wavelengths_nm.push(l);
@@ -314,8 +314,8 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                 }
                 let mut ur = use_r;
                 if ui
-                    .checkbox(&mut ur, tr("反射も書く"))
-                    .on_hover_text(tr("書かなければ反射 0（吸収）"))
+                    .checkbox(&mut ur, tr("Also give reflection"))
+                    .on_hover_text(tr("Without it, reflection is 0 (absorptive)"))
                     .changed()
                 {
                     *r = if ur {
@@ -337,7 +337,7 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
             });
             ui.label(
                 RichText::new(tr(
-                    "1 行に [入射角 deg, 波長 µm, Rs, Rp, Ts, Tp]（メーカーの表など）",
+                    "One row per line: [incidence angle deg, wavelength µm, Rs, Rp, Ts, Tp] (e.g. a vendor table)",
                 ))
                 .small(),
             );
@@ -362,7 +362,7 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                     }
                 }
                 Ok(_) => {
-                    ui.colored_label(ui.visuals().warn_fg_color, tr("行が無い"));
+                    ui.colored_label(ui.visuals().warn_fg_color, tr("No rows"));
                 }
                 Err(e) => {
                     ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(&e));
@@ -467,8 +467,8 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
         .include_y(1.0)
         .include_x(lo)
         .include_x(hi)
-        .x_axis_label(tr("波長 [nm]"))
-        .y_axis_label(tr("透過"))
+        .x_axis_label(tr("Wavelength [nm]"))
+        .y_axis_label(tr("Transmission"))
         .allow_scroll(false)
         .show(ui, |pl| {
             pl.line(
@@ -489,14 +489,14 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
 
 /// 膜の名前の欄（鏡・BS の分ける面）
 pub fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: egui::Color32, coats: &[String]) {
-    ui.label(RichText::new(tr("膜")).color(weak));
+    ui.label(RichText::new(tr("Coating")).color(weak));
     ui.add(
         egui::TextEdit::singleline(coat)
-            .hint_text(tr("膜なし"))
+            .hint_text(tr("no coating"))
             .desired_width(70.0),
     )
     .on_hover_text(tr(
-        "膜ファイル（COATING.DAT など）・膜モデルの膜の名前、系の設定で定義した膜の名前。空なら理想の鏡・分岐比のまま",
+        "Name of a coating in a coating file (COATING.DAT, etc.), a coating model, or one defined in system settings. Empty keeps an ideal mirror or the split ratio",
     ));
     // 系の設定で定義した膜から選ぶ
     if !coats.is_empty() {
@@ -511,7 +511,7 @@ pub fn coat_edit(ui: &mut Ui, coat: &mut String, k: usize, weak: egui::Color32, 
                 }
             })
             .response
-            .on_hover_text(tr("定義した膜から選ぶ"));
+            .on_hover_text(tr("Choose a defined coating"));
     }
 }
 

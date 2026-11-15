@@ -26,10 +26,10 @@ impl Core {
             return;
         }
         let text = trf(
-            "開いた系を組合せにして {} を足します。今の組合せ（{} 個の要素）は置き換わります。よいですか？",
+            "Turn the open system into a combination and add {}. The current combination ({} elements) will be replaced. OK?",
             &[&label, &n_old],
         );
-        self.ask(tr("開いた系に足す"), &text, go);
+        self.ask(tr("Add to the open system"), &text, go);
     }
 
     /// 開いた系を組合せにする: 系の取り込み（zmx ブロック、.zmx も lensbench の .json も）1 つと、系の設定。keep は今の
@@ -54,8 +54,8 @@ impl Core {
         self.to_combo = None;
         if self.loc.ld_dirty && !asked {
             self.ask(
-                tr("組合せにする"),
-                tr("開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？"),
+                tr("Make a combination"),
+                tr("Unsaved changes to the opened system will not be included (it is imported from the file). Continue?"),
                 move |c, yes| {
                     if yes {
                         c.open_to_combo_with(keep, true);
@@ -116,7 +116,9 @@ impl Core {
         self.p.combo_view = combo::View::default();
         self.combo_len_prev = self.doc.combo.picks.len();
         self.loc.doc_path = None;
-        self.info(tr("開いた系を組合せの要素にした（系の取り込み）"));
+        self.info(tr(
+            "Made the opened system an element of the combination (system import)",
+        ));
         self.build_combo(self.doc.combo.project());
     }
 }

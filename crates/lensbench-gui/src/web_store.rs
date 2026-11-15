@@ -101,7 +101,10 @@ pub async fn restore() -> usize {
             n
         }
         Err(e) => {
-            web_sys::console::warn_2(&"lensbench: ブラウザに残したファイルを読めない".into(), &e);
+            web_sys::console::warn_2(
+                &"lensbench: cannot read the files kept in the browser".into(),
+                &e,
+            );
             0
         }
     };
@@ -146,7 +149,10 @@ pub fn clear() {
     SEQ.with(|s| s.set(Some(sync::seq())));
     wasm_bindgen_futures::spawn_local(async {
         if let Err(e) = store_clear().await {
-            web_sys::console::warn_2(&"lensbench: ブラウザに残したファイルを消せない".into(), &e);
+            web_sys::console::warn_2(
+                &"lensbench: cannot delete the files kept in the browser".into(),
+                &e,
+            );
         }
     });
 }

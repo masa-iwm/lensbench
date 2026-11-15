@@ -42,8 +42,8 @@ impl Core {
             {
                 let p = p.to_path_buf();
                 self.ask(
-                    tr("開く"),
-                    tr("今の組合せを消して、ファイルの組合せを開きますか？"),
+                    tr("Expand"),
+                    tr("Discard the current combination and open the one in the file?"),
                     move |c, yes| {
                         if yes {
                             c.open_doc_with(&p, true);
@@ -93,7 +93,7 @@ impl Core {
             }
         );
         self.worker.send(Tag::Load, "load", params);
-        self.info(trf("{} を読んでいます…", &[&file]));
+        self.info(trf("Reading {}…", &[&file]));
     }
 
     pub(super) fn load_params(&self, p: &Path) -> Value {

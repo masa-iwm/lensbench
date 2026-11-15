@@ -177,7 +177,7 @@ mod tests {
                 file_name: "s.json",
             }),
         });
-        translations(&[("試しのカメラ", "Toy camera")]);
+        translations(&[("Toy camera", "試しのカメラ")]);
         assert!(crate::layout::analyses()
             .iter()
             .any(|a| a.0 == "toy-camera"));

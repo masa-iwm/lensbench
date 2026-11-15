@@ -173,7 +173,9 @@ impl Timings {
         let bad = |x: f64| !(x.is_finite() && x >= 0.0);
         let d = t.default;
         if bad(d.dwell_s) || bad(d.gap_s) || bad(d.wait_s) {
-            return Err(format!("{TIMING_FILE}: default の秒は 0 以上"));
+            return Err(format!(
+                "{TIMING_FILE}: the default seconds must be 0 or more"
+            ));
         }
         for (k, p) in &t.sites {
             if [p.dwell_s, p.gap_s, p.wait_s]
@@ -181,7 +183,9 @@ impl Timings {
                 .flatten()
                 .any(bad)
             {
-                return Err(format!("{TIMING_FILE}: {k} の秒は 0 以上"));
+                return Err(format!(
+                    "{TIMING_FILE}: the seconds of {k} must be 0 or more"
+                ));
             }
         }
         Ok(t)
@@ -547,7 +551,7 @@ impl FillWin {
             self.take_page(url, &t);
         }
         self.note = Some((
-            tr("ページから値が決まらなかったので、窓に出しました").to_string(),
+            tr("The values could not be decided from the page, so the window is shown").to_string(),
             false,
         ));
     }
@@ -560,7 +564,7 @@ impl FillWin {
         self.pending = false;
         self.note = Some((
             trf(
-                "{} に保存しました。一覧では普通の品として並びます",
+                "Saved to {}. It is now listed as a normal part",
                 &[&v["catalog"].as_str().unwrap_or_default()],
             ),
             false,
@@ -599,7 +603,7 @@ impl FillWin {
                 Err(e) => {
                     self.note = Some((
                         trf(
-                            "アプリ内のブラウザを開けないので既定のブラウザで開きます: {}",
+                            "Cannot open the in-app browser, opening the default browser: {}",
                             &[&e],
                         ),
                         true,
@@ -657,12 +661,12 @@ impl FillWin {
                     lensbench_project::catalog_fill::read_step(&String::from_utf8_lossy(&b))
                 })
         } else {
-            Err(tr("STEP（.step・.stp）でないファイル").to_string())
+            Err(tr("Not a STEP file (.step, .stp)").to_string())
         };
         // ガラスの無い機構部品の STEP は、ガラスの厚さ・径にならない
         let res = res.and_then(|s| {
             if s.mech {
-                Err(tr("ガラスの無い機構部品（チューブ・ケージ板・マウント）の STEP なので、ガラスの厚さ・径は測れません").to_string())
+                Err(tr("This STEP is a mechanical part without glass (tube, cage plate or mount), so the glass thickness and diameter can't be measured").to_string())
             } else {
                 Ok(s)
             }
@@ -708,14 +712,14 @@ impl FillWin {
         }
         let num = crate::json_view::fmt_num;
         let mut use_t = None;
-        ui.label(RichText::new(tr("仕様表との突き合わせ")).strong());
+        ui.label(RichText::new(tr("Comparison with the spec table")).strong());
         egui::Grid::new("fill_spec_grid")
             .num_columns(4)
             .striped(true)
             .show(ui, |ui| {
-                ui.weak(tr("項目"));
+                ui.weak(tr("Item"));
                 ui.weak("STEP");
-                ui.weak(tr("仕様表"));
+                ui.weak(tr("Spec table"));
                 ui.weak("");
                 ui.end_row();
                 for c in &cmp {
@@ -725,11 +729,13 @@ impl FillWin {
                     if c.ok() {
                         ui.label("✔");
                     } else {
-                        ui.colored_label(warn, trf("差 {} mm", &[&num(c.step - c.spec)]));
+                        ui.colored_label(warn, trf("Off by {} mm", &[&num(c.step - c.spec)]));
                         if c.key == "thickness"
                             && ui
-                                .small_button(tr("仕様の値を使う"))
-                                .on_hover_text(tr("ガラスの厚さを仕様表の値にします"))
+                                .small_button(tr("Use spec value"))
+                                .on_hover_text(tr(
+                                    "Sets the glass thickness to the spec table value",
+                                ))
                                 .clicked()
                         {
                             use_t = Some(c.spec);
@@ -740,23 +746,23 @@ impl FillWin {
             });
         if cmp.iter().any(|c| c.spec_key != c.key) {
             ui.weak(tr(
-                "仕様表の「厚さ」「径」が枠の長さ・外径と合うので、枠の値として比べました。",
+                "The spec table \"thickness\" / \"diameter\" match the mount length / outer diameter, so they were compared as mount values.",
             ));
         }
         if cmp.iter().any(|c| !c.ok()) {
             ui.colored_label(
                 warn,
-                tr("食い違う項目は、保存する品のメモに残します。品ページの図面で確かめてください。"),
+                tr("Mismatched items are recorded in the saved item's notes. Check them against the drawing on the product page."),
             );
         }
         let mut use_d = None;
         if let Some(d) = glass_d {
             ui.horizontal_wrapped(|ui| {
                 ui.label(trf(
-                    "STEP のガラスと枠が 1 つの立体なので、ガラスの径 {} mm は見えている径です。仕様表の径は {} mm です。",
+                    "The STEP models the glass and mount as one solid, so the glass diameter {} mm is the visible diameter. The spec table diameter is {} mm.",
                     &[&s.diameter.to_string(), &num(d)],
                 ));
-                if ui.small_button(tr("ガラスの径を仕様の値にする")).clicked() {
+                if ui.small_button(tr("Use spec glass diameter")).clicked() {
                     use_d = Some(d);
                 }
             });
@@ -804,7 +810,7 @@ impl FillWin {
         }
         let mut open = self.open;
         let mut req = None;
-        egui::Window::new(trf("未完の品を補う — {} {}", &[&r.vendor, &r.part]))
+        egui::Window::new(trf("Complete part — {} {}", &[&r.vendor, &r.part]))
             .id(egui::Id::new("catalog_fill"))
             .open(&mut open)
             .default_width(520.0)
@@ -830,7 +836,7 @@ impl FillWin {
         ui.colored_label(
             warn,
             trf(
-                "足りない値: {}。値を入れて確定すると置けるようになります。",
+                "Missing: {}. Enter the values and confirm to make it placeable.",
                 &[&r.missing_text()],
             ),
         );
@@ -841,7 +847,7 @@ impl FillWin {
         }
         ui.horizontal_wrapped(|ui| {
             if !r.url.is_empty() {
-                if ui.button(tr("🌐 品ページを開き直す")).clicked() {
+                if ui.button(tr("🌐 Reopen the product page")).clicked() {
                     #[cfg(all(windows, feature = "webview"))]
                     {
                         self.child = None;
@@ -849,21 +855,24 @@ impl FillWin {
                     self.open_page(ui.ctx());
                 }
                 ui.add(
-                    egui::Hyperlink::from_label_and_url(tr("既定のブラウザで開く"), r.url.as_str())
-                        .open_in_new_tab(true),
+                    egui::Hyperlink::from_label_and_url(
+                        tr("Open in the default browser"),
+                        r.url.as_str(),
+                    )
+                    .open_in_new_tab(true),
                 );
             }
         });
         #[cfg(all(windows, feature = "webview"))]
         ui.weak(if self.child.is_some() {
-            tr("品ページの仕様表を読んでいます。CAD 欄から STEP を落とすと測ります。ボットの判定や captcha が出たら、ページの指示に従ってください。")
+            tr("Reading the spec table of the product page. Download a STEP file from the CAD section to measure it. If a bot check or captcha appears, follow the page.")
         } else {
-            tr("アプリ内のブラウザは閉じています。ページの文字を写して下に貼り付けるか、STEP を選んでください。")
+            tr("The in-app browser is closed. Copy the page text and paste it below, or choose a STEP file.")
         });
         #[cfg(not(all(windows, feature = "webview")))]
-        ui.weak(tr("品ページを既定のブラウザで開きました。ページの文字を全部選んで写し、下に貼り付けるか、CAD 欄から落とした STEP を選んでください。"));
+        ui.weak(tr("Opened the product page in the default browser. Select and copy all the page text and paste it below, or choose the STEP file downloaded from the CAD section."));
         ui.separator();
-        ui.collapsing(tr("ページの文字を貼り付ける"), |ui| {
+        ui.collapsing(tr("Paste the page text"), |ui| {
             egui::ScrollArea::vertical()
                 .max_height(120.0)
                 .show(ui, |ui| {
@@ -874,13 +883,13 @@ impl FillWin {
                             .hint_text("Thickness (mm): 3.00"),
                     );
                 });
-            if ui.button(tr("仕様表を読む")).clicked() {
+            if ui.button(tr("Read the spec table")).clicked() {
                 let t = std::mem::take(&mut self.paste);
-                self.take_page(tr("貼り付けた文字").to_string(), &t);
+                self.take_page(tr("Pasted text").to_string(), &t);
             }
         });
         #[cfg(not(target_arch = "wasm32"))]
-        if ui.button(tr("📂 STEP を選んで測る…")).clicked() {
+        if ui.button(tr("📂 Choose a STEP file to measure…")).clicked() {
             if let Some(p) = crate::files::open("fill_step", true, || {
                 crate::files::FileDialog::new().add_filter("STEP", &["step", "stp", "STEP", "STP"])
             }) {
@@ -889,26 +898,23 @@ impl FillWin {
         }
         // 読んだ値（仕様表と STEP を並べて見比べる）
         if let Some((url, pr)) = &self.read {
-            ui.label(RichText::new(trf("仕様表（{}）", &[url])).strong());
+            ui.label(RichText::new(trf("Spec table ({})", &[url])).strong());
             if pr.found.is_empty() {
-                ui.colored_label(warn, tr("厚さ・径の欄が見つかりません"));
+                ui.colored_label(warn, tr("No thickness or diameter field found"));
             }
             for f in &pr.found {
-                let v = f
-                    .value
-                    .as_ref()
-                    .map_or(tr("（決められない）").to_string(), |v| {
-                        format!("{} mm", value_text(v))
-                    });
+                let v = f.value.as_ref().map_or(tr("(ambiguous)").to_string(), |v| {
+                    format!("{} mm", value_text(v))
+                });
                 ui.label(format!("{}: {}  →  {v}", f.label, f.raw));
             }
         }
         if let Some((name, res)) = &self.step {
-            ui.label(RichText::new(trf("STEP（{}）", &[name])).strong());
+            ui.label(RichText::new(trf("STEP ({})", &[name])).strong());
             match res {
                 Ok(s) => {
                     ui.label(trf(
-                        "厚さ {} mm、径 {} mm",
+                        "Thickness {} mm, diameter {} mm",
                         &[
                             &crate::json_view::fmt_num(s.thickness),
                             &value_text(&s.diameter),
@@ -916,10 +922,10 @@ impl FillWin {
                     ));
                     ui.weak(&s.note);
                     if s.frame.is_some() {
-                        ui.label(tr("枠付きの品として、ガラスと枠を分けて測りました（厚さ・径はガラスの値）。"));
+                        ui.label(tr("Measured as a mounted item, with the glass and the mount separated (the thickness and diameter are those of the glass)."));
                     } else {
                         // ガラスと枠を見分けられない STEP は、外形の寸法になる
-                        ui.colored_label(warn, tr("枠付きの品で STEP がガラスと枠を分けていないと、厚さ・径は枠を含む外形になり、ガラスの厚さ・径になりません。仕様表の値か、品ページの図面で確かめてください。"));
+                        ui.colored_label(warn, tr("If the STEP of a mounted item does not separate the glass from the mount, the thickness and diameter are those of the outer shape including the mount, not of the glass. Check them against the spec table or the drawing on the product page."));
                     }
                 }
                 Err(e) => {
@@ -936,27 +942,27 @@ impl FillWin {
                 .iter()
                 .map(|b| b.diameter)
                 .fold(f64::INFINITY, f64::min);
-            ui.label(RichText::new(tr("枠")).strong());
+            ui.label(RichText::new(tr("Mount")).strong());
             ui.label(trf(
-                "長さ {} mm、外径 {} mm、最小の内径 {} mm、ガラスの前面は枠の端から {} mm（{}）",
+                "Length {} mm, outer diameter {} mm, smallest bore {} mm, glass front {} mm from the mount end ({})",
                 &[
                     &crate::json_view::fmt_num(f.length),
                     &crate::json_view::fmt_num(f.outer_diameter),
                     &crate::json_view::fmt_num(clear),
                     &crate::json_view::fmt_num(f.holds.map_or(0.0, |h| h.seat_z)),
                     &if *from == "step" {
-                        tr("STEP から")
+                        tr("from the STEP")
                     } else {
-                        tr("仕様表から。座の位置は中央と仮定")
+                        tr("from the spec table; the glass is assumed centered")
                     },
                 ],
             ));
             ui.checkbox(
                 &mut self.keep_frame,
-                tr("枠も保存する（組合せに置くと、機構部品として付きます）"),
+                tr("Also save the mount (placed as a mechanical part when the item is added to a combination)"),
             );
-            ui.checkbox(&mut self.frame_reversed, tr("光は枠の逆の端から入る"))
-                .on_hover_text(tr("STEP の枠は STEP の座標の向きで、光は z の小さい端（上の「枠の端」）から入るとしています。図面の矢印などで逆なら選びます"));
+            ui.checkbox(&mut self.frame_reversed, tr("Light enters from the other end of the mount"))
+                .on_hover_text(tr("The mount from the STEP keeps the STEP's coordinate direction, with light entering from the low-z end (the \"mount end\" above). Check this if the drawing's arrow shows the opposite"));
         }
         self.spec_ui(ui, r, warn);
         ui.separator();
@@ -964,12 +970,12 @@ impl FillWin {
         let mut changed = false;
         egui::Grid::new("fill_grid").num_columns(2).show(ui, |ui| {
             if miss.iter().any(|m| m == "thickness") {
-                ui.label(tr("厚さ [mm]"));
+                ui.label(tr("Thickness [mm]"));
                 changed |= ui.text_edit_singleline(&mut self.thickness).changed();
                 ui.end_row();
             }
             if miss.iter().any(|m| m == "diameter") {
-                ui.label(tr("径 [mm]"));
+                ui.label(tr("Diameter [mm]"));
                 changed |= ui
                     .add(egui::TextEdit::singleline(&mut self.diameter).hint_text("25 / 25 x 35"))
                     .changed();
@@ -991,8 +997,8 @@ impl FillWin {
         ui.horizontal(|ui| {
             let can = ok && !self.pending && out.is_some() && r.source.is_some();
             if ui
-                .add_enabled(can, egui::Button::new(tr("✔ 確定して保存")))
-                .on_hover_text(tr("値を確かめてから確定してください。補足のカタログに保存し、元のカタログは書き換えません"))
+                .add_enabled(can, egui::Button::new(tr("✔ Confirm and save")))
+                .on_hover_text(tr("Check the values before confirming. They are saved to a supplement catalog; the original catalog is not changed"))
                 .clicked()
             {
                 let frame = self
@@ -1013,15 +1019,15 @@ impl FillWin {
                 ui.spinner();
             }
             ui.weak(match self.from {
-                "page" => tr("値: 仕様表から"),
-                "step" => tr("値: STEP から"),
-                _ => tr("値: 入力"),
+                "page" => tr("Values: from the spec table"),
+                "step" => tr("Values: from STEP"),
+                _ => tr("Values: entered"),
             });
         });
         if out.is_none() {
             ui.colored_label(
                 crate::theme::error(ui.visuals()),
-                tr("補足のカタログを置く設定のフォルダがありません"),
+                tr("No settings folder for the supplement catalog"),
             );
         }
         if let Some((n, err)) = &self.note {

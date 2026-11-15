@@ -15,7 +15,7 @@ pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
         .ok()
         .filter(|x| x.is_finite())
         .map(Some)
-        .ok_or_else(|| trf("{} の値 {} が数でない", &[&what, &t]))
+        .ok_or_else(|| trf("Value of {} is not a number: {}", &[&what, &t]))
 }
 
 /// JSON の数（inf は `{"$f": "inf"}`）。数でなければ None

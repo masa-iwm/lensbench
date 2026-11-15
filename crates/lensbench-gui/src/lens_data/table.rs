@@ -66,20 +66,20 @@ impl View {
         let r = c.rows.get(j)?;
         if let Col::Par(i) = col {
             if par_label(&r.typ, i).is_none() {
-                return Some(trf("{} にパラメータ {} は無い", &[&r.typ, &i]));
+                return Some(trf("{} has no parameter {}", &[&r.typ, &i]));
             }
         }
         if col == Col::Type && (j == 0 || j == self.last) {
-            return Some(tr("物体面・像面の種類は変えられない").into());
+            return Some(tr("The object and image surface types cannot be changed").into());
         }
         locked_cell(c.blocks, c.locked, j, col)
-            .map(|n| trf("{} はロック中", &[&n]))
+            .map(|n| trf("{} is locked", &[&n]))
             .or_else(|| (c.read_only)(j, col))
     }
 
     /// 面 j の行の右クリックの欄（面の番号・ブロックの列・セル・キーボードの 4 か所で同じ）
     fn row_menu(&self, ui: &mut Ui, menu: &mut CellMenu, c: &Ctx, j: usize) -> RowMenu {
-        let row_ro = locked_at(c.blocks, c.locked, j).map(|n| trf("{} はロック中", &[&n]));
+        let row_ro = locked_at(c.blocks, c.locked, j).map(|n| trf("{} is locked", &[&n]));
         row_menu(
             ui,
             menu,
@@ -427,17 +427,17 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
                 .header(22.0, |mut h| {
                     // 見出しは折り返さない（2 行に折れて行に重ならない、GUX-15）
                     h.col(|ui| {
-                        ui.add(egui::Label::new(RichText::new(tr("面")).strong()).truncate());
+                        ui.add(egui::Label::new(RichText::new(tr("Surface")).strong()).truncate());
                     });
                     h.col(|ui| {
-                        ui.add(egui::Label::new(RichText::new(tr("ブロック")).strong()).truncate());
+                        ui.add(egui::Label::new(RichText::new(tr("Blocks")).strong()).truncate());
                     });
                     for &col in cols {
                         h.col(|ui| {
                             let t = col.header(cur_typ);
                             let r = ui.add(egui::Label::new(RichText::new(&t).strong()).truncate());
                             if let Col::Par(i) = col {
-                                r.on_hover_text(trf("パラメータ {}: {}", &[&i, &t]));
+                                r.on_hover_text(trf("Par {}: {}", &[&i, &t]));
                             }
                         });
                     }
@@ -474,19 +474,19 @@ fn detail(mut bottom: Ui, st: &mut LensData, c: &Ctx, v: &View, acts: &mut Vec<A
     // 詳細設定の帯: 閉じているときは下に折りたたんだ帯、開いているときは欄の上の見出し（どちらもクリックで開閉）
     let what = match st.cur.map(|x| x.0).filter(|&j| j < c.rows.len()) {
         Some(j) => match v.folded(j) {
-            Some((i, _)) => trf("ブロック {}", &[&c.blocks[i].name]),
-            None => trf("面 {}", &[&j]),
+            Some((i, _)) => trf("block {}", &[&c.blocks[i].name]),
+            None => trf("Surface {}", &[&j]),
         },
         None => st
             .sel
             .clone()
-            .map_or(String::new(), |b| trf("ブロック {}", &[&b])),
+            .map_or(String::new(), |b| trf("block {}", &[&b])),
     };
     if bottom.max_rect().height() > 1.0 || st.detail {
         let label = format!(
             "{} {}{}",
             if st.detail { "▼" } else { "▶" },
-            tr("詳細設定"),
+            tr("Details"),
             if what.is_empty() {
                 String::new()
             } else {
@@ -502,8 +502,8 @@ fn detail(mut bottom: Ui, st: &mut LensData, c: &Ctx, v: &View, acts: &mut Vec<A
                 )
                 .on_hover_text(format!(
                     "{}\n\n{}",
-                    tr("開口・前後の傾き偏心・形のデータ・全項目 JSON とブロックの設定（クリックで開く・閉じる）"),
-                    tr("ソルブ・ピックアップはセル右端の […]、dn・分散・複屈折は硝材の […]、絞り・無視・挿入・貼り付けは右クリック（Shift+F10）。キーの一覧は F1"),
+                    tr("Aperture, tilt/decenter before and after, shape data, all-fields JSON and block settings (click to open/close)"),
+                    tr("Solves/pickups: […] at the right of a cell; dn, dispersion, birefringence: the material's […]; stop, ignore, insert, paste: right-click (Shift+F10). Keys: F1"),
                 ));
             if r.clicked() {
                 st.detail = !st.detail;
@@ -520,7 +520,7 @@ fn detail(mut bottom: Ui, st: &mut LensData, c: &Ctx, v: &View, acts: &mut Vec<A
                 acts.push(Act::NeedData(j));
             }
             let ro = locked_at(c.blocks, c.locked, j)
-                .map(|n| trf("{} はロック中", &[&n]))
+                .map(|n| trf("{} is locked", &[&n]))
                 .or_else(|| (c.read_only)(j, Col::R));
             egui::ScrollArea::vertical()
                 .id_salt("surf_edit")
@@ -536,7 +536,7 @@ fn detail(mut bottom: Ui, st: &mut LensData, c: &Ctx, v: &View, acts: &mut Vec<A
             Some(b) => st.block_view = Some(b),
             None => {
                 bottom.weak(tr(
-                    "面かブロックを選ぶと、その設定をここで変えられます（ブロックはダブルクリック・Enter で中へ、マウスの戻るボタン・Backspace で外へ）。",
+                    "Select a surface or block to change its settings here (double-click or Enter goes into a block; the mouse back button or Backspace goes out).",
                 ));
             }
         },

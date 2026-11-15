@@ -543,32 +543,32 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
     let k = pick_state(ui, st, "wavefront", items);
     let it = &items[k];
     let Some(g) = &*memo(ui, ("wf-grid", id, k), gen, || wavefront_grid(it)) else {
-        ui.weak(tr("波面の格子が読めない"));
+        ui.weak(tr("Cannot read the wavefront grid"));
         return true;
     };
     let mut f = st.fringe;
     ui.horizontal_wrapped(|ui| {
-        ui.selectable_value(&mut f.on, false, tr("波面"));
-        ui.selectable_value(&mut f.on, true, tr("干渉縞"))
+        ui.selectable_value(&mut f.on, false, tr("Wavefront"));
+        ui.selectable_value(&mut f.on, true, tr("Fringes"))
             .on_hover_text(tr(
-                "参照球との干渉（I = (1 + cos 2πΔ)/2、Δ = 倍率·W + 傾き）",
+                "Interference with the reference sphere (I = (1 + cos 2πΔ)/2, Δ = scale·W + tilt)",
             ));
         if f.on {
-            ui.label(RichText::new(tr("倍率")).small());
+            ui.label(RichText::new(tr("Scale")).small());
             ui.add(
                 egui::DragValue::new(&mut f.scale)
                     .speed(0.05)
                     .range(0.0..=10.0),
             )
-            .on_hover_text(tr("OPD にかける数（ダブルパスは 2）"));
-            ui.label(RichText::new(tr("傾き x")).small());
+            .on_hover_text(tr("Factor applied to the OPD (2 for double pass)"));
+            ui.label(RichText::new(tr("Tilt x")).small());
             ui.add(
                 egui::DragValue::new(&mut f.xtilt)
                     .speed(0.1)
                     .range(-200.0..=200.0),
             )
-            .on_hover_text(tr("瞳の直径あたりの縞の数"));
-            ui.label(RichText::new(tr("傾き y")).small());
+            .on_hover_text(tr("Fringes across the pupil diameter"));
+            ui.label(RichText::new(tr("Tilt y")).small());
             ui.add(
                 egui::DragValue::new(&mut f.ytilt)
                     .speed(0.1)
@@ -581,13 +581,13 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
                 "P-V {} · RMS {} {}",
                 fmt_sig(it["pv"].as_f64().unwrap_or(f64::NAN), 4),
                 fmt_sig(it["rms"].as_f64().unwrap_or(f64::NAN), 4),
-                tr("波")
+                tr("waves")
             ),
         ));
     });
     st.fringe = f;
     let h = fig_height(ui, 8.0);
-    let lab = (tr("瞳 x"), tr("瞳 y"));
+    let lab = (tr("Pupil x"), tr("Pupil y"));
     if f.on {
         // 縞の設定は鍵でなく世代に混ぜる（スライダーの値ごとに格子を残さない）
         let fk = [f.scale, f.xtilt, f.ytilt].map(f64::to_bits);
@@ -607,7 +607,7 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
             Cmap::Gray,
             0.0,
             1.0,
-            (lab.0, lab.1, tr("強度")),
+            (lab.0, lab.1, tr("Intensity")),
             h,
         );
     } else {
@@ -619,7 +619,7 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bo
             Cmap::CoolWarm,
             lo,
             hi,
-            (lab.0, lab.1, tr("波")),
+            (lab.0, lab.1, tr("waves")),
             h,
         );
     }
@@ -750,10 +750,10 @@ fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
     let mut log = st.psf_log;
     let peak = g.range().map(|r| r.1).unwrap_or(1.0);
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut log, tr("対数（log10）"));
+        ui.checkbox(&mut log, tr("Log (log10)"));
         ui.label(weak(
             ui,
-            trf("ピーク {}（収差のない瞳の中心 = 1）", &[&fmt_sig(peak, 4)]),
+            trf("Peak {} (aberration-free center = 1)", &[&fmt_sig(peak, 4)]),
         ));
     });
     st.psf_log = log;
@@ -816,7 +816,7 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
         .iter()
         .map(|it| {
             trf(
-                "視野 {}: 当てはめの残り RMS {} · Strehl {}",
+                "Field {}: fit residual RMS {} · Strehl {}",
                 &[
                     &it["field"].as_u64().unwrap_or(0),
                     &fmt_sig(it["rms_fit"].as_f64().unwrap_or(f64::NAN), 3),
@@ -825,7 +825,7 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
             )
         })
         .collect();
-    ui.label(weak(ui, trf("{} の係数 [波]", &[&kind])))
+    ui.label(weak(ui, trf("{} coefficients [waves]", &[&kind])))
         .on_hover_text(detail.join("\n"));
     let charts: Vec<BarChart> = items
         .iter()
@@ -849,8 +849,8 @@ fn zernike(ui: &mut Ui, id: u64, v: &Value) -> bool {
         .collect();
     Plot::new(("zern", id))
         .legend(Legend::default())
-        .x_axis_label(tr("項（Noll / Fringe の番号）"))
-        .y_axis_label(tr("係数 [波]"))
+        .x_axis_label(tr("Term (Noll / Fringe index)"))
+        .y_axis_label(tr("Coefficient [waves]"))
         .allow_scroll(false)
         .show(ui, |p| {
             for c in charts {
@@ -895,7 +895,7 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
-        .x_axis_label(tr("視野（正規化）"))
+        .x_axis_label(tr("Field (normalized)"))
         .y_axis_label("MTF");
     crate::plot_tools::show(ui, plot, "", |p, reg| {
         for (fr, _, pts) in before {
@@ -912,7 +912,7 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
                 "{} {} {}",
                 fmt_sig(fr, 3),
                 unit,
-                if t { tr("子午") } else { tr("球欠") }
+                if t { tr("tangential") } else { tr("sagittal") }
             );
             reg.push(crate::plot_tools::Series::new(name.clone(), col(fr), &pts));
             p.line(
@@ -985,7 +985,7 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut Fig
         .legend(Legend::default())
         .include_y(0.0)
         .include_y(1.0)
-        .x_axis_label(tr("像面のずらし [レンズの単位]"))
+        .x_axis_label(tr("Image plane shift [lens units]"))
         .y_axis_label("MTF");
     crate::plot_tools::show(ui, plot, "", |p, reg| {
         for (q, _, pts) in before {
@@ -999,9 +999,9 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut Fig
         for (q, k, pts) in now {
             let t = k == "tangential";
             let name = if t {
-                trf("視野 {} 子午", &[&q.0])
+                trf("Field {} tangential", &[&q.0])
             } else {
-                trf("視野 {} 球欠", &[&q.0])
+                trf("Field {} sagittal", &[&q.0])
             };
             reg.push(crate::plot_tools::Series::new(name.clone(), col(q), &pts));
             p.line(
@@ -1028,27 +1028,27 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState)
     };
     let vs = v["vs"].as_str().unwrap_or("field").to_string();
     let (xk, xl) = match vs.as_str() {
-        "focus" => ("dz", tr("像面のずらし [レンズの単位]").to_string()),
-        "wavelength" => ("wavelength", tr("波長 [µm]").to_string()),
-        _ => ("h", tr("視野（正規化）").to_string()),
+        "focus" => ("dz", tr("Image plane shift [lens units]").to_string()),
+        "wavelength" => ("wavelength", tr("Wavelengths [µm]").to_string()),
+        _ => ("h", tr("Field (normalized)").to_string()),
     };
     let mut q = st.rms_q;
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut q, 0, tr("スポット"));
-        ui.selectable_value(&mut q, 1, tr("波面"));
+        ui.selectable_value(&mut q, 0, tr("Spot"));
+        ui.selectable_value(&mut q, 1, tr("Wavefront"));
         ui.selectable_value(&mut q, 2, "Strehl");
     });
     st.rms_q = q;
     let lens_um = lens_mm(v);
     let (yk, yl, k) = match q {
-        1 => ("wfe", tr("RMS 波面 [波]").to_string(), 1.0),
+        1 => ("wfe", tr("RMS wavefront [waves]").to_string(), 1.0),
         2 => ("strehl", "Strehl".to_string(), 1.0),
         _ => (
             "spot",
             if lens_um {
-                tr("RMS スポット [µm]").to_string()
+                tr("RMS spot [µm]").to_string()
             } else {
-                tr("RMS スポット").to_string()
+                tr("RMS spot").to_string()
             },
             if lens_um { 1e3 } else { 1.0 },
         ),
@@ -1197,7 +1197,7 @@ fn pop(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
     ui.label(weak(
         ui,
         trf(
-            "面 {} の後 {} mm · {} · パワー {} · RMS 幅 {} mm",
+            "After surface {}: {} mm · {} · power {} · RMS width {} mm",
             &[
                 &v["surface"],
                 &n(&v["distance"]),
@@ -1220,39 +1220,39 @@ fn pop(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
             Cmap::Viridis,
             lo.min(0.0),
             hi,
-            ("x [mm]", "y [mm]", tr("照度")),
+            ("x [mm]", "y [mm]", tr("Irradiance")),
             h,
         );
     }
     let plot = Plot::new(("pop-cut", id))
         .legend(Legend::default())
         .include_y(0.0)
-        .x_axis_label(tr("位置 [mm]"))
-        .y_axis_label(tr("照度 [W/mm²]"));
+        .x_axis_label(tr("Position [mm]"))
+        .y_axis_label(tr("Irradiance [W/mm²]"));
     crate::plot_tools::show(ui, plot, "mm", |p, reg| {
         let pts = |a: &[f64], b: &[f64]| -> Vec<[f64; 2]> {
             a.iter().zip(b).map(|(x, y)| [*x, *y]).collect()
         };
         reg.push(crate::plot_tools::Series::new(
-            tr("x の断面"),
+            tr("x section"),
             theme::series(0),
             &pts(&xs, &ix),
         ));
         reg.push(crate::plot_tools::Series::new(
-            tr("y の断面"),
+            tr("y section"),
             theme::series(1),
             &pts(&ys, &iy),
         ));
         p.line(
             Line::new(pts(&xs, &ix))
                 .color(theme::series(0))
-                .name(tr("x の断面")),
+                .name(tr("x section")),
         );
         p.line(
             Line::new(pts(&ys, &iy))
                 .color(theme::series(1))
                 .style(LineStyle::Dashed { length: 6.0 })
-                .name(tr("y の断面")),
+                .name(tr("y section")),
         );
     });
     true
@@ -1263,12 +1263,12 @@ fn interference(ui: &mut Ui, id: u64, v: &Value) -> bool {
     let q = v["quantity"].as_str().unwrap_or("intensity");
     let info = if v["mode"].as_str() == Some("pupil") {
         trf(
-            "{} · 瞳上 · P-V {} · RMS {} 波",
+            "{} · pupil · P-V {} · RMS {} waves",
             &[&q, &n("pv_waves"), &n("rms_waves")],
         )
     } else {
         trf(
-            "{} · 像面上 · 可視度の平均 {}",
+            "{} · detector · mean visibility {}",
             &[&q, &n("visibility_mean")],
         )
     };
@@ -1289,7 +1289,7 @@ pub fn interference_view(
     };
     let q = v["quantity"].as_str().unwrap_or("intensity").to_string();
     ui.label(weak(ui, info)).on_hover_text(tr(
-        "量・構成・遅延などは「⚙ 設定」の欄で（CLI のサブコマンドと同じ引数）",
+        "Set the quantity, configurations, delay and so on in ⚙ Settings (same arguments as the CLI subcommand)",
     ));
     let (lo, hi) = g.range().unwrap_or((0.0, 1.0));
     let c = interference_cmap(v, gray_intensity);
@@ -1303,7 +1303,7 @@ pub fn interference_view(
     };
     let pupil = v["mode"].as_str() == Some("pupil");
     let (xl, yl) = if pupil {
-        (tr("瞳 x"), tr("瞳 y"))
+        (tr("Pupil x"), tr("Pupil y"))
     } else {
         ("x [mm]", "y [mm]")
     };
