@@ -471,6 +471,7 @@ fn wfe_var(
 }
 
 /// 小さな連立一次方程式（部分ピボットの消去）。ピボットが 0 の未知数は 0 にする（傾きが決まらないとき）
+#[doc(hidden)]
 pub fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
     let n = b.len();
     let scale = a

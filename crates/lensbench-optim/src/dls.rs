@@ -1,6 +1,6 @@
 //! 減衰最小二乗の本体（項・変数・問題・ヤコビアン・反復）。説明はクレートの頭（lib.rs）
-
-use lensbench_core::analysis::{mtf_only, pupil_gauss_shared, to_ref, MtfMethod, ZernKind};
+use crate::pupil::pupil_gauss_shared;
+use lensbench_core::analysis::{mtf_only, to_ref, MtfMethod, ZernKind};
 use lensbench_core::error::Result;
 use lensbench_core::fiber::FiberOpts;
 use lensbench_core::math::*;

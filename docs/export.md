@@ -62,7 +62,7 @@ MTF のまわりの解析（`tests/mtf_family.rs` で既存の MTF・スポッ�
   格子の各点まで距離どおりに足す（瞳から像への写像を近似しない）。座標は像面の局所座標、MTF の周波数も像面の上。傾いた像面・収差の大きい系・
   斜めの視野向け。MTF は PSF の格子の調和周波数の値を補間するので、格子が PSF を覆いきれないと低周波が下がる（`--image`・`--delta` で広げる）。
   OpticStudio の Huygens PSF とは瞳 256 で D0 3e-3・A0 2e-2（OS は瞳の標本を増やすほど lensbench に近づく）、像の間隔を固めた Huygens MTF とは 3e-3
-  （`tests/huygens_refs`、許容差と理由は `crates/lensbench-core/tests/huygens_refs.rs`）。OS の自動の Huygens MTF は像の格子が狭く、低周波が高く出る。
+  （`tests/huygens_refs`、許容差と理由は `crates/lensbench-analysis/tests/huygens_refs.rs`）。OS の自動の Huygens MTF は像の格子が狭く、低周波が高く出る。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
 - OpticStudio 26.1 との照合は `tests/refs/<系>/mtf_family.json`・`psf_os.npz`（24 系、許容差と理由は `crates/lensbench-core/tests/mtf_family_refs.rs`）。
 - Python は `System.mtf`（`method="fft"`・`each_wave=True`）・`through_focus_mtf`・`field_mtf`・`rms`（`vs=`）・`psf`・`geometric_mtf`・`huygens_psf`・`huygens_mtf`。

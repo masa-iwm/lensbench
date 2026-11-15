@@ -1,6 +1,6 @@
 //! 減衰最小二乗（DLS、Levenberg–Marquardt）による最適化。
 //!
-//! 変数は系のパラメータ（[`lensbench_core::param`] の [`Param`]: 間隔・傾き・偏心・曲率・玉や群の動きなど）。
+//! 変数は系のパラメータ（[`lensbench_core::param`] の [`Param`](lensbench_core::param::Param): 間隔・傾き・偏心・曲率・玉や群の動きなど）。
 //! 評価関数は残差の二乗和 Σ r²。項（[`Term`]）ごとに残差の並びを作り、重みの平方根を掛ける。
 //! 評価関数の値（[`Problem::merit`]）は √(Σ r² / Σ 重み)。既定の項（スポット・波面の RMS）では
 //! 項ごとの Σ r² が 重み × RMS² になるので、視野の重みで平均した RMS になる（OpticStudio の既定の評価関数と同じ形）。
@@ -25,7 +25,7 @@
 //! あると評価できない（エラー。最適化ではその一歩を捨てて減衰を強める）。
 //!
 //! ヤコビアン（[`Problem::jacobian`]）は、スポット・波面・光線・OPD では解析的な微分を使う: 着地点の微分
-//! [`System::land_grad`]と光路長の微分 [`System::opl_grad`]。開始の光線を固定した微分なので、
+//! [`System::land_grad`](lensbench_core::System::land_grad)と光路長の微分 [`System::opl_grad`](lensbench_core::System::opl_grad)。開始の光線を固定した微分なので、
 //! 変数で光線の始め方（物体側の開始位置・方向。入射瞳・エイミング・視野の定義で決まる）が変わる列は、
 //! 中心差分にする（変数ごとに、少しずらした系の開始の光線を比べて判定する）。波面の参照球の半径（射出瞳の位置）と
 //! 像空間の屈折率の変化は、近軸の量の差分で足す。像面が平面でない系の波面・OPD と、光線の z、MTF・近軸量・
@@ -43,6 +43,7 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 mod dls;
+mod pupil;
 pub mod zoom;
 pub mod zplm;
 
