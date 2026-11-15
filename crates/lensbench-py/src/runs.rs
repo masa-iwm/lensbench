@@ -20,7 +20,7 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 
 use crate::{err, PySystem};
 
-/// 分布の指定: ("normal", σ[, 平均]) ・("uniform", lo, hi) ・("trunc", σ, cut[, 平均]) ・("fixed", 値)、数だけなら正規分布の σ
+/// A distribution: ("normal", σ[, mean]), ("uniform", lo, hi), ("trunc", σ, cut[, mean]), ("fixed", value); a number alone is the σ of a normal distribution
 fn dist_of(v: &Bound<'_, PyAny>) -> PyResult<Dist> {
     if let Ok(s) = v.extract::<f64>() {
         return Ok(Dist::Normal {
@@ -75,7 +75,7 @@ fn dist_json(d: &Dist) -> serde_json::Value {
     }
 }
 
-/// {名前: 値} か [(名前, 値)] を並びに（順を保つ）
+/// {name: value} or [(name, value)] into a list (order kept)
 fn pairs<'py>(v: &Bound<'py, PyAny>) -> PyResult<Vec<(String, Bound<'py, PyAny>)>> {
     if let Ok(d) = v.cast::<PyDict>() {
         return d.iter().map(|(k, x)| Ok((k.extract()?, x))).collect();
@@ -103,7 +103,7 @@ impl PlanKind {
     }
 }
 
-/// 組の作り方と、その公称の系
+/// How the sets are made, and their nominal system
 struct PlanBase {
     plan: PlanKind,
     names: Vec<String>,
@@ -125,11 +125,11 @@ impl PlanBase {
     }
 }
 
-/// 抽選（モンテカルロ）: 系 system の公称値に、パラメータごとの分布のずれを足す。
+/// Sampling (Monte Carlo): adds perturbations from a distribution per parameter to the nominal values of the system.
 ///
-/// - params: {"3.t": 0.02, "5.dx": ("uniform", -0.01, 0.01), "G.tx": ("trunc", 0.05, 2.0)}（数だけなら正規分布の σ）
-/// - corr: 相関行列（params の順）。分布ごとの周辺分布はそのままで、ガウスのコピュラで相関を入れる
-/// - seed: 乱数の種。i 番目の組は (seed, i) だけで決まる（スレッド数・再開・順序によらない）
+/// - params: {"3.t": 0.02, "5.dx": ("uniform", -0.01, 0.01), "G.tx": ("trunc", 0.05, 2.0)} (a number alone is the σ of a normal distribution)
+/// - corr: correlation matrix (in the order of params). The marginal distributions stay as they are; correlation comes from a Gaussian copula
+/// - seed: random seed. The i-th set depends only on (seed, i) (not on the number of threads, resuming or order)
 #[pyclass(module = "lensbench", name = "Sampler", frozen)]
 pub(crate) struct PySampler(PlanBase);
 
@@ -165,12 +165,12 @@ impl PySampler {
         }))
     }
 
-    /// i 番目の組の値（公称値 + ずれ）: {名前: 値}
+    /// Values of the i-th set (nominal + perturbation): {name: value}
     fn draw<'py>(&self, py: Python<'py>, i: usize) -> PyResult<Bound<'py, PyDict>> {
         self.0.draw_dict(py, i)
     }
 
-    /// i 番目の組の値を入れた系
+    /// The system with the values of the i-th set
     fn system(&self, i: usize) -> PyResult<PySystem> {
         system_at(&self.0, i)
     }
@@ -184,7 +184,7 @@ impl PySampler {
     }
 }
 
-/// 掃引の格子: {"3.t": [10, 11, 12], "5.dx": [0, 0.01]} の直積（値そのもの）。番号は最初の軸が最も遅く変わる順
+/// A sweep grid: the Cartesian product of {"3.t": [10, 11, 12], "5.dx": [0, 0.01]} (the values themselves). The first axis changes slowest in numbering
 #[pyclass(module = "lensbench", name = "Grid", frozen)]
 pub(crate) struct PyGrid(PlanBase);
 
@@ -217,12 +217,12 @@ impl PyGrid {
         self.0.plan.plan().count().unwrap_or(0)
     }
 
-    /// i 番目の組の値: {名前: 値}
+    /// Values of the i-th set: {name: value}
     fn draw<'py>(&self, py: Python<'py>, i: usize) -> PyResult<Bound<'py, PyDict>> {
         self.0.draw_dict(py, i)
     }
 
-    /// i 番目の組の値を入れた系
+    /// The system with the values of the i-th set
     fn system(&self, i: usize) -> PyResult<PySystem> {
         system_at(&self.0, i)
     }
@@ -250,21 +250,21 @@ fn fmt_s(s: f64) -> String {
     }
 }
 
-/// 一括実行: plan の各組で func(i, system, seed) を呼ぶ。func に拡張の Rust の模擬（`crate::ext::NativeTask`）を
-/// 渡すと、組の系で Rust のまま（GIL なしで）回す。
+/// Batch run: calls func(i, system, seed) for each set of plan. Passing an extension's Rust simulation (`crate::ext::NativeTask`) as func
+/// runs it on the set's system in Rust (without the GIL).
 ///
-/// - plan: `Sampler` か `Grid`。system は i 番目の組の値を入れた系、seed はタスクごとの種（雑音などに使う）
-/// - n: 組の数（Grid は省くと全部）
-/// - out: 結果を書く JSONL（1 行目に版・系の hash・種・組の作り方、以後 1 行 1 組で終わった順）。止まっても
-///   resume=True なら同じファイルの続きから（頭が違えばエラー）。None なら書かない
-/// - threads: スレッド数（1 で逐次）。progress: 省略か True で標準エラーに進み具合と残り時間（1 秒ごと）、False で出さない、
-///   関数なら dict（done total ran elapsed eta）で呼ぶ
-/// - header: 頭に足す値（JSON にできる dict など。再開のときは同じに）
+/// - plan: a `Sampler` or `Grid`. system is the system with the values of the i-th set, seed a seed per task (for noise and the like)
+/// - n: number of sets (all for a Grid if omitted)
+/// - out: JSONL to write the results to (the first line has the version, system hash, seed and how the sets are made; then one set per line in the order finished). After a stop,
+///   resume=True continues the same file (an error if the head differs). None writes nothing
+/// - threads: number of threads (1 for sequential). progress: omitted or True prints progress and time left to standard error (every second), False prints nothing,
+///   a function is called with a dict (done total ran elapsed eta)
+/// - header: values added to the head (a dict that can go into JSON and so on; the same when resuming)
 ///
-/// func の返り値は JSON にできる値（dict・list・数・文字列、numpy の配列・スカラーも可。NaN・inf は None になる）。
+/// func returns a value that can go into JSON (dict, list, numbers, strings, numpy arrays and scalars; NaN and inf become None).
 ///
-/// 返すのは番号の順の結果の list（out があればファイルから読み直したもの）。func が例外を出すと新しい組を始めず、
-/// 走っている組が終わってから同じ例外を出す（書いた結果は残るので再開できる）。Ctrl-C でも同じ
+/// Returns a list of results in numbering order (read back from the file if out is given). If func raises, no new set is started and
+/// the same exception is raised after the running sets finish (the written results remain, so it can be resumed). The same with Ctrl-C
 #[pyfunction]
 #[pyo3(signature = (func, plan, n=None, out=None, threads=None, resume=true, progress=None, header=None))]
 #[allow(clippy::too_many_arguments)]
@@ -430,7 +430,7 @@ fn run_batch<'py>(
     Ok(l)
 }
 
-/// 一括実行の結果のファイル（JSONL）を読む: (頭の dict, [{"i", "seed", "result"}] 番号の順)
+/// Read a batch result file (JSONL): (head dict, [{"i", "seed", "result"}] in numbering order)
 #[pyfunction]
 fn read_batch<'py>(
     py: Python<'py>,

@@ -9,8 +9,8 @@ use lensbench_core::System;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyString, PyTuple};
 
-/// 開口の dict: {"type": "circular", "min": 0, "max": 3, "dx": 0, "dy": 0}（type は circular・rect・ellipse・
-/// obsc・spider（width・arms）・floating）。None は開口なし
+/// An aperture dict: {"type": "circular", "min": 0, "max": 3, "dx": 0, "dy": 0} (type is circular, rect, ellipse,
+/// obsc, spider (width, arms), floating). None for no aperture
 pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
     if v.is_none() {
         return Ok(Aperture::None);
@@ -128,7 +128,7 @@ pub(crate) fn aperture_dict<'py>(py: Python<'py>, a: &Aperture) -> PyResult<Boun
     Ok(d.into_any())
 }
 
-/// キーワード引数を面の値の組に（真偽・文字列・数・数の並び、aperture は dict か None）
+/// Keyword arguments into a set of surface values (bools, strings, numbers, lists of numbers; aperture is a dict or None)
 pub(crate) fn surf_kwargs(kw: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(String, SurfValue)>> {
     let mut out = Vec::new();
     let Some(kw) = kw else { return Ok(out) };
@@ -169,7 +169,7 @@ pub(crate) fn fields_dict<'py>(
     Ok(d)
 }
 
-/// ピックアップの量: c（曲率）・t（厚さ）・k（円錐係数）・p1〜（面タイプのパラメータ）・dn・disp・semi
+/// Pickup quantities: c (curvature), t (thickness), k (conic), p1… (parameters of the surface type), dn, disp, semi
 pub(crate) fn pick_kind(s: &str) -> PyResult<PickKind> {
     lensbench_core::edit::pick_kind_parse(s).map_err(|e| value_err(e.to_string()))
 }
@@ -178,7 +178,7 @@ pub(crate) fn pick_name(k: PickKind) -> String {
     lensbench_core::edit::pick_kind_name(k)
 }
 
-/// 視野の条件: ("position", 面) / ("dirsum", 面1, 面2) / ("dirdiff", 面1, 面2)
+/// Field conditions: ("position", surface) / ("dirsum", surface1, surface2) / ("dirdiff", surface1, surface2)
 pub fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
     let kind: String = c.get_item(0)?.extract()?;
     let at = |i: usize| -> PyResult<usize> { crate::surf_of(s, c.get_item(i)?.extract()?) };

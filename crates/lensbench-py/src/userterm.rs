@@ -29,7 +29,7 @@ pub(crate) struct PyUserTerm {
     error: Mutex<Option<PyErr>>,
 }
 
-/// 関数の返り値を (系の数, rows) の行に（rows None なら 1 系の結果から決める）
+/// The function's return value into rows of (number of systems, rows) (if rows is None, decided from the result of one system)
 fn to_rows(r: &Bound<'_, PyAny>, k: usize, rows: Option<usize>) -> PyResult<Vec<Vec<f64>>> {
     let np = r.py().import("numpy")?;
     let kw = PyDict::new(r.py());
@@ -109,7 +109,7 @@ impl UserTerm for PyUserTerm {
     }
 }
 
-/// 最適化の後: 利用者の関数が例外を出していれば、最初のものを投げ直す
+/// After optimization: if a user function raised, raise the first exception again
 pub(crate) fn raise_user_errors(us: &[Arc<PyUserTerm>]) -> PyResult<()> {
     for u in us {
         if let Some(e) = u.error.lock_ok().take() {
@@ -119,7 +119,7 @@ pub(crate) fn raise_user_errors(us: &[Arc<PyUserTerm>]) -> PyResult<()> {
     Ok(())
 }
 
-/// terms= の並びを問題に足す。返り値は利用者の項（例外を拾うため）
+/// Add the list of terms= to the problem. Returns the user terms (to catch exceptions)
 pub(crate) fn add_terms(
     py: Python<'_>,
     p: &mut Problem,

@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 
 use crate::errors::err;
 
-/// プロジェクトファイルの BS の経路の一覧（`System.beam_paths`）
+/// The beam splitter paths of a project file (`System.beam_paths`)
 pub(crate) fn beam_paths_of(
     py: Python<'_>,
     path: PathBuf,
@@ -35,7 +35,7 @@ pub(crate) fn beam_paths_of(
     .map_err(err)
 }
 
-/// 展開の説明を Python の警告（UserWarning）にする
+/// Turn the notes of the expansion into Python warnings (UserWarning)
 pub(crate) fn warn_all(py: Python<'_>, warn: &[String]) -> PyResult<()> {
     if warn.is_empty() {
         return Ok(());

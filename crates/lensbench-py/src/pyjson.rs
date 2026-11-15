@@ -6,12 +6,12 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use serde_json::{Map, Number, Value};
 
-/// Python の値 → JSON の値。dict のキーは文字列だけ。NaN・inf は JSON に書けないので誤り（設定の値）
+/// Python value → JSON value. dict keys must be strings. NaN and inf can't be written in JSON, so they are errors (setting values)
 pub fn from_py(v: &Bound<'_, PyAny>) -> PyResult<Value> {
     conv(v, false)
 }
 
-/// [`from_py`] で、NaN・inf を null にする（一括実行の結果など、失敗した値を残したいとき）
+/// [`from_py`] turning NaN and inf into null (for keeping failed values, such as batch results)
 pub fn from_py_nan_null(v: &Bound<'_, PyAny>) -> PyResult<Value> {
     conv(v, true)
 }
@@ -69,8 +69,8 @@ fn conv(v: &Bound<'_, PyAny>, nan_null: bool) -> PyResult<Value> {
     )))
 }
 
-/// dict のキーの文字列（json.dumps と同じ: 文字列はそのまま、bool は true・false、None は null、整数は 10 進、
-/// 小数は repr（NaN・Infinity・-Infinity）。numpy のスカラーは tolist で Python の数にしてから）
+/// The string of a dict key (as json.dumps: strings as they are, bool true and false, None null, integers in decimal,
+/// floats as repr (NaN, Infinity, -Infinity); numpy scalars become Python numbers with tolist first)
 fn key(k: &Bound<'_, PyAny>) -> PyResult<String> {
     if let Ok(s) = k.cast::<PyString>() {
         return Ok(s.to_string());
@@ -105,8 +105,8 @@ fn key(k: &Bound<'_, PyAny>) -> PyResult<String> {
     )))
 }
 
-/// JSON の文字列（ファイルに書いたもの）→ Python の値。旧版が書いた NaN・Infinity（JSON でない）も
-/// 読めるよう、serde で読めなければ json.loads で読む
+/// A JSON string (written to a file) → Python value. To also read the NaN and Infinity (not JSON) written by older versions,
+/// read with json.loads when serde can't
 pub fn loads<'py>(py: Python<'py>, t: &str) -> PyResult<Bound<'py, PyAny>> {
     match serde_json::from_str::<Value>(t) {
         Ok(v) => to_py(py, &v),
@@ -114,7 +114,7 @@ pub fn loads<'py>(py: Python<'py>, t: &str) -> PyResult<Bound<'py, PyAny>> {
     }
 }
 
-/// JSON の値 → Python の値（数は int か float、オブジェクトは dict）
+/// JSON value → Python value (numbers int or float, objects dict)
 pub fn to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
     Ok(match v {
         Value::Null => py.None().into_bound(py),
@@ -146,8 +146,8 @@ pub fn to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
     })
 }
 
-/// オブジェクトのキーを名前の順に並べ直す（json.dumps の sort_keys と同じ。serde_json の preserve_order が
-/// 有効でも同じ並びにする）
+/// Sort the keys of objects by name (the same as sort_keys of json.dumps; the same order even with serde_json's preserve_order
+/// on)
 pub fn sorted(v: Value) -> Value {
     match v {
         Value::Object(o) => {

@@ -40,7 +40,7 @@ use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
 use {lensbench_analysis::huygens, lensbench_optim as optim};
 
-/// coatings= を省いたときの膜の実測表・モデル: 環境変数 LENSBENCH_COATINGS（OS のパス区切り、`lensbench run --coatings`）
+/// Coating tables and models used when coatings= is omitted: the environment variable LENSBENCH_COATINGS (OS path separator, `lensbench run --coatings`)
 fn env_coatings() -> Vec<PathBuf> {
     std::env::var_os("LENSBENCH_COATINGS")
         .map(|v| {
@@ -51,15 +51,15 @@ fn env_coatings() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-/// `lensbench run`が渡す設定。どれも環境変数から読み、無ければ空か None
+/// Settings passed by `lensbench run`. All are read from environment variables; empty or None if not set
 ///
-/// - glass_dirs: ガラスカタログを探すフォルダ（LENSBENCH_GLASSCAT。System.load などは自分でも読む）
-/// - coatings: 膜の実測表・モデル（LENSBENCH_COATINGS。System.load の coatings= の既定）
-/// - threads: スレッド数（LENSBENCH_THREADS。threads= を省いた計算の既定）
-/// - out: 出力先のフォルダ（LENSBENCH_OUT）。スクリプトが自分で使う
-/// - log: ログのファイル（LENSBENCH_LOG）
-/// - args: スクリプトに渡した引数（sys.argv[1:] と同じ）
-/// - under_run: `lensbench run` から起動されたか
+/// - glass_dirs: folders to search for glass catalogs (LENSBENCH_GLASSCAT; System.load and others also read it)
+/// - coatings: coating tables and models (LENSBENCH_COATINGS; the default of coatings= of System.load)
+/// - threads: number of threads (LENSBENCH_THREADS; the default of calculations with threads= omitted)
+/// - out: output folder (LENSBENCH_OUT); for the script's own use
+/// - log: log file (LENSBENCH_LOG)
+/// - args: arguments passed to the script (same as sys.argv[1:])
+/// - under_run: whether started from `lensbench run`
 #[pyfunction]
 fn run_settings<'py>(py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
     let paths = |k: &str| -> Vec<String> {
@@ -88,8 +88,8 @@ fn run_settings<'py>(py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
     Ok(d)
 }
 
-/// 進み具合を 1 行で標準エラーに出す: `lensbench:progress 3/10 メッセージ`。
-/// `lensbench run` はこの行を拾ってログに残し、将来の GUI は進捗の表示に使う
+/// Print the progress on one line to standard error: `lensbench:progress 3/10 message`.
+/// `lensbench run` picks up this line and logs it; a future GUI will use it to show progress
 #[pyfunction]
 #[pyo3(signature = (done, total, message=""))]
 fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResult<()> {
@@ -104,9 +104,9 @@ fn progress(py: Python<'_>, done: usize, total: usize, message: &str) -> PyResul
     Ok(())
 }
 
-/// 長い計算を別のスレッドで回し、呼んだスレッド（Python の主スレッド）で Ctrl-C（シグナル）を見張る。
-/// シグナルが来たら stop を立てて計算の終わりを待ち、KeyboardInterrupt などの例外を返す。
-/// 計算は stop を反復・試行ごとに見て止まる（optim::dls_with・tolerance::run_with の進み具合の口）
+/// Run a long calculation in another thread and watch for Ctrl-C (signals) in the calling thread (Python's main thread).
+/// When a signal comes, set stop, wait for the calculation to end and return an exception such as KeyboardInterrupt.
+/// The calculation checks stop at each iteration or trial and stops (the progress hooks of optim::dls_with and tolerance::run_with)
 pub fn interruptible<R: Send>(
     py: Python<'_>,
     f: impl FnOnce(&AtomicBool) -> R + Send,
@@ -150,21 +150,21 @@ pub fn interruptible<R: Send>(
 
 pub use errors::{err, ErrSrc};
 
-/// 光学系（.zmx またはプロジェクトファイル .json から読む）
+/// An optical system (read from .zmx or a project file .json)
 #[pyclass(module = "lensbench", name = "System", frozen)]
 pub struct PySystem {
-    /// 系。ロックは Arc の複製・差し替えの間だけ持つ（追跡は複製した Arc で、GIL を外して行う）。
-    /// 変更は複製した系に施して差し替えるので、走っている追跡は前の系のまま
+    /// The system. The lock is held only while cloning or replacing the Arc (tracing uses the cloned Arc without the GIL).
+    /// Changes are made to a cloned system that then replaces it, so a running trace keeps the previous system
     sys: RwLock<Arc<System>>,
     coat_files: Vec<PathBuf>,
-    /// 系の膜（初めて要ったときに読む）。膜・媒質・膜ファイルの変わる編集で空に戻す
+    /// The coatings of the system (read when first needed). Emptied by edits that change coatings, media or the coating file
     coat: RwLock<CoatCell>,
 }
 
-/// 系の膜を読んだもの（複製した系・派生した系で共有する）
+/// The coatings read for a system (shared by cloned and derived systems)
 pub type CoatCell = Arc<OnceLock<Result<Coatings, String>>>;
 
-/// 読んだ膜への参照（[`PySystem::coatings`]）
+/// A reference to the coatings read ([`PySystem::coatings`])
 pub struct CoatRef(CoatCell);
 
 impl std::ops::Deref for CoatRef {
@@ -178,14 +178,14 @@ impl std::ops::Deref for CoatRef {
     }
 }
 
-/// 膜の読み込みに関わる系の部分が変わったか（膜・媒質の境界、膜ファイル、系の膜の表）
+/// Whether the parts of the system that coating loading depends on changed (coatings, media boundaries, coating file, the system's coating table)
 fn coat_changed(a: &System, b: &System) -> bool {
     a.coating_file != b.coating_file
         || a.coat_tables != b.coat_tables
         || lensbench_core::coating::media_keys(a).0 != lensbench_core::coating::media_keys(b).0
 }
 
-/// 視野の指定: 番号（1 始まり）か正規化視野 (hx, hy)。bool は弾く
+/// A field: a number (from 1) or a normalized field (hx, hy). bool is rejected
 #[derive(FromPyObject, Clone)]
 pub enum FieldArg {
     Flag(bool),
@@ -193,28 +193,28 @@ pub enum FieldArg {
     Norm((f64, f64)),
 }
 
-/// 物体の指定: 有限物体の物点 (x, y) [mm]（物体面の局所座標）か、無限遠物体の方向 (l, m, n)
+/// An object: an object point (x, y) [mm] of a finite object (local coordinates of the object surface) or a direction (l, m, n) of an infinite object
 #[derive(FromPyObject, Clone)]
 pub enum ObjArg {
     Point((f64, f64)),
     Dir((f64, f64, f64)),
 }
 
-/// pol の指定: True（主波長）か波長の番号
+/// pol: True (primary wavelength) or a wavelength number
 #[derive(FromPyObject, Clone)]
 enum PolArg {
     Flag(bool),
     Wave(usize),
 }
 
-/// pol_grid の指定: 両軸の点数 n か (nx, ny)
+/// pol_grid: the number of points n for both axes or (nx, ny)
 #[derive(FromPyObject, Clone)]
 enum GridArg {
     N(usize),
     Nxy((usize, usize)),
 }
 
-/// record の指定: True（全面）か面の番号（1 始まり）の列
+/// record: True (all surfaces) or a list of surface numbers (from 1)
 #[derive(FromPyObject, Clone)]
 enum RecArg {
     Flag(bool),
@@ -230,14 +230,14 @@ impl RecArg {
     }
 }
 
-/// 光線の出どころ
+/// Where the rays come from
 #[derive(Clone, Copy)]
 enum Source {
     Field(FieldSel),
     Object(ObjSpec),
 }
 
-/// trace の光線の始め方（視野か物体と、瞳の座標の種類）
+/// How trace starts the rays (a field or an object, and the kind of pupil coordinates)
 struct Prep {
     src: Source,
     spec: ObjSpec,
@@ -319,7 +319,7 @@ impl Prep {
         }
     }
 
-    /// 結果の dict に視野（hx・hy）か物体を足す
+    /// Add the field (hx, hy) or the object to the result dict
     fn finish(&self, d: &Bound<'_, PyDict>) -> PyResult<()> {
         match self.src {
             Source::Field(_) => {
@@ -414,7 +414,7 @@ fn sweep_dict<'py>(
     Ok(d)
 }
 
-/// RMS の各量を dict に（値の列 → Python の値は put で作る）
+/// The RMS values into a dict (lists of values; Python values are made by put)
 fn rms_items<'py>(
     d: &Bound<'py, PyDict>,
     r: &[sweep::Rms],
@@ -438,7 +438,7 @@ pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
     Ok(w - 1)
 }
 
-/// 最適化の変数: "7.t" か ("7.t", 下限, 上限)
+/// An optimization variable: "7.t" or ("7.t", lower, upper)
 #[derive(FromPyObject, Clone)]
 enum VarArg {
     Name(String),
@@ -505,7 +505,7 @@ fn opt_problem(
     Ok((p, users, n_default))
 }
 
-/// 変更の列: {"3.t": 1.0, ...} か [("3.t", 1.0), ...]
+/// A list of changes: {"3.t": 1.0, ...} or [("3.t", 1.0), ...]
 pub fn parse_changes(s: &System, c: &Bound<'_, PyAny>) -> PyResult<Vec<(Param, f64)>> {
     let v: Vec<(String, f64)> = match c.cast::<PyDict>() {
         Ok(d) => d
@@ -524,7 +524,7 @@ fn floats(a: &PyArrayLike1<'_, f64, AllowTypeChange>) -> Vec<f64> {
         .map_or_else(|_| a.as_array().iter().copied().collect(), <[f64]>::to_vec)
 }
 
-/// 面を番号か名前で
+/// A surface by number or name
 #[derive(FromPyObject)]
 enum SurfArg {
     Index(usize),
@@ -539,12 +539,12 @@ fn surf_of(s: &System, a: SurfArg) -> PyResult<usize> {
 }
 
 impl PySystem {
-    /// 今の系（複製した Arc）
+    /// The current system (a cloned Arc)
     pub fn sys(&self) -> Arc<System> {
         self.sys.read_ok().clone()
     }
 
-    /// 系から作る（膜のファイル、膜を読んだもの）
+    /// Make from a system (the coating file, the coatings read)
     pub fn new(sys: System, coat_files: Vec<PathBuf>, coat: CoatCell) -> Self {
         PySystem {
             sys: RwLock::new(Arc::new(sys)),
@@ -553,13 +553,13 @@ impl PySystem {
         }
     }
 
-    /// 読んだ膜（派生した系に引き継ぐ）
+    /// The coatings read (carried over to derived systems)
     pub fn coat_cell(&self) -> CoatCell {
         self.coat.read_ok().clone()
     }
 
-    /// 系を複製して f で変え、うまくいったときだけ差し替える（走っている追跡は前の系のまま）。
-    /// 膜の読み込みに関わる所が変われば、読んだ膜を捨てて次に要ったときに読み直す
+    /// Clone the system, change it with f and replace it only on success (a running trace keeps the previous system).
+    /// If something that coating loading depends on changes, drop the coatings read and read them again when next needed
     fn mutate<R>(&self, f: impl FnOnce(&mut System) -> lensbench_core::Result<R>) -> PyResult<R> {
         let mut g = self.sys.write_ok();
         let mut n: System = (**g).clone();
@@ -571,7 +571,7 @@ impl PySystem {
         Ok(r)
     }
 
-    /// 系の膜（初めて呼んだときに読む）
+    /// The coatings of the system (read on the first call)
     pub fn coatings(&self, s: &System) -> PyResult<CoatRef> {
         let cell = self.coat_cell();
         cell.get_or_init(|| {
@@ -587,11 +587,11 @@ impl PySystem {
     }
 }
 
-/// 波長ごとの追跡の結果を (波長, 光線) の配列に並べる（列ごとに 1 回ずつ写す）
+/// Arrange the traces per wavelength into (wavelength, ray) arrays (each column copied once)
 struct Soa {
     nw: usize,
     n: usize,
-    /// (名前, 値, 光線ごとの数)
+    /// (name, value, count per ray)
     f: Vec<(&'static str, Vec<f64>, usize)>,
     err: Vec<i32>,
     vig: Vec<i32>,
@@ -600,10 +600,10 @@ struct Soa {
     rec: Vec<(&'static str, Vec<f64>)>,
 }
 
-/// 既定で返す列（最後の面の局所座標、光路長）
+/// Columns returned by default (local coordinates of the last surface, optical path length)
 const COLS: [&str; 9] = ["x", "y", "z", "l", "m", "n", "opl", "opl_os", "lens_opd"];
 
-/// globals=True で足す列（大域の位置・方向）
+/// Columns added with globals=True (global position and direction)
 const GLOBAL_COLS: [&str; 6] = ["gx", "gy", "gz", "gl", "gm", "gn"];
 
 type RecGet = fn(&lensbench_core::system::RecSurf, usize) -> f64;
@@ -708,23 +708,23 @@ impl Soa {
     }
 }
 
-/// trace・trace_rays の共通の引数
+/// Arguments shared by trace and trace_rays
 struct TraceOpts {
     ws: Vec<usize>,
     last: Option<usize>,
     record: bool,
-    /// 記録する面（None なら全面）
+    /// Surfaces to record (all if None)
     rec_surfs: Option<Vec<usize>>,
     pw: Option<usize>,
     pol_phase: bool,
-    /// 偏光追跡を粗い瞳格子 (nx, ny) で行って補間する
+    /// Polarization trace on a coarse pupil grid (nx, ny), interpolated
     pol_grid: Option<(usize, usize)>,
     globals: bool,
     params: Option<Vec<Param>>,
     threads: Option<usize>,
-    /// 検出面を最後の面の局所座標の z = dz に置く
+    /// Put the detector at z = dz in the local coordinates of the last surface
     dz: Option<f64>,
-    /// grad と一緒に着地点の微分 d(x, y, l, m)/dp を返す
+    /// With grad, also return the derivative of the landing point d(x, y, l, m)/dp
     land: bool,
 }
 
@@ -803,7 +803,7 @@ impl TraceOpts {
 }
 
 impl PySystem {
-    /// 光線の始め方 launch（n 本）で追跡し、結果の dict を作る（trace・trace_rays の共通部分）
+    /// Trace with the launch (n rays) and make the result dict (shared part of trace and trace_rays)
     fn run_trace<'py>(
         &self,
         gil: Python<'py>,
@@ -823,14 +823,14 @@ impl PySystem {
     }
 }
 
-/// 追跡の結果（dict にする前。GIL なしで作る）
+/// A trace result (before making the dict; made without the GIL)
 type TraceOut = (Soa, Option<PolOut>, Vec<f64>, Vec<f64>);
 
-/// 偏光追跡の結果: Jones (光線, 2, 2)、z 成分 (光線, 2)、格子で補間したときは瞳の内側で欠けた格子点と、
-/// そのために補間できなかった光線
+/// Polarization trace result: Jones (ray, 2, 2), z components (ray, 2), and when interpolated on a grid, the grid points missing inside
+/// the pupil and the rays that could not be interpolated because of them
 type PolOut = (Vec<C64>, Vec<C64>, Option<(Vec<[f64; 2]>, Vec<bool>)>);
 
-/// 光線の始め方 launch（n 本）で追跡する（GIL なし）
+/// Trace with the launch (n rays) (without the GIL)
 fn compute(
     sys: &System,
     coat: Option<&Coatings>,
@@ -928,7 +928,7 @@ fn compute(
     Ok((Soa::new(&traces, n, o.globals, o.record), jones, g, gl))
 }
 
-/// 追跡の結果の dict を作る
+/// Make the dict of a trace result
 fn to_dict<'py>(
     gil: Python<'py>,
     s: &System,
@@ -1011,22 +1011,22 @@ fn a3<T: numpy::Element>(py: Python<'_>, v: Vec<T>, s: (usize, usize, usize)) ->
         .into_any()
 }
 
-/// 展開した系の面ごとの元の面と、反射の面の番号
+/// For each surface of the expanded system, the original surface and the number of the reflection
 type GhostOrigin = (Vec<Option<usize>>, (usize, usize));
 
 #[pymethods]
 impl PySystem {
-    /// 系を読む。path は .zmx かプロジェクトファイル（.json）。
+    /// Read a system. path is a .zmx or a project file (.json).
     ///
-    /// - glass_dirs: ガラスカタログ（AGF）を探すフォルダ
-    /// - cfg: .zmx のマルチコンフィグの番号（1 始まり）
-    /// - state: プロジェクトファイルの状態の名前
-    /// - beam_path: プロジェクトファイルのビームスプリッターの経路（BS を通る順の T・R、例 "TR"）。
-    ///   とれる経路は `System.beam_paths(path)`
-    /// - lens_catalogs: プロジェクトファイルのカタログレンズを探すレンズカタログ（.zmx またはフォルダ）
-    /// - coatings: 偏光追跡で使う膜の実測表（LBCT）・モデル（LBCM）のファイル
-    /// - coating_file: 系の膜ファイル（COATING.DAT 形式）を置き換える
-    /// - wavelengths: 波長 [µm] を置き換える（.zmx だけ。系ファイル・プロジェクトファイルに渡すと InvalidError。重みは 1、主波長の番号はそのまま）
+    /// - glass_dirs: folders to search for glass catalogs (AGF)
+    /// - cfg: the multi-configuration number of a .zmx (from 1)
+    /// - state: the name of a state of a project file
+    /// - beam_path: the beam splitter path of a project file (T and R in the order the BSs are passed, e.g. "TR").
+    ///   The possible paths are `System.beam_paths(path)`
+    /// - lens_catalogs: lens catalogs (.zmx or folders) to search for the catalog lenses of a project file
+    /// - coatings: files of coating tables (LBCT) and models (LBCM) used in polarization traces
+    /// - coating_file: replaces the system's coating file (COATING.DAT format)
+    /// - wavelengths: replaces the wavelengths [µm] (.zmx only; InvalidError for a system file or project file. Weights are 1, the primary wavelength number is kept)
     #[staticmethod]
     #[pyo3(signature = (path, glass_dirs=None, cfg=1, state=None, lens_catalogs=None, coatings=None, coating_file=None, wavelengths=None, beam_path=None))]
     #[allow(clippy::too_many_arguments)]
@@ -1080,20 +1080,20 @@ impl PySystem {
         ))
     }
 
-    /// 系ファイル（lensbench 独自の JSON）に保存する。面・ガラスのデータ・パラメータの変更・ピックアップ・
-    /// ソルブ・玉と群・多重構成の表・dn と disp を欠けなく書き、System.load で読み直すと追跡はビット一致する。
-    /// 膜の実測表・モデル（coatings=）のパスも書く
+    /// Save to a system file (lensbench's own JSON). Surfaces, glass data, parameter changes, pickups,
+    /// solves, lenses and groups, the multi-configuration table, dn and disp are all written; reading it back with System.load traces bit for bit the same.
+    /// The paths of the coating tables and models (coatings=) are written too
     fn save(&self, path: PathBuf) -> PyResult<()> {
         let s = self.sys();
         lensbench_project::sysfile::save(&path, &s, &self.coat_files).map_err(err)
     }
 
-    /// 系ファイルの中身（JSON の文字列）
+    /// The content of the system file (a JSON string)
     fn to_json(&self) -> PyResult<String> {
         lensbench_project::sysfile::to_string(&self.sys(), &self.coat_files).map_err(err)
     }
 
-    /// 系ファイルの JSON の文字列から系を作る（coatings のパスはそのまま使う）
+    /// Make a system from the JSON string of a system file (the coatings paths are used as they are)
     #[staticmethod]
     fn from_json(py: Python<'_>, text: &str) -> PyResult<PySystem> {
         let (s, m, w) = lensbench_project::sysfile::from_str(text).map_err(err)?;
@@ -1101,18 +1101,18 @@ impl PySystem {
         Ok(PySystem::new(s, m.coatings, Default::default()))
     }
 
-    /// 系の hash（"sha256:…"、系ファイルと同じ）。解析の結果に刻んで、後から同じ系か確かめる
+    /// The hash of the system ("sha256:…", the same as the system file). Stamp it on analysis results to check later that the system is the same
     #[getter]
     fn hash(&self) -> PyResult<String> {
         lensbench_project::sysfile::system_hash(&self.sys()).map_err(err)
     }
 
-    /// プロジェクト（ブロックで組む系）を、ファイルを介さずに JSON の文字列か dict から展開する。
+    /// Expand a project (a system built from blocks) from a JSON string or dict, without a file.
     ///
-    /// - project: プロジェクトファイルと同じ形の JSON の文字列、または dict
-    /// - base: 相対パス（zmx ブロックの path など）の基準のフォルダ（省略でカレント）
-    /// - そのほかは load と同じ。取り込んだ .zmx のピックアップのうち展開で残せないもの（範囲の外を参照するなど）は
-    ///   値で固定し、warnings で知らせる
+    /// - project: a JSON string of the same form as a project file, or a dict
+    /// - base: the folder that relative paths (such as the path of a zmx block) are based on (current folder if omitted)
+    /// - the rest as in load. Pickups of an imported .zmx that can't be kept in the expansion (referring outside the range and so on) are
+    ///   fixed at their values and reported in warnings
     #[staticmethod]
     #[pyo3(signature = (project, base=None, glass_dirs=None, state=None, lens_catalogs=None, coatings=None, coating_file=None, beam_path=None))]
     #[allow(clippy::too_many_arguments)]
@@ -1161,8 +1161,8 @@ impl PySystem {
         ))
     }
 
-    /// プロジェクトファイル（.json）のビームスプリッターの経路の一覧（BS を通る順の T・R の文字列）。
-    /// BS がなければ空。それぞれ `load(path, beam_path=経路)` で読む
+    /// The beam splitter paths of a project file (.json) (strings of T and R in the order the BSs are passed).
+    /// Empty without a BS. Read each with `load(path, beam_path=path)`
     #[staticmethod]
     #[pyo3(signature = (path, glass_dirs=None, state=None, lens_catalogs=None))]
     fn beam_paths(
@@ -1175,10 +1175,10 @@ impl PySystem {
         names::beam_paths_of(py, path, glass_dirs, state, lens_catalogs)
     }
 
-    /// 多重構成の .zmx から複数の構成の系をまとめて読む。configs は構成の番号（1 始まり）の列で、
-    /// 省くと全部（空の list はエラー）。返すのは System の list で、それぞれ `load(path, cfg=k)` と同じ。
-    /// 試料腕・参照腕や絞りの径の切替（APMX・APER など）を、`trace_many(..., object=物点)` で同じ物点・
-    /// 同じ瞳の格子でまとめて追跡するのに使う
+    /// Read the systems of several configurations of a multi-configuration .zmx at once. configs is a list of configuration numbers (from 1);
+    /// all if omitted (an empty list is an error). Returns a list of System, each the same as `load(path, cfg=k)`.
+    /// Use it to trace switches such as the sample and reference arms or the stop diameter (APMX, APER and so on) together with
+    /// `trace_many(..., object=point)` on the same object point and pupil grid
     #[staticmethod]
     #[pyo3(signature = (path, configs=None, glass_dirs=None, coatings=None, coating_file=None))]
     fn load_configs(
@@ -1227,18 +1227,18 @@ impl PySystem {
         self.sys().name.clone()
     }
 
-    /// 波長 [µm]
+    /// Wavelengths [µm]
     #[getter]
     fn wavelengths(&self) -> Vec<f64> {
         self.sys().wavelengths.clone()
     }
 
-    /// 分散式の有効範囲（AGF の LD）の外の波長で屈折率を求めている材料の警告（式を延ばして計算している）
+    /// Warnings for materials whose index is computed at wavelengths outside the valid range of the dispersion formula (LD of the AGF; the formula is extended)
     fn dispersion_warnings(&self) -> Vec<String> {
         self.sys().dispersion_warnings()
     }
 
-    /// ZPL Macro Solve のうち、解かずに保存された値で固定したもの（マクロがない・対応していない命令など）の理由
+    /// ZPL Macro Solves fixed at their saved values without solving (no macro, unsupported commands and so on), with the reasons
     fn macro_warnings(&self) -> Vec<String> {
         self.sys().macro_warnings()
     }
@@ -1248,43 +1248,43 @@ impl PySystem {
         self.sys().weights.clone()
     }
 
-    /// 主波長の番号（1 始まり）
+    /// Primary wavelength number (from 1)
     #[getter]
     fn primary(&self) -> usize {
         self.sys().primary + 1
     }
 
-    /// 視野 (x, y)
+    /// Fields (x, y)
     #[getter]
     fn fields(&self) -> Vec<(f64, f64)> {
         self.sys().fields.iter().map(|f| (f.x, f.y)).collect()
     }
 
-    /// 像面の面番号
+    /// Surface number of the image surface
     #[getter]
     fn image(&self) -> usize {
         self.sys().image()
     }
 
-    /// 絞りの面番号
+    /// Surface number of the stop
     #[getter]
     fn stop(&self) -> usize {
         self.sys().stop()
     }
 
-    /// 有限物体で入射瞳が物体より前にあるか（pupil="normalized" の向きが "signed" と逆になる系）
+    /// Whether the entrance pupil of a finite object is before the object (systems where pupil="normalized" is reversed from "signed")
     #[getter]
     fn pupil_reversed(&self) -> bool {
         self.sys().pupil_reversed()
     }
 
-    /// 無限遠物体か
+    /// Whether the object is at infinity
     #[getter]
     fn infinite(&self) -> bool {
         self.sys().infinite()
     }
 
-    /// 光線のエイミング（"off"・"paraxial"・"real"）
+    /// Ray aiming ("off", "paraxial", "real")
     #[getter]
     fn aiming(&self) -> &'static str {
         match self.sys().aiming {
@@ -1294,8 +1294,8 @@ impl PySystem {
         }
     }
 
-    /// 浮動開口（半直径を固定した面・.zmx の FLAP）の外の光線をけるか（既定 True。OpticStudio と同じ）。
-    /// 半直径でけらない従来のモデルと比べるときに False にする
+    /// Whether rays outside floating apertures (surfaces with fixed semi-diameters, FLAP in .zmx) are vignetted (default True, as in OpticStudio).
+    /// Set False to compare with the older model that doesn't vignette at semi-diameters
     #[getter]
     fn floating_clip(&self) -> bool {
         self.sys().floating_clip
@@ -1309,13 +1309,13 @@ impl PySystem {
         })
     }
 
-    /// 基点（OpticStudio の Cardinal Points 相当）。wave は波長の番号（1 始まり、省略で主波長）。
+    /// Cardinal points (like OpticStudio's Cardinal Points). wave is a wavelength number (from 1; primary wavelength if omitted).
     ///
-    /// 面 1 から像面の手前の面までの近軸の系（Y-Z 面）。物体空間の位置は面 1 の頂点から、像空間の位置は像面の
-    /// 頂点から、それぞれの局所 z で測る [mm]（OpticStudio と同じ。鏡が奇数枚なら n_image と f_image は負）。
-    /// `efl` は空気換算（EFFL と同じ）、`f_object`・`f_image` は媒質の中の焦点距離（物体空間は負）。
-    /// `bfl` は最後の面から、`ffl` は面 1 から焦点までの距離。
-    /// 無焦点の系では inf。`set_param` などの変更後の系の値を返す。
+    /// The paraxial system from surface 1 to the surface before the image (Y-Z plane). Object-space positions are from the vertex of surface 1 and image-space positions from the
+    /// vertex of the image surface, each along its local z [mm] (as in OpticStudio; with an odd number of mirrors n_image and f_image are negative).
+    /// `efl` is in air (the same as EFFL), `f_object` and `f_image` are focal lengths in the media (negative in object space).
+    /// `bfl` is from the last surface and `ffl` from surface 1 to the focus.
+    /// inf for an afocal system. Returns the values of the system after changes such as `set_param`.
     #[pyo3(signature = (wave=None))]
     fn cardinal<'py>(&self, py: Python<'py>, wave: Option<usize>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
@@ -1349,16 +1349,16 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 機構部品（プロジェクトの mechanics）のケラレ。CLI の `mech-check` と同じ。
+    /// Vignetting by the mechanical parts (mechanics of the project). The same as the CLI's `mech-check`.
     ///
-    /// 瞳の正方格子（一辺 grid 本）の単位円の中の光線を、視野 fields・波長 waves（どちらも 1 始まり、省略で全部）
-    /// ごとに追い、部品の穴の外に出た割合 [%] を数える。戻り値は dict:
-    /// `pupil_rays`（1 視野・波長あたりの光線数）、`parts`（部品ごとの name・surface・clipped_max_pct・
-    /// first_max_pct・bores）、`results`（視野・波長ごとの field・wave・rays・failed・optical_pct・passed_pct・
-    /// parts=[{name, clipped_pct, first_pct}]）。clipped は部品の穴の外に出た光線（先に切れたものも数える）、
-    /// first は光の通る順で最初にその部品で切れた光線、optical は部品より先に系の開口で切れた光線。
-    /// `fit` は配置の確認: kind（collision・protrude・loose・overlap・rod・rod_mismatch）・error・
-    /// part・other・surface・value [mm]・message の dict の並び。
+    /// Traces the rays inside the unit circle of a square pupil grid (grid rays on a side) for each field in fields and wavelength in waves (both from 1; all if omitted)
+    /// and counts the fraction [%] that leaves the bores of the parts. Returns a dict:
+    /// `pupil_rays` (rays per field and wavelength), `parts` (name, surface, clipped_max_pct,
+    /// first_max_pct and bores of each part), `results` (field, wave, rays, failed, optical_pct, passed_pct and
+    /// parts=[{name, clipped_pct, first_pct}] per field and wavelength). clipped counts the rays that leave a part's bore (also those cut earlier),
+    /// first the rays first cut by that part in the order the light passes, optical the rays cut by an aperture of the system before the parts.
+    /// `fit` checks the placement: a list of dicts of kind (collision, protrude, loose, overlap, rod, rod_mismatch), error,
+    /// part, other, surface, value [mm] and message.
     #[pyo3(signature = (fields=None, waves=None, grid=21))]
     fn mech_check<'py>(
         &self,
@@ -1476,11 +1476,11 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 単一モードファイバへの結合効率（OpticStudio の FICL 相当）。送り側は物点 source（物体面の局所 [mm]）、受け側は像面の局所の点 receiver、
-    /// どちらも遠視野の 1/e² の NA のガウスモード（na_receiver の省略は na_source）。物体空間の sin θ ≤ na_max（省略で min(3·NA/n, 0.999)）を
-    /// grid × grid の方向で標本化し、受け側の方向空間で重なり積分をとる。dict: eta（結合効率）・system（受け側まで届いた送り側の電力の比）・receiver（eta/system）・
-    /// phase_step（隣り合う格子点の位相の差の最大 [rad]、π/2 超なら警告。grid を増やす）。pol=True なら膜込みの偏光の重なり jones（(2, 2) complex、[出射 x/y, 入射 x/y]、
-    /// 入射偏光 e の結合は |jones @ e|²）も。clip_stop=True（既定）なら系の絞り（開口がなければ絞り半径の円）の外を通る光を系の損失に数える（FICL と同じ）。有限物体の系だけ
+    /// Coupling efficiency into a single-mode fiber (like OpticStudio's FICL). The source is the object point source (local [mm] on the object surface), the receiver the local point receiver on the image surface,
+    /// both Gaussian modes with a far-field 1/e² NA (na_receiver defaults to na_source). Directions with sin θ ≤ na_max in object space (min(3·NA/n, 0.999) if omitted) are
+    /// sampled on a grid × grid and the overlap integral is taken in the direction space of the receiver. dict: eta (coupling efficiency), system (fraction of the source power reaching the receiver), receiver (eta/system),
+    /// phase_step (largest phase difference between neighboring grid points [rad]; a warning above π/2, increase grid). With pol=True also the polarized overlap with coatings jones ((2, 2) complex, [exit x/y, input x/y];
+    /// the coupling of input polarization e is |jones @ e|²). With clip_stop=True (default) light passing outside the system stop (a circle of the stop radius without an aperture) counts as system loss (as FICL). Finite-object systems only
     #[pyo3(signature = (na_source, na_receiver=None, wave=None, source=(0.0, 0.0), receiver=(0.0, 0.0), grid=101, na_max=None, pol=false, clip_stop=true))]
     #[allow(clippy::too_many_arguments)]
     fn fiber_coupling<'py>(
@@ -1524,8 +1524,8 @@ impl PySystem {
         Ok(d)
     }
 
-    /// システムデータ（OpticStudio のオペランド名の小文字: effl・epdi・enpp・expd・expp・wfno・pwfn・isfn・
-    /// pimh・pmag・totr・obna・isna）。主波長、変更後の系の値
+    /// System data (lowercase OpticStudio operand names: effl, epdi, enpp, expd, expp, wfno, pwfn, isfn,
+    /// pimh, pmag, totr, obna, isna). At the primary wavelength, values of the system after changes
     fn system_data<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let r = py.detach(|| lensbench_core::report::system_data(&s));
@@ -1550,7 +1550,7 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 視野番号 i（1 始まり）の正規化視野 (hx, hy)
+    /// Normalized field (hx, hy) of field number i (from 1)
     fn hxhy(&self, i: usize) -> PyResult<(f64, f64)> {
         let s = self.sys();
         match field_sel(&s, FieldArg::Index(i))? {
@@ -1559,7 +1559,7 @@ impl PySystem {
         }
     }
 
-    /// 視野（番号か (hx, hy)）の物体: 有限物体なら物点 (x, y) [mm]、無限遠なら方向 (l, m, n)
+    /// The object of a field (number or (hx, hy)): an object point (x, y) [mm] for a finite object, a direction (l, m, n) at infinity
     fn object_of(&self, field: FieldArg) -> PyResult<Vec<f64>> {
         let s = self.sys();
         let (hx, hy) = match field_sel(&s, field)? {
@@ -1569,12 +1569,12 @@ impl PySystem {
         Ok(obj_out(s.object_spec(hx, hy).map_err(err)?))
     }
 
-    /// 面を番号か名前（コメント）で探し、面番号を返す
+    /// Find a surface by number or name (comment) and return its surface number
     fn find_surface(&self, target: &str) -> PyResult<usize> {
         self.sys().find_surface(target).map_err(err)
     }
 
-    /// 玉・群の一覧: name・spans（面の範囲 [最初, 最後] の並び）・pivot・motion（dx dy tx ty tz）・shift・auto の dict
+    /// Lenses and groups: dicts of name, spans (list of surface ranges [first, last]), pivot, motion (dx dy tx ty tz), shift and auto
     fn units<'py>(&self, gil: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let s = self.sys();
         s.units
@@ -1595,8 +1595,8 @@ impl PySystem {
             .collect()
     }
 
-    /// 玉・群を定義する。spans は面の範囲 (最初, 最後) の並び（ダブルパスの往きと戻りなど、同じ玉を 2 回通るなら
-    /// 2 つ）、pivot は回転の中心（最初の範囲の最初の面の頂点が原点の座標）。以後 "名前.dx" などで変えられる
+    /// Define a lens or group. spans is a list of surface ranges (first, last) (two when the same lens is passed twice, such as the way out
+    /// and back of a double pass), pivot the center of rotation (coordinates with the vertex of the first surface of the first range as origin). Then changed with "name.dx" and so on
     #[pyo3(signature = (name, spans, pivot=(0.0, 0.0, 0.0)))]
     fn define_unit(
         &self,
@@ -1613,7 +1613,7 @@ impl PySystem {
         Ok(())
     }
 
-    /// 玉・群の回転の中心を変える
+    /// Change the center of rotation of a lens or group
     fn set_unit_pivot(&self, name: &str, pivot: (f64, f64, f64)) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let Some(u) = g.find_unit(name) else {
@@ -1626,15 +1626,15 @@ impl PySystem {
         Ok(())
     }
 
-    /// パラメータの今の値。spec は "面.種類"（例 "3.t"、"L1 front.c"）。種類は c r k a2〜a16 t dx dy tx ty tz dn disp。
-    /// 玉・群は "名前.種類"（例 "lens2.tx"、"G1.shift"）で、種類は dx dy tx ty tz shift dn disp
+    /// The current value of a parameter. spec is "surface.kind" (e.g. "3.t", "L1 front.c"). kind is c r k a2 to a16 t dx dy tx ty tz dn disp.
+    /// Lenses and groups are "name.kind" (e.g. "lens2.tx", "G1.shift") with kind dx dy tx ty tz shift dn disp
     fn get_param(&self, spec: &str) -> PyResult<f64> {
         let s = self.sys();
         let p = s.param(spec).map_err(err)?;
         s.get_param(p).map_err(err)
     }
 
-    /// パラメータを変える（系を作り直さない）。ピックアップ先は元の面に合わせて解き直す（ピックアップ先そのものは変えられない）
+    /// Change a parameter (without rebuilding the system). Pickup targets are solved again from their source surfaces (a pickup target itself can't be changed)
     fn set_param(&self, spec: &str, value: f64) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let p = g.param(spec).map_err(err)?;
@@ -1643,7 +1643,7 @@ impl PySystem {
         Ok(())
     }
 
-    /// まとめて変える: {"3.t": 10.0, "5.dx": 0.01} か [("3.t", 10.0), ...]
+    /// Change several at once: {"3.t": 10.0, "5.dx": 0.01} or [("3.t", 10.0), ...]
     fn set_params(&self, changes: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let c = parse_changes(&g, changes)?;
@@ -1652,7 +1652,7 @@ impl PySystem {
         Ok(())
     }
 
-    /// 変えた系を新しく返す（元の系は変えない。軽い複製）
+    /// Return a new changed system (the original system is not changed; a light copy)
     fn with_params(&self, changes: &Bound<'_, PyAny>) -> PyResult<PySystem> {
         let s = self.sys();
         let c = parse_changes(&s, changes)?;
@@ -1661,22 +1661,22 @@ impl PySystem {
     }
 
     // ---------------------------------------------------------------------- 系の編集
-    /// 面 s の値の dict（type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order
-    /// focal jones dn disp n）。r は曲率半径（平面は inf）、aperture は dict か None
+    /// A dict of the values of surface s (type comment t c r k asph cx material mirror coating semi stop ignore aperture cb cb_order
+    /// focal jones dn disp n). r is the radius of curvature (inf for a plane), aperture a dict or None
     fn surface<'py>(&self, py: Python<'py>, s: SurfArg) -> PyResult<Bound<'py, PyDict>> {
         let sys = self.sys();
         let j = surf_of(&sys, s)?;
         edit::fields_dict(py, sys.surface_fields(j).map_err(err)?)
     }
 
-    /// 面の数（物体面と像面を含む）
+    /// Number of surfaces (including the object and image surfaces)
     #[getter]
     fn surface_count(&self) -> usize {
         self.sys().surfaces.len()
     }
 
-    /// 面 at の前に面を入れる（at は 1〜像面）。値はキーワードで（surface() の名前。type material r t など）。
-    /// 入れた面の後ろの媒質はその面の材料（省略で空気）
+    /// Insert a surface before surface at (at is 1 to the image surface). Values as keywords (the names of surface(): type material r t and so on).
+    /// The medium after the inserted surface is its material (air if omitted)
     #[pyo3(signature = (at, **kw))]
     fn insert_surface(&self, at: usize, kw: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let f = edit::surf_kwargs(kw)?;
@@ -1686,7 +1686,7 @@ impl PySystem {
         })
     }
 
-    /// 面 s を消す。消した面を参照していたピックアップ・ソルブ・多重構成の行の説明の list を返す（警告にも出す）
+    /// Delete surface s. Returns a list describing the pickups, solves and multi-configuration rows that referred to it (also as warnings)
     fn delete_surface(&self, py: Python<'_>, s: SurfArg) -> PyResult<Vec<String>> {
         let j = surf_of(&self.sys(), s)?;
         let notes = self.mutate(|s| s.delete_surface(j))?;
@@ -1694,7 +1694,7 @@ impl PySystem {
         Ok(notes)
     }
 
-    /// 面 s の値をキーワードでまとめて変える（surface() の名前。mirror・stop・n は除く。材料は material）
+    /// Change values of surface s with keywords (the names of surface(), except mirror, stop and n; material for the material)
     #[pyo3(signature = (s, **kw))]
     fn set_surface(&self, s: SurfArg, kw: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let j = surf_of(&self.sys(), s)?;
@@ -1702,27 +1702,27 @@ impl PySystem {
         self.mutate(|s| s.set_surface_fields(j, &f))
     }
 
-    /// 面 s の種類（STANDARD EVENASPH COORDBRK JONESMAT PARAXIAL TOROIDAL FRESNELS）。新しい種類に無い値は 0 に戻す
+    /// The type of surface s (STANDARD EVENASPH COORDBRK JONESMAT PARAXIAL TOROIDAL FRESNELS). Values the new type doesn't have go back to 0
     fn set_surface_type(&self, s: SurfArg, kind: &str) -> PyResult<()> {
         let j = surf_of(&self.sys(), s)?;
         let t = lensbench_core::edit::surf_type_parse(kind).map_err(err)?;
         self.mutate(|s| s.set_surface_type(j, t))
     }
 
-    /// 面 s の材料: ガラス名（系のカタログ、add_glass_catalogs で足せる）・"nd,vd[,dpgf]"・"" か "AIR"・"MIRROR"
+    /// The material of surface s: a glass name (the system's catalogs; add more with add_glass_catalogs), "nd,vd[,dpgf]", "" or "AIR", "MIRROR"
     fn set_material(&self, s: SurfArg, material: &str) -> PyResult<()> {
         let j = surf_of(&self.sys(), s)?;
         self.mutate(|s| s.set_material(j, material))
     }
 
-    /// 面 s を絞りにする
+    /// Make surface s the stop
     fn set_stop(&self, s: SurfArg) -> PyResult<()> {
         let j = surf_of(&self.sys(), s)?;
         self.mutate(|s| s.set_stop(j))
     }
 
-    /// ガラスのカタログ（AGF の名前、例 "SCHOTT"）を読んで系に足す。dirs は探す場所（省略で既定の場所）。
-    /// 見つからなかったカタログの名前を返す
+    /// Read glass catalogs (AGF names, e.g. "SCHOTT") and add them to the system. dirs are where to search (default places if omitted).
+    /// Returns the names of the catalogs not found
     #[pyo3(signature = (names, dirs=None))]
     fn add_glass_catalogs(
         &self,
@@ -1733,7 +1733,7 @@ impl PySystem {
         self.mutate(|s| Ok(s.add_glass_catalogs(&names, &dirs)))
     }
 
-    /// ピックアップの一覧: dst・src・what（c t k p1〜 before0〜4 after0〜4 など）・scale・offset の dict。元の量が what と違えば src_what も
+    /// Pickups: dicts of dst, src, what (c t k p1… before0–4 after0–4 and so on), scale and offset, with src_what when the source quantity differs from what
     fn pickups<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.sys()
             .pickups
@@ -1753,9 +1753,9 @@ impl PySystem {
             .collect()
     }
 
-    /// ピックアップを付ける: 面 dst の what = scale × 面 src の src_what + offset（同じ先・量のものは置き換える）。
-    /// what は c r t k p1〜 dn disp semi before0〜4 after0〜4（面の前・後の傾き偏心 dx dy tx ty tz）。
-    /// src_what を省くと what と同じ量（例: 面の後を元の面の前から引くなら what="after0", src_what="before0"）
+    /// Add a pickup: what of surface dst = scale × src_what of surface src + offset (replaces one with the same target and quantity).
+    /// what is c r t k p1… dn disp semi before0–4 after0–4 (tilts and decenters before and after the surface: dx dy tx ty tz).
+    /// src_what defaults to what (e.g. to take the after of a surface from the before of the source surface: what="after0", src_what="before0")
     #[pyo3(signature = (dst, src, what, scale=1.0, offset=0.0, src_what=None))]
     fn add_pickup(
         &self,
@@ -1781,14 +1781,14 @@ impl PySystem {
         self.mutate(|s| s.add_pickup(p))
     }
 
-    /// 面 dst の what のピックアップを外す（値は今のまま）
+    /// Remove the pickup of what on surface dst (the value stays as it is)
     fn remove_pickup(&self, dst: SurfArg, what: &str) -> PyResult<()> {
         let j = surf_of(&self.sys(), dst)?;
         let w = edit::pick_kind(what)?;
         self.mutate(|s| s.remove_pickup(j, w))
     }
 
-    /// ソルブの一覧: surf・what（"t" 厚さ / "c" 曲率）・kind（種類の名前）・value・param・other の dict
+    /// Solves: dicts of surf, what ("t" thickness / "c" curvature), kind (name of the kind), value, param and other
     fn solves<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.sys()
             .solves
@@ -1807,11 +1807,11 @@ impl PySystem {
             .collect()
     }
 
-    /// 面 surf にソルブを付ける（同じ面・同じ量のものは置き換える）。kind は厚さの marginal_height（既定）・
-    /// marginal_height_zone・chief_height・pupil_position・edge・opd・position・compensator・center_of_curvature、
-    /// 曲率の marginal_angle・chief_angle・marginal_normal・chief_normal・aplanatic・element_power・
-    /// concentric_surface・concentric_radius・f_number。value はその値（高さ・角度・長さなど）、param は
-    /// marginal_height_zone・opd の瞳の帯・edge の高さ、other は別の面を参照する種類の面
+    /// Add a solve on surface surf (replaces one on the same surface and quantity). kind is, for thickness, marginal_height (default),
+    /// marginal_height_zone, chief_height, pupil_position, edge, opd, position, compensator, center_of_curvature;
+    /// for curvature, marginal_angle, chief_angle, marginal_normal, chief_normal, aplanatic, element_power,
+    /// concentric_surface, concentric_radius, f_number. value is its value (height, angle, length and so on), param is
+    /// the pupil zone of marginal_height_zone and opd or the height of edge, other the surface for kinds that refer to another surface
     #[pyo3(signature = (surf, kind="marginal_height", value=0.0, other=None, param=0.0))]
     fn add_solve(
         &self,
@@ -1831,7 +1831,7 @@ impl PySystem {
         self.mutate(|s| s.add_solve(q))
     }
 
-    /// 面 surf の what（"t" 厚さ / "c" 曲率）のソルブを外す（値は今のまま）
+    /// Remove the solve of what ("t" thickness / "c" curvature) on surface surf (the value stays as it is)
     #[pyo3(signature = (surf, what="t"))]
     fn remove_solve(&self, surf: SurfArg, what: &str) -> PyResult<()> {
         let j = surf_of(&self.sys(), surf)?;
@@ -1843,24 +1843,24 @@ impl PySystem {
         self.mutate(|s| s.remove_solve(j, k))
     }
 
-    /// 多重構成の数（表が無ければ 1）
+    /// Number of configurations (1 without a table)
     #[getter]
     fn config_count(&self) -> usize {
         self.sys().configs().map_or(1, |c| c.n)
     }
 
-    /// 今の系に入っている構成（1 始まり）
+    /// The configuration in the current system (from 1)
     #[getter]
     fn active_config(&self) -> usize {
         self.sys().configs().map_or(1, |c| c.active)
     }
 
-    /// 構成の数を n にする（増やした構成の値は今の値、1 で表を消す）
+    /// Set the number of configurations to n (added configurations take the current values; 1 removes the table)
     fn set_config_count(&self, n: usize) -> PyResult<()> {
         self.mutate(|s| s.set_config_count(n))
     }
 
-    /// 多重構成の表: (パラメータ名, 構成ごとの値) の list
+    /// The multi-configuration table: a list of (parameter name, values per configuration)
     fn configs(&self) -> Vec<(String, Vec<f64>)> {
         let s = self.sys();
         s.configs()
@@ -1873,7 +1873,7 @@ impl PySystem {
             .unwrap_or_default()
     }
 
-    /// 表の行を足す（同じパラメータは置き換える）: spec は set_param と同じ名前、values は構成ごとの値
+    /// Add a row to the table (replaces the same parameter): spec is the same name as in set_param, values the values per configuration
     fn set_config_row(&self, spec: &str, values: Vec<f64>) -> PyResult<()> {
         self.mutate(|s| {
             let p = s.param(spec)?;
@@ -1881,7 +1881,7 @@ impl PySystem {
         })
     }
 
-    /// 表の行を消す（系の値は今のまま）
+    /// Remove a row of the table (the system's value stays as it is)
     fn remove_config_row(&self, spec: &str) -> PyResult<()> {
         self.mutate(|s| {
             let p = s.param(spec)?;
@@ -1889,13 +1889,13 @@ impl PySystem {
         })
     }
 
-    /// 構成 k（1 始まり）の値を入れた新しい系（元の系は変えない）
+    /// A new system with the values of configuration k (from 1) (the original system is not changed)
     fn config(&self, k: usize) -> PyResult<PySystem> {
         let n = self.sys().config(k).map_err(err)?;
         Ok(PySystem::new(n, self.coat_files.clone(), self.coat_cell()))
     }
 
-    /// 今の系を構成 k に切り替える
+    /// Switch the current system to configuration k
     fn set_config(&self, k: usize) -> PyResult<()> {
         self.mutate(|s| {
             *s = s.config(k)?;
@@ -1903,8 +1903,8 @@ impl PySystem {
         })
     }
 
-    /// ゴースト: 面 a で反射し、面 b で反射する（b < a）経路を順次の面に展開した系（膜の係数・偏光追跡もそのまま使える）。
-    /// 面は番号かコメント。展開した系の面ごとの元の面は ghost_origin で
+    /// Ghost: the system with the path reflected at surface a and then at surface b (b < a) unfolded into sequential surfaces (coating coefficients and polarization traces work as they are).
+    /// Surfaces by number or comment. The original surface of each surface of the unfolded system is in ghost_origin
     fn ghost(&self, a: SurfArg, b: SurfArg) -> PyResult<PySystem> {
         let s = self.sys();
         let (a, b) = (surf_of(&s, a)?, surf_of(&s, b)?);
@@ -1916,7 +1916,7 @@ impl PySystem {
         ))
     }
 
-    /// ゴーストの系（ghost(a, b)）の面ごとの元の面の番号（挟んだ座標ブレークは None）と、反射の面の番号 (a, b)
+    /// For each surface of a ghost system (ghost(a, b)) the original surface number (None for coordinate breaks put in between), and the reflecting surfaces (a, b)
     fn ghost_origin(&self, a: SurfArg, b: SurfArg) -> PyResult<GhostOrigin> {
         let s = self.sys();
         let (a, b) = (surf_of(&s, a)?, surf_of(&s, b)?);
@@ -1924,7 +1924,7 @@ impl PySystem {
         Ok((g.origin, g.at))
     }
 
-    /// 2 回反射の組 [(a, b), ...]（a > b、a が先に反射）。first..=last の面（省略で 1〜像面。像面は膜があるときだけ）
+    /// Pairs of double reflections [(a, b), ...] (a > b, a reflects first). Surfaces first..=last (1 to the image surface if omitted; the image surface only with a coating)
     #[pyo3(signature = (first=1, last=None))]
     fn ghost_pairs(&self, first: usize, last: Option<usize>) -> Vec<(usize, usize)> {
         let s = self.sys();
@@ -1932,8 +1932,8 @@ impl PySystem {
         lensbench_core::ghost::pairs(&s, first, last)
     }
 
-    /// 視野の種類: "angle"・"object_height"・"paraxial_image_height"・"real_image_height"、
-    /// 条件で定める視野なら ("solve", ("dirsum", 面1, 面2)) など
+    /// The field type: "angle", "object_height", "paraxial_image_height", "real_image_height",
+    /// or ("solve", ("dirsum", surface1, surface2)) and so on for a field given by a condition
     #[getter]
     fn field_type<'py>(&self, gil: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let s = self.sys();
@@ -1954,10 +1954,10 @@ impl PySystem {
         Ok(name.into_pyobject(gil)?.into_any())
     }
 
-    /// 視野の種類と値を変える。kind は field_type と同じ名前。"solve" なら cond に条件
-    /// （("position", 面)、("dirsum", 面1, 面2)、("dirdiff", 面1, 面2)、面は番号か名前）を与え、
-    /// 視野の (x, y) が条件の目標値になる物体を主波長の主光線で解く（パラメータを変えると解き直す）。
-    /// fields を与えると視野の (x, y) も置き換える（重み・ケラレ係数は既定に戻る）
+    /// Change the field type and values. kind is the same name as field_type. For "solve" give the condition in cond
+    /// (("position", surface), ("dirsum", surface1, surface2), ("dirdiff", surface1, surface2); surfaces by number or name);
+    /// the object whose chief ray at the primary wavelength makes the field (x, y) the target of the condition is solved (again when parameters change).
+    /// fields also replaces the field (x, y) values (weights and vignetting factors go back to the defaults)
     #[pyo3(signature = (kind, cond=None, fields=None))]
     fn set_field_type(
         &self,
@@ -1993,46 +1993,46 @@ impl PySystem {
         Ok(())
     }
 
-    /// 光線を追跡し、numpy 配列の dict を返す。
+    /// Trace rays and return a dict of numpy arrays.
     ///
-    /// - field: 視野の番号（1 始まり）か正規化視野 (hx, hy)。object を与えるときは None
-    /// - px, py: 正規化瞳座標（1 次元、同じ長さ。list・float32 も可）
-    /// - waves: 波長の番号（1 始まり）の列。省くと全波長
-    /// - last: この面で止める（省くと像面）
-    /// - record: True なら途中の全面の交点も返す（`rec_*`、形は (波長, 面, 光線)）。面の番号の列なら
-    ///   その面だけ（無視する面・last より後は除く。面の多い系で速い）
-    /// - pol: 偏光追跡する波長の番号（True なら主波長）。`jones` に (光線, 2, 2) の complex128 を返す。
-    ///   列は入射偏光（物体側の局所 x・y の単位ベクトル）、行は最後の面の局所座標の出射電場の x・y 成分。
-    ///   z 成分は `jones_z`（(光線, 2)）。膜の振幅・位相込み、位相の約束は E ∝ exp(−ikL)。止まった光線は NaN
-    /// - pol_phase: True なら jones に伝搬の位相 exp(−ik·OPL) を掛ける（既定は掛けない。光路長は `opl`）
-    /// - pol_grid: 偏光追跡を正規化瞳座標 [−1, 1]² の粗い格子（点数 n か (nx, ny)、各軸 4 点以上。例 25）で行い、
-    ///   伝搬の位相を除いた Jones 行列を 2 次元の 3 次スプライン（not-a-knot）で全光線へ補間する（全光線の偏光
-    ///   追跡より速い）。止まった・けられた格子点は格子で最も近い有効な点で埋める。瞳の内側（px² + py² ≤ 1）で欠けた
-    ///   格子点は `pol_grid_missing`（(点, 2) の px・py）に返し、そこから 2 点の範囲のセルにある光線は jones を NaN に
-    ///   して `pol_grid_bad`（(光線,) の bool）を True にする。pupil が "normalized"・"signed" のときだけ
-    /// - globals: True なら大域の位置・方向 gx, gy, gz, gl, gm, gn と開始点・方向 p0, k0（(波長, 光線, 3)）も返す
-    /// - object: 視野の代わりに物体を直接: 有限物体なら物点 (x, y) [mm]、無限遠物体なら方向 (l, m, n)。
-    ///   ケラレ係数はかけない
-    /// - grad: 光路長を微分するパラメータ（"3.t"、"objx" など）の列。`grad` に dOPL/dp（(波長, 光線, パラメータ)）を返す。
-    ///   始点と最後の面の交点（局所 x・y）を固定した微分。objx・objy は有限物体のみ
-    /// - land: True なら grad と一緒に `grad_land`（(波長, 光線, パラメータ, 4)）に最後の面での着地点・方向の微分
-    ///   d(x, y, l, m)/dp を返す。開始位置と開始方向を固定した微分（同じ光線を打ち出して系だけ変える。
-    ///   pupil="stop" や照準した光線でも、解き直さない）
-    /// - dz: 検出面を最後の面の局所座標の z = dz の平面に置く（面の傾き・偏心に従う平面）。x, y, z・opl・
-    ///   opl_os・大域の位置をその平面での値にし、grad はその平面の x・y を固定した微分、grad_land もその平面で。
-    ///   記録（record）は変えない。pol_phase=True とは一緒に使えない
-    /// - threads: スレッド数（1 で逐次。省くと全コア）。結果はスレッド数によらず同じビット
-    /// - pupil: "normalized"（既定）なら px・py は正規化瞳座標（OpticStudio と同じ。入射瞳が物体より前の
-    ///   有限物体系では px = 1 が絞りの −x 側を通り、テレセントリックをまたぐと向きが反転する）。"signed" は
-    ///   その系で符号を反転した瞳座標（px = 1 が常に絞りの同じ側。`System.pupil_reversed` が True の系で
-    ///   normalized と符号が逆）。"stop" なら絞り面の局所座標 [mm] で、
-    ///   その点を通る実光線を光線ごとに解く（系のエイミング・入射瞳の位置によらない。ケラレ係数はかけない。
-    ///   解けない光線は err が絞りの面）
+    /// - field: a field number (from 1) or a normalized field (hx, hy). None when object is given
+    /// - px, py: normalized pupil coordinates (1-D, same length; lists and float32 also work)
+    /// - waves: a list of wavelength numbers (from 1). All wavelengths if omitted
+    /// - last: stop at this surface (the image surface if omitted)
+    /// - record: True also returns the intersections at all surfaces on the way (`rec_*`, shape (wavelength, surface, ray)). A list of surface numbers
+    ///   gives only those surfaces (except ignored surfaces and those after last; faster for systems with many surfaces)
+    /// - pol: the wavelength number for a polarization trace (True for the primary wavelength). Returns complex128 (ray, 2, 2) in `jones`.
+    ///   Columns are the input polarization (unit vectors of local x and y on the object side), rows the x and y components of the exit field in local coordinates of the last surface.
+    ///   The z components are `jones_z` ((ray, 2)). With coating amplitudes and phases; the phase convention is E ∝ exp(−ikL). NaN for stopped rays
+    /// - pol_phase: True multiplies jones by the propagation phase exp(−ik·OPL) (not by default; the optical path length is `opl`)
+    /// - pol_grid: does the polarization trace on a coarse grid of normalized pupil coordinates [−1, 1]² (n points or (nx, ny), at least 4 per axis, e.g. 25) and
+    ///   interpolates the Jones matrices without the propagation phase to all rays with a 2-D cubic spline (not-a-knot) (faster than a polarization trace
+    ///   of all rays). Stopped or vignetted grid points are filled from the nearest valid point of the grid. Grid points missing inside the pupil (px² + py² ≤ 1)
+    ///   are returned in `pol_grid_missing` ((point, 2) of px, py); rays in cells within 2 points of them get NaN jones
+    ///   and True in `pol_grid_bad` ((ray,) bool). Only when pupil is "normalized" or "signed"
+    /// - globals: True also returns the global positions and directions gx, gy, gz, gl, gm, gn and the start points and directions p0, k0 ((wavelength, ray, 3))
+    /// - object: the object directly instead of a field: an object point (x, y) [mm] for a finite object, a direction (l, m, n) for an infinite object.
+    ///   No vignetting factors are applied
+    /// - grad: a list of parameters ("3.t", "objx" and so on) to differentiate the optical path length by. Returns dOPL/dp in `grad` ((wavelength, ray, parameter)).
+    ///   The derivative with the start point and the intersection with the last surface (local x, y) fixed. objx and objy for finite objects only
+    /// - land: with grad, True also returns in `grad_land` ((wavelength, ray, parameter, 4)) the derivative of the landing point and direction at the last surface
+    ///   d(x, y, l, m)/dp. The derivative with the start position and direction fixed (the same ray is launched and only the system changes;
+    ///   not solved again even with pupil="stop" or aimed rays)
+    /// - dz: puts the detector on the plane z = dz in local coordinates of the last surface (a plane following the tilts and decenters of the surface). x, y, z, opl,
+    ///   opl_os and the global positions become the values on that plane, grad the derivative with x and y on that plane fixed, and grad_land is on that plane too.
+    ///   record is not changed. Can't be used with pol_phase=True
+    /// - threads: number of threads (1 for sequential; all cores if omitted). The results are bit for bit the same for any number of threads
+    /// - pupil: with "normalized" (default) px and py are normalized pupil coordinates (as in OpticStudio; in finite-object systems with the entrance pupil before
+    ///   the object, px = 1 passes the −x side of the stop, and the direction flips across telecentricity). "signed" is
+    ///   the pupil coordinate with the sign flipped for those systems (px = 1 always on the same side of the stop; opposite in sign to normalized for systems where
+    ///   `System.pupil_reversed` is True). With "stop" they are local coordinates [mm] on the stop surface, and
+    ///   the real ray through that point is solved for each ray (independent of the system's aiming and entrance pupil position; no vignetting factors;
+    ///   rays that can't be solved have err at the stop surface)
     ///
-    /// 返す配列（形は (波長, 光線)）: x, y, z, l, m, n（最後の面の局所座標の位置・方向余弦）,
-    /// opl（光路長）, opl_os（OpticStudio の生の光路長）, lens_opd（理想レンズの位相）, err・vig（止まった・
-    /// けられた面の番号、0 は通過）, ok（err も vig も 0）。ほかに wavelengths（番号）, last、視野なら hx・hy、
-    /// object なら object。record のとき rec_surfaces と rec_x … rec_opl（rec_gx・rec_gy・rec_gz は大域）
+    /// Returned arrays (shape (wavelength, ray)): x, y, z, l, m, n (position and direction cosines in local coordinates of the last surface),
+    /// opl (optical path length), opl_os (OpticStudio's raw optical path length), lens_opd (phase of ideal lenses), err and vig (number of the surface where the ray stopped
+    /// or was vignetted, 0 if it passed), ok (err and vig both 0). Also wavelengths (numbers), last, hx and hy for a field,
+    /// object for an object. With record, rec_surfaces and rec_x … rec_opl (rec_gx, rec_gy, rec_gz are global)
     #[pyo3(signature = (field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false, pol_grid=None))]
     #[allow(clippy::too_many_arguments)]
     fn trace<'py>(
@@ -2088,11 +2088,11 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 開始位置と方向を直接与えて追跡する。返す dict は [`trace`] と同じ（hx・hy・object はない）。
+    /// Trace from start positions and directions given directly. The returned dict is the same as [`trace`] (without hx, hy and object).
     ///
-    /// - start, direction: (光線, 3) の配列。方向は規格化する（0 ベクトルは止まった光線）。光路長は開始位置から
-    /// - frame: "object"（既定。有限物体なら物体面の局所座標、無限遠物体なら面 1 の変換の前の座標系）か "global"（大域）
-    /// - ほかの引数は trace と同じ。grad の objx・objy は開始位置を物体面と一緒に動かした微分
+    /// - start, direction: (ray, 3) arrays. Directions are normalized (a zero vector is a stopped ray). The optical path length is from the start position
+    /// - frame: "object" (default; local coordinates of the object surface for a finite object, the coordinates before the transform of surface 1 for an infinite object) or "global"
+    /// - the other arguments are as in trace. objx and objy of grad are derivatives with the start positions moving with the object surface
     #[pyo3(signature = (start, direction, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, frame="object", grad=None, threads=None, dz=None, land=false))]
     #[allow(clippy::too_many_arguments)]
     fn trace_rays<'py>(
@@ -2160,17 +2160,17 @@ impl PySystem {
         self.run_trace(gil, &s, &launch, p.len(), &opts)
     }
 
-    /// 未知数 2 つ・残差 2 つの実光線を Newton 法で解く。
+    /// Solve a real ray with two unknowns and two residuals by Newton's method.
     ///
-    /// - unknown: "object"（物点の x・y [mm]、有限物体）か "pupil"（瞳座標 px・py）
-    /// - residual: ("position", 面, (x, y))（面での局所座標の位置 − 目標）、("dirsum", 面1, 面2)（方向余弦
-    ///   l・m の和）、("dirdiff", 面1, 面2)（差）のどれか
-    /// - object: 物体（物点 (x, y) か方向 (l, m, n)）。未知数が物点なら初期値。省くと field の物体
-    /// - field: object を省いたときの視野（番号か (hx, hy)、省くと軸上）
-    /// - pupil: 瞳座標。未知数が瞳座標なら初期値
-    /// - wave: 波長の番号（省くと主波長）
+    /// - unknown: "object" (x and y of the object point [mm], finite object) or "pupil" (pupil coordinates px and py)
+    /// - residual: one of ("position", surface, (x, y)) (local position on the surface − target), ("dirsum", surface1, surface2) (sum of the direction cosines
+    ///   l and m) and ("dirdiff", surface1, surface2) (difference)
+    /// - object: the object (an object point (x, y) or a direction (l, m, n)). The initial value when the unknown is the object point. The object of field if omitted
+    /// - field: the field when object is omitted (number or (hx, hy); on axis if omitted)
+    /// - pupil: pupil coordinates. The initial value when the unknown is the pupil coordinates
+    /// - wave: wavelength number (primary wavelength if omitted)
     ///
-    /// 返す dict: object、pupil、residual、iterations（そのまま trace(None, [px], [py], object=...) に渡せる）
+    /// Returned dict: object, pupil, residual, iterations (can be passed as they are to trace(None, [px], [py], object=...))
     #[pyo3(signature = (unknown, residual, object=None, field=None, pupil=(0.0, 0.0), wave=None, tol=1e-12, max_iter=50))]
     #[allow(clippy::too_many_arguments)]
     fn solve_ray<'py>(
@@ -2246,12 +2246,12 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 回折 MTF（CLI の mtf と同じ）。field は番号（1 始まり）か正規化視野 (hx, hy)、wave は波長の番号（省略で
-    /// 多色）、n は瞳の重なりの求積の点の数の目安（省略で自動）。method は "auto"（既定。"interp" で、n を省いて
-    /// 求積の点数が 1024 を超え、周波数が 8 個以上なら "fft"）・"interp"（補間の求積）・"fft"（瞳関数の自己相関を FFT で全周波数まとめて。
-    /// 周波数が多いとき速い、求積との差 1e-4 程度）・"direct"（確かめ用）。
-    /// 返す dict: freqs・tangential・sagittal（numpy）・cutoff（tangential・sagittal の遮断周波数 [cycles/mm]、計算した波長。多色は主波長）。
-    /// each_wave=True なら多色に加えて waves（波長ごとの dict のリスト。別々に求めるより速い）も返す（wave と一緒に使えない）
+    /// Diffraction MTF (the same as the CLI's mtf). field is a number (from 1) or a normalized field (hx, hy), wave a wavelength number (polychromatic
+    /// if omitted), n a guide for the number of quadrature points of the pupil overlap (automatic if omitted). method is "auto" (default; "interp", or "fft" when n is omitted,
+    /// the quadrature has more than 1024 points and there are 8 or more frequencies), "interp" (interpolated quadrature), "fft" (autocorrelation of the pupil function by FFT, all frequencies at once;
+    /// fast with many frequencies, about 1e-4 from the quadrature) or "direct" (for checking).
+    /// Returned dict: freqs, tangential, sagittal (numpy), cutoff (tangential and sagittal cutoff frequencies [cycles/mm] at the calculated wavelength; the primary wavelength for polychromatic).
+    /// each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave)
     #[pyo3(signature = (field, freqs, wave=None, n=None, threads=None, method="auto", each_wave=false))]
     #[allow(clippy::too_many_arguments)]
     fn mtf<'py>(
@@ -2302,9 +2302,9 @@ impl PySystem {
         mtf_dict(py, &m)
     }
 
-    /// スルーフォーカス MTF: 像面を dz [レンズ単位] ずつずらした回折 MTF（像面の手前の厚さを変える。
-    /// 厚さのソルブは解き直さない）。tangential・sagittal は (周波数, dz) の配列。計算できない点は NaN で、
-    /// 理由は warnings
+    /// Through-focus MTF: the diffraction MTF with the image surface shifted by dz [lens units] (changes the thickness before the image surface;
+    /// thickness solves are not solved again). tangential and sagittal are (frequency, dz) arrays. Points that can't be calculated are NaN, with
+    /// the reasons in warnings
     #[pyo3(signature = (field, freqs, dz, wave=None, n=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn through_focus_mtf<'py>(
@@ -2326,8 +2326,8 @@ impl PySystem {
         sweep_dict(py, "dz", &m)
     }
 
-    /// フィールド MTF: 正規化視野 h（0〜1、axis "y" か "x" の向き）ごとの回折 MTF。
-    /// tangential・sagittal は (周波数, h) の配列、field_value は視野の値（系の単位）
+    /// Field MTF: the diffraction MTF for each normalized field h (0 to 1, in the direction axis "y" or "x").
+    /// tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
     #[pyo3(signature = (freqs, h, axis="y", wave=None, n=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn field_mtf<'py>(
@@ -2351,23 +2351,23 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 減衰最小二乗（DLS）で最適化した系を返す（元の系は変えない）。vars は変数の列で、各要素は "7.t" か
-    /// ("7.t", 下限, 上限)（None で片側なし）。既定の評価関数 merit は "spot"（RMS スポット）か "wavefront"（RMS 波面）で、
-    /// 全視野（視野の重み）・多色。None なら terms の項だけ。jac は "auto"（解析的に求められる列が 16 個以上の項は解析的に、少ない項は中心差分）か
-    /// "fd"（すべて中心差分）か "forward"（すべて前進差分、中心差分の半分の追跡）。
+    /// Return the system optimized by damped least squares (DLS) (the original system is not changed). vars is a list of variables, each "7.t" or
+    /// ("7.t", lower, upper) (None for no bound on that side). The default merit function merit is "spot" (RMS spot) or "wavefront" (RMS wavefront),
+    /// over all fields (field weights) and wavelengths. None for only the terms. jac is "auto" (analytic for terms with 16 or more analytic columns, central differences for the others),
+    /// "fd" (all central differences) or "forward" (all forward differences, half the traces of central differences).
     ///
-    /// termsは足す項の dict の並び。{"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1} の
-    /// 形で、種類は spot・wavefront・mtf・paraxial（q: efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・
-    /// obna・isna）・ray（q: x・y・z・l・m・n、面 surf の局所座標）・centroid（像面の光束の重心、q: x・y）・opd・zernike・coupling・zplm（ZPL マクロの OPTRETURN）・
-    /// plugin（登録したプラグインの出力。CLI の --term と同じ）。
-    /// {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} は Python の関数で定義する項: f(systems) は
-    /// System の list を受け取り、系ごとの残差を (len(systems), 残差の数) の配列で返す（差分の系はまとめて 1 回で渡す）。
-    /// g(system, names) を与えると残差の偏微分 (残差の数, len(names)) をそれで求める。
+    /// terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
+    /// the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
+    /// obna, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
+    /// plugin (output of a registered plugin; the same as the CLI's --term).
+    /// {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} is a term defined by Python functions: f(systems) takes
+    /// a list of System and returns the residuals per system as a (len(systems), number of residuals) array (the systems for differences are passed together in one call).
+    /// With g(system, names), the partial derivatives of the residuals (number of residuals, len(names)) are computed with it.
     ///
-    /// 返り値の dict: system（最適化した系）・x0・x（変数の値）・merit0・merit・history（反復ごとの評価関数）・
-    /// iterations・evals・stop（"converged"・"small_step"・"no_progress"・"max_iter"・"jacobian_failed"）・note（止まった理由の補足）・
-    /// inactive（効かないとみなして動かさなかった変数の番号）・term_values0・term_values
-    /// （terms の項ごとの値: 目標のある項は値、ほかは √Σr²）
+    /// Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
+    /// iterations, evals, stop ("converged", "small_step", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
+    /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values
+    /// (values per term of terms: the value for terms with a target, √Σr² for the others)
     #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None))]
     #[allow(clippy::too_many_arguments)]
     fn optimize<'py>(
@@ -2437,20 +2437,20 @@ impl PySystem {
         Ok(d)
     }
 
-    /// モンテカルロ公差シミュレーション。spec は CLI の `lensbench tolerance --spec` と同じ設定の dict
-    /// （trials・seed・dist・preset・catalog・catalog_tols・lenses・groups・tols・compensators・comp_iters・merit・rings・
-    /// ref・terms・sensitivity・percentiles・samples）。None なら既定（一般の公差の組を全部の玉に、RMS 波面、100 回）。
-    /// terms は optimize の terms と同じ並びで、spec の terms の後に足す（Python の関数の項 {"type": "user", ...} も使える。
-    /// 測定値などを評価量にするときに）。vendors はブロックの id → メーカーの dict（カタログの玉の既定の公差に使う）。
-    /// configs は追加の構成（この系が構成 1、ずれはすべての構成に同じく与える）。reversed は裏返して置いた玉のブロックの
-    /// id の並び（spec の wedge_face の前・後ろを玉のもとの向きで決めるのに使う。from_project で作った系は裏返しの印を
-    /// 持つので要らない）。
+    /// Monte Carlo tolerance simulation. spec is a dict of the same settings as the CLI's `lensbench tolerance --spec`
+    /// (trials, seed, dist, preset, catalog, catalog_tols, lenses, groups, tols, compensators, comp_iters, merit, rings,
+    /// ref, terms, sensitivity, percentiles, samples). None for the default (the general tolerance set on all lenses, RMS wavefront, 100 trials).
+    /// terms is a list as in optimize, added after the terms of spec (Python function terms {"type": "user", ...} also work,
+    /// for using measured values and the like as the criterion). vendors maps block ids to vendors (used for the default tolerances of catalog lenses).
+    /// configs are additional configurations (this system is configuration 1; perturbations are the same in all configurations). reversed is the list of ids of blocks of lenses
+    /// placed reversed (used to decide front and back of wedge_face in spec by the lens's original orientation; systems made with from_project carry
+    /// the reversed mark, so it isn't needed).
     ///
-    /// 返り値の dict: nominal（merit・terms・comp）・merit（統計: n・mean・std・min・max・percentiles）・cdf（評価関数の
-    /// 昇順）・terms（項ごとの label・nominal・stats・cdf）・compensators（name・nominal・stats・試行ごとの values）・
-    /// tilt_magnitudes（補償子の tx・ty の組の大きさ [分]）・merit_values（試行ごとの評価関数）・sensitivity（公差ごとの lo・hi での評価関数の
-    /// 変化、悪い順）・rss_estimate・correlation（ずれとの相関 r と |ずれ| との相関 r_abs）・tolerances・trials・failed・
-    /// errors（samples が true なら試行ごとの deltas・eval も）
+    /// Returned dict: nominal (merit, terms, comp), merit (statistics: n, mean, std, min, max, percentiles), cdf (merit
+    /// in ascending order), terms (label, nominal, stats, cdf per term), compensators (name, nominal, stats, values per trial),
+    /// tilt_magnitudes (magnitude of the tx, ty pair of compensators [arcmin]), merit_values (merit per trial), sensitivity (change of the merit at lo and hi of each tolerance,
+    /// worst first), rss_estimate, correlation (correlation r with the perturbation and r_abs with |perturbation|), tolerances, trials, failed,
+    /// errors (with samples true, also deltas and eval per trial)
     #[pyo3(signature = (spec=None, terms=None, vendors=None, configs=None, threads=None, reversed=None))]
     #[allow(clippy::too_many_arguments)]
     fn tolerance<'py>(
@@ -2494,9 +2494,9 @@ impl PySystem {
         pyjson::to_py(py, &out)
     }
 
-    /// 最適化の評価関数の残差 r とヤコビアン J（[残差][変数]）を、今の変数の値で返す（反復は自前で回す使い方。
-    /// 引数は optimize と同じ。terms の項も使える）。Σ r² / Σ 重み の平方根が評価関数の値。残差は項の順
-    /// （既定の評価関数の項、terms の順）で、各項に重みの平方根を掛けたもの
+    /// Return the residuals r of the optimization merit and the Jacobian J ([residual][variable]) at the current variable values (for running the iterations yourself.
+    /// Arguments as in optimize; terms work too). The merit is the square root of Σ r² / Σ weights. Residuals are in term order
+    /// (terms of the default merit, then terms in order), each multiplied by the square root of its weight
     #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, jac="auto", threads=None, terms=None))]
     #[allow(clippy::too_many_arguments)]
     fn merit_jacobian<'py>(
@@ -2530,11 +2530,11 @@ impl PySystem {
         Ok((r.into_pyarray(py).into_any(), a2(py, j, (m, n))))
     }
 
-    /// RMS: スポット半径（spot・spot_x・spot_y [レンズ単位]）、波面収差 wfe [波]、ストレール比の近似
-    /// strehl = exp(−(2π wfe)²)。横軸 vs は "field"（x は正規化視野、axis の向き）・"focus"（x は像面のずらし）・
-    /// "wavelength"（x は波長 [µm]、単色）・None（1 点、field の値）。reference は "centroid" か "chief"、
-    /// rings は瞳のガウス求積のリング数。field は vs が focus・wavelength・None のとき使う。field_wave=True で、
-    /// 単色の field・wavelength の掃引の実像高（と条件で定める視野）の視野を解析の波長の主光線で解く（OpticStudio と同じ）
+    /// RMS: spot radius (spot, spot_x, spot_y [lens units]), wavefront error wfe [waves], and the Strehl ratio approximation
+    /// strehl = exp(−(2π wfe)²). The abscissa vs is "field" (x is the normalized field along axis), "focus" (x is the image surface shift),
+    /// "wavelength" (x is the wavelength [µm], monochromatic) or None (one point at field). reference is "centroid" or "chief",
+    /// rings the number of rings of the Gaussian quadrature of the pupil. field is used when vs is focus, wavelength or None. With field_wave=True,
+    /// the fields of real image height (and fields given by conditions) of monochromatic field and wavelength sweeps are solved with the chief ray at the analysis wavelength (as in OpticStudio)
     #[pyo3(signature = (field=None, vs=None, x=None, wave=None, axis="y", reference="centroid", rings=6, threads=None, field_wave=false))]
     #[allow(clippy::too_many_arguments)]
     fn rms<'py>(
@@ -2620,12 +2620,12 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 回折 PSF: 瞳関数（MTF と同じ）の DFT。強度 i は (y, x) の配列で、収差のない同じ瞳の多色 PSF の中心を
-    /// 1 とする（peak はストレール比の目安）。x・y は主波長の主光線の像点 center からの、主光線に垂直な面の座標
-    /// [レンズ単位]（OpticStudio の FFT PSF と同じ。向きは axes = [e1, e2]、像空間の単位ベクトル）。
-    /// pupil は瞳の格子の一辺（省略で自動: 隣り合う標本の位相差が π/2 以下）、image は像の格子の一辺、delta は像の格子の
-    /// 間隔（省略で 1 / (2 × 遮断周波数)）。pupil（使った値）・phase_step（瞳の隣り合う標本の位相差の最大 [rad]）・
-    /// enclosed（像の格子に入った光量の割合）・warnings（標本不足などの注意）も返す
+    /// Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
+    /// of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates on the plane perpendicular to the chief ray, from the image point center
+    /// of the chief ray at the primary wavelength [lens units] (as OpticStudio's FFT PSF; directions axes = [e1, e2], unit vectors in image space).
+    /// pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, delta the spacing
+    /// of the image grid (1 / (2 × cutoff frequency) if omitted). Also returns pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
+    /// enclosed (fraction of the light inside the image grid) and warnings (notes such as undersampling)
     #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn psf<'py>(
@@ -2664,8 +2664,8 @@ impl PySystem {
         Ok(d)
     }
 
-    /// 幾何 MTF: 光線の位置の分布から。n は瞳の求積の点の数の目安、diff_limit なら回折限界の MTF をかける。
-    /// 返す dict は mtf と同じ形
+    /// Geometric MTF: from the distribution of ray positions. n is a guide for the number of pupil quadrature points; diff_limit applies the diffraction-limited MTF.
+    /// The returned dict has the same form as mtf
     #[pyo3(signature = (field, freqs, wave=None, n=128, diff_limit=false, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn geometric_mtf<'py>(
@@ -2688,8 +2688,8 @@ impl PySystem {
         mtf_dict(py, &m)
     }
 
-    /// Huygens PSF: 射出瞳の参照球の各点からの 2 次波を像面の上で足す（傾いた像面・収差の大きい系向け）。
-    /// 返す dict は psf と同じ形で、x・y は中心 center からの像面の局所座標の差（axes は x̂・ŷ）
+    /// Huygens PSF: sums the secondary waves from each point of the reference sphere of the exit pupil on the image surface (for tilted image surfaces and strongly aberrated systems).
+    /// The returned dict has the same form as psf; x and y are local image surface coordinates relative to center (axes are x̂, ŷ)
     #[pyo3(signature = (field, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_psf<'py>(
@@ -2728,7 +2728,7 @@ impl PySystem {
         Ok(d)
     }
 
-    /// Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）。返す dict は mtf と同じ形
+    /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf
     #[pyo3(signature = (field, freqs, wave=None, pupil=None, image=128, delta=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn huygens_mtf<'py>(
@@ -2757,9 +2757,9 @@ impl PySystem {
         mtf_dict(py, &m)
     }
 
-    /// pickle: 系を系ファイルの JSON のバイト列にし、膜の実測表・モデルのファイル名と一緒に渡す。
-    /// 読み直した側では膜ファイルと実測表を同じパスから読み直す（同じ計算機の別プロセス向け）。パラメータ変更・ガラス・
-    /// 照準・ピックアップを含めて、往復した系の追跡は元の系とビット一致する
+    /// pickle: turns the system into the JSON bytes of a system file and passes them with the file names of the coating tables and models.
+    /// The receiving side reads the coating file and tables again from the same paths (for another process on the same machine). With parameter changes, glasses,
+    /// aiming and pickups, the round-tripped system traces bit for bit the same as the original
     fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Reduced<'py>> {
         let s = self.sys();
         let b = lensbench_project::sysfile::to_string(&s, &self.coat_files).map_err(err)?;
@@ -2779,12 +2779,12 @@ impl PySystem {
     }
 }
 
-/// 多数の系を 1 回の呼び出しでまとめて追跡する。返すのは系ごとの dict の list で、
-/// それぞれ `systems[i].trace(field, px, py, ...)` と同じビット（スレッド数にもよらない）。
+/// Trace many systems together in one call. Returns a list of dicts, one per system,
+/// each bit for bit the same as `systems[i].trace(field, px, py, ...)` (for any number of threads).
 ///
-/// 引数は System.trace と同じで、全部の系に同じものを使う（grad のパラメータ名も系ごとに解く）。
-/// 系の単位と光線の単位の両方で並列にするので、系ごとの光線が少なくてもコアを使い切る。
-/// threads は全体のスレッド数（1 で逐次）
+/// The arguments are as in System.trace, the same for all systems (grad parameter names are resolved per system).
+/// Parallel over both systems and rays, so all cores are used even with few rays per system.
+/// threads is the total number of threads (1 for sequential)
 #[pyfunction]
 #[pyo3(signature = (systems, field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false))]
 #[allow(clippy::too_many_arguments)]
@@ -2850,10 +2850,10 @@ fn trace_many<'py>(
     Ok(res)
 }
 
-/// `__reduce__` の返す値: (作り直す関数, (系のバイト列, 膜のファイル))
+/// The value returned by `__reduce__`: (function to rebuild, (system bytes, coating files))
 type Reduced<'py> = (Bound<'py, PyAny>, (Bound<'py, PyBytes>, Vec<PathBuf>));
 
-/// pickle から系を作り直す（[`PySystem::__reduce__`] の対）
+/// Rebuild a system from a pickle (the pair of [`PySystem::__reduce__`])
 #[pyfunction]
 fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem> {
     let txt =
@@ -2864,8 +2864,8 @@ fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem
     Ok(PySystem::new(sys, coatings, Default::default()))
 }
 
-/// Python API の版 (major, minor)。互換を壊す変更で major、足すだけの変更で minor を上げる
-/// （docs/python.md の「版と互換」）。変えたら docs/python.md の変更履歴に書く
+/// Python API version (major, minor). major goes up with changes that break compatibility, minor with additions
+/// ("Versions and compatibility" in docs/python.md). Write changes in the change history of docs/python.md
 pub const API_VERSION: (u32, u32) = (2, 0);
 
 // 大きな配列を追跡ごとに確保し直しても OS からページを取り直さないように。別の拡張モジュールに
@@ -2874,16 +2874,16 @@ pub const API_VERSION: (u32, u32) = (2, 0);
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-/// lensbench: 順次光線追跡（Python バインディング）
+/// lensbench: sequential ray tracing (Python bindings)
 #[cfg(feature = "module")]
 #[pymodule]
 fn lensbench(m: &Bound<'_, PyModule>) -> PyResult<()> {
     init_module(m)
 }
 
-/// モジュールに関数・クラスを足す。別の拡張モジュールに組み込むときは、その側の `#[pymodule]` でこれを呼んでから
-/// 拡張の表の既定（`lensbench_core::ext::update_default`、`lensbench_engine::Extensions::install`）へ足す
-/// （先に登録すると、同梱のプラグインと同じ名前は同梱のものに戻る）
+/// Add the functions and classes to the module. To build it into another extension module, call this from its `#[pymodule]` and then
+/// add to the defaults of the extension table (`lensbench_core::ext::update_default`, `lensbench_engine::Extensions::install`)
+/// (registering first would turn names shared with the bundled plugins back to the bundled ones)
 pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // threads= を省いた計算の既定（lensbench run --threads が渡す）
     lensbench_core::init_from_env();

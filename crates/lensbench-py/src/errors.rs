@@ -7,19 +7,29 @@ pyo3::create_exception!(
     lensbench,
     Error,
     PyValueError,
-    "lensbench の誤りの基底（ValueError の子なので except ValueError でも拾える）"
+    "Base of lensbench errors (a child of ValueError, so except ValueError also catches it)"
 );
-pyo3::create_exception!(lensbench, InvalidError, Error, "値や構成が不正");
+pyo3::create_exception!(
+    lensbench,
+    InvalidError,
+    Error,
+    "Invalid value or configuration"
+);
 pyo3::create_exception!(
     lensbench,
     UnsupportedError,
     Error,
-    "対応していない機能を含む"
+    "Uses an unsupported feature"
 );
-pyo3::create_exception!(lensbench, ReadError, Error, "ファイルの読込の誤り");
-pyo3::create_exception!(lensbench, CancelledError, Error, "計算を途中でやめた");
+pyo3::create_exception!(lensbench, ReadError, Error, "Error reading a file");
+pyo3::create_exception!(
+    lensbench,
+    CancelledError,
+    Error,
+    "The calculation was cancelled"
+);
 
-/// 誤りの元（core の誤りは種類ごとの例外に、文字列などは [`Error`] に）
+/// Where an error comes from (core errors become exceptions per kind, strings and the like [`Error`])
 pub enum ErrSrc {
     Core(lensbench_core::Error),
     Text(String),
@@ -61,7 +71,7 @@ impl From<numpy::ndarray::ShapeError> for ErrSrc {
     }
 }
 
-/// 誤りを lensbench の例外に（core の誤りは種類ごとのクラス、ほかは基底の [`Error`]。どれも ValueError の子）
+/// An error into a lensbench exception (core errors into classes per kind, others into the base [`Error`]; all are children of ValueError)
 pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
     match e.into() {
         ErrSrc::Core(e) => {
@@ -88,22 +98,22 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// Python の組み込みの例外を、英語の文を表示の言語に訳して作る（XCT-20）
+/// Make a Python built-in exception, translating the English message into the display language (XCT-20)
 pub fn value_err(m: impl AsRef<str>) -> PyErr {
     PyValueError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
-/// [`value_err`] の IndexError
+/// IndexError of [`value_err`]
 pub fn index_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyIndexError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
-/// [`value_err`] の TypeError
+/// TypeError of [`value_err`]
 pub fn type_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyTypeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
-/// [`value_err`] の RuntimeError
+/// RuntimeError of [`value_err`]
 pub fn runtime_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }

@@ -162,12 +162,12 @@ def gen_python() -> str:
     def first(node: ast.AST) -> str:
         """説明の 1 文目（表に入れるので | と改行を除く）"""
         d = ast.get_docstring(node, clean=True) or ""  # type: ignore[arg-type]
-        s = d.strip().split("\n\n")[0].replace("\n", "")
+        s = d.strip().split("\n\n")[0].replace("\n", " ")
         depth = 0
-        for i, ch in enumerate(s):  # 括弧の外の最初の「。」まで
+        for i, ch in enumerate(s):  # 括弧の外の最初の「。」か「. 」まで（説明は英語が元、XCT-20）
             depth += ch in "（("
             depth -= ch in "）)"
-            if ch == "。" and depth <= 0:
+            if depth <= 0 and (ch == "。" or (ch == "." and s[i + 1 : i + 2] == " ")):
                 s = s[: i + 1]
                 break
         if len(s) > 90:

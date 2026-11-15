@@ -27,22 +27,22 @@ use pyo3::types::{PyBool, PyDict, PyList, PyString};
 
 use crate::{err, PySystem};
 
-/// 組み込みのプラグインを登録する（モジュールの読込時）
+/// Register the built-in plugins (when the module is loaded)
 fn register_builtin(reg: &mut Registry) {
     lensbench_analysis::register(reg);
 }
 
-/// 今の拡張の表のプラグイン（写し。中身は Arc なので軽い）
+/// The plugins of the current extension table (a copy; the contents are Arc, so it is light)
 fn read_registry() -> Registry {
     lensbench_core::ext::current().plugins().clone()
 }
 
-/// プロセスの既定の拡張の表のプラグインを f で変える（置き直す前に始まった計算は前の表のまま）
+/// Change the plugins of the process's default extension table with f (calculations started before the replacement keep the previous table)
 fn write_registry<R>(f: impl FnOnce(&mut Registry) -> R) -> R {
     lensbench_core::ext::update_default(|e| f(e.plugins_mut()))
 }
 
-/// Python の値 → 設定の値
+/// Python value → setting value
 fn to_value(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Value> {
     if v.is_instance_of::<PyBool>() {
         return Ok(Value::Bool(v.extract()?));
@@ -100,7 +100,7 @@ fn shaped<T: numpy::Element + Copy>(a: &Bound<'_, PyAny>) -> PyResult<(Vec<usize
     Ok((a.shape().to_vec(), a.iter().copied().collect()))
 }
 
-/// Python の配列 → 配列（bool・complex128・float64）
+/// Python array → array (bool, complex128, float64)
 fn to_array(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Array> {
     let np = v.py().import("numpy")?;
     let a = np.call_method1("asarray", (v,))?;
@@ -156,7 +156,7 @@ fn array_to_py<'py>(py: Python<'py>, a: &Array) -> PyResult<Bound<'py, PyAny>> {
     })
 }
 
-/// 名前つきの配列を dict に（numpy の配列）
+/// Named arrays into a dict (numpy arrays)
 pub fn arrays_to_py<'py>(py: Python<'py>, a: &Arrays) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
     for (k, v) in a {
@@ -211,7 +211,7 @@ fn spec_to_py<'py>(py: Python<'py>, p: &dyn Plugin) -> PyResult<Bound<'py, PyDic
     Ok(d)
 }
 
-/// 登録されたプラグインの一覧 → [(名前, 種類), ...]
+/// The registered plugins → [(name, kind), ...]
 #[pyfunction]
 fn plugins() -> Vec<(String, &'static str)> {
     read_registry()
@@ -221,14 +221,14 @@ fn plugins() -> Vec<(String, &'static str)> {
         .collect()
 }
 
-/// プラグインの説明 → {"name", "kind", "doc", "config"（設定の項目の dict の並び）, "inputs", "outputs"（出力の名前・型・形・単位の dict の並び）}
+/// A plugin's description → {"name", "kind", "doc", "config" (list of dicts of setting items), "inputs", "outputs" (list of dicts of output name, dtype, shape and unit)}
 #[pyfunction]
 fn plugin_spec<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyDict>> {
     let p = read_registry().get(name).map_err(err)?;
     spec_to_py(py, p.as_ref())
 }
 
-/// Python の関数のプラグイン（試作用）。呼び出しのたびに GIL を取る
+/// A plugin made of a Python function (for prototypes). Takes the GIL on each call
 struct PyFuncPlugin {
     name: String,
     kind: Kind,
@@ -295,9 +295,9 @@ impl Instance for PyFuncInstance {
     }
 }
 
-/// Python の関数をプラグインとして登録する（同じ名前は差し替える）。
-/// `func(config: dict, inputs: dict[str, ndarray]) -> dict[str, array]`。配列は呼び出しごとにまとめて渡す。
-/// 系を渡して呼ぶと `func(config, inputs, system)`。`needs_system=True` なら系の膜も読んでから渡す
+/// Register a Python function as a plugin (replaces one with the same name).
+/// `func(config: dict, inputs: dict[str, ndarray]) -> dict[str, array]`. Arrays are passed together per call.
+/// When called with a system, `func(config, inputs, system)`. With `needs_system=True` the system's coatings are read before passing it
 #[pyfunction]
 #[pyo3(signature = (name, func, kind="analysis", needs_system=false))]
 fn register_plugin(
@@ -326,13 +326,13 @@ fn register_plugin(
     Ok(())
 }
 
-/// 登録を外す（あれば True）
+/// Remove a registration (True if there was one)
 #[pyfunction]
 fn unregister_plugin(name: &str) -> bool {
     write_registry(|r| r.unregister(name))
 }
 
-/// 設定の決まったプラグイン。`Plugin(name, **config)`。`run(**inputs)` → dict、
+/// A plugin with fixed settings. `Plugin(name, **config)`. `run(**inputs)` → dict,
 /// `run_many([inputs, ...], threads=None)` → [dict, ...]
 #[pyclass(module = "lensbench", name = "Plugin", frozen)]
 pub struct PyPlugin {
@@ -340,7 +340,7 @@ pub struct PyPlugin {
     kind: Kind,
     needs_system: bool,
     config: Config,
-    /// 設定を当てたプラグイン
+    /// A plugin with its settings applied
     pub inst: Arc<dyn Instance>,
 }
 
@@ -371,14 +371,14 @@ impl PyPlugin {
         self.kind.as_str()
     }
 
-    /// 設定（dict）
+    /// The settings (dict)
     #[getter]
     fn config<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         config_to_py(py, &self.config)
     }
 
-    /// 1 回呼ぶ → 名前つきの配列の dict（Rust のプラグインは GIL を外して計算する）。`system` は系を追跡する
-    /// プラグインに渡す `lb.System`
+    /// Call once → a dict of named arrays (Rust plugins compute without the GIL). `system` is the `lb.System` passed to plugins
+    /// that trace the system
     #[pyo3(signature = (system=None, **inputs))]
     fn run<'py>(
         &self,
@@ -394,8 +394,8 @@ impl PyPlugin {
         arrays_to_py(py, &r.map_err(err)?)
     }
 
-    /// 多数の入力（dict の並び）をまとめて呼ぶ → [dict, ...]。入力ごとに `threads` 本で並列（None は既定）、
-    /// 結果は入力の順でスレッド数によらない。どれかが誤りなら最初の誤りを出す
+    /// Call with many inputs (a list of dicts) together → [dict, ...]. Parallel over inputs with `threads` threads (None for the default);
+    /// results are in input order and independent of the number of threads. If any fails, the first error is raised
     #[pyo3(signature = (inputs, system=None, threads=None))]
     fn run_many<'py>(
         &self,
@@ -433,7 +433,7 @@ impl PyPlugin {
 }
 
 impl PyPlugin {
-    /// 系（あれば膜も）の文脈を作り、GIL を外して f を呼ぶ
+    /// Make the context of a system (with coatings if any) and call f without the GIL
     fn with_context<R: Send>(
         &self,
         py: Python<'_>,
@@ -462,14 +462,14 @@ impl PyPlugin {
     }
 }
 
-/// serde の JSON → Python
+/// serde JSON → Python
 fn json_to_py<'py>(py: Python<'py>, v: &serde_json::Value) -> PyResult<Bound<'py, PyAny>> {
     crate::pyjson::to_py(py, v)
 }
 
-/// 照合: 記述（*.verify.json）かそれを含むフォルダ（1 つか並び）を、登録のプラグイン（同梱・`register_plugin` で
-/// 足した分）で回し、照合ごとの結果の dict の並びを返す（`lensbench verify --json` の reports と同じ形）。
-/// ci=True で ci: false の照合を飛ばす
+/// Verification: runs descriptions (*.verify.json) or folders containing them (one or a list) with the registered plugins (bundled ones and those added with
+/// `register_plugin`) and returns a list of result dicts per verification (the same form as the reports of `lensbench verify --json`).
+/// ci=True skips verifications with ci: false
 #[pyfunction]
 #[pyo3(signature = (paths, ci=false))]
 fn verify<'py>(
@@ -490,8 +490,8 @@ fn verify<'py>(
     json_to_py(py, &serde_json::Value::Array(v))
 }
 
-/// 照合の比べ方だけを使う: 出力 actual と基準 expected（名前 → 配列）を、checks（名前 → {abs, rel, exact,
-/// note}、記述の checks と同じ）で比べ、量ごとの結果の dict の並びを返す。基準の名前には全部 checks が要る
+/// Use only the comparison of verification: compares the outputs actual with the references expected (name → array) by checks (name → {abs, rel, exact,
+/// note}, the same as the checks of a description) and returns a list of result dicts per quantity. Every reference name needs checks
 #[pyfunction]
 fn verify_compare<'py>(
     py: Python<'py>,

@@ -17,23 +17,23 @@ pub use crate::{
     err, field_sel, obj_out, obj_spec, parse_changes, wave_index, FieldArg, ObjArg, PySystem,
 };
 
-/// 組の系で Rust のまま回す模擬（GIL を持たない）
+/// A simulation run in Rust on the systems of sets (without the GIL)
 pub trait NativeTask: Send + Sync {
-    /// 組の系 `sample` で回し、組の結果の JSON（文字列）を返す。`batch_seed` は組の種
+    /// Run on the system `sample` of a set and return the set's result as JSON (a string). `batch_seed` is the set's seed
     fn run_json(&self, sample: &System, batch_seed: u64) -> lensbench_core::Result<String>;
 }
 
-/// Python の値から [`NativeTask`] を取り出す関数（その値でなければ None）
+/// A function that takes a [`NativeTask`] out of a Python value (None if the value is not one)
 pub type NativeTaskFrom = fn(&Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>>;
 
 static NATIVE: RwLock<Vec<NativeTaskFrom>> = RwLock::new(Vec::new());
 
-/// [`NativeTask`] を取り出す関数を足す
+/// Add a function that takes out a [`NativeTask`]
 pub fn register_native_task(f: NativeTaskFrom) {
     NATIVE.write_ok().push(f);
 }
 
-/// 登録した関数で値から [`NativeTask`] を取り出す（どれも合わなければ None）
+/// Take a [`NativeTask`] out of a value with the registered functions (None if none match)
 pub(crate) fn native_task(v: &Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>> {
     let fs = NATIVE.read_ok().clone();
     fs.iter().find_map(|f| f(v))

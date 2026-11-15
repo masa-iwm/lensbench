@@ -39,12 +39,12 @@ fn reference_kind(r: &str) -> PyResult<RmsRef> {
     }
 }
 
-/// ズーム軌跡: 状態（systems、ズーム位置ごとの系。同じ形の系）ごとに vars（"G2.shift" か
-/// ("G2.shift", 下限, 上限)）を解く。評価関数は像の RMS（merit: "spot"・"wavefront"、全視野・多色）と、
-/// efl か pmag の目標（状態ごとの値の list、None は目標なし）。steps は隣り合う状態の間にとる点の数（継続法）。
-/// 返り値の dict: quantity（"efl"・"pmag"）・names（変数の名前）・path（点の dict の list: pos・state（状態の番号、
-/// 間の点は None）・target・value（近軸量）・x・merit（像だけの評価関数）・stop・iterations）・systems（状態ごとの
-/// 解いた系）・warnings
+/// Zoom trajectory: solves vars ("G2.shift" or ("G2.shift", lower, upper)) for each state (systems: a system per zoom position, all of the same form).
+/// The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
+/// the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
+/// Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
+/// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop, iterations), systems (solved system
+/// per state), warnings
 #[pyfunction]
 #[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None))]
 #[allow(clippy::too_many_arguments)]
@@ -125,7 +125,7 @@ fn zoom<'py>(
     Ok(d)
 }
 
-/// JSON の文字列か dict を文字列に
+/// A JSON string or dict into a string
 fn json_text(v: &Bound<'_, PyAny>, what: &str) -> PyResult<String> {
     if let Ok(t) = v.extract::<String>() {
         Ok(t)
@@ -136,12 +136,12 @@ fn json_text(v: &Bound<'_, PyAny>, what: &str) -> PyResult<String> {
     }
 }
 
-/// カタログレンズの差し替え探索: project（プロジェクトファイルのパス）の玉のブロックを spec（dict か JSON の
-/// 文字列。CLI の swap --spec と同じ: slots・vars・merit・iters・efl・state など）の候補で差し替えた組を並列に回し、
-/// 組ごとに変数を最適化する。返り値は組の結果の dict の list（評価関数の小さい順、top > 0 なら先頭の top 個）。
-/// 各 dict は CLI の swap --json の results と同じ（i・lenses・merit0・merit・image_merit・vars・efl・stop・
-/// iterations・total_track、評価できなければ error）。out（JSONL）を与えると組ごとに逐次書き出し、resume なら
-/// 同じ探索のファイルの続きから回す（一括実行の形）
+/// Catalog lens swap search: runs in parallel the sets with the lens blocks of project (path of a project file) swapped for the candidates of spec (a dict or JSON
+/// string; the same as the CLI's swap --spec: slots, vars, merit, iters, efl, state and so on) and
+/// optimizes the variables of each set. Returns a list of result dicts per set (smallest merit first; the first top if top > 0).
+/// Each dict is the same as the results of the CLI's swap --json (i, lenses, merit0, merit, image_merit, vars, efl, stop,
+/// iterations, total_track; error if it can't be evaluated). With out (JSONL) each set is written as it finishes; with resume
+/// it continues from the file of the same search (the batch form)
 #[pyfunction]
 #[pyo3(signature = (project, spec, glass_dirs=None, lens_catalogs=None, top=0, threads=None, out=None, resume=true))]
 #[allow(clippy::too_many_arguments)]

@@ -10,12 +10,12 @@ use pyo3::types::PyDict;
 
 use crate::{err, field_sel, wave_index, FieldArg, PySystem};
 
-/// 瞳上の干渉縞（OpticStudio の Interferogram に当たる）: 光束 1（beam1）と光束 2（beam2、None なら参照球）の
-/// 波面（それぞれの主光線・参照球に対する OPD [波]）を同じ正規化瞳座標で引き、
-/// Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2（傾きは瞳の直径あたりの縞の数）、強度 (1 + cos 2πΔ)/2。多重構成なら `System.config(k)` の系を渡す。
-/// 格子は OpticStudio の Interferogram と同じ（p_i = (i − n/2 + 1)/(n/2 − 1)、瞳は入射瞳の正規化座標 = OS の
-/// Use Exit Pupil を外した設定）。返す dict: p（格子の正規化瞳座標）、delta・intensity（(n, n)、行 = py、外は NaN）、
-/// pv・rms（scale·(W1 − W2) の値 [波]、傾きを除く）
+/// Interferogram on the pupil (like OpticStudio's Interferogram): the wavefronts (OPD [waves] relative to each chief ray and reference sphere) of beam 1 (beam1) and beam 2 (beam2; the reference sphere if None)
+/// are subtracted at the same normalized pupil coordinates,
+/// Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2 (tilts in fringes per pupil diameter), intensity (1 + cos 2πΔ)/2. For a multi-configuration system pass the system of `System.config(k)`.
+/// The grid is the same as OpticStudio's Interferogram (p_i = (i − n/2 + 1)/(n/2 − 1); the pupil is normalized entrance pupil coordinates = OS with
+/// Use Exit Pupil off). Returned dict: p (normalized pupil coordinates of the grid), delta and intensity ((n, n), rows = py, NaN outside),
+/// pv and rms (of scale·(W1 − W2) [waves], without the tilts)
 #[pyfunction]
 #[pyo3(signature = (beam1, beam2=None, field=FieldArg::Index(1), wave=None, n=64, scale=1.0, xtilt=0.0, ytilt=0.0,
     threads=None))]
@@ -58,11 +58,11 @@ fn interferogram<'py>(
     Ok(d)
 }
 
-/// 像面上の干渉縞: 試料（sample）と参照（reference）の 2 本の経路の光線の格子（瞳 pupil²、一様に照らす）を像面の
-/// 画素（npx²、中心 center = (x, y)・一辺 width [mm]、省略で 2 つが届く範囲）へ補間し、場を足す。
-/// polarized なら偏光追跡の場（入射偏光 sample_input・reference_input、膜は試料の系の膜）で重ねる。
-/// 返す dict: x・y（画素の中心 [mm]）、intensity・i_sample・i_reference（(npx, npx)、行 = y）、opd [波]・
-/// visibility（両方届く画素だけ、ほかは NaN）、ok_sample・ok_reference、wavelength [µm]、fold（折り返しの割合）
+/// Interferogram on the image surface: interpolates the ray grids (pupil², uniformly illuminated) of the two paths, sample and reference, onto the
+/// pixels of the image surface (npx², center center = (x, y), side width [mm]; the range both reach if omitted) and adds the fields.
+/// With polarized, superposes the fields of polarization traces (input polarizations sample_input and reference_input; coatings from the sample system).
+/// Returned dict: x and y (pixel centers [mm]), intensity, i_sample and i_reference ((npx, npx), rows = y), opd [waves] and
+/// visibility (only pixels both reach, NaN elsewhere), ok_sample and ok_reference, wavelength [µm], fold (fraction folded back)
 #[pyfunction]
 #[pyo3(signature = (sample, reference, field=FieldArg::Index(1), wave=None, pupil=65, npx=256, center=None, width=None,
     sample_power=1.0, reference_power=1.0, delay=0.0, polarized=false, sample_input="x", reference_input="x",
@@ -142,7 +142,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// 2 次元の格子の値 → 形 (ny, nx) の配列（行優先の並びをそのまま使う）
+/// Values of a 2-D grid → an array of shape (ny, nx) (uses the row-major order as it is)
 pub(crate) fn grid_array(g: lensbench_core::grid::Grid2) -> numpy::ndarray::Array2<f64> {
     let (ny, nx) = (g.ny(), g.nx());
     let (_, _, data) = g.into_parts();
