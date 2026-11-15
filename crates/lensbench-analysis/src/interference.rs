@@ -6,14 +6,14 @@
 //!   格子は OpticStudio の Interferogram と同じ [`pupil_grid`]。瞳は正規化した入射瞳の座標で、OpticStudio の
 //!   「Use Exit Pupil」を外したときと同じ（既定の射出瞳の形を使う設定では、軸外で射出瞳の形に合わせて点を
 //!   取り直すので、縞の位置が少し違う）。A0 系の 16 条件で強度の差は 2e-9 以下（OpticStudio の結果と照合）。
-//! - 像面上（[`detector`]）: 2 本の経路の光線の格子を像面（検出面）の画素へ補間し（[`crate::raygrid::rasterize`]）、
+//! - 像面上（[`detector`]）: 2 本の経路の光線の格子を像面（検出面）の画素へ補間し（[`lensbench_core::raygrid::rasterize`]）、
 //!   画素ごとに場を足して I = |A_s e^{ikL_s} + A_r e^{ikL_r}|² を出す。瞳は一様に照らす
 //!   （強度は瞳の正規化座標の面積の割合 / 検出面の面積）。偏光を指定すると Jones の場で重ねる。
 
-use crate::coating::{Coatings, C64};
-use crate::raygrid::{self as rg, InputPol, RayGrid};
-use crate::system::{FieldSel, System};
-use crate::{analysis, invalid, Result};
+use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
+use lensbench_core::system::{FieldSel, System};
+use lensbench_core::{analysis, invalid, Result};
 
 // ---------------------------------------------------------------------------------------------------------------
 // 瞳上
@@ -45,9 +45,9 @@ impl Default for PupilOpts {
 #[derive(Debug, Clone)]
 pub struct Interferogram {
     /// Δ [波]（行優先、行 = y。座標は正規化瞳で x・y 共通。どちらかの光束が通らない点は NaN）
-    pub delta: crate::grid::Grid2,
+    pub delta: lensbench_core::grid::Grid2,
     /// 縞の強度 (1 + cos 2πΔ) / 2（座標は delta と同じ、外は NaN）
-    pub intensity: crate::grid::Grid2,
+    pub intensity: lensbench_core::grid::Grid2,
     /// scale·(W1 − W2) の P-V・RMS [波]（傾きの縞は含めない。OpticStudio の Peak to Valley と同じ）
     pub pv: f64,
     pub rms: f64,
@@ -100,8 +100,8 @@ pub fn interferogram(
     }
     let (pv, rms) = pv_rms(&v);
     Ok(Interferogram {
-        delta: crate::grid::Grid2::from_rows(p.clone(), p.clone(), delta),
-        intensity: crate::grid::Grid2::from_rows(p.clone(), p, inten),
+        delta: lensbench_core::grid::Grid2::from_rows(p.clone(), p.clone(), delta),
+        intensity: lensbench_core::grid::Grid2::from_rows(p.clone(), p, inten),
         pv,
         rms,
     })
@@ -253,7 +253,8 @@ fn trace_grid(
         !s.ignore
             && matches!(
                 s.typ,
-                crate::surface::SurfType::Paraxial | crate::surface::SurfType::User
+                lensbench_core::surface::SurfType::Paraxial
+                    | lensbench_core::surface::SurfType::User
             )
     });
     let c_lens = if phase {
@@ -468,8 +469,8 @@ mod tests {
             one.join(" "),
             50.0 + dz
         );
-        let raw = crate::zmx::parse_text(&txt).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = lensbench_core::zmx::parse_text(&txt).unwrap();
+        lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]
@@ -591,8 +592,8 @@ mod tests {
              SURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
             100.0 + dz
         );
-        let raw = crate::zmx::parse_text(&txt).unwrap();
-        crate::zmx::build(&raw, &Default::default(), &[], None).unwrap()
+        let raw = lensbench_core::zmx::parse_text(&txt).unwrap();
+        lensbench_core::zmx::build(&raw, &Default::default(), &[], None).unwrap()
     }
 
     #[test]

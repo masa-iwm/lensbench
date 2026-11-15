@@ -4,7 +4,7 @@
 //! 展開した系（[`ghost_system`]）を作り、追跡・偏光・解析は普通の系と同じに使う。
 //!
 //! - 反射する面は鏡にし、[`Surface::reflect`] に反対側の媒質を持たせる。偏光追跡の係数は、入射側と反対側の境界
-//!   （膜込み）の反射 r（[`crate::coating::Coatings::prepare`]）。
+//!   （膜込み）の反射 r（[`lensbench_core::coating::Coatings::prepare`]）。
 //! - 逆にたどる区間の面は元の面の写し（曲率などの形はそのまま、後ろの媒質は元の面の前の媒質）。面の位置・向きは
 //!   元の系と同じ（大域の座標で一致する）: 共軸の区間は厚さの符号を変えるだけ（OpticStudio の鏡のあとの約束）、
 //!   傾き・偏心・座標ブレークのある区間は、元の面の座標系へ移す座標ブレークを挟む。
@@ -12,11 +12,11 @@
 //!   （ゴーストの系の近軸量で入射光束が変わらないように）。ピックアップは解決済みの値のまま外す。
 //! - 元の面に戻せる対応 [`GhostSystem::origin`] を持つ（挟んだ座標ブレークは None）。
 
-use crate::coating;
-use crate::math::*;
-use crate::surface::{After, Reflect, SurfType, Surface, Tilt};
-use crate::system::{apply_cb, step_frame, ApertureKind, System};
-use crate::{invalid, Result};
+use lensbench_core::coating;
+use lensbench_core::math::*;
+use lensbench_core::surface::{After, Reflect, SurfType, Surface, Tilt};
+use lensbench_core::system::{apply_cb, step_frame, ApertureKind, System};
+use lensbench_core::{invalid, Result};
 
 /// 展開したゴーストの系
 #[derive(Debug, Clone)]
@@ -92,7 +92,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     if let Some(j) =
         (1..sys.surfaces.len()).find(|&j| !sys.surfaces[j].ignore && sys.surfaces[j].grin.is_some())
     {
-        crate::notimpl!("ghost: a system with a GRIN medium (surface {j})");
+        lensbench_core::notimpl!("ghost: a system with a GRIN medium (surface {j})");
     }
     let img = sys.image();
     if b == img {
@@ -347,10 +347,10 @@ pub fn survey(
     sys: &System,
     first: usize,
     last: usize,
-    coat: &crate::coating::Coatings,
+    coat: &lensbench_core::coating::Coatings,
 ) -> Result<Vec<GhostInfo>> {
-    use crate::coating::C64;
-    use crate::system::FieldSel;
+    use lensbench_core::coating::C64;
+    use lensbench_core::system::FieldSel;
     let pols = [
         [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],
         [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
@@ -376,7 +376,7 @@ pub fn survey(
     let main = power(sys);
     // 組どうしは独立なので並列に（順と、最初の誤りは逐次と同じ）
     let ps = pairs(sys, first, last);
-    crate::par::map(&ps, |&(a, b)| {
+    lensbench_core::par::map(&ps, |&(a, b)| {
         let g = ghost_system(sys, a, b)?;
         let intensity = match (&main, power(&g.sys)) {
             (Ok(m), Ok(p)) => Ok(p / m),

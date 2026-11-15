@@ -25,9 +25,9 @@ mod userterm;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
 
+use lensbench_analysis::polgrid::{self, PolGrid};
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{Coatings, C64};
-use lensbench_core::polgrid::{self, PolGrid};
 use lensbench_core::solve::{RayProblem, Residual, Unknown};
 use lensbench_core::system::{
     Aiming, Field, FieldCond, FieldSel, FieldType, Launch, ObjSpec, Trace,
@@ -1905,7 +1905,7 @@ impl PySystem {
     fn ghost(&self, a: SurfArg, b: SurfArg) -> PyResult<PySystem> {
         let s = self.sys();
         let (a, b) = (surf_of(&s, a)?, surf_of(&s, b)?);
-        let g = lensbench_core::ghost::ghost_system(&s, a, b).map_err(err)?;
+        let g = lensbench_analysis::ghost::ghost_system(&s, a, b).map_err(err)?;
         Ok(PySystem::new(
             g.sys,
             self.coat_files.clone(),
@@ -1917,7 +1917,7 @@ impl PySystem {
     fn ghost_origin(&self, a: SurfArg, b: SurfArg) -> PyResult<GhostOrigin> {
         let s = self.sys();
         let (a, b) = (surf_of(&s, a)?, surf_of(&s, b)?);
-        let g = lensbench_core::ghost::ghost_system(&s, a, b).map_err(err)?;
+        let g = lensbench_analysis::ghost::ghost_system(&s, a, b).map_err(err)?;
         Ok((g.origin, g.at))
     }
 
@@ -1926,7 +1926,7 @@ impl PySystem {
     fn ghost_pairs(&self, first: usize, last: Option<usize>) -> Vec<(usize, usize)> {
         let s = self.sys();
         let last = last.unwrap_or(s.image());
-        lensbench_core::ghost::pairs(&s, first, last)
+        lensbench_analysis::ghost::pairs(&s, first, last)
     }
 
     /// The field type: "angle", "object_height", "paraxial_image_height", "real_image_height",

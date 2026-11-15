@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use lensbench_core::param::{Kind, Param, SolveKind};
 use lensbench_core::zmx::{self, LoadOptions};
-use lensbench_core::zmx_write;
+use lensbench_formats::zmx_write;
 
 const HEAD: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 3 1 0 0 0\n\

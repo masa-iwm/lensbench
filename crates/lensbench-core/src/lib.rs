@@ -1,4 +1,4 @@
-//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、.zmx の読み書き、ソルブ・ZPL、基本の解析（波面・PSF・POP・ゴースト）。
+//! lensbench のコア: 系（面・ガラス・膜）、順次光線追跡（偏光・GRIN・自由曲面）、.zmx の読み書き、ソルブ・ZPL、基本の解析（波面・PSF・POP）。.zmx の書き出しは lensbench-formats、ゴースト・干渉縞・偏光の格子は lensbench-analysis。
 //!
 //! 外部のレンズカタログ（ZMF など）の読込は [`catalog::LensCatalogSource`] を実装した
 //! 別クレートから差し込む。公開版にはその実装を含めない。
@@ -24,19 +24,16 @@ pub mod fermat;
 pub mod fiber;
 mod focus;
 pub mod freeform;
-pub mod ghost;
 pub mod glass;
 pub mod grid;
 pub mod grin;
 pub mod i18n;
-pub mod interference;
 mod interp2d;
 pub mod landing;
 pub mod mech;
 pub mod par;
 pub mod param;
 pub mod plugin;
-pub mod polgrid;
 pub mod pop;
 pub mod psf;
 pub mod raygrid;
@@ -55,7 +52,6 @@ pub mod usersurf;
 pub mod vfs;
 pub mod waves;
 pub mod zmx;
-pub mod zmx_write;
 pub mod zpl;
 pub mod zpl_solve;
 

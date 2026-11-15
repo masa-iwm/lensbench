@@ -3,7 +3,8 @@
 
 use lensbench_core::param::PickKind;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{zmx, zmx_write};
+use lensbench_core::zmx;
+use lensbench_formats::zmx_write;
 
 const HEAD: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 2 2 0 0 0\n\

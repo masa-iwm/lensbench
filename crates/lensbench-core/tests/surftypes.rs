@@ -10,8 +10,8 @@
 
 use crate::common::root;
 use lensbench_core::zmx::{self, LoadOptions};
-use lensbench_core::zmx_write;
 use lensbench_core::{analysis, FieldSel, System};
+use lensbench_formats::zmx_write;
 use serde_json::Value;
 
 fn load(name: &str) -> (System, Value) {

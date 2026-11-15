@@ -15,7 +15,7 @@
 //!   どちらもなければ追跡を止める
 //!
 //! 境界の鍵は `膜|前の媒質|後の媒質（鏡は MIRROR）`（[`media_keys`]）。屈折面での反射（ゴーストの経路、
-//! [`crate::ghost`]）は `膜|入射側の媒質|反対側の媒質|R` で、係数は境界の反射（[`Coatings::prepare`] の注記）。
+//! lensbench-analysis の ghost）は `膜|入射側の媒質|反対側の媒質|R` で、係数は境界の反射（[`Coatings::prepare`] の注記）。
 
 use std::collections::HashMap;
 use std::f64::consts::PI;

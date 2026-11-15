@@ -79,7 +79,7 @@ fn main() {
                 d.coat.clear();
             }
         }
-        lensbench_core::zmx_write::save(&out.join(format!("{name}.zmx")), &s).unwrap();
+        lensbench_formats::zmx_write::save(&out.join(format!("{name}.zmx")), &s).unwrap();
         println!("{name}: {} surfaces", s.surfaces.len());
     }
 }

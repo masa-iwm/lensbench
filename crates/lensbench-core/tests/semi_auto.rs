@@ -82,7 +82,7 @@ fn edit_semi_auto_and_zmx_roundtrip() {
     assert!(!s.surfaces[3].semi_auto);
     assert_eq!(s.surfaces[3].semi, 7.5);
     // 書き出すと固定は DIAM … 1、読み直しても固定
-    let txt = lensbench_core::zmx_write::write(&s).unwrap();
+    let txt = lensbench_formats::zmx_write::write(&s).unwrap();
     let r = zmx::build(
         &zmx::parse_text(&txt).unwrap(),
         &LoadOptions {
@@ -130,6 +130,6 @@ fn legacy_lensbench_files_keep_fixed_semi() {
     let a0 = root().join("tests/refs/A0/system.zmx");
     let raw = zmx::parse_text(&lensbench_core::glass::read_text(&a0).unwrap()).unwrap();
     assert!(!raw.legacy_lensbench());
-    let txt = lensbench_core::zmx_write::write(&load("A0", false)).unwrap();
+    let txt = lensbench_formats::zmx_write::write(&load("A0", false)).unwrap();
     assert!(!zmx::parse_text(&txt).unwrap().legacy_lensbench());
 }

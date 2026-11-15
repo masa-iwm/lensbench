@@ -116,7 +116,7 @@ fn opd_solve() {
     let s = build(&lens("  DISZ 30\n", "  DISZ 50\n  OPDZ 0.25 0.7\n")).unwrap();
     assert!((s.surfaces[4].t - 50.0).abs() > 1.0);
     assert!((opd_at(&s, 0.7) - 0.25).abs() < 1e-9, "{}", opd_at(&s, 0.7));
-    let w = lensbench_core::zmx_write::write(&s).unwrap();
+    let w = lensbench_formats::zmx_write::write(&s).unwrap();
     assert!(w.contains("  OPDZ 0.25 0.7"), "{w}");
     let r = build(&w).unwrap();
     assert!((r.surfaces[4].t - s.surfaces[4].t).abs() < 1e-9);
@@ -166,7 +166,7 @@ fn set_param_resolves_and_round_trips() {
     assert!((marg_at(&a, 3) - 2.0).abs() < 1e-12, "{}", marg_at(&a, 3));
     assert!(marg_at(&a, 5).abs() < 1e-12);
     assert_eq!(a.surfaces[3].t, 0.1 * a.surfaces[2].t);
-    let w = lensbench_core::zmx_write::write(&a).unwrap();
+    let w = lensbench_formats::zmx_write::write(&a).unwrap();
     assert_eq!(w.matches("MAZH").count(), 2);
     let r = build(&w).unwrap();
     for j in 0..a.surfaces.len() {
@@ -207,7 +207,7 @@ fn position_solve_keeps_the_length() {
     // 前の厚さを変えると追従する。書き出して読み戻しても同じ
     let a = s.with_params(&[(s.param("2.t").unwrap(), 25.0)]).unwrap();
     assert_eq!(a.surfaces[4].t, 13.0);
-    let w = lensbench_core::zmx_write::write(&a).unwrap();
+    let w = lensbench_formats::zmx_write::write(&a).unwrap();
     assert!(w.contains("  TOLE 2 40"), "{w}");
     let r = build(&w).unwrap();
     for j in 0..a.surfaces.len() {
@@ -244,6 +244,6 @@ fn position_solve_with_the_reference_after() {
     assert_eq!(s.surfaces[2].t, 33.0);
     let a = s.with_params(&[(s.param("3.t").unwrap(), 4.5)]).unwrap();
     assert_eq!(a.surfaces[2].t, 30.5);
-    let r = build(&lensbench_core::zmx_write::write(&a).unwrap()).unwrap();
+    let r = build(&lensbench_formats::zmx_write::write(&a).unwrap()).unwrap();
     assert_eq!(r.surfaces[2].t, 30.5);
 }

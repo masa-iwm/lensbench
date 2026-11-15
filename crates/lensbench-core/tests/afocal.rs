@@ -4,8 +4,9 @@
 use lensbench_core::analysis::{self, ZernKind};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::system::{AfocalUnit, FieldSel, System};
+use lensbench_core::zmx;
 use lensbench_core::Waves;
-use lensbench_core::{zmx, zmx_write};
+use lensbench_formats::zmx_write;
 
 /// ケプラー型の望遠鏡（物体は無限遠、視野 0・0.5°）。afocal で FTYP の 7 番目、img で像面までの距離
 fn telescope(lens: &str, afocal: bool, img: f64) -> System {

@@ -145,7 +145,7 @@ fn zmx_export_keeps_coat_tables() {
     let dir = std::env::temp_dir().join(format!("lb_coat_export_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let zp = dir.join("bp.zmx");
-    lensbench_core::zmx_write::save(&zp, &s).unwrap();
+    lensbench_formats::zmx_write::save(&zp, &s).unwrap();
     let dat = std::fs::read_to_string(dir.join("bp_coat.dat")).unwrap();
     assert!(dat.contains("TABLE BP532"));
     // OpticStudio は全部の角度で同じ波長の並びでないと表を 0 として読む（理想フィルタの表は角度ごとにエッジの
@@ -186,7 +186,7 @@ fn zmx_export_keeps_coat_tables() {
         assert!((a - b).abs() < 1e-12, "波長 {w}: {a} {b}");
     }
     // 表を使わない系は膜ファイルを書かない
-    assert!(lensbench_core::zmx_write::coating_dat(&r)
+    assert!(lensbench_formats::zmx_write::coating_dat(&r)
         .unwrap()
         .is_none());
     std::fs::remove_dir_all(&dir).ok();

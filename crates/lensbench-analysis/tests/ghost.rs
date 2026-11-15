@@ -1,7 +1,7 @@
 //! ゴーストの経路（2 回反射）の展開と、屈折面での反射の係数。
 
+use lensbench_analysis::ghost::{self, ghost_system};
 use lensbench_core::coating::{stack, Coatings, C64};
-use lensbench_core::ghost::{self, ghost_system};
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;

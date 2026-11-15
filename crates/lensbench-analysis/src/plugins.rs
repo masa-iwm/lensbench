@@ -28,10 +28,11 @@ use lensbench_core::grid::Grid2;
 use lensbench_core::Waves;
 use std::sync::Arc;
 
+use crate::ghost;
 use crate::huygens::{self, HuygensOpts};
+use crate::interference::{self, PupilOpts};
 use lensbench_core::analysis::{self, MtfMethod, ZernKind};
 use lensbench_core::coating::Coatings;
-use lensbench_core::interference::{self, PupilOpts};
 use lensbench_core::plugin::{
     check_wave, field_sel, Array, ArrayReader, Arrays, Config, ConfigReader, Context, Instance,
     Kind, OutputSpec, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
@@ -39,7 +40,7 @@ use lensbench_core::plugin::{
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
 use lensbench_core::psf::{self, PsfOpts};
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
-use lensbench_core::{ghost, invalid, FieldSel, Result, System};
+use lensbench_core::{invalid, FieldSel, Result, System};
 
 /// 同梱の解析を `reg` に登録する
 pub fn register(reg: &mut Registry) {

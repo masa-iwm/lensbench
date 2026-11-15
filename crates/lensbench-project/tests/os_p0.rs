@@ -2,7 +2,7 @@
 //! 別の玉に置き換えて展開し、パラメータを変えた後の光線を、展開した系（expanded.zmx）を OpticStudio で開いて
 //! 同じパラメータを変えた結果（os_rays.json）と比べる
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::zmx_write;
+use lensbench_formats::zmx_write;
 use lensbench_project::{expand_report, Env, Project};
 use std::path::PathBuf;
 

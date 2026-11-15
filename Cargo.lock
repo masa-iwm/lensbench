@@ -2736,6 +2736,7 @@ name = "lensbench-analysis"
 version = "0.4.0"
 dependencies = [
  "lensbench-core",
+ "lensbench-formats",
  "mimalloc",
  "ndarray",
  "ndarray-npy",
@@ -2772,6 +2773,7 @@ dependencies = [
  "lensbench-design",
  "lensbench-engine",
  "lensbench-export",
+ "lensbench-formats",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",
@@ -2790,6 +2792,7 @@ version = "0.4.0"
 dependencies = [
  "criterion",
  "encoding_rs",
+ "lensbench-formats",
  "mimalloc",
  "miniz_oxide 0.9.1",
  "ndarray",
@@ -2829,6 +2832,7 @@ dependencies = [
  "lensbench-core",
  "lensbench-design",
  "lensbench-export",
+ "lensbench-formats",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",
@@ -2848,6 +2852,13 @@ dependencies = [
  "ndarray-npy",
  "png 0.17.16",
  "serde_json",
+]
+
+[[package]]
+name = "lensbench-formats"
+version = "0.4.0"
+dependencies = [
+ "lensbench-core",
 ]
 
 [[package]]
@@ -2898,6 +2909,7 @@ dependencies = [
  "flate2",
  "jsonschema",
  "lensbench-core",
+ "lensbench-formats",
  "rayon",
  "schemars",
  "serde",
@@ -2912,6 +2924,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-core",
  "lensbench-design",
+ "lensbench-formats",
  "lensbench-optim",
  "lensbench-project",
  "lensbench-runs",

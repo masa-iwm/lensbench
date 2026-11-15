@@ -14,8 +14,9 @@ use web_time::Instant;
 
 use lensbench_core::coating::C64;
 use lensbench_core::system::Launch;
-use lensbench_core::{zmx_write, System};
+use lensbench_core::System;
 use lensbench_export::d2::Plane;
+use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
 use crate::load::{load_file, SysSpec as LoadSpec};

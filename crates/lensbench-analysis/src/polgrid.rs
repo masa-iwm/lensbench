@@ -1,6 +1,6 @@
 //! 偏光追跡を粗い瞳格子で行い、全光線へ補間して Jones 行列を配る。
 //!
-//! 伝搬の位相 exp(−ik·OPL) を除いた Jones 行列（[`crate::system::System::trace_pol_launch`] の phase = false）は
+//! 伝搬の位相 exp(−ik·OPL) を除いた Jones 行列（[`lensbench_core::system::System::trace_pol_launch`] の phase = false）は
 //! 瞳の上で滑らかなので、正規化瞳座標の [−1, 1]² の正規の格子（nx × ny 点）で偏光追跡し、その値を 2 次元の
 //! 3 次スプライン（not-a-knot の 1 次元スプラインのテンソル積）で補間する。全光線の偏光追跡より速い
 //! （偏光追跡は普通の追跡の約 10 倍かかる）。
@@ -13,9 +13,9 @@
 //! 値は格子点ごとに 6 つの複素数: Jones 行列 [xx, xy, yx, yy]（行 = 出射の x・y、列 = 入射の x・y）と
 //! z 成分 [z_x, z_y]（列 = 入射の x・y）。
 
-use crate::coating::{Coatings, C64};
-use crate::system::{Launch, RecSel, System};
-use crate::{invalid, Result};
+use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::system::{Launch, RecSel, System};
+use lensbench_core::{invalid, Result};
 
 /// 格子点ごとの値の数（Jones 4 + z 成分 2）
 pub(crate) const NV: usize = 6;

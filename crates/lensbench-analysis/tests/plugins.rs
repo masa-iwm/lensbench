@@ -253,7 +253,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
     let inst = reg().prepare("ghost", &Config::new()).unwrap();
     let o = inst.run(&Context::with_system(&s), &Arrays::new()).unwrap();
     let co = Coatings::for_system(&s).unwrap();
-    let v = lensbench_core::ghost::survey(&s, 1, s.image(), &co).unwrap();
+    let v = lensbench_analysis::ghost::survey(&s, 1, s.image(), &co).unwrap();
     assert_eq!(get(&o, "a").len(), v.len());
     let want: Vec<f64> = v
         .iter()
@@ -266,7 +266,7 @@ fn rms_geo_mtf_pop_ghost_match_core() {
 
 #[test]
 fn interferogram_matches_core_with_the_configurations() {
-    use lensbench_core::interference::{self, PupilOpts};
+    use lensbench_analysis::interference::{self, PupilOpts};
     use lensbench_core::param::{Kind, Param};
     let mut s = (*sys()).clone();
     let im = s.image();

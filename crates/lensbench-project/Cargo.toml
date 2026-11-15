@@ -27,6 +27,7 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 flate2 = "1"
 
 [dev-dependencies]
+lensbench-formats = { path = "../lensbench-formats" }
 # スキーマで例題を検査
 jsonschema = { version = "0.60", default-features = false }
 

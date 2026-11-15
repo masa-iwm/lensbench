@@ -1,7 +1,7 @@
 //! 瞳の格子の光線の追跡と画素への補間（干渉の解析で共通）: 1 本の経路の光線の格子（[`RayGrid`]）、検出面の画素への
 //! 三角形の補間（[`rasterize`]）、ファイバの入射偏光（[`InputPol`]）と偏光追跡（[`trace_path`]・[`trace_jones`]）。
 //!
-//! 単色の干渉縞（[`crate::interference`]）と、拡張のプラグイン（干渉の計算など）が使う。
+//! 単色の干渉縞（lensbench-analysis の interference）と、拡張のプラグイン（干渉の計算など）が使う。
 //!
 //! - 強度は幾何光学: 瞳の格子のセル 1 つを三角形 2 つに分け、三角形ごとに
 //!   ファイバのモードの重み（ファイバ端の方向余弦のガウス）× 方向余弦の面積 / 検出面の面積。
@@ -153,7 +153,7 @@ pub fn rasterize(r: &RayGrid, npx: usize, x0: f64, y0: f64, dx: f64, na: f64) ->
 
 /// [`rasterize`] に、光線ごとの複素の値をもう 1 つ（`extra`、場の z 成分など）同じ三角形・同じ重みで補間して添える
 /// （1 回の走査で。`extra` が無ければ空の列）
-pub(crate) fn rasterize_with(
+pub fn rasterize_with(
     r: &RayGrid,
     extra: Option<&[C64]>,
     npx: usize,

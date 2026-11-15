@@ -7,7 +7,8 @@
 //! （0.6328 µm）だけで、他の波長では波長板の遅延の違いだけずれる。
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{zmx, zmx_write};
+use lensbench_core::zmx;
+use lensbench_formats::zmx_write;
 use lensbench_project::{expand, Env, Project};
 use std::path::PathBuf;
 

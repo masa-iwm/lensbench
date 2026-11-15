@@ -34,6 +34,8 @@ serde = ["dep:serde", "serde/rc", "num-complex/serde"]
 schema = ["serde", "dep:schemars"]
 
 [dev-dependencies]
+# .zmx の書き出しで読み直す試験（書き手は lensbench-formats。dev の依存なので循環にならない）
+lensbench-formats = { path = "../lensbench-formats" }
 criterion = { version = "0.5", default-features = false }
 ndarray = "0.16"
 ndarray-npy = "0.9"

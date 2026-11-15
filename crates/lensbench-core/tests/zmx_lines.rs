@@ -3,7 +3,8 @@
 use lensbench_core::surface::{Aperture, SurfType};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::trace::{sag, sag_toroidal};
-use lensbench_core::{zmx, zmx_write};
+use lensbench_core::zmx;
+use lensbench_formats::zmx_write;
 
 const HEAD: &str =
     "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 3 1 0 0 0\n\

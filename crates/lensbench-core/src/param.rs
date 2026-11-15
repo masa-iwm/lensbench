@@ -129,7 +129,7 @@ impl Kind {
     }
 
     /// 傾き偏心の値の位置（dx dy tx ty tz）
-    pub(crate) fn tilt_index(&self) -> Option<usize> {
+    pub fn tilt_index(&self) -> Option<usize> {
         match self {
             Kind::Dx => Some(0),
             Kind::Dy => Some(1),

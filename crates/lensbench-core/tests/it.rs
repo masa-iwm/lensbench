@@ -16,7 +16,6 @@ mod elements_refs;
 mod fermat;
 mod fiber;
 mod freeform;
-mod ghost;
 mod grin;
 mod invariants;
 mod landing;

@@ -9,7 +9,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use lensbench_core::system::Launch;
-use lensbench_core::{analysis, zmx, zmx_write, FieldSel, System};
+use lensbench_core::{analysis, zmx, FieldSel, System};
+use lensbench_formats::zmx_write;
 use serde_json::{json, Value};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");

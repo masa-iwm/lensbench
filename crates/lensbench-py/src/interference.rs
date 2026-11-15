@@ -1,6 +1,6 @@
-//! 単色の干渉縞（`lensbench_core::interference`）を Python から使う。
+//! 単色の干渉縞（`lensbench_analysis::interference`）を Python から使う。
 
-use lensbench_core::interference::{self as core, DetectorOpts, Polarized, PupilOpts};
+use lensbench_analysis::interference::{self as core, DetectorOpts, Polarized, PupilOpts};
 use lensbench_core::raygrid::InputPol;
 use lensbench_core::with_threads;
 use numpy::ndarray::Array2;

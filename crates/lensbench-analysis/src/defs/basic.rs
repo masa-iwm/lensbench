@@ -362,15 +362,15 @@ impl Analysis for Ghost {
         for f in &p.coatings {
             co.load_file(f)?;
         }
-        let v = lensbench_core::ghost::survey(s, p.first, last, &co)?;
+        let v = crate::ghost::survey(s, p.first, last, &co)?;
         let (mut written, mut warnings) = (Vec::new(), Vec::new());
         if let Some(dir) = &p.out_dir {
             lensbench_core::vfs::create_dir_all(dir)
                 .map_err(|x| lensbench_core::Error::Io(format!("{}: {x}", dir.display())))?;
             for g in &v {
-                let gs = lensbench_core::ghost::ghost_system(s, g.par.a, g.par.b)?;
+                let gs = crate::ghost::ghost_system(s, g.par.a, g.par.b)?;
                 let f = dir.join(format!("ghost_{}_{}.zmx", g.par.a, g.par.b));
-                warnings.extend(lensbench_core::zmx_write::save(&f, &gs.sys)?);
+                warnings.extend(lensbench_formats::zmx_write::save(&f, &gs.sys)?);
                 written.push(f.display().to_string());
             }
         }

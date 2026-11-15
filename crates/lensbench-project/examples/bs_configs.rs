@@ -65,7 +65,7 @@ fn main() {
                 }
             }
         }
-        lensbench_core::zmx_write::save_configs(&out.join(format!("{name}.zmx")), &ss).unwrap();
+        lensbench_formats::zmx_write::save_configs(&out.join(format!("{name}.zmx")), &ss).unwrap();
         println!("{name}: {} 構成 {:?}", ss.len(), names);
         list.push(format!("  \"{name}\": {:?}", names));
     }

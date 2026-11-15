@@ -83,7 +83,7 @@ fn write_roundtrip() {
     for n in ["Z0", "Z1", "Z2", "Z3", "Z4", "G0", "G1", "G2", "G3"] {
         let a = zmx::load_with(&root.join(format!("tests/refs/{n}/system.zmx")), &opt).unwrap();
         let p = tmp.join(format!("{n}.zmx"));
-        lensbench_core::zmx_write::save(&p, &a).unwrap();
+        lensbench_formats::zmx_write::save(&p, &a).unwrap();
         let b = zmx::load_with(&p, &opt).unwrap();
         for (j, (x, y)) in a.surfaces.iter().zip(&b.surfaces).enumerate() {
             assert_eq!(x.typ, y.typ, "{n} 面 {j}");

@@ -53,7 +53,7 @@ fn split_and_assemble_trace_the_same_rays() {
         );
         let a0 = elements::assemble(&s, &e).unwrap();
         // .zmx に書き出して読み戻した系で比べる（書き出しの確認も兼ねる）
-        let txt = lensbench_core::zmx_write::write(&a0).unwrap();
+        let txt = lensbench_formats::zmx_write::write(&a0).unwrap();
         let raw = zmx::parse_text(&txt).unwrap();
         let a = zmx::build(
             &raw,

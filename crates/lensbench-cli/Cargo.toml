@@ -25,6 +25,7 @@ name = "lensbench"
 path = "src/bin/lensbench.rs"
 
 [dependencies]
+lensbench-formats = { path = "../lensbench-formats" }
 lensbench-runs = { path = "../lensbench-runs" }
 lensbench-optim = { path = "../lensbench-optim" }
 lensbench-core = { path = "../lensbench-core" }

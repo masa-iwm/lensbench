@@ -16,7 +16,7 @@
 
 ## 名前
 
-- .zmx の 4 文字の略語（`ropd`・`glrs`・`enpp`・`expp`・`mema` など）は .zmx の読み書き（`lensbench_core::zmx`・`zmx_write`）と、
+- .zmx の 4 文字の略語（`ropd`・`glrs`・`enpp`・`expp`・`mema` など）は .zmx の読み書き（`lensbench_core::zmx`・`lensbench_formats::zmx_write`）と、
   OpticStudio の評価関数の項の名前をそのまま使う所（最適化の項）の中だけで使う。そこから外へ出す名前は略さない英語にする。
 - 同じ概念は層（core・プロジェクトファイル・GUI・Python）が違っても同じ英語の名前にする。
 

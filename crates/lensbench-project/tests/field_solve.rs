@@ -172,5 +172,5 @@ fn project_errors() {
 fn zmx_write_refuses() {
     let mut s = zmx_sys("A0");
     s.field_type = FieldType::Solve(FieldCond::DirSum { s1: 1, s2: 2 });
-    assert!(lensbench_core::zmx_write::write(&s).is_err());
+    assert!(lensbench_formats::zmx_write::write(&s).is_err());
 }

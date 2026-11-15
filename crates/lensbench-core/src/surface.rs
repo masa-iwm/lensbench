@@ -204,7 +204,7 @@ pub struct Surface {
     pub disp: f64,
     /// dn・disp をかける前の屈折率 n0（どちらも 0 なら空）
     pub n_base: Vec<f64>,
-    /// 屈折面での反射（ゴーストの経路、[`crate::ghost`]）。`mirror` と一緒に立て、光線は鏡として曲げ、
+    /// 屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。`mirror` と一緒に立て、光線は鏡として曲げ、
     /// 偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする
     pub reflect: Option<Reflect>,
     /// Jones 面（[`SurfType::Jones`]）を波長ごとに作る偏光子・波長板。あれば偏光の追跡は `jones` でなく

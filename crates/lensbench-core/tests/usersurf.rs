@@ -115,7 +115,7 @@ fn polarization_and_errors() {
     g.surfaces[1].n = vec![1.5];
     assert!(g.validate().is_err());
     // .zmx には書けない
-    assert!(lensbench_core::zmx_write::write(&s).is_err());
+    assert!(lensbench_formats::zmx_write::write(&s).is_err());
 }
 
 /// 利用者が登録するモデル（光線を曲げずに、決まった位相だけ足す）

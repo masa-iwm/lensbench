@@ -575,7 +575,7 @@ impl Analysis for Elements {
         let a = elements::assemble(s, &els)?;
         let mut warnings = Vec::new();
         if let Some(path) = &p.out {
-            warnings.extend(lensbench_core::zmx_write::save(path, &a)?);
+            warnings.extend(lensbench_formats::zmx_write::save(path, &a)?);
         }
         let w = s.primary;
         let mut nl = 0;

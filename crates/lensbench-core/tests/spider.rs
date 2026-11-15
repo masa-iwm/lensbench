@@ -4,7 +4,8 @@
 //! 面 1 の点 (x, y) = (−9.9 + 0.3i, −9.9 + 0.3j)（i, j = 0..66）を通る光線を追い、遮れば #。ファイルの行は j = 66 から
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{zmx, zmx_write};
+use lensbench_core::zmx;
+use lensbench_formats::zmx_write;
 
 fn build(txt: &str) -> System {
     let raw = zmx::parse_text(txt).unwrap();

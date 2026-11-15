@@ -404,7 +404,7 @@ fn crystal_plate_zmx_roundtrip() {
     let s = system(
         r#"{"waveplate": {"retardance": 0.25, "wavelength_um": 0.633, "axis_deg": 30, "material": "QUARTZ"}, "t": 3}"#,
     );
-    let txt = lensbench_core::zmx_write::write(&s).unwrap();
+    let txt = lensbench_formats::zmx_write::write(&s).unwrap();
     assert!(
         txt.contains("TYPE BIRE__IN") && txt.contains("TYPE BIRE_OUT"),
         "{txt}"

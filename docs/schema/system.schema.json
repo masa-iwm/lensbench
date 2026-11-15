@@ -2745,7 +2745,7 @@
               "type": "null"
             }
           ],
-          "description": "屈折面での反射（ゴーストの経路、[`crate::ghost`]）。`mirror` と一緒に立て、光線は鏡として曲げ、\n偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする"
+          "description": "屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。`mirror` と一緒に立て、光線は鏡として曲げ、\n偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする"
         },
         "retarder": {
           "anyOf": [

@@ -5,7 +5,8 @@
 //! b2_ax0・b2_ax60 は b2 の結晶軸を 0°・60° にしたもの。基準は Normalized Polarized の像面の電場（入力 x・y）
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{zmx, zmx_write};
+use lensbench_core::zmx;
+use lensbench_formats::zmx_write;
 use std::path::PathBuf;
 
 fn dir() -> PathBuf {

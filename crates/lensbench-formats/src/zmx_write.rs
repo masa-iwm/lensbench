@@ -1,16 +1,16 @@
-//! 系を .zmx（OpticStudio のレンズファイル）に書き出す。読込（[`crate::zmx`]）が解釈する項目だけを書く。
+//! 系を .zmx（OpticStudio のレンズファイル）に書き出す。読込（[`lensbench_core::zmx`]）が解釈する項目だけを書く。
 //!
 //! 厚さのソルブ（[`System::solves`]）は解いた値と MAZH の行を書き、ほかのソルブは値にして書く。ピックアップ（[`System::pickups`]）は解決した値とピックアップの行の両方を書く。モデルガラス（分散なし）は ___BLANK、ほかのガラスは名前とカタログ（GCAT）。
 
 use std::fmt::Write as _;
 use std::path::Path;
 
-use crate::error::{Error, Result};
-use crate::notimpl;
-use crate::param::{PickKind, SolveKind, ThickSolve};
-use crate::surface::{After, Aperture, Bire, SurfType, Tilt};
-use crate::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
-use crate::zpl_solve::MacroCol;
+use lensbench_core::error::{Error, Result};
+use lensbench_core::notimpl;
+use lensbench_core::param::{PickKind, SolveKind, ThickSolve};
+use lensbench_core::surface::{After, Aperture, Bire, SurfType, Tilt};
+use lensbench_core::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
+use lensbench_core::zpl_solve::MacroCol;
 
 /// 数値を読み戻しで同じ値になる表記で（Rust の最短表記）
 fn f(v: f64) -> String {
@@ -23,7 +23,7 @@ fn f(v: f64) -> String {
 }
 
 /// ピックアップの元の列のコード（0 = 同じ列）
-fn col(q: &crate::param::Pickup) -> i64 {
+fn col(q: &lensbench_core::param::Pickup) -> i64 {
     q.from.and_then(|k| k.column()).unwrap_or(0)
 }
 
@@ -132,7 +132,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         ),
     );
     w(&mut o, format!("ROPD {}", s.ropd));
-    let row = |key: &str, g: &dyn Fn(&crate::system::Field) -> f64| -> String {
+    let row = |key: &str, g: &dyn Fn(&lensbench_core::system::Field) -> f64| -> String {
         let v: Vec<String> = s.fields.iter().map(|x| f(g(x))).collect();
         format!("{key} {}", v.join(" "))
     };
@@ -154,7 +154,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         .surfaces
         .iter()
         .find_map(|d| match d.grin.as_deref().map(|g| &g.kind) {
-            Some(crate::grin::GrinKind::Gradium { prof, .. })
+            Some(lensbench_core::grin::GrinKind::Gradium { prof, .. })
                 if !prof.file.eq_ignore_ascii_case("PROFILE.GRD") =>
             {
                 Some(prof.file.clone())
@@ -361,7 +361,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                     notimpl!("surface {k}: no GRIN profile");
                 };
                 match &g.kind {
-                    crate::grin::GrinKind::Gradium {
+                    lensbench_core::grin::GrinKind::Gradium {
                         prof, dz, dec, cap, ..
                     } => {
                         w(&mut o, format!("  PARM 0 {}", f(prof.zmax)));
@@ -376,7 +376,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                         }
                         w(&mut o, format!("  PARM 8 {cap}"));
                     }
-                    crate::grin::GrinKind::Grad9 { tan, .. } => {
+                    lensbench_core::grin::GrinKind::Grad9 { tan, .. } => {
                         w(&mut o, format!("  PARM 1 {}", f(g.dt)));
                         w(&mut o, format!("  PARM 2 {}", f(tan[0])));
                         w(&mut o, format!("  PARM 3 {}", f(tan[1])));
@@ -742,8 +742,8 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
 
 /// 多重構成の表の行の .zmx の演算子: (演算子, 番号 1, PARM の番号, 値の換算)。書けない行は None
 type ConfigOp = (&'static str, usize, Option<u8>, fn(f64) -> f64);
-fn config_op(s: &System, p: crate::param::Param) -> Option<ConfigOp> {
-    use crate::param::Kind;
+fn config_op(s: &System, p: lensbench_core::param::Param) -> Option<ConfigOp> {
+    use lensbench_core::param::Kind;
     let d = s.surfaces.get(p.surf)?;
     let id: fn(f64) -> f64 = |v| v;
     Some(match p.kind {
@@ -850,7 +850,7 @@ fn save_utf16(path: &Path, txt: &str) -> Result<()> {
     for u in txt.encode_utf16() {
         b.extend_from_slice(&u.to_le_bytes());
     }
-    crate::vfs::write(path, b).map_err(|e| Error::Io(format!("{}: {e}", path.display())))
+    lensbench_core::vfs::write(path, b).map_err(|e| Error::Io(format!("{}: {e}", path.display())))
 }
 
 /// `.zmx` の隣に書く膜ファイルの名前
@@ -865,7 +865,7 @@ fn coat_file_for(path: &Path) -> String {
 fn save_coating(path: &Path, name: &str, s: &System) -> Result<()> {
     if let Some(txt) = coating_dat(s)? {
         let p = path.with_file_name(name);
-        crate::vfs::write(&p, txt.as_bytes())
+        lensbench_core::vfs::write(&p, txt.as_bytes())
             .map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
     }
     Ok(())
@@ -887,8 +887,8 @@ pub fn coating_dat(s: &System) -> Result<Option<String>> {
     }
     let mut o = String::new();
     if let Some(p) = &s.coating_file {
-        let t =
-            crate::glass::read_text(p).map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
+        let t = lensbench_core::glass::read_text(p)
+            .map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
         o.push_str(t.trim_end());
         o.push_str("\r\n\r\n");
     }
@@ -915,7 +915,7 @@ pub fn coating_dat(s: &System) -> Result<Option<String>> {
 /// エラーを出さずに表全体を R = T = 0 として読む。OpticStudio 26.1 の実測）。角度ごとに波長が違う表は、全角度の
 /// 波長の和集合に、角度ごとに波長の線形補間（範囲の外は端の値）で並べ直す。lensbench の表の読み方（角度ごとに
 /// 波長で線形補間、範囲の外は端の値）では同じ値の表
-fn same_wavelengths(t: &crate::coating::Table) -> Vec<(f64, Vec<[f64; 9]>)> {
+fn same_wavelengths(t: &lensbench_core::coating::Table) -> Vec<(f64, Vec<[f64; 9]>)> {
     let mut wl: Vec<f64> = t.iter().flat_map(|(_, r)| r.iter().map(|x| x[0])).collect();
     wl.sort_by(f64::total_cmp);
     wl.dedup();
@@ -933,7 +933,7 @@ fn same_wavelengths(t: &crate::coating::Table) -> Vec<(f64, Vec<[f64; 9]>)> {
                 .map(|&w| {
                     let mut r = [w; 9];
                     for k in 1..9 {
-                        r[k] = crate::coating::interp(w, &xs, &cols[k - 1]);
+                        r[k] = lensbench_core::coating::interp(w, &xs, &cols[k - 1]);
                     }
                     r
                 })
@@ -956,7 +956,7 @@ pub fn write_configs(systems: &[System]) -> Result<String> {
 /// [`write_configs`] の本体。まとめた系（膜の表は全部の系の表を合わせる）も返す
 fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, System)> {
     if systems.is_empty() {
-        crate::invalid!("no system to write");
+        lensbench_core::invalid!("no system to write");
     }
     if systems.len() == 1 {
         return Ok((write_as(&systems[0], coat_file)?, systems[0].clone()));
@@ -969,7 +969,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
                 i + 1
             );
         }
-        if let crate::system::FieldType::Solve(_) = s.field_type {
+        if let lensbench_core::system::FieldType::Solve(_) = s.field_type {
             notimpl!("a field set by a condition can't be written to .zmx");
         }
         let mut t = if s.units.iter().any(|u| u.moved()) {
@@ -1011,8 +1011,8 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         }
     }
     // 同じ先頭の面（物体面から、どの系でも像面の手前まで）。厚さだけの違いは多重構成の THIC にする
-    let key = |d: &crate::surface::Surface| format!("{d:?}");
-    let key_t = |d: &crate::surface::Surface| {
+    let key = |d: &lensbench_core::surface::Surface| format!("{d:?}");
+    let key_t = |d: &lensbench_core::surface::Surface| {
         let mut d = d.clone();
         d.t = 0.0;
         // 自動の半直径は構成ごとに光線から求め直すので、値の違いは同じ面とみる
@@ -1055,7 +1055,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     if ss.iter().any(|s| img_key(s) != img_key(&ss[0])) {
         notimpl!("the image surface (other than its radius) differs between configurations");
     }
-    let mut surfs: Vec<crate::surface::Surface> = ss[0].surfaces[..np].to_vec();
+    let mut surfs: Vec<lensbench_core::surface::Surface> = ss[0].surfaces[..np].to_vec();
     // 系ごとの残りの面の番号（まとめた系の番号）と、絞りの面
     let mut tails: Vec<Vec<usize>> = Vec::new();
     let mut stops: Vec<usize> = Vec::new();

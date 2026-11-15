@@ -3,7 +3,8 @@
 
 use crate::common::root;
 use lensbench_core::zmx::{self, LoadOptions};
-use lensbench_core::{glass, zmx_write, System};
+use lensbench_core::{glass, System};
+use lensbench_formats::zmx_write;
 
 fn opt() -> LoadOptions {
     LoadOptions {

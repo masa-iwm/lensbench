@@ -4,6 +4,7 @@
 
 mod common;
 mod consistency;
+mod ghost;
 mod huygens;
 mod huygens_refs;
 mod obsc_mtf;

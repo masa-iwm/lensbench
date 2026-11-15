@@ -11,6 +11,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+lensbench-formats = { path = "../lensbench-formats" }
 lensbench-runs = { path = "../lensbench-runs" }
 lensbench-optim = { path = "../lensbench-optim" }
 lensbench-core = { path = "../lensbench-core", features = ["serde"] }
