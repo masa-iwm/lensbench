@@ -16,7 +16,7 @@ pub fn analysis_args(cmd: &str) -> Option<Vec<Value>> {
             "type": "path",
             "default": null,
             "unit": "",
-            "doc": "膜の実測表（LBCT 形式、複数可）",
+            "doc": "Measured coating tables (LBCT format, more than one allowed)",
             "repeat": true,
         })]);
     }

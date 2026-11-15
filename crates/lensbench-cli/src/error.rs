@@ -7,16 +7,16 @@ use lensbench_core::Error as CoreError;
 
 /// 終了コードと意味（`lensbench --help`・`lensbench help --json`・docs に出す）
 pub const EXIT_CODES: &[(u8, &str)] = &[
-    (0, "成功"),
+    (0, "Success"),
     (
         1,
-        "失敗（系・値の不正、計算の失敗、照合の不合格、結果は出したが一部が失敗）",
+        "Failure (invalid system or value, calculation failed, verification failed, or results written but partly failed)",
     ),
-    (2, "使い方の誤り（引数・設定ファイル。run の設定の誤りも）"),
-    (3, "ファイルが無い・読めない・書けない"),
-    (4, "未対応の機能（.zmx の未対応の面・項目など）"),
-    (127, "run: Python が見つからない"),
-    (130, "中断した"),
+    (2, "Usage error (arguments or settings file; also run settings errors)"),
+    (3, "File missing, unreadable or unwritable"),
+    (4, "Unsupported feature (unsupported .zmx surfaces, items, etc.)"),
+    (127, "run: Python not found"),
+    (130, "Cancelled"),
 ];
 
 /// コマンドラインの誤り
@@ -131,9 +131,10 @@ pub fn report(prefix: &str, e: &AppError) {
 
 /// `lensbench --help` の末尾に付ける終了コードの表
 pub fn exit_code_help() -> String {
-    let mut s = String::from("終了コード:\n");
+    let f = lensbench_core::i18n::tr_doc;
+    let mut s = format!("{}\n", f("Exit codes:"));
     for (c, m) in EXIT_CODES {
-        s.push_str(&format!("  {c:>3}  {m}\n"));
+        s.push_str(&format!("  {c:>3}  {}\n", f(m)));
     }
     s
 }

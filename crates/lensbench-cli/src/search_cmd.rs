@@ -201,15 +201,12 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     let show = |st: lensbench_design::swap::SwapStage, pr: lensbench_runs::Progress| {
         if !a.json {
             let what = match st {
-                lensbench_design::swap::SwapStage::Screen => "ふるい",
-                lensbench_design::swap::SwapStage::Main => "組",
+                lensbench_design::swap::SwapStage::Screen => "screening",
+                lensbench_design::swap::SwapStage::Main => "combinations",
             };
-            eprint!(
-                "\r{what} {}/{}（残り {}）  ",
-                pr.done,
-                pr.total,
-                pr.eta.map_or("?".into(), |e| format!("{e:.0} 秒"))
-            );
+            let eta = pr.eta.map_or("?".into(), |e| format!("{e:.0} s"));
+            let m = format!("{what} {}/{} ({eta} left)", pr.done, pr.total);
+            eprint!("\r{}  ", lensbench_core::i18n::tr(&m));
         }
     };
     let mut r = s.run_to(a.out.as_deref(), !a.no_resume, None, Some(&show))?;

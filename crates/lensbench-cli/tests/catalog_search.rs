@@ -73,7 +73,7 @@ fn cli_search() {
     // 表
     let (ok, out) = cli(&[&base[..], &["--kind", "polarizer"]].concat());
     assert!(ok, "{out}");
-    assert!(out.starts_with("1 品"), "{out}");
+    assert!(out.starts_with("1 item(s)"), "{out}");
     assert!(
         out.contains("POL-254") && out.contains("https://example.com/lb/POL-254"),
         "{out}"

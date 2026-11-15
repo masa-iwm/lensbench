@@ -1859,7 +1859,7 @@ pub fn zern_nm(kind: ZernKind, nterms: usize) -> Vec<(usize, usize, bool)> {
     let mut out = Vec::new();
     match kind {
         ZernKind::Fringe => {
-            assert!(nterms <= 37, "Fringe Zernike は 37 項まで");
+            assert!(nterms <= 37, "Fringe Zernike has at most 37 terms");
             for g in 0..6usize {
                 for m in (0..=g).rev() {
                     let n = 2 * g - m;
@@ -1920,7 +1920,7 @@ pub struct ZernBasis {
 
 impl ZernBasis {
     pub fn new(kind: ZernKind, nm: &[(usize, usize, bool)]) -> ZernBasis {
-        assert!(nm.iter().all(|t| t.0 < 64), "Zernike の次数は 63 まで");
+        assert!(nm.iter().all(|t| t.0 < 64), "Zernike orders go up to 63");
         let mut coef = Vec::new();
         let mut rad: Vec<(usize, usize, usize)> = Vec::new();
         let mut keys: Vec<(usize, usize)> = Vec::new();

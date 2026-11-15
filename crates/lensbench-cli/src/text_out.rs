@@ -2,6 +2,13 @@
 
 use serde_json::Value;
 
+/// 1 行を表示の言語で出す（先頭の字下げはそのまま、残りを訳す。XCT-20）
+pub(crate) fn say(s: &str) {
+    let body = s.trim_start();
+    let pad = &s[..s.len() - body.len()];
+    println!("{pad}{}", lensbench_core::i18n::tr(body));
+}
+
 /// JSON をそのまま読める形で出す（GUI ができるまでの簡易表示）
 pub(crate) fn print_text(w: &mut dyn std::io::Write, v: &Value, ind: usize) -> std::io::Result<()> {
     let pad = "  ".repeat(ind);

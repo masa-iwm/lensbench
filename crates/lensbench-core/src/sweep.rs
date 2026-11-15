@@ -274,7 +274,7 @@ pub fn through_focus_mtf(
     mtf_sweep(
         dz,
         freqs,
-        |z| format!("ずらし {z}"),
+        |z| format!("shift {z}"),
         |z| mtf(&defocus(s, z)?, field, Waves::all_or(w), n, freqs),
     )
 }
@@ -315,7 +315,7 @@ pub fn field_mtf(
     let mut r = mtf_sweep(
         h,
         freqs,
-        |h| format!("視野 {h}"),
+        |h| format!("field {h}"),
         |h| mtf(&s, axis.sel(h), Waves::all_or(w), n, freqs),
     );
     r.warnings.splice(0..0, warn);
@@ -635,7 +635,7 @@ pub fn rms_vs_field(s: &System, axis: FieldAxis, h: &[f64], w: Waves, o: RmsOpts
         Some(w) => match field_at_wave(&s, w, o) {
             Ok(d) => std::borrow::Cow::Owned(d.into_owned()),
             Err(e) => {
-                let mut r = rms_sweep(h, |h| format!("視野 {h}"), |_| Err(e.clone()));
+                let mut r = rms_sweep(h, |h| format!("field {h}"), |_| Err(e.clone()));
                 r.warnings.splice(0..0, warn);
                 return r;
             }
@@ -644,7 +644,7 @@ pub fn rms_vs_field(s: &System, axis: FieldAxis, h: &[f64], w: Waves, o: RmsOpts
     };
     let mut r = rms_sweep(
         h,
-        |h| format!("視野 {h}"),
+        |h| format!("field {h}"),
         |h| rms(&s, axis.sel(h), Waves::all_or(w), o),
     );
     r.warnings.splice(0..0, warn);
@@ -656,7 +656,7 @@ pub fn rms_vs_focus(s: &System, field: FieldSel, dz: &[f64], w: Waves, o: RmsOpt
     let w = w.one();
     rms_sweep(
         dz,
-        |z| format!("ずらし {z}"),
+        |z| format!("shift {z}"),
         |z| rms(&defocus(s, z)?, field, Waves::all_or(w), o),
     )
 }
@@ -665,7 +665,7 @@ pub fn rms_vs_focus(s: &System, field: FieldSel, dz: &[f64], w: Waves, o: RmsOpt
 pub fn rms_vs_wavelength(s: &System, field: FieldSel, lams: &[f64], o: RmsOpts) -> RmsSweep {
     rms_sweep(
         lams,
-        |l| format!("波長 {l} µm"),
+        |l| format!("wavelength {l} µm"),
         |l| {
             let (d, w) = with_wavelength(s, l)?;
             let d2: std::borrow::Cow<'_, System> = field_at_wave(&d, w, o)?;

@@ -132,13 +132,13 @@ pub fn compare_one(name: &str, actual: Option<&Array>, expected: &Array, tol: &T
         tol: tol.clone(),
     };
     let Some(a) = actual else {
-        r.error = Some("出力にない".into());
+        r.error = Some("missing from the output".into());
         return r;
     };
     // 形 [] と [1] のような長さの同じ違いは許す（数 1 つの書き方の違い）
     if a.shape != expected.shape && !(a.data.len() == 1 && expected.data.len() == 1) {
         r.error = Some(format!(
-            "形が違う（{:?} と基準 {:?}）",
+            "shape differs ({:?} vs reference {:?})",
             a.shape, expected.shape
         ));
         return r;
@@ -194,7 +194,11 @@ pub fn compare_one(name: &str, actual: Option<&Array>, expected: &Array, tol: &T
                 }),
             ),
             (p, q) => {
-                r.error = Some(format!("型が違う（{} と基準 {}）", p.dtype(), q.dtype()));
+                r.error = Some(format!(
+                    "type differs ({} vs reference {})",
+                    p.dtype(),
+                    q.dtype()
+                ));
                 return r;
             }
         };
@@ -855,61 +859,48 @@ impl Report {
         })
     }
 
-    /// 人が読む表
+    /// 人が読む表（英語。コマンドラインは行ごとに表示の言語に訳す）
     pub fn to_text(&self) -> String {
-        let mut s = format!(
-            "{} {}（{}、基準: {}{}）\n",
-            if self.passed() { "OK  " } else { "FAIL" },
-            self.name,
-            self.plugin,
-            self.source.by,
-            if self.source.commit.is_empty() {
-                String::new()
-            } else {
-                format!(" @ {}", self.source.commit)
-            }
-        );
+        let status = if self.passed() { "OK  " } else { "FAIL" };
+        let by = match self.source.commit.as_str() {
+            "" => self.source.by.clone(),
+            c => format!("{} @ {c}", self.source.by),
+        };
+        let (name, plugin) = (&self.name, &self.plugin);
+        let mut s = format!("{status} {name} ({plugin}, reference: {by})\n");
         if let Some(e) = &self.error {
-            s += &format!("  誤り: {e}\n");
+            s += &format!("  error: {e}\n");
         }
         for (k, a, r, t, p) in self.summary() {
-            let tt = match (t.exact, t.abs, t.rel) {
-                (true, _, _) => "ビット同じ".to_string(),
-                (_, Some(a), Some(r)) => format!("abs {a:e} か rel {r:e}"),
+            let what = match (t.exact, t.abs, t.rel) {
+                (true, _, _) => "bit-identical".to_string(),
+                (_, Some(a), Some(r)) => format!("abs {a:e} or rel {r:e}"),
                 (_, Some(a), None) => format!("abs {a:e}"),
                 (_, None, Some(r)) => format!("rel {r:e}"),
                 _ => String::new(),
             };
-            s += &format!(
-                "  {} {k}: 差 {a:.3e}（相対 {r:.3e}）/ 許容 {tt}{}\n",
-                if p { "ok" } else { "NG" },
-                if t.note.is_empty() {
-                    String::new()
-                } else {
-                    format!("（{}）", t.note)
-                }
-            );
+            let ok = if p { "ok" } else { "NG" };
+            s += &match t.note.as_str() {
+                "" => format!("  {ok} {k}: diff {a:.3e} (relative {r:.3e}) / tolerance {what}\n"),
+                why => format!(
+                    "  {ok} {k}: diff {a:.3e} (relative {r:.3e}) / tolerance {what} ({why})\n"
+                ),
+            };
         }
         for r in &self.runs {
+            let l = &r.label;
             if let Some(e) = &r.error {
-                s += &format!("  [{}] 誤り: {e}\n", r.label);
+                s += &format!("  [{l}] error: {e}\n");
             }
             if r.threads_identical == Some(false) {
-                s += &format!("  [{}] スレッド数で出力が違う\n", r.label);
+                s += &format!("  [{l}] the output differs with the thread count\n");
             }
             for c in r.checks.iter().filter(|c| !c.passed) {
-                s += &format!(
-                    "  [{}] {}: {}差 {:.3e} の要素 {:?}、片方だけ値でない {}\n",
-                    r.label,
-                    c.name,
-                    c.error
-                        .as_ref()
-                        .map(|e| format!("{e}、"))
-                        .unwrap_or_default(),
-                    c.max_abs,
-                    c.worst,
-                    c.mismatched
-                );
+                let (n, d, w, m) = (&c.name, c.max_abs, &c.worst, c.mismatched);
+                s += &match &c.error {
+                    None => format!("  [{l}] {n}: diff {d:.3e} at element {w:?}, values on one side only {m}\n"),
+                    Some(e) => format!("  [{l}] {n}: {e}, diff {d:.3e} at element {w:?}, values on one side only {m}\n"),
+                };
             }
         }
         s
@@ -986,7 +977,7 @@ pub fn run_builtin(paths: &[PathBuf], opt: &Options) -> Result<Vec<Report>, Stri
 /// Rust の試験から: フォルダの照合を全部回し、通らなければ表を出して panic する
 pub fn assert_dir(dir: &Path, reg: &Registry) {
     let reps = run_paths(&[dir.to_path_buf()], reg, &Options::default()).unwrap();
-    assert!(!reps.is_empty(), "{} に照合がない", dir.display());
+    assert!(!reps.is_empty(), "no verifications in {}", dir.display());
     let text: String = reps.iter().map(Report::to_text).collect();
     assert!(reps.iter().all(Report::passed), "{text}");
 }

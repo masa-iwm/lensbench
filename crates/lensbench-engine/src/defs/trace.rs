@@ -420,7 +420,7 @@ impl Analysis for Pop {
         t.cols.push(("phase".into(), table::Col::F64(ph)));
         t.meta.insert(
             "note".into(),
-            json!("phase はパイロット（output.pilot）を除いた位相 [rad]"),
+            json!("phase is the phase without the pilot beam (output.pilot) [rad]"),
         );
         t.meta.insert("output".into(), v["output"].clone());
         Some(t.save(path).map_err(Error::Io).map(|_| {

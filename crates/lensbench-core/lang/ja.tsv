@@ -1941,3 +1941,52 @@ RMS of scale·(W1 − W2) (tilt removed)	scale·(W1 − W2) の RMS （傾きを
 Ray position	光線の位置
 (inf at infinity)	（無限遠は inf）
 Δ, NaN outside	Δ、外は NaN
+# command line output (verify, catalog-step, cad-step, swap, optimize)
+({} rows, {} elements; use --json or --save for everything)	（{} 行・{} 要素。全体は --json か --save で）
+{} item(s)	{} 品
+ error: {e}	 エラー: {e}
+iteration {:>3}: merit {:.9e}	反復 {:>3}: 評価関数 {:.9e}
+{bad} STEP files could not be read	読めない STEP が {bad} 個
+error: {e}	誤り: {e}
+thickness {t} mm, diameter {d}	厚さ {t} mm、径 {d}
+thickness {t} mm, diameter {d}, with frame	厚さ {t} mm、径 {d}、枠あり
+{p} (cache)	{p}（キャッシュ）
+{p} (from the store)	{p}（置き場から）
+{p} (also uploaded to the store)	{p}（置き場にも上げた）
+store: {n}	置き場: {n}
+matches the simple outline	簡易外形と合う
+mismatch: {n}	食い違い: {n}
+screening	ふるい
+combinations	組
+{what} {}/{} ({eta} left)	{what} {}/{}（残り {eta}）
+Success	成功
+Failure (invalid system or value, calculation failed, verification failed, or results written but partly failed)	失敗（系・値の不正、計算の失敗、照合の不合格、結果は出したが一部が失敗）
+Usage error (arguments or settings file; also run settings errors)	使い方の誤り（引数・設定ファイル。run の設定の誤りも）
+File missing, unreadable or unwritable	ファイルが無い・読めない・書けない
+Unsupported feature (unsupported .zmx surfaces, items, etc.)	未対応の機能（.zmx の未対応の面・項目など）
+run: Python not found	run: Python が見つからない
+Cancelled	中断した
+Exit codes:	終了コード:
+missing from the output	出力にない
+shape differs ({:?} vs reference {:?})	形が違う（{:?} と基準 {:?}）
+type differs ({} vs reference {})	型が違う（{} と基準 {}）
+{status} {name} ({plugin}, reference: {by})	{status} {name}（{plugin}、基準: {by}）
+bit-identical	ビット同じ
+abs {a:e} or rel {r:e}	abs {a:e} か rel {r:e}
+{ok} {k}: diff {a:.3e} (relative {r:.3e}) / tolerance {what}	{ok} {k}: 差 {a:.3e}（相対 {r:.3e}）/ 許容 {what}
+{ok} {k}: diff {a:.3e} (relative {r:.3e}) / tolerance {what} ({why})	{ok} {k}: 差 {a:.3e}（相対 {r:.3e}）/ 許容 {what}（{why}）
+[{l}] error: {e}	[{l}] 誤り: {e}
+[{l}] the output differs with the thread count	[{l}] スレッド数で出力が違う
+[{l}] {n}: diff {d:.3e} at element {w:?}, values on one side only {m}	[{l}] {n}: 差 {d:.3e} の要素 {w:?}、片方だけ値でない {m}
+[{l}] {n}: {e}, diff {d:.3e} at element {w:?}, values on one side only {m}	[{l}] {n}: {e}、差 {d:.3e} の要素 {w:?}、片方だけ値でない {m}
+# analysis sweeps and user surfaces
+shift {z}	ずらし {z}
+field {h}	視野 {h}
+wavelength {l} µm	波長 {l} µm
+Ideal lens given by the field angle θ → image height h relation (f tan θ, f θ, f sin θ, equisolid, stereographic, polynomial, table)	画角 θ → 像高 h の関係を与える理想レンズ（f tan θ・f θ・f sin θ・等立体角・立体射影・多項式・表）
+Focal length (nonzero, required)	焦点距離（0 以外、必須）
+Field angle → image height relation	画角 → 像高の関係
+poly: c₁, c₂, … of h = f (θ + c₁ θ³ + c₂ θ⁵ + …)	poly: h = f (θ + c₁ θ³ + c₂ θ⁵ + …) の c₁, c₂, …
+table: field angles (increasing from 0)	table: 画角（0 から増える順）
+table: image heights	table: 像高
+Measured coating tables (LBCT format, more than one allowed)	膜の実測表（LBCT 形式、複数可）

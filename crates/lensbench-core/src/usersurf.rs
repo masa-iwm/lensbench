@@ -320,7 +320,7 @@ impl SurfaceModel for IdealMapping {
     }
 
     fn doc(&self) -> String {
-        "画角 θ → 像高 h の関係を与える理想レンズ（f tan θ・f θ・f sin θ・等立体角・立体射影・多項式・表）".into()
+        "Ideal lens given by the field angle θ → image height h relation (f tan θ, f θ, f sin θ, equisolid, stereographic, polynomial, table)".into()
     }
 
     fn params(&self) -> Vec<ParamSpec> {
@@ -334,34 +334,40 @@ impl SurfaceModel for IdealMapping {
             "table",
         ];
         vec![
-            ParamSpec::new("f", ParamType::Num, None, "mm", "焦点距離（0 以外、必須）"),
+            ParamSpec::new(
+                "f",
+                ParamType::Num,
+                None,
+                "mm",
+                "Focal length (nonzero, required)",
+            ),
             ParamSpec::new(
                 "mapping",
                 ParamType::Choice(ch.iter().map(|s| s.to_string()).collect()),
                 Some(Value::Str("tan".into())),
                 "",
-                "画角 → 像高の関係",
+                "Field angle → image height relation",
             ),
             ParamSpec::new(
                 "coef",
                 ParamType::Nums { len: None },
                 None,
                 "",
-                "poly: h = f (θ + c₁ θ³ + c₂ θ⁵ + …) の c₁, c₂, …",
+                "poly: c₁, c₂, … of h = f (θ + c₁ θ³ + c₂ θ⁵ + …)",
             ),
             ParamSpec::new(
                 "theta_deg",
                 ParamType::Nums { len: None },
                 None,
                 "deg",
-                "table: 画角（0 から増える順）",
+                "table: field angles (increasing from 0)",
             ),
             ParamSpec::new(
                 "height",
                 ParamType::Nums { len: None },
                 None,
                 "mm",
-                "table: 像高",
+                "table: image heights",
             ),
         ]
     }

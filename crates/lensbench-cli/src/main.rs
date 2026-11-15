@@ -542,11 +542,11 @@ fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Optio
     Ok(scene::Options {
         fields: match &l.field {
             None => None,
-            Some(v) => Some(index_list(v, s.fields.len(), "視野")?),
+            Some(v) => Some(index_list(v, s.fields.len(), "field")?),
         },
         waves: match &l.wave {
             None => None,
-            Some(v) => Some(index_list(v, s.wavelengths.len(), "波長")?),
+            Some(v) => Some(index_list(v, s.wavelengths.len(), "wavelength")?),
         },
         fan,
         rays,
@@ -612,11 +612,11 @@ fn brief(v: &Value) -> Value {
     match v {
         Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), brief(x))).collect()),
         Value::Array(a) if leaves(v) > 1000 => {
-            json!(format!(
-                "（{} 行・{} 要素。全体は --json か --save で）",
+            json!(lensbench_core::i18n::tr(&format!(
+                "({} rows, {} elements; use --json or --save for everything)",
                 a.len(),
                 leaves(v)
-            ))
+            )))
         }
         Value::Array(a) => Value::Array(a.iter().map(brief).collect()),
         _ => v.clone(),
@@ -687,7 +687,7 @@ fn verify(paths: &[PathBuf], ci: bool, json_out: bool) -> Result<(), AppError> {
         );
     } else {
         for r in &reps {
-            print!("{}", r.to_text());
+            r.to_text().lines().for_each(text_out::say);
         }
     }
     let bad = reps.iter().filter(|r| !r.passed()).count();
@@ -708,7 +708,7 @@ fn print_catalog_table(v: &Value) {
             .map(|x| format!("{x:.4}"))
             .unwrap_or_else(|| "-".into())
     };
-    println!("{} 品", rows.len());
+    text_out::say(&format!("{} item(s)", rows.len()));
     for r in &rows {
         let specs = r["specs"]
             .as_object()
@@ -736,7 +736,7 @@ fn print_catalog_table(v: &Value) {
                 .unwrap_or_default(),
             r["error"]
                 .as_str()
-                .map(|e| format!(" エラー: {e}"))
+                .map(|e| lensbench_core::i18n::tr(&format!(" error: {e}")))
                 .unwrap_or_default(),
         );
     }
@@ -1074,7 +1074,13 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let json = c.json;
             let r = optim::dls_with(&p, &o, |pr| {
                 if !json {
-                    eprintln!("反復 {:>3}: 評価関数 {:.9e}", pr.iter, pr.merit);
+                    eprintln!(
+                        "{}",
+                        lensbench_core::i18n::tr(&format!(
+                            "iteration {:>3}: merit {:.9e}",
+                            pr.iter, pr.merit
+                        ))
+                    );
                 }
                 true
             })
@@ -1332,24 +1338,21 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .collect();
             let bad = v.iter().filter(|x| x.get("error").is_some()).count();
             if bad > 0 {
-                partial_failure(format!("読めない STEP が {bad} 個"));
+                partial_failure(format!("{bad} STEP files could not be read"));
             }
             if !json {
                 for x in &v {
                     println!("{}", x["file"].as_str().unwrap_or(""));
                     match x["error"].as_str() {
-                        Some(e) => println!("  誤り: {e}"),
-                        None => println!(
-                            "  厚さ {} mm、径 {}{}\n  {}",
-                            x["thickness"],
-                            x["diameter"],
-                            if x["frame"].is_null() {
-                                ""
-                            } else {
-                                "、枠あり"
-                            },
-                            x["note"].as_str().unwrap_or("")
-                        ),
+                        Some(e) => text_out::say(&format!("  error: {e}")),
+                        None => {
+                            let (t, d) = (&x["thickness"], &x["diameter"]);
+                            text_out::say(&match x["frame"].is_null() {
+                                true => format!("  thickness {t} mm, diameter {d}"),
+                                false => format!("  thickness {t} mm, diameter {d}, with frame"),
+                            });
+                            println!("  {}", x["note"].as_str().unwrap_or(""));
+                        }
                     }
                 }
                 return Ok((false, Value::Null));
@@ -1381,27 +1384,24 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     Err(e) => return Err(format!("{e} (product page: {})", it.url).into()),
                 };
                 if !json {
-                    println!(
-                        "{}{}",
-                        r.path.display(),
-                        match r.source {
-                            cad::Source::Cache => "（キャッシュ）",
-                            cad::Source::Store => "（置き場から）",
-                            cad::Source::Vendor => "",
-                            cad::Source::VendorUploaded => "（置き場にも上げた）",
-                        }
-                    );
+                    let p = r.path.display();
+                    text_out::say(&match r.source {
+                        cad::Source::Cache => format!("{p} (cache)"),
+                        cad::Source::Store => format!("{p} (from the store)"),
+                        cad::Source::Vendor => p.to_string(),
+                        cad::Source::VendorUploaded => format!("{p} (also uploaded to the store)"),
+                    });
                     for n in &r.store_notes {
-                        println!("  置き場: {n}");
+                        text_out::say(&format!("  store: {n}"));
                     }
                     if let Some(m) = &r.measured {
                         println!("  {}", m.note);
                     }
                     if r.notes.is_empty() {
-                        println!("  簡易外形と合う");
+                        text_out::say("  matches the simple outline");
                     }
                     for n in &r.notes {
-                        println!("  食い違い: {n}");
+                        text_out::say(&format!("  mismatch: {n}"));
                     }
                     return Ok((false, Value::Null));
                 }

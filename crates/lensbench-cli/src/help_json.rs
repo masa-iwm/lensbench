@@ -145,7 +145,7 @@ pub fn help_json(c: Command) -> Value {
     v["exit_codes"] = Value::from(
         crate::error::EXIT_CODES
             .iter()
-            .map(|(code, m)| json!({ "code": code, "meaning": m }))
+            .map(|(code, m)| json!({ "code": code, "meaning": lensbench_core::i18n::translate_doc(m) }))
             .collect::<Vec<_>>(),
     );
     v

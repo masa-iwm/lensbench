@@ -905,7 +905,7 @@ fn run<R: LaneSink>(
             }
         }
     }
-    let f = plan.steps.last().expect("追う面がない").f;
+    let f = plan.steps.last().expect("no surface to trace").f;
     let pg = mv_l(&f.r, &pl);
     let kg = mv_l(&f.r, &kl);
     std::array::from_fn(|i| RayOut {
