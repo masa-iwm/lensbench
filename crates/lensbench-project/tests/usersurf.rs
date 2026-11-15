@@ -16,12 +16,12 @@ fn edit_and_system_file_round_trip() {
     let raw = zmx::parse_text(ZMX).unwrap();
     let mut s = zmx::build(&raw, &zmx::LoadOptions::default(), &[], None).unwrap();
     // 形のデータ（user）が無いうちは面タイプを変えられない
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_surface_type", "surface": 1, "type": "USER"}])
     )
     .is_err());
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_surface_data", "surface": 1,
@@ -66,7 +66,7 @@ fn edit_and_system_file_round_trip() {
     // 知らないモデル・誤った設定は誤り
     let bad = txt.replace("ideal_mapping", "no_such_model");
     assert!(sysfile::from_str(&bad).is_err());
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_surface_data", "surface": 1,
                  "data": {"user": {"model": "ideal_mapping", "config": {"f": 0}}}}])

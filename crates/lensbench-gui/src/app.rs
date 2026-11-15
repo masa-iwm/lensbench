@@ -13,6 +13,9 @@ use lensbench_engine::session::views;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+#[path = "app_combo_ops.rs"]
+mod combo_ops;
+
 use crate::argform;
 use crate::catalog::{self, Browser, Combo};
 use crate::catsave::CatSave;
@@ -3299,157 +3302,6 @@ impl Core {
             return None;
         }
         Some((k, (a..j).filter(|&i| !rows[i].is_cb()).count()))
-    }
-
-    /// 組合せの系の絞り・ソルブ・ピックアップ: serve の edit の操作を組合せの要素の surface_ops にする
-    fn combo_ops(
-        &mut self,
-        spans: &[Option<[usize; 2]>],
-        ids: &[String],
-        ops: &[Value],
-    ) -> Result<(), String> {
-        let lead0 = self.browser.combo.lead_stop();
-        let r = self.combo_ops_inner(spans, ids, ops);
-        // 前の絞りが出入りすると面の番号がずれるので、選んだ面も合わせる
-        let lead1 = self.browser.combo.lead_stop();
-        if lead0 != lead1 {
-            if let Some((j, c)) = self.ld.cur {
-                self.ld.cur = Some(if lead1 {
-                    (j + 1, c)
-                } else {
-                    (j.saturating_sub(1), c)
-                });
-            }
-        }
-        r
-    }
-
-    fn combo_ops_inner(
-        &mut self,
-        spans: &[Option<[usize; 2]>],
-        ids: &[String],
-        ops: &[Value],
-    ) -> Result<(), String> {
-        let outside = || tr("組合せの要素の外の面").to_string();
-        for op in ops {
-            let name = op["op"].as_str().unwrap_or_default();
-            let face = |key: &str| -> Result<(usize, usize), String> {
-                let (k, i) = op[key]
-                    .as_u64()
-                    .and_then(|j| self.combo_face(spans, j as usize))
-                    .ok_or_else(outside)?;
-                if self.browser.combo.el(k).is_some_and(|p| p.locked) {
-                    return Err(tr("ロックした要素は変えられない").into());
-                }
-                Ok((k, i))
-            };
-            let other = |key: &str| -> Result<Option<Value>, String> {
-                match op.get(key) {
-                    None | Some(Value::Null) => Ok(None),
-                    Some(v) => {
-                        let (k, i) = v
-                            .as_u64()
-                            .and_then(|j| self.combo_face(spans, j as usize))
-                            .ok_or_else(outside)?;
-                        Ok(Some(json!({ "block": ids[k], "surface": i })))
-                    }
-                }
-            };
-            let is_curv = |o: &Value| {
-                lensbench_core::edit::solve_kind_parse(
-                    o["kind"].as_str().unwrap_or("marginal_height"),
-                    0.0,
-                    Some(0),
-                )
-                .is_ok_and(|k| k.is_curv())
-            };
-            match name {
-                "set_stop" => {
-                    let j = op["surface"].as_u64().unwrap_or(0) as usize;
-                    let c = &self.browser.combo;
-                    let lead = c
-                        .all()
-                        .iter()
-                        .all(|l| !c.get(l).is_some_and(|p| p.kind == combo::ElemKind::Stop));
-                    match self.combo_face(spans, j) {
-                        Some((k, i)) => {
-                            let c = &mut self.browser.combo;
-                            if c.el(k).is_some_and(|p| p.kind == combo::ElemKind::Stop) {
-                                // 絞りの要素そのもの
-                                c.set_stop_face(None);
-                            } else {
-                                let loc = c.chain()[k].loc.clone();
-                                c.set_stop_face(Some((loc, i)));
-                            }
-                        }
-                        // 前の絞り（要素の外）に戻す
-                        None if lead
-                            && self.ld_rows.get(j).is_some_and(|r| r.comment == "STOP") =>
-                        {
-                            self.browser.combo.set_stop_face(None)
-                        }
-                        None => return Err(outside()),
-                    }
-                }
-                "unset_stop" => self.browser.combo.set_stop_face(None),
-                "add_solve" => {
-                    let (k, i) = face("surface")?;
-                    let mut o = op.clone();
-                    o["surface"] = json!(i);
-                    if let Some(x) = other("other")? {
-                        o["other"] = x;
-                    }
-                    let c = is_curv(&o);
-                    let Some(p) = self.browser.combo.el_mut(k) else {
-                        return Err(outside());
-                    };
-                    p.ops.retain(|q| {
-                        !(q["op"] == "add_solve" && q["surface"] == json!(i) && is_curv(q) == c)
-                    });
-                    p.ops.push(o);
-                }
-                "remove_solve" => {
-                    let (k, i) = face("surface")?;
-                    let c = op["what"] == "c";
-                    self.browser
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .ops
-                        .retain(|q| {
-                            !(q["op"] == "add_solve" && q["surface"] == json!(i) && is_curv(q) == c)
-                        });
-                }
-                "add_pickup" => {
-                    let (k, i) = face("dst")?;
-                    let mut o = op.clone();
-                    o["dst"] = json!(i);
-                    o["src"] = other("src")?.ok_or_else(outside)?;
-                    let Some(p) = self.browser.combo.el_mut(k) else {
-                        return Err(outside());
-                    };
-                    p.ops.retain(|q| {
-                        !(q["op"] == "add_pickup" && q["dst"] == json!(i) && q["what"] == o["what"])
-                    });
-                    p.ops.push(o);
-                }
-                "remove_pickup" => {
-                    let (k, i) = face("dst")?;
-                    self.browser
-                        .combo
-                        .el_mut(k)
-                        .ok_or_else(outside)?
-                        .ops
-                        .retain(|q| {
-                            !(q["op"] == "add_pickup"
-                                && q["dst"] == json!(i)
-                                && q["what"] == op["what"])
-                        });
-                }
-                _ => return Err(trf("組合せの系では {} は使えない", &[&name])),
-            }
-        }
-        Ok(())
     }
 
     /// 組合せの系の面 j の値 key を、組合せの要素に当てる（要素の最後の面の厚さは後の空気、ほかは面の上書き）

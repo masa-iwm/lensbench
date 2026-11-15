@@ -22,6 +22,7 @@ pub mod catalog_fill;
 pub mod catalog_spec;
 pub mod detectors;
 pub mod edit_ops;
+pub mod edit_spec;
 pub mod filter;
 pub mod lenient;
 pub mod open;
@@ -29,6 +30,8 @@ pub mod schema;
 mod splitter;
 mod step_geom;
 pub mod sysfile;
+pub use edit_spec::SurfaceOp;
+use edit_spec::{BlockRef, EditOp, Ref};
 pub use splitter::{Arm, PbsSpec, SplitFace, SplitForm, SplitterSpec};
 use splitter::{Level, SplitState};
 

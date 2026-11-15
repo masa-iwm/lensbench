@@ -156,7 +156,8 @@ fn stale_surface_edits_are_dropped() {
     let mut a = Pick::new(ElemKind::Surfaces);
     a.surfs = vec![SurfRow::default(), SurfRow::default(), SurfRow::default()];
     a.set_edit(1, "r", json!(-40.0));
-    a.ops.push(json!({ "op": "set_stop", "surface": 2 }));
+    a.ops
+        .push(serde_json::from_value(json!({ "op": "set_stop", "surface": 2 })).unwrap());
     c.picks = vec![a];
     // 印の無い上書き（前の保存）は今の並びのものとみなす
     assert_eq!(c.drop_stale_edits(), 0);
@@ -189,9 +190,12 @@ fn surface_ops_follow_the_element() {
         ..Default::default()
     };
     assert!(c.lead_stop());
-    c.picks[1].ops.push(json!({
-        "op": "add_pickup", "dst": 1, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1
-    }));
+    c.picks[1].ops.push(
+        serde_json::from_value(json!({
+            "op": "add_pickup", "dst": 1, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1
+        }))
+        .unwrap(),
+    );
     c.set_stop_face(Some((vec![0], 1)));
     assert!(!c.lead_stop());
     assert_eq!(c.stop_face(), Some((vec![0], 1)));
@@ -201,7 +205,7 @@ fn surface_ops_follow_the_element() {
         v["surface_ops"],
         json!([
             {"op": "set_stop", "surface": {"block": "L1", "surface": 1}},
-            {"op": "add_pickup", "dst": {"block": "L2", "surface": 1}, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1},
+            {"op": "add_pickup", "dst": {"block": "L2", "surface": 1}, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1.0},
         ])
     );
     c.set_stop_face(None);

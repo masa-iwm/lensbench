@@ -800,11 +800,11 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub surface_edits: Vec<SurfaceEdit>,
     /// 面の絞り・ソルブ・ピックアップ。serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、
-    /// 面（`surface`・`dst`・`src`・`other`）は `{"block": id, "surface": i}`（[`SurfaceEdit`] と同じ数え方）か系の面の番号。
+    /// 面（`surface`・`dst`・`src`・`other`）は `{"block": id, "surface": i}`（[`SurfaceEdit`] と同じ数え方）か系の面の番号・名前。
     /// 展開の最後（`surface_edits` の後）に当てる。ブロックが無い（状態で外したなど）操作は当てずに注意を出す。
     /// 往復するブロックは往路の面を指す
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub surface_ops: Vec<Value>,
+    pub surface_ops: Vec<SurfaceOp>,
     /// 機構部品（チューブ・ケージ板・マウント）。光線の追跡は変えず、ケラレの確認（`mech-check`）と描画に使う
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mechanics: Vec<MechPlacement>,

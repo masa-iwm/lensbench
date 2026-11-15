@@ -1,0 +1,941 @@
+{
+  "$defs": {
+    "Bore": {
+      "description": "部品の穴（円柱）。z は部品の座標 [mm]",
+      "properties": {
+        "radius": {
+          "description": "半径 [mm]",
+          "format": "double",
+          "type": "number"
+        },
+        "z0": {
+          "format": "double",
+          "type": "number"
+        },
+        "z1": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "z0",
+        "z1",
+        "radius"
+      ],
+      "type": "object"
+    },
+    "EditOp": {
+      "description": "系の編集の操作（serve の `edit` の `ops` の要素）。`op` で選ぶ",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "面 at の前に面を入れる（surface は面の値の名前と値、[`lensbench_core::edit::SURF_FIELDS`]）",
+          "properties": {
+            "at": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "insert_surface",
+              "type": "string"
+            },
+            "surface": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "op",
+            "at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面を消す",
+          "properties": {
+            "op": {
+              "const": "delete_surface",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面の値を変える（名前と値、[`lensbench_core::edit::SURF_FIELDS`]。aperture は {\"type\": \"circular\", \"max\": 3, …} か null）",
+          "properties": {
+            "fields": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "op": {
+              "const": "set_surface",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面タイプを変える",
+          "properties": {
+            "op": {
+              "const": "set_surface_type",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "材料を変える",
+          "properties": {
+            "material": {
+              "type": "string"
+            },
+            "op": {
+              "const": "set_material",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面を絞りにする",
+          "properties": {
+            "op": {
+              "const": "set_stop",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ピックアップを置く",
+          "properties": {
+            "dst": {
+              "$ref": "#/$defs/Ref",
+              "description": "値を写される面"
+            },
+            "from": {
+              "description": "元の量（省くと what）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "offset": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "足す値（既定 0）"
+            },
+            "op": {
+              "const": "add_pickup",
+              "type": "string"
+            },
+            "scale": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "倍率（既定 1）"
+            },
+            "src": {
+              "$ref": "#/$defs/Ref",
+              "description": "元の面"
+            },
+            "what": {
+              "description": "量（c r t k p1〜 dn disp semi before0〜4 after0〜4）",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "dst",
+            "src",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ピックアップを外す",
+          "properties": {
+            "dst": {
+              "$ref": "#/$defs/Ref"
+            },
+            "op": {
+              "const": "remove_pickup",
+              "type": "string"
+            },
+            "what": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "dst",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ソルブを置く",
+          "properties": {
+            "kind": {
+              "description": "種類（既定 marginal_height、[`lensbench_core::edit::SOLVE_KINDS`]）",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "op": {
+              "const": "add_solve",
+              "type": "string"
+            },
+            "other": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Ref"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "別の面を参照する種類の面"
+            },
+            "param": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "帯・縁の高さ（既定 0）"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "目標の値（既定 0）"
+            }
+          },
+          "required": [
+            "op",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "ソルブを外す",
+          "properties": {
+            "op": {
+              "const": "remove_solve",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            },
+            "what": {
+              "$ref": "#/$defs/SolveWhat",
+              "default": "t"
+            }
+          },
+          "required": [
+            "op",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "面のデータを全部の項目で変える（serve の `surface_data` の data と同じ形、書いた項目だけ）。屈折率 n・絞り stop・\n鏡 mirror は変えない（材料・set_stop で）。面タイプの形のデータ zern・grid・bin2・cylf・grin、前後の傾き偏心\nbefore・after もここで",
+          "properties": {
+            "data": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "op": {
+              "const": "set_surface_data",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "surface",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "パラメータの値を変える（名前は set と同じ）",
+          "properties": {
+            "op": {
+              "const": "set_param",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Num"
+            }
+          },
+          "required": [
+            "op",
+            "param",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "系の設定の項目を変える（[`crate::edit_ops::SYSTEM_KEYS`] の書いた分だけ。形は serve の `system_data` と同じ）",
+          "properties": {
+            "data": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "op": {
+              "const": "set_system_data",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "玉・群を作る（spans は面の範囲 [[最初, 最後], …]、pivot は既定 [0, 0, 0]）",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "op": {
+              "const": "define_unit",
+              "type": "string"
+            },
+            "pivot": {
+              "items": {
+                "$ref": "#/$defs/Num"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "spans": {
+              "items": {
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "name",
+            "spans"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "玉・群を変える（書いた分だけ。範囲を変えるのは動き・移動が 0 のときだけ）",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "op": {
+              "const": "set_unit",
+              "type": "string"
+            },
+            "pivot": {
+              "items": {
+                "$ref": "#/$defs/Num"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "spans": {
+              "items": {
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "unit": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "unit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "玉・群を外す（動き・移動が 0 のときだけ）",
+          "properties": {
+            "op": {
+              "const": "remove_unit",
+              "type": "string"
+            },
+            "unit": {
+              "$ref": "#/$defs/Ref"
+            }
+          },
+          "required": [
+            "op",
+            "unit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "機構部品を置く（系ファイルの mechanics の要素と同じ形）",
+          "properties": {
+            "op": {
+              "const": "add_mech",
+              "type": "string"
+            },
+            "part": {
+              "$ref": "#/$defs/MechPart"
+            }
+          },
+          "required": [
+            "op",
+            "part"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "機構部品を変える（part は書いた項目だけ）",
+          "properties": {
+            "mech": {
+              "$ref": "#/$defs/Ref"
+            },
+            "op": {
+              "const": "set_mech",
+              "type": "string"
+            },
+            "part": {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          },
+          "required": [
+            "op",
+            "mech",
+            "part"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "機構部品を外す",
+          "properties": {
+            "mech": {
+              "$ref": "#/$defs/Ref"
+            },
+            "op": {
+              "const": "remove_mech",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "mech"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "多重構成の数",
+          "properties": {
+            "n": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "set_config_count",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "n"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "多重構成の表の行（パラメータの構成ごとの値）",
+          "properties": {
+            "op": {
+              "const": "set_config_row",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "$ref": "#/$defs/Num"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "param",
+            "values"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "多重構成の表に行を足す（どの構成も今の値）",
+          "properties": {
+            "op": {
+              "const": "add_config_row",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "param"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "多重構成の表の行を外す",
+          "properties": {
+            "op": {
+              "const": "remove_config_row",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "param"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "構成 k（1 始まり）を系に入れる",
+          "properties": {
+            "k": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "set_config",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "k"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "構成を at（1 始まり）に入れる。from の構成の値で（既定は今の構成、pickup なら 1）、pickup なら from を写す",
+          "properties": {
+            "at": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "from": {
+              "format": "uint",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "op": {
+              "const": "insert_config",
+              "type": "string"
+            },
+            "pickup": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "op",
+            "at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "構成 k を外す",
+          "properties": {
+            "k": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "remove_config",
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "k"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "表の行 param の構成 k を構成 from から写す（× scale + offset）",
+          "properties": {
+            "from": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "k": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "offset": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "const": "set_config_pickup",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            },
+            "scale": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Num"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "param",
+            "k",
+            "from"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "表の行 param の構成 k の写しをやめる",
+          "properties": {
+            "k": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "op": {
+              "const": "remove_config_pickup",
+              "type": "string"
+            },
+            "param": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "param",
+            "k"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MechPart": {
+      "description": "系に置いた機構部品",
+      "properties": {
+        "bores": {
+          "items": {
+            "$ref": "#/$defs/Bore"
+          },
+          "type": "array"
+        },
+        "hold_radius": {
+          "default": 0.0,
+          "description": "素子を保持する内壁の半径（保持径の半分）。0 なら穴の半径が内壁",
+          "format": "double",
+          "type": "number"
+        },
+        "holds": {
+          "description": "保持する素子の面（系の面の番号）。はみ出し・保持径の確認に使う",
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "length": {
+          "default": 0.0,
+          "description": "外形（描画・重なりの確認用）: 部品の z の範囲と外径の半径。0 なら穴から決める",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "offset": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "description": "基準の面の局所座標でのずれ [dx, dy, dz] [mm]",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "outer_radius": {
+          "default": 0.0,
+          "format": "double",
+          "type": "number"
+        },
+        "rod_spacing": {
+          "default": 0.0,
+          "description": "ケージのロッドの間隔 [mm]（0 はケージ板でない）",
+          "format": "double",
+          "type": "number"
+        },
+        "square": {
+          "description": "外形が角（`outer_radius` は正方形の一辺の半分、辺は部品の x・y 軸に沿う）。false は丸",
+          "type": "boolean"
+        },
+        "step": {
+          "description": "部品の詳しい形の STEP（品の公式の STEP を取ったキャッシュのファイル）。描画で詳しい形を選ぶと使う",
+          "type": "string"
+        },
+        "step_flip": {
+          "description": "STEP の形を裏返して置く（部品を `reversed` で置いた。z → 長さ − z、y → −y）",
+          "type": "boolean"
+        },
+        "surface": {
+          "description": "置く基準の面（その面の局所座標）",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tilt": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "傾き [tx, ty] [deg]（ずらした後、x → y の順）",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "surface",
+        "bores"
+      ],
+      "type": "object"
+    },
+    "Num": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "$f": {
+              "enum": [
+                "inf",
+                "-inf",
+                "nan"
+              ]
+            }
+          },
+          "required": [
+            "$f"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "数。JSON に書けない数は {\"$f\": \"inf\"}（-inf・nan も）"
+    },
+    "Ref": {
+      "anyOf": [
+        {
+          "description": "番号",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "description": "名前",
+          "type": "string"
+        }
+      ],
+      "description": "番号か名前。面は OpticStudio の面番号か面のコメント、玉・群と機構部品は 0 始まりの番号か名前"
+    },
+    "SolveWhat": {
+      "description": "ソルブを外す量",
+      "oneOf": [
+        {
+          "const": "t",
+          "description": "厚さ（既定）",
+          "type": "string"
+        },
+        {
+          "const": "c",
+          "description": "曲率",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/edit-ops.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "$ref": "#/$defs/EditOp"
+  },
+  "title": "lensbench 系の編集の操作の列（serve の edit の ops）",
+  "type": "array"
+}

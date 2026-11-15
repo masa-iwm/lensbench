@@ -1,4 +1,4 @@
-//! JSON スキーマ: プロジェクト・系ファイル・ユーザーカタログの形を（差し替え探索の設定は lensbench-design）、
+//! JSON スキーマ: プロジェクト・系ファイル・ユーザーカタログ・系の編集の操作（serve の `edit`）の形を（差し替え探索の設定は lensbench-design）、
 //! serde の型から schemars で作る。リポジトリの `docs/schema/<名前>.schema.json` はこれで作り、テスト
 //! （`tests/schema.rs`）で型とずれていないかを確かめる（作り直すには `LENSBENCH_UPDATE_SCHEMA=1 cargo test
 //! -p lensbench-project --test it schema::`）。
@@ -16,7 +16,7 @@ use schemars::{JsonSchema, Schema};
 use serde_json::{json, Map, Value};
 
 /// スキーマの名前（`docs/schema/<名前>.schema.json`）
-pub const NAMES: [&str; 3] = ["project", "system", "user-catalog"];
+pub const NAMES: [&str; 4] = ["project", "system", "user-catalog", "edit-ops"];
 
 /// スキーマの `$id` の元（公開リポジトリの main の docs/schema）
 pub const BASE_URL: &str = "https://raw.githubusercontent.com/masa-iwm/lensbench/main/docs/schema/";
@@ -75,6 +75,10 @@ pub fn schema_with(name: &str, kinds: &[detectors::DetectorKind]) -> Option<Valu
             (v, "lensbench 系ファイル")
         }
         "user-catalog" => (gen::<UserCatalog>(), "lensbench ユーザーカタログ"),
+        "edit-ops" => (
+            gen::<Vec<crate::edit_spec::EditOp>>(),
+            "lensbench 系の編集の操作の列（serve の edit の ops）",
+        ),
         _ => return None,
     };
     add_detectors(&mut v, kinds);

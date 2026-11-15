@@ -123,6 +123,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   `add_solve` surface・kind（marginal_height など、Python の add_solve と同じ名前）・value・other（別の面）・param、`remove_solve` surface・what（t か c）、`set_param` param・value、`set_config_count` n、`set_config_row` param・values、`add_config_row` param（どの構成も今の値）、
   `remove_config_row` param、`insert_config` at（新しい構成の番号 1〜n+1）・from（値を写す構成、省略は今の構成、pickup なら 1）・pickup（true で新しい構成を from のピックアップに。OpticStudio の Insert Configuration with Pickups）、`remove_config` k（構成が 1 つになると表を消す）、`set_config_pickup` param・k・from・scale（既定 1）・offset（既定 0）（構成 k の値 = 構成 from の値 × scale + offset。ピックアップの構成の値を直接変えると外れる）、`remove_config_pickup` param・k、`set_config` k（表の操作でない操作・`set` で表の行の値を変えると、今の構成の列も変わる）、`set_system_data` data（`system_data` の data と同じ形で、書いた項目だけ変える。波長・視野の数も変えられる）、`set_surface_data` surface・data（`surface_data` の data と同じ形で、書いた項目だけ変える。開口 ap・前後の傾き偏心 before・after・面タイプの形のデータ zern grid bin2 cylf grin もここで。stop・mirror・n は変えない）。開口は `{"type": "circular", "max": 3}` か null、inf は `{"$f": "inf"}`。
   例: `{"ops": [{"op": "insert_surface", "at": 3, "surface": {"r": 50, "t": 5, "material": "N-BK7"}}]}`
+  操作の形はスキーマ [edit-ops](schema/edit-ops.schema.json)（玉・群の `define_unit`・`set_unit`・`remove_unit`、機構部品の `add_mech`・`set_mech`・`remove_mech` も）。
+  知らない操作・キー・型の合わない値は、どの操作も当てる前に invalid params（-32602）の誤り（「操作 2 (set_stop): unknown field …」）
 - `load` は系ファイルも読める（`format` が `lensbench-system` の .json）
 - 数は JSON から丸めずに読む（Python の `float` を送れば同じ f64 が届く）
 - 像面距離などの解き（ソルブ）のある系では、値を変えてから元に戻すと、解きを前の値から解き直すので 1e-14 程度の差が残ることがある

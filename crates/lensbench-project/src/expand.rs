@@ -401,7 +401,7 @@ pub(crate) fn expand_inner(
     let stop_op = p
         .surface_ops
         .iter()
-        .any(|o| o.get("op").and_then(Value::as_str) == Some("set_stop"));
+        .any(|o| matches!(o, SurfaceOp::SetStop(_)));
     if c.nstop > 1 || (c.nstop == 0 && !stop_op) {
         return Err(format!("絞りが {} 個（ちょうど 1 つ要る）", c.nstop));
     }
@@ -911,54 +911,39 @@ pub(crate) fn block_face(
 /// 当てたかを返す
 pub(crate) fn apply_surface_ops(
     s: &mut System,
-    ops: &[Value],
+    ops: &[SurfaceOp],
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
 ) -> Result<(Vec<String>, bool), String> {
     let mut warn = Vec::new();
     let mut out = Vec::new();
-    'ops: for (k, op) in ops.iter().enumerate() {
-        let name = op.get("op").and_then(Value::as_str).unwrap_or_default();
-        if !["set_stop", "add_solve", "add_pickup"].contains(&name) {
-            return Err(format!(
-                "surface_ops {}: 操作は set_stop・add_solve・add_pickup（{name}）",
-                k + 1
-            ));
-        }
-        let mut o = op.clone();
-        for key in ["surface", "dst", "src", "other"] {
-            let Some(r) = op.get(key).and_then(Value::as_object) else {
-                continue;
-            };
-            let (Some(b), Some(i)) = (
-                r.get("block").and_then(Value::as_str),
-                r.get("surface").and_then(Value::as_u64),
-            ) else {
-                return Err(format!(
-                    "surface_ops {}: {key} は {{\"block\": id, \"surface\": i}} か面の番号",
-                    k + 1
-                ));
-            };
-            match block_face(s, b, i as usize, spans, back_spans)
+    for (k, op) in ops.iter().enumerate() {
+        let mut missing = None;
+        let e = op.to_edit(|r| match r {
+            BlockRef::Sys(r) => Ok::<_, String>(Some(r)),
+            BlockRef::Block(f) => match block_face(s, &f.block, f.surface, spans, back_spans)
                 .map_err(|x| format!("surface_ops {}: {x}", k + 1))?
             {
-                Some(j) => o[key] = Value::from(j),
+                Some(j) => Ok(Some(Ref::Index(j))),
                 None => {
-                    warn.push(format!(
-                        "surface_ops {}: ブロック {b} が無いので {name} を当てない",
-                        k + 1
-                    ));
-                    continue 'ops;
+                    missing = Some(f.block);
+                    Ok(None)
                 }
-            }
+            },
+        })?;
+        match e {
+            Some(e) => out.push(e),
+            None => warn.push(format!(
+                "surface_ops {}: ブロック {} が無いので {} を当てない",
+                k + 1,
+                missing.unwrap_or_default(),
+                op.name()
+            )),
         }
-        out.push(o);
     }
-    let stopped = out.iter().any(|o| o["op"] == "set_stop");
+    let stopped = out.iter().any(|o| matches!(o, EditOp::SetStop(_)));
     if !out.is_empty() {
-        warn.extend(
-            edit_ops::apply(s, &Value::Array(out)).map_err(|x| format!("surface_ops: {x}"))?,
-        );
+        warn.extend(edit_ops::apply(s, &out).map_err(|x| format!("surface_ops: {x}"))?);
     }
     Ok((warn, stopped))
 }
@@ -1018,8 +1003,7 @@ pub(crate) fn apply_surface_edits(
             .clone()
             .into_iter()
             .partition(|(k, _)| lensbench_core::edit::SURF_FIELDS.contains(&k.as_str()));
-        let data = Value::Object(data);
-        let has_data = data.as_object().is_some_and(|m| !m.is_empty());
+        let has_data = !data.is_empty();
         let f = edit_ops::surf_fields(&Value::Object(named))
             .map_err(|x| format!("surface_edits: {x}"))?;
         for v in &fwd {

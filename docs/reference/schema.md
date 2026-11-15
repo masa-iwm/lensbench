@@ -11,5 +11,6 @@ lensbench が読み書きする JSON ファイルのスキーマです。ファ�
 | [swap](../schema/swap.schema.json) | 差し替え探索の `--spec` |
 | [terms](../schema/terms.schema.json) | 評価関数の項（`optimize --terms`、1 つか並び） |
 | [tolerance](../schema/tolerance.schema.json) | モンテカルロ公差の `--spec` |
+| [edit-ops](../schema/edit-ops.schema.json) | 系の編集の操作の並び（serve の `edit` の `ops`。プロジェクトの `surface_ops` は project の中） |
 
 serde の型から作っているので、型を変えたら `LENSBENCH_UPDATE_SCHEMA=1 cargo test -p lensbench-project -p lensbench-design --test it schema::` で作り直す（swap・terms・tolerance は lensbench-design）。

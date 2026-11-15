@@ -32,10 +32,16 @@
 //! JSON に書けない inf は {"$f": "inf"}（系ファイルと同じ）
 
 use lensbench_core::edit::{pick_kind_parse, SurfValue};
+use lensbench_core::mech::MechPart;
 use lensbench_core::param::{Kind, Pickup, ThickSolve};
 use lensbench_core::surface::{Aperture, Surface};
 use lensbench_core::System;
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{Map, Value};
+
+pub use crate::edit_spec::{
+    BlockFace, BlockRef, EditOp, Num, PickupOp, Ref, SolveOp, SolveWhat, StopOp, SurfaceOp,
+};
 
 fn num(v: &Value) -> Option<f64> {
     if let Some(x) = v.as_f64() {
@@ -48,80 +54,47 @@ fn num(v: &Value) -> Option<f64> {
     }
 }
 
-fn surf(s: &System, v: &Value, what: &str) -> Result<usize, String> {
+fn surf(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
     match v {
-        Value::Number(n) => n
-            .as_u64()
-            .map(|j| j as usize)
+        Ref::Index(j) => Some(*j)
             .filter(|&j| j < s.surfaces.len())
-            .ok_or_else(|| format!("{what}: 面 {n}")),
-        Value::String(t) => s.find_surface(t).map_err(|e| format!("{what}: {e}")),
-        _ => Err(format!("{what} は面の番号か名前")),
+            .ok_or_else(|| format!("{what}: 面 {j}")),
+        Ref::Name(t) => s.find_surface(t).map_err(|e| format!("{what}: {e}")),
     }
 }
 
-/// 玉・群の範囲 [[最初, 最後], …]
-fn spans_of(v: &Value, what: &str) -> Result<Vec<[usize; 2]>, String> {
-    let bad = || format!("{what} の spans は [[最初, 最後], …]");
-    v.as_array()
-        .ok_or_else(bad)?
-        .iter()
-        .map(|x| match x.as_array().map(|a| a.as_slice()) {
-            Some([a, b]) => Ok([
-                a.as_u64().ok_or_else(bad)? as usize,
-                b.as_u64().ok_or_else(bad)? as usize,
-            ]),
-            _ => Err(bad()),
-        })
-        .collect()
-}
-
-fn vec3(v: &Value, what: &str) -> Result<[f64; 3], String> {
-    match v.as_array().map(|a| a.as_slice()) {
-        Some([a, b, c]) => match (num(a), num(b), num(c)) {
-            (Some(a), Some(b), Some(c)) => Ok([a, b, c]),
-            _ => Err(format!("{what} の pivot は数 3 つ")),
-        },
-        _ => Err(format!("{what} の pivot は数 3 つ")),
-    }
+fn vec3(v: &[Num; 3]) -> [f64; 3] {
+    v.map(|x| x.0)
 }
 
 /// 玉・群（名前か、0 始まりの番号）
-fn unit_of(s: &System, v: &Value, what: &str) -> Result<usize, String> {
+fn unit_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
     match v {
-        Value::Number(n) => n
-            .as_u64()
-            .map(|i| i as usize)
+        Ref::Index(i) => Some(*i)
             .filter(|&i| i < s.units.len())
-            .ok_or_else(|| format!("{what}: 玉・群 {n}")),
-        Value::String(t) => s
+            .ok_or_else(|| format!("{what}: 玉・群 {i}")),
+        Ref::Name(t) => s
             .find_unit(t)
             .ok_or_else(|| format!("{what}: 玉・群 {t} が無い")),
-        _ => Err(format!("{what} の unit は玉・群の名前か番号")),
     }
 }
 
 /// 機構部品（名前か、0 始まりの番号）
-fn mech_of(s: &System, v: &Value, what: &str) -> Result<usize, String> {
+fn mech_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
     match v {
-        Value::Number(n) => n
-            .as_u64()
-            .map(|i| i as usize)
+        Ref::Index(i) => Some(*i)
             .filter(|&i| i < s.mechanics.len())
-            .ok_or_else(|| format!("{what}: 機構部品 {n}")),
-        Value::String(t) => s
+            .ok_or_else(|| format!("{what}: 機構部品 {i}")),
+        Ref::Name(t) => s
             .mechanics
             .iter()
             .position(|m| m.name.eq_ignore_ascii_case(t.trim()))
             .ok_or_else(|| format!("{what}: 機構部品 {t} が無い")),
-        _ => Err(format!("{what} の mech は機構部品の名前か番号")),
     }
 }
 
-/// 機構部品の JSON を読んで確かめる（名前・面の番号・寸法）
-fn mech_from(s: &System, v: Value) -> Result<lensbench_core::mech::MechPart, String> {
-    let m: lensbench_core::mech::MechPart =
-        serde_json::from_value(v).map_err(|e| format!("機構部品: {e}"))?;
+/// 機構部品を確かめる（名前・面の番号・寸法）
+fn mech_check(s: &System, m: MechPart) -> Result<MechPart, String> {
     let n = s.surfaces.len();
     if m.name.trim().is_empty() {
         return Err("機構部品の名前が空".into());
@@ -217,6 +190,11 @@ pub fn surf_fields(v: &Value) -> Result<Vec<(String, SurfValue)>, String> {
     let Some(m) = v.as_object() else {
         return Err("面の値は {名前: 値}".into());
     };
+    surf_fields_map(m)
+}
+
+/// 面の値の {名前: 値} を名前と値の組に
+pub fn surf_fields_map(m: &Map<String, Value>) -> Result<Vec<(String, SurfValue)>, String> {
     let mut out = Vec::with_capacity(m.len());
     for (k, x) in m {
         let val = if k == "aperture" {
@@ -382,10 +360,11 @@ fn coerce(v: Value, tmpl: Option<&Value>, key: &str, in_bin2: bool) -> Value {
 }
 
 /// 面 j のデータを data の項目で変える（[`surface_data`] の data と同じ形、書いた項目だけ）
-pub(crate) fn set_surface_data(t: &mut System, j: usize, data: &Value) -> Result<(), String> {
-    let Some(m) = data.as_object() else {
-        return Err("data は {項目: 値}".into());
-    };
+pub(crate) fn set_surface_data(
+    t: &mut System,
+    j: usize,
+    m: &Map<String, Value>,
+) -> Result<(), String> {
     let cur = t.surfaces[j].clone();
     let c = ciborium::value::Value::serialized(&cur).map_err(|e| e.to_string())?;
     let mut v = crate::sysfile::to_json(c)?;
@@ -464,10 +443,7 @@ pub fn system_data(s: &System) -> Result<Value, String> {
 }
 
 /// 系の設定の項目を変える（`set_system_data`）。書いた項目だけ変え、屈折率は波長・温度・気圧から作り直す
-pub(crate) fn set_system_data(t: &mut System, data: &Value) -> Result<(), String> {
-    let Some(m) = data.as_object() else {
-        return Err("data は {項目: 値}".into());
-    };
+pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<(), String> {
     let c = ciborium::value::Value::serialized(&*t).map_err(|e| e.to_string())?;
     let mut v = crate::sysfile::to_json(c)?;
     let o = v.as_object_mut().ok_or("系のデータ")?;
@@ -516,19 +492,36 @@ pub(crate) fn set_system_data(t: &mut System, data: &Value) -> Result<(), String
     .map_err(|e| e.to_string())
 }
 
-/// 操作の列を順に当てる（どれかが失敗すれば系は変えない）。面を消したときなどの説明を返す
-pub fn apply(s: &mut System, ops: &Value) -> Result<Vec<String>, String> {
+/// 操作の列の JSON を読む（知らない操作・キーは誤り。誤りの文の頭に操作の番号）
+pub fn parse(ops: &Value) -> Result<Vec<EditOp>, String> {
     let Some(list) = ops.as_array() else {
         return Err("ops は操作の並び".into());
     };
+    list.iter()
+        .enumerate()
+        .map(|(i, o)| {
+            EditOp::deserialize(o).map_err(|e| {
+                let name = o.get("op").and_then(Value::as_str).unwrap_or("?");
+                format!("操作 {} ({name}): {e}", i + 1)
+            })
+        })
+        .collect()
+}
+
+/// JSON の操作の列を読んで当てる（[`parse`] と [`apply`]）
+pub fn apply_json(s: &mut System, ops: &Value) -> Result<Vec<String>, String> {
+    apply(s, &parse(ops)?)
+}
+
+/// 操作の列を順に当てる（どれかが失敗すれば系は変えない）。面を消したときなどの説明を返す
+pub fn apply(s: &mut System, ops: &[EditOp]) -> Result<Vec<String>, String> {
     let mut t = s.clone();
     let mut notes = Vec::new();
-    for (i, op) in list.iter().enumerate() {
+    for (i, op) in ops.iter().enumerate() {
         let at = |e: String| format!("操作 {}: {e}", i + 1);
         apply_one(&mut t, op, &mut notes).map_err(at)?;
         // 表の操作でなければ、変えた値を表の今の構成の列にも
-        let name = op.get("op").and_then(Value::as_str).unwrap_or_default();
-        if !name.contains("config") {
+        if !op.is_config() {
             t.sync_active_config();
         }
     }
@@ -536,145 +529,123 @@ pub fn apply(s: &mut System, ops: &Value) -> Result<Vec<String>, String> {
     Ok(notes)
 }
 
-fn apply_one(t: &mut System, op: &Value, notes: &mut Vec<String>) -> Result<(), String> {
+fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> Result<(), String> {
+    use EditOp as O;
     let e = |x: lensbench_core::Error| x.to_string();
-    let name = op
-        .get("op")
-        .and_then(Value::as_str)
-        .ok_or("op（操作の名前）がない")?;
-    let field = |k: &str| op.get(k).ok_or(format!("{name} には {k}"));
-    let text = |k: &str| -> Result<String, String> {
-        field(k)?
-            .as_str()
-            .map(str::to_string)
-            .ok_or(format!("{name} の {k} は文字列"))
-    };
-    let count = |k: &str| -> Result<usize, String> {
-        field(k)?
-            .as_u64()
-            .map(|x| x as usize)
-            .ok_or(format!("{name} の {k} は 0 以上の整数"))
-    };
-    match name {
-        "insert_surface" => {
-            let at = count("at")?;
-            let f = match op.get("surface") {
-                Some(v) => surf_fields(v)?,
-                None => Vec::new(),
-            };
-            t.insert_surface(at, Surface::default()).map_err(e)?;
-            t.set_surface_fields(at, &f).map_err(e)?;
+    let name = op.name();
+    let name = name.as_str();
+    match op {
+        O::InsertSurface { at, surface } => {
+            let f = surf_fields_map(surface)?;
+            t.insert_surface(*at, Surface::default()).map_err(e)?;
+            t.set_surface_fields(*at, &f).map_err(e)?;
         }
-        "delete_surface" => {
-            let j = surf(t, field("surface")?, name)?;
+        O::DeleteSurface { surface } => {
+            let j = surf(t, surface, name)?;
             notes.extend(t.delete_surface(j).map_err(e)?);
         }
-        "set_surface" => {
-            let j = surf(t, field("surface")?, name)?;
-            let f = surf_fields(field("fields")?)?;
+        O::SetSurface { surface, fields } => {
+            let j = surf(t, surface, name)?;
+            let f = surf_fields_map(fields)?;
             t.set_surface_fields(j, &f).map_err(e)?;
         }
-        "set_surface_type" => {
-            let j = surf(t, field("surface")?, name)?;
-            let k = lensbench_core::edit::surf_type_parse(&text("type")?).map_err(e)?;
+        O::SetSurfaceType { surface, typ } => {
+            let j = surf(t, surface, name)?;
+            let k = lensbench_core::edit::surf_type_parse(typ).map_err(e)?;
             t.set_surface_type(j, k).map_err(e)?;
         }
-        "set_material" => {
-            let j = surf(t, field("surface")?, name)?;
-            t.set_material(j, &text("material")?).map_err(e)?;
+        O::SetMaterial { surface, material } => {
+            let j = surf(t, surface, name)?;
+            t.set_material(j, material).map_err(e)?;
         }
-        "set_stop" => {
-            let j = surf(t, field("surface")?, name)?;
+        O::SetStop(o) => {
+            let j = surf(t, &o.surface, name)?;
             t.set_stop(j).map_err(e)?;
         }
-        "add_pickup" => {
+        O::AddPickup(o) => {
             let mut p = Pickup::new(
-                surf(t, field("dst")?, name)?,
-                surf(t, field("src")?, name)?,
-                pick_kind_parse(&text("what")?).map_err(e)?,
-                op.get("scale").and_then(num).unwrap_or(1.0),
-                op.get("offset").and_then(num).unwrap_or(0.0),
+                surf(t, &o.dst, name)?,
+                surf(t, &o.src, name)?,
+                pick_kind_parse(&o.what).map_err(e)?,
+                o.scale.map_or(1.0, |x| x.0),
+                o.offset.map_or(0.0, |x| x.0),
             );
-            p.from = match op.get("from") {
-                None | Some(Value::Null) => None,
-                Some(v) => Some(
-                    pick_kind_parse(v.as_str().ok_or(format!("{name} の from は量の名前"))?)
-                        .map_err(e)?,
-                ),
+            p.from = match &o.from {
+                None => None,
+                Some(v) => Some(pick_kind_parse(v).map_err(e)?),
             };
             t.add_pickup(p).map_err(e)?;
         }
-        "remove_pickup" => {
-            let j = surf(t, field("dst")?, name)?;
-            let w = pick_kind_parse(&text("what")?).map_err(e)?;
+        O::RemovePickup { dst, what } => {
+            let j = surf(t, dst, name)?;
+            let w = pick_kind_parse(what).map_err(e)?;
             t.remove_pickup(j, w).map_err(e)?;
         }
-        "add_solve" => {
-            let other = match op.get("other") {
-                None | Some(Value::Null) => None,
+        O::AddSolve(o) => {
+            let other = match &o.other {
+                None => None,
                 Some(v) => Some(surf(t, v, name)?),
             };
-            let kind = match op.get("kind") {
-                None | Some(Value::Null) => "marginal_height".to_string(),
-                Some(_) => text("kind")?,
-            };
             let q = ThickSolve {
-                surf: surf(t, field("surface")?, name)?,
-                height: op.get("value").and_then(num).unwrap_or(0.0),
+                surf: surf(t, &o.surface, name)?,
+                height: o.value.map_or(0.0, |x| x.0),
                 kind: lensbench_core::edit::solve_kind_parse(
-                    &kind,
-                    op.get("param").and_then(num).unwrap_or(0.0),
+                    o.kind.as_deref().unwrap_or("marginal_height"),
+                    o.param.map_or(0.0, |x| x.0),
                     other,
                 )
                 .map_err(e)?,
             };
             t.add_solve(q).map_err(e)?;
         }
-        "remove_solve" => {
-            let j = surf(t, field("surface")?, name)?;
-            let k = match op.get("what").and_then(Value::as_str).unwrap_or("t") {
-                "t" => Kind::Thick,
-                "c" => Kind::Curv,
-                w => return Err(format!("{name} の what は t か c（{w}）")),
+        O::RemoveSolve { surface, what } => {
+            let j = surf(t, surface, name)?;
+            let k = match what {
+                SolveWhat::T => Kind::Thick,
+                SolveWhat::C => Kind::Curv,
             };
             t.remove_solve(j, k).map_err(e)?;
         }
-        "set_surface_data" => {
-            let j = surf(t, field("surface")?, name)?;
-            set_surface_data(t, j, field("data")?)?;
+        O::SetSurfaceData { surface, data } => {
+            let j = surf(t, surface, name)?;
+            set_surface_data(t, j, data)?;
         }
-        "set_system_data" => set_system_data(t, field("data")?)?,
-        "set_param" => {
-            let p = t.param(&text("param")?).map_err(e)?;
-            let v = num(field("value")?).ok_or(format!("{name} の value は数"))?;
-            t.set_param(p, v).map_err(e)?;
+        O::SetSystemData { data } => set_system_data(t, data)?,
+        O::SetParam { param, value } => {
+            let p = t.param(param).map_err(e)?;
+            t.set_param(p, value.0).map_err(e)?;
         }
-        "define_unit" => {
-            let spans = spans_of(field("spans")?, name)?;
-            let pivot = match op.get("pivot") {
-                None | Some(Value::Null) => [0.0; 3],
-                Some(v) => vec3(v, name)?,
-            };
-            t.define_unit(&text("name")?, &spans, pivot).map_err(e)?;
+        O::DefineUnit {
+            name: n,
+            spans,
+            pivot,
+        } => {
+            let pivot = pivot.as_ref().map_or([0.0; 3], vec3);
+            t.define_unit(n, spans, pivot).map_err(e)?;
         }
-        "set_unit" => {
-            let u = unit_of(t, field("unit")?, name)?;
-            if let Some(v) = op.get("spans") {
-                t.set_unit_spans(u, &spans_of(v, name)?).map_err(e)?;
+        O::SetUnit {
+            unit,
+            name: n,
+            spans,
+            pivot,
+        } => {
+            let u = unit_of(t, unit, name)?;
+            if let Some(v) = spans {
+                t.set_unit_spans(u, v).map_err(e)?;
             }
-            if let Some(v) = op.get("pivot") {
-                t.set_unit_pivot(u, vec3(v, name)?).map_err(e)?;
+            if let Some(v) = pivot {
+                t.set_unit_pivot(u, vec3(v)).map_err(e)?;
             }
-            if op.get("name").is_some() {
-                t.rename_unit(u, &text("name")?).map_err(e)?;
+            if let Some(n) = n {
+                t.rename_unit(u, n).map_err(e)?;
             }
         }
-        "remove_unit" => {
-            let u = unit_of(t, field("unit")?, name)?;
+        O::RemoveUnit { unit } => {
+            let u = unit_of(t, unit, name)?;
             notes.extend(t.remove_unit(u).map_err(e)?);
         }
-        "add_mech" => {
-            let m = mech_from(t, field("part")?.clone())?;
+        O::AddMech { part } => {
+            let m = mech_check(t, part.clone())?;
             if t.mechanics
                 .iter()
                 .any(|x| x.name.eq_ignore_ascii_case(&m.name))
@@ -683,19 +654,17 @@ fn apply_one(t: &mut System, op: &Value, notes: &mut Vec<String>) -> Result<(), 
             }
             t.mechanics.push(m);
         }
-        "set_mech" => {
-            let i = mech_of(t, field("mech")?, name)?;
+        O::SetMech { mech, part } => {
+            let i = mech_of(t, mech, name)?;
             let mut v = serde_json::to_value(&t.mechanics[i]).map_err(|x| x.to_string())?;
-            let part = field("part")?
-                .as_object()
-                .ok_or(format!("{name} の part は {{項目: 値}}"))?;
             for (k, x) in part {
                 if v.get(k).is_none() && !["holds"].contains(&k.as_str()) {
                     return Err(format!("機構部品の項目 {k} は無い"));
                 }
                 v[k] = x.clone();
             }
-            let m = mech_from(t, v)?;
+            let m: MechPart = serde_json::from_value(v).map_err(|x| format!("機構部品: {x}"))?;
+            let m = mech_check(t, m)?;
             if t.mechanics
                 .iter()
                 .enumerate()
@@ -705,61 +674,54 @@ fn apply_one(t: &mut System, op: &Value, notes: &mut Vec<String>) -> Result<(), 
             }
             t.mechanics[i] = m;
         }
-        "remove_mech" => {
-            let i = mech_of(t, field("mech")?, name)?;
+        O::RemoveMech { mech } => {
+            let i = mech_of(t, mech, name)?;
             t.mechanics.remove(i);
         }
-        "set_config_count" => t.set_config_count(count("n")?).map_err(e)?,
-        "set_config_row" => {
-            let p = t.param(&text("param")?).map_err(e)?;
-            let v: Vec<f64> = field("values")?
-                .as_array()
-                .ok_or(format!("{name} の values は数の並び"))?
-                .iter()
-                .map(|x| num(x).ok_or(format!("{name} の values は数の並び")))
-                .collect::<Result<_, _>>()?;
-            t.set_config_row(p, v).map_err(e)?;
+        O::SetConfigCount { n } => t.set_config_count(*n).map_err(e)?,
+        O::SetConfigRow { param, values } => {
+            let p = t.param(param).map_err(e)?;
+            t.set_config_row(p, values.iter().map(|x| x.0).collect())
+                .map_err(e)?;
         }
-        "add_config_row" => {
-            let p = t.param(&text("param")?).map_err(e)?;
+        O::AddConfigRow { param } => {
+            let p = t.param(param).map_err(e)?;
             let n = t.configs().map_or(1, |c| c.n);
             let v = t.get_param(p).map_err(e)?;
             t.set_config_row(p, vec![v; n]).map_err(e)?;
         }
-        "remove_config_row" => {
-            let p = t.param(&text("param")?).map_err(e)?;
+        O::RemoveConfigRow { param } => {
+            let p = t.param(param).map_err(e)?;
             t.remove_config_row(p).map_err(e)?;
         }
-        "set_config" => {
-            let k = count("k")?;
-            *t = t.config(k).map_err(e)?;
+        O::SetConfig { k } => {
+            *t = t.config(*k).map_err(e)?;
         }
-        "insert_config" => {
-            let at = count("at")?;
-            let pickup = op.get("pickup").and_then(Value::as_bool).unwrap_or(false);
-            let from = match op.get("from") {
-                Some(_) => count("from")?,
-                None if pickup => 1,
+        O::InsertConfig { at, from, pickup } => {
+            let from = match from {
+                Some(f) => *f,
+                None if *pickup => 1,
                 None => t.configs().map_or(1, |c| c.active),
             };
-            t.insert_config(at, from, pickup).map_err(e)?;
+            t.insert_config(*at, from, *pickup).map_err(e)?;
         }
-        "remove_config" => t.remove_config(count("k")?).map_err(e)?,
-        "set_config_pickup" => {
-            let p = t.param(&text("param")?).map_err(e)?;
-            let f = |k: &str, d: f64| -> Result<f64, String> {
-                op.get(k)
-                    .map_or(Ok(d), |x| num(x).ok_or(format!("{name} の {k} は数")))
-            };
-            let (scale, offset) = (f("scale", 1.0)?, f("offset", 0.0)?);
-            t.set_config_pickup(p, count("k")?, count("from")?, scale, offset)
+        O::RemoveConfig { k } => t.remove_config(*k).map_err(e)?,
+        O::SetConfigPickup {
+            param,
+            k,
+            from,
+            scale,
+            offset,
+        } => {
+            let p = t.param(param).map_err(e)?;
+            let (scale, offset) = (scale.map_or(1.0, |x| x.0), offset.map_or(0.0, |x| x.0));
+            t.set_config_pickup(p, *k, *from, scale, offset)
                 .map_err(e)?;
         }
-        "remove_config_pickup" => {
-            let p = t.param(&text("param")?).map_err(e)?;
-            t.remove_config_pickup(p, count("k")?).map_err(e)?;
+        O::RemoveConfigPickup { param, k } => {
+            let p = t.param(param).map_err(e)?;
+            t.remove_config_pickup(p, *k).map_err(e)?;
         }
-        _ => return Err(format!("操作 {name} はない")),
     }
     Ok(())
 }

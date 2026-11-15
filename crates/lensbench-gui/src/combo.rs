@@ -16,6 +16,7 @@ use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, WavePt};
 use crate::theme;
+use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 /// 要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -382,10 +383,9 @@ pub struct Pick {
     pub surfs: Vec<SurfRow>,
     /// .zmx の取り込み: 面 from〜to（0 は既定: 面 1〜像面の手前）
     pub range: [usize; 2],
-    /// 面の絞り・ソルブ・ピックアップ（プロジェクトの surface_ops になる）。serve の edit の set_stop・add_solve・
-    /// add_pickup の形で、この要素の面（surface・dst）は要素の面の番号（座標ブレークを除く）、ほかの要素の面（src・other）は
-    /// {"block": id, "surface": i}
-    pub ops: Vec<Value>,
+    /// 面の絞り・ソルブ・ピックアップ（プロジェクトの surface_ops になる）。この要素の面（surface・dst）は要素の面の
+    /// 番号（座標ブレークを除く、`BlockRef::Sys(Ref::Index(i))`）、ほかの要素の面（src・other）は {"block": id, "surface": i}
+    pub ops: Vec<SurfaceOp>,
     /// ON/OFF（OFF の要素は系に入らない）。状態ごとの値は state_on
     pub on: bool,
     /// OFF のとき同じ長さの空気で残す（既定は詰める）
@@ -1391,12 +1391,8 @@ impl Combo {
     /// 絞りにした要素の面（要素の場所、要素の面の番号）
     pub fn stop_face(&self) -> Option<(Loc, usize)> {
         self.all().into_iter().find_map(|l| {
-            self.get(&l)?
-                .ops
-                .iter()
-                .find(|o| o["op"] == "set_stop")
-                .and_then(|o| o["surface"].as_u64())
-                .map(|i| (l.clone(), i as usize))
+            let i = self.get(&l)?.ops.iter().find_map(SurfaceOp::stop_index)?;
+            Some((l.clone(), i))
         })
     }
 
@@ -1404,7 +1400,7 @@ impl Combo {
     pub fn set_stop_face(&mut self, at: Option<(Loc, usize)>) {
         for l in self.all() {
             if let Some(p) = self.get_mut(&l) {
-                p.ops.retain(|o| o["op"] != "set_stop");
+                p.ops.retain(|o| !matches!(o, SurfaceOp::SetStop(_)));
                 // 玉の前面の絞りも面の絞りに置き換える
                 if at.is_some() {
                     p.stop_front = false;
@@ -1413,7 +1409,9 @@ impl Combo {
         }
         if let Some((l, i)) = at {
             if let Some(p) = self.get_mut(&l) {
-                p.ops.push(json!({ "op": "set_stop", "surface": i }));
+                p.ops.push(SurfaceOp::SetStop(StopOp {
+                    surface: BlockRef::Sys(Ref::Index(i)),
+                }));
             }
         }
     }
@@ -1450,15 +1448,7 @@ impl Combo {
             .collect();
         for (loc, id) in self.ids_all() {
             let Some(p) = self.get(&loc) else { continue };
-            for o in &p.ops {
-                let mut o = o.clone();
-                for key in ["surface", "dst"] {
-                    if let Some(i) = o.get(key).and_then(Value::as_u64) {
-                        o[key] = json!({ "block": id, "surface": i });
-                    }
-                }
-                ops.push(o);
-            }
+            ops.extend(p.ops.iter().map(|o| o.in_block(&id)));
             for (n, set) in states.iter_mut() {
                 if let Some(&on) = p.state_on.get(n).filter(|_| p.kind.has_on()) {
                     set.insert(id.clone(), json!({ "on": on }));
@@ -1507,7 +1497,7 @@ impl Combo {
             v["surface_edits"] = Value::Array(edits);
         }
         if !ops.is_empty() {
-            v["surface_ops"] = Value::Array(ops);
+            v["surface_ops"] = serde_json::to_value(&ops).unwrap_or_default();
         }
         if !self.mechanics.is_empty() {
             v["mechanics"] = Value::Array(self.mechanics.iter().map(MechPick::json).collect());
@@ -4178,7 +4168,11 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
                 p.edits
                     .iter()
                     .map(|e| format!("{} {} = {}", e.surface + 1, e.field, e.value))
-                    .chain(p.ops.iter().map(|o| o.to_string()))
+                    .chain(
+                        p.ops
+                            .iter()
+                            .map(|o| serde_json::to_string(o).unwrap_or_default()),
+                    )
                     .collect::<Vec<_>>()
                     .join("\n"),
             );

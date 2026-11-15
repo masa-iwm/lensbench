@@ -84,3 +84,42 @@ fn missing_block_warns_and_bad_ops_fail() {
     .unwrap_err();
     assert!(e.contains("絞りが 0 個"), "{e}");
 }
+
+/// surface_ops は set_stop・add_solve・add_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
+#[test]
+fn surface_ops_are_typed() {
+    for (ops, want) in [
+        (
+            r#"[{"op": "set_material", "surface": 1, "material": "N-BK7"}]"#,
+            "set_material",
+        ),
+        (
+            r#"[{"op": "set_stop", "surface": {"block": "L1", "surface": 1}, "x": 1}]"#,
+            "x",
+        ),
+        (
+            r#"[{"op": "set_stop", "surface": {"block": "L1", "face": 1}}]"#,
+            "face",
+        ),
+        (r#"[{"op": "set_stop", "surface": -1}]"#, "面の番号 -1"),
+    ] {
+        let e = project(false, ops).unwrap_err();
+        assert!(e.contains(want), "{ops}: {e}");
+    }
+    // 面の名前（展開した系の面のコメント）も前どおり書ける。書き直しても同じ形
+    let p = lensbench_project::Project::from_json(
+        r#"{"wavelengths": [{"um": 0.55}], "aperture": {"type": "epd", "value": 5},
+        "blocks": [{"type": "stop", "semi": 2.5}, {"type": "air", "t": 30}],
+        "surface_ops": [{"op": "add_solve", "surface": 2, "other": {"block": "S", "surface": 0}},
+                        {"op": "add_pickup", "dst": "IMG", "src": 1, "what": "t", "scale": -1, "from": null, "offset": 0}]}"#,
+    )
+    .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&p.to_json()).unwrap();
+    assert_eq!(
+        v["surface_ops"],
+        serde_json::json!([
+            {"op": "add_solve", "surface": 2, "other": {"block": "S", "surface": 0}},
+            {"op": "add_pickup", "dst": "IMG", "src": 1, "what": "t", "scale": -1.0, "offset": 0.0}
+        ])
+    );
+}

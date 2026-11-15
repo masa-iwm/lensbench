@@ -114,7 +114,7 @@ enum Change {
     /// set: (名前, 変える前の値, 値)
     Set(Vec<(String, f64, f64)>),
     /// edit の ops
-    Edit(Value),
+    Edit(Vec<lensbench_project::edit_ops::EditOp>),
 }
 
 struct Served {
@@ -1068,11 +1068,11 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "edit" => {
             let (s, spec) = sess.current()?;
             let mut n = (*s).clone();
-            let notes =
-                lensbench_project::edit_ops::apply(&mut n, &p["ops"]).map_err(RpcErr::app)?;
+            let ops = lensbench_project::edit_ops::parse(&p["ops"]).map_err(RpcErr::params)?;
+            let notes = lensbench_project::edit_ops::apply(&mut n, &ops).map_err(RpcErr::app)?;
             let hash = lensbench_project::sysfile::system_hash(&n).map_err(RpcErr::app)?;
             let count = n.surfaces.len();
-            store_changed(sess, n, spec, Change::Edit(p["ops"].clone()));
+            store_changed(sess, n, spec, Change::Edit(ops));
             let mut v = history(sess);
             v["notes"] = json!(notes);
             v["surfaces"] = json!(count);

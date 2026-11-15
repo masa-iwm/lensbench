@@ -22,7 +22,7 @@ fn a0() -> lensbench_core::System {
 fn ops_apply_in_order_and_all_or_nothing() {
     let mut s = a0();
     let n0 = s.surfaces.len();
-    let notes = edit_ops::apply(
+    let notes = edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "insert_surface", "at": 1, "surface": {"t": 0.0, "comment": "D", "aperture": {"type": "circular", "max": 20}}},
@@ -42,7 +42,7 @@ fn ops_apply_in_order_and_all_or_nothing() {
     assert_eq!(f["t"], json!({"$f": "inf"}));
     // 途中で失敗すると何も変わらない
     let before = s.surfaces.len();
-    let r = edit_ops::apply(
+    let r = edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "insert_surface", "at": 1},
@@ -51,7 +51,7 @@ fn ops_apply_in_order_and_all_or_nothing() {
     );
     assert!(r.unwrap_err().starts_with("操作 2:"));
     assert_eq!(s.surfaces.len(), before);
-    assert!(edit_ops::apply(&mut s, &json!([{"op": "nope"}])).is_err());
+    assert!(edit_ops::apply_json(&mut s, &json!([{"op": "nope"}])).is_err());
 }
 
 /// ソルブの種類を名前で付け・外す（別の面を参照する種類は面の番号か名前）
@@ -60,7 +60,7 @@ fn solve_ops() {
     let mut s = a0();
     s.solves.clear();
     let j = s.image() - 1;
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "add_solve", "surface": j, "kind": "marginal_height", "value": 0.0},
@@ -73,19 +73,19 @@ fn solve_ops() {
         .solves
         .iter()
         .any(|q| q.kind == lensbench_core::param::SolveKind::ConcentricSurface(j - 1)));
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "remove_solve", "surface": j, "what": "c"}]),
     )
     .unwrap();
     assert_eq!(s.solves.len(), 1);
     // 別の面が要る種類で other なし・知らない量の from はエラー
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "add_solve", "surface": j, "kind": "position"}])
     )
     .is_err());
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "add_pickup", "dst": 1, "src": 2, "what": "c", "from": "nope"}])
     )
@@ -112,7 +112,7 @@ fn edit_with_coordinate_breaks() {
         .unwrap();
     assert_eq!(s.surfaces[cb].mat, "-");
     let semi = s.surfaces[1].semi + 1.0;
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_surface", "surface": 1, "fields": {"semi": semi}}]),
     )
@@ -133,7 +133,7 @@ fn surface_data_roundtrip() {
     }
     assert!(d.get("n").is_none());
     let mat = d["mat"].as_str().unwrap().to_string();
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_surface_data", "surface": 2, "data": {"typ": "EvenAsph", "k": -0.5, "asph": [0.0, 1e-6], "semi": 9.5}},
                 {"op": "add_solve", "surface": 2, "kind": "marginal_height"}]),
@@ -150,7 +150,7 @@ fn surface_data_roundtrip() {
     assert_eq!(v["solves"][0]["what"], "t");
     // 変えない項目・無い項目は断る（系はそのまま）
     for bad in [json!({"stop": true}), json!({"zz": 1}), json!({"k": "x"})] {
-        let e = edit_ops::apply(
+        let e = edit_ops::apply_json(
             &mut s,
             &json!([{"op": "set_surface_data", "surface": 2, "data": bad}]),
         );
@@ -169,12 +169,12 @@ fn system_data_roundtrip() {
     }
     // 読んだものをそのまま書いても変わらない
     let hash = lensbench_project::sysfile::system_hash(&s).unwrap();
-    edit_ops::apply(&mut s, &json!([{"op": "set_system_data", "data": d}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "set_system_data", "data": d}])).unwrap();
     assert_eq!(lensbench_project::sysfile::system_hash(&s).unwrap(), hash);
 
     // 波長を 3 つに（整数の重みも数として読む）、温度を変える
     let n_before = s.surfaces[1].n.clone();
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_system_data", "data": {
             "wavelengths": [0.486, 0.5876, 0.656], "weights": [1, 2, 1], "primary": 1,
@@ -188,7 +188,7 @@ fn system_data_roundtrip() {
     assert_eq!(s.surfaces[1].n.len(), 3);
     assert_ne!(s.surfaces[1].n, n_before);
     // 視野・開口
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_system_data", "data": {
             "fields": [{"x": 0, "y": 0, "w": 1, "vdx": 0, "vdy": 0, "vcx": 0, "vcy": 0, "van": 0},
@@ -209,7 +209,7 @@ fn system_data_roundtrip() {
         json!({"wavelengths": []}),
         json!({"glrs": 999}),
     ] {
-        let r = edit_ops::apply(&mut s, &json!([{"op": "set_system_data", "data": bad}]));
+        let r = edit_ops::apply_json(&mut s, &json!([{"op": "set_system_data", "data": bad}]));
         assert!(r.is_err(), "{bad} が通った");
     }
     assert_eq!(lensbench_project::sysfile::system_hash(&s).unwrap(), h);
@@ -223,7 +223,7 @@ fn unit_ops() {
     assert!(auto.len() >= 2, "{auto:?}");
     let [a, b] = s.units[0].spans[0];
     let last = s.units[1].spans[0][1];
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "define_unit", "name": "G1", "spans": [[a, last]]},
@@ -235,7 +235,7 @@ fn unit_ops() {
     assert_eq!(s.units[g].spans, vec![[a, last]]);
     assert!(s.find_unit("L1").is_some_and(|i| !s.units[i].auto));
     // 範囲を縮める・動かした群は範囲を変えられない
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_unit", "unit": "G1", "spans": [[a, b]], "pivot": [0, 0, 1]}]),
     )
@@ -245,14 +245,15 @@ fn unit_ops() {
         (s.units[g].spans.clone(), s.units[g].pivot),
         (vec![[a, b]], [0.0, 0.0, 1.0])
     );
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_param", "param": "G1.dx", "value": 0.1}]),
     )
     .unwrap();
-    let e = edit_ops::apply(&mut s, &json!([{"op": "remove_unit", "unit": "G1"}])).unwrap_err();
+    let e =
+        edit_ops::apply_json(&mut s, &json!([{"op": "remove_unit", "unit": "G1"}])).unwrap_err();
     assert!(e.contains("動か"), "{e}");
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_param", "param": "G1.dx", "value": 0.0},
@@ -262,12 +263,12 @@ fn unit_ops() {
     .unwrap();
     assert!(s.find_unit("G1").is_none());
     // 一部だけ重なる範囲・数字だけの名前は誤り
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "define_unit", "name": "X", "spans": [[b, last + 1]]}])
     )
     .is_err());
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "define_unit", "name": "12", "spans": [[a, b]]}])
     )
@@ -278,7 +279,7 @@ fn unit_ops() {
 #[test]
 fn mech_ops() {
     let mut s = a0();
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "add_mech", "part": {
             "name": "tube", "surface": 2, "offset": [0, 0, -1], "bores": [{"z0": 0, "z1": 10, "radius": 15}], "holds": [2, 3]
@@ -286,7 +287,7 @@ fn mech_ops() {
     )
     .unwrap();
     assert_eq!(s.mechanics[0].bores[0].radius, 15.0);
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_mech", "mech": "tube", "part": {"tilt": [1, 0], "surface": 3}}]),
     )
@@ -296,37 +297,38 @@ fn mech_ops() {
         (3, [1.0, 0.0])
     );
     // 前に面を足すと番号がずれる、保持する面を消すと外れる
-    edit_ops::apply(&mut s, &json!([{"op": "insert_surface", "at": 1}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "insert_surface", "at": 1}])).unwrap();
     assert_eq!(
         (s.mechanics[0].surface, s.mechanics[0].holds.clone()),
         (4, vec![3, 4])
     );
-    edit_ops::apply(&mut s, &json!([{"op": "delete_surface", "surface": 3}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "delete_surface", "surface": 3}])).unwrap();
     assert_eq!(
         (s.mechanics[0].surface, s.mechanics[0].holds.clone()),
         (3, vec![3])
     );
-    let notes = edit_ops::apply(&mut s, &json!([{"op": "delete_surface", "surface": 3}])).unwrap();
+    let notes =
+        edit_ops::apply_json(&mut s, &json!([{"op": "delete_surface", "surface": 3}])).unwrap();
     assert!(
         s.mechanics.is_empty() && notes.iter().any(|n| n.contains("tube")),
         "{notes:?}"
     );
     // 誤り: 名前の重なり・面の範囲・穴の寸法・無い項目
     let part = json!({"name": "m", "surface": 1, "bores": []});
-    edit_ops::apply(&mut s, &json!([{"op": "add_mech", "part": part}])).unwrap();
-    assert!(edit_ops::apply(&mut s, &json!([{"op": "add_mech", "part": part}])).is_err());
-    assert!(edit_ops::apply(
+    edit_ops::apply_json(&mut s, &json!([{"op": "add_mech", "part": part}])).unwrap();
+    assert!(edit_ops::apply_json(&mut s, &json!([{"op": "add_mech", "part": part}])).is_err());
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_mech", "mech": 0, "part": {"surface": 999}}])
     )
     .is_err());
-    assert!(edit_ops::apply(&mut s, &json!([{"op": "set_mech", "mech": 0, "part": {"bores": [{"z0": 1, "z1": 0, "radius": 1}]}}])).is_err());
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(&mut s, &json!([{"op": "set_mech", "mech": 0, "part": {"bores": [{"z0": 1, "z1": 0, "radius": 1}]}}])).is_err());
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_mech", "mech": "m", "part": {"what": 1}}])
     )
     .is_err());
-    edit_ops::apply(&mut s, &json!([{"op": "remove_mech", "mech": "m"}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "remove_mech", "mech": "m"}])).unwrap();
     assert!(s.mechanics.is_empty());
 }
 
@@ -352,7 +354,7 @@ fn bire_by_surface_data() {
     let din = edit_ops::surface_data(&s0, jin).unwrap()["data"]["bire"].clone();
     assert!(din["In"]["axis"].is_array(), "{din}");
     let mut s = s0.clone();
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_surface_data", "surface": jin, "data": {"bire": null}},
@@ -364,7 +366,7 @@ fn bire_by_surface_data() {
     // 付け直す（ne は書かなくても材料から）
     let mut d = din.clone();
     d["In"].as_object_mut().unwrap().remove("ne");
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_surface_data", "surface": jin, "data": {"bire": d}},
@@ -376,7 +378,7 @@ fn bire_by_surface_data() {
     assert_eq!(s.surfaces[jout].bire, s0.surfaces[jout].bire);
     // 波長を変えると異常光の屈折率も作り直す
     let mut w = s.clone();
-    edit_ops::apply(&mut w, &json!([{"op": "set_system_data", "data": {"wavelengths": [0.6328], "weights": [1.0], "primary": 0}}])).unwrap();
+    edit_ops::apply_json(&mut w, &json!([{"op": "set_system_data", "data": {"wavelengths": [0.6328], "weights": [1.0], "primary": 0}}])).unwrap();
     match (&w.surfaces[jin].bire, &s0.surfaces[jin].bire) {
         (
             Some(lensbench_core::surface::Bire::In { ne, .. }),
@@ -406,7 +408,7 @@ fn config_insert_remove_and_pickups() {
             .map(|p| (p.k, p.from, p.scale, p.offset))
             .collect::<Vec<_>>()
     };
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_config_count", "n": 2},
@@ -419,7 +421,7 @@ fn config_insert_remove_and_pickups() {
     assert_eq!(t(&s), vec![5.0, 6.0, 5.0]);
     assert_eq!(picks(&s), vec![(3, 1, 1.0, 0.0)]);
     // 構成 1 の値を変えると構成 3 も追従（今の構成 1 を系で変えても）
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_param", "param": "1.t", "value": 7.0}]),
     )
@@ -427,7 +429,7 @@ fn config_insert_remove_and_pickups() {
     s.sync_active_config();
     assert_eq!(t(&s), vec![7.0, 6.0, 7.0]);
     // 構成 1 の前に挿入: ピックアップの番号がずれる、今の構成は 2 に
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "insert_config", "at": 1, "from": 2}]),
     )
@@ -436,7 +438,7 @@ fn config_insert_remove_and_pickups() {
     assert_eq!(picks(&s), vec![(4, 2, 1.0, 0.0)]);
     assert_eq!(s.configs().unwrap().active, 2);
     // 倍率・ずれ付きのピックアップ、今の構成にすると系に入る
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([
             {"op": "set_config_pickup", "param": "1.t", "k": 1, "from": 2, "scale": 2.0, "offset": 1.0},
@@ -447,27 +449,27 @@ fn config_insert_remove_and_pickups() {
     assert_eq!(t(&s), vec![15.0, 7.0, 6.0, 7.0]);
     assert_eq!(s.surfaces[1].t, 15.0);
     // 循環は不可、ピックアップの構成の値を直接変えるとピックアップは外れる
-    assert!(edit_ops::apply(
+    assert!(edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_config_pickup", "param": "1.t", "k": 2, "from": 1}])
     )
     .is_err());
-    edit_ops::apply(
+    edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_config_row", "param": "1.t", "values": [15.0, 7.0, 6.0, 9.0]}]),
     )
     .unwrap();
     assert_eq!(picks(&s), vec![(1, 2, 2.0, 1.0)]);
     // 元の構成 2 を消す: ピックアップは値を残して外れる。今の構成 1 はそのまま
-    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 2}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "remove_config", "k": 2}])).unwrap();
     assert_eq!(t(&s), vec![15.0, 6.0, 9.0]);
     assert!(picks(&s).is_empty());
     assert_eq!(s.configs().unwrap().active, 1);
     // 今の構成を消すと次の構成が系に入る、1 つになると表が消えて残りの値が系に
-    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
     assert_eq!(s.configs().unwrap().active, 1);
     assert_eq!(s.surfaces[1].t, 6.0);
-    edit_ops::apply(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
+    edit_ops::apply_json(&mut s, &json!([{"op": "remove_config", "k": 1}])).unwrap();
     assert!(s.configs().is_none());
     assert_eq!(s.surfaces[1].t, 9.0);
 }
