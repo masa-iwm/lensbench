@@ -67,13 +67,14 @@ pub(super) fn raw_fields(ui: &mut Ui, p: &mut Pick, k: usize) {
     // 欄はパネルの下に隠れやすいので、JSON は別の窓で直す（GPN-17 で要素の欄を 1 つにするまで）
     let open_id = id.with("open");
     let mut open: bool = ui.data_mut(|d| d.get_temp(open_id)).unwrap_or(false);
-    ui.label(
-        RichText::new(tr(
+    // 狭い行でも押せるように、説明はボタンのホバーに
+    if ui
+        .button(tr("Edit JSON…"))
+        .on_hover_text(tr(
             "Kept as written in the file (the combination has no fields for it)",
         ))
-        .weak(),
-    );
-    if ui.button(tr("Edit JSON…")).clicked() {
+        .clicked()
+    {
         open = true;
     }
     let mut keep = open;
