@@ -3,7 +3,7 @@
 //! 分散式 1〜13、カタログ温度での空気に対する相対屈折率、系の温度・気圧への換算（カタログの dn/dT と
 //! 空気の屈折率による）。OpticStudio の INDX と 1e-15 で一致する。
 
-use crate::LockExt;
+use crate::{LockExt, RwLockExt};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -436,18 +436,41 @@ pub fn missing_note(missing: &[String]) -> String {
 pub const DIRS_HINT: &str =
     ". Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT";
 
-/// ガラスの検索パス: 引数、環境変数 LENSBENCH_GLASSCAT（OS のパス区切り）。
+/// 引数の後に探す既定のガラスのフォルダ（[`set_default_dirs`]。入口が環境変数 LENSBENCH_GLASSCAT から決める）
+static DEFAULT_DIRS: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
+
+/// 引数の後に探す既定のガラスのフォルダを決める。CLI・Python・GUI の入口が [`crate::init_from_env`] で
+/// LENSBENCH_GLASSCAT から決める（core は環境変数を読まない、XCT-08）
+pub fn set_default_dirs(dirs: Vec<PathBuf>) {
+    *DEFAULT_DIRS.write_ok() = dirs;
+}
+
+/// 既定のガラスのフォルダ（[`set_default_dirs`]）
+pub fn default_dirs() -> Vec<PathBuf> {
+    DEFAULT_DIRS.read_ok().clone()
+}
+
+/// ガラスの検索パス: 引数、既定のフォルダ（[`set_default_dirs`]、入口が LENSBENCH_GLASSCAT から決める）
 pub fn catalog_dirs(extra: &[PathBuf]) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = extra.to_vec();
-    if let Some(e) = std::env::var_os("LENSBENCH_GLASSCAT") {
-        v.extend(std::env::split_paths(&e));
-    }
+    v.extend(default_dirs());
     v
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 検索パスは引数の後に既定のフォルダ（入口が決める）。core は環境変数を読まない（XCT-08）
+    #[test]
+    fn default_dirs_follow_the_arguments() {
+        let none = PathBuf::from("/lensbench-no-such-glass-dir");
+        set_default_dirs(vec![none.clone()]);
+        let v = catalog_dirs(&[PathBuf::from("a")]);
+        set_default_dirs(Vec::new());
+        assert_eq!(v, [PathBuf::from("a"), none]);
+        assert_eq!(catalog_dirs(&[]), Vec::<PathBuf>::new());
+    }
     #[test]
     fn air_index_reasonable() {
         let n = air(0.5875618, 20.0, 1.0);

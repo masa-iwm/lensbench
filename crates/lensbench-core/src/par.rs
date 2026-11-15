@@ -1,5 +1,5 @@
 //! 並列の制御: 呼び出しごとのスレッド数と、計算の文脈（[`Ctx`]: 中断の印 [`CancelToken`]・まとめ追跡の切り替え・
-//! 拡張の表）。
+//! 拡張の表・ファイルの口）。
 //!
 //! 文脈は呼び出したスレッドに置き（[`with_cancel`]・[`with_batch`]）、このモジュールの並列は作業のスレッドへ引き継ぐ。
 //! プロセスの大域には置かないので、同じプロセスで同時に回る別の計算（GUI の下書き・serve の別の接続）に響かない。
@@ -200,7 +200,7 @@ impl CancelToken {
 }
 
 /// 計算の文脈（呼び出したスレッドに置き、このモジュールの並列が作業のスレッドへ引き継ぐ）
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Ctx {
     /// 中断の印（[`with_cancel`]）。None は中断できない
     pub cancel: Option<CancelToken>,
@@ -208,6 +208,19 @@ pub struct Ctx {
     pub no_batch: bool,
     /// 拡張の表（[`crate::ext::with`]）。None はプロセスの既定
     pub ext: Option<Arc<crate::ext::Ext>>,
+    /// ファイルの口（[`crate::vfs::with`]）。None はプロセスの既定
+    pub fs: Option<Arc<dyn crate::vfs::Fs>>,
+}
+
+impl std::fmt::Debug for Ctx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ctx")
+            .field("cancel", &self.cancel)
+            .field("no_batch", &self.no_batch)
+            .field("ext", &self.ext)
+            .field("fs", &self.fs.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 thread_local! {
@@ -264,6 +277,20 @@ pub(crate) fn with_ext<R>(e: Arc<crate::ext::Ext>, f: impl FnOnce() -> R) -> R {
 /// 文脈で渡した拡張の表
 pub(crate) fn current_ext() -> Option<Arc<crate::ext::Ext>> {
     CTX.with(|x| x.borrow().ext.clone())
+}
+
+/// f をファイルの口 fs の下で回す（[`crate::vfs::with`]）
+pub(crate) fn with_fs<R>(fs: Arc<dyn crate::vfs::Fs>, f: impl FnOnce() -> R) -> R {
+    let c = Ctx {
+        fs: Some(fs),
+        ..current()
+    };
+    with_ctx(&c, f)
+}
+
+/// 文脈で渡したファイルの口
+pub(crate) fn current_fs() -> Option<Arc<dyn crate::vfs::Fs>> {
+    CTX.with(|x| x.borrow().fs.clone())
 }
 
 /// まとめ追跡を使ってよいか（[`with_batch`]）

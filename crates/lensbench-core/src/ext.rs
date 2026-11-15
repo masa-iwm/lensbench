@@ -121,19 +121,23 @@ impl Ext {
 
 /// プロセスの既定の表（None は `Ext::default()`）
 static DEFAULT: RwLock<Option<Arc<Ext>>> = RwLock::new(None);
+/// `update_default` どうしを順に並べる（DEFAULT の書き込みロックは f の間持たない）
+static UPDATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// プロセスの既定の表を決める（入口の exe・Python が起動時に）
 pub fn set_default(e: Arc<Ext>) {
+    let _u = UPDATE.lock().unwrap_or_else(|p| p.into_inner());
     *DEFAULT.write_ok() = Some(e);
 }
 
 /// プロセスの既定の表を写して f で変え、置き直す（Python から足すプラグインなど）。
-/// 置き直す前に始まった計算は前の表のまま
+/// 置き直す前に始まった計算は前の表のまま。f の中で `current()`・`default_ext()` は呼べる（前の表が返る）が、
+/// `update_default`・`set_default` を呼ぶと止まる
 pub fn update_default<R>(f: impl FnOnce(&mut Ext) -> R) -> R {
-    let mut g = DEFAULT.write_ok();
-    let mut e = g.as_deref().cloned().unwrap_or_default();
+    let _u = UPDATE.lock().unwrap_or_else(|p| p.into_inner());
+    let mut e = DEFAULT.read_ok().as_deref().cloned().unwrap_or_default();
     let r = f(&mut e);
-    *g = Some(Arc::new(e));
+    *DEFAULT.write_ok() = Some(Arc::new(e));
     r
 }
 
@@ -150,7 +154,8 @@ pub fn current() -> Arc<Ext> {
     crate::par::current_ext().unwrap_or_else(default_ext)
 }
 
-/// f を表 e の下で回す（文脈のほかの項目は引き継ぐ。並列の作業のスレッドにも効く）
+/// f を表 e の下で回す（文脈のほかの項目は引き継ぐ）。表が引き継がれるのは `par` の並列（`par::scoped` など）の
+/// 作業のスレッドまでで、f の中で自分で作ったスレッド（`std::thread::spawn`・rayon を直に使う所）ではプロセスの既定に戻る
 pub fn with<R>(e: Arc<Ext>, f: impl FnOnce() -> R) -> R {
     crate::par::with_ext(e, f)
 }
@@ -210,5 +215,12 @@ mod tests {
         assert!(a.surface_models().is_empty());
         a.merge(&e);
         assert_eq!(a.surface_models(), ["ideal_mapping"]);
+    }
+
+    #[test]
+    fn update_default_can_read_the_table() {
+        // f の中で今の表を読んでも止まらない（表は変えない: ほかの試験と共有のプロセスの既定）
+        let n = update_default(|_| exts(&current()).len());
+        assert_eq!(n, exts(&default_ext()).len());
     }
 }

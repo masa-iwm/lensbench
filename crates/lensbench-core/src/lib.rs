@@ -58,10 +58,19 @@ pub mod zpl_solve;
 pub use error::{Error, Result};
 pub use par::with_threads;
 
-/// 環境変数から決める既定（CLI の起動・Python の import で呼ぶ）: スレッド数（LENSBENCH_THREADS、
-/// [`par::default_threads_from_env`]）。消した環境変数が設定されていれば標準エラーに 1 回注意を出す
+/// 環境変数から決める既定（CLI・GUI の起動・Python の import で呼ぶ。core のほかの所は環境変数を読まない、XCT-08）:
+/// スレッド数（LENSBENCH_THREADS、[`par::default_threads_from_env`]）、ガラスのフォルダ（LENSBENCH_GLASSCAT、
+/// [`glass::set_default_dirs`]）、マクロのフォルダ（LENSBENCH_MACROS、[`zpl_solve::set_default_dirs`]）。フォルダは OS の
+/// パス区切りで並べる。消した環境変数が設定されていれば標準エラーに 1 回注意を出す
 pub fn init_from_env() {
     par::default_threads_from_env();
+    let dirs = |k: &str| {
+        std::env::var_os(k)
+            .map(|e| std::env::split_paths(&e).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    glass::set_default_dirs(dirs("LENSBENCH_GLASSCAT"));
+    zpl_solve::set_default_dirs(dirs("LENSBENCH_MACROS"));
     static ONCE: std::sync::Once = std::sync::Once::new();
     if std::env::var_os("LENSBENCH_FLOATING_CLIP").is_some() {
         ONCE.call_once(|| {

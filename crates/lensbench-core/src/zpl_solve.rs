@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::error::{Error, Result};
 use crate::zpl::{Flow, Host, Program, Value};
-use crate::System;
+use crate::{RwLockExt, System};
 
 /// 系に付けたマクロ（名前と文）。系ファイル（JSON）には文をそのまま入れ、戻すときにファイルは読まない
 #[derive(Debug, Clone)]
@@ -90,10 +90,17 @@ pub fn macro_dirs(extra: &[PathBuf], zmx_dir: Option<&Path>) -> Vec<PathBuf> {
             v.push(d);
         }
     }
-    if let Some(e) = std::env::var_os("LENSBENCH_MACROS") {
-        v.extend(std::env::split_paths(&e));
-    }
+    v.extend(DEFAULT_DIRS.read_ok().iter().cloned());
     v
+}
+
+/// 最後に探す既定のマクロのフォルダ（[`set_default_dirs`]）
+static DEFAULT_DIRS: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
+
+/// 最後に探す既定のマクロのフォルダを決める。入口が [`crate::init_from_env`] で LENSBENCH_MACROS から決める
+/// （core は環境変数を読まない、XCT-08）
+pub fn set_default_dirs(dirs: Vec<PathBuf>) {
+    *DEFAULT_DIRS.write_ok() = dirs;
 }
 
 /// 名前 name（拡張子なし、大文字・小文字は区別しない）のマクロを探して解釈する

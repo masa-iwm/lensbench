@@ -40,6 +40,7 @@ mod surftypes_os;
 mod thinfilm;
 mod units;
 mod usersurf;
+mod vfs_mem;
 mod vig_interp;
 mod zmx_broken;
 mod zmx_lines;
