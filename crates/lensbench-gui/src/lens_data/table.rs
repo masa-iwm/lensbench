@@ -226,7 +226,24 @@ pub fn ui(ui: &mut Ui, st: &mut LensData, c: &Ctx) -> (Vec<Act>, Ui) {
     // 記号がフォントに無い（豆腐 □ になる）ときも字を出す
     let tofu = |t: &&str| !ui.fonts(|f| f.has_glyphs(&egui::FontId::proportional(15.0), t));
     let wide = full.width() >= 760.0 || ICONS.iter().any(tofu);
-    let strip_w = if wide { 74.0 } else { 30.0 };
+    // 字を出すときの幅は、いちばん長い字（言語で変わる）に合わせる（訳語が長いと折り返す）
+    let strip_w = if wide {
+        let pad = 2.0 * ui.spacing().button_padding.x + 6.0;
+        let longest = ICONS
+            .iter()
+            .filter_map(|t| icon_label(t).map(|l| format!("{t} {}", tr(l))))
+            .map(|s| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(s, egui::FontId::proportional(12.0), Color32::WHITE)
+                        .size()
+                        .x
+                })
+            })
+            .fold(0.0_f32, f32::max);
+        (longest + pad).clamp(74.0, 120.0)
+    } else {
+        30.0
+    };
     let strip_r = egui::Rect::from_min_size(full.min, egui::vec2(strip_w, full.height()));
     let body_r = egui::Rect::from_min_max(
         egui::pos2(full.left() + strip_w + 5.0, full.top()),

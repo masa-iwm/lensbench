@@ -76,7 +76,7 @@ Name (an existing name is overwritten)	名前（同じ名前は上書き）
 Figure	図
 Part	型番
 Remove	削除
-Polychromatic	ポリクロマティック
+Polychromatic	多色
 Dia.	径
 Diameter [mm]	径 [mm]
 Air after	後の空気
@@ -195,7 +195,7 @@ Image at paraxial focus (last air {} mm)	像面を近軸の焦点へ（最後の
 Earlier	前へ
 Semi-diameter	半径
 Follow reflected arm	反射側へ進む
-Click an element to select it, drag sideways to move it along the axis (Shift: decenter vertically). Click a dimension's value (or select it and press Enter) to type a new value; click the line to just select it. Keys: [ ] select, ← → move, ↑ ↓ decenter, Shift+↑ ↓ tilt, R reverse, F flip the BS reflection, Delete remove, Ctrl+L lock.	図の要素をクリックで選択し、横にドラッグで光軸に沿って動かす（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選択して Enter）でその場で入力、寸法線のクリックは選択するだけ。キーは [ ] で選択、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ でチルト、R で反転、F で BS の反射を逆向きに、Delete で削除、Ctrl+L でロック。
+Click an element to select it, drag sideways to move it along the axis (Shift: decenter vertically). Click a dimension's value (or select it and press Enter) to type a new value; click the line to just select it. Keys: [ ] select, ← → move, ↑ ↓ decenter, Shift+↑ ↓ tilt, R reverse, F flip the BS reflection, Delete remove, Ctrl+L lock.	図の要素をクリックで選択し、横にドラッグで光軸に沿って動かします（Shift で縦に偏心）。寸法の数字をクリック（または寸法を選択して Enter）でその場で入力、寸法線のクリックは選択するだけ。キーは [ ] で選択、← → で動かす、↑ ↓ で偏心、Shift+↑ ↓ でチルト、R で反転、F で BS の反射を逆向きに、Delete で削除、Ctrl+L でロック。
 Rebuild on every change	変えたらすぐ作り直す
 Plate	平板
 Later	後へ
@@ -206,14 +206,14 @@ Stop → first element	絞り → 最初の要素
 Custom lens	カスタムレンズ
 Add elements to see the layout here (light travels left to right).	要素を追加すると、ここにレイアウト図が出ます（光は左から右へ）。
 Add	追加
-The on-axis ray does not cross the axis (no focus)	軸上の光線が軸と交わりません（焦点が無い）
+The on-axis ray does not cross the axis (no focus)	軸上の光線が軸と交わりません（焦点がありません）
 Mirror	ミラー
 The open system was not built from the combination (the layout is view-only).	開いている系は組合せから作ったものではありません（図は見るだけ）。
 Gap	間隔
 + {}…	＋ {}…
 The on-axis ray does not reach the surface before the image	軸上の光線が像面の前の面まで届きません
 Lock	ロック
-A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)	ロックした要素は中身（面・硝材・反転など）を変えられません。位置・後の空気は変えられる（Ctrl+L でも切り替え）
+A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)	ロックした要素は中身（面・硝材・反転など）を変えられません。位置・後の空気は変えられます（Ctrl+L でも切り替え）
 Press "▶ Build system" to see the layout	「▶ 系を作る」でレイアウト図が出ます
 Click to copy the version	クリックでバージョンをコピー
 Mirror: R = {} mm, f = {} mm, diameter {} mm	ミラー: R = {} mm、f = {} mm、径 {} mm
@@ -234,9 +234,9 @@ This aperture type needs a finite object	この開口の種類は物体が有限
 Off	オフ
 Presets:	プリセット:
 Afocal	アフォーカル
-Put a "Stop" element at the head of the sequence. Drag it in the figure to move it anywhere	並びの先頭に「絞り」の要素を置く。図でドラッグして好きな位置へ動かせる
+Put a "Stop" element at the head of the sequence. Drag it in the figure to move it anywhere	並びの先頭に「絞り」の要素を置きます。図でドラッグして好きな位置へ動かせます
 Primary	主
-Solves the object so the primary-wavelength chief ray meets the condition (x, y below). Cannot be written to .zmx	主波長の主光線が条件の値（下の x・y）になる物体を解く。.zmx には書けません
+Solves the object so the primary-wavelength chief ray meets the condition (x, y below). Cannot be written to .zmx	主波長の主光線が条件の値（下の x・y）になる物体を解きます。.zmx には書けません
 Image space	像空間
 Image space F/#	像空間 F 値
 Ray aiming	光線エイミング
@@ -264,7 +264,7 @@ Stop diameter [mm]	絞りの径 [mm]
 Float by stop size	絞りの径で決まる
 Stop diameter (drawing only) [mm]	絞りの径（図だけ）[mm]
 {} stop elements (keep only one)	絞りの要素が {} 個（1 つだけにする）
-Place a "Stop" from the element palette anywhere in the sequence to set the stop there. Without one, a stop is placed automatically before the first element.	絞りは要素パレットの「絞り」を並びの好きな所に置くとそこになる。置かなければ最初の要素の前に自動で置く。
+Place a "Stop" from the element palette anywhere in the sequence to set the stop there. Without one, a stop is placed automatically before the first element.	絞りは要素パレットの「絞り」を並びの好きな所に置くとそこになります。置かなければ最初の要素の前に自動で置きます。
 Make the stop an element	絞りを要素にする
 No fields	視野がありません
 Angle	角度
@@ -312,7 +312,7 @@ Surface outside the combination elements (only the thickness of the leading stop
 Coating	コーティング
 The spacing must be 0 or more	間隔は 0 以上
 {} values changed in Lens Data	面の表で変えた値 {} 件
-Press Enter or click outside to apply. Aperture is "None" or {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}; tilt/decenter is {"d": [dx, dy, tx, ty, tz], "order": 0} (after: "None", "Reverse" or {"Tilt": …})	Enter・欄の外のクリックで決める。開口は "None" か {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}、チルト・偏心は {"d": [dx, dy, tx, ty, tz], "order": 0}（後は "None"・"Reverse"・{"Tilt": …}）
+Press Enter or click outside to apply. Aperture is "None" or {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}; tilt/decenter is {"d": [dx, dy, tx, ty, tz], "order": 0} (after: "None", "Reverse" or {"Tilt": …})	Enter・欄の外のクリックで決めます。開口は "None" か {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}、チルト・偏心は {"d": [dx, dy, tx, ty, tz], "order": 0}（後は "None"・"Reverse"・{"Tilt": …}）
 {} surfaces	{} 面
 Ignore this surface	この面を無視
 Offset	オフセット
@@ -546,7 +546,7 @@ Jones matrix	Jones 行列
 Tilt then decenter	チルトしてから偏心
 First surface to import (0 is surface 1)	取り込む最初の面（0 は面 1）
 Last surface to import (0 is the one before the image)	取り込む最後の面（0 は像面の手前）
-Make the stop of the imported surfaces the system stop. When off, the stop is the automatic stop or a stop element (one stop per system)	取り込む面の絞りを系の絞りにする。オフにすると、絞りは自動の絞り・絞りの要素になる（絞りは系に 1 つだけ）
+Make the stop of the imported surfaces the system stop. When off, the stop is the automatic stop or a stop element (one stop per system)	取り込む面の絞りを系の絞りにします。オフにすると、絞りは自動の絞り・絞りの要素になります（絞りは系に 1 つだけ）
 Coordinate break	座標ブレーク
 Add a surface after	後に面を追加
 air	空気
@@ -559,7 +559,7 @@ Add surfaces for a cemented doublet, triplet, etc. (edit in the table)	面を追
 Tilt z	チルト z
 No medium, or the value differs per surface (change it in the surface settings)	媒質が無いか、面ごとに値が違う（面の設定で変える）
 Shift	移動
-Group shift (positive along the light). Added to the gap before and taken from the gap after	群の移動（光の進む向きが正）。前の間隔に足し、後の間隔から引く
+Group shift (positive along the light). Added to the gap before and taken from the gap after	群の移動（光の進む向きが正）。前の間隔に足し、後の間隔から引きます
 Select a surface or block to change its settings here (double-click or Enter goes into a block; the mouse back button or Backspace goes out).	面かブロックを選択すると、その設定をここで変えられます（ブロックはダブルクリック・Enter で中へ、マウスの戻るボタン・Backspace で外へ）。
 This .zmx has {} configurations; configuration {} is loaded.	この .zmx は {} 個の構成を持ち、構成 {} を読んでいます。
 Read each configuration and make a row for every value that differs (curvature, conic, thickness, asphere, tilt/decenter, dn, disp)	各構成を読み、構成で違う値（曲率・コーニック・厚み・非球面・チルト・偏心・dn・disp）を表の行にする
@@ -708,7 +708,7 @@ State name	状態の名前
 Select an OFF element (turn it back ON in the settings below)	OFF の要素を選択（下の設定で ON に戻せる）
 OFF	OFF
 An element in the row beyond a BS port	BS のポートの先の並びの要素
-Transmit T / reflect R at each BS in the order passed (missing letters use each BS's default port). The figure and analyses use this path; other paths can be drawn with "Overlay configurations"	BS を通る順の透過 T・反射 R（足りない文字は各 BS のデフォルトのポート）。図・解析はこの経路。ほかの経路は「重ねる構成」で重ねて描ける
+Transmit T / reflect R at each BS in the order passed (missing letters use each BS's default port). The figure and analyses use this path; other paths can be drawn with "Overlay configurations"	BS を通る順の透過 T・反射 R（足りない文字は各 BS のデフォルトのポート）。図・解析はこの経路。ほかの経路は「重ねる構成」で重ねて描けます
 {}. {} (branched)	{}. {}（分岐）
 {} (returns)	{}（戻る）
 Wedge x	ウェッジ x
@@ -722,22 +722,22 @@ Splitting face tilt x	分割面のチルト x
 Default coating of faces other than the splitting face (faces without their own coating)	分割面以外の面のコーティングのデフォルト（面ごとのコーティングが無い面）
 Split ratio	分岐比
 Beyond port B (transmitted)	ポート B（透過）の先
-Place elements beyond port B (transmitted), C (reflected) and D (reflection of light returning from B), e.g. interferometer arms. The BS becomes the last in its row and the elements after it move beyond the current port	ポート B（透過）・C（反射）・D（B から戻る光の反射）の先に、それぞれ要素を並べる。干渉計のアームなど。BS は並びの最後になり、後ろの要素は今のポートの先へ移る
+Place elements beyond port B (transmitted), C (reflected) and D (reflection of light returning from B), e.g. interferometer arms. The BS becomes the last in its row and the elements after it move beyond the current port	ポート B（透過）・C（反射）・D（B から戻る光の反射）の先に、それぞれ要素を並べます。干渉計のアームなど。BS は並びの最後になり、後ろの要素は今のポートの先へ移ります
 Beyond port C (reflected)	ポート C（反射）の先
 Beyond port D (returning reflection)	ポート D（戻りの反射）の先
 From the port to the first element (to the image plane if there is none)	ポートから最初の要素まで（要素が無ければ像面まで）
 Elements beyond ports (branch)	ポートの先に並べる（分岐）
-Coating of the plate's front/back (not applied to the splitting face). Empty uses the other faces' coating	平板の表・裏のコーティング（分割面には付かない）。空ならほかの面のコーティング
+Coating of the plate's front/back (not applied to the splitting face). Empty uses the other faces' coating	平板の表・裏のコーティング（分割面には付きません）。空ならほかの面のコーティング
 Ideal PBS	理想の PBS
 Path	経路
 Port to take when the path has no letter for this BS (default: transmitted)	経路の文字が足りないときに進むポート（デフォルトは透過）
 Back	裏
 Split at the back face	裏の面で分ける
-Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS	ミラーで反射した光が来た道を戻る（ダブルパス・干渉計のアームの端）。BS の分岐の中なら、戻った光は BS で分かれる
+Light reflected by the mirror returns along its path (double pass, end of an interferometer arm). Inside a BS branch, the returning light splits again at the BS	ミラーで反射した光が来た道を戻ります（ダブルパス・干渉計のアームの端）。BS の分岐の中なら、戻った光は BS で分かれます
 (beyond {})	（{} の先）
-Group .zmx surfaces from–to into one group (lens/group parameters). Without groups, one per lens automatically	.zmx の面 from〜to をまとめて 1 つの群（レンズ・群のパラメータ）にする。無ければレンズごとに自動
+Group .zmx surfaces from–to into one group (lens/group parameters). Without groups, one per lens automatically	.zmx の面 from〜to をまとめて 1 つの群（レンズ・群のパラメータ）にします。無ければレンズごとに自動
 {} is the same as an element name (not grouped)	{} は要素の名前と同じ（群にしない）
-Positive along the light. Added to the gap before and subtracted from the gap after	光の進む向きが正。前の間隔に足し、後の間隔から引く
+Positive along the light. Added to the gap before and subtracted from the gap after	光の進む向きが正。前の間隔に足し、後の間隔から引きます
 Lens groups	レンズの群
 Shift 	移動 
 Consecutive elements with the same name form one group (role and shift below, or under Groups in the Layout panel)	続く要素に同じ名前を付けると 1 つの群になる（役割・移動はこの下か、レイアウトのパネルの「群」で）
@@ -764,7 +764,7 @@ Catalog lenses use catalog tolerances (catalog_tols in the settings; otherwise c
 Random seed	乱数シード
 Add a tolerance	個別の公差を追加
 Add wavelength shift	波長のずれを追加
-Source wavelength shift (± µm, all wavelengths shifted by the same amount; wave1 etc. for a single wavelength)	光源の波長のずれ（± µm、すべての波長を同じだけずらす。wave1 などは 1 つの波長だけ）
+Source wavelength shift (± µm, all wavelengths shifted by the same amount; wave1 etc. for a single wavelength)	光源の波長のずれ（± µm、すべての波長を同じだけずらします。wave1 などは 1 つの波長だけ）
 Individual tolerances (per surface)	個別の公差（面ごと）
 Decenter	偏心
 Tilt	チルト
@@ -774,7 +774,7 @@ Tolerance settings	公差の設定
 Run tolerancing	公差解析を実行
 Nominal	公称
 Distribution	分布
-The same seed gives the same result (regardless of thread count). With several configurations, the same deviations are applied to all of them.	同じ種なら同じ結果になります（スレッド数によらない）。構成を並べると、同じずれをすべての構成に与えます。
+The same seed gives the same result (regardless of thread count). With several configurations, the same deviations are applied to all of them.	同じ種なら同じ結果になります（スレッド数によりません）。構成を並べると、同じずれをすべての構成に与えます。
 Change (max)	変化（上限）
 Change (min)	変化（下限）
 Largest contributors (sensitivity, worst first)	寄与の大きい項目（感度、悪い順）
@@ -830,7 +830,7 @@ Retardance	リタデーション
 Design wavelength	設計波長
 Fast axis	進相軸
 Order	次数
-Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)	ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番号 nn = ZPLnn.ZPL か名前、file は .ZPL のパス、macro_dirs は探すフォルダを ; で区切る）
+Value of OPTRETURN data from a ZPL macro − target (like ZPLM; macro is a number nn = ZPLnn.ZPL or a name, file is a .ZPL path, macro_dirs are folders to search separated by ;)	ZPL マクロの OPTRETURN data の値 − 目標（ZPLM 相当。macro は番号 nn = ZPLnn.ZPL か名前、file は .ZPL のパス、macro_dirs は探すフォルダを ; で区切ります）
 Output output of a registered plugin − target (name is rms, zernike, …; args is the settings as JSON, e.g. {"rings": 4}; index picks one element)	登録したプラグインの出力 output − 目標（name は rms・zernike など、args は設定の JSON 例 {"rings": 4}、index は出力の要素）
 Tube	チューブ
 Cage plate	ケージプレート
@@ -856,7 +856,7 @@ Birefringent material	複屈折材
 Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes	常光はこの名前、異常光は名前-E の硝材（空なら理想の位相子）。2 つ目があれば進相軸を直交させた 2 材の組
 0 derives the thickness from the design retardance (single material)	0 は設計波長のリタデーションから厚みを決める（1 材のとき）
 Compute the semi-diameter from rays of all fields and wavelengths	半径を全視野・全波長の光線から求める
-The element is gone (removed or renamed). Choose it again	要素がありません（削除したか名前が変わった）。選択し直してください
+The element is gone (removed or renamed). Choose it again	要素がありません（削除したか名前が変わりました）。選択し直してください
 JSON with the same items as the fields	欄と同じ項目の JSON
 Set the quantity, configurations, delay and so on in ⚙ Settings (same arguments as the CLI subcommand)	量・構成・遅延などは「⚙ 設定」の欄で（CLI のサブコマンドと同じ引数）
 Clear files kept in the browser ({} files, {} MB)…	ブラウザに残したファイルを削除（{} 個、{} MB）…
@@ -942,7 +942,7 @@ After surface {}: {} mm · {} · power {} · RMS width {} mm	面 {} の後 {} mm
 Columns…	列…
 Choose the columns shown in the list	一覧に出す列を選択します
 Coarse prescreen	粗い事前選別
-Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)	全組を少ないリング数で最適化し、メリットファンクションの小さい組だけを本来の設定で最適化し直します（組が多いとき速くなる）
+Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)	全組を少ないリング数で最適化し、メリットファンクションの小さい組だけを本来の設定で最適化し直します（組が多いとき速くなります）
 Keep	残す組
 Drop the ON/OFF, following air, decenter and tilt changed in this state	この状態で変えた ON/OFF・後の空気・偏心・チルトを破棄
 Use the base path	基本の経路に
@@ -950,7 +950,7 @@ Changing it makes a path for state {} only	変えると状態 {} だけの経路
 Use values for state {} only	状態 {} だけの値にする
 Drop the path changed in state {}	状態 {} で変えた経路を破棄
 State {} uses the base values too	状態 {} も基本の値を使う
-Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected	状態ごとに要素の ON/OFF・後の空気・偏心・チルト、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられる（測定系の出し入れ・ズームなど）。基本は状態を選ばない系
+Each state can change element ON/OFF, following air, decenter and tilt, the BS path and system settings (aperture, fields, wavelengths, object distance and so on), e.g. inserting a measurement system or zooming. Base is the system with no state selected	状態ごとに要素の ON/OFF・後の空気・偏心・チルト、BS の経路、系の設定（開口・視野・波長・物体距離など）を変えられます（測定系の出し入れ・ズームなど）。基本は状態を選ばない系
 Change the aperture, fields, wavelengths, object distance, telecentricity, aiming and afocal mode for this state only (stop position and glass catalogs are shared by all states)	開口・視野・波長・物体距離・テレセントリック・エイミング・アフォーカルを、この状態だけ変える（絞りの位置・硝材カタログは全部の状態で共通）
 (same as base)	（基本と同じ）
 One row per line: [incidence angle deg, wavelength µm, Rs, Rp, Ts, Tp] (e.g. a vendor table)	1 行に [入射角 deg, 波長 µm, Rs, Rp, Ts, Tp]（メーカーの表など）
@@ -968,7 +968,7 @@ Center [nm]	中心 [nm]
 FWHM [nm]	半値全幅 [nm]
 Reflection	反射
 Also give reflection	反射も書く
-Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs	名前をミラー・BS のコーティングの欄、面の表のコーティング（coating）に書いて使う。コーティングファイル・ユーザーカタログの同じ名前より優先
+Use it by writing the name in the coating field of a mirror or BS, or the coating of a surface in the surface table. Takes precedence over the same name in coating files and user catalogs	名前をミラー・BS のコーティングの欄、面の表のコーティング（coating）に書いて使います。コーティングファイル・ユーザーカタログの同じ名前より優先
 Absorptive (no reflection)	吸収型（反射 0）
 Choose a defined coating	定義したコーティングから選択
 Effective index	実効屈折率
@@ -995,7 +995,7 @@ Space after	後の間隔
 |Focal length|	|焦点距離|
 Threads	スレッド数
 Catalog lens tolerances by vendor	メーカーごとのカタログのレンズの公差
-Catalog lens tolerances by vendor (catalog_tols). A name matches if the block's vendor contains it (case-insensitive; * is any other). Empty cells use the defaults. Condition rows apply in order; each match overrides the values.	メーカーごとのカタログのレンズの公差（catalog_tols）。名前はブロックのメーカー名に含まれれば合う（大文字小文字は区別しない、* はほか）。空の欄はデフォルトの値。条件の行は前から順に、合うものの値で上書き
+Catalog lens tolerances by vendor (catalog_tols). A name matches if the block's vendor contains it (case-insensitive; * is any other). Empty cells use the defaults. Condition rows apply in order; each match overrides the values.	メーカーごとのカタログのレンズの公差（catalog_tols）。名前はブロックのメーカー名に含まれれば合います（大文字小文字は区別しない、* はほか）。空の欄はデフォルトの値。条件の行は前から順に、合うものの値で上書き
 Singlet	単レンズ
 Diameter	外径
 Condition {}	条件 {}
@@ -1042,7 +1042,7 @@ Out	出口
 Set motion and shift to 0 to change the range or remove it	動き・移動を 0 にすると、範囲を変更・削除できます
 Apply changes	変更を当てる
 Ordinary only (0)	常光だけ（0）
-Mechanical parts sit in a surface's local coordinates; rays outside their bores (z range and radius) count as vignetted (ray tracing itself is unchanged).	機構部品は面のローカル座標に置き、穴（z の範囲・半径）の外に出た光線をケラレにします（光線の追跡そのものは変えない）。
+Mechanical parts sit in a surface's local coordinates; rays outside their bores (z range and radius) count as vignetted (ray tracing itself is unchanged).	機構部品は面のローカル座標に置き、穴（z の範囲・半径）の外に出た光線をケラレにします（光線の追跡そのものは変えません）。
 Wave plate (2)	波長板（2）
 A lens or group name is required	レンズ・群の名前が要る
 Remove the lens or group definition (surfaces stay)	レンズ・群の定義を削除（面はそのまま）
@@ -1052,7 +1052,7 @@ Bore {}	穴 {}
 Crystal axis	結晶軸
 Birefringence	複屈折
 Length	長さ
-The material after surface {} is the ordinary ray and material-E the extraordinary ray (must be in the catalog). Use with an Out surface.	面 {} の後の材料が常光、材料名-E が異常光（カタログに要る）。出口の面と組で使う
+The material after surface {} is the ordinary ray and material-E the extraordinary ray (must be in the catalog). Use with an Out surface.	面 {} の後の材料が常光、材料名-E が異常光（カタログに必要です）。出口の面と組で使います
 Surface range	面の範囲
 Cannot read surface range {} (write like 3-5, 9-12)	面の範囲 {} が読めません（3-5, 9-12 のように）
 Surface range is empty	面の範囲が空
@@ -1076,11 +1076,11 @@ Measured as a mounted item, with the glass and the mount separated (the thicknes
 Length {} mm, outer diameter {} mm, smallest bore {} mm, glass front {} mm from the mount end ({})	長さ {} mm、外径 {} mm、最小の内径 {} mm、硝材の前面はマウントの端から {} mm（{}）
 from the STEP	STEP から
 from the spec table; the glass is assumed centered	仕様表から。座の位置は中央と仮定
-Also save the mount (placed as a mechanical part when the item is added to a combination)	マウントも保存する（組合せに置くと、機構部品として付きます）
+Also save the mount (placed as a mechanical part when the item is added to a combination)	マウントも保存します（組合せに置くと、機構部品として付きます）
 Others	そのほか
 Detector block at the image surface (the last block of the project; the last air is the distance to the detector). Empty fields use the defaults	像面に置く検出器のブロック（プロジェクトの最後のブロック、最後の空気が検出器までの距離）。空の欄はデフォルト値
 Detector	検出器
-Detector {} is not available in this build (its settings are kept)	検出器 {} はこの版で使えません（設定はそのまま残す）
+Detector {} is not available in this build (its settings are kept)	検出器 {} はこの版で使えません（設定はそのまま残します）
 Detector settings: {}	検出器の設定: {}
 Mounted: mount length {} mm, outer diameter {} mm, smallest bore {} mm (added as a mechanical part when placed)	マウント付き: マウントの長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）
 Seat on element	座に合わせる
@@ -1101,7 +1101,7 @@ Use spec glass diameter	硝材の径を仕様の値にする
 This STEP is a mechanical part without glass (tube, cage plate or mount), so the glass thickness and diameter can't be measured	硝材の無い機構部品（チューブ・ケージプレート・マウント）の STEP なので、硝材の厚み・径は測れません
 Connect after {}	{} の後ろにつなぐ
 Connects to the back end of the earlier part. If both ends have threads, checks that they mate and overlaps by the male thread length	前の部品の後ろの端につなぎます。両方の端にねじがあれば、合うか確かめ、オスのねじの分だけ重ねます
-Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)	部品を裏返して置きます（光が部品の後ろの端から入る。穴・座・両端のねじも入れ替わる）
+Places the part reversed (light enters from its back end; bores, seat and end threads are swapped too)	部品を裏返して置きます（光が部品の後ろの端から入ります。穴・座・両端のねじも入れ替わります）
 Fetching the STEP…	STEP を取得しています…
 Could not fetch the STEP (drawing the simple outline): {}	STEP を取得できませんでした（簡易外形で描きます）: {}
 STEP: {}{}	STEP: {}{}
@@ -1109,7 +1109,7 @@ STEP (official)	STEP（公式）
 Copy path	パスをコピー
 Right-click to copy the path	右クリックでパスをコピー
 Open the product page	製品ページを開く
-Makes the outline a square prism (the outer radius is half the side; cage plates etc.)	外形を正方形の柱にする（外径の半径は一辺の半分。ケージプレートなど）
+Makes the outline a square prism (the outer radius is half the side; cage plates etc.)	外形を正方形の柱にします（外径の半径は一辺の半分。ケージプレートなど）
 Mechanical part: length {} mm, round (outer diameter {} mm)	機構部品: 長さ {} mm、丸（外径 {} mm）
 Mechanical part: length {} mm, square (side {} mm)	機構部品: 長さ {} mm、角（一辺 {} mm）
 Matches the simple outline (length, outer size and shape)	簡易外形と合います（長さ・外径・外形の形）
@@ -1137,7 +1137,7 @@ Zoom out	縮小
 Copy ▼	コピー ▼
 Save ▼	保存 ▼
 Text (tab-separated)	テキスト（タブ区切り）
-Pastes into a spreadsheet. Multiple tables are separated by "# name" lines	表計算に貼れる形。表が複数あれば「# 名前」の行で区切る
+Pastes into a spreadsheet. Multiple tables are separated by "# name" lines	表計算に貼れる形。表が複数あれば「# 名前」の行で区切ります
 JSON…	JSON…
 CSV…	CSV…
 JSON	JSON
@@ -1162,7 +1162,7 @@ Diffraction MTF: modulation per frequency (tangential/sagittal), from the pupil 
 Wavefront: OPD map referenced to the chief ray, with P-V and RMS [waves]	波面マップ: 主光線基準の OPD マップと P-V・RMS [波]
 Zernike coefficients [waves] (fit of the wavefront)	Zernike 係数 [波]（波面を Zernike 多項式でフィッティングした係数）
 RMS (spot radius, wavefront, approximate Strehl) versus field, focus or wavelength	RMS（スポット半径・波面・Strehl の近似）を視野・フォーカス・波長に対して
-Diffraction PSF: DFT of the pupil function, normalized to the aberration-free peak	回折 PSF: 瞳関数の DFT。強度は収差のない同じ瞳の中心を 1 とする
+Diffraction PSF: DFT of the pupil function, normalized to the aberration-free peak	回折 PSF: 瞳関数の DFT。強度は収差のない同じ瞳の中心を 1 とします
 Geometric MTF: MTF from the ray position distribution	幾何 MTF: 光線の位置の分布から求めた MTF
 Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface)	Huygens MTF: Huygens PSF のフーリエ変換（像面の上の周波数）
 Field MTF: MTF versus normalized field 0–1 (per frequency)	フィールド MTF: 正規化視野 0〜1 に対する MTF（周波数ごと）
@@ -1178,7 +1178,7 @@ Mechanical vignetting: share of rays outside the mechanical apertures	機構の�
 Discard the current combination and open the one in the file?	今の組合せを削除して、ファイルの組合せを開きますか？
 Save (Ctrl+S)	保存（Ctrl+S）
 Save As… (Ctrl+Shift+S)	名前を付けて保存…（Ctrl+Shift+S）
-A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file	組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻る）。開いた系は系ファイルに
+A combination is saved with the combination in a project .json (opening it restores the combination). An opened system is saved as a system file	組合せの系は組合せごとプロジェクトの .json に保存（開くと組合せに戻ります）。開いた系は系ファイルに
 System (.zmx / .json)	系（.zmx・.json）
 Make this system a combination	この系を組合せにする
 Replace the current combination with one that imports the opened system?	今の組合せを、開いた系を取り込んだ組合せに置き換えますか？
@@ -1188,9 +1188,9 @@ Cannot read the system aperture	系の開口が読めません
 Make a combination	組合せにする
 Unsaved changes to the opened system will not be included (it is imported from the file). Continue?	開いた系の保存していない変更は組合せに入りません（ファイルから取り込みます）。続けますか？
 Made the opened system an element of the combination (system import)	開いた系を組合せの要素にした（系の取り込み）
-Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it	開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移す。前後にカタログのレンズなどを追加できる
+Make the opened system one element of a combination (a system import) and move its settings (aperture, fields, wavelengths, …). Catalog lenses etc. can then be added before or after it	開いた系を組合せの要素（系の取り込み 1 つ）にし、系の設定（開口・視野・波長など）も移します。前後にカタログのレンズなどを追加できます
 Combinations (open as a combination)	組合せ（開くと組合せに戻る）
-Create lenses/groups (zoom, focus groups, …) from surface ranges and place mechanical parts. The range starts at the selected surface	面の範囲でレンズ・群（ズーム群・フォーカス群など）を作る・機構部品を置く。範囲は選択している面から始まる
+Create lenses/groups (zoom, focus groups, …) from surface ranges and place mechanical parts. The range starts at the selected surface	面の範囲でレンズ・群（ズーム群・フォーカス群など）を作る・機構部品を置きます。範囲は選択している面から始まります
 The browser blocked opening another tab or window (allow pop-ups to move panels to another tab or window). Showing it as a window inside the page	ブラウザが別のタブ・ウィンドウを開くのを止めました（ポップアップを許すと、パネルを別のタブ・ウィンドウに出せます）。本体の中のウィンドウに出します
 The main tab was closed, so this panel cannot be used. Please close this window.	元のタブを閉じたので、このパネルは使えません。このウィンドウを閉じてください。
 Move to another window	別のウィンドウに出す
@@ -1276,7 +1276,7 @@ Kind: {}	種類: {}
 System (all surfaces)	系（全部の面）
 Remove stop	絞りを解除
 Stop (make another surface the stop to move it)	絞り（別の面を絞りにすると移る）
-Show surface details (aperture, tilt/decenter before and after, shape data, all items as JSON) and block settings below the table. Also by double-clicking a surface number	表の下に面の詳細設定（開口・前後のチルト・偏心・形のデータ・全項目 JSON）とブロックの設定を出す。面の番号のダブルクリックでも
+Show surface details (aperture, tilt/decenter before and after, shape data, all items as JSON) and block settings below the table. Also by double-clicking a surface number	表の下に面の詳細設定（開口・前後のチルト・偏心・形のデータ・全項目 JSON）とブロックの設定を出します。面の番号のダブルクリックでも
 Details (aperture, tilt/decenter, shape data)	詳細設定（開口・チルト・偏心・形のデータ）
 Paraxial lens	近軸レンズ
 Level: {} (click for the list and view mode; Backspace goes up)	階層: {}（クリックで一覧・表示の切り替え。Backspace で 1 つ上へ）
@@ -1315,7 +1315,7 @@ Turned-around lens: reverse surface order, negate curvature and aspheric terms (
 Return	戻り
 Return pass after a mirror (double pass): reverse surface order, keep curvature, negate thickness	ミラーの後の戻り（ダブルパス）: 面の順を逆に、曲率はそのまま、厚みの符号を変える
 Export only the selected surface range (lens/group) to a system file… (Shift selects a range; save the whole system with File → Save)	選択した面の範囲（レンズ・群）だけを系ファイルにエクスポート…（Shift で範囲を選択。系全体の保存はファイル → 保存）
-Select the surfaces to export (not the object or image surface)	エクスポートする面を選択してください（物体面・像面は除く）
+Select the surfaces to export (not the object or image surface)	エクスポートする面を選択してください（物体面・像面は除きます）
 Exported to {}	{} にエクスポート
 Zernike {}	Zernike {}
 r^{} coefficient	r^{} の係数
@@ -1337,12 +1337,12 @@ Back face	後ろの面
 Front face	前の面
 Front/back refer to the lens's own orientation (as in the catalog or .zmx). The same face is used for reversed lenses and lenses traversed twice via a mirror	前・後ろはレンズのもとの向き（カタログ・.zmx の向き）。裏返して置いたレンズやミラーで往復するレンズでも同じ面
 {} (pickup: configuration {} × {} + {})	{}（構成 {} × {} + {} のピックアップ）
-Apply this configuration to the system (analyses, plots and lens data follow). Ctrl+A: next, Ctrl+Shift+A: previous	この構成の値を系に入れる（解析・図・面の表が追従）。Ctrl+A で次、Ctrl+Shift+A で前の構成
+Apply this configuration to the system (analyses, plots and lens data follow). Ctrl+A: next, Ctrl+Shift+A: previous	この構成の値を系に入れます（解析・図・面の表が追従）。Ctrl+A で次、Ctrl+Shift+A で前の構成
 Delete this configuration (Delete)	この構成を削除（Delete）
-Click to select the column (Delete removes the configuration). Double-click to apply it. Right-click to insert or delete	クリックで列を選択（Delete で構成を削除）。ダブルクリックでこの構成を系に入れる。右クリックで挿入・削除
+Click to select the column (Delete removes the configuration). Double-click to apply it. Right-click to insert or delete	クリックで列を選択（Delete で構成を削除）。ダブルクリックでこの構成を系に入れます。右クリックで挿入・削除
 Pickup source configuration, scale and offset must be numbers	ピックアップの元の構成・倍率・ずれは数で
 Source config	元の構成
-Add the parameter named on the left (names as in Python / serve set; every configuration starts from the current value). Also available from "Make a multi-config row" in the lens data cell right-click menu	左の名前のパラメータを表に追加（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも追加できる
+Add the parameter named on the left (names as in Python / serve set; every configuration starts from the current value). Also available from "Make a multi-config row" in the lens data cell right-click menu	左の名前のパラメータを表に追加（名前は Python・serve の set と同じ。どの構成も今の値から）。レンズデータのセルの右クリックの「多重構成の行にする」でも追加できます
 Every row of the new configuration picks up configuration {} (follows when the source changes)	新しい構成の値を、どの行も構成 {} のピックアップにする（元を変えると追従）
 Delete the last configuration	最後の構成を削除
 Configuration {} / {}	構成 {} / {}
@@ -1358,7 +1358,7 @@ There is one configuration. Add one from the insert ▼, or insert a row to make
 Delete row	行を削除
 Insert row	行を挿入
 Remove the selected row from the table (system values stay). Also with the Delete key	選択した行を表から削除（系の値は今のまま）。Delete キーでも
-{} items. Type to filter (name, catalog, nd)	{} 件。入力して絞る（名前・カタログ・nd）
+{} items. Type to filter (name, catalog, nd)	{} 件。入力して絞ります（名前・カタログ・nd）
 Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)	硝材カタログを読んでいます…（名前・1.5,60 のようなモデルガラスは入力して Enter）
 block {}	ブロック {}
 Choose from the list (type to filter)	候補から選択（入力して絞り込む）
@@ -1378,7 +1378,7 @@ Insert a surface after the current one	今の面の後に面を挿入
 Insert as many surfaces as copied rows and paste	コピーした行の数だけ面を挿入して貼り付け
 Right-click menu	右クリックの欄
 Edit (typing also starts editing)	編集（文字を入力しても始まる）
-Edit (typing also starts editing). Enter commits, Esc cancels	編集（文字を入力しても始まる）。Enter で決め、Esc で取り消し
+Edit (typing also starts editing). Enter commits, Esc cancels	編集（文字を入力しても始まります）。Enter で決め、Esc で取り消し
 Copy rows / paste over	行のコピー・上書きで貼り付け
 Copy selected rows as tab-separated text	選択した行をタブ区切りでコピー
 Delete the selected row (or the configuration if a column header is selected)	選択した行を削除（列の見出しを選択していれば構成を削除）
@@ -1393,7 +1393,7 @@ Pick from surfaces, lenses and groups and add	面・レンズ・群から選択�
 Redo (Ctrl+Y)	やり直す（Ctrl+Y）
 Redo the undone change	元に戻した変更をやり直す
 Undo (Ctrl+Z)	元に戻す（Ctrl+Z）
-Undo a system change (up to 100 steps; inside a text box, its text)	系の変更を元に戻す（100 段まで。入力欄の中では欄の文字）
+Undo a system change (up to 100 steps; inside a text box, its text)	系の変更を元に戻します（100 段まで。入力欄の中では欄の文字）
 System changes (lens data, multi-config, optimization results, combination) and open, reload and new, up to 100 steps	系の変更（面の表・多重構成・最適化の結果・組合せ）と、系を開く・再読み込み・新規を 100 段まで
 Edit	編集
 Undone	元に戻した
@@ -1424,7 +1424,7 @@ Tubes, mounts and cage plates that this item's diameter fits. Picking one adds i
 Remove this filter	この絞り込みを解除します
 No catalog mechanics has a holding diameter this item fits	カタログの機構部品に、この径が入る保持径のものがありません
 Show only the mechanics this item fits (remove the filter with ✖ next to the fields)	一覧をこの製品が入る機構部品だけに絞ります（絞り込みは欄の ✖ で解除）
-Spec conditions (space separated, all must hold): name (present), name=value (numbers equal, range specs contain, strings contain), name=a..b, name>=value, <=, >, <. efl, diameter and thickness also compare the list values. Example: wavelength_nm=633 extinction_ratio>=1000	仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000
+Spec conditions (space separated, all must hold): name (present), name=value (numbers equal, range specs contain, strings contain), name=a..b, name>=value, <=, >, <. efl, diameter and thickness also compare the list values. Example: wavelength_nm=633 extinction_ratio>=1000	仕様の条件（空白で区切り、すべて満たします）: 名前（あります）、名前=値（数は一致、範囲の仕様は含む、文字列は含みます）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べます。例: wavelength_nm=633 extinction_ratio>=1000
 e.g. wavelength_nm=633	例 wavelength_nm=633
 Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)	保持径 {} mm に入る径（{} mm 細いものまで）のレンズ・ミラーなどだけを一覧に出します
 Optics	光学素子
@@ -1432,7 +1432,7 @@ Optics (all)	光学素子（すべて）
 No fitting mechanics	入る機構部品なし
 Filter fitting optics ({})	入る素子（{}）で絞る
 Mechanics (all)	機構部品（すべて）
-Added to the combination (the open system is unchanged; build it with "▶ Build a system from this combination")	組合せに追加した（開いた系はそのまま。「▶ 組合せの系を作る」で作る）
+Added to the combination (the open system is unchanged; build it with "▶ Build a system from this combination")	組合せに追加しました（開いた系はそのまま。「▶ 組合せの系を作る」で作ります）
 Add to the open system	開いた系に追加
 Turn the open system into a combination and add {}. The current combination ({} elements) will be replaced. OK?	開いた系を組合せにして {} を追加します。今の組合せ（{} 個の要素）は置き換わります。よいですか？
 Insert after surface {}	面 {} の後に差し込む
@@ -1455,14 +1455,14 @@ Redo ({}): {}	やり直す（{}）: {}
 Add catalog folders…	カタログのフォルダを追加…
 Glass {} is not in the catalogs (write a model glass as nd,νd like 1.5,60; add catalogs in File > Catalog folders…)	硝材 {} がカタログにありません（モデルガラスは 1.5,60 のように nd,νd で。カタログはファイル > カタログのフォルダ…）
 Glass {} has no nd/νd in the file, so it cannot be substituted	硝材 {} は nd・νd が書かれていないので代用できません
-Opened with model glasses (nd, νd) in place of {} (the original file is unchanged; use Save As)	硝材 {} をモデルガラス（nd・νd）で代用して開いた（元のファイルは変えていません。保存は名前を付けて）
+Opened with model glasses (nd, νd) in place of {} (the original file is unchanged; use Save As)	硝材 {} をモデルガラス（nd・νd）で代用して開きました（元のファイルは変えていません。保存は名前を付けて）
 Glass not found	硝材が見つかりません
 Click to sort	クリックで並べ替え
 Click for the full text and history	クリックで全文と履歴
 Add the folder of the maker's glass catalog (.AGF), or open with model glasses from the nd and νd written in the .zmx.	メーカーの硝材カタログ（.AGF）のフォルダを追加するか、.zmx に書かれた nd・νd のモデルガラスで代用して開けます。
 Open with model glasses (nd, νd)	モデルガラス（nd・νd）で代用して開く
 Layout figure (combination)	レイアウト図（組合せ）
-Opens a copy in a temporary folder (the original file is unchanged; use Save As)	一時フォルダにコピーを作って開く（元のファイルは変えません。保存は名前を付けて）
+Opens a copy in a temporary folder (the original file is unchanged; use Save As)	一時フォルダにコピーを作って開きます（元のファイルは変えません。保存は名前を付けて）
 Double-click a row in the list (or "Add to combination") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch).	一覧の行をダブルクリック（または「組合せに追加する」）で、レイアウト図で選択している要素の直後（無ければ後ろ）に追加します。一覧は光の進む順（字下げは BS の分岐の先）。
 Only .zmx files can be substituted	代用は .zmx だけ
 Unsaved changes	保存していない変更
@@ -1471,7 +1471,7 @@ Save and close	保存して閉じる
 Close without saving	保存しないで閉じる
 Decenter (Shift: tilt)	偏心（Shift でチルト）
 Undo ({}): {}	元に戻す（{}）: {}
-Move along the axis (the selected gap if a dimension is selected). Ctrl ×10, Alt ×1/10	光軸に沿って動かす（寸法を選択していればその間隔）。Ctrl で 10 倍、Alt で 1/10
+Move along the axis (the selected gap if a dimension is selected). Ctrl ×10, Alt ×1/10	光軸に沿って動かします（寸法を選択していればその間隔）。Ctrl で 10 倍、Alt で 1/10
 Copy full text	全文をコピー
 Collapse all (blocks on one row)	全部折りたたむ（ブロックを 1 行に）
 Expand all (show every surface)	全部開く（面を全部見せる）
@@ -1485,7 +1485,7 @@ Add at least one variable to enable	変数を 1 つ以上追加すると押せ�
 Add at least one variable (a name like 4.t in the Variables table below, or pick with […])	変数を 1 つ以上追加（下の「変数」の表に 4.t のような名前、または […] から選択）
 Remove (Ctrl+Z to undo)	削除（Ctrl+Z で元に戻す）
 Next multi-configuration (Shift: previous). In the Lens Data table, selects all rows	多重構成の次の構成（Shift で前へ）。レンズデータの表を使っているときは全部の行を選択
-Same as New (Ctrl+N). Ctrl+Z to undo	新規（Ctrl+N）と同じ。Ctrl+Z で戻す
+Same as New (Ctrl+N). Ctrl+Z to undo	新規（Ctrl+N）と同じ。Ctrl+Z で戻します
 New (Ctrl+Z to undo)	新規（Ctrl+Z で戻す）
 Adds it to the Variables table of the Optimize panel and shows the panel	最適化のパネルの変数の表に追加して、パネルを出す
 Make an optimization variable ({})	最適化の変数にする（{}）
@@ -1502,22 +1502,22 @@ Deselect	選択を解除
 {} surface overrides	面の上書き {} 件
 (add glass catalogs in File > Catalog folders…)	（ファイル > カタログのフォルダ… で硝材カタログを追加）
 (unsaved)	（未保存）
-Select	選択方法
+Select	選択単位
 Insert	挿入
 Fold	開閉
 Current	今の値
 Glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Add the maker catalogs in File > Catalog folders…	硝材 {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログはファイル > カタログのフォルダ… で追加できます
 Vignette rays outside fixed semi-diameters	半径を固定した面の外の光線をケラレとする
 Floating apertures (FLAP in .zmx etc.). Uncheck to ignore semi-diameters (to compare with models that do not clip at semi-diameters)	浮動開口（.zmx の FLAP など）。オフにすると半径でケラレない（半径でケラレない従来のモデルと比べるとき）
-The system changed after the optimization started, so the result was not applied (optimize again)	最適化を始めた後に系が変わったので当てません（もう一度最適化する）
+The system changed after the optimization started, so the result was not applied (optimize again)	最適化を始めた後に系が変わったので当てません（もう一度最適化してください）
 Show panel: {}	パネルを出す: {}
 Add analysis	解析を追加
-Single panel; brings it to the front if already open	1 枚だけのパネル。あれば表に出す
+Single panel; brings it to the front if already open	1 枚だけのパネル。あれば表に出します
 Workspace	ワークスペース
 Cannot write the samples: {}	サンプルを書き込めません: {}
 Save as system file (.json)…(Ctrl+S)	系ファイル（.json）として保存…（Ctrl+S）
-… (truncated at {} characters; use Copy or Save for the full text)	…（長いので {} 字で切った。全文は「コピー」「保存」で）
-The stop surface cannot be deleted (move the stop to another surface first)	絞りの面は削除できません（先に絞りを別の面へ移す）
+… (truncated at {} characters; use Copy or Save for the full text)	…（長いので {} 字で切りました。全文は「コピー」「保存」で）
+The stop surface cannot be deleted (move the stop to another surface first)	絞りの面は削除できません（先に絞りを別の面へ移してください）
 Catalog lens combination	カタログレンズの組合せ
 Field #	視野の番号
 Wave #	波長の番号

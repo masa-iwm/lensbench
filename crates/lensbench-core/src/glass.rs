@@ -573,6 +573,9 @@ mod tests {
             ja.contains("（見つからない・読めなかったカタログ: BADCAT"),
             "{ja}"
         );
-        assert!(ja.ends_with("環境変数 LENSBENCH_GLASSCAT で渡す"), "{ja}");
+        assert!(
+            ja.ends_with("環境変数 LENSBENCH_GLASSCAT で渡してください"),
+            "{ja}"
+        );
     }
 }

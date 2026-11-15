@@ -479,7 +479,7 @@ mod tests {
     fn notes_of_several_sentences() {
         assert_eq!(
             translate("the seat is the mount end (not known from the STEP). inner thread SM1 (for elements of diameter 25.4 mm)"),
-            "座の位置はマウントの端（STEP から分からない）。内側のねじ SM1（入る素子の径 25.4 mm）"
+            "座の位置はマウントの端（STEP から分かりません）。内側のねじ SM1（入る素子の径 25.4 mm）"
         );
         // 訳の無い文が混ざれば英語のまま
         let s = "the seat is the mount end (not known from the STEP). no such sentence";
@@ -506,10 +506,10 @@ mod tests {
 
     #[test]
     fn kinds_are_translated() {
-        assert_eq!(translate("cancelled"), "中断した");
+        assert_eq!(translate("cancelled"), "中断しました");
         assert_eq!(
             translate("surface 3: cancelled"),
-            "面 3: 中断した",
+            "面 3: 中断しました",
             "context parts are translated one by one"
         );
         // 埋めた値は訳さない（入れ子の誤り {e} だけ訳す）
@@ -526,7 +526,7 @@ mod tests {
         // 注意の行: 「注意: 」を付け、中の文も訳す
         assert_eq!(
             translate("warning: removed multi-configuration row 3.t"),
-            "注意: 多重構成の行 3.t を外した"
+            "注意: 多重構成の行 3.t を外しました"
         );
         // 札（{what}）も訳す: 「state 2」→「状態 2」
         assert!(translate(
@@ -548,7 +548,7 @@ mod tests {
         );
         assert_eq!(
             translate("the ray stopped (wavelength 1, pupil (0.000, 1.000), surface 4)"),
-            "光線が止まった（波長 1、瞳 (0.000, 1.000)、面 4）"
+            "光線が止まりました（波長 1、瞳 (0.000, 1.000)、面 4）"
         );
         // ラベルの欄 {what} に 2 語以上の句（#381 のレビュー）
         assert_eq!(

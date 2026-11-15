@@ -10,7 +10,9 @@
 - 画面（GUI）・誤り・CLI の説明の文は英語を元にし、日本語の訳を表に付ける。GUI は `tr("…")` の英語が鍵で訳は
   `crates/lensbench-gui/lang/ja.tsv`、誤りの文の訳は `crates/lensbench-core/lang/ja.tsv`。
 - 日本語の訳語は OpticStudio の日本語版などで広く使われる言い回し（カタカナ語を含む）に揃え、どの表でも同じ語にする。
-  用語集は `crates/lensbench-core/lang/glossary.tsv`（使わない語 → 使う語）。状態・誤りの文の文末は「〜ません」の形。
+  用語集は `crates/lensbench-core/lang/glossary.tsv`（使わない語 → 使う語）。
+- 文末: 誤り・注意・状態などのメッセージは敬体（「〜ません」「〜が必要です」「〜しました」。案内は「〜してください」）。
+  ボタン・欄・CLI のオプションの説明のような一句のラベルは常体（「〜する」・体言止め）。GUI の説明の文（「。」で区切る文）は敬体。
 
 ## 名前
 
