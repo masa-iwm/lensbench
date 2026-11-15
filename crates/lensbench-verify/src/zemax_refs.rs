@@ -23,7 +23,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// 既定の基準データのフォルダ（LB_REFS_DIR で差し替え。非公開の基準を同じ照合にかけるため）
+/// 既定の基準データのフォルダ（LB_REFS_DIR で差し替え。公開していない基準を同じ照合にかけるため）
 pub fn refs_dir() -> PathBuf {
     std::env::var_os("LB_REFS_DIR")
         .map(PathBuf::from)

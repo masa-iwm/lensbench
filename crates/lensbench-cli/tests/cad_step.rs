@@ -427,7 +427,24 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         "{v}"
     );
     assert_eq!(hits.load(Ordering::SeqCst), 2);
-    // URL の無い品: 置き場に無ければ誤り。cad-upload --dir でファイル名から当てて上げると取れる
+    // URL の無い品: 置き場に無ければ誤り。フォルダの STEP をファイル名から当てて上げると取れる
+    // （上げる道具 cad-upload は配る版の exe にだけある。ここではその中身の関数を呼ぶ）
+    let store = lensbench_cad::Store {
+        url: store_url.clone(),
+        id: "tid".into(),
+        secret: "tsecret".into(),
+        read_only: false,
+    };
+    let upload = |from: lensbench_cad::UploadFrom, overwrite: bool, dry_run: bool| -> Value {
+        let (jobs, unmatched) = lensbench_cad::upload_jobs(from).unwrap();
+        let files: Vec<_> = jobs
+            .iter()
+            .map(|(k, f, n)| lensbench_cad::upload_file(&store, k, f, n, overwrite, dry_run))
+            .collect();
+        let c = |s: &str| files.iter().filter(|u| u.status == s).count();
+        json!({ "files": files.iter().map(|u| u.to_json()).collect::<Vec<_>>(),
+                "unmatched": unmatched.len(), "uploaded": c("uploaded"), "exists": c("exists") })
+    };
     let (ok, _, e) = run(
         &["cad-step", "--catalog", c, "--item", "CP-N"],
         &dir.join("c4"),
@@ -438,24 +455,17 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
     std::fs::create_dir_all(&up).unwrap();
     std::fs::write(up.join("CP-N_ttn0001-e0w.step"), &step).unwrap();
     std::fs::write(up.join("unknown.step"), &step).unwrap();
-    let u = up.to_str().unwrap();
     let n_put = |log: &Vec<String>| log.iter().filter(|l| l.starts_with("PUT")).count();
     let put0 = n_put(&log.lock().unwrap());
-    let (ok, v, e) = run(
-        &["cad-upload", "--catalog", c, "--dir", u, "--dry-run"],
-        &dir.join("c4"),
-        "tsecret",
-    );
-    assert!(ok, "{e}");
+    let from = || lensbench_cad::UploadFrom::CatalogDir {
+        catalog: &cat,
+        dir: &up,
+    };
+    let v = upload(from(), false, true);
     assert_eq!(v["files"][0]["status"], "dry_run", "{v}");
-    assert_eq!(v["unmatched"].as_array().unwrap().len(), 1, "{v}");
+    assert_eq!(v["unmatched"], 1, "{v}");
     assert_eq!(n_put(&log.lock().unwrap()), put0, "dry-run は上げない");
-    let (ok, v, e) = run(
-        &["cad-upload", "--catalog", c, "--dir", u],
-        &dir.join("c4"),
-        "tsecret",
-    );
-    assert!(ok, "{e}");
+    let v = upload(from(), false, false);
     assert_eq!(
         (v["uploaded"].as_u64(), v["files"][0]["item"].as_str()),
         (Some(1), Some("CP-N")),
@@ -469,21 +479,16 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
     assert!(ok, "{e}");
     assert_eq!(v["source"], "store", "{v}");
     // キャッシュをそのまま上げる: 置き場にある鍵は上げない
-    let (ok, v, e) = run(
-        &["cad-upload", "--cache", dir.join("c1").to_str().unwrap()],
-        &dir.join("c1"),
-        "tsecret",
+    let v = upload(
+        lensbench_cad::UploadFrom::Cache(&dir.join("c1")),
+        false,
+        false,
     );
-    assert!(ok, "{e}");
     assert_eq!(
         (v["exists"].as_u64(), v["uploaded"].as_u64()),
         (Some(1), Some(0)),
         "{v}"
     );
-    // --cache の値を省くと既定のキャッシュ（LENSBENCH_CAD_CACHE）
-    let (ok, v, e) = run(&["cad-upload", "--cache"], &dir.join("c1"), "tsecret");
-    assert!(ok, "{e}");
-    assert_eq!(v["exists"].as_u64(), Some(1), "{v}");
     // --catalog にフォルダ（中の .json・.json.gz を全部）、STEP を束ねた zip は中の STEP を 1 つずつ当てる
     let cats = dir.join("cats");
     std::fs::create_dir_all(cats.join("sub")).unwrap();
@@ -501,30 +506,25 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         }
         z.finish().unwrap();
     }
-    let (ok, v, e) = run(
-        &[
-            "cad-upload",
-            "--catalog",
-            cats.to_str().unwrap(),
-            "--dir",
-            bundle.to_str().unwrap(),
-            "--overwrite",
-        ],
-        &dir.join("c4"),
-        "tsecret",
+    let v = upload(
+        lensbench_cad::UploadFrom::CatalogDir {
+            catalog: &cats,
+            dir: &bundle,
+        },
+        true,
+        false,
     );
-    assert!(ok, "{e}");
     assert_eq!(
         (v["uploaded"].as_u64(), v["files"][0]["item"].as_str()),
         (Some(1), Some("CP-N")),
         "{v}"
     );
-    assert_eq!(v["unmatched"].as_array().unwrap().len(), 1, "{v}");
+    assert_eq!(v["unmatched"], 1, "{v}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 膜のモデル: coat-upload で目録を作って上げ、フォルダから外した膜を置き場から取って使う（系の膜の自動の読み）。
-/// coat-fetch でフォルダに戻す
+/// 膜のモデル: 目録を作って上げ（配る版の coat-upload の中身）、フォルダから外した膜を置き場から取って使う
+/// （系の膜の自動の読み）。目録の膜をすべてフォルダに戻す（coat-fetch の中身）
 #[test]
 fn coating_models_come_from_the_store_when_missing() {
     use lensbench_core::coating::Coatings;
@@ -543,20 +543,20 @@ fn coating_models_come_from_the_store_when_missing() {
     }
     std::fs::write(coat.join("ZEC_R.lbcb"), &lbcm).unwrap();
     std::fs::write(coat.join("COATING.DAT"), "MATE N15\n0.5 1.5 0\n").unwrap();
-    let run = |args: &[&str]| {
-        let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
-            .args(args)
-            .arg("--json")
-            .env("LENSBENCH_CAD_CACHE", dir.join("cache"))
-            .env("LENSBENCH_CAD_STORE", &store_url)
-            .env("LENSBENCH_CAD_STORE_ID", "tid")
-            .env("LENSBENCH_CAD_STORE_SECRET", "tsecret")
-            .output()
-            .unwrap();
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        serde_json::from_slice::<Value>(&o.stdout).unwrap()
+    let store = lensbench_cad::Store {
+        url: store_url.clone(),
+        id: "tid".into(),
+        secret: "tsecret".into(),
+        read_only: false,
     };
-    let v = run(&["coat-upload", coat.to_str().unwrap()]);
+    // 状態ごとの数
+    let upload = || -> Value {
+        let rows =
+            lensbench_cad::coat_remote::upload_dir(&coat, None, Some(&store), false).unwrap();
+        let n = |s: &str| rows.iter().filter(|r| r.2 == s).count();
+        json!({ "uploaded": n("uploaded"), "exists": n("exists"), "kept": n("kept"), "errors": n("error") })
+    };
+    let v = upload();
     assert_eq!(v["uploaded"], 1, "{v}");
     let idx: Value =
         serde_json::from_slice(&std::fs::read(coat.join("lbcb-remote.json")).unwrap()).unwrap();
@@ -566,10 +566,10 @@ fn coating_models_come_from_the_store_when_missing() {
         .lock()
         .unwrap()
         .contains_key(&format!("coat/ZEC_R-{h}.lbcb")));
-    assert_eq!(run(&["coat-upload", coat.to_str().unwrap()])["exists"], 1);
+    assert_eq!(upload()["exists"], 1);
     // フォルダに無い膜は目録に残す（1 膜だけ足すときに、手元に無い膜が目録から消えない）
     std::fs::rename(coat.join("ZEC_R.lbcb"), dir.join("ZEC_R.lbcb.bak")).unwrap();
-    let v = run(&["coat-upload", coat.to_str().unwrap()]);
+    let v = upload();
     assert_eq!(
         (v["kept"].as_u64(), v["uploaded"].as_u64()),
         (Some(1), Some(0)),
@@ -622,9 +622,10 @@ fn coating_models_come_from_the_store_when_missing() {
     db.lock()
         .unwrap()
         .insert(format!("coat/ZEC_R-{h}.lbcb"), lbcm.clone().into_bytes());
-    // coat-fetch でフォルダに戻す
-    let v = run(&["coat-fetch", coat.to_str().unwrap()]);
-    assert_eq!(v["fetched"], 1, "{v}");
+    // フォルダに戻す
+    let rows = lensbench_cad::coat_remote::fetch_dir(&coat, Some(&store)).unwrap();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].1, "fetched", "{rows:?}");
     assert_eq!(
         std::fs::read_to_string(coat.join("ZEC_R.lbcb")).unwrap(),
         lbcm

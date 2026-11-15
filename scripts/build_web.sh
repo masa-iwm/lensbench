@@ -26,7 +26,7 @@ bindgen() { # wasm 出力先
   elif [ -n "${REQUIRE_WASM_OPT:-}" ]; then
     echo "wasm-opt（binaryen）が無い" >&2; exit 1
   fi
-  # Cloudflare Pages は 1 ファイル 25 MiB まで（非公開側の配備と同じ上限で見る）
+  # Cloudflare Pages は 1 ファイル 25 MiB まで（限定公開の版の配備と同じ上限で見る）
   local n; n=$(stat -c %s "$2/lensbench_web_bg.wasm")
   echo "$2/lensbench_web_bg.wasm: $((n / 1000000)) MB"
   [ "$n" -lt $((25 * 1048576)) ] || { echo "wasm が 25 MiB を超える" >&2; exit 1; }

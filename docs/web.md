@@ -173,7 +173,7 @@ MTF・PSF は追跡が律速でないので変わらない。
 ## 公開（Cloudflare Pages ＋ Cloudflare Access、限定公開）
 
 配る形のフォルダはそのまま Cloudflare Pages に置ける。`_headers` で COOP/COEP を付ける（並列化に要る）。
-閲覧できる人は Cloudflare Access で限る。限定公開の版（非公開のカタログを同梱した版）の配備と手順は非公開側にある。
+閲覧できる人は Cloudflare Access で限る。限定公開の版（非公開のカタログを同梱した版）の配備の手順はこのリポジトリには無い。
 
 ## 別の入口（カタログ・プラグインを足した版）
 

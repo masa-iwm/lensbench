@@ -4,8 +4,8 @@
 //! を置くと、フォルダに無い膜のモデルを置き場（[`crate::store`]、品の STEP と同じ口）の鍵
 //! `coat/<膜の名前>-<ハッシュ>.lbcb` から取り、キャッシュ（品の STEP のキャッシュの隣の `coat`）に置いて読む。
 //! 中身のハッシュを確かめるので、作り直した膜は別の鍵になり、古いキャッシュを使わない。
-//! 目録と置き場への上げは `lensbench coat-upload`、まとめて取ってフォルダに置くのは `lensbench coat-fetch`
-//! （Python など、置き場を見ない使い方のため）。
+//! 目録と置き場への上げは [`upload_dir`]、まとめて取ってフォルダに置くのは [`fetch_dir`]
+//! （Python など、置き場を見ない使い方のため）。どちらも CLI のサブコマンドは置き場を持つ配る版の exe が足す。
 use crate as cad;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

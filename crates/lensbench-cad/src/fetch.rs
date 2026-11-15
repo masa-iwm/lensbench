@@ -682,6 +682,79 @@ pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, Stri
     Ok(all)
 }
 
+/// 置き場に上げるファイルの選び方
+pub enum UploadFrom<'a> {
+    /// キャッシュのフォルダの STEP をそのまま（ファイル名が鍵）
+    Cache(&'a Path),
+    /// フォルダの STEP（zip の中も）をファイル名で機構部品の品に当てる（cad-step と同じ鍵）
+    CatalogDir { catalog: &'a Path, dir: &'a Path },
+    /// 1 品だけ、ファイルを指定して
+    CatalogItem {
+        catalog: &'a Path,
+        item: &'a str,
+        file: &'a Path,
+    },
+}
+
+/// 上げるもの（鍵・ファイル・品の名前、キャッシュなら品は空）と、品に当たらなかったファイル
+pub type UploadJobs = (Vec<(String, PathBuf, String)>, Vec<PathBuf>);
+
+/// カタログの品の置き場の鍵（cad-step がキャッシュに置く名前と同じ）
+fn catalog_key(
+    cat: &lensbench_project::UserCatalog,
+    catalog: &Path,
+    name: &str,
+) -> Result<String, String> {
+    let it = cat
+        .items
+        .get(name)
+        .ok_or_else(|| format!("no item {name} in {}", catalog.display()))?;
+    Ok(store_key(&cache_path(Path::new(""), name, &it.cad.step)))
+}
+
+/// 上げるものを決める（上げはしない。上げるのは [`upload_file`]）
+pub fn upload_jobs(from: UploadFrom) -> Result<UploadJobs, String> {
+    let mut jobs = Vec::new();
+    let mut unmatched = Vec::new();
+    match from {
+        UploadFrom::Cache(d) => {
+            for f in step_files(d)? {
+                let n = f.to_string_lossy();
+                if n.ends_with(".step") || n.ends_with(".step.gz") {
+                    jobs.push((store_key(&f), f, String::new()));
+                }
+            }
+        }
+        UploadFrom::CatalogItem {
+            catalog,
+            item,
+            file,
+        } => {
+            let cat = load_catalogs(catalog)?;
+            jobs.push((
+                catalog_key(&cat, catalog, item)?,
+                file.to_path_buf(),
+                item.to_string(),
+            ));
+        }
+        UploadFrom::CatalogDir { catalog, dir } => {
+            let cat = load_catalogs(catalog)?;
+            // 機構部品（mech）の品だけに当てる
+            let names = cat
+                .items
+                .iter()
+                .filter(|(_, it)| it.mech.is_some())
+                .map(|(k, _)| k.as_str());
+            let (got, miss) = match_files(names, &step_sources(dir)?);
+            unmatched = miss;
+            for (name, f) in got {
+                jobs.push((catalog_key(&cat, catalog, &name)?, f, name));
+            }
+        }
+    }
+    Ok((jobs, unmatched))
+}
+
 /// 置き場に上げた結果（1 ファイル）
 #[derive(Debug, Clone)]
 pub struct Uploaded {
