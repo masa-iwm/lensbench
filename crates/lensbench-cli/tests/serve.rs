@@ -207,13 +207,15 @@ fn loop_thickness() {
     }
     eprintln!("set + get + spot の 1 往復: {:.3} ms", ms(t, n));
 
-    // 解析の引数は CLI と同じ
+    // 解析の引数は CLI と同じ（厚さは最後に set した値そのもの: 0.1 × 12 は 1.2 と 1 ulp 違う）
     let r = sv.call(
         "analyze",
         json!({ "cmd": "wavefront", "field": 2, "wave": 2, "n": 32 }),
     );
     let wf = analysis::wavefront(
-        &base.with_params(&[(p, t0 + 1.2)]).unwrap(),
+        &base
+            .with_params(&[(p, t0 + 0.1 * (n - 1 - 12) as f64)])
+            .unwrap(),
         FieldSel::Index(1),
         Some(1),
         32,

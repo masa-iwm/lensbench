@@ -995,22 +995,22 @@ fn shifted_rows(
 }
 
 /// 瞳の格子の行ごとの自己相関の和 r[s] = Σ_行 Σ_i P[i + s] P*[i]（s = 0..L、負の s は L + s）。
-/// rows は P を行優先で並べたもの（一辺 ns）、L ≥ 2 ns で巡回の重なりなし
-fn row_autocorr(p: &[C64], ns: usize, l: usize) -> Vec<C64> {
-    use rayon::prelude::*;
+/// line(k, buf) が行 k の P（長さ ns）を buf に書く（全面を持たずに済む）。L ≥ 2 ns で巡回の重なりなし
+fn row_autocorr(ns: usize, l: usize, line: impl Fn(usize, &mut [C64]) + Sync) -> Vec<C64> {
     let fft = rustfft::FftPlanner::<f64>::new().plan_fft_forward(l);
     let zero = C64::new(0.0, 0.0);
     // 行を決まった大きさの塊に分けて塊ごとに |F|² を足し、塊の順に足す（スレッド数によらず同じ値）
     const CH: usize = 16;
-    let part = |rows: &[C64]| -> Vec<f64> {
+    let groups: Vec<usize> = (0..ns.div_ceil(CH)).collect();
+    let parts = crate::par::map(&groups, |&g| {
         let mut buf = vec![zero; l];
         let mut scratch = vec![zero; fft.get_inplace_scratch_len()];
         let mut acc = vec![0.0; l];
-        for row in rows.chunks(ns) {
-            if row.iter().all(|c| c.re == 0.0 && c.im == 0.0) {
+        for k in g * CH..((g + 1) * CH).min(ns) {
+            line(k, &mut buf[..ns]);
+            if buf[..ns].iter().all(|c| c.re == 0.0 && c.im == 0.0) {
                 continue;
             }
-            buf[..ns].copy_from_slice(row);
             buf[ns..].fill(zero);
             fft.process_with_scratch(&mut buf, &mut scratch);
             for (a, f) in acc.iter_mut().zip(&buf) {
@@ -1018,12 +1018,7 @@ fn row_autocorr(p: &[C64], ns: usize, l: usize) -> Vec<C64> {
             }
         }
         acc
-    };
-    let parts: Vec<Vec<f64>> = if !crate::par::sequential() {
-        p.par_chunks(ns * CH).map(scoped(part)).collect()
-    } else {
-        p.chunks(ns * CH).map(part).collect()
-    };
+    });
     let mut sp = vec![zero; l];
     for q in parts {
         for (a, v) in sp.iter_mut().zip(q) {
@@ -1203,35 +1198,30 @@ fn wave_otf_fft(
         }
     }
     let zero = C64::new(0.0, 0.0);
-    let mut e0 = 0.0;
-    let mut p: Vec<C64> = (0..ns * ns)
-        .map(|i| {
-            if inside(i) && wv[i].is_finite() {
-                e0 += 1.0;
-                phasor(wv[i])
-            } else {
-                zero
-            }
-        })
-        .collect();
-    drop(wv);
+    let ok = |i: usize| inside(i) && wv[i].is_finite();
+    let e0 = (0..ns * ns).filter(|&i| ok(i)).count() as f64;
     if !(e0 > 0.0) {
         invalid!("MTF: no valid rays (all vignetted)");
     }
+    // 瞳の標本の位相因子は行（列）ごとに作る（ns = 4096 で複素数の全面は 268 MB になるので持たない）
+    let at = |i: usize| if ok(i) { phasor(wv[i]) } else { zero };
     let l = (2 * ns).next_power_of_two();
     // 球欠: 行（x の向き）の自己相関、子午: 列（y の向き）
-    let rs = row_autocorr(&p, ns, l);
+    let rs = row_autocorr(ns, l, |iy, b| {
+        for (ix, v) in b.iter_mut().enumerate() {
+            *v = at(iy * ns + ix);
+        }
+    });
     let rt = if axis_symmetric(&jm, &ip) {
         rs.clone()
     } else {
-        // その場で転置する（ns = 4096 で瞳の標本は 1 枚 268 MB。写しを作らない）
-        for iy in 0..ns {
-            for ix in iy + 1..ns {
-                p.swap(iy * ns + ix, ix * ns + iy);
+        row_autocorr(ns, l, |ix, b| {
+            for (iy, v) in b.iter_mut().enumerate() {
+                *v = at(iy * ns + ix);
             }
-        }
-        row_autocorr(&p, ns, l)
+        })
     };
+    drop(wv);
     let (mut sag, mut tan) = (Vec::new(), Vec::new());
     let (sx, _) = pupil_shift(&jm, lam, 0);
     let (_, sy) = pupil_shift(&jm, lam, 1);

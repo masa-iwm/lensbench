@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::glass::Glass;
 use crate::interp2d::interp_weights;
 use crate::math::*;
-use crate::surface::{After, Bire, SurfType, Surface, Tilt};
+use crate::surface::{After, Bire, SurfType, Surface};
 use crate::trace::{self, CryKind, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
 use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
@@ -200,10 +200,10 @@ pub struct Rel {
 
 #[derive(Debug, Clone)]
 pub struct Frames {
-    /// 面ごと（無視する面と、無限遠の物体面は None）
-    pub surf: Vec<Option<Frame>>,
+    /// 面ごと（無視する面と、無限遠の物体面は None）。Fresnel の基準点だけ違う写しを安く作れるよう共有で持つ
+    pub surf: Arc<Vec<Option<Frame>>>,
     /// 面ごとの、直前の有効な面の局所座標からこの面の局所座標への変換（追跡の内側で大域座標を経ずに進むため）
-    pub rel: Vec<Option<Rel>>,
+    pub rel: Arc<Vec<Option<Rel>>>,
     /// 面 1 の変換の前の座標系（入射瞳を測る物体空間の軸）
     pub obj: Frame,
     /// Fresnel・Cylinder Fresnel の面の光路長の基準点（面ごとの局所座標 (x, y)。空か範囲外なら頂点）。
@@ -3332,112 +3332,9 @@ impl System {
     }
 }
 
-/// 座標系を 1 面ぶん進める（[`frames`] と同じ）。面の座標系と、次の面へ渡す座標系を返す
-pub fn step_frame(o: V3, r: M3, d: &Surface) -> ((V3, M3), (V3, M3)) {
-    if d.ignore {
-        return ((o, r), (o, r));
-    }
-    let (mut o, mut r) = (o, r);
-    let frame;
-    if d.typ == SurfType::CoordBrk {
-        (o, r) = apply_cb(
-            o,
-            r,
-            &Tilt {
-                d: d.cb,
-                order: d.cb_order,
-            },
-        );
-        frame = (o, r);
-    } else {
-        let (o_pre, r_pre) = (o, r);
-        if let Some(b) = &d.before {
-            (o, r) = apply_cb(o, r, b);
-        }
-        frame = (o, r);
-        match &d.after {
-            After::Reverse => {
-                o = o_pre;
-                r = r_pre;
-            }
-            After::Tilt(a) => (o, r) = apply_cb(o, r, a),
-            After::None => {}
-        }
-    }
-    o = add(o, scale(col(&r, 2), d.t));
-    (frame, (o, r))
-}
-
-/// 座標ブレーク（dx dy tx ty tz）を座標系に適用する
-pub fn apply_cb(o: V3, r: M3, t: &Tilt) -> (V3, M3) {
-    let [dx, dy, tx, ty, tz] = t.d;
-    let (rx, ry, rz) = (rot(0, tx), rot(1, ty), rot(2, tz));
-    if t.order == 0 {
-        let o = add(o, mv(&r, [dx, dy, 0.0]));
-        (o, mm(&mm(&mm(&r, &rx), &ry), &rz))
-    } else {
-        let r = mm(&mm(&mm(&r, &rz), &ry), &rx);
-        (add(o, mv(&r, [dx, dy, 0.0])), r)
-    }
-}
-
-/// 面ごとの座標系（大域座標 = 面 glrs の座標系）。玉・群の剛体の動き（[`crate::units`]）も入れる
-pub fn frames(s: &System) -> Frames {
-    let glrs = s.glrs;
-    let raw = crate::units::raw_frames(s);
-    let mut out = raw.surf;
-    if s.units.iter().any(|u| u.moved()) {
-        crate::units::apply_frames(&s.units, &raw.entry, &mut out);
-    }
-    let g = if glrs < out.len() && out[glrs].is_some() {
-        out[glrs].unwrap()
-    } else {
-        // 面 1 が無視（IGNR）なら、その次の有効な面を基準にする
-        out.iter()
-            .skip(1)
-            .flatten()
-            .next()
-            .copied()
-            .unwrap_or(Frame {
-                o: [0.0; 3],
-                r: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            })
-    };
-    let gt = transpose(&g.r);
-    let res = out
-        .iter()
-        .map(|f| {
-            f.map(|f| Frame {
-                o: mtv(&g.r, sub(f.o, g.o)),
-                r: mm(&gt, &f.r),
-            })
-        })
-        .collect::<Vec<Option<Frame>>>();
-    let mut rel = vec![None; res.len()];
-    let mut prev: Option<Frame> = None;
-    for (j, f) in res.iter().enumerate() {
-        if let Some(f) = f {
-            if let Some(q) = prev {
-                let ft = transpose(&f.r);
-                let r = mm(&ft, &q.r);
-                let t = mv(&ft, sub(q.o, f.o));
-                let ident = r == [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-                let shift = (ident && t[0] == 0.0 && t[1] == 0.0).then_some(t[2]);
-                rel[j] = Some(Rel { r, t, shift });
-            }
-            prev = Some(*f);
-        }
-    }
-    Frames {
-        surf: res,
-        rel,
-        obj: Frame {
-            o: mv(&gt, scale(g.o, -1.0)),
-            r: gt,
-        },
-        fres_ref: Vec::new(),
-    }
-}
+#[path = "system_frames.rs"]
+mod frame_calc;
+pub use frame_calc::{apply_cb, frames, step_frame};
 
 #[path = "system_field_cond.rs"]
 mod field_cond;
