@@ -15,7 +15,7 @@ use crate::glass::Glass;
 use crate::interp2d::interp_weights;
 use crate::math::*;
 use crate::surface::{After, Bire, SurfType, Surface};
-use crate::trace::{self, CryKind, PolKind, PolRay, PolSurf, RayOut, RecEntry, CV3};
+use crate::trace::{self, CryKind, PolKind, PolSurf, RayOut, RecEntry, CV3};
 use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
 use rayon::prelude::*;
@@ -41,6 +41,8 @@ struct Cache {
     kinds: OnceLock<Vec<crate::trace::SurfKind>>,
     /// 面ごとの空間の進む向き（[`crate::trace::space_signs`]、追跡の内側で光線ごとに作らないため）。面の並びで決まる
     signs: OnceLock<Vec<f64>>,
+    /// 追跡の面ごとの準備（[`crate::batch::Plan`]。鍵は (波長, 最後の面, Floating 開口でけるか)。系の座標系で追う分だけ）
+    plans: crate::batch::PlanCache,
     /// 像面だけをずらした系の追跡の共有の表（[`crate::focus`]。changed() で外れる）
     pub(crate) focus: Option<crate::focus::FocusShift>,
 }
@@ -418,6 +420,11 @@ impl System {
         self.cache
             .kinds
             .get_or_init(|| self.surfaces.iter().map(crate::trace::surf_kind).collect())
+    }
+
+    /// 追跡の面ごとの準備のキャッシュ（[`crate::batch::Plan::new`]）
+    pub(crate) fn plan_cache(&self) -> &crate::batch::PlanCache {
+        &self.cache.plans
     }
 
     pub(crate) fn space_signs(&self) -> &[f64] {

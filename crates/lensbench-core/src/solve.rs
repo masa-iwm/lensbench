@@ -139,53 +139,27 @@ impl System {
             (t, if bad { [f64::NAN; 2] } else { r })
         };
         let norm = |r: [f64; 2]| r[0].abs().max(r[1].abs());
-        let mut u = start;
-        let (mut t, mut r) = run(u);
-        if !norm(r).is_finite() {
+        if !norm(run(start).1).is_finite() {
             invalid!("the starting ray doesn't pass ({:?})", prob.unknown);
         }
-        let mut it = 0;
-        while it < prob.max_iter && !(norm(r) <= prob.tol) {
-            it += 1;
-            let h = match prob.unknown {
-                Unknown::Object => 1e-6 * u[0].abs().max(u[1].abs()).max(1.0),
-                Unknown::Pupil => 1e-6,
-            };
-            let mut jac = [[0.0; 2]; 2];
-            for c in 0..2 {
-                let mut a = u;
-                let mut b = u;
-                a[c] += h;
-                b[c] -= h;
-                let (ra, rb) = (run(a).1, run(b).1);
-                jac[0][c] = (ra[0] - rb[0]) / (2.0 * h);
-                jac[1][c] = (ra[1] - rb[1]) / (2.0 * h);
-            }
-            let du = crate::math::solve2([jac[0][0], jac[0][1], jac[1][0], jac[1][1]], r);
-            if !(du[0].is_finite() && du[1].is_finite()) {
-                return Err(Error::Invalid(format!(
-                    "ray solve: singular Jacobian (iteration {it}, residual {:e})",
-                    norm(r)
-                )));
-            }
+        let nw = crate::newton2::Newton2 {
+            tol: prob.tol,
+            max_it: prob.max_iter,
+            diff: crate::newton2::Diff {
+                h: 1e-6,
+                rel: prob.unknown == Unknown::Object,
+                central: true,
+            },
             // 残差が減るまで歩幅を半分にする
-            let mut step = 1.0;
-            loop {
-                let v = [u[0] - step * du[0], u[1] - step * du[1]];
-                let (t2, r2) = run(v);
-                if norm(r2) < norm(r) || step < 1e-4 {
-                    if norm(r2).is_finite() {
-                        u = v;
-                        t = t2;
-                        r = r2;
-                    }
-                    break;
-                }
-                step *= 0.5;
-            }
-            if step < 1e-4 {
-                break;
-            }
+            line: crate::newton2::Line::Decrease { min: 1e-4 },
+        };
+        let sol = nw.solve(|u| run(u).1, start, [0.0; 2]);
+        let (u, r, it) = (sol.v, sol.r, sol.it);
+        if sol.end == crate::newton2::End::Singular {
+            return Err(Error::Invalid(format!(
+                "ray solve: singular Jacobian (iteration {it}, residual {:e})",
+                norm(r)
+            )));
         }
         if !(norm(r) <= prob.tol) {
             invalid!(
@@ -194,6 +168,7 @@ impl System {
                 prob.tol
             );
         }
+        let t = run(u).0;
         let (object, pupil) = match prob.unknown {
             Unknown::Object => (ObjSpec::Point(u), prob.pupil),
             Unknown::Pupil => (prob.object, u),

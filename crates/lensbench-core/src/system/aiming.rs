@@ -1,6 +1,7 @@
 //! 光線エイミング（絞りへの狙い・実光線エイミング・主光線の継続法）
 
 use super::*;
+use crate::newton2;
 
 impl System {
     /// 物体 spec から絞り面の局所座標 (x, y) を通る実光線を光線ごとに解く（[`Launch::Stop`]）。
@@ -15,6 +16,7 @@ impl System {
     ) -> (Vec<(V3, V3)>, Vec<bool>) {
         let s = self.stop();
         let fr = self.frames();
+        let plan = batch::Plan::new(self, fr, w, s, false);
         let r0 = fr.obj.r;
         let geom = StartGeom::new(self, spec);
         let start = |v: [f64; 2]| -> (V3, V3) {
@@ -29,7 +31,7 @@ impl System {
         };
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
             let (p, k) = start(v);
-            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
+            let r = batch::trace_one_plain(&plan, p, k);
             if r.err != 0 {
                 return [f64::NAN; 2];
             }
@@ -49,25 +51,13 @@ impl System {
                 (qy[1] - q[1]) / h,
             ]
         };
-        // J v = e を解く（J は行優先 [a b; c d]）
-        let newton = |mut v: [f64; 2], tgt: [f64; 2]| -> ([f64; 2], f64) {
-            let lim = 1e-12 * tgt[0].abs().max(tgt[1].abs()).max(1.0);
-            let mut q = at_stop(v);
-            for _ in 0..40 {
-                let e = [q[0] - tgt[0], q[1] - tgt[1]];
-                if !(e[0].abs().max(e[1].abs()) > lim) {
-                    break;
-                }
-                let dv = solve2(jac(v, q), e);
-                if !(dv[0].is_finite() && dv[1].is_finite()) {
-                    break;
-                }
-                v = [v[0] - dv[0], v[1] - dv[1]];
-                q = at_stop(v);
-            }
-            let e = (q[0] - tgt[0]).abs().max((q[1] - tgt[1]).abs());
-            (v, if e.is_finite() { e } else { f64::INFINITY })
+        let nw = newton2::Newton2 {
+            tol: 0.0,
+            max_it: 40,
+            diff: newton2::Diff::fwd(h),
+            line: newton2::Line::Full,
         };
+        let lim = |t: [f64; 2]| 1e-12 * t[0].abs().max(t[1].abs()).max(1.0);
         // 絞りの中心を通る光線を解き、その点のヤコビアンで光線ごとの初期値を作る
         let v0 = match spec {
             ObjSpec::Dir(_) => [0.0, 0.0],
@@ -77,28 +67,43 @@ impl System {
                 [kk[0] / kk[2], kk[1] / kk[2]]
             }
         };
-        let (vc, _) = newton(v0, [0.0, 0.0]);
+        let [c] = nw.solve_lanes(
+            |v: &[[f64; 2]; 1]| [at_stop(v[0])],
+            [v0],
+            [[0.0; 2]],
+            [lim([0.0; 2])],
+        );
+        let vc = c.v;
         let jc = jac(vc, at_stop(vc));
-        let one = |i: usize| -> ((V3, V3), bool) {
-            let tgt = [x[i], y[i]];
-            let d = solve2(jc, tgt);
-            let g = if d[0].is_finite() && d[1].is_finite() {
+        let guess = |t: [f64; 2]| -> [f64; 2] {
+            let d = solve2(jc, t);
+            if d[0].is_finite() && d[1].is_finite() {
                 [vc[0] + d[0], vc[1] + d[1]]
             } else {
                 vc
-            };
-            let (v, e) = newton(g, tgt);
-            let fail = !(tgt[0].is_finite() && tgt[1].is_finite())
-                || !(e <= 1e-9 * tgt[0].abs().max(tgt[1].abs()).max(1.0));
-            (start(v), fail)
+            }
+        };
+        let result = |t: [f64; 2], s: &newton2::Sol| -> ((V3, V3), bool) {
+            let fail = !(t[0].is_finite() && t[1].is_finite())
+                || !(s.err() <= 1e-9 * t[0].abs().max(t[1].abs()).max(1.0));
+            (start(s.v), fail)
+        };
+        let one = |i: usize| -> ((V3, V3), bool) {
+            let tgt = [x[i], y[i]];
+            let [s] = nw.solve_lanes(
+                |v: &[[f64; 2]; 1]| [at_stop(v[0])],
+                [guess(tgt)],
+                [tgt],
+                [lim(tgt)],
+            );
+            result(tgt, &s)
         };
         let n = x.len().min(y.len());
         let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
         // L 本ずつまとめて同じ反復をする（光線ごとの手順・結果は上の one と同じビット。収束・中断した光線は
         // そこで止め、残りの光線の反復だけを続ける）
         const L: usize = batch::L;
-        let plan = batch::Plan::new(self, fr, w, 1, s, false);
-        if plan.is_empty() || !batch::use_for(n) {
+        if !batch::use_for(n) {
             let out: Vec<_> = if par {
                 (0..n)
                     .into_par_iter()
@@ -126,64 +131,8 @@ impl System {
             // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
             let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
             let tgt: [[f64; 2]; L] = idx.map(|i| [x[i], y[i]]);
-            // newton の初期値（one と同じ）
-            let mut v: [[f64; 2]; L] = tgt.map(|t| {
-                let d = solve2(jc, t);
-                if d[0].is_finite() && d[1].is_finite() {
-                    [vc[0] + d[0], vc[1] + d[1]]
-                } else {
-                    vc
-                }
-            });
-            let lim = tgt.map(|t| 1e-12 * t[0].abs().max(t[1].abs()).max(1.0));
-            let mut q = at_stop_l(&v);
-            let mut act = [true; L];
-            for _ in 0..40 {
-                let mut e = [[0.0; 2]; L];
-                for l in 0..L {
-                    e[l] = [q[l][0] - tgt[l][0], q[l][1] - tgt[l][1]];
-                    if act[l] && !(e[l][0].abs().max(e[l][1].abs()) > lim[l]) {
-                        act[l] = false;
-                    }
-                }
-                if !act.iter().any(|&a| a) {
-                    break;
-                }
-                // jac と同じ点
-                let qx = at_stop_l(&std::array::from_fn(|l| [v[l][0] + h, v[l][1]]));
-                let qy = at_stop_l(&std::array::from_fn(|l| [v[l][0], v[l][1] + h]));
-                for l in 0..L {
-                    if !act[l] {
-                        continue;
-                    }
-                    let j = [
-                        (qx[l][0] - q[l][0]) / h,
-                        (qy[l][0] - q[l][0]) / h,
-                        (qx[l][1] - q[l][1]) / h,
-                        (qy[l][1] - q[l][1]) / h,
-                    ];
-                    let dv = solve2(j, e[l]);
-                    if !(dv[0].is_finite() && dv[1].is_finite()) {
-                        act[l] = false;
-                        continue;
-                    }
-                    v[l] = [v[l][0] - dv[0], v[l][1] - dv[1]];
-                }
-                let qn = at_stop_l(&v);
-                for l in 0..L {
-                    if act[l] {
-                        q[l] = qn[l];
-                    }
-                }
-            }
-            std::array::from_fn(|l| {
-                let t = tgt[l];
-                let e = (q[l][0] - t[0]).abs().max((q[l][1] - t[1]).abs());
-                let e = if e.is_finite() { e } else { f64::INFINITY };
-                let fail = !(t[0].is_finite() && t[1].is_finite())
-                    || !(e <= 1e-9 * t[0].abs().max(t[1].abs()).max(1.0));
-                (start(v[l]), fail)
-            })
+            let s = nw.solve_lanes(at_stop_l, tgt.map(guess), tgt, tgt.map(lim));
+            std::array::from_fn(|l| result(tgt[l], &s[l]))
         };
         let nb = n.div_ceil(L);
         let g: Vec<_> = if par {
@@ -214,6 +163,7 @@ impl System {
         let (rx, ry) = self.stop_radius();
         let s = self.stop();
         let fr = self.frames();
+        let plan = batch::Plan::new(self, fr, w, s, false);
         let tol = 1e-12;
         let fail_tol = 1e-9 * rx.max(ry).max(1.0);
         let scale_ = ex
@@ -225,7 +175,7 @@ impl System {
         let geom = StartGeom::new(self, spec);
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
             let (p, k) = geom.ray(v[0], v[1]);
-            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
+            let r = batch::trace_one_plain(&plan, p, k);
             [r.xyz[0], r.xyz[1]]
         };
         // 1 本ずつの反復
@@ -242,7 +192,6 @@ impl System {
         // L 本ずつまとめて同じ反復をする（光線ごとの手順・結果は上の one と同じビット。
         // 収束した光線はそこで止め、残りの光線の反復だけを続ける）
         const L: usize = batch::L;
-        let plan = batch::Plan::new(self, fr, w, 1, s, false);
         let at_stop_l = |v: &[[f64; 2]; L]| -> [[f64; 2]; L] {
             let st = v.map(|v| geom.ray(v[0], v[1]));
             let r =
@@ -452,6 +401,7 @@ impl System {
     pub(super) fn aim_chief_continuation(&self, spec: ObjSpec, w: usize) -> Option<[f64; 2]> {
         let s = self.stop();
         let fr = self.frames();
+        let plan = batch::Plan::new(self, fr, w, s, false);
         let (o1, r0) = (fr.obj.o, fr.obj.r);
         // 無限遠物体の未知数は、面 1 の原点を通り光線に垂直な面の上の位置（入射瞳の面の座標は視野 90° で決まらなく
         // なるので、90° を超える視野へもたどれるように）。光線はその面から十分前に戻した点から出し、各面まで光線の
@@ -483,7 +433,7 @@ impl System {
                 ObjSpec::Point(_) => self.start_ray(sp, v[0], v[1]),
             };
             let mut rec = vec![trace::RecEntry::NAN; nrec];
-            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, Some(&mut rec));
+            let r = batch::trace_one(&plan, p, k, Some(&mut rec[..]));
             if r.err != 0 {
                 return [f64::NAN; 2];
             }
@@ -498,46 +448,16 @@ impl System {
             [r.xyz[0], r.xyz[1]]
         };
         let (rx, ry) = self.stop_radius();
-        let lim = 1e-12 * rx.abs().max(ry.abs()).max(1.0);
-        let h = 1e-7 * (self.paraxial().epd / 2.0).max(1.0);
-        let newton = |sp: ObjSpec, mut v: [f64; 2]| -> Option<[f64; 2]> {
-            let mut q = at(sp, v);
-            for _ in 0..60 {
-                if !(q[0].is_finite() && q[1].is_finite()) {
-                    return None;
-                }
-                if q[0].abs().max(q[1].abs()) <= lim {
-                    return Some(v);
-                }
-                let qx = at(sp, [v[0] + h, v[1]]);
-                let qy = at(sp, [v[0], v[1] + h]);
-                let j = [
-                    (qx[0] - q[0]) / h,
-                    (qy[0] - q[0]) / h,
-                    (qx[1] - q[1]) / h,
-                    (qy[1] - q[1]) / h,
-                ];
-                let dv = solve2(j, q);
-                if !(dv[0].is_finite() && dv[1].is_finite()) {
-                    return None;
-                }
-                // 光線が面から外れたら刻みを半分に
-                let mut t = 1.0;
-                loop {
-                    let vn = [v[0] - t * dv[0], v[1] - t * dv[1]];
-                    let qn = at(sp, vn);
-                    if qn[0].is_finite() && qn[1].is_finite() {
-                        v = vn;
-                        q = qn;
-                        break;
-                    }
-                    t *= 0.5;
-                    if t < 1e-6 {
-                        return None;
-                    }
-                }
-            }
-            (q[0].abs().max(q[1].abs()) <= lim).then_some(v)
+        let nw = newton2::Newton2 {
+            tol: 1e-12 * rx.abs().max(ry.abs()).max(1.0),
+            max_it: 60,
+            diff: newton2::Diff::fwd(1e-7 * (self.paraxial().epd / 2.0).max(1.0)),
+            // 光線が面から外れたら刻みを半分に
+            line: newton2::Line::Finite { min: 1e-6 },
+        };
+        let newton = |sp: ObjSpec, v: [f64; 2]| -> Option<[f64; 2]> {
+            let s = nw.solve(|v| at(sp, v), v, [0.0; 2]);
+            s.ok().then_some(s.v)
         };
         // 軸上（主光線は入射瞳の中心）から物体を動かす
         let step = |t: f64| -> ObjSpec {
@@ -620,54 +540,25 @@ impl System {
     ) -> Option<[f64; 2]> {
         let s = self.stop();
         let fr = self.frames();
+        let plan = batch::Plan::new(self, fr, w, s, false);
         let at = |v: [f64; 2], tg: [f64; 2]| -> [f64; 2] {
             let (p, k) = self.start_ray(spec, v[0], v[1]);
-            let r = trace::trace_ray(self, fr, w, p, k, 0.0, 1, s, false, None);
+            let r = batch::trace_one_plain(&plan, p, k);
             if r.err != 0 {
                 return [f64::NAN; 2];
             }
             [r.xyz[0] - tg[0], r.xyz[1] - tg[1]]
         };
         let (rx, ry) = self.stop_radius();
-        let lim = 1e-12 * rx.abs().max(ry.abs()).max(1.0);
-        let h = 1e-7 * (self.paraxial().epd / 2.0).abs().max(1.0);
-        let newton = |mut v: [f64; 2], tg: [f64; 2]| -> Option<[f64; 2]> {
-            let mut q = at(v, tg);
-            for _ in 0..60 {
-                if !(q[0].is_finite() && q[1].is_finite()) {
-                    return None;
-                }
-                if q[0].abs().max(q[1].abs()) <= lim {
-                    return Some(v);
-                }
-                let qx = at([v[0] + h, v[1]], tg);
-                let qy = at([v[0], v[1] + h], tg);
-                let j = [
-                    (qx[0] - q[0]) / h,
-                    (qy[0] - q[0]) / h,
-                    (qx[1] - q[1]) / h,
-                    (qy[1] - q[1]) / h,
-                ];
-                let dv = solve2(j, q);
-                if !(dv[0].is_finite() && dv[1].is_finite()) {
-                    return None;
-                }
-                let mut t = 1.0;
-                loop {
-                    let vn = [v[0] - t * dv[0], v[1] - t * dv[1]];
-                    let qn = at(vn, tg);
-                    if qn[0].is_finite() && qn[1].is_finite() {
-                        v = vn;
-                        q = qn;
-                        break;
-                    }
-                    t *= 0.5;
-                    if t < 1e-6 {
-                        return None;
-                    }
-                }
-            }
-            (q[0].abs().max(q[1].abs()) <= lim).then_some(v)
+        let nw = newton2::Newton2 {
+            tol: 1e-12 * rx.abs().max(ry.abs()).max(1.0),
+            max_it: 60,
+            diff: newton2::Diff::fwd(1e-7 * (self.paraxial().epd / 2.0).abs().max(1.0)),
+            line: newton2::Line::Finite { min: 1e-6 },
+        };
+        let newton = |v: [f64; 2], tg: [f64; 2]| -> Option<[f64; 2]> {
+            let s = nw.solve(|v| at(v, tg), v, [0.0; 2]);
+            s.ok().then_some(s.v)
         };
         let mut v = v0;
         let mut t: f64 = 0.0;

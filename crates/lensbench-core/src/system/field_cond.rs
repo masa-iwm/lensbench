@@ -72,24 +72,18 @@ impl System {
                 }
             }
         };
-        for _ in 0..40 {
-            let q = img(v);
-            let e = [q[0] - x, q[1] - y];
-            if e[0].abs().max(e[1].abs()) < 1e-13 {
-                break;
-            }
-            let h = 1e-7 * v[0].abs().max(v[1].abs()).max(1.0);
-            let qx = img([v[0] + h, v[1]]);
-            let qy = img([v[0], v[1] + h]);
-            let (a, b, c, d) = (
-                (qx[0] - q[0]) / h,
-                (qy[0] - q[0]) / h,
-                (qx[1] - q[1]) / h,
-                (qy[1] - q[1]) / h,
-            );
-            let dv = crate::math::solve2([a, b, c, d], e);
-            v = [v[0] - dv[0], v[1] - dv[1]];
-        }
+        // 収束は残差 < 1e-13（<= の幅は 1e-13 のすぐ下の数）
+        let nw = crate::newton2::Newton2 {
+            tol: f64::from_bits(1e-13f64.to_bits() - 1),
+            max_it: 40,
+            diff: crate::newton2::Diff {
+                h: 1e-7,
+                rel: true,
+                central: false,
+            },
+            line: crate::newton2::Line::Full,
+        };
+        v = nw.solve(img, v, [x, y]).v;
         let q = img(v);
         let e = (q[0] - x).abs().max((q[1] - y).abs());
         if !(e < 1e-9 * x.abs().max(y.abs()).max(1.0)) {

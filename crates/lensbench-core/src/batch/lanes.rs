@@ -1,72 +1,54 @@
-//! L 本の光線の値の組（[`F`]）と真偽の組（[`B`]）。まとめ追跡の演算はこの型の演算子・関数で書く。
+//! 光線の値の組（[`Lanes`]）と真偽の組（[`Mask`]）。追跡のカーネルはこの型の演算子・関数で書き、
+//! 組の幅ごとに展開する（[`Wide`]: まとめ追跡の [`super::L`] 本、[`One`]: 1 本）。
 //!
-//! 光線ごとの演算は 1 本ずつの追跡と同じ IEEE の演算（四則・平方根・比較・符号）だけで、光線の間で値を
-//! 混ぜないので、結果は光線ごとに 1 本ずつの追跡とビット単位で同じ。
+//! 光線ごとの演算は IEEE の演算（四則・平方根・比較・符号）だけで、光線の間で値を混ぜないので、
+//! 結果は組の幅によらず光線ごとに同じビット。
 //!
-//! - wasm32 ＋ simd128: 2 本ずつ `f64x2` の命令で計算する（LLVM は wasm ではこの形のループを
+//! - wasm32 ＋ simd128: [`Wide`] は 2 本ずつ `f64x2` の命令で計算する（LLVM は wasm ではこの形のループを
 //!   ベクトル化しないので、命令を名指しする。公開 #99）
 //! - それ以外: 光線の配列への素直なループ（コンパイラのベクトル化に任せる。x86_64 の AVX 版も同じ）
 
-use super::L;
 use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Index, IndexMut, Mul, Neg, Not, Sub};
 
-#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-pub use simd::*;
+/// 光線の値の組。四則は組どうしと、右が数のもの（左が数の式は `V::splat(a) - x` の形で書く）
+pub trait Lanes:
+    Copy
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Neg<Output = Self>
+    + Add<f64, Output = Self>
+    + Sub<f64, Output = Self>
+    + Mul<f64, Output = Self>
+    + Div<f64, Output = Self>
+    + AddAssign
+    + Index<usize, Output = f64>
+    + IndexMut<usize>
+    + Rhs<Self>
+{
+    /// 真偽の組
+    type B: Mask;
+    /// 光線の数
+    const N: usize;
+    fn splat(x: f64) -> Self;
+    fn sqrt(self) -> Self;
+    fn abs(self) -> Self;
+    /// [`f64::signum`]（NaN は NaN、±0 は ±1）
+    fn signum(self) -> Self;
+    fn lt(self, o: impl Rhs<Self>) -> Self::B;
+    fn gt(self, o: impl Rhs<Self>) -> Self::B;
+    fn le(self, o: impl Rhs<Self>) -> Self::B;
+    fn ge(self, o: impl Rhs<Self>) -> Self::B;
+    fn eq(self, o: impl Rhs<Self>) -> Self::B;
+    fn ne(self, o: impl Rhs<Self>) -> Self::B;
+    /// 光線ごとに m なら a、でなければ b
+    fn select(m: Self::B, a: Self, b: Self) -> Self;
 
-#[cfg(not(all(target_arch = "wasm32", target_feature = "simd128")))]
-pub use plain::*;
-
-/// [`F`] の光線ごとの値（配列として）
-impl Index<usize> for F {
-    type Output = f64;
     #[inline(always)]
-    fn index(&self, i: usize) -> &f64 {
-        &self.arr()[i]
-    }
-}
-
-impl IndexMut<usize> for F {
-    #[inline(always)]
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        &mut self.arr_mut()[i]
-    }
-}
-
-macro_rules! binop_scalar {
-    ($tr:ident, $m:ident) => {
-        impl $tr<f64> for F {
-            type Output = F;
-            #[inline(always)]
-            fn $m(self, o: f64) -> F {
-                $tr::$m(self, F::splat(o))
-            }
-        }
-        impl $tr<F> for f64 {
-            type Output = F;
-            #[inline(always)]
-            fn $m(self, o: F) -> F {
-                $tr::$m(F::splat(self), o)
-            }
-        }
-    };
-}
-binop_scalar!(Add, add);
-binop_scalar!(Sub, sub);
-binop_scalar!(Mul, mul);
-binop_scalar!(Div, div);
-
-impl AddAssign for F {
-    #[inline(always)]
-    fn add_assign(&mut self, o: F) {
-        *self = *self + o;
-    }
-}
-
-impl F {
-    #[inline(always)]
-    pub fn from_fn(mut f: impl FnMut(usize) -> f64) -> F {
-        let mut o = F::splat(0.0);
-        for i in 0..L {
+    fn from_fn(mut f: impl FnMut(usize) -> f64) -> Self {
+        let mut o = Self::splat(0.0);
+        for i in 0..Self::N {
             o[i] = f(i);
         }
         o
@@ -74,68 +56,84 @@ impl F {
 
     /// `x.max(0.0)`（NaN は 0）。この追跡で -0 は max に来ない（1 − x・a² − b·c の形で、-0 にならない）
     #[inline(always)]
-    pub fn max0(self) -> F {
-        sel(self.gt(0.0), self, F::splat(0.0))
+    fn max0(self) -> Self {
+        Self::select(self.gt(0.0), self, Self::splat(0.0))
     }
 
     /// 有限か（NaN・無限大は false）
     #[inline(always)]
-    pub fn is_finite(self) -> B {
+    fn is_finite(self) -> Self::B {
         self.abs().lt(f64::INFINITY)
     }
 }
 
-/// 2 つの組の比較（光線ごと）。右は組でも数でもよい
-pub trait Rhs: Copy {
-    fn lanes(self) -> F;
-}
-impl Rhs for F {
-    #[inline(always)]
-    fn lanes(self) -> F {
-        self
-    }
-}
-impl Rhs for f64 {
-    #[inline(always)]
-    fn lanes(self) -> F {
-        F::splat(self)
-    }
-}
+/// 真偽の組
+pub trait Mask: Copy + BitAnd<Output = Self> + BitOr<Output = Self> + Not<Output = Self> {
+    const N: usize;
+    fn splat(b: bool) -> Self;
+    fn at(self, i: usize) -> bool;
+    fn set(&mut self, i: usize, b: bool);
+    fn any(self) -> bool;
 
-impl B {
     #[inline(always)]
-    pub fn from_fn(f: impl Fn(usize) -> bool) -> B {
-        let mut o = B::splat(false);
-        for i in 0..L {
+    fn from_fn(f: impl Fn(usize) -> bool) -> Self {
+        let mut o = Self::splat(false);
+        for i in 0..Self::N {
             o.set(i, f(i));
         }
         o
     }
 }
 
-/// 光線ごとに m なら a、でなければ b
-#[inline(always)]
-pub fn sel(m: B, a: F, b: F) -> F {
-    select(m, a, b)
+/// 比較の右辺（組か数）
+pub trait Rhs<V>: Copy {
+    fn lanes(self) -> V;
+}
+impl<V: Lanes> Rhs<V> for f64 {
+    #[inline(always)]
+    fn lanes(self) -> V {
+        V::splat(self)
+    }
 }
 
+/// 光線ごとに m なら a、でなければ b
+#[inline(always)]
+pub fn sel<V: Lanes>(m: V::B, a: V, b: V) -> V {
+    V::select(m, a, b)
+}
+
+/// 1 本（1 本ずつの追跡）
+pub type One = plain::F<1>;
+
+/// まとめ追跡の L 本
 #[cfg(not(all(target_arch = "wasm32", target_feature = "simd128")))]
-mod plain {
+pub type Wide = plain::F<{ super::L }>;
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+pub type Wide = simd::F;
+
+pub mod plain {
     use super::*;
 
-    /// L 本の光線の値
+    /// N 本の光線の値
     #[derive(Clone, Copy)]
     #[repr(C, align(32))]
-    pub struct F([f64; L]);
+    pub struct F<const N: usize>([f64; N]);
 
-    /// L 本の光線の真偽
+    /// N 本の光線の真偽
     #[derive(Clone, Copy)]
-    pub struct B([bool; L]);
+    pub struct B<const N: usize>([bool; N]);
+
+    impl<const N: usize> Rhs<F<N>> for F<N> {
+        #[inline(always)]
+        fn lanes(self) -> F<N> {
+            self
+        }
+    }
 
     macro_rules! lanes {
         ($i:ident => $e:expr) => {{
-            let mut o = [0.0f64; L];
-            for $i in 0..L {
+            let mut o = [0.0f64; N];
+            for $i in 0..N {
                 o[$i] = $e;
             }
             F(o)
@@ -143,8 +141,8 @@ mod plain {
     }
     macro_rules! lanes_b {
         ($i:ident => $e:expr) => {{
-            let mut o = [false; L];
-            for $i in 0..L {
+            let mut o = [false; N];
+            for $i in 0..N {
                 o[$i] = $e;
             }
             B(o)
@@ -153,11 +151,18 @@ mod plain {
 
     macro_rules! binop {
         ($tr:ident, $m:ident, $op:tt) => {
-            impl $tr for F {
-                type Output = F;
+            impl<const N: usize> $tr for F<N> {
+                type Output = F<N>;
                 #[inline(always)]
-                fn $m(self, o: F) -> F {
+                fn $m(self, o: F<N>) -> F<N> {
                     lanes!(i => self.0[i] $op o.0[i])
+                }
+            }
+            impl<const N: usize> $tr<f64> for F<N> {
+                type Output = F<N>;
+                #[inline(always)]
+                fn $m(self, o: f64) -> F<N> {
+                    lanes!(i => self.0[i] $op o)
                 }
             }
         };
@@ -167,47 +172,62 @@ mod plain {
     binop!(Mul, mul, *);
     binop!(Div, div, /);
 
-    impl Neg for F {
-        type Output = F;
+    impl<const N: usize> Neg for F<N> {
+        type Output = F<N>;
         #[inline(always)]
-        fn neg(self) -> F {
+        fn neg(self) -> F<N> {
             lanes!(i => -self.0[i])
+        }
+    }
+
+    impl<const N: usize> AddAssign for F<N> {
+        #[inline(always)]
+        fn add_assign(&mut self, o: F<N>) {
+            *self = *self + o;
+        }
+    }
+
+    impl<const N: usize> Index<usize> for F<N> {
+        type Output = f64;
+        #[inline(always)]
+        fn index(&self, i: usize) -> &f64 {
+            &self.0[i]
+        }
+    }
+    impl<const N: usize> IndexMut<usize> for F<N> {
+        #[inline(always)]
+        fn index_mut(&mut self, i: usize) -> &mut f64 {
+            &mut self.0[i]
         }
     }
 
     macro_rules! cmp {
         ($m:ident, $op:tt) => {
             #[inline(always)]
-            pub fn $m(self, o: impl Rhs) -> B {
+            fn $m(self, o: impl Rhs<Self>) -> B<N> {
                 let o = o.lanes();
                 lanes_b!(i => self.0[i] $op o.0[i])
             }
         };
     }
 
-    impl F {
+    impl<const N: usize> Lanes for F<N> {
+        type B = B<N>;
+        const N: usize = N;
         #[inline(always)]
-        pub fn splat(x: f64) -> F {
-            F([x; L])
+        fn splat(x: f64) -> F<N> {
+            F([x; N])
         }
         #[inline(always)]
-        pub(super) fn arr(&self) -> &[f64; L] {
-            &self.0
-        }
-        #[inline(always)]
-        pub(super) fn arr_mut(&mut self) -> &mut [f64; L] {
-            &mut self.0
-        }
-        #[inline(always)]
-        pub fn sqrt(self) -> F {
+        fn sqrt(self) -> F<N> {
             lanes!(i => self.0[i].sqrt())
         }
         #[inline(always)]
-        pub fn abs(self) -> F {
+        fn abs(self) -> F<N> {
             lanes!(i => self.0[i].abs())
         }
         #[inline(always)]
-        pub fn signum(self) -> F {
+        fn signum(self) -> F<N> {
             lanes!(i => self.0[i].signum())
         }
         cmp!(lt, <);
@@ -216,85 +236,93 @@ mod plain {
         cmp!(ge, >=);
         cmp!(eq, ==);
         cmp!(ne, !=);
+        #[inline(always)]
+        fn select(m: B<N>, a: F<N>, b: F<N>) -> F<N> {
+            lanes!(i => if m.0[i] { a.0[i] } else { b.0[i] })
+        }
     }
 
-    impl B {
+    impl<const N: usize> Mask for B<N> {
+        const N: usize = N;
         #[inline(always)]
-        pub fn splat(b: bool) -> B {
-            B([b; L])
+        fn splat(b: bool) -> B<N> {
+            B([b; N])
         }
         #[inline(always)]
-        pub fn at(self, i: usize) -> bool {
+        fn at(self, i: usize) -> bool {
             self.0[i]
         }
         #[inline(always)]
-        pub fn set(&mut self, i: usize, b: bool) {
+        fn set(&mut self, i: usize, b: bool) {
             self.0[i] = b;
         }
         #[inline(always)]
-        pub fn any(self) -> bool {
+        fn any(self) -> bool {
             self.0.iter().any(|&b| b)
         }
     }
 
-    impl BitAnd for B {
-        type Output = B;
+    impl<const N: usize> BitAnd for B<N> {
+        type Output = B<N>;
         #[inline(always)]
-        fn bitand(self, o: B) -> B {
+        fn bitand(self, o: B<N>) -> B<N> {
             lanes_b!(i => self.0[i] & o.0[i])
         }
     }
-    impl BitOr for B {
-        type Output = B;
+    impl<const N: usize> BitOr for B<N> {
+        type Output = B<N>;
         #[inline(always)]
-        fn bitor(self, o: B) -> B {
+        fn bitor(self, o: B<N>) -> B<N> {
             lanes_b!(i => self.0[i] | o.0[i])
         }
     }
-    impl Not for B {
-        type Output = B;
+    impl<const N: usize> Not for B<N> {
+        type Output = B<N>;
         #[inline(always)]
-        fn not(self) -> B {
+        fn not(self) -> B<N> {
             lanes_b!(i => !self.0[i])
         }
-    }
-
-    #[inline(always)]
-    pub(super) fn select(m: B, a: F, b: F) -> F {
-        lanes!(i => if m.0[i] { a.0[i] } else { b.0[i] })
     }
 }
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-mod simd {
+pub mod simd {
     use super::*;
+    use crate::batch::L;
     use std::arch::wasm32::*;
 
     /// 2 本ずつの組の数
-    const N: usize = L / 2;
+    const NW: usize = L / 2;
     const _: () = assert!(L.is_multiple_of(2));
 
     /// L 本の光線の値（2 本ずつ f64x2）
     #[derive(Clone, Copy)]
-    pub struct F([v128; N]);
+    pub struct F([v128; NW]);
 
     /// L 本の光線の真偽（2 本ずつ、各 64 ビットが全部 1 か 0）
     #[derive(Clone, Copy)]
-    pub struct B([v128; N]);
+    pub struct B([v128; NW]);
+
+    impl Rhs<F> for F {
+        #[inline(always)]
+        fn lanes(self) -> F {
+            self
+        }
+    }
 
     #[inline(always)]
-    fn map1(a: [v128; N], f: impl Fn(v128) -> v128) -> [v128; N] {
+    fn map1(a: [v128; NW], f: impl Fn(v128) -> v128) -> [v128; NW] {
         let mut o = a;
-        for j in 0..N {
+        for j in 0..NW {
             o[j] = f(a[j]);
         }
         o
     }
 
     #[inline(always)]
-    fn map2(a: [v128; N], b: [v128; N], f: impl Fn(v128, v128) -> v128) -> [v128; N] {
+    fn map2(a: [v128; NW], b: [v128; NW], f: impl Fn(v128, v128) -> v128) -> [v128; NW] {
         let mut o = a;
-        for j in 0..N {
+        for j in 0..NW {
             o[j] = f(a[j], b[j]);
         }
         o
@@ -307,6 +335,13 @@ mod simd {
                 #[inline(always)]
                 fn $m(self, o: F) -> F {
                     F(map2(self.0, o.0, |a, b| $f(a, b)))
+                }
+            }
+            impl $tr<f64> for F {
+                type Output = F;
+                #[inline(always)]
+                fn $m(self, o: f64) -> F {
+                    $tr::$m(self, F::splat(o))
                 }
             }
         };
@@ -324,41 +359,57 @@ mod simd {
         }
     }
 
+    impl AddAssign for F {
+        #[inline(always)]
+        fn add_assign(&mut self, o: F) {
+            *self = *self + o;
+        }
+    }
+
+    impl Index<usize> for F {
+        type Output = f64;
+        #[inline(always)]
+        fn index(&self, i: usize) -> &f64 {
+            // 安全: [v128; NW] と [f64; L] は大きさが同じで、v128 の並びの方が揃え（16）が厳しい
+            let a = unsafe { &*(self as *const F as *const [f64; L]) };
+            &a[i]
+        }
+    }
+    impl IndexMut<usize> for F {
+        #[inline(always)]
+        fn index_mut(&mut self, i: usize) -> &mut f64 {
+            // 安全: index と同じ。どのビット列も f64x2 として正しい
+            let a = unsafe { &mut *(self as *mut F as *mut [f64; L]) };
+            &mut a[i]
+        }
+    }
+
     macro_rules! cmp {
         ($m:ident, $f:ident) => {
             #[inline(always)]
-            pub fn $m(self, o: impl Rhs) -> B {
+            fn $m(self, o: impl Rhs<Self>) -> B {
                 B(map2(self.0, o.lanes().0, |a, b| $f(a, b)))
             }
         };
     }
 
-    impl F {
+    impl Lanes for F {
+        type B = B;
+        const N: usize = L;
         #[inline(always)]
-        pub fn splat(x: f64) -> F {
-            F([f64x2_splat(x); N])
+        fn splat(x: f64) -> F {
+            F([f64x2_splat(x); NW])
         }
         #[inline(always)]
-        pub(super) fn arr(&self) -> &[f64; L] {
-            // 安全: [v128; N] と [f64; L] は大きさが同じで、v128 の並びの方が揃え（16）が厳しい
-            unsafe { &*(self as *const F as *const [f64; L]) }
-        }
-        #[inline(always)]
-        pub(super) fn arr_mut(&mut self) -> &mut [f64; L] {
-            // 安全: arr と同じ。どのビット列も f64x2 として正しい
-            unsafe { &mut *(self as *mut F as *mut [f64; L]) }
-        }
-        #[inline(always)]
-        pub fn sqrt(self) -> F {
+        fn sqrt(self) -> F {
             F(map1(self.0, |x| f64x2_sqrt(x)))
         }
         #[inline(always)]
-        pub fn abs(self) -> F {
+        fn abs(self) -> F {
             F(map1(self.0, |x| f64x2_abs(x)))
         }
-        /// [`f64::signum`]（NaN は NaN、±0 は ±1）
         #[inline(always)]
-        pub fn signum(self) -> F {
+        fn signum(self) -> F {
             let one = f64x2_splat(1.0);
             let sign = f64x2_splat(-0.0);
             F(map1(self.0, |x| {
@@ -373,32 +424,44 @@ mod simd {
         cmp!(ge, f64x2_ge);
         cmp!(eq, f64x2_eq);
         cmp!(ne, f64x2_ne);
+        #[inline(always)]
+        fn select(m: B, a: F, b: F) -> F {
+            let mut o = a.0;
+            for j in 0..NW {
+                o[j] = v128_bitselect(a.0[j], b.0[j], m.0[j]);
+            }
+            F(o)
+        }
     }
 
     impl B {
         #[inline(always)]
-        pub fn splat(b: bool) -> B {
-            B([i64x2_splat(-(b as i64)); N])
-        }
-        #[inline(always)]
         fn words(&self) -> &[u64; L] {
-            // 安全: F::arr と同じ
+            // 安全: F の index と同じ
             unsafe { &*(self as *const B as *const [u64; L]) }
         }
+    }
+
+    impl Mask for B {
+        const N: usize = L;
         #[inline(always)]
-        pub fn at(self, i: usize) -> bool {
+        fn splat(b: bool) -> B {
+            B([i64x2_splat(-(b as i64)); NW])
+        }
+        #[inline(always)]
+        fn at(self, i: usize) -> bool {
             self.words()[i] != 0
         }
         #[inline(always)]
-        pub fn set(&mut self, i: usize, b: bool) {
-            // 安全: F::arr_mut と同じ
+        fn set(&mut self, i: usize, b: bool) {
+            // 安全: F の index_mut と同じ
             let w = unsafe { &mut *(self as *mut B as *mut [u64; L]) };
             w[i] = if b { u64::MAX } else { 0 };
         }
         #[inline(always)]
-        pub fn any(self) -> bool {
+        fn any(self) -> bool {
             let mut a = self.0[0];
-            for j in 1..N {
+            for j in 1..NW {
                 a = v128_or(a, self.0[j]);
             }
             v128_any_true(a)
@@ -425,14 +488,5 @@ mod simd {
         fn not(self) -> B {
             B(map1(self.0, |x| v128_not(x)))
         }
-    }
-
-    #[inline(always)]
-    pub(super) fn select(m: B, a: F, b: F) -> F {
-        let mut o = a.0;
-        for j in 0..N {
-            o[j] = v128_bitselect(a.0[j], b.0[j], m.0[j]);
-        }
-        F(o)
     }
 }

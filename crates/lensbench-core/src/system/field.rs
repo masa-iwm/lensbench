@@ -216,10 +216,10 @@ impl System {
                 };
                 let epd = self.paraxial().epd;
                 let st = self.stop();
-                let fr = self.frames();
+                let plan = batch::Plan::new(self, self.frames(), self.primary, st, false);
                 let go = |ex: f64, ey: f64| {
                     let (p, k) = self.start_ray(spec, ex, ey);
-                    trace::trace_ray(self, fr, self.primary, p, k, 0.0, 1, st, false, None)
+                    batch::trace_one_plain(&plan, p, k)
                 };
                 (go(epd / 2.0, 0.0).xyz[0], go(0.0, epd / 2.0).xyz[1])
             } else {

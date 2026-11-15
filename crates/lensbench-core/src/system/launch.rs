@@ -334,18 +334,8 @@ impl System {
         let nrec = (1..=last).filter(|&j| !self.surfaces[j].ignore).count();
         let mut rec = vec![trace::RecEntry::NAN; nrec];
         let (p, k) = st[0];
-        let r = trace::trace_ray(
-            self,
-            fr,
-            w,
-            p,
-            k,
-            0.0,
-            1,
-            last,
-            self.floating_clip,
-            Some(&mut rec),
-        );
+        let plan = batch::Plan::new(self, fr, w, last, self.floating_clip);
+        let r = batch::trace_one(&plan, p, k, Some(&mut rec[..]));
         if r.err == 0 {
             for e in &rec {
                 if is_f(e.surf) {
@@ -436,6 +426,8 @@ impl System {
                 e.iter_mut().for_each(|x| *x = x.map(|c| c * ph));
             }
         };
+        // 面ごとの準備（光線によらない量）は 1 回だけ
+        let plan = batch::Plan::new(self, fr, w, last, clip);
         let one = |i: usize| {
             let (p, k) = starts.get(i);
             let mut row = SoaRow { out: &ptrs, i };
@@ -443,16 +435,11 @@ impl System {
             let mut pr = pol.map(|(inp, surf, _)| {
                 let mut e = Vec::with_capacity(inp.len());
                 e_start(inp, k, &mut e);
-                PolRay {
-                    e,
-                    surf,
-                    err: None,
-                    cry: None,
-                }
+                batch::PolLanes::<1>::new(e, inp.len(), surf)
             });
             let mut r = match pr.as_mut() {
-                Some(q) => trace::trace_core(self, fr, w, p, k, 0.0, 1, last, clip, rec, Some(q)),
-                None => trace::trace_core(self, fr, w, p, k, 0.0, 1, last, clip, rec, None),
+                Some(q) => batch::trace_one_pol(&plan, p, k, rec, q),
+                None => batch::trace_one(&plan, p, k, rec),
             };
             if fail[i] {
                 r.err = st;
@@ -460,7 +447,8 @@ impl System {
             // 偏光なしの追跡で結果を大きくしないよう箱に入れる
             let pe = pr.map(|mut pr| {
                 put_phase(&mut pr.e, r.opl);
-                Box::new((pr.e, pr.err))
+                let [perr] = pr.err;
+                Box::new((pr.e, perr))
             });
             (r, p, k, pe)
         };
@@ -468,24 +456,17 @@ impl System {
         // スレッド数によらず同じビット）。with_threads(Some(1), ..) の中では逐次
         let par = n >= PAR_MIN_RAYS && !crate::par::sequential();
         // L 本ずつまとめて追う（1 本ずつと同じビット。組は入力の順に固定）。偏光ありは別の組で（下）
-        let plan = if batch::use_for(n) {
-            Some(batch::Plan::new(self, fr, w, 1, last, clip)).filter(|p| match pol {
-                None => !p.is_empty(),
-                Some((_, surf, _)) => p.supports_pol(surf),
-            })
-        } else {
-            None
-        };
+        let wide = batch::use_for(n).then_some(&plan);
         let (plan, pol_plan) = match pol {
-            None => (plan, None),
-            Some(_) => (None, plan),
+            None => (wide, None),
+            Some(_) => (None, wide),
         };
         let mut rays: Vec<RayOut>;
         let mut p0: Vec<V3>;
         let mut k0: Vec<V3>;
         let mut es = Vec::new();
         let mut first_err = None;
-        if let Some(plan) = &plan {
+        if let Some(plan) = plan {
             // 結果の配列へ組ごとに直接書く（中間の配列を作らない）
             // 結果の配列は初期化せずに確保し、組ごとに（並列に）全要素を書いてから長さを決める
             // （大きな配列の初期化を 1 スレッドでしないため）
@@ -563,12 +544,7 @@ impl System {
                     for kk in &k {
                         e_start(inp, *kk, &mut e);
                     }
-                    let mut pl = batch::PolLanes {
-                        e,
-                        np,
-                        surf,
-                        err: std::array::from_fn(|_| None),
-                    };
+                    let mut pl = batch::PolLanes::<L>::new(e, np, surf);
                     let mut sink = SoaLanes {
                         out: &ptrs,
                         base: b * L,

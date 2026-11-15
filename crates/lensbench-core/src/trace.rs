@@ -1,12 +1,10 @@
-//! 実光線の追跡の核（1 本ずつ）。
-//!
-//! 光線が面に当たらない・全反射するとその面で止まり（err = 面番号、以後 NaN）、開口の外に出た光線は
-//! 先へ進む（vig = 最初の面）。OpticStudio のバッチ追跡と同じ扱い。
+//! 実光線の追跡の部品（面の形・交点・法線・屈折・偏光の面ごとの処理）。追跡のカーネル本体は
+//! [`crate::batch`]（1 本ずつとまとめ追跡を 1 つのジェネリックな実装で）。
 
 use crate::coating::{Iface, C64};
 use crate::math::*;
 use crate::surface::{Aperture, SurfType, Surface};
-use crate::system::{Frame, Frames, Rel, System};
+use crate::system::System;
 use crate::Error;
 
 /// 複素の 3 次元ベクトル（電場）
@@ -108,23 +106,9 @@ fn crystal_phase(c: &CryState, e: &mut [CV3], k: V3, lam: f64) {
     }
 }
 
-/// 1 本の光線の偏光の状態: 電場（偏光の入力ごと、今いる面の局所座標）
-pub(crate) struct PolRay<'a> {
-    pub e: Vec<CV3>,
-    pub surf: &'a [PolSurf],
-    /// 係数を求められなかったとき（膜の表の範囲外など）。電場は NaN にする
-    pub err: Option<Error>,
-    /// 複屈折材の板の中を進んでいるとき
-    pub cry: Option<CryState>,
-}
-
 #[inline]
 pub(crate) fn cmv(m: &M3, e: CV3) -> CV3 {
     [0, 1, 2].map(|i| e[0] * m[i][0] + e[1] * m[i][1] + e[2] * m[i][2])
-}
-#[inline]
-pub(crate) fn cmtv(m: &M3, e: CV3) -> CV3 {
-    [0, 1, 2].map(|i| e[0] * m[0][i] + e[1] * m[1][i] + e[2] * m[2][i])
 }
 #[inline]
 fn cdot(e: CV3, v: V3) -> C64 {
@@ -395,7 +379,7 @@ impl RecEntry {
 
 /// Fresnel・Cylinder Fresnel の屈折に使う面の法線（規格化前、局所座標）。
 /// Fresnel は偶数次非球面（c・k・asph）、Cylinder Fresnel は [`crate::surface::CylFresnel`] の面（y だけ）の傾き
-fn fresnel_normal(d: &Surface, x: f64, y: f64) -> V3 {
+pub(crate) fn fresnel_normal(d: &Surface, x: f64, y: f64) -> V3 {
     match (d.typ, d.cylf.as_deref()) {
         (SurfType::CylFresnel, Some(f)) => {
             let (_, dz) = sag(f.c, f.k, &f.coef, y * y);
@@ -434,7 +418,14 @@ fn bend(k: V3, nv: V3, n1: f64, n2: f64, mirror: bool) -> Option<V3> {
 /// ∫ (n2 k2 − n1 k1)·dr（k1 は入射の方向で一定、k2 は線分上の各点の傾きでの屈折の方向）。
 /// 平面の上の段差の高さを位相に置き換えたもので、OpticStudio 26.1 と一致する（合成系 F1・C1 で 1e-10。
 /// 基準点は同じ視野・波長の主光線の交点）。途中で全反射すれば None
-fn fresnel_opl(d: &Surface, k1: V3, n1: f64, n2: f64, a: [f64; 2], b: [f64; 2]) -> Option<f64> {
+pub(crate) fn fresnel_opl(
+    d: &Surface,
+    k1: V3,
+    n1: f64,
+    n2: f64,
+    a: [f64; 2],
+    b: [f64; 2],
+) -> Option<f64> {
     let (ux, uy) = (b[0] - a[0], b[1] - a[1]);
     if ux == 0.0 && uy == 0.0 {
         return Some(0.0);
@@ -473,7 +464,7 @@ fn fresnel_opl(d: &Surface, k1: V3, n1: f64, n2: f64, a: [f64; 2], b: [f64; 2]) 
 /// 回折面（Binary 2）の方向の変化: 屈折の後の方向 k（屈折率 n）の接線成分に、位相の勾配 g = (λ/2π)∇Φ の
 /// 接平面への射影を足す（n′k′_t = n k_t + g_t）。法線成分は向きを保って長さを合わせる。エバネッセントなら None
 #[inline]
-fn diffract(k: V3, nv: V3, n: f64, g: [f64; 2]) -> Option<V3> {
+pub(crate) fn diffract(k: V3, nv: V3, n: f64, g: [f64; 2]) -> Option<V3> {
     let gv = [g[0], g[1], 0.0];
     let gt = sub(gv, scale(nv, dot(gv, nv)));
     let m = add(scale(k, n), gt);
@@ -725,24 +716,6 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     (k2, (s_in0 + s_out0) - (s_in + s_out))
 }
 
-/// 大域の位置 p・方向 k、光路長 opl の光線を、面 first の直前から面 last まで、波長 w で追跡する。
-/// rec には無視しない面ごとに 1 つずつ（first..=last の順に）書く（足りる長さを渡す）
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn trace_ray(
-    sys: &System,
-    fr: &Frames,
-    w: usize,
-    p: V3,
-    k: V3,
-    opl: f64,
-    first: usize,
-    last: usize,
-    floating_clip: bool,
-    rec: Option<&mut [RecEntry]>,
-) -> RayOut {
-    trace_core(sys, fr, w, p, k, opl, first, last, floating_clip, rec, None)
-}
-
 /// 交点の求め方（面ごとに前計算する。[`surf_kind`]）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Isect {
@@ -837,504 +810,6 @@ pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
     }
 }
 
-// 偏光なしの追跡に偏光の分岐が残らないよう、呼び出し側ごとに展開する
-#[allow(clippy::too_many_arguments)]
-#[inline(always)]
-pub(crate) fn trace_core<R: RecSink + ?Sized>(
-    sys: &System,
-    fr: &Frames,
-    w: usize,
-    mut p: V3,
-    mut k: V3,
-    mut opl: f64,
-    first: usize,
-    last: usize,
-    floating_clip: bool,
-    mut rec: Option<&mut R>,
-    mut pol: Option<&mut PolRay>,
-) -> RayOut {
-    let sf = &sys.surfaces;
-    let kinds = sys.surf_kinds();
-    let mut err = 0usize;
-    let mut tir = false;
-    let mut vig = 0usize;
-    let mut nprev = sys.index_before(first, w);
-    let mut lens_opd = 0.0;
-    let mut loc = (NAN3, NAN3);
-    // 直前に通った面の番号（その局所座標 loc から次の面へ直接移る）
-    let mut prev: Option<usize> = None;
-    let mut last_frame: Option<Frame> = None;
-    // 記録の次の位置（無視しない面ごとに 1 つ）
-    let mut ri = 0usize;
-    // 直前の面の後ろが GRIN の媒質なら、その面の番号（次の面までは媒質の中を曲がりながら進む）
-    let mut grin_from: Option<usize> = None;
-    // GRIN の媒質に入ったときの方向（座標ブレークを挟んで進むあいだ持つ）
-    let mut grin_k0: Option<V3> = None;
-    let lam = sys.wavelengths[w];
-    let sigs = sys.space_signs();
-    for j in first..=last {
-        let d = &sf[j];
-        if d.ignore {
-            continue;
-        }
-        // 座標系の無い面（無限遠の物体面）は通らない（first = 0 を渡されても落ちない）
-        let Some(f) = fr.surf[j] else { continue };
-        let (o, rm) = (f.o, f.r);
-        last_frame = Some(f);
-        if err != 0 {
-            let pl = NAN3;
-            loc = (pl, NAN3);
-            p = NAN3;
-            k = NAN3;
-            prev = Some(j);
-            if let Some(r) = rec.as_deref_mut() {
-                r.put(
-                    ri,
-                    RecEntry {
-                        surf: j,
-                        xyz: pl,
-                        lmn: NAN3,
-                        opl: f64::NAN,
-                        p: NAN3,
-                    },
-                );
-                ri += 1;
-            }
-            continue;
-        }
-        // GRIN の媒質の中を、GRIN の面の局所座標で面 j との交点まで進める（交点は面の上なので、下の交点の計算は
-        // 飛ばす）。間に座標ブレークがあれば、その面までで一度止め、次の面で続きを進める（媒質は GRIN の面の座標の
-        // まま続く）
-        let mut on_surf = false;
-        // 光線を面 j の局所座標へ移す変換を、直前の面からでなく GRIN の面から（媒質の中を進めたとき）
-        let mut from_grin: Option<(M3, V3)> = None;
-        if let Some(gj) = grin_from.take() {
-            let gs = &sf[gj];
-            let g = gs.grin.as_deref().unwrap();
-            let fg = fr.surf[gj].unwrap();
-            let rr = mm(&transpose(&rm), &fg.r);
-            let tt = mtv(&rm, sub(fg.o, o));
-            // 直前の面が座標ブレークなら、その局所座標から GRIN の面の局所座標へ戻す
-            let pj = prev.unwrap_or(gj);
-            if pj != gj {
-                let fp = fr.surf[pj].unwrap();
-                let rb = mm(&transpose(&fg.r), &fp.r);
-                let tb = mtv(&fg.r, sub(fp.o, fg.o));
-                loc = (add(mv(&rb, loc.0), tb), mv(&rb, loc.1));
-                if let Some(pr) = pol.as_deref_mut() {
-                    pr.e.iter_mut().for_each(|e| *e = cmv(&rb, *e));
-                }
-            }
-            let max_len = 100.0 + 100.0 * gs.t.abs();
-            let ex = if d.typ == SurfType::CoordBrk {
-                // 座標ブレークの面（平面 z = 0）は光線の後ろにもありうる（厚さ 0 の傾けた座標ブレークなど）。
-                // 均質な媒質と同じく、そのときは媒質の中を逆向きにたどって交点を求める（光路長は負）
-                let fx = |q: V3| add(mv(&rr, q), tt)[2];
-                let back = fx(loc.0) * mv(&rr, loc.1)[2] > 0.0;
-                if back {
-                    crate::grin::propagate(g, lam, loc.0, scale(loc.1, -1.0), fx, max_len).map(
-                        |e| crate::grin::Exit {
-                            k: scale(e.k, -1.0),
-                            opl: -e.opl,
-                            ..e
-                        },
-                    )
-                } else {
-                    crate::grin::propagate(g, lam, loc.0, loc.1, fx, max_len)
-                }
-            } else {
-                crate::grin::next_sag(d).and_then(|sg| {
-                    let fx = |q: V3| {
-                        let q2 = add(mv(&rr, q), tt);
-                        q2[2] - sg(q2[0], q2[1])
-                    };
-                    crate::grin::propagate(g, lam, loc.0, loc.1, fx, max_len)
-                })
-            };
-            match ex {
-                Some(e) => {
-                    // 媒質に入ったときの方向（GRIN の面の局所座標）
-                    let k0 = *grin_k0.get_or_insert(loc.1);
-                    if let (Some(pr), false) = (pol.as_deref_mut(), d.typ == SurfType::CoordBrk) {
-                        // 電場は、媒質に入ったときからの方向の変化と同じ最小の回転で回す（媒質の中の偏光の変化は
-                        // 見ない。座標ブレークで区切っても同じ回転になるよう、次の実在の面でまとめて回す）
-                        let (ax, c) = (cross(k0, e.k), dot(k0, e.k));
-                        pr.e.iter_mut().for_each(|x| *x = rotate_min(*x, ax, c));
-                    }
-                    opl += e.opl;
-                    nprev = e.n;
-                    loc = (e.p, e.k);
-                    on_surf = true;
-                    from_grin = Some((rr, tt));
-                    // 座標ブレークの後ろも同じ媒質
-                    if d.typ == SurfType::CoordBrk {
-                        grin_from = Some(gj);
-                    } else {
-                        grin_k0 = None;
-                    }
-                }
-                None => {
-                    err = j;
-                    loc = (NAN3, NAN3);
-                    grin_k0 = None;
-                }
-            }
-        }
-        let (mut pl, mut kl) = match (prev, fr.rel[j], from_grin) {
-            (_, _, Some((rr, tt))) => (add(mv(&rr, loc.0), tt), mv(&rr, loc.1)),
-            (
-                Some(_),
-                Some(Rel {
-                    shift: Some(dz), ..
-                }),
-                None,
-            ) => ([loc.0[0], loc.0[1], loc.0[2] + dz], loc.1),
-            (Some(_), Some(q), None) => (add(mv(&q.r, loc.0), q.t), mv(&q.r, loc.1)),
-            _ => (mtv(&rm, sub(p, o)), mtv(&rm, k)),
-        };
-        // 電場も方向と同じ変換で今の面の局所座標へ
-        if let Some(pr) = pol.as_deref_mut() {
-            match (prev, fr.rel[j], from_grin) {
-                (_, _, Some((rr, _))) => pr.e.iter_mut().for_each(|e| *e = cmv(&rr, *e)),
-                (Some(_), Some(Rel { shift: Some(_), .. }), None) => {}
-                (Some(_), Some(q), None) => pr.e.iter_mut().for_each(|e| *e = cmv(&q.r, *e)),
-                _ => pr.e.iter_mut().for_each(|e| *e = cmtv(&rm, *e)),
-            }
-            // 板の結晶軸も同じ変換で
-            if let Some(c) = pr.cry.as_mut() {
-                c.axis = match (prev, fr.rel[j], from_grin) {
-                    (_, _, Some((rr, _))) => mv(&rr, c.axis),
-                    (Some(_), Some(Rel { shift: Some(_), .. }), None) => c.axis,
-                    (Some(_), Some(q), None) => mv(&q.r, c.axis),
-                    _ => mtv(&rm, c.axis),
-                };
-            }
-        }
-        prev = Some(j);
-        // 頂点面へ
-        let s = if on_surf { 0.0 } else { -pl[2] / kl[2] };
-        if !s.is_finite() {
-            err = j;
-        }
-        pl = add(pl, scale(kl, s));
-        opl += nprev * s;
-        let mut s_tot = s;
-        let kd = kinds[j];
-        // GRIN の媒質から来た光線はもう面の上
-        let (s, bad) = match kd.isect {
-            _ if err != 0 || on_surf => (0.0, false),
-            Isect::Plane => (0.0, false),
-            Isect::Grad9Tilt => crate::freeform::isect_with(d.c, d.k, pl, kl, sigs[j], |x, y| {
-                crate::grin::grad9_sag(d, x, y)
-            }),
-            Isect::CylSub => crate::freeform::isect_with(0.0, 0.0, pl, kl, sigs[j], |_, y| {
-                let (z, dz) = sag(d.c, d.k, &d.asph, y * y);
-                (z, 0.0, 2.0 * dz * y)
-            }),
-            Isect::Free => crate::freeform::isect(d, pl, kl, sigs[j]),
-            Isect::Toroidal => toroidal_isect(d, pl, kl, sigs[j]),
-            Isect::Std { asph } => {
-                let (c, kc) = (d.c, d.k);
-                let mut s = 0.0;
-                let mut bad = false;
-                if c != 0.0 {
-                    let ff = c * (pl[0] * pl[0] + pl[1] * pl[1]);
-                    let gg = kl[2] - c * (pl[0] * kl[0] + pl[1] * kl[1]);
-                    let aa = c * (kl[0] * kl[0] + kl[1] * kl[1] + (1.0 + kc) * kl[2] * kl[2]);
-                    let disc = gg * gg - aa * ff;
-                    if !(disc >= 0.0) {
-                        bad = true;
-                    }
-                    s = conic_root(ff, gg, aa, disc.max(0.0), sigs[j]);
-                    if !s.is_finite() {
-                        bad = true;
-                    }
-                }
-                if asph && !bad {
-                    let mut ds = 0.0;
-                    for _ in 0..60 {
-                        let q = add(pl, scale(kl, s));
-                        let r2 = q[0] * q[0] + q[1] * q[1];
-                        let (z, dz) = sag(c, kc, &d.asph, r2);
-                        ds = (q[2] - z) / (kl[2] - 2.0 * dz * (q[0] * kl[0] + q[1] * kl[1]));
-                        s -= ds;
-                        if !(ds.abs() > crate::trace::newton_tol(s, z)) {
-                            break;
-                        }
-                    }
-                    if !(ds.abs() <= 1e-10) {
-                        bad = true;
-                    }
-                }
-                (s, bad)
-            }
-        };
-        if err == 0 && !on_surf && kd.isect != Isect::Plane {
-            if bad {
-                err = j;
-            }
-            pl = add(pl, scale(kl, s));
-            opl += nprev * s;
-            s_tot += s;
-        }
-        // 通ってきた媒質の吸収（振幅は内部透過率の 1/2 乗）
-        if let Some(pr) = pol.as_deref_mut() {
-            if let Some(c) = pr.cry.as_mut() {
-                c.len += s_tot;
-            }
-            if pr.surf[j].it.is_some() {
-                // 距離 0 は 1（t = 0 でも pow と同じ）
-                let a = if s_tot == 0.0 {
-                    1.0
-                } else {
-                    (pr.surf[j].la * s_tot).exp()
-                };
-                pr.e.iter_mut().for_each(|e| *e = e.map(|c| c * a));
-            }
-        }
-        // 開口
-        let clip = match d.ap {
-            Aperture::None => None,
-            Aperture::Floating { .. } if !floating_clip => None,
-            a => Some(a),
-        };
-        if let Some(a) = clip {
-            let out = aperture_out(a, pl);
-            if out && vig == 0 && err == 0 {
-                vig = j;
-            }
-        }
-        let mut nn = d.n[w];
-        // GRIN の媒質へは交点の屈折率で
-        if let (Some(g), false, 0) = (d.grin.as_deref(), d.mirror, err) {
-            match g.eval(lam, pl) {
-                Some((n, _)) => nn = n,
-                None => err = j,
-            }
-        }
-        match d.typ {
-            SurfType::CoordBrk => nn = nprev,
-            SurfType::Paraxial => {
-                let (k2, dl) = paraxial(d.focal, pl, kl, sys.lens_conjugate(j));
-                // 電場は方向の変化と同じ最小の回転で回す（振幅は変えない。OpticStudio との照合は未確認）
-                if let Some(pr) = pol.as_deref_mut() {
-                    if err == 0 {
-                        let (ax, c) = (cross(kl, k2), dot(kl, k2));
-                        pr.e.iter_mut().for_each(|e| *e = rotate_min(*e, ax, c));
-                    }
-                }
-                kl = k2;
-                lens_opd += dl;
-            }
-            SurfType::User => {
-                let out = d.user.as_ref().and_then(|u| {
-                    u.instance()
-                        .deflect(pl, kl, nprev, nn, lam)
-                        .filter(|(k2, dl)| k2.iter().all(|v| v.is_finite()) && dl.is_finite())
-                });
-                match out {
-                    Some((k2, dl)) if err == 0 => {
-                        // 電場は理想レンズと同じく、方向の変化と同じ最小の回転で回す
-                        if let Some(pr) = pol.as_deref_mut() {
-                            let (ax, c) = (cross(kl, k2), dot(kl, k2));
-                            pr.e.iter_mut().for_each(|e| *e = rotate_min(*e, ax, c));
-                        }
-                        kl = k2;
-                        lens_opd += dl;
-                    }
-                    Some(_) => {}
-                    None => {
-                        if err == 0 {
-                            err = j;
-                        }
-                    }
-                }
-            }
-            _ => {
-                let nvec = match kd.norm {
-                    Norm::Free => {
-                        let (_, zx, zy) = crate::freeform::sag_xy(d, pl[0], pl[1]);
-                        if !(zx.is_finite() && zy.is_finite()) && err == 0 {
-                            err = j;
-                        }
-                        [-zx, -zy, 1.0]
-                    }
-                    Norm::Toroidal => {
-                        let (_, zx, zy) = sag_toroidal(d.c, d.k, &d.asph, d.cx, pl[0], pl[1]);
-                        if !(zx.is_finite() && zy.is_finite()) && err == 0 {
-                            err = j;
-                        }
-                        [-zx, -zy, 1.0]
-                    }
-                    Norm::Grad9Tilt => {
-                        let (_, zx, zy) = crate::grin::grad9_sag(d, pl[0], pl[1]);
-                        if !(zx.is_finite() && zy.is_finite()) && err == 0 {
-                            err = j;
-                        }
-                        [-zx, -zy, 1.0]
-                    }
-                    Norm::Fresnel => {
-                        let nv = fresnel_normal(d, pl[0], pl[1]);
-                        if !(nv[0].is_finite() && nv[1].is_finite()) && err == 0 {
-                            err = j;
-                        }
-                        nv
-                    }
-                    Norm::Asph => {
-                        let (_, dz) = sag(d.c, d.k, &d.asph, pl[0] * pl[0] + pl[1] * pl[1]);
-                        if !dz.is_finite() && err == 0 {
-                            err = j;
-                        }
-                        [-2.0 * dz * pl[0], -2.0 * dz * pl[1], 1.0]
-                    }
-                    Norm::Flat => [0.0, 0.0, 1.0],
-                    Norm::Conic => [-d.c * pl[0], -d.c * pl[1], 1.0 - d.c * (1.0 + d.k) * pl[2]],
-                };
-                let nv = normalize(nvec);
-                let cosi = dot(kl, nv);
-                let kin = kl;
-                if d.mirror {
-                    kl = sub(kl, scale(nv, 2.0 * cosi));
-                    nn = nprev;
-                } else if d.typ != SurfType::Jones && nn != nprev {
-                    let mu = nprev / nn;
-                    let disc = 1.0 - mu * mu * (1.0 - cosi * cosi);
-                    if !(disc >= 0.0) && err == 0 {
-                        err = j;
-                        tir = true;
-                    }
-                    kl = add(
-                        scale(kl, mu),
-                        scale(nv, cosi.signum() * disc.max(0.0).sqrt() - mu * cosi),
-                    );
-                }
-                if let Some(pr) = pol.as_deref_mut() {
-                    if err == 0 {
-                        // 複屈折材の板の出口: 板の中の方向 kin で異常光の位相を付けてから境界の係数
-                        let cry = pr.surf[j].cry;
-                        // 境界の係数を常光・異常光で分ける板の面（公開 #52）: (結晶軸, no, ne, 板の中の方向, 入る面か)
-                        let mut xc = None;
-                        // 貼り合わせ（公開 #73）: 前の板の出口で次の板の o・e へ 1 回で移す
-                        let mut cem = None;
-                        if let (Some(CryKind::Out), Some(c)) = (cry, pr.cry.take()) {
-                            crystal_phase(&c, &mut pr.e, kin, lam);
-                            xc = Some((c.axis, c.no, c.ne, kin, false));
-                            if let Some(b) = pr.surf[j].cement {
-                                cem = Some(((c.axis, c.no, c.ne), b));
-                            }
-                        }
-                        if let Some(CryKind::In { axis, no, ne, .. }) = cry {
-                            xc = Some((axis, no, ne, kl, true));
-                        }
-                        let r = match (xc, cem) {
-                            _ if pr.surf[j].cemented && !d.mirror => Ok(()),
-                            (_, Some((a, b))) if !d.mirror => {
-                                pol_surface_cement(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, a, b)
-                            }
-                            (Some(x), _) if !d.mirror => {
-                                pol_surface_crystal(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, x)
-                            }
-                            _ => pol_surface(&pr.surf[j], &mut pr.e, kin, kl, nv, cosi, d.mirror),
-                        };
-                        if let Err(e) = r {
-                            // 光線ごとに持ち、束を止めるかは追跡の後で決める（後ろの面でけられる光線もあるため）
-                            pr.err.get_or_insert_with(|| e.at(sys.surf_label(j)));
-                        }
-                        if let Some(CryKind::In { mode, axis, no, ne }) = cry {
-                            pr.cry = Some(CryState {
-                                mode,
-                                axis,
-                                no,
-                                ne,
-                                len: 0.0,
-                            });
-                        }
-                    }
-                }
-                if kd.fresnel && err == 0 {
-                    let r0 = fr.fres_ref.get(j).copied().unwrap_or([0.0; 2]);
-                    match fresnel_opl(d, kin, nprev, nn, r0, [pl[0], pl[1]]) {
-                        Some(e) => opl += e,
-                        None => err = j,
-                    }
-                }
-                if let (SurfType::Binary2, Some(b), 0) = (d.typ, d.bin2.as_deref(), err) {
-                    let sc = sys.wavelengths[w] * 1e-3 / (2.0 * std::f64::consts::PI);
-                    let (ph, gx, gy) = b.phase(pl[0], pl[1]);
-                    opl += sc * ph;
-                    match diffract(kl, nv, nn, [sc * gx, sc * gy]) {
-                        Some(k2) => {
-                            // 電場は方向の変化と同じ最小の回転で回す（振幅は変えない。OpticStudio との照合は未確認）
-                            if let Some(pr) = pol.as_deref_mut() {
-                                let (ax, c) = (cross(kl, k2), dot(kl, k2));
-                                pr.e.iter_mut().for_each(|e| *e = rotate_min(*e, ax, c));
-                            }
-                            kl = k2;
-                        }
-                        None => err = j,
-                    }
-                }
-            }
-        }
-        // 面の中で方向・位置が有限でなくなった光線（理想レンズの kl[2] = 0、屈折率 NaN など）もこの面で止める
-        // （最後の面でも「err = 0 なら有限」を守る）
-        if err == 0 && !(pl.iter().chain(&kl).all(|v| v.is_finite()) && opl.is_finite()) {
-            err = j;
-        }
-        if err != 0 {
-            pl = NAN3;
-            kl = NAN3;
-            opl = f64::NAN;
-        }
-        nprev = nn;
-        loc = (pl, kl);
-        if d.grin.is_some() && !d.mirror && err == 0 {
-            grin_from = Some(j);
-        } else if err != 0 {
-            grin_from = None;
-        }
-        if let Some(r) = rec.as_deref_mut() {
-            if !r.wants(ri) {
-                ri += 1;
-                continue;
-            }
-            p = add(o, mv(&rm, pl));
-            r.put(
-                ri,
-                RecEntry {
-                    surf: j,
-                    xyz: pl,
-                    lmn: kl,
-                    opl,
-                    p,
-                },
-            );
-            ri += 1;
-        }
-    }
-    if let Some(pr) = pol {
-        if err != 0 || pr.err.is_some() {
-            pr.e.iter_mut().for_each(|e| *e = CNAN3);
-        }
-    }
-    // 大域の位置・方向は最後の面でだけ求める
-    if let Some(f) = last_frame {
-        p = add(f.o, mv(&f.r, loc.0));
-        k = mv(&f.r, loc.1);
-    }
-    RayOut {
-        xyz: loc.0,
-        lmn: loc.1,
-        opl,
-        err,
-        tir,
-        vig,
-        p,
-        k,
-        lens_opd,
-    }
-}
-
 /// 面 d の局所座標の点 pl での単位法線（+z 寄り。追跡の内側と同じ式。理想レンズ・Jones・座標ブレークなど平らな面は (0, 0, 1)）
 pub(crate) fn local_normal(d: &Surface, pl: V3) -> V3 {
     if matches!(
@@ -1365,4 +840,56 @@ pub(crate) fn local_normal(d: &Surface, pl: V3) -> V3 {
         Norm::Conic => [-d.c * pl[0], -d.c * pl[1], 1.0 - d.c * (1.0 + d.k) * pl[2]],
     };
     normalize(v)
+}
+
+/// 面 j での電場の変化を 1 本の光線について（複屈折材の板の入口・出口・貼り合わせを含む）。g は
+/// (面の前の方向, 後の方向, 法線, 入射角の cos)。係数のエラーは err に持つ（束を止めるかは追跡の後で決める）
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pol_step(
+    sys: &System,
+    surf: &[PolSurf],
+    j: usize,
+    e: &mut [CV3],
+    cry_state: &mut Option<CryState>,
+    err: &mut Option<Error>,
+    g: (V3, V3, V3, f64),
+    mirror: bool,
+    lam: f64,
+) {
+    let (kin, kl, nv, cosi) = g;
+    // 複屈折材の板の出口: 板の中の方向 kin で異常光の位相を付けてから境界の係数
+    let cry = surf[j].cry;
+    // 境界の係数を常光・異常光で分ける板の面（公開 #52）: (結晶軸, no, ne, 板の中の方向, 入る面か)
+    let mut xc = None;
+    // 貼り合わせ（公開 #73）: 前の板の出口で次の板の o・e へ 1 回で移す
+    let mut cem = None;
+    if let (Some(CryKind::Out), Some(c)) = (cry, cry_state.take()) {
+        crystal_phase(&c, e, kin, lam);
+        xc = Some((c.axis, c.no, c.ne, kin, false));
+        if let Some(b) = surf[j].cement {
+            cem = Some(((c.axis, c.no, c.ne), b));
+        }
+    }
+    if let Some(CryKind::In { axis, no, ne, .. }) = cry {
+        xc = Some((axis, no, ne, kl, true));
+    }
+    let r = match (xc, cem) {
+        _ if surf[j].cemented && !mirror => Ok(()),
+        (_, Some((a, b))) if !mirror => pol_surface_cement(&surf[j], e, kin, kl, nv, cosi, a, b),
+        (Some(x), _) if !mirror => pol_surface_crystal(&surf[j], e, kin, kl, nv, cosi, x),
+        _ => pol_surface(&surf[j], e, kin, kl, nv, cosi, mirror),
+    };
+    if let Err(x) = r {
+        // 光線ごとに持ち、束を止めるかは追跡の後で決める（後ろの面でけられる光線もあるため）
+        err.get_or_insert_with(|| x.at(sys.surf_label(j)));
+    }
+    if let Some(CryKind::In { mode, axis, no, ne }) = cry {
+        *cry_state = Some(CryState {
+            mode,
+            axis,
+            no,
+            ne,
+            len: 0.0,
+        });
+    }
 }
