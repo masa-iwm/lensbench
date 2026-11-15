@@ -415,6 +415,11 @@ mod tests {
     }
 
     #[test]
+    fn swap_progress_eta_in_seconds() {
+        assert!(translate("screening 3/10 (5 s left)").ends_with("3/10（残り 5 秒）"));
+    }
+
+    #[test]
     fn surface_label_coating_is_translated() {
         assert_eq!(
             translate("surface 3(STANDARD, N-BK7, coating AR, 「L1」)"),

@@ -1958,7 +1958,7 @@ matches the simple outline	簡易外形と合う
 mismatch: {n}	食い違い: {n}
 screening	ふるい
 combinations	組
-{what} {}/{} ({eta} left)	{what} {}/{}（残り {eta}）
+{what} {}/{} ({} s left)	{what} {}/{}（残り {} 秒）
 Success	成功
 Failure (invalid system or value, calculation failed, verification failed, or results written but partly failed)	失敗（系・値の不正、計算の失敗、照合の不合格、結果は出したが一部が失敗）
 Usage error (arguments or settings file; also run settings errors)	使い方の誤り（引数・設定ファイル。run の設定の誤りも）

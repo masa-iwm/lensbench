@@ -204,8 +204,8 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
                 lensbench_design::swap::SwapStage::Screen => "screening",
                 lensbench_design::swap::SwapStage::Main => "combinations",
             };
-            let eta = pr.eta.map_or("?".into(), |e| format!("{e:.0} s"));
-            let m = format!("{what} {}/{} ({eta} left)", pr.done, pr.total);
+            let eta = pr.eta.map_or("?".into(), |e| format!("{e:.0}"));
+            let m = format!("{what} {}/{} ({} s left)", pr.done, pr.total, eta);
             eprint!("\r{}  ", lensbench_core::i18n::tr(&m));
         }
     };
