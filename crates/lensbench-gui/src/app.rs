@@ -477,6 +477,7 @@ struct Core {
     status_err: Option<(Tag, String)>,
     /// 文書の所在（開いた系のファイル・保存先・最後に作った組合せ、GAR-01）
     loc: DocLoc,
+    _work: doc_loc::WorkDir,
     /// serve の系の写し（概要・面の表・元に戻す段など、GAR-01）
     sys: SysCopy,
     results: HashMap<u64, AnaRes>,
@@ -1119,7 +1120,7 @@ impl Core {
     fn build_combo(&mut self, project: Value) {
         // 組合せを変えたら、新規はやり直さない
         self.new_redo = None;
-        let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui");
+        let dir = doc_loc::work_dir();
         let name: String = self
             .doc
             .combo
@@ -2807,9 +2808,7 @@ impl Core {
             return;
         }
         let project = catalog::preview_project(r);
-        let path = lensbench_core::vfs::temp_dir()
-            .join("lensbench-gui")
-            .join("catalog-preview.json");
+        let path = doc_loc::work_dir().join("catalog-preview.json");
         let ok = lensbench_core::vfs::create_dir_all(path.parent().unwrap_or(&path))
             .and_then(|_| lensbench_core::vfs::write(&path, project.to_string()));
         if ok.is_err() {
@@ -4029,6 +4028,7 @@ impl App {
                     built_combo,
                     ..Default::default()
                 },
+                _work: Default::default(),
                 layout_data: None,
                 overlay: Overlay::default(),
                 rays_open: false,

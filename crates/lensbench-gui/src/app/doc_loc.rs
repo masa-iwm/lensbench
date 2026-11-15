@@ -21,3 +21,23 @@ pub(super) struct DocLoc {
     /// 開いた系を面の表で変えて、まだ保存していない
     pub(super) ld_dirty: bool,
 }
+
+/// 組合せの系・カタログの下書きを書く一時フォルダ。ネイティブはプロセスごとに分ける（同時に 2 つ起動しても
+/// 互いの組合せを読み違えない、GAR-03）。Web 版の置き場はページごとなので分けない
+pub(super) fn work_dir() -> PathBuf {
+    let d = lensbench_core::vfs::temp_dir().join("lensbench-gui");
+    #[cfg(not(target_arch = "wasm32"))]
+    let d = d.join(std::process::id().to_string());
+    d
+}
+
+/// 終わるときに [`work_dir`] を消す
+#[derive(Default)]
+pub(super) struct WorkDir;
+
+impl Drop for WorkDir {
+    fn drop(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = std::fs::remove_dir_all(work_dir());
+    }
+}
