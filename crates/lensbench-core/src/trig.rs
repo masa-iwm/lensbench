@@ -130,8 +130,8 @@ unsafe fn cis_avx2(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
         let mut g = 0;
         while g < AVX_GROUPS && i < full {
             // 安全: i + 8 ≤ full ≤ n
-            let x0 = _mm256_loadu_pd(pp.add(i));
-            let x1 = _mm256_loadu_pd(pp.add(i + 4));
+            let x0 = unsafe { _mm256_loadu_pd(pp.add(i)) };
+            let x1 = unsafe { _mm256_loadu_pd(pp.add(i + 4)) };
             let (a0, a1) = (_mm256_and_pd(x0, abs_mask), _mm256_and_pd(x1, abs_mask));
             // 比較は NaN で偽
             let ok = _mm256_movemask_pd(_mm256_and_pd(
@@ -235,13 +235,13 @@ unsafe fn cis_avx2(phase: &[f64], amp: &[f64], out: &mut [Complex64]) {
             let cv = _mm256_xor_pd(b, _mm256_castsi256_pd(cos_neg));
             let k = pos[v];
             // 安全: k + 4 ≤ full ≤ n。Complex64 は (re, im) の並び（repr(C)）
-            let am = _mm256_loadu_pd(ap.add(k));
+            let am = unsafe { _mm256_loadu_pd(ap.add(k)) };
             let re = _mm256_mul_pd(am, cv);
             let im = _mm256_mul_pd(am, sv);
             let lo = _mm256_unpacklo_pd(re, im); // re0 im0 re2 im2
             let hi = _mm256_unpackhi_pd(re, im); // re1 im1 re3 im3
-            _mm256_storeu_pd(op.add(2 * k), _mm256_permute2f128_pd::<0x20>(lo, hi));
-            _mm256_storeu_pd(op.add(2 * k + 4), _mm256_permute2f128_pd::<0x31>(lo, hi));
+            unsafe { _mm256_storeu_pd(op.add(2 * k), _mm256_permute2f128_pd::<0x20>(lo, hi)) };
+            unsafe { _mm256_storeu_pd(op.add(2 * k + 4), _mm256_permute2f128_pd::<0x31>(lo, hi)) };
         }
     }
     cis_impl(&phase[full..], &amp[full..], &mut out[full..])

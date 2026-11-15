@@ -2615,13 +2615,6 @@ impl System {
             ]
         };
         // J v = e を解く（J は行優先 [a b; c d]）
-        let solve2 = |j: [f64; 4], e: [f64; 2]| -> [f64; 2] {
-            let det = j[0] * j[3] - j[1] * j[2];
-            [
-                (j[3] * e[0] - j[1] * e[1]) / det,
-                (-j[2] * e[0] + j[0] * e[1]) / det,
-            ]
-        };
         let newton = |mut v: [f64; 2], tgt: [f64; 2]| -> ([f64; 2], f64) {
             let lim = 1e-12 * tgt[0].abs().max(tgt[1].abs()).max(1.0);
             let mut q = at_stop(v);
@@ -3089,11 +3082,7 @@ impl System {
                     (qx[1] - q[1]) / h,
                     (qy[1] - q[1]) / h,
                 ];
-                let det = j[0] * j[3] - j[1] * j[2];
-                let dv = [
-                    (j[3] * q[0] - j[1] * q[1]) / det,
-                    (-j[2] * q[0] + j[0] * q[1]) / det,
-                ];
+                let dv = solve2(j, q);
                 if !(dv[0].is_finite() && dv[1].is_finite()) {
                     return None;
                 }
@@ -3224,11 +3213,7 @@ impl System {
                     (qx[1] - q[1]) / h,
                     (qy[1] - q[1]) / h,
                 ];
-                let det = j[0] * j[3] - j[1] * j[2];
-                let dv = [
-                    (j[3] * q[0] - j[1] * q[1]) / det,
-                    (-j[2] * q[0] + j[0] * q[1]) / det,
-                ];
+                let dv = solve2(j, q);
                 if !(dv[0].is_finite() && dv[1].is_finite()) {
                     return None;
                 }

@@ -26,19 +26,6 @@ use crate::System;
 use crate::{invalid, notimpl};
 use rayon::prelude::*;
 
-/// 回転行列の角度 [deg] による微分
-fn drot(ax: usize, a_deg: f64) -> M3 {
-    let a = a_deg.to_radians();
-    let (s, c) = a.sin_cos();
-    let k = std::f64::consts::PI / 180.0;
-    let m = match ax {
-        0 => [[0.0, 0.0, 0.0], [0.0, -s, -c], [0.0, c, -s]],
-        1 => [[-s, 0.0, c], [0.0, 0.0, 0.0], [-c, 0.0, -s]],
-        _ => [[-s, -c, 0.0], [c, -s, 0.0], [0.0, 0.0, 0.0]],
-    };
-    m.map(|r| r.map(|v| v * k))
-}
-
 fn madd(a: &M3, b: &M3) -> M3 {
     let mut r = [[0.0; 3]; 3];
     for i in 0..3 {

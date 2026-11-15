@@ -156,24 +156,6 @@ impl Unit {
     }
 }
 
-/// 回転行列（軸 ax の周りに a [deg]）。system の座標ブレークと同じ
-fn rot(ax: usize, a: f64) -> M3 {
-    crate::math::rot(ax, a)
-}
-
-/// 回転行列の角度 [deg] による微分
-pub(crate) fn drot(ax: usize, a_deg: f64) -> M3 {
-    let a = a_deg.to_radians();
-    let (s, c) = a.sin_cos();
-    let k = std::f64::consts::PI / 180.0;
-    let m = match ax {
-        0 => [[0.0, 0.0, 0.0], [0.0, -s, -c], [0.0, c, -s]],
-        1 => [[-s, 0.0, c], [0.0, 0.0, 0.0], [-c, 0.0, -s]],
-        _ => [[-s, -c, 0.0], [c, -s, 0.0], [0.0, 0.0, 0.0]],
-    };
-    m.map(|r| r.map(|v| v * k))
-}
-
 /// 動かす順（内側が先: 範囲の面の数が少ない順、同じなら先に定義した順）。動いていない玉・群は除く
 pub(crate) fn order(units: &[Unit]) -> Vec<usize> {
     let mut v: Vec<usize> = (0..units.len()).filter(|&i| units[i].moved()).collect();

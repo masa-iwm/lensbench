@@ -93,10 +93,7 @@ pub fn frames(s: &System) -> Frames {
             .flatten()
             .next()
             .copied()
-            .unwrap_or(Frame {
-                o: [0.0; 3],
-                r: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            })
+            .unwrap_or(Frame { o: [0.0; 3], r: I3 })
     };
     let gt = transpose(&g.r);
     let res = out
@@ -111,7 +108,7 @@ pub fn frames(s: &System) -> Frames {
     let mut rel = vec![None; res.len()];
     let mut prev: Option<(usize, Frame)> = None;
     let moved = s.units.iter().any(|u| u.moved());
-    let id = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let id = I3;
     for (j, f) in res.iter().enumerate() {
         if let Some(f) = f {
             if let Some((qi, q)) = prev {

@@ -92,6 +92,27 @@ pub fn rot(ax: usize, a_deg: f64) -> M3 {
     }
 }
 
+/// 2×2 の連立 J v = e の解（J は行優先 [a, b, c, d]）。特異なら非有限
+#[inline]
+pub fn solve2(j: [f64; 4], e: [f64; 2]) -> [f64; 2] {
+    let [a, b, c, d] = j;
+    let det = a * d - b * c;
+    [(d * e[0] - b * e[1]) / det, (-c * e[0] + a * e[1]) / det]
+}
+
+/// [`rot`] の角 [deg] による微分
+pub fn drot(ax: usize, a_deg: f64) -> M3 {
+    let a = a_deg.to_radians();
+    let (s, c) = a.sin_cos();
+    let k = std::f64::consts::PI / 180.0;
+    let m = match ax {
+        0 => [[0.0, 0.0, 0.0], [0.0, -s, -c], [0.0, c, -s]],
+        1 => [[-s, 0.0, c], [0.0, 0.0, 0.0], [-c, 0.0, -s]],
+        _ => [[-s, -c, 0.0], [c, -s, 0.0], [0.0, 0.0, 0.0]],
+    };
+    m.map(|r| r.map(|v| v * k))
+}
+
 /// 回転 R = Rx(a) Ry(b) Rz(c)（[`rot`]、順序 0 の座標ブレーク）の角 [deg]
 pub fn xyz_angles(m: &M3) -> [f64; 3] {
     let b = m[0][2].atan2((m[0][0] * m[0][0] + m[0][1] * m[0][1]).sqrt());

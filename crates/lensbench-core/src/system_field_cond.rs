@@ -87,11 +87,8 @@ impl System {
                 (qx[1] - q[1]) / h,
                 (qy[1] - q[1]) / h,
             );
-            let det = a * d - b * c;
-            v = [
-                v[0] - (d * e[0] - b * e[1]) / det,
-                v[1] - (-c * e[0] + a * e[1]) / det,
-            ];
+            let dv = crate::math::solve2([a, b, c, d], e);
+            v = [v[0] - dv[0], v[1] - dv[1]];
         }
         let q = img(v);
         let e = (q[0] - x).abs().max((q[1] - y).abs());

@@ -161,11 +161,7 @@ impl System {
                 jac[0][c] = (ra[0] - rb[0]) / (2.0 * h);
                 jac[1][c] = (ra[1] - rb[1]) / (2.0 * h);
             }
-            let det = jac[0][0] * jac[1][1] - jac[0][1] * jac[1][0];
-            let du = [
-                (jac[1][1] * r[0] - jac[0][1] * r[1]) / det,
-                (-jac[1][0] * r[0] + jac[0][0] * r[1]) / det,
-            ];
+            let du = crate::math::solve2([jac[0][0], jac[0][1], jac[1][0], jac[1][1]], r);
             if !(du[0].is_finite() && du[1].is_finite()) {
                 return Err(Error::Invalid(format!(
                     "ray solve: singular Jacobian (iteration {it}, residual {:e})",

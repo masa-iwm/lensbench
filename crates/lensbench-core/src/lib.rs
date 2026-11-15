@@ -4,6 +4,7 @@
 //! 別クレートから差し込む。公開版にはその実装を含めない。
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方。
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod error;
 pub mod math;

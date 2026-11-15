@@ -93,8 +93,8 @@ impl AimLane {
                     (qy[0] - q[0]) / h,
                     (qy[1] - q[1]) / h,
                 );
-                let det = a * d - b * c;
-                [(d * e[0] - c * e[1]) / det, (-b * e[0] + a * e[1]) / det]
+                // (a, b, c, d) は列の順なので行優先では [a, c, b, d]
+                crate::math::solve2([a, c, b, d], e)
             }
             (None, Some(m)) => [m[0] * e[0] + m[1] * e[1], m[2] * e[0] + m[3] * e[1]],
             (None, None) => [f64::NAN; 2],

@@ -2208,14 +2208,14 @@ unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64
     for bi in (0..np).step_by(4) {
         for bj in (0..bi + 4).step_by(2) {
             let mut acc = [_mm256_setzero_pd(); 8];
-            let pi = [0, 1, 2, 3].map(|k| base.add((bi + k) * ld));
-            let pj = [0, 1].map(|k| base.add((bj + k) * ld));
+            let pi = [0, 1, 2, 3].map(|k| unsafe { base.add((bi + k) * ld) });
+            let pj = [0, 1].map(|k| unsafe { base.add((bj + k) * ld) });
             for p in (0..ld).step_by(4) {
                 // 安全: 列 bi..bi+4、bj..bj+2 は np 列の中、p + 4 ≤ ld（上の assert）
-                let y0 = _mm256_loadu_pd(pj[0].add(p));
-                let y1 = _mm256_loadu_pd(pj[1].add(p));
+                let y0 = unsafe { _mm256_loadu_pd(pj[0].add(p)) };
+                let y1 = unsafe { _mm256_loadu_pd(pj[1].add(p)) };
                 for u in 0..4 {
-                    let x = _mm256_loadu_pd(pi[u].add(p));
+                    let x = unsafe { _mm256_loadu_pd(pi[u].add(p)) };
                     acc[2 * u] = _mm256_add_pd(acc[2 * u], _mm256_mul_pd(x, y0));
                     acc[2 * u + 1] = _mm256_add_pd(acc[2 * u + 1], _mm256_mul_pd(x, y1));
                 }
@@ -2231,7 +2231,7 @@ unsafe fn gram_block_avx(a: &[f64], ld: usize, np: usize, n: usize, g: &mut [f64
                         break;
                     }
                     let mut s = [0.0f64; 4];
-                    _mm256_storeu_pd(s.as_mut_ptr(), acc[2 * u + w]);
+                    unsafe { _mm256_storeu_pd(s.as_mut_ptr(), acc[2 * u + w]) };
                     g[i * n + j] = (s[0] + s[1]) + (s[2] + s[3]);
                 }
             }
