@@ -175,7 +175,7 @@ fn pol_diff(s: &System) -> Vec<(f64, f64)> {
 /// 書き出した .zmx（JONESMAT は設計波長の行列）を開いた系は、全波長で OpticStudio と同じ偏光になる。
 ///
 /// 残りの差（最大 2e-4）は、くさびで曲がった光線が偏光子（非ユニタリの Jones 面）を通るときだけ出る。
-/// くさびがなければ（斜めの視野でも）、また Jones 面がユニタリ（波長板）なら 1e-15 で合う（非公開側の切り分け）。
+/// くさびがなければ（斜めの視野でも）、また Jones 面がユニタリ（波長板）なら 1e-15 で合う（OpticStudio で切り分けた）。
 /// 原因は調査中
 #[test]
 fn zmx_polarization_matches_opticstudio() {

@@ -335,7 +335,7 @@ impl GridSag {
         let p = idx.map(|k| self.z[k]);
         if self.linear {
             // 双一次: 矢高は z の、傾きは格子点の ∂z/∂x・∂z/∂y の双一次補間（OpticStudio 26.1 と同じ。矢高の
-            // 微分ではないので、矢高と傾きは厳密には合わない。非公開側の照合データ G2 で方向が 3e-13 で一致）
+            // 微分ではないので、矢高と傾きは厳密には合わない。OpticStudio との照合で G2 の方向が 3e-13 で一致）
             let bl = |c: usize| {
                 p[0][c] * (1.0 - t) * (1.0 - s)
                     + p[1][c] * t * (1.0 - s)
@@ -636,13 +636,13 @@ pub fn sag_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
     (z, zx, zy)
 }
 
-/// 近軸の曲率（YZ 面）。OpticStudio 26.1 の EFFL に合わせたもの（非公開側の照合データの Z・G 系）:
+/// 近軸の曲率（YZ 面）。OpticStudio 26.1 の EFFL に合わせたもの（OpticStudio と照合した Z・G 系）:
 /// - Zernike Sag: 基準の c + 2 α1 に、Zernike の項のうち Z4（デフォーカス）の分だけを足す
 ///   （Standard Z4 = √3 (2ρ² − 1) → 4√3 A4 / R²、Fringe Z4 = 2ρ² − 1 → 4 A4 / R²。偏心は見ない）
 /// - Grid Sag: 双三次なら頂点での ∂²z/∂y²（格子の補間の分を含む。勾配 ∂z/∂y の中心差分）、双一次は基準の面だけ。
 ///   OpticStudio は頂点の ∂²z/∂y² を矢高の差分（刻み 1e-2 mm 程度）で求めるらしく、円錐係数・r^4 以上の項・
 ///   双一次の折れ目の分だけ違う（EFFL で相対 1e-9〜1e-8、頂点が格子点に乗る双一次では大きく違う。
-///   非公開側の照合データ）。ここでは差分を使わない厳密な値にしている
+///   OpticStudio との照合）。ここでは差分を使わない厳密な値にしている
 pub fn paraxial_curv(d: &Surface) -> f64 {
     match d.typ {
         // r² の項（β_2）を足す

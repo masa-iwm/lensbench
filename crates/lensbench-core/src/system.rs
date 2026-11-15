@@ -1416,7 +1416,7 @@ impl System {
                     if free {
                         // Zernike・Grid Sag・傾けた GRIN の面を含む系は y-z 面で交わる点（3 次元の最近点だと、
                         // 面の傾きの項で主光線が x にも振れる系でずれる。OpticStudio 26.1 の EXPP と、鏡 1 枚の
-                        // Z2 で 3e-12、G3 で 8e-7 一致。非公開側の照合データ）
+                        // Z2 で 3e-12、G3 で 8e-7 一致。OpticStudio との照合）
                         let det = k1[1] * k0[2] - k0[1] * k1[2];
                         let (ry, rz) = (p1[1] - p0[1], p1[2] - p0[2]);
                         let t = (rz * k1[1] - ry * k1[2]) / det;
@@ -1495,7 +1495,7 @@ impl System {
     /// r の 1 次の項（β1、頂点が尖る）がある Odd Asphere の面を含む、無限遠物体・角度の視野の系なら true。
     /// OpticStudio 2026 R1.01 はこの系の瞳を、視野 0.01° の実主光線 1 本と、軸上の視野の +y 側だけの瞳座標 1e-3 の
     /// 光線 1 本で求める（尖りの傾き β1 がそのまま瞳の位置・径に効く。β1 = ±1e-3・1e-5、入射瞳径 10・20、
-    /// 最大視野 2・5・10° の自作の系で EXPP・EXPD が 1e-5 mm 一致。非公開側の照合データ）。
+    /// 最大視野 2・5・10° の自作の系で EXPP・EXPD が 1e-5 mm 一致。OpticStudio との照合）。
     /// 外挿や ±両側の光線で求める極限の値とは違う
     pub(crate) fn cusp_pupil(&self) -> bool {
         self.infinite()

@@ -267,7 +267,7 @@ fn toroid_and_ellipse_round_trip() {
     same_rays(&a, &b, &PX, &PY, 1e-12);
 }
 
-/// 分散ありのモデルガラス: OpticStudio 2026 R1.01 の INDX（非公開側 tools/zos-cs/logs/modelglass.json の一部）
+/// 分散ありのモデルガラス: OpticStudio 2026 R1.01 の INDX（OpticStudio で実測した値の一部）
 #[test]
 fn model_glass_matches_opticstudio() {
     #[rustfmt::skip]

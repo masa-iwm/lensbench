@@ -1966,7 +1966,7 @@ fn aperture(s: &RawSurf, d: &mut Surface, ops: &HashMap<(String, i64), String>) 
     };
 }
 
-/// Zernike Sag・Grid Sag の面の読込（OpticStudio 26.1 の書き方、非公開側の照合データで確認）:
+/// Zernike Sag・Grid Sag の面の読込（OpticStudio 26.1 の書き方、OpticStudio で書き出した .zmx で確認）:
 /// PARM 0 は外挿（Zernike、1 = する）か補間（Grid、0 = 双三次・1 = 双一次）、PARM 1〜8 は r^2〜r^16、
 /// PARM 9・10 は Zernike の項の偏心、XDAT 1 は項の数、XDAT 2 は正規化半径、XDAT k+2 は項 k の係数。
 /// Grid Sag は GDAT（nx ny dx dy xdec ydec unit …）と GARR（.DAT の行の順: +y の行から、行の中は −x から）

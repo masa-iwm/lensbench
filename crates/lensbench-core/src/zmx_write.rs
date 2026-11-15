@@ -221,7 +221,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
             // 無視する面は標準面として書く
             SurfType::User => "STANDARD",
         };
-        // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（非公開側の照合データで確認）
+        // 複屈折材の板（形は標準面）: OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）
         let bire = match (&d.bire, d.typ) {
             (Some(b), SurfType::Standard) => Some(b),
             (Some(_), t) => notimpl!("面 {k}: 複屈折材の板の面が {t:?}（標準面だけ）"),
@@ -408,7 +408,7 @@ pub fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 w(&mut o, "  XDAT 2 100 0 0 1 0 0 \"\"".into());
             }
             SurfType::ZernikeStd | SurfType::ZernikeFringe | SurfType::GridSag => {
-                // OpticStudio 26.1 の書き方（非公開側の照合データで確認）: PARM 0 は外挿・補間、1〜8 は r^2〜r^16、
+                // OpticStudio 26.1 の書き方（OpticStudio で書き出した .zmx で確認）: PARM 0 は外挿・補間、1〜8 は r^2〜r^16、
                 // 9・10 は Zernike の偏心。XDAT 1 は項の数、2 は正規化半径、k+2 は項 k。Grid は GDAT・GARR を埋め込む
                 let z = d.zern.as_deref();
                 let p0 = match (&d.grid, z) {

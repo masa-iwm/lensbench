@@ -1,6 +1,6 @@
 //! Fresnel（FRESNELS）・Cylinder Fresnel（CFRESNEL）・Binary Optic 2（BINARY_2）の面を OpticStudio と比べる。
 //!
-//! 基準は tests/surftypes（独自処方の合成系、OpticStudio 26.1 の OPTH・REAX… と OPDC、非公開側で測定）。
+//! 基準は tests/surftypes（独自処方の合成系、OpticStudio 26.1 の OPTH・REAX… と OPDC で測定）。
 //! - F1: 平面の窓 + Fresnel（R −40、k −1.2、r^4 3e-6）、視野 y 0・5・8°
 //! - B2: R50 のレンズ + Binary 2（基板 R −80、r^4 1e-6、M 1、正規化半径 6、ρ^2・ρ^4・ρ^6 の係数）
 //! - C1: 平面の窓 + Cylinder Fresnel（平面の基板、c −0.03、k −0.5、y^4 2e-6）、視野 (0,0)・(0,3)・(3,0)°

@@ -68,7 +68,7 @@ fn wide_angle_rays_are_aimed_like_opticstudio() {
 }
 
 /// 90° を超える視野（物体側の後ろから来る光）: 光線は向きどおり（n < 0）に進み、面 1 の球（頂点側の半球）に
-/// 下から当たる（OpticStudio 付属の 210° 広角レンズの 105° の視野と同じ根の選び方。非公開側で OpticStudio と 1.7e-9 mm）
+/// 下から当たる（OpticStudio 付属の 210° 広角レンズの 105° の視野と同じ根の選び方。OpticStudio と 1.7e-9 mm で一致）
 #[test]
 fn field_beyond_90_degrees_hits_the_vertex_side_cap() {
     let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 4\nFTYP 0 0 2 1 0 0 0\n\

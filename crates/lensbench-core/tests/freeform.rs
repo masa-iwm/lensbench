@@ -1,6 +1,6 @@
 //! Zernike Standard・Fringe Sag と Grid Sag の面の矢高を OpticStudio の GetSag と比べる。
 //!
-//! 基準は tests/freeform（OpticStudio 26.1 の LDE.GetSag、非公開側で測定）。
+//! 基準は tests/freeform（OpticStudio 26.1 の LDE.GetSag で測定）。
 //! 面 1 だけの系で、x・y が ±7 mm の格子と数点。Zernike は 37・231 項と外挿の有無、Grid Sag は双三次・双一次、
 //! 微分あり・なし（OpticStudio が差分で求めた微分は .zmx の GARR に入る）、格子の外、Grid Sag の Zernike の項。
 

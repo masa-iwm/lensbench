@@ -1,5 +1,5 @@
 //! 偏光追跡の性質の確認（公開のテスト光学系 A0）。OpticStudio の偏光追跡との照合は、市販の膜・ガラスを
-//! 含む非公開の基準（Jones 行列、薄膜の鏡、表、暗号化された膜の実測表）で行う。
+//! 含む公開していない基準（Jones 行列、薄膜の鏡、表、暗号化された膜の実測表）で行う。
 
 use lensbench_core::coating::{Coatings, Measured, C64};
 use lensbench_core::surface::SurfType;

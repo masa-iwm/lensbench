@@ -1,7 +1,7 @@
 //! GRIN の面（Gradium＝GRINSUR8、Gradient 9＝GRINSUR9）を OpticStudio と比べる。
 //!
 //! 基準は tests/grin（独自係数の合成データ LBTEST.GRD・SGRIN.DAT・GRADIENT_9.DAT と
-//! 独自処方の系、OpticStudio 26.1 の OPTH・REAX… と OPDC、非公開側で測定）。
+//! 独自処方の系、OpticStudio 26.1 の OPTH・REAX… と OPDC で測定）。
 //! - G8A: Gradium（R 8、厚さ 3、Δz 1.5、LBTG1）+ R −20、視野 y 0・2°
 //! - G8B: G8A に偏心 dx 0.1・dy −0.05、傾き tx 0.01・ty 0.02、視野 (0,0)・(0,2)・(2,0)°
 //! - G8C: G8B の偏心・傾きを dx 0.2・dy 0.1・tx 0.05・ty 0.04 に（tx·dx + ty·dy ≠ 0 で dx・dy の符号が効く）
