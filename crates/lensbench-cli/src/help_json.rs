@@ -107,9 +107,31 @@ pub fn localize(mut c: clap::Command, f: &dyn Fn(&str) -> String) -> clap::Comma
     c
 }
 
+/// `lensbench plugins` の doc（英語が元）を文字の出力では表示の言語に訳す。JSON は英語のまま（XCT-20）
+pub fn localize_docs(mut v: Value, json: bool) -> Value {
+    fn walk(v: &mut Value) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m.iter_mut() {
+                    match x {
+                        Value::String(s) if k == "doc" => *s = lensbench_core::i18n::tr_doc(s),
+                        _ => walk(x),
+                    }
+                }
+            }
+            Value::Array(a) => a.iter_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    if !json {
+        walk(&mut v);
+    }
+    v
+}
+
 /// clap の定義の JSON（版・終了コードの表も）。マニュアルの CLI のページは日本語なので help を表で訳す（訳した後の日本語はそのまま）
 pub fn help_json(c: Command) -> Value {
-    let mut c = localize(c, &lensbench_core::i18n::translate_lines);
+    let mut c = localize(c, &lensbench_core::i18n::translate_doc);
     c.build();
     let mut v = command_json(&mut c);
     // exe の入口で足した解析（非公開版など、lensbench_engine::register）の印。非公開版のマニュアルは足した分だけ載せる

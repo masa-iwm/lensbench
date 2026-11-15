@@ -1035,17 +1035,17 @@ impl System {
         let Some(d) = self.surfaces.get(j) else {
             return format!("surface {j}");
         };
-        let mut parts = vec![crate::edit::surf_type_name(d.typ).to_string()];
+        let mut what = crate::edit::surf_type_name(d.typ).to_string();
         if !d.mat.is_empty() && d.mat != "-" {
-            parts.push(d.mat.clone());
+            what = format!("{what}, {}", d.mat);
         }
         if !d.coat.is_empty() {
-            parts.push(format!("coating {}", d.coat));
+            what = format!("{what}, coating {}", d.coat);
         }
         if !d.comment.is_empty() {
-            parts.push(format!("「{}」", d.comment));
+            what = format!("{what}, 「{}」", d.comment);
         }
-        format!("surface {j}({})", parts.join(", "))
+        format!("surface {j}({what})")
     }
 
     pub fn image(&self) -> usize {

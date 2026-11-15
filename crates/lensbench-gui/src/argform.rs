@@ -47,7 +47,7 @@ impl ArgSpec {
             default: v["default"].clone(),
             unit: v["unit"].as_str().unwrap_or_default().to_string(),
             // 解析の設定の説明は英語が元。表示の言語に訳す（XCT-20）
-            doc: lensbench_core::i18n::tr(doc),
+            doc: lensbench_core::i18n::tr_doc(doc),
             choices: v["choices"]
                 .as_array()
                 .map(|a| {

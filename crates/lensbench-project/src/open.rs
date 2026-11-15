@@ -45,7 +45,7 @@ pub struct OpenSpec<'a> {
     pub lens_catalogs: &'a [PathBuf],
     /// .zmx の多重構成の番号（1 始まり。0 は誤り）
     pub cfg: usize,
-    /// State name of a project file
+    /// プロジェクトファイルの状態の名前
     pub state: Option<&'a str>,
     /// プロジェクトファイルのビームスプリッターの経路
     pub split_path: Option<&'a str>,

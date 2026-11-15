@@ -1192,12 +1192,17 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
     s.solves.retain(|q| {
         let used = q.surf == j || q.kind.other_surface() == Some(j);
         if used {
-            notes.push(format!(
-                "removed the solve of surface {} {} ({:?})",
-                q.surf,
-                q.kind.param_kind().name(),
-                q.kind
-            ));
+            notes.push(if q.kind.is_curv() {
+                format!(
+                    "removed the curvature solve of surface {} ({:?})",
+                    q.surf, q.kind
+                )
+            } else {
+                format!(
+                    "removed the thickness solve of surface {} ({:?})",
+                    q.surf, q.kind
+                )
+            });
         }
         !used
     });

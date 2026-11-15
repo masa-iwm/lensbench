@@ -1564,7 +1564,7 @@ fn wfe_term(
 /// DLS の設定
 #[derive(Debug, Clone, Copy)]
 pub struct DlsOpts {
-    /// Maximum number of iterations
+    /// 反復の上限
     pub max_iter: usize,
     /// 1 回の反復での評価関数（Σ r²）の相対的な減りがこれ未満で止める
     pub ftol: f64,
@@ -1594,7 +1594,7 @@ pub enum Stop {
     SmallStep,
     /// どの減衰でも評価関数が減らない（局所解）
     NoProgress,
-    /// Maximum number of iterations
+    /// 反復の上限
     MaxIter,
     /// 呼び出し側が止めた
     Cancelled,

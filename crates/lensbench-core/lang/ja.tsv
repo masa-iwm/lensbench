@@ -47,7 +47,8 @@ configuration {b}	構成 {b}
 state {}	状態 {}
 default	既定
 coating {}	膜 {}
-surface {j}({})	面 {j}({})
+surface {j}({what})	面 {j}({what})
+{what}, coating {}	{what}, 膜 {}
 tilt and decenter before the surface	面の前の傾き偏心
 coating	膜
 radius of curvature	曲率半径
@@ -1509,7 +1510,8 @@ lensbench: {done}/{total} ({pc:.1}%) elapsed {el} left {eta}	lensbench: {done}/{
 no wavelength {w} (1 to {n})	波長 {w} はありません（1〜{n}）
 vignetting factors are not used (ignored in a field sweep, as in OpticStudio)	ケラレ係数は使わない（視野の掃引では OpticStudio と同じく無視）
 removed the pickup of surface {} {:?} (from surface {} {:?})	面 {} の {:?} のピックアップ（元 面 {} の {:?}）を外した
-removed the solve of surface {} {} ({:?})	面 {} の {} のソルブ（{:?}）を外した
+removed the curvature solve of surface {} ({:?})	面 {} の曲率のソルブ（{:?}）を外した
+removed the thickness solve of surface {} ({:?})	面 {} の厚さのソルブ（{:?}）を外した
 removed lens or group {} (its surfaces are gone)	玉・群 {} を外した（面が無くなった）
 removed multi-configuration row {}	多重構成の行 {} を外した
 removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外した（置く面 {j} を消した）
@@ -1854,3 +1856,86 @@ Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the
 Simple POP: build a field from rays on the tangent plane of a surface (with the surface aperture applied) and propagate it in a uniform medium over the distance dist (to the vertex plane of the next surface if omitted); the irradiance. --save writes the grid (csv, npz) or everything (json)	簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 dist （省略で次の面の頂点面まで）伝えた照度。--save で格子（csv・npz）か全部（json）を書き出す
 Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength	機構部品（プロジェクトの mechanics）のケラレ: 瞳の格子の光線を追い、部品の穴（チューブの内径・ケージ板やマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す
 Monochromatic interferogram: overlay the light of two configurations (.zmx) or states (project file). mode pupil is on the pupil (like OpticStudio's Interferogram: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2, I = (1 + cos 2πΔ)/2), detector is on the image surface (rays interpolated to pixels and fields summed). The out extension gives csv (grid, row = +y), json (summary and grid), tif (16 bit; 32-bit float with float) or png (16 bit)	単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。mode pupil は瞳上（OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、detector は像面上（光線を画素へ補間して場を足す）。out の拡張子で csv（格子、行 = +y）・json（要約と格子）・tif（16 bit、float で 32 bit float）・png（16 bit）
+# analysis plugin descriptions (lensbench plugins)
+Calculation method	方式
+Ray position [mm]	光線の位置 [mm]
+Ray weight	光線の重み
+Wavelength number of the ray (from 1)	光線の波長の番号（1 始まり）
+Wavefront error (OPD relative to the chief ray [waves])	波面収差（主光線基準の OPD [波]）
+Pupil coordinates of the grid (n,)	格子の瞳座標 (n,)
+[waves]	[波]
+Coefficients [waves]	係数 [波]
+[waves²]	[波²]
+Strehl ratio	ストレール比
+Diffraction MTF	回折 MTF
+Tangential	子午
+Sagittal	球欠
+Maximum of the grid	格子の最大値
+Side of the pupil grid used	使った瞳の格子の一辺
+Fraction of the energy inside the image grid	像の格子に入った光量の割合
+RMS spot radius, wavefront error and Strehl ratio	RMS スポット半径・波面収差・ストレール比
+Approximate	近似
+Geometric MTF	幾何 MTF
+Huygens PSF (on the image surface, sum of secondary waves from each point of the reference sphere)	Huygens PSF（像面の上、参照球の各点からの 2 次波の和）
+Huygens MTF (Fourier transform of the Huygens PSF)	Huygens MTF（Huygens PSF のフーリエ変換）
+Tangential (image y)	子午（像面の y）
+Sagittal (image x)	球欠（像面の x）
+Simple POP (build the field after a surface and propagate it over a distance or to a surface)	簡易 POP（面の後の場を作り、距離か面まで伝搬）
+Output power	出力の光量
+Output peak intensity	出力の最大強度
+Propagation distance [mm]	伝搬の距離 [mm]
+Refractive index of the medium	媒質の屈折率
+Phase difference of the kernel between samples [rad]	核の位相の標本の間の差 [rad]
+Phase dropped by the Fresnel approximation [rad]	Fresnel 近似で落とす位相 [rad]
+Input field complex (ny, nx)	入力の場 complex (ny, nx)
+List of double-bounce ghosts (paraxial quantities and intensity ratio)	2 回反射のゴーストの一覧（近軸の量と強度の比）
+Surface of the first reflection	1 回目の反射の面
+Surface of the second reflection	2 回目の反射の面
+Intensity ratio (NaN if not found)	強度の比（求まらなければ NaN）
+Monochromatic interferogram (on the pupil, like OpticStudio's Interferogram): Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2	単色の干渉縞（瞳上、OpticStudio の Interferogram に当たる）: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2
+Field number (from 1) or normalized field (2,)	視野の番号（1 始まり）か正規化視野 (2,)
+Wavelength number (from 1; polychromatic or primary wavelength if omitted)	波長の番号（1 始まり、省けば多色・主波長）
+Frequencies (21 points from 0 to 0.95 of the cutoff if omitted)	周波数（省けば遮断周波数の 0〜0.95 を 21 点）
+Reference to the chief ray of the primary wavelength (false: the chief ray of that wavelength, as in the CLI and OpticStudio)	主波長の主光線を基準（false: その波長の主光線。CLI・OpticStudio と同じ）
+Side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2)	瞳の格子の一辺（省けば自動: 隣り合う標本の位相差が π/2 以下）
+Side of the image grid	像の格子の一辺
+Spacing of the image grid (automatic if omitted)	像の格子の間隔（省けば自動）
+Ordering	並び
+Side of the pupil grid (automatic if omitted)	瞳の格子の一辺（省けば自動）
+Reference	基準
+Number of quadrature points	求積の点の数
+Multiply by the diffraction limit	回折限界を掛ける
+Surface to build the field on (required)	場を作る面（必須）
+Propagation distance (either this or to)	伝搬の距離（to とどちらか）
+Surface to propagate to (surface + 1 if omitted)	伝搬の先の面（省けば surface + 1）
+Side of the input grid	入力の格子の一辺
+Half width of the input grid (automatic if omitted)	入力の格子の半幅（省けば自動）
+Clip by the surface aperture	面の開口で切る
+Side of the output grid	出力の格子の一辺
+Half width of the output grid	出力の格子の半幅
+Center of the output grid (x, y)	出力の格子の中心 (x, y)
+First surface	最初の面
+Last surface (image surface if omitted)	最後の面（省けば像面）
+Configuration of beam 1	光束 1 の構成
+Configuration of beam 2 (0 for the reference sphere)	光束 2 の構成（0 で参照球）
+Factor applied to the OPD difference (2 for double pass)	OPD の差にかける数（ダブルパスは 2）
+Number of tilt fringes (per pupil diameter)	傾きの縞の数（瞳の直径あたり）
+(1 + cos 2πΔ)/2, NaN outside	(1 + cos 2πΔ)/2、外は NaN
+tangential and sagittal	子午・球欠
+1 at the center without aberrations	収差なしの中心を 1
+local image x relative to center	像面の局所 x の center からの差
+local image y relative to center	像面の局所 y の center からの差
+Coefficients	係数
+Input field	入力の場
+Largest phase difference between neighboring pupil samples (undersampled above π/2)	瞳の隣り合う標本の位相差の最大 （π/2 を超えたら標本不足）
+OPD, NaN outside	OPD、外は NaN
+Output field (without the pilot beam)	出力の場 （パイロットを除く）
+P-V of scale·(W1 − W2) (tilt removed)	scale·(W1 − W2) の P-V （傾きを除く）
+Phase difference of the kernel between samples	核の位相の標本の間の差
+Phase dropped by the Fresnel approximation	Fresnel 近似で落とす位相
+Propagation distance	伝搬の距離
+Pupil coordinates of the grid	格子の瞳座標
+RMS of scale·(W1 − W2) (tilt removed)	scale·(W1 − W2) の RMS （傾きを除く）
+Ray position	光線の位置
+(inf at infinity)	（無限遠は inf）
+Δ, NaN outside	Δ、外は NaN

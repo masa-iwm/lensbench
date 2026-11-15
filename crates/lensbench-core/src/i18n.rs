@@ -313,15 +313,39 @@ pub fn tr(s: &str) -> String {
     }
 }
 
-/// Japanese of a text of several lines (help): each line is translated on its own (lines with no entry stay)
-pub fn translate_lines(s: &str) -> String {
-    s.split('\n').map(translate).collect::<Vec<_>>().join("\n")
+/// The Japanese of a line only when a table line is exactly that text (descriptions: an
+/// English text with no line of its own must not be taken apart by message templates such as `surface {}`)
+fn exact(s: &str) -> Option<String> {
+    let t = table().read().unwrap_or_else(|e| e.into_inner());
+    let text = |v: &[Piece]| -> String {
+        v.iter()
+            .map(|p| match p {
+                Piece::Text(x) | Piece::Slot(x) => x.as_str(),
+            })
+            .collect()
+    };
+    let e = t.iter().rev().find(|e| text(&e.en) == s)?;
+    Some(text(&e.ja))
 }
 
-/// [`translate_lines`] in the current language (help text)
-pub fn tr_lines(s: &str) -> String {
+/// Japanese of a description of several lines (help, analysis settings): each line from its own table line
+/// (a trailing ` [unit]` is kept as it is); lines with no line of their own stay English
+pub fn translate_doc(s: &str) -> String {
+    let line = |l: &str| {
+        exact(l)
+            .or_else(|| {
+                let (a, u) = l.rsplit_once(" [").filter(|(_, u)| u.ends_with(']'))?;
+                exact(a).map(|j| format!("{j} [{u}"))
+            })
+            .unwrap_or_else(|| l.to_string())
+    };
+    s.split('\n').map(line).collect::<Vec<_>>().join("\n")
+}
+
+/// [`translate_doc`] in the current language
+pub fn tr_doc(s: &str) -> String {
     if is_ja() {
-        translate_lines(s)
+        translate_doc(s)
     } else {
         s.to_string()
     }
@@ -363,6 +387,29 @@ mod tests {
         check_table(JA).unwrap_or_else(|e| panic!("lang/ja.tsv {e}"));
         assert!(check_table("a {} b {:.3}\tA {:.3} B {}").is_err());
         assert!(check_table("a {}{}\tA {}{}").is_err());
+    }
+
+    #[test]
+    fn docs_translate_only_whole_lines() {
+        // 表に行の無い英語の説明は誤りの文の型（`surface {}` など）で崩さない
+        assert_eq!(translate_doc("surface tilt"), "surface tilt");
+        assert_eq!(
+            translate_doc("Number of quadrature points\nno such line [mm]"),
+            "求積の点の数\nno such line [mm]"
+        );
+        assert_eq!(
+            translate_doc("Propagation distance [mm]"),
+            "伝搬の距離 [mm]"
+        );
+    }
+
+    #[test]
+    fn surface_label_coating_is_translated() {
+        assert_eq!(
+            translate("surface 3(STANDARD, N-BK7, coating AR, 「L1」)"),
+            "面 3(STANDARD, N-BK7, 膜 AR, 「L1」)"
+        );
+        assert_eq!(translate("surface 2(STANDARD)"), "面 2(STANDARD)");
     }
 
     #[test]

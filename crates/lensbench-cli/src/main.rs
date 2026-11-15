@@ -799,7 +799,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
         }
         // 記述の中のパス（基準データ・系）を serve の --root で確かめられないので、コマンドラインからだけ
         Cmd::Verify { .. } => return Err("verify is only available from the command line".into()),
-        Cmd::Plugins { json } => (json, plugins_json()),
+        Cmd::Plugins { json } => (json, help_json::localize_docs(plugins_json(), json)),
         Cmd::Analysis(a) => {
             let s = load(&a.c)?;
             let def = analyses()
@@ -1582,7 +1582,7 @@ fn cli_command() -> clap::Command {
     for a in analysis_commands() {
         c = c.subcommand(a);
     }
-    help_json::localize(negative_numbers(c), &lensbench_core::i18n::tr_lines)
+    help_json::localize(negative_numbers(c), &lensbench_core::i18n::tr_doc)
 }
 
 /// `--dist -5`・`--pmag -0.5` のような負の数を値として受ける（入れ子のサブコマンドも）

@@ -492,6 +492,7 @@ impl OutputSpec {
         let d = d.split_whitespace().collect::<Vec<_>>().join(" ");
         let doc = d
             .replace(" 、", "、")
+            .replace(" ,", ",")
             .trim_matches(|c: char| c == '、' || c == ',' || c.is_whitespace())
             .to_string();
         OutputSpec {

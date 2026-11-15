@@ -809,7 +809,7 @@ fn direct(b: &Beam, d: f64, o: &mut Beam) {
 /// 光線から場を作るときの設定
 #[derive(Debug, Clone, Copy)]
 pub struct RayBeamOpts {
-    /// Number of rays on a side of the pupil grid
+    /// 瞳の格子の一辺の光線の数
     pub rays: usize,
     /// 場の格子の一辺の標本の数
     pub n: usize,

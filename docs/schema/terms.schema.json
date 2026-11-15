@@ -23,7 +23,7 @@
     "FieldRef": {
       "anyOf": [
         {
-          "description": "Field number (from 1)",
+          "description": "視野の番号（1 始まり）",
           "format": "uint",
           "minimum": 0,
           "type": "integer"

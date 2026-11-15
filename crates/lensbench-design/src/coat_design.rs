@@ -64,9 +64,9 @@ pub struct Options {
     pub materials: Vec<Material>,
     /// 試す層の数（最小、最大）
     pub layers: (usize, usize),
-    /// Number of starting points per number of layers
+    /// 層の数ごとの初期値の数
     pub starts: usize,
-    /// Maximum layer thickness [µm]
+    /// 層の厚さの上限 [µm]
     pub d_max: f64,
     /// 乱数の種
     pub seed: u64,
