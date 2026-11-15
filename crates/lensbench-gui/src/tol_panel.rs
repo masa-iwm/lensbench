@@ -1118,7 +1118,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                     }
                     ui.end_row();
                     for s in sens.iter().take(20) {
-                        ui.label(text_of(&s["label"]));
+                        ui.label(item_name(&s["label"]));
                         ui.label(f(&s["lo"]));
                         ui.label(f(&s["hi"]));
                         ui.label(f(&s["change_lo"]));
@@ -1147,7 +1147,7 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                     }
                     ui.end_row();
                     for c in corr.iter().take(15) {
-                        ui.label(text_of(&c["label"]));
+                        ui.label(item_name(&c["label"]));
                         ui.label(f(&c["r"]));
                         ui.label(f(&c["r_abs"]));
                         ui.end_row();
@@ -1155,6 +1155,11 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
                 });
             });
     }
+}
+
+/// 公差の項目名（「L1 decenter x」など英語が元）を表示の言語で（XCT-20）
+fn item_name(v: &Value) -> String {
+    lensbench_core::i18n::tr_item(&text_of(v))
 }
 
 #[cfg(test)]

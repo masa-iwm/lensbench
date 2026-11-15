@@ -79,3 +79,47 @@ fn fmt(v: &Value) -> String {
         _ => v.to_string(),
     }
 }
+
+/// 公差の結果（`merit_values` を持つ）を画面用に要点だけにする。--save・serve・GUI には全体を渡す
+pub(crate) fn tolerance_brief(out: &Value) -> Value {
+    let mut out = out.clone();
+    let Some(o) = out.as_object_mut() else {
+        return out;
+    };
+    if !o.contains_key("merit_values") {
+        return out;
+    }
+    o.remove("cdf");
+    o.remove("tolerances");
+    o.remove("merit_values");
+    for k in ["compensators", "tilt_magnitudes"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            for t in a {
+                if let Some(t) = t.as_object_mut() {
+                    t.remove("values");
+                }
+            }
+        }
+    }
+    for k in ["sensitivity", "correlation"] {
+        if let Some(Value::Array(a)) = o.get_mut(k) {
+            a.truncate(10);
+            // 項目名は英語が元（JSON はそのまま）。文字の出力では表示の言語で
+            for t in a.iter_mut() {
+                if let Some(l) = t.get_mut("label") {
+                    if let Some(x) = l.as_str() {
+                        *l = Value::String(lensbench_core::i18n::tr_item(x));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(Value::Array(a)) = o.get_mut("terms") {
+        for t in a {
+            if let Some(t) = t.as_object_mut() {
+                t.remove("cdf");
+            }
+        }
+    }
+    out
+}

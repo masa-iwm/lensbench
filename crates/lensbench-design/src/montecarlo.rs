@@ -907,7 +907,7 @@ pub fn simple(
             );
         }
         push(
-            format!("{name} 焦点距離"),
+            format!("{name} focal length"),
             curved.iter().flat_map(|&j| surf(j, Kind::Radius)).collect(),
             t.focal_rel,
             true,
@@ -920,7 +920,7 @@ pub fn simple(
         for &j in &media {
             if j < b {
                 push(
-                    format!("{name} 厚さ{}", j - a + 1),
+                    format!("{name} thickness {}", j - a + 1),
                     medium(j, Kind::Thick, true),
                     t.thickness,
                     false,
@@ -929,13 +929,13 @@ pub fn simple(
         }
         for &j in &media {
             push(
-                format!("{name} 屈折率{}", j - a + 1),
+                format!("{name} index {}", j - a + 1),
                 medium(j, Kind::Dn, false),
                 t.dn,
                 false,
             );
             push(
-                format!("{name} 分散{}", j - a + 1),
+                format!("{name} dispersion {}", j - a + 1),
                 medium(j, Kind::Disp, false),
                 t.disp,
                 false,
@@ -945,37 +945,37 @@ pub fn simple(
         let flipped = s.units[u].flipped || s.units[mu].flipped;
         let wf = if t.wedge_first != flipped { a } else { b };
         push(
-            format!("{name} くさびx"),
+            format!("{name} wedge x"),
             surf(wf, Kind::Tx),
             t.wedge,
             false,
         );
         push(
-            format!("{name} くさびy"),
+            format!("{name} wedge y"),
             surf(wf, Kind::Ty),
             t.wedge,
             false,
         );
         push(
-            format!("{name} 偏心x"),
+            format!("{name} decenter x"),
             one(Param::unit(mu, UnitKind::Dx)),
             t.decenter,
             false,
         );
         push(
-            format!("{name} 偏心y"),
+            format!("{name} decenter y"),
             one(Param::unit(mu, UnitKind::Dy)),
             t.decenter,
             false,
         );
         push(
-            format!("{name} 傾きx"),
+            format!("{name} tilt x"),
             one(Param::unit(mu, UnitKind::Tx)),
             t.tilt,
             false,
         );
         push(
-            format!("{name} 傾きy"),
+            format!("{name} tilt y"),
             one(Param::unit(mu, UnitKind::Ty)),
             t.tilt,
             false,
@@ -988,7 +988,7 @@ pub fn simple(
                     v.push((Param::new(j, Kind::Thick), f));
                 }
             }
-            push(format!("{name} 後の間隔"), v, t.space, false);
+            push(format!("{name} space after"), v, t.space, false);
         }
     }
     for u in 0..s.units.len() {
@@ -997,40 +997,43 @@ pub fn simple(
             continue;
         }
         let Some(g) = group(&unit.name) else { continue };
-        // 玉 1 つのブロック（往復する玉も）は玉の公差の偏心・傾きと別に足す（組立の公差）。名前は「群の」を付けて分ける
+        // 玉 1 つのブロック（往復する玉も）は玉の公差の偏心・傾きと別に足す（組立の公差）。名前は「group」を付けて分ける
         let is_lens = s.units.iter().any(|v| v.auto && v.spans == unit.spans)
             || links.iter().any(|l| l.unit == u);
-        let n = if is_lens {
-            format!("{} 群の", unit.name)
-        } else {
-            format!("{} ", unit.name)
-        };
+        let name = &unit.name;
+        let lab = |g: String, b: String| if is_lens { g } else { b };
         push(
-            format!("{n}偏心x"),
+            lab(
+                format!("{name} group decenter x"),
+                format!("{name} decenter x"),
+            ),
             one(Param::unit(u, UnitKind::Dx)),
             g.decenter,
             false,
         );
         push(
-            format!("{n}偏心y"),
+            lab(
+                format!("{name} group decenter y"),
+                format!("{name} decenter y"),
+            ),
             one(Param::unit(u, UnitKind::Dy)),
             g.decenter,
             false,
         );
         push(
-            format!("{n}傾きx"),
+            lab(format!("{name} group tilt x"), format!("{name} tilt x")),
             one(Param::unit(u, UnitKind::Tx)),
             g.tilt,
             false,
         );
         push(
-            format!("{n}傾きy"),
+            lab(format!("{name} group tilt y"), format!("{name} tilt y")),
             one(Param::unit(u, UnitKind::Ty)),
             g.tilt,
             false,
         );
         push(
-            format!("{n}移動"),
+            lab(format!("{name} group shift"), format!("{name} shift")),
             one(Param::unit(u, UnitKind::Shift)),
             g.shift,
             false,

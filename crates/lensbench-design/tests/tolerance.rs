@@ -53,32 +53,36 @@ fn names_and_catalog_defaults() {
     for k in [
         "L1 R1",
         "L1 R2",
-        "L1 厚さ1",
-        "L1 偏心x",
-        "L1 くさびy",
-        "L1 後の間隔",
+        "L1 thickness 1",
+        "L1 decenter x",
+        "L1 wedge y",
+        "L1 space after",
         "L2 R1",
-        "L2 傾きy",
+        "L2 tilt y",
     ] {
         assert!(l.iter().any(|x| x == k), "{k} が {l:?} にない");
     }
     // 平面（R=0）の曲率半径の公差は作らない、最後の玉の後の間隔（ピント）も作らない
-    assert!(!l.iter().any(|x| x == "L2 R2" || x == "L2 後の間隔"));
+    assert!(!l.iter().any(|x| x == "L2 R2" || x == "L2 space after"));
     // カタログの玉: 曲率半径ごとではなく焦点距離（メーカーによらない既定 ±2%・中心厚 ±0.1）
     let mut vd = HashMap::new();
     vd.insert("L1".to_string(), "Acme Optics".to_string());
     let m = spec_from_json(&json!({}), vec![s.clone()], &vd).unwrap();
-    let f = m.tols.iter().find(|t| t.label == "L1 焦点距離").unwrap();
+    let f = m
+        .tols
+        .iter()
+        .find(|t| t.label == "L1 focal length")
+        .unwrap();
     assert_eq!(f.params.len(), 2);
     assert!((f.hi - 0.02).abs() < 1e-15 && f.relative);
     assert!(!m.tols.iter().any(|t| t.label == "L1 R1"));
-    let ct = m.tols.iter().find(|t| t.label == "L1 厚さ1").unwrap();
+    let ct = m.tols.iter().find(|t| t.label == "L1 thickness 1").unwrap();
     assert_eq!(ct.hi, 0.1);
     // メーカーの公差（名前の一部・大文字小文字によらない）と、外径・焦点距離の規則。L1 は外径 = 既定の semi から
     let g = |v: serde_json::Value| {
         let m = spec_from_json(&v, vec![s.clone()], &vd).unwrap();
         let h = |l: &str| m.tols.iter().find(|t| t.label == l).map(|t| t.hi);
-        (h("L1 厚さ1"), h("L1 焦点距離"), h("L1 くさびx"))
+        (h("L1 thickness 1"), h("L1 focal length"), h("L1 wedge x"))
     };
     let (ct, fr, _) = g(
         json!({"catalog_tols": {"acme": {"thickness": 0.15, "focal_rel": 0.01}}, "lenses": {"L2": null}}),
@@ -291,12 +295,12 @@ fn double_pass_lens_errors_on_both_passes() {
         "{names:?}"
     );
     for k in [
-        "L1 厚さ1",
-        "L1 厚さ2",
-        "L1 屈折率2",
-        "L1 くさびx",
-        "L1 偏心y",
-        "L1 後の間隔",
+        "L1 thickness 1",
+        "L1 thickness 2",
+        "L1 index 2",
+        "L1 wedge x",
+        "L1 decenter y",
+        "L1 space after",
         "L2 R1",
     ] {
         assert!(names.contains(&k), "{k} が {names:?} にない");
@@ -358,7 +362,7 @@ fn double_pass_lens_errors_on_both_passes() {
         }
     }
     // 偏心・傾きは往復の範囲を持つブロックの動き
-    let u = m.tols.iter().find(|t| t.label == "L2 偏心x").unwrap();
+    let u = m.tols.iter().find(|t| t.label == "L2 decenter x").unwrap();
     assert_eq!(s.param_name(u.params[0]), "L2.dx");
     // 結果の JSON: 厚さの公差は戻りの面に -1
     let r = lensbench_design::montecarlo::run(&lensbench_design::montecarlo::McSpec {
@@ -371,7 +375,7 @@ fn double_pass_lens_errors_on_both_passes() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|t| t["label"] == "L2 厚さ1")
+        .find(|t| t["label"] == "L2 thickness 1")
         .unwrap();
     assert_eq!(th["scale"], json!([1.0, -1.0]));
 }
@@ -401,7 +405,7 @@ fn wedge_face_follows_lens_orientation() {
         // 往きと戻りの面がすべて平面（front なら曲面）
         let flat = |v: serde_json::Value, r: &HashSet<String>| -> Vec<bool> {
             let m = spec_from_json_with(&v, vec![s.clone()], &HashMap::new(), r).unwrap();
-            let t = m.tols.iter().find(|t| t.label == "L2 くさびx").unwrap();
+            let t = m.tols.iter().find(|t| t.label == "L2 wedge x").unwrap();
             assert_eq!(t.params.len(), 2, "往きと戻り");
             t.params
                 .iter()
@@ -430,7 +434,7 @@ fn wedge_face_follows_lens_orientation() {
         s1.units.iter_mut().for_each(|u| u.flipped = false);
         let flat1 = |r: &HashSet<String>| -> Vec<bool> {
             let m = spec_from_json_with(&json!({}), vec![s1.clone()], &HashMap::new(), r).unwrap();
-            let t = m.tols.iter().find(|t| t.label == "L2 くさびx").unwrap();
+            let t = m.tols.iter().find(|t| t.label == "L2 wedge x").unwrap();
             t.params
                 .iter()
                 .map(|q| s1.surfaces[q.surf].c == 0.0)
@@ -447,7 +451,7 @@ fn wedge_face_follows_lens_orientation() {
         let t = m
             .tols
             .iter()
-            .find(|t| t.label.ends_with(" くさびx") && !t.label.starts_with("L1"))
+            .find(|t| t.label.ends_with(" wedge x") && !t.label.starts_with("L1"))
             .unwrap();
         let f: Vec<bool> = t
             .params
@@ -482,11 +486,11 @@ fn groups_on_lens_blocks() {
     assert_eq!(
         names,
         [
-            "L1 群の偏心x",
-            "L1 群の偏心y",
-            "L1 群の傾きx",
-            "L1 群の傾きy",
-            "L2 群の移動"
+            "L1 group decenter x",
+            "L1 group decenter y",
+            "L1 group tilt x",
+            "L1 group tilt y",
+            "L2 group shift"
         ]
     );
     assert_eq!(s.param_name(m.tols[0].params[0]), "L1.dx");
@@ -494,7 +498,10 @@ fn groups_on_lens_blocks() {
     // 玉の公差（preset）とは名前を分けて両方入る
     let v = json!({"preset": "commercial", "groups": {"L1": {"decenter": 0.2}}});
     let names = labels(&v, &s, &HashMap::new());
-    assert!(names.iter().any(|l| l == "L1 偏心x") && names.iter().any(|l| l == "L1 群の偏心x"));
+    assert!(
+        names.iter().any(|l| l == "L1 decenter x")
+            && names.iter().any(|l| l == "L1 group decenter x")
+    );
     // 片道の系の玉 1 つのブロックでも
     let (_, s1) = sys();
     let names = labels(
@@ -502,7 +509,7 @@ fn groups_on_lens_blocks() {
         &s1,
         &HashMap::new(),
     );
-    assert_eq!(names, ["L1 群の傾きx", "L1 群の傾きy"]);
+    assert_eq!(names, ["L1 group tilt x", "L1 group tilt y"]);
 }
 
 #[test]

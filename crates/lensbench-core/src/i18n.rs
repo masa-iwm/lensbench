@@ -111,10 +111,24 @@ struct Entry {
 
 const JA: &str = include_str!("../lang/ja.tsv");
 
-fn entries(text: &str) -> impl Iterator<Item = Entry> + '_ {
-    text.lines()
-        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
-        .filter_map(|l| l.split_once('\t'))
+/// The table lines with a tab: `(in an "# items" section, line)`. Lines of an `# items` section are names
+/// (tolerance items such as `{name} decenter x`) that only [`translate_item`] uses: their templates
+/// match any head, so they must not take part of a message
+fn table_lines(text: &str) -> impl Iterator<Item = (bool, &str)> + '_ {
+    let mut items = false;
+    text.lines().filter_map(move |l| {
+        if l.starts_with('#') {
+            items = l.starts_with("# items");
+            return None;
+        }
+        (!l.trim().is_empty() && l.contains('\t')).then_some((items, l))
+    })
+}
+
+fn entries(text: &str, items: bool) -> impl Iterator<Item = Entry> + '_ {
+    table_lines(text)
+        .filter(move |(i, _)| *i == items)
+        .filter_map(|(_, l)| l.split_once('\t'))
         .map(|(en, ja)| Entry {
             en: pieces(en),
             ja: pieces(ja),
@@ -124,7 +138,13 @@ fn entries(text: &str) -> impl Iterator<Item = Entry> + '_ {
 /// The table: `lang/ja.tsv` and the tables added with [`add_table`]
 fn table() -> &'static RwLock<Vec<Entry>> {
     static T: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
-    T.get_or_init(|| RwLock::new(entries(JA).collect()))
+    T.get_or_init(|| RwLock::new(entries(JA, false).collect()))
+}
+
+/// The names of the `# items` sections ([`translate_item`])
+fn item_table() -> &'static RwLock<Vec<Entry>> {
+    static T: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
+    T.get_or_init(|| RwLock::new(entries(JA, true).collect()))
 }
 
 /// Add a table of the same format as `lang/ja.tsv` (an exe that adds plugins adds the Japanese of their
@@ -133,7 +153,11 @@ pub fn add_table(text: &'static str) {
     table()
         .write()
         .unwrap_or_else(|e| e.into_inner())
-        .extend(entries(text));
+        .extend(entries(text, false));
+    item_table()
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(entries(text, true));
     whole_lines()
         .write()
         .unwrap_or_else(|e| e.into_inner())
@@ -141,9 +165,9 @@ pub fn add_table(text: &'static str) {
 }
 
 fn lines(text: &str) -> impl Iterator<Item = (String, String)> + '_ {
-    text.lines()
-        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
-        .filter_map(|l| l.split_once('\t'))
+    table_lines(text)
+        .filter(|(i, _)| !i)
+        .filter_map(|(_, l)| l.split_once('\t'))
         .map(|(en, ja)| (en.to_string(), ja.to_string()))
 }
 
@@ -305,7 +329,11 @@ fn literal_len(p: &[Piece]) -> usize {
 /// Translate one English message into Japanese with the table (None if no entry matches). When several
 /// entries match, the one with the most literal text wins (`input {}` loses to `input {key} must be …`)
 fn lookup(s: &str) -> Option<String> {
-    let t = table().read().unwrap_or_else(|e| e.into_inner());
+    lookup_in(table(), s)
+}
+
+fn lookup_in(t: &RwLock<Vec<Entry>>, s: &str) -> Option<String> {
+    let t = t.read().unwrap_or_else(|e| e.into_inner());
     t.iter()
         .filter_map(|e| matches(&e.en, s).map(|v| (literal_len(&e.en), e, v)))
         .max_by_key(|(n, _, _)| *n)
@@ -351,6 +379,21 @@ pub fn translate_doc(s: &str) -> String {
             .unwrap_or_else(|| l.to_string())
     };
     s.split('\n').map(line).collect::<Vec<_>>().join("\n")
+}
+
+/// The Japanese of a name from an `# items` section of the table (a tolerance item such as
+/// `L1 group decenter x`); other text stays as it is
+pub fn translate_item(s: &str) -> String {
+    lookup_in(item_table(), s).unwrap_or_else(|| s.to_string())
+}
+
+/// [`translate_item`] in the current language
+pub fn tr_item(s: &str) -> String {
+    if is_ja() {
+        translate_item(s)
+    } else {
+        s.to_string()
+    }
 }
 
 /// [`translate_doc`] in the current language
@@ -412,6 +455,16 @@ mod tests {
             translate_doc("Propagation distance [mm]"),
             "伝搬の距離 [mm]"
         );
+    }
+
+    #[test]
+    fn tolerance_item_names() {
+        assert_eq!(translate_item("L1 group decenter x"), "L1 群の偏心x");
+        assert_eq!(translate_item("L1 decenter x"), "L1 偏心x");
+        assert_eq!(translate_item("lens 2 thickness 3"), "lens 2 厚さ3");
+        assert_eq!(translate_item("L1 R2"), "L1 R2");
+        // 項目名の型は誤りの文の経路では使わない（先頭が何でも当たるので）
+        assert_eq!(translate("no such glass index 3"), "no such glass index 3");
     }
 
     #[test]

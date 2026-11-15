@@ -1990,3 +1990,22 @@ poly: c₁, c₂, … of h = f (θ + c₁ θ³ + c₂ θ⁵ + …)	poly: h = f (
 table: field angles (increasing from 0)	table: 画角（0 から増える順）
 table: image heights	table: 像高
 Measured coating tables (LBCT format, more than one allowed)	膜の実測表（LBCT 形式、複数可）
+
+# items: tolerance item names (Monte Carlo, sensitivity), only for translate_item
+{name} focal length	{name} 焦点距離
+{name} thickness {}	{name} 厚さ{}
+{name} index {}	{name} 屈折率{}
+{name} dispersion {}	{name} 分散{}
+{name} wedge x	{name} くさびx
+{name} wedge y	{name} くさびy
+{name} decenter x	{name} 偏心x
+{name} decenter y	{name} 偏心y
+{name} tilt x	{name} 傾きx
+{name} tilt y	{name} 傾きy
+{name} space after	{name} 後の間隔
+{name} group decenter x	{name} 群の偏心x
+{name} group decenter y	{name} 群の偏心y
+{name} group tilt x	{name} 群の傾きx
+{name} group tilt y	{name} 群の傾きy
+{name} group shift	{name} 群の移動
+{name} shift	{name} 移動

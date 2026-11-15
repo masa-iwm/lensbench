@@ -751,7 +751,7 @@ fn print_out(json_out: bool, out: &Value) {
     let r = if json_out {
         writeln!(w, "{}", serde_json::to_string_pretty(out).unwrap())
     } else {
-        text_out::print_text(&mut w, &brief(&tolerance_brief(out)), 0)
+        text_out::print_text(&mut w, &brief(&text_out::tolerance_brief(out)), 0)
     };
     // 読み手が先に閉じた（`| head` など）ときは黙って終える
     let e = r.and_then(|_| w.flush()).err();
@@ -759,42 +759,6 @@ fn print_out(json_out: bool, out: &Value) {
         let m = format!("lensbench: output: {e}");
         eprintln!("{}", lensbench_core::i18n::tr(&m));
     }
-}
-
-/// 公差の結果（`merit_values` を持つ）を画面用に要点だけにする。--save・serve・GUI には全体を渡す
-fn tolerance_brief(out: &Value) -> Value {
-    let mut out = out.clone();
-    let Some(o) = out.as_object_mut() else {
-        return out;
-    };
-    if !o.contains_key("merit_values") {
-        return out;
-    }
-    o.remove("cdf");
-    o.remove("tolerances");
-    o.remove("merit_values");
-    for k in ["compensators", "tilt_magnitudes"] {
-        if let Some(Value::Array(a)) = o.get_mut(k) {
-            for t in a {
-                if let Some(t) = t.as_object_mut() {
-                    t.remove("values");
-                }
-            }
-        }
-    }
-    for k in ["sensitivity", "correlation"] {
-        if let Some(Value::Array(a)) = o.get_mut(k) {
-            a.truncate(10);
-        }
-    }
-    if let Some(Value::Array(a)) = o.get_mut("terms") {
-        for t in a {
-            if let Some(t) = t.as_object_mut() {
-                t.remove("cdf");
-            }
-        }
-    }
-    out
 }
 
 /// 解析のコマンドを 1 つ実行して結果を返す（--save があれば書き出す）。watch・ext::run_cli もこれを使う

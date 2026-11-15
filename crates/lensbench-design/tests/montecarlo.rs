@@ -182,11 +182,14 @@ fn simple_set_and_relative() {
     };
     let tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
     let labels: Vec<&str> = tols.iter().map(|t| t.label.as_str()).collect();
-    assert!(labels.contains(&"lens1 焦点距離"), "{labels:?}");
-    assert!(labels.contains(&"lens1 偏心x"));
-    assert!(labels.contains(&"lens1 後の間隔"));
+    assert!(labels.contains(&"lens1 focal length"), "{labels:?}");
+    assert!(labels.contains(&"lens1 decenter x"));
+    assert!(labels.contains(&"lens1 space after"));
     // 焦点距離の公差は玉の曲率半径をすべて同じ比で変える
-    let k = labels.iter().position(|&l| l == "lens1 焦点距離").unwrap();
+    let k = labels
+        .iter()
+        .position(|&l| l == "lens1 focal length")
+        .unwrap();
     let spec = McSpec::new(problem(&s), tols.clone());
     let mut d = vec![0.0; tols.len()];
     d[k] = 0.01;
@@ -205,7 +208,10 @@ fn disc_pairs() {
     let mut tols = tolerance::simple(&s, &|_| Some(lt), &|_| None, Dist::Uniform);
     let n = tolerance::pair_disc(&mut tols, None);
     // 玉ごとにくさび・偏心・傾きの 3 組
-    let lenses = tols.iter().filter(|t| t.label.ends_with("偏心x")).count();
+    let lenses = tols
+        .iter()
+        .filter(|t| t.label.ends_with("decenter x"))
+        .count();
     assert!(lenses > 0);
     assert_eq!(
         n,
@@ -215,7 +221,7 @@ fn disc_pairs() {
     );
     let k = tols
         .iter()
-        .position(|t| t.label.ends_with("偏心x"))
+        .position(|t| t.label.ends_with("decenter x"))
         .unwrap();
     assert_eq!(
         (tols[k].dist, tols[k + 1].dist),
@@ -224,7 +230,7 @@ fn disc_pairs() {
     // 曲率・厚さなどは組にしない
     assert!(tols
         .iter()
-        .filter(|t| t.label.contains("厚さ"))
+        .filter(|t| t.label.contains("thickness"))
         .all(|t| t.dist == Dist::Uniform));
     let mut spec = McSpec::new(problem(&s), tols.clone());
     spec.trials = 0;
@@ -285,7 +291,7 @@ fn disc_normal_pairs() {
     assert!(n > 0);
     let k = tols
         .iter()
-        .position(|t| t.label.ends_with("偏心x"))
+        .position(|t| t.label.ends_with("decenter x"))
         .unwrap();
     assert_eq!(
         (tols[k].dist, tols[k + 1].dist),
