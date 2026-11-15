@@ -99,3 +99,10 @@ mod tests {
         assert_eq!(json_num(&json!("x")), None);
     }
 }
+
+/// 見るだけの図の拡大（対数）と移動（パネルの状態に持つ、GPN-28）
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+pub struct Nav {
+    pub zoom_log: f32,
+    pub pan: egui::Vec2,
+}

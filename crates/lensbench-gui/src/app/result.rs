@@ -151,7 +151,9 @@ impl Core {
             egui::ScrollArea::vertical()
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
-                .show(ui, |ui| plots::mtf(ui, v, r.prev.as_ref(), id, r.gen));
+                .show(ui, |ui| {
+                    plots::mtf(ui, v, r.prev.as_ref(), id, r.gen, &mut cfg.fig.mtf_prev)
+                });
             return;
         }
         // スポット以外の図（描けない結果なら表）
@@ -160,7 +162,7 @@ impl Core {
                 .id_salt(("fig", id))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    figures::show(ui, id, r.gen, &r.cmd, v, r.prev.as_ref())
+                    figures::show(ui, id, r.gen, &r.cmd, v, r.prev.as_ref(), &mut cfg.fig)
                 })
                 .inner;
             if shown {
@@ -178,7 +180,15 @@ impl Core {
                         primary: self.primary(),
                         wfno: self.info_num("wfno"),
                     };
-                    plots::spot(ui, &r.rays, r.rays_gen, v, r.prev.as_ref(), &sys);
+                    plots::spot(
+                        ui,
+                        &r.rays,
+                        r.rays_gen,
+                        v,
+                        r.prev.as_ref(),
+                        &sys,
+                        &mut cfg.fig,
+                    );
                     ui.separator();
                     json_view::show(ui, v);
                 } else if cfg.view == View::Json {

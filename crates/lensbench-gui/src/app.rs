@@ -2143,14 +2143,8 @@ impl Core {
                 let (mut top, b) = split::two(ui, "open_layout", (0.55, 0.55), 80.0);
                 let h = top.available_height();
                 let hl = self.p.ld.cur.map(|x| x.0);
-                let clicked = combo::view_only(
-                    &mut top,
-                    d,
-                    h,
-                    accent,
-                    Some(egui::Id::new("open_layout_nav")),
-                    hl,
-                );
+                let nav = Some(&mut self.p.open_nav);
+                let clicked = combo::view_only(&mut top, d, h, accent, nav, hl);
                 match clicked {
                     // 図でクリックした玉の行をレンズデータで選ぶ
                     Some(combo::OpenAct::Clicked([a, _])) => self.select_ld_surface(a),

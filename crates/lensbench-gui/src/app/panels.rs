@@ -10,6 +10,8 @@ pub(super) struct Panels {
     pub(super) um: crate::unit_mech::Edits,
     /// 組合せのレイアウト図の選択・拡大・ドラッグ
     pub(super) combo_view: combo::View,
+    /// 開いた系のレイアウト図の拡大・移動
+    pub(super) open_nav: crate::widgets::Nav,
     /// 多重構成の表
     pub(super) mc: config_panel::State,
     /// 開いた系の系の設定
@@ -34,6 +36,7 @@ impl Default for Panels {
             ld: Default::default(),
             um: Default::default(),
             combo_view: Default::default(),
+            open_nav: Default::default(),
             mc: Default::default(),
             oss: Default::default(),
             cat_save: CatSave::default(),

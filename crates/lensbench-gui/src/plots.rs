@@ -177,6 +177,7 @@ pub fn spot(
     result: &Value,
     prev: Option<&Value>,
     sys: &SysInfo,
+    st: &mut crate::figures::FigState,
 ) {
     let scale = crate::figures::memo(ui, ("spot-scale", sys.primary), rays_gen, || {
         spot_scale(rays, sys.primary)
@@ -203,10 +204,7 @@ pub fn spot(
     let vis = ui.visuals().clone();
     // 拡大・移動（全視野で共通。倍率と中心のずれ µm）。ホイール＝拡大、右・中ドラッグ＝移動、
     // ダブルクリック・Home＝全体（GPN-09）
-    let view_id = ui.make_persistent_id("spot-view");
-    let mut view: (f32, egui::Vec2) = ui
-        .data(|d| d.get_temp(view_id))
-        .unwrap_or((1.0, egui::Vec2::ZERO));
+    let mut view: (f32, egui::Vec2) = (st.spot_zoom, egui::Vec2::from(st.spot_pan));
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(trf(
@@ -326,7 +324,7 @@ pub fn spot(
                 }
             }
         });
-    ui.data_mut(|d| d.insert_temp(view_id, view));
+    (st.spot_zoom, st.spot_pan) = (view.0, view.1.into());
 }
 
 /// 視野の座標の文字の並び（画面の一時データの鍵。解析パネルが描く前に入れる）
@@ -344,13 +342,28 @@ pub fn field_namer(ui: &Ui) -> impl Fn(usize) -> String {
 }
 
 /// MTF の曲線（視野ごとに色、子午は実線・球欠は破線）。前の結果は薄い点線
-pub fn mtf(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, gen: u64) {
-    mtf_curves(ui, result, prev, id, gen, "mtf");
+pub fn mtf(
+    ui: &mut Ui,
+    result: &Value,
+    prev: Option<&Value>,
+    id: u64,
+    gen: u64,
+    show_prev: &mut bool,
+) {
+    mtf_curves(ui, result, prev, id, gen, "mtf", show_prev);
 }
 
 /// MTF の曲線（key は結果の並びの名前: 回折 MTF は mtf、幾何 MTF は geometric_mtf）。gen は結果の世代
 /// （曲線はそのときだけ JSON から作る、GPN-07）
-pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, gen: u64, key: &str) {
+pub fn mtf_curves(
+    ui: &mut Ui,
+    result: &Value,
+    prev: Option<&Value>,
+    id: u64,
+    gen: u64,
+    key: &str,
+    show_prev: &mut bool,
+) {
     let Some(curves) = result[key].as_array() else {
         ui.weak(tr("MTF の結果がない"));
         return;
@@ -382,14 +395,12 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ge
     });
     let (now, prev_lines) = (&both.0, &both.1);
     // 前の結果（点線）は出すかを選べる。出すときも今の結果の周波数の範囲で切る（軸を引き伸ばさない、GUX-19）
-    let show_prev_id = egui::Id::new(("mtf-show-prev", key, id));
-    let mut show_prev: bool = ui.data(|d| d.get_temp(show_prev_id)).unwrap_or(true);
     let xmax = now
         .iter()
         .flat_map(|(_, _, p)| p.iter().map(|q| q[0]))
         .filter(|x| x.is_finite())
         .fold(f64::NEG_INFINITY, f64::max);
-    let before: Vec<(usize, &str, Vec<[f64; 2]>)> = if show_prev {
+    let before: Vec<(usize, &str, Vec<[f64; 2]>)> = if *show_prev {
         prev_lines
             .iter()
             .map(|(f, k, p)| {
@@ -491,15 +502,10 @@ pub fn mtf_curves(ui: &mut Ui, result: &Value, prev: Option<&Value>, id: u64, ge
     if has_prev {
         ui.horizontal(|ui| {
             sample(ui, weak, false, true);
-            if ui
-                .checkbox(
-                    &mut show_prev,
-                    RichText::new(tr("前の結果（系を変える前）")).small(),
-                )
-                .changed()
-            {
-                ui.data_mut(|d| d.insert_temp(show_prev_id, show_prev));
-            }
+            ui.checkbox(
+                show_prev,
+                RichText::new(tr("前の結果（系を変える前）")).small(),
+            );
         });
     }
 }

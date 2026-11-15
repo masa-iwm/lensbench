@@ -2277,7 +2277,7 @@ pub fn view_only(
     d: &LayoutData,
     h: f32,
     accent: Color32,
-    nav: Option<egui::Id>,
+    mut nav: Option<&mut crate::widgets::Nav>,
     hl_surf: Option<usize>,
 ) -> Option<OpenAct> {
     // 3D は回す・拡大の操作を受ける。2D も nav があれば拡大縮小・移動を受ける（#124）
@@ -2298,15 +2298,15 @@ pub fn view_only(
         hl_surf,
         ..Default::default()
     };
-    if let Some(id) = nav {
-        let (z, p): (f32, Vec2) = ui.data(|m| m.get_temp(id)).unwrap_or_default();
+    if let Some(n) = nav.as_deref() {
         view.nav = true;
-        view.zoom_log = z;
-        view.pan = p;
+        view.zoom_log = n.zoom_log;
+        view.pan = n.pan;
     }
     figure(ui, rect, &resp, &mut none, d, &mut view, accent);
-    if let Some(id) = nav {
-        ui.data_mut(|m| m.insert_temp(id, (view.zoom_log, view.pan)));
+    if let Some(n) = nav.as_deref_mut() {
+        n.zoom_log = view.zoom_log;
+        n.pan = view.pan;
     }
     // カタログの行を落とす（nav のある開いた系の図だけ。2D の図）: 差し込む間隔の印
     if nav.is_some() && d.d3.is_none() && !d.unfold {

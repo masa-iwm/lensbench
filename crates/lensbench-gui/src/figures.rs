@@ -90,19 +90,27 @@ pub(crate) fn memo<T: Send + Sync + 'static>(
 }
 
 /// 図を描く。描けない結果なら false（呼び手が表で見せる）。gen は結果の世代（届くたびに変わる）
-pub fn show(ui: &mut Ui, id: u64, gen: u64, cmd: &str, v: &Value, prev: Option<&Value>) -> bool {
+pub fn show(
+    ui: &mut Ui,
+    id: u64,
+    gen: u64,
+    cmd: &str,
+    v: &Value,
+    prev: Option<&Value>,
+    st: &mut FigState,
+) -> bool {
     if let Some(a) = crate::ext::get(cmd) {
         return a.figure.is_some_and(|f| f(ui, id, v));
     }
     match cmd {
-        "wavefront" => wavefront(ui, id, gen, v),
-        "psf" => psf(ui, id, gen, v),
+        "wavefront" => wavefront(ui, id, gen, v, st),
+        "psf" => psf(ui, id, gen, v, st),
         "zernike" => zernike(ui, id, v),
         "mtf-field" => mtf_field(ui, id, v, prev),
-        "mtf-focus" => mtf_focus(ui, id, v, prev),
-        "rms" => rms(ui, id, v, prev),
+        "mtf-focus" => mtf_focus(ui, id, v, prev, st),
+        "rms" => rms(ui, id, v, prev, st),
         "geo-mtf" => {
-            crate::plots::mtf_curves(ui, v, prev, id, gen, "geometric_mtf");
+            crate::plots::mtf_curves(ui, v, prev, id, gen, "geometric_mtf", &mut st.mtf_prev);
             true
         }
         "interference" => interference(ui, id, v),
@@ -374,24 +382,73 @@ pub fn f64s(v: &Value) -> Vec<f64> {
         .unwrap_or_default()
 }
 
-/// 視野の選び（全視野の結果のとき）。選んだ項目の位置を返す
+/// 解析パネルの図の見せ方（パネルごと。[`crate::layout::AnaCfg`] に入れて並びと一緒に保存する、GPN-28）
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct FigState {
+    /// 全視野の結果で選んだ視野の位置（図の種類ごと: wavefront・psf）
+    pub pick: std::collections::BTreeMap<String, usize>,
+    /// 波面の図の干渉縞
+    pub fringe: FringeCfg,
+    /// PSF を対数で
+    pub psf_log: bool,
+    /// through-focus の MTF で選んだ周波数の位置
+    pub tf_freq: usize,
+    /// RMS の図の量（0 スポット・1 波面・2 Strehl）
+    pub rms_q: usize,
+    /// MTF の図に前の結果（点線）を出す
+    pub mtf_prev: bool,
+    /// スポット図の倍率と、中心のずれ [µm]
+    pub spot_zoom: f32,
+    pub spot_pan: [f32; 2],
+}
+
+impl Default for FigState {
+    fn default() -> Self {
+        FigState {
+            pick: Default::default(),
+            fringe: FringeCfg::default(),
+            psf_log: false,
+            tf_freq: 0,
+            rms_q: 0,
+            mtf_prev: true,
+            spot_zoom: 1.0,
+            spot_pan: [0.0; 2],
+        }
+    }
+}
+
+/// 視野の選び（全視野の結果のとき）。選んだ項目の位置を返す。選びは画面の一時データに持つ
+/// （拡張の解析の図から。内蔵の図は [`FigState::pick`]）
 pub fn pick_field(ui: &mut Ui, id: u64, what: &str, items: &[Value]) -> usize {
-    let fname = crate::plots::field_namer(ui);
     let key = ui.make_persistent_id(("fig-field", id, what));
     let mut k: usize = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, 0usize));
-    if k >= items.len() {
-        k = 0;
+    pick_in(ui, &mut k, items);
+    ui.ctx().data_mut(|d| d.insert_temp(key, k));
+    k
+}
+
+/// 視野の選び（k を書き換える。範囲の外なら 0 に戻す）
+fn pick_in(ui: &mut Ui, k: &mut usize, items: &[Value]) {
+    let fname = crate::plots::field_namer(ui);
+    if *k >= items.len() {
+        *k = 0;
     }
     if items.len() > 1 {
         ui.horizontal_wrapped(|ui| {
             for (i, it) in items.iter().enumerate() {
                 let f = it["field"].as_u64().unwrap_or(i as u64 + 1);
-                ui.selectable_value(&mut k, i, fname(f as usize));
+                ui.selectable_value(k, i, fname(f as usize));
             }
         });
-        ui.ctx().data_mut(|d| d.insert_temp(key, k));
     }
-    k
+}
+
+/// 内蔵の図の視野の選び（[`FigState::pick`] に持つ）
+fn pick_state(ui: &mut Ui, st: &mut FigState, what: &str, items: &[Value]) -> usize {
+    let k = st.pick.entry(what.to_string()).or_insert(0);
+    pick_in(ui, k, items);
+    *k
 }
 
 /// 小さい薄い字
@@ -433,8 +490,9 @@ pub fn wavefront_grid(item: &Value) -> Option<Grid> {
     })
 }
 
-/// 干渉縞の設定（パネルごと、保存しない）
-#[derive(Clone, Copy, PartialEq, Debug)]
+/// 干渉縞の設定（パネルごと。[`FigState`] に入れて並びと一緒に保存する）
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct FringeCfg {
     pub on: bool,
     /// OPD にかける数（ダブルパスは 2）
@@ -475,21 +533,20 @@ pub fn interferogram(g: &Grid, f: &FringeCfg) -> Grid {
     out
 }
 
-fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
+fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
     let Some(items) = v["wavefront"].as_array() else {
         return false;
     };
     if items.is_empty() || items[0]["map"].is_null() {
         return false;
     }
-    let k = pick_field(ui, id, "wavefront", items);
+    let k = pick_state(ui, st, "wavefront", items);
     let it = &items[k];
     let Some(g) = &*memo(ui, ("wf-grid", id, k), gen, || wavefront_grid(it)) else {
         ui.weak(tr("波面の格子が読めない"));
         return true;
     };
-    let key = ui.make_persistent_id(("interference", id));
-    let mut f: FringeCfg = ui.ctx().data_mut(|d| *d.get_temp_mut_or_default(key));
+    let mut f = st.fringe;
     ui.horizontal_wrapped(|ui| {
         ui.selectable_value(&mut f.on, false, tr("波面"));
         ui.selectable_value(&mut f.on, true, tr("干渉縞"))
@@ -528,7 +585,7 @@ fn wavefront(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
             ),
         ));
     });
-    ui.ctx().data_mut(|d| d.insert_temp(key, f));
+    st.fringe = f;
     let h = fig_height(ui, 8.0);
     let lab = (tr("瞳 x"), tr("瞳 y"));
     if f.on {
@@ -680,18 +737,17 @@ pub fn crop_to_signal(g: &Grid, rel: f64) -> Grid {
     }
 }
 
-fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
+fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value, st: &mut FigState) -> bool {
     let grids = memo(ui, ("psf-grids", id), gen, || psf_grids(v));
     if grids.is_empty() {
         return false;
     }
     let items: Vec<Value> = grids.iter().map(|(f, _)| json!({ "field": f })).collect();
-    let k = pick_field(ui, id, "psf", &items);
+    let k = pick_state(ui, st, "psf", &items);
     let g = &*memo(ui, ("psf-crop", id, k), gen, || {
         crop_to_signal(&grids[k].1, 1e-2)
     });
-    let key = ui.make_persistent_id(("psf-log", id));
-    let mut log: bool = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, false));
+    let mut log = st.psf_log;
     let peak = g.range().map(|r| r.1).unwrap_or(1.0);
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut log, tr("対数（log10）"));
@@ -700,7 +756,7 @@ fn psf(ui: &mut Ui, id: u64, gen: u64, v: &Value) -> bool {
             trf("ピーク {}（収差のない瞳の中心 = 1）", &[&fmt_sig(peak, 4)]),
         ));
     });
-    ui.ctx().data_mut(|d| d.insert_temp(key, log));
+    st.psf_log = log;
     let unit = if lens_mm(v) {
         "µm".to_string()
     } else {
@@ -876,7 +932,7 @@ fn mtf_field(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
 }
 
 /// スルーフォーカス MTF: 横軸は像面のずらし、（視野・周波数）ごとに色
-fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
+fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState) -> bool {
     let Some(_) = v["through_focus"].as_array() else {
         return false;
     };
@@ -908,8 +964,7 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
             freqs.push(f);
         }
     }
-    let fk = ui.make_persistent_id(("tf-freq", id));
-    let mut sel: usize = ui.ctx().data_mut(|d| *d.get_temp_mut_or(fk, 0usize));
+    let mut sel = st.tf_freq;
     if sel >= freqs.len() {
         sel = 0;
     }
@@ -919,8 +974,8 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
                 ui.selectable_value(&mut sel, i, format!("{} {}", fmt_sig(*f, 3), unit));
             }
         });
-        ui.ctx().data_mut(|d| d.insert_temp(fk, sel));
     }
+    st.tf_freq = sel;
     let fsel = freqs.get(sel).copied().unwrap_or(f64::NAN);
     let keep = |s: S| -> S { s.into_iter().filter(|x| x.0 .1 == fsel).collect() };
     let now = keep(series(v));
@@ -966,7 +1021,7 @@ fn mtf_focus(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
 }
 
 /// RMS の掃引（視野・フォーカス・波長）。量はスポット [µm]・波面 [波]・Strehl から選ぶ
-fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
+fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>, st: &mut FigState) -> bool {
     let fname = crate::plots::field_namer(ui);
     let Some(_) = v["rms"].as_array() else {
         return false;
@@ -977,14 +1032,13 @@ fn rms(ui: &mut Ui, id: u64, v: &Value, prev: Option<&Value>) -> bool {
         "wavelength" => ("wavelength", tr("波長 [µm]").to_string()),
         _ => ("h", tr("視野（正規化）").to_string()),
     };
-    let key = ui.make_persistent_id(("rms-q", id));
-    let mut q: usize = ui.ctx().data_mut(|d| *d.get_temp_mut_or(key, 0usize));
+    let mut q = st.rms_q;
     ui.horizontal(|ui| {
         ui.selectable_value(&mut q, 0, tr("スポット"));
         ui.selectable_value(&mut q, 1, tr("波面"));
         ui.selectable_value(&mut q, 2, "Strehl");
     });
-    ui.ctx().data_mut(|d| d.insert_temp(key, q));
+    st.rms_q = q;
     let lens_um = lens_mm(v);
     let (yk, yl, k) = match q {
         1 => ("wfe", tr("RMS 波面 [波]").to_string(), 1.0),

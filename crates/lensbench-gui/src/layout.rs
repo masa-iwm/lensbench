@@ -131,6 +131,8 @@ pub struct AnaCfg {
     pub view: View,
     /// 系の値が変わったら計算し直す
     pub live: bool,
+    /// 図の見せ方（干渉縞・対数・選んだ視野・拡大など、GPN-28。大きいので箱に）
+    pub fig: Box<crate::figures::FigState>,
 }
 
 impl Default for AnaCfg {
@@ -145,6 +147,7 @@ impl Default for AnaCfg {
             args_open: false,
             view: View::Figure,
             live: true,
+            fig: Default::default(),
         }
     }
 }
