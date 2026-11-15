@@ -73,7 +73,8 @@ pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
                 lensbench_core::Error::Cancelled => CancelledError::new_err(m),
             }
         }
-        ErrSrc::Text(m) => Error::new_err(m),
+        // 文字列の誤りは英語で書いてあるので、表示の言語に訳す（XCT-20）
+        ErrSrc::Text(m) => Error::new_err(lensbench_core::i18n::tr(&m)),
     }
 }
 
@@ -85,4 +86,24 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("ReadError", py.get_type::<ReadError>())?;
     m.add("CancelledError", py.get_type::<CancelledError>())?;
     Ok(())
+}
+
+/// Python の組み込みの例外を、英語の文を表示の言語に訳して作る（XCT-20）
+pub fn value_err(m: impl AsRef<str>) -> PyErr {
+    PyValueError::new_err(lensbench_core::i18n::tr(m.as_ref()))
+}
+
+/// [`value_err`] の IndexError
+pub fn index_err(m: impl AsRef<str>) -> PyErr {
+    pyo3::exceptions::PyIndexError::new_err(lensbench_core::i18n::tr(m.as_ref()))
+}
+
+/// [`value_err`] の TypeError
+pub fn type_err(m: impl AsRef<str>) -> PyErr {
+    pyo3::exceptions::PyTypeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
+}
+
+/// [`value_err`] の RuntimeError
+pub fn runtime_err(m: impl AsRef<str>) -> PyErr {
+    pyo3::exceptions::PyRuntimeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }

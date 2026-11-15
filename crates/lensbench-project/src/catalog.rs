@@ -238,14 +238,23 @@ impl MechSpec {
     pub fn validate(&self) -> Result<(), String> {
         for (k, b) in self.bores.iter().enumerate() {
             if !(b.diameter > 0.0 && b.diameter.is_finite()) {
-                return Err(format!("機構の穴 {}: 内径 {}", k + 1, b.diameter));
+                return Err(format!(
+                    "mechanism bore {}: inner diameter {}",
+                    k + 1,
+                    b.diameter
+                ));
             }
             if !(b.z0.is_finite() && b.z1.is_finite() && b.z1 >= b.z0) {
-                return Err(format!("機構の穴 {}: z の範囲 {}〜{}", k + 1, b.z0, b.z1));
+                return Err(format!(
+                    "mechanism bore {}: z range {} to {}",
+                    k + 1,
+                    b.z0,
+                    b.z1
+                ));
             }
         }
         if !(self.length >= 0.0 && self.outer_diameter >= 0.0) {
-            return Err("機構の長さ・外径が負".into());
+            return Err("negative mechanism length or outer diameter".into());
         }
         Ok(())
     }
@@ -344,7 +353,7 @@ impl MechAt {
 
 impl UserCatalog {
     pub fn from_json(txt: &str) -> Result<UserCatalog, String> {
-        serde_json::from_str(txt).map_err(|e| format!("ユーザーカタログ: {e}"))
+        serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}"))
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap()
@@ -450,10 +459,7 @@ pub(crate) fn read_text_limit(path: &Path, limit: u64) -> Result<String, String>
             .read_to_end(&mut out)
             .map_err(err)?;
         if out.len() as u64 > limit {
-            return Err(format!(
-                "{}: 展開すると {limit} バイトを超える",
-                p.display()
-            ));
+            return Err(format!("{}: over {limit} bytes when inflated", p.display()));
         }
         out
     } else {

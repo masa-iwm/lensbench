@@ -4,7 +4,7 @@ use super::*;
 /// 玉（玉モードの要素）を、面を直接書いた玉のブロックにする（ほかのプロジェクトへ持ち出せる形）
 pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
     if e.kind != Kind::Lens {
-        return Err("玉でない要素".into());
+        return Err("not a lens element".into());
     }
     let n = e.surfaces.len();
     let mut v = Vec::new();
@@ -16,10 +16,14 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
             SurfType::Fresnel => Some(SurfShape::Fresnel),
             _ => None,
         };
-        let msg = "標準面・偶数次非球面・Odd Asphere・トロイダル・Fresnel だけ保存できる";
-        let shape = shape.ok_or_else(|| format!("玉の面 {}: {msg}", i + 1))?;
+        let e =
+            "only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved";
+        let shape = shape.ok_or_else(|| format!("lens surface {}: {e}", i + 1))?;
         if s.mirror {
-            return Err(format!("玉の面 {}: 鏡の面のある玉は保存できない", i + 1));
+            return Err(format!(
+                "lens surface {}: a lens with a mirror surface can't be saved",
+                i + 1
+            ));
         }
         let glass = if i + 1 == n || is_air(&s.mat) {
             None
@@ -29,7 +33,7 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
                 (Ok(_), Ok(0.0)) => Some(format!("{}", s.n.first().copied().unwrap_or(0.0))),
                 _ => {
                     return Err(format!(
-                        "玉の面 {}: 分散のあるモデルガラス {} は保存できない",
+                        "lens surface {}: model glass {} with dispersion can't be saved",
                         i + 1,
                         s.mat
                     ))
@@ -119,8 +123,8 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
     find(&p.blocks, id, &mut hits);
     let b = match hits.as_slice() {
         [b] => (*b).clone(),
-        [] => return Err(format!("ブロック {id} はない")),
-        _ => return Err(format!("id {id} のブロックが 2 つ以上ある")),
+        [] => return Err(format!("no block {id}")),
+        _ => return Err(format!("two or more blocks with id {id}")),
     };
     let mut c = Ctx {
         env,
@@ -163,7 +167,7 @@ pub fn blocks_item(
     description: &str,
 ) -> Result<UserItem, String> {
     let (first, last) = match ids {
-        [] => return Err("保存するブロックの id がない".into()),
+        [] => return Err("no block id to save".into()),
         [a] => (a, a),
         [a, .., b] => (a, b),
     };
@@ -178,8 +182,8 @@ pub fn blocks_item(
             .collect();
         match v.as_slice() {
             [i] => Ok(*i),
-            [] => Err(format!("ブロック {id} は最上位の並びにない")),
-            _ => Err(format!("id {id} のブロックが 2 つ以上ある")),
+            [] => Err(format!("block {id} is not in the top-level list")),
+            _ => Err(format!("two or more blocks with id {id}")),
         }
     };
     let mut item = if ids.len() == 1 {
@@ -187,7 +191,7 @@ pub fn blocks_item(
     } else {
         let (i, j) = (top(first)?, top(last)?);
         if i > j {
-            return Err(format!("{first} は {last} より後ろ"));
+            return Err(format!("{first} is after {last}"));
         }
         let mut blocks = Vec::new();
         let mut cats = Vec::new();
@@ -270,11 +274,11 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
         .units
         .iter()
         .find(|u| u.name == id)
-        .ok_or_else(|| format!("ブロック {id} の面が系に無い"))?;
+        .ok_or_else(|| format!("the surfaces of block {id} are not in the system"))?;
     let [a, z] = u.spans[0];
     if s.surfaces[..a].iter().any(|x| x.mirror) {
         return Err(format!(
-            "ブロック {id}: 鏡の後の玉の変更は焼き込めない（未対応）"
+            "block {id}: changes to a lens after a mirror can't be baked in (not supported)"
         ));
     }
     // 面の表の番号と同じく、座標ブレークを除いた面（偏心・傾きの座標ブレークは place のまま残る）
@@ -296,18 +300,18 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
         .map_or(0, |v| v.iter().filter(|q| q.coordbrk.is_some()).count());
     if span_cbs != place_cbs + inner_cbs || (*reversed && inner_cbs > 0) {
         return Err(format!(
-            "ブロック {id}: 中に座標ブレークのある玉の変更は焼き込めない（未対応）"
+            "block {id}: changes to a lens with a coordinate break inside can't be baked in (not supported)"
         ));
     }
     let n = faces.len();
     let mut specs = Vec::with_capacity(n + inner_cbs);
     let mut k = 0;
     let take = |k: &mut usize| -> Result<SurfSpec, String> {
-        let f = faces
-            .get(*k)
-            .ok_or_else(|| format!("ブロック {id}: 面の数が元の玉と違う"))?;
+        let f = faces.get(*k).ok_or_else(|| {
+            format!("block {id}: the number of surfaces differs from the original lens")
+        })?;
         *k += 1;
-        let mut q = surface_spec(f, *k == n).map_err(|e| format!("ブロック {id} の面 {k}: {e}"))?;
+        let mut q = surface_spec(f, *k == n).map_err(|e| format!("block {id} surface {k}: {e}"))?;
         if *k == n {
             q.t = 0.0;
         }
@@ -330,7 +334,9 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
         }
     }
     if k != n {
-        return Err(format!("ブロック {id}: 面の数が元の玉と違う"));
+        return Err(format!(
+            "block {id}: the number of surfaces differs from the original lens"
+        ));
     }
     for d in &faces {
         if let Some(g) = s.glasses.get(&d.mat) {
@@ -352,33 +358,42 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> 
         f.typ,
         SurfType::Standard | SurfType::EvenAsph | SurfType::Jones
     ) {
-        return Err(format!("面の型 {:?} は書けない", f.typ));
+        return Err(format!("surface type {:?} can't be written", f.typ));
     }
     if f.mirror {
-        return Err("鏡の面は書けない".into());
+        return Err("a mirror surface can't be written".into());
     }
     // 頂点のまわりの傾きだけで後で戻す面は tilt で書ける（tilt は tx → ty の順。順序 1 は tx・ty の片方が 0 のときだけ同じ）
-    let tilt = match (&f.before, &f.after) {
-        (None, After::None) => None,
-        (Some(t), After::Reverse)
-            if t.d[0] == 0.0
-                && t.d[1] == 0.0
-                && t.d[4] == 0.0
-                && (t.order == 0 || t.d[2] == 0.0 || t.d[3] == 0.0) =>
-        {
-            Some([t.d[2], t.d[3]])
-        }
-        _ => return Err("面の前後の傾き・偏心（before・after）は書けない".into()),
-    };
+    let tilt =
+        match (&f.before, &f.after) {
+            (None, After::None) => None,
+            (Some(t), After::Reverse)
+                if t.d[0] == 0.0
+                    && t.d[1] == 0.0
+                    && t.d[4] == 0.0
+                    && (t.order == 0 || t.d[2] == 0.0 || t.d[3] == 0.0) =>
+            {
+                Some([t.d[2], t.d[3]])
+            }
+            _ => return Err(
+                "tilts and decenters before or after a surface (before, after) can't be written"
+                    .into(),
+            ),
+        };
     if f.ignore || f.dn != 0.0 || f.disp != 0.0 || f.cx != 0.0 {
-        return Err("ignore・dn・disp・cx は書けない".into());
+        return Err("ignore, dn, disp and cx can't be written".into());
     }
     let glass = if last || is_air(&f.mat) {
         None
     } else if let Some((nd, vd)) = f.mat.split_once(',') {
         match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
             (Ok(_), Ok(0.0)) => Some(format!("{}", f.n.first().copied().unwrap_or(0.0))),
-            _ => return Err(format!("分散のあるモデルガラス {} は書けない", f.mat)),
+            _ => {
+                return Err(format!(
+                    "model glass {} with dispersion can't be written",
+                    f.mat
+                ))
+            }
         }
     } else {
         Some(f.mat.clone())

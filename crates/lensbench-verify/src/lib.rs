@@ -65,13 +65,13 @@ impl Tol {
     fn parse(name: &str, v: &Value) -> Result<Tol, String> {
         let o = v
             .as_object()
-            .ok_or_else(|| format!("checks.{name} はオブジェクトに"))?;
+            .ok_or_else(|| format!("checks.{name} must be an object"))?;
         let mut t = Tol::default();
         for (k, x) in o {
             let num = || {
                 x.as_f64()
                     .filter(|v| *v >= 0.0)
-                    .ok_or_else(|| format!("checks.{name}.{k} は 0 以上の数に"))
+                    .ok_or_else(|| format!("checks.{name}.{k} must be a number 0 or more"))
             };
             match k.as_str() {
                 "abs" => t.abs = Some(num()?),
@@ -79,18 +79,18 @@ impl Tol {
                 "exact" => {
                     t.exact = x
                         .as_bool()
-                        .ok_or_else(|| format!("checks.{name}.exact は true か false に"))?
+                        .ok_or_else(|| format!("checks.{name}.exact must be true or false"))?
                 }
                 "note" => t.note = x.as_str().unwrap_or_default().to_string(),
                 _ => {
                     return Err(format!(
-                        "checks.{name} の知らない項目 {k}（abs・rel・exact・note）"
+                        "checks.{name} unknown item {k} (abs, rel, exact, note)"
                     ))
                 }
             }
         }
         if t.abs.is_none() && t.rel.is_none() && !t.exact {
-            return Err(format!("checks.{name} に abs・rel・exact のどれかが要る"));
+            return Err(format!("checks.{name} needs one of abs, rel and exact"));
         }
         Ok(t)
     }
@@ -229,7 +229,7 @@ pub fn checks_from_json(v: &Value) -> Result<BTreeMap<String, Tol>, String> {
             .iter()
             .map(|(k, x)| Tol::parse(k, x).map(|t| (k.clone(), t)))
             .collect(),
-        _ => Err("checks（量ごとの許容差）はオブジェクトに".into()),
+        _ => Err("checks (tolerances per quantity) must be an object".into()),
     }
 }
 
@@ -269,7 +269,7 @@ pub fn compare(
         .collect();
     if !missing.is_empty() {
         return Err(format!(
-            "基準の {} に許容差（checks）がない",
+            "reference {} has no tolerances (checks)",
             missing.join("・")
         ));
     }
@@ -286,14 +286,14 @@ pub fn compare(
 pub fn array_from_json(v: &Value) -> Result<Array, String> {
     if let Some(o) = v.as_object() {
         let (Some(re), Some(im)) = (o.get("re"), o.get("im")) else {
-            return Err("オブジェクトの配列は {\"re\": …, \"im\": …} に".into());
+            return Err("an array of objects must be {\"re\": …, \"im\": …}".into());
         };
         let (re, im) = (array_from_json(re)?, array_from_json(im)?);
         let (Some(a), Some(b)) = (re.as_f64(), im.as_f64()) else {
-            return Err("re・im は数の配列に".into());
+            return Err("re and im must be arrays of numbers".into());
         };
         if re.shape != im.shape {
-            return Err("re・im の形が違う".into());
+            return Err("re and im have different shapes".into());
         }
         let c = a.iter().zip(b).map(|(x, y)| C64::new(*x, *y)).collect();
         return Array::c64(re.shape, c).map_err(|e| e.to_string());
@@ -316,14 +316,14 @@ pub fn array_from_json(v: &Value) -> Result<Array, String> {
     ) -> Result<(), String> {
         if depth == shape.len() {
             if v.is_array() {
-                return Err("並びの入れ子の深さがそろっていない".into());
+                return Err("the list nesting depths don't match".into());
             }
             out.push(v);
             return Ok(());
         }
-        let a = v.as_array().ok_or("並びの入れ子の深さがそろっていない")?;
+        let a = v.as_array().ok_or("the list nesting depths don't match")?;
         if a.len() != shape[depth] {
-            return Err("並びの長さがそろっていない".into());
+            return Err("the list lengths don't match".into());
         }
         a.iter().try_for_each(|x| walk(x, depth + 1, shape, out))
     }
@@ -338,16 +338,18 @@ pub fn array_from_json(v: &Value) -> Result<Array, String> {
     let f = leaves
         .iter()
         .map(|x| match x {
-            Value::Number(n) => n.as_f64().ok_or_else(|| "数にできない".to_string()),
+            Value::Number(n) => n
+                .as_f64()
+                .ok_or_else(|| "can't be made a number".to_string()),
             // NaN・inf は JSON に書けないので、null を NaN、文字列の "inf"・"-inf"・"nan" を受ける
             Value::Null => Ok(f64::NAN),
             Value::String(s) => match s.as_str() {
                 "inf" => Ok(f64::INFINITY),
                 "-inf" => Ok(f64::NEG_INFINITY),
                 "nan" => Ok(f64::NAN),
-                _ => Err(format!("数でない値 {s}")),
+                _ => Err(format!("value {s} is not a number")),
             },
-            _ => Err(format!("数でない値 {x}")),
+            _ => Err(format!("value {x} is not a number")),
         })
         .collect::<Result<Vec<f64>, String>>()?;
     Array::f64(shape, f).map_err(|e| e.to_string())
@@ -411,7 +413,7 @@ pub fn read_npz(path: &Path) -> Result<Arrays, String> {
             to_array(a, Data::Bool)
         } else {
             return Err(format!(
-                "{}: {key} は float64・complex128・bool でない",
+                "{}: {key} is not float64, complex128 or bool",
                 path.display()
             ));
         };
@@ -441,7 +443,7 @@ fn arrays_of(v: &Value, base: &Path, what: &str) -> Result<Arrays, String> {
             })
             .collect(),
         Value::Null => Ok(Arrays::new()),
-        _ => Err(format!("{what} はオブジェクトか npz のパスに")),
+        _ => Err(format!("{what} must be an object or an npz path")),
     }
 }
 
@@ -451,7 +453,7 @@ fn config_of(v: &Value, what: &str) -> Result<Config, String> {
         return if v.is_null() {
             Ok(Config::new())
         } else {
-            Err(format!("{what} はオブジェクトに"))
+            Err(format!("{what} must be an object"))
         };
     };
     o.iter()
@@ -462,10 +464,17 @@ fn config_of(v: &Value, what: &str) -> Result<Config, String> {
                 Value::String(s) => CfgValue::Str(s.clone()),
                 Value::Array(a) => CfgValue::Nums(
                     a.iter()
-                        .map(|y| y.as_f64().ok_or_else(|| format!("{what}.{k} は数の並びに")))
+                        .map(|y| {
+                            y.as_f64()
+                                .ok_or_else(|| format!("{what}.{k} must be a list of numbers"))
+                        })
                         .collect::<Result<_, _>>()?,
                 ),
-                _ => return Err(format!("{what}.{k} は数・文字列・数の並びに")),
+                _ => {
+                    return Err(format!(
+                        "{what}.{k} must be a number, string or list of numbers"
+                    ))
+                }
             };
             Ok((k.clone(), c))
         })
@@ -534,16 +543,16 @@ impl Manifest {
     }
 
     pub fn from_json(v: &Value, path: &Path) -> Result<Manifest, String> {
-        let o = v.as_object().ok_or("記述はオブジェクトに")?;
+        let o = v.as_object().ok_or("the description must be an object")?;
         if o.get("format").and_then(Value::as_str) != Some("lensbench-verify") {
-            return Err("format は \"lensbench-verify\" に".into());
+            return Err("format must be \"lensbench-verify\"".into());
         }
         match o.get("version").and_then(Value::as_u64) {
             Some(1) => {}
-            v => return Err(format!("version は 1 に（{v:?}）")),
+            v => return Err(format!("version must be 1 ({v:?})")),
         }
         if let Some(k) = o.keys().find(|k| !KNOWN.contains(&k.as_str())) {
-            return Err(format!("知らない項目 {k}"));
+            return Err(format!("unknown item {k}"));
         }
         let base = path.parent().unwrap_or(Path::new("."));
         let s = |k: &str| {
@@ -566,11 +575,11 @@ impl Manifest {
             date: ss("date"),
         };
         if source.by.is_empty() {
-            return Err("source.by（基準を作った実装）が要る".into());
+            return Err("source.by (the implementation that made the reference) is needed".into());
         }
         let plugin = s("plugin");
         if plugin.is_empty() {
-            return Err("plugin が要る".into());
+            return Err("plugin is needed".into());
         }
         let system = match o.get("system") {
             None | Some(Value::Null) => None,
@@ -583,7 +592,7 @@ impl Manifest {
                 path: base.join(
                     so.get("path")
                         .and_then(Value::as_str)
-                        .ok_or("system.path が要る")?,
+                        .ok_or("system.path is needed")?,
                 ),
                 cfg: so.get("cfg").and_then(Value::as_u64).unwrap_or(1) as usize,
                 glass_dirs: so
@@ -597,7 +606,7 @@ impl Manifest {
                     })
                     .unwrap_or_default(),
             }),
-            _ => return Err("system はパスかオブジェクトに".into()),
+            _ => return Err("system must be a path or an object".into()),
         };
         let threads: Vec<usize> = match o.get("threads") {
             None => Vec::new(),
@@ -607,10 +616,10 @@ impl Manifest {
                     x.as_u64()
                         .filter(|n| *n >= 1)
                         .map(|n| n as usize)
-                        .ok_or("threads は 1 以上の整数の並びに")
+                        .ok_or("threads must be a list of integers 1 or more")
                 })
                 .collect::<Result<_, _>>()?,
-            _ => return Err("threads は 1 以上の整数の並びに".into()),
+            _ => return Err("threads must be a list of integers 1 or more".into()),
         };
         let checks = checks_from_json(o.get("checks").unwrap_or(&Value::Null))?;
         let config = config_of(o.get("config").unwrap_or(&Value::Null), "config")?;
@@ -618,23 +627,23 @@ impl Manifest {
             .get("runs")
             .and_then(Value::as_array)
             .filter(|a| !a.is_empty())
-            .ok_or("runs（1 回以上）が要る")?
+            .ok_or("runs (1 or more) is needed")?
             .iter()
             .enumerate()
             .map(|(i, r)| -> Result<RunSpec, String> {
                 let w = format!("runs[{i}]");
-                let ro = r.as_object().ok_or(format!("{w} はオブジェクトに"))?;
+                let ro = r.as_object().ok_or(format!("{w} must be an object"))?;
                 if let Some(k) = ro
                     .keys()
                     .find(|k| !["label", "config", "inputs", "expected"].contains(&k.as_str()))
                 {
-                    return Err(format!("{w} の知らない項目 {k}"));
+                    return Err(format!("{w} unknown item {k}"));
                 }
                 let mut cfg = config.clone();
                 cfg.extend(config_of(ro.get("config").unwrap_or(&Value::Null), &w)?);
                 let expected = arrays_of(ro.get("expected").unwrap_or(&Value::Null), base, &w)?;
                 if expected.is_empty() {
-                    return Err(format!("{w} に expected（基準）が要る"));
+                    return Err(format!("{w} needs expected (the reference)"));
                 }
                 Ok(RunSpec {
                     label: ro
@@ -704,7 +713,7 @@ impl Manifest {
         let sys = match self.load_system() {
             Ok(s) => s,
             Err(e) => {
-                rep.error = Some(format!("系: {e}"));
+                rep.error = Some(format!("system: {e}"));
                 return rep;
             }
         };

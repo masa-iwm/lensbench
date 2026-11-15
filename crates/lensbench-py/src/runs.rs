@@ -4,6 +4,7 @@
 //! 並列はスレッドで（プロセスは使わない）。func の中の lensbench の追跡・解析は GIL を外すので、その間はほかの
 //! スレッドの func が進む。func が Python の計算ばかりなら並列にはならない（重い所は Rust 側へ の方針）。
 
+use crate::errors::value_err;
 use lensbench_core::LockExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,7 +14,7 @@ use std::time::Instant;
 use lensbench_core::param::Param;
 use lensbench_core::System;
 use lensbench_runs::{Dist, Grid, Plan, Progress, RunOpts, Sampler};
-use pyo3::exceptions::{PyKeyboardInterrupt, PyValueError};
+use pyo3::exceptions::PyKeyboardInterrupt;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 
@@ -27,9 +28,9 @@ fn dist_of(v: &Bound<'_, PyAny>) -> PyResult<Dist> {
             sigma: s,
         });
     }
-    let t = v
-        .cast::<PyTuple>()
-        .map_err(|_| PyValueError::new_err("分布は σ の数か (\"normal\", σ) などの tuple"))?;
+    let t = v.cast::<PyTuple>().map_err(|_| {
+        value_err("a distribution is a number σ or a tuple such as (\"normal\", σ)")
+    })?;
     let kind: String = t.get_item(0)?.extract()?;
     let x = |k: usize| -> PyResult<f64> { t.get_item(k)?.extract() };
     let opt = |k: usize| -> PyResult<f64> {
@@ -55,8 +56,8 @@ fn dist_of(v: &Bound<'_, PyAny>) -> PyResult<Dist> {
         },
         "fixed" => Dist::Fixed(x(1)?),
         k => {
-            return Err(PyValueError::new_err(format!(
-                "分布 {k}（normal uniform trunc fixed）"
+            return Err(value_err(format!(
+                "distribution {k} (normal uniform trunc fixed)"
             )))
         }
     })
@@ -284,13 +285,11 @@ fn run_batch<'py>(
     };
     let n = match (n, pb.plan.plan().count()) {
         (Some(n), Some(m)) if n > m => {
-            return Err(PyValueError::new_err(format!(
-                "n = {n} は組の数 {m} を超える"
-            )))
+            return Err(value_err(format!("n = {n} is over the number of sets {m}")))
         }
         (Some(n), _) => n,
         (None, Some(m)) => m,
-        (None, None) => return Err(PyValueError::new_err("Sampler では n が要る")),
+        (None, None) => return Err(value_err("Sampler needs n")),
     };
     let seed = match &pb.plan {
         PlanKind::Sampler(s) => s.seed,
@@ -409,7 +408,9 @@ fn run_batch<'py>(
     }
     let sum = res.map_err(err)?;
     if sum.cancelled {
-        return Err(PyKeyboardInterrupt::new_err("一括実行を止めた"));
+        return Err(PyKeyboardInterrupt::new_err(lensbench_core::i18n::tr(
+            "the batch run was stopped",
+        )));
     }
     let rows: Vec<(usize, String)> = match &out {
         Some(p) => lensbench_runs::read_results(p)

@@ -351,11 +351,14 @@ pub struct PlateSpec {
 impl PolarizerSpec {
     pub fn retarder(&self) -> Result<lensbench_core::surface::Retarder, String> {
         if !(self.transmittance >= 0.0 && self.transmittance <= 1.0) {
-            return Err(format!("偏光子の透過率 {}（0〜1）", self.transmittance));
+            return Err(format!(
+                "polarizer transmittance {} (0 to 1)",
+                self.transmittance
+            ));
         }
         if self.extinction_ratio.is_nan() || self.extinction_ratio < 1.0 {
             return Err(format!(
-                "偏光子の消光比 {}（1 以上）",
+                "polarizer extinction ratio {} (1 or more)",
                 self.extinction_ratio
             ));
         }
@@ -374,13 +377,19 @@ impl PolarizerSpec {
 impl WaveplateSpec {
     pub fn retarder(&self) -> Result<lensbench_core::surface::Retarder, String> {
         if !(self.wavelength_um > 0.0 && self.wavelength_um.is_finite()) {
-            return Err(format!("波長板の設計波長 {} µm", self.wavelength_um));
+            return Err(format!(
+                "waveplate design wavelength {} µm",
+                self.wavelength_um
+            ));
         }
         if !(self.transmittance >= 0.0 && self.transmittance <= 1.0) {
-            return Err(format!("波長板の透過率 {}（0〜1）", self.transmittance));
+            return Err(format!(
+                "waveplate transmittance {} (0 to 1)",
+                self.transmittance
+            ));
         }
         if !self.retardance.is_finite() {
-            return Err("波長板の遅延が数でない".into());
+            return Err("the waveplate retardance is not a number".into());
         }
         use lensbench_core::surface::Plate;
         let plate = |m: &str, d: f64, a: f64| Plate {
@@ -391,32 +400,34 @@ impl WaveplateSpec {
             e: None,
         };
         let plates = match (&self.material, self.plates.is_empty()) {
-            (Some(_), false) => return Err("波長板に material と plates は一緒に書けない".into()),
+            (Some(_), false) => {
+                return Err("a waveplate can't have both material and plates".into())
+            }
             (Some(m), true) => {
                 let d = self.thickness_mm.unwrap_or(0.0);
                 if self.thickness_mm.is_some() && !(d > 0.0 && d.is_finite()) {
-                    return Err(format!("波長板の厚さ {d} mm"));
+                    return Err(format!("waveplate thickness {d} mm"));
                 }
                 let total = self.order as f64 + self.retardance;
                 if self.thickness_mm.is_none() && !(total > 0.0 && total.is_finite()) {
-                    return Err("厚さを省いた波長板は遅延 order + retardance を正にする".into());
+                    return Err("a waveplate without a thickness needs a positive retardance order + retardance".into());
                 }
                 vec![plate(m, d, 0.0)]
             }
             (None, false) => {
                 if self.thickness_mm.is_some() {
-                    return Err("plates の波長板では厚さは板ごとに書く".into());
+                    return Err("a waveplate with plates takes a thickness for each plate".into());
                 }
                 let mut v = Vec::new();
                 for p in &self.plates {
                     if !(p.thickness_mm > 0.0 && p.thickness_mm.is_finite()) {
                         return Err(format!(
-                            "波長板の板 {} の厚さ {} mm",
+                            "waveplate plate {} thickness {} mm",
                             p.material, p.thickness_mm
                         ));
                     }
                     if !p.axis_deg.is_finite() {
-                        return Err("波長板の板の軸が数でない".into());
+                        return Err("the waveplate plate axis is not a number".into());
                     }
                     v.push(plate(&p.material, p.thickness_mm, p.axis_deg));
                 }
@@ -424,13 +435,13 @@ impl WaveplateSpec {
             }
             (None, true) => {
                 if self.thickness_mm.is_some() {
-                    return Err("波長板の厚さは material と一緒に書く".into());
+                    return Err("write the waveplate thickness together with material".into());
                 }
                 Vec::new()
             }
         };
         if plates.iter().any(|p| p.material.is_empty()) {
-            return Err("波長板の複屈折材の名前が空".into());
+            return Err("empty birefringent material name of the waveplate".into());
         }
         let t = self.transmittance.sqrt();
         Ok(lensbench_core::surface::Retarder {
@@ -663,7 +674,7 @@ impl DetectorBlock {
     pub fn check(&self) -> Result<(), String> {
         let k = detectors::get(&self.kind).ok_or_else(|| {
             format!(
-                "知らないブロックの種類 {:?}（{} か、登録した検出器: {}）",
+                "unknown block type {:?} ({} or a registered detector: {})",
                 self.kind,
                 BUILTIN_BLOCKS.join("・"),
                 detectors::list()
@@ -865,10 +876,9 @@ pub struct SurfaceEdit {
 
 impl Project {
     pub fn from_json(txt: &str) -> Result<Project, String> {
-        let v: Value =
-            serde_json::from_str(txt).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+        let v: Value = serde_json::from_str(txt).map_err(|e| format!("project file: {e}"))?;
         let p: Project =
-            serde_json::from_value(v.clone()).map_err(|e| format!("プロジェクトファイル: {e}"))?;
+            serde_json::from_value(v.clone()).map_err(|e| format!("project file: {e}"))?;
         // "$schema" はエディタの検査用（docs/schema）
         let unknown: Vec<String> = unknown_keys::<Project>(&v, &p)
             .into_iter()
@@ -876,7 +886,7 @@ impl Project {
             .collect();
         if !unknown.is_empty() {
             return Err(format!(
-                "プロジェクトファイル: 知らないキー {}（綴りを確かめる）",
+                "project file: unknown key {} (check the spelling)",
                 unknown.join("・")
             ));
         }
@@ -896,13 +906,16 @@ impl Project {
         let st: Vec<&State> = self.states.iter().filter(|s| s.name == name).collect();
         let st = match st.as_slice() {
             [s] => *s,
+            [] if self.states.is_empty() => {
+                return Err(format!("no state {name} (the project has no states)"))
+            }
             [] => {
                 return Err(format!(
-                    "状態 {name} はない（{}）",
+                    "no state {name} ({})",
                     self.state_names().join(", ")
                 ))
             }
-            _ => return Err(format!("状態 {name} が 2 つ以上ある")),
+            _ => return Err(format!("two or more states named {name}")),
         };
         let mut v = serde_json::to_value(self).map_err(|e| e.to_string())?;
         let root = v.as_object_mut().unwrap();
@@ -912,7 +925,7 @@ impl Project {
                 || (!root.contains_key(k)
                     && !["path", "afocal", "telecentric"].contains(&k.as_str()))
             {
-                return Err(format!("状態 {name}: 系の値 {k} は変えられない"));
+                return Err(format!("state {name}: system value {k} can't be changed"));
             }
             root.insert(k.clone(), x.clone());
         }
@@ -923,23 +936,23 @@ impl Project {
             }
             let ptr = match hits.as_slice() {
                 [p] => p.clone(),
-                [] => return Err(format!("状態 {name}: ブロック {id} はない")),
-                _ => return Err(format!("状態 {name}: id {id} のブロックが 2 つ以上ある")),
+                [] => return Err(format!("state {name}: no block {id}")),
+                _ => return Err(format!("state {name}: two or more blocks with id {id}")),
             };
             let obj = v.pointer_mut(&ptr).unwrap().as_object_mut().unwrap();
             for (k, x) in fields {
                 if ["type", "id", "blocks", "groups"].contains(&k.as_str()) || !obj.contains_key(k)
                 {
-                    return Err(format!("状態 {name}: ブロック {id} の {k} は変えられない"));
+                    return Err(format!("state {name}: {k} of block {id} can't be changed"));
                 }
                 obj.insert(k.clone(), x.clone());
             }
         }
         let p: Project =
-            serde_json::from_value(v.clone()).map_err(|e| format!("状態 {name}: {e}"))?;
+            serde_json::from_value(v.clone()).map_err(|e| format!("state {name}: {e}"))?;
         let unknown = unknown_keys::<Project>(&v, &p);
         if !unknown.is_empty() {
-            return Err(format!("状態 {name}: 知らないキー {}", unknown.join("・")));
+            return Err(format!("state {name}: unknown key {}", unknown.join("・")));
         }
         Ok(p)
     }

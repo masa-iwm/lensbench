@@ -6,6 +6,7 @@
 //! 残差の偏微分（形 (残差の数, len(names))、names は変数の名前）をそれで求める。
 //! 関数の例外は、最適化が終わったあとにそのまま投げ直す。
 
+use crate::errors::value_err;
 use lensbench_core::LockExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -14,7 +15,6 @@ use lensbench_core::param::Param;
 use lensbench_core::System;
 use lensbench_optim::{Problem, Term, TermKind, UserTerm, UserTermRef};
 use numpy::{PyArrayDyn, PyArrayMethods};
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -40,8 +40,8 @@ fn to_rows(r: &Bound<'_, PyAny>, k: usize, rows: Option<usize>) -> PyResult<Vec<
     let sh = v.shape().to_vec();
     let flat: Vec<f64> = v.iter().copied().collect();
     let bad = || {
-        PyValueError::new_err(format!(
-            "利用者の項の返り値の形 {sh:?}（(系の数 {k}, 残差の数) のはず）"
+        value_err(format!(
+            "shape {sh:?} of the user term result (should be ({k} systems, residuals))"
         ))
     };
     let (n, m) = match sh.len() {
@@ -131,7 +131,7 @@ pub(crate) fn add_terms(
         let t = t?;
         let d = t
             .cast::<PyDict>()
-            .map_err(|_| PyValueError::new_err(format!("terms[{i}] は dict")))?;
+            .map_err(|_| value_err(format!("terms[{i}] must be a dict")))?;
         let ty: Option<String> = d.get_item("type")?.map(|v| v.extract()).transpose()?;
         if ty.as_deref() == Some("user") {
             let mut f = None;
@@ -151,23 +151,23 @@ pub(crate) fn add_terms(
                     "config" => {
                         let c: usize = v.extract()?;
                         if c == 0 || c > p.configs.len() {
-                            return Err(PyValueError::new_err(format!(
-                                "terms[{i}]: 構成 {c} はない（1〜{}）",
+                            return Err(value_err(format!(
+                                "terms[{i}]: no configuration {c} (1 to {})",
                                 p.configs.len()
                             )));
                         }
                         config = c - 1;
                     }
                     _ => {
-                        return Err(PyValueError::new_err(format!(
-                        "terms[{i}]: user の項に使わないキー {k}（fn・jac・name・weight・config）"
+                        return Err(value_err(format!(
+                        "terms[{i}]: key {k} is not used by user terms (fn, jac, name, weight, config)"
                     )))
                     }
                 }
             }
             let Some(f) = f.filter(|f| f.bind(py).is_callable()) else {
-                return Err(PyValueError::new_err(format!(
-                    "terms[{i}]: user の項には関数 fn が要る"
+                return Err(value_err(format!(
+                    "terms[{i}]: user terms need a function fn"
                 )));
             };
             // 残差の数は今の系で 1 回呼んで決める
@@ -198,7 +198,7 @@ pub(crate) fn add_terms(
         }
         let v = crate::pyjson::from_py(d.as_any())?;
         let term = lensbench_design::merit::term_from_json(&v, &p.configs)
-            .map_err(|e| PyValueError::new_err(format!("terms[{i}]: {e}")))?;
+            .map_err(|e| value_err(format!("terms[{i}]: {e}")))?;
         p.terms.push(term);
     }
     Ok(users)

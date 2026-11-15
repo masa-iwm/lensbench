@@ -110,22 +110,22 @@ fn check01(v: f64, what: &str) -> Result<(), String> {
     if (0.0..=1.0).contains(&v) {
         Ok(())
     } else {
-        Err(format!("{what} {v}（0〜1）"))
+        Err(format!("{what} {v} (0 to 1)"))
     }
 }
 
 impl Ideal {
     fn check(&self) -> Result<(), String> {
-        check01(self.t, "フィルタの透過率")?;
+        check01(self.t, "filter transmittance")?;
         if !(self.od >= 0.0 && self.od.is_finite()) {
-            return Err(format!("フィルタの OD {}", self.od));
+            return Err(format!("filter OD {}", self.od));
         }
         if !(self.neff >= 1.0 && self.neff.is_finite()) {
-            return Err(format!("フィルタの neff {}（1 以上）", self.neff));
+            return Err(format!("filter neff {} (1 or more)", self.neff));
         }
         if let Some(w) = self.width_nm {
             if !(w > 0.0 && w.is_finite()) {
-                return Err(format!("フィルタのエッジの幅 {w} nm"));
+                return Err(format!("filter edge width {w} nm"));
             }
         }
         Ok(())
@@ -139,7 +139,7 @@ fn pos(v: f64, what: &str) -> Result<(), String> {
     if v > 0.0 && v.is_finite() {
         Ok(())
     } else {
-        Err(format!("フィルタの {what} {v}"))
+        Err(format!("filter {what} {v}"))
     }
 }
 
@@ -154,26 +154,26 @@ impl CoatSpec {
                 r,
             } => {
                 if wavelengths_nm.len() < 2 || t.len() != wavelengths_nm.len() {
-                    return Err("curve は 2 点以上で、wavelengths_nm と t は同じ数".into());
+                    return Err(
+                        "curve needs 2 or more points, and wavelengths_nm and t of the same count"
+                            .into(),
+                    );
                 }
                 if !r.is_empty() && r.len() != t.len() {
-                    return Err("curve の r は t と同じ数".into());
+                    return Err("curve r must have the same count as t".into());
                 }
                 if wavelengths_nm
                     .windows(2)
                     .any(|w| w[0].partial_cmp(&w[1]) != Some(std::cmp::Ordering::Less))
                 {
-                    return Err("curve の波長が昇順でない".into());
+                    return Err("the curve wavelengths are not ascending".into());
                 }
                 for (i, &x) in t.iter().enumerate() {
-                    check01(x, "curve の t")?;
+                    check01(x, "curve t")?;
                     let rr = r.get(i).copied().unwrap_or(0.0);
-                    check01(rr, "curve の r")?;
+                    check01(rr, "curve r")?;
                     if x + rr > 1.0 + 1e-9 {
-                        return Err(format!(
-                            "curve の t + r が 1 を超える（{} nm）",
-                            wavelengths_nm[i]
-                        ));
+                        return Err(format!("curve t + r is over 1 ({} nm)", wavelengths_nm[i]));
                     }
                 }
                 let rows: Vec<[f64; 9]> = wavelengths_nm
@@ -188,7 +188,7 @@ impl CoatSpec {
             }
             CoatSpec::Nd { od, absorptive } => {
                 if !(*od >= 0.0 && od.is_finite()) {
-                    return Err(format!("ND の OD {od}"));
+                    return Err(format!("ND OD {od}"));
                 }
                 let t = 10f64.powf(-od);
                 let r = if *absorptive { 0.0 } else { 1.0 - t };
@@ -200,7 +200,7 @@ impl CoatSpec {
             }
             CoatSpec::Longpass { edge_nm, ideal } | CoatSpec::Shortpass { edge_nm, ideal } => {
                 ideal.check()?;
-                pos(*edge_nm, "エッジ波長")?;
+                pos(*edge_nm, "edge wavelength")?;
                 let e = edge_nm * 1e-3;
                 let w = ideal.width_nm.map_or(0.01 * e, |w| w * 1e-3);
                 let long = matches!(self, CoatSpec::Longpass { .. });
@@ -224,10 +224,10 @@ impl CoatSpec {
                 ideal,
             } => {
                 ideal.check()?;
-                pos(*center_nm, "中心波長")?;
-                pos(*fwhm_nm, "半値全幅")?;
+                pos(*center_nm, "center wavelength")?;
+                pos(*fwhm_nm, "FWHM")?;
                 if fwhm_nm >= center_nm {
-                    return Err("フィルタの半値全幅が中心波長以上".into());
+                    return Err("the filter FWHM is not less than the center wavelength".into());
                 }
                 let (c, f) = (center_nm * 1e-3, fwhm_nm * 1e-3);
                 let w = ideal.width_nm.map_or(0.1 * f, |w| w * 1e-3);
@@ -286,13 +286,13 @@ fn table_rows(rows: &[[f64; 6]]) -> Result<Table, String> {
     let mut out: Table = Vec::new();
     for r in rows {
         if !r.iter().all(|v| v.is_finite()) {
-            return Err("表の値が数でない".into());
+            return Err("a table value is not a number".into());
         }
         if !(0.0..90.0).contains(&r[0]) || r[1] <= 0.0 {
-            return Err(format!("表の行の角度 {}・波長 {}", r[0], r[1]));
+            return Err(format!("table row angle {}, wavelength {}", r[0], r[1]));
         }
         for &v in &r[2..] {
-            check01(v, "表の R・T")?;
+            check01(v, "table R or T")?;
         }
         let row = [r[1], r[2], r[3], r[4], r[5], 0.0, 0.0, 0.0, 0.0];
         match out.iter_mut().find(|(a, _)| *a == r[0]) {
@@ -301,13 +301,15 @@ fn table_rows(rows: &[[f64; 6]]) -> Result<Table, String> {
         }
     }
     if out.is_empty() {
-        return Err("表の行が無い".into());
+        return Err("no table rows".into());
     }
     out.sort_by(|a, b| a.0.total_cmp(&b.0));
     for (a, v) in &mut out {
         v.sort_by(|x, y| x[0].total_cmp(&y[0]));
         if v.windows(2).any(|w| w[0][0] == w[1][0]) {
-            return Err(format!("表の角度 {a} に同じ波長の行が 2 つ"));
+            return Err(format!(
+                "two rows with the same wavelength at table angle {a}"
+            ));
         }
     }
     Ok(out)

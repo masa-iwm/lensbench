@@ -50,7 +50,9 @@ pub fn builtin_analyses() -> Analyses {
 pub fn register<A: Analysis>(a: A) -> Result<(), String> {
     let name = a.meta().name;
     if RESERVED.contains(&name) || builtin_analyses().get(name).is_some() {
-        return Err(format!("解析 {name} は同梱のものと同じ名前"));
+        return Err(format!(
+            "analysis {name} has the same name as a built-in one"
+        ));
     }
     EXTRA
         .write_ok()

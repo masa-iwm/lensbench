@@ -100,26 +100,36 @@ pub(crate) fn check_crystal_order(v: &[Surface]) -> Result<(), String> {
                     );
                     if !next_in || s.t != 0.0 || v[i + 1].mat != s.mat {
                         return Err(
-                            "複屈折材の板の出口の後のガラスは、厚さ 0 で同じ材料の次の板の入口へ"
+                            "the glass after the exit of a birefringent plate goes to the entrance of the next plate of the same material with thickness 0"
                                 .into(),
                         );
                     }
                 }
             }
             (Some(Bire::In { .. }), true) => {
-                return Err("複屈折材の板の入口が続く（出口が要る）".into())
+                return Err("two birefringent plate entrances in a row (an exit is needed)".into())
             }
-            (Some(Bire::Out), false) => return Err("複屈折材の板の出口の前に入口が無い".into()),
-            (None, true) => return Err("複屈折材の板の入口と出口の間にほかの面は置けない".into()),
+            (Some(Bire::Out), false) => {
+                return Err("no entrance before the exit of a birefringent plate".into())
+            }
+            (None, true) => {
+                return Err(
+                    "no other surface can go between the entrance and exit of a birefringent plate"
+                        .into(),
+                )
+            }
             (None, false) => {
                 if s.typ != SurfType::CoordBrk && !is_air(&s.mat) {
-                    return Err("面の並びのブロックは空気中の面だけ（ガラスは玉で）".into());
+                    return Err(
+                        "a surface list block holds only surfaces in air (glass goes in lenses)"
+                            .into(),
+                    );
                 }
             }
         }
     }
     if inside {
-        return Err("複屈折材の板に出口が無い".into());
+        return Err("a birefringent plate has no exit".into());
     }
     Ok(())
 }
@@ -159,7 +169,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 continue;
             };
             if s.before.is_some() {
-                return Err("複屈折材の波長板に tilt は未対応".into());
+                return Err("tilt is not supported on a birefringent waveplate".into());
             }
             let mut r = r0.clone();
             r.resolve(&self.glasses)?;
@@ -274,7 +284,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 );
                 body(self)?;
                 if self.parity != p0 {
-                    return Err("鏡を含むブロックは「空気で残す」にできない".into());
+                    return Err("a block with a mirror can't be 'kept as air'".into());
                 }
                 let l = self.length_since(start) + (self.lead - lead0);
                 self.sf.truncate(start);
@@ -301,7 +311,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let p0 = self.parity;
         body(self)?;
         if self.parity != p0 {
-            return Err("偏心・傾きをつけたブロックに鏡は入れられない（鏡の傾きは鏡で）".into());
+            return Err(
+                "a mirror can't go in a decentered or tilted block (tilt the mirror itself)".into(),
+            );
         }
         // 中身の最後の面の厚さを戻りの後へ回す
         let tail = self.sf.last().map(|s| s.t).unwrap_or(0.0);
@@ -416,7 +428,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     matches!(s.typ, SurfType::Jones | SurfType::CoordBrk) || s.bire.is_some()
                 }) {
                     return Err(
-                        "往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応".into(),
+                        "jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path".into(),
                     );
                 }
                 if !place.on {
@@ -440,12 +452,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
             } => {
                 if place.moved() {
                     return Err(
-                        "往路を戻る範囲の、偏心・傾きをつけた群は未対応（群の中の玉に付ける）"
+                        "decentered or tilted groups are not supported on the return path (put it on the lenses in the group)"
                             .into(),
                     );
                 }
                 if !place.on {
-                    return Err("往路を戻る範囲の、OFF の群は未対応".into());
+                    return Err("groups that are OFF are not supported on the return path".into());
                 }
                 // 復路では後の間隔が先: 往路で引いた分を引き、群の後（往路の前の間隔）で足す
                 self.gap(-shift);
@@ -466,18 +478,21 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.base = base;
                 r?;
             }
-            Block::Mirror { .. } => return Err("往路を戻る範囲に鏡がある".into()),
+            Block::Mirror { .. } => return Err("a mirror on the return path".into()),
             Block::Splitter { id, spec, .. } => {
                 if spec.has_branches() {
                     return Err(format!(
-                        "BS {id}: 分岐のある BS を後ろから戻ることはない（内部エラー）"
+                        "BS {id}: a BS with branches is never passed backwards (internal error)"
                     ));
                 }
                 self.splitter_back(id)?;
             }
-            Block::Detector(_) => return Err("検出器は最後のブロックだけ".into()),
+            Block::Detector(_) => return Err("a detector must be the last block".into()),
             Block::Zmx { .. } => {
-                return Err("往路を戻る範囲の .zmx の取り込みは未対応（玉のブロックにする）".into())
+                return Err(
+                    "importing a .zmx on the return path is not supported (use a lens block)"
+                        .into(),
+                )
             }
         }
         Ok(())
@@ -518,7 +533,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
 
     pub(crate) fn load_zmx(&mut self, path: &str, cfg: usize) -> Result<System, String> {
         if cfg == 0 {
-            return Err(format!("{path}: 構成の番号は 1 以上"));
+            return Err(format!(
+                "{path}: the configuration number must be 1 or more"
+            ));
         }
         let p = self.base.join(path);
         // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む（#132）
@@ -526,13 +543,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
             .is_some_and(|x| x.eq_ignore_ascii_case("json"))
         {
             if cfg != 1 {
-                return Err(format!("{path}: .json の系では構成の番号は 1 だけ"));
+                return Err(format!("{path}: a .json system has only configuration 1"));
             }
             thread_local! {
                 static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
             }
             if DEPTH.with(|d| d.get()) >= 8 {
-                return Err(format!("{path}: 系の取り込みが深すぎる（循環？）"));
+                return Err(format!("{path}: system imports nested too deep (a loop?)"));
             }
             DEPTH.with(|d| d.set(d.get() + 1));
             let r = if sysfile::is_system_file(&p) {
@@ -585,7 +602,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         );
         if self.users.contains(&key) {
             return Err(format!(
-                "{}: 項目 {item} が自分自身を参照している（循環）",
+                "{}: item {item} refers to itself (a loop)",
                 path.display()
             ));
         }
@@ -593,12 +610,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let it = cat
             .items
             .get(item)
-            .ok_or_else(|| format!("{}: 項目 {item} はない", path.display()))?;
+            .ok_or_else(|| format!("{}: no item {item}", path.display()))?;
         let dirs = glass::catalog_dirs(&self.env.glass_dirs);
         let (g, missing) = glass::load_catalogs_shared(&it.glass_catalogs, &dirs);
         if !missing.is_empty() {
             return Err(format!(
-                "{item}: ガラスカタログが見つからない: {}",
+                "{item}: glass catalog not found: {}",
                 missing.join(", ")
             ));
         }
@@ -607,10 +624,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
         for (k, spec) in &cat.coatings {
             let t = spec
                 .table()
-                .map_err(|e| format!("{}: 膜 {k}: {e}", path.display()))?;
+                .map_err(|e| format!("{}: coating {k}: {e}", path.display()))?;
             match self.coats.get(k) {
                 Some(old) if *old != t => {
-                    return Err(format!("{}: 膜 {k} がほかのカタログと違う", path.display()))
+                    return Err(format!(
+                        "{}: coating {k} differs from another catalog",
+                        path.display()
+                    ))
                 }
                 Some(_) => {}
                 None => {
@@ -662,10 +682,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 pick_lens(&s, *lens).map_err(|e| format!("{zmx}: {e}"))
             }
             LensSource::Catalog { vendor, part } => {
-                let f = self
-                    .env
-                    .catalog
-                    .ok_or_else(|| format!("レンズカタログ {vendor} {part}: カタログを読めない"))?;
+                let f = self.env.catalog.ok_or_else(|| {
+                    format!("lens catalog {vendor} {part}: the catalog can't be read")
+                })?;
                 let txt = f(vendor, part)?;
                 let raw = zmx::parse_text(&txt).map_err(|e| e.to_string())?;
                 let s = zmx::build(
@@ -685,7 +704,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
             LensSource::Surfaces { surfaces } => {
                 if surfaces.len() < 2 {
-                    return Err("玉には面が 2 つ以上要る".into());
+                    return Err("a lens needs 2 or more surfaces".into());
                 }
                 let n = surfaces.len();
                 let mut v = Vec::new();
@@ -695,7 +714,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         s.t = 0.0;
                         s.mat.clear();
                     } else if is_air(&s.mat) {
-                        return Err(format!("玉の面 {}: 後がガラスでない", i + 1));
+                        return Err(format!("lens surface {}: not glass after it", i + 1));
                     }
                     v.push(s);
                 }
@@ -847,7 +866,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     self.split.stopped = false;
                     if self.split.done && idx + 1 < siblings.len() {
                         return Err(
-                            "鏡の後のブロックと、BS の分岐の両方がある（復路が BS の分岐へ進む経路）".into(),
+                            "both blocks after a mirror and BS branches (a return path going into a BS branch)".into(),
                         );
                     }
                 }
@@ -917,7 +936,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         })?;
                         c.note(&gr.id, start);
                         if gr.shift != 0.0 && c.has_mirror_since(start) {
-                            return Err("鏡を含む群は動かせない（shift は 0 に）".into());
+                            return Err(
+                                "a group with a mirror can't be moved (set shift to 0)".into()
+                            );
                         }
                         c.element(&Element::air(-gr.shift), sign);
                         i = z + 1;
@@ -962,7 +983,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
             Block::Detector(_) => {
                 return Err(
-                    "検出器は最後のブロックだけ（群・ユーザーカタログの中には置けない）".into(),
+                    "a detector must be the last block (not inside a group or user catalog)".into(),
                 )
             }
             Block::Group {
@@ -987,7 +1008,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.split.levels.pop();
                 r?;
                 if *shift != 0.0 && self.has_mirror_since(start) {
-                    return Err("鏡を含む群は動かせない（shift は 0 に）".into());
+                    return Err("a group with a mirror can't be moved (set shift to 0)".into());
                 }
                 self.gap(-shift);
             }

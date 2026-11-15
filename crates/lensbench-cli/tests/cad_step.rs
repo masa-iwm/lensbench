@@ -143,7 +143,7 @@ fn step_is_fetched_once_and_cached() {
     // STEP でなければ誤りで、品ページを示す。キャッシュに残さない
     let c = call("CP-C").unwrap_err();
     assert!(
-        c.contains("STEP（ISO-10303-21）でない") && c.contains("https://example.com/CP-C"),
+        c.contains("not a STEP (ISO-10303-21)") && c.contains("https://example.com/CP-C"),
         "{c}"
     );
     let n_files = std::fs::read_dir(&cache).unwrap().count();
@@ -423,7 +423,7 @@ fn store_is_checked_first_and_vendor_steps_are_uploaded() {
         v["store_notes"][0]
             .as_str()
             .unwrap()
-            .contains("サービストークン"),
+            .contains("service token"),
         "{v}"
     );
     assert_eq!(hits.load(Ordering::SeqCst), 2);
@@ -618,7 +618,7 @@ fn coating_models_come_from_the_store_when_missing() {
     std::fs::remove_dir_all(dir.join("cache")).unwrap();
     let e = lensbench_cad::coat_remote::fetch(lensbench_cad::store().as_ref(), "ZEC_R", &h)
         .unwrap_err();
-    assert!(e.contains("目録と違う"), "{e}");
+    assert!(e.contains("doesn't match the index"), "{e}");
     db.lock()
         .unwrap()
         .insert(format!("coat/ZEC_R-{h}.lbcb"), lbcm.clone().into_bytes());

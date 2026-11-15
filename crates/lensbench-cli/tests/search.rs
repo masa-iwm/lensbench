@@ -78,7 +78,7 @@ fn zoom_project_states() {
         "--efl",
         "95,130",
     ]);
-    assert!(!ok && err.contains("目標が 2 個"), "{err}");
+    assert!(!ok && err.contains("2 targets"), "{err}");
 }
 
 #[test]

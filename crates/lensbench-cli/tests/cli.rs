@@ -399,7 +399,7 @@ fn project_states() {
     assert_ne!(v1["effl"], v0["effl"]);
     // 状態がない・.zmx に --state・.json に --cfg はエラー
     let (ok, _, err) = run(&["info", p, "--glass-dir", "tests/glass", "--state", "x"]);
-    assert!(!ok && err.contains("状態 x"), "{err}");
+    assert!(!ok && err.contains("no state x"), "{err}");
     let (ok, _, err) = run(&["info", ZMX, "--glass-dir", "tests/glass", "--state", "near"]);
     assert!(!ok && err.contains("--state"), "{err}");
     let (ok, _, err) = run(&["info", p, "--glass-dir", "tests/glass", "--cfg", "2"]);

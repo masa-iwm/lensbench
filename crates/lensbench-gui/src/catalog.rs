@@ -990,7 +990,7 @@ fn lens_cell(ui: &mut Ui, c: LensCol, r: &LensRow) {
         LensCol::Thickness => num_cell(ui, r.thickness),
         LensCol::Glass => {
             if let Some(e) = &r.error {
-                ui.colored_label(theme::error(ui.visuals()), e)
+                ui.colored_label(theme::error(ui.visuals()), lensbench_core::i18n::tr(e))
                     .on_hover_text(e);
             } else if r.is_incomplete() {
                 ui.colored_label(
@@ -1332,7 +1332,7 @@ impl Browser {
                 "仕様の条件（空白で区切り、すべて満たす）: 名前（ある）、名前=値（数は一致、範囲の仕様は含む、文字列は含む）、名前=a..b、名前>=値・<=・>・<。efl・diameter・thickness は一覧の値でも比べる。例: wavelength_nm=633 extinction_ratio>=1000",
             ));
             if let Err(e) = parse_spec_filters(&q.spec) {
-                ui.colored_label(theme::error(ui.visuals()), e);
+                ui.colored_label(theme::error(ui.visuals()), lensbench_core::i18n::tr(&e));
             }
             // 玉と機構部品の対応での絞り込み（「入る機構部品」「入る素子」から）
             if let Some(f) = &q.fit {
@@ -1393,7 +1393,7 @@ impl Browser {
                     ui.set_min_height(24.0);
                     let Some(r) = &picked else { return };
                     if let Some(e) = &r.error {
-                        ui.colored_label(theme::error(ui.visuals()), e);
+                        ui.colored_label(theme::error(ui.visuals()), lensbench_core::i18n::tr(e));
                     } else if r.is_incomplete() {
                         ui.colored_label(
                             ui.visuals().warn_fg_color,

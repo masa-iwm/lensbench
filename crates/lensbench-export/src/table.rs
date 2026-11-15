@@ -130,7 +130,7 @@ impl Table {
             "npz" => self.write_npz(&mut w),
             _ => {
                 return Err(format!(
-                    "{}: 拡張子は csv・json・npz のどれか",
+                    "{}: the extension must be csv, json or npz",
                     path.display()
                 ));
             }
@@ -249,7 +249,7 @@ impl Zip {
         let n = self.files.len();
         for (name, data) in &self.files {
             if data.len() > u32::MAX as usize - 1 || off > u32::MAX as u64 {
-                return Err(std::io::Error::other("npz が 4 GB を超える"));
+                return Err(std::io::Error::other("npz is over 4 GB"));
             }
             let crc = crc32(data);
             let nb = name.as_bytes();
@@ -288,7 +288,7 @@ impl Zip {
             off += (h.len() + data.len()) as u64;
         }
         if off > u32::MAX as u64 || n > u16::MAX as usize {
-            return Err(std::io::Error::other("npz が大きすぎる"));
+            return Err(std::io::Error::other("npz is too large"));
         }
         w.write_all(&central)?;
         let mut e = Vec::with_capacity(22);

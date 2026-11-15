@@ -611,7 +611,7 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                 });
             });
             if let Some(e) = &p.error {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
             }
             if let Some(h) = progress {
                 ui.label(trf(

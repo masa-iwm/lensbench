@@ -12,7 +12,7 @@ pub fn measure(item: &UserItem, text: &[u8]) -> (Option<catalog_fill::StepSize>,
             };
             (Some(s), notes)
         }
-        Err(e) => (None, vec![format!("STEP を測れない: {e}")]),
+        Err(e) => (None, vec![format!("the STEP can't be measured: {e}")]),
     }
 }
 
@@ -31,7 +31,7 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
     let upper_unit = catalog_fill::read_step(text)
         .map(|s| s.unit_mm)
         .unwrap_or(1.0);
-    let table = Table::from_step(text).ok_or("STEP を読めない（truck）")?;
+    let table = Table::from_step(text).ok_or("the STEP can't be read (truck)")?;
     let tol = DETAIL_TOL_MM / upper_unit;
     let mut meshed: std::collections::HashMap<u64, Vec<[[f64; 3]; 3]>> = Default::default();
     let mut tris = Vec::new();
@@ -80,7 +80,7 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
         tris.extend(meshed[&shell].iter().map(|t| t.map(apply)));
     }
     if tris.is_empty() {
-        return Err("STEP を三角形にできない".into());
+        return Err("the STEP can't be triangulated".into());
     }
     Ok(lensbench_export::detail::Detail {
         tris,
@@ -161,9 +161,9 @@ pub fn gunzip(b: Vec<u8>, max: u64) -> Result<Vec<u8>, String> {
     flate2::read::GzDecoder::new(&b[..])
         .take(max + 1)
         .read_to_end(&mut out)
-        .map_err(|e| format!("gzip を展開できない: {e}"))?;
+        .map_err(|e| format!("gzip can't be inflated: {e}"))?;
     if out.len() as u64 > max {
-        return Err("gzip の中身が大きすぎる".into());
+        return Err("the gzip content is too large".into());
     }
     Ok(out)
 }

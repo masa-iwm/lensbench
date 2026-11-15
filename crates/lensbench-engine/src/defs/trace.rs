@@ -149,10 +149,10 @@ impl Analysis for Rays {
         let waves = if p.all_waves {
             Some((0..s.wavelengths.len()).collect())
         } else {
-            indices(&p.wave, s.wavelengths.len(), "波長")?
+            indices(&p.wave, s.wavelengths.len(), "wavelength")?
         };
         let o = table::RayOptions {
-            fields: indices(&p.field, s.fields.len(), "視野")?,
+            fields: indices(&p.field, s.fields.len(), "field")?,
             waves,
             px,
             py,
@@ -480,9 +480,9 @@ impl Analysis for MechCheck {
             return Err(Error::Invalid("grid must be 2 or more".into()));
         }
         let all = |n: usize| (0..n).collect::<Vec<_>>();
-        let fields = indices(&p.field, s.fields.len(), "視野")?.unwrap_or(all(s.fields.len()));
-        let waves =
-            indices(&p.wave, s.wavelengths.len(), "波長")?.unwrap_or(all(s.wavelengths.len()));
+        let fields = indices(&p.field, s.fields.len(), "field")?.unwrap_or(all(s.fields.len()));
+        let waves = indices(&p.wave, s.wavelengths.len(), "wavelength")?
+            .unwrap_or(all(s.wavelengths.len()));
         let (px, py) = lensbench_core::mech::pupil_grid(p.grid);
         let v = lensbench_core::mech::vignetting(s, &s.mechanics, &fields, &waves, &px, &py)?;
         let pct = |n: usize, d: usize| {

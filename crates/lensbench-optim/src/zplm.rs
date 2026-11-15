@@ -59,7 +59,7 @@ impl ZplmTerm {
         };
         self.prog
             .run_term(&mut h, &mut Vars::default())
-            .map_err(|e| e.at(format!("ZPLM のマクロ {}", self.macro_name)))?;
+            .map_err(|e| e.at(format!("ZPLM macro {}", self.macro_name)))?;
         Ok(h.out)
     }
 

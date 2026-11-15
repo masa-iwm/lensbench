@@ -685,10 +685,10 @@ fn verify(paths: &[PathBuf], ci: bool, json_out: bool) -> Result<(), AppError> {
     }
     let bad = reps.iter().filter(|r| !r.passed()).count();
     if reps.is_empty() {
-        return Err("照合の記述（*.verify.json）が見つからない".into());
+        return Err("no verify description (*.verify.json) found".into());
     }
     if bad > 0 {
-        return Err(format!("照合 {} 件のうち {bad} 件が通らない", reps.len()).into());
+        return Err(format!("{bad} of {} checks fail", reps.len()).into());
     }
     Ok(())
 }
@@ -798,17 +798,17 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
     PARTIAL_FAILURE.with(|x| *x.borrow_mut() = None);
     let (json_out, out): (bool, Value) = match cmd {
         Cmd::Serve(_) | Cmd::Watch(_) | Cmd::Run(_) => {
-            return Err("serve・watch・run は入れ子にできない".into())
+            return Err("serve, watch and run can't be nested".into())
         }
         // 記述の中のパス（基準データ・系）を serve の --root で確かめられないので、コマンドラインからだけ
-        Cmd::Verify { .. } => return Err("verify はコマンドラインからだけ使える".into()),
+        Cmd::Verify { .. } => return Err("verify is only available from the command line".into()),
         Cmd::Plugins { json } => (json, plugins_json()),
         Cmd::Analysis(a) => {
             let s = load(&a.c)?;
             let def = analyses()
                 .get(&a.name)
                 .cloned()
-                .ok_or_else(|| format!("解析 {} は無い", a.name))?;
+                .ok_or_else(|| format!("no analysis {}", a.name))?;
             let (out, to_save) = def
                 .run_save(
                     &lensbench_analysis::Cx {
@@ -1056,7 +1056,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             }
             for (i, v) in specs.iter().enumerate() {
                 let t = lensbench_design::merit::term_from_json(v, &p.configs)
-                    .map_err(|x| format!("項 {}: {x}", i + 1))?;
+                    .map_err(|x| format!("term {}: {x}", i + 1))?;
                 p.terms.push(t);
             }
             p.check().map_err(e)?;
@@ -1125,7 +1125,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 let Value::Object(o) = o else {
                     return Err(AppError::usage(format!("--set {t} must be an object")));
                 };
-                let m = v.as_object_mut().ok_or("設定はオブジェクト")?;
+                let m = v.as_object_mut().ok_or("settings must be an object")?;
                 m.extend(o);
             }
             if let Some(n) = trials {
@@ -1163,7 +1163,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     .filter_map(|t| t.eval.as_ref().map(|x| (x.merit, t)))
                     .max_by(|a, b| a.0.total_cmp(&b.0));
                 let Some((_, t)) = worst else {
-                    return Err("--out: 追跡できた試行がない".into());
+                    return Err("--out: no trial could be traced".into());
                 };
                 let cs = lensbench_design::montecarlo::perturbed(&ms, &t.deltas).map_err(e)?;
                 let mut p = ms.problem.clone();
@@ -1179,7 +1179,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 } else {
                     warn_notes(
                         zmx_write::save(path, &sys[0])
-                            .map_err(|x| format!("--out: {x}（.json の系ファイルなら書ける）"))?,
+                            .map_err(|x| format!("--out: {x} (write a .json system file)"))?,
                     );
                 }
             }
@@ -1206,7 +1206,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let cat = lensbench_project::UserCatalog::load_or_new(&catalog)?;
             if cat.items.contains_key(&name) && !replace {
                 return Err(AppError::usage(format!(
-                    "item {name} already exists (use --replace to replace it)"
+                    "item {name} already exists (use --replace)"
                 )));
             }
             if block.len() > 2 {
@@ -1246,7 +1246,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             // 読み直して足す（品を作る間にほかで足した品を消さない）
             let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
                 if cat.items.contains_key(&name) && !replace {
-                    return Err(format!("項目 {name} はもうある（置き換えは --replace）"));
+                    return Err(format!("item {name} already exists (use --replace)"));
                 }
                 cat.items.insert(name.clone(), item);
                 Ok(())
@@ -1358,7 +1358,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             #[cfg(target_arch = "wasm32")]
             {
                 let _ = (catalog, item, cache, json);
-                return Err("cad-step は Web 版では使えない".into());
+                return Err("cad-step is not available in the web version".into());
             }
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -1366,12 +1366,12 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 let it = cat
                     .items
                     .get(&item)
-                    .ok_or_else(|| format!("{} に品 {item} がない", catalog.display()))?;
+                    .ok_or_else(|| format!("no item {item} in {}", catalog.display()))?;
                 let dir = cache.unwrap_or_else(cad::default_cache_dir);
                 let r = match cad::fetch_item(&dir, &item, it) {
                     Ok(r) => r,
                     Err(e) if it.url.is_empty() => return Err(e.into()),
-                    Err(e) => return Err(format!("{e}\n品ページ: {}", it.url).into()),
+                    Err(e) => return Err(format!("{e} (product page: {})", it.url).into()),
                 };
                 if !json {
                     println!(

@@ -760,10 +760,10 @@ pub fn complete(
         let ok = match m.as_str() {
             "thickness" => thickness.is_some_and(|t| t > 0.0 && t.is_finite()),
             "diameter" => diameter.as_ref().and_then(semi_of).is_some(),
-            other => return Err(format!("補えない値: {other}")),
+            other => return Err(format!("value that can't be filled in: {other}")),
         };
         if !ok {
-            return Err(format!("{m} の値が要る"));
+            return Err(format!("a value for {m} is needed"));
         }
     }
     if let Some(t) = thickness.filter(|t| *t > 0.0 && t.is_finite()) {
@@ -781,7 +781,7 @@ pub fn complete(
         .specs
         .get("diameter")
         .and_then(semi_of)
-        .ok_or("径（diameter）が無い")?;
+        .ok_or("no diameter (diameter)")?;
     let material = it
         .specs
         .get("material")
@@ -807,7 +807,7 @@ pub fn complete(
     let block = if it.kind == Some(ItemKind::Mirror) {
         surf(json!({ "type": "mirror", "semi": semi }))
     } else {
-        let t = t.ok_or("厚さ（thickness）が無い")?;
+        let t = t.ok_or("no thickness (thickness)")?;
         let (glass, cat, sub) = material_glass(&material);
         if sub {
             it.notes.push(format!(
@@ -832,9 +832,9 @@ pub fn complete(
     };
     it.blocks = vec![serde_json::from_value(block).map_err(|e| format!("blocks: {e}"))?];
     if let Some(f) = frame {
-        f.validate().map_err(|e| format!("枠: {e}"))?;
+        f.validate().map_err(|e| format!("mount: {e}"))?;
         if f.bores.is_empty() {
-            return Err("枠: 穴（bores）が無い".into());
+            return Err("mount: no bores (bores)".into());
         }
         let clear = f
             .bores

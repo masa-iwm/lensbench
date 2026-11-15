@@ -14,6 +14,7 @@ mod errors;
 pub mod ext;
 mod interference;
 mod names;
+use crate::errors::{index_err, runtime_err, type_err, value_err};
 use names::warn_all;
 mod plugin;
 mod pyjson;
@@ -35,7 +36,6 @@ use lensbench_core::{analysis, psf, sweep, with_threads, zmx, RecSel, System};
 use lensbench_core::{param::Param, RwLockExt, Waves};
 use numpy::ndarray::Array;
 use numpy::{AllowTypeChange, IntoPyArray, PyArrayLike1, PyArrayLike2};
-use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyTuple};
 use {lensbench_analysis::huygens, lensbench_optim as optim};
@@ -131,12 +131,10 @@ pub fn interruptible<R: Send>(
             });
             rx = Some(r);
             match got {
-                Ok(r) => {
-                    return r.map_err(|_| PyRuntimeError::new_err("計算のスレッドが panic した"))
-                }
+                Ok(r) => return r.map_err(|_| runtime_err("the computing thread panicked")),
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    return Err(PyRuntimeError::new_err("計算のスレッドが終わった"))
+                    return Err(runtime_err("the computing thread ended"))
                 }
             }
             if let Err(e) = py.check_signals() {
@@ -261,25 +259,21 @@ impl Prep {
         let src = match (field, object) {
             (Some(f), None) => Source::Field(field_sel(s, f)?),
             (None, Some(o)) => Source::Object(obj_spec(s, o)?),
-            _ => {
-                return Err(PyValueError::new_err(
-                    "field か object のどちらか 1 つを与える",
-                ))
-            }
+            _ => return Err(value_err("give exactly one of field and object")),
         };
         let (at_stop, signed) = match pupil.to_ascii_lowercase().as_str() {
             "normalized" => (false, false),
             "signed" => (false, true),
             "stop" => (true, false),
             p => {
-                return Err(PyValueError::new_err(format!(
-                    "pupil は \"normalized\"・\"signed\"・\"stop\" のどれか（{p}）"
+                return Err(value_err(format!(
+                    "pupil must be \"normalized\", \"signed\" or \"stop\" ({p})"
                 )))
             }
         };
         if npx != npy {
-            return Err(PyValueError::new_err(format!(
-                "px と py の長さが違う（{npx} と {npy}）"
+            return Err(value_err(format!(
+                "px and py have different lengths ({npx} and {npy})"
             )));
         }
         let (spec, vig, hxy) = match src {
@@ -342,19 +336,19 @@ pub fn obj_spec(s: &System, o: ObjArg) -> PyResult<ObjSpec> {
     match o {
         ObjArg::Point((x, y)) => {
             if s.infinite() {
-                return Err(PyValueError::new_err(
-                    "無限遠物体では object は方向 (l, m, n)",
+                return Err(value_err(
+                    "with an object at infinity, object is a direction (l, m, n)",
                 ));
             }
             Ok(ObjSpec::Point([x, y]))
         }
         ObjArg::Dir((l, m, n)) => {
             if !s.infinite() {
-                return Err(PyValueError::new_err("有限物体では object は物点 (x, y)"));
+                return Err(value_err("a finite object takes a point (x, y)"));
             }
             let r = (l * l + m * m + n * n).sqrt();
             if r.is_nan() || r <= 0.0 || n.is_nan() || n <= 0.0 {
-                return Err(PyValueError::new_err("方向 (l, m, n) は n > 0"));
+                return Err(value_err("direction (l, m, n) needs n > 0"));
             }
             Ok(ObjSpec::Dir([l / r, m / r, n / r]))
         }
@@ -370,15 +364,13 @@ pub fn obj_out(o: ObjSpec) -> Vec<f64> {
 
 pub fn field_sel(s: &System, f: FieldArg) -> PyResult<FieldSel> {
     match f {
-        FieldArg::Flag(b) => Err(PyTypeError::new_err(format!(
-            "視野は番号（1 始まり）か (hx, hy)。bool（{b}）は使えない"
+        FieldArg::Flag(b) => Err(type_err(format!(
+            "a field is a number (1-based) or (hx, hy); a bool ({b}) can't be used"
         ))),
         FieldArg::Index(i) => {
             let n = s.fields.len();
             if i == 0 || i > n {
-                return Err(PyIndexError::new_err(format!(
-                    "視野 {i} はありません（1〜{n}）"
-                )));
+                return Err(index_err(format!("no field {i} (1 to {n})")));
             }
             Ok(FieldSel::Index(i - 1))
         }
@@ -390,9 +382,7 @@ fn field_axis(a: &str) -> PyResult<sweep::FieldAxis> {
     match a {
         "x" => Ok(sweep::FieldAxis::X),
         "y" => Ok(sweep::FieldAxis::Y),
-        _ => Err(PyValueError::new_err(format!(
-            "axis は \"x\" か \"y\"（{a}）"
-        ))),
+        _ => Err(value_err(format!("axis must be \"x\" or \"y\" ({a})"))),
     }
 }
 
@@ -443,7 +433,7 @@ pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
     let n = s.wavelengths.len();
     if w == 0 || w > n {
         let e = format!("波長 {w} はありません（1〜{n}）");
-        return Err(PyIndexError::new_err(e));
+        return Err(index_err(e));
     }
     Ok(w - 1)
 }
@@ -484,8 +474,8 @@ fn opt_problem(
         Some("wavefront") => Some(optim::DefaultMerit::Wavefront),
         None => None,
         Some(m) => {
-            return Err(PyValueError::new_err(format!(
-                "merit は \"spot\"・\"wavefront\"・None（{m}）"
+            return Err(value_err(format!(
+                "merit must be \"spot\", \"wavefront\" or None ({m})"
             )))
         }
     };
@@ -493,14 +483,14 @@ fn opt_problem(
         "centroid" => sweep::RmsRef::Centroid,
         "chief" => sweep::RmsRef::Chief,
         _ => {
-            return Err(PyValueError::new_err(format!(
-                "reference は \"centroid\" か \"chief\"（{reference}）"
+            return Err(value_err(format!(
+                "reference must be \"centroid\" or \"chief\" ({reference})"
             )))
         }
     };
     p.jac = optim::JacMode::parse(jac).ok_or_else(|| {
-        PyValueError::new_err(format!(
-            "jac は \"auto\"・\"fd\"・\"forward\" のどれか（{jac}）"
+        value_err(format!(
+            "jac must be \"auto\", \"fd\" or \"forward\" ({jac})"
         ))
     })?;
     if let Some(kind) = kind {
@@ -764,9 +754,7 @@ impl TraceOpts {
         let img = s.image();
         if let Some(l) = last {
             if l == 0 || l > img {
-                return Err(PyIndexError::new_err(format!(
-                    "面 {l} はありません（1〜{img}）"
-                )));
+                return Err(index_err(format!("no surface {l} (1 to {img})")));
             }
         }
         let pw = match pol {
@@ -775,8 +763,8 @@ impl TraceOpts {
             Some(PolArg::Wave(w)) => Some(wave_index(s, w)?),
         };
         if pw.is_some() && last.is_some_and(|l| l != img) {
-            return Err(PyValueError::new_err(
-                "pol は last を省いたとき（像面まで）だけ",
+            return Err(value_err(
+                "pol only when last is left out (up to the image)",
             ));
         }
         let params: Option<Vec<Param>> = grad
@@ -785,15 +773,15 @@ impl TraceOpts {
             .transpose()
             .map_err(err)?;
         if land && params.is_none() {
-            return Err(PyValueError::new_err("land は grad と一緒に与える"));
+            return Err(value_err("give land together with grad"));
         }
         if let Some(z) = dz {
             if !z.is_finite() {
-                return Err(PyValueError::new_err(format!("dz が有限でない（{z}）")));
+                return Err(value_err(format!("dz is not finite ({z})")));
             }
             if pw.is_some() && pol_phase {
-                return Err(PyValueError::new_err(
-                    "dz と pol_phase=True は一緒に使えない（ずらした分の伝搬の位相を入れていない）",
+                return Err(value_err(
+                    "dz and pol_phase=True can't be used together (the propagation phase of the shift is not included)",
                 ));
             }
         }
@@ -1144,7 +1132,7 @@ impl PySystem {
         } else if project.cast::<PyDict>().is_ok() {
             pyjson::from_py(project)?.to_string()
         } else {
-            return Err(PyTypeError::new_err("project は JSON の文字列か dict"));
+            return Err(type_err("project: a JSON string or dict"));
         };
         let base = base.unwrap_or_else(|| PathBuf::from("."));
         let glass_dirs = glass_dirs.unwrap_or_default();
@@ -1205,8 +1193,8 @@ impl PySystem {
             .extension()
             .is_some_and(|x| x.eq_ignore_ascii_case("json"))
         {
-            return Err(PyValueError::new_err(
-                "load_configs は .zmx だけ（プロジェクトファイルは load(state=...) で状態ごとに）",
+            return Err(value_err(
+                "load_configs is only for .zmx (load project files per state with load(state=...))",
             ));
         }
         let opt = zmx::LoadOptions {
@@ -1215,8 +1203,8 @@ impl PySystem {
         };
         // 空の list は全部（None）と取り違えやすいので断る
         if configs.as_ref().is_some_and(|c| c.is_empty()) {
-            return Err(PyValueError::new_err(
-                "configs が空（全部の構成なら configs を省く）",
+            return Err(value_err(
+                "configs is empty (leave configs out for all configurations)",
             ));
         }
         let cfgs = configs.unwrap_or_default();
@@ -1381,12 +1369,12 @@ impl PySystem {
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         if s.mechanics.is_empty() {
-            return Err(PyValueError::new_err(
-                "機構部品がない（プロジェクトの mechanics に書く）",
+            return Err(value_err(
+                "no mechanical parts (write them in the project mechanics)",
             ));
         }
         if grid < 2 {
-            return Err(PyValueError::new_err("grid は 2 以上"));
+            return Err(value_err("grid must be 2 or more"));
         }
         let nf = s.fields.len();
         let fs: Vec<usize> = match fields {
@@ -1394,9 +1382,7 @@ impl PySystem {
                 .into_iter()
                 .map(|f| {
                     if f == 0 || f > nf {
-                        Err(PyIndexError::new_err(format!(
-                            "視野 {f} はありません（1〜{nf}）"
-                        )))
+                        Err(index_err(format!("no field {f} (1 to {nf})")))
                     } else {
                         Ok(f - 1)
                     }
@@ -1631,7 +1617,7 @@ impl PySystem {
     fn set_unit_pivot(&self, name: &str, pivot: (f64, f64, f64)) -> PyResult<()> {
         let mut g = self.sys.write_ok();
         let Some(u) = g.find_unit(name) else {
-            return Err(PyValueError::new_err(format!("玉・群 {name} がない")));
+            return Err(value_err(format!("no lens or group {name}")));
         };
         let mut n = g.with_params(&[]).map_err(err)?;
         n.set_unit_pivot(u, [pivot.0, pivot.1, pivot.2])
@@ -1852,7 +1838,7 @@ impl PySystem {
         let k = match what {
             "t" => lensbench_core::param::Kind::Thick,
             "c" => lensbench_core::param::Kind::Curv,
-            _ => return Err(PyValueError::new_err(format!("what は t か c（{what}）"))),
+            _ => return Err(value_err(format!("what: t or c ({what})"))),
         };
         self.mutate(|s| s.remove_solve(j, k))
     }
@@ -1986,11 +1972,11 @@ impl PySystem {
             ("paraxial_image_height", None) => FieldType::ParH,
             ("real_image_height", None) => FieldType::RealH,
             ("solve", Some(c)) => FieldType::Solve(edit::field_cond(&g, c)?),
-            ("solve", None) => return Err(PyValueError::new_err("solve には cond が要る")),
-            (_, Some(_)) => return Err(PyValueError::new_err("cond は kind が solve のときだけ")),
+            ("solve", None) => return Err(value_err("solve needs cond")),
+            (_, Some(_)) => return Err(value_err("cond only when kind is solve")),
             (k, None) => {
-                return Err(PyValueError::new_err(format!(
-                    "視野の種類 {k}（angle・object_height・paraxial_image_height・real_image_height・solve）"
+                return Err(value_err(format!(
+                    "field type {k} (angle, object_height, paraxial_image_height, real_image_height, solve)"
                 )))
             }
         };
@@ -1998,7 +1984,7 @@ impl PySystem {
         n.field_type = ft;
         if let Some(f) = fields {
             if f.is_empty() {
-                return Err(PyValueError::new_err("視野が空"));
+                return Err(value_err("no fields given"));
             }
             n.fields = f.into_iter().map(|(x, y)| Field::xy(x, y)).collect();
         }
@@ -2081,16 +2067,16 @@ impl PySystem {
                 GridArg::Nxy(v) => v,
             };
             if opts.pw.is_none() {
-                return Err(PyValueError::new_err("pol_grid は pol と一緒に与える"));
+                return Err(value_err("give pol_grid together with pol"));
             }
             if pre.at_stop {
-                return Err(PyValueError::new_err(
-                    "pol_grid は pupil が \"normalized\" か \"signed\" のときだけ",
+                return Err(value_err(
+                    "pol_grid only when pupil is \"normalized\" or \"signed\"",
                 ));
             }
             if g.0 < polgrid::MIN_POINTS || g.1 < polgrid::MIN_POINTS {
-                return Err(PyValueError::new_err(format!(
-                    "pol_grid は各軸 {} 点以上（{:?}）",
+                return Err(value_err(format!(
+                    "pol_grid needs {} points or more on each axis ({:?})",
                     polgrid::MIN_POINTS,
                     g
                 )));
@@ -2131,8 +2117,8 @@ impl PySystem {
             |a: &PyArrayLike2<'py, f64, AllowTypeChange>, name: &str| -> PyResult<Vec<[f64; 3]>> {
                 let v = a.as_array();
                 if v.ncols() != 3 {
-                    return Err(PyValueError::new_err(format!(
-                        "{name} の形は (光線, 3)（{:?}）",
+                    return Err(value_err(format!(
+                        "the shape of {name} must be (rays, 3) ({:?})",
                         v.shape()
                     )));
                 }
@@ -2140,8 +2126,8 @@ impl PySystem {
             };
         let (mut p, mut k) = (rows(&start, "start")?, rows(&direction, "direction")?);
         if p.len() != k.len() {
-            return Err(PyValueError::new_err(format!(
-                "start と direction の本数が違う（{} と {}）",
+            return Err(value_err(format!(
+                "start and direction have different numbers of rays ({} and {})",
                 p.len(),
                 k.len()
             )));
@@ -2162,8 +2148,8 @@ impl PySystem {
                 }
             }
             f => {
-                return Err(PyValueError::new_err(format!(
-                    "frame は \"object\" か \"global\"（{f}）"
+                return Err(value_err(format!(
+                    "frame must be \"object\" or \"global\" ({f})"
                 )))
             }
         }
@@ -2203,11 +2189,7 @@ impl PySystem {
         let unknown = match unknown.to_ascii_lowercase().as_str() {
             "object" => Unknown::Object,
             "pupil" => Unknown::Pupil,
-            u => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown は object か pupil（{u}）"
-                )))
-            }
+            u => return Err(value_err(format!("unknown must be object or pupil ({u})"))),
         };
         let kind: String = residual.get_item(0)?.extract()?;
         let res = match (kind.to_ascii_lowercase().as_str(), residual.len()) {
@@ -2227,8 +2209,8 @@ impl PySystem {
                 s2: residual.get_item(2)?.extract()?,
             },
             _ => {
-                return Err(PyValueError::new_err(
-                    "residual は (\"position\", 面, (x, y))、(\"dirsum\", 面1, 面2)、(\"dirdiff\", 面1, 面2)",
+                return Err(value_err(
+                    "residual must be (\"position\", surface, (x, y)), (\"dirsum\", surface1, surface2) or (\"dirdiff\", surface1, surface2)",
                 ))
             }
         };
@@ -2244,9 +2226,7 @@ impl PySystem {
                 };
                 s.object_spec(hx, hy).map_err(err)?
             }
-            (Some(_), Some(_)) => {
-                return Err(PyValueError::new_err("object と field は一緒に与えない"))
-            }
+            (Some(_), Some(_)) => return Err(value_err("not both object and field")),
         };
         let w = match wave {
             None => s.primary,
@@ -2295,14 +2275,14 @@ impl PySystem {
             "fft" => analysis::MtfMethod::Fft,
             "direct" => analysis::MtfMethod::Direct,
             m => {
-                return Err(PyValueError::new_err(format!(
-                    "method は \"auto\"・\"interp\"・\"fft\"・\"direct\"（{m}）"
+                return Err(value_err(format!(
+                    "method must be \"auto\", \"interp\", \"fft\" or \"direct\" ({m})"
                 )))
             }
         };
         if each_wave {
             if w != Waves::All {
-                return Err(PyValueError::new_err("each_wave は wave と一緒に使えない"));
+                return Err(value_err("each_wave can't be used with wave"));
             }
             let mw = py
                 .detach(|| with_threads(threads, || analysis::mtf_waves(&s, f, n, &fs, method)))
@@ -2496,8 +2476,8 @@ impl PySystem {
             reversed.unwrap_or_default().into_iter().collect();
         let mut ms =
             lensbench_design::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
-                .map_err(PyValueError::new_err)?;
-        let oo = lensbench_design::tolerance::out_opts(&v).map_err(PyValueError::new_err)?;
+                .map_err(value_err)?;
+        let oo = lensbench_design::tolerance::out_opts(&v).map_err(value_err)?;
         let users = match &terms {
             Some(t) => userterm::add_terms(py, &mut ms.problem, t, &self.coat_files)?,
             None => Vec::new(),
@@ -2578,8 +2558,8 @@ impl PySystem {
                 "centroid" => sweep::RmsRef::Centroid,
                 "chief" => sweep::RmsRef::Chief,
                 _ => {
-                    return Err(PyValueError::new_err(format!(
-                        "reference は \"centroid\" か \"chief\"（{reference}）"
+                    return Err(value_err(format!(
+                        "reference must be \"centroid\" or \"chief\" ({reference})"
                     )))
                 }
             },
@@ -2588,12 +2568,12 @@ impl PySystem {
         let xs = x.map(|a| floats(&a));
         let need_x = || {
             xs.clone()
-                .ok_or_else(|| PyValueError::new_err("vs を使うときは x（横軸の値の列）が要る"))
+                .ok_or_else(|| value_err("vs needs x (the axis values)"))
         };
         let fsel = |f: Option<FieldArg>| -> PyResult<FieldSel> {
             match f {
                 Some(f) => field_sel(&s, f),
-                None => Err(PyValueError::new_err("field が要る")),
+                None => Err(value_err("field is needed")),
             }
         };
         let r = match vs {
@@ -2608,7 +2588,7 @@ impl PySystem {
             }
             Some("field") => {
                 if field.is_some() {
-                    return Err(PyValueError::new_err("vs=\"field\" では field は使わない"));
+                    return Err(value_err("field is not used with vs=\"field\""));
                 }
                 let ax = field_axis(axis)?;
                 let h = need_x()?;
@@ -2621,17 +2601,15 @@ impl PySystem {
             }
             Some("wavelength") => {
                 if wave.is_some() {
-                    return Err(PyValueError::new_err(
-                        "vs=\"wavelength\" では wave は使わない",
-                    ));
+                    return Err(value_err("wave is not used with vs=\"wavelength\""));
                 }
                 let f = fsel(field)?;
                 let l = need_x()?;
                 py.detach(|| with_threads(threads, || sweep::rms_vs_wavelength(&s, f, &l, o)))
             }
             Some(v) => {
-                return Err(PyValueError::new_err(format!(
-                    "vs は \"field\"・\"focus\"・\"wavelength\"（{v}）"
+                return Err(value_err(format!(
+                    "vs must be \"field\", \"focus\" or \"wavelength\" ({v})"
                 )))
             }
         };
@@ -2884,11 +2862,11 @@ type Reduced<'py> = (Bound<'py, PyAny>, (Bound<'py, PyBytes>, Vec<PathBuf>));
 /// pickle から系を作り直す（[`PySystem::__reduce__`] の対）
 #[pyfunction]
 fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem> {
-    let txt = std::str::from_utf8(state)
-        .map_err(|e| PyValueError::new_err(format!("系の読み直し: {e}")))?;
+    let txt =
+        std::str::from_utf8(state).map_err(|e| value_err(format!("reloading the system: {e}")))?;
     // 長さと系の約束は sysfile::check で確かめる（壊れたバイト列で追跡が panic しないよう）
     let (sys, _, _) = lensbench_project::sysfile::from_str(txt)
-        .map_err(|e| PyValueError::new_err(format!("系の読み直し: {e}")))?;
+        .map_err(|e| value_err(format!("reloading the system: {e}")))?;
     Ok(PySystem::new(sys, coatings, Default::default()))
 }
 

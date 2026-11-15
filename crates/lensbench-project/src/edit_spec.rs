@@ -47,7 +47,7 @@ impl<'de> Deserialize<'de> for Num {
             },
         }
         match Raw::deserialize(d)
-            .map_err(|_| serde::de::Error::custom("数か {\"$f\": \"inf\"} が要る"))?
+            .map_err(|_| serde::de::Error::custom("a number or {\"$f\": \"inf\"} is needed"))?
         {
             Raw::N(x) => Ok(Num(x)),
             Raw::F { f } => match f.as_str() {
@@ -55,7 +55,7 @@ impl<'de> Deserialize<'de> for Num {
                 "-inf" => Ok(Num(f64::NEG_INFINITY)),
                 "nan" => Ok(Num(f64::NAN)),
                 t => Err(serde::de::Error::custom(format!(
-                    "{{\"$f\": \"{t}\"}}（inf・-inf・nan）"
+                    "{{\"$f\": \"{t}\"}} (inf, -inf, nan)"
                 ))),
             },
         }
@@ -112,20 +112,26 @@ pub enum BlockRef {
     Sys(Ref),
 }
 
-fn ref_of<E: serde::de::Error>(v: Value, what: &str) -> Result<Ref, E> {
+fn ref_of<E: serde::de::Error>(v: Value, surface: bool) -> Result<Ref, E> {
+    let msg = match (&v, surface) {
+        (Value::Number(n), true) => format!("surface number {n} (an integer 0 or more)"),
+        (Value::Number(n), false) => format!("item number {n} (an integer 0 or more)"),
+        (v, true) => format!("surface number or name needed ({v})"),
+        (v, false) => format!("item number or name needed ({v})"),
+    };
     match v {
         Value::Number(n) => n
             .as_u64()
             .map(|i| Ref::Index(i as usize))
-            .ok_or_else(|| E::custom(format!("{what}番号 {n}（0 以上の整数）"))),
+            .ok_or_else(|| E::custom(msg)),
         Value::String(t) => Ok(Ref::Name(t)),
-        v => Err(E::custom(format!("{what}番号か名前が要る（{v}）"))),
+        _ => Err(E::custom(msg)),
     }
 }
 
 impl<'de> Deserialize<'de> for Ref {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        ref_of(Value::deserialize(d)?, "")
+        ref_of(Value::deserialize(d)?, false)
     }
 }
 
@@ -133,11 +139,11 @@ impl<'de> Deserialize<'de> for BlockRef {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         match Value::deserialize(d)? {
             v @ Value::Object(_) => BlockFace::deserialize(v).map(BlockRef::Block).map_err(|e| {
-                serde::de::Error::custom(format!("面の {{\"block\": id, \"surface\": i}}: {e}"))
+                serde::de::Error::custom(format!("block surface (block, surface): {e}"))
             }),
-            v => ref_of(v, "面の").map(BlockRef::Sys).map_err(|e: D::Error| {
+            v => ref_of(v, true).map(BlockRef::Sys).map_err(|e: D::Error| {
                 serde::de::Error::custom(format!(
-                    "{e}（ブロックの面は {{\"block\": id, \"surface\": i}}）"
+                    "{e} (a block surface is written with block and surface)"
                 ))
             }),
         }

@@ -205,8 +205,8 @@ fn a_catalog_item_referring_to_itself_is_an_error() {
     );
     let ok = expand(&Project::from_json(&txt).unwrap(), &env_at(&dir));
     std::fs::remove_dir_all(&dir).ok();
-    assert!(ea.contains("循環"), "{ea}");
-    assert!(eb.contains("循環"), "{eb}");
+    assert!(ea.contains("refers to itself"), "{ea}");
+    assert!(eb.contains("refers to itself"), "{eb}");
     assert_eq!(ok.unwrap().surfaces[1].t, 2.0);
 }
 

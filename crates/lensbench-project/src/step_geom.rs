@@ -336,7 +336,7 @@ impl Step {
             _ => 0,
         };
         let Some(data) = text[from..].find("DATA;").map(|k| k + from) else {
-            return Err("STEP の DATA 部が無い".into());
+            return Err("no DATA section in the STEP".into());
         };
         let body = &text.as_bytes()[data + 5..];
         let mut ents: HashMap<u64, Vec<(String, Vec<Arg>)>> = HashMap::new();
@@ -1845,7 +1845,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         });
     let t = hi - lo;
     if t.is_nan() || t <= 0.0 {
-        return Err("STEP の円の軸の向きに厚さが無い".into());
+        return Err("no thickness along the circle axis in the STEP".into());
     }
     let solids = if geos.is_empty() {
         String::new()
@@ -1878,7 +1878,7 @@ pub(crate) fn shell_poses(
 ) -> Result<Vec<crate::catalog_fill::ShellPose>, String> {
     let m = measure(upper, k, |x| x)?;
     let Some((o, axis, x, z0)) = m.axes else {
-        return Err("STEP から枠・機構部品の座標が決まらない（穴のある立体が無い）".into());
+        return Err("the mount or mechanical part coordinates can't be found from the STEP (no solid with a bore)".into());
     };
     let y = cross(axis, x);
     let st = Step::parse(upper)?;
@@ -1926,7 +1926,7 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
             .collect()
     };
     if pts.len() < 2 {
-        return Err("STEP に点が無い".into());
+        return Err("no points in the STEP".into());
     }
     let mut ext = [0.0; 3];
     for (a, e) in ext.iter_mut().enumerate() {
@@ -1939,7 +1939,7 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
     }
     ext.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     if ext[0].is_nan() || ext[0] <= 0.0 {
-        return Err("STEP の形に厚さが無い".into());
+        return Err("the STEP shape has no thickness".into());
     }
     let d = if (ext[1] - ext[2]).abs() < 1e-9 {
         json!(sc(ext[2]))

@@ -212,7 +212,7 @@ pub fn ui(ui: &mut Ui, p: &mut ZoomPanel, cands: &[Cand], sys: &pp::Sys) -> Opti
                 }
             });
             if let Some(e) = &p.error {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
             }
             if let Some(r) = &p.result {
                 section(ui, "zoom_result_sec", tr("結果"), |ui| {

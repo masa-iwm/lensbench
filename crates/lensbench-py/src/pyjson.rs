@@ -1,7 +1,7 @@
 //! Python の値 ⇄ serde の JSON の値の直接の変換（json モジュールを往復しない、CLI-20）。numpy の配列・
 //! スカラー（`np.int64`・`np.float32` など）も、`tolist()` で Python の数・並びにして受ける
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use crate::errors::{type_err, value_err};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use serde_json::{Map, Number, Value};
@@ -30,17 +30,15 @@ fn conv(v: &Bound<'_, PyAny>, nan_null: bool) -> PyResult<Value> {
         if let Ok(u) = v.extract::<u64>() {
             return Ok(Value::from(u));
         }
-        return Err(PyValueError::new_err(format!(
-            "整数 {v} は 64 ビットに入らない"
-        )));
+        return Err(value_err(format!("integer {v} doesn't fit in 64 bits")));
     }
     if v.is_instance_of::<PyFloat>() {
         let x: f64 = v.extract()?;
         return match Number::from_f64(x) {
             Some(n) => Ok(Value::Number(n)),
             None if nan_null => Ok(Value::Null),
-            None => Err(PyValueError::new_err(format!(
-                "{x} は JSON に書けない（NaN・inf）"
+            None => Err(value_err(format!(
+                "{x} can't be written to JSON (NaN, inf)"
             ))),
         };
     }
@@ -65,8 +63,8 @@ fn conv(v: &Bound<'_, PyAny>, nan_null: bool) -> PyResult<Value> {
     if v.hasattr("tolist")? {
         return conv(&v.call_method0("tolist")?, nan_null);
     }
-    Err(PyTypeError::new_err(format!(
-        "{} は JSON にできない（None・bool・数・文字列・list・tuple・dict・numpy の配列）",
+    Err(type_err(format!(
+        "{} can't be made JSON (None, bool, number, string, list, tuple, dict, numpy array)",
         v.get_type().name()?
     )))
 }
@@ -102,8 +100,8 @@ fn key(k: &Bound<'_, PyAny>) -> PyResult<String> {
             return key(&v);
         }
     }
-    Err(PyTypeError::new_err(format!(
-        "dict のキー {k} は文字列・数・bool・None だけ"
+    Err(type_err(format!(
+        "dict key {k} must be a string, number, bool or None"
     )))
 }
 

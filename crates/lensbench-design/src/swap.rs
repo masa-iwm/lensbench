@@ -205,11 +205,11 @@ fn parse_var(v: &str) -> Result<(&str, Option<Range>), String> {
     };
     let (lo, hi) = r
         .split_once(':')
-        .ok_or_else(|| format!("変数 {v} の範囲は 下限:上限"))?;
+        .ok_or_else(|| format!("the range of variable {v} is min:max"))?;
     let num = |t: &str, d: f64| -> Result<f64, String> {
         match t.trim() {
             "" => Ok(d),
-            t => t.parse().map_err(|_| format!("変数 {v} の範囲 {t}")),
+            t => t.parse().map_err(|_| format!("range {t} of variable {v}")),
         }
     };
     let range = (num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
@@ -251,7 +251,7 @@ impl SwapSpec {
             Some(v) => serde_json::from_value(v),
             None => serde_json::from_str(txt),
         };
-        r.map_err(|e| format!("差し替え探索の設定: {e}"))
+        r.map_err(|e| format!("swap search settings: {e}"))
     }
 }
 
@@ -288,7 +288,7 @@ pub fn lens_info(
     let e = els
         .iter()
         .find(|e| e.kind == EKind::Lens)
-        .ok_or("玉がない")?;
+        .ok_or("no lenses")?;
     let efl = if efl_cat.is_finite() {
         efl_cat
     } else {
@@ -404,14 +404,14 @@ impl<'a> SwapSearch<'a> {
         spec: SwapSpec,
     ) -> Result<SwapSearch<'a>, String> {
         if spec.state.is_some() && !spec.states.is_empty() {
-            return Err("state と states は同時に使えない".into());
+            return Err("state and states can't be used together".into());
         }
         // 変数の書き方の誤りは組ごとの失敗にせず、始める前に弾く
         for v in spec.vars.iter().chain(&spec.state_vars) {
             parse_var(v)?;
         }
         if spec.states.is_empty() && !spec.state_vars.is_empty() {
-            return Err("state_vars は states と一緒に使う".into());
+            return Err("state_vars goes with states".into());
         }
         for n in &spec.states {
             p.with_state(n)?;
@@ -422,11 +422,11 @@ impl<'a> SwapSearch<'a> {
         };
         let base = serde_json::to_value(&p).map_err(|e| e.to_string())?;
         if spec.slots.is_empty() {
-            return Err("差し替える所がない".into());
+            return Err("no place to swap".into());
         }
         if let Some(pr) = &spec.prescreen {
             if pr.rings == 0 || pr.keep == 0 {
-                return Err("prescreen の rings・keep は 1 以上".into());
+                return Err("prescreen rings and keep must be 1 or more".into());
             }
         }
         // 候補の要約は所の間で使い回す（絞り込みの所が使うレンズをまとめて 1 回だけ、並列に作る）
@@ -446,17 +446,17 @@ impl<'a> SwapSearch<'a> {
         let mut picks = Vec::new();
         for (k, sl) in spec.slots.iter().enumerate() {
             if spec.slots[..k].iter().any(|x| x.block == sl.block) {
-                return Err(format!("所 {} が 2 回ある", sl.block));
+                return Err(format!("place {} appears twice", sl.block));
             }
             let hits = block_pointers(&base["blocks"], &sl.block);
             let ptr = match hits.as_slice() {
                 [x] => x.clone(),
-                [] => return Err(format!("ブロック {} がない", sl.block)),
-                _ => return Err(format!("id {} のブロックが 2 つ以上ある", sl.block)),
+                [] => return Err(format!("no block {}", sl.block)),
+                _ => return Err(format!("two or more blocks with id {}", sl.block)),
             };
             let b = base.pointer(&ptr).unwrap();
             if b["type"] != "lens" {
-                return Err(format!("ブロック {} は玉（type lens）でない", sl.block));
+                return Err(format!("block {} is not a lens (type lens)", sl.block));
             }
             let rev0 = b["reversed"].as_bool().unwrap_or(false);
             let lenses = if let Some(idx) = &slot_idx[k] {
@@ -466,7 +466,7 @@ impl<'a> SwapSearch<'a> {
                     .iter()
                     .map(|q| {
                         let l = cat.get(&q.vendor, &q.part).ok_or_else(|| {
-                            format!("レンズカタログに {} {} がない", q.vendor, q.part)
+                            format!("no {} {} in the lens catalogs", q.vendor, q.part)
                         })?;
                         let (efl, diameter, thickness) = lens_info(&l.zmx, l.efl, &env.glass_dirs)
                             .map_err(|e| format!("{} {}: {e}", q.vendor, q.part))?;
@@ -483,7 +483,7 @@ impl<'a> SwapSearch<'a> {
             if lenses.is_empty() {
                 return Err(if cat.is_empty() {
                     format!(
-                        "所 {}: 候補がない（レンズカタログが 0 品。メーカーのフォルダか .zmx・ZMF のあるフォルダを指定する）",
+                        "place {}: no candidates (0 items in the lens catalogs; give the maker folder or a folder with .zmx or ZMF)",
                         sl.block
                     )
                 } else {
@@ -523,8 +523,8 @@ impl<'a> SwapSearch<'a> {
         match n {
             Some(n) if n <= s.spec.max_count => Ok(s),
             _ => Err(format!(
-                "組が多すぎる（{}、上限 {}。max_count で上げられる）",
-                n.map_or("桁あふれ".to_string(), |n| n.to_string()),
+                "too many combinations ({}, limit {}; raise it with max_count)",
+                n.map_or("overflow".to_string(), |n| n.to_string()),
                 s.spec.max_count
             )),
         }
@@ -616,7 +616,7 @@ impl<'a> SwapSearch<'a> {
                 for (k, (sk, gk)) in systems.iter().zip(&gapss).enumerate().skip(1) {
                     if var_param(sk, gk, spec)? != param {
                         return Err(format!(
-                            "変数 {spec} が状態 {} で別の面を指す（state_vars に）",
+                            "variable {spec} points at another surface in state {} (put it in state_vars)",
                             self.spec.states[k]
                         ));
                     }
@@ -662,7 +662,10 @@ impl<'a> SwapSearch<'a> {
                         .iter()
                         .find(|u| u.name == sl.block)
                         .ok_or_else(|| {
-                            format!("玉 {} の面が見つからない（有効径の条件）", sl.block)
+                            format!(
+                                "surfaces of lens {} not found (clear aperture condition)",
+                                sl.block
+                            )
                         })?;
                     for sp in &u.spans {
                         for j in sp[0]..=sp[1] {
@@ -809,7 +812,9 @@ impl<'a> SwapSearch<'a> {
             for (name, &v) in st.iter() {
                 let qs: Vec<usize> = (0..names.len()).filter(|&q| &names[q].0 == name).collect();
                 if qs.is_empty() {
-                    return Err(format!("出発点の変数 {name} が vars・state_vars にない"));
+                    return Err(format!(
+                        "start variable {name} is not in vars or state_vars"
+                    ));
                 }
                 for q in qs {
                     match names[q].1 {
@@ -838,7 +843,7 @@ impl<'a> SwapSearch<'a> {
             }
         }
         let Some((start, pr, r)) = best else {
-            return Err(last_err.unwrap_or_else(|| "出発点がない".into()));
+            return Err(last_err.unwrap_or_else(|| "no start point".into()));
         };
         Ok((start, pr, r, names))
     }
@@ -1119,15 +1124,17 @@ fn var_param(s: &System, gaps: &[Gap], spec: &str) -> Result<Param, String> {
                 [h] => (h.1, h.2),
                 _ => {
                     return Err(format!(
-                        "空気 {id} は 2 回通る（往復の間隔は群の shift で動かす）"
+                        "air {id} is passed twice (move the round-trip gap with the group shift)"
                     ))
                 }
             };
             if sign < 0.0 {
-                return Err(format!("空気 {id} は鏡の後（群の shift で動かす）"));
+                return Err(format!(
+                    "air {id} is after a mirror (move it with the group shift)"
+                ));
             }
             if !s.surfaces[surf].t.is_finite() {
-                return Err(format!("空気 {id} は物体からの距離（無限遠）"));
+                return Err(format!("air {id} is the object distance (infinity)"));
             }
             let p = Param::new(surf, Kind::Thick);
             s.check_param(p).map_err(|e| e.to_string())?;

@@ -313,13 +313,13 @@ impl SpecFilter {
         .unwrap_or((s, Op::Has, ""));
         let name = name.trim().to_string();
         if name.is_empty() {
-            return Err(format!("仕様の条件 {s:?}: 名前が無い"));
+            return Err(format!("spec condition {s:?}: no name"));
         }
         let text = rest.trim().to_string();
         let num = |x: &str| {
             x.trim()
                 .parse::<f64>()
-                .map_err(|_| format!("仕様の条件 {s:?}: {x:?} が数でない"))
+                .map_err(|_| format!("spec condition {s:?}: {x:?} is not a number"))
         };
         let (lo, hi) = match op {
             Op::Has => (f64::NAN, f64::NAN),

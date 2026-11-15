@@ -176,20 +176,29 @@ pub fn check_table(text: &str) -> Result<(), String> {
 
 /// Match `s` against the pieces `p` (anchored at both ends); the slots' text in order
 fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
+    matches_at(p, s, false)
+}
+
+/// [`matches`]; `open` is whether the text just before ends with "("
+fn matches_at(p: &[Piece], s: &str, open: bool) -> Option<Vec<String>> {
     match p.split_first() {
         None => s.is_empty().then(Vec::new),
-        Some((Piece::Text(t), rest)) => matches(rest, s.strip_prefix(t.as_str())?),
+        Some((Piece::Text(t), rest)) => {
+            matches_at(rest, s.strip_prefix(t.as_str())?, t.ends_with('('))
+        }
         Some((Piece::Slot(name), rest)) => {
-            // shortest slot text first; a slot never takes an empty string
+            // shortest slot text first; a slot never takes an empty string, except a whole
+            // parenthesis "({})" (an empty list: "no state x ()")
             let next = match rest.first() {
                 Some(Piece::Text(t)) => Some(t.as_str()),
                 _ => None,
             };
+            let empty = open && next.is_some_and(|t| t.starts_with(')'));
             let ends: Vec<usize> = match next {
                 Some(t) => s
                     .match_indices(t)
                     .map(|(i, _)| i)
-                    .filter(|&i| i > 0)
+                    .filter(|&i| i > 0 || empty)
                     .collect(),
                 None if rest.is_empty() => vec![s.len()],
                 None => s.char_indices().map(|(i, _)| i).skip(1).collect(),
@@ -206,10 +215,10 @@ fn matches(p: &[Piece], s: &str) -> Option<Vec<String>> {
                 .filter(|&i| {
                     let colon =
                         s[..i].contains(": ") || (s[..i].ends_with(':') && s[i..].starts_with(' '));
-                    i > 0 && (nested || !colon)
+                    (i > 0 || empty) && (nested || !colon)
                 })
                 .find_map(|i| {
-                    let mut v = matches(rest, &s[i..])?;
+                    let mut v = matches_at(rest, &s[i..], false)?;
                     v.insert(0, s[..i].to_string());
                     Some(v)
                 })
@@ -356,6 +365,8 @@ mod tests {
             translate("surface 3 can't be written (1 to 9)"),
             "面 3 は書けない（1〜9）"
         );
+        // 空の一覧の括弧「()」は空の欄に当てる
+        assert_eq!(translate("no state nosuch ()"), "状態 nosuch はない（）");
         assert_eq!(
             translate("set 3: no wavelength 2 (1 to 1)"),
             "組 3: 波長 2 はありません（1〜1）"

@@ -70,7 +70,7 @@ fn save_list_rename_delete() {
         json!({ "catalog": cat, "name": "pair", "blocks": ["L1"] }),
     )
     .unwrap_err();
-    assert!(e.contains("もうある"), "{e}");
+    assert!(e.contains("already exists"), "{e}");
     call(
         &sv,
         "catalog_add",
@@ -98,7 +98,7 @@ fn save_list_rename_delete() {
         json!({ "catalog": cat, "name": "pair", "rename": "L2 edited" }),
     )
     .unwrap_err();
-    assert!(e.contains("もうある"), "{e}");
+    assert!(e.contains("already exists"), "{e}");
     let v = call(
         &sv,
         "catalog_edit",

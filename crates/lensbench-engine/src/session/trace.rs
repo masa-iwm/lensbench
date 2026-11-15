@@ -9,12 +9,12 @@ pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply,
     use lensbench_core::plugin::{self as pl, Array};
     let name = p["name"]
         .as_str()
-        .ok_or_else(|| RpcErr::params("plugin には name"))?;
+        .ok_or_else(|| RpcErr::params("plugin needs name"))?;
     let mut config = pl::Config::new();
     if let Some(m) = p.get("config").filter(|v| !v.is_null()) {
         let m = m
             .as_object()
-            .ok_or_else(|| RpcErr::params("config はオブジェクト"))?;
+            .ok_or_else(|| RpcErr::params("config must be an object"))?;
         for (k, v) in m {
             let x = match v {
                 Value::Number(n) => pl::Value::Num(n.as_f64().unwrap_or(f64::NAN)),
@@ -24,9 +24,11 @@ pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply,
                     a.iter()
                         .map(|x| x.as_f64())
                         .collect::<Option<Vec<_>>>()
-                        .ok_or_else(|| RpcErr::params(format!("config の {k} は数の並び")))?,
+                        .ok_or_else(|| {
+                            RpcErr::params(format!("config {k} must be a list of numbers"))
+                        })?,
                 ),
-                _ => return Err(RpcErr::params(format!("config の {k} の値 {v}"))),
+                _ => return Err(RpcErr::params(format!("config {k} value {v}"))),
             };
             config.insert(k.clone(), x);
         }
@@ -35,11 +37,11 @@ pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply,
     if let Some(m) = p.get("inputs").filter(|v| !v.is_null()) {
         let m = m
             .as_object()
-            .ok_or_else(|| RpcErr::params("inputs はオブジェクト"))?;
+            .ok_or_else(|| RpcErr::params("inputs must be an object"))?;
         for (k, v) in m {
             let (mut shape, mut out) = (Vec::new(), Vec::new());
             nested(v, &mut shape, &mut out, 0)
-                .map_err(|e| RpcErr::params(format!("inputs の {k}: {e}")))?;
+                .map_err(|e| RpcErr::params(format!("inputs {k}: {e}")))?;
             inputs.insert(k.clone(), Array::f64(shape, out)?);
         }
     }
@@ -94,11 +96,11 @@ pub(super) fn plugin(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply,
 pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
     let (s, _) = sess.current()?;
     let mut bins: HashMap<String, Bin> = bins.into_iter().map(|b| (b.name.clone(), b)).collect();
-    let px = floats(p, &mut bins, "px")?.ok_or_else(|| RpcErr::params("trace には px"))?;
-    let py = floats(p, &mut bins, "py")?.ok_or_else(|| RpcErr::params("trace には py"))?;
+    let px = floats(p, &mut bins, "px")?.ok_or_else(|| RpcErr::params("trace needs px"))?;
+    let py = floats(p, &mut bins, "py")?.ok_or_else(|| RpcErr::params("trace needs py"))?;
     if px.len() != py.len() {
         return Err(RpcErr::params(format!(
-            "px と py の長さが違う（{} と {}）",
+            "px and py have different lengths ({} and {})",
             px.len(),
             py.len()
         )));
@@ -108,7 +110,7 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
         Some(i) if i >= 1 && i <= s.wavelengths.len() => i - 1,
         Some(i) => {
             return Err(RpcErr::params(format!(
-                "波長 {i} はありません（1〜{}）",
+                "no wavelength {i} (1 to {})",
                 s.wavelengths.len()
             )))
         }
@@ -117,7 +119,7 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
         Some(i) if i >= 1 && i <= s.fields.len() => s.hxhy(i - 1),
         Some(i) => {
             return Err(RpcErr::params(format!(
-                "視野 {i} はありません（1〜{}）",
+                "no field {i} (1 to {})",
                 s.fields.len()
             )))
         }
@@ -129,7 +131,10 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
     let last = opt_usize(p, "last")?;
     if let Some(l) = last {
         if l == 0 || l > s.image() {
-            return Err(RpcErr::params(format!("last {l} は 1〜{}", s.image())));
+            return Err(RpcErr::params(format!(
+                "last {l} must be 1 to {}",
+                s.image()
+            )));
         }
     }
     let global = p.get("global").and_then(Value::as_bool).unwrap_or(false);
@@ -191,25 +196,25 @@ fn nested(
     match v {
         Value::Number(n) => {
             if depth != shape.len() {
-                return Err("並びの深さがそろわない".into());
+                return Err("the list depths don't match".into());
             }
-            out.push(n.as_f64().ok_or("数")?);
+            out.push(n.as_f64().ok_or("number")?);
             Ok(())
         }
         Value::Array(a) => {
             if depth == shape.len() {
                 if !out.is_empty() {
-                    return Err("並びの深さがそろわない".into());
+                    return Err("the list depths don't match".into());
                 }
                 shape.push(a.len());
             } else if shape[depth] != a.len() {
-                return Err("並びの長さがそろわない".into());
+                return Err("the list lengths don't match".into());
             }
             for x in a {
                 nested(x, shape, out, depth + 1)?;
             }
             Ok(())
         }
-        _ => Err(format!("数の並びでない（{v}）")),
+        _ => Err(format!("not a list of numbers ({v})")),
     }
 }

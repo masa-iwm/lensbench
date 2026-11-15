@@ -102,7 +102,7 @@ pub fn fetch_item_with(
 ) -> Result<CadStep, String> {
     let url = item.cad.step.trim();
     if url.is_empty() && store.is_none() {
-        return Err(format!("{name} に STEP の URL（cad.step）がない"));
+        return Err(format!("{name} has no STEP URL (cad.step)"));
     }
     let found = catalog_fill::cad_cache_find(dir, name, url);
     let cached = found.is_some();
@@ -291,7 +291,7 @@ impl Store {
         if self.id.trim().is_empty() || u.starts_with("https://") || local {
             Ok(())
         } else {
-            Err(format!("トークンを送る置き場は https だけ: {u}"))
+            Err(format!("a store that gets a token must be https: {u}"))
         }
     }
 
@@ -338,10 +338,10 @@ impl Store {
     fn status_err(&self, what: &str, st: u16) -> String {
         match st {
             301..=303 | 307 | 308 | 401 | 403 => format!(
-                "置き場に{what}ない（{st}、Access のサービストークンを確かめる）: {}",
+                "can't {what} the store ({st}; check the Access service token): {}",
                 self.url
             ),
-            _ => format!("置き場に{what}ない（{st}）: {}", self.url),
+            _ => format!("can't {what} the store ({st}): {}", self.url),
         }
     }
 
@@ -349,9 +349,12 @@ impl Store {
     pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
         match self.get_raw(key)? {
             None => Ok(None),
-            Some(b) => step_bytes(b)
-                .map(Some)
-                .map_err(|e| format!("置き場の中身が STEP でない（{}）: {e}", self.url_of(key))),
+            Some(b) => step_bytes(b).map(Some).map_err(|e| {
+                format!(
+                    "the store content is not a STEP ({}): {e}",
+                    self.url_of(key)
+                )
+            }),
         }
     }
 
@@ -362,22 +365,22 @@ impl Store {
         let mut r = self
             .auth(Self::agent().get(&u))
             .call()
-            .map_err(|e| format!("置き場を読めない（{u}）: {e}"))?;
+            .map_err(|e| format!("the store can't be read ({u}): {e}"))?;
         let st = r.status().as_u16();
         if st == 404 {
             return Ok(None);
         }
         if st != 200 {
-            return Err(self.status_err("届か", st));
+            return Err(self.status_err("reach", st));
         }
         let mut b = Vec::new();
         r.body_mut()
             .as_reader()
             .take(MAX_BYTES + 1)
             .read_to_end(&mut b)
-            .map_err(|e| format!("置き場を読めない（{u}）: {e}"))?;
+            .map_err(|e| format!("the store can't be read ({u}): {e}"))?;
         if b.len() as u64 > MAX_BYTES {
-            return Err(format!("置き場の中身が大きすぎる: {u}"));
+            return Err(format!("the store content is too large: {u}"));
         }
         Ok(Some(b))
     }
@@ -386,7 +389,7 @@ impl Store {
     pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
         if self.read_only {
             return Err(format!(
-                "読み取り専用の置き場には上げない（書き込み用のトークンを環境変数 LENSBENCH_CAD_STORE_ID・LENSBENCH_CAD_STORE_SECRET に）: {}",
+                "not uploading to a read-only store (put a write token in LENSBENCH_CAD_STORE_ID and LENSBENCH_CAD_STORE_SECRET): {}",
                 self.url
             ));
         }
@@ -401,11 +404,13 @@ impl Store {
             step
         };
         if body.len() as u64 > MAX_BYTES {
-            return Err(format!(
-                "置き場に上げられない（{} MB 超{}）: {u}",
-                MAX_BYTES >> 20,
-                if is_step { "、gzip にしても" } else { "" }
-            ));
+            let mb = MAX_BYTES >> 20;
+            if is_step {
+                return Err(format!(
+                    "can't upload to the store (over {mb} MB even gzipped): {u}"
+                ));
+            }
+            return Err(format!("can't upload to the store (over {mb} MB): {u}"));
         }
         let r = self
             .auth(Self::agent().put(&u))
@@ -418,12 +423,12 @@ impl Store {
                 },
             )
             .send(body)
-            .map_err(|e| format!("置き場に上げられない（{u}）: {e}"))?;
+            .map_err(|e| format!("can't upload to the store ({u}): {e}"))?;
         let st = r.status().as_u16();
         if (200..300).contains(&st) {
             Ok(())
         } else {
-            Err(self.status_err("上げられ", st))
+            Err(self.status_err("upload to", st))
         }
     }
 
@@ -434,11 +439,11 @@ impl Store {
         let r = self
             .auth(Self::agent().head(&u))
             .call()
-            .map_err(|e| format!("置き場を読めない（{u}）: {e}"))?;
+            .map_err(|e| format!("the store can't be read ({u}): {e}"))?;
         match r.status().as_u16() {
             200 => Ok(true),
             404 => Ok(false),
-            st => Err(self.status_err("届か", st)),
+            st => Err(self.status_err("reach", st)),
         }
     }
 }
@@ -630,18 +635,18 @@ pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
             let mut a = zip::ZipArchive::new(file).map_err(|e| format!("{}: {e}", z.display()))?;
             let f = a
                 .by_name(&entry)
-                .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
+                .map_err(|e| format!("{entry} of {}: {e}", z.display()))?;
             let mut out = Vec::new();
             f.take(MAX_STEP + 1)
                 .read_to_end(&mut out)
-                .map_err(|e| format!("{} の {entry}: {e}", z.display()))?;
+                .map_err(|e| format!("{entry} of {}: {e}", z.display()))?;
             if out.len() as u64 > MAX_STEP {
-                return Err(format!("{} の {entry} が大きすぎる", z.display()));
+                return Err(format!("{entry} of {} is too large", z.display()));
             }
             return Ok(out);
         }
     }
-    Err(format!("{}: ファイルが無い", path.display()))
+    Err(format!("{}: no such file", path.display()))
 }
 
 /// ユーザーカタログを読む。フォルダなら中の .json・.json.gz を全部（下のフォルダも）読んで品を合わせる
@@ -675,7 +680,7 @@ pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, Stri
     }
     if all.items.is_empty() {
         return Err(format!(
-            "{} にカタログ（品のある .json・.json.gz）が無い",
+            "no catalog (a .json or .json.gz with items) in {}",
             path.display()
         ));
     }
@@ -813,7 +818,7 @@ pub fn upload_file(
 /// URL の中身（http・https。環境変数のプロキシを使う）
 fn download(url: &str) -> Result<Vec<u8>, String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(format!("STEP の URL は http(s) だけ: {url}"));
+        return Err(format!("STEP URLs must be http(s): {url}"));
     }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(std::time::Duration::from_secs(120)))
@@ -823,16 +828,16 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut r = agent
         .get(url)
         .call()
-        .map_err(|e| format!("STEP を取れない（{url}）: {e}"))?;
+        .map_err(|e| format!("the STEP can't be fetched ({url}): {e}"))?;
     let mut b = Vec::new();
     r.body_mut()
         .as_reader()
         .take(MAX_STEP + 1)
         .read_to_end(&mut b)
-        .map_err(|e| format!("STEP を取れない（{url}）: {e}"))?;
+        .map_err(|e| format!("the STEP can't be fetched ({url}): {e}"))?;
     if b.len() as u64 > MAX_STEP {
         return Err(format!(
-            "STEP が大きすぎる（{} MB 超）: {url}",
+            "the STEP is too large (over {} MB): {url}",
             MAX_STEP >> 20
         ));
     }
@@ -845,7 +850,7 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
     let b = crate::detail::gunzip(b, MAX_STEP)?;
     let b = if b.starts_with(b"PK\x03\x04") {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(b))
-            .map_err(|e| format!("zip を読めない: {e}"))?;
+            .map_err(|e| format!("the zip can't be read: {e}"))?;
         let name = z
             .file_names()
             .filter(|n| {
@@ -854,16 +859,16 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
             })
             .min()
             .map(str::to_string)
-            .ok_or("zip に .step・.stp が無い")?;
+            .ok_or("no .step or .stp in the zip")?;
         let f = z
             .by_name(&name)
-            .map_err(|e| format!("zip の {name}: {e}"))?;
+            .map_err(|e| format!("{name} in the zip: {e}"))?;
         let mut out = Vec::new();
         f.take(MAX_STEP + 1)
             .read_to_end(&mut out)
-            .map_err(|e| format!("zip の {name}: {e}"))?;
+            .map_err(|e| format!("{name} in the zip: {e}"))?;
         if out.len() as u64 > MAX_STEP {
-            return Err(format!("zip の {name} が大きすぎる"));
+            return Err(format!("{name} in the zip is too large"));
         }
         out
     } else {
@@ -875,7 +880,9 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
         .trim_start()
         .starts_with("ISO-10303-21")
     {
-        return Err("取った中身が STEP（ISO-10303-21）でない（ログインの要るページなど）".into());
+        return Err(
+            "the fetched content is not a STEP (ISO-10303-21) (a page that needs a login?)".into(),
+        );
     }
     Ok(b)
 }
@@ -1042,7 +1049,7 @@ mod tests {
         let e = ro
             .put("A-0123456789abcdef.step", b"ISO-10303-21;")
             .unwrap_err();
-        assert!(e.contains("読み取り専用"), "{e}");
+        assert!(e.contains("read-only"), "{e}");
         let none = || [String::new(), String::new(), String::new()];
         // 環境変数が無ければ組み込みのまま（読むだけ）
         assert_eq!(

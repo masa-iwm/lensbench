@@ -142,5 +142,5 @@ fn ids_that_cannot_be_units_are_warned() {
     .unwrap();
     let (s, warn) = expand_report(&p, &env()).unwrap();
     assert!(s.find_unit("3").is_none());
-    assert!(warn.iter().any(|w| w.contains("ブロック 3")), "{warn:?}");
+    assert!(warn.iter().any(|w| w.contains("block 3")), "{warn:?}");
 }

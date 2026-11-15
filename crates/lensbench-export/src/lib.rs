@@ -103,7 +103,7 @@ pub fn write_layout(
 ) -> Result<LayoutFormat, String> {
     let f = LayoutFormat::from_path(path).ok_or_else(|| {
         format!(
-            "{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか",
+            "{}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp",
             path.display()
         )
     })?;

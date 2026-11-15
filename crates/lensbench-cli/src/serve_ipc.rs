@@ -28,7 +28,9 @@ fn check_name(name: &str) -> Result<(), String> {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
         || name.starts_with('.')
     {
-        return Err(format!("共有メモリの名前 {name:?}（英数字と _ . - だけ）"));
+        return Err(format!(
+            "shared memory name {name:?} (only letters, digits, _ . -)"
+        ));
     }
     Ok(())
 }
@@ -44,7 +46,7 @@ impl Shm {
                 .read(true)
                 .write(true)
                 .open(&p)
-                .map_err(|e| format!("共有メモリ {name}: {e}"))?;
+                .map_err(|e| format!("shared memory {name}: {e}"))?;
             let size = f.metadata().map_err(|e| e.to_string())?.len();
             Ok(Shm { f, size })
         }
@@ -56,7 +58,7 @@ impl Shm {
         }
         #[cfg(not(any(target_os = "linux", windows)))]
         {
-            Err("共有メモリは Windows・Linux だけ".into())
+            Err("shared memory is only for Windows and Linux".into())
         }
     }
 
@@ -68,7 +70,7 @@ impl Shm {
         match off.checked_add(n as u64) {
             Some(e) if e <= self.size => Ok(()),
             _ => Err(format!(
-                "共有メモリの範囲の外（位置 {off}、{n} バイト、大きさ {}）",
+                "outside the shared memory (offset {off}, {n} bytes, size {})",
                 self.size
             )),
         }
@@ -82,7 +84,7 @@ impl Shm {
             use std::os::unix::fs::FileExt;
             self.f
                 .read_exact_at(buf, off)
-                .map_err(|e| format!("共有メモリ: {e}"))
+                .map_err(|e| format!("shared memory: {e}"))
         }
         #[cfg(windows)]
         {
@@ -92,7 +94,7 @@ impl Shm {
         #[cfg(not(any(target_os = "linux", windows)))]
         {
             let _ = buf;
-            Err("共有メモリは Windows・Linux だけ".into())
+            Err("shared memory is only for Windows and Linux".into())
         }
     }
 
@@ -104,7 +106,7 @@ impl Shm {
             use std::os::unix::fs::FileExt;
             self.f
                 .write_all_at(data, off)
-                .map_err(|e| format!("共有メモリ: {e}"))
+                .map_err(|e| format!("shared memory: {e}"))
         }
         #[cfg(windows)]
         {
@@ -114,7 +116,7 @@ impl Shm {
         #[cfg(not(any(target_os = "linux", windows)))]
         {
             let _ = data;
-            Err("共有メモリは Windows・Linux だけ".into())
+            Err("shared memory is only for Windows and Linux".into())
         }
     }
 }
@@ -174,10 +176,10 @@ pub(crate) fn listen_pipe(
             use std::os::unix::fs::FileTypeExt;
             let sock = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_socket());
             if !sock {
-                return Err(format!("--pipe {path} はソケットでないファイルがある"));
+                return Err(format!("--pipe {path} has a file that is not a socket"));
             }
             if UnixStream::connect(path).is_ok() {
-                return Err(format!("--pipe {path} は別のサーバーが使っている"));
+                return Err(format!("--pipe {path} is used by another server"));
             }
             lensbench_core::vfs::remove_file(path).map_err(|e| format!("--pipe {path}: {e}"))?;
             bind().map_err(|e| format!("--pipe {path}: {e}"))?
@@ -242,7 +244,7 @@ pub(crate) fn listen_pipe(
         + Sync
         + 'static,
 ) -> Result<(), String> {
-    Err(format!("--pipe {path} はこの OS では使えない"))
+    Err(format!("--pipe {path} can't be used on this OS"))
 }
 
 #[cfg(windows)]
@@ -326,7 +328,7 @@ mod win {
         };
         if h.is_null() || h as isize == -1 {
             return Err(format!(
-                "--pipe {path} で待ち受けられない: {}",
+                "can't listen on --pipe {path}: {}",
                 std::io::Error::last_os_error()
             ));
         }
@@ -342,7 +344,7 @@ mod win {
         if ok == 0 {
             let e = std::io::Error::last_os_error();
             if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED) {
-                return Err(format!("パイプの接続: {e}"));
+                return Err(format!("pipe connection: {e}"));
             }
         }
         Ok(f)
@@ -362,7 +364,7 @@ mod win {
             let h = unsafe { OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, 0, w.as_ptr()) };
             if h.is_null() {
                 return Err(format!(
-                    "共有メモリ {name}: {}",
+                    "shared memory {name}: {}",
                     std::io::Error::last_os_error()
                 ));
             }
@@ -372,7 +374,7 @@ mod win {
                 let e = std::io::Error::last_os_error();
                 // SAFETY: h は開いたハンドル
                 unsafe { CloseHandle(h) };
-                return Err(format!("共有メモリ {name}: {e}"));
+                return Err(format!("shared memory {name}: {e}"));
             }
             // SAFETY: 写した区画の先頭で問い合わせる
             let mut mbi: MemoryBasicInformation = unsafe { std::mem::zeroed() };

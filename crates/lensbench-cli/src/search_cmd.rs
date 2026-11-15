@@ -105,7 +105,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
             None => p.state_names().iter().map(|s| s.to_string()).collect(),
         };
         if names.is_empty() {
-            return Err("プロジェクトに状態（states）がない".into());
+            return Err("the project has no states (states)".into());
         }
         let cat = LensCatalog::load_registered(&a.lens_catalog)?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
@@ -127,12 +127,15 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
     } else if lensbench_project::open::FileKind::of(&a.file)
         == lensbench_project::open::FileKind::SystemFile
     {
-        Err("系ファイルは構成・状態を持たない（.zmx かプロジェクトファイルを渡す）".into())
+        Err("a system file has no configurations or states (give a .zmx or project file)".into())
     } else {
         let cfgs: Vec<usize> = match &names {
             Some(n) => n
                 .iter()
-                .map(|t| t.parse().map_err(|_| format!("--states の構成の番号 {t}")))
+                .map(|t| {
+                    t.parse()
+                        .map_err(|_| format!("configuration number {t} of --states"))
+                })
                 .collect::<Result<_, String>>()?,
             None => Vec::new(),
         };

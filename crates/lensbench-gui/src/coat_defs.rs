@@ -365,7 +365,7 @@ fn fields(ui: &mut Ui, id: egui::Id, spec: &mut CoatSpec) {
                     ui.colored_label(ui.visuals().warn_fg_color, tr("行が無い"));
                 }
                 Err(e) => {
-                    ui.colored_label(ui.visuals().error_fg_color, e);
+                    ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(&e));
                 }
             }
             if r.has_focus() {
@@ -435,7 +435,7 @@ fn curve_plot(ui: &mut Ui, id: egui::Id, spec: &CoatSpec) {
     let p0 = match curve_at(spec, 0.0) {
         Ok(p) => p,
         Err(e) => {
-            ui.colored_label(ui.visuals().error_fg_color, e);
+            ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(&e));
             return;
         }
     };

@@ -40,11 +40,7 @@ impl std::str::FromStr for Fan {
             "cross" | "xy" => Fan::Cross,
             "grid" => Fan::Grid,
             "ring" => Fan::Ring,
-            _ => {
-                return Err(format!(
-                    "光線の並び {s} は y・x・cross・grid・ring のどれか"
-                ))
-            }
+            _ => return Err(format!("ray pattern {s} must be y, x, cross, grid or ring")),
         })
     }
 }

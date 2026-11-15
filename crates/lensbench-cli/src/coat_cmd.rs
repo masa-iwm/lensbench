@@ -151,7 +151,7 @@ pub(crate) fn coat_model(
         models.push((c.clone(), r.model));
     }
     if models.is_empty() {
-        return Err("作れた膜のモデルがない".into());
+        return Err("no coating model could be made".into());
     }
     let e: Vec<(&str, &coating::CoatModel)> = models.iter().map(|(c, m)| (c.as_str(), m)).collect();
     lensbench_core::vfs::write(out, format_models(&e))
@@ -204,7 +204,7 @@ pub(crate) fn read_targets(
         .filter(|l| !l.is_empty() && !l.starts_with('#'));
     let head: Vec<String> = lines
         .next()
-        .ok_or_else(|| format!("{}: 空", p.display()))?
+        .ok_or_else(|| format!("{}: empty", p.display()))?
         .split(',')
         .map(|x| x.trim().to_ascii_lowercase())
         .collect();
@@ -212,12 +212,12 @@ pub(crate) fn read_targets(
     let (wl, scale_wl) = match (col("wl_um"), col("wl_nm")) {
         (Some(i), _) => (i, 1.0),
         (None, Some(i)) => (i, 1e-3),
-        _ => return Err(format!("{}: 列 wl_um か wl_nm がない", p.display())),
+        _ => return Err(format!("{}: no column wl_um or wl_nm", p.display())),
     };
     let (val, scale_v) = match (col("value"), col("value_pct")) {
         (Some(i), _) => (i, 1.0),
         (None, Some(i)) => (i, 0.01),
-        _ => return Err(format!("{}: 列 value か value_pct がない", p.display())),
+        _ => return Err(format!("{}: no column value or value_pct", p.display())),
     };
     let (ang, pol, qty, w) = (col("angle_deg"), col("pol"), col("quantity"), col("weight"));
     let mut v = Vec::new();
@@ -226,20 +226,20 @@ pub(crate) fn read_targets(
         let num = |i: usize| -> Result<f64, String> {
             c.get(i)
                 .and_then(|x| x.parse::<f64>().ok())
-                .ok_or_else(|| format!("{}: {} 行目の数値", p.display(), ln + 2))
+                .ok_or_else(|| format!("{}: number on line {}", p.display(), ln + 2))
         };
         let pol = match pol.and_then(|i| c.get(i)).map(|x| x.to_ascii_lowercase()) {
             None => Pol::Avg,
             Some(x) if x == "avg" || x.is_empty() => Pol::Avg,
             Some(x) if x == "s" => Pol::S,
             Some(x) if x == "p" => Pol::P,
-            Some(x) => return Err(format!("{}: 偏光 {x}（s・p・avg）", p.display())),
+            Some(x) => return Err(format!("{}: polarization {x} (s, p, avg)", p.display())),
         };
         let q = match qty.and_then(|i| c.get(i)).map(|x| x.to_ascii_uppercase()) {
             None => Quantity::R,
             Some(x) if x == "R" || x.is_empty() => Quantity::R,
             Some(x) if x == "T" => Quantity::T,
-            Some(x) => return Err(format!("{}: 量 {x}（R・T）", p.display())),
+            Some(x) => return Err(format!("{}: quantity {x} (R, T)", p.display())),
         };
         v.push(Target {
             wl: num(wl)? * scale_wl,
@@ -304,8 +304,9 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
                 false,
             ));
         }
-        let g = glass(name)
-            .ok_or_else(|| format!("材料 {name} が膜ファイルにもガラスカタログにもない"))?;
+        let g = glass(name).ok_or_else(|| {
+            format!("material {name} is neither in the coating file nor in the glass catalogs")
+        })?;
         let rows = (0..=460)
             .map(|i| {
                 let wl = 0.2 + 0.005 * i as f64;
@@ -360,7 +361,7 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
         ..Default::default()
     };
     let all = fit_all(&ts, &*sub, &o).map_err(|e| e.to_string())?;
-    let d = pick(&all, a.slack).ok_or("当てはめられない")?;
+    let d = pick(&all, a.slack).ok_or("can't be fitted")?;
     let lay = |d: &lensbench_design::coat_design::Design| -> Vec<Value> {
         d.layers
             .iter()
@@ -413,7 +414,7 @@ pub(crate) fn coatings(
             catalog_dirs: glass_dir.to_vec(),
             ..Default::default()
         };
-        let s = zmx::load_with(file, &opt).map_err(|x| x.at(format!("構成 {cfg}")))?;
+        let s = zmx::load_with(file, &opt).map_err(|x| x.at(format!("configuration {cfg}")))?;
         found = s.coating_file.clone();
         let CoatInterfaces {
             list: v,

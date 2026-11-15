@@ -172,7 +172,7 @@ impl SplitterSpec {
     fn split_coat(&self) -> Result<String, String> {
         let n = self.ratio.is_some() as u8 + !self.coat.is_empty() as u8 + self.pbs.is_some() as u8;
         if n > 1 {
-            return Err("ratio・coat・pbs はどれか 1 つ".into());
+            return Err("exactly one of ratio, coat and pbs".into());
         }
         if let Some(p) = &self.pbs {
             return Ok(format!("I.s={},p={}", p.ts, p.tp));
@@ -208,12 +208,12 @@ impl SplitterSpec {
     pub(crate) fn check(&self, id: &str) -> Result<(), String> {
         let e = |m: &str| Err(format!("BS {id}: {m}"));
         if id.is_empty() {
-            return Err("BS（splitter）には id が要る".into());
+            return Err("a BS (splitter) needs an id".into());
         }
         self.split_coat().map_err(|m| format!("BS {id}: {m}"))?;
         if let Some(t) = self.ratio {
             if !(0.0..=1.0).contains(&t) {
-                return e("ratio は 0〜1");
+                return e("ratio must be 0 to 1");
             }
         }
         if let Some(p) = &self.pbs {
@@ -499,7 +499,7 @@ pub(crate) fn parse_path(s: &str) -> Result<Vec<bool>, String> {
         .map(|c| match c {
             'T' | 't' => Ok(true),
             'R' | 'r' => Ok(false),
-            _ => Err(format!("経路 {s}: 文字は T か R")),
+            _ => Err(format!("path {s}: letters must be T or R")),
         })
         .collect()
 }
@@ -519,7 +519,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         st.passes += 1;
         if st.passes > MAX_PASSES {
             return Err(format!(
-                "BS を {MAX_PASSES} 回より多く通る（経路が戻り続ける）"
+                "the BS is passed more than {MAX_PASSES} times (the path keeps coming back)"
             ));
         }
         if st.pos < st.path.len() {
@@ -647,7 +647,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         spec.check(id)?;
         if spec.has_branches() && idx + 1 < siblings.len() {
             return Err(format!(
-                "BS {id}: 分岐（t・r・d）のある BS の後ろにはブロックを置けない（分岐の中に書く）"
+                "BS {id}: no block can go after a BS with branches (t, r, d); write it in the branch"
             ));
         }
         let key = self.split_key(id);
@@ -703,7 +703,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn splitter_back(&mut self, id: &str) -> Result<(), String> {
         let key = self.split_key(id);
         let Some(info) = self.split.info.get(&key).cloned() else {
-            return Err(format!("BS {id}: 往路で通っていない"));
+            return Err(format!("BS {id}: not passed on the way out"));
         };
         if info.off {
             if info.spec.length() != 0.0 && self.split_off_air(&info) {

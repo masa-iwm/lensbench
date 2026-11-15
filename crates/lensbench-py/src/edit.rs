@@ -1,11 +1,11 @@
 //! 系の編集の Python 側の変換: 面の値の dict、開口、ピックアップの量の名前。
 
+use crate::errors::value_err;
 use lensbench_core::edit::SurfValue;
 use lensbench_core::param::PickKind;
 use lensbench_core::surface::Aperture;
 use lensbench_core::system::FieldCond;
 use lensbench_core::System;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyString, PyTuple};
 
@@ -25,12 +25,12 @@ pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
     let need = |k: &str| -> PyResult<f64> {
         match d.get_item(k)? {
             Some(x) => x.extract(),
-            None => Err(PyValueError::new_err(format!("開口に {k} が要る"))),
+            None => Err(value_err(format!("the aperture needs {k}"))),
         }
     };
     let typ: String = match d.get_item("type")? {
         Some(t) => t.extract()?,
-        None => return Err(PyValueError::new_err("開口に type が要る")),
+        None => return Err(value_err("the aperture needs type")),
     };
     let (dx, dy) = (get("dx")?, get("dy")?);
     Ok(match typ.to_ascii_lowercase().as_str() {
@@ -62,7 +62,7 @@ pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
         "spider" => {
             let n = need("arms")?;
             if !(n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64) {
-                return Err(PyValueError::new_err(format!("スパイダーの腕の本数 {n}")));
+                return Err(value_err(format!("number of spider arms {n}")));
             }
             Aperture::Spider {
                 width: need("width")?,
@@ -73,8 +73,8 @@ pub(crate) fn aperture_from(v: &Bound<'_, PyAny>) -> PyResult<Aperture> {
         }
         "floating" => Aperture::Floating { semi: get("semi")? },
         t => {
-            return Err(PyValueError::new_err(format!(
-                "開口の type {t}（none circular obsc rect ellipse spider floating）"
+            return Err(value_err(format!(
+                "aperture type {t} (none circular obsc rect ellipse spider floating)"
             )))
         }
     })
@@ -145,7 +145,7 @@ pub(crate) fn surf_kwargs(kw: Option<&Bound<'_, PyDict>>) -> PyResult<Vec<(Strin
         } else if let Ok(x) = v.extract::<Vec<f64>>() {
             SurfValue::Nums(x)
         } else {
-            return Err(PyValueError::new_err(format!("面の値 {name} の型")));
+            return Err(value_err(format!("type of surface value {name}")));
         };
         out.push((name, val));
     }
@@ -171,7 +171,7 @@ pub(crate) fn fields_dict<'py>(
 
 /// ピックアップの量: c（曲率）・t（厚さ）・k（円錐係数）・p1〜（面タイプのパラメータ）・dn・disp・semi
 pub(crate) fn pick_kind(s: &str) -> PyResult<PickKind> {
-    lensbench_core::edit::pick_kind_parse(s).map_err(|e| PyValueError::new_err(e.to_string()))
+    lensbench_core::edit::pick_kind_parse(s).map_err(|e| value_err(e.to_string()))
 }
 
 pub(crate) fn pick_name(k: PickKind) -> String {
@@ -193,8 +193,8 @@ pub fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
             s2: at(2)?,
         },
         _ => {
-            return Err(PyValueError::new_err(
-                "cond は (\"position\", 面)、(\"dirsum\", 面1, 面2)、(\"dirdiff\", 面1, 面2)",
+            return Err(value_err(
+                "cond must be (\"position\", surface), (\"dirsum\", surface1, surface2) or (\"dirdiff\", surface1, surface2)",
             ))
         }
     })

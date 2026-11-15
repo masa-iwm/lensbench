@@ -522,7 +522,7 @@ pub fn ui(
             });
         });
         if let Some(e) = &p.error {
-            ui.colored_label(ui.visuals().error_fg_color, e);
+            ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
         }
         if let Some((k, n)) = progress {
             let f = if n > 0 { k as f32 / n as f32 } else { 0.0 };

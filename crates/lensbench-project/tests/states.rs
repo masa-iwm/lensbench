@@ -154,7 +154,7 @@ fn bad_states_are_errors() {
     assert!(err(r#""set": {"nope": {"t": 1}}"#).contains("nope"));
     assert!(err(r#""set": {"d1": {"thickness": 1}}"#).contains("thickness"));
     assert!(err(r#""set": {"L1": {"type": "air"}}"#).contains("type"));
-    assert!(err(r#""set": {"d1": {"t": "x"}}"#).contains("状態 x"));
+    assert!(err(r#""set": {"d1": {"t": "x"}}"#).contains("state x"));
     assert!(err(r#""project": {"blocks": []}"#).contains("blocks"));
     let p = parse(&format!("\"blocks\": {blocks}"));
     assert!(expand_state(&p, &env(), Some("y")).is_err());
@@ -253,10 +253,10 @@ fn bad_zmx_groups_are_errors() {
     };
     assert!(
         e(r#"{"name": "a", "from": 1, "to": 4}, {"name": "b", "from": 3, "to": 7}"#)
-            .contains("重なる")
+            .contains("overlap")
     );
-    assert!(e(r#"{"name": "a", "from": 4, "to": 3}"#).contains("逆"));
-    assert!(e(r#"{"name": "a", "from": 20, "to": 30}"#).contains("ない"));
+    assert!(e(r#"{"name": "a", "from": 4, "to": 3}"#).contains("reverse"));
+    assert!(e(r#"{"name": "a", "from": 20, "to": 30}"#).contains("no "));
 }
 
 #[test]
@@ -322,7 +322,7 @@ fn a_group_with_a_mirror_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.contains("鏡"), "{e}");
+    assert!(e.contains("mirror"), "{e}");
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn a_group_with_two_mirrors_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.contains("鏡"), "{e}");
+    assert!(e.contains("mirror"), "{e}");
 }
 
 /// 像空間のアフォーカル（`afocal` に角度の単位）と物体側テレセントリック。状態でも変えられる

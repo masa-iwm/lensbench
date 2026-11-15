@@ -11,19 +11,22 @@ pub(crate) fn zmx_group_spans(
     for (g, gr) in groups.iter().enumerate() {
         let label = if gr.id.is_empty() { &gr.name } else { &gr.id };
         if gr.from > gr.to {
-            return Err(format!("群 {label}: 面 {}〜{} の順が逆", gr.from, gr.to));
+            return Err(format!(
+                "group {label}: surfaces {} to {} are in reverse order",
+                gr.from, gr.to
+            ));
         }
         let inside: Vec<usize> = (0..keep.len())
             .filter(|&i| keep[i].kind != Kind::Air && (gr.from..=gr.to).contains(&keep[i].from))
             .collect();
         let (Some(&a), Some(&z)) = (inside.first(), inside.last()) else {
             return Err(format!(
-                "群 {label}: 面 {}〜{} に取り込んだ玉・面がない",
+                "group {label}: no imported lenses or surfaces in surfaces {} to {}",
                 gr.from, gr.to
             ));
         };
         if let Some(o) = out.iter().find(|o| a <= o.2 && o.1 <= z) {
-            return Err(format!("群 {label} が群 {} と重なる", groups[o.0].name));
+            return Err(format!("group {label} overlaps group {}", groups[o.0].name));
         }
         out.push((g, a, z));
     }
@@ -122,7 +125,7 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
         + q.birefringent.is_some() as u8;
     if special > 1 {
         return Err(
-            "面に jones・polarizer・waveplate・coordbrk・birefringent のうち 2 つ以上は書けない"
+            "a surface can't have two or more of jones, polarizer, waveplate, coordbrk and birefringent"
                 .into(),
         );
     }
@@ -130,13 +133,15 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
         s.bire = Some(match b {
             BireSpec::In { mode, axis } => {
                 if !matches!(mode, 0 | 2) {
-                    return Err(format!("複屈折材の板の mode {mode}（0 か 2）"));
+                    return Err(format!("birefringent plate mode {mode} (0 or 2)"));
                 }
                 if !(axis.iter().all(|v| v.is_finite()) && axis.iter().any(|v| *v != 0.0)) {
-                    return Err("複屈折材の板の結晶軸 axis が 0 か数でない".into());
+                    return Err(
+                        "the crystal axis of the birefringent plate is 0 or not a number".into(),
+                    );
                 }
                 if q.glass.as_deref().is_none_or(|g| is_air(g.trim())) {
-                    return Err("複屈折材の板の入口の面には glass（常光の材料）を書く".into());
+                    return Err("write glass (the ordinary material) on the entrance surface of a birefringent plate".into());
                 }
                 lensbench_core::surface::Bire::In {
                     mode,
@@ -162,10 +167,12 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
             || s.typ == SurfType::EvenAsph
             || q.shape != SurfShape::Standard
         {
-            return Err(format!("{what} の面に曲率・円錐係数・非球面は書けない"));
+            return Err(format!(
+                "a {what} surface can't have curvature, conic or asphere terms"
+            ));
         }
         if q.glass.as_deref().is_some_and(|g| !is_air(g.trim())) {
-            return Err(format!("{what} の面の後にガラスは書けない"));
+            return Err(format!("no glass after a {what} surface"));
         }
     }
     if let Some(j) = q.jones {
@@ -185,10 +192,10 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
     }
     if let Some([tx, ty]) = q.tilt {
         if q.coordbrk.is_some() {
-            return Err("座標ブレークの面に tilt は書けない".into());
+            return Err("a coordinate break surface can't have tilt".into());
         }
         if !(tx.is_finite() && ty.is_finite()) {
-            return Err("tilt が数でない".into());
+            return Err("tilt is not a number".into());
         }
         if tx != 0.0 || ty != 0.0 {
             s.before = Some(lensbench_core::surface::Tilt {
@@ -200,10 +207,10 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
     }
     if let Some(d) = q.coordbrk {
         if q.order > 1 {
-            return Err(format!("座標ブレークの順序 {}（0 か 1）", q.order));
+            return Err(format!("coordinate break order {} (0 or 1)", q.order));
         }
         if q.aperture.is_some() {
-            return Err("座標ブレークの面に開口は書けない".into());
+            return Err("a coordinate break surface can't have an aperture".into());
         }
         s.typ = SurfType::CoordBrk;
         s.mat = "-".into();
@@ -282,7 +289,7 @@ pub fn paths(p: &Project, env: &Env) -> Result<Vec<String>, String> {
             Ok(_) => out.push(q),
             Err(e) if e == splitter::NEED => {
                 if out.len() + todo.len() > 1024 {
-                    return Err("経路が 1024 より多い".into());
+                    return Err("more than 1024 paths".into());
                 }
                 todo.push(format!("{q}R"));
                 todo.push(format!("{q}T"));
@@ -291,7 +298,7 @@ pub fn paths(p: &Project, env: &Env) -> Result<Vec<String>, String> {
                 return Err(if q.is_empty() {
                     e
                 } else {
-                    format!("経路 {q}: {e}")
+                    format!("path {q}: {e}")
                 })
             }
         }
@@ -330,19 +337,19 @@ pub(crate) fn expand_inner(
         splitter_ids(&p.blocks, &mut ids);
         for (i, id) in ids.iter().enumerate() {
             if id.is_empty() {
-                return Err("BS（splitter）には id が要る".into());
+                return Err("a BS (splitter) needs an id".into());
             }
             if ids[..i].contains(id) {
-                return Err(format!("BS の id {id} が 2 つ以上ある"));
+                return Err(format!("BS id {id} appears twice or more"));
             }
         }
     }
     if p.wavelengths.is_empty() {
-        return Err("波長がない".into());
+        return Err("no wavelengths".into());
     }
     if p.primary == 0 || p.primary > p.wavelengths.len() {
         return Err(format!(
-            "主波長 {}（波長は {} 個）",
+            "primary wavelength {} (there are {} wavelengths)",
             p.primary,
             p.wavelengths.len()
         ));
@@ -350,10 +357,7 @@ pub(crate) fn expand_inner(
     let dirs = glass::catalog_dirs(&env.glass_dirs);
     let (glasses, missing) = glass::load_catalogs_shared(&p.glass_catalogs, &dirs);
     if !missing.is_empty() {
-        return Err(format!(
-            "ガラスカタログが見つからない: {}",
-            missing.join(", ")
-        ));
+        return Err(format!("glass catalog not found: {}", missing.join(", ")));
     }
     let mut c = Ctx {
         env,
@@ -391,7 +395,7 @@ pub(crate) fn expand_inner(
     }
     if c.split.pos < c.split.path.len() {
         return Err(format!(
-            "経路 {}: 文字が多い（BS を通るのは {} 回）",
+            "path {}: too many letters (the BS is passed {} times)",
             path.unwrap_or(""),
             c.split.pos
         ));
@@ -403,7 +407,7 @@ pub(crate) fn expand_inner(
         .iter()
         .any(|o| matches!(o, SurfaceOp::SetStop(_)));
     if c.nstop > 1 || (c.nstop == 0 && !stop_op) {
-        return Err(format!("絞りが {} 個（ちょうど 1 つ要る）", c.nstop));
+        return Err(format!("{} stops (exactly one is needed)", c.nstop));
     }
     if c.nstop == 0 {
         // 仮の絞り（set_stop で移す）
@@ -424,7 +428,7 @@ pub(crate) fn expand_inner(
     if c.sf.len() != c.org.len() {
         // 面は put か element_from で足す（出どころの表を面と揃える）
         return Err(format!(
-            "内部エラー: 面 {} 個に出どころ {} 個",
+            "internal error: {} surfaces but {} sources",
             c.sf.len(),
             c.org.len()
         ));
@@ -466,7 +470,7 @@ pub(crate) fn expand_inner(
             let en = lensbench_core::surface::Bire::e_name(&d.mat);
             let g = c.glasses.get(&en).ok_or_else(|| {
                 format!(
-                    "面 {j}: 複屈折材 {} の異常光のガラス {en} がカタログにない",
+                    "surface {j}: extraordinary glass {en} of birefringent material {} is not in the catalogs",
                     d.mat
                 )
             })?;
@@ -477,7 +481,8 @@ pub(crate) fn expand_inner(
         }
         // 複屈折材の波長板: 板のガラスを引き、設計波長の行列を作り直す
         if let Some(r) = d.retarder.as_mut().filter(|r| !r.plates.is_empty()) {
-            r.resolve(&c.glasses).map_err(|e| format!("面 {j}: {e}"))?;
+            r.resolve(&c.glasses)
+                .map_err(|e| format!("surface {j}: {e}"))?;
             d.jones = r.jones8(r.wl0);
         }
         // 屈折面での反射（ビームスプリッター）: 反対側の媒質の屈折率
@@ -489,7 +494,10 @@ pub(crate) fn expand_inner(
                     .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
                     .collect()
             } else {
-                return Err(format!("面 {j}: ガラス {} がカタログにない", r.mat));
+                return Err(format!(
+                    "surface {j}: glass {} is not in the catalogs",
+                    r.mat
+                ));
             };
         }
     }
@@ -547,19 +555,22 @@ pub(crate) fn expand_inner(
     // 膜: プロジェクトの coatings はカタログの同じ名前より優先
     s.coat_tables = c.coats;
     for (k, spec) in &p.coatings {
-        let t = spec.table().map_err(|e| format!("膜 {k}: {e}"))?;
+        let t = spec.table().map_err(|e| format!("coating {k}: {e}"))?;
         s.coat_tables.insert(k.clone(), t);
     }
     if let Some(u) = &p.afocal {
         s.afocal = true;
         s.afocal_unit = AfocalUnit::from_code(u)
-            .ok_or_else(|| format!("afocal の単位 {u}（ur・mr・rr・as・am・dg のどれか）"))?;
+            .ok_or_else(|| format!("afocal unit {u} (ur, mr, rr, as, am or dg)"))?;
     }
     if p.fields.kind == FieldKind::Solve {
         let Some(c) = &p.fields.solve else {
-            return Err("fields の type が solve なら solve に条件を書く".into());
+            return Err("when the fields type is solve, write the condition in solve".into());
         };
-        let f = |t: &str| s.find_surface(t).map_err(|e| format!("視野の条件: {e}"));
+        let f = |t: &str| {
+            s.find_surface(t)
+                .map_err(|e| format!("field condition: {e}"))
+        };
         let cond = match c {
             FieldSolveSpec::Position { surface } => FieldCond::Position { surf: f(surface)? },
             FieldSolveSpec::DirSum { s1, s2 } => FieldCond::DirSum {
@@ -574,7 +585,7 @@ pub(crate) fn expand_inner(
         s.field_type = FieldType::Solve(cond);
         s.changed().map_err(|e| e.to_string())?;
     } else if p.fields.solve.is_some() {
-        return Err("fields の solve は type が solve のときだけ".into());
+        return Err("fields solve only with type solve".into());
     }
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
     for (path, t, pr, adj) in &c.zenv {
@@ -614,7 +625,9 @@ pub(crate) fn expand_inner(
             // 群の移動はもう厚さに入っているので、その分を玉・群の shift の今の値にする（状態ごとの群の位置を
             // `id.shift` で比べられるように）
             Ok(u) => s.units[u].shift = group_shift(&p.blocks, id).unwrap_or(0.0),
-            Err(e) => warn.push(format!("ブロック {id} を玉・群のパラメータにしない: {e}")),
+            Err(e) => warn.push(format!(
+                "block {id} is not made a lens or group parameter: {e}"
+            )),
         }
     }
     // 裏返して置いた玉（id の無い玉の lens1 … も）。最初の範囲が玉の面と同じ玉・群
@@ -633,9 +646,7 @@ pub(crate) fn expand_inner(
     let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &c.spans, &c.back_spans)?;
     if c.nstop == 0 && !stopped {
         // 仮の絞りのまま（set_stop のブロックが無い）にはしない
-        return Err(
-            "絞りが 0 個（surface_ops の set_stop のブロックが無い。ちょうど 1 つ要る）".into(),
-        );
+        return Err("0 stops (no set_stop block in surface_ops; exactly one is needed)".into());
     }
     warn.extend(w);
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
@@ -677,11 +688,10 @@ pub(crate) fn place_mechanics(
                 let it = c
                     .items
                     .get(item)
-                    .ok_or_else(|| format!("{tag}: {} に品 {item} はない", path.display()))?;
-                let x = it
-                    .mech
-                    .clone()
-                    .ok_or_else(|| format!("{tag}: 品 {item} は機構部品でない（mech がない）"))?;
+                    .ok_or_else(|| format!("{tag}: no item {item} in {}", path.display()))?;
+                let x = it.mech.clone().ok_or_else(|| {
+                    format!("{tag}: item {item} is not a mechanical part (no mech)")
+                })?;
                 // URL の無い品も、共有の置き場から取ってあればキャッシュにある
                 {
                     if let Some(f) = catalog_fill::cad_cache_find(
@@ -696,7 +706,7 @@ pub(crate) fn place_mechanics(
             }
             _ => {
                 return Err(format!(
-                    "{tag}: 部品は mech か、catalog と item のどちらか一方で書く"
+                    "{tag}: write a part with mech, or with catalog and item, not both"
                 ))
             }
         };
@@ -732,11 +742,11 @@ pub(crate) fn place_mechanics(
         // 前の部品の後ろの端につなぐ
         if let Some(prev_name) = &m.after {
             if m.seat || !m.at.is_unset() {
-                return Err(format!("{tag}: after は at・seat と一緒に使えない"));
+                return Err(format!("{tag}: after can't be used with at or seat"));
             }
             if m.tilt != [0.0, 0.0] {
                 return Err(format!(
-                    "{tag}: after では tilt は使えない（前の部品の傾きになる）"
+                    "{tag}: tilt can't be used with after (it takes the previous part's tilt)"
                 ));
             }
             let Some((prev, prev_spec)) = out
@@ -745,7 +755,9 @@ pub(crate) fn place_mechanics(
                 .rev()
                 .find(|(p, _): &(&lensbench_core::mech::MechPart, _)| &p.name == prev_name)
             else {
-                return Err(format!("{tag}: after の部品 {prev_name} が前に無い"));
+                return Err(format!(
+                    "{tag}: the after part {prev_name} is not before it"
+                ));
             };
             let (prev, prev_spec): (&lensbench_core::mech::MechPart, &MechSpec) = (prev, prev_spec);
             let overlap = match (&prev_spec.back_thread, &spec.front_thread) {
@@ -781,7 +793,7 @@ pub(crate) fn place_mechanics(
                 prev.offset[2] + d[2],
             ];
             if !part0.offset.iter().all(|v| v.is_finite()) {
-                return Err(format!("{tag}: offset が数でない"));
+                return Err(format!("{tag}: offset is not a number"));
             }
             for b in &m.holds {
                 match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
@@ -802,17 +814,19 @@ pub(crate) fn place_mechanics(
         let seat_at = if m.seat {
             let seat = spec
                 .holds
-                .ok_or_else(|| format!("{tag}: seat には部品の寸法の holds（座の位置）が要る"))?
+                .ok_or_else(|| {
+                    format!("{tag}: seat needs holds (the seat position) in the part size")
+                })?
                 .seat_z;
             let b = m
                 .holds
                 .first()
-                .ok_or_else(|| format!("{tag}: seat には holds（保持する素子）が要る"))?;
+                .ok_or_else(|| format!("{tag}: seat needs holds (the held element)"))?;
             offset[2] -= seat;
             match block_face(s, b, 0, spans, back_spans).map_err(|e| format!("{tag}: {e}"))? {
                 Some(j) => Some(j),
                 None => {
-                    warn.push(format!("{tag}: ブロック {b} が無いので置かない"));
+                    warn.push(format!("{tag}: no block {b}, not placed"));
                     continue;
                 }
             }
@@ -827,23 +841,27 @@ pub(crate) fn place_mechanics(
                 {
                     Some(j) => j,
                     None => {
-                        warn.push(format!("{tag}: ブロック {b} が無いので置かない"));
+                        warn.push(format!("{tag}: no block {b}, not placed"));
                         continue;
                     }
                 },
                 None => {
                     if m.at.is_unset() {
-                        return Err(format!("{tag}: 置く所（at）か seat が要る"));
+                        return Err(format!("{tag}: a place (at) or seat is needed"));
                     }
                     if m.at.surface == 0 || m.at.surface > s.image() {
-                        return Err(format!("{tag}: 面 {}（1〜{}）", m.at.surface, s.image()));
+                        return Err(format!(
+                            "{tag}: surface {} (1 to {})",
+                            m.at.surface,
+                            s.image()
+                        ));
                     }
                     m.at.surface
                 }
             },
         };
         if !offset.iter().chain(&m.tilt).all(|v| v.is_finite()) {
-            return Err(format!("{tag}: offset・tilt が数でない"));
+            return Err(format!("{tag}: offset or tilt is not a number"));
         }
         let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
@@ -873,7 +891,7 @@ pub(crate) fn place_frames(
     for (name, f, a, b) in frames {
         let tag = format!("{name} の枠");
         if let Err(e) = f.validate() {
-            warn.push(format!("{tag}: {e}（置かない）"));
+            warn.push(format!("{tag}: {e} (not placed)"));
             continue;
         }
         let faces: Vec<usize> = (a + 1..=b + 1)
@@ -908,7 +926,7 @@ pub(crate) fn block_face(
         .filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk)
         .collect();
     faces.get(i).copied().map(Some).ok_or(format!(
-        "ブロック {block} の面 {i}（面は {} 枚）",
+        "block {block} surface {i} ({} surfaces)",
         faces.len()
     ))
 }
@@ -970,9 +988,9 @@ pub(crate) fn apply_surface_edits(
             .collect()
     };
     for e in edits {
-        let err = |x: String| {
+        let err = |why: String| {
             format!(
-                "surface_edits: ブロック {} の面 {}: {x}",
+                "surface_edits: block {} surface {}: {why}",
                 e.block, e.surface
             )
         };
@@ -999,7 +1017,7 @@ pub(crate) fn apply_surface_edits(
         let i = e.surface;
         if i >= n {
             return Err(format!(
-                "surface_edits: ブロック {} の面 {}（面は {n} 枚）",
+                "surface_edits: block {} surface {} ({n} surfaces)",
                 e.block, e.surface
             ));
         }
@@ -1013,9 +1031,9 @@ pub(crate) fn apply_surface_edits(
         let f = edit_ops::surf_fields(&Value::Object(named))
             .map_err(|x| format!("surface_edits: {x}"))?;
         for v in &fwd {
-            let j = *v
-                .get(i)
-                .ok_or_else(|| err("同じ向きの範囲の面の数が違う".into()))?;
+            let j = *v.get(i).ok_or_else(|| {
+                err("the ranges in the same direction have different numbers of surfaces".into())
+            })?;
             if !f.is_empty() {
                 s.set_surface_fields(j, &f)
                     .map_err(|x| err(x.to_string()))?;
@@ -1030,13 +1048,13 @@ pub(crate) fn apply_surface_edits(
                 .any(|k| data.get(*k).is_some())
             {
                 return Err(err(
-                    "往復するブロックの厚さ・材料は t・material の名前で変える".into(),
+                    "change the thickness and material of a round-trip block with the names t and material".into(),
                 ));
             }
             // 復路では面の前後が入れ替わり向きも逆になるので、前後の傾き偏心はそのまま当てられない
             if ["before", "after"].iter().any(|k| data.get(*k).is_some()) {
                 return Err(err(
-                    "往復するブロックの面の前後の傾き偏心は変えられない（ブロックの偏心・傾きで）"
+                    "tilts and decenters before or after surfaces of a round-trip block can't be changed (use the block decenter and tilt)"
                         .into(),
                 ));
             }
@@ -1051,7 +1069,10 @@ pub(crate) fn apply_surface_edits(
         // ブロックでは変えない
         for v in &back {
             if v.len() != n {
-                return Err(err(format!("復路の面の数 {}（往路は {n}）", v.len())));
+                return Err(err(format!(
+                    "{} surfaces on the return path ({n} on the way out)",
+                    v.len()
+                )));
             }
             let (face, gap): (Vec<_>, Vec<_>) = f
                 .iter()
@@ -1064,7 +1085,7 @@ pub(crate) fn apply_surface_edits(
             if !gap.is_empty() {
                 if i + 1 == n {
                     return Err(err(
-                        "往復するブロックの最後の面の厚さ・材料は、後の空気のブロックで変える"
+                        "change the thickness and material of the last surface of a round-trip block in the air block after it"
                             .into(),
                     ));
                 }

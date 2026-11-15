@@ -499,7 +499,10 @@ fn shared_memory_arrays() {
         json!({ "shm": { "name": name }, "bin": [{ "name": "x", "dtype": "<f8", "shape": [10], "offset": fsz - 8 }] }),
     );
     assert!(
-        h["error"]["message"].as_str().unwrap().contains("範囲の外"),
+        h["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("outside the shared memory"),
         "{h}"
     );
     let (h, _) = c.send(
@@ -509,7 +512,10 @@ fn shared_memory_arrays() {
         json!({ "shm": { "name": "../etc/passwd" }, "bin": [{ "name": "x", "dtype": "<f8", "shape": [1], "offset": 0 }] }),
     );
     assert!(
-        h["error"]["message"].as_str().unwrap().contains("名前"),
+        h["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("shared memory name"),
         "{h}"
     );
     assert_eq!(
@@ -553,7 +559,7 @@ fn pipe_keeps_regular_file() {
         .output()
         .unwrap();
     assert!(!o.status.success());
-    assert!(String::from_utf8_lossy(&o.stderr).contains("ソケットでない"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("not a socket"));
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "keep");
     std::fs::remove_dir_all(&d).ok();
 }

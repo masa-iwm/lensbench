@@ -174,13 +174,13 @@ fn loop_thickness() {
     // 名前は Python と同じ glass_dirs。旧名 glass_dir・path・ref は新しい名前を示す誤り（CLI-17）
     assert!(sv
         .error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }))
-        .contains("glass_dirs に名前を変えた"));
+        .contains("renamed to glass_dirs"));
     assert!(sv
         .error("load", json!({ "file": ZMX, "path": "TR" }))
         .contains("beam_path"));
     assert!(sv
         .error("analyze", json!({ "cmd": "rms", "ref": "chief" }))
-        .contains("reference に名前を変えた"));
+        .contains("renamed to reference"));
     let base = core_system(&Path::new(ROOT).join(ZMX));
     let p = base.param("3.t").unwrap();
     let t0 = sv.call("get", json!({ "param": "3.t" }))["value"]
@@ -241,9 +241,8 @@ fn loop_thickness() {
     assert!(sv
         .error("analyze", json!({ "cmd": "spot", "cfg": 2 }))
         .contains("load"));
-    assert!(sv
-        .error("analyze", json!({ "cmd": "catalog-list" }))
-        .contains("解析ではない"));
+    let e = sv.error("analyze", json!({ "cmd": "catalog-list" }));
+    assert!(e.contains("is not an analyze analysis"), "{e}");
     // 解析の値の誤りは文だけ（「不正: 」を付けない・重ねない）
     let e = sv.error("analyze", json!({ "cmd": "mech-check" }));
     assert!(e.starts_with("no mechanical parts"), "{e}");
@@ -275,7 +274,7 @@ fn undo_redo_history() {
             .unwrap()
     };
     let (t3, t2) = (get(&mut sv, "3.t"), get(&mut sv, "2.t"));
-    assert!(sv.error("undo", json!({})).contains("元に戻す"));
+    assert!(sv.error("undo", json!({})).contains("no change to undo"));
     // 同じ名前の set が続けば 1 段にまとめる
     sv.call("set", json!({ "values": { "3.t": t3 + 1.0 } }));
     let r = sv.call("set", json!({ "values": { "3.t": t3 + 2.0 } }));
@@ -305,14 +304,14 @@ fn undo_redo_history() {
     assert_eq!(get(&mut sv, "3.t"), t3 + 2.0);
     sv.call("undo", json!({}));
     assert_eq!(get(&mut sv, "3.t"), t3);
-    assert!(sv.error("undo", json!({})).contains("元に戻す"));
+    assert!(sv.error("undo", json!({})).contains("no change to undo"));
     sv.call("redo", json!({}));
     sv.call("redo", json!({}));
     assert_eq!(
         (get(&mut sv, "3.t"), get(&mut sv, "2.t")),
         (t3 + 2.0, t2 + 0.5)
     );
-    assert!(sv.error("redo", json!({})).contains("やり直す"));
+    assert!(sv.error("redo", json!({})).contains("no change to redo"));
     // 戻した後に変えるとやり直す段は消える
     sv.call("undo", json!({}));
     let r = sv.call("set", json!({ "values": { "2.t": t2 + 0.25 } }));
@@ -605,7 +604,7 @@ fn request_size_is_limited() {
         h["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("大きすぎる"),
+            .contains("too large"),
         "{h}"
     );
     let mut rest = String::new();
@@ -621,7 +620,7 @@ fn request_size_is_limited() {
         h["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("大きすぎる"),
+            .contains("too large"),
         "{h}"
     );
 }
@@ -671,8 +670,13 @@ fn root_limits_files() {
         json!({ "file": "sys.zmx", "glass_dirs": ["glass"] }),
     );
     // 外のパス、または無いファイル・フォルダ（OS のエラー）
-    let out = |m: String| assert!(m.contains("--root の外") || m.contains("os error"), "{m}");
-    let outside = |m: String| assert!(m.contains("--root の外"), "{m}");
+    let out = |m: String| {
+        assert!(
+            m.contains("outside --root") || m.contains("os error"),
+            "{m}"
+        )
+    };
+    let outside = |m: String| assert!(m.contains("outside --root"), "{m}");
     // 外のファイル・フォルダは読まない
     outside(sv.error(
         "load",
@@ -721,7 +725,7 @@ fn root_limits_files() {
     // optimize・tolerance・layout は analyze では受けない（専用のメソッドで）
     for c in ["optimize", "tolerance", "layout"] {
         let e = sv.error("analyze", json!({ "cmd": c }));
-        assert!(e.contains("解析ではない"), "{e}");
+        assert!(e.contains("is not an analyze analysis"), "{e}");
     }
     sv.stop();
     std::fs::remove_dir_all(&dir).ok();
@@ -887,7 +891,7 @@ fn layout_export_writes_formats() {
             "layout_export",
             json!({ "file": dir.join("a.txt").display().to_string() })
         )
-        .contains("拡張子"));
+        .contains("extension"));
     assert!(sv.error("layout_export", json!({})).contains("file"));
     sv.stop();
     std::fs::remove_dir_all(&dir).unwrap();
@@ -1223,7 +1227,7 @@ fn zoom_of_loaded_project() {
     // 状態を選ぶ・目標の数が違えば誤り
     let mut q = p.clone();
     q["configs"] = json!(["wide", "tele"]);
-    assert!(sv.error("zoom", q.clone()).contains("目標"));
+    assert!(sv.error("zoom", q.clone()).contains("targets"));
     q["efl"] = json!([140.0, null]);
     assert_eq!(sv.call("zoom", q)["path"].as_array().unwrap().len(), 3);
     assert!(sv.error("zoom", json!({ "vars": [] })).contains("vars"));

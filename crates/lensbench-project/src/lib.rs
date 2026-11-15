@@ -267,7 +267,7 @@ mod read_text_tests {
         gz.write_all(&vec![b' '; 1 << 20]).unwrap();
         std::fs::write(&f, gz.finish().unwrap()).unwrap();
         let e = read_text_limit(&f, 1000).unwrap_err();
-        assert!(e.contains("超える"), "{e}");
+        assert!(e.contains("when inflated"), "{e}");
         assert_eq!(read_text_limit(&f, 1 << 20).unwrap().len(), 1 << 20);
         // .json を指すと .json.gz を読む
         assert_eq!(read_text(&dir.join("big.json")).unwrap().len(), 1 << 20);

@@ -114,7 +114,7 @@ via_value!(Radial, |v| match v {
     Value::Bool(b) => Ok(Radial::On(b)),
     Value::String(s) => Ok(Radial::Dist(s)),
     x => Err(format!(
-        "radial は true・false・uniform・normal・normal:σの数（{x}）"
+        "radial must be true, false, uniform, normal or normal:σ ({x})"
     )),
 });
 
@@ -241,7 +241,7 @@ pub enum LensEntry {
 via_value!(LensEntry, |v| match v {
     Value::String(s) => Ok(LensEntry::Preset(s)),
     v @ Value::Object(_) => from(v).map(LensEntry::Fields),
-    x => Err(format!("オブジェクト・組の名前・null（{x}）")),
+    x => Err(format!("an object, a set name or null ({x})")),
 });
 
 /// メーカーの公差: 項目のオブジェクト（rules つき）か組の名前
@@ -254,7 +254,7 @@ pub enum CatEntry {
 via_value!(CatEntry, |v| match v {
     Value::String(s) => Ok(CatEntry::Preset(s)),
     v @ Value::Object(_) => from(v).map(CatEntry::Fields),
-    x => Err(format!("オブジェクト・組の名前・null（{x}）")),
+    x => Err(format!("an object, a set name or null ({x})")),
 });
 
 /// 組の名前の公差（くさびの面は base のまま）
@@ -329,7 +329,7 @@ pub enum VarSpec {
 via_value!(VarSpec, |v| match v {
     Value::String(s) => Ok(VarSpec::Text(s)),
     v @ Value::Object(_) => from(v).map(VarSpec::Obj),
-    x => Err(format!("補償子は文字列かオブジェクト（{x}）")),
+    x => Err(format!("a compensator must be a string or an object ({x})")),
 });
 
 /// 補償子のオブジェクト

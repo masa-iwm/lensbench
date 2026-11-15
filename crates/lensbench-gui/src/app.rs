@@ -224,7 +224,7 @@ impl Core {
     /// 下の行に誤りを出す（GAR-16）
     fn fail(&mut self, text: impl Into<String>) {
         self.status = Status {
-            text: text.into(),
+            text: lensbench_core::i18n::tr(&text.into()), // 計算側の英語の文を訳す（XCT-20）
             error: true,
         };
     }

@@ -75,7 +75,7 @@ impl Files {
         match self {
         Files::Any => Ok(p.to_path_buf()),
         Files::Deny => Err(RpcErr::app(format!(
-            "{}: --allow-remote では要求でファイルを読み書きしない（--root で場所を限れば読み書きできる）",
+            "{}: with --allow-remote, requests don't read or write files (limit the place with --root to allow it)",
             p.display()
         ))),
         Files::Root(root) => {
@@ -84,7 +84,7 @@ impl Files {
             } else {
                 root.join(p)
             };
-            let bad = || RpcErr::app(format!("{} は --root の外", p.display()));
+            let bad = || RpcErr::app(format!("{} is outside --root", p.display()));
             // 在るものは実体（シンボリックリンクの先）で、書き出す新しいファイルはフォルダの実体で確かめる
             let real = match q.canonicalize() {
                 Ok(r) => r,
@@ -239,14 +239,14 @@ impl Session {
         self.served()
             .as_ref()
             .map(|x| (x.sys.clone(), x.spec.clone(), x.log.clone()))
-            .ok_or_else(|| RpcErr::app("系がない（先に load）"))
+            .ok_or_else(|| RpcErr::app("no system (load first)"))
     }
 
     fn current(&self) -> Result<(Arc<System>, LoadSpec), RpcErr> {
         self.served()
             .as_ref()
             .map(|x| (x.sys.clone(), x.spec.clone()))
-            .ok_or_else(|| RpcErr::app("系がない（先に load）"))
+            .ok_or_else(|| RpcErr::app("no system (load first)"))
     }
 
     /// 読み込んだ後の変更の記録
@@ -288,7 +288,7 @@ fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
         Some("keep") => LoadHistory::Keep,
         Some(x) => {
             return Err(RpcErr::params(format!(
-                "history は clear・push・keep（{x}）"
+                "history must be clear, push or keep ({x})"
             )))
         }
     })
@@ -396,7 +396,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     let mut g = sess.served();
     let x = g
         .as_mut()
-        .ok_or_else(|| RpcErr::app("系がない（先に load）"))?;
+        .ok_or_else(|| RpcErr::app("no system (load first)"))?;
     let (from, to) = if back {
         (&mut x.undo, &mut x.redo)
     } else {
@@ -404,9 +404,9 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     };
     let Some(snap) = from.pop() else {
         return Err(RpcErr::app(if back {
-            "元に戻す変更がない"
+            "no change to undo"
         } else {
-            "やり直す変更がない"
+            "no change to redo"
         }));
     };
     let file0 = x.spec.file.clone();
@@ -537,9 +537,10 @@ impl RpcErr {
     }
 }
 
+/// 文字列の誤り（project などの `Err(String)`）は英語で書いてあるので、表示の言語に訳す（XCT-20）
 impl From<String> for RpcErr {
     fn from(m: String) -> Self {
-        RpcErr::app(m)
+        RpcErr::app(lensbench_core::i18n::tr(&m))
     }
 }
 
@@ -692,8 +693,8 @@ fn dispatch(
                 .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
                 .or_else(|| e.downcast_ref::<String>().cloned());
             Err(RpcErr::app(match t {
-                Some(t) => format!("内部エラー（panic）: {t}"),
-                None => "内部エラー（panic）".into(),
+                Some(t) => format!("internal error (panic): {t}"),
+                None => "internal error (panic)".into(),
             }))
         })
     };
@@ -743,7 +744,7 @@ fn status(sess: &Session, method: &str, p: &Value) -> Option<Result<Reply, RpcEr
             }
             _ => {
                 return Some(Err(RpcErr::params(
-                    "stop の what は optimize・tolerance・swap のどれか",
+                    "stop what must be optimize, tolerance or swap",
                 )))
             }
         },
@@ -773,7 +774,7 @@ pub type Arrays = Vec<(String, Vec<f64>)>;
 /// 鍵 new の値（無ければ null）。名前を変える前の鍵 old を渡すと誤り（CLI-17、旧名は受けない）
 fn renamed<'a>(p: &'a Value, new: &'static str, old: &'static str) -> Result<&'a Value, RpcErr> {
     if !p[old].is_null() {
-        return Err(RpcErr::params(format!("{old} は {new} に名前を変えた")));
+        return Err(RpcErr::params(format!("{old} was renamed to {new}")));
     }
     Ok(&p[new])
 }
@@ -782,7 +783,7 @@ fn renamed<'a>(p: &'a Value, new: &'static str, old: &'static str) -> Result<&'a
 fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let file = p["file"]
         .as_str()
-        .ok_or_else(|| RpcErr::params("load には file"))?;
+        .ok_or_else(|| RpcErr::params("load needs file"))?;
     let read_all = |v: Vec<PathBuf>| -> Result<Vec<PathBuf>, RpcErr> {
         v.iter().map(|x| sess.files.check_path(x, false)).collect()
     };
@@ -793,7 +794,9 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
         Value::Null => None,
         v => Some(
             v.as_str()
-                .ok_or_else(|| RpcErr::params("beam_path は文字列（BS の経路、例 \"TR\"）"))?
+                .ok_or_else(|| {
+                    RpcErr::params("beam_path must be a string (the BS path, e.g. \"TR\")")
+                })?
                 .to_string(),
         ),
     };
@@ -865,7 +868,7 @@ impl Session {
             layout_with(sess, &s, &spec, opts)
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
+            .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
             .map_err(CallError::from)
     }
 
@@ -879,11 +882,11 @@ impl Session {
             "catalog_items" | "catalog_edit" => user_catalog(sess, method, params),
             "catalog_fill" => catalog_fill(sess, params),
             m => Err(RpcErr::params(format!(
-                "{m} は catalog_items・catalog_edit・catalog_fill"
+                "{m} must be catalog_items, catalog_edit or catalog_fill"
             ))),
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
+            .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
             .map_err(CallError::from)
     }
 
@@ -892,7 +895,7 @@ impl Session {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             browse_of(sess, method, params)
         }))
-        .unwrap_or_else(|_| Err(RpcErr::app("内部エラー（panic）")))
+        .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
         .map_err(CallError::from)
     }
 }
@@ -935,10 +938,10 @@ fn str_list(v: &Value, what: &str) -> Result<Vec<PathBuf>, RpcErr> {
             .map(|x| {
                 x.as_str()
                     .map(PathBuf::from)
-                    .ok_or_else(|| RpcErr::params(format!("{what} は文字列の並び")))
+                    .ok_or_else(|| RpcErr::params(format!("{what} must be a list of strings")))
             })
             .collect(),
-        _ => Err(RpcErr::params(format!("{what} は文字列の並び"))),
+        _ => Err(RpcErr::params(format!("{what} must be a list of strings"))),
     }
 }
 
@@ -948,7 +951,7 @@ fn opt_usize(p: &Value, k: &str) -> Result<Option<usize>, RpcErr> {
         Some(v) => v
             .as_u64()
             .map(|x| Some(x as usize))
-            .ok_or_else(|| RpcErr::params(format!("{k} は 0 以上の整数"))),
+            .ok_or_else(|| RpcErr::params(format!("{k} must be an integer 0 or more"))),
     }
 }
 
@@ -958,7 +961,7 @@ fn opt_f64(p: &Value, k: &str) -> Result<Option<f64>, RpcErr> {
         Some(v) => v
             .as_f64()
             .map(Some)
-            .ok_or_else(|| RpcErr::params(format!("{k} は数"))),
+            .ok_or_else(|| RpcErr::params(format!("{k} must be a number"))),
     }
 }
 
@@ -1028,12 +1031,12 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             }
             let list = p["params"]
                 .as_array()
-                .ok_or_else(|| RpcErr::params("get には param か params（並び）"))?;
+                .ok_or_else(|| RpcErr::params("get needs param or params (a list)"))?;
             let mut out = Vec::with_capacity(list.len());
             for x in list {
                 let spec = x
                     .as_str()
-                    .ok_or_else(|| RpcErr::params("params は文字列の並び"))?;
+                    .ok_or_else(|| RpcErr::params("params must be a list of strings"))?;
                 out.push(s.get_param(s.param(spec)?)?);
             }
             Ok((json!({ "values": out }), Vec::new()))
@@ -1060,7 +1063,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let (s, _) = sess.current()?;
             let path = p["path"]
                 .as_str()
-                .ok_or_else(|| RpcErr::params("write には path"))?;
+                .ok_or_else(|| RpcErr::params("write needs path"))?;
             let notes = zmx_write::save(&sess.files.check_path(Path::new(path), true)?, &s)?;
             Ok((json!({ "written": path, "notes": notes }), Vec::new()))
         }
@@ -1141,8 +1144,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
                 Some(v) => v
                     .as_u64()
                     .map(|x| x as usize)
-                    .ok_or_else(|| RpcErr::params("surface は面の番号か名前"))?,
-                None => return Err(RpcErr::params("surface_data には surface")),
+                    .ok_or_else(|| RpcErr::params("surface must be a surface number or name"))?,
+                None => return Err(RpcErr::params("surface_data needs surface")),
             };
             let v = lensbench_project::edit_ops::surface_data(&s, j).map_err(RpcErr::app)?;
             Ok((v, Vec::new()))
@@ -1201,7 +1204,7 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let (s, _) = sess.current()?;
             let path = p["path"]
                 .as_str()
-                .ok_or_else(|| RpcErr::params("save には path"))?;
+                .ok_or_else(|| RpcErr::params("save needs path"))?;
             lensbench_project::sysfile::save(
                 &sess.files.check_path(Path::new(path), true)?,
                 &s,
@@ -1217,11 +1220,11 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             let (s, _) = sess.current()?;
             let path = p["path"]
                 .as_str()
-                .ok_or_else(|| RpcErr::params("save_range には path"))?;
+                .ok_or_else(|| RpcErr::params("save_range needs path"))?;
             let num = |k: &str| {
-                p[k].as_u64()
-                    .map(|x| x as usize)
-                    .ok_or_else(|| RpcErr::params(format!("save_range には {k}（面の番号）")))
+                p[k].as_u64().map(|x| x as usize).ok_or_else(|| {
+                    RpcErr::params(format!("save_range needs {k} (a surface number)"))
+                })
             };
             let (from, to) = (num("from")?, num("to")?);
             let s = range_system(&s, from, to).map_err(|e| RpcErr::app(e.to_string()))?;
@@ -1256,10 +1259,10 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "analysis_args" => {
             let cmd = p["cmd"]
                 .as_str()
-                .ok_or_else(|| RpcErr::params("analysis_args には cmd"))?;
+                .ok_or_else(|| RpcErr::params("analysis_args needs cmd"))?;
             let args = crate::params::analysis_args(cmd).ok_or_else(|| {
                 RpcErr::params(format!(
-                    "{cmd} は analyze の解析ではない（解析の一覧は plugins）"
+                    "{cmd} is not an analyze analysis (see plugins for the list)"
                 ))
             })?;
             Ok((json!({ "cmd": cmd, "args": args }), Vec::new()))
@@ -1279,12 +1282,12 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "zoom" => zoom(sess, p).map(|v| (v, Vec::new())),
         "" => Err(RpcErr {
             code: -32600,
-            msg: "method がない".into(),
+            msg: "no method".into(),
             kind: None,
         }),
         m => Err(RpcErr {
             code: -32601,
-            msg: format!("method {m} はない"),
+            msg: format!("no method {m}"),
             kind: None,
         }),
     }
@@ -1295,7 +1298,7 @@ fn parse_changes(
     s: &System,
     p: &Value,
 ) -> Result<Vec<(lensbench_core::param::Param, f64)>, RpcErr> {
-    let bad = || RpcErr::params("set には values: {\"3.t\": 10.0} か [[\"3.t\", 10.0]]");
+    let bad = || RpcErr::params("set needs values (\"3.t\": 10.0, or [[\"3.t\", 10.0]])");
     let pairs: Vec<(&str, f64)> = match p.get("values") {
         Some(Value::Object(m)) => m
             .iter()
@@ -1322,11 +1325,11 @@ fn analyze(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     sess.current()?;
     let m = p
         .as_object()
-        .ok_or_else(|| RpcErr::params("params はオブジェクト"))?;
+        .ok_or_else(|| RpcErr::params("params must be an object"))?;
     let cmd = m
         .get("cmd")
         .and_then(Value::as_str)
-        .ok_or_else(|| RpcErr::params("cmd（解析の名前）が要る"))?;
+        .ok_or_else(|| RpcErr::params("cmd (the analysis name) is needed"))?;
     if cmd == "coatings" {
         return crate::analyze::coatings_loaded(sess, m);
     }
@@ -1334,14 +1337,16 @@ fn analyze(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         Some(def) => crate::analyze::run(sess, def.as_ref(), m),
         None => Err(RpcErr::params(match cmd {
             "optimize" | "tolerance" | "swap" | "zoom" | "layout" => format!(
-                "{cmd} は analyze の解析ではない（メソッド {} で）",
+                "{cmd} is not an analyze analysis (use method {})",
                 if cmd == "layout" {
                     "layout_export"
                 } else {
                     cmd
                 }
             ),
-            _ => format!("{cmd} は analyze の解析ではない（解析の一覧は analysis_args・plugins）"),
+            _ => format!(
+                "{cmd} is not an analyze analysis (list them with analysis_args or plugins)"
+            ),
         })),
     }
 }
@@ -1369,7 +1374,7 @@ fn is_zmx(f: &Path) -> bool {
 fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
     use lensbench_core::param::{Kind, Param};
     if !is_zmx(&spec.file) {
-        return Err(RpcErr::params("config_diff は .zmx の系だけ"));
+        return Err(RpcErr::params("config_diff is only for .zmx systems"));
     }
     let txt = lensbench_core::glass::read_text(&spec.file)
         .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
@@ -1377,17 +1382,19 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
         .map_err(|x| RpcErr::app(x.to_string()))?
         .configurations();
     if n < 2 {
-        return Err(RpcErr::app("この .zmx は多重構成でない"));
+        return Err(RpcErr::app("this .zmx has no multiple configurations"));
     }
     let mut systems = Vec::with_capacity(n);
     for k in 1..=n {
         let mut c = spec.clone();
         c.cfg = k;
-        systems.push(load_file(&c).map_err(|e| e.at(format!("構成 {k}")))?);
+        systems.push(load_file(&c).map_err(|e| e.at(format!("configuration {k}")))?);
     }
     let m = systems[0].surfaces.len();
     if systems.iter().any(|s| s.surfaces.len() != m) {
-        return Err(RpcErr::app("構成で面の数が違う（表にできない）"));
+        return Err(RpcErr::app(
+            "the configurations have different numbers of surfaces (no table)",
+        ));
     }
     let mut kinds = vec![Kind::Curv, Kind::Conic, Kind::Thick];
     kinds.extend((0..8).map(Kind::Asph));
@@ -1454,7 +1461,7 @@ fn floats(p: &Value, bins: &mut HashMap<String, Bin>, k: &str) -> Result<Option<
     if let Some(b) = bins.remove(k) {
         return match b.data {
             Data::F64(v) => Ok(Some(v)),
-            _ => Err(RpcErr::params(format!("{k} は <f8"))),
+            _ => Err(RpcErr::params(format!("{k} must be <f8"))),
         };
     }
     match p.get(k) {
@@ -1463,11 +1470,11 @@ fn floats(p: &Value, bins: &mut HashMap<String, Bin>, k: &str) -> Result<Option<
             .iter()
             .map(|x| {
                 x.as_f64()
-                    .ok_or_else(|| RpcErr::params(format!("{k} は数の並び")))
+                    .ok_or_else(|| RpcErr::params(format!("{k} must be a list of numbers")))
             })
             .collect::<Result<_, _>>()
             .map(Some),
-        _ => Err(RpcErr::params(format!("{k} は数の並び"))),
+        _ => Err(RpcErr::params(format!("{k} must be a list of numbers"))),
     }
 }
 
@@ -1481,7 +1488,7 @@ fn opt_index_list(p: &Value, k: &str, n: usize) -> Result<Option<Vec<usize>>, Rp
     v.iter()
         .map(|x| match x.as_u64() {
             Some(i) if i >= 1 && i as usize <= n => Ok(i as usize - 1),
-            _ => Err(RpcErr::params(format!("{k} は 1〜{n} の番号"))),
+            _ => Err(RpcErr::params(format!("{k} must be a number 1 to {n}"))),
         })
         .collect::<Result<Vec<_>, _>>()
         .map(Some)

@@ -162,3 +162,20 @@ def test_result_typed_dicts_match_the_results():
         keys = set(r)
         assert req <= keys, f"{name}: 無い鍵 {sorted(req - keys)}"
         assert keys <= req | opt, f"{name}: 型スタブに無い鍵 {sorted(keys - req - opt)}"
+
+
+def test_builtin_errors_are_translated_in_japanese():
+    # IndexError・ValueError に直に渡す英語の文も、日本語の表示では訳の表から日本語に（XCT-20）
+    code = (
+        "import lensbench as lb\n"
+        f"s = lb.System.load({str(ROOT / 'tests' / 'refs' / 'A0' / 'system.zmx')!r}, glass_dirs=[{str(ROOT / 'tests' / 'glass')!r}])\n"
+        "for f in (lambda: s.mtf(99, [10.0]), lambda: lb.Sampler(s, {'3.t': ('nosuch', 1)})):\n"
+        "    try:\n"
+        "        f()\n"
+        "    except (IndexError, ValueError) as e:\n"
+        "        print(type(e).__name__, e)\n"
+    )
+    env = dict(os.environ, LENSBENCH_LANG="ja")
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True).stdout
+    assert "IndexError 視野 99 は" in out, out
+    assert "ValueError 分布" in out and "nosuch" in out, out

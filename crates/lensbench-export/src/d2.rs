@@ -23,7 +23,7 @@ impl std::str::FromStr for Plane {
         match s.to_ascii_lowercase().as_str() {
             "yz" => Ok(Plane::YZ),
             "xz" => Ok(Plane::XZ),
-            _ => Err(format!("投影面 {s} は yz か xz")),
+            _ => Err(format!("projection plane {s} must be yz or xz")),
         }
     }
 }
@@ -44,7 +44,7 @@ impl std::str::FromStr for ColorBy {
             "field" => Ok(ColorBy::Field),
             "wave" => Ok(ColorBy::Wave),
             "cfg" | "config" => Ok(ColorBy::Config),
-            _ => Err(format!("色分け {s} は field・wave・cfg のどれか")),
+            _ => Err(format!("color by {s} must be field, wave or cfg")),
         }
     }
 }

@@ -76,18 +76,18 @@ fn terms_schema_matches_reader() {
         std::slice::from_ref(&s),
     )
     .unwrap_err();
-    assert!(e.starts_with("ray の項: unknown field `taget`"), "{e}");
+    assert!(e.starts_with("ray term: unknown field `taget`"), "{e}");
     // 値の綴りの誤りは種類の誤りにしない
     let terms = |v: Value| lensbench_design::merit::term_from_json(&v, std::slice::from_ref(&s));
     let e = terms(serde_json::json!({"type": "mtf", "field": 1, "freq": 30, "dir": "TAN"}))
         .unwrap_err();
-    assert!(e.starts_with("mtf の項: unknown variant `TAN`"), "{e}");
+    assert!(e.starts_with("mtf term: unknown variant `TAN`"), "{e}");
     let e = terms(serde_json::json!({"type": "nope"})).unwrap_err();
     assert!(e.starts_with("type nope（spot・"), "{e}");
     assert!(terms(serde_json::json!({"type": "paraxial", "q": "efl"})).is_err());
     terms(serde_json::json!({"type": "paraxial", "q": "efl", "min": 351})).unwrap();
     let e = terms(serde_json::json!({"type": "spot", "field": 1, "min": 1})).unwrap_err();
-    assert!(e.contains("min・max は使えない"), "{e}");
+    assert!(e.contains("can't use min or max"), "{e}");
 }
 
 /// 公差の設定: 例がスキーマに合い、知らないキーはスキーマでも読みでも誤りで、読みの誤りには欄の道が付く（PRJ-11）

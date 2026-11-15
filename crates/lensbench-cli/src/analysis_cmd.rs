@@ -109,13 +109,13 @@ fn nums(s: &str, p: &Param) -> Result<Value, String> {
         .map(|t| {
             t.trim()
                 .parse::<f64>()
-                .map_err(|_| format!("--{} の数が読めない（{t}）", flag_of(&p.name)))
+                .map_err(|_| format!("--{} number can't be read ({t})", flag_of(&p.name)))
         })
         .collect::<Result<_, _>>()?;
     if let Some(n) = p.len {
         if v.len() != n {
             return Err(format!(
-                "--{} は数 {n} 個のカンマ区切り（{s}）",
+                "--{} is {n} comma-separated numbers ({s})",
                 flag_of(&p.name)
             ));
         }
@@ -153,7 +153,7 @@ pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> Result<AnalysisCmd, String>
                 .get_one::<String>(id)
                 .map(|x| {
                     serde_json::from_str::<Value>(x)
-                        .map_err(|e| format!("--{} の JSON が読めない: {e}", flag_of(&p.name)))
+                        .map_err(|e| format!("--{} JSON can't be read: {e}", flag_of(&p.name)))
                 })
                 .transpose()?,
             ParamTy::Path => m

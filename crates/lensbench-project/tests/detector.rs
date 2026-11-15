@@ -98,7 +98,7 @@ fn detector_errors() {
     let v = project(json!([lens(), {"type": "no_such_camera"}]));
     let e = Project::from_json(&v.to_string()).unwrap_err();
     assert!(
-        e.contains("知らないブロックの種類") && e.contains("toy_camera"),
+        e.contains("unknown block type") && e.contains("toy_camera"),
         "{e}"
     );
     // 群の中も確かめる
@@ -112,7 +112,7 @@ fn detector_errors() {
     let v = project(json!([{"type": "toy_camera"}, lens()]));
     let p = Project::from_json(&v.to_string()).unwrap();
     let e = expand(&p, &env()).unwrap_err();
-    assert!(e.contains("検出器"), "{e}");
+    assert!(e.contains("detector"), "{e}");
     // 組み込みの名前は登録できない
     assert!(detectors::register(DetectorKind {
         name: "lens",

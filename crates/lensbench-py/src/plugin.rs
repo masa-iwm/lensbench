@@ -11,6 +11,7 @@
 //!
 //! 設定の値は数・文字列・数の並び。入力の配列は bool・complex・それ以外（float64 に直す）の 3 種類。
 
+use crate::errors::{type_err, value_err};
 use lensbench_core::RwLockExt;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -22,7 +23,6 @@ use lensbench_core::plugin::{
 use lensbench_core::{with_threads, Error};
 use numpy::ndarray::{ArrayD, IxDyn};
 use numpy::{IntoPyArray, PyReadonlyArrayDyn};
-use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyString};
 
@@ -63,8 +63,8 @@ fn to_value(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Value> {
             return Ok(Value::Nums(a.as_array().iter().copied().collect()));
         }
     }
-    Err(PyTypeError::new_err(format!(
-        "設定 {k} は数・真偽・文字列・数の並びに"
+    Err(type_err(format!(
+        "setting {k} must be a number, bool, string or list of numbers"
     )))
 }
 
@@ -109,8 +109,8 @@ fn to_array(k: &str, v: &Bound<'_, PyAny>) -> PyResult<Array> {
         "c" => ("complex128", 1),
         "f" | "i" | "u" => ("float64", 2),
         _ => {
-            return Err(PyTypeError::new_err(format!(
-                "入力 {k} の型（dtype.kind {kind}）は使えない"
+            return Err(type_err(format!(
+                "input {k} type (dtype.kind {kind}) can't be used"
             )))
         }
     };
@@ -287,7 +287,7 @@ impl Instance for PyFuncInstance {
             };
             let d = r
                 .cast::<PyDict>()
-                .map_err(|_| PyTypeError::new_err("プラグインの関数は dict を返すこと"))?;
+                .map_err(|_| type_err("a plugin function must return a dict"))?;
             to_arrays(d)
         })
         .map_err(|e| Error::Invalid(format!("Python plugin: {e}")))
@@ -306,7 +306,7 @@ fn register_plugin(
     needs_system: bool,
 ) -> PyResult<()> {
     if !func.is_callable() {
-        return Err(PyTypeError::new_err("func は呼び出せるものに"));
+        return Err(type_err("func must be callable"));
     }
     let kind = Kind::parse(kind).map_err(err)?;
     let doc = func
@@ -406,7 +406,7 @@ impl PyPlugin {
         for (i, d) in inputs.iter().enumerate() {
             let d = d
                 .cast::<PyDict>()
-                .map_err(|_| PyTypeError::new_err(format!("inputs[{i}] は dict に")))?;
+                .map_err(|_| type_err(format!("inputs[{i}] must be a dict")))?;
             all.push(to_arrays(d)?);
         }
         let rs = self.with_context(py, system, |inst, ctx| {
@@ -414,7 +414,7 @@ impl PyPlugin {
         })?;
         let out = PyList::empty(py);
         for (i, r) in rs.into_iter().enumerate() {
-            let r = r.map_err(|e| PyValueError::new_err(format!("inputs[{i}]: {e}")))?;
+            let r = r.map_err(|e| value_err(format!("inputs[{i}]: {e}")))?;
             out.append(arrays_to_py(py, &r)?)?;
         }
         Ok(out)
@@ -483,7 +483,7 @@ fn verify<'py>(
     let opt = lensbench_verify::Options { ci_only: ci };
     let reps = py
         .detach(|| lensbench_verify::run_paths(&ps, &reg, &opt))
-        .map_err(PyValueError::new_err)?;
+        .map_err(value_err)?;
     let v: Vec<serde_json::Value> = reps.iter().map(|r| r.to_json()).collect();
     json_to_py(py, &serde_json::Value::Array(v))
 }
@@ -500,8 +500,8 @@ fn verify_compare<'py>(
     let a = to_arrays(actual)?;
     let e = to_arrays(expected)?;
     let c = crate::pyjson::from_py(checks.as_any())?;
-    let c = lensbench_verify::checks_from_json(&c).map_err(PyValueError::new_err)?;
-    let r = lensbench_verify::compare(&a, &e, &c).map_err(PyValueError::new_err)?;
+    let c = lensbench_verify::checks_from_json(&c).map_err(value_err)?;
+    let r = lensbench_verify::compare(&a, &e, &c).map_err(value_err)?;
     let v: Vec<serde_json::Value> = r.iter().map(|x| x.to_json()).collect();
     json_to_py(py, &serde_json::Value::Array(v))
 }

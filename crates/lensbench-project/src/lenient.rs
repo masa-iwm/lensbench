@@ -97,7 +97,7 @@ impl<'de> de::Deserializer<'de> for Lenient {
                 next: None,
             }),
             C::Tag(_, x) => Lenient(*x).deserialize_any(v),
-            _ => Err(de::Error::custom("読めない値")),
+            _ => Err(de::Error::custom("a value that can't be read")),
         }
     }
 
@@ -127,11 +127,13 @@ impl<'de> de::Deserializer<'de> for Lenient {
             C::Map(m) if m.len() == 1 => {
                 let (k, x) = m.into_iter().next().expect("1 つ");
                 let C::Text(k) = k else {
-                    return Err(de::Error::custom("列挙の名前が文字列でない"));
+                    return Err(de::Error::custom("the enum name is not a string"));
                 };
                 v.visit_enum(Variant(k, x))
             }
-            _ => Err(de::Error::custom("列挙は文字列か、1 つのキーの表")),
+            _ => Err(de::Error::custom(
+                "an enum is a string or a table with one key",
+            )),
         }
     }
 
@@ -184,7 +186,7 @@ impl<'de> de::MapAccess<'de> for MapA {
         let (name, v) = self
             .next
             .take()
-            .ok_or_else(|| de::Error::custom("値の前にキーがない"))?;
+            .ok_or_else(|| de::Error::custom("no key before the value"))?;
         seed.deserialize(Lenient(v)).map_err(|e| e.within(name))
     }
 }
@@ -206,7 +208,7 @@ impl<'de> de::VariantAccess<'de> for Lenient {
     fn unit_variant(self) -> Result<(), Error> {
         match self.0 {
             C::Null => Ok(()),
-            _ => Err(de::Error::custom("値のない列挙に値がある")),
+            _ => Err(de::Error::custom("a value on an enum without values")),
         }
     }
     fn newtype_variant_seed<T: DeserializeSeed<'de>>(self, seed: T) -> Result<T::Value, Error> {

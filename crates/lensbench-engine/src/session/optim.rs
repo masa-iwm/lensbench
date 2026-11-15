@@ -73,7 +73,7 @@ pub(super) fn config_system(
     if is_project(&spec.file) {
         let name = b
             .as_str()
-            .ok_or_else(|| RpcErr::params("configs はプロジェクトの状態の名前の並び"))?;
+            .ok_or_else(|| RpcErr::params("configs must be a list of project state names"))?;
         if spec.state.as_deref() == Some(name) {
             return Ok((**cur).clone());
         }
@@ -82,8 +82,9 @@ pub(super) fn config_system(
         let c = b
             .as_u64()
             .or_else(|| b.as_str().and_then(|x| x.parse().ok()))
-            .ok_or_else(|| RpcErr::params("configs は .zmx の構成番号（1 始まり）の並び"))?
-            as usize;
+            .ok_or_else(|| {
+                RpcErr::params("configs must be a list of .zmx configuration numbers (1-based)")
+            })? as usize;
         if c == spec.cfg {
             return Ok((**cur).clone());
         }
@@ -135,28 +136,30 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let mut prob = optim::Problem::new(systems);
     let vars = p["vars"]
         .as_array()
-        .ok_or_else(|| RpcErr::params("optimize には vars（変数の並び）"))?;
+        .ok_or_else(|| RpcErr::params("optimize needs vars (a list of variables)"))?;
     for v in vars {
         let (name, lo, hi, cfgs) = match v {
             Value::String(n) => (n.as_str(), None, None, None),
             Value::Object(_) => (
                 v["name"]
                     .as_str()
-                    .ok_or_else(|| RpcErr::params("vars の要素に name"))?,
+                    .ok_or_else(|| RpcErr::params("vars items need name"))?,
                 opt_f64(v, "lo")?,
                 opt_f64(v, "hi")?,
                 match v.get("configs") {
                     None | Some(Value::Null) => None,
                     Some(c) => Some(
                         c.as_array()
-                            .ok_or_else(|| RpcErr::params("vars の configs は番号の並び"))?
+                            .ok_or_else(|| {
+                                RpcErr::params("configs of vars must be a list of numbers")
+                            })?
                             .iter()
                             .map(|x| match x.as_u64() {
                                 Some(k) if k >= 1 && (k as usize) <= prob.configs.len() => {
                                     Ok(k as usize - 1)
                                 }
                                 _ => Err(RpcErr::params(format!(
-                                    "vars の configs {x}（1〜{}）",
+                                    "configs of vars {x} (1 to {})",
                                     prob.configs.len()
                                 ))),
                             })
@@ -164,7 +167,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                     ),
                 },
             ),
-            _ => return Err(RpcErr::params("vars の要素は \"7.t\" か {\"name\": ...}")),
+            _ => return Err(RpcErr::params("vars items are \"7.t\" or {\"name\": ...}")),
         };
         let first = cfgs.as_ref().and_then(|c| c.first().copied()).unwrap_or(0);
         let param = prob.configs[first].param(name)?;
@@ -180,7 +183,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         "chief" => lensbench_core::sweep::RmsRef::Chief,
         r => {
             return Err(RpcErr::params(format!(
-                "reference は centroid か chief（{r}）"
+                "reference must be centroid or chief ({r})"
             )))
         }
     };
@@ -193,7 +196,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         Some(None) | Some(Some("none")) => {}
         Some(Some(m)) => {
             return Err(RpcErr::params(format!(
-                "merit は spot・wavefront・none（{m}）"
+                "merit must be spot, wavefront or none ({m})"
             )))
         }
     }
@@ -207,7 +210,10 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     }
     let j = p["jac"].as_str().unwrap_or("auto");
     prob.jac = optim::JacMode::parse(j).ok_or_else(|| {
-        RpcErr::params(format!("jac は {} のどれか（{j}）", optim::JacMode::NAMES))
+        RpcErr::params(format!(
+            "jac must be one of {} ({j})",
+            optim::JacMode::NAMES
+        ))
     })?;
     prob.check()?;
     let o = optim::DlsOpts {
@@ -408,7 +414,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .get("vars")
         .and_then(Value::as_array)
         .filter(|a| !a.is_empty())
-        .ok_or_else(|| RpcErr::params("vars（解くパラメータの並び）がない"))?
+        .ok_or_else(|| RpcErr::params("no vars (the list of parameters to solve)"))?
         .iter()
         .map(|v| match v {
             Value::String(s) => Ok(s.clone()),
@@ -416,7 +422,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 let name = o
                     .get("name")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| RpcErr::params(format!("vars の {v} に name がない")))?;
+                    .ok_or_else(|| RpcErr::params(format!("vars {v} has no name")))?;
                 let b = |k: &str| o.get(k).and_then(Value::as_f64).map(|x| x.to_string());
                 Ok(match (b("lo"), b("hi")) {
                     (None, None) => name.to_string(),
@@ -428,7 +434,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 })
             }
             _ => Err(RpcErr::params(format!(
-                "vars の {v} は文字列か {{name, lo, hi}}"
+                "vars {v} must be a string or {{name, lo, hi}}"
             ))),
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -441,16 +447,20 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 .map(|x| match x {
                     Value::Null => Ok("-".to_string()),
                     Value::Number(n) => Ok(n.to_string()),
-                    _ => Err(RpcErr::params(format!("{k} の {x} は数か null"))),
+                    _ => Err(RpcErr::params(format!(
+                        "{x} of {k} must be a number or null"
+                    ))),
                 })
                 .collect::<Result<Vec<_>, _>>()
                 .map(|v| Some(v.join(","))),
-            Some(x) => Err(RpcErr::params(format!("{k} は数（か null）の並び（{x}）"))),
+            Some(x) => Err(RpcErr::params(format!(
+                "{k} must be a list of numbers (or null) ({x})"
+            ))),
         }
     };
     let (efl, pmag) = (targets("efl")?, targets("pmag")?);
     if efl.is_some() && pmag.is_some() {
-        return Err(RpcErr::params("efl と pmag は一方だけ"));
+        return Err(RpcErr::params("only one of efl and pmag"));
     }
     let str_of = |k: &str, d: &str| p.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
     let a = crate::zoom::ZoomOpts {
@@ -511,7 +521,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         // 中の zmx・カタログ・膜のパスを check_path で確かめられないので、要求のファイルを制限するときは断る
         Some(_) if !matches!(sess.files, Files::Any) => {
             return Err(RpcErr::app(
-                "swap の project は --allow-remote・--root では使えない（中のパスを確かめられない。読み込んだファイルで回す）",
+                "swap project can't be used with --allow-remote or --root (the paths inside can't be checked; run on the loaded file)",
             ))
         }
         Some(v) => serde_json::from_value::<lensbench_project::Project>(v.clone())
@@ -520,7 +530,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             let txt = lensbench_core::vfs::read_to_string(&ls.file)
                 .map_err(|e| RpcErr::app(format!("{}: {e}", ls.file.display())))?;
             lensbench_project::Project::from_json(&txt)
-                .map_err(|e| RpcErr::app(format!("読み込んだ系がプロジェクトでない（{e}）")))?
+                .map_err(|e| RpcErr::app(format!("the loaded system is not a project ({e})")))?
         }
     };
     let mut sp = p.clone();
@@ -539,7 +549,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         }
     }
     let spec: SwapSpec = serde_json::from_value(sp)
-        .map_err(|e| RpcErr::params(format!("差し替え探索の設定: {e}")))?;
+        .map_err(|e| RpcErr::params(format!("swap search settings: {e}")))?;
     let cat = lensbench_core::catalog::LensCatalog::load_registered(&ls.lens_catalog)?;
     let env = lensbench_project::Env {
         base: ls

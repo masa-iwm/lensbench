@@ -28,7 +28,7 @@ static KINDS: RwLock<Vec<DetectorKind>> = RwLock::new(Vec::new());
 /// 種類を登録する（同じ名前なら置き換える）。組み込みのブロックの名前は登録できない
 pub fn register(k: DetectorKind) -> Result<(), String> {
     if crate::BUILTIN_BLOCKS.contains(&k.name) || k.name.is_empty() {
-        return Err(format!("検出器の種類の名前 {:?} は使えない", k.name));
+        return Err(format!("detector kind name {:?} can't be used", k.name));
     }
     let mut v = KINDS.write_ok();
     v.retain(|x| x.name != k.name);

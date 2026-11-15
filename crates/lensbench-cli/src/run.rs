@@ -80,7 +80,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
     let v: Value = serde_json::from_str(&txt).map_err(|e| format!("{}: {e}", path.display()))?;
     let obj = v
         .as_object()
-        .ok_or_else(|| format!("{}: JSON のオブジェクトでない", path.display()))?;
+        .ok_or_else(|| format!("{}: not a JSON object", path.display()))?;
     let base = path.parent().unwrap_or(Path::new("."));
     let rel = |s: &str| -> PathBuf {
         let p = PathBuf::from(s);
@@ -99,10 +99,10 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
                 .map(|x| {
                     x.as_str()
                         .map(str::to_string)
-                        .ok_or_else(|| format!("設定 {k} は文字列の並び"))
+                        .ok_or_else(|| format!("setting {k} must be a list of strings"))
                 })
                 .collect(),
-            Some(_) => Err(format!("設定 {k} は文字列か文字列の並び")),
+            Some(_) => Err(format!("setting {k} must be a string or a list of strings")),
         }
     };
     let mut r = Resolved::default();
@@ -118,7 +118,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
         ]
         .contains(&k.as_str())
         {
-            return Err(format!("{}: 知らない設定 {k}", path.display()));
+            return Err(format!("{}: unknown setting {k}", path.display()));
         }
     }
     // python は文字列（"py -3" のように引数つきも可）か並び。パスに見えるものだけ設定ファイルから解く
@@ -138,19 +138,21 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
         Some(v) => Some(
             v.as_u64()
                 .filter(|&n| n > 0)
-                .ok_or("設定 threads は 1 以上の整数")? as usize,
+                .ok_or("setting threads must be an integer 1 or more")? as usize,
         ),
     };
     r.out = strs("out")?.first().map(|s| rel(s));
     r.log = strs("log")?.first().map(|s| rel(s));
     if let Some(e) = obj.get("env") {
-        let e = e.as_object().ok_or("設定 env は {名前: 値}")?;
+        let e = e
+            .as_object()
+            .ok_or("setting env must be an object (name: value)")?;
         for (k, v) in e {
             let v = match v {
                 Value::String(s) => s.clone(),
                 Value::Number(n) => n.to_string(),
                 Value::Bool(b) => b.to_string(),
-                _ => return Err(format!("設定 env.{k} は文字列か数")),
+                _ => return Err(format!("setting env.{k} must be a string or number")),
             };
             r.env.push((k.clone(), v));
         }
@@ -271,7 +273,7 @@ fn join_paths(
     if let Some(o) = old {
         all.extend(std::env::split_paths(&o));
     }
-    std::env::join_paths(all).map_err(|e| format!("パスを並べられない: {e}"))
+    std::env::join_paths(all).map_err(|e| format!("paths can't be joined: {e}"))
 }
 
 /// Python を起動できないときの終了コード（シェルの「コマンドがない」と同じ）
@@ -285,7 +287,7 @@ pub fn run_script(
     mut on_line: impl FnMut(Stream, f64, &str),
 ) -> Result<i32, String> {
     if !a.script.is_file() {
-        return Err(format!("スクリプトがない: {}", a.script.display()));
+        return Err(format!("no script: {}", a.script.display()));
     }
     if let Some(o) = &r.out {
         lensbench_core::vfs::create_dir_all(o).map_err(|e| format!("{}: {e}", o.display()))?;
@@ -405,7 +407,7 @@ pub fn run_script(
     let _ = h2.join();
     let status = child
         .wait()
-        .map_err(|e| format!("スクリプトの終わりを待てない: {e}"))?;
+        .map_err(|e| format!("can't wait for the script to end: {e}"))?;
     let code = exit_code(status);
     if missing_module {
         on_line(

@@ -220,14 +220,14 @@ fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
             Some((a, r)) => {
                 let (l, h) = r
                     .split_once(':')
-                    .ok_or_else(|| format!("補償子 {t} の範囲は 下限:上限"))?;
+                    .ok_or_else(|| format!("the range of compensator {t} is min:max"))?;
                 let n = |x: &str, d: f64| -> Result<f64, String> {
                     if x.trim().is_empty() {
                         Ok(d)
                     } else {
                         x.trim()
                             .parse()
-                            .map_err(|_| format!("補償子 {t} の範囲 {x}"))
+                            .map_err(|_| format!("range {x} of compensator {t}"))
                     }
                 };
                 let (l, h) = (n(l, f64::NEG_INFINITY)?, n(h, f64::INFINITY)?);
@@ -238,7 +238,7 @@ fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
         VarSpec::Obj(o) => {
             if o.configs.iter().flatten().any(|&k| k == 0) {
                 return Err(format!(
-                    "補償子 {}: configs は構成の番号（1 から）の並び",
+                    "compensator {}: configs must be a list of configuration numbers (from 1)",
                     o.param
                 ));
             }
@@ -266,7 +266,7 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
         (None, Some(a)) => a.clone(),
         _ => {
             return Err(format!(
-                "公差 {i}: param（文字列）か params（並び）のどちらか"
+                "tolerance {i}: either param (a string) or params (a list)"
             ))
         }
     };
@@ -277,21 +277,21 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
             params.extend((0..s.wavelengths.len()).map(|w| Param::new(0, Kind::Wave(w as u8))));
             continue;
         }
-        params.push(s.param(n).map_err(|e| format!("公差 {i}: {e}"))?);
+        params.push(s.param(n).map_err(|e| format!("tolerance {i}: {e}"))?);
     }
     let (lo, hi) = match (m.pm, m.lo, m.hi) {
         (Some(p), None, None) => (-p.abs(), p.abs()),
         (None, Some(l), Some(h)) => (l, h),
-        _ => return Err(format!("公差 {i}: pm か lo・hi の組")),
+        _ => return Err(format!("tolerance {i}: pm or the pair lo and hi")),
     };
     let dist = match &m.dist {
         None => dist,
-        Some(d) => Dist::parse(d).map_err(|e| format!("公差 {i}: {e}"))?,
+        Some(d) => Dist::parse(d).map_err(|e| format!("tolerance {i}: {e}"))?,
     };
     let scale = m.scale.clone().unwrap_or_default();
     if !scale.is_empty() && scale.len() != params.len() {
         return Err(format!(
-            "公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{} 個）",
+            "tolerance {i}: scale must be a list of {} numbers, as many as the parameters ({} given)",
             params.len(),
             scale.len()
         ));
@@ -313,10 +313,10 @@ pub fn read_spec(v: &Value) -> Result<TolSpec, String> {
         return Ok(TolSpec::default());
     }
     if !v.is_object() {
-        return Err("公差の設定はオブジェクト".into());
+        return Err("tolerance settings must be an object".into());
     }
     if v.get("ref").is_some() {
-        return Err("公差の設定の ref は reference に名前を変えた".into());
+        return Err("ref of the tolerance settings was renamed to reference".into());
     }
     lenient::from_json(v, "tolerance")
 }
@@ -341,7 +341,7 @@ pub fn spec_from_json_with(
     reversed: &HashSet<String>,
 ) -> Result<McSpec, String> {
     let m = read_spec(v)?;
-    let s0 = configs.first().ok_or("構成がない")?.clone();
+    let s0 = configs.first().ok_or("no configurations")?.clone();
     let dist = match &m.dist {
         None => Dist::Normal { cut: 2.0 },
         Some(d) => Dist::parse(d).map_err(|e| e.to_string())?,
@@ -399,7 +399,7 @@ pub fn spec_from_json_with(
     // 名前の誤りを見つける
     for k in lens_over.keys().chain(group_over.keys()) {
         if s0.find_unit(k).is_none() {
-            return Err(format!("玉・群 {k} がない"));
+            return Err(format!("no lens or group {k}"));
         }
     }
     let base_err = std::cell::RefCell::new(None);
@@ -460,7 +460,7 @@ pub fn spec_from_json_with(
                 Ok(Dist::Normal { cut }) => Some(cut),
                 _ => {
                     return Err(format!(
-                        "radial は true・false・uniform・normal・normal:σの数（{r}）"
+                        "radial must be true, false, uniform, normal or normal:σ ({r})"
                     ))
                 }
             };
@@ -574,7 +574,7 @@ pub fn compensators_csv(result: &Value) -> Result<String, String> {
         .unwrap_or_default();
     let merits = result["merit_values"]
         .as_array()
-        .ok_or("結果に試行ごとの値（merit_values）がない")?;
+        .ok_or("the result has no per-trial values (merit_values)")?;
     let n = merits.len();
     let cols: Vec<(String, &Vec<Value>)> = comps
         .iter()
@@ -589,7 +589,7 @@ pub fn compensators_csv(result: &Value) -> Result<String, String> {
             v.as_array()
                 .filter(|a| a.len() == n)
                 .map(|a| (h.clone(), a))
-                .ok_or_else(|| format!("補償子 {h} の試行ごとの値がない"))
+                .ok_or_else(|| format!("no per-trial values of compensator {h}"))
         })
         .collect::<Result<_, _>>()?;
     let esc = |s: &str| {

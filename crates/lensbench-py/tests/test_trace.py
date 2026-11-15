@@ -813,7 +813,7 @@ def test_load_configs_and_trace_them_together(tmp_path):
     with pytest.raises(ValueError):
         lb.System.load_configs(p, configs=[0], glass_dirs=GLASS)
     # 空の list は全部ではなくエラー
-    with pytest.raises(ValueError, match="空"):
+    with pytest.raises(ValueError, match="empty"):
         lb.System.load_configs(p, configs=[], glass_dirs=GLASS)
 
 

@@ -74,33 +74,38 @@ fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {
     let Some(list) = h.get("bin") else {
         return Ok(Vec::new());
     };
-    let list = list.as_array().ok_or("bin は配列")?;
+    let list = list.as_array().ok_or("bin must be an array")?;
     let mut total: u64 = 0;
     list.iter()
         .map(|b| {
-            let name = b["name"].as_str().ok_or("bin の name がない")?.to_string();
-            let dtype = b["dtype"]
-                .as_str()
-                .ok_or("bin の dtype がない")?
-                .to_string();
+            let name = b["name"].as_str().ok_or("bin has no name")?.to_string();
+            let dtype = b["dtype"].as_str().ok_or("bin has no dtype")?.to_string();
             let shape: Vec<usize> = match &b["shape"] {
                 Value::Array(a) => a
                     .iter()
-                    .map(|x| x.as_u64().map(|x| x as usize).ok_or("shape は整数"))
+                    .map(|x| {
+                        x.as_u64()
+                            .map(|x| x as usize)
+                            .ok_or("shape must be integers")
+                    })
                     .collect::<Result<_, _>>()?,
-                Value::Number(n) => vec![n.as_u64().ok_or("shape は整数")? as usize],
-                _ => return Err("bin の shape がない".to_string()),
+                Value::Number(n) => vec![n.as_u64().ok_or("shape must be integers")? as usize],
+                _ => return Err("bin has no shape".to_string()),
             };
             let item = match dtype.as_str() {
                 "<f8" | "f8" | "float64" => 8,
                 "<i4" | "i4" | "int32" => 4,
                 "|u1" | "u1" | "uint8" | "|b1" | "b1" | "bool" => 1,
                 "<c16" | "c16" | "complex128" => 16,
-                d => return Err(format!("dtype {d} は使えない（<f8・<i4・|u1・|b1・<c16）")),
+                d => {
+                    return Err(format!(
+                        "dtype {d} can't be used (<f8, <i4, |u1, |b1, <c16)"
+                    ))
+                }
             };
             // 積のあふれと、要求の合計の上限を確かめてから確保する
             let too_big =
-                || format!("bin が大きすぎる（合計の上限 {limit} バイト、--max-request-bytes）");
+                || format!("bin is too large (total limit {limit} bytes, --max-request-bytes)");
             let nb = shape
                 .iter()
                 .try_fold(item as u64, |a, &d| a.checked_mul(d as u64))
@@ -112,7 +117,10 @@ fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {
             let nb = usize::try_from(nb).map_err(|_| too_big())?;
             let off = match b.get("offset") {
                 None | Some(Value::Null) => None,
-                Some(v) => Some(v.as_u64().ok_or("bin の offset は 0 以上の整数")?),
+                Some(v) => Some(
+                    v.as_u64()
+                        .ok_or("bin offset must be an integer 0 or more")?,
+                ),
             };
             Ok((name, dtype, shape, nb, off))
         })
@@ -170,9 +178,9 @@ fn shm_spec(head: &Value) -> Option<(String, u64)> {
 
 fn open_shm(head: &Value) -> Result<crate::serve_ipc::Shm, String> {
     if !SHM_OK.get().copied().unwrap_or(false) {
-        return Err("共有メモリは使えない（--allow-remote、または serve の外）".into());
+        return Err("shared memory can't be used (--allow-remote, or outside serve)".into());
     }
-    let (name, _) = shm_spec(head).ok_or("bin に offset があるのに shm の name がない")?;
+    let (name, _) = shm_spec(head).ok_or("bin has an offset but no shm name")?;
     crate::serve_ipc::Shm::open(&name)
 }
 
@@ -201,7 +209,7 @@ pub(crate) fn read_msg(
     }
     let head: Value = match serde_json::from_slice(&line) {
         Ok(v) => v,
-        Err(e) => return Ok(Some(Err(format!("JSON が読めない: {e}")))),
+        Err(e) => return Ok(Some(Err(format!("JSON can't be read: {e}")))),
     };
     let layout = match bin_layout(&head, limit) {
         Ok(l) => l,
@@ -298,7 +306,7 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
     let loopback = matches!(a.host.as_str(), "127.0.0.1" | "localhost" | "::1");
     if !loopback && !a.allow_remote {
         return Err(format!(
-            "--host {} は localhost ではない（認証がないので、受けるなら --allow-remote）",
+            "--host {} is not localhost (there is no authentication; use --allow-remote to accept it)",
             a.host
         ));
     }
@@ -344,7 +352,7 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
         });
     }
     let l = TcpListener::bind((a.host.as_str(), a.port))
-        .map_err(|e| format!("{}:{} で待ち受けられない: {e}", a.host, a.port))?;
+        .map_err(|e| format!("can't listen on {}:{}: {e}", a.host, a.port))?;
     let addr = l.local_addr().map_err(|e| e.to_string())?;
     if let Some(p) = &a.port_file {
         lensbench_core::vfs::write(p, format!("{}\n", addr.port()))

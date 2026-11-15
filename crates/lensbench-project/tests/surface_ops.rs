@@ -71,18 +71,18 @@ fn missing_block_warns_and_bad_ops_fail() {
         r#"[{"op": "set_stop", "surface": {"block": "L1", "surface": 5}}]"#,
     )
     .unwrap_err();
-    assert!(e.contains("面 5"), "{e}");
+    assert!(e.contains("surface 5"), "{e}");
     let e = project(true, r#"[{"op": "delete_surface", "surface": 1}]"#).unwrap_err();
     assert!(e.contains("delete_surface"), "{e}");
     // 絞りが無く set_stop も無ければ従来どおりのエラー
-    assert!(project(false, "[]").unwrap_err().contains("絞り"));
+    assert!(project(false, "[]").unwrap_err().contains("stop"));
     // 絞りが無く、set_stop のブロックが無い（状態で外した・id の誤り）ときもエラー（仮の絞りのままにしない）
     let e = project(
         false,
         r#"[{"op": "set_stop", "surface": {"block": "X", "surface": 0}}]"#,
     )
     .unwrap_err();
-    assert!(e.contains("絞りが 0 個"), "{e}");
+    assert!(e.contains("0 stops"), "{e}");
 }
 
 /// surface_ops は set_stop・add_solve・add_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
@@ -101,7 +101,10 @@ fn surface_ops_are_typed() {
             r#"[{"op": "set_stop", "surface": {"block": "L1", "face": 1}}]"#,
             "face",
         ),
-        (r#"[{"op": "set_stop", "surface": -1}]"#, "面の番号 -1"),
+        (
+            r#"[{"op": "set_stop", "surface": -1}]"#,
+            "surface number -1",
+        ),
     ] {
         let e = project(false, ops).unwrap_err();
         assert!(e.contains(want), "{ops}: {e}");

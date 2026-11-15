@@ -575,7 +575,7 @@ impl FillWin {
 
     pub fn failed(&mut self, e: &str) {
         self.pending = false;
-        self.note = Some((e.to_string(), true));
+        self.note = Some((lensbench_core::i18n::tr(e), true));
     }
 
     fn missing(&self) -> Vec<String> {
@@ -923,7 +923,10 @@ impl FillWin {
                     }
                 }
                 Err(e) => {
-                    ui.colored_label(crate::theme::error(ui.visuals()), e);
+                    ui.colored_label(
+                        crate::theme::error(ui.visuals()),
+                        lensbench_core::i18n::tr(e),
+                    );
                 }
             }
         }

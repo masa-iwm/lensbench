@@ -42,7 +42,7 @@ pub fn terms_from_json(v: &Value, configs: &[System]) -> Result<Vec<Term>, Strin
         Value::Array(a) => a
             .iter()
             .enumerate()
-            .map(|(i, t)| term_from_json(t, configs).map_err(|e| format!("項 {}: {e}", i + 1)))
+            .map(|(i, t)| term_from_json(t, configs).map_err(|e| format!("term {}: {e}", i + 1)))
             .collect(),
         _ => Ok(vec![term_from_json(v, configs)?]),
     }
@@ -52,7 +52,7 @@ fn field(f: FieldRef, s: &System) -> Result<FieldSel, String> {
     match f {
         FieldRef::Norm([x, y]) => Ok(FieldSel::Norm(x, y)),
         FieldRef::Index(i) if i >= 1 && i <= s.fields.len() => Ok(FieldSel::Index(i - 1)),
-        FieldRef::Index(i) => Err(format!("視野 {i} はない（1〜{}）", s.fields.len())),
+        FieldRef::Index(i) => Err(format!("no field {i} (1 to {})", s.fields.len())),
     }
 }
 
@@ -60,7 +60,7 @@ fn wave(w: Option<usize>, s: &System) -> Result<Option<usize>, String> {
     match w {
         None => Ok(None),
         Some(w) if w >= 1 && w <= s.wavelengths.len() => Ok(Some(w - 1)),
-        Some(w) => Err(format!("波長 {w} はない（1〜{}）", s.wavelengths.len())),
+        Some(w) => Err(format!("no wavelength {w} (1 to {})", s.wavelengths.len())),
     }
 }
 
@@ -72,14 +72,15 @@ fn reference(r: Option<RefName>) -> RmsRef {
 }
 
 fn num(k: &str, v: &Value) -> Result<f64, String> {
-    v.as_f64().ok_or_else(|| format!("{k} は数（{v}）"))
+    v.as_f64()
+        .ok_or_else(|| format!("{k} must be a number ({v})"))
 }
 
 /// 1 つの項。共通のキー（weight・config・min・max）を外し、残りを [`TermSpec`] で読む
 pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     let mut m = v
         .as_object()
-        .ok_or_else(|| format!("項は {{\"type\": ...}} のオブジェクト（{v}）"))?
+        .ok_or_else(|| format!("a term is an object {{\"type\": ...}} ({v})"))?
         .clone();
     m.retain(|_, x| !x.is_null());
     // 片側の条件: "min"（値 ≥ min）・"max"（値 ≤ max）は target の代わりに書く
@@ -87,7 +88,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     for (k, sd) in [("min", Side::Min), ("max", Side::Max)] {
         if let Some(b) = m.remove(k) {
             if side != Side::Eq || m.contains_key("target") {
-                return Err("target・min・max はどれか 1 つ".into());
+                return Err("exactly one of target, min and max".into());
             }
             m.insert("target".into(), b);
             side = sd;
@@ -97,8 +98,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     let config = match m.remove("config").map(|c| c.as_u64().ok_or(c)) {
         None => 0,
         Some(Ok(c)) if c >= 1 && c as usize <= configs.len() => c as usize - 1,
-        Some(Ok(c)) => return Err(format!("構成 {c} はない（1〜{}）", configs.len())),
-        Some(Err(c)) => return Err(format!("config は 1 以上の整数（{c}）")),
+        Some(Ok(c)) => return Err(format!("no configuration {c} (1 to {})", configs.len())),
+        Some(Err(c)) => return Err(format!("config must be an integer 1 or more ({c})")),
     };
     if let Some(Value::String(t)) = m.get_mut("type") {
         *t = t.to_ascii_lowercase();
@@ -109,7 +110,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
         .unwrap_or("")
         .to_string();
     if ty.is_empty() {
-        return Err("type がない".into());
+        return Err("no type".into());
     }
     const TYPES: [&str; 12] = [
         "spot",
@@ -130,12 +131,12 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     }
     if side != Side::Eq && ["spot", "wavefront", "wfe", "zplm", "plugin"].contains(&ty.as_str()) {
         return Err(format!(
-            "{ty} の項に min・max は使えない（目標が 1 つの値の項だけ）"
+            "{ty} terms can't use min or max (only terms with a single target value)"
         ));
     }
     let spec: TermSpec =
-        serde_json::from_value(Value::Object(m)).map_err(|e| format!("{ty} の項: {e}"))?;
-    let s = configs.get(config).ok_or("構成がない")?;
+        serde_json::from_value(Value::Object(m)).map_err(|e| format!("{ty} term: {e}"))?;
+    let s = configs.get(config).ok_or("no configurations")?;
     let kind = kind_of(spec, s)?;
     let single = matches!(
         kind,
@@ -151,7 +152,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     );
     if side != Side::Eq && !single {
         return Err(format!(
-            "{ty} の項に min・max は使えない（目標が 1 つの値の項だけ）"
+            "{ty} terms can't use min or max (only terms with a single target value)"
         ));
     }
     Ok(Term {
@@ -196,7 +197,7 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
             q: ParaxQ::parse(&t.q).map_err(|e| e.to_string())?,
             target: t
                 .target
-                .ok_or("paraxial の項に target（か min・max）がない")?,
+                .ok_or("paraxial term has no target (or min and max)")?,
         },
         TermSpec::Ray(t) => TermKind::Ray {
             field: field(t.field, s)?,
@@ -259,18 +260,18 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
         }
         TermSpec::Plugin(t) => {
             if t.name.is_empty() {
-                return Err("name（プラグインの名前）がない".into());
+                return Err("no name (the plugin name)".into());
             }
             let args = crate::plugin_term::config_of(t.args.as_ref())?;
             let mut inputs = crate::plugin_term::arrays_of(t.inputs.as_ref())?;
             if let Some(f) = &t.field {
                 if inputs.contains_key("field") {
-                    return Err("field と inputs の field はどちらか一方".into());
+                    return Err("only one of field and the field in inputs".into());
                 }
                 inputs.insert("field".into(), crate::plugin_term::array_of("field", f)?);
             }
             if t.output.is_empty() {
-                return Err("output（出力の名前）がない".into());
+                return Err("no output (the output name)".into());
             }
             let target = match t.target {
                 None => vec![],
@@ -292,7 +293,7 @@ fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Mac
     use std::path::{Path, PathBuf};
     if let Some(f) = &t.file {
         if t.macro_.is_some() {
-            return Err("macro と file はどちらか一方".into());
+            return Err("only one of macro and file".into());
         }
         let p = Path::new(f);
         let src = lensbench_core::vfs::read(p).map_err(|e| format!("{f}: {e}"))?;
@@ -306,10 +307,12 @@ fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Mac
         return Ok(m);
     }
     let name = match &t.macro_ {
-        None => return Err("macro（番号か名前）か file がない".into()),
+        None => return Err("no macro (number or name) or file".into()),
         Some(MacroRef::Name(n)) => n.clone(),
         Some(MacroRef::No(n)) if *n <= 99 => format!("ZPL{n:02}"),
-        Some(MacroRef::No(n)) => return Err(format!("macro は 0〜99 の番号か名前（{n}）")),
+        Some(MacroRef::No(n)) => {
+            return Err(format!("macro must be a number 0 to 99 or a name ({n})"))
+        }
     };
     let extra: Vec<PathBuf> = t.macro_dirs.iter().flatten().map(PathBuf::from).collect();
     if !extra.is_empty() {

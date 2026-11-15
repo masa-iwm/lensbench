@@ -51,7 +51,7 @@ fn edits_count_surfaces_without_coordinate_breaks() {
 #[test]
 fn bad_edits_are_errors() {
     let e = project("", r#"[{"block": "L1", "surface": 2, "fields": {"r": 1}}]"#).unwrap_err();
-    assert!(e.contains("面 2"), "{e}");
+    assert!(e.contains("surface 2"), "{e}");
     let e = project(
         "",
         r#"[{"block": "L1", "surface": 0, "fields": {"zz": 1}}]"#,
@@ -99,11 +99,11 @@ fn edits_apply_to_both_passes() {
     }
     // 最後の面の後はブロックの外
     let e = run(r#"[{"block": "L1", "surface": 2, "fields": {"t": 3}}]"#).unwrap_err();
-    assert!(e.contains("後の空気"), "{e}");
+    assert!(e.contains("air block after"), "{e}");
     // 面の前後の傾き偏心は復路で前後・向きが変わるので断る
     let e = run(r#"[{"block": "L1", "surface": 0, "fields": {"before": {"d": [0, 0.1, 0, 0, 0], "order": 0}}}]"#)
         .unwrap_err();
-    assert!(e.contains("傾き偏心"), "{e}");
+    assert!(e.contains("tilts and decenters"), "{e}");
     // 面の値だけなら最後の面も変えられる
     let s = run(r#"[{"block": "L1", "surface": 2, "fields": {"semi": 6}}]"#).unwrap();
     assert_eq!((s.surfaces[4].semi, s.surfaces[6].semi), (6.0, 6.0));

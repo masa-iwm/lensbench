@@ -503,7 +503,7 @@ pub fn ui(
                 });
             });
             if let Some(e) = &p.error {
-                ui.colored_label(ui.visuals().error_fg_color, e);
+                ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(e));
             }
             if let Some((d, n)) = progress {
                 ui.add(

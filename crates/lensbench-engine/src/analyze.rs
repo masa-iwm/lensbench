@@ -21,7 +21,7 @@ pub(crate) fn run(
         // 鍵はハイフンでも（CLI の旗と同じ書き方）
         let k = k.replace('-', "_");
         if let Some(n) = lensbench_analysis::registry::renamed_param(&k) {
-            return Err(RpcErr::params(format!("{k} は {n} に名前を変えた")));
+            return Err(RpcErr::params(format!("{k} was renamed to {n}")));
         }
         match k.as_str() {
             // json は CLI の --json に当たる（serve の結果はいつも JSON）
@@ -29,13 +29,13 @@ pub(crate) fn run(
             "file" | "cfg" | "state" | "path" | "beam_path" | "glass_dir" | "glass_dirs"
             | "lens_catalog" | "lens_catalogs" => {
                 return Err(RpcErr::params(format!(
-                    "{k} は analyze では変えられない（load で選ぶ）"
+                    "{k} can't be changed in analyze (choose it in load)"
                 )))
             }
             "save" => {
                 let p = v
                     .as_str()
-                    .ok_or_else(|| RpcErr::params("save はファイルのパス"))?;
+                    .ok_or_else(|| RpcErr::params("save must be a file path"))?;
                 save = Some(sess.files.check_path(Path::new(p), true)?);
             }
             _ => {
@@ -128,18 +128,18 @@ pub(crate) fn coatings_loaded(sess: &Session, m: &Map<String, Value>) -> Result<
             for t in a {
                 let t = t
                     .as_str()
-                    .ok_or_else(|| RpcErr::params("table はパスの並び"))?;
+                    .ok_or_else(|| RpcErr::params("table must be a list of paths"))?;
                 tables.push(sess.files.check_path(Path::new(t), false)?);
             }
         }
-        Some(_) => return Err(RpcErr::params("table はパスの並び")),
+        Some(_) => return Err(RpcErr::params("table must be a list of paths")),
     }
     if let Some(k) = m
         .keys()
         .find(|k| !["cmd", "table", "json"].contains(&k.as_str()))
     {
         return Err(RpcErr::params(format!(
-            "coatings の引数 {k} は無い（table だけ）"
+            "no coatings argument {k} (only table)"
         )));
     }
     let c = crate::load::coat_interfaces(&s, &tables)?;

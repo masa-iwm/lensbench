@@ -1,5 +1,6 @@
 //! ズーム軌跡とカタログレンズの差し替え探索の Python 側。
 
+use crate::errors::{type_err, value_err};
 use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
@@ -9,7 +10,6 @@ use lensbench_design::swap::{SwapSearch, SwapSpec};
 use lensbench_optim::zoom::{self as zoom_core, ZoomSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ, Stop};
 use lensbench_project::{Env, Project};
-use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -23,8 +23,8 @@ fn merit_kind(m: &str) -> PyResult<DefaultMerit> {
     match m {
         "spot" => Ok(DefaultMerit::Spot),
         "wavefront" => Ok(DefaultMerit::Wavefront),
-        _ => Err(PyValueError::new_err(format!(
-            "merit は \"spot\" か \"wavefront\"（{m}）"
+        _ => Err(value_err(format!(
+            "merit must be \"spot\" or \"wavefront\" ({m})"
         ))),
     }
 }
@@ -33,8 +33,8 @@ fn reference_kind(r: &str) -> PyResult<RmsRef> {
     match r {
         "centroid" => Ok(RmsRef::Centroid),
         "chief" => Ok(RmsRef::Chief),
-        _ => Err(PyValueError::new_err(format!(
-            "reference は \"centroid\" か \"chief\"（{r}）"
+        _ => Err(value_err(format!(
+            "reference must be \"centroid\" or \"chief\" ({r})"
         ))),
     }
 }
@@ -63,11 +63,11 @@ fn zoom<'py>(
     threads: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     if systems.is_empty() {
-        return Err(PyValueError::new_err("systems が空"));
+        return Err(value_err("systems is empty"));
     }
     let cs: Vec<lensbench_core::System> = systems.iter().map(|s| (*s.sys()).clone()).collect();
     let (q, targets) = match (efl, pmag) {
-        (Some(_), Some(_)) => return Err(PyValueError::new_err("efl と pmag はどちらか一方")),
+        (Some(_), Some(_)) => return Err(value_err("only one of efl and pmag")),
         (Some(t), None) => (ParaxQ::Efl, t),
         (None, Some(t)) => (ParaxQ::Pmag, t),
         (None, None) => (ParaxQ::Efl, vec![None; cs.len()]),
@@ -132,9 +132,7 @@ fn json_text(v: &Bound<'_, PyAny>, what: &str) -> PyResult<String> {
     } else if v.cast::<PyDict>().is_ok() {
         Ok(crate::pyjson::from_py(v)?.to_string())
     } else {
-        Err(PyTypeError::new_err(format!(
-            "{what} は JSON の文字列か dict"
-        )))
+        Err(type_err(format!("{what} must be a JSON string or a dict")))
     }
 }
 

@@ -37,7 +37,7 @@ fn color_of(p: &Value) -> Result<Option<lensbench_export::d2::ColorBy>, RpcErr> 
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(c)) if c.is_empty() => Ok(None),
         Some(Value::String(c)) => c.parse().map(Some).map_err(RpcErr::params),
-        Some(_) => Err(RpcErr::params("color は field・wave・cfg のどれか")),
+        Some(_) => Err(RpcErr::params("color must be field, wave or cfg")),
     }
 }
 
@@ -46,11 +46,11 @@ fn color_of(p: &Value) -> Result<Option<lensbench_export::d2::ColorBy>, RpcErr> 
 pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let file = p["file"]
         .as_str()
-        .ok_or_else(|| RpcErr::params("layout_export には file"))?;
+        .ok_or_else(|| RpcErr::params("layout_export needs file"))?;
     let path = sess.files.check_path(Path::new(file), true)?;
     let f = lensbench_export::LayoutFormat::from_path(&path).ok_or_else(|| {
         RpcErr::params(format!(
-            "{file}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか"
+            "{file}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp"
         ))
     })?;
     let mut q = p.clone();
@@ -87,7 +87,7 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
     };
     let tube = match opt_f64(p, "tube")? {
         Some(t) if !(t > 0.0 && t.is_finite()) => {
-            return Err(RpcErr::params("tube は正の数 [mm]"));
+            return Err(RpcErr::params("tube must be a positive number [mm]"));
         }
         t => t,
     };
@@ -146,7 +146,7 @@ pub(super) fn layout_scene(
                 .map(|a| a.iter().filter_map(Value::as_f64).collect())
                 .unwrap_or_default();
             if a.len() != 3 {
-                return Err(RpcErr::params("offset は [dx, dy, dz]"));
+                return Err(RpcErr::params("offset must be [dx, dy, dz]"));
             }
             [a[0], a[1], a[2]]
         }
@@ -183,12 +183,14 @@ fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
                 .map(|x| match x {
                     Value::String(t) => Ok(t.clone()),
                     Value::Number(n) => Ok(n.to_string()),
-                    _ => Err(RpcErr::params(format!("{k} は文字列か番号の並び"))),
+                    _ => Err(RpcErr::params(format!(
+                        "{k} must be a string or a list of numbers"
+                    ))),
                 })
                 .collect::<Result<Vec<_>, _>>()
                 .map(|v| Some(v.join(","))),
             _ => Err(RpcErr::params(format!(
-                "{k} は文字列か番号の並び（\"all\" で全部）"
+                "{k} must be a string or a list of numbers (\"all\" for all)"
             ))),
         }
     };
@@ -260,10 +262,10 @@ fn scene_opts(s: &System, p: &Value) -> Result<lensbench_export::scene::Options,
     let unfold = match p.get("unfold") {
         None | Some(Value::Null) => false,
         Some(Value::Bool(b)) => *b,
-        Some(_) => return Err(RpcErr::params("unfold は true か false")),
+        Some(_) => return Err(RpcErr::params("unfold must be true or false")),
     };
     if unfold && d3 {
-        return Err(RpcErr::params("unfold は 2D（plane が yz・xz）だけ"));
+        return Err(RpcErr::params("unfold is only for 2D (plane yz or xz)"));
     }
     let n0 = if fan == scene::Fan::Ring { 12 } else { 7 };
     Ok(scene::Options {
@@ -313,7 +315,7 @@ fn plane_of(p: &Value) -> Result<Plane, RpcErr> {
     match p.get("plane") {
         None | Some(Value::Null) => Ok(Plane::YZ),
         Some(Value::String(x)) => x.parse().map_err(RpcErr::params),
-        Some(_) => Err(RpcErr::params("plane は \"yz\"・\"xz\"・\"3d\"")),
+        Some(_) => Err(RpcErr::params("plane must be \"yz\", \"xz\" or \"3d\"")),
     }
 }
 

@@ -18,6 +18,21 @@ zmx primary wavelength PWAV	zmx の主波長 PWAV
 zmx GLRS	zmx の GLRS
 Grid Sag grid columns	Grid Sag の格子の列の数
 Grid Sag grid rows	Grid Sag の格子の行の数
+reach	届か
+upload to	上げられ
+wavelength	波長
+field	視野
+configuration	構成
+only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved	標準面・偶数次非球面・Odd Asphere・トロイダル・Fresnel だけ保存できる
+surface values must be an object (name: value)	面の値は「名前: 値」の表で
+{what} {v} (0 to 1)	{what} {v}（0〜1）
+filter transmittance	フィルタの透過率
+curve r	curve の r
+edge wavelength	エッジ波長
+center wavelength	中心波長
+FWHM	半値全幅
+curve t	curve の t
+table R or T	表の R・T
 total reflection	で全反射
 missed	に当たらない
 maker	メーカー
@@ -210,7 +225,7 @@ can't read the number of {what} ({x})	{what} の数が読めない（{x}）
 --merit {m} (spot, wavefront, none)	--merit {m}（spot・wavefront・none）
 --reference {r} (centroid, chief)	--reference {r}（centroid・chief）
 --set {t} must be an object	--set {t} はオブジェクト
-item {name} already exists (use --replace to replace it)	項目 {name} はもうある（置き換えは --replace）
+item {name} already exists (use --replace)	項目 {name} はもうある（置き換えは --replace）
 --block takes 1 or 2 values (the first and last of the range)	--block は 1 つか 2 つ（範囲の最初と最後）
 give one of --lens and --block	--lens か --block のどちらか 1 つ
 --kind: unknown kind {k}	--kind: 知らない種類 {k}
@@ -810,3 +825,628 @@ quantity {q} (on the pupil: intensity, delta)	quantity {q}（瞳上は intensity
 mode detector needs a configuration or state for beam2	mode detector では beam2 に構成か状態を指定する
 quantity {q} (on the image: intensity, opd, visibility, sample, reference)	quantity {q}（像面上は intensity・opd・visibility・sample・reference）
 out extension {ext} (csv, json, tif, png)	out の拡張子 {ext}（csv・json・tif・png）
+
+# project (Err(String)), export, optim, web
+not a lens element	玉でない要素
+lens surface {}: {e}	玉の面 {}: {e}
+lens surface {}: a lens with a mirror surface can't be saved	玉の面 {}: 鏡の面のある玉は保存できない
+lens surface {}: model glass {} with dispersion can't be saved	玉の面 {}: 分散のあるモデルガラス {} は保存できない
+no block {id}	ブロック {id} はない
+two or more blocks with id {id}	id {id} のブロックが 2 つ以上ある
+no block id to save	保存するブロックの id がない
+block {id} is not in the top-level list	ブロック {id} は最上位の並びにない
+{first} is after {last}	{first} は {last} より後ろ
+the surfaces of block {id} are not in the system	ブロック {id} の面が系に無い
+block {id}: changes to a lens after a mirror can't be baked in (not supported)	ブロック {id}: 鏡の後の玉の変更は焼き込めない（未対応）
+block {id}: changes to a lens with a coordinate break inside can't be baked in (not supported)	ブロック {id}: 中に座標ブレークのある玉の変更は焼き込めない（未対応）
+block {id}: the number of surfaces differs from the original lens	ブロック {id}: 面の数が元の玉と違う
+block {id} surface {k}: {e}	ブロック {id} の面 {k}: {e}
+surface type {:?} can't be written	面の型 {:?} は書けない
+a mirror surface can't be written	鏡の面は書けない
+tilts and decenters before or after a surface (before, after) can't be written	面の前後の傾き・偏心（before・after）は書けない
+ignore, dn, disp and cx can't be written	ignore・dn・disp・cx は書けない
+model glass {} with dispersion can't be written	分散のあるモデルガラス {} は書けない
+the glass after the exit of a birefringent plate goes to the entrance of the next plate of the same material with thickness 0	複屈折材の板の出口の後のガラスは、厚さ 0 で同じ材料の次の板の入口へ
+two birefringent plate entrances in a row (an exit is needed)	複屈折材の板の入口が続く（出口が要る）
+no entrance before the exit of a birefringent plate	複屈折材の板の出口の前に入口が無い
+no other surface can go between the entrance and exit of a birefringent plate	複屈折材の板の入口と出口の間にほかの面は置けない
+a surface list block holds only surfaces in air (glass goes in lenses)	面の並びのブロックは空気中の面だけ（ガラスは玉で）
+a birefringent plate has no exit	複屈折材の板に出口が無い
+tilt is not supported on a birefringent waveplate	複屈折材の波長板に tilt は未対応
+a block with a mirror can't be 'kept as air'	鏡を含むブロックは「空気で残す」にできない
+a mirror can't go in a decentered or tilted block (tilt the mirror itself)	偏心・傾きをつけたブロックに鏡は入れられない（鏡の傾きは鏡で）
+jones, coordbrk and birefringent surfaces are not supported in a surface list on the return path	往路を戻る範囲の面の並びに jones・coordbrk・複屈折材の面は未対応
+decentered or tilted groups are not supported on the return path (put it on the lenses in the group)	往路を戻る範囲の、偏心・傾きをつけた群は未対応（群の中の玉に付ける）
+groups that are OFF are not supported on the return path	往路を戻る範囲の、OFF の群は未対応
+a mirror on the return path	往路を戻る範囲に鏡がある
+BS {id}: a BS with branches is never passed backwards (internal error)	BS {id}: 分岐のある BS を後ろから戻ることはない（内部エラー）
+a detector must be the last block	検出器は最後のブロックだけ
+importing a .zmx on the return path is not supported (use a lens block)	往路を戻る範囲の .zmx の取り込みは未対応（玉のブロックにする）
+{path}: the configuration number must be 1 or more	{path}: 構成の番号は 1 以上
+{path}: a .json system has only configuration 1	{path}: .json の系では構成の番号は 1 だけ
+{path}: system imports nested too deep (a loop?)	{path}: 系の取り込みが深すぎる（循環？）
+{}: item {item} refers to itself (a loop)	{}: 項目 {item} が自分自身を参照している（循環）
+{}: no item {item}	{}: 項目 {item} はない
+{item}: glass catalog not found: {}	{item}: ガラスカタログが見つからない: {}
+{}: coating {k}: {e}	{}: 膜 {k}: {e}
+{}: coating {k} differs from another catalog	{}: 膜 {k} がほかのカタログと違う
+lens catalog {vendor} {part}: the catalog can't be read	レンズカタログ {vendor} {part}: カタログを読めない
+a lens needs 2 or more surfaces	玉には面が 2 つ以上要る
+lens surface {}: not glass after it	玉の面 {}: 後がガラスでない
+both blocks after a mirror and BS branches (a return path going into a BS branch)	鏡の後のブロックと、BS の分岐の両方がある（復路が BS の分岐へ進む経路）
+a group with a mirror can't be moved (set shift to 0)	鏡を含む群は動かせない（shift は 0 に）
+a detector must be the last block (not inside a group or user catalog)	検出器は最後のブロックだけ（群・ユーザーカタログの中には置けない）
+mechanism bore {}: inner diameter {}	機構の穴 {}: 内径 {}
+mechanism bore {}: z range {} to {}	機構の穴 {}: z の範囲 {}〜{}
+negative mechanism length or outer diameter	機構の長さ・外径が負
+user catalog: {e}	ユーザーカタログ: {e}
+{}: over {limit} bytes when inflated	{}: 展開すると {limit} バイトを超える
+value that can't be filled in: {other}	補えない値: {other}
+a value for {m} is needed	{m} の値が要る
+no diameter (diameter)	径（diameter）が無い
+no thickness (thickness)	厚さ（thickness）が無い
+mount: {e}	枠: {e}
+mount: no bores (bores)	枠: 穴（bores）が無い
+spec condition {s:?}: no name	仕様の条件 {s:?}: 名前が無い
+spec condition {s:?}: {x:?} is not a number	仕様の条件 {s:?}: {x:?} が数でない
+detector kind name {:?} can't be used	検出器の種類の名前 {:?} は使えない
+{what}: no surface {j}	{what}: 面 {j} はない
+{what}: no lens or group {i}	{what}: 玉・群 {i} はない
+{what}: no lens or group {t}	{what}: 玉・群 {t} が無い
+{what}: mechanical part {i}	{what}: 機構部品 {i}
+{what}: no mechanical part {t}	{what}: 機構部品 {t} が無い
+empty mechanical part name	機構部品の名前が空
+mechanical part {} surface {} (1 to {})	機構部品 {} の面 {}（1〜{}）
+mechanical part {} holds surface {h}	機構部品 {} の保持する面 {h}
+mechanical part {} position or size	機構部品 {} の位置・寸法
+mechanical part {} bore (z {} to {}, radius {})	機構部品 {} の穴（z {}〜{}・半径 {}）
+number of spider arms {n}	スパイダーの腕の本数 {n}
+the aperture needs {k}	開口に {k} が要る
+the aperture needs type	開口に type が要る
+aperture type {t}	開口の type {t}
+surface value {k} must be a list of numbers	面の値 {k} は数の並び
+type of surface value {k}	面の値 {k} の型
+surface data	面のデータ
+surface item {k} is not changed by data (use the material or set_stop)	面の項目 {k} は data では変えない（材料・set_stop で）
+no surface item {k}	面の項目 {k} は無い
+system data	系のデータ
+system item {k} is not changed by set_system_data ({})	系の項目 {k} は set_system_data では変えない（{}）
+no wavelengths	波長が無い
+wavelengths {:?}	波長 {:?}
+{} wavelength weights ({nw} wavelengths)	波長の重みの数 {}（波長 {nw}）
+primary wavelength {} (0-based, {nw} wavelengths)	主波長 {}（0 始まり、波長 {nw}）
+no fields	視野が無い
+global coordinate reference surface {}	大域座標の基準面 {}
+temperature and pressure must be numbers	温度・気圧は数
+mechanical part {} is already placed	機構部品 {} は置いてある
+no mechanical part item {k}	機構部品の項目 {k} は無い
+mechanical part: {x}	機構部品: {x}
+a number or {"$f": "inf"} is needed	数か {"$f": "inf"} が要る
+{"$f": "{t}"} (inf, -inf, nan)	{"$f": "{t}"}（inf・-inf・nan）
+surface number {n} (an integer 0 or more)	面の番号 {n}（0 以上の整数）
+item number {n} (an integer 0 or more)	番号 {n}（0 以上の整数）
+surface number or name needed ({v})	面の番号か名前が要る（{v}）
+item number or name needed ({v})	番号か名前が要る（{v}）
+block surface (block, surface): {e}	ブロックの面（block・surface）: {e}
+{e} (a block surface is written with block and surface)	{e}（ブロックの面は block と surface で書く）
+group {label}: surfaces {} to {} are in reverse order	群 {label}: 面 {}〜{} の順が逆
+group {label}: no imported lenses or surfaces in surfaces {} to {}	群 {label}: 面 {}〜{} に取り込んだ玉・面がない
+group {label} overlaps group {}	群 {label} が群 {} と重なる
+a surface can't have two or more of jones, polarizer, waveplate, coordbrk and birefringent	面に jones・polarizer・waveplate・coordbrk・birefringent のうち 2 つ以上は書けない
+birefringent plate mode {mode} (0 or 2)	複屈折材の板の mode {mode}（0 か 2）
+the crystal axis of the birefringent plate is 0 or not a number	複屈折材の板の結晶軸 axis が 0 か数でない
+write glass (the ordinary material) on the entrance surface of a birefringent plate	複屈折材の板の入口の面には glass（常光の材料）を書く
+a {what} surface can't have curvature, conic or asphere terms	{what} の面に曲率・円錐係数・非球面は書けない
+no glass after a {what} surface	{what} の面の後にガラスは書けない
+a coordinate break surface can't have tilt	座標ブレークの面に tilt は書けない
+tilt is not a number	tilt が数でない
+coordinate break order {} (0 or 1)	座標ブレークの順序 {}（0 か 1）
+a coordinate break surface can't have an aperture	座標ブレークの面に開口は書けない
+more than 1024 paths	経路が 1024 より多い
+path {q}: {e}	経路 {q}: {e}
+a BS (splitter) needs an id	BS（splitter）には id が要る
+BS id {id} appears twice or more	BS の id {id} が 2 つ以上ある
+primary wavelength {} (there are {} wavelengths)	主波長 {}（波長は {} 個）
+glass catalog not found: {}	ガラスカタログが見つからない: {}
+path {}: too many letters (the BS is passed {} times)	経路 {}: 文字が多い（BS を通るのは {} 回）
+{} stops (exactly one is needed)	絞りが {} 個（ちょうど 1 つ要る）
+internal error: {} surfaces but {} sources	内部エラー: 面 {} 個に出どころ {} 個
+surface {j}: extraordinary glass {en} of birefringent material {} is not in the catalogs	面 {j}: 複屈折材 {} の異常光のガラス {en} がカタログにない
+surface {j}: glass {} is not in the catalogs	面 {j}: ガラス {} がカタログにない
+coating {k}: {e}	膜 {k}: {e}
+afocal unit {u} (ur, mr, rr, as, am or dg)	afocal の単位 {u}（ur・mr・rr・as・am・dg のどれか）
+when the fields type is solve, write the condition in solve	fields の type が solve なら solve に条件を書く
+field condition: {e}	視野の条件: {e}
+fields solve only with type solve	fields の solve は type が solve のときだけ
+block {id} is not made a lens or group parameter: {e}	ブロック {id} を玉・群のパラメータにしない: {e}
+0 stops (no set_stop block in surface_ops; exactly one is needed)	絞りが 0 個（surface_ops の set_stop のブロックが無い。ちょうど 1 つ要る）
+{tag}: no item {item} in {}	{tag}: {} に品 {item} はない
+{tag}: item {item} is not a mechanical part (no mech)	{tag}: 品 {item} は機構部品でない（mech がない）
+{tag}: write a part with mech, or with catalog and item, not both	{tag}: 部品は mech か、catalog と item のどちらか一方で書く
+{tag}: after can't be used with at or seat	{tag}: after は at・seat と一緒に使えない
+{tag}: tilt can't be used with after (it takes the previous part's tilt)	{tag}: after では tilt は使えない（前の部品の傾きになる）
+{tag}: the after part {prev_name} is not before it	{tag}: after の部品 {prev_name} が前に無い
+{tag}: offset is not a number	{tag}: offset が数でない
+{tag}: seat needs holds (the seat position) in the part size	{tag}: seat には部品の寸法の holds（座の位置）が要る
+{tag}: seat needs holds (the held element)	{tag}: seat には holds（保持する素子）が要る
+{tag}: no block {b}, not placed	{tag}: ブロック {b} が無いので置かない
+{tag}: a place (at) or seat is needed	{tag}: 置く所（at）か seat が要る
+{tag}: surface {} (1 to {})	{tag}: 面 {}（1〜{}）
+{tag}: offset or tilt is not a number	{tag}: offset・tilt が数でない
+{tag}: {e} (not placed)	{tag}: {e}（置かない）
+block {block} surface {i} ({} surfaces)	ブロック {block} の面 {i}（面は {} 枚）
+surface_edits: block {} surface {} ({n} surfaces)	surface_edits: ブロック {} の面 {}（面は {n} 枚）
+surface_edits: block {} surface {}: {why}	surface_edits: ブロック {} の面 {}: {why}
+the ranges in the same direction have different numbers of surfaces	同じ向きの範囲の面の数が違う
+change the thickness and material of a round-trip block with the names t and material	往復するブロックの厚さ・材料は t・material の名前で変える
+tilts and decenters before or after surfaces of a round-trip block can't be changed (use the block decenter and tilt)	往復するブロックの面の前後の傾き偏心は変えられない（ブロックの偏心・傾きで）
+{} surfaces on the return path ({n} on the way out)	復路の面の数 {}（往路は {n}）
+change the thickness and material of the last surface of a round-trip block in the air block after it	往復するブロックの最後の面の厚さ・材料は、後の空気のブロックで変える
+filter OD {}	フィルタの OD {}
+filter neff {} (1 or more)	フィルタの neff {}（1 以上）
+filter edge width {w} nm	フィルタのエッジの幅 {w} nm
+filter {what} {v}	フィルタの {what} {v}
+curve needs 2 or more points, and wavelengths_nm and t of the same count	curve は 2 点以上で、wavelengths_nm と t は同じ数
+curve r must have the same count as t	curve の r は t と同じ数
+the curve wavelengths are not ascending	curve の波長が昇順でない
+curve t + r is over 1 ({} nm)	curve の t + r が 1 を超える（{} nm）
+ND OD {od}	ND の OD {od}
+the filter FWHM is not less than the center wavelength	フィルタの半値全幅が中心波長以上
+a table value is not a number	表の値が数でない
+table row angle {}, wavelength {}	表の行の角度 {}・波長 {}
+no table rows	表の行が無い
+two rows with the same wavelength at table angle {a}	表の角度 {a} に同じ波長の行が 2 つ
+a value that can't be read	読めない値
+the enum name is not a string	列挙の名前が文字列でない
+an enum is a string or a table with one key	列挙は文字列か、1 つのキーの表
+no key before the value	値の前にキーがない
+a value on an enum without values	値のない列挙に値がある
+polarizer transmittance {} (0 to 1)	偏光子の透過率 {}（0〜1）
+polarizer extinction ratio {} (1 or more)	偏光子の消光比 {}（1 以上）
+waveplate design wavelength {} µm	波長板の設計波長 {} µm
+waveplate transmittance {} (0 to 1)	波長板の透過率 {}（0〜1）
+the waveplate retardance is not a number	波長板の遅延が数でない
+a waveplate can't have both material and plates	波長板に material と plates は一緒に書けない
+waveplate thickness {d} mm	波長板の厚さ {d} mm
+a waveplate without a thickness needs a positive retardance order + retardance	厚さを省いた波長板は遅延 order + retardance を正にする
+a waveplate with plates takes a thickness for each plate	plates の波長板では厚さは板ごとに書く
+waveplate plate {} thickness {} mm	波長板の板 {} の厚さ {} mm
+the waveplate plate axis is not a number	波長板の板の軸が数でない
+write the waveplate thickness together with material	波長板の厚さは material と一緒に書く
+empty birefringent material name of the waveplate	波長板の複屈折材の名前が空
+unknown block type {:?} ({} or a registered detector: {})	知らないブロックの種類 {:?}（{} か、登録した検出器: {}）
+project file: {e}	プロジェクトファイル: {e}
+project file: unknown key {} (check the spelling)	プロジェクトファイル: 知らないキー {}（綴りを確かめる）
+no state {name} ({})	状態 {name} はない（{}）
+no state {name} (the project has no states)	状態 {name} はない（プロジェクトに状態がない）
+two or more states named {name}	状態 {name} が 2 つ以上ある
+state {name}: system value {k} can't be changed	状態 {name}: 系の値 {k} は変えられない
+state {name}: no block {id}	状態 {name}: ブロック {id} はない
+state {name}: two or more blocks with id {id}	状態 {name}: id {id} のブロックが 2 つ以上ある
+state {name}: {k} of block {id} can't be changed	状態 {name}: ブロック {id} の {k} は変えられない
+state {name}: {e}	状態 {name}: {e}
+state {name}: unknown key {}	状態 {name}: 知らないキー {}
+exactly one of ratio, coat and pbs	ratio・coat・pbs はどれか 1 つ
+ratio must be 0 to 1	ratio は 0〜1
+path {s}: letters must be T or R	経路 {s}: 文字は T か R
+the BS is passed more than {MAX_PASSES} times (the path keeps coming back)	BS を {MAX_PASSES} 回より多く通る（経路が戻り続ける）
+BS {id}: no block can go after a BS with branches (t, r, d); write it in the branch	BS {id}: 分岐（t・r・d）のある BS の後ろにはブロックを置けない（分岐の中に書く）
+BS {id}: not passed on the way out	BS {id}: 往路で通っていない
+no DATA section in the STEP	STEP の DATA 部が無い
+no thickness along the circle axis in the STEP	STEP の円の軸の向きに厚さが無い
+the mount or mechanical part coordinates can't be found from the STEP (no solid with a bore)	STEP から枠・機構部品の座標が決まらない（穴のある立体が無い）
+no points in the STEP	STEP に点が無い
+the STEP shape has no thickness	STEP の形に厚さが無い
+integer {i} is too large	整数 {i} が大きすぎる
+a table key is not a string ({k:?})	表のキーが文字列でない（{k:?}）
+bytes can't be written	バイト列は書けない
+a value that can't be written	書けない値
+number	数
+number {"$f": {s:?}}	数 {"$f": {s:?}}
+writing the system: {e}	系の書き出し: {e}
+system file: {e}	系ファイル: {e}
+system file: not a JSON object	系ファイル: JSON のオブジェクトでない
+system file: format is not {FORMAT}	系ファイル: format が {FORMAT} でない
+system file: no format_version	系ファイル: format_version がない
+system file: version {ver} can't be read (up to {FORMAT_VERSION}; update lensbench)	系ファイル: 版 {ver} は読めない（{FORMAT_VERSION} まで、lensbench を新しくする）
+system file: no system	系ファイル: system がない
+system file: coatings must be a list of strings	系ファイル: coatings は文字列の並び
+system file: the numbers of wavelengths, weights and primary don't match	系ファイル: 波長・重み・主波長の数が合わない
+system file: surface {j} has {} refractive indices ({nw} wavelengths)	系ファイル: 面 {j} の屈折率の数 {}（波長 {nw}）
+system file: surface {j} n_base count	系ファイル: 面 {j} の n_base の数
+system file: pickup surfaces ({} → {})	系ファイル: ピックアップの面（{} → {}）
+system file: solve surface {}	系ファイル: ソルブの面 {}
+system file: no macro {i} for surface {}	系ファイル: 面 {} のマクロ {i} がない
+system file: macro solve (surface {})	系ファイル: マクロのソルブ（面 {}）
+system file: range of lens or group {}	系ファイル: 玉・群 {} の範囲
+system file: global coordinate reference surface {}	系ファイル: 大域座標の基準面 {}
+projection plane {s} must be yz or xz	投影面 {s} は yz か xz
+color by {s} must be field, wave or cfg	色分け {s} は field・wave・cfg のどれか
+ray pattern {s} must be y, x, cross, grid or ring	光線の並び {s} は y・x・cross・grid・ring のどれか
+{}: the extension must be csv, json or npz	{}: 拡張子は csv・json・npz のどれか
+npz is over 4 GB	npz が 4 GB を超える
+npz is too large	npz が大きすぎる
+ZPLM macro {}	ZPLM のマクロ {}
+gzip can't be inflated: {e}	gzip を展開できない: {e}
+the file bundle is cut short	ファイルの束が途中で切れている
+
+# engine, design (Err(String))
+{k} was renamed to {n}	{k} は {n} に名前を変えた
+{k} can't be changed in analyze (choose it in load)	{k} は analyze では変えられない（load で選ぶ）
+save must be a file path	save はファイルのパス
+table must be a list of paths	table はパスの並び
+no coatings argument {k} (only table)	coatings の引数 {k} は無い（table だけ）
+no mirror surface	鏡の面がない
+no lenses	玉がない
+a system file can't draw overlaid configurations (--cfgs, --states and --beam-paths are only for .zmx and projects)	系ファイルは構成を重ねて描けない（--cfgs・--states・--beam-paths は .zmx・プロジェクトだけ）
+--cfgs is only for .zmx (projects use --states and --beam-paths)	--cfgs は .zmx だけ（プロジェクトは --states・--beam-paths）
+--states and --beam-paths are only for project files (.json); .zmx uses --cfgs	--states・--beam-paths はプロジェクトファイル（.json）だけ（.zmx は --cfgs）
+the project has no states	プロジェクトに状態がない
+the project has no beam splitters	プロジェクトにビームスプリッターがない
+path {q}: {x}	経路 {q}: {x}
+{what} number {t}	{what}の番号 {t}
+no {what} {k} (1 to {n})	{what} {k} はありません（1〜{n}）
+analysis {name} has the same name as a built-in one	解析 {name} は同梱のものと同じ名前
+{}: with --allow-remote, requests don't read or write files (limit the place with --root to allow it)	{}: --allow-remote では要求でファイルを読み書きしない（--root で場所を限れば読み書きできる）
+{} is outside --root	{} は --root の外
+no system (load first)	系がない（先に load）
+history must be clear, push or keep ({x})	history は clear・push・keep（{x}）
+no change to undo	元に戻す変更がない
+no change to redo	やり直す変更がない
+internal error (panic): {t}	内部エラー（panic）: {t}
+internal error (panic)	内部エラー（panic）
+stop what must be optimize, tolerance or swap	stop の what は optimize・tolerance・swap のどれか
+{old} was renamed to {new}	{old} は {new} に名前を変えた
+load needs file	load には file
+beam_path must be a string (the BS path, e.g. "TR")	beam_path は文字列（BS の経路、例 "TR"）
+{m} must be catalog_items, catalog_edit or catalog_fill	{m} は catalog_items・catalog_edit・catalog_fill
+{what} must be a list of strings	{what} は文字列の並び
+{k} must be an integer 0 or more	{k} は 0 以上の整数
+{k} must be a number	{k} は数
+get needs param or params (a list)	get には param か params（並び）
+params must be a list of strings	params は文字列の並び
+write needs path	write には path
+surface must be a surface number or name	surface は面の番号か名前
+surface_data needs surface	surface_data には surface
+save needs path	save には path
+save_range needs path	save_range には path
+save_range needs {k} (a surface number)	save_range には {k}（面の番号）
+analysis_args needs cmd	analysis_args には cmd
+{cmd} is not an analyze analysis (see plugins for the list)	{cmd} は analyze の解析ではない（解析の一覧は plugins）
+{cmd} is not an analyze analysis (list them with analysis_args or plugins)	{cmd} は analyze の解析ではない（解析の一覧は analysis_args・plugins）
+no method	method がない
+no method {m}	method {m} はない
+set needs values ("3.t": 10.0, or [["3.t", 10.0]])	set には values が要る（"3.t": 10.0 か [["3.t", 10.0]]）
+params must be an object	params はオブジェクト
+cmd (the analysis name) is needed	cmd（解析の名前）が要る
+{cmd} is not an analyze analysis (use method {})	{cmd} は analyze の解析ではない（メソッド {} で）
+config_diff is only for .zmx systems	config_diff は .zmx の系だけ
+this .zmx has no multiple configurations	この .zmx は多重構成でない
+configuration {k}	構成 {k}
+the configurations have different numbers of surfaces (no table)	構成で面の数が違う（表にできない）
+{k} must be <f8	{k} は <f8
+{k} must be a list of numbers	{k} は数の並び
+{k} must be a number 1 to {n}	{k} は 1〜{n} の番号
+the range of --var {v} is min:max	--var {v} の範囲は 下限:上限
+range {t} of --var {v}	--var {v} の範囲 {t}
+target {x} can't be read	目標 {x} が読めない
+{} targets ({n} states: {})	目標が {} 個（状態は {n} 個: {}）
+--merit {m} (spot, wavefront)	--merit {m}（spot・wavefront）
+kinds: unknown kind {k}	kinds: 知らない種類 {k}
+{method} needs catalog (the user catalog file)	{method} には catalog（ユーザーカタログのファイル）
+{method} needs name (the item name)	{method} には name（項目の名前）
+blocks must be a list of ids	blocks は id の並び
+catalog_add needs blocks (a list of block ids)	catalog_add には blocks（ブロックの id の並び）
+catalog_add only works when a project file (combination) is loaded	catalog_add はプロジェクトファイル（組合せ）を読み込んだときだけ
+item {name} already exists (replace it with replace: true)	項目 {name} はもうある（置き換えは replace: true）
+no item {name}	項目 {name} はない
+empty rename name	rename の名前が空
+item {to} already exists	項目 {to} はもうある
+getting STEP files is not available in the web version	STEP の取得は Web 版では使えない
+cad_step needs {k}	cad_step には {k}
+no item {name} in {}	{} に項目 {name} がない
+{e} (product page: {})	{e}（品ページ: {}）
+catalog_fill needs {k}	catalog_fill には {k}
+{name} is not an incomplete item	{name} は未完の品でない
+{} is a supplementary catalog of maker {} (put {vendor} items in another file)	{} はメーカー {} の補足のカタログ（{vendor} の品は別のファイルに）
+color must be field, wave or cfg	color は field・wave・cfg のどれか
+layout_export needs file	layout_export には file
+{file}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp	{file}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか
+tube must be a positive number [mm]	tube は正の数 [mm]
+offset must be [dx, dy, dz]	offset は [dx, dy, dz]
+{k} must be a string or a list of numbers	{k} は文字列か番号の並び
+{k} must be a string or a list of numbers ("all" for all)	{k} は文字列か番号の並び（"all" で全部）
+unfold must be true or false	unfold は true か false
+unfold is only for 2D (plane yz or xz)	unfold は 2D（plane が yz・xz）だけ
+plane must be "yz", "xz" or "3d"	plane は "yz"・"xz"・"3d"
+configs must be a list of project state names	configs はプロジェクトの状態の名前の並び
+configs must be a list of .zmx configuration numbers (1-based)	configs は .zmx の構成番号（1 始まり）の並び
+optimize needs vars (a list of variables)	optimize には vars（変数の並び）
+vars items need name	vars の要素に name
+configs of vars must be a list of numbers	vars の configs は番号の並び
+configs of vars {x} (1 to {})	vars の configs {x}（1〜{}）
+vars items are "7.t" or {"name": ...}	vars の要素は "7.t" か {"name": ...}
+reference must be centroid or chief ({r})	reference は centroid か chief（{r}）
+merit must be spot, wavefront or none ({m})	merit は spot・wavefront・none（{m}）
+jac must be one of {} ({j})	jac は {} のどれか（{j}）
+no vars (the list of parameters to solve)	vars（解くパラメータの並び）がない
+vars {v} has no name	vars の {v} に name がない
+vars {v} must be a string or {name, lo, hi}	vars の {v} は文字列か {name, lo, hi}
+{x} of {k} must be a number or null	{k} の {x} は数か null
+{k} must be a list of numbers (or null) ({x})	{k} は数（か null）の並び（{x}）
+only one of efl and pmag	efl と pmag は一方だけ
+swap project can't be used with --allow-remote or --root (the paths inside can't be checked; run on the loaded file)	swap の project は --allow-remote・--root では使えない（中のパスを確かめられない。読み込んだファイルで回す）
+the loaded system is not a project ({e})	読み込んだ系がプロジェクトでない（{e}）
+swap search settings: {e}	差し替え探索の設定: {e}
+plugin needs name	plugin には name
+config must be an object	config はオブジェクト
+config {k} must be a list of numbers	config の {k} は数の並び
+config {k} value {v}	config の {k} の値 {v}
+inputs must be an object	inputs はオブジェクト
+inputs {k}: {e}	inputs の {k}: {e}
+trace needs px	trace には px
+trace needs py	trace には py
+px and py have different lengths ({} and {})	px と py の長さが違う（{} と {}）
+last {l} must be 1 to {}	last {l} は 1〜{}
+the list depths don't match	並びの深さがそろわない
+the list lengths don't match	並びの長さがそろわない
+not a list of numbers ({v})	数の並びでない（{v}）
+term {}: {e}	項 {}: {e}
+no wavelength {w} (1 to {})	波長 {w} はありません（1〜{}）
+{k} must be a number ({v})	{k} は数（{v}）
+a term is an object {"type": ...} ({v})	項は {"type": ...} のオブジェクト（{v}）
+exactly one of target, min and max	target・min・max はどれか 1 つ
+no configuration {c} (1 to {})	構成 {c} はない（1〜{}）
+config must be an integer 1 or more ({c})	config は 1 以上の整数（{c}）
+no type	type がない
+{ty} terms can't use min or max (only terms with a single target value)	{ty} の項に min・max は使えない（目標が 1 つの値の項だけ）
+{ty} term: {e}	{ty} の項: {e}
+paraxial term has no target (or min and max)	paraxial の項に target（か min・max）がない
+no name (the plugin name)	name（プラグインの名前）がない
+only one of field and the field in inputs	field と inputs の field はどちらか一方
+no output (the output name)	output（出力の名前）がない
+only one of macro and file	macro と file はどちらか一方
+no macro (number or name) or file	macro（番号か名前）か file がない
+macro must be a number 0 to 99 or a name ({n})	macro は 0〜99 の番号か名前（{n}）
+args {k} must be a list of numbers ({x})	args の {k} は数の並び（{x}）
+args {k} must be a number, string or list of numbers ({x})	args の {k} は数・文字列・数の並び（{x}）
+input {k} must be a list of numbers ({x})	入力 {k} は数の並び（{x}）
+input {k} must be a number or a list of numbers ({x})	入力 {k} は数か数の並び（{x}）
+the range of variable {v} is min:max	変数 {v} の範囲は 下限:上限
+range {t} of variable {v}	変数 {v} の範囲 {t}
+state and states can't be used together	state と states は同時に使えない
+state_vars goes with states	state_vars は states と一緒に使う
+no place to swap	差し替える所がない
+prescreen rings and keep must be 1 or more	prescreen の rings・keep は 1 以上
+place {} appears twice	所 {} が 2 回ある
+no block {}	ブロック {} がない
+two or more blocks with id {}	id {} のブロックが 2 つ以上ある
+block {} is not a lens (type lens)	ブロック {} は玉（type lens）でない
+no {} {} in the lens catalogs	レンズカタログに {} {} がない
+place {}: no candidates (0 items in the lens catalogs; give the maker folder or a folder with .zmx or ZMF)	所 {}: 候補がない（レンズカタログが 0 品。メーカーのフォルダか .zmx・ZMF のあるフォルダを指定する）
+too many combinations ({}, limit {}; raise it with max_count)	組が多すぎる（{}、上限 {}。max_count で上げられる）
+overflow	桁あふれ
+variable {spec} points at another surface in state {} (put it in state_vars)	変数 {spec} が状態 {} で別の面を指す（state_vars に）
+surfaces of lens {} not found (clear aperture condition)	玉 {} の面が見つからない（有効径の条件）
+start variable {name} is not in vars or state_vars	出発点の変数 {name} が vars・state_vars にない
+no start point	出発点がない
+air {id} is passed twice (move the round-trip gap with the group shift)	空気 {id} は 2 回通る（往復の間隔は群の shift で動かす）
+air {id} is after a mirror (move it with the group shift)	空気 {id} は鏡の後（群の shift で動かす）
+air {id} is the object distance (infinity)	空気 {id} は物体からの距離（無限遠）
+radial must be true, false, uniform, normal or normal:σ ({x})	radial は true・false・uniform・normal・normal:σの数（{x}）
+an object, a set name or null ({x})	オブジェクト・組の名前・null（{x}）
+a compensator must be a string or an object ({x})	補償子は文字列かオブジェクト（{x}）
+the range of compensator {t} is min:max	補償子 {t} の範囲は 下限:上限
+range {x} of compensator {t}	補償子 {t} の範囲 {x}
+compensator {}: configs must be a list of configuration numbers (from 1)	補償子 {}: configs は構成の番号（1 から）の並び
+tolerance {i}: either param (a string) or params (a list)	公差 {i}: param（文字列）か params（並び）のどちらか
+tolerance {i}: {e}	公差 {i}: {e}
+tolerance {i}: pm or the pair lo and hi	公差 {i}: pm か lo・hi の組
+tolerance {i}: scale must be a list of {} numbers, as many as the parameters ({} given)	公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{} 個）
+tolerance settings must be an object	公差の設定はオブジェクト
+ref of the tolerance settings was renamed to reference	公差の設定の ref は reference に名前を変えた
+no lens or group {k}	玉・群 {k} がない
+radial must be true, false, uniform, normal or normal:σ ({r})	radial は true・false・uniform・normal・normal:σの数（{r}）
+the result has no per-trial values (merit_values)	結果に試行ごとの値（merit_values）がない
+no per-trial values of compensator {h}	補償子 {h} の試行ごとの値がない
+args must be an object of name: value ({v})	args は「名前: 値」の表（{v}）
+inputs must be an object of name: value ({v})	inputs は「名前: 値」の表（{v}）
+
+# py, cli, cad, verify (Err(String))
+aperture type {t} (none circular obsc rect ellipse spider floating)	開口の type {t}（none circular obsc rect ellipse spider floating）
+type of surface value {name}	面の値 {name} の型
+cond must be ("position", surface), ("dirsum", surface1, surface2) or ("dirdiff", surface1, surface2)	cond は ("position", 面)、("dirsum", 面1, 面2)、("dirdiff", 面1, 面2)
+the computing thread panicked	計算のスレッドが panic した
+the computing thread ended	計算のスレッドが終わった
+give exactly one of field and object	field か object のどちらか 1 つを与える
+pupil must be "normalized", "signed" or "stop" ({p})	pupil は "normalized"・"signed"・"stop" のどれか（{p}）
+px and py have different lengths ({npx} and {npy})	px と py の長さが違う（{npx} と {npy}）
+with an object at infinity, object is a direction (l, m, n)	無限遠物体では object は方向 (l, m, n)
+a finite object takes a point (x, y)	有限物体では object は物点 (x, y)
+direction (l, m, n) needs n > 0	方向 (l, m, n) は n > 0
+a field is a number (1-based) or (hx, hy); a bool ({b}) can't be used	視野は番号（1 始まり）か (hx, hy)。bool（{b}）は使えない
+no field {i} (1 to {n})	視野 {i} はありません（1〜{n}）
+axis must be "x" or "y" ({a})	axis は "x" か "y"（{a}）
+merit must be "spot", "wavefront" or None ({m})	merit は "spot"・"wavefront"・None（{m}）
+reference must be "centroid" or "chief" ({reference})	reference は "centroid" か "chief"（{reference}）
+jac must be "auto", "fd" or "forward" ({jac})	jac は "auto"・"fd"・"forward" のどれか（{jac}）
+no surface {l} (1 to {img})	面 {l} はありません（1〜{img}）
+pol only when last is left out (up to the image)	pol は last を省いたとき（像面まで）だけ
+give land together with grad	land は grad と一緒に与える
+dz is not finite ({z})	dz が有限でない（{z}）
+dz and pol_phase=True can't be used together (the propagation phase of the shift is not included)	dz と pol_phase=True は一緒に使えない（ずらした分の伝搬の位相を入れていない）
+project: a JSON string or dict	project は JSON の文字列か dict
+load_configs is only for .zmx (load project files per state with load(state=...))	load_configs は .zmx だけ（プロジェクトファイルは load(state=...) で状態ごとに）
+configs is empty (leave configs out for all configurations)	configs が空（全部の構成なら configs を省く）
+no mechanical parts (write them in the project mechanics)	機構部品がない（プロジェクトの mechanics に書く）
+no field {f} (1 to {nf})	視野 {f} はありません（1〜{nf}）
+no lens or group {name}	玉・群 {name} がない
+what: t or c ({what})	what は t か c（{what}）
+solve needs cond	solve には cond が要る
+cond only when kind is solve	cond は kind が solve のときだけ
+field type {k} (angle, object_height, paraxial_image_height, real_image_height, solve)	視野の種類 {k}（angle・object_height・paraxial_image_height・real_image_height・solve）
+no fields given	視野が空
+give pol_grid together with pol	pol_grid は pol と一緒に与える
+pol_grid only when pupil is "normalized" or "signed"	pol_grid は pupil が "normalized" か "signed" のときだけ
+pol_grid needs {} points or more on each axis ({:?})	pol_grid は各軸 {} 点以上（{:?}）
+the shape of {name} must be (rays, 3) ({:?})	{name} の形は (光線, 3)（{:?}）
+start and direction have different numbers of rays ({} and {})	start と direction の本数が違う（{} と {}）
+frame must be "object" or "global" ({f})	frame は "object" か "global"（{f}）
+unknown must be object or pupil ({u})	unknown は object か pupil（{u}）
+residual must be ("position", surface, (x, y)), ("dirsum", surface1, surface2) or ("dirdiff", surface1, surface2)	residual は ("position", 面, (x, y))、("dirsum", 面1, 面2)、("dirdiff", 面1, 面2)
+not both object and field	object と field は一緒に与えない
+method must be "auto", "interp", "fft" or "direct" ({m})	method は "auto"・"interp"・"fft"・"direct"（{m}）
+vs needs x (the axis values)	vs を使うときは x（横軸の値の列）が要る
+field is needed	field が要る
+field is not used with vs="field"	vs="field" では field は使わない
+wave is not used with vs="wavelength"	vs="wavelength" では wave は使わない
+vs must be "field", "focus" or "wavelength" ({v})	vs は "field"・"focus"・"wavelength"（{v}）
+reloading the system: {e}	系の読み直し: {e}
+setting {k} must be a number, bool, string or list of numbers	設定 {k} は数・真偽・文字列・数の並びに
+input {k} type (dtype.kind {kind}) can't be used	入力 {k} の型（dtype.kind {kind}）は使えない
+a plugin function must return a dict	プラグインの関数は dict を返すこと
+func must be callable	func は呼び出せるものに
+inputs[{i}] must be a dict	inputs[{i}] は dict に
+integer {v} doesn't fit in 64 bits	整数 {v} は 64 ビットに入らない
+{x} can't be written to JSON (NaN, inf)	{x} は JSON に書けない（NaN・inf）
+{} can't be made JSON (None, bool, number, string, list, tuple, dict, numpy array)	{} は JSON にできない（None・bool・数・文字列・list・tuple・dict・numpy の配列）
+dict key {k} must be a string, number, bool or None	dict のキー {k} は文字列・数・bool・None だけ
+a distribution is a number σ or a tuple such as ("normal", σ)	分布は σ の数か ("normal", σ) などの tuple
+distribution {k} (normal uniform trunc fixed)	分布 {k}（normal uniform trunc fixed）
+n = {n} is over the number of sets {m}	n = {n} は組の数 {m} を超える
+Sampler needs n	Sampler では n が要る
+the batch run was stopped	一括実行を止めた
+merit must be "spot" or "wavefront" ({m})	merit は "spot" か "wavefront"（{m}）
+reference must be "centroid" or "chief" ({r})	reference は "centroid" か "chief"（{r}）
+systems is empty	systems が空
+{what} must be a JSON string or a dict	{what} は JSON の文字列か dict
+shape {sh:?} of the user term result (should be ({k} systems, residuals))	利用者の項の返り値の形 {sh:?}（(系の数 {k}, 残差の数) のはず）
+terms[{i}] must be a dict	terms[{i}] は dict
+terms[{i}]: no configuration {c} (1 to {})	terms[{i}]: 構成 {c} はない（1〜{}）
+terms[{i}]: key {k} is not used by user terms (fn, jac, name, weight, config)	terms[{i}]: user の項に使わないキー {k}（fn・jac・name・weight・config）
+terms[{i}]: user terms need a function fn	terms[{i}]: user の項には関数 fn が要る
+--{} number can't be read ({t})	--{} の数が読めない（{t}）
+--{} is {n} comma-separated numbers ({s})	--{} は数 {n} 個のカンマ区切り（{s}）
+--{} JSON can't be read: {e}	--{} の JSON が読めない: {e}
+no coating model could be made	作れた膜のモデルがない
+{}: empty	{}: 空
+{}: no column wl_um or wl_nm	{}: 列 wl_um か wl_nm がない
+{}: no column value or value_pct	{}: 列 value か value_pct がない
+{}: number on line {}	{}: {} 行目の数値
+{}: polarization {x} (s, p, avg)	{}: 偏光 {x}（s・p・avg）
+{}: quantity {x} (R, T)	{}: 量 {x}（R・T）
+material {name} is neither in the coating file nor in the glass catalogs	材料 {name} が膜ファイルにもガラスカタログにもない
+can't be fitted	当てはめられない
+configuration {cfg}	構成 {cfg}
+no verify description (*.verify.json) found	照合の記述（*.verify.json）が見つからない
+{bad} of {} checks fail	照合 {} 件のうち {bad} 件が通らない
+serve, watch and run can't be nested	serve・watch・run は入れ子にできない
+verify is only available from the command line	verify はコマンドラインからだけ使える
+no analysis {}	解析 {} は無い
+term {}: {x}	項 {}: {x}
+settings must be an object	設定はオブジェクト
+--out: no trial could be traced	--out: 追跡できた試行がない
+--out: {x} (write a .json system file)	--out: {x}（.json の系ファイルなら書ける）
+cad-step is not available in the web version	cad-step は Web 版では使えない
+no item {item} in {}	{} に品 {item} がない
+{}: not a JSON object	{}: JSON のオブジェクトでない
+setting {k} must be a list of strings	設定 {k} は文字列の並び
+setting {k} must be a string or a list of strings	設定 {k} は文字列か文字列の並び
+{}: unknown setting {k}	{}: 知らない設定 {k}
+setting threads must be an integer 1 or more	設定 threads は 1 以上の整数
+setting env.{k} must be a string or number	設定 env.{k} は文字列か数
+paths can't be joined: {e}	パスを並べられない: {e}
+no script: {}	スクリプトがない: {}
+can't wait for the script to end: {e}	スクリプトの終わりを待てない: {e}
+the project has no states (states)	プロジェクトに状態（states）がない
+a system file has no configurations or states (give a .zmx or project file)	系ファイルは構成・状態を持たない（.zmx かプロジェクトファイルを渡す）
+configuration number {t} of --states	--states の構成の番号 {t}
+bin must be an array	bin は配列
+bin has no name	bin の name がない
+bin has no dtype	bin の dtype がない
+shape must be integers	shape は整数
+bin has no shape	bin の shape がない
+dtype {d} can't be used (<f8, <i4, |u1, |b1, <c16)	dtype {d} は使えない（<f8・<i4・|u1・|b1・<c16）
+bin is too large (total limit {limit} bytes, --max-request-bytes)	bin が大きすぎる（合計の上限 {limit} バイト、--max-request-bytes）
+bin offset must be an integer 0 or more	bin の offset は 0 以上の整数
+shared memory can't be used (--allow-remote, or outside serve)	共有メモリは使えない（--allow-remote、または serve の外）
+bin has an offset but no shm name	bin に offset があるのに shm の name がない
+JSON can't be read: {e}	JSON が読めない: {e}
+--host {} is not localhost (there is no authentication; use --allow-remote to accept it)	--host {} は localhost ではない（認証がないので、受けるなら --allow-remote）
+can't listen on {}:{}: {e}	{}:{} で待ち受けられない: {e}
+shared memory name {name:?} (only letters, digits, _ . -)	共有メモリの名前 {name:?}（英数字と _ . - だけ）
+shared memory {name}: {e}	共有メモリ {name}: {e}
+shared memory is only for Windows and Linux	共有メモリは Windows・Linux だけ
+outside the shared memory (offset {off}, {n} bytes, size {})	共有メモリの範囲の外（位置 {off}、{n} バイト、大きさ {}）
+shared memory: {e}	共有メモリ: {e}
+--pipe {path} has a file that is not a socket	--pipe {path} はソケットでないファイルがある
+--pipe {path} is used by another server	--pipe {path} は別のサーバーが使っている
+--pipe {path} can't be used on this OS	--pipe {path} はこの OS では使えない
+can't listen on --pipe {path}: {}	--pipe {path} で待ち受けられない: {}
+pipe connection: {e}	パイプの接続: {e}
+shared memory {name}: {}	共有メモリ {name}: {}
+no store (LENSBENCH_CAD_STORE)	置き場が無い（LENSBENCH_CAD_STORE）
+no model of coating {name} in the store ({key})	置き場に膜 {name} のモデルが無い（{key}）
+the store's coating {name} doesn't match the index ({key})	置き場の膜 {name} の中身が目録と違う（{key}）
+the model of coating {name} can't be fetched: {e}	膜 {name} のモデルを取れない: {e}
+no index {INDEX} in {}	{} に目録 {INDEX} が無い
+the STEP can't be measured: {e}	STEP を測れない: {e}
+the STEP can't be read (truck)	STEP を読めない（truck）
+the STEP can't be triangulated	STEP を三角形にできない
+the gzip content is too large	gzip の中身が大きすぎる
+{name} has no STEP URL (cad.step)	{name} に STEP の URL（cad.step）がない
+a store that gets a token must be https: {u}	トークンを送る置き場は https だけ: {u}
+the store content is not a STEP ({}): {e}	置き場の中身が STEP でない（{}）: {e}
+the store can't be read ({u}): {e}	置き場を読めない（{u}）: {e}
+the store content is too large: {u}	置き場の中身が大きすぎる: {u}
+not uploading to a read-only store (put a write token in LENSBENCH_CAD_STORE_ID and LENSBENCH_CAD_STORE_SECRET): {}	読み取り専用の置き場には上げない（書き込み用のトークンを環境変数 LENSBENCH_CAD_STORE_ID・LENSBENCH_CAD_STORE_SECRET に）: {}
+can't upload to the store ({u}): {e}	置き場に上げられない（{u}）: {e}
+{entry} of {}: {e}	{} の {entry}: {e}
+{entry} of {} is too large	{} の {entry} が大きすぎる
+no catalog (a .json or .json.gz with items) in {}	{} にカタログ（品のある .json・.json.gz）が無い
+STEP URLs must be http(s): {url}	STEP の URL は http(s) だけ: {url}
+the STEP can't be fetched ({url}): {e}	STEP を取れない（{url}）: {e}
+the STEP is too large (over {} MB): {url}	STEP が大きすぎる（{} MB 超）: {url}
+the zip can't be read: {e}	zip を読めない: {e}
+no .step or .stp in the zip	zip に .step・.stp が無い
+{name} in the zip: {e}	zip の {name}: {e}
+{name} in the zip is too large	zip の {name} が大きすぎる
+the fetched content is not a STEP (ISO-10303-21) (a page that needs a login?)	取った中身が STEP（ISO-10303-21）でない（ログインの要るページなど）
+checks.{name} must be an object	checks.{name} はオブジェクトに
+checks.{name}.{k} must be a number 0 or more	checks.{name}.{k} は 0 以上の数に
+checks.{name}.exact must be true or false	checks.{name}.exact は true か false に
+checks.{name} unknown item {k} (abs, rel, exact, note)	checks.{name} の知らない項目 {k}（abs・rel・exact・note）
+checks.{name} needs one of abs, rel and exact	checks.{name} に abs・rel・exact のどれかが要る
+checks (tolerances per quantity) must be an object	checks（量ごとの許容差）はオブジェクトに
+reference {} has no tolerances (checks)	基準の {} に許容差（checks）がない
+an array of objects must be {"re": …, "im": …}	オブジェクトの配列は {"re": …, "im": …} に
+re and im must be arrays of numbers	re・im は数の配列に
+re and im have different shapes	re・im の形が違う
+the list nesting depths don't match	並びの入れ子の深さがそろっていない
+can't be made a number	数にできない
+value {s} is not a number	数でない値 {s}
+value {x} is not a number	数でない値 {x}
+{}: {key} is not float64, complex128 or bool	{}: {key} は float64・complex128・bool でない
+{what} must be an object or an npz path	{what} はオブジェクトか npz のパスに
+{what} must be an object	{what} はオブジェクトに
+{what}.{k} must be a list of numbers	{what}.{k} は数の並びに
+{what}.{k} must be a number, string or list of numbers	{what}.{k} は数・文字列・数の並びに
+the description must be an object	記述はオブジェクトに
+format must be "lensbench-verify"	format は "lensbench-verify" に
+version must be 1 ({v:?})	version は 1 に（{v:?}）
+unknown item {k}	知らない項目 {k}
+source.by (the implementation that made the reference) is needed	source.by（基準を作った実装）が要る
+plugin is needed	plugin が要る
+system.path is needed	system.path が要る
+system must be a path or an object	system はパスかオブジェクトに
+threads must be a list of integers 1 or more	threads は 1 以上の整数の並びに
+runs (1 or more) is needed	runs（1 回以上）が要る
+{w} must be an object	{w} はオブジェクトに
+{w} unknown item {k}	{w} の知らない項目 {k}
+{w} needs expected (the reference)	{w} に expected（基準）が要る
+system: {e}	系: {e}
+setting env must be an object (name: value)	設定 env は「名前: 値」の表
+can't {what} the store ({st}; check the Access service token): {}	置き場に{what}ない（{st}、Access のサービストークンを確かめる）: {}
+can't {what} the store ({st}): {}	置き場に{what}ない（{st}）: {}
+can't upload to the store (over {mb} MB even gzipped): {u}	置き場に上げられない（{mb} MB 超、gzip にしても）: {u}
+can't upload to the store (over {mb} MB): {u}	置き場に上げられない（{mb} MB 超）: {u}

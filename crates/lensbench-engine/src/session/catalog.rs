@@ -35,7 +35,7 @@ fn catalog_query(p: &Value) -> Result<lensbench_project::catalog_spec::CatalogQu
     let kinds = strs("kinds")?
         .iter()
         .map(|k| {
-            ItemKind::parse(k).ok_or_else(|| RpcErr::params(format!("kinds: 知らない種類 {k}")))
+            ItemKind::parse(k).ok_or_else(|| RpcErr::params(format!("kinds: unknown kind {k}")))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let specs = strs("specs")?
@@ -98,11 +98,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
     let path = p["catalog"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            RpcErr::params(format!(
-                "{method} には catalog（ユーザーカタログのファイル）"
-            ))
-        })?;
+        .ok_or_else(|| RpcErr::params(format!("{method} needs catalog (the user catalog file)")))?;
     let file = sess
         .files
         .check_path(Path::new(path), method != "catalog_items")?;
@@ -111,7 +107,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             .as_str()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| RpcErr::params(format!("{method} には name（項目の名前）")))
+            .ok_or_else(|| RpcErr::params(format!("{method} needs name (the item name)")))
     };
     let set_vendor = |cat: &mut UserCatalog| {
         if let Some(v) = p["vendor"].as_str() {
@@ -130,24 +126,24 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                     .iter()
                     .map(|x| x.as_str().map(str::to_string))
                     .collect::<Option<_>>()
-                    .ok_or_else(|| RpcErr::params("blocks は id の並び"))?,
+                    .ok_or_else(|| RpcErr::params("blocks must be a list of ids"))?,
                 (_, Value::String(b)) => vec![b.clone()],
                 _ => {
                     return Err(RpcErr::params(
-                        "catalog_add には blocks（ブロックの id の並び）",
+                        "catalog_add needs blocks (a list of block ids)",
                     ))
                 }
             };
             let (_, spec) = sess.current()?;
             if !is_project(&spec.file) {
                 return Err(RpcErr::app(
-                    "catalog_add はプロジェクトファイル（組合せ）を読み込んだときだけ",
+                    "catalog_add only works when a project file (combination) is loaded",
                 ));
             }
             let cat = UserCatalog::load_or_new(&file)?;
             if cat.items.contains_key(name) && p["replace"].as_bool() != Some(true) {
                 return Err(RpcErr::app(format!(
-                    "項目 {name} はもうある（置き換えは replace: true）"
+                    "item {name} already exists (replace it with replace: true)"
                 )));
             }
             let txt = lensbench_core::vfs::read_to_string(&spec.file)
@@ -173,7 +169,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             let cat = UserCatalog::update(&file, |cat| {
                 if cat.items.contains_key(name) && !replace {
                     return Err(format!(
-                        "項目 {name} はもうある（置き換えは replace: true）"
+                        "item {name} already exists (replace it with replace: true)"
                     ));
                 }
                 cat.items.insert(name.to_string(), item);
@@ -194,7 +190,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             let name = name()?;
             let mut cat = UserCatalog::load(&file)?;
             if !cat.items.contains_key(name) {
-                return Err(RpcErr::app(format!("項目 {name} はない")));
+                return Err(RpcErr::app(format!("no item {name}")));
             }
             if p["delete"].as_bool() == Some(true) {
                 cat.items.remove(name);
@@ -204,11 +200,11 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                 }
                 if let Some(to) = p["rename"].as_str().map(str::trim) {
                     if to.is_empty() {
-                        return Err(RpcErr::params("rename の名前が空"));
+                        return Err(RpcErr::params("empty rename name"));
                     }
                     if to != name {
                         if cat.items.contains_key(to) {
-                            return Err(RpcErr::app(format!("項目 {to} はもうある")));
+                            return Err(RpcErr::app(format!("item {to} already exists")));
                         }
                         let it = cat.items.remove(name).unwrap();
                         cat.items.insert(to.to_string(), it);
@@ -232,7 +228,9 @@ pub(super) fn cad_step(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = (sess, p);
-        Err(RpcErr::app("STEP の取得は Web 版では使えない"))
+        Err(RpcErr::app(
+            "getting STEP files is not available in the web version",
+        ))
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -240,7 +238,7 @@ pub(super) fn cad_step(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             p[k].as_str()
                 .map(str::trim)
                 .filter(|x| !x.is_empty())
-                .ok_or_else(|| RpcErr::params(format!("cad_step には {k}")))
+                .ok_or_else(|| RpcErr::params(format!("cad_step needs {k}")))
         };
         let src = sess.files.check_path(Path::new(s("catalog")?), false)?;
         let name = s("item")?;
@@ -248,7 +246,7 @@ pub(super) fn cad_step(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         let it = cat
             .items
             .get(name)
-            .ok_or_else(|| RpcErr::app(format!("{} に項目 {name} がない", src.display())))?;
+            .ok_or_else(|| RpcErr::app(format!("no item {name} in {}", src.display())))?;
         let dir = match p["cache"].as_str().map(str::trim).filter(|x| !x.is_empty()) {
             Some(d) => sess.files.check_path(Path::new(d), true)?,
             // 既定の場所も --root の中でなければ書かない
@@ -262,7 +260,7 @@ pub(super) fn cad_step(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
                 if it.url.is_empty() {
                     RpcErr::app(e)
                 } else {
-                    RpcErr::app(format!("{e}（品ページ: {}）", it.url))
+                    RpcErr::app(format!("{e} (product page: {})", it.url))
                 }
             })
     }
@@ -274,7 +272,7 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         p[k].as_str()
             .map(str::trim)
             .filter(|x| !x.is_empty())
-            .ok_or_else(|| RpcErr::params(format!("catalog_fill には {k}")))
+            .ok_or_else(|| RpcErr::params(format!("catalog_fill needs {k}")))
     };
     let src = sess.files.check_path(Path::new(s("catalog")?), false)?;
     let out = sess.files.check_path(Path::new(s("out")?), true)?;
@@ -283,9 +281,9 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let it = cat
         .items
         .get(name)
-        .ok_or_else(|| RpcErr::app(format!("{} に項目 {name} がない", src.display())))?;
+        .ok_or_else(|| RpcErr::app(format!("no item {name} in {}", src.display())))?;
     if !it.is_incomplete() {
-        return Err(RpcErr::app(format!("{name} は未完の品でない")));
+        return Err(RpcErr::app(format!("{name} is not an incomplete item")));
     }
     let vendor = if cat.vendor.trim().is_empty() {
         src.parent()
@@ -342,7 +340,7 @@ pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let mut fc = UserCatalog::load_or_new(&out)?;
     if !fc.vendor.is_empty() && fc.vendor != vendor {
         return Err(RpcErr::app(format!(
-            "{} はメーカー {} の補足のカタログ（{vendor} の品は別のファイルに）",
+            "{} is a supplementary catalog of maker {} (put {vendor} items in another file)",
             out.display(),
             fc.vendor
         )));

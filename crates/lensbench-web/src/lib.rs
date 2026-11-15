@@ -62,7 +62,7 @@ pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
     }
     let mut out = Vec::with_capacity(b.len() * 4);
     std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&b[..]), &mut out)
-        .map_err(|e| format!("gzip を展開できない: {e}"))?;
+        .map_err(|e| format!("gzip can't be inflated: {e}"))?;
     Ok(out)
 }
 
@@ -71,7 +71,7 @@ pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
 pub fn unpack(b: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
     fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
         if b.len() < n {
-            return Err("ファイルの束が途中で切れている".into());
+            return Err("the file bundle is cut short".into());
         }
         let (x, rest) = b.split_at(n);
         *b = rest;

@@ -492,21 +492,21 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
     for (s, msg) in [
         (
             r#"{"jones": [1, 0, 0, 0, 0, 0, 1, 0], "coordbrk": [0, 0, 0, 0, 0]}"#,
-            "2 つ以上",
+            "two or more",
         ),
         (
             r#"{"jones": [1, 0, 0, 0, 0, 0, 1, 0], "radius": 20}"#,
-            "曲率",
+            "curvature",
         ),
         (
             r#"{"coordbrk": [0, 0, 1, 0, 0], "glass": "N-BK7"}"#,
-            "ガラス",
+            "no glass after",
         ),
         (
             r#"{"coordbrk": [0, 0, 1, 0, 0], "aperture": {"type": "floating"}}"#,
-            "開口",
+            "aperture",
         ),
-        (r#"{"coordbrk": [0, 0, 1, 0, 0], "order": 2}"#, "順序"),
+        (r#"{"coordbrk": [0, 0, 1, 0, 0], "order": 2}"#, "order"),
     ] {
         let e = try_project(&format!(
             r#"[{zmx}, {{"type": "surfaces", "surfaces": [{s}]}}]"#
@@ -625,7 +625,7 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
         serde_json::to_string(&f.display().to_string()).unwrap()
     ))
     .unwrap_err();
-    assert!(e.contains("構成の番号"), "{e}");
+    assert!(e.contains("only configuration 1"), "{e}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

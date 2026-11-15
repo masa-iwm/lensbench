@@ -125,11 +125,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
     let kind = FileKind::of(&c.file);
     let is_json = kind != FileKind::Zmx;
     if kind == FileKind::SystemFile {
-        return Err("系ファイルは構成を重ねて描けない（--cfgs・--states・--beam-paths は .zmx・プロジェクトだけ）".into());
+        return Err("a system file can't draw overlaid configurations (--cfgs, --states and --beam-paths are only for .zmx and projects)".into());
     }
     if let Some(v) = &l.cfgs {
         if is_json {
-            return Err("--cfgs は .zmx だけ（プロジェクトは --states・--beam-paths）".into());
+            return Err("--cfgs is only for .zmx (projects use --states and --beam-paths)".into());
         }
         let opt = zmx::LoadOptions {
             catalog_dirs: c.glass_dir.clone(),
@@ -139,7 +139,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
         let n = zmx::parse_text(&txt)
             .map_err(|x| x.to_string())?
             .configurations();
-        let ks: Vec<usize> = index_list(v, n, "構成")?
+        let ks: Vec<usize> = index_list(v, n, "configuration")?
             .into_iter()
             .map(|k| k + 1)
             .collect();
@@ -148,7 +148,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
     }
     if !is_json {
         return Err(
-            "--states・--beam-paths はプロジェクトファイル（.json）だけ（.zmx は --cfgs）".into(),
+            "--states and --beam-paths are only for project files (.json); .zmx uses --cfgs".into(),
         );
     }
     let txt = lensbench_core::vfs::read_to_string(&c.file)
@@ -163,7 +163,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
                 .map(|x| Some(x.to_string()))
                 .collect();
             if n.is_empty() {
-                return Err("プロジェクトに状態がない".into());
+                return Err("the project has no states".into());
             }
             n
         }
@@ -187,7 +187,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
             Some(v) if v.eq_ignore_ascii_case("all") => {
                 let v = lensbench_project::paths(&ps, &env)?;
                 if v.is_empty() {
-                    return Err("プロジェクトにビームスプリッターがない".into());
+                    return Err("the project has no beam splitters".into());
                 }
                 v.into_iter().map(Some).collect()
             }
@@ -196,7 +196,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
         for pa in &paths {
             let (s, warn) =
                 lensbench_project::expand_path(&ps, &env, pa.as_deref()).map_err(|x| match pa {
-                    Some(q) => format!("経路 {q}: {x}"),
+                    Some(q) => format!("path {q}: {x}"),
                     None => x,
                 })?;
             for w in warn {
@@ -222,9 +222,9 @@ pub fn index_list(s: &str, n: usize, what: &str) -> Result<Vec<usize>, String> {
     }
     s.split(',')
         .map(|t| {
-            let k: usize = t.trim().parse().map_err(|_| format!("{what}の番号 {t}"))?;
+            let k: usize = t.trim().parse().map_err(|_| format!("{what} number {t}"))?;
             if k == 0 || k > n {
-                return Err(format!("{what} {k} はありません（1〜{n}）"));
+                return Err(format!("no {what} {k} (1 to {n})"));
             }
             Ok(k - 1)
         })

@@ -148,7 +148,7 @@ fn reads_a_config_file_and_arguments_take_precedence() {
     std::fs::write(d.join("conf/bad.json"), r#"{"thread": 2}"#).unwrap();
     let o = lb(&d, &["run", "--config", "conf/bad.json", "s.py"]);
     assert_eq!(o.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&o.stderr).contains("知らない設定 thread"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("unknown setting thread"));
 }
 
 #[test]
@@ -160,5 +160,5 @@ fn missing_python_or_script_fails_with_a_clear_code() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("Python を起動できない"));
     let o = lb(&d, &["run", "no-such-script.py"]);
     assert_eq!(o.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&o.stderr).contains("スクリプトがない"));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("no script"));
 }

@@ -146,7 +146,11 @@ fn system_summary(s: &lensbench_core::system::System, efl_cat: f64) -> Result<Va
     // 玉の無いカタログの鏡: 鏡の面の曲率半径・コーニック・径
     if lenses.is_empty() {
         if let Some(m) = els.iter().find(|e| e.kind == Kind::Mirror) {
-            let q = m.surfaces.iter().find(|q| q.mirror).ok_or("鏡の面がない")?;
+            let q = m
+                .surfaces
+                .iter()
+                .find(|q| q.mirror)
+                .ok_or("no mirror surface")?;
             let r = if q.c == 0.0 { 0.0 } else { 1.0 / q.c };
             return Ok(json!({
                 "efl": num(if efl_cat.is_finite() {
@@ -169,7 +173,7 @@ fn system_summary(s: &lensbench_core::system::System, efl_cat: f64) -> Result<Va
             }));
         }
     }
-    let e = lenses.first().ok_or("玉がない")?;
+    let e = lenses.first().ok_or("no lenses")?;
     let efl = if efl_cat.is_finite() {
         efl_cat
     } else {

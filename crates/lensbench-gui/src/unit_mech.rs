@@ -131,7 +131,7 @@ pub fn ui(ui: &mut Ui, e: &mut Edits, n_surf: usize) -> Vec<Value> {
     let mut ops = Vec::new();
     let weak = crate::theme::weak_text(ui.visuals());
     if let Some(x) = &e.error {
-        ui.colored_label(ui.visuals().error_fg_color, x);
+        ui.colored_label(ui.visuals().error_fg_color, lensbench_core::i18n::tr(x));
     }
     ui.label(RichText::new(tr("玉・群を足す")).strong());
     ui.horizontal_wrapped(|ui| {

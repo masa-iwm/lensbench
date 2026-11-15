@@ -50,14 +50,14 @@ fn parse_var(s: &System, v: &str) -> Result<(lensbench_core::param::Param, (f64,
     if let Some(r) = range {
         let (lo, hi) = r
             .split_once(':')
-            .ok_or_else(|| format!("--var {v} の範囲は 下限:上限"))?;
+            .ok_or_else(|| format!("the range of --var {v} is min:max"))?;
         let num = |t: &str, d: f64| -> Result<f64, String> {
             if t.trim().is_empty() {
                 Ok(d)
             } else {
                 t.trim()
                     .parse()
-                    .map_err(|_| format!("--var {v} の範囲 {t}"))
+                    .map_err(|_| format!("range {t} of --var {v}"))
             }
         };
         b = (num(lo, b.0)?, num(hi, b.1)?);
@@ -84,14 +84,14 @@ pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomOpts) -> Result<Val
                 } else {
                     x.parse()
                         .map(Some)
-                        .map_err(|_| format!("目標 {x} が読めない"))
+                        .map_err(|_| format!("target {x} can't be read"))
                 }
             })
             .collect::<Result<_, String>>()?,
     };
     if targets.len() != n {
         return Err(format!(
-            "目標が {} 個（状態は {n} 個: {}）",
+            "{} targets ({n} states: {})",
             targets.len(),
             names.join(", ")
         ));
@@ -112,12 +112,12 @@ pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomOpts) -> Result<Val
     sp.merit = match a.merit.to_ascii_lowercase().as_str() {
         "spot" => DefaultMerit::Spot,
         "wavefront" | "wfe" => DefaultMerit::Wavefront,
-        m => return Err(format!("--merit {m}（spot・wavefront）")),
+        m => return Err(format!("--merit {m} (spot, wavefront)")),
     };
     sp.reference = match a.reference.to_ascii_lowercase().as_str() {
         "centroid" => RmsRef::Centroid,
         "chief" => RmsRef::Chief,
-        r => return Err(format!("--reference {r}（centroid・chief）")),
+        r => return Err(format!("--reference {r} (centroid, chief)")),
     };
     sp.opts = DlsOpts {
         max_iter: a.iters,

@@ -64,13 +64,15 @@ pub fn fetch(store: Option<&cad::Store>, name: &str, hash: &str) -> Result<PathB
     if path.is_file() {
         return Ok(path);
     }
-    let s = store.ok_or("置き場が無い（LENSBENCH_CAD_STORE）")?;
+    let s = store.ok_or("no store (LENSBENCH_CAD_STORE)")?;
     let key = key_of(name, hash);
     let b = s
         .get_raw(&key)?
-        .ok_or_else(|| format!("置き場に膜 {name} のモデルが無い（{key}）"))?;
+        .ok_or_else(|| format!("no model of coating {name} in the store ({key})"))?;
     if hash_hex(&b) != hash {
-        return Err(format!("置き場の膜 {name} の中身が目録と違う（{key}）"));
+        return Err(format!(
+            "the store's coating {name} doesn't match the index ({key})"
+        ));
     }
     cad::write_cache(&dir, &path, &b)?;
     Ok(path)
@@ -93,7 +95,7 @@ pub fn remote_loader(dir: &Path, coat: &str) -> Option<PathBuf> {
     match fetch(cad::store().as_ref(), name, hash) {
         Ok(p) => Some(p),
         Err(e) => {
-            eprintln!("膜 {name} のモデルを取れない: {e}");
+            eprintln!("the model of coating {name} can't be fetched: {e}");
             MISSES
                 .lock()
                 .ok()?
@@ -161,7 +163,7 @@ pub fn upload_dir(
             Ok("dry_run")
         } else {
             match store {
-                None => Err("置き場が無い（LENSBENCH_CAD_STORE）".to_string()),
+                None => Err("no store (LENSBENCH_CAD_STORE)".to_string()),
                 Some(s) => s.has(&key).and_then(|has| {
                     if has {
                         Ok("exists")
@@ -190,7 +192,7 @@ pub fn fetch_dir(
 ) -> Result<Vec<(String, &'static str, String)>, String> {
     let idx = read_index(dir)?;
     if idx.is_empty() {
-        return Err(format!("{} に目録 {INDEX} が無い", dir.display()));
+        return Err(format!("no index {INDEX} in {}", dir.display()));
     }
     let mut rows = Vec::new();
     for (name, hash) in idx {

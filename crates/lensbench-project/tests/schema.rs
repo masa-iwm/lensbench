@@ -93,7 +93,7 @@ fn project_schema_rejects_mistakes() {
     typo["blocks"][0]["type"] = "glass".into();
     assert!(v.is_valid(&typo));
     let e = Project::from_json(&typo.to_string()).unwrap_err();
-    assert!(e.contains("知らないブロックの種類"), "{e}");
+    assert!(e.contains("unknown block type"), "{e}");
     let mut bad = ok.clone();
     bad["blocks"][0].as_object_mut().unwrap().remove("t");
     assert!(!v.is_valid(&bad));

@@ -115,7 +115,7 @@ pub fn config_of(v: Option<&Value>) -> std::result::Result<Config, String> {
     let Some(v) = v else { return Ok(c) };
     let m = v
         .as_object()
-        .ok_or_else(|| format!("args は {{\"名前\": 値}}（{v}）"))?;
+        .ok_or_else(|| format!("args must be an object of name: value ({v})"))?;
     for (k, x) in m {
         let p = match x {
             Value::Number(n) => PValue::Num(n.as_f64().unwrap_or(f64::NAN)),
@@ -124,11 +124,15 @@ pub fn config_of(v: Option<&Value>) -> std::result::Result<Config, String> {
                 a.iter()
                     .map(|y| {
                         y.as_f64()
-                            .ok_or_else(|| format!("args の {k} は数の並び（{x}）"))
+                            .ok_or_else(|| format!("args {k} must be a list of numbers ({x})"))
                     })
                     .collect::<std::result::Result<_, _>>()?,
             ),
-            _ => return Err(format!("args の {k} は数・文字列・数の並び（{x}）")),
+            _ => {
+                return Err(format!(
+                    "args {k} must be a number, string or list of numbers ({x})"
+                ))
+            }
         };
         c.insert(k.clone(), p);
     }
@@ -141,7 +145,7 @@ pub fn arrays_of(v: Option<&Value>) -> std::result::Result<Arrays, String> {
     let Some(v) = v else { return Ok(a) };
     let m = v
         .as_object()
-        .ok_or_else(|| format!("inputs は {{\"名前\": 値}}（{v}）"))?;
+        .ok_or_else(|| format!("inputs must be an object of name: value ({v})"))?;
     for (k, x) in m {
         a.insert(k.clone(), array_of(k, x)?);
     }
@@ -156,11 +160,13 @@ pub fn array_of(k: &str, x: &Value) -> std::result::Result<Array, String> {
                 .iter()
                 .map(|y| {
                     y.as_f64()
-                        .ok_or_else(|| format!("入力 {k} は数の並び（{x}）"))
+                        .ok_or_else(|| format!("input {k} must be a list of numbers ({x})"))
                 })
                 .collect::<std::result::Result<_, _>>()?;
             Array::f64(vec![d.len()], d).map_err(|e| e.to_string())
         }
-        _ => Err(format!("入力 {k} は数か数の並び（{x}）")),
+        _ => Err(format!(
+            "input {k} must be a number or a list of numbers ({x})"
+        )),
     }
 }
