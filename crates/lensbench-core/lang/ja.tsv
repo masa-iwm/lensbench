@@ -1237,6 +1237,9 @@ state and states can't be used together	state と states は同時に使えな�
 state_vars goes with states	state_vars は states と一緒に使う
 no place to swap	差し替える所がない
 prescreen rings and keep must be 1 or more	prescreen の rings・keep は 1 以上
+beam and prescreen can't be used together	beam と prescreen は同時に使えない
+beam width and passes must be 1 or more	beam の width・passes は 1 以上
+beam search: no candidate of place {} could be evaluated (first: {})	ビーム探索: 所 {} のどの候補も評価できない（最初の理由: {}）
 place {} appears twice	所 {} が 2 回ある
 no block {}	ブロック {} がない
 two or more blocks with id {}	id {} のブロックが 2 つ以上ある

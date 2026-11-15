@@ -552,9 +552,7 @@ pub fn perturbed(spec: &McSpec, deltas: &[f64]) -> Result<Vec<System>> {
 
 /// ずれ deltas の系を補償して評価する
 pub fn evaluate(spec: &McSpec, deltas: &[f64]) -> Result<Eval> {
-    let configs = perturbed(spec, deltas)?;
-    let mut p = spec.problem.clone();
-    p.configs = configs;
+    let p = spec.problem.with_configs(perturbed(spec, deltas)?);
     eval_problem(&p, &spec.comp, true)
 }
 
@@ -564,12 +562,16 @@ fn eval_problem(p: &Problem, o: &DlsOpts, compensate: bool) -> Result<Eval> {
     } else {
         p.x0()?
     };
+    let (merit, terms) = p.merit_and_terms(&x)?;
     Ok(Eval {
-        merit: p.merit(&x)?,
-        terms: p.term_values(&x)?,
+        merit,
+        terms,
         comp: x,
     })
 }
+
+/// 評価の結果（追跡できなければ理由）
+type Outcome = std::result::Result<Eval, String>;
 
 /// 試行 i のずれ
 pub fn draw_trial(spec: &McSpec, i: usize) -> Vec<f64> {
@@ -661,21 +663,18 @@ pub fn run_with(
             stop.store(true, Ordering::Relaxed);
         }
     };
-    let one = |deltas: Vec<f64>| -> (Vec<f64>, Option<Eval>, Option<String>) {
+    // 止めた後の評価は None（結果に出さない。追跡できなかった評価とは別）
+    let one = |deltas: Vec<f64>| -> Option<(Vec<f64>, Outcome)> {
         if stop.load(Ordering::Relaxed) {
-            return (deltas, None, Some("cancelled".into()));
+            return None;
         }
         let r = evaluate(spec, &deltas);
         tick();
-        match r {
-            Ok(e) if e.merit.is_finite() => (deltas, Some(e), None),
-            Ok(_) => (
-                deltas,
-                None,
-                Some("the merit function is not finite".into()),
-            ),
-            Err(e) => (deltas, None, Some(e.to_string())),
-        }
+        Some(match r {
+            Ok(e) if e.merit.is_finite() => (deltas, Ok(e)),
+            Ok(_) => (deltas, Err("the merit function is not finite".into())),
+            Err(e) => (deltas, Err(e.to_string())),
+        })
     };
     let seq = lensbench_core::par::sequential();
     // 感度: 公差ごとに lo と hi
@@ -690,12 +689,16 @@ pub fn run_with(
     } else {
         sens_in.par_iter().map(scoped(sens_one)).collect()
     };
+    // 止めて lo・hi のどちらかを評価しなかった公差は感度に出さない
     let sensitivity: Vec<Sens> = (0..spec.tols.len())
         .filter(|_| spec.sensitivity)
-        .map(|i| Sens {
-            tol: i,
-            lo: sens_out[2 * i].1.clone(),
-            hi: sens_out[2 * i + 1].1.clone(),
+        .filter_map(|i| match (&sens_out[2 * i], &sens_out[2 * i + 1]) {
+            (Some(lo), Some(hi)) => Some(Sens {
+                tol: i,
+                lo: lo.1.as_ref().ok().cloned(),
+                hi: hi.1.as_ref().ok().cloned(),
+            }),
+            _ => None,
         })
         .collect();
     let trial_one = |i: &usize| one(draw_trial(spec, *i));
@@ -708,11 +711,17 @@ pub fn run_with(
     let cancelled = stop.load(Ordering::Relaxed);
     let trials = out
         .into_iter()
-        .filter(|x| x.2.as_deref() != Some("cancelled"))
-        .map(|(deltas, eval, error)| Trial {
-            deltas,
-            eval,
-            error,
+        .flatten()
+        .map(|(deltas, r)| {
+            let (eval, error) = match r {
+                Ok(e) => (Some(e), None),
+                Err(e) => (None, Some(e)),
+            };
+            Trial {
+                deltas,
+                eval,
+                error,
+            }
         })
         .collect();
     Ok(McResult {

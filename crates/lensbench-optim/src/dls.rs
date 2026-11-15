@@ -46,350 +46,9 @@ impl Var {
     }
 }
 
-/// MTF の向き
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MtfDir {
-    Tan,
-    Sag,
-    /// 子午・球欠の 2 つの残差
-    Both,
-}
-
-/// 項の種類
-#[derive(Debug, Clone, PartialEq)]
-pub enum TermKind {
-    /// RMS スポット半径 [レンズ単位]。wave None なら重みのある全波長
-    Spot {
-        field: FieldSel,
-        wave: Option<usize>,
-        rings: usize,
-        reference: RmsRef,
-    },
-    /// RMS 波面収差 [波]。wave None なら重みのある全波長（波長ごとの分散を波長の重みで平均）
-    Wavefront {
-        field: FieldSel,
-        wave: Option<usize>,
-        rings: usize,
-        reference: RmsRef,
-    },
-    /// 周波数 freq [cycles/mm] の MTF − target（n は瞳の標本数、[`lensbench_core::analysis::mtf`]）
-    Mtf {
-        field: FieldSel,
-        wave: Option<usize>,
-        n: Option<usize>,
-        freq: f64,
-        dir: MtfDir,
-        target: f64,
-    },
-    /// 近軸量 − target（主波長の近軸追跡。[`System::paraxial`]）。ズーム軌跡の焦点距離・倍率の条件
-    Paraxial { q: ParaxQ, target: f64 },
-    /// 像面の光束の重心の x（`y` が false）か y − target [レンズ単位]。光線・重みはスポットの項と同じ（ガウス求積、
-    /// rings、wave None なら重みのある全波長）。けられた光線は除く。鏡で像点を合わせる補償など
-    Centroid {
-        field: FieldSel,
-        wave: Option<usize>,
-        rings: usize,
-        y: bool,
-        target: f64,
-    },
-    /// 1 本の実光線の量 − target。視野 field・正規化瞳座標 (px, py)・波長 wave（None なら主波長）の光線を
-    /// 面 surf（None なら像面）まで追い、その面の局所座標での値（[`RayQ`]）。光線が止まると評価できない
-    Ray {
-        field: FieldSel,
-        wave: Option<usize>,
-        px: f64,
-        py: f64,
-        surf: Option<usize>,
-        q: RayQ,
-        target: f64,
-    },
-    /// 1 本の光線の OPD [波] − target（[`lensbench_core::analysis::opd`]、参照球の中心は主波長の主光線。OpticStudio の OPDC）
-    Opd {
-        field: FieldSel,
-        wave: Option<usize>,
-        px: f64,
-        py: f64,
-        target: f64,
-    },
-    /// Zernike 係数 [波] − target（[`lensbench_core::analysis::zernike`]、自波長の主光線基準、格子 n × n）。term は 1 始まり
-    Zernike {
-        field: FieldSel,
-        wave: Option<usize>,
-        kind: ZernKind,
-        term: usize,
-        n: usize,
-        target: f64,
-    },
-    /// 単一モードファイバへの結合効率（偏光なし）− target（[`lensbench_core::fiber::fiber_coupling`]、有限物体の系）
-    Coupling {
-        wave: Option<usize>,
-        opts: FiberOpts,
-        target: f64,
-    },
-    /// 利用者の項（残差はそのまま。目標との差は利用者の関数の中でとる）
-    User(UserTermRef),
-}
-
-/// 光線の量（[`TermKind::Ray`]）。面の局所座標
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RayQ {
-    X,
-    Y,
-    Z,
-    /// 方向余弦
-    L,
-    M,
-    N,
-}
-
-impl RayQ {
-    pub fn parse(s: &str) -> Result<RayQ> {
-        Ok(match s.trim().to_ascii_lowercase().as_str() {
-            "x" | "reax" => RayQ::X,
-            "y" | "reay" => RayQ::Y,
-            "z" | "reaz" => RayQ::Z,
-            "l" | "reaa" => RayQ::L,
-            "m" | "reab" => RayQ::M,
-            "n" | "reac" => RayQ::N,
-            _ => invalid!("ray quantity {s} (x, y, z, l, m, n)"),
-        })
-    }
-    pub fn name(&self) -> &'static str {
-        match self {
-            RayQ::X => "x",
-            RayQ::Y => "y",
-            RayQ::Z => "z",
-            RayQ::L => "l",
-            RayQ::M => "m",
-            RayQ::N => "n",
-        }
-    }
-}
-
-/// 近軸量など系全体の量（[`TermKind::Paraxial`]）。値は [`lensbench_core::report::system_data`]（OpticStudio の
-/// System Data と同じ定義、名前は OpticStudio の演算子に合わせる）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParaxQ {
-    /// 有効焦点距離 [レンズ単位]（EFFL）
-    Efl,
-    /// 近軸倍率（有限物体、PMAG）
-    Pmag,
-    /// 入射瞳の位置（ENPP）
-    Enpp,
-    /// 入射瞳径（EPDI）
-    Epd,
-    /// 射出瞳の位置（EXPP）
-    Expp,
-    /// 射出瞳径（EXPD）
-    Expd,
-    /// 実効 F ナンバー（実光線、WFNO）
-    Wfno,
-    /// 近軸の実効 F ナンバー（PWFN）
-    Pwfn,
-    /// 像空間 F ナンバー（ISFN）
-    Isfn,
-    /// 近軸像高（PIMH）
-    Pimh,
-    /// 全長（面 1 から像面の手前の面まで、TOTR）
-    Totr,
-    /// 物体空間の NA（OBNA）
-    Obna,
-    /// 像空間の NA（ISNA）
-    Isna,
-}
-
-impl ParaxQ {
-    pub const ALL: [ParaxQ; 13] = [
-        ParaxQ::Efl,
-        ParaxQ::Pmag,
-        ParaxQ::Enpp,
-        ParaxQ::Epd,
-        ParaxQ::Expp,
-        ParaxQ::Expd,
-        ParaxQ::Wfno,
-        ParaxQ::Pwfn,
-        ParaxQ::Isfn,
-        ParaxQ::Pimh,
-        ParaxQ::Totr,
-        ParaxQ::Obna,
-        ParaxQ::Isna,
-    ];
-    pub fn parse(s: &str) -> Result<ParaxQ> {
-        let t = s.trim().to_ascii_lowercase();
-        Ok(match t.as_str() {
-            "effl" => ParaxQ::Efl,
-            "mag" => ParaxQ::Pmag,
-            "epdi" => ParaxQ::Epd,
-            _ => match ParaxQ::ALL.iter().find(|q| q.name() == t) {
-                Some(q) => *q,
-                None => invalid!("paraxial {s} ({})", ParaxQ::ALL.map(|q| q.name()).join(",")),
-            },
-        })
-    }
-    pub fn name(&self) -> &'static str {
-        match self {
-            ParaxQ::Efl => "efl",
-            ParaxQ::Pmag => "pmag",
-            ParaxQ::Enpp => "enpp",
-            ParaxQ::Epd => "epd",
-            ParaxQ::Expp => "expp",
-            ParaxQ::Expd => "expd",
-            ParaxQ::Wfno => "wfno",
-            ParaxQ::Pwfn => "pwfn",
-            ParaxQ::Isfn => "isfn",
-            ParaxQ::Pimh => "pimh",
-            ParaxQ::Totr => "totr",
-            ParaxQ::Obna => "obna",
-            ParaxQ::Isna => "isna",
-        }
-    }
-    /// 系の値
-    pub fn value(&self, s: &System) -> f64 {
-        let p = s.paraxial();
-        match self {
-            ParaxQ::Efl => return p.efl,
-            ParaxQ::Pmag => return p.pmag,
-            ParaxQ::Enpp => return p.enpp,
-            ParaxQ::Epd => return p.epd,
-            ParaxQ::Expp => return p.expp,
-            ParaxQ::Pwfn => return p.wfno,
-            ParaxQ::Isfn => return p.isfn,
-            _ => {}
-        }
-        let d = lensbench_core::report::system_data(s);
-        match self {
-            ParaxQ::Expd => d.expd,
-            ParaxQ::Wfno => d.wfno,
-            ParaxQ::Pimh => d.pimh,
-            ParaxQ::Totr => d.totr,
-            ParaxQ::Obna => d.obna,
-            ParaxQ::Isna => d.isna,
-            _ => unreachable!(),
-        }
-    }
-}
-
-/// 利用者が定義する項（OpticStudio の UDOP 相当）。Python の関数などを包む
-pub trait UserTerm: Send + Sync {
-    /// 名前（表示用）
-    fn name(&self) -> &str;
-    /// 残差の数（系によらず一定）
-    fn rows(&self) -> usize;
-    /// 系の並びの残差をまとめて求める（系ごとに rows 個）。差分のヤコビアンでは、ずらした系をすべて 1 回で渡す
-    fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>>;
-    /// 残差の偏微分（行優先 [残差][params]）。None なら差分にする
-    fn grad(&self, _s: &System, _params: &[Param]) -> Result<Option<Vec<f64>>> {
-        Ok(None)
-    }
-}
-
-/// [`UserTerm`] の共有の参照（同じ物を指すとき等しい）
-#[derive(Clone)]
-pub struct UserTermRef(pub Arc<dyn UserTerm>);
-
-impl std::fmt::Debug for UserTermRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UserTerm({}, {} 行)", self.0.name(), self.0.rows())
-    }
-}
-
-impl PartialEq for UserTermRef {
-    fn eq(&self, o: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &o.0)
-    }
-}
-
-impl UserTermRef {
-    /// 系の並びを評価し、行数を確かめる
-    fn eval_checked(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
-        let v = self.0.eval(systems)?;
-        if v.len() != systems.len() {
-            invalid!(
-                "user term {}: {} results for {} systems",
-                self.0.name(),
-                systems.len(),
-                v.len()
-            );
-        }
-        for r in &v {
-            if r.len() != self.0.rows() {
-                invalid!(
-                    "user term {}: {} residuals (expected {})",
-                    self.0.name(),
-                    r.len(),
-                    self.0.rows()
-                );
-            }
-            if r.iter().any(|x| !x.is_finite()) {
-                invalid!("user term {}: non-finite residual", self.0.name());
-            }
-        }
-        Ok(v)
-    }
-}
-
-impl TermKind {
-    /// 1 つの値と目標の差を残差にする項の目標
-    fn target(&self) -> Option<f64> {
-        match self {
-            TermKind::Mtf { dir, target, .. } if *dir != MtfDir::Both => Some(*target),
-            TermKind::Paraxial { target, .. }
-            | TermKind::Ray { target, .. }
-            | TermKind::Centroid { target, .. }
-            | TermKind::Opd { target, .. }
-            | TermKind::Zernike { target, .. }
-            | TermKind::Coupling { target, .. } => Some(*target),
-            _ => None,
-        }
-    }
-}
-
-/// 目標の向き（目標のある項だけ。[`TermKind`] の target）
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Side {
-    /// 値 = 目標（残差は 値 − 目標）
-    #[default]
-    Eq,
-    /// 値 ≥ 目標（下回ったときだけ 値 − 目標、ほかは 0）
-    Min,
-    /// 値 ≤ 目標（上回ったときだけ 値 − 目標、ほかは 0）
-    Max,
-}
-
-impl Side {
-    /// 片側の条件を満たしていれば残差（とその行のヤコビアン）を 0 にする
-    fn active(self, r: f64) -> bool {
-        match self {
-            Side::Eq => true,
-            Side::Min => r < 0.0,
-            Side::Max => r > 0.0,
-        }
-    }
-}
-
-/// 評価関数の項
-#[derive(Debug, Clone, PartialEq)]
-pub struct Term {
-    /// 構成の番号（[`Problem::configs`]）
-    pub config: usize,
-    pub weight: f64,
-    pub kind: TermKind,
-    /// 目標の向き（[`Side::Min`]・[`Side::Max`] は目標のある項だけ）
-    pub side: Side,
-}
-
-impl Term {
-    /// 片側の条件の項で、条件を満たしている残差を 0 にする（j はその項の行のヤコビアン）
-    fn clamp(&self, r: &mut [f64], j: Option<&mut Vec<f64>>) {
-        if self.side == Side::Eq || r.len() != 1 || self.side.active(r[0]) {
-            return;
-        }
-        r[0] = 0.0;
-        if let Some(j) = j {
-            j.iter_mut().for_each(|v| *v = 0.0);
-        }
-    }
-}
+#[path = "dls_terms.rs"]
+mod terms;
+pub use terms::*;
 
 /// 差分の +h・−h の系（前進差分では −h はなし。境界の外に出る・作れない側は None）
 type FdSystems = (Option<System>, Option<System>);
@@ -471,6 +130,19 @@ impl Problem {
             fd_rel: 1e-6,
             fd_rel_noisy: 1e-3,
             analytic_min: 16,
+        }
+    }
+
+    /// 構成だけ configs に替えた問題（今の構成は写さない）
+    pub fn with_configs(&self, configs: Vec<System>) -> Problem {
+        Problem {
+            configs,
+            vars: self.vars.clone(),
+            terms: self.terms.clone(),
+            jac: self.jac,
+            fd_rel: self.fd_rel,
+            fd_rel_noisy: self.fd_rel_noisy,
+            analytic_min: self.analytic_min,
         }
     }
 
@@ -765,9 +437,34 @@ impl Problem {
         })
     }
 
+    /// [`Self::merit`] と [`Self::term_values`]（系を 1 回作り、項を 1 回ずつ評価する。値はそれぞれと同じ）
+    pub fn merit_and_terms(&self, x: &[f64]) -> Result<(f64, Vec<f64>)> {
+        let sys = self.systems(x)?;
+        let parts = map_maybe_par(&self.terms, |t| {
+            let r0 = eval_term(&sys[t.config], &t.kind, None)?.0;
+            let ss: f64 = r0.iter().map(|v| v * v).sum();
+            let v = match t.kind.target() {
+                Some(target) => r0[0] + target,
+                None => ss.sqrt(),
+            };
+            let mut r = r0;
+            t.clamp(&mut r, None);
+            let a = t.weight.sqrt();
+            r.iter_mut().for_each(|v| *v *= a);
+            Ok((r, v))
+        })?;
+        let r: Vec<f64> = parts.iter().flat_map(|p| p.0.iter().copied()).collect();
+        Ok((self.merit_of(&r), parts.into_iter().map(|p| p.1).collect()))
+    }
+
     /// 残差とヤコビアン（行優先 [残差][変数]）
     pub fn jacobian(&self, x: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
         self.check()?;
+        self.jacobian_checked(x)
+    }
+
+    /// [`Self::jacobian`] で、[`Self::check`] を済ませた問題（[`dls_with`] は入口で 1 回だけ確かめる）
+    pub(crate) fn jacobian_checked(&self, x: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
         let nv = self.vars.len();
         if x.len() != nv {
             invalid!("{} values for {nv} variables", x.len());
@@ -2036,7 +1733,7 @@ pub fn dls_with(
             systems: p.final_systems(&x)?,
         });
     }
-    let (mut r, mut j) = p.jacobian(&x)?;
+    let (mut r, mut j) = p.jacobian_checked(&x)?;
     let mut f = dot_n(&r, &r);
     let merit0 = p.merit_of(&r);
     let mut history = vec![merit0];
@@ -2183,7 +1880,7 @@ pub fn dls_with(
         }
         if it + 1 < o.max_iter {
             // 途中のヤコビアンの失敗は、それまでの改善を捨てずに止める
-            match p.jacobian(&x) {
+            match p.jacobian_checked(&x) {
                 Ok(v) => (r, j) = v,
                 Err(e) => {
                     stop = Stop::JacobianFailed;

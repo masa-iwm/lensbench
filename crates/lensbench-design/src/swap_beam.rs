@@ -56,18 +56,18 @@ impl SwapSearch<'_> {
     }
 
     /// ビーム探索（[`SwapSpec::beam`] がなければ全組の総当たり [`Self::run`]）:
-    /// (すべての所を選んだ組の結果（評価関数の小さい順）, 最適化した選び方の数, 止めたか)。
+    /// (すべての所を選んだ組の結果（評価関数の小さい順）, 最適化した選び方の数, 止めたか, 結果が空のときの理由)。
     /// progress の `total` は評価する数の見込みの上限（[`Self::beam_estimate`]）。cancel が true になったら新しい評価を始めない
     pub fn beam_run(
         &self,
         threads: Option<usize>,
         progress: Option<&(dyn Fn(Progress) + Sync)>,
         cancel: Option<&AtomicBool>,
-    ) -> (Vec<SwapResult>, usize, bool) {
+    ) -> (Vec<SwapResult>, usize, bool, Option<String>) {
         let Some(b) = &self.spec.beam else {
             let v = self.run(threads);
             let n = v.len();
-            return (v, n, false);
+            return (v, n, false, None);
         };
         let total = self.beam_estimate().unwrap_or(usize::MAX);
         let t0 = web_time::Instant::now();
@@ -77,6 +77,7 @@ impl SwapSearch<'_> {
         let mut full: HashMap<usize, SwapResult> = HashMap::new();
         let mut beams: Vec<Assign> = vec![vec![None; self.picks.len()]];
         let mut stopped = false;
+        let mut why = None;
         'passes: for _ in 0..b.passes {
             let before = beams.clone();
             for k in 0..self.picks.len() {
@@ -91,6 +92,7 @@ impl SwapSearch<'_> {
                         }
                     }
                 }
+                let mut last_err: Option<String> = None;
                 let todo: Vec<&Assign> = stage.iter().filter(|a| !merit.contains_key(*a)).collect();
                 let out = par::with_threads(threads, || {
                     par::map(&todo, |a| {
@@ -118,11 +120,13 @@ impl SwapSearch<'_> {
                         stopped = true;
                         continue;
                     };
-                    let m = r
-                        .as_ref()
-                        .ok()
-                        .and_then(|f| f.merit)
-                        .unwrap_or(f64::INFINITY);
+                    let m = match &r {
+                        Ok(f) => f.merit.unwrap_or(f64::INFINITY),
+                        Err(e) => {
+                            last_err.get_or_insert_with(|| e.clone());
+                            f64::INFINITY
+                        }
+                    };
                     merit.insert(a.clone(), m);
                     if let Some(i) = self.index_of(a) {
                         full.insert(i, self.result(i, r));
@@ -139,6 +143,11 @@ impl SwapSearch<'_> {
                 ranked.sort_by(|x, y| x.0.total_cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
                 if ranked.is_empty() {
                     // この所のどの候補も評価できない: 残す選び方がない
+                    why = Some(format!(
+                        "beam search: no candidate of place {} could be evaluated (first: {})",
+                        self.spec.slots[k].block,
+                        last_err.unwrap_or_else(|| "the merit function is not finite".into())
+                    ));
                     break 'passes;
                 }
                 beams = ranked.into_iter().take(b.width).map(|x| x.1).collect();
@@ -149,7 +158,8 @@ impl SwapSearch<'_> {
         }
         let mut v: Vec<SwapResult> = full.into_values().collect();
         sort_results(&mut v);
-        (v, merit.len(), stopped)
+        let why = why.filter(|_| v.is_empty());
+        (v, merit.len(), stopped, why)
     }
 
     /// [`Self::run_to`] のビーム探索: 結果は out に一括実行の形で書く（ビーム探索は続きから回せないので、いつも書き直す）
@@ -160,7 +170,10 @@ impl SwapSearch<'_> {
         progress: Option<&(dyn Fn(SwapStage, Progress) + Sync)>,
     ) -> Result<Vec<SwapResult>, String> {
         let show = |p| progress.map_or((), |f| f(SwapStage::Main, p));
-        let (v, _, _) = self.beam_run(threads, Some(&show), None);
+        let (v, _, _, why) = self.beam_run(threads, Some(&show), None);
+        if let Some(e) = why {
+            return Err(e);
+        }
         if let Some(path) = out {
             let o = lensbench_runs::RunOpts {
                 threads: Some(1),

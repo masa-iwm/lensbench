@@ -588,8 +588,11 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let t0 = web_time::Instant::now();
     let (mut rows, screened, cancelled) = if s.uses_beam() {
         // 所ごとのビーム探索: 評価したすべての所を選んだ組（screened はその数）
-        let (v, _, stopped) = s.beam_run(o.threads, Some(&show), Some(&sess.swap_cancel));
+        let (v, _, stopped, why) = s.beam_run(o.threads, Some(&show), Some(&sess.swap_cancel));
         *sess.swap_run.lock_ok() = None;
+        if let Some(e) = why {
+            return Err(e.into());
+        }
         let k = v.len();
         (v, k, stopped)
     } else {

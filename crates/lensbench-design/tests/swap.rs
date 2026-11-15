@@ -345,7 +345,8 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     });
     let s = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
     assert!(s.uses_beam());
-    let (r, evaluated, stopped) = s.beam_run(None, None, None);
+    let (r, evaluated, stopped, why) = s.beam_run(None, None, None);
+    assert!(why.is_none());
     assert!(!stopped);
     let n = full.count();
     assert!(evaluated < n, "{evaluated} {n}");
@@ -357,7 +358,7 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     }
     assert_eq!(r[0], rf[0]);
     // スレッド数によらない。run・run_to もビーム探索
-    let (r1, e1, _) = s.beam_run(Some(1), None, None);
+    let (r1, e1, _, _) = s.beam_run(Some(1), None, None);
     assert_eq!(vals(r1), r);
     assert_eq!(e1, evaluated);
     assert_eq!(vals(s.run(None)), r);
@@ -367,6 +368,19 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
     assert_eq!(s.run_to(Some(&f), true, None, None).map(vals).unwrap(), r);
     let _ = std::fs::remove_dir_all(&tmp);
+    // 最初の所でどの候補も評価できなければ、結果は空で理由を返す（run_to は誤り）
+    let mut sp = spec(vec![a.clone(), b.clone()]);
+    sp.vars = vec!["nosuch.t".into()];
+    sp.beam = Some(swap::Beam {
+        width: 2,
+        passes: 2,
+    });
+    let s5 = SwapSearch::new(&p, &env(dir.clone()), &c, sp).unwrap();
+    let (r5, _, _, why) = s5.beam_run(None, None, None);
+    assert!(r5.is_empty());
+    let why = why.unwrap();
+    assert!(why.contains("no candidate of place A"), "{why}");
+    assert_eq!(s5.run_to(None, true, None, None).unwrap_err(), why);
     // ふるいとは同時に使えない・幅 0 は誤り
     let mut sp = spec(vec![a.clone(), b.clone()]);
     sp.beam = Some(swap::Beam {
