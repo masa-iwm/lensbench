@@ -172,16 +172,18 @@ fn loop_thickness() {
         json!({ "file": ZMX, "glass_dirs": ["tests/glass"] }),
     );
     assert_eq!(sum["image_surface"], 9);
-    // 名前は Python と同じ glass_dirs。旧名 glass_dir・path・ref は新しい名前を示す誤り（CLI-17）
+    // 名前は Python と同じ glass_dirs。知らない鍵（前の名前 glass_dir・path・ref も）は誤り（XCT-34）
     assert!(sv
         .error("load", json!({ "file": ZMX, "glass_dir": ["tests/glass"] }))
-        .contains("renamed to glass_dirs"));
+        .contains("unknown key glass_dir (one of file, glass_dirs"));
     assert!(sv
         .error("load", json!({ "file": ZMX, "path": "TR" }))
         .contains("beam_path"));
+    let e = sv.error("analyze", json!({ "cmd": "rms", "ref": "chief" }));
+    assert!(e.contains("ref"), "{e}");
     assert!(sv
-        .error("analyze", json!({ "cmd": "rms", "ref": "chief" }))
-        .contains("renamed to reference"));
+        .error("glasses", json!({ "glass_dir": ["tests/glass"] }))
+        .contains("unknown key glass_dir"));
     let base = core_system(&Path::new(ROOT).join(ZMX));
     let p = base.param("3.t").unwrap();
     let t0 = sv.call("get", json!({ "param": "3.t" }))["value"]
@@ -1302,7 +1304,7 @@ fn analyze_registered_params_and_save_hash() {
     );
     let b = sv.call(
         "analyze",
-        json!({ "cmd": "mtf", "field": "2", "freqs": "10,20", "json": true }),
+        json!({ "cmd": "mtf", "field": 2, "freqs": [10, 20], "json": true }),
     );
     assert_eq!(a, b);
     let c = sv.call(
@@ -1314,6 +1316,9 @@ fn analyze_registered_params_and_save_hash() {
     for bad in [
         json!({ "cmd": "spot", "nope": 1 }),
         json!({ "cmd": "spot", "rings": "x" }),
+        // 数の文字列・カンマ区切りの文字列は受けない（値は JSON の型で、XCT-34）
+        json!({ "cmd": "mtf", "field": "2" }),
+        json!({ "cmd": "mtf", "freqs": "10,20" }),
     ] {
         let (h, _) = sv.call_bin("analyze", bad, &[]);
         assert_eq!(h["error"]["code"], json!(-32602), "{h}");

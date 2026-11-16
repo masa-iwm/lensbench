@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use lensbench_analysis::{Param, ParamTy};
+use lensbench_analysis::ParamTy;
 use serde_json::{json, Map, Value};
 
 use crate::session::{RpcErr, Session};
@@ -14,20 +14,15 @@ pub(crate) fn run(
     m: &Map<String, Value>,
 ) -> Result<Value, RpcErr> {
     let sys = sess.current_system()?;
-    let ps = def.params();
     let mut params = Map::new();
     let mut save = None;
     for (k, v) in m {
         // 鍵はハイフンでも（CLI の旗と同じ書き方）
         let k = k.replace('-', "_");
-        if let Some(n) = lensbench_analysis::registry::renamed_param(&k) {
-            return Err(RpcErr::params(format!("{k} was renamed to {n}")));
-        }
         match k.as_str() {
             // json は CLI の --json に当たる（serve の結果はいつも JSON）
             "cmd" | "json" => {}
-            "file" | "cfg" | "state" | "path" | "beam_path" | "glass_dir" | "glass_dirs"
-            | "lens_catalog" | "lens_catalogs" => {
+            "file" | "cfg" | "state" | "beam_path" | "glass_dirs" | "lens_catalogs" => {
                 return Err(RpcErr::params(format!(
                     "{k} can't be changed in analyze (choose it in load)"
                 )))
@@ -39,11 +34,7 @@ pub(crate) fn run(
                 save = Some(sess.files.check_path(Path::new(p), true)?);
             }
             _ => {
-                let v = match ps.iter().find(|p| p.name == k) {
-                    Some(p) => loose(p, v),
-                    None => v.clone(),
-                };
-                params.insert(k, v);
+                params.insert(k, v.clone());
             }
         }
     }
@@ -85,34 +76,6 @@ fn analysis_err(e: lensbench_core::Error) -> RpcErr {
         ))
         .with_core(&e),
         _ => RpcErr::from(e),
-    }
-}
-
-/// 前の受け方（引数の文字列を経た頃）の値も受ける: 数の文字列（"2"）、数の並びのカンマ区切りの文字列（"10,20"）や
-/// 1 つの数、パスの並びの 1 つのパス。読めない値はそのまま渡し、設定を読むところで誤りにする
-fn loose(p: &Param, v: &Value) -> Value {
-    let num = |t: &str| -> Option<Value> {
-        let t = t.trim();
-        t.parse::<i64>()
-            .map(Value::from)
-            .ok()
-            .or_else(|| t.parse::<f64>().ok().map(Value::from))
-    };
-    match (p.ty, v) {
-        (ParamTy::Count | ParamTy::Int | ParamTy::Num, Value::String(t)) => {
-            num(t).unwrap_or_else(|| v.clone())
-        }
-        (ParamTy::Nums, Value::String(t)) => t
-            .split(',')
-            .filter(|x| !x.trim().is_empty())
-            .map(num)
-            .collect::<Option<Vec<_>>>()
-            .map(Value::from)
-            .unwrap_or_else(|| v.clone()),
-        (ParamTy::Nums, Value::Number(_)) => Value::from(vec![v.clone()]),
-        (ParamTy::Paths, Value::String(_)) => Value::from(vec![v.clone()]),
-        (ParamTy::Json, Value::String(t)) => serde_json::from_str(t).unwrap_or_else(|_| v.clone()),
-        _ => v.clone(),
     }
 }
 

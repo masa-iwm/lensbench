@@ -147,7 +147,6 @@ pub enum SwapMerit {
     #[default]
     Spot,
     /// 波面の RMS
-    #[serde(alias = "wfe")]
     Wavefront,
 }
 

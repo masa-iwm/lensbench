@@ -331,12 +331,14 @@ fn store_loaded(
 #[path = "session_hist.rs"]
 mod hist;
 
+mod args;
 mod catalog;
 mod layout;
 mod optim;
 mod proto;
 mod trace;
 pub mod views;
+use args::{known_keys, opt_f64, opt_usize, str_list};
 pub use catalog::range_system;
 use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
 use hist::{change_label, config_only, history_json, snap_was_load, summary, CONFIG_KEY};
@@ -785,14 +787,6 @@ impl std::fmt::Display for CallError {
 /// 結果の配列（`trace` の x・y・z・opl・err・vig など。名前と f64 の並び、整数も f64 にする）
 pub type Arrays = Vec<(String, Vec<f64>)>;
 
-/// 鍵 new の値（無ければ null）。名前を変える前の鍵 old を渡すと誤り（CLI-17、旧名は受けない）
-fn renamed<'a>(p: &'a Value, new: &'static str, old: &'static str) -> Result<&'a Value, RpcErr> {
-    if !p[old].is_null() {
-        return Err(RpcErr::params(format!("{old} was renamed to {new}")));
-    }
-    Ok(&p[new])
-}
-
 /// load の params から系の読み方
 fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
     let file = p["file"]
@@ -802,9 +796,18 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
         v.iter().map(|x| sess.files.check_path(x, false)).collect()
     };
     // 名前は Python と同じ（CLI-17）
-    let glass = renamed(p, "glass_dirs", "glass_dir")?;
-    let lens = renamed(p, "lens_catalogs", "lens_catalog")?;
-    let path = match renamed(p, "beam_path", "path")? {
+    let keys = [
+        "file",
+        "glass_dirs",
+        "lens_catalogs",
+        "cfg",
+        "state",
+        "beam_path",
+        "history",
+    ];
+    known_keys(p, &keys)?;
+    let (glass, lens) = (&p["glass_dirs"], &p["lens_catalogs"]);
+    let path = match &p["beam_path"] {
         Value::Null => None,
         v => Some(
             v.as_str()
@@ -941,42 +944,6 @@ pub fn user_catalog_edit(method: &str, params: &Value) -> Result<Value, CallErro
 /// [`global`] の場の [`Session::browse`]
 pub fn browse(method: &str, params: &Value) -> Result<Value, CallError> {
     global().browse(method, params)
-}
-
-fn str_list(v: &Value, what: &str) -> Result<Vec<PathBuf>, RpcErr> {
-    match v {
-        Value::Null => Ok(Vec::new()),
-        Value::String(s) => Ok(vec![PathBuf::from(s)]),
-        Value::Array(a) => a
-            .iter()
-            .map(|x| {
-                x.as_str()
-                    .map(PathBuf::from)
-                    .ok_or_else(|| RpcErr::params(format!("{what} must be a list of strings")))
-            })
-            .collect(),
-        _ => Err(RpcErr::params(format!("{what} must be a list of strings"))),
-    }
-}
-
-fn opt_usize(p: &Value, k: &str) -> Result<Option<usize>, RpcErr> {
-    match p.get(k) {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_u64()
-            .map(|x| Some(x as usize))
-            .ok_or_else(|| RpcErr::params(format!("{k} must be an integer 0 or more"))),
-    }
-}
-
-fn opt_f64(p: &Value, k: &str) -> Result<Option<f64>, RpcErr> {
-    match p.get(k) {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_f64()
-            .map(Some)
-            .ok_or_else(|| RpcErr::params(format!("{k} must be a number"))),
-    }
 }
 
 type Reply = (Value, Vec<Bin>);

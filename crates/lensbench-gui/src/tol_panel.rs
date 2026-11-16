@@ -353,8 +353,7 @@ impl TolPanel {
         if m.get("merit").is_none() {
             op["merit"] = json!("wavefront");
         }
-        // #321 より前の GUI が保存した設定は ref（旧名）。読むときだけ reference として受ける
-        if let Some(x) = m.get("reference").or_else(|| m.get("ref")) {
+        if let Some(x) = m.get("reference") {
             op["reference"] = x.clone();
         }
         n.opt.set_params(&op)?;
@@ -455,7 +454,7 @@ impl TolPanel {
                         }
                     }
                 }
-                "compensators" | "merit" | "rings" | "terms" | "configs" | "reference" | "ref" => {}
+                "compensators" | "merit" | "rings" | "terms" | "configs" | "reference" => {}
                 _ => {
                     n.extra.insert(k.clone(), x.clone());
                 }
@@ -1286,15 +1285,6 @@ mod tests {
         q.set_spec(&w).unwrap();
         assert!(q.catalog_tols.is_empty());
         assert_eq!(q.spec().unwrap()["catalog_tols"], w["catalog_tols"]);
-        // #321 より前の GUI が保存した ref（旧名）は reference として読み、書くのは reference だけ
-        let mut old = v.clone();
-        old.as_object_mut().unwrap().remove("reference");
-        old["ref"] = json!("chief");
-        let mut q = TolPanel::default();
-        q.set_spec(&old).unwrap();
-        let back = q.spec().unwrap();
-        assert_eq!(back["reference"], json!("chief"));
-        assert!(back.get("ref").is_none() && !q.extra.contains_key("ref"));
     }
 
     #[test]

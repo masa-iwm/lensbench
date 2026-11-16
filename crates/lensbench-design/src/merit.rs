@@ -22,7 +22,7 @@
 //! `"default_dirs": false` なら最後の 2 つ（既定の場所）を探さない（serve が --root・--allow-remote のときに付ける）。
 //!
 //! 種類ごとのキーは [`crate::term_spec`] の型で読み、知らないキーは誤り。スキーマは `docs/schema/terms.schema.json`
-//! （正式な綴りだけ。読みが受ける別名 `wfe`・dir の `t`・`s`・大文字の `type` はスキーマには無い）。
+//! （正式な綴りだけ。読みが受ける大文字の `type` はスキーマには無い）。
 
 use lensbench_core::analysis::ZernKind;
 use lensbench_core::fiber::FiberOpts;
@@ -111,10 +111,9 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if ty.is_empty() {
         return Err("no type".into());
     }
-    const TYPES: [&str; 12] = [
+    const TYPES: [&str; 11] = [
         "spot",
         "wavefront",
-        "wfe",
         "mtf",
         "paraxial",
         "ray",
@@ -128,7 +127,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
     if !TYPES.contains(&ty.as_str()) {
         return Err(format!("type {ty} (one of {})", TYPES.join(", ")).into());
     }
-    if side != Side::Eq && ["spot", "wavefront", "wfe", "zplm", "plugin"].contains(&ty.as_str()) {
+    if side != Side::Eq && ["spot", "wavefront", "zplm", "plugin"].contains(&ty.as_str()) {
         return Err(format!(
             "{ty} terms can't use min or max (only terms with a single target value)"
         )

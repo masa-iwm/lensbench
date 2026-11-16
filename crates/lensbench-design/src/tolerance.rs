@@ -312,9 +312,6 @@ pub fn read_spec(v: &Value) -> lensbench_core::Result<TolSpec> {
     if !v.is_object() {
         return Err("tolerance settings must be an object".into());
     }
-    if v.get("ref").is_some() {
-        return Err("ref of the tolerance settings was renamed to reference".into());
-    }
     lenient::from_json(v, "tolerance")
 }
 

@@ -187,6 +187,8 @@ impl ArgSpec {
                     _ => Value::Array(v.into_iter().map(num_json).collect()),
                 }
             }
+            // JSON の設定（センサなど）は値にして渡す（serve は文字列の JSON を読み替えない、XCT-34）
+            "json" => serde_json::from_str(t).map_err(|_| bad())?,
             _ if self.repeat => json!(split(t).map(str::to_string).collect::<Vec<_>>()),
             _ => json!(t),
         })
@@ -747,6 +749,17 @@ mod tests {
         assert!(s.value("0").is_err());
         assert_eq!(s.value("1").unwrap(), Some(json!(1)));
         assert_eq!(s.value("").unwrap(), None);
+    }
+
+    /// JSON の設定は値にして渡す（読めなければ欄の誤り）
+    #[test]
+    fn json_value() {
+        let s = spec("sensor", "json", None);
+        assert_eq!(
+            s.value(r#"{"pitch": 0.15}"#).unwrap(),
+            Some(json!({"pitch": 0.15}))
+        );
+        assert!(s.value("{pitch").is_err());
     }
 
     #[test]

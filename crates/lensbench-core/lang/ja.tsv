@@ -1061,6 +1061,7 @@ state {name}: two or more blocks with id {id}	状態 {name}: id {id} のブロ�
 state {name}: {k} of block {id} can't be changed	状態 {name}: ブロック {id} の {k} は変えられません
 state {name}: {e}	状態 {name}: {e}
 state {name}: unknown key {}	状態 {name}: 不明なキー {}
+unknown key {k} (one of {})	不明なキー {k}（{} のどれか）
 exactly one of ratio, coat and pbs	ratio・coat・pbs はどれか 1 つ
 ratio must be 0 to 1	ratio は 0〜1
 path {s}: letters must be T or R	経路 {s}: 文字は T か R
@@ -1137,7 +1138,6 @@ gzip can't be inflated	gzip を展開できません
 the file bundle is cut short	ファイルの束が途中で切れています
 
 # engine, design (Err(String))
-{k} was renamed to {n}	{k} は {n} に名前を変えました
 {k} can't be changed in analyze (choose it in load)	{k} は analyze では変えられません（load で選択）
 save must be a file path	save はファイルのパス
 table must be a list of paths	table はパスの並び
@@ -1162,7 +1162,6 @@ no change to redo	やり直す変更がありません
 internal error (panic): {t}	内部エラー（panic）: {t}
 internal error (panic)	内部エラー（panic）
 stop what must be optimize, tolerance or swap	stop の what は optimize・tolerance・swap のどれか
-{old} was renamed to {new}	{old} は {new} に名前を変えました
 load needs file	load には file
 beam_path must be a string (the BS path, e.g. "TR")	beam_path は文字列（BS の経路、例 "TR"）
 {m} must be catalog_items, catalog_edit or catalog_fill	{m} は catalog_items・catalog_edit・catalog_fill
@@ -1295,7 +1294,6 @@ tolerance {i}: {e}	公差 {i}: {e}
 tolerance {i}: pm or the pair lo and hi	公差 {i}: pm か lo・hi の組
 tolerance {i}: scale must be a list of {} numbers, as many as the parameters ({} given)	公差 {i}: scale はパラメータと同じ数（{}）の数の並び（{} 個）
 tolerance settings must be an object	公差の設定はオブジェクト
-ref of the tolerance settings was renamed to reference	公差の設定の ref は reference に名前を変えました
 no lens or group {k}	レンズ・群 {k} がありません
 radial must be true, false, uniform, normal or normal:σ ({r})	radial は true・false・uniform・normal・normal:σの数（{r}）
 the result has no per-trial values (merit_values)	結果に試行ごとの値（merit_values）がありません
@@ -1537,7 +1535,6 @@ removed lens or group {} (its surfaces are gone)	レンズ・群 {} を外しま
 removed multi-configuration row {}	多重構成の行 {} を外しました
 removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外しました（置く面 {j} を削除しました）
 the global coordinate reference surface {j} was deleted, so it is now surface 1	グローバル座標の基準面 {j} を削除したので面 1 にしました
-warning: the environment variable LENSBENCH_FLOATING_CLIP is no longer used (ignored). To keep floating apertures from clipping, set the system setting floating_clip to false	注意: 環境変数 LENSBENCH_FLOATING_CLIP は使わなくなりました（無視します）。浮動開口でケラレないようにするには系の設定 floating_clip を false にしてください
 .zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses	.zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログのレンズとして読むので使いません
 .zmx system line GFAC {} (pupil apodization) is used only by the diffraction analyses (FFT PSF, Huygens PSF/MTF, diffraction MTF); spot, RMS wavefront, Zernike and geometric MTF do not weight the pupil	.zmx の系の行 GFAC {}（瞳のアポダイゼーション）は回折の解析（FFT PSF・Huygens PSF/MTF・回折 MTF）にだけ入ります。スポット・RMS 波面・Zernike・幾何 MTF は瞳にウェイトをつけません
 .zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx の系の行 {k} {}（デフォルト {d} と違いますが、lensbench は読みません）

@@ -4,18 +4,32 @@ use super::*;
 
 /// カタログの一覧（`glasses`・`lenses`）
 pub(super) fn browse_of(sess: &Session, method: &str, p: &Value) -> Result<Value, RpcErr> {
-    // 名前は load と同じ（glass_dirs・lens_catalogs。旧名 glass_dir・lens_catalog は誤り）
-    let read_all = |k: &'static str, old: &'static str| -> Result<Vec<PathBuf>, RpcErr> {
-        str_list(renamed(p, k, old)?, k)?
+    // 名前は load と同じ（glass_dirs・lens_catalogs）。知らない鍵は誤り
+    let keys: &[&str] = match method {
+        "glasses" => &["glass_dirs"],
+        "lenses" => &["glass_dirs", "lens_catalogs"],
+        _ => &[
+            "glass_dirs",
+            "lens_catalogs",
+            "kinds",
+            "vendor",
+            "text",
+            "specs",
+            "fits",
+        ],
+    };
+    known_keys(p, keys)?;
+    let read_all = |k: &'static str| -> Result<Vec<PathBuf>, RpcErr> {
+        str_list(&p[k], k)?
             .iter()
             .map(|x| sess.files.check_path(x, false))
             .collect()
     };
-    let dirs = read_all("glass_dirs", "glass_dir")?;
+    let dirs = read_all("glass_dirs")?;
     if method == "glasses" {
         return Ok(crate::browse::glasses(&dirs));
     }
-    let cat = read_all("lens_catalogs", "lens_catalog")?;
+    let cat = read_all("lens_catalogs")?;
     if method == "catalog_search" {
         let q = catalog_query(p)?;
         return Ok(crate::browse::search(&cat, &dirs, &q)?);

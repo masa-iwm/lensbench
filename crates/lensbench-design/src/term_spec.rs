@@ -32,10 +32,8 @@ pub enum RefName {
 #[serde(rename_all = "lowercase")]
 pub enum DirName {
     /// タンジェンシャル
-    #[serde(alias = "t")]
     Tan,
     /// サジタル
-    #[serde(alias = "s")]
     Sag,
     /// 両方（既定）
     #[default]
@@ -240,7 +238,6 @@ pub struct PluginSpec {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum TermSpec {
     Spot(RmsSpec),
-    #[serde(alias = "wfe")]
     Wavefront(RmsSpec),
     Mtf(MtfSpec),
     Paraxial(ParaxSpec),

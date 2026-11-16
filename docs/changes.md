@@ -26,6 +26,11 @@
   `FieldNormSpec`・`AimingSpec` は消し、`lensbench_core::system` の `ApertureKind`・`FieldNorm`・`Aiming` を使う。
 - 物体空間 NA の量の名前を `obna` から OpticStudio の演算子名 `obsn` にした: 評価関数の `{"type":"paraxial","q":"obsn"}`、Python の
   `paraxial()` の鍵、`report::SystemData::obsn`、GUI の最適化パネルの選択肢。旧名 `obna` は受けない（誤りになる）。.zmx の系の行 `OBNA`（絞りの種類）はそのまま。
+- 過去互換の受け口を消した（XCT-34、11/16 masa）: 評価関数・公差・差し替え探索の `wfe`（`wavefront` に）と MTF の向き `t`・`s`
+  （`tan`・`sag` に）の別名、serve の `analyze` が数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つの数の並び・JSON の
+  文字列を読み替えること（値は JSON の型で渡す）、旧名（`glass_dir`・`lens_catalog`・`path`・`ref`・`steps`）を新しい名前で示す誤り
+  （serve の `load`・`glasses`・`lenses`・`catalog_search` は知らない鍵を誤りにする。解析は知らない設定の誤り）、環境変数
+  `LENSBENCH_FLOATING_CLIP` の注意、GUI の公差パネルの設定の `ref`・CAD 置き場の設定に書いた Client Secret の読み込み。
 - 名前を CLI・serve・Python でそろえた（CLI-14・CLI-17、11/16 masa 決定。旧名は受けない）:
   Python の `System.geometric_mtf`・`through_focus_mtf`・`field_mtf` は登録簿の名前どおり `geo_mtf`・`mtf_focus`・`mtf_field`。
   `trace`・`trace_rays` の結果の波長の番号の鍵 `wavelengths` は `waves`（引数と同じ）。
@@ -46,9 +51,9 @@
 - GUI の組合せの保存は、ブロックが元になった（文書モデル）。`gui.combo`（組合せの編集状態の写し）は書かず、読まない。前の版で
   保存したファイルはブロックから組合せに戻るので、系はそのまま開けるが、ロック・今の状態・カタログの鏡や平板の品名は外れる。前の版で保存したファイルは `lensbench-gui --convert-combo ファイル…` で一度だけ今の形に直す（元は `.bak` に残す。この変換は次の版で消す）。
 - 最適化（`optimize`）とズーム軌跡（`zoom`）の設定を CLI・serve・Python・GUI で 1 つの型にした（XCT-02）。serve の `optimize`・`zoom` の
-  params は知らないキーが誤り（前は無視）、`merit`・`reference`・`jac`・`method` は決まった綴りだけ（大文字・小文字は問わず、`wfe` も受ける。
+  params は知らないキーが誤り（前は無視）、`merit`・`reference`・`jac`・`method` は決まった綴りだけ（大文字・小文字は問わない。
   誤りの文に鍵の名前が付く）。serve の `optimize` の変数に CLI と同じ範囲の書き方 `"7.t=0.5:3"` を、`zoom` の `efl`・`pmag` に CLI と同じ
-  `"50,-,80"` の文字列を足した。`optimize --json` の `merit` は打った綴りでなく正式の名前（`wfe` → `wavefront`）。
+  `"50,-,80"` の文字列を足した。`optimize --json` の `merit` は打った綴りでなく正式の名前。
   `zoom` で `efl` と `pmag`（CLI は `--efl` と `--pmag`）を両方与えると誤り（前は `efl` を使った）。
 - Python に、登録簿の解析を名前で回す `System.analyze(name, **settings)`、解析の一覧 `lensbench.analyses()`、既定の設定
   `lensbench.defaults(name)` を足した（CLI のサブコマンド・serve の `analyze` と同じ設定・結果）。

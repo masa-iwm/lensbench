@@ -98,14 +98,6 @@ pub fn init_from_env() {
     };
     glass::set_default_dirs(dirs("LENSBENCH_GLASSCAT"));
     zpl_solve::set_default_dirs(dirs("LENSBENCH_MACROS"));
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    if std::env::var_os("LENSBENCH_FLOATING_CLIP").is_some() {
-        ONCE.call_once(|| {
-            eprintln!(
-                "warning: the environment variable LENSBENCH_FLOATING_CLIP is no longer used (ignored). To keep floating apertures from clipping, set the system setting floating_clip to false"
-            )
-        });
-    }
 }
 pub use sync::{LockExt, RwLockExt};
 pub use system::{FieldSel, Prescription, RecSel, System, TraceOpts};

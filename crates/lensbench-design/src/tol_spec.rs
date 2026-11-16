@@ -98,7 +98,6 @@ pub enum Face {
 #[derive(Deserialize, JsonSchema, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MeritName {
-    #[serde(alias = "wfe")]
     Wavefront,
     Spot,
     /// terms だけ

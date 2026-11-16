@@ -15,7 +15,7 @@ pub struct CadStore {
     pub id: String,
     /// Client Secret は設定ファイルに書かない（ポータブルの settings.ron をフォルダごと渡すと付いていくため）。
     /// 起動のたびに入れるか、環境変数 `LENSBENCH_CAD_STORE_SECRET` に置く（欄が空ならそれを使う）
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub secret: String,
 }
 
@@ -85,7 +85,7 @@ pub fn cad_store_ui(ui: &mut Ui, st: &mut CadStore) {
 mod tests {
     use super::CadStore;
 
-    /// 置き場の Client Secret は設定ファイルに書かない（前の版の設定に書いてあれば読める）
+    /// 置き場の Client Secret は設定ファイルに書かず、読まない（前の版の設定に書いてあっても捨てる、XCT-34）
     #[test]
     fn secret_is_not_saved() {
         let st = CadStore {
@@ -98,6 +98,6 @@ mod tests {
         let back: CadStore = ron::from_str(&t).unwrap();
         assert!(back.secret.is_empty());
         let old: CadStore = ron::from_str(r#"(url: "u", id: "i", secret: "old")"#).unwrap();
-        assert_eq!(old.secret, "old");
+        assert!(old.secret.is_empty() && old.id == "i");
     }
 }

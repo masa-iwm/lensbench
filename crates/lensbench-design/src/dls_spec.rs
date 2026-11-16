@@ -172,7 +172,7 @@ str_enum!(
         #[default]
         Spot = "spot",
         /// RMS 波面
-        Wavefront = "wavefront" | "wfe",
+        Wavefront = "wavefront",
         /// なし（足した項だけ）
         None = "none",
     }
@@ -183,7 +183,7 @@ str_enum!(
     ImageMerit ("merit") {
         #[default]
         Spot = "spot",
-        Wavefront = "wavefront" | "wfe",
+        Wavefront = "wavefront",
     }
 );
 
@@ -635,7 +635,9 @@ mod tests {
         assert_eq!(p.merit, Merit::Spot);
         assert!(serde_json::from_value::<OptimizeParams>(json!({"ring": 3})).is_err());
         assert!(serde_json::from_value::<OptimizeParams>(json!({"jac": "x"})).is_err());
-        assert_eq!("WFE".parse::<Merit>().unwrap(), Merit::Wavefront);
+        assert_eq!("Wavefront".parse::<Merit>().unwrap(), Merit::Wavefront);
+        // 別名 wfe は受けない（XCT-34）
+        assert!("wfe".parse::<Merit>().is_err());
         assert!("x"
             .parse::<Jac>()
             .unwrap_err()
