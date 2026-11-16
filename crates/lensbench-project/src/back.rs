@@ -9,59 +9,21 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
     let n = e.surfaces.len();
     let mut v = Vec::new();
     for (i, s) in e.surfaces.iter().enumerate() {
-        let shape = match s.typ {
-            SurfType::Standard | SurfType::EvenAsph => Some(SurfShape::Standard),
-            SurfType::OddAsph => Some(SurfShape::OddAsph),
-            SurfType::Toroidal => Some(SurfShape::Toroidal),
-            SurfType::Fresnel => Some(SurfShape::Fresnel),
-            _ => None,
-        };
-        let e =
-            "only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved";
-        let shape = shape.ok_or_else(|| format!("lens surface {}: {e}", i + 1))?;
-        if s.is_mirror() {
+        let last = i + 1 == n;
+        let mut q = surface_spec(s, last).map_err(|e| format!("lens surface {}: {e}", i + 1))?;
+        if q.coordbrk.is_some() || s.typ == SurfType::Jones {
             return Err(format!(
-                "lens surface {}: a lens with a mirror surface can't be saved",
+                "lens surface {}: only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved",
                 i + 1
             )
             .into());
         }
-        let glass = if i + 1 == n {
-            None
-        } else {
-            match &s.mat {
-                Material::Air => None,
-                // 屈折率だけの媒質（.zmx の分散のないモデルガラス）は数で
-                Material::Index(nd) => Some(format!("{nd}")),
-                Material::Model { .. } => {
-                    return Err(format!(
-                        "lens surface {}: model glass {} with dispersion can't be saved",
-                        i + 1,
-                        s.mat
-                    )
-                    .into())
-                }
-                m => Some(m.name()),
-            }
-        };
-        v.push(SurfSpec {
-            radius: (s.c != 0.0).then(|| 1.0 / s.c),
-            conic: s.k,
-            asph: if s.typ == SurfType::Standard {
-                Vec::new()
-            } else {
-                s.asph.clone()
-            },
-            shape,
-            radius_x: (shape == SurfShape::Toroidal && s.cx != 0.0).then(|| 1.0 / s.cx),
-            t: if i + 1 == n { 0.0 } else { s.t },
-            glass,
-            // カタログの玉は径が決まっているので固定（自動ならいまの値）
-            semi: Semi::Value(s.semi),
-            coat: s.coat.clone(),
-            comment: s.comment.clone(),
-            ..Default::default()
-        });
+        if last {
+            q.t = 0.0;
+        }
+        // カタログの玉は径が決まっているので固定（自動ならいまの値）
+        q.semi = Semi::Value(s.semi);
+        v.push(q);
     }
     Ok(Block::Lens {
         id: id.to_string(),
@@ -361,17 +323,47 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
     Ok(())
 }
 
-/// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。書けない値（面の前後の傾き・偏心、
-/// 標準面・偶数次非球面・Jones 面のほかの型、鏡、ignore、dn・disp、分散のあるモデルガラス）は誤り
+/// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。[`surf`] が作る面はすべて書け、
+/// `surface_spec` → `surf` で同じ面に戻る（PRJ-15）。書けない値（面の前後の傾き・偏心、[`SurfShape`] のほかの型、
+/// 鏡、ignore、dn・disp）は誤り
 pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
-    if !matches!(
-        f.typ,
-        SurfType::Standard | SurfType::EvenAsph | SurfType::Jones
-    ) {
-        return Err(format!("surface type {:?} can't be written", f.typ).into());
-    }
+    let shape = match f.typ {
+        SurfType::Standard | SurfType::EvenAsph | SurfType::Jones | SurfType::CoordBrk => {
+            SurfShape::Standard
+        }
+        SurfType::OddAsph => SurfShape::OddAsph,
+        SurfType::Toroidal => SurfShape::Toroidal,
+        SurfType::Fresnel => SurfShape::Fresnel,
+        t => return Err(format!("surface type {:?} can't be written", t).into()),
+    };
     if f.is_mirror() {
         return Err("a mirror surface can't be written".into());
+    }
+    if f.ignore || f.dn != 0.0 || f.disp != 0.0 {
+        return Err("ignore, dn and disp can't be written".into());
+    }
+    if f.cx != 0.0 && shape != SurfShape::Toroidal {
+        return Err("cx is only for a toroidal surface".into());
+    }
+    if f.typ == SurfType::CoordBrk {
+        if f.before.is_some() || f.after != After::None {
+            return Err(
+                "tilts and decenters before or after a surface (before, after) can't be written"
+                    .into(),
+            );
+        }
+        if f.ap != Aperture::None {
+            return Err("a coordinate break surface can't have an aperture".into());
+        }
+        return Ok(SurfSpec {
+            t: f.t,
+            semi: Semi::of(f),
+            coat: f.coat.clone(),
+            comment: f.comment.clone(),
+            coordbrk: Some(f.cb),
+            order: f.cb_order,
+            ..Default::default()
+        });
     }
     // 頂点のまわりの傾きだけで後で戻す面は tilt で書ける（tilt は tx → ty の順。順序 1 は tx・ty の片方が 0 のときだけ同じ）
     let tilt =
@@ -390,20 +382,12 @@ pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec>
                     .into(),
             ),
         };
-    if f.ignore || f.dn != 0.0 || f.disp != 0.0 || f.cx != 0.0 {
-        return Err("ignore, dn, disp and cx can't be written".into());
-    }
     let glass = if last {
         None
     } else {
         match &f.mat {
             Material::Air => None,
             Material::Index(nd) => Some(format!("{nd}")),
-            Material::Model { .. } => {
-                return Err(
-                    format!("model glass {} with dispersion can't be written", f.mat).into(),
-                )
-            }
             m => Some(m.name()),
         }
     };
@@ -479,11 +463,13 @@ pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec>
     Ok(SurfSpec {
         radius: (f.c != 0.0).then(|| 1.0 / f.c),
         conic: f.k,
-        asph: if f.typ == SurfType::EvenAsph {
-            f.asph.clone()
-        } else {
+        asph: if matches!(f.typ, SurfType::Standard | SurfType::Jones) {
             Vec::new()
+        } else {
+            f.asph.clone()
         },
+        shape,
+        radius_x: (f.cx != 0.0).then(|| 1.0 / f.cx),
         t: f.t,
         glass,
         semi: Semi::of(f),

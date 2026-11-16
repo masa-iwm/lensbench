@@ -180,6 +180,111 @@ mod retarder_spec_tests {
 }
 
 #[cfg(test)]
+mod surface_spec_all_tests {
+    use super::*;
+
+    /// 小さな擬似乱数（試験を毎回同じにする）
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn pick(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+        fn val(&mut self) -> f64 {
+            (self.pick(2001) as f64 - 1000.0) / 37.0
+        }
+    }
+
+    /// PRJ-15: surf が読める面はすべて surface_spec で書け、書いたものから同じ面に戻る
+    #[test]
+    fn every_readable_surface_round_trips() {
+        let mut r = Rng(0x9e37_79b9_7f4a_7c15);
+        let mut kinds = [0usize; 8];
+        for _ in 0..4000 {
+            let shape = [
+                SurfShape::Standard,
+                SurfShape::OddAsph,
+                SurfShape::Toroidal,
+                SurfShape::Fresnel,
+            ][r.pick(4) as usize];
+            let special = r.pick(6);
+            let flat = special != 0;
+            let mut q = SurfSpec {
+                shape: if flat { SurfShape::Standard } else { shape },
+                t: r.val(),
+                semi: if r.pick(2) == 0 {
+                    Semi::Auto(AutoWord::Auto)
+                } else {
+                    Semi::Value(r.val().abs() + 0.1)
+                },
+                coat: ["", "AR"][r.pick(2) as usize].into(),
+                comment: ["", "c"][r.pick(2) as usize].into(),
+                ..Default::default()
+            };
+            if !flat {
+                q.radius = (r.pick(3) != 0).then(|| r.val()).filter(|v| *v != 0.0);
+                q.conic = if r.pick(2) == 0 { 0.0 } else { r.val() };
+                q.asph = (0..r.pick(4)).map(|_| r.val() * 1e-5).collect();
+                if shape == SurfShape::Toroidal {
+                    q.radius_x = (r.pick(2) == 0).then(|| r.val()).filter(|v| *v != 0.0);
+                }
+                q.glass = [
+                    None,
+                    Some("N-BK7"),
+                    Some("1.6"),
+                    Some("1.6,40"),
+                    Some("1.6,40,0.01"),
+                ][r.pick(5) as usize]
+                    .map(String::from);
+                if r.pick(3) == 0 {
+                    q.tilt = Some([r.val(), if r.pick(2) == 0 { 0.0 } else { r.val() }]);
+                }
+                if r.pick(3) == 0 {
+                    q.aperture = Some(SurfAperture::Rect {
+                        hx: 2.0,
+                        hy: 1.0,
+                        dx: r.val(),
+                        dy: 0.0,
+                    });
+                }
+            }
+            match special {
+                1 => q.jones = Some([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, r.val(), 0.0]),
+                2 => {
+                    q.polarizer = Some(PolarizerSpec {
+                        axis_deg: r.val(),
+                        extinction_ratio: 100.0,
+                        transmittance: 0.9,
+                    })
+                }
+                3 => {
+                    q.coordbrk = Some([r.val(), r.val(), r.val(), r.val(), r.val()]);
+                    q.order = r.pick(2) as u8;
+                }
+                _ => {}
+            }
+            kinds[q.shape as usize + 4 * usize::from(flat)] += 1;
+            let s = surf(&q).unwrap_or_else(|e| panic!("{q:?}: {e}"));
+            let back = surface_spec(&s, false).unwrap_or_else(|e| panic!("{q:?}: {e}"));
+            let s2 = surf(&back).unwrap_or_else(|e| panic!("{back:?}: {e}"));
+            assert_eq!(format!("{s:?}"), format!("{s2:?}"), "{q:?}");
+            // 書き戻しは変わらない（2 回目も同じ）
+            let again = surface_spec(&s2, false).unwrap();
+            assert_eq!(
+                serde_json::to_value(&back).unwrap(),
+                serde_json::to_value(&again).unwrap()
+            );
+        }
+        assert!(kinds.iter().take(5).all(|n| *n > 0), "{kinds:?}");
+    }
+}
+
+#[cfg(test)]
 mod read_text_tests {
     use super::*;
     use std::io::Write;

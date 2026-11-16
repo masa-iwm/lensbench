@@ -864,8 +864,6 @@ out extension {ext} (csv, json, tif, png)	out の拡張子 {ext}（csv・json・
 # project (Err(String)), export, optim, web
 not a lens element	レンズでない要素
 lens surface {}: {e}	レンズの面 {}: {e}
-lens surface {}: a lens with a mirror surface can't be saved	レンズの面 {}: ミラーの面のあるレンズは保存できません
-lens surface {}: model glass {} with dispersion can't be saved	レンズの面 {}: 分散のあるモデルガラス {} は保存できません
 no block {id}	ブロック {id} はありません
 two or more blocks with id {id}	id {id} のブロックが 2 つ以上あります
 no block id to save	保存するブロックの id がありません
@@ -879,8 +877,8 @@ block {id} surface {k}: {e}	ブロック {id} の面 {k}: {e}
 surface type {:?} can't be written	面の型 {:?} は書けません
 a mirror surface can't be written	ミラーの面は書けません
 tilts and decenters before or after a surface (before, after) can't be written	面の前後のチルト・偏心（before・after）は書けません
-ignore, dn, disp and cx can't be written	ignore・dn・disp・cx は書けません
-model glass {} with dispersion can't be written	分散のあるモデルガラス {} は書けません
+ignore, dn and disp can't be written	ignore・dn・disp は書けません
+cx is only for a toroidal surface	cx はトロイダル面だけのものです
 the glass after the exit of a birefringent plate goes to the entrance of the next plate of the same material with thickness 0	複屈折材の板の出口の後の硝材は、厚み 0 で同じ材料の次の板の入口へ
 two birefringent plate entrances in a row (an exit is needed)	複屈折材の板の入口が続きます（出口が必要です）
 no entrance before the exit of a birefringent plate	複屈折材の板の出口の前に入口がありません
