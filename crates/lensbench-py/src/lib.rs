@@ -1723,7 +1723,7 @@ impl PySystem {
         src_what: Option<&str>,
     ) -> PyResult<()> {
         let s0 = self.sys();
-        let mut p = lensbench_core::param::Pickup::new(
+        let mut p = lensbench_core::pickup::Pickup::new(
             surf_of(&s0, dst)?,
             surf_of(&s0, src)?,
             edit::pick_kind(what)?,
@@ -1750,12 +1750,12 @@ impl PySystem {
             .solves
             .iter()
             .map(|q| {
-                let (name, param, other) = lensbench_core::edit::solve_kind_info(q.kind);
+                let (name, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
                 let d = PyDict::new(py);
                 d.set_item("surf", q.surf)?;
                 d.set_item("what", if q.kind.is_curv() { "c" } else { "t" })?;
                 d.set_item("kind", name)?;
-                d.set_item("value", q.height)?;
+                d.set_item("value", value)?;
                 d.set_item("param", param)?;
                 d.set_item("other", other)?;
                 Ok(d)
@@ -1779,10 +1779,10 @@ impl PySystem {
     ) -> PyResult<()> {
         let s0 = self.sys();
         let other = other.map(|f| surf_of(&s0, f)).transpose()?;
-        let q = lensbench_core::param::ThickSolve {
+        let q = lensbench_core::solves::Solve {
             surf: surf_of(&s0, surf)?,
-            height: value,
-            kind: lensbench_core::edit::solve_kind_parse(kind, param, other).map_err(err)?,
+            kind: lensbench_core::solves::solve_kind_parse(kind, value, param, other)
+                .map_err(err)?,
         };
         self.mutate(|s| s.add_solve(q))
     }

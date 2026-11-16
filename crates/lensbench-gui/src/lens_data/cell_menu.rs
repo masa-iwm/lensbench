@@ -4,7 +4,7 @@ use super::*;
 
 /// ソルブの種類が曲率のものか
 fn curv_kind(k: &str) -> bool {
-    lensbench_core::edit::solve_kind_parse(k, 0.0, Some(0)).is_ok_and(|x| x.is_curv())
+    lensbench_core::solves::solve_kind_parse(k, 0.0, 0.0, Some(0)).is_ok_and(|x| x.is_curv())
 }
 
 /// セルの右クリックの欄の「上書きを外す」（組合せの系で、面の上書きのあるセル）
@@ -62,7 +62,7 @@ pub(super) fn cell_menu(
                 }
             });
         }
-        let kinds: Vec<&str> = lensbench_core::edit::SOLVE_KINDS
+        let kinds: Vec<&str> = lensbench_core::solves::SOLVE_KINDS
             .iter()
             .copied()
             .filter(|k| curv_kind(k) == (w == "c"))

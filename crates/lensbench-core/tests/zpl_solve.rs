@@ -3,7 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
-use lensbench_core::param::{Kind, Param, SolveKind};
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::solves::SolveKind;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_formats::zmx_write;
 
@@ -57,7 +58,7 @@ fn macro_curvature_solve_recomputes() {
     assert!(s
         .solves
         .iter()
-        .any(|q| q.surf == 2 && matches!(q.kind, SolveKind::MacroCurv(_))));
+        .any(|q| q.surf == 2 && matches!(q.kind, SolveKind::MacroCurv { .. })));
     // 変数を変えると解き直す
     let s2 = s.with_params(&[(Param::new(1, Kind::Curv), 0.03)]).unwrap();
     assert_eq!(s2.surfaces[2].c, -0.03);

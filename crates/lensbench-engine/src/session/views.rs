@@ -75,7 +75,7 @@ pub struct ConfigRow {
 }
 
 /// 構成のピックアップ（core の型をそのまま）
-pub use lensbench_core::edit::ConfigPick;
+pub use lensbench_core::configs::ConfigPick;
 
 /// serde_json は NaN を null に書くので、読むときは null を NaN に戻す
 fn nan_for_null<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::Error> {

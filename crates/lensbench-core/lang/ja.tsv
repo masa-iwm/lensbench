@@ -365,7 +365,7 @@ thickness of the image surface	像面の厚み
 field point {kind} is not system data (it is a trace input)	物点 {kind} は系のデータではありません（追跡の入力）
 lens or group {unit}: medium {medium} differs between surfaces ({v:?})	レンズ・群 {unit} の媒質の {medium} が面ごとに違います（{v:?}）
 {name} becomes {now} by a pickup and doesn't match {v} of the lens or group change	{name} はピックアップで {now} になり、レンズ・群の変更の {v} と合いません
-{} is set by a solve ({:?})	{} はソルブ（{:?}）で決まります
+{} is set by a solve ({})	{} はソルブ（{}）で決まります
 {name} is a pickup from surface {src} (scale {scale}, offset {offset}); change the source surface	{name} は面 {src} からのピックアップ（倍率 {scale}、オフセット {offset}）。元の面を変えてください
 no pickup surface (from {}, to {})	ピックアップの面（元 {}、先 {}）がありません
 material or coating pickups don't converge (a loop?)	材料・コーティングのピックアップが収束しません（循環？）
@@ -389,7 +389,7 @@ surface {k}: the position solve thickness is not finite (sum from surface {f})	�
 surface {k}: compensator solve referring to itself	面 {k}: 自分を基準にした補償のソルブ
 surface {k}: center of curvature solve on the later surface {s0}	面 {k}: 後ろの面 {s0} の曲率中心のソルブ
 surface {k}: no macro {i} ({} in all)	面 {k}: マクロ {i} がありません（全 {}）
-surface {k}: solve {:?} can't be solved ({v})	面 {k}: ソルブ {:?} が解けません（{v}）
+surface {k}: solve {} can't be solved ({v})	面 {k}: ソルブ {} が解けません（{v}）
 surface {k}: ray curvature solve on a mirror or a surface after a mirror	面 {k}: ミラー・ミラーの後の面の光線の曲率のソルブ
 curvature solve on surface {k} ({:?})	面 {k}（{:?}）の曲率のソルブ
 surface {k}: the ray height is 0, so the curvature solve can't be solved	面 {k}: 光線の高さが 0 で曲率のソルブが解けません

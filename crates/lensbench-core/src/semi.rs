@@ -89,9 +89,9 @@ impl System {
         }) || self
             .pickups
             .iter()
-            .any(|p| p.what == crate::param::PickKind::Semi && auto(p.src))
+            .any(|p| p.what == crate::pickup::PickKind::Semi && auto(p.src))
             || self.solves.iter().any(|q| {
-                matches!(q.kind, crate::param::SolveKind::Edge(r) if r == 0.0)
+                matches!(q.kind, crate::solves::SolveKind::Edge { radius: r, .. } if r == 0.0)
                     && (auto(q.surf) || auto(q.surf + 1))
             })
     }
@@ -120,7 +120,7 @@ impl System {
         if self
             .pickups
             .iter()
-            .any(|p| p.what == crate::param::PickKind::Semi)
+            .any(|p| p.what == crate::pickup::PickKind::Semi)
         {
             let _ = self.resolve_pickups();
         }

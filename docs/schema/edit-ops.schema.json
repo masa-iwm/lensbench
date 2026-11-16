@@ -239,7 +239,7 @@
           "description": "ソルブを置く",
           "properties": {
             "kind": {
-              "description": "種類（既定 marginal_height、[`lensbench_core::edit::SOLVE_KINDS`]）",
+              "description": "種類（既定 marginal_height、[`lensbench_core::solves::SOLVE_KINDS`]）",
               "type": [
                 "string",
                 "null"

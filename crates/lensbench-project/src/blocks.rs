@@ -176,7 +176,7 @@ pub(crate) struct ZmxLinks {
     /// 取り込んだ向き（1 か、鏡の後で −1。曲率・厚さの符号を返した）
     pub(crate) sign: f64,
     pub(crate) pickups: Vec<Pickup>,
-    pub(crate) solves: Vec<ThickSolve>,
+    pub(crate) solves: Vec<Solve>,
     /// 取り込んだ .zmx の像面の番号
     pub(crate) image: usize,
 }

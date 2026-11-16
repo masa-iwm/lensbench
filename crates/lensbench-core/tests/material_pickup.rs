@@ -1,7 +1,7 @@
 //! 材料のピックアップ（.zmx の GLAS 名前 2 元の面 …）。Ghost Focus Generator が保存するゴーストの系は戻りの面の
 //! 材料をこの形で書く（名前と nd・vd は保存時のもので、使わない）。
 
-use lensbench_core::param::PickKind;
+use lensbench_core::pickup::PickKind;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
@@ -164,7 +164,7 @@ fn follows_material_change() {
 /// 膜のピックアップ: 元の面の膜の名前を写す。.zmx には書かない（OpticStudio に無い）
 #[test]
 fn coating_pickup_copies_name() {
-    use lensbench_core::param::Pickup;
+    use lensbench_core::pickup::Pickup;
     let mut s = build(&explicit());
     s.set_coating(1, "AR").unwrap();
     s.add_pickup(Pickup::new(2, 1, PickKind::Coating, 1.0, 0.0))

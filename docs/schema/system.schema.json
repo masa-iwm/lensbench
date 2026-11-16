@@ -2405,7 +2405,7 @@
         },
         "solves": {
           "items": {
-            "$ref": "#/$defs/ThickSolve"
+            "$ref": "#/$defs/Solve"
           },
           "type": "array"
         },
@@ -3348,19 +3348,53 @@
         }
       ]
     },
-    "SolveKind": {
-      "description": "ソルブの種類（.zmx の書き方は OpticStudio 2026 R1.01 で実測）。値は [`ThickSolve::height`]",
+    "Solve": {
+      "description": "ソルブ: 面 surf の厚さか曲率（[`SolveKind::is_curv`]）を、種類 kind の条件で決める",
       "oneOf": [
         {
-          "const": "MarginalHeight",
-          "description": "厚さ: 次の面での主波長の近軸マージナル光線の高さ = 値（MAZH 高さ 0）",
-          "type": "string"
+          "description": "厚さ: 次の面での主波長の近軸マージナル光線の高さ = height（MAZH 高さ 0）",
+          "properties": {
+            "height": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "marginal_height",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "height"
+          ],
+          "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 次の面での実光線（軸上、瞳 (0, 帯)、主波長）の高さ = 値（MAZH 高さ 帯、帯 ≠ 0）",
+          "description": "厚さ: 次の面での実光線（軸上、瞳 (0, zone)、主波長）の高さ = height（MAZH 高さ 帯、帯 ≠ 0）",
           "properties": {
-            "MarginalHeightZone": {
+            "height": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "marginal_height_zone",
+              "type": "string"
+            },
+            "zone": {
               "anyOf": [
                 {
                   "format": "double",
@@ -3373,20 +3407,56 @@
             }
           },
           "required": [
-            "MarginalHeightZone"
+            "type",
+            "height",
+            "zone"
           ],
           "type": "object"
         },
         {
-          "const": "ChiefHeight",
-          "description": "厚さ: 次の面での近軸主光線の高さ = 値（CHZH 高さ 0）",
-          "type": "string"
+          "description": "厚さ: 次の面での近軸主光線の高さ = height（CHZH 高さ 0）",
+          "properties": {
+            "height": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "chief_height",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "height"
+          ],
+          "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 軸上の視野・主波長の実光線（瞳 (0, 帯)）の像面での OPD [波] = 値（OPDZ OPD 帯）。OPD は\n[`crate::analysis::opd`]（OpticStudio の光線の OPD、OPDC と同じ）",
+          "description": "厚さ: 軸上の視野・主波長の実光線（瞳 (0, zone)）の像面での OPD [波] = opd（OPDZ OPD 帯）。OPD は\n[`crate::analysis::opd`]（OpticStudio の光線の OPD、OPDC と同じ）",
           "properties": {
-            "Opd": {
+            "opd": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "opd",
+              "type": "string"
+            },
+            "zone": {
               "anyOf": [
                 {
                   "format": "double",
@@ -3399,20 +3469,29 @@
             }
           },
           "required": [
-            "Opd"
+            "type",
+            "opd",
+            "zone"
           ],
           "type": "object"
         },
         {
-          "const": "PupilPosition",
           "description": "厚さ: 次の面を近軸の瞳（その空間で近軸主光線が軸を切る位置）に置く（TPUP）",
-          "type": "string"
+          "properties": {
+            "type": {
+              "const": "pupil_position",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 半径方向の高さ r（0 は面の半直径）でのコバ厚 = 値（EDGE コバ厚 r）",
+          "description": "厚さ: 半径方向の高さ radius（0 は面の半直径）でのコバ厚 = thickness（EDGE コバ厚 r）",
           "properties": {
-            "Edge": {
+            "radius": {
               "anyOf": [
                 {
                   "format": "double",
@@ -3422,175 +3501,330 @@
                   "$ref": "#/$defs/NonFinite"
                 }
               ]
+            },
+            "thickness": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "edge",
+              "type": "string"
             }
           },
           "required": [
-            "Edge"
+            "type",
+            "thickness",
+            "radius"
           ],
           "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 面 s から次の面までの距離（厚さの和 Σ t[s..=この面]）= 値（TOLE s 長さ）。s が後ろなら、この面から\n面 s までの距離 Σ t[この面..s] = 値",
+          "description": "厚さ: 面 other から次の面までの距離（厚さの和 Σ t[other..=この面]）= length（TOLE s 長さ）。other が後ろなら、\nこの面から面 other までの距離 Σ t[この面..other] = length",
           "properties": {
-            "Position": {
+            "length": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "other": {
               "format": "uint",
               "minimum": 0,
               "type": "integer"
+            },
+            "type": {
+              "const": "position",
+              "type": "string"
             }
           },
           "required": [
-            "Position"
+            "type",
+            "other",
+            "length"
           ],
           "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 面 s の厚さ + この面の厚さ = 値（TCOM s 和）",
+          "description": "厚さ: 面 other の厚さ + この面の厚さ = sum（TCOM s 和）",
           "properties": {
-            "Compensator": {
+            "other": {
               "format": "uint",
               "minimum": 0,
               "type": "integer"
+            },
+            "sum": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "compensator",
+              "type": "string"
             }
           },
           "required": [
-            "Compensator"
+            "type",
+            "other",
+            "sum"
           ],
           "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: 次の面を面 s の曲率中心に置く（TCOC s 0。平面は R = 1e10）",
+          "description": "厚さ: 次の面を面 other の曲率中心に置く（TCOC s 0。平面は R = 1e10）",
           "properties": {
-            "CenterOfCurvature": {
+            "other": {
               "format": "uint",
               "minimum": 0,
               "type": "integer"
+            },
+            "type": {
+              "const": "center_of_curvature",
+              "type": "string"
             }
           },
           "required": [
-            "CenterOfCurvature"
+            "type",
+            "other"
           ],
           "type": "object"
         },
         {
-          "const": "MarginalAngle",
-          "description": "曲率: 面の後の近軸マージナル光線の傾き = 値（CURV c 2 値）",
-          "type": "string"
+          "description": "曲率: 面の後の近軸マージナル光線の傾き = angle（CURV c 2 値）",
+          "properties": {
+            "angle": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "marginal_angle",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "angle"
+          ],
+          "type": "object"
         },
         {
-          "const": "ChiefAngle",
-          "description": "曲率: 面の後の近軸主光線の傾き = 値（CURV c 3 値）",
-          "type": "string"
+          "description": "曲率: 面の後の近軸主光線の傾き = angle（CURV c 3 値）",
+          "properties": {
+            "angle": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "chief_angle",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "angle"
+          ],
+          "type": "object"
         },
         {
-          "const": "MarginalNormal",
           "description": "曲率: 近軸マージナル光線が面に垂直に入る（CURV c 5）",
-          "type": "string"
+          "properties": {
+            "type": {
+              "const": "marginal_normal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
         },
         {
-          "const": "ChiefNormal",
           "description": "曲率: 近軸主光線が面に垂直に入る（CURV c 6）",
-          "type": "string"
+          "properties": {
+            "type": {
+              "const": "chief_normal",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
         },
         {
-          "const": "Aplanatic",
           "description": "曲率: 近軸マージナル光線で不遊（u′/n′ = u/n、CURV c 7）",
-          "type": "string"
-        },
-        {
-          "const": "ElementPower",
-          "description": "曲率: この面を含む玉（後ろがガラスなら次の面と、そうでなければ前の面と）のパワー = 値（CURV c 8 値）",
-          "type": "string"
-        },
-        {
-          "additionalProperties": false,
-          "description": "曲率: 曲率中心を面 s の頂点に置く（CURV c 9 s）",
           "properties": {
-            "ConcentricSurface": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
+            "type": {
+              "const": "aplanatic",
+              "type": "string"
             }
           },
           "required": [
-            "ConcentricSurface"
+            "type"
           ],
           "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "曲率: 曲率中心を面 s の曲率中心に置く（CURV c 10 s。平面は R = 1e10）",
+          "description": "曲率: この面を含む玉（後ろがガラスなら次の面と、そうでなければ前の面と）のパワー = power（CURV c 8 値）",
           "properties": {
-            "ConcentricRadius": {
-              "format": "uint",
-              "minimum": 0,
-              "type": "integer"
+            "power": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "element_power",
+              "type": "string"
             }
           },
           "required": [
-            "ConcentricRadius"
+            "type",
+            "power"
           ],
           "type": "object"
         },
         {
-          "const": "FNumber",
-          "description": "曲率: 面の後の近軸マージナル光線の傾き = −1/(2 F)（CURV c 11 F）",
-          "type": "string"
+          "description": "曲率: 曲率中心を面 other の頂点に置く（CURV c 9 s）",
+          "properties": {
+            "other": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "concentric_surface",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "other"
+          ],
+          "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "曲率: ZPL のマクロ（[`System::macros`] の番号）の SOLVERETURN の値（CURV c 12 … \"名前\"）",
+          "description": "曲率: 曲率中心を面 other の曲率中心に置く（CURV c 10 s。平面は R = 1e10）",
           "properties": {
-            "MacroCurv": {
+            "other": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "concentric_radius",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "other"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "曲率: 面の後の近軸マージナル光線の傾き = −1/(2 fnum)（CURV c 11 F）",
+          "properties": {
+            "fnum": {
+              "anyOf": [
+                {
+                  "format": "double",
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/$defs/NonFinite"
+                }
+              ]
+            },
+            "type": {
+              "const": "f_number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "fnum"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "曲率: ZPL のマクロ（[`System::macros`] の番号 index）の SOLVERETURN の値（CURV c 12 … \"名前\"）",
+          "properties": {
+            "index": {
               "format": "uint16",
               "maximum": 65535,
               "minimum": 0,
               "type": "integer"
+            },
+            "type": {
+              "const": "macro_curv",
+              "type": "string"
             }
           },
           "required": [
-            "MacroCurv"
+            "type",
+            "index"
           ],
           "type": "object"
         },
         {
-          "additionalProperties": false,
-          "description": "厚さ: ZPL のマクロ（[`System::macros`] の番号）の SOLVERETURN の値",
+          "description": "厚さ: ZPL のマクロ（[`System::macros`] の番号 index）の SOLVERETURN の値",
           "properties": {
-            "MacroThick": {
+            "index": {
               "format": "uint16",
               "maximum": 65535,
               "minimum": 0,
               "type": "integer"
+            },
+            "type": {
+              "const": "macro_thick",
+              "type": "string"
             }
           },
           "required": [
-            "MacroThick"
+            "type",
+            "index"
           ],
           "type": "object"
         }
-      ]
-    },
-    "ThickSolve": {
-      "description": "ソルブ: 面 surf の厚さか曲率（[`SolveKind::is_curv`]）を、種類 kind の条件で決める。height はその値\n（高さ・角度・コバ厚・長さ・和・パワー・F/#。使わない種類では 0）。名前は厚さのソルブだけだった頃のもの",
+      ],
       "properties": {
-        "height": {
-          "anyOf": [
-            {
-              "format": "double",
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/NonFinite"
-            }
-          ]
-        },
-        "kind": {
-          "$ref": "#/$defs/SolveKind",
-          "default": "MarginalHeight"
-        },
         "surf": {
           "format": "uint",
           "minimum": 0,
@@ -3598,8 +3832,7 @@
         }
       },
       "required": [
-        "surf",
-        "height"
+        "surf"
       ],
       "type": "object"
     },

@@ -15,12 +15,13 @@ pub(crate) mod read;
 pub(crate) mod write;
 
 use lensbench_core::coating::Table;
-use lensbench_core::edit::Configs;
+use lensbench_core::configs::Configs;
 use lensbench_core::freeform::{GridSag, ZernSag};
 use lensbench_core::grin::GrinKind;
 use lensbench_core::mech::MechPart;
-use lensbench_core::param::{Pickup, ThickSolve};
+use lensbench_core::pickup::Pickup;
 use lensbench_core::plugin::Config;
+use lensbench_core::solves::Solve;
 use lensbench_core::surface::{Binary2, CylFresnel};
 use lensbench_core::system::{AfocalUnit, Aiming, ApertureKind, FieldNorm, VigInterp};
 use lensbench_core::units::Unit;
@@ -141,7 +142,7 @@ pub struct Prescription {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pickups: Vec<Pickup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub solves: Vec<ThickSolve>,
+    pub solves: Vec<Solve>,
     /// ソルブが呼ぶ ZPL のマクロ（文を入れる）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub macros: Vec<Macro>,

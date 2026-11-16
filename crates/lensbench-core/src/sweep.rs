@@ -321,7 +321,7 @@ fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
             }
         }
     }
-    let c = solve(g, v);
+    let c = crate::linalg::solve_or_zero(g, v);
     Ok(rows
         .iter()
         .enumerate()
@@ -337,51 +337,6 @@ fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
                 .sum()
         })
         .collect())
-}
-
-/// 小さな連立一次方程式（部分ピボットの消去）。ピボットが 0 の未知数は 0 にする（傾きが決まらないとき）
-#[doc(hidden)]
-pub fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Vec<f64> {
-    let n = b.len();
-    let scale = a
-        .iter()
-        .flatten()
-        .fold(0.0f64, |x, y| x.max(y.abs()))
-        .max(1e-300);
-    let mut skip = vec![false; n];
-    for c in 0..n {
-        let p = (c..n)
-            .max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))
-            .expect("non-empty range");
-        if !(a[p][c].abs() > 1e-14 * scale) {
-            skip[c] = true;
-            continue;
-        }
-        a.swap(c, p);
-        b.swap(c, p);
-        for r in c + 1..n {
-            let f = a[r][c] / a[c][c];
-            if f == 0.0 {
-                continue;
-            }
-            for k in c..n {
-                a[r][k] -= f * a[c][k];
-            }
-            b[r] -= f * b[c];
-        }
-    }
-    let mut x = vec![0.0; n];
-    for c in (0..n).rev() {
-        if skip[c] {
-            continue;
-        }
-        let mut t = b[c];
-        for k in c + 1..n {
-            t -= a[c][k] * x[k];
-        }
-        x[c] = t / a[c][c];
-    }
-    x
 }
 
 /// 1 点の RMS（スポット半径・x・y、波面、ストレール比）。w None なら多色
@@ -585,13 +540,13 @@ mod tests {
                 }
             }
         }
-        let r = solve(g, v);
+        let r = crate::linalg::solve_or_zero(g, v);
         assert!(
             (r[0] - 1.5).abs() < 1e-12 && r[1] == 0.0 && (r[2] - 2.0).abs() < 1e-12,
             "{r:?}"
         );
         // 傾きの列がすべて 0 ならピストンは重み付き平均
-        let r = solve(
+        let r = crate::linalg::solve_or_zero(
             vec![vec![2.0, 0.0, 0.0], vec![0.0; 3], vec![0.0; 3]],
             vec![3.0, 0.0, 0.0],
         );
@@ -614,7 +569,7 @@ mod tests {
                 }
             }
         }
-        let r = solve(g, v);
+        let r = crate::linalg::solve_or_zero(g, v);
         assert!((r[0] - a).abs() < 1e-12 && (r[1] - b).abs() < 1e-12 && (r[2] - c).abs() < 1e-12);
     }
 

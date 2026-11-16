@@ -277,6 +277,10 @@ pub fn from_str_with(
         .to_string();
     // 版 1 は面ごとに屈折率を持つ（分散のない媒質の値に使う）
     let v1_n = (ver < 2).then(|| v1_indices(&sv));
+    let mut sv = sv;
+    if ver < 2 {
+        v1_solves(&mut sv)?;
+    }
     let c = from_json(sv).map_err(|e| format!("system file: {e}"))?;
     let (sys, hash_back) = if ver >= 2 {
         let p: crate::sysfile_v2::Prescription =
@@ -330,6 +334,59 @@ pub fn from_str_with(
         coatings,
     };
     Ok((sys, meta, warn))
+}
+
+/// 版 1 のソルブ（`{"surf", "height", "kind": "Edge" か {"Edge": r}}`）を今の形（種類ごとに値を持つ）に直す
+fn v1_solves(sv: &mut Value) -> Result<(), String> {
+    let Some(qs) = sv.get_mut("solves").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    for q in qs.iter_mut() {
+        let surf = q.get("surf").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let h = q.get("height").and_then(Value::as_f64).unwrap_or(0.0);
+        let (name, arg) = match q.get("kind") {
+            None | Some(Value::Null) => ("MarginalHeight".to_string(), None),
+            Some(Value::String(s)) => (s.clone(), None),
+            Some(Value::Object(m)) if m.len() == 1 => {
+                let (k, v) = m.iter().next().expect("one entry");
+                (k.clone(), v.as_f64())
+            }
+            Some(k) => return Err(format!("system file: solve kind {k}")),
+        };
+        let snake: String = name
+            .chars()
+            .enumerate()
+            .flat_map(|(i, c)| {
+                let lower = c.to_ascii_lowercase();
+                let sep = (i > 0 && c.is_ascii_uppercase()).then_some('_');
+                sep.into_iter().chain(std::iter::once(lower))
+            })
+            .collect();
+        let snake = if snake == "f_number" || snake == "fnumber" {
+            "f_number".to_string()
+        } else {
+            snake
+        };
+        let refers = matches!(
+            snake.as_str(),
+            "position"
+                | "compensator"
+                | "center_of_curvature"
+                | "concentric_surface"
+                | "concentric_radius"
+        );
+        let a = arg.unwrap_or(0.0);
+        let (param, other) = if refers {
+            (0.0, Some(a as usize))
+        } else {
+            (a, None)
+        };
+        let kind = lensbench_core::solves::solve_kind_parse(&snake, h, param, other)
+            .map_err(|e| format!("system file: {e}"))?;
+        *q = serde_json::to_value(lensbench_core::solves::Solve { surf, kind })
+            .map_err(|e| format!("system file: {e}"))?;
+    }
+    Ok(())
 }
 
 /// 版 1 の面ごとの屈折率（ずれをかける前の値、n_base が無ければ n）
@@ -394,8 +451,8 @@ pub(crate) fn check_refs(sys: &lensbench_core::Prescription) -> lensbench_core::
         if q.surf >= ns || q.kind.other_surface().is_some_and(|f| f >= ns) {
             return Err(format!("system file: solve surface {}", q.surf).into());
         }
-        if let lensbench_core::param::SolveKind::MacroCurv(i)
-        | lensbench_core::param::SolveKind::MacroThick(i) = q.kind
+        if let lensbench_core::solves::SolveKind::MacroCurv { index: i }
+        | lensbench_core::solves::SolveKind::MacroThick { index: i } = q.kind
         {
             if i as usize >= sys.macros.len() {
                 return Err(format!("system file: no macro {i} for surface {}", q.surf).into());

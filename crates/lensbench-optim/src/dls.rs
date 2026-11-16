@@ -1520,7 +1520,7 @@ fn wfe_term(
             }
         }
     }
-    let cf = lensbench_core::sweep::solve(g.clone(), v);
+    let cf = lensbench_core::linalg::solve_or_zero(g.clone(), v);
     let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
     let e: Vec<f64> = rows
         .iter()
@@ -1556,7 +1556,7 @@ fn wfe_term(
                     rhs[nw + 1] += row.5 * drows[j].2[q] * e[j];
                 }
             }
-            let dc = lensbench_core::sweep::solve(g.clone(), rhs);
+            let dc = lensbench_core::linalg::solve_or_zero(g.clone(), rhs);
             for (j, row) in rows.iter().enumerate() {
                 jm[(row.0 * n + row.1) * np + q] = amp[j] * (u[j] - dot(&bs[j], &dc));
             }

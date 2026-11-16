@@ -1,4 +1,4 @@
-//! 面の後ろの媒質（材料）。.zmx・系ファイルの名前の書き方（空・"AIR"・"MIRROR"・"-"・"nd,vd[,ΔPgF]"・ガラスの名前）は
+//! 面の後ろの媒質（材料）。.zmx・系ファイルの名前の書き方（空・"AIR"・"MIRROR"・"-"・`nd,vd[,ΔPgF]`・ガラスの名前）は
 //! 読むときに [`Material::parse`] でこの型にし、名前に戻すのは [`Material::name`]（serde も同じ文字列）。
 
 use std::fmt;
@@ -22,7 +22,7 @@ pub enum Material {
 }
 
 impl Material {
-    /// 名前から。空・"AIR" は空気、"MIRROR" は鏡、"-" は媒質なし、"nd,vd[,ΔPgF]" はモデルガラス（vd = 0 は屈折率だけ）、
+    /// 名前から。空・"AIR" は空気、"MIRROR" は鏡、"-" は媒質なし、`nd,vd[,ΔPgF]` はモデルガラス（vd = 0 は屈折率だけ）、
     /// ほかはガラスの名前（前後の空白は除く。大文字小文字はガラスの名前では区別する）
     pub fn parse(s: &str) -> Material {
         let m = s.trim();

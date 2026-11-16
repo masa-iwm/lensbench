@@ -19,7 +19,8 @@
 use crate::error::Result;
 use crate::math::*;
 use crate::par::scoped;
-use crate::param::{Kind, Param, ThickSolve};
+use crate::param::{Kind, Param};
+use crate::solves::Solve;
 use crate::surface::{After, SurfType, Tilt};
 use crate::system::{FieldSel, Trace};
 use crate::System;
@@ -426,7 +427,7 @@ impl System {
     }
 
     /// ソルブで決まる量（qs の順）の p への微分を、ソルブを解き直した系の中心差分で
-    fn solve_sensitivity_resolved(&self, p: Param, qs: &[ThickSolve]) -> Result<Vec<f64>> {
+    fn solve_sensitivity_resolved(&self, p: Param, qs: &[Solve]) -> Result<Vec<f64>> {
         let v = self.get_param(p)?;
         let h = 1e-6 * (1.0 + v.abs());
         let (a, b) = (

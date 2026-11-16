@@ -482,7 +482,7 @@ fn normal_step(a: &[f64], g: &[f64], nv: usize, cols: &[usize], mu: f64) -> Opti
         }
         af[u * nf + u] += mu * a[q * nv + q];
     }
-    cholesky_solve(&mut af, &mut bf, nf)
+    lensbench_core::linalg::cholesky_solve(&mut af, &mut bf, nf)
 }
 
 /// [J D⁻¹; √mu I] y ≈ [−r; 0] を cols の変数で QR で解き、δ = D⁻¹ y（D_q = ‖J_q‖ = √A_qq）
@@ -511,42 +511,6 @@ fn qr_step(
     }
     let y = qr_lstsq(mat, rows, nc, b)?;
     Some(y.iter().zip(&dn).map(|(y, d)| y / d).collect())
-}
-
-/// 対称正定値の n×n を Cholesky で解く（正定値でなければ None）
-fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
-    for c in 0..n {
-        let mut d = a[c * n + c];
-        for k in 0..c {
-            d -= a[c * n + k] * a[c * n + k];
-        }
-        if !(d > 0.0) {
-            return None;
-        }
-        let d = d.sqrt();
-        a[c * n + c] = d;
-        for rr in c + 1..n {
-            let mut v = a[rr * n + c];
-            for k in 0..c {
-                v -= a[rr * n + k] * a[c * n + k];
-            }
-            a[rr * n + c] = v / d;
-        }
-    }
-    let mut y = b.to_vec();
-    for i in 0..n {
-        for k in 0..i {
-            y[i] -= a[i * n + k] * y[k];
-        }
-        y[i] /= a[i * n + i];
-    }
-    for i in (0..n).rev() {
-        for k in i + 1..n {
-            y[i] -= a[k * n + i] * y[k];
-        }
-        y[i] /= a[i * n + i];
-    }
-    Some(y)
 }
 
 /// 最小二乗 min ‖M y − b‖ を Householder の QR で解く（M は rows × n の行優先で、列は一次独立）。解けなければ None

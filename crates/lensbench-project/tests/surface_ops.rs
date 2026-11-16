@@ -179,7 +179,7 @@ fn remove_solve_of_block_source() {
         r#"{"op": "add_solve", "surface": {"block": "zmx", "surface": 6}, "kind": "marginal_height", "value": 0.5}"#
     ));
     assert_eq!(s.solves.len(), 1);
-    assert_eq!(s.solves[0].height, 0.5);
+    assert_eq!(s.solves[0].kind.value(), 0.5);
     // 外すものが無い面・曲率は注意だけ
     for ops in [
         r#"[{"op": "remove_solve", "surface": {"block": "zmx", "surface": 2}}]"#,

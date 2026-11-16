@@ -5,7 +5,8 @@
 
 use crate::error::{Error, Result};
 use crate::glass::{self, Glass};
-use crate::param::{surf_parm, PickKind, Pickup, SolveKind, ThickSolve};
+use crate::pickup::{surf_parm, PickKind, Pickup};
+use crate::solves::{Solve, SolveKind};
 use crate::surface::{After, Aperture, SurfType, Surface, Tilt};
 use crate::system::{Aiming, ApertureKind, Field, FieldNorm, FieldType, System};
 use crate::{invalid, notimpl};
@@ -212,19 +213,61 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "MAZH" => {
                 let z = num(2)?;
                 let k = if z == 0.0 {
-                    SolveKind::MarginalHeight
+                    SolveKind::MarginalHeight { height: 0.0 }
                 } else {
-                    SolveKind::MarginalHeightZone(z)
+                    SolveKind::MarginalHeightZone {
+                        height: 0.0,
+                        zone: z,
+                    }
                 };
                 s.tsolve = Some((k, num(1)?));
             }
-            "CHZH" => s.tsolve = Some((SolveKind::ChiefHeight, num(1)?)),
+            "CHZH" => s.tsolve = Some((SolveKind::ChiefHeight { height: 0.0 }, num(1)?)),
             "TPUP" => s.tsolve = Some((SolveKind::PupilPosition, 0.0)),
-            "EDGE" => s.tsolve = Some((SolveKind::Edge(num(2)?), num(1)?)),
-            "TOLE" => s.tsolve = Some((SolveKind::Position(surf_no(num(1)?)?), num(2)?)),
-            "TCOM" => s.tsolve = Some((SolveKind::Compensator(surf_no(num(1)?)?), num(2)?)),
-            "TCOC" => s.tsolve = Some((SolveKind::CenterOfCurvature(surf_no(num(1)?)?), 0.0)),
-            "OPDZ" => s.tsolve = Some((SolveKind::Opd(num(2)?), num(1)?)),
+            "EDGE" => {
+                s.tsolve = Some((
+                    SolveKind::Edge {
+                        thickness: 0.0,
+                        radius: num(2)?,
+                    },
+                    num(1)?,
+                ))
+            }
+            "TOLE" => {
+                s.tsolve = Some((
+                    SolveKind::Position {
+                        other: surf_no(num(1)?)?,
+                        length: 0.0,
+                    },
+                    num(2)?,
+                ))
+            }
+            "TCOM" => {
+                s.tsolve = Some((
+                    SolveKind::Compensator {
+                        other: surf_no(num(1)?)?,
+                        sum: 0.0,
+                    },
+                    num(2)?,
+                ))
+            }
+            "TCOC" => {
+                s.tsolve = Some((
+                    SolveKind::CenterOfCurvature {
+                        other: surf_no(num(1)?)?,
+                    },
+                    0.0,
+                ))
+            }
+            "OPDZ" => {
+                s.tsolve = Some((
+                    SolveKind::Opd {
+                        opd: 0.0,
+                        zone: num(2)?,
+                    },
+                    num(1)?,
+                ))
+            }
             "PKUP" => {
                 let from = pick_col(s.n, "PKUP", num(3)?, PickKind::Conic)?;
                 s.pkup = Some((surf_no(num(1)?)?, num(2)?, 0.0, from));
@@ -275,15 +318,25 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
                         None
                     }
                     // 曲率のソルブ（OpticStudio 2026 R1.01 で実測）
-                    "2" => Some((SolveKind::MarginalAngle, p1)),
-                    "3" => Some((SolveKind::ChiefAngle, p1)),
+                    "2" => Some((SolveKind::MarginalAngle { angle: 0.0 }, p1)),
+                    "3" => Some((SolveKind::ChiefAngle { angle: 0.0 }, p1)),
                     "5" => Some((SolveKind::MarginalNormal, 0.0)),
                     "6" => Some((SolveKind::ChiefNormal, 0.0)),
                     "7" => Some((SolveKind::Aplanatic, 0.0)),
-                    "8" => Some((SolveKind::ElementPower, p1)),
-                    "9" => Some((SolveKind::ConcentricSurface(surf_no(p1)?), 0.0)),
-                    "10" => Some((SolveKind::ConcentricRadius(surf_no(p1)?), 0.0)),
-                    "11" => Some((SolveKind::FNumber, p1)),
+                    "8" => Some((SolveKind::ElementPower { power: 0.0 }, p1)),
+                    "9" => Some((
+                        SolveKind::ConcentricSurface {
+                            other: surf_no(p1)?,
+                        },
+                        0.0,
+                    )),
+                    "10" => Some((
+                        SolveKind::ConcentricRadius {
+                            other: surf_no(p1)?,
+                        },
+                        0.0,
+                    )),
+                    "11" => Some((SolveKind::FNumber { fnum: 0.0 }, p1)),
                     // ZPL マクロのソルブ（最後の欄の "…" がマクロの名前）。マクロは build で探す
                     "12" => {
                         s.cmacro = Some(macro_name(s.n, line)?);
@@ -429,12 +482,12 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         }
         if let Some((kind, v)) = sf.tsolve.as_mut() {
             match kind {
-                SolveKind::MarginalHeight
-                | SolveKind::ChiefHeight
-                | SolveKind::Position(_)
-                | SolveKind::Compensator(_) => *v *= f,
-                SolveKind::MarginalHeightZone(_) => *v *= f,
-                SolveKind::Edge(rr) => {
+                SolveKind::MarginalHeight { .. }
+                | SolveKind::ChiefHeight { .. }
+                | SolveKind::Position { .. }
+                | SolveKind::Compensator { .. } => *v *= f,
+                SolveKind::MarginalHeightZone { .. } => *v *= f,
+                SolveKind::Edge { radius: rr, .. } => {
                     *v *= f;
                     *rr *= f;
                 }
@@ -443,7 +496,7 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
         }
         if let Some((kind, v)) = sf.csolve.as_mut() {
             // 傾き・F 値・面の関係は単位によらない。玉のパワー [1/長さ] だけ換算
-            if matches!(kind, SolveKind::ElementPower) {
+            if matches!(kind, SolveKind::ElementPower { .. }) {
                 *v /= f;
             }
         }
@@ -545,7 +598,7 @@ fn to_mm(raw: &Raw, unit: &str) -> Result<Raw> {
     Ok(r)
 }
 
-/// .zmx の多重構成（MCE）を多重構成の表（[`crate::edit::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
+/// .zmx の多重構成（MCE）を多重構成の表（[`crate::configs::Configs`]）にする。表せる演算子は THIC・CRVT・CONN と、
 /// 偶数次非球面・座標ブレークの PRAM。表せない演算子が構成で変われば、その演算子の名前を Err で返す（構成で変わらない
 /// 演算子・光線追跡に効かない演算子は表に入れない）
 fn config_table(
@@ -553,8 +606,8 @@ fn config_table(
     s: &System,
     n: usize,
     active: usize,
-) -> crate::Result<crate::edit::Configs> {
-    use crate::edit::{ConfigRow, Configs};
+) -> crate::Result<crate::configs::Configs> {
+    use crate::configs::{ConfigRow, Configs};
     use crate::param::{Kind, Param};
     let mut rows: Vec<(String, i64, i64, Vec<Option<f64>>)> = Vec::new();
     for (op, p1, c, v, rest) in &raw.mce {
@@ -1584,16 +1637,20 @@ pub fn build(
             [r.csolve, r.tsolve]
                 .into_iter()
                 .flatten()
-                .map(move |(kind, h)| ThickSolve {
+                .map(move |(kind, h)| Solve {
                     surf: k,
-                    height: h,
-                    kind,
+                    kind: kind.with_value(h),
                 })
         })
         .collect();
     attach_macros(&mut s, raw, opt, base);
     // OpticStudio は読込でソルブを解き直す（保存した DISZ が古くても同じ系になる）
-    let is_macro = |k: &SolveKind| matches!(k, SolveKind::MacroCurv(_) | SolveKind::MacroThick(_));
+    let is_macro = |k: &SolveKind| {
+        matches!(
+            k,
+            SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
+        )
+    };
     if s.solves.iter().any(|q| is_macro(&q.kind)) || !s.macro_parms.is_empty() {
         let before = s.clone();
         if let Err(e) = s.solve_thickness() {
@@ -1602,7 +1659,7 @@ pub fn build(
             let r = s.rx_mut();
             for q in r.solves.iter().filter(|q| is_macro(&q.kind)) {
                 let name = match q.kind {
-                    SolveKind::MacroCurv(i) | SolveKind::MacroThick(i) => {
+                    SolveKind::MacroCurv { index: i } | SolveKind::MacroThick { index: i } => {
                         r.macros[i as usize].name.clone()
                     }
                     _ => unreachable!(),
@@ -1638,7 +1695,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
     let dirs = crate::zpl_solve::macro_dirs(&opt.macro_dirs, base);
     for (k, r) in raw.surfs.iter().enumerate() {
         use crate::zpl_solve::MacroCol;
-        // 曲率・厚さはソルブ（ThickSolve）、ほかの列は MacroParm
+        // 曲率・厚さはソルブ（Solve）、ほかの列は MacroParm
         enum T {
             Curv,
             Thick,
@@ -1662,7 +1719,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
             };
             let got = crate::zpl_solve::find_macro(name, &dirs).and_then(|m| {
                 if let T::Col(c, p) = &t {
-                    if crate::param::pick_get(&s.surfaces[k], c.pick(*p)).is_none() {
+                    if crate::pickup::pick_get(&s.surfaces[k], c.pick(*p)).is_none() {
                         notimpl!("surface type {:?} {what}", s.surfaces[k].typ);
                     }
                 }
@@ -1683,13 +1740,12 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                         }
                     } as u16;
                     match t {
-                        T::Curv | T::Thick => s.rx_mut().solves.push(ThickSolve {
+                        T::Curv | T::Thick => s.rx_mut().solves.push(Solve {
                             surf: k,
-                            height: 0.0,
                             kind: if matches!(t, T::Curv) {
-                                SolveKind::MacroCurv(id)
+                                SolveKind::MacroCurv { index: id }
                             } else {
-                                SolveKind::MacroThick(id)
+                                SolveKind::MacroThick { index: id }
                             },
                         }),
                         T::Col(col, parm) => s.rx_mut().macro_parms.push(crate::zpl_solve::MacroParm {

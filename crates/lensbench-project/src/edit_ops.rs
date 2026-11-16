@@ -13,7 +13,7 @@
 //! - `set_material` surface, material ／ `set_stop` surface
 //! - `add_pickup` dst, src, what（c r t k p1〜 dn disp semi before0〜4 after0〜4）, scale（既定 1）, offset（既定 0）,
 //!   from（元の量、省くと what） ／ `remove_pickup` dst, what
-//! - `add_solve` surface, kind（既定 marginal_height、[`lensbench_core::edit::SOLVE_KINDS`]）, value（既定 0）,
+//! - `add_solve` surface, kind（既定 marginal_height、[`lensbench_core::solves::SOLVE_KINDS`]）, value（既定 0）,
 //!   other（別の面を参照する種類の面）, param（帯・縁の高さ） ／ `remove_solve` surface, what（t か c、既定 t）
 //! - `set_surface_data` surface, data（面のデータを全部の項目で。[`surface_data`] と同じ形で、書いた項目だけ変える。
 //!   屈折率 n・絞り stop・鏡 mirror は変えない（材料・set_stop で）。面タイプの形のデータ zern・grid・bin2・cylf・grin、
@@ -31,9 +31,12 @@
 //! 値: 数・数の並び・文字列・真偽。aperture は {"type": "circular", "max": 3, …} か null。
 //! JSON に書けない inf は {"$f": "inf"}（系ファイルと同じ）
 
-use lensbench_core::edit::{pick_kind_parse, SurfValue};
+use lensbench_core::edit::SurfValue;
 use lensbench_core::mech::MechPart;
-use lensbench_core::param::{Kind, Pickup, ThickSolve};
+use lensbench_core::param::Kind;
+use lensbench_core::pickup::pick_kind_parse;
+use lensbench_core::pickup::Pickup;
+use lensbench_core::solves::Solve;
 use lensbench_core::surface::{Aperture, Surface};
 use lensbench_core::System;
 use serde::Deserialize;
@@ -287,10 +290,10 @@ pub fn surface_solves(s: &System, j: usize) -> Value {
         .iter()
         .filter(|q| q.surf == j)
         .map(|q| {
-            let (kind, param, other) = lensbench_core::edit::solve_kind_info(q.kind);
+            let (kind, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
             serde_json::json!({
                 "what": if q.kind.is_curv() { "c" } else { "t" },
-                "kind": kind, "value": q.height, "param": param, "other": other,
+                "kind": kind, "value": value, "param": param, "other": other,
             })
         })
         .collect();
@@ -300,9 +303,9 @@ pub fn surface_solves(s: &System, j: usize) -> Value {
         .filter(|p| p.dst == j)
         .map(|p| {
             serde_json::json!({
-                "what": lensbench_core::edit::pick_kind_name(p.what),
+                "what": lensbench_core::pickup::pick_kind_name(p.what),
                 "src": p.src, "scale": p.scale, "offset": p.offset,
-                "from": p.from.map(lensbench_core::edit::pick_kind_name),
+                "from": p.from.map(lensbench_core::pickup::pick_kind_name),
             })
         })
         .collect();
@@ -624,11 +627,11 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
                 None => None,
                 Some(v) => Some(surf(t, v, name)?),
             };
-            let q = ThickSolve {
+            let q = Solve {
                 surf: surf(t, &o.surface, name)?,
-                height: o.value.map_or(0.0, |x| x.0),
-                kind: lensbench_core::edit::solve_kind_parse(
+                kind: lensbench_core::solves::solve_kind_parse(
                     o.kind.as_deref().unwrap_or("marginal_height"),
+                    o.value.map_or(0.0, |x| x.0),
                     o.param.map_or(0.0, |x| x.0),
                     other,
                 )

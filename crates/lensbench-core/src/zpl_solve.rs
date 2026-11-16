@@ -381,7 +381,7 @@ impl Host for SysHost<'_> {
                         let d = &s.surfaces[k as usize];
                         // Standard の面にはパラメータがなく、OpticStudio は 0 を返す（26.1.1 で実測）
                         let std0 = (d.typ == crate::surface::SurfType::Standard).then_some(0.0);
-                        crate::param::surf_parm(d, *n as u8)
+                        crate::pickup::surf_parm(d, *n as u8)
                             .or(std0)
                             .map(Value::Num)
                             .ok_or_else(|| Error::NotImplemented(format!("surface {k} PARM {n}")))
@@ -457,8 +457,8 @@ impl MacroCol {
         *self == MacroCol::Parm
     }
     /// 値を読み書きする量
-    pub(crate) fn pick(self, parm: u8) -> crate::param::PickKind {
-        use crate::param::PickKind;
+    pub(crate) fn pick(self, parm: u8) -> crate::pickup::PickKind {
+        use crate::pickup::PickKind;
         match self {
             MacroCol::Parm => PickKind::Parm(parm),
             MacroCol::Conic => PickKind::Conic,
@@ -504,9 +504,9 @@ impl System {
                 v = v.abs();
             }
             let what = q.col.pick(q.parm);
-            let old = crate::param::pick_get(&self.surfaces[q.surf], what);
+            let old = crate::pickup::pick_get(&self.surfaces[q.surf], what);
             if old != Some(v) {
-                if !crate::param::pick_set(&mut self.rx_mut().surfaces[q.surf], what, v) {
+                if !crate::pickup::pick_set(&mut self.rx_mut().surfaces[q.surf], what, v) {
                     crate::notimpl!(
                         "putting a macro value into surface {} {}",
                         q.surf,

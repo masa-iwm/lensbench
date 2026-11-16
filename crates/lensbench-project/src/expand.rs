@@ -999,7 +999,7 @@ pub(crate) fn apply_surface_ops(
         EditOp::RemovePickup {
             dst: Ref::Index(j),
             what,
-        } => match lensbench_core::edit::pick_kind_parse(what) {
+        } => match lensbench_core::pickup::pick_kind_parse(what) {
             Ok(w) => s.pickups.iter().any(|p| p.dst == *j && p.what == w),
             Err(_) => true,
         },
@@ -1248,7 +1248,7 @@ pub(crate) fn keep_pickups(
             // 鏡のあと（向きが逆、sign = −1）で取り込むと、曲率・厚さの符号が変わる。先 dst' = σd·dst、元 src' = σs·src
             // （σ は量の符号が変われば sign、変わらなければ 1）なら、dst = a·src + b は dst' = (σd·σs·a)·src' + σd·b。
             // 向きから決めた組を先に試し、合わなければ（面タイプのパラメータの意味は型で違う）ほかの符号の組を試す
-            use lensbench_core::param::PickKind as Pk;
+            use lensbench_core::pickup::PickKind as Pk;
             let flips = |k: Pk| matches!(k, Pk::Curv | Pk::Thick | Pk::Radius);
             let sd = if flips(q.what) { z.sign } else { 1.0 };
             let ss = if flips(q.from.unwrap_or(q.what)) {
@@ -1313,13 +1313,13 @@ pub(crate) fn keep_pickups(
                 at.get(&(inst, j))
                     .is_some_and(|&n| n as i64 - k as i64 == j as i64 - q.surf as i64)
             };
-            use lensbench_core::param::SolveKind as Sk;
+            use lensbench_core::solves::SolveKind as Sk;
             let mut ok = true;
             // 位置ソルブは高さを見ないので次の面は要らない（基準の面との間が並んでいればよい）
-            if !q.kind.is_curv() && !matches!(q.kind, Sk::Position(_)) {
+            if !q.kind.is_curv() && !matches!(q.kind, Sk::Position { .. }) {
                 ok &= same(q.surf + 1) || (q.surf + 1 == z.image && k + 1 == s.image());
             }
-            if q.kind == Sk::ElementPower {
+            if matches!(q.kind, Sk::ElementPower { .. }) {
                 ok &= q.surf >= 1 && same(q.surf - 1);
             }
             let mut kind = q.kind;
@@ -1328,10 +1328,10 @@ pub(crate) fn keep_pickups(
                 // 基準の面との距離で決まるものは、間の面（基準の面が後ろでも）も並んで取り込まれていること
                 if matches!(
                     q.kind,
-                    Sk::Position(_)
-                        | Sk::CenterOfCurvature(_)
-                        | Sk::ConcentricSurface(_)
-                        | Sk::ConcentricRadius(_)
+                    Sk::Position { .. }
+                        | Sk::CenterOfCurvature { .. }
+                        | Sk::ConcentricSurface { .. }
+                        | Sk::ConcentricRadius { .. }
                 ) {
                     ok &= (o.min(q.surf)..=o.max(q.surf)).all(same);
                 }
@@ -1341,11 +1341,7 @@ pub(crate) fn keep_pickups(
             }
             if ok {
                 s.edit_raw(|rx| {
-                    rx.solves.push(ThickSolve {
-                        surf: k,
-                        kind,
-                        ..*q
-                    });
+                    rx.solves.push(Solve { surf: k, kind });
                     Ok(())
                 })?;
             } else {
@@ -1357,7 +1353,7 @@ pub(crate) fn keep_pickups(
         }
     }
     if !s.solves.is_empty() {
-        let val = |s: &System, q: &ThickSolve| {
+        let val = |s: &System, q: &Solve| {
             let d = &s.surfaces[q.surf];
             if q.kind.is_curv() {
                 d.c
@@ -1377,7 +1373,7 @@ pub(crate) fn keep_pickups(
                 };
                 warn.push(format!(
                     "solved the {what} of surface {} again with the solve ({:?}, value {}): {b} → {a}",
-                    q.surf, q.kind, q.height
+                    q.surf, q.kind, q.kind.value()
                 ));
             }
         }

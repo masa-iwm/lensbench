@@ -13,96 +13,15 @@
 
 use crate::error::Result;
 use crate::glass::{self, Glass};
-use crate::param::{Kind, Param, PickKind, Pickup, ThickSolve};
+use crate::param::{Kind, Param};
+use crate::pickup::{PickKind, Pickup};
+use crate::solves::{solve_kind_of, Solve};
 use crate::surface::{After, Aperture, Material, SurfType, Surface};
 use crate::system::Prescription;
 use crate::system::{FieldCond, FieldType, System};
 use crate::{invalid, notimpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
-
-/// 多重構成の表（OpticStudio の Multi-Configuration Editor の数の行に当たる）。
-/// 行ごとにパラメータ 1 つと、構成ごとの値を持つ。[`System::config`] で構成 k の値を入れた系を作る
-#[derive(Debug, Clone, PartialEq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Configs {
-    /// 構成の数（1 以上）
-    pub n: usize,
-    /// 今の系に入っている構成（1 始まり）
-    pub active: usize,
-    pub rows: Vec<ConfigRow>,
-}
-
-/// 多重構成の表の 1 行
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct ConfigRow {
-    pub param: Param,
-    /// 構成ごとの値（長さは構成の数）。ピックアップの構成の値は元の構成から求めた値
-    pub values: Vec<f64>,
-    /// 構成のピックアップ（OpticStudio の多重構成の pickup）。無ければ省く
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Vec::is_empty")
-    )]
-    pub picks: Vec<ConfigPick>,
-}
-
-/// 多重構成の行の、構成 k の値 = 構成 from の値 × scale + offset（どちらも 1 始まり）
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct ConfigPick {
-    pub k: usize,
-    pub from: usize,
-    #[cfg_attr(feature = "serde", serde(default = "one"))]
-    pub scale: f64,
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub offset: f64,
-}
-
-#[cfg(feature = "serde")]
-fn one() -> f64 {
-    1.0
-}
-
-#[cfg(feature = "serde")]
-pub(crate) fn yes() -> bool {
-    true
-}
-
-#[cfg(feature = "serde")]
-pub(crate) fn is_yes(b: &bool) -> bool {
-    *b
-}
-
-impl ConfigRow {
-    /// ピックアップの値を元の構成から求め直す（ピックアップの元がピックアップでも、並びの順によらず）
-    pub fn resolve_picks(&mut self) {
-        for _ in 0..=self.picks.len() {
-            let mut changed = false;
-            for p in &self.picks {
-                if let (Some(&v), true) = (self.values.get(p.from - 1), p.k <= self.values.len()) {
-                    let x = v * p.scale + p.offset;
-                    if self.values[p.k - 1] != x {
-                        self.values[p.k - 1] = x;
-                        changed = true;
-                    }
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
-    }
-
-    /// 構成 k のピックアップ
-    pub fn pick(&self, k: usize) -> Option<&ConfigPick> {
-        self.picks.iter().find(|p| p.k == k)
-    }
-}
 
 /// 面タイプの名前（.zmx の名前と、短い別名）
 pub fn surf_type_parse(s: &str) -> Result<SurfType> {
@@ -726,7 +645,7 @@ impl System {
     }
 
     /// 面 dst の量 what のピックアップを外す（値は今の値のまま残る）。無ければエラー
-    pub fn remove_pickup(&mut self, dst: usize, what: crate::param::PickKind) -> Result<()> {
+    pub fn remove_pickup(&mut self, dst: usize, what: crate::pickup::PickKind) -> Result<()> {
         if !self.pickups.iter().any(|q| q.dst == dst && q.what == what) {
             invalid!("no pickup of {what:?} on surface {dst}");
         }
@@ -738,16 +657,16 @@ impl System {
         })
     }
 
-    /// ソルブ（厚さか曲率、[`crate::param::SolveKind`]）を足す（同じ面・同じ量のものは置き換える）。値はすぐに解き直す
-    pub fn add_solve(&mut self, q: ThickSolve) -> Result<()> {
+    /// ソルブ（厚さか曲率、[`crate::solves::SolveKind`]）を足す（同じ面・同じ量のものは置き換える）。値はすぐに解き直す
+    pub fn add_solve(&mut self, q: Solve) -> Result<()> {
         let ns = self.surfaces.len();
         if q.surf == 0 || q.surf + 1 >= ns || q.kind.other_surface().is_some_and(|f| f >= ns) {
             invalid!("solve surface {} (1 to {})", q.surf, ns - 2);
         }
         let pk = q.kind.param_kind();
         self.check_param(Param::new(q.surf, pk))?;
-        if !q.height.is_finite() {
-            invalid!("solve value {}", q.height);
+        if !q.kind.value().is_finite() {
+            invalid!("solve value {}", q.kind.value());
         }
         if self
             .pickups
@@ -771,7 +690,7 @@ impl System {
 
     /// 面 surf の量 kind（[`Kind::Thick`] か [`Kind::Curv`]）のソルブを外す（値は今のまま残る）。無ければエラー
     pub fn remove_solve(&mut self, surf: usize, kind: Kind) -> Result<()> {
-        let hit = |x: &ThickSolve| x.surf == surf && x.kind.param_kind() == kind;
+        let hit = |x: &Solve| x.surf == surf && x.kind.param_kind() == kind;
         if !self.solves.iter().any(hit) {
             invalid!("no solve of {} on surface {surf}", kind.name());
         }
@@ -779,314 +698,6 @@ impl System {
             s.rx_mut().solves.retain(|x| !hit(x));
             Ok(())
         })
-    }
-
-    // ------------------------------------------------------------------------------ 多重構成
-    /// 多重構成の表（無ければ None）
-    pub fn configs(&self) -> Option<&Configs> {
-        self.configs.as_ref()
-    }
-
-    /// 構成の数を n にする（増やした構成の値は今の値。1 で表を消す）。今の構成が n を超えたら 1 にする
-    pub fn set_config_count(&mut self, n: usize) -> Result<()> {
-        if n == 0 {
-            invalid!("0 configurations");
-        }
-        if n == 1 {
-            self.rx_mut().configs = None;
-            return Ok(());
-        }
-        let mut c = self.configs.clone().unwrap_or(Configs {
-            n: 1,
-            active: 1,
-            rows: Vec::new(),
-        });
-        for r in c.rows.iter_mut() {
-            let now = self.get_param(r.param)?;
-            r.values.resize(n, now);
-            r.picks.retain(|p| p.k <= n && p.from <= n);
-        }
-        c.n = n;
-        let back = c.active > n;
-        if back {
-            c.active = 1;
-        }
-        if back {
-            // 今の構成が無くなるので構成 1 の値を系に入れる
-            let mut t = self.clone();
-            t.rx_mut().configs = Some(c);
-            *self = t.config(1)?;
-        } else {
-            self.rx_mut().configs = Some(c);
-        }
-        Ok(())
-    }
-
-    /// 表に行を足す（同じパラメータの行は置き換える）。values の長さは構成の数。今の構成の値を系に入れる
-    pub fn set_config_row(&mut self, p: Param, values: Vec<f64>) -> Result<()> {
-        let Some(c) = &self.configs else {
-            invalid!("only one configuration (set_config_count first)");
-        };
-        if values.len() != c.n {
-            invalid!("{} values ({} configurations)", values.len(), c.n);
-        }
-        self.check_param(p)?;
-        if p.kind.is_global() {
-            invalid!(
-                "{} can't go in the table (field points, wavelengths)",
-                p.name()
-            );
-        }
-        let mut c = c.clone();
-        // ピックアップは残す（ピックアップの構成の値を変えたら、その構成のピックアップは外す）
-        let mut picks = Vec::new();
-        if let Some(old) = c.rows.iter().find(|r| r.param == p) {
-            picks = old.picks.clone();
-            picks.retain(|q| old.values.get(q.k - 1) == values.get(q.k - 1));
-        }
-        c.rows.retain(|r| r.param != p);
-        let mut row = ConfigRow {
-            param: p,
-            values,
-            picks,
-        };
-        row.resolve_picks();
-        c.rows.push(row);
-        let mut s = self.clone();
-        s.rx_mut().configs = Some(c);
-        let k = s.configs.as_ref().map(|c| c.active).unwrap_or(1);
-        *self = s.config(k)?;
-        Ok(())
-    }
-
-    /// 表の今の構成の列を、系の今の値に合わせる（面の表・set で表の行の値を変えたとき。
-    /// OpticStudio で Lens Data の値を変えると Multi-Configuration Editor の今の構成の値も変わるのと同じ）
-    pub fn sync_active_config(&mut self) {
-        let Some(mut c) = self.rx_mut().configs.take() else {
-            return;
-        };
-        let k = c.active.saturating_sub(1);
-        for r in &mut c.rows {
-            if let (Ok(v), Some(x)) = (self.get_param(r.param), r.values.get_mut(k)) {
-                if *x != v {
-                    // 今の構成がピックアップなら、値を変えたのでピックアップを外す
-                    *x = v;
-                    r.picks.retain(|p| p.k != k + 1);
-                }
-            }
-            // 今の構成を元にするピックアップの値も変わる（今の構成でない列なので系はそのまま）
-            r.resolve_picks();
-        }
-        self.rx_mut().configs = Some(c);
-    }
-
-    /// 構成を位置 at（1 始まり、1〜n+1）に挿入する。値は構成 from（挿入前の番号）の値。pickup なら各行の新しい構成を
-    /// 構成 from のピックアップにする（OpticStudio の Insert Configuration with Pickups）。ピックアップの番号は付け替える。
-    /// 今の構成は同じ構成を指したまま（番号はずれる）。表が無ければ構成 2 つの表を作る
-    pub fn insert_config(&mut self, at: usize, from: usize, pickup: bool) -> Result<()> {
-        let mut c = self.configs.clone().unwrap_or(Configs {
-            n: 1,
-            active: 1,
-            rows: Vec::new(),
-        });
-        if at == 0 || at > c.n + 1 {
-            invalid!("position {at} to insert a configuration (1 to {})", c.n + 1);
-        }
-        if from == 0 || from > c.n {
-            invalid!("configuration {from} (1 to {})", c.n);
-        }
-        let shift = |k: usize| if k >= at { k + 1 } else { k };
-        let src = shift(from);
-        for r in c.rows.iter_mut() {
-            let v = r.values[from - 1];
-            r.values.insert(at - 1, v);
-            for p in r.picks.iter_mut() {
-                p.k = shift(p.k);
-                p.from = shift(p.from);
-            }
-            if pickup {
-                r.picks.push(ConfigPick {
-                    k: at,
-                    from: src,
-                    scale: 1.0,
-                    offset: 0.0,
-                });
-            } else if let Some(q) = r.picks.iter().find(|p| p.k == src).copied() {
-                // 元がピックアップなら、新しい構成も同じ元のピックアップ
-                r.picks.push(ConfigPick { k: at, ..q });
-            }
-        }
-        c.n += 1;
-        c.active = shift(c.active);
-        self.rx_mut().configs = Some(c);
-        Ok(())
-    }
-
-    /// 構成 k（1 始まり）を消す。k を元にするピックアップは値を残して外し、番号を付け替える。今の構成を消したら
-    /// 次の構成（最後なら前）を系に入れる。構成が 1 つになったら表を消す（残った構成の値は系に入る）
-    pub fn remove_config(&mut self, k: usize) -> Result<()> {
-        let Some(mut c) = self.configs.clone() else {
-            invalid!("only one configuration");
-        };
-        if k == 0 || k > c.n {
-            invalid!("configuration {k} (1 to {})", c.n);
-        }
-        let shift = |j: usize| if j > k { j - 1 } else { j };
-        for r in c.rows.iter_mut() {
-            r.values.remove(k - 1);
-            r.picks.retain(|p| p.k != k && p.from != k);
-            for p in r.picks.iter_mut() {
-                p.k = shift(p.k);
-                p.from = shift(p.from);
-            }
-        }
-        let was = c.active;
-        c.n -= 1;
-        c.active = if was == k { k.min(c.n) } else { shift(was) };
-        let mut t = self.clone();
-        if c.n == 1 {
-            // 表の値の数を 1 つにはできないので、残った構成の値を系に入れて表を消す
-            let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[0])).collect();
-            t.rx_mut().configs = None;
-            *self = t.with_params(&ch)?;
-            return Ok(());
-        }
-        t.rx_mut().configs = Some(c.clone());
-        *self = if was == k { t.config(c.active)? } else { t };
-        Ok(())
-    }
-
-    /// 表の行 p の構成 k を、構成 from の値 × scale + offset のピックアップにする（同じ構成のピックアップは置き換える）
-    pub fn set_config_pickup(
-        &mut self,
-        p: Param,
-        k: usize,
-        from: usize,
-        scale: f64,
-        offset: f64,
-    ) -> Result<()> {
-        let Some(c) = &self.configs else {
-            invalid!("only one configuration");
-        };
-        let n = c.n;
-        if k == 0 || k > n || from == 0 || from > n || k == from {
-            invalid!("configuration pickup {from} → {k} (1 to {n}, another configuration)");
-        }
-        if !scale.is_finite() || !offset.is_finite() {
-            invalid!("configuration pickup scale or offset");
-        }
-        let mut c = c.clone();
-        let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
-            invalid!("no row {} in the table", p.name());
-        };
-        let mut picks = r.picks.clone();
-        picks.retain(|q| q.k != k);
-        picks.push(ConfigPick {
-            k,
-            from,
-            scale,
-            offset,
-        });
-        // 循環（k が元をたどって k に戻る）は不可
-        let mut at = from;
-        for _ in 0..=picks.len() {
-            match picks.iter().find(|q| q.k == at) {
-                Some(q) if q.from == k => {
-                    invalid!("configuration pickups go round in a loop ({k})")
-                }
-                Some(q) => at = q.from,
-                None => break,
-            }
-        }
-        r.picks = picks;
-        r.resolve_picks();
-        let active = c.active;
-        let mut s = self.clone();
-        s.rx_mut().configs = Some(c);
-        *self = if active == k { s.config(k)? } else { s };
-        Ok(())
-    }
-
-    /// 表の行 p の構成 k のピックアップを外す（値は今のまま）
-    pub fn remove_config_pickup(&mut self, p: Param, k: usize) -> Result<()> {
-        let Some(c) = &mut self.rx_mut().configs else {
-            invalid!("only one configuration");
-        };
-        let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
-            invalid!("no row {} in the table", p.name());
-        };
-        let n0 = r.picks.len();
-        r.picks.retain(|q| q.k != k);
-        if r.picks.len() == n0 {
-            invalid!("no pickup on {} configuration {k}", p.name());
-        }
-        Ok(())
-    }
-
-    /// 表の行（パラメータ p）を消す。系の値は今のまま
-    pub fn remove_config_row(&mut self, p: Param) -> Result<()> {
-        let Some(c) = &mut self.rx_mut().configs else {
-            invalid!("only one configuration");
-        };
-        let n0 = c.rows.len();
-        c.rows.retain(|r| r.param != p);
-        if c.rows.len() == n0 {
-            invalid!("no row {} in the table", p.name());
-        }
-        Ok(())
-    }
-
-    /// 構成 k（1 始まり）の値を入れた系（表は残し、今の構成を k にする）
-    pub fn config(&self, k: usize) -> Result<System> {
-        let Some(c) = &self.configs else {
-            if k == 1 {
-                return Ok(self.clone());
-            }
-            invalid!("configuration {k} (there is one configuration)");
-        };
-        if k == 0 || k > c.n {
-            invalid!("configuration {k} (1 to {})", c.n);
-        }
-        let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[k - 1])).collect();
-        let mut s = self.with_params(&ch)?;
-        if let Some(c) = &mut s.rx_mut().configs {
-            c.active = k;
-        }
-        Ok(s)
-    }
-
-    fn check_configs(&self) -> Result<()> {
-        let Some(c) = &self.configs else {
-            return Ok(());
-        };
-        if c.n < 2 || c.active == 0 || c.active > c.n {
-            invalid!(
-                "multi-configuration table ({} configurations, now {})",
-                c.n,
-                c.active
-            );
-        }
-        for r in &c.rows {
-            if r.values.len() != c.n {
-                invalid!(
-                    "multi-configuration row {} has {} values",
-                    r.param.name(),
-                    r.values.len()
-                );
-            }
-            self.check_param(r.param)?;
-            for p in &r.picks {
-                if p.k == 0 || p.k > c.n || p.from == 0 || p.from > c.n || p.k == p.from {
-                    invalid!(
-                        "multi-configuration row {} pickup {} → {}",
-                        r.param.name(),
-                        p.from,
-                        p.k
-                    );
-                }
-            }
-        }
-        Ok(())
     }
 }
 
@@ -1249,163 +860,5 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
                 r.param.surf = mm(r.param.surf);
             }
         }
-    }
-}
-
-/// ピックアップの量がソルブの決める量（厚さ・曲率）に当たるならその種類
-fn solve_kind_of(w: crate::param::PickKind) -> Option<Kind> {
-    use crate::param::PickKind;
-    match w {
-        PickKind::Thick => Some(Kind::Thick),
-        PickKind::Curv => Some(Kind::Curv),
-        _ => None,
-    }
-}
-
-/// ソルブの種類の名前（[`solve_kind_parse`]・[`solve_kind_info`]）
-pub const SOLVE_KINDS: &[&str] = &[
-    "marginal_height",
-    "marginal_height_zone",
-    "chief_height",
-    "pupil_position",
-    "edge",
-    "opd",
-    "position",
-    "compensator",
-    "center_of_curvature",
-    "marginal_angle",
-    "chief_angle",
-    "marginal_normal",
-    "chief_normal",
-    "aplanatic",
-    "element_power",
-    "concentric_surface",
-    "concentric_radius",
-    "f_number",
-];
-
-/// ソルブの種類を名前から。param は marginal_height_zone・opd の瞳の帯・edge の高さ、other は別の面を参照する種類の面
-pub fn solve_kind_parse(
-    name: &str,
-    param: f64,
-    other: Option<usize>,
-) -> Result<crate::param::SolveKind> {
-    use crate::param::SolveKind as K;
-    let n = name.trim().to_ascii_lowercase();
-    let need = || -> Result<usize> {
-        match other {
-            Some(s) => Ok(s),
-            None => invalid!("solve {n} needs another surface (other)"),
-        }
-    };
-    Ok(match n.as_str() {
-        "marginal_height" => K::MarginalHeight,
-        "marginal_height_zone" => K::MarginalHeightZone(param),
-        "chief_height" => K::ChiefHeight,
-        "pupil_position" => K::PupilPosition,
-        "edge" => K::Edge(param),
-        "opd" => K::Opd(param),
-        "position" => K::Position(need()?),
-        "compensator" => K::Compensator(need()?),
-        "center_of_curvature" => K::CenterOfCurvature(need()?),
-        "marginal_angle" => K::MarginalAngle,
-        "chief_angle" => K::ChiefAngle,
-        "marginal_normal" => K::MarginalNormal,
-        "chief_normal" => K::ChiefNormal,
-        "aplanatic" => K::Aplanatic,
-        "element_power" => K::ElementPower,
-        "concentric_surface" => K::ConcentricSurface(need()?),
-        "concentric_radius" => K::ConcentricRadius(need()?),
-        "f_number" => K::FNumber,
-        // ZPL のマクロ: param は系のマクロの番号（System::macros）。マクロは .zmx の読込で付くので、
-        // 新しく選ぶ種類の一覧（SOLVE_KINDS）には入れない
-        "macro_curv" | "macro_thick" => {
-            if !(param >= 0.0 && param.fract() == 0.0 && param <= u16::MAX as f64) {
-                invalid!("macro number {param}");
-            }
-            if n == "macro_curv" {
-                K::MacroCurv(param as u16)
-            } else {
-                K::MacroThick(param as u16)
-            }
-        }
-        _ => invalid!("solve type {name} ({})", SOLVE_KINDS.join(" ")),
-    })
-}
-
-/// ソルブの種類の (名前, param, other)（[`solve_kind_parse`] の逆）
-pub fn solve_kind_info(k: crate::param::SolveKind) -> (&'static str, f64, Option<usize>) {
-    use crate::param::SolveKind as K;
-    let o = k.other_surface();
-    match k {
-        K::MarginalHeight => ("marginal_height", 0.0, o),
-        K::MarginalHeightZone(z) => ("marginal_height_zone", z, o),
-        K::ChiefHeight => ("chief_height", 0.0, o),
-        K::PupilPosition => ("pupil_position", 0.0, o),
-        K::Edge(r) => ("edge", r, o),
-        K::Opd(z) => ("opd", z, o),
-        K::Position(_) => ("position", 0.0, o),
-        K::Compensator(_) => ("compensator", 0.0, o),
-        K::CenterOfCurvature(_) => ("center_of_curvature", 0.0, o),
-        K::MarginalAngle => ("marginal_angle", 0.0, o),
-        K::ChiefAngle => ("chief_angle", 0.0, o),
-        K::MarginalNormal => ("marginal_normal", 0.0, o),
-        K::ChiefNormal => ("chief_normal", 0.0, o),
-        K::Aplanatic => ("aplanatic", 0.0, o),
-        K::ElementPower => ("element_power", 0.0, o),
-        K::ConcentricSurface(_) => ("concentric_surface", 0.0, o),
-        K::ConcentricRadius(_) => ("concentric_radius", 0.0, o),
-        K::FNumber => ("f_number", 0.0, o),
-        K::MacroCurv(i) => ("macro_curv", i as f64, o),
-        K::MacroThick(i) => ("macro_thick", i as f64, o),
-    }
-}
-
-/// ピックアップの量の名前: c（曲率）・r（半径）・t（厚さ）・k（円錐係数）・p1〜（面タイプのパラメータ）・
-/// dn・disp（材料も一緒に追従）・semi・coating（膜の名前）・before0〜4・after0〜4（傾き偏心の値 dx dy tx ty tz）
-pub fn pick_kind_parse(s: &str) -> Result<crate::param::PickKind> {
-    use crate::param::PickKind;
-    let t = s.trim().to_ascii_lowercase();
-    let num = |p: &str| t.strip_prefix(p).and_then(|n| n.parse::<u8>().ok());
-    Ok(match t.as_str() {
-        "c" | "curv" => PickKind::Curv,
-        "r" | "radius" => PickKind::Radius,
-        "t" | "thick" => PickKind::Thick,
-        "k" | "conic" => PickKind::Conic,
-        "dn" => PickKind::Dn,
-        "disp" => PickKind::Disp,
-        "semi" => PickKind::Semi,
-        "coating" | "coat" => PickKind::Coating,
-        _ => {
-            if let Some(i) = num("before").filter(|&i| i < 5) {
-                PickKind::Before(i)
-            } else if let Some(i) = num("after").filter(|&i| i < 5) {
-                PickKind::After(i)
-            } else if let Some(i) = num("parm").or_else(|| num("p")) {
-                PickKind::Parm(i)
-            } else {
-                invalid!(
-                    "pickup quantity {s} (c r t k p1.. dn disp semi coating before0..4 after0..4)"
-                )
-            }
-        }
-    })
-}
-
-/// ピックアップの量の名前（[`pick_kind_parse`] の逆）
-pub fn pick_kind_name(k: crate::param::PickKind) -> String {
-    use crate::param::PickKind;
-    match k {
-        PickKind::Curv => "c".into(),
-        PickKind::Thick => "t".into(),
-        PickKind::Conic => "k".into(),
-        PickKind::Parm(i) => format!("p{i}"),
-        PickKind::Dn => "dn".into(),
-        PickKind::Disp => "disp".into(),
-        PickKind::Semi => "semi".into(),
-        PickKind::Coating => "coating".into(),
-        PickKind::Radius => "r".into(),
-        PickKind::Before(i) => format!("before{i}"),
-        PickKind::After(i) => format!("after{i}"),
     }
 }

@@ -682,7 +682,7 @@ fn multi_config_table_roundtrip() {
 /// .zmx に書けないもの（曲率半径のピックアップ等）は注意として返し、書けるものだけの系では空
 #[test]
 fn write_notes_list_dropped_items() {
-    use lensbench_core::param::{PickKind, Pickup};
+    use lensbench_core::pickup::{PickKind, Pickup};
     let (txt, opt) = a0_text();
     let mut s = zmx::build(
         &zmx::parse_text(&txt).unwrap(),

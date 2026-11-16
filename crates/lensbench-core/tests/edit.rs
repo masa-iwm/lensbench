@@ -2,7 +2,9 @@
 
 use crate::common::root;
 use lensbench_core::edit::surf_type_parse;
-use lensbench_core::param::{Kind, Param, PickKind, Pickup, SolveKind, ThickSolve};
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::pickup::{PickKind, Pickup};
+use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{Aperture, SurfType, Surface};
 use lensbench_core::system::{Aiming, ApertureKind, Field, FieldNorm, FieldSel, FieldType};
 use lensbench_core::zmx::{self, LoadOptions};
@@ -169,10 +171,9 @@ fn build_singlet() {
     let efl = s.paraxial().efl;
     assert!((efl - 1.0 / p).abs() < 1e-9, "{efl} {}", 1.0 / p);
     // 像面の手前の厚さを近軸のマージナル光線の高さ 0 で解く
-    s.add_solve(ThickSolve {
+    s.add_solve(Solve {
         surf: 3,
-        height: 0.0,
-        kind: SolveKind::MarginalHeight,
+        kind: SolveKind::MarginalHeight { height: 0.0 },
     })
     .unwrap();
     let t = s
@@ -479,10 +480,9 @@ fn curvature_solve_renumber() {
     s.insert_surface(2, a).unwrap();
     s.insert_surface(3, surf(40.0)).unwrap();
     // 面 3 の曲率中心を面 2 の頂点に
-    s.add_solve(ThickSolve {
+    s.add_solve(Solve {
         surf: 3,
-        height: 0.0,
-        kind: SolveKind::ConcentricSurface(2),
+        kind: SolveKind::ConcentricSurface { other: 2 },
     })
     .unwrap();
     assert!(
@@ -490,10 +490,12 @@ fn curvature_solve_renumber() {
         "{}",
         s.surfaces[3].c
     );
-    s.add_solve(ThickSolve {
+    s.add_solve(Solve {
         surf: 3,
-        height: 45.0,
-        kind: SolveKind::Position(2),
+        kind: SolveKind::Position {
+            other: 2,
+            length: 45.0,
+        },
     })
     .unwrap();
     assert_eq!(s.solves.len(), 2);
@@ -502,8 +504,20 @@ fn curvature_solve_renumber() {
     assert!(s.set_surface_fields(3, &[("c".into(), Num(0.1))]).is_err());
     s.insert_surface(1, surf(1.0)).unwrap();
     let k: Vec<_> = s.solves.iter().map(|q| (q.surf, q.kind)).collect();
-    assert!(k.contains(&(4, SolveKind::ConcentricSurface(3))), "{k:?}");
-    assert!(k.contains(&(4, SolveKind::Position(3))), "{k:?}");
+    assert!(
+        k.contains(&(4, SolveKind::ConcentricSurface { other: 3 })),
+        "{k:?}"
+    );
+    assert!(
+        k.contains(&(
+            4,
+            SolveKind::Position {
+                other: 3,
+                length: 45.0
+            }
+        )),
+        "{k:?}"
+    );
     s.remove_solve(4, Kind::Thick).unwrap();
     assert_eq!(s.solves.len(), 1);
     // 参照先の面を消すとそのソルブは外れる

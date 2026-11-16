@@ -7,7 +7,8 @@ use std::path::Path;
 
 use lensbench_core::error::{Error, Result};
 use lensbench_core::notimpl;
-use lensbench_core::param::{PickKind, SolveKind, ThickSolve};
+use lensbench_core::pickup::PickKind;
+use lensbench_core::solves::{Solve, SolveKind};
 use lensbench_core::surface::{After, Aperture, Bire, Material, SurfType, Tilt};
 use lensbench_core::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
 use lensbench_core::zpl_solve::MacroCol;
@@ -23,7 +24,7 @@ fn f(v: f64) -> String {
 }
 
 /// ピックアップの元の列のコード（0 = 同じ列）
-fn col(q: &lensbench_core::param::Pickup) -> i64 {
+fn col(q: &lensbench_core::pickup::Pickup) -> i64 {
     q.from.and_then(|k| k.column()).unwrap_or(0)
 }
 
@@ -268,8 +269,8 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             ),
             None => match s.solves.iter().find(|q| q.surf == k && q.kind.is_curv()) {
                 // ZPL マクロのソルブ: CURV 曲率 12 0 0 0 "名前"
-                Some(ThickSolve {
-                    kind: SolveKind::MacroCurv(i),
+                Some(Solve {
+                    kind: SolveKind::MacroCurv { index: i },
                     ..
                 }) => {
                     let name = s
@@ -282,15 +283,15 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 // 曲率のソルブ: CURV 曲率 種類 値 0 0 ""（OpticStudio 2026 R1.01 の書き方）
                 Some(q) => {
                     let (code, v) = match q.kind {
-                        SolveKind::MarginalAngle => (2, q.height),
-                        SolveKind::ChiefAngle => (3, q.height),
+                        SolveKind::MarginalAngle { .. } => (2, q.kind.value()),
+                        SolveKind::ChiefAngle { .. } => (3, q.kind.value()),
                         SolveKind::MarginalNormal => (5, 0.0),
                         SolveKind::ChiefNormal => (6, 0.0),
                         SolveKind::Aplanatic => (7, 0.0),
-                        SolveKind::ElementPower => (8, q.height),
-                        SolveKind::ConcentricSurface(j) => (9, j as f64),
-                        SolveKind::ConcentricRadius(j) => (10, j as f64),
-                        SolveKind::FNumber => (11, q.height),
+                        SolveKind::ElementPower { .. } => (8, q.kind.value()),
+                        SolveKind::ConcentricSurface { other: j } => (9, j as f64),
+                        SolveKind::ConcentricRadius { other: j } => (10, j as f64),
+                        SolveKind::FNumber { .. } => (11, q.kind.value()),
                         _ => unreachable!(),
                     };
                     w(
@@ -550,19 +551,19 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         w(&mut o, format!("  DISZ {}", f(d.t)));
         // 厚さのソルブ（OpticStudio 2026 R1.01 の書き方）
         for q in s.solves.iter().filter(|q| q.surf == k && !q.kind.is_curv()) {
-            let h = f(q.height);
+            let h = f(q.kind.value());
             let line = match q.kind {
-                SolveKind::MarginalHeight => format!("  MAZH {h} 0"),
-                SolveKind::MarginalHeightZone(z) => format!("  MAZH {h} {}", f(z)),
-                SolveKind::ChiefHeight => format!("  CHZH {h} 0"),
+                SolveKind::MarginalHeight { .. } => format!("  MAZH {h} 0"),
+                SolveKind::MarginalHeightZone { zone: z, .. } => format!("  MAZH {h} {}", f(z)),
+                SolveKind::ChiefHeight { .. } => format!("  CHZH {h} 0"),
                 SolveKind::PupilPosition => "  TPUP 0 0".into(),
-                SolveKind::Edge(r) => format!("  EDGE {h} {}", f(r)),
-                SolveKind::Opd(z) => format!("  OPDZ {h} {}", f(z)),
-                SolveKind::Position(j) => format!("  TOLE {j} {h}"),
-                SolveKind::Compensator(j) => format!("  TCOM {j} {h}"),
-                SolveKind::CenterOfCurvature(j) => format!("  TCOC {j} 0"),
+                SolveKind::Edge { radius: r, .. } => format!("  EDGE {h} {}", f(r)),
+                SolveKind::Opd { zone: z, .. } => format!("  OPDZ {h} {}", f(z)),
+                SolveKind::Position { other: j, .. } => format!("  TOLE {j} {h}"),
+                SolveKind::Compensator { other: j, .. } => format!("  TCOM {j} {h}"),
+                SolveKind::CenterOfCurvature { other: j } => format!("  TCOC {j} 0"),
                 // ZPL マクロのソルブ（OpticStudio 26.1.1 の書き方）
-                SolveKind::MacroThick(i) => {
+                SolveKind::MacroThick { index: i } => {
                     let name = s
                         .macros
                         .get(i as usize)

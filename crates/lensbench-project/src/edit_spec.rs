@@ -162,7 +162,7 @@ pub struct StopOp<S> {
 #[serde(deny_unknown_fields, bound(deserialize = "S: Deserialize<'de>"))]
 pub struct SolveOp<S> {
     pub surface: S,
-    /// 種類（既定 marginal_height、[`lensbench_core::edit::SOLVE_KINDS`]）
+    /// 種類（既定 marginal_height、[`lensbench_core::solves::SOLVE_KINDS`]）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// 目標の値（既定 0）
@@ -234,8 +234,9 @@ impl<S> SolveOp<S> {
 
     /// 曲率のソルブか（種類の名前が読めなければ false）
     pub fn is_curv(&self) -> bool {
-        lensbench_core::edit::solve_kind_parse(
+        lensbench_core::solves::solve_kind_parse(
             self.kind.as_deref().unwrap_or("marginal_height"),
+            0.0,
             0.0,
             Some(0),
         )

@@ -7,7 +7,7 @@
 //! - 物体面と像面は分けない。物体面の厚さは系に残す。
 //!
 //! [`assemble`] は分けた並びを面の列に戻す。並び替え・反転・差し替えをした並びでもよい。
-//! 組み直した系はピックアップ（[`crate::param::Pickup`]）・玉・群（[`crate::units`]）を引き継がない（玉は作り直す）。
+//! 組み直した系はピックアップ（[`crate::pickup::Pickup`]）・玉・群（[`crate::units`]）を引き継がない（玉は作り直す）。
 
 use crate::action::Action;
 use crate::error::Result;

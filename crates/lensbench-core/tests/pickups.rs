@@ -1,6 +1,7 @@
 //! ピックアップの追従: 元の面のパラメータを変えると、ピックアップ先も解決し直す。
 use lensbench_core::elements;
-use lensbench_core::param::{Kind, Param, PickKind};
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::pickup::PickKind;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;

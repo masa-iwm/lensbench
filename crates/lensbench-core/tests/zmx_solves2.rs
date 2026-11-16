@@ -2,7 +2,8 @@
 //! .zmx の書き方と読込で解き直すことは OpticStudio 2026 R1.01 で実測した（123 ケースで一致を確認）。
 //! ここでは定義どおりに解けること、保存値が古くても解き直すこと、書き出し・読み戻し・パラメータの変更を確かめる。
 
-use lensbench_core::param::{PickKind, SolveKind};
+use lensbench_core::pickup::PickKind;
+use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::After;
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
@@ -86,15 +87,15 @@ fn close(a: f64, b: f64, tol: f64) -> bool {
 fn curvature_solves_meet_their_definition() {
     let fmax = 20f64.to_radians().tan();
     let cases: [(usize, &str, SolveKind); 9] = [
-        (6, "2 -0.1", SolveKind::MarginalAngle),
-        (7, "3 -0.1", SolveKind::ChiefAngle),
+        (6, "2 -0.1", SolveKind::MarginalAngle { angle: -0.1 }),
+        (7, "3 -0.1", SolveKind::ChiefAngle { angle: -0.1 }),
         (6, "5 0", SolveKind::MarginalNormal),
         (6, "6 0", SolveKind::ChiefNormal),
         (6, "7 0", SolveKind::Aplanatic),
-        (7, "8 0.02", SolveKind::ElementPower),
-        (6, "9 3", SolveKind::ConcentricSurface(3)),
-        (7, "10 6", SolveKind::ConcentricRadius(6)),
-        (6, "11 4.5", SolveKind::FNumber),
+        (7, "8 0.02", SolveKind::ElementPower { power: 0.02 }),
+        (6, "9 3", SolveKind::ConcentricSurface { other: 3 }),
+        (7, "10 6", SolveKind::ConcentricRadius { other: 6 }),
+        (6, "11 4.5", SolveKind::FNumber { fnum: 4.5 }),
     ];
     for (k, code, kind) in cases {
         let line = format!("CURV 0.5 {code} 0 0 \"\"");
@@ -108,21 +109,21 @@ fn curvature_solves_meet_their_definition() {
         let n = s.index_before(k, 0);
         let n2 = s.n(k)[0];
         let ok = match kind {
-            SolveKind::MarginalAngle => close(um[k], -0.1, 1e-13),
-            SolveKind::ChiefAngle => close(uc[k] * fmax, -0.1, 1e-13),
+            SolveKind::MarginalAngle { .. } => close(um[k], -0.1, 1e-13),
+            SolveKind::ChiefAngle { .. } => close(uc[k] * fmax, -0.1, 1e-13),
             SolveKind::MarginalNormal => close(um[k - 1] + ym[k] * d.c, 0.0, 1e-13),
             SolveKind::ChiefNormal => close(uc[k - 1] + yc[k] * d.c, 0.0, 1e-13),
             SolveKind::Aplanatic => close(um[k] / n2, um[k - 1] / n, 1e-13),
-            SolveKind::ElementPower => {
+            SolveKind::ElementPower { .. } => {
                 let a = &s.surfaces[k - 1];
                 let ng = s.n(k - 1)[0];
                 let (fa, fb) = (a.c * (ng - 1.0), d.c * (1.0 - ng));
                 close(fa + fb - a.t / ng * fa * fb, 0.02, 1e-13)
             }
             // 面 6 から面 3 の頂点まで −(2.3 + 2.6 + 1.2)
-            SolveKind::ConcentricSurface(_) => close(1.0 / d.c, -6.1, 1e-13),
-            SolveKind::ConcentricRadius(_) => close(1.0 / d.c, -3.2 + 88.0, 1e-13),
-            SolveKind::FNumber => close(um[k], -1.0 / 9.0, 1e-13),
+            SolveKind::ConcentricSurface { .. } => close(1.0 / d.c, -6.1, 1e-13),
+            SolveKind::ConcentricRadius { .. } => close(1.0 / d.c, -3.2 + 88.0, 1e-13),
+            SolveKind::FNumber { .. } => close(um[k], -1.0 / 9.0, 1e-13),
             _ => unreachable!(),
         };
         assert!(ok, "{kind:?}: c = {}", d.c);
@@ -143,13 +144,34 @@ fn curvature_solves_meet_their_definition() {
 fn thickness_solves_meet_their_definition() {
     let fmax = 20f64.to_radians().tan();
     let cases: [(usize, &str, SolveKind); 7] = [
-        (6, "CHZH 0.5 0", SolveKind::ChiefHeight),
+        (6, "CHZH 0.5 0", SolveKind::ChiefHeight { height: 0.5 }),
         (7, "TPUP 0 0", SolveKind::PupilPosition),
-        (6, "EDGE 1.5 4", SolveKind::Edge(4.0)),
-        (6, "TOLE 5 10", SolveKind::Position(5)),
-        (4, "TCOM 2 8", SolveKind::Compensator(2)),
-        (6, "TCOC 6 0", SolveKind::CenterOfCurvature(6)),
-        (7, "MAZH 0.2 0.7", SolveKind::MarginalHeightZone(0.7)),
+        (
+            6,
+            "EDGE 1.5 4",
+            SolveKind::Edge {
+                thickness: 1.5,
+                radius: 4.0,
+            },
+        ),
+        (
+            6,
+            "TOLE 5 10",
+            SolveKind::Position {
+                other: 5,
+                length: 10.0,
+            },
+        ),
+        (4, "TCOM 2 8", SolveKind::Compensator { other: 2, sum: 8.0 }),
+        (6, "TCOC 6 0", SolveKind::CenterOfCurvature { other: 6 }),
+        (
+            7,
+            "MAZH 0.2 0.7",
+            SolveKind::MarginalHeightZone {
+                height: 0.2,
+                zone: 0.7,
+            },
+        ),
     ];
     for (k, line, kind) in cases {
         let s = build(&triplet(&[], &[(k, line)]));
@@ -157,17 +179,17 @@ fn thickness_solves_meet_their_definition() {
         let par = s.paraxial();
         let t = s.surfaces[k].t;
         let ok = match kind {
-            SolveKind::ChiefHeight => close(par.chief.0[k + 1] * fmax, 0.5, 1e-13),
+            SolveKind::ChiefHeight { .. } => close(par.chief.0[k + 1] * fmax, 0.5, 1e-13),
             SolveKind::PupilPosition => par.chief.0[k + 1].abs() < 1e-12,
-            SolveKind::Edge(r) => {
+            SolveKind::Edge { radius: r, .. } => {
                 let (a, b) = (&s.surfaces[k], &s.surfaces[k + 1]);
                 let sag = |c: f64| c * r * r / (1.0 + (1.0 - c * c * r * r).sqrt());
                 close(t + sag(b.c) - sag(a.c), 1.5, 1e-13)
             }
-            SolveKind::Position(_) => close(s.surfaces[5].t + t, 10.0, 1e-13),
-            SolveKind::Compensator(_) => close(s.surfaces[2].t + t, 8.0, 1e-13),
-            SolveKind::CenterOfCurvature(_) => close(t, 88.0, 1e-13),
-            SolveKind::MarginalHeightZone(z) => {
+            SolveKind::Position { .. } => close(s.surfaces[5].t + t, 10.0, 1e-13),
+            SolveKind::Compensator { .. } => close(s.surfaces[2].t + t, 8.0, 1e-13),
+            SolveKind::CenterOfCurvature { .. } => close(t, 88.0, 1e-13),
+            SolveKind::MarginalHeightZone { zone: z, .. } => {
                 let r = s
                     .try_trace(
                         FieldSel::Norm(0.0, 0.0),

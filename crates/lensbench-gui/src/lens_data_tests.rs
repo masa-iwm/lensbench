@@ -461,8 +461,8 @@ fn inserting_at_the_start_of_the_entered_block_keeps_the_new_surface_inside() {
 /// 鏡の後の戻り（ダブルパス）: 面 4・5 を面 1・2 から逆の順に。曲率はそのまま、間の硝材は元の間、厚さは符号を変える
 #[test]
 fn range_pickup_return_and_flip() {
-    use lensbench_core::edit::pick_kind_parse;
-    use lensbench_core::param::Pickup;
+    use lensbench_core::pickup::pick_kind_parse;
+    use lensbench_core::pickup::Pickup;
     let txt = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 8\nFTYP 0 0 1 1 0 0 0\n\
 XFLN 0\nYFLN 0\nFWGN 1\nWAVM 1 0.5876 1\nPWAV 1\n\
 SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\

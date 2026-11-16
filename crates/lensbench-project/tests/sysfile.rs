@@ -1,7 +1,8 @@
 //! 系ファイル（版 2）: 公開の試験の .zmx すべてと例題を、保存して読み直すと追跡・近軸量がビット一致し、
 //! 書き直した文字列も同じになる。hash は同じ系で同じ。版 1 も読める。
 
-use lensbench_core::param::{Kind, Param, PickKind, Pickup};
+use lensbench_core::param::{Kind, Param};
+use lensbench_core::pickup::{PickKind, Pickup};
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
@@ -415,10 +416,9 @@ fn edited_system_roundtrip() {
     s.add_pickup(Pickup::new(1, 3, PickKind::Thick, 0.5, 0.0))
         .unwrap();
     let k = s.image() - 1;
-    s.add_solve(lensbench_core::param::ThickSolve {
+    s.add_solve(lensbench_core::solves::Solve {
         surf: k - 1,
-        height: 0.0,
-        kind: lensbench_core::param::SolveKind::ConcentricSurface(k - 2),
+        kind: lensbench_core::solves::SolveKind::ConcentricSurface { other: k - 2 },
     })
     .unwrap();
     s.set_config_count(2).unwrap();

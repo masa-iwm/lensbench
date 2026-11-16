@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lensbench_core::param::SolveKind;
+use lensbench_core::solves::SolveKind;
 use lensbench_core::surface::SurfType;
 use lensbench_core::System;
 use serde_json::{json, Value};
@@ -120,19 +120,22 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         ops.push(json!({ "op": "set_stop", "surface": { "block": b, "surface": i } }));
     }
     for q in &s.solves {
-        if matches!(q.kind, SolveKind::MacroCurv(..) | SolveKind::MacroThick(..)) {
+        if matches!(
+            q.kind,
+            SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
+        ) {
             return None;
         }
-        let (kind, param, other) = lensbench_core::edit::solve_kind_info(q.kind);
+        let (kind, value, param, other) = lensbench_core::solves::solve_kind_info(q.kind);
         let mut o = json!({ "op": "add_solve", "surface": at(q.surf)?, "kind": kind,
-            "value": q.height, "param": param });
+            "value": value, "param": param });
         if let Some(x) = other {
             o["other"] = at(x)?;
         }
         ops.push(o);
     }
     for q in &s.pickups {
-        let name = lensbench_core::edit::pick_kind_name;
+        let name = lensbench_core::pickup::pick_kind_name;
         let mut o = json!({ "op": "add_pickup", "dst": at(q.dst)?, "src": at(q.src)?,
             "what": name(q.what), "scale": q.scale, "offset": q.offset });
         if let Some(w) = q.from {

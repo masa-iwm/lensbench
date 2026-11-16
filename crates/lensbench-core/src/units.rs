@@ -496,12 +496,13 @@ impl System {
                         q.surf = to;
                     }
                     // 面 b の厚さを参照する補償のソルブ
-                    if q.kind == crate::param::SolveKind::Compensator(b) {
+                    if matches!(q.kind, crate::solves::SolveKind::Compensator { other, .. } if other == b)
+                    {
                         q.kind = q.kind.with_other_surface(to);
                     }
                 }
                 for p in s.rx_mut().pickups.iter_mut() {
-                    use crate::param::PickKind::Thick;
+                    use crate::pickup::PickKind::Thick;
                     if p.src == b && p.source() == Thick {
                         p.src = to;
                     }

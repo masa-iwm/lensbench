@@ -80,7 +80,7 @@ fn solve_ops() {
     assert!(s
         .solves
         .iter()
-        .any(|q| q.kind == lensbench_core::param::SolveKind::ConcentricSurface(j - 1)));
+        .any(|q| q.kind == lensbench_core::solves::SolveKind::ConcentricSurface { other: j - 1 }));
     edit_ops::apply_json(
         &mut s,
         &json!([{"op": "remove_solve", "surface": j, "what": "c"}]),

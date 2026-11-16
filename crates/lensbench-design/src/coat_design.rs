@@ -133,30 +133,11 @@ fn residuals(ts: &[Target], pre: &Prep, mats: &[usize], d: &[f64], n0: f64, out:
     }
 }
 
-/// 小さな連立一次方程式（ガウスの消去、部分ピボット）。解けなければ None
-fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
+/// 小さな連立一次方程式（LU 分解）。解けなければ None
+fn solve(a: Vec<Vec<f64>>, b: Vec<f64>) -> Option<Vec<f64>> {
     let n = b.len();
-    for c in 0..n {
-        let p = (c..n).max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))?;
-        if a[p][c].abs() < 1e-300 {
-            return None;
-        }
-        a.swap(c, p);
-        b.swap(c, p);
-        for r in c + 1..n {
-            let f = a[r][c] / a[c][c];
-            for k in c..n {
-                a[r][k] -= f * a[c][k];
-            }
-            b[r] -= f * b[c];
-        }
-    }
-    let mut x = vec![0.0; n];
-    for r in (0..n).rev() {
-        let s: f64 = (r + 1..n).map(|k| a[r][k] * x[k]).sum();
-        x[r] = (b[r] - s) / a[r][r];
-    }
-    Some(x)
+    let lu = lensbench_core::linalg::Lu::new(a.into_iter().flatten().collect(), n)?;
+    Some(lu.solve(&b))
 }
 
 /// 厚さ d から LM で合わせる（d は [0, d_max] に収める）→ (d, 残差の二乗和)

@@ -43,7 +43,8 @@ use std::path::{Path, PathBuf};
 use lensbench_core::elements::{self, Element, Kind};
 use lensbench_core::glass::{self, Glass};
 use lensbench_core::math::{mv, rot, M3};
-use lensbench_core::param::{Pickup, ThickSolve};
+use lensbench_core::pickup::Pickup;
+use lensbench_core::solves::Solve;
 use lensbench_core::surface::{After, Aperture, Material, SurfType, Surface};
 use lensbench_core::system::{
     AfocalUnit, Aiming, ApertureKind, Field, FieldCond, FieldNorm, FieldType, System,

@@ -5,6 +5,13 @@
 ## 次の版（v0.4.0 の後）
 
 ### 系ファイル
+- ソルブの書き方を変えた（IOO-19）: 系ファイル版 2 の `solves` は `{"surf": 5, "type": "edge", "thickness": 1.5, "radius": 4}` のように
+  種類（`type`、snake_case）と種類ごとの値の欄を持つ（前の `height` と `kind` はやめた）。版 1 のファイルは読むときに直す。
+  Rust は `lensbench_core::param::ThickSolve` を `lensbench_core::solves::Solve { surf, kind }` に、`SolveKind` の各種類が値を持つ
+  （`MarginalHeight { height }`・`Edge { thickness, radius }`・`Position { other, length }` など。`value()`・`with_value()` で条件の値）。
+  `solve_kind_parse(名前, value, param, other)`・`solve_kind_info` は value も扱う。ピックアップは `lensbench_core::pickup`
+  （`PickKind`・`Pickup`・`pick_kind_parse`・`pick_kind_name`・`surf_parm`）、多重構成の表は `lensbench_core::configs`
+  （`Configs`・`ConfigRow`・`ConfigPick`）、`SOLVE_KINDS` は `lensbench_core::solves` に移した。`sweep::solve` は `linalg::solve_or_zero`。
 - 系ファイルを版 2 にした（PRJ-24・IOO-10）。`system` は内部の構造体の serde でなく、利用者が書いた値（処方）だけを決めた形で書く
   （[JSON スキーマ](reference/schema.md) の system）。面は形 `shape`・働き `action`・媒質 `medium` などの行で、曲率は `c`。求めた屈折率
   `n`・`n_base`、自動の半直径の値、ガラスの式（カタログ全体）は書かない（玉 2 枚の ACH-45 は 760 KB から 1.8 KB）。ガラスは名前と、使った

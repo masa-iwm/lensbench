@@ -99,8 +99,8 @@ pub struct Prescription {
     #[cfg_attr(
         feature = "serde",
         serde(
-            default = "crate::edit::yes",
-            skip_serializing_if = "crate::edit::is_yes"
+            default = "crate::configs::yes",
+            skip_serializing_if = "crate::configs::is_yes"
         )
     )]
     pub floating_clip: bool,
@@ -119,10 +119,10 @@ pub struct Prescription {
     pub name: String,
     pub adjust_index: bool,
     /// ピックアップ（.zmx の PZUP・PPAR・PKUP・曲率のピックアップ）。パラメータを変えると解決し直す（[`crate::param`]）
-    pub pickups: Vec<crate::param::Pickup>,
+    pub pickups: Vec<crate::pickup::Pickup>,
     /// 厚さのソルブ（.zmx の MAZH）。パラメータを変えると解き直す（[`crate::param`]）
-    pub solves: Vec<crate::param::ThickSolve>,
-    /// ソルブが呼ぶ ZPL のマクロ（[`crate::param::SolveKind::MacroCurv`]・`MacroThick` の番号で引く）
+    pub solves: Vec<crate::solves::Solve>,
+    /// ソルブが呼ぶ ZPL のマクロ（[`crate::solves::SolveKind::MacroCurv`]・`MacroThick` の番号で引く）
     #[cfg_attr(
         feature = "serde",
         serde(default, skip_serializing_if = "Vec::is_empty")
@@ -161,7 +161,7 @@ pub struct Prescription {
         feature = "serde",
         serde(default, skip_serializing_if = "Option::is_none")
     )]
-    pub configs: Option<crate::edit::Configs>,
+    pub configs: Option<crate::configs::Configs>,
 }
 
 /// 系: 文書（[`Prescription`]、[`Arc`] で共有）と、そこから作る追跡の準備（座標系・近軸量・追跡の表などのキャッシュ）。
