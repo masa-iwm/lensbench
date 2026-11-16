@@ -20,6 +20,7 @@ use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 mod ap_shape;
 mod detector;
+mod element;
 mod figure;
 mod mech;
 mod raw;
@@ -2484,105 +2485,9 @@ fn gap_mut(combo: &mut Combo, g: usize) -> Option<&mut f64> {
     }
 }
 
-/// 面の表で選んだ要素 k（ブロック）の設定。要素の設定と同じ値を、置き方（偏心 x・y、傾き x・y・z）まで全部出す
+/// 面の表で選んだ要素 k（ブロック）の設定。図の下の欄と同じで、置き方（偏心 x・y、傾き x・y・z）まで全部出す
 pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
-    let chain = combo.chain();
-    let last = k + 1 == chain.len();
-    let Some(step) = chain.get(k).cloned() else {
-        return;
-    };
-    let air_gap = matches!(step.after, Some(Gap::Air(_)));
-    let st = combo.active_state().map(str::to_string);
-    let st = st.as_deref();
-    // 膜の欄で選べる、系の設定で定義した膜の名前
-    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
-    let Some(p) = combo.get_mut(&step.loc) else {
-        return;
-    };
-    let weak = theme::weak_text(ui.visuals());
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
-        ui.label(RichText::new(p.kind.label()).color(weak));
-        ui.checkbox(&mut p.locked, tr("Lock")).on_hover_text(tr(
-            "A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)",
-        ));
-        if p.locked {
-            ui.checkbox(&mut p.lock_place, tr("Position too")).on_hover_text(tr(
-                "Also lock the position (drag, keys, decenter, tilt) and the air after",
-            ));
-        }
-        if !p.edits.is_empty() || !p.ops.is_empty() {
-            ui.label(
-                RichText::new(trf(
-                    "{} values changed in Lens Data",
-                    &[&(p.edits.len() + p.ops.len())],
-                ))
-                .color(ui.visuals().warn_fg_color),
-            );
-            if ui
-                .add_enabled(!p.locked, egui::Button::new(tr("Revert")))
-                .on_hover_text(tr(
-                    "Drop the values changed in the surface table (including stop, solves and pickups)",
-                ))
-                .clicked()
-            {
-                p.edits.clear();
-                p.ops.clear();
-            }
-        }
-    });
-    // ロックは中身（種類ごとの欄・面・反転）だけを止める。位置・後の空気は「位置も」で止める。ON/OFF はいつも変えられる
-    let locked = p.locked;
-    ui.add_enabled_ui(!locked, |ui| {
-        ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak, &coats));
-        if p.kind == ElemKind::Surfaces {
-            surf_table(ui, p, k, weak);
-        }
-    });
-    ui.add_enabled_ui(!p.fixed(), |ui| {
-        if place_fields(p.kind) {
-            ui.horizontal_wrapped(|ui| {
-                if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx)
-                    && !(p.kind == ElemKind::Catalog && !p.path.is_empty())
-                {
-                    ui.add_enabled(!locked, egui::Checkbox::new(&mut p.reversed, tr("Reverse")));
-                }
-                place_ui(ui, p, st, &[0, 1], &[0, 1, 2]);
-            });
-        }
-        let mut air = p.air_in(st);
-        if air_gap {
-            ui.horizontal_wrapped(|ui| {
-                num(
-                    ui,
-                    if last {
-                        tr("To image")
-                    } else {
-                        tr("Air after")
-                    },
-                    &mut air,
-                    " mm",
-                );
-                if air != p.air_in(st) {
-                    *p.air_mut(st) = air;
-                }
-            });
-        }
-    });
-    // 構成への入れる・外すは「位置も」のロックでも変えられる（動かすのではないので）
-    ui.horizontal_wrapped(|ui| onoff_ui(ui, p, st, k, weak));
-    let is_bs = p.kind == ElemKind::Splitter;
-    if is_bs {
-        ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
-    }
-    // 要素の群の役割・移動もここで（レイアウトのパネルの「群」と同じ、#136）
-    let g = combo
-        .get(&step.loc)
-        .map(|p| p.group.trim().to_string())
-        .unwrap_or_default();
-    if !g.is_empty() {
-        ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, Some(&g)));
-    }
+    element::element_settings(ui, combo, k, element::Detail::Full, |_, _| {});
 }
 
 const ROLES: [(&str, &str); 4] = [
@@ -3181,22 +3086,18 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         );
         return None;
     };
-    let chain = combo.chain();
-    let step = chain[k].clone();
-    let where_ = combo.where_label(&step.loc);
+    let where_ = combo
+        .chain()
+        .get(k)
+        .map(|s| combo.where_label(&s.loc))
+        .unwrap_or_default();
     let can_prev = combo.can_swap(k, -1);
     let can_next = combo.can_swap(k, 1);
     let mut remove = false;
     let mut swap: Option<i32> = None;
     let mut open = None;
-    let st = combo.active_state().map(str::to_string);
-    let st = st.as_deref();
-    let coats: Vec<String> = combo.coatings.keys().cloned().collect();
-    let air_gap = matches!(step.after, Some(Gap::Air(_)));
-    let p = combo.get_mut(&step.loc)?;
-    let locked = p.locked;
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(format!("{}. {}", k + 1, p.label())).strong());
+    let mut save = false;
+    element::element_settings(ui, combo, k, element::Detail::Compact, |ui, _| {
         if !where_.is_empty() {
             ui.label(RichText::new(trf("(beyond {})", &[&where_])).color(weak))
                 .on_hover_text(tr("An element in the row beyond a BS port"));
@@ -3212,81 +3113,13 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
         }
         if ui
             .button(tr("📚 Save to catalog"))
-            .on_hover_text(tr("Save this element (or a range) as an item of a user catalog"))
+            .on_hover_text(tr(
+                "Save this element (or a range) as an item of a user catalog",
+            ))
             .clicked()
         {
-            view.save = Some(k);
+            save = true;
         }
-        if !p.edits.is_empty() || !p.ops.is_empty() {
-            ui.label(
-                RichText::new(trf(
-                    "{} values changed in Lens Data",
-                    &[&(p.edits.len() + p.ops.len())],
-                ))
-                .color(ui.visuals().warn_fg_color),
-            )
-            .on_hover_text(
-                p.edits
-                    .iter()
-                    .map(|e| format!("{} {} = {}", e.surface + 1, e.field, e.value))
-                    .chain(
-                        p.ops
-                            .iter()
-                            .map(|o| serde_json::to_string(o).unwrap_or_default()),
-                    )
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
-            if ui
-                .add_enabled(!p.locked, egui::Button::new(tr("Revert")))
-                .on_hover_text(tr(
-                    "Drop the values changed in the surface table (including stop, solves and pickups)",
-                ))
-                .clicked()
-            {
-                p.edits.clear();
-                p.ops.clear();
-            }
-        }
-        ui.checkbox(&mut p.locked, tr("Lock")).on_hover_text(tr(
-            "A locked element keeps its contents (surfaces, glass, flip); position and the air after can still change (toggle with Ctrl+L)",
-        ));
-        if p.locked {
-            ui.checkbox(&mut p.lock_place, tr("Position too")).on_hover_text(tr(
-                "Also lock the position (drag, keys, decenter, tilt) and the air after",
-            ));
-        }
-        ui.add_enabled_ui(!p.locked, |ui| {
-            kind_fields(ui, p, st, k, weak, &coats);
-            if matches!(p.kind, ElemKind::Catalog | ElemKind::Lens | ElemKind::Zmx) {
-                ui.checkbox(&mut p.reversed, tr("Reverse"));
-            }
-        });
-        ui.add_enabled_ui(!p.fixed(), |ui| {
-            if !matches!(
-                p.kind,
-                ElemKind::Mirror | ElemKind::Stop | ElemKind::Aperture
-            ) {
-                place_ui(ui, p, st, &[1], &[0]);
-            }
-            let mut air = p.air_in(st);
-            if air_gap {
-                num(
-                    ui,
-                    if k + 1 == n {
-                        tr("To image")
-                    } else {
-                        tr("Air after")
-                    },
-                    &mut air,
-                    " mm",
-                );
-                if air != p.air_in(st) {
-                    *p.air_mut(st) = air;
-                }
-            }
-        });
-        onoff_ui(ui, p, st, k, weak);
         if ui
             .add_enabled(can_prev, egui::Button::new("◀"))
             .on_hover_text(tr("Earlier"))
@@ -3305,18 +3138,8 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
             remove = true;
         }
     });
-    if combo
-        .get(&step.loc)
-        .is_some_and(|p| p.kind == ElemKind::Splitter)
-    {
-        ui.add_enabled_ui(!locked, |ui| bs_fields(ui, combo, &step.loc, weak));
-    }
-    if let Some(p) = combo
-        .get_mut(&step.loc)
-        .filter(|p| p.kind == ElemKind::Surfaces)
-    {
-        let locked = p.locked;
-        ui.add_enabled_ui(!locked, |ui| surf_table(ui, p, k, weak));
+    if save {
+        view.save = Some(k);
     }
     if remove {
         combo.remove_chain(k);
