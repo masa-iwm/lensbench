@@ -13,6 +13,7 @@ use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::theme;
 
+pub(crate) mod form;
 mod pts;
 pub use pts::{FieldPt, WavePt};
 
@@ -266,91 +267,15 @@ impl Combo {
     /// 開いた系の設定（serve の `system_data` の data）を組合せの設定にする。obj_t は物体面の厚さ（無限遠は inf）。
     /// 条件で定める視野は組合せの欄に移せないので断る（#135）
     pub fn take_system_data(&mut self, d: &Value, obj_t: f64) -> Result<(), String> {
-        let wl: Vec<f64> = d["wavelengths"]
-            .as_array()
-            .map(|a| a.iter().filter_map(Value::as_f64).collect())
-            .unwrap_or_default();
-        if wl.is_empty() {
-            return Err(tr("Cannot read the system wavelengths").into());
+        let empty = serde_json::Map::new();
+        let f = form::SysForm::from_data(d.as_object().unwrap_or(&empty))?;
+        if f.field_cond.is_some() {
+            return Err(
+                tr("A system with solved fields cannot be moved to combination settings").into(),
+            );
         }
-        let ws: Vec<f64> = d["weights"]
-            .as_array()
-            .map(|a| a.iter().filter_map(Value::as_f64).collect())
-            .unwrap_or_default();
-        self.waves = wl
-            .iter()
-            .enumerate()
-            .map(|(i, &um)| WavePt {
-                um,
-                w: ws.get(i).copied().unwrap_or(1.0),
-            })
-            .collect();
-        self.primary = d["primary"].as_u64().map_or(1, |p| p as usize + 1);
-        self.field_kind = match d["field_type"].as_str() {
-            Some("Angle") => FieldKind::Angle,
-            Some("ObjH") => FieldKind::ObjectHeight,
-            Some("ParH") => FieldKind::ParaxialImageHeight,
-            Some("RealH") => FieldKind::RealImageHeight,
-            _ => {
-                return Err(tr(
-                    "A system with solved fields cannot be moved to combination settings",
-                )
-                .into())
-            }
-        };
-        self.fields = d["fields"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .map(|f| FieldPt {
-                        x: f["x"].as_f64().unwrap_or(0.0),
-                        y: f["y"].as_f64().unwrap_or(0.0),
-                        w: f["w"].as_f64().unwrap_or(1.0),
-                        vig: ["vdx", "vdy", "vcx", "vcy", "van"]
-                            .map(|k| f[k].as_f64().unwrap_or(0.0)),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let (kind, val) = (d["aperture"][0].as_str(), d["aperture"][1].as_f64());
-        let val = val.unwrap_or(0.0);
-        self.aperture = match kind {
-            Some("Epd") => ApKind::Epd,
-            Some("FNum") => ApKind::Fnum,
-            Some("Na") => ApKind::Na,
-            Some("Float") => ApKind::Float,
-            Some("Pwfn") => ApKind::Pwfn,
-            Some("Cone") => ApKind::Cone,
-            _ => return Err(tr("Cannot read the system aperture").into()),
-        };
-        if self.aperture == ApKind::Epd {
-            self.epd = val;
-        } else {
-            self.ap_value = val;
-        }
+        f.apply_to(self);
         self.object_distance = obj_t.is_finite().then_some(obj_t);
-        self.telecentric = d["telecentric"].as_bool().unwrap_or(false);
-        self.floating_clip = d["floating_clip"].as_bool().unwrap_or(true);
-        self.aiming = match d["aiming"].as_str() {
-            Some("Paraxial") => Aiming::Paraxial,
-            Some("Real") => Aiming::Real,
-            _ => Aiming::Off,
-        };
-        self.afocal = if d["afocal"].as_bool() == Some(true) {
-            Some(
-                match d["afocal_unit"].as_str() {
-                    Some("Microradians") => "ur",
-                    Some("Radians") => "rr",
-                    Some("ArcSeconds") => "as",
-                    Some("ArcMinutes") => "am",
-                    Some("Degrees") => "dg",
-                    _ => "mr",
-                }
-                .to_string(),
-            )
-        } else {
-            None
-        };
         Ok(())
     }
 
@@ -724,333 +649,130 @@ pub fn ui(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
     }
 }
 
-fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
-    let weak = theme::weak_text(ui.visuals());
-    let id = ui.id().with("sysset");
-    // 開口
-    egui::Grid::new(id.with("ap"))
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            ui.label(tr("Aperture type"));
-            let before = c.aperture;
-            egui::ComboBox::from_id_salt(id.with("apk"))
-                .selected_text(c.aperture.label())
-                .show_ui(ui, |ui| {
-                    for k in ApKind::ALL {
-                        ui.selectable_value(&mut c.aperture, k, k.label());
-                    }
-                });
-            if c.aperture != before && c.aperture.has_value() {
-                c.ap_value = c.aperture.initial();
-            }
-            ui.end_row();
-            if c.aperture.has_value() {
-                ui.label(c.aperture.label());
-                ui.add(
-                    egui::DragValue::new(&mut c.ap_value)
-                        .speed(0.01)
-                        .range(1e-6..=1e6)
-                        .max_decimals(6)
-                        .suffix(c.aperture.unit()),
-                );
-                ui.end_row();
-            }
-            let lead = c.lead_stop();
-            if c.aperture == ApKind::Epd || lead {
-                ui.label(match c.aperture {
-                    ApKind::Epd => tr("Entrance pupil diameter [mm]"),
-                    ApKind::Float => tr("Stop diameter [mm]"),
-                    _ => tr("Stop diameter (drawing only) [mm]"),
-                });
-                ui.add(
-                    egui::DragValue::new(&mut c.epd)
-                        .speed(0.1)
-                        .range(1e-3..=1e4)
-                        .max_decimals(4),
-                );
-                ui.end_row();
-            }
-        });
-    // 絞りの位置
-    ui.add_space(4.0);
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Aperture stop")).strong());
-        match c.stop_at() {
-            StopAt::Lead => {
-                ui.label(tr("Before the first element (automatic)"));
-                ui.label(tr("Gap"));
-                ui.add(
-                    egui::DragValue::new(&mut c.stop_gap)
-                        .speed(0.1)
-                        .range(0.0..=1e5)
-                        .suffix(" mm"),
-                );
-                if ui
-                    .button(tr("Make the stop an element"))
-                    .on_hover_text(tr(
-                        "Put a \"Stop\" element at the head of the sequence. Drag it in the figure to move it anywhere",
-                    ))
-                    .clicked()
-                {
-                    c.make_stop_element();
-                }
-            }
-            StopAt::Pick(k) => {
-                let label = c
-                    .all()
-                    .get(k)
-                    .and_then(|l| c.get(l))
-                    .map(|p| p.label())
-                    .unwrap_or_default();
-                ui.label(trf("Element {}: \"{}\"", &[&(k + 1), &label]));
-            }
-            StopAt::Many(ks) => {
-                let s: Vec<String> = ks.iter().map(|k| (k + 1).to_string()).collect();
-                ui.label(
-                    RichText::new(trf("Elements {} (keep only one)", &[&s.join(", ")]))
-                        .color(Color32::RED),
-                );
-            }
-        }
-    });
-    ui.label(
-        RichText::new(tr(
-            "Place a \"Stop\" from the element palette anywhere in the sequence to set the stop there. Without one, a stop is placed automatically before the first element.",
-        ))
-        .small()
-        .color(weak),
-    );
-    if c.aperture == ApKind::Float && !c.lead_stop() {
-        ui.label(
-            RichText::new(tr("The aperture is set by the stop element's radius"))
-                .small()
-                .color(weak),
-        );
-    }
-    ui.separator();
+/// 組合せだけの項目（絞りの径と位置・物体・最初の空気）を共通の欄に差し込む
+struct ComboExtra<'a>(&'a mut Combo);
 
-    // 物体・エイミング・像空間
-    egui::Grid::new(id.with("obj"))
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            ui.label(tr("Object"));
-            ui.horizontal(|ui| {
-                let mut finite = c.object_distance.is_some();
-                ui.radio_value(&mut finite, false, tr("Infinity"));
-                ui.radio_value(&mut finite, true, tr("Finite"));
-                match (finite, c.object_distance) {
-                    (true, None) => c.object_distance = Some(100.0),
-                    (false, Some(_)) => c.object_distance = None,
-                    _ => {}
-                }
-                if let Some(d) = c.object_distance.as_mut() {
-                    ui.add(
-                        egui::DragValue::new(d)
-                            .speed(0.5)
-                            .range(0.0..=1e9)
-                            .max_decimals(4)
-                            .suffix(" mm"),
-                    )
-                    .on_hover_text(tr(
-                        "From the object surface to the first element (or the leading stop)",
-                    ));
-                }
+impl form::Extra for ComboExtra<'_> {
+    fn aperture_rows(&mut self, ui: &mut Ui, f: &mut form::SysForm) {
+        let c = &*self.0;
+        // 前に自動で置く絞りの径（EPD は入射瞳径の欄が兼ねる。絞りが要素なら要素の半径）
+        if f.aperture != ApKind::Epd && c.lead_stop() {
+            ui.label(if f.aperture == ApKind::Float {
+                tr("Stop diameter [mm]")
+            } else {
+                tr("Stop diameter (drawing only) [mm]")
             });
-            ui.end_row();
-            crate::combo_tree::lead_air_row(ui, c);
-            if c.object_distance.is_some() {
-                ui.label("");
-                ui.checkbox(&mut c.telecentric, tr("Telecentric in object space"));
-                ui.end_row();
-            }
-            ui.label(tr("Ray aiming"));
-            ui.horizontal(|ui| {
-                for a in Aiming::ALL {
-                    ui.radio_value(&mut c.aiming, a, a.label());
-                }
-            });
-            ui.end_row();
-            ui.label(tr("Image space"));
-            ui.horizontal(|ui| {
-                let mut on = c.afocal.is_some();
-                if ui.checkbox(&mut on, tr("Afocal")).changed() {
-                    c.afocal = on.then(|| AfocalUnit::default().code().to_ascii_lowercase());
-                }
-                if let Some(code) = c.afocal.as_mut() {
-                    let mut u = AfocalUnit::from_code(code).unwrap_or_default();
-                    egui::ComboBox::from_id_salt(id.with("afu"))
-                        .selected_text(u.label())
-                        .width(80.0)
-                        .show_ui(ui, |ui| {
-                            for x in AFOCAL_UNITS {
-                                ui.selectable_value(&mut u, x, x.label());
-                            }
-                        });
-                    *code = u.code().to_ascii_lowercase();
-                }
-            });
-            ui.end_row();
-            ui.label("");
-            ui.checkbox(
-                &mut c.floating_clip,
-                tr("Vignette rays outside fixed semi-diameters"),
-            )
-            .on_hover_text(tr(FLOATING_CLIP_HINT));
-            ui.end_row();
-        });
-    ui.separator();
-
-    // 視野
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(tr("Fields")).strong());
-        egui::ComboBox::from_id_salt(id.with("fk"))
-            .selected_text(c.field_kind.label())
-            .show_ui(ui, |ui| {
-                for k in FieldKind::ALL {
-                    ui.selectable_value(&mut c.field_kind, k, k.label());
-                }
-            });
-    });
-    if c.field_kind == FieldKind::Solve {
-        ui.horizontal_wrapped(|ui| {
-            egui::ComboBox::from_id_salt(id.with("sc"))
-                .selected_text(c.field_solve.cond.label())
-                .show_ui(ui, |ui| {
-                    for k in SolveCond::ALL {
-                        ui.selectable_value(&mut c.field_solve.cond, k, k.label());
-                    }
-                });
-            let two = c.field_solve.cond != SolveCond::Position;
-            ui.label(if two { tr("Surface 1") } else { tr("Surface") });
+            // 欄の値（f）を変える。c を直接変えると後の apply_to で戻る
             ui.add(
-                egui::TextEdit::singleline(&mut c.field_solve.s1)
-                    .hint_text(tr("number or name"))
-                    .desired_width(70.0),
+                egui::DragValue::new(&mut f.epd)
+                    .speed(0.1)
+                    .range(1e-3..=1e4)
+                    .max_decimals(4),
             );
-            if two {
-                ui.label(tr("Surface 2"));
-                ui.add(
-                    egui::TextEdit::singleline(&mut c.field_solve.s2)
-                        .hint_text(tr("number or name"))
-                        .desired_width(70.0),
-                );
+            ui.end_row();
+        }
+    }
+
+    fn after_aperture(&mut self, ui: &mut Ui, f: &form::SysForm) {
+        let c = &mut *self.0;
+        let weak = theme::weak_text(ui.visuals());
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(tr("Aperture stop")).strong());
+            match c.stop_at() {
+                StopAt::Lead => {
+                    ui.label(tr("Before the first element (automatic)"));
+                    ui.label(tr("Gap"));
+                    ui.add(
+                        egui::DragValue::new(&mut c.stop_gap)
+                            .speed(0.1)
+                            .range(0.0..=1e5)
+                            .suffix(" mm"),
+                    );
+                    if ui
+                        .button(tr("Make the stop an element"))
+                        .on_hover_text(tr(
+                            "Put a \"Stop\" element at the head of the sequence. Drag it in the figure to move it anywhere",
+                        ))
+                        .clicked()
+                    {
+                        c.make_stop_element();
+                    }
+                }
+                StopAt::Pick(k) => {
+                    let label = c
+                        .all()
+                        .get(k)
+                        .and_then(|l| c.get(l))
+                        .map(|p| p.label())
+                        .unwrap_or_default();
+                    ui.label(trf("Element {}: \"{}\"", &[&(k + 1), &label]));
+                }
+                StopAt::Many(ks) => {
+                    let s: Vec<String> = ks.iter().map(|k| (k + 1).to_string()).collect();
+                    ui.label(
+                        RichText::new(trf("Elements {} (keep only one)", &[&s.join(", ")]))
+                            .color(Color32::RED),
+                    );
+                }
             }
         });
         ui.label(
             RichText::new(tr(
-                "Solves the object so the primary-wavelength chief ray meets the condition (x, y below). Cannot be written to .zmx",
+                "Place a \"Stop\" from the element palette anywhere in the sequence to set the stop there. Without one, a stop is placed automatically before the first element.",
             ))
             .small()
             .color(weak),
         );
+        if f.aperture == ApKind::Float && !c.lead_stop() {
+            ui.label(
+                RichText::new(tr("The aperture is set by the stop element's radius"))
+                    .small()
+                    .color(weak),
+            );
+        }
     }
-    let unit = c.field_kind.unit();
-    let mut del = None;
-    egui::Grid::new(id.with("fields"))
-        .num_columns(5)
-        .striped(true)
-        .spacing([6.0, 2.0])
-        .show(ui, |ui| {
-            ui.label(RichText::new("#").color(weak));
-            ui.label(RichText::new("x").color(weak));
-            ui.label(RichText::new("y").color(weak));
-            ui.label(RichText::new(tr("Weight")).color(weak));
-            ui.label("");
-            ui.end_row();
-            for (i, f) in c.fields.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
-                ui.add(
-                    egui::DragValue::new(&mut f.x)
-                        .speed(0.05)
-                        .max_decimals(6)
-                        .suffix(unit),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut f.y)
-                        .speed(0.05)
-                        .max_decimals(6)
-                        .suffix(unit),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut f.w)
-                        .speed(0.05)
-                        .range(0.0..=1e6)
-                        .max_decimals(4),
-                );
-                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = del {
-        c.fields.remove(i);
-    }
-    if ui.small_button(tr("+ Add field")).clicked() {
-        let next = c
-            .fields
-            .last()
-            .map_or(FieldPt::y(0.0), |f| FieldPt::xyw(f.x, f.y + 1.0, f.w));
-        c.fields.push(next);
-    }
-    ui.separator();
 
-    // 波長
-    ui.label(RichText::new(tr("Wavelengths")).strong());
-    let mut del = None;
-    egui::Grid::new(id.with("waves"))
-        .num_columns(5)
-        .striped(true)
-        .spacing([6.0, 2.0])
-        .show(ui, |ui| {
-            ui.label(RichText::new("#").color(weak));
-            ui.label(RichText::new(tr("Wavelengths [µm]")).color(weak));
-            ui.label(RichText::new(tr("Weight")).color(weak));
-            ui.label(RichText::new(tr("Primary")).color(weak));
-            ui.label("");
-            ui.end_row();
-            for (i, w) in c.waves.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
+    fn option_rows(&mut self, ui: &mut Ui) {
+        let c = &mut *self.0;
+        ui.label(tr("Object"));
+        ui.horizontal(|ui| {
+            let mut finite = c.object_distance.is_some();
+            ui.radio_value(&mut finite, false, tr("Infinity"));
+            ui.radio_value(&mut finite, true, tr("Finite"));
+            match (finite, c.object_distance) {
+                (true, None) => c.object_distance = Some(100.0),
+                (false, Some(_)) => c.object_distance = None,
+                _ => {}
+            }
+            if let Some(d) = c.object_distance.as_mut() {
                 ui.add(
-                    egui::DragValue::new(&mut w.um)
-                        .speed(0.001)
-                        .range(0.1..=30.0)
-                        .max_decimals(7),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut w.w)
-                        .speed(0.05)
-                        .range(0.0..=1e6)
-                        .max_decimals(4),
-                );
-                ui.radio_value(&mut c.primary, i + 1, "");
-                if ui.small_button("✖").on_hover_text(tr("Remove")).clicked() {
-                    del = Some(i);
-                }
-                ui.end_row();
+                    egui::DragValue::new(d)
+                        .speed(0.5)
+                        .range(0.0..=1e9)
+                        .max_decimals(4)
+                        .suffix(" mm"),
+                )
+                .on_hover_text(tr(
+                    "From the object surface to the first element (or the leading stop)",
+                ));
             }
         });
-    if let Some(i) = del {
-        c.waves.remove(i);
-        if c.primary > i + 1 || c.primary > c.waves.len() {
-            c.primary = c.primary.saturating_sub(1).max(1);
-        }
+        ui.end_row();
+        crate::combo_tree::lead_air_row(ui, c);
     }
-    ui.horizontal_wrapped(|ui| {
-        if ui.small_button(tr("+ Add wavelength")).clicked() {
-            let next = c.waves.last().map_or(0.5875618, |w| w.um + 0.05);
-            c.waves.push(WavePt::um(next));
-        }
-        ui.label(RichText::new(tr("Presets:")).small().color(weak));
-        for (name, set) in PRESETS {
-            if ui.small_button(*name).clicked() {
-                c.waves = set.iter().map(|&u| WavePt::um(u)).collect();
-                c.primary = if set.len() == 3 { 2 } else { 1 };
-            }
-        }
-    });
+
+    fn telecentric(&self) -> bool {
+        self.0.object_distance.is_some()
+    }
+}
+
+fn body(ui: &mut Ui, c: &mut Combo, cats: &[String]) {
+    let weak = theme::weak_text(ui.visuals());
+    let id = ui.id().with("sysset");
+    let mut f = form::SysForm::of_combo(c);
+    form::ui(ui, &mut f, &mut ComboExtra(c));
+    f.apply_to(c);
     ui.separator();
     glass_catalogs_ui(ui, c, cats, weak);
     let probs = c.settings_problems();
@@ -1280,6 +1002,30 @@ mod tests {
             p["fields"]["solve"],
             json!({"cond": "dir_sum", "s1": "1", "s2": "6"})
         );
+    }
+
+    /// 先頭に自動で置く絞りの径（入射瞳径以外の種類）は欄の値 f.epd で変え、apply_to で組合せに残る。
+    /// 何も変えないフレームでは組合せは変わらない
+    #[test]
+    fn stop_diameter_goes_through_the_form() {
+        let mut c = Combo {
+            aperture: ApKind::Fnum,
+            ap_value: 4.0,
+            epd: 8.0,
+            picks: vec![Pick::new(ElemKind::Lens)],
+            ..Default::default()
+        };
+        assert!(c.lead_stop());
+        let before = c.clone();
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| body(ui, &mut c, &[]));
+        });
+        assert_eq!(c, before);
+        let mut f = form::SysForm::of_combo(&c);
+        f.epd = 6.0;
+        f.apply_to(&mut c);
+        assert_eq!((c.epd, c.ap_value, c.aperture), (6.0, 4.0, ApKind::Fnum));
     }
 
     #[test]

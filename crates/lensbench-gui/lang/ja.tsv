@@ -1562,3 +1562,4 @@ Check that the file exists and its name and folder are right	ファイルがあ�
 Check the catalog and part number (add lens catalogs in File > Catalog folders…)	カタログと品番を確かめてください（レンズカタログはファイル > カタログのフォルダ… で追加）
 The project may have been changed elsewhere; reopen it	プロジェクトがほかで変えられたかもしれません。開き直してください
 Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)	まだ対応していません。対応する面・項目はマニュアル（.zmx の読み込み）にあります
+Vignetting factors	ケラレ係数

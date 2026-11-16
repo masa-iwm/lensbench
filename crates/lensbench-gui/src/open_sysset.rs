@@ -1,13 +1,14 @@
 //! 開いた系（.zmx・系ファイル・プロジェクト）の系の設定。
 //!
-//! serve の `system_data` の値（系ファイルと同じ形）をそのまま欄にし、変えた項目を `edit` の `set_system_data` で送る。
-//! 項目: 名前・波長と重み・主波長・視野（種類・正規化・点・重み・ケラレ係数）・開口・テレセントリック・エイミング・
-//! アフォーカル・環境（温度・気圧・屈折率の補正）・大域座標の基準面 GLRS・OPD の基準 ROPD・膜ファイル。
+//! serve の `system_data` の値（系ファイルと同じ形）を組合せと同じ欄（[`crate::sysset::form`]）で描き、
+//! 変えた項目を `edit` の `set_system_data` で送る。開いた系だけの項目: 名前・大域座標の基準面 GLRS・
+//! OPD の基準 ROPD・膜ファイル。
 
 use egui::{RichText, Ui};
 use serde_json::{json, Map, Value};
 
-use crate::i18n::{n_, tr, trf};
+use crate::i18n::tr;
+use crate::sysset::form::{self, SysForm};
 use crate::theme;
 
 /// 欄の状態
@@ -49,51 +50,6 @@ impl State {
     }
 }
 
-const FIELD_TYPES: [(&str, &str); 4] = [
-    ("Angle", n_("Angle")),
-    ("ObjH", n_("Object height")),
-    ("ParH", n_("Paraxial image height")),
-    ("RealH", n_("Real image height")),
-];
-const APERTURES: [(&str, &str, &str); 6] = [
-    ("Epd", n_("Entrance pupil diameter"), " mm"),
-    ("FNum", n_("Image space F/#"), ""),
-    ("Na", n_("Object space NA"), ""),
-    ("Float", n_("Float by stop size"), " mm"),
-    ("Pwfn", n_("Paraxial working F/#"), ""),
-    ("Cone", n_("Object cone angle"), "°"),
-];
-const AIMING: [(&str, &str); 3] = [
-    ("Off", n_("Off")),
-    ("Paraxial", n_("Paraxial")),
-    ("Real", n_("Real")),
-];
-const AFOCAL_UNITS: [&str; 6] = [
-    "Microradians",
-    "Milliradians",
-    "Radians",
-    "ArcSeconds",
-    "ArcMinutes",
-    "Degrees",
-];
-const VIGNETTING: [&str; 5] = ["vdx", "vdy", "vcx", "vcy", "van"];
-
-fn num(v: &Value) -> f64 {
-    v.as_f64().unwrap_or(0.0)
-}
-
-/// 数の欄。変えたら true（ドラッグ中・入力中かは busy に）
-fn drag(ui: &mut Ui, v: &mut f64, speed: f64, suffix: &str, busy: &mut bool) -> bool {
-    let r = ui.add(
-        egui::DragValue::new(v)
-            .speed(speed)
-            .max_decimals(8)
-            .suffix(suffix),
-    );
-    *busy |= r.dragged() || r.has_focus();
-    r.changed()
-}
-
 /// 欄を描く。送る edit の操作（set_system_data）があれば返す。ns は面の数
 pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
     let weak = theme::weak_text(ui.visuals());
@@ -101,7 +57,6 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
         ui.weak(tr("Loading…"));
         return None;
     };
-    let id = ui.id().with("open_sysset");
     let mut changed: Vec<&'static str> = Vec::new();
     let mut busy = false;
 
@@ -116,283 +71,18 @@ pub fn ui(ui: &mut Ui, st: &mut State, ns: usize) -> Option<Value> {
             changed.push("name");
         }
     });
-
-    // 開口
     ui.separator();
-    ui.strong(tr("Aperture"));
-    ui.horizontal_wrapped(|ui| {
-        let ap = d["aperture"].as_array().cloned().unwrap_or_default();
-        let mut kind = ap
-            .first()
-            .and_then(Value::as_str)
-            .unwrap_or("Epd")
-            .to_string();
-        let mut val = ap.get(1).map(num).unwrap_or(0.0);
-        let (_, label, unit) = APERTURES
-            .iter()
-            .find(|a| a.0 == kind)
-            .copied()
-            .unwrap_or(APERTURES[0]);
-        let before = kind.clone();
-        egui::ComboBox::from_id_salt(id.with("ap"))
-            .selected_text(tr(label))
-            .show_ui(ui, |ui| {
-                for (k, l, _) in APERTURES {
-                    ui.selectable_value(&mut kind, k.to_string(), tr(l));
-                }
-            });
-        let mut ch = kind != before;
-        if drag(ui, &mut val, 0.01, unit, &mut busy) {
-            ch = true;
-        }
-        if ch {
-            d.insert("aperture".into(), json!([kind, val]));
-            changed.push("aperture");
-        }
-        let mut tele = d["telecentric"].as_bool().unwrap_or(false);
-        if ui
-            .checkbox(&mut tele, tr("Telecentric in object space"))
-            .changed()
-        {
-            d.insert("telecentric".into(), json!(tele));
-            changed.push("telecentric");
-        }
-        let mut clip = d["floating_clip"].as_bool().unwrap_or(true);
-        if ui
-            .checkbox(&mut clip, tr("Vignette rays outside fixed semi-diameters"))
-            .on_hover_text(tr(crate::sysset::FLOATING_CLIP_HINT))
-            .changed()
-        {
-            d.insert("floating_clip".into(), json!(clip));
-            changed.push("floating_clip");
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Ray aiming")).color(weak));
-        let mut a = d["aiming"].as_str().unwrap_or("Off").to_string();
-        for (k, l) in AIMING {
-            if ui.radio_value(&mut a, k.to_string(), tr(l)).changed() {
-                d.insert("aiming".into(), json!(a.clone()));
-                changed.push("aiming");
-            }
-        }
-        ui.separator();
-        let mut af = d["afocal"].as_bool().unwrap_or(false);
-        if ui.checkbox(&mut af, tr("Afocal")).changed() {
-            d.insert("afocal".into(), json!(af));
-            changed.push("afocal");
-        }
-        if af {
-            let mut u = d["afocal_unit"]
-                .as_str()
-                .unwrap_or("Milliradians")
-                .to_string();
-            let before = u.clone();
-            egui::ComboBox::from_id_salt(id.with("afu"))
-                .selected_text(u.clone())
-                .show_ui(ui, |ui| {
-                    for k in AFOCAL_UNITS {
-                        ui.selectable_value(&mut u, k.to_string(), k);
-                    }
-                });
-            if u != before {
-                d.insert("afocal_unit".into(), json!(u));
-                changed.push("afocal_unit");
-            }
-        }
-    });
 
-    // 視野
-    ui.separator();
-    ui.horizontal_wrapped(|ui| {
-        ui.strong(tr("Fields"));
-        let ft = d["field_type"].clone();
-        match ft.as_str() {
-            Some(cur) => {
-                let mut k = cur.to_string();
-                let label = FIELD_TYPES
-                    .iter()
-                    .find(|x| x.0 == cur)
-                    .map_or(cur.to_string(), |x| tr(x.1).to_string());
-                egui::ComboBox::from_id_salt(id.with("ft"))
-                    .selected_text(label)
-                    .show_ui(ui, |ui| {
-                        for (key, l) in FIELD_TYPES {
-                            ui.selectable_value(&mut k, key.to_string(), tr(l));
-                        }
-                    });
-                if k != cur {
-                    d.insert("field_type".into(), json!(k));
-                    changed.push("field_type");
-                }
-            }
-            None => {
-                // 条件で定める視野（面の番号の条件）。形は JSON で見せる
-                ui.label(RichText::new(trf("Field by condition {}", &[&ft])).color(weak));
-            }
+    // 組合せと同じ欄
+    match SysForm::from_data(d) {
+        Ok(mut f) => {
+            busy |= form::ui(ui, &mut f, &mut form::NoExtra);
+            changed.extend(f.write_data(d));
         }
-        let mut norm = d["field_norm"].as_str().unwrap_or("Radial").to_string();
-        let before = norm.clone();
-        ui.label(RichText::new(tr("Normalization")).color(weak));
-        ui.radio_value(&mut norm, "Radial".into(), tr("Radial"));
-        ui.radio_value(&mut norm, "Rect".into(), tr("Rectangular"));
-        if norm != before {
-            d.insert("field_norm".into(), json!(norm));
-            changed.push("field_norm");
+        Err(e) => {
+            ui.colored_label(egui::Color32::from_rgb(220, 80, 60), e);
         }
-    });
-    let mut fields: Vec<Map<String, Value>> = d["fields"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|x| x.as_object().cloned()).collect())
-        .unwrap_or_default();
-    let mut fch = false;
-    let mut remove = None;
-    egui::Grid::new(id.with("fields"))
-        .num_columns(10)
-        .spacing([6.0, 3.0])
-        .striped(true)
-        .show(ui, |ui| {
-            for h in ["#", "x", "y", tr("Weight")] {
-                ui.label(RichText::new(h).color(weak));
-            }
-            for h in VIGNETTING {
-                ui.label(RichText::new(h).color(weak));
-            }
-            ui.end_row();
-            for (i, f) in fields.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
-                for k in ["x", "y", "w"].into_iter().chain(VIGNETTING) {
-                    let mut v = num(&f[k]);
-                    if drag(ui, &mut v, 0.01, "", &mut busy) {
-                        f.insert(k.into(), json!(v));
-                        fch = true;
-                    }
-                }
-                if ui
-                    .add(egui::Button::new("✖").small())
-                    .on_hover_text(tr("Remove"))
-                    .clicked()
-                {
-                    remove = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = remove.filter(|_| fields.len() > 1) {
-        fields.remove(i);
-        fch = true;
     }
-    if ui.button(tr("+ Add field")).clicked() {
-        let mut f = fields.last().cloned().unwrap_or_default();
-        for k in ["x", "y"].into_iter().chain(VIGNETTING) {
-            f.insert(k.into(), json!(0.0));
-        }
-        f.insert("w".into(), json!(1.0));
-        fields.push(f);
-        fch = true;
-    }
-    if fch {
-        d.insert(
-            "fields".into(),
-            Value::Array(fields.into_iter().map(Value::Object).collect()),
-        );
-        changed.push("fields");
-    }
-
-    // 波長
-    ui.separator();
-    ui.strong(tr("Wavelengths"));
-    let mut wl: Vec<f64> = d["wavelengths"]
-        .as_array()
-        .map(|a| a.iter().map(num).collect())
-        .unwrap_or_default();
-    let mut wt: Vec<f64> = d["weights"]
-        .as_array()
-        .map(|a| a.iter().map(num).collect())
-        .unwrap_or_default();
-    wt.resize(wl.len(), 1.0);
-    let mut primary = d["primary"].as_u64().unwrap_or(0) as usize;
-    let mut wch = false;
-    let mut wremove = None;
-    egui::Grid::new(id.with("waves"))
-        .num_columns(4)
-        .spacing([6.0, 3.0])
-        .striped(true)
-        .show(ui, |ui| {
-            for h in ["#", tr("Wavelengths [µm]"), tr("Weight"), tr("Primary")] {
-                ui.label(RichText::new(h).color(weak));
-            }
-            ui.end_row();
-            for i in 0..wl.len() {
-                ui.label((i + 1).to_string());
-                if drag(ui, &mut wl[i], 0.001, "", &mut busy) {
-                    wch = true;
-                }
-                if drag(ui, &mut wt[i], 0.01, "", &mut busy) {
-                    wch = true;
-                }
-                if ui.radio(primary == i, "").clicked() && primary != i {
-                    primary = i;
-                    wch = true;
-                }
-                if ui
-                    .add(egui::Button::new("✖").small())
-                    .on_hover_text(tr("Remove"))
-                    .clicked()
-                {
-                    wremove = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    if let Some(i) = wremove.filter(|_| wl.len() > 1) {
-        wl.remove(i);
-        wt.remove(i);
-        if primary >= i && primary > 0 {
-            primary -= 1;
-        }
-        wch = true;
-    }
-    if ui.button(tr("+ Add wavelength")).clicked() {
-        wl.push(wl.last().copied().unwrap_or(0.55));
-        wt.push(1.0);
-        wch = true;
-    }
-    if wch {
-        d.insert("wavelengths".into(), json!(wl));
-        d.insert("weights".into(), json!(wt));
-        d.insert(
-            "primary".into(),
-            json!(primary.min(wl.len().saturating_sub(1))),
-        );
-        changed.extend(["wavelengths", "weights", "primary"]);
-    }
-
-    // 環境
-    ui.separator();
-    ui.strong(tr("Environment"));
-    ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Temperature")).color(weak));
-        let mut t = num(&d["temperature"]);
-        if drag(ui, &mut t, 0.1, " °C", &mut busy) {
-            d.insert("temperature".into(), json!(t));
-            changed.push("temperature");
-        }
-        ui.label(RichText::new(tr("Pressure")).color(weak));
-        let mut p = num(&d["pressure"]);
-        if drag(ui, &mut p, 0.01, " atm", &mut busy) {
-            d.insert("pressure".into(), json!(p));
-            changed.push("pressure");
-        }
-        let mut adj = d["adjust_index"].as_bool().unwrap_or(false);
-        if ui
-            .checkbox(&mut adj, tr("Adjust index to temperature and pressure"))
-            .changed()
-        {
-            d.insert("adjust_index".into(), json!(adj));
-            changed.push("adjust_index");
-        }
-    });
 
     // 座標・OPD・膜
     ui.separator();
