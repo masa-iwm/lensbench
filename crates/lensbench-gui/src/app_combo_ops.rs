@@ -61,10 +61,18 @@ impl Core {
                 if p.locked {
                     return Err(tr("A locked element cannot be changed").into());
                 }
+                // ほかの要素の操作がこの要素の面を指していれば、番号を合わせる
                 if ins {
-                    p.insert_face(i + usize::from(after))?;
+                    let pos = i + usize::from(after);
+                    p.insert_face(pos)?;
+                    self.doc
+                        .combo
+                        .shift_block_refs(&ids[k], &|x| Some(if x >= pos { x + 1 } else { x }));
                 } else {
                     p.delete_face(i)?;
+                    self.doc
+                        .combo
+                        .shift_block_refs(&ids[k], &|x| (x != i).then(|| x - usize::from(x > i)));
                 }
                 continue;
             }

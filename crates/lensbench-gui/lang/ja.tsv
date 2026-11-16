@@ -1552,6 +1552,6 @@ Edit JSON…	JSON を直す…
 Edit the JSON of the block:	ブロックの JSON を直す:
 Not a block (JSON with "type", no branches)	ブロックでない（"type" のある JSON で、分岐は書けない）
 {} surfaces (edit them in the Lens Data table)	{} 面（レンズデータの表で編集）
-Surfaces can be added or removed only in a custom lens or a surface list	面を足し引きできるのはカスタムレンズと面の並びの中だけです
-A lens needs at least 2 surfaces	レンズには面が 2 つ以上要ります
-A surface list needs at least 1 surface	面の並びには面が 1 つ以上要ります
+Surfaces can be added or removed only in a custom lens or a surface list	面を追加・削除できるのはカスタムレンズと面の並びの中だけです
+A lens needs at least 2 surfaces	レンズには面が 2 つ以上必要です
+A surface list needs at least 1 surface	面の並びには面が 1 つ以上必要です

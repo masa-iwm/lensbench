@@ -256,21 +256,19 @@ pub(super) fn strip_ui(
         }
     }
     ui.separator();
-    // 面の挿入・削除（開いた系だけ。Insert・Delete キー・右クリックでも）
-    if !c.combo {
-        if icon(ui, "＋", false)
-            .on_hover_text(tr(
-                "Insert a surface before the selected row (Insert; Alt+Insert inserts after)",
-            ))
-            .clicked()
-        {
-            out.fx.insert = true;
-            out.fx.insert_before = true;
-        }
-        out.fx.delete |= icon(ui, "－", false)
-            .on_hover_text(tr("Delete the selected surface (Delete)"))
-            .clicked();
+    // 面の挿入・削除（Insert・Delete キー・右クリックでも。組合せの系は自作の玉・面の並びの中だけ）
+    if icon(ui, "＋", false)
+        .on_hover_text(tr(
+            "Insert a surface before the selected row (Insert; Alt+Insert inserts after)",
+        ))
+        .clicked()
+    {
+        out.fx.insert = true;
+        out.fx.insert_before = true;
     }
+    out.fx.delete |= icon(ui, "－", false)
+        .on_hover_text(tr("Delete the selected surface (Delete)"))
+        .clicked();
     // 表の下の詳細設定（標準的な設定は表で。開口・傾き偏心・形のデータ・ブロックの設定は詳細で）
     if icon(ui, "⚙", st.detail)
         .on_hover_text(tr(

@@ -201,7 +201,7 @@ impl Pick {
 impl Pick {
     /// 要素に面を足す（レンズデータの表の挿入、GPN-19）。pos は系の並びの向きで、足す面の前にある要素の面の数
     /// （座標ブレークを除く）。足した面は厚さ 0 の平面で、前後と同じ媒質にするので系は変わらない
-    pub fn insert_face(&mut self, pos: usize) -> Result<(), String> {
+    fn insert_rows(&mut self, pos: usize) -> Result<(), String> {
         match self.kind {
             ElemKind::Lens => {
                 let mut rows = self.lens_rows();
@@ -251,7 +251,7 @@ impl Pick {
     }
 
     /// 要素の面 rel（系の並びの向き、座標ブレークを除く）を消す（レンズデータの表の削除）
-    pub fn delete_face(&mut self, rel: usize) -> Result<(), String> {
+    fn delete_rows(&mut self, rel: usize) -> Result<(), String> {
         match self.kind {
             ElemKind::Lens => {
                 let mut rows = self.lens_rows();
@@ -287,6 +287,74 @@ impl Pick {
             )
             .into()),
         }
+    }
+}
+
+impl Pick {
+    /// 面を足す（[`Self::insert_rows`]）。この要素の面の上書き・絞り・ソルブ・ピックアップは番号をずらして残す
+    pub fn insert_face(&mut self, pos: usize) -> Result<(), String> {
+        self.insert_rows(pos)?;
+        self.shift_faces(&|i| Some(if i >= pos { i + 1 } else { i }));
+        Ok(())
+    }
+
+    /// 面を消す（[`Self::delete_rows`]）。消した面の上書き・操作は外し、後ろの面の番号を詰める
+    pub fn delete_face(&mut self, rel: usize) -> Result<(), String> {
+        self.delete_rows(rel)?;
+        self.shift_faces(&|i| match i.cmp(&rel) {
+            std::cmp::Ordering::Less => Some(i),
+            std::cmp::Ordering::Equal => None,
+            std::cmp::Ordering::Greater => Some(i - 1),
+        });
+        Ok(())
+    }
+
+    /// この要素の面（座標ブレークを除く番号）を map で付け替える。None になった面の上書き・操作は外す
+    pub fn shift_faces(&mut self, map: &dyn Fn(usize) -> Option<usize>) {
+        self.edits.retain_mut(|e| match map(e.surface) {
+            Some(i) => {
+                e.surface = i;
+                true
+            }
+            None => false,
+        });
+        let own = |r: &mut BlockRef| match r {
+            BlockRef::Sys(Ref::Index(i)) => map(*i).map(|j| *i = j).is_some(),
+            _ => true,
+        };
+        self.ops.retain_mut(|o| map_refs(o, &own));
+        // 面の数え方の印も今の並びに（印が古いと、開いたときに上書きを外してしまう）
+        if !self.edits_for.is_empty() {
+            self.edits_for = self.surf_sig();
+        }
+    }
+}
+
+/// 操作の面を f で書き換える。f が false を返した面があれば false（その操作は外す）
+fn map_refs(o: &mut SurfaceOp, f: &dyn Fn(&mut BlockRef) -> bool) -> bool {
+    match o {
+        SurfaceOp::SetStop(s) => f(&mut s.surface),
+        SurfaceOp::AddSolve(s) => f(&mut s.surface) && s.other.as_mut().is_none_or(f),
+        SurfaceOp::AddPickup(s) => f(&mut s.dst) && f(&mut s.src),
+    }
+}
+
+impl Combo {
+    /// 要素 id の面を map で付け替えたとき、ほかの要素の操作（{"block": id, "surface": i}）も合わせる
+    pub fn shift_block_refs(&mut self, id: &str, map: &dyn Fn(usize) -> Option<usize>) {
+        fn walk(ps: &mut [Pick], f: &dyn Fn(&mut BlockRef) -> bool) {
+            for p in ps {
+                p.ops.retain_mut(|o| map_refs(o, f));
+                for b in p.ports.iter_mut() {
+                    walk(&mut b.picks, f);
+                }
+            }
+        }
+        let f = |r: &mut BlockRef| match r {
+            BlockRef::Block(b) if b.block == id => map(b.surface).map(|j| b.surface = j).is_some(),
+            _ => true,
+        };
+        walk(&mut self.picks, &f);
     }
 }
 
@@ -553,6 +621,51 @@ mod tests {
         assert_eq!(p.surfs[1].radius, 9.0);
         p.delete_face(0).unwrap();
         assert_eq!(p.surfs[1].radius, 0.0);
+    }
+
+    /// 面を足し引きしても、上書き・絞り・ほかの要素からのピックアップは番号をずらして残る（消した面の分は外す）
+    #[test]
+    fn faces_shift_with_insert_and_delete() {
+        let mut p = lens();
+        p.surfs = lens().lens_rows();
+        p.surfs[1].glass = "F2".into();
+        p.surfs[1].t = 2.0;
+        p.surfs.push(SurfRow::default());
+        p.set_edit(2, "coating", json!("AR"));
+        p.ops.push(SurfaceOp::SetStop(StopOp {
+            surface: BlockRef::Sys(Ref::Index(2)),
+        }));
+        p.edits_for = p.surf_sig();
+        let mut other = Pick::new(ElemKind::Lens);
+        other.ops.push(
+            serde_json::from_value(json!({ "op": "add_pickup",
+                "dst": 0, "src": { "block": "L1", "surface": 2 }, "what": "c" }))
+            .unwrap(),
+        );
+        let mut c = Combo {
+            picks: vec![p, other],
+            ..Default::default()
+        };
+        c.picks[0].insert_face(1).unwrap();
+        c.shift_block_refs("L1", &|x| Some(if x >= 1 { x + 1 } else { x }));
+        let p = &c.picks[0];
+        assert_eq!(p.edits[0].surface, 3);
+        assert!(
+            matches!(&p.ops[0], SurfaceOp::SetStop(s) if s.surface == BlockRef::Sys(Ref::Index(3)))
+        );
+        assert_eq!(p.edits_for, p.surf_sig());
+        let src = |c: &Combo| match &c.picks[1].ops[0] {
+            SurfaceOp::AddPickup(o) => o.src.clone(),
+            _ => unreachable!(),
+        };
+        assert!(matches!(src(&c), BlockRef::Block(b) if b.surface == 3));
+        // 印の合った上書きは、開き直しても外れない
+        assert_eq!(c.drop_stale_edits(), 0);
+        // 消した面の分は外れる
+        c.picks[0].delete_face(3).unwrap();
+        c.shift_block_refs("L1", &|x| (x != 3).then(|| x - usize::from(x > 3)));
+        assert!(c.picks[0].edits.is_empty() && c.picks[0].ops.is_empty());
+        assert!(c.picks[1].ops.is_empty());
     }
 
     /// 中身を変えない要素（カタログの玉）は上書き
