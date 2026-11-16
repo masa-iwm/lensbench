@@ -4,9 +4,6 @@
 //! exe の入口で `lensbench_engine::register` と [`register`] をしてから [`crate::main`] を呼ぶ。図を描く部品は
 //! [`fig`]（色の図・色の表・視野の選び・干渉の図など）。
 
-use lensbench_core::RwLockExt;
-use std::sync::RwLock;
-
 use serde_json::{Map, Value};
 
 /// 図を描く関数（ui、図の識別子、結果）。描けない結果なら false
@@ -78,7 +75,30 @@ impl ObjectArg {
     }
 }
 
-static ANALYSES: RwLock<Vec<Analysis>> = RwLock::new(Vec::new());
+/// GUI の見せ方の表（拡張の表 `lensbench_core::ext::Ext` の欄、XCT-07）
+#[derive(Clone, Default)]
+pub struct GuiExt {
+    analyses: Vec<Analysis>,
+    detectors: Vec<Detector>,
+}
+
+impl GuiExt {
+    /// 解析を足す（同じ cmd は置き換える）
+    pub fn add_analysis(&mut self, a: Analysis) {
+        self.analyses.retain(|x| x.cmd != a.cmd);
+        self.analyses.push(a);
+    }
+
+    /// 検出器を足す（同じ kind は置き換える）
+    pub fn add_detector(&mut self, d: Detector) {
+        self.detectors.retain(|x| x.kind != d.kind);
+        self.detectors.push(d);
+    }
+}
+
+fn table() -> Option<GuiExt> {
+    lensbench_core::ext::current().slot::<GuiExt>().cloned()
+}
 
 /// 拡張の検出器（組合せの最後に置く検出器のブロック、`lensbench_project::detectors` に登録した種類）の欄
 #[derive(Clone, Copy)]
@@ -89,18 +109,14 @@ pub struct Detector {
     pub object: ObjectArg,
 }
 
-static DETECTORS: RwLock<Vec<Detector>> = RwLock::new(Vec::new());
-
-/// 検出器を足す（同じ kind は置き換える）
+/// 検出器をプロセスの既定の表に足す（同じ kind は置き換える）
 pub fn register_detector(d: Detector) {
-    let mut v = DETECTORS.write_ok();
-    v.retain(|x| x.kind != d.kind);
-    v.push(d);
+    lensbench_core::ext::update_default(|e| e.slot_mut::<GuiExt>().add_detector(d));
 }
 
 /// 足した検出器（足した順）
 pub fn detectors() -> Vec<Detector> {
-    DETECTORS.read_ok().clone()
+    table().map(|t| t.detectors).unwrap_or_default()
 }
 
 /// kind の検出器
@@ -108,16 +124,14 @@ pub fn detector(kind: &str) -> Option<Detector> {
     detectors().into_iter().find(|d| d.kind == kind)
 }
 
-/// 解析を足す（同じ cmd は置き換える）
+/// 解析をプロセスの既定の表に足す（同じ cmd は置き換える）
 pub fn register(a: Analysis) {
-    let mut v = ANALYSES.write_ok();
-    v.retain(|x| x.cmd != a.cmd);
-    v.push(a);
+    lensbench_core::ext::update_default(|e| e.slot_mut::<GuiExt>().add_analysis(a));
 }
 
 /// 足した解析（足した順）
 pub fn list() -> Vec<Analysis> {
-    ANALYSES.read_ok().clone()
+    table().map(|t| t.analyses).unwrap_or_default()
 }
 
 /// cmd の拡張の解析

@@ -1479,19 +1479,3 @@ fn floats(p: &Value, bins: &mut HashMap<String, Bin>, k: &str) -> Result<Option<
         _ => Err(RpcErr::params(format!("{k} must be a list of numbers"))),
     }
 }
-
-/// 番号の並び（1 始まり）を 0 始まりに。省略は None
-fn opt_index_list(p: &Value, k: &str, n: usize) -> Result<Option<Vec<usize>>, RpcErr> {
-    let v = match p.get(k) {
-        None | Some(Value::Null) => return Ok(None),
-        Some(Value::Array(a)) => a.clone(),
-        Some(x) => vec![x.clone()],
-    };
-    v.iter()
-        .map(|x| match x.as_u64() {
-            Some(i) if i >= 1 && i as usize <= n => Ok(i as usize - 1),
-            _ => Err(RpcErr::params(format!("{k} must be a number 1 to {n}"))),
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(Some)
-}

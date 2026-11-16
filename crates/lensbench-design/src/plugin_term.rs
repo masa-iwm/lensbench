@@ -29,7 +29,7 @@ impl PluginTerm {
         target: Vec<f64>,
         s: &System,
     ) -> Result<PluginTerm> {
-        let inst = crate::plugins::builtin().prepare(name, args)?;
+        let inst = crate::plugins::prepare(name, args)?;
         let mut t = PluginTerm {
             label: format!("plugin {name}.{output}"),
             inst,

@@ -245,7 +245,6 @@ only .zmx can be read with replaced trace wavelengths	追跡する波長を置�
 # cli
 can't read the number of {what} ({x})	{what} の数が読めません（{x}）
 {what} is empty	{what} が空
---offset takes 3 values dx,dy,dz	--offset は dx,dy,dz の 3 つ
 {}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp	{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか
 --unfold is only for 2D (svg, png, dxf)	--unfold は 2D（svg・png・dxf）だけ
 --set {t} must be an object	--set {t} はオブジェクト
@@ -1146,7 +1145,6 @@ configuration {k}	構成 {k}
 the configurations have different numbers of surfaces (no table)	構成で面の数が違います（表にできません）
 {k} must be <f8	{k} は <f8
 {k} must be a list of numbers	{k} は数の並び
-{k} must be a number 1 to {n}	{k} は 1〜{n} の番号
 target {x} can't be read	目標 {x} が読めません
 {} targets ({n} states: {})	目標が {} 個（状態は {n} 個: {}）
 kinds: unknown kind {k}	kinds: 不明な種類 {k}
@@ -1170,7 +1168,6 @@ color must be field, wave or cfg	color は field・wave・cfg のどれか
 layout_export needs file	layout_export には file
 {file}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp	{file}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか
 tube must be a positive number [mm]	tube は正の数 [mm]
-offset must be [dx, dy, dz]	offset は [dx, dy, dz]
 {k} must be a string or a list of numbers	{k} は文字列か番号の並び
 {k} must be a string or a list of numbers ("all" for all)	{k} は文字列か番号の並び（"all" で全部）
 unfold must be true or false	unfold は true か false
@@ -2043,4 +2040,7 @@ optimize: {e}	optimize: {e}
 zoom: {e}	zoom: {e}
 {what}: {e}	{what}: {e}
 no analysis {name} (lensbench.analyses() lists the names)	解析 {name} はありません（名前は lensbench.analyses() で見られます）
+offset takes 3 values dx,dy,dz	offset は dx,dy,dz の 3 つ
+{k} must be numbers from 1 or "all"	{k} は 1 からの番号か "all"
+number {t}	番号 {t}
 no wavelength {n} (1 to {nw})	波長 {n} はありません（1〜{nw}）

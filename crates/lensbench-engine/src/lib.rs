@@ -6,6 +6,7 @@ pub mod analyze;
 pub mod browse;
 pub mod defs;
 pub mod ext;
+pub mod layout;
 pub mod load;
 pub mod params;
 pub mod provenance;

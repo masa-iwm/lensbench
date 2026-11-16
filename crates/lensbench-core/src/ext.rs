@@ -6,12 +6,16 @@
 //! 持てて、試験どうしで登録が漏れない。並列の作業のスレッドへは文脈と一緒に引き継ぐ（[`crate::par`]）。
 //!
 //! 表は読むだけの値（`Arc<Ext>`）で、足すときは写して足したものを置き直す（[`update_default`]）。
+//!
+//! 上の層の拡張（プロジェクトの検出器の種類・拡張の解析・GUI の見せ方・Python の模擬の組など）も、型ごとの欄
+//! （[`Ext::slot`]・[`Ext::slot_mut`]）として同じ表に載せる。拡張の登録はこの表 1 つ（XCT-07）。
 
 use crate::catalog::{LbcatSource, LensCatalogSource, ZmxFileSource};
 use crate::error::Result;
 use crate::plugin::Registry;
 use crate::usersurf::{IdealMapping, SurfaceModel};
 use crate::{invalid, RwLockExt};
+use std::any::{Any, TypeId};
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
@@ -26,6 +30,8 @@ pub struct Ext {
     sources: Vec<CatalogSource>,
     surfaces: BTreeMap<String, Arc<dyn SurfaceModel>>,
     plugins: Registry,
+    /// 上の層の表（型ごとに 1 つ）
+    slots: BTreeMap<TypeId, Arc<dyn Any + Send + Sync>>,
 }
 
 impl Default for Ext {
@@ -36,6 +42,7 @@ impl Default for Ext {
             sources: Vec::new(),
             surfaces,
             plugins: Registry::new(),
+            slots: BTreeMap::new(),
         }
     }
 }
@@ -46,6 +53,7 @@ impl std::fmt::Debug for Ext {
             .field("sources", &self.sources.len())
             .field("surfaces", &self.surfaces.keys().collect::<Vec<_>>())
             .field("plugins", &self.plugins.list())
+            .field("slots", &self.slots.len())
             .finish()
     }
 }
@@ -82,7 +90,31 @@ impl Ext {
         &mut self.plugins
     }
 
-    /// other の分を足す（形式は後ろに、同じ名前の面のモデル・プラグインは other が勝つ）
+    /// 上の層の表 T（無ければ None）。検出器の種類・拡張の解析など、core の知らない型の表を載せる欄
+    pub fn slot<T: Any + Send + Sync>(&self) -> Option<&T> {
+        self.slots
+            .get(&TypeId::of::<T>())
+            .and_then(|a| a.downcast_ref::<T>())
+    }
+
+    /// 上の層の表 T を変える（無ければ既定値で作る。ほかの表と共有している中身は写してから変える）
+    pub fn slot_mut<T: Any + Send + Sync + Clone + Default>(&mut self) -> &mut T {
+        let id = TypeId::of::<T>();
+        let a = self
+            .slots
+            .entry(id)
+            .or_insert_with(|| Arc::new(T::default()));
+        if Arc::get_mut(a).is_none() {
+            let copy = a.downcast_ref::<T>().cloned().unwrap_or_default();
+            *a = Arc::new(copy);
+        }
+        Arc::get_mut(a)
+            .and_then(|x| x.downcast_mut::<T>())
+            .expect("the slot was just made unique and of type T")
+    }
+
+    /// other の分を足す（形式は後ろに、同じ名前の面のモデル・プラグインは other が勝つ。上の層の表は、other に
+    /// ある型の表を other のもので置き換える）
     pub fn merge(&mut self, other: &Ext) -> &mut Self {
         self.sources.extend(other.sources.iter().cloned());
         for (k, m) in &other.surfaces {
@@ -90,6 +122,9 @@ impl Ext {
         }
         for p in other.plugins.plugins() {
             self.plugins.register(p.clone());
+        }
+        for (k, v) in &other.slots {
+            self.slots.insert(*k, v.clone());
         }
         self
     }
@@ -215,6 +250,24 @@ mod tests {
         assert!(a.surface_models().is_empty());
         a.merge(&e);
         assert_eq!(a.surface_models(), ["ideal_mapping"]);
+    }
+
+    /// 上の層の表は型ごと。写した表を変えても元は変わらない
+    #[test]
+    fn slots_are_per_type_and_copy_on_write() {
+        #[derive(Clone, Default, Debug, PartialEq)]
+        struct Names(Vec<&'static str>);
+        let mut a = Ext::new();
+        assert!(a.slot::<Names>().is_none());
+        a.slot_mut::<Names>().0.push("x");
+        let mut b = a.clone();
+        b.slot_mut::<Names>().0.push("y");
+        assert_eq!(a.slot::<Names>().unwrap().0, ["x"]);
+        assert_eq!(b.slot::<Names>().unwrap().0, ["x", "y"]);
+        assert!(a.slot::<u32>().is_none());
+        with(Arc::new(b), || {
+            assert_eq!(current().slot::<Names>().unwrap().0.len(), 2);
+        });
     }
 
     #[test]

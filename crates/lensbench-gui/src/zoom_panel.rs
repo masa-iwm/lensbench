@@ -13,6 +13,7 @@ use crate::json_view::fmt_num;
 use crate::optim_panel::{section, small_edit};
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use lensbench_engine::session::views::{ZoomPoint, ZoomView};
 
 /// 状態の行（名前で覚える。選べる状態に無い行は出さない）
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -56,7 +57,7 @@ pub struct ZoomPanel {
     pub iters: usize,
     pub tol: f64,
     pub running: bool,
-    pub result: Option<Value>,
+    pub result: Option<ZoomView>,
     pub error: Option<String>,
 }
 
@@ -369,22 +370,16 @@ fn run_ui(ui: &mut Ui, p: &mut ZoomPanel, weak: egui::Color32) {
     );
 }
 
-fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
-    let q = r["quantity"].as_str().unwrap_or("efl");
-    let vars: Vec<String> = r["vars"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|x| x.as_str().map(String::from))
-        .collect();
-    let path = r["path"].as_array().cloned().unwrap_or_default();
-    let f = |v: &Value| v.as_f64().map_or("—".into(), fmt_num);
+fn result_ui(ui: &mut Ui, r: &ZoomView, weak: egui::Color32) {
+    let q = r.quantity.as_str();
+    let f = |v: Option<f64>| v.filter(|x| x.is_finite()).map_or("—".into(), fmt_num);
+    let key = |pt: &ZoomPoint, k: &str| pt.extra.get(k).and_then(Value::as_f64);
     egui::ScrollArea::horizontal()
         .id_salt("zoom_table")
         .show(ui, |ui| {
             egui::Grid::new("zoom_path")
                 .striped(true)
-                .num_columns(4 + vars.len())
+                .num_columns(4 + r.vars.len())
                 .show(ui, |ui| {
                     ui.strong(tr("Position"));
                     ui.strong(tr("State"));
@@ -394,20 +389,20 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
                     } else {
                         tr("Focal length")
                     });
-                    for v in &vars {
+                    for v in &r.vars {
                         ui.strong(v);
                     }
                     ui.strong(tr("Image merit"));
                     ui.end_row();
-                    for pt in &path {
-                        ui.label(f(&pt["pos"]));
-                        ui.label(pt["state"].as_str().unwrap_or(""));
-                        ui.label(f(&pt["target"]));
-                        ui.label(f(&pt[q]));
-                        for v in &vars {
-                            ui.label(f(&pt[v.as_str()]));
+                    for pt in &r.path {
+                        ui.label(f(Some(pt.pos)));
+                        ui.label(pt.state.as_deref().unwrap_or(""));
+                        ui.label(f(pt.target));
+                        ui.label(f(key(pt, q)));
+                        for v in &r.vars {
+                            ui.label(f(key(pt, v)));
                         }
-                        ui.label(f(&pt["merit"]));
+                        ui.label(f(Some(pt.merit)));
                         ui.end_row();
                     }
                 });
@@ -418,24 +413,20 @@ fn result_ui(ui: &mut Ui, r: &Value, weak: egui::Color32) {
         .legend(Legend::default())
         .x_axis_label(tr("Position (state index, from 0)"))
         .show(ui, |pu| {
-            for (i, v) in vars.iter().enumerate() {
-                let pts: Vec<[f64; 2]> = path
+            for (i, v) in r.vars.iter().enumerate() {
+                let pts: Vec<[f64; 2]> = r
+                    .path
                     .iter()
-                    .filter_map(|pt| Some([pt["pos"].as_f64()?, pt[v.as_str()].as_f64()?]))
+                    .filter_map(|pt| Some([pt.pos, key(pt, v)?]))
                     .collect();
                 let c = theme::series(i);
                 pu.line(Line::new(pts.clone()).name(v).color(c));
                 pu.points(Points::new(pts).radius(3.0_f32).color(c));
             }
         });
-    for w in r["warnings"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .chain(r["notes"].as_array().into_iter().flatten())
-    {
+    for w in r.warnings.iter().chain(&r.notes) {
         ui.label(
-            RichText::new(lensbench_core::i18n::tr(w.as_str().unwrap_or_default()))
+            RichText::new(lensbench_core::i18n::tr(w))
                 .small()
                 .color(weak),
         );
@@ -464,7 +455,7 @@ mod tests {
             },
         );
         p.pmag = true;
-        p.result = Some(json!({ "x": 1 }));
+        p.result = Some(ZoomView::default());
         let v = p.saved().unwrap();
         let mut q = ZoomPanel::default();
         q.restore(&v);

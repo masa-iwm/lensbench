@@ -204,9 +204,10 @@ pub fn zoom(a: &ZoomArgs) -> Result<Value, crate::error::AppError> {
         active_set: a.dls.active_set,
         ..ZoomParams::default()
     };
-    Ok(crate::progress::with(a.json, || {
+    let z = crate::progress::with(a.json, || {
         lensbench_engine::zoom::zoom_systems(&cs, &names, &o)
-    })?)
+    })?;
+    Ok(serde_json::to_value(z).map_err(|e| e.to_string())?)
 }
 
 pub fn swap(a: &SwapArgs) -> Result<Value, crate::error::AppError> {

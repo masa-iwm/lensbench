@@ -92,6 +92,97 @@ fn nan_for_null_1<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
     Ok(Option::<f64>::deserialize(d)?.unwrap_or(f64::NAN))
 }
 
+/// 最適化（optimize）の結果
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeView {
+    /// 変数の名前
+    pub names: Vec<String>,
+    /// 変数の初めの値・最適化した値
+    #[serde(deserialize_with = "nan_for_null")]
+    pub x0: Vec<f64>,
+    #[serde(deserialize_with = "nan_for_null")]
+    pub x: Vec<f64>,
+    /// 読み込んだ系の構成に効く変数か（apply で当てられるもの）
+    pub applicable: Vec<bool>,
+    /// 読み込んだ系に当てたか
+    pub applied: bool,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit0: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit: f64,
+    /// 反復ごとの評価関数の値（初期値を含む）
+    #[serde(deserialize_with = "nan_for_null")]
+    pub history: Vec<f64>,
+    pub iterations: usize,
+    pub evals: usize,
+    /// 止まった理由（converged・small_step・no_progress・max_iter・jacobian_failed・cancelled）
+    pub stop: String,
+    /// 項ごとの値（既定の評価関数の項が先）
+    pub terms: Vec<TermValue>,
+    pub notes: Vec<String>,
+}
+
+/// 評価関数の項の値（最適化の前と後）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TermValue {
+    /// 既定の評価関数の項か
+    pub default: bool,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub value0: f64,
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub value: f64,
+    /// 値の意味（目標のある項は量そのもの quantity、ない項は √Σr² の rms）
+    pub value_kind: String,
+    /// 瞳の光線を並べる項の、最適化の後の光線の数
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rays: Option<RayCount>,
+}
+
+/// 項の光線の数（全部・蹴られた・止まった）
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RayCount {
+    pub total: usize,
+    pub vignetted: usize,
+    pub stopped: usize,
+}
+
+/// ズーム軌跡（zoom）の結果。点ごとの変数の値は点の `vars` の名前の鍵（[`ZoomPoint::extra`]）
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ZoomView {
+    /// 近軸量（efl・pmag）
+    pub quantity: String,
+    /// 像の評価関数（spot・wavefront）
+    pub merit_kind: String,
+    /// 解いたパラメータの名前
+    pub vars: Vec<String>,
+    pub path: Vec<ZoomPoint>,
+    pub warnings: Vec<String>,
+    /// 読み込んだ後の変更を当てなかった説明（serve）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
+/// ズーム軌跡の点
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ZoomPoint {
+    /// 状態の間の位置（状態 k は k）
+    pub pos: f64,
+    /// 状態の名前（間の点は None）
+    pub state: Option<String>,
+    pub target: Option<f64>,
+    /// 像の評価関数の値（NaN は null）
+    #[serde(deserialize_with = "nan_for_null_1")]
+    pub merit: f64,
+    /// 止まった理由（解けなかった点は failed）
+    pub stop: String,
+    /// 解けなかった理由
+    pub error: Option<String>,
+    pub iterations: usize,
+    /// 近軸量（`quantity` の名前の鍵）と変数の値（変数の名前の鍵）
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

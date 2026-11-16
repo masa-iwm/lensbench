@@ -235,36 +235,35 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             applied = true;
         }
     }
-    let terms: Vec<Value> = (0..prob.terms.len())
-        .map(|i| {
-            let mut t = json!({
-                "default": i < n_default,
-                "value0": tv0[i].value(),
-                "value": tv[i].value(),
-                "value_kind": tv[i].kind_name(),
-            });
-            if let Some(c) = rays[i] {
-                t["rays"] =
-                    json!({ "total": c.total, "vignetted": c.vignetted, "stopped": c.stopped });
-            }
-            t
+    let terms = (0..prob.terms.len())
+        .map(|i| views::TermValue {
+            default: i < n_default,
+            value0: tv0[i].value(),
+            value: tv[i].value(),
+            value_kind: tv[i].kind_name().to_string(),
+            rays: rays[i].map(|c| views::RayCount {
+                total: c.total,
+                vignetted: c.vignetted,
+                stopped: c.stopped,
+            }),
         })
         .collect();
-    Ok(json!({
-        "names": names,
-        "x0": r.x0,
-        "x": r.x,
-        "applicable": applicable,
-        "applied": applied,
-        "merit0": r.merit0,
-        "merit": r.merit,
-        "history": r.history,
-        "iterations": r.iterations,
-        "evals": r.evals,
-        "stop": stop,
-        "terms": terms,
-        "notes": notes,
-    }))
+    let v = views::OptimizeView {
+        names,
+        x0: r.x0,
+        x: r.x,
+        applicable,
+        applied,
+        merit0: r.merit0,
+        merit: r.merit,
+        history: r.history,
+        iterations: r.iterations,
+        evals: r.evals,
+        stop: stop.to_string(),
+        terms,
+        notes,
+    };
+    serde_json::to_value(v).map_err(|e| RpcErr::app(e.to_string()))
 }
 
 // ------------------------------------------------------------------------------------ 公差
@@ -365,8 +364,9 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .iter()
         .map(|b| b.as_str().map_or_else(|| b.to_string(), String::from))
         .collect();
-    let mut out = crate::zoom::zoom_systems(&systems, &names, &zp)
+    let z = crate::zoom::zoom_systems(&systems, &names, &zp)
         .map_err(|e| RpcErr::params(e.to_string()))?;
+    let mut out = serde_json::to_value(z).map_err(|e| RpcErr::app(e.to_string()))?;
     out["notes"] = json!(notes);
     Ok(out)
 }

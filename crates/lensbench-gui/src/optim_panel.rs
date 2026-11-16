@@ -13,6 +13,7 @@ use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::param_pick::{self as pp, Set};
 use crate::theme;
+use lensbench_engine::session::views::{OptimizeView, TermValue};
 
 /// 項のキーの値の書き方
 #[derive(Clone, Copy, PartialEq)]
@@ -242,7 +243,7 @@ pub struct OptPanel {
     pub new_term: String,
     pub running: bool,
     /// serve の optimize の結果
-    pub result: Option<std::sync::Arc<Value>>,
+    pub result: Option<std::sync::Arc<OptimizeView>>,
     pub error: Option<String>,
     /// 系に当てる前の値（元に戻す）
     pub undo: Option<Vec<(String, f64)>>,
@@ -926,28 +927,29 @@ fn stop_label(s: &str) -> &'static str {
 fn result_ui(
     ui: &mut Ui,
     p: &mut OptPanel,
-    r: &Value,
+    r: &OptimizeView,
     acts: &mut Vec<Action>,
     weak: egui::Color32,
 ) {
-    let f = |k: &str| r[k].as_f64().unwrap_or(f64::NAN);
     ui.label(trf(
         "Merit {} → {} ({} iterations, {})",
         &[
-            &fmt_g(f("merit0")),
-            &fmt_g(f("merit")),
-            &r["iterations"],
-            &stop_label(r["stop"].as_str().unwrap_or_default()),
+            &fmt_g(r.merit0),
+            &fmt_g(r.merit),
+            &r.iterations,
+            &stop_label(&r.stop),
         ],
     ));
-    if let Some(h) = r["history"].as_array() {
-        let h: Vec<f64> = h.iter().filter_map(Value::as_f64).collect();
+    if !r.history.is_empty() {
+        let h: Vec<f64> = r
+            .history
+            .iter()
+            .copied()
+            .filter(|x| x.is_finite())
+            .collect();
         history_plot(ui, &h);
     }
-    let names: Vec<&str> = r["names"]
-        .as_array()
-        .map(|a| a.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+    let at = |v: &[f64], i: usize| v.get(i).copied().unwrap_or(f64::NAN);
     egui::Grid::new("opt_res_vars")
         .striped(true)
         .show(ui, |ui| {
@@ -955,11 +957,11 @@ fn result_ui(
             ui.label(RichText::new(tr("Before")).small().color(weak));
             ui.label(RichText::new(tr("After")).small().color(weak));
             ui.end_row();
-            for (i, n) in names.iter().enumerate() {
-                ui.label(*n);
-                ui.monospace(fmt_num(r["x0"][i].as_f64().unwrap_or(f64::NAN)));
-                ui.monospace(fmt_num(r["x"][i].as_f64().unwrap_or(f64::NAN)));
-                if r["applicable"][i] == json!(false) {
+            for (i, n) in r.names.iter().enumerate() {
+                ui.label(n);
+                ui.monospace(fmt_num(at(&r.x0, i)));
+                ui.monospace(fmt_num(at(&r.x, i)));
+                if r.applicable.get(i) == Some(&false) {
                     ui.label(
                         RichText::new(tr("Does not apply to the open system's configuration"))
                             .small()
@@ -969,10 +971,7 @@ fn result_ui(
                 ui.end_row();
             }
         });
-    let extra: Vec<&Value> = r["terms"]
-        .as_array()
-        .map(|a| a.iter().filter(|t| t["default"] == json!(false)).collect())
-        .unwrap_or_default();
+    let extra: Vec<&TermValue> = r.terms.iter().filter(|t| !t.default).collect();
     if !extra.is_empty() {
         egui::Grid::new("opt_res_terms")
             .striped(true)
@@ -984,15 +983,15 @@ fn result_ui(
                 for (i, t) in extra.iter().enumerate() {
                     let ty = p.terms.get(i).map(|t| t.ty.as_str()).unwrap_or("");
                     ui.label(format!("{} {ty}", i + 1));
-                    ui.monospace(fmt_g(t["value0"].as_f64().unwrap_or(f64::NAN)));
-                    ui.monospace(fmt_g(t["value"].as_f64().unwrap_or(f64::NAN)));
+                    ui.monospace(fmt_g(t.value0));
+                    ui.monospace(fmt_g(t.value));
                     ui.end_row();
                 }
             });
     }
-    for n in r["notes"].as_array().into_iter().flatten() {
+    for n in &r.notes {
         ui.label(
-            RichText::new(lensbench_core::i18n::tr(n.as_str().unwrap_or_default()))
+            RichText::new(lensbench_core::i18n::tr(n))
                 .small()
                 .color(weak),
         );
@@ -1017,15 +1016,13 @@ fn result_ui(
 }
 
 /// 結果の (名前, 値) のうち開いている系に当てられるもの。before なら最適化の前の値
-pub fn result_values(r: &Value, before: bool) -> Vec<(String, f64)> {
-    let key = if before { "x0" } else { "x" };
-    r["names"]
-        .as_array()
-        .into_iter()
-        .flatten()
+pub fn result_values(r: &OptimizeView, before: bool) -> Vec<(String, f64)> {
+    let x = if before { &r.x0 } else { &r.x };
+    r.names
+        .iter()
         .enumerate()
-        .filter(|(i, _)| r["applicable"][*i] != json!(false))
-        .filter_map(|(i, n)| Some((n.as_str()?.to_string(), r[key][i].as_f64()?)))
+        .filter(|(i, _)| r.applicable.get(*i) != Some(&false))
+        .filter_map(|(i, n)| Some((n.clone(), *x.get(i).filter(|v| v.is_finite())?)))
         .collect()
 }
 

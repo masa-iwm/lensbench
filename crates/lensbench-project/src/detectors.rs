@@ -5,8 +5,7 @@
 //!
 //! 検出器のブロックは最後のブロックだけに置け、面は足さない（像面に置く。前の空気のブロックが距離）。
 
-use lensbench_core::RwLockExt;
-use std::sync::RwLock;
+use lensbench_core::ext::{self, Ext};
 
 use serde_json::{Map, Value};
 
@@ -23,25 +22,35 @@ pub struct DetectorKind {
     pub schema: Option<fn() -> Value>,
 }
 
-static KINDS: RwLock<Vec<DetectorKind>> = RwLock::new(Vec::new());
+/// 登録した種類の表（拡張の表 [`Ext`] の欄、XCT-07）
+#[derive(Clone, Default)]
+pub struct DetectorKinds(Vec<DetectorKind>);
 
-/// 種類を登録する（同じ名前なら置き換える）。組み込みのブロックの名前は登録できない
-pub fn register(k: DetectorKind) -> lensbench_core::Result<()> {
+/// 表 e に種類を足す（同じ名前なら置き換える）。組み込みのブロックの名前は使えない
+pub fn add(e: &mut Ext, k: DetectorKind) -> lensbench_core::Result<()> {
     if crate::BUILTIN_BLOCKS.contains(&k.name) || k.name.is_empty() {
         return Err(format!("detector kind name {:?} can't be used", k.name).into());
     }
-    let mut v = KINDS.write_ok();
+    let v = &mut e.slot_mut::<DetectorKinds>().0;
     v.retain(|x| x.name != k.name);
     v.push(k);
     Ok(())
 }
 
-/// 名前の種類
-pub fn get(name: &str) -> Option<DetectorKind> {
-    KINDS.read_ok().iter().find(|k| k.name == name).copied()
+/// 種類をプロセスの既定の表に登録する（[`add`]）
+pub fn register(k: DetectorKind) -> lensbench_core::Result<()> {
+    ext::update_default(|e| add(e, k))
 }
 
-/// 登録した種類（登録の順）
+/// 名前の種類（今の計算の表から）
+pub fn get(name: &str) -> Option<DetectorKind> {
+    list().into_iter().find(|k| k.name == name)
+}
+
+/// 登録した種類（登録の順、今の計算の表から）
 pub fn list() -> Vec<DetectorKind> {
-    KINDS.read_ok().clone()
+    ext::current()
+        .slot::<DetectorKinds>()
+        .map(|k| k.0.clone())
+        .unwrap_or_default()
 }

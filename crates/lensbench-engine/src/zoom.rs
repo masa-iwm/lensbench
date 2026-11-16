@@ -1,5 +1,6 @@
 //! ズーム軌跡（CLI の `zoom`・serve の `zoom`）
 
+use crate::session::views::{ZoomPoint, ZoomView};
 use lensbench_core::System;
 pub use lensbench_design::dls_spec::{DlsChoice, ZoomParams};
 use lensbench_optim::zoom;
@@ -18,36 +19,38 @@ pub fn zoom_systems(
     cs: &[System],
     names: &[String],
     a: &ZoomParams,
-) -> lensbench_core::Result<Value> {
+) -> lensbench_core::Result<ZoomView> {
     let sp = a.spec(cs, names)?;
     let q = sp.q;
     let r = zoom::solve(cs, &sp)?;
     let vnames: Vec<String> = sp.moving.iter().map(|&p| cs[0].param_name(p)).collect();
-    let path: Vec<Value> = r
+    let path = r
         .path
         .iter()
         .map(|p| {
-            let mut o = json!({
-                "pos": p.pos,
-                "state": p.state.map(|k| names[k].clone()),
-                "target": p.target,
-                q.name(): num(p.value),
-                "merit": num(p.merit),
-                "stop": p.stop.as_str(),
-                "error": p.stop.error(),
-                "iterations": p.iterations,
-            });
+            let mut extra = serde_json::Map::new();
+            extra.insert(q.name().into(), num(p.value));
             for (k, nm) in vnames.iter().enumerate() {
-                o[nm] = json!(p.x[k]);
+                extra.insert(nm.clone(), json!(p.x[k]));
             }
-            o
+            ZoomPoint {
+                pos: p.pos,
+                state: p.state.map(|k| names[k].clone()),
+                target: p.target,
+                merit: p.merit,
+                stop: p.stop.as_str().into(),
+                error: p.stop.error().map(String::from),
+                iterations: p.iterations,
+                extra,
+            }
         })
         .collect();
-    Ok(json!({
-        "quantity": q.name(),
-        "merit_kind": a.merit.as_str(),
-        "vars": vnames,
-        "path": path,
-        "warnings": r.warnings,
-    }))
+    Ok(ZoomView {
+        quantity: q.name().into(),
+        merit_kind: a.merit.as_str().into(),
+        vars: vnames,
+        path,
+        warnings: r.warnings,
+        notes: Vec::new(),
+    })
 }

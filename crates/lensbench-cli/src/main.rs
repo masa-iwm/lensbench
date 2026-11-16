@@ -31,9 +31,8 @@ mod serve_ipc;
 mod watch;
 
 use lensbench_design::dls_spec::{Jac, Merit, OptimizeParams, Reference, VarSpec};
-use lensbench_engine::load::{
-    coat_interfaces, index_list, plugins_json, save_value, AutoCoat, CoatInterfaces,
-};
+use lensbench_engine::layout::{self, Draw, Pick, RaySel, View};
+use lensbench_engine::load::{coat_interfaces, plugins_json, save_value, AutoCoat, CoatInterfaces};
 use lensbench_engine::{builtin_plugins, provenance};
 
 /// 最適化の設定の既定値（旗の既定はここから。設定の型 1 か所、XCT-02）
@@ -367,7 +366,7 @@ enum Cmd {
         out: Vec<PathBuf>,
         /// 2D projection plane (yz or xz)
         #[arg(long, default_value = "yz")]
-        plane: String,
+        plane: d2::Plane,
         /// PNG width [px]
         #[arg(long, default_value_t = D2.width)]
         width: u32,
@@ -512,7 +511,7 @@ struct LayoutArgs {
     wave: Option<String>,
     /// Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)
     #[arg(long)]
-    fan: Option<String>,
+    fan: Option<scene::Fan>,
     /// Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1). If omitted, 7 for y, 12 for ring
     #[arg(long)]
     rays: Option<usize>,
@@ -524,7 +523,7 @@ struct LayoutArgs {
     last: Option<usize>,
     /// Ray colors (field, wave, cfg; cfg is per overlaid configuration). If omitted, cfg when overlaying, otherwise field
     #[arg(long)]
-    color: Option<String>,
+    color: Option<d2::ColorBy>,
     /// 重ね描きする構成
     #[command(flatten)]
     sel: ConfigSel,
@@ -536,32 +535,24 @@ struct LayoutArgs {
     unfold: bool,
 }
 
-/// 2D と 3D で既定の光線の並びが違う（2D は断面に乗る y 扇、3D は光束の形が分かる円周）
-fn scene_options(s: &System, l: &LayoutArgs, is_2d: bool) -> Result<scene::Options, String> {
-    let fan: scene::Fan = match &l.fan {
-        Some(f) => f.parse()?,
-        None if is_2d => scene::Fan::Y,
-        None => scene::Fan::Ring,
-    };
-    let rays = l.rays.unwrap_or(match fan {
-        scene::Fan::Ring => 12,
-        _ => 7,
-    });
-    Ok(scene::Options {
-        fields: match &l.field {
-            None => None,
-            Some(v) => Some(index_list(v, s.fields.len(), "field")?),
-        },
-        waves: match &l.wave {
-            None => None,
-            Some(v) => Some(index_list(v, s.wavelengths.len(), "wavelength")?),
-        },
-        fan,
-        rays,
-        first: l.first,
-        last: l.last,
-        unfold: l.unfold,
-    })
+impl LayoutArgs {
+    /// 光線の選び方（既定は serve の layout と同じ [`lensbench_engine::layout`]）
+    fn ray_sel(&self) -> Result<RaySel, String> {
+        let pick = |v: &Option<String>, what: &str| {
+            v.as_deref()
+                .map(|x| x.parse::<Pick>().map_err(|e| format!("{what} {e}")))
+                .transpose()
+        };
+        Ok(RaySel {
+            fields: pick(&self.field, "field")?,
+            waves: pick(&self.wave, "wavelength")?,
+            fan: self.fan,
+            rays: self.rays,
+            first: self.first,
+            last: self.last,
+            unfold: self.unfold,
+        })
+    }
 }
 
 fn load(c: &Common) -> Result<System, AppError> {
@@ -836,34 +827,25 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             mech_detail,
         } => {
             let systems = overlay_systems(&c, &l.sel)?;
-            let color: d2::ColorBy = match &l.color {
-                Some(v) => v.parse()?,
-                None if l.sel.overlay().any() => d2::ColorBy::Config,
-                None => d2::ColorBy::Field,
-            };
             let offset = match &l.offset {
                 None => [0.0; 3],
                 Some(v) => {
-                    let x = parse_list(v, "--offset")?;
-                    if x.len() != 3 {
-                        return Err(AppError::usage("--offset takes 3 values dx,dy,dz"));
-                    }
-                    [x[0], x[1], x[2]]
+                    layout::offset(&parse_list(v, "--offset")?).map_err(AppError::usage_of)?
                 }
             };
-            let o2 = d2::Options2D {
-                plane: plane.parse()?,
-                color,
-                width,
-                segments,
-            };
-            let o3 = mesh::Options3D {
-                segments,
-                rings,
+            let draw = Draw {
+                plane,
+                color: l.color,
+                width: Some(width),
+                segments: Some(segments),
+                rings: Some(rings),
                 tube,
-                color,
                 mech_detail: mech_detail.then(lensbench_cad::detail::details).flatten(),
             };
+            let (o2, o3) = draw
+                .options(l.sel.overlay().any())
+                .map_err(AppError::usage_of)?;
+            let rsel = l.ray_sel()?;
             // 拡張子を先に確かめ、2D 用と 3D 用の場面を要るものだけ作る
             let fmts = out
                 .iter()
@@ -889,7 +871,12 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                         && systems.iter().any(|x| scene::auto_first(&x.1) != 0))
                     .then_some(1);
                     for (name, sy) in &systems {
-                        let mut so = scene_options(sy, &l, f.is_2d())?;
+                        let view = match (f.is_2d(), plane) {
+                            (false, _) => View::D3,
+                            (true, d2::Plane::XZ) => View::XZ,
+                            (true, d2::Plane::YZ) => View::YZ,
+                        };
+                        let mut so = rsel.options(sy, view).map_err(e)?;
                         so.first = so.first.or(first0);
                         let sc = scene::build(sy, &so).map_err(|x| {
                             if name.is_empty() {

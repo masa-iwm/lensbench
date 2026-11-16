@@ -6,8 +6,7 @@
 //! `lb.run_many` などの模擬の組の関数に、Python を通さず Rust のまま回せるもの（[`NativeTask`]）を渡せるようにするには、
 //! [`register_native_task`] で Python の値から取り出す関数を登録する。
 
-use lensbench_core::RwLockExt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use lensbench_core::System;
 use pyo3::prelude::*;
@@ -26,15 +25,17 @@ pub trait NativeTask: Send + Sync {
 /// A function that takes a [`NativeTask`] out of a Python value (None if the value is not one)
 pub type NativeTaskFrom = fn(&Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>>;
 
-static NATIVE: RwLock<Vec<NativeTaskFrom>> = RwLock::new(Vec::new());
+/// The registered functions that take out a [`NativeTask`] (a slot of the extension table `lensbench_core::ext::Ext`, XCT-07)
+#[derive(Clone, Default)]
+pub struct NativeTasks(Vec<NativeTaskFrom>);
 
-/// Add a function that takes out a [`NativeTask`]
+/// Add a function that takes out a [`NativeTask`] (to the process default extension table)
 pub fn register_native_task(f: NativeTaskFrom) {
-    NATIVE.write_ok().push(f);
+    lensbench_core::ext::update_default(|e| e.slot_mut::<NativeTasks>().0.push(f));
 }
 
 /// Take a [`NativeTask`] out of a value with the registered functions (None if none match)
 pub(crate) fn native_task(v: &Bound<'_, PyAny>) -> Option<Arc<dyn NativeTask>> {
-    let fs = NATIVE.read_ok().clone();
-    fs.iter().find_map(|f| f(v))
+    let e = lensbench_core::ext::current();
+    e.slot::<NativeTasks>()?.0.iter().find_map(|f| f(v))
 }

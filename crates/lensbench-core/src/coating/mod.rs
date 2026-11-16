@@ -25,6 +25,7 @@ mod format;
 mod iface;
 mod interpolate;
 mod library;
+mod remote;
 mod spline;
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,7 @@ pub use format::lbct::*;
 pub use iface::*;
 pub use interpolate::*;
 pub use library::*;
+pub use remote::{set_remote_loader, RemoteCoatings, RemoteLoader};
 pub use spline::Spline;
 pub use thin_film::*;
 

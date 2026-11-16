@@ -38,20 +38,17 @@ pub struct Extra {
     pub cad_store: Option<&'static str>,
 }
 
-static EXTRA: std::sync::Mutex<Option<Extra>> = std::sync::Mutex::new(None);
-
 /// 別の入口（この crate を依存にした wasm の crate）が、起動より前（`#[wasm_bindgen(start)]`）に、同梱する
-/// ファイルとフォルダを足す。カタログの形式・プラグインの登録も同じ所で行う
+/// ファイルとフォルダを足す（拡張の表 `lensbench_core::ext::Ext` の欄、XCT-07）。カタログの形式・プラグインの登録も同じ所で行う
 pub fn set_extra(e: Extra) {
-    *EXTRA.lock().unwrap_or_else(|e| e.into_inner()) = Some(e);
+    lensbench_core::ext::update_default(|x| *x.slot_mut::<Extra>() = e);
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn extra() -> Extra {
-    EXTRA
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    lensbench_core::ext::default_ext()
+        .slot::<Extra>()
+        .cloned()
         .unwrap_or_default()
 }
 

@@ -416,7 +416,11 @@ impl Core {
                     "Optimization done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.p.opt.result = Some(std::sync::Arc::new(v));
+                (self.p.opt.result, self.p.opt.error) = views::read::<views::OptimizeView>(&v)
+                    .map_or_else(
+                        |e| (None, Some(e)),
+                        |r| (Some(std::sync::Arc::new(r)), None),
+                    );
             }
             Tag::Swap => {
                 self.p.swap.running = false;
@@ -450,7 +454,8 @@ impl Core {
                     "Zoom track done ({} ms)",
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
-                self.p.zoom.result = Some(v);
+                (self.p.zoom.result, self.p.zoom.error) = views::read::<views::ZoomView>(&v)
+                    .map_or_else(|e| (None, Some(e)), |r| (Some(r), None));
             }
         }
         self.set_done_status(&d.tag, text);

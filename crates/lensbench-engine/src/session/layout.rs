@@ -1,6 +1,7 @@
 //! レイアウト図（layout・layout_export・configs）
 
 use super::*;
+use crate::layout::{Draw, Pick, RaySel, View};
 
 /// 断面図（YZ）の図形と、玉・群・面の位置（GUI のレイアウト図）。座標は [z, y] mm（大域座標）
 ///
@@ -67,37 +68,16 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
     let (s, spec) = sess.current()?;
     let (sc, notes) = layout_scene(sess, &s, &spec, &q)?;
     // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
-    let color = match color_of(p)? {
-        Some(c) => c,
-        None if config_sel(p)?.any() => lensbench_export::d2::ColorBy::Config,
-        None => lensbench_export::d2::ColorBy::Field,
-    };
-    let d2 = lensbench_export::d2::Options2D::default();
-    let d3 = lensbench_export::mesh::Options3D::default();
-    let segments = opt_usize(p, "segments")?
-        .unwrap_or(d2.segments)
-        .clamp(4, 1024);
-    let o2 = lensbench_export::d2::Options2D {
+    let draw = Draw {
         plane: if f.is_2d() { plane_of(&q)? } else { Plane::YZ },
-        color,
-        width: opt_usize(p, "width")?
-            .map(|w| w.clamp(100, 20000) as u32)
-            .unwrap_or(d2.width),
-        segments,
-    };
-    let tube = match opt_f64(p, "tube")? {
-        Some(t) if !(t > 0.0 && t.is_finite()) => {
-            return Err(RpcErr::params("tube must be a positive number [mm]"));
-        }
-        t => t,
-    };
-    let o3 = lensbench_export::mesh::Options3D {
-        segments,
-        rings: opt_usize(p, "rings")?.unwrap_or(d3.rings).clamp(1, 256),
-        tube,
-        color,
+        color: color_of(p)?,
+        width: opt_usize(p, "width")?.map(|w| w.min(u32::MAX as usize) as u32),
+        segments: opt_usize(p, "segments")?,
+        rings: opt_usize(p, "rings")?,
+        tube: opt_f64(p, "tube")?,
         mech_detail: mech_detail(p),
     };
+    let (o2, o3) = draw.options(config_sel(p)?.any())?;
     lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
     Ok(json!({
         "written": path.display().to_string(),
@@ -145,10 +125,7 @@ pub(super) fn layout_scene(
                 .as_array()
                 .map(|a| a.iter().filter_map(Value::as_f64).collect())
                 .unwrap_or_default();
-            if a.len() != 3 {
-                return Err(RpcErr::params("offset must be [dx, dy, dz]"));
-            }
-            [a[0], a[1], a[2]]
+            crate::layout::offset(&a)?
         }
     };
     use lensbench_export::scene;
@@ -229,34 +206,51 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
 }
 
 fn scene_opts(s: &System, p: &Value) -> Result<lensbench_export::scene::Options, RpcErr> {
-    use lensbench_export::scene;
-    // 光線の扇の既定は見る面の向き（xz 面なら x の扇）
-    // 3D は光束の形が分かる円周（CLI の 3D の書き出しと同じ）
-    let d3 = is_3d(p);
-    let fan: scene::Fan = match p.get("fan").and_then(Value::as_str) {
-        Some(f) => f.parse().map_err(RpcErr::params)?,
-        None if d3 => scene::Fan::Ring,
-        None if plane_of(p)? == Plane::XZ => scene::Fan::X,
-        None => scene::Fan::Y,
+    Ok(ray_sel(p)?.options(s, view_of(p)?)?)
+}
+
+/// layout の光線の選び方（field・wave は番号か並びか "all"）
+fn ray_sel(p: &Value) -> Result<RaySel, RpcErr> {
+    let pick = |k: &str| -> Result<Option<Pick>, RpcErr> {
+        let bad = || RpcErr::params(format!("{k} must be numbers from 1 or \"all\""));
+        match p.get(k) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(x)) => x.parse().map(Some).map_err(|_| bad()),
+            Some(x) => {
+                let a = x.as_array().cloned().unwrap_or_else(|| vec![x.clone()]);
+                a.iter()
+                    .map(|v| v.as_u64().map(|i| i as usize).ok_or_else(bad))
+                    .collect::<Result<_, _>>()
+                    .map(|v| Some(Pick::List(v)))
+            }
+        }
     };
     let unfold = match p.get("unfold") {
         None | Some(Value::Null) => false,
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(RpcErr::params("unfold must be true or false")),
     };
-    if unfold && d3 {
-        return Err(RpcErr::params("unfold is only for 2D (plane yz or xz)"));
-    }
-    let n0 = if fan == scene::Fan::Ring { 12 } else { 7 };
-    Ok(scene::Options {
-        fields: opt_index_list(p, "field", s.fields.len())?,
-        waves: opt_index_list(p, "wave", s.wavelengths.len())?,
-        fan,
-        rays: opt_usize(p, "rays")?.unwrap_or(n0).clamp(1, 200),
+    Ok(RaySel {
+        fields: pick("field")?,
+        waves: pick("wave")?,
+        fan: match p.get("fan").and_then(Value::as_str) {
+            Some(f) => Some(f.parse().map_err(RpcErr::params)?),
+            None => None,
+        },
+        rays: opt_usize(p, "rays")?,
         first: opt_usize(p, "first")?,
         last: opt_usize(p, "last")?,
         unfold,
     })
+}
+
+/// layout の見る面（plane: "yz"（既定）・"xz"・"3d"）
+fn view_of(p: &Value) -> Result<View, RpcErr> {
+    match p.get("plane") {
+        None | Some(Value::Null) => Ok(View::YZ),
+        Some(Value::String(x)) => x.parse().map_err(RpcErr::params),
+        Some(_) => Err(RpcErr::params("plane must be \"yz\", \"xz\" or \"3d\"")),
+    }
 }
 
 /// 見る面に合わせて、場面を断面図（yz・xz）か 3D の網（"3d"）の JSON に
@@ -285,18 +279,12 @@ fn view_json(s: &System, sc: &lensbench_export::scene::Scene, p: &Value) -> Resu
 
 /// layout の 3D 表示か（plane が "3d"）
 fn is_3d(p: &Value) -> bool {
-    p["plane"]
-        .as_str()
-        .is_some_and(|x| x.eq_ignore_ascii_case("3d"))
+    matches!(view_of(p), Ok(View::D3))
 }
 
-/// layout の見る面（"yz"（既定）か "xz"。"3d" は [`is_3d`]）
+/// layout の断面図の面（"3d" なら yz）
 fn plane_of(p: &Value) -> Result<Plane, RpcErr> {
-    match p.get("plane") {
-        None | Some(Value::Null) => Ok(Plane::YZ),
-        Some(Value::String(x)) => x.parse().map_err(RpcErr::params),
-        Some(_) => Err(RpcErr::params("plane must be \"yz\", \"xz\" or \"3d\"")),
-    }
+    Ok(view_of(p)?.plane())
 }
 
 /// 要求の `mech_detail`（真なら機構部品を取った STEP の詳しい形で描く読み手、PRJ-21）

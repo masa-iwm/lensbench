@@ -31,6 +31,18 @@
   `lensbench_step`（`StepFile`）の 1 本で、寸法の測定（`read_step`・`StepSize`）は `lensbench_catalog::step`。`cad_cache_*` は
   `lensbench_cad` に。機構部品の STEP は大域の差し込み（`install_detail_loader`）をやめ、`Env::step_files`・`open_with` と
   `Options3D`・`OptionsStep` の `mech_detail: Option<Details>`（`lensbench_cad::detail::details()` で作る）で渡す。CLI・Python・GUI は同じ。
+- レイアウトの描き方（光線の選び方・書き出しの形）の既定値と範囲を CLI の `layout` と serve の `layout`・`layout_export` で
+  1 つにした（`lensbench_engine::layout`、CLI-02）。CLI の `layout --plane xz` で `--fan` を省くと x の扇（前は y の扇。serve と同じ）、
+  `--rays` は 1〜200、`--width`・`--segments`・`--rings` は serve と同じ範囲に収める。`--tube` は正の数だけ（0・負の値は使い方の誤り、
+  終了コード 2。前は黙って受けた）。`--fan`・`--plane`・`--color` の不正な値は引数の解釈で誤り（終了コード 1 → 2、選択肢を出す）。
+  serve の `field`・`wave` に `"all"` を足した。
+- 最適化・ズームの結果を型にした（GAR-04）: `lensbench_engine::session::views::{OptimizeView, ZoomView}`。serve・CLI はこの型を JSON に、
+  GUI は同じ型で読む（鍵が足りなければ誤り）。Rust の `lensbench_engine::zoom::zoom_systems` は `Value` でなく `ZoomView` を返す。
+- 拡張の登録を拡張の表 1 つに（XCT-07）: 検出器の種類（`lensbench_project::detectors`）・拡張の解析（`lensbench_engine::register`）・
+  GUI の見せ方（`lensbench_gui::ext`）・Python の模擬の組（`register_native_task`）・Web 版の同梱ファイル（`set_extra`）・膜のモデルを
+  取る口（`coating::set_remote_loader`）は、それぞれのプロセス大域の表をやめ、`lensbench_core::ext::Ext` の型ごとの欄
+  （`Ext::slot`・`slot_mut`）に載せた。登録の関数は前どおりプロセスの既定に足し、`ext::with` で渡した表はその計算だけに効く。
+  `Extensions::core_ext()` は `Extensions::ext()`（名前が組み込みと重なれば誤り）に、表に足すのは `add_to`。
 - 単色の干渉縞の解析 `fringe` を `interference` に改名した（CLI のサブコマンド・serve の `analyze` の `cmd`・GUI の解析パネル・
   `lensbench_client` の `interference()`）。Python の `fringe_detector` は `interference_detector`、Rust の `lensbench_core::fringe` は
   `lensbench_core::interference`。旧名は残さない（GUI の設定に残った `fringe` のパネルは開き直す）。Zernike の並び `kind = "fringe"` は変えない。

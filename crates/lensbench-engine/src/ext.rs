@@ -4,19 +4,16 @@
 //! [`Extensions`] に集め、入口で 1 回 [`Extensions::install`] する。足す側のクレートは `Extensions` を返す関数を
 //! 1 つ持てばよく、入口は呼ぶ順を気にしなくてよい。GUI の見せ方（図・欄）は `lensbench_gui::ext` で別に足す。
 //!
-//! core の分（プラグイン・カタログの形式・面のモデル）は値の表 [`lensbench_core::ext::Ext`] になる
-//! （[`Extensions::core_ext`]。計算ごとに `lensbench_core::ext::with` で渡せる）。install はそれをプロセスの既定に
-//! 重ねる。検出器のブロック・解析はまだプロセスで共通の表（`detectors::register`・[`crate::register`]）
+//! 足したものはすべて値の表 [`lensbench_core::ext::Ext`] 1 つになる（[`Extensions::ext`]。検出器の種類・解析は
+//! 表の欄。計算ごとに `lensbench_core::ext::with` で渡せる）。install はそれをプロセスの既定に重ねる
 
-use lensbench_analysis::Analysis;
+use lensbench_analysis::{Analyses, Analysis, DynAnalysis};
 use lensbench_core::catalog::LensCatalogSource;
 use lensbench_core::ext::Ext;
 use lensbench_core::plugin::Registry;
 use lensbench_core::usersurf::SurfaceModel;
 use lensbench_project::detectors::DetectorKind;
 use std::sync::Arc;
-
-type AddAnalysis = Box<dyn FnOnce() -> Result<(), String> + Send>;
 
 /// 足す拡張の集まり（[`Extensions::install`] でプロセスに入れる）
 #[derive(Default)]
@@ -25,7 +22,7 @@ pub struct Extensions {
     sources: Vec<Arc<dyn LensCatalogSource + Send + Sync>>,
     surfaces: Vec<Arc<dyn SurfaceModel>>,
     detectors: Vec<DetectorKind>,
-    analyses: Vec<AddAnalysis>,
+    analyses: Vec<Arc<dyn DynAnalysis>>,
 }
 
 impl Extensions {
@@ -58,8 +55,11 @@ impl Extensions {
     }
 
     /// 解析（CLI のサブコマンド・serve の analyze・GUI の解析）
-    pub fn analysis<A: Analysis + Send + 'static>(mut self, a: A) -> Self {
-        self.analyses.push(Box::new(move || crate::register(a)));
+    pub fn analysis<A: Analysis>(mut self, a: A) -> Self {
+        let name = a.meta().name;
+        let mut t = Analyses::default();
+        t.add(a);
+        self.analyses.extend(t.get(name).cloned());
         self
     }
 
@@ -73,14 +73,15 @@ impl Extensions {
         self
     }
 
-    /// core の分（プラグイン・カタログの形式・面のモデル）の表（同梱の分の上に足したもの）
-    pub fn core_ext(&self) -> Ext {
+    /// 足したものの表（同梱の分の上に足したもの）。名前が組み込みと重なれば誤り
+    pub fn ext(&self) -> Result<Ext, String> {
         let mut e = Ext::default();
-        self.add_core(&mut e);
-        e
+        self.add_to(&mut e)?;
+        Ok(e)
     }
 
-    fn add_core(&self, e: &mut Ext) {
+    /// 表 e に足す（同じ名前は置き換える）。名前が組み込みと重なれば誤り
+    pub fn add_to(&self, e: &mut Ext) -> Result<(), String> {
         for s in &self.sources {
             e.add_catalog_source(s.clone());
         }
@@ -90,18 +91,23 @@ impl Extensions {
         for f in &self.plugins {
             f(e.plugins_mut());
         }
-    }
-
-    /// プロセスの既定に入れる（何度呼んでもよい。同じ名前は置き換える）。名前が組み込みと重なれば誤り
-    pub fn install(self) -> Result<(), String> {
-        lensbench_core::ext::update_default(|e| self.add_core(e));
-        for k in self.detectors {
-            lensbench_project::detectors::register(k)?;
+        for k in &self.detectors {
+            lensbench_project::detectors::add(e, *k).map_err(|x| x.to_string())?;
         }
-        for a in self.analyses {
-            a()?;
+        for a in &self.analyses {
+            crate::registry::add_dyn(e, a.clone())?;
         }
         Ok(())
+    }
+
+    /// プロセスの既定に入れる（何度呼んでもよい。同じ名前は置き換える）。名前が組み込みと重なれば誤り（何も入れない）
+    pub fn install(self) -> Result<(), String> {
+        lensbench_core::ext::update_default(|e| {
+            let mut n = e.clone();
+            self.add_to(&mut n)?;
+            *e = n;
+            Ok(())
+        })
     }
 }
 
@@ -143,5 +149,14 @@ mod tests {
         assert!(lensbench_project::detectors::get("ext-test-detector").is_some());
         let bad = lensbench_project::BUILTIN_BLOCKS[0];
         assert!(Extensions::new().detector(k(bad)).install().is_err());
+        // 表を値で渡せば、その計算だけに効く（プロセスの既定に漏れない）
+        let e = Extensions::new()
+            .detector(k("ext-test-scoped"))
+            .ext()
+            .unwrap();
+        lensbench_core::ext::with(Arc::new(e), || {
+            assert!(lensbench_project::detectors::get("ext-test-scoped").is_some());
+        });
+        assert!(lensbench_project::detectors::get("ext-test-scoped").is_none());
     }
 }
