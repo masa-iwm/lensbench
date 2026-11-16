@@ -18,7 +18,7 @@ use crate::pickup::{PickKind, Pickup};
 use crate::solves::{solve_kind_of, Solve};
 use crate::surface::{After, Aperture, Material, SurfType, Surface};
 use crate::system::Prescription;
-use crate::system::{FieldCond, FieldType, System};
+use crate::system::{Batch, FieldCond, FieldType, System};
 use crate::{invalid, notimpl};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -176,8 +176,12 @@ impl System {
     }
 
     /// 文書を f で直し、値はそのまま置く（ピックアップ・ソルブ・屈折率・自動の半直径は求め直さない）。
-    /// 座標系・近軸量などは作り直し、系を確かめる。失敗なら元のまま
+    /// 座標系・近軸量などは作り直し、系を確かめる。失敗なら元のまま（[`System::batch`] の中では系ごと捨てる）
     pub fn edit_raw(&mut self, f: impl FnOnce(&mut Prescription) -> Result<()>) -> Result<()> {
+        if self.batch != Batch::Off {
+            f(self.rx_mut())?;
+            return self.changed();
+        }
         let mut s = self.clone();
         f(s.rx_mut())?;
         s.changed()?;
@@ -197,7 +201,13 @@ impl System {
     }
 
     /// 系を複製して f で変え、編集の後始末（`refresh`）をしてから差し替える。失敗なら元のまま
+    /// （[`System::batch`] の中では複製せずに直し、失敗した系は batch が捨てる）
     pub(crate) fn edit_sys(&mut self, f: impl FnOnce(&mut System) -> Result<()>) -> Result<()> {
+        // まとめた編集の中では複製しない（失敗すれば batch が系ごと捨てる）
+        if self.batch != Batch::Off {
+            f(self)?;
+            return self.refresh();
+        }
         let mut s = self.clone();
         f(&mut s)?;
         s.refresh()?;

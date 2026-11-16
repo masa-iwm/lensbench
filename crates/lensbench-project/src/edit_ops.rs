@@ -548,8 +548,17 @@ pub(crate) fn apply_labeled(
     ops: &[(usize, &EditOp)],
     block: Option<&str>,
 ) -> lensbench_core::Result<Vec<String>> {
-    let mut t = s.clone();
     let mut notes = Vec::new();
+    s.batch(|t| apply_ops(t, ops, block, &mut notes))?;
+    Ok(notes)
+}
+
+fn apply_ops(
+    t: &mut System,
+    ops: &[(usize, &EditOp)],
+    block: Option<&str>,
+    notes: &mut Vec<String>,
+) -> lensbench_core::Result<()> {
     for &(i, op) in ops {
         let at = |e: lensbench_core::Error| {
             e.map_message(|e| {
@@ -560,14 +569,41 @@ pub(crate) fn apply_labeled(
                 }
             })
         };
-        apply_one(&mut t, op, &mut notes).map_err(at)?;
+        // 今の半直径を読むかもしれない操作の前には、残っている自動の半直径の求め直しをする
+        if !leaves_semi_unread(op) {
+            t.settle_semi();
+        }
+        apply_one(t, op, notes).map_err(at)?;
         // 表の操作でなければ、変えた値を表の今の構成の列にも
         if !op.is_config() {
             t.sync_active_config();
         }
     }
-    *s = t;
-    Ok(notes)
+    Ok(())
+}
+
+/// 今の自動の半直径を読まず、半直径が追跡に効くようにもしない操作（[`System::batch`] の中で求め直しを後に回せる）。
+/// 面の値は形・厚さ・材料などだけ（semi・semi_auto・aperture・type を含まない）
+fn leaves_semi_unread(op: &EditOp) -> bool {
+    use EditOp as O;
+    const FREE: &[&str] = &[
+        "t", "c", "r", "k", "asph", "cx", "cb", "comment", "coating", "material", "ignore",
+    ];
+    let free = |m: &Map<String, Value>| m.keys().all(|k| FREE.contains(&k.as_str()));
+    match op {
+        O::InsertSurface { surface, .. } => free(surface),
+        O::SetSurface { fields, .. } => free(fields),
+        O::DeleteSurface { .. }
+        | O::SetMaterial { .. }
+        | O::SetParam { .. }
+        | O::DefineUnit { .. }
+        | O::SetUnit { .. }
+        | O::RemoveUnit { .. }
+        | O::AddMech { .. }
+        | O::SetMech { .. }
+        | O::RemoveMech { .. } => true,
+        _ => op.is_config(),
+    }
 }
 
 fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_core::Result<()> {

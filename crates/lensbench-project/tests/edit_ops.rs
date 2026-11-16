@@ -477,3 +477,88 @@ fn config_insert_remove_and_pickups() {
     assert!(s.configs().is_none());
     assert_eq!(s.surfaces[1].t, 9.0);
 }
+
+/// 操作の列は自動の半直径を最後に 1 回だけ求め直す（IOO-17）。結果は 1 つずつ当てたときと同じ。
+/// 半直径から曲率を取るピックアップがある（半直径が追跡に効く）ときは操作ごとに求め直すので、それも同じ
+#[test]
+fn ops_semi_once_matches_one_by_one() {
+    let s0 = a0();
+    assert!(s0.surfaces.iter().any(|d| d.semi_auto));
+    let n = s0.surfaces.len();
+    let mut ops: Vec<serde_json::Value> = (1..n - 1)
+        .map(|j| match j % 3 {
+            0 => json!({"op": "set_surface", "surface": j, "fields": {"t": s0.surfaces[j].t * 1.01 + 0.1}}),
+            1 => json!({"op": "set_surface", "surface": j, "fields": {"comment": "x"}}),
+            _ => json!({"op": "set_surface", "surface": j, "fields": {"c": s0.surfaces[j].c * 0.99}}),
+        })
+        .collect();
+    let surfs = |s: &lensbench_core::System| format!("{:?}", s.surfaces);
+    let one_by_one = |ops: &[serde_json::Value]| {
+        let mut b = a0();
+        for o in ops {
+            edit_ops::apply_json(&mut b, &json!([o])).unwrap();
+        }
+        b
+    };
+    let mut a = a0();
+    edit_ops::apply_json(&mut a, &json!(ops)).unwrap();
+    let b = one_by_one(&ops);
+    assert_eq!(surfs(&a), surfs(&b));
+    assert_ne!(surfs(&a), surfs(&s0));
+
+    // 最後の面の曲率を、自動の半直径の面 1 から取る
+    let last = n - 2;
+    assert!(s0.surfaces[1].semi_auto);
+    ops.insert(
+        0,
+        json!({"op": "add_pickup", "dst": last, "src": 1, "what": "c", "from": "semi", "scale": -0.001}),
+    );
+    ops.retain(|o| o["surface"] != json!(last));
+    let mut a = a0();
+    edit_ops::apply_json(&mut a, &json!(ops)).unwrap();
+    let b = one_by_one(&ops);
+    assert_eq!(surfs(&a), surfs(&b));
+
+    // 変えた後に今の半直径を読む操作: 自動を外して固定する、半直径から曲率を取るピックアップを足す
+    let t1 = s0.surfaces[1].t;
+    for tail in [
+        json!({"op": "set_surface", "surface": 1, "fields": {"semi_auto": false}}),
+        json!({"op": "add_pickup", "dst": last, "src": 1, "what": "c", "from": "semi", "scale": -0.001}),
+    ] {
+        let ops = vec![
+            json!({"op": "set_surface", "surface": 1, "fields": {"t": t1 + 3.0}}),
+            json!({"op": "set_surface", "surface": 2, "fields": {"comment": "y"}}),
+            tail,
+        ];
+        let mut a = a0();
+        edit_ops::apply_json(&mut a, &json!(ops)).unwrap();
+        assert_eq!(surfs(&a), surfs(&one_by_one(&ops)), "{ops:?}");
+    }
+
+    // 開口が絞りの大きさで決まる系で、変えた後に絞りを自動の半直径の面へ移す（その面の今の半直径が開口になる）
+    let float = |ops: &[serde_json::Value]| {
+        let mut s = a0();
+        let mut ap = edit_ops::system_data(&s).unwrap()["aperture"].clone();
+        ap[0] = json!("float");
+        ap[1] = json!(s.surfaces[s.stop()].semi);
+        edit_ops::apply_json(
+            &mut s,
+            &json!([{"op": "set_system_data", "data": {"aperture": ap}}]),
+        )
+        .unwrap();
+        assert_eq!(s.aperture.0, lensbench_core::system::ApertureKind::Float);
+        let mut a = s.clone();
+        edit_ops::apply_json(&mut a, &json!(ops)).unwrap();
+        for o in ops {
+            edit_ops::apply_json(&mut s, &json!([o])).unwrap();
+        }
+        (a, s)
+    };
+    let ops = vec![
+        json!({"op": "set_surface", "surface": 1, "fields": {"t": t1 + 3.0}}),
+        json!({"op": "set_surface", "surface": 2, "fields": {"c": s0.surfaces[2].c * 0.9}}),
+        json!({"op": "set_stop", "surface": 4}),
+    ];
+    let (a, b) = float(&ops);
+    assert_eq!(surfs(&a), surfs(&b));
+}

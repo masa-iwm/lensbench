@@ -172,6 +172,20 @@ pub struct System {
     /// 文書から求めた媒質の屈折率（[`crate::media::Media`]）
     media: Arc<crate::media::Media>,
     cache: Cache,
+    /// まとめた編集（[`System::batch`]）の中か
+    pub(crate) batch: Batch,
+}
+
+/// まとめた編集（[`System::batch`]）の中か
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Batch {
+    /// 外: 編集のたびに複製し、自動の半直径も求め直す
+    #[default]
+    Off,
+    /// 中: 編集は系をそのまま直し（失敗した系は batch が捨てる）、自動の半直径は追跡に効かなければ最後に 1 回
+    On,
+    /// 中で、自動の半直径の求め直しが残っている
+    SemiPending,
 }
 
 impl std::ops::Deref for System {
@@ -309,6 +323,7 @@ impl System {
             rx: Arc::new(rx),
             media,
             cache: Cache::default(),
+            batch: Batch::Off,
         })
     }
 
@@ -399,6 +414,7 @@ impl System {
             rx: self.rx.clone(),
             media: self.media.clone(),
             cache,
+            batch: self.batch,
         }
     }
 

@@ -15,7 +15,7 @@
 //! ケラレ係数・VAN のある視野の系（A6、最大 8%）
 
 use crate::surface::Aperture;
-use crate::system::{FieldSel, RecSel};
+use crate::system::{Batch, FieldSel, RecSel};
 use crate::System;
 
 impl System {
@@ -78,7 +78,7 @@ impl System {
     }
 
     /// 自動の半直径が追跡に効くか: 自動の面に浮動開口がある（ける）、Irregular の面（半直径で正規化）、
-    /// 半直径のピックアップ、半径 0 のコバ厚のソルブ（半直径で測る）。最適化・公差の内側
+    /// 自動の半直径を元にするピックアップ（曲率などを半直径から取るものも）、半径 0 のコバ厚のソルブ（半直径で測る）。最適化・公差の内側
     /// （[`System::with_params_fast`]）はこのときだけ求め直す
     pub(crate) fn semi_affects_trace(&self) -> bool {
         let auto = |k: usize| self.surfaces.get(k).is_some_and(|d| d.semi_auto);
@@ -89,7 +89,7 @@ impl System {
         }) || self
             .pickups
             .iter()
-            .any(|p| p.what == crate::pickup::PickKind::Semi && auto(p.src))
+            .any(|p| p.source() == crate::pickup::PickKind::Semi && auto(p.src))
             || self.solves.iter().any(|q| {
                 matches!(q.kind, crate::solves::SolveKind::Edge { radius: r, .. } if r == 0.0)
                     && (auto(q.surf) || auto(q.surf + 1))
@@ -101,6 +101,14 @@ impl System {
     pub fn update_semi(&mut self) {
         if !self.surfaces.iter().any(|d| d.semi_auto) {
             return;
+        }
+        // まとめた編集の中で、半直径が追跡に効かなければ最後に 1 回（結果は最後の系だけで決まる）
+        if self.batch != Batch::Off {
+            if !self.semi_affects_trace() {
+                self.batch = Batch::SemiPending;
+                return;
+            }
+            self.batch = Batch::On;
         }
         // 複製で追う（座標系などのキャッシュをこの系に残さない）
         let h = self.clone().ray_heights();
@@ -126,5 +134,36 @@ impl System {
         }
         // 浮動開口の半径が変わると追跡の準備も変わる
         self.invalidate_frames();
+    }
+
+    /// 編集をまとめる: 系の複製 1 つに f を当て（中の編集は複製しない）、自動の半直径は（追跡に効かなければ）
+    /// 最後に 1 回だけ求め直す。f が失敗を返せば元のまま。f の中で失敗した編集の後の系は途中まで変わっているので、
+    /// 失敗は握りつぶさずに返すこと。半直径が追跡に効かないうちは、半直径は最後の系だけで決まるので編集ごとに求め直したときと同じ。
+    /// 効く系（[`System::semi_affects_trace`]）では編集のたびに求め直す。今の半直径を読む編集（自動を外して固定する、
+    /// 半直径を元にするピックアップを足す、半直径が追跡に効くようにする など）の前には、呼ぶ側が
+    /// [`System::settle_semi`] で残りを求め直すこと
+    pub fn batch<R>(
+        &mut self,
+        f: impl FnOnce(&mut System) -> crate::Result<R>,
+    ) -> crate::Result<R> {
+        let mut t = self.clone();
+        t.batch = Batch::On;
+        let r = f(&mut t)?;
+        if t.batch == Batch::SemiPending {
+            t.batch = Batch::Off;
+            t.update_semi();
+        }
+        t.batch = Batch::Off;
+        *self = t;
+        Ok(r)
+    }
+
+    /// [`System::batch`] の中で残っている自動の半直径の求め直しを今する（今の半直径を読む編集の前に）。外では何もしない
+    pub fn settle_semi(&mut self) {
+        if self.batch == Batch::SemiPending {
+            self.batch = Batch::Off;
+            self.update_semi();
+            self.batch = Batch::On;
+        }
     }
 }
