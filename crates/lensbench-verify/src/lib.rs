@@ -277,7 +277,7 @@ pub fn compare(
     if !missing.is_empty() {
         return Err(format!(
             "reference {} has no tolerances (checks)",
-            missing.join("・")
+            missing.join(", ")
         ));
     }
     Ok(expected

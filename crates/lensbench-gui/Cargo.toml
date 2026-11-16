@@ -82,5 +82,7 @@ tao = { version = "0.36", default-features = false, features = ["rwh_06"], optio
 winresource = "0.1"
 
 [dev-dependencies]
+# 画面の振る舞いのテスト（GAR-07）。窓も GPU も使わず、AccessKit の木でボタンを探して押す
+egui_kittest = { version = "0.31", features = ["eframe"] }
 # 並びの保存（eframe の保存と同じ RON。並びには無限大の矩形が入るので JSON では読み直せない）
 ron = "0.8"

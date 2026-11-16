@@ -662,12 +662,12 @@ impl DetectorBlock {
             format!(
                 "unknown block type {:?} ({} or a registered detector: {})",
                 self.kind,
-                BUILTIN_BLOCKS.join("・"),
+                BUILTIN_BLOCKS.join(", "),
                 detectors::list()
                     .iter()
                     .map(|k| k.name)
                     .collect::<Vec<_>>()
-                    .join("・")
+                    .join(", ")
             )
         })?;
         Ok((k.check)(&self.params).map_err(|e| format!("{} {}: {e}", self.kind, self.id))?)
@@ -884,7 +884,7 @@ impl Project {
         if !unknown.is_empty() {
             return Err(format!(
                 "project file: unknown key {} (check the spelling)",
-                unknown.join("・")
+                unknown.join(", ")
             )
             .into());
         }
@@ -982,7 +982,7 @@ fn patch<T: Serialize + serde::de::DeserializeOwned>(
             return Err(msg(k).into());
         }
         let u: Vec<&str> = unknown.iter().map(String::as_str).collect();
-        return Err(format!("state {name}: unknown key {}", u.join("・")).into());
+        return Err(format!("state {name}: unknown key {}", u.join(", ")).into());
     }
     *x = y;
     Ok(())

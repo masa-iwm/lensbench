@@ -64,7 +64,7 @@ impl PluginTerm {
                 "{}: no output {} ({})",
                 self.label,
                 self.output,
-                out.keys().cloned().collect::<Vec<_>>().join("・")
+                out.keys().cloned().collect::<Vec<_>>().join(", ")
             ))
         })?;
         let v = a

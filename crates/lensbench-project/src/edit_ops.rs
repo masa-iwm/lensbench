@@ -469,7 +469,7 @@ pub(crate) fn set_system_data(
         if !SYSTEM_KEYS.contains(&k.as_str()) {
             return Err(format!(
                 "system item {k} is not changed by set_system_data ({})",
-                SYSTEM_KEYS.join("・")
+                SYSTEM_KEYS.join(", ")
             )
             .into());
         }

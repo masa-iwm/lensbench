@@ -26,10 +26,12 @@ use panels::Panels;
 use result::AnaRes;
 use sys_copy::SysCopy;
 mod take;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 mod test_state;
 mod to_combo;
 mod tour_steps;
+#[cfg(test)]
+mod ui_tests;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};

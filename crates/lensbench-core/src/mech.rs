@@ -419,7 +419,7 @@ pub fn fit_check(s: &System, parts: &[MechPart]) -> Result<Vec<FitIssue>> {
                     .iter()
                     .map(|&b| parts[b].name.as_str())
                     .collect::<Vec<_>>()
-                    .join("・"),
+                    .join(", "),
                 zmax - zmin,
                 parts[a].rod_spacing
             ),

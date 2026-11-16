@@ -76,10 +76,20 @@ impl Core {
                                 )
                                 .into())
                             }
-                            None => spans
-                                .iter()
-                                .position(|s| s.is_some_and(|s| s[0] > at))
-                                .unwrap_or(spans.len()),
+                            None => {
+                                let pos = spans
+                                    .iter()
+                                    .position(|s| s.is_some_and(|s| s[0] > at))
+                                    .unwrap_or(spans.len());
+                                // 足した面の行は、次の要素の最初の面の行（無ければ像面の行）。前の絞りの行の前に
+                                // 足したときも面は絞りの後に入るので、今のセルをそちらへ
+                                let row = spans[pos..]
+                                    .iter()
+                                    .find_map(|s| s.map(|s| s[0]))
+                                    .unwrap_or(self.sys.ld_rows.len().saturating_sub(1));
+                                self.p.ld.insert_lands_at(row);
+                                pos
+                            }
                         };
                         self.doc.combo.insert_plane(pos);
                         continue;

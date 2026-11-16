@@ -925,6 +925,15 @@ fn selection(rows: &[usize], anchor: Option<usize>, cur: Option<usize>) -> Vec<u
     }
 }
 
+impl LensData {
+    /// 足した面が表の at と違う行に入るとき（組合せの系で前の絞りの前に足すと絞りの後に入る）、今のセルを移す先を直す
+    pub fn insert_lands_at(&mut self, row: usize) {
+        if let Some((at, _)) = self.ins_at.as_mut() {
+            *at = row;
+        }
+    }
+}
+
 /// セルを選ぶ（Shift は範囲を広げる、keep は範囲を残す＝範囲の中の右クリック）
 fn click_to(st: &mut LensData, j: usize, col: Col, shift: bool, keep: bool) {
     st.ins_at = None;
