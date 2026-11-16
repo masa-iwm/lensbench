@@ -1,5 +1,5 @@
 //! serve の元に戻す段の名前・一覧と、読み込んだ系の概要（serve.rs から分けた）
-use super::{Change, LoadSpec, Served, Snap};
+use super::{Change, LoadSpec, Served};
 use lensbench_core::System;
 use lensbench_project::edit_ops::EditOp;
 use serde_json::{json, Value};
@@ -34,12 +34,12 @@ pub(super) fn change_label(c: Option<&Change>) -> Value {
 
 /// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）
 pub(super) fn history_json(x: &Served) -> Value {
-    let list = |v: &[Snap]| v.iter().rev().map(|s| s.what.clone()).collect::<Vec<_>>();
+    let h = &x.hist;
     json!(super::views::HistoryView {
-        undo: x.undo.len(),
-        redo: x.redo.len(),
-        undo_list: list(&x.undo),
-        redo_list: list(&x.redo),
+        undo: h.len(true),
+        redo: h.len(false),
+        undo_list: h.labels(true).cloned().collect(),
+        redo_list: h.labels(false).cloned().collect(),
     })
 }
 

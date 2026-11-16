@@ -33,6 +33,7 @@ pub mod freeform;
 pub mod glass;
 pub mod grid;
 pub mod grin;
+pub mod history;
 pub mod i18n;
 mod interp2d;
 pub mod landing;

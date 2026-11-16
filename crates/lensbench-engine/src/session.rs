@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use web_time::Instant;
 
 use lensbench_core::coating::C64;
+use lensbench_core::history::History;
 use lensbench_core::system::Launch;
 use lensbench_core::System;
 use lensbench_export::d2::Plane;
@@ -123,25 +124,20 @@ struct Served {
     /// 読んだときの注意（load・reload の返事の notes。CLI-10）
     notes: Vec<String>,
     log: Vec<Change>,
-    /// 元に戻す・やり直すための前の系と変更の記録（新しいものが後ろ）
-    undo: Vec<Snap>,
-    redo: Vec<Snap>,
+    /// 元に戻す・やり直すための前の系と変更の記録。段の名前は変更の短い記述（GUI の一覧の名前）
+    hist: History<Snap, Value>,
     /// 最後に記録した set の名前と時刻（同じ名前の set が続けば 1 段にまとめる。スライダーのドラッグなど）
     last_set: Option<(Vec<String>, Instant)>,
 }
 
-/// 元に戻す 1 段: 系と読み方、そのときの変更の記録、この段から次の段への変更の短い記述（GUI の一覧の名前）
+/// 元に戻す 1 段: 系と読み方、そのときの注意と変更の記録
 #[derive(Clone)]
 struct Snap {
     sys: Arc<System>,
     spec: LoadSpec,
     notes: Vec<String>,
     log: Vec<Change>,
-    what: Value,
 }
-
-/// 元に戻せる段の数
-const UNDO_DEPTH: usize = 100;
 /// 同じ名前の set をまとめる間隔 [s]
 const SET_MERGE_S: f64 = 1.0;
 
@@ -262,8 +258,7 @@ fn store(sess: &Session, sys: System, spec: LoadSpec, notes: Vec<String>) {
         spec,
         notes,
         log: Vec::new(),
-        undo: Vec::new(),
-        redo: Vec::new(),
+        hist: History::default(),
         last_set: None,
     });
 }
@@ -318,7 +313,6 @@ fn store_loaded(
             json!({ "open": name })
         };
         push_undo(&mut x, what);
-        x.redo.clear();
     }
     x.sys = Arc::new(sys);
     x.spec = spec;
@@ -351,18 +345,20 @@ pub use optim::{
 pub use proto::{Access, METHODS, PROTOCOL};
 use trace::{plugin, trace};
 
-/// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる）
-fn push_undo(x: &mut Served, what: Value) {
-    x.undo.push(Snap {
+/// 今の系の写し
+fn snap(x: &Served) -> Snap {
+    Snap {
         sys: x.sys.clone(),
         spec: x.spec.clone(),
         notes: x.notes.clone(),
         log: x.log.clone(),
-        what,
-    });
-    if x.undo.len() > UNDO_DEPTH {
-        x.undo.remove(0);
     }
+}
+
+/// 今の系を元に戻す段に積む（深さを超えたら古い段を捨てる。やり直す段は捨てる）
+fn push_undo(x: &mut Served, what: Value) {
+    let s = snap(x);
+    x.hist.record(s, what);
 }
 
 /// 変更した系を置き、変更を記録する。前の系は元に戻す段に積む（やり直す段は空にする）
@@ -374,8 +370,7 @@ fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
             spec,
             notes: Vec::new(),
             log: vec![c],
-            undo: Vec::new(),
-            redo: Vec::new(),
+            hist: History::default(),
             last_set: None,
         });
         return;
@@ -386,13 +381,10 @@ fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
         Change::Set(v) => Some(v.iter().map(|r| r.0.clone()).collect::<Vec<_>>()),
         Change::Edit(o) => config_only(o).then(|| vec![CONFIG_KEY.to_string()]),
     };
-    let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t))) if n == m && !x.undo.is_empty()
+    let merge = matches!((&names, &x.last_set), (Some(n), Some((m, t))) if n == m
         && (n[..] == [CONFIG_KEY] || now.duration_since(*t).as_secs_f64() < SET_MERGE_S));
-    if !merge {
-        let what = change_label(Some(&c));
-        push_undo(&mut x, what);
-    }
-    x.redo.clear();
+    let s = snap(&x);
+    x.hist.record_or_merge(s, change_label(Some(&c)), merge);
     x.last_set = names.map(|n| (n, now));
     x.log.push(c);
     x.sys = Arc::new(sys);
@@ -406,26 +398,18 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     let x = g
         .as_mut()
         .ok_or_else(|| RpcErr::app("no system (load first)"))?;
-    let (from, to) = if back {
-        (&mut x.undo, &mut x.redo)
-    } else {
-        (&mut x.redo, &mut x.undo)
-    };
-    let Some(snap) = from.pop() else {
+    let cur = snap(x);
+    let Some(snap) = x.hist.step(cur, back) else {
         return Err(RpcErr::app(if back {
             "no change to undo"
         } else {
             "no change to redo"
         }));
     };
-    let file0 = x.spec.file.clone();
-    to.push(Snap {
-        sys: std::mem::replace(&mut x.sys, snap.sys),
-        spec: std::mem::replace(&mut x.spec, snap.spec),
-        notes: std::mem::replace(&mut x.notes, snap.notes),
-        log: std::mem::replace(&mut x.log, snap.log),
-        what: snap.what,
-    });
+    let file0 = std::mem::replace(&mut x.spec, snap.spec).file;
+    x.sys = snap.sys;
+    x.notes = snap.notes;
+    x.log = snap.log;
     x.last_set = None;
     let hash = lensbench_project::sysfile::system_hash(&x.sys).map_err(RpcErr::app)?;
     let mut v = history_json(x);
