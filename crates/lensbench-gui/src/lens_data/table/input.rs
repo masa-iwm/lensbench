@@ -5,7 +5,7 @@ use super::*;
 /// キー（表をクリックした後。書き換え中は入力欄が使う）: 移動・範囲・書き換えの開始・コピー・貼り付け・挿入・削除
 pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
     // Shift+F10: 今のセルの右クリックの欄をキーボードで
-    if ui.input(|i| i.modifiers.shift && i.key_pressed(Key::F10)) {
+    if crate::widgets::menu::menu_key(ui) {
         if let Some((j, col)) = st.cur {
             let pos = out.cur_pos.unwrap_or_else(|| ui.min_rect().left_top());
             st.kbd_menu = Some((j, col, pos, false));
@@ -216,44 +216,42 @@ pub(super) fn kbd_menu(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
         } else {
             let r = &c.rows[j];
             let ro = v.cell_ro(c, j, col);
-            let mut done = false;
             let menu = &mut st.menu;
-            let area = egui::Area::new(ui.id().with("ld_kbd_menu"))
-                .order(egui::Order::Foreground)
-                .fixed_pos(pos)
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::menu(ui.style()).show(ui, |ui| {
-                        ui.set_max_width(340.0);
-                        if ro.is_none() {
-                            if let Some(a) = override_item(ui, c, j, col) {
-                                done = true;
-                                out.acts.push(a);
-                            }
-                            let a = cell_menu(
-                                ui,
-                                menu,
-                                j,
-                                col,
-                                r,
-                                v.bire_of(j),
-                                c.combo,
-                                (c.config_n, c.config_rows),
-                            );
-                            done |= !a.is_empty();
-                            out.acts.extend(a);
+            let fresh = std::mem::take(&mut st.kbd_fresh);
+            let close = crate::widgets::menu::float_menu(
+                ui,
+                ui.id().with("ld_kbd_menu"),
+                pos,
+                340.0,
+                fresh,
+                |ui| {
+                    let mut done = false;
+                    if ro.is_none() {
+                        if let Some(a) = override_item(ui, c, j, col) {
+                            done = true;
+                            out.acts.push(a);
                         }
-                        if cell_only {
-                            return;
-                        }
+                        let a = cell_menu(
+                            ui,
+                            menu,
+                            j,
+                            col,
+                            r,
+                            v.bire_of(j),
+                            c.combo,
+                            (c.config_n, c.config_rows),
+                        );
+                        done |= !a.is_empty();
+                        out.acts.extend(a);
+                    }
+                    if !cell_only {
                         let m = v.row_menu(ui, menu, c, j);
                         done |= out.fx.merge(m);
-                    });
-                });
-            let fresh = std::mem::take(&mut st.kbd_fresh);
-            if done
-                || ui.input(|i| i.key_pressed(Key::Escape))
-                || (!fresh && area.response.clicked_elsewhere())
-            {
+                    }
+                    done
+                },
+            );
+            if close {
                 st.kbd_menu = None;
                 st.active = true;
             }

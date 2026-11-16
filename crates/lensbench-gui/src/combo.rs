@@ -218,7 +218,7 @@ impl SurfRow {
 impl ElemKind {
     pub fn label(self) -> &'static str {
         match self {
-            ElemKind::Catalog => tr("catalog element"),
+            ElemKind::Catalog => tr("Catalog element"),
             ElemKind::Lens => tr("Custom lens"),
             ElemKind::Plate => tr("Plate"),
             ElemKind::Mirror => tr("Mirror"),
@@ -1667,7 +1667,7 @@ pub fn ui(
     ui.horizontal_wrapped(|ui| {
         ui.menu_button(trf("+ {}", &[&tr("Add")]), |ui| {
             if ui
-                .button(trf("{}…", &[&tr("catalog element")]))
+                .button(trf("{}…", &[&tr("Catalog element")]))
                 .on_hover_text(tr(
                     "Double-click a row in the catalog panel, or drag it onto the layout",
                 ))

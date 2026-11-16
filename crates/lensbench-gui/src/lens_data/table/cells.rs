@@ -148,7 +148,7 @@ pub(super) fn cell(
         return;
     }
     if let Some(e) = st.edit.as_mut().filter(|e| e.j == j && e.col == col) {
-        edit_cell(ui, e, c, v, out, j, col);
+        edit_cell(ui, e, c, out, j, col);
         return;
     }
     value_cell(ui, st, c, v, out, j, col);
@@ -200,74 +200,22 @@ fn fold_cell(
 }
 
 /// 書き換え中のセル（入力欄。種類・硝材は入力できるドロップダウン）
-fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, v: &View, out: &mut Out, j: usize, col: Col) {
+fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, out: &mut Out, j: usize, col: Col) {
     let r = &c.rows[j];
-    let (tab, shift, up, down, enter_k, esc) = ui.input(|i| {
-        (
-            i.key_pressed(Key::Tab),
-            i.modifiers.shift,
-            i.key_pressed(Key::ArrowUp),
-            i.key_pressed(Key::ArrowDown),
-            i.key_pressed(Key::Enter),
-            i.key_pressed(Key::Escape),
-        )
-    });
-    // Tab で欄の外へフォーカスを移さない（Tab・↑↓ は決めて隣のセルへ）
-    let te = egui::TextEdit::singleline(&mut e.text)
-        .desired_width(f32::INFINITY)
-        .lock_focus(true);
-    let te = if col.numeric() {
-        te.horizontal_align(egui::Align::RIGHT)
-    } else {
-        te
-    };
-    let resp = ui.add(te);
-    if let Some(why) = &e.error {
-        ui.painter().rect_stroke(
-            resp.rect.expand(1.0),
-            2.0,
-            egui::Stroke::new(1.5_f32, ui.visuals().error_fg_color),
-            egui::StrokeKind::Outside,
-        );
-        let why = why.clone();
-        egui::Area::new(resp.id.with("why"))
-            .order(egui::Order::Tooltip)
-            .fixed_pos(resp.rect.left_bottom() + egui::vec2(0.0, 2.0))
-            .interactable(false)
-            .show(ui.ctx(), |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.colored_label(
-                        ui.visuals().error_fg_color,
-                        trf("⚠ {} (Esc to cancel)", &[&why]),
-                    );
-                });
-            });
-        if resp.changed() {
-            e.error = None;
-        }
+    // Tab で欄の外へフォーカスを移さない（Tab・↑↓ は決めて隣のセルへ。種類・硝材の ↑↓ は候補を選ぶ）
+    let (resp, keys) = crate::widgets::cell::input(
+        ui,
+        &mut e.text,
+        &mut e.focused,
+        e.select_all,
+        col.numeric(),
+        e.error.as_deref(),
+    );
+    if e.error.is_some() && resp.changed() {
+        e.error = None;
     }
-    if !e.focused {
-        resp.request_focus();
-        if let Some(mut s) = egui::TextEdit::load_state(ui.ctx(), resp.id) {
-            let n = e.text.chars().count();
-            let from = if e.select_all { 0 } else { n };
-            s.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                egui::text::CCursor::new(from),
-                egui::text::CCursor::new(n),
-            )));
-            s.store(ui.ctx(), resp.id);
-        }
-        e.focused = true;
-    }
-    let mv = if tab {
-        Some((0, if shift { -1 } else { 1 }))
-    } else if up && !col.has_list() {
-        Some((-1, 0))
-    } else if down && !col.has_list() {
-        Some((1, 0))
-    } else {
-        None
-    };
+    let (up, down, enter_k, esc) = (keys.up, keys.down, keys.enter, keys.esc);
+    let mv = keys.nav(!col.has_list());
     if col.has_list() {
         // 種類・硝材: 入力できるドロップダウン。開いたときは全部の候補から今の値を選び、
         // 打ち始めたら絞る（↑↓ で選び Enter、クリックでも）
@@ -320,59 +268,25 @@ fn edit_cell(ui: &mut Ui, e: &mut Editing, c: &Ctx, v: &View, out: &mut Out, j: 
             e.moved = true;
             e.scroll = true;
         }
-        let mut chosen: Option<String> = None;
-        let row_hh = 18.0;
         let scroll_to = std::mem::take(&mut e.scroll).then_some(e.pick);
-        let area = egui::Area::new(resp.id.with("choices"))
-                                            .order(egui::Order::Foreground)
-                                            .fixed_pos(resp.rect.left_bottom())
-                                            .show(ui.ctx(), |ui| {
-                                                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                                    ui.set_min_width(if col == Col::Material { 300.0 } else { 220.0 });
-                                                    if m.is_empty() {
-                                                        ui.weak(if col == Col::Type {
-                                                            tr("No matching surface type")
-                                                        } else if c.glasses.is_empty() && !c.glasses_loaded {
-                                                            tr("Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)")
-                                                        } else {
-                                                            tr("No matching glass (names not in the catalogs are refused; write a model glass as nd,νd like 1.5,60)")
-                                                        });
-                                                        return;
-                                                    }
-                                                    let mut sa = egui::ScrollArea::vertical()
-                                                        .id_salt("choices_scroll")
-                                                        .max_height(280.0)
-                                                        .auto_shrink([false, true]);
-                                                    if let Some(k) = scroll_to {
-                                                        sa = sa.vertical_scroll_offset(
-                                                            (k as f32 - 5.0).max(0.0) * row_hh,
-                                                        );
-                                                    }
-                                                    ui.spacing_mut().item_spacing.y = 0.0;
-                                                    sa.show_rows(ui, row_hh, m.len(), |ui, range| {
-                                                        for k in range {
-                                                            let (t, d) = &m[k];
-                                                            let txt = if d.is_empty() {
-                                                                t.clone()
-                                                            } else {
-                                                                format!("{t}  {d}")
-                                                            };
-                                                            if ui.selectable_label(k == e.pick, txt).clicked()
-                                                            {
-                                                                chosen = Some(t.clone());
-                                                            }
-                                                        }
-                                                    });
-                                                    if col == Col::Material {
-                                                        ui.label(
-                                                            RichText::new(trf("{} items. Type to filter (name, catalog, nd)", &[&m.len()]))
-                                                                .small()
-                                                                .color(v.weak),
-                                                        );
-                                                    }
-                                                });
-                                            });
-        let hover = area.response.contains_pointer();
+        let empty = if col == Col::Type {
+            tr("No matching surface type")
+        } else if c.glasses.is_empty() && !c.glasses_loaded {
+            tr("Loading glass catalogs… (type a name or a model glass such as 1.5,60 and press Enter)")
+        } else {
+            tr("No matching glass (names not in the catalogs are refused; write a model glass as nd,νd like 1.5,60)")
+        };
+        let shown = crate::widgets::choices::Choices {
+            scroll_to,
+            min_width: if col == Col::Material { 300.0 } else { 220.0 },
+            empty: Some(empty),
+            footer: (col == Col::Material)
+                .then(|| trf("{} items. Type to filter (name, catalog, nd)", &[&m.len()])),
+            ..crate::widgets::choices::Choices::new(&m, e.pick)
+        }
+        .show(ui, resp.id.with("choices"), resp.rect);
+        let chosen = shown.clicked.and_then(|k| m.get(k)).map(|x| x.0.clone());
+        let hover = shown.hovered;
         // 種類は選んでいる候補、硝材は ↑↓ で選んだか打った文字で始まる候補（ほかは打った文字のまま）
         let pick = m.get(e.pick).map(|x| x.0.clone()).filter(|x| {
             e.moved

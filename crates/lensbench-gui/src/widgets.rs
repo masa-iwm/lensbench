@@ -1,9 +1,13 @@
-//! パネルが共有する小さな部品（GPN-08）。文字の欄の数の読み、JSON の数の読み、図の拡大・移動の操作（GPN-09）
+//! パネルが共有する小さな部品（GPN-08）。文字の欄・表のセルの数の読み、補完の並べ方、JSON の数の読み、図の拡大・移動の操作（GPN-09）
 
 use egui::{Pos2, Response, Ui, Vec2};
 use serde_json::Value;
 
 use crate::i18n::trf;
+
+pub mod cell;
+pub mod choices;
+pub mod menu;
 
 /// 文字の欄の数。空は None、数でない・有限でない（inf・nan）は誤り（`what` は欄の名前）
 pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
@@ -16,6 +20,32 @@ pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
         .filter(|x| x.is_finite())
         .map(Some)
         .ok_or_else(|| trf("Value of {} is not a number: {}", &[&what, &t]))
+}
+
+/// 表のセルの数。inf・infinity（符号つきも）は無限大、空・数でない・nan は誤り（多重構成の表など）
+pub fn parse_cell(s: &str) -> Result<f64, String> {
+    let t = s.trim();
+    match t.to_ascii_lowercase().as_str() {
+        "inf" | "infinity" | "+inf" | "+infinity" => Ok(f64::INFINITY),
+        "-inf" | "-infinity" => Ok(f64::NEG_INFINITY),
+        _ => t
+            .parse::<f64>()
+            .ok()
+            .filter(|x| x.is_finite())
+            .ok_or_else(|| trf("Not a number: {}", &[&t])),
+    }
+}
+
+/// 候補の並べ方: 前方一致なら Some(true)、名前か説明の部分一致なら Some(false)、合わなければ None。
+/// 名前・説明・打った文字は同じ大小（小文字か大文字）に揃えて渡す（補完つきの欄で共通、GPN-08）
+pub fn match_rank(name: &str, desc: &str, q: &str) -> Option<bool> {
+    if name.starts_with(q) {
+        Some(true)
+    } else if name.contains(q) || desc.contains(q) {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 /// JSON の数（inf は `{"$f": "inf"}`）。数でなければ None
@@ -89,6 +119,20 @@ mod tests {
         for s in ["inf", "-inf", "nan", "NaN", "abc"] {
             assert!(parse_num(s, "x").is_err(), "{s}");
         }
+    }
+
+    #[test]
+    fn parse_cell_reads_inf() {
+        assert_eq!(parse_cell(" inf "), Ok(f64::INFINITY));
+        assert_eq!(parse_cell("-Infinity"), Ok(f64::NEG_INFINITY));
+        assert_eq!(parse_cell("2.5"), Ok(2.5));
+        for s in ["", "nan", "x"] {
+            assert!(parse_cell(s).is_err(), "{s}");
+        }
+        assert_eq!(match_rank("n-bk7", "schott", "n-b"), Some(true));
+        assert_eq!(match_rank("n-bk7", "schott", "bk"), Some(false));
+        assert_eq!(match_rank("n-bk7", "schott", "sch"), Some(false));
+        assert_eq!(match_rank("n-bk7", "schott", "zz"), None);
     }
 
     #[test]

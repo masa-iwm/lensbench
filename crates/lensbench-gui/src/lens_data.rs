@@ -742,11 +742,10 @@ fn list_choices(
             let q = text.trim().to_uppercase();
             let (mut head, mut rest) = (Vec::new(), Vec::new());
             for (n, d) in all {
-                let u = n.to_uppercase();
-                if u.starts_with(&q) {
-                    head.push((n, d));
-                } else if u.contains(&q) || d.to_uppercase().contains(&q) {
-                    rest.push((n, d));
+                match crate::widgets::match_rank(&n.to_uppercase(), &d.to_uppercase(), &q) {
+                    Some(true) => head.push((n, d)),
+                    Some(false) => rest.push((n, d)),
+                    None => {}
                 }
             }
             head.extend(rest);

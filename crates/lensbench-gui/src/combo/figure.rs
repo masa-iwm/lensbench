@@ -1001,17 +1001,9 @@ fn dim_edit(ui: &mut Ui, resp: &egui::Response, combo: &mut Combo, view: &mut Vi
                     .margin(egui::Margin::symmetric(4, 2)),
             );
             if !*focused || te.gained_focus() {
-                te.request_focus();
+                // 全選択（打てば今の数字が置き換わる。表のセルと同じ、GPN-08）
+                crate::widgets::cell::start(ui, &te, text, true);
                 *focused = true;
-                // 全選択（打てば今の数字が置き換わる）
-                if let Some(mut st) = egui::TextEdit::load_state(ui.ctx(), te_id) {
-                    let n = text.chars().count();
-                    st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(0),
-                        egui::text::CCursor::new(n),
-                    )));
-                    st.store(ui.ctx(), te_id);
-                }
             } else if te.lost_focus() {
                 let (esc, enter) =
                     ui.input(|i| (i.key_pressed(Key::Escape), i.key_pressed(Key::Enter)));

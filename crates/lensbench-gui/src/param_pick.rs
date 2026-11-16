@@ -195,11 +195,10 @@ fn complete(all: Vec<(String, String)>, text: &str) -> Vec<(String, String)> {
     }
     let (mut head, mut rest) = (Vec::new(), Vec::new());
     for (n, d) in all {
-        let l = n.to_lowercase();
-        if l.starts_with(&q) {
-            head.push((n, d));
-        } else if l.contains(&q) || d.to_lowercase().contains(&q) {
-            rest.push((n, d));
+        match crate::widgets::match_rank(&n.to_lowercase(), &d.to_lowercase(), &q) {
+            Some(true) => head.push((n, d)),
+            Some(false) => rest.push((n, d)),
+            None => {}
         }
     }
     head.extend(rest);
@@ -263,10 +262,10 @@ fn complete_lower(all: &[(String, String, String, String)], text: &str) -> Vec<(
     }
     let (mut head, mut rest) = (Vec::new(), Vec::new());
     for (n, d, ln, ld) in all {
-        if ln.starts_with(&q) {
-            head.push((n.clone(), d.clone()));
-        } else if rest.len() < 200 && (ln.contains(&q) || ld.contains(&q)) {
-            rest.push((n.clone(), d.clone()));
+        match crate::widgets::match_rank(ln, ld, &q) {
+            Some(true) => head.push((n.clone(), d.clone())),
+            Some(false) if rest.len() < 200 => rest.push((n.clone(), d.clone())),
+            _ => {}
         }
     }
     head.extend(rest);
@@ -324,33 +323,13 @@ pub fn edit(
             st.pick += 1;
         }
         if !m.is_empty() && !(exact && m.len() == 1) {
-            let mut clicked = None;
-            egui::Area::new(resp.id.with("comp"))
-                .order(egui::Order::Foreground)
-                .fixed_pos(resp.rect.left_bottom())
-                .show(ui.ctx(), |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.set_min_width(240.0);
-                        // 見える行だけ描く（GPN-27）。↑↓ で選んだ行が見えるように位置を合わせる
-                        let row_h = ui.text_style_height(&egui::TextStyle::Body)
-                            + ui.spacing().item_spacing.y;
-                        let mut area = egui::ScrollArea::vertical().max_height(240.0);
-                        if up || down {
-                            area = area.vertical_scroll_offset(
-                                (st.pick as f32 * row_h - 240.0 * 0.5).max(0.0),
-                            );
-                        }
-                        area.show_rows(ui, row_h, m.len(), |ui, range| {
-                            for k in range {
-                                let (n, d) = &m[k];
-                                let r = ui.selectable_label(k == st.pick, format!("{n}  {d}"));
-                                if r.clicked() {
-                                    clicked = Some(n.clone());
-                                }
-                            }
-                        });
-                    });
-                });
+            let shown = crate::widgets::choices::Choices {
+                scroll_to: (up || down).then_some(st.pick),
+                max_height: 240.0,
+                ..crate::widgets::choices::Choices::new(&m, st.pick)
+            }
+            .show(ui, resp.id.with("comp"), resp.rect);
+            let clicked = shown.clicked.and_then(|k| m.get(k)).map(|x| x.0.clone());
             if let Some(n) = clicked {
                 *s = n;
                 chosen = true;

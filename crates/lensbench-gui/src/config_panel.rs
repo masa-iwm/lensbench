@@ -68,13 +68,27 @@ pub enum Act {
     Refused(String),
 }
 
+/// 書き換え中のセル（行、構成 0 始まり）
+#[derive(Debug, Clone)]
+struct CellEdit {
+    i: usize,
+    k: usize,
+    text: String,
+    /// 入力欄にフォーカスを渡したか
+    started: bool,
+    /// 全部を選んで始める（Enter・F2・ダブルクリック）
+    select_all: bool,
+    /// 決められなかった理由（欄を閉じずに赤枠で出す。Esc でやめる、レンズデータと同じ GPN-10）
+    error: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct State {
     pub table: Option<Table>,
     /// 今のセル（行、構成 0 始まり）
     cur: Option<(usize, usize)>,
-    /// 書き換え中のセル（行、構成 0 始まり、文字、入力欄にフォーカスを渡したか、全部を選んで始めるか）
-    edit: Option<(usize, usize, String, bool, bool)>,
+    /// 書き換え中のセル
+    edit: Option<CellEdit>,
     /// 表をクリックした後（キーを表が使う）
     active: bool,
     /// 足す行のパラメータの名前
@@ -118,15 +132,6 @@ fn short(x: f64) -> String {
 }
 
 /// 値の文字を数に（inf も）
-fn parse_num(t: &str) -> Result<f64, String> {
-    let t = t.trim();
-    match t.to_ascii_lowercase().as_str() {
-        "inf" | "infinity" => Ok(f64::INFINITY),
-        "-inf" | "-infinity" => Ok(f64::NEG_INFINITY),
-        _ => t.parse().map_err(|_| trf("Not a number: {}", &[&t])),
-    }
-}
-
 /// 行 r の構成 k の値を v にした set_config_row
 fn set_cell(row: &(String, Vec<f64>), k: usize, v: f64) -> Value {
     let mut vals = row.1.clone();
@@ -214,7 +219,7 @@ fn paste_ops(t: &Table, i: usize, k: usize, text: &str) -> Result<Vec<Value>, St
     for (li, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
         let cells: Vec<&str> = line.split('\t').collect();
         // 最初の欄が数でなければパラメータの名前（Ctrl+C で写した行）
-        let (row, start, vals) = match parse_num(cells[0]) {
+        let (row, start, vals) = match crate::widgets::parse_cell(cells[0]) {
             Ok(_) => (i + li, k, &cells[..]),
             Err(_) => {
                 let name = cells[0].trim();
@@ -233,7 +238,7 @@ fn paste_ops(t: &Table, i: usize, k: usize, text: &str) -> Result<Vec<Value>, St
         let Some(r) = rows.get_mut(row) else { break };
         for (c, x) in vals.iter().enumerate() {
             if let Some(slot) = r.1.get_mut(start + c) {
-                *slot = parse_num(x)?;
+                *slot = crate::widgets::parse_cell(x)?;
             }
         }
         if r.1.iter().all(|x| !x.is_nan()) {
@@ -319,8 +324,8 @@ fn cell_menu(
             if ui.button(tr("+ Make pickup")).clicked() {
                 match (
                     f.1.trim().parse::<usize>(),
-                    parse_num(&f.2),
-                    parse_num(&f.3),
+                    crate::widgets::parse_cell(&f.2),
+                    crate::widgets::parse_cell(&f.3),
                 ) {
                     (Ok(from), Ok(sc), Ok(of)) => menu_ops.push(json!({
                         "op": "set_config_pickup", "param": name, "k": k + 1,
@@ -584,56 +589,25 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
                         });
                         for k in 0..t.n {
                             row.col(|ui| {
-                                if let Some(e) = st.edit.as_mut().filter(|e| e.0 == i && e.1 == k) {
-                                    let (tab, shift, up, down, enter, esc) = ui.input(|x| {
-                                        (
-                                            x.key_pressed(Key::Tab),
-                                            x.modifiers.shift,
-                                            x.key_pressed(Key::ArrowUp),
-                                            x.key_pressed(Key::ArrowDown),
-                                            x.key_pressed(Key::Enter),
-                                            x.key_pressed(Key::Escape),
-                                        )
-                                    });
-                                    let resp = ui.add(
-                                        egui::TextEdit::singleline(&mut e.2)
-                                            .desired_width(f32::INFINITY)
-                                            .horizontal_align(egui::Align::RIGHT)
-                                            .lock_focus(true),
+                                if let Some(e) = st.edit.as_mut().filter(|e| e.i == i && e.k == k) {
+                                    // レンズデータと同じ入力欄（Enter・F2・ダブルクリックは全部を選ぶ、GPN-08）
+                                    let (resp, keys) = crate::widgets::cell::input(
+                                        ui,
+                                        &mut e.text,
+                                        &mut e.started,
+                                        e.select_all,
+                                        true,
+                                        e.error.as_deref(),
                                     );
-                                    if !e.3 {
-                                        resp.request_focus();
-                                        if let Some(mut s) =
-                                            egui::TextEdit::load_state(ui.ctx(), resp.id)
-                                        {
-                                            let n = e.2.chars().count();
-                                            // Enter・F2・ダブルクリックは全部を選んで、打った文字から始めたときは後ろにカーソル
-                                            let r = if e.4 {
-                                                egui::text::CCursorRange::two(
-                                                    egui::text::CCursor::new(0),
-                                                    egui::text::CCursor::new(n),
-                                                )
-                                            } else {
-                                                egui::text::CCursorRange::one(egui::text::CCursor::new(n))
-                                            };
-                                            s.cursor.set_char_range(Some(r));
-                                            s.store(ui.ctx(), resp.id);
-                                        }
-                                        e.3 = true;
+                                    if e.error.is_some() && resp.changed() {
+                                        e.error = None;
                                     }
-                                    let mv = if tab {
-                                        Some((0, if shift { -1 } else { 1 }))
-                                    } else if up {
-                                        Some((-1, 0))
-                                    } else if down || enter {
-                                        Some((if enter { 0 } else { 1 }, 0))
-                                    } else {
-                                        None
-                                    };
+                                    let esc = keys.esc;
+                                    let mv = keys.nav(true).or(keys.enter.then_some((0, 0)));
                                     if esc {
                                         cancel = true;
                                     } else if mv.is_some() || resp.lost_focus() {
-                                        commit = Some((i, k, e.2.clone(), mv));
+                                        commit = Some((i, k, e.text.clone(), mv));
                                         resp.surrender_focus();
                                     }
                                     return;
@@ -716,7 +690,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     if st.active
         && st.edit.is_none()
         && ui.memory(|m| m.focused().is_none())
-        && ui.input(|x| x.modifiers.shift && x.key_pressed(Key::F10))
+        && crate::widgets::menu::menu_key(ui)
     {
         if let Some((i, k)) = st.cur {
             let pos = st.cur_pos.unwrap_or_else(|| ui.min_rect().left_top());
@@ -725,32 +699,30 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
         }
     }
     if let Some((i, k, pos)) = st.kbd_menu.filter(|m| m.0 < t.rows.len() && m.1 < t.n) {
-        let n0 = (menu_ops.len(), acts.len());
-        let area = egui::Area::new(ui.id().with("mce_kbd_menu"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(pos)
-            .show(ui.ctx(), |ui| {
-                egui::Frame::menu(ui.style()).show(ui, |ui| {
-                    ui.set_max_width(320.0);
-                    cell_menu(
-                        ui,
-                        st,
-                        &t,
-                        i,
-                        k,
-                        &mut start,
-                        &mut menu_ops,
-                        &mut acts,
-                        &mut remove,
-                    );
-                });
-            });
         let fresh = std::mem::take(&mut st.kbd_fresh);
-        let done = (menu_ops.len(), acts.len()) != n0 || start.is_some() || remove.is_some();
-        if done
-            || ui.input(|x| x.key_pressed(Key::Escape))
-            || (!fresh && area.response.clicked_elsewhere())
-        {
+        let close = crate::widgets::menu::float_menu(
+            ui,
+            ui.id().with("mce_kbd_menu"),
+            pos,
+            320.0,
+            fresh,
+            |ui| {
+                let n0 = (menu_ops.len(), acts.len());
+                cell_menu(
+                    ui,
+                    st,
+                    &t,
+                    i,
+                    k,
+                    &mut start,
+                    &mut menu_ops,
+                    &mut acts,
+                    &mut remove,
+                );
+                (menu_ops.len(), acts.len()) != n0 || start.is_some() || remove.is_some()
+            },
+        );
+        if close {
             st.kbd_menu = None;
         }
     } else {
@@ -850,26 +822,48 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
     if let Some((i, k, typed)) = start {
         let v = t.rows[i].1.get(k).copied().unwrap_or(f64::NAN);
         st.cur = Some((i, k));
-        st.edit = Some(match typed {
-            Some(s) => (i, k, s, false, false),
-            None => (i, k, full(v), false, true),
+        let (text, select_all) = match typed {
+            Some(s) => (s, false),
+            None => (full(v), true),
+        };
+        st.edit = Some(CellEdit {
+            i,
+            k,
+            text,
+            started: false,
+            select_all,
+            error: None,
         });
     }
     if let Some((i, k, text, mv)) = commit {
-        st.edit = None;
         st.active = true;
-        if let Some(r) = t.rows.get(i) {
-            match parse_num(&text) {
-                // set_config_row は今の構成の値を系に入れ直す（ほかの構成の値を変えても系はそのまま）
-                Ok(v) if r.1.get(k) != Some(&v) => acts.push(Act::Ops(vec![set_cell(r, k, v)])),
-                Ok(_) => {}
-                Err(e) => acts.push(Act::Refused(e)),
+        match t
+            .rows
+            .get(i)
+            .map(|r| (r, crate::widgets::parse_cell(&text)))
+        {
+            // 数でなければ欄を閉じずに赤枠で（Esc でやめる）
+            Some((_, Err(why))) => {
+                if let Some(e) = st.edit.as_mut() {
+                    e.error = Some(why);
+                    e.started = false;
+                    e.select_all = true;
+                }
             }
-        }
-        if let Some((dr, dc)) = mv {
-            let ni = (i as i32 + dr).clamp(0, t.rows.len() as i32 - 1) as usize;
-            let nk = (k as i32 + dc).clamp(0, t.n as i32 - 1) as usize;
-            st.cur = Some((ni, nk));
+            parsed => {
+                st.edit = None;
+                // set_config_row は今の構成の値を系に入れ直す（ほかの構成の値を変えても系はそのまま）
+                if let Some((r, Ok(v))) = parsed {
+                    if r.1.get(k) != Some(&v) {
+                        acts.push(Act::Ops(vec![set_cell(r, k, v)]));
+                    }
+                }
+                if let Some((dr, dc)) = mv {
+                    let ni = (i as i32 + dr).clamp(0, t.rows.len() as i32 - 1) as usize;
+                    let nk = (k as i32 + dc).clamp(0, t.n as i32 - 1) as usize;
+                    st.cur = Some((ni, nk));
+                }
+            }
         }
     }
     if !menu_ops.is_empty() {
@@ -915,8 +909,8 @@ mod tests {
             set_cell(&t.rows[0], 0, 85.0),
             json!({ "op": "set_config_row", "param": "2.t", "values": [85.0, 80.0] })
         );
-        assert_eq!(parse_num(" inf ").unwrap(), f64::INFINITY);
-        assert!(parse_num("x").is_err());
+        assert_eq!(crate::widgets::parse_cell(" inf ").unwrap(), f64::INFINITY);
+        assert!(crate::widgets::parse_cell("x").is_err());
         assert_eq!(short(0.1 + 0.2), "0.3");
         assert_eq!(short(-0.0), "0");
     }
