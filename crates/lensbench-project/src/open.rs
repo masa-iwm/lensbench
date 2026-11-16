@@ -63,6 +63,13 @@ pub struct OpenSpec<'a> {
     pub step_files: Option<crate::StepLookup<'a>>,
 }
 
+impl OpenSpec<'_> {
+    /// 展開で読んだものを使い回してよい範囲（[`crate::SourceCache::scope`]）
+    fn cache_scope(&self) -> String {
+        format!("{:?}|{:?}", self.glass_dirs, self.lens_catalogs)
+    }
+}
+
 impl std::fmt::Debug for OpenSpec<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenSpec")
@@ -159,6 +166,8 @@ pub enum Source {
         /// ファイルの中身（状態は当てない）
         text: String,
         project: Box<crate::Project>,
+        /// 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す（PRJ-13）
+        cache: std::sync::Arc<crate::SourceCache>,
     },
 }
 
@@ -190,6 +199,7 @@ impl Source {
             path: path_buf,
             text: txt,
             project: Box::new(project),
+            cache: Default::default(),
         })
     }
 
@@ -264,7 +274,12 @@ impl Source {
         };
         let cat = LensCatalog::load_registered(o.lens_catalogs)?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
-        crate::paths(&p, &self.env(o, Some(&look)))
+        let cache = match self {
+            Source::Project { cache, .. } => cache.clone(),
+            _ => Default::default(),
+        };
+        cache.scope(&o.cache_scope());
+        crate::paths_cached(&p, &self.env(o, Some(&look)), &cache)
     }
 
     /// 系を読む（[`open`] と同じ誤り）
@@ -294,7 +309,12 @@ impl Source {
                     coatings: m.coatings,
                 })
             }
-            Source::Project { path, project, .. } => {
+            Source::Project {
+                path,
+                project,
+                cache,
+                ..
+            } => {
                 if o.cfg != 1 {
                     return Err(bad_arg(format!(
                         "choose the state with {state}, not {cfg}, in a project file"
@@ -310,11 +330,13 @@ impl Source {
                 };
                 let cat = LensCatalog::load_registered(o.lens_catalogs)?;
                 let look = |v: &str, q: &str| cat.zmx(v, q);
+                cache.scope(&o.cache_scope());
                 let x = crate::expand(
                     &p,
                     &self.env(o, Some(&look)),
                     &crate::ExpandOpts {
                         path: o.split_path,
+                        cache: Some(cache),
                         ..Default::default()
                     },
                 )

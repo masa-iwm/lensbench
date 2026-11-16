@@ -5,14 +5,54 @@ use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
 pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> lensbench_core::Result<String>;
 
-/// カタログの玉の要素の使い回し（[`ExpandOpts::cache`]）: (メーカー, 型番) → (玉, 玉の .zmx のガラス)。
-/// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。差し替え探索が組ごとに同じ .zmx を読み直さないため
+/// 展開でファイル・カタログから読んだものの使い回し（[`ExpandOpts::cache`]、PRJ-13）。
+/// - カタログの玉: (メーカー, 型番) → (玉, 玉の .zmx のガラス)
+/// - `.zmx`・系ファイルのブロック: (正規化したパス, 構成番号) → 系。ファイルの更新時刻と大きさが変われば読み直す
+///
+/// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。状態・経路・差し替えの組・GUI の編集ごとの展開が、
+/// 同じファイルを読んで解析し直さないため（入れ子のプロジェクトは中の葉だけ覚える）
 #[derive(Default)]
-pub struct LensCache {
-    map: std::sync::Mutex<HashMap<(String, String), CachedLens>>,
+pub struct SourceCache {
+    lenses: std::sync::Mutex<HashMap<(String, String), CachedLens>>,
+    files: std::sync::Mutex<HashMap<(PathBuf, usize), (lensbench_core::vfs::Stamp, System)>>,
+    scope: std::sync::Mutex<String>,
 }
 
 type CachedLens = std::sync::Arc<(Element, std::sync::Arc<HashMap<String, Glass>>)>;
+
+impl std::fmt::Debug for SourceCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SourceCache")
+            .field("lenses", &self.lenses.lock_ok().len())
+            .field("files", &self.files.lock_ok().len())
+            .finish()
+    }
+}
+
+impl SourceCache {
+    /// 覚えているファイルの数（試験用）
+    pub fn file_count(&self) -> usize {
+        self.files.lock_ok().len()
+    }
+
+    /// 環境（ガラスのフォルダ・レンズカタログなど）を表す文字列 key が前と違えば、覚えたものを捨てる。
+    /// 環境を変えうる呼び手（[`crate::open::Source`]）が展開の前に呼ぶ
+    pub fn scope(&self, key: &str) {
+        let mut s = self.scope.lock_ok();
+        if *s != key {
+            self.lenses.lock_ok().clear();
+            self.files.lock_ok().clear();
+            *s = key.to_string();
+        }
+    }
+
+    fn file(&self, k: &(PathBuf, usize), st: &lensbench_core::vfs::Stamp) -> Option<System> {
+        match self.files.lock_ok().get(k) {
+            Some((s, sys)) if s == st => Some(sys.clone()),
+            _ => None,
+        }
+    }
+}
 
 /// 機構部品の詳しい形の STEP のファイルを引く関数: (品の名前, STEP の公式の URL) → 手元のファイル
 /// （lensbench-cad の `cached_step` は取った STEP のキャッシュから引く）
@@ -57,7 +97,7 @@ impl<'a> Env<'a> {
 
 pub(crate) struct Ctx<'a, 'b> {
     pub(crate) env: &'a Env<'b>,
-    pub(crate) lens_cache: Option<&'a LensCache>,
+    pub(crate) cache: Option<&'a SourceCache>,
     /// 相対パスの基準（ユーザーカタログの項目の中ではカタログのフォルダ）
     pub(crate) base: PathBuf,
     /// 展開中のユーザーカタログの項目（正規化したパス, 項目）。循環を見つける
@@ -588,6 +628,23 @@ impl<'a, 'b> Ctx<'a, 'b> {
             return Err(format!("{path}: the configuration number must be 1 or more").into());
         }
         let p = self.base.join(path);
+        // 覚えた系（ファイルが変わっていなければ）
+        let key = (
+            lensbench_core::vfs::canonicalize(&p).unwrap_or_else(|_| p.clone()),
+            cfg,
+        );
+        let stamp = self.cache.and_then(|_| lensbench_core::vfs::stamp(&p).ok());
+        if let (Some(c), Some(st)) = (self.cache, &stamp) {
+            if let Some(s) = c.file(&key, st) {
+                self.merge_glasses(&s);
+                return Ok(s);
+            }
+        }
+        let keep = |c: &Self, s: &System| {
+            if let (Some(c), Some(st)) = (c.cache, stamp) {
+                c.files.lock_ok().insert(key, (st, s.clone()));
+            }
+        };
         // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む（#132）
         if p.extension()
             .is_some_and(|x| x.eq_ignore_ascii_case("json"))
@@ -601,19 +658,27 @@ impl<'a, 'b> Ctx<'a, 'b> {
             if DEPTH.with(|d| d.get()) >= 8 {
                 return Err(format!("{path}: system imports nested too deep (a loop?)").into());
             }
+            // ファイルは 1 回だけ読む（系ファイルかプロジェクトかは中身で見る）
+            let txt = lensbench_core::vfs::read_to_string(&p)
+                .map_err(lensbench_core::Error::io_at(p.display()))?;
+            if sysfile::is_system_json(&txt) {
+                let s = sysfile::load_text_with(&p, &txt, &self.env.glass_dirs)?.0;
+                keep(self, &s);
+                self.merge_glasses(&s);
+                return Ok(s);
+            }
             DEPTH.with(|d| d.set(d.get() + 1));
-            let r = if sysfile::is_system_file(&p) {
-                sysfile::load_with(&p, &self.env.glass_dirs).map(|x| x.0)
-            } else {
-                Project::load(&p).and_then(|q| {
-                    let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
-                    expand(&q, &env, &ExpandOpts::default())
-                        .map(|x| x.system)
-                        .map_err(|e| format!("{}: {e}", p.display()).into())
-                })
-            };
+            // 入れ子のプロジェクトは中のファイルが変わりうるので系は覚えず、中の葉だけ覚える
+            let r = Project::from_json(&txt).and_then(|q| {
+                let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
+                let o = ExpandOpts {
+                    cache: self.cache,
+                    ..Default::default()
+                };
+                expand(&q, &env, &o).map(|x| x.system)
+            });
             DEPTH.with(|d| d.set(d.get() - 1));
-            let s = r?;
+            let s = r.map_err(|e| e.at(p.display()))?;
             self.merge_glasses(&s);
             return Ok(s);
         }
@@ -623,6 +688,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             ..Default::default()
         };
         let s = zmx::load_with(&p, &opt).map_err(|e| format!("{}: {e}", p.display()))?;
+        keep(self, &s);
         self.merge_glasses(&s);
         Ok(s)
     }
@@ -740,8 +806,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
             LensSource::Catalog { vendor, part } => {
                 let key = (vendor.clone(), part.clone());
                 let hit = self
-                    .lens_cache
-                    .and_then(|c| c.map.lock_ok().get(&key).cloned());
+                    .cache
+                    .and_then(|c| c.lenses.lock_ok().get(&key).cloned());
                 if let Some(h) = hit {
                     self.add_glasses(&h.1);
                     return Ok(h.0.clone());
@@ -770,9 +836,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.merge_glasses(&s);
                 // カタログの玉は径が決まっているので半直径は固定（fixed_semi）
                 let el = pick_lens(&s, 1).map_err(|e| format!("{vendor} {part}: {e}"))?;
-                if let Some(c) = self.lens_cache {
+                if let Some(c) = self.cache {
                     let v = std::sync::Arc::new((el.clone(), s.glasses.clone()));
-                    c.map.lock_ok().insert(key, v);
+                    c.lenses.lock_ok().insert(key, v);
                 }
                 Ok(el)
             }
@@ -1066,7 +1132,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 shift,
                 ..
             } => {
-                let bl = blocks.clone();
+                let bl = blocks;
                 self.gap(*shift);
                 let start = self.sf.len();
                 self.split.levels.push(Level::Other);
@@ -1075,7 +1141,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         if c.split.done {
                             break;
                         }
-                        c.block(x, &bl, i)?;
+                        c.block(x, bl, i)?;
                     }
                     Ok(())
                 });

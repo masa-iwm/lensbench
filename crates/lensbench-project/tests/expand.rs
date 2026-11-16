@@ -757,3 +757,74 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert_eq!((s.temperature, s.pressure), (40.0, 1.2));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// 使い回し（PRJ-13）: 同じファイルは読み直さず、書き換えれば読み直す。入れ子のプロジェクトは中の葉だけ覚える
+#[test]
+fn source_cache_reuses_files_until_they_change() {
+    let dir = std::env::temp_dir().join(format!("lb-src-cache-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("a0.json");
+    let a = a0();
+    lensbench_project::sysfile::save(&f, &a, &[]).unwrap();
+    let txt = format!(
+        "{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": {}}}] }}",
+        serde_json::to_string(&f.display().to_string()).unwrap()
+    );
+    let p = Project::from_json(&txt).unwrap();
+    let cache = lensbench_project::SourceCache::default();
+    let o = ExpandOpts {
+        cache: Some(&cache),
+        ..Default::default()
+    };
+    let s1 = expand(&p, &env(), &o).unwrap().system;
+    assert_eq!(cache.file_count(), 1);
+    let s2 = expand(&p, &env(), &o).unwrap().system;
+    assert_eq!(cache.file_count(), 1);
+    same_rays(&s1, &s2, 1e-15);
+    same_rays(&s1, &a, 1e-12);
+    // 書き換えると読み直す（大きさが変わるように面を 1 つ減らす）
+    let mut fewer = a.clone();
+    fewer
+        .edit(|r| {
+            r.surfaces.remove(2);
+            Ok(())
+        })
+        .unwrap();
+    lensbench_project::sysfile::save(&f, &fewer, &[]).unwrap();
+    let s3 = expand(&p, &env(), &o).unwrap().system;
+    assert_eq!(s3.surfaces.len(), fewer.surfaces.len());
+    // 入れ子のプロジェクト: 中の .zmx は覚え、プロジェクトの系は覚えない
+    let q = dir.join("p.json");
+    std::fs::write(
+        &q,
+        format!(
+            "{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": {}}}] }}",
+            serde_json::to_string(
+                &root()
+                    .join("tests/refs/A0/system.zmx")
+                    .display()
+                    .to_string()
+            )
+            .unwrap()
+        ),
+    )
+    .unwrap();
+    let outer = Project::from_json(&format!(
+        "{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": {}}}] }}",
+        serde_json::to_string(&q.display().to_string()).unwrap()
+    ))
+    .unwrap();
+    let cache = lensbench_project::SourceCache::default();
+    let o = ExpandOpts {
+        cache: Some(&cache),
+        ..Default::default()
+    };
+    let n1 = expand(&outer, &env(), &o).unwrap().system;
+    assert_eq!(cache.file_count(), 1);
+    let n2 = expand(&outer, &env(), &o).unwrap().system;
+    same_rays(&n1, &n2, 1e-15);
+    // 環境が変われば捨てる
+    cache.scope("other");
+    assert_eq!(cache.file_count(), 0);
+    std::fs::remove_dir_all(&dir).ok();
+}

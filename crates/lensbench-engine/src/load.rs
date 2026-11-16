@@ -221,6 +221,8 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
     };
     let mut out = Vec::new();
     let mut notes = Vec::new();
+    // 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す
+    let cache = lensbench_project::SourceCache::default();
     for st in &states {
         let ps = match &st {
             Some(n) => p.with_state(n)?,
@@ -229,7 +231,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
         let paths: Vec<Option<String>> = match &l.paths {
             None => vec![c.path.clone()],
             Some(v) if v.eq_ignore_ascii_case("all") => {
-                let v = lensbench_project::paths(&ps, &env)?;
+                let v = lensbench_project::paths_cached(&ps, &env, &cache)?;
                 if v.is_empty() {
                     return Err("the project has no beam splitters".into());
                 }
@@ -243,6 +245,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
                 &env,
                 &lensbench_project::ExpandOpts {
                     path: pa.as_deref(),
+                    cache: Some(&cache),
                     ..Default::default()
                 },
             )

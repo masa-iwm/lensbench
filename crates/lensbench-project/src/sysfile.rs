@@ -294,8 +294,7 @@ pub fn from_str_with(
         let sys = crate::sysfile_v2::read::system(p, std::sync::Arc::new(g))
             .map_err(|e| format!("system file: {e}"))?;
         check(&sys)?;
-        let h = system_hash(&sys)?;
-        (sys, h)
+        (sys, None)
     } else {
         let mut p: lensbench_core::Prescription =
             crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
@@ -303,10 +302,11 @@ pub fn from_str_with(
         let sys = p.build_raw().map_err(|e| format!("system file: {e}"))?;
         check(&sys)?;
         let h = hash_value(&internal_value(&sys)?);
-        (sys, h)
+        (sys, Some(h))
     };
-    // hash は読み直した系から作り直したものとも比べる（数の書き方の違いでは値が変わる）
+    // hash は読み直した系から作り直したものとも比べる（数の書き方の違いでは値が変わる。版 2 は今の系の hash と同じ）
     let hash_sys = system_hash(&sys)?;
+    let hash_back = hash_back.unwrap_or_else(|| hash_sys.clone());
     if !hash.is_empty() && hash != hash_now && hash != hash_back {
         warn.push(format!(
             "the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})"
@@ -505,6 +505,15 @@ pub fn load_with(
 ) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     let txt = lensbench_core::vfs::read_to_string(path)
         .map_err(lensbench_core::Error::io_at(path.display()))?;
+    load_text_with(path, &txt, glass_dirs)
+}
+
+/// [`load_with`] で、ファイル path の中身 txt をもう読んであるとき（読み直さない）
+pub fn load_text_with(
+    path: &Path,
+    txt: &str,
+    glass_dirs: &[PathBuf],
+) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     // "a.json" の parent は "" なので、カタログは "." から探す
     let base = path
         .parent()
@@ -512,7 +521,7 @@ pub fn load_with(
         .unwrap_or(Path::new("."));
     let mut dirs = glass_dirs.to_vec();
     dirs.push(base.to_path_buf());
-    let (s, mut m, w) = from_str_with(&txt, &dirs).map_err(|e| e.at(path.display()))?;
+    let (s, mut m, w) = from_str_with(txt, &dirs).map_err(|e| e.at(path.display()))?;
     for c in m.coatings.iter_mut() {
         if c.is_relative() {
             *c = base.join(&*c);

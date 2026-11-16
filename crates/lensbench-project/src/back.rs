@@ -100,7 +100,7 @@ pub fn block_item(
     };
     let mut c = Ctx {
         env,
-        lens_cache: None,
+        cache: None,
         base: env.base.clone(),
         users: Vec::new(),
         sf: Vec::new(),

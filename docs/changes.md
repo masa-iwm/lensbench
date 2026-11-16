@@ -289,6 +289,9 @@
   `expand_path`・`load`・`load_state`・`load_state_report`・`load_path_report`・`expand_json`・`expand_json_path`。ファイルからは
   `Project::load(path)` で読み、環境は `Env::for_file(path, glass_dirs, catalog)`（相対パスはそのフォルダから）か
   `Env::in_dir(base, …)` で作る。JSON の本文からは `Project::from_json`。前の `expand(p, env)` は `expand(p, env, &ExpandOpts::default())?.system`。
+- `LensCache` を `SourceCache` にした（PRJ-13）: カタログの玉に加えて、`.zmx`・系ファイルのブロックの系も覚える（ファイルの
+  更新時刻と大きさが変われば読み直す）。`ExpandOpts::cache` に渡す。BS の経路の一覧を同じ使い回しで求めるのは
+  `paths_cached`。`open::Source::Project` に欄 `cache` を足した（状態・経路ごとの展開で使い回す）。
 
 ### GUI
 - 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。

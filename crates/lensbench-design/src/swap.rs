@@ -460,7 +460,7 @@ pub struct SwapSearch<'a> {
     /// base の JSON の hash（結果のファイルの頭）
     base_hash: String,
     /// カタログの玉の使い回し（組ごとに .zmx を読み直さない）
-    lenses: lensbench_project::LensCache,
+    lenses: lensbench_project::SourceCache,
     dir: PathBuf,
     glass_dirs: Vec<PathBuf>,
     cat: &'a LensCatalog,

@@ -252,7 +252,7 @@ pub struct ExpandOpts<'a> {
     /// ビームスプリッターの経路（BS を通る順の T・R）。None なら状態・プロジェクトの path
     pub path: Option<&'a str>,
     /// カタログの玉を使い回す（同じ環境の展開の間だけで共有する）
-    pub cache: Option<&'a LensCache>,
+    pub cache: Option<&'a SourceCache>,
 }
 
 /// 展開の結果
@@ -289,10 +289,19 @@ pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> lensbench_core::Result<
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
 /// 経路は BS ごとに透過・反射を選んで、BS を通らなくなるまで（像面まで）たどったもの
 pub fn paths(p: &Project, env: &Env) -> lensbench_core::Result<Vec<String>> {
+    paths_cached(p, env, &SourceCache::default())
+}
+
+/// [`paths`] で、ファイル・カタログから読んだものを cache で使い回す
+pub fn paths_cached(
+    p: &Project,
+    env: &Env,
+    cache: &SourceCache,
+) -> lensbench_core::Result<Vec<String>> {
     let mut out = Vec::new();
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
-        match expand_inner(p, env, Some(&q), true, None) {
+        match expand_inner(p, env, Some(&q), true, Some(cache)) {
             Ok(Some(_)) => out.push(q),
             Ok(None) => {
                 if out.len() + todo.len() > 1024 {
@@ -338,7 +347,7 @@ pub(crate) fn expand_inner(
     env: &Env,
     path: Option<&str>,
     strict: bool,
-    cache: Option<&LensCache>,
+    cache: Option<&SourceCache>,
 ) -> lensbench_core::Result<Option<Expansion>> {
     {
         let mut ids = Vec::new();
@@ -374,7 +383,7 @@ pub(crate) fn expand_inner(
     }
     let mut c = Ctx {
         env,
-        lens_cache: cache,
+        cache,
         base: env.base.clone(),
         users: Vec::new(),
         sf: Vec::new(),
