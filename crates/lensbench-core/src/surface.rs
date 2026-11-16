@@ -200,14 +200,17 @@ pub struct Surface {
     pub before: Option<Tilt>,
     pub after: After,
     pub ap: Aperture,
-    /// 面の後の媒質の屈折率（波長ごと、下の dn・disp を反映した値）
-    pub n: Vec<f64>,
+    /// 屈折率だけで決めた媒質の値（どの波長でも同じ。プロジェクトの屈折率だけのガラス・名前から作れない材料）。
+    /// あれば材料の名前 `mat` は表示用で、屈折率はこの値。屈折率は系が文書から作る（[`crate::System::n`]）
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub index: Option<f64>,
     /// 媒質の屈折率のずれ（全波長に足す）。[`crate::param`] で変える
     pub dn: f64,
     /// 媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))
     pub disp: f64,
-    /// dn・disp をかける前の屈折率 n0（どちらも 0 なら空）
-    pub n_base: Vec<f64>,
     /// 屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。`mirror` と一緒に立て、光線は鏡として曲げ、
     /// 偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする
     pub reflect: Option<Reflect>,
@@ -476,10 +479,9 @@ impl Default for Surface {
             before: None,
             after: After::None,
             ap: Aperture::None,
-            n: Vec::new(),
+            index: None,
             dn: 0.0,
             disp: 0.0,
-            n_base: Vec::new(),
             reflect: None,
             retarder: None,
             bire: None,

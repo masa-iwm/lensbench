@@ -416,18 +416,7 @@ fn medium(s: &System, j: usize) -> Result<Option<Medium>, String> {
             dt: g.dt,
         })))));
     }
-    let m = d.mat.trim();
-    if m.is_empty() {
-        return Ok(None);
-    }
-    let base = |w: usize| -> f64 {
-        if d.n_base.is_empty() {
-            d.n.get(w).copied().unwrap_or(f64::NAN)
-        } else {
-            d.n_base[w]
-        }
-    };
-    // 分散のない媒質は名前でなく面の値（名前は丸めてある）
+    // 分散のない媒質は名前でなく面の値（モデルガラスの名前は丸めてある）
     let flat = |nd: f64| {
         Medium::Data(MediumData::Model {
             nd,
@@ -435,20 +424,22 @@ fn medium(s: &System, j: usize) -> Result<Option<Medium>, String> {
             dpgf: 0.0,
         })
     };
+    if let Some(nd) = d.index {
+        return Ok(Some(flat(nd)));
+    }
+    let m = d.mat.trim();
+    if m.is_empty() {
+        return Ok(None);
+    }
     if let Some((nd, vd, dpgf)) = model_glass(m) {
         return Ok(Some(if vd == 0.0 {
-            flat(base(s.primary))
+            flat(nd)
         } else {
             Medium::Data(MediumData::Model { nd, vd, dpgf })
         }));
     }
     if m.eq_ignore_ascii_case("AIR") || s.glasses.contains_key(m) {
         return Ok(Some(Medium::Glass(d.mat.clone())));
-    }
-    // カタログに無い名前で、どの波長でも同じ値の媒質（屈折率だけ決めた媒質）
-    let n0 = base(0);
-    if !d.n.is_empty() && (0..s.wavelengths.len()).all(|w| base(w).to_bits() == n0.to_bits()) {
-        return Ok(Some(flat(base(s.primary))));
     }
     Ok(Some(Medium::Glass(d.mat.clone())))
 }

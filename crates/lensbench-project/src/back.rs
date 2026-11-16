@@ -31,7 +31,7 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
         } else if let Some((nd, vd)) = s.mat.split_once(',') {
             // モデルガラス（.zmx 読込の名前）: 分散なしだけ
             match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
-                (Ok(_), Ok(0.0)) => Some(format!("{}", s.n.first().copied().unwrap_or(0.0))),
+                (Ok(nd), Ok(0.0)) => Some(format!("{}", s.index.unwrap_or(nd))),
                 _ => {
                     return Err(format!(
                         "lens surface {}: model glass {} with dispersion can't be saved",
@@ -397,7 +397,7 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<Su
         None
     } else if let Some((nd, vd)) = f.mat.split_once(',') {
         match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
-            (Ok(_), Ok(0.0)) => Some(format!("{}", f.n.first().copied().unwrap_or(0.0))),
+            (Ok(nd), Ok(0.0)) => Some(format!("{}", f.index.unwrap_or(nd))),
             _ => {
                 return Err(
                     format!("model glass {} with dispersion can't be written", f.mat).into(),

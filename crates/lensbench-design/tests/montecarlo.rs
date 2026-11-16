@@ -407,15 +407,13 @@ fn wavelength_param_reindexes_media() {
         );
         let (d, k) = s.with_wavelength(s.wavelengths[w] + dl).unwrap();
         for j in 0..s.surfaces.len() {
-            let (a, b) = (t.surfaces[j].n[w], d.surfaces[j].n[k]);
+            let (a, b) = (t.n(j)[w], d.n(j)[k]);
             assert!((a - b).abs() < 1e-14, "面 {j} 波長 {w}: {a} {b}");
         }
     }
     // ガラスの屈折率は変わる（短い波長側へずらすと上がる）
-    let j = (0..s.surfaces.len())
-        .find(|&j| s.surfaces[j].n[1] > 1.2)
-        .unwrap();
-    assert!(t.surfaces[j].n[1] < s.surfaces[j].n[1]);
+    let j = (0..s.surfaces.len()).find(|&j| s.n(j)[1] > 1.2).unwrap();
+    assert!(t.n(j)[1] < s.n(j)[1]);
     // 戻すと元の屈折率
     let back: Vec<(Param, f64)> = (0..nw)
         .map(|w| (Param::new(0, Kind::Wave(w as u8)), s.wavelengths[w]))
@@ -423,7 +421,7 @@ fn wavelength_param_reindexes_media() {
     let u = t.with_params(&back).unwrap();
     for j in 0..s.surfaces.len() {
         for w in 0..nw {
-            assert!((u.surfaces[j].n[w] - s.surfaces[j].n[w]).abs() < 1e-15);
+            assert!((u.n(j)[w] - s.n(j)[w]).abs() < 1e-15);
         }
     }
     // 正でない波長・最適化の変数は不正

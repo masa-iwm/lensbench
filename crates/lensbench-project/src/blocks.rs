@@ -759,6 +759,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     kind: Kind::Lens,
                     from: 0,
                     surfaces: v,
+                    n: Vec::new(),
                     t: 0.0,
                     reversed: false,
                 })

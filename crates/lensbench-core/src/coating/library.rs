@@ -435,7 +435,7 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
     let mut keys = vec![None; sf.len()];
     let mut before = vec!["AIR".to_string(); sf.len()];
     let mut prev = "AIR".to_string();
-    let mut nprev = sf[0].n[0];
+    let mut nprev = sys.n(0)[0];
     for (k, d) in sf.iter().enumerate() {
         before[k] = prev.clone();
         if d.ignore || d.is_coord_break() {
@@ -454,7 +454,7 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
             && (!d.coat.is_empty()
                 || d.mirror
                 || after != prev
-                || (d.n[0] - nprev).abs() > 1e-12
+                || (sys.n(k)[0] - nprev).abs() > 1e-12
                 || d.bire.is_some())
         {
             let c = if d.coat.is_empty() { "-" } else { &d.coat };
@@ -470,7 +470,7 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
         if !d.mirror {
             prev = after;
         }
-        nprev = d.n[0];
+        nprev = sys.n(k)[0];
     }
     (keys, before)
 }

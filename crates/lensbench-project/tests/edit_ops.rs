@@ -148,7 +148,7 @@ fn surface_data_roundtrip() {
     assert_eq!((d2.k, d2.semi), (-0.5, 9.5));
     assert_eq!(d2.asph, vec![0.0, 1e-6]);
     assert_eq!(d2.mat, mat);
-    assert!(!d2.n.is_empty());
+    assert!(!s.n(2).is_empty());
     let v = edit_ops::surface_data(&s, 2).unwrap();
     assert_eq!(v["solves"][0]["kind"], "marginal_height");
     assert_eq!(v["solves"][0]["what"], "t");
@@ -177,7 +177,7 @@ fn system_data_roundtrip() {
     assert_eq!(lensbench_project::sysfile::system_hash(&s).unwrap(), hash);
 
     // 波長を 3 つに（整数の重みも数として読む）、温度を変える
-    let n_before = s.surfaces[1].n.clone();
+    let n_before = s.n(1).to_vec();
     edit_ops::apply_json(
         &mut s,
         &json!([{"op": "set_system_data", "data": {
@@ -189,8 +189,8 @@ fn system_data_roundtrip() {
     assert_eq!(s.wavelengths, vec![0.486, 0.5876, 0.656]);
     assert_eq!(s.weights, vec![1.0, 2.0, 1.0]);
     assert_eq!((s.primary, s.temperature), (1, 40.0));
-    assert_eq!(s.surfaces[1].n.len(), 3);
-    assert_ne!(s.surfaces[1].n, n_before);
+    assert_eq!(s.n(1).len(), 3);
+    assert_ne!(s.n(1), n_before);
     // 視野・開口
     edit_ops::apply_json(
         &mut s,

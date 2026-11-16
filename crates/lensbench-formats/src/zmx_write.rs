@@ -602,8 +602,9 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
                 );
             } else {
                 // モデルガラス（分散なし）: 屈折率は面の後の媒質の値
-                let nd = d.n.first().copied().unwrap_or(f64::NAN);
-                if d.n.iter().any(|&v| v != nd) {
+                let nn = s.n(k);
+                let nd = nn.first().copied().unwrap_or(f64::NAN);
+                if nn.iter().any(|&v| v != nd) {
                     notimpl!(
                         "surface {k}: writing glass {} that is not in the catalogs",
                         d.mat

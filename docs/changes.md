@@ -179,6 +179,12 @@
   `sys.edit_raw(|p| { … Ok(()) })`（前の「書き換えて `changed()`」と同じ）。`edit` の引数は `&mut System` から `&mut Prescription` に。
   足したピックアップ・ソルブを効かせるのは `resolve_links()`。文書から系を作るのは `Prescription::build()`（`edit` と同じ後始末）・
   `build_raw()`（確かめだけ）、取り出すのは `sys.prescription()`・`into_prescription()`。結果は前とビット単位で同じ。
+- 屈折率を面から外した（KRN-25・IOO-09）: `Surface::n`・`n_base` を消した。求めた屈折率は `sys.n(j)`（面 j の後の媒質、波長ごと）と
+  `sys.base_index(j, w)`（ずれ `dn`・`disp` をかける前）で読む。屈折率を求めるのは系を作る・直すとき（`edit`・`edit_raw`・`build`）の
+  1 か所で、鏡・座標ブレークの後は前の媒質。カタログに無い分散のない媒質（.zmx のモデルガラス "nd,0"・屈折率だけ決めた媒質）は
+  `Surface::index`（どの波長でも同じ値）に書く（前は `n` に値を置いた）。`Element` に `n`（`split` が埋める）を足した。
+  `set_surface_data` の項目は `n`・`n_base` が無くなり `index` を書ける。版 1 の系ファイルは、名前から屈折率が決まらない分散のない
+  媒質だけ、書いてあった `n` を `index` にして読む。結果は前とビット単位で同じ。
 - `edit_ops::apply` は `&[EditOp]` を受ける（JSON は `edit_ops::parse` で読むか `apply_json`）。`Project::surface_ops` は
   `Vec<Value>` から `Vec<SurfaceOp>` に（型は `lensbench_project::edit_spec`）。
 - 差し替え探索 `SwapSearch::eval`・`run`・`run_to` の返り値は `serde_json::Value` から `SwapResult` に（`to_value()` で前と同じ JSON）。

@@ -29,5 +29,5 @@ fn warns_outside_formula_range_and_extrapolates() {
     assert!(w.iter().any(|x| x.contains("N-SK16") && x.contains("3 µm")));
     assert!(w.iter().any(|x| x.contains("F2") && x.contains("0.315")));
     // 屈折率は式を延ばした値（1.0 にはしない）
-    assert!(s.surfaces[1].n[1] > 1.5 && s.surfaces[2].n[1] > 1.5);
+    assert!(s.n(1)[1] > 1.5 && s.n(2)[1] > 1.5);
 }

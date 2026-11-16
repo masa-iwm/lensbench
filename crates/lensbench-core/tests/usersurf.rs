@@ -116,7 +116,7 @@ fn polarization_and_errors() {
     // 空気以外の中は未対応
     let mut g = f50("theta");
     g.edit_raw(|p| {
-        p.surfaces[1].n = vec![1.5];
+        p.surfaces[1].index = Some(1.5);
         Ok(())
     })
     .unwrap();

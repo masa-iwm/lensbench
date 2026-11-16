@@ -11,7 +11,7 @@ impl System {
         let upto = upto.unwrap_or(sf.len() - 1);
         let mut y = vec![f64::NAN; sf.len()];
         let mut u = vec![f64::NAN; sf.len()];
-        let mut n = sf[0].n[w];
+        let mut n = self.n(0)[w];
         let (mut uu, mut yy, mut sgn) = (u0, y1, 1.0);
         let mut gmed: Option<(&crate::grin::Grin, f64)> = None;
         y[0] = yy - uu * if sf[0].t.is_finite() { sf[0].t } else { 0.0 };
@@ -35,7 +35,7 @@ impl System {
                         uu -= yy * u.instance().paraxial_power();
                     }
                 }
-                Action::Jones(_) => n = d.n[w],
+                Action::Jones(_) => n = self.n(j)[w],
                 Action::Refract
                 | Action::Reflect { .. }
                 | Action::Binary2(_)
@@ -70,7 +70,7 @@ impl System {
                             .grin
                             .as_deref()
                             .and_then(|g| g.vertex_index(self.wavelengths[w]))
-                            .unwrap_or(d.n[w]);
+                            .unwrap_or(self.n(j)[w]);
                         uu = (n * uu - yy * c * (n2 - n) + sgn * dphi) / n2;
                         n = n2;
                     }
@@ -161,7 +161,7 @@ impl System {
                 }
             }
             ApertureKind::Na | ApertureKind::Cone => {
-                let n0 = sf[0].n[pw];
+                let n0 = self.n(0)[pw];
                 let th = if kind == ApertureKind::Na {
                     (val / n0).asin()
                 } else {
@@ -237,7 +237,7 @@ impl System {
             },
             isfn: efl.abs() / epd,
             pmag: if !self.infinite() && umi != 0.0 {
-                sf[0].n[pw] * um[0] / (n_i * umi)
+                self.n(0)[pw] * um[0] / (n_i * umi)
             } else {
                 0.0
             },

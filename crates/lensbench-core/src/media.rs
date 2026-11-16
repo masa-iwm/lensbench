@@ -1,9 +1,9 @@
 //! 媒質の屈折率を材料から作る（dn・disp をかける前の値）。
 //!
-//! 材料の名前の読み方は 1 か所（[`System::material_index_at`]）: 空・AIR は 1、系のガラス（温度・気圧・
+//! 材料の名前の読み方は 1 か所（[`Prescription::material_index_at`]）: 空・AIR は 1、系のガラス（温度・気圧・
 //! Adjust Index は系の設定）、モデルガラス "nd,vd[,dpgf]"（vd = 0 は分散なし）。GRIN の面は頂点の屈折率、
-//! 鏡・座標ブレークは前の媒質を引き継ぐ。材料を設定したとき（[`System::refresh_media`]）も、系の波長を変える・足す
-//! とき（[`System::set_wavelengths`]・[`System::with_wavelength`]）も、これで作る。
+//! 鏡・座標ブレークは前の媒質を引き継ぐ。屈折率は文書から [`resolve`] で作り、[`crate::System`] が
+//! 持つ（文書には屈折率を置かない。屈折率だけの媒質は面の `index`）。
 
 use crate::error::{Error, Result};
 use crate::glass;
@@ -11,47 +11,73 @@ use crate::invalid;
 use crate::surface::Bire;
 use crate::system::{Prescription, System};
 
-/// 面の後の媒質の、材料からの作り方
-enum Medium {
-    /// 前の媒質を引き継ぐ（鏡・座標ブレーク）
-    Previous,
-    /// GRIN の頂点の屈折率
-    Grin,
-    /// 分散のない媒質（空気、vd = 0 のモデルガラス）: 今の値をどの波長でも使う。値は名前でなく面の値
-    /// （プロジェクトの屈折率だけのガラスは名前を丸めた "1.52,0.0" で、値は丸めない）
-    Flat,
-    /// 材料の名前から
-    Material,
+/// 文書から求めた媒質の屈折率（面ごと・波長ごと）。[`crate::System`] が持ち、文書を直すたびに作り直す
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Media {
+    /// 面の後の媒質の屈折率（dn・disp 込み。鏡・座標ブレークは前の媒質）
+    pub n: Vec<Vec<f64>>,
+    /// dn・disp をかける前の屈折率
+    pub base: Vec<Vec<f64>>,
 }
 
-fn medium_of(sys: &System, j: usize) -> Medium {
-    let d = &sys.surfaces[j];
+/// 面 j の後の媒質の、波長 lams [µm] での屈折率（dn・disp をかける前）。鏡・座標ブレークは None（前の媒質）
+fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Vec<f64>>> {
+    let d = &p.surfaces[j];
     if j > 0 && (d.mirror || d.is_coord_break()) {
-        return Medium::Previous;
+        return Ok(None);
     }
-    if d.grin.is_some() {
-        return Medium::Grin;
+    if let Some(g) = d.grin.as_deref() {
+        return lams
+            .iter()
+            .map(|&l| {
+                g.vertex_index(l).ok_or_else(|| {
+                    Error::Invalid(format!(
+                        "surface {j}: the GRIN vertex is outside the profile range"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<f64>>>()
+            .map(Some);
     }
-    if d.n.is_empty() {
-        return Medium::Material;
+    if let Some(x) = d.index {
+        return Ok(Some(vec![x; lams.len()]));
     }
-    let m = d.mat.trim();
-    let flat = match model_glass(m) {
-        Some((_, vd, _)) => vd == 0.0,
-        // 名前から作れない材料（カタログに無いガラス）で、値がどの波長でも同じもの（プロジェクトで屈折率だけ
-        // 決めた媒質）も分散なし
-        None => {
-            !(m.is_empty() || m.eq_ignore_ascii_case("AIR") || sys.glasses.contains_key(m)) && {
-                let n0 = sys.base_index(j, 0);
-                (0..sys.wavelengths.len()).all(|w| sys.base_index(j, w) == n0)
-            }
-        }
+    p.material_index_at(&d.mat, lams)
+        .map(Some)
+        .map_err(|e| Error::Invalid(format!("surface {j}: {e}")))
+}
+
+/// 文書の全面の媒質の屈折率を作る（屈折率を求めるのはここだけ）。無視した面は次の面の「前の媒質」にならない
+pub(crate) fn resolve(p: &Prescription) -> Result<Media> {
+    let ns = p.surfaces.len();
+    let wp = p.primary;
+    let mut m = Media {
+        n: Vec::with_capacity(ns),
+        base: Vec::with_capacity(ns),
     };
-    if flat {
-        Medium::Flat
-    } else {
-        Medium::Material
+    let mut prev = vec![1.0; p.wavelengths.len()];
+    for j in 0..ns {
+        let d = &p.surfaces[j];
+        let (n, base) = match medium_index_at(p, j, &p.wavelengths)? {
+            // 鏡・座標ブレーク: 前の媒質（ずれをかける前の値も前の媒質の値）
+            None => (prev.clone(), prev.clone()),
+            Some(b) => {
+                let n = if (d.dn != 0.0 || d.disp != 0.0) && wp < b.len() {
+                    let bp = b[wp];
+                    b.iter().map(|&x| x + d.dn + d.disp * (x - bp)).collect()
+                } else {
+                    b.clone()
+                };
+                (n, b)
+            }
+        };
+        if !d.ignore || j == 0 {
+            prev = n.clone();
+        }
+        m.n.push(n);
+        m.base.push(base);
     }
+    Ok(m)
 }
 
 /// モデルガラスの名前 "nd,vd[,dpgf]" の (nd, vd, dpgf)
@@ -103,64 +129,8 @@ impl Prescription {
 }
 
 impl System {
-    /// 面 j の後の媒質の、波長 lams [µm] での屈折率（dn・disp をかける前）。鏡・座標ブレークは None（前の媒質）
-    pub(crate) fn medium_index_at(&self, j: usize, lams: &[f64]) -> Result<Option<Vec<f64>>> {
-        let d = &self.surfaces[j];
-        Ok(Some(match medium_of(self, j) {
-            Medium::Previous => return Ok(None),
-            Medium::Grin => {
-                let g = d.grin.as_deref().expect("GRIN");
-                lams.iter()
-                    .map(|&l| {
-                        g.vertex_index(l).ok_or_else(|| {
-                            Error::Invalid(format!(
-                                "surface {j}: the GRIN vertex is outside the profile range"
-                            ))
-                        })
-                    })
-                    .collect::<Result<Vec<f64>>>()?
-            }
-            Medium::Flat => vec![self.base_index(j, self.primary); lams.len()],
-            Medium::Material => self
-                .material_index_at(&d.mat, lams)
-                .map_err(|e| Error::Invalid(format!("surface {j}: {e}")))?,
-        }))
-    }
-
-    /// 全面の媒質の、波長 lam での屈折率（dn・disp をかける前。鏡・座標ブレーク・無視した面の扱いは系の値と同じ）
-    fn media_at(&self, lam: f64) -> Result<Vec<f64>> {
-        let mut prev = 1.0;
-        let mut col = Vec::with_capacity(self.surfaces.len());
-        for j in 0..self.surfaces.len() {
-            let n = match self.medium_index_at(j, &[lam])? {
-                Some(v) => v[0],
-                None => prev,
-            };
-            col.push(n);
-            if !self.surfaces[j].ignore || j == 0 {
-                prev = n;
-            }
-        }
-        Ok(col)
-    }
-
-    /// 材料の印 `n` が空の面（挿入した面・材料を変えた面）の屈折率を材料から作る。
-    /// 複屈折材の異常光の屈折率（材料の名前-E）も、数が波長の数と違えば作り直す
+    /// 複屈折材の異常光の屈折率（材料の名前-E）を、数が波長の数と違えば材料から作り直す
     pub(crate) fn refresh_media(&mut self) -> Result<()> {
-        for j in 0..self.surfaces.len() {
-            if !self.surfaces[j].n.is_empty() {
-                continue;
-            }
-            let Some(base) = self.medium_index_at(j, &self.wavelengths)? else {
-                continue;
-            };
-            let d = &mut self.rx_mut().surfaces[j];
-            d.n_base.clear();
-            d.n = base;
-            if let Some(Bire::In { ne, .. }) = &mut d.bire {
-                ne.clear();
-            }
-        }
         let nw = self.wavelengths.len();
         for j in 0..self.surfaces.len() {
             let d = &self.surfaces[j];
@@ -185,24 +155,24 @@ impl System {
 
     /// 複屈折材の異常光の屈折率を材料から作り直す（波長を変えた・足したとき）
     fn rebuild_extraordinary(&mut self) -> Result<()> {
-        let mut bire = false;
+        if !self
+            .surfaces
+            .iter()
+            .any(|d| matches!(d.bire, Some(Bire::In { .. })))
+        {
+            return Ok(());
+        }
         for d in self.rx_mut().surfaces.iter_mut() {
             if let Some(Bire::In { ne, .. }) = &mut d.bire {
                 ne.clear();
-                bire = true;
             }
         }
-        if bire {
-            self.refresh_media()?;
-        }
-        Ok(())
+        self.refresh_media()
     }
 
-    /// 波長 i を lam [µm] に変える（(i, lam) の並び）。全媒質の屈折率（dn・disp をかける前の値と、複屈折材の異常光）を
-    /// 材料から新しい波長で作り直す。dn・disp の反映（[`System::update_indices`]）とキャッシュの扱いは呼ぶ側
-    /// （[`System::set_params`]）で
+    /// 波長 i を lam [µm] に変える（(i, lam) の並び）。複屈折材の異常光も作り直す。媒質の屈折率と
+    /// キャッシュの扱いは呼ぶ側（[`System::set_params`]）で
     pub(crate) fn set_wavelengths(&mut self, waves: &[(usize, f64)]) -> Result<()> {
-        let mut new: Vec<(usize, Vec<f64>)> = Vec::with_capacity(waves.len());
         for &(i, lam) in waves {
             if i >= self.wavelengths.len() || !(lam > 0.0) {
                 invalid!(
@@ -210,20 +180,6 @@ impl System {
                     i + 1,
                     self.wavelengths.len()
                 );
-            }
-            new.push((i, self.media_at(lam)?));
-        }
-        for (i, col) in new {
-            for (j, n) in col.into_iter().enumerate() {
-                let d = &mut self.rx_mut().surfaces[j];
-                let v = if d.n_base.is_empty() {
-                    &mut d.n
-                } else {
-                    &mut d.n_base
-                };
-                if let Some(x) = v.get_mut(i) {
-                    *x = n;
-                }
             }
         }
         for &(i, lam) in waves {
@@ -238,21 +194,10 @@ impl System {
         if !(lam > 0.0) {
             invalid!("wavelength {lam} µm");
         }
-        let add = self.media_at(lam)?;
         let mut d = self.clone();
-        for (j, n) in add.into_iter().enumerate() {
-            let sf = &mut d.rx_mut().surfaces[j];
-            if sf.n_base.is_empty() {
-                sf.n.push(n);
-            } else {
-                sf.n_base.push(n);
-                sf.n.push(f64::NAN);
-            }
-        }
         d.rx_mut().wavelengths.push(lam);
         d.rx_mut().weights.push(0.0);
         d.rebuild_extraordinary()?;
-        d.update_indices();
         d.changed()?;
         Ok((d, self.wavelengths.len()))
     }

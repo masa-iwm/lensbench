@@ -203,7 +203,6 @@ fn cb(d: [f64; 5], order: u8, t: f64) -> lensbench_core::surface::Surface {
         cb: d,
         cb_order: order,
         t,
-        n: vec![1.0; 24],
         ..Default::default()
     }
 }

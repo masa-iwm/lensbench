@@ -223,9 +223,9 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     }
     if let Some(g) = &q.glass {
         if let Ok(nd) = g.trim().parse::<f64>() {
-            // モデルガラス（分散なし）: 名前は .zmx 読込と同じ形、屈折率は n に入れておく
+            // モデルガラス（分散なし）: 名前は .zmx 読込と同じ形、屈折率は index に
             s.mat = format!("{nd:.2},{:.1}", 0.0);
-            s.n = vec![nd];
+            s.index = Some(nd);
         } else {
             s.mat = g.trim().to_string();
         }
@@ -458,28 +458,16 @@ pub(crate) fn expand_inner(
     let org = std::mem::take(&mut c.org);
     let zpicks = std::mem::take(&mut c.zpicks);
     sf.push(Surface::default());
-    // 面の後の屈折率（波長ごと）
+    // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
     let envr = p.environment;
-    let mut prev = vec![1.0; wl.len()];
     for (j, d) in sf.iter_mut().enumerate() {
-        let n = if j > 0 && (d.mirror || d.is_coord_break()) {
-            prev.clone()
-        } else if is_air(&d.mat) {
-            vec![1.0; wl.len()]
-        } else if let Some(g) = c.glasses.get(&d.mat) {
-            wl.iter()
-                .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
-                .collect()
-        } else if let Some(&n0) = d.n.first() {
-            if d.n.iter().any(|&v| v != n0) {
-                return Err(glass_missing(j, &d.mat));
-            }
-            vec![n0; wl.len()]
-        } else {
+        let known = (j > 0 && (d.mirror || d.is_coord_break()))
+            || is_air(&d.mat)
+            || c.glasses.contains_key(&d.mat)
+            || d.index.is_some();
+        if !known {
             return Err(glass_missing(j, &d.mat));
-        };
-        d.n = n.clone();
-        prev = n;
+        }
         // 複屈折材の板の入口: 異常光の屈折率
         if let Some(lensbench_core::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
             let en = lensbench_core::surface::Bire::e_name(&d.mat);

@@ -37,7 +37,7 @@ impl System {
                                 self.index_before(j, w),
                                 match &d.reflect {
                                     Some(r) if d.mirror => r.n[w],
-                                    _ => d.n[w],
+                                    _ => self.n(j)[w],
                                 },
                             )
                             .map_err(|e| e.at(self.surf_label(j)))?,
@@ -66,7 +66,7 @@ impl System {
                         Some(CryKind::In {
                             mode: *mode,
                             axis: *axis,
-                            no: d.n[w],
+                            no: self.n(j)[w],
                             ne,
                         })
                     }

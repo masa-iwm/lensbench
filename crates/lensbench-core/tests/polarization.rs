@@ -24,7 +24,7 @@ const X: [C64; 2] = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
 fn interfaces(s: &System, w: usize) -> Vec<(usize, f64, f64)> {
     (1..s.surfaces.len())
         .filter(|&j| !s.surfaces[j].ignore && !s.surfaces[j].is_coord_break())
-        .map(|j| (j, s.index_before(j, w), s.surfaces[j].n[w]))
+        .map(|j| (j, s.index_before(j, w), s.n(j)[w]))
         .filter(|&(_, a, b)| a != b)
         .collect()
 }
@@ -183,7 +183,7 @@ fn measured_tables_are_used_for_unknown_coatings() {
     let t0 = s0
         .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c0)
         .unwrap();
-    let (n1, n2) = (s.index_before(j, w), s.surfaces[j].n[w]);
+    let (n1, n2) = (s.index_before(j, w), s.n(j)[w]);
     let fres = 2.0 * (n1 * n2).sqrt() / (n1 + n2);
     let r = t.e[0][0][0] / t0.e[0][0][0];
     assert!((r - C64::new(0.8 / fres, 0.0)).norm() < 1e-13, "{r}");
@@ -659,7 +659,7 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
     let key = format!("zec_auto|AIR|{mat}");
     assert_eq!(c.kind(&key), lensbench_core::coating::CoatKind::Measured);
     let n1 = s.index_before(j, w);
-    let n2 = s.surfaces[j].n[w];
+    let n2 = s.n(j)[w];
     let got = c.prepare(&s, &key, wl, n1, n2).unwrap().eval(0.1).unwrap();
     assert!(
         (got[0] - v[0]).norm() < 1e-12 && (got[1] - v[1]).norm() < 1e-12,

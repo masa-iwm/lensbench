@@ -69,7 +69,7 @@ fn ignored_surface_anywhere() {
                 } else {
                     p.mat.clone()
                 },
-                n: if p.mirror { Vec::new() } else { p.n.clone() },
+                index: if p.mirror { None } else { p.index },
                 ignore: true,
                 ..Default::default()
             };
@@ -147,7 +147,7 @@ fn with_surface(s0: &System, at: usize, mut d: Surface) -> Option<System> {
     // 座標ブレークは材料を持たない（前の媒質が続く）
     if !d.is_coord_break() {
         d.mat = p.mat.clone();
-        d.n = p.n.clone();
+        d.index = p.index;
     }
     let mut s = s0.clone();
     s.insert_surface(at, d).unwrap();

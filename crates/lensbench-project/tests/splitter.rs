@@ -346,7 +346,7 @@ fn michelson_arms_meet_at_port_d() {
     };
     let (a, b) = (ia(&tr), ia(&rt));
     assert!((a - b).abs() < 1e-14, "{a} {b}");
-    let n = tr.surfaces[3].n[1];
+    let n = tr.n(3)[1];
     let fr = 4.0 * n / ((n + 1.0) * (n + 1.0)); // 空気とガラスの面の垂直入射の透過率
     assert!((a - 0.24 * fr.powi(4)).abs() < 1e-12, "{a}");
 }
@@ -436,7 +436,7 @@ fn wedge_plate_deviates_the_beam() {
         ),
         Some("T"),
     );
-    let n = s.surfaces[3].n[1];
+    let n = s.n(3)[1];
     let r = s
         .try_trace(FieldSel::Index(0), &[0.0], &[0.0], Some(1), None, false)
         .unwrap()
@@ -608,7 +608,7 @@ fn split_coating_reflection_matches_opticstudio() {
     };
     let s = os_case("cube_T");
     let wl = s.wavelengths[s.primary];
-    let n = s.surfaces[2].n[s.primary];
+    let n = s.n(2)[s.primary];
     let k = 2.0 * PI / wl;
     let d = 0.0655 + 0.0996 + 0.0655;
     let (mut wr, mut wph) = (0.0f64, 0.0f64);

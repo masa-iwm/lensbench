@@ -1123,6 +1123,11 @@ pub fn build(
                 mat.clone()
             },
             coat: s.coat.clone().unwrap_or_default(),
+            // 分散のないモデルガラスは名前を丸めるので、値はここに丸めずに持つ
+            index: match model {
+                Some((nd, vd, _)) if vd == 0.0 && typ != SurfType::CoordBrk => Some(nd),
+                _ => None,
+            },
             stop: k == stop,
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
@@ -1307,7 +1312,6 @@ pub fn build(
             };
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
-        d.n = n.clone();
         if let Some(crate::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
             let en = crate::surface::Bire::e_name(&mat);
             let Some(g) = glasses.get(&en) else {
@@ -1531,6 +1535,9 @@ pub fn build(
     )?;
     s.rx_mut().temperature = temp;
     s.rx_mut().pressure = pres;
+    s.rx_mut().adjust_index = adjust;
+    // 温度・気圧で媒質の屈折率が変わる
+    s.changed()?;
     s.rx_mut().glrs = glrs;
     s.rx_mut().ropd = ropd;
     s.rx_mut().apodization = system_lines::apodization(raw, opt.fixed_semi)?;
@@ -1566,7 +1573,6 @@ pub fn build(
             )),
         }
     }
-    s.rx_mut().adjust_index = adjust;
     s.rx_mut().pickups = pickups;
     if !s.pickups.is_empty() {
         // OpticStudio は読込でピックアップを解き直す（保存された値が古くても元の面に合わせる）

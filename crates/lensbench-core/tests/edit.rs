@@ -76,7 +76,6 @@ fn close(a: &[f64], b: &[f64], tol: f64) -> f64 {
 fn surf(t: f64) -> Surface {
     Surface {
         t,
-        n: Vec::new(),
         ..Default::default()
     }
 }
@@ -85,9 +84,6 @@ fn surf(t: f64) -> Surface {
 fn empty() -> System {
     let mut sf = vec![surf(f64::INFINITY), surf(10.0), surf(0.0)];
     sf[1].stop = true;
-    for d in sf.iter_mut() {
-        d.n = vec![1.0; 3];
-    }
     System::new(
         sf,
         vec![0.4861, 0.5876, 0.6563],
@@ -121,13 +117,9 @@ fn noop_edit_keeps_bits() {
         let s = load(&name);
         let mut t = s.clone();
         t.edit(|_| Ok(())).unwrap();
-        for (j, (a, b)) in s.surfaces.iter().zip(&t.surfaces).enumerate() {
-            assert!(
-                same_bits(&a.n, &b.n),
-                "{name} 面 {j}: 屈折率 {:?} {:?}",
-                a.n,
-                b.n
-            );
+        for j in 0..s.surfaces.len() {
+            let (a, b) = (s.n(j), t.n(j));
+            assert!(same_bits(a, b), "{name} 面 {j}: 屈折率 {a:?} {b:?}");
         }
         assert!(same_bits(&rays(&s), &rays(&t)), "{name}");
         n += 1;
@@ -143,7 +135,7 @@ fn insert_and_delete_dummy() {
         let r0 = rays(&s);
         // 後ろが空気の面の後に入れる
         let j = (1..s.image())
-            .find(|&j| s.surfaces[j].n.iter().all(|&x| x == 1.0) && !s.surfaces[j].mirror)
+            .find(|&j| s.n(j).iter().all(|&x| x == 1.0) && !s.surfaces[j].mirror)
             .unwrap();
         let mut t = s.clone();
         t.insert_surface(j + 1, surf(0.0)).unwrap();
@@ -170,8 +162,8 @@ fn build_singlet() {
     s.insert_surface(2, a).unwrap();
     s.insert_surface(3, b).unwrap();
     assert_eq!(s.surfaces.len(), 5);
-    assert_eq!(s.surfaces[2].n, vec![1.5; 3]);
-    assert_eq!(s.surfaces[3].n, vec![1.0; 3]);
+    assert_eq!(s.n(2), vec![1.5; 3]);
+    assert_eq!(s.n(3), vec![1.0; 3]);
     let (n, r1, r2, d) = (1.5_f64, 50.0, -50.0, 5.0);
     let p = (n - 1.0) * (1.0 / r1 - 1.0 / r2 + (n - 1.0) * d / (n * r1 * r2));
     let efl = s.paraxial().efl;
@@ -198,17 +190,13 @@ fn build_singlet() {
     let miss = s.add_glass_catalogs(&["SCHOTT".into()], &[root().join("tests/glass")]);
     assert!(miss.is_empty(), "{miss:?}");
     s.set_material(2, "N-BK7").unwrap();
-    assert!(
-        (s.surfaces[2].n[1] - 1.5168).abs() < 1e-3,
-        "{:?}",
-        s.surfaces[2].n
-    );
+    assert!((s.n(2)[1] - 1.5168).abs() < 1e-3, "{:?}", s.n(2));
     // 鏡にすると後ろの媒質は前の媒質（空気）
     s.set_material(3, "MIRROR").unwrap();
     assert!(s.surfaces[3].mirror);
-    assert_eq!(s.surfaces[3].n, s.surfaces[2].n);
+    assert_eq!(s.n(3), s.n(2));
     s.set_material(3, "").unwrap();
-    assert_eq!(s.surfaces[3].n, vec![1.0; 3]);
+    assert_eq!(s.n(3), vec![1.0; 3]);
     // 開口・膜
     s.set_aperture(
         2,
@@ -361,11 +349,11 @@ fn surface_type_change() {
     s.insert_surface(3, surf(2.0)).unwrap();
     s.set_surface_type(3, surf_type_parse("COORDBRK").unwrap())
         .unwrap();
-    assert_eq!(s.surfaces[3].n, vec![1.5; 3]);
+    assert_eq!(s.n(3), vec![1.5; 3]);
     s.set_param(Param::new(3, Kind::Tx), 1.0).unwrap();
     s.set_surface_type(3, SurfType::Standard).unwrap();
     assert_eq!(s.surfaces[3].cb, [0.0; 5]);
-    assert_eq!(s.surfaces[3].n, vec![1.0; 3]);
+    assert_eq!(s.n(3), vec![1.0; 3]);
     // 形のデータの要る種類はエラー（.zmx から読む）
     assert!(s.set_surface_type(3, SurfType::ZernikeStd).is_err());
     // 失敗した編集で系は変わらない
@@ -434,15 +422,15 @@ fn surface_fields_by_name() {
     )
     .unwrap();
     assert_eq!(s.surfaces[2].c, 0.02);
-    assert_eq!(s.surfaces[2].n, vec![1.6; 3]);
+    assert_eq!(s.n(2), vec![1.6; 3]);
     assert_eq!(s.find_surface("L1 front").unwrap(), 2);
     s.set_surface_fields(2, &[("dn".into(), Num(0.01))])
         .unwrap();
-    assert!((s.surfaces[2].n[0] - 1.61).abs() < 1e-15);
+    assert!((s.n(2)[0] - 1.61).abs() < 1e-15);
     // 材料を変えても dn は残る
     s.set_surface_fields(2, &[("material".into(), Text("1.5,0".into()))])
         .unwrap();
-    assert!((s.surfaces[2].n[0] - 1.51).abs() < 1e-15);
+    assert!((s.n(2)[0] - 1.51).abs() < 1e-15);
     let f = s.surface_fields(2).unwrap();
     assert!(f.contains(&("material", Text("1.5,0".into()))));
     assert!(s

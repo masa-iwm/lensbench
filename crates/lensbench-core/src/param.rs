@@ -1159,7 +1159,7 @@ impl System {
             self.resolve_pickups()?;
         }
         if index {
-            self.update_indices();
+            self.resolve_media()?;
         }
         Ok(keep_for(changes))
     }
@@ -1190,18 +1190,17 @@ impl System {
                 match q.what {
                     PickKind::Dn => {
                         let a = &self.surfaces[q.src];
-                        let (mat, mirror) = (a.mat.clone(), a.mirror);
+                        let (mat, mirror, index) = (a.mat.clone(), a.mirror, a.index);
                         let d = &mut self.rx_mut().surfaces[q.dst];
                         if d.is_coord_break()
                             || (mirror && q.dst == 0)
-                            || (d.mat == mat && d.mirror == mirror)
+                            || (d.mat == mat && d.mirror == mirror && d.index == index)
                         {
                             continue;
                         }
                         d.mat = mat;
                         d.mirror = mirror;
-                        d.n.clear();
-                        d.n_base.clear();
+                        d.index = index;
                         changed = true;
                     }
                     PickKind::Coating => {
@@ -1331,59 +1330,6 @@ impl System {
             }
         }
         Ok(out)
-    }
-
-    /// 屈折率のずれ（dn・disp）を n に反映する。鏡・座標ブレークの面は前の媒質を引き継ぐ
-    pub(crate) fn update_indices(&mut self) {
-        let wp = self.primary;
-        let mut nprev: Option<Vec<f64>> = None;
-        // 直前の媒質を今回書き換えたか（その後の鏡・座標ブレークにだけ写す）
-        let mut touched = false;
-        for j in 0..self.surfaces.len() {
-            let d = &mut self.rx_mut().surfaces[j];
-            if j > 0 && (d.mirror || d.is_coord_break()) {
-                if touched {
-                    if let Some(n) = &nprev {
-                        d.n = n.clone();
-                    }
-                }
-            } else {
-                let has = d.dn != 0.0 || d.disp != 0.0;
-                if has || !d.n_base.is_empty() {
-                    if d.n_base.is_empty() {
-                        d.n_base = d.n.clone();
-                    }
-                    let b = &d.n_base;
-                    d.n = if has {
-                        let bp = b[wp];
-                        b.iter().map(|&x| x + d.dn + d.disp * (x - bp)).collect()
-                    } else {
-                        b.clone()
-                    };
-                    if !has {
-                        d.n_base.clear();
-                    }
-                    if !d.ignore {
-                        touched = true;
-                    }
-                } else if !d.ignore {
-                    touched = false;
-                }
-            }
-            if !d.ignore {
-                nprev = Some(d.n.clone());
-            }
-        }
-    }
-
-    /// 屈折率のずれをかける前の媒質の屈折率（面 j の後、波長 w）
-    pub fn base_index(&self, j: usize, w: usize) -> f64 {
-        let d = &self.surfaces[j];
-        if d.n_base.is_empty() {
-            d.n[w]
-        } else {
-            d.n_base[w]
-        }
     }
 }
 
@@ -1771,7 +1717,7 @@ impl System {
         let f = if chief { self.chief_scale()? } else { 1.0 };
         let (y, u) = (f * y[k], f * u[self.prev_live(k)]);
         let n = self.index_before(k, pw);
-        let n2 = d.n[pw];
+        let n2 = self.n(k)[pw];
         // 近軸の曲率のうち c に依らない分（偶数次非球面の r²・トロイダル面の y² の項。近軸の追跡と同じ、KRN-33）
         let a1 = d.shape().paraxial_extra().unwrap_or(0.0);
         if y == 0.0 {
@@ -1815,8 +1761,8 @@ impl System {
             }
         }
         let n0 = self.index_before(a, pw);
-        let ng = self.surfaces[a].n[pw];
-        let n1 = self.surfaces[b].n[pw];
+        let ng = self.n(a)[pw];
+        let n1 = self.n(b)[pw];
         let t = self.axial(a, b)?;
         let ce = |j: usize| {
             let d = &self.surfaces[j];

@@ -707,13 +707,13 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     // 既定の環境（20 °C）: 注意が出て、屈折率は .zmx を単体で読んだのと違う
     let (s, warn) = run("");
     assert!(warn.iter().any(|w| w.contains("environment")), "{warn:?}");
-    assert!(s.surfaces[1].n[1] != z.surfaces[1].n[1]);
+    assert!(s.n(1)[1] != z.n(1)[1]);
     // 同じ環境にすれば注意はなく、屈折率も同じ
     let (s, warn) =
         run(r#""environment": {"temperature_c": 40, "pressure_atm": 1.2, "adjust_index": true},"#);
     assert!(!warn.iter().any(|w| w.contains("environment")), "{warn:?}");
     for j in 1..s.surfaces.len() {
-        assert_eq!(s.surfaces[j].n, z.surfaces[j].n, "面 {j}");
+        assert_eq!(s.n(j), z.n(j), "面 {j}");
     }
     assert_eq!((s.temperature, s.pressure), (40.0, 1.2));
     std::fs::remove_dir_all(&dir).unwrap();

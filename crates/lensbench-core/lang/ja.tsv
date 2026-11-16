@@ -283,8 +283,8 @@ there must be exactly one stop surface	絞り面がちょうど 1 つではあ�
 surface {j}: material {} on a coordinate break	面 {j}: 座標ブレークに材料 {}
 Jones matrix surface {j} on a curved surface	曲面の Jones 行列面 {j}
 surface {j} thickness {}	面 {j} の厚み {}
+surface {j} index {n}	面 {j} の屈折率 {n}
 surface {j} {name} = {v}	面 {j} の {name} = {v}
-surface {j}: {} refractive indices ({nw} wavelengths)	面 {j}: 屈折率の数 {}（波長 {nw}）
 global coordinate reference surface {} ({ns} surfaces)	グローバル座標の基準面 {}（面 {ns} 個）
 MIRROR is not a medium	MIRROR は媒質ではありません
 no glass {m} (add catalogs: add_glasses, add_glass_catalogs)	硝材 {m} がありません（カタログを追加: add_glasses・add_glass_catalogs）
@@ -1087,8 +1087,6 @@ system file: version {ver} can't be read (up to {FORMAT_VERSION}; update lensben
 system file: no system	系ファイル: system がありません
 system file: coatings must be a list of strings	系ファイル: coatings は文字列の並び
 system file: the numbers of wavelengths, weights and primary don't match	系ファイル: 波長・ウェイト・主波長の数が合いません
-system file: surface {j} has {} refractive indices ({nw} wavelengths)	系ファイル: 面 {j} の屈折率の数 {}（波長 {nw}）
-system file: surface {j} n_base count	系ファイル: 面 {j} の n_base の数
 system file: pickup surfaces ({} → {})	系ファイル: ピックアップの面（{} → {}）
 system file: solve surface {}	系ファイル: ソルブの面 {}
 system file: no macro {i} for surface {}	系ファイル: 面 {} のマクロ {i} がありません

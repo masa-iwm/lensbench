@@ -532,7 +532,7 @@ impl System {
             n_out[k] = if d.mirror || d.is_coord_break() {
                 n_in[k]
             } else {
-                d.n[w]
+                self.n(j)[w]
             };
             // index_before と同じ: 直前の無視しない・座標ブレークでない面
             let prev = (0..j)

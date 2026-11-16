@@ -275,6 +275,8 @@ pub fn from_str_with(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
+    // 版 1 は面ごとに屈折率を持つ（分散のない媒質の値に使う）
+    let v1_n = (ver < 2).then(|| v1_indices(&sv));
     let c = from_json(sv).map_err(|e| format!("system file: {e}"))?;
     let (sys, hash_back) = if ver >= 2 {
         let p: crate::sysfile_v2::Prescription =
@@ -291,8 +293,10 @@ pub fn from_str_with(
         let h = system_hash(&sys)?;
         (sys, h)
     } else {
-        let sys: System =
+        let mut p: lensbench_core::Prescription =
             crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
+        v1_flat(&mut p, &v1_n.unwrap_or_default());
+        let sys = p.build_raw().map_err(|e| format!("system file: {e}"))?;
         check(&sys)?;
         let h = hash_value(&internal_value(&sys)?);
         (sys, h)
@@ -328,6 +332,44 @@ pub fn from_str_with(
     Ok((sys, meta, warn))
 }
 
+/// 版 1 の面ごとの屈折率（ずれをかける前の値、n_base が無ければ n）
+fn v1_indices(sv: &Value) -> Vec<Option<Vec<f64>>> {
+    let nums = |v: Option<&Value>| -> Option<Vec<f64>> {
+        let a = v?.as_array()?;
+        (!a.is_empty())
+            .then(|| a.iter().map(|x| x.as_f64()).collect::<Option<Vec<f64>>>())
+            .flatten()
+    };
+    sv.get("surfaces")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .map(|s| nums(s.get("n_base")).or_else(|| nums(s.get("n"))))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 版 1 で、名前から屈折率が決まらない分散のない媒質（モデルガラス "nd,0"・カタログに無い名前で波長によらない値）は
+/// 書いてあった値を index にする
+fn v1_flat(p: &mut lensbench_core::Prescription, ns: &[Option<Vec<f64>>]) {
+    for j in 0..p.surfaces.len() {
+        let Some(Some(n)) = ns.get(j) else { continue };
+        let d = &p.surfaces[j];
+        if (j > 0 && (d.mirror || d.is_coord_break())) || d.grin.is_some() || d.index.is_some() {
+            continue;
+        }
+        let n0 = n[0];
+        if n.iter().any(|&x| x.to_bits() != n0.to_bits()) {
+            continue;
+        }
+        let model0 = crate::sysfile_v2::write::model_glass(&d.mat).is_some_and(|m| m.1 == 0.0);
+        if model0 || p.material_index_at(&d.mat, &p.wavelengths).is_err() {
+            p.surfaces[j].index = Some(n0);
+        }
+    }
+}
+
 /// 壊れた・手で直した系で追跡が panic しないよう、配列の長さと系の約束を確かめる
 pub fn check(sys: &System) -> lensbench_core::Result<()> {
     let nw = sys.wavelengths.len();
@@ -335,18 +377,6 @@ pub fn check(sys: &System) -> lensbench_core::Result<()> {
         return Err(
             "system file: the numbers of wavelengths, weights and primary don't match".into(),
         );
-    }
-    for (j, d) in sys.surfaces.iter().enumerate() {
-        if d.n.len() != nw {
-            return Err(format!(
-                "system file: surface {j} has {} refractive indices ({nw} wavelengths)",
-                d.n.len()
-            )
-            .into());
-        }
-        if !d.n_base.is_empty() && d.n_base.len() != nw {
-            return Err(format!("system file: surface {j} n_base count").into());
-        }
     }
     check_refs(sys)?;
     Ok(sys.check().map_err(|e| format!("system file: {e}"))?)

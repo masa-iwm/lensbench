@@ -146,7 +146,7 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
         for (k, v) in m {
             if let (Some(rest), Some(v)) = (k.strip_prefix("INDX|"), v.as_f64()) {
                 let p: Vec<usize> = rest.split('|').map(|x| x.parse().unwrap()).collect();
-                mx(&mut c.d_indx, (s.surfaces[p[0]].n[p[1]] - v).abs());
+                mx(&mut c.d_indx, (s.n(p[0])[p[1]] - v).abs());
             }
         }
     }

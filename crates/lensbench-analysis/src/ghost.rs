@@ -123,6 +123,14 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     let nw = sys.wavelengths.len();
     let (_, before_name) = coating::media_keys(sys);
     let idx_before = |m: usize| -> Vec<f64> { (0..nw).map(|w| sys.index_before(m, w)).collect() };
+    // 面 m の前の媒質を持つ面（無視する面・鏡・座標ブレークは前の媒質を通す）
+    let owner = |m: usize| -> usize {
+        let mut k = m - 1;
+        while k > 0 && (sf[k].ignore || sf[k].mirror || sf[k].is_coord_break()) {
+            k -= 1;
+        }
+        k
+    };
     let air = |s: &str| {
         if s == "AIR" {
             String::new()
@@ -184,10 +192,9 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
         g.mat = "MIRROR".into();
         g.reflect = Some(Reflect {
             mat: after_a.clone(),
-            n: d.n.clone(),
+            n: sys.n(a).to_vec(),
         });
-        g.n = idx_before(a);
-        g.n_base = Vec::new();
+        // 鏡の後ろは前の媒質（媒質を解くときに決まる）
         g.dn = 0.0;
         g.disp = 0.0;
         g.after = After::None;
@@ -235,7 +242,6 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
                     mat: "-".into(),
                     cb: cb.d,
                     cb_order: 0,
-                    n: out[lp].n.clone(),
                     ..Default::default()
                 };
                 push(&mut out, &mut origin, c, None);
@@ -251,17 +257,20 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
                 n: idx_before(b),
             });
             // 反射のあとは元の b の後ろの媒質のまま、元の b と同じ厚さ・傾きで b+1 へ
-            g.n_base = Vec::new();
             g.dn = 0.0;
             g.disp = 0.0;
         } else {
             if !d.mirror {
-                g.mat = air(&before_name[m]);
-                g.n = idx_before(m);
-                // 媒質のずれ（param）は元の前の媒質の面のもの。解決済みの n を使う
-                g.n_base = Vec::new();
-                g.dn = 0.0;
-                g.disp = 0.0;
+                // 媒質は元の前の媒質（それを持つ面の材料・屈折率・ずれを写す）
+                let k = owner(m);
+                g.mat = if k == 0 {
+                    sf[0].mat.clone()
+                } else {
+                    air(&before_name[m])
+                };
+                g.index = sf[k].index;
+                g.dn = sf[k].dn;
+                g.disp = sf[k].disp;
             }
             g.after = After::None;
             g.t = 0.0;

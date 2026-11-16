@@ -264,7 +264,7 @@ impl System {
             n_out[k] = if d.mirror || d.is_coord_break() {
                 n_in[k]
             } else {
-                d.n[w]
+                self.n(j)[w]
             };
             own_in[k] = (0..j)
                 .rev()
@@ -656,7 +656,7 @@ impl System {
         let nout = if d.mirror || d.is_coord_break() {
             self.index_before(j, w)
         } else {
-            d.n[w]
+            self.n(j)[w]
         };
         let Some(f) = self.frames().surf[j] else {
             invalid!("surface {j} is ignored");
@@ -724,7 +724,7 @@ impl System {
         let nout = if mirror_like {
             self.index_before(j, w)
         } else {
-            d.n[w]
+            self.n(j)[w]
         };
         let own_in = (0..j)
             .rev()

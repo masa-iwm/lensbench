@@ -84,8 +84,8 @@ fn fingerprint(s: &System) -> u64 {
     for x in out {
         f(f64::from_bits(x));
     }
-    for d in &s.surfaces {
-        for v in d.n.iter().chain([&d.t, &d.c]) {
+    for (j, d) in s.surfaces.iter().enumerate() {
+        for v in s.n(j).iter().chain([&d.t, &d.c]) {
             f(*v);
         }
         // 自動の半直径は光線から求めた値（光線が通らない面では求め直せず、読込の前の値は残らない）
@@ -446,8 +446,8 @@ fn edited_system_roundtrip() {
         fingerprint(&s.config(2).unwrap()),
         fingerprint(&t.config(2).unwrap())
     );
-    for (a, b) in s.surfaces.iter().zip(&t.surfaces) {
-        assert_eq!((a.dn, &a.n_base, &a.n), (b.dn, &b.n_base, &b.n));
+    for (j, (a, b)) in s.surfaces.iter().zip(&t.surfaces).enumerate() {
+        assert_eq!((a.dn, a.index, s.n(j)), (b.dn, b.index, t.n(j)));
     }
     // 読み直した系も編集できる
     let mut t = t;

@@ -309,7 +309,7 @@ pub fn surface_solves(s: &System, j: usize) -> Value {
     serde_json::json!({ "solves": solves, "pickups": pickups })
 }
 
-/// 面 j のデータを全部の項目で（系ファイルの面と同じ形。計算で作る屈折率 n・n_base・ゴーストの reflect は除く）と、
+/// 面 j のデータを全部の項目で（系ファイルの面と同じ形。ゴーストの reflect は除く）と、
 /// その面のソルブ・ピックアップ（GUI の面の設定）
 pub fn surface_data(s: &System, j: usize) -> lensbench_core::Result<Value> {
     let d = s.surfaces.get(j).ok_or_else(|| {
@@ -322,9 +322,7 @@ pub fn surface_data(s: &System, j: usize) -> lensbench_core::Result<Value> {
         .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = crate::sysfile::to_json(c)?;
     if let Some(o) = v.as_object_mut() {
-        for k in ["n", "n_base", "reflect"] {
-            o.remove(k);
-        }
+        o.remove("reflect");
     }
     let sp = surface_solves(s, j);
     Ok(serde_json::json!({ "data": v, "solves": sp["solves"], "pickups": sp["pickups"] }))
@@ -387,14 +385,14 @@ pub(crate) fn set_surface_data(
     let mut v = crate::sysfile::to_json(c)?;
     let o = v.as_object_mut().ok_or("surface data")?;
     for (k, x) in m {
-        if ["n", "n_base", "reflect", "stop", "mirror"].contains(&k.as_str()) {
+        if ["reflect", "stop", "mirror"].contains(&k.as_str()) {
             return Err(format!(
                 "surface item {k} is not changed by data (use the material or set_stop)"
             )
             .into());
         }
-        // user（利用者定義の面）と semi_autoは無ければ書き出さないので、無くても足せる
-        if !o.contains_key(k) && !["user", "semi_auto", "bire"].contains(&k.as_str()) {
+        // user（利用者定義の面）・semi_auto・index は無ければ書き出さないので、無くても足せる
+        if !o.contains_key(k) && !["user", "semi_auto", "bire", "index"].contains(&k.as_str()) {
             return Err(format!("no surface item {k}").into());
         }
         let x = coerce(x.clone(), o.get(k), k, k == "bin2");
@@ -409,9 +407,6 @@ pub(crate) fn set_surface_data(
     if d.mirror {
         d.mat = "MIRROR".into();
     }
-    // 屈折率は材料・GRIN から作り直す（dn・disp も当て直す）
-    d.n.clear();
-    d.n_base.clear();
     t.edit(|s| {
         s.surfaces[j] = d;
         Ok(())
@@ -482,7 +477,7 @@ pub(crate) fn set_system_data(
         let x = coerce(x.clone(), o.get(k), k, false);
         o.insert(k.clone(), x);
     }
-    let mut n: lensbench_core::Prescription =
+    let n: lensbench_core::Prescription =
         crate::lenient::decode(crate::sysfile::from_json(v)?, "system data")?;
     let nw = n.wavelengths.len();
     if nw == 0 {
@@ -514,11 +509,6 @@ pub(crate) fn set_system_data(
         if !(g.is_finite() && g >= 0.0) {
             return Err(format!("apodization factor {g} must be 0 or more").into());
         }
-    }
-    // 屈折率は材料・GRIN から作り直す（波長・温度・気圧が変わるかもしれない）
-    for d in &mut n.surfaces {
-        d.n.clear();
-        d.n_base.clear();
     }
     t.edit(|s| {
         *s = n;

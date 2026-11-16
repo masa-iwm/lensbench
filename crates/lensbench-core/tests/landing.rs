@@ -110,7 +110,7 @@ pub(crate) fn check(
         if d.mirror || d.is_coord_break() {
             s.index_before(last, w)
         } else {
-            d.n[w]
+            s.n(last)[w]
         }
     };
     let mut worst: f64 = 0.0;
@@ -380,7 +380,7 @@ fn shift_end_and_errors() {
     let r1 = &t2.rays[0];
     assert!((r1.xyz[2] - 1.25).abs() < 1e-15);
     assert!((tt[0] - (1.25 - r0.xyz[2]) / r0.lmn[2]).abs() < 1e-15);
-    let n = s.surfaces[s.image()].n[s.primary];
+    let n = s.n(s.image())[s.primary];
     assert!((r1.opl - r0.opl - n * tt[0]).abs() < 1e-12);
     let dp = sub(r1.p, r0.p);
     let dk = scale(r0.k, tt[0]);

@@ -169,6 +169,8 @@ pub struct Prescription {
 #[derive(Debug)]
 pub struct System {
     rx: Arc<Prescription>,
+    /// 文書から求めた媒質の屈折率（[`crate::media::Media`]）
+    media: Arc<crate::media::Media>,
     cache: Cache,
 }
 
@@ -263,17 +265,6 @@ impl Prescription {
         !self.surfaces[0].t.is_finite()
     }
 
-    /// 面 j の直前の媒質の屈折率
-    pub fn index_before(&self, j: usize, w: usize) -> f64 {
-        let mut n = self.surfaces[0].n[w];
-        for d in &self.surfaces[1..j.max(1)] {
-            if !d.ignore && !d.is_coord_break() {
-                n = d.n[w];
-            }
-        }
-        n
-    }
-
     /// 像面での光線の点。ふつうは像面の局所座標 (x, y) [mm]。アフォーカル像空間では向きの角度
     /// (atan(l/n), atan(m/n)) を [`System::afocal_unit`] の単位で（OpticStudio のスポットと同じ定義）
     pub fn image_point(&self, xyz: [f64; 3], lmn: [f64; 3]) -> (f64, f64) {
@@ -294,21 +285,17 @@ impl Prescription {
         }
     }
 
-    pub fn image_index(&self, w: usize) -> f64 {
-        self.index_before(self.image(), w)
-    }
-
     /// 系を作る: 面の値の確かめ、材料からの屈折率、ピックアップの解決、厚さのソルブ、系の確かめ、自動の半直径
     /// （[`System::edit`] と同じ後始末）
     pub fn build(self) -> Result<System> {
-        let mut s = System::from_rx(self);
+        let mut s = System::from_rx(self)?;
         s.refresh()?;
         Ok(s)
     }
 
     /// 値をそのまま置いて系を作る（ピックアップ・ソルブ・屈折率・自動の半直径は求め直さない）。系は確かめる
     pub fn build_raw(self) -> Result<System> {
-        let s = System::from_rx(self);
+        let s = System::from_rx(self)?;
         s.check()?;
         Ok(s)
     }
@@ -316,11 +303,44 @@ impl Prescription {
 
 impl System {
     /// 確かめずに作る（読み込みの途中・確かめた系の写しから）
-    pub(crate) fn from_rx(rx: Prescription) -> System {
-        System {
+    pub(crate) fn from_rx(rx: Prescription) -> Result<System> {
+        let media = Arc::new(crate::media::resolve(&rx)?);
+        Ok(System {
             rx: Arc::new(rx),
+            media,
             cache: Cache::default(),
+        })
+    }
+
+    /// 媒質の屈折率を文書から作り直す（材料・波長・温度・dn・disp などを変えた後）
+    pub(crate) fn resolve_media(&mut self) -> Result<()> {
+        self.media = Arc::new(crate::media::resolve(&self.rx)?);
+        Ok(())
+    }
+
+    /// 面 j の後の媒質の屈折率（波長ごと、dn・disp 込み。鏡・座標ブレークは前の媒質）
+    pub fn n(&self, j: usize) -> &[f64] {
+        &self.media.n[j]
+    }
+
+    /// 屈折率のずれ（dn・disp）をかける前の媒質の屈折率（面 j の後、波長 w）
+    pub fn base_index(&self, j: usize, w: usize) -> f64 {
+        self.media.base[j][w]
+    }
+
+    /// 面 j の直前の媒質の屈折率
+    pub fn index_before(&self, j: usize, w: usize) -> f64 {
+        let mut n = self.media.n[0][w];
+        for (k, d) in self.surfaces.iter().enumerate().take(j.max(1)).skip(1) {
+            if !d.ignore && !d.is_coord_break() {
+                n = self.media.n[k][w];
+            }
         }
+        n
+    }
+
+    pub fn image_index(&self, w: usize) -> f64 {
+        self.index_before(self.image(), w)
     }
 }
 
@@ -334,7 +354,8 @@ impl serde::Serialize for System {
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for System {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<System, D::Error> {
-        Prescription::deserialize(d).map(System::from_rx)
+        let p = Prescription::deserialize(d)?;
+        System::from_rx(p).map_err(serde::de::Error::custom)
     }
 }
 
@@ -376,6 +397,7 @@ impl System {
         }
         System {
             rx: self.rx.clone(),
+            media: self.media.clone(),
             cache,
         }
     }
@@ -524,6 +546,7 @@ impl System {
     /// 文書を書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てて系を確かめる）
     pub(crate) fn changed(&mut self) -> Result<()> {
         self.cache = Cache::default();
+        self.resolve_media()?;
         self.check()
     }
 
@@ -560,14 +583,14 @@ impl System {
                     invalid!("user-defined surface (surface {j}) has no model (user)");
                 }
                 let w = self.primary;
-                let (nb, na) = (self.index_before(j, w), d.n[w]);
+                let (nb, na) = (self.index_before(j, w), self.n(j)[w]);
                 if nb != 1.0 || na != 1.0 || d.mirror {
                     notimpl!("user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})");
                 }
             }
             if let (crate::action::Action::Paraxial { f, .. }, false) = (action, d.ignore) {
                 let w = self.primary;
-                let (nb, na) = (self.index_before(j, w), d.n[w]);
+                let (nb, na) = (self.index_before(j, w), self.n(j)[w]);
                 if nb != 1.0 || na != 1.0 {
                     notimpl!("paraxial lens in a medium other than air (surface {j}: {nb} → {na})");
                 }

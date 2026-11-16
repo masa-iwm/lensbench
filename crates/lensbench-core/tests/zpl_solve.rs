@@ -323,7 +323,7 @@ fn ray_functions_match_trace() {
     assert_eq!(v("RAGY(2)"), r2.p[0][1]);
     assert_eq!(v("RAYE() + RAYV()"), 0.0);
     // 面 2 までの長さ・光路長（面 1 の後のガラスの屈折率）
-    let ng = s.surfaces[1].n[0];
+    let ng = s.n(1)[0];
     let len = lensbench_core::math::norm(lensbench_core::math::sub(r2.p[0], r1.p[0]));
     assert!((v("RAYT(2)") - len).abs() < 1e-12);
     assert!((v("RAYO(2)") - ng * len).abs() < 1e-12);

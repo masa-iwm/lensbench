@@ -67,7 +67,7 @@ fn bandpass_on_plate() {
     let (tin, tout) = (transmission(&s, 0), transmission(&s, 1));
     // 裏面のフレネル（N-BK7 → 空気 ≈ 4 %）を除く
     let fres = |n: f64| 1.0 - ((n - 1.0) / (n + 1.0)).powi(2);
-    let n = |w: usize| s.surfaces[2].n[w];
+    let n = |w: usize| s.n(2)[w];
     assert!((tin / fres(n(0)) - 0.9).abs() < 1e-6, "{tin}");
     assert!((tout / fres(n(1)) - 1e-3).abs() < 1e-8, "{tout}");
     // 仕様の誤り（半値全幅が中心波長以上）は展開で誤り
@@ -97,7 +97,7 @@ fn catalog_coatings() {
         .0;
     let fres = |n: f64| 1.0 - ((n - 1.0) / (n + 1.0)).powi(2);
     let t = transmission(&s, 0);
-    assert!((t / fres(s.surfaces[2].n[0]) - 0.1).abs() < 1e-9, "{t}");
+    assert!((t / fres(s.n(2)[0]) - 0.1).abs() < 1e-9, "{t}");
     let s = expand_path(
         &project(
             r#"{"ND1": {"type": "nd", "od": 2, "absorptive": true}}"#,
@@ -109,7 +109,7 @@ fn catalog_coatings() {
     .unwrap()
     .0;
     let t = transmission(&s, 0);
-    assert!((t / fres(s.surfaces[2].n[0]) - 0.01).abs() < 1e-9, "{t}");
+    assert!((t / fres(s.n(2)[0]) - 0.01).abs() < 1e-9, "{t}");
     std::fs::remove_dir_all(&dir).ok();
 }
 

@@ -68,11 +68,11 @@ fn resolves_to_source_material() {
     let s = build(&picked());
     let e = build(&explicit());
     for k in 0..s.surfaces.len() {
-        assert_eq!(s.surfaces[k].n, e.surfaces[k].n, "面 {k}");
+        assert_eq!(s.n(k), e.n(k), "面 {k}");
     }
     assert_eq!(s.surfaces[5].mat, s.surfaces[1].mat);
-    assert_eq!(s.surfaces[4].n, vec![1.0, 1.0]);
-    assert_eq!(s.surfaces[6].n, vec![1.0, 1.0]);
+    assert_eq!(s.n(4), vec![1.0, 1.0]);
+    assert_eq!(s.n(6), vec![1.0, 1.0]);
     assert_eq!(bits(&s), bits(&e));
     let k = |d: usize| -> Vec<PickKind> {
         s.pickups
@@ -96,8 +96,8 @@ fn follows_index_change() {
         .unwrap();
     assert_eq!(c.surfaces[5].dn, 2e-3);
     assert_eq!(c.surfaces[5].disp, 0.05);
-    assert_eq!(c.surfaces[5].n, c.surfaces[1].n);
-    assert_ne!(c.surfaces[5].n, s.surfaces[5].n);
+    assert_eq!(c.n(5), c.n(1));
+    assert_ne!(c.n(5), s.n(5));
     let e = s.with_params(&[(s.param("5.dn").unwrap(), 1e-3)]);
     assert!(e
         .unwrap_err()
@@ -148,7 +148,7 @@ fn follows_material_change() {
     let mut s = build(&picked());
     s.set_material(1, "1.7,30").unwrap();
     assert_eq!(s.surfaces[5].mat, "1.7,30");
-    assert_eq!(s.surfaces[5].n, s.surfaces[1].n);
+    assert_eq!(s.n(5), s.n(1));
     let f = [(
         "material".to_string(),
         lensbench_core::edit::SurfValue::Text("1.5,60".into()),

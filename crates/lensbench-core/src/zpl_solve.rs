@@ -369,7 +369,7 @@ impl Host for SysHost<'_> {
             "RAYE" if a.is_empty() => num(self.raye),
             "RAYV" if a.is_empty() => num(self.rayv),
             "OPDC" if a.is_empty() => num(self.opdc),
-            "INDX" => Some(surf(self).map(|k| Value::Num(s.surfaces[k].n[s.primary]))),
+            "INDX" => Some(surf(self).map(|k| Value::Num(s.n(k)[s.primary]))),
             "PARM" => Some(match a {
                 [Value::Num(n), Value::Num(k)] => {
                     let k = k.trunc();

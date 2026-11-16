@@ -195,9 +195,9 @@ fn index_offsets() {
         ])
         .unwrap();
     for w in 0..base.wavelengths.len() {
-        let b0 = base.surfaces[1].n[w];
-        let want = b0 + 1e-3 + 0.02 * (b0 - base.surfaces[1].n[wp]);
-        assert_eq!(a.surfaces[1].n[w], want);
+        let b0 = base.n(1)[w];
+        let want = b0 + 1e-3 + 0.02 * (b0 - base.n(1)[wp]);
+        assert_eq!(a.n(1)[w], want);
         assert_eq!(a.base_index(1, w), b0);
     }
     // 追跡は変わる
@@ -209,14 +209,14 @@ fn index_offsets() {
         (b.param("1.disp").unwrap(), 0.0),
     ])
     .unwrap();
-    assert!(b.surfaces[1].n_base.is_empty());
+    assert_eq!(b.base_index(1, 0), b.n(1)[0]);
     same(&b, &base, "dn を 0 に戻す");
     // 鏡の後は前の媒質を引き継ぐ: 鏡の前の空気（面 7 の後）にずれを与えると鏡（面 8）の n も変わる
     let c = base
         .with_params(&[(base.param("7.dn").unwrap(), 2e-4)])
         .unwrap();
-    assert_eq!(c.surfaces[8].n, c.surfaces[7].n);
-    assert_eq!(c.surfaces[8].n[wp], base.surfaces[8].n[wp] + 2e-4);
+    assert_eq!(c.n(8), c.n(7));
+    assert_eq!(c.n(8)[wp], base.n(8)[wp] + 2e-4);
     // .zmx には書けない
     assert!(zmx_write::write(&c).is_err());
 }

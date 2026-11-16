@@ -33,6 +33,9 @@ pub struct Element {
     pub from: usize,
     /// 面（玉なら最後の面の厚さは 0）。空気間隔は空
     pub surfaces: Vec<Surface>,
+    /// 面の後の媒質の屈折率（面ごと・波長ごと、[`split`] で分けた系の値）。系から分けていない玉は空
+    /// （[`Element::efl`] は 1 とみなす）
+    pub n: Vec<Vec<f64>>,
     /// 空気間隔の厚さ [mm]
     pub t: f64,
     /// 反転してあるか
@@ -45,6 +48,7 @@ impl Element {
             kind: Kind::Air,
             from: 0,
             surfaces: Vec::new(),
+            n: Vec::new(),
             t,
             reversed: false,
         }
@@ -77,7 +81,7 @@ impl Element {
             let n1 = if i == last {
                 1.0
             } else {
-                s.n.get(w).copied().unwrap_or(1.0)
+                self.n.get(i).and_then(|v| v.get(w)).copied().unwrap_or(1.0)
             };
             let p = match s.action() {
                 _ if s.is_coord_break() => 0.0,
@@ -170,6 +174,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
             kind,
             from: j,
             surfaces: v,
+            n: (j..=k).map(|i| s.n(i).to_vec()).collect(),
             t: 0.0,
             reversed: false,
         });
@@ -197,6 +202,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
     }
     let n = e.surfaces.len();
     let mut v = Vec::with_capacity(n);
+    let mut nv = Vec::with_capacity(n);
     for i in 0..n {
         let mut s = e.surfaces[n - 1 - i].clone();
         s.c = -s.c;
@@ -256,17 +262,20 @@ pub fn reverse(e: &Element) -> Result<Element> {
             let q = &e.surfaces[n - 2 - i];
             s.t = q.t;
             s.mat = q.mat.clone();
-            s.n = q.n.clone();
+            s.index = q.index;
+            nv.extend(e.n.get(n - 2 - i).cloned());
         } else {
             let last = &e.surfaces[n - 1];
             s.t = 0.0;
             s.mat = last.mat.clone();
-            s.n = last.n.clone();
+            s.index = last.index;
+            nv.extend(e.n.get(n - 1).cloned());
         }
         v.push(s);
     }
     Ok(Element {
         surfaces: v,
+        n: nv,
         reversed: !e.reversed,
         ..e.clone()
     })
@@ -356,8 +365,9 @@ mod tests {
             assert_eq!(r.length(), e[i].length());
             let rr = reverse(&r).unwrap();
             for (x, y) in rr.surfaces.iter().zip(&e[i].surfaces) {
-                assert_eq!((x.c, x.t, &x.mat, &x.n), (y.c, y.t, &y.mat, &y.n));
+                assert_eq!((x.c, x.t, &x.mat, x.index), (y.c, y.t, &y.mat, y.index));
             }
+            assert_eq!(rr.n, e[i].n);
         }
         // 単玉の焦点距離（厚肉の式）
         let (n, c1, c2, d): (f64, f64, f64, f64) = (1.5168, 0.02, -0.005, 4.0);

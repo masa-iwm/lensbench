@@ -25,13 +25,11 @@ fn load(name: &str) -> System {
 fn tilt_image(s: &System, deg: f64) -> System {
     let mut t = s.clone();
     let at = t.image();
-    let n = t.surfaces[at - 1].n.clone();
     t.insert_surface(
         at,
         Surface {
             typ: SurfType::CoordBrk,
             cb: [0.0, 0.0, deg, 0.0, 0.0],
-            n,
             ..Default::default()
         },
     )

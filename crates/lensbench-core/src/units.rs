@@ -513,23 +513,9 @@ impl System {
             }
             s.rx_mut().units[u].motion = [0.0; 5];
         }
-        // 座標ブレークの媒質は前の媒質
-        s.fill_cb_indices();
+        // 座標ブレークの媒質は前の媒質（changed が媒質を解き直す）
         s.changed()?;
         Ok(s)
-    }
-
-    /// 座標ブレークの面の n を前の媒質にする
-    fn fill_cb_indices(&mut self) {
-        let mut prev = self.surfaces[0].n.clone();
-        for d in self.rx_mut().surfaces.iter_mut().skip(1) {
-            if d.is_coord_break() {
-                d.n = prev.clone();
-            }
-            if !d.ignore {
-                prev = d.n.clone();
-            }
-        }
     }
 }
 

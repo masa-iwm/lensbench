@@ -106,7 +106,7 @@ fn curvature_solves_meet_their_definition() {
         let (yc, uc) = &par.chief;
         let d = &s.surfaces[k];
         let n = s.index_before(k, 0);
-        let n2 = d.n[0];
+        let n2 = s.n(k)[0];
         let ok = match kind {
             SolveKind::MarginalAngle => close(um[k], -0.1, 1e-13),
             SolveKind::ChiefAngle => close(uc[k] * fmax, -0.1, 1e-13),
@@ -115,7 +115,7 @@ fn curvature_solves_meet_their_definition() {
             SolveKind::Aplanatic => close(um[k] / n2, um[k - 1] / n, 1e-13),
             SolveKind::ElementPower => {
                 let a = &s.surfaces[k - 1];
-                let ng = a.n[0];
+                let ng = s.n(k - 1)[0];
                 let (fa, fb) = (a.c * (ng - 1.0), d.c * (1.0 - ng));
                 close(fa + fb - a.t / ng * fa * fb, 0.02, 1e-13)
             }

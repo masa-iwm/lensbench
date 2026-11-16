@@ -503,7 +503,7 @@ SURF 6\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert_eq!((d[4].c, d[5].c), (-0.01, 0.02));
     assert_eq!((d[4].k, d[5].k), (0.0, -0.5));
     assert_eq!(d[4].mat, d[1].mat);
-    assert_eq!(d[4].n, d[1].n);
+    assert_eq!((d[4].index, s.n(4)), (d[1].index, s.n(1)));
     assert_eq!(d[4].t, -4.0);
     // 戻りの最後の面の後（玉の外）は変えない
     assert_eq!(d[5].t, -20.0);

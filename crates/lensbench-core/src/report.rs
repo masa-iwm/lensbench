@@ -73,7 +73,7 @@ pub fn system_data(s: &System) -> SystemData {
     }
     let totr =
         z.iter().cloned().fold(f64::MIN, f64::max) - z.iter().cloned().fold(f64::MAX, f64::min);
-    let n0 = s.surfaces[0].n[s.primary];
+    let n0 = s.n(0)[s.primary];
     let obsn = if s.infinite() {
         n0 * p.epd / 2.0 / ENPP_MAX
     } else {
@@ -144,7 +144,7 @@ pub fn cardinal(s: &System, w: usize) -> Cardinal {
     let sf = &s.surfaces;
     // 像面の手前の、無視しない最後の面
     let last = (1..img).rev().find(|&j| !sf[j].ignore).unwrap_or(0);
-    let n0 = sf[0].n[w];
+    let n0 = s.n(0)[w];
     let n1 = s.image_index(w);
     let (ya, ua) = s.ptrace(1.0, 0.0, w, Some(last));
     let (_, ub) = s.ptrace(0.0, 1.0, w, Some(last));

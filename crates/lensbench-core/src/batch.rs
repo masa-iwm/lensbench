@@ -231,7 +231,7 @@ impl<'a> Plan<'a> {
             let grin_eval = d.grin.is_some() && !d.mirror;
             // GRIN の媒質の中の面は前の屈折率が光線ごと（交点の値）
             let n_var_before = nprev_var || grin.is_some();
-            let n_tab = d.n[w];
+            let n_tab = sys.n(j)[w];
             let nn = if takes_prev(d) { nprev } else { n_tab };
             let n_var_after = grin_eval || (n_var_before && takes_prev(d));
             steps.push(Step {

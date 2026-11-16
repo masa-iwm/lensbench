@@ -369,7 +369,7 @@ fn pol_matches_scalar() {
     let mut s = load("A0");
     let w = s.primary;
     for j in 1..s.surfaces.len() {
-        if s.surfaces[j].n[w] != s.index_before(j, w) {
+        if s.n(j)[w] != s.index_before(j, w) {
             s.edit_raw(|p| {
                 p.surfaces[j].coat = "I.95".into();
                 Ok(())

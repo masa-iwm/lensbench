@@ -34,7 +34,7 @@ pub(crate) fn system(
         if r.image && j + 1 != ns {
             return Err(format!("surfaces[{j}]: only the last row is the image"));
         }
-        surfaces.push(surface(r, nw).map_err(|e| format!("surfaces[{j}]: {e}"))?);
+        surfaces.push(surface(r).map_err(|e| format!("surfaces[{j}]: {e}"))?);
     }
     let f = &p.fields;
     let npt = f.points.len();
@@ -188,7 +188,7 @@ fn named(v: &[f64]) -> Vec<f64> {
     a
 }
 
-fn surface(r: Row, nw: usize) -> Result<Surface, String> {
+fn surface(r: Row) -> Result<Surface, String> {
     let mut d = Surface {
         comment: r.comment,
         coat: r.coating,
@@ -457,7 +457,7 @@ fn surface(r: Row, nw: usize) -> Result<Surface, String> {
             }
             d.mat = if vd == 0.0 {
                 // 分散のない媒質: 名前は丸め、値は nd のまま
-                d.n = vec![nd; nw];
+                d.index = Some(nd);
                 format!("{nd:.2},{vd:.1}")
             } else if dpgf == 0.0 {
                 format!("{nd},{vd}")

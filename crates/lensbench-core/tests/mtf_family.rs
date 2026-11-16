@@ -150,8 +150,8 @@ fn added_wavelength_reproduces_the_system_indices() {
         for (w, &lam) in s.wavelengths.iter().enumerate() {
             let (d, k) = s.with_wavelength(lam).unwrap();
             assert_eq!(k, s.wavelengths.len());
-            for (j, sf) in d.surfaces.iter().enumerate() {
-                assert_eq!(sf.n[k], s.surfaces[j].n[w], "{name} 面 {j} 波長 {}", w + 1);
+            for j in 0..d.surfaces.len() {
+                assert_eq!(d.n(j)[k], s.n(j)[w], "{name} 面 {j} 波長 {}", w + 1);
             }
         }
     }

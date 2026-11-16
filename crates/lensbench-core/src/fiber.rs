@@ -223,7 +223,7 @@ pub fn fiber_coupling(
         invalid!("NA must be positive");
     }
     crate::waves::index(w + 1, s.wavelengths.len())?;
-    let n0 = s.surfaces[0].n[w];
+    let n0 = s.n(0)[w];
     let n1 = s.image_index(w);
     let smax = o.na_max.unwrap_or((3.0 * o.na_source / n0).min(0.999));
     if !(smax > 0.0 && smax < 1.0) {

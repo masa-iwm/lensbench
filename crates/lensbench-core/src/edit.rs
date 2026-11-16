@@ -296,9 +296,13 @@ impl System {
         if self.surfaces.iter().filter(|d| d.stop).count() != 1 {
             invalid!("there must be exactly one stop surface");
         }
-        let nw = self.wavelengths.len();
         for (j, d) in self.surfaces.iter().enumerate() {
             type_data_ok(d)?;
+            if let Some(n) = d.index {
+                if !(n.is_finite() && n > 0.0) {
+                    invalid!("surface {j} index {n}");
+                }
+            }
             if d.typ == SurfType::CoordBrk && (d.mirror || !no_material(&d.mat)) {
                 invalid!("surface {j}: material {} on a coordinate break", d.mat);
             }
@@ -313,12 +317,6 @@ impl System {
                     invalid!("surface {j} {name} = {v}");
                 }
             }
-            if !d.n.is_empty() && d.n.len() != nw {
-                invalid!(
-                    "surface {j}: {} refractive indices ({nw} wavelengths)",
-                    d.n.len()
-                );
-            }
         }
         if self.glrs >= ns {
             invalid!(
@@ -329,8 +327,7 @@ impl System {
         self.pick_names()?;
         self.refresh_media()?;
         self.resolve_pickups()?;
-        self.update_indices();
-        self.propagate_media();
+        self.resolve_media()?;
         if !self.solves.is_empty() || !self.macro_parms.is_empty() {
             self.solve_thickness()?;
         }
@@ -352,21 +349,6 @@ impl System {
         let (g, missing) = glass::load_catalogs(names, &glass::catalog_dirs(dirs));
         self.add_glasses(g);
         missing
-    }
-
-    /// 鏡・座標ブレークの媒質を前の媒質（無視した面は飛ばす）にそろえる
-    fn propagate_media(&mut self) {
-        let mut prev: Vec<f64> = self.surfaces[0].n.clone();
-        for j in 1..self.surfaces.len() {
-            let d = &mut self.rx_mut().surfaces[j];
-            if d.mirror || d.typ == SurfType::CoordBrk {
-                d.n = prev.clone();
-                d.n_base.clear();
-            }
-            if !d.ignore {
-                prev = d.n.clone();
-            }
-        }
     }
 
     // ------------------------------------------------------------------------------ 面の挿入・削除
@@ -520,9 +502,6 @@ impl System {
                         } else {
                             d.disp = x
                         }
-                        if d.n_base.is_empty() {
-                            d.n_base = d.n.clone();
-                        }
                     }
                     _ => unreachable!(),
                 }
@@ -562,7 +541,7 @@ impl System {
             ("jones", Nums(d.jones.to_vec())),
             ("dn", Num(d.dn)),
             ("disp", Num(d.disp)),
-            ("n", Nums(d.n.clone())),
+            ("n", Nums(self.n(j).to_vec())),
         ])
     }
 
@@ -630,12 +609,10 @@ impl System {
                 d.after = After::None;
                 d.dn = 0.0;
                 d.disp = 0.0;
-                d.n_base.clear();
+                d.index = None;
             } else if old == SurfType::CoordBrk {
                 d.cb = [0.0; 5];
                 d.cb_order = 0;
-                // 前の媒質を引き継いでいた屈折率を材料（空なら空気）から作り直す
-                d.n.clear();
             }
             if typ == SurfType::Jones {
                 d.c = 0.0;
@@ -675,8 +652,7 @@ impl System {
             } else {
                 mat.trim().to_string()
             };
-            d.n.clear();
-            d.n_base.clear();
+            d.index = None;
             if mirror {
                 d.dn = 0.0;
                 d.disp = 0.0;

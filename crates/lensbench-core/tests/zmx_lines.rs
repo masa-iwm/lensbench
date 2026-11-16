@@ -315,11 +315,11 @@ fn model_glass_matches_opticstudio() {
         .replace("WAVM 1 0.5876 1\n", "WAVM 1 0.35 1\nWAVM 2 2.3 1\n")
         .replace("FTYP 0 0 3 1 0 0 0", "FTYP 0 0 3 2 0 0 0");
     let s = build(&t);
-    let n = &s.surfaces[1].n;
+    let n = &s.n(1);
     assert_eq!(n.len(), 2);
     assert!((n[0] - 1.5353779237154606).abs() < 1e-14 && (n[1] - 1.4167988104648341).abs() < 1e-14);
     let b = build(&zmx_write::write(&s).unwrap());
-    assert_eq!(b.surfaces[1].n, s.surfaces[1].n);
+    assert_eq!(b.n(1), s.n(1));
     assert_eq!(b.surfaces[1].mat, "1.45,18,0.01");
 }
 
