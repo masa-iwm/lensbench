@@ -686,21 +686,26 @@ pub(crate) fn expand_inner(
             )),
         }
     }
-    // 裏返して置いた玉（id の無い玉の lens1 … も）。最初の範囲が玉の面と同じ玉・群
-    let flips: Vec<[usize; 2]> = (1..=c.nflip)
-        .filter_map(|k| {
-            let mut j = map
-                .iter()
-                .enumerate()
-                .filter(|x| x.1.flip == Some(k))
-                .map(|x| x.0);
-            let a = j.next()?;
-            Some([a, j.next_back().unwrap_or(a)])
-        })
+    // 裏返して置いた玉（id の無い玉の lens1 … も）: 最初の範囲の面（偏心・傾きの座標ブレークを除く）が、ちょうど
+    // 1 つの裏返した玉の面すべて（PRJ-31: 前は座標ブレークを含めて範囲を比べたので、偏心した玉は立たなかった）
+    let flipped = |s: &System, r: &[usize; 2]| -> bool {
+        let faces: Vec<usize> = (r[0]..=r[1].min(map.len() - 1))
+            .filter(|&j| !s.surfaces[j].is_coord_break())
+            .collect();
+        let Some(k) = faces.first().and_then(|&j| map[j].flip) else {
+            return false;
+        };
+        faces.iter().all(|&j| map[j].flip == Some(k))
+            && map.iter().filter(|o| o.flip == Some(k)).count() == faces.len()
+    };
+    let marks: Vec<bool> = s
+        .units
+        .iter()
+        .map(|u| u.spans.first().is_some_and(|r| flipped(&s, r)))
         .collect();
     s.edit_raw(|rx| {
-        for u in rx.units.iter_mut() {
-            u.flipped = flips.iter().any(|r| u.spans.first() == Some(r));
+        for (u, f) in rx.units.iter_mut().zip(marks) {
+            u.flipped = f;
         }
         Ok(())
     })?;

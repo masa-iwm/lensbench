@@ -880,5 +880,8 @@ fn the_expansion_maps_each_surface_to_its_blocks() {
         .all(|o| o.is_in("B") && !o.back));
     let ua = s.units.iter().find(|u| u.name == "A").unwrap();
     assert!(!ua.flipped);
-    // B（偏心つき）の flipped は PRJ-31 で直す
+    // PRJ-31: 偏心つきの裏返した玉 B も flipped（範囲は偏心の座標ブレークを含む）。B を含む群 G は立たない
+    let u = s.units.iter().find(|u| u.name == "B").unwrap();
+    assert!(u.flipped, "{:?}", u.spans);
+    assert!(!s.units.iter().find(|u| u.name == "G").unwrap().flipped);
 }
