@@ -1,4 +1,5 @@
-//! 組合せの系の絞り・ソルブ・ピックアップ: 面の表の操作を組合せの要素の surface_ops にする（app.rs から分けた）
+//! 組合せの系の絞り・ソルブ・ピックアップ・面の挿入削除: 面の表の操作を組合せの要素の surface_ops・中身の面にする
+//! （app.rs から分けた）
 
 use super::*;
 use lensbench_project::edit_ops::{
@@ -40,6 +41,31 @@ impl Core {
             // 絞りをやめる（GUI だけの操作）
             if op["op"] == "unset_stop" {
                 self.doc.combo.set_stop_face(None);
+                continue;
+            }
+            // 面の挿入・削除: 自作の玉・面の並びの中身の面を足し引きする（GPN-19）。"after" は面 at−1 の後に足す
+            // （GUI だけの欄。要素の境目でどちらの要素に足すかを決める）
+            if op["op"] == "insert_surface" || op["op"] == "delete_surface" {
+                let ins = op["op"] == "insert_surface";
+                let j = op[if ins { "at" } else { "surface" }]
+                    .as_u64()
+                    .ok_or_else(outside)? as usize;
+                let after = ins && op["after"] == json!(true);
+                let (k, i) = self
+                    .combo_face(spans, if after { j.saturating_sub(1) } else { j })
+                    .ok_or_else(|| {
+                        tr("Surfaces can be added or removed only in a custom lens or a surface list")
+                            .to_string()
+                    })?;
+                let p = self.doc.combo.el_mut(k).ok_or_else(outside)?;
+                if p.locked {
+                    return Err(tr("A locked element cannot be changed").into());
+                }
+                if ins {
+                    p.insert_face(i + usize::from(after))?;
+                } else {
+                    p.delete_face(i)?;
+                }
                 continue;
             }
             let name = op["op"].as_str().unwrap_or_default().to_string();

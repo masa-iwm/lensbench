@@ -165,8 +165,10 @@ impl Pick {
                 } else {
                     Some(face)
                 };
-                // 最後の面の後は要素の後の空気（呼ぶ側で扱う）
-                match after.filter(|&i| i + 1 < n) {
+                // 最後の面の後は要素の後の空気（呼ぶ側で扱う）。玉の中の空気（ガラスを空に）は玉のブロックに書けない
+                // ので面の上書きのまま（前と同じく系の上で空気になる）
+                let air = key == "material" && v.as_str().is_none_or(|g| g.trim().is_empty());
+                match after.filter(|&i| i + 1 < n && !air) {
                     Some(i) => write_after(&mut rows[i], key, v),
                     None => false,
                 }
@@ -193,6 +195,98 @@ impl Pick {
             self.surfs = rows;
         }
         true
+    }
+}
+
+impl Pick {
+    /// 要素に面を足す（レンズデータの表の挿入、GPN-19）。pos は系の並びの向きで、足す面の前にある要素の面の数
+    /// （座標ブレークを除く）。足した面は厚さ 0 の平面で、前後と同じ媒質にするので系は変わらない
+    pub fn insert_face(&mut self, pos: usize) -> Result<(), String> {
+        match self.kind {
+            ElemKind::Lens => {
+                let mut rows = self.lens_rows();
+                let n = rows.len();
+                if pos > n {
+                    return Err(tr("Surface outside the combination elements").into());
+                }
+                let at = if self.reversed { n - pos } else { pos };
+                // 足した面は厚さ 0。玉の中は前の面の後のガラスの平面。両端は端の面の形を写し、端の面は同じガラスの
+                // 間の面（屈折しない）になる（玉のブロックは面の間にガラスが要るので空気は挟めない）
+                let mut new = SurfRow {
+                    semi: rows[at.min(n - 1)].semi,
+                    semi_auto: rows[at.min(n - 1)].semi_auto,
+                    ..Default::default()
+                };
+                if at == 0 {
+                    new.radius = rows[0].radius;
+                    new.conic = rows[0].conic;
+                    new.glass = rows[0].glass.clone();
+                    rows.insert(0, new);
+                } else if at == n {
+                    new.radius = rows[n - 1].radius;
+                    new.conic = rows[n - 1].conic;
+                    rows[n - 1].glass = rows[n - 2].glass.clone();
+                    rows[n - 1].t = 0.0;
+                    rows.push(new);
+                } else {
+                    new.glass = rows[at - 1].glass.clone();
+                    rows.insert(at, new);
+                }
+                self.surfs = rows;
+                Ok(())
+            }
+            ElemKind::Surfaces => {
+                let at = (0..self.surfs.len())
+                    .filter(|&i| self.surfs[i].kind != SurfKind::Coordbrk)
+                    .nth(pos)
+                    .unwrap_or(self.surfs.len());
+                self.surfs.insert(at, SurfRow::default());
+                Ok(())
+            }
+            _ => Err(tr(
+                "Surfaces can be added or removed only in a custom lens or a surface list",
+            )
+            .into()),
+        }
+    }
+
+    /// 要素の面 rel（系の並びの向き、座標ブレークを除く）を消す（レンズデータの表の削除）
+    pub fn delete_face(&mut self, rel: usize) -> Result<(), String> {
+        match self.kind {
+            ElemKind::Lens => {
+                let mut rows = self.lens_rows();
+                let n = rows.len();
+                if n <= 2 {
+                    return Err(tr("A lens needs at least 2 surfaces").into());
+                }
+                if rel >= n {
+                    return Err(tr("Surface outside the combination elements").into());
+                }
+                let at = if self.reversed { n - 1 - rel } else { rel };
+                rows.remove(at);
+                // 最後の面の後は空気（要素の後の空気）
+                if let Some(last) = rows.last_mut() {
+                    last.glass.clear();
+                }
+                self.surfs = rows;
+                Ok(())
+            }
+            ElemKind::Surfaces => {
+                let i = (0..self.surfs.len())
+                    .filter(|&i| self.surfs[i].kind != SurfKind::Coordbrk)
+                    .nth(rel)
+                    .ok_or_else(|| tr("Surface outside the combination elements").to_string())?;
+                if self.surfs.len() <= 1 {
+                    return Err(tr("A surface list needs at least 1 surface").into());
+                }
+                self.surfs.remove(i);
+                Ok(())
+            }
+            _ => Err(tr(
+                "Surfaces can be added or removed only in a custom lens or a surface list",
+            )
+            .into()),
+        }
     }
 }
 
@@ -241,6 +335,10 @@ mod tests {
         p.write_face(1, "k", json!(-1.0));
         assert_eq!(p.surfs.len(), 2);
         assert_eq!((p.surfs[0].radius, p.surfs[1].conic), (60.0, -1.0));
+        // 玉の中を空気にするのは上書き
+        p.write_face(0, "material", json!(""));
+        assert_eq!((p.glass.as_str(), p.edits.len()), ("F2", 1));
+        p.edits.clear();
         // 最後の面の後（要素の後の空気）・欄の無い値は上書き
         p.write_face(1, "t", json!(9.0));
         p.write_face(0, "coating", json!("AR"));
@@ -363,6 +461,98 @@ mod tests {
         assert_eq!(p.r1, 60.0);
         assert_eq!(p.edits.len(), 1);
         assert_eq!(p.edits_for, p.surf_sig());
+    }
+
+    /// 面を足しても系（焦点距離・バックフォーカス）は変わらず、面が 1 つ増える。消すと 1 つ減る（下限あり）
+    #[test]
+    fn insert_and_delete_faces() {
+        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let env = lensbench_project::Env {
+            base: root.clone(),
+            glass_dirs: vec![root.join("tests/glass")],
+            ..Default::default()
+        };
+        let sys = |p: &Pick| {
+            let c = Combo {
+                picks: vec![p.clone()],
+                ..Default::default()
+            };
+            let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
+            lensbench_project::expand_state(&pr, &env, None).unwrap()
+        };
+        let mut l3 = lens();
+        l3.surfs = vec![
+            SurfRow {
+                radius: 50.0,
+                t: 5.0,
+                glass: "N-BK7".into(),
+                semi: 10.0,
+                ..Default::default()
+            },
+            SurfRow {
+                radius: -40.0,
+                t: 2.0,
+                glass: "F2".into(),
+                semi: 10.0,
+                ..Default::default()
+            },
+            SurfRow {
+                radius: -120.0,
+                semi: 10.0,
+                ..Default::default()
+            },
+        ];
+        let mut l3r = l3.clone();
+        l3r.reversed = true;
+        let mut lr = lens();
+        lr.reversed = true;
+        for base in [lens(), lr, l3, l3r] {
+            let s0 = sys(&base);
+            let c0 = lensbench_core::report::cardinal(&s0, 0);
+            let n = base.lens_rows().len();
+            for pos in 0..=n {
+                let mut p = base.clone();
+                p.insert_face(pos).unwrap();
+                let s1 = sys(&p);
+                let c1 = lensbench_core::report::cardinal(&s1, 0);
+                assert_eq!(s1.surfaces.len(), s0.surfaces.len() + 1);
+                assert!(
+                    (c1.efl - c0.efl).abs() < 1e-9,
+                    "{pos}: {} {}",
+                    c1.efl,
+                    c0.efl
+                );
+                assert!(
+                    (c1.bfl - c0.bfl).abs() < 1e-9,
+                    "{pos}: {} {}",
+                    c1.bfl,
+                    c0.bfl
+                );
+                // 足した面は消せる
+                p.delete_face(pos).unwrap();
+                assert_eq!(sys(&p).surfaces.len(), s0.surfaces.len());
+            }
+        }
+        // 2 面の玉は消せない。カタログの玉は足せない
+        assert!(lens().delete_face(0).is_err());
+        assert!(Pick::new(ElemKind::Catalog).insert_face(0).is_err());
+        // 面の並び: 座標ブレークを除いて数える
+        let mut p = Pick::new(ElemKind::Surfaces);
+        p.surfs = vec![
+            SurfRow {
+                kind: SurfKind::Coordbrk,
+                ..Default::default()
+            },
+            SurfRow {
+                radius: 9.0,
+                ..Default::default()
+            },
+        ];
+        p.insert_face(1).unwrap();
+        assert_eq!(p.surfs.len(), 3);
+        assert_eq!(p.surfs[1].radius, 9.0);
+        p.delete_face(0).unwrap();
+        assert_eq!(p.surfs[1].radius, 0.0);
     }
 
     /// 中身を変えない要素（カタログの玉）は上書き

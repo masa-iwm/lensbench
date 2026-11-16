@@ -279,10 +279,6 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
     if out.fx.insert || out.fx.delete {
         let cur = st.cur.map(|x| x.0).or(v.keys.first().copied());
         match cur {
-            _ if c.combo => out.acts.push(Act::Refused(
-                tr("Surfaces cannot be added or removed in a combination system (use elements)")
-                    .into(),
-            )),
             None => {}
             Some(j) => {
                 // たたんだブロックの行は、ブロックの最初の面
@@ -301,9 +297,14 @@ pub(super) fn surfaces(st: &mut LensData, c: &Ctx, v: &View, out: &mut Out) {
                     let mut ops = vec![
                         serde_json::json!({ "op": "insert_surface", "at": at, "surface": {} }),
                     ];
-                    // ブロックの中を見ているとき、そのブロック（と外のブロック）の最初の面の前に足した面もブロックに入れる
-                    // （入れないとブロックの外になって表から消える）
-                    ops.extend(grow_blocks(c.blocks, v.scope, at, after));
+                    if c.combo {
+                        // 組合せの系: 要素の中身に足す。後に足すときは前の面の要素（要素の境目でどちらに足すか）
+                        ops[0]["after"] = serde_json::json!(after);
+                    } else {
+                        // ブロックの中を見ているとき、そのブロック（と外のブロック）の最初の面の前に足した面もブロックに
+                        // 入れる（入れないとブロックの外になって表から消える）
+                        ops.extend(grow_blocks(c.blocks, v.scope, at, after));
+                    }
                     out.acts.push(Act::Ops(ops));
                     st.ins_at = Some((at, c.rows.len()));
                 } else if v.selected.len() > 1 {

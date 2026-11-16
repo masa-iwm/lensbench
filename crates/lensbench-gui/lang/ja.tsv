@@ -552,8 +552,7 @@ Add a surface after	後に面を追加
 air	空気
 Surfaces	面の並び
 Remove surface	面を削除
-Add surfaces for a cemented doublet, triplet, etc. (edit in the table)	面を追加して貼り合わせ・3 枚レンズなどにする（面の表で編集）
-(air after)	（後の空気）
+Add surfaces for a cemented doublet, triplet, etc. (edit them in the Lens Data table)	面を追加して貼り合わせ・3 枚レンズなどにする（レンズデータの表で編集）
 + Surface	＋ 面
 {} is not a combination element (select the element for its settings)	{} は組合せの要素ではありません（設定は要素を選択して）
 Tilt z	チルト z
@@ -583,7 +582,6 @@ Temperature	温度
 The object and image surfaces cannot be deleted	物体面・像面は削除できません
 Environment	環境
 Rectangular	矩形
-Surfaces cannot be added or removed in a combination system (use elements)	組合せの系では面を足し引きできません（要素で）
 Combination settings (used when a combination is built)	組合せの設定（組合せの系を作ると使われる）
 Coating file	コーティングファイル
 Loading…	読み込み中…
@@ -1553,3 +1551,7 @@ Kept as written in the file (the combination has no fields for it)	ファイル�
 Edit JSON…	JSON を直す…
 Edit the JSON of the block:	ブロックの JSON を直す:
 Not a block (JSON with "type", no branches)	ブロックでない（"type" のある JSON で、分岐は書けない）
+{} surfaces (edit them in the Lens Data table)	{} 面（レンズデータの表で編集）
+Surfaces can be added or removed only in a custom lens or a surface list	面を足し引きできるのはカスタムレンズと面の並びの中だけです
+A lens needs at least 2 surfaces	レンズには面が 2 つ以上要ります
+A surface list needs at least 1 surface	面の並びには面が 1 つ以上要ります

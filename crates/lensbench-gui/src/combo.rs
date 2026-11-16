@@ -2011,9 +2011,9 @@ pub fn ui(
     // 図の下に、選んだ要素・寸法の設定
     let sel = view.sel.and_then(|k| combo.el(k));
     let bs_sel = sel.is_some_and(|p| p.kind == ElemKind::Splitter);
-    // 面の表（自作の玉の 3 面以上・面の並び）を出すときはその分も
+    // 面の表（面の並び。自作の玉の面はレンズデータの表で編集、GPN-19）を出すときはその分も
     let rows = sel
-        .filter(|p| p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2)
+        .filter(|p| p.kind == ElemKind::Surfaces)
         .map_or(0, |p| p.surfs.len() + 1);
     let editor_h = if bs_sel { 200.0 } else { 96.0 } + 24.0 * rows as f32;
     // 図と設定に残りを分ける（パネルが低くても設定が押し出されないように。横に広く低いと左右に並べる）
@@ -2533,7 +2533,7 @@ pub fn block_settings(ui: &mut Ui, combo: &mut Combo, k: usize) {
     let locked = p.locked;
     ui.add_enabled_ui(!locked, |ui| {
         ui.horizontal_wrapped(|ui| kind_fields(ui, p, st, k, weak, &coats));
-        if p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2 {
+        if p.kind == ElemKind::Surfaces {
             surf_table(ui, p, k, weak);
         }
     });
@@ -2921,7 +2921,11 @@ fn kind_fields(
     match p.kind {
         ElemKind::Lens if p.surfs.len() >= 2 => {
             ui.label(
-                RichText::new(trf("{} surfaces (table below)", &[&p.surfs.len()])).color(weak),
+                RichText::new(trf(
+                    "{} surfaces (edit them in the Lens Data table)",
+                    &[&p.surfs.len()],
+                ))
+                .color(weak),
             );
         }
         ElemKind::Lens => {
@@ -2934,7 +2938,7 @@ fn kind_fields(
             if ui
                 .button(tr("+ Surface"))
                 .on_hover_text(tr(
-                    "Add surfaces for a cemented doublet, triplet, etc. (edit in the table)",
+                    "Add surfaces for a cemented doublet, triplet, etc. (edit them in the Lens Data table)",
                 ))
                 .clicked()
             {
@@ -3307,7 +3311,7 @@ fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     }
     if let Some(p) = combo
         .get_mut(&step.loc)
-        .filter(|p| p.kind == ElemKind::Surfaces || p.kind == ElemKind::Lens && p.surfs.len() >= 2)
+        .filter(|p| p.kind == ElemKind::Surfaces)
     {
         let locked = p.locked;
         ui.add_enabled_ui(!locked, |ui| surf_table(ui, p, k, weak));
@@ -3499,9 +3503,8 @@ pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     v
 }
 
-/// 自作の玉（3 面以上）・面の並びの面の表。自作の玉は面だけ（ガラスは面の後）、面の並びは種類を選べる
+/// 面の並びの面の表（種類を選べる。自作の玉の面はレンズデータの表で編集する、GPN-19）
 fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
-    let lens = p.kind == ElemKind::Lens;
     let n = p.surfs.len();
     let (mut del, mut add) = (None, None);
     let drag = |ui: &mut Ui, v: &mut f64| {
@@ -3514,7 +3517,7 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
         .show(ui, |ui| {
             for h in [
                 "#",
-                if lens { "" } else { tr("Type") },
+                tr("Type"),
                 "R",
                 tr("Conic"),
                 tr("Thickness"),
@@ -3527,39 +3530,29 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
             ui.end_row();
             for (i, r) in p.surfs.iter_mut().enumerate() {
                 ui.label((i + 1).to_string());
-                if lens {
-                    ui.label("");
-                } else {
-                    egui::ComboBox::from_id_salt(("surf_kind", k, i))
-                        .selected_text(r.kind.label())
-                        .show_ui(ui, |ui| {
-                            for x in [
-                                SurfKind::Standard,
-                                SurfKind::Polarizer,
-                                SurfKind::Waveplate,
-                                SurfKind::Jones,
-                                SurfKind::Coordbrk,
-                            ] {
-                                ui.selectable_value(&mut r.kind, x, x.label());
-                            }
-                        });
-                }
-                let last_lens = lens && i + 1 == n;
+                egui::ComboBox::from_id_salt(("surf_kind", k, i))
+                    .selected_text(r.kind.label())
+                    .show_ui(ui, |ui| {
+                        for x in [
+                            SurfKind::Standard,
+                            SurfKind::Polarizer,
+                            SurfKind::Waveplate,
+                            SurfKind::Jones,
+                            SurfKind::Coordbrk,
+                        ] {
+                            ui.selectable_value(&mut r.kind, x, x.label());
+                        }
+                    });
                 match r.kind {
                     SurfKind::Standard => {
                         drag(ui, &mut r.radius);
                         drag(ui, &mut r.conic);
-                        if last_lens {
-                            ui.label(RichText::new(tr("(air after)")).small().color(weak));
-                            ui.label("");
-                        } else {
-                            drag(ui, &mut r.t);
-                            ui.add(
-                                egui::TextEdit::singleline(&mut r.glass)
-                                    .desired_width(70.0)
-                                    .hint_text(tr("air")),
-                            );
-                        }
+                        drag(ui, &mut r.t);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut r.glass)
+                                .desired_width(70.0)
+                                .hint_text(tr("air")),
+                        );
                         ui.horizontal(|ui| {
                             ui.add_enabled(!r.semi_auto, egui::DragValue::new(&mut r.semi).speed(0.1));
                             ui.checkbox(&mut r.semi_auto, tr("Auto"))
@@ -3679,9 +3672,8 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                     {
                         add = Some(i + 1);
                     }
-                    let min = if lens { 2 } else { 1 };
                     if ui
-                        .add_enabled(n > min, egui::Button::new("✖").small())
+                        .add_enabled(n > 1, egui::Button::new("✖").small())
                         .on_hover_text(tr("Remove surface"))
                         .clicked()
                     {
@@ -3700,14 +3692,6 @@ fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
                 ..Default::default()
             },
         );
-        // 自作の玉の最後に足したら、前の最後の面の後はガラスにする
-        if lens && i + 1 == p.surfs.len() {
-            let prev = &mut p.surfs[i - 1];
-            if prev.glass.trim().is_empty() {
-                prev.glass = "N-BK7".into();
-                prev.t = 2.0;
-            }
-        }
     }
     if let Some(i) = del {
         p.surfs.remove(i);
