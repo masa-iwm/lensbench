@@ -32,6 +32,18 @@ fn register_builtin(reg: &mut Registry) {
     lensbench_analysis::register(reg);
 }
 
+/// Add the built-in plugins whose names are not in reg yet. A plugin an extension module installed
+/// with the same name stays, so the order of `init_module` and the extension's install does not matter (PRV-30)
+fn add_missing_builtin(reg: &mut Registry) {
+    let mut b = Registry::new();
+    register_builtin(&mut b);
+    for p in b.plugins() {
+        if reg.get(p.name()).is_err() {
+            reg.register(p.clone());
+        }
+    }
+}
+
 /// The plugins of the current extension table (a copy; the contents are Arc, so it is light)
 fn read_registry() -> Registry {
     lensbench_core::ext::current().plugins().clone()
@@ -509,7 +521,7 @@ fn verify_compare<'py>(
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    write_registry(register_builtin);
+    write_registry(add_missing_builtin);
     m.add_function(wrap_pyfunction!(verify, m)?)?;
     m.add_function(wrap_pyfunction!(verify_compare, m)?)?;
     m.add_class::<PyPlugin>()?;

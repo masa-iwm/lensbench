@@ -2864,9 +2864,9 @@ fn lensbench(m: &Bound<'_, PyModule>) -> PyResult<()> {
     init_module(m)
 }
 
-/// Add the functions and classes to the module. To build it into another extension module, call this from its `#[pymodule]` and then
-/// add to the defaults of the extension table (`lensbench_core::ext::update_default`, `lensbench_engine::Extensions::install`)
-/// (registering first would turn names shared with the bundled plugins back to the bundled ones)
+/// Add the functions and classes to the module. To build it into another extension module, call this from its `#[pymodule]` and
+/// add to the defaults of the extension table (`lensbench_core::ext::update_default`, `lensbench_engine::Extensions::install`),
+/// before or after: the bundled plugins are added only under names not in the table yet, so the extension's plugin wins either way
 pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // threads= を省いた計算の既定（lensbench run --threads が渡す）
     lensbench_core::init_from_env();
