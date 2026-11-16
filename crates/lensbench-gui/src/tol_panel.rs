@@ -1033,8 +1033,15 @@ fn result_ui(ui: &mut Ui, r: &Value, sel: &mut usize, as_cdf: &mut bool, weak: e
         r["merit"].clone(),
     )];
     for t in r["terms"].as_array().into_iter().flatten() {
+        // 項の単位を名前に添える（spot・ray は mm、wavefront・opd は波、GUX-20）
+        let label = text_of(&t["label"]);
+        let unit = term_unit(&label);
         rows.push((
-            text_of(&t["label"]),
+            if unit.is_empty() {
+                label
+            } else {
+                format!("{label} [{unit}]")
+            },
             t["nominal"].clone(),
             t["stats"].clone(),
         ));
@@ -1176,9 +1183,27 @@ fn item_name(v: &Value) -> String {
     lensbench_core::i18n::tr_item(&text_of(v))
 }
 
+/// 公差の項の名前（"spot #1"・"wavefront #2 (config 1)" など）から値の単位
+fn term_unit(label: &str) -> &'static str {
+    // ray は量（x・y の mm か l・m・n の方向余弦）で単位が違い、名前からは決まらないので添えない
+    match label.split([' ', '#']).next().unwrap_or_default() {
+        "spot" | "centroid" => "mm",
+        "wavefront" | "opd" | "zernike" => tr("waves"),
+        _ => "",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn term_units() {
+        assert_eq!(term_unit("spot #1"), "mm");
+        assert_eq!(term_unit("wavefront #2 (config 1)"), tr("waves"));
+        assert_eq!(term_unit("mtf #3"), "");
+        assert_eq!(term_unit("ray #4"), "");
+    }
 
     #[test]
     fn spec_round_trip() {

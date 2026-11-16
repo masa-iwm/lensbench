@@ -352,6 +352,8 @@ pub struct Host {
     pub title: String,
     /// このパネルの egui が頼んだ描き直しまでの時間 [ms]（一番短いもの。[`Host::take_again`]）
     again: std::sync::Arc<std::sync::Mutex<Option<f64>>>,
+    /// フォントを並べた言語（日本語か。変わったら並べ直す、GUX-32）
+    ja: Option<bool>,
 }
 
 impl Host {
@@ -379,6 +381,7 @@ impl Host {
             last_out: Value::Null,
             title: String::new(),
             again,
+            ja: None,
         }
     }
 
@@ -419,6 +422,12 @@ impl Host {
             return (None, None);
         }
         self.ctx.set_style(main.style());
+        // 文章のフォントの順を元のタブと同じ言語に（言語を変えたら並べ直す）
+        let ja = crate::i18n::is_ja();
+        if self.ja != Some(ja) {
+            crate::fonts::follow_lang(&self.ctx);
+            self.ja = Some(ja);
+        }
         let mut raw = egui::RawInput {
             screen_rect: Some(self.rect),
             time: Some(now_ms() / 1000.0),

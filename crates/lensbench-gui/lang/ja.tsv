@@ -497,7 +497,7 @@ Input half width	入力の半幅
 No aperture	開口なし
 Output samples	出力のサンプル数
 Output half width	出力の半幅
-Ray pattern	光線の並び
+Ray pattern	光線のパターン
 Output surfaces	出力する面
 First surface	最初の面
 Last surface	最後の面
@@ -1087,7 +1087,7 @@ Detector {} is not available in this build (its settings are kept)	検出器 {} 
 Detector settings: {}	検出器の設定: {}
 Mounted: mount length {} mm, outer diameter {} mm, smallest bore {} mm (added as a mechanical part when placed)	マウント付き: マウントの長さ {} mm、外径 {} mm、最小の内径 {} mm（置くと機構部品として付きます）
 Seat on element	座に合わせる
-Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)	部品の座（保持する素子を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）
+Places the part so that its seat (the face the held element rests on) meets the front of the held element (instead of the element and face to place on; z is an offset from there)	部品の座（保持する要素を当てる面）を、保持する要素の前面に合わせて置きます（置く要素・面の代わり。z はそこからのずれ）
 Fitting mechanical parts ({})…	入る機構部品（{}）…
 Light enters from the other end of the mount	光はマウントの逆の端から入る
 The mount from the STEP keeps the STEP's coordinate direction, with light entering from the low-z end (the "mount end" above). Check this if the drawing's arrow shows the opposite	STEP のマウントは STEP の座標の向きで、光は z の小さい端（上の「マウントの端」）から入るとしています。図面の矢印などで逆なら選択します
@@ -1420,7 +1420,7 @@ Delete surface	面を削除
 Insert surface	面を挿入
 Open {}	{} を開く
 Reload {}	{} を再読み込み
-Optics that fit {} (holding diameter {} mm)	{}（保持径 {} mm）に入る素子
+Optics that fit {} (holding diameter {} mm)	{}（保持径 {} mm）に入る光学素子
 Mechanics that hold {} (diameter {} mm)	{}（径 {} mm）が入る機構部品
 , holding diameter {} mm	、保持径 {} mm
 Tubes, mounts and cage plates that this item's diameter fits. Picking one adds it to the combination's mechanics (if this item is in the combination, it holds it and seats it)	この製品の径が入るチューブ・マウント・ケージプレート。選択すると組合せの機構部品に追加します（組合せにこの製品があれば、それを保持して座に合わせます）
@@ -1433,7 +1433,7 @@ Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (d
 Optics	光学素子
 Optics (all)	光学素子（すべて）
 No fitting mechanics	入る機構部品なし
-Filter fitting optics ({})	入る素子（{}）で絞る
+Filter fitting optics ({})	入る光学素子（{}）で絞る
 Mechanics (all)	機構部品（すべて）
 Added to the combination (the open system is unchanged; build it with "▶ Build a system from this combination")	組合せに追加しました（開いた系はそのまま。「▶ 組合せの系を作る」で作ります）
 Add to the open system	開いた系に追加

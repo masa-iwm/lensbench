@@ -1003,7 +1003,7 @@ block {id} is not made a lens or group parameter: {e}	ブロック {id} をレ�
 {tag}: the after part {prev_name} is not before it	{tag}: after の部品 {prev_name} が前にありません
 {tag}: offset is not a number	{tag}: offset が数ではありません
 {tag}: seat needs holds (the seat position) in the part size	{tag}: seat には部品の寸法の holds（座の位置）が必要です
-{tag}: seat needs holds (the held element)	{tag}: seat には holds（保持する素子）が必要です
+{tag}: seat needs holds (the held element)	{tag}: seat には holds（保持する光学素子）が必要です
 {tag}: no block {b}, not placed	{tag}: ブロック {b} が無いので置きません
 {tag}: a place (at) or seat is needed	{tag}: 置く所（at）か seat が必要です
 {tag}: surface {} (1 to {})	{tag}: 面 {}（1〜{}）
@@ -1128,7 +1128,7 @@ surface {j}: ghost reflection medium: {e}	面 {j}: ゴーストの反射の媒�
 the numbers of wavelengths, weights and primary don't match	波長・ウェイト・主波長の数が合いません
 projection plane {s} must be yz or xz	投影面 {s} は yz か xz
 color by {s} must be field, wave or cfg	色分け {s} は field・wave・cfg のどれか
-ray pattern {s} must be y, x, cross, grid or ring	光線の並び {s} は y・x・cross・grid・ring のどれか
+ray pattern {s} must be y, x, cross, grid or ring	光線のパターン {s} は y・x・cross・grid・ring のどれか
 {}: the extension must be csv, json or npz	{}: 拡張子は csv・json・npz のどれか
 npz is over 4 GB	npz が 4 GB を超えます
 npz is too large	npz が大きすぎます
@@ -1678,10 +1678,10 @@ Item kinds (lens, mirror, splitter, polarizer, waveplate, window, filter, prism,
 Maker (contains; case, spaces and symbols are ignored)	メーカー（含む。大文字小文字・空白・記号は無視）
 Words in the part number, description, tags or specs (separated by spaces, all must be present)	型番・説明・タグ・仕様に含む語（空白で区切るとすべて含む）
 Spec conditions (more than one allowed, all must hold): `name` (present), `name=value` (numbers equal, range specs contain, strings contain), `name=a..b`, `name>=value`, `<=`, `>`, `<` (range specs by overlap). E.g. `wavelength_nm=633`, `extinction_ratio>=1000`	仕様の条件（複数可、すべて満たす）: `名前`（ある）、`名前=値`（数は一致、範囲の仕様は含む、文字列は含む）、`名前=a..b`、`名前>=値`・`<=`・`>`・`<`（範囲の仕様は重なりで）。例 `wavelength_nm=633`・`extinction_ratio>=1000`
-Only mechanical parts (tubes, mounts, cage plates) that hold an element of diameter [mm]: holding diameter at least the diameter and no more than 0.25 mm larger	径 [mm] の素子が入る機構部品（チューブ・マウント・ケージプレート）だけ: 保持径が径以上、径 + 0.25 mm 以下
+Only mechanical parts (tubes, mounts, cage plates) that hold an element of diameter [mm]: holding diameter at least the diameter and no more than 0.25 mm larger	径 [mm] の光学素子が入る機構部品（チューブ・マウント・ケージプレート）だけ: 保持径が径以上、径 + 0.25 mm 以下
 List the specs with fixed names	名前の決まった仕様の一覧を出す
 Measure an item's STEP (.step, .stp)	製品の STEP（.step・.stp）を測る
-Thickness and diameter; glass and frame (`frame`) for mounted items; mechanical parts without glass (tubes, cage plates, mounts) as a whole frame (`mech`; `frame` with the bore, length, outer diameter, threads, rod spacing and the element held)	厚み・径、マウント付きの製品は硝材とマウント（`frame`）、硝材の無い機構部品（チューブ・ケージプレート・マウント）は全体をマウントとして（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する素子）
+Thickness and diameter; glass and frame (`frame`) for mounted items; mechanical parts without glass (tubes, cage plates, mounts) as a whole frame (`mech`; `frame` with the bore, length, outer diameter, threads, rod spacing and the element held)	厚み・径、マウント付きの製品は硝材とマウント（`frame`）、硝材の無い機構部品（チューブ・ケージプレート・マウント）は全体をマウントとして（`mech`、`frame` に穴・長さ・外径・ねじ・ロッドの間隔・保持する光学素子）
 Fetch one detailed STEP of an item from its official source (the item's `cad.step`) and put it in the cache	製品の詳しい形の STEP を公式の配布元（製品の `cad.step`）から 1 件だけ取り、キャッシュに置く
 From the second time the cache is used. The fetched STEP is measured like catalog-step and differences from the catalog's simple outline (`mech` length, outer diameter and shape) are shown	2 回目からはキャッシュを使う。取った STEP を catalog-step と同じ読み方で測り、カタログの簡易外形（`mech` の長さ・外径・外形の形）との食い違いを示す
 User catalog	ユーザーカタログ
@@ -1696,7 +1696,7 @@ Write the layout (section or 3D) and rays	レイアウト（断面図・立体�
 The format is chosen by the --out extension: 2D svg, png or dxf; 3D gltf, glb, obj or stl; step (stp) for CAD	形式は --out の拡張子で決める:2D は svg・png・dxf、3D は gltf・glb・obj・stl、CAD 用は step（stp）
 Field numbers (from 1, comma-separated; all fields if omitted)	視野の番号（1 始まり、カンマ区切り、省略で全視野）
 Wavelength numbers (from 1, comma-separated, all for every one; the primary wavelength if omitted)	波長の番号（1 始まり、カンマ区切り、all で全部、省略で主波長）
-Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)	光線の並び（y・x・cross・grid・ring）。省略で 2D は y、3D・STEP は ring（主光線と瞳の縁）
+Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)	光線のパターン（y・x・cross・grid・ring）。省略で 2D は y、3D・STEP は ring（主光線と瞳の縁）
 Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1). If omitted, 7 for y, 12 for ring	光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を追加した n+1 本）。省略で y は 7、ring は 12
 First surface to draw (if omitted, the object surface when a finite object is near, otherwise surface 1)	描き始める面（省略で、有限の物体が近ければ物体面、ほかは面 1）
 Last surface to draw (the image surface if omitted)	描き終える面（省略で像面）
@@ -2070,12 +2070,12 @@ the glass and mount are one solid, so the glass is taken between the faces that 
 measured {} solids ({} with a bore) as the mount of a mechanical part without glass	硝材の無い機構部品として、立体 {} 個（穴のある立体 {}）をマウントとして測りました
 length {} mm, outer diameter {} mm (side of the cage plate), rod spacing {} mm, smallest inner diameter (clear aperture) {} mm	長さ {} mm・外径 {} mm（ケージプレートの一辺）・ロッドの間隔 {} mm・最小の内径（クリア開口）{} mm
 length {} mm, outer diameter {} mm, smallest inner diameter (clear aperture) {} mm	長さ {} mm・外径 {} mm・最小の内径（クリア開口）{} mm
-inner thread {thread} (for elements of diameter {} mm)	内側のねじ {thread}（入る素子の径 {} mm）
+inner thread {thread} (for elements of diameter {} mm)	内側のねじ {thread}（入る光学素子の径 {} mm）
 the seat is the mount end (not known from the STEP)	座の位置はマウントの端（STEP から分かりません）
-the seat is the bore step narrower than the held element	座の位置は保持する素子より細い穴の段
+the seat is the bore step narrower than the held element	座の位置は保持する光学素子より細い穴の段
 the seat is the face behind the retaining ring	座の位置は止め輪の奥の面
-the supplied retaining ring (inner diameter {ds} mm) moves with the element, so it isn't part of the mount	付属の止め輪 1 個（内径 {ds} mm）は素子に合わせて動かすのでマウントに含めません
-the {n} supplied retaining rings (inner diameter {ds} mm) move with the element, so they aren't part of the mount	付属の止め輪 {n} 個（内径 {ds} mm）は素子に合わせて動かすのでマウントに含めません
+the supplied retaining ring (inner diameter {ds} mm) moves with the element, so it isn't part of the mount	付属の止め輪 1 個（内径 {ds} mm）は光学素子に合わせて動かすのでマウントに含めません
+the {n} supplied retaining rings (inner diameter {ds} mm) move with the element, so they aren't part of the mount	付属の止め輪 {n} 個（内径 {ds} mm）は光学素子に合わせて動かすのでマウントに含めません
 largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis	円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり
 {} solids, largest diameter of {} circles ({} parallel to the axis) and extent of {} vertices along the axis	立体 {} 個、円 {} 個（軸に平行 {} 個）の最大の直径と、頂点 {} 個の軸の向きの広がり
 no circles, so a box of {} vertices (along the coordinate axes)	円が無いので頂点 {} 個の箱（座標軸の向き）

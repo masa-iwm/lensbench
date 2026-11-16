@@ -152,7 +152,7 @@ pub fn center_tweak(bytes: &[u8], index: u32) -> Option<f32> {
 mod tests {
     use super::*;
 
-    /// GUX-29: 無い記号は代わりの字に、ある記号はそのまま
+    /// GUX-32: 日本語は日本語のフォントを先に、英語は欧文を先に
     #[test]
     fn reorder_puts_japanese_first_or_last() {
         let mut f: Vec<String> = ["ja", "Ubuntu", "emoji"].map(String::from).to_vec();
@@ -164,6 +164,7 @@ mod tests {
         assert!(!reorder(&mut none, true));
     }
 
+    /// GUX-29: 無い記号は代わりの字に、ある記号はそのまま
     #[test]
     fn gux29_glyph_or_falls_back_for_missing_symbols() {
         let ctx = egui::Context::default();
