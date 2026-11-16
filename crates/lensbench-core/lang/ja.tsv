@@ -1268,10 +1268,10 @@ paraxial: efl must be finite and nonzero, efl_tol 0 or more	paraxial: efl は 0 
 paraxial: variable {name} must be a thickness with a range (e.g. {name}=1:20)	paraxial: 変数 {name} は範囲つきの厚みに（例 {name}=1:20）
 paraxial: 12 variables at most (it tries every corner of the ranges)	paraxial: 変数は 12 個まで（範囲の角をすべて試すため）
 paraxial: the variables must be thicknesses with a range	paraxial: 変数は範囲つきの厚みに
-paraxial: the focal length over the variable ranges ({range}{}) misses the target {t} ± {tol}	paraxial: 変数の範囲での焦点距離（{range}{}）が目標 {t} ± {tol} に届きません
+paraxial: the focal length over the variable ranges ({range}) misses the target {t} ± {tol}	paraxial: 変数の範囲での焦点距離（{range}）が目標 {t} ± {tol} に届きません
+paraxial: in state {n}, the focal length over the variable ranges ({range}) misses the target {t} ± {tol}	paraxial: 状態 {n} で、変数の範囲での焦点距離（{range}）が目標 {t} ± {tol} に届きません
 {a:.4} mm or less, {b:.4} mm or more	{a:.4} mm 以下か {b:.4} mm 以上
 {:.4} to {:.4} mm	{:.4}〜{:.4} mm
-, state {}	、状態 {}
 beam width and passes must be 1 or more	beam の width・passes は 1 以上
 beam search: no candidate of place {} could be evaluated (first: {})	ビーム探索: 所 {} のどの候補も評価できません（最初の理由: {}）
 place {} appears twice	所 {} が 2 回あります

@@ -102,10 +102,12 @@ impl SwapSearch<'_> {
                 } else {
                     format!("{:.4} to {:.4} mm", a.min(b), a.max(b))
                 };
-                return Err(format!(
-                    "paraxial: the focal length over the variable ranges ({range}{}) misses the target {t} ± {tol}",
-                    if pr.configs.len() > 1 { format!(", state {}", c + 1) } else { String::new() }
-                )
+                return Err(if pr.configs.len() > 1 {
+                    let n = c + 1;
+                    format!("paraxial: in state {n}, the focal length over the variable ranges ({range}) misses the target {t} ± {tol}")
+                } else {
+                    format!("paraxial: the focal length over the variable ranges ({range}) misses the target {t} ± {tol}")
+                }
                 .into());
             }
         }
