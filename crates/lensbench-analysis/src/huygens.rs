@@ -414,6 +414,15 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
 /// 直接変換すると、格子の端の打ち切りの影響が残る。OpticStudio の Huygens MTF も PSF の FFT）。
 /// 格子の間隔 Δ のナイキスト 1/(2Δ) を超える周波数は NaN
 pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
+    // 強度が NaN の点（像面の形の外など）を含む PSF からは、どの周波数の値も決まらない（変換も規格化の全光量も
+    // 格子の全点の和）。全部 NaN にする（下の補間の max(0) で NaN が 0 に化けないよう、先に返す）
+    if p.i.rows().flatten().any(|v| v.is_nan()) {
+        let nan = vec![f64::NAN; freqs.len()];
+        return TanSag {
+            tan: nan.clone(),
+            sag: nan,
+        };
+    }
     // 周辺分布（x・y への射影）
     let mut mx = vec![0.0; p.i.nx()];
     let mut my = vec![0.0; p.i.ny()];
@@ -484,6 +493,12 @@ pub fn huygens_mtf(
 ) -> Result<Mtf> {
     let w = w.one();
     let p = huygens_psf(s, field, Waves::all_or(w), o)?;
+    // 像の格子の一部で強度が決まらない（像面の矢高が求まらない点）PSF の MTF は、どの周波数も決まらない。
+    // 結果（Mtf）に注意の欄が無いので、NaN の並びを黙って返さず理由つきの誤りにする
+    let off = p.i.rows().flatten().filter(|v| v.is_nan()).count();
+    if off > 0 {
+        invalid!("Huygens MTF: the PSF intensity is undefined at {off} image grid points (the image surface sag can't be found there); reduce the image grid or spacing");
+    }
     let TanSag { tan, sag } = psf_mtf(&p, freqs);
     Ok(Mtf {
         freqs: freqs.to_vec(),

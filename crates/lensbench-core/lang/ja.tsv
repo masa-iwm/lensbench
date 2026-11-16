@@ -215,6 +215,7 @@ Huygens PSF image grid spacing {d}	Huygens PSF の像のグリッドの間隔 {d
 Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)	Huygens PSF: 像のグリッドの幅が瞳の標本の周期を超えます（波長 {}、瞳のグリッドを増やすか、像のグリッド・間隔を減らしてください）
 Huygens PSF: no valid rays (all vignetted)	Huygens PSF: 有効な光線がありません（すべてケラレました）
 Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts} image grid points (outside the surface shape); their intensity is NaN	Huygens PSF: 像のグリッドの {npts} 点のうち {off_surface} 点で像面の矢高が求まりません（面の形の外）。その点の強度は NaN
+Huygens MTF: the PSF intensity is undefined at {off} image grid points (the image surface sag can't be found there); reduce the image grid or spacing	Huygens MTF: 像のグリッドの {off} 点で PSF の強度が決まりません（像面の矢高が求まらない点）。像のグリッド・間隔を減らしてください
 no weighted wavelength	ウェイトのある波長がありません
 setting method must be auto, interp, direct or fft ({x})	設定 method は auto・interp・direct・fft に（{x}）
 setting reference must be centroid or chief ({x})	設定 reference は centroid か chief に（{x}）

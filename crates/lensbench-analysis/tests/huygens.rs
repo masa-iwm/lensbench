@@ -220,4 +220,22 @@ fn huygens_points_outside_the_image_surface_are_nan() {
         p.warnings
     );
     assert!(p.enclosed.is_finite());
+    // その PSF の MTF はどの周波数も決まらない: 変換は全部 NaN（調和周波数の間も 0 にしない）、
+    // huygens_mtf は理由つきの誤り
+    let ny = 0.5 / p.delta.0;
+    let fs = [0.0, 0.1 * ny, 0.37 * ny, 0.5 * ny];
+    let m = lensbench_analysis::huygens::psf_mtf(&p, &fs);
+    assert!(
+        m.tan.iter().chain(&m.sag).all(|v| v.is_nan()),
+        "{:?} {:?}",
+        m.tan,
+        m.sag
+    );
+    let e = huygens_mtf(&s, f, Waves::One(s.primary), o, &fs)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("undefined at"), "{e}");
+    // NaN の無い PSF では有限（間の周波数も）
+    let m0 = lensbench_analysis::huygens::psf_mtf(&p0, &fs);
+    assert!(m0.tan.iter().chain(&m0.sag).all(|v| v.is_finite()));
 }
