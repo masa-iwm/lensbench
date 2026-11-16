@@ -1,5 +1,5 @@
 # テストの実行（cargo-nextest）。exe をまたいでテストを並べて回す（cargo test は exe を 1 本ずつ順に回し、遅い 3 本
-# batch・mtf_family_refs・huygens_refs が実行時間の 6〜9 割を占めていた。公開 #216 BLD-04）。
+# batch・mtf_family_refs（いまは lensbench-verify の mtf_refs）・huygens_refs が実行時間の 6〜9 割を占めていた。公開 #216 BLD-04）。
 # 各テストは別のプロセスで動く（1 つの exe にまとめたテストどうしでも、グローバルな状態を取り合わない）。
 #   cargo nextest run --profile ci --cargo-profile ci --workspace   （エイリアス: cargo t）
 

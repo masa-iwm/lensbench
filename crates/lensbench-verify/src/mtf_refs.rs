@@ -1,6 +1,24 @@
-#![allow(clippy::neg_cmp_op_on_partial_ord)]
-//! スルーフォーカス MTF・MTF vs 視野・RMS の各種・FFT PSF・幾何 MTFを
-//! OpticStudio 26.1 と照合する（tests/refs/<系>/mtf_family.json・psf_os.npz）。
+//! OpticStudio 26.1 の MTF 系の基準（tests/refs/<系>/mtf.json・mtf_weights.json・mtf_family.json・psf_os.npz）との照合。
+//!
+//! [`crate::zemax_refs`] と同じく、このクレートのテスト（`tests/mtf_refs.rs`）と、別の基準・ガラスで同じ照合を
+//! かけたい側の両方から呼ぶ（照合の中身を 1 か所に置く。PRJ-19）。各関数は合わなかった項目を返す（空なら合格）。
+//! `only` に系の名前（カンマ区切り）を渡すとそれだけ。
+//!
+//! # FFT MTF（mtf.json）
+//! 回折 MTF を OpticStudio 26.1 の FFT MTF（mtf.json、MTFT・MTFS 演算子の多色の値）と照合する。
+//!
+//! 基準は sampling 512（なければ 256）。OpticStudio 側も sampling を上げると値が動くので、許容差は系ごとに
+//! 「2 × |最良の sampling − 1 つ前|」を 2.5e-3〜5e-3 に収めたもの（mtf.json の tolerance）。
+//! skip_fields は照合しない視野（A6 の 4 番目: 口径食の角度 VANN で瞳が回っている視野。OpticStudio の
+//! 縮尺は cos(VAN) に近いが根拠がないので合わせない）。A6v は A6 の口径食の係数をすべて 0 にした系。
+//!
+//! C0・C1・E0・E1（収差が大きい系）は視野ごとに方法を選んだ基準（fields[].method）: OPD の傾きが小さい視野
+//! （E0・E1 の視野 1）だけ FFT MTF sampling 512、ほかは FFT が収束しない（傾き 70〜700 波）ので幾何 MTF ×
+//! 回折限界 sampling 1024。幾何 MTF の最初の周波数は OS の多色の幾何 MTF が 0.01 ほど高く出る（sampling に
+//! よらない、D4 の低い周波数と同じ挙動）ので FFT s512 の値に置き換えてある。許容差は 5e-3〜1e-2 に収めた値。
+//! 多色の重みは A0 の重みを変えた系（mtf_weights.json）で別に確かめる。
+//!
+//! # スルーフォーカス MTF・MTF vs 視野・RMS・幾何 MTF・FFT PSF（mtf_family.json）
 //!
 //! 許容差（理由）
 //! - RMS: スポットは相対 1e-6、波面は相対 5e-5 + 2e-5 波（収差のない D 系で OS は 1e-5 波ほどの値を返す）、Strehl は 1e-4（Gauss 求積は OS と同じ点・重み）。
@@ -22,24 +40,29 @@
 //!   根拠がないので合わせない（で決定）。A6 の視野 4 は外す。
 //! - A6 の MTF vs 視野は OS が VDY・VCY を視野の間で補間して使うため端（h > 0.75）で最大 0.05 違うので外し、
 //!   口径食の係数をすべて 0 にした A6v で照合する（RMS vs 視野は A6 でも合う）。
+#![allow(clippy::unwrap_used, clippy::panic, clippy::neg_cmp_op_on_partial_ord)] // 試験から呼ぶ照合の中身（XCT-35）。NaN も不合格にする
 
-use crate::common::{refs_dir, root};
 use lensbench_core::psf;
 use lensbench_core::sweep::{self, FieldAxis, RmsOpts, RmsRef};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx::{self, LoadOptions};
-use lensbench_core::Waves;
+use lensbench_core::{analysis, Waves};
 use ndarray::Array2;
 use ndarray_npy::NpzReader;
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
-fn load(name: &str) -> System {
+fn load(refs: &Path, glass: &[PathBuf], name: &str) -> System {
     let opt = LoadOptions {
         cfg: 1,
-        catalog_dirs: vec![root().join("tests/glass")],
+        catalog_dirs: glass.to_vec(),
         ..Default::default()
     };
-    zmx::load_with(&refs_dir().join(name).join("system.zmx"), &opt).unwrap()
+    zmx::load_with(&refs.join(name).join("system.zmx"), &opt).unwrap()
+}
+
+fn read(path: &Path) -> Value {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
 fn nums(v: &Value) -> Vec<f64> {
@@ -50,28 +73,43 @@ fn nums(v: &Value) -> Vec<f64> {
         .collect()
 }
 
+/// 数の列（どれも数であること。mtf.json の形）
+fn all_nums(v: &Value) -> Vec<f64> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap())
+        .collect()
+}
+
 fn wave(v: &Value) -> Option<usize> {
     v.as_u64().map(|w| w as usize - 1)
 }
 
-/// 照合する系（mtf_family.json があるもの）と基準
-fn cases() -> Vec<(String, Value)> {
-    let mut v: Vec<(String, Value)> = std::fs::read_dir(refs_dir())
+/// `refs` の下で `file` を持つ系の名前（名前の順、`only` で絞る）
+pub fn systems_with(refs: &Path, file: &str, only: Option<&str>) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(refs)
         .unwrap()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().join("mtf_family.json").exists())
-        .map(|e| {
-            let n = e.file_name().to_string_lossy().into_owned();
-            let p = e.path().join("mtf_family.json");
-            (
-                n,
-                serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap(),
-            )
-        })
+        .flatten()
+        .filter(|e| e.path().join(file).exists())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    v.sort_by(|a, b| a.0.cmp(&b.0));
-    assert!(!v.is_empty());
+    v.sort();
+    if let Some(only) = only {
+        v.retain(|n| only.split(',').any(|o| o == n));
+    }
     v
+}
+
+/// 照合する系（mtf_family.json があるもの）と基準
+fn cases(refs: &Path, only: Option<&str>) -> Vec<(String, Value)> {
+    systems_with(refs, "mtf_family.json", only)
+        .into_iter()
+        .map(|n| {
+            let r = read(&refs.join(&n).join("mtf_family.json"));
+            (n, r)
+        })
+        .collect()
 }
 
 /// MTF 系の許容差の倍率
@@ -81,6 +119,85 @@ fn mtf_scale(name: &str) -> f64 {
     } else {
         1.0
     }
+}
+
+/// 基準 r（mtf.json の形）との差の最大
+fn mtf_worst(s: &lensbench_core::system::System, r: &Value) -> f64 {
+    let freqs = all_nums(&r["freqs"]);
+    let skip: Vec<u64> = r["skip_fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_u64().unwrap())
+        .collect();
+    let mut worst: f64 = 0.0;
+    for f in r["fields"].as_array().unwrap() {
+        let fi = f["field"].as_u64().unwrap();
+        if skip.contains(&fi) {
+            continue;
+        }
+        let m = analysis::mtf(
+            s,
+            FieldSel::Index(fi as usize - 1),
+            Waves::All,
+            None,
+            &freqs,
+        )
+        .unwrap();
+        for (got, want) in [(&m.tan, all_nums(&f["T"])), (&m.sag, all_nums(&f["S"]))] {
+            for (g, w) in got.iter().zip(&want) {
+                worst = worst.max((g - w).abs());
+            }
+        }
+    }
+    worst
+}
+
+/// 回折 MTF（FFT MTF、mtf.json）
+pub fn fft_mtf(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
+    let mut bad = Vec::new();
+    for name in systems_with(refs, "mtf.json", only) {
+        let r = read(&refs.join(&name).join("mtf.json"));
+        let tol = r["tolerance"].as_f64().unwrap();
+        let w = mtf_worst(&load(refs, glass, &name), &r);
+        eprintln!("{name}: max |MTF − OpticStudio| = {w:.2e}（許容 {tol}）");
+        if !(w <= tol) {
+            bad.push(format!("{name} {w:.2e} > {tol}"));
+        }
+    }
+    tag("FFT MTF", bad)
+}
+
+/// 多色の波長の重み: A0 の重みを 1・2・0.5 に変えた系の OpticStudio の値（A0/mtf_weights.json、無ければ何もしない）。
+/// 重みを 1 に戻すと合わなくなることも確かめる（重みが効いていることの確かめ）
+pub fn mtf_weights(refs: &Path, glass: &[PathBuf]) -> Vec<String> {
+    let p = refs.join("A0/mtf_weights.json");
+    if !p.exists() {
+        return Vec::new();
+    }
+    let r = read(&p);
+    let mut s = load(refs, glass, "A0");
+    s.edit_raw(|p| {
+        p.weights = all_nums(&r["weights"]);
+        Ok(())
+    })
+    .unwrap();
+    let tol = r["tolerance"].as_f64().unwrap();
+    let mut bad = Vec::new();
+    let w = mtf_worst(&s, &r);
+    if !(w <= tol) {
+        bad.push(format!("A0 {w:.2e} > {tol}"));
+    }
+    s.edit_raw(|p| {
+        p.weights = vec![1.0; p.weights.len()];
+        Ok(())
+    })
+    .unwrap();
+    let w1 = mtf_worst(&s, &r);
+    if !(w1 > 3.0 * tol) {
+        bad.push(format!("A0 重み 1 でも {w1:.2e}（重みが効いていない）"));
+    }
+    tag("MTF の波長の重み", bad)
 }
 
 /// 差の最大（両方有限の点だけ。lensbench だけ NaN なら無限大）
@@ -99,15 +216,15 @@ fn max_diff(got: &[f64], want: &[f64]) -> f64 {
     m
 }
 
-fn report(what: &str, bad: Vec<String>) {
-    assert!(bad.is_empty(), "{what}: {bad:#?}");
+/// 合わなかった項目に照合の名前を付ける
+fn tag(what: &str, bad: Vec<String>) -> Vec<String> {
+    bad.into_iter().map(|b| format!("{what}: {b}")).collect()
 }
 
-#[test]
-fn through_focus_mtf_matches_opticstudio() {
+pub fn through_focus(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
     let mut bad = Vec::new();
-    for (name, r) in cases() {
-        let s = load(&name);
+    for (name, r) in cases(refs, only) {
+        let s = load(refs, glass, &name);
         let fr = nums(&r["frequencies"]);
         let mut worst: f64 = 0.0;
         for it in r["through_focus"].as_array().unwrap() {
@@ -137,7 +254,7 @@ fn through_focus_mtf_matches_opticstudio() {
         }
         eprintln!("{name}: スルーフォーカス MTF の差 最大 {worst:.2e}");
     }
-    report("スルーフォーカス MTF", bad);
+    tag("スルーフォーカス MTF", bad)
 }
 
 /// 自然 3 次スプライン（節 x の値 y）の点 t の値
@@ -171,25 +288,13 @@ fn natural_spline(x: &[f64], y: &[f64], t: f64) -> f64 {
     u * y[i] + v * y[i + 1] + ((u * u * u - u) * m[i] + (v * v * v - v) * m[i + 1]) * h * h / 6.0
 }
 
-#[test]
-fn natural_spline_reproduces_a_line_and_its_nodes() {
-    let x = [0.0, 0.3, 0.5, 1.0];
-    let y: Vec<f64> = x.iter().map(|v| 2.0 * v + 1.0).collect();
-    assert!((natural_spline(&x, &y, 0.77) - 2.54).abs() < 1e-12);
-    let y2 = [0.0, 1.0, -1.0, 0.5];
-    for (xi, yi) in x.iter().zip(y2) {
-        assert!((natural_spline(&x, &y2, *xi) - yi).abs() < 1e-12);
-    }
-}
-
-#[test]
-fn mtf_vs_field_matches_opticstudio() {
+pub fn mtf_vs_field(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
     let mut bad = Vec::new();
-    for (name, r) in cases() {
+    for (name, r) in cases(refs, only) {
         if name == "A6" || name == "A3" {
             continue;
         }
-        let s = load(&name);
+        let s = load(refs, glass, &name);
         let fm = &r["mtf_vs_field"];
         let nn = fm["nodes"].as_u64().unwrap() as usize;
         let nodes = sweep::steps01(nn);
@@ -220,14 +325,13 @@ fn mtf_vs_field_matches_opticstudio() {
         }
         eprintln!("{name}: MTF vs 視野の差 最大 {worst:.2e}");
     }
-    report("MTF vs 視野", bad);
+    tag("MTF vs 視野", bad)
 }
 
-#[test]
-fn rms_family_matches_opticstudio() {
+pub fn rms_family(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
     let mut bad = Vec::new();
-    for (name, r) in cases() {
-        let s = load(&name);
+    for (name, r) in cases(refs, only) {
+        let s = load(refs, glass, &name);
         let nw = s.wavelengths.len();
         let ny = FieldAxis::Y.value(&s, 1.0);
         let mut worst = [0.0f64; 3];
@@ -319,17 +423,16 @@ fn rms_family_matches_opticstudio() {
             worst[0], worst[1], worst[2]
         );
     }
-    report("RMS", bad);
+    tag("RMS", bad)
 }
 
-#[test]
-fn geometric_mtf_matches_opticstudio() {
+pub fn geometric_mtf(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
     let mut bad = Vec::new();
-    for (name, r) in cases() {
+    for (name, r) in cases(refs, only) {
         if name == "D4" {
             continue;
         }
-        let s = load(&name);
+        let s = load(refs, glass, &name);
         let mut worst: f64 = 0.0;
         for it in r["geometric_mtf"].as_array().unwrap() {
             let field = it["field"].as_u64().unwrap() as usize;
@@ -358,18 +461,17 @@ fn geometric_mtf_matches_opticstudio() {
         }
         eprintln!("{name}: 幾何 MTF の差 最大 {worst:.2e}");
     }
-    report("幾何 MTF", bad);
+    tag("幾何 MTF", bad)
 }
 
-#[test]
-fn fft_psf_matches_opticstudio() {
+pub fn fft_psf(refs: &Path, glass: &[PathBuf], only: Option<&str>) -> Vec<String> {
     let mut bad = Vec::new();
-    for (name, r) in cases() {
-        let p = refs_dir().join(&name).join("psf_os.npz");
+    for (name, r) in cases(refs, only) {
+        let p = refs.join(&name).join("psf_os.npz");
         if !p.exists() {
             continue;
         }
-        let s = load(&name);
+        let s = load(refs, glass, &name);
         let mut npz = NpzReader::new(std::fs::File::open(p).unwrap()).unwrap();
         let mut worst: f64 = 0.0;
         for it in r["psf"]["items"].as_array().unwrap() {
@@ -418,5 +520,21 @@ fn fft_psf_matches_opticstudio() {
         }
         eprintln!("{name}: FFT PSF の差 / 許容差 最大 {worst:.2}");
     }
-    report("FFT PSF", bad);
+    tag("FFT PSF", bad)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::natural_spline;
+
+    #[test]
+    fn natural_spline_reproduces_a_line_and_its_nodes() {
+        let x = [0.0, 0.3, 0.5, 1.0];
+        let y: Vec<f64> = x.iter().map(|v| 2.0 * v + 1.0).collect();
+        assert!((natural_spline(&x, &y, 0.77) - 2.54).abs() < 1e-12);
+        let y2 = [0.0, 1.0, -1.0, 0.5];
+        for (xi, yi) in x.iter().zip(y2) {
+            assert!((natural_spline(&x, &y2, *xi) - yi).abs() < 1e-12);
+        }
+    }
 }

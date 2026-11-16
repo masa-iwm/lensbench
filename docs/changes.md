@@ -284,6 +284,9 @@
   並びは前と同じで、値の意味を `value_kind`・`term_value_kinds` で足した。
 - `lensbench_runs::Sampler` は `params` と `draws: Draws` に（`vars`・`seed` の欄はなくした。種は `draws.seed()`）。`Dist` に
   `End`（lo か hi を半々）と `Disc`（円の中の分布の 1 成分）、組の分布 `Joint::Disc` と `Sampler::with_joints` を足した。
+- OpticStudio の MTF 系の基準（mtf.json・mtf_weights.json・mtf_family.json・psf_os.npz）との照合を core の試験から
+  `lensbench_verify::mtf_refs`（`fft_mtf`・`mtf_weights`・`through_focus`・`mtf_vs_field`・`rms_family`・`geometric_mtf`・`fft_psf`）に
+  移した（PRJ-19）。`zemax_refs::check_dir` と同じく基準・ガラスのフォルダを渡して、別の基準にも同じ照合をかけられる。
 - 展開の入口を 1 本にした（PRJ-12）: `lensbench_project::expand(&project, &env, &ExpandOpts { state, path, cache })` が
   `Expansion { system, notes, gaps }` を返す。消したのは `expand_state`・`expand_report`・`expand_gaps`・`expand_gaps_cached`・
   `expand_path`・`load`・`load_state`・`load_state_report`・`load_path_report`・`expand_json`・`expand_json_path`。ファイルからは

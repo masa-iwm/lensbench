@@ -41,6 +41,7 @@
 
 #![warn(unreachable_pub)]
 
+pub mod mtf_refs;
 pub mod zemax_refs;
 
 use std::collections::BTreeMap;

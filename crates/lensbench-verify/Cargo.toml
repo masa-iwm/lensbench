@@ -19,7 +19,7 @@ lensbench-project = { path = "../lensbench-project" }
 lensbench-design = { path = "../lensbench-design" }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 ndarray = "0.16"
-ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "num-complex-0_4"] }
+ndarray-npy = { version = "0.9", default-features = false, features = ["npz", "compressed_npz", "num-complex-0_4"] }
 
 # 結合テストは tests/it.rs の 1 つの exe にまとめる（ファイルごとの exe を作らない。公開 #216 BLD-03）
 [[test]]

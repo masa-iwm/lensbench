@@ -36,7 +36,7 @@
 `mtf` は回折 MTF（変調度、子午・球欠）。`--wave` を省くと多色（波長の重みで平均）、`--freqs` を省くと 0 から遮断周波数の
 0.95 倍までの 21 点（遮断周波数は計算した波長の値、多色は主波長。結果の `cutoff` は `tangential`・`sagittal`）。瞳関数の自己相関を、ずらした 2 つの瞳の重なりで直接求積する（OPD は瞳の格子を 1 度追跡して補間）。求積の点の数は
 OPD の傾きから自動で決める（`--n` で指定も可）。OpticStudio の FFT MTF と同じく瞳の座標（主光線に垂直な面）で計算するので、
-像面の傾き・回転は考えない。照合は `tests/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 系で 3e-4〜2e-3）。
+像面の傾き・回転は考えない。照合は `crates/lensbench-verify/src/mtf_refs.rs`（OpticStudio の FFT MTF の sampling 512・256 と 24 系で 3e-4〜2e-3）。
 `--each-wave` で多色に加えて波長ごとの MTF（`waves`）も出す（波長ごとの計算を使い回すので別々に求めるより約 2 倍速い）。
 `--method fft` は瞳関数（直径 512〜4096 点の格子）の自己相関を FFT で全周波数まとめて求める: 時間が周波数の数によらないので、
 周波数が多いとき（目安 100 点超）や収差の大きい系で速い。求積との差は 24 系で 1e-4 以下（`examples/mtf_fft.rs`）。
@@ -65,7 +65,7 @@ MTF のまわりの解析（`tests/mtf_family.rs` で既存の MTF・スポッ�
   OpticStudio の Huygens PSF とは瞳 256 で D0 3e-3・A0 2e-2（OS は瞳の標本を増やすほど lensbench に近づく）、像の間隔を固めた Huygens MTF とは 3e-3
   （`tests/huygens_refs`、許容差と理由は `crates/lensbench-analysis/tests/huygens_refs.rs`）。OS の自動の Huygens MTF は像の格子が狭く、低周波が高く出る。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
-- OpticStudio 26.1 との照合は `tests/refs/<系>/mtf_family.json`・`psf_os.npz`（24 系、許容差と理由は `crates/lensbench-core/tests/mtf_family_refs.rs`）。
+- OpticStudio 26.1 との照合は `tests/refs/<系>/mtf_family.json`・`psf_os.npz`（24 系、許容差と理由は `crates/lensbench-verify/src/mtf_refs.rs`）。
 - Python は `System.mtf`（`method="fft"`・`each_wave=True`）・`mtf_focus`・`mtf_field`・`rms`（`vs=`）・`psf`・`geo_mtf`・`huygens_psf`・`huygens_mtf`。
 
 ## 例
