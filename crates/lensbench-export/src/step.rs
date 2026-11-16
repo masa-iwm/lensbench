@@ -22,6 +22,8 @@ pub struct StepReport {
     /// 機構部品の輪の立体
     pub mechs: usize,
     pub rays: usize,
+    /// 利用者に見せる注意（写した品の STEP の長さを直せなかった実体など。PRJ-22）
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,7 +57,12 @@ impl crate::step_embed::Sink for Ents {
 }
 
 /// 機構部品を取った品の STEP の立体で書く（写した立体の番号）。STEP が無いか写せなければ None
-fn embed_mech(e: &mut Ents, m: &MechShape, details: &crate::detail::Details) -> Option<Vec<usize>> {
+fn embed_mech(
+    e: &mut Ents,
+    m: &MechShape,
+    details: &crate::detail::Details,
+    notes: &mut Vec<String>,
+) -> Option<Vec<usize>> {
     let (file, flip) = m.step.as_ref()?;
     let d = details.load(file)?;
     let src = d.step.as_ref()?;
@@ -77,6 +84,7 @@ fn embed_mech(e: &mut Ents, m: &MechShape, details: &crate::detail::Details) -> 
         (fr.r, fr.o)
     };
     let mut out = Vec::new();
+    let mut unscaled = std::collections::BTreeSet::new();
     for (k, (shell, mt)) in src.shells.iter().enumerate() {
         let name = text(&format!("{} detail {}", m.name, k + 1));
         out.push(crate::step_embed::embed_shell(
@@ -87,7 +95,15 @@ fn embed_mech(e: &mut Ents, m: &MechShape, details: &crate::detail::Details) -> 
             (&r, o),
             &name,
             real,
+            &mut unscaled,
         )?);
+    }
+    if !unscaled.is_empty() {
+        let types: Vec<String> = unscaled.into_iter().collect();
+        let (name, types) = (&m.name, types.join(", "));
+        notes.push(format!(
+            "the STEP of {name} is not in mm; lengths in these entities may be left unscaled: {types}"
+        ));
     }
     (!out.is_empty()).then_some(out)
 }
@@ -992,7 +1008,7 @@ pub fn write_step<W: Write>(w: &mut W, sc: &Scene, o: &OptionsStep) -> std::io::
     }
     for m in &sc.mechs {
         if let Some(src) = &o.mech_detail {
-            if let Some(v) = embed_mech(&mut e, m, src) {
+            if let Some(v) = embed_mech(&mut e, m, src, &mut rep.notes) {
                 rep.mechs += v.len();
                 items.extend(v);
                 continue;

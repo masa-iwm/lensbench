@@ -66,7 +66,7 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
         }
     }
     let (s, spec) = sess.current()?;
-    let (sc, notes) = layout_scene(sess, &s, &spec, &q)?;
+    let (sc, mut notes) = layout_scene(sess, &s, &spec, &q)?;
     // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
     let draw = Draw {
         plane: if f.is_2d() { plane_of(&q)? } else { Plane::YZ },
@@ -78,7 +78,8 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
         mech_detail: mech_detail(p),
     };
     let (o2, o3) = draw.options(config_sel(p)?.any())?;
-    lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
+    let w = lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
+    notes.extend(w.notes);
     Ok(json!({
         "written": path.display().to_string(),
         "format": format!("{f:?}").to_lowercase(),

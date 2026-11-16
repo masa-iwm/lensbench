@@ -788,6 +788,7 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
         "state",
         "beam_path",
         "history",
+        "strict_macros",
     ];
     known_keys(p, &keys)?;
     let (glass, lens) = (&p["glass_dirs"], &p["lens_catalogs"]);
@@ -809,6 +810,12 @@ fn load_spec(sess: &Session, p: &Value) -> Result<LoadSpec, RpcErr> {
         state: p["state"].as_str().map(str::to_string),
         path,
         names: lensbench_project::open::ArgNames::SERVE,
+        strict_macros: match &p["strict_macros"] {
+            Value::Null => false,
+            v => v
+                .as_bool()
+                .ok_or_else(|| RpcErr::params("strict_macros must be true or false"))?,
+        },
     })
 }
 

@@ -81,6 +81,9 @@ pub struct Common {
     /// File to write the result to (csv, json or npz by extension)
     #[arg(long)]
     pub save: Option<PathBuf>,
+    /// Stop with an error when a ZPL macro solve of a .zmx can't be solved (by default the value is the same as OpticStudio's and a warning is shown)
+    #[arg(long = "strict-macros")]
+    pub strict_macros: bool,
 }
 
 impl Common {
@@ -93,6 +96,7 @@ impl Common {
             cfg: self.cfg,
             state: self.state.clone(),
             path: self.path.clone(),
+            strict_macros: self.strict_macros,
             ..Default::default()
         }
     }
@@ -905,8 +909,13 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let mut written = Vec::new();
             for (p, f) in out.iter().zip(&fmts) {
                 let sc = scenes[usize::from(!f.is_2d())].as_ref().unwrap();
-                lensbench_export::write_layout(p, sc, &o2, &o3)?;
-                written.push(json!({ "file": p.display().to_string(), "format": format!("{f:?}").to_lowercase() }));
+                let w = lensbench_export::write_layout(p, sc, &o2, &o3)?;
+                let mut row = json!({ "file": p.display().to_string(), "format": format!("{f:?}").to_lowercase() });
+                // 写した品の STEP の長さを直せなかった実体など（PRJ-22）
+                if !w.notes.is_empty() {
+                    row["notes"] = json!(w.notes);
+                }
+                written.push(row);
             }
             let sc = scenes.iter().flatten().next().unwrap();
             let (lo, hi) = sc.bounds();
@@ -1140,6 +1149,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                         path: None,
                         json,
                         save: None,
+                        strict_macros: false,
                     };
                     lensbench_project::lens_item(&load(&c)?, k, &description)?
                 }

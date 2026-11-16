@@ -1442,6 +1442,7 @@ no index {INDEX} in {}	{} に目録 {INDEX} がありません
 the STEP can't be measured: {e}	STEP を測れません: {e}
 the STEP can't be read (truck)	STEP を読めません（truck）
 the STEP can't be triangulated	STEP を三角形にできません
+the STEP of {name} is not in mm; lengths in these entities may be left unscaled: {types}	{name} の STEP は mm でなく、次の実体の長さは mm に直っていないかもしれません: {types}
 the gzip content is too large	gzip の中身が大きすぎます
 {name} has no STEP URL (cad.step)	{name} に STEP の URL（cad.step）がありません
 a store that gets a token must be https: {u}	トークンを送る保管場所は https だけ: {u}
@@ -1612,6 +1613,8 @@ Beam splitter path of a project file (T and R in the order the BSs are passed, e
 Output JSON	JSON で出力する
 Print JSON	JSON で出す
 File to write the result to (csv, json or npz by extension)	結果をエクスポートするファイル（拡張子で csv・json・npz）
+Stop with an error when a ZPL macro solve of a .zmx can't be solved (by default the value is the same as OpticStudio's and a warning is shown)	.zmx の ZPL マクロのソルブを解けなければ誤りで止める（デフォルトは OpticStudio と同じ値で読み、注意を出す）
+{n} macro solve(s) can't be solved (strict macros): {list}	解けないマクロのソルブが {n} 個あります（厳密な読込）: {list}
 File to write (.json or .zmx)	エクスポートするファイル（.json か .zmx）
 Write the system to .zmx (an expanded project, etc.)	系を .zmx にエクスポート（プロジェクトの展開など）
 With --beam-paths, --states or --cfgs, put one configuration per item into a multi-configuration .zmx (per BS path, etc.; surfaces that differ are ignored with IGNR)	--beam-paths・--states・--cfgs で、構成ごとに 1 構成の多重構成の .zmx にまとめる（BS の経路ごとなど。面の並びが違う分は IGNR で無視する）

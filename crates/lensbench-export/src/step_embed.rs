@@ -6,7 +6,7 @@
 //! 3 次元の曲線（`SURFACE_CURVE`・`SEAM_CURVE` の 1 つ目）にする。
 use lensbench_core::math::V3;
 use lensbench_step::{refs, split, StepFile};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// 品の STEP（[`crate::detail::Detail::step`]）
 #[derive(Debug, Clone)]
@@ -46,6 +46,68 @@ fn own_length_args(ty: &str) -> &'static [usize] {
         "VECTOR" | "OFFSET_SURFACE" | "OFFSET_CURVE_3D" => &[1],
         _ => &[],
     }
+}
+
+/// 実数を持つが長さではない（単位を直さなくてよい）型: B スプラインの節点（径数）・重み、部分の型の名前だけのもの
+fn unit_free(ty: &str) -> bool {
+    matches!(
+        ty,
+        "B_SPLINE_CURVE_WITH_KNOTS"
+            | "B_SPLINE_SURFACE_WITH_KNOTS"
+            | "RATIONAL_B_SPLINE_CURVE"
+            | "RATIONAL_B_SPLINE_SURFACE"
+            | "B_SPLINE_CURVE"
+            | "B_SPLINE_SURFACE"
+            | "UNIFORM_CURVE"
+            | "UNIFORM_SURFACE"
+            | "QUASI_UNIFORM_CURVE"
+            | "QUASI_UNIFORM_SURFACE"
+            | "BEZIER_CURVE"
+            | "BEZIER_SURFACE"
+    )
+}
+
+/// 文字列の外に実数（小数点のある数）があるか
+fn has_real(args: &str) -> bool {
+    let b = args.as_bytes();
+    let mut in_str = false;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'\'' {
+            in_str = !in_str;
+        } else if !in_str && c == b'#' {
+            // 参照の番号は飛ばす
+            i += 1;
+            while i < b.len() && b[i].is_ascii_digit() {
+                i += 1;
+            }
+            continue;
+        } else if !in_str && c.is_ascii_digit() {
+            let st = i;
+            while i < b.len()
+                && (b[i].is_ascii_digit() || matches!(b[i], b'.' | b'E' | b'e' | b'+' | b'-'))
+            {
+                i += 1;
+            }
+            if args[st..i].contains('.') {
+                return true;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// 単位を直す表に無く、実数を持つ型（長さの引数かもしれないのに直さなかった。PRJ-22）なら Some(型の名前)
+fn unscaled_type<'a>(ty: &'a str, args: &[&str], own: bool) -> Option<&'a str> {
+    let known = if own {
+        !own_length_args(ty).is_empty()
+    } else {
+        !length_args(ty).is_empty()
+    };
+    (!known && !unit_free(ty) && args.iter().any(|a| has_real(a))).then_some(ty)
 }
 
 /// 複合の実体の本体（`(A(…) B(…))`）を部分 `A(…)` の並びに分ける。複合でなければ None
@@ -96,7 +158,9 @@ pub trait Sink {
 }
 
 /// 殻を 1 つ写し、`MANIFOLD_SOLID_BREP` の番号を返す。`place` は部品の座標 [mm] から書き出す座標への変換
-/// （回転の行列の列が軸、原点）。写せなければ None
+/// （回転の行列の列が軸、原点）。写せなければ None。単位の倍率 k が 1 でないとき、長さを直す表に無く実数を持つ
+/// 型の名前を `unscaled` に足す（長さなら mm に直っていない。PRJ-22）
+#[allow(clippy::too_many_arguments)]
 pub fn embed_shell(
     sink: &mut impl Sink,
     ents: &StepFile,
@@ -105,6 +169,7 @@ pub fn embed_shell(
     place: (&[[f64; 3]; 3], V3),
     name: &str,
     real: fn(f64) -> String,
+    unscaled: &mut BTreeSet<String>,
 ) -> Option<usize> {
     // 辺の曲線: SURFACE_CURVE・SEAM_CURVE は 3 次元の曲線に置き換える
     let alias = |id: u64| -> u64 {
@@ -194,14 +259,25 @@ pub fn embed_shell(
                 }
                 format!("{ty}({})", a.join(","))
             }
-            Some((ty, args)) => scaled(ty, &args, length_args(ty), k, real),
+            Some((ty, args)) => {
+                if k != 1.0 {
+                    unscaled.extend(unscaled_type(ty, &args, false).map(String::from));
+                }
+                scaled(ty, &args, length_args(ty), k, real)
+            }
             // 複合の実体: 部分ごとに長さを直す（PRJ-22）
             None => match complex_parts(body) {
                 Some(parts) => {
                     let v: Vec<String> = parts
                         .iter()
                         .map(|p| match split(p) {
-                            Some((ty, args)) => scaled(ty, &args, own_length_args(ty), k, real),
+                            Some((ty, args)) => {
+                                if k != 1.0 {
+                                    unscaled
+                                        .extend(unscaled_type(ty, &args, true).map(String::from));
+                                }
+                                scaled(ty, &args, own_length_args(ty), k, real)
+                            }
                             None => p.to_string(),
                         })
                         .collect();
@@ -273,5 +349,28 @@ mod tests {
             complex_parts("(A('x)y') B(1,(2,3)))").unwrap(),
             ["A('x)y')", "B(1,(2,3))"]
         );
+    }
+
+    /// 長さを直す表に無く実数を持つ型を拾う。B スプラインの節点・参照の番号・文字列の中の数は数えない（PRJ-22）
+    #[test]
+    fn unknown_types_with_reals_are_reported() {
+        let t = |b: &str, own: bool| {
+            let (ty, a) = split(b).unwrap();
+            unscaled_type(ty, &a, own).map(String::from)
+        };
+        assert_eq!(
+            t(
+                "TRIMMED_CURVE('',#4,(PARAMETER_VALUE(0.)),(PARAMETER_VALUE(2.5)),.T.,.PARAMETER.)",
+                false
+            )
+            .as_deref(),
+            Some("TRIMMED_CURVE")
+        );
+        assert_eq!(t("B_SPLINE_CURVE_WITH_KNOTS('',3,(#1,#2,#3,#4),.UNSPECIFIED.,.F.,.F.,(4,4),(0.,1.),.UNSPECIFIED.)", false), None);
+        assert_eq!(t("CIRCLE('',#5,2.)", false), None);
+        assert_eq!(t("EDGE_CURVE('1.5',#12,#13,#14,.T.)", false), None);
+        assert_eq!(t("SURFACE_OF_REVOLUTION('',#3,#4)", false), None);
+        assert_eq!(t("CIRCLE(2.)", true), None);
+        assert_eq!(t("MYSTERY(1.5)", true).as_deref(), Some("MYSTERY"));
     }
 }

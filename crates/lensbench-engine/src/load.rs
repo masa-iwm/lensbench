@@ -26,6 +26,9 @@ pub struct SysSpec {
     pub path: Option<String>,
     /// 誤りの文に書く引数の名前（既定は CLI の旗。serve の load は [`lensbench_project::open::ArgNames::SERVE`]）
     pub names: lensbench_project::open::ArgNames,
+    /// マクロのソルブを解けなかったら（途中で止まった・外して保存された値で固定した）誤りにする。既定（false）は
+    /// OpticStudio と同じ値で読み、注意を出す（IOO-22、11/17 の決定）
+    pub strict_macros: bool,
 }
 
 impl SysSpec {
@@ -69,6 +72,15 @@ pub fn load_source_notes(
     c: &SysSpec,
 ) -> Result<(System, Vec<String>), lensbench_core::Error> {
     let o = src.open(&c.open_spec())?;
+    if c.strict_macros {
+        let w = o.system.macro_warnings();
+        if !w.is_empty() {
+            let (n, list) = (w.len(), w.join("; "));
+            return Err(lensbench_core::Error::Invalid(format!(
+                "{n} macro solve(s) can't be solved (strict macros): {list}"
+            )));
+        }
+    }
     let mut notes = o.warnings;
     notes.extend(system_notes(&o.system));
     Ok((o.system, notes))
@@ -399,4 +411,41 @@ pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> lensbench_core::Result
         needs: need,
         auto,
     })
+}
+
+#[cfg(test)]
+mod strict_tests {
+    use super::*;
+
+    /// 途中で止まるマクロのソルブ: 既定は注意だけで読み、strict_macros なら誤り（IOO-22）
+    #[test]
+    fn strict_macros_turns_the_macro_warning_into_an_error() {
+        let d = std::env::temp_dir().join(format!("lb_strict_macros_{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("LBMID.ZPL"),
+            "SOLVERETURN -0.03\nx = nosuchvar\nSOLVERETURN 1\n",
+        )
+        .unwrap();
+        let zmx = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 3 1 0 0 0\n\
+XFLN 0 0 0\nYFLN 0 14 20\nFWGN 1 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.02\n  DISZ 5\n  GLAS ___BLANK 1 0 1.5168 64.17 0 0 0 0 0\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 2\n  TYPE STANDARD\n  CURV -1.23e-2 12 0 0 0 \"LBMID\"\n  DISZ 45\n  DIAM 6 1 0 0 1 \"\"\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+        let f = d.join("s.zmx");
+        std::fs::write(&f, zmx).unwrap();
+        let mut c = SysSpec {
+            file: f,
+            cfg: 1,
+            ..Default::default()
+        };
+        let (s, notes) = load_file_notes(&c).unwrap();
+        assert_eq!(s.surfaces[2].c, -0.03);
+        assert!(notes.iter().any(|n| n.contains("LBMID")), "{notes:?}");
+        c.strict_macros = true;
+        let e = load_file_notes(&c).unwrap_err().to_string();
+        assert!(e.contains("strict macros") && e.contains("LBMID"), "{e}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

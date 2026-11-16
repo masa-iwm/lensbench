@@ -96,13 +96,21 @@ impl LayoutFormat {
     }
 }
 
+/// 書き出した結果（[`write_layout`]）
+#[derive(Debug, Clone)]
+pub struct Written {
+    pub format: LayoutFormat,
+    /// 利用者に見せる注意（STEP に写した品の長さを直せなかった実体など。PRJ-22）
+    pub notes: Vec<String>,
+}
+
 /// 場面を書き出す（形式はファイルの拡張子で決める）
 pub fn write_layout(
     path: &Path,
     sc: &scene::Scene,
     o2: &d2::Options2D,
     o3: &mesh::Options3D,
-) -> lensbench_core::Result<LayoutFormat> {
+) -> lensbench_core::Result<Written> {
     let f = LayoutFormat::from_path(path).ok_or_else(|| {
         lensbench_core::Error::from(format!(
             "{}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp",
@@ -111,6 +119,7 @@ pub fn write_layout(
     })?;
     // 中身を作ってから書く（wasm ではファイルの置き場へ、lensbench_core::vfs）
     let mut w: Vec<u8> = Vec::new();
+    let mut notes = Vec::new();
     let r = match f {
         LayoutFormat::Svg => d2::write_svg(&mut w, sc, o2),
         LayoutFormat::Png => d2::write_png(&mut w, sc, o2),
@@ -124,10 +133,10 @@ pub fn write_layout(
                 mech_detail: o3.mech_detail.clone(),
                 ..Default::default()
             };
-            step::write_step(&mut w, sc, &os).map(|_| ())
+            step::write_step(&mut w, sc, &os).map(|rep| notes = rep.notes)
         }
     };
     r.and_then(|_| lensbench_core::vfs::write(path, w))
         .map_err(lensbench_core::Error::io_at(path.display()))?;
-    Ok(f)
+    Ok(Written { format: f, notes })
 }

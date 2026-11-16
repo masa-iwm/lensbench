@@ -188,6 +188,8 @@
 - .zmx の ZPL マクロのソルブ（IOO-22）: 途中で誤りになって止まったマクロは、値は前と同じく OpticStudio に合わせる（それまでの
   SOLVERETURN の値か 0、または変えない）が、読込の注意（`System.macro_warnings`、CLI の `warning:`）に止まったことと誤りを出す。
   読込で解き直せないときは、前はすべてのマクロのソルブを外したが、解き直せなくするソルブだけを外し、ほかは残す。
+  既定はこのまま（OpticStudio と同じ値＋注意）で、CLI の `--strict-macros`・serve の `load` の `strict_macros: true` で、解けない
+  マクロのソルブ（止まった・外した）があれば誤りで止める（Rust は `lensbench_engine::SysSpec::strict_macros`）。
 - ガラスのフォルダのどこにも無いカタログ SCHOTT・OHARA は、同梱のカタログ（分散式のみ、GUI と同じもの）から取る（CLI-31）。
   CLI・serve・Python でも、前は「glass catalog not found」で止まった系がフォルダの指定なしで開く。同梱から取ったガラスは
   読込の注意（CLI は標準誤差の `warning:`、`System.import_notes`）に出る。同じ名前の AGF がフォルダにあればそちらが先なので、
@@ -217,6 +219,9 @@
   Fresnel・理想レンズ・Jones の面は平らな基板（矢高 0）。
 
 ### Rust API
+- `lensbench_export::write_layout` は書いた形式の代わりに `Written { format, notes }` を返す。`notes` は STEP に写した品の
+  STEP が mm でなく、長さを直す表に無い実体があったときの注意（PRJ-22）。CLI の `layout` は `written` の行に `notes`、serve の
+  `layout_export` は `notes` に足す。`step_embed::embed_shell` は直せなかった型を集める引数を、`StepReport` は `notes` を持つ。
 - `lensbench_design::dls_spec::OptimizeParams`・`ZoomParams` と `lensbench_optim::zoom::ZoomSpec` に `stopped_as_vignetted`
   （既定 false。止まった光線をけられた光線と同じく除く、IOO-28）を足した。構造体を全部の欄で書いていれば足す（`..Default::default()` なら要らない）。
   CLI の `optimize`・`zoom` は `--stopped-as-vignetted`、serve・Python は `stopped_as_vignetted`。
