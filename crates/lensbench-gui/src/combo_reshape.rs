@@ -191,7 +191,12 @@ impl Combo {
                 .extra
                 .glrs
                 .as_ref()
-                .is_some_and(|g| g["block"] == id.as_str());
+                .is_some_and(|g| g["block"] == id.as_str())
+            // 機構部品は要素の id と面の番号で置くので、面が別の要素へ移るとずれる
+            || self
+                .mechanics
+                .iter()
+                .any(|m| m.at == id || m.holds.contains(&id));
         if moved || referred {
             return Err(tr(
                 "This element has a placement, states or references from other elements, so it cannot be split into lenses and surface lists",
@@ -222,6 +227,8 @@ impl Combo {
                     Pick::new(part.0)
                 };
                 q.kind = part.0;
+                // 行は光の進む順なので、反転は持たない（面の並びは反転を無視するが、古い保存では残っていることがある）
+                q.reversed = false;
                 q.surfs = rows[part.1.clone()].to_vec();
                 // 最後の面の後の間隔は要素の後の空気
                 q.air = q.surfs.last().map_or(0.0, |r| r.t);
@@ -429,6 +436,32 @@ mod tests {
         // 先頭の面の並びの状態ごとの間隔は、前の絞りからの間隔に持てないので断る
         c.picks[0].state_air.insert("s1".into(), 3.0);
         assert!(c.remove_plane(0).is_err());
+    }
+
+    /// 反転の印が残った面の並びにガラスを入れても、面の順と曲率は変わらない。機構部品が置かれた要素は分けない
+    #[test]
+    fn reversed_flag_and_mechanics() {
+        let mut c = base();
+        c.picks[0].surfs = (0..2)
+            .map(|i| SurfRow {
+                radius: [40.0, -60.0][i],
+                t: [4.0, 0.0][i],
+                ..SurfRow::default()
+            })
+            .collect();
+        c.picks[0].air = 30.0;
+        c.picks[0].reversed = true;
+        let mut d = c.clone();
+        c.glass_into_surfaces(0, 0, "N-BK7").unwrap();
+        assert!(!c.picks[0].reversed);
+        let r: Vec<f64> = rows(&c).iter().map(|x| x.0).collect();
+        assert!(r.contains(&(1.0 / 40.0)), "{r:?}");
+        let id = d.ids()[0].clone();
+        d.mechanics.push(crate::combo::MechPick {
+            at: id,
+            ..Default::default()
+        });
+        assert!(d.glass_into_surfaces(0, 0, "N-BK7").is_err());
     }
 
     /// 面の並びの中の面に硝材を入れると、前後の面の並びと玉に分かれ、空気の間隔は変わらない

@@ -1,6 +1,6 @@
 //! 開いた .zmx を組合せの要素（自作の玉・絞り・面の並びと空気）に分ける（11/16 masa 決定: 開いた .zmx の変更は
 //! 取り込みの上書きでなく中身へ）。ソルブ・ピックアップ・絞りは要素の操作にする。分けた組合せの系が元の系と
-//! 同じときだけ使い、書けない面（非球面・鏡・座標ブレーク・膜・面の名前など）があれば今までどおり .zmx を取り込む
+//! 同じときだけ使い、書けない面（SurfSpec で書けない型・鏡・座標ブレークなど）があれば今までどおり .zmx を取り込む
 
 use std::path::{Path, PathBuf};
 
@@ -56,23 +56,20 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     // 系の面 → (ブロック id, ブロックの面)
     let mut face: Vec<Option<(String, usize)>> = vec![None; img + 1];
     let mut stop: Option<(String, usize)> = None;
-    let surf = |j: usize, last: bool| -> Option<Value> {
+    // 面 j を SurfSpec の JSON に（書けない面は None）。玉の中の面は Jones にしない
+    let surf = |j: usize, last: bool, in_lens: bool| -> Option<Value> {
         let a = &s.surfaces[j];
-        let plain = a.typ == SurfType::Standard
-            && a.mat.is_medium()
-            && !a.ignore
-            && a.asph.is_empty()
-            && a.coat.is_empty()
-            && a.comment.is_empty()
-            && a.before.is_none();
-        if !plain {
+        if (in_lens && a.typ == SurfType::Jones) || !a.mat.is_medium() {
             return None;
         }
-        let mut x = json!({ "radius": radius_of(a.c)?, "conic": a.k,
-            "semi": if a.semi_auto { json!("auto") } else { json!(a.semi) } });
-        if !last {
-            x["t"] = json!(a.t);
-            x["glass"] = json!(a.mat.name());
+        let mut x = serde_json::to_value(lensbench_project::surface_spec(a, last).ok()?).ok()?;
+        // 半径は 1/半径 が曲率に戻る値に（系と同じ値にする）
+        x["radius"] = json!(radius_of(a.c)?);
+        if last {
+            if let Some(o) = x.as_object_mut() {
+                o.remove("t");
+                o.remove("glass");
+            }
         }
         Some(x)
     };
@@ -86,7 +83,8 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             k = j;
             ns += 1;
             id = format!("S{ns}");
-            blocks.push(json!({ "type": "surfaces", "id": id, "surfaces": [surf(j, true)?] }));
+            blocks
+                .push(json!({ "type": "surfaces", "id": id, "surfaces": [surf(j, true, false)?] }));
         } else {
             // ガラスに入る面から、空気に出る面までが 1 つの玉
             let mut e = j;
@@ -100,7 +98,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             nl += 1;
             id = format!("L{nl}");
             let ss = (j..=k)
-                .map(|x| surf(x, x == k))
+                .map(|x| surf(x, x == k, true))
                 .collect::<Option<Vec<_>>>()?;
             blocks.push(json!({ "type": "lens", "id": id, "source": { "surfaces": ss } }));
         }

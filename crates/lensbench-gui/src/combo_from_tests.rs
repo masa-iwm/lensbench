@@ -69,15 +69,20 @@ fn refuses_what_it_cannot_write() {
     let stop = json!({ "type": "stop", "semi": 2 });
     let air = json!({ "type": "air", "t": 10 });
     assert!(with(json!([stop, air, lens, air])).is_ok());
-    // 非球面の係数は組合せの欄に無い: ブロックをそのまま持つ要素に（id も残る）
+    // 非球面の係数は面の more に持つ自作の玉
     let mut asph = lens.clone();
     asph["source"]["surfaces"][0]["asph"] = json!([0.0, 1e-5]);
     let c = with(json!([stop, air, asph, air])).unwrap();
+    assert_eq!(c.picks[0].kind, ElemKind::Lens);
+    assert_eq!(c.picks[0].surfs[0].more["asph"][1], 1e-5);
+    // 玉の中の Jones 面は書けない: ブロックをそのまま持つ要素に（id も残る）
+    let mut jones = lens.clone();
+    jones["source"]["surfaces"][0]["jones"] = json!([1, 0, 0, 0, 0, 0, 1, 0]);
+    let c = with(json!([stop, air, jones, air])).unwrap();
     assert_eq!(c.picks[0].kind, ElemKind::Raw);
     assert_eq!(c.picks[0].id, "A");
-    assert_eq!(c.picks[0].extra["source"]["surfaces"][0]["asph"][1], 1e-5);
     // 前面を絞りにしたブロックは絞り（前の絞りを置かない）
-    let mut sasph = asph.clone();
+    let mut sasph = jones.clone();
     sasph["stop"] = json!(true);
     assert!(!with(json!([air, sasph, air])).unwrap().lead_stop());
     // 鏡の開口も
@@ -212,7 +217,8 @@ fn raw_blocks_build_the_same() {
         { "type": "air", "t": 30 }] });
     let c = Combo::from_project(&v, &tmp).unwrap();
     let kinds: Vec<ElemKind> = c.picks.iter().map(|p| p.kind).collect();
-    assert_eq!(kinds, [ElemKind::Raw, ElemKind::Raw]);
+    // 非球面の玉は自作の玉、開口のある鏡はそのまま持つ要素
+    assert_eq!(kinds, [ElemKind::Lens, ElemKind::Raw]);
     let build = |name: &str, x: &Value| {
         let f = tmp.join(name);
         lensbench_core::vfs::write(&f, x.to_string()).unwrap();

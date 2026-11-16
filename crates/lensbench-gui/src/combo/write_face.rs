@@ -33,7 +33,48 @@ fn write_row(row: &mut SurfRow, key: &str, v: &Value, sign: f64) -> bool {
             })
             .is_some(),
         "semi_auto" => v.as_bool().map(|b| row.semi_auto = b).is_some(),
+        // 欄の無い SurfSpec の値（more）。空にすると外す
+        "comment" | "coating" => match v {
+            Value::String(t) => {
+                let k = if key == "coating" { "coat" } else { key };
+                set_more(row, k, (!t.is_empty()).then(|| json!(t)));
+                true
+            }
+            Value::Null => {
+                set_more(row, if key == "coating" { "coat" } else { key }, None);
+                true
+            }
+            _ => false,
+        },
+        // 偶数次非球面の係数（反転した玉では形が逆なので符号も逆。標準面の形のときだけ）
+        "asph" if row.more.get("shape").is_none() => match v {
+            Value::Array(a) => {
+                let Some(c) = a.iter().map(Value::as_f64).collect::<Option<Vec<f64>>>() else {
+                    return false;
+                };
+                let c: Vec<f64> = c.iter().map(|x| sign * x).collect();
+                set_more(row, "asph", c.iter().any(|x| *x != 0.0).then(|| json!(c)));
+                true
+            }
+            Value::Null => {
+                set_more(row, "asph", None);
+                true
+            }
+            _ => false,
+        },
         _ => false,
+    }
+}
+
+/// more の鍵 k を v にする（None なら外す）
+fn set_more(row: &mut SurfRow, k: &str, v: Option<Value>) {
+    match v {
+        Some(v) => {
+            row.more.insert(k.into(), v);
+        }
+        None => {
+            row.more.remove(k);
+        }
     }
 }
 
@@ -186,7 +227,7 @@ impl Pick {
         // 2 面の単玉で、r1・r2・t・glass と同じ形なら欄のまま。ほか（コーニック・面ごとの半径）は面の表に
         let simple = n == 2
             && self.surfs.len() < 2
-            && rows.iter().all(|r| r.conic == 0.0)
+            && rows.iter().all(|r| r.conic == 0.0 && r.more.is_empty())
             && rows[0].semi == rows[1].semi
             && rows[0].semi_auto == rows[1].semi_auto;
         if simple {
@@ -424,10 +465,15 @@ mod tests {
         p.write_face(0, "material", json!(""));
         assert_eq!((p.glass.as_str(), p.edits.len()), ("F2", 1));
         p.edits.clear();
-        // 最後の面の後（要素の後の空気）・欄の無い値は上書き
+        // 最後の面の後（要素の後の空気）は上書き。欄の無い SurfSpec の値（膜）は面の more に
         p.write_face(1, "t", json!(9.0));
         p.write_face(0, "coating", json!("AR"));
-        assert_eq!(p.edits.len(), 2);
+        assert_eq!(p.edits.len(), 1);
+        assert_eq!(p.surfs[0].more["coat"], "AR");
+        p.write_face(0, "asph", json!([0.0, 1e-5]));
+        assert_eq!(p.surfs[0].more["asph"], json!([0.0, 1e-5]));
+        p.write_face(0, "coating", json!(""));
+        assert!(p.surfs[0].more.get("coat").is_none());
     }
 
     /// 反転した玉: 系の面 0 は表の最後の面（半径の符号が逆）、系の面 0 の後の厚さは表の面 0 の後
@@ -542,7 +588,7 @@ mod tests {
         }
     }
 
-    /// 前に保存した上書きは、書けるものだけ中身に移る
+    /// 前に保存した上書きは、書けるものだけ中身に移る（膜は面の more に）
     #[test]
     fn bake_old_edits() {
         let mut p = lens();
@@ -550,9 +596,10 @@ mod tests {
         p.set_edit(0, "coating", json!("AR"));
         p.edits_for = p.surf_sig();
         p.bake_edits();
-        assert_eq!(p.r1, 60.0);
-        assert_eq!(p.edits.len(), 1);
-        assert_eq!(p.edits_for, p.surf_sig());
+        assert_eq!(p.surfs[0].radius, 60.0);
+        assert_eq!(p.surfs[0].more["coat"], "AR");
+        assert!(p.edits.is_empty());
+        assert_eq!(p.edits_for, "");
     }
 
     /// 面を足しても系（焦点距離・バックフォーカス）は変わらず、面が 1 つ増える。消すと 1 つ減る（下限あり）

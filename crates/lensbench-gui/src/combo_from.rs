@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use crate::combo::{
     ApShape, Combo, ElemKind, GroupDef, MechPick, Pick, SurfEdit, SurfKind, SurfRow, ZGroup,
+    SURF_MORE,
 };
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt};
 use lensbench_core::system::ApertureKind;
@@ -567,7 +568,8 @@ fn lens(ss: &[Value]) -> R<Pick> {
         && semi(&ss[0]["semi"]) == semi(&ss[1]["semi"])
         && f(&ss[0]["conic"], 0.0) == 0.0
         && f(&ss[1]["conic"], 0.0) == 0.0
-        && ss[0]["glass"].is_string();
+        && ss[0]["glass"].is_string()
+        && ss.iter().all(|x| row(x).more.is_empty());
     if simple {
         p.r1 = f(&ss[0]["radius"], 0.0);
         p.r2 = f(&ss[1]["radius"], 0.0);
@@ -583,7 +585,7 @@ fn lens(ss: &[Value]) -> R<Pick> {
     Ok(p)
 }
 
-/// 面 1 つ（書けない項目は落ちる。比べると違うので組合せにしない）
+/// 面 1 つ（欄の無い SurfSpec の値は more に持つ。ほかの書けない項目は落ちる。比べると違うので組合せにしない）
 fn row(x: &Value) -> SurfRow {
     let mut r = SurfRow {
         radius: f(&x["radius"], 0.0),
@@ -593,6 +595,16 @@ fn row(x: &Value) -> SurfRow {
         ..SurfRow::default()
     };
     (r.semi, r.semi_auto) = semi(&x["semi"]);
+    for k in SURF_MORE {
+        match x.get(*k) {
+            None | Some(Value::Null) => {}
+            Some(Value::String(t)) if t.is_empty() => {}
+            Some(Value::Array(a)) if a.is_empty() => {}
+            Some(v) => {
+                r.more.insert(k.to_string(), v.clone());
+            }
+        }
+    }
     if let Some(j) = x.get("jones") {
         r.kind = SurfKind::Jones;
         r.jones = arr(j);

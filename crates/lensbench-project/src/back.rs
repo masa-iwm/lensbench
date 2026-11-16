@@ -363,7 +363,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
 
 /// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。書けない値（面の前後の傾き・偏心、
 /// 標準面・偶数次非球面・Jones 面のほかの型、鏡、ignore、dn・disp、分散のあるモデルガラス）は誤り
-pub(crate) fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
+pub fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if !matches!(
         f.typ,
         SurfType::Standard | SurfType::EvenAsph | SurfType::Jones

@@ -131,7 +131,23 @@ pub struct SurfRow {
     pub wp_thickness: f64,
     pub wp_material2: String,
     pub wp_thickness2: f64,
+    /// 欄の無い SurfSpec の値（非球面の係数・面の形・膜・コメント・開口・面の傾き・複屈折など。[`SURF_MORE`]）。
+    /// そのまま project の面に書く
+    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
+    pub more: serde_json::Map<String, Value>,
 }
+
+/// [`SurfRow::more`] に持つ SurfSpec の鍵
+pub const SURF_MORE: &[&str] = &[
+    "asph",
+    "shape",
+    "radius_x",
+    "coat",
+    "comment",
+    "aperture",
+    "tilt",
+    "birefringent",
+];
 
 impl Default for SurfRow {
     fn default() -> Self {
@@ -156,6 +172,7 @@ impl Default for SurfRow {
             wp_thickness: 0.0,
             wp_material2: String::new(),
             wp_thickness2: 0.0,
+            more: serde_json::Map::new(),
         }
     }
 }
@@ -163,6 +180,15 @@ impl Default for SurfRow {
 impl SurfRow {
     /// project の SurfSpec の JSON
     pub fn json(&self) -> Value {
+        let mut v = self.json_fields();
+        for (k, x) in &self.more {
+            v[k] = x.clone();
+        }
+        v
+    }
+
+    /// 欄だけの SurfSpec の JSON
+    fn json_fields(&self) -> Value {
         match self.kind {
             SurfKind::Standard => {
                 let mut v = json!({ "radius": Pick::radius(self.radius), "t": self.t,
