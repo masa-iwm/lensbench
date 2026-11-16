@@ -18,6 +18,7 @@ mod coat_defs;
 mod combo;
 mod combo_doc;
 mod combo_from;
+mod combo_reshape;
 mod combo_split;
 mod combo_tree;
 mod config_panel;

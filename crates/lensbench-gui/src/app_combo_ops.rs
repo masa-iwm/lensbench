@@ -51,12 +51,53 @@ impl Core {
                     .as_u64()
                     .ok_or_else(outside)? as usize;
                 let after = ins && op["after"] == json!(true);
-                let (k, i) = self
-                    .combo_face(spans, if after { j.saturating_sub(1) } else { j })
-                    .ok_or_else(|| {
-                        tr("Surfaces can be added or removed only in a custom lens or a surface list")
-                            .to_string()
-                    })?;
+                let at = if after { j.saturating_sub(1) } else { j };
+                let editable = |c: &Combo, k: usize| {
+                    c.el(k).is_some_and(|p| {
+                        matches!(
+                            p.kind,
+                            crate::combo::ElemKind::Lens | crate::combo::ElemKind::Surfaces
+                        )
+                    })
+                };
+                let (k, i) = match self.combo_face(spans, at) {
+                    Some((k, i)) if editable(&self.doc.combo, k) => (k, i),
+                    // 要素の外（前の絞り・像面の前・要素の間の空気）や、面を足せない要素の端: 平面 1 枚の面の並びを
+                    // 置く（11/16 masa 決定: 表から自由に面を足す）
+                    found if ins && j > 0 => {
+                        let last = |k: usize| spans[k].map(|s| s[1]) == Some(at);
+                        let first = |k: usize| spans[k].map(|s| s[0]) == Some(at);
+                        let pos = match found {
+                            Some((k, _)) if after && last(k) => k + 1,
+                            Some((k, _)) if !after && first(k) => k,
+                            Some(_) => {
+                                return Err(tr(
+                                    "Surfaces can be added or removed only in a custom lens or a surface list",
+                                )
+                                .into())
+                            }
+                            None => spans
+                                .iter()
+                                .position(|s| s.is_some_and(|s| s[0] > at))
+                                .unwrap_or(spans.len()),
+                        };
+                        self.doc.combo.insert_plane(pos);
+                        continue;
+                    }
+                    _ => return Err(tr(
+                        "Surfaces can be added or removed only in a custom lens or a surface list",
+                    )
+                    .into()),
+                };
+                // 面の並びの最後の 1 面を消すと、要素ごと外す（後の空気は前の要素の後の空気に足す）
+                if !ins
+                    && self.doc.combo.el(k).is_some_and(|p| {
+                        p.kind == crate::combo::ElemKind::Surfaces && p.surfs.len() == 1
+                    })
+                {
+                    self.doc.combo.remove_plane(k)?;
+                    continue;
+                }
                 let p = self.doc.combo.el_mut(k).ok_or_else(outside)?;
                 if p.locked {
                     return Err(tr("A locked element cannot be changed").into());

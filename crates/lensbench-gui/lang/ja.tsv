@@ -1569,3 +1569,12 @@ Vignetting factors	ケラレ係数
 Computing ({})	計算中（{}）
 {}…	{}…
 Radius, conic, thickness and semi-diameter are edited in the Lens Data table (surfaces in air only)	曲率半径・コーニック・厚み・半径はレンズデータの表で編集（面は空気中だけ）
++ Add a surface	＋ 面を追加
+Starts a surface list with one plane surface. Insert more surfaces from the table, and set a glass after a surface to make a lens	平面 1 枚の面の並びから始めます。面は表から挿入し、面の後に硝材を入れるとレンズになります
+A solve or pickup links surfaces that would be in different elements, so the element cannot be split	ソルブ・ピックアップが分けた先で別の要素になる面をつないでいるので、要素を分割できません
+Only a standard surface can be followed by glass	硝材を入れられるのは標準面の後だけです
+This element has a placement, states or references from other elements, so it cannot be split into lenses and surface lists	この要素は置き方・状態・ほかの要素からの参照を持つので、レンズと面の並びに分割できません
+This surface has a stop, solve or pickup; remove them first	この面には絞り・ソルブ・ピックアップがあります。先に外してください
+Unreverse the lens first to change its glass to air	硝材を空気にするには、先にレンズの反転を戻してください
+This surface list is turned off in some states, so it cannot be removed	この面の並びは状態によって OFF になるので、外せません
+This surface list has spacings for states, and the spacing before it cannot hold them, so it cannot be removed	この面の並びは状態ごとの間隔を持ち、前の間隔には状態ごとの値を持てないので、外せません

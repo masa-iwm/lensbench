@@ -479,7 +479,7 @@ mod tests {
     fn notes_of_several_sentences() {
         assert_eq!(
             translate("the seat is the mount end (not known from the STEP). inner thread SM1 (for elements of diameter 25.4 mm)"),
-            "座の位置はマウントの端（STEP から分かりません）。内側のねじ SM1（入る素子の径 25.4 mm）"
+            "座の位置はマウントの端（STEP から分かりません）。内側のねじ SM1（入る光学素子の径 25.4 mm）"
         );
         // 訳の無い文が混ざれば英語のまま
         let s = "the seat is the mount end (not known from the STEP). no such sentence";

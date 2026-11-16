@@ -449,6 +449,29 @@ impl App {
                 self.c.p.combo_view.select(1);
                 self.exec(ctx, Cmd::FocusKind(Kind::Layout));
             }
+            Step::FreeEdit => {
+                // 空の文書から面を足していく: 平面 1 枚の面の並びに半径と硝材を入れて玉にし、後ろに平面を足す
+                let mut c = combo::Combo {
+                    epd: 10.0,
+                    ..Default::default()
+                };
+                c.insert_plane(0);
+                c.picks[0].surfs[0].radius = 50.0;
+                c.picks[0].air = 5.0;
+                if let Err(e) = c.glass_into_surfaces(0, 0, "N-BK7") {
+                    self.c.fail(e);
+                }
+                if let Some(v) = c.gap_after(0) {
+                    *v = 40.0;
+                }
+                c.insert_plane(1);
+                self.c.doc.combo = c;
+                self.c.overlay.items.clear();
+                let p = self.c.doc.combo.project();
+                self.c.build_combo(p);
+                self.c.p.combo_view.select(0);
+                self.exec(ctx, Cmd::FocusKind(Kind::LensData));
+            }
         }
     }
 }

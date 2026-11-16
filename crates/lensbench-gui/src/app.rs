@@ -1729,6 +1729,19 @@ impl Core {
             ui.label(tr(
                 "Open a system or build one from the combination to see its surfaces here.",
             ));
+            // 空の文書: 平面 1 枚から面を足していける（11/16 masa 決定: 表から自由に面を足す）
+            if self.doc.combo.picks.is_empty() && (self.loc.file.is_none() || self.is_combo()) {
+                ui.add_space(4.0);
+                if ui
+                    .button(tr("+ Add a surface"))
+                    .on_hover_text(tr(
+                        "Starts a surface list with one plane surface. Insert more surfaces from the table, and set a glass after a surface to make a lens",
+                    ))
+                    .clicked()
+                {
+                    self.doc.combo.insert_plane(0);
+                }
+            }
             return;
         }
         let is_combo = self.is_combo();
@@ -2239,6 +2252,25 @@ impl Core {
                     }
                 }
             }
+            (Some(k), "material", _) if self.material_reshapes(spans, k, j, &value) => {
+                // 面の並びにガラスを入れる・自作の玉の中を空気にする: 要素を玉と面の並びに分け直す（11/16 masa 決定）
+                let a = spans[k].map(|s| s[0]).unwrap_or(j);
+                let rel = (a..j).filter(|&i| !rows[i].is_cb()).count();
+                let glass = value
+                    .as_str()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_string();
+                let r = if glass.is_empty() {
+                    self.doc.combo.glass_out_of_lens(k, rel)
+                } else {
+                    self.doc.combo.glass_into_surfaces(k, rel, &glass)
+                };
+                if let Err(e) = r {
+                    self.fail(e);
+                    return false;
+                }
+            }
             (Some(k), _, _) => {
                 let a = spans[k].map(|s| s[0]).unwrap_or(j);
                 let rel = (a..j).filter(|&i| !rows[i].is_cb()).count();
@@ -2252,6 +2284,23 @@ impl Core {
             }
         }
         true
+    }
+
+    /// 硝材の変更が要素の分け直しになるか: 面の並びにガラスを入れる、または自作の玉の最後でない面の後を空気にする
+    fn material_reshapes(
+        &self,
+        spans: &[Option<[usize; 2]>],
+        k: usize,
+        j: usize,
+        value: &Value,
+    ) -> bool {
+        let air = value.as_str().is_none_or(|g| g.trim().is_empty());
+        let last = spans[k].is_some_and(|s| s[1] == j);
+        match self.doc.combo.el(k).map(|p| p.kind) {
+            Some(combo::ElemKind::Surfaces) => !air,
+            Some(combo::ElemKind::Lens) => air && !last,
+            _ => false,
+        }
     }
 
     /// 組合せが変わっていて系の読み込みが空いていれば、系を作り直す。待っている解析は捨てる

@@ -133,12 +133,13 @@ pub enum Step {
     Palette,
     English,
     Settings,
+    FreeEdit,
     Interferometer,
     Done,
 }
 
 impl Step {
-    const ORDER: [Step; 29] = [
+    const ORDER: [Step; 30] = [
         Step::Open,
         Step::Analysis,
         Step::Catalog,
@@ -160,6 +161,7 @@ impl Step {
         Step::Palette,
         Step::English,
         Step::Settings,
+        Step::FreeEdit,
         Step::Interferometer,
         Step::Pop,
         Step::States,
@@ -194,6 +196,7 @@ impl Step {
             Step::English => "12_english_light",
             Step::Settings => "13_settings",
             Step::Interferometer => "14_interferometer",
+            Step::FreeEdit => "13b_free_edit",
             Step::Pop => "15_pop",
             Step::States => "16_states",
             Step::Coatings => "17_coatings",
@@ -350,6 +353,6 @@ mod tests {
             s = s.next();
             n += 1;
         }
-        assert_eq!(n, 28);
+        assert_eq!(n, 29);
     }
 }
