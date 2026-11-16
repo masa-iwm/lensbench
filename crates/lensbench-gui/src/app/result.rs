@@ -101,7 +101,8 @@ impl Core {
             ui.spinner();
             return;
         };
-        ui.horizontal(|ui| {
+        // 狭いパネルでは折り返す（GUX-14）
+        ui.horizontal_wrapped(|ui| {
             view_row(ui, cfg);
             ui.separator();
             ui.label(

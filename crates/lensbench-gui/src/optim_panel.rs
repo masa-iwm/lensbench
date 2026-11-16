@@ -703,7 +703,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
     if let Some(i) = del {
         p.vars.remove(i);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let (_, mut enter) = pp::edit(
             ui,
             &mut p.new_var,
@@ -744,7 +744,7 @@ pub(crate) fn vars_ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, weak: egui::Colo
 }
 
 pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Default"));
         for (k, l) in [
             ("spot", tr("RMS spot")),
@@ -755,7 +755,7 @@ pub(crate) fn merit_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
         }
     });
     if p.merit != "none" {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(tr("Rings"));
             ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
             ui.label(tr("Reference"));
@@ -851,7 +851,7 @@ pub(crate) fn terms_ui(
     if let Some(i) = del {
         terms.remove(i);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_id_salt((id, "new_term"))
             .selected_text(new_term.clone())
             .width(90.0)
@@ -875,7 +875,7 @@ pub(crate) fn terms_ui(
 }
 
 fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Max iterations"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=10000));
         ui.label(tr("Derivatives"));
@@ -887,7 +887,7 @@ fn settings_ui(ui: &mut Ui, p: &mut OptPanel, weak: egui::Color32) {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Config"));
         small_edit(ui, &mut p.configs, 160.0, tr("Open system only"));
     });
@@ -907,10 +907,11 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
         .filter(|(_, v)| **v > 0.0)
         .map(|(i, v)| [i as f64, v.log10()])
         .collect();
+    // 縦軸の名前は図の上に書く（縦書きの名前は図の高さより長く、上の行に重なる、GUX-14）
+    ui.label(RichText::new(tr("Merit (log10)")).small().weak());
     Plot::new("opt_history")
         .height(140.0)
         .x_axis_label(tr("Iteration"))
-        .y_axis_label(tr("Merit (log10)"))
         .allow_scroll(false)
         .show(ui, |pu| pu.line(Line::new(pts)));
 }
@@ -1029,7 +1030,7 @@ fn result_ui(
                 .color(weak),
         );
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui
             .button(tr("Apply to system"))
             .on_hover_text(tr(

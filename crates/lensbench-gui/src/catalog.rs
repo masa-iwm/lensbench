@@ -1245,6 +1245,8 @@ impl Browser {
                         ui.selectable_value(&mut q.vendor, v.clone(), v);
                     }
                 });
+            let w = crate::widgets::combos_width(ui, 1, 40.0);
+            crate::widgets::wrap_before(ui, w);
             ui.label(tr("Type"));
             kind_combo(ui, q, &kinds);
             ui.separator();

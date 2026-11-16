@@ -12,6 +12,21 @@ pub mod menu;
 mod ui_tests;
 
 /// 文字の欄の数。空は None、数でない・有限でない（inf・nan）は誤り（`what` は欄の名前）
+/// 折り返す行（`horizontal_wrapped`）で、幅 w の塊が行の残りに入らなければ先に折り返す。ComboBox や組にした
+/// 部品は行の端で折り返されず、パネルの右で切れるので、その前に呼ぶ（GUX-14）
+pub fn wrap_before(ui: &mut egui::Ui, w: f32) {
+    // 折り返す行の available_width は折り返した後の幅（行の全幅）を返すので、行の残りはカーソルから測る
+    if ui.max_rect().right() - ui.cursor().left() < w {
+        ui.end_row();
+    }
+}
+
+/// [`wrap_before`] の、ComboBox n 個（とその前の名前 label_w）の幅
+pub fn combos_width(ui: &egui::Ui, n: usize, label_w: f32) -> f32 {
+    let s = ui.spacing();
+    n as f32 * (s.combo_width + s.item_spacing.x) + label_w
+}
+
 pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
     let t = s.trim();
     if t.is_empty() {

@@ -226,6 +226,13 @@ pub struct Tour {
     pub shots: Vec<String>,
 }
 
+/// 環境変数 LENSBENCH_TOUR_SIZE（"幅x高さ"）の窓の大きさ
+pub fn size_from_env() -> Option<[f32; 2]> {
+    let v = std::env::var("LENSBENCH_TOUR_SIZE").ok()?;
+    let (w, h) = v.split_once('x')?;
+    Some([w.trim().parse().ok()?, h.trim().parse().ok()?])
+}
+
 impl Tour {
     pub fn new(dir: PathBuf, timeout: Option<Duration>) -> Tour {
         Tour {

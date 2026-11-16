@@ -691,7 +691,7 @@ fn vars_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color32) {
     if let Some(i) = del {
         p.vars.remove(i);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let (_, enter) = pp::edit_pick(ui, &mut p.new_var, 90.0, tr("d1.t, G2.shift"), &c.sys, set);
         if (ui.button(tr("Add")).clicked() || enter) && !p.new_var.trim().is_empty() {
             p.vars.push(VarRow {
@@ -788,7 +788,7 @@ fn starts_states_ui(ui: &mut Ui, p: &mut SwapPanel, c: &Cands, weak: egui::Color
 }
 
 fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Merit function"));
         for (k, l) in [("spot", tr("RMS spot")), ("wavefront", tr("RMS wavefront"))] {
             ui.selectable_value(&mut p.merit, k.to_string(), l);
@@ -798,13 +798,13 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
             ui.selectable_value(&mut p.reference, k.to_string(), l);
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Rings"));
         ui.add(egui::DragValue::new(&mut p.rings).range(1..=20));
         ui.label(tr("Iterations per set"));
         ui.add(egui::DragValue::new(&mut p.iters).range(1..=1000));
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Target focal length"));
         small_edit(ui, &mut p.efl, 60.0, tr("Off"));
         ui.label(tr("Max sets"));
@@ -813,7 +813,7 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
         ui.add(egui::DragValue::new(&mut p.top).range(0..=10_000))
             .on_hover_text(tr("0 = all"));
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut p.clear_aperture, tr("Clear aperture condition"))
             .on_hover_text(tr(
             "Require the pupil-edge rays of every field to stay inside the radius on each surface of the swapped lenses",
@@ -828,7 +828,7 @@ fn settings_ui(ui: &mut Ui, p: &mut SwapPanel, weak: egui::Color32) {
             ui.selectable_value(&mut p.jac, k.to_string(), l);
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut p.pre, tr("Coarse prescreen"))
             .on_hover_text(tr(
                 "Optimize all sets with fewer rings first, then re-optimize only the best sets with the full settings (faster with many sets)",
@@ -969,7 +969,7 @@ fn result_ui(
                 }
             });
         });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if c.combo {
             if ui
                 .add_enabled(p.undo.is_some(), egui::Button::new(tr("Undo use")))

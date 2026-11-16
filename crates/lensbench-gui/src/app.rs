@@ -3020,6 +3020,9 @@ impl Core {
         let mut rerun = false;
         ui.horizontal_wrapped(|ui| {
             Self::analysis_picker(ui, id, cfg);
+            // 視野・波長の 2 つの選択は 1 つの塊なので、行の残りに入らなければ先に折り返す（塊の中で折り返すと右が切れる、GUX-14）
+            let need = crate::widgets::combos_width(ui, 2, 60.0);
+            crate::widgets::wrap_before(ui, need);
             ui.add_enabled_ui(layout::takes_sel(&cfg.cmd), |ui| {
                 let fname = |i: usize| match fields.get(i - 1) {
                     Some(f) => trf("Field {} {}", &[&i, f]),

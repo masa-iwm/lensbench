@@ -576,7 +576,7 @@ pub fn ui(
 }
 
 fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Lens tolerance set"));
         for (k, l) in PRESETS.iter().take(4) {
             ui.selectable_value(&mut p.preset, k.to_string(), tr(l));
@@ -612,7 +612,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
                 }
             });
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Distribution"));
         for (k, l) in DISTS {
             ui.selectable_value(&mut p.dist, k.to_string(), tr(l));
@@ -623,7 +623,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
         &mut p.radial,
         tr("Pair x/y of decenters, tilts and wedges within a circle (magnitude at most the tolerance)"),
     );
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.add_space(24.0);
         let on = p.radial;
         if ui
@@ -648,7 +648,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
             p.radial_dist = "normal".to_string();
         }
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Wedge face"));
         ui.selectable_value(&mut p.wedge_front, false, tr("Back face"));
         ui.selectable_value(&mut p.wedge_front, true, tr("Front face"));
@@ -763,7 +763,7 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
     if let Some(i) = del {
         p.tols.remove(i);
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui.button(tr("Add a tolerance")).clicked() {
             p.tols.push(TolRow::default());
         }
@@ -794,13 +794,13 @@ fn tol_ui(ui: &mut Ui, p: &mut TolPanel, c: &op::Cands, weak: egui::Color32) {
 }
 
 fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Trials"));
         ui.add(egui::DragValue::new(&mut p.trials).range(0..=1_000_000));
         ui.label(tr("Random seed"));
         ui.add(egui::DragValue::new(&mut p.seed));
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Compensator iterations"));
         ui.add(egui::DragValue::new(&mut p.comp_iters).range(1..=200));
         ui.checkbox(
@@ -808,7 +808,7 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
             tr("Also compute sensitivities (each tolerance at its limits)"),
         );
     });
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Percentiles"));
         small_edit(ui, &mut p.percentiles, 120.0, "50, 80, 90, 95, 98");
         ui.label(tr("Threads"));
@@ -828,7 +828,7 @@ fn run_ui(ui: &mut Ui, p: &mut TolPanel, weak: egui::Color32) {
         &mut p.samples,
         tr("Include each trial's deltas and evaluation in the result (samples)"),
     );
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(tr("Config"));
         small_edit(ui, &mut p.opt.configs, 160.0, tr("Open system only"));
     });
@@ -968,7 +968,7 @@ fn comps_ui(ui: &mut Ui, r: &Value, sel: &mut usize, cdf: &mut bool, weak: egui:
         return;
     }
     *sel = (*sel).min(ds.len() - 1);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_id_salt("tol_comp_sel")
             .selected_text(ds[*sel].name.as_str())
             .show_ui(ui, |ui| {
