@@ -316,12 +316,10 @@ fn interference_like_cli() {
     assert_eq!(got_fg, cli_json(&args));
     assert_eq!(got_fg["grid"].as_array().unwrap().len(), 16 * 16);
 
-    // 構成 1 だけの値（1.t）: 構成 2 には当てず、notes に書く
+    // 構成 1 だけの値（1.t）: 多重構成の表の構成 1 の列が変わり、構成 2 は表のまま（読み直して当て直さないので notes は無い。CLI-21）
     c.call("set", json!({ "values": { "1.t": 100.5 } }));
     let got = c.call("analyze", params.clone());
-    let notes = got["notes"].as_array().unwrap();
-    assert_eq!(notes.len(), 1, "{notes:?}");
-    assert!(notes[0].as_str().unwrap().contains("configuration 2"));
+    assert_eq!(got["notes"], json!([]));
     // 同じ値をファイルに書いた系の CLI と同じ（構成 1 の値だけ変わる）
     let f2 = d.join("two_cfg_changed.zmx");
     std::fs::write(&f2, TWO_CFG.replace("THIC 1 1 100.3", "THIC 1 1 100.5")).unwrap();
@@ -562,4 +560,33 @@ fn pipe_keeps_regular_file() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("not a socket"));
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "keep");
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// 読み込んだ後に別アプリがファイルを書き換えても、別の構成の系は読んだときのもの（読み込んだ系の多重構成の表から。
+/// reload で初めて読み直す）。読み込んだ後に構成を足すと、configs・重ね描きにも出る（CLI-21）
+#[test]
+fn other_configs_come_from_the_loaded_system() {
+    let d = tmp_dir("loaded");
+    let f = d.join("two_cfg.zmx");
+    std::fs::write(&f, TWO_CFG).unwrap();
+    let fs = f.to_str().unwrap();
+    let sv = Server::start(&["--port", "0", fs]);
+    let mut c = sv.tcp();
+    let params = json!({ "cmd": "interference", "n": 16, "beam1": "1", "beam2": "2" });
+    let before = strip_notes(c.call("analyze", params.clone()));
+    std::fs::write(&f, TWO_CFG.replace("THIC 1 2 100.0", "THIC 1 2 101.0")).unwrap();
+    assert_eq!(strip_notes(c.call("analyze", params.clone())), before);
+    assert_eq!(c.call("configs", json!({}))["cfgs"], json!(2));
+
+    c.call(
+        "edit",
+        json!({ "ops": [{ "op": "set_config_count", "n": 3 }] }),
+    );
+    assert_eq!(c.call("configs", json!({}))["cfgs"], json!(3));
+    let v = c.call("layout", json!({ "rays": 3, "cfgs": "all" }));
+    assert_eq!(v["configs"], json!(["C1", "C2", "C3"]));
+
+    c.call("reload", json!({}));
+    assert_eq!(c.call("configs", json!({}))["cfgs"], json!(2));
+    assert_ne!(strip_notes(c.call("analyze", params)), before);
 }

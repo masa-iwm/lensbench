@@ -110,12 +110,14 @@ pub fn optimize_cancel() {
     global().optimize_cancel()
 }
 
-/// 構成（.zmx の構成番号か、プロジェクトの状態の名前）の系。読み込んだ系と同じ構成なら読み込んだ系（set・edit の後）、
-/// ほかはファイルから読み、読み込んだ後の変更を当てる
+/// 構成（.zmx の構成番号か、プロジェクトの状態の名前）の系。読み込んだ系と同じ構成なら読み込んだ系（set・edit の後）。
+/// .zmx で多重構成の表を読めていれば読み込んだ系の表から（変更が入ったまま）。ほかは読んだときのファイル src から読み、
+/// 読み込んだ後の変更を当てる（CLI-21）
 pub(super) fn config_system(
     b: &Value,
     cur: &Arc<System>,
     spec: &LoadSpec,
+    src: &Source,
     log: &[Change],
     notes: &mut Vec<String>,
 ) -> Result<System, RpcErr> {
@@ -135,12 +137,15 @@ pub(super) fn config_system(
             .ok_or_else(|| {
                 RpcErr::params("configs must be a list of .zmx configuration numbers (1-based)")
             })? as usize;
-        if c == spec.cfg {
+        if c == active_cfg(cur, spec) {
             return Ok((**cur).clone());
+        }
+        if cur.configs.is_some() {
+            return Ok(cur.config(c)?);
         }
         sp.cfg = c;
     }
-    let s = load_file(&sp)?;
+    let s = crate::load::load_source(src, &sp)?;
     let beam = if is_project(&spec.file) {
         format!("state {b}")
     } else {
@@ -158,7 +163,12 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     use lensbench_optim as optim;
     let mut op: lensbench_design::dls_spec::OptimizeParams = lensbench_design::dls_spec::read(p)
         .map_err(|e| RpcErr::params(format!("optimize: {e}")))?;
-    let (cur, spec, log) = sess.current_full()?;
+    let Current {
+        sys: cur,
+        spec,
+        src,
+        log,
+    } = sess.current_full()?;
     let mut notes = Vec::new();
     let (systems, cur_idx) = if op.configs.is_empty() {
         (vec![(*cur).clone()], Some(0))
@@ -171,12 +181,12 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             } else {
                 b.as_u64()
                     .or_else(|| b.as_str().and_then(|x| x.parse().ok()))
-                    == Some(spec.cfg as u64)
+                    == Some(active_cfg(&cur, &spec) as u64)
             };
             if same && cur_idx.is_none() {
                 cur_idx = Some(v.len());
             }
-            v.push(config_system(b, &cur, &spec, &log, &mut notes)?);
+            v.push(config_system(b, &cur, &spec, &src, &log, &mut notes)?);
         }
         (v, cur_idx)
     };
@@ -295,16 +305,21 @@ pub fn tolerance_cancel() {
 /// configs（構成の番号か状態の名前の並び。optimize と同じ。省けば読み込んだ系だけ）。読み込んだ系（set・edit の後）を使う。
 /// 同じプロセスからは [`tolerance_progress`] で進み具合を読み、[`tolerance_cancel`] で止められる
 pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    let (cur, spec, log) = sess.current_full()?;
+    let Current {
+        sys: cur,
+        spec,
+        src,
+        log,
+    } = sess.current_full()?;
     let mut notes = Vec::new();
     let systems = match p.get("configs").and_then(Value::as_array) {
         Some(bs) if !bs.is_empty() => bs
             .iter()
-            .map(|b| config_system(b, &cur, &spec, &log, &mut notes))
+            .map(|b| config_system(b, &cur, &spec, &src, &log, &mut notes))
             .collect::<Result<Vec<_>, _>>()?,
         _ => vec![(*cur).clone()],
     };
-    let (vendors, reversed) = crate::load::tolerance_vendors(&spec);
+    let (vendors, reversed) = crate::load::tolerance_vendors_in(&src);
     let mut v = p.clone();
     if let Some(o) = v.as_object_mut() {
         o.remove("configs");
@@ -343,7 +358,12 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     let zp: lensbench_design::dls_spec::ZoomParams =
         lensbench_design::dls_spec::read(p).map_err(|e| RpcErr::params(format!("zoom: {e}")))?;
-    let (cur, spec, log) = sess.current_full()?;
+    let Current {
+        sys: cur,
+        spec,
+        src,
+        log,
+    } = sess.current_full()?;
     let mut notes = Vec::new();
     let cfgs: Vec<Value> = if zp.configs.is_empty() {
         let c = configs(sess)?;
@@ -358,7 +378,7 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     };
     let systems = cfgs
         .iter()
-        .map(|b| config_system(b, &cur, &spec, &log, &mut notes))
+        .map(|b| config_system(b, &cur, &spec, &src, &log, &mut notes))
         .collect::<Result<Vec<_>, _>>()?;
     let names: Vec<String> = cfgs
         .iter()

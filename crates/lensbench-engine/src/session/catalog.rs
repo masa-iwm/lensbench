@@ -148,7 +148,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                     ))
                 }
             };
-            let (_, spec) = sess.current()?;
+            let Current { spec, src, log, .. } = sess.current_full()?;
             if !is_project(&spec.file) {
                 return Err(RpcErr::app(
                     "catalog_add only works when a project file (combination) is loaded",
@@ -160,9 +160,15 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                     "item {name} already exists (replace it with replace: true)"
                 )));
             }
-            let txt = lensbench_core::vfs::read_to_string(&spec.file)
-                .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
-            let mut pr = lensbench_project::Project::from_json(&txt)?;
+            // 読んだときのプロジェクトから（ファイルを読み直さない）
+            let mut pr = src
+                .project()
+                .ok_or_else(|| {
+                    RpcErr::app(
+                        "catalog_add only works when a project file (combination) is loaded",
+                    )
+                })?
+                .clone();
             if let Some(st) = &spec.state {
                 pr = pr.with_state(st)?;
             }
@@ -195,7 +201,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             let mut out = catalog_listing(path, &cat);
             out["added"] = json!(name);
             // 品はプロジェクトファイルの中身から作る（展開した系への set・edit はブロックへ戻せない）
-            if !sess.current_log().is_empty() {
+            if !log.is_empty() {
                 out["notes"] = json!([
                     "changes after loading (set, edit) are not in the item (items are made from the project file; save and reload first to include them)"
                 ]);

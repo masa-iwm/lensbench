@@ -1383,3 +1383,42 @@ fn describe_lists_every_method() {
     let mut line = String::new();
     assert_eq!(sv.r.read_line(&mut line).unwrap_or(0), 0, "{line}");
 }
+
+/// プロジェクトの別の状態は、読んだときのプロジェクトから展開する（読み込んだ後にファイルを書き換えても、reload まで
+/// 前のまま。CLI-21）
+#[test]
+fn project_states_come_from_the_loaded_file() {
+    let dir = std::env::temp_dir().join(format!("lb-serve-states-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let zmx = Path::new(ROOT).join("tests/refs/A0/system.zmx");
+    let txt = std::fs::read_to_string(
+        Path::new(ROOT).join("examples/projects/P6_states_focus_group.json"),
+    )
+    .unwrap()
+    .replace("../../tests/refs/A0/system.zmx", zmx.to_str().unwrap());
+    let f = dir.join("p6.json");
+    std::fs::write(&f, &txt).unwrap();
+    let mut sv = Server::start(&[]);
+    sv.call(
+        "load",
+        json!({
+            "file": f.display().to_string(),
+            "glass_dirs": [Path::new(ROOT).join("tests/glass").display().to_string()],
+        }),
+    );
+    let states = sv.call("configs", json!({}))["states"].clone();
+    assert!(
+        states.as_array().unwrap().contains(&json!("near")),
+        "{states}"
+    );
+    let all = sv.call("layout", json!({ "rays": 3, "states": "all" }));
+    std::fs::write(&f, txt.replace("\"near\"", "\"close\"")).unwrap();
+    assert_eq!(sv.call("configs", json!({}))["states"], states);
+    let again = sv.call("layout", json!({ "rays": 3, "states": "all" }));
+    assert_eq!(again["configs"], all["configs"]);
+    assert_eq!(again["rays"], all["rays"]);
+    sv.call("reload", json!({}));
+    let now = sv.call("configs", json!({}))["states"].clone();
+    assert!(now.as_array().unwrap().contains(&json!("close")), "{now}");
+    sv.stop();
+}

@@ -3,6 +3,8 @@
 use lensbench_core::{Error, Result, System};
 
 use crate::load::SysSpec;
+use lensbench_project::open::Source;
+use std::sync::Arc;
 
 /// 読み込んだ後の変更（serve の set・edit）を別に読んだ系に当てる口（系, 説明に付ける名前, 当てなかった変更）
 pub(crate) type Replay<'a> =
@@ -14,24 +16,58 @@ pub struct FileSource<'a> {
     pub c: &'a SysSpec,
     /// serve で読み込んだ後の変更を当てる（CLI は None）
     pub replay: Option<Replay<'a>>,
-    src: std::sync::OnceLock<Result<lensbench_project::open::Source>>,
+    /// serve で読み込んだ系（読み込んだ後の変更の入った系。CLI は None）
+    cur: Option<&'a System>,
+    src: std::sync::OnceLock<Result<Arc<Source>>>,
 }
 
 impl<'a> FileSource<'a> {
+    /// CLI: ファイルは初めに要るときに読む
     pub fn new(c: &'a SysSpec, replay: Option<Replay<'a>>) -> Self {
         Self {
             c,
             replay,
+            cur: None,
             src: Default::default(),
         }
     }
 
+    /// serve: 読んだときのファイル src と、読み込んだ系 cur から引く（CLI-21）。今の構成・状態・経路は cur そのもの、
+    /// .zmx の別の構成は cur の多重構成の表から（変更が入ったまま）、ほかは src から読んで replay で変更を当てる
+    pub fn loaded(c: &'a SysSpec, src: Arc<Source>, cur: &'a System, replay: Replay<'a>) -> Self {
+        Self {
+            c,
+            replay: Some(replay),
+            cur: Some(cur),
+            src: std::sync::OnceLock::from(Ok(src)),
+        }
+    }
+
     /// 1 回だけ読んだファイル
-    fn src(&self) -> Result<&lensbench_project::open::Source> {
+    fn src(&self) -> Result<&Source> {
         self.src
-            .get_or_init(|| lensbench_project::open::Source::read(&self.c.file))
+            .get_or_init(|| Source::read(&self.c.file).map(Arc::new))
             .as_ref()
+            .map(|s| &**s)
             .map_err(Clone::clone)
+    }
+
+    /// 読み込んだ系から引ける構成・状態の系（変更が入ったまま。引けなければ None）
+    fn loaded_variant(&self, cfg: usize, state: &Option<String>) -> Result<Option<System>> {
+        let Some(cur) = self.cur else {
+            return Ok(None);
+        };
+        if lensbench_analysis::Source::is_project(self) {
+            return Ok((*state == self.c.state).then(|| cur.clone()));
+        }
+        let active = cur.configs.as_ref().map_or(self.c.cfg, |t| t.active);
+        if cfg == active {
+            return Ok(Some(cur.clone()));
+        }
+        match &cur.configs {
+            Some(_) => Ok(Some(cur.config(cfg)?)),
+            None => Ok(None),
+        }
     }
 }
 
@@ -72,6 +108,15 @@ impl lensbench_analysis::Source for FileSource<'_> {
                 (k, None)
             }
         };
+        if v.wavelengths.is_none() {
+            // 光束を選ばなければ読み込んだ系そのもの
+            if let (None, Some(cur)) = (&v.beam, self.cur) {
+                return Ok(cur.clone());
+            }
+            if let Some(s) = self.loaded_variant(cfg, &state)? {
+                return Ok(s);
+            }
+        }
         let c = SysSpec {
             cfg,
             state,

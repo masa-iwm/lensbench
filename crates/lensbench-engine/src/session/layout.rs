@@ -6,21 +6,22 @@ use crate::layout::{Draw, Pick, RaySel, View};
 /// 断面図（YZ）の図形と、玉・群・面の位置（GUI のレイアウト図）。座標は [z, y] mm（大域座標）
 ///
 /// `cfgs`・`states`・`paths`（並びか "all"）を与えると、その構成（.zmx の多重構成・プロジェクトの状態・BS の経路）を
-/// ファイルから読み直して重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。読み込んだ後の変更（set・edit）は
-/// 読み直した構成にも当てる（構成で値の違うパラメータの set は当てずに `notes` に書く）。
-/// `surfaces`・`units` は読み込んだ系のもの
+/// 重ねる。構成 k は `offset` [dx, dy, dz] の k 倍ずらす。.zmx の多重構成は読み込んだ系の表から（読み込んだ後の変更
+/// set・edit が入る）。プロジェクトの別の状態・経路は読んだときのファイルから展開し、読み込んだ後の変更を当てる
+/// （構成で値の違うパラメータの set は当てずに `notes` に書く）。`surfaces`・`units` は読み込んだ系のもの
 pub(super) fn layout(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    let (s, spec) = sess.current()?;
-    layout_with(sess, &s, &spec, p)
+    let c = sess.current_full()?;
+    layout_with(&c.sys, &c.spec, p, Some(&c))
 }
 
+/// [`layout`]。loaded は読み込んだ系（None は s をファイルから読んだばかりの系として、重ねる構成もファイルから）
 pub(super) fn layout_with(
-    sess: &Session,
     s: &System,
     spec: &LoadSpec,
     p: &Value,
+    loaded: Option<&Current>,
 ) -> Result<Value, RpcErr> {
-    let (sc, notes) = layout_scene(sess, s, spec, p)?;
+    let (sc, notes) = layout_scene(s, spec, p, loaded)?;
     let mut v = view_json(s, &sc, p)?;
     if !notes.is_empty() {
         v["notes"] = json!(notes);
@@ -65,8 +66,9 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
             m.remove("unfold");
         }
     }
-    let (s, spec) = sess.current()?;
-    let (sc, mut notes) = layout_scene(sess, &s, &spec, &q)?;
+    let c = sess.current_full()?;
+    let (s, spec) = (&c.sys, &c.spec);
+    let (sc, mut notes) = layout_scene(s, spec, &q, Some(&c))?;
     // 色分けの既定は CLI の layout と同じ（重ね描きなら構成ごと、ほかは視野ごと）
     let draw = Draw {
         plane: if f.is_2d() { plane_of(&q)? } else { Plane::YZ },
@@ -92,10 +94,10 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
 
 /// layout・layout_export の場面（構成を選べば重ねる）と、読み直した構成に変更を当てられなかった説明
 pub(super) fn layout_scene(
-    sess: &Session,
     s: &System,
     spec: &LoadSpec,
     p: &Value,
+    loaded: Option<&Current>,
 ) -> Result<(lensbench_export::scene::Scene, Vec<String>), RpcErr> {
     let sel = config_sel(p)?;
     if !sel.any() {
@@ -104,18 +106,22 @@ pub(super) fn layout_scene(
             Vec::new(),
         ));
     }
-    // ファイルから読み直した構成にも、読み込んだ後の変更（set・edit）を当てる
-    let log = sess.current_log();
-    let (systems, mut notes) = crate::load::overlay_systems(spec, &sel)?;
+    // ファイルから展開した構成には、読み込んだ後の変更（set・edit）を当てる
+    let (systems, mut notes) =
+        crate::load::overlay_in(spec, &sel, loaded.map(|c| (&*c.src, &*c.sys)))?;
+    let log = loaded.map_or(&[][..], |c| &c.log[..]);
     let systems = systems
         .into_iter()
-        .map(|(name, sy)| {
+        .map(|(name, sy, edited)| {
+            if edited {
+                return Ok((name, sy));
+            }
             let label = if name.is_empty() {
                 "configuration".to_string()
             } else {
                 name.clone()
             };
-            replay(sy, &log, &label, &mut notes).map(|sy| (name, sy))
+            replay(sy, log, &label, &mut notes).map(|sy| (name, sy))
         })
         .collect::<lensbench_core::Result<Vec<_>>>()
         .map_err(RpcErr::app)?;
@@ -176,11 +182,14 @@ fn config_sel(p: &Value) -> Result<crate::load::Overlay, RpcErr> {
 
 /// 重ねて描ける構成: .zmx は構成の数、プロジェクトは状態の名前と BS の経路（今の状態で）
 pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
-    let (_, spec) = sess.current()?;
-    let kind = lensbench_project::open::FileKind::of(&spec.file);
+    let Current { sys, spec, src, .. } = sess.current_full()?;
+    let kind = src.kind();
     if kind != lensbench_project::open::FileKind::Project {
         let n = if kind == lensbench_project::open::FileKind::SystemFile {
             1
+        } else if let Some(t) = &sys.configs {
+            // 多重構成の表を読めていれば表の構成の数（読み込んだ後に set_config_count で変えたものも）
+            t.n
         } else {
             let txt = lensbench_core::glass::read_text(&spec.file)
                 .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
@@ -188,9 +197,9 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
                 .map_err(|x| RpcErr::app(x.to_string()))?
                 .configurations()
         };
-        return Ok(json!({ "cfgs": n, "cfg": spec.cfg, "states": [], "paths": [] }));
+        let cfg = active_cfg(&sys, &spec);
+        return Ok(json!({ "cfgs": n, "cfg": cfg, "states": [], "paths": [] }));
     }
-    let src = lensbench_project::open::Source::read(&spec.file)?;
     let paths = src.paths(&spec.open_spec())?;
     Ok(json!({
         "cfgs": 1,

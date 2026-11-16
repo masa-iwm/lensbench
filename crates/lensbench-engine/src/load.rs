@@ -56,13 +56,33 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
 
 /// ファイルから系を読み、読んだときの注意（[`load_source_notes`]）と一緒に返す
 pub fn load_file_notes(c: &SysSpec) -> Result<(System, Vec<String>), lensbench_core::Error> {
+    Ok(read_file_notes(c)?.1)
+}
+
+/// [`load_file_notes`] で、読んだファイルも返す（serve が持っておき、別の状態・経路をそこから引く。CLI-21）
+pub fn read_file_notes(
+    c: &SysSpec,
+) -> Result<(Source, (System, Vec<String>)), lensbench_core::Error> {
     if c.cfg == 0 {
         return Err(lensbench_core::Error::Invalid(format!(
             "{} must be 1 or more",
             c.names.cfg
         )));
     }
-    load_source_notes(&Source::read(&c.file)?, c)
+    let src = Source::read(&c.file)?;
+    let l = load_source_notes(&src, c)?;
+    Ok((src, l))
+}
+
+/// 読んだファイル src から、c の構成・状態・経路の系を読む（注意は捨てる）
+pub fn load_source(src: &Source, c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    if c.cfg == 0 {
+        return Err(lensbench_core::Error::Invalid(format!(
+            "{} must be 1 or more",
+            c.names.cfg
+        )));
+    }
+    Ok(load_source_notes(src, c)?.0)
 }
 
 /// 読んだファイル src から、c の構成・状態・経路の系を読む。注意（プロジェクトの展開・分散式・マクロ・
@@ -139,14 +159,23 @@ pub fn tolerance_vendors(
         return Default::default();
     }
     Source::read(&c.file)
-        .ok()
-        .and_then(|s| {
-            s.project().map(|p| {
-                (
-                    lensbench_design::tolerance::catalog_vendors(p),
-                    lensbench_design::tolerance::reversed_lenses(p),
-                )
-            })
+        .map(|s| tolerance_vendors_in(&s))
+        .unwrap_or_default()
+}
+
+/// [`tolerance_vendors`] を読んだファイルから
+pub fn tolerance_vendors_in(
+    src: &Source,
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashSet<String>,
+) {
+    src.project()
+        .map(|p| {
+            (
+                lensbench_design::tolerance::catalog_vendors(p),
+                lensbench_design::tolerance::reversed_lenses(p),
+            )
         })
         .unwrap_or_default()
 }
@@ -176,6 +205,24 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
         crate::provenance::set(&s);
         return Ok((vec![(String::new(), s)], notes));
     }
+    let (v, notes) = overlay_in(c, l, None)?;
+    Ok((v.into_iter().map(|(n, s, _)| (n, s)).collect(), notes))
+}
+
+/// [`overlay_in`] の系（名前・系・読み込んだ後の変更が入っているか）と、読んだときの注意
+pub(crate) type OverlaidIn = (Vec<(String, System, bool)>, Vec<String>);
+
+/// 読み込んだ系（serve）: 読んだときのファイル src と、読み込んだ後の変更の入った系 cur
+pub(crate) type Loaded<'a> = (&'a Source, &'a System);
+
+/// [`overlay_systems`] の重ね描きの系。loaded があればファイルを読み直さずに src から引き、.zmx の多重構成の表を
+/// 読めていれば cur の表から、今の状態・経路は cur そのものを使う（CLI-21）。系ごとの bool はそうして読み込んだ後の
+/// 変更がもう入っているか（false なら呼ぶ側が当て直す）
+pub(crate) fn overlay_in(
+    c: &SysSpec,
+    l: &Overlay,
+    loaded: Option<Loaded>,
+) -> lensbench_core::Result<OverlaidIn> {
     let kind = FileKind::of(&c.file);
     let is_json = kind != FileKind::Zmx;
     if kind == FileKind::SystemFile {
@@ -184,6 +231,15 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
     if let Some(v) = &l.cfgs {
         if is_json {
             return Err("--cfgs is only for .zmx (projects use --states and --beam-paths)".into());
+        }
+        // 多重構成の表を読めていれば、変更の入った系の表から
+        if let Some(t) = loaded.and_then(|(_, cur)| cur.configs.as_ref().map(|t| (cur, t.n))) {
+            let (cur, n) = t;
+            let mut out = Vec::new();
+            for k in index_list(v, n, "configuration")? {
+                out.push((format!("C{}", k + 1), cur.config(k + 1)?, true));
+            }
+            return Ok((out, Vec::new()));
         }
         let opt = zmx::LoadOptions {
             catalog_dirs: c.glass_dir.clone(),
@@ -197,7 +253,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
             .collect();
         let ss = zmx::load_configs(&c.file, &opt, &ks)?;
         return Ok((
-            ks.iter().map(|k| format!("C{k}")).zip(ss).collect(),
+            ks.iter()
+                .map(|k| format!("C{k}"))
+                .zip(ss)
+                .map(|(n, s)| (n, s, false))
+                .collect(),
             Vec::new(),
         ));
     }
@@ -206,7 +266,14 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
             "--states and --beam-paths are only for project files (.json); .zmx uses --cfgs".into(),
         );
     }
-    let src = Source::read(&c.file)?;
+    let read;
+    let src = match loaded {
+        Some((s, _)) => s,
+        None => {
+            read = Source::read(&c.file)?;
+            &read
+        }
+    };
     let Some(p) = src.project() else {
         return Err("--states and --beam-paths are only for project files (.json)".into());
     };
@@ -236,8 +303,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
     };
     let mut out = Vec::new();
     let mut notes = Vec::new();
-    // 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す
-    let cache = lensbench_project::SourceCache::default();
+    // 状態・経路ごとの展開で、ブロックが読むファイル・カタログの玉を使い回す（読んだときのものを引き継ぐ）
+    let cache = match src {
+        Source::Project { cache, .. } => cache.clone(),
+        _ => Default::default(),
+    };
     for st in &states {
         let ps = match &st {
             Some(n) => p.with_state(n)?,
@@ -255,6 +325,18 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
             Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
         };
         for pa in &paths {
+            let mut name: Vec<&str> = Vec::new();
+            if l.states.is_some() {
+                name.extend(st.as_deref());
+            }
+            if l.paths.is_some() {
+                name.extend(pa.as_deref());
+            }
+            // 今の状態・経路は読み込んだ系そのもの
+            if let Some((_, cur)) = loaded.filter(|_| *st == c.state && *pa == c.path) {
+                out.push((name.join("/"), cur.clone(), true));
+                continue;
+            }
             let (s, warn) = lensbench_project::expand(
                 &ps,
                 &env,
@@ -275,14 +357,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
                     notes.push(w);
                 }
             }
-            let mut name: Vec<&str> = Vec::new();
-            if l.states.is_some() {
-                name.extend(st.as_deref());
-            }
-            if l.paths.is_some() {
-                name.extend(pa.as_deref());
-            }
-            out.push((name.join("/"), s));
+            out.push((name.join("/"), s, false));
         }
     }
     Ok((out, notes))

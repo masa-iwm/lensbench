@@ -20,7 +20,8 @@ use lensbench_export::d2::Plane;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
-use crate::load::{load_file, load_file_notes, SysSpec as LoadSpec};
+use crate::load::{load_file, read_file_notes, SysSpec as LoadSpec};
+use lensbench_project::open::Source;
 
 /// 要求で与えたパスの扱い
 pub enum Files {
@@ -121,6 +122,8 @@ enum Change {
 struct Served {
     sys: Arc<System>,
     spec: LoadSpec,
+    /// 読んだときのファイル（別の構成・状態・経路はファイルを読み直さずにここから。CLI-21）
+    src: Arc<Source>,
     /// 読んだときの注意（load・reload の返事の notes。CLI-10）
     notes: Vec<String>,
     log: Vec<Change>,
@@ -130,11 +133,28 @@ struct Served {
     last_set: Option<(Vec<String>, Instant)>,
 }
 
+/// 読み込んだ系（[`Session::current_full`]）
+pub(crate) struct Current {
+    /// 読み込んだ後の変更（set・edit）の入った系
+    sys: Arc<System>,
+    spec: LoadSpec,
+    /// 読んだときのファイル
+    src: Arc<Source>,
+    /// 読み込んだ後の変更
+    log: Vec<Change>,
+}
+
+/// 読み込んだ .zmx の今の構成（多重構成の表があれば表の今の構成。set_config で替えたものも）
+fn active_cfg(cur: &System, spec: &LoadSpec) -> usize {
+    cur.configs.as_ref().map_or(spec.cfg, |t| t.active)
+}
+
 /// 元に戻す 1 段: 系と読み方、そのときの注意と変更の記録
 #[derive(Clone)]
 struct Snap {
     sys: Arc<System>,
     spec: LoadSpec,
+    src: Arc<Source>,
     notes: Vec<String>,
     log: Vec<Change>,
 }
@@ -197,8 +217,8 @@ impl Session {
 
     /// 系を読んで場に置く（起動の引数で与えた系。要求で与えたパスの扱いは当てない）
     pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> lensbench_core::Result<()> {
-        let (s, notes) = lensbench_core::with_threads(threads, || load_file_notes(&spec))?;
-        store(self, s, spec, notes);
+        let (src, (s, notes)) = lensbench_core::with_threads(threads, || read_file_notes(&spec))?;
+        store(self, s, spec, Arc::new(src), notes);
         Ok(())
     }
 
@@ -227,11 +247,16 @@ impl Session {
         Ok(self.current()?.0)
     }
 
-    /// 読み込んだ系・読み方・変更の記録を 1 度に（鍵を持たない長い要求が、間の set で混ざらないように）
-    fn current_full(&self) -> Result<(Arc<System>, LoadSpec, Vec<Change>), RpcErr> {
+    /// 読み込んだ系・読み方・読んだファイル・変更の記録を 1 度に（鍵を持たない長い要求が、間の set で混ざらないように）
+    fn current_full(&self) -> Result<Current, RpcErr> {
         self.served()
             .as_ref()
-            .map(|x| (x.sys.clone(), x.spec.clone(), x.log.clone()))
+            .map(|x| Current {
+                sys: x.sys.clone(),
+                spec: x.spec.clone(),
+                src: x.src.clone(),
+                log: x.log.clone(),
+            })
             .ok_or_else(|| RpcErr::app("no system (load first)"))
     }
 
@@ -241,21 +266,14 @@ impl Session {
             .map(|x| (x.sys.clone(), x.spec.clone()))
             .ok_or_else(|| RpcErr::app("no system (load first)"))
     }
-
-    /// 読み込んだ後の変更の記録
-    fn current_log(&self) -> Vec<Change> {
-        self.served()
-            .as_ref()
-            .map(|x| x.log.clone())
-            .unwrap_or_default()
-    }
 }
 
 /// 読み込んだ系を置く（変更の記録・元に戻す段は空にする）
-fn store(sess: &Session, sys: System, spec: LoadSpec, notes: Vec<String>) {
+fn store(sess: &Session, sys: System, spec: LoadSpec, src: Arc<Source>, notes: Vec<String>) {
     *sess.served() = Some(Served {
         sys: Arc::new(sys),
         spec,
+        src,
         notes,
         log: Vec::new(),
         hist: History::default(),
@@ -290,15 +308,16 @@ fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
 /// 読み込んだ系を置く。h が Push なら前の系を段に積み、Keep なら段はそのまま
 fn store_loaded(
     sess: &Session,
-    (sys, notes): (System, Vec<String>),
+    (src, (sys, notes)): (Source, (System, Vec<String>)),
     spec: LoadSpec,
     h: LoadHistory,
     reload: bool,
 ) {
+    let src = Arc::new(src);
     let mut g = sess.served();
     let Some(mut x) = g.take().filter(|_| h != LoadHistory::Clear) else {
         drop(g);
-        store(sess, sys, spec, notes);
+        store(sess, sys, spec, src, notes);
         return;
     };
     if h == LoadHistory::Push {
@@ -316,6 +335,7 @@ fn store_loaded(
     }
     x.sys = Arc::new(sys);
     x.spec = spec;
+    x.src = src;
     x.notes = notes;
     x.log = Vec::new();
     x.last_set = None;
@@ -350,6 +370,7 @@ fn snap(x: &Served) -> Snap {
     Snap {
         sys: x.sys.clone(),
         spec: x.spec.clone(),
+        src: x.src.clone(),
         notes: x.notes.clone(),
         log: x.log.clone(),
     }
@@ -364,15 +385,8 @@ fn push_undo(x: &mut Served, what: Value) {
 /// 変更した系を置き、変更を記録する。前の系は元に戻す段に積む（やり直す段は空にする）
 fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
     let mut g = sess.served();
+    // 読み込む前の set・edit は current で断るので、ここには来ない（一度置いた系は外さない）
     let Some(mut x) = g.take() else {
-        *g = Some(Served {
-            sys: Arc::new(sys),
-            spec,
-            notes: Vec::new(),
-            log: vec![c],
-            hist: History::default(),
-            last_set: None,
-        });
         return;
     };
     let now = Instant::now();
@@ -408,6 +422,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     };
     let file0 = std::mem::replace(&mut x.spec, snap.spec).file;
     x.sys = snap.sys;
+    x.src = snap.src;
     x.notes = snap.notes;
     x.log = snap.log;
     x.last_set = None;
@@ -873,7 +888,7 @@ impl Session {
         let f = || -> Result<Value, RpcErr> {
             let spec = load_spec(sess, load)?;
             let s = load_file(&spec)?;
-            layout_with(sess, &s, &spec, opts)
+            layout_with(&s, &spec, opts, None)
         };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .unwrap_or_else(|_| Err(RpcErr::app("internal error (panic)")))
@@ -955,8 +970,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "load" => {
             let h = load_history(p)?;
             let spec = load_spec(sess, p)?;
-            let l = load_file_notes(&spec)?;
-            let mut v = summary(&l.0, &spec, &l.1);
+            let l = read_file_notes(&spec)?;
+            let mut v = summary(&l.1 .0, &spec, &l.1 .1);
             store_loaded(sess, l, spec, h, false);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
@@ -965,8 +980,8 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "reload" => {
             let h = load_history(p)?;
             let (_, spec) = sess.current()?;
-            let l = load_file_notes(&spec)?;
-            let mut v = summary(&l.0, &spec, &l.1);
+            let l = read_file_notes(&spec)?;
+            let mut v = summary(&l.1 .0, &spec, &l.1 .1);
             store_loaded(sess, l, spec, h, true);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
@@ -1323,11 +1338,14 @@ pub(crate) fn with_source<R>(
     sess: &Session,
     f: impl FnOnce(&dyn lensbench_analysis::Source) -> R,
 ) -> Result<R, RpcErr> {
-    let (_, spec) = sess.current()?;
-    let log = sess.current_log();
-    let c = spec.clone();
+    let Current {
+        sys,
+        spec,
+        src,
+        log,
+    } = sess.current_full()?;
     let r = |s: System, l: &str, n: &mut Vec<String>| replay(s, &log, l, n);
-    Ok(f(&crate::source::FileSource::new(&c, Some(&r))))
+    Ok(f(&crate::source::FileSource::loaded(&spec, src, &sys, &r)))
 }
 
 fn is_zmx(f: &Path) -> bool {
