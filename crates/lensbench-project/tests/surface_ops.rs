@@ -81,6 +81,18 @@ fn missing_block_warns_and_bad_ops_fail() {
         e.message().unwrap_or_default().contains("delete_surface"),
         "{e}"
     );
+    // 誤りの文は surface_ops の何番目か（ブロックの無い操作・外す操作で束を分けてもずれない）
+    let e = project(
+        true,
+        r#"[{"op": "add_solve", "surface": {"block": "X", "surface": 0}},
+            {"op": "remove_solve", "surface": {"block": "L1", "surface": 0}},
+            {"op": "add_solve", "surface": {"block": "L2", "surface": 1}, "kind": "nonsense"}]"#,
+    )
+    .unwrap_err();
+    assert!(
+        e.message().unwrap_or_default().contains("surface_ops 3:"),
+        "{e}"
+    );
     // 絞りが無く set_stop も無ければ従来どおりのエラー
     assert!(project(false, "[]")
         .unwrap_err()

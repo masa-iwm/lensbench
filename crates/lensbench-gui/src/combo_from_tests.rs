@@ -238,7 +238,7 @@ fn zmx_files_become_combos() {
         .filter(|p| p.exists())
         .collect();
     files.sort();
-    let (mut ok, mut no) = (Vec::new(), Vec::new());
+    let (mut ok, mut no, mut split) = (Vec::new(), Vec::new(), Vec::new());
     for f in &files {
         let name = f
             .parent()
@@ -254,8 +254,12 @@ fn zmx_files_become_combos() {
                 continue;
             }
         };
+        // 書ける .zmx は要素に分ける（同じ系かは分けるときに確かめる）
+        if !c.picks.iter().any(|p| p.kind == ElemKind::ZmxRange) {
+            split.push(name);
+            continue;
+        }
         assert_eq!(c.picks.len(), 1, "{name}");
-        assert_eq!(c.picks[0].kind, ElemKind::ZmxRange, "{name}");
         let o = lensbench_project::open::OpenSpec {
             glass_dirs: &gd,
             cfg: 1,
@@ -282,25 +286,29 @@ fn zmx_files_become_combos() {
         );
         ok.push(name);
     }
-    assert!(ok.len() >= 30, "{ok:?} {no:?}");
-    // 作業フォルダからの相対パスで開いても（GUI の引数）
-    let rel = Path::new("../../tests/refs/A0/system.zmx");
+    assert!(ok.len() + split.len() >= 30, "{ok:?} {split:?} {no:?}");
+    assert!(
+        ok.len() >= 10 && split.contains(&"A0".to_string()),
+        "{ok:?} {split:?}"
+    );
+    // 作業フォルダからの相対パスで開いても（GUI の引数）。G0 は分けずに取り込む
+    let rel = Path::new("../../tests/refs/G0/system.zmx");
     let c = Combo::from_zmx(rel, &gd, &[]).unwrap();
     assert!(
         Path::new(&c.picks[0].path).is_absolute(),
         "{}",
         c.picks[0].path
     );
-    // A0 の GLRS 8 はブロックの面で持つ（前に要素を足しても同じ面）
-    assert_eq!(c.picks[0].id, lensbench_project::ZMX_ID);
-    assert_eq!(c.extra.glrs, Some(json!({ "block": "zmx", "surface": 7 })));
+    // A0 の GLRS 8 は要素の面で持つ（前に要素を足しても同じ面）。分けた A0 では像の前のダミー面
+    let c = Combo::from_zmx(Path::new("../../tests/refs/A0/system.zmx"), &gd, &[]).unwrap();
+    assert_eq!(c.extra.glrs, Some(json!({ "block": "S2", "surface": 0 })));
     assert!(
         no.iter()
             .all(|e| e.starts_with("C0") || e.starts_with("C1")),
         "{no:?}"
     );
     for n in ["A0", "A6", "F2"] {
-        assert!(ok.iter().any(|x| x == n), "{n}: {no:?}");
+        assert!(ok.iter().chain(&split).any(|x| x == n), "{n}: {no:?}");
     }
 }
 

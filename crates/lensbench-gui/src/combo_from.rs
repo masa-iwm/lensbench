@@ -36,6 +36,10 @@ impl Combo {
         let name = f.file_name().ok_or("no file name")?.to_string_lossy();
         let p = lensbench_project::zmx_project(&s, &name)?;
         let base = f.parent().unwrap_or(Path::new(""));
+        // 書ける .zmx は要素に分ける（変更は中身へ）。書けなければ .zmx をまるごと取り込む
+        if let Some(c) = crate::combo_split::split(&s, &p, base, glass_dirs) {
+            return Ok(c);
+        }
         let (t, _) = lensbench_project::expand_json(&p.to_string(), base, glass_dirs, None, None)?;
         lensbench_project::same_system(&s, &t)?;
         Combo::from_project(&p, base)

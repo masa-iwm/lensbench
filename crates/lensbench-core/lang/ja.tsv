@@ -1576,6 +1576,8 @@ block {id}: only lenses can bake in values changed in the surface table (undo th
 {tag}: no block {b} for holds	{tag}: holds のブロック {b} がありません
 {name} mount	{name} のマウント
 surface_ops {}: block {} not found, so {} is not applied	surface_ops {}: ブロック {} が無いので {} を当てません
+surface_ops {}: nothing to remove, so {} is not applied	surface_ops {}: 外すものが無いので {} を当てません
+surface_ops {}: {e}	surface_ops {}: {e}
 surface_edits: block {} not found, so the override of surface {} is not applied	surface_edits: ブロック {} が無いので面 {} の上書きを当てません
 {path}: surface {} {:?} is a pickup from surface {} outside the range (fixed to the value)	{path}: 面 {} の {:?} は範囲の外の面 {} からのピックアップ（値で固定）
 {path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended	{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めました（倍率 {}・ずれ {}）。意図どおりか確認します

@@ -743,6 +743,28 @@ fn ui_arrow_keys_move_the_cell_and_select_the_block() {
             .any(|a| matches!(a, Act::Select(Some(n)) if n == "L1")),
         "{acts:?}"
     );
+    // 面単位の選択では、ブロックの中の面へ動くとブロックの選びを外す（ブロック全体をハイライトしない）
+    let mut st = LensData {
+        active: true,
+        tree: true,
+        by_surface: true,
+        sel: Some("L1".into()),
+        cur: Some((1, Col::T)),
+        ..Default::default()
+    };
+    let acts = drive_with(
+        &mut st,
+        &rows,
+        &blocks,
+        &BTreeSet::new(),
+        vec![Vec::new(), vec![key(egui::Key::ArrowDown)], Vec::new()],
+    );
+    assert_eq!(st.cur, Some((2, Col::T)));
+    assert_eq!(st.sel, None);
+    assert!(
+        acts.iter().any(|a| matches!(a, Act::Select(None))),
+        "{acts:?}"
+    );
 }
 
 #[test]

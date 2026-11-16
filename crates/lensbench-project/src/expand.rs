@@ -987,14 +987,16 @@ pub(crate) fn apply_surface_ops(
     let mut out = Vec::new();
     let mut stopped = false;
     // ためた操作をまとめて当てる
+    // 誤りの文の番号は surface_ops の何番目か
     let flush = |s: &mut System,
-                 out: &mut Vec<EditOp>,
+                 out: &mut Vec<(usize, EditOp)>,
                  warn: &mut Vec<String>,
                  stopped: &mut bool|
      -> lensbench_core::Result<()> {
         if !out.is_empty() {
-            *stopped |= out.iter().any(|o| matches!(o, EditOp::SetStop(_)));
-            warn.extend(edit_ops::apply(s, out).map_err(|x| format!("surface_ops: {x}"))?);
+            *stopped |= out.iter().any(|o| matches!(o.1, EditOp::SetStop(_)));
+            let ops: Vec<(usize, &EditOp)> = out.iter().map(|(k, o)| (*k, o)).collect();
+            warn.extend(edit_ops::apply_labeled(s, &ops, true)?);
             out.clear();
         }
         Ok(())
@@ -1038,7 +1040,7 @@ pub(crate) fn apply_surface_ops(
             Some(e @ (EditOp::RemoveSolve { .. } | EditOp::RemovePickup { .. })) => {
                 flush(s, &mut out, &mut warn, &mut stopped)?;
                 if has_target(s, &e) {
-                    flush(s, &mut vec![e], &mut warn, &mut stopped)?;
+                    flush(s, &mut vec![(k + 1, e)], &mut warn, &mut stopped)?;
                 } else {
                     warn.push(format!(
                         "surface_ops {}: nothing to remove, so {} is not applied",
@@ -1047,7 +1049,7 @@ pub(crate) fn apply_surface_ops(
                     ));
                 }
             }
-            Some(e) => out.push(e),
+            Some(e) => out.push((k + 1, e)),
             None => warn.push(format!(
                 "surface_ops {}: block {} not found, so {} is not applied",
                 k + 1,
