@@ -998,6 +998,40 @@ pub(crate) fn apply_surface_ops(
 ) -> lensbench_core::Result<(Vec<String>, bool)> {
     let mut warn = Vec::new();
     let mut out = Vec::new();
+    let mut stopped = false;
+    // ためた操作をまとめて当てる
+    let flush = |s: &mut System,
+                 out: &mut Vec<EditOp>,
+                 warn: &mut Vec<String>,
+                 stopped: &mut bool|
+     -> lensbench_core::Result<()> {
+        if !out.is_empty() {
+            *stopped |= out.iter().any(|o| matches!(o, EditOp::SetStop(_)));
+            warn.extend(edit_ops::apply(s, out).map_err(|x| format!("surface_ops: {x}"))?);
+            out.clear();
+        }
+        Ok(())
+    };
+    // 外す操作の面に、外すソルブ・ピックアップがあるか（名前で書いた面・読めない量は当てて誤りにする）
+    let has_target = |s: &System, e: &EditOp| match e {
+        EditOp::RemoveSolve {
+            surface: Ref::Index(j),
+            what,
+        } => {
+            let c = *what == crate::edit_spec::SolveWhat::C;
+            s.solves
+                .iter()
+                .any(|q| q.surf == *j && q.kind.is_curv() == c)
+        }
+        EditOp::RemovePickup {
+            dst: Ref::Index(j),
+            what,
+        } => match lensbench_core::edit::pick_kind_parse(what) {
+            Ok(w) => s.pickups.iter().any(|p| p.dst == *j && p.what == w),
+            Err(_) => true,
+        },
+        _ => true,
+    };
     for (k, op) in ops.iter().enumerate() {
         let mut missing = None;
         let e = op.to_edit(|r| match r {
@@ -1013,6 +1047,19 @@ pub(crate) fn apply_surface_ops(
             },
         })?;
         match e {
+            // 外す操作: 前の操作を当ててから、外すものが無ければ当てずに注意（ブロックの元が変わったなど）
+            Some(e @ (EditOp::RemoveSolve { .. } | EditOp::RemovePickup { .. })) => {
+                flush(s, &mut out, &mut warn, &mut stopped)?;
+                if has_target(s, &e) {
+                    flush(s, &mut vec![e], &mut warn, &mut stopped)?;
+                } else {
+                    warn.push(format!(
+                        "surface_ops {}: nothing to remove, so {} is not applied",
+                        k + 1,
+                        op.name()
+                    ));
+                }
+            }
             Some(e) => out.push(e),
             None => warn.push(format!(
                 "surface_ops {}: block {} not found, so {} is not applied",
@@ -1022,10 +1069,7 @@ pub(crate) fn apply_surface_ops(
             )),
         }
     }
-    let stopped = out.iter().any(|o| matches!(o, EditOp::SetStop(_)));
-    if !out.is_empty() {
-        warn.extend(edit_ops::apply(s, &out).map_err(|x| format!("surface_ops: {x}"))?);
-    }
+    flush(s, &mut out, &mut warn, &mut stopped)?;
     Ok((warn, stopped))
 }
 

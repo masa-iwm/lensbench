@@ -129,6 +129,13 @@ impl Out {
         }
     }
 
+    /// ブロックを選ばない（面単位の選択でブロックの中の面・ブロックの外の面を選んだとき。選んでいたときだけ知らせる）
+    fn unselect(&mut self, st: &mut LensData) {
+        if st.sel.take().is_some() {
+            self.acts.push(Act::Select(None));
+        }
+    }
+
     /// ブロック i を開く・たたむ（折りたたみ表示）か、中へ入る
     fn open_or_enter(&mut self, c: &Ctx, tree: bool, i: usize) {
         if tree {

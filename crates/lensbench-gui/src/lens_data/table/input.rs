@@ -163,11 +163,13 @@ pub(super) fn key_input(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: 
             }
             st.cur = Some(m);
             st.hscroll = left || right;
-            if let Some(i) = v
+            match v
                 .child_of(m.0)
                 .filter(|&i| Some(i) != v.scope && (v.folded(m.0).is_some() || !st.by_surface))
             {
-                out.select(st, c, i);
+                Some(i) => out.select(st, c, i),
+                None if st.by_surface => out.unselect(st),
+                None => {}
             }
         }
         if let Some((j, col)) = st.cur {

@@ -841,11 +841,7 @@ fn ops(c: &mut Combo, v: &Value) -> R<()> {
     };
     let list: Vec<SurfaceOp> = serde_json::from_value(x.clone()).map_err(|e| e.to_string())?;
     for mut o in list {
-        let r = match &mut o {
-            SurfaceOp::SetStop(x) => &mut x.surface,
-            SurfaceOp::AddSolve(x) => &mut x.surface,
-            SurfaceOp::AddPickup(x) => &mut x.dst,
-        };
+        let r = o.target_mut();
         let BlockRef::Block(face) = r.clone() else {
             return Err("surface_ops on a system surface".into());
         };

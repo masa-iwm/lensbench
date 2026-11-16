@@ -1254,6 +1254,7 @@ Toroidal	トロイダル
 Par {}	パラメータ {}
 Par {}: {}	パラメータ {}: {}
 Pickup: {}	ピックアップ: {}
+{} decides this value. Remove it first (right-click the cell)	{} で決まる値です。先に外してください（セルを右クリック）
 A pickup needs the source surface number	ピックアップには元の面の番号が要る
 Fresnel	フレネル
 Block: {} (click to select, lock, enter)	ブロック: {}（クリックで選択・ロック・中へ）

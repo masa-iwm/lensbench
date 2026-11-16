@@ -30,12 +30,13 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   厚さは符号を逆に）。往路の最後の面の厚さ・材料はブロックの外（後の空気のブロック）なので変えられない。
   `fields` の名前が面の値の名前に無ければ、serve の `set_surface_data` と同じ面のデータの項目（`ap`・`before`・`zern` など）として当てる。
   GUI の面の表で組合せの玉の面を変えると、これで保存される
-- 面の絞り・ソルブ・ピックアップ（`surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、面を
+- 面の絞り・ソルブ・ピックアップ（`surface_ops`）: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・`remove_pickup` と同じ形で、面を
   `{"block": "L2", "surface": 1}`（`surface_edits` と同じ数え方。往復するブロックは往路の面）か、展開した系の面の番号・名前で書く。ほかの操作・知らないキーは読むときに誤り。例:
   `[{"op": "set_stop", "surface": {"block": "L1", "surface": 1}}, {"op": "add_solve", "surface": {"block": "L2", "surface": 1}, "kind": "marginal_height"},
   {"op": "add_pickup", "dst": {"block": "L2", "surface": 1}, "src": {"block": "L1", "surface": 0}, "what": "c", "scale": -1}]`。
   `surface_edits` の後に当てる。`set_stop` があれば絞りのブロックは無くてよい（あれば絞りは面に移る）。ブロックの順を変えても id で付いて行き、
-  状態で外したブロックの操作は当てずに注意を出す
+  状態で外したブロックの操作は当てずに注意を出す。`remove_solve`・`remove_pickup` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す
+  （値はそのまま残る。外すものが無ければ当てずに注意）。GUI の面の表で組合せの玉の元のソルブを外すと、これで保存される
 
 - 視野の種類（`fields.type`）は `angle`・`object_height`・`paraxial_image_height`・`real_image_height` と、条件で定める視野 `solve`。
   `solve` では `fields.solve` の条件について、視野の (x, y) が目標値になる物体（有限なら物点、無限遠なら方向）を主波長の主光線で解く。

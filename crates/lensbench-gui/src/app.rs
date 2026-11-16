@@ -1798,9 +1798,11 @@ impl Core {
         for a in acts {
             match a {
                 Act::Select(name) => {
+                    // 選ばないとき（面単位の選択など）は図の要素も外す。残すと次のフレームで表に戻る
                     if is_combo && self.p.ld.scope.is_empty() {
-                        if let Some(k) = name.and_then(|n| ids.iter().position(|i| *i == n)) {
-                            self.p.combo_view.select(k);
+                        match name.and_then(|n| ids.iter().position(|i| *i == n)) {
+                            Some(k) => self.p.combo_view.select(k),
+                            None => self.p.combo_view.sel = None,
                         }
                     }
                 }
@@ -2173,6 +2175,12 @@ impl Core {
                 json!({ "op": "set_surface", "surface": j, "fields": fields })
             };
             self.worker.send(Tag::Edit, "edit", json!({ "ops": [op] }));
+            return;
+        }
+        let why = (self.sys.ld_rows.get(j))
+            .and_then(|r| fields.keys().find_map(|k| ld_combo::solved_reason(r, k)));
+        if let Some(why) = why {
+            self.fail(why);
             return;
         }
         for (key, value) in fields {

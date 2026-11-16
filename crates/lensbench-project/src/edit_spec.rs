@@ -410,8 +410,9 @@ impl EditOp {
     }
 }
 
-/// プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、面
-/// （`surface`・`dst`・`src`・`other`）はブロックの面 `{"block": id, "surface": i}` でも指せる
+/// プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・
+/// `remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{"block": id, "surface": i}` でも指せる。
+/// `remove_*` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す（無ければ当てずに注意）
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum SurfaceOp {
@@ -421,19 +422,44 @@ pub enum SurfaceOp {
     AddSolve(SolveOp<BlockRef>),
     /// ピックアップを置く
     AddPickup(PickupOp<BlockRef>),
+    /// ソルブを外す
+    RemoveSolve {
+        surface: BlockRef,
+        #[serde(default)]
+        what: SolveWhat,
+    },
+    /// ピックアップを外す
+    RemovePickup { dst: BlockRef, what: String },
 }
 
 impl SurfaceOp {
     /// 面を f で系の面に読み替えて編集の操作にする（f が None を返した面があれば当てない）
     pub fn to_edit<E>(
         &self,
-        f: impl FnMut(BlockRef) -> Result<Option<Ref>, E>,
+        mut f: impl FnMut(BlockRef) -> Result<Option<Ref>, E>,
     ) -> Result<Option<EditOp>, E> {
         Ok(match self.clone() {
             SurfaceOp::SetStop(o) => o.map(f)?.map(EditOp::SetStop),
             SurfaceOp::AddSolve(o) => o.map(f)?.map(EditOp::AddSolve),
             SurfaceOp::AddPickup(o) => o.map(f)?.map(EditOp::AddPickup),
+            SurfaceOp::RemoveSolve { surface, what } => {
+                f(surface)?.map(|surface| EditOp::RemoveSolve { surface, what })
+            }
+            SurfaceOp::RemovePickup { dst, what } => {
+                f(dst)?.map(|dst| EditOp::RemovePickup { dst, what })
+            }
         })
+    }
+
+    /// 操作を当てる面（`surface`・`dst`。`src`・`other` は含めない）
+    pub fn target_mut(&mut self) -> &mut BlockRef {
+        match self {
+            SurfaceOp::SetStop(x) => &mut x.surface,
+            SurfaceOp::AddSolve(x) => &mut x.surface,
+            SurfaceOp::AddPickup(x) => &mut x.dst,
+            SurfaceOp::RemoveSolve { surface, .. } => surface,
+            SurfaceOp::RemovePickup { dst, .. } => dst,
+        }
     }
 
     /// 番号で書いた面（`surface`・`dst`。`src`・`other` はそのまま）をブロック id の面にする（GUI の組合せの要素の面）
@@ -447,11 +473,7 @@ impl SurfaceOp {
             }
         };
         let mut o = self.clone();
-        match &mut o {
-            SurfaceOp::SetStop(x) => f(&mut x.surface),
-            SurfaceOp::AddSolve(x) => f(&mut x.surface),
-            SurfaceOp::AddPickup(x) => f(&mut x.dst),
-        }
+        f(o.target_mut());
         o
     }
 
@@ -471,6 +493,8 @@ impl SurfaceOp {
             SurfaceOp::SetStop(_) => "set_stop",
             SurfaceOp::AddSolve(_) => "add_solve",
             SurfaceOp::AddPickup(_) => "add_pickup",
+            SurfaceOp::RemoveSolve { .. } => "remove_solve",
+            SurfaceOp::RemovePickup { .. } => "remove_pickup",
         }
     }
 }

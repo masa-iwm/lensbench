@@ -66,6 +66,26 @@ pub(super) fn override_fields(col: lens_data::Col) -> &'static [&'static str] {
     }
 }
 
+/// 面の値 key がソルブ・ピックアップで決まっていれば、変えられない理由（開いた系で serve が断るのと同じ。
+/// 組合せでは上書きを入れると系の作り直しが誤りで止まるか、ソルブが値を戻してしまう）
+pub(super) fn solved_reason(row: &lens_data::Row, key: &str) -> Option<String> {
+    use lens_data::Col;
+    let col = match key {
+        "t" => Col::T,
+        "r" | "c" => Col::R,
+        "semi" => Col::Semi,
+        "k" => Col::Conic,
+        "material" => Col::Material,
+        "coating" => Col::Coating,
+        _ => return None,
+    };
+    let (_, what) = col.solved(row)?;
+    Some(trf(
+        "{} decides this value. Remove it first (right-click the cell)",
+        &[&what],
+    ))
+}
+
 /// 組合せの系の面 j の要素と、要素の面の番号（座標ブレークを除く）
 pub(super) fn face_of(
     rows: &[lens_data::Row],
@@ -134,5 +154,19 @@ mod tests {
         assert!(!overridden(&rows, &spans, &picks, 3, Col::R));
         assert!(!overridden(&rows, &spans, &picks, 1, Col::Semi));
         assert!(!overridden(&rows, &spans, &picks, 2, Col::Semi));
+    }
+
+    /// ソルブ・ピックアップで決まる値は変えない（A0 の面 7 の厚さ）
+    #[test]
+    fn solved_values_are_refused() {
+        let r = Row {
+            solves: vec![("t".into(), "marginal_height 0".into())],
+            pickups: vec![("k".into(), "from 1".into())],
+            ..Default::default()
+        };
+        assert!(solved_reason(&r, "t").is_some());
+        assert!(solved_reason(&r, "k").is_some());
+        assert!(solved_reason(&r, "r").is_none());
+        assert!(solved_reason(&r, "comment").is_none());
     }
 }

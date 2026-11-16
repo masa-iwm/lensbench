@@ -1735,6 +1735,21 @@
       ],
       "description": "面の半直径: 数 [mm] か \"auto\"（全視野・全波長の主光線と瞳の縁の光線から求める）"
     },
+    "SolveWhat": {
+      "description": "ソルブを外す量",
+      "oneOf": [
+        {
+          "const": "t",
+          "description": "厚さ（既定）",
+          "type": "string"
+        },
+        {
+          "const": "c",
+          "description": "曲率",
+          "type": "string"
+        }
+      ]
+    },
     "SplitFace": {
       "description": "平板で分ける面",
       "enum": [
@@ -2181,7 +2196,7 @@
       "type": "object"
     },
     "SurfaceOp": {
-      "description": "プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup` と同じ形で、面\n（`surface`・`dst`・`src`・`other`）はブロックの面 `{\"block\": id, \"surface\": i}` でも指せる",
+      "description": "プロジェクトの `surface_ops` の操作: serve の `edit` の `set_stop`・`add_solve`・`add_pickup`・`remove_solve`・\n`remove_pickup` と同じ形で、面（`surface`・`dst`・`src`・`other`）はブロックの面 `{\"block\": id, \"surface\": i}` でも指せる。\n`remove_*` はブロックの元（.zmx など）にあるソルブ・ピックアップを外す（無ければ当てずに注意）",
       "oneOf": [
         {
           "additionalProperties": false,
@@ -2313,6 +2328,48 @@
             "op",
             "dst",
             "src",
+            "what"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ソルブを外す",
+          "properties": {
+            "op": {
+              "const": "remove_solve",
+              "type": "string"
+            },
+            "surface": {
+              "$ref": "#/$defs/BlockRef"
+            },
+            "what": {
+              "$ref": "#/$defs/SolveWhat",
+              "default": "t"
+            }
+          },
+          "required": [
+            "op",
+            "surface"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ピックアップを外す",
+          "properties": {
+            "dst": {
+              "$ref": "#/$defs/BlockRef"
+            },
+            "op": {
+              "const": "remove_pickup",
+              "type": "string"
+            },
+            "what": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "dst",
             "what"
           ],
           "type": "object"

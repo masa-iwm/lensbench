@@ -95,7 +95,7 @@ fn missing_block_warns_and_bad_ops_fail() {
     assert!(e.message().unwrap_or_default().contains("0 stops"), "{e}");
 }
 
-/// surface_ops は set_stop・add_solve・add_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
+/// surface_ops は set_stop・add_solve・add_pickup・remove_solve・remove_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
 #[test]
 fn surface_ops_are_typed() {
     for (ops, want) in [
@@ -135,4 +135,50 @@ fn surface_ops_are_typed() {
             {"op": "add_pickup", "dst": "IMG", "src": 1, "what": "t", "scale": -1.0, "offset": 0.0}
         ])
     );
+}
+
+/// ブロックの元（.zmx）のソルブを remove_solve で外せる。外すものが無ければ当てずに注意（A0 の最後の厚さのソルブ）
+#[test]
+fn remove_solve_of_block_source() {
+    let a0 = |ops: &str| {
+        let txt = format!(
+            r#"{{ "glass_catalogs": ["SCHOTT"], "wavelengths": [{{"um": 0.5875618}}],
+            "aperture": {{"type": "epd", "value": 10}},
+            "blocks": [{{"type": "zmx", "id": "zmx", "path": "A0/system.zmx"}}, {{"type": "air", "t": 0}}],
+            "surface_ops": {ops} }}"#
+        );
+        expand_report(&Project::from_json(&txt).unwrap(), &env()).unwrap()
+    };
+    // 元の .zmx は面 7 の厚さに周辺光線の高さのソルブ（MAZH）を持つ
+    let (s, warn) = a0("[]");
+    assert!(warn.is_empty(), "{warn:?}");
+    assert_eq!(s.solves.iter().map(|q| q.surf).collect::<Vec<_>>(), [7]);
+    let t = s.surfaces[7].t;
+    let rm = r#"[{"op": "remove_solve", "surface": {"block": "zmx", "surface": 6}, "what": "t"}]"#;
+    let (s, warn) = a0(rm);
+    assert!(warn.is_empty(), "{warn:?}");
+    assert!(s.solves.is_empty());
+    // 外しても値はそのまま
+    assert_eq!(s.surfaces[7].t, t);
+    // 外したあとに置き直せる（順に当てる）
+    let (s, _) = a0(&format!(
+        "[{}, {}]",
+        &rm[1..rm.len() - 1],
+        r#"{"op": "add_solve", "surface": {"block": "zmx", "surface": 6}, "kind": "marginal_height", "value": 0.5}"#
+    ));
+    assert_eq!(s.solves.len(), 1);
+    assert_eq!(s.solves[0].height, 0.5);
+    // 外すものが無い面・曲率は注意だけ
+    for ops in [
+        r#"[{"op": "remove_solve", "surface": {"block": "zmx", "surface": 2}}]"#,
+        r#"[{"op": "remove_solve", "surface": {"block": "zmx", "surface": 6}, "what": "c"}]"#,
+        r#"[{"op": "remove_pickup", "dst": {"block": "zmx", "surface": 6}, "what": "t"}]"#,
+    ] {
+        let (s, warn) = a0(ops);
+        assert_eq!(s.solves.len(), 1, "{ops}");
+        assert!(
+            warn.iter().any(|w| w.contains("nothing to remove")),
+            "{ops}: {warn:?}"
+        );
+    }
 }

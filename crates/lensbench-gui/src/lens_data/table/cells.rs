@@ -479,8 +479,9 @@ fn value_cell(
         // 範囲を選んでいる行の右クリックは範囲を残す（今のセルも動かさない）
         let keep = resp.secondary_clicked() && v.selected.len() > 1 && v.selected.contains(&j);
         click_to(st, j, col, v.shift_down, keep);
-        if let Some(i) = blk.filter(|_| fold.is_some() || !st.by_surface) {
-            out.select(st, c, i);
+        match blk.filter(|_| fold.is_some() || !st.by_surface) {
+            Some(i) => out.select(st, c, i),
+            None => out.unselect(st),
         }
     }
     if resp.double_clicked() {
@@ -551,8 +552,9 @@ pub(super) fn row_end(
         let col = st.cur.map_or(Col::R, |x| x.1);
         click_to(st, j, col, v.shift_down, false);
         st.edit = None;
-        if let Some(i) = blk.filter(|_| fold.is_some() || !st.by_surface) {
-            out.select(st, c, i);
+        match blk.filter(|_| fold.is_some() || !st.by_surface) {
+            Some(i) => out.select(st, c, i),
+            None => out.unselect(st),
         }
         if let (true, Some((i, _))) = (rr.double_clicked(), fold) {
             out.open_or_enter(c, v.tree, i);
