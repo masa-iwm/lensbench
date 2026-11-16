@@ -1,0 +1,10 @@
+{
+  "rod_spacings_mm": [16.0, 26.87, 30.0, 60.0],
+  "threads": [
+    { "name": "SM05", "major_mm": 13.589, "pitch_mm": 0.635, "holds_mm": 12.7, "female_major": true },
+    { "name": "SM1", "major_mm": 26.289, "pitch_mm": 0.635, "holds_mm": 25.4, "female_major": true },
+    { "name": "SM2", "major_mm": 51.689, "pitch_mm": 0.635, "holds_mm": 50.8, "female_major": true },
+    { "name": "SM3", "major_mm": 77.089, "pitch_mm": 0.635, "holds_mm": 76.2, "female_major": true },
+    { "name": "C-Mount", "major_mm": 25.4, "pitch_mm": 0.79375, "holds_mm": 0.0, "female_major": false }
+  ]
+}

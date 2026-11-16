@@ -4,6 +4,7 @@
 - glTF（.glb）: trimesh。網の数・頂点・面、閉じた立体の体積、光線の点
 - STEP: OpenCascade（cadquery-ocp）。立体の数・妥当性・体積・境界箱、面の点、光線の点
 - 追跡結果（CSV・JSON）: csv・json。OpticStudio の基準（tests/refs/*/rays.npz）と照合
+- OBJ・STL: trimesh。DXF: ezdxf。PNG・TIFF（干渉の格子）: Pillow（PRJ-27 (4)、npz は Rust の試験で numpy に読ませる）
 
 面の位置と形は、.zmx をこのファイルの中で読んだ曲率・非球面・半径と、OpticStudio が書いた各面の大域座標
 （rays.npz の gmat、.zmx の大域基準面 = GLRS）から求める。lensbench の計算は使わないので、書き出しの座標が
@@ -612,3 +613,125 @@ def test_step(name: str, tmp_path: Path) -> None:
     # 追跡（同じ円周の瞳）の面ごとの大域座標が折れ点にある
     t = rays_table(ref, tmp_path, "ring", 12)
     assert nearest(global_points(t), np.concatenate(lines)).max() < 1e-9
+
+
+# ---------------------------------------------------------------- OBJ・STL・DXF・PNG（PRJ-27 (4)）
+
+
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_obj_stl(name: str, tmp_path: Path) -> None:
+    """OBJ・STL は trimesh。OBJ の三角形（立体・面）は glTF と同じ数で、箱は bounds_mm の中（縁は多角形）。
+    STL は光線も管の三角形なので、立体・面の三角形より多く、箱は OBJ の箱を含む（管の半径の分だけ外）"""
+    ref = load_ref(name)
+    info = layout(ref, tmp_path, "a.obj", "a.stl", "a.glb")
+    lo, hi = np.array(info["bounds_mm"])
+    obj = trimesh.load(tmp_path / "a.obj", force="mesh")
+    # bounds_mm は縁の円の箱を式で出すので、周を多角形にした網の箱を含む（共軸なら一致、傾くと網が内側）
+    assert np.all(obj.bounds[0] >= lo - 2e-6) and np.all(obj.bounds[1] <= hi + 2e-6)
+    assert np.all(obj.bounds[0] < lo + 0.5) and np.all(obj.bounds[1] > hi - 0.5)
+    glb = trimesh.load(tmp_path / "a.glb", force="scene")
+    tris = sum(len(g.faces) for g in glb.geometry.values() if hasattr(g, "faces"))
+    assert len(obj.faces) == tris
+    stl = trimesh.load(tmp_path / "a.stl", force="mesh")
+    assert len(stl.faces) > len(obj.faces)
+    assert np.all(stl.bounds[0] <= obj.bounds[0] + 2e-6) and np.all(stl.bounds[1] >= obj.bounds[1] - 2e-6)
+    assert np.all(stl.bounds[0] > lo - 1.0) and np.all(stl.bounds[1] < hi + 1.0)
+
+
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_dxf(name: str, tmp_path: Path) -> None:
+    """DXF は ezdxf。監査で誤りがなく、層は玉・光線・面。図の範囲（x = z、y = y）は bounds_mm の yz の中"""
+    import ezdxf
+    from ezdxf import bbox
+
+    ref = load_ref(name)
+    info = layout(ref, tmp_path, "a.dxf")
+    doc = ezdxf.readfile(tmp_path / "a.dxf")
+    assert not doc.audit().has_errors
+    msp = doc.modelspace()
+    assert {"LENS", "RAYS", "SURFACE"} <= {e.dxf.layer for e in msp}
+    ext = bbox.extents(msp)
+    lo, hi = np.array(info["bounds_mm"])
+    # 断面は 3 次元の箱（傾いた面の縁の円を含む）の yz の中。共軸なら一致する
+    have = np.array([[ext.extmin.x, ext.extmin.y], [ext.extmax.x, ext.extmax.y]])
+    want = np.array([[lo[2], lo[1]], [hi[2], hi[1]]])
+    assert np.all(have[0] >= want[0] - 1e-4) and np.all(have[1] <= want[1] + 1e-4)
+    assert np.all(have[0] < want[0] + 0.5) and np.all(have[1] > want[1] - 0.5)
+
+
+@pytest.mark.parametrize("name", SYSTEMS)
+def test_png(name: str, tmp_path: Path) -> None:
+    """PNG は Pillow。既定の横幅で、背景でない画素（玉・光線）があり、光線は視野ごとに色が違う"""
+    from PIL import Image
+
+    ref = load_ref(name)
+    layout(ref, tmp_path, "a.png")
+    im = Image.open(tmp_path / "a.png")
+    im.verify()
+    im = Image.open(tmp_path / "a.png").convert("RGB")
+    assert im.size[0] == 1600 and im.size[1] > 0
+    a = np.asarray(im)
+    drawn = (a != a[0, 0]).any(axis=2)
+    assert 0.005 < drawn.mean() < 0.5
+    assert len(np.unique(a[drawn].reshape(-1, 3), axis=0)) > 3
+
+
+# ---------------------------------------------------------------- TIFF・16 ビット PNG（干渉の格子）
+
+# 2 つの構成の光束を重ねる（厚さが 0.3 mm 違う）
+TWO_CFG = """VERS 260327 42
+MODE SEQ
+UNIT MM X W X CM MR CPMM
+OBNA 0.15 0
+FTYP 0 0 1 1 0 0 0
+YFLN 0
+FWGN 1
+WAVM 1 0.84 1
+PWAV 1
+SURF 0
+  TYPE STANDARD
+  CURV 0.0
+  DISZ 50
+SURF 1
+  STOP
+  TYPE PARAXIAL
+  PARM 1 50
+  PARM 2 1
+  DISZ 100
+SURF 2
+  TYPE STANDARD
+  CURV 0.0
+  DISZ 0
+MNUM 2 1
+THIC 1 1 100.3 0 0 0 1 1 0
+THIC 1 2 100.0 0 0 0 1 1 0
+"""
+
+
+def test_tiff_and_png16(tmp_path: Path) -> None:
+    """干渉の格子の TIFF（32 ビット浮動小数・16 ビット）と 16 ビット PNG を Pillow で読み、CSV の格子と照合する。
+    画像の行 0 が上（y の最大）、CSV の行 0 は y の最小"""
+    from PIL import Image
+
+    z = tmp_path / "two.zmx"
+    z.write_text(TWO_CFG)
+    a = ["interference", str(z), "--beam1", "1", "--beam2", "2", "--n", "16"]
+    run(*a, "--out", str(tmp_path / "i.csv"))
+    run(*a, "--out", str(tmp_path / "f.tif"), "--float")
+    run(*a, "--out", str(tmp_path / "u.tif"))
+    run(*a, "--out", str(tmp_path / "u.png"))
+    grid = np.flipud(np.genfromtxt(tmp_path / "i.csv", delimiter=","))
+    f = np.asarray(Image.open(tmp_path / "f.tif"))
+    assert f.dtype == np.float32 and f.shape == (16, 16)
+    ok = np.isfinite(grid)
+    assert ok.any() and np.array_equal(ok, np.isfinite(f))
+    np.testing.assert_allclose(f[ok], grid[ok], rtol=1e-6, atol=1e-7)
+    u = np.asarray(Image.open(tmp_path / "u.tif"))
+    p = np.asarray(Image.open(tmp_path / "u.png"))
+    assert u.dtype == np.uint16 and u.shape == (16, 16)
+    assert np.array_equal(u, p)
+    # 16 ビットは横の JSON に書いた範囲の線形（0 は値なし）
+    side = json.loads((tmp_path / "u.json").read_text())
+    m = re.match(r"linear: 0 = (\S+), 65535 = (\S+);", side["values"])
+    lo, hi = float(m.group(1)), float(m.group(2))
+    np.testing.assert_allclose(lo + (hi - lo) * u[ok] / 65535.0, grid[ok], atol=(hi - lo) / 65535.0)

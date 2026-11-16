@@ -73,12 +73,15 @@ pub fn load_source_notes(
 ) -> Result<(System, Vec<String>), lensbench_core::Error> {
     let o = src.open(&c.open_spec())?;
     if c.strict_macros {
+        // 注意の文は 1 つずつ訳せるよう、最初の 1 つだけを {e} に入れる（数は前に）
         let w = o.system.macro_warnings();
-        if !w.is_empty() {
-            let (n, list) = (w.len(), w.join("; "));
-            return Err(lensbench_core::Error::Invalid(format!(
-                "{n} macro solve(s) can't be solved (strict macros): {list}"
-            )));
+        if let Some(e) = w.first() {
+            let n = w.len();
+            return Err(lensbench_core::Error::Invalid(if n == 1 {
+                format!("a macro solve can't be solved (strict macros): {e}")
+            } else {
+                format!("{n} macro solves can't be solved (strict macros); the first: {e}")
+            }));
         }
     }
     let mut notes = o.warnings;
@@ -446,6 +449,12 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
         c.strict_macros = true;
         let e = load_file_notes(&c).unwrap_err().to_string();
         assert!(e.contains("strict macros") && e.contains("LBMID"), "{e}");
+        // 和訳で外の文と中の注意の両方が訳される（中の注意は「: 」を跨ぐ {e}）
+        let ja = lensbench_core::i18n::translate(&e);
+        assert!(
+            ja.contains("厳密な読込") && ja.contains("面 2 の") && !ja.contains("macro solve"),
+            "{ja}"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 }

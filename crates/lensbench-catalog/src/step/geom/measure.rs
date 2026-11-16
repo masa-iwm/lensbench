@@ -1,8 +1,9 @@
 //! 立体の形から品の寸法を測る（[`measure`]）。順に「光軸を決める」（[`find_axis`]）、「立体を分ける」
 //! （[`solids`]: ガラスと枠）、「枠の寸法を読む」（[`glass_mount`]・[`mech_part`]）、「ねじ・ロッドを当てる」
-//! （[`rod_spacing`]・[`end_thread`]・[`pick_hold`]）。規格の表（[`THREADS`]・[`ROD_SPACINGS`]）と
-//! 許容差（`*_COS`・`*_REL`・`*_MM`）は名前のある定数にまとめる（PRJ-26）
+//! （[`rod_spacing`]・[`end_thread`]・[`pick_hold`]）。規格の表（ねじ・ロッドの間隔）は JSON（[`standards`]、
+//! 利用者が足せる）、許容差（`*_COS`・`*_REL`・`*_MM`）は名前のある定数にまとめる（PRJ-26）
 
+use super::standards::{standards, Thread};
 use super::{
     add, boxed, cross, dot, notes, perp, scale, sub, unit, Geo, Measure, Res, RetainingRing, Step,
     SubSq, V3,
@@ -22,64 +23,11 @@ const SAME_R_MM: f64 = 0.2;
 /// 端の面取りとみなす長さ [mm]（端のねじ）
 const END_TOL_MM: f64 = 1.0;
 
-/// ケージのロッドの間隔の規格 [mm]（16・30・60 は Thorlabs、26.87 は Edmund の 25・30 mm のケージ（ロッドの円の
-/// 直径 38 mm））
-const ROD_SPACINGS: [f64; 4] = [16.0, 26.87, 30.0, 60.0];
-
 /// 端のねじとする最短の長さ [mm]（ねじの径の浅い座ぐり・刻印などを除く）
 const MIN_THREAD_MM: f64 = 0.5;
 
 /// ケージのロッドの間隔の規格に合わない組を使うときの、ロッドの穴の数
 const ROD_HOLES: usize = 4;
-
-/// 光学部品のねじ（名前、ねじの外径（メスの谷の径）[mm]、ピッチ [mm]、入る素子の径 [mm]（0 は素子を入れない
-/// ねじ）、メスを外径の円柱でも判定するか（C マウントの外径 25.4 mm は 1 インチの素子の穴と区別できないので、
-/// 端のねじで、奥にねじの逃げの溝（外径より太い短い穴）のあるときだけ。[`relief_next_to`]））
-struct Thread {
-    name: &'static str,
-    major: f64,
-    pitch: f64,
-    holds: f64,
-    female_major: bool,
-}
-
-const THREADS: [Thread; 5] = [
-    Thread {
-        name: "SM05",
-        major: 0.535 * 25.4,
-        pitch: 25.4 / 40.0,
-        holds: 12.7,
-        female_major: true,
-    },
-    Thread {
-        name: "SM1",
-        major: 1.035 * 25.4,
-        pitch: 25.4 / 40.0,
-        holds: 25.4,
-        female_major: true,
-    },
-    Thread {
-        name: "SM2",
-        major: 2.035 * 25.4,
-        pitch: 25.4 / 40.0,
-        holds: 50.8,
-        female_major: true,
-    },
-    Thread {
-        name: "SM3",
-        major: 3.035 * 25.4,
-        pitch: 25.4 / 40.0,
-        holds: 76.2,
-        female_major: true,
-    },
-    Thread {
-        name: "C-Mount",
-        major: 25.4,
-        pitch: 25.4 / 32.0,
-        holds: 0.0,
-        female_major: false,
-    },
-];
 
 impl Thread {
     /// 円柱の直径 `d` [mm] がこのねじか。STEP のねじは外径の円柱で描かれる（Thorlabs）か、メスは山の径（内径）の
@@ -93,9 +41,14 @@ impl Thread {
     }
 }
 
-/// 直径 `d` [mm] のねじ。`relief` は穴の並びがねじの逃げの溝を持つか（[`relief_next_to`]）
+/// 直径 `d` [mm] のねじ（規格の表 [`standards`] の順に最初に合うもの）。`relief` は穴の並びがねじの逃げの溝を
+/// 持つか（[`relief_next_to`]）。表は [`measure`] の始めに読めることを確かめる
 fn thread_fits(d: f64, female: bool, relief: &dyn Fn(f64) -> bool) -> Option<&'static Thread> {
-    THREADS.iter().find(|t| t.fits(d, female, relief(t.major)))
+    standards()
+        .ok()?
+        .threads
+        .iter()
+        .find(|t| t.fits(d, female, relief(t.major)))
 }
 
 /// 穴の並び（mm）で、直径 `major` の穴のとなりに、それより太い（1.1 mm まで）短い（2 mm まで）穴があるか
@@ -223,6 +176,8 @@ impl Ctx {
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
 pub(crate) fn measure(f: &StepFile, k: f64, round: fn(f64) -> f64) -> Res<Measure> {
+    // 規格の表（同梱と LENSBENCH_STEP_STANDARDS）が読めなければ誤り
+    standards()?;
     let st = Step::new(f);
     let inst = st.instances();
     // 立体ごとの形（共通の座標）
@@ -823,7 +778,9 @@ fn rod_spacing(cx: &Ctx, geos: &[Geo], bore_r: f64) -> Option<f64> {
         .collect();
     let spacing_mm = |rho: f64| rho * std::f64::consts::SQRT_2 * cx.k;
     let standard = |mm: f64| {
-        ROD_SPACINGS
+        standards()
+            .ok()?
+            .rod_spacings_mm
             .iter()
             .copied()
             .find(|s| (s - mm).abs() <= 0.05)

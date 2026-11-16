@@ -1675,13 +1675,13 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
             match got {
                 Ok((m, o)) => {
                     // 途中で止まったマクロ: 値は OpticStudio と同じ（それまでの値か 0、または変えない）だが黙らない（IOO-22）
-                    if let Some(err) = &o.error {
+                    if let Some(e) = &o.error {
                         s.rx_mut().macro_notes.push(match o.value {
                             Some(v) => format!(
-                                "the {what} macro solve {name} of surface {k} stopped with an error and used {v} as OpticStudio does: {err}"
+                                "the {what} macro solve {name} of surface {k} stopped with an error and used {v} as OpticStudio does: {e}"
                             ),
                             None => format!(
-                                "the {what} macro solve {name} of surface {k} stopped with an error and left the value as OpticStudio does: {err}"
+                                "the {what} macro solve {name} of surface {k} stopped with an error and left the value as OpticStudio does: {e}"
                             ),
                         });
                     }
