@@ -233,6 +233,8 @@ pub struct OptPanel {
     pub terms: Vec<TermRow>,
     /// 既定の評価関数: spot・wavefront・none
     pub merit: String,
+    /// 走らせたときの評価関数の値の倍率と単位（[`merit_unit`]）
+    pub run_unit: (f64, &'static str),
     pub rings: usize,
     pub reference: String,
     pub iters: usize,
@@ -595,6 +597,7 @@ pub fn ui(ui: &mut Ui, p: &mut OptPanel, c: &Cands, progress: Option<&[f64]>) ->
                         match p.params() {
                             Ok(v) => {
                                 p.error = None;
+                                p.run_unit = merit_unit(p);
                                 acts.push(Action::Run(v));
                             }
                             Err(e) => p.error = Some(e),
@@ -912,6 +915,22 @@ fn history_plot(ui: &mut Ui, h: &[f64]) {
         .show(ui, |pu| pu.line(Line::new(pts)));
 }
 
+/// 評価関数の値の倍率と単位。項がスポット（と重心）だけなら µm、波面・OPD・Zernike だけなら波、ほかは単位なし
+fn merit_unit(p: &OptPanel) -> (f64, &'static str) {
+    let mut kinds: Vec<&str> = p.terms.iter().map(|t| t.ty.as_str()).collect();
+    if p.merit != "none" {
+        kinds.push(p.merit.as_str());
+    }
+    let all = |set: &[&str]| !kinds.is_empty() && kinds.iter().all(|k| set.contains(k));
+    if all(&["spot", "centroid"]) {
+        (1000.0, "µm")
+    } else if all(&["wavefront", "opd", "zernike"]) {
+        (1.0, tr("waves"))
+    } else {
+        (1.0, "")
+    }
+}
+
 fn stop_label(s: &str) -> &'static str {
     match s {
         "converged" => tr("Converged"),
@@ -931,15 +950,29 @@ fn result_ui(
     acts: &mut Vec<Action>,
     weak: egui::Color32,
 ) {
-    ui.label(trf(
+    // 評価関数の単位（走らせたときの項が同じ単位のときだけ。混ざると単位なし）
+    let (scale, unit) = p.run_unit;
+    let v = |x: f64| {
+        if unit.is_empty() {
+            fmt_g(x)
+        } else {
+            format!("{} {unit}", fmt_g(x * scale))
+        }
+    };
+    let res = ui.label(trf(
         "Merit {} → {} ({} iterations, {})",
         &[
-            &fmt_g(r.merit0),
-            &fmt_g(r.merit),
+            &v(r.merit0),
+            &v(r.merit),
             &r.iterations,
             &stop_label(&r.stop),
         ],
     ));
+    if unit.is_empty() {
+        res.on_hover_text(tr(
+            "The merit is √(Σ weight × residual² / Σ weight). Its terms have different units, so it has none",
+        ));
+    }
     if !r.history.is_empty() {
         let h: Vec<f64> = r
             .history
@@ -1044,6 +1077,25 @@ pub fn combo_edit(name: &str, x: f64) -> Result<(usize, &'static str, Value), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUX-20: 評価関数の単位は項が同じ単位のときだけ（スポットは µm、波面は波、混ざると無し）
+    #[test]
+    fn gux20_merit_unit() {
+        let mut p = OptPanel {
+            merit: "spot".into(),
+            ..Default::default()
+        };
+        assert_eq!(merit_unit(&p), (1000.0, "µm"));
+        p.terms.push(TermRow::new("centroid"));
+        assert_eq!(merit_unit(&p).1, "µm");
+        p.terms.push(TermRow::new("wavefront"));
+        assert_eq!(merit_unit(&p).1, "");
+        p.merit = "none".into();
+        p.terms.retain(|t| t.ty == "wavefront");
+        assert_eq!(merit_unit(&p).1, tr("waves"));
+        p.terms.clear();
+        assert_eq!(merit_unit(&p).1, "");
+    }
 
     /// GUX-21: 変数の行に面の値（t・r・c・k）の今の値を出す
     #[test]

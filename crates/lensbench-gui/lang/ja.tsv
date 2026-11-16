@@ -1578,3 +1578,4 @@ This surface has a stop, solve or pickup; remove them first	この面には絞�
 Unreverse the lens first to change its glass to air	硝材を空気にするには、先にレンズの反転を戻してください
 This surface list is turned off in some states, so it cannot be removed	この面の並びは状態によって OFF になるので、外せません
 This surface list has spacings for states, and the spacing before it cannot hold them, so it cannot be removed	この面の並びは状態ごとの間隔を持ち、前の間隔には状態ごとの値を持てないので、外せません
+The merit is √(Σ weight × residual² / Σ weight). Its terms have different units, so it has none	メリットファンクションは √(Σ ウェイト × 残差² / Σ ウェイト) です。項の単位が混ざっているので、単位はありません
