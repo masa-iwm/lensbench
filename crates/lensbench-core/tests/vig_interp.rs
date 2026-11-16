@@ -15,20 +15,23 @@ fn with_fields(fields: &[(f64, f64, [f64; 5])], norm: FieldNorm) -> System {
         ..Default::default()
     };
     let mut s = zmx::load_with(&root.join("tests/refs/A0/system.zmx"), &opt).unwrap();
-    s.fields = fields
-        .iter()
-        .map(|&(x, y, v)| Field {
-            vdx: v[0],
-            vdy: v[1],
-            vcx: v[2],
-            vcy: v[3],
-            van: v[4],
-            ..Field::xy(x, y)
-        })
-        .collect();
-    s.field_norm = norm;
-    s.vig_interp = VigInterp::OpticStudio;
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.fields = fields
+            .iter()
+            .map(|&(x, y, v)| Field {
+                vdx: v[0],
+                vdy: v[1],
+                vcx: v[2],
+                vcy: v[3],
+                van: v[4],
+                ..Field::xy(x, y)
+            })
+            .collect();
+        p.field_norm = norm;
+        p.vig_interp = VigInterp::OpticStudio;
+        Ok(())
+    })
+    .unwrap();
     s
 }
 
@@ -130,8 +133,11 @@ fn continuous_is_continuous_and_matches_fields() {
         (7.0, 7.0, f4),
     ];
     let mut s = with_fields(&fields, FieldNorm::Radial);
-    s.vig_interp = VigInterp::Continuous;
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.vig_interp = VigInterp::Continuous;
+        Ok(())
+    })
+    .unwrap();
     let r = 10.0;
     for &(x, y, v) in &fields {
         assert!(near(s.vig_factors(x / r, y / r).unwrap(), v));
@@ -162,7 +168,11 @@ fn continuous_is_continuous_and_matches_fields() {
         FieldNorm::Radial,
     );
     let os = y.vig_factors(0.0, 0.7).unwrap();
-    y.vig_interp = VigInterp::Continuous;
+    y.edit_raw(|p| {
+        p.vig_interp = VigInterp::Continuous;
+        Ok(())
+    })
+    .unwrap();
     assert!(near(y.vig_factors(0.0, 0.7).unwrap(), os));
     assert!(near(y.vig_factors(0.0, 1.3).unwrap(), F3));
 }
@@ -204,8 +214,11 @@ fn continuous_on_cocircular_grids() {
         .collect();
     for (fields, norm) in [(grid, FieldNorm::Rect), (square, FieldNorm::Rect)] {
         let mut s = with_fields(&fields, norm);
-        s.vig_interp = VigInterp::Continuous;
-        s.changed().unwrap();
+        s.edit_raw(|p| {
+            p.vig_interp = VigInterp::Continuous;
+            Ok(())
+        })
+        .unwrap();
         for &(x, y, f) in &fields {
             assert!(near(s.vig_factors(x / 10.0, y / 10.0).unwrap(), f));
         }
@@ -266,8 +279,11 @@ fn continuous_on_rings() {
     for pts in [one, two] {
         let fields: Vec<_> = pts.iter().map(|&(x, y)| (x, y, v(x, y))).collect();
         let mut s = with_fields(&fields, FieldNorm::Radial);
-        s.vig_interp = VigInterp::Continuous;
-        s.changed().unwrap();
+        s.edit_raw(|p| {
+            p.vig_interp = VigInterp::Continuous;
+            Ok(())
+        })
+        .unwrap();
         // 中は平面の値（三角形の線形で厳密に再現）、外も縁で連続
         let n = 600;
         for (row, horiz) in [
@@ -343,8 +359,11 @@ fn continuous_is_scale_invariant() {
                 .map(|(i, &(x, y))| (k * x, k * y, val(i)))
                 .collect();
             let mut s = with_fields(&fields, FieldNorm::Radial);
-            s.vig_interp = VigInterp::Continuous;
-            s.changed().unwrap();
+            s.edit_raw(|p| {
+                p.vig_interp = VigInterp::Continuous;
+                Ok(())
+            })
+            .unwrap();
             s
         };
         let n = 60;

@@ -188,9 +188,14 @@ fn freeform_surfaces() {
     use std::sync::Arc;
     let mut s = load("A0");
     // 像面を焦点から十分に離す（交点を固定した光線が瞳座標で決まるように）。像のソルブは外す
-    s.solves.clear();
-    s.surfaces[7].t = 10.0;
-    let d = &mut s.surfaces[3];
+    s.edit_raw(|p| {
+        p.solves.clear();
+        p.surfaces[7].t = 10.0;
+        Ok(())
+    })
+    .unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[3];
     d.typ = SurfType::ZernikeStd;
     d.zern = Some(Arc::new(ZernSag::new(
         false,
@@ -198,7 +203,9 @@ fn freeform_surfaces() {
         (1..=37).map(|i| 1e-4 * (i as f64 * 0.7).sin()).collect(),
         true,
     )));
-    let d = &mut s.surfaces[1];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[1];
     d.typ = SurfType::ZernikeFringe;
     d.k = -0.4;
     d.zern = Some(Arc::new(ZernSag::new(
@@ -208,7 +215,9 @@ fn freeform_surfaces() {
         true,
     )));
     let (nx, ny) = (21, 21);
-    let d = &mut s.surfaces[6];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[6];
     d.typ = SurfType::GridSag;
     d.grid = Some(Arc::new(GridSag {
         nx,
@@ -231,6 +240,7 @@ fn freeform_surfaces() {
         nodata: vec![false; nx * ny],
         linear: false,
     }));
+    let s = rx.build_raw().unwrap();
     let p = ps(
         &s,
         &[
@@ -322,7 +332,11 @@ SURF 8\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
     check("ピックアップ", &s, 1, s.primary, 7, &p);
     // 連なりの分が入っている（ピックアップを外した系とは違う）
     let mut free = s.clone();
-    free.pickups.clear();
+    free.edit_raw(|p| {
+        p.pickups.clear();
+        Ok(())
+    })
+    .unwrap();
     let tr = s.trace_spec(
         s.object_spec(0.0, 1.0).unwrap(),
         &[0.3],

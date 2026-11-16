@@ -401,7 +401,11 @@ fn bad_units_are_rejected() {
     s.define_unit("lens1", &[[1, 2]], [0.0, 0.0, 1.0]).unwrap();
     assert_eq!(s.units.iter().filter(|u| u.name == "lens1").count(), 1);
     // 面の名前と重なる名前は unit: / surf: で区別
-    s.surfaces[5].comment = "x".into();
+    s.edit_raw(|p| {
+        p.surfaces[5].comment = "x".into();
+        Ok(())
+    })
+    .unwrap();
     assert!(s.param("x.dx").is_err());
     assert!(s.param("unit:x.dx").unwrap().kind.is_unit());
     assert!(!s.param("surf:x.dx").unwrap().kind.is_unit());
@@ -517,13 +521,24 @@ fn with_probe(s: &System) -> (System, usize) {
     probe.c = 0.0;
     // 最後の玉のすぐ後（瞳座標で交点がよく動く所）
     let t = s.surfaces[ima - 1].t;
-    s.surfaces[ima - 1].t = 1.0;
+    s.edit_raw(|p| {
+        p.surfaces[ima - 1].t = 1.0;
+        Ok(())
+    })
+    .unwrap();
     probe.t = t - 1.0;
     probe.ap = lensbench_core::surface::Aperture::None;
-    s.solves.retain(|q| q.surf != ima - 1);
+    s.edit_raw(|p| {
+        p.solves.retain(|q| q.surf != ima - 1);
+        Ok(())
+    })
+    .unwrap();
     probe.n = s.surfaces[ima - 1].n.clone();
-    s.surfaces.insert(ima, probe);
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.surfaces.insert(ima, probe);
+        Ok(())
+    })
+    .unwrap();
     (s, ima)
 }
 
@@ -532,7 +547,12 @@ fn opl_grad_of_unit_params_matches_differences() {
     for name in ["A0", "B0"] {
         let base = load(name);
         let (mut s, last) = with_probe(&base);
-        s.units = s.lens_units();
+        let lu = s.lens_units();
+        s.edit_raw(|p| {
+            p.units = lu;
+            Ok(())
+        })
+        .unwrap();
         let l2 = s.units[1].spans[0];
         let l3 = s.units[2].spans[0];
         s.define_unit("G", &[[l2[0], l3[1]]], [0.0, 0.3, 1.5])

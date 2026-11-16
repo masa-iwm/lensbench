@@ -153,9 +153,13 @@ fn changed_system_traces_bit_identical_to_reloaded_zmx() {
 #[test]
 fn surfaces_by_name_and_errors() {
     let mut s = load("C0");
-    s.surfaces[3].comment = "L1 back".into();
-    s.surfaces[6].comment = "dup".into();
-    s.surfaces[7].comment = "DUP".into();
+    s.edit_raw(|p| {
+        p.surfaces[3].comment = "L1 back".into();
+        p.surfaces[6].comment = "dup".into();
+        p.surfaces[7].comment = "DUP".into();
+        Ok(())
+    })
+    .unwrap();
     assert_eq!(s.find_surface("3").unwrap(), 3);
     assert_eq!(s.find_surface(" l1 BACK ").unwrap(), 3);
     assert_eq!(s.param("L1 back.t").unwrap(), Param::new(3, Kind::Thick));
@@ -274,8 +278,7 @@ fn surface_shape_cache_follows_curvature_changes() {
         let f = FieldSel::Index(1.min(flat.fields.len() - 1));
         flat.try_trace_pol(f, &px, &py, None, &pols, &coat).unwrap();
         let back = flat.with_params(&[(p, c0)]).unwrap();
-        let mut fresh = back.clone();
-        fresh.changed().unwrap();
+        let fresh = back.prescription().clone().build_raw().unwrap();
         let a = back.try_trace_pol(f, &px, &py, None, &pols, &coat).unwrap();
         let b = fresh
             .try_trace_pol(f, &px, &py, None, &pols, &coat)

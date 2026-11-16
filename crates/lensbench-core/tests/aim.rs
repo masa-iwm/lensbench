@@ -26,7 +26,11 @@ fn many_rays_agree_with_few_rays() {
         };
         let mut s =
             zmx::load_with(&root.join(format!("tests/refs/{name}/system.zmx")), &opt).unwrap();
-        s.aiming = Aiming::Real;
+        s.edit_raw(|p| {
+            p.aiming = Aiming::Real;
+            Ok(())
+        })
+        .unwrap();
         let st = s.stop();
         let (rx, ry) = s.stop_radius();
         let r = rx.abs().max(ry.abs()).max(1.0);

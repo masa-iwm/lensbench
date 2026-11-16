@@ -45,13 +45,16 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     )
     .unwrap();
     if obsc > 0.0 {
-        s.surfaces[1].ap = Aperture::Obsc {
-            min: 0.0,
-            max: obsc,
-            dx: 0.0,
-            dy: 0.0,
-        };
-        s.changed().unwrap();
+        s.edit_raw(|rx| {
+            rx.surfaces[1].ap = Aperture::Obsc {
+                min: 0.0,
+                max: obsc,
+                dx: 0.0,
+                dy: 0.0,
+            };
+            Ok(())
+        })
+        .unwrap();
     }
     s
 }

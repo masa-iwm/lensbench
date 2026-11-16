@@ -14,9 +14,13 @@ use std::sync::Arc;
 /// 半直径を今の値に固定する（Irregular の正規化半径は半直径なので、自動の半直径だとパラメータを変えた系で
 /// 形の正規化も変わる。その分は微分に入れていない）
 fn fix_semi(mut s: System) -> System {
-    for d in &mut s.surfaces {
-        d.semi_auto = false;
-    }
+    s.edit_raw(|p| {
+        for d in &mut p.surfaces {
+            d.semi_auto = false;
+        }
+        Ok(())
+    })
+    .unwrap();
     s
 }
 
@@ -51,9 +55,17 @@ fn a0_mixed() -> System {
         )
         .unwrap(),
     );
-    s.solves.clear();
+    s.edit_raw(|p| {
+        p.solves.clear();
+        Ok(())
+    })
+    .unwrap();
     let img = s.image();
-    s.surfaces[img - 1].t += 10.0;
+    s.edit_raw(|p| {
+        p.surfaces[img - 1].t += 10.0;
+        Ok(())
+    })
+    .unwrap();
     let zern = |fringe: bool, norm: f64, a: f64| {
         Some(Arc::new(ZernSag::new(
             fringe,
@@ -62,23 +74,29 @@ fn a0_mixed() -> System {
             true,
         )))
     };
-    let d = &mut s.surfaces[1];
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[1];
     d.typ = SurfType::ZernikeFringe;
     d.k = -0.4;
     d.zern = zern(true, 9.0, 1.3);
-    let d = &mut s.surfaces[2];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[2];
     d.typ = SurfType::EvenAsph;
     d.k = 0.3;
     d.asph = vec![1e-5, -2e-7, 3e-10];
-    let d = &mut s.surfaces[3];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[3];
     d.typ = SurfType::ZernikeStd;
     d.zern = zern(false, 6.0, 0.7);
-    let d = &mut s.surfaces[4];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[4];
     d.typ = SurfType::Standard;
     d.asph.clear();
     d.zern = zern(false, 6.0, 0.4);
-    s.changed().unwrap();
-    s
+    rx.build_raw().unwrap()
 }
 
 /// A0 の面 3 を surftypes_os の系 name の面 2（Tilted・Odd Asphere・Irregular）の形にした系（像面は焦点から離す。
@@ -96,16 +114,24 @@ fn a0_with(name: &str) -> System {
         )
         .unwrap(),
     );
-    s.solves.clear();
+    s.edit_raw(|p| {
+        p.solves.clear();
+        Ok(())
+    })
+    .unwrap();
     let img = s.image();
-    s.surfaces[img - 1].t += 10.0;
-    let d = &mut s.surfaces[3];
+    s.edit_raw(|p| {
+        p.surfaces[img - 1].t += 10.0;
+        Ok(())
+    })
+    .unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[3];
     d.typ = src.typ;
     d.c = src.c;
     d.k = src.k;
     d.asph = src.asph;
-    s.changed().unwrap();
-    s
+    rx.build_raw().unwrap()
 }
 
 /// asph が偶数次の係数でない面の刻み（fermat・landing の差分と共通）
@@ -155,9 +181,9 @@ const KINDS: [Kind; 15] = [
 ];
 
 /// 面 j の値を、パラメータ kind の値として直接 d だけ変えた系（パラメータ・系の検査を通さない。形を見るだけ）
-fn nudge(s: &System, j: usize, kind: Kind, d: f64) -> System {
-    let mut s = s.clone();
-    let f = &mut s.surfaces[j];
+fn nudge(s: &System, j: usize, kind: Kind, d: f64) -> lensbench_core::Prescription {
+    let mut rx = s.prescription().clone();
+    let f = &mut rx.surfaces[j];
     match kind {
         Kind::Curv | Kind::Radius => f.c += d,
         Kind::Conic => f.k += d,
@@ -180,7 +206,7 @@ fn nudge(s: &System, j: usize, kind: Kind, d: f64) -> System {
         }
         _ => unreachable!(),
     }
-    s
+    rx
 }
 
 /// 形のパラメータの矢高・勾配の微分（Shape::dsag）が、パラメータを変えた系の本当の矢高（Shape::sag）の中心差分と
@@ -329,9 +355,12 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     assert_eq!(d.asph.first().copied(), Some(4e-3));
     // 以前の規則（y² の項を引かない c = 目標の近軸の曲率）の系
     let mut old = s.clone();
-    old.solves.clear();
-    old.surfaces[2].c = d.shape().paraxial_curv();
-    old.changed().unwrap();
+    old.edit_raw(|p| {
+        p.solves.clear();
+        p.surfaces[2].c = d.shape().paraxial_curv();
+        Ok(())
+    })
+    .unwrap();
     let u_old = old.paraxial().marginal.1[2];
     println!(
         "トロイダル面の曲率のソルブ: c = {}（以前の規則 {}）、面 2 の後の u = {:e}（以前の規則 {:e}、目標 −0.05）",

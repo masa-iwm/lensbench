@@ -482,7 +482,8 @@ pub(crate) fn set_system_data(
         let x = coerce(x.clone(), o.get(k), k, false);
         o.insert(k.clone(), x);
     }
-    let mut n: System = crate::lenient::decode(crate::sysfile::from_json(v)?, "system data")?;
+    let mut n: lensbench_core::Prescription =
+        crate::lenient::decode(crate::sysfile::from_json(v)?, "system data")?;
     let nw = n.wavelengths.len();
     if nw == 0 {
         return Err("no wavelengths".into());
@@ -521,7 +522,7 @@ pub(crate) fn set_system_data(
     }
     t.edit(|s| {
         *s = n;
-        s.check()
+        Ok(())
     })
 }
 
@@ -685,7 +686,10 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
             {
                 return Err(format!("mechanical part {} is already placed", m.name).into());
             }
-            t.mechanics.push(m);
+            t.edit_raw(|p| {
+                p.mechanics.push(m);
+                Ok(())
+            })?;
         }
         O::SetMech { mech, part } => {
             let i = mech_of(t, mech, name)?;
@@ -707,11 +711,17 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_
             {
                 return Err(format!("mechanical part {} is already placed", m.name).into());
             }
-            t.mechanics[i] = m;
+            t.edit_raw(|p| {
+                p.mechanics[i] = m;
+                Ok(())
+            })?;
         }
         O::RemoveMech { mech } => {
             let i = mech_of(t, mech, name)?;
-            t.mechanics.remove(i);
+            t.edit_raw(|p| {
+                p.mechanics.remove(i);
+                Ok(())
+            })?;
         }
         O::SetConfigCount { n } => t.set_config_count(*n).map_err(e)?,
         O::SetConfigRow { param, values } => {

@@ -65,7 +65,11 @@ fn zmx_apodization_is_read_and_written() {
         Apodization::CosineCubed,
     ] {
         let mut t = s.clone();
-        t.apodization = a;
+        t.edit_raw(|rx| {
+            rx.apodization = a;
+            Ok(())
+        })
+        .unwrap();
         let text = lensbench_formats::zmx_write::write(&t).unwrap();
         let r = zmx::build(
             &zmx::parse_text(&text).unwrap(),

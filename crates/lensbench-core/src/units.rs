@@ -245,7 +245,7 @@ impl System {
             if !self.units[i].auto {
                 invalid!("lens or group {name} is already defined");
             }
-            self.units.remove(i);
+            self.rx_mut().units.remove(i);
         }
         for u in &self.units {
             for a in &sp {
@@ -262,7 +262,7 @@ impl System {
             }
         }
         // 範囲は定義の順（光の通る順）のまま持つ
-        self.units.push(Unit {
+        self.rx_mut().units.push(Unit {
             name: name.to_string(),
             spans: spans.to_vec(),
             pivot,
@@ -289,8 +289,8 @@ impl System {
         if self.find_unit(name).is_some_and(|i| i != u) {
             invalid!("lens or group {name} is already defined");
         }
-        self.units[u].name = name.to_string();
-        self.units[u].auto = false;
+        self.rx_mut().units[u].name = name.to_string();
+        self.rx_mut().units[u].auto = false;
         Ok(())
     }
 
@@ -306,12 +306,12 @@ impl System {
             );
         }
         let mut t = self.clone();
-        t.units.remove(u);
+        t.rx_mut().units.remove(u);
         t.define_unit(&cur.name, spans, cur.pivot)?;
-        let mut nu = t.units.pop().expect("定義した玉・群");
+        let mut nu = t.rx_mut().units.pop().expect("定義した玉・群");
         nu.auto = false;
-        t.units.insert(u, nu);
-        self.units = t.units;
+        t.rx_mut().units.insert(u, nu);
+        self.rx_mut().units = std::mem::take(&mut t.rx_mut().units);
         self.invalidate_frames();
         Ok(())
     }
@@ -328,7 +328,7 @@ impl System {
             );
         }
         let mut notes = Vec::new();
-        if let Some(c) = &mut self.configs {
+        if let Some(c) = &mut self.rx_mut().configs {
             c.rows.retain(|r| {
                 let used = matches!(r.param.kind, crate::param::Kind::Unit(_)) && r.param.surf == u;
                 if used {
@@ -345,7 +345,7 @@ impl System {
                 }
             }
         }
-        self.units.remove(u);
+        self.rx_mut().units.remove(u);
         self.invalidate_frames();
         Ok(notes)
     }
@@ -355,7 +355,7 @@ impl System {
         if u >= self.units.len() || !pivot.iter().all(|v| v.is_finite()) {
             invalid!("pivot {pivot:?} of lens or group {u}");
         }
-        self.units[u].pivot = pivot;
+        self.rx_mut().units[u].pivot = pivot;
         self.invalidate_frames();
         Ok(())
     }
@@ -406,7 +406,11 @@ impl System {
             let ord = order(&s.units);
             let Some(&u) = ord.first() else { break };
             let mut still = s.clone();
-            still.units.iter_mut().for_each(|x| x.motion = [0.0; 5]);
+            still
+                .rx_mut()
+                .units
+                .iter_mut()
+                .for_each(|x| x.motion = [0.0; 5]);
             let fr = raw_frames(&still);
             let unit = s.units[u].clone();
             let (r, t) = unit.local();
@@ -482,12 +486,12 @@ impl System {
                     cb([h1[0], h1[1], bang[0], bang[1], bang[2]], 0, hz),
                     cb([h2[0], h2[1], 0.0, 0.0, 0.0], 0, tb),
                 ];
-                s.surfaces[b].t = 0.0;
+                s.rx_mut().surfaces[b].t = 0.0;
                 let nb = back.len();
                 insert_surfaces(&mut s, b + 1, back, InsertAt::After);
                 // 面 b の厚さ（後の間隔）は戻りの最後の座標ブレークへ移したので、そのソルブ・ピックアップも移す
                 let to = b + nb;
-                for q in s.solves.iter_mut() {
+                for q in s.rx_mut().solves.iter_mut() {
                     if q.surf == b && !q.kind.is_curv() {
                         q.surf = to;
                     }
@@ -496,7 +500,7 @@ impl System {
                         q.kind = q.kind.with_other_surface(to);
                     }
                 }
-                for p in s.pickups.iter_mut() {
+                for p in s.rx_mut().pickups.iter_mut() {
                     use crate::param::PickKind::Thick;
                     if p.src == b && p.source() == Thick {
                         p.src = to;
@@ -507,7 +511,7 @@ impl System {
                 }
                 insert_surfaces(&mut s, a, go, InsertAt::Before);
             }
-            s.units[u].motion = [0.0; 5];
+            s.rx_mut().units[u].motion = [0.0; 5];
         }
         // 座標ブレークの媒質は前の媒質
         s.fill_cb_indices();
@@ -518,7 +522,7 @@ impl System {
     /// 座標ブレークの面の n を前の媒質にする
     fn fill_cb_indices(&mut self) {
         let mut prev = self.surfaces[0].n.clone();
-        for d in self.surfaces.iter_mut().skip(1) {
+        for d in self.rx_mut().surfaces.iter_mut().skip(1) {
             if d.is_coord_break() {
                 d.n = prev.clone();
             }
@@ -571,18 +575,18 @@ enum InsertAt {
 fn insert_surfaces(s: &mut System, at: usize, v: Vec<Surface>, how: InsertAt) {
     let n = v.len();
     let m = |j: usize| if j >= at { j + n } else { j };
-    s.surfaces.splice(at..at, v);
-    for p in s.pickups.iter_mut() {
+    s.rx_mut().surfaces.splice(at..at, v);
+    for p in s.rx_mut().pickups.iter_mut() {
         p.src = m(p.src);
         p.dst = m(p.dst);
     }
-    for q in s.solves.iter_mut() {
+    for q in s.rx_mut().solves.iter_mut() {
         q.surf = m(q.surf);
         if let Some(o) = q.kind.other_surface() {
             q.kind = q.kind.with_other_surface(m(o));
         }
     }
-    for u in s.units.iter_mut() {
+    for u in s.rx_mut().units.iter_mut() {
         for sp in u.spans.iter_mut() {
             let [a, b] = *sp;
             let a2 = if how == InsertAt::Before && a == at {
@@ -599,7 +603,7 @@ fn insert_surfaces(s: &mut System, at: usize, v: Vec<Surface>, how: InsertAt) {
         }
     }
     if s.glrs >= at {
-        s.glrs += n;
+        s.rx_mut().glrs += n;
     }
 }
 

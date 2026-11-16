@@ -654,26 +654,6 @@ impl Param {
 }
 
 impl System {
-    /// 面を番号か名前（コメント、前後の空白と大文字小文字は区別しない）で探す。名前が複数の面にあれば不正
-    pub fn find_surface(&self, target: &str) -> Result<usize> {
-        let t = target.trim();
-        if let Ok(j) = t.parse::<usize>() {
-            if j >= self.surfaces.len() {
-                let last = self.surfaces.len() - 1;
-                invalid!("surface {j} (surfaces are 0 to {last})");
-            }
-            return Ok(j);
-        }
-        let hits: Vec<usize> = (0..self.surfaces.len())
-            .filter(|&j| self.surfaces[j].comment.trim().eq_ignore_ascii_case(t))
-            .collect();
-        match hits.as_slice() {
-            [j] => Ok(*j),
-            [] => invalid!("no surface named {t}"),
-            _ => invalid!("several surfaces are named {t} ({hits:?}); use the number"),
-        }
-    }
-
     /// パラメータを名前で: "3.t"、"L1 front.c"（面の名前.種類）、"objx"、"lens2.tx"（玉・群の名前.種類）。
     /// `unit:` `surf:` を前に付けると玉・群か面かを決める
     pub fn param(&self, spec: &str) -> Result<Param> {
@@ -913,7 +893,7 @@ impl System {
         let mut s = self.clone_keep(keep);
         s.apply(&flat)?;
         for &(u, k, v) in &motions {
-            let x = &mut s.units[u];
+            let x = &mut s.rx_mut().units[u];
             match k.motion_index() {
                 Some(i) => x.motion[i] = v,
                 None => x.shift = v,
@@ -1124,7 +1104,7 @@ impl System {
             if p.kind.is_wave() {
                 continue;
             }
-            let d = &mut self.surfaces[p.surf];
+            let d = &mut self.rx_mut().surfaces[p.surf];
             match p.kind {
                 Kind::Curv => d.c = v,
                 Kind::Radius => d.c = if v == 0.0 { 0.0 } else { 1.0 / v },
@@ -1211,7 +1191,7 @@ impl System {
                     PickKind::Dn => {
                         let a = &self.surfaces[q.src];
                         let (mat, mirror) = (a.mat.clone(), a.mirror);
-                        let d = &mut self.surfaces[q.dst];
+                        let d = &mut self.rx_mut().surfaces[q.dst];
                         if d.is_coord_break()
                             || (mirror && q.dst == 0)
                             || (d.mat == mat && d.mirror == mirror)
@@ -1226,7 +1206,7 @@ impl System {
                     }
                     PickKind::Coating => {
                         let coat = self.surfaces[q.src].coat.clone();
-                        let d = &mut self.surfaces[q.dst];
+                        let d = &mut self.rx_mut().surfaces[q.dst];
                         if d.coat != coat {
                             d.coat = coat;
                             changed = true;
@@ -1243,7 +1223,7 @@ impl System {
     }
 
     /// ピックアップを解決する（元の面が後ろにあっても、連なっていてもよい）。循環して収まらなければエラー
-    pub fn resolve_pickups(&mut self) -> Result<()> {
+    pub(crate) fn resolve_pickups(&mut self) -> Result<()> {
         let ns = self.surfaces.len();
         for q in &self.pickups {
             if q.src >= ns || q.dst >= ns {
@@ -1257,7 +1237,7 @@ impl System {
                 let Some(v) = q.value(&self.surfaces[q.src]) else {
                     invalid!("surface {} {:?} can't be picked up", q.src, q.source());
                 };
-                let d = &mut self.surfaces[q.dst];
+                let d = &mut self.rx_mut().surfaces[q.dst];
                 let before = pick_get(d, q.what);
                 if before != Some(v) {
                     let created = matches!(q.what, PickKind::After(_)) && d.after == After::None;
@@ -1272,16 +1252,16 @@ impl System {
                             .iter()
                             .any(|k| k.dst == q.dst && matches!(k.what, PickKind::After(_)))
                     {
-                        self.surfaces[q.dst].after = After::None;
+                        self.rx_mut().surfaces[q.dst].after = After::None;
                     }
                     if created {
                         // 作ったばかりの面の後の変換の順序は元の面の前のもの（反転なら逆）
                         let o = self.surfaces[q.src].before.map(|b| b.order).unwrap_or(0);
-                        if let After::Tilt(t) = &mut self.surfaces[q.dst].after {
+                        if let After::Tilt(t) = &mut self.rx_mut().surfaces[q.dst].after {
                             t.order = if q.scale < 0.0 { 1 - o.min(1) } else { o };
                         }
                     }
-                    let d = &mut self.surfaces[q.dst];
+                    let d = &mut self.rx_mut().surfaces[q.dst];
                     if !ok {
                         invalid!("surface {} {:?} can't take a pickup", q.dst, q.what);
                     }
@@ -1354,13 +1334,13 @@ impl System {
     }
 
     /// 屈折率のずれ（dn・disp）を n に反映する。鏡・座標ブレークの面は前の媒質を引き継ぐ
-    pub fn update_indices(&mut self) {
+    pub(crate) fn update_indices(&mut self) {
         let wp = self.primary;
         let mut nprev: Option<Vec<f64>> = None;
         // 直前の媒質を今回書き換えたか（その後の鏡・座標ブレークにだけ写す）
         let mut touched = false;
         for j in 0..self.surfaces.len() {
-            let d = &mut self.surfaces[j];
+            let d = &mut self.rx_mut().surfaces[j];
             if j > 0 && (d.mirror || d.is_coord_break()) {
                 if touched {
                     if let Some(n) = &nprev {
@@ -1426,7 +1406,7 @@ impl System {
     /// 近軸の量は主波長で、無視した面は飛ばす（近軸の追跡と同じ）。面の順に解き、どれかを変えると前のソルブの
     /// 条件も変わりうる（入射瞳・F/# の絞りなど）ので、全部が収まるまで繰り返す。ピックアップは途中で解決し直す。
     /// 既に解けている値（相対 1e-14）は変えない（読み戻し・関係ないパラメータの変更で同じ系になるように）
-    pub fn solve_thickness(&mut self) -> Result<()> {
+    pub(crate) fn solve_thickness(&mut self) -> Result<()> {
         let ns = self.surfaces.len();
         for q in &self.solves {
             let what = if q.kind.is_curv() {
@@ -1597,9 +1577,9 @@ impl System {
     /// 値 v を面 k の厚さか曲率に入れて系を更新する（ピックアップも）
     fn put_solved(&mut self, k: usize, curv: bool, v: f64) -> Result<()> {
         if curv {
-            self.surfaces[k].c = v;
+            self.rx_mut().surfaces[k].c = v;
         } else {
-            self.surfaces[k].t = v;
+            self.rx_mut().surfaces[k].t = v;
         }
         if !self.pickups.is_empty() {
             self.resolve_pickups()?;

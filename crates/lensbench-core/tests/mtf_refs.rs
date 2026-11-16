@@ -105,11 +105,19 @@ fn polychromatic_mtf_uses_the_wavelength_weights() {
     }
     let r = read(p);
     let mut s = load("A0");
-    s.weights = nums(&r["weights"]);
+    s.edit_raw(|p| {
+        p.weights = nums(&r["weights"]);
+        Ok(())
+    })
+    .unwrap();
     let tol = r["tolerance"].as_f64().unwrap();
     let w = worst(&s, &r);
     assert!(w <= tol, "{w:.2e} > {tol}");
     // 重みを 1 に戻すと合わなくなる（重みが効いていることの確かめ）
-    s.weights = vec![1.0; s.weights.len()];
+    s.edit_raw(|p| {
+        p.weights = vec![1.0; p.weights.len()];
+        Ok(())
+    })
+    .unwrap();
     assert!(worst(&s, &r) > 3.0 * tol);
 }

@@ -271,13 +271,15 @@ fn aspheric_and_toroidal() {
         .collect();
     check("E0", &s, 1, s.primary, s.image(), Some(0.05), &p);
 
-    let mut s = load("A0");
-    let d = &mut s.surfaces[1];
+    let s = load("A0");
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[1];
     d.typ = SurfType::Toroidal;
     d.cx = d.c * 0.7;
     d.asph = vec![1e-5, -2e-7];
     // 面を直接書き換えたので、像面の厚さのソルブ（面 7）を解き直す（with_params の系と揃える）
-    s.solve_thickness().unwrap();
+    let mut s = rx.build_raw().unwrap();
+    s.resolve_links().unwrap();
     let p = ps(&s, &["1.t", "1.dy", "1.tx", "1.ty", "2.c", "1.dn", "3.dx"]);
     check("A0+トロイダル", &s, 1, s.primary, s.image(), None, &p);
     // トロイダル面の形のパラメータは未対応
@@ -298,8 +300,9 @@ fn aspheric_and_toroidal() {
 fn freeform_surfaces() {
     use lensbench_core::freeform::{GridSag, ZernSag};
     use std::sync::Arc;
-    let mut s = load("A0");
-    let d = &mut s.surfaces[3];
+    let s = load("A0");
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[3];
     d.typ = SurfType::ZernikeStd;
     d.zern = Some(Arc::new(ZernSag::new(
         false,
@@ -307,7 +310,9 @@ fn freeform_surfaces() {
         (1..=37).map(|i| 1e-4 * (i as f64 * 0.7).sin()).collect(),
         true,
     )));
-    let d = &mut s.surfaces[1];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[1];
     d.typ = SurfType::ZernikeFringe;
     d.k = -0.4;
     d.zern = Some(Arc::new(ZernSag::new(
@@ -317,7 +322,9 @@ fn freeform_surfaces() {
         true,
     )));
     let (nx, ny) = (21, 21);
-    let d = &mut s.surfaces[6];
+    let s = rx.build_raw().unwrap();
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[6];
     d.typ = SurfType::GridSag;
     d.grid = Some(Arc::new(GridSag {
         nx,
@@ -341,7 +348,8 @@ fn freeform_surfaces() {
         linear: false,
     }));
     // 面を直接書き換えたので、像面の厚さのソルブを解き直す
-    s.solve_thickness().unwrap();
+    let mut s = rx.build_raw().unwrap();
+    s.resolve_links().unwrap();
     let p = ps(
         &s,
         &[

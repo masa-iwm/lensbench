@@ -55,10 +55,12 @@ const AIM_FIT_MIN: usize = 1024;
 /// 頂点の尖った面がある系の瞳を求める主光線の視野 [°]（[`System::cusp_pupil`]）
 const CUSP_FIELD_DEG: f64 = 0.01;
 
-#[derive(Debug)]
+/// 系の文書: 利用者が書く値（面・波長・視野・開口・ピックアップ・ソルブ・多重構成など）。
+/// [`System`] はこれを [`Arc`] で持ち、書き換えは [`System::edit`] を通す（直した後に座標系・近軸量などを作り直す）
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct System {
+pub struct Prescription {
     pub surfaces: Vec<Surface>,
     pub wavelengths: Vec<f64>,
     pub weights: Vec<f64>,
@@ -103,7 +105,7 @@ pub struct System {
     )]
     pub floating_clip: bool,
     /// 実像高・条件で定める視野を解く波長（None で主波長）。単色の RMS の掃引で OpticStudio に合わせるとき
-    /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）。変えたら [`System::changed`] を呼ぶ
+    /// だけ使う（[`crate::sweep::RmsOpts::field_wave`]）
     #[cfg_attr(feature = "serde", serde(skip))]
     pub field_wave: Option<usize>,
     pub coating_file: Option<PathBuf>,
@@ -160,13 +162,189 @@ pub struct System {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub configs: Option<crate::edit::Configs>,
-    #[cfg_attr(feature = "serde", serde(skip))]
+}
+
+/// 系: 文書（[`Prescription`]、[`Arc`] で共有）と、そこから作る追跡の準備（座標系・近軸量・追跡の表などのキャッシュ）。
+/// 欄は書き換えられない（読むのは `Deref` で文書の欄、直すのは [`System::edit`]）。複製は文書を共有するので軽い
+#[derive(Debug)]
+pub struct System {
+    rx: Arc<Prescription>,
     cache: Cache,
+}
+
+impl std::ops::Deref for System {
+    type Target = Prescription;
+    fn deref(&self) -> &Prescription {
+        &self.rx
+    }
 }
 
 impl Clone for System {
     fn clone(&self) -> Self {
         self.clone_keep(Keep::default())
+    }
+}
+
+impl Prescription {
+    /// 面を番号か名前（コメント、前後の空白と大文字小文字は区別しない）で探す。名前が複数の面にあれば不正
+    pub fn find_surface(&self, target: &str) -> Result<usize> {
+        let t = target.trim();
+        if let Ok(j) = t.parse::<usize>() {
+            if j >= self.surfaces.len() {
+                let last = self.surfaces.len() - 1;
+                invalid!("surface {j} (surfaces are 0 to {last})");
+            }
+            return Ok(j);
+        }
+        let hits: Vec<usize> = (0..self.surfaces.len())
+            .filter(|&j| self.surfaces[j].comment.trim().eq_ignore_ascii_case(t))
+            .collect();
+        match hits.as_slice() {
+            [j] => Ok(*j),
+            [] => invalid!("no surface named {t}"),
+            _ => invalid!("several surfaces are named {t} ({hits:?}); use the number"),
+        }
+    }
+
+    /// 分散式の有効範囲（AGF の LD 行）の外の波長で屈折率を求めている材料の警告（面の番号・材料・波長・範囲）。
+    /// lensbench は式をそのまま延ばして計算する（OpticStudio は範囲外ではエラーにして屈折率を 1.0 にする）
+    pub fn dispersion_warnings(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for (k, d) in self.surfaces.iter().enumerate() {
+            if d.ignore || d.mat.is_empty() {
+                continue;
+            }
+            let Some(g) = self.glasses.get(&d.mat) else {
+                continue;
+            };
+            let Some([lo, hi]) = g.ld else {
+                continue;
+            };
+            for &l in &self.wavelengths {
+                if (l < lo || l > hi) && seen.insert((d.mat.clone(), l.to_bits())) {
+                    out.push(format!(
+                        "surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)",
+                        d.mat, g.catalog
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    pub fn stop(&self) -> usize {
+        self.surfaces.iter().position(|d| d.stop).unwrap_or(0)
+    }
+
+    /// エラーに添える面の名札: 「面 j(種類, 材料, 膜 名前, 「コメント」)」。空の項は省く
+    pub fn surf_label(&self, j: usize) -> String {
+        let Some(d) = self.surfaces.get(j) else {
+            return format!("surface {j}");
+        };
+        let mut what = crate::edit::surf_type_name(d.typ).to_string();
+        if !d.mat.is_empty() && d.mat != "-" {
+            what = format!("{what}, {}", d.mat);
+        }
+        if !d.coat.is_empty() {
+            what = format!("{what}, coating {}", d.coat);
+        }
+        if !d.comment.is_empty() {
+            what = format!("{what}, 「{}」", d.comment);
+        }
+        format!("surface {j}({what})")
+    }
+
+    pub fn image(&self) -> usize {
+        self.surfaces.len() - 1
+    }
+
+    pub fn infinite(&self) -> bool {
+        !self.surfaces[0].t.is_finite()
+    }
+
+    /// 面 j の直前の媒質の屈折率
+    pub fn index_before(&self, j: usize, w: usize) -> f64 {
+        let mut n = self.surfaces[0].n[w];
+        for d in &self.surfaces[1..j.max(1)] {
+            if !d.ignore && !d.is_coord_break() {
+                n = d.n[w];
+            }
+        }
+        n
+    }
+
+    /// 像面での光線の点。ふつうは像面の局所座標 (x, y) [mm]。アフォーカル像空間では向きの角度
+    /// (atan(l/n), atan(m/n)) を [`System::afocal_unit`] の単位で（OpticStudio のスポットと同じ定義）
+    pub fn image_point(&self, xyz: [f64; 3], lmn: [f64; 3]) -> (f64, f64) {
+        if self.afocal {
+            let u = self.afocal_unit.radians();
+            ((lmn[0] / lmn[2]).atan() / u, (lmn[1] / lmn[2]).atan() / u)
+        } else {
+            (xyz[0], xyz[1])
+        }
+    }
+
+    /// 像面の点・周波数の単位の名前: ふつうは mm、アフォーカル像空間では角度の単位
+    pub fn image_unit(&self) -> &'static str {
+        if self.afocal {
+            self.afocal_unit.label()
+        } else {
+            "mm"
+        }
+    }
+
+    pub fn image_index(&self, w: usize) -> f64 {
+        self.index_before(self.image(), w)
+    }
+
+    /// 系を作る: 面の値の確かめ、材料からの屈折率、ピックアップの解決、厚さのソルブ、系の確かめ、自動の半直径
+    /// （[`System::edit`] と同じ後始末）
+    pub fn build(self) -> Result<System> {
+        let mut s = System::from_rx(self);
+        s.refresh()?;
+        Ok(s)
+    }
+
+    /// 値をそのまま置いて系を作る（ピックアップ・ソルブ・屈折率・自動の半直径は求め直さない）。系は確かめる
+    pub fn build_raw(self) -> Result<System> {
+        let s = System::from_rx(self);
+        s.check()?;
+        Ok(s)
+    }
+}
+
+impl System {
+    /// 確かめずに作る（読み込みの途中・確かめた系の写しから）
+    pub(crate) fn from_rx(rx: Prescription) -> System {
+        System {
+            rx: Arc::new(rx),
+            cache: Cache::default(),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for System {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        self.rx.serialize(s)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for System {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<System, D::Error> {
+        Prescription::deserialize(d).map(System::from_rx)
+    }
+}
+
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for System {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        Prescription::schema_name()
+    }
+    fn json_schema(g: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        Prescription::json_schema(g)
     }
 }
 
@@ -197,42 +375,25 @@ impl System {
             }
         }
         System {
-            surfaces: self.surfaces.clone(),
-            wavelengths: self.wavelengths.clone(),
-            weights: self.weights.clone(),
-            primary: self.primary,
-            fields: self.fields.clone(),
-            field_type: self.field_type,
-            field_norm: self.field_norm,
-            aperture: self.aperture,
-            telecentric: self.telecentric,
-            aiming: self.aiming,
-            glasses: self.glasses.clone(),
-            temperature: self.temperature,
-            pressure: self.pressure,
-            glrs: self.glrs,
-            ropd: self.ropd,
-            apodization: self.apodization,
-            afocal: self.afocal,
-            afocal_unit: self.afocal_unit,
-            vig_interp: self.vig_interp,
-            floating_clip: self.floating_clip,
-            field_wave: self.field_wave,
-            coating_file: self.coating_file.clone(),
-            coat_tables: self.coat_tables.clone(),
-            name: self.name.clone(),
-            adjust_index: self.adjust_index,
-            pickups: self.pickups.clone(),
-            solves: self.solves.clone(),
-            macros: self.macros.clone(),
-            macro_parms: self.macro_parms.clone(),
-            macro_notes: self.macro_notes.clone(),
-            import_notes: self.import_notes.clone(),
-            units: self.units.clone(),
-            mechanics: self.mechanics.clone(),
-            configs: self.configs.clone(),
+            rx: self.rx.clone(),
             cache,
         }
+    }
+
+    /// 文書を書き換える（共有していれば写す）。キャッシュは捨てないので、書き換えた後に
+    /// `changed` か `refresh` を呼ぶ（[`Keep`] で残す分を選んだときを除く）
+    pub(crate) fn rx_mut(&mut self) -> &mut Prescription {
+        Arc::make_mut(&mut self.rx)
+    }
+
+    /// 文書
+    pub fn prescription(&self) -> &Prescription {
+        &self.rx
+    }
+
+    /// 文書を取り出す（共有していなければ写さない）
+    pub fn into_prescription(self) -> Prescription {
+        Arc::try_unwrap(self.rx).unwrap_or_else(|a| (*a).clone())
     }
 }
 
@@ -240,33 +401,6 @@ impl System {
 const ON_AXIS_PUPIL_FIELD: f64 = 10.0;
 
 impl System {
-    /// 分散式の有効範囲（AGF の LD 行）の外の波長で屈折率を求めている材料の警告（面の番号・材料・波長・範囲）。
-    /// lensbench は式をそのまま延ばして計算する（OpticStudio は範囲外ではエラーにして屈折率を 1.0 にする）
-    pub fn dispersion_warnings(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for (k, d) in self.surfaces.iter().enumerate() {
-            if d.ignore || d.mat.is_empty() {
-                continue;
-            }
-            let Some(g) = self.glasses.get(&d.mat) else {
-                continue;
-            };
-            let Some([lo, hi]) = g.ld else {
-                continue;
-            };
-            for &l in &self.wavelengths {
-                if (l < lo || l > hi) && seen.insert((d.mat.clone(), l.to_bits())) {
-                    out.push(format!(
-                        "surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)",
-                        d.mat, g.catalog
-                    ));
-                }
-            }
-        }
-        out
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         surfaces: Vec<Surface>,
@@ -281,7 +415,7 @@ impl System {
         aiming: Aiming,
         glasses: impl Into<Arc<HashMap<String, Glass>>>,
     ) -> Result<System> {
-        let s = System {
+        let s = Prescription {
             surfaces,
             wavelengths,
             weights,
@@ -320,9 +454,8 @@ impl System {
             units: Vec::new(),
             mechanics: Vec::new(),
             configs: None,
-            cache: Cache::default(),
-        };
-        s.check()?;
+        }
+        .build_raw()?;
         Ok(s)
     }
 
@@ -388,38 +521,10 @@ impl System {
         self.cache.focus = Some(f);
     }
 
-    /// 面や系のデータを書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てる）
-    pub fn changed(&mut self) -> Result<()> {
+    /// 文書を書き換えたあとに呼ぶ（座標系・近軸量などのキャッシュを捨てて系を確かめる）
+    pub(crate) fn changed(&mut self) -> Result<()> {
         self.cache = Cache::default();
         self.check()
-    }
-
-    pub fn stop(&self) -> usize {
-        self.surfaces.iter().position(|d| d.stop).unwrap_or(0)
-    }
-    /// エラーに添える面の名札: 「面 j(種類, 材料, 膜 名前, 「コメント」)」。空の項は省く
-    pub fn surf_label(&self, j: usize) -> String {
-        let Some(d) = self.surfaces.get(j) else {
-            return format!("surface {j}");
-        };
-        let mut what = crate::edit::surf_type_name(d.typ).to_string();
-        if !d.mat.is_empty() && d.mat != "-" {
-            what = format!("{what}, {}", d.mat);
-        }
-        if !d.coat.is_empty() {
-            what = format!("{what}, coating {}", d.coat);
-        }
-        if !d.comment.is_empty() {
-            what = format!("{what}, 「{}」", d.comment);
-        }
-        format!("surface {j}({what})")
-    }
-
-    pub fn image(&self) -> usize {
-        self.surfaces.len() - 1
-    }
-    pub fn infinite(&self) -> bool {
-        !self.surfaces[0].t.is_finite()
     }
 
     /// 面ごとの交点・法線の求め方（[`crate::shape::surf_kind`]）
@@ -442,41 +547,6 @@ impl System {
 
     pub fn frames(&self) -> &Frames {
         self.cache.frames.get_or_init(|| frames(self))
-    }
-
-    /// 面 j の直前の媒質の屈折率
-    pub fn index_before(&self, j: usize, w: usize) -> f64 {
-        let mut n = self.surfaces[0].n[w];
-        for d in &self.surfaces[1..j.max(1)] {
-            if !d.ignore && !d.is_coord_break() {
-                n = d.n[w];
-            }
-        }
-        n
-    }
-
-    /// 像面での光線の点。ふつうは像面の局所座標 (x, y) [mm]。アフォーカル像空間では向きの角度
-    /// (atan(l/n), atan(m/n)) を [`System::afocal_unit`] の単位で（OpticStudio のスポットと同じ定義）
-    pub fn image_point(&self, xyz: [f64; 3], lmn: [f64; 3]) -> (f64, f64) {
-        if self.afocal {
-            let u = self.afocal_unit.radians();
-            ((lmn[0] / lmn[2]).atan() / u, (lmn[1] / lmn[2]).atan() / u)
-        } else {
-            (xyz[0], xyz[1])
-        }
-    }
-
-    /// 像面の点・周波数の単位の名前: ふつうは mm、アフォーカル像空間では角度の単位
-    pub fn image_unit(&self) -> &'static str {
-        if self.afocal {
-            self.afocal_unit.label()
-        } else {
-            "mm"
-        }
-    }
-
-    pub fn image_index(&self, w: usize) -> f64 {
-        self.index_before(self.image(), w)
     }
 
     // ---------------------------------------------------------------------------------- 近軸

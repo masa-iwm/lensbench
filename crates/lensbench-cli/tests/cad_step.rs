@@ -591,8 +591,12 @@ fn coating_models_come_from_the_store_when_missing() {
     let j = (1..s.surfaces.len())
         .find(|&j| !s.surfaces[j].mat.is_empty())
         .unwrap();
-    s.surfaces[j].coat = "zec_r".into();
-    s.coating_file = Some(coat.join("COATING.DAT"));
+    s.edit_raw(|rx| {
+        rx.surfaces[j].coat = "zec_r".into();
+        rx.coating_file = Some(coat.join("COATING.DAT"));
+        Ok(())
+    })
+    .unwrap();
     lensbench_cad::set_cad_cache_dir(dir.join("cache"));
     lensbench_cad::set_store(Some(lensbench_cad::Store {
         url: store_url.clone(),

@@ -324,7 +324,11 @@ fn obscuration_and_spider_on_the_stop_keep_the_stop_circle() {
         },
     ] {
         let mut s = paraxial_lens(f, epd);
-        s.surfaces[1].ap = ap;
+        s.edit_raw(|p| {
+            p.surfaces[1].ap = ap;
+            Ok(())
+        })
+        .unwrap();
         let rb = pop::beam_from_rays(
             &s,
             FieldSel::Index(0),

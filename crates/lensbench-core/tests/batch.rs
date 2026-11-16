@@ -147,55 +147,66 @@ fn apertures_and_toroidal_match_scalar() {
     let (px, py) = grid(73, 1.2);
     let mut s = load("A0");
     let semi = s.surfaces[2].semi.max(1.0);
-    s.surfaces[2].ap = Aperture::Circular {
-        min: 0.2 * semi,
-        max: 0.9 * semi,
-        dx: 0.05 * semi,
-        dy: -0.03 * semi,
-    };
-    s.surfaces[3].ap = Aperture::Obsc {
-        min: 0.0,
-        max: 0.15 * semi,
-        dx: 0.0,
-        dy: 0.02 * semi,
-    };
-    s.surfaces[4].ap = Aperture::Rect {
-        hx: 0.8 * semi,
-        hy: 0.7 * semi,
-        dx: 0.01,
-        dy: 0.0,
-    };
-    s.surfaces[5].ap = Aperture::Ellipse {
-        hx: 0.85 * semi,
-        hy: 0.75 * semi,
-        dx: 0.0,
-        dy: 0.02,
-    };
+    s.edit_raw(|p| {
+        p.surfaces[2].ap = Aperture::Circular {
+            min: 0.2 * semi,
+            max: 0.9 * semi,
+            dx: 0.05 * semi,
+            dy: -0.03 * semi,
+        };
+        p.surfaces[3].ap = Aperture::Obsc {
+            min: 0.0,
+            max: 0.15 * semi,
+            dx: 0.0,
+            dy: 0.02 * semi,
+        };
+        p.surfaces[4].ap = Aperture::Rect {
+            hx: 0.8 * semi,
+            hy: 0.7 * semi,
+            dx: 0.01,
+            dy: 0.0,
+        };
+        p.surfaces[5].ap = Aperture::Ellipse {
+            hx: 0.85 * semi,
+            hy: 0.75 * semi,
+            dx: 0.0,
+            dy: 0.02,
+        };
+        Ok(())
+    })
+    .unwrap();
     let v = check("A0+開口", &s, &px, &py);
     assert!(v > 100, "けられた光線が少ない（{v}）");
 
     // スパイダー（腕 3 本、偏心）
     let mut s = load("A0");
     let semi = s.surfaces[3].semi;
-    s.surfaces[3].ap = Aperture::Spider {
-        width: 0.2 * semi,
-        arms: 3,
-        dx: 0.05 * semi,
-        dy: -0.02 * semi,
-    };
+    s.edit_raw(|p| {
+        p.surfaces[3].ap = Aperture::Spider {
+            width: 0.2 * semi,
+            arms: 3,
+            dx: 0.05 * semi,
+            dy: -0.02 * semi,
+        };
+        Ok(())
+    })
+    .unwrap();
     let v = check("A0+スパイダー", &s, &px, &py);
     assert!(v > 50, "けられた光線が少ない（{v}）");
 
-    let mut s = load("A0");
-    let d = &mut s.surfaces[1];
+    let s = load("A0");
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[1];
     d.typ = SurfType::Toroidal;
     d.cx = d.c * 0.7;
     d.asph = vec![1e-5, -2e-7];
+    let s = rx.build_raw().unwrap();
     check("A0+トロイダル", &s, &px, &py);
 
     // Zernike・Grid Sag
-    let mut s = load("A0");
-    let d = &mut s.surfaces[6];
+    let s = load("A0");
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[6];
     d.typ = SurfType::ZernikeStd;
     d.zern = Some(Arc::new(ZernSag::new(
         false,
@@ -203,9 +214,11 @@ fn apertures_and_toroidal_match_scalar() {
         (1..=37).map(|i| 1e-3 * (i as f64).sin()).collect(),
         true,
     )));
+    let s = rx.build_raw().unwrap();
     check("A0+Zernike", &s, &px, &py);
-    let mut s = load("A0");
-    let d = &mut s.surfaces[3];
+    let s = load("A0");
+    let mut rx = s.into_prescription();
+    let d = &mut rx.surfaces[3];
     d.typ = SurfType::GridSag;
     let (nx, ny) = (13, 11);
     d.grid = Some(Arc::new(GridSag {
@@ -226,6 +239,7 @@ fn apertures_and_toroidal_match_scalar() {
         nodata: (0..nx * ny).map(|k| k % 17 == 5).collect(),
         linear: false,
     }));
+    let s = rx.build_raw().unwrap();
     let v = check("A0+Grid Sag", &s, &px, &py);
     assert!(v > 100, "値のない升目で止まる光線が少ない（{v}）");
 }
@@ -356,7 +370,11 @@ fn pol_matches_scalar() {
     let w = s.primary;
     for j in 1..s.surfaces.len() {
         if s.surfaces[j].n[w] != s.index_before(j, w) {
-            s.surfaces[j].coat = "I.95".into();
+            s.edit_raw(|p| {
+                p.surfaces[j].coat = "I.95".into();
+                Ok(())
+            })
+            .unwrap();
         }
     }
     // 最初のガラスに内部透過率（厚さ 10 mm で 0.9）
@@ -365,26 +383,38 @@ fn pol_matches_scalar() {
         .find(|m| s.glasses.contains_key(m))
         .unwrap();
     let wls = s.wavelengths.clone();
-    let g = Arc::make_mut(&mut s.glasses).get_mut(&mat).unwrap();
-    g.it = wls
-        .iter()
-        .flat_map(|&wl| [[wl - 0.01, 0.9, 10.0], [wl + 0.01, 0.9, 10.0]])
-        .collect();
+    s.edit_raw(|p| {
+        let g = Arc::make_mut(&mut p.glasses).get_mut(&mat).unwrap();
+        g.it = wls
+            .iter()
+            .flat_map(|&wl| [[wl - 0.01, 0.9, 10.0], [wl + 0.01, 0.9, 10.0]])
+            .collect();
+        Ok(())
+    })
+    .unwrap();
     let img = s.image();
-    s.surfaces[img].typ = SurfType::Jones;
-    s.surfaces[img].jones = [1.0, 0.0, 0.2, 0.1, 0.0, -0.3, 0.0, 1.0];
+    s.edit_raw(|p| {
+        p.surfaces[img].typ = SurfType::Jones;
+        p.surfaces[img].jones = [1.0, 0.0, 0.2, 0.1, 0.0, -0.3, 0.0, 1.0];
+        Ok(())
+    })
+    .unwrap();
     let c = Coatings::for_system(&s).unwrap();
     assert!(check_pol("A0+膜・吸収・Jones", &s, &c, &px, &py) > 0);
 
     // 実測表の範囲（0〜8°）の外: けられた光線は止めず、通る光線は止める（エラーの文も同じ）
     let mut s = load("A0");
-    s.surfaces[2].coat = "ZEC1".into();
-    s.surfaces[2].ap = Aperture::Circular {
-        min: 0.0,
-        max: 2.0,
-        dx: 0.0,
-        dy: 0.0,
-    };
+    s.edit_raw(|p| {
+        p.surfaces[2].coat = "ZEC1".into();
+        p.surfaces[2].ap = Aperture::Circular {
+            min: 0.0,
+            max: 2.0,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
     let mut c = Coatings::for_system(&s).unwrap();
     let key = format!("ZEC1|AIR|{}", s.surfaces[2].mat);
     let ang: Vec<f64> = (0..=8).map(|a| a as f64).collect();

@@ -9,7 +9,7 @@ use crate::error::{Error, Result};
 use crate::glass;
 use crate::invalid;
 use crate::surface::Bire;
-use crate::system::System;
+use crate::system::{Prescription, System};
 
 /// 面の後の媒質の、材料からの作り方
 enum Medium {
@@ -66,7 +66,7 @@ fn model_glass(mat: &str) -> Option<(f64, f64, f64)> {
         .then(|| (v[0], v[1], v.get(2).copied().unwrap_or(0.0)))
 }
 
-impl System {
+impl Prescription {
     /// 材料の屈折率（系の波長ごと、dn・disp をかける前）。空・AIR は 1、"nd,vd[,dpgf]" はモデルガラス、
     /// ほかは系のガラス（[`System::add_glasses`] で足せる）
     pub fn material_index(&self, mat: &str) -> Result<Vec<f64>> {
@@ -100,7 +100,9 @@ impl System {
         }
         invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)")
     }
+}
 
+impl System {
     /// 面 j の後の媒質の、波長 lams [µm] での屈折率（dn・disp をかける前）。鏡・座標ブレークは None（前の媒質）
     pub(crate) fn medium_index_at(&self, j: usize, lams: &[f64]) -> Result<Option<Vec<f64>>> {
         let d = &self.surfaces[j];
@@ -152,7 +154,7 @@ impl System {
             let Some(base) = self.medium_index_at(j, &self.wavelengths)? else {
                 continue;
             };
-            let d = &mut self.surfaces[j];
+            let d = &mut self.rx_mut().surfaces[j];
             d.n_base.clear();
             d.n = base;
             if let Some(Bire::In { ne, .. }) = &mut d.bire {
@@ -174,7 +176,7 @@ impl System {
                     "surface {j}: extraordinary material {en} of the birefringent material: {e}"
                 ))
             })?;
-            if let Some(Bire::In { ne, .. }) = &mut self.surfaces[j].bire {
+            if let Some(Bire::In { ne, .. }) = &mut self.rx_mut().surfaces[j].bire {
                 *ne = v;
             }
         }
@@ -184,7 +186,7 @@ impl System {
     /// 複屈折材の異常光の屈折率を材料から作り直す（波長を変えた・足したとき）
     fn rebuild_extraordinary(&mut self) -> Result<()> {
         let mut bire = false;
-        for d in self.surfaces.iter_mut() {
+        for d in self.rx_mut().surfaces.iter_mut() {
             if let Some(Bire::In { ne, .. }) = &mut d.bire {
                 ne.clear();
                 bire = true;
@@ -213,7 +215,7 @@ impl System {
         }
         for (i, col) in new {
             for (j, n) in col.into_iter().enumerate() {
-                let d = &mut self.surfaces[j];
+                let d = &mut self.rx_mut().surfaces[j];
                 let v = if d.n_base.is_empty() {
                     &mut d.n
                 } else {
@@ -225,7 +227,7 @@ impl System {
             }
         }
         for &(i, lam) in waves {
-            self.wavelengths[i] = lam;
+            self.rx_mut().wavelengths[i] = lam;
         }
         self.rebuild_extraordinary()
     }
@@ -239,7 +241,7 @@ impl System {
         let add = self.media_at(lam)?;
         let mut d = self.clone();
         for (j, n) in add.into_iter().enumerate() {
-            let sf = &mut d.surfaces[j];
+            let sf = &mut d.rx_mut().surfaces[j];
             if sf.n_base.is_empty() {
                 sf.n.push(n);
             } else {
@@ -247,8 +249,8 @@ impl System {
                 sf.n.push(f64::NAN);
             }
         }
-        d.wavelengths.push(lam);
-        d.weights.push(0.0);
+        d.rx_mut().wavelengths.push(lam);
+        d.rx_mut().weights.push(0.0);
         d.rebuild_extraordinary()?;
         d.update_indices();
         d.changed()?;

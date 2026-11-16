@@ -14,13 +14,16 @@ SURF 1\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n\
 SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\n\
 SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     let mut s = zmx::build(&zmx::parse_text(t).unwrap(), &Default::default(), &[], None).unwrap();
-    s.surfaces[1].ap = Aperture::Obsc {
-        min: 0.0,
-        max: obsc,
-        dx: 0.0,
-        dy: 0.0,
-    };
-    s.changed().unwrap();
+    s.edit_raw(|rx| {
+        rx.surfaces[1].ap = Aperture::Obsc {
+            min: 0.0,
+            max: obsc,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
     s
 }
 

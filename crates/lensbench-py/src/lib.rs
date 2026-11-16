@@ -994,7 +994,11 @@ impl PySystem {
         } = o.map_err(err)?;
         warn_all(py, &warn)?;
         if coating_file.is_some() {
-            sys.coating_file = coating_file;
+            sys.edit_raw(|r| {
+                r.coating_file = coating_file;
+                Ok(())
+            })
+            .map_err(err)?;
         }
         Ok(PySystem::new(
             sys,
@@ -1094,7 +1098,11 @@ impl PySystem {
         let (mut sys, warn) = r.map_err(err)?;
         warn_all(py, &warn)?;
         if coating_file.is_some() {
-            sys.coating_file = coating_file;
+            sys.edit_raw(|r| {
+                r.coating_file = coating_file;
+                Ok(())
+            })
+            .map_err(err)?;
         }
         Ok(PySystem::new(
             sys,
@@ -1154,14 +1162,18 @@ impl PySystem {
             .detach(|| zmx::load_configs(&path, &opt, &cfgs))
             .map_err(err)?;
         let coat = coatings.unwrap_or_else(env_coatings);
-        Ok(v.into_iter()
+        v.into_iter()
             .map(|mut s| {
                 if coating_file.is_some() {
-                    s.coating_file = coating_file.clone();
+                    s.edit_raw(|r| {
+                        r.coating_file = coating_file.clone();
+                        Ok(())
+                    })
+                    .map_err(err)?;
                 }
-                PySystem::new(s, coat.clone(), Default::default())
+                Ok(PySystem::new(s, coat.clone(), Default::default()))
             })
-            .collect())
+            .collect()
     }
 
     #[getter]
@@ -1246,8 +1258,10 @@ impl PySystem {
     #[setter]
     fn set_floating_clip(&self, on: bool) -> PyResult<()> {
         self.mutate(|s| {
-            s.floating_clip = on;
-            s.changed()
+            s.edit_raw(|r| {
+                r.floating_clip = on;
+                Ok(())
+            })
         })
     }
 
@@ -1922,7 +1936,7 @@ impl PySystem {
                 )))
             }
         };
-        let mut n = g.with_params(&[]).map_err(err)?;
+        let mut n = g.with_params(&[]).map_err(err)?.into_prescription();
         n.field_type = ft;
         if let Some(f) = fields {
             if f.is_empty() {
@@ -1930,7 +1944,7 @@ impl PySystem {
             }
             n.fields = f.into_iter().map(|(x, y)| Field::xy(x, y)).collect();
         }
-        n.changed().map_err(err)?;
+        let n = n.build_raw().map_err(err)?;
         *g = Arc::new(n);
         Ok(())
     }

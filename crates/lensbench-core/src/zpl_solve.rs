@@ -506,7 +506,7 @@ impl System {
             let what = q.col.pick(q.parm);
             let old = crate::param::pick_get(&self.surfaces[q.surf], what);
             if old != Some(v) {
-                if !crate::param::pick_set(&mut self.surfaces[q.surf], what, v) {
+                if !crate::param::pick_set(&mut self.rx_mut().surfaces[q.surf], what, v) {
                     crate::notimpl!(
                         "putting a macro value into surface {} {}",
                         q.surf,

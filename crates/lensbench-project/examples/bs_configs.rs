@@ -57,15 +57,19 @@ fn main() {
     for (name, file, states) in CASES {
         let (names, mut ss) = systems(&root, file, states);
         for s in ss.iter_mut() {
-            s.coating_file = None;
-            for d in s.surfaces.iter_mut() {
-                d.coat.clear();
-            }
-            for g in std::sync::Arc::make_mut(&mut s.glasses).values_mut() {
-                if g.catalog.eq_ignore_ascii_case("SCHOTT") {
-                    g.catalog = "LBSCH".into();
+            s.edit_raw(|rx| {
+                rx.coating_file = None;
+                for d in rx.surfaces.iter_mut() {
+                    d.coat.clear();
                 }
-            }
+                for g in std::sync::Arc::make_mut(&mut rx.glasses).values_mut() {
+                    if g.catalog.eq_ignore_ascii_case("SCHOTT") {
+                        g.catalog = "LBSCH".into();
+                    }
+                }
+                Ok(())
+            })
+            .unwrap();
         }
         lensbench_formats::zmx_write::save_configs(&out.join(format!("{name}.zmx")), &ss).unwrap();
         println!("{name}: {} 構成 {:?}", ss.len(), names);

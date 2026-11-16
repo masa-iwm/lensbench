@@ -14,13 +14,16 @@ SURF 1\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n\
 SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\n\
 SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
     let mut s = zmx::build(&zmx::parse_text(t).unwrap(), &Default::default(), &[], None).unwrap();
-    s.surfaces[1].ap = Aperture::Obsc {
-        min: 0.0,
-        max: obsc,
-        dx: 0.0,
-        dy: 0.0,
-    };
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].ap = Aperture::Obsc {
+            min: 0.0,
+            max: obsc,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
     s
 }
 
@@ -123,13 +126,16 @@ fn obscured_and_clipped() {
     let fr = [0.0, 1.0, 5.0, 20.0, 60.0, 120.0];
     for obsc in [0.0, 2.5] {
         let mut s = ideal(obsc);
-        s.surfaces[2].ap = Aperture::Rect {
-            hx: 6.0,
-            hy: 3.0,
-            dx: 0.0,
-            dy: 1.5,
-        };
-        s.changed().unwrap();
+        s.edit_raw(|p| {
+            p.surfaces[2].ap = Aperture::Rect {
+                hx: 6.0,
+                hy: 3.0,
+                dx: 0.0,
+                dy: 1.5,
+            };
+            Ok(())
+        })
+        .unwrap();
         for k in 0..2 {
             // 遮蔽（絞りの 10 前）は視野 1° で瞳の y に 10 tan 1° ずれる
             let cy = if k == 0 {
@@ -160,13 +166,16 @@ fn obscured_and_clipped() {
         }
     }
     let mut s = ideal(2.5);
-    s.surfaces[2].ap = Aperture::Rect {
-        hx: 6.0,
-        hy: 3.0,
-        dx: 0.0,
-        dy: 1.5,
-    };
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[2].ap = Aperture::Rect {
+            hx: 6.0,
+            hy: 3.0,
+            dx: 0.0,
+            dy: 1.5,
+        };
+        Ok(())
+    })
+    .unwrap();
     let sp = analysis::spot(&s, FieldSel::Index(0), Waves::All, 6).unwrap();
     assert!(sp.chief.0.is_finite() && sp.chief.1.is_finite());
 }

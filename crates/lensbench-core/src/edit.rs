@@ -15,6 +15,7 @@ use crate::error::Result;
 use crate::glass::{self, Glass};
 use crate::param::{Kind, Param, PickKind, Pickup, ThickSolve};
 use crate::surface::{After, Aperture, SurfType, Surface};
+use crate::system::Prescription;
 use crate::system::{FieldCond, FieldType, System};
 use crate::{invalid, notimpl};
 use std::collections::HashMap;
@@ -249,8 +250,35 @@ impl SurfValue {
 }
 
 impl System {
-    /// 系を複製して f で変え、編集の後始末（[`System::refresh`]）をしてから差し替える。失敗なら元のまま
-    pub fn edit(&mut self, f: impl FnOnce(&mut System) -> Result<()>) -> Result<()> {
+    /// 文書を f で直して作り直す: 面の値の確かめ、材料からの屈折率、ピックアップの解決、厚さのソルブ、
+    /// 系の確かめ、自動の半直径。失敗なら元のまま
+    pub fn edit(&mut self, f: impl FnOnce(&mut Prescription) -> Result<()>) -> Result<()> {
+        self.edit_sys(|s| f(s.rx_mut()))
+    }
+
+    /// 文書を f で直し、値はそのまま置く（ピックアップ・ソルブ・屈折率・自動の半直径は求め直さない）。
+    /// 座標系・近軸量などは作り直し、系を確かめる。失敗なら元のまま
+    pub fn edit_raw(&mut self, f: impl FnOnce(&mut Prescription) -> Result<()>) -> Result<()> {
+        let mut s = self.clone();
+        f(s.rx_mut())?;
+        s.changed()?;
+        *self = s;
+        Ok(())
+    }
+
+    /// ピックアップを解決し、ソルブを解き直す（[`System::edit_raw`] で足したピックアップ・ソルブを効かせる）。
+    /// 座標系・近軸量などは作り直す
+    pub fn resolve_links(&mut self) -> Result<()> {
+        self.invalidate_frames();
+        self.resolve_pickups()?;
+        if !self.solves.is_empty() || !self.macro_parms.is_empty() {
+            self.solve_thickness()?;
+        }
+        self.changed()
+    }
+
+    /// 系を複製して f で変え、編集の後始末（`refresh`）をしてから差し替える。失敗なら元のまま
+    pub(crate) fn edit_sys(&mut self, f: impl FnOnce(&mut System) -> Result<()>) -> Result<()> {
         let mut s = self.clone();
         f(&mut s)?;
         s.refresh()?;
@@ -258,9 +286,8 @@ impl System {
         Ok(())
     }
 
-    /// 編集の後始末: 面の値の確かめ、材料からの屈折率、ピックアップの解決、厚さのソルブ、系の確かめ。
-    /// 面のデータを直接書き換えたときに呼ぶ
-    pub fn refresh(&mut self) -> Result<()> {
+    /// 編集の後始末: 面の値の確かめ、材料からの屈折率、ピックアップの解決、厚さのソルブ、系の確かめ
+    pub(crate) fn refresh(&mut self) -> Result<()> {
         self.invalidate_frames();
         let ns = self.surfaces.len();
         if ns < 3 {
@@ -316,7 +343,7 @@ impl System {
 
     /// ガラスを足す（同じ名前は置き換える）。屈折率は材料を設定したときに作る
     pub fn add_glasses(&mut self, g: HashMap<String, Glass>) {
-        std::sync::Arc::make_mut(&mut self.glasses).extend(g);
+        std::sync::Arc::make_mut(&mut self.rx_mut().glasses).extend(g);
         self.invalidate_frames();
     }
 
@@ -331,7 +358,7 @@ impl System {
     fn propagate_media(&mut self) {
         let mut prev: Vec<f64> = self.surfaces[0].n.clone();
         for j in 1..self.surfaces.len() {
-            let d = &mut self.surfaces[j];
+            let d = &mut self.rx_mut().surfaces[j];
             if d.mirror || d.typ == SurfType::CoordBrk {
                 d.n = prev.clone();
                 d.n_base.clear();
@@ -351,12 +378,12 @@ impl System {
         if d.stop {
             invalid!("make the inserted surface the stop with set_stop");
         }
-        self.edit(|s| {
+        self.edit_sys(|s| {
             let mut d = d;
             if d.mirror {
                 d.mat = "MIRROR".into();
             }
-            s.surfaces.insert(at, d);
+            s.rx_mut().surfaces.insert(at, d);
             renumber(s, |j| Some(if j >= at { j + 1 } else { j }), at, true);
             Ok(())
         })
@@ -412,9 +439,9 @@ impl System {
         if let Some((_, v)) = fields.iter().find(|(n, _)| n == "material") {
             s.set_material(j, &v.text("material")?)?;
         }
-        s.edit(|s| {
+        s.edit_sys(|s| {
             let last = s.surfaces.len() - 1;
-            let d = &mut s.surfaces[j];
+            let d = &mut s.rx_mut().surfaces[j];
             for (name, v) in fields {
                 match name.as_str() {
                     "type" | "material" => {}
@@ -557,9 +584,9 @@ impl System {
             }
         }
         let mut notes = Vec::new();
-        self.edit(|s| {
+        self.edit_sys(|s| {
             notes = drop_refs(s, j);
-            s.surfaces.remove(j);
+            s.rx_mut().surfaces.remove(j);
             renumber(s, |k| Some(if k > j { k - 1 } else { k }), j, false);
             Ok(())
         })?;
@@ -571,8 +598,8 @@ impl System {
         if j == 0 || j >= self.image() {
             invalid!("stop surface {j} (1 to {})", self.image() - 1);
         }
-        self.edit(|s| {
-            for (k, d) in s.surfaces.iter_mut().enumerate() {
+        self.edit_sys(|s| {
+            for (k, d) in s.rx_mut().surfaces.iter_mut().enumerate() {
                 d.stop = k == j;
             }
             Ok(())
@@ -588,8 +615,8 @@ impl System {
         if typ == SurfType::CoordBrk && (j == self.image() || self.surfaces[j].stop) {
             invalid!("surface {j} (image or stop) can't be a coordinate break");
         }
-        self.edit(|s| {
-            let d = &mut s.surfaces[j];
+        self.edit_sys(|s| {
+            let d = &mut s.rx_mut().surfaces[j];
             let old = d.typ;
             d.typ = typ;
             if typ == SurfType::CoordBrk {
@@ -637,8 +664,8 @@ impl System {
         if j == 0 && mirror {
             invalid!("the object surface can't be a mirror");
         }
-        self.edit(|s| {
-            let d = &mut s.surfaces[j];
+        self.edit_sys(|s| {
+            let d = &mut s.rx_mut().surfaces[j];
             if d.typ == SurfType::CoordBrk && !no_material(mat) {
                 invalid!("surface {j}: material {mat} on a coordinate break");
             }
@@ -663,8 +690,8 @@ impl System {
         if j > self.image() {
             invalid!("surface {j}");
         }
-        self.edit(|s| {
-            s.surfaces[j].coat = coat.trim().to_string();
+        self.edit_sys(|s| {
+            s.rx_mut().surfaces[j].coat = coat.trim().to_string();
             Ok(())
         })
     }
@@ -674,8 +701,8 @@ impl System {
         if j > self.image() {
             invalid!("surface {j}");
         }
-        self.edit(|s| {
-            s.surfaces[j].ap = ap;
+        self.edit_sys(|s| {
+            s.rx_mut().surfaces[j].ap = ap;
             Ok(())
         })
     }
@@ -711,9 +738,11 @@ impl System {
                 );
             }
         }
-        self.edit(|s| {
-            s.pickups.retain(|q| !(q.dst == p.dst && q.what == p.what));
-            s.pickups.push(p);
+        self.edit_sys(|s| {
+            s.rx_mut()
+                .pickups
+                .retain(|q| !(q.dst == p.dst && q.what == p.what));
+            s.rx_mut().pickups.push(p);
             Ok(())
         })
     }
@@ -723,8 +752,10 @@ impl System {
         if !self.pickups.iter().any(|q| q.dst == dst && q.what == what) {
             invalid!("no pickup of {what:?} on surface {dst}");
         }
-        self.edit(|s| {
-            s.pickups.retain(|q| !(q.dst == dst && q.what == what));
+        self.edit_sys(|s| {
+            s.rx_mut()
+                .pickups
+                .retain(|q| !(q.dst == dst && q.what == what));
             Ok(())
         })
     }
@@ -751,10 +782,11 @@ impl System {
                 pk.name()
             );
         }
-        self.edit(|s| {
-            s.solves
+        self.edit_sys(|s| {
+            s.rx_mut()
+                .solves
                 .retain(|x| !(x.surf == q.surf && x.kind.param_kind() == pk));
-            s.solves.push(q);
+            s.rx_mut().solves.push(q);
             Ok(())
         })
     }
@@ -765,8 +797,8 @@ impl System {
         if !self.solves.iter().any(hit) {
             invalid!("no solve of {} on surface {surf}", kind.name());
         }
-        self.edit(|s| {
-            s.solves.retain(|x| !hit(x));
+        self.edit_sys(|s| {
+            s.rx_mut().solves.retain(|x| !hit(x));
             Ok(())
         })
     }
@@ -783,7 +815,7 @@ impl System {
             invalid!("0 configurations");
         }
         if n == 1 {
-            self.configs = None;
+            self.rx_mut().configs = None;
             return Ok(());
         }
         let mut c = self.configs.clone().unwrap_or(Configs {
@@ -804,10 +836,10 @@ impl System {
         if back {
             // 今の構成が無くなるので構成 1 の値を系に入れる
             let mut t = self.clone();
-            t.configs = Some(c);
+            t.rx_mut().configs = Some(c);
             *self = t.config(1)?;
         } else {
-            self.configs = Some(c);
+            self.rx_mut().configs = Some(c);
         }
         Ok(())
     }
@@ -843,7 +875,7 @@ impl System {
         row.resolve_picks();
         c.rows.push(row);
         let mut s = self.clone();
-        s.configs = Some(c);
+        s.rx_mut().configs = Some(c);
         let k = s.configs.as_ref().map(|c| c.active).unwrap_or(1);
         *self = s.config(k)?;
         Ok(())
@@ -852,7 +884,7 @@ impl System {
     /// 表の今の構成の列を、系の今の値に合わせる（面の表・set で表の行の値を変えたとき。
     /// OpticStudio で Lens Data の値を変えると Multi-Configuration Editor の今の構成の値も変わるのと同じ）
     pub fn sync_active_config(&mut self) {
-        let Some(mut c) = self.configs.take() else {
+        let Some(mut c) = self.rx_mut().configs.take() else {
             return;
         };
         let k = c.active.saturating_sub(1);
@@ -867,7 +899,7 @@ impl System {
             // 今の構成を元にするピックアップの値も変わる（今の構成でない列なので系はそのまま）
             r.resolve_picks();
         }
-        self.configs = Some(c);
+        self.rx_mut().configs = Some(c);
     }
 
     /// 構成を位置 at（1 始まり、1〜n+1）に挿入する。値は構成 from（挿入前の番号）の値。pickup なら各行の新しい構成を
@@ -908,7 +940,7 @@ impl System {
         }
         c.n += 1;
         c.active = shift(c.active);
-        self.configs = Some(c);
+        self.rx_mut().configs = Some(c);
         Ok(())
     }
 
@@ -937,11 +969,11 @@ impl System {
         if c.n == 1 {
             // 表の値の数を 1 つにはできないので、残った構成の値を系に入れて表を消す
             let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[0])).collect();
-            t.configs = None;
+            t.rx_mut().configs = None;
             *self = t.with_params(&ch)?;
             return Ok(());
         }
-        t.configs = Some(c.clone());
+        t.rx_mut().configs = Some(c.clone());
         *self = if was == k { t.config(c.active)? } else { t };
         Ok(())
     }
@@ -992,14 +1024,14 @@ impl System {
         r.resolve_picks();
         let active = c.active;
         let mut s = self.clone();
-        s.configs = Some(c);
+        s.rx_mut().configs = Some(c);
         *self = if active == k { s.config(k)? } else { s };
         Ok(())
     }
 
     /// 表の行 p の構成 k のピックアップを外す（値は今のまま）
     pub fn remove_config_pickup(&mut self, p: Param, k: usize) -> Result<()> {
-        let Some(c) = &mut self.configs else {
+        let Some(c) = &mut self.rx_mut().configs else {
             invalid!("only one configuration");
         };
         let Some(r) = c.rows.iter_mut().find(|r| r.param == p) else {
@@ -1015,7 +1047,7 @@ impl System {
 
     /// 表の行（パラメータ p）を消す。系の値は今のまま
     pub fn remove_config_row(&mut self, p: Param) -> Result<()> {
-        let Some(c) = &mut self.configs else {
+        let Some(c) = &mut self.rx_mut().configs else {
             invalid!("only one configuration");
         };
         let n0 = c.rows.len();
@@ -1039,7 +1071,7 @@ impl System {
         }
         let ch: Vec<(Param, f64)> = c.rows.iter().map(|r| (r.param, r.values[k - 1])).collect();
         let mut s = self.with_params(&ch)?;
-        if let Some(c) = &mut s.configs {
+        if let Some(c) = &mut s.rx_mut().configs {
             c.active = k;
         }
         Ok(s)
@@ -1083,7 +1115,7 @@ impl System {
 /// 面 j を消す前に、j を参照するピックアップ・ソルブ・表の行・玉・群の範囲を外す。説明を返す
 fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
     let mut notes = Vec::new();
-    s.pickups.retain(|p| {
+    s.rx_mut().pickups.retain(|p| {
         let used = p.src == j || p.dst == j;
         if used {
             notes.push(format!(
@@ -1096,7 +1128,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         }
         !used
     });
-    s.solves.retain(|q| {
+    s.rx_mut().solves.retain(|q| {
         let used = q.surf == j || q.kind.other_surface() == Some(j);
         if used {
             notes.push(if q.kind.is_curv() {
@@ -1116,7 +1148,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
     // 玉・群: 範囲を縮め、空になった範囲・玉・群は外す
     let mut unit_map: Vec<Option<usize>> = Vec::with_capacity(s.units.len());
     let mut kept = Vec::new();
-    for u in std::mem::take(&mut s.units) {
+    for u in std::mem::take(&mut s.rx_mut().units) {
         let mut u = u;
         u.spans.retain_mut(|sp| {
             let [a, b] = *sp;
@@ -1140,8 +1172,8 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
             kept.push(u);
         }
     }
-    s.units = kept;
-    if let Some(c) = &mut s.configs {
+    s.rx_mut().units = kept;
+    if let Some(c) = &mut s.rx_mut().configs {
         c.rows.retain(|r| {
             let used = match r.param.kind {
                 Kind::Unit(_) => unit_map.get(r.param.surf).copied().flatten().is_none(),
@@ -1165,7 +1197,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         }
     }
     // 機構部品: 置く面を消したら外す。保持する面からは外す（番号の付け替えは renumber）
-    s.mechanics.retain_mut(|m| {
+    s.rx_mut().mechanics.retain_mut(|m| {
         m.holds.retain(|&h| h != j);
         if m.surface == j {
             notes.push(format!(
@@ -1180,7 +1212,7 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
         notes.push(format!(
             "the global coordinate reference surface {j} was deleted, so it is now surface 1"
         ));
-        s.glrs = 1;
+        s.rx_mut().glrs = 1;
     }
     notes
 }
@@ -1189,24 +1221,24 @@ fn drop_refs(s: &mut System, j: usize) -> Vec<String> {
 /// （範囲の前に入る）。削除の範囲は [`drop_refs`] で済ませている
 fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, insert: bool) {
     let mm = |j: usize| m(j).unwrap_or(j);
-    for p in s.pickups.iter_mut() {
+    for p in s.rx_mut().pickups.iter_mut() {
         p.src = mm(p.src);
         p.dst = mm(p.dst);
     }
-    for q in s.solves.iter_mut() {
+    for q in s.rx_mut().solves.iter_mut() {
         q.surf = mm(q.surf);
         if let Some(o) = q.kind.other_surface() {
             q.kind = q.kind.with_other_surface(mm(o));
         }
     }
-    for m in s.mechanics.iter_mut() {
+    for m in s.rx_mut().mechanics.iter_mut() {
         m.surface = mm(m.surface);
         for h in m.holds.iter_mut() {
             *h = mm(*h);
         }
     }
     if insert {
-        for u in s.units.iter_mut() {
+        for u in s.rx_mut().units.iter_mut() {
             for sp in u.spans.iter_mut() {
                 // 範囲の中（最初の面より後ろ、最後の面まで）に入れた面は範囲に含める
                 let [a, b] = *sp;
@@ -1214,12 +1246,12 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
             }
         }
         if s.glrs >= at {
-            s.glrs += 1;
+            s.rx_mut().glrs += 1;
         }
     } else if s.glrs > at {
-        s.glrs -= 1;
+        s.rx_mut().glrs -= 1;
     }
-    s.field_type = match s.field_type {
+    s.rx_mut().field_type = match s.field_type {
         FieldType::Solve(FieldCond::Position { surf }) => {
             FieldType::Solve(FieldCond::Position { surf: mm(surf) })
         }
@@ -1233,7 +1265,7 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
         }),
         t => t,
     };
-    if let Some(c) = &mut s.configs {
+    if let Some(c) = &mut s.rx_mut().configs {
         for r in c.rows.iter_mut() {
             if !r.param.kind.is_global() && !r.param.kind.is_unit() {
                 r.param.surf = mm(r.param.surf);

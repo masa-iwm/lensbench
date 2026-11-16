@@ -26,7 +26,7 @@ pub fn defocus(s: &System, dz: f64) -> Result<System> {
     let mut d = s.clone();
     if dz != 0.0 {
         let j = d.image() - 1;
-        d.surfaces[j].t += dz;
+        d.rx_mut().surfaces[j].t += dz;
         d.changed()?;
     }
     Ok(d)
@@ -169,7 +169,7 @@ fn without_vig(s: &System) -> (std::borrow::Cow<'_, System>, Option<String>) {
         return (std::borrow::Cow::Borrowed(s), None);
     }
     let mut c = s.clone();
-    for f in c.fields.iter_mut() {
+    for f in c.rx_mut().fields.iter_mut() {
         (f.vdx, f.vdy, f.vcx, f.vcy, f.van) = (0.0, 0.0, 0.0, 0.0, 0.0);
     }
     (
@@ -498,7 +498,7 @@ fn field_at_wave(s: &System, w: usize, o: RmsOpts) -> Result<std::borrow::Cow<'_
         return Ok(std::borrow::Cow::Borrowed(s));
     }
     let mut d = s.clone();
-    d.field_wave = Some(w);
+    d.rx_mut().field_wave = Some(w);
     d.changed()?;
     Ok(std::borrow::Cow::Owned(d))
 }

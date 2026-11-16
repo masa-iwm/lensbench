@@ -113,7 +113,8 @@ pub(crate) fn system(
         aiming,
         glasses,
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())?
+    .into_prescription();
     s.name = p.name;
     s.temperature = p.temperature_c;
     s.pressure = p.pressure_atm;
@@ -164,8 +165,7 @@ pub(crate) fn system(
             }
         }
     }
-    s.refresh().map_err(|e| e.to_string())?;
-    Ok(s)
+    s.build().map_err(|e| e.to_string())
 }
 
 fn core_tilt(t: &Tilt) -> cs::Tilt {

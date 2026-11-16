@@ -56,7 +56,11 @@ fn ideal_coatings_scale_every_ray_alike() {
     let w = s.primary;
     let ifs = interfaces(&s, w);
     for &(j, _, _) in &ifs {
-        s.surfaces[j].coat = "I.95".into();
+        s.edit_raw(|p| {
+            p.surfaces[j].coat = "I.95".into();
+            Ok(())
+        })
+        .unwrap();
     }
     let c = Coatings::for_system(&s).unwrap();
     let px = [0.0, 0.7, -0.3, 0.0];
@@ -95,10 +99,14 @@ fn absorption_follows_the_internal_transmittance() {
         .filter(|&q| s.surfaces[q].mat == mat && !s.surfaces[q].mirror)
         .map(|q| s.surfaces[q].t)
         .sum();
-    std::sync::Arc::make_mut(&mut s.glasses)
-        .get_mut(&mat)
-        .unwrap()
-        .it = vec![[wl - 0.1, 0.9, 10.0], [wl + 0.1, 0.9, 10.0]];
+    s.edit_raw(|p| {
+        std::sync::Arc::make_mut(&mut p.glasses)
+            .get_mut(&mat)
+            .unwrap()
+            .it = vec![[wl - 0.1, 0.9, 10.0], [wl + 0.1, 0.9, 10.0]];
+        Ok(())
+    })
+    .unwrap();
     let t1 = s
         .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c)
         .unwrap();
@@ -112,8 +120,12 @@ fn quarter_wave_jones_surface_makes_circular_polarization() {
     let mut s = a0();
     let img = s.image();
     // 像面を λ/4（速軸 x）の Jones 行列面にする
-    s.surfaces[img].typ = SurfType::Jones;
-    s.surfaces[img].jones = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    s.edit_raw(|p| {
+        p.surfaces[img].typ = SurfType::Jones;
+        p.surfaces[img].jones = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        Ok(())
+    })
+    .unwrap();
     let c = Coatings::for_system(&s).unwrap();
     let d45 = [C64::new(0.5f64.sqrt(), 0.0), C64::new(0.5f64.sqrt(), 0.0)];
     let t = s
@@ -129,7 +141,11 @@ fn measured_tables_are_used_for_unknown_coatings() {
     let mut s = a0();
     let w = s.primary;
     let (j, _, _) = interfaces(&s, w)[0];
-    s.surfaces[j].coat = "ZEC1".into();
+    s.edit_raw(|p| {
+        p.surfaces[j].coat = "ZEC1".into();
+        Ok(())
+    })
+    .unwrap();
     let mut c = Coatings::for_system(&s).unwrap();
     // 表がなければ止める。エラーには面の番号・種類・材料・膜の名前が入る
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c);
@@ -158,7 +174,11 @@ fn measured_tables_are_used_for_unknown_coatings() {
         .unwrap();
     // 面 j だけ表の係数、他は膜なしのフレネル。軸上では s 方向が x̂ × k の向き（y）になるので、x 偏光は p
     let mut s0 = a0();
-    s0.surfaces[j].coat = String::new();
+    s0.edit_raw(|p| {
+        p.surfaces[j].coat = String::new();
+        Ok(())
+    })
+    .unwrap();
     let c0 = Coatings::for_system(&s0).unwrap();
     let t0 = s0
         .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &[X], &c0)
@@ -214,13 +234,17 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     let mut s = a0();
     let w = s.primary;
     let (j, _, _) = interfaces(&s, w)[0];
-    s.surfaces[j].coat = "ZEC1".into();
-    s.surfaces[j].ap = lensbench_core::surface::Aperture::Circular {
-        min: 0.0,
-        max: 2.0,
-        dx: 0.0,
-        dy: 0.0,
-    };
+    s.edit_raw(|p| {
+        p.surfaces[j].coat = "ZEC1".into();
+        p.surfaces[j].ap = lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 2.0,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
     let mut c = Coatings::for_system(&s).unwrap();
     let key = format!("ZEC1|AIR|{}", s.surfaces[j].mat);
     let ang: Vec<f64> = (0..=8).map(|a| a as f64).collect();
@@ -248,14 +272,22 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     assert!(t.e[0][0][0].norm().is_finite());
     assert!(t.e[1][0][0].re.is_nan());
     // 後ろの面（像面の手前）でけられる光線も止めない
-    s.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+    s.edit_raw(|p| {
+        p.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+        Ok(())
+    })
+    .unwrap();
     let img = s.image();
-    s.surfaces[img - 1].ap = lensbench_core::surface::Aperture::Circular {
-        min: 0.0,
-        max: 1e-3,
-        dx: 0.0,
-        dy: 0.0,
-    };
+    s.edit_raw(|p| {
+        p.surfaces[img - 1].ap = lensbench_core::surface::Aperture::Circular {
+            min: 0.0,
+            max: 1e-3,
+            dx: 0.0,
+            dy: 0.0,
+        };
+        Ok(())
+    })
+    .unwrap();
     let t = s
         .try_trace_pol(
             FieldSel::Norm(0.0, 0.0),
@@ -268,9 +300,13 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
         .unwrap();
     assert!(t.trace.rays[1].vig == img - 1 && t.trace.rays[1].status.is_ok());
     assert!(t.e[1][0][0].re.is_nan());
-    s.surfaces[img - 1].ap = lensbench_core::surface::Aperture::None;
-    // けられていない光線が範囲外なら止める
-    s.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+    s.edit_raw(|p| {
+        p.surfaces[img - 1].ap = lensbench_core::surface::Aperture::None;
+        // けられていない光線が範囲外なら止める
+        p.surfaces[j].ap = lensbench_core::surface::Aperture::None;
+        Ok(())
+    })
+    .unwrap();
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
     // 光線ごとのエラーにも面の名札が付く
@@ -594,11 +630,19 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
     let w = s.primary;
     let (j, _, _) = interfaces(&s, w)[0];
     // 膜の名前は大文字小文字を区別しない（ファイルは ZEC_AUTO、系は zec_auto）
-    s.surfaces[j].coat = "zec_auto".into();
+    s.edit_raw(|p| {
+        p.surfaces[j].coat = "zec_auto".into();
+        Ok(())
+    })
+    .unwrap();
     let dir = std::env::temp_dir().join(format!("lensbench-coat-auto-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("COATING.DAT"), "MATE N15\n0.5 1.5 0\n").unwrap();
-    s.coating_file = Some(dir.join("COATING.DAT"));
+    s.edit_raw(|p| {
+        p.coating_file = Some(dir.join("COATING.DAT"));
+        Ok(())
+    })
+    .unwrap();
     let mat = s.surfaces[j].mat.clone();
     let wl = s.wavelengths[w];
     let v = [C64::new(0.0, 0.9), C64::new(0.8, 0.0)];
@@ -649,7 +693,11 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
     assert_eq!(c6.kind(&key), lensbench_core::coating::CoatKind::Model);
     assert!(c6.auto_measured.is_empty());
     // 層のわかる近似の膜（.lbcs）。モデル・実測表（lbcb・lbcm・lbct）があればそちらが勝つ
-    s.surfaces[j].coat = "zec_stack".into();
+    s.edit_raw(|p| {
+        p.surfaces[j].coat = "zec_stack".into();
+        Ok(())
+    })
+    .unwrap();
     std::fs::write(
         dir.join("zec_stack.LBCS"),
         "COAT ZEC_STACK\nN15X 0.25\nMATE N15X\n0.5 1.38 0\n",
@@ -672,7 +720,11 @@ fn coating_models_are_found_by_name_next_to_the_coating_file() {
     assert_eq!(c5.kind(&key), lensbench_core::coating::CoatKind::Measured);
     assert!(c5.auto[0].1.ends_with("ZEC_STACK.lbct"));
     // 膜ファイルのない系は、どこも探さない
-    s.coating_file = None;
+    s.edit_raw(|p| {
+        p.coating_file = None;
+        Ok(())
+    })
+    .unwrap();
     assert!(Coatings::for_system(&s).unwrap().auto.is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }

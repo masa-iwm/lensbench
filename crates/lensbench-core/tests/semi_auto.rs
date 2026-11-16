@@ -61,8 +61,12 @@ fn recomputed_on_change_and_fixed_stays() {
     assert!((s2.surfaces[2].semi - s.surfaces[2].semi).abs() > 1e-3);
     // 固定の面は変えない
     let mut f = s.clone();
-    f.surfaces[2].semi_auto = false;
-    f.surfaces[2].semi = 20.0;
+    f.edit_raw(|p| {
+        p.surfaces[2].semi_auto = false;
+        p.surfaces[2].semi = 20.0;
+        Ok(())
+    })
+    .unwrap();
     let f2 = f
         .with_params(&[(Param::new(1, Kind::Thick), f.surfaces[1].t + 1.0)])
         .unwrap();
@@ -77,7 +81,7 @@ fn edit_semi_auto_and_zmx_roundtrip() {
     use lensbench_core::edit::SurfValue;
     let mut s = load("A0", false);
     let v = s.surfaces[3].semi;
-    s.edit(|s| s.set_surface_fields(3, &[("semi".into(), SurfValue::Num(7.5))]))
+    s.set_surface_fields(3, &[("semi".into(), SurfValue::Num(7.5))])
         .unwrap();
     assert!(!s.surfaces[3].semi_auto);
     assert_eq!(s.surfaces[3].semi, 7.5);
@@ -96,7 +100,7 @@ fn edit_semi_auto_and_zmx_roundtrip() {
     .unwrap();
     assert!(!r.surfaces[3].semi_auto && r.surfaces[3].semi == 7.5);
     assert!(r.surfaces[4].semi_auto);
-    s.edit(|s| s.set_surface_fields(3, &[("semi".into(), SurfValue::Text("auto".into()))]))
+    s.set_surface_fields(3, &[("semi".into(), SurfValue::Text("auto".into()))])
         .unwrap();
     assert!(s.surfaces[3].semi_auto);
     assert!((s.surfaces[3].semi - v).abs() < 1e-12);

@@ -353,7 +353,7 @@ pub fn check(sys: &System) -> lensbench_core::Result<()> {
 }
 
 /// ピックアップ・ソルブ・マクロ・玉と群・大域座標の基準が範囲の中の面を指すか
-pub(crate) fn check_refs(sys: &System) -> lensbench_core::Result<()> {
+pub(crate) fn check_refs(sys: &lensbench_core::Prescription) -> lensbench_core::Result<()> {
     let ns = sys.surfaces.len();
     for p in &sys.pickups {
         if p.src >= ns || p.dst >= ns {

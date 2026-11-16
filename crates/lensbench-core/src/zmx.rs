@@ -1529,49 +1529,51 @@ pub fn build(
         aiming,
         glasses,
     )?;
-    s.temperature = temp;
-    s.pressure = pres;
-    s.glrs = glrs;
-    s.ropd = ropd;
-    s.apodization = system_lines::apodization(raw, opt.fixed_semi)?;
+    s.rx_mut().temperature = temp;
+    s.rx_mut().pressure = pres;
+    s.rx_mut().glrs = glrs;
+    s.rx_mut().ropd = ropd;
+    s.rx_mut().apodization = system_lines::apodization(raw, opt.fixed_semi)?;
     // Afocal Image Space は FTYP の 7 番目（OpticStudio 26.1 で確認。保存すると HYPR も 1 になるが、読むときは FTYP だけが効く）
-    s.afocal = ftyp.get(6) == Some(&1);
+    s.rx_mut().afocal = ftyp.get(6) == Some(&1);
     // UNIT の値の 6 番目（MM X W X CM の次）が Afocal Mode Units（UR・MR・RR・AS・AM・DG、OpticStudio 26.1 で確認）。無ければ mrad
     // （知らない記号はアフォーカルのときだけ誤り）
     if let Some(u) = sys_str(raw, "UNIT", 5) {
         match crate::system::AfocalUnit::from_code(u) {
-            Some(a) => s.afocal_unit = a,
+            Some(a) => s.rx_mut().afocal_unit = a,
             None if s.afocal => invalid!("UNIT Afocal Mode Units {u}"),
             None => {}
         }
     }
-    s.coating_file = coating_file;
-    s.name = name;
-    s.import_notes = raw.notes.clone();
-    s.import_notes.extend(raw.system_notes(opt.fixed_semi)?);
+    s.rx_mut().coating_file = coating_file;
+    s.rx_mut().name = name;
+    s.rx_mut().import_notes = raw.notes.clone();
+    s.rx_mut()
+        .import_notes
+        .extend(raw.system_notes(opt.fixed_semi)?);
     if opt.glasses.is_none() {
         let n = glass::builtin::note_for(&s, &cats, dirs); // 同梱のガラスの知らせ（CLI-31）
-        s.import_notes.extend(n);
+        s.rx_mut().import_notes.extend(n);
     }
     if ncfg > 1 {
         match config_table(raw, &s, ncfg as usize, cfg as usize) {
             Ok(c) => {
-                s.configs = Some(c);
+                s.rx_mut().configs = Some(c);
                 s.changed()?;
             }
-            Err(why) => s.import_notes.push(format!(
+            Err(why) => s.rx_mut().import_notes.push(format!(
                 "only configuration {cfg} (of {ncfg}) of the multi-configuration was read ({why} can't be expressed in the multi-configuration table)"
             )),
         }
     }
-    s.adjust_index = adjust;
-    s.pickups = pickups;
+    s.rx_mut().adjust_index = adjust;
+    s.rx_mut().pickups = pickups;
     if !s.pickups.is_empty() {
         // OpticStudio は読込でピックアップを解き直す（保存された値が古くても元の面に合わせる）
         s.resolve_pickups()?;
         s.changed()?;
     }
-    s.solves = raw
+    s.rx_mut().solves = raw
         .surfs
         .iter()
         .enumerate()
@@ -1594,35 +1596,36 @@ pub fn build(
         if let Err(e) = s.solve_thickness() {
             // マクロのソルブが収まらない（自分の値を読むなど）・解き直しの途中でエラーになる: マクロのソルブを外す
             s = before;
-            for q in s.solves.iter().filter(|q| is_macro(&q.kind)) {
+            let r = s.rx_mut();
+            for q in r.solves.iter().filter(|q| is_macro(&q.kind)) {
                 let name = match q.kind {
                     SolveKind::MacroCurv(i) | SolveKind::MacroThick(i) => {
-                        s.macros[i as usize].name.clone()
+                        r.macros[i as usize].name.clone()
                     }
                     _ => unreachable!(),
                 };
-                s.macro_notes.push(format!(
+                r.macro_notes.push(format!(
                     "removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
                     q.surf
                 ));
             }
-            s.solves.retain(|q| !is_macro(&q.kind));
-            for q in &s.macro_parms {
-                let name = s.macros[q.id as usize].name.clone();
-                s.macro_notes.push(format!(
+            r.solves.retain(|q| !is_macro(&q.kind));
+            for q in &r.macro_parms {
+                let name = r.macros[q.id as usize].name.clone();
+                r.macro_notes.push(format!(
                     "removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
                     q.surf,
                     what = q.col.label(q.parm)
                 ));
             }
-            s.macro_parms.clear();
+            r.macro_parms.clear();
         }
     }
     s.solve_thickness()?;
     // 自動の半直径を光線から求める（OpticStudio は読込で求め直す）
     s.update_semi();
     // 玉モードの玉（lens1, lens2, …）を玉・群のパラメータで使えるように
-    s.units = s.lens_units();
+    s.rx_mut().units = s.lens_units();
     Ok(s)
 }
 
@@ -1672,12 +1675,12 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                     {
                         Some(i) => i,
                         None => {
-                            s.macros.push(m);
+                            s.rx_mut().macros.push(m);
                             s.macros.len() - 1
                         }
                     } as u16;
                     match t {
-                        T::Curv | T::Thick => s.solves.push(ThickSolve {
+                        T::Curv | T::Thick => s.rx_mut().solves.push(ThickSolve {
                             surf: k,
                             height: 0.0,
                             kind: if matches!(t, T::Curv) {
@@ -1686,7 +1689,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                                 SolveKind::MacroThick(id)
                             },
                         }),
-                        T::Col(col, parm) => s.macro_parms.push(crate::zpl_solve::MacroParm {
+                        T::Col(col, parm) => s.rx_mut().macro_parms.push(crate::zpl_solve::MacroParm {
                             surf: k,
                             parm,
                             id,
@@ -1694,7 +1697,7 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                         }),
                     }
                 }
-                Err(e) => s.macro_notes.push(format!(
+                Err(e) => s.rx_mut().macro_notes.push(format!(
                     "removed the {what} macro solve {name} of surface {k} and fixed the saved value: {e}"
                 )),
             }

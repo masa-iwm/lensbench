@@ -431,7 +431,11 @@ fn wedge_face_follows_lens_orientation() {
         assert_eq!(flat(json!({}), &HashSet::new()), [true, true]);
         // 印の無い系（Python で作った系など）: 名前で渡せば同じ、渡さなければ系の中の面の順の最後の面
         let mut s1 = s.clone();
-        s1.units.iter_mut().for_each(|u| u.flipped = false);
+        s1.edit_raw(|rx| {
+            rx.units.iter_mut().for_each(|u| u.flipped = false);
+            Ok(())
+        })
+        .unwrap();
         let flat1 = |r: &HashSet<String>| -> Vec<bool> {
             let m = spec_from_json_with(&json!({}), vec![s1.clone()], &HashMap::new(), r).unwrap();
             let t = m.tols.iter().find(|t| t.label == "L2 wedge x").unwrap();

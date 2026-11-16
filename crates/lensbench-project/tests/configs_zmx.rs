@@ -73,7 +73,7 @@ fn same_trace(a: &System, b: &System, tol: f64, what: &str) {
 fn with_floating(s: &System) -> System {
     use lensbench_core::surface::Aperture;
     let glass = |m: &str| !m.is_empty() && m != "-" && !m.eq_ignore_ascii_case("AIR");
-    let mut t = s.clone();
+    let mut t = s.prescription().clone();
     for k in 1..t.surfaces.len().saturating_sub(1) {
         let lens = (glass(&s.surfaces[k].mat) && !s.surfaces[k].mirror)
             || (glass(&s.surfaces[k - 1].mat) && !s.surfaces[k - 1].mirror);
@@ -82,8 +82,7 @@ fn with_floating(s: &System) -> System {
             d.ap = Aperture::Floating { semi: d.semi };
         }
     }
-    t.changed().unwrap();
-    t
+    t.build_raw().unwrap()
 }
 
 fn round_trip(systems: &[System], names: &[String], tag: &str) {
@@ -134,7 +133,11 @@ fn different_system_values_are_refused() {
     let p = project("P16_twyman_green.json");
     let a = expand_path(&p, &env(), Some("TR")).unwrap().0;
     let mut b = expand_path(&p, &env(), Some("RT")).unwrap().0;
-    b.wavelengths[0] = 0.55;
+    b.edit_raw(|rx| {
+        rx.wavelengths[0] = 0.55;
+        Ok(())
+    })
+    .unwrap();
     let e = zmx_write::write_configs(&[a, b])
         .unwrap_err()
         .message()

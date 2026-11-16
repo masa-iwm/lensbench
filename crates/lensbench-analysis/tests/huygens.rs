@@ -235,8 +235,11 @@ fn huygens_points_outside_the_image_surface_are_nan() {
     // 半径が格子の幅の 1/4 の球面の像面: 格子の外側の点は球の外
     let r = 16.0 * p0.pixel.0;
     let img = s.image();
-    s.surfaces[img].c = 1.0 / r;
-    s.changed().unwrap();
+    s.edit_raw(|rx| {
+        rx.surfaces[img].c = 1.0 / r;
+        Ok(())
+    })
+    .unwrap();
     let p = huygens_psf(&s, f, Waves::One(s.primary), o).unwrap();
     let rows: Vec<&[f64]> = p.i.rows().collect();
     assert!(rows[0][0].is_nan(), "{}", rows[0][0]);

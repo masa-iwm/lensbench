@@ -172,6 +172,13 @@
   Fresnel・理想レンズ・Jones の面は平らな基板（矢高 0）。
 
 ### Rust API
+- `System` を書き換えられない値にした（KRN-04・XCT-05）: 利用者が書く値は `lensbench_core::Prescription`（欄は前の `System` と同じ）に
+  移し、`System` はそれを共有して持つ（複製は軽い）。`sys.surfaces` などは前どおり読めるが、`sys.surfaces[j].t = …` のような書き換えと
+  `changed()`・`refresh()`・`resolve_pickups()`・`solve_thickness()`・`update_indices()` は外から使えない。直すのは
+  `sys.edit(|p| { … Ok(()) })`（屈折率・ピックアップ・ソルブ・自動の半直径を作り直す。前の `refresh()` と同じ）か、値をそのまま置く
+  `sys.edit_raw(|p| { … Ok(()) })`（前の「書き換えて `changed()`」と同じ）。`edit` の引数は `&mut System` から `&mut Prescription` に。
+  足したピックアップ・ソルブを効かせるのは `resolve_links()`。文書から系を作るのは `Prescription::build()`（`edit` と同じ後始末）・
+  `build_raw()`（確かめだけ）、取り出すのは `sys.prescription()`・`into_prescription()`。結果は前とビット単位で同じ。
 - `edit_ops::apply` は `&[EditOp]` を受ける（JSON は `edit_ops::parse` で読むか `apply_json`）。`Project::surface_ops` は
   `Vec<Value>` から `Vec<SurfaceOp>` に（型は `lensbench_project::edit_spec`）。
 - 差し替え探索 `SwapSearch::eval`・`run`・`run_to` の返り値は `serde_json::Value` から `SwapResult` に（`to_value()` で前と同じ JSON）。
@@ -209,7 +216,7 @@
   （`use lensbench_core::prelude::*;`）。CLI のクレートの `error`・`run`・`serve` のモジュールは外に出さない。
 - 追跡のカーネルを 1 本にした（KRN-06・IOO-20）: `batch::Plan::new(sys, frames, w, last, floating_clip)` は面 1 から（`first` を取らない）。
   1 本ずつの追跡も同じカーネル（幅 1）。結果はビット単位で前と同じ。
-  面ごとの準備（`Plan`）は系のキャッシュに持つので、系の欄を書き換えたら `changed()` を呼ぶこと（呼ばないと古い準備のまま追う。開口の半径だけは追跡のたびに読む）。
+  面ごとの準備（`Plan`）は系のキャッシュに持つ（系は書き換えられないので、`edit`・`edit_raw` で直すと作り直す）。
 - 光線の状態（KRN-10）: `RayOut` の `err: usize`・`tir: bool` を `status: RayStatus`（`Ok`・`Missed { surf }`・`Tir { surf }`・`AimFailed { stop }`）にした。
   `r.err == 0` は `r.status.is_ok()`、面の番号は `r.status.surf()`（届いたなら None）か `r.status.code()`（前と同じ数、届いたなら 0）。
   光線のエイミングに失敗した光線は、前は主光線の値のまま `err` に絞りの面を入れていたが、位置・方向・光路長・開始の位置・面ごとの記録・電場をすべて NaN にした。

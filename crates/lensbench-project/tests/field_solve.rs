@@ -72,19 +72,25 @@ fn image_position_is_real_image_height() {
                 (t.rays[0].xyz[0], t.rays[0].xyz[1])
             })
             .collect();
-        for (f, &(x, y)) in a.fields.iter_mut().zip(&fs) {
-            f.x = x;
-            f.y = y;
-        }
-        a.field_type = FieldType::RealH;
-        a.changed().unwrap();
+        a.edit_raw(|rx| {
+            for (f, &(x, y)) in rx.fields.iter_mut().zip(&fs) {
+                f.x = x;
+                f.y = y;
+            }
+            rx.field_type = FieldType::RealH;
+            Ok(())
+        })
+        .unwrap();
         let mut b = zmx_sys(name);
-        for (f, &(x, y)) in b.fields.iter_mut().zip(&fs) {
-            f.x = x;
-            f.y = y;
-        }
-        b.field_type = FieldType::Solve(FieldCond::Position { surf: b.image() });
-        b.changed().unwrap();
+        b.edit_raw(|rx| {
+            for (f, &(x, y)) in rx.fields.iter_mut().zip(&fs) {
+                f.x = x;
+                f.y = y;
+            }
+            rx.field_type = FieldType::Solve(FieldCond::Position { surf: rx.image() });
+            Ok(())
+        })
+        .unwrap();
         assert_eq!(bits(&a), bits(&b), "{name}");
     }
 }
@@ -174,6 +180,10 @@ fn project_errors() {
 #[test]
 fn zmx_write_refuses() {
     let mut s = zmx_sys("A0");
-    s.field_type = FieldType::Solve(FieldCond::DirSum { s1: 1, s2: 2 });
+    s.edit_raw(|rx| {
+        rx.field_type = FieldType::Solve(FieldCond::DirSum { s1: 1, s2: 2 });
+        Ok(())
+    })
+    .unwrap();
     assert!(lensbench_formats::zmx_write::write(&s).is_err());
 }

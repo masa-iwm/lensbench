@@ -73,7 +73,7 @@ pub mod prelude {
     pub use crate::grid::Grid2;
     pub use crate::par::{with_threads, CancelToken};
     pub use crate::psf::{self, Psf, PsfOpts, PsfPlane};
-    pub use crate::system::{FieldSel, RecSel, System, TraceOpts};
+    pub use crate::system::{FieldSel, Prescription, RecSel, System, TraceOpts};
     pub use crate::tansag::TanSag;
     pub use crate::vfs;
     pub use crate::waves::Waves;
@@ -107,7 +107,7 @@ pub fn init_from_env() {
     }
 }
 pub use sync::{LockExt, RwLockExt};
-pub use system::{FieldSel, RecSel, System, TraceOpts};
+pub use system::{FieldSel, Prescription, RecSel, System, TraceOpts};
 pub use tansag::TanSag;
 pub use waves::Waves;
 

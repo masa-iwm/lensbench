@@ -95,8 +95,11 @@ fn on_axis_only_field() {
         .find(|&i| s0.fields[i].x == 0.0 && s0.fields[i].y == 0.0)
         .expect("C0 に軸上の視野");
     let mut s = s0.clone();
-    s.fields = vec![s0.fields[k]];
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.fields = vec![s0.fields[k]];
+        Ok(())
+    })
+    .unwrap();
     let (e0, e1) = (s0.exit_pupil(), s.exit_pupil());
     assert!(e1.is_finite(), "{e1}");
     // C0 の最大視野は 20（正規化の値）、軸上だけの系は 10 の相当で外挿する。外挿の差は 1e-5 mm ほど
@@ -127,8 +130,12 @@ fn standard_with_asph_is_error() {
                 && s.surfaces[j].c != 0.0
         })
         .unwrap();
-    s.surfaces[j].asph = vec![0.0, 2e-5];
-    assert!(s.changed().is_err());
+    assert!(s
+        .edit_raw(|p| {
+            p.surfaces[j].asph = vec![0.0, 2e-5];
+            Ok(())
+        })
+        .is_err());
 }
 
 /// 面 at の前に、前の面の後の媒質のまま面 d（無視しない）を挟んだ系。前の面が鏡なら None
@@ -165,9 +172,12 @@ fn split_gap_anywhere() {
             let Some(mut s) = with_surface(&s0, at, Surface::default()) else {
                 continue;
             };
-            s.surfaces[at - 1].t = 0.4 * t;
-            s.surfaces[at].t = t - 0.4 * t;
-            s.changed().unwrap();
+            s.edit_raw(|p| {
+                p.surfaces[at - 1].t = 0.4 * t;
+                p.surfaces[at].t = t - 0.4 * t;
+                Ok(())
+            })
+            .unwrap();
             let v = values(&s);
             for ((k, a), (_, b)) in v0.iter().zip(&v) {
                 assert!(
@@ -275,7 +285,11 @@ fn bad_inputs_are_errors() {
 fn mtf_with_all_zero_weights_is_an_error() {
     let mut s = load("A0");
     assert!(s.wavelengths.len() > 1);
-    s.weights.iter_mut().for_each(|w| *w = 0.0);
+    s.edit_raw(|p| {
+        p.weights.iter_mut().for_each(|w| *w = 0.0);
+        Ok(())
+    })
+    .unwrap();
     let r = analysis::mtf(
         &s,
         FieldSel::Index(0),

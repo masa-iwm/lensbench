@@ -64,10 +64,14 @@ fn zmx_project_refuses_what_it_cannot_write() {
         e.message().unwrap_or_default().contains("configurations"),
         "{e}"
     );
-    s.field_type =
-        lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
-            surf: 3,
-        });
+    s.edit_raw(|rx| {
+        rx.field_type =
+            lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
+                surf: 3,
+            });
+        Ok(())
+    })
+    .unwrap();
     assert!(lensbench_project::zmx_project(&s, "x.zmx").is_err());
 }
 

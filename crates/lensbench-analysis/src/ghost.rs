@@ -278,7 +278,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
         push(&mut out, &mut origin, d.clone(), Some(j));
     }
 
-    let mut g = sys.clone();
+    let mut g = sys.prescription().clone();
     g.surfaces = out;
     g.pickups.clear();
     g.units.clear();
@@ -291,7 +291,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     if matches!(g.aperture.0, ApertureKind::FNum | ApertureKind::Pwfn) {
         g.aperture = (ApertureKind::Epd, sys.paraxial().epd);
     }
-    g.changed()?;
+    let g = g.build_raw()?;
     Ok(GhostSystem {
         sys: g,
         a,

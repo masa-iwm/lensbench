@@ -152,7 +152,11 @@ fn spot_is_the_ray_angle() {
     }
     // 単位を度にすると値が 1 mrad / 1° 倍になる
     let mut d = a.clone();
-    d.afocal_unit = AfocalUnit::Degrees;
+    d.edit_raw(|p| {
+        p.afocal_unit = AfocalUnit::Degrees;
+        Ok(())
+    })
+    .unwrap();
     let s1 = analysis::spot(&a, FieldSel::Index(1), Waves::All, 6).unwrap();
     let s2 = analysis::spot(&d, FieldSel::Index(1), Waves::All, 6).unwrap();
     let k = 1e-3f64.to_degrees();

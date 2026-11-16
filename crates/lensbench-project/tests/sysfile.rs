@@ -233,7 +233,11 @@ fn apodization_roundtrip() {
         Apodization::CosineCubed,
     ] {
         let mut s = load("A0");
-        s.apodization = a;
+        s.edit_raw(|rx| {
+            rx.apodization = a;
+            Ok(())
+        })
+        .unwrap();
         roundtrip(&format!("A0 {a:?}"), &s, &dirs);
         let txt = sysfile::to_string(&s, &[]).unwrap();
         assert_eq!(
@@ -326,7 +330,11 @@ fn catalog_without_hash() {
     let x = g.get_mut(&name).unwrap();
     x.c[0] *= 1.001;
     let cat = x.catalog.clone();
-    s.glasses = std::sync::Arc::new(g);
+    s.edit_raw(|rx| {
+        rx.glasses = std::sync::Arc::new(g);
+        Ok(())
+    })
+    .unwrap();
     let notes = sysfile::save_notes(&s);
     assert!(
         notes.len() == 1 && notes[0].contains(&cat) && notes[0].contains(&name),

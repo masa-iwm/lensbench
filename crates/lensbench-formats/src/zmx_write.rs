@@ -56,9 +56,9 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     if s.units.iter().any(|u| u.moved()) {
         // 玉・群の剛体の動きは座標ブレークにして書く（面の番号が変わる）
         // 面の番号が変わるので多重構成の表は書かない（[`write_notes`] に注意）
-        let mut f = s.flatten_units()?;
+        let mut f = s.flatten_units()?.into_prescription();
         f.configs = None;
-        return write_as(&f, coat_file);
+        return write_as(&f.build_raw()?, coat_file);
     }
     let mut o = String::new();
     let w = |o: &mut String, l: String| {
@@ -979,21 +979,22 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         if let lensbench_core::system::FieldType::Solve(_) = s.field_type {
             notimpl!("a field set by a condition can't be written to .zmx");
         }
-        let mut t = if s.units.iter().any(|u| u.moved()) {
+        let t = if s.units.iter().any(|u| u.moved()) {
             s.flatten_units()?
         } else {
             s.clone()
         };
+        let mut t = t.into_prescription();
         t.units.clear();
         t.pickups.clear();
         t.solves.clear();
-        ss.push(t);
+        ss.push(t.build_raw()?);
     }
     // 系の値（面の前の行）。名前と使うガラスのカタログ以外は同じでなければならない
     let head = |s: &System| -> Result<Vec<String>> {
-        let mut t = s.clone();
+        let mut t = s.prescription().clone();
         t.name = String::new();
-        let txt = write(&t)?;
+        let txt = write(&t.build_raw()?)?;
         Ok(txt
             .split("\r\n")
             .take_while(|l| !l.starts_with("SURF "))
@@ -1099,7 +1100,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
     im.stop = false;
     surfs.push(im);
     let nimg = surfs.len() - 1;
-    let mut m = ss[0].clone();
+    let mut m = ss[0].prescription().clone();
     m.surfaces = surfs;
     for s in &ss[1..] {
         if !std::sync::Arc::ptr_eq(&m.glasses, &s.glasses) {
@@ -1115,6 +1116,7 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
             m.coat_tables.entry(k.clone()).or_insert_with(|| t.clone());
         }
     }
+    let m = m.build_raw()?;
     let mut o = write_as(&m, coat_file)?;
     // 多重構成の表（OpticStudio 26.1 が書く形: 演算子 番号1 構成 値 0 0 0 1 1 倍率 オフセット 0 "" 0。
     // 倍率を落とすと OpticStudio は黙って値を読み違える）

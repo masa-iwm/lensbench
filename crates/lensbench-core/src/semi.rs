@@ -102,13 +102,12 @@ impl System {
         if !self.surfaces.iter().any(|d| d.semi_auto) {
             return;
         }
-        // 複製で追う（座標系などのキャッシュをこの系に残さない。読込のあとに面を直接書き換えて
-        // changed() を呼ばない使い方でも古いキャッシュを使わないように）
+        // 複製で追う（座標系などのキャッシュをこの系に残さない）
         let h = self.clone().ray_heights();
         // 絞りの大きさで決める系（Float By Stop Size）の絞りの半直径は開口そのものなので求めない
         let fixed_stop =
             (self.aperture.0 == crate::system::ApertureKind::Float).then(|| self.stop());
-        for (j, (d, v)) in self.surfaces.iter_mut().zip(h).enumerate() {
+        for (j, (d, v)) in self.rx_mut().surfaces.iter_mut().zip(h).enumerate() {
             let Some(v) = v else { continue };
             if !d.semi_auto || Some(j) == fixed_stop {
                 continue;
@@ -125,5 +124,7 @@ impl System {
         {
             let _ = self.resolve_pickups();
         }
+        // 浮動開口の半径が変わると追跡の準備も変わる
+        self.invalidate_frames();
     }
 }

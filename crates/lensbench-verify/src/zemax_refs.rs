@@ -112,7 +112,11 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
                 )
             })
             .collect();
-        s.solves.clear();
+        s.edit_raw(|rx| {
+            rx.solves.clear();
+            Ok(())
+        })
+        .unwrap();
         s.set_params(&ch).unwrap();
         // 測ったときの OpticStudio の像の厚さ: G0〜G2 は保存された DISZ と TOTR が 3〜4e-9 mm 食い違う（Grid Sag の近軸を
         // 差分で求めるので、像のソルブの値が保存のときと測ったときでわずかに違うらしい）。TOTR に合わせると

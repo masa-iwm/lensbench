@@ -222,10 +222,13 @@ SURF 9\n  TYPE STANDARD\n  CURV 0\n  DISZ 0\n";
     )
     .unwrap();
     // 開口・視野をプロジェクトと同じに
-    hand.fields = bs.fields.clone();
-    hand.field_type = bs.field_type;
-    hand.aperture = bs.aperture;
-    hand.changed().unwrap();
+    hand.edit_raw(|rx| {
+        rx.fields = bs.fields.clone();
+        rx.field_type = bs.field_type;
+        rx.aperture = bs.aperture;
+        Ok(())
+    })
+    .unwrap();
     same_global(&bs, &hand, 1e-11);
 }
 

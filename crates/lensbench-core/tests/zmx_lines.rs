@@ -503,7 +503,11 @@ SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
         t.rays.iter().filter(|r| r.vig != 0).count()
     };
     assert!(vig(&s) > 0);
-    s.floating_clip = false;
+    s.edit_raw(|p| {
+        p.floating_clip = false;
+        Ok(())
+    })
+    .unwrap();
     assert_eq!(vig(&s), 0);
 }
 
@@ -688,8 +692,12 @@ fn write_notes_list_dropped_items() {
     )
     .unwrap();
     assert!(zmx_write::write_notes(&s).is_empty());
-    s.pickups
-        .push(Pickup::new(3, 1, PickKind::Radius, 1.0, 0.0));
+    s.edit_raw(|p| {
+        p.pickups
+            .push(Pickup::new(3, 1, PickKind::Radius, 1.0, 0.0));
+        Ok(())
+    })
+    .unwrap();
     let notes = zmx_write::write_notes(&s);
     assert!(
         notes
@@ -697,7 +705,11 @@ fn write_notes_list_dropped_items() {
             .any(|n| n.contains("radius of curvature") && n.contains("surface 3")),
         "{notes:?}"
     );
-    s.floating_clip = false;
+    s.edit_raw(|p| {
+        p.floating_clip = false;
+        Ok(())
+    })
+    .unwrap();
     assert!(zmx_write::write_notes(&s)
         .iter()
         .any(|n| n.contains("floating_clip")));

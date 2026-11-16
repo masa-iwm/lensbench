@@ -290,16 +290,16 @@ pub fn assemble(base: &System, els: &[Element]) -> Result<System> {
     }
     sf.push(base.surfaces[base.image()].clone());
     let mut s = base.clone();
-    s.surfaces = sf;
+    s.rx_mut().surfaces = sf;
     // 面の番号が変わるので、ピックアップ・厚さのソルブは引き継がない（値はそのまま）
-    s.pickups.clear();
-    s.solves.clear();
-    s.units.clear();
+    s.rx_mut().pickups.clear();
+    s.rx_mut().solves.clear();
+    s.rx_mut().units.clear();
     if !s.surfaces.iter().any(|d| d.stop) {
         invalid!("the rebuilt system has no stop");
     }
     s.changed()?;
-    s.units = s.lens_units();
+    s.rx_mut().units = s.lens_units();
     Ok(s)
 }
 

@@ -74,13 +74,17 @@ fn main() {
         std::fs::write(out.join(format!("{name}.json")), &txt).unwrap();
         let p = Project::from_json(&txt).unwrap();
         let (mut s, _) = expand_path(&p, &env, None).unwrap();
-        s.coating_file = Some(PathBuf::from("LBBS.DAT"));
-        // OpticStudio の順次の系には屈折面での反射がないので、反射の面は膜なしの鏡で書く（形だけの照合）
-        for d in s.surfaces.iter_mut() {
-            if d.reflect.is_some() {
-                d.coat.clear();
+        s.edit_raw(|rx| {
+            rx.coating_file = Some(PathBuf::from("LBBS.DAT"));
+            // OpticStudio の順次の系には屈折面での反射がないので、反射の面は膜なしの鏡で書く（形だけの照合）
+            for d in rx.surfaces.iter_mut() {
+                if d.reflect.is_some() {
+                    d.coat.clear();
+                }
             }
-        }
+            Ok(())
+        })
+        .unwrap();
         lensbench_formats::zmx_write::save(&out.join(format!("{name}.zmx")), &s).unwrap();
         println!("{name}: {} surfaces", s.surfaces.len());
     }

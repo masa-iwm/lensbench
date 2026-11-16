@@ -273,7 +273,11 @@ fn image_surface_reflects_first_only_when_listed_with_a_coating() {
     assert!(h.e[0][0].iter().all(|z| z.norm() == 0.0));
     // 像面に理想膜 I.96（反射率 4%）: 検出器の反射
     let mut s = plate("");
-    s.surfaces[3].coat = "I.96".into();
+    s.edit_raw(|rx| {
+        rx.surfaces[3].coat = "I.96".into();
+        Ok(())
+    })
+    .unwrap();
     assert_eq!(ghost::reflecting_surfaces(&s), vec![1, 2, 3]);
     assert_eq!(ghost::pairs(&s, 1, 3), vec![(2, 1), (3, 1), (3, 2)]);
     let g = ghost_system(&s, 3, 2).unwrap().sys;

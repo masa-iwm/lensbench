@@ -247,9 +247,12 @@ fn coordinate_breaks_inside_the_medium() {
         let efl = s.paraxial().efl;
         // 厚さを分ける
         let mut a = s.clone();
-        a.surfaces[1].t = 0.4 * t;
-        a.surfaces.insert(2, cb([0.0; 5], 0, 0.6 * t));
-        a.changed().unwrap();
+        a.edit_raw(|p| {
+            p.surfaces[1].t = 0.4 * t;
+            p.surfaces.insert(2, cb([0.0; 5], 0, 0.6 * t));
+            Ok(())
+        })
+        .unwrap();
         let d = max_diff(&base, &image_rays(&a));
         println!(
             "{name}: 厚さを分ける {d:.1e}、EFL {}",
@@ -260,11 +263,14 @@ fn coordinate_breaks_inside_the_medium() {
         // 傾けて戻す
         let g = [0.05, -0.1, 3.0, -2.0, 1.0];
         let mut b = s.clone();
-        b.surfaces[1].t = 0.4 * t;
-        b.surfaces.insert(2, cb(g, 0, 0.0));
-        b.surfaces
-            .insert(3, cb([-g[0], -g[1], -g[2], -g[3], -g[4]], 1, 0.6 * t));
-        b.changed().unwrap();
+        b.edit_raw(|p| {
+            p.surfaces[1].t = 0.4 * t;
+            p.surfaces.insert(2, cb(g, 0, 0.0));
+            p.surfaces
+                .insert(3, cb([-g[0], -g[1], -g[2], -g[3], -g[4]], 1, 0.6 * t));
+            Ok(())
+        })
+        .unwrap();
         let d = max_diff(&base, &image_rays(&b));
         println!("{name}: 傾けて戻す {d:.1e}");
         assert!(d < 1e-9, "{name}: {d:e}");
@@ -322,15 +328,13 @@ fn unit_motion_inside_the_medium() {
 fn unsupported_surface_after_the_medium_is_rejected() {
     let (s, _) = load("G8A");
     let mut a = s.clone();
-    a.surfaces.insert(2, cb([0.0, 0.0, 1.0, 0.0, 0.0], 0, 0.0));
-    a.surfaces[3].typ = lensbench_core::surface::SurfType::Paraxial;
-    a.surfaces[3].focal = 50.0;
-    let e = a
-        .changed()
-        .unwrap_err()
-        .message()
-        .unwrap_or_default()
-        .to_string();
+    let e = a.edit_raw(|p| {
+        p.surfaces.insert(2, cb([0.0, 0.0, 1.0, 0.0, 0.0], 0, 0.0));
+        p.surfaces[3].typ = lensbench_core::surface::SurfType::Paraxial;
+        p.surfaces[3].focal = 50.0;
+        Ok(())
+    });
+    let e = e.unwrap_err().message().unwrap_or_default().to_string();
     assert!(e.contains("GRIN"), "{e}");
 }
 

@@ -571,7 +571,8 @@ pub(crate) fn expand_inner(
         p.telecentric,
         aim,
         c.glasses,
-    )?;
+    )?
+    .into_prescription();
     s.name = p.name.clone();
     // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる（CLI-31）
     let b = glass::builtin::note_for(&s, &p.glass_catalogs, &dirs);
@@ -611,10 +612,10 @@ pub(crate) fn expand_inner(
             },
         };
         s.field_type = FieldType::Solve(cond);
-        s.changed()?;
     } else if p.fields.solve.is_some() {
         return Err("fields solve only with type solve".into());
     }
+    let mut s = s.build_raw()?;
     let mut warn = keep_pickups(&mut s, &org, &zpicks)?;
     for (path, t, pr, adj) in &c.zenv {
         let e = &p.environment;
@@ -635,7 +636,9 @@ pub(crate) fn expand_inner(
         }
     }
     // 玉・群のパラメータ: 玉モードの玉 lens1 … と、id のあるブロック・群（同じ id の範囲は 1 つの玉・群）
-    s.units = s.lens_units();
+    let mut rx = s.prescription().clone();
+    rx.units = s.lens_units();
+    let mut s = rx.build_raw()?;
     let mut ids: Vec<&str> = Vec::new();
     for (id, _, _) in &c.spans {
         if !ids.contains(&id.as_str()) {
@@ -652,19 +655,28 @@ pub(crate) fn expand_inner(
         match s.define_unit(id, &spans, [0.0; 3]) {
             // 群の移動はもう厚さに入っているので、その分を玉・群の shift の今の値にする（状態ごとの群の位置を
             // `id.shift` で比べられるように）
-            Ok(u) => s.units[u].shift = group_shift(&p.blocks, id).unwrap_or(0.0),
+            Ok(u) => {
+                let shift = group_shift(&p.blocks, id).unwrap_or(0.0);
+                s.edit_raw(|rx| {
+                    rx.units[u].shift = shift;
+                    Ok(())
+                })?
+            }
             Err(e) => warn.push(format!(
                 "block {id} is not made a lens or group parameter: {e}"
             )),
         }
     }
     // 裏返して置いた玉（id の無い玉の lens1 … も）。最初の範囲が玉の面と同じ玉・群
-    for u in s.units.iter_mut() {
-        u.flipped = c
-            .rev_spans
-            .iter()
-            .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
-    }
+    s.edit_raw(|rx| {
+        for u in rx.units.iter_mut() {
+            u.flipped = c
+                .rev_spans
+                .iter()
+                .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
+        }
+        Ok(())
+    })?;
     warn.extend(apply_surface_edits(
         &mut s,
         &p.surface_edits,
@@ -678,25 +690,35 @@ pub(crate) fn expand_inner(
     }
     warn.extend(w);
     if let Some(r) = &p.glrs {
-        match r {
-            BlockRef::Sys(r) => s.glrs = edit_ops::surf_of(&s, r, "glrs")?,
+        let g = match r {
+            BlockRef::Sys(r) => Some(edit_ops::surf_of(&s, r, "glrs")?),
             BlockRef::Block(f) => {
-                match block_face(&s, &f.block, f.surface, &c.spans, &c.back_spans)
-                    .map_err(|x| format!("glrs: {x}"))?
-                {
-                    Some(j) => s.glrs = j,
-                    None => warn.push(format!(
+                let j = block_face(&s, &f.block, f.surface, &c.spans, &c.back_spans)
+                    .map_err(|x| format!("glrs: {x}"))?;
+                if j.is_none() {
+                    warn.push(format!(
                         "glrs: block {} not found, so the global reference stays at surface {}",
                         f.block, s.glrs
-                    )),
+                    ));
                 }
+                j
             }
+        };
+        if let Some(g) = g {
+            s.edit_raw(|rx| {
+                rx.glrs = g;
+                Ok(())
+            })?;
         }
     }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
-    s.mechanics = place_mechanics(&s, &p.mechanics, env, &c.spans, &c.back_spans, &mut warn)?;
-    s.mechanics.extend(place_frames(&s, &c.frames, &mut warn));
+    let mut mech = place_mechanics(&s, &p.mechanics, env, &c.spans, &c.back_spans, &mut warn)?;
+    mech.extend(place_frames(&s, &c.frames, &mut warn));
+    s.edit_raw(|rx| {
+        rx.mechanics = mech;
+        Ok(())
+    })?;
     s.validate()?;
     Ok((s, warn, npass, c.gaps))
 }
@@ -1237,10 +1259,16 @@ pub(crate) fn keep_pickups(
                 }
             }
             match cands.iter().position(|c| c.holds(s)) {
-                Some(0) => s.pickups.push(cands[0]),
+                Some(0) => s.edit_raw(|rx| {
+                    rx.pickups.push(cands[0]);
+                    Ok(())
+                })?,
                 Some(k) => {
                     // 向きから決めた組と違う符号で値が合った（元の値が 0 だと符号を区別できない）
-                    s.pickups.push(cands[k]);
+                    s.edit_raw(|rx| {
+                        rx.pickups.push(cands[k]);
+                        Ok(())
+                    })?;
                     warn.push(format!(
                         "{path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended",
                         q.dst, q.what, q.src, cands[k].scale, cands[k].offset
@@ -1254,7 +1282,7 @@ pub(crate) fn keep_pickups(
         }
     }
     if !s.pickups.is_empty() {
-        s.resolve_pickups()?;
+        s.resolve_links()?;
     }
     // ソルブ（厚さ・曲率）: 関わる面（厚さは次の面、玉のパワーは前の面、基準の面）が同じ並びで取り込まれていれば
     // 残し、展開した系で解き直す（雛形の像面の手前の面の厚さのソルブは、展開した系でも像面の手前にあれば残す）
@@ -1295,11 +1323,14 @@ pub(crate) fn keep_pickups(
                 }
             }
             if ok {
-                s.solves.push(ThickSolve {
-                    surf: k,
-                    kind,
-                    ..*q
-                });
+                s.edit_raw(|rx| {
+                    rx.solves.push(ThickSolve {
+                        surf: k,
+                        kind,
+                        ..*q
+                    });
+                    Ok(())
+                })?;
             } else {
                 warn.push(format!(
                     "{}: the solve of surface {} ({:?}) involves surfaces outside the range or far away (fixed to the value)",
@@ -1318,7 +1349,7 @@ pub(crate) fn keep_pickups(
             }
         };
         let before: Vec<f64> = s.solves.iter().map(|q| val(s, q)).collect();
-        s.solve_thickness()?;
+        s.resolve_links()?;
         for (q, b) in s.solves.iter().zip(before) {
             let a = val(s, q);
             if (a - b).abs() > 1e-9 * (1.0 + b.abs()) {

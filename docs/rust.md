@@ -48,7 +48,9 @@ let p = psf::psf(&sys, FieldSel::Index(0), Waves::All, PsfOpts::default())?;
   分散の相対変化: n = n0 + dn + disp·(n0 − n0(主波長))）。変えた系の追跡は同じ値の .zmx を読み直した系とビット一致する
 - `lensbench_core::edit`: 系の編集。`insert_surface`・`delete_surface`・`set_surface_fields`（名前と値の組）・
   `set_surface_type`・`set_material`・`add_pickup`・`add_solve`・多重構成の表 `Configs`（`set_config_row`・`config(k)`）。
-  面を直接書き換えたときは `refresh()` で屈折率・ピックアップ・ソルブを作り直す。媒質の約束は OpticStudio と同じ
+  系の欄は書き換えられない（読むのは `sys.surfaces` など、文書は `sys.prescription()`）。値を直すときは
+  `sys.edit(|p| { p.surfaces[3].t = 5.0; Ok(()) })`（屈折率・ピックアップ・ソルブ・自動の半直径を作り直す）か、
+  値をそのまま置く `edit_raw`。文書から作るのは `Prescription::build`・`build_raw`。媒質の約束は OpticStudio と同じ
   （面の後ろは面の材料、鏡・座標ブレークは前の媒質）
 - `lensbench_core::units`: 玉・群（面の範囲の組）の単位のパラメータ `lens2.tx`・`G.shift` など。剛体の偏心・傾きは
   座標系にかけ、`shift`・`dn`・`disp` は面のパラメータの組合せ。`flatten_units` で座標ブレークに展開（.zmx の書き出しで使う）

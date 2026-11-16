@@ -1981,13 +1981,17 @@ mod tests {
             let ji = pupil_jacobian_inner(&s, f, s.primary).unwrap();
             let mut v = s.clone();
             let st = v.stop();
-            v.surfaces[st].ap = crate::surface::Aperture::Circular {
-                min: 0.0,
-                max: 0.9 * v.stop_radius().0.abs(),
-                dx: 0.0,
-                dy: 0.0,
-            };
-            v.changed().unwrap();
+            let rmax = 0.9 * v.stop_radius().0.abs();
+            v.edit_raw(|p| {
+                p.surfaces[st].ap = crate::surface::Aperture::Circular {
+                    min: 0.0,
+                    max: rmax,
+                    dx: 0.0,
+                    dy: 0.0,
+                };
+                Ok(())
+            })
+            .unwrap();
             let r = v
                 .try_trace(
                     f,

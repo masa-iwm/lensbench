@@ -208,11 +208,15 @@ fn zmx_groups_move_and_tilt_lenses() {
     // 玉 2（面 3〜4）を 1.25 動かす = 面 2 の厚さに足し、面 4 の厚さから引く
     let s = zb(r#"{"id": "g2", "name": "G2", "role": "zoom", "from": 3, "to": 4, "shift": 1.25}"#);
     let mut b = a.clone();
-    b.surfaces[2].t += 1.25;
-    b.surfaces[4].t -= 1.25;
+    b.edit_raw(|rx| {
+        rx.surfaces[2].t += 1.25;
+        rx.surfaces[4].t -= 1.25;
+        Ok(())
+    })
+    .unwrap();
     // 像面までの厚さ（面 7）はソルブ（近軸の焦点）なので、OpticStudio と同じく解き直される
     assert_eq!(b.solves.len(), 1);
-    b.solve_thickness().unwrap();
+    b.resolve_links().unwrap();
     assert!((b.surfaces[7].t - a.surfaces[7].t).abs() > 1e-6);
     same_rays(&s, &b, 1e-12);
     for j in 0..a.surfaces.len() {
@@ -223,15 +227,23 @@ fn zmx_groups_move_and_tilt_lenses() {
     let z = zb(&format!(r#"{{"id": "g2", "from": 3, "to": 4{tilt}}}"#));
     let mut blk = project(&a0_blocks(a.surfaces[2].t, a.surfaces[4].t, tilt));
     // 注記と、ダミー面の半径だけ違う（ブロックの絞りは「STOP」、面のブロックは半径 0 の固定、zmx の面は自動）
-    for (x, y) in blk.surfaces.iter_mut().zip(&z.surfaces) {
-        x.comment = y.comment.clone();
-        x.semi = y.semi;
-        x.semi_auto = y.semi_auto;
-    }
+    blk.edit_raw(|rx| {
+        for (x, y) in rx.surfaces.iter_mut().zip(&z.surfaces) {
+            x.comment = y.comment.clone();
+            x.semi = y.semi;
+            x.semi_auto = y.semi_auto;
+        }
+        Ok(())
+    })
+    .unwrap();
     // zmx ブロックでは像面までの厚さのソルブが残り、展開した系で解き直される（玉のブロックは値）
     assert_eq!(z.solves.len(), 1);
     let k = z.solves[0].surf;
-    blk.surfaces[k].t = z.surfaces[k].t;
+    blk.edit_raw(|rx| {
+        rx.surfaces[k].t = z.surfaces[k].t;
+        Ok(())
+    })
+    .unwrap();
     same_surfaces(&z, &blk);
     // 群の外の座標系は元の系と同じ（像面は焦点のソルブで動くので、ソルブの面で比べる）
     let plain = zb("");

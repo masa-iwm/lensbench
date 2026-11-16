@@ -23,9 +23,12 @@ fn paraxial() -> System {
 fn with_user(kv: &[(&str, Value)]) -> System {
     let mut s = paraxial();
     let cfg: Config = kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect();
-    s.surfaces[1].user = Some(UserSurf::new("ideal_mapping", cfg).unwrap());
-    s.surfaces[1].typ = SurfType::User;
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[1].user = Some(UserSurf::new("ideal_mapping", cfg).unwrap());
+        p.surfaces[1].typ = SurfType::User;
+        Ok(())
+    })
+    .unwrap();
     s
 }
 
@@ -112,7 +115,11 @@ fn polarization_and_errors() {
     assert!(s.opl_grad(&tr, 0, &[prm]).is_err());
     // 空気以外の中は未対応
     let mut g = f50("theta");
-    g.surfaces[1].n = vec![1.5];
+    g.edit_raw(|p| {
+        p.surfaces[1].n = vec![1.5];
+        Ok(())
+    })
+    .unwrap();
     assert!(g.validate().is_err());
     // .zmx には書けない
     assert!(lensbench_formats::zmx_write::write(&s).is_err());
@@ -152,10 +159,14 @@ fn user_registered_model() {
 fn user_model_traces() {
     let mut s = paraxial();
     // 理想レンズの直後に位相板（間隔 0）を足す代わりに、像面の手前の面を位相板にする
-    s.surfaces[2].typ = SurfType::User;
-    s.surfaces[2].user =
-        Some(UserSurf::new("test_plate", Config::from([("a".into(), Value::Num(1e-3))])).unwrap());
-    s.changed().unwrap();
+    s.edit_raw(|p| {
+        p.surfaces[2].typ = SurfType::User;
+        p.surfaces[2].user = Some(
+            UserSurf::new("test_plate", Config::from([("a".into(), Value::Num(1e-3))])).unwrap(),
+        );
+        Ok(())
+    })
+    .unwrap();
     let t = s
         .try_trace(FieldSel::Index(0), &[0.0], &[1.0], None, None, false)
         .unwrap();

@@ -62,7 +62,11 @@ fn ops_apply_in_order_and_all_or_nothing() {
 #[test]
 fn solve_ops() {
     let mut s = a0();
-    s.solves.clear();
+    s.edit_raw(|rx| {
+        rx.solves.clear();
+        Ok(())
+    })
+    .unwrap();
     let j = s.image() - 1;
     edit_ops::apply_json(
         &mut s,
