@@ -863,22 +863,15 @@ impl Core {
         ));
         // 失敗しても同じ組合せを毎フレーム書き直さない
         self.loc.built_combo = Some(self.doc.combo.clone());
-        // 別の名前に書いてから置き換える（系の読み込みが書きかけのファイルを読まないように）
-        let tmp = path.with_extension("json.tmp");
-        let res = lensbench_core::vfs::create_dir_all(&dir)
-            .and_then(|_| {
+        // 作業フォルダはメモリ（work_fs）: 書きかけを読まれることも、読み中で置き換えられないことも無い
+        let res = crate::work_fs::with(|| {
+            lensbench_core::vfs::create_dir_all(&dir).and_then(|_| {
                 lensbench_core::vfs::write(
-                    &tmp,
+                    &path,
                     serde_json::to_string_pretty(&project).unwrap_or_default(),
                 )
             })
-            .and_then(|_| {
-                // Windows で読んでいる最中なら置き換えられないので、そのときは上書き
-                lensbench_core::vfs::rename(&tmp, &path).or_else(|_| {
-                    lensbench_core::vfs::read(&tmp)
-                        .and_then(|b| lensbench_core::vfs::write(&path, b))
-                })
-            });
+        });
         match res {
             Ok(()) => {
                 self.loc.built = Some(project);
@@ -2423,8 +2416,10 @@ impl Core {
         }
         let project = catalog::preview_project(r);
         let path = doc_loc::work_dir().join("catalog-preview.json");
-        let ok = lensbench_core::vfs::create_dir_all(path.parent().unwrap_or(&path))
-            .and_then(|_| lensbench_core::vfs::write(&path, project.to_string()));
+        let ok = crate::work_fs::with(|| {
+            lensbench_core::vfs::create_dir_all(path.parent().unwrap_or(&path))
+                .and_then(|_| lensbench_core::vfs::write(&path, project.to_string()))
+        });
         if ok.is_err() {
             return;
         }

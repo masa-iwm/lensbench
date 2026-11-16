@@ -625,16 +625,19 @@ impl Worker {
                 std::thread::Builder::new()
                     .name(name.into())
                     .spawn(move || {
-                        for j in jobs {
-                            let d = runner.run(j);
-                            let skipped = d.skipped;
-                            if done.send(d).is_err() {
-                                break;
+                        // 組合せの系はメモリの作業フォルダから読む（work_fs）
+                        crate::work_fs::with(|| {
+                            for j in jobs {
+                                let d = runner.run(j);
+                                let skipped = d.skipped;
+                                if done.send(d).is_err() {
+                                    break;
+                                }
+                                if !skipped {
+                                    repaint();
+                                }
                             }
-                            if !skipped {
-                                repaint();
-                            }
-                        }
+                        })
                     })
                     .expect("cannot start the computation thread");
             };

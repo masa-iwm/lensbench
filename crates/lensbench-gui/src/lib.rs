@@ -66,6 +66,7 @@ mod webview;
 mod widgets;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wire;
+mod work_fs;
 mod worker;
 mod zoom_panel;
 

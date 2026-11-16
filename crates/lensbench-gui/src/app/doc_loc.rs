@@ -24,13 +24,10 @@ pub(super) struct DocLoc {
     pub(super) ld_dirty: bool,
 }
 
-/// 組合せの系・カタログの下書きを書く一時フォルダ。ネイティブはプロセスごとに分ける（同時に 2 つ起動しても
-/// 互いの組合せを読み違えない、GAR-03）。Web 版の置き場はページごとなので分けない
+/// 組合せの系・カタログの下書きを置くフォルダ。中身はプロセスの中のメモリ（[`crate::work_fs`]、GAR-03）。
+/// ネイティブはプロセスごとに分ける。Web 版の置き場はページごとなので分けない
 pub(super) fn work_dir() -> PathBuf {
-    let d = lensbench_core::vfs::temp_dir().join("lensbench-gui");
-    #[cfg(not(target_arch = "wasm32"))]
-    let d = d.join(std::process::id().to_string());
-    d
+    crate::work_fs::work_dir()
 }
 
 /// 終わるときに [`work_dir`] を消す。作るときに、異常終了で残った前のプロセスのフォルダ（2 日より古いもの）を消す
