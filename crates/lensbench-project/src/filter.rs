@@ -110,7 +110,7 @@ fn check01(v: f64, what: &str) -> lensbench_core::Result<()> {
     if (0.0..=1.0).contains(&v) {
         Ok(())
     } else {
-        Err(format!("{what} {v} (0 to 1)").into())
+        Err(format!("{what} {v} must be 0 to 1").into())
     }
 }
 

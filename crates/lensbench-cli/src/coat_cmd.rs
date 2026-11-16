@@ -349,21 +349,23 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
             Box::new(move |wl| m.index(wl))
         }
     };
+    let bad_layers =
+        |l: &str| format!("--layers {l}: expected a number of layers N or a range N..M");
     let (lo, hi) = match a.layers.split_once("..") {
         Some((x, y)) => (
             x.trim()
                 .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?,
+                .map_err(|_| bad_layers(a.layers))?,
             y.trim()
                 .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?,
+                .map_err(|_| bad_layers(a.layers))?,
         ),
         None => {
             let n = a
                 .layers
                 .trim()
                 .parse::<usize>()
-                .map_err(|_| format!("--layers {}", a.layers))?;
+                .map_err(|_| bad_layers(a.layers))?;
             (n, n)
         }
     };

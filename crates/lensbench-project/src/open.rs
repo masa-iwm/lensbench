@@ -446,18 +446,32 @@ mod tests {
             ("invalid", code::STATE_NOT_FOUND),
             "{e}"
         );
-        // ガラスのフォルダが空: .zmx から取った玉のガラスが無い
+        // ガラスのフォルダが空で、同梱にも無いカタログ（SCHOTT・OHARA は同梱から取る、CLI-31）
         let empty = std::env::temp_dir().join(format!("lb_open_code_{}", std::process::id()));
         std::fs::create_dir_all(&empty).unwrap();
+        let src = std::fs::read_to_string(root.join("examples/projects/P5_triplet_blocks.json"))
+            .unwrap()
+            .replace("\"SCHOTT\"", "\"NOSUCHCAT\"")
+            .replace(
+                "../../tests/refs",
+                &root
+                    .join("tests/refs")
+                    .display()
+                    .to_string()
+                    .replace('\\', "/"),
+            );
+        let proj = empty.join("p.json");
+        std::fs::write(&proj, src).unwrap();
         let dirs = [empty.clone()];
         let o = OpenSpec {
             glass_dirs: &dirs,
             cfg: 1,
             ..Default::default()
         };
-        let e = open(&root.join("examples/projects/P5_triplet_blocks.json"), &o).unwrap_err();
+        let e = open(&proj, &o).unwrap_err();
         let _ = std::fs::remove_dir_all(&empty);
         assert_eq!(e.code(), code::GLASS_NOT_FOUND, "{e}");
+        assert!(e.to_string().contains("--glass-dir"), "{e}");
     }
 
     #[test]

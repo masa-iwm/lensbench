@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GUI に同梱するガラスカタログ crates/lensbench-gui/assets/glass/*.AGF を refractiveindex.info のデータベース（CC0）から作る
+"""同梱するガラスカタログ crates/lensbench-core/assets/glass/*.AGF を refractiveindex.info のデータベース（CC0）から作る
 （GUX-01: 何も設定していなくても普通の .zmx が開けるように）。
 
     git clone --depth 1 https://github.com/polyanskiy/refractiveindex.info-database ri
@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_test_glass as mt  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   'crates', 'lensbench-gui', 'assets', 'glass')
+                   'crates', 'lensbench-core', 'assets', 'glass')
 
 
 def main(ri):

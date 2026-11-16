@@ -29,7 +29,8 @@ mod usersurf;
 fn every_test_file_is_listed() {
     let me = include_str!("it.rs");
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let separate: &[&str] = &[];
+    // 別の exe（Cargo.toml の [[test]]）: 同梱のガラスカタログの往復は、このプロセスで読んだ AGF に左右されないよう分ける
+    let separate: &[&str] = &["builtin_glass"];
     for e in std::fs::read_dir(dir).unwrap().flatten() {
         let p = e.path();
         let Some(stem) = p.file_stem().and_then(|s| s.to_str()) else {

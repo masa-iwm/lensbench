@@ -3,7 +3,7 @@
 `lensbench ghost` は面 a で反射し面 b（b < a）で反射する経路（OpticStudio の Ghost Focus Generator の double bounce）を
 全部の組について並べる: 像面での近軸の周辺光線の高さ（ぼけの半径）・角度、像面から近軸のゴーストの焦点までの距離、
 作動 F 値と、軸上の主光線の強度の比（ゴースト / 元の系、膜の反射率・透過率・吸収込み、x・y の偏光の平均）。
-`--first`・`--last` で反射させる面を絞り、`--out-dir` で展開した系を `ghost_a_b.zmx` に書く。
+`--first`・`--last` で反射させる面を絞り、`--out`（`-o`）で展開した系をフォルダの `ghost_a_b.zmx` に書く。
 
 経路は順次の面の列に展開した系（`lensbench_analysis::ghost::ghost_system`、Python は `s.ghost(a, b)`）なので、追跡・偏光・
 MTF などはそのまま使える。逆にたどる区間は元の面の写し（共軸なら厚さの符号を変えるだけ、傾き・座標ブレークがあれば

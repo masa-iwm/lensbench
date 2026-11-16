@@ -849,7 +849,9 @@ fn layout_of_combo() {
         }
     }
     // 範囲外の視野はエラー
-    assert!(sv.error("layout", json!({ "field": 99 })).contains("field"));
+    assert!(sv
+        .error("layout", json!({ "fields": 99 }))
+        .contains("field"));
     sv.stop();
 }
 

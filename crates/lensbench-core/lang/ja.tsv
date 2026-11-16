@@ -62,6 +62,15 @@ semi-diameter	半径
 stop	絞り
 ignore	無視
 glass	硝材
+# loading, catalogs and settings
+{what} {v} must be 0 to 1	{what} {v} は 0〜1 にしてください
+glass {} came from the built-in catalog (index only; no internal transmittance or thermal expansion). Pass the maker catalogs with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	硝材 {} は同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）から取りました。メーカーのカタログは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
+type {ty} (one of {})	種類 {ty}（{} のどれか）
+--layers {l}: expected a number of layers N or a range N..M	--layers {l}: 層の数 N か範囲 N..M を書いてください
+PARM({n}, {k}): the parameter (0 to 255) or the surface is out of range	PARM({n}, {k}): パラメータ（0〜255）か面が範囲の外です
+a .zmx with two or more configurations	構成が 2 つ以上の .zmx
+a field defined by a condition	条件で定めた視野
+--states and --beam-paths are only for project files (.json)	--states・--beam-paths はプロジェクトファイル（.json）だけで使えます
 # command line (lensbench-cli)
 See the arguments with lensbench <command> --help	引数の一覧は lensbench <コマンド> --help
 Check the file name and location (relative paths are from the current folder)	ファイルの名前と場所を確認する（相対パスは今のフォルダから）
@@ -766,7 +775,7 @@ a lens line doesn't have 3 fields (lens {})	レンズの行の欄が 3 つでは
 {part}: the .zmx is cut short	{part}: .zmx が途中で切れています
 {part}: the .zmx is not UTF-8	{part}: .zmx が UTF-8 ではありません
 {}: a lens catalog in a format that can't be read	{}: 読めない形式のレンズカタログ
-no {vendor} {part} in the lens catalogs	レンズカタログに {vendor} {part} がありません
+no {vendor} {part} in the lens catalogs. Pass lens catalog folders with --lens-catalog (CLI) or lens_catalogs (serve, Python)	レンズカタログに {vendor} {part} がありません。レンズカタログのフォルダは CLI の --lens-catalog、serve・Python の lens_catalogs で渡してください
 {} Zernike terms (at most {max})	Zernike の項が {} 個（上限 {max}）
 empty file	空のファイル
 line 1 must be nx ny delx dely unitflag xdec ydec	1 行目は nx ny delx dely unitflag xdec ydec
@@ -893,7 +902,7 @@ importing a .zmx on the return path is not supported (use a lens block)	往路�
 {path}: system imports nested too deep (a loop?)	{path}: 系の取り込みが深すぎます（循環？）
 {}: item {item} refers to itself (a loop)	{}: 項目 {item} が自分自身を参照しています（循環）
 {}: no item {item}	{}: 項目 {item} はありません
-{item}: glass catalog not found: {}	{item}: 硝材カタログが見つかりません: {}
+{item}: glass catalog not found: {}. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	{item}: 硝材カタログが見つかりません: {}。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
 {}: coating {k}: {e}	{}: コーティング {k}: {e}
 {}: coating {k} differs from another catalog	{}: コーティング {k} がほかのカタログと違います
 lens catalog {vendor} {part}: the catalog can't be read	レンズカタログ {vendor} {part}: カタログを読めません
@@ -973,7 +982,7 @@ path {q}: {e}	経路 {q}: {e}
 a BS (splitter) needs an id	BS（splitter）には id が必要です
 BS id {id} appears twice or more	BS の id {id} が 2 つ以上あります
 primary wavelength {} (there are {} wavelengths)	主波長 {}（波長は {} 個）
-glass catalog not found: {}	硝材カタログが見つかりません: {}
+glass catalog not found: {}. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	硝材カタログが見つかりません: {}。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
 path {}: too many letters (the BS is passed {} times)	経路 {}: 文字が多いです（BS を通るのは {} 回）
 {} stops (exactly one is needed)	絞りが {} 個（ちょうど 1 つ必要です）
 internal error: {} surfaces but {} sources	内部エラー: 面 {} 個に出どころ {} 個
@@ -1089,6 +1098,8 @@ system file: global coordinate reference surface {}	系ファイル: グロー�
 glass catalog {} was not found{}	硝材のカタログ {} が見つかりません{}
 glass catalog {} differs from when the file was saved ({}); the values are computed from the current catalog	硝材のカタログ {} が保存したときと違います（{}）。値は今のカタログで求めます
 glass catalog {} has no hash in the system file, so its values can't be checked; the values are computed from the current catalog ({})	硝材のカタログ {} は系ファイルに hash が無いので値を確かめられません。値は今のカタログ（{}）で求めます
+glass catalog {} was not found in the folders; the built-in catalog is used (index only; no internal transmittance or thermal expansion). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT	硝材のカタログ {} がフォルダに無いので、同梱のカタログ（屈折率だけ。内部透過率・熱膨張なし）を使います。カタログのフォルダは CLI の --glass-dir、serve・Python の glass_dirs、環境変数 LENSBENCH_GLASSCAT で渡してください
+glass catalog {} differs from when the file was saved (built-in catalog); the values are computed from the built-in catalog	硝材のカタログ {} が保存したときと違います（同梱のカタログ）。値は同梱のカタログから求めます
 no file of glass catalog {} has the same values as the system's glasses ({}); the system file records no hash for it, so the values can't be checked when it is read	硝材のカタログ {} のファイルで系の硝材（{}）と値が同じものが見つかりません。系ファイルに hash を書けないので、読むときに値を確かめられません
 wavelengths: no wavelength	wavelengths: 波長がありません
 primary: {} ({nw} wavelengths)	primary: {}（波長 {nw}）
@@ -1806,7 +1817,7 @@ System data (EFL, F-number, pupils, etc.)	システムデータ（EFL、F 値、
 Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface)	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）
 Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface). --save writes csv, json or npz	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz にエクスポート
 Wavelength numbers (from 1, comma-separated; the primary wavelength if omitted)	波長の番号（1 始まり、カンマ区切り、省略で主波長）
-All wavelengths (takes precedence over wave)	全波長（wave より優先）
+All wavelengths (takes precedence over waves)	全波長（waves より優先）
 Ray pattern	光線の並び
 Number of rays (rays per direction for a fan or cross, the side for grid, the rays around for ring, plus the chief ray: n+1)	光線の本数（扇・十字は片方向の本数、grid は一辺、ring は周の本数で、主光線を追加した n+1 本）
 Pupil coordinates directly (px,py,px,py,…). Takes precedence over fan and rays	瞳座標を直接（px,py,px,py,…）。fan・rays より優先
@@ -1871,7 +1882,7 @@ Center x,y of the output grid (the point advanced along the chief ray if omitted
 Image: center x,y of the area (the center of the area reached by both beams if omitted)	像面上: 範囲の中心 x,y（省略で 2 つの光束が届く範囲の中心）
 Image: side of the area (covers the area reached by both beams if omitted)	像面上: 範囲の一辺（省略で 2 つの光束が届く範囲を覆う）
 Image: optical path added to the reference path	像面上: 参照の経路に追加する光路長
-List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out_dir writes the expanded systems to .zmx	ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧: 近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（コーティング込み）。out_dir で展開した系を .zmx に書く
+List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out writes the expanded systems to .zmx files in a folder	ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧: 近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（コーティング込み）。out で展開した系をフォルダの .zmx に書く
 Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface). x and y are local image surface coordinates relative to the chief ray; with plane chief, coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)	回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色。huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す）。x・y は主光線の像点からの像面のローカル座標。plane chief では主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）
 Simple POP: build a field from rays on the tangent plane of a surface (with the surface aperture applied) and propagate it in a uniform medium over the distance dist (to the vertex plane of the next surface if omitted); the irradiance. --save writes the grid (csv, npz) or everything (json)	簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 dist （省略で次の面の頂点面まで）伝えた放射照度。--save でグリッド（csv・npz）か全部（json）をエクスポート
 Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength	機構部品（プロジェクトの mechanics）のケラレ: 瞳のグリッドの光線を追い、部品の穴（チューブの内径・ケージプレートやマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す

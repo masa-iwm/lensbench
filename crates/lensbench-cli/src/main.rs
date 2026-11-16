@@ -505,10 +505,10 @@ enum Cmd {
 struct LayoutArgs {
     /// Field numbers (from 1, comma-separated; all fields if omitted)
     #[arg(long)]
-    field: Option<String>,
+    fields: Option<String>,
     /// Wavelength numbers (from 1, comma-separated, all for every one; the primary wavelength if omitted)
     #[arg(long)]
-    wave: Option<String>,
+    waves: Option<String>,
     /// Ray pattern (y, x, cross, grid, ring). If omitted, y for 2D, ring for 3D and STEP (the chief ray and the pupil edge)
     #[arg(long)]
     fan: Option<scene::Fan>,
@@ -544,8 +544,8 @@ impl LayoutArgs {
                 .transpose()
         };
         Ok(RaySel {
-            fields: pick(&self.field, "field")?,
-            waves: pick(&self.wave, "wavelength")?,
+            fields: pick(&self.fields, "field")?,
+            waves: pick(&self.waves, "wavelength")?,
             fan: self.fan,
             rays: self.rays,
             first: self.first,

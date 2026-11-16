@@ -19,6 +19,11 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### 名前・設定の書き方
+- 名前を CLI・serve・Python でそろえた（CLI-14・CLI-17、11/16 masa 決定。旧名は受けない）:
+  Python の `System.geometric_mtf`・`through_focus_mtf`・`field_mtf` は登録簿の名前どおり `geo_mtf`・`mtf_focus`・`mtf_field`。
+  `trace`・`trace_rays` の結果の波長の番号の鍵 `wavelengths` は `waves`（引数と同じ）。
+  番号の並びを取る `rays`・`mech-check`・`layout` の視野・波長は `--fields`・`--waves`（serve・`analyze` の設定は `fields`・`waves`。
+  1 つの番号を取る解析は前どおり `--field`・`--wave`）。`ghost` の書き出し先のフォルダ `--out-dir`（`out_dir`）は `--out`・`-o`（`out`）。
 - FFT PSF の既定の面を像面の上にした（ANA-08）: 格子の座標は像面の局所座標の x・y（`axes` は x̂・ŷ）で、回折 MTF と同じ
   周波数の面（PSF をフーリエ変換すると回折 MTF になる。x・y の両方に角度のある視野では、回折 MTF の子午・球欠は前と同じく
   瞳の py・px の向きのずれなので、像面の上では少し傾いた向きの周波数に当たる）。x・y の両方に角度のある視野では瞳の格子を
@@ -136,6 +141,11 @@
   違う（統計としては同じ分布。切った正規分布は棄却法から逆関数法に）。感度・公称の値は変わらない。
 
 ### 光学系
+- ガラスのフォルダのどこにも無いカタログ SCHOTT・OHARA は、同梱のカタログ（分散式のみ、GUI と同じもの）から取る（CLI-31）。
+  CLI・serve・Python でも、前は「glass catalog not found」で止まった系がフォルダの指定なしで開く。同梱から取ったガラスは
+  読込の注意（CLI は標準誤差の `warning:`、`System.import_notes`）に出る。同じ名前の AGF がフォルダにあればそちらが先なので、
+  フォルダを渡している使い方の結果は変わらない。同梱のカタログは内部透過率・熱膨張を持たない。
+  プロジェクトの「カタログが無い」・「レンズカタログに無い」の誤りに、`--glass-dir`・`--lens-catalog`（serve・Python の名前も）の案内を付けた。
 - 共軸の面の間（前の面の後と次の面の前に傾き・座標ブレークがない区間）の座標の変換は、大域の座標の差でなく面の厚さそのものを
   使う。追跡の結果は丸めの分だけ変わる（公開のテスト系 38 本のうち 29 本。光線の座標 1e-12 前後、RMS・波面は相対 5e-10 まで、
   傾きのある C1 で 3e-9 まで、MTF は値が小さい周波数で相対 1e-5 まで）。自動の半直径・実光線のソルブの値も丸めの分変わるので `system_hash` も変わる。

@@ -632,7 +632,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let (g, missing) = glass::load_catalogs_shared(&it.glass_catalogs, &dirs);
         if !missing.is_empty() {
             return Err(lensbench_core::Error::Invalid(format!(
-                "{item}: glass catalog not found: {}",
+                "{item}: glass catalog not found: {}. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT",
                 missing.join(", ")
             ))
             .with_code(lensbench_core::error::code::GLASS_NOT_FOUND));

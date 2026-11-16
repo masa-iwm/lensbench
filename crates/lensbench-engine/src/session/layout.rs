@@ -231,8 +231,8 @@ fn ray_sel(p: &Value) -> Result<RaySel, RpcErr> {
         Some(_) => return Err(RpcErr::params("unfold must be true or false")),
     };
     Ok(RaySel {
-        fields: pick("field")?,
-        waves: pick("wave")?,
+        fields: pick("fields")?,
+        waves: pick("waves")?,
         fan: match p.get("fan").and_then(Value::as_str) {
             Some(f) => Some(f.parse().map_err(RpcErr::params)?),
             None => None,

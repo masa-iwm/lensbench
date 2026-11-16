@@ -20,6 +20,8 @@ CLI だけなら速くできる（GUI・Web 版・Python は作らない）:
 ```sh
 cargo build --release -p lensbench-cli
 target/release/lensbench spot tests/refs/A0/system.zmx --glass-dir tests/glass
+# examples のプロジェクトはレンズカタログを渡す（ガラスは同梱の SCHOTT・OHARA で足りる）
+target/release/lensbench info examples/projects/P8_catalog_two.json --lens-catalog examples/lenses
 ```
 
 GUI は `cargo build --release -p lensbench-gui` のあと `target/release/lensbench-gui examples/projects/P8_catalog_two.json`。

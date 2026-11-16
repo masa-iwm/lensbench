@@ -7,6 +7,9 @@
 //! 読むときは渡したフォルダ（`glass_dirs`）・系ファイルのフォルダ・既定のフォルダ（LENSBENCH_GLASSCAT）・このプロセスで
 //! 読んだ AGF の順に探し、最初に見つかったファイル（今のカタログ）を使う。hash が合うものを選ぶのではない。hash が
 //! 書いたときと違えば注意を返し、hash が空なら値を確かめられないと注意を返す。見つからなければ誤り。
+//!
+//! 同梱のカタログ（[`glass::builtin`]、SCHOTT・OHARA）は、ファイルが見つからないときの最後の候補（CLI-31）。保存では
+//! 同梱のデータ（AGF の本文）の hash を書き、読むときはフォルダに無ければ同梱のものを使って注意を返す。
 
 use super::CatalogRef;
 use lensbench_core::glass::{self, Glass};
@@ -108,8 +111,25 @@ pub(crate) fn file_hash(p: &Path) -> std::io::Result<String> {
     Ok(h)
 }
 
-/// カタログの名前、系のガラスと値が同じファイル（見つからなければ None）、そのカタログから使うガラスの名前
-type Source = (String, Option<(PathBuf, Catalog)>, Vec<String>);
+/// 同梱のカタログ name の AGF の本文の hash（同じ中身の AGF ファイルの [`file_hash`] と同じ値）
+fn builtin_hash(name: &str) -> Option<String> {
+    glass::builtin::FILES
+        .iter()
+        .find(|(f, _)| f.trim_end_matches(".AGF").eq_ignore_ascii_case(name))
+        .map(|(_, t)| {
+            let hex: String = Sha256::digest(t.as_bytes())
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            format!("sha256:{hex}")
+        })
+}
+
+/// 系のガラスと値が同じカタログ: ファイルか同梱のもの（None）
+type Origin = (Option<PathBuf>, Catalog);
+
+/// カタログの名前、系のガラスと値が同じカタログ（見つからなければ None）、そのカタログから使うガラスの名前
+type Source = (String, Option<Origin>, Vec<String>);
 
 /// 使ったカタログごとの [`Source`]
 fn sources(s: &System) -> Vec<Source> {
@@ -127,19 +147,27 @@ fn sources(s: &System) -> Vec<Source> {
                 .filter(|p| is_catalog(p, &cat))
                 .collect::<Vec<_>>();
             cands.extend(candidates(&cat, &dirs));
-            let found = cands.into_iter().find_map(|p| {
-                let m = glass::load_agf_shared(&p).ok()?;
-                gs.iter()
-                    .all(|(n, g)| m.get(n) == Some(*g))
-                    .then_some((p, m))
-            });
+            let same = |m: &Catalog| gs.iter().all(|(n, g)| m.get(n) == Some(*g));
+            let found = cands
+                .into_iter()
+                .find_map(|p| {
+                    let m = glass::load_agf_shared(&p).ok()?;
+                    same(&m).then_some((Some(p), m))
+                })
+                .or_else(|| {
+                    let m = glass::builtin::catalog(&cat)?;
+                    same(&m).then_some((None, m))
+                });
             (cat, found, names)
         })
         .collect()
 }
 
+/// カタログの名前と、系のガラスと値が同じカタログ（`Some(None)` は同梱のもの）
+type Ordered = (String, Option<Option<PathBuf>>);
+
 /// 名前で引くと同じガラスになる並び: カタログ A のガラスを、前にあるカタログ B も持っていれば A を B の前へ
-fn order(mut v: Vec<Source>) -> Vec<(String, Option<PathBuf>)> {
+fn order(mut v: Vec<Source>) -> Vec<Ordered> {
     for _ in 0..v.len() * v.len() {
         let mut moved = false;
         'find: for a in 0..v.len() {
@@ -166,7 +194,10 @@ pub(crate) fn refs(s: &System) -> lensbench_core::Result<Vec<CatalogRef>> {
         .into_iter()
         .map(|(name, f)| {
             let hash = match f {
-                Some(p) => file_hash(&p).map_err(lensbench_core::Error::io_at(p.display()))?,
+                Some(Some(p)) => {
+                    file_hash(&p).map_err(lensbench_core::Error::io_at(p.display()))?
+                }
+                Some(None) => builtin_hash(&name).unwrap_or_default(),
                 None => String::new(),
             };
             Ok(CatalogRef { name, hash })
@@ -192,7 +223,10 @@ pub(crate) fn unverified(s: &System) -> Vec<String> {
 
 /// 系のガラスの元のカタログのファイル（見つかったものだけ。pickle で別のプロセスに渡す）
 pub(crate) fn files(s: &System) -> Vec<PathBuf> {
-    order(sources(s)).into_iter().filter_map(|x| x.1).collect()
+    order(sources(s))
+        .into_iter()
+        .filter_map(|x| x.1.flatten())
+        .collect()
 }
 
 /// `catalogs` のカタログをフォルダ dirs（とこのプロセスで読んだ AGF）から読み、名前 → ガラスの表にする（前の
@@ -205,8 +239,24 @@ pub(crate) fn load(
     let mut notes = Vec::new();
     for r in refs {
         let cands = candidates(&r.name, dirs);
-        // 探す順で最初に見つかったもの（今のカタログ）を使う
+        // 探す順で最初に見つかったもの（今のカタログ）を使う。無ければ同梱のもの
         let pick = cands.first().cloned();
+        if let (None, Some(g)) = (&pick, glass::builtin::catalog(&r.name)) {
+            notes.push(format!(
+                "glass catalog {} was not found in the folders; the built-in catalog is used (index only; no internal transmittance or thermal expansion). Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT",
+                r.name
+            ));
+            if !r.hash.is_empty() && builtin_hash(&r.name).as_deref() != Some(r.hash.as_str()) {
+                notes.push(format!(
+                    "glass catalog {} differs from when the file was saved (built-in catalog); the values are computed from the built-in catalog",
+                    r.name
+                ));
+            }
+            for (k, v) in g.iter() {
+                out.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            continue;
+        }
         let Some(p) = pick else {
             return Err(lensbench_core::Error::Invalid(format!(
                 "glass catalog {} was not found{}",

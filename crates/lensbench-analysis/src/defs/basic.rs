@@ -297,7 +297,7 @@ pub(super) struct GhostParams {
     pub coatings: Vec<PathBuf>,
     /// Folder to write the expanded ghost systems to (ghost_a_b.zmx)
     #[schemars(extend("x-kind" = "path", "x-write" = true))]
-    pub out_dir: Option<PathBuf>,
+    pub out: Option<PathBuf>,
 }
 
 impl Default for GhostParams {
@@ -306,7 +306,7 @@ impl Default for GhostParams {
             first: 1,
             last: None,
             coatings: Vec::new(),
-            out_dir: None,
+            out: None,
         }
     }
 }
@@ -352,7 +352,7 @@ impl Analysis for Ghost {
         Meta {
             name: "ghost",
             about: "Ghosts (double reflections): focus position, blur at the image and intensity ratio",
-            help: "List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out_dir writes the expanded systems to .zmx",
+            help: "List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out writes the expanded systems to .zmx files in a folder",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &GhostParams) -> Result<GhostOut> {
@@ -364,7 +364,7 @@ impl Analysis for Ghost {
         }
         let v = crate::ghost::survey(s, p.first, last, &co)?;
         let (mut written, mut warnings) = (Vec::new(), Vec::new());
-        if let Some(dir) = &p.out_dir {
+        if let Some(dir) = &p.out {
             lensbench_core::vfs::create_dir_all(dir)
                 .map_err(|x| lensbench_core::Error::Io(format!("{}: {x}", dir.display())))?;
             for g in &v {

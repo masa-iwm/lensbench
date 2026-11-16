@@ -54,7 +54,7 @@ def test_matches_cli_bit_for_bit(name, tmp_path):
     s = lb.System.load(zmx(name), glass_dirs=GLASS)
     out = tmp_path / "rays.npz"
     subprocess.run(
-        [cli(), "rays", zmx(name), "--glass-dir", GLASS[0], "--all-waves", "--field", "2",
+        [cli(), "rays", zmx(name), "--glass-dir", GLASS[0], "--all-waves", "--fields", "2",
          "--fan", "grid", "--rays", "24", "--surface", str(s.image), "--save", str(out)],
         check=True,
         capture_output=True,
@@ -88,7 +88,7 @@ def test_wavelengths_last_and_record():
     s = lb.System.load(zmx("A0"), glass_dirs=GLASS)
     px, py = grid(8)
     r = s.trace((0.0, 0.5), px, py, waves=[3, 1], last=5, record=True)
-    assert list(r["wavelengths"]) == [3, 1] and r["last"] == 5
+    assert list(r["waves"]) == [3, 1] and r["last"] == 5
     assert (r["hx"], r["hy"]) == (0.0, 0.5)
     assert list(r["rec_surfaces"]) == [1, 2, 3, 4, 5]
     assert r["rec_x"].shape == (2, 5, len(px))
@@ -874,7 +874,7 @@ def test_pol_grid_missing(tmp_path):
     m = b["pol_grid_missing"]
     assert len(m) > 0 and np.all(np.hypot(m[:, 0], m[:, 1]) < 0.35)
     bad = b["pol_grid_bad"]
-    ok = b["ok"][list(b["wavelengths"]).index(b["jones_wavelength"])]
+    ok = b["ok"][list(b["waves"]).index(b["jones_wavelength"])]
     assert bad.any() and not (bad & ~ok).any() and np.all(np.isnan(b["jones"][bad]))
     good = ok & ~bad
     assert good.sum() > 0.5 * len(px) and np.all(np.isfinite(b["jones"][good]))

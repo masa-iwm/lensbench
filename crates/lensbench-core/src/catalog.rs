@@ -270,7 +270,9 @@ impl LensCatalog {
         Ok(self
             .get(vendor, part)
             .map(|l| l.zmx.clone())
-            .ok_or_else(|| format!("no {vendor} {part} in the lens catalogs"))?)
+            .ok_or_else(|| format!(
+                "no {vendor} {part} in the lens catalogs. Pass lens catalog folders with --lens-catalog (CLI) or lens_catalogs (serve, Python)"
+            ))?)
     }
 
     pub fn lenses(&self) -> &[CatalogLens] {

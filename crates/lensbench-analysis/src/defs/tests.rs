@@ -29,7 +29,7 @@ fn params_from_schema() {
         ParamTy::Paths
     );
     assert_eq!(
-        g.iter().find(|p| p.name == "out_dir").unwrap().ty,
+        g.iter().find(|p| p.name == "out").unwrap().ty,
         ParamTy::Path
     );
 }

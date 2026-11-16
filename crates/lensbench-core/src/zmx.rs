@@ -964,17 +964,15 @@ pub fn build(
         invalid!("primary wavelength {pw} (there are {nw} wavelengths)");
     }
     // ガラス。見つからない・読めなかったカタログ（理由つき）は、ガラスが無いときの誤りに添える（XCT-01）
+    let cats: Vec<String> = raw
+        .sysl
+        .get("GCAT")
+        .and_then(|v| v.first())
+        .cloned()
+        .unwrap_or_else(|| vec!["SCHOTT".into()]);
     let (glasses, cat_missing): (std::sync::Arc<HashMap<String, Glass>>, _) = match &opt.glasses {
         Some(g) => (std::sync::Arc::new(g.clone()), Vec::new()),
-        None => {
-            let cats: Vec<String> = raw
-                .sysl
-                .get("GCAT")
-                .and_then(|v| v.first())
-                .cloned()
-                .unwrap_or_else(|| vec!["SCHOTT".into()]);
-            glass::load_catalogs_shared(&cats, dirs)
-        }
+        None => glass::load_catalogs_shared(&cats, dirs),
     };
     let why = glass::missing_note(&cat_missing) + glass::DIRS_HINT; // 「（見つからない…）」と渡し方の案内
     let ns = raw.surfs.len();
@@ -1551,6 +1549,10 @@ pub fn build(
     s.name = name;
     s.import_notes = raw.notes.clone();
     s.import_notes.extend(raw.system_notes(opt.fixed_semi)?);
+    if opt.glasses.is_none() {
+        let n = glass::builtin::note_for(&s, &cats, dirs); // 同梱のガラスの知らせ（CLI-31）
+        s.import_notes.extend(n);
+    }
     if ncfg > 1 {
         match config_table(raw, &s, ncfg as usize, cfg as usize) {
             Ok(c) => {

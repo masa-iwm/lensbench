@@ -65,10 +65,10 @@ impl Fan {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct RaysParams {
     /// Field numbers (from 1, comma-separated; all fields if omitted)
-    pub field: Option<Vec<usize>>,
+    pub fields: Option<Vec<usize>>,
     /// Wavelength numbers (from 1, comma-separated; the primary wavelength if omitted)
-    pub wave: Option<Vec<usize>>,
-    /// All wavelengths (takes precedence over wave)
+    pub waves: Option<Vec<usize>>,
+    /// All wavelengths (takes precedence over waves)
     pub all_waves: bool,
     /// Ray pattern
     pub fan: Fan,
@@ -84,8 +84,8 @@ pub(super) struct RaysParams {
 impl Default for RaysParams {
     fn default() -> Self {
         RaysParams {
-            field: None,
-            wave: None,
+            fields: None,
+            waves: None,
             all_waves: false,
             fan: Fan::Grid,
             rays: 5,
@@ -149,10 +149,10 @@ impl Analysis for Rays {
         let waves = if p.all_waves {
             Some((0..s.wavelengths.len()).collect())
         } else {
-            indices(&p.wave, s.wavelengths.len(), "wavelength")?
+            indices(&p.waves, s.wavelengths.len(), "wavelength")?
         };
         let o = table::RayOptions {
-            fields: indices(&p.field, s.fields.len(), "field")?,
+            fields: indices(&p.fields, s.fields.len(), "field")?,
             waves,
             px,
             py,
@@ -436,9 +436,9 @@ impl Analysis for Pop {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct MechCheckParams {
     /// Field numbers (from 1, comma-separated; all fields if omitted)
-    pub field: Option<Vec<usize>>,
+    pub fields: Option<Vec<usize>>,
     /// Wavelength numbers (from 1, comma-separated; all wavelengths if omitted)
-    pub wave: Option<Vec<usize>>,
+    pub waves: Option<Vec<usize>>,
     /// Rays on a side of the pupil grid (points inside the unit circle are used)
     #[schemars(extend("x-min" = 2))]
     pub grid: usize,
@@ -447,8 +447,8 @@ pub(super) struct MechCheckParams {
 impl Default for MechCheckParams {
     fn default() -> Self {
         MechCheckParams {
-            field: None,
-            wave: None,
+            fields: None,
+            waves: None,
             grid: 21,
         }
     }
@@ -477,8 +477,8 @@ impl Analysis for MechCheck {
             return Err(Error::Invalid("grid must be 2 or more".into()));
         }
         let all = |n: usize| (0..n).collect::<Vec<_>>();
-        let fields = indices(&p.field, s.fields.len(), "field")?.unwrap_or(all(s.fields.len()));
-        let waves = indices(&p.wave, s.wavelengths.len(), "wavelength")?
+        let fields = indices(&p.fields, s.fields.len(), "field")?.unwrap_or(all(s.fields.len()));
+        let waves = indices(&p.waves, s.wavelengths.len(), "wavelength")?
             .unwrap_or(all(s.wavelengths.len()));
         let (px, py) = lensbench_core::mech::pupil_grid(p.grid);
         let v = lensbench_core::mech::vignetting(s, &s.mechanics, &fields, &waves, &px, &py)?;

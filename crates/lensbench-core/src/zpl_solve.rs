@@ -374,7 +374,9 @@ impl Host for SysHost<'_> {
                 [Value::Num(n), Value::Num(k)] => {
                     let k = k.trunc();
                     if k < 0.0 || k as usize >= s.surfaces.len() || *n < 0.0 || *n > 255.0 {
-                        Err(Error::Invalid(format!("PARM({n}, {k})")))
+                        Err(Error::Invalid(format!(
+                            "PARM({n}, {k}): the parameter (0 to 255) or the surface is out of range"
+                        )))
                     } else {
                         let d = &s.surfaces[k as usize];
                         // Standard の面にはパラメータがなく、OpticStudio は 0 を返す（26.1.1 で実測）

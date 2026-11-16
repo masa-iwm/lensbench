@@ -46,7 +46,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
         "Result of System.trace and trace_rays (columns per ray)",
         {**{k: F64 for k in ("x", "y", "z", "l", "m", "n", "opl", "opl_os", "lens_opd")},
          "err": "NDArray[np.int32]", "vig": "NDArray[np.int32]", "ok": "NDArray[np.bool_]",
-         "wavelengths": "NDArray[np.int64]", "last": "int"},
+         "waves": "NDArray[np.int64]", "last": "int"},
         {"hx": "float", "hy": "float", "rec_surfaces": "NDArray[np.int64]",
          **{f"rec_{k}": F64 for k in ("x", "y", "z", "l", "m", "n", "gx", "gy", "gz", "opl")},
          "jones": "NDArray[np.complex128]", "jones_z": "NDArray[np.complex128]", "jones_wavelength": "int",
@@ -56,7 +56,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
          "pol_grid_bad": "NDArray[np.bool_]"},
     ),
     "_MtfResult": (
-        "Diffraction MTF (mtf, geometric_mtf, huygens_mtf). tangential and sagittal are [wavelength][frequency] (each_wave) or [frequency]",
+        "Diffraction MTF (mtf, geo_mtf, huygens_mtf). tangential and sagittal are [wavelength][frequency] (each_wave) or [frequency]",
         {"freqs": F64, "tangential": F64, "sagittal": F64, "cutoff": "_TanSag"},
         {"waves": "list[int]", "warnings": "list[str]"},
     ),
@@ -157,8 +157,8 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
 }
 RESULT_OF = {
     "System.trace": "_TraceResult", "System.trace_rays": "_TraceResult", "System.mtf": "_MtfResult",
-    "System.geometric_mtf": "_MtfResult", "System.huygens_mtf": "_MtfResult",
-    "System.through_focus_mtf": "_ThroughFocusMtf", "System.field_mtf": "_FieldMtf", "System.psf": "_PsfResult",
+    "System.geo_mtf": "_MtfResult", "System.huygens_mtf": "_MtfResult",
+    "System.mtf_focus": "_ThroughFocusMtf", "System.mtf_field": "_FieldMtf", "System.psf": "_PsfResult",
     "System.huygens_psf": "_PsfResult", "System.cardinal": "_Cardinal", "System.optimize": "_OptimizeResult",
     "System.rms": "_Rms | _RmsSweep", "System.system_data": "_SystemData", "System.surface": "_Surface",
     "System.fiber_coupling": "_FiberCoupling", "System.mech_check": "_MechCheck", "System.solve_ray": "_SolveRay",

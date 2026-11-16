@@ -372,7 +372,7 @@ pub(crate) fn expand_inner(
     let (glasses, missing) = glass::load_catalogs_shared(&p.glass_catalogs, &dirs);
     if !missing.is_empty() {
         return Err(lensbench_core::Error::Invalid(format!(
-            "glass catalog not found: {}",
+            "glass catalog not found: {}. Pass catalog folders with --glass-dir (CLI), glass_dirs (serve, Python) or LENSBENCH_GLASSCAT",
             missing.join(", ")
         ))
         .with_code(code::GLASS_NOT_FOUND));
@@ -573,6 +573,9 @@ pub(crate) fn expand_inner(
         c.glasses,
     )?;
     s.name = p.name.clone();
+    // 同梱のカタログ（屈折率だけ）から取ったガラスを知らせる（CLI-31）
+    let b = glass::builtin::note_for(&s, &p.glass_catalogs, &dirs);
+    s.import_notes.extend(b);
     s.temperature = envr.temperature_c;
     s.pressure = envr.pressure_atm;
     s.adjust_index = envr.adjust_index;

@@ -11,7 +11,7 @@
     立体が閉じていて体積が .zmx から求めたものと合うこと（STEP 1e-6、glb は網の粗さの分）、光線の折れ点が追跡の大域座標と
     合うこと、追跡の表が OpticStudio の光線（tests/refs の A0・C0）と 1e-9 mm で合うことを確かめる。
     手元では `pip install -r tests/readback/requirements.txt` の後 `cargo build --profile ci -p lensbench-cli && pytest tests/readback`
-  - 光線は `--field`・`--wave`（`all` も可）・`--fan`（y・x・cross・grid・ring）・`--rays`・`--color`（field・wave）、描く範囲は `--first`・`--last`。
+  - 光線は `--fields`・`--waves`（番号の並び、`all` も可）・`--fan`（y・x・cross・grid・ring）・`--rays`・`--color`（field・wave）、描く範囲は `--first`・`--last`。
     既定は 2D が y 扇 7 本、3D・STEP が主光線と瞳の縁の円周 12 本。
     ガラスを挟む 2 面ごとに 1 つの立体（外径は 2 面の半径の大きい方）。ダブルパスで同じ玉を 2 回通っても 1 つだけ描く
   - 重ね描き: `--cfgs 1,2,3`（.zmx の多重構成、`all` も可）、`--states 名前,…`・`--beam-paths T,R,…`（プロジェクトの状態・
@@ -65,7 +65,7 @@ MTF のまわりの解析（`tests/mtf_family.rs` で既存の MTF・スポッ�
   （`tests/huygens_refs`、許容差と理由は `crates/lensbench-analysis/tests/huygens_refs.rs`）。OS の自動の Huygens MTF は像の格子が狭く、低周波が高く出る。
 - 横軸のある点で計算できない（瞳の縁がけられるなど）ときはその点を空（NaN）にして `warnings` に理由を残す。
 - OpticStudio 26.1 との照合は `tests/refs/<系>/mtf_family.json`・`psf_os.npz`（24 系、許容差と理由は `crates/lensbench-core/tests/mtf_family_refs.rs`）。
-- Python は `System.mtf`（`method="fft"`・`each_wave=True`）・`through_focus_mtf`・`field_mtf`・`rms`（`vs=`）・`psf`・`geometric_mtf`・`huygens_psf`・`huygens_mtf`。
+- Python は `System.mtf`（`method="fft"`・`each_wave=True`）・`mtf_focus`・`mtf_field`・`rms`（`vs=`）・`psf`・`geo_mtf`・`huygens_psf`・`huygens_mtf`。
 
 ## 例
 

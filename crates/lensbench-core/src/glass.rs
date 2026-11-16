@@ -357,7 +357,22 @@ fn n_coef(formula: i32) -> usize {
     }
 }
 
-/// GCAT の順にカタログを探して読む。同じ名前のガラスは先のカタログのもの。
+pub mod builtin;
+
+/// フォルダ `dirs` を順に見て、カタログ `name` の AGF（大文字小文字は問わない）を探す
+pub(crate) fn find_agf(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    let want = format!("{}.AGF", name.to_uppercase());
+    dirs.iter().find_map(|d| {
+        crate::vfs::read_dir(d).ok()?.into_iter().find(|e| {
+            e.file_name()
+                .map(|n| n.to_string_lossy().to_uppercase())
+                .unwrap_or_default()
+                == want
+        })
+    })
+}
+
+/// GCAT の順にカタログを探して読む（フォルダに無いカタログは同梱のもの、[`builtin`]）。同じ名前のガラスは先のカタログのもの。
 /// 見つからないカタログ名は戻り値の 2 番目に返す（読めなかったカタログは「名前（理由）」の形で）。
 pub fn load_catalogs(names: &[String], dirs: &[PathBuf]) -> (HashMap<String, Glass>, Vec<String>) {
     let (g, missing) = load_catalogs_shared(names, dirs);
@@ -390,41 +405,34 @@ pub fn load_catalogs_shared(
     let mut out: HashMap<String, Glass> = HashMap::new();
     let mut missing = Vec::new();
     let mut files = Vec::new();
-    // 読めなかった AGF があれば使い回さない（直したら読み直す）
+    // 読めなかった AGF・同梱のカタログを使ったら使い回さない（直したら・置いたら読み直す）
     let mut complete = true;
     for name in names {
-        let want = format!("{}.AGF", name.to_uppercase());
-        let mut found = false;
-        'dirs: for d in dirs {
-            let Ok(rd) = crate::vfs::read_dir(d) else {
-                continue;
-            };
-            for e in rd {
-                if e.file_name()
-                    .map(|n| n.to_string_lossy().to_uppercase())
-                    .unwrap_or_default()
-                    == want
-                {
-                    match (crate::vfs::stamp(&e), load_agf_shared(&e)) {
-                        (Ok(st), Ok(g)) => {
-                            for (k, v) in g.iter() {
-                                out.entry(k.clone()).or_insert_with(|| v.clone());
-                            }
-                            files.push((e.clone(), st));
-                        }
-                        (Err(err), _) | (_, Err(err)) => {
-                            // 読めなかったカタログは理由つきで「見つからない」に入れる（黙って飛ばさない）
-                            complete = false;
-                            missing.push(format!("{name} ({err})"));
-                        }
+        let Some(e) = find_agf(name, dirs) else {
+            // フォルダのどこにも無ければ同梱のカタログ（CLI-31）。後でフォルダに置かれたら読み直すよう使い回さない
+            match builtin::catalog(name) {
+                Some(g) => {
+                    for (k, v) in g.iter() {
+                        out.entry(k.clone()).or_insert_with(|| v.clone());
                     }
-                    found = true;
-                    break 'dirs;
+                    complete = false;
                 }
+                None => missing.push(name.clone()),
             }
-        }
-        if !found {
-            missing.push(name.clone());
+            continue;
+        };
+        match (crate::vfs::stamp(&e), load_agf_shared(&e)) {
+            (Ok(st), Ok(g)) => {
+                for (k, v) in g.iter() {
+                    out.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+                files.push((e.clone(), st));
+            }
+            (Err(err), _) | (_, Err(err)) => {
+                // 読めなかったカタログは理由つきで「見つからない」に入れる（黙って飛ばさない）
+                complete = false;
+                missing.push(format!("{name} ({err})"));
+            }
         }
     }
     let out = Arc::new(out);

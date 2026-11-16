@@ -37,7 +37,7 @@ lensbench layout   project.json --beam-paths all --out paths.svg     # BS の経
 lensbench zmx      project.json --beam-paths all --out paths.zmx     # 経路ごとに 1 構成の多重構成の .zmx
 lensbench rays     system.zmx --fan grid --rays 7 --save rays.npz
 lensbench zernike  system.zmx --save zernike.csv
-lensbench ghost    system.zmx --coatings coat_models.lbcm --out-dir ghosts
+lensbench ghost    system.zmx --coatings coat_models.lbcm --out ghosts
 lensbench pop      system.zmx --surf 7 --out-n 64 --out-half 0.02 --save psf.npz
 ```
 

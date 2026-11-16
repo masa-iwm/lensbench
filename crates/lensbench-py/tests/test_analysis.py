@@ -43,7 +43,7 @@ def b0():
 def test_mtf_and_through_focus(b0):
     f = [20.0, 50.0]
     m = b0.mtf(2, f)
-    t = b0.through_focus_mtf(2, f, [-0.01, 0.0, 0.01])
+    t = b0.mtf_focus(2, f, [-0.01, 0.0, 0.01])
     assert t["tangential"].shape == (2, 3)
     assert np.array_equal(t["tangential"][:, 1], m["tangential"])
     assert np.array_equal(t["sagittal"][:, 1], m["sagittal"])
@@ -70,9 +70,9 @@ def test_mtf_each_wave_and_fft(b0):
         b0.mtf(2, f, method="x")
 
 
-def test_field_mtf(b0):
+def test_mtf_field(b0):
     h = np.linspace(0, 1, 3)
-    m = b0.field_mtf([50.0], h)
+    m = b0.mtf_field([50.0], h)
     c = cli("mtf-field", zmx("B0"), "--freqs", "50", "--points", "3")
     assert np.array_equal(m["sagittal"][0], [r["sagittal"] for r in c["field_mtf"]])
     assert np.array_equal(m["field_value"], [r["field_value"] for r in c["field_mtf"]])
@@ -116,8 +116,8 @@ def test_psf(b0):
         b0.psf(1, plane="x")
 
 
-def test_geometric_mtf(b0):
-    g = b0.geometric_mtf(2, [0.0, 50.0], diff_limit=True)
+def test_geo_mtf(b0):
+    g = b0.geo_mtf(2, [0.0, 50.0], diff_limit=True)
     assert g["tangential"][0] == pytest.approx(1.0, abs=1e-14)
     c = cli("geo-mtf", zmx("B0"), "--field", "2", "--freqs", "0,50", "--diff-limit")
     assert np.array_equal(g["tangential"], c["geometric_mtf"][0]["tangential"])

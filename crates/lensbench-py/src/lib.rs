@@ -876,7 +876,7 @@ fn to_dict<'py>(
     d.set_item("vig", a2(gil, soa.vig, (nw, n)))?;
     d.set_item("ok", a2(gil, soa.ok, (nw, n)))?;
     d.set_item(
-        "wavelengths",
+        "waves",
         o.ws.iter()
             .map(|&w| w as i64 + 1)
             .collect::<Vec<_>>()
@@ -1972,7 +1972,7 @@ impl PySystem {
     ///
     /// Returned arrays (shape (wavelength, ray)): x, y, z, l, m, n (position and direction cosines in local coordinates of the last surface),
     /// opl (optical path length), opl_os (OpticStudio's raw optical path length), lens_opd (phase of ideal lenses), err and vig (number of the surface where the ray stopped
-    /// or was vignetted, 0 if it passed), ok (err and vig both 0). Also wavelengths (numbers), last, hx and hy for a field,
+    /// or was vignetted, 0 if it passed), ok (err and vig both 0). Also waves (numbers), last, hx and hy for a field,
     /// object for an object. With record, rec_surfaces and rec_x … rec_opl (rec_gx, rec_gy, rec_gz are global)
     #[pyo3(signature = (field, px, py, waves=None, last=None, record=RecArg::Flag(false), pol=None, pol_phase=false, globals=false, object=None, grad=None, threads=None, pupil="normalized", dz=None, land=false, pol_grid=None))]
     #[allow(clippy::too_many_arguments)]
@@ -2248,7 +2248,7 @@ impl PySystem {
     /// the reasons in warnings
     #[pyo3(signature = (field, freqs, dz, wave=None, n=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
-    fn through_focus_mtf<'py>(
+    fn mtf_focus<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,
@@ -2271,7 +2271,7 @@ impl PySystem {
     /// tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
     #[pyo3(signature = (freqs, h, axis="y", wave=None, n=None, threads=None))]
     #[allow(clippy::too_many_arguments)]
-    fn field_mtf<'py>(
+    fn mtf_field<'py>(
         &self,
         py: Python<'py>,
         freqs: PyArrayLike1<'_, f64, AllowTypeChange>,
@@ -2629,7 +2629,7 @@ impl PySystem {
     /// The returned dict has the same form as mtf
     #[pyo3(signature = (field, freqs, wave=None, n=128, diff_limit=false, threads=None))]
     #[allow(clippy::too_many_arguments)]
-    fn geometric_mtf<'py>(
+    fn geo_mtf<'py>(
         &self,
         py: Python<'py>,
         field: FieldArg,

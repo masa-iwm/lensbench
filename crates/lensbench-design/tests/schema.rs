@@ -96,7 +96,7 @@ fn terms_schema_matches_reader() {
     assert!(
         e.message()
             .unwrap_or_default()
-            .starts_with("type nope（spot・"),
+            .starts_with("type nope (one of spot, "),
         "{e}"
     );
     assert!(terms(serde_json::json!({"type": "paraxial", "q": "efl"})).is_err());

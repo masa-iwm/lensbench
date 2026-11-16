@@ -16,7 +16,7 @@ impl Core {
         // 続きは答え（{gui, blocks}。.zmx は組合せにできたら combo）を受けて [`Self::open_doc_peeked`]
         let mut q = json!({ "file": p.display().to_string() });
         if !is_json {
-            q["glass_dirs"] = glass_dirs(&self.s.glass_dirs);
+            q["glass_dirs"] = dirs(&self.s.glass_dirs);
             q["lens_catalogs"] = dirs(&self.s.lens_dirs);
         }
         self.preview.send(Tag::OpenDoc, "doc_peek", q);
@@ -85,7 +85,7 @@ impl Core {
     pub(super) fn load_params(&self, p: &Path) -> Value {
         let mut v = json!({
             "file": p.display().to_string(),
-            "glass_dirs": glass_dirs(&self.s.glass_dirs),
+            "glass_dirs": dirs(&self.s.glass_dirs),
             "lens_catalogs": dirs(&self.s.lens_dirs),
         });
         // 組合せの今の状態

@@ -126,7 +126,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<T
         "plugin",
     ];
     if !TYPES.contains(&ty.as_str()) {
-        return Err(format!("type {ty}（{}）", TYPES.join("・")).into());
+        return Err(format!("type {ty} (one of {})", TYPES.join(", ")).into());
     }
     if side != Side::Eq && ["spot", "wavefront", "wfe", "zplm", "plugin"].contains(&ty.as_str()) {
         return Err(format!(

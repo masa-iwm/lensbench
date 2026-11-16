@@ -123,7 +123,6 @@ pub fn main() -> std::process::ExitCode {
     crash::install(settings_dir.clone());
     fill::set_fill_dir(settings_dir.clone());
     cad_fetch::set_cad_dir(settings_dir.clone());
-    builtin_glass::install(settings_dir.clone());
     samples::install(settings_dir.clone());
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);

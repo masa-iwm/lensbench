@@ -64,8 +64,12 @@ fn spot_and_zernike() {
 
 #[test]
 fn errors() {
+    // ガラスのフォルダが無くても同梱の SCHOTT で開き、同梱から取ったガラスを知らせる（CLI-31）
     let (ok, _, err) = run(&["spot", ZMX]);
-    assert!(!ok && err.contains("N-SK16"), "{err}");
+    assert!(
+        ok && err.contains("N-SK16") && err.contains("built-in catalog"),
+        "{err}"
+    );
     let (ok, _, err) = run(&["spot", ZMX, "--glass-dir", "tests/glass", "--field", "9"]);
     assert!(!ok && err.contains("field 9"), "{err}");
 }
@@ -317,7 +321,7 @@ fn rays_and_analysis_are_saved() {
         ZMX,
         "--glass-dir",
         "tests/glass",
-        "--field",
+        "--fields",
         "2",
         "--pupil",
         "0,0,0,1",
@@ -441,7 +445,7 @@ fn layout_and_rays_follow_the_state() {
             "tests/glass",
             "--pupil",
             "0,1",
-            "--field",
+            "--fields",
             "1",
             "--state",
             st,
@@ -587,10 +591,12 @@ fn convert_to_system_file() {
         serde_json::from_str::<serde_json::Value>(&out).unwrap()
     };
     assert_eq!(spot(ZMX, &[])["spot"], spot(fs, &[])["spot"]);
-    // 系ファイルはガラスを名前だけで持つので、カタログのフォルダが要る（無ければ誤りに案内が付く）
+    // 系ファイルはガラスを名前と hash で持つ。フォルダに無ければ同梱のカタログで開き、注意（渡し方の案内・hash の違い）を出す（CLI-31）
     let (ok, _, err) = run(&["info", fs, "--json"]);
     assert!(
-        !ok && err.contains("glass catalog") && err.contains("--glass-dir"),
+        ok && err.contains("built-in catalog")
+            && err.contains("--glass-dir")
+            && err.contains("differs from when the file was saved"),
         "{err}"
     );
     let (ok, out, err) = run(&["info", fs, "--glass-dir", "tests/glass", "--json"]);
@@ -966,8 +972,17 @@ fn exit_codes_by_kind() {
     let (c, err) = code(&["info", ni.to_str().unwrap()]);
     assert_eq!(c, Some(4), "{err}");
     std::fs::remove_dir_all(&dir).ok();
-    // 系の不正は 1（ガラスが無いときは渡し方の案内が文に入る）
-    let (c, err) = code(&["spot", ZMX]);
+    // 系の不正は 1（ガラスが無いときは渡し方の案内が文に入る。同梱にも無いカタログ）
+    let dir = std::env::temp_dir().join(format!("lb-exit-glass-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ng = dir.join("glass.zmx");
+    std::fs::write(
+        &ng,
+        "VERS 190513 80 123457\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nWAVM 1 0.5876 1\nGCAT NOSUCHCAT\nSURF 0\n  DISZ INFINITY\nSURF 1\n  STOP\n  DISZ 5\n  GLAS N-BK7 0 0 1.5 40 0 0 0 0 0 0\nSURF 2\n  DISZ 10\nSURF 3\n",
+    )
+    .unwrap();
+    let (c, err) = code(&["spot", ng.to_str().unwrap()]);
+    std::fs::remove_dir_all(&dir).ok();
     assert_eq!(c, Some(1), "{err}");
     assert!(err.contains("--glass-dir"), "{err}");
 }

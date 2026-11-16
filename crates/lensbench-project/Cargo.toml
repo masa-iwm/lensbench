@@ -35,3 +35,8 @@ jsonschema = { version = "0.60", default-features = false }
 [[test]]
 name = "it"
 path = "tests/it.rs"
+
+# 例外: 同梱のガラスカタログの往復は別の exe（このプロセスで読んだ AGF が候補になるので、tests/glass を読む it と分ける）
+[[test]]
+name = "builtin_glass"
+path = "tests/builtin_glass.rs"

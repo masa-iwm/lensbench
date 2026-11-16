@@ -509,14 +509,6 @@ fn dirs(v: &[String]) -> Value {
     json!(v)
 }
 
-/// serve に渡すガラスのフォルダ（アプリ版は同梱のカタログを後ろに足す、GUX-01）
-fn glass_dirs(v: &[String]) -> Value {
-    #[cfg(not(target_arch = "wasm32"))]
-    return crate::builtin_glass::dirs(v);
-    #[cfg(target_arch = "wasm32")]
-    dirs(v)
-}
-
 impl Core {
     /// 最適化・公差・差し替えのパネルの設定（変数・項・公差の表。serve の optimize・tolerance・swap と同じ形）。
     /// 空のパネルは入れない（GPN-14）
@@ -646,14 +638,14 @@ impl Core {
         self.preview.send(
             Tag::Glasses,
             "glasses",
-            json!({ "glass_dirs": glass_dirs(&self.s.glass_dirs) }),
+            json!({ "glass_dirs": dirs(&self.s.glass_dirs) }),
         );
         self.preview.send(
             Tag::Lenses,
             "lenses",
             json!({
                 "lens_catalogs": dirs(&self.s.lens_dirs),
-                "glass_dirs": glass_dirs(&self.s.glass_dirs),
+                "glass_dirs": dirs(&self.s.glass_dirs),
             }),
         );
         self.browser.loaded = true;

@@ -23,7 +23,7 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 
 - 起動すると最初の行に `{"listening": "127.0.0.1:7010", "port": 7010, "version": "..."}` を出す（`--pipe` なら `{"listening", "pipe", "version"}`）
 - 既定は 127.0.0.1 だけで待ち受ける。認証はないので、ほかのアドレスは `--allow-remote` を付けたときだけ
-- 要求で与えたパス（`load` の file・glass_dirs・lens_catalogs、`write` の path、`analyze` の save・out・out_dir・coatings）の扱い:
+- 要求で与えたパス（`load` の file・glass_dirs・lens_catalogs、`write` の path、`analyze` の save・out・coatings）の扱い:
   - 既定（localhost だけ）: そのまま読み書きする（同じ利用者からの要求なので）
   - `--root DIR`: DIR の下だけ（相対パスは DIR から。シンボリックリンクは先の実体で確かめる）。外は `--root の外` のエラー
   - `--allow-remote` で `--root` なし: 要求ではファイルを読み書きしない。起動時に与えた系と、その読み方での `reload`・ファイルを書かない解析だけ

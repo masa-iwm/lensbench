@@ -41,7 +41,7 @@ class _TraceResultBase(TypedDict):
     err: NDArray[np.int32]
     vig: NDArray[np.int32]
     ok: NDArray[np.bool_]
-    wavelengths: NDArray[np.int64]
+    waves: NDArray[np.int64]
     last: int
 
 
@@ -82,7 +82,7 @@ class _TraceResult(_TraceResultBase, total=False):
 
 
 class _MtfResultBase(TypedDict):
-    """Diffraction MTF (mtf, geometric_mtf, huygens_mtf). tangential and sagittal are [wavelength][frequency] (each_wave) or [frequency]"""
+    """Diffraction MTF (mtf, geo_mtf, huygens_mtf). tangential and sagittal are [wavelength][frequency] (each_wave) or [frequency]"""
     freqs: NDArray[np.float64]
     tangential: NDArray[np.float64]
     sagittal: NDArray[np.float64]
@@ -600,11 +600,6 @@ class System:
         the coupling of input polarization e is |jones @ e|²). With clip_stop=True (default) light passing outside the system stop (a circle of the stop radius without an aperture) counts as system loss (as FICL). Finite-object systems only
         """
 
-    def field_mtf(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None) -> _FieldMtf:
-        """Field MTF: the diffraction MTF for each normalized field h (0 to 1, in the direction axis "y" or "x").
-        tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
-        """
-
     @property
     def field_type(self) -> Any:
         """The field type: "angle", "object_height", "paraxial_image_height", "real_image_height",
@@ -643,7 +638,7 @@ class System:
           fixed at their values and reported in warnings
         """
 
-    def geometric_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None) -> _MtfResult:
+    def geo_mtf(self, field: _Field, freqs: ArrayLike, wave: int | None = None, n: int = 128, diff_limit: bool = False, threads: int | None = None) -> _MtfResult:
         """Geometric MTF: from the distribution of ray positions. n is a guide for the number of pupil quadrature points; diff_limit applies the diffraction-limited MTF.
         The returned dict has the same form as mtf
         """
@@ -744,6 +739,17 @@ class System:
         fast with many frequencies, about 1e-4 from the quadrature) or "direct" (for checking).
         Returned dict: freqs, tangential, sagittal (numpy), cutoff (tangential and sagittal cutoff frequencies [cycles/mm] at the calculated wavelength; the primary wavelength for polychromatic).
         each_wave=True also returns waves (a list of dicts per wavelength, faster than computing them separately) besides the polychromatic one (can't be used with wave)
+        """
+
+    def mtf_field(self, freqs: ArrayLike, h: ArrayLike, axis: str = "y", wave: int | None = None, n: int | None = None, threads: int | None = None) -> _FieldMtf:
+        """Field MTF: the diffraction MTF for each normalized field h (0 to 1, in the direction axis "y" or "x").
+        tangential and sagittal are (frequency, h) arrays, field_value the field values (system units)
+        """
+
+    def mtf_focus(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None) -> _ThroughFocusMtf:
+        """Through-focus MTF: the diffraction MTF with the image surface shifted by dz [lens units] (changes the thickness before the image surface;
+        thickness solves are not solved again). tangential and sagittal are (frequency, dz) arrays. Points that can't be calculated are NaN, with
+        the reasons in warnings
         """
 
     @property
@@ -890,12 +896,6 @@ class System:
         pimh, pmag, totr, obna, isna). At the primary wavelength, values of the system after changes
         """
 
-    def through_focus_mtf(self, field: _Field, freqs: ArrayLike, dz: ArrayLike, wave: int | None = None, n: int | None = None, threads: int | None = None) -> _ThroughFocusMtf:
-        """Through-focus MTF: the diffraction MTF with the image surface shifted by dz [lens units] (changes the thickness before the image surface;
-        thickness solves are not solved again). tangential and sagittal are (frequency, dz) arrays. Points that can't be calculated are NaN, with
-        the reasons in warnings
-        """
-
     def to_json(self) -> str:
         """The content of the system file (a JSON string). Warns like save"""
 
@@ -955,7 +955,7 @@ class System:
 
         Returned arrays (shape (wavelength, ray)): x, y, z, l, m, n (position and direction cosines in local coordinates of the last surface),
         opl (optical path length), opl_os (OpticStudio's raw optical path length), lens_opd (phase of ideal lenses), err and vig (number of the surface where the ray stopped
-        or was vignetted, 0 if it passed), ok (err and vig both 0). Also wavelengths (numbers), last, hx and hy for a field,
+        or was vignetted, 0 if it passed), ok (err and vig both 0). Also waves (numbers), last, hx and hy for a field,
         object for an object. With record, rec_surfaces and rec_x … rec_opl (rec_gx, rec_gy, rec_gz are global)
         """
 

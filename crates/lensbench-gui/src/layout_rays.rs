@@ -77,11 +77,11 @@ impl RaySet {
         };
         let f = pick(&self.fields, n_fields);
         if !f.is_empty() {
-            v["field"] = json!(f);
+            v["fields"] = json!(f);
         }
         let w = pick(&self.waves, n_waves);
         if !w.is_empty() {
-            v["wave"] = json!(w);
+            v["waves"] = json!(w);
         }
         if !self.fan.is_empty() {
             v["fan"] = json!(self.fan);
@@ -288,11 +288,11 @@ mod tests {
         r.apply(&mut v, 3, 3, false);
         assert_eq!(
             v,
-            json!({ "field": [1, 3], "wave": [2], "fan": "grid", "rays": 9, "first": 2, "color": "wave" })
+            json!({ "fields": [1, 3], "waves": [2], "fan": "grid", "rays": 9, "first": 2, "color": "wave" })
         );
         let mut v = json!({});
         r.apply(&mut v, 0, 0, true);
-        assert_eq!(v["field"], json!([1, 3, 5]));
+        assert_eq!(v["fields"], json!([1, 3, 5]));
         assert_eq!(v["width"], json!(800));
         assert_eq!(v["tube"], json!(0.05));
         assert!(v.get("segments").is_none());

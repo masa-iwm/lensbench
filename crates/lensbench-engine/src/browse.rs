@@ -47,12 +47,25 @@ pub fn glasses(dirs: &[PathBuf]) -> Value {
             }
         }
     }
-    let mut catalogs = Vec::new();
-    let mut out = Vec::new();
+    // フォルダの AGF、続けてフォルダに無い同梱のカタログ（CLI-31。path は "(built-in)"）
+    let mut sets: Vec<(String, String, glass::builtin::Glasses)> = Vec::new();
     for f in &files {
         let Ok(gs) = glass::load_agf(f) else {
             continue;
         };
+        let stem = f.file_stem().map(|s| s.to_string_lossy().into_owned());
+        sets.push((stem.unwrap_or_default(), f.display().to_string(), gs.into()));
+    }
+    for c in glass::builtin::catalogs() {
+        if !sets.iter().any(|(n, _, _)| n.eq_ignore_ascii_case(c)) {
+            if let Some(g) = glass::builtin::catalog(c) {
+                sets.push((c.to_string(), "(built-in)".into(), g));
+            }
+        }
+    }
+    let mut catalogs = Vec::new();
+    let mut out = Vec::new();
+    for (stem, path, gs) in &sets {
         let mut names: Vec<&String> = gs.keys().collect();
         names.sort();
         for n in &names {
@@ -69,8 +82,8 @@ pub fn glasses(dirs: &[PathBuf]) -> Value {
             }));
         }
         catalogs.push(json!({
-            "name": f.file_stem().map(|s| s.to_string_lossy().into_owned()),
-            "path": f.display().to_string(),
+            "name": stem,
+            "path": path,
             "count": names.len(),
         }));
     }

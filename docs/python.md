@@ -76,8 +76,8 @@ CLI では単数形の旗を繰り返します。
 
 旧名（`split_path`・`--path`・`path`、`--paths`・`paths`（layout）、`wavelengths=`（番号）・`wavelength=`、
 `glass_dir`・`lens_catalog`（serve）、`--ref`・`ref`（rms・公差の設定））は受けません（2.0 で変えた）。
-解析の名前は CLI のサブコマンド（`geo-mtf`・`mtf-focus`・`mtf-field`）と Python のメソッド（`geometric_mtf`・
-`through_focus_mtf`・`field_mtf`）で違います（CLI-02 の登録簿でそろえる予定）。
+解析のメソッドの名前は CLI のサブコマンド・登録簿の名前の `-` を `_` にしたもの（`geo_mtf`・`mtf_focus`・`mtf_field`。
+旧名 `geometric_mtf`・`through_focus_mtf`・`field_mtf` は受けません）。`trace` の結果の波長の番号は `waves`（引数と同じ名前）。
 
 ### 座標
 
@@ -131,7 +131,7 @@ r = s.analyze("mtf", field=1, max_freq=100)  # 結果は CLI の --json と同�
 
 ## 結果の型
 
-結果は dict です。主な結果（`trace`・`trace_rays`・`mtf`・`geometric_mtf`・`huygens_mtf`・`through_focus_mtf`・`field_mtf`・`psf`・
+結果は dict です。主な結果（`trace`・`trace_rays`・`mtf`・`geo_mtf`・`huygens_mtf`・`mtf_focus`・`mtf_field`・`psf`・
 `huygens_psf`・`cardinal`・`optimize`）は型スタブに鍵と型を書いてあり（`lensbench.pyi` の `_TraceResult` などの `TypedDict`）、
 エディタの補完と mypy の検査が効きます。実行時の型は dict のままです。オプションで付く鍵（`record=True` の `rec_x` など）は
 `total=False` の側にあります。
