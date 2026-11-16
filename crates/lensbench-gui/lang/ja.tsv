@@ -307,7 +307,10 @@ Type	タイプ
 Open a system or build one from the combination to see its surfaces here.	系を開くか、組合せで系を作ると、面の表が出ます。
 System file	系ファイル
 In a combination, lock whole elements	組合せでは要素ごとにロックする
-Combination system: changes are kept in the combination elements (the trailing air is the element spacing, other values are surface overrides). Set decenter, tilt and BS in the element settings.	組合せの系: 変えた値は組合せの要素に残ります（後の空気は要素の間隔、ほかは面の上書き）。偏心・チルト・BS は要素の設定で。
+Combination system: changes go into the combination elements (the trailing air is the element spacing). Catalog lenses and imported elements keep them as surface overrides, marked in the cell (right-click to remove). Set decenter, tilt and BS in the element settings.	組合せの系: 変えた値は組合せの要素に入ります（後の空気は要素の間隔）。カタログのレンズと取り込んだ要素では面の上書きになり、セルに印が付きます（右クリックで解除）。偏心・チルト・BS は要素の設定で。
+Remove override	上書きを解除
+Back to the value of the element	要素の値に戻す
+Overridden in this combination (right-click to remove)	この組合せで上書きした値（右クリックで解除）
 Surface outside the combination elements (only the thickness of the leading stop can be changed)	組合せの要素の外の面（前の絞りは厚みだけ）
 Coating	コーティング
 The spacing must be 0 or more	間隔は 0 以上

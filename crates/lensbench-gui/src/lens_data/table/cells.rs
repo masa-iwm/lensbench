@@ -537,9 +537,27 @@ fn value_cell(
             egui::StrokeKind::Inside,
         );
     }
+    // 組合せの要素の面の上書き: 左上の小さな三角（表計算のメモの印のように）
+    let over = (c.overridden)(j, col);
+    if over {
+        let rc = ui.max_rect();
+        let w = 6.0;
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                rc.left_top(),
+                rc.left_top() + egui::vec2(w, 0.0),
+                rc.left_top() + egui::vec2(0.0, w),
+            ],
+            crate::theme::warn(ui.visuals()),
+            egui::Stroke::NONE,
+        ));
+    }
+    let over_why = || tr("Overridden in this combination (right-click to remove)");
     let resp = match (&ro, &solved) {
         (Some(why), _) => resp.on_hover_text(why),
+        (None, Some((_, why))) if over => resp.on_hover_text(format!("{why}\n{}", over_why())),
         (None, Some((_, why))) => resp.on_hover_text(why),
+        (None, None) if over => resp.on_hover_text(over_why()),
         _ => resp,
     };
     if resp.clicked() || resp.double_clicked() || resp.secondary_clicked() {
@@ -558,6 +576,7 @@ fn value_cell(
         }
     }
     resp.context_menu(|ui| {
+        out.fx.acts.extend(override_item(ui, c, j, col));
         if ro.is_none() {
             out.fx.acts.extend(cell_menu(
                 ui,

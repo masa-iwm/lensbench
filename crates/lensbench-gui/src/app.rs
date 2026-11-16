@@ -9,6 +9,7 @@ mod doc_loc;
 mod folders;
 mod help;
 mod history;
+mod ld_combo;
 use history::{ComboHist, DocHist};
 mod menus;
 mod open_doc;
@@ -1808,8 +1809,10 @@ impl Core {
         self.combo_sel_prev = self.p.combo_view.sel;
         let rows = &self.sys.ld_rows;
         let read_only = |j: usize, col: Col| -> Option<String> {
-            combo_read_only(is_combo, rows, &spans, picks, lead, j, col)
+            ld_combo::read_only(is_combo, rows, &spans, picks, lead, j, col)
         };
+        let overridden =
+            |j: usize, col: Col| is_combo && ld_combo::overridden(rows, &spans, picks, j, col);
         let cfg_rows: Vec<String> = self
             .p
             .mc
@@ -1826,10 +1829,11 @@ impl Core {
             blocks: &self.sys.ld_blocks,
             locked: &locked,
             read_only: &read_only,
+            overridden: &overridden,
             combo: is_combo,
             unit_mech: (!is_combo).then_some(self.um_open),
             note: is_combo.then(|| tr(
-                "Combination system: changes are kept in the combination elements (the trailing air is the element spacing, other values are surface overrides). Set decenter, tilt and BS in the element settings.",
+                "Combination system: changes go into the combination elements (the trailing air is the element spacing). Catalog lenses and imported elements keep them as surface overrides, marked in the cell (right-click to remove). Set decenter, tilt and BS in the element settings.",
             )),
         };
         let (acts, mut bottom) = lens_data::ui(ui, &mut self.p.ld, &ctx);
@@ -1919,6 +1923,18 @@ impl Core {
                         }
                     } else {
                         self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                    }
+                }
+                Act::DropOverride { j, col } => {
+                    if let Some((k, i)) = self.combo_face(&spans, j) {
+                        let names = ld_combo::override_fields(col);
+                        if let Some(p) = self.doc.combo.el_mut(k) {
+                            p.edits
+                                .retain(|e| !(e.surface == i && names.contains(&e.field.as_str())));
+                        }
+                        if !self.s.auto_build {
+                            self.build_combo(self.doc.combo.project());
+                        }
                     }
                 }
                 Act::DropPick { after, pick } => {
@@ -2209,15 +2225,7 @@ impl Core {
 
     /// 組合せの系の面 j（系の面の番号）の要素と、要素の面の番号（座標ブレークを除く）
     fn combo_face(&self, spans: &[Option<[usize; 2]>], j: usize) -> Option<(usize, usize)> {
-        let k = spans
-            .iter()
-            .position(|s| s.is_some_and(|s| s[0] <= j && j <= s[1]))?;
-        let a = spans[k]?[0];
-        let rows = &self.sys.ld_rows;
-        if !rows.get(j).is_some_and(|r| !r.is_cb()) {
-            return None;
-        }
-        Some((k, (a..j).filter(|&i| !rows[i].is_cb()).count()))
+        ld_combo::face_of(&self.sys.ld_rows, spans, j)
     }
 
     /// 組合せの系の面 j の値 key を、組合せの要素に当てる（要素の最後の面の厚さは後の空気、ほかは要素の中身か面の上書き）
@@ -3339,54 +3347,6 @@ pub(crate) fn split_open(
     z2.range = [a + 1, 0];
     z2.zgroups.retain(|g| g.from > a);
     vec![z1, p, z2]
-}
-
-fn combo_read_only(
-    is_combo: bool,
-    rows: &[lens_data::Row],
-    spans: &[Option<[usize; 2]>],
-    picks: &[combo::Pick],
-    lead: bool,
-    j: usize,
-    col: lens_data::Col,
-) -> Option<String> {
-    use lens_data::Col;
-    if !is_combo {
-        return None;
-    }
-    let img = rows.len().saturating_sub(1);
-    if j == 0 || j >= img {
-        return Some(tr("Set the object and image surfaces in the combination settings").into());
-    }
-    let Some(k) = spans
-        .iter()
-        .position(|s| s.is_some_and(|s| s[0] <= j && j <= s[1]))
-    else {
-        if lead && rows[j].stop && col == Col::T {
-            return None;
-        }
-        return Some(tr("Surface outside the combination elements (only the thickness of the leading stop can be changed)").into());
-    };
-    if picks.get(k).is_some_and(|p| p.fixed())
-        && col == Col::T
-        && spans[k].is_some_and(|s| s[1] == j)
-    {
-        return Some(tr("The gap after an element locked with its position cannot change").into());
-    }
-    if picks
-        .get(k)
-        .is_some_and(|p| p.kind == combo::ElemKind::Splitter)
-    {
-        return Some(tr("Set the BS in the element settings").into());
-    }
-    let end = spans[k].map(|s| s[1]).unwrap_or(j);
-    if col == Col::T && j == end {
-        return None;
-    }
-    if rows[j].is_cb() {
-        return Some(tr("Set decenter and tilt in the element settings").into());
-    }
-    None
 }
 
 /// missing は見つからないフォルダ（下書きの Worker が調べた分、[`Core::ask_folders`]）

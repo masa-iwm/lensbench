@@ -550,6 +550,7 @@ fn drive_with(
         blocks,
         locked,
         read_only: &ro,
+        overridden: &|_, _| false,
         combo: false,
         unit_mech: None,
         note: None,

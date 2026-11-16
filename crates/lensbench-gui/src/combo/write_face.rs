@@ -293,8 +293,18 @@ impl Pick {
 impl Pick {
     /// 面を足す（[`Self::insert_rows`]）。この要素の面の上書き・絞り・ソルブ・ピックアップは番号をずらして残す
     pub fn insert_face(&mut self, pos: usize) -> Result<(), String> {
+        let n = self.lens_rows().len();
         self.insert_rows(pos)?;
         self.shift_faces(&|i| Some(if i >= pos { i + 1 } else { i }));
+        // 玉の端に足すと、空気との境目は足した面に移る。端の面の膜の上書きも新しい端の面へ（透過・偏光を変えない）
+        if self.kind == ElemKind::Lens && (pos == 0 || pos == n) {
+            let (from, to) = if pos == 0 { (1, 0) } else { (n - 1, n) };
+            for e in &mut self.edits {
+                if e.surface == from && e.field == "coating" {
+                    e.surface = to;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -666,6 +676,26 @@ mod tests {
         c.shift_block_refs("L1", &|x| (x != 3).then(|| x - usize::from(x > 3)));
         assert!(c.picks[0].edits.is_empty() && c.picks[0].ops.is_empty());
         assert!(c.picks[1].ops.is_empty());
+    }
+
+    /// 玉の端に足すと、端の面の膜の上書きは新しい端の面へ移る（中に足したときは番号がずれるだけ）
+    #[test]
+    fn coating_moves_to_new_end() {
+        let faces = |pos: usize, on: usize| {
+            let mut p = lens();
+            p.set_edit(on, "coating", json!("AR"));
+            p.set_edit(on, "semi", json!(9.0));
+            p.insert_face(pos).unwrap();
+            let f = |k: &str| p.edits.iter().find(|e| e.field == k).unwrap().surface;
+            (f("coating"), f("semi"))
+        };
+        // 前の端: 膜は新しい面 0 へ、半径の上書きは元の面（1）に
+        assert_eq!(faces(0, 0), (0, 1));
+        // 後ろの端: 膜は新しい面 2 へ
+        assert_eq!(faces(2, 1), (2, 1));
+        // 中: どちらも番号がずれるだけ
+        assert_eq!(faces(1, 1), (2, 2));
+        assert_eq!(faces(1, 0), (0, 0));
     }
 
     /// 中身を変えない要素（カタログの玉）は上書き
