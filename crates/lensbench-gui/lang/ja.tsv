@@ -313,7 +313,7 @@ Overridden in this combination (right-click to remove)	この組合せで上書�
 Surface outside the combination elements (only the thickness of the leading stop can be changed)	組合せの要素の外の面（前の絞りは厚みだけ）
 Coating	コーティング
 The spacing must be 0 or more	間隔は 0 以上
-{} values changed in Lens Data	面の表で変えた値 {} 件
+Changed in Lens Data: {}	面の表で変えた値 {} 件
 Press Enter or click outside to apply. Aperture is "None" or {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}; tilt/decenter is {"d": [dx, dy, tx, ty, tz], "order": 0} (after: "None", "Reverse" or {"Tilt": …})	Enter・欄の外のクリックで決めます。開口は "None" か {"Circular": {"min": 0, "max": 5, "dx": 0, "dy": 0}}、チルト・偏心は {"d": [dx, dy, tx, ty, tz], "order": 0}（後は "None"・"Reverse"・{"Tilt": …}）
 {} surfaces	{} 面
 Ignore this surface	この面を無視
@@ -1494,7 +1494,7 @@ Make an optimization variable ({})	最適化の変数にする（{}）
 Status history	状態の履歴
 Select a row to see its cross-section	行を選択すると断面が出ます
 {} elements	要素 {} 個
-The element's surfaces changed, so {} values changed in Lens Data were dropped (Ctrl+Z to undo)	要素の面が変わったので、面の表で変えた値 {} 件を破棄しました（Ctrl+Z で元に戻す）
+The element's surfaces changed, so the values changed in Lens Data ({}) were dropped (Ctrl+Z to undo)	要素の面が変わったので、面の表で変えた値 {} 件を破棄しました（Ctrl+Z で元に戻す）
 Open / close the analysis settings ({} changed)	解析の設定の欄を開く・閉じる（{} 個を変更）
 Search analyses, panels and commands (Ctrl+K)	解析・パネル・操作を探す（Ctrl+K）
 Reloaded (Ctrl+Z to undo)	再読み込みしました（Ctrl+Z で元に戻す）

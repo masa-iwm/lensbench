@@ -79,8 +79,40 @@ pub fn install(ctx: &egui::Context) -> Option<String> {
         .entry(FontFamily::Monospace)
         .or_default()
         .push("ja".into());
+    if let Ok(mut d) = DEFS.lock() {
+        *d = Some(fonts.clone());
+    }
     ctx.set_fonts(fonts);
     Some(path)
+}
+
+/// 入れたフォント（言語を変えたときに並べ直す）
+static DEFS: std::sync::Mutex<Option<FontDefinitions>> = std::sync::Mutex::new(None);
+
+/// 文章のフォントの順を今の言語に合わせる: 日本語は日本語のフォントを先に、英語は欧文のフォントを先に
+/// （日本語のフォントの英字は字間が広く、英語の文が切れ・折り返しやすい、GUX-32）。日本語のフォントが無ければ何もしない
+pub fn follow_lang(ctx: &egui::Context) {
+    let Some(mut fonts) = DEFS.lock().ok().and_then(|d| d.clone()) else {
+        return;
+    };
+    let prop = fonts.families.entry(FontFamily::Proportional).or_default();
+    if reorder(prop, crate::i18n::is_ja()) {
+        ctx.set_fonts(fonts);
+    }
+}
+
+/// 文章のフォントの並びで日本語のフォントを先頭（ja）か最後（英語）に。変えたか
+fn reorder(fam: &mut Vec<String>, ja: bool) -> bool {
+    let Some(i) = fam.iter().position(|f| f == "ja") else {
+        return false;
+    };
+    let name = fam.remove(i);
+    if ja {
+        fam.insert(0, name);
+    } else {
+        fam.push(name);
+    }
+    true
 }
 
 /// 記号 `sym` がフォントに無ければ代わりの字 `alt`（豆腐 □ を出さない、GUX-24・GUX-29）
@@ -121,6 +153,17 @@ mod tests {
     use super::*;
 
     /// GUX-29: 無い記号は代わりの字に、ある記号はそのまま
+    #[test]
+    fn reorder_puts_japanese_first_or_last() {
+        let mut f: Vec<String> = ["ja", "Ubuntu", "emoji"].map(String::from).to_vec();
+        assert!(reorder(&mut f, false));
+        assert_eq!(f, ["Ubuntu", "emoji", "ja"]);
+        assert!(reorder(&mut f, true));
+        assert_eq!(f, ["ja", "Ubuntu", "emoji"]);
+        let mut none: Vec<String> = vec!["Ubuntu".into()];
+        assert!(!reorder(&mut none, true));
+    }
+
     #[test]
     fn gux29_glyph_or_falls_back_for_missing_symbols() {
         let ctx = egui::Context::default();

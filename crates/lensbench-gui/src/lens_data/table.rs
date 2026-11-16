@@ -412,14 +412,26 @@ fn table(top: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, npar: u8, out: &mut
         .show(top, |ui| {
             // 文字を選べるラベルはクリックを取ってしまう（セルの空き・行のクリックが行に届かない）
             ui.style_mut().interaction.selectable_labels = false;
+            // 面の列の幅は見出しが入る幅から（英語の「Surface」が切れない、GUX-32）
+            let surf_w =
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        tr("Surface").into(),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        egui::Color32::WHITE,
+                    )
+                })
+                .size()
+                .x + 2.0 * ui.spacing().item_spacing.x
+                    + 4.0;
             let mut table = TableBuilder::new(ui)
-                .id_salt(("lens_data", npar))
+                .id_salt(("lens_data", npar, crate::i18n::is_ja()))
                 .max_scroll_height(table_h)
                 .auto_shrink([false, true])
                 .striped(true)
                 .resizable(true)
                 .sense(Sense::click())
-                .column(Column::initial(40.0).at_least(30.0))
+                .column(Column::initial(surf_w.max(40.0)).at_least(30.0))
                 .column(Column::initial(70.0).at_least(30.0));
             for (n, &col) in cols.iter().enumerate() {
                 table = table.column(if n + 1 == cols.len() {

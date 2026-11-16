@@ -130,3 +130,76 @@ pub fn filter_glasses(rows: &[GlassRow], q: &GlassFilter) -> Vec<usize> {
         })
         .collect()
 }
+
+/// 範囲の入力（チェックで有効にする）
+pub(super) fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64), speed: f64) {
+    ui.label(label);
+    let mut on = r.min.is_some();
+    if ui.checkbox(&mut on, tr("Min")).changed() {
+        r.min = on.then_some(default.0);
+    }
+    if let Some(m) = r.min.as_mut() {
+        ui.add(egui::DragValue::new(m).speed(speed));
+    }
+    let mut on = r.max.is_some();
+    if ui.checkbox(&mut on, tr("Max")).changed() {
+        r.max = on.then_some(default.1);
+    }
+    if let Some(m) = r.max.as_mut() {
+        ui.add(egui::DragValue::new(m).speed(speed));
+    }
+}
+
+/// 種類の選択（「機構部品（すべて）」と、一覧にある品の種類）
+pub(super) fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
+    let name = |k: &str| {
+        CATEGORIES
+            .iter()
+            .find(|(c, _)| *c == k)
+            .map_or(k.to_string(), |(_, n)| tr(n).to_string())
+    };
+    let mech_all = tr("Mechanics (all)");
+    let optics_all = tr("Optics (all)");
+    let selected = match (&q.category, q.kind_group) {
+        (Some(c), _) => name(c),
+        (None, Some(true)) => mech_all.to_string(),
+        (None, Some(false)) => optics_all.to_string(),
+        (None, None) => tr("All").to_string(),
+    };
+    let has_mech = kinds.has_mech;
+    egui::ComboBox::from_id_salt("category")
+        .selected_text(selected)
+        .height(480.0)
+        .show_ui(ui, |ui| {
+            let mut pick = |ui: &mut Ui, cat: Option<&str>, group: Option<bool>, label: String| {
+                let sel = q.category.as_deref() == cat && (cat.is_some() || q.kind_group == group);
+                if ui.selectable_label(sel, label).clicked() {
+                    q.category = cat.map(str::to_string);
+                    q.kind_group = if cat.is_some() { None } else { group };
+                }
+            };
+            pick(ui, None, None, tr("All").to_string());
+            if has_mech {
+                pick(ui, None, Some(false), optics_all.to_string());
+                pick(ui, None, Some(true), mech_all.to_string());
+            }
+            // 光学素子の種類、続けて機構部品の種類
+            for mech in [false, true] {
+                let ks = if mech { &kinds.mech } else { &kinds.optics };
+                if ks.is_empty() {
+                    continue;
+                }
+                ui.separator();
+                if has_mech {
+                    ui.weak(if mech {
+                        tr("Mechanical parts")
+                    } else {
+                        tr("Optics")
+                    });
+                }
+                for &k in ks {
+                    pick(ui, Some(k), None, format!("  {}", name(k)));
+                }
+            }
+        });
+}

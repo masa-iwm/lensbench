@@ -83,7 +83,7 @@ pub(super) fn element_settings(
         if !p.edits.is_empty() || !p.ops.is_empty() {
             ui.label(
                 RichText::new(trf(
-                    "{} values changed in Lens Data",
+                    "Changed in Lens Data: {}",
                     &[&(p.edits.len() + p.ops.len())],
                 ))
                 .color(ui.visuals().warn_fg_color),

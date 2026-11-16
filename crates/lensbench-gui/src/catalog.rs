@@ -14,6 +14,7 @@ pub use filter::CATEGORIES;
 use std::sync::Arc;
 
 pub use filter::{filter_glasses, filter_lenses};
+use filter::{kind_combo, range_ui};
 
 use crate::i18n::{n_, tr, trf};
 use crate::json_view::fmt_num;
@@ -410,60 +411,6 @@ impl KindChoices {
             has_mech: rows.iter().any(|l| l.kind == RowKind::Mech),
         }
     }
-}
-
-/// 種類の選択（「機構部品（すべて）」と、一覧にある品の種類）
-fn kind_combo(ui: &mut Ui, q: &mut LensFilter, kinds: &KindChoices) {
-    let name = |k: &str| {
-        CATEGORIES
-            .iter()
-            .find(|(c, _)| *c == k)
-            .map_or(k.to_string(), |(_, n)| tr(n).to_string())
-    };
-    let mech_all = tr("Mechanics (all)");
-    let optics_all = tr("Optics (all)");
-    let selected = match (&q.category, q.kind_group) {
-        (Some(c), _) => name(c),
-        (None, Some(true)) => mech_all.to_string(),
-        (None, Some(false)) => optics_all.to_string(),
-        (None, None) => tr("All").to_string(),
-    };
-    let has_mech = kinds.has_mech;
-    egui::ComboBox::from_id_salt("category")
-        .selected_text(selected)
-        .height(480.0)
-        .show_ui(ui, |ui| {
-            let mut pick = |ui: &mut Ui, cat: Option<&str>, group: Option<bool>, label: String| {
-                let sel = q.category.as_deref() == cat && (cat.is_some() || q.kind_group == group);
-                if ui.selectable_label(sel, label).clicked() {
-                    q.category = cat.map(str::to_string);
-                    q.kind_group = if cat.is_some() { None } else { group };
-                }
-            };
-            pick(ui, None, None, tr("All").to_string());
-            if has_mech {
-                pick(ui, None, Some(false), optics_all.to_string());
-                pick(ui, None, Some(true), mech_all.to_string());
-            }
-            // 光学素子の種類、続けて機構部品の種類
-            for mech in [false, true] {
-                let ks = if mech { &kinds.mech } else { &kinds.optics };
-                if ks.is_empty() {
-                    continue;
-                }
-                ui.separator();
-                if has_mech {
-                    ui.weak(if mech {
-                        tr("Mechanical parts")
-                    } else {
-                        tr("Optics")
-                    });
-                }
-                for &k in ks {
-                    pick(ui, Some(k), None, format!("  {}", name(k)));
-                }
-            }
-        });
 }
 
 /// 選んだ品の 1 行の説明（誤り・未完の品は 2 行目に出すので空）
@@ -953,25 +900,6 @@ fn mech_ui(ui: &mut Ui, ms: &mut Vec<crate::combo::MechPick>, ids: &[String]) {
     }
 }
 
-/// 範囲の入力（チェックで有効にする）
-fn range_ui(ui: &mut Ui, label: &str, r: &mut Range, default: (f64, f64), speed: f64) {
-    ui.label(label);
-    let mut on = r.min.is_some();
-    if ui.checkbox(&mut on, tr("Min")).changed() {
-        r.min = on.then_some(default.0);
-    }
-    if let Some(m) = r.min.as_mut() {
-        ui.add(egui::DragValue::new(m).speed(speed));
-    }
-    let mut on = r.max.is_some();
-    if ui.checkbox(&mut on, tr("Max")).changed() {
-        r.max = on.then_some(default.1);
-    }
-    if let Some(m) = r.max.as_mut() {
-        ui.add(egui::DragValue::new(m).speed(speed));
-    }
-}
-
 /// 一覧の 1 マス
 fn lens_cell(ui: &mut Ui, c: LensCol, r: &LensRow) {
     // 切れた文字はマウスを載せると全体が出る（egui の Label が切ったときに出す）
@@ -1257,9 +1185,20 @@ impl Browser {
         } else {
             builder.size(Size::relative(0.45))
         };
+        // 上下に並べるときの欄の幅はパネルの幅まで（StripBuilder の縦の欄は中身に合わせて広がり、折り返す行も
+        // パネルの外で折り返して切れる、GUX-14）
+        let cap = |ui: &mut Ui| {
+            if !wide {
+                ui.set_max_width(w);
+            }
+        };
         let mut cells = |mut strip: egui_extras::Strip| {
-            strip.cell(|ui| self.lens_list(ui, doc));
             strip.cell(|ui| {
+                cap(ui);
+                self.lens_list(ui, doc)
+            });
+            strip.cell(|ui| {
+                cap(ui);
                 egui::ScrollArea::vertical()
                     .id_salt("combo_scroll")
                     .show(ui, |ui| {
@@ -1281,14 +1220,19 @@ impl Browser {
     fn lens_list(&mut self, ui: &mut Ui, doc: &mut ComboDoc) {
         let (vendors, kinds) = self.lens_meta();
         let q = &mut self.lens_q;
-        // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
-        ui.horizontal_wrapped(|ui| {
+        // 検索の欄は 1 行に（欄の幅は行の残り。後ろに欄を続けると、狭いパネルで欄の枠の分だけはみ出し、
+        // 後ろの折り返す行もパネルの外で折り返して切れる、GUX-14）
+        ui.horizontal(|ui| {
             ui.label(tr("Search"));
+            let w = (ui.available_width() - 2.0 * ui.spacing().button_padding.x).max(60.0);
             ui.add(
                 egui::TextEdit::singleline(&mut q.text)
                     .hint_text(tr("Part, vendor, glass"))
-                    .desired_width(160.0),
+                    .desired_width(w.min(260.0)),
             );
+        });
+        // 項目は平らに並べる（ui.horizontal で組にすると、組の中が折り返されずにパネルの外へはみ出す）
+        ui.horizontal_wrapped(|ui| {
             egui::ComboBox::from_id_salt("vendor")
                 .selected_text(if q.vendor.is_empty() {
                     tr("All vendors")
@@ -1644,7 +1588,8 @@ impl Browser {
         ui.label(tr("Double-click a row in the list (or \"Add to combination\") to add it right after the element selected in the layout figure (or at the end). The list is in the order light travels (indented rows are behind a BS branch)."));
         ui.horizontal(|ui| {
             ui.label(tr("Name"));
-            ui.text_edit_singleline(&mut c.name);
+            // 欄はパネルの幅に合わせる（既定の幅だと狭いパネルで中身全体が広がる、GUX-14）
+            ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(ui.available_width()));
         });
         ui.horizontal_wrapped(|ui| {
             if ui
@@ -1759,7 +1704,7 @@ impl Browser {
             }
             None => {}
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let ok = !c.picks.is_empty() && c.settings_problems().is_empty();
             if ui
                 .add_enabled(

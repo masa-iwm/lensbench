@@ -53,6 +53,7 @@ impl App {
             Cmd::Lang(l) => {
                 self.c.s.lang = l;
                 i18n::set(l);
+                crate::fonts::follow_lang(ctx);
                 self.apply_dock_translations();
             }
             Cmd::Folders => self.c.folders_open = true,

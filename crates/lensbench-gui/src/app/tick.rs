@@ -95,7 +95,7 @@ impl App {
         let dropped = self.c.doc.combo.drop_stale_edits();
         if dropped > 0 {
             self.c.info(trf(
-                "The element's surfaces changed, so {} values changed in Lens Data were dropped (Ctrl+Z to undo)",
+                "The element's surfaces changed, so the values changed in Lens Data ({}) were dropped (Ctrl+Z to undo)",
                 &[&dropped],
             ));
         }

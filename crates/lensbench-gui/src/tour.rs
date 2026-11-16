@@ -35,7 +35,23 @@ pub struct Args {
     pub tour_timeout: Option<Duration>,
     /// 起動時に出す知らせ（設定の取り込みなど）
     pub notice: Option<crate::portable::Notice>,
+    /// --help・-h: 使い方を出して終わる（GUX-32）
+    pub help: bool,
 }
+
+/// `--help` の使い方（Web 版は引数を取らない）
+#[cfg(not(target_arch = "wasm32"))]
+pub const USAGE: &str =
+    "usage: lensbench-gui [FILE] [--glass-dir DIR]... [--lens-catalog DIR]... [--settings FILE]
+                     [--tour DIR [--tour-timeout SECONDS]]
+
+  FILE              system file to open (.json project, .zmx)
+  --glass-dir DIR   glass catalog (.AGF) folder (repeatable)
+  --lens-catalog D  lens catalog folder (folders of .zmx files; repeatable)
+  --settings FILE   settings file (default: portable file next to the exe, else the OS location)
+  --tour DIR        run the screen tour and write screenshots to DIR (development)
+  --tour-timeout S  time limit of the tour in seconds (default 240)
+  -h, --help        show this help";
 
 impl Args {
     /// `[--tour DIR] [--tour-timeout 秒] [--glass-dir D]... [--lens-catalog D]... [--settings FILE] [系のファイル]`
@@ -45,6 +61,7 @@ impl Args {
         while let Some(x) = it.next() {
             let mut val = |k: &str| it.next().ok_or(format!("{k} needs a value"));
             match x.as_str() {
+                "--help" | "-h" => a.help = true,
                 "--tour" => a.tour = Some(PathBuf::from(val("--tour")?)),
                 "--glass-dir" => a.glass_dirs.push(val("--glass-dir")?),
                 "--lens-catalog" => a.lens_dirs.push(val("--lens-catalog")?),

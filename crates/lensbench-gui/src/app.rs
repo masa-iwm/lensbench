@@ -3501,6 +3501,7 @@ impl App {
             }
         }
         i18n::set(s.lang);
+        crate::fonts::follow_lang(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, &s.look);
         s.cad_store.apply();
         // Web 版: 別のタブのパネル（?panel=）は計算の Web Worker を作らない

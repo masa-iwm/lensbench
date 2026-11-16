@@ -105,6 +105,10 @@ pub fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.help {
+        println!("{}", tour::USAGE);
+        return std::process::ExitCode::SUCCESS;
+    }
     // 設定の保存先
     let mut args = args;
     let store = portable::choose(
