@@ -287,7 +287,7 @@ impl Source {
                 if o.wavelengths.is_some() {
                     return Err(bad_arg("wavelengths is only for .zmx".into()));
                 }
-                let (system, m, warnings) = crate::sysfile::load(path)?;
+                let (system, m, warnings) = crate::sysfile::load_with(path, o.glass_dirs)?;
                 Ok(Opened {
                     system,
                     warnings,

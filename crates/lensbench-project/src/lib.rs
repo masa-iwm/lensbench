@@ -32,6 +32,7 @@ pub mod open;
 pub mod schema;
 mod splitter;
 pub mod sysfile;
+pub mod sysfile_v2;
 pub use edit_spec::SurfaceOp;
 use edit_spec::{BlockRef, EditOp, Ref};
 pub use splitter::{Arm, PbsSpec, SplitFace, SplitForm, SplitterSpec};

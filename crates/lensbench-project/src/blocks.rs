@@ -571,7 +571,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             }
             DEPTH.with(|d| d.set(d.get() + 1));
             let r = if sysfile::is_system_file(&p) {
-                sysfile::load(&p).map(|x| x.0)
+                sysfile::load_with(&p, &self.env.glass_dirs).map(|x| x.0)
             } else {
                 load_state(&p, &self.env.glass_dirs, self.env.catalog, None)
             };

@@ -587,8 +587,14 @@ fn convert_to_system_file() {
         serde_json::from_str::<serde_json::Value>(&out).unwrap()
     };
     assert_eq!(spot(ZMX, &[])["spot"], spot(fs, &[])["spot"]);
-    let (ok, out, _) = run(&["info", fs, "--json"]);
-    assert!(ok);
+    // 系ファイルはガラスを名前だけで持つので、カタログのフォルダが要る（無ければ誤りに案内が付く）
+    let (ok, _, err) = run(&["info", fs, "--json"]);
+    assert!(
+        !ok && err.contains("glass catalog") && err.contains("--glass-dir"),
+        "{err}"
+    );
+    let (ok, out, err) = run(&["info", fs, "--glass-dir", "tests/glass", "--json"]);
+    assert!(ok, "{err}");
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["system_hash"].as_str().unwrap(), h);
     let saved = dir.join("spot.json");
@@ -597,9 +603,41 @@ fn convert_to_system_file() {
         serde_json::from_str(&std::fs::read_to_string(&saved).unwrap()).unwrap();
     assert_eq!(s["provenance"]["system_hash"].as_str().unwrap(), h);
     // --state は系ファイルでは使えない
-    let (ok, _, _) = run(&["info", fs, "--state", "x"]);
+    let (ok, _, _) = run(&["info", fs, "--glass-dir", "tests/glass", "--state", "x"]);
     assert!(!ok);
+    // フォルダの無いファイル名（`info a0.json`）でも、同じフォルダのカタログを見つける
+    for c in v_catalogs(fs) {
+        std::fs::copy(
+            format!(
+                "{root}/tests/glass/{c}.AGF",
+                root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..")
+            ),
+            dir.join(format!("{c}.AGF")),
+        )
+        .unwrap();
+    }
+    let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+        .current_dir(&dir)
+        .args(["info", "a0.json", "--json"])
+        .env_remove("LENSBENCH_GLASSCAT")
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["system_hash"].as_str().unwrap(), h);
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// 系ファイルの `catalogs` のカタログの名前
+fn v_catalogs(file: &str) -> Vec<String> {
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    v["system"]["catalogs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap().to_string())
+        .collect()
 }
 
 #[test]

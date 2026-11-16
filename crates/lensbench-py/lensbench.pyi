@@ -628,8 +628,10 @@ class System:
     def floating_clip(self, value: bool) -> None: ...
 
     @staticmethod
-    def from_json(text: str) -> System:
-        """Make a system from the JSON string of a system file (the coatings paths are used as they are)"""
+    def from_json(text: str, glass_dirs: Sequence[_StrPath] | None = None) -> System:
+        """Make a system from the JSON string of a system file (the coatings paths are used as they are).
+        glass_dirs: folders to search for the glass catalogs first (then LENSBENCH_GLASSCAT and the catalogs already read)
+        """
 
     @staticmethod
     def from_project(project: Any, base: _StrPath | None = None, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None, coatings: Sequence[_StrPath] | None = None, coating_file: _StrPath | None = None, beam_path: str | None = None) -> System:
@@ -808,9 +810,11 @@ class System:
         """
 
     def save(self, path: _StrPath) -> None:
-        """Save to a system file (lensbench's own JSON). Surfaces, glass data, parameter changes, pickups,
-        solves, lenses and groups, the multi-configuration table, dn and disp are all written; reading it back with System.load traces bit for bit the same.
+        """Save to a system file (lensbench's own JSON, format version 2). What you wrote is saved: surfaces, glass names, parameter changes, pickups,
+        solves, lenses and groups, the multi-configuration table, dn and disp; reading it back with System.load traces bit for bit the same.
+        Glasses are written by name with the name and hash of their catalogs (the catalogs are searched again when reading).
         The paths of the coating tables and models (coatings=) are written too
+        A warning is given for a catalog with no file whose values match the system's glasses (its hash is left empty and can't be checked on reading)
         """
 
     def set_config(self, k: int) -> None:
@@ -893,7 +897,7 @@ class System:
         """
 
     def to_json(self) -> str:
-        """The content of the system file (a JSON string)"""
+        """The content of the system file (a JSON string). Warns like save"""
 
     def tolerance(self, spec: Any = None, terms: Any = None, vendors: Any = None, configs: Sequence[System] | None = None, threads: int | None = None, reversed: Sequence[str] | None = None) -> Any:
         """Monte Carlo tolerance simulation. spec is a dict of the same settings as the CLI's `lensbench tolerance --spec`
@@ -981,8 +985,8 @@ class UnsupportedError(Error):
     """Uses an unsupported feature"""
 
 
-def _system_from_state(state: Any, coatings: Sequence[_StrPath]) -> System:
-    """Rebuild a system from a pickle (the pair of [`PySystem::__reduce__`])"""
+def _system_from_state(state: Any, coatings: Sequence[_StrPath], glass_dirs: Sequence[_StrPath] | None = None) -> System:
+    """Rebuild a system from a pickle (the values of [`PySystem::__reduce__`]). glass_dirs is missing in pickles of older versions"""
 
 
 def analyses() -> list[Any]:

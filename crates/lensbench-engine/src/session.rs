@@ -1212,7 +1212,11 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             )
             .map_err(RpcErr::app)?;
             let hash = lensbench_project::sysfile::system_hash(&s).map_err(RpcErr::app)?;
-            Ok((json!({ "written": path, "system_hash": hash }), Vec::new()))
+            let notes = lensbench_project::sysfile::save_notes(&s);
+            Ok((
+                json!({ "written": path, "system_hash": hash, "notes": notes }),
+                Vec::new(),
+            ))
         }
         // 今の系の面 from〜to だけを系ファイル（面の並び）に書き出す（GUI のレンズデータの「選んだ範囲を書き出す」）。
         // 物体面・像面は残し、範囲の外の面は消す（外を参照するピックアップ・ソルブは外れる）。絞りが範囲の外なら from を絞りに
@@ -1234,8 +1238,9 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
                 &[],
             )
             .map_err(RpcErr::app)?;
+            let notes = lensbench_project::sysfile::save_notes(&s);
             Ok((
-                json!({ "written": path, "surfaces": s.surfaces.len() }),
+                json!({ "written": path, "surfaces": s.surfaces.len(), "notes": notes }),
                 Vec::new(),
             ))
         }

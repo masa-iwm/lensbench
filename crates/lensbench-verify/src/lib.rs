@@ -694,7 +694,7 @@ impl Manifest {
             .extension()
             .map(|e| e.to_string_lossy().to_ascii_lowercase());
         let s = if ext.as_deref() == Some("json") {
-            lensbench_project::sysfile::load(&sp.path)?.0
+            lensbench_project::sysfile::load_with(&sp.path, &sp.glass_dirs)?.0
         } else {
             let opt = lensbench_core::zmx::LoadOptions {
                 cfg: sp.cfg,

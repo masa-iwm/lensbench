@@ -1,17 +1,21 @@
-//! 系ファイル: 順次の面の列の系（[`System`]）を欠けなく保存・読込する lensbench 独自の JSON。
+//! 系ファイル: 順次の面の列の系（[`System`]）を保存・読込する lensbench 独自の JSON。
 //!
 //! ```json
-//! {"format": "lensbench-system", "format_version": 1, "lensbench": "0.1.0",
+//! {"format": "lensbench-system", "format_version": 2, "lensbench": "0.1.0",
 //!  "hash": "sha256:…", "coatings": ["膜の表.json"], "system": { … }}
 //! ```
 //!
-//! - `system` は [`System`] の serde（面・ガラスのデータ・パラメータの変更の結果・ピックアップ・ソルブ・玉と群・
-//!   多重構成の表・モデルガラスの dn・disp）。読み直した系の追跡は元の系とビット一致する。
+//! - `system` は処方（利用者が書いた値だけ、[`crate::sysfile_v2::Prescription`]）。形は core の内部の構造体と
+//!   切り離して決めてある。読み直した系の追跡は元の系とビット一致する（屈折率・自動の半直径・ピックアップ・ソルブは
+//!   読んだ後に求める）。
+//! - ガラスは名前だけを書き、`system.catalogs` に使ったカタログの名前とファイルの SHA-256 を残す。読むときは
+//!   カタログをフォルダから探して今のカタログの値で追い、hash が違えば注意を返す。
 //! - JSON に書けない数（無限遠の物体距離の inf、NaN）は `{"$f": "inf"}`・`{"$f": "-inf"}`・`{"$f": "nan"}`。
-//! - ガラスの表は名前の順に並べる（同じ系なら同じファイル・同じ hash になる）。
+//!   実数の欄は整数の書き方でも読め、誤りには欄の道が付く（[`crate::lenient`]）。
 //! - `hash` は `system` の部分（キーを名前の順にした空白なしの JSON）の SHA-256。解析の結果に刻んで、後から同じ系か確かめる。
 //!   読むときに合わなければ（手で直したなど）注意を返す。
 //! - `coatings` は膜の実測表・モデルのファイル（相対パスは系ファイルのフォルダから）。系の `coating_file` は系の中。
+//! - 版 1（core の System の serde をそのまま書いた形）は読めるが、書くのはいつも版 2。
 
 use lensbench_core::System;
 use serde_json::{Map, Value};
@@ -20,8 +24,8 @@ use std::path::{Path, PathBuf};
 
 /// 系ファイルの `format` の値
 pub const FORMAT: &str = "lensbench-system";
-/// 書く版（読めるのはこれ以下）
-pub const FORMAT_VERSION: u64 = 1;
+/// 書く版（読めるのはこれ以下。版 1 も読める）
+pub const FORMAT_VERSION: u64 = 2;
 
 /// 系ファイルの中身（系以外）
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -139,8 +143,9 @@ pub(crate) fn from_json(v: Value) -> lensbench_core::Result<ciborium::value::Val
     })
 }
 
-/// 系の部分の JSON の値（ガラスの表は名前の順）
-fn system_value(s: &System) -> lensbench_core::Result<Value> {
+/// core の System の serde をそのまま JSON にした値（版 1 の `system`。ガラスの表は名前の順）。系どうしを
+/// 比べる（[`crate::same_system`]）・版 1 の hash を確かめるのに使う
+pub(crate) fn internal_value(s: &System) -> lensbench_core::Result<Value> {
     let c =
         ciborium::value::Value::serialized(s).map_err(|e| format!("writing the system: {e}"))?;
     let mut v = to_json(c)?;
@@ -150,6 +155,20 @@ fn system_value(s: &System) -> lensbench_core::Result<Value> {
         g.extend(items);
     }
     Ok(v)
+}
+
+/// 系ファイルの `system` の JSON の値（処方）
+fn system_value(s: &System) -> lensbench_core::Result<Value> {
+    let p = crate::sysfile_v2::write::prescription(s)?;
+    let c =
+        ciborium::value::Value::serialized(&p).map_err(|e| format!("writing the system: {e}"))?;
+    to_json(c)
+}
+
+/// 系のガラスの元のカタログのファイル（このプロセスで読んだ AGF・既定のフォルダから、系のガラスと値が同じもの）。
+/// 系ファイルの JSON を別のプロセスに渡すとき（Python の pickle）に、そのフォルダを glass_dirs に渡す
+pub fn catalog_files(s: &System) -> Vec<PathBuf> {
+    crate::sysfile_v2::catalogs::files(s)
 }
 
 /// キーを名前の順に並べ、空白なしで書いた JSON（serde_json の preserve_order の有無によらず同じ）
@@ -215,11 +234,22 @@ pub fn to_string(s: &System, coatings: &[PathBuf]) -> lensbench_core::Result<Str
         ),
     );
     o.insert("system".into(), sv);
-    Ok(serde_json::to_string_pretty(&Value::Object(o)).expect("JSON") + "\n")
+    // キーは名前の順（serde_json の preserve_order の有無によらず同じ文字列）
+    Ok(crate::schema::to_text(&Value::Object(o)))
 }
 
-/// 系ファイルの JSON を読む。返すのは (系, 中身, 注意)。注意は hash が合わない・新しい版が書いたなど
+/// 系ファイルの JSON を読む（ガラスのカタログは既定のフォルダとこのプロセスで読んだ AGF から探す）。
+/// 返すのは (系, 中身, 注意)。注意は hash が合わない・カタログが保存時と違うなど
 pub fn from_str(txt: &str) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
+    from_str_with(txt, &[])
+}
+
+/// [`from_str`] で、ガラスのカタログをフォルダ glass_dirs から先に探す（その後に既定のフォルダ・このプロセスで
+/// 読んだ AGF）
+pub fn from_str_with(
+    txt: &str,
+    glass_dirs: &[PathBuf],
+) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     let v: Value = serde_json::from_str(txt).map_err(|e| format!("system file: {e}"))?;
     let Value::Object(mut o) = v else {
         return Err("system file: not a JSON object".into());
@@ -246,12 +276,30 @@ pub fn from_str(txt: &str) -> lensbench_core::Result<(System, Meta, Vec<String>)
         .unwrap_or("")
         .to_string();
     let c = from_json(sv).map_err(|e| format!("system file: {e}"))?;
-    let sys: System =
-        crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
-    check(&sys)?;
-    // hash は読み直した系から作り直す（数の書き方の違い・手での直しでは値が変わる）
+    let (sys, hash_back) = if ver >= 2 {
+        let p: crate::sysfile_v2::Prescription =
+            crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
+        let (g, notes) = crate::sysfile_v2::catalogs::load(
+            &p.catalogs,
+            &lensbench_core::glass::catalog_dirs(glass_dirs),
+        )
+        .map_err(|e| e.at("system file"))?;
+        warn.extend(notes);
+        let sys = crate::sysfile_v2::read::system(p, std::sync::Arc::new(g))
+            .map_err(|e| format!("system file: {e}"))?;
+        check(&sys)?;
+        let h = system_hash(&sys)?;
+        (sys, h)
+    } else {
+        let sys: System =
+            crate::lenient::decode(c, "system").map_err(|e| format!("system file: {e}"))?;
+        check(&sys)?;
+        let h = hash_value(&internal_value(&sys)?);
+        (sys, h)
+    };
+    // hash は読み直した系から作り直したものとも比べる（数の書き方の違いでは値が変わる）
     let hash_sys = system_hash(&sys)?;
-    if !hash.is_empty() && hash != hash_now && hash != hash_sys {
+    if !hash.is_empty() && hash != hash_now && hash != hash_back {
         warn.push(format!(
             "the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})"
         ));
@@ -300,6 +348,12 @@ pub fn check(sys: &System) -> lensbench_core::Result<()> {
             return Err(format!("system file: surface {j} n_base count").into());
         }
     }
+    check_refs(sys)?;
+    Ok(sys.check().map_err(|e| format!("system file: {e}"))?)
+}
+
+/// ピックアップ・ソルブ・マクロ・玉と群・大域座標の基準が範囲の中の面を指すか
+pub(crate) fn check_refs(sys: &System) -> lensbench_core::Result<()> {
     let ns = sys.surfaces.len();
     for p in &sys.pickups {
         if p.src >= ns || p.dst >= ns {
@@ -335,7 +389,7 @@ pub fn check(sys: &System) -> lensbench_core::Result<()> {
         )
         .into());
     }
-    Ok(sys.check().map_err(|e| format!("system file: {e}"))?)
+    Ok(())
 }
 
 /// 系ファイルに書く（coatings は書いたとおりに残す）
@@ -345,12 +399,33 @@ pub fn save(path: &Path, s: &System, coatings: &[PathBuf]) -> lensbench_core::Re
         .map_err(lensbench_core::Error::io_at(path.display()))
 }
 
-/// 系ファイルを読む。coatings の相対パスはファイルのフォルダからにする
+/// 系を系ファイルに書くときの注意（[`save`]・[`to_string`] の後に表に出す）: 系のガラスと値が同じカタログのファイルが
+/// 見つからず、`catalogs` に hash を書けないカタログ（読むときに値を確かめられない）
+pub fn save_notes(s: &System) -> Vec<String> {
+    crate::sysfile_v2::catalogs::unverified(s)
+}
+
+/// 系ファイルを読む。coatings の相対パスはファイルのフォルダからにする。ガラスのカタログはファイルのフォルダ・
+/// 既定のフォルダ・このプロセスで読んだ AGF から探す
 pub fn load(path: &Path) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
+    load_with(path, &[])
+}
+
+/// [`load`] で、ガラスのカタログをフォルダ glass_dirs から先に探す
+pub fn load_with(
+    path: &Path,
+    glass_dirs: &[PathBuf],
+) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     let txt = lensbench_core::vfs::read_to_string(path)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    let (s, mut m, w) = from_str(&txt).map_err(|e| format!("{}: {e}", path.display()))?;
-    let base = path.parent().unwrap_or(Path::new("."));
+        .map_err(lensbench_core::Error::io_at(path.display()))?;
+    // "a.json" の parent は "" なので、カタログは "." から探す
+    let base = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut dirs = glass_dirs.to_vec();
+    dirs.push(base.to_path_buf());
+    let (s, mut m, w) = from_str_with(&txt, &dirs).map_err(|e| e.at(path.display()))?;
     for c in m.coatings.iter_mut() {
         if c.is_relative() {
             *c = base.join(&*c);

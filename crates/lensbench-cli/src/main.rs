@@ -793,6 +793,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 warn_notes(zmx_write::save(&out, &s).map_err(e)?);
             } else {
                 lensbench_project::sysfile::save(&out, &s, &[])?;
+                warn_notes(lensbench_project::sysfile::save_notes(&s));
             }
             (
                 c.json,
@@ -1060,6 +1061,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     .is_some_and(|x| x.eq_ignore_ascii_case("json"))
                 {
                     lensbench_project::sysfile::save(path, &sys[0], &[])?;
+                    warn_notes(lensbench_project::sysfile::save_notes(&sys[0]));
                 } else {
                     warn_notes(
                         zmx_write::save(path, &sys[0])

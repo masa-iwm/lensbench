@@ -4,6 +4,20 @@
 
 ## 次の版（v0.4.0 の後）
 
+### 系ファイル
+- 系ファイルを版 2 にした（PRJ-24・IOO-10）。`system` は内部の構造体の serde でなく、利用者が書いた値（処方）だけを決めた形で書く
+  （[JSON スキーマ](reference/schema.md) の system）。面は形 `shape`・働き `action`・媒質 `medium` などの行で、曲率は `c`。求めた屈折率
+  `n`・`n_base`、自動の半直径の値、ガラスの式（カタログ全体）は書かない（玉 2 枚の ACH-45 は 760 KB から 1.8 KB）。ガラスは名前と、使った
+  カタログの名前・ファイルの hash（`catalogs`）だけを書き、読むときにカタログを `glass_dirs`・系ファイルのフォルダ・LENSBENCH_GLASSCAT・
+  そのプロセスで読んだカタログから探す（中身が保存時と違えば注意を出し、今のカタログの値で追う。見つからなければ誤り）。
+  書くときに系のガラスと値が同じカタログのファイルが見つからなければ、そのカタログの hash は空にして注意を出し（CLI・Python の警告、
+  serve の `save`・`save_range` の `notes`）、hash が空のカタログを読むときは値を確かめられないと注意を出す。
+  版 1 のファイルは読めるが、書くのはいつも版 2。`field_wave`・`import_notes`・`macro_notes` は書かない。
+- 系の hash（`system_hash`・`s.hash`・解析の結果の `system_hash`）は中身が変わったので値が変わる。前の結果に刻んだ hash とは合わない。
+- 光線が届かず求め直せない自動の半直径は、読み直すと 0 になる（前は保存した値が残った）。
+- Python の `System.from_json` に `glass_dirs=` を、pickle にカタログのフォルダを足した（古い pickle も読める）。Rust は
+  `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
+
 ### 名前・設定の書き方
 - FFT PSF の既定の面を像面の上にした（ANA-08）: 格子の座標は像面の局所座標の x・y（`axes` は x̂・ŷ）で、回折 MTF と同じ
   周波数の面（PSF をフーリエ変換すると回折 MTF になる。x・y の両方に角度のある視野では、回折 MTF の子午・球欠は前と同じく

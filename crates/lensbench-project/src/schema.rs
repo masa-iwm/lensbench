@@ -10,7 +10,6 @@
 //! - 系ファイルの数は JSON に書けない値（inf・NaN）を `{"$f": "inf"}` などで書くので、系の中の数はそれも許す。
 
 use crate::{detectors, Project, UserCatalog, BUILTIN_BLOCKS};
-use lensbench_core::System;
 use schemars::generate::SchemaSettings;
 use schemars::{JsonSchema, Schema};
 use serde_json::{json, Map, Value};
@@ -29,7 +28,7 @@ struct SystemFile {
     /// 系ファイルの印（"lensbench-system"）
     #[schemars(extend("const" = "lensbench-system"))]
     format: String,
-    /// 形式の版（読めるのはこの lensbench が書く版以下）
+    /// 形式の版（書くのは 2。読めるのはこの lensbench が書く版以下）
     format_version: u64,
     /// 書いた lensbench の版
     #[serde(default)]
@@ -40,8 +39,8 @@ struct SystemFile {
     /// 膜の実測表・モデルのファイル（相対パスは系ファイルのフォルダから）
     #[serde(default)]
     coatings: Vec<String>,
-    /// 順次の面の列の系
-    system: System,
+    /// 順次の面の列の系（処方。利用者が書いた値だけ）
+    system: crate::sysfile_v2::Prescription,
 }
 
 /// 型のスキーマ（draft 2020-12、読む側の形）。仕上げは [`finish`]

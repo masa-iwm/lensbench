@@ -1008,23 +1008,36 @@ impl PySystem {
         ))
     }
 
-    /// Save to a system file (lensbench's own JSON). Surfaces, glass data, parameter changes, pickups,
-    /// solves, lenses and groups, the multi-configuration table, dn and disp are all written; reading it back with System.load traces bit for bit the same.
+    /// Save to a system file (lensbench's own JSON, format version 2). What you wrote is saved: surfaces, glass names, parameter changes, pickups,
+    /// solves, lenses and groups, the multi-configuration table, dn and disp; reading it back with System.load traces bit for bit the same.
+    /// Glasses are written by name with the name and hash of their catalogs (the catalogs are searched again when reading).
     /// The paths of the coating tables and models (coatings=) are written too
-    fn save(&self, path: PathBuf) -> PyResult<()> {
+    /// A warning is given for a catalog with no file whose values match the system's glasses (its hash is left empty and can't be checked on reading)
+    fn save(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
         let s = self.sys();
-        lensbench_project::sysfile::save(&path, &s, &self.coat_files).map_err(err)
+        lensbench_project::sysfile::save(&path, &s, &self.coat_files).map_err(err)?;
+        warn_all(py, &lensbench_project::sysfile::save_notes(&s))
     }
 
-    /// The content of the system file (a JSON string)
-    fn to_json(&self) -> PyResult<String> {
-        lensbench_project::sysfile::to_string(&self.sys(), &self.coat_files).map_err(err)
+    /// The content of the system file (a JSON string). Warns like save
+    fn to_json(&self, py: Python<'_>) -> PyResult<String> {
+        let s = self.sys();
+        warn_all(py, &lensbench_project::sysfile::save_notes(&s))?;
+        lensbench_project::sysfile::to_string(&s, &self.coat_files).map_err(err)
     }
 
-    /// Make a system from the JSON string of a system file (the coatings paths are used as they are)
+    /// Make a system from the JSON string of a system file (the coatings paths are used as they are).
+    /// glass_dirs: folders to search for the glass catalogs first (then LENSBENCH_GLASSCAT and the catalogs already read)
     #[staticmethod]
-    fn from_json(py: Python<'_>, text: &str) -> PyResult<PySystem> {
-        let (s, m, w) = lensbench_project::sysfile::from_str(text).map_err(err)?;
+    #[pyo3(signature = (text, glass_dirs=None))]
+    fn from_json(
+        py: Python<'_>,
+        text: &str,
+        glass_dirs: Option<Vec<PathBuf>>,
+    ) -> PyResult<PySystem> {
+        let (s, m, w) =
+            lensbench_project::sysfile::from_str_with(text, &glass_dirs.unwrap_or_default())
+                .map_err(err)?;
         warn_all(py, &w)?;
         Ok(PySystem::new(s, m.coatings, Default::default()))
     }
@@ -2693,14 +2706,24 @@ impl PySystem {
         mtf_dict(py, &m)
     }
 
-    /// pickle: turns the system into the JSON bytes of a system file and passes them with the file names of the coating tables and models.
-    /// The receiving side reads the coating file and tables again from the same paths (for another process on the same machine). With parameter changes, glasses,
-    /// aiming and pickups, the round-tripped system traces bit for bit the same as the original
+    /// pickle: turns the system into the JSON bytes of a system file and passes them with the file names of the coating tables and models
+    /// and the folders of the glass catalogs. The receiving side reads the coating file, tables and catalogs again from the same paths
+    /// (for another process on the same machine). With parameter changes, glasses, aiming and pickups, the round-tripped system traces bit
+    /// for bit the same as the original
     fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Reduced<'py>> {
         let s = self.sys();
         let b = lensbench_project::sysfile::to_string(&s, &self.coat_files).map_err(err)?;
+        let dirs: Vec<PathBuf> = lensbench_project::sysfile::catalog_files(&s)
+            .iter()
+            .filter_map(|p| p.parent().map(|d| std::path::Path::new(".").join(d)))
+            .collect();
         let f = py.import("lensbench")?.getattr("_system_from_state")?;
-        Ok((f, (PyBytes::new(py, b.as_bytes()), self.coat_files.clone())))
+        let state = (
+            PyBytes::new(py, b.as_bytes()),
+            self.coat_files.clone(),
+            dirs,
+        );
+        Ok((f, state))
     }
 
     fn __repr__(&self) -> String {
@@ -2786,17 +2809,26 @@ fn trace_many<'py>(
     Ok(res)
 }
 
-/// The value returned by `__reduce__`: (function to rebuild, (system bytes, coating files))
-type Reduced<'py> = (Bound<'py, PyAny>, (Bound<'py, PyBytes>, Vec<PathBuf>));
+/// The value returned by `__reduce__`: (function to rebuild, (system bytes, coating files, glass catalog folders))
+type Reduced<'py> = (
+    Bound<'py, PyAny>,
+    (Bound<'py, PyBytes>, Vec<PathBuf>, Vec<PathBuf>),
+);
 
-/// Rebuild a system from a pickle (the pair of [`PySystem::__reduce__`])
+/// Rebuild a system from a pickle (the values of [`PySystem::__reduce__`]). glass_dirs is missing in pickles of older versions
 #[pyfunction]
-fn _system_from_state(state: &[u8], coatings: Vec<PathBuf>) -> PyResult<PySystem> {
+#[pyo3(signature = (state, coatings, glass_dirs=None))]
+fn _system_from_state(
+    state: &[u8],
+    coatings: Vec<PathBuf>,
+    glass_dirs: Option<Vec<PathBuf>>,
+) -> PyResult<PySystem> {
     let txt =
         std::str::from_utf8(state).map_err(|e| value_err(format!("reloading the system: {e}")))?;
     // 長さと系の約束は sysfile::check で確かめる（壊れたバイト列で追跡が panic しないよう）
-    let (sys, _, _) = lensbench_project::sysfile::from_str(txt)
-        .map_err(|e| value_err(format!("reloading the system: {e}")))?;
+    let (sys, _, _) =
+        lensbench_project::sysfile::from_str_with(txt, &glass_dirs.unwrap_or_default())
+            .map_err(|e| value_err(format!("reloading the system: {e}")))?;
     Ok(PySystem::new(sys, coatings, Default::default()))
 }
 

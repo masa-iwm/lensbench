@@ -111,9 +111,7 @@ pub fn same_system(a: &System, b: &System) -> lensbench_core::Result<()> {
 }
 
 fn comparable(s: &System) -> lensbench_core::Result<Value> {
-    let mut v: Value = serde_json::from_str(&sysfile::to_string(s, &[])?)
-        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
-    let mut v = v["system"].take();
+    let mut v = sysfile::internal_value(s)?;
     let m = v.as_object_mut().ok_or("system is not an object")?;
     for k in ["name", "import_notes", "glasses", "units"] {
         m.remove(k);

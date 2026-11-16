@@ -202,8 +202,17 @@ pub fn load_agf(path: &Path) -> std::io::Result<HashMap<String, Glass>> {
     Ok((*load_agf_shared(path)?).clone())
 }
 
+/// これまでに読んだ AGF のファイル（正規化したパス、読んだ順）。系ファイルに書くとき、系のガラスがどのカタログの
+/// ファイルから来たかを探すのに使う（lensbench-project の sysfile）。読込の使い回しの表と違って空にしない
+static LOADED: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// これまでにこのプロセスで読んだ AGF のファイル（読んだ順）
+pub fn loaded_files() -> Vec<PathBuf> {
+    LOADED.lock_ok().clone()
+}
+
 /// [`load_agf`] と同じだが、使い回しの結果をそのまま共有して返す（写さない）
-pub(crate) fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass>>> {
+pub fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String, Glass>>> {
     type Cache = HashMap<
         PathBuf,
         (
@@ -230,6 +239,12 @@ pub(crate) fn load_agf_shared(path: &Path) -> std::io::Result<Arc<HashMap<String
         parse_agf(&txt, &cat)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?,
     );
+    {
+        let mut l = LOADED.lock_ok();
+        if !l.contains(&key) {
+            l.push(key.clone());
+        }
+    }
     let mut c = cache.lock_ok();
     bound_cache(&mut c);
     c.insert(key, (stamp.0, stamp.1, g.clone()));

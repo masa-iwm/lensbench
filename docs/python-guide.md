@@ -49,9 +49,12 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   コアを使い切る（4 コア・256 系・32〜1716 本で、系ごとの 1 スレッドの 2.2〜4.1 倍、系ごとに 4 スレッドで呼ぶときの 3.3〜5.9 倍）
 - 近軸量: `s.cardinal(wave=None)` で基点（OpticStudio の Cardinal Points 相当: 焦点・主点・反主点・節点・反節点、物体空間は面 1 から・像空間は像面から、媒質の中の焦点距離 `f_object`・`f_image`、空気換算の `efl`、`bfl`・`ffl`）、`s.system_data()` でシステムデータ（`effl`・`enpp`・`expp`・`wfno` など OpticStudio のオペランド名の小文字）。変更後の系の値
 - ファイバ結合: `s.fiber_coupling(na_source, na_receiver=None, wave=None, source=(0, 0), receiver=(0, 0), grid=101, pol=False, clip_stop=True)` → `eta`・`system`・`receiver`・`phase_step`（格子の隣り合う点の位相の差の最大 [rad]、π/2 を超えたら警告を出すので grid を増やす）（pol=True なら膜込みの `jones` (2, 2)、入射偏光 e の結合は |jones @ e|²）。送り側は物点、受け側は像面の点の、遠視野 1/e² の NA のガウスモードで、受け側の方向空間で重なり積分をとる（有限物体の系）。系の絞りの外を通る光は既定で系の損失 `system` に数える（`clip_stop=False` で無視）
-- 系ファイル: `s.save("x.json")` で lensbench 独自の JSON に欠けなく保存し（面・ガラスのデータ・パラメータの変更・ピックアップ・
-  ソルブ・玉と群・多重構成の表・dn と disp・`coatings=` のパス）、`lb.System.load("x.json")` で読み直す（追跡はビット一致）。
-  `s.to_json()`・`lb.System.from_json(txt)`、`s.hash`（系の SHA-256、同じ系なら同じ値。結果に刻んで後から確かめる）。
+- 系ファイル: `s.save("x.json")` で lensbench 独自の JSON（版 2）に、書いた値を欠けなく保存し（面・ガラスの名前・パラメータの変更・
+  ピックアップ・ソルブ・玉と群・多重構成の表・dn と disp・`coatings=` のパス）、`lb.System.load("x.json")` で読み直す（追跡はビット一致）。
+  ガラスは名前と、使ったカタログの名前・ファイルの hash だけを書き、読むときにカタログを探す（`glass_dirs=`・系ファイルのフォルダ・
+  LENSBENCH_GLASSCAT・そのプロセスで読んだカタログの順。中身が保存時と違えば警告を出し、今のカタログの値で追う）。
+  `s.to_json()`・`lb.System.from_json(txt, glass_dirs=None)`、`s.hash`（系の SHA-256、同じ系なら同じ値。結果に刻んで後から確かめる）。
+  形は [JSON スキーマ](reference/schema.md) の system。
   CLI は `lensbench convert x.zmx -o x.json`（.zmx・プロジェクトから）、どの解析も系ファイルを読め、`--save` の JSON と `info` に
   `lensbench`（版）と `system_hash` を書く。serve は `save`・`edit`・`surface`（docs/serve.md）
 - 一括実行: 公差・モンテカルロ・掃引を、スレッドで並列に回して JSONL に逐次書き、止まっても続きから。
@@ -66,7 +69,7 @@ j = s.trace(2, px, py, waves=[1], pol=True)["jones"]       # (光線, 2, 2) comp
   i 番目の組は (種, i) だけで決まる（スレッド数・再開・順序によらない）。相関はガウスのコピュラ（周辺分布はそのまま）。
   同じファイルに同じ計算（頭が同じ）なら終わった組を飛ばす。func の中の lensbench の追跡・解析は GIL を外すので並列に進む
   （Python の計算ばかりの func は並列にならない）。Rust からは `lensbench_runs`（`Sampler`・`Grid`・`run`）
-- pickle: `pickle.dumps(s)` で系を系ファイルの JSON のバイト列にし、別プロセスで作り直せる（パラメータ変更・ピックアップ・ガラス・照準・視野の種類を含め、追跡はビット一致）。膜ファイルと `coatings=` の表は同じパスから読み直す（同じ計算機向け）
+- pickle: `pickle.dumps(s)` で系を系ファイルの JSON のバイト列にし、別プロセスで作り直せる（パラメータ変更・ピックアップ・ガラス・照準・視野の種類を含め、追跡はビット一致）。膜ファイルと `coatings=` の表とガラスのカタログは同じパスから読み直す（同じ計算機向け）
 - 多重構成をまとめて: `cs = lb.System.load_configs("x.zmx", configs=None)`（省くと全構成、ファイルは 1 回だけ読む）→
   `lb.trace_many(cs, None, px, py, object=物点)` で同じ物点・同じ瞳の格子で全構成を一度に追跡（絞りの径の切替 APMX・APER なども構成どおり）
 - 視野の種類: `s.field_type`、`s.set_field_type(kind, cond=None, fields=None)`（条件で定める視野はプロジェクトファイルの節を参照）

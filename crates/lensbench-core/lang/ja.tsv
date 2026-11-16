@@ -1086,6 +1086,36 @@ system file: no macro {i} for surface {}	系ファイル: 面 {} のマクロ {i
 system file: macro solve (surface {})	系ファイル: マクロのソルブ（面 {}）
 system file: range of lens or group {}	系ファイル: レンズ・群 {} の範囲
 system file: global coordinate reference surface {}	系ファイル: グローバル座標の基準面 {}
+glass catalog {} was not found{}	硝材のカタログ {} が見つかりません{}
+glass catalog {} differs from when the file was saved ({}); the values are computed from the current catalog	硝材のカタログ {} が保存したときと違います（{}）。値は今のカタログで求めます
+glass catalog {} has no hash in the system file, so its values can't be checked; the values are computed from the current catalog ({})	硝材のカタログ {} は系ファイルに hash が無いので値を確かめられません。値は今のカタログ（{}）で求めます
+no file of glass catalog {} has the same values as the system's glasses ({}); the system file records no hash for it, so the values can't be checked when it is read	硝材のカタログ {} のファイルで系の硝材（{}）と値が同じものが見つかりません。系ファイルに hash を書けないので、読むときに値を確かめられません
+wavelengths: no wavelength	wavelengths: 波長がありません
+primary: {} ({nw} wavelengths)	primary: {}（波長 {nw}）
+surfaces: too few surfaces ({ns})	surfaces: 面が少なすぎます（{ns}）
+surfaces[{j}]: only the first row is the object	surfaces[{j}]: 物体面は最初の行だけです
+surfaces[{j}]: only the last row is the image	surfaces[{j}]: 像面は最後の行だけです
+fields.weights: {} weights ({npt} points)	fields.weights: ウェイトが {} 個（視野 {npt}）
+fields.vignetting: {} rows ({npt} points)	fields.vignetting: {} 行（視野 {npt}）
+fields: type solve needs solve	fields: type が solve なら solve が要ります
+fields: solve is only for type solve	fields: solve は type が solve のときだけです
+a coordinate break has no shape, action or medium	座標ブレークに形・働き・媒質は書けません
+a coordinate break can't be a mirror	座標ブレークは鏡にできません
+the {what} action takes no shape of this kind	働き {what} はこの種類の形を取れません
+a paraxial lens has no shape	理想レンズに形は書けません
+a Jones matrix surface has no shape	Jones 行列の面に形は書けません
+Binary 2 takes an even asphere shape	Binary 2 の形は偶数次非球面です
+a Fresnel surface has no shape (its c, k, a are in the action)	Fresnel の面に形は書けません（c・k・a は働きに書きます）
+a cylinder Fresnel surface takes a cylinder shape	Cylinder Fresnel の面の形は cylinder です
+a cylinder shape needs the cylinder_fresnel action	cylinder の形には働き cylinder_fresnel が要ります
+a user-defined surface has no shape	ユーザー定義の面に形は書けません
+a mirror keeps the medium before it (write no medium)	鏡は前の媒質のままです（medium は書きません）
+model glass nd {nd}, vd {vd}, dpgf {dpgf}	モデルガラス nd {nd}・vd {vd}・dpgf {dpgf}
+a GRIN medium follows a conic surface	屈折率分布の媒質は二次曲面の後に置きます
+a mirror on a birefringent surface can't be written	複屈折材の面の鏡は書けません
+a ghost reflection on this surface type can't be written	この面タイプのゴーストの反射は書けません
+surface {j}: ghost reflection medium: {e}	面 {j}: ゴーストの反射の媒質: {e}
+the numbers of wavelengths, weights and primary don't match	波長・ウェイト・主波長の数が合いません
 projection plane {s} must be yz or xz	投影面 {s} は yz か xz
 color by {s} must be field, wave or cfg	色分け {s} は field・wave・cfg のどれか
 ray pattern {s} must be y, x, cross, grid or ring	光線の並び {s} は y・x・cross・grid・ring のどれか

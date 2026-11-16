@@ -21,7 +21,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand_state`。
 - 自動の半径: 面の `semi` を `"auto"` にすると、半径を光線から求める（OpticStudio の Automatic と同じ決め方: 全視野・全波長の
   瞳の縁の光線の高さの最大。回転対称な系は視野の値 (x, y) の向きの上下 2 本、そうでない系は縁の 8 本）。系やパラメータを変えるたびに求め直し、
-  描画・機構部品の検査・書き出し・Floating 開口に使う。`surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi_auto": true`、
+  描画・機構部品の検査・書き出し・Floating 開口に使う。`surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi": "auto"`、
   .zmx の `DIAM 値 0`（自動）も同じ。カタログの玉の半径はファイルの値で固定
 - 面の値の上書き（`surface_edits`）: `[{"block": "L1", "surface": 1, "fields": {"r": -40, "semi": 8}}]` のように、ブロック `id` の
   面の値を展開の最後に変える。`surface` はそのブロックの面のうち座標ブレークを除いて数えた番号（0 始まり。偏心・傾きを付け外ししても

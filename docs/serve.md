@@ -77,12 +77,12 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |
 | `set` | `values`: `{"3.t": 10.5, "G1.shift": 0.2}` か `[["3.t", 10.5], ...]` | `changed`（まとめて変える） |
 | `write` | `path` | 今の系を .zmx に書く（別アプリに渡す）。`written`・`notes`（.zmx に書けず落とした・変えたものの注意） |
-| `save` | `path` | 今の系（`set`・`edit` の後）を系ファイル（.json）に書く。`written`・`system_hash` |
-| `save_range` | `path`・`from`・`to` | 今の系の面 from〜to と物体面・像面だけを系ファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces` |
+| `save` | `path` | 今の系（`set`・`edit` の後）を系ファイル（.json）に書く。`written`・`system_hash`・`notes`（値が同じカタログのファイルが見つからず hash を書けないカタログ） |
+| `save_range` | `path`・`from`・`to` | 今の系の面 from〜to と物体面・像面だけを系ファイルに書く（範囲の外を参照するピックアップ・ソルブは外れ、絞りが外なら from を絞りに）。`written`・`surfaces`・`notes`（`save` と同じ） |
 | `edit` | `ops`: 操作の並び（下） | 系を編集する。`notes`（外したピックアップなど）・`surfaces`（面の数）・`system_hash`。どれかが失敗すれば系は変えない |
 | `surface` | `surface`（番号か名前、省くと全部） | 面の値（`fields`、全部なら `surfaces` の並びと、玉・群の面の範囲 `units`（name・spans・auto、偏心・傾き `motion`（dx dy tx ty tz）・移動 `shift`・媒質の `dn`・`disp`（面ごとに違えば null））） |
-| `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。系ファイルの面と同じ形、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |
-| `system_data` | | 系全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。系ファイルと同じ形 |
+| `surface_data` | `surface`（番号か名前） | 面のデータを全部の項目で（`data`。core の面の形（系ファイルの版 1 の面と同じ）、屈折率 n は除く）と、その面のソルブ `solves`・ピックアップ `pickups` |
+| `system_data` | | 系全体の設定: `data` に name・wavelengths（µm）・weights・primary（0 始まり）・fields（x y w vdx vdy vcx vcy van）・field_type・field_norm・aperture・telecentric・aiming・afocal・afocal_unit・floating_clip（浮動開口でけるか、既定 true）・temperature・pressure・adjust_index・glrs・ropd・coating_file。core の系の形（系ファイルの版 1 と同じ） |
 | `config_table` | | 多重構成の表: 構成の数 `n`・今の構成 `active`・行 `rows`（`param`・構成ごとの `values`・構成のピックアップ `picks`（`k`・`from`・`scale`・`offset`））。.zmx なら、ファイルの多重構成の数 `zmx_cfgs` と読んだ構成 `zmx_cfg` |
 | `config_diff` | | .zmx の多重構成を表にする `edit` の操作 `ops`（各構成を読み、構成で違う曲率・コーニック・厚さ・非球面・傾き偏心・dn・disp を行に）と、表にできない違い（硝材・無視・半径・絞り・視野・波長）の `notes`、行の数 `rows`。系は変えない |
 | `analyze` | `cmd` と CLI と同じ引数 | CLI の `--json` と同じ結果。干渉（`fringe`）は下の「干渉の解析」。`coatings` は読み込んだ系（今の構成・状態、.zmx でなくても）の膜の境界で、引数は `table`（実測表・モデルを足す）だけ: `coating_file_path`・`wavelengths_um`・`interfaces`（`surface`・`key`・`kind`・`note`）・`needs_table`（実測表が要る境界の KEY）・`auto_coatings` |
@@ -128,7 +128,8 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
   例: `{"ops": [{"op": "insert_surface", "at": 3, "surface": {"r": 50, "t": 5, "material": "N-BK7"}}]}`
   操作の形はスキーマ [edit-ops](schema/edit-ops.schema.json)（玉・群の `define_unit`・`set_unit`・`remove_unit`、機構部品の `add_mech`・`set_mech`・`remove_mech` も）。
   知らない操作・キー・型の合わない値は、どの操作も当てる前に invalid params（-32602）の誤り（「操作 2 (set_stop): unknown field …」）
-- `load` は系ファイルも読める（`format` が `lensbench-system` の .json）
+- `load` は系ファイルも読める（`format` が `lensbench-system` の .json）。ガラスのカタログは `glass_dirs`・系ファイルのフォルダ・
+  LENSBENCH_GLASSCAT から探す
 - 数は JSON から丸めずに読む（Python の `float` を送れば同じ f64 が届く）
 - 像面距離などの解き（ソルブ）のある系では、値を変えてから元に戻すと、解きを前の値から解き直すので 1e-14 程度の差が残ることがある
 

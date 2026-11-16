@@ -34,6 +34,10 @@ def test_save_load_edited(tmp_path):
     s.save(str(p))
     d = json.loads(p.read_text(encoding="utf-8"))
     assert d["format"] == "lensbench-system" and d["hash"] == s.hash
+    # 版 2: ガラスは名前とカタログの hash だけ、求めた屈折率は書かない
+    assert d["format_version"] == 2 and "glasses" not in d["system"]
+    assert all(c["hash"].startswith("sha256:") for c in d["system"]["catalogs"])
+    assert all("n" not in r for r in d["system"]["surfaces"])
     assert d["lensbench"] == lb.__version__
     r = lb.System.load(str(p))
     assert r.hash == s.hash
