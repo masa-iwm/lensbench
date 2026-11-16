@@ -140,14 +140,25 @@ fn mtf_and_psf_match_core() {
         ("pupil".into(), Value::Num(32.0)),
         ("image".into(), Value::Num(64.0)),
     ]);
-    let o = run("psf", cfg, &s, 1.0);
+    let o = run("psf", cfg.clone(), &s, 1.0);
     let opts = PsfOpts {
         pupil: Some(32),
         image: 64,
         pixel: None,
+        ..Default::default()
     };
     let r = psf::psf(&s, FieldSel::Index(0), Waves::All, opts).unwrap();
     assert_eq!(o["i"].shape, vec![64, 64]);
+    assert_eq!(bits(get(&o, "i")), bits(r.i.data()));
+    // plane chief は主光線に垂直な面
+    let mut cfg = cfg;
+    cfg.insert("plane".into(), Value::Str("chief".into()));
+    let o = run("psf", cfg, &s, 1.0);
+    let opts = PsfOpts {
+        plane: psf::PsfPlane::ChiefPerp,
+        ..opts
+    };
+    let r = psf::psf(&s, FieldSel::Index(0), Waves::All, opts).unwrap();
     assert_eq!(bits(get(&o, "i")), bits(r.i.data()));
 }
 
@@ -299,8 +310,13 @@ fn interferogram_matches_core_with_the_configurations() {
         ("beam2".into(), Value::Num(0.0)),
     ]);
     let o = run("interferogram", cfg, &s, 1.0);
-    let w = interference::opd_grid(&c1, FieldSel::Index(0), None, &interference::pupil_grid(32))
-        .unwrap();
+    let w = interference::opd_grid(
+        &c1,
+        FieldSel::Index(0),
+        None,
+        lensbench_core::pupil::PupilGrid::Interferogram(32),
+    )
+    .unwrap();
     assert_eq!(bits(get(&o, "delta")), bits(&w.concat()));
 }
 

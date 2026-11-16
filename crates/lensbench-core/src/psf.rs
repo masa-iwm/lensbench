@@ -1,21 +1,24 @@
 //! 回折 PSF（OpticStudio の FFT PSF 相当）と幾何 MTF（Geometric MTF 相当）。
 //!
 //! PSF は回折 MTF（[`crate::analysis::mtf`]）と同じ瞳関数 P = A exp(2πi W)（W は主波長の主光線を基準にした
-//! OPD [波]、A はけられで 0）から、像面の格子の点で直接フーリエ変換して求める（行列の DFT。FFT と同じ値を
-//! 任意の間隔で出せる）。像の座標は主光線に垂直な面（OpticStudio の FFT PSF と同じ）で、主波長の主光線の
-//! 向き k に垂直な単位ベクトル e1（x 寄り）・e2（y 寄り）に沿う。瞳から像への写像は MTF と同じく対角だけを使い、
-//! 正規化瞳 (px, py) の向きの光線の向きの傾き ∂d/∂px・∂d/∂py を e1・e2 に射影したもの（斜めの視野では
-//! 像面上より 1/cos だけ細かい。OS の FFT PSF と照合して確かめた）。
+//! OPD [波]、A はけられで 0）から、像の格子の点で直接フーリエ変換して求める（行列の DFT。FFT と同じ値を
+//! 任意の間隔で出せる）。瞳から像への写像は MTF と同じく対角だけを使う。像の面は [`PsfPlane`] で選ぶ:
+//! - 既定の [`PsfPlane::Image`] は像面の上（像面の局所座標の x・y、センサーの面）。位相の傾きは像面の局所座標の
+//!   方向余弦の傾き ∂L/∂px・∂M/∂py で、回折 MTF の周波数と同じ面（PSF をフーリエ変換すると回折 MTF になる）。
+//! - [`PsfPlane::ChiefPerp`] は主光線に垂直な面（OpticStudio の FFT PSF と同じ。照合用）で、主波長の主光線の
+//!   向き k に垂直な単位ベクトル e1（x 寄り）・e2（y 寄り）に沿う。傾きは光線の向きの傾き ∂d/∂px・∂d/∂py を
+//!   e1・e2 に射影したもの（斜めの視野では像面上より 1/cos だけ細かい。OS の FFT PSF と照合して確かめた）。
 //!
 //! 幾何 MTF は像面に届いた光線の位置の分布の特性関数 |Σ w exp(2πi ν x)| / Σ w（瞳の重なり求積と同じ
 //! Gauss-Legendre の求積で光線を選ぶ）。球欠は x、子午は y の周波数。
 
-use crate::analysis::{lens_quad, mtf_cutoff, opd, pupil_jacobian, LensGl};
+use crate::analysis::{lens_quad, mtf_cutoff, pupil_jacobian, LensGl};
 use crate::coating::C64;
 use crate::error::Result;
 use crate::grid::Grid2;
 use crate::invalid;
 use crate::par::scoped;
+use crate::pupil::{PupilAmp, PupilFunction, PupilGrid};
 use crate::system::{FieldSel, System};
 use crate::{TanSag, Waves};
 
@@ -23,14 +26,17 @@ use crate::{TanSag, Waves};
 #[derive(Debug, Clone)]
 pub struct Psf {
     /// 強度（行優先、行 = y）。収差のない同じ瞳（けられ込み）の多色 PSF の中心の値を 1 とする（ピークはストレール比）。
-    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、主光線に垂直な面の e1・e2 に沿う）は `i.x()[m] = (m − M/2)·pixel.0`。
+    /// 格子の座標 [レンズ単位]（中心 = 主波長の主光線の像点、[`Self::axes`] の向きに沿う）は `i.x()[m] = (m − M/2)·pixel.0`。
     /// アフォーカル像空間では向きの角度 [System::afocal_unit]（atan(l/n)・atan(m/n) の主光線との差、center・pixel も同じ）
     pub i: Grid2,
+    /// 格子の面（像面の上か、主光線に垂直な面か）
+    pub plane: PsfPlane,
     /// 主波長の主光線の像点（像面の局所座標）
     pub center: (f64, f64),
     pub pixel: (f64, f64),
-    /// 格子の x・y の向き e1・e2（像空間の単位ベクトル、主波長の主光線に垂直）。像面上の点は
-    /// v = x e1 + y e2 を主光線の向き k = e1 × e2 に沿って像面へ移した v − k v_z / k_z（アフォーカル像空間では使わない）
+    /// 格子の x・y の向き（像面の局所座標の単位ベクトル）。[`PsfPlane::Image`] なら像面の x̂・ŷ。
+    /// [`PsfPlane::ChiefPerp`] なら主波長の主光線に垂直な e1・e2 で、像面上の点は v = x e1 + y e2 を主光線の向き
+    /// k = e1 × e2 に沿って像面へ移した v − k v_z / k_z（アフォーカル像空間では使わない）
     pub axes: [[f64; 3]; 2],
     /// 格子の最大値（ストレール比の目安）
     pub peak: f64,
@@ -116,6 +122,17 @@ pub fn sampling_warnings(what: &str, np: usize, step: f64, enclosed: f64) -> Vec
     w
 }
 
+/// PSF を求める面
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PsfPlane {
+    /// 像面の上（像面の局所座標の x・y）。センサーの面で、回折 MTF・Huygens PSF と同じ面
+    #[default]
+    Image,
+    /// 主波長の主光線に垂直な面（OpticStudio の FFT PSF と同じ。照合用）。斜めの視野では像面の上より
+    /// 1/cos だけ細かい（子午）
+    ChiefPerp,
+}
+
 /// PSF の設定
 #[derive(Debug, Clone, Copy)]
 pub struct PsfOpts {
@@ -124,10 +141,12 @@ pub struct PsfOpts {
     pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
-    /// 像の格子の間隔 [レンズ単位]（None で 1 / (2 × 遮断周波数)、x・y 別、使う波長のうち最も短い波長で。
-    /// 単色なら OpticStudio の FFT PSF で像の格子 = 瞳の格子 × 2 のときと同じ）。
+    /// 像の格子の間隔 [レンズ単位]（None で 1 / (2 × 遮断周波数)、x・y 別、使う波長のうち最も短い波長で、
+    /// plane の面の上の値。単色の ChiefPerp なら OpticStudio の FFT PSF で像の格子 = 瞳の格子 × 2 のときと同じ）。
     /// 像の格子の幅は瞳の標本の周期を超えられない（間隔が既定なら image ≤ 2 pupil）
     pub pixel: Option<f64>,
+    /// 像の面（既定は像面の上）
+    pub plane: PsfPlane,
 }
 
 impl Default for PsfOpts {
@@ -136,6 +155,7 @@ impl Default for PsfOpts {
             pupil: None,
             image: 128,
             pixel: None,
+            plane: PsfPlane::Image,
         }
     }
 }
@@ -200,6 +220,72 @@ pub fn perp_slopes_of(s: &System, jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) 
     }
 }
 
+/// 瞳の px・py の向きの、面 plane の上の位相の傾き。[`PsfPlane::Image`] は像面の局所座標の方向余弦の傾き
+/// J = ∂(L, M)/∂(px, py) の各行の長さに対角の符号をつけた値（J が対角なら対角 ∂L/∂px・∂M/∂py そのもので、回折 MTF と
+/// 同じ。非対角の項があるときは [`image_shear`] の写した瞳の格子での傾き）。[`PsfPlane::ChiefPerp`] は [`perp_slopes_of`]
+#[doc(hidden)]
+pub fn plane_slopes(s: &System, jm: [[f64; 2]; 2], k: [f64; 3], plane: PsfPlane) -> (f64, f64) {
+    match plane {
+        PsfPlane::Image => (
+            jm[0][0].signum() * jm[0][0].hypot(jm[0][1]),
+            jm[1][1].signum() * jm[1][0].hypot(jm[1][1]),
+        ),
+        PsfPlane::ChiefPerp => perp_slopes_of(s, jm, k),
+    }
+}
+
+/// 像面の上の FFT PSF の瞳の写像（ANA-08）。像面の点 (x, y) の位相は x ΔL + y ΔM = (x, y)·J p で、J に非対角の項
+/// （x・y の両方に角度のある視野で出る）があると x と y の変換に分かれない。瞳の格子の点 c（区間の中心、[−1, 1]²）を
+/// p = Q c、Q = J⁻¹ diag(ga, gb)（ga・gb は [`plane_slopes`] の値）で追うと J Q = diag(ga, gb) なので位相は
+/// x ga c_x + y gb c_y に分かれ、行列の DFT がそのまま使える。単位円は c の上で [−1, 1]² に内接する楕円になる。
+/// J が対角（非対角が対角の 1e-12 以下）なら None（写さない）
+#[doc(hidden)]
+pub fn image_shear(jm: [[f64; 2]; 2]) -> Option<[[f64; 2]; 2]> {
+    let [[a, b], [c, d]] = jm;
+    if b.abs() <= 1e-12 * a.abs() && c.abs() <= 1e-12 * d.abs() {
+        return None;
+    }
+    let det = a * d - b * c;
+    let (ga, gb) = (a.signum() * a.hypot(b), d.signum() * c.hypot(d));
+    Some([[d * ga / det, -b * gb / det], [-c * ga / det, a * gb / det]])
+}
+
+/// [`cell_frac`] の、区間を q で写したもの: 区間（中心 (cx, cy)、一辺 h）を p = q c で写した平行四辺形の単位円内の面積の
+/// 割合と、円内の部分の中心（p の座標）
+pub(crate) fn cell_frac_mapped(q: [[f64; 2]; 2], cx: f64, cy: f64, h: f64) -> (f64, f64, f64) {
+    let map = |x: f64, y: f64| (q[0][0] * x + q[0][1] * y, q[1][0] * x + q[1][1] * y);
+    let (px, py) = map(cx, cy);
+    let r0 = px.hypot(py);
+    let (u, v) = map(0.5 * h, 0.5 * h);
+    let (u2, v2) = map(0.5 * h, -0.5 * h);
+    let half = u.hypot(v).max(u2.hypot(v2));
+    if r0 + half <= 1.0 {
+        return (1.0, px, py);
+    }
+    if r0 - half >= 1.0 {
+        return (0.0, px, py);
+    }
+    let k = 8;
+    let (mut n, mut sx, mut sy) = (0usize, 0.0, 0.0);
+    for a in 0..k {
+        for b in 0..k {
+            let x = cx + h * ((a as f64 + 0.5) / k as f64 - 0.5);
+            let y = cy + h * ((b as f64 + 0.5) / k as f64 - 0.5);
+            let (x, y) = map(x, y);
+            if x * x + y * y <= 1.0 {
+                n += 1;
+                sx += x;
+                sy += y;
+            }
+        }
+    }
+    if n == 0 {
+        return (0.0, px, py);
+    }
+    let f = n as f64 / (k * k) as f64;
+    (f, sx / n as f64, sy / n as f64)
+}
+
 fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
     let (e1, e2) = perp_basis(k);
     let v = |c: usize| {
@@ -213,11 +299,23 @@ fn perp_slopes(jm: [[f64; 2]; 2], k: [f64; 3]) -> (f64, f64) {
     )
 }
 
-/// 回折 PSF。w None なら全波長を重みで足した多色（各波長の全強度を重みに比例させる）
+/// 回折 PSF。w None なら全波長を重みで足した多色（各波長の全強度を重みに比例させる）。瞳の振幅は系の
+/// アポダイゼーション（[`System::apodization`]）
 pub fn psf(s: &System, field: FieldSel, w: Waves, o: PsfOpts) -> Result<Psf> {
+    psf_with(s, field, w, o, None)
+}
+
+/// [`psf`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す
+pub fn psf_with(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    o: PsfOpts,
+    extra: Option<&dyn PupilAmp>,
+) -> Result<Psf> {
     let w = w.one();
     retry_auto(o.pupil, PSF_PUPIL_CAP, |np| {
-        psf_once(s, field, w, PsfOpts { pupil: np, ..o })
+        psf_once(s, field, w, PsfOpts { pupil: np, ..o }, extra)
     })
 }
 
@@ -249,7 +347,13 @@ pub fn retry_auto(
     Ok(r)
 }
 
-fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result<Psf> {
+fn psf_once(
+    s: &System,
+    field: FieldSel,
+    w: Option<usize>,
+    o: PsfOpts,
+    extra: Option<&dyn PupilAmp>,
+) -> Result<Psf> {
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
@@ -272,14 +376,20 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     if !(kc[2].abs() > 1e-9) {
         invalid!("PSF: the chief ray is parallel to the image surface");
     }
-    let (e1, e2) = perp_basis(kc);
+    let axes = match o.plane {
+        PsfPlane::Image => [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        PsfPlane::ChiefPerp => {
+            let (e1, e2) = perp_basis(kc);
+            [e1, e2]
+        }
+    };
     // 遮断周波数（x・y）の、使う波長のうちの最大（短い波長）
     let mut cut: (f64, f64) = (0.0, 0.0);
     for &wi in &ws {
         if ws.len() > 1 && !(s.weights[wi] > 0.0) {
             continue;
         }
-        let (ga, gb) = perp_slopes_of(s, pupil_jacobian(s, field, wi)?, kc);
+        let (ga, gb) = plane_slopes(s, pupil_jacobian(s, field, wi)?, kc, o.plane);
         let lam = s.wavelengths[wi] * 1e-3;
         cut.0 = cut.0.max(2.0 * (ga / lam).abs());
         cut.1 = cut.1.max(2.0 * (gb / lam).abs());
@@ -306,22 +416,9 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         }
     };
 
-    // 瞳の格子（区間の中心）と円内の割合
+    // 瞳の格子（区間の中心、重みは円内の面積の割合）。像面の上で J に非対角の項があれば波長ごとに写す
     let h = 2.0 / np as f64;
-    let mut cells = Vec::new(); // (ix, iy, 面積の割合, 追跡する点)
-    for iy in 0..np {
-        for ix in 0..np {
-            let cx = -1.0 + h * (ix as f64 + 0.5);
-            let cy = -1.0 + h * (iy as f64 + 0.5);
-            let (f, qx, qy) = cell_frac(cx, cy, h);
-            if f > 0.0 {
-                cells.push((ix, iy, f, qx, qy));
-            }
-        }
-    }
-    let px: Vec<f64> = cells.iter().map(|c| c.3).collect();
-    let py: Vec<f64> = cells.iter().map(|c| c.4).collect();
-    let pcx: Vec<f64> = (0..np).map(|i| -1.0 + h * (i as f64 + 0.5)).collect();
+    let pcx: Vec<f64> = PupilGrid::Cells(np).axis().unwrap_or_default();
 
     let mut tot = vec![vec![0.0; ni]; ni];
     let (mut norm, mut wsum) = (0.0, 0.0);
@@ -332,9 +429,14 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
         if !(k > 0.0) {
             continue;
         }
-        let (ga, gb) = perp_slopes_of(s, pupil_jacobian(s, field, wi)?, kc);
+        let jm = pupil_jacobian(s, field, wi)?;
+        let (ga, gb) = plane_slopes(s, jm, kc, o.plane);
+        let grid = match (o.plane, image_shear(jm)) {
+            (PsfPlane::Image, Some(q)) => PupilGrid::Sheared { n: np, q },
+            _ => PupilGrid::Cells(np),
+        };
         let lam = s.wavelengths[wi] * 1e-3;
-        // 位相の係数: exp(−2πi (a px x + b py y))、a = (∂d/∂px·e1) / λ
+        // 位相の係数: exp(−2πi (a px x + b py y))、a = (∂L/∂px) / λ（垂直な面なら (∂d/∂px·e1) / λ）
         let (a, b) = (ga / lam, gb / lam);
         // 瞳の標本の間隔 h で像の DFT は周期 1 / (a h) で繰り返すので、像の格子がそれを超えると重なる
         // （OpticStudio の FFT PSF で像の格子 = 瞳の格子 × 2 のときがちょうど 1 周期）
@@ -346,26 +448,25 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
                 wi + 1
             );
         }
-        let op = opd(s, field, &px, &py, Some(wi), true)?;
-        // 瞳の格子の複素振幅（面積の割合を重みに）
+        let op = PupilFunction::trace_amp(s, field, Some(wi), grid, true, extra)?;
+        // 瞳の格子の複素振幅（面積の割合 × 振幅を重みに）。s1 = Σ f A（収差なしの中心の振幅）、s2 = Σ f A²（光量）
         let mut p = vec![vec![C64::new(0.0, 0.0); np]; np];
-        let mut sa = 0.0;
-        for (q, &(ix, iy, f, _, _)) in cells.iter().enumerate() {
-            if op.ok(q) && op.opd[q].is_finite() {
-                let ph = 2.0 * std::f64::consts::PI * op.opd[q];
-                p[iy][ix] = C64::new(ph.cos(), ph.sin()) * f;
-                sa += f;
+        let (mut s1, mut s2) = (0.0, 0.0);
+        let mut w_ok: Vec<(usize, usize, f64)> = Vec::new();
+        for q in 0..op.len() {
+            if let Some(o) = op.get(q) {
+                let ((ix, iy), f) = (op.samples.cell[q], op.samples.wt[q]);
+                let (fa, am) = (f * op.amp[q], op.amp[q]);
+                let ph = 2.0 * std::f64::consts::PI * o;
+                p[iy][ix] = C64::new(ph.cos(), ph.sin()) * fa;
+                s1 += fa;
+                s2 += fa * am;
+                w_ok.push((ix, iy, o));
             }
         }
-        if !(sa > 0.0) {
+        if !(s2 > 0.0) {
             invalid!("PSF: no valid rays (all vignetted)");
         }
-        let w_ok: Vec<(usize, usize, f64)> = cells
-            .iter()
-            .enumerate()
-            .filter(|&(q, _)| op.ok(q) && op.opd[q].is_finite())
-            .map(|(q, c)| (c.0, c.1, op.opd[q]))
-            .collect();
         step = step.max(phase_step(np, &w_ok));
         // 行列の DFT: U[y][x] = Σ_iy e^{−2πi b py y} Σ_ix e^{−2πi a px x} P[iy][ix]
         let ex: Vec<Vec<C64>> = xs
@@ -417,10 +518,10 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
             (0..ni).map(one).collect()
         };
         // 格子の点の強度は |Σ P|²（U の連続の積分の 1/h² 倍）。全強度は Parseval で
-        // ∫|U|² dx dy = ∫|P|² dp / |a b| なので、同じ単位で Σ f / |a b h²|
-        let e_w = sa / (a * b * h * h).abs();
-        // 収差なしの中心の値 |Σ A|²（全強度あたり）
-        let dl = sa * sa / e_w;
+        // ∫|U|² dx dy = ∫|P|² dp / |a b| なので、同じ単位で Σ f A² / |a b h²|
+        let e_w = s2 / (a * b * h * h).abs();
+        // 収差なしの中心の値 |Σ f A|²（全強度あたり）
+        let dl = s1 * s1 / e_w;
         for (t, r) in tot.iter_mut().zip(&iw) {
             for (a, v) in t.iter_mut().zip(r) {
                 *a += k * v / e_w;
@@ -443,9 +544,10 @@ fn psf_once(s: &System, field: FieldSel, w: Option<usize>, o: PsfOpts) -> Result
     let enclosed = encl / wsum;
     Ok(Psf {
         i: Grid2::from_rows(xs, ys, tot),
+        plane: o.plane,
         center,
         pixel,
-        axes: [e1, e2],
+        axes,
         peak,
         pupil: np,
         phase_step: step,

@@ -585,23 +585,18 @@ fn first_clip(
     Some((cands[0], j))
 }
 
-/// 瞳の正方格子（一辺 `n` 本、-1〜1）のうち単位円の中の点 (px, py)。`n` < 2 なら空
+/// 瞳の正方格子（一辺 `n` 本、-1〜1）のうち単位円の中の点 (px, py)（[`crate::pupil::PupilGrid::Linear`] の
+/// [`crate::pupil::Rim::Padded`]）。`n` < 2 なら空
 pub fn pupil_grid(n: usize) -> (Vec<f64>, Vec<f64>) {
-    let (mut px, mut py) = (Vec::new(), Vec::new());
     if n < 2 {
-        return (px, py);
+        return (Vec::new(), Vec::new());
     }
-    for iy in 0..n {
-        for ix in 0..n {
-            let x = -1.0 + 2.0 * ix as f64 / (n - 1) as f64;
-            let y = -1.0 + 2.0 * iy as f64 / (n - 1) as f64;
-            if x * x + y * y <= 1.0 + 1e-12 {
-                px.push(x);
-                py.push(y);
-            }
-        }
+    let s = crate::pupil::PupilGrid::Linear {
+        n,
+        rim: crate::pupil::Rim::Padded,
     }
-    (px, py)
+    .samples();
+    (s.px, s.py)
 }
 
 /// 部品の座標の点を大域座標へ

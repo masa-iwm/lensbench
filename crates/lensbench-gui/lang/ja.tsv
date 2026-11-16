@@ -471,6 +471,7 @@ Solve field at analysis wavelength	視野を解析の波長で解く
 Huygens PSF	Huygens PSF
 Image grid	像のグリッドサイズ
 Image grid spacing	像のグリッドの間隔
+Grid plane	グリッドの面
 Apply diffraction limit	回折限界をかける
 Beam 1 (sample)	光束 1（試料）
 Beam 2 (reference)	光束 2（参照）
@@ -483,6 +484,7 @@ Sample power	試料の強度の倍率
 Reference power	参照の強度の倍率
 Reference delay	参照の光路長
 Polarized overlap	偏光追跡で重ねる
+Use polarization	偏光・コーティングを入れる
 Sample input polarization	試料の入射偏光
 Reference input polarization	参照の入射偏光
 Output file	出力ファイル

@@ -132,6 +132,13 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         ),
     );
     w(&mut o, format!("ROPD {}", s.ropd));
+    // 瞳のアポダイゼーション GFAC 係数 種類（OpticStudio は一様でも GFAC 0 0 と書くが、読む側の既定も一様なので
+    // 一様なら書かない）
+    match s.apodization {
+        lensbench_core::pupil::Apodization::Uniform => {}
+        lensbench_core::pupil::Apodization::Gaussian(g) => w(&mut o, format!("GFAC {} 1", f(g))),
+        lensbench_core::pupil::Apodization::CosineCubed => w(&mut o, "GFAC 0 2".to_string()),
+    }
     let row = |key: &str, g: &dyn Fn(&lensbench_core::system::Field) -> f64| -> String {
         let v: Vec<String> = s.fields.iter().map(|x| f(g(x))).collect();
         format!("{key} {}", v.join(" "))

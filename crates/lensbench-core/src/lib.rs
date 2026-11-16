@@ -43,6 +43,7 @@ pub mod param;
 pub mod plugin;
 pub mod pop;
 pub mod psf;
+pub mod pupil;
 pub mod raygrid;
 pub mod report;
 pub mod semi;
@@ -72,7 +73,7 @@ pub mod prelude {
     pub use crate::ext::{self, Ext};
     pub use crate::grid::Grid2;
     pub use crate::par::{with_threads, CancelToken};
-    pub use crate::psf::{self, Psf, PsfOpts};
+    pub use crate::psf::{self, Psf, PsfOpts, PsfPlane};
     pub use crate::system::{FieldSel, RecSel, System, TraceOpts};
     pub use crate::tansag::TanSag;
     pub use crate::vfs;

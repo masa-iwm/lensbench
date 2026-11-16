@@ -106,6 +106,14 @@ def test_psf(b0):
     assert np.array_equal(p["i"].ravel(), [q["i"] for q in c["psf"]])
     with pytest.raises(ValueError):
         b0.psf(1, pupil=16, image=64)
+    # 既定は像面の上、plane="chief" は主光線に垂直な面（CLI の --plane chief と同じ）
+    assert p["plane"] == "image"
+    q = b0.psf(2, wave=2, pupil=32, image=64, plane="chief")
+    assert q["plane"] == "chief"
+    c = cli("psf", zmx("B0"), "--field", "2", "--wave", "2", "--pupil", "32", "--image", "64", "--plane", "chief")
+    assert np.array_equal(q["i"].ravel(), [r["i"] for r in c["psf"]])
+    with pytest.raises(ValueError):
+        b0.psf(1, plane="x")
 
 
 def test_geometric_mtf(b0):

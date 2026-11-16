@@ -16,6 +16,7 @@ pub mod huygens;
 pub mod interference;
 pub mod plugins;
 pub mod polgrid;
+pub mod pupil_amp;
 pub mod registry;
 
 pub use plugins::{register, Analysis as PluginAnalysis, Prepared};

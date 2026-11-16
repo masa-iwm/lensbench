@@ -99,80 +99,7 @@ pub struct Raw {
     pub notes: Vec<String>,
 }
 
-/// 系の行のうち、読む鍵（build・Raw のメソッドで使う）
-const SYS_READ: &[&str] = &[
-    "VERS", "MODE", "UNIT", "NAME", "ENPD", "FNUM", "OBNA", "FLOA", "ENVD", "GCAT", "RAIM", "FTYP",
-    "ROPD", "XFLN", "YFLN", "FWGN", "VDXN", "VDYN", "VCXN", "VCYN", "VANN", "WAVM", "WAVL", "WWGT",
-    "PWAV", "GLRS", "COFN", "AFOC", "MNUM", "HYPR",
-];
-
-/// 系の行のうち、読まなくても光線追跡・解析に効かない鍵（表示・作者・言語・公差・非順次の設定・最適化の設定・
-/// エイミングの途中の値など）
-const SYS_HARMLESS: &[&str] = &[
-    "AUTH", "NOTE", "PFIL", "LANG", "IWDP", "TOL", "TOLE", "NSCD", "LUID", "EERA", "BLNK", "OMMA",
-    "PUSH", "GSTD", "MAZH", "MCOM", "XFIE", "YFIE", "RSCE", "DMFS", "OPDX", "TELE",
-];
-
-/// 系の行のうち、値が既定（OpticStudio が普通に書く値）のときだけ害がない鍵と、その既定。違えば注意に残す
-const SYS_DEFAULT_ONLY: &[(&str, &str)] = &[
-    // 自動の半直径の余裕（mm・%）
-    ("SDMA", "0 1 0"),
-    // 偏光の状態（解析ごとに lensbench の設定を使う）
-    ("POLS", "1 0 1 0 0 1 0"),
-    // 近軸の量で座標ブレークを無視する
-    ("PICB", "1"),
-];
-
-impl Raw {
-    /// 読まずに飛ばした系の行の注意（行の鍵と値）。アポダイゼーション（GFAC）が一様でなければ誤り。
-    /// ただしカタログの玉として読むとき（`catalog`）は注意だけ（玉の面の形・材料・径には関係せず、
-    /// 差し込んだ先の系の瞳は使う側の系が決める）
-    fn system_notes(&self, catalog: bool) -> Result<Vec<String>> {
-        let mut out = Vec::new();
-        let mut keys: Vec<&String> = self.sysl.keys().collect();
-        keys.sort();
-        for k in keys {
-            let k = k.as_str();
-            if SYS_READ.contains(&k) || SYS_HARMLESS.contains(&k) {
-                continue;
-            }
-            let vals = &self.sysl[k];
-            let joined: Vec<String> = vals.iter().map(|v| v.join(" ")).collect();
-            if k == "GFAC" {
-                // アポダイゼーションの種類（0 は一様）。瞳の振幅が変わるので、読まずに進めると別の系になる
-                if vals
-                    .first()
-                    .and_then(|v| v.first())
-                    .is_some_and(|x| !matches!(fv(x), Ok(v) if v == 0.0))
-                {
-                    if !catalog {
-                        notimpl!("pupil apodization (GFAC {})", joined.join(" "));
-                    }
-                    out.push(format!(
-                        ".zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses",
-                        joined.join(" / ")
-                    ));
-                }
-                continue;
-            }
-            if let Some((_, d)) = SYS_DEFAULT_ONLY.iter().find(|(n, _)| *n == k) {
-                if joined.iter().all(|j| j == d) {
-                    continue;
-                }
-                out.push(format!(
-                    ".zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)",
-                    joined.join(" / ")
-                ));
-                continue;
-            }
-            out.push(format!(
-                ".zmx system line {k} {} was skipped",
-                joined.join(" / ")
-            ));
-        }
-        Ok(out)
-    }
-}
+mod system_lines;
 
 fn fv(v: &str) -> Result<f64> {
     if v.eq_ignore_ascii_case("INFINITY") {
@@ -1608,6 +1535,7 @@ pub fn build(
     s.pressure = pres;
     s.glrs = glrs;
     s.ropd = ropd;
+    s.apodization = system_lines::apodization(raw, opt.fixed_semi)?;
     // Afocal Image Space は FTYP の 7 番目（OpticStudio 26.1 で確認。保存すると HYPR も 1 になるが、読むときは FTYP だけが効く）
     s.afocal = ftyp.get(6) == Some(&1);
     // UNIT の値の 6 番目（MM X W X CM の次）が Afocal Mode Units（UR・MR・RR・AS・AM・DG、OpticStudio 26.1 で確認）。無ければ mrad

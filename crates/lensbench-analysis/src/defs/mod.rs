@@ -40,6 +40,22 @@ pub fn fields(s: &System, field: Option<usize>) -> Result<Vec<usize>> {
 }
 
 /// 波長の番号（1 始まり、None で多色）を 0 始まりにする
+/// 設定 polarization の膜・偏光の振幅（偏光なし、系の膜。[`crate::pupil_amp::PolAmp`]）。off なら None
+fn pol_amp(
+    s: &System,
+    i: usize,
+    w: Option<usize>,
+    on: bool,
+) -> Result<Option<crate::pupil_amp::PolAmp>> {
+    if !on {
+        return Ok(None);
+    }
+    let co = lensbench_core::coating::Coatings::for_system(s)?;
+    let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
+    let f = lensbench_core::FieldSel::Index(i);
+    crate::pupil_amp::PolAmp::new(s, f, &ws, &co, crate::pupil_amp::POL_GRID, None).map(Some)
+}
+
 pub fn wave(s: &System, w: Option<usize>) -> Result<Option<usize>> {
     lensbench_core::waves::index_opt(w, s.wavelengths.len())
 }

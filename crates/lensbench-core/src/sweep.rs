@@ -8,11 +8,12 @@
 //! 横軸のある点で計算できない（瞳の縁がけられる・光線が届かないなど）ときは、その点を NaN にして warnings に
 //! 理由を残し、ほかの点は続ける。
 
-use crate::analysis::{self, mtf, pupil_gauss, Opd};
+use crate::analysis::{self, mtf};
 use crate::error::Result;
 use crate::focus::{FocusBase, FocusShift};
 use crate::invalid;
-use crate::system::{Cols, FieldSel, FieldType, RayBuf, System, Trace};
+use crate::pupil::{PupilFunction, PupilGrid};
+use crate::system::{Cols, FieldSel, FieldType, RayBuf, System};
 use crate::Waves;
 use std::sync::Arc;
 
@@ -265,27 +266,20 @@ impl Rms {
 ///   波長ごとのピストンと、全波長に共通の (L − Lc, M − Mc) の係数 [波]（Lc は主波長の主光線）を一緒に当てはめて除く。
 /// - アフォーカル（参照が平面波）の centroid は (L − Lc, M − Mc) の代わりに瞳座標 (px, py)（参照の平面を傾けた分）。
 ///
-/// os は波長ごとの OPD と、参照に使った主光線の追跡（`analysis::opd_chief`、多色なら主波長の主光線）。
+/// os は波長ごとの瞳関数（ガウス求積の格子。参照の主光線は多色なら主波長）。
 /// 返すのは波長ごとの分散（os の順）
-fn wfe_var(
-    s: &System,
-    os: &[&(Opd, Trace)],
-    px: &[f64],
-    py: &[f64],
-    wt: &[f64],
-    r: RmsRef,
-) -> Result<Vec<f64>> {
+fn wfe_var(s: &System, os: &[&PupilFunction], r: RmsRef) -> Result<Vec<f64>> {
     let nw = os.len();
     // 波長ごとの (OPD, L − Lc, M − Mc, 重み)（重みは波長の中で和 1）
     let mut rows: Vec<Vec<(f64, f64, f64, f64)>> = Vec::with_capacity(nw);
-    for &(o, c) in os {
+    for &o in os {
+        let c = &o.chief;
+        let (px, py, wt) = (&o.samples.px, &o.samples.py, &o.samples.wt);
         if !c.traced(0) {
             invalid!("the chief ray doesn't reach the image");
         }
         let (lc, mc) = (c.rays[0].lmn[0], c.rays[0].lmn[1]);
-        let idx: Vec<usize> = (0..px.len())
-            .filter(|&i| o.ok(i) && o.opd[i].is_finite())
-            .collect();
+        let idx: Vec<usize> = (0..o.len()).filter(|&i| o.mask[i]).collect();
         let sw: f64 = idx.iter().map(|&i| wt[i]).sum();
         if idx.is_empty() || !(sw > 0.0) {
             invalid!("no valid rays (all vignetted)");
@@ -410,31 +404,36 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
         invalid!("no weighted wavelength");
     }
     // 同じ求積の点の追跡からスポットと OPD の両方を作る（スポットは重み 0 の波長も含め、その分は OPD を求めない）
-    let (px, py, wt) = pupil_gauss(o.rings, None);
+    let grid = PupilGrid::Gauss {
+        rings: o.rings,
+        arms: None,
+    };
+    let smp = grid.samples();
+    let (px, py, wt) = (&smp.px, &smp.py, &smp.wt);
     let poly = w.is_none();
-    // OPD を求めた波長は Ok（OPD と参照の主光線）、重み 0 の波長は Err（スポット用の追跡だけ）
-    type Traced = std::result::Result<(Opd, Trace), RayBuf>;
+    // OPD を求めた波長は Ok（瞳関数）、重み 0 の波長は Err（スポット用の追跡だけ）
+    type Traced = std::result::Result<PupilFunction, RayBuf>;
     let mut rs: Vec<(usize, Traced)> = Vec::with_capacity(ws.len());
     for &wi in &ws {
         rs.push(if ks.iter().any(|k| k.0 == wi) {
             (
                 wi,
-                Ok(analysis::opd_chief(s, field, &px, &py, Some(wi), poly)?),
+                Ok(PupilFunction::trace(s, field, Some(wi), grid, poly)?),
             )
         } else {
             let mut b = RayBuf::with_cols(Cols::XYZ | Cols::LMN);
-            s.try_trace_into(field, &px, &py, Some(wi), None, &mut b)?;
+            s.try_trace_into(field, px, py, Some(wi), None, &mut b)?;
             (wi, Err(b))
         });
     }
-    let os: Vec<&(Opd, Trace)> = rs.iter().filter_map(|(_, r)| r.as_ref().ok()).collect();
+    let os: Vec<&PupilFunction> = rs.iter().filter_map(|(_, r)| r.as_ref().ok()).collect();
     // スポットの主光線は単色ならその波長、多色なら主波長（OPD の参照の主光線と同じ）
-    let rc = &os[0].1;
+    let rc = &os[0].chief;
     let tr: Vec<(usize, &RayBuf)> = rs
         .iter()
-        .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.0.rays)))
+        .map(|(wi, r)| (*wi, r.as_ref().map_or_else(|t| t, |o| &o.rays)))
         .collect();
-    let sp = analysis::spot_of(s, &tr, &wt, rc);
+    let sp = analysis::spot_of(s, &tr, wt, rc);
     let (rx, ry) = match o.reference {
         RmsRef::Chief => sp.chief,
         RmsRef::Centroid => sp.centroid,
@@ -445,7 +444,7 @@ pub fn rms(s: &System, field: FieldSel, w: Waves, o: RmsOpts) -> Result<Rms> {
     };
     let sx = mom(&|i| (sp.x[i] - rx).powi(2));
     let sy = mom(&|i| (sp.y[i] - ry).powi(2));
-    let vars = wfe_var(s, &os, &px, &py, &wt, o.reference)?;
+    let vars = wfe_var(s, &os, o.reference)?;
     let (mut var, mut st) = (0.0, 0.0);
     for (&(_, k), &v) in ks.iter().zip(&vars) {
         var += k * v;

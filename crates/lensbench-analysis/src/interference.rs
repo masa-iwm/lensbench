@@ -12,9 +12,10 @@
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
+use lensbench_core::pupil::{PupilFunction, PupilGrid, Rim};
 use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::system::{FieldSel, System};
-use lensbench_core::{analysis, invalid, Result};
+use lensbench_core::{invalid, Result};
 
 // ---------------------------------------------------------------------------------------------------------------
 // 瞳上
@@ -70,10 +71,11 @@ pub fn interferogram(
         invalid!("grid side {} must be an even number 4 or more", o.n);
     }
     let n = o.n;
+    let grid = PupilGrid::Interferogram(n);
     let p = pupil_grid(n);
-    let w1 = opd_grid(beam1, field, w, &p)?;
+    let w1 = opd_grid(beam1, field, w, grid)?;
     let w2 = match beam2 {
-        Some(s) => Some(opd_grid(s, field, w, &p)?),
+        Some(s) => Some(opd_grid(s, field, w, grid)?),
         None => None,
     };
     let mut delta = vec![vec![f64::NAN; n]; n];
@@ -108,34 +110,22 @@ pub fn interferogram(
     })
 }
 
-/// 瞳上の干渉縞の格子 p_i = (i − n/2 + 1)/(n/2 − 1)（n は 4 以上の偶数）。OpticStudio の Interferogram の格子で、
-/// Wavefront Map の格子（[`analysis::wavefront_grid`]、(i − n/2)/(n/2 − 1)）とは 1 点ずれる（OpticStudio 2026 R1 で確認）
+/// 瞳上の干渉縞の格子 p_i = (i − n/2 + 1)/(n/2 − 1)（n は 4 以上の偶数、[`PupilGrid::Interferogram`]）
 pub fn pupil_grid(n: usize) -> Vec<f64> {
-    let h = (n / 2) as f64 - 1.0;
-    (0..n).map(|i| (i as f64 - h) / h).collect()
+    PupilGrid::Interferogram(n).axis().unwrap_or_default()
 }
 
-/// 格子 p × p の OPD [波]（波長 w 自身の主光線・参照球に対して。瞳の外・けられは NaN）。[iy][ix]
-pub fn opd_grid(s: &System, field: FieldSel, w: Option<usize>, p: &[f64]) -> Result<Vec<Vec<f64>>> {
-    let n = p.len();
-    let (mut px, mut py, mut idx) = (Vec::new(), Vec::new(), Vec::new());
-    for (iy, &y) in p.iter().enumerate() {
-        for (ix, &x) in p.iter().enumerate() {
-            if x * x + y * y <= 1.0 {
-                px.push(x);
-                py.push(y);
-                idx.push((iy, ix));
-            }
-        }
+/// 格子 grid の OPD [波]（波長 w 自身の主光線・参照球に対して。瞳の外・けられは NaN）。[iy][ix]
+pub fn opd_grid(
+    s: &System,
+    field: FieldSel,
+    w: Option<usize>,
+    grid: PupilGrid,
+) -> Result<Vec<Vec<f64>>> {
+    if grid.side().is_none() {
+        invalid!("the OPD map needs a square pupil grid");
     }
-    let r = analysis::opd(s, field, &px, &py, w, false)?;
-    let mut g = vec![vec![f64::NAN; n]; n];
-    for (q, &(iy, ix)) in idx.iter().enumerate() {
-        if r.ok(q) && r.opd[q].is_finite() {
-            g[iy][ix] = r.opd[q];
-        }
-    }
-    Ok(g)
+    Ok(PupilFunction::trace(s, field, w, grid, false)?.map())
 }
 
 fn pv_rms(v: &[f64]) -> (f64, f64) {
@@ -227,17 +217,14 @@ fn trace_grid(
     w: usize,
     pol: Option<(InputPol, &Coatings)>,
 ) -> Result<(RayGrid, Vec<[C64; 3]>)> {
-    let mut idx = Vec::new();
-    for iy in 0..g {
-        for ix in 0..g {
-            let (px, py) = grid_p(g, ix, iy);
-            if px * px + py * py <= 1.0 {
-                idx.push(iy * g + ix);
-            }
-        }
+    // 偏光の追跡・光路長 opl_os が要るので PupilFunction でなく格子の標本だけを使う
+    let smp = PupilGrid::Linear {
+        n: g,
+        rim: Rim::Closed,
     }
-    let pxs: Vec<f64> = idx.iter().map(|&q| grid_p(g, q % g, q / g).0).collect();
-    let pys: Vec<f64> = idx.iter().map(|&q| grid_p(g, q % g, q / g).1).collect();
+    .samples();
+    let idx: Vec<usize> = smp.cell.iter().map(|&(ix, iy)| iy * g + ix).collect();
+    let (pxs, pys) = (smp.px, smp.py);
     let mut r = RayGrid::new(g, 1);
     let mut e = vec![[C64::new(0.0, 0.0); 3]; g * g];
     // 偏光つきなら偏光追跡の結果の追跡（同じ光線、ビット単位で同じ）を使い、同じ点を 2 回追わない
@@ -293,13 +280,6 @@ fn trace_grid(
         r.ok[q] = true;
     }
     Ok((r, e))
-}
-
-fn grid_p(g: usize, ix: usize, iy: usize) -> (f64, f64) {
-    (
-        -1.0 + 2.0 * ix as f64 / (g - 1) as f64,
-        -1.0 + 2.0 * iy as f64 / (g - 1) as f64,
-    )
 }
 
 /// 場の 3 成分を画素へ（x・y は rasterize の ex・ey、z は同じ走査で添える）
@@ -511,9 +491,9 @@ mod tests {
             ..Default::default()
         };
         let r = interferogram(&a, Some(&b), FieldSel::Index(0), None, &o).unwrap();
-        let p = pupil_grid(32);
-        let wa = opd_grid(&a, FieldSel::Index(0), None, &p).unwrap();
-        let wb = opd_grid(&b, FieldSel::Index(0), None, &p).unwrap();
+        let g = PupilGrid::Interferogram(32);
+        let wa = opd_grid(&a, FieldSel::Index(0), None, g).unwrap();
+        let wb = opd_grid(&b, FieldSel::Index(0), None, g).unwrap();
         for iy in 0..32 {
             for ix in 0..32 {
                 let d = r.delta[iy][ix];

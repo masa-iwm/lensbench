@@ -216,6 +216,8 @@ Huygens PSF: the image surface sag can't be found at {off_surface} of the {npts}
 Huygens MTF: the PSF intensity is undefined at {off} image grid points (the image surface sag can't be found there); reduce the image grid or spacing	Huygens MTF: 像のグリッドの {off} 点で PSF の強度が決まりません（像面の矢高が求まらない点）。像のグリッド・間隔を減らしてください
 no weighted wavelength	ウェイトのある波長がありません
 setting method must be auto, interp, direct or fft ({x})	設定 method は auto・interp・direct・fft に（{x}）
+setting plane must be image or chief ({x})	設定 plane は image・chief に（{x}）
+Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)	像のグリッドの面（image: 像面、chief: 主光線に垂直な面。OpticStudio の FFT PSF と同じ）
 setting reference must be centroid or chief ({x})	設定 reference は centroid か chief に（{x}）
 setting surface (the surface that makes the field) is needed	設定 surface（場を作る面）が必要です
 give only one of the settings dist and to	設定 dist と to はどちらか
@@ -473,7 +475,9 @@ coating model {name} (reflection): β = {b:.4} is outside the model range (β �
 coating model {name}: β = {b:.4} is outside the model range (β ≤ {top:.4}, BMAX {bmax})	コーティングのモデル {name}: β = {b:.4} がモデルの範囲（β ≤ {top:.4}、BMAX {bmax}）の外
 coating model {name} (mirror): β = {b:.4} is outside the model range (β ≤ {top:.4})	コーティングのモデル {name}（ミラー）: β = {b:.4} がモデルの範囲（β ≤ {top:.4}）の外
 coating model {name} (mirror): β = {b:.5} is near where the outer medium turns to total reflection (β {lo:.5} to {hi:.5}); too few measured points to set the value	コーティングのモデル {name}（ミラー）: β = {b:.5} はコーティングの外の媒質で全反射に変わる点（β {lo:.5}〜{hi:.5}）のそばで、測った点が足りず値が決まりません
-pupil apodization (GFAC {})	瞳のアポダイゼーション（GFAC {}）
+zmx apodization factor {g}: the Gaussian factor must be 0 or more	.zmx のアポダイゼーションの係数 {g}: ガウスの係数は 0 以上
+zmx apodization type {t} (0, 1 or 2)	.zmx のアポダイゼーションの種類 {t}（0・1・2）
+apodization factor {g} must be 0 or more	アポダイゼーションの係数 {g} は 0 以上
 not a number: {v}	数値ではありません: {v}
 can't read the zmx multi-configuration line: {line}	zmx の多重構成の行を読めません: {line}
 surface {}: too few GARR values	面 {}: GARR の値が足りません
@@ -674,6 +678,8 @@ the ray grid size doesn't match (G = {})	光線のグリッドの大きさが合
 input polarization {s} (x, y, angle [deg], circ+, circ-)	入射偏光 {s}（x・y・角度 [deg]・circ+・circ-）
 surface {s} is out of range (1 to {})	面 {s} が範囲外（1〜{}）
 the pupil grid must be 2 or more	瞳のグリッドは 2 以上
+the pupil grid must be 1 or more	瞳のグリッドは 1 以上
+the OPD map needs a square pupil grid	OPD のマップには正方形の瞳のグリッドが必要
 the primary wavelength must be the center wavelength (wavelength 1)	主波長は中心波長（波長 1）に
 the chief ray doesn't reach the sensor	主光線がセンサに届きません
 residual surface {j} (surfaces not ignored, 1 to {})	残差の面 {j}（無視しない面 1〜{}）
@@ -1493,6 +1499,7 @@ removed mechanical part {} (its surface {j} was deleted)	機構部品 {} を外�
 the global coordinate reference surface {j} was deleted, so it is now surface 1	グローバル座標の基準面 {j} を削除したので面 1 にしました
 warning: the environment variable LENSBENCH_FLOATING_CLIP is no longer used (ignored). To keep floating apertures from clipping, set the system setting floating_clip to false	注意: 環境変数 LENSBENCH_FLOATING_CLIP は使わなくなりました（無視します）。浮動開口でケラレないようにするには系の設定 floating_clip を false にしてください
 .zmx system line GFAC {} (pupil apodization) is not used because the system is read as catalog lenses	.zmx の系の行 GFAC {}（瞳のアポダイゼーション）はカタログのレンズとして読むので使いません
+.zmx system line GFAC {} (pupil apodization) is used only by the diffraction analyses (FFT PSF, Huygens PSF/MTF, diffraction MTF); spot, RMS wavefront, Zernike and geometric MTF do not weight the pupil	.zmx の系の行 GFAC {}（瞳のアポダイゼーション）は回折の解析（FFT PSF・Huygens PSF/MTF・回折 MTF）にだけ入ります。スポット・RMS 波面・Zernike・幾何 MTF は瞳にウェイトをつけません
 .zmx system line {k} {} (differs from the default {d}, but lensbench doesn't read it)	.zmx の系の行 {k} {}（デフォルト {d} と違いますが、lensbench は読みません）
 .zmx system line {k} {} was skipped	.zmx の系の行 {k} {} を読まずに飛ばしました
 zmx surface {}: line {k} was skipped (an old .zmx without indentation)	zmx の面 {}: 行 {k} を読まずに飛ばしました（字下げのない古い .zmx）
@@ -1763,6 +1770,8 @@ Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the
 Huygens PSF (on the image surface; for tilted image surfaces and strongly aberrated systems; slower than FFT)	Huygens PSF（像面の上。傾いた像面・収差の大きい系向け、FFT より遅い）
 Image grid side (up to twice the pupil grid at the default spacing)	像のグリッドサイズ（間隔がデフォルトなら瞳のグリッドの 2 倍まで）
 Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)	像のグリッドの間隔 [レンズ単位、アフォーカル像空間では角度の単位]（省くと 1 / (2 × 遮断周波数)）
+Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included	瞳の振幅にコーティングの透過率・境界の Fresnel の損失を入れる（偏光なし、系のコーティング。OpticStudio の Use Polarization と同じ）。系の瞳のアポダイゼーションは常に入る
+Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)	FFT PSF のグリッドの面（image: 像面、chief: 主光線に垂直な面。OpticStudio の FFT PSF と同じ）
 System data (EFL, F-number, pupils, etc.)	システムデータ（EFL、F 値、瞳など）
 Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface)	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）
 Intersections, directions and optical path lengths of rays at each surface (1 row = 1 ray × 1 surface). --save writes csv, json or npz	光線の面ごとの交点・方向・光路長（1 行 = 1 光線 × 1 面）。--save で csv・json・npz にエクスポート
@@ -1833,7 +1842,7 @@ Image: center x,y of the area (the center of the area reached by both beams if o
 Image: side of the area (covers the area reached by both beams if omitted)	像面上: 範囲の一辺（省略で 2 つの光束が届く範囲を覆う）
 Image: optical path added to the reference path	像面上: 参照の経路に追加する光路長
 List of ghosts (reflected at surface a then at surface b, the double bounce of OpticStudio's Ghost Focus Generator): paraxial ghost focus position, blur radius at the image and on-axis chief ray intensity ratio (with coatings). out_dir writes the expanded systems to .zmx	ゴースト（面 a で反射し、面 b で反射する 2 回反射、OpticStudio の Ghost Focus Generator の double bounce）の一覧: 近軸のゴーストの焦点の位置・像面でのぼけの半径と、軸上の主光線の強度の比（コーティング込み）。out_dir で展開した系を .zmx に書く
-Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface; coordinates are the local image surface coordinates). x and y are coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)	回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色。huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で追加。座標は像面のローカル座標）。x・y は主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）
+Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface). x and y are local image surface coordinates relative to the chief ray; with plane chief, coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)	回折 PSF（瞳関数の DFT）。強度は収差のない同じ瞳の中心の値を 1 とする。wave を省くと多色。huygens で Huygens PSF（参照球の各点からの 2 次波を像面の上で足す）。x・y は主光線の像点からの像面のローカル座標。plane chief では主光線に垂直な面の座標（e1・e2 の向き、OpticStudio の FFT PSF と同じ）
 Simple POP: build a field from rays on the tangent plane of a surface (with the surface aperture applied) and propagate it in a uniform medium over the distance dist (to the vertex plane of the next surface if omitted); the irradiance. --save writes the grid (csv, npz) or everything (json)	簡易 POP: 光線から面の接平面の上に場を作り（面の開口を掛けて）、一様な媒質の中を距離 dist （省略で次の面の頂点面まで）伝えた放射照度。--save でグリッド（csv・npz）か全部（json）をエクスポート
 Vignetting by mechanical parts (the project's mechanics): trace the rays of the pupil grid and give the fraction outside the part bores (tube inner diameter, clear aperture of cage plates and mounts) per part, field and wavelength	機構部品（プロジェクトの mechanics）のケラレ: 瞳のグリッドの光線を追い、部品の穴（チューブの内径・ケージプレートやマウントのクリア開口）の外に出た割合を部品ごと・視野と波長ごとに出す
 Monochromatic interferogram: overlay the light of two configurations (.zmx) or states (project file). mode pupil is on the pupil (like OpticStudio's Interferogram: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2, I = (1 + cos 2πΔ)/2), detector is on the image surface (rays interpolated to pixels and fields summed). The out extension gives csv (grid, row = +y), json (summary and grid), tif (16 bit; 32-bit float with float) or png (16 bit)	単色の干渉縞: 2 つの構成（.zmx）か状態（プロジェクトファイル）の光を重ねる。mode pupil は瞳上（OpticStudio の Interferogram に当たる: Δ = scale·(W1 − W2) + (xtilt·px + ytilt·py)/2、I = (1 + cos 2πΔ)/2）、detector は像面上（光線を画素へ補間して場を追加）。out の拡張子で csv（グリッド、行 = +y）・json（要約とグリッド）・tif（16 bit、float で 32 bit float）・png（16 bit）
@@ -2031,6 +2040,9 @@ no circles, so a box of {} vertices (along the coordinate axes)	円が無いの�
 clear aperture	有効径
 length	長さ
 outer diameter	外径
+cosine cubed apodization: the chief ray can't be traced	Cosine Cubed のアポダイゼーション: 主光線を追跡できない
+cosine cubed apodization: the object or entrance pupil position is undefined	Cosine Cubed のアポダイゼーション: 物体か入射瞳の位置が決まらない
+the input polarization (Ex, Ey) must not be zero	入射の偏光 (Ex, Ey) は 0 以外に
 the range of variable {v} is min:max	変数 {v} の範囲は 下限:上限
 range {t} of variable {v} can't be read	変数 {v} の範囲 {t} が読めません
 configs of variable {name}: {k} (1 to {n_configs})	変数 {name} の configs: {k}（1〜{n_configs}）

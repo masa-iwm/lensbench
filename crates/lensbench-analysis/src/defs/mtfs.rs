@@ -7,8 +7,9 @@ use lensbench_core::{psf, sweep, Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, freq_unit, freqs_for, wave, Axis, MtfRow, WaveMtf};
+use super::{fields, freq_unit, freqs_for, pol_amp, wave, Axis, MtfRow, WaveMtf};
 use crate::registry::{Analysis, Cx, Meta};
+use lensbench_core::pupil::PupilAmp;
 
 // ----------------------------------------------------------------------------------------- mtf
 
@@ -48,6 +49,8 @@ pub(super) struct MtfParams {
     pub method: MtfHow,
     /// Also output the MTF of each wavelength besides the polychromatic one ("waves"; faster than separate runs because the per-wavelength computation is reused). Can't be used with wave
     pub each_wave: bool,
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    pub polarization: bool,
 }
 
 impl Default for MtfParams {
@@ -61,6 +64,7 @@ impl Default for MtfParams {
             n: None,
             method: MtfHow::Auto,
             each_wave: false,
+            polarization: false,
         }
     }
 }
@@ -103,8 +107,10 @@ impl Analysis for Mtf {
         for i in fields(s, p.field)? {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
             let f = FieldSel::Index(i);
+            let pa = pol_amp(s, i, w, p.polarization)?;
+            let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
             let row = if p.each_wave {
-                let mw = analysis::mtf_waves(s, f, p.n, &fs, method)?;
+                let mw = analysis::mtf_waves_amp(s, f, p.n, &fs, method, pa)?;
                 let mut r = MtfRow::of(i, mw.poly);
                 r.waves = Some(
                     mw.waves
@@ -121,7 +127,7 @@ impl Analysis for Mtf {
             } else {
                 MtfRow::of(
                     i,
-                    analysis::mtf_with(s, f, Waves::all_or(w), p.n, &fs, method)?,
+                    analysis::mtf_amp(s, f, Waves::all_or(w), p.n, &fs, method, None, pa)?,
                 )
             };
             v.push(row);
@@ -438,6 +444,8 @@ pub(super) struct HuygensMtfParams {
     pub image: usize,
     /// Image grid spacing [mm] (1 / (2 × cutoff) if omitted)
     pub pixel: Option<f64>,
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    pub polarization: bool,
 }
 
 impl Default for HuygensMtfParams {
@@ -451,6 +459,7 @@ impl Default for HuygensMtfParams {
             pupil: None,
             image: 128,
             pixel: None,
+            polarization: false,
         }
     }
 }
@@ -478,9 +487,12 @@ impl Analysis for HuygensMtf {
         let mut v = Vec::new();
         for i in fields(s, p.field)? {
             let fs = freqs_for(s, i, w, &p.freqs, p.max_freq, p.freq_steps)?;
+            let pa = pol_amp(s, i, w, p.polarization)?;
+            let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
+            let f = FieldSel::Index(i);
             v.push(MtfRow::of(
                 i,
-                huygens::huygens_mtf(s, FieldSel::Index(i), Waves::all_or(w), o, &fs)?,
+                huygens::huygens_mtf_with(s, f, Waves::all_or(w), o, &fs, pa)?,
             ));
         }
         Ok(MtfOut {

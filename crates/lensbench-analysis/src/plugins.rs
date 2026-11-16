@@ -11,7 +11,7 @@
 //! | `wavefront` | `wave`・`n`（64）・`ref_primary`（0） | `p`・`w`（(n, n)、外は NaN）・`pv`・`rms` |
 //! | `zernike` | `wave`・`kind`（standard）・`terms`（37）・`n`（64）・`ref_primary`（0） | `coef`・`pv`・`pv_centroid`・`rms_fit`・`max_fit`・`rms_chief`・`rms_centroid`・`variance`・`strehl` |
 //! | `mtf` | `wave`・`freqs`（省けば遮断周波数の 0〜0.95 を 21 点）・`n`・`method`（auto・interp・direct・fft） | `freqs`・`tan`・`sag`・`cutoff` |
-//! | `psf` | `wave`・`pupil`（自動）・`image`（128）・`pixel` | `x`・`y`・`i`（(image, image)）・`center`・`pixel`・`peak`・`pupil`・`phase_step`・`enclosed` |
+//! | `psf` | `wave`・`pupil`（自動）・`image`（128）・`pixel`・`plane`（image・chief） | `x`・`y`・`i`（(image, image)）・`center`・`pixel`・`peak`・`pupil`・`phase_step`・`enclosed` |
 //! | `rms` | `wave`・`rings`（6）・`reference`（centroid・chief） | `spot`・`spot_x`・`spot_y`・`wfe`・`strehl` |
 //! | `huygens_psf` | `wave`・`pupil`（自動）・`image`（128）・`pixel` | psf と同じ（x・y は像面の局所座標の中心からの差） |
 //! | `huygens_mtf` | `wave`・`freqs`（省けば mtf と同じ既定）・`pupil`（自動）・`image`（128）・`pixel` | `freqs`・`tan`・`sag`・`cutoff` |
@@ -37,7 +37,7 @@ use lensbench_core::plugin::{
     Kind, OutputSpec, ParamSpec, ParamType, Plugin, Registry, Spec, Value,
 };
 use lensbench_core::pop::{self, OutGrid, PopMethod, RayBeamOpts};
-use lensbench_core::psf::{self, PsfOpts};
+use lensbench_core::psf::{self, PsfOpts, PsfPlane};
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::{invalid, FieldSel, Result, System};
 
@@ -435,7 +435,20 @@ impl Plugin for Analysis {
                     "Calculation method",
                 ),
             ],
-            Analysis::Psf | Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
+            Analysis::Psf => vec![
+                wave(),
+                pupil(),
+                image(),
+                pixel(),
+                p(
+                    "plane",
+                    ch(&["image", "chief"]),
+                    st("image"),
+                    "",
+                    "Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)",
+                ),
+            ],
+            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
             Analysis::Rms => vec![
                 wave(),
                 p(
@@ -615,6 +628,11 @@ impl Plugin for Analysis {
                         pupil: r.opt_count("pupil")?,
                         image: r.count("image", d.image)?,
                         pixel,
+                        plane: match r.str("plane", "image")?.as_str() {
+                            "image" => PsfPlane::Image,
+                            "chief" => PsfPlane::ChiefPerp,
+                            x => invalid!("setting plane must be image or chief ({x})"),
+                        },
                     },
                 }
             }

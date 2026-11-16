@@ -353,6 +353,7 @@ fn matches_opticstudio() {
             pupil: Some(128),
             image: 256,
             pixel: Some(0.0914374977),
+            plane: psf::PsfPlane::ChiefPerp,
         };
         let p = psf::psf(&s, f, Waves::All, po).unwrap();
         assert!(

@@ -384,6 +384,8 @@ fn fft_psf_matches_opticstudio() {
                 pupil: Some(it["pupil"].as_u64().unwrap() as usize),
                 image,
                 pixel: Some(it["delta_um"].as_f64().unwrap() * 1e-3),
+                // OS の FFT PSF は主光線に垂直な面
+                plane: psf::PsfPlane::ChiefPerp,
             };
             let g = psf::psf(
                 &s,

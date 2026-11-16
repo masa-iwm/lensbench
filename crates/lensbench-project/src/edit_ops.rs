@@ -439,6 +439,7 @@ pub const SYSTEM_KEYS: &[&str] = &[
     "glrs",
     "ropd",
     "coating_file",
+    "apodization",
 ];
 
 /// 系の設定（[`SYSTEM_KEYS`] の項目。系ファイルと同じ形、inf は {"$f": "inf"}。主波長 primary は 0 始まり）
@@ -454,6 +455,7 @@ pub fn system_data(s: &System) -> lensbench_core::Result<Value> {
                 (Some(x), _) => Some((k.to_string(), x.clone())),
                 // 既定（ける）は系ファイルに書かない
                 (None, "floating_clip") => Some((k.to_string(), Value::Bool(true))),
+                (None, "apodization") => Some((k.to_string(), Value::String("uniform".into()))),
                 _ => None,
             })
             .collect(),
@@ -506,6 +508,11 @@ pub(crate) fn set_system_data(
     }
     if !(n.temperature.is_finite() && n.pressure.is_finite()) {
         return Err("temperature and pressure must be numbers".into());
+    }
+    if let lensbench_core::pupil::Apodization::Gaussian(g) = n.apodization {
+        if !(g.is_finite() && g >= 0.0) {
+            return Err(format!("apodization factor {g} must be 0 or more").into());
+        }
     }
     // 屈折率は材料・GRIN から作り直す（波長・温度・気圧が変わるかもしれない）
     for d in &mut n.surfaces {

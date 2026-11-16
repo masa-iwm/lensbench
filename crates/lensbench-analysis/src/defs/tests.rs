@@ -93,3 +93,36 @@ fn unknown_keys_and_types_are_errors() {
         .to_string();
     assert!(e.contains("settings of spot"), "{e}");
 }
+
+/// 設定 polarization（膜・偏光の振幅）は psf・mtf・huygens-mtf で使え、膜のないガラスの系では値が少し変わる
+#[test]
+fn polarization_option_changes_the_pupil_amplitude() {
+    let s = a0();
+    let cx = crate::registry::Cx::new(&s);
+    let a = Analyses::builtin();
+    for (name, p) in [
+        ("psf", json!({ "field": 1, "image": 32 })),
+        ("mtf", json!({ "field": 1, "freqs": [20.0, 40.0] })),
+        (
+            "huygens-mtf",
+            json!({ "field": 1, "image": 32, "freqs": [20.0] }),
+        ),
+    ] {
+        let off = a.get(name).unwrap().run_json(&cx, &p).unwrap();
+        let mut q = p.clone();
+        q["polarization"] = json!(true);
+        let on = a.get(name).unwrap().run_json(&cx, &q).unwrap();
+        assert_ne!(off, on, "{name}");
+        let pick = |v: &serde_json::Value| -> f64 {
+            match name {
+                "psf" => v["psf"][16 * 32 + 16]["i"].as_f64().unwrap(),
+                _ => v["mtf"][0]["tangential"][0].as_f64().unwrap(),
+            }
+        };
+        let (x, y) = (pick(&off), pick(&on));
+        assert!(
+            y.is_finite() && (x - y).abs() < 0.05 * x.abs().max(1e-3),
+            "{name} {x} {y}"
+        );
+    }
+}

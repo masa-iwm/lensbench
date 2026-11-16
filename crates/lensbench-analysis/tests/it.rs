@@ -2,6 +2,7 @@
 //! 公開 #216 BLD-03）。tests/ の .rs は各ファイルが 1 つのモジュール。テストを足すときは下の一覧にも足す
 //! （足し忘れは `every_test_file_is_listed` が落とす）。1 ファイルだけ回すときは `cargo test --test it <モジュール名>::`。
 
+mod apodization;
 mod common;
 mod consistency;
 mod ghost;

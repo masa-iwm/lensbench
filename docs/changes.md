@@ -5,6 +5,18 @@
 ## 次の版（v0.4.0 の後）
 
 ### 名前・設定の書き方
+- FFT PSF の既定の面を像面の上にした（ANA-08）: 格子の座標は像面の局所座標の x・y（`axes` は x̂・ŷ）で、回折 MTF と同じ
+  周波数の面（PSF をフーリエ変換すると回折 MTF になる。x・y の両方に角度のある視野では、回折 MTF の子午・球欠は前と同じく
+  瞳の py・px の向きのずれなので、像面の上では少し傾いた向きの周波数に当たる）。x・y の両方に角度のある視野では瞳の格子を
+  写して像面の上の位相の傾き J = ∂(L, M)/∂(px, py) の 2×2 全部を入れる（Huygens PSF と同じ形になる）。斜めの視野では子午の既定の間隔が 1/cos だけ広がる
+  （E1 の視野 3・主波長で Δy 5.588e-4 → 6.324e-4 mm）。前の主光線に垂直な面は `PsfOpts::plane = PsfPlane::ChiefPerp`
+  （CLI・serve の `psf` の `--plane chief`、Python の `psf(plane="chief")`、プラグインの `plane = "chief"`）で、OpticStudio の
+  FFT PSF との照合用。`PsfOpts`・`Psf` に `plane` を足した（構造体の式で作るなら `..Default::default()` を）。
+  Huygens PSF の既定の間隔も像面の上の値（前は主光線に垂直な面の傾きから決めていた）。
+- 瞳の格子を `lensbench_core::pupil::PupilGrid` に、格子の光線と OPD を `PupilFunction` にまとめた（ANA-04）:
+  `lensbench_analysis::interference::opd_grid` は格子の座標の並びでなく `PupilGrid` を受ける（前の `pupil_grid(n)` の並びは
+  `PupilGrid::Interferogram(n)`）。`analysis::pupil_grid`・`wavefront_grid`・`pupil_gauss`・`interference::pupil_grid`・
+  `mech::pupil_grid` は残し、`PupilGrid` の値を返す。値は同じ。
 - GUI の組合せの保存は、ブロックが元になった（文書モデル）。`gui.combo`（組合せの編集状態の写し）は書かず、読まない。前の版で
   保存したファイルはブロックから組合せに戻るので、系はそのまま開けるが、ロック・今の状態・カタログの鏡や平板の品名は外れる。前の版で保存したファイルは `lensbench-gui --convert-combo ファイル…` で一度だけ今の形に直す（元は `.bak` に残す。この変換は次の版で消す）。
 - 最適化（`optimize`）とズーム軌跡（`zoom`）の設定を CLI・serve・Python・GUI で 1 つの型にした（XCT-02）。serve の `optimize`・`zoom` の
@@ -114,6 +126,13 @@
   使う。追跡の結果は丸めの分だけ変わる（公開のテスト系 38 本のうち 29 本。光線の座標 1e-12 前後、RMS・波面は相対 5e-10 まで、
   傾きのある C1 で 3e-9 まで、MTF は値が小さい周波数で相対 1e-5 まで）。自動の半直径・実光線のソルブの値も丸めの分変わるので `system_hash` も変わる。
 - 2 軸の折り曲げ鏡・ビームスプリッターの後の座標の軸の向きが変わる。
+- 瞳のアポダイゼーションを系の設定にした（ANA-05）: .zmx の系の行 `GFAC 係数 種類`（種類 1 ガウス・2 Cosine Cubed）を
+  `System::apodization`（系ファイルの `apodization`、`set_system_data` でも変えられる）に読み、FFT PSF・Huygens PSF・回折 MTF の
+  瞳の振幅に常に入れる。前は一様でない GFAC は読めない誤りだった。一様の系の結果はビット単位で同じ。.zmx に書き出すと
+  一様でなければ `GFAC` の行を書く。一様でない GFAC を読むと、振幅が回折の解析にだけ入る（スポット・RMS 波面・Zernike・幾何 MTF には入らない）ことを読込の注意に出す。膜の透過率・偏光の振幅は選択式（既定は off）で、Rust は
+  `lensbench_analysis::pupil_amp::PolAmp` を `psf::psf_with`・`huygens::huygens_psf_with`・`huygens_mtf_with`・
+  `analysis::mtf_amp`・`mtf_waves_amp` に渡す。CLI・serve の `psf`・`mtf`・`huygens-mtf` は `--polarization`。
+  `PupilFunction` に振幅の `amp` を足した。
 - 形のパラメータの微分（光路長の微分 `opl_grad`・着地点の微分 `land_grad`、それを使う最適化・公差）を、面の形どおりに求める（KRN-32）。
   以前は `asph` をどの型でも偶数次非球面の係数とみていた。Odd Asphere の `a2`, `a4`, … は β1 r, β2 r², …、Tilted の `a2`・`a4` は
   tan α・tan β（z = x tan α + y tan β）、Irregular の `a2`〜`a16` は偏心 x・y、傾き x・y、Zs・Za・Zc、角度で、偏心・傾けた面の c・k の

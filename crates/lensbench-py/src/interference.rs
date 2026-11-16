@@ -1,12 +1,14 @@
 //! 単色の干渉縞（`lensbench_analysis::interference`）を Python から使う。
 
 use lensbench_analysis::interference::{self as core, DetectorOpts, Polarized, PupilOpts};
+use lensbench_core::psf::{Psf, PsfPlane};
 use lensbench_core::raygrid::InputPol;
 use lensbench_core::with_threads;
 use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use crate::errors::value_err;
 use crate::{err, field_sel, wave_index, FieldArg, PySystem};
 
 /// Interferogram on the pupil (like OpticStudio's Interferogram): the wavefronts (OPD [waves] relative to each chief ray and reference sphere) of beam 1 (beam1) and beam 2 (beam2; the reference sphere if None)
@@ -141,4 +143,37 @@ pub(crate) fn grid_array<T>(g: lensbench_core::grid::Grid2<T>) -> numpy::ndarray
     let (ny, nx) = (g.ny(), g.nx());
     let (_, _, data) = g.into_parts();
     numpy::ndarray::Array2::from_shape_vec((ny, nx), data).expect("Grid2 は ny × nx")
+}
+
+/// psf の plane（"image" か "chief"）
+pub(crate) fn psf_plane(s: &str) -> PyResult<PsfPlane> {
+    match s {
+        "image" => Ok(PsfPlane::Image),
+        "chief" => Ok(PsfPlane::ChiefPerp),
+        x => Err(value_err(format!(
+            "plane must be \"image\" or \"chief\" ({x})"
+        ))),
+    }
+}
+
+/// psf・huygens_psf の返す dict
+pub(crate) fn psf_dict(py: Python<'_>, p: Psf) -> PyResult<Bound<'_, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("x", p.i.x().to_vec().into_pyarray(py))?;
+    d.set_item("y", p.i.y().to_vec().into_pyarray(py))?;
+    d.set_item("i", grid_array(p.i).into_pyarray(py))?;
+    d.set_item("center", p.center)?;
+    let plane = match p.plane {
+        PsfPlane::Image => "image",
+        PsfPlane::ChiefPerp => "chief",
+    };
+    d.set_item("plane", plane)?;
+    d.set_item("axes", p.axes)?;
+    d.set_item("pixel", p.pixel)?;
+    d.set_item("peak", p.peak)?;
+    d.set_item("pupil", p.pupil)?;
+    d.set_item("phase_step", p.phase_step)?;
+    d.set_item("enclosed", p.enclosed)?;
+    d.set_item("warnings", p.warnings)?;
+    Ok(d)
 }

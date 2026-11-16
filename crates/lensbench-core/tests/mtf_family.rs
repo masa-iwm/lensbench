@@ -194,6 +194,7 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
                 pupil: Some(128),
                 image: 256,
                 pixel: None,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -235,21 +236,27 @@ fn psf_centroid_is_the_spot_centroid_and_its_otf_is_the_mtf() {
                 pupil: Some(256),
                 image: 512,
                 pixel: None,
+                ..Default::default()
             },
         )
         .unwrap();
         let fr = [10.0, 30.0, 60.0];
         let m = analysis::mtf(&s, f, Waves::One(w), None, &fr).unwrap();
         let tot: f64 = p.i.data().iter().sum();
+        // 子午の MTF は瞳を py の向きに δ = λν / J11 ずらす（OpticStudio の FFT MTF と同じ、J の非対角は使わない）。
+        // 像面の上の周波数では J (0, δ) / λ = ν (J01 / J11, 1) なので、PSF をその向きにフーリエ変換して比べる
+        // （x・y の両方に角度のある視野で J01 ≠ 0。A0 の視野 4 (10, 10)° で J01 / J11 = −0.033）
+        let jm = analysis::pupil_jacobian(&s, f, w).unwrap();
+        let fx_per = jm[0][1] / jm[1][1];
         for (k, &nu) in fr.iter().enumerate() {
-            // MTF の周波数は瞳の軸に沿う（J の対角）ので、像面の y に直した格子の y で
             let (mut re, mut im) = (0.0, 0.0);
             for (iy, row) in p.i.rows().enumerate() {
-                let ry: f64 = row.iter().sum();
-                let y = img(&p, 0.0, p.i.y()[iy]).1;
-                let ph = -2.0 * std::f64::consts::PI * nu * y;
-                re += ry * ph.cos();
-                im += ry * ph.sin();
+                for (ix, v) in row.iter().enumerate() {
+                    let (x, y) = img(&p, p.i.x()[ix], p.i.y()[iy]);
+                    let ph = -2.0 * std::f64::consts::PI * nu * (fx_per * x + y);
+                    re += v * ph.cos();
+                    im += v * ph.sin();
+                }
             }
             let t = re.hypot(im) / tot;
             assert!((t - m.tan[k]).abs() < 3e-3, "{name} {nu}: {t} {}", m.tan[k]);
@@ -280,7 +287,8 @@ fn psf_of_a_near_perfect_system_peaks_at_its_strehl() {
         psf::PsfOpts {
             pupil: Some(32),
             image: 128,
-            pixel: None
+            pixel: None,
+            ..Default::default()
         }
     )
     .is_err());

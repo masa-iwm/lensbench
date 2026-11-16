@@ -614,7 +614,20 @@ fn unread_lines_are_reported() {
     ))
     .unwrap();
     assert_eq!(s.import_notes.len(), 2, "{:?}", s.import_notes);
-    assert!(load(&txt.replacen("GFAC 0 0", "GFAC 1 3", 1)).is_err());
+    // GFAC は瞳のアポダイゼーションとして読む（ANA-05）
+    let g = load(&txt.replacen("GFAC 0 0", "GFAC 3 1", 1)).unwrap();
+    assert_eq!(
+        g.apodization,
+        lensbench_core::pupil::Apodization::Gaussian(3.0)
+    );
+    // 回折の解析にだけ入ることの注意
+    assert_eq!(g.import_notes.len(), 1, "{:?}", g.import_notes);
+    assert!(g.import_notes[0].contains("diffraction analyses"));
+    assert!(load(&txt.replacen("GFAC 0 0", "GFAC 0 5", 1)).is_err());
+    // 種類が一様なら係数が残っていても一様（OpticStudio は種類を変えても係数を残す）
+    let u = load(&txt.replacen("GFAC 0 0", "GFAC 2.25 0", 1)).unwrap();
+    assert_eq!(u.apodization, lensbench_core::pupil::Apodization::Uniform);
+    assert!(u.import_notes.is_empty(), "{:?}", u.import_notes);
     // カタログの玉として読むとき（fixed_semi）は注意だけ
     let cat = zmx::LoadOptions {
         fixed_semi: true,

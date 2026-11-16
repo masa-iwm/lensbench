@@ -1,14 +1,15 @@
 //! RMS の掃引・PSF
 
 use crate::huygens::{self, HuygensOpts};
-use lensbench_core::psf::{self, PsfOpts};
+use lensbench_core::psf::{self, PsfOpts, PsfPlane};
+use lensbench_core::pupil::PupilAmp;
 use lensbench_core::sweep::{self, RmsOpts, RmsRef};
 use lensbench_core::Waves;
 use lensbench_core::{Error, FieldSel, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{fields, spot_unit, wave, Axis};
+use super::{fields, pol_amp, spot_unit, wave, Axis};
 use crate::registry::{Analysis, Cx, Meta};
 
 // ----------------------------------------------------------------------------------------- rms
@@ -231,6 +232,17 @@ impl Analysis for Rms {
 
 // ----------------------------------------------------------------------------------------- psf
 
+/// PSF の像の面
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum Plane {
+    /// 像面の上（像面の局所座標）
+    #[default]
+    Image,
+    /// 主光線に垂直な面（OpticStudio の FFT PSF と同じ）
+    Chief,
+}
+
 /// PSF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
@@ -248,6 +260,10 @@ pub(super) struct PsfParams {
     pub image: usize,
     /// Image grid spacing [lens units; angle units in afocal image space] (1 / (2 × cutoff) if omitted)
     pub pixel: Option<f64>,
+    /// Plane of the FFT PSF grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)
+    pub plane: Plane,
+    /// Include coating transmission and Fresnel losses in the pupil amplitude (unpolarized, with the system's coatings; like OpticStudio's Use Polarization). The system's pupil apodization is always included
+    pub polarization: bool,
 }
 
 impl Default for PsfParams {
@@ -259,6 +275,8 @@ impl Default for PsfParams {
             pupil: None,
             image: 128,
             pixel: None,
+            plane: Plane::Image,
+            polarization: false,
         }
     }
 }
@@ -279,6 +297,8 @@ pub(super) struct PsfAxes {
     pub field: usize,
     /// 主波長の主光線の像点（像面の局所座標）
     pub center: [f64; 2],
+    /// 格子の面（image か chief）
+    pub plane: Plane,
     /// 格子の x の向き（像空間の単位ベクトル）
     pub e1: [f64; 3],
     /// 格子の y の向き
@@ -322,7 +342,7 @@ impl Analysis for Psf {
         Meta {
             name: "psf",
             about: "Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted",
-            help: "Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface; coordinates are the local image surface coordinates). x and y are coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)",
+            help: "Diffraction PSF (DFT of the pupil function). Intensity is 1 at the center of the same pupil without aberrations. Polychromatic if wave is omitted. huygens gives the Huygens PSF (secondary waves from each point of the reference sphere summed on the image surface). x and y are local image surface coordinates relative to the chief ray; with plane chief, coordinates in the plane perpendicular to the chief ray (along e1 and e2, as in OpticStudio's FFT PSF)",
         }
     }
     fn run(&self, cx: &Cx<'_>, p: &PsfParams) -> Result<PsfOut> {
@@ -331,24 +351,34 @@ impl Analysis for Psf {
         let (mut v, mut axes, mut warn, mut samp) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for i in fields(s, p.field)? {
+            let pa = pol_amp(s, i, w, p.polarization)?;
+            let pa = pa.as_ref().map(|a| a as &dyn PupilAmp);
             let r = if p.huygens {
                 let o = HuygensOpts {
                     pupil: p.pupil,
                     image: p.image,
                     pixel: p.pixel,
                 };
-                huygens::huygens_psf(s, FieldSel::Index(i), Waves::all_or(w), o)
+                huygens::huygens_psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
             } else {
                 let o = PsfOpts {
                     pupil: p.pupil,
                     image: p.image,
                     pixel: p.pixel,
+                    plane: match p.plane {
+                        Plane::Image => PsfPlane::Image,
+                        Plane::Chief => PsfPlane::ChiefPerp,
+                    },
                 };
-                psf::psf(s, FieldSel::Index(i), Waves::all_or(w), o)
+                psf::psf_with(s, FieldSel::Index(i), Waves::all_or(w), o, pa)
             }?;
             axes.push(PsfAxes {
                 field: i + 1,
                 center: [r.center.0, r.center.1],
+                plane: match r.plane {
+                    PsfPlane::Image => Plane::Image,
+                    PsfPlane::ChiefPerp => Plane::Chief,
+                },
                 e1: r.axes[0],
                 e2: r.axes[1],
             });

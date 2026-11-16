@@ -2578,12 +2578,13 @@ impl PySystem {
     }
 
     /// Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
-    /// of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates on the plane perpendicular to the chief ray, from the image point center
-    /// of the chief ray at the primary wavelength [lens units] (as OpticStudio's FFT PSF; directions axes = [e1, e2], unit vectors in image space).
+    /// of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates from the image point center of the chief ray at the primary
+    /// wavelength [lens units] on the plane given by plane: "image" (default) the image surface (local x, y; the same frequencies as mtf), "chief" the plane perpendicular to the
+    /// chief ray (as OpticStudio's FFT PSF; finer by 1/cos in oblique fields). axes are the grid directions (unit vectors in image space).
     /// pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, pixel the spacing
-    /// of the image grid (1 / (2 × cutoff frequency) if omitted). Also returns pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
+    /// of the image grid (1 / (2 × cutoff frequency) on that plane if omitted). Also returns plane, pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
     /// enclosed (fraction of the light inside the image grid) and warnings (notes such as undersampling)
-    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, threads=None))]
+    #[pyo3(signature = (field, wave=None, pupil=None, image=128, pixel=None, plane="image", threads=None))]
     #[allow(clippy::too_many_arguments)]
     fn psf<'py>(
         &self,
@@ -2593,6 +2594,7 @@ impl PySystem {
         pupil: Option<usize>,
         image: usize,
         pixel: Option<f64>,
+        plane: &str,
         threads: Option<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
@@ -2602,23 +2604,12 @@ impl PySystem {
             pupil,
             image,
             pixel,
+            plane: interference::psf_plane(plane)?,
         };
         let p = py
             .detach(|| with_threads(threads, || psf::psf(&s, f, w, o)))
             .map_err(err)?;
-        let d = PyDict::new(py);
-        d.set_item("x", p.i.x().to_vec().into_pyarray(py))?;
-        d.set_item("y", p.i.y().to_vec().into_pyarray(py))?;
-        d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
-        d.set_item("center", p.center)?;
-        d.set_item("axes", p.axes)?;
-        d.set_item("pixel", p.pixel)?;
-        d.set_item("peak", p.peak)?;
-        d.set_item("pupil", p.pupil)?;
-        d.set_item("phase_step", p.phase_step)?;
-        d.set_item("enclosed", p.enclosed)?;
-        d.set_item("warnings", p.warnings)?;
-        Ok(d)
+        interference::psf_dict(py, p)
     }
 
     /// Geometric MTF: from the distribution of ray positions. n is a guide for the number of pupil quadrature points; diff_limit applies the diffraction-limited MTF.
@@ -2670,19 +2661,7 @@ impl PySystem {
         let p = py
             .detach(|| with_threads(threads, || huygens::huygens_psf(&s, f, w, o)))
             .map_err(err)?;
-        let d = PyDict::new(py);
-        d.set_item("x", p.i.x().to_vec().into_pyarray(py))?;
-        d.set_item("y", p.i.y().to_vec().into_pyarray(py))?;
-        d.set_item("i", interference::grid_array(p.i).into_pyarray(py))?;
-        d.set_item("center", p.center)?;
-        d.set_item("axes", p.axes)?;
-        d.set_item("pixel", p.pixel)?;
-        d.set_item("peak", p.peak)?;
-        d.set_item("pupil", p.pupil)?;
-        d.set_item("phase_step", p.phase_step)?;
-        d.set_item("enclosed", p.enclosed)?;
-        d.set_item("warnings", p.warnings)?;
-        Ok(d)
+        interference::psf_dict(py, p)
     }
 
     /// Huygens MTF: Fourier transform of the Huygens PSF (frequencies on the image surface). The returned dict has the same form as mtf

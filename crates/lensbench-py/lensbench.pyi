@@ -120,6 +120,7 @@ class _PsfResult(TypedDict):
     y: NDArray[np.float64]
     i: NDArray[np.float64]
     center: tuple[float, float]
+    plane: str
     axes: list[list[float]]
     pixel: tuple[float, float]
     peak: float
@@ -775,12 +776,13 @@ class System:
     def primary(self) -> int:
         """Primary wavelength number (from 1)"""
 
-    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, threads: int | None = None) -> _PsfResult:
+    def psf(self, field: _Field, wave: int | None = None, pupil: int | None = None, image: int = 128, pixel: float | None = None, plane: str = "image", threads: int | None = None) -> _PsfResult:
         """Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
-        of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates on the plane perpendicular to the chief ray, from the image point center
-        of the chief ray at the primary wavelength [lens units] (as OpticStudio's FFT PSF; directions axes = [e1, e2], unit vectors in image space).
+        of the same pupil without aberrations is 1 (peak is a guide to the Strehl ratio). x and y are coordinates from the image point center of the chief ray at the primary
+        wavelength [lens units] on the plane given by plane: "image" (default) the image surface (local x, y; the same frequencies as mtf), "chief" the plane perpendicular to the
+        chief ray (as OpticStudio's FFT PSF; finer by 1/cos in oblique fields). axes are the grid directions (unit vectors in image space).
         pupil is the side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2), image the side of the image grid, pixel the spacing
-        of the image grid (1 / (2 × cutoff frequency) if omitted). Also returns pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
+        of the image grid (1 / (2 × cutoff frequency) on that plane if omitted). Also returns plane, pupil (the value used), phase_step (largest phase difference between neighboring pupil samples [rad]),
         enclosed (fraction of the light inside the image grid) and warnings (notes such as undersampling)
         """
 

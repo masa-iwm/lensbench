@@ -75,6 +75,12 @@ pub struct System {
     pub pressure: f64,
     pub glrs: usize,
     pub ropd: i64,
+    /// 瞳のアポダイゼーション（.zmx の GFAC。PSF・MTF の瞳関数の振幅、[`crate::pupil::Apodization`]）
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "crate::pupil::Apodization::is_uniform")
+    )]
+    pub apodization: crate::pupil::Apodization,
     /// 像空間がアフォーカル（.zmx の FTYP の 7 番目）。波面収差・Zernike・OPD を、射出瞳の位置で主光線に
     /// 垂直な平面（平面波）を基準に測る。スポット・MTF・PSF は角度（[`System::image_point`]、単位は
     /// [`System::afocal_unit`]）で出す
@@ -206,6 +212,7 @@ impl System {
             pressure: self.pressure,
             glrs: self.glrs,
             ropd: self.ropd,
+            apodization: self.apodization,
             afocal: self.afocal,
             afocal_unit: self.afocal_unit,
             vig_interp: self.vig_interp,
@@ -294,6 +301,7 @@ impl System {
             pressure: 1.0,
             glrs: 1,
             ropd: 2,
+            apodization: crate::pupil::Apodization::Uniform,
             afocal: false,
             afocal_unit: AfocalUnit::Milliradians,
             vig_interp: VigInterp::Continuous,

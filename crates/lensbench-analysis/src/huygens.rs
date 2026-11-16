@@ -1,6 +1,6 @@
 //! Huygens PSF・Huygens MTF（OpticStudio の Huygens PSF・Huygens MTF 相当）。
 //!
-//! FFT の PSF（[`lensbench_core::psf::psf`]）は瞳から主光線に垂直な面への写像を一次（対角）で近似するが、Huygens は
+//! FFT の PSF（[`lensbench_core::psf::psf`]）は瞳から像の面（既定は像面、照合用に主光線に垂直な面）への写像を一次（対角）で近似するが、Huygens は
 //! 射出瞳の参照球（OPD の基準と同じ。ROPD「無限遠」・射出瞳が無限遠なら主光線に垂直な平面）の上の各点を
 //! 2 次波源とし、像面（傾き・曲率を含む像面そのもの）の格子の各点まで素直に足し合わせる:
 //!
@@ -19,11 +19,12 @@
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
-use lensbench_core::analysis::{mtf_cutoff, opd, pupil_jacobian, Mtf};
+use lensbench_core::analysis::{mtf_cutoff, pupil_jacobian, Mtf};
 use lensbench_core::coating::C64;
 use lensbench_core::error::Result;
 use lensbench_core::math::*;
-use lensbench_core::psf::{cell_frac, perp_slopes_of, Psf};
+use lensbench_core::psf::{perp_slopes_of, plane_slopes, Psf, PsfPlane};
+use lensbench_core::pupil::{PupilAmp, PupilFunction, PupilGrid, RefSurface};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::{invalid, notimpl};
 use lensbench_core::{TanSag, Waves};
@@ -37,7 +38,8 @@ pub struct HuygensOpts {
     pub pupil: Option<usize>,
     /// 像の格子の一辺
     pub image: usize,
-    /// 像の格子の間隔 [レンズ単位]（像面の上で。None で FFT PSF の既定と同じ 1 / (2 × 遮断周波数)、x・y 別）
+    /// 像の格子の間隔 [レンズ単位]（像面の上で。None で像面の上の 1 / (2 × 遮断周波数)、x・y 別。FFT PSF の
+    /// 既定の面（[`lensbench_core::psf::PsfPlane::Image`]）の既定の間隔と同じ）
     pub pixel: Option<f64>,
 }
 
@@ -118,16 +120,34 @@ type Sphere = Option<(V3, f64, f64)>;
 /// Huygens PSF。w None なら全波長を重みで足した多色。座標は像面の局所座標 (x, y)（中心 = 主波長の主光線の
 /// 像点）で、axes は像面の x̂・ŷ
 pub fn huygens_psf(s: &System, field: FieldSel, w: Waves, o: HuygensOpts) -> Result<Psf> {
+    huygens_psf_with(s, field, w, o, None)
+}
+
+/// [`huygens_psf`] に、膜・偏光の振幅 extra（[`PupilAmp`]、例えば [`crate::pupil_amp::PolAmp`]）を足す。
+/// 系のアポダイゼーションはどちらにも入る
+pub fn huygens_psf_with(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    o: HuygensOpts,
+    extra: Option<&dyn PupilAmp>,
+) -> Result<Psf> {
     let w = w.one();
     lensbench_core::psf::retry_auto(o.pupil, HUYGENS_PUPIL_CAP, |np| {
-        huygens_once(s, field, w, HuygensOpts { pupil: np, ..o })
+        huygens_once(s, field, w, HuygensOpts { pupil: np, ..o }, extra)
     })
 }
 
 /// 自動の瞳の格子の上限（Huygens PSF。計算量は瞳の格子² × 像の格子²）
 const HUYGENS_PUPIL_CAP: usize = 256;
 
-fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -> Result<Psf> {
+fn huygens_once(
+    s: &System,
+    field: FieldSel,
+    w: Option<usize>,
+    o: HuygensOpts,
+    extra: Option<&dyn PupilAmp>,
+) -> Result<Psf> {
     let ni = o.image;
     if o.pupil.is_some_and(|np| np < 4) || ni < 2 {
         invalid!(
@@ -154,21 +174,25 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         invalid!("Huygens PSF: the chief ray is parallel to the image surface");
     }
     // 参照球（OPD の to_ref と同じ）
-    let expp = s.exit_pupil();
-    let sphere: Sphere = if s.ropd == 1 || !expp.is_finite() || expp.abs() > 1e9 {
-        None
-    } else {
-        let sc = (expp - pc[2]) / kc[2];
-        Some((pc, sc.abs(), if sc < 0.0 { 1.0 } else { -1.0 }))
+    let sphere: Sphere = match RefSurface::of(s, pc, kc) {
+        RefSurface::Sphere {
+            center,
+            radius,
+            sign,
+        } => Some((center, radius, sign)),
+        RefSurface::Plane { .. } => None,
     };
 
-    // 既定の間隔と、像の格子が瞳の標本の周期を超えないかの確かめに FFT PSF と同じ傾きを使う
+    // 既定の間隔と、像の格子が瞳の標本の周期を超えないかの確かめには像面の上の傾き（FFT PSF の既定の面、回折 MTF と
+    // 同じ）を、全光量の重み（FFT PSF と同じ Parseval の全強度）には主光線に垂直な面の傾きを使う
     let mut slopes = Vec::new();
     let mut cut: (f64, f64) = (0.0, 0.0);
     for &wi in &ws {
-        let (ga, gb) = perp_slopes_of(s, pupil_jacobian(s, field, wi)?, kc);
+        let jm = pupil_jacobian(s, field, wi)?;
+        let (ga, gb) = plane_slopes(s, jm, kc, PsfPlane::Image);
+        let (pa, pb) = perp_slopes_of(s, jm, kc);
         let lam = s.wavelengths[wi] * 1e-3;
-        slopes.push((ga / lam, gb / lam));
+        slopes.push(((ga / lam, gb / lam), (pa / lam, pb / lam)));
         if ws.len() > 1 && !(s.weights[wi] > 0.0) {
             continue;
         }
@@ -214,33 +238,19 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         }
     };
     // 瞳の格子（FFT PSF と同じ区間の中心）
+    let grid = PupilGrid::Cells(np);
     let h = 2.0 / np as f64;
-    let mut cells = Vec::new();
-    let mut cell_ix = Vec::new();
-    for iy in 0..np {
-        for ix in 0..np {
-            let ux = -1.0 + h * (ix as f64 + 0.5);
-            let uy = -1.0 + h * (iy as f64 + 0.5);
-            let (f, qx, qy) = cell_frac(ux, uy, h);
-            if f > 0.0 {
-                cells.push((f, qx, qy));
-                cell_ix.push((ix, iy));
-            }
-        }
-    }
-    let px: Vec<f64> = cells.iter().map(|c| c.1).collect();
-    let py: Vec<f64> = cells.iter().map(|c| c.2).collect();
 
     let mut tot = vec![0.0; pts.len()];
     let (mut nrm, mut wsum) = (0.0, 0.0);
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
-    for (&wi, &(a, b)) in ws.iter().zip(&slopes) {
+    for (&wi, &((ia, ib), (a, b))) in ws.iter().zip(&slopes) {
         let kw = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
         if !(kw > 0.0) {
             continue;
         }
-        if ni as f64 * pixel.0 * a.abs() * h > 1.0 + 1e-9
-            || ni as f64 * pixel.1 * b.abs() * h > 1.0 + 1e-9
+        if ni as f64 * pixel.0 * ia.abs() * h > 1.0 + 1e-9
+            || ni as f64 * pixel.1 * ib.abs() * h > 1.0 + 1e-9
         {
             invalid!(
                 "Huygens PSF: the image grid is wider than the period of the pupil samples (wavelength {}; increase the pupil grid or reduce the image grid or spacing)",
@@ -250,16 +260,20 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
         let lam = s.wavelengths[wi] * 1e-3;
         let n = s.image_index(wi);
         let kn = 2.0 * PI * n / lam;
-        let op = opd(s, field, &px, &py, Some(wi), true)?;
-        let mut src = Vec::with_capacity(cells.len());
-        let mut sa = 0.0;
-        for (i, &(f, _, _)) in cells.iter().enumerate() {
-            if !(op.ok(i) && op.opd[i].is_finite()) {
+        let op = PupilFunction::trace_amp(s, field, Some(wi), grid, true, extra)?;
+        let mut src = Vec::with_capacity(op.len());
+        // s1 = Σ f A（収差なしの中心の振幅）、s2 = Σ f A²（光量）。f は区間の面積の割合、A は振幅
+        let (mut s1, mut s2) = (0.0, 0.0);
+        let mut w_ok: Vec<(usize, usize, f64)> = Vec::new();
+        for i in 0..op.len() {
+            let Some(w) = op.get(i) else {
                 continue;
-            }
+            };
+            let f = op.samples.wt[i] * op.amp[i];
+            w_ok.push((op.samples.cell[i].0, op.samples.cell[i].1, w));
             let (q, k) = (op.rays.xyz[i], op.rays.lmn[i]);
-            let ph = -2.0 * PI * op.opd[i];
-            let s1 = match sphere {
+            let ph = -2.0 * PI * w;
+            let s1_src = match sphere {
                 Some((c0, rr, sg)) => {
                     // 像面の点 q から向き k に沿って参照球まで（OPD の to_ref と同じ根）
                     let dd = sub(q, c0);
@@ -284,16 +298,13 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
                     }
                 }
             };
-            src.push(s1);
-            sa += f;
+            src.push(s1_src);
+            s1 += f;
+            s2 += f * op.amp[i];
         }
-        if !(sa > 0.0) {
+        if !(s2 > 0.0) {
             invalid!("Huygens PSF: no valid rays (all vignetted)");
         }
-        let w_ok: Vec<(usize, usize, f64)> = (0..cells.len())
-            .filter(|&i| op.ok(i) && op.opd[i].is_finite())
-            .map(|i| (cell_ix[i].0, cell_ix[i].1, op.opd[i]))
-            .collect();
         step = step.max(lensbench_core::psf::phase_step(np, &w_ok));
         // 光源を成分ごとの配列に（像の 1 点の内側のループをベクトル化し、位相因子をまとめて求める）
         let (qx, qy, qz): (Vec<f64>, Vec<f64>, Vec<f64>) = (
@@ -367,15 +378,16 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
             pts.iter().map(|p| one(p, &mut b)).collect()
         };
         lensbench_core::par::check_cancel()?;
-        // 各波長で収差なしの中心が 1（|Σ f|²）、全強度の重み G = Σf |a b| h²（FFT PSF と同じ）
-        let g = sa * (a * b * h * h).abs();
+        // 各波長で収差なしの中心が 1（|Σ f A|²）、全強度の重み G = (Σ f A)² / Σ f A² · |a b| h²（FFT PSF と同じ。
+        // 振幅が一様なら Σ f |a b| h²）
+        let g = s1 * (a * b * h * h).abs() * (s1 / s2);
         for (t, v) in tot.iter_mut().zip(&iw) {
-            *t += kw * g * v / (sa * sa);
+            *t += kw * g * v / (s1 * s1);
         }
         // 格子に入った光量の割合: 全光量は FFT PSF と同じく Σf / |a b h²|（主光線に垂直な面で）。像面の上の
         // 1 点の面積は垂直な面では |k_z| 倍
         let isum: f64 = iw.iter().filter(|v| v.is_finite()).sum();
-        encl += kw * isum * pixel.0 * pixel.1 * kc[2].abs() * (a * b * h * h).abs() / sa;
+        encl += kw * isum * pixel.0 * pixel.1 * kc[2].abs() * (a * b * h * h).abs() / s2;
         nrm += kw * g;
         wsum += kw;
     }
@@ -397,6 +409,7 @@ fn huygens_once(s: &System, field: FieldSel, w: Option<usize>, o: HuygensOpts) -
     }
     Ok(Psf {
         i: lensbench_core::grid::Grid2::from_rows(xs, ys, i),
+        plane: PsfPlane::Image,
         center: (cx, cy),
         pixel,
         axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
@@ -490,8 +503,20 @@ pub fn huygens_mtf(
     o: HuygensOpts,
     freqs: &[f64],
 ) -> Result<Mtf> {
+    huygens_mtf_with(s, field, w, o, freqs, None)
+}
+
+/// [`huygens_mtf`] に膜・偏光の振幅 extra を足す（[`huygens_psf_with`]）
+pub fn huygens_mtf_with(
+    s: &System,
+    field: FieldSel,
+    w: Waves,
+    o: HuygensOpts,
+    freqs: &[f64],
+    extra: Option<&dyn PupilAmp>,
+) -> Result<Mtf> {
     let w = w.one();
-    let p = huygens_psf(s, field, Waves::all_or(w), o)?;
+    let p = huygens_psf_with(s, field, Waves::all_or(w), o, extra)?;
     // 像の格子の一部で強度が決まらない（像面の矢高が求まらない点）PSF の MTF は、どの周波数も決まらない。
     // 結果（Mtf）に注意の欄が無いので、NaN の並びを黙って返さず理由つきの誤りにする
     let off = p.i.rows().flatten().filter(|v| v.is_nan()).count();

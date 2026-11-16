@@ -1,5 +1,5 @@
-//! Huygens PSF・Huygens MTFの性質: 軸上で FFT PSF と一致、収差のない系で回折限界、傾いた像面で
-//! 像面の上の座標（主光線に垂直な面の 1/cos 倍に伸びる）になること。OpticStudio との照合は mtf_family_refs.rs。
+//! Huygens PSF・Huygens MTFの性質: 軸上・斜めの視野で FFT PSF（像面の上）と一致、収差のない系で回折限界、傾いた像面で
+//! 像面の上の座標（主光線に垂直な面の 1/cos 倍に伸びる）になること。OpticStudio との照合は huygens_refs.rs。
 
 use lensbench_analysis::huygens::{huygens_mtf, huygens_psf, HuygensOpts};
 use lensbench_core::analysis;
@@ -76,14 +76,24 @@ fn on_axis_matches_fft_psf() {
 
 #[test]
 fn off_axis_close_to_fft_psf() {
-    // 斜めの視野では像面上の座標なので 1/cos だけ違う（A0 の視野は小さく、差は数 1e-3）
+    // 斜めの視野でも FFT PSF の既定は像面の上なので、同じ格子で比べられる（主光線に垂直な面の格子は
+    // 1/cos だけ細かく、差が大きい）
     let s = load("A0");
     for fi in 1..s.fields.len() {
         let f = psf::psf(&s, FieldSel::Index(fi), Waves::All, PsfOpts::default()).unwrap();
         let h = huygens_psf(&s, FieldSel::Index(fi), Waves::All, HuygensOpts::default()).unwrap();
+        assert_eq!(f.i.x(), h.i.x());
+        assert_eq!(f.i.y(), h.i.y());
         let d = max_abs_diff(&f.i, &h.i);
-        assert!(d < 1e-2, "A0 視野 {}: {d:.2e}", fi + 1);
+        assert!(d < 2e-3, "A0 視野 {}: {d:.2e}", fi + 1);
         assert_eq!(h.center, f.center);
+        assert_eq!(f.plane, psf::PsfPlane::Image);
+        let perp = PsfOpts {
+            plane: psf::PsfPlane::ChiefPerp,
+            ..Default::default()
+        };
+        let fp = psf::psf(&s, FieldSel::Index(fi), Waves::All, perp).unwrap();
+        assert!(fp.pixel.1 < f.pixel.1);
     }
 }
 
@@ -116,8 +126,12 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
     let s = tilt_image(&s0, deg);
     let cs = deg.to_radians().cos();
     let f = FieldSel::Index(0);
-    // 中心の行（x）は FFT PSF と同じ間隔、中心の列（y）は像面の Δ が垂直な面の Δ cos に当たる
-    let fp = psf::psf(&s, f, Waves::One(s.primary), PsfOpts::default()).unwrap();
+    // 中心の行（x）は FFT PSF（主光線に垂直な面）と同じ間隔、中心の列（y）は像面の Δ が垂直な面の Δ cos に当たる
+    let perp = PsfOpts {
+        plane: psf::PsfPlane::ChiefPerp,
+        ..Default::default()
+    };
+    let fp = psf::psf(&s, f, Waves::One(s.primary), perp).unwrap();
     let d = fp.pixel.0;
     let fq = psf::psf(
         &s,
@@ -125,7 +139,7 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         Waves::One(s.primary),
         PsfOpts {
             pixel: Some(d * cs),
-            ..Default::default()
+            ..perp
         },
     )
     .unwrap();
@@ -142,6 +156,19 @@ fn tilted_image_plane_stretches_by_one_over_cos() {
         ey = ey.max((hp.i[m][c0] - fq.i[m][c0]).abs());
     }
     assert!(ex < 3e-3 && ey < 3e-3, "x {ex:.2e} y {ey:.2e}");
+    // 既定の FFT PSF（像面の上）は Huygens PSF と同じ格子で全体が合う
+    let fi = psf::psf(
+        &s,
+        f,
+        Waves::One(s.primary),
+        PsfOpts {
+            pixel: Some(d),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let e = max_abs_diff(&fi.i, &hp.i);
+    assert!(e < 3e-3, "像面の上 {e:.2e}");
     // MTF: 像面の上の周波数 ν は主光線に垂直な面の ν / cos（子午）
     let c = analysis::mtf_cutoff(&s0, f, s.primary).unwrap().sag;
     let fs: Vec<f64> = (0..=8).map(|k| 0.9 * c * cs * k as f64 / 8.0).collect();
@@ -238,4 +265,59 @@ fn huygens_points_outside_the_image_surface_are_nan() {
     // NaN の無い PSF では有限（間の周波数も）
     let m0 = lensbench_analysis::huygens::psf_mtf(&p0, &fs);
     assert!(m0.tan.iter().chain(&m0.sag).all(|v| v.is_finite()));
+}
+
+/// 理想レンズ（f 100、入射瞳径 10、λ 0.55 µm）で視野 (x, y)° の系
+fn ideal_lens_field(x: f64, y: f64) -> System {
+    let t = format!(
+        "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 1 0 0 0\n\
+XFLN 0 {x}\nYFLN 0 {y}\nFWGN 1 1\nWAVM 1 0.55 1\nPWAV 1\nSURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\nSURF 2\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
+    );
+    zmx::build(
+        &zmx::parse_text(&t).unwrap(),
+        &Default::default(),
+        &[],
+        None,
+    )
+    .unwrap()
+}
+
+#[test]
+fn skew_fields_match_huygens() {
+    // x・y の両方に角度のある視野では J = ∂(L, M)/∂(px, py) に非対角の項が出る。像面の上の FFT PSF は瞳の格子を
+    // 写してそれを位相に入れる（ANA-08、psf::image_shear）。同じ画角の y だけの視野と同じくらい Huygens に合う
+    let o = PsfOpts {
+        pupil: Some(64),
+        image: 64,
+        ..Default::default()
+    };
+    let ho = HuygensOpts {
+        pupil: Some(64),
+        image: 64,
+        pixel: None,
+    };
+    let f1 = FieldSel::Index(1);
+    let mut worst = Vec::new();
+    for (x, y) in [(20.0, 20.0), (14.6, 14.6), (0.0, 28.0), (-12.0, 17.0)] {
+        let s = ideal_lens_field(x, y);
+        let f = psf::psf(&s, f1, Waves::All, o).unwrap();
+        let h = huygens_psf(&s, f1, Waves::All, ho).unwrap();
+        assert_eq!(f.i.x(), h.i.x());
+        assert_eq!(f.i.y(), h.i.y());
+        let d = max_abs_diff(&f.i, &h.i);
+        let dp = (f.peak - h.peak).abs() / h.peak;
+        worst.push((x, y, d, dp));
+    }
+    for (x, y, d, dp) in worst {
+        assert!(d < 2e-3 && dp < 2e-3, "({x}, {y}): {d:.2e} {dp:.2e}");
+    }
+    // 公開の D1 の視野 (3, −4) もほかの視野と同じくらい
+    let s = load("D1");
+    for fi in 0..s.fields.len() {
+        let f = psf::psf(&s, FieldSel::Index(fi), Waves::All, PsfOpts::default()).unwrap();
+        let h = huygens_psf(&s, FieldSel::Index(fi), Waves::All, HuygensOpts::default()).unwrap();
+        let d = max_abs_diff(&f.i, &h.i);
+        assert!(d < 2e-3, "D1 視野 {}: {d:.2e}", fi + 1);
+    }
 }
