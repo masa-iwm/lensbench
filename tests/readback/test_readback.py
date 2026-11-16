@@ -308,8 +308,8 @@ def test_ray_table_matches_opticstudio(name: str, tmp_path: Path) -> None:
     for ext in ("csv", "json"):
         p = tmp_path / f"rays.{ext}"
         run(
-            "rays", str(ref.zmx), "--pupil", pup, "--field", fields,
-            "--wave", str(ref.primary), "--save", str(p),
+            "rays", str(ref.zmx), "--pupil", pup, "--fields", fields,
+            "--waves", str(ref.primary), "--save", str(p),
         )
         tabs[ext] = p
     t = read_csv(tabs["csv"])

@@ -3,6 +3,7 @@
 
 - 拡張子: ZMF・ZEC・ZDA・ZAR（Zemax のカタログ、暗号化膜、アーカイブ）と LBCAT（メーカーのカタログを変換したレンズカタログの束）
 - AGF: tests/glass/ 以下のテスト用カタログと、同梱するカタログ（crates/lensbench-core/assets/glass/）だけを許す。
+  履歴（--history）では同梱のカタログの前の場所（crates/lensbench-gui/assets/glass/、今は core へ移した）も許す。
   どちらも refractiveindex.info のデータベース（CC0）から作ったもので、先頭の CC 行に出典を書くこと（今の版だけ検査）
 - COATING.DAT などメーカー・Zemax 由来の名前
 使い方: python3 scripts/check_public.py [--history]
@@ -13,6 +14,8 @@ import subprocess, sys, re
 DENY_EXT = re.compile(r"\.(zmf|zec|zda|zar|lbcat)$", re.I)
 AGF = re.compile(r"\.agf$", re.I)
 AGF_OK = re.compile(r"^(tests/glass|crates/lensbench-core/assets/glass)/[^/]+\.agf$", re.I)
+# 履歴だけ: 同梱のカタログの前の場所（中身は同じ CC0 のデータ）
+AGF_OK_HISTORY = re.compile(r"^crates/lensbench-gui/assets/glass/(OHARA|SCHOTT)\.agf$", re.I)
 DENY_NAME = re.compile(r"(^|/)(coating\.dat)$", re.I)
 
 def files(history):
@@ -25,8 +28,10 @@ def files(history):
 
 def main():
     bad = []
-    for f in files("--history" in sys.argv):
-        if DENY_EXT.search(f) or DENY_NAME.search(f) or (AGF.search(f) and not AGF_OK.match(f)):
+    history = "--history" in sys.argv
+    for f in files(history):
+        agf_ok = AGF_OK.match(f) or (history and AGF_OK_HISTORY.match(f))
+        if DENY_EXT.search(f) or DENY_NAME.search(f) or (AGF.search(f) and not agf_ok):
             bad.append(f)
         elif AGF.search(f) and "--history" not in sys.argv:
             try:
