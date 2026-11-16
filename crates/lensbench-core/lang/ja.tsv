@@ -2094,3 +2094,6 @@ offset takes 3 values dx,dy,dz	offset は dx,dy,dz の 3 つ
 {k} must be numbers from 1 or "all"	{k} は 1 からの番号か "all"
 number {t}	番号 {t}
 no wavelength {n} (1 to {nw})	波長 {n} はありません（1〜{nw}）
+--params-file {} must be a JSON object	--params-file {} は JSON のオブジェクトにしてください
+--params-file {} can't be read: {e}	--params-file {} が読めません: {e}
+--params-file {} JSON can't be read: {e}	--params-file {} の JSON が読めません: {e}

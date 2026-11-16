@@ -1018,3 +1018,49 @@ fn help_json_lists_commands() {
         spot["usage"]
     );
 }
+
+/// 解析の設定を JSON のファイルで渡せる。コマンド行で明示した旗がファイルより優先し、旗の既定値は
+/// ファイルを上書きしない
+#[test]
+fn params_file_and_flags() {
+    let dir = std::env::temp_dir().join(format!("lb-params-file-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let f = dir.join("zernike.json");
+    std::fs::write(&f, r#"{"terms": 16, "field": 2}"#).unwrap();
+    let f = f.to_str().unwrap();
+    let base = ["zernike", ZMX, "--glass-dir", "tests/glass", "--json"];
+    let terms = |args: &[&str]| -> serde_json::Value {
+        let (ok, out, err) = run(args);
+        assert!(ok, "{err}");
+        serde_json::from_str(&out).unwrap()
+    };
+    let by_flags = terms(&[&base[..], &["--terms", "16", "--field", "2"]].concat());
+    let by_file = terms(&[&base[..], &["--params-file", f]].concat());
+    assert_eq!(by_flags, by_file);
+    let over = terms(
+        &[
+            &base[..],
+            &["--params-file", f, "--terms", "9", "--field", "2"],
+        ]
+        .concat(),
+    );
+    let nine = terms(&[&base[..], &["--terms", "9", "--field", "2"]].concat());
+    assert_eq!(over, nine);
+    assert_ne!(over, by_file);
+    // 知らない鍵・オブジェクトでない JSON は誤り
+    std::fs::write(dir.join("bad.json"), r#"{"no_such_key": 1}"#).unwrap();
+    let (ok, _, _) = run(&[
+        &base[..],
+        &["--params-file", dir.join("bad.json").to_str().unwrap()],
+    ]
+    .concat());
+    assert!(!ok);
+    std::fs::write(dir.join("list.json"), "[1]").unwrap();
+    let (ok, _, err) = run(&[
+        &base[..],
+        &["--params-file", dir.join("list.json").to_str().unwrap()],
+    ]
+    .concat());
+    assert!(!ok && err.contains("JSON object"), "{err}");
+    std::fs::remove_dir_all(&dir).ok();
+}

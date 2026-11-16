@@ -26,6 +26,7 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### 名前・設定の書き方
+- 解析のサブコマンドに `--params-file`（設定を JSON のファイルで渡す。コマンド行で明示した旗が優先、[CLI](cli.md)）。
 - 開口の種類・視野の正規化・エイミング・無限焦点の単位・ケラレの補間を、core・プロジェクト・系ファイルで同じ列挙にした（XCT-09）。
   serve の `system_data`・`set_system_data` の `data`（GUI の系の設定もこれを使う）と Rust の core の列挙の serde の名前は系ファイル版 2 と同じ小文字（`"epd"`・`"fnum"`・`"na"`・
   `"float"`・`"pwfn"`・`"cone"`、`"off"`・`"paraxial"`・`"real"`、`"radial"`・`"rect"`、`"degrees"` など、`"opticstudio"`・

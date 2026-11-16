@@ -81,11 +81,59 @@ fn arg_of(p: &Param) -> Arg {
             a = a.default_value(leak(d));
         }
     }
-    // 数の並びで既定が空で省けないもの（スルーフォーカスの周波数など）は必須
+    // 数の並びで既定が空で省けないもの（スルーフォーカスの周波数など）は必須（設定のファイルで渡すときは省ける）
     if p.required() {
-        a = a.required(true);
+        a = a.required_unless_present(PARAMS_FILE);
     }
     a
+}
+
+/// 設定のファイルの旗の id（解析の設定の鍵と重ならないよう、鍵に使わない形）
+const PARAMS_FILE: &str = "--params-file";
+
+/// 設定を JSON のファイルから読む旗
+fn params_file_arg() -> Arg {
+    Arg::new(PARAMS_FILE)
+        .long("params-file")
+        .value_name("JSON")
+        .value_parser(clap::value_parser!(PathBuf))
+        .action(ArgAction::Set)
+        .help(
+            "Settings from a JSON file: an object with the same keys as the flags (underscores, as in the GUI \
+             and Python). Flags given on the command line take precedence; relative paths in the file are \
+             relative to the file",
+        )
+}
+
+/// 設定のファイルを読む（JSON のオブジェクト。知らない鍵は解析が断る）。パスの鍵の相対パスはファイルの場所から
+fn read_params_file(
+    a: &dyn DynAnalysis,
+    path: &std::path::Path,
+) -> lensbench_core::Result<Map<String, Value>> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("--params-file {} can't be read: {e}", path.display()))?;
+    let Value::Object(mut o) = serde_json::from_str::<Value>(&text)
+        .map_err(|e| format!("--params-file {} JSON can't be read: {e}", path.display()))?
+    else {
+        return Err(format!("--params-file {} must be a JSON object", path.display()).into());
+    };
+    let base = path.parent().unwrap_or(std::path::Path::new(""));
+    let rel = |v: &mut Value| {
+        if let Value::String(s) = v {
+            let q = std::path::Path::new(s.as_str());
+            if q.is_relative() && !s.is_empty() {
+                *s = base.join(q).display().to_string();
+            }
+        }
+    };
+    for p in a.params() {
+        match (p.ty, o.get_mut(&p.name)) {
+            (ParamTy::Path, Some(v)) => rel(v),
+            (ParamTy::Paths, Some(Value::Array(vs))) => vs.iter_mut().for_each(rel),
+            _ => {}
+        }
+    }
+    Ok(o)
 }
 
 /// 解析のサブコマンド（系の読み方の引数＋設定の旗）
@@ -99,7 +147,7 @@ pub fn command(a: &dyn DynAnalysis) -> Command {
     for p in a.params() {
         c = c.arg(arg_of(&p));
     }
-    c
+    c.arg(params_file_arg())
 }
 
 fn nums(s: &str, p: &Param) -> lensbench_core::Result<Value> {
@@ -138,9 +186,17 @@ fn nums(s: &str, p: &Param) -> lensbench_core::Result<Value> {
 /// 解釈した引数から解析のサブコマンドを作る
 pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> lensbench_core::Result<AnalysisCmd> {
     let c = Common::from_arg_matches(m).map_err(|e| e.to_string())?;
-    let mut o = Map::new();
+    let mut o = match m.get_one::<PathBuf>(PARAMS_FILE) {
+        Some(f) => read_params_file(a, f)?,
+        None => Map::new(),
+    };
     for p in a.params() {
         let id = p.name.as_str();
+        // 設定のファイルにある鍵は、コマンド行で明示した旗だけが上書きする（旗の既定値では上書きしない）
+        if o.contains_key(id) && m.value_source(id) != Some(clap::parser::ValueSource::CommandLine)
+        {
+            continue;
+        }
         let v = match p.ty {
             ParamTy::Flag => m.get_flag(id).then_some(Value::Bool(true)),
             ParamTy::Count => m.get_one::<u64>(id).map(|x| Value::from(*x)),
