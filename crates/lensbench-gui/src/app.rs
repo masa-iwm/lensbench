@@ -67,32 +67,19 @@ use crate::theme::{self, Look, Mode};
 use crate::tour::{Args, Step, Tour};
 use crate::worker::{Done, Tag, Worker};
 
-/// 覚えておく設定（次に開いたときも使う）
+/// 覚えておく好み（次に開いたときも使う）。開いていた文書と画面の様子は [`Session`] に分ける（GAR-17）
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub glass_dirs: Vec<String>,
     pub lens_dirs: Vec<String>,
     pub recent: Vec<String>,
-    pub combo: Combo,
     pub look: Look,
     pub lang: Lang,
-    /// 今の並び
-    pub layout: Option<Layout>,
     /// 名前を付けて保存した並び
     pub layouts: Vec<(String, Layout)>,
-    /// 系のパネルで見るパラメータ（3.t、G1.shift など）
-    pub params: Vec<String>,
     /// 組合せを変えたらすぐ系を作り直す
     pub auto_build: bool,
-    /// レイアウト図の見る面
-    pub view_plane: ViewPlane,
-    /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
-    pub ld_tree: bool,
-    /// レンズデータの表の下に詳細設定（開口・傾き偏心・形のデータ・ブロックの設定）を出す
-    pub ld_detail: bool,
-    /// レンズデータの表を面単位で選ぶ（ブロックを自動で選ばない）
-    pub ld_by_surface: bool,
     /// レイアウト図・書き出しの光線と書き出しの設定
     pub rays: crate::layout_rays::RaySet,
     /// カタログレンズの一覧で隠す列（[`catalog::LensCol::key`]）
@@ -101,10 +88,6 @@ pub struct Settings {
     pub os_titlebar: bool,
     /// 品の STEP の共有の置き場（アプリ版。空なら環境変数 LENSBENCH_CAD_STORE、なければ配布元だけ）
     pub cad_store: crate::cad_store::CadStore,
-    /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
-    pub panels: Value,
-    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す、GPN-14）
-    pub locked: std::collections::BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Settings {
@@ -118,7 +101,6 @@ impl Settings {
         {
             *p = f(p);
         }
-        self.combo.map_paths(&f);
     }
 
     fn paths(&self) -> Settings {
@@ -126,7 +108,6 @@ impl Settings {
             glass_dirs: self.glass_dirs.clone(),
             lens_dirs: self.lens_dirs.clone(),
             recent: self.recent.clone(),
-            combo: self.combo.clone(),
             ..Default::default()
         }
     }
@@ -135,7 +116,6 @@ impl Settings {
         self.glass_dirs = k.glass_dirs;
         self.lens_dirs = k.lens_dirs;
         self.recent = k.recent;
-        self.combo = k.combo;
     }
 
     /// 読んだ設定の相対パスを、設定のフォルダから戻す（ポータブル・--settings のとき）
@@ -200,27 +180,71 @@ impl Default for Settings {
             glass_dirs: Vec::new(),
             lens_dirs: Vec::new(),
             recent: Vec::new(),
-            combo: Combo::default(),
             look: Look::default(),
             lang: Lang::Auto,
-            layout: None,
             layouts: Vec::new(),
-            params: Vec::new(),
             auto_build: true,
+            rays: Default::default(),
+            lens_hide: Vec::new(),
+            os_titlebar: false,
+            cad_store: Default::default(),
+        }
+    }
+}
+
+/// 次に開いたときに戻す、開いていた文書と画面の様子（GAR-17: 好みの [`Settings`] と分ける）。
+/// 保存するときだけ今の文書と画面から作る（毎フレーム写さない）
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
+pub struct Session {
+    pub combo: Combo,
+    /// 今の並び
+    pub layout: Option<Layout>,
+    /// 系のパネルで見るパラメータ（3.t、G1.shift など）
+    pub params: Vec<String>,
+    /// レイアウト図の見る面
+    pub view_plane: ViewPlane,
+    /// レンズデータの表をブロックごとに折りたたむ表示（false はブロックに入って中を見る表示）
+    pub ld_tree: bool,
+    /// レンズデータの表の下に詳細設定（開口・傾き偏心・形のデータ・ブロックの設定）を出す
+    pub ld_detail: bool,
+    /// レンズデータの表を面単位で選ぶ（ブロックを自動で選ばない）
+    pub ld_by_surface: bool,
+    /// 最適化・公差・差し替え・ズームのパネルの設定（serve と同じ形。次に開いたときも残す、GPN-14）
+    pub panels: Value,
+    /// 開いた系（組合せでない系）のファイルごとのロックしたブロック（開き直しても残す、GPN-14）
+    pub locked: std::collections::BTreeMap<String, BTreeSet<String>>,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Session {
+            combo: Combo::default(),
+            layout: None,
+            params: Vec::new(),
             view_plane: ViewPlane::Yz,
             // 既定は折りたたみ表示で全部開く（曲率半径・硝材がすぐ見える、GUX-05）
             ld_tree: true,
             ld_detail: false,
             ld_by_surface: false,
-            rays: Default::default(),
-            lens_hide: Vec::new(),
-            os_titlebar: false,
-            cad_store: Default::default(),
             panels: Value::Null,
             locked: Default::default(),
         }
     }
 }
+
+impl Session {
+    /// 読んだ組合せの相対パスを、設定のフォルダから戻す（ポータブル・--settings のとき）
+    fn resolve_paths(&mut self) {
+        if let Some(b) = crate::portable::base() {
+            self.combo
+                .map_paths(&|p: &str| crate::portable::from_stored(p, b));
+        }
+    }
+}
+
+/// 保存先での [`Session`] の鍵（好みは eframe::APP_KEY）
+const SESSION_KEY: &str = "lensbench_session";
 
 #[derive(Default)]
 struct Status {
@@ -331,6 +355,9 @@ struct Core {
     /// パネルの状態（GAR-01）
     p: Panels,
     s: Settings,
+    /// 開いていた文書と画面の様子のうち、画面で使い続けるもの（見るパラメータ・図の面・ロック）。組合せ・並び・
+    /// パネルの設定・表の見せ方は開いたときに取り出し、保存するときだけ今のものを入れる
+    ses: Session,
     /// ファイルメニューの「見本」（Web 版の同梱の系）
     samples: Vec<String>,
     /// カタログのフォルダの様子（AGF の名前・見つからないフォルダ）
@@ -672,7 +699,7 @@ impl Core {
 
     /// serve の layout の params（重ねる構成・見る面と光線の設定）
     fn layout_params(&self) -> Value {
-        let mut v = self.overlay.params_in(self.s.view_plane);
+        let mut v = self.overlay.params_in(self.ses.view_plane);
         self.s
             .rays
             .apply(&mut v, self.n_fields(), self.waves_um().len(), false);
@@ -841,7 +868,7 @@ impl Core {
     }
 
     fn read_params(&mut self) {
-        for p in self.s.params.clone() {
+        for p in self.ses.params.clone() {
             self.worker.send(Tag::Get, "get", json!({ "param": p }));
         }
     }
@@ -986,7 +1013,7 @@ impl Core {
             .and_then(|f| f.file_stem())
             .map(|x| x.to_string_lossy().into_owned())
             .unwrap_or_else(|| "layout".into());
-        let ext = if self.s.view_plane == ViewPlane::D3 {
+        let ext = if self.ses.view_plane == ViewPlane::D3 {
             "step"
         } else {
             "svg"
@@ -1000,7 +1027,7 @@ impl Core {
             .set_file_name(format!("{base}.{ext}"))
             .save_file()
         {
-            let mut params = self.overlay.params_in(self.s.view_plane);
+            let mut params = self.overlay.params_in(self.ses.view_plane);
             self.s
                 .rays
                 .apply(&mut params, self.n_fields(), self.waves_um().len(), true);
@@ -1099,7 +1126,7 @@ impl Core {
             self.p.ld.reset();
             let key = new_file.as_ref().map(|f| f.display().to_string());
             self.p.ld.locked = key
-                .and_then(|k| self.s.locked.get(&k).cloned())
+                .and_then(|k| self.ses.locked.get(&k).cloned())
                 .unwrap_or_default();
         }
         self.loc.file = new_file;
@@ -1158,7 +1185,7 @@ impl Core {
             ui.horizontal(|ui| {
                 ui.label(tr("View plane"));
                 for p in ViewPlane::ALL {
-                    let r = ui.selectable_value(&mut self.s.view_plane, p, p.label());
+                    let r = ui.selectable_value(&mut self.ses.view_plane, p, p.label());
                     let r = match p {
                         ViewPlane::Unfold => r.on_hover_text(tr(
                             "Sections after mirror/BS folds laid out along the original axis (moves along the axis only)",
@@ -1181,7 +1208,7 @@ impl Core {
                     self.export_layout();
                 }
             });
-            changed |= self.overlay.ui(ui, self.s.view_plane.vert());
+            changed |= self.overlay.ui(ui, self.ses.view_plane.vert());
             let (nf, nw) = (self.n_fields(), self.waves_um().len());
             let head = if self.s.rays.is_default() {
                 tr("Rays and export settings").to_string()
@@ -1928,10 +1955,23 @@ impl App {
                 .and_then(|st| eframe::get_value(st, eframe::APP_KEY))
                 .unwrap_or_default()
         };
+        // 開いていた文書と画面の様子。前の版は好みと同じ値に入れていたので、鍵が無ければそこから一度だけ読む
+        // （同じ欄の名前。次に保存すると分かれる。この読み替えは XCT-34 でほかの移行と一緒に消す）
+        let mut ses: Session = if args.tour.is_some() {
+            Session::default()
+        } else {
+            cc.storage
+                .and_then(|st| {
+                    eframe::get_value(st, SESSION_KEY)
+                        .or_else(|| eframe::get_value(st, eframe::APP_KEY))
+                })
+                .unwrap_or_default()
+        };
         if args.tour.is_some() {
             crate::tour::prepare(&args, &mut s);
         } else {
             s.resolve_paths();
+            ses.resolve_paths();
             // 硝材・レンズのフォルダが無ければ、exe の隣の catalogs/ を既定に（リリースを展開してすぐ見える）
             if s.glass_dirs.is_empty() && s.lens_dirs.is_empty() {
                 if let Some(d) = crate::portable::exe_dir() {
@@ -1982,14 +2022,18 @@ impl App {
             )
         };
         let browser = Browser::default();
-        let doc = crate::combo_doc::ComboDoc::new(s.combo.clone());
+        let doc = crate::combo_doc::ComboDoc::new(std::mem::take(&mut ses.combo));
         // 系のファイルを指定して開いたときは、前の組合せを作り直さない（指定が無ければ前の組合せで系を作る）
-        let built_combo = args.open.is_some().then(|| s.combo.clone());
-        let lay = s.layout.take().unwrap_or_else(|| Preset::Analysis.build());
+        let built_combo = args.open.is_some().then(|| doc.combo.clone());
+        let lay = ses
+            .layout
+            .take()
+            .unwrap_or_else(|| Preset::Analysis.build());
         let next_id = lay.max_id();
         let mut app = App {
             c: Core {
                 s,
+                ses,
                 samples: menus::samples(&args),
                 worker,
                 preview,
@@ -2069,12 +2113,12 @@ impl App {
             hosts: HashMap::new(),
         };
         // 前に閉じたときの最適化・公差・差し替えの設定（GPN-14）
-        let panels = app.c.s.panels.clone();
+        let panels = std::mem::take(&mut app.c.ses.panels);
         app.c.set_panels(&panels);
-        // レンズデータの見せ方は表の状態が持ち、設定には保存するときだけ写す（GPN-28）
-        app.c.p.ld.tree = app.c.s.ld_tree;
-        app.c.p.ld.detail = app.c.s.ld_detail;
-        app.c.p.ld.by_surface = app.c.s.ld_by_surface;
+        // レンズデータの見せ方は表の状態が持ち、保存するときだけ写す（GPN-28）
+        app.c.p.ld.tree = app.c.ses.ld_tree;
+        app.c.p.ld.detail = app.c.ses.ld_detail;
+        app.c.p.ld.by_surface = app.c.ses.ld_by_surface;
         app.apply_dock_translations();
         // Web 版: 別の窓のパネルなら、計算しないで元のタブで描いた画面を受けて描く
         #[cfg(target_arch = "wasm32")]
@@ -2809,22 +2853,30 @@ impl eframe::App for App {
         if self.viewer.is_some() {
             return;
         }
-        self.c.s.combo = self.c.doc.combo.clone();
-        self.c.s.ld_tree = self.c.p.ld.tree;
-        self.c.s.ld_detail = self.c.p.ld.detail;
-        self.c.s.ld_by_surface = self.c.p.ld.by_surface;
-        self.c.s.panels = self.c.panels_value();
-        self.c.s.layout = Some(self.layout());
+        // 好み（設定）と、開いていた文書と画面の様子（Session）を別の鍵に書く（GAR-17）
+        let mut ses = Session {
+            combo: self.c.doc.combo.clone(),
+            layout: Some(self.layout()),
+            params: self.c.ses.params.clone(),
+            view_plane: self.c.ses.view_plane,
+            ld_tree: self.c.p.ld.tree,
+            ld_detail: self.c.p.ld.detail,
+            ld_by_surface: self.c.p.ld.by_surface,
+            panels: self.c.panels_value(),
+            locked: self.c.ses.locked.clone(),
+        };
         // ポータブル: 設定のフォルダの中のパスは相対で書く
         if let Some(b) = crate::portable::base() {
             let keep = self.c.s.paths();
             self.c.s.map_paths(|p| crate::portable::to_stored(p, b));
             eframe::set_value(storage, eframe::APP_KEY, &self.c.s);
             self.c.s.set_paths(keep);
+            ses.combo
+                .map_paths(&|p: &str| crate::portable::to_stored(p, b));
         } else {
             eframe::set_value(storage, eframe::APP_KEY, &self.c.s);
         }
-        self.c.s.layout = None;
+        eframe::set_value(storage, SESSION_KEY, &ses);
     }
 }
 /// レイアウト図に重ねる構成（.zmx の多重構成・プロジェクトの状態・BS の経路）
@@ -3278,5 +3330,47 @@ mod open_insert_tests {
             2
         );
         assert_eq!(split_open(z, &rows, None, p).len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+
+    /// 好みと開いていた様子は別の値: 好みに組合せ・並びが入らず、Session は読み直して同じ
+    #[test]
+    fn gar17_settings_and_session_are_separate() {
+        let mut ses = Session {
+            params: vec!["1.t".into()],
+            view_plane: ViewPlane::Xz,
+            ..Session::default()
+        };
+        ses.combo.insert_plane(0);
+        let t = ron::to_string(&ses).unwrap();
+        let back: Session = ron::from_str(&t).unwrap();
+        assert_eq!(back.combo, ses.combo);
+        assert_eq!(back.params, ses.params);
+        assert_eq!(back.view_plane, ViewPlane::Xz);
+        let st = ron::to_string(&Settings::default()).unwrap();
+        for k in ["combo", "layout:", "params", "panels", "locked", "ld_tree"] {
+            assert!(!st.contains(k), "{k} in {st}");
+        }
+    }
+
+    /// 前の版の設定（好みと様子が 1 つの値）を Session として読める（一度だけの読み替え）
+    #[test]
+    fn gar17_old_settings_read_as_session() {
+        let ses = Session {
+            params: vec!["G1.shift".into()],
+            ld_tree: false,
+            ..Session::default()
+        };
+        // 前の版の形: 好みの欄と様子の欄が同じ構造体に並ぶ（eframe は RON の構造体で書く）
+        let a = ron::to_string(&Settings::default()).unwrap();
+        let b = ron::to_string(&ses).unwrap();
+        let old = format!("({},{})", &a[1..a.len() - 1], &b[1..b.len() - 1]);
+        let back: Session = ron::from_str(&old).unwrap();
+        assert_eq!(back.params, ses.params);
+        assert!(!back.ld_tree);
     }
 }

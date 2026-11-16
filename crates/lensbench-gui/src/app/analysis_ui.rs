@@ -142,7 +142,7 @@ impl Core {
                 .color(weak),
             );
             let mut remove = None;
-            for (i, p) in self.s.params.clone().iter().enumerate() {
+            for (i, p) in self.ses.params.clone().iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(p).monospace());
                     match self.sys.param_vals.get(p).copied() {
@@ -165,7 +165,7 @@ impl Core {
                 });
             }
             if let Some(i) = remove {
-                let p = self.s.params.remove(i);
+                let p = self.ses.params.remove(i);
                 self.sys.param_vals.remove(&p);
             }
             ui.horizontal_wrapped(|ui| {

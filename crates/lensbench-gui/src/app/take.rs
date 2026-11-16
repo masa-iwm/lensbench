@@ -221,8 +221,8 @@ impl Core {
             Tag::Get => {
                 if let (Some(p), Some(x)) = (params["param"].as_str(), v["value"].as_f64()) {
                     self.sys.param_vals.insert(p.to_string(), x);
-                    if !self.s.params.iter().any(|q| q == p) {
-                        self.s.params.push(p.to_string());
+                    if !self.ses.params.iter().any(|q| q == p) {
+                        self.ses.params.push(p.to_string());
                     }
                 }
                 return;

@@ -204,7 +204,7 @@ impl App {
             Step::Layout3d => {
                 // 3D 表示: 2 枚目を選んだまま
                 self.c.p.combo_view.select(1);
-                self.c.s.view_plane = ViewPlane::D3;
+                self.c.ses.view_plane = ViewPlane::D3;
                 self.c.request_layout();
             }
             Step::LensData => {
@@ -257,7 +257,7 @@ impl App {
                 self.c.p.ld.tree = false;
                 self.c.p.ld.detail = false;
                 self.c.p.ld.open.clear();
-                self.c.s.view_plane = ViewPlane::Yz;
+                self.c.ses.view_plane = ViewPlane::Yz;
                 self.c.request_layout();
                 if let Some(id) = self.pane_of(spot) {
                     self.focus(id);
@@ -380,7 +380,7 @@ impl App {
             }
             Step::Param => {
                 // 1 枚目の後の空気を少し動かす（解析は自動で計算し直し、前との差が出る）
-                self.c.s.params = vec!["1.t".into()];
+                self.c.ses.params = vec!["1.t".into()];
                 self.c.read_params();
                 self.c.pending_set.insert("1.t".into(), 2.5);
             }

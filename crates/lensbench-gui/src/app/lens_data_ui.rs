@@ -130,9 +130,9 @@ impl Core {
                         // ファイルごとに設定へ残す（空になったら消す、GPN-14）
                         if let Some(f) = self.loc.file.as_ref().map(|f| f.display().to_string()) {
                             if self.p.ld.locked.is_empty() {
-                                self.s.locked.remove(&f);
+                                self.ses.locked.remove(&f);
                             } else {
-                                self.s.locked.insert(f, self.p.ld.locked.clone());
+                                self.ses.locked.insert(f, self.p.ld.locked.clone());
                             }
                         }
                     }
