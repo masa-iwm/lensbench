@@ -264,6 +264,53 @@ pub struct Expansion {
     pub notes: Vec<String>,
     /// id のある空気のブロックが入る面（差し替え探索の間隔の変数、[`Gap`]）
     pub gaps: Vec<Gap>,
+    /// 系の面ごとの出どころ（`system.surfaces` と同じ長さ。物体面・像面は既定値）
+    pub map: Vec<SurfOrigin>,
+}
+
+/// 展開した系の面 1 つの出どころ（[`Expansion::map`]、PRJ-04）
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SurfOrigin {
+    /// 面を足した id のあるブロック・群（内から外へ。.zmx の取り込みの群も）
+    pub blocks: Vec<String>,
+    /// 鏡の `back` で復路にたどった面
+    pub back: bool,
+    /// 裏返して置いた玉（`reversed`）の面なら、その玉の番号（1 始まり、展開の中で数える）
+    pub flip: Option<usize>,
+    /// .zmx の取り込みの番号と、元の .zmx の面番号（ピックアップを付け替える）
+    pub(crate) zmx: Option<(usize, usize)>,
+}
+
+impl SurfOrigin {
+    /// 面が id のブロック・群のものか
+    pub fn is_in(&self, id: &str) -> bool {
+        self.blocks.iter().any(|b| b == id)
+    }
+}
+
+/// id のブロック・群の面の範囲（系の面の番号 [最初, 最後]）。続けて同じ向きにたどった範囲ごとに、たどった順。
+/// back が Some なら往路（false）か復路（true）の範囲だけ
+pub fn block_runs(map: &[SurfOrigin], id: &str, back: Option<bool>) -> Vec<[usize; 2]> {
+    let mut out: Vec<[usize; 2]> = Vec::new();
+    let mut prev: Option<(usize, bool)> = None;
+    for (j, o) in map.iter().enumerate() {
+        if id.is_empty() || !o.is_in(id) {
+            prev = None;
+            continue;
+        }
+        match (prev, out.last_mut()) {
+            (Some((pj, pb)), Some(r)) if pj + 1 == j && pb == o.back => r[1] = j,
+            _ => out.push([j, j]),
+        }
+        prev = Some((j, o.back));
+    }
+    out.retain(|r| back.is_none_or(|b| map[r[0]].back == b));
+    out
+}
+
+/// id のブロック・群の往路の最初の範囲
+pub(crate) fn fwd_run(map: &[SurfOrigin], id: &str) -> Option<[usize; 2]> {
+    block_runs(map, id, Some(false)).into_iter().next()
 }
 
 /// id のある空気のブロックが入る面: (id, 面番号, 向き)。向きは鏡の後（光が −z へ進む）で −1（面の厚さは −t）。
@@ -387,15 +434,15 @@ pub(crate) fn expand_inner(
         base: env.base.clone(),
         users: Vec::new(),
         sf: Vec::new(),
-        org: Vec::new(),
+        map: Vec::new(),
+        noted: Vec::new(),
+        nflip: 0,
         zpicks: Vec::new(),
         lead: 0.0,
         parity: 1.0,
         glasses,
         coats: HashMap::new(),
         nstop: 0,
-        spans: Vec::new(),
-        back_spans: Vec::new(),
         gaps: Vec::new(),
         split: SplitState {
             path: splitter::parse_path(path.unwrap_or(""))?,
@@ -403,7 +450,6 @@ pub(crate) fn expand_inner(
             ..Default::default()
         },
         frames: Vec::new(),
-        rev_spans: Vec::new(),
         zenv: Vec::new(),
     };
     for (i, b) in p.blocks.iter().enumerate() {
@@ -452,17 +498,21 @@ pub(crate) fn expand_inner(
     if p.object_distance.is_some() {
         sf[0].t += c.lead;
     }
-    if c.sf.len() != c.org.len() {
+    if c.sf.len() != c.map.len() {
         // 面は put か element_from で足す（出どころの表を面と揃える）
         return Err(format!(
             "internal error: {} surfaces but {} sources",
             c.sf.len(),
-            c.org.len()
+            c.map.len()
         )
         .into());
     }
     sf.append(&mut c.sf);
-    let org = std::mem::take(&mut c.org);
+    let org: Vec<Option<(usize, usize)>> = c.map.iter().map(|o| o.zmx).collect();
+    // 系の面ごとの出どころ（物体面・像面はブロックの外）
+    let mut map = vec![SurfOrigin::default()];
+    map.append(&mut c.map);
+    map.push(SurfOrigin::default());
     let zpicks = std::mem::take(&mut c.zpicks);
     sf.push(Surface::default());
     // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
@@ -618,19 +668,9 @@ pub(crate) fn expand_inner(
     let mut rx = s.prescription().clone();
     rx.units = s.lens_units();
     let mut s = rx.build_raw()?;
-    let mut ids: Vec<&str> = Vec::new();
-    for (id, _, _) in &c.spans {
-        if !ids.contains(&id.as_str()) {
-            ids.push(id);
-        }
-    }
-    for id in ids {
-        let spans: Vec<[usize; 2]> = c
-            .spans
-            .iter()
-            .filter(|x| x.0 == id)
-            .map(|x| [x.1 + 1, x.2 + 1])
-            .collect();
+    for id in &c.noted {
+        let id = id.as_str();
+        let spans = block_runs(&map, id, None);
         match s.define_unit(id, &spans, [0.0; 3]) {
             // 群の移動はもう厚さに入っているので、その分を玉・群の shift の今の値にする（状態ごとの群の位置を
             // `id.shift` で比べられるように）
@@ -647,22 +687,25 @@ pub(crate) fn expand_inner(
         }
     }
     // 裏返して置いた玉（id の無い玉の lens1 … も）。最初の範囲が玉の面と同じ玉・群
+    let flips: Vec<[usize; 2]> = (1..=c.nflip)
+        .filter_map(|k| {
+            let mut j = map
+                .iter()
+                .enumerate()
+                .filter(|x| x.1.flip == Some(k))
+                .map(|x| x.0);
+            let a = j.next()?;
+            Some([a, j.next_back().unwrap_or(a)])
+        })
+        .collect();
     s.edit_raw(|rx| {
         for u in rx.units.iter_mut() {
-            u.flipped = c
-                .rev_spans
-                .iter()
-                .any(|&(a, b)| u.spans.first() == Some(&[a + 1, b + 1]));
+            u.flipped = flips.iter().any(|r| u.spans.first() == Some(r));
         }
         Ok(())
     })?;
-    warn.extend(apply_surface_edits(
-        &mut s,
-        &p.surface_edits,
-        &c.spans,
-        &c.back_spans,
-    )?);
-    let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &c.spans, &c.back_spans)?;
+    warn.extend(apply_surface_edits(&mut s, &p.surface_edits, &map)?);
+    let (w, stopped) = apply_surface_ops(&mut s, &p.surface_ops, &map)?;
     if c.nstop == 0 && !stopped {
         // 仮の絞りのまま（set_stop のブロックが無い）にはしない
         return Err("0 stops (no set_stop block in surface_ops; exactly one is needed)".into());
@@ -672,8 +715,8 @@ pub(crate) fn expand_inner(
         let g = match r {
             BlockRef::Sys(r) => Some(edit_ops::surf_of(&s, r, "glrs")?),
             BlockRef::Block(f) => {
-                let j = block_face(&s, &f.block, f.surface, &c.spans, &c.back_spans)
-                    .map_err(|x| format!("glrs: {x}"))?;
+                let j =
+                    block_face(&s, &f.block, f.surface, &map).map_err(|x| format!("glrs: {x}"))?;
                 if j.is_none() {
                     warn.push(format!(
                         "glrs: block {} not found, so the global reference stays at surface {}",
@@ -692,7 +735,7 @@ pub(crate) fn expand_inner(
     }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
-    let mut mech = place_mechanics(&s, &p.mechanics, env, &c.spans, &c.back_spans, &mut warn)?;
+    let mut mech = place_mechanics(&s, &p.mechanics, env, &map, &mut warn)?;
     mech.extend(place_frames(&s, &c.frames, &mut warn));
     s.edit_raw(|rx| {
         rx.mechanics = mech;
@@ -703,6 +746,7 @@ pub(crate) fn expand_inner(
         system: s,
         notes: warn,
         gaps: c.gaps,
+        map,
     }))
 }
 
@@ -711,8 +755,7 @@ pub(crate) fn place_mechanics(
     s: &System,
     ms: &[MechPlacement],
     env: &Env<'_>,
-    spans: &[(String, usize, usize)],
-    back_spans: &[(String, usize, usize)],
+    map: &[SurfOrigin],
     warn: &mut Vec<String>,
 ) -> lensbench_core::Result<Vec<lensbench_core::mech::MechPart>> {
     let mut out = Vec::new();
@@ -753,9 +796,9 @@ pub(crate) fn place_mechanics(
             let t = if m.seat {
                 m.holds
                     .first()
-                    .and_then(|b| spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)))
+                    .and_then(|b| fwd_run(map, b))
                     .map_or(0.0, |x| {
-                        (x.1 + 1..=x.2)
+                        (x[0]..x[1])
                             .filter(|&j| j < s.surfaces.len() && !s.surfaces[j].is_coord_break())
                             .map(|j| s.surfaces[j].t)
                             .sum::<f64>()
@@ -834,10 +877,10 @@ pub(crate) fn place_mechanics(
                 return Err(format!("{tag}: offset is not a number").into());
             }
             for b in &m.holds {
-                match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
+                match fwd_run(map, b) {
                     Some(x) => part0
                         .holds
-                        .extend((x.1 + 1..=x.2 + 1).filter(|&j| !s.surfaces[j].is_coord_break())),
+                        .extend((x[0]..=x[1]).filter(|&j| !s.surfaces[j].is_coord_break())),
                     None => warn.push(format!("{tag}: no block {b} for holds")),
                 }
             }
@@ -861,7 +904,7 @@ pub(crate) fn place_mechanics(
                 .first()
                 .ok_or_else(|| format!("{tag}: seat needs holds (the held element)"))?;
             offset[2] -= seat;
-            match block_face(s, b, 0, spans, back_spans).map_err(|e| format!("{tag}: {e}"))? {
+            match block_face(s, b, 0, map).map_err(|e| format!("{tag}: {e}"))? {
                 Some(j) => Some(j),
                 None => {
                     warn.push(format!("{tag}: no block {b}, not placed"));
@@ -874,15 +917,15 @@ pub(crate) fn place_mechanics(
         let surface = match (seat_at, &m.at.block) {
             (Some(j), _) => j,
             (None, block) => match block {
-                Some(b) => match block_face(s, b, m.at.surface, spans, back_spans)
-                    .map_err(|e| format!("{tag}: {e}"))?
-                {
-                    Some(j) => j,
-                    None => {
-                        warn.push(format!("{tag}: no block {b}, not placed"));
-                        continue;
+                Some(b) => {
+                    match block_face(s, b, m.at.surface, map).map_err(|e| format!("{tag}: {e}"))? {
+                        Some(j) => j,
+                        None => {
+                            warn.push(format!("{tag}: no block {b}, not placed"));
+                            continue;
+                        }
                     }
-                },
+                }
                 None => {
                     if m.at.is_unset() {
                         return Err(format!("{tag}: a place (at) or seat is needed").into());
@@ -904,10 +947,10 @@ pub(crate) fn place_mechanics(
         }
         let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
-            match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
+            match fwd_run(map, b) {
                 Some(x) => part
                     .holds
-                    .extend((x.1 + 1..=x.2 + 1).filter(|&j| !s.surfaces[j].is_coord_break())),
+                    .extend((x[0]..=x[1]).filter(|&j| !s.surfaces[j].is_coord_break())),
                 None => warn.push(format!("{tag}: no block {b} for holds")),
             }
         }
@@ -952,16 +995,12 @@ pub(crate) fn block_face(
     s: &System,
     block: &str,
     i: usize,
-    spans: &[(String, usize, usize)],
-    back_spans: &[(String, usize, usize)],
+    map: &[SurfOrigin],
 ) -> lensbench_core::Result<Option<usize>> {
-    let Some(x) = spans
-        .iter()
-        .find(|x| x.0 == block && !back_spans.contains(x))
-    else {
+    let Some(x) = fwd_run(map, block) else {
         return Ok(None);
     };
-    let faces: Vec<usize> = (x.1 + 1..=x.2 + 1)
+    let faces: Vec<usize> = (x[0]..=x[1])
         .filter(|&j| !s.surfaces[j].is_coord_break())
         .collect();
     faces
@@ -976,8 +1015,7 @@ pub(crate) fn block_face(
 pub(crate) fn apply_surface_ops(
     s: &mut System,
     ops: &[SurfaceOp],
-    spans: &[(String, usize, usize)],
-    back_spans: &[(String, usize, usize)],
+    map: &[SurfOrigin],
 ) -> lensbench_core::Result<(Vec<String>, bool)> {
     let mut warn = Vec::new();
     let mut out = Vec::new();
@@ -1021,7 +1059,7 @@ pub(crate) fn apply_surface_ops(
         let mut missing = None;
         let e = op.to_edit(|r| match r {
             BlockRef::Sys(r) => Ok::<_, String>(Some(r)),
-            BlockRef::Block(f) => match block_face(s, &f.block, f.surface, spans, back_spans)
+            BlockRef::Block(f) => match block_face(s, &f.block, f.surface, map)
                 .map_err(|x| format!("surface_ops {}: {x}", k + 1))?
             {
                 Some(j) => Ok(Some(Ref::Index(j))),
@@ -1063,13 +1101,12 @@ pub(crate) fn apply_surface_ops(
 pub(crate) fn apply_surface_edits(
     s: &mut System,
     edits: &[SurfaceEdit],
-    spans: &[(String, usize, usize)],
-    back_spans: &[(String, usize, usize)],
+    map: &[SurfOrigin],
 ) -> lensbench_core::Result<Vec<String>> {
     let mut warn = Vec::new();
     // 範囲の面（座標ブレークを除く）
-    let faces = |s: &System, a: usize, b: usize| -> Vec<usize> {
-        (a + 1..=b + 1)
+    let faces = |s: &System, r: [usize; 2]| -> Vec<usize> {
+        (r[0]..=r[1])
             .filter(|&j| !s.surfaces[j].is_coord_break())
             .collect()
     };
@@ -1082,18 +1119,14 @@ pub(crate) fn apply_surface_edits(
                 )
             })
         };
-        let mine = |x: &&(String, usize, usize)| x.0 == e.block;
         // 往路（と、同じ向きに通るほかの範囲）・復路
-        let fwd: Vec<Vec<usize>> = spans
-            .iter()
-            .filter(mine)
-            .filter(|x| !back_spans.contains(x))
-            .map(|x| faces(s, x.1, x.2))
+        let fwd: Vec<Vec<usize>> = block_runs(map, &e.block, Some(false))
+            .into_iter()
+            .map(|r| faces(s, r))
             .collect();
-        let back: Vec<Vec<usize>> = back_spans
-            .iter()
-            .filter(mine)
-            .map(|x| faces(s, x.1, x.2))
+        let back: Vec<Vec<usize>> = block_runs(map, &e.block, Some(true))
+            .into_iter()
+            .map(|r| faces(s, r))
             .collect();
         let Some(n) = fwd.first().map(Vec::len).filter(|&n| n > 0) else {
             warn.push(format!(

@@ -828,3 +828,57 @@ fn source_cache_reuses_files_until_they_change() {
     assert_eq!(cache.file_count(), 0);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// PRJ-04: 展開の結果は面ごとの出どころ（ブロック・群、往路・復路、裏返した玉）を持つ
+#[test]
+fn the_expansion_maps_each_surface_to_its_blocks() {
+    let lens = |id: &str, rev: bool| {
+        format!(
+            r#"{{"type": "lens", "id": "{id}", "reversed": {rev}, "decenter": [0.1, 0], "source": {{"surfaces": [{{"radius": 40, "t": 4, "glass": "N-BK7"}}, {{"radius": -60}}]}}}}"#
+        )
+    };
+    let txt = format!(
+        r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}},
+            {{"type": "group", "id": "G", "blocks": [{}, {{"type": "air", "t": 2}}, {}]}},
+            {{"type": "air", "t": 30}}, {{"type": "mirror", "id": "M", "back": true}}] }}"#,
+        lens("A", false),
+        lens("B", true)
+    );
+    let p = Project::from_json(&txt).unwrap();
+    let x = expand(&p, &env(), &ExpandOpts::default()).unwrap();
+    let s = &x.system;
+    assert_eq!(x.map.len(), s.surfaces.len());
+    let runs = |id: &str, back| lensbench_project::block_runs(&x.map, id, back);
+    // 玉 A・B は群 G の中。往路と復路で 1 つずつ
+    let (a, b, g) = (
+        runs("A", Some(false)),
+        runs("B", Some(false)),
+        runs("G", Some(false)),
+    );
+    assert_eq!((a.len(), b.len(), g.len()), (1, 1, 1));
+    assert_eq!((g[0][0], g[0][1]), (a[0][0], b[0][1]));
+    assert_eq!(runs("A", Some(true)).len(), 1);
+    assert_eq!(runs("G", None).len(), 2);
+    // 偏心の座標ブレークもブロックの面。中の面は 2 つ
+    let faces = (a[0][0]..=a[0][1])
+        .filter(|&j| !s.surfaces[j].is_coord_break())
+        .count();
+    assert_eq!(faces, 2);
+    // 復路の面は back、鏡は鏡の面だけ
+    let m = runs("M", None);
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0][0], m[0][1]);
+    assert!(s.surfaces[m[0][0]].is_mirror());
+    assert!(x.map[m[0][0] + 1..s.surfaces.len() - 1]
+        .iter()
+        .any(|o| o.back));
+    // 裏返した玉 B の往路の面だけ flip、玉・群のパラメータは flipped
+    assert!(x
+        .map
+        .iter()
+        .filter(|o| o.flip.is_some())
+        .all(|o| o.is_in("B") && !o.back));
+    let ua = s.units.iter().find(|u| u.name == "A").unwrap();
+    assert!(!ua.flipped);
+    // B（偏心つき）の flipped は PRJ-31 で直す
+}

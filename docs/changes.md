@@ -296,6 +296,8 @@
 - `LensCache` を `SourceCache` にした（PRJ-13）: カタログの玉に加えて、`.zmx`・系ファイルのブロックの系も覚える（ファイルの
   更新時刻と大きさが変われば読み直す）。`ExpandOpts::cache` に渡す。BS の経路の一覧を同じ使い回しで求めるのは
   `paths_cached`。`open::Source::Project` に欄 `cache` を足した（状態・経路ごとの展開で使い回す）。
+- 展開の結果 `Expansion` に `map: Vec<SurfOrigin>`（系の面ごとの出どころ: 面を足した id のあるブロック・群、往路・復路、
+  裏返した玉）を足した（PRJ-04）。ブロック・群の面の範囲は `block_runs(&map, id, back)` で引く。
 
 ### GUI
 - 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。

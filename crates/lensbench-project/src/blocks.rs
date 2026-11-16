@@ -103,8 +103,12 @@ pub(crate) struct Ctx<'a, 'b> {
     /// 展開中のユーザーカタログの項目（正規化したパス, 項目）。循環を見つける
     pub(crate) users: Vec<(PathBuf, String)>,
     pub(crate) sf: Vec<Surface>,
-    /// sf の各面の出どころ（zmx ブロックの取り込みの番号, 元の .zmx の面番号）。ピックアップを付け替える
-    pub(crate) org: Vec<Option<(usize, usize)>>,
+    /// sf の各面の出どころ（[`SurfOrigin`]: 面を足したブロック、往路・復路、.zmx の元の面）。sf と同じ長さ
+    pub(crate) map: Vec<SurfOrigin>,
+    /// 面を覚えた id のあるブロック・群（覚えた順）。玉・群のパラメータの順
+    pub(crate) noted: Vec<String>,
+    /// 裏返して置いた玉の数（[`SurfOrigin::flip`] の番号）
+    pub(crate) nflip: usize,
     /// zmx ブロックの取り込みごとの、元の系のピックアップ
     /// zmx ブロックごとのピックアップと厚さのソルブ
     pub(crate) zpicks: Vec<ZmxLinks>,
@@ -117,18 +121,12 @@ pub(crate) struct Ctx<'a, 'b> {
     /// ユーザーカタログの `coatings`（TABLE 膜）
     pub(crate) coats: HashMap<String, lensbench_core::coating::Table>,
     pub(crate) nstop: usize,
-    /// id のあるブロック・群の面の範囲（id, sf の最初, 最後）。玉・群のパラメータにする
-    pub(crate) spans: Vec<(String, usize, usize)>,
-    /// spans のうち、鏡の back で復路にたどった範囲（面の値の上書きを往路から当てる）
-    pub(crate) back_spans: Vec<(String, usize, usize)>,
     /// id のある空気のブロックが入った面（id, 面番号, 向き）。差し替え探索の間隔の変数にする
     pub(crate) gaps: Vec<Gap>,
     /// ビームスプリッターの経路
     pub(crate) split: SplitState,
     /// 枠付きのユーザーカタログの品（名前, 枠, sf の最初, 最後）。枠を機構部品として置く
     pub(crate) frames: Vec<(String, MechSpec, usize, usize)>,
-    /// 裏返して置いた玉（`reversed` の玉のブロック）の往路の面の範囲（sf の最初, 最後）。玉・群の `flipped` にする
-    pub(crate) rev_spans: Vec<(usize, usize)>,
     /// 取り込んだ .zmx の環境（パス, 温度, 気圧, 補正）。プロジェクトの環境と違えば注意を出す
     pub(crate) zenv: Vec<(String, f64, f64, bool)>,
 }
@@ -310,7 +308,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// 面をそのまま足す（出どころなし）
     pub(crate) fn put(&mut self, s: Surface) {
         self.sf.push(s);
-        self.org.push(None);
+        self.map.push(SurfOrigin::default());
     }
 
     /// id の空気が入る面（gap の前に呼ぶ）
@@ -366,11 +364,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let start = self.sf.len();
                 let (p0, n0, lead0) = (self.parity, self.nstop, self.lead);
                 let lens = (
-                    self.spans.len(),
-                    self.back_spans.len(),
+                    self.noted.len(),
                     self.gaps.len(),
                     self.frames.len(),
-                    self.rev_spans.len(),
                     self.zpicks.len(),
                 );
                 body(self)?;
@@ -379,13 +375,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 }
                 let l = self.length_since(start) + (self.lead - lead0);
                 self.sf.truncate(start);
-                self.org.truncate(start);
-                self.spans.truncate(lens.0);
-                self.back_spans.truncate(lens.1);
-                self.gaps.truncate(lens.2);
-                self.frames.truncate(lens.3);
-                self.rev_spans.truncate(lens.4);
-                self.zpicks.truncate(lens.5);
+                self.map.truncate(start);
+                self.noted.truncate(lens.0);
+                self.gaps.truncate(lens.1);
+                self.frames.truncate(lens.2);
+                self.zpicks.truncate(lens.3);
                 self.nstop = n0;
                 self.lead = lead0;
                 self.gap(l);
@@ -447,16 +441,23 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 self.nstop += 1;
             }
             self.sf.push(s);
-            self.org.push(inst.map(|k| (k, e.from + i)));
+            self.map.push(SurfOrigin {
+                zmx: inst.map(|k| (k, e.from + i)),
+                ..Default::default()
+            });
         }
     }
 
     /// id のあるブロックが sf の start から足した面を、玉・群の範囲として覚える
     pub(crate) fn note(&mut self, id: &str, start: usize) {
         if !id.is_empty() && self.sf.len() > start {
-            let v = (id.to_string(), start, self.sf.len() - 1);
-            if !self.spans.contains(&v) {
-                self.spans.push(v);
+            for o in &mut self.map[start..] {
+                if !o.blocks.iter().any(|b| b == id) {
+                    o.blocks.push(id.to_string());
+                }
+            }
+            if !self.noted.iter().any(|b| b == id) {
+                self.noted.push(id.to_string());
             }
         }
     }
@@ -466,12 +467,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let start = self.sf.len();
         self.back_block_inner(b)?;
         self.note(block_id(b), start);
-        let id = block_id(b);
-        if !id.is_empty() && self.sf.len() > start {
-            let v = (id.to_string(), start, self.sf.len() - 1);
-            if !self.back_spans.contains(&v) {
-                self.back_spans.push(v);
-            }
+        for o in &mut self.map[start..] {
+            o.back = true;
         }
         Ok(())
     }
@@ -927,7 +924,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         c.push(s.clone());
                     }
                     if rev && c.sf.len() > start {
-                        c.rev_spans.push((start, c.sf.len() - 1));
+                        c.nflip += 1;
+                        let k = c.nflip;
+                        for o in &mut c.map[start..] {
+                            o.flip = Some(k);
+                        }
                     }
                     Ok(())
                 })?;
