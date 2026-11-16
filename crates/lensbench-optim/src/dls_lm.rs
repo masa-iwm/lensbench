@@ -482,7 +482,7 @@ fn normal_step(a: &[f64], g: &[f64], nv: usize, cols: &[usize], mu: f64) -> Opti
         }
         af[u * nf + u] += mu * a[q * nv + q];
     }
-    lensbench_core::linalg::cholesky_solve(&mut af, &mut bf, nf)
+    lensbench_core::linalg::Cholesky::new(&af, nf).map(|c| c.solve(&bf))
 }
 
 /// [J D⁻¹; √mu I] y ≈ [−r; 0] を cols の変数で QR で解き、δ = D⁻¹ y（D_q = ‖J_q‖ = √A_qq）
@@ -514,45 +514,11 @@ fn qr_step(
 }
 
 /// 最小二乗 min ‖M y − b‖ を Householder の QR で解く（M は rows × n の行優先で、列は一次独立）。解けなければ None
-fn qr_lstsq(mut m: Vec<f64>, rows: usize, n: usize, mut b: Vec<f64>) -> Option<Vec<f64>> {
-    let mut v = vec![0.0; rows];
-    for k in 0..n {
-        let norm = (k..rows).map(|i| m[i * n + k].powi(2)).sum::<f64>().sqrt();
-        if !(norm > 0.0) {
-            return None;
-        }
-        let alpha = if m[k * n + k] > 0.0 { -norm } else { norm };
-        for i in k..rows {
-            v[i] = m[i * n + k];
-        }
-        v[k] -= alpha;
-        let vn2: f64 = (k..rows).map(|i| v[i] * v[i]).sum();
-        if vn2 > 0.0 {
-            for c in k..n {
-                let sdot: f64 = (k..rows).map(|i| v[i] * m[i * n + c]).sum();
-                let f = 2.0 * sdot / vn2;
-                for i in k..rows {
-                    m[i * n + c] -= f * v[i];
-                }
-            }
-            let sdot: f64 = (k..rows).map(|i| v[i] * b[i]).sum();
-            let f = 2.0 * sdot / vn2;
-            for i in k..rows {
-                b[i] -= f * v[i];
-            }
-        }
+fn qr_lstsq(m: Vec<f64>, rows: usize, n: usize, b: Vec<f64>) -> Option<Vec<f64>> {
+    let qr = lensbench_core::linalg::Qr::from_rows(&m, rows, n);
+    if !qr.rdiag().iter().all(|d| d.abs() > 0.0) {
+        return None;
     }
-    let mut y = vec![0.0; n];
-    for i in (0..n).rev() {
-        let mut t = b[i];
-        for c in i + 1..n {
-            t -= m[i * n + c] * y[c];
-        }
-        let d = m[i * n + i];
-        if !(d.abs() > 0.0) {
-            return None;
-        }
-        y[i] = t / d;
-    }
+    let y = qr.solve(&b);
     y.iter().all(|v| v.is_finite()).then_some(y)
 }

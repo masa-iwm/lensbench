@@ -78,7 +78,7 @@ impl Opd {
 /// アフォーカル像空間の基準の平面の点: 射出瞳の位置で主光線に垂直な平面（OpticStudio の平面波基準）。
 /// 射出瞳が無限遠なら像面の主光線の点で（平面波なので面の位置は定数の違いだけ）
 pub(crate) fn to_ref_plane_point(expp: f64, pc: V3, kc: V3) -> V3 {
-    if expp.is_finite() && expp.abs() <= 1e9 {
+    if crate::pupil::exit_pupil_near(expp) {
         add(pc, scale(kc, (expp - pc[2]) / kc[2]))
     } else {
         pc
@@ -87,24 +87,7 @@ pub(crate) fn to_ref_plane_point(expp: f64, pc: V3, kc: V3) -> V3 {
 
 #[doc(hidden)]
 pub fn to_ref(s: &System, w: usize, pc: V3, kc: V3, q: V3, k: V3, opl: f64) -> f64 {
-    let ni = s.image_index(w);
-    let expp = s.exit_pupil();
-    if s.afocal {
-        let pe = to_ref_plane_point(expp, pc, kc);
-        return opl + ni * dot(sub(pe, q), kc) / dot(k, kc);
-    }
-    if s.ropd == 1 || !expp.is_finite() || expp.abs() > 1e9 {
-        return opl - ni * dot(sub(q, pc), kc) / dot(k, kc);
-    }
-    let sc = (expp - pc[2]) / kc[2];
-    let rr = sc.abs();
-    let dd = sub(q, pc);
-    let b = dot(dd, k);
-    let c = dot(dd, dd) - rr * rr;
-    // 基準球に届かない光線は NaN（接点に丸めない）
-    let disc = (b * b - c).sqrt();
-    let t = if sc < 0.0 { -b - disc } else { -b + disc };
-    opl + ni * t
+    crate::pupil::RefSurface::of(s, pc, kc).opl(s.image_index(w), q, k, opl)
 }
 
 /// 視野の光線 (px, py) の OPD [波]。ref_primary: 参照球の中心を主波長の主光線に（OpticStudio の光線の OPD）、
@@ -129,14 +112,7 @@ pub(crate) fn opd_chief(
     w: Option<usize>,
     ref_primary: bool,
 ) -> Result<(Opd, Trace)> {
-    if !s.afocal && s.ropd != 1 && s.ropd != 2 {
-        notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
-    }
-    if !s.afocal && s.ropd != 1 && s.exit_pupil().is_nan() {
-        invalid!(
-            "the exit pupil can't be found (the pupil helper rays can't be solved); no OPD reference"
-        );
-    }
+    crate::pupil::check_opd_reference(s)?;
     let w = w.unwrap_or(s.primary);
     let mut r = RayBuf::with_cols(Cols::WAVE);
     s.try_trace_into(field, px, py, Some(w), None, &mut r)?;
@@ -347,7 +323,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
     // 射出瞳の位置で主光線に垂直な平面（OPD の基準の平面、[`to_ref`]）まで光線を延ばした点の、主光線からの差。
     // 射出瞳が無限遠なら像面の主光線の点を通る平面
     let expp = s.exit_pupil();
-    let pe = if expp.is_finite() && expp.abs() <= 1e9 {
+    let pe = if crate::pupil::exit_pupil_near(expp) {
         add(q0, scale(k0, (expp - q0[2]) / k0[2]))
     } else {
         q0
@@ -654,17 +630,7 @@ impl PupilInterp {
             return None;
         }
         let u = t - i as f64; // 足の点 0..LAG に対する位置
-                              // Lagrange の重み: Π_{j≠k}(u − j) / Π_{j≠k}(k − j)。分母は定数
-        const DEN: [f64; LAG] = [-120.0, 24.0, -12.0, 12.0, -24.0, 120.0];
-        let d: [f64; LAG] = std::array::from_fn(|j| u - j as f64);
-        // 左からの積と右からの積
-        let mut left = [1.0; LAG];
-        let mut right = [1.0; LAG];
-        for k in 1..LAG {
-            left[k] = left[k - 1] * d[k - 1];
-            right[LAG - 1 - k] = right[LAG - k] * d[LAG - k];
-        }
-        let wv: [f64; LAG] = std::array::from_fn(|k| left[k] * right[k] / DEN[k]);
+        let wv = crate::interp::lagrange::<LAG>(u);
         Some((wv, i as usize))
     }
 }
@@ -1034,13 +1000,8 @@ fn autocorr_at(r: &[C64], s: f64) -> C64 {
     if u == 0.0 {
         return at(i0);
     }
-    // 点 i0−1, i0, i0+1, i0+2
-    let w = [
-        -u * (u - 1.0) * (u - 2.0) / 6.0,
-        (u + 1.0) * (u - 1.0) * (u - 2.0) / 2.0,
-        -(u + 1.0) * u * (u - 2.0) / 2.0,
-        (u + 1.0) * u * (u - 1.0) / 6.0,
-    ];
+    // 点 i0−1, i0, i0+1, i0+2（節点の番号 0..4 で u + 1 の位置）
+    let w = crate::interp::lagrange::<4>(u + 1.0);
     (0..4).map(|k| at(i0 - 1 + k as isize) * w[k]).sum()
 }
 
@@ -2126,7 +2087,7 @@ mod tests {
                 v.push(o.opd[i]);
             }
         }
-        let c = lstsq(&a, &v);
+        let c = crate::linalg::lstsq(&a, &v);
         let e = c
             .iter()
             .zip(&z.coef)
@@ -2138,7 +2099,7 @@ mod tests {
     #[test]
     fn lstsq_exact() {
         let a = vec![vec![1.0, 0.0], vec![1.0, 1.0], vec![1.0, 2.0]];
-        let x = lstsq(&a, &[1.0, 3.0, 5.0]);
+        let x = crate::linalg::lstsq(&a, &[1.0, 3.0, 5.0]);
         assert!((x[0] - 1.0).abs() < 1e-14 && (x[1] - 2.0).abs() < 1e-14);
     }
 

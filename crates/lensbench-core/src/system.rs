@@ -611,7 +611,7 @@ impl System {
                     notimpl!("paraxial lens in a medium other than air (surface {j}: {nb} → {na})");
                 }
                 let z = self.lens_conjugate(j);
-                if z.is_finite() && z.abs() <= 1e12 && 1.0 / f + 1.0 / z == 0.0 {
+                if !crate::tol::infinite_dist(z) && 1.0 / f + 1.0 / z == 0.0 {
                     notimpl!("the paraxial lens images the object to infinity (OPD)");
                 }
             }

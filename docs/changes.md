@@ -222,6 +222,15 @@
   Fresnel・理想レンズ・Jones の面は平らな基板（矢高 0）。
 
 ### Rust API
+- OPD の基準の選び方を `lensbench_core::pupil::RefSurface::of` の 1 か所にした（XCT-19）: OPD の値（`analysis::to_ref`）・最適化の微分・
+  Huygens PSF が同じ判定（`RefSurface::plane_for`・`pupil::exit_pupil_near`、閾値は `lensbench_core::tol`）を使う。値はビット単位で同じ。
+  Huygens PSF は射出瞳が求まらない系で、平面の基準に黙って切り替えず OPD と同じ誤りを返す（`pupil::check_opd_reference`）。
+- 小さな線形代数を `lensbench_core::linalg` に集めた（ANA-17）: 最小二乗 `analysis::lstsq` は `linalg::lstsq`（列優先は `lstsq_cols`、
+  右辺を何本も解く・残差を出すのは `linalg::Qr`）、`linalg::cholesky_solve(&mut a, &mut b, n)` は `linalg::Cholesky::new(&a, n)?.solve(&b)`
+  （対角の残りが 1e-14 · 対角以下なら None）。三重対角は `linalg::solve_tridiag`。補間は `lensbench_core::interp` に: 3 次スプライン
+  `coating::Spline` は `interp::Spline`（節点の傾きだけは `Spline::not_a_knot_slopes`）、等間隔の Lagrange の重みは `interp::lagrange::<K>`。
+  膜のアドミタンス `coating::admittance` を公開にした。Zernike の当てはめ・MTF の瞳の補間はビット単位で同じ。エイミングの当てはめ（KRN-30）・
+  減衰最小二乗の一歩・偏光の格子の傾き・自己相関と Huygens MTF の 4 点補間は解き方が変わり、値は丸めの分だけ変わる。
 - `lensbench_export::write_layout` は書いた形式の代わりに `Written { format, notes }` を返す。`notes` は STEP に写した品の
   STEP が mm でなく、長さを直す表に無い実体があったときの注意（PRJ-22）。CLI の `layout` は `written` の行に `notes`、serve の
   `layout_export` は `notes` に足す。`step_embed::embed_shell` は直せなかった型を集める引数を、`StepReport` は `notes` を持つ。

@@ -158,9 +158,7 @@ fn huygens_once(
     if s.afocal {
         notimpl!("Huygens PSF: afocal image space (use the FFT PSF)");
     }
-    if s.ropd != 1 && s.ropd != 2 {
-        notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
-    }
+    lensbench_core::pupil::check_opd_reference(s)?;
     let ws: Vec<usize> = match w {
         None => (0..s.wavelengths.len()).collect(),
         Some(w) => vec![w],
@@ -476,14 +474,9 @@ pub fn psf_mtf(p: &Psf, freqs: &[f64]) -> TanSag<Vec<f64>> {
                 let i = t.floor() as i64 - 1;
                 let u = t - i as f64;
                 // 点 i..i+3 の Lagrange（負の番号は |k| で偶関数）
+                let w = lensbench_core::interp::lagrange::<4>(u);
                 (0..4)
-                    .map(|a| {
-                        let w: f64 = (0..4)
-                            .filter(|&b| b != a)
-                            .map(|b| (u - b as f64) / (a as f64 - b as f64))
-                            .product();
-                        w * at(i + a)
-                    })
+                    .map(|a| w[a] * at(i + a as i64))
                     .sum::<f64>()
                     .max(0.0)
             })

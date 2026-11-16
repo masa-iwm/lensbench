@@ -70,7 +70,7 @@ fn mx(a: &mut f64, b: f64) {
 fn ptp_detrended(dl: &[f64], q: &[[f64; 3]]) -> f64 {
     let a: Vec<Vec<f64>> = q.iter().map(|p| vec![1.0, p[0], p[1], p[2]]).collect();
     // 退化（全点で z が同じなど）に強いよう、列ごとに尺度をそろえずそのまま QR
-    let c = analysis::lstsq(&a, dl);
+    let c = lensbench_core::linalg::lstsq(&a, dl);
     let r: Vec<f64> = a
         .iter()
         .zip(dl)

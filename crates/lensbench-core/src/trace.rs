@@ -620,7 +620,7 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     let nn = (1.0 + t2[0] * t2[0] + t2[1] * t2[1]).sqrt();
     let k2 = [t2[0] / nn, t2[1] / nn, sz / nn];
     let rr = [r[0], r[1], 0.0];
-    if !z_obj.is_finite() || z_obj.abs() > 1e12 {
+    if crate::tol::infinite_dist(z_obj) {
         let ff = [f * t[0], f * t[1], f];
         let kin = scale(kl, sz);
         return (
@@ -632,7 +632,7 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     let zi = 1.0 / (1.0 / f + 1.0 / z_obj);
     let s_in = (-z_obj).signum() * norm(sub(rr, p));
     let s_in0 = (-z_obj).signum() * norm(p);
-    if !zi.is_finite() || zi.abs() > 1e12 {
+    if crate::tol::infinite_dist(zi) {
         // 物体が前側焦点にある（出ていく光は平行光）: 平行光の波面までの道のり C − k2·r を一定にする
         return (k2, (s_in0 - s_in) + dot(k2, rr));
     }

@@ -566,8 +566,8 @@ pub fn trace_jones(
             }
         }
     }
-    // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)）の共役が
-    // exp(+i k L) の約束の場
+    // 偏光: 検出面の局所 x・y の場。伝搬の位相を除いた振幅（OpticStudio の E = J exp(−i k L_raw)）を
+    // exp(+i k L) の約束の場に（[`crate::phase`]）
     let mut jones = vec![[[czero(); 2]; 2]; g * g];
     for (m, &q) in idx.iter().enumerate() {
         if !t0.ok(m) || !good[q] {
@@ -575,8 +575,8 @@ pub fn trace_jones(
             continue;
         }
         for (b, pol) in pol_e[m].iter().enumerate().take(2) {
-            jones[q][0][b] = pol[0].conj();
-            jones[q][1][b] = pol[1].conj();
+            jones[q][0][b] = crate::phase::pol_to_scalar(pol[0]);
+            jones[q][1][b] = crate::phase::pol_to_scalar(pol[1]);
         }
     }
     let (mut xf, mut yf) = (Vec::new(), Vec::new());

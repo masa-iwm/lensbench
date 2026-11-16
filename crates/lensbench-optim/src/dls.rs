@@ -6,6 +6,7 @@ use lensbench_core::fiber::FiberOpts;
 use lensbench_core::math::*;
 use lensbench_core::par;
 use lensbench_core::param::{Kind, Param};
+use lensbench_core::pupil::{exit_pupil_near, RefSurface};
 use lensbench_core::surface::SurfType;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::system::{FieldSel, System, Trace};
@@ -1064,9 +1065,7 @@ fn opd_term(
     ps: Option<&[Param]>,
     pcache: Option<&PupilCache>,
 ) -> Result<TermOut> {
-    if !s.afocal && s.ropd != 1 && s.ropd != 2 {
-        invalid!("OPD reference {} (exit pupil or infinity only)", s.ropd);
-    }
+    lensbench_core::pupil::check_ropd(s)?;
     let w = wave.unwrap_or(s.primary);
     let rec = ps.is_some();
     let t = trace_ok(s, field, &[px], &[py], w, rec)?;
@@ -1302,7 +1301,7 @@ fn to_ref_d(
     let ddd = sub(dq, dpc);
     if s.afocal {
         // opl + ni a / b、a = (pe − q)·kc、pe = 射出瞳の位置で主光線の上の点（無限遠なら pc）
-        let (pe, dpe) = if expp.is_finite() && expp.abs() <= 1e9 {
+        let (pe, dpe) = if exit_pupil_near(expp) {
             let u = (expp - pc[2]) / kc[2];
             let du = (dexpp - dpc[2]) / kc[2] - u * dkc[2] / kc[2];
             (
@@ -1318,7 +1317,7 @@ fn to_ref_d(
         let db = dot(dk, kc) + dot(k, dkc);
         return dopl + dni * a / b + ni * (da / b - a * db / (b * b));
     }
-    if s.ropd == 1 || !expp.is_finite() || expp.abs() > 1e9 {
+    if RefSurface::plane_for(s) {
         // opl − ni a / b
         let a = dot(dd, kc);
         let b = dot(k, kc);

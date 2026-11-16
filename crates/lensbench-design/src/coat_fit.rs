@@ -16,7 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::PI;
 
-use lensbench_core::coating::{CoatModel, Measured, MirrorModel, Spline, C64};
+use lensbench_core::coating::{admittance as eta, CoatModel, Measured, MirrorModel, C64};
+use lensbench_core::interp::Spline;
 use lensbench_core::{invalid, Result};
 
 /// 透過側の (n cos)² がこれより小さい点（すれすれ）は使わない
@@ -73,15 +74,6 @@ fn model_n(m: &str) -> Option<f64> {
         return None;
     }
     n.parse().ok()
-}
-
-fn eta(n: f64, b: f64, pol: usize) -> C64 {
-    let q = C64::new(n * n - b * b, 0.0).sqrt();
-    if pol == 0 {
-        q
-    } else {
-        C64::new(n * n, 0.0) / q
-    }
 }
 
 /// β を表のキーにする（1e-9 で丸める）
@@ -467,35 +459,13 @@ pub struct Kink {
 /// 実数の最小二乗 a x = y（y は列が複数）の、列ごとの残差のノルム。ハウスホルダー QR
 fn lsq_resid(a: &[Vec<f64>], ys: &[Vec<f64>]) -> Vec<f64> {
     let (m, n) = (a.len(), a[0].len());
-    // 行列 [a | y] に左から反射を掛ける
-    let mut w: Vec<Vec<f64>> = a
-        .iter()
-        .zip(ys)
-        .map(|(r, y)| r.iter().chain(y).copied().collect())
-        .collect();
-    let nc = w[0].len();
-    for k in 0..n {
-        let norm = (k..m).map(|i| w[i][k] * w[i][k]).sum::<f64>().sqrt();
-        if norm == 0.0 {
-            continue;
-        }
-        let alpha = if w[k][k] > 0.0 { -norm } else { norm };
-        let mut v: Vec<f64> = (k..m).map(|i| w[i][k]).collect();
-        v[0] -= alpha;
-        let vv: f64 = v.iter().map(|x| x * x).sum();
-        if vv == 0.0 {
-            continue;
-        }
-        for j in k..nc {
-            let d = (k..m).map(|i| v[i - k] * w[i][j]).sum::<f64>() * 2.0 / vv;
-            for i in k..m {
-                w[i][j] -= d * v[i - k];
-            }
-        }
-    }
-    // 残差のノルムは Qᵀy の n 行目より後のノルム
-    (n..nc)
-        .map(|j| w[n..].iter().map(|r| r[j] * r[j]).sum::<f64>().sqrt())
+    let flat: Vec<f64> = a.iter().flatten().copied().collect();
+    let qr = lensbench_core::linalg::Qr::from_rows(&flat, m, n);
+    (0..ys[0].len())
+        .map(|j| {
+            let y: Vec<f64> = ys.iter().map(|r| r[j]).collect();
+            qr.residual(&y)
+        })
         .collect()
 }
 

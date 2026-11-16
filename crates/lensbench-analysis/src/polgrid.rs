@@ -15,6 +15,7 @@
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
+use lensbench_core::interp::Spline;
 use lensbench_core::system::{Launch, RecSel, System};
 use lensbench_core::{invalid, Result};
 
@@ -239,45 +240,16 @@ struct SlopeOp {
 
 impl SlopeOp {
     fn new(n: usize, h: f64) -> SlopeOp {
-        // 2 階微分 M: 内側 M[i−1] + 4M[i] + M[i+1] = 6(f[i+1] − 2f[i] + f[i−1])/h²、
-        // 両端 not-a-knot: M0 − 2M1 + M2 = 0、M[n−3] − 2M[n−2] + M[n−1] = 0
-        let mut a = vec![0.0; n * n];
-        let mut r = vec![0.0; n * n]; // 右辺の f に掛かる係数
-        a[0] = 1.0;
-        a[1] = -2.0;
-        a[2] = 1.0;
-        for i in 1..n - 1 {
-            a[i * n + i - 1] = 1.0;
-            a[i * n + i] = 4.0;
-            a[i * n + i + 1] = 1.0;
-            let c = 6.0 / (h * h);
-            r[i * n + i - 1] = c;
-            r[i * n + i] = -2.0 * c;
-            r[i * n + i + 1] = c;
-        }
-        let l = n - 1;
-        a[l * n + l - 2] = 1.0;
-        a[l * n + l - 1] = -2.0;
-        a[l * n + l] = 1.0;
-        // M = A⁻¹ R f
-        let mf = solve_mat(&a, &r, n);
-        // 傾き d[i] = (f[i+1] − f[i])/h − h(2M[i] + M[i+1])/6（i < n−1）、
-        // d[n−1] = (f[n−1] − f[n−2])/h + h(M[n−2] + 2M[n−1])/6
+        // 傾きは値について線形なので、単位の値 e_c のスプラインの傾きが演算子の列 c（膜の表と同じスプライン）
+        let x: Vec<f64> = (0..n).map(|i| i as f64 * h).collect();
         let mut m = vec![0.0; n * n];
-        for i in 0..n {
-            let row = &mut m[i * n..(i + 1) * n];
-            if i < n - 1 {
-                row[i + 1] += 1.0 / h;
-                row[i] -= 1.0 / h;
-                for c in 0..n {
-                    row[c] -= h * (2.0 * mf[i * n + c] + mf[(i + 1) * n + c]) / 6.0;
-                }
-            } else {
-                row[i] += 1.0 / h;
-                row[i - 1] -= 1.0 / h;
-                for c in 0..n {
-                    row[c] += h * (mf[(i - 1) * n + c] + 2.0 * mf[i * n + c]) / 6.0;
-                }
+        for c in 0..n {
+            let mut e = vec![0.0; n];
+            e[c] = 1.0;
+            let d = Spline::not_a_knot_slopes(&x, &e)
+                .expect("equally spaced nodes with MIN_POINTS (4) points or more");
+            for (i, v) in d.into_iter().enumerate() {
+                m[i * n + c] = v;
             }
         }
         SlopeOp { n, m }
@@ -317,44 +289,6 @@ impl SlopeOp {
         }
         d
     }
-}
-
-/// A X = B（n × n、行優先）を部分ピボットの Gauss 消去で解く
-fn solve_mat(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
-    let mut a = a.to_vec();
-    let mut x = b.to_vec();
-    for col in 0..n {
-        let p = (col..n)
-            .max_by(|&r, &s| a[r * n + col].abs().total_cmp(&a[s * n + col].abs()))
-            .expect("col < n, so the pivot range is not empty");
-        if p != col {
-            for c in 0..n {
-                a.swap(p * n + c, col * n + c);
-                x.swap(p * n + c, col * n + c);
-            }
-        }
-        let d = a[col * n + col];
-        for r in 0..n {
-            if r == col {
-                continue;
-            }
-            let f = a[r * n + col] / d;
-            if f == 0.0 {
-                continue;
-            }
-            for c in 0..n {
-                a[r * n + c] -= f * a[col * n + c];
-                x[r * n + c] -= f * x[col * n + c];
-            }
-        }
-    }
-    for r in 0..n {
-        let d = a[r * n + r];
-        for c in 0..n {
-            x[r * n + c] /= d;
-        }
-    }
-    x
 }
 
 #[cfg(test)]

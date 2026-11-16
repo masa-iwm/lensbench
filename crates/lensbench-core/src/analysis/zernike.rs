@@ -1,6 +1,7 @@
-//! Zernike の当てはめ（OPD の最小二乗。OpticStudio の Zernike Coefficients）と、そのための小さな最小二乗の道具。
+//! Zernike の当てはめ（OPD の最小二乗。OpticStudio の Zernike Coefficients）。最小二乗は [`crate::linalg`]。
 
 use super::*;
+use crate::linalg::{dot4, lstsq_cols, Cholesky};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZernKind {
@@ -207,96 +208,6 @@ pub fn zernike_row(px: f64, py: f64, kind: ZernKind, nm: &[(usize, usize, bool)]
     out
 }
 
-/// 内積（4 本の和に分けて足す。順序は固定なのでスレッド数によらず同じ値）
-#[inline]
-pub(super) fn dot4(a: &[f64], b: &[f64]) -> f64 {
-    let n = a.len().min(b.len());
-    let (a, b) = (&a[..n], &b[..n]);
-    let mut s = [0.0f64; 4];
-    let (ca, ra) = a.as_chunks::<4>();
-    let (cb, rb) = b.as_chunks::<4>();
-    for (x, y) in ca.iter().zip(cb) {
-        for k in 0..4 {
-            s[k] += x[k] * y[k];
-        }
-    }
-    let mut t = (s[0] + s[1]) + (s[2] + s[3]);
-    for (x, y) in ra.iter().zip(rb) {
-        t += x * y;
-    }
-    t
-}
-
-/// 最小二乗（Householder QR）: A x ≈ b
-pub fn lstsq(a: &[Vec<f64>], b: &[f64]) -> Vec<f64> {
-    let m = a.len();
-    if m == 0 {
-        return Vec::new();
-    }
-    let n = a[0].len();
-    let mut q = vec![0.0; m * n];
-    for (i, row) in a.iter().enumerate() {
-        for (j, &v) in row.iter().enumerate() {
-            q[j * m + i] = v;
-        }
-    }
-    lstsq_cols(&mut q, m, b)
-}
-
-/// 最小二乗（Householder QR）。q は A の列優先（列 j が q[j*m..(j+1)*m]）で、分解で上書きする
-pub(crate) fn lstsq_cols(q: &mut [f64], m: usize, b: &[f64]) -> Vec<f64> {
-    use rayon::prelude::*;
-    if m == 0 {
-        return Vec::new();
-    }
-    let n = q.len() / m;
-    let mut y = b.to_vec();
-    let mut rdiag = vec![0.0; n];
-    let par = m * n >= 1 << 16 && !crate::par::sequential();
-    for k in 0..n {
-        let (done, rest) = q.split_at_mut((k + 1) * m);
-        let ck = &mut done[k * m..];
-        let nrm = dot4(&ck[k..], &ck[k..]).sqrt();
-        if nrm == 0.0 {
-            rdiag[k] = 0.0;
-            continue;
-        }
-        let alpha = if ck[k] > 0.0 { -nrm } else { nrm };
-        let mut v: Vec<f64> = ck[k..].to_vec();
-        v[0] -= alpha;
-        let vn = dot4(&v, &v);
-        if vn == 0.0 {
-            rdiag[k] = alpha;
-            continue;
-        }
-        let refl = |col: &mut [f64]| {
-            let s = dot4(&col[k..], &v) * 2.0 / vn;
-            for (c, vi) in col[k..].iter_mut().zip(&v) {
-                *c -= s * vi;
-            }
-        };
-        refl(ck);
-        // 残りの列は互いに独立（列ごとに同じ計算なので並列でも同じ値）
-        if par {
-            rest.par_chunks_mut(m).for_each(scoped(refl));
-        } else {
-            rest.chunks_mut(m).for_each(refl);
-        }
-        refl(&mut y);
-        rdiag[k] = ck[k];
-    }
-    let mut x = vec![0.0; n];
-    for k in (0..n).rev() {
-        let s: f64 = (k + 1..n).map(|j| q[j * m + k] * x[j]).sum();
-        x[k] = if rdiag[k] != 0.0 {
-            (y[k] - s) / rdiag[k]
-        } else {
-            0.0
-        };
-    }
-    x
-}
-
 /// Zernike の当てはめで点を分ける塊の大きさ
 const ZCH: usize = 256;
 
@@ -435,40 +346,6 @@ pub(super) fn zern_pass(
     (g, atr, r)
 }
 
-/// 対称正定値 g（n×n）の Cholesky 分解 L（下三角、行優先）
-pub(super) fn cholesky(g: &[f64], n: usize) -> Option<Vec<f64>> {
-    let mut l = vec![0.0; n * n];
-    for i in 0..n {
-        for j in 0..=i {
-            let s: f64 = (0..j).map(|k| l[i * n + k] * l[j * n + k]).sum();
-            if i == j {
-                let d = g[i * n + i] - s;
-                if !(d > 1e-14 * g[i * n + i].abs()) {
-                    return None;
-                }
-                l[i * n + i] = d.sqrt();
-            } else {
-                l[i * n + j] = (g[i * n + j] - s) / l[j * n + j];
-            }
-        }
-    }
-    Some(l)
-}
-
-pub(super) fn chol_solve(l: &[f64], n: usize, b: &[f64]) -> Vec<f64> {
-    let mut y = vec![0.0; n];
-    for i in 0..n {
-        let s: f64 = (0..i).map(|k| l[i * n + k] * y[k]).sum();
-        y[i] = (b[i] - s) / l[i * n + i];
-    }
-    let mut x = vec![0.0; n];
-    for i in (0..n).rev() {
-        let s: f64 = (i + 1..n).map(|k| l[k * n + i] * x[k]).sum();
-        x[i] = (y[i] - s) / l[i * n + i];
-    }
-    x
-}
-
 #[derive(Debug, Clone)]
 pub struct Zernike {
     pub coef: Vec<f64>,
@@ -519,10 +396,10 @@ pub fn zernike(
     let (g, atv, _) = zern_pass(&basis, &qx, &qy, &v, None);
     // 正規方程式は条件数の 2 乗で効くので、Cholesky が通らない・補正が大きい（項数が格子に比べて多いなど）
     // ときは QR で解き直す
-    let normal = cholesky(&g, nt).and_then(|ch| {
-        let mut c = chol_solve(&ch, nt, &atv);
+    let normal = Cholesky::new(&g, nt).and_then(|ch| {
+        let mut c = ch.solve(&atv);
         let (_, atr, _) = zern_pass(&basis, &qx, &qy, &v, Some(&c));
-        let dc = chol_solve(&ch, nt, &atr);
+        let dc = ch.solve(&atr);
         let cn = c.iter().map(|x| x * x).sum::<f64>().sqrt();
         let dn = dc.iter().map(|x| x * x).sum::<f64>().sqrt();
         c.iter_mut().zip(&dc).for_each(|(x, d)| *x += d);
@@ -539,16 +416,16 @@ pub fn zernike(
                     q[j * m + i] = z;
                 }
             }
-            lstsq_cols(&mut q, m, &v)
+            lstsq_cols(q, m, &v)
         }
     };
     let (_, _, res) = zern_pass(&basis, &qx, &qy, &v, Some(&c));
     // 重心基準: 1・px・py の最小二乗（QR、列優先）
-    let mut q3: Vec<f64> = std::iter::repeat_n(1.0, m)
+    let q3: Vec<f64> = std::iter::repeat_n(1.0, m)
         .chain(qx.iter().copied())
         .chain(qy.iter().copied())
         .collect();
-    let t = lstsq_cols(&mut q3, m, &v);
+    let t = lstsq_cols(q3, m, &v);
     let vt: Vec<f64> = qx
         .iter()
         .zip(&qy)

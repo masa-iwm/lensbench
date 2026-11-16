@@ -953,7 +953,7 @@ pub fn beam_from_rays(
             rhs.push(opl[i]);
         }
     }
-    let c = crate::analysis::lstsq(&rows, &rhs);
+    let c = crate::linalg::lstsq(&rows, &rhs);
     let pilot = Pilot {
         ax: c[1] / n,
         ay: c[2] / n,

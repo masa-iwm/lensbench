@@ -3,7 +3,7 @@
 use super::*;
 
 /// 媒質 n（実数）の β でのアドミタンス（s: n cos、p: n / cos。cos は実数の枝）
-pub(in crate::coating) fn admittance(n: f64, b: f64, pol: usize) -> C64 {
+pub fn admittance(n: f64, b: f64, pol: usize) -> C64 {
     let q = C64::new(n * n - b * b, 0.0).sqrt();
     if pol == 0 {
         q

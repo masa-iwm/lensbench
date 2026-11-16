@@ -185,69 +185,41 @@ impl AimFit {
         v: &[Option<[f64; 2]>],
     ) -> Option<Self> {
         let nt = terms().count();
-        let mut ata = vec![0.0; nt * nt];
-        let mut atb = vec![[0.0; 2]; nt];
-        let mut row = vec![0.0; nt];
-        let mut m = 0;
-        for (p, v) in pts.iter().zip(v) {
-            let Some(v) = v else { continue };
-            if !(v[0].is_finite() && v[1].is_finite()) {
-                continue;
-            }
-            m += 1;
-            let (tx, _) = cheb((p[0] - c[0]) / hw[0]);
-            let (ty, _) = cheb((p[1] - c[1]) / hw[1]);
-            for (k, (a, b)) in terms().enumerate() {
-                row[k] = tx[a] * ty[b];
-            }
-            for i in 0..nt {
-                for j in 0..=i {
-                    ata[i * nt + j] += row[i] * row[j];
-                }
-                atb[i][0] += row[i] * v[0];
-                atb[i][1] += row[i] * v[1];
-            }
-        }
+        // 解けた点の行（項ごとの値）を列優先に並べ、最小二乗を QR で解く（正規方程式は条件数の 2 乗で効く）
+        let ok: Vec<(&[f64; 2], [f64; 2])> = pts
+            .iter()
+            .zip(v)
+            .filter_map(|(p, v)| {
+                v.filter(|v| v[0].is_finite() && v[1].is_finite())
+                    .map(|v| (p, v))
+            })
+            .collect();
+        let m = ok.len();
         if m < 2 * nt {
             return None;
         }
-        // コレスキー分解（下三角）
-        for j in 0..nt {
-            let mut d = ata[j * nt + j];
-            for k in 0..j {
-                d -= ata[j * nt + k] * ata[j * nt + k];
-            }
-            if !(d > 1e-12 * m as f64) {
-                return None;
-            }
-            let d = d.sqrt();
-            ata[j * nt + j] = d;
-            for i in j + 1..nt {
-                let mut s = ata[i * nt + j];
-                for k in 0..j {
-                    s -= ata[i * nt + k] * ata[j * nt + k];
-                }
-                ata[i * nt + j] = s / d;
+        let mut a = vec![0.0; m * nt];
+        for (i, (p, _)) in ok.iter().enumerate() {
+            let (tx, _) = cheb((p[0] - c[0]) / hw[0]);
+            let (ty, _) = cheb((p[1] - c[1]) / hw[1]);
+            for (k, (ia, ib)) in terms().enumerate() {
+                a[k * m + i] = tx[ia] * ty[ib];
             }
         }
-        let mut y = atb;
-        for i in 0..nt {
-            for k in 0..i {
-                let l = ata[i * nt + k];
-                y[i] = [y[i][0] - l * y[k][0], y[i][1] - l * y[k][1]];
-            }
-            let d = ata[i * nt + i];
-            y[i] = [y[i][0] / d, y[i][1] / d];
+        let qr = crate::linalg::Qr::from_cols(a, m);
+        // チェビシェフ点の上の項は条件数が小さい。対角が潰れていれば（点が偏っている）当てはめない
+        let rmax = qr.rdiag().iter().fold(0.0f64, |x, d| x.max(d.abs()));
+        if !qr.rdiag().iter().all(|d| d.abs() > 1e-6 * rmax) {
+            return None;
         }
-        for i in (0..nt).rev() {
-            for k in i + 1..nt {
-                let l = ata[k * nt + i];
-                y[i] = [y[i][0] - l * y[k][0], y[i][1] - l * y[k][1]];
-            }
-            let d = ata[i * nt + i];
-            y[i] = [y[i][0] / d, y[i][1] / d];
+        let bx: Vec<f64> = ok.iter().map(|(_, v)| v[0]).collect();
+        let by: Vec<f64> = ok.iter().map(|(_, v)| v[1]).collect();
+        let (cx, cy) = (qr.solve(&bx), qr.solve(&by));
+        if !cx.iter().chain(&cy).all(|x| x.is_finite()) {
+            return None;
         }
-        Some(AimFit { c, hw, coef: y })
+        let coef = cx.into_iter().zip(cy).map(|(x, y)| [x, y]).collect();
+        Some(AimFit { c, hw, coef })
     }
 
     /// 正規化した q での v と dv/dq（行優先、q は正規化した座標）

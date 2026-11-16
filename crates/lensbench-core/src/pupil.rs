@@ -196,7 +196,7 @@ impl PupilGrid {
     }
 }
 
-/// OPD の基準の面（[`crate::analysis::to_ref`] と同じ選び方）
+/// OPD の基準の面。選び方は [`RefSurface::of`] の 1 か所（OPD の値・最適化の微分・Huygens PSF が同じものを使う）
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RefSurface {
     /// 射出瞳の参照球: 中心（参照の主光線の像点）、半径、σ（球が像点の前なら +1、後ろなら −1）
@@ -205,7 +205,37 @@ pub enum RefSurface {
     Plane { point: V3, normal: V3 },
 }
 
+/// 射出瞳の位置 expp（像面から）が有限で、参照球を置ける近さか（|expp| ≤ [`crate::tol::EXPP_FAR`]）
+#[inline]
+pub fn exit_pupil_near(expp: f64) -> bool {
+    expp.is_finite() && expp.abs() <= crate::tol::EXPP_FAR
+}
+
+/// OPD の基準の設定（ROPD）が扱えるか: 射出瞳（2）か無限遠（1）、またはアフォーカル像空間
+pub fn check_ropd(s: &System) -> Result<()> {
+    if !s.afocal && s.ropd != 1 && s.ropd != 2 {
+        crate::notimpl!("OPD reference {} (exit pupil or infinity only)", s.ropd);
+    }
+    Ok(())
+}
+
+/// OPD を求められるか: [`check_ropd`] に加え、射出瞳を基準にするなら射出瞳の位置が求まっていること
+pub fn check_opd_reference(s: &System) -> Result<()> {
+    check_ropd(s)?;
+    if !s.afocal && s.ropd != 1 && s.exit_pupil().is_nan() {
+        invalid!(
+            "the exit pupil can't be found (the pupil helper rays can't be solved); no OPD reference"
+        );
+    }
+    Ok(())
+}
+
 impl RefSurface {
+    /// アフォーカルでない系で、基準が主光線に垂直な平面か（ROPD が無限遠、または射出瞳が遠い・無限遠）
+    pub fn plane_for(s: &System) -> bool {
+        !s.afocal && (s.ropd == 1 || !exit_pupil_near(s.exit_pupil()))
+    }
+
     /// 参照の主光線の像点 pc・向き kc から
     pub fn of(s: &System, pc: V3, kc: V3) -> RefSurface {
         let expp = s.exit_pupil();
@@ -215,7 +245,7 @@ impl RefSurface {
                 normal: kc,
             };
         }
-        if s.ropd == 1 || !expp.is_finite() || expp.abs() > 1e9 {
+        if RefSurface::plane_for(s) {
             return RefSurface::Plane {
                 point: pc,
                 normal: kc,
@@ -226,6 +256,30 @@ impl RefSurface {
             center: pc,
             radius: sc.abs(),
             sign: if sc < 0.0 { 1.0 } else { -1.0 },
+        }
+    }
+
+    /// 像面の点 q・向き k・光路長 opl の光線を、像空間（屈折率 ni）で基準の面まで延ばした光路長。基準の球に
+    /// 届かない光線は NaN（接点に丸めない）
+    #[inline]
+    pub fn opl(&self, ni: f64, q: V3, k: V3, opl: f64) -> f64 {
+        use crate::math::{dot, sub};
+        match *self {
+            RefSurface::Plane { point, normal } => {
+                opl + ni * dot(sub(point, q), normal) / dot(k, normal)
+            }
+            RefSurface::Sphere {
+                center,
+                radius,
+                sign,
+            } => {
+                let dd = sub(q, center);
+                let b = dot(dd, k);
+                let c = dot(dd, dd) - radius * radius;
+                let disc = (b * b - c).sqrt();
+                let t = if sign > 0.0 { -b - disc } else { -b + disc };
+                opl + ni * t
+            }
         }
     }
 }

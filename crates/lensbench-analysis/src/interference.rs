@@ -12,6 +12,7 @@
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::grid::Grid2;
+use lensbench_core::phase::pol_to_scalar;
 use lensbench_core::pupil::{PupilFunction, PupilGrid, Rim};
 use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::system::{FieldSel, System};
@@ -272,8 +273,8 @@ fn trace_grid(
         e[q] = match &pt {
             Some(pt) => {
                 let v = pt.e[m][0];
-                // 伝搬の位相を除いた振幅の共役が exp(+i k L) の約束の場（raygrid::trace_jones と同じ）
-                [v[0].conj(), v[1].conj(), v[2].conj()]
+                // 伝搬の位相を除いた振幅を exp(+i k L) の約束の場に（lensbench_core::phase、raygrid と同じ）
+                v.map(pol_to_scalar)
             }
             None => [C64::new(1.0, 0.0), C64::new(0.0, 0.0), C64::new(0.0, 0.0)],
         };
