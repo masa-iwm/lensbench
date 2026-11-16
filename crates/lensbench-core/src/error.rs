@@ -48,7 +48,7 @@ pub mod code {
 const PREFIXES: [(&str, &str); 3] = [
     ("not supported: ", "未対応: "),
     ("invalid: ", "不正: "),
-    ("read: ", "読込: "),
+    ("I/O: ", "入出力: "),
 ];
 
 /// 表示の文（[`crate::i18n`]: 英語の元の文、日本語の表示なら表で訳す）

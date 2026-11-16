@@ -103,12 +103,12 @@ pub fn write_layout(
     sc: &scene::Scene,
     o2: &d2::Options2D,
     o3: &mesh::Options3D,
-) -> Result<LayoutFormat, String> {
+) -> lensbench_core::Result<LayoutFormat> {
     let f = LayoutFormat::from_path(path).ok_or_else(|| {
-        format!(
+        lensbench_core::Error::from(format!(
             "{}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp",
             path.display()
-        )
+        ))
     })?;
     // 中身を作ってから書く（wasm ではファイルの置き場へ、lensbench_core::vfs）
     let mut w: Vec<u8> = Vec::new();

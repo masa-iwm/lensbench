@@ -186,7 +186,7 @@ pub(crate) fn listen_pipe(
                 .map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?;
             bind().map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?
         }
-        Err(e) => return Err(format!("--pipe {path}: {e}").into()),
+        Err(e) => return Err(lensbench_core::Error::io_at(format!("--pipe {path}"))(e)),
     };
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?;
