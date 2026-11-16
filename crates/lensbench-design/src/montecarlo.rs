@@ -261,15 +261,45 @@ impl McSpec {
     }
 }
 
-/// 評価の結果（公称・試行・感度で共通）
-#[derive(Debug, Clone, PartialEq)]
+/// 評価の結果（公称・試行・感度で共通）。一括実行のファイル（[`run_to`]）にも書く（有限でない値は null）
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Eval {
     /// 評価関数の値（補償の後）
     pub merit: f64,
     /// 項ごとの値（[`Problem::term_values`]）
+    #[serde(with = "nan_null")]
     pub terms: Vec<f64>,
     /// 補償子の値（補償の後、変数の順）
+    #[serde(with = "nan_null")]
     pub comp: Vec<f64>,
+}
+
+/// 有限でない値を null で書き、null を NaN で読む（JSON に NaN は書けない）
+mod nan_null {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(v: &[f64], s: S) -> Result<S::Ok, S::Error> {
+        v.iter()
+            .map(|x| x.is_finite().then_some(*x))
+            .collect::<Vec<_>>()
+            .serialize(s)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<f64>, D::Error> {
+        Ok(Vec::<Option<f64>>::deserialize(d)?
+            .into_iter()
+            .map(|x| x.unwrap_or(f64::NAN))
+            .collect())
+    }
+}
+
+/// 一括実行のファイルの 1 行の結果（評価 1 つ）
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Row {
+    #[serde(with = "nan_null")]
+    deltas: Vec<f64>,
+    eval: Option<Eval>,
+    error: Option<String>,
 }
 
 /// 試行 1 回
@@ -356,7 +386,7 @@ pub fn stats(values: &[f64], pcts: &[f64]) -> Stats {
 }
 
 /// モンテカルロの結果
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct McResult {
     /// 公称の系の評価（補償子も合わせた後。試行の評価と同じ条件）
     pub nominal: Eval,
@@ -596,6 +626,14 @@ pub fn pair_disc(tols: &mut [Tol], normal: Option<f64>) -> usize {
 /// 文脈の中断の印（[`par::with_cancel`]）が倒れたら新しい評価を始めず、そこまでの結果を返す（`cancelled`）
 /// 感度と試行は一括実行の枠組み（[`lensbench_runs::run`]、ファイルには書かない）で回す
 pub fn run(spec: &McSpec) -> Result<McResult> {
+    run_to(spec, &runs::RunOpts::default())
+}
+
+/// [`run`] と同じ。o.out があれば評価（感度の lo・hi、試行）を 1 つずつ一括実行の JSONL に書き、o.resume なら
+/// 同じ頭（o.header）のファイルの続きから回す（書いた評価は飛ばす）。タスク k は k < 2×公差の数（感度があるとき）が感度、
+/// ほかは試行 k − 感度の数で、試行のずれは種と番号だけで決まるので、頭に試行の数を入れなければ試行を足して続きから回せる。
+/// o.threads は使う（None なら外の指定）、o.stage は使わない
+pub fn run_to(spec: &McSpec, o: &runs::RunOpts) -> Result<McResult> {
     spec.check()?;
     let draws = spec.draws()?;
     let nominal = eval_problem(&spec.problem, &spec.comp, true)?;
@@ -616,10 +654,18 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
     // 止めた後の評価は None のまま（結果に出さない。追跡できなかった評価とは別）。評価の途中で止めたもの
     // （補償が途中）も出さない
     let out: Vec<Slot> = (0..total).map(|_| Mutex::new(None)).collect();
-    runs::run(total, spec.seed, &runs::RunOpts::default(), |k, _| {
+    let ro = runs::RunOpts {
+        threads: o.threads,
+        out: o.out,
+        header: o.header.clone(),
+        resume: o.resume,
+        stage: "",
+    };
+    runs::run(total, spec.seed, &ro, |k, _| {
         let deltas = deltas_of(k);
         let r = evaluate(spec, &deltas);
         if par::cancelled() {
+            // 空の結果はファイルに書かない（続きから回すときに評価し直す）
             return Ok(String::new());
         }
         let r = match r {
@@ -627,13 +673,37 @@ pub fn run(spec: &McSpec) -> Result<McResult> {
             Ok(_) => Err("the merit function is not finite".into()),
             Err(e) => Err(e.to_string()),
         };
+        let line = match (o.out, &r) {
+            (None, _) => "0".to_string(),
+            (Some(_), r) => serde_json::to_string(&Row {
+                deltas: deltas.clone(),
+                eval: r.as_ref().ok().cloned(),
+                error: r.as_ref().err().cloned(),
+            })
+            .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?,
+        };
         *out[k].lock_ok() = Some((deltas, r));
-        Ok(String::new())
+        Ok(line)
     })?;
     let mut out: Vec<Option<(Vec<f64>, Outcome)>> = out
         .into_iter()
         .map(|m| m.into_inner().unwrap_or_else(|e| e.into_inner()))
         .collect();
+    if let Some(path) = o.out {
+        // 続きから回して飛ばした評価はファイルから
+        let (_, rows) = runs::read_results(path)?;
+        for (k, _, txt) in rows {
+            if k < total && out[k].is_none() {
+                let r: Row = serde_json::from_str(&txt)
+                    .map_err(|e| format!("{}: evaluation {k}: {e}", path.display()))?;
+                let res = match (r.eval, r.error) {
+                    (Some(e), _) => Ok(e),
+                    (None, e) => Err(e.unwrap_or_default()),
+                };
+                out[k] = Some((r.deltas, res));
+            }
+        }
+    }
     let trials_out = out.split_off(ns);
     // 止めて lo・hi のどちらかを評価しなかった公差は感度に出さない
     let sensitivity: Vec<Sens> = (0..ns / 2)

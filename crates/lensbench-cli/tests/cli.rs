@@ -705,6 +705,26 @@ fn tolerance_monte_carlo() {
         "tests/glass",
     ]);
     assert!(ok, "{err}");
+    // --results: 評価を JSONL に書き、もう一度回すとファイルから読んで同じ結果（試行を足しても続きから）
+    let res = dir.join("r.jsonl");
+    let with_results = |trials: &str| -> serde_json::Value {
+        let mut a = args("9");
+        a[6] = trials.to_string();
+        a.extend(["--results".to_string(), res.to_str().unwrap().to_string()]);
+        let a: Vec<&str> = a.iter().map(|x| x.as_str()).collect();
+        let (ok, out, err) = run(&a);
+        assert!(ok, "{err}");
+        serde_json::from_str(&out).unwrap()
+    };
+    assert_eq!(with_results("5")["cdf"], a["cdf"]);
+    let n5 = std::fs::read_to_string(&res).unwrap().lines().count();
+    assert_eq!(with_results("5")["cdf"], a["cdf"]);
+    assert_eq!(std::fs::read_to_string(&res).unwrap().lines().count(), n5);
+    assert_eq!(with_results("7")["trials"], 7);
+    assert_eq!(
+        std::fs::read_to_string(&res).unwrap().lines().count(),
+        n5 + 2
+    );
     // 設定の誤り
     let (ok, _, err) = run(&[
         "tolerance",

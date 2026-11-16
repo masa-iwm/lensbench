@@ -215,6 +215,12 @@ enum Cmd {
         /// CSV file to write the compensators of each trial to (with the merit and the size of the x and y tilt pair [arcmin])
         #[arg(long = "comp-csv")]
         comp_csv: Option<PathBuf>,
+        /// JSONL file to write each evaluation (sensitivity and trials) to as it finishes. If the file is from the same calculation, continue from it (only the missing evaluations run; more --trials can be added)
+        #[arg(long)]
+        results: Option<PathBuf>,
+        /// With --results, start over instead of continuing from the file
+        #[arg(long = "no-resume")]
+        no_resume: bool,
     },
     /// Zoom trajectory
     ///
@@ -1009,6 +1015,8 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             seed,
             out,
             comp_csv,
+            results,
+            no_resume,
         } => {
             let s = load(&c)?;
             let mut v = match &spec {
@@ -1041,7 +1049,22 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             let ms =
                 lensbench_design::tolerance::spec_from_json_with(&v, vec![s], &vendors, &reversed)?;
             let oo = lensbench_design::tolerance::out_opts(&v)?;
-            let run = || progress::with(c.json, || lensbench_design::montecarlo::run(&ms));
+            let header = match &results {
+                Some(_) => lensbench_design::tolerance::runs_header(
+                    &v,
+                    &ms.problem.configs,
+                    &vendors,
+                    &reversed,
+                )?,
+                None => String::new(),
+            };
+            let ro = lensbench_runs::RunOpts {
+                out: results.as_deref(),
+                header,
+                resume: !no_resume,
+                ..Default::default()
+            };
+            let run = || progress::with(c.json, || lensbench_design::montecarlo::run_to(&ms, &ro));
             let r = match oo.threads {
                 Some(t) => lensbench_core::with_threads(Some(t), run),
                 None => run(),

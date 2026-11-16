@@ -705,7 +705,8 @@ fn parse_line(l: &str) -> Option<(usize, u64, String)> {
     Some((i.parse().ok()?, s.parse().ok()?, res.to_string()))
 }
 
-/// タスク task(i, タスクの種) を i = 0..n で回す（再開なら終わった番号を飛ばす）。結果は JSON の値の文字列で返す。
+/// タスク task(i, タスクの種) を i = 0..n で回す（再開なら終わった番号を飛ばす）。結果は JSON の値の文字列で返す
+/// （空の文字列は終えなかったタスク: ファイルに書かず、進み具合にも数えない）。
 /// タスクが失敗したら新しいタスクを始めず、走っているものが終わってから最初のエラーを返す（書いた結果は残る）。
 /// 進み具合は文脈の受け手（[`lensbench_core::par::with_progress`]）へ、タスクが終わるたびにワーカーのスレッドから知らせる。
 /// 文脈の中断の印（[`lensbench_core::par::with_cancel`]）が倒れたら新しいタスクを始めない（走っているものは終わらせる）
@@ -770,6 +771,8 @@ where
             }
             let s = sub_seed(seed, i);
             match task(i, s) {
+                // 空の結果は終えなかったタスク（止めた後に終わった評価など）: 書かず、数えない
+                Ok(res) if res.is_empty() => {}
                 Ok(res) => {
                     if res.contains('\n') {
                         stop.store(true, Ordering::Relaxed);

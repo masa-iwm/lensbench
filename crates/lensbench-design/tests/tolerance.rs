@@ -619,3 +619,82 @@ fn wavelength_tolerance_param() {
     )
     .is_err());
 }
+
+#[test]
+fn results_are_written_and_resumed_with_more_trials() {
+    // 評価を 1 つずつ JSONL に書き、続きから回す。途中で切れたファイル・試行を足したときも、通しで回した結果と同じ
+    use lensbench_design::montecarlo::{run, run_to};
+    let (_, s) = sys();
+    let v = |n: usize| {
+        json!({
+            "preset": "none", "trials": n, "seed": 11, "dist": "normal",
+            "tols": [{"param": "L1.dy", "pm": 0.05}, {"params": ["1.r", "2.r"], "pm": 0.01, "relative": true}],
+            "groups": {"G": {"decenter": 0.0}},
+            "compensators": ["G.shift=-2:2"],
+        })
+    };
+    let spec = |n| spec_from_json(&v(n), vec![s.clone()], &HashMap::new()).unwrap();
+    let header = |n| {
+        lensbench_design::tolerance::runs_header(
+            &v(n),
+            std::slice::from_ref(&s),
+            &HashMap::new(),
+            &Default::default(),
+        )
+        .unwrap()
+    };
+    // 試行の数は頭に入らない
+    assert_eq!(header(4), header(7));
+    let dir = std::env::temp_dir().join(format!("lb_tol_runs_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("r.jsonl");
+    let o = |resume| lensbench_runs::RunOpts {
+        out: Some(&path),
+        header: header(4),
+        resume,
+        ..Default::default()
+    };
+    let full4 = run(&spec(4)).unwrap();
+    assert_eq!(run_to(&spec(4), &o(false)).unwrap(), full4);
+    // 頭＋感度 4 つ＋試行 4 つ
+    let txt = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(txt.lines().count(), 1 + 4 + 4);
+    // 途中で切れた（最後の行が半分）ファイルの続き
+    let lines: Vec<&str> = txt.lines().collect();
+    let cut = format!(
+        "{}\n{}",
+        lines[..5].join("\n"),
+        &lines[5][..lines[5].len() / 2]
+    );
+    std::fs::write(&path, cut).unwrap();
+    assert_eq!(run_to(&spec(4), &o(true)).unwrap(), full4);
+    // 試行を足して続きから
+    let full7 = run(&spec(7)).unwrap();
+    assert_eq!(run_to(&spec(7), &o(true)).unwrap(), full7);
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap().lines().count(),
+        1 + 4 + 7
+    );
+    // 別の計算（seed を変えた）のファイルは続きから回さない
+    let mut v2 = v(4);
+    v2["seed"] = json!(12);
+    let o2 = lensbench_runs::RunOpts {
+        out: Some(&path),
+        header: lensbench_design::tolerance::runs_header(
+            &v2,
+            std::slice::from_ref(&s),
+            &HashMap::new(),
+            &Default::default(),
+        )
+        .unwrap(),
+        resume: true,
+        ..Default::default()
+    };
+    let e = run_to(
+        &spec_from_json(&v2, vec![s.clone()], &HashMap::new()).unwrap(),
+        &o2,
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("header differs"), "{e}");
+    std::fs::remove_dir_all(&dir).ok();
+}

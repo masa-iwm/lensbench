@@ -38,6 +38,9 @@
   （「設定」の samples を入れて回せば試行ごとのずれも）、「補償子の CSV…」で同じ CSV を保存する。
 - 試行は並列に回し（`--threads`）、試行ごとの乱数は種 `seed` と試行の番号だけで決まるので、スレッド数によらず同じ結果になる。
   `--out`（`-o`）で最も悪い試行の系（補償の後）を書き出す（.json は系ファイル。屈折率のずれは .zmx に書けない）。
+- `--results r.jsonl` で評価（感度の lo・hi と試行）を終わるたびに一括実行の JSONL へ書き、同じ計算（設定・系・玉のメーカーが
+  同じ。試行の数・`threads`・`percentiles`・`samples` は問わない）のファイルがあれば続きから回す（書いた評価は飛ばす。`--no-resume` で
+  書き直す）。止めた計算の続きや、`--trials` を増やして試行を足すのに使う。結果は通しで回したときと同じ。
 - Python は `System.tolerance(spec, terms=None, vendors=None, configs=None)`、serve は `tolerance`。複数の構成では
   同じずれをすべての構成に与える。
 

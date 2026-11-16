@@ -471,6 +471,38 @@ pub fn spec_from_json_with(
     Ok(spec)
 }
 
+/// 公差の評価を書く一括実行のファイル（[`crate::montecarlo::run_to`]）の頭。設定 v（試行の数・出力だけの指定
+/// trials・threads・percentiles・samples は除く。試行を足して続きから回せる）・系の hash・玉のメーカーと裏返しから作る
+pub fn runs_header(
+    v: &Value,
+    configs: &[System],
+    vendors: &HashMap<String, String>,
+    reversed: &HashSet<String>,
+) -> lensbench_core::Result<String> {
+    let mut settings = v.clone();
+    if let Some(m) = settings.as_object_mut() {
+        for k in ["trials", "threads", "percentiles", "samples"] {
+            m.remove(k);
+        }
+    }
+    let systems = configs
+        .iter()
+        .map(lensbench_project::sysfile::system_hash)
+        .collect::<lensbench_core::Result<Vec<_>>>()?;
+    let vendors: std::collections::BTreeMap<_, _> = vendors.iter().collect();
+    let mut reversed: Vec<_> = reversed.iter().collect();
+    reversed.sort();
+    Ok(json!({
+        "lensbench": lensbench_core::VERSION,
+        "kind": "tolerance",
+        "settings": settings,
+        "systems": systems,
+        "vendors": vendors,
+        "reversed": reversed,
+    })
+    .to_string())
+}
+
 /// 設定の JSON の百分位・samples・threads
 pub struct OutOpts {
     pub percentiles: Vec<f64>,
