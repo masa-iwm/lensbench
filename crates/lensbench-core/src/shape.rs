@@ -3,6 +3,7 @@
 //! 形に依る計算はここに集める。[`Surface::shape`] は今の平たい [`Surface`] の値から形を借りて作る見方で、
 //! 面の種類ごとに `asph` などの値の意味（偶数次非球面の係数、Odd Asphere の β、Tilted の tan、Irregular の偏心・
 //! 傾き・Zernike 風の項）をここで分ける。面の働き（屈折・反射・理想レンズ・Jones など）は [`crate::action`]。
+//! 形のパラメータによる矢高と勾配の微分（[`Shape::dsag`]・[`Shape::takes`]）は shape_param.rs。
 //!
 //! 追跡の内側（[`crate::batch`]）は面ごとに [`SurfKind`] を前計算し、回転対称の面は光線の組のまま、
 //! それ以外は光線ごとに [`Shape::isect`]・[`Shape::sag`] を呼ぶ（どれも enum の静的な分岐）。
@@ -182,10 +183,14 @@ impl Surface {
     }
 
     /// 形のパラメータ（曲率・円錐係数・非球面の係数・Zernike の項）を変数・微分にできる面: 標準面・偶数次非球面と
-    /// 回転対称でない面（[`Shape::is_freeform`]）。微分（[`crate::fermat`] の `shape_dz`）は `asph` を偶数次非球面の
-    /// 係数として求める（Odd Asphere・Tilted・Irregular の `asph` は別の意味。従来どおり）
+    /// 回転対称でない面（[`Shape::is_freeform`]）。どのパラメータが形に効くかは [`Shape::takes`]
     pub(crate) fn shape_params(&self) -> bool {
         matches!(self.typ, SurfType::Standard | SurfType::EvenAsph) || self.shape().is_freeform()
+    }
+
+    /// 形のパラメータ kind を変数・微分にできるか（[`Surface::shape_params`] の面で、形に効くもの。KRN-32）
+    pub(crate) fn takes_shape_param(&self, kind: crate::param::Kind) -> bool {
+        self.shape_params() && self.shape().takes(kind)
     }
 }
 
@@ -284,9 +289,33 @@ fn r2_curv(c: f64, a: &[f64]) -> f64 {
 }
 
 impl Irregular {
+    /// 傾きの行列 M = Rx(tx) Ry(ty)（行優先）と、その tx・ty [rad] による微分
+    pub(crate) fn rot(&self) -> [[[f64; 3]; 3]; 3] {
+        let (tx, ty) = (self.tilt[0].to_radians(), self.tilt[1].to_radians());
+        let (sx, cx) = tx.sin_cos();
+        let (sy, cy) = ty.sin_cos();
+        [
+            [
+                [cy, 0.0, sy],
+                [sx * sy, cx, -sx * cy],
+                [-cx * sy, sx, cx * cy],
+            ],
+            [
+                [0.0, 0.0, 0.0],
+                [cx * sy, -sx, -cx * cy],
+                [sx * sy, cx, -sx * cy],
+            ],
+            [
+                [-sy, 0.0, cy],
+                [sx * cy, 0.0, sx * sy],
+                [-cx * cy, 0.0, -cx * sy],
+            ],
+        ]
+    }
+
     /// 偏心・傾ける前の座標の矢高と勾配: 標準面 + Zs ρ⁴ + Za ρ_y² + Zc ρ² ρ_y。OpticStudio 26.1 と照合
     /// （自作の系で面の交点 1e-15 mm）
-    fn local(&self, x: f64, y: f64) -> (f64, f64, f64) {
+    pub(crate) fn local(&self, x: f64, y: f64) -> (f64, f64, f64) {
         let (zs, za, zc, ang) = (self.zs, self.za, self.zc, self.angle.to_radians());
         let (z0, dz) = sag(self.c, self.k, &[], x * x + y * y);
         let (mut z, mut zx, mut zy) = (z0, 2.0 * dz * x, 2.0 * dz * y);
@@ -308,15 +337,8 @@ impl Irregular {
     /// （Q は [`Irregular::local`] の座標）。z を Q_z = f(Q_x, Q_y) のニュートン法で解く
     pub fn sag(&self, x: f64, y: f64) -> (f64, f64, f64) {
         let (dx, dy) = (self.decenter[0], self.decenter[1]);
-        let (tx, ty) = (self.tilt[0].to_radians(), self.tilt[1].to_radians());
-        let (sx, cx) = tx.sin_cos();
-        let (sy, cy) = ty.sin_cos();
         // M = Rx(tx) Ry(ty)（行優先）、Q = Mᵀ (P − d)
-        let m = [
-            [cy, 0.0, sy],
-            [sx * sy, cx, -sx * cy],
-            [-cx * sy, sx, cx * cy],
-        ];
+        let m = self.rot()[0];
         let q = |px: f64, py: f64, pz: f64| -> [f64; 3] {
             [
                 m[0][0] * px + m[1][0] * py + m[2][0] * pz,
@@ -522,6 +544,23 @@ impl Shape<'_> {
                 stray_grid,
             } => zern_grid_curv(base, terms, stray_grid),
             Shape::GridSag { base, terms, grid } => zern_grid_curv(base, terms, grid),
+        }
+    }
+
+    /// 近軸の曲率のうち c に依らない分 e（[`Shape::paraxial_curv`] が c + e のとき）: 二次曲面・Irregular 0、
+    /// 偶数次非球面・トロイダル面・Cylinder Fresnel の基板 2 a₁、Odd Asphere 2 β₂。曲率のソルブ（c = 目標の近軸の
+    /// 曲率 − e）を近軸の追跡と同じ規則にするためのもの（KRN-33）。c だけで近軸の曲率が決まらない面（平面・Tilted・
+    /// Zernike Sag・Grid Sag）は None
+    pub fn paraxial_extra(&self) -> Option<f64> {
+        match *self {
+            Shape::Conic { .. } | Shape::ConicTilted { .. } | Shape::Irregular(_) => Some(0.0),
+            Shape::EvenAsphere(Base { a, .. })
+            | Shape::Cylinder(Base { a, .. })
+            | Shape::Toroid { a, .. } => Some(2.0 * a.first().copied().unwrap_or(0.0)),
+            Shape::OddAsphere { b, .. } => Some(2.0 * b.get(1).copied().unwrap_or(0.0)),
+            Shape::Plane | Shape::Tilted { .. } | Shape::Zernike { .. } | Shape::GridSag { .. } => {
+                None
+            }
         }
     }
 

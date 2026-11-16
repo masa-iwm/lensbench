@@ -347,6 +347,7 @@ surface {j} is not an even asphere ({})	面 {j} は偶数次非球面ではあ�
 asphere coefficient {}	非球面の係数 {}
 surface {j} Zernike term {n} is over the limit	面 {j} の Zernike の項 {n} は上限を超えます
 surface {j} is not a Zernike Sag surface ({})	面 {j} は Zernike Sag の面ではありません（{}）
+surface {j} ({typ:?}): {kind} doesn't change the shape of this surface type	面 {j}（{typ:?}）: {kind} はこの種類の面の形を変えません
 tilt or decenter of the object surface	物体面のチルト・偏心
 surface {j} is a mirror or a coordinate break (the medium is surface {kind} before it)	面 {j} はミラーか座標ブレーク（媒質は前の面の {kind}）
 thickness of the image surface	像面の厚み

@@ -45,6 +45,7 @@ pub mod raygrid;
 pub mod report;
 pub mod semi;
 pub mod shape;
+mod shape_param;
 pub mod solve;
 pub mod surface;
 pub mod sweep;

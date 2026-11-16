@@ -52,7 +52,11 @@ fn opl_fixed(
     sol.trace.rays[0].opl - n * (k[0] * (x[0] - target[0]) + k[1] * (x[1] - target[1]))
 }
 
-fn step(p: Param) -> f64 {
+fn step(s: &System, p: Param) -> f64 {
+    // asph が偶数次の係数でない面（Odd Asphere・Tilted・Irregular）の刻み（KRN-32）
+    if let Some(h) = crate::shape_params::asph_step(s, p) {
+        return h;
+    }
     match p.kind {
         Kind::Curv => 2e-5,
         Kind::Conic => 2e-2,
@@ -66,7 +70,14 @@ fn step(p: Param) -> f64 {
 
 /// 系 s の視野 fi・波長 w の数本の光線を面 last（平面）まで追い、params の dOPL/dp を差分と比べる。
 /// 最後の面が像面（結像している）だと交点を固定した光線が瞳座標で決まらないので、その前の面で止める
-fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Param]) -> f64 {
+pub(crate) fn check(
+    label: &str,
+    s: &System,
+    fi: usize,
+    w: usize,
+    last: usize,
+    params: &[Param],
+) -> f64 {
     let px = [0.0, 0.6, -0.3, 0.2, -0.7];
     let py = [0.0, 0.1, 0.5, -0.8, -0.4];
     let (hx, hy) = s.hxhy(fi);
@@ -101,7 +112,7 @@ fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Pa
             // 刻みを 3 通り試し、最もよく合うものを使う（差分の打ち切り誤差と丸め誤差の兼ね合いは量ごとに違う）
             let mut best = (f64::INFINITY, 0.0, 0.0);
             for m in [0.25, 1.0, 4.0, 16.0] {
-                let h = step(p) * m;
+                let h = step(s, p) * m;
                 let at = |d: f64| -> f64 {
                     match p.kind {
                         Kind::ObjX | Kind::ObjY => {

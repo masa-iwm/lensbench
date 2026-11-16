@@ -112,6 +112,17 @@
   使う。追跡の結果は丸めの分だけ変わる（公開のテスト系 38 本のうち 29 本。光線の座標 1e-12 前後、RMS・波面は相対 5e-10 まで、
   傾きのある C1 で 3e-9 まで、MTF は値が小さい周波数で相対 1e-5 まで）。自動の半直径・実光線のソルブの値も丸めの分変わるので `system_hash` も変わる。
 - 2 軸の折り曲げ鏡・ビームスプリッターの後の座標の軸の向きが変わる。
+- 形のパラメータの微分（光路長の微分 `opl_grad`・着地点の微分 `land_grad`、それを使う最適化・公差）を、面の形どおりに求める（KRN-32）。
+  以前は `asph` をどの型でも偶数次非球面の係数とみていた。Odd Asphere の `a2`, `a4`, … は β1 r, β2 r², …、Tilted の `a2`・`a4` は
+  tan α・tan β（z = x tan α + y tan β）、Irregular の `a2`〜`a16` は偏心 x・y、傾き x・y、Zs・Za・Zc、角度で、偏心・傾けた面の c・k の
+  微分も変わる。形に効かない値はパラメータにできない（誤り「surface j (TiltSurf): c doesn't change the shape of this surface type」）:
+  Tilted の c・R・k と 3 番目からの `asph`、Zernike Sag・Grid Sag でない面に残った Zernike の項（以前は効かない値を変数にでき、
+  Zernike の項は効かない微分が付いた）。追跡・近軸量は変わらない。
+- トロイダル面の曲率のソルブ（周辺光線・主光線の傾き・垂直・不遊・F/#）が y² の項を近軸の曲率に入れる（KRN-33。近軸の追跡と同じ
+  c + 2 a₁）。以前は y² の項がある面で解いた曲率が目標から外れていた（例: 周辺光線の傾き −0.05 の目標で −0.0636）。
+- `freeform::sag_xy`（機構部品の確認の素子の縁、Huygens PSF の像面の矢高）が、トロイダル面・Cylinder Fresnel の基板・Fresnel・
+  Gradient 9 の傾きの項なども追跡と同じ形で求める（KRN-34。以前は回転対称でない面のほかを c・k・asph の偶数次非球面として求めていた）。
+  Fresnel・理想レンズ・Jones の面は平らな基板（矢高 0）。
 
 ### Rust API
 - `edit_ops::apply` は `&[EditOp]` を受ける（JSON は `edit_ops::parse` で読むか `apply_json`）。`Project::surface_ops` は

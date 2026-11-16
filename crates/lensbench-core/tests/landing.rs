@@ -28,7 +28,11 @@ fn ps(s: &System, names: &[&str]) -> Vec<Param> {
     names.iter().map(|n| s.param(n).unwrap()).collect()
 }
 
-fn step(p: Param) -> f64 {
+fn step(s: &System, p: Param) -> f64 {
+    // asph が偶数次の係数でない面（Odd Asphere・Tilted・Irregular）の刻み（KRN-32）
+    if let Some(h) = crate::shape_params::asph_step(s, p) {
+        return h;
+    }
     match p.kind {
         Kind::Curv => 2e-6,
         Kind::Conic => 2e-3,
@@ -52,7 +56,7 @@ fn launch(s: &System, p: &[V3], k: &[V3], w: usize, last: usize, dz: Option<f64>
 }
 
 /// 系 s の視野 fi の数本の光線で、着地点の微分と dz つき dOPL/dp を差分と比べる。最大の相対誤差を返す
-fn check(
+pub(crate) fn check(
     label: &str,
     s: &System,
     fi: usize,
@@ -134,7 +138,7 @@ fn check(
                 }
             }
         };
-        let hs = [0.25, 1.0, 4.0].map(|m| step(p) * m);
+        let hs = [0.25, 1.0, 4.0].map(|m| step(s, p) * m);
         let tr: Vec<[Trace; 4]> = hs
             .iter()
             .map(|&h| [at(h), at(-h), at(2.0 * h), at(-2.0 * h)])

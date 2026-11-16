@@ -33,6 +33,7 @@ mod pop;
 mod pop_os;
 mod record_sel;
 mod semi_auto;
+mod shape_params;
 mod spider;
 mod surftypes;
 mod surftypes_os;

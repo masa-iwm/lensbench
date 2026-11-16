@@ -14,11 +14,12 @@
 
 use crate::action::Action;
 use crate::error::Result;
-use crate::fermat::{dsag, raw_frames_d, PrepParam};
+use crate::fermat::{raw_frames_d, PrepParam};
 use crate::math::*;
 use crate::par::scoped;
 use crate::param::{Kind, Param};
 use crate::shape::{sag, Shape};
+use crate::shape_param::sag_uu;
 use crate::surface::SurfType;
 use crate::system::Trace;
 use crate::System;
@@ -35,42 +36,6 @@ fn omega_vec(om: &M3) -> V3 {
         0.5 * (om[0][2] - om[2][0]),
         0.5 * (om[1][0] - om[0][1]),
     ]
-}
-
-/// 回転対称のサグ z(u)（u = r²）の dz/du を、形のパラメータで微分したもの
-fn dsag_u(c: f64, k: f64, kind: Kind, u: f64) -> f64 {
-    let root = (1.0 - (1.0 + k) * c * c * u).max(0.0).sqrt();
-    match kind {
-        Kind::Curv | Kind::Radius => {
-            let v = 0.5 / root + c * c * (1.0 + k) * u / (2.0 * root * root * root);
-            if kind == Kind::Radius {
-                -c * c * v
-            } else {
-                v
-            }
-        }
-        Kind::Conic => c * c * c * u / (4.0 * root * root * root),
-        Kind::Asph(i) => (i as f64 + 1.0) * u.powi(i as i32),
-        _ => 0.0,
-    }
-}
-
-/// 回転対称のサグの d²z/du²
-fn sag_uu(c: f64, k: f64, asph: &[f64], u: f64) -> f64 {
-    let a = (1.0 + k) * c * c;
-    let root = (1.0 - a * u).max(0.0).sqrt();
-    let mut v = if c != 0.0 {
-        c * a / (4.0 * root * root * root)
-    } else {
-        0.0
-    };
-    for (i, &ai) in asph.iter().enumerate() {
-        let p = (i + 1) as i32;
-        if ai != 0.0 && p >= 2 {
-            v += ai * (p * (p - 1)) as f64 * u.powi(p - 2);
-        }
-    }
-    v
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -356,7 +321,7 @@ impl System {
                 let shape = matches!(
                     pp.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
-                ) && sf[pp.surf].shape_params();
+                ) && sf[pp.surf].takes_shape_param(pp.kind);
                 if shape {
                     t.rec.iter().position(|rs| rs.surf == pp.surf)
                 } else {
@@ -650,18 +615,8 @@ impl System {
                 if let Some(k) = sag_k[q] {
                     let d = &sf[t.rec[k].surf];
                     let x = geo[k].q;
-                    let sh = match (pre[q].kind, &d.zern) {
-                        (Kind::Zern(j), Some(z)) => {
-                            let (a, ax, ay) = z.term(j as usize, x[0], x[1]);
-                            [a, ax, ay]
-                        }
-                        _ => {
-                            let u = x[0] * x[0] + x[1] * x[1];
-                            let dzp = dsag(d.c, d.k, pre[q].kind, u);
-                            let dz1 = dsag_u(d.c, d.k, pre[q].kind, u);
-                            [dzp, 2.0 * dz1 * x[0], 2.0 * dz1 * x[1]]
-                        }
-                    };
+                    // 形どおりの微分（sag_k は形に効くパラメータだけ）
+                    let sh = d.shape().dsag(pre[q].kind, x[0], x[1]).unwrap_or_default();
                     for y in 0..NY {
                         o[y] += (0..3).map(|c| q_shape[k][y * 3 + c] * sh[c]).sum::<f64>();
                     }
@@ -783,7 +738,7 @@ impl System {
                     p.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
                 )
-                && d.shape_params();
+                && d.takes_shape_param(p.kind);
             if dn == 0.0 && !shape {
                 continue;
             }
@@ -805,6 +760,7 @@ impl System {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shape_param::dsag_u;
 
     #[test]
     fn sag_derivatives_match_differences() {

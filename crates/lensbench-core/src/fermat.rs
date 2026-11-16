@@ -237,37 +237,10 @@ pub(crate) fn raw_frames_d(sys: &System, p: Param) -> Vec<Option<DFrame>> {
     out
 }
 
-/// サグの、形のパラメータによる微分（r2 = x² + y²）
-pub(crate) fn dsag(c: f64, k: f64, kind: Kind, r2: f64) -> f64 {
-    let root = (1.0 - (1.0 + k) * c * c * r2).max(0.0).sqrt();
-    match kind {
-        Kind::Curv | Kind::Radius => {
-            let dc = r2 / (1.0 + root)
-                + if c != 0.0 {
-                    c * c * r2 * r2 * (1.0 + k) / ((1.0 + root) * (1.0 + root) * root)
-                } else {
-                    0.0
-                };
-            if kind == Kind::Radius {
-                // dc/dR = −c²
-                -c * c * dc
-            } else {
-                dc
-            }
-        }
-        Kind::Conic => c * c * c * r2 * r2 / (2.0 * root * (1.0 + root) * (1.0 + root)),
-        Kind::Asph(i) => r2.powi(i as i32 + 1),
-        _ => 0.0,
-    }
-}
-
-/// 面 d の矢高の、形のパラメータ kind による微分（面の局所座標の x・y で）
+/// 面 d の矢高の、形のパラメータ kind による微分（面の局所座標の x・y で。形どおり、[`crate::shape::Shape::dsag`]）。
+/// 形に効かないパラメータは 0（[`System::check_param`] で断っている）
 pub(crate) fn shape_dz(d: &crate::surface::Surface, kind: Kind, x: f64, y: f64) -> f64 {
-    match (kind, &d.zern) {
-        (Kind::Zern(j), Some(z)) => z.term(j as usize, x, y).0,
-        (Kind::Zern(_), None) => 0.0,
-        _ => dsag(d.c, d.k, kind, x * x + y * y),
-    }
+    d.shape().dsag(kind, x, y).map_or(0.0, |v| v[0])
 }
 
 /// 1 つのパラメータの、面ごとの交点の動き δ = a + b x（局所座標）と、媒質の屈折率の微分
@@ -635,7 +608,8 @@ impl System {
                 if matches!(
                     pp.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
-                ) {
+                ) && sf[pp.surf].takes_shape_param(pp.kind)
+                {
                     t.rec.iter().position(|rs| rs.surf == pp.surf)
                 } else {
                     None

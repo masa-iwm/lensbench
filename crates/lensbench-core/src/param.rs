@@ -763,14 +763,10 @@ impl System {
             Kind::Curv | Kind::Radius | Kind::Conic if j == 0 || !curved => {
                 invalid!("surface {j} ({:?}) {}", d.typ, p.kind.name());
             }
-            Kind::Asph(i) => {
-                if d.typ != SurfType::EvenAsph && !d.shape().is_freeform() {
-                    invalid!("surface {j} is not an even asphere ({})", p.kind.name());
-                }
-                if i >= 8 {
-                    invalid!("asphere coefficient {}", p.kind.name());
-                }
+            Kind::Asph(_) if d.typ != SurfType::EvenAsph && !d.shape().is_freeform() => {
+                invalid!("surface {j} is not an even asphere ({})", p.kind.name());
             }
+            Kind::Asph(i) if i >= 8 => invalid!("asphere coefficient {}", p.kind.name()),
             Kind::Zern(n) => match &d.zern {
                 Some(z) if (n as usize) <= crate::freeform::ZernSag::max_terms(z.fringe) => {}
                 Some(_) => invalid!("surface {j} Zernike term {n} is over the limit"),
@@ -779,6 +775,19 @@ impl System {
                     p.kind.name()
                 ),
             },
+            _ => {}
+        }
+        // 形に効かない値（Tilted の c・k、Tilted の 3 番目からの asph、ほかの型の面に残った Zernike の項など）は
+        // 変数・微分にしない（KRN-32）
+        if matches!(
+            p.kind,
+            Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+        ) && !d.takes_shape_param(p.kind)
+        {
+            let (typ, kind) = (d.typ, p.kind.name());
+            invalid!("surface {j} ({typ:?}): {kind} doesn't change the shape of this surface type");
+        }
+        match p.kind {
             Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz if j == 0 => {
                 notimpl!("tilt or decenter of the object surface");
             }
@@ -1783,12 +1792,8 @@ impl System {
         let (y, u) = (f * y[k], f * u[self.prev_live(k)]);
         let n = self.index_before(k, pw);
         let n2 = d.n[pw];
-        // 非球面の 2 次の項（r^2）は近軸の曲率に入る（近軸の追跡と同じ）
-        let a1 = if d.typ == SurfType::EvenAsph {
-            2.0 * d.asph.first().copied().unwrap_or(0.0)
-        } else {
-            0.0
-        };
+        // 近軸の曲率のうち c に依らない分（偶数次非球面の r²・トロイダル面の y² の項。近軸の追跡と同じ、KRN-33）
+        let a1 = d.shape().paraxial_extra().unwrap_or(0.0);
         if y == 0.0 {
             invalid!("surface {k}: the ray height is 0, so the curvature solve can't be solved");
         }
@@ -1835,11 +1840,7 @@ impl System {
         let t = self.axial(a, b)?;
         let ce = |j: usize| {
             let d = &self.surfaces[j];
-            let a1 = if d.typ == SurfType::EvenAsph {
-                2.0 * d.asph.first().copied().unwrap_or(0.0)
-            } else {
-                0.0
-            };
+            let a1 = d.shape().paraxial_extra().unwrap_or(0.0);
             (d.c + a1, a1)
         };
         // φ = φa + φb − (t/ng) φa φb、φa = ca (ng − n0)、φb = cb (n1 − ng)

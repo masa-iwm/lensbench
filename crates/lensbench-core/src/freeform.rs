@@ -13,7 +13,6 @@
 
 use crate::math::*;
 use crate::surface::{SurfType, Surface};
-use crate::trace::sag;
 
 /// Zernike の矢高の項
 ///
@@ -512,15 +511,11 @@ pub fn is_freeform(t: SurfType) -> bool {
 }
 
 /// 面の矢高と (∂z/∂x, ∂z/∂y)（面の局所座標）。面の外（基準の面の平方根が負、値のない格子点）は NaN。
-/// 回転対称でない面（[`is_freeform`]）は形どおり（[`crate::shape::Shape::sag`]）、ほかの面は従来どおり
-/// c・k・asph の偶数次非球面として求める（トロイダル面・Fresnel なども。形どおりの矢高は `Shape::sag`）
+/// 形どおり（[`crate::shape::Shape::sag`]、追跡と同じ形）: トロイダル面は x・y の曲線、Cylinder Fresnel は y だけの
+/// 基板、Fresnel・理想レンズ・Jones などは頂点の平面（Fresnel の曲率は屈折の傾きだけで、面は平らな基板）。
+/// 以前は回転対称でない面のほかを c・k・asph の偶数次非球面として求めていた（KRN-34）
 pub fn sag_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
-    let s = d.shape();
-    if s.is_freeform() {
-        return s.sag(x, y);
-    }
-    let (z, dz) = sag(d.c, d.k, &d.asph, x * x + y * y);
-    (z, 2.0 * dz * x, 2.0 * dz * y)
+    d.shape().sag(x, y)
 }
 
 /// 基準の二次曲面（c・k）との交点までの距離（頂点面上の pl から方向 kl に）。交わらなければ 0

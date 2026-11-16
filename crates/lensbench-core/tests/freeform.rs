@@ -111,3 +111,79 @@ fn write_roundtrip() {
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// sag_xy は追跡と同じ形（Shape::sag）: トロイダル面・Cylinder Fresnel の基板・Fresnel（平らな基板）でも、追跡した
+/// 光線の面の上の交点（局所座標）の z と合う（KRN-34。以前は回転対称でない面のほかを偶数次非球面として求めていた）
+#[test]
+fn sag_xy_is_the_traced_shape() {
+    use lensbench_core::FieldSel;
+    let head = "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 12\nFTYP 0 0 2 1 0 0 0\n\
+XFLN 0 2\nYFLN 0 3\nFWGN 1 1\nWAVM 1 0.5876 1\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\n\
+SURF 1\n  STOP\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 2\n";
+    let tail = "  DISZ 5\n  GLAS ___BLANK 1 0 1.5168 64.2 0 0 0 0 0\n\
+SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 20\n\
+SURF 4\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
+    let build = |surf: &str| {
+        let txt = format!("{head}SURF 2\n  {surf}{tail}");
+        zmx::build(
+            &zmx::parse_text(&txt).unwrap(),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .unwrap()
+    };
+    for (label, surf) in [
+        (
+            "トロイダル面",
+            "TYPE TOROIDAL\n  CURV 0.02\n  PARM 1 30\n  PARM 2 2e-3\n  PARM 3 -1e-6\n",
+        ),
+        ("Fresnel", "TYPE FRESNELS\n  CURV 0.03\n  PARM 1 1e-5\n"),
+        (
+            "Cylinder Fresnel",
+            "TYPE CFRESNEL\n  CURV 0.015\n  PARM 1 1e-5\n",
+        ),
+    ] {
+        let s = build(surf);
+        let d = &s.surfaces[2];
+        let px = [0.0, 0.5, -0.8, 0.3, 0.7];
+        let py = [0.0, 0.6, 0.2, -0.9, -0.5];
+        let t = s
+            .try_trace(FieldSel::Index(1), &px, &py, None, None, true)
+            .unwrap();
+        let k = t.rec.iter().position(|r| r.surf == 2).unwrap();
+        let mut moved: f64 = 0.0;
+        for i in 0..px.len() {
+            assert!(t.rays[i].status.is_ok(), "{label}: 光線 {i}");
+            let q = t.rec[k].xyz[i];
+            let z = sag_xy(d, q[0], q[1]).0;
+            assert!(
+                (z - q[2]).abs() < 1e-12,
+                "{label} 光線 {i}: 矢高 {z} 交点 {}",
+                q[2]
+            );
+            // 以前の求め方（c・k・asph の偶数次非球面）との差
+            let r2 = q[0] * q[0] + q[1] * q[1];
+            let old = d.c * r2 / (1.0 + (1.0 - (1.0 + d.k) * d.c * d.c * r2).sqrt())
+                + d.asph
+                    .iter()
+                    .enumerate()
+                    .map(|(j, a)| a * r2.powi(j as i32 + 1))
+                    .sum::<f64>();
+            moved = moved.max((old - z).abs());
+        }
+        println!("{label}: 以前の矢高との差 最大 {moved:e} mm");
+        assert!(moved > 1e-3, "{label}: 以前の矢高との差 {moved}");
+        if label == "Fresnel" {
+            // Fresnel の面は平らな基板（曲率は屈折の傾きだけ）
+            assert_eq!(sag_xy(d, 3.0, -2.0), (0.0, 0.0, 0.0));
+        }
+    }
+    // トロイダル面の x 方向は回転の円（半径 30）: 点 (x, 0) の矢高は x² / (R + √(R² − x²))
+    let s = build("TYPE TOROIDAL\n  CURV 0.02\n  PARM 1 30\n  PARM 2 2e-3\n");
+    let x: f64 = 4.0;
+    let want = x * x / (30.0 + (900.0 - x * x).sqrt());
+    let z = sag_xy(&s.surfaces[2], x, 0.0).0;
+    assert!((z - want).abs() < 1e-15, "{z} {want}");
+}
