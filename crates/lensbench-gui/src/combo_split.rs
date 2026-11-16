@@ -59,7 +59,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     let surf = |j: usize, last: bool| -> Option<Value> {
         let a = &s.surfaces[j];
         let plain = a.typ == SurfType::Standard
-            && !a.mirror
+            && a.mat.is_medium()
             && !a.ignore
             && a.asph.is_empty()
             && a.coat.is_empty()
@@ -72,7 +72,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
             "semi": if a.semi_auto { json!("auto") } else { json!(a.semi) } });
         if !last {
             x["t"] = json!(a.t);
-            x["glass"] = json!(a.mat);
+            x["glass"] = json!(a.mat.name());
         }
         Some(x)
     };
@@ -81,7 +81,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
     while j < img {
         let id;
         let k;
-        if s.surfaces[j].mat.is_empty() {
+        if s.surfaces[j].mat.is_air() {
             // 空気中の面 1 つ: 面の並び（絞りなら set_stop で）
             k = j;
             ns += 1;
@@ -90,7 +90,7 @@ fn split_project(s: &System, p: &Value) -> Option<Value> {
         } else {
             // ガラスに入る面から、空気に出る面までが 1 つの玉
             let mut e = j;
-            while e < img && !s.surfaces[e].mat.is_empty() {
+            while e < img && !s.surfaces[e].mat.is_air() {
                 e += 1;
             }
             if e >= img {
