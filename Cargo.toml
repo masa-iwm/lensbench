@@ -12,6 +12,10 @@ repository = "https://github.com/masa-iwm/lensbench"
 rust-version = "1.100"
 
 # ワークスペース共通の lint（各クレートは [lints] workspace = true）。clippy の -D warnings は CI のコマンドライン
+[workspace.lints.rust]
+# truck（STEP の三角形化）を組まない印（RUSTFLAGS="--cfg lensbench_no_mesh"。lensbench-cad、XCT-17）
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(lensbench_no_mesh)"] }
+
 [workspace.lints.clippy]
 # 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める（BLD-30）
 needless_range_loop = "allow"

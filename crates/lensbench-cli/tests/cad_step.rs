@@ -207,6 +207,13 @@ fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::pa
         assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
         std::fs::read(dir.join(out)).unwrap()
     };
+    // 詳しい形を選ばなければ簡易外形
+    let st0 = String::from_utf8(layout("s.step", false)).unwrap();
+    assert!(!st0.contains("detail") && st0.contains("MANIFOLD_SOLID_BREP('a 1'"));
+    // truck を組まないビルド（--cfg lensbench_no_mesh、試験だけのビルド）には詳しい形が無い
+    if cfg!(lensbench_no_mesh) {
+        return;
+    }
     // STL: 三角形の数が簡易外形と違い、z は 5〜13.89
     let stl_tris = |b: &[u8]| u32::from_le_bytes(b[80..84].try_into().unwrap());
     let simple = layout("s.stl", false);
@@ -237,9 +244,6 @@ fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::pa
     let f = s.frame.clone().expect("枠");
     assert_eq!((f.length, f.outer_diameter), (8.89, 40.64), "{s:?}");
     assert_eq!(f.outline, lensbench_project::MechOutline::Square);
-    // 詳しい形を選ばなければ簡易外形
-    let st0 = String::from_utf8(layout("s.step", false)).unwrap();
-    assert!(!st0.contains("detail") && st0.contains("MANIFOLD_SOLID_BREP('a 1'"));
 }
 
 fn b4(b: &[u8]) -> [u8; 4] {

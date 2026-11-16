@@ -12,17 +12,20 @@ workspace = true
 
 [features]
 default = ["mesh"]
-# STEP を表示用の三角形にする（truck）。外すとビルドが軽くなる（詳しい形は描かない）
-mesh = ["dep:truck-stepio", "dep:truck-meshalgo", "dep:lensbench-export"]
+# STEP を表示用の三角形にする（truck）。外すとビルドが軽くなる（詳しい形は描かない）。
+# feature を変えずに truck を省くときは RUSTFLAGS="--cfg lensbench_no_mesh"（試験・検査だけのビルド向け。XCT-17）
+mesh = ["dep:truck-stepio", "dep:truck-meshalgo"]
 
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-catalog = { path = "../lensbench-catalog" }
-lensbench-export = { path = "../lensbench-export", optional = true }
+lensbench-export = { path = "../lensbench-export" }
 # 置き場の STEP（gzip）を展開する（ネイティブと Web 版）
 flate2 = "1"
-# 取った STEP を読んで三角形にする（公開 #121、Web 版でも #158）
+
+# 取った STEP を読んで三角形にする（公開 #121、Web 版でも #158）。--cfg lensbench_no_mesh では組まない
+[target.'cfg(not(lensbench_no_mesh))'.dependencies]
 truck-stepio = { version = "0.3", optional = true }
 # vtk（vtkio、将来のコンパイラで通らない nom 3・quick-xml 0.22 を引く）は使わないので外す（BLD-10）
 truck-meshalgo = { version = "0.4", optional = true, default-features = false, features = ["tessellation"] }

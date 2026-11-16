@@ -17,13 +17,13 @@ pub fn measure(item: &UserItem, text: &[u8]) -> (Option<step::StepSize>, Vec<Str
     }
 }
 
-#[cfg(feature = "mesh")]
+#[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
 /// 詳しい形の三角形の細かさ [mm]（面からのずれの許し）
 const DETAIL_TOL_MM: f64 = 0.2;
 
 /// STEP の文字を部品の座標の三角形にする（[`step::shell_poses`] の置き方で、殻ごとに三角形にして置く）。
 /// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
-#[cfg(feature = "mesh")]
+#[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
 pub fn detail_of_step(text: &str) -> lensbench_core::Result<lensbench_export::detail::Detail> {
     use truck_meshalgo::prelude::*;
     use truck_stepio::r#in::Table;
@@ -94,7 +94,7 @@ pub fn detail_of_step(text: &str) -> lensbench_core::Result<lensbench_export::de
     })
 }
 
-#[cfg(feature = "mesh")]
+#[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
 /// 詳しい形の読み手（[`details`]）。ファイルごとに読んで覚える。
 /// 更新時刻が変われば読み直し、覚えるのは最近使った [`MEMO_MAX`] 個まで（STEP の全文を持つので増やし続けない）
 pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
@@ -135,15 +135,15 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 }
 
 /// [`load_detail`] が覚える数の上限
-#[cfg(feature = "mesh")]
+#[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
 pub const MEMO_MAX: usize = 64;
 
-/// 詳しい形の読み手（書き出し・表示の設定 `mech_detail` に渡す。PRJ-21）。feature `mesh` が無ければ None
-/// （詳しい形は描かない）
+/// 詳しい形の読み手（書き出し・表示の設定 `mech_detail` に渡す。PRJ-21）。feature `mesh` が無いか、
+/// `--cfg lensbench_no_mesh` で組んだときは None（詳しい形は描かない）
 pub fn details() -> Option<lensbench_export::detail::Details> {
-    #[cfg(feature = "mesh")]
+    #[cfg(all(feature = "mesh", not(lensbench_no_mesh)))]
     return Some(lensbench_export::detail::Details::new(load_detail));
-    #[cfg(not(feature = "mesh"))]
+    #[cfg(not(all(feature = "mesh", not(lensbench_no_mesh))))]
     None
 }
 
