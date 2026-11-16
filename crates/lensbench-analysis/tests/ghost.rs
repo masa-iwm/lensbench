@@ -46,7 +46,7 @@ fn assert_frames_match(s: &System, tol: f64) {
         let f1 = g.sys.frames();
         assert_eq!(g.origin[g.at.0], Some(a));
         assert_eq!(g.origin[g.at.1], Some(b));
-        assert!(g.sys.surfaces[g.at.0].mirror && g.sys.surfaces[g.at.1].mirror);
+        assert!(g.sys.surfaces[g.at.0].is_mirror() && g.sys.surfaces[g.at.1].is_mirror());
         assert_eq!(g.sys.surfaces.iter().filter(|d| d.stop).count(), 1);
         for (k, o) in g.origin.iter().enumerate() {
             let Some(m) = *o else { continue };

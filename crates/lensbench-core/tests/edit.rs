@@ -135,7 +135,7 @@ fn insert_and_delete_dummy() {
         let r0 = rays(&s);
         // 後ろが空気の面の後に入れる
         let j = (1..s.image())
-            .find(|&j| s.n(j).iter().all(|&x| x == 1.0) && !s.surfaces[j].mirror)
+            .find(|&j| s.n(j).iter().all(|&x| x == 1.0) && !s.surfaces[j].is_mirror())
             .unwrap();
         let mut t = s.clone();
         t.insert_surface(j + 1, surf(0.0)).unwrap();
@@ -193,7 +193,7 @@ fn build_singlet() {
     assert!((s.n(2)[1] - 1.5168).abs() < 1e-3, "{:?}", s.n(2));
     // 鏡にすると後ろの媒質は前の媒質（空気）
     s.set_material(3, "MIRROR").unwrap();
-    assert!(s.surfaces[3].mirror);
+    assert!(s.surfaces[3].is_mirror());
     assert_eq!(s.n(3), s.n(2));
     s.set_material(3, "").unwrap();
     assert_eq!(s.n(3), vec![1.0; 3]);

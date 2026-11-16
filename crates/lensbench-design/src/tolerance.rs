@@ -145,7 +145,7 @@ fn lens_geometry(s: &System) -> HashMap<String, LensGeom> {
             .surfaces
             .iter()
             .take(e.surfaces.len().saturating_sub(1))
-            .filter(|d| !d.mat.is_empty() && d.mat != "-" && !d.mirror)
+            .filter(|d| d.mat.is_medium() && !d.mat.is_air())
             .count()
             .max(1);
         let g = LensGeom {

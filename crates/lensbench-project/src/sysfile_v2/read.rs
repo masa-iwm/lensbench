@@ -3,7 +3,7 @@
 
 use super::*;
 use lensbench_core::glass::Glass;
-use lensbench_core::surface::{self as cs, SurfType, Surface};
+use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
 use lensbench_core::system::{self as sy, ApertureKind, FieldCond, FieldType};
 use lensbench_core::System;
 use std::collections::HashMap;
@@ -158,7 +158,7 @@ pub(crate) fn system(
     for j in 0..s.surfaces.len() {
         if let Some(g) = &s.surfaces[j].reflect {
             let n = s
-                .material_index(&g.mat)
+                .material_index(&Material::parse(&g.mat))
                 .map_err(|e| format!("surface {j}: ghost reflection medium: {e}"))?;
             if let Some(g) = &mut s.surfaces[j].reflect {
                 g.n = n;
@@ -329,11 +329,12 @@ fn surface(r: Row) -> Result<Surface, String> {
         Ok(())
     };
     // 働き
+    let mut is_mirror = false;
     match r.action {
         None => {}
-        Some(Action::Reflect) => d.mirror = true,
+        Some(Action::Reflect) => is_mirror = true,
         Some(Action::GhostReflect { medium }) => {
-            d.mirror = true;
+            is_mirror = true;
             d.reflect = Some(cs::Reflect {
                 mat: medium,
                 n: Vec::new(),
@@ -348,7 +349,7 @@ fn surface(r: Row) -> Result<Surface, String> {
                 return Err("a paraxial lens has no shape".into());
             }
             d.typ = SurfType::Paraxial;
-            (d.focal, d.opd_mode, d.mirror) = (f, opd_mode, mirror);
+            (d.focal, d.opd_mode, is_mirror) = (f, opd_mode, mirror);
         }
         Some(Action::Jones {
             matrix,
@@ -360,7 +361,7 @@ fn surface(r: Row) -> Result<Surface, String> {
             }
             d.typ = SurfType::Jones;
             d.jones = matrix;
-            d.mirror = mirror;
+            is_mirror = mirror;
             d.retarder = retarder.map(|r| cs::Retarder {
                 axis_deg: r.axis_deg,
                 tx: r.tx,
@@ -387,7 +388,7 @@ fn surface(r: Row) -> Result<Surface, String> {
             }
             d.typ = SurfType::Binary2;
             d.bin2 = phase.map(Arc::new);
-            d.mirror = mirror;
+            is_mirror = mirror;
         }
         Some(Action::Fresnel { c, k, a, mirror }) => {
             if shaped {
@@ -396,7 +397,7 @@ fn surface(r: Row) -> Result<Surface, String> {
                 );
             }
             d.typ = SurfType::Fresnel;
-            (d.c, d.k, d.asph, d.mirror) = (c, k, a, mirror);
+            (d.c, d.k, d.asph, is_mirror) = (c, k, a, mirror);
         }
         Some(Action::CylinderFresnel { bend, mirror }) => {
             if shaped && !cyl {
@@ -404,7 +405,7 @@ fn surface(r: Row) -> Result<Surface, String> {
             }
             d.typ = SurfType::CylFresnel;
             d.cylf = bend.map(Arc::new);
-            d.mirror = mirror;
+            is_mirror = mirror;
             cyl = false;
         }
         Some(Action::BirefringentIn { mode, axis }) => {
@@ -428,7 +429,7 @@ fn surface(r: Row) -> Result<Surface, String> {
                 return Err("a user-defined surface has no shape".into());
             }
             d.typ = SurfType::User;
-            d.mirror = mirror;
+            is_mirror = mirror;
             if !model.is_empty() {
                 d.user = Some(
                     lensbench_core::usersurf::UserSurf::new(&model, config)
@@ -441,28 +442,30 @@ fn surface(r: Row) -> Result<Surface, String> {
         return Err("a cylinder shape needs the cylinder_fresnel action".into());
     }
     // 媒質
-    if d.mirror {
+    if is_mirror {
         if r.medium.is_some() {
             return Err("a mirror keeps the medium before it (write no medium)".into());
         }
-        d.mat = "MIRROR".into();
+        d.mat = Material::Mirror;
         return Ok(d);
     }
     match r.medium {
         None => {}
-        Some(Medium::Glass(m)) => d.mat = m,
+        Some(Medium::Glass(m)) => {
+            d.mat = if m.trim().eq_ignore_ascii_case("AIR") {
+                Material::Air
+            } else {
+                Material::Glass(m)
+            }
+        }
         Some(Medium::Data(MediumData::Model { nd, vd, dpgf })) => {
             if !(nd.is_finite() && nd > 0.0 && vd.is_finite() && dpgf.is_finite()) {
                 return Err(format!("model glass nd {nd}, vd {vd}, dpgf {dpgf}"));
             }
             d.mat = if vd == 0.0 {
-                // 分散のない媒質: 名前は丸め、値は nd のまま
-                d.index = Some(nd);
-                format!("{nd:.2},{vd:.1}")
-            } else if dpgf == 0.0 {
-                format!("{nd},{vd}")
+                Material::Index(nd)
             } else {
-                format!("{nd},{vd},{dpgf}")
+                Material::Model { nd, vd, dpgf }
             };
         }
         Some(Medium::Data(MediumData::Grin(g))) => {
@@ -476,7 +479,7 @@ fn surface(r: Row) -> Result<Surface, String> {
             };
             d.typ = grin.surf_type();
             d.grin = Some(Arc::new(grin));
-            d.mat = g.name;
+            d.mat = Material::Glass(g.name);
         }
     }
     Ok(d)

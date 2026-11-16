@@ -307,7 +307,7 @@ fn double_pass_lens_errors_on_both_passes() {
     // 往きの面と戻りの同じ面の組（往き j ↔ 戻り j'）を名前から作る
     let mut pairs = Vec::new(); // (往きの面, 戻りの面)
     let n = s.image();
-    let mirror = (1..n).find(|&j| s.surfaces[j].mirror).unwrap();
+    let mirror = (1..n).find(|&j| s.surfaces[j].is_mirror()).unwrap();
     for j in 1..mirror {
         pairs.push((j, 2 * mirror - j));
     }

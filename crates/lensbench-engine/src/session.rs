@@ -1430,7 +1430,7 @@ fn config_diff(spec: &LoadSpec) -> Result<Value, RpcErr> {
         };
         type Get = fn(&lensbench_core::surface::Surface) -> String;
         let checks: [(&str, Get); 4] = [
-            ("glass", |d| d.mat.clone()),
+            ("glass", |d| d.mat.name()),
             ("ignore", |d| d.ignore.to_string()),
             ("semi-diameter", |d| format!("{:?}", d.semi)),
             ("stop", |d| d.stop.to_string()),

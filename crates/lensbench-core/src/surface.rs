@@ -8,6 +8,8 @@ use crate::freeform::{GridSag, ZernSag};
 use crate::grin::Grin;
 use std::sync::Arc;
 
+pub use crate::material::Material;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -161,10 +163,9 @@ pub struct Surface {
     pub ignore: bool,
     /// 次の面までの厚さ [mm]（物体面は無限遠なら inf）
     pub t: f64,
-    pub mirror: bool,
     pub comment: String,
-    /// 材料名（空なら空気、座標ブレークは "-"）
-    pub mat: String,
+    /// 面の後ろの媒質（鏡・座標ブレークの媒質なしも）
+    pub mat: Material,
     pub coat: String,
     pub stop: bool,
     /// 半直径 [mm]。`semi_auto` なら光線から求めた値（[`crate::System::update_semi`]）
@@ -200,18 +201,11 @@ pub struct Surface {
     pub before: Option<Tilt>,
     pub after: After,
     pub ap: Aperture,
-    /// 屈折率だけで決めた媒質の値（どの波長でも同じ。プロジェクトの屈折率だけのガラス・名前から作れない材料）。
-    /// あれば材料の名前 `mat` は表示用で、屈折率はこの値。屈折率は系が文書から作る（[`crate::System::n`]）
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
-    pub index: Option<f64>,
     /// 媒質の屈折率のずれ（全波長に足す）。[`crate::param`] で変える
     pub dn: f64,
     /// 媒質の分散の相対変化: n = n0(λ) + dn + disp·(n0(λ) − n0(主波長))
     pub disp: f64,
-    /// 屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。`mirror` と一緒に立て、光線は鏡として曲げ、
+    /// 屈折面での反射（ゴーストの経路、lensbench-analysis の ghost）。材料を鏡にして立て、光線は鏡として曲げ、
     /// 偏光の係数は入射側の媒質と反対側の媒質 [`Reflect::mat`] の境界（膜込み）の反射にする
     pub reflect: Option<Reflect>,
     /// Jones 面（[`SurfType::Jones`]）を波長ごとに作る偏光子・波長板。あれば偏光の追跡は `jones` でなく
@@ -454,9 +448,8 @@ impl Default for Surface {
             typ: SurfType::Standard,
             ignore: false,
             t: 0.0,
-            mirror: false,
             comment: String::new(),
-            mat: String::new(),
+            mat: Material::Air,
             coat: String::new(),
             stop: false,
             semi: 0.0,
@@ -479,7 +472,6 @@ impl Default for Surface {
             before: None,
             after: After::None,
             ap: Aperture::None,
-            index: None,
             dn: 0.0,
             disp: 0.0,
             reflect: None,
@@ -491,6 +483,11 @@ impl Default for Surface {
 }
 
 impl Surface {
+    /// 鏡（材料が [`Material::Mirror`]）
+    pub fn is_mirror(&self) -> bool {
+        self.mat.is_mirror()
+    }
+
     pub fn has_asph(&self) -> bool {
         self.asph.iter().any(|&a| a != 0.0)
     }

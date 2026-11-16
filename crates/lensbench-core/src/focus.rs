@@ -77,7 +77,7 @@ impl FocusBase {
             && im.typ == SurfType::Standard
             && im.c == 0.0
             && !im.ignore
-            && !im.mirror
+            && !im.is_mirror()
             && matches!(im.ap, Aperture::None)
             && s.frames().surf[s.image()].is_some();
         ok.then(|| {

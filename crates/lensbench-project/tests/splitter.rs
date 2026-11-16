@@ -419,9 +419,9 @@ fn a_state_selects_the_path() {
     let p = Project::from_json(&txt).unwrap();
     let r = p.with_state("refl").unwrap();
     let (s, _) = expand_path(&r, &env(), None).unwrap();
-    assert!(s.surfaces.iter().any(|d| d.mirror));
+    assert!(s.surfaces.iter().any(|d| d.is_mirror()));
     let (s, _) = expand_path(&p, &env(), None).unwrap();
-    assert!(!s.surfaces.iter().any(|d| d.mirror));
+    assert!(!s.surfaces.iter().any(|d| d.is_mirror()));
 }
 
 /// くさびの平板: 垂直に置いた板の裏面を α 傾けると、主光線は asin(n sin α) − α 曲がる

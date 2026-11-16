@@ -175,7 +175,7 @@ pub fn unfold_maps(s: &System) -> Vec<(Unfold, Unfold)> {
     let mut out = Vec::with_capacity(s.surfaces.len());
     for (j, d) in s.surfaces.iter().enumerate() {
         let before = t;
-        if j > 0 && d.mirror && !d.ignore && !d.is_coord_break() {
+        if j > 0 && d.is_mirror() && !d.ignore && !d.is_coord_break() {
             if let Some(f) = fr.surf[j] {
                 t = t.then_mirror(f.o, col(&f.r, 2));
             }
@@ -897,7 +897,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
     let mut nm = 0;
     for (i, &j) in active.iter().enumerate() {
         let d = &s.surfaces[j];
-        if !d.mirror || !air[j] || j == img {
+        if !d.is_mirror() || !air[j] || j == img {
             continue;
         }
         let semi = semi_of(j);
@@ -1035,7 +1035,7 @@ fn fill_split_halves(s: &System, solids: &mut [Solid]) {
         if prev.back.surf != j
             || prev.kind != SolidKind::Glass
             || cur.kind != SolidKind::Glass
-            || !s.surfaces[j].mirror
+            || !s.surfaces[j].is_mirror()
             || cur.front.c != 0.0
         {
             continue;
@@ -1173,8 +1173,8 @@ fn medium_name(s: &System, j: usize) -> String {
     let mut k = j;
     loop {
         let d = &s.surfaces[k];
-        if k == 0 || !(d.mirror || d.is_coord_break() || d.ignore) {
-            return d.mat.clone();
+        if k == 0 || !(d.is_mirror() || d.is_coord_break() || d.ignore) {
+            return d.mat.name();
         }
         k -= 1;
     }

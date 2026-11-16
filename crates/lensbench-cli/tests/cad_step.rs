@@ -589,7 +589,7 @@ fn coating_models_come_from_the_store_when_missing() {
     let mut s =
         lensbench_core::zmx::load_with(&root().join("tests/refs/A0/system.zmx"), &opt).unwrap();
     let j = (1..s.surfaces.len())
-        .find(|&j| !s.surfaces[j].mat.is_empty())
+        .find(|&j| !s.surfaces[j].mat.is_air())
         .unwrap();
     s.edit_raw(|rx| {
         rx.surfaces[j].coat = "zec_r".into();

@@ -304,7 +304,7 @@ fn catalog_item_frame_is_placed_on_the_glass() {
     assert_eq!(m.offset, [0.0, 0.0, -0.4]);
     assert_eq!(m.holds.len(), 2);
     assert_eq!(m.surface, m.holds[0]);
-    assert!(!s.surfaces[m.surface].mat.is_empty(), "ガラスの前面");
+    assert!(!s.surfaces[m.surface].mat.is_air(), "ガラスの前面");
     let fit = lensbench_core::mech::fit_check(&s, &s.mechanics).unwrap();
     assert!(fit.is_empty(), "{fit:?}");
     let (px, py) = pupil(41);

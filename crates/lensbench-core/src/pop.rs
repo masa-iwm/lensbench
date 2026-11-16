@@ -1194,7 +1194,7 @@ pub fn distance_to(s: &System, j: usize, to: usize, dir: f64) -> Result<f64> {
         if q > j && !d.ignore {
             let plain = d.typ == crate::surface::SurfType::Standard
                 && d.c == 0.0
-                && !d.mirror
+                && !d.is_mirror()
                 && d.before.is_none()
                 && d.mat == s.surfaces[j].mat;
             if !plain {

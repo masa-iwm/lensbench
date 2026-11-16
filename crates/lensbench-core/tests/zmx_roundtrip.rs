@@ -61,7 +61,7 @@ fn refs_keep_values_and_states() {
             assert_eq!(a.ignore, b.ignore, "{at}: 無視");
             assert_eq!(a.stop, b.stop, "{at}");
             assert_eq!(a.coat, b.coat, "{at}");
-            assert_eq!(a.mirror, b.mirror, "{at}");
+            assert_eq!(a.is_mirror(), b.is_mirror(), "{at}");
             assert_eq!(a.c, b.c, "{at}");
             assert_eq!(a.k, b.k, "{at}");
             assert!(

@@ -122,7 +122,7 @@ struct Step {
 
 /// 面の後ろの屈折率が前の値を引き継ぐか（座標ブレーク、鏡。理想レンズ・利用者定義の面の鏡は表の値）
 pub(crate) fn takes_prev(d: &Surface) -> bool {
-    d.is_coord_break() || d.mirror && !d.action().is_ideal()
+    d.is_coord_break() || d.is_mirror() && !d.action().is_ideal()
 }
 
 /// 面 1..=last の追跡の準備（波長 w）。光線によらない量を先に求めておく
@@ -228,7 +228,7 @@ impl<'a> Plan<'a> {
                 (false, Some(q)) => Move::Rel(q),
                 _ => Move::First,
             };
-            let grin_eval = d.grin.is_some() && !d.mirror;
+            let grin_eval = d.grin.is_some() && !d.is_mirror();
             // GRIN の媒質の中の面は前の屈折率が光線ごと（交点の値）
             let n_var_before = nprev_var || grin.is_some();
             let n_tab = sys.n(j)[w];

@@ -526,7 +526,7 @@ pub(crate) fn space_signs(sys: &System) -> Vec<f64> {
     let mut s = 1.0;
     for d in &sys.surfaces {
         out.push(s);
-        if d.mirror && !d.ignore && !d.is_coord_break() {
+        if d.is_mirror() && !d.ignore && !d.is_coord_break() {
             s = -s;
         }
     }

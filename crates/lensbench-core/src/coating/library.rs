@@ -441,18 +441,16 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
         if d.ignore || d.is_coord_break() {
             continue;
         }
-        let after = if d.mirror {
+        let after = if d.is_mirror() {
             prev.clone()
-        } else if d.mat.is_empty() {
-            "AIR".to_string()
         } else {
-            d.mat.clone()
+            d.mat.label()
         };
         // 名前の違う媒質は、ある波長で屈折率が同じでも境界にする（他の波長でフレネルが抜けないように）。
         // 複屈折材の板の入口・出口も境界にする（同じ材料の常光どうしでも、異常光の成分に Fresnel がある。公開 #52）
         if k > 0
             && (!d.coat.is_empty()
-                || d.mirror
+                || d.is_mirror()
                 || after != prev
                 || (sys.n(k)[0] - nprev).abs() > 1e-12
                 || d.bire.is_some())
@@ -460,14 +458,14 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
             let c = if d.coat.is_empty() { "-" } else { &d.coat };
             keys[k] = Some(match &d.reflect {
                 // 屈折面での反射（ゴースト）: `膜|入射側|反対側|R`
-                Some(r) if d.mirror => format!("{c}|{prev}|{}|R", r.mat),
+                Some(r) if d.is_mirror() => format!("{c}|{prev}|{}|R", r.mat),
                 _ => {
-                    let a = if d.mirror { "MIRROR" } else { &after };
+                    let a = if d.is_mirror() { "MIRROR" } else { &after };
                     format!("{c}|{prev}|{a}")
                 }
             });
         }
-        if !d.mirror {
+        if !d.is_mirror() {
             prev = after;
         }
         nprev = sys.n(k)[0];

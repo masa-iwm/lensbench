@@ -164,7 +164,7 @@ fn system_summary(
             let q = m
                 .surfaces
                 .iter()
-                .find(|q| q.mirror)
+                .find(|q| q.is_mirror())
                 .ok_or("no mirror surface")?;
             let r = if q.c == 0.0 { 0.0 } else { 1.0 / q.c };
             return Ok(json!({
@@ -197,8 +197,8 @@ fn system_summary(
     let semi = e.surfaces.iter().map(|q| q.semi).fold(0.0, f64::max);
     let mut mats: Vec<String> = Vec::new();
     for m in e.materials() {
-        if !mats.iter().any(|x| x == m) {
-            mats.push(m.to_string());
+        if !mats.contains(&m) {
+            mats.push(m);
         }
     }
     Ok(json!({
@@ -210,7 +210,7 @@ fn system_summary(
         "pieces": lenses.iter().map(|l| l.surfaces.len().saturating_sub(1)).sum::<usize>(),
         "surfaces": e.surfaces.len(),
         "glasses": mats,
-        "mirror": e.surfaces.iter().any(|q| q.mirror),
+        "mirror": e.surfaces.iter().any(|q| q.is_mirror()),
         "kind": "lens",
         // 最初の玉の前・後ろの面の曲率 [1/mm]（GUI の断面で無限共役の側を見る）
         "curv": [

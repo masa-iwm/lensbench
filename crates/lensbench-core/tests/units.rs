@@ -535,8 +535,8 @@ fn with_probe(s: &System) -> (System, usize) {
     .unwrap();
     // 後ろの媒質は前の面の後ろの媒質のまま
     let q = &s.surfaces[ima - 1];
-    if !(q.mirror || q.is_coord_break()) {
-        (probe.mat, probe.index, probe.dn, probe.disp) = (q.mat.clone(), q.index, q.dn, q.disp);
+    if !(q.is_mirror() || q.is_coord_break()) {
+        (probe.mat, probe.dn, probe.disp) = (q.mat.clone(), q.dn, q.disp);
     }
     s.edit_raw(|p| {
         p.surfaces.insert(ima, probe);

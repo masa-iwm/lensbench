@@ -108,8 +108,8 @@ impl Surface {
             SurfType::CylFresnel => Action::Fresnel(FresnelBend::Cyl(self.cylf.as_deref())),
             SurfType::CoordBrk => Action::Refract,
             _ => match &self.bire {
-                Some(b) if !self.mirror => Action::Birefringent(b),
-                _ if self.mirror => Action::Reflect {
+                Some(b) if !self.is_mirror() => Action::Birefringent(b),
+                _ if self.is_mirror() => Action::Reflect {
                     ghost: self.reflect.as_ref(),
                 },
                 _ => Action::Refract,

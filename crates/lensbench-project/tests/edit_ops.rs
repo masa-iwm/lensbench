@@ -147,7 +147,7 @@ fn surface_data_roundtrip() {
     assert_eq!(d2.typ, lensbench_core::surface::SurfType::EvenAsph);
     assert_eq!((d2.k, d2.semi), (-0.5, 9.5));
     assert_eq!(d2.asph, vec![0.0, 1e-6]);
-    assert_eq!(d2.mat, mat);
+    assert_eq!(d2.mat, mat.as_str());
     assert!(!s.n(2).is_empty());
     let v = edit_ops::surface_data(&s, 2).unwrap();
     assert_eq!(v["solves"][0]["kind"], "marginal_height");

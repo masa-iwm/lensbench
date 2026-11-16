@@ -36,7 +36,7 @@ impl System {
                                 wl,
                                 self.index_before(j, w),
                                 match &d.reflect {
-                                    Some(r) if d.mirror => r.n[w],
+                                    Some(r) if d.is_mirror() => r.n[w],
                                     _ => self.n(j)[w],
                                 },
                             )
@@ -60,7 +60,7 @@ impl System {
                             Error::Invalid(format!(
                                 "{}: no index for the extraordinary material {}",
                                 self.surf_label(j),
-                                Bire::e_name(&d.mat)
+                                Bire::e_name(&d.mat.name())
                             ))
                         })?;
                         Some(CryKind::In {
@@ -80,7 +80,7 @@ impl System {
         // 境界は 1 つとして出口の面で係数を 1 回かける
         for j in 1..self.surfaces.len() {
             let d = &self.surfaces[j];
-            if !matches!(out[j].cry, Some(CryKind::Out)) || d.mirror || d.t != 0.0 {
+            if !matches!(out[j].cry, Some(CryKind::Out)) || d.is_mirror() || d.t != 0.0 {
                 continue;
             }
             if !matches!(d.after, After::None) {
@@ -99,7 +99,7 @@ impl System {
                 && d.grid.is_none()
                 && e.zern.is_none()
                 && e.grid.is_none();
-            if e.mirror || !e.coat.is_empty() || e.before.is_some() || !same_shape {
+            if e.is_mirror() || !e.coat.is_empty() || e.before.is_some() || !same_shape {
                 continue;
             }
             if let Some(CryKind::In { axis, no, ne, .. }) = out[k].cry {

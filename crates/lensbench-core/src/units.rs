@@ -387,7 +387,7 @@ impl System {
         for s in &self.units[u].spans {
             for j in s[0]..=s[1] {
                 let d = &self.surfaces[j];
-                if !air[j] && !d.mirror && !d.is_coord_break() && !d.ignore {
+                if !air[j] && !d.is_mirror() && !d.is_coord_break() && !d.ignore {
                     v.push(j);
                 }
             }

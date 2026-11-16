@@ -771,7 +771,7 @@ impl System {
             Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz if j == 0 => {
                 notimpl!("tilt or decenter of the object surface");
             }
-            Kind::Dn | Kind::Disp if d.mirror || d.is_coord_break() => {
+            Kind::Dn | Kind::Disp if d.is_mirror() || d.is_coord_break() => {
                 let kind = p.kind.name();
                 invalid!("surface {j} is a mirror or a coordinate break (the medium is surface {kind} before it)");
             }
@@ -1190,17 +1190,12 @@ impl System {
                 match q.what {
                     PickKind::Dn => {
                         let a = &self.surfaces[q.src];
-                        let (mat, mirror, index) = (a.mat.clone(), a.mirror, a.index);
+                        let mat = a.mat.clone();
                         let d = &mut self.rx_mut().surfaces[q.dst];
-                        if d.is_coord_break()
-                            || (mirror && q.dst == 0)
-                            || (d.mat == mat && d.mirror == mirror && d.index == index)
-                        {
+                        if d.is_coord_break() || (mat.is_mirror() && q.dst == 0) || d.mat == mat {
                             continue;
                         }
                         d.mat = mat;
-                        d.mirror = mirror;
-                        d.index = index;
                         changed = true;
                     }
                     PickKind::Coating => {
@@ -1552,7 +1547,7 @@ impl System {
             let tilted = (d.is_coord_break() && d.cb.iter().any(|&v| v != 0.0))
                 || d.before.is_some()
                 || matches!(d.after, After::Tilt(_));
-            if d.mirror || tilted {
+            if d.is_mirror() || tilted {
                 notimpl!("solve distance across a mirror or a tilt or decenter (surface {j})");
             }
             z += d.t;
@@ -1700,7 +1695,11 @@ impl System {
     fn paraxial_curv(&self, q: &ThickSolve) -> Result<f64> {
         let k = q.surf;
         let d = &self.surfaces[k];
-        if d.mirror || self.surfaces[1..k].iter().any(|x| x.mirror && !x.ignore) {
+        if d.is_mirror()
+            || self.surfaces[1..k]
+                .iter()
+                .any(|x| x.is_mirror() && !x.ignore)
+        {
             notimpl!("surface {k}: ray curvature solve on a mirror or a surface after a mirror");
         }
         if !matches!(
@@ -1756,7 +1755,7 @@ impl System {
         }
         for j in [a, b] {
             let d = &self.surfaces[j];
-            if d.mirror || !matches!(d.typ, SurfType::Standard | SurfType::EvenAsph) {
+            if d.is_mirror() || !matches!(d.typ, SurfType::Standard | SurfType::EvenAsph) {
                 notimpl!("lens power solve on a lens with surface {j} ({:?})", d.typ);
             }
         }
@@ -1835,7 +1834,7 @@ impl System {
         // 鏡のあとは展開した向き（近軸の追跡と同じく、厚さは sgn·t で進む）
         let nmir = self.surfaces[1..=k]
             .iter()
-            .filter(|d| d.mirror && !d.ignore)
+            .filter(|d| d.is_mirror() && !d.ignore)
             .count();
         let du = f * if nmir % 2 == 1 { -u } else { u };
         Ok((f * y + du * t - h, du))
@@ -1844,7 +1843,7 @@ impl System {
     /// 実光線（軸上、瞳 (0, 帯)）の次の面での高さの厚さのソルブ
     fn solve_real_height(&mut self, k: usize, h: f64, zone: f64) -> Result<bool> {
         let (d, n) = (&self.surfaces[k], &self.surfaces[k + 1]);
-        if d.mirror
+        if d.is_mirror()
             || d.is_coord_break()
             || d.after != After::None
             || n.before.is_some()
@@ -1905,7 +1904,7 @@ impl System {
     /// 満たす値。ほかのソルブを止めたままでは解がないことがある: 焦点ソルブの前の面の OPD のソルブ）。
     /// OPD のソルブどうしは外の繰り返し（[`System::solve_thickness`]）で揃える
     fn solve_opd(&mut self, k: usize, opd: f64, zone: f64) -> Result<bool> {
-        if self.surfaces[k].mirror || self.surfaces[k].is_coord_break() {
+        if self.surfaces[k].is_mirror() || self.surfaces[k].is_coord_break() {
             notimpl!("surface {k}: OPD thickness solve on a mirror or coordinate break");
         }
         if k + 1 >= self.surfaces.len() {

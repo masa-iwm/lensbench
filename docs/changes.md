@@ -185,6 +185,12 @@
   `Surface::index`（どの波長でも同じ値）に書く（前は `n` に値を置いた）。`Element` に `n`（`split` が埋める）を足した。
   `set_surface_data` の項目は `n`・`n_base` が無くなり `index` を書ける。版 1 の系ファイルは、名前から屈折率が決まらない分散のない
   媒質だけ、書いてあった `n` を `index` にして読む。結果は前とビット単位で同じ。
+- 面の材料を型にした（IOO-09）: `Surface::mat` は文字列から `lensbench_core::surface::Material`（`Air`・`Glass(名前)`・
+  `Model { nd, vd, dpgf }`・`Index(n)`・`Mirror`・`Inherit`（座標ブレーク））に。`Surface::mirror` と `Surface::index` を消した
+  （鏡は `d.is_mirror()`、屈折率だけの媒質は `Material::Index`）。名前から作るのは `Material::parse`、名前に戻すのは `name()`
+  （serde・系ファイル版 1 の書き方は前と同じ文字列。分散のないモデルガラスは丸めない "nd,0"）、`d.mat == "N-BK7"` のように名前と
+  比べられる。`Prescription::material_index`・`material_index_at` は `&Material` を受ける。`Element::materials` は名前の `Vec<String>`。
+  玉の展開（project）は分散のあるモデルガラスの玉も受ける（前は「カタログに無い」の誤り）。結果は前とビット単位で同じ。
 - `edit_ops::apply` は `&[EditOp]` を受ける（JSON は `edit_ops::parse` で読むか `apply_json`）。`Project::surface_ops` は
   `Vec<Value>` から `Vec<SurfaceOp>` に（型は `lensbench_project::edit_spec`）。
 - 差し替え探索 `SwapSearch::eval`・`run`・`run_to` の返り値は `serde_json::Value` から `SwapResult` に（`to_value()` で前と同じ JSON）。

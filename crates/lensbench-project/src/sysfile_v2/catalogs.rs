@@ -35,10 +35,10 @@ fn used(s: &System) -> BTreeMap<String, &Glass> {
         if d.is_coord_break() {
             continue;
         }
-        if !d.mirror && d.grin.is_none() {
-            add(&d.mat);
+        if !d.is_mirror() && d.grin.is_none() {
+            add(&d.mat.name());
             if matches!(d.bire, Some(Bire::In { .. })) {
-                add(&Bire::e_name(&d.mat));
+                add(&Bire::e_name(&d.mat.name()));
             }
         }
         if let Some(r) = &d.retarder {

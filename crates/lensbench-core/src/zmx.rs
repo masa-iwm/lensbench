@@ -1111,23 +1111,20 @@ pub fn build(
         }
         let ign = k > 0 && fop("IGNR", ki, if s.ignore { 1.0 } else { 0.0 }) != 0.0;
         let p = |i: i64| parm[k].get(&i).copied().unwrap_or(0.0);
+        use crate::material::Material as M;
         let mut d = Surface {
             typ,
             ignore: ign,
             t: th[k],
-            mirror: mat.eq_ignore_ascii_case("MIRROR"),
             comment: s.comment.clone(),
-            mat: if typ == SurfType::CoordBrk {
-                "-".into()
-            } else {
-                mat.clone()
+            // モデルガラスは値で持つ（分散のないものも丸めない）
+            mat: match model {
+                _ if typ == SurfType::CoordBrk => M::Inherit,
+                Some((nd, 0.0, _)) => M::Index(nd),
+                Some((nd, vd, dpgf)) => M::Model { nd, vd, dpgf },
+                None => M::parse(&mat),
             },
             coat: s.coat.clone().unwrap_or_default(),
-            // 分散のないモデルガラスは名前を丸めるので、値はここに丸めずに持つ
-            index: match model {
-                Some((nd, vd, _)) if vd == 0.0 && typ != SurfType::CoordBrk => Some(nd),
-                _ => None,
-            },
             stop: k == stop,
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
@@ -1285,7 +1282,7 @@ pub fn build(
         }
         after_picks.push(tilts(s, &mut d, k)?);
         aperture(s, &mut d, &ops);
-        let n = if d.mirror || typ == SurfType::CoordBrk {
+        let n = if d.is_mirror() || typ == SurfType::CoordBrk {
             nprev.clone()
         } else if let Some(g) = &d.grin {
             // GRIN: 頂点の屈折率

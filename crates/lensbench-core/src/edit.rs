@@ -14,7 +14,7 @@
 use crate::error::Result;
 use crate::glass::{self, Glass};
 use crate::param::{Kind, Param, PickKind, Pickup, ThickSolve};
-use crate::surface::{After, Aperture, SurfType, Surface};
+use crate::surface::{After, Aperture, Material, SurfType, Surface};
 use crate::system::Prescription;
 use crate::system::{FieldCond, FieldType, System};
 use crate::{invalid, notimpl};
@@ -183,9 +183,9 @@ pub enum SurfValue {
     Aperture(Aperture),
 }
 
-/// 材料なし（座標ブレークの材料。読込・展開では "-"）
-fn no_material(m: &str) -> bool {
-    matches!(m.trim(), "" | "-")
+/// 材料なし（座標ブレークの材料。読込・展開では [`Material::Inherit`]）
+fn no_material(m: &Material) -> bool {
+    matches!(m, Material::Air | Material::Inherit)
 }
 
 /// 面の値の名前（[`System::set_surface_fields`]・[`System::surface_fields`]）
@@ -298,12 +298,18 @@ impl System {
         }
         for (j, d) in self.surfaces.iter().enumerate() {
             type_data_ok(d)?;
-            if let Some(n) = d.index {
-                if !(n.is_finite() && n > 0.0) {
-                    invalid!("surface {j} index {n}");
+            match d.mat {
+                Material::Index(n) if !(n.is_finite() && n > 0.0) => {
+                    invalid!("surface {j} index {n}")
                 }
+                Material::Model { nd, vd, dpgf }
+                    if !(nd.is_finite() && nd > 0.0 && vd.is_finite() && dpgf.is_finite()) =>
+                {
+                    invalid!("surface {j}: model glass nd {nd}, vd {vd}, dpgf {dpgf}")
+                }
+                _ => {}
             }
-            if d.typ == SurfType::CoordBrk && (d.mirror || !no_material(&d.mat)) {
+            if d.typ == SurfType::CoordBrk && !no_material(&d.mat) {
                 invalid!("surface {j}: material {} on a coordinate break", d.mat);
             }
             if d.typ == SurfType::Jones && d.c != 0.0 {
@@ -362,7 +368,7 @@ impl System {
         }
         self.edit_sys(|s| {
             let mut d = d;
-            if d.mirror {
+            if d.is_mirror() {
                 d.mat = "MIRROR".into();
             }
             s.rx_mut().surfaces.insert(at, d);
@@ -493,7 +499,7 @@ impl System {
                         d.retarder = None;
                     }
                     "dn" | "disp" => {
-                        if d.mirror || d.typ == SurfType::CoordBrk {
+                        if d.is_mirror() || d.typ == SurfType::CoordBrk {
                             invalid!("surface {j} is a mirror or a coordinate break ({name})");
                         }
                         let x = v.num(name)?;
@@ -527,8 +533,8 @@ impl System {
             ("k", Num(d.k)),
             ("asph", Nums(d.asph.clone())),
             ("cx", Num(d.cx)),
-            ("material", Text(d.mat.clone())),
-            ("mirror", Bool(d.mirror)),
+            ("material", Text(d.mat.name())),
+            ("mirror", Bool(d.is_mirror())),
             ("coating", Text(d.coat.clone())),
             ("semi", Num(d.semi)),
             ("semi_auto", Bool(d.semi_auto)),
@@ -603,14 +609,15 @@ impl System {
                 d.k = 0.0;
                 d.asph.clear();
                 d.cx = 0.0;
-                d.mat.clear();
-                d.mirror = false;
+                d.mat = Material::Air;
                 d.before = None;
                 d.after = After::None;
                 d.dn = 0.0;
                 d.disp = 0.0;
-                d.index = None;
             } else if old == SurfType::CoordBrk {
+                if d.mat == Material::Inherit {
+                    d.mat = Material::Air;
+                }
                 d.cb = [0.0; 5];
                 d.cb_order = 0;
             }
@@ -637,22 +644,17 @@ impl System {
         if j > self.image() {
             invalid!("surface {j}");
         }
-        let mirror = mat.trim().eq_ignore_ascii_case("MIRROR");
+        let m = Material::parse(mat);
+        let mirror = m.is_mirror();
         if j == 0 && mirror {
             invalid!("the object surface can't be a mirror");
         }
         self.edit_sys(|s| {
             let d = &mut s.rx_mut().surfaces[j];
-            if d.typ == SurfType::CoordBrk && !no_material(mat) {
+            if d.typ == SurfType::CoordBrk && !no_material(&m) {
                 invalid!("surface {j}: material {mat} on a coordinate break");
             }
-            d.mirror = mirror;
-            d.mat = if mirror {
-                "MIRROR".into()
-            } else {
-                mat.trim().to_string()
-            };
-            d.index = None;
+            d.mat = m;
             if mirror {
                 d.dn = 0.0;
                 d.disp = 0.0;

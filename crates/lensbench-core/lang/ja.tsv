@@ -286,7 +286,7 @@ surface {j} thickness {}	面 {j} の厚み {}
 surface {j} index {n}	面 {j} の屈折率 {n}
 surface {j} {name} = {v}	面 {j} の {name} = {v}
 global coordinate reference surface {} ({ns} surfaces)	グローバル座標の基準面 {}（面 {ns} 個）
-MIRROR is not a medium	MIRROR は媒質ではありません
+{} is not a medium	{} は媒質ではありません
 no glass {m} (add catalogs: add_glasses, add_glass_catalogs)	硝材 {m} がありません（カタログを追加: add_glasses・add_glass_catalogs）
 surface {k}: the GRIN vertex is out of range	面 {k}: GRIN の頂点が分布の範囲の外
 surface {j}: the GRIN vertex is outside the profile range	面 {j}: GRIN の頂点が分布の範囲の外
@@ -570,7 +570,7 @@ surface {k}: no GRIN profile	面 {k}: GRIN の分布がありません
 surface {k}: the Grid Sag Zernike terms can only be extrapolated	面 {k}: Grid Sag の Zernike の項は外挿しかありません
 surface {k}: terms of r^18 or higher	面 {k}: r^18 以上の項
 surface {k}: no Grid Sag grid	面 {k}: Grid Sag のグリッドがありません
-surface {k}: writing glass {} that is not in the catalogs	面 {k}: カタログにない硝材 {} のエクスポート
+surface {k}: writing glass {m} that is not in the catalogs	面 {k}: カタログにない硝材 {m} のエクスポート
 coating name {k:?}: a name with spaces or non-ASCII characters can't go in a coating file	コーティングの名前 {k:?}: 空白・ASCII 以外の文字のある名前はコーティングファイルに書けません
 no system to write	エクスポートする系がありません
 configuration {}: systems with a multi-configuration table can't be merged	構成 {}: 多重構成の表を持つ系はまとめられません
@@ -1120,6 +1120,7 @@ a cylinder shape needs the cylinder_fresnel action	cylinder の形には働き c
 a user-defined surface has no shape	ユーザー定義の面に形は書けません
 a mirror keeps the medium before it (write no medium)	鏡は前の媒質のままです（medium は書きません）
 model glass nd {nd}, vd {vd}, dpgf {dpgf}	モデルガラス nd {nd}・vd {vd}・dpgf {dpgf}
+surface {j}: model glass nd {nd}, vd {vd}, dpgf {dpgf}	面 {j}: モデルガラス nd {nd}・vd {vd}・dpgf {dpgf}
 a GRIN medium follows a conic surface	屈折率分布の媒質は二次曲面の後に置きます
 a mirror on a birefringent surface can't be written	複屈折材の面の鏡は書けません
 a ghost reflection on this surface type can't be written	この面タイプのゴーストの反射は書けません

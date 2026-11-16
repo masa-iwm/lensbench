@@ -200,7 +200,12 @@ pub struct FitIssue {
 fn element_rims(s: &System, n: usize) -> Vec<(usize, f64, Vec<V3>)> {
     let fr = s.frames();
     let img = s.image();
-    let glass = |m: &str| !m.is_empty() && m != "-";
+    let glass = |m: &crate::surface::Material| {
+        !matches!(
+            m,
+            crate::surface::Material::Air | crate::surface::Material::Inherit
+        )
+    };
     let mut out = Vec::new();
     let mut prev_glass = false;
     for j in 1..img {
@@ -209,7 +214,7 @@ fn element_rims(s: &System, n: usize) -> Vec<(usize, f64, Vec<V3>)> {
             continue;
         }
         let g = glass(&d.mat);
-        let solid = g || prev_glass || d.mirror;
+        let solid = g || prev_glass || d.is_mirror();
         prev_glass = g;
         let Some(f) = fr.surf.get(j).copied().flatten() else {
             continue;

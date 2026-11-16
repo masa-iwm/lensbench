@@ -155,7 +155,7 @@ pub fn cardinal(s: &System, w: usize) -> Cardinal {
     // 鏡の数の偶奇（展開した向き → 物理的な向き）
     let sgn = sf[1..=last]
         .iter()
-        .filter(|d| !d.ignore && d.mirror)
+        .filter(|d| !d.ignore && d.is_mirror())
         .fold(1.0, |a, _| -a);
     let inf = f64::INFINITY;
     if phi == 0.0 || !phi.is_finite() {

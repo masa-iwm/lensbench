@@ -72,11 +72,11 @@ fn same_trace(a: &System, b: &System, tol: f64, what: &str) {
 /// 半直径を固定した玉の面（前か後ろがガラス）で開口のない面を浮動開口にした系（.zmx の読込と同じ）
 fn with_floating(s: &System) -> System {
     use lensbench_core::surface::Aperture;
-    let glass = |m: &str| !m.is_empty() && m != "-" && !m.eq_ignore_ascii_case("AIR");
+    let glass = |m: &lensbench_core::surface::Material| m.is_medium() && !m.is_air();
     let mut t = s.prescription().clone();
     for k in 1..t.surfaces.len().saturating_sub(1) {
-        let lens = (glass(&s.surfaces[k].mat) && !s.surfaces[k].mirror)
-            || (glass(&s.surfaces[k - 1].mat) && !s.surfaces[k - 1].mirror);
+        let lens = (glass(&s.surfaces[k].mat) && !s.surfaces[k].is_mirror())
+            || (glass(&s.surfaces[k - 1].mat) && !s.surfaces[k - 1].is_mirror());
         let d = &mut t.surfaces[k];
         if !d.semi_auto && lens && d.ap == Aperture::None {
             d.ap = Aperture::Floating { semi: d.semi };

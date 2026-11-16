@@ -1,7 +1,7 @@
 //! 系 → 処方（系ファイル v2 の `system`）
 
 use super::*;
-use lensbench_core::surface::{self as cs, SurfType, Surface};
+use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
 use lensbench_core::system::{self as sy, ApertureKind, FieldCond, FieldType};
 use lensbench_core::System;
 
@@ -168,7 +168,7 @@ fn row(s: &System, j: usize) -> Result<Row, String> {
     };
     r.aperture = aperture(d);
     if d.is_coord_break() {
-        if d.mirror {
+        if d.is_mirror() {
             return Err("a coordinate break can't be a mirror".into());
         }
         r.coordinate_break = Some(Tilt {
@@ -179,7 +179,7 @@ fn row(s: &System, j: usize) -> Result<Row, String> {
         return Ok(r);
     }
     let (c, k) = (d.c, d.k);
-    let mirror = d.mirror;
+    let mirror = d.is_mirror();
     // 鏡・ゴーストの反射・複屈折材の板は形だけを持つ面タイプの働き
     let plain_action = || -> Result<Option<Action>, String> {
         Ok(match (&d.bire, mirror, &d.reflect) {
@@ -394,52 +394,29 @@ fn aperture(d: &Surface) -> Option<Aperture> {
     })
 }
 
-/// モデルガラスの名前 "nd,vd[,dpgf]" の (nd, vd, dpgf)（core の media.rs と同じ読み方）
-pub(crate) fn model_glass(mat: &str) -> Option<(f64, f64, f64)> {
-    let v: Vec<f64> = mat
-        .trim()
-        .split(',')
-        .map(|x| x.trim().parse::<f64>())
-        .collect::<Result<_, _>>()
-        .ok()?;
-    ((2..=3).contains(&v.len()) && v.iter().all(|x| x.is_finite()) && v[0] > 0.0)
-        .then(|| (v[0], v[1], v.get(2).copied().unwrap_or(0.0)))
-}
-
 /// 面 j の後の媒質（鏡でない面）
 fn medium(s: &System, j: usize) -> Result<Option<Medium>, String> {
     let d = &s.surfaces[j];
     if let Some(g) = &d.grin {
         return Ok(Some(Medium::Data(MediumData::Grin(Box::new(Grin {
-            name: d.mat.clone(),
+            name: d.mat.name(),
             profile: g.kind.clone(),
             dt: g.dt,
         })))));
     }
-    // 分散のない媒質は名前でなく面の値（モデルガラスの名前は丸めてある）
-    let flat = |nd: f64| {
-        Medium::Data(MediumData::Model {
-            nd,
+    Ok(match &d.mat {
+        Material::Air | Material::Mirror | Material::Inherit => None,
+        Material::Glass(m) => Some(Medium::Glass(m.clone())),
+        Material::Model { nd, vd, dpgf } => Some(Medium::Data(MediumData::Model {
+            nd: *nd,
+            vd: *vd,
+            dpgf: *dpgf,
+        })),
+        // 分散のない媒質
+        Material::Index(nd) => Some(Medium::Data(MediumData::Model {
+            nd: *nd,
             vd: 0.0,
             dpgf: 0.0,
-        })
-    };
-    if let Some(nd) = d.index {
-        return Ok(Some(flat(nd)));
-    }
-    let m = d.mat.trim();
-    if m.is_empty() {
-        return Ok(None);
-    }
-    if let Some((nd, vd, dpgf)) = model_glass(m) {
-        return Ok(Some(if vd == 0.0 {
-            flat(nd)
-        } else {
-            Medium::Data(MediumData::Model { nd, vd, dpgf })
-        }));
-    }
-    if m.eq_ignore_ascii_case("AIR") || s.glasses.contains_key(m) {
-        return Ok(Some(Medium::Glass(d.mat.clone())));
-    }
-    Ok(Some(Medium::Glass(d.mat.clone())))
+        })),
+    })
 }

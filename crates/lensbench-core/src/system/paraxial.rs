@@ -61,7 +61,7 @@ impl System {
                         }
                         _ => 0.0,
                     };
-                    if d.mirror {
+                    if d.is_mirror() {
                         uu += 2.0 * c * yy - sgn * dphi / n;
                         sgn = -sgn;
                     } else {
@@ -78,7 +78,7 @@ impl System {
             }
             u[j] = uu;
             // GRIN の媒質（座標ブレークの後ろも続く）と、その面の局所 z の今の位置
-            gmed = match d.grin.as_deref().filter(|_| !d.mirror) {
+            gmed = match d.grin.as_deref().filter(|_| !d.is_mirror()) {
                 Some(g) => Some((g, 0.0)),
                 None if d.is_coord_break() => gmed,
                 None => None,
@@ -210,7 +210,10 @@ impl System {
         } else {
             f64::INFINITY
         };
-        let nmir = sf[1..img].iter().filter(|d| d.mirror && !d.ignore).count();
+        let nmir = sf[1..img]
+            .iter()
+            .filter(|d| d.is_mirror() && !d.ignore)
+            .count();
         if nmir % 2 == 1 {
             expp = -expp;
         }

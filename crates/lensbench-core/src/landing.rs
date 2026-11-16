@@ -261,7 +261,7 @@ impl System {
             let j = rs.surf;
             n_in[k] = self.index_before(j, w);
             let d = &sf[j];
-            n_out[k] = if d.mirror || d.is_coord_break() {
+            n_out[k] = if d.is_mirror() || d.is_coord_break() {
                 n_in[k]
             } else {
                 self.n(j)[w]
@@ -304,7 +304,7 @@ impl System {
                     .filter_map(|k| {
                         let j = t.rec[k].surf;
                         let a = pp.dn[own_in[k]];
-                        let b = if sf[j].mirror || sf[j].is_coord_break() {
+                        let b = if sf[j].is_mirror() || sf[j].is_coord_break() {
                             a
                         } else {
                             pp.dn[j]
@@ -419,7 +419,7 @@ impl System {
                     let zyy = (by1 - by0) / (2.0 * hh);
                     ([-zx, -zy, 1.0], [zxx, zxy, zyy])
                 };
-                let mode = if d.mirror {
+                let mode = if d.is_mirror() {
                     Mode::Mirror
                 } else if pass {
                     Mode::Pass
@@ -653,7 +653,7 @@ impl System {
         }
         let j = t.last;
         let d = &self.surfaces[j];
-        let nout = if d.mirror || d.is_coord_break() {
+        let nout = if d.is_mirror() || d.is_coord_break() {
             self.index_before(j, w)
         } else {
             self.n(j)[w]
@@ -720,7 +720,7 @@ impl System {
         }
         let owner = self.medium_owner();
         let d = &self.surfaces[j];
-        let mirror_like = d.mirror || d.is_coord_break();
+        let mirror_like = d.is_mirror() || d.is_coord_break();
         let nout = if mirror_like {
             self.index_before(j, w)
         } else {

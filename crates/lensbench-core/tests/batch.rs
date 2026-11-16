@@ -379,7 +379,7 @@ fn pol_matches_scalar() {
     }
     // 最初のガラスに内部透過率（厚さ 10 mm で 0.9）
     let mat = (1..s.surfaces.len())
-        .map(|j| s.surfaces[j].mat.clone())
+        .filter_map(|j| s.surfaces[j].mat.glass().map(str::to_string))
         .find(|m| s.glasses.contains_key(m))
         .unwrap();
     let wls = s.wavelengths.clone();

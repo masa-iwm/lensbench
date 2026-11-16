@@ -23,7 +23,7 @@ fn folded() -> System {
         Some(&look),
     )
     .unwrap();
-    assert!(s.surfaces[4].mirror);
+    assert!(s.surfaces[4].is_mirror());
     assert_eq!((s.surfaces[3].cb_order, s.surfaces[5].cb_order), (0, 1));
     // 鏡を偏心させる（戻りの座標ブレークは逆の順で戻す）
     s.with_params(&[

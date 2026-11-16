@@ -323,7 +323,7 @@ fn catalog_without_hash() {
     let name = s
         .surfaces
         .iter()
-        .map(|d| d.mat.trim().to_string())
+        .map(|d| d.mat.name())
         .find(|m| s.glasses.contains_key(m))
         .unwrap();
     let mut g = (*s.glasses).clone();
@@ -447,7 +447,7 @@ fn edited_system_roundtrip() {
         fingerprint(&t.config(2).unwrap())
     );
     for (j, (a, b)) in s.surfaces.iter().zip(&t.surfaces).enumerate() {
-        assert_eq!((a.dn, a.index, s.n(j)), (b.dn, b.index, t.n(j)));
+        assert_eq!((a.dn, &a.mat, s.n(j)), (b.dn, &b.mat, t.n(j)));
     }
     // 読み直した系も編集できる
     let mut t = t;

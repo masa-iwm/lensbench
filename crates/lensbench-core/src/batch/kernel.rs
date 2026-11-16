@@ -474,7 +474,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             }
             // 平面で屈折率が変わらない面（鏡でない）は方向が変わらないので、法線を求めない
             // （求めても使わない。結果は同じビット）
-            _ if !d.mirror
+            _ if !d.is_mirror()
                 && st.kind.norm == Norm::Flat
                 && st.kind.act != Act::Binary2
                 && !pol_scalar
@@ -531,7 +531,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 let nv: VL<V> = [nvec[0] * inv, nvec[1] * inv, nvec[2] * inv];
                 let cosi = kl[0] * nv[0] + kl[1] * nv[1] + kl[2] * nv[2];
                 let kin = kl;
-                if d.mirror {
+                if d.is_mirror() {
                     kl = {
                         let f = |c: usize| kl[c] - nv[c] * (cosi * 2.0);
                         [f(0), f(1), f(2)]
@@ -588,14 +588,14 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                                 &mut pr.cry[i],
                                 &mut pr.err[i],
                                 (get(&kin, i), get(&kl, i), get(&nv, i), cosi[i]),
-                                d.mirror,
+                                d.is_mirror(),
                                 plan.lam,
                             );
                             e.set_lane(i, &x);
                         }
                     } else if !matches!(pr.surf[j].kind, trace::PolKind::None) {
                         let act = err.eq(0.0);
-                        pol_surface_l(sys, pr, e, j, (&kin, &kl, &nv, cosi), d.mirror, act);
+                        pol_surface_l(sys, pr, e, j, (&kin, &kl, &nv, cosi), d.is_mirror(), act);
                     }
                 }
                 // 働きの見方は使う面でだけ作る（どの面でも通る所なので）
@@ -609,7 +609,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                             let a = [pl[0][i], pl[1][i]];
                             match trace::fresnel_opl(
                                 &bend,
-                                d.mirror,
+                                d.is_mirror(),
                                 get(&kin, i),
                                 nprev[i],
                                 nn[i],

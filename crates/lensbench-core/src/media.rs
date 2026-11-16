@@ -1,14 +1,14 @@
 //! 媒質の屈折率を材料から作る（dn・disp をかける前の値）。
 //!
-//! 材料の名前の読み方は 1 か所（[`Prescription::material_index_at`]）: 空・AIR は 1、系のガラス（温度・気圧・
-//! Adjust Index は系の設定）、モデルガラス "nd,vd[,dpgf]"（vd = 0 は分散なし）。GRIN の面は頂点の屈折率、
+//! 媒質（[`Material`]）の屈折率は 1 か所（[`Prescription::material_index_at`]）: 空気は 1、系のガラス（温度・気圧・
+//! Adjust Index は系の設定）、モデルガラス、屈折率だけの媒質。GRIN の面は頂点の屈折率、
 //! 鏡・座標ブレークは前の媒質を引き継ぐ。屈折率は文書から [`resolve`] で作り、[`crate::System`] が
-//! 持つ（文書には屈折率を置かない。屈折率だけの媒質は面の `index`）。
+//! 持つ（文書には屈折率を置かない）。
 
 use crate::error::{Error, Result};
 use crate::glass;
 use crate::invalid;
-use crate::surface::Bire;
+use crate::surface::{Bire, Material};
 use crate::system::{Prescription, System};
 
 /// 文書から求めた媒質の屈折率（面ごと・波長ごと）。[`crate::System`] が持ち、文書を直すたびに作り直す
@@ -23,7 +23,7 @@ pub(crate) struct Media {
 /// 面 j の後の媒質の、波長 lams [µm] での屈折率（dn・disp をかける前）。鏡・座標ブレークは None（前の媒質）
 fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Vec<f64>>> {
     let d = &p.surfaces[j];
-    if j > 0 && (d.mirror || d.is_coord_break()) {
+    if j > 0 && (d.is_mirror() || d.is_coord_break()) {
         return Ok(None);
     }
     if let Some(g) = d.grin.as_deref() {
@@ -38,9 +38,6 @@ fn medium_index_at(p: &Prescription, j: usize, lams: &[f64]) -> Result<Option<Ve
             })
             .collect::<Result<Vec<f64>>>()
             .map(Some);
-    }
-    if let Some(x) = d.index {
-        return Ok(Some(vec![x; lams.len()]));
     }
     p.material_index_at(&d.mat, lams)
         .map(Some)
@@ -80,51 +77,30 @@ pub(crate) fn resolve(p: &Prescription) -> Result<Media> {
     Ok(m)
 }
 
-/// モデルガラスの名前 "nd,vd[,dpgf]" の (nd, vd, dpgf)
-fn model_glass(mat: &str) -> Option<(f64, f64, f64)> {
-    let v: Vec<f64> = mat
-        .trim()
-        .split(',')
-        .map(|x| x.trim().parse::<f64>())
-        .collect::<std::result::Result<_, _>>()
-        .ok()?;
-    ((2..=3).contains(&v.len()) && v.iter().all(|x| x.is_finite()) && v[0] > 0.0)
-        .then(|| (v[0], v[1], v.get(2).copied().unwrap_or(0.0)))
-}
-
 impl Prescription {
-    /// 材料の屈折率（系の波長ごと、dn・disp をかける前）。空・AIR は 1、"nd,vd[,dpgf]" はモデルガラス、
-    /// ほかは系のガラス（[`System::add_glasses`] で足せる）
-    pub fn material_index(&self, mat: &str) -> Result<Vec<f64>> {
+    /// 媒質の屈折率（系の波長ごと、dn・disp をかける前）。ガラスは系のガラス（[`System::add_glasses`] で足せる）
+    pub fn material_index(&self, mat: &Material) -> Result<Vec<f64>> {
         self.material_index_at(mat, &self.wavelengths)
     }
 
-    /// [`System::material_index`] を波長 lams [µm] で
-    pub fn material_index_at(&self, mat: &str, lams: &[f64]) -> Result<Vec<f64>> {
-        let m = mat.trim();
-        if m.is_empty() || m.eq_ignore_ascii_case("AIR") {
-            return Ok(vec![1.0; lams.len()]);
-        }
-        if m.eq_ignore_ascii_case("MIRROR") {
-            invalid!("MIRROR is not a medium");
-        }
-        if let Some(g) = self.glasses.get(m) {
-            let (t, p, a) = (self.temperature, self.pressure, self.adjust_index);
-            return Ok(lams.iter().map(|&l| g.index(l, t, p, a)).collect());
-        }
-        if let Some((nd, vd, dp)) = model_glass(m) {
-            return Ok(lams
+    /// [`Prescription::material_index`] を波長 lams [µm] で
+    pub fn material_index_at(&self, mat: &Material, lams: &[f64]) -> Result<Vec<f64>> {
+        match mat {
+            Material::Air => Ok(vec![1.0; lams.len()]),
+            Material::Index(n) => Ok(vec![*n; lams.len()]),
+            Material::Model { nd, vd, dpgf } => Ok(lams
                 .iter()
-                .map(|&l| {
-                    if vd == 0.0 {
-                        nd
-                    } else {
-                        glass::model_index(nd, vd, dp, l)
-                    }
-                })
-                .collect());
+                .map(|&l| glass::model_index(*nd, *vd, *dpgf, l))
+                .collect()),
+            Material::Glass(m) => {
+                let Some(g) = self.glasses.get(m) else {
+                    invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)");
+                };
+                let (t, p, a) = (self.temperature, self.pressure, self.adjust_index);
+                Ok(lams.iter().map(|&l| g.index(l, t, p, a)).collect())
+            }
+            Material::Mirror | Material::Inherit => invalid!("{} is not a medium", mat.name()),
         }
-        invalid!("no glass {m} (add catalogs: add_glasses, add_glass_catalogs)")
     }
 }
 
@@ -140,12 +116,14 @@ impl System {
             if ne.len() == nw {
                 continue;
             }
-            let en = Bire::e_name(&d.mat);
-            let v = self.material_index(&en).map_err(|e| {
-                Error::Invalid(format!(
+            let en = Bire::e_name(&d.mat.name());
+            let v = self
+                .material_index(&Material::Glass(en.clone()))
+                .map_err(|e| {
+                    Error::Invalid(format!(
                     "surface {j}: extraordinary material {en} of the birefringent material: {e}"
                 ))
-            })?;
+                })?;
             if let Some(Bire::In { ne, .. }) = &mut self.rx_mut().surfaces[j].bire {
                 *ne = v;
             }

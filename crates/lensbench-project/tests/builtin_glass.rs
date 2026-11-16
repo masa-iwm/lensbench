@@ -50,8 +50,8 @@ fn builtin_catalog_roundtrip() {
     );
     assert!(!warn.iter().any(|w| w.contains("differs")), "{warn:?}");
     for d in &s.surfaces {
-        if let Some(g) = s.glasses.get(d.mat.trim()) {
-            assert_eq!(t.glasses.get(d.mat.trim()), Some(g), "{}", d.mat);
+        if let Some(g) = d.mat.glass().and_then(|m| s.glasses.get(m)) {
+            assert_eq!(t.glasses.get(d.mat.glass().unwrap()), Some(g), "{}", d.mat);
         }
     }
     // hash が違えば（書いた後に同梱のデータが変わった）注意

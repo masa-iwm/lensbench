@@ -143,7 +143,7 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
                         "the crystal axis of the birefringent plate is 0 or not a number".into(),
                     );
                 }
-                if q.glass.as_deref().is_none_or(|g| is_air(g.trim())) {
+                if q.glass.as_deref().is_none_or(is_air_name) {
                     return Err("write glass (the ordinary material) on the entrance surface of a birefringent plate".into());
                 }
                 lensbench_core::surface::Bire::In {
@@ -174,7 +174,7 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
                 format!("a {what} surface can't have curvature, conic or asphere terms").into(),
             );
         }
-        if q.glass.as_deref().is_some_and(|g| !is_air(g.trim())) {
+        if q.glass.as_deref().is_some_and(|g| !is_air_name(g)) {
             return Err(format!("no glass after a {what} surface").into());
         }
     }
@@ -223,11 +223,10 @@ pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     }
     if let Some(g) = &q.glass {
         if let Ok(nd) = g.trim().parse::<f64>() {
-            // モデルガラス（分散なし）: 名前は .zmx 読込と同じ形、屈折率は index に
-            s.mat = format!("{nd:.2},{:.1}", 0.0);
-            s.index = Some(nd);
+            // 数は屈折率だけの媒質（分散なし）
+            s.mat = Material::Index(nd);
         } else {
-            s.mat = g.trim().to_string();
+            s.mat = Material::parse(g);
         }
     }
     Ok(s)
@@ -461,16 +460,16 @@ pub(crate) fn expand_inner(
     // 面の後の媒質が決まるか（屈折率は系を作るときに解く）
     let envr = p.environment;
     for (j, d) in sf.iter_mut().enumerate() {
-        let known = (j > 0 && (d.mirror || d.is_coord_break()))
+        let known = (j > 0 && (d.is_mirror() || d.is_coord_break()))
             || is_air(&d.mat)
-            || c.glasses.contains_key(&d.mat)
-            || d.index.is_some();
+            || d.mat.glass().is_some_and(|g| c.glasses.contains_key(g))
+            || matches!(d.mat, Material::Index(_) | Material::Model { .. });
         if !known {
-            return Err(glass_missing(j, &d.mat));
+            return Err(glass_missing(j, &d.mat.name()));
         }
         // 複屈折材の板の入口: 異常光の屈折率
         if let Some(lensbench_core::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
-            let en = lensbench_core::surface::Bire::e_name(&d.mat);
+            let en = lensbench_core::surface::Bire::e_name(&d.mat.name());
             let g = c.glasses.get(&en).ok_or_else(|| {
                 format!(
                     "surface {j}: extraordinary glass {en} of birefringent material {} is not in the catalogs",
@@ -490,9 +489,9 @@ pub(crate) fn expand_inner(
         }
         // 屈折面での反射（ビームスプリッター）: 反対側の媒質の屈折率
         if let Some(r) = &mut d.reflect {
-            r.n = if is_air(&r.mat) {
+            r.n = if is_air_name(&r.mat) {
                 vec![1.0; wl.len()]
-            } else if let Some(g) = c.glasses.get(&r.mat) {
+            } else if let Some(g) = c.glasses.get(r.mat.trim()) {
                 wl.iter()
                     .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
                     .collect()

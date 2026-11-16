@@ -8,7 +8,7 @@ use std::path::Path;
 use lensbench_core::error::{Error, Result};
 use lensbench_core::notimpl;
 use lensbench_core::param::{PickKind, SolveKind, ThickSolve};
-use lensbench_core::surface::{After, Aperture, Bire, SurfType, Tilt};
+use lensbench_core::surface::{After, Aperture, Bire, Material, SurfType, Tilt};
 use lensbench_core::system::{Aiming, ApertureKind, FieldNorm, FieldType, System};
 use lensbench_core::zpl_solve::MacroCol;
 
@@ -92,7 +92,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
     // 使っているガラスのカタログ（出てきた順）
     let mut cats: Vec<String> = Vec::new();
     for d in &s.surfaces {
-        if let Some(g) = s.glasses.get(&d.mat) {
+        if let Some(g) = d.mat.glass().and_then(|m| s.glasses.get(m)) {
             if !g.catalog.is_empty() && !cats.contains(&g.catalog) {
                 cats.push(g.catalog.clone());
             }
@@ -578,42 +578,42 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
             .pickups
             .iter()
             .find(|q| q.dst == k && q.what == PickKind::Dn);
-        if d.mirror {
+        if d.is_mirror() {
             w(&mut o, "  GLAS MIRROR 0 0 1.5 40 0 0 0 0 0 0".into());
         } else if let (Some(q), false) = (mat_pick, d.typ == SurfType::CoordBrk) {
             // 材料のピックアップ（OpticStudio の書き方: GLAS 名前 2 元の面 …。名前は読込で使わない）
-            let name = if s.glasses.contains_key(&d.mat) {
-                d.mat.as_str()
-            } else {
-                "___BLANK"
+            let name = match d.mat.glass() {
+                Some(m) if s.glasses.contains_key(m) => m,
+                _ => "___BLANK",
             };
             w(
                 &mut o,
                 format!("  GLAS {name} 2 {} 1.5 40 0 0 0 0 0 0", q.src),
             );
-        } else if d.typ != SurfType::CoordBrk && !d.mat.is_empty() && d.mat != "AIR" {
-            if s.glasses.contains_key(&d.mat) || d.grin.is_some() {
-                w(&mut o, format!("  GLAS {} 0 0 1.5 40 0 0 0 0 0 0", d.mat));
-            } else if let Some((nd, vd, dp)) = model_glass(&d.mat) {
-                // 分散ありのモデルガラス（.zmx 読込の名前 "nd,vd[,ΔPgF]"）
-                w(
-                    &mut o,
-                    format!("  GLAS ___BLANK 1 0 {} {} {} 0 0 0 0", f(nd), f(vd), f(dp)),
-                );
-            } else {
-                // モデルガラス（分散なし）: 屈折率は面の後の媒質の値
-                let nn = s.n(k);
-                let nd = nn.first().copied().unwrap_or(f64::NAN);
-                if nn.iter().any(|&v| v != nd) {
-                    notimpl!(
-                        "surface {k}: writing glass {} that is not in the catalogs",
-                        d.mat
-                    );
+        } else if d.typ != SurfType::CoordBrk {
+            match &d.mat {
+                Material::Air | Material::Mirror | Material::Inherit => {}
+                Material::Glass(m) if s.glasses.contains_key(m) || d.grin.is_some() => {
+                    w(&mut o, format!("  GLAS {m} 0 0 1.5 40 0 0 0 0 0 0"));
                 }
-                w(
+                Material::Glass(m) => {
+                    notimpl!("surface {k}: writing glass {m} that is not in the catalogs");
+                }
+                // モデルガラス（分散あり）
+                Material::Model { nd, vd, dpgf } => w(
                     &mut o,
-                    format!("  GLAS ___BLANK 1 0 {} 0 0 0 0 0 0 0", f(nd)),
-                );
+                    format!(
+                        "  GLAS ___BLANK 1 0 {} {} {} 0 0 0 0",
+                        f(*nd),
+                        f(*vd),
+                        f(*dpgf)
+                    ),
+                ),
+                // モデルガラス（分散なし）
+                Material::Index(nd) => w(
+                    &mut o,
+                    format!("  GLAS ___BLANK 1 0 {} 0 0 0 0 0 0 0", f(*nd)),
+                ),
             }
         }
         if !d.coat.is_empty() {
@@ -1169,20 +1169,6 @@ pub fn save_configs(path: &Path, systems: &[System]) -> Result<()> {
     let (txt, m) = write_configs_as(systems, &name)?;
     save_coating(path, &name, &m)?;
     save_utf16(path, &txt)
-}
-
-/// 分散ありのモデルガラスの名前 "nd,vd[,ΔPgF]"（vd ≠ 0）
-fn model_glass(m: &str) -> Option<(f64, f64, f64)> {
-    let v: Vec<f64> = m
-        .split(',')
-        .map(|t| t.trim().parse::<f64>())
-        .collect::<std::result::Result<_, _>>()
-        .ok()?;
-    match v[..] {
-        [nd, vd] if vd != 0.0 => Some((nd, vd, 0.0)),
-        [nd, vd, dp] if vd != 0.0 => Some((nd, vd, dp)),
-        _ => None,
-    }
 }
 
 /// マクロの名前（番号がなければ空）

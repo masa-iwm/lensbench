@@ -14,7 +14,7 @@
 
 use lensbench_core::coating;
 use lensbench_core::math::*;
-use lensbench_core::surface::{After, Reflect, SurfType, Surface, Tilt};
+use lensbench_core::surface::{After, Material, Reflect, SurfType, Surface, Tilt};
 use lensbench_core::system::{apply_cb, step_frame, ApertureKind, System};
 use lensbench_core::{invalid, Result};
 
@@ -43,7 +43,7 @@ pub fn reflecting_surfaces(sys: &System) -> Vec<usize> {
             let d = &sys.surfaces[k];
             keys[k].is_some()
                 && (k < img || !d.coat.is_empty())
-                && !d.mirror
+                && !d.is_mirror()
                 && !d.ignore
                 && matches!(
                     d.typ,
@@ -101,7 +101,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     // 像面は膜がなくても a にできる（反射の係数は膜なしの境界のもの）
     let image_ok = |k: usize| {
         k == img
-            && !sys.surfaces[k].mirror
+            && !sys.surfaces[k].is_mirror()
             && matches!(
                 sys.surfaces[k].typ,
                 SurfType::Standard
@@ -126,17 +126,10 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     // 面 m の前の媒質を持つ面（無視する面・鏡・座標ブレークは前の媒質を通す）
     let owner = |m: usize| -> usize {
         let mut k = m - 1;
-        while k > 0 && (sf[k].ignore || sf[k].mirror || sf[k].is_coord_break()) {
+        while k > 0 && (sf[k].ignore || sf[k].is_mirror() || sf[k].is_coord_break()) {
             k -= 1;
         }
         k
-    };
-    let air = |s: &str| {
-        if s == "AIR" {
-            String::new()
-        } else {
-            s.to_string()
-        }
     };
     // 元の系の、面ごとの「面に入る前の座標系」（面の傾き・座標ブレークをかける前）
     let mut pre = Vec::with_capacity(sf.len());
@@ -154,12 +147,8 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     let after_a = {
         let mut m = before_name[a].clone();
         let d = &sf[a];
-        if !d.mirror {
-            m = if d.mat.is_empty() {
-                "AIR".to_string()
-            } else {
-                d.mat.clone()
-            };
+        if !d.is_mirror() {
+            m = d.mat.label();
         }
         m
     };
@@ -188,8 +177,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     {
         let d = &sf[a];
         let mut g = d.clone();
-        g.mirror = true;
-        g.mat = "MIRROR".into();
+        g.mat = Material::Mirror;
         g.reflect = Some(Reflect {
             mat: after_a.clone(),
             n: sys.n(a).to_vec(),
@@ -239,7 +227,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
                 (o, r) = apply_cb(o, r, &cb);
                 let c = Surface {
                     typ: SurfType::CoordBrk,
-                    mat: "-".into(),
+                    mat: Material::Inherit,
                     cb: cb.d,
                     cb_order: 0,
                     ..Default::default()
@@ -250,8 +238,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
         // 写し: 形はそのまま、後ろの媒質は元の面の前の媒質
         let mut g = d.clone();
         if m == b {
-            g.mirror = true;
-            g.mat = "MIRROR".into();
+            g.mat = Material::Mirror;
             g.reflect = Some(Reflect {
                 mat: before_name[b].clone(),
                 n: idx_before(b),
@@ -260,15 +247,10 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
             g.dn = 0.0;
             g.disp = 0.0;
         } else {
-            if !d.mirror {
+            if !d.is_mirror() {
                 // 媒質は元の前の媒質（それを持つ面の材料・屈折率・ずれを写す）
                 let k = owner(m);
-                g.mat = if k == 0 {
-                    sf[0].mat.clone()
-                } else {
-                    air(&before_name[m])
-                };
-                g.index = sf[k].index;
+                g.mat = sf[k].mat.clone();
                 g.dn = sf[k].dn;
                 g.disp = sf[k].disp;
             }

@@ -93,7 +93,8 @@ pub fn note(materials: &[&str], names: &[String], dirs: &[PathBuf]) -> Option<St
 
 /// 系 `s` の面の材料について [`note`]
 pub fn note_for(s: &crate::Prescription, names: &[String], dirs: &[PathBuf]) -> Option<String> {
-    let mats: Vec<&str> = s.surfaces.iter().map(|x| x.mat.as_str()).collect();
+    let mats: Vec<String> = s.surfaces.iter().map(|x| x.mat.name()).collect();
+    let mats: Vec<&str> = mats.iter().map(String::as_str).collect();
     note(&mats, names, dirs)
 }
 

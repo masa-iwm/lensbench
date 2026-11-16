@@ -206,7 +206,7 @@ fn plate_thicknesses(s: &lensbench_core::System) -> Vec<(String, f64)> {
     s.surfaces
         .iter()
         .filter(|d| matches!(d.bire, Some(lensbench_core::surface::Bire::In { .. })))
-        .map(|d| (d.mat.clone(), d.t))
+        .map(|d| (d.mat.name(), d.t))
         .collect()
 }
 

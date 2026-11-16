@@ -391,8 +391,8 @@ pub(crate) fn set_surface_data(
             )
             .into());
         }
-        // user（利用者定義の面）・semi_auto・index は無ければ書き出さないので、無くても足せる
-        if !o.contains_key(k) && !["user", "semi_auto", "bire", "index"].contains(&k.as_str()) {
+        // user（利用者定義の面）と semi_auto は無ければ書き出さないので、無くても足せる
+        if !o.contains_key(k) && !["user", "semi_auto", "bire"].contains(&k.as_str()) {
             return Err(format!("no surface item {k}").into());
         }
         let x = coerce(x.clone(), o.get(k), k, k == "bin2");
@@ -402,11 +402,7 @@ pub(crate) fn set_surface_data(
     if m.contains_key("semi") && !m.contains_key("semi_auto") {
         o.insert("semi_auto".into(), Value::Bool(false));
     }
-    let mut d: Surface = crate::lenient::decode(crate::sysfile::from_json(v)?, "surface data")?;
-    d.mirror = d.mat.trim().eq_ignore_ascii_case("MIRROR");
-    if d.mirror {
-        d.mat = "MIRROR".into();
-    }
+    let d: Surface = crate::lenient::decode(crate::sysfile::from_json(v)?, "surface data")?;
     t.edit(|s| {
         s.surfaces[j] = d;
         Ok(())

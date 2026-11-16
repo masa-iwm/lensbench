@@ -19,20 +19,21 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
         let e =
             "only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved";
         let shape = shape.ok_or_else(|| format!("lens surface {}: {e}", i + 1))?;
-        if s.mirror {
+        if s.is_mirror() {
             return Err(format!(
                 "lens surface {}: a lens with a mirror surface can't be saved",
                 i + 1
             )
             .into());
         }
-        let glass = if i + 1 == n || is_air(&s.mat) {
+        let glass = if i + 1 == n {
             None
-        } else if let Some((nd, vd)) = s.mat.split_once(',') {
-            // モデルガラス（.zmx 読込の名前）: 分散なしだけ
-            match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
-                (Ok(nd), Ok(0.0)) => Some(format!("{}", s.index.unwrap_or(nd))),
-                _ => {
+        } else {
+            match &s.mat {
+                Material::Air => None,
+                // 屈折率だけの媒質（.zmx の分散のないモデルガラス）は数で
+                Material::Index(nd) => Some(format!("{nd}")),
+                Material::Model { .. } => {
                     return Err(format!(
                         "lens surface {}: model glass {} with dispersion can't be saved",
                         i + 1,
@@ -40,9 +41,8 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
                     )
                     .into())
                 }
+                m => Some(m.name()),
             }
-        } else {
-            Some(s.mat.clone())
         };
         v.push(SurfSpec {
             radius: (s.c != 0.0).then(|| 1.0 / s.c),
@@ -77,7 +77,7 @@ pub fn lens_item(s: &System, k: usize, description: &str) -> lensbench_core::Res
     let e = pick_lens(s, k)?;
     let mut cats: Vec<String> = Vec::new();
     for d in &e.surfaces {
-        if let Some(g) = s.glasses.get(&d.mat) {
+        if let Some(g) = d.mat.glass().and_then(|g| s.glasses.get(g)) {
             if !g.catalog.is_empty() && !cats.contains(&g.catalog) {
                 cats.push(g.catalog.clone());
             }
@@ -287,7 +287,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
         .find(|u| u.name == id)
         .ok_or_else(|| format!("the surfaces of block {id} are not in the system"))?;
     let [a, z] = u.spans[0];
-    if s.surfaces[..a].iter().any(|x| x.mirror) {
+    if s.surfaces[..a].iter().any(|x| x.is_mirror()) {
         return Err(format!(
             "block {id}: changes to a lens after a mirror can't be baked in (not supported)"
         )
@@ -349,7 +349,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
         );
     }
     for d in &faces {
-        if let Some(g) = s.glasses.get(&d.mat) {
+        if let Some(g) = d.mat.glass().and_then(|g| s.glasses.get(g)) {
             if !g.catalog.is_empty() && !item.glass_catalogs.contains(&g.catalog) {
                 item.glass_catalogs.push(g.catalog.clone());
             }
@@ -370,7 +370,7 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<Su
     ) {
         return Err(format!("surface type {:?} can't be written", f.typ).into());
     }
-    if f.mirror {
+    if f.is_mirror() {
         return Err("a mirror surface can't be written".into());
     }
     // 頂点のまわりの傾きだけで後で戻す面は tilt で書ける（tilt は tx → ty の順。順序 1 は tx・ty の片方が 0 のときだけ同じ）
@@ -393,19 +393,19 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<Su
     if f.ignore || f.dn != 0.0 || f.disp != 0.0 || f.cx != 0.0 {
         return Err("ignore, dn, disp and cx can't be written".into());
     }
-    let glass = if last || is_air(&f.mat) {
+    let glass = if last {
         None
-    } else if let Some((nd, vd)) = f.mat.split_once(',') {
-        match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
-            (Ok(nd), Ok(0.0)) => Some(format!("{}", f.index.unwrap_or(nd))),
-            _ => {
+    } else {
+        match &f.mat {
+            Material::Air => None,
+            Material::Index(nd) => Some(format!("{nd}")),
+            Material::Model { .. } => {
                 return Err(
                     format!("model glass {} with dispersion can't be written", f.mat).into(),
                 )
             }
+            m => Some(m.name()),
         }
-    } else {
-        Some(f.mat.clone())
     };
     let aperture = match f.ap {
         Aperture::None => None,
@@ -528,7 +528,7 @@ pub(crate) fn portable(
         } => {
             let e = c.lens_element(&source)?;
             for d in &e.surfaces {
-                if let Some(g) = c.glasses.get(&d.mat) {
+                if let Some(g) = d.mat.glass().and_then(|g| c.glasses.get(g)) {
                     if !g.catalog.is_empty() && !cats.contains(&g.catalog) {
                         cats.push(g.catalog.clone());
                     }

@@ -4759,7 +4759,7 @@ mod open_insert_tests {
             .iter()
             .map(|s| lens_data::Row {
                 t: s.t,
-                material: s.mat.clone(),
+                material: s.mat.name(),
                 ..Default::default()
             })
             .collect();

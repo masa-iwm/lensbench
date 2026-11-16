@@ -351,21 +351,21 @@ fn v1_indices(sv: &Value) -> Vec<Option<Vec<f64>>> {
 }
 
 /// 版 1 で、名前から屈折率が決まらない分散のない媒質（モデルガラス "nd,0"・カタログに無い名前で波長によらない値）は
-/// 書いてあった値を index にする
+/// 書いてあった値の屈折率だけの媒質にする
 fn v1_flat(p: &mut lensbench_core::Prescription, ns: &[Option<Vec<f64>>]) {
     for j in 0..p.surfaces.len() {
         let Some(Some(n)) = ns.get(j) else { continue };
         let d = &p.surfaces[j];
-        if (j > 0 && (d.mirror || d.is_coord_break())) || d.grin.is_some() || d.index.is_some() {
+        if (j > 0 && (d.is_mirror() || d.is_coord_break())) || d.grin.is_some() {
             continue;
         }
         let n0 = n[0];
         if n.iter().any(|&x| x.to_bits() != n0.to_bits()) {
             continue;
         }
-        let model0 = crate::sysfile_v2::write::model_glass(&d.mat).is_some_and(|m| m.1 == 0.0);
+        let model0 = matches!(d.mat, lensbench_core::surface::Material::Index(_));
         if model0 || p.material_index_at(&d.mat, &p.wavelengths).is_err() {
-            p.surfaces[j].index = Some(n0);
+            p.surfaces[j].mat = lensbench_core::surface::Material::Index(n0);
         }
     }
 }

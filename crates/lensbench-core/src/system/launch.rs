@@ -465,7 +465,7 @@ impl System {
                 if d.ignore {
                     continue;
                 }
-                if d.mirror {
+                if d.is_mirror() {
                     parity = -parity;
                 }
                 let want = match rec {
@@ -666,7 +666,7 @@ impl System {
         let mut parity = 1.0;
         for j in 1..=last {
             let d = &self.surfaces[j];
-            if !d.ignore && d.mirror {
+            if !d.ignore && d.is_mirror() {
                 parity = -parity;
             }
         }

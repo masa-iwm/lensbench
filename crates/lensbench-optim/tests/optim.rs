@@ -452,7 +452,7 @@ fn auto_uses_fd_for_few_columns() {
 fn optimizer_leaves_ineffective_vars() {
     let s = load("A0");
     let stop = s.stop();
-    assert!(s.surfaces[stop].mat.is_empty() && s.surfaces[stop - 1].mat.is_empty());
+    assert!(s.surfaces[stop].mat.is_air() && s.surfaces[stop - 1].mat.is_air());
     let mut p = Problem::single(s.clone());
     p.add_default(DefaultMerit::Wavefront, 3, RmsRef::Centroid);
     for name in [format!("{stop}.c"), format!("{stop}.k"), "2.t".to_string()] {

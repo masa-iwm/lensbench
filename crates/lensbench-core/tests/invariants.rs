@@ -64,16 +64,15 @@ fn ignored_surface_anywhere() {
             // 前の面の後の媒質のまま、厚さ 0 の平面を無視にして挟む
             let p = &s0.surfaces[at - 1];
             let d = Surface {
-                mat: if p.mirror {
-                    String::new()
+                mat: if p.is_mirror() {
+                    Default::default()
                 } else {
                     p.mat.clone()
                 },
-                index: if p.mirror { None } else { p.index },
                 ignore: true,
                 ..Default::default()
             };
-            if p.mirror {
+            if p.is_mirror() {
                 continue;
             }
             s.insert_surface(at, d).unwrap();
@@ -141,13 +140,12 @@ fn standard_with_asph_is_error() {
 /// 面 at の前に、前の面の後の媒質のまま面 d（無視しない）を挟んだ系。前の面が鏡なら None
 fn with_surface(s0: &System, at: usize, mut d: Surface) -> Option<System> {
     let p = &s0.surfaces[at - 1];
-    if p.mirror {
+    if p.is_mirror() {
         return None;
     }
     // 座標ブレークは材料を持たない（前の媒質が続く）
     if !d.is_coord_break() {
         d.mat = p.mat.clone();
-        d.index = p.index;
     }
     let mut s = s0.clone();
     s.insert_surface(at, d).unwrap();

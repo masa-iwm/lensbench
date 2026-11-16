@@ -71,8 +71,13 @@ pub(crate) struct Ctx<'a, 'b> {
 /// 品の枠（向きを当てる前）と向き
 pub(crate) type ItemFrame = Option<(MechSpec, bool)>;
 
-pub(crate) fn is_air(m: &str) -> bool {
-    m.is_empty() || m.eq_ignore_ascii_case("AIR")
+pub(crate) fn is_air(m: &Material) -> bool {
+    m.is_air()
+}
+
+/// 名前（膜の反射の反対側の媒質など）が空気か
+pub(crate) fn is_air_name(m: &str) -> bool {
+    m.trim().is_empty() || m.trim().eq_ignore_ascii_case("AIR")
 }
 
 /// 結晶板の面の元（波長板の面の半直径・開口を写した平面の標準面）
@@ -204,7 +209,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let oa = if p.dn(r.wl0) > 0.0 { fast + 90.0 } else { fast }.to_radians();
                 let axis = [round_unit(oa.cos()), round_unit(oa.sin()), 0.0];
                 out.push(Surface {
-                    mat: p.material.clone(),
+                    mat: Material::Glass(p.material.clone()),
                     t: p.thickness,
                     stop: s.stop && i == 0,
                     coat: if i == 0 { coat.clone() } else { String::new() },
@@ -223,9 +228,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let last = i + 1 == n;
                 out.push(Surface {
                     mat: if last {
-                        String::new()
+                        Material::Air
                     } else {
-                        r.plates[i + 1].material.clone()
+                        Material::Glass(r.plates[i + 1].material.clone())
                     },
                     t: if last { s.t } else { 0.0 },
                     coat: if last { coat.clone() } else { String::new() },
@@ -273,7 +278,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// sf の start 以降に鏡があるか。鏡を含む群の移動は枚数によらず断る:
     /// 偶数枚で向きが戻っても、出ていく軸が入ってくる軸からずれると間隔の補正では表せない
     pub(crate) fn has_mirror_since(&self, start: usize) -> bool {
-        self.sf[start.min(self.sf.len())..].iter().any(|s| s.mirror)
+        self.sf[start.min(self.sf.len())..]
+            .iter()
+            .any(|s| s.is_mirror())
     }
 
     /// 符号つきの長さ（光の進む向き）: 今の位置から n 面前までの厚さの和
@@ -368,7 +375,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 s.asph.iter_mut().for_each(|a| *a = -*a);
                 s.t = -s.t;
             }
-            if s.mirror {
+            if s.is_mirror() {
                 self.parity = -self.parity;
             }
             if s.stop {
@@ -749,7 +756,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     let mut s = surf(q)?;
                     if i + 1 == n {
                         s.t = 0.0;
-                        s.mat.clear();
+                        s.mat = Material::Air;
                     } else if is_air(&s.mat) {
                         return Err(format!("lens surface {}: not glass after it", i + 1).into());
                     }
@@ -863,8 +870,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     self.put(cb([0.0, 0.0, tilt[0], tilt[1], 0.0], 0, 0.0));
                 }
                 let mut m = Surface {
-                    mirror: true,
-                    mat: "MIRROR".into(),
+                    mat: Material::Mirror,
                     c: curv(*radius),
                     k: *conic,
                     semi: *semi,

@@ -325,7 +325,7 @@ fn a_tilted_return_mirror_tilts_only_the_mirror() {
     // s1 は鏡の前後に座標ブレークが 2 つ多い。鏡の後の面を後ろから順に対応させる
     let (n0, n1) = (s0.surfaces.len(), s1.surfaces.len());
     assert_eq!(n1, n0 + 2);
-    let m0 = s0.surfaces.iter().position(|d| d.mirror).unwrap();
+    let m0 = s0.surfaces.iter().position(|d| d.is_mirror()).unwrap();
     for k in 1..(n0 - m0) {
         let (a, b) = (f0.surf[n0 - k].unwrap(), f1.surf[n1 - k].unwrap());
         for i in 0..3 {
@@ -336,7 +336,7 @@ fn a_tilted_return_mirror_tilts_only_the_mirror() {
         }
     }
     // 鏡そのものは傾いている
-    let m1 = s1.surfaces.iter().position(|d| d.mirror).unwrap();
+    let m1 = s1.surfaces.iter().position(|d| d.is_mirror()).unwrap();
     let r = f1.surf[m1].unwrap().r;
     assert!(
         (r[2][2] - (0.7f64.to_radians().cos() * 0.4f64.to_radians().cos())).abs() < 1e-12,
@@ -576,7 +576,7 @@ fn a_mirror_block_can_have_a_rect_aperture() {
     let s = project(
         r#"[{"type": "stop"}, {"type": "air", "t": 10}, {"type": "mirror", "semi": 11.18, "aperture": {"type": "rect", "hx": 5, "hy": 10}}, {"type": "air", "t": 20}]"#,
     );
-    let m = s.surfaces.iter().find(|q| q.mirror).unwrap();
+    let m = s.surfaces.iter().find(|q| q.is_mirror()).unwrap();
     assert!(
         matches!(m.ap, lensbench_core::surface::Aperture::Rect { hx, hy, .. } if hx == 5.0 && hy == 10.0),
         "{:?}",
@@ -654,7 +654,7 @@ fn two_axis_fold_mirror_keeps_axis() {
             .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true)
             .unwrap();
         let m = (1..s.surfaces.len())
-            .position(|j| s.surfaces[j].mirror)
+            .position(|j| s.surfaces[j].is_mirror())
             .unwrap()
             + 1;
         for j in m + 2..s.surfaces.len() {

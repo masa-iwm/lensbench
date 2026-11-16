@@ -261,7 +261,7 @@ impl System {
         let mut own = vec![0usize; self.surfaces.len()];
         let mut cur = 0usize;
         for (j, d) in self.surfaces.iter().enumerate() {
-            if j > 0 && (d.mirror || d.is_coord_break()) {
+            if j > 0 && (d.is_mirror() || d.is_coord_break()) {
                 own[j] = cur;
             } else {
                 own[j] = j;
@@ -529,7 +529,7 @@ impl System {
             let j = rs.surf;
             n_in[k] = self.index_before(j, w);
             let d = &sf[j];
-            n_out[k] = if d.mirror || d.is_coord_break() {
+            n_out[k] = if d.is_mirror() || d.is_coord_break() {
                 n_in[k]
             } else {
                 self.n(j)[w]

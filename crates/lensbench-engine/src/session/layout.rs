@@ -458,7 +458,7 @@ fn scene_json(s: &System, sc: &lensbench_export::scene::Scene, plane: Plane) -> 
             json!({
                 "vertex": fr.surf[j].map(|f| pr(f.o)),
                 "stop": j == s.stop(),
-                "mirror": d.mirror,
+                "mirror": d.is_mirror(),
                 "semi": d.semi,
                 "t": d.t,
             })

@@ -18,7 +18,7 @@ use std::rc::Rc;
 use lensbench_core::math::{
     add, col, mm, mtv, mv, rot, scale, sub, transpose, xyz_angles, I3, M3, V3,
 };
-use lensbench_core::surface::{Aperture, Reflect, Surface, Tilt};
+use lensbench_core::surface::{Aperture, Material, Reflect, Surface, Tilt};
 use lensbench_core::system::{apply_cb, step_frame};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -589,10 +589,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 ..Default::default()
             };
             match act {
-                Act::T(m) => s.mat = if m == "AIR" { String::new() } else { m },
+                Act::T(m) => s.mat = Material::parse(&m),
                 Act::R(m) => {
-                    s.mirror = true;
-                    s.mat = "MIRROR".into();
+                    s.mat = Material::Mirror;
                     s.reflect = Some(Reflect {
                         mat: m,
                         n: Vec::new(),

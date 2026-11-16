@@ -96,12 +96,12 @@ fn absorption_follows_the_internal_transmittance() {
     let mat = s.surfaces[j].mat.clone();
     // 同じガラスの玉すべての軸上の厚さ
     let thick: f64 = (1..s.surfaces.len())
-        .filter(|&q| s.surfaces[q].mat == mat && !s.surfaces[q].mirror)
+        .filter(|&q| s.surfaces[q].mat == mat && !s.surfaces[q].is_mirror())
         .map(|q| s.surfaces[q].t)
         .sum();
     s.edit_raw(|p| {
         std::sync::Arc::make_mut(&mut p.glasses)
-            .get_mut(&mat)
+            .get_mut(mat.glass().unwrap())
             .unwrap()
             .it = vec![[wl - 0.1, 0.9, 10.0], [wl + 0.1, 0.9, 10.0]];
         Ok(())

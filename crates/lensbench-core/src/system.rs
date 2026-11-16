@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::glass::Glass;
 use crate::interp2d::interp_weights;
 use crate::math::*;
-use crate::surface::{After, Bire, Surface};
+use crate::surface::{After, Bire, Material, Surface};
 use crate::trace::{self, CryKind, PolKind, PolSurf, RayOut, RayStatus, RecEntry, CV3};
 use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
@@ -214,17 +214,17 @@ impl Prescription {
         let mut out = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for (k, d) in self.surfaces.iter().enumerate() {
-            if d.ignore || d.mat.is_empty() {
+            if d.ignore {
                 continue;
             }
-            let Some(g) = self.glasses.get(&d.mat) else {
+            let Some(g) = d.mat.glass().and_then(|m| self.glasses.get(m)) else {
                 continue;
             };
             let Some([lo, hi]) = g.ld else {
                 continue;
             };
             for &l in &self.wavelengths {
-                if (l < lo || l > hi) && seen.insert((d.mat.clone(), l.to_bits())) {
+                if (l < lo || l > hi) && seen.insert((d.mat.name(), l.to_bits())) {
                     out.push(format!(
                         "surface {k} material {} ({}): wavelength {l} µm is outside the dispersion formula range {lo} to {hi} µm (the formula is extended)",
                         d.mat, g.catalog
@@ -245,7 +245,7 @@ impl Prescription {
             return format!("surface {j}");
         };
         let mut what = crate::edit::surf_type_name(d.typ).to_string();
-        if !d.mat.is_empty() && d.mat != "-" {
+        if !matches!(d.mat, Material::Air | Material::Inherit) {
             what = format!("{what}, {}", d.mat);
         }
         if !d.coat.is_empty() {
@@ -515,7 +515,7 @@ impl System {
         }
         // GRIN の媒質の次の面（座標ブレークは通して、その次）は交点を求められる面タイプに限る
         for (j, d) in sf.iter().enumerate() {
-            if d.ignore || d.mirror || d.grin.is_none() {
+            if d.ignore || d.is_mirror() || d.grin.is_none() {
                 continue;
             }
             if let Some((k, e)) = sf
@@ -584,7 +584,7 @@ impl System {
                 }
                 let w = self.primary;
                 let (nb, na) = (self.index_before(j, w), self.n(j)[w]);
-                if nb != 1.0 || na != 1.0 || d.mirror {
+                if nb != 1.0 || na != 1.0 || d.is_mirror() {
                     notimpl!("user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})");
                 }
             }

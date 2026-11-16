@@ -54,12 +54,12 @@ impl Element {
         }
     }
 
-    /// 玉の材料（面の後の媒質、最後の空気を除く）
-    pub fn materials(&self) -> Vec<&str> {
+    /// 玉の材料の名前（面の後の媒質、最後の空気を除く）
+    pub fn materials(&self) -> Vec<String> {
         let n = self.surfaces.len();
         self.surfaces[..n.saturating_sub(1)]
             .iter()
-            .map(|s| s.mat.as_str())
+            .map(|s| s.mat.name())
             .collect()
     }
 
@@ -70,7 +70,7 @@ impl Element {
 
     /// 前後を空気とした玉だけの近軸の焦点距離（波長 w）。無限大なら inf、鏡を含む玉は NaN
     pub fn efl(&self, w: usize) -> f64 {
-        if self.surfaces.iter().any(|s| s.mirror) {
+        if self.surfaces.iter().any(|s| s.is_mirror()) {
             return f64::NAN;
         }
         // [y; n u] の行列
@@ -116,8 +116,8 @@ fn mul(a: &[[f64; 2]; 2], b: &[[f64; 2]; 2]) -> [[f64; 2]; 2] {
     ]
 }
 
-fn is_air_mat(m: &str) -> bool {
-    m.is_empty() || m.eq_ignore_ascii_case("AIR")
+fn is_air_mat(m: &crate::surface::Material) -> bool {
+    m.is_air()
 }
 
 /// 面 j の後の媒質が空気か（鏡・座標ブレーク・無視する面は前の媒質を引き継ぐ）
@@ -127,7 +127,7 @@ pub fn air_after(s: &System) -> Vec<bool> {
     for (j, d) in s.surfaces.iter().enumerate() {
         let a = if j == 0 {
             is_air_mat(&d.mat)
-        } else if d.mirror || d.is_coord_break() || d.ignore {
+        } else if d.is_mirror() || d.is_coord_break() || d.ignore {
             prev
         } else {
             is_air_mat(&d.mat)
@@ -162,7 +162,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
             (Kind::Lens, k)
         } else if d.is_coord_break() {
             (Kind::CoordBreak, j)
-        } else if d.mirror {
+        } else if d.is_mirror() {
             (Kind::Mirror, j)
         } else {
             (Kind::Surface, j)
@@ -191,7 +191,10 @@ pub fn reverse(e: &Element) -> Result<Element> {
     if e.kind != Kind::Lens {
         invalid!("only a lens can be reversed");
     }
-    if e.surfaces.iter().any(|s| s.mirror || s.is_coord_break()) {
+    if e.surfaces
+        .iter()
+        .any(|s| s.is_mirror() || s.is_coord_break())
+    {
         notimpl_rev()?;
     }
     if e.surfaces
@@ -262,13 +265,11 @@ pub fn reverse(e: &Element) -> Result<Element> {
             let q = &e.surfaces[n - 2 - i];
             s.t = q.t;
             s.mat = q.mat.clone();
-            s.index = q.index;
             nv.extend(e.n.get(n - 2 - i).cloned());
         } else {
             let last = &e.surfaces[n - 1];
             s.t = 0.0;
             s.mat = last.mat.clone();
-            s.index = last.index;
             nv.extend(e.n.get(n - 1).cloned());
         }
         v.push(s);
@@ -365,7 +366,7 @@ mod tests {
             assert_eq!(r.length(), e[i].length());
             let rr = reverse(&r).unwrap();
             for (x, y) in rr.surfaces.iter().zip(&e[i].surfaces) {
-                assert_eq!((x.c, x.t, &x.mat, x.index), (y.c, y.t, &y.mat, y.index));
+                assert_eq!((x.c, x.t, &x.mat), (y.c, y.t, &y.mat));
             }
             assert_eq!(rr.n, e[i].n);
         }
