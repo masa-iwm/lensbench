@@ -1129,8 +1129,6 @@ projection plane {s} must be yz or xz	投影面 {s} は yz か xz
 color by {s} must be field, wave or cfg	色分け {s} は field・wave・cfg のどれか
 ray pattern {s} must be y, x, cross, grid or ring	光線のパターン {s} は y・x・cross・grid・ring のどれか
 {}: the extension must be csv, json or npz	{}: 拡張子は csv・json・npz のどれか
-npz is over 4 GB	npz が 4 GB を超えます
-npz is too large	npz が大きすぎます
 ZPLM macro {}	ZPLM のマクロ {}
 gzip can't be inflated	gzip を展開できません
 the file bundle is cut short	ファイルの束が途中で切れています

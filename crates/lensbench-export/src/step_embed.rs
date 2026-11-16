@@ -2,7 +2,7 @@
 //!
 //! 品の STEP の殻（`CLOSED_SHELL`）から辿れる実体を番号を付け直して写し、点（`CARTESIAN_POINT`）は置き方の
 //! 変換で動かし、向き（`DIRECTION`）は回し、長さ（円・円柱の半径、`VECTOR` の大きさなど）は単位の倍率を掛ける
-//! （書き出す STEP は mm）。面の上の 2 次元の曲線（`PCURVE`）は単位を直せないので写さず、辺の曲線は
+//! （書き出す STEP は mm。複合の実体 `(A(…) B(…))` は部分ごとに）。面の上の 2 次元の曲線（`PCURVE`）は単位を直せないので写さず、辺の曲線は
 //! 3 次元の曲線（`SURFACE_CURVE`・`SEAM_CURVE` の 1 つ目）にする。
 use lensbench_core::math::V3;
 use lensbench_step::{refs, split, StepFile};
@@ -29,9 +29,58 @@ fn length_args(ty: &str) -> &'static [usize] {
         | "VECTOR"
         | "OFFSET_SURFACE"
         | "OFFSET_CURVE_3D" => &[2],
-        "ELLIPSE" | "TOROIDAL_SURFACE" | "DEGENERATE_TOROIDAL_SURFACE" => &[2, 3],
+        "PARABOLA" => &[2],
+        "ELLIPSE" | "HYPERBOLA" | "TOROIDAL_SURFACE" | "DEGENERATE_TOROIDAL_SURFACE" => &[2, 3],
         _ => &[],
     }
+}
+
+/// 複合の実体（`(A(…) B(…))`）の部分の長さの引数の位置。部分はその型が自分で足した引数だけを持つ
+/// （CIRCLE の部分は半径だけ、など。継いだ名前・位置は上の型の部分にある）
+fn own_length_args(ty: &str) -> &'static [usize] {
+    match ty {
+        "CIRCLE" | "PARABOLA" | "CYLINDRICAL_SURFACE" | "CONICAL_SURFACE" | "SPHERICAL_SURFACE" => {
+            &[0]
+        }
+        "ELLIPSE" | "HYPERBOLA" | "TOROIDAL_SURFACE" => &[0, 1],
+        "VECTOR" | "OFFSET_SURFACE" | "OFFSET_CURVE_3D" => &[1],
+        _ => &[],
+    }
+}
+
+/// 複合の実体の本体（`(A(…) B(…))`）を部分 `A(…)` の並びに分ける。複合でなければ None
+fn complex_parts(body: &str) -> Option<Vec<&str>> {
+    let inner = body.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let b = inner.as_bytes();
+    let mut parts = Vec::new();
+    let (mut depth, mut in_str, mut st) = (0i64, false, None);
+    for (i, &c) in b.iter().enumerate() {
+        match c {
+            b'\'' => in_str = !in_str,
+            b'(' if !in_str => depth += 1,
+            b')' if !in_str => {
+                depth -= 1;
+                if depth == 0 {
+                    parts.push(inner[st?..=i].trim());
+                    st = None;
+                }
+            }
+            c if !in_str && depth == 0 && st.is_none() && !c.is_ascii_whitespace() => st = Some(i),
+            _ => {}
+        }
+    }
+    (depth == 0 && st.is_none()).then_some(parts)
+}
+
+/// 長さの引数 `idx` に単位の倍率 k を掛けた `ty(args)`
+fn scaled(ty: &str, args: &[&str], idx: &[usize], k: f64, real: fn(f64) -> String) -> String {
+    let mut a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    for &i in idx {
+        if let Some(x) = a.get(i).and_then(|s| s.parse::<f64>().ok()) {
+            a[i] = real(x * k);
+        }
+    }
+    format!("{ty}({})", a.join(","))
 }
 
 fn nums(s: &str) -> Option<Vec<f64>> {
@@ -137,30 +186,29 @@ pub fn embed_shell(
     for &id in &order {
         let body = &ents.get(id)?.body;
         let edited: String = match split(body) {
-            Some((ty, args)) => {
+            Some((ty @ ("CARTESIAN_POINT" | "DIRECTION"), args)) => {
                 let mut a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-                match ty {
-                    "CARTESIAN_POINT" => {
-                        if let Some(v) = a.get(1).and_then(|s| nums(s)).filter(|v| v.len() == 3) {
-                            a[1] = triple(point([v[0], v[1], v[2]]));
-                        }
-                    }
-                    "DIRECTION" => {
-                        if let Some(v) = a.get(1).and_then(|s| nums(s)).filter(|v| v.len() == 3) {
-                            a[1] = triple(dir([v[0], v[1], v[2]]));
-                        }
-                    }
-                    _ => {
-                        for &i in length_args(ty) {
-                            if let Some(x) = a.get(i).and_then(|s| s.parse::<f64>().ok()) {
-                                a[i] = real(x * k);
-                            }
-                        }
-                    }
+                if let Some(v) = a.get(1).and_then(|s| nums(s)).filter(|v| v.len() == 3) {
+                    let v = [v[0], v[1], v[2]];
+                    a[1] = triple(if ty == "DIRECTION" { dir(v) } else { point(v) });
                 }
                 format!("{ty}({})", a.join(","))
             }
-            None => body.clone(),
+            Some((ty, args)) => scaled(ty, &args, length_args(ty), k, real),
+            // 複合の実体: 部分ごとに長さを直す（PRJ-22）
+            None => match complex_parts(body) {
+                Some(parts) => {
+                    let v: Vec<String> = parts
+                        .iter()
+                        .map(|p| match split(p) {
+                            Some((ty, args)) => scaled(ty, &args, own_length_args(ty), k, real),
+                            None => p.to_string(),
+                        })
+                        .collect();
+                    format!("({})", v.join(" "))
+                }
+                None => body.clone(),
+            },
         };
         // 参照の番号を付け直す（文字列の外）
         let b = edited.as_bytes();
@@ -189,4 +237,41 @@ pub fn embed_shell(
     }
     let sh = newid.get(&alias(shell))?;
     Some(sink.push(format!("MANIFOLD_SOLID_BREP('{name}',#{sh})")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn real(x: f64) -> String {
+        format!("{x:?}")
+    }
+
+    /// 双曲線・放物線と、複合の実体の部分の長さにも単位の倍率を掛ける（PRJ-22）
+    #[test]
+    fn lengths_in_conics_and_complex_entities_are_scaled() {
+        let (ty, a) = split("HYPERBOLA('',#5,2.,1.5)").unwrap();
+        assert_eq!(
+            scaled(ty, &a, length_args(ty), 25.4, real),
+            "HYPERBOLA('',#5,50.8,38.099999999999994)"
+        );
+        let (ty, a) = split("PARABOLA('',#5,1.)").unwrap();
+        assert_eq!(
+            scaled(ty, &a, length_args(ty), 25.4, real),
+            "PARABOLA('',#5,25.4)"
+        );
+        let body = "( CONIC() CIRCLE(2.) CURVE() GEOMETRIC_REPRESENTATION_ITEM() REPRESENTATION_ITEM('') )";
+        let parts = complex_parts(body).unwrap();
+        assert_eq!(parts.len(), 5);
+        let (ty, a) = split(parts[1]).unwrap();
+        assert_eq!(
+            scaled(ty, &a, own_length_args(ty), 25.4, real),
+            "CIRCLE(50.8)"
+        );
+        assert!(complex_parts("CIRCLE('',#1,2.)").is_none());
+        assert_eq!(
+            complex_parts("(A('x)y') B(1,(2,3)))").unwrap(),
+            ["A('x)y')", "B(1,(2,3))"]
+        );
+    }
 }

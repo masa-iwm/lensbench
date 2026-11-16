@@ -231,11 +231,23 @@ fn crc32(b: &[u8]) -> u32 {
     !c
 }
 
-/// 無圧縮の zip（npz 用）
+/// 無圧縮の zip（npz 用）。4 GB・65,535 個を超える分は zip64 で書く（PRJ-27。numpy の np.load も読む）
 #[derive(Default)]
 struct Zip {
     files: Vec<(String, Vec<u8>)>,
 }
+
+/// zip の 32 ビット・16 ビットの欄の上限（これ以上は zip64 の欄に書き、こちらは 0xFFFFFFFF・0xFFFF）
+#[derive(Clone, Copy)]
+struct ZipLimits {
+    u32: u64,
+    u16: usize,
+}
+
+const ZIP_LIMITS: ZipLimits = ZipLimits {
+    u32: u32::MAX as u64,
+    u16: u16::MAX as usize,
+};
 
 impl Zip {
     fn add(&mut self, name: &str, data: Vec<u8>) {
@@ -243,60 +255,112 @@ impl Zip {
     }
 
     fn finish<W: Write>(self, w: &mut W) -> std::io::Result<()> {
+        self.finish_with(w, ZIP_LIMITS)
+    }
+
+    fn finish_with<W: Write>(self, w: &mut W, lim: ZipLimits) -> std::io::Result<()> {
         let mut off: u64 = 0;
         let mut central = Vec::new();
         let n = self.files.len();
         for (name, data) in &self.files {
-            if data.len() > u32::MAX as usize - 1 || off > u32::MAX as u64 {
-                return Err(std::io::Error::other("npz is over 4 GB"));
-            }
             let crc = crc32(data);
             let nb = name.as_bytes();
-            let mut h = Vec::with_capacity(30 + nb.len());
+            let size = data.len() as u64;
+            let big = size >= lim.u32;
+            let far = off >= lim.u32;
+            // 版: zip64 の欄を持つなら 4.5
+            let ver: u16 = if big || far { 45 } else { 20 };
+            let size32 = if big { u32::MAX } else { size as u32 };
+            // 局所の頭: 大きければ大きさは zip64 の追加の欄（元の大きさ・圧縮後の大きさ）
+            let mut lx = Vec::new();
+            if big {
+                lx.extend_from_slice(&1u16.to_le_bytes());
+                lx.extend_from_slice(&16u16.to_le_bytes());
+                lx.extend_from_slice(&size.to_le_bytes());
+                lx.extend_from_slice(&size.to_le_bytes());
+            }
+            let mut h = Vec::with_capacity(30 + nb.len() + lx.len());
             h.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-            h.extend_from_slice(&20u16.to_le_bytes()); // 版
+            h.extend_from_slice(&ver.to_le_bytes());
             h.extend_from_slice(&0u16.to_le_bytes()); // フラグ
             h.extend_from_slice(&0u16.to_le_bytes()); // 無圧縮
             h.extend_from_slice(&0u16.to_le_bytes()); // 時刻
             h.extend_from_slice(&0x0021u16.to_le_bytes()); // 日付 1980-01-01
             h.extend_from_slice(&crc.to_le_bytes());
-            h.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            h.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            h.extend_from_slice(&size32.to_le_bytes());
+            h.extend_from_slice(&size32.to_le_bytes());
             h.extend_from_slice(&(nb.len() as u16).to_le_bytes());
-            h.extend_from_slice(&0u16.to_le_bytes());
+            h.extend_from_slice(&(lx.len() as u16).to_le_bytes());
             h.extend_from_slice(nb);
+            h.extend_from_slice(&lx);
             w.write_all(&h)?;
             w.write_all(data)?;
-            let mut c = Vec::with_capacity(46 + nb.len());
+            // 中央の頭: zip64 の追加の欄は、溢れた欄だけを元の大きさ・圧縮後の大きさ・頭の位置の順に
+            let mut cx = Vec::new();
+            if big {
+                cx.extend_from_slice(&size.to_le_bytes());
+                cx.extend_from_slice(&size.to_le_bytes());
+            }
+            if far {
+                cx.extend_from_slice(&off.to_le_bytes());
+            }
+            if !cx.is_empty() {
+                let body = std::mem::take(&mut cx);
+                cx.extend_from_slice(&1u16.to_le_bytes());
+                cx.extend_from_slice(&(body.len() as u16).to_le_bytes());
+                cx.extend_from_slice(&body);
+            }
+            let mut c = Vec::with_capacity(46 + nb.len() + cx.len());
             c.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
-            c.extend_from_slice(&20u16.to_le_bytes());
-            c.extend_from_slice(&20u16.to_le_bytes());
+            c.extend_from_slice(&ver.to_le_bytes());
+            c.extend_from_slice(&ver.to_le_bytes());
             c.extend_from_slice(&0u16.to_le_bytes());
             c.extend_from_slice(&0u16.to_le_bytes());
             c.extend_from_slice(&0u16.to_le_bytes());
             c.extend_from_slice(&0x0021u16.to_le_bytes());
             c.extend_from_slice(&crc.to_le_bytes());
-            c.extend_from_slice(&(data.len() as u32).to_le_bytes());
-            c.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            c.extend_from_slice(&size32.to_le_bytes());
+            c.extend_from_slice(&size32.to_le_bytes());
             c.extend_from_slice(&(nb.len() as u16).to_le_bytes());
-            c.extend_from_slice(&[0u8; 8]); // 追加・注釈・ディスク番号・内部属性
+            c.extend_from_slice(&(cx.len() as u16).to_le_bytes());
+            c.extend_from_slice(&[0u8; 6]); // 注釈・ディスク番号・内部属性
             c.extend_from_slice(&0u32.to_le_bytes()); // 外部属性
-            c.extend_from_slice(&(off as u32).to_le_bytes());
+            c.extend_from_slice(&(if far { u32::MAX } else { off as u32 }).to_le_bytes());
             c.extend_from_slice(nb);
+            c.extend_from_slice(&cx);
             central.extend(c);
             off += (h.len() + data.len()) as u64;
         }
-        if off > u32::MAX as u64 || n > u16::MAX as usize {
-            return Err(std::io::Error::other("npz is too large"));
-        }
         w.write_all(&central)?;
+        let clen = central.len() as u64;
+        // 終わりの記録: 数・中央の大きさ・位置のどれかが溢れれば、zip64 の終わりの記録とその在り処を先に書く
+        let z64 = n >= lim.u16 || clen >= lim.u32 || off >= lim.u32;
+        if z64 {
+            let mut e = Vec::with_capacity(56 + 20);
+            e.extend_from_slice(&0x0606_4b50u32.to_le_bytes());
+            e.extend_from_slice(&44u64.to_le_bytes()); // この後の大きさ
+            e.extend_from_slice(&45u16.to_le_bytes());
+            e.extend_from_slice(&45u16.to_le_bytes());
+            e.extend_from_slice(&[0u8; 8]); // ディスク番号
+            e.extend_from_slice(&(n as u64).to_le_bytes());
+            e.extend_from_slice(&(n as u64).to_le_bytes());
+            e.extend_from_slice(&clen.to_le_bytes());
+            e.extend_from_slice(&off.to_le_bytes());
+            e.extend_from_slice(&0x0706_4b50u32.to_le_bytes());
+            e.extend_from_slice(&0u32.to_le_bytes());
+            e.extend_from_slice(&(off + clen).to_le_bytes());
+            e.extend_from_slice(&1u32.to_le_bytes()); // ディスクの数
+            w.write_all(&e)?;
+        }
+        let n16 = if n >= lim.u16 { u16::MAX } else { n as u16 };
+        let c32 = |x: u64| if x >= lim.u32 { u32::MAX } else { x as u32 };
         let mut e = Vec::with_capacity(22);
         e.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
         e.extend_from_slice(&[0u8; 4]);
-        e.extend_from_slice(&(n as u16).to_le_bytes());
-        e.extend_from_slice(&(n as u16).to_le_bytes());
-        e.extend_from_slice(&(central.len() as u32).to_le_bytes());
-        e.extend_from_slice(&(off as u32).to_le_bytes());
+        e.extend_from_slice(&n16.to_le_bytes());
+        e.extend_from_slice(&n16.to_le_bytes());
+        e.extend_from_slice(&c32(clen).to_le_bytes());
+        e.extend_from_slice(&c32(off).to_le_bytes());
         e.extend_from_slice(&0u16.to_le_bytes());
         w.write_all(&e)
     }
@@ -506,6 +570,39 @@ fn flatten(k: &str, x: &Value, out: &mut Vec<(String, Value)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 上限を小さくして zip64 の欄（大きさ・位置・数）を書かせ、npz の読み手で読み直す（PRJ-27）
+    #[test]
+    fn npz_over_limits_is_zip64() {
+        let cols = [
+            ("a", Col::F64((0..40).map(f64::from).collect())),
+            ("b", Col::I64(vec![1, 2, 3])),
+            ("c", Col::F64(vec![0.5])),
+        ];
+        let write = |lim: ZipLimits| {
+            let mut z = Zip::default();
+            for (n, c) in &cols {
+                z.add(&format!("{n}.npy"), npy(c, false));
+            }
+            let mut out = Vec::new();
+            z.finish_with(&mut out, lim).unwrap();
+            out
+        };
+        let small = write(ZIP_LIMITS);
+        let big = write(ZipLimits { u32: 200, u16: 2 });
+        assert!(big.windows(4).any(|w| w == 0x0606_4b50u32.to_le_bytes()));
+        assert!(!small.windows(4).any(|w| w == 0x0606_4b50u32.to_le_bytes()));
+        for b in [small, big] {
+            let mut r = ndarray_npy::NpzReader::new(std::io::Cursor::new(b)).unwrap();
+            let a: ndarray::Array1<f64> = r.by_name("a.npy").unwrap();
+            assert_eq!(a.len(), 40);
+            assert_eq!(a[39], 39.0);
+            let b: ndarray::Array1<i64> = r.by_name("b.npy").unwrap();
+            assert_eq!(b.to_vec(), [1, 2, 3]);
+            let c: ndarray::Array1<f64> = r.by_name("c.npy").unwrap();
+            assert_eq!(c.to_vec(), [0.5]);
+        }
+    }
 
     #[test]
     fn crc32_known_value() {
