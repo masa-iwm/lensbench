@@ -86,6 +86,15 @@ fn optimize_serve() {
             "{bad}"
         );
     }
+    // DLS の設定の誤りはほかの params の誤りと同じ要求の誤り（−32602）
+    for bad in [
+        json!({"vars": ["8.t"], "qr": "yes"}),
+        json!({"vars": ["8.t"], "gtol": -1.0}),
+        json!({"vars": ["8.t"], "gtol": "x"}),
+    ] {
+        let e = sv.call("optimize", &bad, None).unwrap_err();
+        assert_eq!(e.code, -32602, "{bad}: {}", e.message);
+    }
 
     // 構成の並び（プロジェクトの状態）: 2 つの状態の既定の項（視野 4 つずつ）。読み込んだ状態（far）に効かない変数は
     // 当てない

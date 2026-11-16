@@ -142,6 +142,7 @@ user term {}: non-finite residual	ユーザーの項 {}: 有限でない残差
 no configurations	構成がありません
 no merit function terms	メリットファンクションの項がありません
 {k} must be 0 or more ({v})	{k} は 0 以上に（{v}）
+must be 0 or more ({v})	0 以上に（{v}）
 damping must be a positive number ({})	damping は正の数に（{}）
 variable {q}: moving the object point is not system data	変数 {q}: 物点の移動は系のデータではありません
 variable {q}: the wavelength is a tolerance item only	変数 {q}: 波長は変数にできません（公差の項目だけ）

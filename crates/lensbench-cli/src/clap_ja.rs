@@ -35,7 +35,7 @@ fn source_ja(e: &clap::Error) -> Option<String> {
     if s.downcast_ref::<std::str::ParseBoolError>().is_some() {
         return Some("true・false でない".into());
     }
-    Some(s.to_string())
+    Some(lensbench_core::i18n::translate(&s.to_string()))
 }
 
 /// 「（X のこと？）」の添え書き

@@ -293,6 +293,26 @@ impl Merit {
     }
 }
 
+/// 0 以上の数（gtol）。負の数と NaN は誤り（CLI の旗・serve の params で使い方の誤りにする）
+pub fn non_negative(v: f64) -> std::result::Result<f64, String> {
+    if v.is_nan() || v < 0.0 {
+        Err(format!("must be 0 or more ({v})"))
+    } else {
+        Ok(v)
+    }
+}
+
+/// CLI の旗の値（0 以上の数）。数でなければ数の読みの誤りのまま
+pub fn parse_non_negative(
+    s: &str,
+) -> std::result::Result<f64, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(non_negative(s.trim().parse()?)?)
+}
+
+fn non_negative_de<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<f64, D::Error> {
+    non_negative(f64::deserialize(d)?).map_err(serde::de::Error::custom)
+}
+
 /// null は none（なし）として読む
 fn merit_or_null<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Merit, D::Error> {
     Ok(Option::<Merit>::deserialize(d)?.unwrap_or(Merit::None))
@@ -368,6 +388,7 @@ pub struct OptimizeParams {
     pub qr: bool,
     /// 残差と変数の列の余弦の最大がこれより小さければ止める（0 は判定しない）
     #[schemars(extend("x-min" = 0))]
+    #[serde(deserialize_with = "non_negative_de")]
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
@@ -501,6 +522,7 @@ pub struct ZoomParams {
     pub qr: bool,
     /// 残差と変数の列の余弦の最大がこれより小さければ止める（0 は判定しない）
     #[schemars(extend("x-min" = 0))]
+    #[serde(deserialize_with = "non_negative_de")]
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
@@ -638,6 +660,12 @@ mod tests {
         // 誤りにはどの鍵かを付ける
         let e = read::<ZoomParams>(&json!({"vars": ["7.t"], "qr": 1})).unwrap_err();
         assert!(e.starts_with("qr: "), "{e}");
+        // gtol の負の数は読みの誤り（serve の要求の誤り）
+        let e = read::<OptimizeParams>(&json!({"gtol": -1.0})).unwrap_err();
+        assert!(e.starts_with("gtol: must be 0 or more"), "{e}");
+        assert!(read::<ZoomParams>(&json!({"gtol": -0.5})).is_err());
+        assert!(parse_non_negative("-1").is_err() && parse_non_negative("x").is_err());
+        assert_eq!(parse_non_negative("1e-6").unwrap(), 1e-6);
         let e = read::<ZoomParams>(&json!({"method": "exact"})).unwrap_err();
         assert!(
             e.starts_with("method: exact (one of penalty, lagrange)"),

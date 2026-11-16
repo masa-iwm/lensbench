@@ -73,7 +73,7 @@ pub struct DlsArgs {
     #[arg(long)]
     pub qr: bool,
     /// Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.0, value_parser = lensbench_design::dls_spec::parse_non_negative)]
     pub gtol: f64,
     /// Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)
     #[arg(long = "active-set")]

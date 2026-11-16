@@ -877,6 +877,41 @@ fn exit_codes_by_kind() {
         err.contains("spot, wavefront, none") && err.contains("--help"),
         "{err}"
     );
+    // zoom の --method・DLS の --gtol の誤りも使い方の誤り（選択肢は clap が出す）
+    let zoom = |extra: &[&str]| {
+        let mut a = vec![
+            "zoom",
+            "examples/projects/P17_zoom_three_groups.json",
+            "--glass-dir",
+            "tests/glass",
+            "--var",
+            "G2.shift",
+        ];
+        a.extend_from_slice(extra);
+        a.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+    };
+    let z = zoom(&["--method", "foo"]);
+    let (c, err) = code(&z.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(c, Some(2), "{err}");
+    assert!(err.contains("penalty") && err.contains("lagrange"), "{err}");
+    let z = zoom(&["--gtol=-1"]);
+    let (c, err) = code(&z.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(c, Some(2), "{err}");
+    assert!(err.contains("must be 0 or more"), "{err}");
+    let (c, err) = code_in("ja", &z.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(c, Some(2), "{err}");
+    assert!(err.contains("0 以上に"), "{err}");
+    let (c, err) = code(&[
+        "optimize",
+        ZMX,
+        "--glass-dir",
+        "tests/glass",
+        "--var",
+        "8.t",
+        "--gtol",
+        "x",
+    ]);
+    assert_eq!(c, Some(2), "{err}");
     // ファイルが無いのは 3
     let (c, err) = code(&["info", "no/such.zmx"]);
     assert_eq!(c, Some(3), "{err}");
