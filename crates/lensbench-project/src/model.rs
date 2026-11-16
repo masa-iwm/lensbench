@@ -919,52 +919,137 @@ impl Project {
             }
             _ => return Err(format!("two or more states named {name}").into()),
         };
-        let mut v = serde_json::to_value(self)
-            .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
-        let root = v.as_object_mut().expect("project is an object");
-        for (k, x) in &st.project {
-            if k == "blocks"
-                || k == "states"
-                || (!root.contains_key(k)
-                    && !["path", "afocal", "telecentric"].contains(&k.as_str()))
-            {
-                return Err(format!("state {name}: system value {k} can't be changed").into());
-            }
-            root.insert(k.clone(), x.clone());
+        // 当てるのは変える項目を持つ所（系の値、id のブロック・群）だけで、プロジェクト全体を JSON に往復させない。
+        // 変えてよいかは型が読むか（unknown_keys）で決める（PRJ-10: 前は書き出した JSON にキーがあるかで決めたので、
+        // 既定値で省かれる項目は変えられなかった）
+        let mut p = self.clone();
+        if !st.project.is_empty() {
+            let blocks = std::mem::take(&mut p.blocks);
+            let states = std::mem::take(&mut p.states);
+            patch(&mut p, &st.project, &["blocks", "states"], name, |k| {
+                format!("state {name}: system value {k} can't be changed")
+            })?;
+            p.blocks = blocks;
+            p.states = states;
         }
         for (id, fields) in &st.set {
-            let mut hits = Vec::new();
-            if !id.is_empty() {
-                find_id(&v["blocks"], "/blocks", id, &mut hits);
+            let n = count_id(&p.blocks, id);
+            if n == 0 {
+                return Err(Error::Invalid(format!("state {name}: no block {id}"))
+                    .with_code(code::BLOCK_NOT_FOUND));
             }
-            let ptr = match hits.as_slice() {
-                [p] => p.clone(),
-                [] => {
-                    return Err(Error::Invalid(format!("state {name}: no block {id}"))
-                        .with_code(code::BLOCK_NOT_FOUND))
-                }
-                _ => return Err(format!("state {name}: two or more blocks with id {id}").into()),
+            if n > 1 {
+                return Err(format!("state {name}: two or more blocks with id {id}").into());
+            }
+            let fixed = ["type", "id", "blocks", "groups"];
+            let msg = |k: &str| format!("state {name}: {k} of block {id} can't be changed");
+            let r = match find_node_mut(&mut p.blocks, id).expect("counted above") {
+                NodeMut::Block(b) => patch(b, fields, &fixed, name, msg),
+                NodeMut::ZmxGroup(g) => patch(g, fields, &fixed, name, msg),
             };
-            let obj = v
-                .pointer_mut(&ptr)
-                .and_then(Value::as_object_mut)
-                .expect("block found above is an object");
-            for (k, x) in fields {
-                if ["type", "id", "blocks", "groups"].contains(&k.as_str()) || !obj.contains_key(k)
-                {
-                    return Err(format!("state {name}: {k} of block {id} can't be changed").into());
-                }
-                obj.insert(k.clone(), x.clone());
-            }
-        }
-        let p: Project =
-            serde_json::from_value(v.clone()).map_err(|e| format!("state {name}: {e}"))?;
-        let unknown = unknown_keys::<Project>(&v, &p);
-        if !unknown.is_empty() {
-            return Err(format!("state {name}: unknown key {}", unknown.join("・")).into());
+            r?;
         }
         Ok(p)
     }
+}
+
+/// x の項目 fields を置き換える（x を JSON にして当て、読み直す）。fixed の項目と、型が読まない項目は誤り（msg）。
+/// name は状態の名前（誤りの文）
+fn patch<T: Serialize + serde::de::DeserializeOwned>(
+    x: &mut T,
+    fields: &Map<String, Value>,
+    fixed: &[&str],
+    name: &str,
+    msg: impl Fn(&str) -> String,
+) -> lensbench_core::Result<()> {
+    let mut v = serde_json::to_value(&*x).map_err(|e| Error::Invalid(e.to_string()))?;
+    let obj = v.as_object_mut().expect("block and project are objects");
+    for (k, val) in fields {
+        if fixed.contains(&k.as_str()) {
+            return Err(msg(k).into());
+        }
+        obj.insert(k.clone(), val.clone());
+    }
+    let y: T = serde_json::from_value(v.clone()).map_err(|e| format!("state {name}: {e}"))?;
+    // 型が読まない項目（書いても効かない）は誤り。fields の中のキーだけを見る（入れ子の中は値の誤り）
+    let unknown = unknown_keys(&v, &y);
+    if let Some(k) = fields.keys().find(|k| {
+        unknown
+            .iter()
+            .any(|u| u == *k || u.starts_with(&format!("{k}/")))
+    }) {
+        if unknown.iter().any(|u| u == k) {
+            return Err(msg(k).into());
+        }
+        let u: Vec<&str> = unknown.iter().map(String::as_str).collect();
+        return Err(format!("state {name}: unknown key {}", u.join("・")).into());
+    }
+    *x = y;
+    Ok(())
+}
+
+/// id を持つブロック・群（.zmx の取り込みの群も）
+enum NodeMut<'x> {
+    Block(&'x mut Block),
+    ZmxGroup(&'x mut ZmxGroup),
+}
+
+/// 子のブロックの並び（群・BS の枝）
+fn kids(b: &Block) -> Vec<&Vec<Block>> {
+    match b {
+        Block::Group { blocks, .. } => vec![blocks],
+        Block::Splitter { spec, .. } => vec![&spec.t, &spec.r, &spec.d],
+        _ => Vec::new(),
+    }
+}
+
+/// id のブロック・群の数（[`block_pointers`] と同じ所を探す）
+fn count_id(blocks: &[Block], id: &str) -> usize {
+    if id.is_empty() {
+        return 0;
+    }
+    let mut n = 0;
+    for b in blocks {
+        n += usize::from(crate::blocks::block_id(b) == id);
+        if let Block::Zmx { groups, .. } = b {
+            n += groups.iter().filter(|g| g.id == id).count();
+        }
+        n += kids(b).into_iter().map(|k| count_id(k, id)).sum::<usize>();
+    }
+    n
+}
+
+/// id のブロック・群（[`count_id`] と同じ順で最初のもの）
+fn find_node_mut<'x>(blocks: &'x mut [Block], id: &str) -> Option<NodeMut<'x>> {
+    if id.is_empty() {
+        return None;
+    }
+    for b in blocks {
+        if crate::blocks::block_id(b) == id {
+            return Some(NodeMut::Block(b));
+        }
+        match b {
+            Block::Zmx { groups, .. } => {
+                if let Some(g) = groups.iter_mut().find(|g| g.id == id) {
+                    return Some(NodeMut::ZmxGroup(g));
+                }
+            }
+            Block::Group { blocks, .. } => {
+                if let Some(x) = find_node_mut(blocks, id) {
+                    return Some(x);
+                }
+            }
+            Block::Splitter { spec, .. } => {
+                for k in [&mut spec.t, &mut spec.r, &mut spec.d] {
+                    if let Some(x) = find_node_mut(k, id) {
+                        return Some(x);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// プロジェクトの JSON（`project["blocks"]`）で、id のブロック・群の JSON ポインタ（`/blocks/2/blocks/0` の形）。

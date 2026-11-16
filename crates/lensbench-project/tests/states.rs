@@ -509,3 +509,31 @@ fn afocal_and_telecentric_settings() {
     assert!(s.afocal);
     assert_eq!(s.afocal_unit, AfocalUnit::Degrees);
 }
+
+/// PRJ-10: 書き出しで省かれる項目（鏡の aperture、系の coatings・mechanics）も状態で変えられる。型が読まない項目は誤り
+#[test]
+fn states_change_values_that_are_left_out_when_default() {
+    let p = parse(
+        r#""blocks": [{"type": "air", "t": 10}, {"type": "mirror", "id": "M1", "semi": 5}, {"type": "air", "t": 10}],
+        "states": [
+          {"name": "rect", "set": {"M1": {"aperture": {"type": "rect", "hx": 4, "hy": 3}}},
+           "project": {"coatings": {"ND1": {"type": "nd", "od": 1, "absorptive": true}}}},
+          {"name": "bad", "set": {"M1": {"nope": 1}}},
+          {"name": "bad_root", "project": {"nope": 1}}
+        ]"#,
+    );
+    assert!(!p.to_json().contains("aperture\": {\"type\": \"rect"));
+    let q = p.with_state("rect").unwrap();
+    assert!(q.to_json().contains("\"hx\""), "{}", q.to_json());
+    assert!(q.coatings.contains_key("ND1"));
+    // 状態の一覧と、変えないブロックは残る
+    assert_eq!(q.states.len(), 3);
+    assert_eq!(q.blocks.len(), 3);
+    let e = p.with_state("bad").unwrap_err().to_string();
+    assert!(
+        e.contains("state bad") && e.contains("nope of block M1"),
+        "{e}"
+    );
+    let e = p.with_state("bad_root").unwrap_err().to_string();
+    assert!(e.contains("system value nope"), "{e}");
+}

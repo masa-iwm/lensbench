@@ -10,7 +10,8 @@ pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
     let mut v = Vec::new();
     for (i, s) in e.surfaces.iter().enumerate() {
         let last = i + 1 == n;
-        let mut q = surface_spec(s, last).map_err(|e| format!("lens surface {}: {e}", i + 1))?;
+        let mut q = surface_spec(s, last)
+            .map_err(|x| x.map_message(|e| format!("lens surface {}: {e}", i + 1)))?;
         if q.coordbrk.is_some() || s.typ == SurfType::Jones {
             return Err(format!(
                 "lens surface {}: only standard, even asphere, Odd Asphere, toroidal and Fresnel surfaces can be saved",
