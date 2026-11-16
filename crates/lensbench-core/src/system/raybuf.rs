@@ -1,6 +1,6 @@
 //! 追跡の結果を列（SoA）で受ける再利用の入れ物（KRN-09）
 //!
-//! [`System::trace_into`] は要る列（[`Cols`]）だけを書く。入れ物は呼び出しをまたいで使い回せる（確保は増えたときだけ）。
+//! [`System::try_trace_into`]・[`System::trace_launch_into`] は要る列（[`Cols`]）だけを書く。入れ物は呼び出しをまたいで使い回せる（確保は増えたときだけ）。
 //! 値は [`System::trace_launch`] の [`Trace`] と同じビット。
 
 use super::*;
@@ -49,8 +49,8 @@ impl std::ops::BitOr for Cols {
 /// 追跡の結果の列。書かなかった列は空
 #[derive(Debug, Clone, Default)]
 pub struct RayBuf {
-    /// 書いた列
-    pub cols: Cols,
+    /// 書く列（[`RayBuf::with_cols`] で決め、後からは変えない）
+    cols: Cols,
     pub status: Vec<RayStatus>,
     /// けられた面（0 = けられていない）
     pub vig: Vec<u32>,
@@ -79,6 +79,10 @@ impl RayBuf {
             cols,
             ..Default::default()
         }
+    }
+    /// 書く列
+    pub fn cols(&self) -> Cols {
+        self.cols
     }
     /// 光線の数
     pub fn len(&self) -> usize {

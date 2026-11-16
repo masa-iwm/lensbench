@@ -202,7 +202,7 @@
   `r.err == 0` は `r.status.is_ok()`、面の番号は `r.status.surf()`（届いたなら None）か `r.status.code()`（前と同じ数、届いたなら 0）。
   光線のエイミングに失敗した光線は、前は主光線の値のまま `err` に絞りの面を入れていたが、位置・方向・光路長・開始の位置・面ごとの記録・電場をすべて NaN にした。
   Python・JSON の `err` の数は前と同じ。
-- 追跡の結果を列で受ける入れ物（KRN-09）: `System::try_trace_into`・`trace_launch_into` は `RayBuf`（`cols` で選んだ列と状態・けられ）に書く。
+- 追跡の結果を列で受ける入れ物（KRN-09）: `System::try_trace_into`・`trace_launch_into` は `RayBuf`（`RayBuf::with_cols` で選んだ列と状態・けられ。列は `cols()` で読むだけ）に書く。
   値は `Trace` と同じビットで、入れ物は使い回せる（要らない列は確保しない）。`analysis::Opd` の `trace: Trace` は `rays: RayBuf`（`Cols::WAVE`）に。
 - 波長を足した系 `sweep::with_wavelength(&s, lam)` は `System::with_wavelength(lam)` に（ANA-28）。屈折率は材料から作り直す（ガラスの温度の補正は
   系の Adjust Index の設定のまま。前は系の値に合う方を 2 通りから選んだ）。材料の屈折率を任意の波長で `System::material_index_at`。

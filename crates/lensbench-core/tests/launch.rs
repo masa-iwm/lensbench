@@ -288,14 +288,8 @@ fn aim_failure_is_reported_and_nan() {
 fn trace_into_matches_trace() {
     use lensbench_core::system::{Cols, RayBuf};
     let (px, py) = grid();
-    let mut b = RayBuf {
-        cols: Cols::ALL,
-        ..Default::default()
-    };
-    let mut sp = RayBuf {
-        cols: Cols::SPOT,
-        ..Default::default()
-    };
+    let mut b = RayBuf::with_cols(Cols::ALL);
+    let mut sp = RayBuf::with_cols(Cols::SPOT);
     for name in ["A0", "C0", "E1"] {
         let s = load(name);
         let f = FieldSel::Index(s.fields.len() - 1);
