@@ -496,7 +496,7 @@ fn user_items(
             return (
                 vec![json!({
                     "vendor": folder, "part": abs.file_name().map(|s| s.to_string_lossy().into_owned()),
-                    "error": e,
+                    "error": e.to_string(),
                 })],
                 None,
             )

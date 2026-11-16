@@ -54,7 +54,7 @@ pub fn is_system_file(path: &Path) -> bool {
     lensbench_core::vfs::read_to_string(path).is_ok_and(|t| is_system_json(&t))
 }
 
-pub(crate) fn to_json(v: ciborium::value::Value) -> Result<Value, String> {
+pub(crate) fn to_json(v: ciborium::value::Value) -> lensbench_core::Result<Value> {
     use ciborium::value::Value as C;
     Ok(match v {
         C::Null => Value::Null,
@@ -66,7 +66,7 @@ pub(crate) fn to_json(v: ciborium::value::Value) -> Result<Value, String> {
             } else if let Ok(s) = i64::try_from(i) {
                 Value::from(s)
             } else {
-                return Err(format!("integer {i} is too large"));
+                return Err(format!("integer {i} is too large").into());
             }
         }
         C::Float(f) => {
@@ -91,7 +91,7 @@ pub(crate) fn to_json(v: ciborium::value::Value) -> Result<Value, String> {
             let mut o = Map::new();
             for (k, v) in m {
                 let C::Text(k) = k else {
-                    return Err(format!("a table key is not a string ({k:?})"));
+                    return Err(format!("a table key is not a string ({k:?})").into());
                 };
                 o.insert(k, to_json(v)?);
             }
@@ -103,7 +103,7 @@ pub(crate) fn to_json(v: ciborium::value::Value) -> Result<Value, String> {
     })
 }
 
-pub(crate) fn from_json(v: Value) -> Result<ciborium::value::Value, String> {
+pub(crate) fn from_json(v: Value) -> lensbench_core::Result<ciborium::value::Value> {
     use ciborium::value::Value as C;
     Ok(match v {
         Value::Null => C::Null,
@@ -126,21 +126,21 @@ pub(crate) fn from_json(v: Value) -> Result<ciborium::value::Value, String> {
                         "inf" => f64::INFINITY,
                         "-inf" => f64::NEG_INFINITY,
                         "nan" => f64::NAN,
-                        _ => return Err(format!("number {{\"$f\": {s:?}}}")),
+                        _ => return Err(format!("number {{\"$f\": {s:?}}}").into()),
                     }));
                 }
             }
             C::Map(
                 m.into_iter()
                     .map(|(k, v)| Ok((C::Text(k), from_json(v)?)))
-                    .collect::<Result<_, String>>()?,
+                    .collect::<lensbench_core::Result<_>>()?,
             )
         }
     })
 }
 
 /// 系の部分の JSON の値（ガラスの表は名前の順）
-fn system_value(s: &System) -> Result<Value, String> {
+fn system_value(s: &System) -> lensbench_core::Result<Value> {
     let c =
         ciborium::value::Value::serialized(s).map_err(|e| format!("writing the system: {e}"))?;
     let mut v = to_json(c)?;
@@ -192,12 +192,12 @@ pub fn hash_value(v: &Value) -> String {
 }
 
 /// 系の hash（"sha256:…"、系ファイルの `hash` と同じ）。同じ系なら同じ値
-pub fn system_hash(s: &System) -> Result<String, String> {
+pub fn system_hash(s: &System) -> lensbench_core::Result<String> {
     Ok(hash_value(&system_value(s)?))
 }
 
 /// 系を系ファイルの JSON（整形した文字列）にする
-pub fn to_string(s: &System, coatings: &[PathBuf]) -> Result<String, String> {
+pub fn to_string(s: &System, coatings: &[PathBuf]) -> lensbench_core::Result<String> {
     let sv = system_value(s)?;
     let hash = hash_value(&sv);
     let mut o = Map::new();
@@ -219,13 +219,13 @@ pub fn to_string(s: &System, coatings: &[PathBuf]) -> Result<String, String> {
 }
 
 /// 系ファイルの JSON を読む。返すのは (系, 中身, 注意)。注意は hash が合わない・新しい版が書いたなど
-pub fn from_str(txt: &str) -> Result<(System, Meta, Vec<String>), String> {
+pub fn from_str(txt: &str) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     let v: Value = serde_json::from_str(txt).map_err(|e| format!("system file: {e}"))?;
     let Value::Object(mut o) = v else {
         return Err("system file: not a JSON object".into());
     };
     if o.get("format").and_then(Value::as_str) != Some(FORMAT) {
-        return Err(format!("system file: format is not {FORMAT}"));
+        return Err(format!("system file: format is not {FORMAT}").into());
     }
     let ver = o
         .get("format_version")
@@ -234,7 +234,8 @@ pub fn from_str(txt: &str) -> Result<(System, Meta, Vec<String>), String> {
     if ver > FORMAT_VERSION {
         return Err(format!(
             "system file: version {ver} can't be read (up to {FORMAT_VERSION}; update lensbench)"
-        ));
+        )
+        .into());
     }
     let sv = o.remove("system").ok_or("system file: no system")?;
     let mut warn = Vec::new();
@@ -280,7 +281,7 @@ pub fn from_str(txt: &str) -> Result<(System, Meta, Vec<String>), String> {
 }
 
 /// 壊れた・手で直した系で追跡が panic しないよう、配列の長さと系の約束を確かめる
-pub fn check(sys: &System) -> Result<(), String> {
+pub fn check(sys: &System) -> lensbench_core::Result<()> {
     let nw = sys.wavelengths.len();
     if nw == 0 || sys.weights.len() != nw || sys.primary >= nw {
         return Err(
@@ -292,60 +293,60 @@ pub fn check(sys: &System) -> Result<(), String> {
             return Err(format!(
                 "system file: surface {j} has {} refractive indices ({nw} wavelengths)",
                 d.n.len()
-            ));
+            )
+            .into());
         }
         if !d.n_base.is_empty() && d.n_base.len() != nw {
-            return Err(format!("system file: surface {j} n_base count"));
+            return Err(format!("system file: surface {j} n_base count").into());
         }
     }
     let ns = sys.surfaces.len();
     for p in &sys.pickups {
         if p.src >= ns || p.dst >= ns {
-            return Err(format!(
-                "system file: pickup surfaces ({} → {})",
-                p.src, p.dst
-            ));
+            return Err(format!("system file: pickup surfaces ({} → {})", p.src, p.dst).into());
         }
     }
     for q in &sys.solves {
         if q.surf >= ns || q.kind.other_surface().is_some_and(|f| f >= ns) {
-            return Err(format!("system file: solve surface {}", q.surf));
+            return Err(format!("system file: solve surface {}", q.surf).into());
         }
         if let lensbench_core::param::SolveKind::MacroCurv(i)
         | lensbench_core::param::SolveKind::MacroThick(i) = q.kind
         {
             if i as usize >= sys.macros.len() {
-                return Err(format!("system file: no macro {i} for surface {}", q.surf));
+                return Err(format!("system file: no macro {i} for surface {}", q.surf).into());
             }
         }
     }
     for q in &sys.macro_parms {
         if q.surf >= ns || q.id as usize >= sys.macros.len() {
-            return Err(format!("system file: macro solve (surface {})", q.surf));
+            return Err(format!("system file: macro solve (surface {})", q.surf).into());
         }
     }
     for u in &sys.units {
         if u.spans.iter().any(|s| s[0] > s[1] || s[1] >= ns) {
-            return Err(format!("system file: range of lens or group {}", u.name));
+            return Err(format!("system file: range of lens or group {}", u.name).into());
         }
     }
     if sys.glrs >= ns {
         return Err(format!(
             "system file: global coordinate reference surface {}",
             sys.glrs
-        ));
+        )
+        .into());
     }
-    sys.check().map_err(|e| format!("system file: {e}"))
+    Ok(sys.check().map_err(|e| format!("system file: {e}"))?)
 }
 
 /// 系ファイルに書く（coatings は書いたとおりに残す）
-pub fn save(path: &Path, s: &System, coatings: &[PathBuf]) -> Result<(), String> {
+pub fn save(path: &Path, s: &System, coatings: &[PathBuf]) -> lensbench_core::Result<()> {
     let txt = to_string(s, coatings)?;
-    lensbench_core::vfs::write_atomic(path, txt).map_err(|e| format!("{}: {e}", path.display()))
+    Ok(lensbench_core::vfs::write_atomic(path, txt)
+        .map_err(|e| format!("{}: {e}", path.display()))?)
 }
 
 /// 系ファイルを読む。coatings の相対パスはファイルのフォルダからにする
-pub fn load(path: &Path) -> Result<(System, Meta, Vec<String>), String> {
+pub fn load(path: &Path) -> lensbench_core::Result<(System, Meta, Vec<String>)> {
     let txt = lensbench_core::vfs::read_to_string(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let (s, mut m, w) = from_str(&txt).map_err(|e| format!("{}: {e}", path.display()))?;

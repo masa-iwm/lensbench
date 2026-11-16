@@ -652,7 +652,7 @@ pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
 /// ユーザーカタログを読む。フォルダなら中の .json・.json.gz を全部（下のフォルダも）読んで品を合わせる
 pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, String> {
     if !path.is_dir() {
-        return lensbench_project::UserCatalog::load(path);
+        return Ok(lensbench_project::UserCatalog::load(path)?);
     }
     let mut files = Vec::new();
     let mut stack = vec![path.to_path_buf()];

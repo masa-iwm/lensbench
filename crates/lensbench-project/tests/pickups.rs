@@ -200,7 +200,7 @@ fn zmx_block_without_its_stop() {
         catalog: None,
     };
     let e = expand_report(&p, &env).unwrap_err();
-    assert!(e.contains("0 stops"), "{e}");
+    assert!(e.to_string().contains("0 stops"), "{e}");
 }
 
 /// 鏡のあとで、符号の変わる量（厚さ）から変わらない量（円錐）への別の列のピックアップは、倍率の符号を返して残す

@@ -60,7 +60,7 @@ fn zmx_project_refuses_what_it_cannot_write() {
     let mut m = s.clone();
     m.set_config_count(2).unwrap();
     let e = lensbench_project::zmx_project(&m, "x.zmx").unwrap_err();
-    assert!(e.contains("configurations"), "{e}");
+    assert!(e.to_string().contains("configurations"), "{e}");
     s.field_type =
         lensbench_core::system::FieldType::Solve(lensbench_core::system::FieldCond::Position {
             surf: 3,
@@ -100,11 +100,14 @@ fn glrs_and_vignetting_in_a_project() {
     assert_eq!(make(r#""glrs": 2,"#).unwrap().glrs, 2);
     assert_eq!(make("").unwrap().glrs, 1);
     let e = make(r#""glrs": 99,"#).unwrap_err();
-    assert!(e.contains("glrs"), "{e}");
+    assert!(e.to_string().contains("glrs"), "{e}");
     let e = make_with(
         r#""fields": {"points": [[0, 0]], "vignetting": [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]},"#,
         "",
     )
     .unwrap_err();
-    assert!(e.contains("2 vignetting rows for 1 fields"), "{e}");
+    assert!(
+        e.to_string().contains("2 vignetting rows for 1 fields"),
+        "{e}"
+    );
 }

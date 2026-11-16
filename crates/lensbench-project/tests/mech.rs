@@ -358,7 +358,10 @@ fn seat_places_the_part_on_the_held_element() {
               {{"type": "air", "t": 50}}], "mechanics": [{bad}]}}"#
         ))
         .unwrap();
-        assert!(expand(&p, &env()).unwrap_err().contains("seat"), "{bad}");
+        assert!(
+            expand(&p, &env()).unwrap_err().to_string().contains("seat"),
+            "{bad}"
+        );
     }
 }
 
@@ -408,7 +411,13 @@ fn after_chains_parts_with_threads() {
               {{"type": "air", "t": 50}}], "mechanics": [{first}, {bad}]}}"#
         ))
         .unwrap();
-        assert!(expand(&p, &env()).unwrap_err().contains("after"), "{bad}");
+        assert!(
+            expand(&p, &env())
+                .unwrap_err()
+                .to_string()
+                .contains("after"),
+            "{bad}"
+        );
     }
 }
 

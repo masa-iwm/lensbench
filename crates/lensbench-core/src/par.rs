@@ -173,6 +173,36 @@ pub fn map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync + Send) -> 
     }
 }
 
+/// [`map`] の誤りを返す形: 誤りが出たら新しい要素を始めず、入力の順で最初に見つかった誤りを返す
+/// （並列では、誤りの後に始めなかった要素より前の要素の誤りが返ることもある）
+pub fn try_map<T: Sync, R: Send, E: Send>(
+    items: &[T],
+    f: impl Fn(&T) -> Result<R, E> + Sync + Send,
+) -> Result<Vec<R>, E> {
+    let failed = AtomicBool::new(false);
+    let out = map(items, |x| {
+        if failed.load(Ordering::Relaxed) {
+            return None;
+        }
+        let r = f(x);
+        if r.is_err() {
+            failed.store(true, Ordering::Relaxed);
+        }
+        Some(r)
+    });
+    let mut v = Vec::with_capacity(out.len());
+    let mut skipped = false;
+    for r in out {
+        match r {
+            Some(Ok(x)) => v.push(x),
+            Some(Err(e)) => return Err(e),
+            None => skipped = true,
+        }
+    }
+    debug_assert!(!skipped, "skipped only after an error");
+    Ok(v)
+}
+
 /// 計算の中断の印。計算（要求）ごとに作って [`with_cancel`] で渡し、別のスレッドから [`CancelToken::cancel`] で倒す。
 /// 印は計算ごとなので、同じプロセスで同時に回っている別の計算は止めない。
 /// [`CancelToken::child`] で作った子の印は、親が倒れても倒れたとみなす（serve の要求の中で回す最適化など）
@@ -465,6 +495,18 @@ mod cancel_tests {
         });
         assert_eq!(n.load(Ordering::Relaxed), 4);
         assert!(!reporting());
+    }
+
+    /// try_map: 誤りが無ければ map と同じ順、誤りがあれば誤り
+    #[test]
+    fn try_map_order_and_error() {
+        let v: Vec<usize> = (0..50).collect();
+        let r = with_threads(Some(3), || try_map(&v, |&x| Ok::<_, String>(x * 2)));
+        assert_eq!(r.unwrap(), (0..50).map(|x| x * 2).collect::<Vec<_>>());
+        let r = with_threads(Some(3), || {
+            try_map(&v, |&x| if x == 7 { Err(x) } else { Ok(x) })
+        });
+        assert_eq!(r, Err(7));
     }
 
     /// まとめ追跡の切り替えも文脈で、作業のスレッドに引き継ぎ、外では既定（使う）に戻る

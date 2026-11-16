@@ -424,6 +424,7 @@ fn connection(
                 code: -32602,
                 message: e,
                 kind: None,
+                data_code: None,
             }),
             None => sess.handle(&method, &params, m.bins, threads),
         };
@@ -447,7 +448,8 @@ fn connection(
             Err(e) => {
                 let mut er = json!({ "code": e.code, "message": e.message });
                 if let Some(k) = e.kind {
-                    er["data"] = json!({ "kind": k });
+                    er["data"] =
+                        json!({ "kind": k, "code": e.data_code.unwrap_or_else(|| k.clone()) });
                 }
                 let h = json!({ "jsonrpc": "2.0", "id": id, "error": er });
                 write_msg(&mut w, h, &[])?;

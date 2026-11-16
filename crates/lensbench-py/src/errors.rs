@@ -76,12 +76,17 @@ pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
     match e.into() {
         ErrSrc::Core(e) => {
             let m = e.to_string();
-            match e {
-                lensbench_core::Error::Invalid(_) => InvalidError::new_err(m),
+            let pe = match e.base() {
                 lensbench_core::Error::NotImplemented(_) => UnsupportedError::new_err(m),
                 lensbench_core::Error::Io(_) => ReadError::new_err(m),
                 lensbench_core::Error::Cancelled => CancelledError::new_err(m),
-            }
+                _ => InvalidError::new_err(m),
+            };
+            // 機械で見分ける符号（lensbench_core::error::code、無ければ種類の名前）を例外の code に
+            Python::attach(|py| {
+                let _ = pe.value(py).setattr("code", e.code());
+            });
+            pe
         }
         // 文字列の誤りは英語で書いてあるので、表示の言語に訳す（XCT-20）
         ErrSrc::Text(m) => Error::new_err(lensbench_core::i18n::tr(&m)),

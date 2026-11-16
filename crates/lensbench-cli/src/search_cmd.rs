@@ -119,7 +119,7 @@ fn is_project(p: &std::path::Path) -> bool {
 }
 
 /// 状態ごとの系と、その名前
-fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
+fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), crate::error::AppError> {
     let names: Option<Vec<String>> = a.states.as_ref().map(|s| {
         s.split(',')
             .map(|t| t.trim().to_string())
@@ -128,7 +128,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
     });
     if is_project(&a.file) {
         let txt = lensbench_core::vfs::read_to_string(&a.file)
-            .map_err(|e| format!("{}: {e}", a.file.display()))?;
+            .map_err(crate::error::AppError::io_at(&a.file))?;
         let p = Project::from_json(&txt)?;
         let names = match names {
             Some(n) => n,
@@ -137,7 +137,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
         if names.is_empty() {
             return Err("the project has no states (states)".into());
         }
-        let cat = LensCatalog::load_registered(&a.lens_catalog).map_err(|e| e.to_string())?;
+        let cat = LensCatalog::load_registered(&a.lens_catalog)?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let mut v = Vec::new();
         for n in &names {
@@ -176,7 +176,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
             catalog_dirs: a.glass_dir.clone(),
             ..Default::default()
         };
-        let v = zmx::load_configs(&a.file, &opt, &cfgs).map_err(|e| e.to_string())?;
+        let v = zmx::load_configs(&a.file, &opt, &cfgs)?;
         let names = if cfgs.is_empty() {
             (1..=v.len()).map(|k| k.to_string()).collect()
         } else {
@@ -186,7 +186,7 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
     }
 }
 
-pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
+pub fn zoom(a: &ZoomArgs) -> Result<Value, crate::error::AppError> {
     let (cs, names) = load_states(a)?;
     let o = ZoomParams {
         vars: a.vars.iter().map(|v| VarSpec::from(v.as_str())).collect(),
@@ -204,20 +204,22 @@ pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
         active_set: a.dls.active_set,
         ..ZoomParams::default()
     };
-    lensbench_engine::zoom::zoom_systems(&cs, &names, &o).map_err(|e| e.to_string())
+    Ok(crate::progress::with(a.json, || {
+        lensbench_engine::zoom::zoom_systems(&cs, &names, &o)
+    })?)
 }
 
-pub fn swap(a: &SwapArgs) -> Result<Value, String> {
+pub fn swap(a: &SwapArgs) -> Result<Value, crate::error::AppError> {
     let txt = lensbench_core::vfs::read_to_string(&a.file)
-        .map_err(|e| format!("{}: {e}", a.file.display()))?;
+        .map_err(crate::error::AppError::io_at(&a.file))?;
     let p = Project::from_json(&txt)?;
     let st = lensbench_core::vfs::read_to_string(&a.spec)
-        .map_err(|e| format!("{}: {e}", a.spec.display()))?;
+        .map_err(crate::error::AppError::io_at(&a.spec))?;
     let mut spec = SwapSpec::from_json(&st)?;
     if a.state.is_some() {
         spec.state = a.state.clone();
     }
-    let cat = LensCatalog::load_registered(&a.lens_catalog).map_err(|e| e.to_string())?;
+    let cat = LensCatalog::load_registered(&a.lens_catalog)?;
     let env = Env {
         step_files: None,
         base: a.file.parent().map(|p| p.to_path_buf()).unwrap_or_default(),

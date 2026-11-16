@@ -507,6 +507,8 @@ pub(crate) struct RpcErr {
     pub(crate) msg: String,
     /// core の誤りの種類（[`lensbench_core::Error::kind`]。返す誤りの `data.kind`）
     kind: Option<&'static str>,
+    /// core の誤りの符号（[`lensbench_core::Error::code`]。返す誤りの `data.code`）
+    ecode: Option<&'static str>,
 }
 
 impl RpcErr {
@@ -515,12 +517,14 @@ impl RpcErr {
             code: -32000,
             msg: m.into(),
             kind: None,
+            ecode: None,
         }
     }
-    /// core の誤りの種類を付ける（文を作り直したとき）
-    pub(crate) fn with_kind(self, k: &'static str) -> Self {
+    /// core の誤りの種類と符号を付ける（文を作り直したとき）
+    pub(crate) fn with_core(self, e: &lensbench_core::Error) -> Self {
         RpcErr {
-            kind: Some(k),
+            kind: Some(e.kind()),
+            ecode: Some(e.code()),
             ..self
         }
     }
@@ -529,6 +533,7 @@ impl RpcErr {
             code: -32602,
             msg: m.into(),
             kind: None,
+            ecode: None,
         }
     }
 }
@@ -542,10 +547,7 @@ impl From<String> for RpcErr {
 
 impl From<lensbench_core::Error> for RpcErr {
     fn from(e: lensbench_core::Error) -> Self {
-        RpcErr {
-            kind: Some(e.kind()),
-            ..RpcErr::app(e.to_string())
-        }
+        RpcErr::app(e.to_string()).with_core(&e)
     }
 }
 
@@ -555,6 +557,7 @@ impl From<RpcErr> for CallError {
             code: e.code,
             message: e.msg,
             kind: e.kind.map(str::to_string),
+            data_code: e.ecode.map(str::to_string),
         }
     }
 }
@@ -756,6 +759,8 @@ pub struct CallError {
     pub message: String,
     /// core の誤りの種類（`not_implemented`・`invalid`・`io`・`cancelled`。serve は `data.kind` に書く）
     pub kind: Option<String>,
+    /// core の誤りの符号（`lensbench_core::error::code` の値か種類の名前。serve は `data.code` に書く）
+    pub data_code: Option<String>,
 }
 
 impl std::fmt::Display for CallError {
@@ -1280,11 +1285,13 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
             code: -32600,
             msg: "no method".into(),
             kind: None,
+            ecode: None,
         }),
         m => Err(RpcErr {
             code: -32601,
             msg: format!("no method {m}"),
             kind: None,
+            ecode: None,
         }),
     }
 }
@@ -1356,10 +1363,7 @@ pub(crate) fn with_source<R>(
     let log = sess.current_log();
     let c = spec.clone();
     let r = |s: System, l: &str, n: &mut Vec<String>| replay(s, &log, l, n);
-    Ok(f(&crate::source::FileSource {
-        c: &c,
-        replay: Some(&r),
-    }))
+    Ok(f(&crate::source::FileSource::new(&c, Some(&r))))
 }
 
 fn is_zmx(f: &Path) -> bool {

@@ -171,7 +171,8 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                 if cat.items.contains_key(name) && !replace {
                     return Err(format!(
                         "item {name} already exists (replace it with replace: true)"
-                    ));
+                    )
+                    .into());
                 }
                 cat.items.insert(name.to_string(), item);
                 set_vendor(cat);

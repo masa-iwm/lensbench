@@ -53,6 +53,12 @@
   `groups` の値は `GroupTol`、`dist` は `Dist` の型で直に読む（XCT-11）: `groups` の欄の `null`（以前は 0 扱い）と、
   分布の名前の誤りは読むときの誤り（文は `tolerance.tols[0].dist: distribution …` のように欄の道つき）。
 
+- 誤りの符号: core の誤りに機械で見分ける符号（`Error::code`、`lensbench_core::error::code`）を足した。serve の誤りは `data.code`、
+  Python の例外は `code`。プロジェクトを読む所（`lensbench_project` の関数）は `Result<_, String>` から core の `Error` に変わり、
+  種類（読込・不正）と符号が CLI の終了コード・serve・Python まで残る。表示の文は種類の前置き（`invalid:` など）が付くことがある。
+  検出器の種類の `check` は `lensbench_core::Result<()>` を返す。`par::try_map`（誤りが出たら残りを始めない）を足した。
+  ズーム軌跡も進み具合（`Event::Count`）を知らせ、CLI の `zoom` は標準エラーに「k / n」を出す。
+
 ### 終了コード
 - CLI の終了コードを誤りの種類で分けた: 1 失敗（系・値の不正・計算・照合の不合格・一部の失敗）、2 使い方（引数・設定ファイル）、
   3 ファイルが無い・読めない・書けない、4 未対応の機能、130 中断（以前は引数の誤り 2 のほかは全部 1）。表は [使い方（CLI）](cli.md)・

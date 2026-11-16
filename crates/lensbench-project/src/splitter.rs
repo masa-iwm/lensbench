@@ -169,7 +169,7 @@ impl SplitterSpec {
     }
 
     /// 分ける面の膜の名前
-    fn split_coat(&self) -> Result<String, String> {
+    fn split_coat(&self) -> lensbench_core::Result<String> {
         let n = self.ratio.is_some() as u8 + !self.coat.is_empty() as u8 + self.pbs.is_some() as u8;
         if n > 1 {
             return Err("exactly one of ratio, coat and pbs".into());
@@ -205,8 +205,8 @@ impl SplitterSpec {
         }
     }
 
-    pub(crate) fn check(&self, id: &str) -> Result<(), String> {
-        let e = |m: &str| Err(format!("BS {id}: {m}"));
+    pub(crate) fn check(&self, id: &str) -> lensbench_core::Result<()> {
+        let e = |m: &str| Err(lensbench_core::Error::Invalid(format!("BS {id}: {m}")));
         if id.is_empty() {
             return Err("a BS (splitter) needs an id".into());
         }
@@ -493,13 +493,13 @@ pub(crate) struct SplitState {
 }
 
 /// 経路の文字列（T・R、大小どちらも）
-pub(crate) fn parse_path(s: &str) -> Result<Vec<bool>, String> {
+pub(crate) fn parse_path(s: &str) -> lensbench_core::Result<Vec<bool>> {
     s.chars()
         .filter(|c| !c.is_whitespace())
         .map(|c| match c {
             'T' | 't' => Ok(true),
             'R' | 'r' => Ok(false),
-            _ => Err(format!("path {s}: letters must be T or R")),
+            _ => Err(format!("path {s}: letters must be T or R").into()),
         })
         .collect()
 }
@@ -514,13 +514,14 @@ impl<'a, 'b> Ctx<'a, 'b> {
         k
     }
 
-    fn letter(&mut self, arm: Arm) -> Result<bool, String> {
+    fn letter(&mut self, arm: Arm) -> lensbench_core::Result<bool> {
         let st = &mut self.split;
         st.passes += 1;
         if st.passes > MAX_PASSES {
             return Err(format!(
                 "the BS is passed more than {MAX_PASSES} times (the path keeps coming back)"
-            ));
+            )
+            .into());
         }
         if st.pos < st.path.len() {
             st.pos += 1;
@@ -564,7 +565,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// BS を口 p から通す（面を足して、出る口の軸へ移す）。出る口を返す
-    fn split_pass(&mut self, key: &str, p: usize, t: bool) -> Result<usize, String> {
+    fn split_pass(&mut self, key: &str, p: usize, t: bool) -> lensbench_core::Result<usize> {
         let info = self.split.info[key].clone();
         let sp = &info.spec;
         let faces = sp.faces();
@@ -612,7 +613,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// 分岐（口 port の先）を進む。終わりまで進んだら経路の終わり
-    fn traverse_branch(&mut self, key: &str, port: usize) -> Result<(), String> {
+    fn traverse_branch(&mut self, key: &str, port: usize) -> lensbench_core::Result<()> {
         let spec = self.split.info[key].spec.clone();
         let bl = spec.branch(port);
         self.split.levels.push(Level::Branch {
@@ -643,12 +644,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
         place: &Place,
         siblings: &[Block],
         idx: usize,
-    ) -> Result<(), String> {
+    ) -> lensbench_core::Result<()> {
         spec.check(id)?;
         if spec.has_branches() && idx + 1 < siblings.len() {
             return Err(format!(
                 "BS {id}: no block can go after a BS with branches (t, r, d); write it in the branch"
-            ));
+            ).into());
         }
         let key = self.split_key(id);
         let level = self.split.levels.last().cloned().unwrap_or(Level::Other);
@@ -700,10 +701,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// 復路で分岐のない BS を通る（往路で出た口から入る）
-    pub(crate) fn splitter_back(&mut self, id: &str) -> Result<(), String> {
+    pub(crate) fn splitter_back(&mut self, id: &str) -> lensbench_core::Result<()> {
         let key = self.split_key(id);
         let Some(info) = self.split.info.get(&key).cloned() else {
-            return Err(format!("BS {id}: not passed on the way out"));
+            return Err(format!("BS {id}: not passed on the way out").into());
         };
         if info.off {
             if info.spec.length() != 0.0 && self.split_off_air(&info) {
@@ -727,7 +728,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// 復路で並びの初めまで戻った（level はその並びの段）。BS の分岐なら BS を通る
-    pub(crate) fn return_at(&mut self, level: Level) -> Result<(), String> {
+    pub(crate) fn return_at(&mut self, level: Level) -> lensbench_core::Result<()> {
         let Level::Branch { key, port } = level else {
             return Ok(());
         };

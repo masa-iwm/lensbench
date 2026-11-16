@@ -106,26 +106,26 @@ fn scale(w: f64) -> f64 {
     w / (2.0 * 9f64.ln())
 }
 
-fn check01(v: f64, what: &str) -> Result<(), String> {
+fn check01(v: f64, what: &str) -> lensbench_core::Result<()> {
     if (0.0..=1.0).contains(&v) {
         Ok(())
     } else {
-        Err(format!("{what} {v} (0 to 1)"))
+        Err(format!("{what} {v} (0 to 1)").into())
     }
 }
 
 impl Ideal {
-    fn check(&self) -> Result<(), String> {
+    fn check(&self) -> lensbench_core::Result<()> {
         check01(self.t, "filter transmittance")?;
         if !(self.od >= 0.0 && self.od.is_finite()) {
-            return Err(format!("filter OD {}", self.od));
+            return Err(format!("filter OD {}", self.od).into());
         }
         if !(self.neff >= 1.0 && self.neff.is_finite()) {
-            return Err(format!("filter neff {} (1 or more)", self.neff));
+            return Err(format!("filter neff {} (1 or more)", self.neff).into());
         }
         if let Some(w) = self.width_nm {
             if !(w > 0.0 && w.is_finite()) {
-                return Err(format!("filter edge width {w} nm"));
+                return Err(format!("filter edge width {w} nm").into());
             }
         }
         Ok(())
@@ -135,17 +135,17 @@ impl Ideal {
     }
 }
 
-fn pos(v: f64, what: &str) -> Result<(), String> {
+fn pos(v: f64, what: &str) -> lensbench_core::Result<()> {
     if v > 0.0 && v.is_finite() {
         Ok(())
     } else {
-        Err(format!("filter {what} {v}"))
+        Err(format!("filter {what} {v}").into())
     }
 }
 
 impl CoatSpec {
     /// TABLE 膜の表（角度ごとの [波長, Rs, Rp, Ts, Tp, 位相 4 つ] の並び）
-    pub fn table(&self) -> Result<Table, String> {
+    pub fn table(&self) -> lensbench_core::Result<Table> {
         match self {
             CoatSpec::Table { rows } => table_rows(rows),
             CoatSpec::Curve {
@@ -173,7 +173,9 @@ impl CoatSpec {
                     let rr = r.get(i).copied().unwrap_or(0.0);
                     check01(rr, "curve r")?;
                     if x + rr > 1.0 + 1e-9 {
-                        return Err(format!("curve t + r is over 1 ({} nm)", wavelengths_nm[i]));
+                        return Err(
+                            format!("curve t + r is over 1 ({} nm)", wavelengths_nm[i]).into()
+                        );
                     }
                 }
                 let rows: Vec<[f64; 9]> = wavelengths_nm
@@ -188,7 +190,7 @@ impl CoatSpec {
             }
             CoatSpec::Nd { od, absorptive } => {
                 if !(*od >= 0.0 && od.is_finite()) {
-                    return Err(format!("ND OD {od}"));
+                    return Err(format!("ND OD {od}").into());
                 }
                 let t = 10f64.powf(-od);
                 let r = if *absorptive { 0.0 } else { 1.0 - t };
@@ -282,14 +284,14 @@ fn sample(ideal: &Ideal, edges: &[f64], w: f64, f: impl Fn(f64, f64) -> f64) -> 
         .collect()
 }
 
-fn table_rows(rows: &[[f64; 6]]) -> Result<Table, String> {
+fn table_rows(rows: &[[f64; 6]]) -> lensbench_core::Result<Table> {
     let mut out: Table = Vec::new();
     for r in rows {
         if !r.iter().all(|v| v.is_finite()) {
             return Err("a table value is not a number".into());
         }
         if !(0.0..90.0).contains(&r[0]) || r[1] <= 0.0 {
-            return Err(format!("table row angle {}, wavelength {}", r[0], r[1]));
+            return Err(format!("table row angle {}, wavelength {}", r[0], r[1]).into());
         }
         for &v in &r[2..] {
             check01(v, "table R or T")?;
@@ -307,9 +309,7 @@ fn table_rows(rows: &[[f64; 6]]) -> Result<Table, String> {
     for (a, v) in &mut out {
         v.sort_by(|x, y| x[0].total_cmp(&y[0]));
         if v.windows(2).any(|w| w[0][0] == w[1][0]) {
-            return Err(format!(
-                "two rows with the same wavelength at table angle {a}"
-            ));
+            return Err(format!("two rows with the same wavelength at table angle {a}").into());
         }
     }
     Ok(out)

@@ -315,7 +315,7 @@ pub fn read_spec(v: &Value) -> Result<TolSpec, String> {
     if v.get("ref").is_some() {
         return Err("ref of the tolerance settings was renamed to reference".into());
     }
-    lenient::from_json(v, "tolerance")
+    Ok(lenient::from_json(v, "tolerance")?)
 }
 
 /// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）。

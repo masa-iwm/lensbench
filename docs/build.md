@@ -15,6 +15,19 @@ python3 scripts/check_public.py --history
 一度に追う光線の組（1024 本以上か未満か、座標の範囲）で結果がわずかに変わる（絞りでの位置はどちらも収束の許容差の範囲、tests/refs の像面で 2e-11 mm 以下。ビット単位の再現はスレッド数と
 まとめ追跡の有無についてで、光線の組についてではない）。
 
+### 試験の環境変数（XCT-30）
+
+テストのふるまいを変える環境変数（`LB_*` など）はこれだけ（ほかに `LENSBENCH_LANG` は誤りの文の言語、`.cargo/config.toml` で `en`）。
+
+| 変数 | 効く所 | 意味 |
+| --- | --- | --- |
+| `LB_REFS_DIR` | 結合テスト（`tests/common.rs`）・照合 | 基準データ（`tests/refs`）のフォルダを差し替える |
+| `LB_GLASS_DIR` | 結合テスト・照合 | テスト用ガラス（`tests/glass`）のフォルダを差し替える |
+| `LB_REFS` | `lensbench-verify` の照合のテスト | 照合するケースの名前を絞る |
+| `LB_PRINT_FWD` | `lensbench-optim` の試験 | 差分のヤコビアンの比べを標準エラーに出す（調べ用） |
+| `LB_STEP_FILES` | `lensbench-project` の無視したテスト | 手元の STEP（`;` 区切り）を測って出す（`--ignored` で回す） |
+| `LENSBENCH_UPDATE_SCHEMA` | `lensbench-design`・`lensbench-project` の schema の試験 | `docs/schema` の JSON スキーマを型から書き直す |
+
 ## 第三者のライセンス
 
 配る exe・wheel には第三者のクレート（egui の既定のフォント OFL・UFL を含む）が静的に入る。MIT・Apache-2.0・OFL は

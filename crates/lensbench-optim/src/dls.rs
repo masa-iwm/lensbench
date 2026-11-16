@@ -772,12 +772,12 @@ fn typical(k: Kind) -> f64 {
     }
 }
 
-/// v のそれぞれに f をかける（[`par::map`]。誤りがあれば最初の誤り）
+/// v のそれぞれに f をかける（[`par::try_map`]。誤りが出たら残りは始めない）
 fn map_maybe_par<T: Sync, R: Send>(
     v: &[T],
     f: impl Fn(&T) -> Result<R> + Sync + Send,
 ) -> Result<Vec<R>> {
-    par::map(v, f).into_iter().collect()
+    par::try_map(v, f)
 }
 
 /// 項で使う波長（単色はその波長、多色は重みのある波長）

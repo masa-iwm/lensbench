@@ -29,7 +29,7 @@ fn p14_json() -> serde_json::Value {
 }
 
 /// P14（傾けた球面鏡のダブルパス）をプロジェクトの JSON v から読む
-fn load_json(v: &serde_json::Value, tag: &str) -> Result<System, String> {
+fn load_json(v: &serde_json::Value, tag: &str) -> lensbench_core::Result<System> {
     let dir = std::env::temp_dir().join(format!("lb_field_solve_{}_{tag}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let p = dir.join("p.json");
@@ -156,7 +156,10 @@ fn chief_ray_returning_on_itself_as_a_field() {
 fn project_errors() {
     let mut v = p14_json();
     v["fields"] = serde_json::json!({ "type": "solve", "points": [[0.0, 0.0]] });
-    assert!(load_json(&v, "b").unwrap_err().contains("solve"));
+    assert!(load_json(&v, "b")
+        .unwrap_err()
+        .to_string()
+        .contains("solve"));
     v["fields"] = serde_json::json!({
         "type": "solve", "solve": { "cond": "position", "surface": "nope" }, "points": [[0.0, 0.0]]
     });

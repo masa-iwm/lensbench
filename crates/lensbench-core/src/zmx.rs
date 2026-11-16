@@ -1378,18 +1378,16 @@ pub fn build(
             }
         } else {
             let Some(g) = glasses.get(&mat) else {
-                invalid!("glass {mat} (surface {k}) is not in the catalogs{why}");
+                invalid!(code = crate::error::code::GLASS_NOT_FOUND; "glass {mat} (surface {k}) is not in the catalogs{why}");
             };
             wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect()
         };
         d.n = n.clone();
         if let Some(crate::surface::Bire::In { ne, .. }) = d.bire.as_mut() {
             let en = crate::surface::Bire::e_name(&mat);
-            let g = glasses.get(&en).ok_or_else(|| {
-                Error::Invalid(format!(
-                    "extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}"
-                ))
-            })?;
+            let Some(g) = glasses.get(&en) else {
+                invalid!(code = crate::error::code::GLASS_NOT_FOUND; "extraordinary glass {en} of birefringent material {mat} (surface {k}) is not in the catalogs{why}");
+            };
             *ne = wl.iter().map(|&l| g.index(l, temp, pres, adjust)).collect();
         }
         if !ign {

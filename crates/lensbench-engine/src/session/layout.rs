@@ -217,33 +217,11 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
         };
         return Ok(json!({ "cfgs": n, "cfg": spec.cfg, "states": [], "paths": [] }));
     }
-    let txt = lensbench_core::vfs::read_to_string(&spec.file)
-        .map_err(|x| RpcErr::app(format!("{}: {x}", spec.file.display())))?;
-    let p = lensbench_project::Project::from_json(&txt)?;
-    let ps = match &spec.state {
-        Some(n) => p.with_state(n)?,
-        None => p.clone(),
-    };
-    let cat = lensbench_core::catalog::LensCatalog::load(
-        &spec.lens_catalog,
-        &[&lensbench_core::catalog::ZmxFileSource],
-    )?;
-    let look = |v: &str, q: &str| cat.zmx(v, q);
-    let env = lensbench_project::Env {
-        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
-        step_files: Some(&lensbench_cad::cached_step),
-        base: spec
-            .file
-            .parent()
-            .map(|x| x.to_path_buf())
-            .unwrap_or_default(),
-        glass_dirs: spec.glass_dir.clone(),
-        catalog: Some(&look),
-    };
-    let paths = lensbench_project::paths(&ps, &env)?;
+    let src = lensbench_project::open::Source::read(&spec.file)?;
+    let paths = src.paths(&spec.open_spec())?;
     Ok(json!({
         "cfgs": 1,
-        "states": p.state_names(),
+        "states": src.states(),
         "state": spec.state,
         "paths": paths,
         "path": spec.path,

@@ -8,11 +8,31 @@ use crate::load::SysSpec;
 pub(crate) type Replay<'a> =
     &'a dyn Fn(System, &str, &mut Vec<String>) -> std::result::Result<System, String>;
 
-/// 系のファイルの読み方
+/// 系のファイルの読み方。ファイルは初めに要るときに 1 回だけ読み（[`lensbench_project::open::Source`]）、状態・経路・
+/// プロジェクトの文字列・別の状態の系はそこから引く（CLI-13）
 pub struct FileSource<'a> {
     pub c: &'a SysSpec,
     /// serve で読み込んだ後の変更を当てる（CLI は None）
     pub replay: Option<Replay<'a>>,
+    src: std::sync::OnceLock<Result<lensbench_project::open::Source>>,
+}
+
+impl<'a> FileSource<'a> {
+    pub fn new(c: &'a SysSpec, replay: Option<Replay<'a>>) -> Self {
+        Self {
+            c,
+            replay,
+            src: Default::default(),
+        }
+    }
+
+    /// 1 回だけ読んだファイル
+    fn src(&self) -> Result<&lensbench_project::open::Source> {
+        self.src
+            .get_or_init(|| lensbench_project::open::Source::read(&self.c.file))
+            .as_ref()
+            .map_err(Clone::clone)
+    }
 }
 
 /// 読む所の誤りの文（`load_file` の「不正: …」は頭を重ねない）
@@ -22,17 +42,25 @@ fn invalid(e: String) -> Error {
 
 impl lensbench_analysis::Source for FileSource<'_> {
     fn is_project(&self) -> bool {
-        lensbench_project::open::FileKind::of(&self.c.file)
-            == lensbench_project::open::FileKind::Project
+        match self.src() {
+            Ok(s) => s.kind() == lensbench_project::open::FileKind::Project,
+            Err(_) => {
+                lensbench_project::open::FileKind::of(&self.c.file)
+                    == lensbench_project::open::FileKind::Project
+            }
+        }
     }
     fn states(&self) -> Result<Vec<String>> {
-        Ok(crate::load::state_names(self.c))
+        Ok(self.src().map(|s| s.states()).unwrap_or_default())
     }
     fn state(&self) -> Option<String> {
         self.c.state.clone()
     }
     fn paths(&self) -> Result<Vec<String>> {
-        crate::load::split_paths(self.c).map_err(invalid)
+        if !self.is_project() {
+            return Ok(Vec::new());
+        }
+        self.src()?.paths(&self.c.open_spec())
     }
     fn path(&self) -> Option<String> {
         self.c.path.clone()
@@ -55,7 +83,8 @@ impl lensbench_analysis::Source for FileSource<'_> {
             ..self.c.clone()
         };
         let s = match &v.wavelengths {
-            None => crate::load::load_file(&c)?,
+            None if c.cfg == 0 => crate::load::load_file(&c)?,
+            None => crate::load::load_source(self.src()?, &c)?,
             Some(wl) => {
                 let zmx = c
                     .file
@@ -98,11 +127,9 @@ impl lensbench_analysis::Source for FileSource<'_> {
         if !self.is_project() {
             return Ok(None);
         }
-        lensbench_core::vfs::read_to_string(&self.c.file)
-            .map(Some)
-            .map_err(|x| Error::Io(format!("{}: {x}", self.c.file.display())))
+        Ok(self.src()?.project_text().map(str::to_string))
     }
     fn system_hash(&self, s: &System) -> Result<String> {
-        lensbench_project::sysfile::system_hash(s).map_err(invalid)
+        lensbench_project::sysfile::system_hash(s)
     }
 }

@@ -104,7 +104,7 @@ pub(crate) fn ideal_face(t: f64) -> String {
 
 /// 面の並びのブロックの面の後の媒質: 空気（座標ブレークも）のほかは、複屈折材の板の入口の後（結晶）と、
 /// 貼り合わせの出口の後（次の入口へ厚さ 0）だけ。板の入口と出口は交互に並び、最後は空気
-pub(crate) fn check_crystal_order(v: &[Surface]) -> Result<(), String> {
+pub(crate) fn check_crystal_order(v: &[Surface]) -> lensbench_core::Result<()> {
     use lensbench_core::surface::Bire;
     let mut inside = false;
     for (i, s) in v.iter().enumerate() {
@@ -180,7 +180,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     /// 複屈折材の波長板（`waveplate` の `material`・`plates`）を、厚さのある結晶板の面（入口・出口）に置き換える。
     /// 板ごとに入口（後ろは常光の材料、厚さは板の厚さ、結晶軸は面内で遅い軸の向き）と出口（後ろは次の板の材料か空気）。
     /// 外側の 2 面の膜は波長板の面の `coat`、無ければ透過率から理想膜（1 面あたり √T、T = 1 は I.99999999）
-    pub(crate) fn crystal_plates(&self, v: Vec<Surface>) -> Result<Vec<Surface>, String> {
+    pub(crate) fn crystal_plates(&self, v: Vec<Surface>) -> lensbench_core::Result<Vec<Surface>> {
         let mut out = Vec::with_capacity(v.len());
         for s in v {
             let Some(r0) = s.retarder.as_ref().filter(|r| !r.plates.is_empty()) else {
@@ -285,8 +285,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn placed(
         &mut self,
         place: &Place,
-        body: &mut dyn FnMut(&mut Self) -> Result<(), String>,
-    ) -> Result<(), String> {
+        body: &mut dyn FnMut(&mut Self) -> lensbench_core::Result<()>,
+    ) -> lensbench_core::Result<()> {
         if !place.on {
             if place.off == OffMode::Air {
                 // 長さを測るため一度入れて、空気に置き換える
@@ -390,7 +390,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     }
 
     /// 往路のブロックを復路でたどる（鏡のあと）
-    pub(crate) fn back_block(&mut self, b: &Block) -> Result<(), String> {
+    pub(crate) fn back_block(&mut self, b: &Block) -> lensbench_core::Result<()> {
         let start = self.sf.len();
         self.back_block_inner(b)?;
         self.note(block_id(b), start);
@@ -404,7 +404,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         Ok(())
     }
 
-    pub(crate) fn back_block_inner(&mut self, b: &Block) -> Result<(), String> {
+    pub(crate) fn back_block_inner(&mut self, b: &Block) -> lensbench_core::Result<()> {
         match b {
             Block::Air { id, t } => {
                 self.note_gap(id);
@@ -426,7 +426,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             } => {
                 let mut e = self.lens_element(source)?;
                 if *reversed {
-                    e = elements::reverse(&e).map_err(|x| x.to_string())?;
+                    e = elements::reverse(&e)?;
                 }
                 let len = e.length();
                 if !place.on {
@@ -435,7 +435,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     }
                     return Ok(());
                 }
-                let mut r = elements::reverse(&e).map_err(|x| x.to_string())?;
+                let mut r = elements::reverse(&e)?;
                 r.surfaces.iter_mut().for_each(|s| s.stop = false);
                 self.back_placed(place, len, &r.surfaces)?;
             }
@@ -502,7 +502,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 if spec.has_branches() {
                     return Err(format!(
                         "BS {id}: a BS with branches is never passed backwards (internal error)"
-                    ));
+                    )
+                    .into());
                 }
                 self.splitter_back(id)?;
             }
@@ -523,7 +524,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         place: &Place,
         len: f64,
         rev: &[Surface],
-    ) -> Result<(), String> {
+    ) -> lensbench_core::Result<()> {
         if !place.moved() {
             for s in rev {
                 self.push(s.clone());
@@ -550,11 +551,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
         Ok(())
     }
 
-    pub(crate) fn load_zmx(&mut self, path: &str, cfg: usize) -> Result<System, String> {
+    pub(crate) fn load_zmx(&mut self, path: &str, cfg: usize) -> lensbench_core::Result<System> {
         if cfg == 0 {
-            return Err(format!(
-                "{path}: the configuration number must be 1 or more"
-            ));
+            return Err(format!("{path}: the configuration number must be 1 or more").into());
         }
         let p = self.base.join(path);
         // lensbench の系（系ファイル・プロジェクトの .json）も同じように取り込む（#132）
@@ -562,13 +561,13 @@ impl<'a, 'b> Ctx<'a, 'b> {
             .is_some_and(|x| x.eq_ignore_ascii_case("json"))
         {
             if cfg != 1 {
-                return Err(format!("{path}: a .json system has only configuration 1"));
+                return Err(format!("{path}: a .json system has only configuration 1").into());
             }
             thread_local! {
                 static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
             }
             if DEPTH.with(|d| d.get()) >= 8 {
-                return Err(format!("{path}: system imports nested too deep (a loop?)"));
+                return Err(format!("{path}: system imports nested too deep (a loop?)").into());
             }
             DEPTH.with(|d| d.set(d.get() + 1));
             let r = if sysfile::is_system_file(&p) {
@@ -595,7 +594,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn user_group(
         &mut self,
         b: &Block,
-    ) -> Result<(Block, PathBuf, (PathBuf, String)), String> {
+    ) -> lensbench_core::Result<(Block, PathBuf, (PathBuf, String))> {
         self.user_group_frame(b).map(|(g, d, k, _)| (g, d, k))
     }
 
@@ -604,7 +603,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
     pub(crate) fn user_group_frame(
         &mut self,
         b: &Block,
-    ) -> Result<(Block, PathBuf, (PathBuf, String), ItemFrame), String> {
+    ) -> lensbench_core::Result<(Block, PathBuf, (PathBuf, String), ItemFrame)> {
         let Block::User {
             id,
             catalog,
@@ -620,10 +619,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
             item.clone(),
         );
         if self.users.contains(&key) {
-            return Err(format!(
-                "{}: item {item} refers to itself (a loop)",
-                path.display()
-            ));
+            return Err(
+                format!("{}: item {item} refers to itself (a loop)", path.display()).into(),
+            );
         }
         let cat = UserCatalog::load_shared(&path)?;
         let it = cat
@@ -633,10 +631,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
         let dirs = glass::catalog_dirs(&self.env.glass_dirs);
         let (g, missing) = glass::load_catalogs_shared(&it.glass_catalogs, &dirs);
         if !missing.is_empty() {
-            return Err(format!(
+            return Err(lensbench_core::Error::Invalid(format!(
                 "{item}: glass catalog not found: {}",
                 missing.join(", ")
-            ));
+            ))
+            .with_code(lensbench_core::error::code::GLASS_NOT_FOUND));
         }
         self.add_glasses(&g);
         // カタログの膜（フィルタの透過特性）。同じ名前で中身の違う膜は誤り
@@ -649,7 +648,8 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     return Err(format!(
                         "{}: coating {k} differs from another catalog",
                         path.display()
-                    ))
+                    )
+                    .into())
                 }
                 Some(_) => {}
                 None => {
@@ -694,11 +694,11 @@ impl<'a, 'b> Ctx<'a, 'b> {
         }
     }
 
-    pub(crate) fn lens_element(&mut self, src: &LensSource) -> Result<Element, String> {
+    pub(crate) fn lens_element(&mut self, src: &LensSource) -> lensbench_core::Result<Element> {
         match src {
             LensSource::Zmx { zmx, lens, config } => {
                 let s = self.load_zmx(zmx, *config)?;
-                pick_lens(&s, *lens).map_err(|e| format!("{zmx}: {e}"))
+                Ok(pick_lens(&s, *lens).map_err(|e| format!("{zmx}: {e}"))?)
             }
             LensSource::Catalog { vendor, part } => {
                 let key = (vendor.clone(), part.clone());
@@ -712,8 +712,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
                 let f = self.env.catalog.ok_or_else(|| {
                     format!("lens catalog {vendor} {part}: the catalog can't be read")
                 })?;
-                let txt = f(vendor, part)?;
-                let raw = zmx::parse_text(&txt).map_err(|e| e.to_string())?;
+                // 品が無い（カタログの口の誤り）は符号 catalog.lens_not_found
+                let txt = f(vendor, part).map_err(|e| {
+                    lensbench_core::Error::Invalid(e)
+                        .with_code(lensbench_core::error::code::LENS_NOT_FOUND)
+                })?;
+                let raw = zmx::parse_text(&txt)?;
                 let s = zmx::build(
                     &raw,
                     &zmx::LoadOptions {
@@ -746,7 +750,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                         s.t = 0.0;
                         s.mat.clear();
                     } else if is_air(&s.mat) {
-                        return Err(format!("lens surface {}: not glass after it", i + 1));
+                        return Err(format!("lens surface {}: not glass after it", i + 1).into());
                     }
                     v.push(s);
                 }
@@ -766,7 +770,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         b: &Block,
         siblings: &[Block],
         idx: usize,
-    ) -> Result<(), String> {
+    ) -> lensbench_core::Result<()> {
         let start = self.sf.len();
         self.block_inner(b, siblings, idx)?;
         // 鏡は鏡の面だけ（往路を戻る面は除く）。中で覚える
@@ -781,7 +785,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
         b: &Block,
         siblings: &[Block],
         idx: usize,
-    ) -> Result<(), String> {
+    ) -> lensbench_core::Result<()> {
         match b {
             Block::Air { id, t } => {
                 self.note_gap(id);
@@ -805,7 +809,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             } => {
                 let mut e = self.lens_element(source)?;
                 if *reversed {
-                    e = elements::reverse(&e).map_err(|x| x.to_string())?;
+                    e = elements::reverse(&e)?;
                 }
                 e.surfaces.iter_mut().for_each(|s| s.stop = false);
                 if *stop {

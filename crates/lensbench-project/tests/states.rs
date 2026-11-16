@@ -152,11 +152,21 @@ fn bad_states_are_errors() {
         ));
         expand_state(&p, &env(), Some("x")).unwrap_err()
     };
-    assert!(err(r#""set": {"nope": {"t": 1}}"#).contains("nope"));
-    assert!(err(r#""set": {"d1": {"thickness": 1}}"#).contains("thickness"));
-    assert!(err(r#""set": {"L1": {"type": "air"}}"#).contains("type"));
-    assert!(err(r#""set": {"d1": {"t": "x"}}"#).contains("state x"));
-    assert!(err(r#""project": {"blocks": []}"#).contains("blocks"));
+    assert!(err(r#""set": {"nope": {"t": 1}}"#)
+        .to_string()
+        .contains("nope"));
+    assert!(err(r#""set": {"d1": {"thickness": 1}}"#)
+        .to_string()
+        .contains("thickness"));
+    assert!(err(r#""set": {"L1": {"type": "air"}}"#)
+        .to_string()
+        .contains("type"));
+    assert!(err(r#""set": {"d1": {"t": "x"}}"#)
+        .to_string()
+        .contains("state x"));
+    assert!(err(r#""project": {"blocks": []}"#)
+        .to_string()
+        .contains("blocks"));
     let p = parse(&format!("\"blocks\": {blocks}"));
     assert!(expand_state(&p, &env(), Some("y")).is_err());
     // 同じ id が 2 つ
@@ -254,10 +264,15 @@ fn bad_zmx_groups_are_errors() {
     };
     assert!(
         e(r#"{"name": "a", "from": 1, "to": 4}, {"name": "b", "from": 3, "to": 7}"#)
+            .to_string()
             .contains("overlap")
     );
-    assert!(e(r#"{"name": "a", "from": 4, "to": 3}"#).contains("reverse"));
-    assert!(e(r#"{"name": "a", "from": 20, "to": 30}"#).contains("no "));
+    assert!(e(r#"{"name": "a", "from": 4, "to": 3}"#)
+        .to_string()
+        .contains("reverse"));
+    assert!(e(r#"{"name": "a", "from": 20, "to": 30}"#)
+        .to_string()
+        .contains("no "));
 }
 
 #[test]
@@ -323,7 +338,7 @@ fn a_group_with_a_mirror_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.contains("mirror"), "{e}");
+    assert!(e.to_string().contains("mirror"), "{e}");
 }
 
 #[test]
@@ -346,7 +361,7 @@ fn a_group_with_two_mirrors_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.contains("mirror"), "{e}");
+    assert!(e.to_string().contains("mirror"), "{e}");
 }
 
 /// 像空間のアフォーカル（`afocal` に角度の単位）と物体側テレセントリック。状態でも変えられる

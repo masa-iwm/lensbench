@@ -247,7 +247,7 @@ fn lb_catalog() -> lensbench_core::catalog::LensCatalog {
 fn project_with(
     blocks: &str,
     cat: &lensbench_core::catalog::LensCatalog,
-) -> Result<System, String> {
+) -> lensbench_core::Result<System> {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
     let p = Project::from_json(&txt).unwrap();
     let look = |v: &str, q: &str| cat.zmx(v, q);
@@ -308,7 +308,7 @@ fn catalog_lenses_are_the_lenses_of_their_files() {
         &cat,
     )
     .unwrap_err();
-    assert!(e.contains("NONE"), "{e}");
+    assert!(e.to_string().contains("NONE"), "{e}");
 }
 
 #[test]
@@ -430,7 +430,7 @@ fn a_zmx_lens_file_takes_its_vendor_from_the_folder_even_by_a_bare_name() {
     assert_eq!((l[0].vendor.as_str(), l[0].part.as_str()), ("LB", "BCX-50"));
 }
 
-fn try_project(blocks: &str) -> Result<System, String> {
+fn try_project(blocks: &str) -> lensbench_core::Result<System> {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
     expand(&Project::from_json(&txt).unwrap(), &env())
 }
@@ -514,7 +514,7 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
             r#"[{zmx}, {{"type": "surfaces", "surfaces": [{s}]}}]"#
         ))
         .unwrap_err();
-        assert!(e.contains(msg), "{s}: {e}");
+        assert!(e.to_string().contains(msg), "{s}: {e}");
     }
 }
 
@@ -627,7 +627,7 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
         serde_json::to_string(&f.display().to_string()).unwrap()
     ))
     .unwrap_err();
-    assert!(e.contains("only configuration 1"), "{e}");
+    assert!(e.to_string().contains("only configuration 1"), "{e}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

@@ -9,7 +9,7 @@ pub const ZMX_ID: &str = "zmx";
 
 /// 系 s（`path` の .zmx を構成 1 で読んだもの）の設定と、`path` をまるごと取り込む zmx ブロック 1 つのプロジェクト。
 /// プロジェクトで書けない設定（多重構成・条件で定める視野）があれば誤り
-pub fn zmx_project(s: &System, path: &str) -> Result<Value, String> {
+pub fn zmx_project(s: &System, path: &str) -> lensbench_core::Result<Value> {
     if s.configs.is_some() {
         return Err("a .zmx with two or more configurations".into());
     }
@@ -97,7 +97,7 @@ pub fn zmx_project(s: &System, path: &str) -> Result<Value, String> {
 
 /// 2 つの系が同じか。名前・読込の注意・ガラスの表（屈折率は面ごとに比べる）・玉の表と、物体面・像面の半直径
 /// （描画にだけ使う）は見ない。自動の半直径は光線から求めた値なので 1e-9 mm まで。違えば最初のいくつかの違い
-pub fn same_system(a: &System, b: &System) -> Result<(), String> {
+pub fn same_system(a: &System, b: &System) -> lensbench_core::Result<()> {
     let va = comparable(a)?;
     let vb = comparable(b)?;
     let mut out = Vec::new();
@@ -106,13 +106,13 @@ pub fn same_system(a: &System, b: &System) -> Result<(), String> {
         Ok(())
     } else {
         out.truncate(5);
-        Err(out.join("; "))
+        Err(lensbench_core::Error::Invalid(out.join("; ")))
     }
 }
 
-fn comparable(s: &System) -> Result<Value, String> {
-    let mut v: Value =
-        serde_json::from_str(&sysfile::to_string(s, &[])?).map_err(|e| e.to_string())?;
+fn comparable(s: &System) -> lensbench_core::Result<Value> {
+    let mut v: Value = serde_json::from_str(&sysfile::to_string(s, &[])?)
+        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = v["system"].take();
     let m = v.as_object_mut().ok_or("system is not an object")?;
     for k in ["name", "import_notes", "glasses", "units"] {

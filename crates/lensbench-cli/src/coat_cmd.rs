@@ -2,7 +2,10 @@
 
 use super::*;
 
-pub(crate) fn coat_kinks(tables: &[PathBuf], only: &[String]) -> Result<Value, String> {
+pub(crate) fn coat_kinks(
+    tables: &[PathBuf],
+    only: &[String],
+) -> Result<Value, crate::error::AppError> {
     use lensbench_design::coat_fit::detect_kinks;
     let mut keys = Vec::new();
     // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
@@ -269,7 +272,7 @@ pub(crate) fn read_targets(
     Ok(v)
 }
 
-pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, String> {
+pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::AppError> {
     use lensbench_design::coat_design::{fit_all, format_lbcs, pick, Material, Options};
     let mut ts = Vec::new();
     for p in a.targets {

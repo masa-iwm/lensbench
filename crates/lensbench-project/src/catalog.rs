@@ -235,22 +235,17 @@ impl MechSpec {
         }
     }
 
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> lensbench_core::Result<()> {
         for (k, b) in self.bores.iter().enumerate() {
             if !(b.diameter > 0.0 && b.diameter.is_finite()) {
-                return Err(format!(
-                    "mechanism bore {}: inner diameter {}",
-                    k + 1,
-                    b.diameter
-                ));
+                return Err(
+                    format!("mechanism bore {}: inner diameter {}", k + 1, b.diameter).into(),
+                );
             }
             if !(b.z0.is_finite() && b.z1.is_finite() && b.z1 >= b.z0) {
-                return Err(format!(
-                    "mechanism bore {}: z range {} to {}",
-                    k + 1,
-                    b.z0,
-                    b.z1
-                ));
+                return Err(
+                    format!("mechanism bore {}: z range {} to {}", k + 1, b.z0, b.z1).into(),
+                );
             }
         }
         if !(self.length >= 0.0 && self.outer_diameter >= 0.0) {
@@ -352,20 +347,20 @@ impl MechAt {
 }
 
 impl UserCatalog {
-    pub fn from_json(txt: &str) -> Result<UserCatalog, String> {
-        serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}"))
+    pub fn from_json(txt: &str) -> lensbench_core::Result<UserCatalog> {
+        serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}").into())
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap()
     }
     /// ファイルから読む。`.gz` は展開して読み、`x.json` が無くて `x.json.gz` があればそれを読む（[`read_text`]）
-    pub fn load(path: &Path) -> Result<UserCatalog, String> {
+    pub fn load(path: &Path) -> lensbench_core::Result<UserCatalog> {
         let t = read_text(path)?;
-        UserCatalog::from_json(&t).map_err(|e| format!("{}: {e}", path.display()))
+        Ok(UserCatalog::from_json(&t).map_err(|e| format!("{}: {e}", path.display()))?)
     }
     /// [`Self::load`] と同じだが、読んだものをファイルの更新時刻・大きさと共に覚えておき、変わっていなければ
     /// 読み直さない（展開で品ごとに同じカタログを読むと、品の数の 2 乗の時間がかかるため）。読むだけの所で使う
-    pub fn load_shared(path: &Path) -> Result<std::sync::Arc<UserCatalog>, String> {
+    pub fn load_shared(path: &Path) -> lensbench_core::Result<std::sync::Arc<UserCatalog>> {
         use std::sync::{Arc, Mutex, OnceLock};
         type Stamp = (Option<std::time::SystemTime>, u64);
         type Cache = HashMap<PathBuf, (Stamp, Arc<UserCatalog>)>;
@@ -387,7 +382,7 @@ impl UserCatalog {
     }
     /// ないファイル（`.gz` を足した名前も無い）なら空のカタログ。`.json.gz` だけあれば、それを読む
     /// （足して保存すると `.json` に書き、一覧では `.json` が勝つので、品は欠けない）
-    pub fn load_or_new(path: &Path) -> Result<UserCatalog, String> {
+    pub fn load_or_new(path: &Path) -> lensbench_core::Result<UserCatalog> {
         let mut gz = path.as_os_str().to_owned();
         gz.push(".gz");
         if lensbench_core::vfs::exists(path) || lensbench_core::vfs::is_file(Path::new(&gz)) {
@@ -400,8 +395,8 @@ impl UserCatalog {
     /// 前に読んだ写しを書き戻すと、その間にほかの所（GUI・CLI）が足した品を消してしまう）。変えた後のカタログを返す
     pub fn update(
         path: &Path,
-        f: impl FnOnce(&mut UserCatalog) -> Result<(), String>,
-    ) -> Result<UserCatalog, String> {
+        f: impl FnOnce(&mut UserCatalog) -> lensbench_core::Result<()>,
+    ) -> lensbench_core::Result<UserCatalog> {
         let mut c = UserCatalog::load_or_new(path)?;
         f(&mut c)?;
         c.save(path)?;
@@ -410,7 +405,7 @@ impl UserCatalog {
 
     /// 保存する。名前が `.gz` で終われば gzip で圧縮して書く（一時ファイルに書いて名前を替える。途中で落ちても
     /// 前の中身が残る）
-    pub fn save(&self, path: &Path) -> Result<(), String> {
+    pub fn save(&self, path: &Path) -> lensbench_core::Result<()> {
         use std::io::Write;
         let err = |e: std::io::Error| format!("{}: {e}", path.display());
         let text = self.to_json() + "\n";
@@ -420,23 +415,23 @@ impl UserCatalog {
         if gz {
             let mut w = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
             w.write_all(text.as_bytes()).map_err(err)?;
-            lensbench_core::vfs::write_atomic(path, w.finish().map_err(err)?).map_err(err)
+            Ok(lensbench_core::vfs::write_atomic(path, w.finish().map_err(err)?).map_err(err)?)
         } else {
-            lensbench_core::vfs::write_atomic(path, text).map_err(err)
+            Ok(lensbench_core::vfs::write_atomic(path, text).map_err(err)?)
         }
     }
 }
 
 /// テキストのファイルを読む。拡張子 `.gz`（またはファイルの頭が gzip の印）なら展開する。`path` が無くて
 /// `path` に `.gz` を足したファイルがあればそれを読む（リリースのカタログは .json.gz で配る）
-pub fn read_text(path: &Path) -> Result<String, String> {
+pub fn read_text(path: &Path) -> lensbench_core::Result<String> {
     read_text_limit(path, GZ_LIMIT)
 }
 
 /// gzip を展開した大きさの上限 [byte]（展開爆弾で落ちないように。カタログは大きくても数十 MB）
 pub const GZ_LIMIT: u64 = 256 << 20;
 
-pub(crate) fn read_text_limit(path: &Path, limit: u64) -> Result<String, String> {
+pub(crate) fn read_text_limit(path: &Path, limit: u64) -> lensbench_core::Result<String> {
     use std::io::Read;
     let p = if !lensbench_core::vfs::exists(path) {
         let mut g = path.as_os_str().to_owned();
@@ -459,13 +454,13 @@ pub(crate) fn read_text_limit(path: &Path, limit: u64) -> Result<String, String>
             .read_to_end(&mut out)
             .map_err(err)?;
         if out.len() as u64 > limit {
-            return Err(format!("{}: over {limit} bytes when inflated", p.display()));
+            return Err(format!("{}: over {limit} bytes when inflated", p.display()).into());
         }
         out
     } else {
         b
     };
-    String::from_utf8(b).map_err(|e| format!("{}: {e}", p.display()))
+    Ok(String::from_utf8(b).map_err(|e| format!("{}: {e}", p.display()))?)
 }
 
 /// カタログのファイルか（`.json`・`.json.gz`）

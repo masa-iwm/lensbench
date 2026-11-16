@@ -60,15 +60,22 @@ impl AppError {
     pub fn exit_code(&self) -> u8 {
         match self {
             AppError::Usage(_) => 2,
-            AppError::Io(_) | AppError::Core(CoreError::Io(_)) => 3,
-            AppError::Core(CoreError::NotImplemented(_)) => 4,
-            AppError::Core(CoreError::Cancelled) => 130,
-            AppError::Core(CoreError::Invalid(_)) | AppError::Failed(_) => 1,
+            AppError::Io(_) => 3,
+            AppError::Failed(_) => 1,
+            AppError::Core(e) => match e.base() {
+                CoreError::Io(_) => 3,
+                CoreError::NotImplemented(_) => 4,
+                CoreError::Cancelled => 130,
+                _ => 1,
+            },
         }
     }
 
     /// 次の手の案内（無ければ None）。ガラスが無いときの案内は core の文に入っている
     pub fn hint(&self) -> Option<String> {
+        if let AppError::Core(e @ CoreError::Coded(..)) = self {
+            return AppError::Core(e.base().clone()).hint();
+        }
         let h = match self {
             AppError::Usage(_) => "See the arguments with lensbench <command> --help",
             AppError::Io(_) | AppError::Core(CoreError::Io(_)) => {

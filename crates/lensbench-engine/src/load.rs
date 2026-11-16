@@ -6,7 +6,7 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::coating::{self, Coatings};
 use lensbench_core::{glass, zmx, System};
 use lensbench_export::table;
-use lensbench_project::open::FileKind;
+use lensbench_project::open::{FileKind, OpenSpec, Source};
 use serde_json::{json, Value};
 
 /// 系の読み方（CLI の系の引数、serve の load。reload で同じ読み方を繰り返す）
@@ -28,22 +28,37 @@ pub struct SysSpec {
     pub names: lensbench_project::open::ArgNames,
 }
 
+impl SysSpec {
+    /// 系のファイルの読み方（[`lensbench_project::open::OpenSpec`]）
+    pub fn open_spec(&self) -> OpenSpec<'_> {
+        OpenSpec {
+            glass_dirs: &self.glass_dir,
+            lens_catalogs: &self.lens_catalog,
+            cfg: self.cfg,
+            state: self.state.as_deref(),
+            split_path: self.path.as_deref(),
+            wavelengths: None,
+            names: self.names,
+            // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+            step_files: Some(&lensbench_cad::cached_step),
+        }
+    }
+}
+
 /// ファイルから系を読む（注意は標準誤差へ）。ファイルが無いときは種類 io の誤り
 pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
-    // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
-    let o = lensbench_project::open::open_with(
-        &c.file,
-        &lensbench_project::open::OpenSpec {
-            glass_dirs: &c.glass_dir,
-            lens_catalogs: &c.lens_catalog,
-            cfg: c.cfg,
-            state: c.state.as_deref(),
-            split_path: c.path.as_deref(),
-            wavelengths: None,
-            names: c.names,
-        },
-        Some(&lensbench_cad::cached_step),
-    )?;
+    if c.cfg == 0 {
+        return Err(lensbench_core::Error::Invalid(format!(
+            "{} must be 1 or more",
+            c.names.cfg
+        )));
+    }
+    load_source(&Source::read(&c.file)?, c)
+}
+
+/// 読んだファイル src から、c の構成・状態・経路の系を読む（注意は標準誤差へ）
+pub fn load_source(src: &Source, c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    let o = src.open(&c.open_spec())?;
     for w in o.warnings {
         eprintln!("{}", lensbench_core::i18n::warning(&w));
     }
@@ -67,37 +82,44 @@ pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
 }
 
 /// プロジェクトファイルのビームスプリッターの経路の一覧（.zmx・系ファイル・BS なしなら空）
-pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, String> {
+pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, lensbench_core::Error> {
     if FileKind::of(&c.file) != FileKind::Project {
         return Ok(Vec::new());
     }
-    let t = lensbench_core::vfs::read_to_string(&c.file)
-        .map_err(|x| format!("{}: {x}", c.file.display()))?;
-    let mut p = lensbench_project::Project::from_json(&t)?;
-    if let Some(st) = &c.state {
-        p = p.with_state(st)?;
-    }
-    let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
-    let look = |v: &str, q: &str| cat.zmx(v, q);
-    let env = lensbench_project::Env {
-        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
-        step_files: Some(&lensbench_cad::cached_step),
-        base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
-        glass_dirs: c.glass_dir.clone(),
-        catalog: Some(&look),
-    };
-    lensbench_project::paths(&p, &env)
+    Source::read(&c.file)?.paths(&c.open_spec())
 }
 
-/// プロジェクトファイルの状態の名前（.zmx・系ファイルなら空）
+/// プロジェクトファイルの状態の名前（.zmx・系ファイル・読めないプロジェクトなら空）
 pub fn state_names(c: &SysSpec) -> Vec<String> {
     if FileKind::of(&c.file) != FileKind::Project {
         return Vec::new();
     }
-    lensbench_core::vfs::read_to_string(&c.file)
+    Source::read(&c.file)
+        .map(|s| s.states())
+        .unwrap_or_default()
+}
+
+/// 公差のモンテカルロに渡す、プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id
+/// （.zmx・系ファイル・読めないプロジェクトなら空）
+pub fn tolerance_vendors(
+    c: &SysSpec,
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashSet<String>,
+) {
+    if FileKind::of(&c.file) != FileKind::Project {
+        return Default::default();
+    }
+    Source::read(&c.file)
         .ok()
-        .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-        .map(|p| p.states.iter().map(|s| s.name.clone()).collect())
+        .and_then(|s| {
+            s.project().map(|p| {
+                (
+                    lensbench_design::tolerance::catalog_vendors(p),
+                    lensbench_design::tolerance::reversed_lenses(p),
+                )
+            })
+        })
         .unwrap_or_default()
 }
 
@@ -155,9 +177,10 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
             "--states and --beam-paths are only for project files (.json); .zmx uses --cfgs".into(),
         );
     }
-    let txt = lensbench_core::vfs::read_to_string(&c.file)
-        .map_err(|x| format!("{}: {x}", c.file.display()))?;
-    let p = lensbench_project::Project::from_json(&txt)?;
+    let src = Source::read(&c.file).map_err(|e| e.to_string())?;
+    let Some(p) = src.project() else {
+        return Err("--states and --beam-paths are only for project files (.json)".into());
+    };
     let states: Vec<Option<String>> = match &l.states {
         None => vec![c.state.clone()],
         Some(v) if v.eq_ignore_ascii_case("all") => {
@@ -203,7 +226,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
             let (s, warn) =
                 lensbench_project::expand_path(&ps, &env, pa.as_deref()).map_err(|x| match pa {
                     Some(q) => format!("path {q}: {x}"),
-                    None => x,
+                    None => x.to_string(),
                 })?;
             for w in warn {
                 eprintln!("{}", lensbench_core::i18n::warning(&w));

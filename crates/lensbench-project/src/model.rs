@@ -1,6 +1,7 @@
 //! プロジェクトファイルの形（ブロック・面・状態・環境）と状態の当て方
 
 use super::*;
+use lensbench_core::error::{code, Error};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Wave {
@@ -374,18 +375,16 @@ pub struct PlateSpec {
 }
 
 impl PolarizerSpec {
-    pub fn retarder(&self) -> Result<lensbench_core::surface::Retarder, String> {
+    pub fn retarder(&self) -> lensbench_core::Result<lensbench_core::surface::Retarder> {
         if !(self.transmittance >= 0.0 && self.transmittance <= 1.0) {
-            return Err(format!(
-                "polarizer transmittance {} (0 to 1)",
-                self.transmittance
-            ));
+            return Err(format!("polarizer transmittance {} (0 to 1)", self.transmittance).into());
         }
         if self.extinction_ratio.is_nan() || self.extinction_ratio < 1.0 {
             return Err(format!(
                 "polarizer extinction ratio {} (1 or more)",
                 self.extinction_ratio
-            ));
+            )
+            .into());
         }
         Ok(lensbench_core::surface::Retarder {
             axis_deg: self.axis_deg,
@@ -400,18 +399,12 @@ impl PolarizerSpec {
 }
 
 impl WaveplateSpec {
-    pub fn retarder(&self) -> Result<lensbench_core::surface::Retarder, String> {
+    pub fn retarder(&self) -> lensbench_core::Result<lensbench_core::surface::Retarder> {
         if !(self.wavelength_um > 0.0 && self.wavelength_um.is_finite()) {
-            return Err(format!(
-                "waveplate design wavelength {} µm",
-                self.wavelength_um
-            ));
+            return Err(format!("waveplate design wavelength {} µm", self.wavelength_um).into());
         }
         if !(self.transmittance >= 0.0 && self.transmittance <= 1.0) {
-            return Err(format!(
-                "waveplate transmittance {} (0 to 1)",
-                self.transmittance
-            ));
+            return Err(format!("waveplate transmittance {} (0 to 1)", self.transmittance).into());
         }
         if !self.retardance.is_finite() {
             return Err("the waveplate retardance is not a number".into());
@@ -431,7 +424,7 @@ impl WaveplateSpec {
             (Some(m), true) => {
                 let d = self.thickness_mm.unwrap_or(0.0);
                 if self.thickness_mm.is_some() && !(d > 0.0 && d.is_finite()) {
-                    return Err(format!("waveplate thickness {d} mm"));
+                    return Err(format!("waveplate thickness {d} mm").into());
                 }
                 let total = self.order as f64 + self.retardance;
                 if self.thickness_mm.is_none() && !(total > 0.0 && total.is_finite()) {
@@ -449,7 +442,8 @@ impl WaveplateSpec {
                         return Err(format!(
                             "waveplate plate {} thickness {} mm",
                             p.material, p.thickness_mm
-                        ));
+                        )
+                        .into());
                     }
                     if !p.axis_deg.is_finite() {
                         return Err("the waveplate plate axis is not a number".into());
@@ -696,7 +690,7 @@ pub struct DetectorBlock {
 
 impl DetectorBlock {
     /// 項目を種類の登録で確かめる（登録していない種類は誤り）
-    pub fn check(&self) -> Result<(), String> {
+    pub fn check(&self) -> lensbench_core::Result<()> {
         let k = detectors::get(&self.kind).ok_or_else(|| {
             format!(
                 "unknown block type {:?} ({} or a registered detector: {})",
@@ -709,7 +703,7 @@ impl DetectorBlock {
                     .join("・")
             )
         })?;
-        (k.check)(&self.params).map_err(|e| format!("{} {}: {e}", self.kind, self.id))
+        Ok((k.check)(&self.params).map_err(|e| format!("{} {}: {e}", self.kind, self.id))?)
     }
 }
 
@@ -736,7 +730,7 @@ impl Serialize for Block {
 }
 
 /// 検出器のブロックの種類・項目を確かめる（群の中も。置き場所は展開で確かめる）
-pub(crate) fn check_detectors(blocks: &[Block]) -> Result<(), String> {
+pub(crate) fn check_detectors(blocks: &[Block]) -> lensbench_core::Result<()> {
     for b in blocks {
         match b {
             Block::Detector(d) => d.check()?,
@@ -904,7 +898,7 @@ pub struct SurfaceEdit {
 }
 
 impl Project {
-    pub fn from_json(txt: &str) -> Result<Project, String> {
+    pub fn from_json(txt: &str) -> lensbench_core::Result<Project> {
         let v: Value = serde_json::from_str(txt).map_err(|e| format!("project file: {e}"))?;
         let p: Project =
             serde_json::from_value(v.clone()).map_err(|e| format!("project file: {e}"))?;
@@ -917,7 +911,8 @@ impl Project {
             return Err(format!(
                 "project file: unknown key {} (check the spelling)",
                 unknown.join("・")
-            ));
+            )
+            .into());
         }
         check_detectors(&p.blocks)?;
         Ok(p)
@@ -931,22 +926,27 @@ impl Project {
     }
 
     /// 状態 name の変更を当てたプロジェクト（状態の一覧は残す）
-    pub fn with_state(&self, name: &str) -> Result<Project, String> {
+    pub fn with_state(&self, name: &str) -> lensbench_core::Result<Project> {
         let st: Vec<&State> = self.states.iter().filter(|s| s.name == name).collect();
         let st = match st.as_slice() {
             [s] => *s,
             [] if self.states.is_empty() => {
-                return Err(format!("no state {name} (the project has no states)"))
+                return Err(
+                    Error::Invalid(format!("no state {name} (the project has no states)"))
+                        .with_code(code::STATE_NOT_FOUND),
+                )
             }
             [] => {
-                return Err(format!(
+                return Err(Error::Invalid(format!(
                     "no state {name} ({})",
                     self.state_names().join(", ")
                 ))
+                .with_code(code::STATE_NOT_FOUND))
             }
-            _ => return Err(format!("two or more states named {name}")),
+            _ => return Err(format!("two or more states named {name}").into()),
         };
-        let mut v = serde_json::to_value(self).map_err(|e| e.to_string())?;
+        let mut v = serde_json::to_value(self)
+            .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
         let root = v.as_object_mut().unwrap();
         for (k, x) in &st.project {
             if k == "blocks"
@@ -954,7 +954,7 @@ impl Project {
                 || (!root.contains_key(k)
                     && !["path", "afocal", "telecentric"].contains(&k.as_str()))
             {
-                return Err(format!("state {name}: system value {k} can't be changed"));
+                return Err(format!("state {name}: system value {k} can't be changed").into());
             }
             root.insert(k.clone(), x.clone());
         }
@@ -965,14 +965,17 @@ impl Project {
             }
             let ptr = match hits.as_slice() {
                 [p] => p.clone(),
-                [] => return Err(format!("state {name}: no block {id}")),
-                _ => return Err(format!("state {name}: two or more blocks with id {id}")),
+                [] => {
+                    return Err(Error::Invalid(format!("state {name}: no block {id}"))
+                        .with_code(code::BLOCK_NOT_FOUND))
+                }
+                _ => return Err(format!("state {name}: two or more blocks with id {id}").into()),
             };
             let obj = v.pointer_mut(&ptr).unwrap().as_object_mut().unwrap();
             for (k, x) in fields {
                 if ["type", "id", "blocks", "groups"].contains(&k.as_str()) || !obj.contains_key(k)
                 {
-                    return Err(format!("state {name}: {k} of block {id} can't be changed"));
+                    return Err(format!("state {name}: {k} of block {id} can't be changed").into());
                 }
                 obj.insert(k.clone(), x.clone());
             }
@@ -981,7 +984,7 @@ impl Project {
             serde_json::from_value(v.clone()).map_err(|e| format!("state {name}: {e}"))?;
         let unknown = unknown_keys::<Project>(&v, &p);
         if !unknown.is_empty() {
-            return Err(format!("state {name}: unknown key {}", unknown.join("・")));
+            return Err(format!("state {name}: unknown key {}", unknown.join("・")).into());
         }
         Ok(p)
     }

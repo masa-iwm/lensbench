@@ -53,19 +53,22 @@ impl de::Error for Error {
 }
 
 /// CBOR の値を型に読む（実数の欄は整数でもよい）。誤りの文は「root.欄の道: 理由」（道が無ければ「root: 理由」）
-pub fn decode<T: DeserializeOwned>(v: C, root: &str) -> Result<T, String> {
-    T::deserialize(Lenient(v)).map_err(|e| {
+pub fn decode<T: DeserializeOwned>(v: C, root: &str) -> lensbench_core::Result<T> {
+    Ok(T::deserialize(Lenient(v)).map_err(|e| {
         let sep = match e.path.last() {
             None => ": ",
             Some(s) if s.starts_with('[') => "",
             Some(_) => ".",
         };
         format!("{root}{sep}{e}")
-    })
+    })?)
 }
 
 /// JSON の値を型に読む（[`decode`] と同じ。`{"$f": "inf"}` も受ける）。設定の JSON（公差など）の読みに使う
-pub fn from_json<T: DeserializeOwned>(v: &serde_json::Value, root: &str) -> Result<T, String> {
+pub fn from_json<T: DeserializeOwned>(
+    v: &serde_json::Value,
+    root: &str,
+) -> lensbench_core::Result<T> {
     decode(crate::sysfile::from_json(v.clone())?, root)
 }
 
@@ -273,9 +276,17 @@ mod tests {
             "v",
         )
         .unwrap_err();
-        assert!(e.starts_with("v[1].t: "), "{e}");
+        assert!(
+            e.message().unwrap_or_default().starts_with("v[1].t: "),
+            "{e}"
+        );
         // 一番外で足りない欄は道なし
         let e = decode::<S>(c(serde_json::json!({})), "s").unwrap_err();
-        assert!(e.starts_with("s: missing field"), "{e}");
+        assert!(
+            e.message()
+                .unwrap_or_default()
+                .starts_with("s: missing field"),
+            "{e}"
+        );
     }
 }

@@ -166,8 +166,8 @@ fn a_saved_lens_in_a_double_pass() {
     let e2 = mk(r#"{"type": "user", "catalog": "none.json", "item": "L"}"#).unwrap_err();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(format!("{:?}", s.surfaces), format!("{:?}", s0.surfaces));
-    assert!(e.contains("nope"), "{e}");
-    assert!(e2.contains("none.json"), "{e2}");
+    assert!(e.to_string().contains("nope"), "{e}");
+    assert!(e2.to_string().contains("none.json"), "{e2}");
 }
 
 #[test]
@@ -206,8 +206,8 @@ fn a_catalog_item_referring_to_itself_is_an_error() {
     );
     let ok = expand(&Project::from_json(&txt).unwrap(), &env_at(&dir));
     std::fs::remove_dir_all(&dir).ok();
-    assert!(ea.contains("refers to itself"), "{ea}");
-    assert!(eb.contains("refers to itself"), "{eb}");
+    assert!(ea.to_string().contains("refers to itself"), "{ea}");
+    assert!(eb.to_string().contains("refers to itself"), "{eb}");
     assert_eq!(ok.unwrap().surfaces[1].t, 2.0);
 }
 
@@ -265,7 +265,7 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
     )
     .unwrap();
     let e = blocks_item(&q, &env, &["S".into(), "L1".into()], "").unwrap_err();
-    assert!(e.contains("only lenses"), "{e}");
+    assert!(e.to_string().contains("only lenses"), "{e}");
 }
 
 /// 焼き込みで面の開口・玉の中の座標ブレークが残り、書けない値（面の前後の傾き偏心）は誤り（のレビュー）
@@ -326,7 +326,7 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     .unwrap();
     let e = blocks_item(&q, &env, &["L1".into()], "").unwrap_err();
     std::fs::remove_dir_all(&dir).ok();
-    assert!(e.contains("before"), "{e}");
+    assert!(e.to_string().contains("before"), "{e}");
 }
 
 /// 標準面でない面（Odd Asphere・トロイダル・Fresnel）の玉も、面を直接書いた玉に保存して同じ光線になる

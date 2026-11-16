@@ -13,7 +13,7 @@ fn system(surfs: &str) -> lensbench_core::System {
     try_system(surfs).unwrap()
 }
 
-fn try_system(surfs: &str) -> Result<lensbench_core::System, String> {
+fn try_system(surfs: &str) -> lensbench_core::Result<lensbench_core::System> {
     let p = Project::from_json(&format!(
         r#"{{"glass_catalogs": ["SCHOTT", "LBCRYSTAL"], "wavelengths": [{{"um": 0.5}}, {{"um": 0.633}}, {{"um": 1.0}}], "primary": 2,
         "aperture": {{"type": "epd", "value": 4}}, "fields": {{"points": [[0, 0]]}},

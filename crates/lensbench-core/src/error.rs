@@ -10,6 +10,38 @@ pub enum Error {
     Io(String),
     /// 計算を途中でやめた（[`crate::par::CancelToken::cancel`]、GUI で系が変わったとき）
     Cancelled,
+    /// 機械で見分ける符号（[`code`] の定数）を付けた誤り（[`Error::with_code`]。種類・文は中の誤りのもの）
+    Coded(&'static str, Box<Error>),
+}
+
+/// 誤りの符号（[`Error::code`]）。serve の `error.data.code`・Python の例外の `code`・試験の判定に使う。
+/// 符号の付いていない誤りの符号は種類の名前（[`Error::kind`]）
+pub mod code {
+    /// ファイルが無い（種類 io）
+    pub const FILE_NOT_FOUND: &str = "file.not_found";
+    /// ファイルでなくフォルダ（種類 io）
+    pub const IS_FOLDER: &str = "file.is_folder";
+    /// ガラスがカタログに無い・ガラスカタログが見つからない（種類 invalid）
+    pub const GLASS_NOT_FOUND: &str = "glass.not_found";
+    /// プロジェクトに無い状態の名前（種類 invalid）
+    pub const STATE_NOT_FOUND: &str = "project.state_not_found";
+    /// プロジェクトに無いブロックの id（種類 invalid）
+    pub const BLOCK_NOT_FOUND: &str = "project.block_not_found";
+    /// レンズカタログに無い品（種類 invalid）
+    pub const LENS_NOT_FOUND: &str = "catalog.lens_not_found";
+    /// 引数の組み合わせ・値の誤り（読み方の構成・状態・経路の指定など。種類 invalid）
+    pub const BAD_ARGUMENT: &str = "argument.invalid";
+
+    /// 符号の一覧（docs・試験で使う）
+    pub const ALL: [&str; 7] = [
+        FILE_NOT_FOUND,
+        IS_FOLDER,
+        GLASS_NOT_FOUND,
+        STATE_NOT_FOUND,
+        BLOCK_NOT_FOUND,
+        LENS_NOT_FOUND,
+        BAD_ARGUMENT,
+    ];
 }
 
 /// 種類の前置き（英語と、日本語の表示のとき）
@@ -29,6 +61,7 @@ impl std::fmt::Display for Error {
             Error::Invalid(s) => write!(f, "{}{}", pre(1), crate::i18n::tr(s)),
             Error::Io(s) => write!(f, "{}{}", pre(2), crate::i18n::tr(s)),
             Error::Cancelled => f.write_str(&crate::i18n::tr("cancelled")),
+            Error::Coded(_, e) => e.fmt(f),
         }
     }
 }
@@ -60,6 +93,55 @@ impl Error {
             Error::Invalid(_) => "invalid",
             Error::Io(_) => "io",
             Error::Cancelled => "cancelled",
+            Error::Coded(_, e) => e.kind(),
+        }
+    }
+
+    /// 機械で見分ける符号（[`code`] の定数。符号を付けていなければ種類の名前 [`Error::kind`]）
+    pub fn code(&self) -> &'static str {
+        match self {
+            Error::Coded(c, _) => c,
+            e => e.kind(),
+        }
+    }
+
+    /// 符号 c を付ける（種類・文は変えない。付いていれば付け替える）
+    pub fn with_code(self, c: &'static str) -> Error {
+        Error::Coded(c, Box::new(self.base_owned()))
+    }
+
+    /// 符号を外した誤り（種類で `match` するとき）
+    pub fn base(&self) -> &Error {
+        match self {
+            Error::Coded(_, e) => e.base(),
+            e => e,
+        }
+    }
+
+    fn base_owned(self) -> Error {
+        match self {
+            Error::Coded(_, e) => e.base_owned(),
+            e => e,
+        }
+    }
+
+    /// 符号のない文の誤り（[`Error::Invalid`]・[`Error::Io`]・[`Error::NotImplemented`]）の文（中断は None）
+    pub fn message(&self) -> Option<&str> {
+        match self.base() {
+            Error::NotImplemented(s) | Error::Invalid(s) | Error::Io(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// 文を f で書き換える（種類・符号は変えない。中断はそのまま）。訳の表の文をソースに残すとき
+    /// （`e.map_message(|e| format!("operation {k}: {e}"))`）
+    pub fn map_message(self, f: impl FnOnce(&str) -> String) -> Error {
+        match self {
+            Error::NotImplemented(s) => Error::NotImplemented(f(&s)),
+            Error::Invalid(s) => Error::Invalid(f(&s)),
+            Error::Io(s) => Error::Io(f(&s)),
+            Error::Cancelled => Error::Cancelled,
+            Error::Coded(c, e) => Error::Coded(c, Box::new(e.map_message(f))),
         }
     }
 
@@ -70,6 +152,35 @@ impl Error {
             Error::Invalid(s) => Error::Invalid(format!("{ctx}: {s}")),
             Error::Io(s) => Error::Io(format!("{ctx}: {s}")),
             Error::Cancelled => Error::Cancelled,
+            Error::Coded(c, e) => Error::Coded(c, Box::new(e.at(ctx))),
+        }
+    }
+}
+
+/// 文字列の誤り（種類の前置きがあればその種類、無ければ [`Error::Invalid`]）。`Result<_, String>` を返す関数を `?` で呼べる
+impl From<String> for Error {
+    fn from(s: String) -> Self {
+        parse_display(&s).unwrap_or(Error::Invalid(s))
+    }
+}
+
+impl From<&str> for Error {
+    fn from(s: &str) -> Self {
+        Error::from(s.to_string())
+    }
+}
+
+/// 誤りを文字列にする（`Result<_, String>` を返す関数の中で `?` で呼べる。種類・符号は消えるので、新しいコードは
+/// [`Error`] のまま返す）。文字列の誤りは表示する所で訳す約束なので、ここでは訳さない（英語の元の文）。
+/// 不正（[`Error::Invalid`]）は前置きなしの文、ほかは英語の種類の前置きつき（[`From<String>`] で種類に戻る）
+impl From<Error> for String {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::Invalid(s) => s,
+            Error::NotImplemented(s) => format!("{}{s}", PREFIXES[0].0),
+            Error::Io(s) => format!("{}{s}", PREFIXES[2].0),
+            Error::Cancelled => "cancelled".into(),
+            Error::Coded(_, e) => String::from(*e),
         }
     }
 }
@@ -82,6 +193,9 @@ macro_rules! notimpl {
 }
 #[macro_export]
 macro_rules! invalid {
+    (code = $c:expr; $($a:tt)*) => {
+        return Err($crate::error::Error::Invalid(format!($($a)*)).with_code($c))
+    };
     ($($a:tt)*) => { return Err($crate::error::Error::Invalid(format!($($a)*))) };
 }
 
@@ -101,5 +215,24 @@ mod tests {
         assert_eq!(strip_invalid("不正: a"), "a");
         assert_eq!(strip_invalid("invalid: a"), "a");
         assert_eq!(parse_display("a"), None);
+    }
+
+    #[test]
+    fn codes_keep_kind_and_text() {
+        let e = Error::Invalid("x".into()).with_code(code::GLASS_NOT_FOUND);
+        assert_eq!((e.kind(), e.code()), ("invalid", "glass.not_found"));
+        assert_eq!(e.to_string(), Error::Invalid("x".into()).to_string());
+        let e = e.at("surface 3");
+        assert_eq!(e.code(), "glass.not_found");
+        assert_eq!(e.message(), Some("surface 3: x"));
+        assert_eq!(Error::Io("y".into()).code(), "io");
+        assert_eq!(
+            Error::Cancelled.with_code(code::BAD_ARGUMENT).base(),
+            &Error::Cancelled
+        );
+        assert_eq!(
+            Error::from("invalid: z".to_string()),
+            Error::Invalid("z".into())
+        );
     }
 }

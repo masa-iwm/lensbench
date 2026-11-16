@@ -100,7 +100,7 @@ surface {j} can't be written (1 to {img})	面 {j} は書けません（1〜{img}
 ops must be a list of operations	ops は操作の並び
 operation {} ({name}): {e}	操作 {} ({name}): {e}
 operation {}: {e}	操作 {}: {e}
-surface {j}: glass {} is not in the catalogs{HINT}	面 {j}: 硝材 {} がカタログにありません{HINT}
+surface {j}: glass {mat} is not in the catalogs{HINT}	面 {j}: 硝材 {mat} がカタログにありません{HINT}
 no lens {k} ({} lenses)	レンズ {k} はありません（{} 個）
 {cfg} must be 1 or more	{cfg} は 1 以上
 {}: a folder (give a system file)	{}: フォルダ（系のファイルを渡してください）

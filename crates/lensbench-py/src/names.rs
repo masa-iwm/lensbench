@@ -31,7 +31,7 @@ pub(crate) fn beam_paths_of(
             glass_dirs,
             catalog: Some(&look),
         };
-        lensbench_project::paths(&p, &env)
+        Ok(lensbench_project::paths(&p, &env)?)
     })
     .map_err(err)
 }

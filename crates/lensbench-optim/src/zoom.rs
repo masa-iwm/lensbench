@@ -332,9 +332,30 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     spec.opts.check()?;
     let mut states = Vec::with_capacity(n);
     let mut systems = Vec::with_capacity(n);
+    // 進み具合: 状態ごと・状態の間の点ごとに 1 つ（文脈の受け手へ、lensbench_core::par::with_progress）
+    let total = n + n.saturating_sub(1) * spec.steps;
+    let t0 = web_time::Instant::now();
+    let mut done = 0;
+    let mut tick = || {
+        done += 1;
+        if lensbench_core::par::reporting() {
+            let el = t0.elapsed().as_secs_f64();
+            lensbench_core::par::report(&lensbench_core::par::Event::Count(
+                lensbench_core::par::Count {
+                    stage: "",
+                    done,
+                    total,
+                    ran: done,
+                    elapsed: el,
+                    eta: Some(el / done as f64 * total.saturating_sub(done) as f64),
+                },
+            ));
+        }
+    };
     for (k, s) in configs.iter().enumerate() {
         lensbench_core::par::check_cancel()?;
         let (p, sys) = solve_point(s, spec, spec.targets[k], Some(k), k as f64)?;
+        tick();
         states.push(p);
         systems.push(sys);
     }
@@ -387,6 +408,9 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
         );
         if !(ta.is_finite() && tb.is_finite()) {
             // 目標のない状態が解けなかった: 間の点の目標が決まらない
+            for _ in 0..spec.steps {
+                tick();
+            }
             warnings.push(format!(
                 "points between states {} and {} were skipped (a state without a target was not solved)",
                 k + 1,
@@ -414,6 +438,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
             let s0 = systems[k].with_params(&start)?;
             let pos = k as f64 + f;
             let (p, _) = solve_point(&s0, spec, Some(interp(ta, tb, f)), None, pos)?;
+            tick();
             if let Some(e) = p.stop.error() {
                 warnings.push(format!(
                     "between states {} and {} at {f:.3}: not solved ({e})",

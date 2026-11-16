@@ -18,7 +18,7 @@ pub struct DetectorKind {
     /// 説明（スキーマの description）
     pub doc: &'static str,
     /// 項目（`"type"`・`"id"` を除く）を確かめる。誤りなら説明
-    pub check: fn(&Map<String, Value>) -> Result<(), String>,
+    pub check: fn(&Map<String, Value>) -> lensbench_core::Result<()>,
     /// 項目（`"type"`・`"id"` を除く）の JSON スキーマ（無ければ何でも書ける）
     pub schema: Option<fn() -> Value>,
 }
@@ -26,9 +26,9 @@ pub struct DetectorKind {
 static KINDS: RwLock<Vec<DetectorKind>> = RwLock::new(Vec::new());
 
 /// 種類を登録する（同じ名前なら置き換える）。組み込みのブロックの名前は登録できない
-pub fn register(k: DetectorKind) -> Result<(), String> {
+pub fn register(k: DetectorKind) -> lensbench_core::Result<()> {
     if crate::BUILTIN_BLOCKS.contains(&k.name) || k.name.is_empty() {
-        return Err(format!("detector kind name {:?} can't be used", k.name));
+        return Err(format!("detector kind name {:?} can't be used", k.name).into());
     }
     let mut v = KINDS.write_ok();
     v.retain(|x| x.name != k.name);

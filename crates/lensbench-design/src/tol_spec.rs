@@ -25,9 +25,10 @@ macro_rules! via_value {
 /// 中の欄の道つきで読む（「thickness: …」。外側の道は呼ぶ側が前に付ける）
 fn from<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, String> {
     lensbench_project::lenient::from_json(&v, "").map_err(|e| {
-        e.strip_prefix(": ")
-            .or_else(|| e.strip_prefix('.'))
-            .unwrap_or(&e)
+        let m = e.message().unwrap_or_default();
+        m.strip_prefix(": ")
+            .or_else(|| m.strip_prefix('.'))
+            .unwrap_or(m)
             .to_string()
     })
 }

@@ -16,7 +16,10 @@ fn env() -> Env<'static> {
     }
 }
 
-fn project(stop_block: bool, ops: &str) -> Result<(lensbench_core::System, Vec<String>), String> {
+fn project(
+    stop_block: bool,
+    ops: &str,
+) -> lensbench_core::Result<(lensbench_core::System, Vec<String>)> {
     let stop = if stop_block {
         r#"{"type": "stop", "semi": 2.5}, {"type": "air", "t": 2},"#
     } else {
@@ -72,18 +75,21 @@ fn missing_block_warns_and_bad_ops_fail() {
         r#"[{"op": "set_stop", "surface": {"block": "L1", "surface": 5}}]"#,
     )
     .unwrap_err();
-    assert!(e.contains("surface 5"), "{e}");
+    assert!(e.to_string().contains("surface 5"), "{e}");
     let e = project(true, r#"[{"op": "delete_surface", "surface": 1}]"#).unwrap_err();
-    assert!(e.contains("delete_surface"), "{e}");
+    assert!(e.to_string().contains("delete_surface"), "{e}");
     // 絞りが無く set_stop も無ければ従来どおりのエラー
-    assert!(project(false, "[]").unwrap_err().contains("stop"));
+    assert!(project(false, "[]")
+        .unwrap_err()
+        .to_string()
+        .contains("stop"));
     // 絞りが無く、set_stop のブロックが無い（状態で外した・id の誤り）ときもエラー（仮の絞りのままにしない）
     let e = project(
         false,
         r#"[{"op": "set_stop", "surface": {"block": "X", "surface": 0}}]"#,
     )
     .unwrap_err();
-    assert!(e.contains("0 stops"), "{e}");
+    assert!(e.to_string().contains("0 stops"), "{e}");
 }
 
 /// surface_ops は set_stop・add_solve・add_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
@@ -108,7 +114,7 @@ fn surface_ops_are_typed() {
         ),
     ] {
         let e = project(false, ops).unwrap_err();
-        assert!(e.contains(want), "{ops}: {e}");
+        assert!(e.to_string().contains(want), "{ops}: {e}");
     }
     // 面の名前（展開した系の面のコメント）も前どおり書ける。書き直しても同じ形
     let p = lensbench_project::Project::from_json(

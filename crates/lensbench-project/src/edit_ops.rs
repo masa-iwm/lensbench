@@ -55,16 +55,16 @@ fn num(v: &Value) -> Option<f64> {
 }
 
 /// 面（番号か名前）の系の面の番号。プロジェクトの glrs も引く
-pub(crate) fn surf_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
+pub(crate) fn surf_of(s: &System, v: &Ref, what: &str) -> lensbench_core::Result<usize> {
     surf(s, v, what)
 }
 
-fn surf(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
+fn surf(s: &System, v: &Ref, what: &str) -> lensbench_core::Result<usize> {
     match v {
-        Ref::Index(j) => Some(*j)
+        Ref::Index(j) => Ok(Some(*j)
             .filter(|&j| j < s.surfaces.len())
-            .ok_or_else(|| format!("{what}: no surface {j}")),
-        Ref::Name(t) => s.find_surface(t).map_err(|e| format!("{what}: {e}")),
+            .ok_or_else(|| format!("{what}: no surface {j}"))?),
+        Ref::Name(t) => Ok(s.find_surface(t).map_err(|e| format!("{what}: {e}"))?),
     }
 }
 
@@ -73,33 +73,33 @@ fn vec3(v: &[Num; 3]) -> [f64; 3] {
 }
 
 /// 玉・群（名前か、0 始まりの番号）
-fn unit_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
+fn unit_of(s: &System, v: &Ref, what: &str) -> lensbench_core::Result<usize> {
     match v {
-        Ref::Index(i) => Some(*i)
+        Ref::Index(i) => Ok(Some(*i)
             .filter(|&i| i < s.units.len())
-            .ok_or_else(|| format!("{what}: no lens or group {i}")),
-        Ref::Name(t) => s
+            .ok_or_else(|| format!("{what}: no lens or group {i}"))?),
+        Ref::Name(t) => Ok(s
             .find_unit(t)
-            .ok_or_else(|| format!("{what}: no lens or group {t}")),
+            .ok_or_else(|| format!("{what}: no lens or group {t}"))?),
     }
 }
 
 /// 機構部品（名前か、0 始まりの番号）
-fn mech_of(s: &System, v: &Ref, what: &str) -> Result<usize, String> {
+fn mech_of(s: &System, v: &Ref, what: &str) -> lensbench_core::Result<usize> {
     match v {
-        Ref::Index(i) => Some(*i)
+        Ref::Index(i) => Ok(Some(*i)
             .filter(|&i| i < s.mechanics.len())
-            .ok_or_else(|| format!("{what}: mechanical part {i}")),
-        Ref::Name(t) => s
+            .ok_or_else(|| format!("{what}: mechanical part {i}"))?),
+        Ref::Name(t) => Ok(s
             .mechanics
             .iter()
             .position(|m| m.name.eq_ignore_ascii_case(t.trim()))
-            .ok_or_else(|| format!("{what}: no mechanical part {t}")),
+            .ok_or_else(|| format!("{what}: no mechanical part {t}"))?),
     }
 }
 
 /// 機構部品を確かめる（名前・面の番号・寸法）
-fn mech_check(s: &System, m: MechPart) -> Result<MechPart, String> {
+fn mech_check(s: &System, m: MechPart) -> lensbench_core::Result<MechPart> {
     let n = s.surfaces.len();
     if m.name.trim().is_empty() {
         return Err("empty mechanical part name".into());
@@ -110,39 +110,41 @@ fn mech_check(s: &System, m: MechPart) -> Result<MechPart, String> {
             m.name,
             m.surface,
             n - 1
-        ));
+        )
+        .into());
     }
     if let Some(h) = m.holds.iter().find(|&&h| h >= n) {
-        return Err(format!("mechanical part {} holds surface {h}", m.name));
+        return Err(format!("mechanical part {} holds surface {h}", m.name).into());
     }
     let fin = m.offset.iter().chain(&m.tilt).all(|x| x.is_finite())
         && [m.length, m.outer_radius, m.hold_radius, m.rod_spacing]
             .iter()
             .all(|x| x.is_finite() && *x >= 0.0);
     if !fin {
-        return Err(format!("mechanical part {} position or size", m.name));
+        return Err(format!("mechanical part {} position or size", m.name).into());
     }
     for b in &m.bores {
         if !(b.z0.is_finite() && b.z1.is_finite() && b.z0 <= b.z1 && b.radius > 0.0) {
             return Err(format!(
                 "mechanical part {} bore (z {} to {}, radius {})",
                 m.name, b.z0, b.z1, b.radius
-            ));
+            )
+            .into());
         }
     }
     Ok(m)
 }
 
 /// スパイダーの腕の本数（0 以上の整数）
-fn arms(n: f64) -> Result<u32, String> {
+fn arms(n: f64) -> lensbench_core::Result<u32> {
     if n >= 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64 {
         Ok(n as u32)
     } else {
-        Err(format!("number of spider arms {n}"))
+        Err(format!("number of spider arms {n}").into())
     }
 }
 
-fn aperture(v: &Value) -> Result<Aperture, String> {
+fn aperture(v: &Value) -> lensbench_core::Result<Aperture> {
     if v.is_null() {
         return Ok(Aperture::None);
     }
@@ -190,12 +192,12 @@ fn aperture(v: &Value) -> Result<Aperture, String> {
             dy,
         },
         "floating" => Aperture::Floating { semi: g("semi") },
-        t => return Err(format!("aperture type {t}")),
+        t => return Err(format!("aperture type {t}").into()),
     })
 }
 
 /// 面の値の dict を名前と値の組に
-pub fn surf_fields(v: &Value) -> Result<Vec<(String, SurfValue)>, String> {
+pub fn surf_fields(v: &Value) -> lensbench_core::Result<Vec<(String, SurfValue)>> {
     let Some(m) = v.as_object() else {
         return Err("surface values must be an object (name: value)".into());
     };
@@ -203,7 +205,7 @@ pub fn surf_fields(v: &Value) -> Result<Vec<(String, SurfValue)>, String> {
 }
 
 /// 面の値の {名前: 値} を名前と値の組に
-pub fn surf_fields_map(m: &Map<String, Value>) -> Result<Vec<(String, SurfValue)>, String> {
+pub fn surf_fields_map(m: &Map<String, Value>) -> lensbench_core::Result<Vec<(String, SurfValue)>> {
     let mut out = Vec::with_capacity(m.len());
     for (k, x) in m {
         let val = if k == "aperture" {
@@ -221,7 +223,7 @@ pub fn surf_fields_map(m: &Map<String, Value>) -> Result<Vec<(String, SurfValue)
                         })
                         .collect::<Result<_, _>>()?,
                 ),
-                _ => return Err(format!("type of surface value {k}")),
+                _ => return Err(format!("type of surface value {k}").into()),
             }
         };
         out.push((k.clone(), val));
@@ -230,8 +232,8 @@ pub fn surf_fields_map(m: &Map<String, Value>) -> Result<Vec<(String, SurfValue)
 }
 
 /// 面の値を JSON に（inf は {"$f": "inf"}）
-pub fn surf_fields_json(s: &System, j: usize) -> Result<Value, String> {
-    let f = s.surface_fields(j).map_err(|e| e.to_string())?;
+pub fn surf_fields_json(s: &System, j: usize) -> lensbench_core::Result<Value> {
+    let f = s.surface_fields(j)?;
     let n = |x: f64| -> Value {
         if x.is_finite() {
             Value::from(x)
@@ -309,14 +311,15 @@ pub fn surface_solves(s: &System, j: usize) -> Value {
 
 /// 面 j のデータを全部の項目で（系ファイルの面と同じ形。計算で作る屈折率 n・n_base・ゴーストの reflect は除く）と、
 /// その面のソルブ・ピックアップ（GUI の面の設定）
-pub fn surface_data(s: &System, j: usize) -> Result<Value, String> {
+pub fn surface_data(s: &System, j: usize) -> lensbench_core::Result<Value> {
     let d = s.surfaces.get(j).ok_or_else(|| {
         format!(
             "surface {j} (surfaces are 0 to {})",
             s.surfaces.len().saturating_sub(1)
         )
     })?;
-    let c = ciborium::value::Value::serialized(d).map_err(|e| e.to_string())?;
+    let c = ciborium::value::Value::serialized(d)
+        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = crate::sysfile::to_json(c)?;
     if let Some(o) = v.as_object_mut() {
         for k in ["n", "n_base", "reflect"] {
@@ -377,20 +380,22 @@ pub(crate) fn set_surface_data(
     t: &mut System,
     j: usize,
     m: &Map<String, Value>,
-) -> Result<(), String> {
+) -> lensbench_core::Result<()> {
     let cur = t.surfaces[j].clone();
-    let c = ciborium::value::Value::serialized(&cur).map_err(|e| e.to_string())?;
+    let c = ciborium::value::Value::serialized(&cur)
+        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = crate::sysfile::to_json(c)?;
     let o = v.as_object_mut().ok_or("surface data")?;
     for (k, x) in m {
         if ["n", "n_base", "reflect", "stop", "mirror"].contains(&k.as_str()) {
             return Err(format!(
                 "surface item {k} is not changed by data (use the material or set_stop)"
-            ));
+            )
+            .into());
         }
         // user（利用者定義の面）と semi_autoは無ければ書き出さないので、無くても足せる
         if !o.contains_key(k) && !["user", "semi_auto", "bire"].contains(&k.as_str()) {
-            return Err(format!("no surface item {k}"));
+            return Err(format!("no surface item {k}").into());
         }
         let x = coerce(x.clone(), o.get(k), k, k == "bin2");
         o.insert(k.clone(), x);
@@ -411,7 +416,6 @@ pub(crate) fn set_surface_data(
         s.surfaces[j] = d;
         Ok(())
     })
-    .map_err(|e| e.to_string())
 }
 
 /// 系の設定の項目（[`system_data`]・`set_system_data` で読み書きできるもの。系ファイルの同じ名前の項目と同じ形）
@@ -438,8 +442,9 @@ pub const SYSTEM_KEYS: &[&str] = &[
 ];
 
 /// 系の設定（[`SYSTEM_KEYS`] の項目。系ファイルと同じ形、inf は {"$f": "inf"}。主波長 primary は 0 始まり）
-pub fn system_data(s: &System) -> Result<Value, String> {
-    let c = ciborium::value::Value::serialized(s).map_err(|e| e.to_string())?;
+pub fn system_data(s: &System) -> lensbench_core::Result<Value> {
+    let c = ciborium::value::Value::serialized(s)
+        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let v = crate::sysfile::to_json(c)?;
     let o = v.as_object().ok_or("system data")?;
     Ok(Value::Object(
@@ -456,8 +461,12 @@ pub fn system_data(s: &System) -> Result<Value, String> {
 }
 
 /// 系の設定の項目を変える（`set_system_data`）。書いた項目だけ変え、屈折率は波長・温度・気圧から作り直す
-pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<(), String> {
-    let c = ciborium::value::Value::serialized(&*t).map_err(|e| e.to_string())?;
+pub(crate) fn set_system_data(
+    t: &mut System,
+    m: &Map<String, Value>,
+) -> lensbench_core::Result<()> {
+    let c = ciborium::value::Value::serialized(&*t)
+        .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
     let mut v = crate::sysfile::to_json(c)?;
     let o = v.as_object_mut().ok_or("system data")?;
     for (k, x) in m {
@@ -465,7 +474,8 @@ pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<
             return Err(format!(
                 "system item {k} is not changed by set_system_data ({})",
                 SYSTEM_KEYS.join("・")
-            ));
+            )
+            .into());
         }
         let x = coerce(x.clone(), o.get(k), k, false);
         o.insert(k.clone(), x);
@@ -476,25 +486,23 @@ pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<
         return Err("no wavelengths".into());
     }
     if n.wavelengths.iter().any(|&l| !(l.is_finite() && l > 0.0)) {
-        return Err(format!("wavelengths {:?}", n.wavelengths));
+        return Err(format!("wavelengths {:?}", n.wavelengths).into());
     }
     if n.weights.len() != nw {
-        return Err(format!(
-            "{} wavelength weights ({nw} wavelengths)",
-            n.weights.len()
-        ));
+        return Err(format!("{} wavelength weights ({nw} wavelengths)", n.weights.len()).into());
     }
     if n.primary >= nw {
         return Err(format!(
             "primary wavelength {} (0-based, {nw} wavelengths)",
             n.primary
-        ));
+        )
+        .into());
     }
     if n.fields.is_empty() {
         return Err("no fields".into());
     }
     if n.glrs >= n.surfaces.len() {
-        return Err(format!("global coordinate reference surface {}", n.glrs));
+        return Err(format!("global coordinate reference surface {}", n.glrs).into());
     }
     if !(n.temperature.is_finite() && n.pressure.is_finite()) {
         return Err("temperature and pressure must be numbers".into());
@@ -508,11 +516,10 @@ pub(crate) fn set_system_data(t: &mut System, m: &Map<String, Value>) -> Result<
         *s = n;
         s.check()
     })
-    .map_err(|e| e.to_string())
 }
 
 /// 操作の列の JSON を読む（知らない操作・キーは誤り。誤りの文の頭に操作の番号）
-pub fn parse(ops: &Value) -> Result<Vec<EditOp>, String> {
+pub fn parse(ops: &Value) -> lensbench_core::Result<Vec<EditOp>> {
     let Some(list) = ops.as_array() else {
         return Err("ops must be a list of operations".into());
     };
@@ -521,23 +528,23 @@ pub fn parse(ops: &Value) -> Result<Vec<EditOp>, String> {
         .map(|(i, o)| {
             EditOp::deserialize(o).map_err(|e| {
                 let name = o.get("op").and_then(Value::as_str).unwrap_or("?");
-                format!("operation {} ({name}): {e}", i + 1)
+                lensbench_core::Error::Invalid(format!("operation {} ({name}): {e}", i + 1))
             })
         })
         .collect()
 }
 
 /// JSON の操作の列を読んで当てる（[`parse`] と [`apply`]）
-pub fn apply_json(s: &mut System, ops: &Value) -> Result<Vec<String>, String> {
+pub fn apply_json(s: &mut System, ops: &Value) -> lensbench_core::Result<Vec<String>> {
     apply(s, &parse(ops)?)
 }
 
 /// 操作の列を順に当てる（どれかが失敗すれば系は変えない）。面を消したときなどの説明を返す
-pub fn apply(s: &mut System, ops: &[EditOp]) -> Result<Vec<String>, String> {
+pub fn apply(s: &mut System, ops: &[EditOp]) -> lensbench_core::Result<Vec<String>> {
     let mut t = s.clone();
     let mut notes = Vec::new();
     for (i, op) in ops.iter().enumerate() {
-        let at = |e: String| format!("operation {}: {e}", i + 1);
+        let at = |e: lensbench_core::Error| e.map_message(|e| format!("operation {}: {e}", i + 1));
         apply_one(&mut t, op, &mut notes).map_err(at)?;
         // 表の操作でなければ、変えた値を表の今の構成の列にも
         if !op.is_config() {
@@ -548,7 +555,7 @@ pub fn apply(s: &mut System, ops: &[EditOp]) -> Result<Vec<String>, String> {
     Ok(notes)
 }
 
-fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> Result<(), String> {
+fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> lensbench_core::Result<()> {
     use EditOp as O;
     let e = |x: lensbench_core::Error| x.to_string();
     let name = op.name();
@@ -669,16 +676,17 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> Result<(),
                 .iter()
                 .any(|x| x.name.eq_ignore_ascii_case(&m.name))
             {
-                return Err(format!("mechanical part {} is already placed", m.name));
+                return Err(format!("mechanical part {} is already placed", m.name).into());
             }
             t.mechanics.push(m);
         }
         O::SetMech { mech, part } => {
             let i = mech_of(t, mech, name)?;
-            let mut v = serde_json::to_value(&t.mechanics[i]).map_err(|x| x.to_string())?;
+            let mut v = serde_json::to_value(&t.mechanics[i])
+                .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))?;
             for (k, x) in part {
                 if v.get(k).is_none() && !["holds"].contains(&k.as_str()) {
-                    return Err(format!("no mechanical part item {k}"));
+                    return Err(format!("no mechanical part item {k}").into());
                 }
                 v[k] = x.clone();
             }
@@ -690,7 +698,7 @@ fn apply_one(t: &mut System, op: &EditOp, notes: &mut Vec<String>) -> Result<(),
                 .enumerate()
                 .any(|(k, x)| k != i && x.name.eq_ignore_ascii_case(&m.name))
             {
-                return Err(format!("mechanical part {} is already placed", m.name));
+                return Err(format!("mechanical part {} is already placed", m.name).into());
             }
             t.mechanics[i] = m;
         }

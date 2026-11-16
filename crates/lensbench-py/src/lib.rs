@@ -985,6 +985,7 @@ impl PySystem {
                     split_path: beam_path.as_deref(),
                     wavelengths,
                     names: lensbench_project::open::ArgNames::PYTHON,
+                    step_files: None,
                 },
             )
         });
@@ -1067,8 +1068,8 @@ impl PySystem {
         let base = base.unwrap_or_else(|| PathBuf::from("."));
         let glass_dirs = glass_dirs.unwrap_or_default();
         let lens_catalogs = lens_catalogs.unwrap_or_default();
-        let r = py.detach(|| -> Result<(System, Vec<String>), String> {
-            let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
+        let r = py.detach(|| -> lensbench_core::Result<(System, Vec<String>)> {
+            let cat = LensCatalog::load_registered(&lens_catalogs)?;
             let look = |v: &str, p: &str| cat.zmx(v, p);
             lensbench_project::expand_json_path(
                 &txt,

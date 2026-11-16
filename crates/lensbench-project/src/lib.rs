@@ -70,7 +70,7 @@ pub fn load(
     path: &Path,
     glass_dirs: &[PathBuf],
     catalog: Option<CatalogLookup>,
-) -> Result<System, String> {
+) -> lensbench_core::Result<System> {
     load_state(path, glass_dirs, catalog, None)
 }
 
@@ -80,7 +80,7 @@ pub fn load_state(
     glass_dirs: &[PathBuf],
     catalog: Option<CatalogLookup>,
     state: Option<&str>,
-) -> Result<System, String> {
+) -> lensbench_core::Result<System> {
     load_state_report(path, glass_dirs, catalog, state).map(|r| r.0)
 }
 
@@ -90,7 +90,7 @@ pub fn load_state_report(
     glass_dirs: &[PathBuf],
     catalog: Option<CatalogLookup>,
     state: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
+) -> lensbench_core::Result<(System, Vec<String>)> {
     load_path_report(path, glass_dirs, catalog, state, None)
 }
 
@@ -101,12 +101,14 @@ pub fn load_path_report(
     catalog: Option<CatalogLookup>,
     state: Option<&str>,
     split_path: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
+) -> lensbench_core::Result<(System, Vec<String>)> {
     let txt = lensbench_core::vfs::read_to_string(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let base = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    expand_json_path(&txt, &base, glass_dirs, catalog, state, split_path)
-        .map_err(|e| format!("{}: {e}", path.display()))
+    Ok(
+        expand_json_path(&txt, &base, glass_dirs, catalog, state, split_path)
+            .map_err(|e| format!("{}: {e}", path.display()))?,
+    )
 }
 
 /// プロジェクトの JSON（ファイルの中身と同じ形）を展開する。相対パスは base から。
@@ -117,7 +119,7 @@ pub fn expand_json(
     glass_dirs: &[PathBuf],
     catalog: Option<CatalogLookup>,
     state: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
+) -> lensbench_core::Result<(System, Vec<String>)> {
     expand_json_path(txt, base, glass_dirs, catalog, state, None)
 }
 
@@ -129,29 +131,19 @@ pub fn expand_json_path(
     catalog: Option<CatalogLookup>,
     state: Option<&str>,
     split_path: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
+) -> lensbench_core::Result<(System, Vec<String>)> {
     let env = Env {
         step_files: None,
         base: base.to_path_buf(),
         glass_dirs: glass_dirs.to_vec(),
         catalog,
     };
-    expand_text(txt, &env, state, split_path)
-}
-
-/// プロジェクトの JSON を環境 env で展開する（状態・経路を選んで）
-pub(crate) fn expand_text(
-    txt: &str,
-    env: &Env,
-    state: Option<&str>,
-    split_path: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
     let p = Project::from_json(txt)?;
     let p = match state {
         Some(n) => p.with_state(n)?,
         None => p,
     };
-    expand_path(&p, env, split_path)
+    expand_path(&p, &env, split_path)
 }
 
 #[cfg(test)]
@@ -278,7 +270,7 @@ mod read_text_tests {
         gz.write_all(&vec![b' '; 1 << 20]).unwrap();
         std::fs::write(&f, gz.finish().unwrap()).unwrap();
         let e = read_text_limit(&f, 1000).unwrap_err();
-        assert!(e.contains("when inflated"), "{e}");
+        assert!(e.to_string().contains("when inflated"), "{e}");
         assert_eq!(read_text_limit(&f, 1 << 20).unwrap().len(), 1 << 20);
         // .json を指すと .json.gz を読む
         assert_eq!(read_text(&dir.join("big.json")).unwrap().len(), 1 << 20);

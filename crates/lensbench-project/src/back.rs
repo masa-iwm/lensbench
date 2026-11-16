@@ -2,7 +2,7 @@
 
 use super::*;
 /// 玉（玉モードの要素）を、面を直接書いた玉のブロックにする（ほかのプロジェクトへ持ち出せる形）
-pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
+pub fn lens_to_block(e: &Element, id: &str) -> lensbench_core::Result<Block> {
     if e.kind != Kind::Lens {
         return Err("not a lens element".into());
     }
@@ -23,7 +23,8 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
             return Err(format!(
                 "lens surface {}: a lens with a mirror surface can't be saved",
                 i + 1
-            ));
+            )
+            .into());
         }
         let glass = if i + 1 == n || is_air(&s.mat) {
             None
@@ -36,7 +37,8 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
                         "lens surface {}: model glass {} with dispersion can't be saved",
                         i + 1,
                         s.mat
-                    ))
+                    )
+                    .into())
                 }
             }
         } else {
@@ -71,8 +73,8 @@ pub fn lens_to_block(e: &Element, id: &str) -> Result<Block, String> {
 }
 
 /// 系の玉 k（1 始まり、玉だけを数える）をユーザーカタログの項目にする
-pub fn lens_item(s: &System, k: usize, description: &str) -> Result<UserItem, String> {
-    let e = pick_lens(s, k).map_err(|e| e.to_string())?;
+pub fn lens_item(s: &System, k: usize, description: &str) -> lensbench_core::Result<UserItem> {
+    let e = pick_lens(s, k)?;
     let mut cats: Vec<String> = Vec::new();
     for d in &e.surfaces {
         if let Some(g) = s.glasses.get(&d.mat) {
@@ -91,7 +93,12 @@ pub fn lens_item(s: &System, k: usize, description: &str) -> Result<UserItem, St
 
 /// プロジェクトのブロック id（入れ子も探す）をユーザーカタログの項目にする。
 /// .zmx の玉は面を直接書いた玉に、.zmx の取り込み・ユーザーカタログの参照のパスは絶対パスにする
-pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result<UserItem, String> {
+pub fn block_item(
+    p: &Project,
+    env: &Env,
+    id: &str,
+    description: &str,
+) -> lensbench_core::Result<UserItem> {
     fn find<'x>(v: &'x [Block], id: &str, out: &mut Vec<&'x Block>) {
         for b in v {
             let bid = match b {
@@ -123,8 +130,11 @@ pub fn block_item(p: &Project, env: &Env, id: &str, description: &str) -> Result
     find(&p.blocks, id, &mut hits);
     let b = match hits.as_slice() {
         [b] => (*b).clone(),
-        [] => return Err(format!("no block {id}")),
-        _ => return Err(format!("two or more blocks with id {id}")),
+        [] => {
+            return Err(lensbench_core::Error::Invalid(format!("no block {id}"))
+                .with_code(lensbench_core::error::code::BLOCK_NOT_FOUND))
+        }
+        _ => return Err(format!("two or more blocks with id {id}").into()),
     };
     let mut c = Ctx {
         env,
@@ -166,14 +176,14 @@ pub fn blocks_item(
     env: &Env,
     ids: &[String],
     description: &str,
-) -> Result<UserItem, String> {
+) -> lensbench_core::Result<UserItem> {
     let (first, last) = match ids {
         [] => return Err("no block id to save".into()),
         [a] => (a, a),
         [a, .., b] => (a, b),
     };
     // 範囲（最上位の並び）
-    let top = |id: &str| -> Result<usize, String> {
+    let top = |id: &str| -> lensbench_core::Result<usize> {
         let v: Vec<usize> = p
             .blocks
             .iter()
@@ -183,8 +193,8 @@ pub fn blocks_item(
             .collect();
         match v.as_slice() {
             [i] => Ok(*i),
-            [] => Err(format!("block {id} is not in the top-level list")),
-            _ => Err(format!("two or more blocks with id {id}")),
+            [] => Err(format!("block {id} is not in the top-level list").into()),
+            _ => Err(format!("two or more blocks with id {id}").into()),
         }
     };
     let mut item = if ids.len() == 1 {
@@ -192,7 +202,7 @@ pub fn blocks_item(
     } else {
         let (i, j) = (top(first)?, top(last)?);
         if i > j {
-            return Err(format!("{first} is after {last}"));
+            return Err(format!("{first} is after {last}").into());
         }
         let mut blocks = Vec::new();
         let mut cats = Vec::new();
@@ -242,7 +252,7 @@ pub(crate) fn item_has_id(blocks: &[Block], id: &str) -> bool {
 }
 
 /// 展開した系 s の玉 id の面（面の表の変更を当てた後）で、項目の玉 id を面を直接書いた玉にする
-pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(), String> {
+pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_core::Result<()> {
     fn find<'x>(v: &'x mut [Block], id: &str) -> Option<&'x mut Block> {
         for b in v {
             if block_id(b) == id {
@@ -269,7 +279,7 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
         ..
     } = b
     else {
-        return Err(nope());
+        return Err(lensbench_core::Error::Invalid(nope()));
     };
     let u = s
         .units
@@ -280,7 +290,8 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
     if s.surfaces[..a].iter().any(|x| x.mirror) {
         return Err(format!(
             "block {id}: changes to a lens after a mirror can't be baked in (not supported)"
-        ));
+        )
+        .into());
     }
     // 面の表の番号と同じく、座標ブレークを除いた面（偏心・傾きの座標ブレークは place のまま残る）
     let faces: Vec<&Surface> = (a..=z)
@@ -302,12 +313,12 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
     if span_cbs != place_cbs + inner_cbs || (*reversed && inner_cbs > 0) {
         return Err(format!(
             "block {id}: changes to a lens with a coordinate break inside can't be baked in (not supported)"
-        ));
+        ).into());
     }
     let n = faces.len();
     let mut specs = Vec::with_capacity(n + inner_cbs);
     let mut k = 0;
-    let take = |k: &mut usize| -> Result<SurfSpec, String> {
+    let take = |k: &mut usize| -> lensbench_core::Result<SurfSpec> {
         let f = faces.get(*k).ok_or_else(|| {
             format!("block {id}: the number of surfaces differs from the original lens")
         })?;
@@ -335,9 +346,9 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
         }
     }
     if k != n {
-        return Err(format!(
-            "block {id}: the number of surfaces differs from the original lens"
-        ));
+        return Err(
+            format!("block {id}: the number of surfaces differs from the original lens").into(),
+        );
     }
     for d in &faces {
         if let Some(g) = s.glasses.get(&d.mat) {
@@ -354,12 +365,12 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> Result<(),
 
 /// 展開した系の面を、面を直接書いた玉の面（[`SurfSpec`]）に戻す。書けない値（面の前後の傾き・偏心、
 /// 標準面・偶数次非球面・Jones 面のほかの型、鏡、ignore、dn・disp、分散のあるモデルガラス）は誤り
-pub(crate) fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> {
+pub(crate) fn surface_spec(f: &Surface, last: bool) -> lensbench_core::Result<SurfSpec> {
     if !matches!(
         f.typ,
         SurfType::Standard | SurfType::EvenAsph | SurfType::Jones
     ) {
-        return Err(format!("surface type {:?} can't be written", f.typ));
+        return Err(format!("surface type {:?} can't be written", f.typ).into());
     }
     if f.mirror {
         return Err("a mirror surface can't be written".into());
@@ -390,10 +401,9 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> 
         match (nd.trim().parse::<f64>(), vd.trim().parse::<f64>()) {
             (Ok(_), Ok(0.0)) => Some(format!("{}", f.n.first().copied().unwrap_or(0.0))),
             _ => {
-                return Err(format!(
-                    "model glass {} with dispersion can't be written",
-                    f.mat
-                ))
+                return Err(
+                    format!("model glass {} with dispersion can't be written", f.mat).into(),
+                )
             }
         }
     } else {
@@ -498,7 +508,11 @@ pub(crate) fn surface_spec(f: &Surface, last: bool) -> Result<SurfSpec, String> 
 }
 
 /// ブロックを持ち出せる形に（.zmx の玉は面に、パスは絶対パスに）
-pub(crate) fn portable(c: &mut Ctx, b: Block, cats: &mut Vec<String>) -> Result<Block, String> {
+pub(crate) fn portable(
+    c: &mut Ctx,
+    b: Block,
+    cats: &mut Vec<String>,
+) -> lensbench_core::Result<Block> {
     let abs = |c: &Ctx, p: &str| -> String {
         let q = c.base.join(p);
         lensbench_core::vfs::canonicalize(&q)

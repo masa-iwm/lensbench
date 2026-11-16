@@ -17,10 +17,10 @@ fn env() -> Env<'static> {
     }
 }
 
-fn check_toy(m: &Map<String, Value>) -> Result<(), String> {
+fn check_toy(m: &Map<String, Value>) -> lensbench_core::Result<()> {
     for k in m.keys() {
         if k != "pixel" {
-            return Err(format!("知らない項目 {k}"));
+            return Err(format!("知らない項目 {k}").into());
         }
     }
     Ok(())
@@ -94,12 +94,12 @@ fn detector_errors() {
     // 種類の項目の誤り（登録した確かめ）
     let v = project(json!([lens(), {"type": "toy_camera", "nosie": 1}]));
     let e = Project::from_json(&v.to_string()).unwrap_err();
-    assert!(e.contains("nosie"), "{e}");
+    assert!(e.to_string().contains("nosie"), "{e}");
     // 登録していない種類
     let v = project(json!([lens(), {"type": "no_such_camera"}]));
     let e = Project::from_json(&v.to_string()).unwrap_err();
     assert!(
-        e.contains("unknown block type") && e.contains("toy_camera"),
+        e.to_string().contains("unknown block type") && e.to_string().contains("toy_camera"),
         "{e}"
     );
     // 群の中も確かめる
@@ -108,12 +108,12 @@ fn detector_errors() {
     // 組み込みのブロックの誤りは今までどおりの説明
     let v = project(json!([{"type": "air"}]));
     let e = Project::from_json(&v.to_string()).unwrap_err();
-    assert!(e.contains("missing field `t`"), "{e}");
+    assert!(e.to_string().contains("missing field `t`"), "{e}");
     // 最後のブロックだけ
     let v = project(json!([{"type": "toy_camera"}, lens()]));
     let p = Project::from_json(&v.to_string()).unwrap();
     let e = expand(&p, &env()).unwrap_err();
-    assert!(e.contains("detector"), "{e}");
+    assert!(e.to_string().contains("detector"), "{e}");
     // 組み込みの名前は登録できない
     assert!(detectors::register(DetectorKind {
         name: "lens",

@@ -1,12 +1,13 @@
 //! 展開の入口（状態・経路）と、面の並びのあとの仕上げ（機構部品の配置・面の操作と編集・群の移動・ピックアップの保持）
 
 use super::*;
+use lensbench_core::error::code;
 use lensbench_core::glass::DIRS_HINT as HINT;
 /// .zmx の取り込みの群の、要素の範囲 (群の番号, 最初, 最後)。最初・最後は面が from〜to に始まる要素（空気でない）
 pub(crate) fn zmx_group_spans(
     keep: &[Element],
     groups: &[ZmxGroup],
-) -> Result<Vec<(usize, usize, usize)>, String> {
+) -> lensbench_core::Result<Vec<(usize, usize, usize)>> {
     let mut out: Vec<(usize, usize, usize)> = Vec::new();
     for (g, gr) in groups.iter().enumerate() {
         let label = if gr.id.is_empty() { &gr.name } else { &gr.id };
@@ -14,7 +15,8 @@ pub(crate) fn zmx_group_spans(
             return Err(format!(
                 "group {label}: surfaces {} to {} are in reverse order",
                 gr.from, gr.to
-            ));
+            )
+            .into());
         }
         let inside: Vec<usize> = (0..keep.len())
             .filter(|&i| keep[i].kind != Kind::Air && (gr.from..=gr.to).contains(&keep[i].from))
@@ -23,10 +25,11 @@ pub(crate) fn zmx_group_spans(
             return Err(format!(
                 "group {label}: no imported lenses or surfaces in surfaces {} to {}",
                 gr.from, gr.to
-            ));
+            )
+            .into());
         };
         if let Some(o) = out.iter().find(|o| a <= o.2 && o.1 <= z) {
-            return Err(format!("group {label} overlaps group {}", groups[o.0].name));
+            return Err(format!("group {label} overlaps group {}", groups[o.0].name).into());
         }
         out.push((g, a, z));
     }
@@ -93,7 +96,7 @@ pub(crate) fn surf_ap(ap: Option<SurfAperture>, semi: f64) -> Aperture {
     }
 }
 
-pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
+pub(crate) fn surf(q: &SurfSpec) -> lensbench_core::Result<Surface> {
     let mut s = Surface {
         typ: match q.shape {
             SurfShape::Standard if q.asph.iter().any(|a| *a != 0.0) => SurfType::EvenAsph,
@@ -133,7 +136,7 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
         s.bire = Some(match b {
             BireSpec::In { mode, axis } => {
                 if !matches!(mode, 0 | 2) {
-                    return Err(format!("birefringent plate mode {mode} (0 or 2)"));
+                    return Err(format!("birefringent plate mode {mode} (0 or 2)").into());
                 }
                 if !(axis.iter().all(|v| v.is_finite()) && axis.iter().any(|v| *v != 0.0)) {
                     return Err(
@@ -167,12 +170,12 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
             || s.typ == SurfType::EvenAsph
             || q.shape != SurfShape::Standard
         {
-            return Err(format!(
-                "a {what} surface can't have curvature, conic or asphere terms"
-            ));
+            return Err(
+                format!("a {what} surface can't have curvature, conic or asphere terms").into(),
+            );
         }
         if q.glass.as_deref().is_some_and(|g| !is_air(g.trim())) {
-            return Err(format!("no glass after a {what} surface"));
+            return Err(format!("no glass after a {what} surface").into());
         }
     }
     if let Some(j) = q.jones {
@@ -207,7 +210,7 @@ pub(crate) fn surf(q: &SurfSpec) -> Result<Surface, String> {
     }
     if let Some(d) = q.coordbrk {
         if q.order > 1 {
-            return Err(format!("coordinate break order {} (0 or 1)", q.order));
+            return Err(format!("coordinate break order {} (0 or 1)", q.order).into());
         }
         if q.aperture.is_some() {
             return Err("a coordinate break surface can't have an aperture".into());
@@ -243,7 +246,7 @@ pub(crate) fn pick_lens(s: &System, k: usize) -> lensbench_core::Result<Element>
 }
 
 /// プロジェクトの状態 state（None なら変更なし）を順次の面の列の系に展開する
-pub fn expand_state(p: &Project, env: &Env, state: Option<&str>) -> Result<System, String> {
+pub fn expand_state(p: &Project, env: &Env, state: Option<&str>) -> lensbench_core::Result<System> {
     match state {
         Some(n) => expand(&p.with_state(n)?, env),
         None => expand(p, env),
@@ -251,12 +254,12 @@ pub fn expand_state(p: &Project, env: &Env, state: Option<&str>) -> Result<Syste
 }
 
 /// プロジェクトを順次の面の列の系に展開する
-pub fn expand(p: &Project, env: &Env) -> Result<System, String> {
+pub fn expand(p: &Project, env: &Env) -> lensbench_core::Result<System> {
     expand_report(p, env).map(|r| r.0)
 }
 
 /// expand と同じ。展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の説明も返す
-pub fn expand_report(p: &Project, env: &Env) -> Result<(System, Vec<String>), String> {
+pub fn expand_report(p: &Project, env: &Env) -> lensbench_core::Result<(System, Vec<String>)> {
     expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.1))
 }
 
@@ -266,7 +269,7 @@ pub type Gap = (String, usize, f64);
 /// id のある空気のブロックの間隔（差し替え探索の変数）: (id, その空気が入る面の番号, 向き)。
 /// 向きは鏡の後（光が −z へ進む）で −1（面の厚さは −t）。往復で 2 回通る空気は 2 つ並ぶ。
 /// 面の厚さには、同じ面に入る他の空気・群の移動も足されている
-pub fn expand_gaps(p: &Project, env: &Env) -> Result<(System, Vec<Gap>), String> {
+pub fn expand_gaps(p: &Project, env: &Env) -> lensbench_core::Result<(System, Vec<Gap>)> {
     expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.3))
 }
 
@@ -275,7 +278,7 @@ pub fn expand_gaps_cached(
     p: &Project,
     env: &Env,
     cache: &LensCache,
-) -> Result<(System, Vec<Gap>), String> {
+) -> lensbench_core::Result<(System, Vec<Gap>)> {
     expand_inner(p, env, p.path.as_deref(), false, Some(cache)).map(|r| (r.0, r.3))
 }
 
@@ -284,19 +287,19 @@ pub fn expand_path(
     p: &Project,
     env: &Env,
     path: Option<&str>,
-) -> Result<(System, Vec<String>), String> {
+) -> lensbench_core::Result<(System, Vec<String>)> {
     expand_inner(p, env, path.or(p.path.as_deref()), false, None).map(|r| (r.0, r.1))
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
 /// 経路は BS ごとに透過・反射を選んで、BS を通らなくなるまで（像面まで）たどったもの
-pub fn paths(p: &Project, env: &Env) -> Result<Vec<String>, String> {
+pub fn paths(p: &Project, env: &Env) -> lensbench_core::Result<Vec<String>> {
     let mut out = Vec::new();
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
         match expand_inner(p, env, Some(&q), true, None) {
             Ok(_) => out.push(q),
-            Err(e) if e == splitter::NEED => {
+            Err(e) if e == splitter::NEED.into() => {
                 if out.len() + todo.len() > 1024 {
                     return Err("more than 1024 paths".into());
                 }
@@ -307,7 +310,7 @@ pub fn paths(p: &Project, env: &Env) -> Result<Vec<String>, String> {
                 return Err(if q.is_empty() {
                     e
                 } else {
-                    format!("path {q}: {e}")
+                    format!("path {q}: {e}").into()
                 })
             }
         }
@@ -341,7 +344,7 @@ pub(crate) fn expand_inner(
     path: Option<&str>,
     strict: bool,
     cache: Option<&LensCache>,
-) -> Result<(System, Vec<String>, usize, Vec<Gap>), String> {
+) -> lensbench_core::Result<(System, Vec<String>, usize, Vec<Gap>)> {
     {
         let mut ids = Vec::new();
         splitter_ids(&p.blocks, &mut ids);
@@ -350,7 +353,7 @@ pub(crate) fn expand_inner(
                 return Err("a BS (splitter) needs an id".into());
             }
             if ids[..i].contains(id) {
-                return Err(format!("BS id {id} appears twice or more"));
+                return Err(format!("BS id {id} appears twice or more").into());
             }
         }
     }
@@ -362,12 +365,17 @@ pub(crate) fn expand_inner(
             "primary wavelength {} (there are {} wavelengths)",
             p.primary,
             p.wavelengths.len()
-        ));
+        )
+        .into());
     }
     let dirs = glass::catalog_dirs(&env.glass_dirs);
     let (glasses, missing) = glass::load_catalogs_shared(&p.glass_catalogs, &dirs);
     if !missing.is_empty() {
-        return Err(format!("glass catalog not found: {}", missing.join(", ")));
+        return Err(lensbench_core::Error::Invalid(format!(
+            "glass catalog not found: {}",
+            missing.join(", ")
+        ))
+        .with_code(code::GLASS_NOT_FOUND));
     }
     let mut c = Ctx {
         env,
@@ -409,7 +417,8 @@ pub(crate) fn expand_inner(
             "path {}: too many letters (the BS is passed {} times)",
             path.unwrap_or(""),
             c.split.pos
-        ));
+        )
+        .into());
     }
     let npass = c.split.pos;
     // 絞りを面に置く操作（surface_ops の set_stop）があれば、ブロックの絞りは無くてよい
@@ -418,7 +427,7 @@ pub(crate) fn expand_inner(
         .iter()
         .any(|o| matches!(o, SurfaceOp::SetStop(_)));
     if c.nstop > 1 || (c.nstop == 0 && !stop_op) {
-        return Err(format!("{} stops (exactly one is needed)", c.nstop));
+        return Err(format!("{} stops (exactly one is needed)", c.nstop).into());
     }
     if c.nstop == 0 {
         // 仮の絞り（set_stop で移す）
@@ -442,7 +451,8 @@ pub(crate) fn expand_inner(
             "internal error: {} surfaces but {} sources",
             c.sf.len(),
             c.org.len()
-        ));
+        )
+        .into());
     }
     sf.append(&mut c.sf);
     let org = std::mem::take(&mut c.org);
@@ -462,17 +472,11 @@ pub(crate) fn expand_inner(
                 .collect()
         } else if let Some(&n0) = d.n.first() {
             if d.n.iter().any(|&v| v != n0) {
-                return Err(format!(
-                    "surface {j}: glass {} is not in the catalogs{HINT}",
-                    d.mat
-                ));
+                return Err(glass_missing(j, &d.mat));
             }
             vec![n0; wl.len()]
         } else {
-            return Err(format!(
-                "surface {j}: glass {} is not in the catalogs{HINT}",
-                d.mat
-            ));
+            return Err(glass_missing(j, &d.mat));
         };
         d.n = n.clone();
         prev = n;
@@ -505,10 +509,7 @@ pub(crate) fn expand_inner(
                     .map(|&l| g.index(l, envr.temperature_c, envr.pressure_atm, envr.adjust_index))
                     .collect()
             } else {
-                return Err(format!(
-                    "surface {j}: glass {} is not in the catalogs",
-                    r.mat
-                ));
+                return Err(format!("surface {j}: glass {} is not in the catalogs", r.mat).into());
             };
         }
     }
@@ -533,7 +534,8 @@ pub(crate) fn expand_inner(
             "fields: {} vignetting rows for {} fields",
             p.fields.vignetting.len(),
             p.fields.points.len()
-        ));
+        )
+        .into());
     }
     let fields: Vec<Field> = p
         .fields
@@ -569,8 +571,7 @@ pub(crate) fn expand_inner(
         p.telecentric,
         aim,
         c.glasses,
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
     s.name = p.name.clone();
     s.temperature = envr.temperature_c;
     s.pressure = envr.pressure_atm;
@@ -607,7 +608,7 @@ pub(crate) fn expand_inner(
             },
         };
         s.field_type = FieldType::Solve(cond);
-        s.changed().map_err(|e| e.to_string())?;
+        s.changed()?;
     } else if p.fields.solve.is_some() {
         return Err("fields solve only with type solve".into());
     }
@@ -693,7 +694,7 @@ pub(crate) fn expand_inner(
     s.update_semi();
     s.mechanics = place_mechanics(&s, &p.mechanics, env, &c.spans, &c.back_spans, &mut warn)?;
     s.mechanics.extend(place_frames(&s, &c.frames, &mut warn));
-    s.validate().map_err(|e| e.to_string())?;
+    s.validate()?;
     Ok((s, warn, npass, c.gaps))
 }
 
@@ -705,7 +706,7 @@ pub(crate) fn place_mechanics(
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
     warn: &mut Vec<String>,
-) -> Result<Vec<lensbench_core::mech::MechPart>, String> {
+) -> lensbench_core::Result<Vec<lensbench_core::mech::MechPart>> {
     let mut out = Vec::new();
     // 置いた部品の寸法（after でねじを見る）
     let mut specs: Vec<MechSpec> = Vec::new();
@@ -734,7 +735,8 @@ pub(crate) fn place_mechanics(
             _ => {
                 return Err(format!(
                     "{tag}: write a part with mech, or with catalog and item, not both"
-                ))
+                )
+                .into())
             }
         };
         spec.validate().map_err(|e| format!("{tag}: {e}"))?;
@@ -769,12 +771,13 @@ pub(crate) fn place_mechanics(
         // 前の部品の後ろの端につなぐ
         if let Some(prev_name) = &m.after {
             if m.seat || !m.at.is_unset() {
-                return Err(format!("{tag}: after can't be used with at or seat"));
+                return Err(format!("{tag}: after can't be used with at or seat").into());
             }
             if m.tilt != [0.0, 0.0] {
                 return Err(format!(
                     "{tag}: tilt can't be used with after (it takes the previous part's tilt)"
-                ));
+                )
+                .into());
             }
             let Some((prev, prev_spec)) = out
                 .iter()
@@ -782,9 +785,7 @@ pub(crate) fn place_mechanics(
                 .rev()
                 .find(|(p, _): &(&lensbench_core::mech::MechPart, _)| &p.name == prev_name)
             else {
-                return Err(format!(
-                    "{tag}: the after part {prev_name} is not before it"
-                ));
+                return Err(format!("{tag}: the after part {prev_name} is not before it").into());
             };
             let (prev, prev_spec): (&lensbench_core::mech::MechPart, &MechSpec) = (prev, prev_spec);
             let overlap = match (&prev_spec.back_thread, &spec.front_thread) {
@@ -824,7 +825,7 @@ pub(crate) fn place_mechanics(
                 prev.offset[2] + d[2],
             ];
             if !part0.offset.iter().all(|v| v.is_finite()) {
-                return Err(format!("{tag}: offset is not a number"));
+                return Err(format!("{tag}: offset is not a number").into());
             }
             for b in &m.holds {
                 match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
@@ -878,21 +879,22 @@ pub(crate) fn place_mechanics(
                 },
                 None => {
                     if m.at.is_unset() {
-                        return Err(format!("{tag}: a place (at) or seat is needed"));
+                        return Err(format!("{tag}: a place (at) or seat is needed").into());
                     }
                     if m.at.surface == 0 || m.at.surface > s.image() {
                         return Err(format!(
                             "{tag}: surface {} (1 to {})",
                             m.at.surface,
                             s.image()
-                        ));
+                        )
+                        .into());
                     }
                     m.at.surface
                 }
             },
         };
         if !offset.iter().chain(&m.tilt).all(|v| v.is_finite()) {
-            return Err(format!("{tag}: offset or tilt is not a number"));
+            return Err(format!("{tag}: offset or tilt is not a number").into());
         }
         let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
@@ -946,7 +948,7 @@ pub(crate) fn block_face(
     i: usize,
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
-) -> Result<Option<usize>, String> {
+) -> lensbench_core::Result<Option<usize>> {
     let Some(x) = spans
         .iter()
         .find(|x| x.0 == block && !back_spans.contains(x))
@@ -956,10 +958,11 @@ pub(crate) fn block_face(
     let faces: Vec<usize> = (x.1 + 1..=x.2 + 1)
         .filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk)
         .collect();
-    faces.get(i).copied().map(Some).ok_or(format!(
-        "block {block} surface {i} ({} surfaces)",
-        faces.len()
-    ))
+    faces
+        .get(i)
+        .copied()
+        .map(Some)
+        .ok_or(format!("block {block} surface {i} ({} surfaces)", faces.len()).into())
 }
 
 /// 面の絞り・ソルブ・ピックアップを当てる（[`Project::surface_ops`]）。当てなかった操作の注意と、set_stop を
@@ -969,7 +972,7 @@ pub(crate) fn apply_surface_ops(
     ops: &[SurfaceOp],
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
-) -> Result<(Vec<String>, bool), String> {
+) -> lensbench_core::Result<(Vec<String>, bool)> {
     let mut warn = Vec::new();
     let mut out = Vec::new();
     for (k, op) in ops.iter().enumerate() {
@@ -1010,7 +1013,7 @@ pub(crate) fn apply_surface_edits(
     edits: &[SurfaceEdit],
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
-) -> Result<Vec<String>, String> {
+) -> lensbench_core::Result<Vec<String>> {
     let mut warn = Vec::new();
     // 範囲の面（座標ブレークを除く）
     let faces = |s: &System, a: usize, b: usize| -> Vec<usize> {
@@ -1019,11 +1022,13 @@ pub(crate) fn apply_surface_edits(
             .collect()
     };
     for e in edits {
-        let err = |why: String| {
-            format!(
-                "surface_edits: block {} surface {}: {why}",
-                e.block, e.surface
-            )
+        let err = |why: lensbench_core::Error| {
+            why.map_message(|why| {
+                format!(
+                    "surface_edits: block {} surface {}: {why}",
+                    e.block, e.surface
+                )
+            })
         };
         let mine = |x: &&(String, usize, usize)| x.0 == e.block;
         // 往路（と、同じ向きに通るほかの範囲）・復路
@@ -1050,7 +1055,8 @@ pub(crate) fn apply_surface_edits(
             return Err(format!(
                 "surface_edits: block {} surface {} ({n} surfaces)",
                 e.block, e.surface
-            ));
+            )
+            .into());
         }
         // 面の値の名前（SURF_FIELDS）と、それ以外の面のデータの項目（set_surface_data）
         let (named, data): (Map<String, Value>, Map<String, Value>) = e
@@ -1066,8 +1072,7 @@ pub(crate) fn apply_surface_edits(
                 err("the ranges in the same direction have different numbers of surfaces".into())
             })?;
             if !f.is_empty() {
-                s.set_surface_fields(j, &f)
-                    .map_err(|x| err(x.to_string()))?;
+                s.set_surface_fields(j, &f).map_err(err)?;
             }
             if has_data {
                 edit_ops::set_surface_data(s, j, &data).map_err(err)?;
@@ -1103,15 +1108,15 @@ pub(crate) fn apply_surface_edits(
                 return Err(err(format!(
                     "{} surfaces on the return path ({n} on the way out)",
                     v.len()
-                )));
+                )
+                .into()));
             }
             let (face, gap): (Vec<_>, Vec<_>) = f
                 .iter()
                 .cloned()
                 .partition(|(k, _)| !matches!(k.as_str(), "t" | "material" | "dn" | "disp"));
             if !face.is_empty() {
-                s.set_surface_fields(v[n - 1 - i], &face)
-                    .map_err(|x| err(x.to_string()))?;
+                s.set_surface_fields(v[n - 1 - i], &face).map_err(err)?;
             }
             if !gap.is_empty() {
                 if i + 1 == n {
@@ -1129,8 +1134,7 @@ pub(crate) fn apply_surface_edits(
                         (_, x) => (k, x),
                     })
                     .collect();
-                s.set_surface_fields(v[n - 2 - i], &gap)
-                    .map_err(|x| err(x.to_string()))?;
+                s.set_surface_fields(v[n - 2 - i], &gap).map_err(err)?;
             }
         }
     }
@@ -1179,7 +1183,7 @@ pub(crate) fn keep_pickups(
     s: &mut System,
     org: &[Option<(usize, usize)>],
     zpicks: &[ZmxLinks],
-) -> Result<Vec<String>, String> {
+) -> lensbench_core::Result<Vec<String>> {
     let mut at: HashMap<(usize, usize), usize> = HashMap::new();
     for (i, o) in org.iter().enumerate() {
         if let Some(k) = o {
@@ -1249,7 +1253,7 @@ pub(crate) fn keep_pickups(
         }
     }
     if !s.pickups.is_empty() {
-        s.resolve_pickups().map_err(|e| e.to_string())?;
+        s.resolve_pickups()?;
     }
     // ソルブ（厚さ・曲率）: 関わる面（厚さは次の面、玉のパワーは前の面、基準の面）が同じ並びで取り込まれていれば
     // 残し、展開した系で解き直す（雛形の像面の手前の面の厚さのソルブは、展開した系でも像面の手前にあれば残す）
@@ -1313,7 +1317,7 @@ pub(crate) fn keep_pickups(
             }
         };
         let before: Vec<f64> = s.solves.iter().map(|q| val(s, q)).collect();
-        s.solve_thickness().map_err(|e| e.to_string())?;
+        s.solve_thickness()?;
         for (q, b) in s.solves.iter().zip(before) {
             let a = val(s, q);
             if (a - b).abs() > 1e-9 * (1.0 + b.abs()) {
@@ -1330,4 +1334,12 @@ pub(crate) fn keep_pickups(
         }
     }
     Ok(warn)
+}
+
+/// 面 j のガラス mat がカタログに無い誤り（符号 [`code::GLASS_NOT_FOUND`]）
+fn glass_missing(j: usize, mat: &str) -> lensbench_core::Error {
+    lensbench_core::Error::Invalid(format!(
+        "surface {j}: glass {mat} is not in the catalogs{HINT}"
+    ))
+    .with_code(code::GLASS_NOT_FOUND)
 }

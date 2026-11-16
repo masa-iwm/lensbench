@@ -568,29 +568,6 @@ fn load(c: &Common) -> Result<System, AppError> {
     Ok(lensbench_engine::load::load_file_noted(&c.spec())?)
 }
 
-/// プロジェクトファイルのカタログの玉（ブロックの id → メーカー）と裏返して置いた玉の id。.zmx・系ファイルなら空
-fn tolerance_vendors(
-    c: &Common,
-) -> (
-    std::collections::HashMap<String, String>,
-    std::collections::HashSet<String>,
-) {
-    if lensbench_project::open::FileKind::of(&c.file) != lensbench_project::open::FileKind::Project
-    {
-        return Default::default();
-    }
-    lensbench_core::vfs::read_to_string(&c.file)
-        .ok()
-        .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-        .map(|p| {
-            (
-                lensbench_design::tolerance::catalog_vendors(&p),
-                lensbench_design::tolerance::reversed_lenses(&p),
-            )
-        })
-        .unwrap_or_default()
-}
-
 /// カンマ区切りの数
 fn parse_list(s: &str, what: &str) -> Result<Vec<f64>, AppError> {
     let v: Vec<f64> = s
@@ -792,10 +769,10 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .run_save(
                     &lensbench_analysis::Cx {
                         system: &s,
-                        source: Some(&lensbench_engine::source::FileSource {
-                            c: &a.c.spec(),
-                            replay: None,
-                        }),
+                        source: Some(&lensbench_engine::source::FileSource::new(
+                            &a.c.spec(),
+                            None,
+                        )),
                     },
                     &a.params,
                     a.c.save.as_deref(),
@@ -1066,7 +1043,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             if let Some(t) = v.get_mut("terms") {
                 lensbench_engine::Files::Any.check_terms(t)?;
             }
-            let (vendors, reversed) = tolerance_vendors(&c);
+            let (vendors, reversed) = lensbench_engine::load::tolerance_vendors(&c.spec());
             let ms =
                 lensbench_design::tolerance::spec_from_json_with(&v, vec![s], &vendors, &reversed)?;
             let oo = lensbench_design::tolerance::out_opts(&v)?;
@@ -1167,7 +1144,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             // 読み直して足す（品を作る間にほかで足した品を消さない）
             let cat = lensbench_project::UserCatalog::update(&catalog, |cat| {
                 if cat.items.contains_key(&name) && !replace {
-                    return Err(format!("item {name} already exists (use --replace)"));
+                    return Err(format!("item {name} already exists (use --replace)").into());
                 }
                 cat.items.insert(name.clone(), item);
                 Ok(())

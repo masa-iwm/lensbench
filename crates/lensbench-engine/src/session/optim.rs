@@ -305,20 +305,7 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
             .collect::<Result<Vec<_>, _>>()?,
         _ => vec![(*cur).clone()],
     };
-    let (vendors, reversed) = if is_project(&spec.file) {
-        lensbench_core::vfs::read_to_string(&spec.file)
-            .ok()
-            .and_then(|t| lensbench_project::Project::from_json(&t).ok())
-            .map(|p| {
-                (
-                    lensbench_design::tolerance::catalog_vendors(&p),
-                    lensbench_design::tolerance::reversed_lenses(&p),
-                )
-            })
-            .unwrap_or_default()
-    } else {
-        Default::default()
-    };
+    let (vendors, reversed) = crate::load::tolerance_vendors(&spec);
     let mut v = p.clone();
     if let Some(o) = v.as_object_mut() {
         o.remove("configs");
