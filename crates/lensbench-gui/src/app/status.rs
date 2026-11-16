@@ -20,6 +20,9 @@ impl App {
             ui.label(RichText::new(dot).color(col));
             if busy {
                 ui.spinner();
+                ui.label(
+                    RichText::new(trf("Computing ({})", &[&self.c.worker.pending()])).color(weak),
+                );
             }
             let text = if self.c.status.text.is_empty() {
                 tr("Ready").to_string()

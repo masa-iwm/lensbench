@@ -746,6 +746,11 @@ impl Worker {
         self.pending > 0
     }
 
+    /// 待っている要求の数（下の行の「計算中（n）」）
+    pub fn pending(&self) -> usize {
+        self.pending
+    }
+
     /// 長い要求（最適化など）のほかに待っている
     pub fn busy_short(&self) -> bool {
         self.pending > self.pending_long

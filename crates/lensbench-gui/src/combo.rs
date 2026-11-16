@@ -1661,55 +1661,47 @@ pub fn ui(
     let mut act = None;
     let weak = theme::weak_text(ui.visuals());
     combo.normalize();
-    // 要素のパレット
+    // 要素のパレット: 足すものは 1 つのメニューに（図の高さを取らない、GUX-30）
+    const ZMX: [ElemKind; 2] = [ElemKind::Zmx, ElemKind::ZmxRange];
+    let mut zmx_start = [false; 2];
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tr("Add")).small().color(weak));
-        if ui
-            .button(trf("+ {}…", &[&tr("catalog element")]))
-            .on_hover_text(tr(
-                "Double-click a row in the catalog panel, or drag it onto the layout",
-            ))
-            .clicked()
-        {
-            act = Some(Act::Catalog);
-        }
-        for k in [
-            ElemKind::Lens,
-            ElemKind::Plate,
-            ElemKind::Mirror,
-            ElemKind::Stop,
-            ElemKind::Aperture,
-            ElemKind::Splitter,
-            ElemKind::Surfaces,
-        ] {
-            if ui.button(trf("+ {}", &[&k.label()])).clicked() {
-                insert(combo, view, Pick::new(k));
-            }
-        }
-        for (kind, hint) in [
-            (ElemKind::Zmx, tr("The k-th lens of a .zmx")),
-            (
-                ElemKind::ZmxRange,
-                tr("Insert a range of .zmx surfaces as is (default: surface 1 to the one before the image), e.g. a lens under test inside a measurement setup"),
-            ),
-        ] {
-            let start = ui
-                .button(trf("+ {}…", &[&kind.label()]))
-                .on_hover_text(hint)
-                .clicked();
-            let key = format!("combo-zmx-{:?}", kind);
+        ui.menu_button(trf("+ {}", &[&tr("Add")]), |ui| {
+            if ui
+                .button(trf("{}…", &[&tr("catalog element")]))
+                .on_hover_text(tr(
+                    "Double-click a row in the catalog panel, or drag it onto the layout",
+                ))
+                .clicked()
             {
-                if let Some(p) = crate::files::open(&key, start, || {
-                    // lensbench の系（系ファイル・プロジェクトの .json）も取り込める（#132）
-                    crate::files::FileDialog::new()
-                        .add_filter(tr("System (.zmx / .json)"), &["zmx", "json"])
-                }) {
-                    let mut e = Pick::new(kind);
-                    e.path = p.display().to_string();
-                    insert(combo, view, e);
+                act = Some(Act::Catalog);
+                ui.close_menu();
+            }
+            for k in [
+                ElemKind::Lens,
+                ElemKind::Plate,
+                ElemKind::Mirror,
+                ElemKind::Stop,
+                ElemKind::Aperture,
+                ElemKind::Splitter,
+                ElemKind::Surfaces,
+            ] {
+                if ui.button(k.label()).clicked() {
+                    insert(combo, view, Pick::new(k));
+                    ui.close_menu();
                 }
             }
-        }
+            ui.separator();
+            let hints = [
+                tr("The k-th lens of a .zmx"),
+                tr("Insert a range of .zmx surfaces as is (default: surface 1 to the one before the image), e.g. a lens under test inside a measurement setup"),
+            ];
+            for (i, kind) in ZMX.into_iter().enumerate() {
+                if ui.button(trf("{}…", &[&kind.label()])).on_hover_text(hints[i]).clicked() {
+                    zmx_start[i] = true;
+                    ui.close_menu();
+                }
+            }
+        });
         ui.separator();
         if ui
             .add_enabled(
@@ -1733,6 +1725,19 @@ pub fn ui(
             act = Some(Act::Build);
         }
     });
+    // .zmx を選ぶ窓（閉じた後も毎フレーム見る）
+    for (i, kind) in ZMX.into_iter().enumerate() {
+        let key = format!("combo-zmx-{:?}", kind);
+        if let Some(p) = crate::files::open(&key, zmx_start[i], || {
+            // lensbench の系（系ファイル・プロジェクトの .json）も取り込める（#132）
+            crate::files::FileDialog::new()
+                .add_filter(tr("System (.zmx / .json)"), &["zmx", "json"])
+        }) {
+            let mut e = Pick::new(kind);
+            e.path = p.display().to_string();
+            insert(combo, view, e);
+        }
+    }
     if !combo.picks.is_empty() {
         ui.horizontal_wrapped(|ui| states_ui(ui, combo, view, weak));
         ui.horizontal_wrapped(|ui| groups_ui(ui, combo, weak, None));
@@ -1770,7 +1775,11 @@ pub fn ui(
     let (mut top, mut bottom) = crate::split::two(
         ui,
         "combo_fig",
-        (((avail - editor_h) / avail).clamp(0.5, 0.85), 0.6),
+        // 図は少なくとも 200 px（GUX-30）
+        (
+            ((avail - editor_h).max(200.0) / avail).clamp(0.5, 0.85),
+            0.6,
+        ),
         80.0,
     );
     let ui = &mut top;

@@ -796,8 +796,8 @@ impl Core {
         match Self::analysis_params(cfg, self.cutoff()) {
             Ok(p) => {
                 self.worker.send(Tag::Analyze(id), "analyze", p);
+                // 下の行は操作の結果だけ。計算中は要求の数を横に出す（GUX-31）
                 self.ana_sent(id);
-                self.info(trf("Computing {}…", &[&layout::analysis_label(&cfg.cmd)]));
             }
             Err(e) => {
                 self.results.entry(id).or_default().error = Some(e.clone());

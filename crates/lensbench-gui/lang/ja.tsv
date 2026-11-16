@@ -6,7 +6,6 @@ Follow the OS	OS に合わせる
 nd and νd come from the dispersion formula at the catalog temperature. Click a row or a point on the map to select	nd・νd はカタログ温度の分散式から。表の行か図の点をクリックで選択します
 {} / {} lenses	{} / {} 枚
 {} / {} glasses	{} / {} 種
-Computing {}…	{} を計算しています…
 Reading {}…	{} を読んでいます…
 {} done ({} ms)	{} 完了（{} ms）
 {} (not found)	{}（見つからない）
@@ -1565,3 +1564,5 @@ Check the catalog and part number (add lens catalogs in File > Catalog folders�
 The project may have been changed elsewhere; reopen it	プロジェクトがほかで変えられたかもしれません。開き直してください
 Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)	まだ対応していません。対応する面・項目はマニュアル（.zmx の読み込み）にあります
 Vignetting factors	ケラレ係数
+Computing ({})	計算中（{}）
+{}…	{}…

@@ -15,7 +15,6 @@ pub enum Detail {
 }
 
 impl Pick {
-    /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）
     /// 種類を変えた要素。置き方・後の空気・ON/OFF・状態ごとの値・群・id・ロックは残し、種類ごとの欄は新しい種類の
     /// 既定にする（前の種類のファイル・面・上書きなどを持ち越さない、GPN-04）
     pub fn retyped(&self, kind: ElemKind) -> Pick {
@@ -37,6 +36,7 @@ impl Pick {
         }
     }
 
+    /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）
     pub fn can_reverse(&self) -> bool {
         matches!(
             self.kind,

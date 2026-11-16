@@ -506,7 +506,8 @@ impl Preset {
                 let [center, _] = m.split_left(NodeIndex::root(), 0.22, vec![sys, catalog]);
                 let [center, right] = m.split_right(center, 0.6, vec![spot]);
                 m.split_below(right, 0.5, vec![mtf, wf]);
-                m.split_below(center, 0.5, vec![lens, mce]);
+                // レイアウト図を広く（既定の窓で図が潰れない、GUX-30）
+                m.split_below(center, 0.62, vec![lens, mce]);
                 Layout {
                     dock,
                     windows: Vec::new(),
