@@ -222,7 +222,7 @@ fn paraxial_zernike_coupling_values() {
         (ParaxQ::Isfn, d.isfn),
         (ParaxQ::Pimh, d.pimh),
         (ParaxQ::Totr, d.totr),
-        (ParaxQ::Obna, d.obna),
+        (ParaxQ::Obsn, d.obsn),
         (ParaxQ::Isna, d.isna),
     ] {
         assert_eq!(ParaxQ::parse(q.name()).unwrap(), q);

@@ -89,7 +89,7 @@ RESULTS: dict[str, tuple[str, dict[str, str], dict[str, str]]] = {
                   {"x": F64, **{k: F64 for k in ("spot", "spot_x", "spot_y", "wfe", "strehl")}, "warnings": "list[str]"},
                   {}),
     "_SystemData": ("Paraxial system data (abbreviations of OpticStudio's System Data)", {k: "float" for k in (
-        "effl", "epdi", "enpp", "expd", "expp", "wfno", "pwfn", "isfn", "pimh", "pmag", "totr", "obna", "isna")}, {}),
+        "effl", "epdi", "enpp", "expd", "expp", "wfno", "pwfn", "isfn", "pimh", "pmag", "totr", "obsn", "isna")}, {}),
     "_Surface": (
         "Values of a surface from System.surface (the same names as the keywords of insert_surface and set_surface)",
         {"type": "str", "comment": "str", "t": "float", "c": "float", "r": "float", "k": "float", "asph": "list[float]",

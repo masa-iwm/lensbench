@@ -203,7 +203,7 @@ class _SystemData(TypedDict):
     pimh: float
     pmag: float
     totr: float
-    obna: float
+    obsn: float
     isna: float
 
 
@@ -766,7 +766,7 @@ class System:
 
         terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
         the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
-        obna, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
+        obsn, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
         plugin (output of a registered plugin; the same as the CLI's --term).
         {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} is a term defined by Python functions: f(systems) takes
         a list of System and returns the residuals per system as a (len(systems), number of residuals) array (the systems for differences are passed together in one call).
@@ -893,7 +893,7 @@ class System:
 
     def system_data(self) -> _SystemData:
         """System data (lowercase OpticStudio operand names: effl, epdi, enpp, expd, expp, wfno, pwfn, isfn,
-        pimh, pmag, totr, obna, isna). At the primary wavelength, values of the system after changes
+        pimh, pmag, totr, obsn, isna). At the primary wavelength, values of the system after changes
         """
 
     def to_json(self) -> str:

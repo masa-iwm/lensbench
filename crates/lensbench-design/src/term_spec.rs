@@ -110,7 +110,7 @@ pub struct MtfSpec {
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct ParaxSpec {
-    /// 量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obna・isna、OpticStudio の名前も可）
+    /// 量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna、OpticStudio の名前も可）
     pub q: String,
     /// 目標（target・min・max のどれかが要る）
     pub target: Option<f64>,

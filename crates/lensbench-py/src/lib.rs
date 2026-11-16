@@ -1466,7 +1466,7 @@ impl PySystem {
     }
 
     /// System data (lowercase OpticStudio operand names: effl, epdi, enpp, expd, expp, wfno, pwfn, isfn,
-    /// pimh, pmag, totr, obna, isna). At the primary wavelength, values of the system after changes
+    /// pimh, pmag, totr, obsn, isna). At the primary wavelength, values of the system after changes
     fn system_data<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
         let r = py.detach(|| lensbench_core::report::system_data(&s));
@@ -1483,7 +1483,7 @@ impl PySystem {
             ("pimh", r.pimh),
             ("pmag", r.pmag),
             ("totr", r.totr),
-            ("obna", r.obna),
+            ("obsn", r.obsn),
             ("isna", r.isna),
         ] {
             d.set_item(k, v)?;
@@ -2299,7 +2299,7 @@ impl PySystem {
     ///
     /// terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
     /// the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
-    /// obna, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
+    /// obsn, isna), ray (q: x, y, z, l, m, n in local coordinates of surface surf), centroid (centroid of the beam on the image surface, q: x, y), opd, zernike, coupling, zplm (OPTRETURN of a ZPL macro) and
     /// plugin (output of a registered plugin; the same as the CLI's --term).
     /// {"type": "user", "fn": f, "jac": g, "name": ..., "weight": ...} is a term defined by Python functions: f(systems) takes
     /// a list of System and returns the residuals per system as a (len(systems), number of residuals) array (the systems for differences are passed together in one call).

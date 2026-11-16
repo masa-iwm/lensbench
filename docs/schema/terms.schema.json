@@ -351,7 +351,7 @@
               ]
             },
             "q": {
-              "description": "量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obna・isna、OpticStudio の名前も可）",
+              "description": "量（efl・pmag・enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna、OpticStudio の名前も可）",
               "type": "string"
             },
             "target": {

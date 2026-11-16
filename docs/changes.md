@@ -19,6 +19,8 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### 名前・設定の書き方
+- 物体空間 NA の量の名前を `obna` から OpticStudio の演算子名 `obsn` にした: 評価関数の `{"type":"paraxial","q":"obsn"}`、Python の
+  `paraxial()` の鍵、`report::SystemData::obsn`、GUI の最適化パネルの選択肢。旧名 `obna` は受けない（誤りになる）。.zmx の系の行 `OBNA`（絞りの種類）はそのまま。
 - 名前を CLI・serve・Python でそろえた（CLI-14・CLI-17、11/16 masa 決定。旧名は受けない）:
   Python の `System.geometric_mtf`・`through_focus_mtf`・`field_mtf` は登録簿の名前どおり `geo_mtf`・`mtf_focus`・`mtf_field`。
   `trace`・`trace_rays` の結果の波長の番号の鍵 `wavelengths` は `waves`（引数と同じ）。

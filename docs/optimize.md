@@ -18,7 +18,7 @@
   `System.merit_jacobian(vars, ...)`。
 - 項の追加: `--term '{"type":"paraxial","q":"efl","target":50,"weight":10}'`（複数可）か `--terms 項の配列.json` で
   既定の評価関数に項を足す（`--merit none` なら足した項だけ）。種類は `spot`・`wavefront`・`mtf`・`paraxial`（`q`: efl・pmag・
-  enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obna・isna。値は System Data と同じ）・`ray`（1 本の実光線の面 `surf` の
+  enpp・epd・expp・expd・wfno・pwfn・isfn・pimh・totr・obsn・isna。値は System Data と同じ）・`ray`（1 本の実光線の面 `surf` の
   局所座標での `q`: x・y・z・l・m・n、OpticStudio の REAX〜REAC 相当）・`opd`（1 本の光線の OPD [波]、OPDC 相当）・
   `zernike`（係数 [波]）・`coupling`（ファイバ結合効率）。視野・波長は 1 始まり（視野は `[hx, hy]` も可）、目標 `target` の
   既定は 0（MTF・結合効率は 1）。目標が 1 つの値の項（mtf の tan・sag、paraxial・ray・opd・zernike・coupling）は `target` の代わりに

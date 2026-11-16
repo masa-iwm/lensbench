@@ -36,7 +36,7 @@ enum KeyKind {
 }
 
 const PARAXIAL_Q: &[&str] = &[
-    "efl", "pmag", "enpp", "epd", "expp", "expd", "wfno", "pwfn", "isfn", "pimh", "totr", "obna",
+    "efl", "pmag", "enpp", "epd", "expp", "expd", "wfno", "pwfn", "isfn", "pimh", "totr", "obsn",
     "isna",
 ];
 const RAY_Q: &[&str] = &["x", "y", "z", "l", "m", "n"];

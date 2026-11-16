@@ -147,8 +147,8 @@ pub enum ParaxQ {
     Pimh,
     /// 全長（面 1 から像面の手前の面まで、TOTR）
     Totr,
-    /// 物体空間の NA（OBNA）
-    Obna,
+    /// 物体空間の NA（OBSN）
+    Obsn,
     /// 像空間の NA（ISNA）
     Isna,
 }
@@ -166,7 +166,7 @@ impl ParaxQ {
         ParaxQ::Isfn,
         ParaxQ::Pimh,
         ParaxQ::Totr,
-        ParaxQ::Obna,
+        ParaxQ::Obsn,
         ParaxQ::Isna,
     ];
     pub fn parse(s: &str) -> Result<ParaxQ> {
@@ -194,7 +194,7 @@ impl ParaxQ {
             ParaxQ::Isfn => "isfn",
             ParaxQ::Pimh => "pimh",
             ParaxQ::Totr => "totr",
-            ParaxQ::Obna => "obna",
+            ParaxQ::Obsn => "obsn",
             ParaxQ::Isna => "isna",
         }
     }
@@ -217,7 +217,7 @@ impl ParaxQ {
             ParaxQ::Wfno => d.wfno,
             ParaxQ::Pimh => d.pimh,
             ParaxQ::Totr => d.totr,
-            ParaxQ::Obna => d.obna,
+            ParaxQ::Obsn => d.obsn,
             ParaxQ::Isna => d.isna,
             _ => unreachable!(),
         }

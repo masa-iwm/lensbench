@@ -40,7 +40,7 @@ pub struct SystemData {
     pub pimh: f64,
     pub pmag: f64,
     pub totr: f64,
-    pub obna: f64,
+    pub obsn: f64,
     /// 像空間の NA: n′·sin θ′（θ′ は近軸マージナル光線の像空間での実際の角度、tan θ′ = u′、主波長、定めた共役で）。
     /// OpticStudio のヘルプの定義どおり。OpticStudio 2026 R1.01 の表示は sin(atan(n′u′)) で、像空間が空気でないと
     /// これと違う（像面が N-BK7 中の系で 0.0516110、この値は 0.0516499）
@@ -74,7 +74,7 @@ pub fn system_data(s: &System) -> SystemData {
     let totr =
         z.iter().cloned().fold(f64::MIN, f64::max) - z.iter().cloned().fold(f64::MAX, f64::min);
     let n0 = s.surfaces[0].n[s.primary];
-    let obna = if s.infinite() {
+    let obsn = if s.infinite() {
         n0 * p.epd / 2.0 / ENPP_MAX
     } else {
         match p.u_obj {
@@ -101,7 +101,7 @@ pub fn system_data(s: &System) -> SystemData {
         pimh,
         pmag: p.pmag,
         totr,
-        obna,
+        obsn,
         isna,
     }
 }

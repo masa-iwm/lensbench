@@ -152,7 +152,7 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
         ("WFNO", sd.wfno),
         ("TOTR", sd.totr),
         ("ISFN", sd.isfn),
-        ("OBSN", sd.obna),
+        ("OBSN", sd.obsn),
     ] {
         if let Some(r) = num(k) {
             mx(&mut c.dsys, (v - r).abs());

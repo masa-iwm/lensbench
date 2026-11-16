@@ -43,7 +43,7 @@ impl Analysis for Info {
             "effl": d.effl, "epd": d.epdi, "enpp": d.enpp, "exp_diameter": d.expd,
             "expp": d.expp, "wfno": d.wfno, "paraxial_wfno": d.pwfn, "image_fno": d.isfn,
             "paraxial_image_height": d.pimh, "paraxial_mag": d.pmag,
-            "total_track": d.totr, "object_na": d.obna, "image_na": d.isna,
+            "total_track": d.totr, "object_na": d.obsn, "image_na": d.isna,
             "states": src.map(|x| x.states()).transpose()?.unwrap_or_default(),
             "state": src.and_then(|x| x.state()),
             "paths": src.map(|x| x.paths()).transpose()?.unwrap_or_default(),
