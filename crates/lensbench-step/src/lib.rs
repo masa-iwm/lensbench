@@ -3,6 +3,8 @@
 //! 三角形にするのは truck（lensbench-cad）。
 //!
 //! 以前は読み手が 2 つ（lensbench-project の `step_geom` と lensbench-export の `step_embed`）あった。
+
+#![warn(unreachable_pub)]
 pub mod p21;
 
 pub use p21::{refs, split, Arg, Entity, Part, StepFile};

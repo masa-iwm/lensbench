@@ -19,9 +19,9 @@ use lensbench_analysis::{Analysis, Cx, Meta};
 /// 系の一覧の設定（無し）
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct InfoParams {}
+pub(super) struct InfoParams {}
 
-pub struct Info;
+pub(super) struct Info;
 
 impl Analysis for Info {
     type Params = InfoParams;
@@ -59,7 +59,7 @@ impl Analysis for Info {
 /// 干渉縞を求める所
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum InterferenceMode {
+pub(super) enum InterferenceMode {
     /// 瞳上（OpticStudio の Interferogram に当たる）
     #[default]
     Pupil,
@@ -70,7 +70,7 @@ pub enum InterferenceMode {
 /// 書き出す量
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Quantity {
+pub(super) enum Quantity {
     /// 強度
     #[default]
     Intensity,
@@ -102,7 +102,7 @@ impl Quantity {
 /// 干渉縞の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct InterferenceParams {
+pub(super) struct InterferenceParams {
     /// Beam 1 (sample): a configuration number (from 1) for .zmx, a state name for a project file
     pub beam1: String,
     /// Beam 2 (reference): the same; 0 or ref for the reference sphere (mode pupil only)
@@ -196,7 +196,7 @@ fn reference_sphere(b: &str) -> bool {
     )
 }
 
-pub struct Interference;
+pub(super) struct Interference;
 
 impl Analysis for Interference {
     type Params = InterferenceParams;

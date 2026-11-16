@@ -47,6 +47,7 @@
 //! （[`Var::configs`]。既定はすべて）。カタログの差し替え探索・ズーム軌跡・モンテカルロは
 //! この [`dls`] を繰り返し呼ぶ形で使う。状態を持たないので、一括実行の各タスクの中から呼んでよい。
 
+#![warn(unreachable_pub)]
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 

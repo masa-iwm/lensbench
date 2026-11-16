@@ -16,6 +16,7 @@
 //! {"i":2,"seed":456,"result":{…}}
 //! ```
 
+#![warn(unreachable_pub)]
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 

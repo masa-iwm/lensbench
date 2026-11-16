@@ -28,7 +28,7 @@ pub(crate) struct AimLane {
 }
 
 impl AimLane {
-    pub fn new(tgt: [f64; 2], v: [f64; 2], m: Option<[f64; 4]>, v0: [f64; 2]) -> Self {
+    pub(crate) fn new(tgt: [f64; 2], v: [f64; 2], m: Option<[f64; 4]>, v0: [f64; 2]) -> Self {
         AimLane {
             tgt,
             v,
@@ -46,7 +46,7 @@ impl AimLane {
     }
 
     /// q を求めた後に呼ぶ。終わりなら None、続けるなら差分のヤコビアン（v+h の追跡 2 本）が要るか
-    pub fn check(&mut self, lim: f64) -> Option<bool> {
+    pub(crate) fn check(&mut self, lim: f64) -> Option<bool> {
         if self.it >= MAX_IT {
             return None;
         }
@@ -77,7 +77,7 @@ impl AimLane {
     }
 
     /// v を更新する（このあと q = q(v) を求め直す）。jac は check が true のときの (q(v+h,·), q(·,v+h))
-    pub fn update(&mut self, h: f64, jac: Option<([f64; 2], [f64; 2])>) {
+    pub(crate) fn update(&mut self, h: f64, jac: Option<([f64; 2], [f64; 2])>) {
         self.it += 1;
         if self.restart {
             self.restart = false;
@@ -107,7 +107,7 @@ impl AimLane {
     }
 
     /// 解けなかったか（残差が有限で fail_tol を超える。NaN は追跡の側で止まる）
-    pub fn failed(&self, fail_tol: f64) -> bool {
+    pub(crate) fn failed(&self, fail_tol: f64) -> bool {
         let e = [self.q[0] - self.tgt[0], self.q[1] - self.tgt[1]];
         e[0].is_finite() && e[1].is_finite() && e[0].abs().max(e[1].abs()) > fail_tol
     }
@@ -152,7 +152,7 @@ fn cheb(u: f64) -> ([f64; DEG + 1], [f64; DEG + 1]) {
 impl AimFit {
     /// 当てはめの範囲（入力の q の範囲）と格子の点。範囲が線や点に潰れていれば None
     #[allow(clippy::type_complexity)]
-    pub fn grid(qx: &[f64], qy: &[f64]) -> Option<([f64; 2], [f64; 2], Vec<[f64; 2]>)> {
+    pub(crate) fn grid(qx: &[f64], qy: &[f64]) -> Option<([f64; 2], [f64; 2], Vec<[f64; 2]>)> {
         let mut lo = [f64::INFINITY; 2];
         let mut hi = [f64::NEG_INFINITY; 2];
         for (&x, &y) in qx.iter().zip(qy) {
@@ -178,7 +178,7 @@ impl AimFit {
     }
 
     /// 格子の点 pts（正規化した q）で解いた v（解けなかった点は None）から当てはめる
-    pub fn new(
+    pub(crate) fn new(
         c: [f64; 2],
         hw: [f64; 2],
         pts: &[[f64; 2]],
@@ -251,7 +251,7 @@ impl AimFit {
     }
 
     /// 正規化した q での v と dv/dq（行優先、q は正規化した座標）
-    pub fn eval(&self, q: [f64; 2]) -> ([f64; 2], [f64; 4]) {
+    pub(crate) fn eval(&self, q: [f64; 2]) -> ([f64; 2], [f64; 4]) {
         let u = [
             (q[0] - self.c[0]) / self.hw[0],
             (q[1] - self.c[1]) / self.hw[1],

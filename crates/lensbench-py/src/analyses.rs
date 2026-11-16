@@ -52,7 +52,7 @@ fn defaults<'py>(py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
     pyjson::to_py(py, &v)
 }
 
-pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(analyses, m)?)?;
     m.add_function(wrap_pyfunction!(defaults, m)?)?;
     Ok(())

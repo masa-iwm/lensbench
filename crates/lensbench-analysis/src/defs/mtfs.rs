@@ -15,7 +15,7 @@ use crate::registry::{Analysis, Cx, Meta};
 /// 回折 MTF の求め方
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum MtfHow {
+pub(super) enum MtfHow {
     /// 瞳の格子を 1 度追跡して補間の求積。求積点が 1024 を超え周波数が 8 個以上なら FFT（n を省いたとき）
     #[default]
     Auto,
@@ -30,7 +30,7 @@ pub enum MtfHow {
 /// 回折 MTF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct MtfParams {
+pub(super) struct MtfParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -67,7 +67,7 @@ impl Default for MtfParams {
 
 /// MTF の結果（mtf・huygens-mtf）
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct MtfOut {
+pub(super) struct MtfOut {
     pub unit: String,
     /// 求め方（huygens-mtf は huygens）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,7 +75,7 @@ pub struct MtfOut {
     pub mtf: Vec<MtfRow>,
 }
 
-pub struct Mtf;
+pub(super) struct Mtf;
 
 impl Analysis for Mtf {
     type Params = MtfParams;
@@ -139,7 +139,7 @@ impl Analysis for Mtf {
 /// スルーフォーカス MTF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct MtfFocusParams {
+pub(super) struct MtfFocusParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -170,7 +170,7 @@ impl Default for MtfFocusParams {
 
 /// スルーフォーカス MTF の 1 点
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct FocusRow {
+pub(super) struct FocusRow {
     pub field: usize,
     pub freq: f64,
     pub dz: f64,
@@ -180,13 +180,13 @@ pub struct FocusRow {
 
 /// スルーフォーカス MTF の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct MtfFocusOut {
+pub(super) struct MtfFocusOut {
     pub unit: String,
     pub through_focus: Vec<FocusRow>,
     pub warnings: Vec<String>,
 }
 
-pub struct MtfFocus;
+pub(super) struct MtfFocus;
 
 impl Analysis for MtfFocus {
     type Params = MtfFocusParams;
@@ -246,7 +246,7 @@ impl Analysis for MtfFocus {
 /// フィールド MTF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct MtfFieldParams {
+pub(super) struct MtfFieldParams {
     /// Wavelength number (from 1; polychromatic if omitted)
     pub wave: Option<usize>,
     /// Frequency [cycles/mm; cycles per angle unit in afocal image space] (required)
@@ -274,7 +274,7 @@ impl Default for MtfFieldParams {
 
 /// フィールド MTF の 1 点
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct FieldRow {
+pub(super) struct FieldRow {
     pub freq: f64,
     /// 正規化視野
     pub h: f64,
@@ -286,13 +286,13 @@ pub struct FieldRow {
 
 /// フィールド MTF の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct MtfFieldOut {
+pub(super) struct MtfFieldOut {
     pub unit: String,
     pub field_mtf: Vec<FieldRow>,
     pub warnings: Vec<String>,
 }
 
-pub struct MtfField;
+pub(super) struct MtfField;
 
 impl Analysis for MtfField {
     type Params = MtfFieldParams;
@@ -339,7 +339,7 @@ impl Analysis for MtfField {
 /// 幾何 MTF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct GeoMtfParams {
+pub(super) struct GeoMtfParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -374,12 +374,12 @@ impl Default for GeoMtfParams {
 
 /// 幾何 MTF の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct GeoMtfOut {
+pub(super) struct GeoMtfOut {
     pub unit: String,
     pub geometric_mtf: Vec<MtfRow>,
 }
 
-pub struct GeoMtf;
+pub(super) struct GeoMtf;
 
 impl Analysis for GeoMtf {
     type Params = GeoMtfParams;
@@ -419,7 +419,7 @@ impl Analysis for GeoMtf {
 /// Huygens MTF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct HuygensMtfParams {
+pub(super) struct HuygensMtfParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -455,7 +455,7 @@ impl Default for HuygensMtfParams {
     }
 }
 
-pub struct HuygensMtf;
+pub(super) struct HuygensMtf;
 
 impl Analysis for HuygensMtf {
     type Params = HuygensMtfParams;

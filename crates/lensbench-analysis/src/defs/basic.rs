@@ -17,7 +17,7 @@ use crate::registry::{Analysis, Cx, Meta};
 /// スポットの設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct SpotParams {
+pub(super) struct SpotParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -39,7 +39,7 @@ impl Default for SpotParams {
 
 /// スポットの 1 視野
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct SpotRow {
+pub(super) struct SpotRow {
     pub field: usize,
     pub rms_centroid: f64,
     pub rms_chief: f64,
@@ -50,13 +50,13 @@ pub struct SpotRow {
 
 /// スポットの結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct SpotOut {
+pub(super) struct SpotOut {
     /// 位置の単位（lens、アフォーカル像空間では角度の単位）
     pub unit: String,
     pub spot: Vec<SpotRow>,
 }
 
-pub struct Spot;
+pub(super) struct Spot;
 
 impl Analysis for Spot {
     type Params = SpotParams;
@@ -95,7 +95,7 @@ impl Analysis for Spot {
 /// 波面収差の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct WavefrontParams {
+pub(super) struct WavefrontParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -120,7 +120,7 @@ impl Default for WavefrontParams {
 
 /// 波面収差の 1 視野
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct WavefrontRow {
+pub(super) struct WavefrontRow {
     pub field: usize,
     pub pv: f64,
     pub rms: f64,
@@ -134,12 +134,12 @@ pub struct WavefrontRow {
 
 /// 波面収差の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct WavefrontOut {
+pub(super) struct WavefrontOut {
     pub unit: String,
     pub wavefront: Vec<WavefrontRow>,
 }
 
-pub struct Wavefront;
+pub(super) struct Wavefront;
 
 impl Analysis for Wavefront {
     type Params = WavefrontParams;
@@ -178,7 +178,7 @@ impl Analysis for Wavefront {
 /// Zernike の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum ZKind {
+pub(super) enum ZKind {
     /// Standard（Noll の順）
     #[default]
     Standard,
@@ -189,7 +189,7 @@ pub enum ZKind {
 /// Zernike の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct ZernikeParams {
+pub(super) struct ZernikeParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -218,7 +218,7 @@ impl Default for ZernikeParams {
 
 /// Zernike の 1 視野
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct ZernikeRow {
+pub(super) struct ZernikeRow {
     pub field: usize,
     /// 係数 [波]（1 項目から）
     pub coef: Vec<f64>,
@@ -231,13 +231,13 @@ pub struct ZernikeRow {
 
 /// Zernike の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct ZernikeOut {
+pub(super) struct ZernikeOut {
     pub unit: String,
     pub kind: ZKind,
     pub zernike: Vec<ZernikeRow>,
 }
 
-pub struct Zernike;
+pub(super) struct Zernike;
 
 impl Analysis for Zernike {
     type Params = ZernikeParams;
@@ -287,7 +287,7 @@ impl Analysis for Zernike {
 /// ゴーストの設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct GhostParams {
+pub(super) struct GhostParams {
     /// First surface to reflect at
     pub first: usize,
     /// Last surface to reflect at (the image surface if omitted; the image surface reflects only when it has a coating)
@@ -313,7 +313,7 @@ impl Default for GhostParams {
 
 /// ゴーストの 1 組
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct GhostRow {
+pub(super) struct GhostRow {
     /// 先に反射する面
     pub a: usize,
     /// 後で反射する面
@@ -333,7 +333,7 @@ pub struct GhostRow {
 
 /// ゴーストの結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct GhostOut {
+pub(super) struct GhostOut {
     pub first: usize,
     pub last: usize,
     pub ghosts: Vec<GhostRow>,
@@ -343,7 +343,7 @@ pub struct GhostOut {
     pub warnings: Vec<String>,
 }
 
-pub struct Ghost;
+pub(super) struct Ghost;
 
 impl Analysis for Ghost {
     type Params = GhostParams;

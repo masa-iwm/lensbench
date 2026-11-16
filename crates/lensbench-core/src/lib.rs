@@ -5,6 +5,8 @@
 //!
 //! ライブラリとして使うときの入口は [`prelude`]（系の読込・追跡・主な解析・結果の型）。それ以外の `pub` のモジュールは
 //! 上の層のクレート（analysis・project・engine など）と拡張のための口で、安定の度合いは低い（XCT-22）。
+
+#![warn(unreachable_pub)]
 // 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
 #![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::panic))]
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方。

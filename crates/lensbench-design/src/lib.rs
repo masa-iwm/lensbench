@@ -5,6 +5,7 @@
 //! 置き、core を光線追跡の核に寄せる（XCT-04）。評価関数の `plugin` の項が同梱の解析を呼ぶので、解析
 //! （lensbench-analysis）への依存はこのクレートに置き、プロジェクトのクレートは解析に依存しない（XCT-11）
 
+#![warn(unreachable_pub)]
 // NaN を弾く比較（!(x > 0.0)）を core と同じく使う
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 

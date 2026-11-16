@@ -240,7 +240,7 @@ pub(crate) struct IdealMappingInst {
 
 impl IdealMappingInst {
     /// 画角 θ [rad] の像高 [mm]（表の範囲の外は None）
-    pub fn height(&self, th: f64) -> Option<f64> {
+    pub(crate) fn height(&self, th: f64) -> Option<f64> {
         let f = self.f;
         Some(match &self.map {
             Mapping::Tan => f * th.tan(),

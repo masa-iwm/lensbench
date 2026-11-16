@@ -23,7 +23,7 @@ pub(crate) struct PolLanes<'a, const N: usize> {
 }
 
 impl<'a, const N: usize> PolLanes<'a, N> {
-    pub fn new(e: Vec<CV3>, np: usize, surf: &'a [PolSurf]) -> Self {
+    pub(crate) fn new(e: Vec<CV3>, np: usize, surf: &'a [PolSurf]) -> Self {
         PolLanes {
             e,
             np,
@@ -51,7 +51,7 @@ fn cross_l<V: Lanes>(a: &VL<V>, b: &VL<V>) -> VL<V> {
 }
 
 impl<V: Lanes> PolSoa<V> {
-    pub fn new<const N: usize>(pr: &PolLanes<N>) -> PolSoa<V> {
+    pub(super) fn new<const N: usize>(pr: &PolLanes<N>) -> PolSoa<V> {
         let np = pr.np;
         let z = [V::splat(0.0); 3];
         let (mut re, mut im) = (vec![z; np], vec![z; np]);
@@ -67,11 +67,11 @@ impl<V: Lanes> PolSoa<V> {
         PolSoa { re, im }
     }
 
-    pub fn get(&self, l: usize, q: usize) -> CV3 {
+    pub(super) fn get(&self, l: usize, q: usize) -> CV3 {
         [0, 1, 2].map(|c| C64::new(self.re[q][c][l], self.im[q][c][l]))
     }
 
-    pub fn put(&mut self, l: usize, q: usize, e: CV3) {
+    pub(super) fn put(&mut self, l: usize, q: usize, e: CV3) {
         for c in 0..3 {
             self.re[q][c][l] = e[c].re;
             self.im[q][c][l] = e[c].im;
@@ -79,11 +79,11 @@ impl<V: Lanes> PolSoa<V> {
     }
 
     /// 光線 l の全入力の電場
-    pub fn lane(&self, l: usize) -> Vec<CV3> {
+    pub(super) fn lane(&self, l: usize) -> Vec<CV3> {
         (0..self.re.len()).map(|q| self.get(l, q)).collect()
     }
 
-    pub fn set_lane(&mut self, l: usize, e: &[CV3]) {
+    pub(super) fn set_lane(&mut self, l: usize, e: &[CV3]) {
         for (q, x) in e.iter().enumerate() {
             self.put(l, q, *x);
         }
@@ -91,7 +91,7 @@ impl<V: Lanes> PolSoa<V> {
 
     /// 実の行列 m をかける（[`trace::cmv`] と同じ順）
     #[inline(always)]
-    pub fn mv(&mut self, m: &M3) {
+    pub(super) fn mv(&mut self, m: &M3) {
         for v in self.re.iter_mut().chain(self.im.iter_mut()) {
             *v = mv_l(m, v);
         }
@@ -99,7 +99,7 @@ impl<V: Lanes> PolSoa<V> {
 
     /// 実の行列 m の転置をかける（[`trace::cmtv`] と同じ順）
     #[inline(always)]
-    pub fn mtv(&mut self, m: &M3) {
+    pub(super) fn mtv(&mut self, m: &M3) {
         for v in self.re.iter_mut().chain(self.im.iter_mut()) {
             *v = mtv_l(m, v);
         }
@@ -107,14 +107,14 @@ impl<V: Lanes> PolSoa<V> {
 
     /// 光線ごとの実数 a をかける
     #[inline(always)]
-    pub fn scale(&mut self, a: V) {
+    pub(super) fn scale(&mut self, a: V) {
         for v in self.re.iter_mut().chain(self.im.iter_mut()) {
             *v = [v[0] * a, v[1] * a, v[2] * a];
         }
     }
 
     /// 光線 l の電場を最小の回転で回す（[`trace::rotate_min`]）
-    pub fn rotate_lane(&mut self, l: usize, ax: V3, c: f64) {
+    pub(super) fn rotate_lane(&mut self, l: usize, ax: V3, c: f64) {
         for q in 0..self.re.len() {
             let x = trace::rotate_min(self.get(l, q), ax, c);
             self.put(l, q, x);

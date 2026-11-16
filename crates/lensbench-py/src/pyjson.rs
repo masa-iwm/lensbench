@@ -7,12 +7,12 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 use serde_json::{Map, Number, Value};
 
 /// Python value → JSON value. dict keys must be strings. NaN and inf can't be written in JSON, so they are errors (setting values)
-pub fn from_py(v: &Bound<'_, PyAny>) -> PyResult<Value> {
+pub(crate) fn from_py(v: &Bound<'_, PyAny>) -> PyResult<Value> {
     conv(v, false)
 }
 
 /// [`from_py`] turning NaN and inf into null (for keeping failed values, such as batch results)
-pub fn from_py_nan_null(v: &Bound<'_, PyAny>) -> PyResult<Value> {
+pub(crate) fn from_py_nan_null(v: &Bound<'_, PyAny>) -> PyResult<Value> {
     conv(v, true)
 }
 
@@ -107,7 +107,7 @@ fn key(k: &Bound<'_, PyAny>) -> PyResult<String> {
 
 /// A JSON string (written to a file) → Python value. To also read the NaN and Infinity (not JSON) written by older versions,
 /// read with json.loads when serde can't
-pub fn loads<'py>(py: Python<'py>, t: &str) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn loads<'py>(py: Python<'py>, t: &str) -> PyResult<Bound<'py, PyAny>> {
     match serde_json::from_str::<Value>(t) {
         Ok(v) => to_py(py, &v),
         Err(_) => py.import("json")?.call_method1("loads", (t,)),
@@ -115,7 +115,7 @@ pub fn loads<'py>(py: Python<'py>, t: &str) -> PyResult<Bound<'py, PyAny>> {
 }
 
 /// JSON value → Python value (numbers int or float, objects dict)
-pub fn to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
     Ok(match v {
         Value::Null => py.None().into_bound(py),
         Value::Bool(b) => PyBool::new(py, *b).to_owned().into_any(),
@@ -148,7 +148,7 @@ pub fn to_py<'py>(py: Python<'py>, v: &Value) -> PyResult<Bound<'py, PyAny>> {
 
 /// Sort the keys of objects by name (the same as sort_keys of json.dumps; the same order even with serde_json's preserve_order
 /// on)
-pub fn sorted(v: Value) -> Value {
+pub(crate) fn sorted(v: Value) -> Value {
     match v {
         Value::Object(o) => {
             let mut kv: Vec<(String, Value)> = o.into_iter().collect();

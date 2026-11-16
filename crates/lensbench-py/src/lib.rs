@@ -9,6 +9,8 @@
 //! （`threads` を省くか 2 以上）で呼んだあとは、子プロセスでの並列は使えない（プールのスレッドが子に
 //! 引き継がれず、止まる）。子で並列にしたいときは forkserver・spawn で子プロセスを作る。
 
+#![warn(unreachable_pub)]
+
 mod edit;
 mod errors;
 pub mod ext;

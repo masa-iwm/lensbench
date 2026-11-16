@@ -93,7 +93,7 @@ pub fn err<E: Into<ErrSrc>>(e: E) -> PyErr {
     }
 }
 
-pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = m.py();
     m.add("Error", py.get_type::<Error>())?;
     m.add("InvalidError", py.get_type::<InvalidError>())?;
@@ -104,21 +104,21 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Make a Python built-in exception, translating the English message into the display language (XCT-20)
-pub fn value_err(m: impl AsRef<str>) -> PyErr {
+pub(crate) fn value_err(m: impl AsRef<str>) -> PyErr {
     PyValueError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
 /// IndexError of [`value_err`]
-pub fn index_err(m: impl AsRef<str>) -> PyErr {
+pub(crate) fn index_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyIndexError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
 /// TypeError of [`value_err`]
-pub fn type_err(m: impl AsRef<str>) -> PyErr {
+pub(crate) fn type_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyTypeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }
 
 /// RuntimeError of [`value_err`]
-pub fn runtime_err(m: impl AsRef<str>) -> PyErr {
+pub(crate) fn runtime_err(m: impl AsRef<str>) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(lensbench_core::i18n::tr(m.as_ref()))
 }

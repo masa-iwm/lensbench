@@ -16,7 +16,7 @@ use crate::registry::{Analysis, Cx, Meta};
 /// RMS の横軸
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Vs {
+pub(super) enum Vs {
     /// 正規化視野 0〜1
     #[default]
     Field,
@@ -29,7 +29,7 @@ pub enum Vs {
 /// RMS の基準
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Reference {
+pub(super) enum Reference {
     /// 重心
     #[default]
     Centroid,
@@ -40,7 +40,7 @@ pub enum Reference {
 /// RMS の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct RmsParams {
+pub(super) struct RmsParams {
     /// Field number (from 1; all fields if omitted; not used with vs field)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted; not used with vs wavelength)
@@ -82,7 +82,7 @@ impl Default for RmsParams {
 
 /// RMS の 1 点
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct RmsRow {
+pub(super) struct RmsRow {
     /// スポット半径の RMS
     pub spot: f64,
     pub spot_x: f64,
@@ -127,7 +127,7 @@ impl RmsRow {
 
 /// RMS の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct RmsOut {
+pub(super) struct RmsOut {
     pub unit: String,
     pub wfe_unit: String,
     pub vs: Vs,
@@ -136,7 +136,7 @@ pub struct RmsOut {
     pub warnings: Vec<String>,
 }
 
-pub struct Rms;
+pub(super) struct Rms;
 
 impl Analysis for Rms {
     type Params = RmsParams;
@@ -234,7 +234,7 @@ impl Analysis for Rms {
 /// PSF の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct PsfParams {
+pub(super) struct PsfParams {
     /// Field number (from 1; all fields if omitted)
     pub field: Option<usize>,
     /// Wavelength number (from 1; polychromatic if omitted)
@@ -265,7 +265,7 @@ impl Default for PsfParams {
 
 /// PSF の格子の 1 点
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct PsfPoint {
+pub(super) struct PsfPoint {
     pub field: usize,
     pub x: f64,
     pub y: f64,
@@ -275,7 +275,7 @@ pub struct PsfPoint {
 
 /// PSF の格子の向き
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct PsfAxes {
+pub(super) struct PsfAxes {
     pub field: usize,
     /// 主波長の主光線の像点（像面の局所座標）
     pub center: [f64; 2],
@@ -287,7 +287,7 @@ pub struct PsfAxes {
 
 /// PSF の標本化
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct PsfSampling {
+pub(super) struct PsfSampling {
     pub field: usize,
     /// 使った瞳の格子の一辺
     pub pupil: usize,
@@ -303,7 +303,7 @@ pub struct PsfSampling {
 
 /// PSF の結果
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct PsfOut {
+pub(super) struct PsfOut {
     pub unit: String,
     /// fft か huygens
     pub method: String,
@@ -313,7 +313,7 @@ pub struct PsfOut {
     pub warnings: Vec<String>,
 }
 
-pub struct Psf;
+pub(super) struct Psf;
 
 impl Analysis for Psf {
     type Params = PsfParams;

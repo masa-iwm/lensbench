@@ -86,3 +86,61 @@ pub fn analyses() -> Arc<Analyses> {
     }
     Arc::new(a)
 }
+
+#[cfg(test)]
+mod plugin_defaults {
+    use lensbench_core::plugin::{Registry, Value};
+    use serde_json::Value as Json;
+
+    /// 同じ値か（プラグインの値と登録簿の JSON の既定）
+    fn same(p: &Value, j: &Json) -> bool {
+        match (p, j) {
+            (Value::Num(x), Json::Number(n)) => n.as_f64() == Some(*x),
+            (Value::Bool(x), Json::Bool(y)) => x == y,
+            (Value::Str(x), Json::String(y)) => x == y,
+            // 番号を文字でも受ける項目（interference の beam1 = "1" など）
+            (Value::Num(x), Json::String(y)) => y.parse::<f64>().ok() == Some(*x),
+            (Value::Nums(x), Json::Array(y)) => {
+                x.len() == y.len() && x.iter().zip(y).all(|(a, b)| b.as_f64() == Some(*a))
+            }
+            _ => false,
+        }
+    }
+
+    /// 同梱プラグインの設定の既定は、同じ解析の登録簿の既定と揃える（ANA-03）
+    #[test]
+    fn plugin_defaults_match_registry() {
+        let mut r = Registry::default();
+        lensbench_analysis::plugins::register(&mut r);
+        let reg = super::builtin_analyses();
+        let mut checked = 0;
+        for p in r.plugins() {
+            let name = match p.name() {
+                "huygens_psf" => "psf".to_string(),
+                "interferogram" => "interference".to_string(),
+                n => n.replace('_', "-"),
+            };
+            let Some(a) = reg.get(&name) else {
+                panic!("plugin {} has no registry analysis {name}", p.name());
+            };
+            let defs: std::collections::BTreeMap<_, _> = a
+                .params()
+                .into_iter()
+                .map(|x| (x.name, x.default))
+                .collect();
+            for s in p.params() {
+                let (Some(d), Some(j)) = (&s.default, defs.get(&s.name)) else {
+                    continue;
+                };
+                assert!(
+                    same(d, j),
+                    "{}.{}: plugin {d:?} / registry {j}",
+                    p.name(),
+                    s.name
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 20, "only {checked} defaults compared");
+    }
+}

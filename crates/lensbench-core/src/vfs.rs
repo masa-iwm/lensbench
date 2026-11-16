@@ -40,13 +40,13 @@ pub type Stamp = (Option<std::time::SystemTime>, u64);
 mod imp {
     use super::*;
 
-    pub fn read(p: &Path) -> io::Result<Vec<u8>> {
+    pub(super) fn read(p: &Path) -> io::Result<Vec<u8>> {
         std::fs::read(p)
     }
     /// 同じフォルダの一時ファイルに書いてから名前を変える（書く途中で落ちても元のファイルは残る）。
     /// 書き先がシンボリックリンクならリンクの先を置き換え、普通のファイルでないもの（/dev/stdout・名前付きパイプなど）
     /// には直接書く（置き換えると壊す）
-    pub fn write(p: &Path, b: &[u8]) -> io::Result<()> {
+    pub(super) fn write(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
         let resolved;
         let p = match std::fs::metadata(p) {
@@ -82,7 +82,7 @@ mod imp {
         }
         res
     }
-    pub fn write_atomic(p: &Path, b: &[u8]) -> io::Result<()> {
+    pub(super) fn write_atomic(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
         let dir = match p.parent() {
             Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
@@ -107,7 +107,7 @@ mod imp {
         }
         r
     }
-    pub fn append(p: &Path, b: &[u8]) -> io::Result<()> {
+    pub(super) fn append(p: &Path, b: &[u8]) -> io::Result<()> {
         use std::io::Write;
         std::fs::OpenOptions::new()
             .append(true)
@@ -115,29 +115,29 @@ mod imp {
             .open(p)?
             .write_all(b)
     }
-    pub fn is_file(p: &Path) -> bool {
+    pub(super) fn is_file(p: &Path) -> bool {
         p.is_file()
     }
-    pub fn is_dir(p: &Path) -> bool {
+    pub(super) fn is_dir(p: &Path) -> bool {
         p.is_dir()
     }
-    pub fn read_dir(p: &Path) -> io::Result<Vec<PathBuf>> {
+    pub(super) fn read_dir(p: &Path) -> io::Result<Vec<PathBuf>> {
         std::fs::read_dir(p)?.map(|e| e.map(|e| e.path())).collect()
     }
-    pub fn create_dir_all(p: &Path) -> io::Result<()> {
+    pub(super) fn create_dir_all(p: &Path) -> io::Result<()> {
         std::fs::create_dir_all(p)
     }
-    pub fn remove_file(p: &Path) -> io::Result<()> {
+    pub(super) fn remove_file(p: &Path) -> io::Result<()> {
         std::fs::remove_file(p)
     }
-    pub fn rename(a: &Path, b: &Path) -> io::Result<()> {
+    pub(super) fn rename(a: &Path, b: &Path) -> io::Result<()> {
         std::fs::rename(a, b)
     }
-    pub fn stamp(p: &Path) -> io::Result<Stamp> {
+    pub(super) fn stamp(p: &Path) -> io::Result<Stamp> {
         let m = std::fs::metadata(p)?;
         Ok((m.modified().ok(), m.len()))
     }
-    pub fn canonicalize(p: &Path) -> io::Result<PathBuf> {
+    pub(super) fn canonicalize(p: &Path) -> io::Result<PathBuf> {
         std::fs::canonicalize(p)
     }
 }

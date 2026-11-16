@@ -17,7 +17,7 @@ pub(crate) struct Diff {
 }
 
 impl Diff {
-    pub const fn fwd(h: f64) -> Diff {
+    pub(crate) const fn fwd(h: f64) -> Diff {
         Diff {
             h,
             rel: false,
@@ -71,11 +71,11 @@ pub(crate) struct Sol {
 }
 
 impl Sol {
-    pub fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         self.end == End::Converged
     }
     /// 残差の大きさ（有限でなければ無限大）
-    pub fn err(&self) -> f64 {
+    pub(crate) fn err(&self) -> f64 {
         let e = self.r[0].abs().max(self.r[1].abs());
         if e.is_finite() {
             e
@@ -97,7 +97,7 @@ fn finite(r: [f64; 2]) -> bool {
 
 impl Newton2 {
     /// 1 本を解く: f(v) = tgt（残差は f(v) − tgt、ヤコビアンは f の差分）
-    pub fn solve(
+    pub(crate) fn solve(
         &self,
         mut f: impl FnMut([f64; 2]) -> [f64; 2],
         v0: [f64; 2],
@@ -109,7 +109,7 @@ impl Newton2 {
 
     /// N 本を同じ手順でまとめて解く（f は N 本の値を 1 度に求める。止まった光線の値も渡すが、結果は使わない）。
     /// tgt・tol は光線ごとの目標と収束の幅
-    pub fn solve_lanes<const N: usize>(
+    pub(crate) fn solve_lanes<const N: usize>(
         &self,
         mut f: impl FnMut(&[[f64; 2]; N]) -> [[f64; 2]; N],
         v0: [[f64; 2]; N],

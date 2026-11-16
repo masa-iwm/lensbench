@@ -17,6 +17,8 @@
 //!   種類と項目の確かめ方は [`detectors`] に登録する（非公開版などの拡張が足す）。
 //! - 状態（多重構成に当たる）: ブロックの値（ON/OFF、間隔、群の移動、偏心・傾き、.zmx の構成番号など）と
 //!   系の値（物体距離など）の変更の組に名前を付ける。[`expand_state`] でその状態の系を展開する。
+
+#![warn(unreachable_pub)]
 // 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
 #![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::panic))]
 

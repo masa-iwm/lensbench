@@ -179,7 +179,7 @@ pub(crate) fn pick_name(k: PickKind) -> String {
 }
 
 /// Field conditions: ("position", surface) / ("dirsum", surface1, surface2) / ("dirdiff", surface1, surface2)
-pub fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
+pub(crate) fn field_cond(s: &System, c: &Bound<'_, PyTuple>) -> PyResult<FieldCond> {
     let kind: String = c.get_item(0)?.extract()?;
     let at = |i: usize| -> PyResult<usize> { crate::surf_of(s, c.get_item(i)?.extract()?) };
     Ok(match (kind.to_ascii_lowercase().as_str(), c.len()) {

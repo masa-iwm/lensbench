@@ -6,6 +6,8 @@
 //! - 取る・置き場（[`Store`]）・アップロード（ネイティブだけ）
 //! - [`cache`] は取った STEP のキャッシュのフォルダ・ファイルの名前（ネイティブと Web 版）
 //! - [`coat_remote`] は膜のモデルを置き場から取る口（ネイティブだけ）
+
+#![warn(unreachable_pub)]
 pub mod cache;
 pub mod detail;
 pub use cache::{cached_step, cad_cache_dir, cad_cache_find, cad_cache_path, set_cad_cache_dir};

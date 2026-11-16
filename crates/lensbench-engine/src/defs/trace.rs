@@ -34,7 +34,7 @@ fn indices(v: &Option<Vec<usize>>, n: usize, what: &str) -> Result<Option<Vec<us
 /// Ray pattern
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Fan {
+pub(super) enum Fan {
     /// y 方向の扇
     Y,
     /// x 方向の扇
@@ -63,7 +63,7 @@ impl Fan {
 /// 光線の表の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct RaysParams {
+pub(super) struct RaysParams {
     /// Field numbers (from 1, comma-separated; all fields if omitted)
     pub field: Option<Vec<usize>>,
     /// Wavelength numbers (from 1, comma-separated; the primary wavelength if omitted)
@@ -96,7 +96,7 @@ impl Default for RaysParams {
 }
 
 /// 光線の表（JSON は列ごとの並び。書き出しは拡張子で csv・json・npz）
-pub struct RaysOut {
+pub(super) struct RaysOut {
     table: table::Table,
 }
 
@@ -115,7 +115,7 @@ impl JsonSchema for RaysOut {
     }
 }
 
-pub struct Rays;
+pub(super) struct Rays;
 
 impl Analysis for Rays {
     type Params = RaysParams;
@@ -176,7 +176,7 @@ impl Analysis for Rays {
 /// 簡易 POP の方法
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum PopHow {
+pub(super) enum PopHow {
     /// 遠ければ fresnel、近ければ angular
     #[default]
     Auto,
@@ -191,7 +191,7 @@ pub enum PopHow {
 /// 簡易 POP の設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct PopParams {
+pub(super) struct PopParams {
     /// Surface to build the field at (from 1; in the medium after it, on the tangent plane). If omitted, with only plane dummy surfaces in between
     /// The last surface that can be propagated to the image (propagates to the image if neither dist nor to is given)
     pub surf: Option<usize>,
@@ -252,7 +252,7 @@ impl Default for PopParams {
 }
 
 /// 簡易 POP の結果（JSON の形は鍵の名前で読む。書き出しの格子は保存のときだけ使う）
-pub struct PopOut {
+pub(super) struct PopOut {
     v: Value,
     beam: pop::Beam,
 }
@@ -298,7 +298,7 @@ fn pop_surfaces(
     Ok((j, to.or(dist.is_none().then_some(t))))
 }
 
-pub struct Pop;
+pub(super) struct Pop;
 
 impl Analysis for Pop {
     type Params = PopParams;
@@ -434,7 +434,7 @@ impl Analysis for Pop {
 /// 機構のケラレの設定
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct MechCheckParams {
+pub(super) struct MechCheckParams {
     /// Field numbers (from 1, comma-separated; all fields if omitted)
     pub field: Option<Vec<usize>>,
     /// Wavelength numbers (from 1, comma-separated; all wavelengths if omitted)
@@ -454,7 +454,7 @@ impl Default for MechCheckParams {
     }
 }
 
-pub struct MechCheck;
+pub(super) struct MechCheck;
 
 impl Analysis for MechCheck {
     type Params = MechCheckParams;
@@ -539,7 +539,7 @@ impl Analysis for MechCheck {
 /// 玉モードの設定
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct ElementsParams {
+pub(super) struct ElementsParams {
     /// Lens numbers to flip (from 1, comma-separated)
     pub reverse: Option<Vec<usize>>,
     /// .zmx to write the rebuilt system to
@@ -547,7 +547,7 @@ pub struct ElementsParams {
     pub out: Option<PathBuf>,
 }
 
-pub struct Elements;
+pub(super) struct Elements;
 
 impl Analysis for Elements {
     type Params = ElementsParams;

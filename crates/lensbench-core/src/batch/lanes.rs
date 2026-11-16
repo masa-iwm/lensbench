@@ -11,7 +11,7 @@
 use std::ops::{Add, AddAssign, BitAnd, BitOr, Div, Index, IndexMut, Mul, Neg, Not, Sub};
 
 /// 光線の値の組。四則は組どうしと、右が数のもの（左が数の式は `V::splat(a) - x` の形で書く）
-pub trait Lanes:
+pub(crate) trait Lanes:
     Copy
     + Add<Output = Self>
     + Sub<Output = Self>
@@ -68,7 +68,9 @@ pub trait Lanes:
 }
 
 /// 真偽の組
-pub trait Mask: Copy + BitAnd<Output = Self> + BitOr<Output = Self> + Not<Output = Self> {
+pub(crate) trait Mask:
+    Copy + BitAnd<Output = Self> + BitOr<Output = Self> + Not<Output = Self>
+{
     const N: usize;
     fn splat(b: bool) -> Self;
     fn at(self, i: usize) -> bool;
@@ -86,7 +88,7 @@ pub trait Mask: Copy + BitAnd<Output = Self> + BitOr<Output = Self> + Not<Output
 }
 
 /// 比較の右辺（組か数）
-pub trait Rhs<V>: Copy {
+pub(crate) trait Rhs<V>: Copy {
     fn lanes(self) -> V;
 }
 impl<V: Lanes> Rhs<V> for f64 {
@@ -98,30 +100,30 @@ impl<V: Lanes> Rhs<V> for f64 {
 
 /// 光線ごとに m なら a、でなければ b
 #[inline(always)]
-pub fn sel<V: Lanes>(m: V::B, a: V, b: V) -> V {
+pub(crate) fn sel<V: Lanes>(m: V::B, a: V, b: V) -> V {
     V::select(m, a, b)
 }
 
 /// 1 本（1 本ずつの追跡）
-pub type One = plain::F<1>;
+pub(crate) type One = plain::F<1>;
 
 /// まとめ追跡の L 本
 #[cfg(not(all(target_arch = "wasm32", target_feature = "simd128")))]
-pub type Wide = plain::F<{ super::L }>;
+pub(crate) type Wide = plain::F<{ super::L }>;
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-pub type Wide = simd::F;
+pub(crate) type Wide = simd::F;
 
-pub mod plain {
+pub(crate) mod plain {
     use super::*;
 
     /// N 本の光線の値
     #[derive(Clone, Copy)]
     #[repr(C, align(32))]
-    pub struct F<const N: usize>([f64; N]);
+    pub(crate) struct F<const N: usize>([f64; N]);
 
     /// N 本の光線の真偽
     #[derive(Clone, Copy)]
-    pub struct B<const N: usize>([bool; N]);
+    pub(crate) struct B<const N: usize>([bool; N]);
 
     impl<const N: usize> Rhs<F<N>> for F<N> {
         #[inline(always)]
@@ -286,7 +288,7 @@ pub mod plain {
 }
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-pub mod simd {
+pub(crate) mod simd {
     use super::*;
     use crate::batch::L;
     use std::arch::wasm32::*;
@@ -297,11 +299,11 @@ pub mod simd {
 
     /// L 本の光線の値（2 本ずつ f64x2）
     #[derive(Clone, Copy)]
-    pub struct F([v128; NW]);
+    pub(crate) struct F([v128; NW]);
 
     /// L 本の光線の真偽（2 本ずつ、各 64 ビットが全部 1 か 0）
     #[derive(Clone, Copy)]
-    pub struct B([v128; NW]);
+    pub(crate) struct B([v128; NW]);
 
     impl Rhs<F> for F {
         #[inline(always)]

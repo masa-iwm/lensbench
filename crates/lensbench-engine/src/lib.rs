@@ -2,6 +2,8 @@
 //!
 //! CLI（`lensbench-cli`）・GUI・Web 版・Python はここを使う（CLI の引数の解釈・要求を運ぶ道は CLI が持つ）。
 
+#![warn(unreachable_pub)]
+
 pub mod analyze;
 pub mod browse;
 pub mod defs;
