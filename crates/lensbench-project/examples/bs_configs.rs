@@ -4,6 +4,7 @@
 //!
 //! 形だけの照合なので膜は外す。ガラスのカタログは LBSCH（試験の SCHOTT.AGF を OpticStudio の Glasscat に
 //! LBSCH.AGF として入れたもの。OpticStudio の SCHOTT は N-BK7 などの値が試験のものと少し違う）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::System;
 use lensbench_project::{expand, expand_path, paths, Env, Project};
 use std::path::{Path, PathBuf};

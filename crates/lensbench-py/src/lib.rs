@@ -10,6 +10,7 @@
 //! 引き継がれず、止まる）。子で並列にしたいときは forkserver・spawn で子プロセスを作る。
 
 #![warn(unreachable_pub)]
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
 
 mod edit;
 mod errors;

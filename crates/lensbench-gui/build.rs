@@ -1,4 +1,5 @@
 //! 版の欄に出す git のハッシュ（LENSBENCH_GIT_HASH で上書き。git が無ければ空）と、Windows の exe のアイコン
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 
 use std::path::Path;
 use std::process::Command;

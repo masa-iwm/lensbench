@@ -393,7 +393,7 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> lensbench_core::Res
         .map(|l| {
             let mut v = json!({ "vendor": l.vendor, "part": l.part });
             match lens_summary(&l.zmx, l.efl, glass_dirs, &mut cache) {
-                Ok(Value::Object(m)) => v.as_object_mut().unwrap().extend(m),
+                Ok(Value::Object(m)) => v.as_object_mut().expect("rows are JSON objects").extend(m),
                 Ok(_) => {}
                 Err(e) => v["error"] = json!(String::from(e)),
             }
@@ -567,7 +567,7 @@ fn user_items(
                     Some(x) => x.as_f64().map_or(Value::Null, num),
                     None => Value::Null,
                 };
-                let m = row.as_object_mut().unwrap();
+                let m = row.as_object_mut().expect("rows are JSON objects");
                 m.extend(
                     json!({
                         "kind": "incomplete", "mirror": false, "efl": Value::Null,
@@ -576,7 +576,7 @@ fn user_items(
                         "incomplete": true, "missing": it.missing,
                     })
                     .as_object()
-                    .unwrap()
+                    .expect("an object literal")
                     .clone(),
                 );
                 if !it.title.is_empty() {
@@ -658,7 +658,7 @@ fn user_items(
                 _ => user_lens_summary(&abs, name, &it.glass_catalogs, glass_dirs, lens_cat),
             };
             match summary {
-                Ok(Value::Object(m)) => row.as_object_mut().unwrap().extend(m),
+                Ok(Value::Object(m)) => row.as_object_mut().expect("rows are JSON objects").extend(m),
                 Ok(_) => {}
                 Err(e) => row["error"] = json!(String::from(e)),
             }

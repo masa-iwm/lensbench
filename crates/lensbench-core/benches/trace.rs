@@ -3,6 +3,7 @@
 //! tests/refs の系を 2 万本で、1 スレッドと全コアで測る。A0・C0 はエイミングなし（C0 は傾き偏心）、
 //! A2・C1 は実光線エイミングあり。前回との差は criterion が target/criterion に残す。
 //! 別の実装と同じ条件で比べるときは examples/bench.rs（`--json`）を使う。
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 
 use std::path::PathBuf;
 

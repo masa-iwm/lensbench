@@ -303,7 +303,7 @@ pub fn fit_all(targets: &[Target], substrate: Substrate, o: &Options) -> Result<
                 best = Some((d, c));
             }
         }
-        let (d, c) = best.unwrap();
+        let (d, c) = best.expect("at least one starting point");
         prev.push((nl, d.clone()));
         let mut r = vec![0.0; targets.len()];
         residuals(targets, &pre, &mats, &d, o.n0, &mut r);

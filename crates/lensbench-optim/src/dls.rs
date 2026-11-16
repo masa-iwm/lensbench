@@ -171,7 +171,7 @@ impl Problem {
             invalid!("no configurations");
         };
         self.vars.push(Var::new(p?));
-        Ok(self.vars.last_mut().unwrap())
+        Ok(self.vars.last_mut().expect("just pushed"))
     }
 
     /// 既定の評価関数: 構成ごと・定義済みの視野ごとに、重みのある全波長の RMS の項を足す（重みは視野の重み、
@@ -599,7 +599,7 @@ impl Problem {
             let mut j = vec![0.0; m * nv];
             let mut fd: Vec<usize> = act.clone();
             if ok {
-                let ja = ja.unwrap();
+                let ja = ja.expect("ok means the analytic Jacobian was computed");
                 for (k, &q) in analytic.iter().enumerate() {
                     for i in 0..m {
                         j[i * nv + q] = ja[i * ps.len() + k];
@@ -652,7 +652,7 @@ impl Problem {
                         }
                         *slot = Some((sp, sm));
                     }
-                    let (sp, sm) = slot.as_ref().unwrap();
+                    let (sp, sm) = slot.as_ref().expect("filled just above");
                     let rp = match sp {
                         Some(sp) => eval_term(sp, &t.kind, None, None, self.stopped_as_vignetted)
                             .map(|v| v.0),

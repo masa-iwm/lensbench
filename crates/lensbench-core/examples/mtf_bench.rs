@@ -2,6 +2,7 @@
 //! `cargo run --release --example mtf_bench -- [系 ...]`（系は tests/refs の名前、既定 A0 A6 D4 F3 C0）。
 //! 環境変数 MTF_N で求積の点数を固定、MTF_FREQS で周波数の数（既定 21）、MTF_METHOD=fft・direct で求め方、
 //! MTF_SEPARATE=1 で多色と各波長を別々に呼ぶ（[`analysis::mtf_waves`] を使わない、補間のみ）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;

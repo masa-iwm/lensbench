@@ -974,6 +974,7 @@ pub fn run_builtin(paths: &[PathBuf], opt: &Options) -> Result<Vec<Report>, Stri
 }
 
 /// Rust の試験から: フォルダの照合を全部回し、通らなければ表を出して panic する
+#[allow(clippy::unwrap_used, clippy::panic)]
 pub fn assert_dir(dir: &Path, reg: &Registry) {
     let reps = run_paths(&[dir.to_path_buf()], reg, &Options::default()).unwrap();
     assert!(!reps.is_empty(), "no verifications in {}", dir.display());

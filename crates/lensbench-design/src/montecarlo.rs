@@ -389,7 +389,15 @@ impl McResult {
     /// 後に出る。試行が 3 回未満か、ずれが変わらない公差は NaN
     pub fn correlation(&self, tols: &[Tol]) -> Vec<(f64, f64)> {
         let ok: Vec<&Trial> = self.trials.iter().filter(|t| t.eval.is_some()).collect();
-        let m: Vec<f64> = ok.iter().map(|t| t.eval.as_ref().unwrap().merit).collect();
+        let m: Vec<f64> = ok
+            .iter()
+            .map(|t| {
+                t.eval
+                    .as_ref()
+                    .expect("only trials with an evaluation")
+                    .merit
+            })
+            .collect();
         tols.iter()
             .enumerate()
             .map(|(i, t)| {

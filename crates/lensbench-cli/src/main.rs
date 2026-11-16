@@ -3,6 +3,7 @@
 //! 引数の解釈・文字の出力・serve の要求を運ぶ道（TCP・パイプ）を持ち、解析・系の読み方・serve の場は lensbench-engine。
 //! 実行ファイルの入口は `src/bin/lensbench.rs` で、[`main`] を呼ぶだけ（非公開版などは拡張の解析を
 //! [`lensbench_engine::register`] してから呼ぶ）。
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
 
 use std::io::Write as _;
 use std::path::PathBuf;

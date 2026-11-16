@@ -3,6 +3,7 @@
 //!
 //! ライブラリとしても使える: 別の exe（カタログの形式・プラグインを足した版）は、起動の最初に
 //! `lensbench_engine::Extensions` の install（拡張の表 [`lensbench_core::ext`] の既定に足す）をしてから [`main`] を呼ぶ。
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
 
 mod app;
 mod argform;

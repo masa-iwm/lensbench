@@ -263,7 +263,7 @@ fn fit_transmit(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<(f64, Fi
 
 /// 鏡の位相の厚さ D_m
 fn mirror_d(air: &Measured, refm: &Measured, opt: &FitOptions) -> f64 {
-    let nr = model_n(MIRROR_REF).unwrap();
+    let nr = model_n(MIRROR_REF).expect("the mirror reference material is built in");
     let ba: BTreeMap<i64, usize> = air
         .angles_deg
         .iter()
@@ -352,7 +352,7 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
                     .collect::<BTreeSet<_>>()
             })
             .reduce(|a, b| &a & &b)
-            .unwrap();
+            .expect("two polarizations");
         betas = Some(match betas {
             None => s,
             Some(b) => &b & &s,
@@ -409,7 +409,7 @@ pub fn fit_model(tabs: &[(&str, &Measured)], opt: &FitOptions) -> Result<FitRepo
     };
     if let (Some((_, air)), Some((_, refm))) = (find("AIR"), find(MIRROR_REF)) {
         let dm = mirror_d(air, refm, opt);
-        let nr = model_n(MIRROR_REF).unwrap();
+        let nr = model_n(MIRROR_REF).expect("the mirror reference material is built in");
         let bs: Vec<f64> = refm
             .angles_deg
             .iter()

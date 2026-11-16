@@ -10,6 +10,7 @@
 //! カタログの形式・プラグインを登録して [`set_extra`] でファイルを足す（JS の口・ページはこの crate のまま）。
 //! スレッドありの版では、同じ wasm・同じメモリの見張りのスレッド（`monitor.js`）が、計算の途中で
 //! 中断・停止・進み具合の問い合わせを受ける（`monitor_*`）。
+#![allow(clippy::unwrap_used, clippy::panic)] // 入口の exe（XCT-35。計算の中身のクレートは検査の内）
 
 /// 並列: rayon のスレッドを Web Worker で作る（JS の initThreadPool(n)）。作った後に threads_ready
 #[cfg(all(target_arch = "wasm32", feature = "threads"))]

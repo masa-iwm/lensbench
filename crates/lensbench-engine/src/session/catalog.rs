@@ -198,7 +198,10 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                 cat.items.remove(name);
             } else {
                 if let Some(d) = p["description"].as_str() {
-                    cat.items.get_mut(name).unwrap().description = d.to_string();
+                    cat.items
+                        .get_mut(name)
+                        .expect("the item exists (looked up above)")
+                        .description = d.to_string();
                 }
                 if let Some(to) = p["rename"].as_str().map(str::trim) {
                     if to.is_empty() {
@@ -208,7 +211,10 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
                         if cat.items.contains_key(to) {
                             return Err(RpcErr::app(format!("item {to} already exists")));
                         }
-                        let it = cat.items.remove(name).unwrap();
+                        let it = cat
+                            .items
+                            .remove(name)
+                            .expect("the item exists (looked up above)");
                         cat.items.insert(to.to_string(), it);
                     }
                 }

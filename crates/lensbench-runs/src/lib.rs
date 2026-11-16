@@ -749,9 +749,8 @@ where
             std::fs::File::create(p)
         }
         .map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
-        file = Some(f);
+        let f = file.insert(f);
         if !keep {
-            let f = file.as_mut().unwrap();
             write_line(f, &format!("{MAGIC}{}}}", opts.header))
                 .map_err(|e| Error::Io(e.to_string()))?;
         }

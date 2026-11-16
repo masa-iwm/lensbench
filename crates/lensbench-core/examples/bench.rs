@@ -15,6 +15,7 @@
 //!
 //! 瞳の点は xorshift64（種 12345）で単位円内に一様。同じ点列を別の実装でも作れるように、
 //! 乱数は `pupil` の手順どおり（1 点につき r²・角の順に 2 回引く）。
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 
 use std::path::PathBuf;
 use std::time::Instant;

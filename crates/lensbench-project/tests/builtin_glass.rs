@@ -1,6 +1,7 @@
 //! 同梱のガラスカタログ（SCHOTT・OHARA、CLI-31）で開いた系の、系ファイル（v2）の往復。ガラスのフォルダを渡さないで
 //! .zmx を読み、保存では同梱のデータの hash を書き、読むときはフォルダに無いので同梱のものを使って注意を返す。
 //! このプロセスで tests/glass の AGF を読むと、それが候補になるので、ほかの結合テストとは別のプロセスにしてある。
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_project::sysfile;

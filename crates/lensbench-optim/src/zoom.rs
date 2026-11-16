@@ -266,7 +266,8 @@ fn try_point(
         let sys = &r.systems[0];
         let miss = target.map(|t| spec.q.value(sys) - t);
         let ok = target.is_none_or(|t| {
-            miss.unwrap().abs() <= spec.target_tol * t.abs().max(f64::MIN_POSITIVE)
+            miss.expect("miss is set whenever there is a target").abs()
+                <= spec.target_tol * t.abs().max(f64::MIN_POSITIVE)
         });
         if ok || tries >= max_tries {
             break (r, img);
@@ -278,7 +279,11 @@ fn try_point(
             w *= 100.0;
         }
     };
-    let sys = r.systems.into_iter().next().unwrap();
+    let sys = r
+        .systems
+        .into_iter()
+        .next()
+        .expect("the optimizer returns one system per configuration");
     let merit = match unsolved(img.merit(&r.x))? {
         Ok(m) => m,
         Err(e) => return Ok(Err(e)),
@@ -361,7 +366,9 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     }
     let mut warnings = Vec::new();
     for p in &states {
-        let k = p.state.unwrap();
+        let k = p
+            .state
+            .expect("every configuration has a state after the solve");
         if let Some(e) = p.stop.error() {
             warnings.push(format!("state {}: not solved ({e})", k + 1));
             continue;

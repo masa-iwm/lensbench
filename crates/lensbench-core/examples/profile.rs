@@ -1,5 +1,6 @@
 //! 解析ごとの時間（プロファイル用）: `cargo run --release --example profile -- [--threads N] [--glass-dir D] [系 ...]`
 //! 系は tests/refs の名前か .zmx のパス（既定 A0 A2 C0 D4）。環境変数 SKIP_AUTO があれば多色・点数自動の MTF を飛ばす
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;

@@ -1,6 +1,7 @@
 //! ビームスプリッターの照合の系を .zmx と .json に書く（tests/splitter の基準を作るとき用）
 //!
 //! cargo run --release -p lensbench-project --example bs_cases -- 出力のフォルダ
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_project::{expand_path, Env, Project};
 use std::path::PathBuf;
 

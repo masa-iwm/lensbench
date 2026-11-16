@@ -369,7 +369,11 @@ pub(crate) fn write_grid(
                 .iter()
                 .map(|x| if x.is_nan() { None } else { Some(*x) })
                 .collect::<Vec<_>>());
-            lensbench_core::vfs::write(p, serde_json::to_string(&v).unwrap()).map_err(io)
+            lensbench_core::vfs::write(
+                p,
+                serde_json::to_string(&v).expect("a JSON value serializes"),
+            )
+            .map_err(io)
         }
         _ => {
             let fmt = ImageFormat::from_path(p, float).ok_or_else(|| {
@@ -384,7 +388,7 @@ pub(crate) fn write_grid(
                 format!("linear: 0 = {lo:?}, 65535 = {hi:?}; no data = 0")
             });
             side["rows"] = json!("row 0 = top = largest y; columns -> +x");
-            let desc = serde_json::to_string_pretty(&side).unwrap();
+            let desc = serde_json::to_string_pretty(&side).expect("a JSON value serializes");
             let soft = format!("lensbench {}", lensbench_core::VERSION);
             match fmt {
                 ImageFormat::TiffFloat => {

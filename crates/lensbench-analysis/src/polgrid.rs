@@ -326,7 +326,7 @@ fn solve_mat(a: &[f64], b: &[f64], n: usize) -> Vec<f64> {
     for col in 0..n {
         let p = (col..n)
             .max_by(|&r, &s| a[r * n + col].abs().total_cmp(&a[s * n + col].abs()))
-            .unwrap();
+            .expect("col < n, so the pivot range is not empty");
         if p != col {
             for c in 0..n {
                 a.swap(p * n + c, col * n + c);

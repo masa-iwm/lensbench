@@ -537,7 +537,9 @@ impl<'a> SwapSearch<'a> {
                 [] => return Err(format!("no block {}", sl.block).into()),
                 _ => return Err(format!("two or more blocks with id {}", sl.block).into()),
             };
-            let b = base.pointer(&ptr).unwrap();
+            let b = base
+                .pointer(&ptr)
+                .expect("the pointer comes from block_pointers on the same document");
             if b["type"] != "lens" {
                 return Err(format!("block {} is not a lens (type lens)", sl.block).into());
             }
@@ -627,7 +629,8 @@ impl<'a> SwapSearch<'a> {
 
     /// 組の数
     pub fn count(&self) -> usize {
-        self.count_checked().unwrap()
+        self.count_checked()
+            .expect("the number of combinations fits in usize (count_checked reports overflow)")
     }
 
     /// 組 i の所ごとの選び方の番号（混合基数、最後の所が最も速く回る）
@@ -1090,7 +1093,7 @@ impl<'a> SwapSearch<'a> {
             "lensbench": lensbench_core::VERSION,
             "kind": "swap",
             "project_hash": self.base_hash,
-            "spec": serde_json::to_value(&self.spec).unwrap(),
+            "spec": serde_json::to_value(&self.spec).expect("the spec serializes to JSON"),
             "picks": picks,
         })
     }

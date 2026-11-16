@@ -699,7 +699,7 @@ pub(crate) fn write_as(s: &System, coat_file: &str) -> Result<String> {
         match (&d.after, &d.before) {
             // 面の後の傾き偏心のピックアップ: モード 2·(この面 − 元の面) + 1、反転は + 2
             (a, _) if after_pick.is_some() => {
-                let q = after_pick.unwrap();
+                let q = after_pick.expect("checked by the match guard");
                 let mode = 2 * (k - q.src) + if q.scale < 0.0 { 2 } else { 1 };
                 let t = match a {
                     After::Tilt(t) => *t,
@@ -1031,7 +1031,11 @@ fn write_configs_as(systems: &[System], coat_file: &str) -> Result<(String, Syst
         }
         key(&d)
     };
-    let min_img = ss.iter().map(|s| s.image()).min().unwrap();
+    let min_img = ss
+        .iter()
+        .map(|s| s.image())
+        .min()
+        .expect("a system has at least one configuration");
     let mut np = 0;
     while np < min_img
         && ss

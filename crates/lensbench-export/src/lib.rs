@@ -4,7 +4,6 @@
 
 #![warn(unreachable_pub)]
 // 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
-#![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::panic))]
 // 添字で回す数値計算のループはそのままにする
 #![allow(clippy::needless_range_loop)]
 

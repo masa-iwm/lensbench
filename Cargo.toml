@@ -15,6 +15,10 @@ rust-version = "1.100"
 [workspace.lints.clippy]
 # 数値の式は添字のループの方が読みやすい所が多い（行列・格子・波長と面の二重ループ）ので止める（BLD-30）
 needless_range_loop = "allow"
+# 試験の外の unwrap・panic! を見つける（XCT-21。クレートを分けても検査から外れないようワークスペースに置く、XCT-35）。
+# 試験の中は public/clippy.toml の allow-*-in-tests で許す。入口の exe（GUI・Web 版・CLI・Python）はクレートの根で allow
+unwrap_used = "warn"
+panic = "warn"
 
 [profile.release]
 lto = "thin"

@@ -8,7 +8,6 @@
 
 #![warn(unreachable_pub)]
 // 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
-#![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::panic))]
 // `!(x >= 0.0)` は NaN も弾くための意図的な書き方。
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
 #![deny(unsafe_op_in_unsafe_fn)]

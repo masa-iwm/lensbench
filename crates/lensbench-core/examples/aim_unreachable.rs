@@ -1,5 +1,6 @@
 //! 実光線エイミングで絞りに届かない光線がある格子の追跡時間（見直し KRN-07）。
 //! `cargo run --profile ci -p lensbench-core --example aim_unreachable -- [瞳座標の倍率]`
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx;
 use std::time::Instant;

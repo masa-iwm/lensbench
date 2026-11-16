@@ -271,7 +271,7 @@ pub fn save_value(p: &std::path::Path, v: &Value) -> lensbench_core::Result<()> 
         if let Some(o) = v.as_object_mut() {
             o.insert("provenance".into(), crate::provenance::value());
         }
-        let s = serde_json::to_string_pretty(&v).unwrap();
+        let s = serde_json::to_string_pretty(&v).expect("a JSON value serializes");
         Ok(lensbench_core::vfs::write(p, s + "\n").map_err(|x| format!("{}: {x}", p.display()))?)
     } else {
         Ok(table::from_json(v).save(p)?)

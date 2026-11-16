@@ -1,5 +1,6 @@
 //! MTF の補間（既定）と直接追跡の差と時間: `cargo run --release --example mtf_interp -- [系 ...]`
 //! 系は tests/refs の名前（既定は全系）。周波数は mtf.json の周波数（なければ遮断周波数の 0〜0.9 を 10 点）
+#![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::Waves;
 use std::path::PathBuf;
 use std::time::Instant;
