@@ -3101,186 +3101,172 @@ pub fn zmx_stop_info(path: &str) -> Option<(usize, usize)> {
     v
 }
 
-/// 面の並びの面の表（種類を選べる。自作の玉の面はレンズデータの表で編集する、GPN-19）
+/// 面の並びの面の並びと種類（GPN-19）。半径・コーニック・厚さ・ガラス・半直径はレンズデータの表で編集し、
+/// ここでは面の種類・足す・消すと、偏光子・波長板・Jones・座標ブレークの値（表の列に無いもの）だけを出す
 fn surf_table(ui: &mut Ui, p: &mut Pick, k: usize, weak: Color32) {
     let n = p.surfs.len();
     let (mut del, mut add) = (None, None);
-    let drag = |ui: &mut Ui, v: &mut f64| {
-        ui.add(egui::DragValue::new(v).speed(0.05).max_decimals(6));
+    let drag = |ui: &mut Ui, v: &mut f64, speed: f64| {
+        ui.add(egui::DragValue::new(v).speed(speed).max_decimals(6));
     };
-    egui::Grid::new(("surf_table", k))
-        .num_columns(8)
-        .spacing([6.0, 2.0])
-        .striped(true)
-        .show(ui, |ui| {
-            for h in [
-                "#",
-                tr("Type"),
-                "R",
-                tr("Conic"),
-                tr("Thickness"),
-                tr("Glass"),
-                tr("Semi-diameter"),
-                "",
-            ] {
-                ui.label(RichText::new(h).small().color(weak));
+    ui.label(
+        RichText::new(tr(
+            "Radius, conic, thickness and semi-diameter are edited in the Lens Data table (surfaces in air only)",
+        ))
+        .small()
+        .color(weak),
+    );
+    for (i, r) in p.surfs.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new((i + 1).to_string()).color(weak));
+            egui::ComboBox::from_id_salt(("surf_kind", k, i))
+                .selected_text(r.kind.label())
+                .show_ui(ui, |ui| {
+                    for x in [
+                        SurfKind::Standard,
+                        SurfKind::Polarizer,
+                        SurfKind::Waveplate,
+                        SurfKind::Jones,
+                        SurfKind::Coordbrk,
+                    ] {
+                        ui.selectable_value(&mut r.kind, x, x.label());
+                    }
+                });
+            if r.kind == SurfKind::Standard {
+                let rad = if r.radius == 0.0 {
+                    "∞".to_string()
+                } else {
+                    format!("{}", r.radius)
+                };
+                ui.label(
+                    RichText::new(format!("R {rad}  t {}", r.t))
+                        .small()
+                        .color(weak),
+                );
             }
-            ui.end_row();
-            for (i, r) in p.surfs.iter_mut().enumerate() {
-                ui.label((i + 1).to_string());
-                egui::ComboBox::from_id_salt(("surf_kind", k, i))
-                    .selected_text(r.kind.label())
-                    .show_ui(ui, |ui| {
-                        for x in [
-                            SurfKind::Standard,
-                            SurfKind::Polarizer,
-                            SurfKind::Waveplate,
-                            SurfKind::Jones,
-                            SurfKind::Coordbrk,
-                        ] {
-                            ui.selectable_value(&mut r.kind, x, x.label());
-                        }
-                    });
-                match r.kind {
-                    SurfKind::Standard => {
-                        drag(ui, &mut r.radius);
-                        drag(ui, &mut r.conic);
-                        drag(ui, &mut r.t);
-                        ui.add(
-                            egui::TextEdit::singleline(&mut r.glass)
-                                .desired_width(70.0)
-                                .hint_text(tr("air")),
-                        );
-                        ui.horizontal(|ui| {
-                            ui.add_enabled(!r.semi_auto, egui::DragValue::new(&mut r.semi).speed(0.1));
-                            ui.checkbox(&mut r.semi_auto, tr("Auto"))
-                                .on_hover_text(tr("Compute the semi-diameter from rays of all fields and wavelengths"));
-                        });
-                    }
-                    SurfKind::Jones => {
-                        ui.horizontal(|ui| {
+            if ui
+                .small_button("＋")
+                .on_hover_text(tr("Add a surface after"))
+                .clicked()
+            {
+                add = Some(i + 1);
+            }
+            if ui
+                .add_enabled(n > 1, egui::Button::new("✖").small())
+                .on_hover_text(tr("Remove surface"))
+                .clicked()
+            {
+                del = Some(i);
+            }
+        });
+        if r.kind == SurfKind::Standard {
+            continue;
+        }
+        // 種類ごとの値は 1 行に 1 つ（GPN-19: 波長板の 11 個を横に並べない）
+        ui.indent(("surf_vals", k, i), |ui| {
+            egui::Grid::new(("surf_vals", k, i))
+                .num_columns(2)
+                .spacing([8.0, 2.0])
+                .show(ui, |ui| {
+                    let label = |ui: &mut Ui, t: &str| {
+                        ui.label(RichText::new(t).small().color(weak));
+                    };
+                    match r.kind {
+                        SurfKind::Standard => {}
+                        SurfKind::Jones => {
                             for (j, l) in ["A", "B", "C", "D"].into_iter().enumerate() {
-                                ui.label(RichText::new(l).small().color(weak));
-                                ui.add(
-                                    egui::DragValue::new(&mut r.jones[2 * j])
-                                        .speed(0.01)
-                                        .max_decimals(6),
-                                );
-                                ui.add(
-                                    egui::DragValue::new(&mut r.jones[2 * j + 1])
-                                        .speed(0.01)
-                                        .max_decimals(6)
-                                        .suffix("i"),
-                                );
+                                label(ui, l);
+                                ui.horizontal(|ui| {
+                                    drag(ui, &mut r.jones[2 * j], 0.01);
+                                    ui.label("+");
+                                    ui.add(
+                                        egui::DragValue::new(&mut r.jones[2 * j + 1])
+                                            .speed(0.01)
+                                            .max_decimals(6)
+                                            .suffix("i"),
+                                    );
+                                });
+                                ui.end_row();
                             }
-                        });
-                        ui.label("");
-                        drag(ui, &mut r.t);
-                        ui.label("");
-                        drag(ui, &mut r.semi);
-                    }
-                    SurfKind::Polarizer => {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(tr("Transmission axis")).small().color(weak));
+                        }
+                        SurfKind::Polarizer => {
+                            label(ui, tr("Transmission axis"));
                             ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
-                            ui.label(RichText::new(tr("Extinction")).small().color(weak));
+                            ui.end_row();
+                            label(ui, tr("Extinction"));
                             ui.add(
                                 egui::DragValue::new(&mut r.extinction_ratio)
                                     .speed(10.0)
                                     .range(0.0..=f64::MAX),
                             )
                             .on_hover_text(tr("0 means infinite (blocks the orthogonal direction)"));
-                            ui.label(RichText::new(tr("Transmittance")).small().color(weak));
+                            ui.end_row();
+                            label(ui, tr("Transmittance"));
                             ui.add(
                                 egui::DragValue::new(&mut r.transmittance)
                                     .speed(0.01)
                                     .range(0.0..=1.0),
                             );
-                        });
-                        ui.label("");
-                        drag(ui, &mut r.t);
-                        ui.label("");
-                        drag(ui, &mut r.semi);
-                    }
-                    SurfKind::Waveplate => {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(tr("Retardance")).small().color(weak));
-                            ui.add(
-                                egui::DragValue::new(&mut r.retardance)
-                                    .speed(0.01)
-                                    .suffix(" λ"),
-                            );
-                            ui.label(RichText::new(tr("Design wavelength")).small().color(weak));
+                            ui.end_row();
+                        }
+                        SurfKind::Waveplate => {
+                            label(ui, tr("Retardance"));
+                            ui.add(egui::DragValue::new(&mut r.retardance).speed(0.01).suffix(" λ"));
+                            ui.end_row();
+                            label(ui, tr("Design wavelength"));
                             ui.add(
                                 egui::DragValue::new(&mut r.wavelength_um)
                                     .speed(0.001)
                                     .range(0.01..=100.0)
                                     .suffix(" µm"),
                             );
-                            ui.label(RichText::new(tr("Fast axis")).small().color(weak));
+                            ui.end_row();
+                            label(ui, tr("Fast axis"));
                             ui.add(egui::DragValue::new(&mut r.axis_deg).speed(1.0).suffix("°"));
-                            ui.label(RichText::new(tr("Order")).small().color(weak));
+                            ui.end_row();
+                            label(ui, tr("Order"));
                             ui.add(egui::DragValue::new(&mut r.wp_order).speed(0.1));
+                            ui.end_row();
                             ui.label(RichText::new(tr("Birefringent material")).small().color(weak))
                                 .on_hover_text(tr("Ordinary index from the glass of this name, extraordinary from NAME-E (empty for an ideal retarder). A second material makes a two-material pair with crossed fast axes"));
-                            ui.add(egui::TextEdit::singleline(&mut r.wp_material).desired_width(70.0));
-                            ui.add(
-                                egui::DragValue::new(&mut r.wp_thickness)
-                                    .speed(0.001)
-                                    .range(0.0..=100.0)
-                                    .suffix(" mm"),
-                            )
-                            .on_hover_text(tr("0 derives the thickness from the design retardance (single material)"));
-                            ui.label("+");
-                            ui.add(egui::TextEdit::singleline(&mut r.wp_material2).desired_width(70.0));
-                            ui.add(
-                                egui::DragValue::new(&mut r.wp_thickness2)
-                                    .speed(0.001)
-                                    .range(0.0..=100.0)
-                                    .suffix(" mm"),
-                            );
-                        });
-                        ui.label("");
-                        drag(ui, &mut r.t);
-                        ui.label("");
-                        drag(ui, &mut r.semi);
-                    }
-                    SurfKind::Coordbrk => {
-                        ui.horizontal(|ui| {
+                            let plate = |ui: &mut Ui, m: &mut String, t: &mut f64| {
+                                ui.horizontal(|ui| {
+                                    ui.add(egui::TextEdit::singleline(m).desired_width(80.0));
+                                    ui.add(
+                                        egui::DragValue::new(t)
+                                            .speed(0.001)
+                                            .range(0.0..=100.0)
+                                            .suffix(" mm"),
+                                    )
+                                    .on_hover_text(tr("0 derives the thickness from the design retardance (single material)"));
+                                });
+                            };
+                            plate(ui, &mut r.wp_material, &mut r.wp_thickness);
+                            ui.end_row();
+                            label(ui, "+");
+                            plate(ui, &mut r.wp_material2, &mut r.wp_thickness2);
+                            ui.end_row();
+                        }
+                        SurfKind::Coordbrk => {
                             for (j, l) in ["dx", "dy", "tx", "ty", "tz"].into_iter().enumerate() {
-                                ui.label(RichText::new(l).small().color(weak));
-                                drag(ui, &mut r.cb[j]);
+                                label(ui, l);
+                                drag(ui, &mut r.cb[j], 0.05);
+                                ui.end_row();
                             }
+                            label(ui, tr("Thickness"));
+                            drag(ui, &mut r.t, 0.05);
+                            ui.end_row();
                             let mut tf = r.order == 1;
+                            label(ui, "");
                             if ui.checkbox(&mut tf, tr("Tilt then decenter")).changed() {
                                 r.order = tf as u8;
                             }
-                        });
-                        ui.label("");
-                        drag(ui, &mut r.t);
-                        ui.label("");
-                        ui.label("");
-                    }
-                }
-                ui.horizontal(|ui| {
-                    if ui
-                        .small_button("＋")
-                        .on_hover_text(tr("Add a surface after"))
-                        .clicked()
-                    {
-                        add = Some(i + 1);
-                    }
-                    if ui
-                        .add_enabled(n > 1, egui::Button::new("✖").small())
-                        .on_hover_text(tr("Remove surface"))
-                        .clicked()
-                    {
-                        del = Some(i);
+                            ui.end_row();
+                        }
                     }
                 });
-                ui.end_row();
-            }
         });
+    }
     if let Some(i) = add {
         let semi = p.surfs.get(i.saturating_sub(1)).map_or(12.7, |r| r.semi);
         p.surfs.insert(

@@ -1566,3 +1566,4 @@ Not supported yet: the manual lists the supported surfaces and items (Reading .z
 Vignetting factors	ケラレ係数
 Computing ({})	計算中（{}）
 {}…	{}…
+Radius, conic, thickness and semi-diameter are edited in the Lens Data table (surfaces in air only)	曲率半径・コーニック・厚み・半径はレンズデータの表で編集（面は空気中だけ）

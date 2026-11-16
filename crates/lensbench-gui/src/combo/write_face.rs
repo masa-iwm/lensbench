@@ -111,12 +111,17 @@ impl Pick {
                     return false;
                 };
                 let row = &mut self.surfs[i];
-                // 面の並びは空気中だけ（ガラスは書かない）。最後の面の後は要素の後の空気
-                write_row(row, key, v, 1.0)
-                    || (row.kind == SurfKind::Standard
-                        && key == "t"
-                        && i + 1 < n
-                        && write_after(row, key, v))
+                // 面の並びは空気中だけ（ガラスは書かない）。最後の面の後は要素の後の空気。偏光子・波長板・Jones の
+                // 面は厚さ・半径だけ（形は持てない）。種類ごとの値は要素の設定欄で
+                match key {
+                    "t" => i + 1 < n && write_after(row, key, v),
+                    "semi" if row.kind != SurfKind::Standard => v
+                        .as_f64()
+                        .filter(|s| *s >= 0.0)
+                        .map(|s| row.semi = s)
+                        .is_some(),
+                    _ => write_row(row, key, v, 1.0),
+                }
             }
             ElemKind::Plate => match (rel, key) {
                 (0, "t") => v.as_f64().map(|t| self.t = t).is_some(),
@@ -492,6 +497,13 @@ mod tests {
                 ..Default::default()
             },
             SurfRow {
+                t: 2.0,
+                semi: 8.0,
+                ..Default::default()
+            },
+            SurfRow {
+                kind: SurfKind::Polarizer,
+                axis_deg: 30.0,
                 semi: 8.0,
                 ..Default::default()
             },
@@ -513,7 +525,7 @@ mod tests {
             Pick::new(ElemKind::Mirror),
             surfs,
         ] {
-            for rel in 0..3 {
+            for rel in 0..4 {
                 for (key, v) in &vals {
                     let mut a = base.clone();
                     a.write_face(rel, key, v.clone());
