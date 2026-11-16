@@ -245,7 +245,7 @@ fn huygens_once(
     let (mut nrm, mut wsum) = (0.0, 0.0);
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for (&wi, &((ia, ib), (a, b))) in ws.iter().zip(&slopes) {
-        let kw = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
+        let kw = lensbench_core::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if !(kw > 0.0) {
             continue;
         }

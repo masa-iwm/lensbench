@@ -3,7 +3,8 @@
 //! 波長ごとに粗い瞳の格子で偏光追跡し（[`PolGrid`]、伝搬の位相なし）、格子の Jones 行列を補間して、入射の偏光の
 //! 強度の透過率 |E_出|² / |E_入|²（OpticStudio の偏光追跡と同じ約束で |E|² が強度）の平方根を瞳の振幅にする
 //! （[`PupilAmp`]）。偏光なし（既定）は x・y の偏光の透過率の平均。振幅だけで、偏光による位相・成分の違い
-//! （偏光ごとの PSF の重ね合わせ）は入れない。
+//! （偏光ごとの PSF の重ね合わせ）は入れない。多色では、波長ごとに瞳の上で平均した光量の透過率を波長の重みに掛ける
+//! （[`lensbench_core::pupil::wave_weight`]。膜の透過率が波長で違えば、像面に届く光量の比で足す）。
 //!
 //! 使い方: [`PolAmp::new`] で作り、[`lensbench_core::psf::psf_with`]・[`crate::huygens::huygens_psf_with`]・
 //! [`lensbench_core::analysis::mtf_amp`] に渡す。系のアポダイゼーション（[`lensbench_core::pupil::Apodization`]）は

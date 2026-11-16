@@ -305,7 +305,8 @@ pub fn psf(s: &System, field: FieldSel, w: Waves, o: PsfOpts) -> Result<Psf> {
     psf_with(s, field, w, o, None)
 }
 
-/// [`psf`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す
+/// [`psf`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す。多色では
+/// 各波長の全強度を、重み × 透過した光量の割合に比例させる（[`crate::pupil::wave_weight`]）
 pub fn psf_with(
     s: &System,
     field: FieldSel,
@@ -425,7 +426,7 @@ fn psf_once(
     let (mut step, mut encl): (f64, f64) = (0.0, 0.0);
     for &wi in &ws {
         crate::par::check_cancel()?;
-        let k = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
+        let k = crate::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if !(k > 0.0) {
             continue;
         }

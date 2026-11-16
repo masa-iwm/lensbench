@@ -206,6 +206,9 @@
   `lensbench_analysis::pupil_amp::PolAmp` を `psf::psf_with`・`huygens::huygens_psf_with`・`huygens_mtf_with`・
   `analysis::mtf_amp`・`mtf_waves_amp` に渡す。CLI・serve の `psf`・`mtf`・`huygens-mtf` は `--polarization`。
   `PupilFunction` に振幅の `amp` を足した。
+- 膜・偏光の振幅（`--polarization`、`PolAmp`）を入れた多色の PSF・Huygens PSF・MTF は、波長の重みに瞳の上で平均した光量の
+  透過率を掛けて足す（ANA-34）。前は波長ごとに光量を 1 に揃えてから重みで足したので、膜の透過率が波長で違うと像面に届く光量の比と
+  違った。振幅なし・一色の結果は変わらない。重みは `lensbench_core::pupil::wave_weight`。
 - 形のパラメータの微分（光路長の微分 `opl_grad`・着地点の微分 `land_grad`、それを使う最適化・公差）を、面の形どおりに求める（KRN-32）。
   以前は `asph` をどの型でも偶数次非球面の係数とみていた。Odd Asphere の `a2`, `a4`, … は β1 r, β2 r², …、Tilted の `a2`・`a4` は
   tan α・tan β（z = x tan α + y tan β）、Irregular の `a2`〜`a16` は偏心 x・y、傾き x・y、Zs・Za・Zc、角度で、偏心・傾けた面の c・k の

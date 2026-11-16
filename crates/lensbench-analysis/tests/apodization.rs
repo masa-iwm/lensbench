@@ -5,7 +5,7 @@
 //! - Cosine Cubed の振幅は物点から入射瞳の点への向きの (cos θ / cos θ₀)^{3/2}、無限遠物体では一様
 //! - 一様なら振幅を入れる前とビット単位で同じ、理想レンズだけの系の膜・偏光の振幅は 1
 
-use lensbench_analysis::huygens::{huygens_psf, HuygensOpts};
+use lensbench_analysis::huygens::{huygens_psf, huygens_psf_with, HuygensOpts};
 use lensbench_analysis::pupil_amp::PolAmp;
 use lensbench_core::analysis::{self, MtfMethod};
 use lensbench_core::coating::Coatings;
@@ -302,4 +302,59 @@ SURF 3\n  TYPE STANDARD\n";
         .iter()
         .zip(&m1.sag)
         .any(|(a, b)| (a - b).abs() > 1e-6));
+}
+
+/// 波長ごとに一定の振幅 c_w を返す膜・偏光の振幅
+struct PerWave(Vec<f64>);
+
+impl lensbench_core::pupil::PupilAmp for PerWave {
+    fn amp(&self, w: usize, _px: f64, _py: f64) -> f64 {
+        self.0[w]
+    }
+}
+
+/// 多色の Huygens PSF も、膜・偏光の振幅の透過した光量の割合（ここでは c_w²）を波長の重みに掛ける: 振幅 c_w の多色は
+/// 振幅 1 で重みを c_w² 倍した系と同じ
+#[test]
+fn huygens_polychromatic_weights_include_the_transmitted_power() {
+    // 理想レンズ（f 100、入射瞳径 10）、3 波長
+    let s = zmx::build(
+        &zmx::parse_text(
+            "VERS 260327 42\nMODE SEQ\nUNIT MM X W X CM MR CPMM\nENPD 10\nFTYP 0 0 2 3 0 0 0\n\
+XFLN 0 0\nYFLN 0 1\nFWGN 1 1\nWAVM 1 0.55 1\nWAVM 2 0.75 1\nWAVM 3 0.45 2\nPWAV 1\n\
+SURF 0\n  TYPE STANDARD\n  CURV 0.0\n  DISZ INFINITY\nSURF 1\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 10\n\
+SURF 2\n  STOP\n  TYPE PARAXIAL\n  PARM 1 100\n  DISZ 100\nSURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n",
+        )
+        .unwrap(),
+        &Default::default(),
+        &[],
+        None,
+    )
+    .unwrap();
+    assert_eq!(s.wavelengths.len(), 3);
+    let c = vec![0.9, 0.5, 0.7];
+    let mut t = s.clone();
+    t.edit_raw(|p| {
+        for (w, ci) in p.weights.iter_mut().zip(&c) {
+            *w *= ci * ci;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let f = FieldSel::Index(1);
+    let ho = HuygensOpts {
+        pupil: Some(32),
+        image: 32,
+        pixel: None,
+    };
+    let h = huygens_psf_with(&s, f, Waves::All, ho, Some(&PerWave(c.clone()))).unwrap();
+    let h1 = huygens_psf_with(&t, f, Waves::All, ho, Some(&PerWave(vec![1.0; 3]))).unwrap();
+    let h0 = huygens_psf_with(&s, f, Waves::All, ho, Some(&PerWave(vec![1.0; 3]))).unwrap();
+    let (mut d1, mut d0): (f64, f64) = (0.0, 0.0);
+    for ((a, b), z) in h.i.data().iter().zip(h1.i.data()).zip(h0.i.data()) {
+        d1 = d1.max((a - b).abs());
+        d0 = d0.max((a - z).abs());
+    }
+    assert!(d1 < 1e-12 * h1.peak, "{d1}");
+    assert!(d0 > 1e-4 * h0.peak, "the weights must change the PSF: {d0}");
 }

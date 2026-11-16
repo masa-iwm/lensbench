@@ -463,3 +463,95 @@ fn auto_mtf_switches_to_fft_for_many_points() {
     .unwrap();
     assert_eq!((&a.tan, &a.sag), (&i.tan, &i.sag));
 }
+
+/// 波長ごとに一定の振幅 c_w を返す膜・偏光の振幅
+struct PerWave(Vec<f64>);
+
+impl lensbench_core::pupil::PupilAmp for PerWave {
+    fn amp(&self, w: usize, _px: f64, _py: f64) -> f64 {
+        self.0[w]
+    }
+}
+
+/// 膜・偏光の振幅を入れた多色の PSF・MTF は、波長の重みに透過した光量の割合（ここでは c_w²）を掛けて足す。
+/// 振幅 c_w の多色は、振幅 1 で重みを c_w² 倍した系の多色と同じになる
+#[test]
+fn polychromatic_weights_include_the_transmitted_power() {
+    let s = load("A0");
+    let nw = s.wavelengths.len();
+    assert!(nw > 1);
+    let c: Vec<f64> = (0..nw)
+        .map(|i| 0.4 + 0.5 * i as f64 / (nw - 1) as f64)
+        .collect();
+    let (amp, one) = (PerWave(c.clone()), PerWave(vec![1.0; nw]));
+    let mut t = s.clone();
+    t.edit_raw(|p| {
+        for (w, ci) in p.weights.iter_mut().zip(&c) {
+            *w *= ci * ci;
+        }
+        Ok(())
+    })
+    .unwrap();
+    let f = FieldSel::Index(s.fields.len() - 1);
+    for wi in 0..nw {
+        let k = lensbench_core::pupil::wave_weight(&s, f, wi, true, Some(&amp)).unwrap();
+        assert!((k - t.weights[wi]).abs() < 1e-12 * t.weights[wi].max(1.0));
+        let k1 = lensbench_core::pupil::wave_weight(&s, f, wi, false, Some(&amp)).unwrap();
+        assert_eq!(k1, 1.0);
+    }
+    let fr = [0.0, 20.0, 50.0];
+    let m = analysis::mtf_amp(
+        &s,
+        f,
+        Waves::All,
+        None,
+        &fr,
+        analysis::MtfMethod::Auto,
+        None,
+        Some(&amp),
+    )
+    .unwrap();
+    let m1 = analysis::mtf_amp(
+        &t,
+        f,
+        Waves::All,
+        None,
+        &fr,
+        analysis::MtfMethod::Auto,
+        None,
+        Some(&one),
+    )
+    .unwrap();
+    let m0 = analysis::mtf_amp(
+        &s,
+        f,
+        Waves::All,
+        None,
+        &fr,
+        analysis::MtfMethod::Auto,
+        None,
+        Some(&one),
+    )
+    .unwrap();
+    let mut differs = false;
+    for k in 0..fr.len() {
+        assert!((m.tan[k] - m1.tan[k]).abs() < 1e-12 && (m.sag[k] - m1.sag[k]).abs() < 1e-12);
+        differs |= (m.tan[k] - m0.tan[k]).abs() > 1e-6;
+    }
+    assert!(differs, "the weights must change the polychromatic MTF");
+    let mw =
+        analysis::mtf_waves_amp(&s, f, None, &fr, analysis::MtfMethod::Auto, Some(&amp)).unwrap();
+    for k in 0..fr.len() {
+        assert!((mw.poly.tan[k] - m1.tan[k]).abs() < 1e-12);
+    }
+    let o = psf::PsfOpts {
+        pupil: Some(32),
+        image: 32,
+        ..Default::default()
+    };
+    let p = psf::psf_with(&s, f, Waves::All, o, Some(&amp)).unwrap();
+    let p1 = psf::psf_with(&t, f, Waves::All, o, Some(&one)).unwrap();
+    for (a, b) in p.i.data().iter().zip(p1.i.data()) {
+        assert!((a - b).abs() < 1e-12 * p1.peak.max(1.0));
+    }
+}

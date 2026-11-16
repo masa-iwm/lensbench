@@ -1817,7 +1817,8 @@ pub fn mtf_only(
 }
 
 /// [`mtf_only`] に、膜・偏光の振幅 extra（[`PupilAmp`]、OpticStudio の「Use Polarization」に当たる選択肢）を足す。
-/// 系のアポダイゼーション（[`System::apodization`]）はどの MTF にも入る
+/// 系のアポダイゼーション（[`System::apodization`]）はどの MTF にも入る。多色の波長の重みには透過した光量の割合を
+/// 掛ける（[`crate::pupil::wave_weight`]）
 #[allow(clippy::too_many_arguments)]
 pub fn mtf_amp(
     s: &System,
@@ -1834,7 +1835,7 @@ pub fn mtf_amp(
     let ws: Vec<usize> = w.map_or_else(|| (0..s.wavelengths.len()).collect(), |w| vec![w]);
     let mut otfs = Vec::new();
     for &wi in &ws {
-        let wt = if ws.len() == 1 { 1.0 } else { s.weights[wi] };
+        let wt = crate::pupil::wave_weight(s, field, wi, ws.len() > 1, extra)?;
         if wt > 0.0 {
             otfs.push((wt, wave_otf(s, field, wi, n, freqs, method, only, extra)?));
         }
@@ -1883,14 +1884,13 @@ pub fn mtf_waves_amp(
         cuts.push(mtf_cutoff(s, field, wi)?);
     }
     let multi = otfs.len() > 1;
-    let poly: Vec<(f64, &_)> = otfs
-        .iter()
-        .enumerate()
-        .filter_map(|(wi, o)| {
-            let wt = if multi { s.weights[wi] } else { 1.0 };
-            (wt > 0.0).then_some((wt, o))
-        })
-        .collect();
+    let mut poly: Vec<(f64, &_)> = Vec::new();
+    for (wi, o) in otfs.iter().enumerate() {
+        let wt = crate::pupil::wave_weight(s, field, wi, multi, extra)?;
+        if wt > 0.0 {
+            poly.push((wt, o));
+        }
+    }
     if poly.is_empty() {
         invalid!("MTF: no wavelength with positive weight");
     }

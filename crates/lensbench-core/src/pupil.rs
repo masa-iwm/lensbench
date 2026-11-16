@@ -521,6 +521,48 @@ impl<'a> WaveAmp<'a> {
     }
 }
 
+/// [`wave_weight`] で透過率を平均する瞳の格子の一辺（膜・偏光の振幅は瞳の上で滑らかなので粗くてよい）
+pub const TRANSMISSION_GRID: usize = 33;
+
+/// 多色の PSF・MTF で波長 w に掛ける重み。一色（multi が false）は 1、多色は系の波長の重みに、膜・偏光の振幅
+/// extra（なければ 1）の光量の透過率を掛けたもの。
+///
+/// 各波長の PSF・OTF は瞳を通った全光量で揃えてから重みで足すので、膜の透過率が波長で違うときの像面に届く光量の比
+/// （重み × 透過率）はここで入れる。透過率は瞳の上（一辺 [`TRANSMISSION_GRID`] の区間の中心）で、系の
+/// アポダイゼーションの強度を重みにした extra² の平均。extra が有限でない点（偏光の追跡で光線が届かない）は分母にも
+/// 数えない（ケラレは振幅なしの多色と同じく波長ごとに揃えたまま）。どの点も届かなければ 0（その波長は足さない）
+pub fn wave_weight(
+    s: &System,
+    field: FieldSel,
+    w: usize,
+    multi: bool,
+    extra: Option<&dyn PupilAmp>,
+) -> Result<f64> {
+    if !multi {
+        return Ok(1.0);
+    }
+    let k = s.weights[w];
+    let Some(e) = extra else {
+        return Ok(k);
+    };
+    if !(k > 0.0) {
+        return Ok(k);
+    }
+    let apod = ApodMap::new(s, field)?;
+    let sm = PupilGrid::Cells(TRANSMISSION_GRID).samples();
+    let (mut num, mut den) = (0.0, 0.0);
+    for q in 0..sm.len() {
+        let (px, py) = (sm.px[q], sm.py[q]);
+        let t = e.amp(w, px, py);
+        if t.is_finite() {
+            let fa = sm.wt[q] * apod.amp(px, py).powi(2);
+            num += fa * t * t;
+            den += fa;
+        }
+    }
+    Ok(if den > 0.0 { k * num / den } else { 0.0 })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
