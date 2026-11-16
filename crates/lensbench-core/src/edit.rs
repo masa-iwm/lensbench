@@ -339,16 +339,31 @@ impl System {
                 }
             }
         }
-        let mut s = self.clone();
-        if let Some((_, v)) = fields.iter().find(|(n, _)| n == "type") {
-            s.set_surface_type(j, surf_type_parse(&v.text("type")?)?)?;
-        }
-        if let Some((_, v)) = fields.iter().find(|(n, _)| n == "material") {
-            s.set_material(j, &v.text("material")?)?;
-        }
-        s.edit_sys(|s| {
+        // 種類・材料・値を 1 つの複製に当て、後始末は最後に 1 回（IOO-17）
+        let typ = match fields.iter().find(|(n, _)| n == "type") {
+            Some((_, v)) => {
+                let t = surf_type_parse(&v.text("type")?)?;
+                self.check_surface_type(j, t)?;
+                Some(t)
+            }
+            None => None,
+        };
+        let mat = match fields.iter().find(|(n, _)| n == "material") {
+            Some((_, v)) => {
+                let txt = v.text("material")?;
+                Some((self.check_material(j, &txt)?, txt))
+            }
+            None => None,
+        };
+        self.edit_sys(|s| {
             let last = s.surfaces.len() - 1;
             let d = &mut s.rx_mut().surfaces[j];
+            if let Some(t) = typ {
+                set_type(d, t);
+            }
+            if let Some((m, txt)) = mat {
+                set_material(d, j, m, &txt)?;
+            }
             for (name, v) in fields {
                 match name.as_str() {
                     "type" | "material" => {}
@@ -432,9 +447,7 @@ impl System {
                 }
             }
             Ok(())
-        })?;
-        *self = s;
-        Ok(())
+        })
     }
 
     /// 面 j の値（名前は [`SURF_FIELDS`] と "mirror"・"stop"・"n"）
@@ -513,73 +526,40 @@ impl System {
     /// 面 j の種類を変える。種類で意味の変わる値（曲率・円錐係数・非球面、座標ブレークの値、傾き偏心）は、
     /// 新しい種類に無いものを 0 に戻す。形のデータの要る種類（Zernike・Grid Sag など）は、その面がすでに持つときだけ
     pub fn set_surface_type(&mut self, j: usize, typ: SurfType) -> Result<()> {
+        self.check_surface_type(j, typ)?;
+        self.edit_sys(|s| {
+            set_type(&mut s.rx_mut().surfaces[j], typ);
+            Ok(())
+        })
+    }
+
+    /// [`Self::set_surface_type`] の前の確かめ
+    fn check_surface_type(&self, j: usize, typ: SurfType) -> Result<()> {
         if j == 0 || j > self.image() {
             invalid!("surface {j}");
         }
         if typ == SurfType::CoordBrk && (j == self.image() || self.surfaces[j].stop) {
             invalid!("surface {j} (image or stop) can't be a coordinate break");
         }
-        self.edit_sys(|s| {
-            let d = &mut s.rx_mut().surfaces[j];
-            let old = d.typ;
-            d.typ = typ;
-            if typ == SurfType::CoordBrk {
-                d.c = 0.0;
-                d.k = 0.0;
-                d.asph.clear();
-                d.cx = 0.0;
-                d.mat = Material::Air;
-                d.before = None;
-                d.after = After::None;
-                d.dn = 0.0;
-                d.disp = 0.0;
-            } else if old == SurfType::CoordBrk {
-                if d.mat == Material::Inherit {
-                    d.mat = Material::Air;
-                }
-                d.cb = [0.0; 5];
-                d.cb_order = 0;
-            }
-            if typ == SurfType::Jones {
-                d.c = 0.0;
-                d.k = 0.0;
-                d.asph.clear();
-            }
-            if matches!(
-                typ,
-                SurfType::Standard | SurfType::CoordBrk | SurfType::Jones
-            ) {
-                d.asph.clear();
-            }
-            if typ != SurfType::Toroidal {
-                d.cx = 0.0;
-            }
-            Ok(())
-        })
+        Ok(())
     }
 
     /// 面 j の材料（ガラス名・"nd,vd[,dpgf]"・空か AIR・MIRROR）を変える。dn・disp は残す
     pub fn set_material(&mut self, j: usize, mat: &str) -> Result<()> {
+        let m = self.check_material(j, mat)?;
+        self.edit_sys(|s| set_material(&mut s.rx_mut().surfaces[j], j, m, mat))
+    }
+
+    /// [`Self::set_material`] の前の確かめ。読んだ材料を返す
+    fn check_material(&self, j: usize, mat: &str) -> Result<Material> {
         if j > self.image() {
             invalid!("surface {j}");
         }
         let m = Material::parse(mat);
-        let mirror = m.is_mirror();
-        if j == 0 && mirror {
+        if j == 0 && m.is_mirror() {
             invalid!("the object surface can't be a mirror");
         }
-        self.edit_sys(|s| {
-            let d = &mut s.rx_mut().surfaces[j];
-            if d.typ == SurfType::CoordBrk && !no_material(&m) {
-                invalid!("surface {j}: material {mat} on a coordinate break");
-            }
-            d.mat = m;
-            if mirror {
-                d.dn = 0.0;
-                d.disp = 0.0;
-            }
-            Ok(())
-        })
+        Ok(m)
     }
 
     /// 面 j の膜（膜ファイルの名前、空で無し）
@@ -861,4 +841,55 @@ fn renumber(s: &mut System, m: impl Fn(usize) -> Option<usize>, at: usize, inser
             }
         }
     }
+}
+
+/// 面の種類を変える（[`System::set_surface_type`] の中身）
+fn set_type(d: &mut Surface, typ: SurfType) {
+    let old = d.typ;
+    d.typ = typ;
+    if typ == SurfType::CoordBrk {
+        d.c = 0.0;
+        d.k = 0.0;
+        d.asph.clear();
+        d.cx = 0.0;
+        d.mat = Material::Air;
+        d.before = None;
+        d.after = After::None;
+        d.dn = 0.0;
+        d.disp = 0.0;
+    } else if old == SurfType::CoordBrk {
+        if d.mat == Material::Inherit {
+            d.mat = Material::Air;
+        }
+        d.cb = [0.0; 5];
+        d.cb_order = 0;
+    }
+    if typ == SurfType::Jones {
+        d.c = 0.0;
+        d.k = 0.0;
+        d.asph.clear();
+    }
+    if matches!(
+        typ,
+        SurfType::Standard | SurfType::CoordBrk | SurfType::Jones
+    ) {
+        d.asph.clear();
+    }
+    if typ != SurfType::Toroidal {
+        d.cx = 0.0;
+    }
+}
+
+/// 面 j の材料を変える（[`System::set_material`] の中身）。mat は誤りの文に書く元の綴り
+fn set_material(d: &mut Surface, j: usize, m: Material, mat: &str) -> Result<()> {
+    if d.typ == SurfType::CoordBrk && !no_material(&m) {
+        invalid!("surface {j}: material {mat} on a coordinate break");
+    }
+    let mirror = m.is_mirror();
+    d.mat = m;
+    if mirror {
+        d.dn = 0.0;
+        d.disp = 0.0;
+    }
+    Ok(())
 }
