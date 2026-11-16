@@ -191,11 +191,8 @@ fn compensator_per_config() {
         json!({"compensators": [{"param": "G.shift", "config": [1]}]}),
         json!({"compensators": [{"param": "G.shift", "configs": [3]}], "trials": 1}),
     ] {
-        let e = spec_from_json(&bad, vec![s.clone(), s2.clone()], &HashMap::new()).and_then(|m| {
-            lensbench_design::montecarlo::run(&m)
-                .map_err(|e| e.to_string())
-                .map(|_| ())
-        });
+        let e = spec_from_json(&bad, vec![s.clone(), s2.clone()], &HashMap::new())
+            .and_then(|m| lensbench_design::montecarlo::run(&m).map(|_| ()));
         assert!(e.is_err(), "{bad}");
     }
 }

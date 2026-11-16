@@ -142,9 +142,9 @@ impl Overlay {
 }
 
 /// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
-pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>, String> {
+pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(String, System)>> {
     if !l.any() {
-        let s = load_file(c).map_err(|e| e.to_string())?;
+        let s = load_file(c)?;
         crate::provenance::set(&s);
         return Ok(vec![(String::new(), s)]);
     }
@@ -162,14 +162,12 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
             ..Default::default()
         };
         let txt = glass::read_text(&c.file).map_err(|x| format!("{}: {x}", c.file.display()))?;
-        let n = zmx::parse_text(&txt)
-            .map_err(|x| x.to_string())?
-            .configurations();
+        let n = zmx::parse_text(&txt)?.configurations();
         let ks: Vec<usize> = index_list(v, n, "configuration")?
             .into_iter()
             .map(|k| k + 1)
             .collect();
-        let ss = zmx::load_configs(&c.file, &opt, &ks).map_err(|x| x.to_string())?;
+        let ss = zmx::load_configs(&c.file, &opt, &ks)?;
         return Ok(ks.iter().map(|k| format!("C{k}")).zip(ss).collect());
     }
     if !is_json {
@@ -177,7 +175,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
             "--states and --beam-paths are only for project files (.json); .zmx uses --cfgs".into(),
         );
     }
-    let src = Source::read(&c.file).map_err(|e| e.to_string())?;
+    let src = Source::read(&c.file)?;
     let Some(p) = src.project() else {
         return Err("--states and --beam-paths are only for project files (.json)".into());
     };
@@ -196,7 +194,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
         }
         Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
     };
-    let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
+    let cat = LensCatalog::load_registered(&c.lens_catalog)?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
         // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
@@ -245,15 +243,18 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
 }
 
 /// "1,3" のような 1 始まりの番号の並びを 0 始まりにする。"all" は 0..n
-pub fn index_list(s: &str, n: usize, what: &str) -> Result<Vec<usize>, String> {
+pub fn index_list(s: &str, n: usize, what: &str) -> lensbench_core::Result<Vec<usize>> {
     if s.eq_ignore_ascii_case("all") {
         return Ok((0..n).collect());
     }
     s.split(',')
         .map(|t| {
-            let k: usize = t.trim().parse().map_err(|_| format!("{what} number {t}"))?;
+            let k: usize = t
+                .trim()
+                .parse()
+                .map_err(|_| lensbench_core::Error::from(format!("{what} number {t}")))?;
             if k == 0 || k > n {
-                return Err(format!("no {what} {k} (1 to {n})"));
+                return Err(format!("no {what} {k} (1 to {n})").into());
             }
             Ok(k - 1)
         })
@@ -261,7 +262,7 @@ pub fn index_list(s: &str, n: usize, what: &str) -> Result<Vec<usize>, String> {
 }
 
 /// --save: 解析の結果を書き出す（json はそのまま、csv・npz は表にして）
-pub fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
+pub fn save_value(p: &std::path::Path, v: &Value) -> lensbench_core::Result<()> {
     let json = p
         .extension()
         .is_some_and(|x| x.eq_ignore_ascii_case("json"));
@@ -271,9 +272,9 @@ pub fn save_value(p: &std::path::Path, v: &Value) -> Result<(), String> {
             o.insert("provenance".into(), crate::provenance::value());
         }
         let s = serde_json::to_string_pretty(&v).unwrap();
-        lensbench_core::vfs::write(p, s + "\n").map_err(|x| format!("{}: {x}", p.display()))
+        Ok(lensbench_core::vfs::write(p, s + "\n").map_err(|x| format!("{}: {x}", p.display()))?)
     } else {
-        table::from_json(v).save(p)
+        Ok(table::from_json(v).save(p)?)
     }
 }
 
@@ -322,7 +323,7 @@ pub struct CoatInterfaces {
 }
 
 /// 系 s の膜の境界（CLI の coatings の 1 構成分）
-pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> Result<CoatInterfaces, String> {
+pub fn coat_interfaces(s: &System, tables: &[PathBuf]) -> lensbench_core::Result<CoatInterfaces> {
     let e = |e: lensbench_core::Error| e.to_string();
     let mut c = Coatings::for_system(s).map_err(e)?;
     for t in tables {

@@ -110,7 +110,7 @@ impl UserTerm for PluginTerm {
 }
 
 /// JSON の {"名前": 数・文字列・数の並び} → 設定
-pub fn config_of(v: Option<&Value>) -> std::result::Result<Config, String> {
+pub fn config_of(v: Option<&Value>) -> lensbench_core::Result<Config> {
     let mut c = Config::new();
     let Some(v) = v else { return Ok(c) };
     let m = v
@@ -129,9 +129,9 @@ pub fn config_of(v: Option<&Value>) -> std::result::Result<Config, String> {
                     .collect::<std::result::Result<_, _>>()?,
             ),
             _ => {
-                return Err(format!(
-                    "args {k} must be a number, string or list of numbers ({x})"
-                ))
+                return Err(
+                    format!("args {k} must be a number, string or list of numbers ({x})").into(),
+                )
             }
         };
         c.insert(k.clone(), p);
@@ -140,7 +140,7 @@ pub fn config_of(v: Option<&Value>) -> std::result::Result<Config, String> {
 }
 
 /// JSON の {"名前": 数・数の並び} → 入力の配列
-pub fn arrays_of(v: Option<&Value>) -> std::result::Result<Arrays, String> {
+pub fn arrays_of(v: Option<&Value>) -> lensbench_core::Result<Arrays> {
     let mut a = Arrays::new();
     let Some(v) = v else { return Ok(a) };
     let m = v
@@ -152,7 +152,7 @@ pub fn arrays_of(v: Option<&Value>) -> std::result::Result<Arrays, String> {
     Ok(a)
 }
 
-pub fn array_of(k: &str, x: &Value) -> std::result::Result<Array, String> {
+pub fn array_of(k: &str, x: &Value) -> lensbench_core::Result<Array> {
     match x {
         Value::Number(n) => Ok(Array::scalar(n.as_f64().unwrap_or(f64::NAN))),
         Value::Array(v) => {
@@ -163,10 +163,8 @@ pub fn array_of(k: &str, x: &Value) -> std::result::Result<Array, String> {
                         .ok_or_else(|| format!("input {k} must be a list of numbers ({x})"))
                 })
                 .collect::<std::result::Result<_, _>>()?;
-            Array::f64(vec![d.len()], d).map_err(|e| e.to_string())
+            Ok(Array::f64(vec![d.len()], d)?)
         }
-        _ => Err(format!(
-            "input {k} must be a number or a list of numbers ({x})"
-        )),
+        _ => Err(format!("input {k} must be a number or a list of numbers ({x})").into()),
     }
 }

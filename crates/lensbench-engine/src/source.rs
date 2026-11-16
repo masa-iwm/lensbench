@@ -6,7 +6,7 @@ use crate::load::SysSpec;
 
 /// 読み込んだ後の変更（serve の set・edit）を別に読んだ系に当てる口（系, 説明に付ける名前, 当てなかった変更）
 pub(crate) type Replay<'a> =
-    &'a dyn Fn(System, &str, &mut Vec<String>) -> std::result::Result<System, String>;
+    &'a dyn Fn(System, &str, &mut Vec<String>) -> lensbench_core::Result<System>;
 
 /// 系のファイルの読み方。ファイルは初めに要るときに 1 回だけ読み（[`lensbench_project::open::Source`]）、状態・経路・
 /// プロジェクトの文字列・別の状態の系はそこから引く（CLI-13）
@@ -33,11 +33,6 @@ impl<'a> FileSource<'a> {
             .as_ref()
             .map_err(Clone::clone)
     }
-}
-
-/// 読む所の誤りの文（`load_file` の「不正: …」は頭を重ねない）
-fn invalid(e: String) -> Error {
-    Error::Invalid(lensbench_core::error::strip_invalid(&e).to_string())
 }
 
 impl lensbench_analysis::Source for FileSource<'_> {
@@ -119,7 +114,7 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     None if project => format!("state {}", c.state.as_deref().unwrap_or("default")),
                     None => format!("configuration {cfg}"),
                 };
-                r(s, &label, notes).map_err(invalid)
+                r(s, &label, notes)
             }
         }
     }

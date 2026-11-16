@@ -242,7 +242,7 @@ impl From<String> for VarSpec {
 
 impl VarSpec {
     /// (名前, 範囲)。範囲を書かなければ None
-    pub fn parts(&self) -> Result<(&str, Option<Range>), String> {
+    pub fn parts(&self) -> lensbench_core::Result<(&str, Option<Range>)> {
         match self {
             VarSpec::Short(s) => parse_var(s),
             VarSpec::Full(VarRange { name, min, max }) => {
@@ -267,17 +267,19 @@ impl VarSpec {
 }
 
 /// 変数の書き方 "d1.t" か "d1.t=下限:上限"（片側は空でよい）を (名前, 範囲) に分ける
-fn parse_var(v: &str) -> Result<(&str, Option<Range>), String> {
+fn parse_var(v: &str) -> lensbench_core::Result<(&str, Option<Range>)> {
     let Some((name, r)) = v.split_once('=') else {
         return Ok((v.trim(), None));
     };
     let (lo, hi) = r
         .split_once(':')
         .ok_or_else(|| format!("the range of variable {v} is min:max"))?;
-    let num = |t: &str, d: f64| -> Result<f64, String> {
+    let num = |t: &str, d: f64| -> lensbench_core::Result<f64> {
         match t.trim() {
             "" => Ok(d),
-            t => t.parse().map_err(|_| format!("range {t} of variable {v}")),
+            t => t
+                .parse()
+                .map_err(|_| format!("range {t} of variable {v}").into()),
         }
     };
     let range = (num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
@@ -318,12 +320,12 @@ fn max_count() -> usize {
 }
 
 impl SwapSpec {
-    pub fn from_json(txt: &str) -> Result<SwapSpec, String> {
+    pub fn from_json(txt: &str) -> lensbench_core::Result<SwapSpec> {
         let r = match lensbench_project::schema::strip_schema_key(txt) {
             Some(v) => serde_json::from_value(v),
             None => serde_json::from_str(txt),
         };
-        r.map_err(|e| format!("swap search settings: {e}"))
+        r.map_err(|e| format!("swap search settings: {e}").into())
     }
 }
 
@@ -343,8 +345,8 @@ pub fn lens_info(
     zmx_text: &str,
     efl_cat: f64,
     glass_dirs: &[PathBuf],
-) -> Result<(f64, f64, f64), String> {
-    let raw = zmx::parse_text(zmx_text).map_err(|e| e.to_string())?;
+) -> lensbench_core::Result<(f64, f64, f64)> {
+    let raw = zmx::parse_text(zmx_text)?;
     let s = zmx::build(
         &raw,
         &zmx::LoadOptions {
@@ -354,9 +356,8 @@ pub fn lens_info(
         },
         &glass::catalog_dirs(glass_dirs),
         None,
-    )
-    .map_err(|e| e.to_string())?;
-    let els = elements::split(&s).map_err(|e| e.to_string())?;
+    )?;
+    let els = elements::split(&s)?;
     let e = els
         .iter()
         .find(|e| e.kind == EKind::Lens)
@@ -477,7 +478,7 @@ impl<'a> SwapSearch<'a> {
         env: &Env,
         cat: &'a LensCatalog,
         spec: SwapSpec,
-    ) -> Result<SwapSearch<'a>, String> {
+    ) -> lensbench_core::Result<SwapSearch<'a>> {
         if spec.state.is_some() && !spec.states.is_empty() {
             return Err("state and states can't be used together".into());
         }
@@ -528,17 +529,17 @@ impl<'a> SwapSearch<'a> {
         let mut picks = Vec::new();
         for (k, sl) in spec.slots.iter().enumerate() {
             if spec.slots[..k].iter().any(|x| x.block == sl.block) {
-                return Err(format!("place {} appears twice", sl.block));
+                return Err(format!("place {} appears twice", sl.block).into());
             }
             let hits = block_pointers(&base["blocks"], &sl.block);
             let ptr = match hits.as_slice() {
                 [x] => x.clone(),
-                [] => return Err(format!("no block {}", sl.block)),
-                _ => return Err(format!("two or more blocks with id {}", sl.block)),
+                [] => return Err(format!("no block {}", sl.block).into()),
+                _ => return Err(format!("two or more blocks with id {}", sl.block).into()),
             };
             let b = base.pointer(&ptr).unwrap();
             if b["type"] != "lens" {
-                return Err(format!("block {} is not a lens (type lens)", sl.block));
+                return Err(format!("block {} is not a lens (type lens)", sl.block).into());
             }
             let rev0 = b["reversed"].as_bool().unwrap_or(false);
             let lenses = if let Some(idx) = &slot_idx[k] {
@@ -551,7 +552,7 @@ impl<'a> SwapSearch<'a> {
                             format!("no {} {} in the lens catalogs", q.vendor, q.part)
                         })?;
                         let (efl, diameter, thickness) = lens_info(&l.zmx, l.efl, &env.glass_dirs)
-                            .map_err(|e| format!("{} {}: {e}", q.vendor, q.part))?;
+                            .map_err(|e| e.at(format!("{} {}", q.vendor, q.part)))?;
                         Ok(Candidate {
                             vendor: l.vendor.clone(),
                             part: l.part.clone(),
@@ -560,20 +561,21 @@ impl<'a> SwapSearch<'a> {
                             thickness,
                         })
                     })
-                    .collect::<Result<Vec<_>, String>>()?
+                    .collect::<lensbench_core::Result<Vec<_>>>()?
             };
             if lenses.is_empty() {
                 return Err(if cat.is_empty() {
                     format!(
                         "place {}: no candidates (0 items in the lens catalogs; give the maker folder or a folder with .zmx or ZMF)",
                         sl.block
-                    )
+                    ).into()
                 } else {
                     format!(
                         "slot {}: no candidates (0 of the {} catalog items match the conditions)",
                         sl.block,
                         cat.len()
                     )
+                    .into()
                 });
             }
             let mut v = Vec::new();
@@ -612,7 +614,8 @@ impl<'a> SwapSearch<'a> {
                 "too many combinations ({}, limit {}; raise it with max_count)",
                 n.map_or("overflow".to_string(), |n| n.to_string()),
                 s.spec.max_count
-            )),
+            )
+            .into()),
         }
     }
 
@@ -640,7 +643,7 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// 組 i で差し替えたプロジェクト
-    pub fn project(&self, i: usize) -> Result<Project, String> {
+    pub fn project(&self, i: usize) -> lensbench_core::Result<Project> {
         self.project_of(&self.assign(i))
     }
 
@@ -650,7 +653,7 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// 所ごとの選び方 a（None の所はプロジェクトの玉のまま）で差し替えたプロジェクト
-    fn project_of(&self, a: &[Option<usize>]) -> Result<Project, String> {
+    fn project_of(&self, a: &[Option<usize>]) -> lensbench_core::Result<Project> {
         let mut p = self.base.clone();
         for (k, c) in a.iter().enumerate() {
             let Some(c) = *c else { continue };
@@ -671,12 +674,12 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// 組 i の系と、最適化の問題
-    pub fn problem(&self, i: usize) -> Result<(System, Problem), String> {
+    pub fn problem(&self, i: usize) -> lensbench_core::Result<(System, Problem)> {
         self.problem_n(i).map(|(s, p, _)| (s, p))
     }
 
     /// [`Self::problem`] と、像の項（既定の評価関数）の数
-    fn problem_n(&self, i: usize) -> Result<(System, Problem, usize), String> {
+    fn problem_n(&self, i: usize) -> lensbench_core::Result<(System, Problem, usize)> {
         self.problem_of(&self.assign(i), self.spec.rings)
     }
 
@@ -685,7 +688,7 @@ impl<'a> SwapSearch<'a> {
         &self,
         a: &[Option<usize>],
         rings: usize,
-    ) -> Result<(System, Problem, usize), String> {
+    ) -> lensbench_core::Result<(System, Problem, usize)> {
         let p = self.project_of(a)?;
         let look = |v: &str, q: &str| self.cat.zmx(v, q);
         let env = Env {
@@ -728,7 +731,7 @@ impl<'a> SwapSearch<'a> {
                         return Err(format!(
                             "variable {spec} points at another surface in state {} (put it in state_vars)",
                             self.spec.states[k]
-                        ));
+                        ).into());
                     }
                 }
             }
@@ -821,7 +824,7 @@ impl<'a> SwapSearch<'a> {
     }
 
     /// 組 i の最適化の結果 fit を [`SwapResult`] に
-    fn result(&self, i: usize, fit: Result<SwapFit, String>) -> SwapResult {
+    fn result(&self, i: usize, fit: lensbench_core::Result<SwapFit>) -> SwapResult {
         let lenses = self
             .combo(i)
             .iter()
@@ -840,7 +843,7 @@ impl<'a> SwapSearch<'a> {
             .collect();
         let (fit, error) = match fit {
             Ok(f) => (Some(f), None),
-            Err(e) => (None, Some(e)),
+            Err(e) => (None, Some(String::from(e))),
         };
         SwapResult {
             i,
@@ -850,7 +853,7 @@ impl<'a> SwapSearch<'a> {
         }
     }
 
-    fn optimize(&self, a: &[Option<usize>]) -> Result<SwapFit, String> {
+    fn optimize(&self, a: &[Option<usize>]) -> lensbench_core::Result<SwapFit> {
         let (s, pr0, n_image) = self.problem_of(a, self.spec.rings)?;
         let (start, pr, r, names) = self.best_start(pr0)?;
         self.report(&s, n_image, start, pr, r, names)
@@ -877,7 +880,10 @@ impl<'a> SwapSearch<'a> {
     /// o.out があれば一段目の粗い評価関数を組ごとにそのファイルへ書き、o.resume なら同じ頭のファイルの続きから回す
     /// （o.header・o.stage は使わず、一段目の頭を書く）。進み具合は段 `"screen"` で文脈の受け手へ知らせ、文脈の中断の印で止める。
     /// 止めたら番号は空
-    pub fn screen(&self, o: &lensbench_runs::RunOpts) -> Result<(Vec<usize>, bool), String> {
+    pub fn screen(
+        &self,
+        o: &lensbench_runs::RunOpts,
+    ) -> lensbench_core::Result<(Vec<usize>, bool)> {
         let n = self.count();
         let Some(pre) = &self.spec.prescreen else {
             return Ok(((0..n).collect(), false));
@@ -894,15 +900,14 @@ impl<'a> SwapSearch<'a> {
             let v = self.coarse_merit(i, pre.rings);
             vals.lock_ok()[i] = v;
             serde_json::to_string(&v).map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
-        })
-        .map_err(|e| e.to_string())?;
+        })?;
         if sum.cancelled {
             return Ok((Vec::new(), true));
         }
         let mut m = vals.into_inner().unwrap_or_else(|e| e.into_inner());
         if let Some(path) = o.out {
             // 再開で飛ばした組は書いた値から
-            let (_, rows) = lensbench_runs::read_results(path).map_err(|e| e.to_string())?;
+            let (_, rows) = lensbench_runs::read_results(path)?;
             for (i, _, r) in rows {
                 if i < n {
                     m[i] = serde_json::from_str::<Option<f64>>(&r).map_err(|e| e.to_string())?;
@@ -974,7 +979,7 @@ impl<'a> SwapSearch<'a> {
             }
             for (c, sv) in pr.configs.iter_mut().zip(&set) {
                 if !sv.is_empty() {
-                    *c = c.with_params(sv).map_err(|e| e.to_string())?;
+                    *c = c.with_params(sv)?;
                 }
             }
             match lensbench_optim::dls_inner(&pr, &o) {
@@ -1006,10 +1011,10 @@ impl<'a> SwapSearch<'a> {
         pr: Problem,
         r: lensbench_optim::DlsResult,
         names: Vec<(String, Option<usize>)>,
-    ) -> Result<SwapFit, String> {
+    ) -> lensbench_core::Result<SwapFit> {
         let mut img = pr.clone();
         img.terms.truncate(n_image);
-        let image_merit = img.merit(&r.x).map_err(|e| e.to_string())?;
+        let image_merit = img.merit(&r.x)?;
         let vars = pr
             .vars
             .iter()
@@ -1031,7 +1036,7 @@ impl<'a> SwapSearch<'a> {
             for (k, name) in self.spec.states.iter().enumerate() {
                 let mut one = img.clone();
                 one.terms.retain(|t| t.config == k);
-                let m = one.merit(&r.x).map_err(|e| e.to_string())?;
+                let m = one.merit(&r.x)?;
                 let efl = fin(r.systems[k].paraxial().efl);
                 st.push(SwapState {
                     state: name.clone(),
@@ -1099,7 +1104,7 @@ impl<'a> SwapSearch<'a> {
         out: Option<&std::path::Path>,
         resume: bool,
         threads: Option<usize>,
-    ) -> Result<Vec<SwapResult>, String> {
+    ) -> lensbench_core::Result<Vec<SwapResult>> {
         if self.spec.beam.is_some() {
             return self.beam_to(out, threads);
         }
@@ -1145,11 +1150,11 @@ impl<'a> SwapSearch<'a> {
                 e
             }
         })?;
-        let (_, rows) = lensbench_runs::read_results(path).map_err(|e| e.to_string())?;
+        let (_, rows) = lensbench_runs::read_results(path)?;
         let mut v = rows
             .into_iter()
-            .map(|(_, _, r)| serde_json::from_str(&r).map_err(|e| e.to_string()))
-            .collect::<Result<Vec<SwapResult>, String>>()?;
+            .map(|(_, _, r)| serde_json::from_str(&r).map_err(|e| e.to_string().into()))
+            .collect::<lensbench_core::Result<Vec<SwapResult>>>()?;
         sort_results(&mut v);
         Ok(v)
     }
@@ -1334,7 +1339,7 @@ fn fin(x: f64) -> Option<f64> {
 }
 
 /// 変数の書き方: id のある空気は `id.t`、ほかは [`System::param`]
-fn var_param(s: &System, gaps: &[Gap], spec: &str) -> Result<Param, String> {
+fn var_param(s: &System, gaps: &[Gap], spec: &str) -> lensbench_core::Result<Param> {
     if let Some((id, k)) = spec.rsplit_once('.') {
         let hits: Vec<&Gap> = gaps.iter().filter(|g| g.0 == id.trim()).collect();
         if !hits.is_empty() && k.trim().eq_ignore_ascii_case("t") {
@@ -1343,23 +1348,24 @@ fn var_param(s: &System, gaps: &[Gap], spec: &str) -> Result<Param, String> {
                 _ => {
                     return Err(format!(
                         "air {id} is passed twice (move the round-trip gap with the group shift)"
-                    ))
+                    )
+                    .into())
                 }
             };
             if sign < 0.0 {
-                return Err(format!(
-                    "air {id} is after a mirror (move it with the group shift)"
-                ));
+                return Err(
+                    format!("air {id} is after a mirror (move it with the group shift)").into(),
+                );
             }
             if !s.surfaces[surf].t.is_finite() {
-                return Err(format!("air {id} is the object distance (infinity)"));
+                return Err(format!("air {id} is the object distance (infinity)").into());
             }
             let p = Param::new(surf, Kind::Thick);
-            s.check_param(p).map_err(|e| e.to_string())?;
+            s.check_param(p)?;
             return Ok(p);
         }
     }
-    s.param(spec).map_err(|e| e.to_string())
+    s.param(spec)
 }
 
 fn stop_name(s: Stop) -> &'static str {

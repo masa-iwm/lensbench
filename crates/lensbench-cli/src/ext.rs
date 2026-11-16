@@ -5,7 +5,7 @@ use serde_json::Value;
 
 /// コマンドラインの引数（先頭は exe の名前）でサブコマンドを 1 つ実行し、結果の JSON を返す（試験・組み込み用。
 /// 標準出力には出さない。--save は書く）
-pub fn run_cli<I, T>(argv: I) -> Result<Value, String>
+pub fn run_cli<I, T>(argv: I) -> lensbench_core::Result<Value>
 where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,

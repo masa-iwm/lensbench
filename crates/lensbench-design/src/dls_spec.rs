@@ -336,7 +336,7 @@ fn seq<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
 }
 
 /// JSON の設定を読む。誤りにはどの鍵の値かを付ける（serde の型の誤りは鍵の名前を言わないので、鍵ごとに読み直して探す）
-pub fn read<T: serde::de::DeserializeOwned>(v: &Value) -> std::result::Result<T, String> {
+pub fn read<T: serde::de::DeserializeOwned>(v: &Value) -> lensbench_core::Result<T> {
     let e = match serde_json::from_value(v.clone()) {
         Ok(t) => return Ok(t),
         Err(e) => e.to_string(),
@@ -351,9 +351,9 @@ pub fn read<T: serde::de::DeserializeOwned>(v: &Value) -> std::result::Result<T,
     });
     Err(match bad {
         Some(k) if !e.starts_with(&format!("{k}:")) && !e.contains(&format!("`{k}`")) => {
-            format!("{k}: {e}")
+            format!("{k}: {e}").into()
         }
-        _ => e,
+        _ => e.into(),
     })
 }
 
@@ -659,16 +659,23 @@ mod tests {
         assert!(o.vars.is_empty() && o.configs.is_empty() && o.terms.len() == 1);
         // 誤りにはどの鍵かを付ける
         let e = read::<ZoomParams>(&json!({"vars": ["7.t"], "qr": 1})).unwrap_err();
-        assert!(e.starts_with("qr: "), "{e}");
+        assert!(e.message().unwrap_or_default().starts_with("qr: "), "{e}");
         // gtol の負の数は読みの誤り（serve の要求の誤り）
         let e = read::<OptimizeParams>(&json!({"gtol": -1.0})).unwrap_err();
-        assert!(e.starts_with("gtol: must be 0 or more"), "{e}");
+        assert!(
+            e.message()
+                .unwrap_or_default()
+                .starts_with("gtol: must be 0 or more"),
+            "{e}"
+        );
         assert!(read::<ZoomParams>(&json!({"gtol": -0.5})).is_err());
         assert!(parse_non_negative("-1").is_err() && parse_non_negative("x").is_err());
         assert_eq!(parse_non_negative("1e-6").unwrap(), 1e-6);
         let e = read::<ZoomParams>(&json!({"method": "exact"})).unwrap_err();
         assert!(
-            e.starts_with("method: exact (one of penalty, lagrange)"),
+            e.message()
+                .unwrap_or_default()
+                .starts_with("method: exact (one of penalty, lagrange)"),
             "{e}"
         );
     }

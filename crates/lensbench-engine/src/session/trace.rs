@@ -187,7 +187,7 @@ fn nested(
     shape: &mut Vec<usize>,
     out: &mut Vec<f64>,
     depth: usize,
-) -> Result<(), String> {
+) -> lensbench_core::Result<()> {
     match v {
         Value::Number(n) => {
             if depth != shape.len() {
@@ -210,6 +210,6 @@ fn nested(
             }
             Ok(())
         }
-        _ => Err(format!("not a list of numbers ({v})")),
+        _ => Err(format!("not a list of numbers ({v})").into()),
     }
 }

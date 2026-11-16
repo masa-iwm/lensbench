@@ -20,7 +20,7 @@ pub(crate) struct Shm {
 }
 
 /// 共有メモリの名前（英数字と _ . - だけ。パスにならないように）
-fn check_name(name: &str) -> Result<(), String> {
+fn check_name(name: &str) -> lensbench_core::Result<()> {
     if name.is_empty()
         || name.len() > 200
         || !name
@@ -28,16 +28,14 @@ fn check_name(name: &str) -> Result<(), String> {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
         || name.starts_with('.')
     {
-        return Err(format!(
-            "shared memory name {name:?} (only letters, digits, _ . -)"
-        ));
+        return Err(format!("shared memory name {name:?} (only letters, digits, _ . -)").into());
     }
     Ok(())
 }
 
 impl Shm {
     /// 名前で開く（作るのはクライアント）
-    pub fn open(name: &str) -> Result<Shm, String> {
+    pub fn open(name: &str) -> lensbench_core::Result<Shm> {
         check_name(name)?;
         #[cfg(target_os = "linux")]
         {
@@ -66,25 +64,27 @@ impl Shm {
         self.size
     }
 
-    fn check(&self, off: u64, n: usize) -> Result<(), String> {
+    fn check(&self, off: u64, n: usize) -> lensbench_core::Result<()> {
         match off.checked_add(n as u64) {
             Some(e) if e <= self.size => Ok(()),
             _ => Err(format!(
                 "outside the shared memory (offset {off}, {n} bytes, size {})",
                 self.size
-            )),
+            )
+            .into()),
         }
     }
 
     /// off からのバイト列を読む
-    pub fn read(&self, off: u64, buf: &mut [u8]) -> Result<(), String> {
+    pub fn read(&self, off: u64, buf: &mut [u8]) -> lensbench_core::Result<()> {
         self.check(off, buf.len())?;
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::fs::FileExt;
-            self.f
+            Ok(self
+                .f
                 .read_exact_at(buf, off)
-                .map_err(|e| format!("shared memory: {e}"))
+                .map_err(|e| format!("shared memory: {e}"))?)
         }
         #[cfg(windows)]
         {
@@ -99,14 +99,15 @@ impl Shm {
     }
 
     /// off からバイト列を書く
-    pub fn write(&self, off: u64, data: &[u8]) -> Result<(), String> {
+    pub fn write(&self, off: u64, data: &[u8]) -> lensbench_core::Result<()> {
         self.check(off, data.len())?;
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::fs::FileExt;
-            self.f
+            Ok(self
+                .f
                 .write_all_at(data, off)
-                .map_err(|e| format!("shared memory: {e}"))
+                .map_err(|e| format!("shared memory: {e}"))?)
         }
         #[cfg(windows)]
         {
@@ -159,12 +160,12 @@ pub(crate) fn pipe_path(name: &str) -> String {
 #[cfg(unix)]
 pub(crate) fn listen_pipe(
     path: &str,
-    ready: impl FnOnce() -> Result<(), String>,
+    ready: impl FnOnce() -> lensbench_core::Result<()>,
     conn: impl Fn(Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn HardFlush + Send>)
         + Send
         + Sync
         + 'static,
-) -> Result<(), String> {
+) -> lensbench_core::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::{UnixListener, UnixStream};
     let bind = || UnixListener::bind(path);
@@ -176,15 +177,15 @@ pub(crate) fn listen_pipe(
             use std::os::unix::fs::FileTypeExt;
             let sock = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_socket());
             if !sock {
-                return Err(format!("--pipe {path} has a file that is not a socket"));
+                return Err(format!("--pipe {path} has a file that is not a socket").into());
             }
             if UnixStream::connect(path).is_ok() {
-                return Err(format!("--pipe {path} is used by another server"));
+                return Err(format!("--pipe {path} is used by another server").into());
             }
             lensbench_core::vfs::remove_file(path).map_err(|e| format!("--pipe {path}: {e}"))?;
             bind().map_err(|e| format!("--pipe {path}: {e}"))?
         }
-        Err(e) => return Err(format!("--pipe {path}: {e}")),
+        Err(e) => return Err(format!("--pipe {path}: {e}").into()),
     };
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .map_err(|e| format!("--pipe {path}: {e}"))?;
@@ -205,12 +206,12 @@ pub(crate) fn listen_pipe(
 #[cfg(windows)]
 pub(crate) fn listen_pipe(
     path: &str,
-    ready: impl FnOnce() -> Result<(), String>,
+    ready: impl FnOnce() -> lensbench_core::Result<()>,
     conn: impl Fn(Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn HardFlush + Send>)
         + Send
         + Sync
         + 'static,
-) -> Result<(), String> {
+) -> lensbench_core::Result<()> {
     let conn = std::sync::Arc::new(conn);
     let mut ready = Some(ready);
     loop {
@@ -238,12 +239,12 @@ pub(crate) fn listen_pipe(
 #[cfg(not(any(unix, windows)))]
 pub(crate) fn listen_pipe(
     path: &str,
-    _ready: impl FnOnce() -> Result<(), String>,
+    _ready: impl FnOnce() -> lensbench_core::Result<()>,
     _conn: impl Fn(Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn HardFlush + Send>)
         + Send
         + Sync
         + 'static,
-) -> Result<(), String> {
+) -> lensbench_core::Result<()> {
     Err(format!("--pipe {path} can't be used on this OS"))
 }
 
@@ -305,7 +306,7 @@ mod win {
     }
 
     /// パイプの口を 1 つ作る（最初の口は、同じ名前のパイプが既にあれば断る）
-    pub fn pipe_instance(path: &str, first: bool) -> Result<File, String> {
+    pub fn pipe_instance(path: &str, first: bool) -> lensbench_core::Result<File> {
         let name = wide(path);
         let mode = PIPE_ACCESS_DUPLEX
             | if first {
@@ -337,7 +338,7 @@ mod win {
     }
 
     /// 相手がつなぐまで待つ
-    pub fn connect(f: File) -> Result<File, String> {
+    pub fn connect(f: File) -> lensbench_core::Result<File> {
         use std::os::windows::io::AsRawHandle;
         // SAFETY: f はパイプの口のハンドル。同期の待ち（overlapped なし）
         let ok = unsafe { ConnectNamedPipe(f.as_raw_handle() as Handle, std::ptr::null_mut()) };
@@ -358,7 +359,7 @@ mod win {
     }
 
     impl View {
-        pub fn open(name: &str) -> Result<View, String> {
+        pub fn open(name: &str) -> lensbench_core::Result<View> {
             let w = wide(name);
             // SAFETY: w は 0 で終わる UTF-16
             let h = unsafe { OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, 0, w.as_ptr()) };

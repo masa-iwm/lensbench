@@ -13,7 +13,7 @@ pub(crate) fn coat_kinks(
     for t in tables {
         let txt =
             lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
-        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
+        for (k, m) in coating::parse_measured(&txt).map_err(|e| e.at(t.display()))? {
             let air = k.split('|').nth(1) == Some("AIR");
             if (only.is_empty() && !air) || (!only.is_empty() && !only.contains(&k)) {
                 continue;
@@ -58,7 +58,7 @@ pub(crate) fn coat_model(
     kinks: Option<&str>,
     tol_psi: f64,
     note: Option<&str>,
-) -> Result<Value, String> {
+) -> lensbench_core::Result<Value> {
     let mut kinks: Vec<f64> = match kinks {
         None => Vec::new(),
         Some(k) => k
@@ -73,7 +73,7 @@ pub(crate) fn coat_model(
     for t in tables {
         let txt =
             lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
-        for (k, m) in coating::parse_measured(&txt).map_err(|e| format!("{}: {e}", t.display()))? {
+        for (k, m) in coating::parse_measured(&txt).map_err(|e| e.at(t.display()))? {
             // 同じ KEY は後の表で置き換える（渡す順で結果が変わらないように、混ぜない）
             if let Some(i) = all.iter().position(|(a, _): &(String, _)| *a == k) {
                 eprintln!(
@@ -175,7 +175,7 @@ pub(crate) fn coat_model(
 pub(crate) fn coat_compact(
     model: &std::path::Path,
     out: &std::path::Path,
-) -> Result<Value, String> {
+) -> lensbench_core::Result<Value> {
     use lensbench_core::coating::format_models_bin;
     let b = lensbench_core::vfs::read(model).map_err(|e| format!("{}: {e}", model.display()))?;
     let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
@@ -183,7 +183,7 @@ pub(crate) fn coat_compact(
     } else {
         coating::parse_models(&String::from_utf8_lossy(&b))
     }
-    .map_err(|e| format!("{}: {e}", model.display()))?;
+    .map_err(|e| e.at(model.display()))?;
     let rep: Vec<Value> = models
         .iter()
         .map(|(name, m)| {
@@ -207,7 +207,7 @@ pub(crate) fn coat_compact(
 /// 曲線の CSV を読む（[`Cmd::CoatDesign`] の列）
 pub(crate) fn read_targets(
     p: &std::path::Path,
-) -> Result<Vec<lensbench_design::coat_design::Target>, String> {
+) -> lensbench_core::Result<Vec<lensbench_design::coat_design::Target>> {
     use lensbench_design::coat_design::{Pol, Quantity, Target};
     let txt =
         lensbench_core::vfs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -225,34 +225,34 @@ pub(crate) fn read_targets(
     let (wl, scale_wl) = match (col("wl_um"), col("wl_nm")) {
         (Some(i), _) => (i, 1.0),
         (None, Some(i)) => (i, 1e-3),
-        _ => return Err(format!("{}: no column wl_um or wl_nm", p.display())),
+        _ => return Err(format!("{}: no column wl_um or wl_nm", p.display()).into()),
     };
     let (val, scale_v) = match (col("value"), col("value_pct")) {
         (Some(i), _) => (i, 1.0),
         (None, Some(i)) => (i, 0.01),
-        _ => return Err(format!("{}: no column value or value_pct", p.display())),
+        _ => return Err(format!("{}: no column value or value_pct", p.display()).into()),
     };
     let (ang, pol, qty, w) = (col("angle_deg"), col("pol"), col("quantity"), col("weight"));
     let mut v = Vec::new();
     for (ln, l) in lines.enumerate() {
         let c: Vec<&str> = l.split(',').map(str::trim).collect();
-        let num = |i: usize| -> Result<f64, String> {
-            c.get(i)
+        let num = |i: usize| -> lensbench_core::Result<f64> {
+            Ok(c.get(i)
                 .and_then(|x| x.parse::<f64>().ok())
-                .ok_or_else(|| format!("{}: number on line {}", p.display(), ln + 2))
+                .ok_or_else(|| format!("{}: number on line {}", p.display(), ln + 2))?)
         };
         let pol = match pol.and_then(|i| c.get(i)).map(|x| x.to_ascii_lowercase()) {
             None => Pol::Avg,
             Some(x) if x == "avg" || x.is_empty() => Pol::Avg,
             Some(x) if x == "s" => Pol::S,
             Some(x) if x == "p" => Pol::P,
-            Some(x) => return Err(format!("{}: polarization {x} (s, p, avg)", p.display())),
+            Some(x) => return Err(format!("{}: polarization {x} (s, p, avg)", p.display()).into()),
         };
         let q = match qty.and_then(|i| c.get(i)).map(|x| x.to_ascii_uppercase()) {
             None => Quantity::R,
             Some(x) if x == "R" || x.is_empty() => Quantity::R,
             Some(x) if x == "T" => Quantity::T,
-            Some(x) => return Err(format!("{}: quantity {x} (R, T)", p.display())),
+            Some(x) => return Err(format!("{}: quantity {x} (R, T)", p.display()).into()),
         };
         v.push(Target {
             wl: num(wl)? * scale_wl,
@@ -279,7 +279,7 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
         ts.extend(read_targets(p)?);
     }
     let file = match a.coating_file {
-        Some(p) => coating::CoatingFile::load(p).map_err(|e| e.to_string())?,
+        Some(p) => coating::CoatingFile::load(p)?,
         None => coating::CoatingFile::default(),
     };
     // ガラスカタログは必要になったときに全部読む
@@ -305,7 +305,7 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
     // 材料: 膜ファイルの MATE、なければガラス（0.2〜2.5 µm を 5 nm 刻みの表にして .lbcs に MATE も書く）
     let mut mats = Vec::new();
     let mut with_mate = Vec::new();
-    let mut lookup = |name: &str| -> Result<(Material, bool), String> {
+    let mut lookup = |name: &str| -> lensbench_core::Result<(Material, bool)> {
         if let Some(r) = file.mate.get(name) {
             let mut rows = r.clone();
             rows.sort_by(|x, y| x[0].total_cmp(&y[0]));
@@ -373,7 +373,7 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
         d_max: a.d_max,
         ..Default::default()
     };
-    let all = fit_all(&ts, &*sub, &o).map_err(|e| e.to_string())?;
+    let all = fit_all(&ts, &*sub, &o)?;
     let d = pick(&all, a.slack).ok_or("can't be fitted")?;
     let lay = |d: &lensbench_design::coat_design::Design| -> Vec<Value> {
         d.layers

@@ -122,7 +122,7 @@ impl ConfigSel {
 }
 
 /// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
-fn overlay_systems(c: &Common, l: &ConfigSel) -> Result<Vec<(String, System)>, String> {
+fn overlay_systems(c: &Common, l: &ConfigSel) -> lensbench_core::Result<Vec<(String, System)>> {
     lensbench_engine::load::overlay_systems(&c.spec(), &l.overlay())
 }
 
@@ -537,7 +537,7 @@ struct LayoutArgs {
 
 impl LayoutArgs {
     /// 光線の選び方（既定は serve の layout と同じ [`lensbench_engine::layout`]）
-    fn ray_sel(&self) -> Result<RaySel, String> {
+    fn ray_sel(&self) -> lensbench_core::Result<RaySel> {
         let pick = |v: &Option<String>, what: &str| {
             v.as_deref()
                 .map(|x| x.parse::<Pick>().map_err(|e| format!("{what} {e}")))

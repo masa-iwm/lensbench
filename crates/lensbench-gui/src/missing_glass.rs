@@ -30,6 +30,14 @@ pub(crate) fn missing_glass_name(e: &str) -> Option<String> {
     (end > 0).then(|| rest[..end].to_string())
 }
 
+/// 開けなかった系の誤りから、カタログに無いガラスの名前（符号が別の種類なら None、GUX-01・GUX-06）
+pub(crate) fn missing_glass_of(e: &crate::worker::CallErr) -> Option<String> {
+    if e.code.is_some() && !e.is(lensbench_core::error::code::GLASS_NOT_FOUND) {
+        return None;
+    }
+    missing_glass_name(e)
+}
+
 /// .zmx の GLAS の行のうち names のガラスを、行にある nd・νd のモデルガラス（___BLANK、ソルブ 1）に替える。
 /// 替えた名前（nd が無い行は替えない）
 pub(crate) fn model_glass_zmx(text: &str, names: &[String]) -> (String, Vec<String>) {
@@ -63,6 +71,19 @@ pub(crate) fn model_glass_zmx(text: &str, names: &[String]) -> (String, Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 符号があれば、ガラスが無い誤りのときだけ名前を探す（文にガラスの言葉があっても、GUX-06）
+    #[test]
+    fn missing_glass_follows_the_code() {
+        use crate::worker::CallErr;
+        let m = "glass N-BK7 (surface 1) is not in the catalogs";
+        assert_eq!(
+            missing_glass_of(&CallErr::coded(m, "glass.not_found")).as_deref(),
+            Some("N-BK7")
+        );
+        assert_eq!(missing_glass_of(&CallErr::coded(m, "file.not_found")), None);
+        assert_eq!(missing_glass_of(&m.into()).as_deref(), Some("N-BK7"));
+    }
 
     /// エラーの文から無いガラスの名前を取り、.zmx の GLAS の行をモデルガラスに替える（GUX-01）
     #[test]

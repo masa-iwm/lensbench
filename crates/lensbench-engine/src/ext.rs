@@ -92,7 +92,7 @@ impl Extensions {
             f(e.plugins_mut());
         }
         for k in &self.detectors {
-            lensbench_project::detectors::add(e, *k).map_err(|x| x.to_string())?;
+            lensbench_project::detectors::add(e, *k)?;
         }
         for a in &self.analyses {
             crate::registry::add_dyn(e, a.clone())?;

@@ -141,11 +141,82 @@ struct Job {
     gen: u64,
 }
 
+/// 呼び出しの誤り: 文と、計算の側の誤りの符号（`lensbench_core::error::code` の値か種類の名前、
+/// 無ければ None）。画面は符号で案内を選ぶ（GUX-06・XCT-06）
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CallErr {
+    pub message: String,
+    pub code: Option<String>,
+}
+
+impl CallErr {
+    /// 符号 c の誤り
+    pub fn coded(message: impl Into<String>, code: impl Into<String>) -> CallErr {
+        CallErr {
+            message: message.into(),
+            code: Some(code.into()),
+        }
+    }
+
+    /// 符号が c か
+    pub fn is(&self, c: &str) -> bool {
+        self.code.as_deref() == Some(c)
+    }
+}
+
+impl std::fmt::Display for CallErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::ops::Deref for CallErr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.message
+    }
+}
+
+impl From<String> for CallErr {
+    fn from(message: String) -> Self {
+        CallErr {
+            message,
+            code: None,
+        }
+    }
+}
+
+impl From<&str> for CallErr {
+    fn from(m: &str) -> Self {
+        m.to_string().into()
+    }
+}
+
+impl From<lensbench_core::Error> for CallErr {
+    fn from(e: lensbench_core::Error) -> Self {
+        CallErr::coded(
+            e.message()
+                .map(str::to_string)
+                .unwrap_or_else(|| e.to_string()),
+            e.code(),
+        )
+    }
+}
+
+impl From<lensbench_engine::CallError> for CallErr {
+    fn from(e: lensbench_engine::CallError) -> Self {
+        CallErr {
+            message: e.message,
+            code: e.data_code,
+        }
+    }
+}
+
 /// 1 つの呼び出しの結果
 pub struct Reply {
     pub method: String,
     pub params: Value,
-    pub result: Result<(Value, Arrays), String>,
+    pub result: Result<(Value, Arrays), CallErr>,
 }
 
 pub struct Done {
@@ -160,13 +231,9 @@ pub struct Done {
 
 impl Done {
     /// 最初の呼び出しの method・params・結果（1 つだけの要求のとき）
-    pub fn first(&self) -> (&str, &Value, Result<&Value, &str>) {
+    pub fn first(&self) -> (&str, &Value, Result<&Value, &CallErr>) {
         let r = &self.replies[0];
-        (
-            &r.method,
-            &r.params,
-            r.result.as_ref().map(|x| &x.0).map_err(String::as_str),
-        )
+        (&r.method, &r.params, r.result.as_ref().map(|x| &x.0))
     }
 
     /// 最初の呼び出しの params と結果を取り出す（深い複製をしない。GAR-08）。エラーなら結果は null。
@@ -200,18 +267,15 @@ impl Done {
     }
 
     /// 最初のエラー
-    pub fn error(&self) -> Option<(&str, &str)> {
-        self.replies.iter().find_map(|r| {
-            r.result
-                .as_ref()
-                .err()
-                .map(|e| (r.method.as_str(), e.as_str()))
-        })
+    pub fn error(&self) -> Option<(&str, &CallErr)> {
+        self.replies
+            .iter()
+            .find_map(|r| r.result.as_ref().err().map(|e| (r.method.as_str(), e)))
     }
 }
 
 /// 1 つの呼び出し（method・params・スレッド数）
-type CallFn = fn(&str, &Value, Option<usize>) -> Result<(Value, Arrays), String>;
+type CallFn = fn(&str, &Value, Option<usize>) -> Result<(Value, Arrays), CallErr>;
 
 /// 何を受ける Worker か（Web Worker の中でも同じ呼び出しを使う）
 #[derive(Clone, Copy)]
@@ -261,30 +325,32 @@ impl Kind {
     }
 }
 
-fn main_call(m: &str, p: &Value, t: Option<usize>) -> Result<(Value, Arrays), String> {
-    lensbench_engine::call_arrays(m, p, t).map_err(|e| e.message)
+fn main_call(m: &str, p: &Value, t: Option<usize>) -> Result<(Value, Arrays), CallErr> {
+    lensbench_engine::call_arrays(m, p, t).map_err(Into::into)
 }
 
-fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays), String> {
+fn preview_call(m: &str, p: &Value, _: Option<usize>) -> Result<(Value, Arrays), CallErr> {
     match m {
         "preview" => lensbench_engine::preview_layout(&p["load"], &p["layout"])
             .map(|v| (v, Vec::new()))
-            .map_err(|e| e.message),
+            .map_err(Into::into),
         "glasses" | "lenses" => lensbench_engine::browse(m, p)
             .map(|v| (v, Vec::new()))
-            .map_err(|e| e.message),
+            .map_err(Into::into),
         // ユーザーカタログの一覧・変更（読み込んだ系は要らない）
         "catalog_items" | "catalog_edit" | "catalog_fill" => {
             lensbench_engine::user_catalog_edit(m, p)
                 .map(|v| (v, Vec::new()))
-                .map_err(|e| e.message)
+                .map_err(Into::into)
         }
         // カタログのフォルダの様子（Web 版の画面はメーカーのデータを持たないので、こちらで調べる、GAR-11）
         "folders" => Ok((folders(p), Vec::new())),
-        "cad_measure" => crate::cad_fetch::measure_call(p).map(|v| (v, Vec::new())),
+        "cad_measure" => crate::cad_fetch::measure_call(p)
+            .map(|v| (v, Vec::new()))
+            .map_err(Into::into),
         // 開くファイルが組合せを同梱しているか（画面のスレッドで丸ごと読まない、GAR-30）
-        "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())),
-        _ => Err(format!("{m} is not available for drafts")),
+        "doc_peek" => doc_peek(p).map(|v| (v, Vec::new())).map_err(Into::into),
+        _ => Err(format!("{m} is not available for drafts").into()),
     }
 }
 
@@ -825,7 +891,7 @@ pub mod entry {
             Err(e) => {
                 return Response {
                     id: 0,
-                    results: vec![Err(e)],
+                    results: vec![Err(e.into())],
                     ms: 0.0,
                     files: Vec::new(),
                 }
@@ -1207,7 +1273,8 @@ mod remote {
                         vec![Err(crate::i18n::trf(
                             "Computation stopped (reopen the system): {}",
                             &[&e],
-                        ))],
+                        )
+                        .into())],
                         0.0,
                     )
                 }
@@ -1254,7 +1321,7 @@ mod tests {
     static LOADED: AtomicBool = AtomicBool::new(false);
 
     /// 中断を頼まれるまで回る解析（"spin"）と、すぐ終わる要求
-    fn fake(m: &str, _p: &Value, _t: Option<usize>) -> Result<(Value, Arrays), String> {
+    fn fake(m: &str, _p: &Value, _t: Option<usize>) -> Result<(Value, Arrays), CallErr> {
         if m == "spin" {
             STARTED.store(true, Ordering::SeqCst);
             let t0 = Instant::now();

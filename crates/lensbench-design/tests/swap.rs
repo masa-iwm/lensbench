@@ -308,7 +308,7 @@ fn prescreen_is_written_and_resumed() {
         };
         c.store(pr.ran, Relaxed);
     });
-    let with_cb = |f: &dyn Fn() -> Result<Vec<swap::SwapResult>, String>| {
+    let with_cb = |f: &dyn Fn() -> lensbench_core::Result<Vec<swap::SwapResult>>| {
         par::with_progress(Some(cb.clone()), f)
     };
     let r = with_cb(&|| s.run_to(Some(&f), true, None))
@@ -334,7 +334,7 @@ fn prescreen_is_written_and_resumed() {
     sp.prescreen = Some(swap::Prescreen { rings: 2, keep: 4 });
     let s4 = SwapSearch::new(&p2, &env(dir2), &c, sp).unwrap();
     let e = with_cb(&|| s4.run_to(Some(&f), true, None)).unwrap_err();
-    assert!(e.contains("rerun only the second stage"), "{e}");
+    assert!(e.to_string().contains("rerun only the second stage"), "{e}");
     std::fs::remove_file(&f).unwrap();
     screen.store(usize::MAX, Relaxed);
     let r4 = with_cb(&|| s4.run_to(Some(&f), true, None)).unwrap();
@@ -396,7 +396,7 @@ fn beam_search_finds_the_best_with_fewer_evaluations() {
     assert!(r5.is_empty());
     let why = why.unwrap();
     assert!(why.contains("no candidate of place A"), "{why}");
-    assert_eq!(s5.run_to(None, true, None).unwrap_err(), why);
+    assert_eq!(String::from(s5.run_to(None, true, None).unwrap_err()), why);
     // ふるいとは同時に使えない・幅 0 は誤り
     let mut sp = spec(vec![a.clone(), b.clone()]);
     sp.beam = Some(swap::Beam {

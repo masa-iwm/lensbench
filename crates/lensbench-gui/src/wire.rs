@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use crate::worker::Arrays;
+use crate::worker::{Arrays, CallErr};
 
 /// ファイルの変更（パス、中身。None は消した）
 pub type Files = Vec<(String, Option<Vec<u8>>)>;
@@ -26,7 +26,7 @@ pub struct Response {
     /// 答えた要求の番号（[`Request::id`]。要求が読めなかったときは 0）。画面の側は待っている要求の番号と
     /// 合わない返事を捨てる（GAR-27）
     pub id: u32,
-    pub results: Vec<Result<(Value, Arrays), String>>,
+    pub results: Vec<Result<(Value, Arrays), CallErr>>,
     pub ms: f64,
     pub files: Files,
 }
@@ -168,7 +168,8 @@ impl Response {
                 }
                 Err(e) => {
                     w.0.push(0);
-                    w.str(e);
+                    w.str(&e.message);
+                    w.str(e.code.as_deref().unwrap_or(""));
                 }
             }
         }
@@ -184,7 +185,9 @@ impl Response {
         let mut results = Vec::with_capacity(n.min(1 << 16));
         for _ in 0..n {
             if r.u8()? == 0 {
-                results.push(Err(r.str()?));
+                let message = r.str()?;
+                let code = Some(r.str()?).filter(|c| !c.is_empty());
+                results.push(Err(CallErr { message, code }));
                 continue;
             }
             let v = r.json()?;
@@ -250,6 +253,7 @@ mod tests {
                     vec![("x".into(), vec![1.0, -2.5, f64::MAX])],
                 )),
                 Err("だめ".into()),
+                Err(CallErr::coded("no file", "file.not_found")),
             ],
             ms: 12.5,
             files: vec![("/downloads/a.zmx".into(), Some(vec![0, 255]))],

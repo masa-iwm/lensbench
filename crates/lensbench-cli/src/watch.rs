@@ -53,9 +53,9 @@ fn stamp(files: &[PathBuf]) -> Stamp {
         .collect()
 }
 
-fn parse(cmd: &[String]) -> Result<Cli, String> {
+fn parse(cmd: &[String]) -> lensbench_core::Result<Cli> {
     let argv = std::iter::once("lensbench".to_string()).chain(cmd.iter().cloned());
-    crate::parse_cli(argv).map_err(|e| e.render().to_string())
+    Ok(crate::parse_cli(argv).map_err(|e| e.render().to_string())?)
 }
 
 /// 書きかけを見せないよう、一時ファイル（同じフォルダ・同じ拡張子）に書いてから置き換える
@@ -67,10 +67,10 @@ fn tmp_path(p: &Path) -> PathBuf {
     p.with_file_name(format!(".~{}-{name}", std::process::id()))
 }
 
-fn write_atomic(p: &Path, s: &str) -> Result<(), String> {
+fn write_atomic(p: &Path, s: &str) -> lensbench_core::Result<()> {
     let t = tmp_path(p);
     lensbench_core::vfs::write(&t, s).map_err(|e| format!("{}: {e}", t.display()))?;
-    std::fs::rename(&t, p).map_err(|e| format!("{}: {e}", p.display()))
+    Ok(std::fs::rename(&t, p).map_err(|e| format!("{}: {e}", p.display()))?)
 }
 
 /// 系・プロジェクトのファイルと --save の欄（見張る・一時ファイルに書かせる）
@@ -84,7 +84,12 @@ fn file_and_save(c: &mut Cmd) -> Option<(&Path, &mut Option<PathBuf>)> {
 
 /// 1 回解析する。返すのは (結果, 書き出したファイル) と、解析の中で読んだファイル
 #[allow(clippy::type_complexity)]
-fn run_once(cmd: &[String]) -> (Result<(bool, Value, Option<PathBuf>), String>, Vec<PathBuf>) {
+fn run_once(
+    cmd: &[String],
+) -> (
+    lensbench_core::Result<(bool, Value, Option<PathBuf>)>,
+    Vec<PathBuf>,
+) {
     let (r, read) = lensbench_core::vfs::recording(|| {
         let mut cli = parse(cmd)?;
         let save = match file_and_save(&mut cli.cmd) {
@@ -140,7 +145,9 @@ pub fn watch(a: WatchArgs) -> Result<(), crate::AppError> {
                 "run": n, "ok": true, "elapsed_ms": ms,
                 "written": w.as_ref().map(|p| p.display().to_string()),
             }),
-            Err(e) => json!({ "run": n, "ok": false, "error": e, "elapsed_ms": ms }),
+            Err(e) => {
+                json!({ "run": n, "ok": false, "error": String::from(e.clone()), "elapsed_ms": ms })
+            }
         };
         if let Some(p) = &a.status {
             // 読む側が開いていて置き換えられないこともある（Windows）。見張りは続ける

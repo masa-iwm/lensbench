@@ -102,7 +102,7 @@ pub fn command(a: &dyn DynAnalysis) -> Command {
     c
 }
 
-fn nums(s: &str, p: &Param) -> Result<Value, String> {
+fn nums(s: &str, p: &Param) -> lensbench_core::Result<Value> {
     let v: Vec<f64> = s
         .split(',')
         .filter(|t| !t.trim().is_empty())
@@ -117,7 +117,8 @@ fn nums(s: &str, p: &Param) -> Result<Value, String> {
             return Err(format!(
                 "--{} is {n} comma-separated numbers ({s})",
                 flag_of(&p.name)
-            ));
+            )
+            .into());
         }
     }
     // 整数の並び（視野・面の番号）にも渡せるよう、整数の値は整数で（実数の並びは整数でも受ける）
@@ -135,7 +136,7 @@ fn nums(s: &str, p: &Param) -> Result<Value, String> {
 }
 
 /// 解釈した引数から解析のサブコマンドを作る
-pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> Result<AnalysisCmd, String> {
+pub fn parse(a: &dyn DynAnalysis, m: &ArgMatches) -> lensbench_core::Result<AnalysisCmd> {
     let c = Common::from_arg_matches(m).map_err(|e| e.to_string())?;
     let mut o = Map::new();
     for p in a.params() {

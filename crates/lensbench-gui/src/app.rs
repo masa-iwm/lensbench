@@ -51,7 +51,7 @@ use crate::i18n::{self, n_, tr, trf, Lang};
 use crate::json_view::{self, fmt_num};
 use crate::layout::{self, AnaCfg, Kind, Layout, OsWin, Pane, Preset, View};
 use crate::lens_data;
-use crate::missing_glass::{missing_glass_name, model_glass_zmx};
+use crate::missing_glass::{missing_glass_of, model_glass_zmx};
 use crate::open_sysset;
 use crate::palette::{Item, Palette};
 use crate::plots::{self, SpotRays, SysInfo};
@@ -264,24 +264,6 @@ fn method_label(m: &str) -> String {
     tr(ja).to_string()
 }
 
-/// serve の誤りの文から、GUI の利用者に関係の無い内部の言葉を外す（「操作 1: 」、serve の操作名の案内）
-fn plain_error(e: &str) -> String {
-    let mut t = e.to_string();
-    // 編集の操作の番号（1 つだけ送ったときは要らない）
-    for p in ["操作 1: ", "operation 1: "] {
-        if let Some(rest) = t.strip_prefix(p) {
-            t = rest.to_string();
-        }
-    }
-    t = t.replace("不正: ", "").replace("invalid: ", "");
-    let add = tr("(add glass catalogs in File > Catalog folders…)");
-    t.replace("（カタログを追加: add_glasses・add_glass_catalogs）", add)
-        .replace(
-            " (add catalogs: add_glasses, add_glass_catalogs)",
-            &format!(" {add}"),
-        )
-}
-
 /// カタログに無いガラスで開けなかった系（GUX-01）
 #[derive(Default, Clone)]
 struct MissingGlass {
@@ -406,8 +388,10 @@ struct Core {
     fig_rects: HashMap<u64, egui::Rect>,
     /// 最後に値の変更を送った時刻（解析を中断して送る間隔）
     last_set: Option<web_time::Instant>,
-    /// 状態の行の履歴（文、誤りか）と、その窓を開いているか
-    status_log: Vec<(String, bool)>,
+    /// 状態の行の履歴（文、誤りか、誤りの案内）と、その窓を開いているか
+    status_log: Vec<(String, bool, Option<String>)>,
+    /// 今の誤りの文への案内（誤りの文、案内と符号）。文が変われば出さない（GUX-06）
+    status_hint: Option<(String, String)>,
     status_log_open: bool,
     /// 開けなかった系の、カタログに無いガラス（案内の窓、GUX-01）
     missing_glass: Option<MissingGlass>,
@@ -3588,6 +3572,7 @@ impl App {
                 combo_census: None,
                 missing_glass: None,
                 status_log: Vec::new(),
+                status_hint: None,
                 last_set: None,
                 shot: None,
                 fig_rects: HashMap::new(),

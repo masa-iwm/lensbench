@@ -35,8 +35,8 @@ pub enum Files {
 /// （--root・--allow-remote）は、既定の場所（LENSBENCH_MACROS・今のフォルダ）を探さない
 impl Files {
     /// 評価関数の項の zplm のファイル・フォルダを確かめる（CLI の optimize・tolerance の項のファイルにも）
-    pub fn check_terms(&self, t: &mut Value) -> Result<(), String> {
-        self.check_term_paths(t).map_err(|e| e.msg)
+    pub fn check_terms(&self, t: &mut Value) -> lensbench_core::Result<()> {
+        Ok(self.check_term_paths(t).map_err(|e| e.msg)?)
     }
 
     pub(crate) fn check_term_paths(&self, t: &mut Value) -> Result<(), RpcErr> {
@@ -197,9 +197,8 @@ impl Session {
     }
 
     /// 系を読んで場に置く（起動の引数で与えた系。要求で与えたパスの扱いは当てない）
-    pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> Result<(), String> {
-        let s = lensbench_core::with_threads(threads, || load_file(&spec))
-            .map_err(|e| e.to_string())?;
+    pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> lensbench_core::Result<()> {
+        let s = lensbench_core::with_threads(threads, || load_file(&spec))?;
         store(self, s, spec);
         Ok(())
     }
@@ -467,8 +466,8 @@ fn replay(
     log: &[Change],
     beam: &str,
     notes: &mut Vec<String>,
-) -> Result<System, String> {
-    let e = |e: lensbench_core::Error| format!("{beam}: {e}");
+) -> lensbench_core::Result<System> {
+    let e = |e: lensbench_core::Error| e.at(beam);
     for c in log {
         match c {
             Change::Set(v) => {

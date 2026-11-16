@@ -116,7 +116,7 @@ pub(super) fn layout_scene(
             };
             replay(sy, &log, &label, &mut notes).map(|sy| (name, sy))
         })
-        .collect::<Result<Vec<_>, String>>()
+        .collect::<lensbench_core::Result<Vec<_>>>()
         .map_err(RpcErr::app)?;
     let offset = match p.get("offset") {
         None | Some(Value::Null) => [0.0; 3],

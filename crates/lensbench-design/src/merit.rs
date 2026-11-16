@@ -37,27 +37,30 @@ use crate::term_spec::{
 };
 
 /// 項の並び（配列か 1 つのオブジェクト）
-pub fn terms_from_json(v: &Value, configs: &[System]) -> Result<Vec<Term>, String> {
+pub fn terms_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<Vec<Term>> {
     match v {
         Value::Array(a) => a
             .iter()
             .enumerate()
-            .map(|(i, t)| term_from_json(t, configs).map_err(|e| format!("term {}: {e}", i + 1)))
+            .map(|(i, t)| {
+                term_from_json(t, configs)
+                    .map_err(|e| e.map_message(|e| format!("term {}: {e}", i + 1)))
+            })
             .collect(),
         _ => Ok(vec![term_from_json(v, configs)?]),
     }
 }
 
-fn field(f: FieldRef, s: &System) -> Result<FieldSel, String> {
+fn field(f: FieldRef, s: &System) -> lensbench_core::Result<FieldSel> {
     match f {
         FieldRef::Norm([x, y]) => Ok(FieldSel::Norm(x, y)),
         FieldRef::Index(i) if i >= 1 && i <= s.fields.len() => Ok(FieldSel::Index(i - 1)),
-        FieldRef::Index(i) => Err(format!("no field {i} (1 to {})", s.fields.len())),
+        FieldRef::Index(i) => Err(format!("no field {i} (1 to {})", s.fields.len()).into()),
     }
 }
 
-fn wave(w: Option<usize>, s: &System) -> Result<Option<usize>, String> {
-    lensbench_core::waves::index_opt(w, s.wavelengths.len()).map_err(String::from)
+fn wave(w: Option<usize>, s: &System) -> lensbench_core::Result<Option<usize>> {
+    Ok(lensbench_core::waves::index_opt(w, s.wavelengths.len()).map_err(String::from)?)
 }
 
 fn reference(r: Option<RefName>) -> RmsRef {
@@ -67,13 +70,13 @@ fn reference(r: Option<RefName>) -> RmsRef {
     }
 }
 
-fn num(k: &str, v: &Value) -> Result<f64, String> {
-    v.as_f64()
-        .ok_or_else(|| format!("{k} must be a number ({v})"))
+fn num(k: &str, v: &Value) -> lensbench_core::Result<f64> {
+    Ok(v.as_f64()
+        .ok_or_else(|| format!("{k} must be a number ({v})"))?)
 }
 
 /// 1 つの項。共通のキー（weight・config・min・max）を外し、残りを [`TermSpec`] で読む
-pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
+pub fn term_from_json(v: &Value, configs: &[System]) -> lensbench_core::Result<Term> {
     let mut m = v
         .as_object()
         .ok_or_else(|| format!("a term is an object {{\"type\": ...}} ({v})"))?
@@ -94,8 +97,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     let config = match m.remove("config").map(|c| c.as_u64().ok_or(c)) {
         None => 0,
         Some(Ok(c)) if c >= 1 && c as usize <= configs.len() => c as usize - 1,
-        Some(Ok(c)) => return Err(format!("no configuration {c} (1 to {})", configs.len())),
-        Some(Err(c)) => return Err(format!("config must be an integer 1 or more ({c})")),
+        Some(Ok(c)) => return Err(format!("no configuration {c} (1 to {})", configs.len()).into()),
+        Some(Err(c)) => return Err(format!("config must be an integer 1 or more ({c})").into()),
     };
     if let Some(Value::String(t)) = m.get_mut("type") {
         *t = t.to_ascii_lowercase();
@@ -123,12 +126,13 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
         "plugin",
     ];
     if !TYPES.contains(&ty.as_str()) {
-        return Err(format!("type {ty}（{}）", TYPES.join("・")));
+        return Err(format!("type {ty}（{}）", TYPES.join("・")).into());
     }
     if side != Side::Eq && ["spot", "wavefront", "wfe", "zplm", "plugin"].contains(&ty.as_str()) {
         return Err(format!(
             "{ty} terms can't use min or max (only terms with a single target value)"
-        ));
+        )
+        .into());
     }
     let spec: TermSpec =
         serde_json::from_value(Value::Object(m)).map_err(|e| format!("{ty} term: {e}"))?;
@@ -149,7 +153,8 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
     if side != Side::Eq && !single {
         return Err(format!(
             "{ty} terms can't use min or max (only terms with a single target value)"
-        ));
+        )
+        .into());
     }
     Ok(Term {
         side,
@@ -160,7 +165,7 @@ pub fn term_from_json(v: &Value, configs: &[System]) -> Result<Term, String> {
 }
 
 /// 型にした項を core の項にする（番号の確かめ・既定値・マクロとプラグインの準備）
-fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
+fn kind_of(spec: TermSpec, s: &System) -> lensbench_core::Result<TermKind> {
     let user = |t: std::sync::Arc<dyn lensbench_optim::UserTerm>| {
         TermKind::User(lensbench_optim::UserTermRef(t))
     };
@@ -190,7 +195,7 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
             target: t.target.unwrap_or(1.0),
         },
         TermSpec::Paraxial(t) => TermKind::Paraxial {
-            q: ParaxQ::parse(&t.q).map_err(|e| e.to_string())?,
+            q: ParaxQ::parse(&t.q)?,
             target: t
                 .target
                 .ok_or("paraxial term has no target (or min and max)")?,
@@ -201,7 +206,7 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
             px: t.px.unwrap_or(0.0),
             py: t.py.unwrap_or(0.0),
             surf: t.surf,
-            q: RayQ::parse(&t.q).map_err(|e| e.to_string())?,
+            q: RayQ::parse(&t.q)?,
             target: t.target.unwrap_or(0.0),
         },
         TermSpec::Centroid(t) => TermKind::Centroid {
@@ -250,8 +255,7 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
             let m = zplm_macro(&t, s)?;
             let pv = [t.hx, t.hy, t.px, t.py].map(|x| x.unwrap_or(0.0));
             let data = t.data.unwrap_or(0);
-            let z =
-                ZplmTerm::new(&m, data, pv, t.target.unwrap_or(0.0)).map_err(|e| e.to_string())?;
+            let z = ZplmTerm::new(&m, data, pv, t.target.unwrap_or(0.0))?;
             user(std::sync::Arc::new(z))
         }
         TermSpec::Plugin(t) => {
@@ -276,15 +280,17 @@ fn kind_of(spec: TermSpec, s: &System) -> Result<TermKind, String> {
             };
             let p = crate::plugin_term::PluginTerm::new(
                 &t.name, &args, inputs, &t.output, t.index, target, s,
-            )
-            .map_err(|e| e.to_string())?;
+            )?;
             user(std::sync::Arc::new(p))
         }
     })
 }
 
 /// zplm の項のマクロ（macro か file）を探して読む
-fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Macro, String> {
+fn zplm_macro(
+    t: &ZplmSpec,
+    s: &System,
+) -> lensbench_core::Result<lensbench_core::zpl_solve::Macro> {
     use lensbench_core::zpl_solve::{find_macro, macro_dirs, Macro};
     use std::path::{Path, PathBuf};
     if let Some(f) = &t.file {
@@ -297,8 +303,7 @@ fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Mac
             .file_stem()
             .map(|x| x.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut m =
-            Macro::from_source(&name, &String::from_utf8_lossy(&src)).map_err(|e| e.to_string())?;
+        let mut m = Macro::from_source(&name, &String::from_utf8_lossy(&src))?;
         m.path = p.to_path_buf();
         return Ok(m);
     }
@@ -307,7 +312,7 @@ fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Mac
         Some(MacroRef::Name(n)) => n.clone(),
         Some(MacroRef::No(n)) if *n <= 99 => format!("ZPL{n:02}"),
         Some(MacroRef::No(n)) => {
-            return Err(format!("macro must be a number 0 to 99 or a name ({n})"))
+            return Err(format!("macro must be a number 0 to 99 or a name ({n})").into())
         }
     };
     let extra: Vec<PathBuf> = t.macro_dirs.iter().flatten().map(PathBuf::from).collect();
@@ -320,11 +325,11 @@ fn zplm_macro(t: &ZplmSpec, s: &System) -> Result<lensbench_core::zpl_solve::Mac
         return Ok(m.clone());
     }
     if !t.default_dirs.unwrap_or(true) {
-        return find_macro(&name, &extra).map_err(|e| e.to_string());
+        return find_macro(&name, &extra);
     }
     let mut dirs = macro_dirs(&extra, None);
     dirs.push(PathBuf::from("."));
-    find_macro(&name, &dirs).map_err(|e| e.to_string())
+    find_macro(&name, &dirs)
 }
 
 #[cfg(test)]

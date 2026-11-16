@@ -83,7 +83,7 @@ pub fn catalog_rule(
     base: LensTol,
     g: LensGeom,
     what: &str,
-) -> Result<Option<LensTol>, String> {
+) -> lensbench_core::Result<Option<LensTol>> {
     let e: Option<CatEntry> = lenient::from_json(v, what)?;
     cat_entry(e.as_ref(), base, g, what)
 }
@@ -94,12 +94,10 @@ fn cat_entry(
     base: LensTol,
     g: LensGeom,
     what: &str,
-) -> Result<Option<LensTol>, String> {
+) -> lensbench_core::Result<Option<LensTol>> {
     Ok(match e {
         None => None,
-        Some(CatEntry::Preset(p)) => {
-            Some(tol_spec::preset(p, base).map_err(|e| format!("{what}: {e}"))?)
-        }
+        Some(CatEntry::Preset(p)) => Some(tol_spec::preset(p, base).map_err(|e| e.at(what))?),
         Some(CatEntry::Fields(f)) => {
             let mut t = f.apply(base);
             for r in f.rules.iter().flatten() {
@@ -214,20 +212,20 @@ pub fn reversed_lenses(p: &Project) -> HashSet<String> {
 }
 
 /// "9.t"・"G1.shift=-1:1"・{"param", "lo", "hi", "configs"}
-fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
+fn var_from(v: &VarSpec, s: &System) -> lensbench_core::Result<Var> {
     let (spec, lo, hi, configs) = match v {
         VarSpec::Text(t) => match t.split_once('=') {
             Some((a, r)) => {
                 let (l, h) = r
                     .split_once(':')
                     .ok_or_else(|| format!("the range of compensator {t} is min:max"))?;
-                let n = |x: &str, d: f64| -> Result<f64, String> {
+                let n = |x: &str, d: f64| -> lensbench_core::Result<f64> {
                     if x.trim().is_empty() {
                         Ok(d)
                     } else {
                         x.trim()
                             .parse()
-                            .map_err(|_| format!("range {x} of compensator {t}"))
+                            .map_err(|_| format!("range {x} of compensator {t}").into())
                     }
                 };
                 let (l, h) = (n(l, f64::NEG_INFINITY)?, n(h, f64::INFINITY)?);
@@ -240,7 +238,8 @@ fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
                 return Err(format!(
                     "compensator {}: configs must be a list of configuration numbers (from 1)",
                     o.param
-                ));
+                )
+                .into());
             }
             (
                 o.param.clone(),
@@ -252,7 +251,7 @@ fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
             )
         }
     };
-    let p = s.param(&spec).map_err(|e| e.to_string())?;
+    let p = s.param(&spec)?;
     let v = Var::new(p).bounds(lo, hi);
     Ok(match configs {
         Some(c) => v.in_configs(c),
@@ -260,14 +259,12 @@ fn var_from(v: &VarSpec, s: &System) -> Result<Var, String> {
     })
 }
 
-fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String> {
+fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> lensbench_core::Result<Tol> {
     let names: Vec<String> = match (&m.param, &m.params) {
         (Some(p), None) => vec![p.clone()],
         (None, Some(a)) => a.clone(),
         _ => {
-            return Err(format!(
-                "tolerance {i}: either param (a string) or params (a list)"
-            ))
+            return Err(format!("tolerance {i}: either param (a string) or params (a list)").into())
         }
     };
     let mut params = Vec::new();
@@ -277,12 +274,15 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
             params.extend((0..s.wavelengths.len()).map(|w| Param::new(0, Kind::Wave(w as u8))));
             continue;
         }
-        params.push(s.param(n).map_err(|e| format!("tolerance {i}: {e}"))?);
+        params.push(
+            s.param(n)
+                .map_err(|e| e.map_message(|e| format!("tolerance {i}: {e}")))?,
+        );
     }
     let (lo, hi) = match (m.pm, m.lo, m.hi) {
         (Some(p), None, None) => (-p.abs(), p.abs()),
         (None, Some(l), Some(h)) => (l, h),
-        _ => return Err(format!("tolerance {i}: pm or the pair lo and hi")),
+        _ => return Err(format!("tolerance {i}: pm or the pair lo and hi").into()),
     };
     let dist = m.dist.unwrap_or(dist);
     let scale = m.scale.clone().unwrap_or_default();
@@ -291,7 +291,7 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
             "tolerance {i}: scale must be a list of {} numbers, as many as the parameters ({} given)",
             params.len(),
             scale.len()
-        ));
+        ).into());
     }
     Ok(Tol {
         label: m.label.clone().unwrap_or_else(|| names.join("+")),
@@ -305,7 +305,7 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
 }
 
 /// 設定の JSON を型に読む（null は空の設定）。誤りには欄の道が付く
-pub fn read_spec(v: &Value) -> Result<TolSpec, String> {
+pub fn read_spec(v: &Value) -> lensbench_core::Result<TolSpec> {
     if v.is_null() {
         return Ok(TolSpec::default());
     }
@@ -315,7 +315,7 @@ pub fn read_spec(v: &Value) -> Result<TolSpec, String> {
     if v.get("ref").is_some() {
         return Err("ref of the tolerance settings was renamed to reference".into());
     }
-    Ok(lenient::from_json(v, "tolerance")?)
+    lenient::from_json(v, "tolerance")
 }
 
 /// 設定の JSON から [`McSpec`] を作る。vendors はブロックの id → メーカー（[`catalog_vendors`]。.zmx なら空）。
@@ -324,7 +324,7 @@ pub fn spec_from_json(
     v: &Value,
     configs: Vec<System>,
     vendors: &HashMap<String, String>,
-) -> Result<McSpec, String> {
+) -> lensbench_core::Result<McSpec> {
     spec_from_json_with(v, configs, vendors, &HashSet::new())
 }
 
@@ -336,12 +336,11 @@ pub fn spec_from_json_with(
     configs: Vec<System>,
     vendors: &HashMap<String, String>,
     reversed: &HashSet<String>,
-) -> Result<McSpec, String> {
+) -> lensbench_core::Result<McSpec> {
     let m = read_spec(v)?;
     let s0 = configs.first().ok_or("no configurations")?.clone();
     let dist = m.dist.unwrap_or(Dist::Normal { cut: 2.0 });
-    let mut base =
-        LensTol::preset(m.preset.as_deref().unwrap_or("commercial")).map_err(|e| e.to_string())?;
+    let mut base = LensTol::preset(m.preset.as_deref().unwrap_or("commercial"))?;
     // ここでの wedge_first は玉のもとの向きで前の面か。系の面の順へは lens_fn で直す
     if let Some(w) = m.wedge_face {
         base.wedge_first = w == Face::Front;
@@ -362,7 +361,7 @@ pub fn spec_from_json_with(
             .or_else(|| cat_over.iter().find(|(k, _)| k == "*"))
     };
     let geom = lens_geometry(&s0);
-    let lens_base = |name: &str| -> Result<LensTol, String> {
+    let lens_base = |name: &str| -> lensbench_core::Result<LensTol> {
         match vendors.get(name).filter(|_| use_catalog) {
             Some(vd) => {
                 let g = geom.get(name).copied().unwrap_or(LensGeom::UNKNOWN);
@@ -382,7 +381,7 @@ pub fn spec_from_json_with(
     for (k, x) in m.lenses.iter().flatten() {
         let b = lens_base(k)?;
         let t = x.as_ref().map(|x| x.apply(b)).transpose();
-        lens_over.insert(k.clone(), t.map_err(|e| format!("lenses.{k}: {e}"))?);
+        lens_over.insert(k.clone(), t.map_err(|e| e.at(format!("lenses.{k}")))?);
     }
     let group_over: HashMap<String, Option<GroupTol>> = m
         .groups
@@ -393,7 +392,7 @@ pub fn spec_from_json_with(
     // 名前の誤りを見つける
     for k in lens_over.keys().chain(group_over.keys()) {
         if s0.find_unit(k).is_none() {
-            return Err(format!("no lens or group {k}"));
+            return Err(format!("no lens or group {k}").into());
         }
     }
     let base_err = std::cell::RefCell::new(None);
@@ -455,7 +454,8 @@ pub fn spec_from_json_with(
                 _ => {
                     return Err(format!(
                         "radial must be true, false, uniform, normal or normal:σ ({r})"
-                    ))
+                    )
+                    .into())
                 }
             };
             tolerance::pair_disc(&mut tols, normal);
@@ -481,7 +481,7 @@ pub struct OutOpts {
     pub threads: Option<usize>,
 }
 
-pub fn out_opts(v: &Value) -> Result<OutOpts, String> {
+pub fn out_opts(v: &Value) -> lensbench_core::Result<OutOpts> {
     let m = read_spec(v)?;
     Ok(OutOpts {
         percentiles: m
@@ -557,7 +557,7 @@ pub fn tilt_pairs(vars: &[Var], names: &[String]) -> Vec<(String, usize, usize)>
 
 /// 試行ごとの補償子の CSV（[`result_json`] の結果から）。列は 試行（1 から）・評価関数・補償子・傾きの大きさ [分]。
 /// 追跡できなかった試行は値を空にする
-pub fn compensators_csv(result: &Value) -> Result<String, String> {
+pub fn compensators_csv(result: &Value) -> lensbench_core::Result<String> {
     let comps = result["compensators"]
         .as_array()
         .cloned()

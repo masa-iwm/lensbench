@@ -544,7 +544,7 @@ pub fn ui(
                         {
                             match lensbench_design::tolerance::compensators_csv(&r) {
                                 Ok(t) => acts.push(Action::SaveCsv(t)),
-                                Err(e) => p.error = Some(e),
+                                Err(e) => p.error = Some(String::from(e)),
                             }
                         }
                         if r.get("samples").is_none() {

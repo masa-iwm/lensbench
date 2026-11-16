@@ -123,7 +123,7 @@ impl SwapSearch<'_> {
                     let m = match &r {
                         Ok(f) => f.merit.unwrap_or(f64::INFINITY),
                         Err(e) => {
-                            last_err.get_or_insert_with(|| e.clone());
+                            last_err.get_or_insert_with(|| String::from(e.clone()));
                             f64::INFINITY
                         }
                     };
@@ -167,10 +167,10 @@ impl SwapSearch<'_> {
         &self,
         out: Option<&std::path::Path>,
         threads: Option<usize>,
-    ) -> Result<Vec<SwapResult>, String> {
+    ) -> lensbench_core::Result<Vec<SwapResult>> {
         let (v, _, _, why) = self.beam_run(threads);
         if let Some(e) = why {
-            return Err(e);
+            return Err(e.into());
         }
         if let Some(path) = out {
             let o = lensbench_runs::RunOpts {
@@ -186,8 +186,7 @@ impl SwapSearch<'_> {
                     serde_json::to_string(&v[j])
                         .map_err(|e| lensbench_core::Error::Invalid(e.to_string()))
                 })
-            })
-            .map_err(|e| e.to_string())?;
+            })?;
         }
         Ok(v)
     }

@@ -15,21 +15,22 @@ macro_rules! via_value {
         impl<'de> Deserialize<'de> for $t {
             fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let v = Value::deserialize(d)?;
-                let f: fn(Value) -> Result<$t, String> = $f;
-                f(v).map_err(D::Error::custom)
+                let f: fn(Value) -> lensbench_core::Result<$t> = $f;
+                f(v).map_err(|e| D::Error::custom(String::from(e)))
             }
         }
     };
 }
 
 /// 中の欄の道つきで読む（「thickness: …」。外側の道は呼ぶ側が前に付ける）
-fn from<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, String> {
+fn from<T: serde::de::DeserializeOwned>(v: Value) -> lensbench_core::Result<T> {
     lensbench_project::lenient::from_json(&v, "").map_err(|e| {
         let m = e.message().unwrap_or_default();
         m.strip_prefix(": ")
             .or_else(|| m.strip_prefix('.'))
             .unwrap_or(m)
             .to_string()
+            .into()
     })
 }
 
@@ -114,9 +115,7 @@ pub enum Radial {
 via_value!(Radial, |v| match v {
     Value::Bool(b) => Ok(Radial::On(b)),
     Value::String(s) => Ok(Radial::Dist(s)),
-    x => Err(format!(
-        "radial must be true, false, uniform, normal or normal:σ ({x})"
-    )),
+    x => Err(format!("radial must be true, false, uniform, normal or normal:σ ({x})").into()),
 });
 
 macro_rules! lens_fields {
@@ -242,7 +241,7 @@ pub enum LensEntry {
 via_value!(LensEntry, |v| match v {
     Value::String(s) => Ok(LensEntry::Preset(s)),
     v @ Value::Object(_) => from(v).map(LensEntry::Fields),
-    x => Err(format!("an object, a set name or null ({x})")),
+    x => Err(format!("an object, a set name or null ({x})").into()),
 });
 
 /// メーカーの公差: 項目のオブジェクト（rules つき）か組の名前
@@ -255,21 +254,19 @@ pub enum CatEntry {
 via_value!(CatEntry, |v| match v {
     Value::String(s) => Ok(CatEntry::Preset(s)),
     v @ Value::Object(_) => from(v).map(CatEntry::Fields),
-    x => Err(format!("an object, a set name or null ({x})")),
+    x => Err(format!("an object, a set name or null ({x})").into()),
 });
 
 /// 組の名前の公差（くさびの面は base のまま）
-pub fn preset(name: &str, base: LensTol) -> Result<LensTol, String> {
-    LensTol::preset(name)
-        .map(|t| LensTol {
-            wedge_first: base.wedge_first,
-            ..t
-        })
-        .map_err(|e| e.to_string())
+pub fn preset(name: &str, base: LensTol) -> lensbench_core::Result<LensTol> {
+    LensTol::preset(name).map(|t| LensTol {
+        wedge_first: base.wedge_first,
+        ..t
+    })
 }
 
 impl LensEntry {
-    pub fn apply(&self, base: LensTol) -> Result<LensTol, String> {
+    pub fn apply(&self, base: LensTol) -> lensbench_core::Result<LensTol> {
         match self {
             LensEntry::Preset(p) => preset(p, base),
             LensEntry::Fields(f) => Ok(f.apply(base)),
@@ -307,7 +304,7 @@ pub enum VarSpec {
 via_value!(VarSpec, |v| match v {
     Value::String(s) => Ok(VarSpec::Text(s)),
     v @ Value::Object(_) => from(v).map(VarSpec::Obj),
-    x => Err(format!("a compensator must be a string or an object ({x})")),
+    x => Err(format!("a compensator must be a string or an object ({x})").into()),
 });
 
 /// 補償子のオブジェクト

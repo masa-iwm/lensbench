@@ -50,11 +50,9 @@ pub fn builtin_analyses() -> Analyses {
 }
 
 /// 同梱の解析・CLI のサブコマンドと同じ名前でないか
-fn check_name(name: &str) -> Result<(), String> {
+fn check_name(name: &str) -> lensbench_core::Result<()> {
     if RESERVED.contains(&name) || builtin_analyses().get(name).is_some() {
-        return Err(format!(
-            "analysis {name} has the same name as a built-in one"
-        ));
+        return Err(format!("analysis {name} has the same name as a built-in one").into());
     }
     Ok(())
 }

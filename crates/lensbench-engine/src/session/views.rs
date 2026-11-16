@@ -4,8 +4,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// JSON の値を型に読む（足りない鍵・型の違いは誤り）
-pub fn read<T: serde::de::DeserializeOwned>(v: &Value) -> Result<T, String> {
-    T::deserialize(v).map_err(|e| e.to_string())
+pub fn read<T: serde::de::DeserializeOwned>(v: &Value) -> lensbench_core::Result<T> {
+    Ok(T::deserialize(v).map_err(|e| e.to_string())?)
 }
 
 /// 元に戻せる段・やり直せる段の数と、その変更（`undo_list` は新しい順、`redo_list` は次にやり直す順）。

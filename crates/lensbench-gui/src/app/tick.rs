@@ -58,7 +58,7 @@ impl App {
             match (&d.tag, r) {
                 (Tag::Layout, Ok(v)) => self.c.layout_data = Some(combo::LayoutData::parse(v)),
                 (Tag::Folders, Ok(v)) => self.c.take_folders(params, v),
-                (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r),
+                (Tag::CadMeasure, r) => self.c.browser.cad.measured(params, r.map_err(|e| &**e)),
                 // 読めないファイルは系の読み込みの方で誤りを出す
                 (Tag::OpenDoc, r) => {
                     if let Some(f) = params["file"].as_str() {

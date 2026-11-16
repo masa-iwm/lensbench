@@ -1558,3 +1558,7 @@ Not a block (JSON with "type", no branches)	ブロックでない（"type" の�
 Surfaces can be added or removed only in a custom lens or a surface list	面を追加・削除できるのはカスタムレンズと面の並びの中だけです
 A lens needs at least 2 surfaces	レンズには面が 2 つ以上必要です
 A surface list needs at least 1 surface	面の並びには面が 1 つ以上必要です
+Check that the file exists and its name and folder are right	ファイルがあるか、名前とフォルダが合っているかを確かめてください
+Check the catalog and part number (add lens catalogs in File > Catalog folders…)	カタログと品番を確かめてください（レンズカタログはファイル > カタログのフォルダ… で追加）
+The project may have been changed elsewhere; reopen it	プロジェクトがほかで変えられたかもしれません。開き直してください
+Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)	まだ対応していません。対応する面・項目はマニュアル（.zmx の読み込み）にあります

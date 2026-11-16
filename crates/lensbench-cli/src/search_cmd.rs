@@ -166,10 +166,11 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), crate::error:
             Some(n) => n
                 .iter()
                 .map(|t| {
-                    t.parse()
-                        .map_err(|_| format!("configuration number {t} of --states"))
+                    t.parse().map_err(|_| {
+                        lensbench_core::Error::from(format!("configuration number {t} of --states"))
+                    })
                 })
-                .collect::<Result<_, String>>()?,
+                .collect::<lensbench_core::Result<_>>()?,
             None => Vec::new(),
         };
         let opt = zmx::LoadOptions {

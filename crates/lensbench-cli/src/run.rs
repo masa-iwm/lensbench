@@ -74,7 +74,7 @@ pub struct Resolved {
 }
 
 /// 設定ファイル（JSON）を読む
-fn read_config(path: &Path) -> Result<Resolved, String> {
+fn read_config(path: &Path) -> lensbench_core::Result<Resolved> {
     let txt = lensbench_core::vfs::read_to_string(path)
         .map_err(|e| format!("{}: {e}", path.display()))?;
     let v: Value = serde_json::from_str(&txt).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -90,19 +90,21 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
             base.join(p)
         }
     };
-    let strs = |k: &str| -> Result<Vec<String>, String> {
+    let strs = |k: &str| -> lensbench_core::Result<Vec<String>> {
         match obj.get(k) {
             None | Some(Value::Null) => Ok(Vec::new()),
             Some(Value::String(s)) => Ok(vec![s.clone()]),
             Some(Value::Array(a)) => a
                 .iter()
                 .map(|x| {
-                    x.as_str()
-                        .map(str::to_string)
-                        .ok_or_else(|| format!("setting {k} must be a list of strings"))
+                    x.as_str().map(str::to_string).ok_or_else(|| {
+                        lensbench_core::Error::from(format!(
+                            "setting {k} must be a list of strings"
+                        ))
+                    })
                 })
                 .collect(),
-            Some(_) => Err(format!("setting {k} must be a string or a list of strings")),
+            Some(_) => Err(format!("setting {k} must be a string or a list of strings").into()),
         }
     };
     let mut r = Resolved::default();
@@ -118,7 +120,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
         ]
         .contains(&k.as_str())
         {
-            return Err(format!("{}: unknown setting {k}", path.display()));
+            return Err(format!("{}: unknown setting {k}", path.display()).into());
         }
     }
     // python は文字列（"py -3" のように引数つきも可）か並び。パスに見えるものだけ設定ファイルから解く
@@ -152,7 +154,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
                 Value::String(s) => s.clone(),
                 Value::Number(n) => n.to_string(),
                 Value::Bool(b) => b.to_string(),
-                _ => return Err(format!("setting env.{k} must be a string or number")),
+                _ => return Err(format!("setting env.{k} must be a string or number").into()),
             };
             r.env.push((k.clone(), v));
         }
@@ -161,7 +163,7 @@ fn read_config(path: &Path) -> Result<Resolved, String> {
 }
 
 /// 引数と設定ファイルを合わせる（引数が優先、並びは引数 → 設定ファイルの順に足す）
-pub fn resolve(a: &RunArgs, threads: Option<usize>) -> Result<Resolved, String> {
+pub fn resolve(a: &RunArgs, threads: Option<usize>) -> lensbench_core::Result<Resolved> {
     let mut r = match &a.config {
         Some(p) => read_config(p)?,
         None => Resolved::default(),
@@ -268,12 +270,12 @@ fn python_candidates(r: &Resolved) -> Vec<Vec<String>> {
 fn join_paths(
     new: &[PathBuf],
     old: Option<std::ffi::OsString>,
-) -> Result<std::ffi::OsString, String> {
+) -> lensbench_core::Result<std::ffi::OsString> {
     let mut all: Vec<PathBuf> = new.to_vec();
     if let Some(o) = old {
         all.extend(std::env::split_paths(&o));
     }
-    std::env::join_paths(all).map_err(|e| format!("paths can't be joined: {e}"))
+    Ok(std::env::join_paths(all).map_err(|e| format!("paths can't be joined: {e}"))?)
 }
 
 /// Python を起動できないときの終了コード（シェルの「コマンドがない」と同じ）
@@ -285,9 +287,9 @@ pub fn run_script(
     a: &RunArgs,
     r: &Resolved,
     mut on_line: impl FnMut(Stream, f64, &str),
-) -> Result<i32, String> {
+) -> lensbench_core::Result<i32> {
     if !a.script.is_file() {
-        return Err(format!("no script: {}", a.script.display()));
+        return Err(format!("no script: {}", a.script.display()).into());
     }
     if let Some(o) = &r.out {
         lensbench_core::vfs::create_dir_all(o).map_err(|e| format!("{}: {e}", o.display()))?;
@@ -445,7 +447,7 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
 }
 
 /// コマンドの入口: 画面とログのファイルに出し、終了コードを返す
-pub fn run(a: &RunArgs, threads: Option<usize>) -> Result<i32, String> {
+pub fn run(a: &RunArgs, threads: Option<usize>) -> lensbench_core::Result<i32> {
     let r = resolve(a, threads)?;
     let mut log = match &r.log {
         Some(p) => {

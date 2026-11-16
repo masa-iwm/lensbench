@@ -2403,8 +2403,8 @@ impl PySystem {
             reversed.unwrap_or_default().into_iter().collect();
         let mut ms =
             lensbench_design::tolerance::spec_from_json_with(&v, systems, &vendors, &reversed)
-                .map_err(value_err)?;
-        let oo = lensbench_design::tolerance::out_opts(&v).map_err(value_err)?;
+                .map_err(err)?;
+        let oo = lensbench_design::tolerance::out_opts(&v).map_err(err)?;
         let users = match &terms {
             Some(t) => userterm::add_terms(py, &mut ms.problem, t, &self.coat_files)?,
             None => Vec::new(),

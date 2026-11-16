@@ -19,7 +19,11 @@ impl Core {
         }
         let ms = d.ms;
         if let Some((method, e)) = d.error() {
-            let text = format!("{}: {}", method_label(method), plain_error(e));
+            let text = format!(
+                "{}: {}",
+                method_label(method),
+                super::status::plain_error(e)
+            );
             match &d.tag {
                 Tag::Analyze(id) | Tag::Rays(id) => {
                     self.results.entry(*id).or_default().error = Some(e.to_string());
@@ -37,13 +41,13 @@ impl Core {
                 // 開けなかったファイルは最近のファイルから外す。ガラスが無いなら案内を出す（GUX-01）。ほかの理由で
                 // 読めなければ開く前の文書に戻す
                 Tag::Load => {
-                    if missing_glass_name(e).is_none() {
+                    if missing_glass_of(e).is_none() {
                         self.revert_open();
                     }
                     if let Some(f) = d.replies[0].params["file"].as_str() {
                         let f = f.to_string();
                         self.s.recent.retain(|x| x != &f);
-                        if let Some(name) = missing_glass_name(e) {
+                        if let Some(name) = missing_glass_of(e) {
                             let m = self.missing_glass.get_or_insert_with(Default::default);
                             let same = m
                                 .model
@@ -87,7 +91,14 @@ impl Core {
                 _ => {}
             }
             self.status_err = Some((d.tag.clone(), text.clone()));
+            let hint = super::status::error_hint(e);
             self.fail(text);
+            // 案内と符号は、訳した後の文に結びつける（文が変われば出さない）
+            let shown = self.status.text.clone();
+            self.status_hint = hint.filter(|h| !shown.contains(h.as_str())).map(|h| {
+                let c = e.code.as_deref().unwrap_or_default();
+                (shown.clone(), format!("{h}\n[{c}]"))
+            });
             return;
         }
         let mut text = trf(
@@ -418,7 +429,7 @@ impl Core {
                 );
                 (self.p.opt.result, self.p.opt.error) = views::read::<views::OptimizeView>(&v)
                     .map_or_else(
-                        |e| (None, Some(e)),
+                        |e| (None, Some(String::from(e))),
                         |r| (Some(std::sync::Arc::new(r)), None),
                     );
             }
@@ -434,7 +445,7 @@ impl Core {
                     );
                 }
                 (self.p.swap.result, self.p.swap.error) = r.map_or_else(
-                    |e| (None, Some(e)),
+                    |e| (None, Some(String::from(e))),
                     |r| (Some(std::sync::Arc::new(r)), None),
                 );
             }
@@ -455,7 +466,7 @@ impl Core {
                     &[&fmt_num((ms * 10.0).round() / 10.0)],
                 );
                 (self.p.zoom.result, self.p.zoom.error) = views::read::<views::ZoomView>(&v)
-                    .map_or_else(|e| (None, Some(e)), |r| (Some(r), None));
+                    .map_or_else(|e| (None, Some(String::from(e))), |r| (Some(r), None));
             }
         }
         self.set_done_status(&d.tag, text);

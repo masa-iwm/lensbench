@@ -26,13 +26,22 @@ impl App {
             } else {
                 self.c.status.text.clone()
             };
+            // 今の誤りへの案内と符号（文が変わっていれば出さない、GUX-06）
+            let hint = self
+                .c
+                .status_hint
+                .as_ref()
+                .filter(|(t, _)| self.c.status.error && t == &self.c.status.text)
+                .map(|(_, h)| h.clone());
             // 履歴（直近 20 件。クリックで全文と履歴を開く）
             if !self.c.status.text.is_empty()
                 && self.c.status_log.last().map(|x| &x.0) != Some(&self.c.status.text)
             {
-                self.c
-                    .status_log
-                    .push((self.c.status.text.clone(), self.c.status.error));
+                self.c.status_log.push((
+                    self.c.status.text.clone(),
+                    self.c.status.error,
+                    hint.clone(),
+                ));
                 if self.c.status_log.len() > 20 {
                     self.c.status_log.remove(0);
                 }
@@ -56,8 +65,20 @@ impl App {
                             .sense(egui::Sense::click()),
                     )
                 })
-                .inner
-                .on_hover_text(tr("Click for the full text and history"));
+                .inner;
+            // 誤りの全文と案内を浮かべる（下の行では切れるので）
+            let r = if self.c.status.error {
+                let mut t = text.clone();
+                if let Some(h) = &hint {
+                    t = format!("{t}\n\n{h}");
+                }
+                r.on_hover_text(format!(
+                    "{t}\n\n{}",
+                    tr("Click for the full text and history")
+                ))
+            } else {
+                r.on_hover_text(tr("Click for the full text and history"))
+            };
             if r.clicked() {
                 self.c.status_log_open = !self.c.status_log_open;
             }
@@ -158,7 +179,7 @@ impl App {
                 .max_height(ui.ctx().screen_rect().height() * 0.6)
                 .show(ui.ctx(), |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        for (t, err) in self.c.status_log.iter().rev() {
+                        for (t, err, hint) in self.c.status_log.iter().rev() {
                             let rt = RichText::new(t);
                             let rt = if *err {
                                 rt.color(theme::error(ui.visuals()))
@@ -166,6 +187,16 @@ impl App {
                                 rt
                             };
                             ui.add(egui::Label::new(rt).wrap());
+                            if let Some(h) = hint {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(h)
+                                            .small()
+                                            .color(theme::weak_text(ui.visuals())),
+                                    )
+                                    .wrap(),
+                                );
+                            }
                             ui.separator();
                         }
                     });
@@ -176,4 +207,45 @@ impl App {
             self.c.status_log_open = open;
         }
     }
+}
+
+/// 計算の側の誤りの符号ごとの案内（GUX-06）。符号の無い誤り・案内の要らない符号は None
+pub(super) fn error_hint(e: &crate::worker::CallErr) -> Option<String> {
+    use lensbench_core::error::code;
+    let h = match e.code.as_deref()? {
+        code::FILE_NOT_FOUND | code::IS_FOLDER | "io" => {
+            "Check that the file exists and its name and folder are right"
+        }
+        // plain_error が文に足していれば出さない
+        code::GLASS_NOT_FOUND => "(add glass catalogs in File > Catalog folders…)",
+        code::LENS_NOT_FOUND => {
+            "Check the catalog and part number (add lens catalogs in File > Catalog folders…)"
+        }
+        code::STATE_NOT_FOUND | code::BLOCK_NOT_FOUND => {
+            "The project may have been changed elsewhere; reopen it"
+        }
+        "not_implemented" => {
+            "Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)"
+        }
+        _ => return None,
+    };
+    Some(tr(h).to_string())
+}
+
+/// serve の誤りの文から、GUI の利用者に関係の無い内部の言葉を外す（「操作 1: 」、serve の操作名の案内）
+pub(super) fn plain_error(e: &str) -> String {
+    let mut t = e.to_string();
+    // 編集の操作の番号（1 つだけ送ったときは要らない）
+    for p in ["操作 1: ", "operation 1: "] {
+        if let Some(rest) = t.strip_prefix(p) {
+            t = rest.to_string();
+        }
+    }
+    t = t.replace("不正: ", "").replace("invalid: ", "");
+    let add = tr("(add glass catalogs in File > Catalog folders…)");
+    t.replace("（カタログを追加: add_glasses・add_glass_catalogs）", add)
+        .replace(
+            " (add catalogs: add_glasses, add_glass_catalogs)",
+            &format!(" {add}"),
+        )
 }

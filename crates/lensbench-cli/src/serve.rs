@@ -70,7 +70,7 @@ static SHM_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// 配列の名前・dtype・形・バイト数・共有メモリの位置
 type Layout = Vec<(String, String, Vec<usize>, usize, Option<u64>)>;
 
-fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {
+fn bin_layout(h: &Value, limit: u64) -> lensbench_core::Result<Layout> {
     let Some(list) = h.get("bin") else {
         return Ok(Vec::new());
     };
@@ -124,7 +124,8 @@ fn bin_layout(h: &Value, limit: u64) -> Result<Layout, String> {
             };
             Ok((name, dtype, shape, nb, off))
         })
-        .collect()
+        .collect::<Result<_, String>>()
+        .map_err(Into::into)
 }
 
 fn decode(dtype: &str, b: &[u8]) -> Data {
@@ -165,7 +166,7 @@ pub(crate) struct Msg {
     pub head: Value,
     pub bins: Vec<Bin>,
     /// 共有メモリの配列が読めなかった（ストリームは続けられる）
-    pub shm_err: Option<String>,
+    pub shm_err: Option<lensbench_core::Error>,
 }
 
 /// ヘッダの共有メモリの名前と、応答を書き始める位置
@@ -176,7 +177,7 @@ fn shm_spec(head: &Value) -> Option<(String, u64)> {
     Some((name, out))
 }
 
-fn open_shm(head: &Value) -> Result<crate::serve_ipc::Shm, String> {
+fn open_shm(head: &Value) -> lensbench_core::Result<crate::serve_ipc::Shm> {
     if !SHM_OK.get().copied().unwrap_or(false) {
         return Err("shared memory can't be used (--allow-remote, or outside serve)".into());
     }
@@ -191,7 +192,7 @@ const HEAD_MAX: u64 = 1 << 20;
 pub(crate) fn read_msg(
     r: &mut impl BufRead,
     limit: u64,
-) -> std::io::Result<Option<Result<Msg, String>>> {
+) -> std::io::Result<Option<lensbench_core::Result<Msg>>> {
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -209,7 +210,7 @@ pub(crate) fn read_msg(
     }
     let head: Value = match serde_json::from_slice(&line) {
         Ok(v) => v,
-        Err(e) => return Ok(Some(Err(format!("JSON can't be read: {e}")))),
+        Err(e) => return Ok(Some(Err(format!("JSON can't be read: {e}").into()))),
     };
     let layout = match bin_layout(&head, limit) {
         Ok(l) => l,
@@ -302,13 +303,13 @@ pub(crate) fn write_msg(w: &mut impl Write, mut head: Value, bins: &[Bin]) -> st
     w.flush()
 }
 
-pub fn serve(a: ServeArgs, threads: Option<usize>) -> Result<(), String> {
+pub fn serve(a: ServeArgs, threads: Option<usize>) -> lensbench_core::Result<()> {
     let loopback = matches!(a.host.as_str(), "127.0.0.1" | "localhost" | "::1");
     if !loopback && !a.allow_remote {
         return Err(format!(
             "--host {} is not localhost (there is no authentication; use --allow-remote to accept it)",
             a.host
-        ));
+        ).into());
     }
     let files = match (&a.root, a.allow_remote) {
         (Some(r), _) => Files::Root(
@@ -410,7 +411,7 @@ fn connection(
         let m = match m {
             Ok(m) => m,
             Err(e) => {
-                let h = json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": e } });
+                let h = json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": String::from(e) } });
                 write_msg(&mut w, h, &[])?;
                 return Ok(());
             }
@@ -422,7 +423,7 @@ fn connection(
         let res = match m.shm_err {
             Some(e) => Err(CallError {
                 code: -32602,
-                message: e,
+                message: String::from(e),
                 kind: None,
                 data_code: None,
             }),

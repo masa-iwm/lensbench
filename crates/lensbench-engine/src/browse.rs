@@ -88,8 +88,8 @@ fn lens_summary(
     efl_cat: f64,
     dirs: &[PathBuf],
     cache: &mut GlassCache,
-) -> Result<Value, String> {
-    let raw = zmx::parse_text(zmx_text).map_err(|e| e.to_string())?;
+) -> lensbench_core::Result<Value> {
+    let raw = zmx::parse_text(zmx_text)?;
     let cats: Vec<String> = raw
         .sysl
         .get("GCAT")
@@ -134,14 +134,16 @@ fn lens_summary(
         },
         &glass::catalog_dirs(dirs),
         None,
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
     system_summary(&s, efl_cat)
 }
 
 /// 系の最初の玉（玉が無ければ鏡）の要約
-fn system_summary(s: &lensbench_core::system::System, efl_cat: f64) -> Result<Value, String> {
-    let els = elements::split(s).map_err(|e| e.to_string())?;
+fn system_summary(
+    s: &lensbench_core::system::System,
+    efl_cat: f64,
+) -> lensbench_core::Result<Value> {
+    let els = elements::split(s)?;
     let lenses: Vec<_> = els.iter().filter(|e| e.kind == Kind::Lens).collect();
     // 玉の無いカタログの鏡: 鏡の面の曲率半径・コーニック・径
     if lenses.is_empty() {
@@ -231,7 +233,7 @@ fn prepared(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Option<Value> {
 /// レンズカタログ（.zmx のファイル・フォルダ）を読み、レンズの一覧を返す。
 /// 焦点距離はカタログの値（無ければ主波長の近軸の値）、径は面の半径の最大の 2 倍、厚さは中心厚の合計。
 /// 前もって作った一覧があればそれ（[`set_prepared`]）
-pub fn lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
+pub fn lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> lensbench_core::Result<Value> {
     if let Some(v) = prepared(paths, glass_dirs) {
         return Ok(v);
     }
@@ -246,7 +248,7 @@ fn lenses_cached(
     paths: &[PathBuf],
     glass_dirs: &[PathBuf],
     dir: &std::path::Path,
-) -> Result<Value, String> {
+) -> lensbench_core::Result<Value> {
     // 覚えた一覧: 同じフォルダの並びで、中のファイル（とこのプログラム）の更新時刻・大きさが同じで、
     // 一覧を作るときに読んだそのほかのファイル（ユーザーカタログの品が参照するフォルダの外の .zmx・
     // カタログ・ガラスなど、公開 #67）も変わっていなければそれを使う
@@ -369,8 +371,8 @@ fn cache_key(
     (format!("{h:016x}-{}", s.len()), covered)
 }
 
-fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, String> {
-    let cat = LensCatalog::load_registered(paths).map_err(|e| e.to_string())?;
+fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> lensbench_core::Result<Value> {
+    let cat = LensCatalog::load_registered(paths)?;
     let mut cache = GlassCache::new();
     let mut out: Vec<Value> = cat
         .lenses()
@@ -380,7 +382,7 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
             match lens_summary(&l.zmx, l.efl, glass_dirs, &mut cache) {
                 Ok(Value::Object(m)) => v.as_object_mut().unwrap().extend(m),
                 Ok(_) => {}
-                Err(e) => v["error"] = json!(e),
+                Err(e) => v["error"] = json!(String::from(e)),
             }
             v
         })
@@ -427,7 +429,7 @@ pub fn search(
     paths: &[PathBuf],
     glass_dirs: &[PathBuf],
     q: &lensbench_catalog::spec::CatalogQuery,
-) -> Result<Value, String> {
+) -> lensbench_core::Result<Value> {
     let mut v = lenses(paths, glass_dirs)?;
     if let Some(a) = v["lenses"].as_array_mut() {
         a.retain(|r| q.matches(r));
@@ -645,7 +647,7 @@ fn user_items(
             match summary {
                 Ok(Value::Object(m)) => row.as_object_mut().unwrap().extend(m),
                 Ok(_) => {}
-                Err(e) => row["error"] = json!(e),
+                Err(e) => row["error"] = json!(String::from(e)),
             }
             row
         })
@@ -661,7 +663,7 @@ fn user_lens_summary(
     glass_catalogs: &[String],
     glass_dirs: &[PathBuf],
     lens_cat: &LensCatalog,
-) -> Result<Value, String> {
+) -> lensbench_core::Result<Value> {
     let p = lensbench_project::Project::from_json(
         &json!({
             "glass_catalogs": glass_catalogs,
