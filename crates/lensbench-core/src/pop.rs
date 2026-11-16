@@ -55,7 +55,8 @@ pub struct Beam {
     pub w: f64,
     /// 局所座標の z の向きに対する伝搬の向き（+1 / −1。鏡の後は −1）
     pub dir: f64,
-    /// パイロットを除いた場（行優先: [iy·nx + ix]）
+    /// パイロットを除いた場（行優先: [iy·nx + ix]）。伝搬の途中の作業用の形（間隔 dx・dy が伝搬で変わるので
+    /// 座標は x0・dx から作る）。結果として渡すときは [`Beam::grid`]（座標の並びつきの [`crate::grid::Grid2`]、ANA-18）
     pub u: Vec<C64>,
 }
 
@@ -112,6 +113,22 @@ impl Beam {
     /// 全体の場（パイロット込み）
     pub fn field(&self, i: usize, j: usize) -> C64 {
         self.u[j * self.nx + i] * C64::from_polar(1.0, self.pilot_phase(self.x(i), self.y(j)))
+    }
+    /// x の座標の並び（標本の中心）
+    pub fn xs(&self) -> Vec<f64> {
+        (0..self.nx).map(|i| self.x(i)).collect()
+    }
+    /// y の座標の並び（標本の中心）
+    pub fn ys(&self) -> Vec<f64> {
+        (0..self.ny).map(|j| self.y(j)).collect()
+    }
+    /// パイロットを除いた場を座標の並びつきの格子で（[`Beam::u`] の写し）
+    pub fn grid(&self) -> crate::grid::Grid2<C64> {
+        crate::grid::Grid2::new(self.xs(), self.ys(), self.u.clone())
+    }
+    /// 照度 |u|² を座標の並びつきの格子で
+    pub fn irradiance_grid(&self) -> crate::grid::Grid2 {
+        crate::grid::Grid2::new(self.xs(), self.ys(), self.irradiance())
     }
     /// 照度 |u|²（行優先）
     pub fn irradiance(&self) -> Vec<f64> {

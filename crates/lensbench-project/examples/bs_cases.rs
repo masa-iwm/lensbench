@@ -60,6 +60,7 @@ fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = PathBuf::from(std::env::args().nth(1).expect("出力のフォルダ"));
     let env = Env {
+        step_files: None,
         base: root.clone(),
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,

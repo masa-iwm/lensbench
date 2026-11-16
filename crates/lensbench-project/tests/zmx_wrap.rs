@@ -73,6 +73,7 @@ fn zmx_project_refuses_what_it_cannot_write() {
 fn glrs_and_vignetting_in_a_project() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let env = lensbench_project::Env {
+        step_files: None,
         base: root.join("tests/refs"),
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,

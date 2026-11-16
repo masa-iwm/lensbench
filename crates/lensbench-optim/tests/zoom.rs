@@ -15,6 +15,7 @@ fn states() -> Vec<System> {
     let path = root().join("examples/projects/P17_zoom_three_groups.json");
     let p = Project::from_json(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let env = Env {
+        step_files: None,
         base: path.parent().unwrap().to_path_buf(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,

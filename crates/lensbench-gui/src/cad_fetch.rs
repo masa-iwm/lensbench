@@ -27,7 +27,7 @@ pub fn set_cad_dir(settings_dir: Option<PathBuf>) {
     if let Some(d) = settings_dir {
         let _ = CAD_DIR.set(d.join("cad"));
         // 系を開くときも同じキャッシュを見る（詳しい形の描画）
-        lensbench_project::catalog_fill::set_cad_cache_dir(d.join("cad"));
+        lensbench_cad::set_cad_cache_dir(d.join("cad"));
     }
 }
 
@@ -64,14 +64,12 @@ async fn web_fetch(
     step: String,
 ) -> Result<Value, String> {
     use js_sys::{Function, Promise, Reflect};
-    use lensbench_project::catalog_fill;
+    use lensbench_cad::{cad_cache_dir, cad_cache_find, cad_cache_path};
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
-    let found = catalog_fill::cad_cache_find(&catalog_fill::cad_cache_dir(), &name, &step);
+    let found = cad_cache_find(&cad_cache_dir(), &name, &step);
     let cached = found.is_some();
-    let path = found.unwrap_or_else(|| {
-        catalog_fill::cad_cache_path(&catalog_fill::cad_cache_dir(), &name, &step)
-    });
+    let path = found.unwrap_or_else(|| cad_cache_path(&cad_cache_dir(), &name, &step));
     if !cached {
         // 置き場の鍵はキャッシュのファイル名から .gz を除いたもの
         let key = path

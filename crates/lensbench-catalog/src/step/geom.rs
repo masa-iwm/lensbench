@@ -10,169 +10,11 @@
 //! 枠（環）は、光軸と同じ軸の円柱の面で、外向きの法線が軸を向く（穴の内壁）ものを持つ立体。ガラスはそれを
 //! 持たない立体（円板・玉）。
 
+use lensbench_step::{Arg, StepFile};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) type V3 = [f64; 3];
-
-/// STEP の 1 つの値
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Arg {
-    Ref(u64),
-    Num(f64),
-    List(Vec<Arg>),
-    /// .T.・.F.
-    Bool(bool),
-    Other,
-}
-
-impl Arg {
-    fn r(&self) -> Option<u64> {
-        match self {
-            Arg::Ref(r) => Some(*r),
-            _ => None,
-        }
-    }
-    fn num(&self) -> Option<f64> {
-        match self {
-            Arg::Num(x) => Some(*x),
-            _ => None,
-        }
-    }
-    fn list(&self) -> Option<&[Arg]> {
-        match self {
-            Arg::List(v) => Some(v),
-            _ => None,
-        }
-    }
-}
-
-/// 括弧の入れ子の深さの上限（これより深い所は読み飛ばす。再帰でスタックがあふれないように）
-const MAX_DEPTH: usize = 64;
-
-/// `(a,b,(c,d))` の中身を値の並びに（文字・.T./.F. 以外の列挙は Other）
-pub(crate) fn parse_args(s: &[u8], i: &mut usize) -> Vec<Arg> {
-    parse_args_at(s, i, 0)
-}
-
-/// s[*i] の '(' に対応する ')' の後へ、再帰せずに進む（文字の中の括弧は数えない）
-fn skip_group(s: &[u8], i: &mut usize) {
-    let mut depth = 0usize;
-    while *i < s.len() {
-        match s[*i] {
-            b'(' => depth += 1,
-            b')' => {
-                if depth <= 1 {
-                    *i += 1;
-                    return;
-                }
-                depth -= 1;
-            }
-            b'\'' => {
-                *i += 1;
-                while *i < s.len() {
-                    if s[*i] == b'\'' {
-                        if s.get(*i + 1) == Some(&b'\'') {
-                            *i += 2;
-                            continue;
-                        }
-                        break;
-                    }
-                    *i += 1;
-                }
-            }
-            _ => {}
-        }
-        *i += 1;
-    }
-}
-
-fn parse_args_at(s: &[u8], i: &mut usize, depth: usize) -> Vec<Arg> {
-    if depth > MAX_DEPTH {
-        skip_group(s, i);
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    // s[*i] は '('
-    *i += 1;
-    loop {
-        while *i < s.len() && s[*i].is_ascii_whitespace() {
-            *i += 1;
-        }
-        if *i >= s.len() {
-            return out;
-        }
-        match s[*i] {
-            b')' => {
-                *i += 1;
-                return out;
-            }
-            b',' => {
-                *i += 1;
-            }
-            b'(' => out.push(Arg::List(parse_args_at(s, i, depth + 1))),
-            b'\'' => {
-                *i += 1;
-                while *i < s.len() {
-                    if s[*i] == b'\'' {
-                        if *i + 1 < s.len() && s[*i + 1] == b'\'' {
-                            *i += 2;
-                            continue;
-                        }
-                        break;
-                    }
-                    *i += 1;
-                }
-                *i += 1;
-                out.push(Arg::Other);
-            }
-            b'#' => {
-                *i += 1;
-                let st = *i;
-                while *i < s.len() && s[*i].is_ascii_digit() {
-                    *i += 1;
-                }
-                let n = std::str::from_utf8(&s[st..*i])
-                    .ok()
-                    .and_then(|x| x.parse().ok());
-                out.push(n.map_or(Arg::Other, Arg::Ref));
-            }
-            c if c == b'-'
-                || c == b'+'
-                || c == b'.' && s.get(*i + 1).is_some_and(u8::is_ascii_digit)
-                || c.is_ascii_digit() =>
-            {
-                let st = *i;
-                *i += 1;
-                while *i < s.len()
-                    && (s[*i].is_ascii_digit() || matches!(s[*i], b'.' | b'e' | b'E' | b'-' | b'+'))
-                {
-                    *i += 1;
-                }
-                let x = std::str::from_utf8(&s[st..*i])
-                    .ok()
-                    .and_then(|x| x.parse::<f64>().ok());
-                out.push(x.map_or(Arg::Other, Arg::Num));
-            }
-            _ => {
-                // 列挙（.T.）・$・* ・型つきの値（名前(...)）
-                let st = *i;
-                while *i < s.len() && !matches!(s[*i], b',' | b')' | b'(') {
-                    *i += 1;
-                }
-                let tok = std::str::from_utf8(&s[st..*i]).unwrap_or("").trim();
-                if *i < s.len() && s[*i] == b'(' {
-                    let _ = parse_args_at(s, i, depth + 1);
-                }
-                out.push(match tok {
-                    ".T." => Arg::Bool(true),
-                    ".F." => Arg::Bool(false),
-                    _ => Arg::Other,
-                });
-            }
-        }
-    }
-}
 
 fn dot(a: V3, b: V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -263,154 +105,21 @@ impl Rigid {
     }
 }
 
-/// 読んだ STEP（実体の番号 → 部分の名前と値の並び。複合の実体は部分が 2 つ以上）
-pub(crate) struct Step {
-    ents: HashMap<u64, Vec<(String, Vec<Arg>)>>,
+/// 読んだ STEP（[`StepFile`]）と、測りに使う表
+pub(crate) struct Step<'a> {
+    f: &'a StepFile,
     /// 半周以上の弧の円（CIRCLE）の実体（[`Step::big_arcs`]）
     big: HashSet<u64>,
 }
 
-/// 名前（英数字と _）を読む
-fn read_name(body: &[u8], j: &mut usize) -> String {
-    let ns = *j;
-    while *j < body.len() && (body[*j].is_ascii_alphanumeric() || body[*j] == b'_') {
-        *j += 1;
-    }
-    String::from_utf8_lossy(&body[ns..*j]).into_owned()
-}
-
-fn skip_ws(body: &[u8], j: &mut usize) {
-    while *j < body.len() && body[*j].is_ascii_whitespace() {
-        *j += 1;
-    }
-}
-
-/// 注釈 `/* … */` を除く（文字 '…' の中は残す）
-fn strip_comments(t: &str) -> std::borrow::Cow<'_, str> {
-    if !t.contains("/*") {
-        return std::borrow::Cow::Borrowed(t);
-    }
-    let b = t.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    let mut quoted = false;
-    while i < b.len() {
-        if quoted {
-            out.push(b[i]);
-            if b[i] == b'\'' {
-                if b.get(i + 1) == Some(&b'\'') {
-                    out.push(b'\'');
-                    i += 1;
-                } else {
-                    quoted = false;
-                }
-            }
-            i += 1;
-        } else if b[i] == b'\'' {
-            quoted = true;
-            out.push(b[i]);
-            i += 1;
-        } else if b[i] == b'/' && b.get(i + 1) == Some(&b'*') {
-            i += 2;
-            while i < b.len() && !(b[i] == b'*' && b.get(i + 1) == Some(&b'/')) {
-                i += 1;
-            }
-            i += 2;
-            out.push(b' ');
-        } else {
-            out.push(b[i]);
-            i += 1;
-        }
-    }
-    std::borrow::Cow::Owned(String::from_utf8_lossy(&out).into_owned())
-}
-
-impl Step {
-    /// DATA 部を読む（大文字にした文字）
-    pub(crate) fn parse(upper: &str) -> Result<Step, String> {
-        let text = strip_comments(upper);
-        // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）。
-        // HEADER の無い STEP は先頭から
-        let from = match (text.find("HEADER;"), text.find("ENDSEC;")) {
-            (Some(h), Some(e)) if h < e => e + 7,
-            _ => 0,
-        };
-        let Some(data) = text[from..].find("DATA;").map(|k| k + from) else {
-            return Err("no DATA section in the STEP".into());
-        };
-        let body = &text.as_bytes()[data + 5..];
-        let mut ents: HashMap<u64, Vec<(String, Vec<Arg>)>> = HashMap::new();
-        let mut i = 0;
-        while i < body.len() {
-            // #n = NAME(args); か #n = ( NAME(args) NAME(args) ... );
-            if body[i] != b'#' {
-                i += 1;
-                continue;
-            }
-            let st = i + 1;
-            let mut j = st;
-            while j < body.len() && body[j].is_ascii_digit() {
-                j += 1;
-            }
-            let Some(id) = std::str::from_utf8(&body[st..j])
-                .ok()
-                .and_then(|x| x.parse::<u64>().ok())
-            else {
-                i = j.max(i + 1);
-                continue;
-            };
-            skip_ws(body, &mut j);
-            if j >= body.len() || body[j] != b'=' {
-                i = j;
-                continue;
-            }
-            j += 1;
-            skip_ws(body, &mut j);
-            let mut parts = Vec::new();
-            if j < body.len() && body[j] == b'(' {
-                // 複合の実体
-                j += 1;
-                loop {
-                    skip_ws(body, &mut j);
-                    if j >= body.len() || body[j] == b')' || body[j] == b';' {
-                        break;
-                    }
-                    let name = read_name(body, &mut j);
-                    skip_ws(body, &mut j);
-                    if j < body.len() && body[j] == b'(' {
-                        let args = parse_args(body, &mut j);
-                        if !name.is_empty() {
-                            parts.push((name, args));
-                        }
-                    } else if name.is_empty() {
-                        break;
-                    }
-                }
-            } else {
-                let name = read_name(body, &mut j);
-                skip_ws(body, &mut j);
-                if j < body.len() && body[j] == b'(' {
-                    let args = parse_args(body, &mut j);
-                    if !name.is_empty() {
-                        parts.push((name, args));
-                    }
-                }
-            }
-            if !parts.is_empty() {
-                ents.insert(id, parts);
-            }
-            // 次の ';' へ（文字の中の ';' は parse_args が飛ばしている）
-            while j < body.len() && body[j] != b';' {
-                j += 1;
-            }
-            i = j + 1;
-        }
+impl<'a> Step<'a> {
+    pub(crate) fn new(f: &'a StepFile) -> Step<'a> {
         let mut st = Step {
-            ents,
+            f,
             big: HashSet::new(),
         };
         st.big = st.big_arcs();
-        Ok(st)
+        st
     }
 
     /// 辺（EDGE_CURVE）で半周以上を回る円（CIRCLE）の実体。同じ円（中心・軸・半径）を分けて描いた辺は回る角を
@@ -420,9 +129,9 @@ impl Step {
         // 中心が丸めでずれる STEP がある）
         let mut groups: Vec<(V3, V3, f64, f64)> = Vec::new();
         let mut ids: Vec<(u64, usize)> = Vec::new();
-        let mut keys: Vec<u64> = self.ents.keys().copied().collect();
+        let mut keys: Vec<u64> = self.f.ids().collect();
         keys.sort_unstable();
-        for parts in keys.iter().map(|k| &self.ents[k]) {
+        for parts in keys.iter().filter_map(|k| self.f.parts(*k)) {
             let Some(a) = parts
                 .iter()
                 .find(|(n, _)| n == "EDGE_CURVE")
@@ -487,9 +196,9 @@ impl Step {
     }
 
     /// 実体 id の部分 ty の値
-    fn part(&self, id: u64, ty: &str) -> Option<&Vec<Arg>> {
-        self.ents
-            .get(&id)?
+    fn part(&self, id: u64, ty: &str) -> Option<&'a Vec<Arg>> {
+        self.f
+            .parts(id)?
             .iter()
             .find(|(n, _)| n == ty)
             .map(|(_, a)| a)
@@ -552,7 +261,7 @@ impl Step {
             if !seen.insert(i) {
                 continue;
             }
-            if let Some(ps) = self.ents.get(&i) {
+            if let Some(ps) = self.f.parts(i) {
                 for (_, args) in ps {
                     push_refs(args, &mut st);
                 }
@@ -637,7 +346,7 @@ const SOLIDS: [&str; 3] = [
     "SHELL_BASED_SURFACE_MODEL",
 ];
 
-impl Step {
+impl<'a> Step<'a> {
     /// 実体の集まりの円と頂点
     fn geo_of(&self, set: &HashSet<u64>) -> Geo {
         let mut g = Geo::default();
@@ -725,10 +434,10 @@ impl Step {
     fn instances(&self) -> Vec<(u64, Rigid)> {
         let solids: Vec<u64> = {
             let mut v: Vec<u64> = self
-                .ents
+                .f
                 .iter()
                 .filter(|(_, ps)| ps.iter().any(|(n, _)| SOLIDS.contains(&n.as_str())))
-                .map(|(i, _)| *i)
+                .map(|(i, _)| i)
                 .collect();
             v.sort_unstable();
             v
@@ -739,14 +448,14 @@ impl Step {
         // 表現（…REPRESENTATION）とその項目
         let mut rep_of_solid: HashMap<u64, u64> = HashMap::new();
         let mut reps: Vec<u64> = Vec::new();
-        for (id, ps) in &self.ents {
+        for (id, ps) in self.f.iter() {
             for (n, a) in ps {
                 if n.ends_with("REPRESENTATION") && !n.contains("RELATIONSHIP") {
                     if let Some(items) = a.get(1).and_then(Arg::list) {
-                        reps.push(*id);
+                        reps.push(id);
                         for it in items.iter().filter_map(Arg::r) {
                             if solids.contains(&it) {
-                                rep_of_solid.insert(it, *id);
+                                rep_of_solid.insert(it, id);
                             }
                         }
                     }
@@ -769,7 +478,7 @@ impl Step {
             r
         }
         let mut rels: Vec<(u64, u64, u64, Option<u64>)> = Vec::new(); // (関係, rep1, rep2, 置き方)
-        for (id, ps) in &self.ents {
+        for (id, ps) in self.f.iter() {
             let rr = ps.iter().find(|(n, _)| {
                 n == "REPRESENTATION_RELATIONSHIP" || n == "SHAPE_REPRESENTATION_RELATIONSHIP"
             });
@@ -782,7 +491,7 @@ impl Step {
                 .iter()
                 .find(|(n, _)| n == "REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION")
                 .and_then(|(_, a)| a.first().and_then(Arg::r));
-            rels.push((*id, r1, r2, tr));
+            rels.push((id, r1, r2, tr));
         }
         for &(_, r1, r2, tr) in &rels {
             if tr.is_none() {
@@ -801,7 +510,7 @@ impl Step {
                 .get(2)
                 .and_then(Arg::r)
         };
-        for ps in self.ents.values() {
+        for (_, ps) in self.f.iter() {
             for (n, a) in ps {
                 if n == "SHAPE_DEFINITION_REPRESENTATION" {
                     if let (Some(d), Some(rep)) =
@@ -812,7 +521,7 @@ impl Step {
                 }
             }
         }
-        for ps in self.ents.values() {
+        for (_, ps) in self.f.iter() {
             for (n, a) in ps {
                 if n == "CONTEXT_DEPENDENT_SHAPE_REPRESENTATION" {
                     let (Some(rel), Some(nauo)) =
@@ -910,7 +619,7 @@ pub(crate) struct Measure {
     pub diameter: Value,
     pub note: String,
     /// 枠付きの品の枠（ガラスは thickness・diameter）
-    pub frame: Option<crate::MechSpec>,
+    pub frame: Option<lensbench_project::MechSpec>,
     /// ガラスと枠が 1 つの立体（ガラスの径は見えている径）
     pub merged: bool,
     /// ガラスの無い機構部品（厚さ・径は枠の長さ・外径）
@@ -927,9 +636,8 @@ fn fmt(x: f64) -> String {
     format!("{r}")
 }
 
-use crate::catalog_fill::RetainingRing;
+use super::RetainingRing;
 
-#[path = "step_notes.rs"]
 mod notes;
 
 /// ケージのロッドの間隔の規格 [mm]（16・30・60 は Thorlabs、26.87 は Edmund の 25・30 mm のケージ（ロッドの円の
@@ -1010,12 +718,12 @@ fn thread_fits(d: f64, female: bool, relief: &dyn Fn(f64) -> bool) -> Option<&'s
 
 /// 穴の並び（mm）で、直径 `major` の穴のとなりに、それより太い（1.1 mm まで）短い（2 mm まで）穴があるか
 /// （メスのねじの奥の逃げの溝。Thorlabs の C マウントのメスは外径 25.4 の円柱と逃げの溝 26.416 で描かれる）
-fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
+fn relief_next_to(bores: &[lensbench_project::BoreSpec], major: f64) -> bool {
     bores.windows(2).any(|w| {
-        let groove = |g: &crate::BoreSpec| {
+        let groove = |g: &lensbench_project::BoreSpec| {
             g.diameter > major + 0.05 && g.diameter <= major + 1.1 && g.z1 - g.z0 <= 2.0
         };
-        let thread = |t: &crate::BoreSpec| (t.diameter - major).abs() <= 0.05;
+        let thread = |t: &lensbench_project::BoreSpec| (t.diameter - major).abs() <= 0.05;
         (thread(&w[0]) && groove(&w[1])) || (groove(&w[0]) && thread(&w[1]))
     })
 }
@@ -1028,8 +736,8 @@ fn relief_next_to(bores: &[crate::BoreSpec], major: f64) -> bool {
 /// 3. 最も長い穴（同じ径の区間の長さの和）
 ///
 /// 2・3 で選んだ穴が素子を入れないねじ（C マウントなど）なら、そのねじの名前も返す
-fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
-    let len = |b: &crate::BoreSpec| b.z1 - b.z0;
+fn pick_hold(bores: &[lensbench_project::BoreSpec]) -> (String, f64) {
+    let len = |b: &lensbench_project::BoreSpec| b.z1 - b.z0;
     let by_len = |a: &&(f64, f64), b: &&(f64, f64)| {
         a.1.partial_cmp(&b.1)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -1056,7 +764,8 @@ fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
             && bores[i - 1].diameter < bores[i].diameter
             && bores[i + 1].diameter < bores[i].diameter
     };
-    let bs: Vec<&crate::BoreSpec> = (0..n).filter(|&i| !groove(i)).map(|i| &bores[i]).collect();
+    let bs: Vec<&lensbench_project::BoreSpec> =
+        (0..n).filter(|&i| !groove(i)).map(|i| &bores[i]).collect();
     let seat = (0..bs.len())
         .filter(|&i| len(bs[i]) >= 0.5)
         .filter(|&i| {
@@ -1089,8 +798,8 @@ fn pick_hold(bores: &[crate::BoreSpec]) -> (String, f64) {
 }
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
-pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
-    let st = Step::parse(upper)?;
+pub(crate) fn measure(f: &StepFile, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
+    let st = Step::new(f);
     let sc = |x: f64| round(x * k);
     let inst = st.instances();
     // 立体ごとの形（共通の座標）
@@ -1101,7 +810,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         .collect();
     // 全体の円と頂点（立体が無ければ全部の実体から）
     let all: Geo = if geos.is_empty() {
-        let ids: HashSet<u64> = st.ents.keys().copied().collect();
+        let ids: HashSet<u64> = st.f.ids().collect();
         st.geo_of(&ids)
     } else {
         let mut g = Geo::default();
@@ -1351,7 +1060,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         let mut zs: Vec<f64> = walls.iter().flat_map(|w| [w.1[0], w.1[1]]).collect();
         zs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         zs.dedup_by(|a, b| (*a - *b).abs() <= eps);
-        let mut bores: Vec<crate::BoreSpec> = Vec::new();
+        let mut bores: Vec<lensbench_project::BoreSpec> = Vec::new();
         for w in zs.windows(2) {
             if w[1] - w[0] <= eps {
                 continue;
@@ -1363,7 +1072,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let (z0, z1, d) = (sc(w[0] - all0), sc(w[1] - all0), sc(2.0 * r));
             match bores.last_mut() {
                 Some(b) if b.diameter == d && (b.z1 - z0).abs() < 1e-9 => b.z1 = z1,
-                _ => bores.push(crate::BoreSpec {
+                _ => bores.push(lensbench_project::BoreSpec {
                     z0,
                     z1,
                     diameter: d,
@@ -1372,12 +1081,14 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
         }
         // 内壁の円柱の無い区間（面取りの円錐など）は、となりの穴の太い方でうめる（穴の無い区間は詰まった
         // 円柱として描かれ、確かめられるので）
-        let mut filled: Vec<crate::BoreSpec> = Vec::new();
+        let mut filled: Vec<lensbench_project::BoreSpec> = Vec::new();
         let mut z = 0.0;
         for (k, b) in bores.iter().enumerate() {
             if b.z0 > z + 1e-9 {
-                let prev = filled.last().map_or(0.0, |x: &crate::BoreSpec| x.diameter);
-                filled.push(crate::BoreSpec {
+                let prev = filled
+                    .last()
+                    .map_or(0.0, |x: &lensbench_project::BoreSpec| x.diameter);
+                filled.push(lensbench_project::BoreSpec {
                     z0: z,
                     z1: b.z0,
                     diameter: prev.max(b.diameter),
@@ -1386,14 +1097,14 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             filled.push(*b);
             z = b.z1;
             if k + 1 == bores.len() && z < length - 1e-9 {
-                filled.push(crate::BoreSpec {
+                filled.push(lensbench_project::BoreSpec {
                     z0: z,
                     z1: length,
                     diameter: b.diameter,
                 });
             }
         }
-        let mut bores: Vec<crate::BoreSpec> = Vec::new();
+        let mut bores: Vec<lensbench_project::BoreSpec> = Vec::new();
         for b in filled {
             match bores.last_mut() {
                 Some(x) if x.diameter == b.diameter && (x.z1 - b.z0).abs() < 1e-9 => x.z1 = b.z1,
@@ -1422,11 +1133,11 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             .iter()
             .map(|b| b.diameter)
             .fold(f64::INFINITY, f64::min);
-        let frame = crate::MechSpec {
+        let frame = lensbench_project::MechSpec {
             bores,
             length,
             outer_diameter: sc(2.0 * outer),
-            holds: Some(crate::HoldSpec {
+            holds: Some(lensbench_project::HoldSpec {
                 diameter: sc(hold_d),
                 seat_z: sc(g0 - all0),
             }),
@@ -1630,7 +1341,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let seat = seat_mm;
             // 両端のねじ: 端に接する、ねじの谷の径の外向きの円柱（オス、外径より細い）か内壁（メス）
             let thread_of = |r: f64, female: bool| thread_fits(sc(2.0 * r), female, &relief);
-            let end_thread = |end: f64| -> Option<crate::ThreadEnd> {
+            let end_thread = |end: f64| -> Option<lensbench_project::ThreadEnd> {
                 // 端から 1 mm 以内（面取りの分）
                 let tol = 1.0 / k;
                 let dist = |zz: [f64; 2]| (zz[0] - end).abs().min((zz[1] - end).abs());
@@ -1661,7 +1372,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                     if sc(reach) < MIN_THREAD_MM {
                         return None;
                     }
-                    return Some(crate::ThreadEnd {
+                    return Some(lensbench_project::ThreadEnd {
                         thread: t.name.to_string(),
                         male: true,
                         length: sc(reach),
@@ -1709,7 +1420,7 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
                 };
                 let stop = if total - reach <= tol { total } else { reach };
                 (dist(nearest.1) < 0.5 * total && sc(stop - start) >= MIN_THREAD_MM).then(|| {
-                    crate::ThreadEnd {
+                    lensbench_project::ThreadEnd {
                         thread: t.name.to_string(),
                         male: false,
                         length: sc(stop - start),
@@ -1725,22 +1436,22 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
             let front_thread = end_thread(all0);
             let back_thread = end_thread(all1);
             let rings_n = keep.iter().filter(|x| x.ring).count();
-            let frame = crate::MechSpec {
+            let frame = lensbench_project::MechSpec {
                 bores,
                 length,
                 outer_diameter: sc(outer),
                 thread: thread.clone(),
                 rod_spacing: rod_spacing_mm,
-                holds: Some(crate::HoldSpec {
+                holds: Some(lensbench_project::HoldSpec {
                     diameter: hold_d,
                     seat_z: seat_mm,
                 }),
                 front_thread,
                 back_thread,
                 outline: if square {
-                    crate::MechOutline::Square
+                    lensbench_project::MechOutline::Square
                 } else {
-                    crate::MechOutline::Round
+                    lensbench_project::MechOutline::Round
                 },
             };
             let clear = frame
@@ -1854,19 +1565,16 @@ pub(crate) fn measure(upper: &str, k: f64, round: fn(f64) -> f64) -> Result<Meas
 /// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列、
 /// `[R | t]`）。部品の座標は [`measure`] で枠・機構部品として測った座標（z は枠の端から光軸の向き、x は角の部品の
 /// 辺に直交）。同じ殻が組立で何度も置かれていれば、置き方ごとに 1 つ
-pub(crate) fn shell_poses(
-    upper: &str,
-    k: f64,
-) -> Result<Vec<crate::catalog_fill::ShellPose>, String> {
-    let m = measure(upper, k, |x| x)?;
+pub(crate) fn shell_poses(f: &StepFile, k: f64) -> Result<Vec<super::ShellPose>, String> {
+    let m = measure(f, k, |x| x)?;
     let Some((o, axis, x, z0)) = m.axes else {
         return Err("the mount or mechanical part coordinates can't be found from the STEP (no solid with a bore)".into());
     };
     let y = cross(axis, x);
-    let st = Step::parse(upper)?;
+    let st = Step::new(f);
     let mut out = Vec::new();
     for (solid, rg) in st.instances() {
-        let Some(shell) = st.ents.get(&solid).and_then(|ps| {
+        let Some(shell) = st.f.parts(solid).and_then(|ps| {
             ps.iter()
                 .find(|(n, _)| SOLIDS.contains(&n.as_str()))
                 .and_then(|(_, a)| a.get(1).and_then(Arg::r))
@@ -1901,9 +1609,8 @@ fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, Strin
     let pts: Vec<V3> = if all.verts.len() >= 2 {
         all.verts.clone()
     } else {
-        st.ents
-            .values()
-            .filter_map(|ps| ps.iter().find(|(n, _)| n == "CARTESIAN_POINT"))
+        st.f.iter()
+            .filter_map(|(_, ps)| ps.iter().find(|(n, _)| n == "CARTESIAN_POINT"))
             .filter_map(|(_, a)| a.get(1).and_then(triple))
             .collect()
     };
@@ -2002,7 +1709,7 @@ mod tests {
     #[test]
     fn framed_assembly_splits_glass_and_frame() {
         for nauo in [false, true] {
-            let s = crate::catalog_fill::read_step(&assembly_step(nauo)).unwrap();
+            let s = crate::step::read_step(&assembly_step(nauo)).unwrap();
             assert_eq!(s.thickness, 2.0, "{nauo}: {s:?}");
             assert_eq!(s.diameter, json!(23.9));
             let f = s.frame.expect("枠");
@@ -2034,7 +1741,7 @@ mod tests {
 #28=PLANE('',#4);\n#29=FACE_OUTER_BOUND('',#11,.T.);\n#30=FACE_BOUND('',#15,.T.);\n\
 #31=ADVANCED_FACE('',(#29,#30),#28,.F.);\n\
 #32=CLOSED_SHELL('',(#14,#18,#21,#24,#27,#31));\n#33=MANIFOLD_SOLID_BREP('one',#32);\nENDSEC;\n";
-        let s = crate::catalog_fill::read_step(d).unwrap();
+        let s = crate::step::read_step(d).unwrap();
         assert_eq!(
             (s.thickness, s.diameter.clone()),
             (5.3, json!(21.0)),
@@ -2069,11 +1776,11 @@ mod tests {
 #46=CIRCLE('',#41,11.4554);\n#47=CIRCLE('',#6,11.4554);\n#48=CYLINDRICAL_SURFACE('',#41,11.4554);\n\
 #49=ADVANCED_FACE('',(#46,#47),#48,.F.);\n\
 #50=CLOSED_SHELL('',(#45,#49));\n#51=MANIFOLD_SOLID_BREP('ring',#50);\nENDSEC;\n";
-        let s = crate::catalog_fill::read_step(tube).unwrap();
+        let s = crate::step::read_step(tube).unwrap();
         assert!(s.mech, "{s:?}");
         let f = s.frame.clone().expect("枠");
         assert_eq!((f.length, f.outer_diameter), (10.0, 30.48));
-        assert_eq!(f.outline, crate::MechOutline::Round);
+        assert_eq!(f.outline, lensbench_project::MechOutline::Round);
         let b: Vec<[f64; 3]> = f.bores.iter().map(|b| [b.z0, b.z1, b.diameter]).collect();
         assert_eq!(b, vec![[0.0, 2.0, 24.0], [2.0, 10.0, 26.289]]);
         assert_eq!(f.thread, "SM1");
@@ -2152,7 +1859,7 @@ mod tests {
             "#900=CLOSED_SHELL('',({}));\n#901=MANIFOLD_SOLID_BREP('plate',#900);\nENDSEC;\n",
             faces.join(",")
         );
-        let s = crate::catalog_fill::read_step(&d).unwrap();
+        let s = crate::step::read_step(&d).unwrap();
         let f = s.frame.clone().expect("枠");
         assert!(s.mech);
         assert_eq!(
@@ -2160,7 +1867,7 @@ mod tests {
             (8.0, 40.64, 30.0),
             "{s:?}"
         );
-        assert_eq!(f.outline, crate::MechOutline::Square);
+        assert_eq!(f.outline, lensbench_project::MechOutline::Square);
         assert_eq!(f.thread, "");
         assert_eq!(f.holds.unwrap().diameter, 22.9);
         assert!(s.note.contains("cage plate"), "{}", s.note);
@@ -2175,7 +1882,7 @@ mod tests {
         };
         for p in v.split(';').filter(|x| !x.is_empty()) {
             let t = String::from_utf8_lossy(&std::fs::read(p).unwrap()).into_owned();
-            println!("== {p}\n{:#?}", crate::catalog_fill::read_step(&t));
+            println!("== {p}\n{:#?}", crate::step::read_step(&t));
         }
     }
 
@@ -2281,10 +1988,7 @@ mod tests {
             (0.0, 0.0, 5.0, 6.0, 6.8945, true),
             (0.0, 0.0, 6.0, 13.0, 6.4897, true),
         ]);
-        let f = crate::catalog_fill::read_step(&tube)
-            .unwrap()
-            .frame
-            .unwrap();
+        let f = crate::step::read_step(&tube).unwrap().frame.unwrap();
         assert_eq!(f.thread, "SM05", "{f:?}");
         let ft = f.front_thread.clone().unwrap();
         assert_eq!(
@@ -2305,7 +2009,7 @@ mod tests {
             (0.0, 0.0, 4.826, 5.588, 13.208, true),
             (0.0, 0.0, 5.588, 14.064, 12.7, true),
         ]);
-        let f = crate::catalog_fill::read_step(&cml).unwrap().frame.unwrap();
+        let f = crate::step::read_step(&cml).unwrap().frame.unwrap();
         let ft = f.front_thread.clone().unwrap();
         assert_eq!((ft.thread.as_str(), ft.male), ("C-Mount", true), "{f:?}");
         let bt = f.back_thread.clone().unwrap();
@@ -2318,10 +2022,7 @@ mod tests {
             (0.0, 0.0, 0.0, 10.0, 14.975, false),
             (0.0, 0.0, 0.0, 10.0, 12.7, true),
         ]);
-        let f = crate::catalog_fill::read_step(&ring)
-            .unwrap()
-            .frame
-            .unwrap();
+        let f = crate::step::read_step(&ring).unwrap().frame.unwrap();
         assert_eq!((f.thread.as_str(), &f.front_thread), ("", &None), "{f:?}");
         // 丸いケージ板（外径 49.25、内径 25）とロッドの穴 4 つ
         let q = 13.435;
@@ -2332,12 +2033,12 @@ mod tests {
         for (x, y) in [(q, q), (-q, q), (-q, -q), (q, -q)] {
             plate.push((x, y, 0.0, 10.0, 3.01, true));
         }
-        let f = crate::catalog_fill::read_step(&solid(&plate))
+        let f = crate::step::read_step(&solid(&plate))
             .unwrap()
             .frame
             .unwrap();
         assert_eq!((f.outer_diameter, f.rod_spacing), (49.25, 26.87), "{f:?}");
-        assert_eq!(f.outline, crate::MechOutline::Round);
+        assert_eq!(f.outline, lensbench_project::MechOutline::Round);
         // 7 つのピンの穴（規格に合わない間隔）はロッドとしない
         let mut iris = vec![
             (0.0, 0.0, 0.0, 10.0, 15.75, false),
@@ -2350,7 +2051,7 @@ mod tests {
         // 90° おきの組を作るため、ピンの 1 つの直交の向きにも置く
         let t = std::f64::consts::FRAC_PI_2;
         iris.push((17.05 * t.cos(), 17.05 * t.sin(), 0.0, 10.0, 1.5, true));
-        let f = crate::catalog_fill::read_step(&solid(&iris))
+        let f = crate::step::read_step(&solid(&iris))
             .unwrap()
             .frame
             .unwrap();
@@ -2425,24 +2126,21 @@ mod tests {
         holes.push((15.0, -15.0, 3.1));
         let t = 200f64.to_radians();
         let plate = square_plate(&holes, &[((15.0, 15.0), 45.0, (t, t + 0.05))]);
-        let f = crate::catalog_fill::read_step(&plate)
-            .unwrap()
-            .frame
-            .unwrap();
+        let f = crate::step::read_step(&plate).unwrap().frame.unwrap();
         assert_eq!(
             (f.outer_diameter, f.holds.map(|h| h.diameter), f.rod_spacing),
             (40.0, Some(25.0), 30.0),
             "{f:?}"
         );
-        assert_eq!(f.outline, crate::MechOutline::Square);
+        assert_eq!(f.outline, lensbench_project::MechOutline::Square);
         // 穴の無い板（中心に細い穴も無い）: ロッドの穴の正方形の中心が光軸で、一辺 40
         let blank = square_plate(&rods(3.0), &[]);
-        let s = crate::catalog_fill::read_step(&blank).unwrap();
+        let s = crate::step::read_step(&blank).unwrap();
         assert_eq!(s.diameter, json!(40.0), "{s:?}");
         // 中心に細い穴のある穴の無い板は、枠として測る
         let mut h = vec![(0.0, 0.0, 1.0)];
         h.extend(rods(3.0));
-        let f = crate::catalog_fill::read_step(&square_plate(&h, &[]))
+        let f = crate::step::read_step(&square_plate(&h, &[]))
             .unwrap()
             .frame
             .unwrap();
@@ -2457,7 +2155,7 @@ mod tests {
             (8.0, -8.0, 2.0),
         ]);
         for _ in 0..4 {
-            let f = crate::catalog_fill::read_step(&square_plate(&h, &[]))
+            let f = crate::step::read_step(&square_plate(&h, &[]))
                 .unwrap()
                 .frame
                 .unwrap();
@@ -2484,10 +2182,7 @@ mod tests {
             } else {
                 f.extend(walls);
             }
-            let m = crate::catalog_fill::read_step(&solid(&f))
-                .unwrap()
-                .frame
-                .unwrap();
+            let m = crate::step::read_step(&solid(&f)).unwrap().frame.unwrap();
             let t = m.front_thread.clone().unwrap();
             assert_eq!(
                 (t.thread.as_str(), t.male, t.length),
@@ -2500,7 +2195,7 @@ mod tests {
     /// 保持する素子の選び方（#182）: ねじ → 座（溝を除く） → 最も長い穴
     #[test]
     fn pick_hold_order() {
-        let b = |z0: f64, z1: f64, diameter: f64| crate::BoreSpec { z0, z1, diameter };
+        let b = |z0: f64, z1: f64, diameter: f64| lensbench_project::BoreSpec { z0, z1, diameter };
         // 素子の入る短い SM1 のメスねじは、より長い別の穴より優先
         let sm1 = 1.035 * 25.4;
         let r = super::pick_hold(&[b(0.0, 3.0, sm1), b(3.0, 20.0, 30.0)]);
@@ -2520,27 +2215,5 @@ mod tests {
         // 素子を入れないねじ（C マウントのメス）の穴は、径はそのままでねじの名前を付ける
         let r = super::pick_hold(&[b(0.0, 9.525, 24.5364)]);
         assert_eq!((r.0.as_str(), r.1), ("C-Mount", 24.5364));
-    }
-
-    /// 深い括弧の入れ子でスタックがあふれず、注釈の中の実体（#5 の上書き）を読まない
-    #[test]
-    fn deep_nesting_and_comments() {
-        let deep = format!(
-            "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=X({}1{});\n#2=CARTESIAN_POINT('',(1.,2.,3.));\nENDSEC;\n",
-            "(".repeat(300_000),
-            ")".repeat(300_000)
-        );
-        let st = super::Step::parse(&deep).unwrap();
-        assert!(st.ents.contains_key(&2));
-        let c =
-            "ISO-10303-21;\nHEADER;\nFILE_NAME('DATA;','',(''),(''),'','','');\nENDSEC;\nDATA;\n\
-#5=CIRCLE('',#4,12.7);\n/* #5=CIRCLE('',#4,99.); */\n#6=X('/* not a comment */');\nENDSEC;\n";
-        let st = super::Step::parse(c).unwrap();
-        let five = &st.ents[&5][0].1;
-        assert!(
-            matches!(five[2], super::Arg::Num(r) if r == 12.7),
-            "{five:?}"
-        );
-        assert!(st.ents.contains_key(&6));
     }
 }

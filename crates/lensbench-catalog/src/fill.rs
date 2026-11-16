@@ -1,14 +1,15 @@
 //! カタログの「未完の品」（厚さ・径の足りない品）を補う。
 //!
-//! 未完の品（[`crate::UserItem::is_incomplete`]）は blocks を持たず、分かっている仕様・品ページの URL・
+//! 未完の品（[`lensbench_project::UserItem::is_incomplete`]）は blocks を持たず、分かっている仕様・品ページの URL・
 //! 足りない値の名前（`missing`）だけを持つ。ユーザーが品を選んだときに品ページを 1 件だけ開き、
 //! - 仕様表の文字（`Thickness (mm): 3.00` など）を [`read_page`] で読むか、
-//! - CAD 欄から落とした STEP を [`read_step`] で測り、
+//! - CAD 欄から落とした STEP を [`crate::step::read_step`] で測り、
 //!
 //! ユーザーが確かめた値で [`complete`] が普通の品（blocks つき）を作る。作った品はユーザー側のカタログ
 //! （補足のカタログ）に保存し、次からは普通の品として並べる（元のカタログは書き換えない）。
 
-use crate::UserItem;
+use crate::step::StepSize;
+use lensbench_project::UserItem;
 use serde_json::{json, Value};
 
 /// 補える値の名前
@@ -290,7 +291,7 @@ pub fn page_frame(
     r: &PageRead,
     thickness: Option<f64>,
     glass: Option<f64>,
-) -> Option<crate::MechSpec> {
+) -> Option<lensbench_project::MechSpec> {
     let len = r.mount_thickness.filter(|x| *x > 0.0)?;
     let ca = r.clear_aperture.filter(|x| *x > 0.0)?;
     let od = r
@@ -300,15 +301,15 @@ pub fn page_frame(
     let seat = thickness
         .filter(|t| *t > 0.0 && *t <= len)
         .map_or(0.0, |t| round6((len - t) / 2.0));
-    Some(crate::MechSpec {
-        bores: vec![crate::BoreSpec {
+    Some(lensbench_project::MechSpec {
+        bores: vec![lensbench_project::BoreSpec {
             z0: 0.0,
             z1: len,
             diameter: ca,
         }],
         length: len,
         outer_diameter: od,
-        holds: Some(crate::HoldSpec {
+        holds: Some(lensbench_project::HoldSpec {
             diameter: glass.filter(|g| *g >= ca && *g <= od).unwrap_or(ca),
             seat_z: seat,
         }),
@@ -368,7 +369,7 @@ impl SpecValues {
 
     /// 枠付きの品で、仕様の厚さ・径が枠の値か（枠の厚さ・外径の欄が無く、枠の長さ・外径と合う）。
     /// Thorlabs のマウント付きフィルタなどは「厚さ」「径」が枠の値
-    fn frame_valued(&self, frame: Option<&crate::MechSpec>) -> (bool, bool) {
+    fn frame_valued(&self, frame: Option<&lensbench_project::MechSpec>) -> (bool, bool) {
         let Some(f) = frame else {
             return (false, false);
         };
@@ -434,7 +435,7 @@ impl SpecCmp {
 pub fn spec_check(
     thickness: Option<f64>,
     diameter: Option<f64>,
-    frame: Option<&crate::MechSpec>,
+    frame: Option<&lensbench_project::MechSpec>,
     merged: bool,
     s: &SpecValues,
 ) -> Vec<SpecCmp> {
@@ -486,46 +487,20 @@ pub fn spec_check(
 
 /// ガラスと枠が 1 つの立体の STEP で、STEP から分からないガラスの本当の径を仕様表で補う。
 /// 仕様の径が枠の値でなく、見えている径以上で枠の外径より小さければその値
-pub fn spec_glass_diameter(visible: f64, frame: &crate::MechSpec, s: &SpecValues) -> Option<f64> {
+pub fn spec_glass_diameter(
+    visible: f64,
+    frame: &lensbench_project::MechSpec,
+    s: &SpecValues,
+) -> Option<f64> {
     let (_, fd) = s.frame_valued(Some(frame));
     s.diameter
         .filter(|_| !fd)
         .filter(|d| *d >= visible - SPEC_TOL && *d < frame.outer_diameter)
 }
 
-/// STEP から測った大きさ
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-pub struct StepSize {
-    /// 厚さ [mm]（円の軸の向きの長さ。円が無ければ箱の最も短い辺）
-    pub thickness: f64,
-    /// 径 [mm]（円の最大の直径。円が無ければ箱の残りの 2 辺 [幅, 高さ]）
-    pub diameter: Value,
-    /// 長さの単位の倍率（mm へ）
-    pub unit_mm: f64,
-    /// 測り方の説明
-    pub note: String,
-    /// 枠付きの品の枠（機構部品の寸法、z は枠の端から）。ガラスは `thickness`・`diameter`
-    pub frame: Option<crate::MechSpec>,
-    /// ガラスと枠が 1 つの立体で、ガラスの径は見えている径（本当の径は仕様表で補う。[`spec_glass_diameter`]）
-    pub merged: bool,
-    /// ガラスの無い機構部品（チューブ・ケージ板・マウント）。厚さ・径は枠の長さ・外径で、寸法は `frame`
-    pub mech: bool,
-    /// 機構部品の付属の止め輪（SM1RR など）。素子に合わせて動かすので `frame` に含めない。z は枠の端から
-    pub retaining_rings: Vec<RetainingRing>,
-}
-
-/// 機構部品の付属の止め輪 [mm]
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
-pub struct RetainingRing {
-    pub z0: f64,
-    pub z1: f64,
-    pub inner_diameter: f64,
-    pub outer_diameter: f64,
-}
-
 /// 品の簡易外形（カタログの `mech`）と、取った STEP から測った寸法の食い違い（長さ・外径・外形の形）。
 /// 食い違いの説明の並び（空なら合う）。差は [`SPEC_TOL`] まで許す
-pub fn cad_check(mech: &crate::MechSpec, s: &StepSize) -> Vec<String> {
+pub fn cad_check(mech: &lensbench_project::MechSpec, s: &StepSize) -> Vec<String> {
     let mut v = Vec::new();
     let Some(f) = s.frame.as_ref().filter(|_| s.mech) else {
         return vec!["the mechanical dimensions can't be measured from the STEP (it has glass, no bore, or the like)".into()];
@@ -556,127 +531,6 @@ pub fn cad_check(mech: &crate::MechSpec, s: &StepSize) -> Vec<String> {
         );
     }
     v
-}
-
-/// 取った品の STEP のキャッシュのフォルダ（[`set_cad_cache_dir`] で決めたもの。無ければ環境変数
-/// `LENSBENCH_CAD_CACHE`、なければ OS の設定の場所: Windows は `%APPDATA%\lensbench\cad`、ほかは
-/// `$XDG_CACHE_HOME/lensbench/cad` か `~/.cache/lensbench/cad`）
-pub fn cad_cache_dir() -> std::path::PathBuf {
-    use std::path::PathBuf;
-    if let Some(d) = CAD_CACHE_DIR.get() {
-        return d.clone();
-    }
-    // Web 版（ファイルシステムが無い）: 置き場（vfs）の /cad
-    if cfg!(target_arch = "wasm32") {
-        return PathBuf::from("/cad");
-    }
-    if let Some(d) = std::env::var_os("LENSBENCH_CAD_CACHE").filter(|d| !d.is_empty()) {
-        return PathBuf::from(d);
-    }
-    let env = |k: &str| {
-        std::env::var_os(k)
-            .filter(|d| !d.is_empty())
-            .map(PathBuf::from)
-    };
-    let base = if cfg!(windows) {
-        env("APPDATA")
-    } else {
-        env("XDG_CACHE_HOME").or_else(|| env("HOME").map(|h| h.join(".cache")))
-    };
-    base.unwrap_or_else(std::env::temp_dir)
-        .join("lensbench")
-        .join("cad")
-}
-
-static CAD_CACHE_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-
-/// キャッシュのフォルダを決める（GUI の起動時に設定のフォルダの `cad`。1 回だけ）
-pub fn set_cad_cache_dir(d: std::path::PathBuf) {
-    let _ = CAD_CACHE_DIR.set(d);
-}
-
-/// キャッシュにある品の STEP（gzip の [`cad_cache_path`]、無ければ以前の形の `.step`）。どちらも無ければ None
-pub fn cad_cache_find(dir: &std::path::Path, item: &str, url: &str) -> Option<std::path::PathBuf> {
-    let p = cad_cache_path(dir, item, url);
-    if lensbench_core::vfs::is_file(&p) {
-        return Some(p);
-    }
-    let old = p.with_extension("");
-    lensbench_core::vfs::is_file(&old).then_some(old)
-}
-
-/// キャッシュのファイル: `<品の名前（ファイル名に使えない文字は _）>-<URL の FNV-1a 64 の 16 進>.step.gz`（gzip の STEP）。
-/// 共有の置き場の鍵は `.gz` を除いた名前
-pub fn cad_cache_path(dir: &std::path::Path, item: &str, url: &str) -> std::path::PathBuf {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in url.trim().bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
-    let name: String = item
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || "-_.+".contains(c) {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(64)
-        .collect();
-    dir.join(format!("{name}-{h:016x}.step.gz"))
-}
-
-/// 殻の実体の番号と、STEP の座標から部品の座標 [mm] への変換（3 行 4 列 `[R | t]`）
-pub type ShellPose = (u64, [[f64; 4]; 3]);
-
-/// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列 `[R | t]`、
-/// 組立の置き方ごとに 1 つ）。部品の座標は [`read_step`] で測った枠・機構部品の寸法の座標（z は枠の端から光軸の向き、
-/// x は角の部品の辺に直交）。取った STEP の形を部品の簡易外形と同じ所に描くのに使う
-pub fn step_shell_poses(text: &str) -> Result<Vec<ShellPose>, String> {
-    let upper = text.to_ascii_uppercase();
-    crate::step_geom::shell_poses(&upper, step_unit(&upper))
-}
-
-/// STEP の長さの単位（mm へ）
-fn step_unit(upper: &str) -> f64 {
-    let squeezed: String = upper.chars().filter(|c| !c.is_whitespace()).collect();
-    let upper = squeezed.as_str();
-    if upper.contains("'INCH'") {
-        25.4
-    } else if upper.contains("SI_UNIT(.MILLI.,.METRE.)") {
-        1.0
-    } else if upper.contains("SI_UNIT(.CENTI.,.METRE.)") {
-        10.0
-    } else if upper.contains("SI_UNIT($,.METRE.)") {
-        1000.0
-    } else {
-        1.0
-    }
-}
-
-/// STEP（AP203/AP214/AP242 の B-rep）の文字から、品の厚さ・径を測る。
-///
-/// 立体（`MANIFOLD_SOLID_BREP`）ごとに組立の置き方を当てて共通の座標に置き、最大の円の軸を光軸とする。
-/// 光軸と同じ軸の穴（内壁の円柱の面）を持つ立体を枠、持たない立体をガラスとみなし、両方あれば
-/// 厚さ・径はガラスの値で、枠は [`StepSize::frame`]（機構部品の寸法）に入れる。ガラスが無く穴のある立体だけなら機構部品（チューブ・
-/// ケージ板・マウント）として全体を枠にし（[`StepSize::mech`]）、ねじ（SM05〜SM3 の内径）・ケージのロッドの間隔も読む。枠の分からない品は、
-/// 径は軸に平行な円の最大の直径、厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の
-/// 最も短い辺を厚さ、残りを [幅, 高さ] とする
-pub fn read_step(text: &str) -> Result<StepSize, String> {
-    let upper = text.to_ascii_uppercase();
-    let k = step_unit(&upper);
-    let m = crate::step_geom::measure(&upper, k, round6)?;
-    Ok(StepSize {
-        thickness: m.thickness,
-        diameter: m.diameter,
-        unit_mm: k,
-        note: m.note,
-        frame: m.frame,
-        merged: m.merged,
-        mech: m.mech,
-        retaining_rings: m.retaining_rings,
-    })
 }
 
 /// 基板の名前から硝材（名前・ガラスのカタログ）。分からない基板は N-BK7 で代用し、代用なら true
@@ -756,11 +610,11 @@ pub fn complete(
     item: &UserItem,
     thickness: Option<f64>,
     diameter: Option<Value>,
-    frame: Option<crate::MechSpec>,
+    frame: Option<lensbench_project::MechSpec>,
     from: FillFrom,
     checked: &str,
 ) -> Result<UserItem, String> {
-    use crate::catalog_spec::ItemKind;
+    use lensbench_project::catalog_spec::ItemKind;
     let mut it = item.clone();
     for m in &item.missing {
         let ok = match m.as_str() {
@@ -957,16 +811,16 @@ mod tests {
         assert_eq!(r.thickness, Some(1.1));
     }
 
-    fn frame(len: f64, od: f64, bore: f64) -> crate::MechSpec {
-        crate::MechSpec {
-            bores: vec![crate::BoreSpec {
+    fn frame(len: f64, od: f64, bore: f64) -> lensbench_project::MechSpec {
+        lensbench_project::MechSpec {
+            bores: vec![lensbench_project::BoreSpec {
                 z0: 0.0,
                 z1: len,
                 diameter: bore,
             }],
             length: len,
             outer_diameter: od,
-            holds: Some(crate::HoldSpec {
+            holds: Some(lensbench_project::HoldSpec {
                 diameter: bore,
                 seat_z: 0.5,
             }),
@@ -1143,53 +997,6 @@ mod tests {
         assert_eq!(r.thickness, Some(3.0));
         let r = read_page("Center Thickness CT (mm): 4.0\n");
         assert_eq!(r.thickness, Some(4.0));
-    }
-
-    /// 厚さ t・半径 r の円板の B-rep（上下の円と側面の円柱）
-    fn disc_step(t: f64, r: f64, unit: &str) -> String {
-        format!(
-            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n\
-#1=CARTESIAN_POINT('',(0.,0.,0.));\n#2=DIRECTION('',(0.,0.,1.));\n#3=DIRECTION('',(1.,0.,0.));\n\
-#4=AXIS2_PLACEMENT_3D('',#1,#2,#3);\n#5=CIRCLE('',#4,{r});\n#6=CARTESIAN_POINT('',(0.,0.,{t}));\n\
-#7=AXIS2_PLACEMENT_3D('',#6,#2,#3);\n#8=CIRCLE('',#7,{r});\n#9=CYLINDRICAL_SURFACE('',#4,{r});\n\
-#10=CARTESIAN_POINT('',({r},0.,0.));\n#11=CARTESIAN_POINT('',({r},0.,{t}));\n\
-#12=VERTEX_POINT('',#10);\n#13=VERTEX_POINT('',#11);\n#14=PLANE('',#7);\n\
-#20=( LENGTH_UNIT() NAMED_UNIT(*) {unit} );\nENDSEC;\nEND-ISO-10303-21;\n"
-        )
-    }
-
-    #[test]
-    fn step_disc_size() {
-        let s = read_step(&disc_step(3.0, 12.5, "SI_UNIT(.MILLI.,.METRE.)")).unwrap();
-        assert_eq!(s.thickness, 3.0);
-        assert_eq!(s.diameter, json!(25.0));
-        assert_eq!(s.unit_mm, 1.0);
-        // インチの STEP
-        let s = read_step(&disc_step(0.25, 0.5, "CONVERSION_BASED_UNIT('INCH',#21)")).unwrap();
-        assert_eq!(s.thickness, 6.35);
-        assert_eq!(s.diameter, json!(25.4));
-        assert!(read_step("not a step").is_err());
-    }
-
-    #[test]
-    fn step_box_size() {
-        let mut d = String::from("ISO-10303-21;\nDATA;\n");
-        let mut n = 1;
-        for x in [0.0, 25.0] {
-            for y in [0.0, 35.0] {
-                for z in [0.0, 1.1] {
-                    d += &format!(
-                        "#{n}=CARTESIAN_POINT('',({x},{y},{z}));\n#{}=VERTEX_POINT('',#{n});\n",
-                        n + 1
-                    );
-                    n += 2;
-                }
-            }
-        }
-        d += "ENDSEC;\n";
-        let s = read_step(&d).unwrap();
-        assert_eq!(s.thickness, 1.1);
-        assert_eq!(s.diameter, json!([25.0, 35.0]));
     }
 
     fn incomplete(kind: &str, missing: &[&str], specs: Value) -> UserItem {

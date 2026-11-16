@@ -268,7 +268,7 @@ mod tests {
         let env = lensbench_project::Env {
             base: root.clone(),
             glass_dirs: vec![root.join("tests/glass")],
-            catalog: None,
+            ..Default::default()
         };
         let sys = |p: &Pick| {
             let c = Combo {

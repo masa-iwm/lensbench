@@ -32,6 +32,7 @@ const P: &str = r#"{"glass_catalogs": ["SCHOTT"],
 fn sys() -> (Project, System) {
     let p = Project::from_json(P).unwrap();
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -280,6 +281,7 @@ const DP: &str = r#"{"glass_catalogs": ["SCHOTT"],
 fn double_pass_lens_errors_on_both_passes() {
     let p = Project::from_json(DP).unwrap();
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -384,6 +386,7 @@ fn double_pass_lens_errors_on_both_passes() {
 #[test]
 fn wedge_face_follows_lens_orientation() {
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -475,6 +478,7 @@ fn groups_on_lens_blocks() {
     // 玉 1 つのブロック（往復する玉も）に groups を書くと、玉の公差と別に組立の偏心・傾き・移動を足す
     let p = Project::from_json(DP).unwrap();
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,

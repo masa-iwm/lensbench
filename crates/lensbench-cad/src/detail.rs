@@ -1,13 +1,14 @@
 //! 取った品の STEP を測る・詳しい形（三角形）にする（公開 #121）。ネイティブと Web 版の両方で使う
 //! （取る・上げるのは [`crate`]、ネイティブだけ。Web 版は GUI が置き場から取って置き場（vfs）に入れる）。
-use lensbench_project::{catalog_fill, UserItem};
+use lensbench_catalog::{fill, step};
+use lensbench_project::UserItem;
 
 /// STEP を catalog-step と同じ読み方で測り、品の簡易外形と比べる（測った寸法、食い違い・測れなかった理由）
-pub fn measure(item: &UserItem, text: &[u8]) -> (Option<catalog_fill::StepSize>, Vec<String>) {
-    match catalog_fill::read_step(&String::from_utf8_lossy(text)) {
+pub fn measure(item: &UserItem, text: &[u8]) -> (Option<step::StepSize>, Vec<String>) {
+    match step::read_step(&String::from_utf8_lossy(text)) {
         Ok(s) => {
             let notes = match &item.mech {
-                Some(m) => catalog_fill::cad_check(m, &s),
+                Some(m) => fill::cad_check(m, &s),
                 None => Vec::new(),
             };
             (Some(s), notes)
@@ -20,17 +21,17 @@ pub fn measure(item: &UserItem, text: &[u8]) -> (Option<catalog_fill::StepSize>,
 /// 詳しい形の三角形の細かさ [mm]（面からのずれの許し）
 const DETAIL_TOL_MM: f64 = 0.2;
 
-/// STEP の文字を部品の座標の三角形にする（[`catalog_fill::step_shell_poses`] の置き方で、殻ごとに三角形にして置く）。
+/// STEP の文字を部品の座標の三角形にする（[`step::shell_poses`] の置き方で、殻ごとに三角形にして置く）。
 /// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
 #[cfg(feature = "mesh")]
 pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, String> {
     use truck_meshalgo::prelude::*;
     use truck_stepio::r#in::Table;
-    let poses = catalog_fill::step_shell_poses(text)?;
+    // 文字は 1 回だけ読み、置き方・単位・書き出しへの写しが同じ表を使う（PRJ-06）
+    let file = step::StepFile::parse(text)?;
+    let poses = step::shell_poses(&file)?;
     let all_poses = poses.clone();
-    let upper_unit = catalog_fill::read_step(text)
-        .map(|s| s.unit_mm)
-        .unwrap_or(1.0);
+    let upper_unit = file.unit_mm();
     let table = Table::from_step(text).ok_or("the STEP can't be read (truck)")?;
     let tol = DETAIL_TOL_MM / upper_unit;
     let mut meshed: std::collections::HashMap<u64, Vec<[[f64; 3]; 3]>> = Default::default();
@@ -85,7 +86,8 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
     Ok(lensbench_export::detail::Detail {
         tris,
         step: Some(lensbench_export::step_embed::StepSource {
-            text: std::sync::Arc::new(text.to_string()),
+            // 全文でなく、殻から辿れる実体だけを持つ（PRJ-21）
+            file: std::sync::Arc::new(file.subset(all_poses.iter().map(|p| p.0))),
             unit_mm: upper_unit,
             shells: all_poses,
         }),
@@ -93,7 +95,7 @@ pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, St
 }
 
 #[cfg(feature = "mesh")]
-/// 詳しい形の読み手（[`lensbench_export::detail::set_loader`] に渡す）。ファイルごとに読んで覚える。
+/// 詳しい形の読み手（[`details`]）。ファイルごとに読んで覚える。
 /// 更新時刻が変われば読み直し、覚えるのは最近使った [`MEMO_MAX`] 個まで（STEP の全文を持つので増やし続けない）
 pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail::Detail>> {
     use lensbench_core::LockExt;
@@ -136,11 +138,13 @@ pub fn load_detail(path: &str) -> Option<std::sync::Arc<lensbench_export::detail
 #[cfg(feature = "mesh")]
 pub const MEMO_MAX: usize = 64;
 
-/// 詳しい形の読み手を使えるようにする（CLI・serve・GUI の起動時）
-/// （feature `mesh` が無ければ何もしない）
-pub fn install_detail_loader() {
+/// 詳しい形の読み手（書き出し・表示の設定 `mech_detail` に渡す。PRJ-21）。feature `mesh` が無ければ None
+/// （詳しい形は描かない）
+pub fn details() -> Option<lensbench_export::detail::Details> {
     #[cfg(feature = "mesh")]
-    lensbench_export::detail::set_loader(load_detail);
+    return Some(lensbench_export::detail::Details::new(load_detail));
+    #[cfg(not(feature = "mesh"))]
+    None
 }
 
 /// STEP を gzip にする（キャッシュと置き場の形）

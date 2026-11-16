@@ -11,6 +11,7 @@
 //!   （強度は瞳の正規化座標の面積の割合 / 検出面の面積）。偏光を指定すると Jones の場で重ねる。
 
 use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::grid::Grid2;
 use lensbench_core::raygrid::{self as rg, InputPol, RayGrid};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::{analysis, invalid, Result};
@@ -187,29 +188,34 @@ pub struct Polarized<'a> {
     pub coat: &'a Coatings,
 }
 
-/// 像面上の干渉縞（画素 (i, j) の中心は (x0 + i·dx, y0 + j·dx)、番号 j·n + i）
+/// 像面上の干渉縞。値は n × n の画素の格子（[`Grid2`]、座標は画素の中心 [mm]、行 = y。ANA-18）
 #[derive(Debug, Clone)]
 pub struct DetectorFringe {
-    pub n: usize,
-    pub x0: f64,
-    pub y0: f64,
+    /// 画素の間隔 [mm]（x・y で同じ）
     pub dx: f64,
     /// 波長 [µm]
     pub wavelength: f64,
     /// 試料・参照のどちらが届いたか
-    pub ok_sample: Vec<bool>,
-    pub ok_reference: Vec<bool>,
+    pub ok_sample: Grid2<bool>,
+    pub ok_reference: Grid2<bool>,
     /// 試料・参照だけの強度（power をかけた値。届かない画素は 0）
-    pub i_sample: Vec<f64>,
-    pub i_reference: Vec<f64>,
+    pub i_sample: Grid2,
+    pub i_reference: Grid2,
     /// 重ねた強度
-    pub intensity: Vec<f64>,
+    pub intensity: Grid2,
     /// 光路差 (L_s − L_r − delay) / λ [波]（両方届く画素だけ、ほかは NaN）
-    pub opd: Vec<f64>,
+    pub opd: Grid2,
     /// 縞の明暗の比（可視度） 2|A_s·A_r*| / (|A_s|² + |A_r|²)（両方届く画素だけ、ほかは NaN）
-    pub visibility: Vec<f64>,
+    pub visibility: Grid2,
     /// 折り返した三角形の割合（試料・参照）
     pub fold: (f64, f64),
+}
+
+impl DetectorFringe {
+    /// 1 辺の画素の数
+    pub fn n(&self) -> usize {
+        self.intensity.nx()
+    }
 }
 
 /// 1 本の経路を瞳 G × G で波長 w の光線の格子にする（場は exp(+i k L) の約束の複素ベクトル、スカラーなら (1, 0, 0)）。
@@ -395,19 +401,19 @@ pub fn detector(
     let k = 2.0 * std::f64::consts::PI / (lam * 1e-3);
     let n2 = n * n;
     let pi = std::f64::consts::PI;
+    let xs: Vec<f64> = (0..n).map(|i| x0 + i as f64 * dx).collect();
+    let ys: Vec<f64> = (0..n).map(|j| y0 + j as f64 * dx).collect();
+    let grid = |v: Vec<f64>| Grid2::new(xs.clone(), ys.clone(), v);
     let mut out = DetectorFringe {
-        n,
-        x0,
-        y0,
         dx,
         wavelength: lam,
-        ok_sample: ps.ok.clone(),
-        ok_reference: pr.ok.clone(),
-        i_sample: vec![0.0; n2],
-        i_reference: vec![0.0; n2],
-        intensity: vec![0.0; n2],
-        opd: vec![f64::NAN; n2],
-        visibility: vec![f64::NAN; n2],
+        ok_sample: Grid2::new(xs.clone(), ys.clone(), ps.ok.clone()),
+        ok_reference: Grid2::new(xs.clone(), ys.clone(), pr.ok.clone()),
+        i_sample: grid(vec![0.0; n2]),
+        i_reference: grid(vec![0.0; n2]),
+        intensity: grid(vec![0.0; n2]),
+        opd: grid(vec![f64::NAN; n2]),
+        visibility: grid(vec![f64::NAN; n2]),
         fold: (ps.fold_fraction, pr.fold_fraction),
     };
     for q in 0..n2 {
@@ -428,21 +434,21 @@ pub fn detector(
             [C64::new(0.0, 0.0); 3]
         };
         let (is, ir) = (n2v(&a_s), n2v(&a_r));
-        out.i_sample[q] = is;
-        out.i_reference[q] = ir;
+        out.i_sample.data_mut()[q] = is;
+        out.i_reference.data_mut()[q] = ir;
         if ps.ok[q] && pr.ok[q] {
             let dl = ps.l[0][q] - pr.l[0][q] - o.delay;
             let cross: C64 = (0..3).map(|c| a_s[c] * a_r[c].conj()).sum::<C64>();
             let ph = C64::from_polar(1.0, k * dl);
-            out.intensity[q] = is + ir + 2.0 * (cross * ph).re;
-            out.opd[q] = dl / (lam * 1e-3);
-            out.visibility[q] = if is + ir > 0.0 {
+            out.intensity.data_mut()[q] = is + ir + 2.0 * (cross * ph).re;
+            out.opd.data_mut()[q] = dl / (lam * 1e-3);
+            out.visibility.data_mut()[q] = if is + ir > 0.0 {
                 2.0 * cross.norm() / (is + ir)
             } else {
                 0.0
             };
         } else {
-            out.intensity[q] = is + ir;
+            out.intensity.data_mut()[q] = is + ir;
         }
     }
     Ok(out)
@@ -544,12 +550,15 @@ mod tests {
         };
         let r = detector(&s, &s, FieldSel::Index(0), None, &o, None).unwrap();
         let mut seen = 0;
-        for q in 0..r.n * r.n {
-            if r.ok_sample[q] && r.ok_reference[q] {
+        for q in 0..r.n() * r.n() {
+            if r.ok_sample.data()[q] && r.ok_reference.data()[q] {
                 seen += 1;
-                assert!(r.opd[q].abs() < 1e-12);
-                assert!((r.visibility[q] - 1.0).abs() < 1e-12);
-                assert!((r.intensity[q] - 4.0 * r.i_sample[q]).abs() < 1e-9 * r.intensity[q]);
+                assert!(r.opd.data()[q].abs() < 1e-12);
+                assert!((r.visibility.data()[q] - 1.0).abs() < 1e-12);
+                assert!(
+                    (r.intensity.data()[q] - 4.0 * r.i_sample.data()[q]).abs()
+                        < 1e-9 * r.intensity.data()[q]
+                );
             }
         }
         assert!(seen > 20, "{seen}");
@@ -559,14 +568,14 @@ mod tests {
             ..o
         };
         let r2 = detector(&s, &s, FieldSel::Index(0), None, &o2, None).unwrap();
-        for q in 0..r2.n * r2.n {
-            if r2.ok_sample[q] && r2.ok_reference[q] {
+        for q in 0..r2.n() * r2.n() {
+            if r2.ok_sample.data()[q] && r2.ok_reference.data()[q] {
                 assert!(
-                    r2.intensity[q].abs() < 1e-9 * r2.i_sample[q],
+                    r2.intensity.data()[q].abs() < 1e-9 * r2.i_sample.data()[q],
                     "{}",
-                    r2.intensity[q]
+                    r2.intensity.data()[q]
                 );
-                assert!((r2.opd[q] + 0.5).abs() < 1e-9);
+                assert!((r2.opd.data()[q] + 0.5).abs() < 1e-9);
             }
         }
         // 一様な瞳: 強度の積分は 1
@@ -578,7 +587,7 @@ mod tests {
             ..Default::default()
         };
         let r3 = detector(&s, &s, FieldSel::Index(0), None, &o3, None).unwrap();
-        let tot: f64 = r3.i_sample.iter().sum::<f64>() * r3.dx * r3.dx;
+        let tot: f64 = r3.i_sample.data().iter().sum::<f64>() * r3.dx * r3.dx;
         assert!((tot - 1.0).abs() < 0.03, "{tot}");
     }
 
@@ -611,15 +620,15 @@ mod tests {
             ..Default::default()
         };
         let b = detector(&s1, &s0, FieldSel::Index(0), None, &o, None).unwrap();
-        let n = b.n;
+        let n = b.n();
         let i = n / 2;
         let (j0, j1) = (n / 2 - 15, n / 2 + 15);
         let (q0, q1) = (j0 * n + i, j1 * n + i);
-        assert!(b.opd[q0].is_finite() && b.opd[q1].is_finite());
-        let y = |j: usize| b.y0 + j as f64 * b.dx;
+        assert!(b.opd.data()[q0].is_finite() && b.opd.data()[q1].is_finite());
+        let y = |j: usize| b.opd.y()[j];
         let sph = |y: f64, yf: f64| (4.0 + (y - yf) * (y - yf)).sqrt();
         let want = (sph(y(j1), yb) - sph(y(j0), yb)) - (sph(y(j1), 0.0) - sph(y(j0), 0.0));
-        let got = (b.opd[q1] - b.opd[q0]) * 0.55e-3;
+        let got = (b.opd.data()[q1] - b.opd.data()[q0]) * 0.55e-3;
         // 画素への補間（三角形の 1 次）の誤差の分だけ許す
         assert!((got - want).abs() < 1e-3 * want.abs(), "{got} {want}");
         assert!(
@@ -629,15 +638,15 @@ mod tests {
         );
         // 重ねた強度は 2 つの強度と光路差の cos
         for q in [q0, q1] {
-            let (a, c) = (b.i_sample[q], b.i_reference[q]);
-            let ph = 2.0 * std::f64::consts::PI * b.opd[q];
+            let (a, c) = (b.i_sample.data()[q], b.i_reference.data()[q]);
+            let ph = 2.0 * std::f64::consts::PI * b.opd.data()[q];
             let want = a + c + 2.0 * (a * c).sqrt() * ph.cos();
             assert!(
-                (b.intensity[q] - want).abs() < 1e-9 * (a + c),
+                (b.intensity.data()[q] - want).abs() < 1e-9 * (a + c),
                 "{} {want}",
-                b.intensity[q]
+                b.intensity.data()[q]
             );
-            assert!((b.visibility[q] - 2.0 * (a * c).sqrt() / (a + c)).abs() < 1e-12);
+            assert!((b.visibility.data()[q] - 2.0 * (a * c).sqrt() / (a + c)).abs() < 1e-12);
         }
     }
 }

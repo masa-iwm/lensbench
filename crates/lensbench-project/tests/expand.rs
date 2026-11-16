@@ -10,6 +10,7 @@ fn root() -> PathBuf {
 
 fn env() -> Env<'static> {
     Env {
+        step_files: None,
         base: root().join("tests/refs"),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -251,6 +252,7 @@ fn project_with(
     let p = Project::from_json(&txt).unwrap();
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let e = Env {
+        step_files: None,
         base: root().join("examples/lenses/LB"),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: Some(&look),
@@ -686,6 +688,7 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
         (40.0, 1.2, true)
     );
     let env = Env {
+        step_files: None,
         base: dir.clone(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,

@@ -17,6 +17,8 @@ workspace = true
 lensbench-core = { path = "../lensbench-core" }
 png = "0.17"
 serde_json = { version = "1", features = ["preserve_order"] }
+# 品の STEP の読み（測りと同じ表で写す、PRJ-06）
+lensbench-step = { path = "../lensbench-step" }
 
 [dev-dependencies]
 ndarray = "0.16"

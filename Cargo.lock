@@ -2751,6 +2751,7 @@ name = "lensbench-cad"
 version = "0.4.0"
 dependencies = [
  "flate2",
+ "lensbench-catalog",
  "lensbench-core",
  "lensbench-export",
  "lensbench-project",
@@ -2762,6 +2763,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-catalog"
+version = "0.4.0"
+dependencies = [
+ "lensbench-project",
+ "lensbench-step",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lensbench-cli"
 version = "0.4.0"
 dependencies = [
@@ -2769,6 +2780,7 @@ dependencies = [
  "flate2",
  "lensbench-analysis",
  "lensbench-cad",
+ "lensbench-catalog",
  "lensbench-core",
  "lensbench-design",
  "lensbench-engine",
@@ -2829,6 +2841,7 @@ version = "0.4.0"
 dependencies = [
  "lensbench-analysis",
  "lensbench-cad",
+ "lensbench-catalog",
  "lensbench-core",
  "lensbench-design",
  "lensbench-export",
@@ -2848,6 +2861,7 @@ version = "0.4.0"
 dependencies = [
  "lensbench-core",
  "lensbench-project",
+ "lensbench-step",
  "ndarray",
  "ndarray-npy",
  "png 0.17.16",
@@ -2873,6 +2887,7 @@ dependencies = [
  "egui_plot",
  "js-sys",
  "lensbench-cad",
+ "lensbench-catalog",
  "lensbench-core",
  "lensbench-design",
  "lensbench-engine",
@@ -2946,6 +2961,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lensbench-step"
+version = "0.4.0"
+
+[[package]]
 name = "lensbench-verify"
 version = "0.4.0"
 dependencies = [
@@ -2963,7 +2982,6 @@ version = "0.4.0"
 dependencies = [
  "flate2",
  "js-sys",
- "lensbench-cad",
  "lensbench-core",
  "lensbench-engine",
  "lensbench-gui",

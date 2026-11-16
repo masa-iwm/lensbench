@@ -24,7 +24,6 @@
 //! `pop` は系の視野で入力の場を作り、`ghost` は視野を使わない（入力なし）。`ghost` の膜は `Context` の膜（なければ
 //! 系の膜ファイル）を使う。
 
-use lensbench_core::grid::Grid2;
 use lensbench_core::Waves;
 use std::sync::Arc;
 
@@ -752,11 +751,6 @@ fn v1(v: Vec<f64>) -> Result<Array> {
     Array::f64(vec![v.len()], v)
 }
 
-/// 2 次元の格子の値 → 形 (ny, nx) の配列（行優先のまま写す）
-fn grid(g: &Grid2) -> Result<Array> {
-    Array::f64(vec![g.ny(), g.nx()], g.data().to_vec())
-}
-
 fn out(items: Vec<(&str, Array)>) -> Arrays {
     items.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
 }
@@ -808,7 +802,7 @@ impl Prepared {
                 let r = analysis::wavefront(s, f, *wave, *n, *ref_primary)?;
                 out(vec![
                     ("p", v1(r.w.x().to_vec())?),
-                    ("w", grid(&r.w)?),
+                    ("w", Array::grid(&r.w)),
                     ("pv", Array::scalar(r.pv)),
                     ("rms", Array::scalar(r.rms)),
                 ])
@@ -853,7 +847,7 @@ impl Prepared {
                 out(vec![
                     ("x", v1(r.i.x().to_vec())?),
                     ("y", v1(r.i.y().to_vec())?),
-                    ("i", grid(&r.i)?),
+                    ("i", Array::grid(&r.i)),
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
@@ -892,7 +886,7 @@ impl Prepared {
                 out(vec![
                     ("x", v1(r.i.x().to_vec())?),
                     ("y", v1(r.i.y().to_vec())?),
-                    ("i", grid(&r.i)?),
+                    ("i", Array::grid(&r.i)),
                     ("center", v1(vec![r.center.0, r.center.1])?),
                     ("delta", v1(vec![r.delta.0, r.delta.1])?),
                     ("peak", Array::scalar(r.peak)),
@@ -930,7 +924,7 @@ impl Prepared {
                 let o = &p.beam;
                 let (cx, cy) = o.centroid();
                 out(vec![
-                    ("u", field(o)?),
+                    ("u", Array::grid(&o.grid())),
                     ("dx", Array::scalar(o.dx)),
                     ("dy", Array::scalar(o.dy)),
                     ("center", v1(vec![o.x0, o.y0])?),
@@ -944,7 +938,7 @@ impl Prepared {
                     ("index", Array::scalar(b.index)),
                     ("kernel_step", Array::scalar(p.kernel_step)),
                     ("fresnel_error", Array::scalar(p.fresnel_error)),
-                    ("input_u", field(b)?),
+                    ("input_u", Array::grid(&b.grid())),
                     ("input_dx", Array::scalar(b.dx)),
                     ("input_dy", Array::scalar(b.dy)),
                     ("input_center", v1(vec![b.x0, b.y0])?),
@@ -965,8 +959,8 @@ impl Prepared {
                 let r = interference::interferogram(&s1, s2.as_ref(), f, *wave, opts)?;
                 out(vec![
                     ("p", v1(r.delta.x().to_vec())?),
-                    ("delta", grid(&r.delta)?),
-                    ("intensity", grid(&r.intensity)?),
+                    ("delta", Array::grid(&r.delta)),
+                    ("intensity", Array::grid(&r.intensity)),
                     ("pv", Array::scalar(r.pv)),
                     ("rms", Array::scalar(r.rms)),
                 ])
@@ -1020,11 +1014,6 @@ fn default_freqs(
             (0..=20).map(|k| 0.95 * c * k as f64 / 20.0).collect()
         }
     })
-}
-
-/// 場 (ny, nx) の複素数の配列
-fn field(b: &pop::Beam) -> Result<Array> {
-    Array::c64(vec![b.ny, b.nx], b.u.clone())
 }
 
 impl Instance for Prepared {

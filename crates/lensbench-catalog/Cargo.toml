@@ -1,0 +1,17 @@
+[package]
+name = "lensbench-catalog"
+description = "Catalog items of lensbench: spec filters and search, overlays onto other catalogs, and completing incomplete items from product pages or STEP files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+lensbench-project = { path = "../lensbench-project" }
+lensbench-step = { path = "../lensbench-step" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

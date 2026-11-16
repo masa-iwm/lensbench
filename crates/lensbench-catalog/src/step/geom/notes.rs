@@ -2,7 +2,7 @@
 //! 「。」でつなぐ。XCT-20）
 
 use super::fmt;
-use crate::catalog_fill::RetainingRing;
+use crate::step::RetainingRing;
 
 /// ガラスと枠を組立の置き方どおりに測った品。`n` は立体・ガラス・枠の数、`d` はガラスの厚さ・径、枠の長さ・外径・
 /// 最小の内径、枠の端からガラスの前面まで [mm]。`merged` はガラスと枠が 1 つの立体のとき
@@ -41,7 +41,7 @@ pub(super) enum Seat {
 /// ガラスの無い機構部品として測った枠。`n` は立体・穴のある立体の数、`cage` はケージ板（外径が一辺）
 pub(super) fn mech(
     n: (usize, usize),
-    frame: &crate::MechSpec,
+    frame: &lensbench_project::MechSpec,
     cage: bool,
     clear: f64,
     thread: &str,

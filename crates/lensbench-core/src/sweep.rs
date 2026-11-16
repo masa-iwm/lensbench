@@ -88,14 +88,24 @@ impl FieldAxis {
 }
 
 // ------------------------------------------------------------------------------------------ MTF
-/// 横軸を振った MTF。tan・sag は [周波数][横軸の点]
+/// 横軸を振った MTF。tan・sag は格子（x = 横軸の点、y = 周波数。`tan[k][i]` は周波数 k・点 i、ANA-18）
 #[derive(Debug, Clone)]
 pub struct MtfSweep {
-    pub x: Vec<f64>,
-    pub freqs: Vec<f64>,
-    pub tan: Vec<Vec<f64>>,
-    pub sag: Vec<Vec<f64>>,
+    pub tan: crate::grid::Grid2,
+    pub sag: crate::grid::Grid2,
     pub warnings: Vec<String>,
+}
+
+impl MtfSweep {
+    /// 横軸の点（焦点のずれ・正規化視野）
+    pub fn x(&self) -> &[f64] {
+        self.tan.x()
+    }
+
+    /// 周波数
+    pub fn freqs(&self) -> &[f64] {
+        self.tan.y()
+    }
 }
 
 fn mtf_sweep(
@@ -105,8 +115,8 @@ fn mtf_sweep(
     one: impl Fn(f64) -> Result<analysis::Mtf> + Sync + Send,
 ) -> MtfSweep {
     let nf = freqs.len();
-    let mut tan = vec![vec![f64::NAN; x.len()]; nf];
-    let mut sag = tan.clone();
+    let grid = || crate::grid::Grid2::new(x.to_vec(), freqs.to_vec(), vec![f64::NAN; x.len() * nf]);
+    let (mut tan, mut sag) = (grid(), grid());
     let mut warnings = Vec::new();
     // 点ごとに独立（周波数が少ないと 1 点の中の並列（周波数×向き）だけではコアが余るので、点でも並列にする。値は同じ）
     let ms = crate::par::map(x, |&xi| one(xi));
@@ -121,13 +131,7 @@ fn mtf_sweep(
             Err(e) => warnings.push(format!("{}: {e}", label(xi))),
         }
     }
-    MtfSweep {
-        x: x.to_vec(),
-        freqs: freqs.to_vec(),
-        tan,
-        sag,
-        warnings,
-    }
+    MtfSweep { tan, sag, warnings }
 }
 
 /// スルーフォーカス MTF（OpticStudio の FFT Through Focus MTF 相当）: 像面を dz ずつずらした回折 MTF。

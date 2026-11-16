@@ -54,7 +54,7 @@ pub fn read_index_file(p: &Path) -> Result<Vec<(String, String)>, String> {
 
 /// キャッシュのフォルダ
 pub fn cache_dir() -> PathBuf {
-    lensbench_project::catalog_fill::cad_cache_dir().join("coat")
+    crate::cache::cad_cache_dir().join("coat")
 }
 
 /// 1 つ取る（キャッシュにあればそれ）。ハッシュが合わなければ誤り

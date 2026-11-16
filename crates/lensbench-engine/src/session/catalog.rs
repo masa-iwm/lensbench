@@ -24,8 +24,8 @@ pub(super) fn browse_of(sess: &Session, method: &str, p: &Value) -> Result<Value
 }
 
 /// `catalog_search` の条件: `kinds`（品の種類の並び）・`vendor`・`text`・`specs`（`名前>=値` などの並び）
-fn catalog_query(p: &Value) -> Result<lensbench_project::catalog_spec::CatalogQuery, RpcErr> {
-    use lensbench_project::catalog_spec::{CatalogQuery, ItemKind, SpecFilter};
+fn catalog_query(p: &Value) -> Result<lensbench_catalog::spec::CatalogQuery, RpcErr> {
+    use lensbench_catalog::spec::{CatalogQuery, ItemKind, SpecFilter};
     let strs = |k: &str| -> Result<Vec<String>, RpcErr> {
         Ok(str_list(&p[k], k)?
             .into_iter()
@@ -155,6 +155,7 @@ pub(super) fn user_catalog(sess: &Session, method: &str, p: &Value) -> Result<Va
             let lc = lensbench_core::catalog::LensCatalog::load_registered(&spec.lens_catalog)?;
             let look = |v: &str, q: &str| lc.zmx(v, q);
             let env = lensbench_project::Env {
+                step_files: None,
                 base: spec
                     .file
                     .parent()
@@ -267,7 +268,8 @@ pub(super) fn cad_step(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 }
 
 pub(super) fn catalog_fill(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
-    use lensbench_project::{catalog_fill as cf, UserCatalog};
+    use lensbench_catalog::fill as cf;
+    use lensbench_project::UserCatalog;
     let s = |k: &str| {
         p[k].as_str()
             .map(str::trim)

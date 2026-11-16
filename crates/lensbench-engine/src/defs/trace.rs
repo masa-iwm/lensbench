@@ -367,10 +367,8 @@ impl Analysis for Pop {
                 "rms_width": b.rms_width(), "phase_step": b.phase_step(),
             })
         };
-        let row =
-            |j: usize| -> Vec<f64> { (0..pb.nx).map(|i| pb.u[j * pb.nx + i].norm_sqr()).collect() };
-        let colm =
-            |i: usize| -> Vec<f64> { (0..pb.ny).map(|j| pb.u[j * pb.nx + i].norm_sqr()).collect() };
+        let ig = pb.irradiance_grid();
+        let colm = |i: usize| -> Vec<f64> { ig.rows().map(|r| r[i]).collect() };
         let mut v = json!({
             "unit": "mm, W/mm² (power 1 in the pupil)",
             "surface": surf, "field": p.field, "wavelength_um": b.wl * 1e3, "index": b.index,
@@ -380,14 +378,14 @@ impl Analysis for Pop {
             "input": summary(b),
             "output": summary(pb),
             "kernel_step": r.kernel_step, "fresnel_error": r.fresnel_error,
-            "x": (0..pb.nx).map(|i| pb.x(i)).collect::<Vec<_>>(),
-            "irradiance_x": row(pb.ny / 2),
-            "y": (0..pb.ny).map(|j| pb.y(j)).collect::<Vec<_>>(),
+            "x": ig.x(),
+            "irradiance_x": ig.row(pb.ny / 2),
+            "y": ig.y(),
             "irradiance_y": colm(pb.nx / 2),
             "warnings": warnings,
         });
         if p.grid {
-            v["grid_irradiance"] = json!(pb.irradiance());
+            v["grid_irradiance"] = json!(ig.data());
         }
         Ok(PopOut { v, beam: r.beam })
     }
@@ -405,13 +403,14 @@ impl Analysis for Pop {
             return Some(Ok(Saved::Json(v)));
         }
         let mut t = table::Table::default();
+        let g = pb.grid();
         let (mut xs, mut ys, mut ir, mut ph) = (vec![], vec![], vec![], vec![]);
-        for j in 0..pb.ny {
-            for i in 0..pb.nx {
-                xs.push(pb.x(i));
-                ys.push(pb.y(j));
-                ir.push(pb.u[j * pb.nx + i].norm_sqr());
-                ph.push(pb.u[j * pb.nx + i].arg());
+        for (&y, r) in g.y().iter().zip(g.rows()) {
+            for (&x, u) in g.x().iter().zip(r) {
+                xs.push(x);
+                ys.push(y);
+                ir.push(u.norm_sqr());
+                ph.push(u.arg());
             }
         }
         t.cols.push(("x".into(), table::Col::F64(xs)));

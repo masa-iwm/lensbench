@@ -20,8 +20,8 @@ pub struct Options3D {
     /// 光線を管にするときの半径 [mm]（None なら glTF・OBJ は線、STL は場面の大きさの 0.1%）
     pub tube: Option<f64>,
     pub color: ColorBy,
-    /// 機構部品を、取った STEP の詳しい形で描く（[`crate::detail`]。無い部品は簡易外形）
-    pub mech_detail: bool,
+    /// 機構部品を、取った STEP の詳しい形で描くときの読み手（[`crate::detail`]。None・読めない部品は簡易外形）
+    pub mech_detail: Option<crate::detail::Details>,
 }
 
 impl Default for Options3D {
@@ -31,7 +31,7 @@ impl Default for Options3D {
             rings: 16,
             tube: None,
             color: ColorBy::Field,
-            mech_detail: false,
+            mech_detail: None,
         }
     }
 }
@@ -244,11 +244,11 @@ fn tube(m: &mut Mesh, pts: &[V3], r: f64) {
 
 /// 機構部品の網: 輪ごとに外側（円柱か、角なら正方形の柱）・内側の円柱の面と両端の輪の面
 fn mech_mesh(m: &MechShape, o: &Options3D) -> Mesh {
-    if o.mech_detail {
+    if let Some(src) = &o.mech_detail {
         if let Some(d) = m
             .step
             .as_ref()
-            .and_then(|(f, flip)| Some((crate::detail::load(f)?, *flip)))
+            .and_then(|(f, flip)| Some((src.load(f)?, *flip)))
         {
             return detail_mesh(m, &d.0, d.1);
         }

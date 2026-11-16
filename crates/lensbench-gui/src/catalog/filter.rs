@@ -77,8 +77,7 @@ pub fn filter_lenses(rows: &[LensRow], q: &LensFilter, sort: LensSort, desc: boo
                 && q.kind_group.is_none_or(|m| (r.kind == RowKind::Mech) == m)
                 && q.fit.as_ref().is_none_or(|f| match f.mode {
                     FitMode::MechFor => {
-                        r.kind == RowKind::Mech
-                            && lensbench_project::catalog_spec::fits_row(&r.raw, f.d)
+                        r.kind == RowKind::Mech && lensbench_catalog::spec::fits_row(&r.raw, f.d)
                     }
                     FitMode::OpticsFor => {
                         r.kind != RowKind::Mech

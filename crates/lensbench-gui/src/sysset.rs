@@ -1182,6 +1182,7 @@ mod tests {
         );
         let p = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
         let env = lensbench_project::Env {
+            step_files: None,
             base: root.clone(),
             glass_dirs: glass,
             catalog: None,

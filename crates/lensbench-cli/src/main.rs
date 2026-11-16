@@ -23,8 +23,6 @@ pub(crate) use error::AppError;
 mod coat_cmd;
 use coat_cmd::{coat_compact, coat_design, coat_kinks, coat_model, coatings};
 #[cfg(not(target_arch = "wasm32"))]
-use lensbench_cad::detail as cad_detail;
-#[cfg(not(target_arch = "wasm32"))]
 use lensbench_cad::{self as cad, coat_remote};
 pub mod ext;
 mod run;
@@ -728,7 +726,7 @@ fn print_catalog_table(v: &Value) {
             "{:<14} {:<16} {:<9} efl={:<10} d={:<8} {}{}{}",
             r["vendor"].as_str().unwrap_or(""),
             r["part"].as_str().unwrap_or(""),
-            lensbench_project::catalog_spec::row_category(r),
+            lensbench_catalog::spec::row_category(r),
             f(&r["efl"]),
             f(&r["diameter"]),
             specs,
@@ -879,7 +877,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 rings,
                 tube,
                 color,
-                mech_detail,
+                mech_detail: mech_detail.then(lensbench_cad::detail::details).flatten(),
             };
             // 拡張子を先に確かめ、2D 用と 3D 用の場面を要るものだけ作る
             let fmts = out
@@ -1190,6 +1188,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     let cat = LensCatalog::load_registered(&lens_catalog)?;
                     let look = |v: &str, p: &str| cat.zmx(v, p);
                     let env = lensbench_project::Env {
+                        step_files: None,
                         base: from.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
                         glass_dirs: glass_dir.clone(),
                         catalog: Some(&look),
@@ -1222,7 +1221,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             list_specs,
             json,
         } => {
-            use lensbench_project::catalog_spec::{CatalogQuery, ItemKind, SpecFilter, SPEC_NAMES};
+            use lensbench_catalog::spec::{CatalogQuery, ItemKind, SpecFilter, SPEC_NAMES};
             if list_specs {
                 let v: Vec<Value> = SPEC_NAMES
                     .iter()
@@ -1266,7 +1265,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                     let r = lensbench_core::vfs::read(f)
                         .map_err(|e| e.to_string())
                         .and_then(|b| {
-                            lensbench_project::catalog_fill::read_step(&String::from_utf8_lossy(&b))
+                            lensbench_catalog::step::read_step(&String::from_utf8_lossy(&b))
                         });
                     match r {
                         Ok(s) => {
@@ -1516,9 +1515,6 @@ pub fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let cli = parse_cli(argv).unwrap_or_else(|e| clap_ja::fail(e));
-    // 機構部品の詳しい形（取った STEP）を描けるように
-    #[cfg(not(target_arch = "wasm32"))]
-    cad_detail::install_detail_loader();
     #[cfg(not(target_arch = "wasm32"))]
     coat_remote::install();
     // run はスレッド数を自分では使わず、起動する Python に渡す

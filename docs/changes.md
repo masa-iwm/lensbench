@@ -5,8 +5,19 @@
 ## 次の版（v0.4.0 の後）
 
 ### 名前・設定の書き方
+- Rust の 2 次元の結果を `lensbench_core::grid::Grid2` に（ANA-18）: `MtfSweep` の `tan`・`sag`（x = 横軸の点、y = 周波数。
+  `tan[k][i]` はそのまま。`x`・`freqs` は同名のメソッド）、`DetectorFringe` の画素の値（`n`・`x0`・`y0` は消し、座標は格子の
+  `x()`・`y()`、`n()` はメソッド）、`PolGrid` の格子点の値（`nx`・`ny` はメソッド、値は `values()`）。POP の `Beam` は伝搬の作業用の
+  形のまま（`u`・`x0`・`dx`）で、座標つきの格子は `Beam::grid()`・`irradiance_grid()`。プラグインの配列は `plugin::Array::grid` で作る。
+  Python・CLI・serve の出力は同じ。
 - Rust のモジュールの置き場所を変えた（XCT-04）: `lensbench_core::zmx_write` は新しいクレートの `lensbench_formats::zmx_write`、
   `lensbench_core::{ghost, interference, polgrid}` は `lensbench_analysis::{ghost, interference, polgrid}`。中身・Python・CLI は同じ。
+- カタログ・STEP のクレートを分けた（PRJ-05/06/21・XCT-11）: `lensbench_project::catalog_fill` は `lensbench_catalog::fill`、
+  `catalog_spec` の検索・絞り込み（`CatalogQuery`・`SpecFilter`・`spec_of`・`apply_overlays` など）は `lensbench_catalog::spec`
+  （型の `ItemKind`・`Overlay`・`SPEC_NAMES`・`spec_unit` は project に残し、spec からも見える）。STEP の読み取りは新しいクレート
+  `lensbench_step`（`StepFile`）の 1 本で、寸法の測定（`read_step`・`StepSize`）は `lensbench_catalog::step`。`cad_cache_*` は
+  `lensbench_cad` に。機構部品の STEP は大域の差し込み（`install_detail_loader`）をやめ、`Env::step_files`・`open_with` と
+  `Options3D`・`OptionsStep` の `mech_detail: Option<Details>`（`lensbench_cad::detail::details()` で作る）で渡す。CLI・Python・GUI は同じ。
 - 単色の干渉縞の解析 `fringe` を `interference` に改名した（CLI のサブコマンド・serve の `analyze` の `cmd`・GUI の解析パネル・
   `lensbench_client` の `interference()`）。Python の `fringe_detector` は `interference_detector`、Rust の `lensbench_core::fringe` は
   `lensbench_core::interference`。旧名は残さない（GUI の設定に残った `fringe` のパネルは開き直す）。Zernike の並び `kind = "fringe"` は変えない。
@@ -32,6 +43,8 @@
 - 公差の設定（`tolerance --spec`）も型で読む（スキーマ `tolerance.schema.json`）。`wedge_face` は小文字の `back`・`front` だけ、
   `relative`・`catalog`・`samples` などの真偽に真偽でない値は誤り（前は無視）。誤りの文は欄の道つきの serde のもの
   （例「tolerance.lenses.L1: unknown field `tlit`, …」）。先頭の `$schema` は受ける。
+  `groups` の値は `GroupTol`、`dist` は `Dist` の型で直に読む（XCT-11）: `groups` の欄の `null`（以前は 0 扱い）と、
+  分布の名前の誤りは読むときの誤り（文は `tolerance.tols[0].dist: distribution …` のように欄の道つき）。
 
 ### 終了コード
 - CLI の終了コードを誤りの種類で分けた: 1 失敗（系・値の不正・計算・照合の不合格・一部の失敗）、2 使い方（引数・設定ファイル）、

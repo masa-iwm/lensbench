@@ -4877,7 +4877,7 @@ mod open_insert_tests {
         let env = lensbench_project::Env {
             base: root.clone(),
             glass_dirs: glass,
-            catalog: None,
+            ..Default::default()
         };
         let b = lensbench_project::expand(&pj, &env).unwrap();
         // 平板の 2 面が増える

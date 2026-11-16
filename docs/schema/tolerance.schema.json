@@ -124,6 +124,10 @@
       ],
       "description": "補償子の 1 つか並び"
     },
+    "Dist": {
+      "description": "分布。設定の JSON では名前の文字列（\"uniform\"・\"normal\"・\"normal:σの数\"・\"end\"・\"disc_x\"・\"disc_y:normal\" など）",
+      "type": "string"
+    },
     "Face": {
       "description": "くさびを入れる面",
       "oneOf": [
@@ -139,33 +143,27 @@
         }
       ]
     },
-    "GroupFields": {
+    "GroupTol": {
       "additionalProperties": false,
-      "description": "群の公差",
+      "description": "群・ブロック（玉でない玉・群）の公差（±、0 なら作らない）。設定の JSON の `groups` の値もこの型で読む（書かない項目は 0）",
       "properties": {
         "decenter": {
+          "default": 0.0,
           "description": "偏心 [mm]",
           "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": "number"
         },
         "shift": {
+          "default": 0.0,
           "description": "光軸方向のずれ [mm]",
           "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": "number"
         },
         "tilt": {
+          "default": 0.0,
           "description": "傾き [deg]",
           "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": "number"
         }
       },
       "type": "object"
@@ -472,9 +470,13 @@
       "description": "個別の公差",
       "properties": {
         "dist": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dist"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "hi": {
@@ -648,17 +650,21 @@
       "description": "補償子（1 つか並び）"
     },
     "dist": {
-      "description": "既定の分布（\"normal\"）: \"uniform\"・\"normal\"・\"normal:3\"・\"end\"",
-      "type": [
-        "string",
-        "null"
-      ]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Dist"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "既定の分布（\"normal\"）: \"uniform\"・\"normal\"・\"normal:3\"・\"end\""
     },
     "groups": {
       "additionalProperties": {
         "anyOf": [
           {
-            "$ref": "#/$defs/GroupFields"
+            "$ref": "#/$defs/GroupTol"
           },
           {
             "type": "null"

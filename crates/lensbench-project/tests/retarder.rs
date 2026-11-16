@@ -21,6 +21,7 @@ fn try_system(surfs: &str) -> Result<lensbench_core::System, String> {
           {{"type": "surfaces", "surfaces": [{surfs}]}}, {{"type": "air", "t": 10}}]}}"#
     ))?;
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -120,6 +121,7 @@ fn spec_round_trip_and_errors() {
             "blocks": [{{"type": "stop"}}, {{"type": "surfaces", "surfaces": [{bad}]}}, {{"type": "air", "t": 10}}]}}"#
         ));
         let env = Env {
+            step_files: None,
             base: root(),
             glass_dirs: vec![root().join("tests/glass")],
             catalog: None,
@@ -141,6 +143,7 @@ fn wedge_window_deviation() {
     )
     .unwrap();
     let env = Env {
+        step_files: None,
         base: root(),
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,

@@ -25,6 +25,7 @@ fn project() -> (Project, PathBuf) {
 
 fn env(base: PathBuf) -> Env<'static> {
     Env {
+        step_files: None,
         base,
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
@@ -55,6 +56,7 @@ fn air_gaps_map_to_surface_thickness() {
     let c = cat();
     let look = |v: &str, q: &str| c.zmx(v, q);
     let e = Env {
+        step_files: None,
         catalog: Some(&look),
         ..env(dir)
     };
@@ -204,6 +206,7 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
     let q = s.project(i).unwrap();
     let look = |v: &str, pt: &str| c.zmx(v, pt);
     let e = Env {
+        step_files: None,
         catalog: Some(&look),
         ..env(dir)
     };

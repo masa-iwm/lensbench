@@ -18,6 +18,7 @@ mesh = ["dep:truck-stepio", "dep:truck-meshalgo", "dep:lensbench-export"]
 [dependencies]
 lensbench-core = { path = "../lensbench-core" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-catalog = { path = "../lensbench-catalog" }
 lensbench-export = { path = "../lensbench-export", optional = true }
 # 置き場の STEP（gzip）を展開する（ネイティブと Web 版）
 flate2 = "1"

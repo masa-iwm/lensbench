@@ -14,6 +14,7 @@
 //! z 成分 [z_x, z_y]（列 = 入射の x・y）。
 
 use lensbench_core::coating::{Coatings, C64};
+use lensbench_core::grid::Grid2;
 use lensbench_core::system::{Launch, RecSel, System};
 use lensbench_core::{invalid, Result};
 
@@ -30,10 +31,8 @@ pub const MIN_POINTS: usize = 4;
 /// 粗い瞳格子での偏光追跡の結果と、補間の係数
 #[derive(Debug, Clone)]
 pub struct PolGrid {
-    pub nx: usize,
-    pub ny: usize,
-    /// 格子点の値（j * nx + i の順、i が px の向き）
-    f: Vec<[C64; NV]>,
+    /// 格子点の値（座標は正規化瞳座標 px・py の [`axis`]、行 = py。欠けた点は最も近い有効な点の値、ANA-18）
+    f: Grid2<[C64; NV]>,
     /// ∂f/∂px・∂f/∂py・∂²f/∂px∂py（スプラインの節点での微分）
     fx: Vec<[C64; NV]>,
     fy: Vec<[C64; NV]>,
@@ -121,9 +120,7 @@ impl PolGrid {
         let fy = sy.along_y(&vals, nx, ny);
         let fxy = sx.along_x(&fy, nx, ny);
         Ok(PolGrid {
-            nx,
-            ny,
-            f: vals,
+            f: Grid2::new(ax, ay, vals),
             fx,
             fy,
             fxy,
@@ -132,12 +129,27 @@ impl PolGrid {
         })
     }
 
+    /// px の向きの格子点の数
+    pub fn nx(&self) -> usize {
+        self.f.nx()
+    }
+
+    /// py の向きの格子点の数
+    pub fn ny(&self) -> usize {
+        self.f.ny()
+    }
+
+    /// 格子点の値（Jones 行列 [xx, xy, yx, yy] と z 成分 [z_x, z_y]。欠けた点は最も近い有効な点の値で埋めたもの）
+    pub fn values(&self) -> &Grid2<[C64; NV]> {
+        &self.f
+    }
+
     /// 瞳の内側で欠けた格子点の座標 (px, py)
     pub fn missing(&self) -> Vec<[f64; 2]> {
-        let (ax, ay) = (axis(self.nx), axis(self.ny));
+        let (ax, ay, nx) = (self.f.x(), self.f.y(), self.nx());
         self.missing
             .iter()
-            .map(|&k| [ax[k % self.nx], ay[k / self.nx]])
+            .map(|&k| [ax[k % nx], ay[k / nx]])
             .collect()
     }
 
@@ -147,7 +159,8 @@ impl PolGrid {
         if !(px.is_finite() && py.is_finite()) {
             return None;
         }
-        let (nx, ny) = (self.nx, self.ny);
+        let (nx, ny) = (self.nx(), self.ny());
+        let f = self.f.data();
         let (hx, hy) = (2.0 / (nx - 1) as f64, 2.0 / (ny - 1) as f64);
         let cell = |p: f64, h: f64, n: usize| -> (usize, f64) {
             let s = (p + 1.0) / h;
@@ -187,7 +200,7 @@ impl PolGrid {
                 let w2 = ax[a] * by[b] * hy;
                 let w3 = bx[a] * by[b] * hx * hy;
                 for c in 0..NV {
-                    out[c] += self.f[k][c] * w0
+                    out[c] += f[k][c] * w0
                         + self.fx[k][c] * w1
                         + self.fy[k][c] * w2
                         + self.fxy[k][c] * w3;
@@ -384,12 +397,10 @@ mod tests {
         let (sx, sy) = (SlopeOp::new(nx, hx), SlopeOp::new(ny, hy));
         let fy = sy.along_y(&f, nx, ny);
         let pg = PolGrid {
-            nx,
-            ny,
             fx: sx.along_x(&f, nx, ny),
             fxy: sx.along_x(&fy, nx, ny),
             fy,
-            f,
+            f: Grid2::new(ax, ay, f),
             missing: vec![],
             bad: vec![false; nx * ny],
         };

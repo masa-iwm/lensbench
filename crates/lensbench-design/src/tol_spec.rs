@@ -1,7 +1,7 @@
 //! モンテカルロ公差の設定の JSON の型（PRJ-11）。キーの意味は [`crate::tolerance`] の表。知らないキーは誤りで、
 //! 誤りの文には欄の道（`tolerance.lenses.L1: …`）が付く。`docs/schema/tolerance.schema.json` はこの型から作る。
 
-use crate::montecarlo::{GroupTol, LensTol};
+use crate::montecarlo::{Dist, GroupTol, LensTol};
 use crate::term_spec::RefName;
 use indexmap::IndexMap;
 use schemars::JsonSchema;
@@ -44,7 +44,7 @@ pub struct TolSpec {
     /// 乱数の種（1）
     pub seed: Option<u64>,
     /// 既定の分布（"normal"）: "uniform"・"normal"・"normal:3"・"end"
-    pub dist: Option<String>,
+    pub dist: Option<Dist>,
     /// 偏心・傾き・くさびの x・y を組にして円の中で引く: true・false・"uniform"・"normal"・"normal:σの数"
     pub radial: Option<Radial>,
     /// 玉の既定の公差の組: "commercial"・"precision"・"high"・"none"
@@ -58,7 +58,7 @@ pub struct TolSpec {
     /// 玉ごとの上書き {"名前": 玉の公差 か 組の名前 か null（公差なし）}
     pub lenses: Option<IndexMap<String, Option<LensEntry>>>,
     /// 群・ブロックの公差 {"名前": {"decenter", "tilt", "shift"} か null}
-    pub groups: Option<IndexMap<String, Option<GroupFields>>>,
+    pub groups: Option<IndexMap<String, Option<GroupTol>>>,
     /// 個別の公差の並び
     pub tols: Option<Vec<TolItem>>,
     /// 補償子（1 つか並び）
@@ -276,29 +276,6 @@ impl LensEntry {
     }
 }
 
-/// 群の公差
-#[derive(Deserialize, JsonSchema, Debug, Clone, Default)]
-#[serde(deny_unknown_fields)]
-pub struct GroupFields {
-    /// 偏心 [mm]
-    pub decenter: Option<f64>,
-    /// 傾き [deg]
-    pub tilt: Option<f64>,
-    /// 光軸方向のずれ [mm]
-    pub shift: Option<f64>,
-}
-
-impl GroupFields {
-    pub fn tol(&self) -> GroupTol {
-        let d = GroupTol::default();
-        GroupTol {
-            decenter: self.decenter.unwrap_or(d.decenter),
-            tilt: self.tilt.unwrap_or(d.tilt),
-            shift: self.shift.unwrap_or(d.shift),
-        }
-    }
-}
-
 /// 個別の公差
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -313,7 +290,7 @@ pub struct TolItem {
     pub hi: Option<f64>,
     /// 比（false）
     pub relative: Option<bool>,
-    pub dist: Option<String>,
+    pub dist: Option<Dist>,
     pub label: Option<String>,
     /// パラメータごとにずれに掛ける数の並び
     pub scale: Option<Vec<f64>>,

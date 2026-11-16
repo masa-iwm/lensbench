@@ -398,15 +398,12 @@ fn sweep_dict<'py>(
     xname: &str,
     m: &sweep::MtfSweep,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let nf = m.freqs.len();
-    let nx = m.x.len();
-    let t = Array::from_shape_fn((nf, nx), |(k, j)| m.tan[k][j]);
-    let g = Array::from_shape_fn((nf, nx), |(k, j)| m.sag[k][j]);
     let d = PyDict::new(py);
-    d.set_item("freqs", m.freqs.clone().into_pyarray(py))?;
-    d.set_item(xname, m.x.clone().into_pyarray(py))?;
-    d.set_item("tangential", t.into_pyarray(py))?;
-    d.set_item("sagittal", g.into_pyarray(py))?;
+    d.set_item("freqs", m.freqs().to_vec().into_pyarray(py))?;
+    d.set_item(xname, m.x().to_vec().into_pyarray(py))?;
+    let g = |g: &lensbench_core::grid::Grid2| interference::grid_array(g.clone()).into_pyarray(py);
+    d.set_item("tangential", g(&m.tan))?;
+    d.set_item("sagittal", g(&m.sag))?;
     d.set_item("warnings", m.warnings.clone())?;
     Ok(d)
 }

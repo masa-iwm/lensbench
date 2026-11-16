@@ -9,9 +9,10 @@
 //! ページは選んだ品の 1 件だけを開き、裏でまとめて取りに行かない。ボットの判定・captcha はそのまま見せる。
 
 use egui::{Color32, RichText, Ui};
-use lensbench_project::catalog_fill::{
-    page_frame, read_page, spec_check, spec_glass_diameter, PageRead, SpecValues, StepSize,
+use lensbench_catalog::fill::{
+    page_frame, read_page, spec_check, spec_glass_diameter, PageRead, SpecValues,
 };
+use lensbench_catalog::step::StepSize;
 use lensbench_project::MechSpec;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -657,9 +658,7 @@ impl FillWin {
             // STEP の文字は ASCII（見出しのファイル名などに Latin-1 の文字が混じることがある）
             lensbench_core::vfs::read(&path)
                 .map_err(|e| e.to_string())
-                .and_then(|b| {
-                    lensbench_project::catalog_fill::read_step(&String::from_utf8_lossy(&b))
-                })
+                .and_then(|b| lensbench_catalog::step::read_step(&String::from_utf8_lossy(&b)))
         } else {
             Err(tr("Not a STEP file (.step, .stp)").to_string())
         };

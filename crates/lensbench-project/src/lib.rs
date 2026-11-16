@@ -18,7 +18,6 @@
 //! - 状態（多重構成に当たる）: ブロックの値（ON/OFF、間隔、群の移動、偏心・傾き、.zmx の構成番号など）と
 //!   系の値（物体距離など）の変更の組に名前を付ける。[`expand_state`] でその状態の系を展開する。
 
-pub mod catalog_fill;
 pub mod catalog_spec;
 pub mod detectors;
 pub mod edit_ops;
@@ -28,7 +27,6 @@ pub mod lenient;
 pub mod open;
 pub mod schema;
 mod splitter;
-mod step_geom;
 pub mod sysfile;
 pub use edit_spec::SurfaceOp;
 use edit_spec::{BlockRef, EditOp, Ref};
@@ -132,17 +130,28 @@ pub fn expand_json_path(
     state: Option<&str>,
     split_path: Option<&str>,
 ) -> Result<(System, Vec<String>), String> {
+    let env = Env {
+        step_files: None,
+        base: base.to_path_buf(),
+        glass_dirs: glass_dirs.to_vec(),
+        catalog,
+    };
+    expand_text(txt, &env, state, split_path)
+}
+
+/// プロジェクトの JSON を環境 env で展開する（状態・経路を選んで）
+pub(crate) fn expand_text(
+    txt: &str,
+    env: &Env,
+    state: Option<&str>,
+    split_path: Option<&str>,
+) -> Result<(System, Vec<String>), String> {
     let p = Project::from_json(txt)?;
     let p = match state {
         Some(n) => p.with_state(n)?,
         None => p,
     };
-    let env = Env {
-        base: base.to_path_buf(),
-        glass_dirs: glass_dirs.to_vec(),
-        catalog,
-    };
-    expand_path(&p, &env, split_path)
+    expand_path(&p, env, split_path)
 }
 
 #[cfg(test)]

@@ -194,8 +194,6 @@ mod web {
         let extra = super::extra();
         insert_all(&extra, true).await?;
         default_dirs(&extra, true);
-        // 機構部品の詳しい形（置き場から取って vfs の /cad に入れた STEP）を描けるように
-        lensbench_cad::detail::install_detail_loader();
         lensbench_gui::web_worker::init(kind);
         Ok(())
     }
@@ -276,7 +274,6 @@ mod web {
             .collect();
         let (glass_dirs, lens_dirs) = default_dirs(&extra, false);
         lensbench_gui::set_web_cad_store(extra.cad_store.map(String::from));
-        lensbench_cad::detail::install_detail_loader();
         let args = lensbench_gui::Args {
             open: Some(FIRST.into()),
             glass_dirs,

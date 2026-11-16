@@ -629,6 +629,7 @@ impl<'a> SwapSearch<'a> {
         let p = self.project_of(a)?;
         let look = |v: &str, q: &str| self.cat.zmx(v, q);
         let env = Env {
+            step_files: None,
             base: self.dir.clone(),
             glass_dirs: self.glass_dirs.clone(),
             catalog: Some(&look),

@@ -8,7 +8,7 @@ fn root() -> std::path::PathBuf {
 }
 
 /// 厚さ t・径 d の平板を置いた系の、平板の面（2〜3）だけを STEP に書き出して測る
-fn measure(t: f64, d: f64, glass: &str) -> lensbench_project::catalog_fill::StepSize {
+fn measure(t: f64, d: f64, glass: &str) -> lensbench_catalog::step::StepSize {
     let dir = std::env::temp_dir().join(format!(
         "lensbench-fill-step-{}-{t}-{d}",
         std::process::id()
@@ -53,8 +53,7 @@ fn measure(t: f64, d: f64, glass: &str) -> lensbench_project::catalog_fill::Step
         .output()
         .unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    let s = lensbench_project::catalog_fill::read_step(&std::fs::read_to_string(&step).unwrap())
-        .unwrap();
+    let s = lensbench_catalog::step::read_step(&std::fs::read_to_string(&step).unwrap()).unwrap();
     std::fs::remove_dir_all(&dir).ok();
     s
 }

@@ -119,7 +119,7 @@ pub fn write_layout(
         LayoutFormat::Stl => mesh::write_stl(&mut w, sc, o3),
         LayoutFormat::Step => {
             let os = step::OptionsStep {
-                mech_detail: o3.mech_detail,
+                mech_detail: o3.mech_detail.clone(),
                 ..Default::default()
             };
             step::write_step(&mut w, sc, &os).map(|_| ())

@@ -23,6 +23,7 @@ fn glass_dir() -> PathBuf {
 fn project_system() -> System {
     let txt = std::fs::read_to_string(dir().join("project.json")).unwrap();
     let env = Env {
+        step_files: None,
         base: dir(),
         glass_dirs: vec![glass_dir()],
         catalog: None,

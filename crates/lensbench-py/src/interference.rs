@@ -3,7 +3,6 @@
 use lensbench_analysis::interference::{self as core, DetectorOpts, Polarized, PupilOpts};
 use lensbench_core::raygrid::InputPol;
 use lensbench_core::with_threads;
-use numpy::ndarray::Array2;
 use numpy::IntoPyArray;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -116,21 +115,16 @@ fn interference_detector<'py>(
     let r = py
         .detach(|| with_threads(threads, || core::detector(&ss, &sr, f, w, &o, pol)))
         .map_err(err)?;
-    let n = r.n;
-    let a = |v: &[f64]| Array2::from_shape_fn((n, n), |(j, i)| v[j * n + i]);
-    let b = |v: &[bool]| Array2::from_shape_fn((n, n), |(j, i)| v[j * n + i]);
     let d = PyDict::new(py);
-    let xs: Vec<f64> = (0..n).map(|i| r.x0 + i as f64 * r.dx).collect();
-    let ys: Vec<f64> = (0..n).map(|j| r.y0 + j as f64 * r.dx).collect();
-    d.set_item("x", xs.into_pyarray(py))?;
-    d.set_item("y", ys.into_pyarray(py))?;
-    d.set_item("intensity", a(&r.intensity).into_pyarray(py))?;
-    d.set_item("i_sample", a(&r.i_sample).into_pyarray(py))?;
-    d.set_item("i_reference", a(&r.i_reference).into_pyarray(py))?;
-    d.set_item("opd", a(&r.opd).into_pyarray(py))?;
-    d.set_item("visibility", a(&r.visibility).into_pyarray(py))?;
-    d.set_item("ok_sample", b(&r.ok_sample).into_pyarray(py))?;
-    d.set_item("ok_reference", b(&r.ok_reference).into_pyarray(py))?;
+    d.set_item("x", r.intensity.x().to_vec().into_pyarray(py))?;
+    d.set_item("y", r.intensity.y().to_vec().into_pyarray(py))?;
+    d.set_item("intensity", grid_array(r.intensity).into_pyarray(py))?;
+    d.set_item("i_sample", grid_array(r.i_sample).into_pyarray(py))?;
+    d.set_item("i_reference", grid_array(r.i_reference).into_pyarray(py))?;
+    d.set_item("opd", grid_array(r.opd).into_pyarray(py))?;
+    d.set_item("visibility", grid_array(r.visibility).into_pyarray(py))?;
+    d.set_item("ok_sample", grid_array(r.ok_sample).into_pyarray(py))?;
+    d.set_item("ok_reference", grid_array(r.ok_reference).into_pyarray(py))?;
     d.set_item("wavelength", r.wavelength)?;
     d.set_item("fold", r.fold)?;
     Ok(d)
@@ -143,7 +137,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Values of a 2-D grid → an array of shape (ny, nx) (uses the row-major order as it is)
-pub(crate) fn grid_array(g: lensbench_core::grid::Grid2) -> numpy::ndarray::Array2<f64> {
+pub(crate) fn grid_array<T>(g: lensbench_core::grid::Grid2<T>) -> numpy::ndarray::Array2<T> {
     let (ny, nx) = (g.ny(), g.nx());
     let (_, _, data) = g.into_parts();
     numpy::ndarray::Array2::from_shape_vec((ny, nx), data).expect("Grid2 は ny × nx")

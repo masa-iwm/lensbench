@@ -29,7 +29,7 @@ fi
 
 mdbook build -d "$PWD/$out"
 
-cargo doc --no-deps --lib -p lensbench-core -p lensbench-project -p lensbench-design -p lensbench-export -p lensbench-analysis -p lensbench-runs -p lensbench-formats -p lensbench-optim \
+cargo doc --no-deps --lib -p lensbench-core -p lensbench-project -p lensbench-design -p lensbench-export -p lensbench-analysis -p lensbench-runs -p lensbench-formats -p lensbench-step -p lensbench-catalog -p lensbench-optim \
   -p lensbench-engine -p lensbench-cli
 mkdir -p "$out/api"
 rm -rf "$out/api/rust"

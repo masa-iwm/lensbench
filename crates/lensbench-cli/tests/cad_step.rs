@@ -233,7 +233,7 @@ fn detail_is_drawn(dir: &std::path::Path, cat: &std::path::Path, cache: &std::pa
         st.contains("MANIFOLD_SOLID_BREP('a detail 1'"),
         "写した立体"
     );
-    let s = lensbench_project::catalog_fill::read_step(&st).unwrap();
+    let s = lensbench_catalog::step::read_step(&st).unwrap();
     let f = s.frame.clone().expect("枠");
     assert_eq!((f.length, f.outer_diameter), (8.89, 40.64), "{s:?}");
     assert_eq!(f.outline, lensbench_project::MechOutline::Square);
@@ -593,7 +593,7 @@ fn coating_models_come_from_the_store_when_missing() {
         .unwrap();
     s.surfaces[j].coat = "zec_r".into();
     s.coating_file = Some(coat.join("COATING.DAT"));
-    lensbench_project::catalog_fill::set_cad_cache_dir(dir.join("cache"));
+    lensbench_cad::set_cad_cache_dir(dir.join("cache"));
     lensbench_cad::set_store(Some(lensbench_cad::Store {
         url: store_url.clone(),
         id: "tid".into(),

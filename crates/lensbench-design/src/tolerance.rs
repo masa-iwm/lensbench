@@ -284,10 +284,7 @@ fn tol_from(m: &TolItem, s: &System, dist: Dist, i: usize) -> Result<Tol, String
         (None, Some(l), Some(h)) => (l, h),
         _ => return Err(format!("tolerance {i}: pm or the pair lo and hi")),
     };
-    let dist = match &m.dist {
-        None => dist,
-        Some(d) => Dist::parse(d).map_err(|e| format!("tolerance {i}: {e}"))?,
-    };
+    let dist = m.dist.unwrap_or(dist);
     let scale = m.scale.clone().unwrap_or_default();
     if !scale.is_empty() && scale.len() != params.len() {
         return Err(format!(
@@ -342,10 +339,7 @@ pub fn spec_from_json_with(
 ) -> Result<McSpec, String> {
     let m = read_spec(v)?;
     let s0 = configs.first().ok_or("no configurations")?.clone();
-    let dist = match &m.dist {
-        None => Dist::Normal { cut: 2.0 },
-        Some(d) => Dist::parse(d).map_err(|e| e.to_string())?,
-    };
+    let dist = m.dist.unwrap_or(Dist::Normal { cut: 2.0 });
     let mut base =
         LensTol::preset(m.preset.as_deref().unwrap_or("commercial")).map_err(|e| e.to_string())?;
     // ここでの wedge_first は玉のもとの向きで前の面か。系の面の順へは lens_fn で直す
@@ -394,7 +388,7 @@ pub fn spec_from_json_with(
         .groups
         .iter()
         .flatten()
-        .map(|(k, x)| (k.clone(), x.as_ref().map(|x| x.tol())))
+        .map(|(k, x)| (k.clone(), *x))
         .collect();
     // 名前の誤りを見つける
     for k in lens_over.keys().chain(group_over.keys()) {

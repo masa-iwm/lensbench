@@ -691,14 +691,7 @@ pub(crate) fn expand_inner(
     }
     // 自動の半直径を光線から求める。機構部品の検査・描画・書き出しが使う
     s.update_semi();
-    s.mechanics = place_mechanics(
-        &s,
-        &p.mechanics,
-        &env.base,
-        &c.spans,
-        &c.back_spans,
-        &mut warn,
-    )?;
+    s.mechanics = place_mechanics(&s, &p.mechanics, env, &c.spans, &c.back_spans, &mut warn)?;
     s.mechanics.extend(place_frames(&s, &c.frames, &mut warn));
     s.validate().map_err(|e| e.to_string())?;
     Ok((s, warn, npass, c.gaps))
@@ -708,7 +701,7 @@ pub(crate) fn expand_inner(
 pub(crate) fn place_mechanics(
     s: &System,
     ms: &[MechPlacement],
-    base: &Path,
+    env: &Env<'_>,
     spans: &[(String, usize, usize)],
     back_spans: &[(String, usize, usize)],
     warn: &mut Vec<String>,
@@ -723,7 +716,7 @@ pub(crate) fn place_mechanics(
         let (spec, item_name) = match (&m.mech, &m.catalog, &m.item) {
             (Some(x), None, None) => (x.clone(), String::new()),
             (None, Some(cat), Some(item)) => {
-                let path = base.join(cat);
+                let path = env.base.join(cat);
                 let c = UserCatalog::load_shared(&path)?;
                 let it = c
                     .items
@@ -732,15 +725,9 @@ pub(crate) fn place_mechanics(
                 let x = it.mech.clone().ok_or_else(|| {
                     format!("{tag}: item {item} is not a mechanical part (no mech)")
                 })?;
-                // URL の無い品も、共有の置き場から取ってあればキャッシュにある
-                {
-                    if let Some(f) = catalog_fill::cad_cache_find(
-                        &catalog_fill::cad_cache_dir(),
-                        item,
-                        &it.cad.step,
-                    ) {
-                        step_file = f.display().to_string();
-                    }
+                // URL の無い品も、共有の置き場から取ってあればキャッシュにある（引き方は呼ぶ側が渡す）
+                if let Some(f) = env.step_files.and_then(|look| look(item, &it.cad.step)) {
+                    step_file = f.display().to_string();
                 }
                 (x, item.clone())
             }

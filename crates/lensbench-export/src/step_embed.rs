@@ -5,162 +5,18 @@
 //! （書き出す STEP は mm）。面の上の 2 次元の曲線（`PCURVE`）は単位を直せないので写さず、辺の曲線は
 //! 3 次元の曲線（`SURFACE_CURVE`・`SEAM_CURVE` の 1 つ目）にする。
 use lensbench_core::math::V3;
+use lensbench_step::{refs, split, StepFile};
 use std::collections::HashMap;
 
 /// 品の STEP（[`crate::detail::Detail::step`]）
 #[derive(Debug, Clone)]
 pub struct StepSource {
-    /// STEP の文字（全部）
-    pub text: std::sync::Arc<String>,
+    /// 読んだ STEP（殻から辿れる実体だけ。[`StepFile::subset`]、PRJ-21）。部品ごとに読み直さない（PRJ-06）
+    pub file: std::sync::Arc<StepFile>,
     /// 長さの単位の倍率（mm へ）
     pub unit_mm: f64,
     /// 殻の実体の番号と、STEP の座標から部品の座標 [mm] への変換（3 行 4 列、回転 × 単位の倍率と移動）
     pub shells: Vec<(u64, [[f64; 4]; 3])>,
-}
-
-/// 実体の番号 → 本体の文字（`=` の後ろ、`;` の前）
-pub fn entities(text: &str) -> HashMap<u64, String> {
-    let mut out = HashMap::new();
-    let text = strip_comments(text);
-    let text = text.as_str();
-    // DATA 部は HEADER の終わり（最初の ENDSEC;）の後から探す（HEADER の文字の中の "DATA;" を拾わない）
-    let from = match (text.find("HEADER;"), text.find("ENDSEC;")) {
-        (Some(h), Some(e)) if h < e => e + 7,
-        _ => 0,
-    };
-    let data = match text[from..].find("DATA;") {
-        Some(i) => &text[from + i + 5..],
-        None => text,
-    };
-    let b = data.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        // 次の #番号=
-        while i < b.len() && b[i] != b'#' {
-            i += 1;
-        }
-        if i >= b.len() {
-            break;
-        }
-        let st = i + 1;
-        let mut j = st;
-        while j < b.len() && b[j].is_ascii_digit() {
-            j += 1;
-        }
-        let id: Option<u64> = data[st..j].parse().ok();
-        let mut k = j;
-        while k < b.len() && b[k].is_ascii_whitespace() {
-            k += 1;
-        }
-        if id.is_none() || k >= b.len() || b[k] != b'=' {
-            i = j.max(i + 1);
-            continue;
-        }
-        // 本体: 文字列の外の ; まで
-        let body0 = k + 1;
-        let mut q = body0;
-        let mut in_str = false;
-        while q < b.len() {
-            match b[q] {
-                b'\'' => in_str = !in_str,
-                b';' if !in_str => break,
-                _ => {}
-            }
-            q += 1;
-        }
-        out.insert(id.unwrap(), data[body0..q].trim().replace(['\r', '\n'], ""));
-        i = q + 1;
-    }
-    out
-}
-
-/// 注釈 `/* … */` を空白に（文字 '…' の中は残す）。注釈の中の実体を読まないように
-fn strip_comments(t: &str) -> String {
-    if !t.contains("/*") {
-        return t.to_string();
-    }
-    let mut out = String::with_capacity(t.len());
-    let mut it = t.chars().peekable();
-    let mut in_str = false;
-    while let Some(c) = it.next() {
-        if in_str {
-            out.push(c);
-            if c == '\'' {
-                in_str = false;
-            }
-        } else if c == '\'' {
-            in_str = true;
-            out.push(c);
-        } else if c == '/' && it.peek() == Some(&'*') {
-            it.next();
-            let mut prev = ' ';
-            for d in it.by_ref() {
-                if prev == '*' && d == '/' {
-                    break;
-                }
-                prev = d;
-            }
-            out.push(' ');
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// 本体の参照（文字列の外の #番号）
-fn refs(body: &str) -> Vec<u64> {
-    let b = body.as_bytes();
-    let mut v = Vec::new();
-    let mut in_str = false;
-    let mut i = 0;
-    while i < b.len() {
-        match b[i] {
-            b'\'' => in_str = !in_str,
-            b'#' if !in_str => {
-                let st = i + 1;
-                let mut j = st;
-                while j < b.len() && b[j].is_ascii_digit() {
-                    j += 1;
-                }
-                if let Ok(n) = body[st..j].parse() {
-                    v.push(n);
-                }
-                i = j;
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    v
-}
-
-/// 単純な実体の型と、上の段の引数（文字のまま）。複合の実体（`(` で始まる）は None
-fn split(body: &str) -> Option<(&str, Vec<&str>)> {
-    let open = body.find('(')?;
-    let ty = body[..open].trim();
-    if ty.is_empty() || !body.ends_with(')') {
-        return None;
-    }
-    let inner = &body[open + 1..body.len() - 1];
-    let b = inner.as_bytes();
-    let mut args = Vec::new();
-    let (mut depth, mut in_str, mut st) = (0i32, false, 0);
-    for (i, &c) in b.iter().enumerate() {
-        match c {
-            b'\'' => in_str = !in_str,
-            b'(' if !in_str => depth += 1,
-            b')' if !in_str => depth -= 1,
-            b',' if !in_str && depth == 0 => {
-                args.push(inner[st..i].trim());
-                st = i + 1;
-            }
-            _ => {}
-        }
-    }
-    args.push(inner[st..].trim());
-    Some((ty, args))
 }
 
 /// 長さの引数の位置（単位の倍率を掛ける）
@@ -194,7 +50,7 @@ pub trait Sink {
 /// （回転の行列の列が軸、原点）。写せなければ None
 pub fn embed_shell(
     sink: &mut impl Sink,
-    ents: &HashMap<u64, String>,
+    ents: &StepFile,
     (shell, m): (u64, &[[f64; 4]; 3]),
     k: f64,
     place: (&[[f64; 3]; 3], V3),
@@ -203,8 +59,8 @@ pub fn embed_shell(
 ) -> Option<usize> {
     // 辺の曲線: SURFACE_CURVE・SEAM_CURVE は 3 次元の曲線に置き換える
     let alias = |id: u64| -> u64 {
-        ents.get(&id)
-            .and_then(|b| split(b))
+        ents.get(id)
+            .and_then(|e| split(&e.body))
             .filter(|(t, _)| *t == "SURFACE_CURVE" || *t == "SEAM_CURVE")
             .and_then(|(_, a)| {
                 a.get(1)
@@ -224,7 +80,7 @@ pub fn embed_shell(
         if seen.insert(id, ()).is_some() {
             continue;
         }
-        let body = ents.get(&id)?;
+        let body = &ents.get(id)?.body;
         stack.push((id, true));
         for r in refs(body) {
             let r = alias(r);
@@ -279,7 +135,7 @@ pub fn embed_shell(
     };
     let triple = |v: V3| format!("({},{},{})", real(v[0]), real(v[1]), real(v[2]));
     for &id in &order {
-        let body = &ents[&id];
+        let body = &ents.get(id)?.body;
         let edited: String = match split(body) {
             Some((ty, args)) => {
                 let mut a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
@@ -333,24 +189,4 @@ pub fn embed_shell(
     }
     let sh = newid.get(&alias(shell))?;
     Some(sink.push(format!("MANIFOLD_SOLID_BREP('{name}',#{sh})")))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn entities_and_split() {
-        let t = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=CARTESIAN_POINT('a;b',(1.,2.,\n3.));\n#2 = CIRCLE('',#3,2.5);\n#3=(A()B(#1));\nENDSEC;";
-        let e = entities(t);
-        assert_eq!(e[&1], "CARTESIAN_POINT('a;b',(1.,2.,3.))");
-        assert_eq!(split(&e[&2]).unwrap(), ("CIRCLE", vec!["''", "#3", "2.5"]));
-        assert!(split(&e[&3]).is_none());
-        assert_eq!(refs(&e[&3]), vec![1]);
-        // 注釈の中の実体は読まない（文字の中の /* は注釈でない）
-        let t = "DATA;\n#5=CIRCLE('',#4,12.7);\n/* #5=CIRCLE('',#4,99.); */\n#6=X('/*');\nENDSEC;";
-        let e = entities(t);
-        assert_eq!(e[&5], "CIRCLE('',#4,12.7)");
-        assert_eq!(e[&6], "X('/*')");
-    }
 }

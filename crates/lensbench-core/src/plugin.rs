@@ -210,6 +210,24 @@ impl Data {
     }
 }
 
+impl From<Vec<f64>> for Data {
+    fn from(v: Vec<f64>) -> Self {
+        Data::F64(v)
+    }
+}
+
+impl From<Vec<C64>> for Data {
+    fn from(v: Vec<C64>) -> Self {
+        Data::C64(v)
+    }
+}
+
+impl From<Vec<bool>> for Data {
+    fn from(v: Vec<bool>) -> Self {
+        Data::Bool(v)
+    }
+}
+
 /// 形つきの配列
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
@@ -240,6 +258,18 @@ impl Array {
 
     pub fn bool(shape: Vec<usize>, v: Vec<bool>) -> Result<Self> {
         Self::new(shape, Data::Bool(v))
+    }
+
+    /// 2 次元の格子の値（[`crate::grid::Grid2`]）→ 形 (ny, nx) の配列（行優先のまま写す。座標は別の配列で渡す）。
+    /// 解析・拡張の 2 次元の出力はこれで作る（ANA-18）
+    pub fn grid<T: Clone>(g: &crate::grid::Grid2<T>) -> Self
+    where
+        Data: From<Vec<T>>,
+    {
+        Self {
+            shape: vec![g.ny(), g.nx()],
+            data: Data::from(g.data().to_vec()),
+        }
     }
 
     /// 数 1 つ（形 []）

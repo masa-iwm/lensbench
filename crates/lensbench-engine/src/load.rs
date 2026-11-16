@@ -30,7 +30,8 @@ pub struct SysSpec {
 
 /// ファイルから系を読む（注意は標準誤差へ）。ファイルが無いときは種類 io の誤り
 pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
-    let o = lensbench_project::open::open(
+    // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+    let o = lensbench_project::open::open_with(
         &c.file,
         &lensbench_project::open::OpenSpec {
             glass_dirs: &c.glass_dir,
@@ -41,6 +42,7 @@ pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
             wavelengths: None,
             names: c.names,
         },
+        Some(&lensbench_cad::cached_step),
     )?;
     for w in o.warnings {
         eprintln!("{}", lensbench_core::i18n::warning(&w));
@@ -78,6 +80,8 @@ pub fn split_paths(c: &SysSpec) -> Result<Vec<String>, String> {
     let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
+        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+        step_files: Some(&lensbench_cad::cached_step),
         base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
         glass_dirs: c.glass_dir.clone(),
         catalog: Some(&look),
@@ -172,6 +176,8 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> Result<Vec<(String, System)>
     let cat = LensCatalog::load_registered(&c.lens_catalog).map_err(|e| e.to_string())?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
+        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+        step_files: Some(&lensbench_cad::cached_step),
         base: c.file.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
         glass_dirs: c.glass_dir.clone(),
         catalog: Some(&look),

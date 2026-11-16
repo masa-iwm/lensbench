@@ -222,6 +222,7 @@ pub fn swap(a: &SwapArgs) -> Result<Value, String> {
     }
     let cat = LensCatalog::load_registered(&a.lens_catalog).map_err(|e| e.to_string())?;
     let env = Env {
+        step_files: None,
         base: a.file.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
         glass_dirs: a.glass_dir.clone(),
         catalog: None,

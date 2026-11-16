@@ -12,6 +12,7 @@ fn root() -> PathBuf {
 
 fn env(base: PathBuf) -> Env<'static> {
     Env {
+        step_files: None,
         base,
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,

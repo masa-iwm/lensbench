@@ -620,6 +620,7 @@ pub(super) fn swap(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .map_err(|e| RpcErr::params(format!("swap search settings: {e}")))?;
     let cat = lensbench_core::catalog::LensCatalog::load_registered(&ls.lens_catalog)?;
     let env = lensbench_project::Env {
+        step_files: None,
         base: ls
             .file
             .parent()

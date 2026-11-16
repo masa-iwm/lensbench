@@ -26,6 +26,7 @@ pub fn systems(root: &Path, file: &str, states: bool) -> (Vec<String>, Vec<Syste
     let p = Project::from_json(&txt).unwrap();
     let base = root.join(file).parent().unwrap().to_path_buf();
     let env = Env {
+        step_files: None,
         base,
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,

@@ -73,7 +73,7 @@ impl ComboDoc {
                         l.vendor == p.vendor && l.part == p.part && l.kind != RowKind::Mech
                     })
                 })
-                .is_some_and(|l| lensbench_project::catalog_spec::fits_row(&r.raw, l.diameter));
+                .is_some_and(|l| lensbench_catalog::spec::fits_row(&r.raw, l.diameter));
             self.combo.mechanics.push(crate::combo::MechPick {
                 name,
                 catalog: r.source.clone().unwrap_or_default(),

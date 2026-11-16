@@ -36,6 +36,7 @@ fn project(blocks: &str) -> (System, Vec<String>) {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
     let p = Project::from_json(&txt).unwrap();
     let env = Env {
+        step_files: None,
         base: dir(),
         glass_dirs: vec![],
         catalog: None,
@@ -193,6 +194,7 @@ fn zmx_block_without_its_stop() {
     );
     let p = Project::from_json(&txt).unwrap();
     let env = Env {
+        step_files: None,
         base: dir(),
         glass_dirs: vec![],
         catalog: None,

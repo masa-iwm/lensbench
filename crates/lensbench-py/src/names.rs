@@ -26,6 +26,7 @@ pub(crate) fn beam_paths_of(
         let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let env = lensbench_project::Env {
+            step_files: None,
             base: path.parent().map(|x| x.to_path_buf()).unwrap_or_default(),
             glass_dirs,
             catalog: Some(&look),

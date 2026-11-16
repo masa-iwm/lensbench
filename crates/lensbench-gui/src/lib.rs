@@ -117,7 +117,6 @@ pub fn main() -> std::process::ExitCode {
     cad_fetch::set_cad_dir(settings_dir.clone());
     builtin_glass::install(settings_dir.clone());
     samples::install(settings_dir.clone());
-    lensbench_cad::detail::install_detail_loader();
     lensbench_cad::coat_remote::install();
     lensbench_engine::set_lens_list_cache_dir(settings_dir);
     let options = eframe::NativeOptions {

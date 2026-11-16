@@ -10,7 +10,7 @@
 //! （`<品>-<URL のハッシュ>.step`）。`cad.step` の URL の無い品も、置き場に上げてあれば取れる。
 //! 口は `GET <url>/<鍵>`（無ければ 404）と `PUT <url>/<鍵>`（本文は STEP）だけ。
 use lensbench_core::LockExt;
-use lensbench_project::{catalog_fill, UserItem};
+use lensbench_project::UserItem;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -19,14 +19,14 @@ const MAX_BYTES: u64 = 64 << 20;
 /// STEP（展開したもの）の大きさの上限。配布元の STEP には 100 MB を超えるものがある
 const MAX_STEP: u64 = 512 << 20;
 
-/// キャッシュのフォルダ（[`catalog_fill::cad_cache_dir`]。GUI は設定のフォルダの `cad` に決める）
+/// キャッシュのフォルダ（[`crate::cache::cad_cache_dir`]。GUI は設定のフォルダの `cad` に決める）
 pub fn default_cache_dir() -> PathBuf {
-    catalog_fill::cad_cache_dir()
+    crate::cache::cad_cache_dir()
 }
 
-/// キャッシュのファイル（[`catalog_fill::cad_cache_path`]）
+/// キャッシュのファイル（[`crate::cache::cad_cache_path`]）
 pub fn cache_path(dir: &Path, item: &str, url: &str) -> PathBuf {
-    catalog_fill::cad_cache_path(dir, item, url)
+    crate::cache::cad_cache_path(dir, item, url)
 }
 
 /// STEP をどこから取ったか
@@ -66,7 +66,7 @@ pub struct CadStep {
     /// 置き場を読めなかった・上げられなかった理由（STEP は取れている）
     pub store_notes: Vec<String>,
     /// STEP から測った寸法（測れなければ None、理由は `notes`）
-    pub measured: Option<catalog_fill::StepSize>,
+    pub measured: Option<lensbench_catalog::step::StepSize>,
     /// 簡易外形との食い違い・測れなかった理由（空なら合う）
     pub notes: Vec<String>,
 }
@@ -104,7 +104,7 @@ pub fn fetch_item_with(
     if url.is_empty() && store.is_none() {
         return Err(format!("{name} has no STEP URL (cad.step)"));
     }
-    let found = catalog_fill::cad_cache_find(dir, name, url);
+    let found = crate::cache::cad_cache_find(dir, name, url);
     let cached = found.is_some();
     let path = found.unwrap_or_else(|| cache_path(dir, name, url));
     let mut source = Source::Cache;
@@ -899,14 +899,14 @@ mod tests {
         assert!(p.to_string_lossy().ends_with(".step.gz"));
         assert_eq!(store_key(&p), store_key(&p.with_extension("")));
         assert!(store_key(&p).ends_with(".step"));
-        assert_eq!(catalog_fill::cad_cache_find(&d, "X1", "u"), None);
+        assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), None);
         std::fs::write(p.with_extension(""), b"ISO-10303-21;").unwrap();
         assert_eq!(
-            catalog_fill::cad_cache_find(&d, "X1", "u"),
+            crate::cache::cad_cache_find(&d, "X1", "u"),
             Some(p.with_extension(""))
         );
         std::fs::write(&p, crate::detail::gzip(b"ISO-10303-21;")).unwrap();
-        assert_eq!(catalog_fill::cad_cache_find(&d, "X1", "u"), Some(p.clone()));
+        assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), Some(p.clone()));
         let gz = std::fs::read(&p).unwrap();
         assert_eq!(step_bytes(gz).unwrap(), b"ISO-10303-21;");
         std::fs::remove_dir_all(&d).ok();

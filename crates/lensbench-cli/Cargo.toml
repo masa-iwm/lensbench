@@ -33,6 +33,7 @@ lensbench-analysis = { path = "../lensbench-analysis" }
 # 解析の登録簿・系の読み方・serve の場
 lensbench-engine = { path = "../lensbench-engine" }
 lensbench-project = { path = "../lensbench-project" }
+lensbench-catalog = { path = "../lensbench-catalog" }
 lensbench-design = { path = "../lensbench-design" }
 lensbench-export = { path = "../lensbench-export" }
 lensbench-verify = { path = "../lensbench-verify" }

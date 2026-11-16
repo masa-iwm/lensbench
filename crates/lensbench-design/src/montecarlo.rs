@@ -39,8 +39,9 @@ use lensbench_optim::{DlsOpts, Problem};
 use lensbench_runs::{self as runs, Draws, Joint};
 use std::sync::Mutex;
 
-/// 分布
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// 分布。設定の JSON では名前の文字列（"uniform"・"normal"・"normal:σの数"・"end"・"disc_x"・"disc_y:normal" など）
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, schemars::JsonSchema)]
+#[serde(try_from = "String")]
 pub enum Dist {
     Uniform,
     /// 範囲の半分が cut σ の正規分布を範囲で切ったもの
@@ -59,6 +60,13 @@ pub enum Dist {
     DiscY {
         normal: Option<f64>,
     },
+}
+
+impl TryFrom<String> for Dist {
+    type Error = String;
+    fn try_from(s: String) -> std::result::Result<Dist, String> {
+        Dist::parse(&s).map_err(|e| e.to_string())
+    }
 }
 
 impl Dist {
@@ -730,11 +738,15 @@ impl LensTol {
     }
 }
 
-/// 群・ブロック（玉でない玉・群）の公差（±、0 なら作らない）
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+/// 群・ブロック（玉でない玉・群）の公差（±、0 なら作らない）。設定の JSON の `groups` の値もこの型で読む（書かない項目は 0）
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(default, deny_unknown_fields)]
 pub struct GroupTol {
+    /// 偏心 [mm]
     pub decenter: f64,
+    /// 傾き [deg]
     pub tilt: f64,
+    /// 光軸方向のずれ [mm]
     pub shift: f64,
 }
 

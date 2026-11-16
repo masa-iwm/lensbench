@@ -284,37 +284,39 @@ impl Analysis for Interference {
                 };
                 let r = interference::detector(&s1, &s2, field, w, &o, pol)?;
                 let grid: Vec<f64> = match a.quantity {
-                    Quantity::Intensity => r.intensity.clone(),
-                    Quantity::Opd => r.opd.clone(),
-                    Quantity::Visibility => r.visibility.clone(),
-                    Quantity::Sample => r.i_sample.clone(),
-                    Quantity::Reference => r.i_reference.clone(),
+                    Quantity::Intensity => r.intensity.data().to_vec(),
+                    Quantity::Opd => r.opd.data().to_vec(),
+                    Quantity::Visibility => r.visibility.data().to_vec(),
+                    Quantity::Sample => r.i_sample.data().to_vec(),
+                    Quantity::Reference => r.i_reference.data().to_vec(),
                     Quantity::Delta => {
                         return Err(Error::Invalid(format!(
                             "quantity {q} (on the image: intensity, opd, visibility, sample, reference)"
                         )))
                     }
                 };
-                let both = (0..r.n * r.n)
-                    .filter(|&q| r.ok_sample[q] && r.ok_reference[q])
+                let both = (r.ok_sample.data().iter().zip(r.ok_reference.data()))
+                    .filter(|&(a, b)| *a && *b)
                     .count();
                 let vis: Vec<f64> = r
                     .visibility
+                    .data()
                     .iter()
                     .cloned()
                     .filter(|v| v.is_finite())
                     .collect();
+                let (n, xs, ys) = (r.n(), r.intensity.x(), r.intensity.y());
                 let summary = json!({
-                    "mode": "detector", "quantity": q, "nx": r.n, "ny": r.n,
-                    "pixel_mm": r.dx, "first_pixel_center_mm": [r.x0, r.y0],
-                    "top_left_pixel_center_mm": [r.x0, r.y0 + (r.n as f64 - 1.0) * r.dx],
+                    "mode": "detector", "quantity": q, "nx": n, "ny": n,
+                    "pixel_mm": r.dx, "first_pixel_center_mm": [xs[0], ys[0]],
+                    "top_left_pixel_center_mm": [xs[0], ys[n - 1]],
                     "wavelength_um": r.wavelength, "beam1": a.beam1, "beam2": a.beam2,
                     "overlap_pixels": both,
                     "visibility_mean": if vis.is_empty() { f64::NAN } else { vis.iter().sum::<f64>() / vis.len() as f64 },
                     "fold_sample": r.fold.0, "fold_reference": r.fold.1,
                     "polarized": a.polarized, "delay_mm": a.delay,
                 });
-                (grid, r.n, summary)
+                (grid, n, summary)
             }
         };
         if let Some(p) = &a.out {

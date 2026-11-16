@@ -419,6 +419,7 @@ fn overlay_splitter_paths() {
         std::fs::read_to_string(format!("{ROOT}/examples/projects/P16_twyman_green.json")).unwrap();
     let p = lensbench_project::Project::from_json(&txt).unwrap();
     let env = lensbench_project::Env {
+        step_files: None,
         base: format!("{ROOT}/examples/projects").into(),
         glass_dirs: vec![format!("{ROOT}/tests/glass").into()],
         catalog: None,
@@ -478,6 +479,7 @@ fn splitter_cube_is_two_prisms() {
         }
         let p = lensbench_project::Project::from_json(&v.to_string()).unwrap();
         let env = lensbench_project::Env {
+            step_files: None,
             base: format!("{ROOT}/examples/projects").into(),
             glass_dirs: vec![format!("{ROOT}/tests/glass").into()],
             catalog: None,
@@ -535,6 +537,7 @@ fn splitter_reflect_only_draws_whole_cube() {
         }
         let p = lensbench_project::Project::from_json(&v.to_string()).unwrap();
         let env = lensbench_project::Env {
+            step_files: None,
             base: format!("{ROOT}/examples/projects").into(),
             glass_dirs: vec![format!("{ROOT}/tests/glass").into()],
             catalog: None,

@@ -189,6 +189,7 @@ fn swap_search<'py>(
             // 候補の要約も threads の指定で作る（Env は Sync でないので中で作る）
             let s = with_threads(threads, || {
                 let env = Env {
+                    step_files: None,
                     base,
                     glass_dirs: glass_dirs.clone(),
                     catalog: None,

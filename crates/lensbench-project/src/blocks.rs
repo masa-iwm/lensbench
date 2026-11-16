@@ -14,12 +14,20 @@ pub struct LensCache {
 
 type CachedLens = std::sync::Arc<(Element, std::sync::Arc<HashMap<String, Glass>>)>;
 
-/// 展開の環境
+/// 機構部品の詳しい形の STEP のファイルを引く関数: (品の名前, STEP の公式の URL) → 手元のファイル
+/// （lensbench-cad の `cached_step` は取った STEP のキャッシュから引く）
+pub type StepLookup<'a> = &'a (dyn Fn(&str, &str) -> Option<PathBuf> + Sync);
+
+/// 展開の環境（既定はフォルダ・カタログ・STEP の口なし）
+#[derive(Default)]
 pub struct Env<'a> {
     /// 相対パスの基準（プロジェクトファイルのフォルダ）
     pub base: PathBuf,
     pub glass_dirs: Vec<PathBuf>,
     pub catalog: Option<CatalogLookup<'a>>,
+    /// カタログの機構部品の詳しい形の STEP（[`lensbench_core::mech::MechPart::step`]）を引く口。None なら引かない
+    /// （描画・書き出しは簡易外形。PRJ-21: 以前はキャッシュのフォルダをこのクレートの中で決めて探していた）
+    pub step_files: Option<StepLookup<'a>>,
 }
 
 pub(crate) struct Ctx<'a, 'b> {

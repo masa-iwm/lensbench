@@ -1,0 +1,11 @@
+[package]
+name = "lensbench-step"
+description = "Tokenizer for STEP (ISO 10303-21) files used by lensbench: one table shared by measuring catalog items and copying solids into exported STEP files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

@@ -27,15 +27,15 @@ pub struct StepReport {
 pub struct OptionsStep {
     /// 非球面の断面を補間する区間の数
     pub profile_segments: usize,
-    /// 機構部品を、取った品の STEP の立体で書く（[`crate::detail`]。無い部品は簡易外形）
-    pub mech_detail: bool,
+    /// 機構部品を、取った品の STEP の立体で書くときの読み手（[`crate::detail`]。None・無い部品は簡易外形）
+    pub mech_detail: Option<crate::detail::Details>,
 }
 
 impl Default for OptionsStep {
     fn default() -> Self {
         OptionsStep {
             profile_segments: 64,
-            mech_detail: false,
+            mech_detail: None,
         }
     }
 }
@@ -50,11 +50,11 @@ impl crate::step_embed::Sink for Ents {
 }
 
 /// 機構部品を取った品の STEP の立体で書く（写した立体の番号）。STEP が無いか写せなければ None
-fn embed_mech(e: &mut Ents, m: &MechShape) -> Option<Vec<usize>> {
+fn embed_mech(e: &mut Ents, m: &MechShape, details: &crate::detail::Details) -> Option<Vec<usize>> {
     let (file, flip) = m.step.as_ref()?;
-    let d = crate::detail::load(file)?;
+    let d = details.load(file)?;
     let src = d.step.as_ref()?;
-    let ents = crate::step_embed::entities(&src.text);
+    let ents = &*src.file;
     // 部品の座標 → 大域: 裏返しは x 軸のまわりの 180°（z → 長さ − z）
     let len = m.rings.iter().map(|q| q[1]).fold(0.0, f64::max);
     let fr = &m.frame;
@@ -76,7 +76,7 @@ fn embed_mech(e: &mut Ents, m: &MechShape) -> Option<Vec<usize>> {
         let name = text(&format!("{} detail {}", m.name, k + 1));
         out.push(crate::step_embed::embed_shell(
             e,
-            &ents,
+            ents,
             (*shell, mt),
             src.unit_mm,
             (&r, o),
@@ -951,8 +951,8 @@ pub fn write_step<W: Write>(w: &mut W, sc: &Scene, o: &OptionsStep) -> std::io::
         rep.solids += 1;
     }
     for m in &sc.mechs {
-        if o.mech_detail {
-            if let Some(v) = embed_mech(&mut e, m) {
+        if let Some(src) = &o.mech_detail {
+            if let Some(v) = embed_mech(&mut e, m, src) {
                 rep.mechs += v.len();
                 items.extend(v);
                 continue;

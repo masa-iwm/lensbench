@@ -253,6 +253,7 @@ fn on_off_back_and_states() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
     let env = lensbench_project::Env {
+        step_files: None,
         base: root.clone(),
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,
@@ -364,6 +365,7 @@ fn groups_wrap_runs_and_move_by_state() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let pr = lensbench_project::Project::from_json(&v.to_string()).unwrap();
     let env = lensbench_project::Env {
+        step_files: None,
         base: root.clone(),
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,
@@ -427,6 +429,7 @@ fn stale_group_shift_is_not_written() {
     let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let pr = lensbench_project::Project::from_json(&v.to_string()).unwrap();
     let env = lensbench_project::Env {
+        step_files: None,
         base: root.clone(),
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,

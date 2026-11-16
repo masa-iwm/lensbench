@@ -62,6 +62,7 @@ fn swap_serve() {
         lensbench_core::catalog::LensCatalog::load_registered(&[path("examples/lenses/LB").into()])
             .unwrap();
     let env = lensbench_project::Env {
+        step_files: None,
         base: Path::new(ROOT).join("examples/projects"),
         glass_dirs: vec![path("tests/glass").into()],
         catalog: None,

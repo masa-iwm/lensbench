@@ -104,6 +104,15 @@ pub struct Opened {
 /// 系ファイル（lensbench 独自の JSON）・プロジェクトファイル（.json）・.zmx を読む。
 /// ファイルが無い・読めないときは [`Error::Io`]、引数の組み合わせや中身の誤りは [`Error::Invalid`]
 pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
+    open_with(path, o, None)
+}
+
+/// [`open`] に、プロジェクトの機構部品の詳しい形の STEP を引く口（[`crate::Env::step_files`]）を足したもの
+pub fn open_with(
+    path: &Path,
+    o: &OpenSpec,
+    step_files: Option<crate::StepLookup>,
+) -> Result<Opened, Error> {
     let ArgNames {
         cfg,
         state,
@@ -149,9 +158,16 @@ pub fn open(path: &Path, o: &OpenSpec) -> Result<Opened, Error> {
         }
         let cat = LensCatalog::load_registered(o.lens_catalogs)?;
         let look = |v: &str, p: &str| cat.zmx(v, p);
-        let (system, warnings) =
-            crate::load_path_report(path, o.glass_dirs, Some(&look), o.state, o.split_path)
-                .map_err(invalid)?;
+        let txt = lensbench_core::vfs::read_to_string(path)
+            .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+        let env = crate::Env {
+            base: path.parent().map(|p| p.to_path_buf()).unwrap_or_default(),
+            glass_dirs: o.glass_dirs.to_vec(),
+            catalog: Some(&look),
+            step_files,
+        };
+        let (system, warnings) = crate::expand_text(&txt, &env, o.state, o.split_path)
+            .map_err(|e| invalid(format!("{}: {e}", path.display())))?;
         return Ok(Opened {
             system,
             warnings,

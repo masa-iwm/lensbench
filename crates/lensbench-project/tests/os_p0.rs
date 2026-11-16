@@ -14,6 +14,7 @@ fn dir() -> PathBuf {
 fn expanded() -> (System, Vec<String>) {
     let txt = std::fs::read_to_string(dir().join("project.json")).unwrap();
     let env = Env {
+        step_files: None,
         base: dir(),
         glass_dirs: vec![dir().join("../../glass")],
         catalog: None,

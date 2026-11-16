@@ -65,7 +65,7 @@ pub struct LensRow {
 
 /// 仕様の値を短く（範囲は a–b、単位つき）
 pub fn spec_text(name: &str, v: &Value) -> String {
-    let unit = lensbench_project::catalog_spec::spec_unit(name);
+    let unit = lensbench_catalog::spec::spec_unit(name);
     let n = |x: &Value| match x {
         Value::Number(_) => fmt_num(x.as_f64().unwrap_or(f64::NAN)),
         Value::String(t) => t.clone(),
@@ -232,9 +232,7 @@ pub fn parse_lenses(v: &Value) -> Vec<LensRow> {
                     category: l["category"]
                         .as_str()
                         .map(str::to_string)
-                        .unwrap_or_else(|| {
-                            lensbench_project::catalog_spec::row_category(l).to_string()
-                        }),
+                        .unwrap_or_else(|| lensbench_catalog::spec::row_category(l).to_string()),
                     url: s(&l["url"]),
                     description: s(&l["description"]),
                     spec_source: s(&l["spec_source"]),
@@ -371,9 +369,9 @@ pub struct FitFilter {
     pub label: String,
 }
 
-/// 保持径 `hold` の機構部品に、径 `d` の素子が入るか（[`lensbench_project::catalog_spec::fits_row`] と同じ幅）
+/// 保持径 `hold` の機構部品に、径 `d` の素子が入るか（[`lensbench_catalog::spec::fits_row`] と同じ幅）
 fn fits_hold(hold: f64, d: f64) -> bool {
-    lensbench_project::catalog_spec::fits(hold, d)
+    lensbench_catalog::spec::fits(hold, d)
 }
 
 /// 機構部品の保持径
@@ -524,11 +522,9 @@ fn row_detail(r: &LensRow) -> String {
 }
 
 /// 仕様の条件を読む（読めない条件は誤りの文に）
-pub fn parse_spec_filters(
-    q: &str,
-) -> Result<Vec<lensbench_project::catalog_spec::SpecFilter>, String> {
+pub fn parse_spec_filters(q: &str) -> Result<Vec<lensbench_catalog::spec::SpecFilter>, String> {
     q.split_whitespace()
-        .map(lensbench_project::catalog_spec::SpecFilter::parse)
+        .map(lensbench_catalog::spec::SpecFilter::parse)
         .collect()
 }
 
@@ -1142,7 +1138,7 @@ impl Browser {
                     .filter(|&i| {
                         let m = &rows[i];
                         m.kind == RowKind::Mech
-                            && lensbench_project::catalog_spec::fits_row(&m.raw, r.diameter)
+                            && lensbench_catalog::spec::fits_row(&m.raw, r.diameter)
                     })
                     .collect()
             };
@@ -1552,7 +1548,7 @@ impl Browser {
                     "Show only lenses, mirrors etc. whose diameter fits the holding diameter {} mm (down to {} mm smaller)",
                     &[
                         &fmt_num(h),
-                        &fmt_num(lensbench_project::catalog_spec::FIT_TOL),
+                        &fmt_num(lensbench_catalog::spec::FIT_TOL),
                     ],
                 ))
                 .clicked()

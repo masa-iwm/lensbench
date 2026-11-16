@@ -412,9 +412,9 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
     // 同じメーカーのカタログの url_template・overlay を全部の行に（ZMF・.zmx の玉にも）
     let refs: Vec<&lensbench_project::UserCatalog> = cats.iter().collect();
     for row in &mut out {
-        lensbench_project::catalog_spec::apply_overlays(row, &refs);
+        lensbench_catalog::spec::apply_overlays(row, &refs);
         if row.get("category").is_none_or(Value::is_null) {
-            use lensbench_project::catalog_spec::{row_category, ItemKind};
+            use lensbench_catalog::spec::{row_category, ItemKind};
             let k = ItemKind::parse(row_category(row)).unwrap_or(ItemKind::Other);
             row["category"] = json!(k.as_str());
         }
@@ -426,7 +426,7 @@ fn read_lenses(paths: &[PathBuf], glass_dirs: &[PathBuf]) -> Result<Value, Strin
 pub fn search(
     paths: &[PathBuf],
     glass_dirs: &[PathBuf],
-    q: &lensbench_project::catalog_spec::CatalogQuery,
+    q: &lensbench_catalog::spec::CatalogQuery,
 ) -> Result<Value, String> {
     let mut v = lenses(paths, glass_dirs)?;
     if let Some(a) = v["lenses"].as_array_mut() {
@@ -678,6 +678,7 @@ fn user_lens_summary(
         .to_string(),
     )?;
     let env = lensbench_project::Env {
+        step_files: None,
         base: catalog
             .parent()
             .map(|x| x.to_path_buf())
@@ -949,7 +950,7 @@ mod tests {
     /// 同じメーカーの .json の overlay・url_template を .zmx の玉にも当て、絞り込む
     #[test]
     fn overlay_and_search() {
-        use lensbench_project::catalog_spec::{CatalogQuery, ItemKind, SpecFilter};
+        use lensbench_catalog::spec::{CatalogQuery, ItemKind, SpecFilter};
         let paths = [
             root().join("examples/lenses/LB"),
             root().join("examples/lenses/LBP"),

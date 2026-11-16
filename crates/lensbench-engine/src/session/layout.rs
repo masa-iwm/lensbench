@@ -96,7 +96,7 @@ pub(super) fn layout_export(sess: &Session, p: &Value) -> Result<Value, RpcErr> 
         rings: opt_usize(p, "rings")?.unwrap_or(d3.rings).clamp(1, 256),
         tube,
         color,
-        mech_detail: p["mech_detail"] == true,
+        mech_detail: mech_detail(p),
     };
     lensbench_export::write_layout(&path, &sc, &o2, &o3).map_err(RpcErr::app)?;
     Ok(json!({
@@ -230,6 +230,8 @@ pub(super) fn configs(sess: &Session) -> Result<Value, RpcErr> {
     )?;
     let look = |v: &str, q: &str| cat.zmx(v, q);
     let env = lensbench_project::Env {
+        // 機構部品の詳しい形の STEP は取った STEP のキャッシュから（PRJ-21）
+        step_files: Some(&lensbench_cad::cached_step),
         base: spec
             .file
             .parent()
@@ -319,6 +321,13 @@ fn plane_of(p: &Value) -> Result<Plane, RpcErr> {
     }
 }
 
+/// 要求の `mech_detail`（真なら機構部品を取った STEP の詳しい形で描く読み手、PRJ-21）
+fn mech_detail(p: &Value) -> Option<lensbench_export::detail::Details> {
+    (p["mech_detail"] == true)
+        .then(lensbench_cad::detail::details)
+        .flatten()
+}
+
 /// 場面を GUI の 3D 表示の JSON に: 立体・面・光線の網（座標は大域 [x, y, z] mm を平らに並べたもの）。
 /// 立体と面は `surfaces`（面の番号）を持ち、組合せの要素の選択に使う
 fn scene3d_json(s: &System, sc: &lensbench_export::scene::Scene, mech_detail: bool) -> Value {
@@ -327,7 +336,7 @@ fn scene3d_json(s: &System, sc: &lensbench_export::scene::Scene, mech_detail: bo
     let o = mesh::Options3D {
         segments: 32,
         rings: 6,
-        mech_detail,
+        mech_detail: mech_detail.then(lensbench_cad::detail::details).flatten(),
         ..Default::default()
     };
     // 立体と面だけ網に（光線は折れ線で別に）
