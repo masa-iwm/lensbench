@@ -1791,7 +1791,7 @@ pub fn ui(
     let focused = resp.has_focus();
     if let Some(d) = data {
         view.nav = true;
-        figure(ui, rect, &resp, combo, d, view, accent);
+        figure(ui, rect, &resp, Some(combo), d, view, accent);
     } else {
         ui.painter().text(
             rect.center(),
@@ -1945,10 +1945,6 @@ pub fn view_only(
     if resp.clicked() || resp.drag_started() {
         resp.request_focus();
     }
-    let mut none = Combo {
-        picks: Vec::new(),
-        ..Default::default()
-    };
     let mut view = View {
         hl_surf,
         ..Default::default()
@@ -1958,7 +1954,7 @@ pub fn view_only(
         view.zoom_log = n.zoom_log;
         view.pan = n.pan;
     }
-    figure(ui, rect, &resp, &mut none, d, &mut view, accent);
+    figure(ui, rect, &resp, None, d, &mut view, accent);
     if let Some(n) = nav.as_deref_mut() {
         n.zoom_log = view.zoom_log;
         n.pan = view.pan;

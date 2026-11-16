@@ -2588,7 +2588,7 @@ impl Core {
                 let p = self.s.params.remove(i);
                 self.sys.param_vals.remove(&p);
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let sys = self.param_sys();
                 let (_, enter) = crate::param_pick::edit_pick(
                     ui,
@@ -2614,7 +2614,8 @@ impl Core {
                 .color(weak),
             );
             if ui
-                .button(tr("Reload (discard changed values; Ctrl+Z to undo)"))
+                .button(tr("Reload"))
+                .on_hover_text(tr("Reload (discard changed values; Ctrl+Z to undo)"))
                 .clicked()
             {
                 self.reload();

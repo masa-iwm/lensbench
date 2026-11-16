@@ -211,22 +211,21 @@ pub fn show(
         ey = ey.max(v[1].abs());
     }
     let base = (inner.width() / 2.0 / ex).min(inner.height() / 2.0 / ey);
+    // 拡大・移動・全体表示はほかの図と同じ操作（widgets::pan_zoom、GPN-09）。左ドラッグは回す（Shift+左は移動）
+    let pz = crate::widgets::pan_zoom(ui, resp, false);
     if resp.dragged() {
         let d = resp.drag_delta();
-        if pan_mode {
+        if pan_mode || pz.pan != egui::Vec2::ZERO {
             cam.pan += d / (base * cam.zoom * sc.radius);
         } else {
             cam.yaw += d.x * 0.01;
             cam.pitch = (cam.pitch + d.y * 0.01).clamp(-1.55, 1.55);
         }
     }
-    if resp.hovered() {
-        let z = ui.input(|i| i.smooth_scroll_delta.y);
-        if z != 0.0 {
-            cam.zoom = (cam.zoom * (z * 0.002).exp()).clamp(0.05, 200.0);
-        }
+    if pz.at.is_some() {
+        cam.zoom = (cam.zoom * pz.zoom).clamp(0.05, 200.0);
     }
-    if resp.double_clicked() {
+    if pz.reset {
         cam = Cam::default();
     }
     if resp.has_focus() {

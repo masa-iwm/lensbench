@@ -190,7 +190,7 @@ impl Fig {
                     resp.request_focus();
                 }
                 let focused = resp.has_focus();
-                figure(ui, rect, &resp, combo, d, view, accent);
+                figure(ui, rect, &resp, Some(combo), d, view, accent);
                 if focused {
                     ui.memory_mut(|m| {
                         m.set_focus_lock_filter(

@@ -1180,7 +1180,8 @@ impl Browser {
         n_lens_dirs: usize,
     ) -> Option<Action> {
         let mut act = None;
-        ui.horizontal(|ui| {
+        // 折り返す（1 行が幅を超えるとパネルの中身全体が広がり、下の折り返す行も切れる、GUX-14）
+        ui.horizontal_wrapped(|ui| {
             ui.selectable_value(
                 &mut self.tab,
                 Tab::Lenses,

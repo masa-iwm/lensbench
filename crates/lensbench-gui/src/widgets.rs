@@ -8,6 +8,8 @@ use crate::i18n::trf;
 pub mod cell;
 pub mod choices;
 pub mod menu;
+#[cfg(test)]
+mod ui_tests;
 
 /// 文字の欄の数。空は None、数でない・有限でない（inf・nan）は誤り（`what` は欄の名前）
 pub fn parse_num(s: &str, what: &str) -> Result<Option<f64>, String> {
@@ -74,6 +76,14 @@ pub struct PanZoom {
     pub reset: bool,
 }
 
+/// 移動のドラッグ中か（中・右ドラッグ、Space+左ドラッグ、`left_pans` なら左ドラッグも）
+pub fn pan_zoom_pans(ui: &Ui, resp: &Response, left_pans: bool) -> bool {
+    let space = ui.input(|i| i.key_down(egui::Key::Space));
+    resp.dragged_by(egui::PointerButton::Middle)
+        || resp.dragged_by(egui::PointerButton::Secondary)
+        || (resp.dragged_by(egui::PointerButton::Primary) && (left_pans || space))
+}
+
 /// `resp`（click_and_drag で取った図の場所）の上の操作を読む。`left_pans` は左ドラッグでも移動する図
 /// （ガラスマップなど、左ドラッグにほかの役が無いもの）。ホイールを使ったら外のスクロールに渡さない
 pub fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
@@ -83,11 +93,7 @@ pub fn pan_zoom(ui: &Ui, resp: &Response, left_pans: bool) -> PanZoom {
         pan: Vec2::ZERO,
         reset: false,
     };
-    let space = ui.input(|i| i.key_down(egui::Key::Space));
-    let pan_btn = resp.dragged_by(egui::PointerButton::Middle)
-        || resp.dragged_by(egui::PointerButton::Secondary)
-        || (resp.dragged_by(egui::PointerButton::Primary) && (left_pans || space));
-    if pan_btn {
+    if pan_zoom_pans(ui, resp, left_pans) {
         out.pan = resp.drag_delta();
     }
     out.reset =

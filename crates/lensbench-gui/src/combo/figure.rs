@@ -13,35 +13,22 @@ use egui::{Align2, FontId, Galley, Painter};
 use std::sync::Arc;
 
 fn panning(ui: &Ui, resp: &egui::Response) -> bool {
-    resp.dragged_by(egui::PointerButton::Middle)
-        || resp.dragged_by(egui::PointerButton::Secondary)
-        || (resp.dragged_by(egui::PointerButton::Primary) && ui.input(|i| i.key_down(Key::Space)))
+    crate::widgets::pan_zoom_pans(ui, resp, false)
 }
 
-/// 2D の図の拡大縮小・移動・全体表示（#124）。ホイール・ピンチでカーソルの所を中心に拡大縮小、
-/// 中ボタン・右ボタン・Space＋左のドラッグで移動、Home キー・何も無い所のダブルクリック・「全体」で全体表示。
-/// fit_center は全体表示のときの図の中心（画面）
+/// 2D の図の拡大縮小・移動・全体表示（#124）。操作はほかの図と同じ [`crate::widgets::pan_zoom`]（GPN-09）:
+/// ホイール・ピンチでカーソルの所を中心に拡大縮小、中ボタン・右ボタン・Space＋左のドラッグで移動、Home キー・
+/// 何も無い所のダブルクリック（[`interact`]）・「全体」で全体表示。fit_center は全体表示のときの図の中心（画面）
 fn navigate(ui: &mut Ui, rect: Rect, fit_center: Pos2, resp: &egui::Response, view: &mut View) {
-    if panning(ui, resp) {
-        view.pan += resp.drag_delta();
+    let pz = crate::widgets::pan_zoom(ui, resp, false);
+    view.pan += pz.pan;
+    if let Some(c) = pz.at {
+        view.zoom_about(fit_center, c, pz.zoom);
     }
-    if resp.hovered() {
-        // ホイールは図の拡大縮小に使い、パネルのスクロールには渡さない（なめらかなスクロールは数フレームに
-        // 分けて届くので、図の上にある間は毎フレーム取る）
-        let (wheel, pinch, pos) = ui.input_mut(|i| {
-            let w = i.smooth_scroll_delta.y;
-            i.smooth_scroll_delta = Vec2::ZERO;
-            i.raw_scroll_delta = Vec2::ZERO;
-            (w, i.zoom_delta(), i.pointer.hover_pos())
-        });
-        let f = pinch * (wheel / 200.0).exp();
-        if (f - 1.0).abs() > 1e-4 {
-            view.zoom_about(fit_center, pos.unwrap_or(fit_center), f);
-        }
-        if ui.input(|i| i.key_pressed(Key::Home)) {
-            view.zoom_log = 0.0;
-            view.pan = Vec2::ZERO;
-        }
+    // ダブルクリックは要素・寸法線の上では別の役なので、全体表示は Home だけここで（何も無い所は interact）
+    if resp.hovered() && ui.input(|i| i.key_pressed(Key::Home)) {
+        view.zoom_log = 0.0;
+        view.pan = Vec2::ZERO;
     }
     // 拡大・移動しているときは右上に「全体」（置き場は取らない: ui.put は下の欄の位置をずらす）
     if view.zoom_log != 0.0 || view.pan != Vec2::ZERO {
@@ -82,16 +69,22 @@ pub(super) fn figure(
     ui: &mut Ui,
     rect: Rect,
     resp: &egui::Response,
-    combo: &mut Combo,
+    mut combo: Option<&mut Combo>,
     d: &LayoutData,
     view: &mut View,
     accent: Color32,
 ) {
+    // 開いた系・カタログのプレビュー（combo なし）は描くだけ。読むのは空の組合せ（毎フレーム作らない、GPN-09）
+    static EMPTY: std::sync::LazyLock<Combo> = std::sync::LazyLock::new(|| Combo {
+        picks: Vec::new(),
+        ..Default::default()
+    });
     view.d3 = d.d3.is_some();
     view.fixed = d.unfold || view.d3;
+    let ro: &Combo = combo.as_deref().unwrap_or(&EMPTY);
     if let Some(sc) = &d.d3 {
         // 3D: 要素の選択だけ（寸法線・ドラッグでの移動はなし）
-        let spans = d.spans_for(&combo.ids(), combo.lead_stop());
+        let spans = d.spans_for(&ro.ids(), ro.lead_stop());
         let owner = |sf: [usize; 2]| {
             spans
                 .iter()
@@ -109,12 +102,12 @@ pub(super) fn figure(
     let weak = theme::weak_text(&vis);
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 8.0, vis.extreme_bg_color);
-    let Some((xf, inner)) = xform(ui, rect, resp, combo, d, view) else {
+    let Some((xf, inner)) = xform(ui, rect, resp, ro, d, view) else {
         return;
     };
     view.surf_pos = d.vertices.iter().map(|v| v.map(|p| xf.to(p))).collect();
     view.xz = d.xz;
-    let sc = scene(&painter, rect, inner, xf, combo, d, view, accent, weak);
+    let sc = scene(&painter, rect, inner, xf, ro, d, view, accent, weak);
     view.axes = sc.axes.clone();
     view.mids = sc.mids.clone();
     let h = hits(&sc, resp.interact_pointer_pos().or(resp.hover_pos()));
@@ -122,8 +115,11 @@ pub(super) fn figure(
         view.hover_surfs = h.surfs;
     }
     paint(&painter, &vis, rect, &sc, &h, d, xf, accent, weak);
-    interact(ui, resp, combo, view, &h, xf.s);
-    dim_edit(ui, resp, combo, view, &sc.dims);
+    // 組合せを変える操作（寸法の書き換え・ドラッグで動かす）は組合せの図だけ
+    interact(ui, resp, combo.as_deref_mut(), view, &h, xf.s);
+    if let Some(combo) = combo {
+        dim_edit(ui, resp, combo, view, &sc.dims);
+    }
     if h.el.is_some() || h.dim.is_some() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -907,17 +903,17 @@ fn paint(
 }
 
 /// クリック・ドラッグ（要素を選ぶ・開く・光軸に沿って動かす・Shift で偏心、寸法を選ぶ・書き換えを始める）。
-/// s は図の 1 mm の画面の長さ
+/// s は図の 1 mm の画面の長さ。combo が無ければ（描くだけの図）選ぶ・開く・全体表示だけ
 fn interact(
     ui: &mut Ui,
     resp: &egui::Response,
-    combo: &mut Combo,
+    mut combo: Option<&mut Combo>,
     view: &mut View,
     h: &Hits,
     s: f64,
 ) {
     if resp.double_clicked() {
-        if let Some(g) = h.dim {
+        if let (Some(g), Some(combo)) = (h.dim, combo.as_deref_mut()) {
             // 寸法線のダブルクリックでも数字を書き換える
             view.start_edit(combo, g);
         } else if let Some(k) = h.el {
@@ -930,7 +926,7 @@ fn interact(
             view.pan = Vec2::ZERO;
         }
     } else if resp.clicked() {
-        if let Some(g) = h.num {
+        if let (Some(g), Some(combo)) = (h.num, combo.as_deref_mut()) {
             // 数字のクリックはその場で書き換える（今の数字は全選択で、打てば置き換わる）
             view.start_edit(combo, g);
         } else if let Some(g) = h.dim {
@@ -948,10 +944,13 @@ fn interact(
             view.sel = Some(k);
             view.dim = None;
         }
-        if let Some(p) = resp.interact_pointer_pos() {
+        if let (Some(p), Some(combo)) = (resp.interact_pointer_pos(), combo.as_deref()) {
             view.drag0 = Some((p, combo.clone()));
         }
     }
+    let Some(combo) = combo else {
+        return;
+    };
     if resp.dragged_by(egui::PointerButton::Primary) && !pan_drag {
         if let (Some(k), Some((p0, c0)), Some(p)) = (
             view.sel
