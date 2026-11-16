@@ -1087,7 +1087,7 @@ ray pattern {s} must be y, x, cross, grid or ring	光線の並び {s} は y・x�
 npz is over 4 GB	npz が 4 GB を超えます
 npz is too large	npz が大きすぎます
 ZPLM macro {}	ZPLM のマクロ {}
-gzip can't be inflated: {e}	gzip を展開できません: {e}
+gzip can't be inflated	gzip を展開できません
 the file bundle is cut short	ファイルの束が途中で切れています
 
 # engine, design (Err(String))
@@ -1357,7 +1357,7 @@ setting threads must be an integer 1 or more	設定 threads は 1 以上の整�
 setting env.{k} must be a string or number	設定 env.{k} は文字列か数
 paths can't be joined: {e}	パスを並べられません: {e}
 no script: {}	スクリプトがありません: {}
-can't wait for the script to end: {e}	スクリプトの終わりを待てません: {e}
+can't wait for the script to end	スクリプトの終わりを待てません
 the project has no states (states)	プロジェクトに状態（states）がありません
 a system file has no configurations or states (give a .zmx or project file)	系ファイルは構成・状態を持ちません（.zmx かプロジェクトファイルを渡してください）
 configuration number {t} of --states	--states の構成の番号 {t}
@@ -1373,18 +1373,17 @@ shared memory can't be used (--allow-remote, or outside serve)	共有メモリ�
 bin has an offset but no shm name	bin に offset があるのに shm の name がありません
 JSON can't be read: {e}	JSON が読めません: {e}
 --host {} is not localhost (there is no authentication; use --allow-remote to accept it)	--host {} は localhost ではありません（認証がないので、受けるなら --allow-remote）
-can't listen on {}:{}: {e}	{}:{} で待ち受けられません: {e}
+can't listen on {}:{}	{}:{} で待ち受けられません
 shared memory name {name:?} (only letters, digits, _ . -)	共有メモリの名前 {name:?}（英数字と _ . - だけ）
-shared memory {name}: {e}	共有メモリ {name}: {e}
+shared memory {name}	共有メモリ {name}
 shared memory is only for Windows and Linux	共有メモリは Windows・Linux だけ
 outside the shared memory (offset {off}, {n} bytes, size {})	共有メモリの範囲の外（位置 {off}、{n} バイト、大きさ {}）
-shared memory: {e}	共有メモリ: {e}
+shared memory	共有メモリ
 --pipe {path} has a file that is not a socket	--pipe {path} はソケットでないファイルがあります
 --pipe {path} is used by another server	--pipe {path} は別のサーバーが使っています
 --pipe {path} can't be used on this OS	--pipe {path} はこの OS では使えません
-can't listen on --pipe {path}: {}	--pipe {path} で待ち受けられません: {}
-pipe connection: {e}	パイプの接続: {e}
-shared memory {name}: {}	共有メモリ {name}: {}
+can't listen on --pipe {path}	--pipe {path} で待ち受けられません
+pipe connection	パイプの接続
 no store (LENSBENCH_CAD_STORE)	保管場所がありません（LENSBENCH_CAD_STORE）
 no model of coating {name} in the store ({key})	保管場所にコーティング {name} のモデルがありません（{key}）
 the store's coating {name} doesn't match the index ({key})	保管場所のコーティング {name} の中身が目録と違います（{key}）

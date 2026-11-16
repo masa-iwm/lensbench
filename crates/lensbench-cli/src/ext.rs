@@ -10,8 +10,11 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let cli = crate::parse_cli(argv).map_err(|e| e.render().to_string())?;
-    Ok(crate::execute(cli.cmd).map_err(|e| e.to_string())?.1)
+    let cli = crate::parse_cli(argv).map_err(|e| {
+        lensbench_core::Error::Invalid(e.render().to_string())
+            .with_code(lensbench_core::error::code::BAD_ARGUMENT)
+    })?;
+    Ok(crate::execute(cli.cmd)?.1)
 }
 
 #[cfg(test)]

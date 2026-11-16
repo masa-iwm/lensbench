@@ -209,7 +209,11 @@ fn run_stops_on_error() {
             Ok("1".into())
         }
     });
-    assert!(e.unwrap_err().to_string().contains("set 3"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("set 3"));
     let (_, rows) = lensbench_runs::read_results(&f).unwrap();
     assert!(rows.len() < 100);
     std::fs::remove_file(&f).unwrap();

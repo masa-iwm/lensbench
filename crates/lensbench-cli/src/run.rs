@@ -292,7 +292,8 @@ pub fn run_script(
         return Err(format!("no script: {}", a.script.display()).into());
     }
     if let Some(o) = &r.out {
-        lensbench_core::vfs::create_dir_all(o).map_err(|e| format!("{}: {e}", o.display()))?;
+        lensbench_core::vfs::create_dir_all(o)
+            .map_err(lensbench_core::Error::io_at(o.display()))?;
     }
     let t0 = Instant::now();
     let mut child = None;
@@ -392,9 +393,9 @@ pub fn run_script(
     }
     let _ = h1.join();
     let _ = h2.join();
-    let status = child
-        .wait()
-        .map_err(|e| format!("can't wait for the script to end: {e}"))?;
+    let status = child.wait().map_err(lensbench_core::Error::io_at(
+        "can't wait for the script to end",
+    ))?;
     let code = exit_code(status);
     if missing_module {
         on_line(
@@ -453,10 +454,10 @@ pub fn run(a: &RunArgs, threads: Option<usize>) -> lensbench_core::Result<i32> {
         Some(p) => {
             if let Some(d) = p.parent().filter(|d| !d.as_os_str().is_empty()) {
                 lensbench_core::vfs::create_dir_all(d)
-                    .map_err(|e| format!("{}: {e}", d.display()))?;
+                    .map_err(lensbench_core::Error::io_at(d.display()))?;
             }
             Some(std::io::BufWriter::new(
-                std::fs::File::create(p).map_err(|e| format!("{}: {e}", p.display()))?,
+                std::fs::File::create(p).map_err(lensbench_core::Error::io_at(p.display()))?,
             ))
         }
         None => None,

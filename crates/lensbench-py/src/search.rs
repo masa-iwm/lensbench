@@ -143,10 +143,10 @@ fn swap_search<'py>(
     let out = py
         .detach(|| -> Result<serde_json::Value, String> {
             let txt = std::fs::read_to_string(&project)
-                .map_err(|e| format!("{}: {e}", project.display()))?;
+                .map_err(lensbench_core::Error::io_at(project.display()))?;
             let p = Project::from_json(&txt)?;
             let spec = SwapSpec::from_json(&st)?;
-            let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
+            let cat = LensCatalog::load_registered(&lens_catalogs)?;
             let base = project
                 .parent()
                 .map(|p| p.to_path_buf())

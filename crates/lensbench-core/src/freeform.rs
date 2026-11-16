@@ -398,7 +398,7 @@ impl GridSag {
     /// OpticStudio の .DAT（1 行目 `nx ny delx dely unitflag xdec ydec`、続いて点ごとに
     /// `z dz/dx dz/dy d2z/dxdy nodata`。上の行（+y）から、行の中は −x から）を読む。
     /// 単位（0 mm・1 cm・2 inch・3 m）は mm に直す
-    pub fn from_dat(text: &str) -> Result<GridSag, String> {
+    pub fn from_dat(text: &str) -> crate::Result<GridSag> {
         let mut lines = text
             .lines()
             .map(str::trim)
@@ -413,16 +413,16 @@ impl GridSag {
             return Err("line 1 must be nx ny delx dely unitflag xdec ydec".into());
         }
         // 点の数は 1〜2^24 の整数（負・小数・巨大な値で確保があふれない）
-        let count = |v: f64, what: &str| -> Result<usize, String> {
+        let count = |v: f64, what: &str| -> crate::Result<usize> {
             if v.fract() == 0.0 && (1.0..=16_777_216.0).contains(&v) {
                 Ok(v as usize)
             } else {
-                Err(format!("{what} {v} must be an integer 1 to 16777216"))
+                Err(format!("{what} {v} must be an integer 1 to 16777216").into())
             }
         };
         let (nx, ny) = (count(head[0], "nx")?, count(head[1], "ny")?);
         if nx * ny > 16_777_216 {
-            return Err(format!("too many points {nx}×{ny} (up to 16777216)"));
+            return Err(format!("too many points {nx}×{ny} (up to 16777216)").into());
         }
         let unit = head.get(4).copied().unwrap_or(0.0) as i32;
         let sc = match unit {
@@ -430,7 +430,7 @@ impl GridSag {
             1 => 10.0,
             2 => 25.4,
             3 => 1000.0,
-            u => return Err(format!("unit number {u}")),
+            u => return Err(format!("unit number {u}").into()),
         };
         let mut z = vec![[0.0; 4]; nx * ny];
         let mut nodata = vec![false; nx * ny];

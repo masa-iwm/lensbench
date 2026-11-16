@@ -312,10 +312,9 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> lensbench_core::Result<()>
         ).into());
     }
     let files = match (&a.root, a.allow_remote) {
-        (Some(r), _) => Files::Root(
-            r.canonicalize()
-                .map_err(|e| format!("--root {}: {e}", r.display()))?,
-        ),
+        (Some(r), _) => Files::Root(r.canonicalize().map_err(lensbench_core::Error::io_at(
+            format!("--root {}", r.display()),
+        ))?),
         (None, true) => Files::Deny,
         (None, false) => Files::Any,
     };
@@ -355,12 +354,13 @@ pub fn serve(a: ServeArgs, threads: Option<usize>) -> lensbench_core::Result<()>
             }
         });
     }
-    let l = TcpListener::bind((a.host.as_str(), a.port))
-        .map_err(|e| format!("can't listen on {}:{}: {e}", a.host, a.port))?;
-    let addr = l.local_addr().map_err(|e| e.to_string())?;
+    let l = TcpListener::bind((a.host.as_str(), a.port)).map_err(lensbench_core::Error::io_at(
+        format!("can't listen on {}:{}", a.host, a.port),
+    ))?;
+    let addr = l.local_addr()?;
     if let Some(p) = &a.port_file {
         lensbench_core::vfs::write(p, format!("{}\n", addr.port()))
-            .map_err(|e| format!("{}: {e}", p.display()))?;
+            .map_err(lensbench_core::Error::io_at(p.display()))?;
     }
     println!(
         "{}",

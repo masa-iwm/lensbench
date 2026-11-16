@@ -468,6 +468,6 @@ mod tests {
         };
         let e = open(Path::new("."), &o).unwrap_err();
         assert_eq!((e.kind(), e.code()), ("io", code::IS_FOLDER));
-        assert!(e.to_string().contains("a folder"), "{e}");
+        assert!(e.message().unwrap_or_default().contains("a folder"), "{e}");
     }
 }

@@ -58,21 +58,21 @@ fn check_name(name: &str) -> lensbench_core::Result<()> {
 }
 
 /// 表 e に型を消した解析を足す（同じ名前は置き換える）
-pub fn add_dyn(e: &mut Ext, a: Arc<dyn DynAnalysis>) -> Result<(), String> {
+pub fn add_dyn(e: &mut Ext, a: Arc<dyn DynAnalysis>) -> lensbench_core::Result<()> {
     check_name(a.meta().name)?;
     e.slot_mut::<ExtraAnalyses>().0.add_dyn(a);
     Ok(())
 }
 
 /// 表 e に解析を足す（同じ名前は置き換える）。同梱の解析・CLI のサブコマンドと同じ名前は誤り
-pub fn add<A: Analysis>(e: &mut Ext, a: A) -> Result<(), String> {
+pub fn add<A: Analysis>(e: &mut Ext, a: A) -> lensbench_core::Result<()> {
     check_name(a.meta().name)?;
     e.slot_mut::<ExtraAnalyses>().0.add(a);
     Ok(())
 }
 
 /// 解析をプロセスの既定の表に足す（[`add`]）
-pub fn register<A: Analysis>(a: A) -> Result<(), String> {
+pub fn register<A: Analysis>(a: A) -> lensbench_core::Result<()> {
     lensbench_core::ext::update_default(|e| add(e, a))
 }
 

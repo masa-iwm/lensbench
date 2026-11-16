@@ -278,5 +278,5 @@ fn config_error_is_an_error_not_a_failed_point() {
     let mut sp = spec(&cs[0], vec![Some(95.0), Some(110.0), Some(130.0)]);
     sp.bounds = vec![(5.0, 1.0), (f64::NEG_INFINITY, f64::INFINITY)];
     let e = zoom::solve(&cs, &sp).unwrap_err();
-    assert!(e.to_string().contains("range"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("range"), "{e}");
 }

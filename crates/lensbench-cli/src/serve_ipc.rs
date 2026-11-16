@@ -44,8 +44,10 @@ impl Shm {
                 .read(true)
                 .write(true)
                 .open(&p)
-                .map_err(|e| format!("shared memory {name}: {e}"))?;
-            let size = f.metadata().map_err(|e| e.to_string())?.len();
+                .map_err(lensbench_core::Error::io_at(format!(
+                    "shared memory {name}"
+                )))?;
+            let size = f.metadata()?.len();
             Ok(Shm { f, size })
         }
         #[cfg(windows)]
@@ -81,10 +83,9 @@ impl Shm {
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::fs::FileExt;
-            Ok(self
-                .f
+            self.f
                 .read_exact_at(buf, off)
-                .map_err(|e| format!("shared memory: {e}"))?)
+                .map_err(lensbench_core::Error::io_at("shared memory"))
         }
         #[cfg(windows)]
         {
@@ -104,10 +105,9 @@ impl Shm {
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::fs::FileExt;
-            Ok(self
-                .f
+            self.f
                 .write_all_at(data, off)
-                .map_err(|e| format!("shared memory: {e}"))?)
+                .map_err(lensbench_core::Error::io_at("shared memory"))
         }
         #[cfg(windows)]
         {
@@ -182,13 +182,14 @@ pub(crate) fn listen_pipe(
             if UnixStream::connect(path).is_ok() {
                 return Err(format!("--pipe {path} is used by another server").into());
             }
-            lensbench_core::vfs::remove_file(path).map_err(|e| format!("--pipe {path}: {e}"))?;
-            bind().map_err(|e| format!("--pipe {path}: {e}"))?
+            lensbench_core::vfs::remove_file(path)
+                .map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?;
+            bind().map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?
         }
         Err(e) => return Err(format!("--pipe {path}: {e}").into()),
     };
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| format!("--pipe {path}: {e}"))?;
+        .map_err(lensbench_core::Error::io_at(format!("--pipe {path}")))?;
     ready()?;
     let conn = std::sync::Arc::new(conn);
     for c in l.incoming() {
@@ -328,10 +329,9 @@ mod win {
             )
         };
         if h.is_null() || h as isize == -1 {
-            return Err(format!(
-                "can't listen on --pipe {path}: {}",
-                std::io::Error::last_os_error()
-            ));
+            return Err(lensbench_core::Error::io_at(format!(
+                "can't listen on --pipe {path}"
+            ))(std::io::Error::last_os_error()));
         }
         // SAFETY: h は今作った、ほかで使っていないハンドル（File が閉じる）
         Ok(unsafe { File::from_raw_handle(h as RawHandle) })
@@ -345,7 +345,7 @@ mod win {
         if ok == 0 {
             let e = std::io::Error::last_os_error();
             if e.raw_os_error() != Some(ERROR_PIPE_CONNECTED) {
-                return Err(format!("pipe connection: {e}"));
+                return Err(lensbench_core::Error::io_at("pipe connection")(e));
             }
         }
         Ok(f)
@@ -364,10 +364,9 @@ mod win {
             // SAFETY: w は 0 で終わる UTF-16
             let h = unsafe { OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, 0, w.as_ptr()) };
             if h.is_null() {
-                return Err(format!(
-                    "shared memory {name}: {}",
-                    std::io::Error::last_os_error()
-                ));
+                return Err(lensbench_core::Error::io_at(format!(
+                    "shared memory {name}"
+                ))(std::io::Error::last_os_error()));
             }
             // SAFETY: h は開いたマッピング。0 バイトで全体を写す
             let p = unsafe { MapViewOfFile(h, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0) };
@@ -375,7 +374,9 @@ mod win {
                 let e = std::io::Error::last_os_error();
                 // SAFETY: h は開いたハンドル
                 unsafe { CloseHandle(h) };
-                return Err(format!("shared memory {name}: {e}"));
+                return Err(lensbench_core::Error::io_at(format!(
+                    "shared memory {name}"
+                ))(e));
             }
             // SAFETY: 写した区画の先頭で問い合わせる
             let mut mbi: MemoryBasicInformation = unsafe { std::mem::zeroed() };

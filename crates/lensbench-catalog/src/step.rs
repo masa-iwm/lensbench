@@ -10,6 +10,9 @@ mod geom;
 pub use lensbench_step::StepFile;
 use serde_json::Value;
 
+/// 測る関数の結果（誤りは core の Error、XCT-06）
+pub(crate) type Res<T> = lensbench_core::Result<T>;
+
 /// STEP から測った大きさ
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct StepSize {
@@ -46,12 +49,12 @@ pub type ShellPose = (u64, [[f64; 4]; 3]);
 /// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列 `[R | t]`、
 /// 組立の置き方ごとに 1 つ）。部品の座標は [`read_step`] で測った枠・機構部品の寸法の座標（z は枠の端から光軸の向き、
 /// x は角の部品の辺に直交）。取った STEP の形を部品の簡易外形と同じ所に描くのに使う
-pub fn step_shell_poses(text: &str) -> Result<Vec<ShellPose>, String> {
+pub fn step_shell_poses(text: &str) -> lensbench_core::Result<Vec<ShellPose>> {
     shell_poses(&StepFile::parse(text)?)
 }
 
 /// 読んだ STEP の [`step_shell_poses`]（読み直さない）
-pub fn shell_poses(f: &StepFile) -> Result<Vec<ShellPose>, String> {
+pub fn shell_poses(f: &StepFile) -> lensbench_core::Result<Vec<ShellPose>> {
     geom::shell_poses(f, f.unit_mm())
 }
 
@@ -67,12 +70,12 @@ fn round6(x: f64) -> f64 {
 /// ケージ板・マウント）として全体を枠にし（[`StepSize::mech`]）、ねじ（SM05〜SM3 の内径）・ケージのロッドの間隔も読む。枠の分からない品は、
 /// 径は軸に平行な円の最大の直径、厚さは頂点と円の中心の軸の向きの広がり。円が無ければ（四角い品）頂点の箱の
 /// 最も短い辺を厚さ、残りを [幅, 高さ] とする
-pub fn read_step(text: &str) -> Result<StepSize, String> {
+pub fn read_step(text: &str) -> lensbench_core::Result<StepSize> {
     measure(&StepFile::parse(text)?)
 }
 
 /// 読んだ STEP の [`read_step`]（読み直さない）
-pub fn measure(f: &StepFile) -> Result<StepSize, String> {
+pub fn measure(f: &StepFile) -> lensbench_core::Result<StepSize> {
     let k = f.unit_mm();
     let m = geom::measure(f, k, round6)?;
     Ok(StepSize {

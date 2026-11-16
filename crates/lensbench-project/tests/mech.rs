@@ -359,7 +359,11 @@ fn seat_places_the_part_on_the_held_element() {
         ))
         .unwrap();
         assert!(
-            expand(&p, &env()).unwrap_err().to_string().contains("seat"),
+            expand(&p, &env())
+                .unwrap_err()
+                .message()
+                .unwrap_or_default()
+                .contains("seat"),
             "{bad}"
         );
     }

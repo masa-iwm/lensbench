@@ -502,9 +502,9 @@ impl PySystem {
     pub fn coatings(&self, s: &System) -> PyResult<CoatRef> {
         let cell = self.coat_cell();
         cell.get_or_init(|| {
-            let mut c = Coatings::for_system(s).map_err(|e| e.to_string())?;
+            let mut c = Coatings::for_system(s)?;
             for p in &self.coat_files {
-                c.load_file(p).map_err(|e| e.to_string())?;
+                c.load_file(p)?;
             }
             Ok(c)
         })

@@ -613,17 +613,17 @@ pub fn complete(
     frame: Option<lensbench_project::MechSpec>,
     from: FillFrom,
     checked: &str,
-) -> Result<UserItem, String> {
+) -> lensbench_core::Result<UserItem> {
     use lensbench_project::catalog_spec::ItemKind;
     let mut it = item.clone();
     for m in &item.missing {
         let ok = match m.as_str() {
             "thickness" => thickness.is_some_and(|t| t > 0.0 && t.is_finite()),
             "diameter" => diameter.as_ref().and_then(semi_of).is_some(),
-            other => return Err(format!("value that can't be filled in: {other}")),
+            other => return Err(format!("value that can't be filled in: {other}").into()),
         };
         if !ok {
-            return Err(format!("a value for {m} is needed"));
+            return Err(format!("a value for {m} is needed").into());
         }
     }
     if let Some(t) = thickness.filter(|t| *t > 0.0 && t.is_finite()) {

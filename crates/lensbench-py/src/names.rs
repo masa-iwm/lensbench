@@ -18,12 +18,13 @@ pub(crate) fn beam_paths_of(
     let glass_dirs = glass_dirs.unwrap_or_default();
     let lens_catalogs = lens_catalogs.unwrap_or_default();
     py.detach(|| -> Result<Vec<String>, String> {
-        let txt = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let txt =
+            std::fs::read_to_string(&path).map_err(lensbench_core::Error::io_at(path.display()))?;
         let mut p = lensbench_project::Project::from_json(&txt)?;
         if let Some(st) = &state {
             p = p.with_state(st)?;
         }
-        let cat = LensCatalog::load_registered(&lens_catalogs).map_err(|e| e.to_string())?;
+        let cat = LensCatalog::load_registered(&lens_catalogs)?;
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let env = lensbench_project::Env {
             step_files: None,

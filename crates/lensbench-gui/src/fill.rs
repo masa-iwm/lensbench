@@ -658,7 +658,10 @@ impl FillWin {
             // STEP の文字は ASCII（見出しのファイル名などに Latin-1 の文字が混じることがある）
             lensbench_core::vfs::read(&path)
                 .map_err(|e| e.to_string())
-                .and_then(|b| lensbench_catalog::step::read_step(&String::from_utf8_lossy(&b)))
+                .and_then(|b| {
+                    lensbench_catalog::step::read_step(&String::from_utf8_lossy(&b))
+                        .map_err(String::from)
+                })
         } else {
             Err(tr("Not a STEP file (.step, .stp)").to_string())
         };

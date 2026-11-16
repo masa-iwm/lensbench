@@ -129,6 +129,6 @@ pub fn write_layout(
         }
     };
     r.and_then(|_| lensbench_core::vfs::write(path, w))
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+        .map_err(lensbench_core::Error::io_at(path.display()))?;
     Ok(f)
 }

@@ -119,7 +119,13 @@ fn destination_is_rejected() {
     let s = build(&text());
     for n in ["4.t", "4.k", "5.a4", "6.dx", "4.r", "4.c"] {
         let e = s.with_params(&[(p(&s, n), 1.0)]);
-        assert!(e.unwrap_err().to_string().contains("pickup"), "{n}");
+        assert!(
+            e.unwrap_err()
+                .message()
+                .unwrap_or_default()
+                .contains("pickup"),
+            "{n}"
+        );
     }
     assert!(s.with_params(&[(p(&s, "5.c"), 0.01)]).is_ok());
     let mut c = s.clone();

@@ -341,8 +341,8 @@ pub fn check(sys: &System) -> lensbench_core::Result<()> {
 /// 系ファイルに書く（coatings は書いたとおりに残す）
 pub fn save(path: &Path, s: &System, coatings: &[PathBuf]) -> lensbench_core::Result<()> {
     let txt = to_string(s, coatings)?;
-    Ok(lensbench_core::vfs::write_atomic(path, txt)
-        .map_err(|e| format!("{}: {e}", path.display()))?)
+    lensbench_core::vfs::write_atomic(path, txt)
+        .map_err(lensbench_core::Error::io_at(path.display()))
 }
 
 /// 系ファイルを読む。coatings の相対パスはファイルのフォルダからにする

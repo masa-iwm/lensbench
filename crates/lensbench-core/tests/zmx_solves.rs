@@ -181,7 +181,7 @@ fn set_param_resolves_and_round_trips() {
     let e = s
         .with_params(&[(s.param("4.t").unwrap(), 3.0)])
         .unwrap_err();
-    assert!(e.to_string().contains("solve"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("solve"), "{e}");
 }
 
 fn build_cfg(txt: &str, cfg: usize) -> lensbench_core::Result<System> {
@@ -216,7 +216,7 @@ fn position_solve_keeps_the_length() {
     let e = s
         .with_params(&[(s.param("4.t").unwrap(), 3.0)])
         .unwrap_err();
-    assert!(e.to_string().contains("solve"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("solve"), "{e}");
     // 多重構成で前の厚さが変わる（THIC）ときも、コンフィグごとに解き直す
     let mc = format!(
         "{txt}MNUM 2 1\nTHIC 2 1 30 0 0 0 1 1 1 0 0 \"\" 0\nTHIC 2 2 21.5 0 0 0 1 1 1 0 0 \"\" 0\n"
@@ -233,7 +233,12 @@ fn position_solve_after_a_height_solve() {
     let sum: f64 = s.surfaces[2..=4].iter().map(|d| d.t).sum();
     assert!((sum - 40.0).abs() < 1e-12, "{sum}");
     let e = build(&lens("  DISZ 30\n", "  DISZ 50\n  TOLE 9 40\n")).unwrap_err();
-    assert!(e.to_string().contains("reference surface"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("reference surface"),
+        "{e}"
+    );
 }
 
 /// 基準の面が後ろの位置ソルブ: 面 2 から面 4 までの距離 t2 + t3 を 35 にする（ZMF のレンズにある書き方。

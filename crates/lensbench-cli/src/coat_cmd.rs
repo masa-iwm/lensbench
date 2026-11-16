@@ -11,8 +11,8 @@ pub(crate) fn coat_kinks(
     // 膜ごとに、KEY で見つかった折れ目をまとめる（5e-4 µm 以内は同じ）
     let mut per: Vec<(String, Vec<f64>)> = Vec::new();
     for t in tables {
-        let txt =
-            lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
+        let txt = lensbench_core::vfs::read_to_string(t)
+            .map_err(lensbench_core::Error::io_at(t.display()))?;
         for (k, m) in coating::parse_measured(&txt).map_err(|e| e.at(t.display()))? {
             let air = k.split('|').nth(1) == Some("AIR");
             if (only.is_empty() && !air) || (!only.is_empty() && !only.contains(&k)) {
@@ -71,8 +71,8 @@ pub(crate) fn coat_model(
     use lensbench_design::coat_fit::{fit_model, FitOptions};
     let mut all = Vec::new();
     for t in tables {
-        let txt =
-            lensbench_core::vfs::read_to_string(t).map_err(|e| format!("{}: {e}", t.display()))?;
+        let txt = lensbench_core::vfs::read_to_string(t)
+            .map_err(lensbench_core::Error::io_at(t.display()))?;
         for (k, m) in coating::parse_measured(&txt).map_err(|e| e.at(t.display()))? {
             // 同じ KEY は後の表で置き換える（渡す順で結果が変わらないように、混ぜない）
             if let Some(i) = all.iter().position(|(a, _): &(String, _)| *a == k) {
@@ -177,7 +177,8 @@ pub(crate) fn coat_compact(
     out: &std::path::Path,
 ) -> lensbench_core::Result<Value> {
     use lensbench_core::coating::format_models_bin;
-    let b = lensbench_core::vfs::read(model).map_err(|e| format!("{}: {e}", model.display()))?;
+    let b =
+        lensbench_core::vfs::read(model).map_err(lensbench_core::Error::io_at(model.display()))?;
     let models = if b.starts_with(coating::MODEL_BIN_HEADER) {
         coating::parse_models_bin(&b)
     } else {
@@ -209,8 +210,8 @@ pub(crate) fn read_targets(
     p: &std::path::Path,
 ) -> lensbench_core::Result<Vec<lensbench_design::coat_design::Target>> {
     use lensbench_design::coat_design::{Pol, Quantity, Target};
-    let txt =
-        lensbench_core::vfs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+    let txt = lensbench_core::vfs::read_to_string(p)
+        .map_err(lensbench_core::Error::io_at(p.display()))?;
     let mut lines = txt
         .lines()
         .map(str::trim)
@@ -392,7 +393,7 @@ pub(crate) fn coat_design(a: &CoatDesignArgs) -> Result<Value, crate::error::App
         );
         let txt = format_lbcs(a.name, d, &mats, &with_mate, &note);
         lensbench_core::vfs::write(out, txt.as_bytes())
-            .map_err(|e| format!("{}: {e}", out.display()))?;
+            .map_err(lensbench_core::Error::io_at(out.display()))?;
         written = Some(out.display().to_string());
     }
     Ok(json!({

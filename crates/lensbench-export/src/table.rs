@@ -115,7 +115,7 @@ impl Table {
     }
 
     /// 拡張子（csv・json・npz）で決めて書き出す
-    pub fn save(&self, path: &Path) -> std::result::Result<(), String> {
+    pub fn save(&self, path: &Path) -> lensbench_core::Result<()> {
         let e = path
             .extension()
             .and_then(|x| x.to_str())
@@ -129,14 +129,13 @@ impl Table {
                 .and_then(|_| writeln!(w)),
             "npz" => self.write_npz(&mut w),
             _ => {
-                return Err(format!(
-                    "{}: the extension must be csv, json or npz",
-                    path.display()
-                ));
+                return Err(
+                    format!("{}: the extension must be csv, json or npz", path.display()).into(),
+                );
             }
         };
         r.and_then(|_| lensbench_core::vfs::write(path, w))
-            .map_err(|x| format!("{}: {x}", path.display()))
+            .map_err(lensbench_core::Error::io_at(path.display()))
     }
 }
 

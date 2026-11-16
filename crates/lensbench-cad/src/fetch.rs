@@ -89,7 +89,7 @@ impl CadStep {
 /// 品の STEP を取る。キャッシュ → 置き場 → 配布元（`cad.step`）の順に見て、配布元から取ったら置き場にも上げる。
 /// 品の簡易外形と測った寸法を比べる。
 /// 取れなかったら Err（呼ぶ側は簡易外形のまま描き、品ページ `url` を示す）
-pub fn fetch_item(dir: &Path, name: &str, item: &UserItem) -> Result<CadStep, String> {
+pub fn fetch_item(dir: &Path, name: &str, item: &UserItem) -> lensbench_core::Result<CadStep> {
     fetch_item_with(dir, name, item, store().as_ref())
 }
 
@@ -99,10 +99,10 @@ pub fn fetch_item_with(
     name: &str,
     item: &UserItem,
     store: Option<&Store>,
-) -> Result<CadStep, String> {
+) -> lensbench_core::Result<CadStep> {
     let url = item.cad.step.trim();
     if url.is_empty() && store.is_none() {
-        return Err(format!("{name} has no STEP URL (cad.step)"));
+        return Err(format!("{name} has no STEP URL (cad.step)").into());
     }
     let found = crate::cache::cad_cache_find(dir, name, url);
     let cached = found.is_some();
@@ -121,7 +121,7 @@ pub fn fetch_item_with(
             Some(s) => match s.get(&key) {
                 Ok(b) => b,
                 Err(e) => {
-                    store_notes.push(e);
+                    store_notes.push(String::from(e));
                     None
                 }
             },
@@ -137,7 +137,7 @@ pub fn fetch_item_with(
                 for n in &store_notes {
                     e.push_str(&format!("（{n}）"));
                 }
-                return Err(e);
+                return Err(e.into());
             }
             None => {
                 source = Source::Vendor;
@@ -150,7 +150,7 @@ pub fn fetch_item_with(
             if let Some(s) = store.filter(|s| !s.read_only) {
                 match s.put(&key, &b) {
                     Ok(()) => source = Source::VendorUploaded,
-                    Err(e) => store_notes.push(e),
+                    Err(e) => store_notes.push(String::from(e)),
                 }
             }
         }
@@ -170,11 +170,11 @@ pub fn fetch_item_with(
 }
 
 /// 途中で止まっても壊れたファイルを残さないよう、別名に書いてから置き換える
-pub(crate) fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+pub(crate) fn write_cache(dir: &Path, path: &Path, b: &[u8]) -> lensbench_core::Result<()> {
+    std::fs::create_dir_all(dir).map_err(lensbench_core::Error::io_at(dir.display()))?;
     let tmp = path.with_extension("part");
-    std::fs::write(&tmp, b).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::write(&tmp, b).map_err(lensbench_core::Error::io_at(tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(lensbench_core::Error::io_at(path.display()))
 }
 
 /// 置き場の鍵（キャッシュのファイル名から `.gz` を除いたもの）
@@ -281,7 +281,7 @@ impl std::fmt::Debug for Store {
 
 impl Store {
     /// トークンを送るのは https の口だけ（試験の手元の口 http://127.0.0.1・localhost は許す）
-    fn check_scheme(&self) -> Result<(), String> {
+    fn check_scheme(&self) -> lensbench_core::Result<()> {
         let u = self.url.trim();
         // http は手元の口だけ（ホストが 127.0.0.1・localhost にちょうど一致）
         let local = u.strip_prefix("http://").is_some_and(|r| {
@@ -291,7 +291,7 @@ impl Store {
         if self.id.trim().is_empty() || u.starts_with("https://") || local {
             Ok(())
         } else {
-            Err(format!("a store that gets a token must be https: {u}"))
+            Err(format!("a store that gets a token must be https: {u}").into())
         }
     }
 
@@ -335,7 +335,7 @@ impl Store {
         }
     }
 
-    fn status_err(&self, what: &str, st: u16) -> String {
+    fn status_err(&self, what: &str, st: u16) -> lensbench_core::Error {
         match st {
             301..=303 | 307 | 308 | 401 | 403 => format!(
                 "can't {what} the store ({st}; check the Access service token): {}",
@@ -343,23 +343,24 @@ impl Store {
             ),
             _ => format!("can't {what} the store ({st}): {}", self.url),
         }
+        .into()
     }
 
     /// 鍵の STEP（無ければ Ok(None)）
-    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub fn get(&self, key: &str) -> lensbench_core::Result<Option<Vec<u8>>> {
         match self.get_raw(key)? {
             None => Ok(None),
-            Some(b) => step_bytes(b).map(Some).map_err(|e| {
+            Some(b) => Ok(step_bytes(b).map(Some).map_err(|e| {
                 format!(
                     "the store content is not a STEP ({}): {e}",
                     self.url_of(key)
                 )
-            }),
+            })?),
         }
     }
 
     /// 鍵の中身（確かめない。無ければ Ok(None)）
-    pub fn get_raw(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+    pub fn get_raw(&self, key: &str) -> lensbench_core::Result<Option<Vec<u8>>> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let mut r = self
@@ -378,20 +379,22 @@ impl Store {
             .as_reader()
             .take(MAX_BYTES + 1)
             .read_to_end(&mut b)
-            .map_err(|e| format!("the store can't be read ({u}): {e}"))?;
+            .map_err(lensbench_core::Error::io_at(format!(
+                "the store can't be read ({u})"
+            )))?;
         if b.len() as u64 > MAX_BYTES {
-            return Err(format!("the store content is too large: {u}"));
+            return Err(format!("the store content is too large: {u}").into());
         }
         Ok(Some(b))
     }
 
     /// 鍵で上げる（STEP・膜のモデル）。STEP は gzip にして上げる（取るときは [`step_bytes`] が展開する）
-    pub fn put(&self, key: &str, step: &[u8]) -> Result<(), String> {
+    pub fn put(&self, key: &str, step: &[u8]) -> lensbench_core::Result<()> {
         if self.read_only {
             return Err(format!(
                 "not uploading to a read-only store (put a write token in LENSBENCH_CAD_STORE_ID and LENSBENCH_CAD_STORE_SECRET): {}",
                 self.url
-            ));
+            ).into());
         }
         self.check_scheme()?;
         let u = self.url_of(key);
@@ -406,11 +409,11 @@ impl Store {
         if body.len() as u64 > MAX_BYTES {
             let mb = MAX_BYTES >> 20;
             if is_step {
-                return Err(format!(
-                    "can't upload to the store (over {mb} MB even gzipped): {u}"
-                ));
+                return Err(
+                    format!("can't upload to the store (over {mb} MB even gzipped): {u}").into(),
+                );
             }
-            return Err(format!("can't upload to the store (over {mb} MB): {u}"));
+            return Err(format!("can't upload to the store (over {mb} MB): {u}").into());
         }
         let r = self
             .auth(Self::agent().put(&u))
@@ -433,7 +436,7 @@ impl Store {
     }
 
     /// 鍵があるか（HEAD）
-    pub fn has(&self, key: &str) -> Result<bool, String> {
+    pub fn has(&self, key: &str) -> lensbench_core::Result<bool> {
         self.check_scheme()?;
         let u = self.url_of(key);
         let r = self
@@ -547,12 +550,12 @@ pub fn match_files<'a>(
 }
 
 /// フォルダの中の STEP（.step・.stp・.zip、下のフォルダも）
-pub fn step_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn step_files(dir: &Path) -> lensbench_core::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).map_err(|e| format!("{}: {e}", d.display()))? {
-            let p = e.map_err(|e| e.to_string())?.path();
+        for e in std::fs::read_dir(&d).map_err(lensbench_core::Error::io_at(d.display()))? {
+            let p = e?.path();
             if p.is_dir() {
                 stack.push(p);
             } else if p
@@ -579,7 +582,7 @@ pub fn step_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// [`step_files`] と同じだが、STEP を 2 つ以上入れた zip は中の STEP を 1 つずつ `<zip>/<中の道>` の形で返す
 /// （束ねた zip の中身を品に当てるため。[`read_source`] で読む）。STEP が 1 つの zip は zip のまま
-pub fn step_sources(dir: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn step_sources(dir: &Path) -> lensbench_core::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     for f in step_files(dir)? {
         let is_zip = f
@@ -618,9 +621,9 @@ fn zip_steps(f: &Path) -> Vec<String> {
 }
 
 /// ファイルを読む。無ければ、道の途中の zip の中のもの（[`step_sources`] の `<zip>/<中の道>`）を読む
-pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
+pub fn read_source(path: &Path) -> lensbench_core::Result<Vec<u8>> {
     if path.is_file() {
-        return std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
+        return std::fs::read(path).map_err(lensbench_core::Error::io_at(path.display()));
     }
     for z in path.ancestors().skip(1) {
         if z.is_file() {
@@ -639,26 +642,29 @@ pub fn read_source(path: &Path) -> Result<Vec<u8>, String> {
             let mut out = Vec::new();
             f.take(MAX_STEP + 1)
                 .read_to_end(&mut out)
-                .map_err(|e| format!("{entry} of {}: {e}", z.display()))?;
+                .map_err(lensbench_core::Error::io_at(format!(
+                    "{entry} of {}",
+                    z.display()
+                )))?;
             if out.len() as u64 > MAX_STEP {
-                return Err(format!("{entry} of {} is too large", z.display()));
+                return Err(format!("{entry} of {} is too large", z.display()).into());
             }
             return Ok(out);
         }
     }
-    Err(format!("{}: no such file", path.display()))
+    Err(format!("{}: no such file", path.display()).into())
 }
 
 /// ユーザーカタログを読む。フォルダなら中の .json・.json.gz を全部（下のフォルダも）読んで品を合わせる
-pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, String> {
+pub fn load_catalogs(path: &Path) -> lensbench_core::Result<lensbench_project::UserCatalog> {
     if !path.is_dir() {
-        return Ok(lensbench_project::UserCatalog::load(path)?);
+        return lensbench_project::UserCatalog::load(path);
     }
     let mut files = Vec::new();
     let mut stack = vec![path.to_path_buf()];
     while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).map_err(|e| format!("{}: {e}", d.display()))? {
-            let p = e.map_err(|e| e.to_string())?.path();
+        for e in std::fs::read_dir(&d).map_err(lensbench_core::Error::io_at(d.display()))? {
+            let p = e?.path();
             let n = p.to_string_lossy().to_ascii_lowercase();
             if p.is_dir() {
                 stack.push(p);
@@ -682,7 +688,8 @@ pub fn load_catalogs(path: &Path) -> Result<lensbench_project::UserCatalog, Stri
         return Err(format!(
             "no catalog (a .json or .json.gz with items) in {}",
             path.display()
-        ));
+        )
+        .into());
     }
     Ok(all)
 }
@@ -709,7 +716,7 @@ fn catalog_key(
     cat: &lensbench_project::UserCatalog,
     catalog: &Path,
     name: &str,
-) -> Result<String, String> {
+) -> lensbench_core::Result<String> {
     let it = cat
         .items
         .get(name)
@@ -718,7 +725,7 @@ fn catalog_key(
 }
 
 /// 上げるものを決める（上げはしない。上げるのは [`upload_file`]）
-pub fn upload_jobs(from: UploadFrom) -> Result<UploadJobs, String> {
+pub fn upload_jobs(from: UploadFrom) -> lensbench_core::Result<UploadJobs> {
     let mut jobs = Vec::new();
     let mut unmatched = Vec::new();
     match from {
@@ -797,7 +804,7 @@ pub fn upload_file(
         status: "error",
         error: String::new(),
     };
-    let r = (|| -> Result<&'static str, String> {
+    let r = (|| -> lensbench_core::Result<&'static str> {
         let b = step_bytes(read_source(file)?)?;
         if dry_run {
             return Ok("dry_run");
@@ -810,15 +817,15 @@ pub fn upload_file(
     })();
     match r {
         Ok(s) => u.status = s,
-        Err(e) => u.error = e,
+        Err(e) => u.error = String::from(e),
     }
     u
 }
 
 /// URL の中身（http・https。環境変数のプロキシを使う）
-fn download(url: &str) -> Result<Vec<u8>, String> {
+fn download(url: &str) -> lensbench_core::Result<Vec<u8>> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(format!("STEP URLs must be http(s): {url}"));
+        return Err(format!("STEP URLs must be http(s): {url}").into());
     }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(std::time::Duration::from_secs(120)))
@@ -834,19 +841,18 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
         .as_reader()
         .take(MAX_STEP + 1)
         .read_to_end(&mut b)
-        .map_err(|e| format!("the STEP can't be fetched ({url}): {e}"))?;
+        .map_err(lensbench_core::Error::io_at(format!(
+            "the STEP can't be fetched ({url})"
+        )))?;
     if b.len() as u64 > MAX_STEP {
-        return Err(format!(
-            "the STEP is too large (over {} MB): {url}",
-            MAX_STEP >> 20
-        ));
+        return Err(format!("the STEP is too large (over {} MB): {url}", MAX_STEP >> 20).into());
     }
     Ok(b)
 }
 
 /// 取った中身から STEP の文字を取り出す（gzip なら展開、zip なら中の最初の .step・.stp）。STEP でなければ Err
 /// （ログインの要るページの HTML など）
-pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
+pub fn step_bytes(b: Vec<u8>) -> lensbench_core::Result<Vec<u8>> {
     let b = crate::detail::gunzip(b, MAX_STEP)?;
     let b = if b.starts_with(b"PK\x03\x04") {
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(b))
@@ -866,9 +872,9 @@ pub fn step_bytes(b: Vec<u8>) -> Result<Vec<u8>, String> {
         let mut out = Vec::new();
         f.take(MAX_STEP + 1)
             .read_to_end(&mut out)
-            .map_err(|e| format!("{name} in the zip: {e}"))?;
+            .map_err(lensbench_core::Error::io_at(format!("{name} in the zip")))?;
         if out.len() as u64 > MAX_STEP {
-            return Err(format!("{name} in the zip is too large"));
+            return Err(format!("{name} in the zip is too large").into());
         }
         out
     } else {
@@ -1049,7 +1055,7 @@ mod tests {
         let e = ro
             .put("A-0123456789abcdef.step", b"ISO-10303-21;")
             .unwrap_err();
-        assert!(e.contains("read-only"), "{e}");
+        assert!(e.message().unwrap_or_default().contains("read-only"), "{e}");
         let none = || [String::new(), String::new(), String::new()];
         // 環境変数が無ければ組み込みのまま（読むだけ）
         assert_eq!(

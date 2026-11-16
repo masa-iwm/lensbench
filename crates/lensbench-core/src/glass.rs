@@ -537,7 +537,7 @@ mod tests {
             );
         }
         let e = parse_agf("NM G 2 0 1.5 60\nCD 1.0 x 0.2\n", "T").unwrap_err();
-        assert!(e.to_string().contains("line 2"), "{e}");
+        assert!(e.message().unwrap_or_default().contains("line 2"), "{e}");
         // 手で組んだ未対応の式は panic せず NaN
         let mut g = parse_agf(&format!("NM G 2 0 1.5 60\n{ok}"), "T")
             .unwrap()
@@ -559,7 +559,11 @@ mod tests {
             "MODE SEQ\nUNIT MM X W X CM MR CPMR\nENPD 10\nGCAT BADCAT\nWAVM 1 0.55 1\nSURF 0\n  TYPE STANDARD\n  DISZ INFINITY\nSURF 1\n  TYPE STANDARD\n  CURV 0.01\n  DISZ 5\n  GLAS G 0 0 1.5 60 0 0 0 0 0 0\n  STOP\nSURF 2\n  TYPE STANDARD\n  DISZ 100\nSURF 3\n  TYPE STANDARD\n",
         )
         .unwrap();
-        let e = crate::zmx::load(&zmx).unwrap_err().to_string();
+        let e = crate::zmx::load(&zmx)
+            .unwrap_err()
+            .message()
+            .unwrap_or_default()
+            .to_string();
         let _ = std::fs::remove_dir_all(&d);
         assert!(e.contains("is not in the catalogs"), "{e}");
         assert!(

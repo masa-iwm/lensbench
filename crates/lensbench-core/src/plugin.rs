@@ -439,10 +439,10 @@ impl OutputSpec {
 
     /// 形が読めるか（dtype が 3 種のどれか、形は空か「()」か「(n, *形)」のような ASCII の名前・数をカンマでつないだもの、
     /// 説明に角括弧が残っていない）。誤りは名前つきの文
-    pub fn check(&self) -> std::result::Result<(), String> {
+    pub fn check(&self) -> crate::Result<()> {
         let n = &self.name;
         if !matches!(self.dtype.as_str(), "float64" | "complex128" | "bool") {
-            return Err(format!("{n}: dtype {}", self.dtype));
+            return Err(format!("{n}: dtype {}", self.dtype).into());
         }
         let s = self.shape.as_str();
         if !s.is_empty() && s != "()" {
@@ -460,14 +460,11 @@ impl OutputSpec {
                         })
             });
             if !ok {
-                return Err(format!("{n}: shape {s}"));
+                return Err(format!("{n}: shape {s}").into());
             }
         }
         if self.doc.contains('[') || self.doc.contains(']') {
-            return Err(format!(
-                "{n}: square brackets in the description {}",
-                self.doc
-            ));
+            return Err(format!("{n}: square brackets in the description {}", self.doc).into());
         }
         Ok(())
     }

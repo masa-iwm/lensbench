@@ -52,13 +52,13 @@ fn edits_count_surfaces_without_coordinate_breaks() {
 #[test]
 fn bad_edits_are_errors() {
     let e = project("", r#"[{"block": "L1", "surface": 2, "fields": {"r": 1}}]"#).unwrap_err();
-    assert!(e.to_string().contains("surface 2"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("surface 2"), "{e}");
     let e = project(
         "",
         r#"[{"block": "L1", "surface": 0, "fields": {"zz": 1}}]"#,
     )
     .unwrap_err();
-    assert!(e.to_string().contains("zz"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("zz"), "{e}");
 }
 
 /// 鏡の back で往復するブロック: 1 つの上書きが往路と復路の同じ面に当たる（復路は逆の順、厚さは符号が逆）
@@ -100,11 +100,19 @@ fn edits_apply_to_both_passes() {
     }
     // 最後の面の後はブロックの外
     let e = run(r#"[{"block": "L1", "surface": 2, "fields": {"t": 3}}]"#).unwrap_err();
-    assert!(e.to_string().contains("air block after"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("air block after"),
+        "{e}"
+    );
     // 面の前後の傾き偏心は復路で前後・向きが変わるので断る
     let e = run(r#"[{"block": "L1", "surface": 0, "fields": {"before": {"d": [0, 0.1, 0, 0, 0], "order": 0}}}]"#)
         .unwrap_err();
-    assert!(e.to_string().contains("tilts and decenters"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("tilts and decenters"),
+        "{e}"
+    );
     // 面の値だけなら最後の面も変えられる
     let s = run(r#"[{"block": "L1", "surface": 2, "fields": {"semi": 6}}]"#).unwrap();
     assert_eq!((s.surfaces[4].semi, s.surfaces[6].semi), (6.0, 6.0));
@@ -129,7 +137,7 @@ fn data_fields_are_applied() {
         r#"[{"block": "L1", "surface": 0, "fields": {"stop": true}}]"#,
     )
     .unwrap_err();
-    assert!(e.to_string().contains("stop"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("stop"), "{e}");
 }
 
 /// 系に無いブロック（OFF の群の中・状態で外したもの）への上書きは、surface_ops と同じく当てずに注意を出す

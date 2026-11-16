@@ -93,7 +93,12 @@ fn project_schema_rejects_mistakes() {
     typo["blocks"][0]["type"] = "glass".into();
     assert!(v.is_valid(&typo));
     let e = Project::from_json(&typo.to_string()).unwrap_err();
-    assert!(e.to_string().contains("unknown block type"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("unknown block type"),
+        "{e}"
+    );
     let mut bad = ok.clone();
     bad["blocks"][0].as_object_mut().unwrap().remove("t");
     assert!(!v.is_valid(&bad));
@@ -151,19 +156,30 @@ fn unknown_keys_are_errors() {
         )
     };
     let e = lensbench_project::Project::from_json(&base("", r#""reversd": true,"#)).unwrap_err();
-    assert!(e.to_string().contains("blocks/2/reversd"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("blocks/2/reversd"),
+        "{e}"
+    );
     let e =
         lensbench_project::Project::from_json(&base(r#""object_distanse": 100,"#, "")).unwrap_err();
-    assert!(e.to_string().contains("object_distanse"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("object_distanse"),
+        "{e}"
+    );
     // 面の中（untagged の出どころの中）も
     let t = base("", "").replace(r#""glass": "N-BK7""#, r#""glas": "N-BK7""#);
     let e = lensbench_project::Project::from_json(&t).unwrap_err();
-    assert!(e.to_string().contains("glas"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("glas"), "{e}");
     // 中身がすべて既定の欄の中の綴りの違いも
     let e =
         lensbench_project::Project::from_json(&base(r#""environment": {"temprature_c": 25},"#, ""))
             .unwrap_err();
-    assert!(e.to_string().contains("environment/temprature_c"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("environment/temprature_c"),
+        "{e}"
+    );
     // 既定値をわざわざ書いたもの（書き戻しでは省かれる）は通す
     lensbench_project::Project::from_json(&base(
         r#""telecentric": false, "surface_edits": [], "path": null,

@@ -356,9 +356,7 @@ pub fn survey(
         [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
     ];
     let power = |s: &System| -> std::result::Result<f64, String> {
-        let t = s
-            .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &pols, coat)
-            .map_err(|e| e.to_string())?;
+        let t = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &pols, coat)?;
         let r = &t.trace.rays[0];
         if r.status.surf().is_some() {
             return Err(format!(

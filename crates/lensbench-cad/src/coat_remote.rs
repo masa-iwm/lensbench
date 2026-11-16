@@ -30,12 +30,12 @@ pub fn key_of(name: &str, hash: &str) -> String {
 }
 
 /// 目録（膜の名前、ハッシュ）。無ければ空
-pub fn read_index(dir: &Path) -> Result<Vec<(String, String)>, String> {
+pub fn read_index(dir: &Path) -> lensbench_core::Result<Vec<(String, String)>> {
     read_index_file(&dir.join(INDEX))
 }
 
 /// 目録のファイルを読む（膜の名前、ハッシュ）。無ければ空
-pub fn read_index_file(p: &Path) -> Result<Vec<(String, String)>, String> {
+pub fn read_index_file(p: &Path) -> lensbench_core::Result<Vec<(String, String)>> {
     if !p.is_file() {
         return Ok(Vec::new());
     }
@@ -58,7 +58,11 @@ pub fn cache_dir() -> PathBuf {
 }
 
 /// 1 つ取る（キャッシュにあればそれ）。ハッシュが合わなければ誤り
-pub fn fetch(store: Option<&cad::Store>, name: &str, hash: &str) -> Result<PathBuf, String> {
+pub fn fetch(
+    store: Option<&cad::Store>,
+    name: &str,
+    hash: &str,
+) -> lensbench_core::Result<PathBuf> {
     let dir = cache_dir();
     let path = dir.join(format!("{name}-{hash}.lbcb"));
     if path.is_file() {
@@ -70,9 +74,7 @@ pub fn fetch(store: Option<&cad::Store>, name: &str, hash: &str) -> Result<PathB
         .get_raw(&key)?
         .ok_or_else(|| format!("no model of coating {name} in the store ({key})"))?;
     if hash_hex(&b) != hash {
-        return Err(format!(
-            "the store's coating {name} doesn't match the index ({key})"
-        ));
+        return Err(format!("the store's coating {name} doesn't match the index ({key})").into());
     }
     cad::write_cache(&dir, &path, &b)?;
     Ok(path)
@@ -119,9 +121,9 @@ pub fn upload_dir(
     out: Option<&Path>,
     store: Option<&cad::Store>,
     dry_run: bool,
-) -> Result<Vec<(String, String, &'static str, String)>, String> {
+) -> lensbench_core::Result<Vec<(String, String, &'static str, String)>> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .map_err(lensbench_core::Error::io_at(dir.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
             p.extension()
@@ -155,7 +157,7 @@ pub fn upload_dir(
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let b = std::fs::read(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+        let b = std::fs::read(&f).map_err(lensbench_core::Error::io_at(f.display()))?;
         let h = hash_hex(&b);
         let key = key_of(&name, &h);
         index.insert(name.clone(), serde_json::Value::String(h));
@@ -163,7 +165,7 @@ pub fn upload_dir(
             Ok("dry_run")
         } else {
             match store {
-                None => Err("no store (LENSBENCH_CAD_STORE)".to_string()),
+                None => Err("no store (LENSBENCH_CAD_STORE)".into()),
                 Some(s) => s.has(&key).and_then(|has| {
                     if has {
                         Ok("exists")
@@ -175,12 +177,12 @@ pub fn upload_dir(
         };
         rows.push(match r {
             Ok(st) => (name, key, st, String::new()),
-            Err(e) => (name, key, "error", e),
+            Err(e) => (name, key, "error", String::from(e)),
         });
     }
     let text = serde_json::to_string_pretty(&serde_json::json!({ "version": 1, "files": index }))
         .map_err(|e| e.to_string())?;
-    std::fs::write(&out, text + "\n").map_err(|e| format!("{}: {e}", out.display()))?;
+    std::fs::write(&out, text + "\n").map_err(lensbench_core::Error::io_at(out.display()))?;
     Ok(rows)
 }
 
@@ -189,10 +191,10 @@ pub fn upload_dir(
 pub fn fetch_dir(
     dir: &Path,
     store: Option<&cad::Store>,
-) -> Result<Vec<(String, &'static str, String)>, String> {
+) -> lensbench_core::Result<Vec<(String, &'static str, String)>> {
     let idx = read_index(dir)?;
     if idx.is_empty() {
-        return Err(format!("no index {INDEX} in {}", dir.display()));
+        return Err(format!("no index {INDEX} in {}", dir.display()).into());
     }
     let mut rows = Vec::new();
     for (name, hash) in idx {
@@ -204,11 +206,11 @@ pub fn fetch_dir(
         let r = fetch(store, &name, &hash).and_then(|p| {
             std::fs::copy(&p, &dst)
                 .map(|_| ())
-                .map_err(|e| format!("{}: {e}", dst.display()))
+                .map_err(lensbench_core::Error::io_at(dst.display()))
         });
         rows.push(match r {
             Ok(()) => (name, "fetched", String::new()),
-            Err(e) => (name, "error", e),
+            Err(e) => (name, "error", String::from(e)),
         });
     }
     Ok(rows)

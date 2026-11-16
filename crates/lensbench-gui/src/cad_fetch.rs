@@ -271,7 +271,9 @@ impl CadFetcher {
                             .items
                             .get(&key.1)
                             .ok_or_else(|| trf("{} has no item {}", &[&key.0, &key.1]))?;
-                        lensbench_cad::fetch_item(&dir, &key.1, it).map(|r| r.to_json())
+                        lensbench_cad::fetch_item(&dir, &key.1, it)
+                            .map(|r| r.to_json())
+                            .map_err(String::from)
                     });
                 done(key, r);
             });

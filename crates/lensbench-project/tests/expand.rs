@@ -308,7 +308,7 @@ fn catalog_lenses_are_the_lenses_of_their_files() {
         &cat,
     )
     .unwrap_err();
-    assert!(e.to_string().contains("NONE"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("NONE"), "{e}");
 }
 
 #[test]
@@ -514,7 +514,7 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
             r#"[{zmx}, {{"type": "surfaces", "surfaces": [{s}]}}]"#
         ))
         .unwrap_err();
-        assert!(e.to_string().contains(msg), "{s}: {e}");
+        assert!(e.message().unwrap_or_default().contains(msg), "{s}: {e}");
     }
 }
 
@@ -627,7 +627,12 @@ fn a_zmx_block_takes_a_lensbench_system_json() {
         serde_json::to_string(&f.display().to_string()).unwrap()
     ))
     .unwrap_err();
-    assert!(e.to_string().contains("only configuration 1"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("only configuration 1"),
+        "{e}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

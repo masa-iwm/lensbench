@@ -3,7 +3,7 @@
 use super::*;
 use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
-pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> Result<String, String>;
+pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> lensbench_core::Result<String>;
 
 /// カタログの玉の要素の使い回し（[`expand_gaps_cached`]）: (メーカー, 型番) → (玉, 玉の .zmx のガラス)。
 /// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。差し替え探索が組ごとに同じ .zmx を読み直さないため
@@ -713,9 +713,10 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     format!("lens catalog {vendor} {part}: the catalog can't be read")
                 })?;
                 // 品が無い（カタログの口の誤り）は符号 catalog.lens_not_found
-                let txt = f(vendor, part).map_err(|e| {
-                    lensbench_core::Error::Invalid(e)
-                        .with_code(lensbench_core::error::code::LENS_NOT_FOUND)
+                // （口が符号を付けていればそのまま）
+                let txt = f(vendor, part).map_err(|e| match e.code() == e.kind() {
+                    true => e.with_code(lensbench_core::error::code::LENS_NOT_FOUND),
+                    false => e,
                 })?;
                 let raw = zmx::parse_text(&txt)?;
                 let s = zmx::build(

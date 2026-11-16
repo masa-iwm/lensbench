@@ -136,7 +136,11 @@ fn measured_tables_are_used_for_unknown_coatings() {
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
     let label = format!("surface {j}(STANDARD, {}, coating ZEC1)", s.surfaces[j].mat);
     assert_eq!(s.surf_label(j), label);
-    assert!(r.unwrap_err().to_string().contains(&label));
+    assert!(r
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains(&label));
     let key = format!("ZEC1|AIR|{}", s.surfaces[j].mat);
     let ang: Vec<f64> = (0..=60).map(|a| a as f64).collect();
     let v = [C64::new(0.0, 0.9), C64::new(0.8, 0.0)];
@@ -270,7 +274,7 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
     let r = s.try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[1.0], None, &[X], &c);
     assert!(matches!(r, Err(Error::NotImplemented(_))), "{r:?}");
     // 光線ごとのエラーにも面の名札が付く
-    let m = r.unwrap_err().to_string();
+    let m = r.unwrap_err().message().unwrap_or_default().to_string();
     assert!(
         m.contains(&format!("surface {j}(STANDARD, ")) && m.contains("coating ZEC1"),
         "{m}"

@@ -205,7 +205,11 @@ fn toroidal_zernike_terms_are_not_implemented() {
         &[],
         None,
     );
-    assert!(e.unwrap_err().to_string().contains("Zernike"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("Zernike"));
 }
 
 /// 楕円の開口: 半軸の外の光線はけられる

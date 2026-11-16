@@ -60,7 +60,7 @@ pub fn ungzip(b: Vec<u8>) -> Result<Vec<u8>, String> {
     }
     let mut out = Vec::with_capacity(b.len() * 4);
     std::io::Read::read_to_end(&mut flate2::read::GzDecoder::new(&b[..]), &mut out)
-        .map_err(|e| format!("gzip can't be inflated: {e}"))?;
+        .map_err(lensbench_core::Error::io_at("gzip can't be inflated"))?;
     Ok(out)
 }
 

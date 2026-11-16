@@ -202,7 +202,11 @@ fn solves_follow_parameter_changes() {
     assert_eq!(c.surfaces[7].t, fresh.surfaces[7].t);
     assert!(close(c.paraxial().marginal.1[6], -1.0 / 9.0, 1e-13));
     let e = s.with_params(&[(s.param("6.r").unwrap(), 50.0)]);
-    assert!(e.unwrap_err().to_string().contains("solve"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("solve"));
 }
 
 /// 別の列からのピックアップ（OpticStudio の実測どおり: 曲率は c = 倍率 / 元の値、ほかは倍率 × 元の値 + オフセットで

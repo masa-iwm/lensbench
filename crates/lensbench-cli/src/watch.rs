@@ -69,8 +69,8 @@ fn tmp_path(p: &Path) -> PathBuf {
 
 fn write_atomic(p: &Path, s: &str) -> lensbench_core::Result<()> {
     let t = tmp_path(p);
-    lensbench_core::vfs::write(&t, s).map_err(|e| format!("{}: {e}", t.display()))?;
-    Ok(std::fs::rename(&t, p).map_err(|e| format!("{}: {e}", p.display()))?)
+    lensbench_core::vfs::write(&t, s).map_err(lensbench_core::Error::io_at(t.display()))?;
+    std::fs::rename(&t, p).map_err(lensbench_core::Error::io_at(p.display()))
 }
 
 /// 系・プロジェクトのファイルと --save の欄（見張る・一時ファイルに書かせる）
@@ -102,9 +102,9 @@ fn run_once(
             }
             None => None,
         };
-        let (json_out, out) = execute(cli.cmd).map_err(|e| e.to_string())?;
+        let (json_out, out) = execute(cli.cmd)?;
         if let Some(p) = &save {
-            std::fs::rename(tmp_path(p), p).map_err(|e| format!("{}: {e}", p.display()))?;
+            std::fs::rename(tmp_path(p), p).map_err(lensbench_core::Error::io_at(p.display()))?;
         }
         Ok((json_out, out, save))
     });

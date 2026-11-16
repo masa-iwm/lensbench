@@ -99,7 +99,11 @@ fn follows_index_change() {
     assert_eq!(c.surfaces[5].n, c.surfaces[1].n);
     assert_ne!(c.surfaces[5].n, s.surfaces[5].n);
     let e = s.with_params(&[(s.param("5.dn").unwrap(), 1e-3)]);
-    assert!(e.unwrap_err().to_string().contains("pickup"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("pickup"));
 }
 
 /// 書き出して読み戻してもつながりが残る
@@ -123,7 +127,11 @@ fn cycle_and_missing_source_are_errors() {
         &[],
         None,
     );
-    assert!(e.unwrap_err().to_string().contains("loop"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("loop"));
     let t = picked().replace("___BLANK 2 2 ", "___BLANK 2 99 ");
     assert!(zmx::build(
         &zmx::parse_text(&t).unwrap(),
@@ -146,7 +154,11 @@ fn follows_material_change() {
         lensbench_core::edit::SurfValue::Text("1.5,60".into()),
     )];
     let e = s.set_surface_fields(5, &f);
-    assert!(e.unwrap_err().to_string().contains("pickup"));
+    assert!(e
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .contains("pickup"));
 }
 
 /// 膜のピックアップ: 元の面の膜の名前を写す。.zmx には書かない（OpticStudio に無い）

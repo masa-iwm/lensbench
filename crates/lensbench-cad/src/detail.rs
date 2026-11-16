@@ -24,7 +24,7 @@ const DETAIL_TOL_MM: f64 = 0.2;
 /// STEP の文字を部品の座標の三角形にする（[`step::shell_poses`] の置き方で、殻ごとに三角形にして置く）。
 /// 三角形にできなかった面と、殻の辺の箱から 1% を超えて外れる面（境の読めなかった面）は除く
 #[cfg(feature = "mesh")]
-pub fn detail_of_step(text: &str) -> Result<lensbench_export::detail::Detail, String> {
+pub fn detail_of_step(text: &str) -> lensbench_core::Result<lensbench_export::detail::Detail> {
     use truck_meshalgo::prelude::*;
     use truck_stepio::r#in::Table;
     // 文字は 1 回だけ読み、置き方・単位・書き出しへの写しが同じ表を使う（PRJ-06）
@@ -156,7 +156,7 @@ pub fn gzip(b: &[u8]) -> Vec<u8> {
 }
 
 /// gzip なら展開する（置き場の STEP は gzip。展開して `max` バイトを超えれば Err）
-pub fn gunzip(b: Vec<u8>, max: u64) -> Result<Vec<u8>, String> {
+pub fn gunzip(b: Vec<u8>, max: u64) -> lensbench_core::Result<Vec<u8>> {
     use std::io::Read;
     if !b.starts_with(&[0x1f, 0x8b]) {
         return Ok(b);
@@ -165,7 +165,7 @@ pub fn gunzip(b: Vec<u8>, max: u64) -> Result<Vec<u8>, String> {
     flate2::read::GzDecoder::new(&b[..])
         .take(max + 1)
         .read_to_end(&mut out)
-        .map_err(|e| format!("gzip can't be inflated: {e}"))?;
+        .map_err(lensbench_core::Error::io_at("gzip can't be inflated"))?;
     if out.len() as u64 > max {
         return Err("the gzip content is too large".into());
     }

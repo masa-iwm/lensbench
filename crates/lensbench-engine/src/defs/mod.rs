@@ -40,8 +40,16 @@ mod tests {
             };
             let r = d.run_json(&cx, &p);
             match name {
-                "mech-check" => assert!(r.unwrap_err().to_string().contains("no mechanical parts")),
-                "interference" => assert!(r.unwrap_err().to_string().contains("system file")),
+                "mech-check" => assert!(r
+                    .unwrap_err()
+                    .message()
+                    .unwrap_or_default()
+                    .contains("no mechanical parts")),
+                "interference" => assert!(r
+                    .unwrap_err()
+                    .message()
+                    .unwrap_or_default()
+                    .contains("system file")),
                 _ => {
                     let v = r.unwrap_or_else(|e| panic!("{name}: {e}"));
                     assert!(v.is_object(), "{name}");

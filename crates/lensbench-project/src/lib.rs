@@ -107,7 +107,7 @@ pub fn load_path_report(
     split_path: Option<&str>,
 ) -> lensbench_core::Result<(System, Vec<String>)> {
     let txt = lensbench_core::vfs::read_to_string(path)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+        .map_err(lensbench_core::Error::io_at(path.display()))?;
     let base = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     Ok(
         expand_json_path(&txt, &base, glass_dirs, catalog, state, split_path)
@@ -274,7 +274,10 @@ mod read_text_tests {
         gz.write_all(&vec![b' '; 1 << 20]).unwrap();
         std::fs::write(&f, gz.finish().unwrap()).unwrap();
         let e = read_text_limit(&f, 1000).unwrap_err();
-        assert!(e.to_string().contains("when inflated"), "{e}");
+        assert!(
+            e.message().unwrap_or_default().contains("when inflated"),
+            "{e}"
+        );
         assert_eq!(read_text_limit(&f, 1 << 20).unwrap().len(), 1 << 20);
         // .json を指すと .json.gz を読む
         assert_eq!(read_text(&dir.join("big.json")).unwrap().len(), 1 << 20);

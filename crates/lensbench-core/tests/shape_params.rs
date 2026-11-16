@@ -276,7 +276,12 @@ fn values_that_do_not_change_the_shape_are_rejected() {
     let t = surftypes("T1");
     for spec in ["2.c", "2.r", "2.k", "2.a6"] {
         let p = Param::new(2, t.param(spec).map(|p| p.kind).unwrap_or(Kind::Asph(2)));
-        let e = t.check_param(p).unwrap_err().to_string();
+        let e = t
+            .check_param(p)
+            .unwrap_err()
+            .message()
+            .unwrap_or_default()
+            .to_string();
         assert!(e.contains("doesn't change the shape"), "{spec}: {e}");
     }
     assert!(t.check_param(Param::new(2, Kind::Asph(1))).is_ok());

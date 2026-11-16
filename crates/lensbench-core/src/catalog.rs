@@ -24,11 +24,7 @@ pub(crate) const LBCAT_VERSION: u32 = 1;
 /// レンズカタログの束 .lbcat のバイト列。zlib で圧縮した UTF-8 の文で、1 行目が
 /// `LBCAT <版>\t<メーカー>\t<変換元>`、続いてレンズごとに `<型番>\t<焦点距離>\t<.zmx のバイト数>` の行と .zmx の本文
 /// （そのバイト数ちょうど）。焦点距離が数でないレンズは `nan`。型番・メーカー・変換元にタブ・改行は使えない
-pub fn encode_lbcat(
-    vendor: &str,
-    source: &str,
-    lenses: &[CatalogLens],
-) -> std::result::Result<Vec<u8>, String> {
+pub fn encode_lbcat(vendor: &str, source: &str, lenses: &[CatalogLens]) -> crate::Result<Vec<u8>> {
     let clean = |what: &str, s: &str| {
         if s.contains(['\t', '\n', '\r']) {
             Err(format!("{what} {s:?} has a tab or line break"))
@@ -53,14 +49,11 @@ pub fn encode_lbcat(
 }
 
 /// [`encode_lbcat`] のバイト列を読む。メーカーは束の値（空なら `default_vendor`）
-pub fn decode_lbcat(
-    bytes: &[u8],
-    default_vendor: &str,
-) -> std::result::Result<Vec<CatalogLens>, String> {
+pub fn decode_lbcat(bytes: &[u8], default_vendor: &str) -> crate::Result<Vec<CatalogLens>> {
     let b = miniz_oxide::inflate::decompress_to_vec_zlib(bytes)
         .map_err(|e| format!("can't be inflated ({:?})", e.status))?;
     let mut o = 0usize;
-    let line = |o: &mut usize| -> std::result::Result<&str, String> {
+    let line = |o: &mut usize| -> crate::Result<&str> {
         let end = b[*o..]
             .iter()
             .position(|&c| c == b'\n')
@@ -75,9 +68,7 @@ pub fn decode_lbcat(
         .and_then(|v| v.parse().ok())
         .ok_or("not a lensbench lens catalog bundle")?;
     if ver == 0 || ver > LBCAT_VERSION {
-        return Err(format!(
-            "format version {ver} can't be read (up to {LBCAT_VERSION})"
-        ));
+        return Err(format!("format version {ver} can't be read (up to {LBCAT_VERSION})").into());
     }
     let vendor = match head.get(1) {
         Some(v) if !v.trim().is_empty() => v.clone(),
@@ -87,10 +78,9 @@ pub fn decode_lbcat(
     while o < b.len() {
         let f: Vec<String> = line(&mut o)?.split('\t').map(str::to_string).collect();
         let [part, efl, n] = &f[..] else {
-            return Err(format!(
-                "a lens line doesn't have 3 fields (lens {})",
-                out.len() + 1
-            ));
+            return Err(
+                format!("a lens line doesn't have 3 fields (lens {})", out.len() + 1).into(),
+            );
         };
         let n: usize = n
             .parse()
@@ -276,10 +266,11 @@ impl LensCatalog {
     }
 
     /// (メーカー, 型番) → .zmx の本文（プロジェクトの展開に渡す形）
-    pub fn zmx(&self, vendor: &str, part: &str) -> std::result::Result<String, String> {
-        self.get(vendor, part)
+    pub fn zmx(&self, vendor: &str, part: &str) -> crate::Result<String> {
+        Ok(self
+            .get(vendor, part)
             .map(|l| l.zmx.clone())
-            .ok_or_else(|| format!("no {vendor} {part} in the lens catalogs"))
+            .ok_or_else(|| format!("no {vendor} {part} in the lens catalogs"))?)
     }
 
     pub fn lenses(&self) -> &[CatalogLens] {

@@ -109,6 +109,20 @@ impl From<CoreError> for AppError {
     }
 }
 
+/// 組み込み用（[`crate::ext::run_cli`]・watch）: 使い方の誤りは符号 argument.invalid の不正、ファイルは io
+impl From<AppError> for CoreError {
+    fn from(e: AppError) -> Self {
+        match e {
+            AppError::Usage(m) => {
+                CoreError::Invalid(m).with_code(lensbench_core::error::code::BAD_ARGUMENT)
+            }
+            AppError::Io(m) => CoreError::Io(m),
+            AppError::Core(e) => e,
+            AppError::Failed(m) => CoreError::from(m),
+        }
+    }
+}
+
 impl From<String> for AppError {
     fn from(s: String) -> Self {
         AppError::Failed(s)

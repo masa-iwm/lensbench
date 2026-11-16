@@ -636,7 +636,7 @@ fn fmt(x: f64) -> String {
     format!("{r}")
 }
 
-use super::RetainingRing;
+use super::{Res, RetainingRing};
 
 mod notes;
 
@@ -798,7 +798,7 @@ fn pick_hold(bores: &[lensbench_project::BoreSpec]) -> (String, f64) {
 }
 
 /// 測る。長さは `k` 倍し `round` で丸める（mm にする）
-pub(crate) fn measure(f: &StepFile, k: f64, round: fn(f64) -> f64) -> Result<Measure, String> {
+pub(crate) fn measure(f: &StepFile, k: f64, round: fn(f64) -> f64) -> Res<Measure> {
     let st = Step::new(f);
     let sc = |x: f64| round(x * k);
     let inst = st.instances();
@@ -1565,7 +1565,7 @@ pub(crate) fn measure(f: &StepFile, k: f64, round: fn(f64) -> f64) -> Result<Mea
 /// STEP の立体の殻（`CLOSED_SHELL` の実体の番号）ごとの、STEP の座標から部品の座標 [mm] への変換（3 行 4 列、
 /// `[R | t]`）。部品の座標は [`measure`] で枠・機構部品として測った座標（z は枠の端から光軸の向き、x は角の部品の
 /// 辺に直交）。同じ殻が組立で何度も置かれていれば、置き方ごとに 1 つ
-pub(crate) fn shell_poses(f: &StepFile, k: f64) -> Result<Vec<super::ShellPose>, String> {
+pub(crate) fn shell_poses(f: &StepFile, k: f64) -> Res<Vec<super::ShellPose>> {
     let m = measure(f, k, |x| x)?;
     let Some((o, axis, x, z0)) = m.axes else {
         return Err("the mount or mechanical part coordinates can't be found from the STEP (no solid with a bore)".into());
@@ -1605,7 +1605,7 @@ impl SubSq for f64 {
 }
 
 /// 円の無い品: 頂点（無ければ全部の点）の箱
-fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Result<Measure, String> {
+fn boxed(st: &Step, all: &Geo, sc: impl Fn(f64) -> f64) -> Res<Measure> {
     let pts: Vec<V3> = if all.verts.len() >= 2 {
         all.verts.clone()
     } else {

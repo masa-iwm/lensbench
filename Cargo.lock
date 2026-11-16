@@ -2766,6 +2766,7 @@ dependencies = [
 name = "lensbench-catalog"
 version = "0.4.0"
 dependencies = [
+ "lensbench-core",
  "lensbench-project",
  "lensbench-step",
  "serde",

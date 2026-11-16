@@ -321,7 +321,7 @@ impl Retarder {
     pub fn resolve(
         &mut self,
         glasses: &std::collections::HashMap<String, crate::glass::Glass>,
-    ) -> Result<(), String> {
+    ) -> crate::Result<()> {
         let n = self.plates.len();
         for p in &mut self.plates {
             let ename = format!("{}-E", p.material);
@@ -329,7 +329,7 @@ impl Retarder {
                 return Err(format!(
                     "birefringent material {}: the ordinary glass {} or extraordinary glass {ename} is not in the catalogs",
                     p.material, p.material
-                ));
+                ).into());
             };
             p.o = Some(o.clone());
             p.e = Some(e.clone());
@@ -338,7 +338,8 @@ impl Retarder {
                 return Err(format!(
                     "ne − no of birefringent material {} at the design wavelength {} µm is {dn}",
                     p.material, self.wl0
-                ));
+                )
+                .into());
             }
             if p.thickness == 0.0 {
                 if n != 1 {
@@ -354,7 +355,8 @@ impl Retarder {
                 return Err(format!(
                     "birefringent material {} plate thickness {}",
                     p.material, p.thickness
-                ));
+                )
+                .into());
             }
         }
         Ok(())

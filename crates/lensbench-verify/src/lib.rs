@@ -423,7 +423,7 @@ pub fn read_npz(path: &Path) -> Result<Arrays, String> {
                 path.display()
             ));
         };
-        out.insert(key, arr.map_err(|e| e.to_string())?);
+        out.insert(key, arr?);
         fn to_array<T: Clone>(
             a: ArrayD<T>,
             f: impl Fn(Vec<T>) -> Data,
@@ -701,7 +701,7 @@ impl Manifest {
                 catalog_dirs: sp.glass_dirs.clone(),
                 ..Default::default()
             };
-            lensbench_core::zmx::load_with(&sp.path, &opt).map_err(|e| e.to_string())?
+            lensbench_core::zmx::load_with(&sp.path, &opt)?
         };
         Ok(Some(Arc::new(s)))
     }
@@ -735,9 +735,7 @@ impl Manifest {
                 error: None,
             };
             let res = (|| -> Result<(), String> {
-                let inst = reg
-                    .prepare(&self.plugin, &r.config)
-                    .map_err(|e| e.to_string())?;
+                let inst = reg.prepare(&self.plugin, &r.config)?;
                 let ts: Vec<Option<usize>> = if self.threads.is_empty() {
                     vec![None]
                 } else {
@@ -745,8 +743,7 @@ impl Manifest {
                 };
                 let mut outs = Vec::new();
                 for t in &ts {
-                    let o = lensbench_core::with_threads(*t, || inst.run(&ctx, &r.inputs))
-                        .map_err(|e| e.to_string())?;
+                    let o = lensbench_core::with_threads(*t, || inst.run(&ctx, &r.inputs))?;
                     outs.push(o);
                 }
                 if outs.len() > 1 {
@@ -913,7 +910,7 @@ impl Report {
 pub fn collect(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     fn walk(p: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
         let mut es: Vec<PathBuf> = std::fs::read_dir(p)
-            .map_err(|e| format!("{}: {e}", p.display()))?
+            .map_err(lensbench_core::Error::io_at(p.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .collect();
         es.sort();

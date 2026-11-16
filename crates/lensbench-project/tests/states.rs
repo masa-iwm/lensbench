@@ -338,7 +338,7 @@ fn a_group_with_a_mirror_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.to_string().contains("mirror"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("mirror"), "{e}");
 }
 
 #[test]
@@ -361,7 +361,7 @@ fn a_group_with_two_mirrors_cannot_move() {
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
-    assert!(e.to_string().contains("mirror"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("mirror"), "{e}");
 }
 
 /// 像空間のアフォーカル（`afocal` に角度の単位）と物体側テレセントリック。状態でも変えられる
@@ -384,7 +384,7 @@ fn afocal_and_telecentric_settings() {
         &env(),
     )
     .unwrap_err();
-    assert!(e.to_string().contains("afocal"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("afocal"), "{e}");
     let mut p = parse(&format!(
         r#""object_distance": 200, "telecentric": true, "blocks": {blocks}"#
     ));

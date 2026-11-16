@@ -163,7 +163,7 @@ impl Analysis for Rays {
         })
     }
     fn save(&self, out: &RaysOut, path: &Path) -> Option<Result<Saved>> {
-        Some(out.table.save(path).map_err(Error::Io).map(|_| {
+        Some(out.table.save(path).map(|_| {
             Saved::Written(
                 json!({ "written": path.display().to_string(), "rows": out.table.rows() }),
             )
@@ -422,7 +422,7 @@ impl Analysis for Pop {
             json!("phase is the phase without the pilot beam (output.pilot) [rad]"),
         );
         t.meta.insert("output".into(), v["output"].clone());
-        Some(t.save(path).map_err(Error::Io).map(|_| {
+        Some(t.save(path).map(|_| {
             v["written"] = json!(path.display().to_string());
             Saved::Written(v)
         }))

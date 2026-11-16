@@ -121,7 +121,10 @@ fn integers_in_float_fields() {
         serde_json::from_str(&sysfile::to_string(&s, &[]).unwrap()).unwrap();
     v["system"]["surfaces"][1]["t"] = serde_json::json!("x");
     let e = sysfile::from_str(&v.to_string()).unwrap_err();
-    assert!(e.to_string().contains("surfaces[1].t"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("surfaces[1].t"),
+        "{e}"
+    );
 }
 
 /// 編集・パラメータ変更・ピックアップ・多重構成の表・玉も残る。違う系は違う hash

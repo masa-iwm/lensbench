@@ -252,7 +252,7 @@ fn unit_ops() {
     .unwrap();
     let e =
         edit_ops::apply_json(&mut s, &json!([{"op": "remove_unit", "unit": "G1"}])).unwrap_err();
-    assert!(e.to_string().contains("is moved"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("is moved"), "{e}");
     edit_ops::apply_json(
         &mut s,
         &json!([

@@ -325,7 +325,12 @@ fn unsupported_surface_after_the_medium_is_rejected() {
     a.surfaces.insert(2, cb([0.0, 0.0, 1.0, 0.0, 0.0], 0, 0.0));
     a.surfaces[3].typ = lensbench_core::surface::SurfType::Paraxial;
     a.surfaces[3].focal = 50.0;
-    let e = a.changed().unwrap_err().to_string();
+    let e = a
+        .changed()
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .to_string();
     assert!(e.contains("GRIN"), "{e}");
 }
 

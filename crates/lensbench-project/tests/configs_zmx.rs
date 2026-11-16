@@ -135,7 +135,11 @@ fn different_system_values_are_refused() {
     let a = expand_path(&p, &env(), Some("TR")).unwrap().0;
     let mut b = expand_path(&p, &env(), Some("RT")).unwrap().0;
     b.wavelengths[0] = 0.55;
-    let e = zmx_write::write_configs(&[a, b]).unwrap_err().to_string();
+    let e = zmx_write::write_configs(&[a, b])
+        .unwrap_err()
+        .message()
+        .unwrap_or_default()
+        .to_string();
     assert!(e.contains("configuration 2"), "{e}");
 }
 

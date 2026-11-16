@@ -393,7 +393,10 @@ fn off_splitter_is_removed_and_path_letters_are_checked() {
     same_global(&sys(&on, None), &sys(&straight, None), 1e-12);
     assert!(paths(&proj(&on), &env()).unwrap().is_empty());
     let e = expand_path(&proj(&on), &env(), Some("T")).unwrap_err();
-    assert!(e.to_string().contains("too many letters"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("too many letters"),
+        "{e}"
+    );
     let dup = r#"[{"type": "stop"}, {"type": "splitter", "id": "BS", "form": "ideal"},
         {"type": "splitter", "id": "BS", "form": "ideal"}, {"type": "air", "t": 5}]"#;
     assert!(expand_path(&proj(dup), &env(), None)

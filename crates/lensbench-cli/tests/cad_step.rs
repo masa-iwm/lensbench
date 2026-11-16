@@ -618,7 +618,12 @@ fn coating_models_come_from_the_store_when_missing() {
     std::fs::remove_dir_all(dir.join("cache")).unwrap();
     let e = lensbench_cad::coat_remote::fetch(lensbench_cad::store().as_ref(), "ZEC_R", &h)
         .unwrap_err();
-    assert!(e.contains("doesn't match the index"), "{e}");
+    assert!(
+        e.message()
+            .unwrap_or_default()
+            .contains("doesn't match the index"),
+        "{e}"
+    );
     db.lock()
         .unwrap()
         .insert(format!("coat/ZEC_R-{h}.lbcb"), lbcm.clone().into_bytes());

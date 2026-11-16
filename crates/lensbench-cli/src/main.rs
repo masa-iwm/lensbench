@@ -1194,7 +1194,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 .iter()
                 .map(|f| {
                     let r = lensbench_core::vfs::read(f)
-                        .map_err(|e| e.to_string())
+                        .map_err(lensbench_core::Error::io_at(f.display()))
                         .and_then(|b| {
                             lensbench_catalog::step::read_step(&String::from_utf8_lossy(&b))
                         });
@@ -1204,7 +1204,9 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                             v["file"] = json!(f.display().to_string());
                             v
                         }
-                        Err(e) => json!({ "file": f.display().to_string(), "error": e }),
+                        Err(e) => {
+                            json!({ "file": f.display().to_string(), "error": String::from(e) })
+                        }
                     }
                 })
                 .collect();
@@ -1426,8 +1428,11 @@ where
     if let Some((name, sub)) = m.subcommand() {
         if let Some(a) = analyses().get(name).cloned() {
             let threads = m.try_get_one::<usize>("threads").ok().flatten().copied();
-            let cmd = analysis_cmd::parse(a.as_ref(), sub)
-                .map_err(|x| cli_command().error(clap::error::ErrorKind::ValueValidation, x))?;
+            let cmd = analysis_cmd::parse(a.as_ref(), sub).map_err(|x| {
+                // clap が「error: 」を付けるので、種類の前置きを付けない文（訳す）
+                let m = lensbench_core::i18n::tr(&String::from(x));
+                cli_command().error(clap::error::ErrorKind::ValueValidation, m)
+            })?;
             return Ok(Cli {
                 threads,
                 cmd: Cmd::Analysis(Box::new(cmd)),

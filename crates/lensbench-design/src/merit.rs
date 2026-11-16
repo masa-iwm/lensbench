@@ -298,7 +298,8 @@ fn zplm_macro(
             return Err("only one of macro and file".into());
         }
         let p = Path::new(f);
-        let src = lensbench_core::vfs::read(p).map_err(|e| format!("{f}: {e}"))?;
+        let src =
+            lensbench_core::vfs::read(p).map_err(lensbench_core::Error::io_at(f.to_string()))?;
         let name = p
             .file_stem()
             .map(|x| x.to_string_lossy().into_owned())

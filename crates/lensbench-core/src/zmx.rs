@@ -626,7 +626,7 @@ fn config_table(
     s: &System,
     n: usize,
     active: usize,
-) -> std::result::Result<crate::edit::Configs, String> {
+) -> crate::Result<crate::edit::Configs> {
     use crate::edit::{ConfigRow, Configs};
     use crate::param::{Kind, Param};
     let mut rows: Vec<(String, i64, i64, Vec<Option<f64>>)> = Vec::new();
@@ -679,7 +679,7 @@ fn config_table(
                 }
                 let p = Param::new(surf.expect("surface number checked above"), kind);
                 // 書いていない構成の値は今の系の値
-                let now = s.get_param(p).map_err(|e| e.to_string())?;
+                let now = s.get_param(p)?;
                 out.push(ConfigRow {
                     param: p,
                     values: vals.iter().map(|v| v.unwrap_or(now)).collect(),
@@ -687,7 +687,7 @@ fn config_table(
                 });
             }
             None if varies && !matches!(op.as_str(), "MCOM" | "CWGT" | "MOFF" | "LTTL") => {
-                return Err(format!("{op} {p1}"));
+                return Err(format!("{op} {p1}").into());
             }
             None => {}
         }

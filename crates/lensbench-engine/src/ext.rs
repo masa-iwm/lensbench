@@ -74,14 +74,14 @@ impl Extensions {
     }
 
     /// 足したものの表（同梱の分の上に足したもの）。名前が組み込みと重なれば誤り
-    pub fn ext(&self) -> Result<Ext, String> {
+    pub fn ext(&self) -> lensbench_core::Result<Ext> {
         let mut e = Ext::default();
         self.add_to(&mut e)?;
         Ok(e)
     }
 
     /// 表 e に足す（同じ名前は置き換える）。名前が組み込みと重なれば誤り
-    pub fn add_to(&self, e: &mut Ext) -> Result<(), String> {
+    pub fn add_to(&self, e: &mut Ext) -> lensbench_core::Result<()> {
         for s in &self.sources {
             e.add_catalog_source(s.clone());
         }
@@ -101,7 +101,7 @@ impl Extensions {
     }
 
     /// プロセスの既定に入れる（何度呼んでもよい。同じ名前は置き換える）。名前が組み込みと重なれば誤り（何も入れない）
-    pub fn install(self) -> Result<(), String> {
+    pub fn install(self) -> lensbench_core::Result<()> {
         lensbench_core::ext::update_default(|e| {
             let mut n = e.clone();
             self.add_to(&mut n)?;

@@ -75,9 +75,12 @@ fn missing_block_warns_and_bad_ops_fail() {
         r#"[{"op": "set_stop", "surface": {"block": "L1", "surface": 5}}]"#,
     )
     .unwrap_err();
-    assert!(e.to_string().contains("surface 5"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("surface 5"), "{e}");
     let e = project(true, r#"[{"op": "delete_surface", "surface": 1}]"#).unwrap_err();
-    assert!(e.to_string().contains("delete_surface"), "{e}");
+    assert!(
+        e.message().unwrap_or_default().contains("delete_surface"),
+        "{e}"
+    );
     // 絞りが無く set_stop も無ければ従来どおりのエラー
     assert!(project(false, "[]")
         .unwrap_err()
@@ -89,7 +92,7 @@ fn missing_block_warns_and_bad_ops_fail() {
         r#"[{"op": "set_stop", "surface": {"block": "X", "surface": 0}}]"#,
     )
     .unwrap_err();
-    assert!(e.to_string().contains("0 stops"), "{e}");
+    assert!(e.message().unwrap_or_default().contains("0 stops"), "{e}");
 }
 
 /// surface_ops は set_stop・add_solve・add_pickup だけで、知らないキー・面の書き方の誤りは読むときに誤り（PRJ-11）
@@ -114,7 +117,7 @@ fn surface_ops_are_typed() {
         ),
     ] {
         let e = project(false, ops).unwrap_err();
-        assert!(e.to_string().contains(want), "{ops}: {e}");
+        assert!(e.message().unwrap_or_default().contains(want), "{ops}: {e}");
     }
     // 面の名前（展開した系の面のコメント）も前どおり書ける。書き直しても同じ形
     let p = lensbench_project::Project::from_json(

@@ -157,6 +157,29 @@ impl Error {
     }
 }
 
+/// 入出力の誤り（種類 io。ファイルが無い・フォルダのときは符号 [`code::FILE_NOT_FOUND`]・[`code::IS_FOLDER`] も）
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        let c = match e.kind() {
+            std::io::ErrorKind::NotFound => Some(code::FILE_NOT_FOUND),
+            std::io::ErrorKind::IsADirectory => Some(code::IS_FOLDER),
+            _ => None,
+        };
+        let x = Error::Io(e.to_string());
+        match c {
+            Some(c) => x.with_code(c),
+            None => x,
+        }
+    }
+}
+
+impl Error {
+    /// 入出力の誤りに文脈（ファイルの名前など）を付けて種類 io のまま上げる: `map_err(Error::io_at(p.display()))`
+    pub fn io_at<C: std::fmt::Display>(ctx: C) -> impl FnOnce(std::io::Error) -> Error {
+        move |e| Error::from(e).at(ctx)
+    }
+}
+
 /// 文字列の誤り（種類の前置きがあればその種類、無ければ [`Error::Invalid`]）。`Result<_, String>` を返す関数を `?` で呼べる
 impl From<String> for Error {
     fn from(s: String) -> Self {
@@ -215,6 +238,19 @@ mod tests {
         assert_eq!(strip_invalid("不正: a"), "a");
         assert_eq!(strip_invalid("invalid: a"), "a");
         assert_eq!(parse_display("a"), None);
+    }
+
+    #[test]
+    fn io_errors_keep_the_kind() {
+        let nf = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let e = Error::io_at("a.zmx")(nf);
+        assert_eq!((e.kind(), e.code()), ("io", code::FILE_NOT_FOUND));
+        assert!(
+            e.message().unwrap_or_default().starts_with("a.zmx: "),
+            "{e}"
+        );
+        let e = Error::from(std::io::Error::other("x"));
+        assert_eq!((e.kind(), e.code()), ("io", "io"));
     }
 
     #[test]
