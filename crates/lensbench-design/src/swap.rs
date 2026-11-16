@@ -5,7 +5,7 @@
 //! - 差し替える所（[`Slot`]）: 玉のブロックの id と、候補（型番の並びか、メーカー・焦点距離・径の範囲）。
 //!   `flip` なら向き（reversed）を両方試す。
 //! - 変数（[`SwapSpec::vars`]）: 展開した系のパラメータの書き方（`G2.shift` など、[`System::param`]）に加えて、
-//!   id のある空気のブロックを `id.t` で指せる（その空気が入る面の厚さ。[`lensbench_project::expand_gaps`]）。範囲は
+//!   id のある空気のブロックを `id.t` で指せる（その空気が入る面の厚さ。[`lensbench_project::Expansion::gaps`]）。範囲は
 //!   `d1.t=0.5:40`。
 //! - 組の番号 i（0 から [`SwapSearch::count`] 未満）は、差し替える所ごとの候補の番号を並べた混合基数
 //!   （最後の所が最も速く回る）。[`SwapSearch::eval`] は組 i だけから決まる JSON を返す。
@@ -26,7 +26,7 @@ use lensbench_optim::{
     DefaultMerit, DlsOpts, ParaxQ, Problem, RayQ, Side, Stop, Term, TermKind, Var,
 };
 use lensbench_project::{
-    block_pointers, expand_gaps_cached, find_block_mut, Block, Env, Gap, LensSource, Project,
+    block_pointers, expand, find_block_mut, Block, Env, ExpandOpts, Gap, LensSource, Project,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -703,12 +703,28 @@ impl<'a> SwapSearch<'a> {
         let mut systems = Vec::new();
         let mut gapss = Vec::new();
         if self.spec.states.is_empty() {
-            let (s, g) = expand_gaps_cached(&p, &env, &self.lenses)?;
+            let (s, g) = expand(
+                &p,
+                &env,
+                &ExpandOpts {
+                    cache: Some(&self.lenses),
+                    ..Default::default()
+                },
+            )
+            .map(|x| (x.system, x.gaps))?;
             systems.push(s);
             gapss.push(g);
         } else {
             for n in &self.spec.states {
-                let (s, g) = expand_gaps_cached(&p.with_state(n)?, &env, &self.lenses)?;
+                let (s, g) = expand(
+                    &p.with_state(n)?,
+                    &env,
+                    &ExpandOpts {
+                        cache: Some(&self.lenses),
+                        ..Default::default()
+                    },
+                )
+                .map(|x| (x.system, x.gaps))?;
                 systems.push(s);
                 gapss.push(g);
             }

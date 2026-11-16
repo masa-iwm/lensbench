@@ -4865,7 +4865,9 @@ mod open_insert_tests {
             glass_dirs: glass,
             ..Default::default()
         };
-        let b = lensbench_project::expand(&pj, &env).unwrap();
+        let b = lensbench_project::expand(&pj, &env, &lensbench_project::ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap();
         // 平板の 2 面が増える
         assert_eq!(b.surfaces.len(), a.surfaces.len() + 2);
         // 元の玉は取り込みのブロックの中の玉として残る

@@ -6,7 +6,7 @@
 //! LBSCH.AGF として入れたもの。OpticStudio の SCHOTT は N-BK7 などの値が試験のものと少し違う）
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
 use lensbench_core::System;
-use lensbench_project::{expand, expand_path, paths, Env, Project};
+use lensbench_project::{expand, paths, Env, ExpandOpts, Project};
 use std::path::{Path, PathBuf};
 
 /// (名前, プロジェクトのファイル（リポジトリの根から）, 状態で並べるか（偽なら BS の経路）)
@@ -36,14 +36,30 @@ pub fn systems(root: &Path, file: &str, states: bool) -> (Vec<String>, Vec<Syste
         let n: Vec<String> = p.state_names().iter().map(|x| x.to_string()).collect();
         let s = n
             .iter()
-            .map(|x| expand(&p.with_state(x).unwrap(), &env).unwrap())
+            .map(|x| {
+                expand(&p.with_state(x).unwrap(), &env, &ExpandOpts::default())
+                    .map(|x| x.system)
+                    .unwrap()
+            })
             .collect();
         (n, s)
     } else {
         let n = paths(&p, &env).unwrap();
         let s = n
             .iter()
-            .map(|q| expand_path(&p, &env, Some(q)).unwrap().0)
+            .map(|q| {
+                expand(
+                    &p,
+                    &env,
+                    &ExpandOpts {
+                        path: Some(q),
+                        ..Default::default()
+                    },
+                )
+                .map(|x| (x.system, x.notes))
+                .unwrap()
+                .0
+            })
             .collect();
         (n, s)
     }

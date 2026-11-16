@@ -16,7 +16,7 @@
 //! - 検出器（[`DetectorBlock`]、`"type"` は登録した種類の名前）: 最後のブロックに置く。像面に置き、面は足さない。
 //!   種類と項目の確かめ方は [`detectors`] に登録する（非公開版などの拡張が足す）。
 //! - 状態（多重構成に当たる）: ブロックの値（ON/OFF、間隔、群の移動、偏心・傾き、.zmx の構成番号など）と
-//!   系の値（物体距離など）の変更の組に名前を付ける。[`expand_state`] でその状態の系を展開する。
+//!   系の値（物体距離など）の変更の組に名前を付ける。[`expand`] に [`ExpandOpts::state`] を渡してその状態の系を展開する。
 
 #![warn(unreachable_pub)]
 // 入力次第で panic しないように、ライブラリでは unwrap・panic を使わない。前に確かめた形は expect に理由を書く（XCT-21。試験は対象外）
@@ -69,87 +69,6 @@ pub use catalog::*;
 pub use expand::*;
 pub use model::*;
 pub use zmx_wrap::{same_system, zmx_project, ZMX_ID};
-
-/// プロジェクトファイルを読んで展開する
-pub fn load(
-    path: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-) -> lensbench_core::Result<System> {
-    load_state(path, glass_dirs, catalog, None)
-}
-
-/// プロジェクトファイルを読んで、状態 state（None なら変更なし）を展開する
-pub fn load_state(
-    path: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-    state: Option<&str>,
-) -> lensbench_core::Result<System> {
-    load_state_report(path, glass_dirs, catalog, state).map(|r| r.0)
-}
-
-/// load_state と同じ。展開で落としたもの（[`expand_report`]）の説明も返す
-pub fn load_state_report(
-    path: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-    state: Option<&str>,
-) -> lensbench_core::Result<(System, Vec<String>)> {
-    load_path_report(path, glass_dirs, catalog, state, None)
-}
-
-/// load_state_report と同じ。split_path はビームスプリッターの経路（None ならプロジェクト・状態の path）
-pub fn load_path_report(
-    path: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-    state: Option<&str>,
-    split_path: Option<&str>,
-) -> lensbench_core::Result<(System, Vec<String>)> {
-    let txt = lensbench_core::vfs::read_to_string(path)
-        .map_err(lensbench_core::Error::io_at(path.display()))?;
-    let base = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    Ok(
-        expand_json_path(&txt, &base, glass_dirs, catalog, state, split_path)
-            .map_err(|e| format!("{}: {e}", path.display()))?,
-    )
-}
-
-/// プロジェクトの JSON（ファイルの中身と同じ形）を展開する。相対パスは base から。
-/// 展開で落としたもの（[`expand_report`]）の説明も返す
-pub fn expand_json(
-    txt: &str,
-    base: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-    state: Option<&str>,
-) -> lensbench_core::Result<(System, Vec<String>)> {
-    expand_json_path(txt, base, glass_dirs, catalog, state, None)
-}
-
-/// expand_json と同じ。split_path はビームスプリッターの経路（None ならプロジェクト・状態の path）
-pub fn expand_json_path(
-    txt: &str,
-    base: &Path,
-    glass_dirs: &[PathBuf],
-    catalog: Option<CatalogLookup>,
-    state: Option<&str>,
-    split_path: Option<&str>,
-) -> lensbench_core::Result<(System, Vec<String>)> {
-    let env = Env {
-        step_files: None,
-        base: base.to_path_buf(),
-        glass_dirs: glass_dirs.to_vec(),
-        catalog,
-    };
-    let p = Project::from_json(txt)?;
-    let p = match state {
-        Some(n) => p.with_state(n)?,
-        None => p,
-    };
-    expand_path(&p, &env, split_path)
-}
 
 #[cfg(test)]
 mod retarder_spec_tests {

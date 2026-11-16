@@ -310,11 +310,18 @@ impl Source {
                 };
                 let cat = LensCatalog::load_registered(o.lens_catalogs)?;
                 let look = |v: &str, q: &str| cat.zmx(v, q);
-                let (system, warnings) =
-                    crate::expand_path(&p, &self.env(o, Some(&look)), o.split_path).map_err(at)?;
+                let x = crate::expand(
+                    &p,
+                    &self.env(o, Some(&look)),
+                    &crate::ExpandOpts {
+                        path: o.split_path,
+                        ..Default::default()
+                    },
+                )
+                .map_err(at)?;
                 Ok(Opened {
-                    system,
-                    warnings,
+                    system: x.system,
+                    warnings: x.notes,
                     coatings: Vec::new(),
                 })
             }

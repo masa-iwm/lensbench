@@ -259,10 +259,18 @@ fn on_off_back_and_states() {
         catalog: None,
     };
     let n = |st: Option<&str>| {
-        lensbench_project::expand_state(&pr, &env, st)
-            .unwrap()
-            .surfaces
-            .len()
+        lensbench_project::expand(
+            &pr,
+            &env,
+            &lensbench_project::ExpandOpts {
+                state: st,
+                ..Default::default()
+            },
+        )
+        .map(|x| x.system)
+        .unwrap()
+        .surfaces
+        .len()
     };
     let (a, m) = (n(None), n(Some("測定")));
     assert_eq!(m, a + 2 * 2, "往復で平板の 2 面が 2 回");
@@ -370,8 +378,26 @@ fn groups_wrap_runs_and_move_by_state() {
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,
     };
-    let a = lensbench_project::expand_state(&pr, &env, None).unwrap();
-    let t = lensbench_project::expand_state(&pr, &env, Some("tele")).unwrap();
+    let a = lensbench_project::expand(
+        &pr,
+        &env,
+        &lensbench_project::ExpandOpts {
+            state: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
+    let t = lensbench_project::expand(
+        &pr,
+        &env,
+        &lensbench_project::ExpandOpts {
+            state: Some("tele"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     // L1 の後の空気が 2 増え、群の後の空気が 2 減る
     assert!((t.surfaces[3].t - a.surfaces[3].t - 2.0).abs() < 1e-12);
     let n = a.surfaces.len();
@@ -434,7 +460,16 @@ fn stale_group_shift_is_not_written() {
         glass_dirs: vec![root.join("tests/glass")],
         catalog: None,
     };
-    lensbench_project::expand_state(&pr, &env, Some("tele")).unwrap();
+    lensbench_project::expand(
+        &pr,
+        &env,
+        &lensbench_project::ExpandOpts {
+            state: Some("tele"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
 }
 /// BS: キューブの半分の三角形から正方形と分ける面
 #[test]

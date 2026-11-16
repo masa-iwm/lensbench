@@ -1,7 +1,7 @@
 //! 機構部品のケラレ: 系に置いた穴（円柱）で切れる光線を数える
 use lensbench_core::mech::vignetting;
 use lensbench_core::system::FieldSel;
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -35,7 +35,9 @@ fn system(mechanics: &str, aperture: Option<f64>) -> lensbench_core::System {
         "mechanics": [{mechanics}]}}"#
     ))
     .unwrap();
-    expand(&p, &env()).unwrap()
+    expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap()
 }
 
 fn pupil(n: usize) -> (Vec<f64>, Vec<f64>) {
@@ -148,7 +150,12 @@ fn catalog_parts_and_errors() {
             "blocks": [{{"type": "stop", "id": "stop"}}, {{"type": "air", "t": 40}}], "mechanics": [{bad}]}}"#
         ))
         .unwrap();
-        assert!(expand(&p, &env()).is_err(), "{bad}");
+        assert!(
+            expand(&p, &env(), &ExpandOpts::default())
+                .map(|x| x.system)
+                .is_err(),
+            "{bad}"
+        );
     }
 }
 
@@ -162,7 +169,9 @@ fn fit_system(mechanics: &str) -> lensbench_core::System {
         "mechanics": [{mechanics}]}}"#
     ))
     .unwrap();
-    expand(&p, &env()).unwrap()
+    expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap()
 }
 
 fn kinds(s: &lensbench_core::System) -> Vec<(&'static str, usize, Option<usize>, f64)> {
@@ -295,7 +304,9 @@ fn catalog_item_frame_is_placed_on_the_glass() {
             cat.to_str().unwrap()
         ))
         .unwrap();
-        expand(&p, &env()).unwrap()
+        expand(&p, &env(), &ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap()
     };
     let s = sys(24.0);
     assert_eq!(s.mechanics.len(), 1);
@@ -359,7 +370,8 @@ fn seat_places_the_part_on_the_held_element() {
         ))
         .unwrap();
         assert!(
-            expand(&p, &env())
+            expand(&p, &env(), &ExpandOpts::default())
+                .map(|x| x.system)
                 .unwrap_err()
                 .message()
                 .unwrap_or_default()
@@ -395,7 +407,10 @@ fn after_chains_parts_with_threads() {
         "mechanics": [{first}, {second}, {third}]}}"#
     ))
     .unwrap();
-    let (s, warn) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let (s, warn) =
+        lensbench_project::expand(&p, &env(), &lensbench_project::ExpandOpts::default())
+            .map(|x| (x.system, x.notes))
+            .unwrap();
     let m = &s.mechanics;
     assert_eq!((m[1].surface, m[2].surface), (m[0].surface, m[0].surface));
     // t2 のオス（3 mm）が t1 のメスにねじ込む: -2 + 10 - 3
@@ -416,7 +431,8 @@ fn after_chains_parts_with_threads() {
         ))
         .unwrap();
         assert!(
-            expand(&p, &env())
+            expand(&p, &env(), &ExpandOpts::default())
+                .map(|x| x.system)
                 .unwrap_err()
                 .to_string()
                 .contains("after"),
@@ -443,7 +459,10 @@ fn reversed_tube_connects_to_cage_plate() {
              "front_thread": {"thread": "SM1", "male": false, "length": 8}}}]}"#,
     )
     .unwrap();
-    let (s, warn) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let (s, warn) =
+        lensbench_project::expand(&p, &env(), &lensbench_project::ExpandOpts::default())
+            .map(|x| (x.system, x.notes))
+            .unwrap();
     let m = &s.mechanics;
     // 裏返した穴: 細い穴（内径 24）が後ろに
     assert_eq!(
@@ -468,7 +487,9 @@ fn square_outline_reaches_corners() {
            "mech": {"bores": [{"z0": 0, "z1": 8, "diameter": 26}], "length": 8, "outer_diameter": 40}}]}"#,
     )
     .unwrap();
-    let (s, _) = lensbench_project::expand_report(&p, &env()).unwrap();
+    let (s, _) = lensbench_project::expand(&p, &env(), &lensbench_project::ExpandOpts::default())
+        .map(|x| (x.system, x.notes))
+        .unwrap();
     let m = &s.mechanics;
     assert!(m[0].square && !m[1].square);
     // 角の近く（半径 26.9 > 外径の半径 20）は角の板の壁の中、丸のチューブの外

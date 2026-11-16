@@ -505,7 +505,16 @@ mod tests {
                 ..Default::default()
             };
             let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
-            let s = lensbench_project::expand_state(&pr, &env, None).unwrap();
+            let s = lensbench_project::expand(
+                &pr,
+                &env,
+                &lensbench_project::ExpandOpts {
+                    state: None,
+                    ..Default::default()
+                },
+            )
+            .map(|x| x.system)
+            .unwrap();
             format!("{:?}", s.surfaces).replace("-0.0,", "0.0,")
         };
         let mut l3 = lens();
@@ -617,7 +626,16 @@ mod tests {
                 ..Default::default()
             };
             let pr = lensbench_project::Project::from_json(&c.project().to_string()).unwrap();
-            lensbench_project::expand_state(&pr, &env, None).unwrap()
+            lensbench_project::expand(
+                &pr,
+                &env,
+                &lensbench_project::ExpandOpts {
+                    state: None,
+                    ..Default::default()
+                },
+            )
+            .map(|x| x.system)
+            .unwrap()
         };
         let mut l3 = lens();
         l3.surfs = vec![

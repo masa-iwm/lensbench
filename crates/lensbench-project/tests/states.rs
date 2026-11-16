@@ -3,7 +3,7 @@
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use lensbench_project::{expand, expand_state, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::{Path, PathBuf};
 
 fn root() -> PathBuf {
@@ -42,7 +42,13 @@ fn parse(rest: &str) -> Project {
 }
 
 fn project(blocks: &str) -> System {
-    expand(&parse(&format!("\"blocks\": {blocks}")), &env()).unwrap()
+    expand(
+        &parse(&format!("\"blocks\": {blocks}")),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap()
 }
 
 /// 面の列がビットまで同じ
@@ -123,17 +129,52 @@ fn a_state_applies_its_changes() {
     let p = parse(&format!("\"blocks\": {blocks}, {states}"));
     assert_eq!(p.state_names(), ["near", "no L3"]);
     // 状態なしは書いたまま
-    same_surfaces(&expand_state(&p, &env(), None).unwrap(), &project(&blocks));
+    same_surfaces(
+        &expand(
+            &p,
+            &env(),
+            &ExpandOpts {
+                state: None,
+                ..Default::default()
+            },
+        )
+        .map(|x| x.system)
+        .unwrap(),
+        &project(&blocks),
+    );
     // near: 物体距離と群の移動
-    let near = expand_state(&p, &env(), Some("near")).unwrap();
+    let near = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("near"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     let mut q = parse(&format!(
         "\"object_distance\": 2000, \"blocks\": {}",
         a0_blocks(t2 - 0.5, t4 + 0.5, "")
     ));
     q.name = p.name.clone();
-    same_surfaces(&near, &expand(&q, &env()).unwrap());
+    same_surfaces(
+        &near,
+        &expand(&q, &env(), &ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap(),
+    );
     // no L3: 玉 3 を空気で残し、間隔 d1 を 7 に
-    let s = expand_state(&p, &env(), Some("no L3")).unwrap();
+    let s = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("no L3"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     let hand = a0_blocks(7.0, t4, "").replace(
         r#""id": "L3","#,
         r#""id": "L3", "on": false, "off": "air","#,
@@ -150,7 +191,16 @@ fn bad_states_are_errors() {
         let p = parse(&format!(
             "\"blocks\": {blocks}, \"states\": [{{\"name\": \"x\", {set}}}]"
         ));
-        expand_state(&p, &env(), Some("x")).unwrap_err()
+        expand(
+            &p,
+            &env(),
+            &ExpandOpts {
+                state: Some("x"),
+                ..Default::default()
+            },
+        )
+        .map(|x| x.system)
+        .unwrap_err()
     };
     assert!(err(r#""set": {"nope": {"t": 1}}"#)
         .to_string()
@@ -168,24 +218,39 @@ fn bad_states_are_errors() {
         .to_string()
         .contains("blocks"));
     let p = parse(&format!("\"blocks\": {blocks}"));
-    assert!(expand_state(&p, &env(), Some("y")).is_err());
+    assert!(expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("y"),
+            ..Default::default()
+        }
+    )
+    .map(|x| x.system)
+    .is_err());
     // 同じ id が 2 つ
     let dup = blocks.replace(r#""id": "L3""#, r#""id": "L1""#);
     let p = parse(&format!(
         "\"blocks\": {dup}, \"states\": [{{\"name\": \"x\", \"set\": {{\"L1\": {{\"on\": false}}}}}}]"
     ));
-    assert!(expand_state(&p, &env(), Some("x")).is_err());
+    assert!(expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("x"),
+            ..Default::default()
+        }
+    )
+    .map(|x| x.system)
+    .is_err());
 }
 
 #[test]
 fn a_group_first_in_the_system_moves_against_the_rest() {
     let mk = |obj: &str| {
-        expand(
-            &parse(&format!(
+        expand(&parse(&format!(
                 r#"{obj} "blocks": [{{"type": "group", "shift": 1, "blocks": [{{"type": "stop"}}]}}, {{"type": "air", "t": 10}}]"#
-            )),
-            &env(),
-        )
+            )), &env(), &ExpandOpts::default()).map(|x| x.system)
         .unwrap()
     };
     // 無限遠の物体: 前の間隔は表さないので、後ろの間隔が縮むだけ
@@ -265,15 +330,13 @@ fn zmx_groups_move_and_tilt_lenses() {
 
 #[test]
 fn bad_zmx_groups_are_errors() {
-    let e = |groups: &str| {
-        expand(
-            &parse(&format!(
+    let e =
+        |groups: &str| {
+            expand(&parse(&format!(
                 r#""blocks": [{{"type": "zmx", "path": "A0/system.zmx", "groups": [{groups}]}}]"#
-            )),
-            &env(),
-        )
+            )), &env(), &ExpandOpts::default()).map(|x| x.system)
         .unwrap_err()
-    };
+        };
     assert!(
         e(r#"{"name": "a", "from": 1, "to": 4}, {"name": "b", "from": 3, "to": 7}"#)
             .to_string()
@@ -313,8 +376,26 @@ fn a_state_can_pick_a_zmx_configuration() {
     ))
     .unwrap();
     let env = env_at(&dir);
-    let s1 = expand_state(&p, &env, None).unwrap();
-    let s2 = expand_state(&p, &env, Some("c2")).unwrap();
+    let s1 = expand(
+        &p,
+        &env,
+        &ExpandOpts {
+            state: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
+    let s2 = expand(
+        &p,
+        &env,
+        &ExpandOpts {
+            state: Some("c2"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(s1.surfaces[4].t, t4);
     assert_eq!(s2.surfaces[4].t, t4 + 2.0);
@@ -338,15 +419,12 @@ fn a_shifted_group_in_a_double_pass() {
 #[test]
 fn a_group_with_a_mirror_cannot_move() {
     let mk = |sh: f64| {
-        expand(
-            &parse(&format!(
+        expand(&parse(&format!(
                 r#""blocks": [{{"type": "stop"}}, {{"type": "air", "t": 10}},
                     {{"type": "group", "shift": {sh}, "blocks": [{{"type": "mirror"}}]}}, {{"type": "air", "t": 20}},
                     {{"type": "lens", "source": {{"surfaces": [{{"radius": 40, "t": 4, "glass": "N-BK7"}}, {{"radius": -60}}]}}}},
                     {{"type": "air", "t": 30}}]"#
-            )),
-            &env(),
-        )
+            )), &env(), &ExpandOpts::default()).map(|x| x.system)
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
@@ -358,8 +436,7 @@ fn a_group_with_two_mirrors_cannot_move() {
     // 鏡 2 枚で parity が元に戻っても、群の中に鏡があれば動かせない。
     // 30° の折り曲げを 2 回すると出ていく軸が入ってくる軸から傾き、間隔の補正では表せない
     let mk = |sh: f64| {
-        expand(
-            &parse(&format!(
+        expand(&parse(&format!(
                 r#""blocks": [{{"type": "stop"}}, {{"type": "air", "t": 10}},
                     {{"type": "group", "shift": {sh}, "blocks": [
                         {{"type": "mirror", "tilt": [15, 0]}}, {{"type": "air", "t": 20}},
@@ -367,9 +444,7 @@ fn a_group_with_two_mirrors_cannot_move() {
                     {{"type": "air", "t": 20}},
                     {{"type": "lens", "source": {{"surfaces": [{{"radius": 40, "t": 4, "glass": "N-BK7"}}, {{"radius": -60}}]}}}},
                     {{"type": "air", "t": 30}}]"#
-            )),
-            &env(),
-        )
+            )), &env(), &ExpandOpts::default()).map(|x| x.system)
     };
     assert!(mk(0.0).is_ok());
     let e = mk(2.0).unwrap_err();
@@ -387,14 +462,18 @@ fn afocal_and_telecentric_settings() {
     let s = expand(
         &parse(&format!(r#""afocal": "as", "blocks": {blocks}"#)),
         &env(),
+        &ExpandOpts::default(),
     )
+    .map(|x| x.system)
     .unwrap();
     assert!(s.afocal);
     assert_eq!(s.afocal_unit, AfocalUnit::ArcSeconds);
     let e = expand(
         &parse(&format!(r#""afocal": "xx", "blocks": {blocks}"#)),
         &env(),
+        &ExpandOpts::default(),
     )
+    .map(|x| x.system)
     .unwrap_err();
     assert!(e.message().unwrap_or_default().contains("afocal"), "{e}");
     let mut p = parse(&format!(
@@ -404,7 +483,9 @@ fn afocal_and_telecentric_settings() {
     p.fields.points = vec![[0.0, 0.0], [0.0, 3.0]];
     p.aperture.kind = lensbench_core::system::ApertureKind::Na;
     p.aperture.value = 0.01;
-    let s = expand(&p, &env()).unwrap();
+    let s = expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     assert!(s.telecentric);
     // 書いて読み直しても同じ
     let p = parse(&format!(r#""afocal": "mr", "blocks": {blocks}"#));
@@ -415,7 +496,16 @@ fn afocal_and_telecentric_settings() {
     let p = parse(&format!(
         r#""blocks": {blocks}, "states": [{{"name": "afocal", "project": {{"afocal": "dg"}}}}]"#
     ));
-    let s = expand_state(&p, &env(), Some("afocal")).unwrap();
+    let s = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            state: Some("afocal"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     assert!(s.afocal);
     assert_eq!(s.afocal_unit, AfocalUnit::Degrees);
 }

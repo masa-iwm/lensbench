@@ -24,12 +24,20 @@ fn zmx(name: &str) -> System {
 }
 
 fn project(name: &str) -> System {
-    lensbench_project::load(
-        format!("{ROOT}/examples/projects/{name}.json").as_ref(),
-        &[format!("{ROOT}/tests/glass").into()],
-        None,
-    )
-    .unwrap()
+    lensbench_project::Project::load(format!("{ROOT}/examples/projects/{name}.json").as_ref())
+        .and_then(|q| {
+            lensbench_project::expand(
+                &q,
+                &lensbench_project::Env::for_file(
+                    format!("{ROOT}/examples/projects/{name}.json").as_ref(),
+                    &[format!("{ROOT}/tests/glass").into()],
+                    None,
+                ),
+                &lensbench_project::ExpandOpts::default(),
+            )
+        })
+        .map(|x| x.system)
+        .unwrap()
 }
 
 #[test]
@@ -488,7 +496,17 @@ fn overlay_splitter_paths() {
         let parts: Vec<(String, scene::Scene)> = ps
             .iter()
             .map(|q| {
-                let s = lensbench_project::expand_path(&p, &env, Some(q)).unwrap().0;
+                let s = lensbench_project::expand(
+                    &p,
+                    &env,
+                    &lensbench_project::ExpandOpts {
+                        path: Some(q),
+                        ..Default::default()
+                    },
+                )
+                .map(|x| (x.system, x.notes))
+                .unwrap()
+                .0;
                 (q.clone(), scene::build(&s, &Options::default()).unwrap())
             })
             .collect();
@@ -543,9 +561,17 @@ fn splitter_cube_is_two_prisms() {
             glass_dirs: vec![format!("{ROOT}/tests/glass").into()],
             catalog: None,
         };
-        let s = lensbench_project::expand_path(&p, &env, Some(path))
-            .unwrap()
-            .0;
+        let s = lensbench_project::expand(
+            &p,
+            &env,
+            &lensbench_project::ExpandOpts {
+                path: Some(path),
+                ..Default::default()
+            },
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
+        .0;
         let sc = scene::build(&s, &Options::default()).unwrap();
         let prisms: Vec<_> = sc.solids.iter().filter(|x| x.poly.is_some()).collect();
         assert!(prisms.len() >= 2, "{path} {flip}");
@@ -601,7 +627,17 @@ fn splitter_reflect_only_draws_whole_cube() {
             glass_dirs: vec![format!("{ROOT}/tests/glass").into()],
             catalog: None,
         };
-        let s = lensbench_project::expand_path(&p, &env, None).unwrap().0;
+        let s = lensbench_project::expand(
+            &p,
+            &env,
+            &lensbench_project::ExpandOpts {
+                path: None,
+                ..Default::default()
+            },
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
+        .0;
         let sc = scene::build(&s, &Options::default()).unwrap();
         let prisms: Vec<_> = sc.solids.iter().filter(|x| x.poly.is_some()).collect();
         assert_eq!(prisms.len(), 2, "{flip}");

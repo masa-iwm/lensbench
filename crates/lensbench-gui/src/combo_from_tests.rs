@@ -273,9 +273,16 @@ fn zmx_files_become_combos() {
         };
         let s = lensbench_project::open::open(f, &o).unwrap().system;
         let base = f.parent().unwrap();
-        let (t, _) =
-            lensbench_project::expand_json(&c.project().to_string(), base, &gd, None, None)
-                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let t = lensbench_project::Project::from_json(&c.project().to_string())
+            .and_then(|q| {
+                lensbench_project::expand(
+                    &q,
+                    &lensbench_project::Env::in_dir(base, &gd, None),
+                    &Default::default(),
+                )
+            })
+            .map(|x| x.system)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         lensbench_project::same_system(&s, &t).unwrap_or_else(|e| panic!("{name}: {e}"));
         let units = |s: &lensbench_core::System| {
             s.units

@@ -4,7 +4,7 @@ use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
 use lensbench_optim::zoom::{self, ZoomSpec};
 use lensbench_optim::{DefaultMerit, ParaxQ};
-use lensbench_project::{expand_state, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -22,7 +22,18 @@ fn states() -> Vec<System> {
     };
     ["wide", "mid", "tele"]
         .iter()
-        .map(|n| expand_state(&p, &env, Some(n)).unwrap())
+        .map(|n| {
+            expand(
+                &p,
+                &env,
+                &ExpandOpts {
+                    state: Some(n),
+                    ..Default::default()
+                },
+            )
+            .map(|x| x.system)
+            .unwrap()
+        })
         .collect()
 }
 

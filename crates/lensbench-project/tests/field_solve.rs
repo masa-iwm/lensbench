@@ -36,7 +36,15 @@ fn load_json(v: &serde_json::Value, tag: &str) -> lensbench_core::Result<System>
     std::fs::write(&p, serde_json::to_string(v).unwrap()).unwrap();
     let cat = LensCatalog::load(&[root().join("examples/lenses/LB")], &[&ZmxFileSource]).unwrap();
     let look = |a: &str, b: &str| cat.zmx(a, b);
-    let r = lensbench_project::load(&p, &[root().join("tests/glass")], Some(&look));
+    let r = lensbench_project::Project::load(&p)
+        .and_then(|q| {
+            lensbench_project::expand(
+                &q,
+                &lensbench_project::Env::for_file(&p, &[root().join("tests/glass")], Some(&look)),
+                &lensbench_project::ExpandOpts::default(),
+            )
+        })
+        .map(|x| x.system);
     let _ = std::fs::remove_dir_all(&dir);
     r
 }

@@ -1,6 +1,6 @@
 //! 組合せの系の絞り・ソルブ・ピックアップ（surface_ops）
 
-use lensbench_project::{expand_report, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -37,7 +37,7 @@ fn project(
           {{"type": "air", "t": 30}}],
         "surface_ops": {ops} }}"#
     );
-    expand_report(&Project::from_json(&txt)?, &env())
+    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default()).map(|x| (x.system, x.notes))
 }
 
 #[test]
@@ -159,7 +159,13 @@ fn remove_solve_of_block_source() {
             "blocks": [{{"type": "zmx", "id": "zmx", "path": "A0/system.zmx"}}, {{"type": "air", "t": 0}}],
             "surface_ops": {ops} }}"#
         );
-        expand_report(&Project::from_json(&txt).unwrap(), &env()).unwrap()
+        expand(
+            &Project::from_json(&txt).unwrap(),
+            &env(),
+            &ExpandOpts::default(),
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
     };
     // 元の .zmx は面 7 の厚さに周辺光線の高さのソルブ（MAZH）を持つ
     let (s, warn) = a0("[]");

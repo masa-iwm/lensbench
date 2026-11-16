@@ -336,9 +336,16 @@ mod tests {
         let mut c = combo::Combo::from_project(&p, &root).unwrap();
         assert_eq!(c.picks[0].kind, combo::ElemKind::ZmxRange);
         let solves = |c: &combo::Combo| {
-            let (t, _) =
-                lensbench_project::expand_json(&c.project().to_string(), &root, &glass, None, None)
-                    .unwrap();
+            let t = lensbench_project::Project::from_json(&c.project().to_string())
+                .and_then(|q| {
+                    lensbench_project::expand(
+                        &q,
+                        &lensbench_project::Env::in_dir(&root, &glass, None),
+                        &Default::default(),
+                    )
+                })
+                .map(|x| x.system)
+                .unwrap();
             t.solves.iter().map(|q| q.surf).collect::<Vec<_>>()
         };
         assert_eq!(solves(&c), [7]);

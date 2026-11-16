@@ -144,13 +144,16 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), crate::error:
         let look = |v: &str, q: &str| cat.zmx(v, q);
         let mut v = Vec::new();
         for n in &names {
-            let (s, warn) = lensbench_project::load_path_report(
-                &a.file,
-                &a.glass_dir,
-                Some(&look),
-                Some(n),
-                None,
-            )?;
+            let x = lensbench_project::expand(
+                &p,
+                &lensbench_project::Env::for_file(&a.file, &a.glass_dir, Some(&look)),
+                &lensbench_project::ExpandOpts {
+                    state: Some(n),
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| format!("{}: {e}", a.file.display()))?;
+            let (s, warn) = (x.system, x.notes);
             for w in warn {
                 eprintln!(
                     "{}",

@@ -9,7 +9,7 @@ use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
 use lensbench_formats::zmx_write;
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn dir() -> PathBuf {
@@ -28,7 +28,13 @@ fn project_system() -> System {
         glass_dirs: vec![glass_dir()],
         catalog: None,
     };
-    expand(&Project::from_json(&txt).unwrap(), &env).unwrap()
+    expand(
+        &Project::from_json(&txt).unwrap(),
+        &env,
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap()
 }
 
 fn zmx_system() -> System {

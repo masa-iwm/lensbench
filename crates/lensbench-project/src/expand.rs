@@ -244,50 +244,46 @@ pub(crate) fn pick_lens(s: &System, k: usize) -> lensbench_core::Result<Element>
     }
 }
 
-/// プロジェクトの状態 state（None なら変更なし）を順次の面の列の系に展開する
-pub fn expand_state(p: &Project, env: &Env, state: Option<&str>) -> lensbench_core::Result<System> {
-    match state {
-        Some(n) => expand(&p.with_state(n)?, env),
-        None => expand(p, env),
-    }
+/// 展開の選び方（[`expand`]）
+#[derive(Clone, Copy, Default)]
+pub struct ExpandOpts<'a> {
+    /// 状態（None なら変更なし）
+    pub state: Option<&'a str>,
+    /// ビームスプリッターの経路（BS を通る順の T・R）。None なら状態・プロジェクトの path
+    pub path: Option<&'a str>,
+    /// カタログの玉を使い回す（同じ環境の展開の間だけで共有する）
+    pub cache: Option<&'a LensCache>,
 }
 
-/// プロジェクトを順次の面の列の系に展開する
-pub fn expand(p: &Project, env: &Env) -> lensbench_core::Result<System> {
-    expand_report(p, env).map(|r| r.0)
+/// 展開の結果
+#[derive(Debug, Clone)]
+pub struct Expansion {
+    /// 順次の面の列の系
+    pub system: System,
+    /// 展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の説明
+    pub notes: Vec<String>,
+    /// id のある空気のブロックが入る面（差し替え探索の間隔の変数、[`Gap`]）
+    pub gaps: Vec<Gap>,
 }
 
-/// expand と同じ。展開で落としたもの（取り込んだ範囲の外を参照するピックアップなど）の説明も返す
-pub fn expand_report(p: &Project, env: &Env) -> lensbench_core::Result<(System, Vec<String>)> {
-    expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.1))
-}
-
-/// id のある空気のブロックが入る面: (id, 面番号, 向き)。[`expand_gaps`]
+/// id のある空気のブロックが入る面: (id, 面番号, 向き)。向きは鏡の後（光が −z へ進む）で −1（面の厚さは −t）。
+/// 往復で 2 回通る空気は 2 つ並ぶ。面の厚さには、同じ面に入る他の空気・群の移動も足されている
 pub type Gap = (String, usize, f64);
 
-/// id のある空気のブロックの間隔（差し替え探索の変数）: (id, その空気が入る面の番号, 向き)。
-/// 向きは鏡の後（光が −z へ進む）で −1（面の厚さは −t）。往復で 2 回通る空気は 2 つ並ぶ。
-/// 面の厚さには、同じ面に入る他の空気・群の移動も足されている
-pub fn expand_gaps(p: &Project, env: &Env) -> lensbench_core::Result<(System, Vec<Gap>)> {
-    expand_inner(p, env, p.path.as_deref(), false, None).map(|r| (r.0, r.3))
-}
-
-/// [`expand_gaps`] で、カタログの玉を cache から使い回す（cache は同じ環境の展開の間だけで共有する）
-pub fn expand_gaps_cached(
-    p: &Project,
-    env: &Env,
-    cache: &LensCache,
-) -> lensbench_core::Result<(System, Vec<Gap>)> {
-    expand_inner(p, env, p.path.as_deref(), false, Some(cache)).map(|r| (r.0, r.3))
-}
-
-/// ビームスプリッターの経路 path（BS を通る順の T・R）を展開する。None ならプロジェクトの path
-pub fn expand_path(
-    p: &Project,
-    env: &Env,
-    path: Option<&str>,
-) -> lensbench_core::Result<(System, Vec<String>)> {
-    expand_inner(p, env, path.or(p.path.as_deref()), false, None).map(|r| (r.0, r.1))
+/// プロジェクトを順次の面の列の系に展開する
+pub fn expand(p: &Project, env: &Env, o: &ExpandOpts) -> lensbench_core::Result<Expansion> {
+    let with;
+    let p = match o.state {
+        Some(n) => {
+            with = p.with_state(n)?;
+            &with
+        }
+        None => p,
+    };
+    Ok(
+        expand_inner(p, env, o.path.or(p.path.as_deref()), false, o.cache)?
+            .ok_or("internal error: the BS path is short outside the path search")?,
+    )
 }
 
 /// プロジェクトでとれるビームスプリッターの経路の全部（BS を通る順の T・R の文字列）。BS がなければ空。
@@ -297,8 +293,8 @@ pub fn paths(p: &Project, env: &Env) -> lensbench_core::Result<Vec<String>> {
     let mut todo = vec![String::new()];
     while let Some(q) = todo.pop() {
         match expand_inner(p, env, Some(&q), true, None) {
-            Ok(_) => out.push(q),
-            Err(e) if e == splitter::NEED.into() => {
+            Ok(Some(_)) => out.push(q),
+            Ok(None) => {
                 if out.len() + todo.len() > 1024 {
                     return Err("more than 1024 paths".into());
                 }
@@ -343,7 +339,7 @@ pub(crate) fn expand_inner(
     path: Option<&str>,
     strict: bool,
     cache: Option<&LensCache>,
-) -> lensbench_core::Result<(System, Vec<String>, usize, Vec<Gap>)> {
+) -> lensbench_core::Result<Option<Expansion>> {
     {
         let mut ids = Vec::new();
         splitter_ids(&p.blocks, &mut ids);
@@ -409,7 +405,11 @@ pub(crate) fn expand_inner(
         if matches!(b, Block::Detector(_)) && i + 1 == p.blocks.len() {
             continue;
         }
-        c.block(b, &p.blocks, i)?;
+        match c.block(b, &p.blocks, i) {
+            // 経路の文字が足りない（strict のとき。paths が次の文字を試す）
+            Err(_) if c.split.need => return Ok(None),
+            r => r?,
+        }
     }
     if c.split.pos < c.split.path.len() {
         return Err(format!(
@@ -419,7 +419,6 @@ pub(crate) fn expand_inner(
         )
         .into());
     }
-    let npass = c.split.pos;
     // 絞りを面に置く操作（surface_ops の set_stop）があれば、ブロックの絞りは無くてよい
     let stop_op = p
         .surface_ops
@@ -691,7 +690,11 @@ pub(crate) fn expand_inner(
         Ok(())
     })?;
     s.validate()?;
-    Ok((s, warn, npass, c.gaps))
+    Ok(Some(Expansion {
+        system: s,
+        notes: warn,
+        gaps: c.gaps,
+    }))
 }
 
 /// 機構部品を系の面に置く（[`Project::mechanics`]）。ブロックが無い（状態で外したなど）部品は置かずに注意を出す
@@ -1372,8 +1375,10 @@ pub(crate) fn keep_pickups(
                     "thickness"
                 };
                 warn.push(format!(
-                    "solved the {what} of surface {} again with the solve ({:?}, value {}): {b} → {a}",
-                    q.surf, q.kind, q.kind.value()
+                    "solved the {what} of surface {} again with the solve ({}, value {}): {b} → {a}",
+                    q.surf,
+                    lensbench_core::solves::solve_kind_info(q.kind).0,
+                    q.kind.value()
                 ));
             }
         }

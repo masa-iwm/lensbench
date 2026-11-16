@@ -6,7 +6,7 @@ use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_design::swap::{self, Filter, PartRef, Slot, SwapSearch, SwapSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts};
-use lensbench_project::{expand, expand_gaps, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -60,7 +60,9 @@ fn air_gaps_map_to_surface_thickness() {
         catalog: Some(&look),
         ..env(dir)
     };
-    let (s, gaps) = expand_gaps(&p, &e).unwrap();
+    let (s, gaps) = expand(&p, &e, &ExpandOpts::default())
+        .map(|x| (x.system, x.gaps))
+        .unwrap();
     let ids: Vec<&str> = gaps.iter().map(|g| g.0.as_str()).collect();
     assert_eq!(ids, ["gap", "bfl"]);
     // 面 1 は絞り、2〜3 が PCX、4〜6 が ACH（貼り合わせ）。gap は面 3 の後、bfl は最後の面の後
@@ -70,7 +72,13 @@ fn air_gaps_map_to_surface_thickness() {
     assert_eq!(s.surfaces[s.image() - 1].t, 30.0);
     assert!(gaps.iter().all(|g| g.2 == 1.0));
     assert_eq!(
-        format!("{:?}", expand(&p, &e).unwrap().surfaces),
+        format!(
+            "{:?}",
+            expand(&p, &e, &ExpandOpts::default())
+                .map(|x| x.system)
+                .unwrap()
+                .surfaces
+        ),
         format!("{:?}", s.surfaces)
     );
 }
@@ -210,7 +218,9 @@ fn search_ranks_combinations_and_matches_a_direct_optimization() {
         catalog: Some(&look),
         ..env(dir)
     };
-    let (sys, gaps) = expand_gaps(&q, &e).unwrap();
+    let (sys, gaps) = expand(&q, &e, &ExpandOpts::default())
+        .map(|x| (x.system, x.gaps))
+        .unwrap();
     assert_eq!(gaps[1].1, sys.image() - 1);
     let mut pr = lensbench_optim::Problem::single(sys.clone());
     pr.vars

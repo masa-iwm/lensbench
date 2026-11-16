@@ -3,7 +3,7 @@
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::FieldSel;
-use lensbench_project::{expand_path, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -62,7 +62,17 @@ fn bandpass_on_plate() {
            {"type": "lens", "source": {"surfaces": [{"t": 2, "glass": "N-BK7", "coat": "BP532"}, {}]}},
            {"type": "air", "t": 10}]"#,
     );
-    let s = expand_path(&p, &env(root()), None).unwrap().0;
+    let s = expand(
+        &p,
+        &env(root()),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
     assert!(s.coat_tables.contains_key("BP532"));
     let (tin, tout) = (transmission(&s, 0), transmission(&s, 1));
     // 裏面のフレネル（N-BK7 → 空気 ≈ 4 %）を除く
@@ -75,7 +85,16 @@ fn bandpass_on_plate() {
         r#"{"BP": {"type": "bandpass", "center_nm": 532, "fwhm_nm": 600}}"#,
         "[]",
     );
-    assert!(expand_path(&p, &env(root()), None).is_err());
+    assert!(expand(
+        &p,
+        &env(root()),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        }
+    )
+    .map(|x| (x.system, x.notes))
+    .is_err());
 }
 
 /// ユーザーカタログの coatings: 品の面の coat から使え、プロジェクトの同じ名前が優先
@@ -92,20 +111,32 @@ fn catalog_coatings() {
     .unwrap();
     let blocks = r#"[{"type": "stop"}, {"type": "air", "t": 5},
         {"type": "user", "catalog": "filters.json", "item": "NE10A"}, {"type": "air", "t": 10}]"#;
-    let s = expand_path(&project("{}", blocks), &env(dir.clone()), None)
-        .unwrap()
-        .0;
+    let s = expand(
+        &project("{}", blocks),
+        &env(dir.clone()),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
     let fres = |n: f64| 1.0 - ((n - 1.0) / (n + 1.0)).powi(2);
     let t = transmission(&s, 0);
     assert!((t / fres(s.n(2)[0]) - 0.1).abs() < 1e-9, "{t}");
-    let s = expand_path(
+    let s = expand(
         &project(
             r#"{"ND1": {"type": "nd", "od": 2, "absorptive": true}}"#,
             blocks,
         ),
         &env(dir.clone()),
-        None,
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
     )
+    .map(|x| (x.system, x.notes))
     .unwrap()
     .0;
     let t = transmission(&s, 0);
@@ -122,8 +153,28 @@ fn dichroic_splits_wavelengths() {
            {"type": "splitter", "id": "BS", "form": "ideal", "coat": "DMLP500", "angle": [45, 0]},
            {"type": "air", "t": 20}]"#,
     );
-    let t = expand_path(&p, &env(root()), Some("T")).unwrap().0;
-    let r = expand_path(&p, &env(root()), Some("R")).unwrap().0;
+    let t = expand(
+        &p,
+        &env(root()),
+        &ExpandOpts {
+            path: Some("T"),
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
+    let r = expand(
+        &p,
+        &env(root()),
+        &ExpandOpts {
+            path: Some("R"),
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
     // 532 nm・600 nm は透過、450 nm は反射（45° でエッジは 500·√(1 − (sin45°/2)²) ≈ 468 nm へ）
     for w in [0, 1] {
         assert!(transmission(&t, w) > 0.9, "{w} {}", transmission(&t, w));
@@ -142,7 +193,17 @@ fn zmx_export_keeps_coat_tables() {
            {"type": "lens", "source": {"surfaces": [{"t": 2, "glass": "N-BK7", "coat": "BP532"}, {}]}},
            {"type": "air", "t": 10}]"#,
     );
-    let s = expand_path(&p, &env(root()), None).unwrap().0;
+    let s = expand(
+        &p,
+        &env(root()),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
     let dir = std::env::temp_dir().join(format!("lb_coat_export_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let zp = dir.join("bp.zmx");
@@ -211,7 +272,17 @@ fn filters_match_opticstudio() {
         let txt = std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap();
         let p = Project::from_json(&txt).unwrap();
         let path = (name == "lp45_T").then_some("T");
-        let s = expand_path(&p, &env(dir.clone()), path).unwrap().0;
+        let s = expand(
+            &p,
+            &env(dir.clone()),
+            &ExpandOpts {
+                path,
+                ..Default::default()
+            },
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
+        .0;
         let coat = Coatings::for_system(&s).unwrap();
         for fld in fields.as_array().unwrap() {
             // (波長) ごとの強度の比

@@ -18,7 +18,7 @@ JSON スキーマは `docs/schema/` にある: `project`（プロジェクトフ
   群にも偏心・傾き・ON/OFF を付けられる。
 - 状態（`states`、多重構成に当たる）は名前と変更の組。`set` はブロックの `id` ごとに変える値（`on`・`off`・`t`・`shift`・`decenter`・`tilt`・
   .zmx の構成番号 `config` など、ブロックの JSON の項目）、`project` は系の値（`object_distance`・`aperture`・`fields` など）。
-  CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand_state`。
+  CLI は `--state 名前` で選ぶ（`info` が状態の一覧を出す）。ライブラリは `lensbench_project::expand` に `ExpandOpts { state, .. }` を渡す。
 - 自動の半径: 面の `semi` を `"auto"` にすると、半径を光線から求める（OpticStudio の Automatic と同じ決め方: 全視野・全波長の
   瞳の縁の光線の高さの最大。回転対称な系は視野の値 (x, y) の向きの上下 2 本、そうでない系は縁の 8 本）。系やパラメータを変えるたびに求め直し、
   描画・機構部品の検査・書き出し・Floating 開口に使う。`surface_edits` の `"semi": "auto"`、系ファイルの面の `"semi": "auto"`、

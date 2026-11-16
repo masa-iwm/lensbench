@@ -17,11 +17,21 @@ fn root() -> PathBuf {
 fn folded() -> System {
     let cat = LensCatalog::load(&[root().join("examples/lenses/LB")], &[&ZmxFileSource]).unwrap();
     let look = |v: &str, p: &str| cat.zmx(v, p);
-    let s = lensbench_project::load(
+    let s = lensbench_project::Project::load(
         &root().join("examples/projects/P14_tilted_spherical_double_pass.json"),
-        &[root().join("tests/glass")],
-        Some(&look),
     )
+    .and_then(|q| {
+        lensbench_project::expand(
+            &q,
+            &lensbench_project::Env::for_file(
+                &root().join("examples/projects/P14_tilted_spherical_double_pass.json"),
+                &[root().join("tests/glass")],
+                Some(&look),
+            ),
+            &lensbench_project::ExpandOpts::default(),
+        )
+    })
+    .map(|x| x.system)
     .unwrap();
     assert!(s.surfaces[4].is_mirror());
     assert_eq!((s.surfaces[3].cb_order, s.surfaces[5].cb_order), (0, 1));

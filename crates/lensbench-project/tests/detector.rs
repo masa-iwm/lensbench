@@ -1,7 +1,7 @@
 //! 検出器のブロック（登録した種類、`lensbench_project::detectors`）: 読込・書き出し・展開・誤り
 use lensbench_core::ext;
 use lensbench_project::detectors::{self, DetectorKind};
-use lensbench_project::{expand, Block, Env, Project};
+use lensbench_project::{expand, Block, Env, ExpandOpts, Project};
 use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 
@@ -84,10 +84,19 @@ fn detector_is_read_written() {
         Some(d)
     );
     // 検出器を除いても同じ系
-    let a = expand(&p, &env()).unwrap();
+    let a = expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     let mut q = p.clone();
     assert!(matches!(q.blocks.pop(), Some(Block::Detector(_))));
-    assert_eq!(a.surfaces.len(), expand(&q, &env()).unwrap().surfaces.len());
+    assert_eq!(
+        a.surfaces.len(),
+        expand(&q, &env(), &ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap()
+            .surfaces
+            .len()
+    );
     // 登録した種類はスキーマに載る
     let sc = lensbench_project::schema::schema("project").unwrap();
     let blocks = sc
@@ -135,7 +144,9 @@ fn detector_errors_in() {
     // 最後のブロックだけ
     let v = project(json!([{"type": "toy_camera"}, lens()]));
     let p = Project::from_json(&v.to_string()).unwrap();
-    let e = expand(&p, &env()).unwrap_err();
+    let e = expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap_err();
     assert!(e.message().unwrap_or_default().contains("detector"), "{e}");
     // 組み込みの名前は登録できない
     let mut x = lensbench_core::ext::Ext::default();

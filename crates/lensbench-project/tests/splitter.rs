@@ -3,7 +3,7 @@
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::FieldSel;
 use lensbench_core::System;
-use lensbench_project::{expand_path, paths, Env, Project};
+use lensbench_project::{expand, paths, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -34,7 +34,17 @@ fn proj(blocks: &str) -> Project {
 }
 
 fn sys(blocks: &str, path: Option<&str>) -> System {
-    expand_path(&proj(blocks), &env(), path).unwrap().0
+    expand(
+        &proj(blocks),
+        &env(),
+        &ExpandOpts {
+            path,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0
 }
 
 const PX: [f64; 5] = [0.0, 0.7, -0.5, 0.3, 0.0];
@@ -395,17 +405,34 @@ fn off_splitter_is_removed_and_path_letters_are_checked() {
     );
     same_global(&sys(&on, None), &sys(&straight, None), 1e-12);
     assert!(paths(&proj(&on), &env()).unwrap().is_empty());
-    let e = expand_path(&proj(&on), &env(), Some("T")).unwrap_err();
+    let e = expand(
+        &proj(&on),
+        &env(),
+        &ExpandOpts {
+            path: Some("T"),
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap_err();
     assert!(
         e.message().unwrap_or_default().contains("too many letters"),
         "{e}"
     );
     let dup = r#"[{"type": "stop"}, {"type": "splitter", "id": "BS", "form": "ideal"},
         {"type": "splitter", "id": "BS", "form": "ideal"}, {"type": "air", "t": 5}]"#;
-    assert!(expand_path(&proj(dup), &env(), None)
-        .unwrap_err()
-        .to_string()
-        .contains("twice or more"));
+    assert!(expand(
+        &proj(dup),
+        &env(),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        }
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap_err()
+    .to_string()
+    .contains("twice or more"));
 }
 
 /// 状態で経路を選ぶ
@@ -418,9 +445,27 @@ fn a_state_selects_the_path() {
     );
     let p = Project::from_json(&txt).unwrap();
     let r = p.with_state("refl").unwrap();
-    let (s, _) = expand_path(&r, &env(), None).unwrap();
+    let (s, _) = expand(
+        &r,
+        &env(),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap();
     assert!(s.surfaces.iter().any(|d| d.is_mirror()));
-    let (s, _) = expand_path(&p, &env(), None).unwrap();
+    let (s, _) = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap();
     assert!(!s.surfaces.iter().any(|d| d.is_mirror()));
 }
 
@@ -493,7 +538,17 @@ const OS_CASES: [&str; 8] = [
 fn os_case(name: &str) -> System {
     let txt = std::fs::read_to_string(splitter_dir().join(format!("{name}.json"))).unwrap();
     let p = Project::from_json(&txt).unwrap();
-    expand_path(&p, &env(), None).unwrap().0
+    expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            path: None,
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0
 }
 
 /// 書き出した .zmx（反射の面は膜なしの鏡）を読み直すと、プロジェクトの経路と同じ光線

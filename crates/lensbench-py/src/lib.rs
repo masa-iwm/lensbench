@@ -1086,14 +1086,15 @@ impl PySystem {
         let r = py.detach(|| -> lensbench_core::Result<(System, Vec<String>)> {
             let cat = LensCatalog::load_registered(&lens_catalogs)?;
             let look = |v: &str, p: &str| cat.zmx(v, p);
-            lensbench_project::expand_json_path(
-                &txt,
-                &base,
-                &glass_dirs,
-                Some(&look),
-                state.as_deref(),
-                beam_path.as_deref(),
-            )
+            let p = lensbench_project::Project::from_json(&txt)?;
+            let env = lensbench_project::Env::in_dir(&base, &glass_dirs, Some(&look));
+            let o = lensbench_project::ExpandOpts {
+                state: state.as_deref(),
+                path: beam_path.as_deref(),
+                cache: None,
+            };
+            let x = lensbench_project::expand(&p, &env, &o)?;
+            Ok((x.system, x.notes))
         });
         let (mut sys, warn) = r.map_err(err)?;
         warn_all(py, &warn)?;

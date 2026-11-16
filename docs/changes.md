@@ -284,6 +284,11 @@
   並びは前と同じで、値の意味を `value_kind`・`term_value_kinds` で足した。
 - `lensbench_runs::Sampler` は `params` と `draws: Draws` に（`vars`・`seed` の欄はなくした。種は `draws.seed()`）。`Dist` に
   `End`（lo か hi を半々）と `Disc`（円の中の分布の 1 成分）、組の分布 `Joint::Disc` と `Sampler::with_joints` を足した。
+- 展開の入口を 1 本にした（PRJ-12）: `lensbench_project::expand(&project, &env, &ExpandOpts { state, path, cache })` が
+  `Expansion { system, notes, gaps }` を返す。消したのは `expand_state`・`expand_report`・`expand_gaps`・`expand_gaps_cached`・
+  `expand_path`・`load`・`load_state`・`load_state_report`・`load_path_report`・`expand_json`・`expand_json_path`。ファイルからは
+  `Project::load(path)` で読み、環境は `Env::for_file(path, glass_dirs, catalog)`（相対パスはそのフォルダから）か
+  `Env::in_dir(base, …)` で作る。JSON の本文からは `Project::from_json`。前の `expand(p, env)` は `expand(p, env, &ExpandOpts::default())?.system`。
 
 ### GUI
 - 組合せの図のキー: ロックは L から Ctrl+L に。R・F は Ctrl などを押していないときだけ効く。要素を外すのは Delete だけ（Backspace では外さない。文字を消すつもりの誤操作を防ぐ）。

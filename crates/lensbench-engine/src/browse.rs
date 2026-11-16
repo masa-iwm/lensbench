@@ -701,7 +701,8 @@ fn user_lens_summary(
         glass_dirs: glass_dirs.to_vec(),
         catalog: Some(&|v: &str, q: &str| lens_cat.zmx(v, q)),
     };
-    let s = lensbench_project::expand(&p, &env)?;
+    let s = lensbench_project::expand(&p, &env, &lensbench_project::ExpandOpts::default())
+        .map(|x| x.system)?;
     system_summary(&s, f64::NAN)
 }
 

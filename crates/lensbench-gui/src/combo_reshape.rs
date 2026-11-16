@@ -357,9 +357,13 @@ mod tests {
     /// 組合せの系（面の行: 曲率半径・厚さ・硝材）
     fn rows(c: &Combo) -> Vec<(f64, f64, String)> {
         let glass = vec![root().join("tests/glass")];
-        let (t, _) =
-            lensbench_project::expand_json(&c.project().to_string(), &root(), &glass, None, None)
-                .unwrap();
+        let t = lensbench_project::Project::from_json(&c.project().to_string())
+            .and_then(|q| {
+                let env = lensbench_project::Env::in_dir(&root(), &glass, None);
+                lensbench_project::expand(&q, &env, &Default::default())
+            })
+            .unwrap()
+            .system;
         t.surfaces
             .iter()
             .map(|s| ((s.c * 1e9).round() / 1e9, s.t, s.mat.name()))

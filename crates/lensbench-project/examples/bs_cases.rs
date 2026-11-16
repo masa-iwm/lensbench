@@ -2,7 +2,7 @@
 //!
 //! cargo run --release -p lensbench-project --example bs_cases -- 出力のフォルダ
 #![allow(clippy::unwrap_used, clippy::panic)] // 試験・例・組み立ての補助は panic で知らせる（XCT-35）
-use lensbench_project::{expand_path, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 pub fn cases() -> Vec<(&'static str, String, &'static str)> {
@@ -73,7 +73,16 @@ fn main() {
         );
         std::fs::write(out.join(format!("{name}.json")), &txt).unwrap();
         let p = Project::from_json(&txt).unwrap();
-        let (mut s, _) = expand_path(&p, &env, None).unwrap();
+        let (mut s, _) = expand(
+            &p,
+            &env,
+            &ExpandOpts {
+                path: None,
+                ..Default::default()
+            },
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap();
         s.edit_raw(|rx| {
             rx.coating_file = Some(PathBuf::from("LBBS.DAT"));
             // OpticStudio の順次の系には屈折面での反射がないので、反射の面は膜なしの鏡で書く（形だけの照合）

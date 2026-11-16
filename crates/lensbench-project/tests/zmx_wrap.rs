@@ -21,9 +21,16 @@ fn zmx_projects_rebuild_the_same_system() {
         };
         let s = lensbench_core::zmx::load_with(f, &o).unwrap();
         let p = lensbench_project::zmx_project(&s, &f.display().to_string()).unwrap();
-        let (t, _) =
-            lensbench_project::expand_json(&p.to_string(), Path::new("/"), &gd, None, None)
-                .unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+        let env = lensbench_project::Env {
+            base: "/".into(),
+            glass_dirs: gd.clone(),
+            catalog: None,
+            step_files: None,
+        };
+        let t = lensbench_project::Project::from_json(&p.to_string())
+            .and_then(|q| lensbench_project::expand(&q, &env, &Default::default()))
+            .unwrap_or_else(|e| panic!("{}: {e}", f.display()))
+            .system;
         let name = f.parent().unwrap().file_name().unwrap().to_string_lossy();
         match lensbench_project::same_system(&s, &t) {
             Ok(()) => same.push(name.to_string()),
@@ -97,7 +104,8 @@ fn glrs_and_vignetting_in_a_project() {
               {{"type": "air", "t": 30}}] }}"#
         );
         let p = lensbench_project::Project::from_json(&txt)?;
-        lensbench_project::expand(&p, &env)
+        lensbench_project::expand(&p, &env, &lensbench_project::ExpandOpts::default())
+            .map(|x| x.system)
     };
     let make = |extra: &str| make_with(FIELDS, extra);
     let s = make(r#""glrs": {"block": "L1", "surface": 1},"#).unwrap();

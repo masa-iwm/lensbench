@@ -238,11 +238,19 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overl
             Some(v) => v.split(',').map(|x| Some(x.trim().to_string())).collect(),
         };
         for pa in &paths {
-            let (s, warn) =
-                lensbench_project::expand_path(&ps, &env, pa.as_deref()).map_err(|x| match pa {
-                    Some(q) => format!("path {q}: {x}"),
-                    None => x.to_string(),
-                })?;
+            let (s, warn) = lensbench_project::expand(
+                &ps,
+                &env,
+                &lensbench_project::ExpandOpts {
+                    path: pa.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .map(|x| (x.system, x.notes))
+            .map_err(|x| match pa {
+                Some(q) => format!("path {q}: {x}"),
+                None => x.to_string(),
+            })?;
             // 状態・経路ごとに同じ注意が出るので 1 度だけ
             for w in warn {
                 if !notes.contains(&w) {

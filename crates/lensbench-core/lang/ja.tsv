@@ -1164,6 +1164,7 @@ internal error (panic)	内部エラー（panic）
 stop what must be optimize, tolerance or swap	stop の what は optimize・tolerance・swap のどれか
 load needs file	load には file
 beam_path must be a string (the BS path, e.g. "TR")	beam_path は文字列（BS の経路、例 "TR"）
+the BS path has too few letters	BS の経路の文字が足りない
 {m} must be catalog_items, catalog_edit or catalog_fill	{m} は catalog_items・catalog_edit・catalog_fill
 {what} must be a list of strings	{what} は文字列の並び
 {k} must be an integer 0 or more	{k} は 0 以上の整数
@@ -1580,7 +1581,7 @@ surface_edits: block {} not found, so the override of surface {} is not applied	
 {path}: the sign of the scale and offset of surface {} {:?} (from surface {}) was chosen by matching values (scale {}, offset {}); check it is as intended	{path}: 面 {} の {:?}（面 {} から）は値の照合で倍率・ずれの符号を決めました（倍率 {}・ずれ {}）。意図どおりか確認します
 {path}: the value relation of surface {} {:?} (from surface {}) changed in the expansion (fixed to the value)	{path}: 面 {} の {:?}（面 {} から）は展開で値の関係が変わりました（値で固定）
 {}: the solve of surface {} ({:?}) involves surfaces outside the range or far away (fixed to the value)	{}: 面 {} のソルブ（{:?}）は、関わる面が範囲の外か離れています（値で固定）
-solved the {what} of surface {} again with the solve ({:?}, value {}): {b} → {a}	面 {} の{what}をソルブ（{:?}、値 {}）で解き直しました: {b} → {a}
+solved the {what} of surface {} again with the solve ({}, value {}): {b} → {a}	面 {} の{what}をソルブ（{}、値 {}）で解き直しました: {b} → {a}
 the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})	系ファイルの hash が中身と合いません（書いた後に直した？ 記録 {hash}、今 {hash_sys}）
 removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} の{what}のマクロのソルブ {name} を外して、保存された値で固定しました: 解き直せません（{e}）
 removed the {what} macro solve {name} of surface {k} and fixed the saved value: {e}	面 {k} の{what}のマクロのソルブ {name} を外して、保存された値で固定しました: {e}

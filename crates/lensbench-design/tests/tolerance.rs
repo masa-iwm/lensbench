@@ -7,7 +7,7 @@ use lensbench_design::tolerance::{
     catalog_vendors, compensators_csv, out_opts, result_json, reversed_lenses, spec_from_json,
     spec_from_json_with, tilt_pairs,
 };
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -37,7 +37,9 @@ fn sys() -> (Project, System) {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    let s = expand(&p, &env).unwrap();
+    let s = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     (p, s)
 }
 
@@ -283,7 +285,9 @@ fn double_pass_lens_errors_on_both_passes() {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    let s = expand(&p, &env).unwrap();
+    let s = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     let m = spec_from_json(&json!({"seed": 3}), vec![s.clone()], &HashMap::new()).unwrap();
     // 玉は往復で 1 つ（L1・L2）。戻りの範囲を別の玉（lens3 …）にしない
     let names: Vec<&str> = m.tols.iter().map(|t| t.label.as_str()).collect();
@@ -399,7 +403,9 @@ fn wedge_face_follows_lens_orientation() {
             DP.to_string()
         };
         let p = Project::from_json(&src).unwrap();
-        let s = expand(&p, &env).unwrap();
+        let s = expand(&p, &env, &ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap();
         let r = reversed_lenses(&p);
         assert_eq!(r.contains("L2"), rev);
         // 往きと戻りの面がすべて平面（front なら曲面）
@@ -449,7 +455,9 @@ fn wedge_face_follows_lens_orientation() {
         // id の無い裏返した玉（lens2 …）も同じ（#192）
         let src2 = src.replace(r#""id": "L2", "#, "");
         let p2 = Project::from_json(&src2).unwrap();
-        let s2 = expand(&p2, &env).unwrap();
+        let s2 = expand(&p2, &env, &ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap();
         assert!(reversed_lenses(&p2).is_empty());
         let m = spec_from_json(&json!({}), vec![s2.clone()], &HashMap::new()).unwrap();
         let t = m
@@ -484,7 +492,9 @@ fn groups_on_lens_blocks() {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    let s = expand(&p, &env).unwrap();
+    let s = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     let v = json!({"preset": "none", "groups": {"L1": {"decenter": 0.2, "tilt": 0.1}, "L2": {"shift": 0.05}}});
     let m = spec_from_json(&v, vec![s.clone()], &HashMap::new()).unwrap();
     let names: Vec<&str> = m.tols.iter().map(|t| t.label.as_str()).collect();

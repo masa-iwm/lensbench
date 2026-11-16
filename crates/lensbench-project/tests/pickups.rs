@@ -1,7 +1,7 @@
 //! zmx ブロックで取り込んだ面のピックアップを展開した系に残す。
 use lensbench_core::system::{FieldSel, System};
 use lensbench_core::zmx;
-use lensbench_project::{expand_report, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 /// 面 4〜6 が面 1〜3 をピックアップする雛形（曲率・円錐・厚さ・非球面・座標ブレーク）
@@ -41,7 +41,9 @@ fn project(blocks: &str) -> (System, Vec<String>) {
         glass_dirs: vec![],
         catalog: None,
     };
-    expand_report(&p, &env).unwrap()
+    expand(&p, &env, &ExpandOpts::default())
+        .map(|x| (x.system, x.notes))
+        .unwrap()
 }
 
 fn bits(s: &System) -> Vec<u64> {
@@ -199,7 +201,9 @@ fn zmx_block_without_its_stop() {
         glass_dirs: vec![],
         catalog: None,
     };
-    let e = expand_report(&p, &env).unwrap_err();
+    let e = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| (x.system, x.notes))
+        .unwrap_err();
     assert!(e.message().unwrap_or_default().contains("0 stops"), "{e}");
 }
 

@@ -134,8 +134,6 @@ const TPAIR: [usize; 4] = [1, 0, 3, 2];
 const RPAIR: [usize; 4] = [2, 3, 0, 1];
 /// z を逆に（y のまわりに 180°）
 const Y180: M3 = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]];
-/// 経路の文字が足りない（[`crate::paths`] が次の文字を試す）
-pub(crate) const NEED: &str = "\u{0}経路の文字が足りない";
 const MAX_PASSES: usize = 64;
 
 /// 面での作用
@@ -490,6 +488,8 @@ pub(crate) struct SplitState {
     /// 分岐の先まで進んだ（経路の終わり）
     pub done: bool,
     pub passes: usize,
+    /// strict で経路の文字が足りなくなった
+    pub need: bool,
 }
 
 /// 経路の文字列（T・R、大小どちらも）
@@ -528,7 +528,9 @@ impl<'a, 'b> Ctx<'a, 'b> {
             return Ok(st.path[st.pos - 1]);
         }
         if st.strict {
-            return Err(NEED.into());
+            // 経路の文字が足りない（[`crate::paths`] が次の文字を試す）
+            st.need = true;
+            return Err("the BS path has too few letters".into());
         }
         Ok(arm == Arm::T)
     }

@@ -2,7 +2,7 @@
 
 use lensbench_core::coating::{Coatings, C64};
 use lensbench_core::system::FieldSel;
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -26,7 +26,7 @@ fn try_system(surfs: &str) -> lensbench_core::Result<lensbench_core::System> {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    expand(&p, &env)
+    expand(&p, &env, &ExpandOpts::default()).map(|x| x.system)
 }
 
 /// 軸上の光線の、入力 x・y の偏光に対する出口の電場 (Ex, Ey)
@@ -126,7 +126,11 @@ fn spec_round_trip_and_errors() {
             glass_dirs: vec![root().join("tests/glass")],
             catalog: None,
         };
-        assert!(p.and_then(|p| expand(&p, &env)).is_err(), "{bad}");
+        assert!(
+            p.and_then(|q| expand(&q, &env, &ExpandOpts::default()).map(|x| x.system))
+                .is_err(),
+            "{bad}"
+        );
     }
 }
 
@@ -148,7 +152,9 @@ fn wedge_window_deviation() {
         glass_dirs: vec![root().join("tests/glass")],
         catalog: None,
     };
-    let s = expand(&p, &env).unwrap();
+    let s = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     let t = s
         .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, false)
         .unwrap();

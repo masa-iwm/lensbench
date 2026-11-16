@@ -3,7 +3,7 @@
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use lensbench_project::{block_item, expand, lens_item, Env, Project, UserCatalog};
+use lensbench_project::{block_item, expand, lens_item, Env, ExpandOpts, Project, UserCatalog};
 use std::path::{Path, PathBuf};
 
 fn root() -> PathBuf {
@@ -88,7 +88,13 @@ fn saved_lenses_rebuild_the_triplet_in_another_project() {
             {{"type": "surfaces", "surfaces": [{{"t": {}}}]}}] }}"#,
         t[2], t[4], a.surfaces[5].semi, t[5], t[7], t[8]
     );
-    let s = expand(&Project::from_json(&txt).unwrap(), &env_at(&dir)).unwrap();
+    let s = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env_at(&dir),
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(s.surfaces.len(), a.surfaces.len());
     same_rays(&s, &a, 1e-12);
@@ -117,8 +123,12 @@ fn a_saved_group_works_in_another_folder() {
     v["blocks"][0] =
         serde_json::json!({"type": "user", "id": "front", "catalog": cp, "item": "front"});
     let q: Project = serde_json::from_value(v).unwrap();
-    let s = expand(&q, &env_at(&ex)).unwrap();
-    let s0 = expand(&p6, &env_at(&ex)).unwrap();
+    let s = expand(&q, &env_at(&ex), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
+    let s0 = expand(&p6, &env_at(&ex), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     // 状態で ON/OFF・偏心もできる（id は参照のブロックのもの）
     let mut q2 = q.clone();
     q2.states = vec![lensbench_project::State {
@@ -133,7 +143,16 @@ fn a_saved_group_works_in_another_folder() {
         .into(),
         ..Default::default()
     }];
-    let off = lensbench_project::expand_state(&q2, &env_at(&ex), Some("off")).unwrap();
+    let off = lensbench_project::expand(
+        &q2,
+        &env_at(&ex),
+        &lensbench_project::ExpandOpts {
+            state: Some("off"),
+            ..Default::default()
+        },
+    )
+    .map(|x| x.system)
+    .unwrap();
     std::fs::remove_dir_all(&dir).ok();
     same_rays(&s, &s0, 1e-12);
     assert!(off.surfaces.len() < s.surfaces.len());
@@ -151,7 +170,12 @@ fn a_saved_lens_in_a_double_pass() {
             r#"{{ {HEAD} "blocks": [{{"type": "stop", "semi": 5}}, {{"type": "air", "t": 20}}, {b},
                 {{"type": "air", "t": 30}}, {{"type": "mirror", "radius": -80, "back": true}}] }}"#
         );
-        expand(&Project::from_json(&txt).unwrap(), &env_at(&dir))
+        expand(
+            &Project::from_json(&txt).unwrap(),
+            &env_at(&dir),
+            &ExpandOpts::default(),
+        )
+        .map(|x| x.system)
     };
     let s = mk(r#"{"type": "user", "catalog": "c.json", "item": "L"}"#).unwrap();
     let txt = format!(r#"{{"type": "group", "blocks": [{lens}]}}"#);
@@ -161,7 +185,13 @@ fn a_saved_lens_in_a_double_pass() {
     ))
     .unwrap();
     p["glass_catalogs"] = serde_json::json!(["SCHOTT"]);
-    let s0 = expand(&serde_json::from_value(p).unwrap(), &env_at(&dir)).unwrap();
+    let s0 = expand(
+        &serde_json::from_value(p).unwrap(),
+        &env_at(&dir),
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap();
     let e = mk(r#"{"type": "user", "catalog": "c.json", "item": "nope"}"#).unwrap_err();
     let e2 = mk(r#"{"type": "user", "catalog": "none.json", "item": "L"}"#).unwrap_err();
     std::fs::remove_dir_all(&dir).ok();
@@ -194,7 +224,12 @@ fn a_catalog_item_referring_to_itself_is_an_error() {
             r#"{{ {HEAD} "blocks": [{{"type": "stop"}}, {{"type": "air", "t": 5}},
                 {{"type": "user", "catalog": "c.json", "item": "{item}"}}, {{"type": "air", "t": 5}}] }}"#
         );
-        expand(&Project::from_json(&txt).unwrap(), &env_at(&dir))
+        expand(
+            &Project::from_json(&txt).unwrap(),
+            &env_at(&dir),
+            &ExpandOpts::default(),
+        )
+        .map(|x| x.system)
     };
     let (ea, eb) = (mk("a").unwrap_err(), mk("b").unwrap_err());
     // 同じ項目を 2 回並べるのは循環ではない
@@ -207,7 +242,12 @@ fn a_catalog_item_referring_to_itself_is_an_error() {
     let txt = format!(
         r#"{{ {HEAD} "blocks": [{{"type": "stop"}}, {{"type": "user", "catalog": "e.json", "item": "y"}}] }}"#
     );
-    let ok = expand(&Project::from_json(&txt).unwrap(), &env_at(&dir));
+    let ok = expand(
+        &Project::from_json(&txt).unwrap(),
+        &env_at(&dir),
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system);
     std::fs::remove_dir_all(&dir).ok();
     assert!(
         ea.message()
@@ -244,7 +284,9 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
     let p = Project::from_json(&txt).unwrap();
     let dir = tmp("bake");
     let env = env_at(&dir);
-    let s0 = expand(&p, &env).unwrap();
+    let s0 = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     // 1 つ: 変更が焼き込まれ、反転は面の向きに入る
     let one = blocks_item(&p, &env, &["L1".into()], "edited").unwrap();
     assert_eq!(one.glass_catalogs, ["SCHOTT"]);
@@ -266,7 +308,13 @@ fn blocks_item_bakes_surface_edits_and_ranges() {
             {{"type": "user", "catalog": "my.json", "item": "pair"}},
             {{"type": "air", "t": 50}}] }}"#
     );
-    let s1 = expand(&Project::from_json(&txt2).unwrap(), &env).unwrap();
+    let s1 = expand(
+        &Project::from_json(&txt2).unwrap(),
+        &env,
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap();
     std::fs::remove_dir_all(&dir).ok();
     same_rays(&s1, &s0, 1e-12);
     // 玉でないブロックの変更は焼き込めない
@@ -309,7 +357,9 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
     .unwrap();
     let dir = tmp("bake2");
     let env = env_at(&dir);
-    let s0 = expand(&p, &env).unwrap();
+    let s0 = expand(&p, &env, &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap();
     let item = blocks_item(&p, &env, &["L1".into()], "").unwrap();
     let js = serde_json::to_value(&item.blocks[0]).unwrap();
     let sf = &js["source"]["surfaces"];
@@ -330,7 +380,13 @@ fn baking_keeps_aperture_and_inner_coordbrk() {
             {{"type": "user", "catalog": "my.json", "item": "L1"}},
             {{"type": "air", "t": 50}}] }}"#
     );
-    let s1 = expand(&Project::from_json(&txt2).unwrap(), &env).unwrap();
+    let s1 = expand(
+        &Project::from_json(&txt2).unwrap(),
+        &env,
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
+    .unwrap();
     same_rays(&s1, &s0, 1e-12);
     let aps0: Vec<&Aperture> = s0.surfaces.iter().map(|x| &x.ap).collect();
     let aps1: Vec<&Aperture> = s1.surfaces.iter().map(|x| &x.ap).collect();
@@ -393,7 +449,13 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n"
           "fields": {"type": "angle", "points": [[0, 0], [4, 2], [-3, 5]]},
           "blocks": [{"type": "stop"}, {"type": "user", "catalog": "s.json", "item": "L"},
             {"type": "air", "t": 40}, {"type": "surfaces", "surfaces": [{"t": 0}]}] }"#;
-        let s = expand(&Project::from_json(p).unwrap(), &env_at(&dir)).unwrap();
+        let s = expand(
+            &Project::from_json(p).unwrap(),
+            &env_at(&dir),
+            &ExpandOpts::default(),
+        )
+        .map(|x| x.system)
+        .unwrap();
         same_rays(&s, &a, 1e-12);
     }
     std::fs::remove_dir_all(&dir).ok();

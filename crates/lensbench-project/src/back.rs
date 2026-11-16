@@ -238,7 +238,7 @@ pub fn blocks_item(
     if edited.is_empty() {
         return Ok(item);
     }
-    let s = expand(p, env)?;
+    let s = expand(p, env, &ExpandOpts::default())?.system;
     for id in edited {
         bake_lens(&s, &mut item, id)?;
     }

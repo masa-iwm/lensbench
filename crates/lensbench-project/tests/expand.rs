@@ -1,7 +1,7 @@
 use lensbench_core::system::FieldSel;
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use lensbench_project::{expand, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -34,7 +34,9 @@ const HEAD: &str = r#""glass_catalogs": ["SCHOTT"],
 fn project(blocks: &str) -> System {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
     let p = Project::from_json(&txt).unwrap();
-    expand(&p, &env()).unwrap()
+    expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap()
 }
 
 /// 像面の光線（局所座標）を比べる
@@ -257,7 +259,7 @@ fn project_with(
         glass_dirs: vec![root().join("tests/glass")],
         catalog: Some(&look),
     };
-    expand(&p, &e)
+    expand(&p, &e, &ExpandOpts::default()).map(|x| x.system)
 }
 
 #[test]
@@ -387,13 +389,23 @@ fn example_projects_expand_and_all_rays_pass() {
         let mut states: Vec<Option<String>> = vec![None];
         states.extend(pr.state_names().into_iter().map(|x| Some(x.to_string())));
         for st in &states {
-            let s = lensbench_project::load_state(
-                &p,
-                &[root().join("tests/glass")],
-                Some(&look),
-                st.as_deref(),
-            )
-            .unwrap_or_else(|e| panic!("{} {st:?}: {e}", p.display()));
+            let s = lensbench_project::Project::load(&p)
+                .and_then(|q| {
+                    lensbench_project::expand(
+                        &q,
+                        &lensbench_project::Env::for_file(
+                            &p,
+                            &[root().join("tests/glass")],
+                            Some(&look),
+                        ),
+                        &lensbench_project::ExpandOpts {
+                            state: st.as_deref(),
+                            ..Default::default()
+                        },
+                    )
+                })
+                .map(|x| x.system)
+                .unwrap_or_else(|e| panic!("{} {st:?}: {e}", p.display()));
             for f in 0..s.fields.len() {
                 for w in 0..s.wavelengths.len() {
                     let t = s
@@ -432,7 +444,12 @@ fn a_zmx_lens_file_takes_its_vendor_from_the_folder_even_by_a_bare_name() {
 
 fn try_project(blocks: &str) -> lensbench_core::Result<System> {
     let txt = format!("{{ {HEAD} \"blocks\": {blocks} }}");
-    expand(&Project::from_json(&txt).unwrap(), &env())
+    expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .map(|x| x.system)
 }
 
 /// 面の並びに Jones 行列・座標ブレーク・開口の面を書ける
@@ -523,8 +540,13 @@ fn surfaces_block_writes_jones_coordbrk_and_apertures() {
 fn thickness_solves_follow_set_param() {
     let txt =
         format!("{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": \"A0/system.zmx\"}}] }}");
-    let (s, warn) =
-        lensbench_project::expand_report(&Project::from_json(&txt).unwrap(), &env()).unwrap();
+    let (s, warn) = lensbench_project::expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &lensbench_project::ExpandOpts::default(),
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap();
     assert!(warn.is_empty(), "{warn:?}");
     assert_eq!(s.solves.len(), 1);
     let k = s.solves[0].surf;
@@ -537,8 +559,13 @@ fn thickness_solves_follow_set_param() {
     let txt = format!(
         "{{ {HEAD} \"blocks\": [{{\"type\": \"zmx\", \"path\": \"A0/system.zmx\", \"to\": 7}}, {{\"type\": \"air\", \"t\": 1}}] }}"
     );
-    let (s, warn) =
-        lensbench_project::expand_report(&Project::from_json(&txt).unwrap(), &env()).unwrap();
+    let (s, warn) = lensbench_project::expand(
+        &Project::from_json(&txt).unwrap(),
+        &env(),
+        &lensbench_project::ExpandOpts::default(),
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap();
     assert!(s.solves.is_empty());
     assert!(warn.iter().any(|w| w.contains("solve")), "{warn:?}");
 }
@@ -649,7 +676,13 @@ fn two_axis_fold_mirror_keeps_axis() {
                 {{"radius": 50, "t": 4, "glass": "N-BK7", "semi": 6}}, {{"radius": -50, "semi": 6}}]}}}},
               {{"type": "air", "t": 20}}] }}"#
         );
-        let s = expand(&Project::from_json(&txt).unwrap(), &env()).unwrap();
+        let s = expand(
+            &Project::from_json(&txt).unwrap(),
+            &env(),
+            &ExpandOpts::default(),
+        )
+        .map(|x| x.system)
+        .unwrap();
         let t = s
             .try_trace(FieldSel::Index(0), &[0.0], &[0.0], None, None, true)
             .unwrap();
@@ -702,7 +735,13 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
         let t = format!(
             "{{ {HEAD} {extra} \"blocks\": [{{\"type\": \"zmx\", \"path\": \"hot.zmx\"}}] }}"
         );
-        lensbench_project::expand_report(&Project::from_json(&t).unwrap(), &env).unwrap()
+        lensbench_project::expand(
+            &Project::from_json(&t).unwrap(),
+            &env,
+            &lensbench_project::ExpandOpts::default(),
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
     };
     // 既定の環境（20 °C）: 注意が出て、屈折率は .zmx を単体で読んだのと違う
     let (s, warn) = run("");

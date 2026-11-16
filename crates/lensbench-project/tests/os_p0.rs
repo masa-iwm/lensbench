@@ -3,7 +3,7 @@
 //! 同じパラメータを変えた結果（os_rays.json）と比べる
 use lensbench_core::system::{FieldSel, System};
 use lensbench_formats::zmx_write;
-use lensbench_project::{expand_report, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn dir() -> PathBuf {
@@ -19,7 +19,13 @@ fn expanded() -> (System, Vec<String>) {
         glass_dirs: vec![dir().join("../../glass")],
         catalog: None,
     };
-    expand_report(&Project::from_json(&txt).unwrap(), &env).unwrap()
+    expand(
+        &Project::from_json(&txt).unwrap(),
+        &env,
+        &ExpandOpts::default(),
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
 }
 
 /// 変えるパラメータ（展開した系の面番号）: 新しい玉の前の曲率（ソルブが動く）、座標ブレーク 6 の dx・ty

@@ -5,7 +5,7 @@ use lensbench_core::sync::LockExt;
 /// レンズカタログを引く関数: (メーカー, 型番) → .zmx の本文
 pub type CatalogLookup<'a> = &'a dyn Fn(&str, &str) -> lensbench_core::Result<String>;
 
-/// カタログの玉の要素の使い回し（[`expand_gaps_cached`]）: (メーカー, 型番) → (玉, 玉の .zmx のガラス)。
+/// カタログの玉の要素の使い回し（[`ExpandOpts::cache`]）: (メーカー, 型番) → (玉, 玉の .zmx のガラス)。
 /// 同じ環境（ガラスのフォルダ・カタログ）の展開の間だけで使う。差し替え探索が組ごとに同じ .zmx を読み直さないため
 #[derive(Default)]
 pub struct LensCache {
@@ -28,6 +28,31 @@ pub struct Env<'a> {
     /// カタログの機構部品の詳しい形の STEP（[`lensbench_core::mech::MechPart::step`]）を引く口。None なら引かない
     /// （描画・書き出しは簡易外形。PRJ-21: 以前はキャッシュのフォルダをこのクレートの中で決めて探していた）
     pub step_files: Option<StepLookup<'a>>,
+}
+
+impl<'a> Env<'a> {
+    /// プロジェクトファイル path の環境（相対パスはそのフォルダから。STEP は引かない）
+    pub fn for_file(
+        path: &Path,
+        glass_dirs: &[PathBuf],
+        catalog: Option<CatalogLookup<'a>>,
+    ) -> Env<'a> {
+        Env::in_dir(path.parent().unwrap_or(Path::new("")), glass_dirs, catalog)
+    }
+
+    /// 相対パスをフォルダ base から引く環境（STEP は引かない）
+    pub fn in_dir(
+        base: &Path,
+        glass_dirs: &[PathBuf],
+        catalog: Option<CatalogLookup<'a>>,
+    ) -> Env<'a> {
+        Env {
+            base: base.to_path_buf(),
+            glass_dirs: glass_dirs.to_vec(),
+            catalog,
+            step_files: None,
+        }
+    }
 }
 
 pub(crate) struct Ctx<'a, 'b> {
@@ -580,7 +605,12 @@ impl<'a, 'b> Ctx<'a, 'b> {
             let r = if sysfile::is_system_file(&p) {
                 sysfile::load_with(&p, &self.env.glass_dirs).map(|x| x.0)
             } else {
-                load_state(&p, &self.env.glass_dirs, self.env.catalog, None)
+                Project::load(&p).and_then(|q| {
+                    let env = Env::for_file(&p, &self.env.glass_dirs, self.env.catalog);
+                    expand(&q, &env, &ExpandOpts::default())
+                        .map(|x| x.system)
+                        .map_err(|e| format!("{}: {e}", p.display()).into())
+                })
             };
             DEPTH.with(|d| d.set(d.get() - 1));
             let s = r?;

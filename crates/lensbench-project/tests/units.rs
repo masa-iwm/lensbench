@@ -2,7 +2,7 @@
 
 use lensbench_core::zmx::{self, LoadOptions};
 use lensbench_core::System;
-use lensbench_project::{expand, expand_report, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -25,7 +25,9 @@ const HEAD: &str = r#""glass_catalogs": ["SCHOTT"],
 
 fn project(blocks: &str) -> System {
     let p = Project::from_json(&format!("{{ {HEAD} \"blocks\": {blocks} }}")).unwrap();
-    expand(&p, &env()).unwrap()
+    expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| x.system)
+        .unwrap()
 }
 
 fn a0() -> System {
@@ -141,7 +143,9 @@ fn ids_that_cannot_be_units_are_warned() {
         r#"{{ {HEAD} "blocks": [{{"type": "stop", "id": "3"}}, {{"type": "air", "t": 10}}] }}"#
     ))
     .unwrap();
-    let (s, warn) = expand_report(&p, &env()).unwrap();
+    let (s, warn) = expand(&p, &env(), &ExpandOpts::default())
+        .map(|x| (x.system, x.notes))
+        .unwrap();
     assert!(s.find_unit("3").is_none());
     assert!(warn.iter().any(|w| w.contains("block 3")), "{warn:?}");
 }

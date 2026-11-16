@@ -19,9 +19,16 @@ pub(crate) fn split(s: &System, p: &Value, base: &Path, glass_dirs: &[PathBuf]) 
     if c.picks.iter().any(|q| q.kind == ElemKind::Raw) {
         return None;
     }
-    let (t, _) =
-        lensbench_project::expand_json(&c.project().to_string(), base, glass_dirs, None, None)
-            .ok()?;
+    let t = lensbench_project::Project::from_json(&c.project().to_string())
+        .and_then(|q| {
+            lensbench_project::expand(
+                &q,
+                &lensbench_project::Env::in_dir(base, glass_dirs, None),
+                &Default::default(),
+            )
+        })
+        .map(|x| x.system)
+        .ok()?;
     lensbench_project::same_system(s, &t).ok()?;
     Some(c)
 }

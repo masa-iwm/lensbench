@@ -909,7 +909,9 @@ mod tests {
             glass_dirs: glass,
             catalog: None,
         };
-        let b = lensbench_project::expand(&p, &env).unwrap();
+        let b = lensbench_project::expand(&p, &env, &lensbench_project::ExpandOpts::default())
+            .map(|x| x.system)
+            .unwrap();
         assert_eq!(b.surfaces.len(), a.surfaces.len());
         for (x, y) in a.surfaces.iter().zip(&b.surfaces) {
             assert_eq!(x.c, y.c);

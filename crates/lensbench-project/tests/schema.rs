@@ -129,7 +129,16 @@ fn system_file_matches_schema() {
             continue;
         }
         // カタログのレンズを使うものは読めないので飛ばす
-        let Ok(sys) = lensbench_project::load(&p, &glass, None) else {
+        let Ok(sys) = lensbench_project::Project::load(&p)
+            .and_then(|q| {
+                lensbench_project::expand(
+                    &q,
+                    &lensbench_project::Env::for_file(&p, &glass, None),
+                    &lensbench_project::ExpandOpts::default(),
+                )
+            })
+            .map(|x| x.system)
+        else {
             continue;
         };
         let txt = sysfile::to_string(&sys, &[]).unwrap();

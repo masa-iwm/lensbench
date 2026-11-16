@@ -3,7 +3,7 @@
 use lensbench_core::system::FieldSel;
 use lensbench_core::{zmx, System};
 use lensbench_formats::zmx_write;
-use lensbench_project::{expand_path, paths, Env, Project};
+use lensbench_project::{expand, paths, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -110,7 +110,19 @@ fn splitter_paths_round_trip() {
     assert_eq!(ps, ["TT", "TR", "RT", "RR"]);
     let ss: Vec<System> = ps
         .iter()
-        .map(|q| expand_path(&p, &env(), Some(q)).unwrap().0)
+        .map(|q| {
+            expand(
+                &p,
+                &env(),
+                &ExpandOpts {
+                    path: Some(q),
+                    ..Default::default()
+                },
+            )
+            .map(|x| (x.system, x.notes))
+            .unwrap()
+            .0
+        })
         .collect();
     round_trip(&ss, &ps, "p16");
 }
@@ -123,7 +135,15 @@ fn states_round_trip() {
     assert!(names.len() >= 2);
     let ss: Vec<System> = names
         .iter()
-        .map(|n| lensbench_project::expand(&p.with_state(n).unwrap(), &env()).unwrap())
+        .map(|n| {
+            lensbench_project::expand(
+                &p.with_state(n).unwrap(),
+                &env(),
+                &lensbench_project::ExpandOpts::default(),
+            )
+            .map(|x| x.system)
+            .unwrap()
+        })
         .collect();
     round_trip(&ss, &names, "p6");
 }
@@ -131,8 +151,28 @@ fn states_round_trip() {
 #[test]
 fn different_system_values_are_refused() {
     let p = project("P16_twyman_green.json");
-    let a = expand_path(&p, &env(), Some("TR")).unwrap().0;
-    let mut b = expand_path(&p, &env(), Some("RT")).unwrap().0;
+    let a = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            path: Some("TR"),
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
+    let mut b = expand(
+        &p,
+        &env(),
+        &ExpandOpts {
+            path: Some("RT"),
+            ..Default::default()
+        },
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap()
+    .0;
     b.edit_raw(|rx| {
         rx.wavelengths[0] = 0.55;
         Ok(())
@@ -219,7 +259,19 @@ fn mce_rows_have_opticstudio_layout() {
     let p = project("P16_twyman_green.json");
     let ss: Vec<System> = ["TR", "RT"]
         .iter()
-        .map(|q| expand_path(&p, &env(), Some(q)).unwrap().0)
+        .map(|q| {
+            expand(
+                &p,
+                &env(),
+                &ExpandOpts {
+                    path: Some(q),
+                    ..Default::default()
+                },
+            )
+            .map(|x| (x.system, x.notes))
+            .unwrap()
+            .0
+        })
         .collect();
     let txt = zmx_write::write_configs(&ss).unwrap();
     let rows: Vec<&str> = txt.lines().filter(|l| l.starts_with("IGNR ")).collect();

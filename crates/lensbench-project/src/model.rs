@@ -865,6 +865,13 @@ pub struct SurfaceEdit {
 }
 
 impl Project {
+    /// プロジェクトファイルを読む（相対パスの基準は [`Env::for_file`]）
+    pub fn load(path: &std::path::Path) -> lensbench_core::Result<Project> {
+        let txt = lensbench_core::vfs::read_to_string(path)
+            .map_err(lensbench_core::Error::io_at(path.display()))?;
+        Project::from_json(&txt).map_err(|e| format!("{}: {e}", path.display()).into())
+    }
+
     pub fn from_json(txt: &str) -> lensbench_core::Result<Project> {
         let v: Value = serde_json::from_str(txt).map_err(|e| format!("project file: {e}"))?;
         let p: Project =

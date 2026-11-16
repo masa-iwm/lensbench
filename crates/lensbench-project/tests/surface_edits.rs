@@ -1,6 +1,6 @@
 //! ブロックの面の値の上書き（surface_edits の GUI の面の表）
 
-use lensbench_project::{expand, expand_report, Env, Project};
+use lensbench_project::{expand, Env, ExpandOpts, Project};
 use std::path::PathBuf;
 
 fn root() -> PathBuf {
@@ -26,7 +26,7 @@ fn project(place: &str, edits: &str) -> lensbench_core::Result<lensbench_core::S
           {{"type": "air", "t": 30}}],
         "surface_edits": {edits} }}"#
     );
-    expand(&Project::from_json(&txt)?, &env())
+    expand(&Project::from_json(&txt)?, &env(), &ExpandOpts::default()).map(|x| x.system)
 }
 
 #[test]
@@ -76,7 +76,14 @@ fn edits_apply_to_both_passes() {
             "surface_edits": {edits} }}"#
         )
     };
-    let run = |edits: &str| expand(&Project::from_json(&txt(edits)).unwrap(), &env());
+    let run = |edits: &str| {
+        expand(
+            &Project::from_json(&txt(edits)).unwrap(),
+            &env(),
+            &ExpandOpts::default(),
+        )
+        .map(|x| x.system)
+    };
     let a = run("[]").unwrap();
     // 往路 2 3 4、鏡 5、復路 6 7 8（4 3 2 の順）
     assert_eq!(a.surfaces[7].c, a.surfaces[3].c);
@@ -150,7 +157,13 @@ fn edits_to_missing_blocks_warn() {
             {"radius": 50, "t": 4, "glass": "N-BK7", "semi": 10}, {"radius": -50, "semi": 10}]}},
           {"type": "air", "t": 30}],
         "surface_edits": [{"block": "X", "surface": 0, "fields": {"r": 1}}] }"#;
-    let (s, warn) = expand_report(&Project::from_json(txt).unwrap(), &env()).unwrap();
+    let (s, warn) = expand(
+        &Project::from_json(txt).unwrap(),
+        &env(),
+        &ExpandOpts::default(),
+    )
+    .map(|x| (x.system, x.notes))
+    .unwrap();
     assert!(warn.iter().any(|w| w.contains("X")), "{warn:?}");
     assert!(s.surfaces.iter().all(|d| d.c != 1.0));
 }
@@ -176,7 +189,15 @@ fn off_air_group_does_not_leak_spans() {
             "surface_edits": {edits} }}"#
         )
     };
-    let run = |e: &str| expand_report(&Project::from_json(&txt(e)).unwrap(), &env()).unwrap();
+    let run = |e: &str| {
+        expand(
+            &Project::from_json(&txt(e)).unwrap(),
+            &env(),
+            &ExpandOpts::default(),
+        )
+        .map(|x| (x.system, x.notes))
+        .unwrap()
+    };
     let (a, _) = run("[]");
     let (b, warn) = run(r#"[{"block": "L1", "surface": 0, "fields": {"semi": 2.5}}]"#);
     assert_eq!(a.surfaces.len(), b.surfaces.len());
