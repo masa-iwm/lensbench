@@ -932,6 +932,15 @@ impl LensData {
             *at = row;
         }
     }
+
+    /// 試験用: セルをクリックしたのと同じに、今のセルを決めて表にキーを受けさせる（自前描画のセルは AccessKit の木に
+    /// 出ないので、画面のテストからは押せない）
+    #[cfg(test)]
+    pub fn click_cell(&mut self, j: usize, col: Col) {
+        self.cur = Some((j, col));
+        self.anchor = None;
+        self.active = true;
+    }
 }
 
 /// セルを選ぶ（Shift は範囲を広げる、keep は範囲を残す＝範囲の中の右クリック）

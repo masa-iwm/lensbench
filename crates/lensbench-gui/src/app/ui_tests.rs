@@ -180,3 +180,37 @@ fn undo_redo_add_surface() {
         h.state().test_state()
     );
 }
+
+/// A0 の最後の厚さのソルブ（周辺光線の高さ 0）を、セルの右クリックの欄（Shift+F10）の「Remove」で外す。
+/// 厚さは解いた値のまま残る（11/16 masa の報告: 要素に分けて開いた系でソルブを外せなかった）
+#[test]
+fn remove_thickness_solve() {
+    let _g = serial();
+    let mut h = harness(a0());
+    let solved = |h: &Harness<'static, App>| -> Vec<usize> {
+        h.state()
+            .c
+            .sys
+            .ld_rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.solves.iter().any(|s| s.0 == "t"))
+            .map(|(i, _)| i)
+            .collect()
+    };
+    let j = *solved(&h).last().expect("A0 has a thickness solve");
+    let t = h.state().c.sys.ld_rows[j].t;
+    h.state_mut().c.p.ld.click_cell(j, lens_data::Col::T);
+    h.run_steps(2);
+    h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
+    h.run_steps(2);
+    click(&mut h, "Remove");
+    let st = h.state().test_state();
+    assert!(!solved(&h).contains(&j), "{st}");
+    assert_eq!(st["status_error"], false, "{st}");
+    assert!((h.state().c.sys.ld_rows[j].t - t).abs() < 1e-9 * t.abs().max(1.0));
+    // 元に戻すとソルブも戻る
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    settle(&mut h);
+    assert!(solved(&h).contains(&j), "{}", h.state().test_state());
+}
