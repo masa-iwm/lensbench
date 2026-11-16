@@ -2939,6 +2939,7 @@ dependencies = [
  "lensbench-analysis",
  "lensbench-core",
  "lensbench-design",
+ "lensbench-engine",
  "lensbench-formats",
  "lensbench-optim",
  "lensbench-project",

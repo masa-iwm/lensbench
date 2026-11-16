@@ -16,6 +16,9 @@ mod interference;
 mod names;
 use crate::errors::{index_err, runtime_err, type_err, value_err};
 use names::warn_all;
+mod analyses;
+mod optargs;
+use optargs::{opt_problem, VarArg};
 mod plugin;
 mod pyjson;
 mod runs;
@@ -430,73 +433,6 @@ pub fn wave_index(s: &System, w: usize) -> PyResult<usize> {
         return Err(index_err(e));
     }
     Ok(w - 1)
-}
-
-/// An optimization variable: "7.t" or ("7.t", lower, upper)
-#[derive(FromPyObject, Clone)]
-enum VarArg {
-    Name(String),
-    Range((String, Option<f64>, Option<f64>)),
-}
-
-#[allow(clippy::too_many_arguments)]
-fn opt_problem(
-    py: Python<'_>,
-    s: &System,
-    vars: &[VarArg],
-    merit: Option<&str>,
-    reference: &str,
-    rings: usize,
-    jac: &str,
-    terms: Option<&Bound<'_, PyAny>>,
-    coat_files: &[PathBuf],
-) -> PyResult<(optim::Problem, Vec<Arc<userterm::PyUserTerm>>, usize)> {
-    let mut p = optim::Problem::single(s.clone());
-    for v in vars {
-        let (name, lo, hi) = match v {
-            VarArg::Name(n) => (n.clone(), None, None),
-            VarArg::Range((n, lo, hi)) => (n.clone(), *lo, *hi),
-        };
-        let param = s.param(&name).map_err(err)?;
-        p.vars.push(
-            optim::Var::new(param)
-                .bounds(lo.unwrap_or(f64::NEG_INFINITY), hi.unwrap_or(f64::INFINITY)),
-        );
-    }
-    let kind = match merit {
-        Some("spot") => Some(optim::DefaultMerit::Spot),
-        Some("wavefront") => Some(optim::DefaultMerit::Wavefront),
-        None => None,
-        Some(m) => {
-            return Err(value_err(format!(
-                "merit must be \"spot\", \"wavefront\" or None ({m})"
-            )))
-        }
-    };
-    let reference = match reference {
-        "centroid" => sweep::RmsRef::Centroid,
-        "chief" => sweep::RmsRef::Chief,
-        _ => {
-            return Err(value_err(format!(
-                "reference must be \"centroid\" or \"chief\" ({reference})"
-            )))
-        }
-    };
-    p.jac = optim::JacMode::parse(jac).ok_or_else(|| {
-        value_err(format!(
-            "jac must be \"auto\", \"fd\" or \"forward\" ({jac})"
-        ))
-    })?;
-    if let Some(kind) = kind {
-        p.add_default(kind, rings, reference);
-    }
-    let n_default = p.terms.len();
-    let users = match terms {
-        Some(t) => userterm::add_terms(py, &mut p, t, coat_files)?,
-        None => Vec::new(),
-    };
-    p.check().map_err(err)?;
-    Ok((p, users, n_default))
 }
 
 /// A list of changes: {"3.t": 1.0, ...} or [("3.t", 1.0), ...]
@@ -2390,7 +2326,12 @@ impl PySystem {
             terms.as_ref(),
             &self.coat_files,
         )?;
-        let o = search::dls_opts(iters, qr, gtol, active_set);
+        let o = lensbench_design::dls_spec::DlsChoice {
+            qr,
+            gtol,
+            active_set,
+        }
+        .opts(iters);
         let r = interruptible(py, || with_threads(threads, || optim::dls(&p, &o)))?;
         userterm::raise_user_errors(&users)?;
         let r = r.map_err(err)?;
@@ -2606,6 +2547,36 @@ impl PySystem {
         rms_items(&d, &r.rms, |v| Ok(v.into_pyarray(py).into_any()))?;
         d.set_item("warnings", r.warnings)?;
         Ok(d)
+    }
+
+    /// Run an analysis of the registry by name, with the same settings and results as the CLI subcommand of that name and serve's
+    /// analyze (lensbench.analyses() lists the names and settings). The settings are keyword arguments with the keys of the settings
+    /// (field and wave are numbers from 1, e.g. max_freq=100); omitted ones take the defaults of the analysis definition
+    /// (lensbench.defaults(name)). Analyses that read other configurations or the system file (interference, etc.) can't run here.
+    /// threads is the number of threads. Returns the result as a dict (lists, not NumPy arrays)
+    #[pyo3(signature = (name, threads=None, **settings))]
+    fn analyze<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+        threads: Option<usize>,
+        settings: Option<&Bound<'py, PyDict>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reg = lensbench_engine::analyses();
+        let a = reg.get(name).cloned().ok_or_else(|| {
+            value_err(format!(
+                "no analysis {name} (lensbench.analyses() lists the names)"
+            ))
+        })?;
+        let p = match settings {
+            Some(d) => pyjson::from_py(d.as_any())?,
+            None => serde_json::Value::Null,
+        };
+        let s = self.sys();
+        let v = py
+            .detach(|| with_threads(threads, || a.run_json(&lensbench_analysis::Cx::new(&s), &p)))
+            .map_err(err)?;
+        pyjson::to_py(py, &v)
     }
 
     /// Diffraction PSF: DFT of the pupil function (the same as MTF). The intensity i is a (y, x) array, normalized so that the center of the polychromatic PSF
@@ -2885,6 +2856,7 @@ pub fn init_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     plugin::register(m)?;
     runs::register(m)?;
     search::register(m)?;
+    analyses::register(m)?;
     m.add("__version__", lensbench_core::VERSION)?;
     m.add("API_VERSION", API_VERSION)?;
     Ok(())

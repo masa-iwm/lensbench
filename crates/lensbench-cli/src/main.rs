@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
-use lensbench_core::{catalog::LensCatalog, coating, glass, sweep, zmx, System};
+use lensbench_core::{catalog::LensCatalog, coating, glass, zmx, System};
 use lensbench_export::{d2, mesh, scene};
 use lensbench_formats::zmx_write;
 use serde_json::{json, Value};
@@ -30,10 +30,18 @@ mod serve;
 mod serve_ipc;
 mod watch;
 
+use lensbench_design::dls_spec::{Jac, Merit, OptimizeParams, Reference, VarSpec};
 use lensbench_engine::load::{
     coat_interfaces, index_list, plugins_json, save_value, AutoCoat, CoatInterfaces,
 };
 use lensbench_engine::{builtin_plugins, provenance};
+
+/// 最適化の設定の既定値（旗の既定はここから。設定の型 1 か所、XCT-02）
+static OPT: std::sync::LazyLock<OptimizeParams> = std::sync::LazyLock::new(OptimizeParams::default);
+/// レイアウトの書き出しの既定値（serve の layout_export と同じ）
+static D2: std::sync::LazyLock<d2::Options2D> = std::sync::LazyLock::new(d2::Options2D::default);
+static D3: std::sync::LazyLock<mesh::Options3D> =
+    std::sync::LazyLock::new(mesh::Options3D::default);
 mod clap_ja;
 mod search_cmd;
 
@@ -153,8 +161,8 @@ enum Cmd {
         #[arg(long = "var", required = true)]
         vars: Vec<String>,
         /// Default merit function: spot, wavefront or none (only the --term terms)
-        #[arg(long, default_value = "spot")]
-        merit: String,
+        #[arg(long, default_value_t = OPT.merit)]
+        merit: Merit,
         /// Terms to add (JSON, e.g. '{"type":"paraxial","q":"efl","target":50,"weight":10}'; see the optimization terms in the docs for kinds and keys). More than one allowed
         #[arg(long = "term")]
         terms: Vec<String>,
@@ -162,17 +170,17 @@ enum Cmd {
         #[arg(long = "terms")]
         terms_file: Option<PathBuf>,
         /// Reference: centroid or chief (chief ray)
-        #[arg(long = "reference", default_value = "centroid")]
-        reference: String,
+        #[arg(long = "reference", default_value_t = OPT.reference)]
+        reference: Reference,
         /// Number of rings of the Gaussian pupil quadrature
-        #[arg(long, default_value_t = 3)]
+        #[arg(long, default_value_t = OPT.rings)]
         rings: usize,
         /// Maximum number of iterations
-        #[arg(long, default_value_t = 50)]
+        #[arg(long, default_value_t = OPT.iters)]
         iters: usize,
         /// Jacobian: auto (analytic for terms with 16 or more analytic columns, central differences for fewer), fd (all central differences) or forward (all forward differences)
-        #[arg(long, default_value = "auto")]
-        jac: String,
+        #[arg(long, default_value_t = OPT.jac)]
+        jac: Jac,
         #[command(flatten)]
         dls: search_cmd::DlsArgs,
         /// .zmx to write the optimized system to
@@ -353,7 +361,7 @@ enum Cmd {
         #[command(flatten)]
         c: Common,
         #[command(flatten)]
-        l: LayoutArgs,
+        l: Box<LayoutArgs>,
         /// Files to write (more than one allowed)
         #[arg(long, short, required = true)]
         out: Vec<PathBuf>,
@@ -361,13 +369,13 @@ enum Cmd {
         #[arg(long, default_value = "yz")]
         plane: String,
         /// PNG width [px]
-        #[arg(long, default_value_t = 1600)]
+        #[arg(long, default_value_t = D2.width)]
         width: u32,
         /// Number of divisions around (3D) and of surface lines (2D)
-        #[arg(long, default_value_t = 64)]
+        #[arg(long, default_value_t = D2.segments)]
         segments: usize,
         /// Number of radial divisions (3D)
-        #[arg(long, default_value_t = 16)]
+        #[arg(long, default_value_t = D3.rings)]
         rings: usize,
         /// Radius of the ray tubes [mm] (3D; for STL, 0.1% of the scene size if omitted)
         #[arg(long)]
@@ -955,57 +963,6 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
         } => {
             use lensbench_optim as optim;
             let s = load(&c)?;
-            let mut p = optim::Problem::single(s.clone());
-            for v in &vars {
-                let (spec, range) = match v.split_once('=') {
-                    Some((a, b)) => (a.trim(), Some(b)),
-                    None => (v.trim(), None),
-                };
-                let param = s.param(spec).map_err(e)?;
-                let mut var = optim::Var::new(param);
-                if let Some(r) = range {
-                    let (lo, hi) = r
-                        .split_once(':')
-                        .ok_or_else(|| AppError::usage(format!("--var {v} range is min:max")))?;
-                    let num = |t: &str, d: f64| -> Result<f64, AppError> {
-                        if t.trim().is_empty() {
-                            Ok(d)
-                        } else {
-                            t.trim()
-                                .parse()
-                                .map_err(|_| AppError::usage(format!("--var {v} range {t}")))
-                        }
-                    };
-                    var = var.bounds(num(lo, f64::NEG_INFINITY)?, num(hi, f64::INFINITY)?);
-                }
-                p.vars.push(var);
-            }
-            let kind = match merit.to_ascii_lowercase().as_str() {
-                "spot" => Some(optim::DefaultMerit::Spot),
-                "wavefront" | "wfe" => Some(optim::DefaultMerit::Wavefront),
-                "none" => None,
-                m => {
-                    return Err(AppError::usage(format!(
-                        "--merit {m} (spot, wavefront, none)"
-                    )))
-                }
-            };
-            let reference = match reference.to_ascii_lowercase().as_str() {
-                "centroid" => sweep::RmsRef::Centroid,
-                "chief" => sweep::RmsRef::Chief,
-                r => {
-                    return Err(AppError::usage(format!(
-                        "--reference {r} (centroid, chief)"
-                    )))
-                }
-            };
-            p.jac = optim::JacMode::parse(&jac).ok_or_else(|| {
-                AppError::usage(format!("--jac {jac}（{}）", optim::JacMode::NAMES))
-            })?;
-            if let Some(kind) = kind {
-                p.add_default(kind, rings, reference);
-            }
-            let n_default = p.terms.len();
             let mut specs: Vec<Value> = Vec::new();
             for t in &terms {
                 specs.push(
@@ -1026,13 +983,22 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             for v in specs.iter_mut() {
                 lensbench_engine::Files::Any.check_terms(v)?;
             }
-            for (i, v) in specs.iter().enumerate() {
-                let t = lensbench_design::merit::term_from_json(v, &p.configs)
-                    .map_err(|x| format!("term {}: {x}", i + 1))?;
-                p.terms.push(t);
-            }
+            let op = OptimizeParams {
+                vars: VarSpec::parse_all(&vars).map_err(AppError::usage_of)?,
+                merit,
+                terms: specs,
+                reference,
+                rings,
+                iters,
+                jac,
+                qr: dls.qr,
+                gtol: dls.gtol,
+                active_set: dls.active_set,
+                ..OptimizeParams::default()
+            };
+            let (p, n_default) = op.problem(vec![s.clone()]).map_err(e)?;
             p.check().map_err(e)?;
-            let o = dls.choice().opts(iters);
+            let o = op.dls_opts();
             let r = progress::with(c.json, || optim::dls(&p, &o)).map_err(e)?;
             if let Some(path) = &out {
                 warn_notes(zmx_write::save(path, &r.systems[0]).map_err(e)?);
@@ -1050,7 +1016,8 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             // 足した項の値（最適化の前と後）
             let tv0 = p.term_values(&r.x0).map_err(e)?;
             let tv = p.term_values(&r.x).map_err(e)?;
-            let ts: Vec<Value> = specs
+            let ts: Vec<Value> = op
+                .terms
                 .iter()
                 .enumerate()
                 .map(|(i, v)| json!({ "term": v, "value0": tv0[n_default + i].value(), "value": tv[n_default + i].value(), "value_kind": tv[n_default + i].kind_name() }))
@@ -1058,7 +1025,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             (
                 c.json,
                 json!({
-                    "merit": merit, "merit0": r.merit0, "merit_final": r.merit, "iterations": r.iterations,
+                    "merit": merit.as_str(), "merit0": r.merit0, "merit_final": r.merit, "iterations": r.iterations,
                     "evals": r.evals, "stop": stop, "note": r.note, "vars": vs, "terms": ts, "history": r.history,
                 }),
             )

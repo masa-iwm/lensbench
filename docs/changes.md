@@ -5,6 +5,13 @@
 ## 次の版（v0.4.0 の後）
 
 ### 名前・設定の書き方
+- 最適化（`optimize`）とズーム軌跡（`zoom`）の設定を CLI・serve・Python・GUI で 1 つの型にした（XCT-02）。serve の `optimize`・`zoom` の
+  params は知らないキーが誤り（前は無視）、`merit`・`reference`・`jac`・`method` は決まった綴りだけ（大文字・小文字は問わず、`wfe` も受ける。
+  誤りの文に鍵の名前が付く）。serve の `optimize` の変数に CLI と同じ範囲の書き方 `"7.t=0.5:3"` を、`zoom` の `efl`・`pmag` に CLI と同じ
+  `"50,-,80"` の文字列を足した。`optimize --json` の `merit` は打った綴りでなく正式の名前（`wfe` → `wavefront`）。
+  `zoom` で `efl` と `pmag`（CLI は `--efl` と `--pmag`）を両方与えると誤り（前は `efl` を使った）。
+- Python に、登録簿の解析を名前で回す `System.analyze(name, **settings)`、解析の一覧 `lensbench.analyses()`、既定の設定
+  `lensbench.defaults(name)` を足した（CLI のサブコマンド・serve の `analyze` と同じ設定・結果）。
 - Rust の 2 次元の結果を `lensbench_core::grid::Grid2` に（ANA-18）: `MtfSweep` の `tan`・`sag`（x = 横軸の点、y = 周波数。
   `tan[k][i]` はそのまま。`x`・`freqs` は同名のメソッド）、`DetectorFringe` の画素の値（`n`・`x0`・`y0` は消し、座標は格子の
   `x()`・`y()`、`n()` はメソッド）、`PolGrid` の格子点の値（`nx`・`ny` はメソッド、値は `values()`）。POP の `Beam` は伝搬の作業用の

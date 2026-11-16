@@ -37,6 +37,8 @@ lensbench-core = { path = "../lensbench-core", features = ["serde"] }
 lensbench-analysis = { path = "../lensbench-analysis" }
 lensbench-project = { path = "../lensbench-project" }
 lensbench-design = { path = "../lensbench-design" }
+# 解析の登録簿（同梱の解析と拡張の解析。System.analyze・analyses()、XCT-02）
+lensbench-engine = { path = "../lensbench-engine" }
 lensbench-verify = { path = "../lensbench-verify" }
 numpy = "0.30"
 pyo3 = { version = "0.30", features = ["abi3-py39"] }

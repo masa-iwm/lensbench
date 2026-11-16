@@ -38,6 +38,14 @@ impl AppError {
         AppError::Usage(m.into())
     }
 
+    /// 引数の読めない値（core の Invalid）は使い方の誤り、ほかはそのまま
+    pub fn usage_of(x: lensbench_core::Error) -> AppError {
+        match x {
+            lensbench_core::Error::Invalid(m) => AppError::Usage(m),
+            x => AppError::Core(x),
+        }
+    }
+
     /// ファイルの読み書きの誤り
     pub fn io(m: impl Into<String>) -> AppError {
         AppError::Io(m.into())

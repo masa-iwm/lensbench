@@ -109,6 +109,22 @@ CLI では単数形の旗を繰り返します。
 
 - 警告（分散式の範囲外、プロジェクトの読み替えなど）は Python の `warnings` で出ます。
 
+## 解析の登録簿
+
+CLI のサブコマンド・serve の `analyze`・GUI の解析パネルと同じ解析は、名前で回せます。設定・既定値・結果の形は 1 か所の定義
+（解析の設定の型）から作るので、どの入口でも同じです。
+
+```python
+import lensbench as lb
+s = lb.System.load("system.zmx", glass_dirs=["glass"])
+[a["name"] for a in lb.analyses()]        # 解析の名前（各要素の params は設定の項目: name・type・default・unit・doc）
+lb.defaults("psf")                         # 既定の設定 {"image": 128, ...}
+r = s.analyze("mtf", field=1, max_freq=100)  # 結果は CLI の --json と同じ dict（配列は NumPy でなくリスト）
+```
+
+`System.psf`・`mtf`・`rms`・`optimize`・`lensbench.zoom` などの関数の引数の既定値も同じ定義の値です（`lb.defaults("optimize")`・
+`lb.defaults("zoom")`。試験で突き合わせています）。
+
 ## 結果の型
 
 結果は dict です。主な結果（`trace`・`trace_rays`・`mtf`・`geometric_mtf`・`huygens_mtf`・`through_focus_mtf`・`field_mtf`・`psf`・

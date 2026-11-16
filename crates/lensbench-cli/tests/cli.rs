@@ -871,8 +871,12 @@ fn exit_codes_by_kind() {
         "--merit",
         "x",
     ]);
+    // 選べる値は clap が確かめる（設定の型の綴り、XCT-02）
     assert_eq!(c, Some(2), "{err}");
-    assert!(err.contains("hint:") && err.contains("--help"), "{err}");
+    assert!(
+        err.contains("spot, wavefront, none") && err.contains("--help"),
+        "{err}"
+    );
     // ファイルが無いのは 3
     let (c, err) = code(&["info", "no/such.zmx"]);
     assert_eq!(c, Some(3), "{err}");

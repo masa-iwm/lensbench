@@ -252,12 +252,14 @@ pub struct OptPanel {
 
 impl OptPanel {
     pub fn new() -> OptPanel {
+        // 既定値は設定の型（CLI・serve・Python と同じ、XCT-02）
+        let d = lensbench_design::dls_spec::OptimizeParams::default();
         OptPanel {
-            merit: "spot".into(),
-            rings: 3,
-            reference: "centroid".into(),
-            iters: 50,
-            jac: "auto".into(),
+            merit: d.merit.to_string(),
+            rings: d.rings,
+            reference: d.reference.to_string(),
+            iters: d.iters,
+            jac: d.jac.to_string(),
             new_term: "paraxial".into(),
             ..Default::default()
         }

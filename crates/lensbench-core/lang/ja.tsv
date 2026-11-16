@@ -187,7 +187,6 @@ no parameters to move	動かすパラメータがありません
 {} targets for {n} states	目標の数 {}（状態は {n}）
 {} ranges for {} parameters	範囲の数 {}（動かすパラメータは {}）
 weight of the paraxial term {}	近軸量の項のウェイト {}
-method must be penalty or lagrange ({})	method は penalty か lagrange（{}）
 state {}: not solved ({e})	状態 {}: 解けませんでした（{e}）
 between states {} and {} at {f:.3}: not solved ({e})	状態 {} と {} の間 {f:.3}: 解けませんでした（{e}）
 points between states {} and {} were skipped (a state without a target was not solved)	状態 {} と {} の間の点は飛ばしました（目標のない状態が解けませんでした）
@@ -250,10 +249,6 @@ can't read the number of {what} ({x})	{what} の数が読めません（{x}）
 --offset takes 3 values dx,dy,dz	--offset は dx,dy,dz の 3 つ
 {}: the extension must be svg, png, dxf, gltf, glb, obj, stl, step or stp	{}: 拡張子は svg・png・dxf・gltf・glb・obj・stl・step・stp のどれか
 --unfold is only for 2D (svg, png, dxf)	--unfold は 2D（svg・png・dxf）だけ
---var {v} range is min:max	--var {v} の範囲は 下限:上限
---var {v} range {t}	--var {v} の範囲 {t}
---merit {m} (spot, wavefront, none)	--merit {m}（spot・wavefront・none）
---reference {r} (centroid, chief)	--reference {r}（centroid・chief）
 --set {t} must be an object	--set {t} はオブジェクト
 item {name} already exists (use --replace)	項目 {name} はもうあります（置き換えは --replace）
 --block takes 1 or 2 values (the first and last of the range)	--block は 1 つか 2 つ（範囲の最初と最後）
@@ -1154,11 +1149,8 @@ the configurations have different numbers of surfaces (no table)	構成で面の
 {k} must be <f8	{k} は <f8
 {k} must be a list of numbers	{k} は数の並び
 {k} must be a number 1 to {n}	{k} は 1〜{n} の番号
-the range of --var {v} is min:max	--var {v} の範囲は 下限:上限
-range {t} of --var {v}	--var {v} の範囲 {t}
 target {x} can't be read	目標 {x} が読めません
 {} targets ({n} states: {})	目標が {} 個（状態は {n} 個: {}）
---merit {m} (spot, wavefront)	--merit {m}（spot・wavefront）
 kinds: unknown kind {k}	kinds: 不明な種類 {k}
 {method} needs catalog (the user catalog file)	{method} には catalog（ユーザーカタログのファイル）
 {method} needs name (the item name)	{method} には name（項目の名前）
@@ -1188,20 +1180,7 @@ unfold is only for 2D (plane yz or xz)	unfold は 2D（plane が yz・xz）だ�
 plane must be "yz", "xz" or "3d"	plane は "yz"・"xz"・"3d"
 configs must be a list of project state names	configs はプロジェクトの状態の名前の並び
 configs must be a list of .zmx configuration numbers (1-based)	configs は .zmx の構成番号（1 始まり）の並び
-optimize needs vars (a list of variables)	optimize には vars（変数の並び）
-vars items need name	vars の要素に name
-configs of vars must be a list of numbers	vars の configs は番号の並び
-configs of vars {x} (1 to {})	vars の configs {x}（1〜{}）
-vars items are "7.t" or {"name": ...}	vars の要素は "7.t" か {"name": ...}
-reference must be centroid or chief ({r})	reference は centroid か chief（{r}）
-merit must be spot, wavefront or none ({m})	merit は spot・wavefront・none（{m}）
-jac must be one of {} ({j})	jac は {} のどれか（{j}）
-{k} must be true or false	{k} は true か false
 no vars (the list of parameters to solve)	vars（解くパラメータの並び）がありません
-vars {v} has no name	vars の {v} に name がありません
-vars {v} must be a string or {name, lo, hi}	vars の {v} は文字列か {name, lo, hi}
-{x} of {k} must be a number or null	{k} の {x} は数か null
-{k} must be a list of numbers (or null) ({x})	{k} は数（か null）の並び（{x}）
 only one of efl and pmag	efl と pmag は一方だけ
 swap project can't be used with --allow-remote or --root (the paths inside can't be checked; run on the loaded file)	swap の project は --allow-remote・--root では使えません（中のパスを確かめられません。読み込んだファイルで回してください）
 the loaded system is not a project ({e})	読み込んだ系がプロジェクトではありません（{e}）
@@ -1298,9 +1277,7 @@ direction (l, m, n) needs n > 0	方向 (l, m, n) は n > 0
 a field is a number (1-based) or (hx, hy); a bool ({b}) can't be used	視野は番号（1 始まり）か (hx, hy)。bool（{b}）は使えません
 no field {i} (1 to {n})	視野 {i} はありません（1〜{n}）
 axis must be "x" or "y" ({a})	axis は "x" か "y"（{a}）
-merit must be "spot", "wavefront" or None ({m})	merit は "spot"・"wavefront"・None（{m}）
 reference must be "centroid" or "chief" ({reference})	reference は "centroid" か "chief"（{reference}）
-jac must be "auto", "fd" or "forward" ({jac})	jac は "auto"・"fd"・"forward" のどれか（{jac}）
 no surface {l} (1 to {img})	面 {l} はありません（1〜{img}）
 pol only when last is left out (up to the image)	pol は last を省いたとき（像面まで）だけ
 give land together with grad	land は grad と一緒に与えてください
@@ -1347,9 +1324,6 @@ distribution {k} (normal uniform trunc fixed)	分布 {k}（normal uniform trunc 
 n = {n} is over the number of sets {m}	n = {n} は組の数 {m} を超えます
 Sampler needs n	Sampler では n が要る
 the batch run was stopped	一括実行を止めました
-merit must be "spot" or "wavefront" ({m})	merit は "spot" か "wavefront"（{m}）
-reference must be "centroid" or "chief" ({r})	reference は "centroid" か "chief"（{r}）
-method must be "penalty" or "lagrange" ({method})	method は "penalty" か "lagrange"（{method}）
 systems is empty	systems が空
 {what} must be a JSON string or a dict	{what} は JSON の文字列か dict
 shape {sh:?} of the user term result (should be ({k} systems, residuals))	ユーザーの項の返り値の形 {sh:?}（(系の数 {k}, 残差の数) のはず）
@@ -1375,7 +1349,6 @@ no verify description (*.verify.json) found	照合の記述（*.verify.json）�
 serve, watch and run can't be nested	serve・watch・run は入れ子にできません
 verify is only available from the command line	verify はコマンドラインからだけ使えます
 no analysis {}	解析 {} はありません
-term {}: {x}	項 {}: {x}
 settings must be an object	設定はオブジェクト
 --out: no trial could be traced	--out: 追跡できた試行がありません
 --out: {x} (write a .json system file)	--out: {x}（.json の系ファイルなら書けます）
@@ -2065,3 +2038,12 @@ no circles, so a box of {} vertices (along the coordinate axes)	円が無いの�
 clear aperture	有効径
 length	長さ
 outer diameter	外径
+the range of variable {v} is min:max	変数 {v} の範囲は 下限:上限
+range {t} of variable {v} can't be read	変数 {v} の範囲 {t} が読めません
+configs of variable {name}: {k} (1 to {n_configs})	変数 {name} の configs: {k}（1〜{n_configs}）
+{s} (one of {})	{s}（{} のどれか）
+term {}: {e}	項 {}: {e}
+optimize: {e}	optimize: {e}
+zoom: {e}	zoom: {e}
+{what}: {e}	{what}: {e}
+no analysis {name} (lensbench.analyses() lists the names)	解析 {name} はありません（名前は lensbench.analyses() で見られます）

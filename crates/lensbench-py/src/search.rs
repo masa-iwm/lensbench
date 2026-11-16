@@ -4,46 +4,19 @@ use crate::errors::{type_err, value_err};
 use std::path::PathBuf;
 
 use lensbench_core::catalog::LensCatalog;
-use lensbench_core::sweep::RmsRef;
 use lensbench_core::with_threads;
+use lensbench_design::dls_spec::{Targets, ZoomParams};
 use lensbench_design::swap::{SwapSearch, SwapSpec};
-use lensbench_optim::zoom::{self as zoom_core, TargetMethod, ZoomSpec};
-use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ};
+use lensbench_optim::zoom as zoom_core;
 use lensbench_project::{Env, Project};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use crate::{err, PySystem, VarArg};
 
-fn merit_kind(m: &str) -> PyResult<DefaultMerit> {
-    match m {
-        "spot" => Ok(DefaultMerit::Spot),
-        "wavefront" => Ok(DefaultMerit::Wavefront),
-        _ => Err(value_err(format!(
-            "merit must be \"spot\" or \"wavefront\" ({m})"
-        ))),
-    }
-}
-
-fn reference_kind(r: &str) -> PyResult<RmsRef> {
-    match r {
-        "centroid" => Ok(RmsRef::Centroid),
-        "chief" => Ok(RmsRef::Chief),
-        _ => Err(value_err(format!(
-            "reference must be \"centroid\" or \"chief\" ({r})"
-        ))),
-    }
-}
-
-/// DLS の設定（optimize・zoom の qr・gtol・active_set、ほかは既定）
-pub(crate) fn dls_opts(iters: usize, qr: bool, gtol: f64, active_set: bool) -> DlsOpts {
-    DlsOpts {
-        max_iter: iters,
-        qr,
-        gtol,
-        active_set,
-        ..Default::default()
-    }
+/// 名前の決まった値（"spot" など）を読む
+pub(crate) fn pick<T: std::str::FromStr<Err = String>>(what: &str, v: &str) -> PyResult<T> {
+    v.parse().map_err(|e| value_err(format!("{what}: {e}")))
 }
 
 /// Zoom trajectory: solves vars ("G2.shift" or ("G2.shift", lower, upper)) for each state (systems: a system per zoom position, all of the same form).
@@ -79,36 +52,28 @@ fn zoom<'py>(
         return Err(value_err("systems is empty"));
     }
     let cs: Vec<lensbench_core::System> = systems.iter().map(|s| (*s.sys()).clone()).collect();
-    let (q, targets) = match (efl, pmag) {
-        (Some(_), Some(_)) => return Err(value_err("only one of efl and pmag")),
-        (Some(t), None) => (ParaxQ::Efl, t),
-        (None, Some(t)) => (ParaxQ::Pmag, t),
-        (None, None) => (ParaxQ::Efl, vec![None; cs.len()]),
-    };
-    let mut moving = Vec::new();
-    let mut bounds = Vec::new();
-    for v in &vars {
-        let (name, lo, hi) = match v {
-            VarArg::Name(n) => (n.clone(), None, None),
-            VarArg::Range((n, lo, hi)) => (n.clone(), *lo, *hi),
-        };
-        moving.push(cs[0].param(&name).map_err(err)?);
-        bounds.push((lo.unwrap_or(f64::NEG_INFINITY), hi.unwrap_or(f64::INFINITY)));
+    if efl.is_some() && pmag.is_some() {
+        return Err(value_err("only one of efl and pmag"));
     }
-    let mut sp = ZoomSpec::new(moving, targets);
-    sp.bounds = bounds;
-    sp.q = q;
-    sp.steps = steps;
-    sp.rings = rings;
-    sp.target_tol = tol;
-    sp.merit = merit_kind(merit)?;
-    sp.reference = reference_kind(reference)?;
-    sp.method = TargetMethod::parse(method).ok_or_else(|| {
-        value_err(format!(
-            "method must be \"penalty\" or \"lagrange\" ({method})"
-        ))
-    })?;
-    sp.opts = dls_opts(iters, qr, gtol, active_set);
+    let zp = ZoomParams {
+        vars: vars.iter().map(VarArg::spec).collect(),
+        efl: efl.map(Targets::List),
+        pmag: pmag.map(Targets::List),
+        steps,
+        merit: pick("merit", merit)?,
+        reference: pick("reference", reference)?,
+        rings,
+        iters,
+        tol,
+        method: pick("method", method)?,
+        qr,
+        gtol,
+        active_set,
+        ..ZoomParams::default()
+    };
+    let names: Vec<String> = (1..=cs.len()).map(|k| k.to_string()).collect();
+    let sp = zp.spec(&cs, &names).map_err(err)?;
+    let q = sp.q;
     let r = py
         .detach(|| with_threads(threads, || zoom_core::solve(&cs, &sp)))
         .map_err(err)?;

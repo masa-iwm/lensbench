@@ -5,9 +5,13 @@ use std::path::PathBuf;
 use clap::Args;
 use lensbench_core::catalog::LensCatalog;
 use lensbench_core::{zmx, System};
+use lensbench_design::dls_spec::{ImageMerit, Reference, Targets, VarSpec, ZoomMethod, ZoomParams};
 use lensbench_design::swap::{SwapSearch, SwapSpec};
 use lensbench_project::{Env, Project};
 use serde_json::{json, Value};
+
+/// ズーム軌跡の設定の既定値（旗の既定はここから、XCT-02）
+static ZOOM: std::sync::LazyLock<ZoomParams> = std::sync::LazyLock::new(ZoomParams::default);
 
 #[derive(Args)]
 pub struct ZoomArgs {
@@ -32,26 +36,26 @@ pub struct ZoomArgs {
     #[arg(long, allow_hyphen_values = true)]
     pub pmag: Option<String>,
     /// Number of points between neighboring states
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = ZOOM.steps)]
     pub steps: usize,
     /// Image merit: spot or wavefront
-    #[arg(long, default_value = "spot")]
-    pub merit: String,
+    #[arg(long, default_value_t = ZOOM.merit)]
+    pub merit: ImageMerit,
     /// Reference: centroid or chief
-    #[arg(long = "reference", default_value = "centroid")]
-    pub reference: String,
+    #[arg(long = "reference", default_value_t = ZOOM.reference)]
+    pub reference: Reference,
     /// Number of rings of the Gaussian pupil quadrature
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = ZOOM.rings)]
     pub rings: usize,
     /// Maximum iterations per point
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = ZOOM.iters)]
     pub iters: usize,
     /// Tolerance from the target (relative to the target)
-    #[arg(long, default_value_t = 1e-8)]
+    #[arg(long, default_value_t = ZOOM.tol)]
     pub tol: f64,
     /// How to meet the targets: penalty (raise the weight of the target term) or lagrange (augmented Lagrangian: shift the target of the term)
-    #[arg(long, default_value = "penalty")]
-    pub method: String,
+    #[arg(long, default_value_t = ZOOM.method)]
+    pub method: ZoomMethod,
     #[command(flatten)]
     pub dls: DlsArgs,
     /// Output JSON
@@ -74,16 +78,6 @@ pub struct DlsArgs {
     /// Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)
     #[arg(long = "active-set")]
     pub active_set: bool,
-}
-
-impl DlsArgs {
-    pub fn choice(self) -> lensbench_engine::zoom::DlsChoice {
-        lensbench_engine::zoom::DlsChoice {
-            qr: self.qr,
-            gtol: self.gtol,
-            active_set: self.active_set,
-        }
-    }
 }
 
 #[derive(Args)]
@@ -194,20 +188,23 @@ fn load_states(a: &ZoomArgs) -> Result<(Vec<System>, Vec<String>), String> {
 
 pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
     let (cs, names) = load_states(a)?;
-    let o = lensbench_engine::zoom::ZoomOpts {
-        vars: a.vars.clone(),
-        efl: a.efl.clone(),
-        pmag: a.pmag.clone(),
+    let o = ZoomParams {
+        vars: a.vars.iter().map(|v| VarSpec::from(v.as_str())).collect(),
+        efl: a.efl.clone().map(Targets::Text),
+        pmag: a.pmag.clone().map(Targets::Text),
         steps: a.steps,
-        merit: a.merit.clone(),
-        reference: a.reference.clone(),
+        merit: a.merit,
+        reference: a.reference,
         rings: a.rings,
         iters: a.iters,
         tol: a.tol,
-        method: a.method.clone(),
-        dls: a.dls.choice(),
+        method: a.method,
+        qr: a.dls.qr,
+        gtol: a.dls.gtol,
+        active_set: a.dls.active_set,
+        ..ZoomParams::default()
     };
-    lensbench_engine::zoom::zoom_systems(&cs, &names, &o)
+    lensbench_engine::zoom::zoom_systems(&cs, &names, &o).map_err(|e| e.to_string())
 }
 
 pub fn swap(a: &SwapArgs) -> Result<Value, String> {

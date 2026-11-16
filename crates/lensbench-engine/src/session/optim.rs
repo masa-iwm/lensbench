@@ -149,124 +149,45 @@ pub(super) fn config_system(
     Ok(replay(s, log, &beam, notes)?)
 }
 
-/// 最適化。params:
-/// - vars: 変数の並び。各要素は "7.t" か {"name": "7.t", "lo": 下限, "hi": 上限, "configs": [構成の番号（1 始まり）]}
-/// - merit: 既定の評価関数 "spot"・"wavefront"・null（なし）。rings（3）・reference（"centroid"）
-/// - terms: 足す項（`lensbench_design::merit` の JSON）
-/// - configs: 構成（.zmx の構成番号か状態の名前）の並び。省けば読み込んだ系だけ。項・変数の構成の番号はこの並びの順
-/// - iters（50）・jac（"auto"・"fd"・"forward"）
-/// - apply: true なら最適化した値を読み込んだ系に set する（読み込んだ系の構成に効く変数だけ）
+/// 最適化。params は [`lensbench_design::dls_spec::OptimizeParams`]（CLI の optimize・Python の optimize と同じ設定の型）:
+/// vars・merit・terms・reference・rings・iters・jac と、configs（構成の番号か状態の名前の並び。省けば読み込んだ系だけ。
+/// 項・変数の構成の番号はこの並びの順）・apply（最適化した値を読み込んだ系に set する。読み込んだ系の構成に効く変数だけ）
 ///
 /// 同じプロセスからは [`optimize_progress`] で進み具合を読み、[`optimize_cancel`] で止められる
 pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
     use lensbench_optim as optim;
+    let mut op: lensbench_design::dls_spec::OptimizeParams = lensbench_design::dls_spec::read(p)
+        .map_err(|e| RpcErr::params(format!("optimize: {e}")))?;
     let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
-    let (systems, cur_idx) = match p.get("configs").and_then(Value::as_array) {
-        Some(bs) if !bs.is_empty() => {
-            let mut v = Vec::new();
-            let mut cur_idx = None;
-            for b in bs {
-                let same = if is_project(&spec.file) {
-                    spec.state.as_deref() == b.as_str()
-                } else {
-                    b.as_u64()
-                        .or_else(|| b.as_str().and_then(|x| x.parse().ok()))
-                        == Some(spec.cfg as u64)
-                };
-                if same && cur_idx.is_none() {
-                    cur_idx = Some(v.len());
-                }
-                v.push(config_system(b, &cur, &spec, &log, &mut notes)?);
+    let (systems, cur_idx) = if op.configs.is_empty() {
+        (vec![(*cur).clone()], Some(0))
+    } else {
+        let mut v = Vec::new();
+        let mut cur_idx = None;
+        for b in &op.configs {
+            let same = if is_project(&spec.file) {
+                spec.state.as_deref() == b.as_str()
+            } else {
+                b.as_u64()
+                    .or_else(|| b.as_str().and_then(|x| x.parse().ok()))
+                    == Some(spec.cfg as u64)
+            };
+            if same && cur_idx.is_none() {
+                cur_idx = Some(v.len());
             }
-            (v, cur_idx)
+            v.push(config_system(b, &cur, &spec, &log, &mut notes)?);
         }
-        _ => (vec![(*cur).clone()], Some(0)),
+        (v, cur_idx)
     };
-    let mut prob = optim::Problem::new(systems);
-    let vars = p["vars"]
-        .as_array()
-        .ok_or_else(|| RpcErr::params("optimize needs vars (a list of variables)"))?;
-    for v in vars {
-        let (name, lo, hi, cfgs) = match v {
-            Value::String(n) => (n.as_str(), None, None, None),
-            Value::Object(_) => (
-                v["name"]
-                    .as_str()
-                    .ok_or_else(|| RpcErr::params("vars items need name"))?,
-                opt_f64(v, "lo")?,
-                opt_f64(v, "hi")?,
-                match v.get("configs") {
-                    None | Some(Value::Null) => None,
-                    Some(c) => Some(
-                        c.as_array()
-                            .ok_or_else(|| {
-                                RpcErr::params("configs of vars must be a list of numbers")
-                            })?
-                            .iter()
-                            .map(|x| match x.as_u64() {
-                                Some(k) if k >= 1 && (k as usize) <= prob.configs.len() => {
-                                    Ok(k as usize - 1)
-                                }
-                                _ => Err(RpcErr::params(format!(
-                                    "configs of vars {x} (1 to {})",
-                                    prob.configs.len()
-                                ))),
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    ),
-                },
-            ),
-            _ => return Err(RpcErr::params("vars items are \"7.t\" or {\"name\": ...}")),
-        };
-        let first = cfgs.as_ref().and_then(|c| c.first().copied()).unwrap_or(0);
-        let param = prob.configs[first].param(name)?;
-        let mut var = optim::Var::new(param)
-            .bounds(lo.unwrap_or(f64::NEG_INFINITY), hi.unwrap_or(f64::INFINITY));
-        if let Some(c) = cfgs {
-            var = var.in_configs(c);
-        }
-        prob.vars.push(var);
+    for t in op.terms.iter_mut() {
+        sess.files.check_term_paths(t)?;
     }
-    let reference = match p["reference"].as_str().unwrap_or("centroid") {
-        "centroid" => lensbench_core::sweep::RmsRef::Centroid,
-        "chief" => lensbench_core::sweep::RmsRef::Chief,
-        r => {
-            return Err(RpcErr::params(format!(
-                "reference must be centroid or chief ({r})"
-            )))
-        }
-    };
-    let rings = opt_usize(p, "rings")?.unwrap_or(3);
-    match p.get("merit").map(|m| m.as_str()) {
-        None | Some(Some("spot")) => prob.add_default(optim::DefaultMerit::Spot, rings, reference),
-        Some(Some("wavefront")) => {
-            prob.add_default(optim::DefaultMerit::Wavefront, rings, reference)
-        }
-        Some(None) | Some(Some("none")) => {}
-        Some(Some(m)) => {
-            return Err(RpcErr::params(format!(
-                "merit must be spot, wavefront or none ({m})"
-            )))
-        }
-    }
-    let n_default = prob.terms.len();
-    if let Some(t) = p.get("terms").filter(|t| !t.is_null()) {
-        let mut t = t.clone();
-        sess.files.check_term_paths(&mut t)?;
-        let ts =
-            lensbench_design::merit::terms_from_json(&t, &prob.configs).map_err(RpcErr::params)?;
-        prob.terms.extend(ts);
-    }
-    let j = p["jac"].as_str().unwrap_or("auto");
-    prob.jac = optim::JacMode::parse(j).ok_or_else(|| {
-        RpcErr::params(format!(
-            "jac must be one of {} ({j})",
-            optim::JacMode::NAMES
-        ))
-    })?;
+    let (prob, n_default) = op
+        .problem(systems)
+        .map_err(|e| RpcErr::params(e.to_string()))?;
     prob.check()?;
-    let o = dls_choice(p)?.opts(opt_usize(p, "iters")?.unwrap_or(50));
+    let o = op.dls_opts();
     let m0 = prob.merit(&prob.x0()?)?;
     let job = Job {
         history: vec![m0],
@@ -289,7 +210,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .map(|v| cur_idx.is_some_and(|c| v.configs.as_ref().is_none_or(|cs| cs.contains(&c))))
         .collect();
     let mut applied = false;
-    if p["apply"].as_bool() == Some(true) {
+    if op.apply {
         let ch: Vec<(lensbench_core::param::Param, f64)> = prob
             .vars
             .iter()
@@ -434,19 +355,20 @@ pub(super) fn tolerance(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
 ///
 /// 読み込んだ後の値の変更（set・edit）は各状態の系にも当てる
 pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
+    let zp: lensbench_design::dls_spec::ZoomParams =
+        lensbench_design::dls_spec::read(p).map_err(|e| RpcErr::params(format!("zoom: {e}")))?;
     let (cur, spec, log) = sess.current_full()?;
     let mut notes = Vec::new();
-    let cfgs: Vec<Value> = match p.get("configs").and_then(Value::as_array) {
-        Some(a) if !a.is_empty() => a.clone(),
-        _ => {
-            let c = configs(sess)?;
-            match c["states"].as_array() {
-                Some(st) if !st.is_empty() => st.clone(),
-                _ => (1..=c["cfgs"].as_u64().unwrap_or(1))
-                    .map(|k| json!(k))
-                    .collect(),
-            }
+    let cfgs: Vec<Value> = if zp.configs.is_empty() {
+        let c = configs(sess)?;
+        match c["states"].as_array() {
+            Some(st) if !st.is_empty() => st.clone(),
+            _ => (1..=c["cfgs"].as_u64().unwrap_or(1))
+                .map(|k| json!(k))
+                .collect(),
         }
+    } else {
+        zp.configs.clone()
     };
     let systems = cfgs
         .iter()
@@ -456,89 +378,10 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         .iter()
         .map(|b| b.as_str().map_or_else(|| b.to_string(), String::from))
         .collect();
-    let vars = p
-        .get("vars")
-        .and_then(Value::as_array)
-        .filter(|a| !a.is_empty())
-        .ok_or_else(|| RpcErr::params("no vars (the list of parameters to solve)"))?
-        .iter()
-        .map(|v| match v {
-            Value::String(s) => Ok(s.clone()),
-            Value::Object(o) => {
-                let name = o
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| RpcErr::params(format!("vars {v} has no name")))?;
-                let b = |k: &str| o.get(k).and_then(Value::as_f64).map(|x| x.to_string());
-                Ok(match (b("lo"), b("hi")) {
-                    (None, None) => name.to_string(),
-                    (lo, hi) => format!(
-                        "{name}={}:{}",
-                        lo.unwrap_or_default(),
-                        hi.unwrap_or_default()
-                    ),
-                })
-            }
-            _ => Err(RpcErr::params(format!(
-                "vars {v} must be a string or {{name, lo, hi}}"
-            ))),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let targets = |k: &str| -> Result<Option<String>, RpcErr> {
-        match p.get(k) {
-            None | Some(Value::Null) => Ok(None),
-            Some(Value::String(s)) => Ok(Some(s.clone())),
-            Some(Value::Array(a)) => a
-                .iter()
-                .map(|x| match x {
-                    Value::Null => Ok("-".to_string()),
-                    Value::Number(n) => Ok(n.to_string()),
-                    _ => Err(RpcErr::params(format!(
-                        "{x} of {k} must be a number or null"
-                    ))),
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(|v| Some(v.join(","))),
-            Some(x) => Err(RpcErr::params(format!(
-                "{k} must be a list of numbers (or null) ({x})"
-            ))),
-        }
-    };
-    let (efl, pmag) = (targets("efl")?, targets("pmag")?);
-    if efl.is_some() && pmag.is_some() {
-        return Err(RpcErr::params("only one of efl and pmag"));
-    }
-    let str_of = |k: &str, d: &str| p.get(k).and_then(Value::as_str).unwrap_or(d).to_string();
-    let a = crate::zoom::ZoomOpts {
-        vars,
-        efl,
-        pmag,
-        steps: opt_usize(p, "steps")?.unwrap_or(0),
-        merit: str_of("merit", "spot"),
-        reference: str_of("reference", "centroid"),
-        rings: opt_usize(p, "rings")?.unwrap_or(3),
-        iters: opt_usize(p, "iters")?.unwrap_or(50),
-        tol: p.get("tol").and_then(Value::as_f64).unwrap_or(1e-8),
-        method: str_of("method", "penalty"),
-        dls: dls_choice(p)?,
-    };
-    let mut out = crate::zoom::zoom_systems(&systems, &names, &a).map_err(RpcErr::params)?;
+    let mut out = crate::zoom::zoom_systems(&systems, &names, &zp)
+        .map_err(|e| RpcErr::params(e.to_string()))?;
     out["notes"] = json!(notes);
     Ok(out)
-}
-
-/// optimize・zoom の DLS の設定（qr・gtol・active_set。省けば既定）
-fn dls_choice(p: &Value) -> Result<crate::zoom::DlsChoice, RpcErr> {
-    let flag = |k: &str| match p.get(k) {
-        None | Some(Value::Null) => Ok(false),
-        Some(Value::Bool(b)) => Ok(*b),
-        Some(_) => Err(RpcErr::params(format!("{k} must be true or false"))),
-    };
-    Ok(crate::zoom::DlsChoice {
-        qr: flag("qr")?,
-        gtol: opt_f64(p, "gtol")?.unwrap_or(0.0),
-        active_set: flag("active_set")?,
-    })
 }
 
 // ------------------------------------------------------------------------------------ 差し替え探索

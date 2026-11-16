@@ -546,6 +546,14 @@ class System:
     def aiming(self) -> str:
         """Ray aiming ("off", "paraxial", "real")"""
 
+    def analyze(self, name: str, threads: int | None = None, **settings: Any) -> Any:
+        """Run an analysis of the registry by name, with the same settings and results as the CLI subcommand of that name and serve's
+        analyze (lensbench.analyses() lists the names and settings). The settings are keyword arguments with the keys of the settings
+        (field and wave are numbers from 1, e.g. max_freq=100); omitted ones take the defaults of the analysis definition
+        (lensbench.defaults(name)). Analyses that read other configurations or the system file (interference, etc.) can't run here.
+        threads is the number of threads. Returns the result as a dict (lists, not NumPy arrays)
+        """
+
     @staticmethod
     def beam_paths(path: _StrPath, glass_dirs: Sequence[_StrPath] | None = None, state: str | None = None, lens_catalogs: Sequence[_StrPath] | None = None) -> list[str]:
         """The beam splitter paths of a project file (.json) (strings of T and R in the order the BSs are passed).
@@ -973,6 +981,18 @@ class UnsupportedError(Error):
 
 def _system_from_state(state: Any, coatings: Sequence[_StrPath]) -> System:
     """Rebuild a system from a pickle (the pair of [`PySystem::__reduce__`])"""
+
+
+def analyses() -> list[Any]:
+    """The analyses of the registry: a list of dicts {name, about, help, params}. params lists the settings
+    (name, type, default, unit, doc, and choices, min, len where they apply), the same as the keyword arguments of System.analyze
+    """
+
+
+def defaults(name: str) -> Any:
+    """The default settings of an analysis of the registry, or of "optimize" or "zoom", as a dict
+    (the defaults of System.optimize, zoom and the analysis methods come from here)
+    """
 
 
 def interference_detector(sample: System, reference: System, field: _Field = ..., wave: int | None = None, pupil: int = 65, npx: int = 256, center: tuple[float, float] | None = None, width: float | None = None, sample_power: float = 1.0, reference_power: float = 1.0, delay: float = 0.0, polarized: bool = False, sample_input: str = "x", reference_input: str = "x", threads: int | None = None) -> _InterferenceDetector:

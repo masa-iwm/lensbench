@@ -62,16 +62,18 @@ pub struct ZoomPanel {
 
 impl Default for ZoomPanel {
     fn default() -> Self {
+        // 既定値は設定の型（CLI・serve・Python と同じ、XCT-02）
+        let d = lensbench_design::dls_spec::ZoomParams::default();
         ZoomPanel {
             states: BTreeMap::new(),
             vars: Vec::new(),
             pmag: false,
-            steps: 0,
-            merit: "spot".into(),
-            reference: "centroid".into(),
-            rings: 3,
-            iters: 50,
-            tol: 1e-8,
+            steps: d.steps,
+            merit: d.merit.to_string(),
+            reference: d.reference.to_string(),
+            rings: d.rings,
+            iters: d.iters,
+            tol: d.tol,
             running: false,
             result: None,
             error: None,
