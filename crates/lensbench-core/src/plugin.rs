@@ -646,6 +646,11 @@ pub trait Instance: Send + Sync {
     ) -> Result<Option<(Arrays, Box<dyn Linear + '_>)>> {
         Ok(None)
     }
+
+    /// 具体の型へ戻す口（上の層が、配列のほかに型の口を持つ実装を見分けて直接呼ぶ用）。既定は None
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
 }
 
 /// [`Instance::linearize`] の線形の写像
