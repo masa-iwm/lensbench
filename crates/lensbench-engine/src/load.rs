@@ -45,36 +45,49 @@ impl SysSpec {
     }
 }
 
-/// ファイルから系を読む（注意は標準誤差へ）。ファイルが無いときは種類 io の誤り
+/// ファイルから系を読む（読んだときの注意は捨てる。利用者に見せる読み方は [`load_file_notes`]）。
+/// ファイルが無いときは種類 io の誤り
 pub fn load_file(c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    Ok(load_file_notes(c)?.0)
+}
+
+/// ファイルから系を読み、読んだときの注意（[`load_source_notes`]）と一緒に返す
+pub fn load_file_notes(c: &SysSpec) -> Result<(System, Vec<String>), lensbench_core::Error> {
     if c.cfg == 0 {
         return Err(lensbench_core::Error::Invalid(format!(
             "{} must be 1 or more",
             c.names.cfg
         )));
     }
-    load_source(&Source::read(&c.file)?, c)
+    load_source_notes(&Source::read(&c.file)?, c)
 }
 
-/// 読んだファイル src から、c の構成・状態・経路の系を読む（注意は標準誤差へ）
-pub fn load_source(src: &Source, c: &SysSpec) -> Result<System, lensbench_core::Error> {
+/// 読んだファイル src から、c の構成・状態・経路の系を読む。注意（プロジェクトの展開・分散式・マクロ・
+/// 取り込み）は返す（CLI は標準エラーへ、serve は load の返事と解析の notes へ、GUI は履歴へ。CLI-10）
+pub fn load_source_notes(
+    src: &Source,
+    c: &SysSpec,
+) -> Result<(System, Vec<String>), lensbench_core::Error> {
     let o = src.open(&c.open_spec())?;
-    for w in o.warnings {
-        eprintln!("{}", lensbench_core::i18n::warning(&w));
-    }
-    Ok(o.system)
+    let mut notes = o.warnings;
+    notes.extend(system_notes(&o.system));
+    Ok((o.system, notes))
 }
 
-/// [`load_file`] に、分散式・マクロ・取り込みの注意も標準誤差へ出し、結果の出どころ（[`crate::provenance`]）に
-/// 系を記録する（CLI の解析の系の読み方）
-pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
-    let s = load_file(c)?;
-    for w in s
-        .dispersion_warnings()
+/// 系そのものが持つ注意: 分散式・マクロ・取り込み（.zmx の読めなかった行・同梱のカタログなど）
+pub fn system_notes(s: &System) -> Vec<String> {
+    s.dispersion_warnings()
         .into_iter()
         .chain(s.macro_warnings())
         .chain(s.import_notes.iter().cloned())
-    {
+        .collect()
+}
+
+/// [`load_file_notes`] の注意を標準エラーへ出し、結果の出どころ（[`crate::provenance`]）に系を記録する
+/// （CLI の解析の系の読み方）
+pub fn load_file_noted(c: &SysSpec) -> Result<System, lensbench_core::Error> {
+    let (s, notes) = load_file_notes(c)?;
+    for w in notes {
         eprintln!("{}", lensbench_core::i18n::warning(&w));
     }
     crate::provenance::set(&s);
@@ -141,12 +154,12 @@ impl Overlay {
     }
 }
 
-/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
-pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(String, System)>> {
+/// 重ね描きする構成の系と名前（重ね描きでなければ今の系 1 つ、名前は空）と、読んだときの注意
+pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Overlaid> {
     if !l.any() {
-        let s = load_file(c)?;
+        let (s, notes) = load_file_notes(c)?;
         crate::provenance::set(&s);
-        return Ok(vec![(String::new(), s)]);
+        return Ok((vec![(String::new(), s)], notes));
     }
     let kind = FileKind::of(&c.file);
     let is_json = kind != FileKind::Zmx;
@@ -168,7 +181,10 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(
             .map(|k| k + 1)
             .collect();
         let ss = zmx::load_configs(&c.file, &opt, &ks)?;
-        return Ok(ks.iter().map(|k| format!("C{k}")).zip(ss).collect());
+        return Ok((
+            ks.iter().map(|k| format!("C{k}")).zip(ss).collect(),
+            Vec::new(),
+        ));
     }
     if !is_json {
         return Err(
@@ -204,6 +220,7 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(
         catalog: Some(&look),
     };
     let mut out = Vec::new();
+    let mut notes = Vec::new();
     for st in &states {
         let ps = match &st {
             Some(n) => p.with_state(n)?,
@@ -226,8 +243,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(
                     Some(q) => format!("path {q}: {x}"),
                     None => x.to_string(),
                 })?;
+            // 状態・経路ごとに同じ注意が出るので 1 度だけ
             for w in warn {
-                eprintln!("{}", lensbench_core::i18n::warning(&w));
+                if !notes.contains(&w) {
+                    notes.push(w);
+                }
             }
             let mut name: Vec<&str> = Vec::new();
             if l.states.is_some() {
@@ -239,8 +259,11 @@ pub fn overlay_systems(c: &SysSpec, l: &Overlay) -> lensbench_core::Result<Vec<(
             out.push((name.join("/"), s));
         }
     }
-    Ok(out)
+    Ok((out, notes))
 }
+
+/// 重ね描きする系（名前と系）と、読んだときの注意
+pub type Overlaid = (Vec<(String, System)>, Vec<String>);
 
 /// "1,3" のような 1 始まりの番号の並びを 0 始まりにする。"all" は 0..n
 pub fn index_list(s: &str, n: usize, what: &str) -> lensbench_core::Result<Vec<usize>> {

@@ -9,6 +9,7 @@ mod catalog_search;
 mod cli;
 mod config_table;
 mod extend;
+mod load_notes;
 mod run;
 mod search;
 mod serve;

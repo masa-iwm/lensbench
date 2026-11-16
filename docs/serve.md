@@ -69,9 +69,9 @@ lensbench serve --pipe lb1 system.zmx                                  # TCP の
 | `progress` | | 処理している要求を待たずに答える。`running`（要求を処理しているか）・`optimize`（反復ごとの評価関数の値）・`tolerance`・`swap`（(終えた数, 全体の数)）。走っていなければ null |
 | `cancel` | | 処理している要求（読むだけの要求が並行に回っていれば、その全部）に途中でやめるよう頼む（待たずに答える。頼んだ要求があれば true）。解析は「中断した」の誤りで返る。最適化・公差・差し替え探索は止まらないことがあるので `stop` で止める |
 | `stop` | `what`（`optimize`・`tolerance`・`swap`） | 最適化・公差・差し替え探索を止め、そこまでの結果を返させる（待たずに答える） |
-| `load` | `file`、`cfg`・`state`・`beam_path`・`glass_dirs`・`lens_catalogs`・`history`（省略可） | 系の概要（面の数・視野・波長など）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
+| `load` | `file`、`cfg`・`state`・`beam_path`・`glass_dirs`・`lens_catalogs`・`history`（省略可） | 系の概要（面の数・視野・波長など）と `notes`（読んだときの注意: プロジェクトの展開・分散式・マクロ・.zmx の読めなかった行など。CLI では標準エラーに出るもの）。`history` は元に戻す段の扱い: `clear`（既定、段を空に）・`push`（前の系を 1 段積み、開くを `undo` で戻せる）・`keep`（段はそのまま）。`push`・`keep` は結果に `undo`・`redo`・`undo_list`・`redo_list` |
 | `reload` | `history`（`load` と同じ） | 同じ読み方でファイルを読み直す（`set` で変えた値は捨てる）。別アプリが系のファイルを書き換えた後に |
-| `system` | | 系の概要 |
+| `system` | | 系の概要（`load` と同じ。`notes` は読んだときの注意） |
 | `undo`・`redo` | `steps`（まとめて戻す段の数、省略で 1） | 読み込んだ後の `set`・`edit`（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで、同じパラメータの `set` が 1 秒以内に続けば 1 段、戻した後に変えるとやり直す段は消える、`load`・`reload` で空。`history: "push"` で読んだときは読む前の系も 1 段）。`surfaces`・`system_hash`・残りの段の数 `undo`・`redo`。開く・読み直すを越えて戻した・やり直したときは `loaded`（その系の概要、`load` の結果と同じ）。`set`・`edit` の結果にも `undo`・`redo` |
 | `history` | | 元に戻せる段・やり直せる段の数 `undo`・`redo` と、その変更 `undo_list`（新しい順）・`redo_list`（次にやり直す順）。set は `{"set": [名前]}`、開く・読み直すは `{"open": ファイル名}`・`{"reload": ファイル名}`、edit は `{"edit": [{op, surface, param, fields（項目の名前）…}]}`。`set`・`edit`・`undo`・`redo` の結果にも |
 | `get` | `param`（1 つ）か `params`（並び） | `value` か `values` |

@@ -77,9 +77,9 @@ impl lensbench_analysis::Source for FileSource<'_> {
             state,
             ..self.c.clone()
         };
-        let s = match &v.wavelengths {
-            None if c.cfg == 0 => crate::load::load_file(&c)?,
-            None => crate::load::load_source(self.src()?, &c)?,
+        let (s, n) = match &v.wavelengths {
+            None if c.cfg == 0 => crate::load::load_file_notes(&c)?,
+            None => crate::load::load_source_notes(self.src()?, &c)?,
             Some(wl) => {
                 let zmx = c
                     .file
@@ -96,15 +96,12 @@ impl lensbench_analysis::Source for FileSource<'_> {
                     wavelengths: Some(wl.clone()),
                     ..Default::default()
                 };
-                lensbench_core::zmx::load_with(&c.file, &opt)?
+                let s = lensbench_core::zmx::load_with(&c.file, &opt)?;
+                let n = crate::load::system_notes(&s);
+                (s, n)
             }
         };
-        notes.extend(
-            s.dispersion_warnings()
-                .into_iter()
-                .chain(s.macro_warnings())
-                .chain(s.import_notes.iter().cloned()),
-        );
+        notes.extend(n);
         match self.replay {
             None => Ok(s),
             Some(r) => {

@@ -19,7 +19,7 @@ use lensbench_export::d2::Plane;
 use lensbench_formats::zmx_write;
 use serde_json::{json, Map, Value};
 
-use crate::load::{load_file, SysSpec as LoadSpec};
+use crate::load::{load_file, load_file_notes, SysSpec as LoadSpec};
 
 /// 要求で与えたパスの扱い
 pub enum Files {
@@ -120,6 +120,8 @@ enum Change {
 struct Served {
     sys: Arc<System>,
     spec: LoadSpec,
+    /// 読んだときの注意（load・reload の返事の notes。CLI-10）
+    notes: Vec<String>,
     log: Vec<Change>,
     /// 元に戻す・やり直すための前の系と変更の記録（新しいものが後ろ）
     undo: Vec<Snap>,
@@ -133,6 +135,7 @@ struct Served {
 struct Snap {
     sys: Arc<System>,
     spec: LoadSpec,
+    notes: Vec<String>,
     log: Vec<Change>,
     what: Value,
 }
@@ -198,8 +201,8 @@ impl Session {
 
     /// 系を読んで場に置く（起動の引数で与えた系。要求で与えたパスの扱いは当てない）
     pub fn open(&self, spec: LoadSpec, threads: Option<usize>) -> lensbench_core::Result<()> {
-        let s = lensbench_core::with_threads(threads, || load_file(&spec))?;
-        store(self, s, spec);
+        let (s, notes) = lensbench_core::with_threads(threads, || load_file_notes(&spec))?;
+        store(self, s, spec, notes);
         Ok(())
     }
 
@@ -253,10 +256,11 @@ impl Session {
 }
 
 /// 読み込んだ系を置く（変更の記録・元に戻す段は空にする）
-fn store(sess: &Session, sys: System, spec: LoadSpec) {
+fn store(sess: &Session, sys: System, spec: LoadSpec, notes: Vec<String>) {
     *sess.served() = Some(Served {
         sys: Arc::new(sys),
         spec,
+        notes,
         log: Vec::new(),
         undo: Vec::new(),
         redo: Vec::new(),
@@ -289,11 +293,17 @@ fn load_history(p: &Value) -> Result<LoadHistory, RpcErr> {
 }
 
 /// 読み込んだ系を置く。h が Push なら前の系を段に積み、Keep なら段はそのまま
-fn store_loaded(sess: &Session, sys: System, spec: LoadSpec, h: LoadHistory, reload: bool) {
+fn store_loaded(
+    sess: &Session,
+    (sys, notes): (System, Vec<String>),
+    spec: LoadSpec,
+    h: LoadHistory,
+    reload: bool,
+) {
     let mut g = sess.served();
     let Some(mut x) = g.take().filter(|_| h != LoadHistory::Clear) else {
         drop(g);
-        store(sess, sys, spec);
+        store(sess, sys, spec, notes);
         return;
     };
     if h == LoadHistory::Push {
@@ -312,6 +322,7 @@ fn store_loaded(sess: &Session, sys: System, spec: LoadSpec, h: LoadHistory, rel
     }
     x.sys = Arc::new(sys);
     x.spec = spec;
+    x.notes = notes;
     x.log = Vec::new();
     x.last_set = None;
     *g = Some(x);
@@ -328,7 +339,7 @@ mod trace;
 pub mod views;
 pub use catalog::range_system;
 use catalog::{browse_of, cad_step, catalog_fill, user_catalog};
-use hist::{change_label, config_only, history_json, snap_was_load, CONFIG_KEY};
+use hist::{change_label, config_only, history_json, snap_was_load, summary, CONFIG_KEY};
 use layout::{configs, layout, layout_export, layout_with};
 use optim::{apply_pending, optimize, swap, tolerance, zoom, PendingApply};
 pub use optim::{
@@ -343,6 +354,7 @@ fn push_undo(x: &mut Served, what: Value) {
     x.undo.push(Snap {
         sys: x.sys.clone(),
         spec: x.spec.clone(),
+        notes: x.notes.clone(),
         log: x.log.clone(),
         what,
     });
@@ -358,6 +370,7 @@ fn store_changed(sess: &Session, sys: System, spec: LoadSpec, c: Change) {
         *g = Some(Served {
             sys: Arc::new(sys),
             spec,
+            notes: Vec::new(),
             log: vec![c],
             undo: Vec::new(),
             redo: Vec::new(),
@@ -407,6 +420,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     to.push(Snap {
         sys: std::mem::replace(&mut x.sys, snap.sys),
         spec: std::mem::replace(&mut x.spec, snap.spec),
+        notes: std::mem::replace(&mut x.notes, snap.notes),
         log: std::mem::replace(&mut x.log, snap.log),
         what: snap.what,
     });
@@ -417,7 +431,7 @@ fn step_history(sess: &Session, back: bool) -> Result<Value, RpcErr> {
     v["system_hash"] = json!(hash);
     // 開く・読み直すを戻したら、戻した系の概要（ファイルが変わる）
     if x.spec.file != file0 || snap_was_load(&v, back) {
-        v["loaded"] = summary(&x.sys, &x.spec);
+        v["loaded"] = summary(&x.sys, &x.spec, &x.notes);
     }
     Ok(v)
 }
@@ -452,8 +466,8 @@ fn step_history_n(sess: &Session, back: bool, p: &Value) -> Result<Value, RpcErr
     }
     // 途中で開く・読み直すを越えたら、最後の系の概要
     if loaded && v.get("loaded").is_none() {
-        if let Ok((s, spec)) = sess.current() {
-            v["loaded"] = summary(&s, &spec);
+        if let Some(x) = sess.served().as_ref() {
+            v["loaded"] = summary(&x.sys, &x.spec, &x.notes);
         }
     }
     Ok(v)
@@ -965,21 +979,6 @@ fn opt_f64(p: &Value, k: &str) -> Result<Option<f64>, RpcErr> {
     }
 }
 
-/// 読み込んだ系の概要
-fn summary(s: &System, spec: &LoadSpec) -> Value {
-    json!({
-        "file": spec.file.display().to_string(),
-        "name": s.name,
-        "cfg": spec.cfg,
-        "state": spec.state,
-        "surfaces": s.surfaces.len(),
-        "image_surface": s.image(),
-        "fields": s.fields.iter().map(|f| [f.x, f.y]).collect::<Vec<_>>(),
-        "wavelengths_um": s.wavelengths,
-        "primary": s.primary + 1,
-    })
-}
-
 type Reply = (Value, Vec<Bin>);
 
 fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Reply, RpcErr> {
@@ -998,9 +997,9 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "load" => {
             let h = load_history(p)?;
             let spec = load_spec(sess, p)?;
-            let s = load_file(&spec)?;
-            let mut v = summary(&s, &spec);
-            store_loaded(sess, s, spec, h, false);
+            let l = load_file_notes(&spec)?;
+            let mut v = summary(&l.0, &spec, &l.1);
+            store_loaded(sess, l, spec, h, false);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
         }
@@ -1008,15 +1007,18 @@ fn handle(sess: &Session, method: &str, p: &Value, bins: Vec<Bin>) -> Result<Rep
         "reload" => {
             let h = load_history(p)?;
             let (_, spec) = sess.current()?;
-            let s = load_file(&spec)?;
-            let mut v = summary(&s, &spec);
-            store_loaded(sess, s, spec, h, true);
+            let l = load_file_notes(&spec)?;
+            let mut v = summary(&l.0, &spec, &l.1);
+            store_loaded(sess, l, spec, h, true);
             add_history(sess, &mut v);
             Ok((v, Vec::new()))
         }
         "system" => {
-            let (s, spec) = sess.current()?;
-            Ok((summary(&s, &spec), Vec::new()))
+            let g = sess.served();
+            let x = g
+                .as_ref()
+                .ok_or_else(|| RpcErr::app("no system (load first)"))?;
+            Ok((summary(&x.sys, &x.spec, &x.notes), Vec::new()))
         }
         // 読み込んだ後の set・edit（最適化の結果を当てたものも）を 1 段ずつ元に戻す・やり直す（100 段まで。
         // 同じパラメータの set が 1 秒以内に続けば 1 段。load・reload で空になる。history: "push" で読めば読む前の系も 1 段）

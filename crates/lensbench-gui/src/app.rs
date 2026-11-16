@@ -222,6 +222,16 @@ struct Status {
 }
 
 impl Core {
+    /// 注意を下の行の履歴（直近 20 件）に足す（系を読んだときの注意。下の行には出さない）
+    fn note_history(&mut self, notes: Vec<String>) {
+        self.status_log
+            .extend(notes.into_iter().map(|t| (t, false, None)));
+        let n = self.status_log.len();
+        if n > 20 {
+            self.status_log.drain(..n - 20);
+        }
+    }
+
     /// 下の行に知らせを出す（利用者の操作の結果、GAR-16）
     fn info(&mut self, text: impl Into<String>) {
         self.status = Status {

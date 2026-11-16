@@ -119,6 +119,23 @@ impl Core {
                 if d.replies[0].method == "reload" {
                     text = tr("Reloaded (Ctrl+Z to undo)").into();
                 }
+                // 読んだときの注意（プロジェクトの展開・分散式・.zmx の読めなかった行など）は履歴へ、下の行には数（CLI-10）
+                let notes: Vec<String> = v["notes"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str())
+                            .map(lensbench_core::i18n::warning)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if !notes.is_empty() {
+                    text = trf(
+                        "{} ({} notes, click for the history)",
+                        &[&text, &notes.len()],
+                    );
+                    self.note_history(notes);
+                }
                 if let Some(m) = self.missing_glass.take() {
                     if m.model.is_some() {
                         text = trf(

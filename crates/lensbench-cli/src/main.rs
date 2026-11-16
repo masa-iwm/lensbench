@@ -122,9 +122,13 @@ impl ConfigSel {
     }
 }
 
-/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）
+/// 重ね描きする構成の系と名前。重ね描きでなければ今の系 1 つ（名前は空）。読んだときの注意は標準エラーへ
 fn overlay_systems(c: &Common, l: &ConfigSel) -> lensbench_core::Result<Vec<(String, System)>> {
-    lensbench_engine::load::overlay_systems(&c.spec(), &l.overlay())
+    let (systems, notes) = lensbench_engine::load::overlay_systems(&c.spec(), &l.overlay())?;
+    for w in notes {
+        eprintln!("{}", lensbench_core::i18n::warning(&w));
+    }
+    Ok(systems)
 }
 
 #[derive(Subcommand)]

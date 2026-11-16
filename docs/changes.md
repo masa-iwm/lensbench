@@ -130,6 +130,9 @@
 - Huygens MTF（`huygens-mtf`）は、像の格子の間隔 Δ のナイキスト 1/(2Δ) を超える周波数を `null`（NaN）にする（以前は折り返した値）。
   多色の MTF（`mtf-focus`・`mtf-field`・Python の `through_focus_mtf`・`field_mtf` も）で重みのある波長が無いときは、全部 NaN でなく誤り。
 - スポット・PSF・RMS の結果の `unit` は `"lens"` から `"mm"` に（意味は同じ。アフォーカル像空間は角度の単位のまま）。
+- serve の `load`・`reload`・`system`（と元に戻すで開く前へ戻した `loaded`）に `notes`（読んだときの注意）を足した（CLI-10）。
+  プロジェクトの展開の注意は解析の `notes` にも入る。Rust の `lensbench_engine::load::load_file` は注意を標準エラーに書かなくなった
+  （注意が要るなら `load_file_notes`）。`overlay_systems` は系と注意の組を返す。
 - serve: 読むだけの要求は並行に、`optimize`・`tolerance`・`swap`・`zoom` は始めたときの系で回る。`optimize` の `apply` は
   回している間に系が変わっていれば当てない（`applied: false` と `notes`）。
 - 公差（`tolerance`・Python の `tolerance`）の結果の `label`（`tolerances`・`sensitivity`・`correlation`）は英語の名前に

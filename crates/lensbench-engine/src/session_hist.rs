@@ -1,5 +1,6 @@
-//! serve の元に戻す段の名前・一覧（serve.rs から分けた）
-use super::{Change, Served, Snap};
+//! serve の元に戻す段の名前・一覧と、読み込んだ系の概要（serve.rs から分けた）
+use super::{Change, LoadSpec, Served, Snap};
+use lensbench_core::System;
 use lensbench_project::edit_ops::EditOp;
 use serde_json::{json, Value};
 
@@ -60,4 +61,20 @@ pub(super) const CONFIG_KEY: &str = "\u{1}set_config";
 /// 構成を順に見ても、段が切り替えの数だけ積まれない）
 pub(super) fn config_only(ops: &[EditOp]) -> bool {
     !ops.is_empty() && ops.iter().all(|o| matches!(o, EditOp::SetConfig { .. }))
+}
+
+/// 読み込んだ系の概要
+pub(super) fn summary(s: &System, spec: &LoadSpec, notes: &[String]) -> Value {
+    json!({
+        "notes": notes,
+        "file": spec.file.display().to_string(),
+        "name": s.name,
+        "cfg": spec.cfg,
+        "state": spec.state,
+        "surfaces": s.surfaces.len(),
+        "image_surface": s.image(),
+        "fields": s.fields.iter().map(|f| [f.x, f.y]).collect::<Vec<_>>(),
+        "wavelengths_um": s.wavelengths,
+        "primary": s.primary + 1,
+    })
 }
