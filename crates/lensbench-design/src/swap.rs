@@ -985,6 +985,7 @@ impl<'a> SwapSearch<'a> {
             header: self.header_screen(),
             resume: o.resume,
             stage: SwapStage::Screen.name(),
+            keep_going: false,
         };
         let sum = lensbench_runs::run(n, 0, &ro, |i, _| {
             let v = self.coarse_merit(i, pre.rings);
@@ -1220,6 +1221,7 @@ impl<'a> SwapSearch<'a> {
             header: header.to_string(),
             resume,
             stage: SwapStage::Main.name(),
+            keep_going: false,
         };
         lensbench_runs::run(idx.len(), 0, &o, |j, _| {
             serde_json::to_string(&self.eval(idx[j]))

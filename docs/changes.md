@@ -178,6 +178,9 @@
   違う（統計としては同じ分布。切った正規分布は棄却法から逆関数法に）。感度・公称の値は変わらない。
 
 ### 光学系
+- .zmx の ZPL マクロのソルブ（IOO-22）: 途中で誤りになって止まったマクロは、値は前と同じく OpticStudio に合わせる（それまでの
+  SOLVERETURN の値か 0、または変えない）が、読込の注意（`System.macro_warnings`、CLI の `warning:`）に止まったことと誤りを出す。
+  読込で解き直せないときは、前はすべてのマクロのソルブを外したが、解き直せなくするソルブだけを外し、ほかは残す。
 - ガラスのフォルダのどこにも無いカタログ SCHOTT・OHARA は、同梱のカタログ（分散式のみ、GUI と同じもの）から取る（CLI-31）。
   CLI・serve・Python でも、前は「glass catalog not found」で止まった系がフォルダの指定なしで開く。同梱から取ったガラスは
   読込の注意（CLI は標準誤差の `warning:`、`System.import_notes`）に出る。同じ名前の AGF がフォルダにあればそちらが先なので、
@@ -312,6 +315,8 @@
   人が書いた名前での絞り込みは `VendorKey::matches`（鍵を含む）。`lensbench_catalog::spec::vendor_key` はなくした。
   `LensCatalog::load_registered` は `Arc<LensCatalog>` を返し、読んだファイルの更新時刻・大きさが変わらなければ読み直さない。
   `UserItem::body` で品の中身（`ItemBody::Optic`・`Mech`・`Incomplete`）を引く。
+- `lensbench_runs::run`（IOO-24）: `RunOpts::keep_going` で失敗したタスクを結果 `{"error": "…"}` の行にして続ける
+  （`RunSummary::failed` に数）。結果のファイルは `lensbench_core::vfs` を通して読み書きし（Web 版でも使える）、再開でファイルを 1 回だけ読む。
 - 差し替え探索（PRJ-07）: 置いた玉の面が同じ候補（型番違いの同じ玉など）の組は 1 回だけ最適化して結果を使い回す
   （`SwapSearch::distinct_count` はまとめた後の組の数）。
 - 展開の結果 `Expansion` に `map: Vec<SurfOrigin>`（系の面ごとの出どころ: 面を足した id のあるブロック・群、往路・復路、

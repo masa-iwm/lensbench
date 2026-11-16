@@ -219,6 +219,53 @@ fn run_stops_on_error() {
     std::fs::remove_file(&f).unwrap();
 }
 
+/// keep_going: 失敗は結果 {"error": …} の行にして続ける。結果のファイルは vfs を通す（メモリの置き場でも書ける。IOO-24）
+#[test]
+fn run_keeps_going_and_uses_vfs() {
+    let fs = std::sync::Arc::new(lensbench_core::vfs::MemFs::new());
+    lensbench_core::vfs::with(fs, || {
+        let f = std::path::PathBuf::from("/runs/r.jsonl");
+        let opts = RunOpts {
+            threads: Some(2),
+            out: Some(&f),
+            header: "{}".into(),
+            keep_going: true,
+            ..Default::default()
+        };
+        let task = |i: usize, _| {
+            if i % 10 == 3 {
+                Err(lensbench_core::Error::Invalid("\"だめ\"\n".into()))
+            } else {
+                Ok(i.to_string())
+            }
+        };
+        let s = lensbench_runs::run(50, 0, &opts, task).unwrap();
+        assert_eq!((s.ran, s.failed), (50, 5));
+        let (_, rows) = lensbench_runs::read_results(&f).unwrap();
+        assert_eq!(rows.len(), 50);
+        for (i, _, r) in &rows {
+            let v: serde_json::Value = serde_json::from_str(r).unwrap();
+            if i % 10 == 3 {
+                let e = v["error"].as_str().unwrap();
+                assert!(
+                    e.contains(&format!("set {i}")) && e.contains("\"だめ\"\n"),
+                    "{e}"
+                );
+            } else {
+                assert_eq!(v, serde_json::json!(i));
+            }
+        }
+        // 続きから: 全部終わっていれば何もしない
+        let again = RunOpts {
+            resume: true,
+            ..opts
+        };
+        let s = lensbench_runs::run(50, 0, &again, task).unwrap();
+        assert_eq!((s.skipped, s.ran), (50, 0));
+        assert!(!std::path::Path::new("/runs/r.jsonl").exists());
+    });
+}
+
 /// 抽選の End・円の中の組（IOO-14・30）: 値の範囲・割合・形、組の約束の誤り
 #[test]
 fn draws_end_and_disc() {

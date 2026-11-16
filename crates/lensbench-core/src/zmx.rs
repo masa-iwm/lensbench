@@ -1645,42 +1645,7 @@ pub fn build(
         .collect();
     attach_macros(&mut s, raw, opt, base);
     // OpticStudio は読込でソルブを解き直す（保存した DISZ が古くても同じ系になる）
-    let is_macro = |k: &SolveKind| {
-        matches!(
-            k,
-            SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
-        )
-    };
-    if s.solves.iter().any(|q| is_macro(&q.kind)) || !s.macro_parms.is_empty() {
-        let before = s.clone();
-        if let Err(e) = s.solve_thickness() {
-            // マクロのソルブが収まらない（自分の値を読むなど）・解き直しの途中でエラーになる: マクロのソルブを外す
-            s = before;
-            let r = s.rx_mut();
-            for q in r.solves.iter().filter(|q| is_macro(&q.kind)) {
-                let name = match q.kind {
-                    SolveKind::MacroCurv { index: i } | SolveKind::MacroThick { index: i } => {
-                        r.macros[i as usize].name.clone()
-                    }
-                    _ => unreachable!(),
-                };
-                r.macro_notes.push(format!(
-                    "removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
-                    q.surf
-                ));
-            }
-            r.solves.retain(|q| !is_macro(&q.kind));
-            for q in &r.macro_parms {
-                let name = r.macros[q.id as usize].name.clone();
-                r.macro_notes.push(format!(
-                    "removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
-                    q.surf,
-                    what = q.col.label(q.parm)
-                ));
-            }
-            r.macro_parms.clear();
-        }
-    }
+    crate::zpl_solve::resolve_on_load(&mut s);
     s.solve_thickness()?;
     // 自動の半直径を光線から求める（OpticStudio は読込で求め直す）
     s.update_semi();
@@ -1723,11 +1688,22 @@ fn attach_macros(s: &mut System, raw: &Raw, opt: &LoadOptions, base: Option<&Pat
                         notimpl!("surface type {:?} {what}", s.surfaces[k].typ);
                     }
                 }
-                s.run_macro(&m, k)?;
-                Ok(m)
+                let o = s.run_macro_outcome(&m, k)?;
+                Ok((m, o))
             });
             match got {
-                Ok(m) => {
+                Ok((m, o)) => {
+                    // 途中で止まったマクロ: 値は OpticStudio と同じ（それまでの値か 0、または変えない）だが黙らない（IOO-22）
+                    if let Some(err) = &o.error {
+                        s.rx_mut().macro_notes.push(match o.value {
+                            Some(v) => format!(
+                                "the {what} macro solve {name} of surface {k} stopped with an error and used {v} as OpticStudio does: {err}"
+                            ),
+                            None => format!(
+                                "the {what} macro solve {name} of surface {k} stopped with an error and left the value as OpticStudio does: {err}"
+                            ),
+                        });
+                    }
                     let id = match s
                         .macros
                         .iter()

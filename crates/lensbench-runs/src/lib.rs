@@ -26,7 +26,6 @@ use lensbench_core::system::System;
 use lensbench_core::LockExt;
 use lensbench_core::{invalid, par};
 use std::collections::HashSet;
-use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -634,6 +633,9 @@ pub struct RunOpts<'a> {
     pub resume: bool,
     /// 進み具合の段の名前（[`Progress::stage`]。`""` は段なし）
     pub stage: &'static str,
+    /// タスクが失敗しても止めない（IOO-24）: 失敗は結果 `{"error": "…"}` の行として書いて次へ進み、
+    /// [`RunSummary::failed`] に数える。false（既定）なら新しいタスクを始めず最初のエラーを返す
+    pub keep_going: bool,
 }
 
 /// 実行の結果
@@ -646,6 +648,8 @@ pub struct RunSummary {
     pub ran: usize,
     /// 止めたか（cancel）
     pub cancelled: bool,
+    /// 失敗して `{"error": …}` を書いたタスクの数（[`RunOpts::keep_going`]。`ran` に含む）
+    pub failed: usize,
 }
 
 const MAGIC: &str = "{\"lensbench_runs\":1,\"header\":";
@@ -653,9 +657,15 @@ const MAGIC: &str = "{\"lensbench_runs\":1,\"header\":";
 /// 結果のファイルを読む: (頭, [(番号, タスクの種, 結果の JSON の文字列)])。番号の順。途中で切れた最後の行は捨てる
 #[allow(clippy::type_complexity)]
 pub fn read_results(path: &Path) -> Result<(String, Vec<(usize, u64, String)>)> {
-    let txt =
-        std::fs::read_to_string(path).map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
-    let mut lines = complete_lines(&txt).into_iter();
+    let txt = lensbench_core::vfs::read_to_string(path)
+        .map_err(|e| Error::Io(format!("{}: {e}", path.display())))?;
+    parse_results(path, &txt)
+}
+
+/// 結果のファイルの中身 txt を読む（[`read_results`]）
+#[allow(clippy::type_complexity)]
+fn parse_results(path: &Path, txt: &str) -> Result<(String, Vec<(usize, u64, String)>)> {
+    let mut lines = complete_lines(txt).into_iter();
     let head = match lines.next() {
         Some(l) => l,
         None => invalid!("{}: empty file", path.display()),
@@ -687,13 +697,31 @@ fn complete_lines(txt: &str) -> Vec<&str> {
     v
 }
 
-/// 1 行を改行まで 1 回の write_all で書いて flush する
-fn write_line(f: &mut std::fs::File, line: &str) -> std::io::Result<()> {
+/// 1 行を改行まで 1 回の書き込みで足す（[`lensbench_core::vfs`] を通す。Web 版でも書ける）
+fn write_line(p: &Path, line: &str) -> std::io::Result<()> {
     let mut b = String::with_capacity(line.len() + 1);
     b.push_str(line);
     b.push('\n');
-    f.write_all(b.as_bytes())?;
-    f.flush()
+    lensbench_core::vfs::append(p, b.as_bytes())
+}
+
+/// JSON の文字列（引用符と、引用符・逆斜線・制御文字の逃がし）
+fn json_str(t: &str) -> String {
+    let mut o = String::with_capacity(t.len() + 2);
+    o.push('"');
+    for c in t.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
 }
 
 /// {"i":N,"seed":S,"result":R} の 1 行（書いた形そのもの。切れていれば None）
@@ -708,6 +736,8 @@ fn parse_line(l: &str) -> Option<(usize, u64, String)> {
 /// タスク task(i, タスクの種) を i = 0..n で回す（再開なら終わった番号を飛ばす）。結果は JSON の値の文字列で返す
 /// （空の文字列は終えなかったタスク: ファイルに書かず、進み具合にも数えない）。
 /// タスクが失敗したら新しいタスクを始めず、走っているものが終わってから最初のエラーを返す（書いた結果は残る）。
+/// [`RunOpts::keep_going`] なら失敗は結果 `{"error": "…"}` として書いて続ける。結果のファイルは
+/// [`lensbench_core::vfs`] を通して読み書きする。
 /// 進み具合は文脈の受け手（[`lensbench_core::par::with_progress`]）へ、タスクが終わるたびにワーカーのスレッドから知らせる。
 /// 文脈の中断の印（[`lensbench_core::par::with_cancel`]）が倒れたら新しいタスクを始めない（走っているものは終わらせる）
 pub fn run<F>(n: usize, seed: u64, opts: &RunOpts, task: F) -> Result<RunSummary>
@@ -718,48 +748,45 @@ where
         invalid!("line break in the batch header (make it one line of JSON)");
     }
     let mut done: HashSet<usize> = HashSet::new();
-    let mut file: Option<std::fs::File> = None;
+    let file: Option<&Path> = opts.out;
     if let Some(p) = opts.out {
-        let mut keep = false;
-        if opts.resume && p.exists() {
-            let (h, rows) = read_results(p)?;
-            if h != opts.header {
-                invalid!(
-                    "{}: the header differs (results of another calculation; stop resume or use another file)",
-                    p.display()
-                );
-            }
-            done = rows.into_iter().map(|r| r.0).filter(|&i| i < n).collect();
-            keep = true;
-            // 切れた行を除いて書き直す（行の境目から追記する）
-            let txt = std::fs::read_to_string(p).map_err(|e| Error::Io(e.to_string()))?;
-            let mut good = String::with_capacity(txt.len());
-            for (k, l) in complete_lines(&txt).into_iter().enumerate() {
-                if k == 0 || parse_line(l).is_some() {
-                    good.push_str(l);
-                    good.push('\n');
+        let io = |e: std::io::Error| Error::Io(format!("{}: {e}", p.display()));
+        // 再開: 1 回だけ読み、切れた行を除いて書き直す（行の境目から追記する）
+        let old = (opts.resume && lensbench_core::vfs::is_file(p))
+            .then(|| lensbench_core::vfs::read_to_string(p))
+            .transpose()
+            .map_err(io)?;
+        match old {
+            Some(txt) => {
+                let (h, rows) = parse_results(p, &txt)?;
+                if h != opts.header {
+                    invalid!(
+                        "{}: the header differs (results of another calculation; stop resume or use another file)",
+                        p.display()
+                    );
+                }
+                done = rows.into_iter().map(|r| r.0).filter(|&i| i < n).collect();
+                let mut good = String::with_capacity(txt.len());
+                for (k, l) in complete_lines(&txt).into_iter().enumerate() {
+                    if k == 0 || parse_line(l).is_some() {
+                        good.push_str(l);
+                        good.push('\n');
+                    }
+                }
+                if good != txt {
+                    lensbench_core::vfs::write(p, good).map_err(io)?;
                 }
             }
-            if good != txt {
-                std::fs::write(p, good).map_err(|e| Error::Io(e.to_string()))?;
+            None => {
+                lensbench_core::vfs::write(p, format!("{MAGIC}{}}}\n", opts.header)).map_err(io)?
             }
-        }
-        let f = if keep {
-            std::fs::OpenOptions::new().append(true).open(p)
-        } else {
-            std::fs::File::create(p)
-        }
-        .map_err(|e| Error::Io(format!("{}: {e}", p.display())))?;
-        let f = file.insert(f);
-        if !keep {
-            write_line(f, &format!("{MAGIC}{}}}", opts.header))
-                .map_err(|e| Error::Io(e.to_string()))?;
         }
     }
     let todo: Vec<usize> = (0..n).filter(|i| !done.contains(i)).collect();
     let skipped = n - todo.len();
     let file = Mutex::new(file);
     let failed: Mutex<Option<Error>> = Mutex::new(None);
+    let n_failed = AtomicUsize::new(0);
     let stop = AtomicBool::new(false);
     let ran = AtomicUsize::new(0);
     let t0 = Instant::now();
@@ -770,48 +797,49 @@ where
                 return;
             }
             let s = sub_seed(seed, i);
-            match task(i, s) {
+            let res = match task(i, s) {
                 // 空の結果は終えなかったタスク（止めた後に終わった評価など）: 書かず、数えない
-                Ok(res) if res.is_empty() => {}
-                Ok(res) => {
-                    if res.contains('\n') {
-                        stop.store(true, Ordering::Relaxed);
-                        failed.lock_ok().get_or_insert(Error::Invalid(format!(
-                            "set {i}: line break in the result"
-                        )));
-                        return;
-                    }
-                    let mut g = file.lock_ok();
-                    if let Some(f) = g.as_mut() {
-                        let w =
-                            write_line(f, &format!("{{\"i\":{i},\"seed\":{s},\"result\":{res}}}"));
-                        if let Err(e) = w {
-                            stop.store(true, Ordering::Relaxed);
-                            failed.lock_ok().get_or_insert(Error::Io(e.to_string()));
-                            return;
-                        }
-                    }
-                    let k = ran.fetch_add(1, Ordering::Relaxed) + 1;
-                    drop(g);
-                    if par::reporting() {
-                        let el = t0.elapsed().as_secs_f64();
-                        let left = todo.len() - k.min(todo.len());
-                        par::report(&par::Event::Count(Progress {
-                            stage: opts.stage,
-                            done: skipped + k,
-                            total: n,
-                            ran: k,
-                            elapsed: el,
-                            eta: (k > 0).then(|| el / k as f64 * left as f64),
-                        }));
-                    }
+                Ok(res) if res.is_empty() => return,
+                Ok(res) if res.contains('\n') => {
+                    Err(Error::Invalid(format!("set {i}: line break in the result")))
+                }
+                Ok(res) => Ok(res),
+                Err(e) => Err(Error::Invalid(format!("set {i}: {e}"))),
+            };
+            let res = match res {
+                Ok(r) => r,
+                Err(e) if opts.keep_going => {
+                    n_failed.fetch_add(1, Ordering::Relaxed);
+                    format!("{{\"error\":{}}}", json_str(&e.to_string()))
                 }
                 Err(e) => {
                     stop.store(true, Ordering::Relaxed);
-                    failed
-                        .lock_ok()
-                        .get_or_insert(Error::Invalid(format!("set {i}: {e}")));
+                    failed.lock_ok().get_or_insert(e);
+                    return;
                 }
+            };
+            let g = file.lock_ok();
+            if let Some(p) = *g {
+                let w = write_line(p, &format!("{{\"i\":{i},\"seed\":{s},\"result\":{res}}}"));
+                if let Err(e) = w {
+                    stop.store(true, Ordering::Relaxed);
+                    failed.lock_ok().get_or_insert(Error::Io(e.to_string()));
+                    return;
+                }
+            }
+            let k = ran.fetch_add(1, Ordering::Relaxed) + 1;
+            drop(g);
+            if par::reporting() {
+                let el = t0.elapsed().as_secs_f64();
+                let left = todo.len() - k.min(todo.len());
+                par::report(&par::Event::Count(Progress {
+                    stage: opts.stage,
+                    done: skipped + k,
+                    total: n,
+                    ran: k,
+                    elapsed: el,
+                    eta: (k > 0).then(|| el / k as f64 * left as f64),
+                }));
             }
         });
     });
@@ -823,6 +851,7 @@ where
         skipped,
         ran: ran.into_inner(),
         cancelled: cancelled(),
+        failed: n_failed.into_inner(),
     })
 }
 

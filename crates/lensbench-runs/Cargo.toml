@@ -19,6 +19,9 @@ web-time = "1"
 serde = { version = "1", features = ["derive"], optional = true }
 schemars = { version = "1", optional = true }
 
+[dev-dependencies]
+serde_json = "1"
+
 [features]
 # 分布・組の作り方（Dist・Sampler・Grid）を serde で書き出し・読み直す（core の serde・schema と同じ約束）
 serde = ["dep:serde", "lensbench-core/serde"]

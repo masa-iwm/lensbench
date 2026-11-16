@@ -478,11 +478,14 @@ impl MacroCol {
 impl System {
     /// マクロ m を面 surf のソルブとして走らせた値（OpticStudio と同じ扱い、[`Program::solve`]）。None は値を変えない
     pub(crate) fn run_macro(&self, m: &Macro, surf: usize) -> Result<Option<f64>> {
-        let o = m
-            .program()?
+        Ok(self.run_macro_outcome(m, surf)?.value)
+    }
+
+    /// [`Self::run_macro`] と同じだが、途中で止まったときのエラー（[`crate::zpl::Outcome::error`]）も返す
+    pub(crate) fn run_macro_outcome(&self, m: &Macro, surf: usize) -> Result<crate::zpl::Outcome> {
+        m.program()?
             .solve(&mut SysHost::new(self, surf))
-            .map_err(|e| e.at(format!("surface {surf} macro {}", m.name)))?;
-        Ok(o.value)
+            .map_err(|e| e.at(format!("surface {surf} macro {}", m.name)))
     }
 
     /// パラメータのマクロのソルブを解く（[`System::solve_thickness`] の中で呼ぶ）。値を変えたら true
@@ -529,5 +532,116 @@ impl System {
     /// マクロのソルブを外して保存された値で固定したもの（面・マクロの名前・理由）。空なら全部のマクロを解いている
     pub fn macro_warnings(&self) -> Vec<String> {
         self.macro_notes.clone()
+    }
+}
+
+/// 読込でマクロのソルブを解き直す。解き直せなければ、マクロのソルブを 1 つずつ足して解けなくするものだけ外し
+/// （IOO-22）、マクロのないところでも解けなければすべて外す。外したものは `macro_notes` に残す
+pub(crate) fn resolve_on_load(s: &mut System) {
+    use crate::solves::SolveKind;
+    let is_macro = |k: &SolveKind| {
+        matches!(
+            k,
+            SolveKind::MacroCurv { .. } | SolveKind::MacroThick { .. }
+        )
+    };
+    if s.solves.iter().any(|q| is_macro(&q.kind)) || !s.macro_parms.is_empty() {
+        let before = s.clone();
+        let mut first = s.solve_thickness();
+        if first.is_err() {
+            // 1 つのマクロの誤りでほかのマクロのソルブまで外さない（IOO-22）: マクロのないところから 1 つずつ足し、
+            // 解けなくなるものだけ外す（前のソルブで値が変わって初めて誤りになる・収まらないものも見つかる）
+            let ns = before.solves.len();
+            let np = before.macro_parms.len();
+            let with = |ks: &[bool], kp: &[bool]| {
+                let mut c = before.clone();
+                let r = c.rx_mut();
+                let mut i = 0;
+                r.solves.retain(|q| {
+                    i += 1;
+                    !is_macro(&q.kind) || ks[i - 1]
+                });
+                let mut i = 0;
+                r.macro_parms.retain(|_| {
+                    i += 1;
+                    kp[i - 1]
+                });
+                c
+            };
+            let (mut ks, mut kp) = (vec![false; ns], vec![false; np]);
+            if with(&ks, &kp).solve_thickness().is_ok() {
+                let mut notes = Vec::new();
+                for i in 0..ns + np {
+                    let (solve, j) = if i < ns { (true, i) } else { (false, i - ns) };
+                    if solve {
+                        if !is_macro(&before.solves[j].kind) {
+                            continue;
+                        }
+                        ks[j] = true;
+                    } else {
+                        kp[j] = true;
+                    }
+                    match with(&ks, &kp).solve_thickness() {
+                        Ok(()) => {}
+                        Err(e) if solve => {
+                            ks[j] = false;
+                            let q = &before.solves[j];
+                            let (SolveKind::MacroCurv { index: m }
+                            | SolveKind::MacroThick { index: m }) = q.kind
+                            else {
+                                unreachable!()
+                            };
+                            notes.push(format!(
+                                "removed macro solve {} of surface {} and fixed the saved value: can't solve it again ({e})",
+                                before.macros[m as usize].name, q.surf
+                            ));
+                        }
+                        Err(e) => {
+                            kp[j] = false;
+                            let q = &before.macro_parms[j];
+                            notes.push(format!(
+                                "removed the {what} macro solve {} of surface {} and fixed the saved value: can't solve it again ({e})",
+                                before.macros[q.id as usize].name,
+                                q.surf,
+                                what = q.col.label(q.parm)
+                            ));
+                        }
+                    }
+                }
+                // 解いた値ではなく保存された値から（外したソルブの面は保存された値で固定）
+                *s = with(&ks, &kp);
+                s.rx_mut().macro_notes.extend(notes);
+                first = s.solve_thickness();
+            } else {
+                *s = before.clone();
+            }
+        }
+        if let Err(e) = first {
+            // マクロのソルブが収まらない（自分の値を読むなど）・解き直しの途中でエラーになる: マクロのソルブを外す
+            *s = before;
+            let r = s.rx_mut();
+            for q in r.solves.iter().filter(|q| is_macro(&q.kind)) {
+                let name = match q.kind {
+                    SolveKind::MacroCurv { index: i } | SolveKind::MacroThick { index: i } => {
+                        r.macros[i as usize].name.clone()
+                    }
+                    _ => unreachable!(),
+                };
+                r.macro_notes.push(format!(
+                    "removed macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
+                    q.surf
+                ));
+            }
+            r.solves.retain(|q| !is_macro(&q.kind));
+            for q in &r.macro_parms {
+                let name = r.macros[q.id as usize].name.clone();
+                r.macro_notes.push(format!(
+                    "removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})",
+                    q.surf,
+                    what = q.col.label(q.parm)
+                ));
+            }
+            r.macro_parms.clear();
+        }
     }
 }

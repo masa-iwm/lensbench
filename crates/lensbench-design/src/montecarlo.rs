@@ -660,6 +660,7 @@ pub fn run_to(spec: &McSpec, o: &runs::RunOpts) -> Result<McResult> {
         header: o.header.clone(),
         resume: o.resume,
         stage: "",
+        keep_going: false,
     };
     runs::run(total, spec.seed, &ro, |k, _| {
         let deltas = deltas_of(k);

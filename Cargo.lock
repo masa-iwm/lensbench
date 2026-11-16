@@ -3147,6 +3147,7 @@ dependencies = [
  "lensbench-core",
  "schemars",
  "serde",
+ "serde_json",
  "web-time",
 ]
 

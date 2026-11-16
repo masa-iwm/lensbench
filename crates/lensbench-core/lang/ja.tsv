@@ -1591,6 +1591,8 @@ solved the {what} of surface {} again with the solve ({}, value {}): {b} → {a}
 the hash of the system file doesn't match its content (edited after writing? recorded {hash}, now {hash_sys})	系ファイルの hash が中身と合いません（書いた後に直した？ 記録 {hash}、今 {hash_sys}）
 removed the {what} macro solve {name} of surface {} and fixed the saved value: can't solve it again ({e})	面 {} の{what}のマクロのソルブ {name} を外して、保存された値で固定しました: 解き直せません（{e}）
 removed the {what} macro solve {name} of surface {k} and fixed the saved value: {e}	面 {k} の{what}のマクロのソルブ {name} を外して、保存された値で固定しました: {e}
+the {what} macro solve {name} of surface {k} stopped with an error and used {v} as OpticStudio does: {err}	面 {k} の{what}のマクロのソルブ {name} は誤りで止まり、OpticStudio と同じく {v} を使いました: {err}
+the {what} macro solve {name} of surface {k} stopped with an error and left the value as OpticStudio does: {err}	面 {k} の{what}のマクロのソルブ {name} は誤りで止まり、OpticStudio と同じく値を変えませんでした: {err}
 warning: {e}	注意: {e}
 field {}: {e}	視野 {}: {e}
 fiber coupling: the phase changes by {:.2} rad between neighboring grid points (more than π/2); increase grid	ファイバ結合: 隣り合うグリッド点の位相差が {:.2} rad（π/2 超え）。grid を増やしてください

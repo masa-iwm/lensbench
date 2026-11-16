@@ -108,13 +108,43 @@ fn macro_errors_like_opticstudio() {
         ("LBNONE", -0.0123),
     ] {
         let s = load(&singlet(name, -0.0123), &d);
-        assert!(
-            s.macro_warnings().is_empty(),
-            "{name}: {:?}",
-            s.macro_warnings()
-        );
+        // 値は OpticStudio と同じだが、止まったことは黙らない（IOO-22）。0 で割るのは止まらない
+        let w = s.macro_warnings();
+        if name == "LBNONE" || name == "LBDIV" {
+            assert!(w.is_empty(), "{name}: {w:?}");
+        } else {
+            assert!(
+                w.len() == 1 && w[0].contains(name) && w[0].contains("stopped with an error"),
+                "{name}: {w:?}"
+            );
+        }
         assert_eq!(s.surfaces[2].c, c, "{name}");
     }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 解き直せないマクロのソルブ（自分の値を読んで収まらない）だけを外し、同じ系のほかのマクロのソルブは残す（IOO-22）
+#[test]
+fn one_bad_macro_keeps_the_other_macro_solves() {
+    let d = macro_dir(
+        "onebad",
+        &[
+            ("LB_GROW", "SOLVERETURN CURV(2) + 0.001\n"),
+            ("KM", "SOLVERETURN -THIC(1) / 10\n"),
+        ],
+    );
+    let txt = singlet("LB_GROW", -0.0123)
+        .replace("  DISZ 45\n", "  DISZ 45\n  CONI -0.123\n  KZPL \"KM\"\n");
+    assert!(txt.contains("KZPL"), "{txt}");
+    let s = load(&txt, &d);
+    assert_eq!(s.surfaces[2].c, -0.0123);
+    assert!(s.solves.iter().all(|q| q.surf != 2));
+    let w = s.macro_warnings();
+    assert!(w.len() == 1 && w[0].contains("LB_GROW"), "{w:?}");
+    assert_eq!(s.surfaces[2].k, -0.5);
+    assert_eq!(s.macro_parms.len(), 1);
+    let s = s.with_params(&[(Param::new(1, Kind::Thick), 7.0)]).unwrap();
+    assert_eq!(s.surfaces[2].k, -0.7);
     let _ = std::fs::remove_dir_all(&d);
 }
 
