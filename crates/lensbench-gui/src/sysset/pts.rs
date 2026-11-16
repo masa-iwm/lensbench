@@ -2,15 +2,17 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 視野の点（x, y と重み）。古い保存の数（視野角 y）も読む
+/// 視野の点（x, y と重み）
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(from = "FieldIn")]
 pub struct FieldPt {
+    #[serde(default)]
     pub x: f64,
+    #[serde(default)]
     pub y: f64,
+    #[serde(default = "one")]
     pub w: f64,
     /// ケラレ係数 [VDX, VDY, VCX, VCY, VAN]（プロジェクトの fields.vignetting。開いた .zmx の値を持つ）
-    #[serde(skip_serializing_if = "no_vig")]
+    #[serde(default, skip_serializing_if = "no_vig")]
     pub vig: [f64; 5],
 }
 
@@ -38,62 +40,17 @@ impl FieldPt {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum FieldIn {
-    Y(f64),
-    Pt {
-        #[serde(default)]
-        x: f64,
-        #[serde(default)]
-        y: f64,
-        #[serde(default = "one")]
-        w: f64,
-        #[serde(default)]
-        vig: [f64; 5],
-    },
-}
-
-impl From<FieldIn> for FieldPt {
-    fn from(v: FieldIn) -> FieldPt {
-        match v {
-            FieldIn::Y(y) => FieldPt::y(y),
-            FieldIn::Pt { x, y, w, vig } => FieldPt { x, y, w, vig },
-        }
-    }
-}
-
-/// 波長 [µm] と重み。古い保存の数（波長だけ）も読む
+/// 波長 [µm] と重み
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(from = "WaveIn")]
 pub struct WavePt {
     pub um: f64,
+    #[serde(default = "one")]
     pub w: f64,
 }
 
 impl WavePt {
     pub fn um(um: f64) -> WavePt {
         WavePt { um, w: 1.0 }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WaveIn {
-    Um(f64),
-    Pt {
-        um: f64,
-        #[serde(default = "one")]
-        w: f64,
-    },
-}
-
-impl From<WaveIn> for WavePt {
-    fn from(v: WaveIn) -> WavePt {
-        match v {
-            WaveIn::Um(um) => WavePt::um(um),
-            WaveIn::Pt { um, w } => WavePt { um, w },
-        }
     }
 }
 

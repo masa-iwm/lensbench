@@ -283,7 +283,7 @@ impl ElemKind {
     }
 }
 
-/// 組合せの 1 つの要素（項目は種類ごとに使うものだけ。古い保存（vendor・part・reversed・air）も読める）
+/// 組合せの 1 つの要素（項目は種類ごとに使うものだけ。無い項目は既定）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Pick {

@@ -898,7 +898,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cache_is_gzip_and_old_step_files_are_still_found() {
+    fn cache_is_gzip() {
         let d = std::env::temp_dir().join(format!("lb-cad-find-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let p = cache_path(&d, "X1", "u");
@@ -906,11 +906,9 @@ mod tests {
         assert_eq!(store_key(&p), store_key(&p.with_extension("")));
         assert!(store_key(&p).ends_with(".step"));
         assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), None);
+        // gzip でない以前の形の .step は使わない（XCT-24）
         std::fs::write(p.with_extension(""), b"ISO-10303-21;").unwrap();
-        assert_eq!(
-            crate::cache::cad_cache_find(&d, "X1", "u"),
-            Some(p.with_extension(""))
-        );
+        assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), None);
         std::fs::write(&p, crate::detail::gzip(b"ISO-10303-21;")).unwrap();
         assert_eq!(crate::cache::cad_cache_find(&d, "X1", "u"), Some(p.clone()));
         let gz = std::fs::read(&p).unwrap();

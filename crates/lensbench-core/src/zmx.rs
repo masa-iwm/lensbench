@@ -46,8 +46,6 @@ pub struct RawSurf {
     pub diam_mode: Option<u8>,
     /// 半直径を固定（DIAM の 2 番目が 1）
     pub diam_fixed: bool,
-    /// 機械的な半直径の行（MEMA）がある（OpticStudio が書いた .zmx）
-    pub mema: bool,
     pub comment: String,
     pub parm: BTreeMap<i64, f64>,
     /// ピックアップ（元の面, 倍率, オフセット, 元の列。None は同じ列）
@@ -393,10 +391,9 @@ pub fn parse_text(txt: &str) -> Result<Raw> {
             "SCBD" => s.scbd.push(rest()),
             "STOP" => s.stop = true,
             // 面の無視（Ignore This Surface）: OpticStudio は HIDE の 6 番目の値を 1 にして書く（IGNR は多重構成の
-            // 演算子の名前で、面の行にはない。以前の lensbench が書いた "IGNR 1" も読めるように残す）
-            "HIDE" => s.ignore = s.ignore || t.get(6).is_some_and(|v| *v != "0"),
-            "IGNR" => s.ignore = t.get(1).is_some_and(|v| *v != "0"),
-            "MEMA" => s.mema = true,
+            // 演算子の名前で、面の行にはない）
+            "HIDE" => s.ignore = t.get(6).is_some_and(|v| *v != "0"),
+            "MEMA" => {}
             k if HARMLESS.contains(&k) => {}
             k if legacy => raw.notes.push(format!(
                 "zmx surface {}: line {k} was skipped (an old .zmx without indentation)",
@@ -744,19 +741,6 @@ fn sys_f(raw: &Raw, key: &str, i: usize, default: f64) -> Result<f64> {
 }
 
 impl Raw {
-    /// 自動の半直径を入れる前の lensbench が書いた .zmx か: VERS が lensbench の書く値（`VERS 260327 42 20120530 20120530`）で、
-    /// どの面にも MEMA の行がない。その頃の書き出しは固定の半直径も `DIAM 値 0`（自動）で書いていたので、半直径は
-    /// ファイルの値で固定として読む（[`LoadOptions::fixed_semi`] と同じ）。OpticStudio が保存した .zmx には全部の面に MEMA が
-    /// あり、今の lensbench の書き出しも MEMA を書くので、どちらもこれに当たらない
-    pub fn legacy_lensbench(&self) -> bool {
-        let vers = self.sysl.get("VERS").and_then(|v| v.first());
-        vers.is_some_and(|v| {
-            v.iter()
-                .map(|x| x.as_str())
-                .eq(["260327", "42", "20120530", "20120530"])
-        }) && !self.surfs.iter().any(|r| r.mema)
-    }
-
     /// マルチコンフィグの数（MNUM、なければ 1）
     pub fn configurations(&self) -> usize {
         // 範囲は parse_text で確かめている
@@ -920,8 +904,6 @@ pub fn build(
         1,
         MAX_CONFIGS,
     )? as i64;
-    // 以前の lensbench の書き出し: 半直径は固定として読む（[`Raw::legacy_lensbench`]）
-    let legacy = raw.legacy_lensbench();
     if !(1..=ncfg).contains(&cfg) {
         invalid!("configuration {cfg} ({ncfg} in all)");
     }
@@ -1182,7 +1164,6 @@ pub fn build(
             semi: fop("SDIA", ki, s.diam.unwrap_or(0.0)),
             // 自動（DIAM … 0、欄がなければ自動）。多重構成の SDIA で値を決める面は固定
             semi_auto: !opt.fixed_semi
-                && !legacy
                 && s.diam_mode.unwrap_or(0) == 0
                 && !ops.contains_key(&("SDIA".to_string(), ki)),
             ..Default::default()

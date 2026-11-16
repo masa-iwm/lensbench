@@ -114,11 +114,7 @@ pub fn main() -> std::process::ExitCode {
     }
     // 設定の保存先
     let mut args = args;
-    let store = portable::choose(
-        args.settings.clone(),
-        portable::exe_dir().as_deref(),
-        portable::os_file().as_deref(),
-    );
+    let store = portable::choose(args.settings.clone(), portable::exe_dir().as_deref());
     portable::set(&store);
     args.notice = store.notice.clone();
     // カタログの一覧を設定の隣に覚えておく（次の起動で読み直さない）。補ったカタログ品も設定の隣に

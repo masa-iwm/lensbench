@@ -29,8 +29,6 @@ pub struct Store {
 /// 起動時の知らせ（画面の言語で出すので、文は [`Notice::text`] で作る）
 #[derive(Debug, Clone, PartialEq)]
 pub enum Notice {
-    /// OS の場所の設定を取り込んだ
-    Imported(PathBuf),
     /// ポータブルのフォルダに書けないので OS の場所にした
     ReadOnly(PathBuf),
 }
@@ -38,9 +36,6 @@ pub enum Notice {
 impl Notice {
     pub fn text(&self) -> String {
         match self {
-            Notice::Imported(p) => {
-                crate::i18n::trf("Imported the settings from {}", &[&p.display()])
-            }
             Notice::ReadOnly(p) => crate::i18n::trf(
                 "Cannot write to {}; settings are saved in the OS location",
                 &[&p.display()],
@@ -80,8 +75,8 @@ fn writable(d: &Path) -> bool {
     ok
 }
 
-/// 保存先を決める。`os_file` は OS の場所の設定のファイル（取り込みの元、無ければ None）
-pub fn choose(settings: Option<PathBuf>, exe: Option<&Path>, os_file: Option<&Path>) -> Store {
+/// 保存先を決める。初めてのポータブルは空の設定から始める（OS の場所の設定は写さない）
+pub fn choose(settings: Option<PathBuf>, exe: Option<&Path>) -> Store {
     if let Some(f) = settings {
         let base = f.parent().map(Path::to_path_buf);
         return Store {
@@ -112,19 +107,10 @@ pub fn choose(settings: Option<PathBuf>, exe: Option<&Path>, os_file: Option<&Pa
             notice: Some(Notice::ReadOnly(d.to_path_buf())),
         };
     }
-    // 初めてのポータブル: OS の場所の設定があれば写す
-    let mut notice = None;
-    if !file.is_file() {
-        if let Some(src) = os_file.filter(|p| p.is_file()) {
-            if std::fs::copy(src, &file).is_ok() {
-                notice = Some(Notice::Imported(src.to_path_buf()));
-            }
-        }
-    }
     Store {
         file: Some(file),
         base: Some(d.to_path_buf()),
-        notice,
+        notice: None,
     }
 }
 
@@ -182,16 +168,6 @@ pub fn from_stored(p: &str, base: &Path) -> String {
         out.push(part);
     }
     clean(&out).to_string_lossy().into_owned()
-}
-
-/// OS の場所から設定を取り込んだときの硝材・レンズのフォルダ: `dir` の隣の `catalogs/` があればそれに替える
-/// （古い版のカタログを絶対パスのまま読み続けないように）。`catalogs/` が無ければ取り込んだまま
-pub fn imported_catalogs(dir: &Path, glass: &mut Vec<String>, lens: &mut Vec<String>) {
-    let (g, l) = default_catalogs(dir);
-    if !g.is_empty() || !l.is_empty() {
-        *glass = g;
-        *lens = l;
-    }
 }
 
 /// 設定が空のときの既定のカタログ: `dir` の `catalogs/glass`（硝材）と `catalogs/lens`・`catalogs/items`（レンズ）
@@ -252,21 +228,16 @@ mod tests {
         let exe = tmp.join("exe");
         std::fs::create_dir_all(&exe).unwrap();
         // 印が無ければ OS の場所
-        assert_eq!(choose(None, Some(&exe), None).file, None);
-        // 印があればポータブル、OS の場所の設定を写す
+        assert_eq!(choose(None, Some(&exe)).file, None);
+        // 印があればポータブル（設定は空から）
         std::fs::write(exe.join(MARKER), b"").unwrap();
-        let os = tmp.join("app.ron");
-        std::fs::write(&os, b"(\n)").unwrap();
-        let s = choose(None, Some(&exe), Some(&os));
+        let s = choose(None, Some(&exe));
         assert_eq!(s.file, Some(exe.join(FILE)));
         assert_eq!(s.base, Some(exe.clone()));
-        assert!(s.notice.is_some());
-        assert!(exe.join(FILE).is_file());
-        // 2 回目は写さない
-        assert!(choose(None, Some(&exe), Some(&os)).notice.is_none());
+        assert!(s.notice.is_none());
         // --settings が先
         let f = tmp.join("my").join("s.ron");
-        let s = choose(Some(f.clone()), Some(&exe), None);
+        let s = choose(Some(f.clone()), Some(&exe));
         assert_eq!((s.file, s.base), (Some(f), Some(tmp.join("my"))));
         // 既定のカタログ
         std::fs::create_dir_all(exe.join("catalogs/glass")).unwrap();
@@ -281,19 +252,6 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()]
         );
-        // 取り込んだ設定のフォルダは exe の隣の catalogs/ に替える
-        let mut g = vec!["C:/old/catalogs/glass".to_string()];
-        let mut l = vec!["C:/old/catalogs/lens".to_string()];
-        imported_catalogs(&exe, &mut g, &mut l);
-        assert_eq!(g, default_catalogs(&exe).0);
-        assert_eq!(l, default_catalogs(&exe).1);
-        // catalogs/ が無ければ取り込んだまま
-        let bare = tmp.join("bare");
-        std::fs::create_dir_all(&bare).unwrap();
-        let mut g = vec!["C:/mine".to_string()];
-        let mut l = vec![];
-        imported_catalogs(&bare, &mut g, &mut l);
-        assert_eq!((g, l), (vec!["C:/mine".to_string()], vec![]));
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

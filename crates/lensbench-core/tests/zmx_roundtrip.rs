@@ -17,7 +17,6 @@ fn opt() -> LoadOptions {
 fn reread(s: &System) -> System {
     let txt = zmx_write::write(s).unwrap();
     let raw = zmx::parse_text(&txt).unwrap();
-    assert!(!raw.legacy_lensbench());
     zmx::build(
         &raw,
         &opt(),

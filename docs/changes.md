@@ -42,6 +42,11 @@
   `FieldNormSpec`・`AimingSpec` は消し、`lensbench_core::system` の `ApertureKind`・`FieldNorm`・`Aiming` を使う。
 - 物体空間 NA の量の名前を `obna` から OpticStudio の演算子名 `obsn` にした: 評価関数の `{"type":"paraxial","q":"obsn"}`、Python の
   `paraxial()` の鍵、`report::SystemData::obsn`、GUI の最適化パネルの選択肢。旧名 `obna` は受けない（誤りになる）。.zmx の系の行 `OBNA`（絞りの種類）はそのまま。
+- lensbench 自身の古い保存の読み分けを消した（XCT-24・GAR-23、11/16 masa）: 自動の半直径を入れる前の lensbench が書いた .zmx
+  （`VERS 260327 42 20120530 20120530` で MEMA の行が無い）の半直径を固定として読む分岐と、面の行の `IGNR 1`。そういうファイルは
+  OpticStudio と同じく `DIAM 値 0` を自動として読むので、固定にしたい面は `DIAM 値 1` に直す（同梱の例のレンズと BS の多重構成の試験の系は直した。OpticStudio と照合した試験の系は OpticStudio と同じ自動で読む）。
+  GUI の組合せの視野・波長の数だけの並び（今は `{"y": …}`・`{"um": …}`）、初めてのポータブルで OS の場所の設定を写す処理
+  （ポータブルは空の設定と exe の隣の `catalogs/` から始める）、取った品の STEP のキャッシュの gzip でない `.step` も読まない。
 - 過去互換の受け口を消した（XCT-34、11/16 masa）: 評価関数・公差・差し替え探索の `wfe`（`wavefront` に）と MTF の向き `t`・`s`
   （`tan`・`sag` に）の別名、serve の `analyze` が数の文字列（`"2"`）・カンマ区切りの文字列（`"10,20"`）・1 つの数の並び・JSON の
   文字列を読み替えること（値は JSON の型で渡す）、旧名（`glass_dir`・`lens_catalog`・`path`・`ref`・`steps`）を新しい名前で示す誤り

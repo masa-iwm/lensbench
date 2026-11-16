@@ -929,22 +929,6 @@ mod tests {
         assert!(c.take_system_data(&d2, 0.0).is_err());
     }
 
-    /// 古い保存（視野角 y・波長の数の並び）も読める
-    #[test]
-    fn old_combo_is_read() {
-        let c: Combo = serde_json::from_str(
-            r#"{"epd": 4, "fields": [0, 1.5], "waves": [0.55, 0.65], "primary": 1}"#,
-        )
-        .unwrap();
-        assert_eq!(c.fields, vec![FieldPt::y(0.0), FieldPt::y(1.5)]);
-        assert_eq!(c.waves, vec![WavePt::um(0.55), WavePt::um(0.65)]);
-        assert_eq!(c.aperture, ApKind::Epd);
-        assert_eq!(c.object_distance, None);
-        // 書いて読み直すと同じ
-        let back: Combo = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
-        assert_eq!(back, c);
-    }
-
     #[test]
     fn settings_go_to_the_project() {
         let mut c = Combo {

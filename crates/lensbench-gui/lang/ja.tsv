@@ -841,7 +841,6 @@ Mount	マウント
 Rod	ロッド
 Adapter	アダプタ
 Samples	サンプル
-Imported the settings from {}	{} の設定を取り込みました
 Cannot write to {}; settings are saved in the OS location	{} に書けないので、設定は OS の場所に保存します
 (not saved)	（保存しない）
 Settings file (portable; paths inside its folder are saved as relative)	設定の保存先（ポータブル。フォルダの中のパスは相対で保存）

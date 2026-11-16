@@ -37,14 +37,10 @@ pub fn set_cad_cache_dir(d: std::path::PathBuf) {
     let _ = CAD_CACHE_DIR.set(d);
 }
 
-/// キャッシュにある品の STEP（gzip の [`cad_cache_path`]、無ければ以前の形の `.step`）。どちらも無ければ None
+/// キャッシュにある品の STEP（gzip の [`cad_cache_path`]）。無ければ None
 pub fn cad_cache_find(dir: &std::path::Path, item: &str, url: &str) -> Option<std::path::PathBuf> {
     let p = cad_cache_path(dir, item, url);
-    if lensbench_core::vfs::is_file(&p) {
-        return Some(p);
-    }
-    let old = p.with_extension("");
-    lensbench_core::vfs::is_file(&old).then_some(old)
+    lensbench_core::vfs::is_file(&p).then_some(p)
 }
 
 /// キャッシュのファイル: `<品の名前（ファイル名に使えない文字は _）>-<URL の FNV-1a 64 の 16 進>.step.gz`（gzip の STEP）。
