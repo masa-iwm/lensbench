@@ -215,9 +215,9 @@ str_enum!(
     /// ズーム軌跡の近軸量の目標の満たし方
     ZoomMethod ("method") {
         /// 罰金: 目標の項の重みを上げる
-        #[default]
         Penalty = "penalty",
         /// 拡大ラグランジュ法: 項の目標をずらす
+        #[default]
         Lagrange = "lagrange",
     }
 );
@@ -547,7 +547,7 @@ impl Default for ZoomParams {
             iters: 50,
             tol: 1e-8,
             configs: Vec::new(),
-            method: ZoomMethod::Penalty,
+            method: ZoomMethod::Lagrange,
             qr: false,
             gtol: 0.0,
             active_set: false,

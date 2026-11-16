@@ -15,9 +15,10 @@
 //! 近軸量・評価関数は NaN）、警告を足して残りの点を続ける。設定の誤り（問題の確かめを通らない: 動かすパラメータが
 //! 状態の系にない、範囲が逆など）と中断（[`lensbench_core::Error::Cancelled`]）は全体を止めて誤りを返す。
 //!
-//! 目標の満たし方（[`TargetMethod`]）: 既定の [`TargetMethod::Penalty`] は上の重みを上げる方法。
-//! [`TargetMethod::Lagrange`] は拡大ラグランジュ法（重みは [`ZoomSpec::target_weight`] のまま、解いた近軸量と目標の差だけ
-//! 項の目標をずらして解き直す。重みを上げないので条件が悪くならず、目標に正確に合う）。
+//! 目標の満たし方（[`TargetMethod`]）: [`TargetMethod::Penalty`] は上の重みを上げる方法。
+//! 既定の [`TargetMethod::Lagrange`] は拡大ラグランジュ法（重みは [`ZoomSpec::target_weight`] のまま、解いた近軸量と目標の差だけ
+//! 項の目標をずらして解き直す。重みを上げないので条件が悪くならず、目標に正確に合う。P17 の目標 70・100・170 mm では
+//! 像の評価関数が罰金より小さく（0.2075 → 0.2048、0.0079 → 0.0061）、時間も半分。2026-11-16 masa 決定で既定に）。
 //!
 //! 状態を持たないので、一括実行のタスクの中からも呼べる。
 
@@ -32,9 +33,9 @@ use lensbench_core::system::System;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TargetMethod {
     /// 罰金: 近軸量の項の重みを、目標に届くまで 100 倍ずつ 3 回まで上げて解き直す
-    #[default]
     Penalty,
     /// 拡大ラグランジュ法: 重みはそのまま、解いた近軸量と目標の差だけ項の目標をずらして解き直す（最大 8 回）
+    #[default]
     Lagrange,
 }
 
@@ -95,7 +96,7 @@ impl ZoomSpec {
             targets,
             target_weight: 10.0,
             target_tol: 1e-8,
-            method: TargetMethod::Penalty,
+            method: TargetMethod::Lagrange,
             merit: DefaultMerit::Spot,
             rings: 3,
             reference: RmsRef::Centroid,

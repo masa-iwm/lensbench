@@ -1115,7 +1115,7 @@ def verify_compare(actual: Mapping[str, Any], expected: Mapping[str, Any], check
     """
 
 
-def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None, method: str = "penalty", qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False) -> _Zoom:
+def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None, method: str = "lagrange", qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False) -> _Zoom:
     """Zoom trajectory: solves vars ("G2.shift" or ("G2.shift", lower, upper)) for each state (systems: a system per zoom position, all of the same form).
     The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
     the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).

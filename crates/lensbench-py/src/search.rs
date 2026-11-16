@@ -28,7 +28,7 @@ pub(crate) fn pick<T: std::str::FromStr<Err = String>>(what: &str, v: &str) -> P
 /// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
 /// per state), warnings
 #[pyfunction]
-#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None, method="penalty", qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false))]
+#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None, method="lagrange", qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false))]
 #[allow(clippy::too_many_arguments)]
 fn zoom<'py>(
     py: Python<'py>,

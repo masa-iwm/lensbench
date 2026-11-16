@@ -34,6 +34,8 @@
   Rust は `Project::surface_edits`・`surface_ops` をやめ、`Block::faces()`・`ZmxGroup::faces`（`FaceMods`）、`SurfaceEdit` から `block` を外した。
 
 ### 名前・設定の書き方
+- ズーム軌跡（CLI `zoom`・serve `zoom`・Python `zoom`）の目標の満たし方の既定を拡大ラグランジュ法 `lagrange` にした（IOO-27、前は `penalty`）。
+  目標が始めの値から遠いと像の評価関数が前より小さくなり、値が変わる。前の結果を出し直すには `--method penalty`（serve・Python は `method`）。
 - 解析のサブコマンドに `--params-file`（設定を JSON のファイルで渡す。コマンド行で明示した旗が優先、[CLI](cli.md)）。
 - 開口の種類・視野の正規化・エイミング・無限焦点の単位・ケラレの補間を、core・プロジェクト・系ファイルで同じ列挙にした（XCT-09）。
   serve の `system_data`・`set_system_data` の `data`（GUI の系の設定もこれを使う）と Rust の core の列挙の serde の名前は系ファイル版 2 と同じ小文字（`"epd"`・`"fnum"`・`"na"`・
