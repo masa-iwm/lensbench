@@ -9,13 +9,8 @@
 pub use lensbench_project::catalog_spec::{spec_unit, ItemKind, Overlay, SPEC_NAMES};
 use serde_json::{json, Map, Value};
 
-/// メーカー名の比べ方: 大文字小文字・空白・記号を無視（"EDMUND OPTICS" と "Edmund_Optics" は同じ）
-pub fn vendor_key(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_uppercase)
-        .collect()
-}
+/// メーカー名の比べ方（大文字小文字・空白・記号を無視。core と同じ 1 つの型）
+pub use lensbench_core::catalog::VendorKey;
 
 /// `*`（任意の文字列）と `?`（1 文字）だけのパターン。大文字小文字は区別しない
 pub fn glob_match(pat: &str, s: &str) -> bool {
@@ -49,13 +44,13 @@ pub fn glob_match(pat: &str, s: &str) -> bool {
 /// 行にもとからある値（品が自分で持つ url・specs の項目・説明）は残す。overlay はパターンの具体的な順
 /// （`*` の無い型番が先、次に長いパターン）に当て、先に当てたものを優先する
 pub fn apply_overlays(row: &mut Value, cats: &[&lensbench_project::UserCatalog]) {
-    let vendor = vendor_key(row["vendor"].as_str().unwrap_or(""));
+    let vendor = VendorKey::new(row["vendor"].as_str().unwrap_or(""));
     let part = row["part"].as_str().unwrap_or("").to_string();
     let Some(obj) = row.as_object_mut() else {
         return;
     };
     for cat in cats {
-        if cat.vendor.trim().is_empty() || vendor_key(&cat.vendor) != vendor {
+        if cat.vendor.trim().is_empty() || VendorKey::new(&cat.vendor) != vendor {
             continue;
         }
         let mut pats: Vec<(&String, &Overlay)> = cat
@@ -302,7 +297,8 @@ impl CatalogQuery {
             }
         }
         if !self.vendor.trim().is_empty()
-            && !vendor_key(row["vendor"].as_str().unwrap_or("")).contains(&vendor_key(&self.vendor))
+            && !VendorKey::new(row["vendor"].as_str().unwrap_or(""))
+                .matches(&VendorKey::new(&self.vendor))
         {
             return false;
         }

@@ -14,7 +14,7 @@
 //! | `preset` | 玉の既定の公差の組: "commercial"（一般）・"precision"（精密）・"high"（高精度）・"none" |
 //! | `wedge_face` | くさびを入れる面（"back"）: "back" は玉の後ろの面、"front" は前の面。前・後ろは玉のもとの向き（カタログ・.zmx の向き）で、ブロックを裏返して置いても（`reversed`）、鏡で往復しても同じ面。玉ごとには `lenses` の {"wedge_face": "front"} |
 //! | `catalog` | カタログの玉（プロジェクトのレンズカタログのブロック）はカタログの玉の公差（[`catalog_lens_tol`]、`catalog_tols`）を既定にする（true） |
-//! | `catalog_tols` | メーカーごとの公差 {"メーカー": {玉の公差と外径・焦点距離の条件つきの rules}}（[`catalog_rule`]。名前は大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほか） |
+//! | `catalog_tols` | メーカーごとの公差 {"メーカー": {玉の公差と外径・焦点距離の条件つきの rules}}（[`catalog_rule`]。名前は大文字小文字・空白・記号を無視して、ブロックのメーカー名に含まれれば合う。複数が合えばいちばん長い名前。"*" はほか） |
 //! | `lenses` | 玉ごとの上書き {"名前": {玉の公差} か 組の名前 か null（公差なし）}。名前はブロックの id か lens1 … |
 //! | `groups` | 群・ブロックの公差 {"名前": {"decenter", "tilt", "shift"}}。玉 1 つのブロックでは玉の公差（`lenses`）と別に足す（組立の公差。名前は「G1 group decenter x」など） |
 //! | `tols` | 個別の公差の並び（下） |
@@ -42,6 +42,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::montecarlo::{self as tolerance, Dist, GroupTol, LensTol, McResult, McSpec, Tol};
+use lensbench_core::catalog::VendorKey;
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
@@ -343,19 +344,22 @@ pub fn spec_from_json_with(
         base.wedge_first = w == Face::Front;
     }
     let use_catalog = m.catalog.unwrap_or(true);
-    // メーカー名（大文字小文字を区別せず、ブロックのメーカー名に含まれれば合う。"*" はほかのすべて）→ 公差
-    let cat_over: Vec<(String, Option<CatEntry>)> = m
+    // メーカー名（[`VendorKey::matches`]: 大文字小文字・空白・記号を無視して、ブロックのメーカー名に含まれれば合う。
+    // 複数が合えばいちばん長い（具体的な）名前。"*" はほかのすべて）→ 公差
+    let cat_over: Vec<(&String, VendorKey, &Option<CatEntry>)> = m
         .catalog_tols
         .iter()
         .flatten()
-        .map(|(k, x)| (k.to_uppercase(), x.clone()))
+        .map(|(k, x)| (k, VendorKey::new(k), x))
         .collect();
-    let find_cat = |vd: &str| -> Option<&(String, Option<CatEntry>)> {
-        let u = vd.to_uppercase();
+    let find_cat = |vd: &str| -> Option<(&String, &Option<CatEntry>)> {
+        let u = VendorKey::new(vd);
         cat_over
             .iter()
-            .find(|(k, _)| k != "*" && u.contains(k.as_str()))
-            .or_else(|| cat_over.iter().find(|(k, _)| k == "*"))
+            .filter(|(k, key, _)| *k != "*" && !key.is_empty() && u.matches(key))
+            .max_by_key(|(_, key, _)| key.as_str().len())
+            .or_else(|| cat_over.iter().find(|(k, _, _)| *k == "*"))
+            .map(|(k, _, x)| (*k, *x))
     };
     let geom = lens_geometry(&s0);
     let lens_base = |name: &str| -> lensbench_core::Result<LensTol> {

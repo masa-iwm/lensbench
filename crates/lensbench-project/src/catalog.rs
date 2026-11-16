@@ -92,10 +92,54 @@ pub struct UserItem {
     pub notes: Vec<String>,
 }
 
+/// 品の中身（[`UserItem::body`]）。欄の組み合わせのうち意味のあるものだけ（PRJ-17）
+#[derive(Debug, Clone, Copy)]
+pub enum ItemBody<'a> {
+    /// 光学の面。枠付きの品は枠（[`UserItem::frame`]）とその向き（`frame_reversed`）も
+    Optic {
+        blocks: &'a [Block],
+        frame: Option<(&'a MechSpec, bool)>,
+    },
+    /// 機構部品
+    Mech(&'a MechSpec),
+    /// 未完の品（足りない値。仕様表か STEP で補ってから使う）
+    Incomplete { missing: &'a [String] },
+}
+
 impl UserItem {
+    /// 品の中身。意味のない組み合わせ（面と機構の寸法の両方、面の無い枠、枠の無い `frame_reversed`、
+    /// 面か機構の寸法のある品の `missing`）は誤り。どれも無い品は面の無い光学の品
+    pub fn body(&self) -> lensbench_core::Result<ItemBody<'_>> {
+        let bad = |m: &str| -> lensbench_core::Result<ItemBody<'_>> {
+            Err(lensbench_core::Error::Invalid(m.to_string()))
+        };
+        if self.frame_reversed && self.frame.is_none() {
+            return bad("frame_reversed without a frame");
+        }
+        match (&self.mech, self.blocks.is_empty()) {
+            (Some(_), false) => bad("both surfaces (blocks) and mechanism dimensions (mech)"),
+            (Some(_), true) if self.frame.is_some() => bad("a frame on a mechanical part"),
+            (Some(_), true) if !self.missing.is_empty() => {
+                bad("missing values on a mechanical part")
+            }
+            (Some(m), true) => Ok(ItemBody::Mech(m)),
+            (None, false) if !self.missing.is_empty() => {
+                bad("missing values on an item with surfaces")
+            }
+            (None, true) if self.frame.is_some() => bad("a frame without surfaces (blocks)"),
+            (None, true) if !self.missing.is_empty() => Ok(ItemBody::Incomplete {
+                missing: &self.missing,
+            }),
+            (None, _) => Ok(ItemBody::Optic {
+                blocks: &self.blocks,
+                frame: self.frame.as_ref().map(|f| (f, self.frame_reversed)),
+            }),
+        }
+    }
+
     /// 未完の品（足りない値があり、面も機構の寸法も無い）か
     pub fn is_incomplete(&self) -> bool {
-        !self.missing.is_empty() && self.blocks.is_empty() && self.mech.is_none()
+        matches!(self.body(), Ok(ItemBody::Incomplete { .. }))
     }
 }
 
@@ -347,8 +391,20 @@ impl MechAt {
 }
 
 impl UserCatalog {
+    /// JSON から読む。品の欄の組み合わせも確かめる（[`UserItem::body`]）
     pub fn from_json(txt: &str) -> lensbench_core::Result<UserCatalog> {
-        serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}").into())
+        let c: UserCatalog = serde_json::from_str(txt).map_err(|e| format!("user catalog: {e}"))?;
+        c.check()?;
+        Ok(c)
+    }
+    /// 品の欄の組み合わせ（[`UserItem::body`]）を確かめる。誤りは `items.<名前>: <理由>`
+    pub fn check(&self) -> lensbench_core::Result<()> {
+        for (k, it) in &self.items {
+            it.body().map_err(|e| {
+                lensbench_core::Error::Invalid(format!("user catalog: items.{k}: {e}"))
+            })?;
+        }
+        Ok(())
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("JSON of plain data")
@@ -470,4 +526,63 @@ pub fn is_catalog_file(p: &Path) -> bool {
         .map(|s| s.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
     n.ends_with(".json") || n.ends_with(".json.gz")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 品の欄の組み合わせ: 意味のあるものだけ通し、ほかは読むときに誤り（PRJ-17）
+    #[test]
+    fn item_body_rejects_meaningless_combinations() {
+        let read = |items: &str| UserCatalog::from_json(&format!(r#"{{"items": {items}}}"#));
+        let mech = r#"{"length": 10, "outer_diameter": 25}"#;
+        let lens = r#"[{"type": "air", "t": 1}]"#;
+        let c = read(&format!(
+            r#"{{"m": {{"mech": {mech}}}, "i": {{"missing": ["thickness"]}}, "e": {{}}}}"#
+        ))
+        .unwrap();
+        assert!(matches!(c.items["m"].body(), Ok(ItemBody::Mech(_))));
+        assert!(c.items["i"].is_incomplete());
+        assert!(matches!(
+            c.items["e"].body(),
+            Ok(ItemBody::Optic { frame: None, .. })
+        ));
+        let f = read(&format!(
+            r#"{{"f": {{"blocks": {lens}, "frame": {mech}, "frame_reversed": true}}}}"#
+        ))
+        .unwrap();
+        assert!(matches!(
+            f.items["f"].body(),
+            Ok(ItemBody::Optic {
+                frame: Some((_, true)),
+                ..
+            })
+        ));
+        for (bad, why) in [
+            (
+                format!(r#"{{"blocks": {lens}, "mech": {mech}}}"#),
+                "both surfaces",
+            ),
+            (
+                format!(r#"{{"frame": {mech}}}"#),
+                "a frame without surfaces",
+            ),
+            (
+                r#"{"frame_reversed": true}"#.to_string(),
+                "frame_reversed without a frame",
+            ),
+            (
+                format!(r#"{{"mech": {mech}, "missing": ["diameter"]}}"#),
+                "missing values on a mechanical part",
+            ),
+            (
+                format!(r#"{{"blocks": {lens}, "missing": ["diameter"]}}"#),
+                "missing values on an item with surfaces",
+            ),
+        ] {
+            let e = read(&format!(r#"{{"x": {bad}}}"#)).unwrap_err().to_string();
+            assert!(e.contains("items.x") && e.contains(why), "{e}");
+        }
+    }
 }

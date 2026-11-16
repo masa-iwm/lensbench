@@ -39,6 +39,10 @@
   文字列を読み替えること（値は JSON の型で渡す）、旧名（`glass_dir`・`lens_catalog`・`path`・`ref`・`steps`）を新しい名前で示す誤り
   （serve の `load`・`glasses`・`lenses`・`catalog_search` は知らない鍵を誤りにする。解析は知らない設定の誤り）、環境変数
   `LENSBENCH_FLOATING_CLIP` の注意、GUI の公差パネルの設定の `ref`・CAD 置き場の設定に書いた Client Secret の読み込み。
+- メーカー名の比べ方を 1 つにした（XCT-12・PRJ-17）: 大文字小文字・空白・記号を無視する。差し替え探索の `filter.vendor` は前の
+  「一致」から、検索と同じ「カタログのメーカー名に含まれれば合う」に。公差の `catalog_tols` は複数のメーカー名が合えばいちばん
+  長い名前を使う（前は書いた順の最初）。ユーザーカタログの品の欄の意味のない組み合わせ（`blocks` と `mech` の両方、面の無い
+  `frame`、枠の無い `frame_reversed`、面か `mech` のある品の `missing`）は読むときに誤り。
 - 名前を CLI・serve・Python でそろえた（CLI-14・CLI-17、11/16 masa 決定。旧名は受けない）:
   Python の `System.geometric_mtf`・`through_focus_mtf`・`field_mtf` は登録簿の名前どおり `geo_mtf`・`mtf_focus`・`mtf_field`。
   `trace`・`trace_rays` の結果の波長の番号の鍵 `wavelengths` は `waves`（引数と同じ）。
@@ -296,6 +300,12 @@
 - `LensCache` を `SourceCache` にした（PRJ-13）: カタログの玉に加えて、`.zmx`・系ファイルのブロックの系も覚える（ファイルの
   更新時刻と大きさが変われば読み直す）。`ExpandOpts::cache` に渡す。BS の経路の一覧を同じ使い回しで求めるのは
   `paths_cached`。`open::Source::Project` に欄 `cache` を足した（状態・経路ごとの展開で使い回す）。
+- メーカー名の比べ方を `lensbench_core::catalog::VendorKey` 1 つに（XCT-12・PRJ-17。英数字だけを大文字に）。同じメーカーかは鍵の一致、
+  人が書いた名前での絞り込みは `VendorKey::matches`（鍵を含む）。`lensbench_catalog::spec::vendor_key` はなくした。
+  `LensCatalog::load_registered` は `Arc<LensCatalog>` を返し、読んだファイルの更新時刻・大きさが変わらなければ読み直さない。
+  `UserItem::body` で品の中身（`ItemBody::Optic`・`Mech`・`Incomplete`）を引く。
+- 差し替え探索（PRJ-07）: 置いた玉の面が同じ候補（型番違いの同じ玉など）の組は 1 回だけ最適化して結果を使い回す
+  （`SwapSearch::distinct_count` はまとめた後の組の数）。
 - 展開の結果 `Expansion` に `map: Vec<SurfOrigin>`（系の面ごとの出どころ: 面を足した id のあるブロック・群、往路・復路、
   裏返した玉）を足した（PRJ-04）。ブロック・群の面の範囲は `block_runs(&map, id, back)` で引く。
 

@@ -796,3 +796,63 @@ fn clear_aperture_with_fixed_semi_diameters() {
 fn vals(v: Vec<lensbench_design::swap::SwapResult>) -> Vec<serde_json::Value> {
     v.iter().map(|x| x.to_value()).collect()
 }
+
+/// 同じ形の候補（型番違いの同じ玉）は 1 回だけ最適化し、結果を使い回す（PRJ-07）。結果はまとめないときと同じ
+#[test]
+fn same_shaped_candidates_share_one_fit() {
+    let tmp = std::env::temp_dir().join(format!("lb-swap-same-{}", std::process::id()));
+    let dir = tmp.join("LB");
+    std::fs::create_dir_all(&dir).unwrap();
+    let src = root().join("examples/lenses/LB");
+    for (from, to) in [
+        ("PCX-100", "PCX-100"),
+        ("PCX-100", "PCX-100B"),
+        ("BCX-50", "BCX-50"),
+        ("ACH-45", "ACH-45"),
+    ] {
+        std::fs::copy(
+            src.join(format!("{from}.zmx")),
+            dir.join(format!("{to}.zmx")),
+        )
+        .unwrap();
+    }
+    let c = LensCatalog::load(std::slice::from_ref(&dir), &[&ZmxFileSource]).unwrap();
+    let (p, pdir) = project();
+    let mut sl = slot("A");
+    sl.flip = true;
+    sl.parts = ["PCX-100", "PCX-100B", "BCX-50"]
+        .iter()
+        .map(|q| PartRef {
+            vendor: "LB".into(),
+            part: q.to_string(),
+        })
+        .collect();
+    let s = SwapSearch::new(&p, &env(pdir.clone()), &c, spec(vec![sl.clone()])).unwrap();
+    assert_eq!(s.count(), 6);
+    assert!(s.distinct_count() <= 4, "{}", s.distinct_count());
+    let r = s.run(Some(2));
+    let fit = |part: &str, rev: bool| {
+        r.iter()
+            .find(|x| x.lenses[0].part == part && x.lenses[0].reversed == rev)
+            .map(|x| (x.fit.clone(), x.error.clone()))
+            .unwrap()
+    };
+    let rev0 = s.picks[0][0].reversed;
+    assert!(
+        fit("PCX-100", rev0).0.is_some(),
+        "{:?}",
+        fit("PCX-100", rev0)
+    );
+    assert_eq!(fit("PCX-100", rev0), fit("PCX-100B", rev0));
+    assert_eq!(fit("PCX-100", !rev0), fit("PCX-100B", !rev0));
+    // 型番が 1 つずつなら、まとめずに解いた結果と同じ
+    for part in ["PCX-100B", "BCX-50"] {
+        let mut one = sl.clone();
+        one.parts.retain(|q| q.part == part);
+        let s1 = SwapSearch::new(&p, &env(pdir.clone()), &c, spec(vec![one])).unwrap();
+        for x in s1.run(Some(1)) {
+            assert_eq!((x.fit, x.error), fit(part, x.lenses[0].reversed));
+        }
+    }
+    std::fs::remove_dir_all(&tmp).ok();
+}

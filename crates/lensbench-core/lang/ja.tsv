@@ -2094,6 +2094,13 @@ offset takes 3 values dx,dy,dz	offset は dx,dy,dz の 3 つ
 {k} must be numbers from 1 or "all"	{k} は 1 からの番号か "all"
 number {t}	番号 {t}
 no wavelength {n} (1 to {nw})	波長 {n} はありません（1〜{nw}）
+user catalog: items.{k}: {e}	ユーザーカタログ: items.{k}: {e}
+frame_reversed without a frame	枠の無い品に frame_reversed
+both surfaces (blocks) and mechanism dimensions (mech)	面（blocks）と機構の寸法（mech）の両方がある
+a frame on a mechanical part	機構部品に枠がある
+missing values on a mechanical part	機構部品に missing がある
+missing values on an item with surfaces	面のある品に missing がある
+a frame without surfaces (blocks)	面（blocks）の無い枠
 --params-file {} must be a JSON object	--params-file {} は JSON のオブジェクトにしてください
 --params-file {} can't be read: {e}	--params-file {} が読めません: {e}
 --params-file {} JSON can't be read: {e}	--params-file {} の JSON が読めません: {e}

@@ -42,7 +42,7 @@ pub struct Rule {
 /// メーカー 1 つ
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VendorTol {
-    /// メーカー名（ブロックのメーカー名に含まれれば合う。"*" はほか）
+    /// メーカー名（大文字小文字・空白・記号を無視して、ブロックのメーカー名に含まれれば合う。複数が合えばいちばん長い名前。"*" はほか）
     pub vendor: String,
     /// 組の名前（commercial など）か "none"（公差なし）。空なら下の項目
     pub preset: String,

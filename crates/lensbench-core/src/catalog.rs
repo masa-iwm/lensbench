@@ -163,11 +163,93 @@ impl LensCatalogSource for ZmxFileSource {
     }
 }
 
-/// 読み込んだレンズカタログの集まり。メーカー・型番は大文字・小文字を区別しない。
+/// paths（ファイルかフォルダ）から読むカタログのファイルと、それを読む source の番号（読む順）。
+/// フォルダは中のファイル（1 階層。カタログのファイルが 1 つも無ければメーカーのフォルダの親とみて 1 段下も）を
+/// 名前の順に。フォルダの中の関係のないファイルは飛ばし、直に渡したファイルの形式が読めなければ誤り
+fn catalog_files(
+    paths: &[std::path::PathBuf],
+    sources: &[&dyn LensCatalogSource],
+) -> Result<Vec<(std::path::PathBuf, usize)>> {
+    let source_of = |f: &std::path::Path| {
+        let ext = f
+            .extension()
+            .map(|x| x.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        sources
+            .iter()
+            .position(|s| s.extensions().contains(&ext.as_str()))
+    };
+    let mut out = Vec::new();
+    for p in paths {
+        if !crate::vfs::is_dir(p) {
+            match source_of(p) {
+                Some(s) => out.push((p.clone(), s)),
+                None => {
+                    return Err(Error::Invalid(format!(
+                        "{}: a lens catalog in a format that can't be read",
+                        p.display()
+                    )))
+                }
+            }
+            continue;
+        }
+        let rd = crate::vfs::read_dir(p).map_err(|e| io_err(p, e))?;
+        let mut files: Vec<std::path::PathBuf> = rd
+            .iter()
+            .filter(|f| crate::vfs::is_file(f))
+            .cloned()
+            .collect();
+        if !files.iter().any(|f| source_of(f).is_some()) {
+            for d in rd.iter().filter(|d| crate::vfs::is_dir(d)) {
+                if let Ok(sub) = crate::vfs::read_dir(d) {
+                    files.extend(sub.into_iter().filter(|f| crate::vfs::is_file(f)));
+                }
+            }
+        }
+        files.sort();
+        out.extend(
+            files
+                .into_iter()
+                .filter_map(|f| source_of(&f).map(|s| (f, s))),
+        );
+    }
+    Ok(out)
+}
+
+/// メーカー名の鍵: 英数字だけを大文字にしたもの（"EDMUND OPTICS" と "Edmund_Optics" は同じ）。メーカー名を比べる所は
+/// 全部これを使う（XCT-12・PRJ-17: 以前は大文字にするだけ・英数字だけ・大文字の「含む」の 3 通りがあった）。
+/// 同じメーカーかは鍵の一致、人が書いた名前での絞り込み（検索・差し替え探索・公差）は [`VendorKey::matches`]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct VendorKey(String);
+
+impl VendorKey {
+    pub fn new(name: &str) -> VendorKey {
+        VendorKey(
+            name.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_uppercase)
+                .collect(),
+        )
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+    /// 鍵が空（名前が無いか、英数字を含まない）
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    /// 人が書いた名前 `pat` の絞り込みに合う: 鍵が `pat` の鍵を含む（"edmund" は "Edmund Optics" に合う）。
+    /// 空の `pat` はすべてに合う
+    pub fn matches(&self, pat: &VendorKey) -> bool {
+        self.0.contains(&pat.0)
+    }
+}
+
+/// 読み込んだレンズカタログの集まり。メーカーは [`VendorKey`] で、型番は前後の空白と大文字・小文字を区別しない。
 #[derive(Debug, Clone, Default)]
 pub struct LensCatalog {
     lenses: Vec<CatalogLens>,
-    index: std::collections::HashMap<(String, String), usize>,
+    index: std::collections::HashMap<(VendorKey, String), usize>,
 }
 
 impl LensCatalog {
@@ -178,74 +260,62 @@ impl LensCatalog {
         sources: &[&dyn LensCatalogSource],
     ) -> Result<LensCatalog> {
         let mut c = LensCatalog::default();
-        for p in paths {
-            let mut files = Vec::new();
-            if crate::vfs::is_dir(p) {
-                let rd = crate::vfs::read_dir(p).map_err(|e| io_err(p, e))?;
-                let known = |f: &std::path::PathBuf| {
-                    let ext = f
-                        .extension()
-                        .map(|x| x.to_string_lossy().to_ascii_lowercase())
-                        .unwrap_or_default();
-                    sources
-                        .iter()
-                        .any(|s| s.extensions().contains(&ext.as_str()))
-                };
-                files.extend(rd.iter().filter(|f| crate::vfs::is_file(f)).cloned());
-                // カタログのファイルが 1 つも無ければ、メーカーのフォルダの親を渡したとみて 1 段下も探す
-                if !files.iter().any(known) {
-                    for d in rd.iter().filter(|d| crate::vfs::is_dir(d)) {
-                        if let Ok(sub) = crate::vfs::read_dir(d) {
-                            files.extend(
-                                sub.into_iter()
-                                    .filter(|f| crate::vfs::is_file(f) && known(f)),
-                            );
-                        }
-                    }
-                }
-                files.sort();
-            } else {
-                files.push(p.clone());
-            }
-            for f in files {
-                let ext = f
-                    .extension()
-                    .map(|x| x.to_string_lossy().to_ascii_lowercase())
-                    .unwrap_or_default();
-                let src = sources
-                    .iter()
-                    .find(|s| s.extensions().contains(&ext.as_str()));
-                match src {
-                    Some(s) => {
-                        for l in s.load(&f)? {
-                            c.add(l);
-                        }
-                    }
-                    None if crate::vfs::is_dir(p) => {} // フォルダの中の関係のないファイルは飛ばす
-                    None => {
-                        return Err(Error::Invalid(format!(
-                            "{}: a lens catalog in a format that can't be read",
-                            f.display()
-                        )))
-                    }
-                }
+        for (f, s) in catalog_files(paths, sources)? {
+            for l in sources[s].load(&f)? {
+                c.add(l);
             }
         }
         Ok(c)
     }
 
-    /// [`load`](Self::load) を、今の拡張の表の形式（[`crate::ext::current`]）で
-    pub fn load_registered(paths: &[std::path::PathBuf]) -> Result<LensCatalog> {
+    /// [`load`](Self::load) を、今の拡張の表の形式（[`crate::ext::current`]）で。読んだものを読んだファイルの
+    /// 更新時刻・大きさと共に覚えておき、どれも変わっていなければ読み直さない（XCT-12: 以前は呼ぶたびにフォルダの
+    /// 全カタログを読み直した）。フォルダにファイルが増えた・減ったときも読み直す
+    pub fn load_registered(paths: &[std::path::PathBuf]) -> Result<std::sync::Arc<LensCatalog>> {
+        use crate::sync::LockExt;
+        use std::sync::{Arc, Mutex, OnceLock};
+        type Key = (Vec<std::path::PathBuf>, Vec<String>);
+        type Stamps = Vec<(std::path::PathBuf, crate::vfs::Stamp)>;
+        type Cache = std::collections::HashMap<Key, (Stamps, Arc<LensCatalog>)>;
+        static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
         let src = crate::ext::current().catalog_sources();
         let refs: Vec<&dyn LensCatalogSource> = src
             .iter()
             .map(|s| s.as_ref() as &dyn LensCatalogSource)
             .collect();
-        Self::load(paths, &refs)
+        let files = catalog_files(paths, &refs)?;
+        // 更新時刻が取れないファイルがあれば覚えずに読む
+        let stamps: Option<Stamps> = files
+            .iter()
+            .map(|(f, _)| crate::vfs::stamp(f).ok().map(|st| (f.clone(), st)))
+            .collect();
+        let Some(stamps) = stamps else {
+            return Self::load(paths, &refs).map(Arc::new);
+        };
+        let exts = refs
+            .iter()
+            .flat_map(|s| s.extensions().iter().map(|e| e.to_string()))
+            .collect();
+        let key: Key = (paths.to_vec(), exts);
+        let cache = CACHE.get_or_init(Default::default);
+        if let Some((st, c)) = cache.lock_ok().get(&key) {
+            if *st == stamps {
+                return Ok(c.clone());
+            }
+        }
+        let mut c = LensCatalog::default();
+        for (f, s) in &files {
+            for l in refs[*s].load(f)? {
+                c.add(l);
+            }
+        }
+        let c = Arc::new(c);
+        cache.lock_ok().insert(key, (stamps, c.clone()));
+        Ok(c)
     }
 
-    fn key(vendor: &str, part: &str) -> (String, String) {
-        (vendor.trim().to_uppercase(), part.trim().to_uppercase())
+    fn key(vendor: &str, part: &str) -> (VendorKey, String) {
+        (VendorKey::new(vendor), part.trim().to_uppercase())
     }
 
     pub fn add(&mut self, l: CatalogLens) {
@@ -327,5 +397,44 @@ mod tests {
         let bad = format!("LBCAT 1\tV\tS\nA\t1\t{}\n", usize::MAX);
         let z = miniz_oxide::deflate::compress_to_vec_zlib(bad.as_bytes(), 6);
         assert!(decode_lbcat(&z, "x").is_err());
+    }
+
+    #[test]
+    fn vendor_key_ignores_case_spaces_and_symbols() {
+        let k = VendorKey::new("Edmund_Optics");
+        assert_eq!(k, VendorKey::new("EDMUND OPTICS"));
+        assert_eq!(k.as_str(), "EDMUNDOPTICS");
+        assert!(k.matches(&VendorKey::new("edmund")));
+        assert!(k.matches(&VendorKey::new("")));
+        assert!(!k.matches(&VendorKey::new("Thorlabs")));
+        let mut c = LensCatalog::default();
+        c.add(CatalogLens {
+            vendor: "Edmund Optics".into(),
+            part: " 32-317 ".into(),
+            efl: 1.0,
+            zmx: String::new(),
+        });
+        assert!(c.get("EDMUND-OPTICS", "32-317").is_some());
+    }
+
+    /// 覚えたカタログは、ファイルを書き換える・足すと読み直す
+    #[test]
+    fn load_registered_rereads_changed_files() {
+        let fs = std::sync::Arc::new(crate::vfs::MemFs::new());
+        crate::vfs::with(fs, || {
+            let d = std::path::PathBuf::from("/cat/ACME");
+            crate::vfs::write(d.join("A.zmx"), "VERS 1\n").unwrap();
+            let a = LensCatalog::load_registered(std::slice::from_ref(&d)).unwrap();
+            let b = LensCatalog::load_registered(std::slice::from_ref(&d)).unwrap();
+            assert!(std::sync::Arc::ptr_eq(&a, &b));
+            assert_eq!(a.len(), 1);
+            crate::vfs::write(d.join("B.zmx"), "VERS 1\n").unwrap();
+            let c = LensCatalog::load_registered(std::slice::from_ref(&d)).unwrap();
+            assert_eq!(c.len(), 2);
+            crate::vfs::write(d.join("A.zmx"), "VERS 1\nNAME longer\n").unwrap();
+            let e = LensCatalog::load_registered(std::slice::from_ref(&d)).unwrap();
+            assert!(!std::sync::Arc::ptr_eq(&c, &e));
+            assert!(e.zmx("acme", "a").unwrap().contains("longer"));
+        });
     }
 }

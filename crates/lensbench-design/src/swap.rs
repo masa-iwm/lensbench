@@ -16,7 +16,7 @@
 //!
 //! 候補の焦点距離はカタログの値（無ければ玉の .zmx の主波長の近軸の値）、径は面の半径の最大の 2 倍。
 
-use lensbench_core::catalog::LensCatalog;
+use lensbench_core::catalog::{LensCatalog, VendorKey};
 use lensbench_core::elements::{self, Kind as EKind};
 use lensbench_core::param::{Kind, Param};
 use lensbench_core::sweep::RmsRef;
@@ -38,7 +38,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Filter {
-    /// メーカー（大文字・小文字を区別しない）
+    /// メーカー（大文字・小文字・空白・記号を無視して、カタログのメーカー名に含まれれば合う）
     #[serde(default)]
     pub vendor: Option<String>,
     /// 焦点距離の範囲 [mm]
@@ -301,6 +301,9 @@ pub struct Prescreen {
 #[path = "swap_beam.rs"]
 mod beam;
 pub use beam::Beam;
+#[path = "swap_shape.rs"]
+mod shape;
+use shape::same_shapes;
 
 fn three() -> usize {
     3
@@ -382,13 +385,13 @@ type Info = Option<(f64, f64, f64)>;
 
 /// メーカーの絞り込みに合うカタログのレンズの番号（カタログの順）
 fn vendor_indices(cat: &LensCatalog, f: &Filter) -> Vec<usize> {
-    let v = f.vendor.as_deref().map(|v| v.trim().to_uppercase());
+    let v = f.vendor.as_deref().map(VendorKey::new);
     cat.lenses()
         .iter()
         .enumerate()
         .filter(|(_, l)| {
             v.as_ref()
-                .is_none_or(|v| l.vendor.trim().to_uppercase() == *v)
+                .is_none_or(|v| VendorKey::new(&l.vendor).matches(v))
         })
         .map(|(i, _)| i)
         .collect()
@@ -467,7 +470,14 @@ pub struct SwapSearch<'a> {
     spec: SwapSpec,
     /// 所ごとの選び方
     pub picks: Vec<Vec<Pick>>,
+    /// 所ごとの選び方の代表（PRJ-07）: 置いた玉の面が同じ（型番違いの同じ玉、対称な玉の向き違い）選び方は最初の
+    /// 選び方の番号。同じ形の組は 1 回だけ最適化し、結果を使い回す
+    same: Vec<Vec<usize>>,
+    /// 同じ形の組の最適化の結果（代表の選び方 → 結果）。同じ形の選び方が無ければ使わない
+    fits: std::sync::Mutex<HashMap<Vec<Option<usize>>, SharedFit>>,
 }
+
+type SharedFit = std::sync::Arc<std::sync::OnceLock<lensbench_core::Result<SwapFit>>>;
 
 impl<'a> SwapSearch<'a> {
     /// プロジェクト p（状態は spec.state）の玉を差し替える探索を作る。env.base・glass_dirs を使い、
@@ -594,6 +604,7 @@ impl<'a> SwapSearch<'a> {
             }
             picks.push(v);
         }
+        let same = same_shapes(cat, &picks, &env.glass_dirs);
         let s = SwapSearch {
             base_hash: lensbench_project::sysfile::hash_value(&base),
             base: p,
@@ -602,6 +613,8 @@ impl<'a> SwapSearch<'a> {
             glass_dirs: env.glass_dirs.clone(),
             cat,
             picks,
+            same,
+            fits: Default::default(),
             spec,
         };
         // ビーム探索なら評価する組の数の見込み（組の番号は全組の積で数えるので、積もあふれてはいけない）
@@ -871,7 +884,39 @@ impl<'a> SwapSearch<'a> {
         }
     }
 
+    /// 選び方 a を最適化する。同じ形の選び方（[`Self::same`]）がある探索では、代表の選び方に直して 1 回だけ
+    /// 最適化し、結果を使い回す（置いた系が同じなので結果も同じ）
     fn optimize(&self, a: &[Option<usize>]) -> lensbench_core::Result<SwapFit> {
+        if self
+            .same
+            .iter()
+            .all(|v| v.iter().enumerate().all(|(c, &r)| c == r))
+        {
+            return self.optimize_one(a);
+        }
+        let canon: Vec<Option<usize>> = a
+            .iter()
+            .enumerate()
+            .map(|(k, c)| c.map(|c| self.same[k][c]))
+            .collect();
+        let cell = self
+            .fits
+            .lock_ok()
+            .entry(canon.clone())
+            .or_default()
+            .clone();
+        cell.get_or_init(|| self.optimize_one(&canon)).clone()
+    }
+
+    /// 同じ形の組の数（代表の選び方の組の数。[`Self::count`] 以下）
+    pub fn distinct_count(&self) -> usize {
+        self.same
+            .iter()
+            .map(|v| v.iter().enumerate().filter(|(c, &r)| *c == r).count())
+            .product()
+    }
+
+    fn optimize_one(&self, a: &[Option<usize>]) -> lensbench_core::Result<SwapFit> {
         let (s, pr0, n_image) = self.problem_of(a, self.spec.rings)?;
         let (start, pr, r, names) = self.best_start(pr0)?;
         self.report(&s, n_image, start, pr, r, names)

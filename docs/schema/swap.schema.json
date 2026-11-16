@@ -61,7 +61,7 @@
         },
         "vendor": {
           "default": null,
-          "description": "メーカー（大文字・小文字を区別しない）",
+          "description": "メーカー（大文字・小文字・空白・記号を無視して、カタログのメーカー名に含まれれば合う）",
           "type": [
             "string",
             "null"
