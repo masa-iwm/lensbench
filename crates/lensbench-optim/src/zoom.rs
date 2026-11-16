@@ -12,7 +12,8 @@
 //! （状態どうしが動かすパラメータのほかにも違うときは警告を返す）。
 //!
 //! 1 点が解けなかった（追跡できない系になったなど）ときは、その点を [`PointStop::Failed`] として残し（変数は解き始めの値、
-//! 近軸量・評価関数は NaN）、警告を足して残りの点を続ける。中断（[`lensbench_core::Error::Cancelled`]）だけは全体を止める。
+//! 近軸量・評価関数は NaN）、警告を足して残りの点を続ける。設定の誤り（問題の確かめを通らない: 動かすパラメータが
+//! 状態の系にない、範囲が逆など）と中断（[`lensbench_core::Error::Cancelled`]）は全体を止めて誤りを返す。
 //!
 //! 目標の満たし方（[`TargetMethod`]）: 既定の [`TargetMethod::Penalty`] は上の重みを上げる方法。
 //! [`TargetMethod::Lagrange`] は拡大ラグランジュ法（重みは [`ZoomSpec::target_weight`] のまま、解いた近軸量と目標の差だけ
@@ -35,6 +36,25 @@ pub enum TargetMethod {
     Penalty,
     /// 拡大ラグランジュ法: 重みはそのまま、解いた近軸量と目標の差だけ項の目標をずらして解き直す（最大 8 回）
     Lagrange,
+}
+
+impl TargetMethod {
+    /// 名前（"penalty"・"lagrange"）から
+    pub fn parse(s: &str) -> Option<TargetMethod> {
+        match s {
+            "penalty" => Some(TargetMethod::Penalty),
+            "lagrange" => Some(TargetMethod::Lagrange),
+            _ => None,
+        }
+    }
+
+    /// 名前
+    pub fn name(self) -> &'static str {
+        match self {
+            TargetMethod::Penalty => "penalty",
+            TargetMethod::Lagrange => "lagrange",
+        }
+    }
 }
 
 /// ズーム軌跡の設定
@@ -171,8 +191,9 @@ fn problem(
     Ok((full, img))
 }
 
-/// 系 s（変数の初期値は s の値）で 1 点を解く。解けなければ [`PointStop::Failed`] の点（と s）を返し、
-/// 中断だけは誤りで返す
+/// 系 s（変数の初期値は s の値）で 1 点を解く。解けなければ [`PointStop::Failed`] の点（と s）を返す。
+/// 設定の誤り（問題の確かめ [`Problem::check`] を通らない: 動かすパラメータが系にない、範囲が逆など）と
+/// 中断は誤りで返す
 fn solve_point(
     s: &System,
     spec: &ZoomSpec,
@@ -180,9 +201,8 @@ fn solve_point(
     state: Option<usize>,
     pos: f64,
 ) -> Result<(ZoomPoint, System)> {
-    match try_point(s, spec, target, state, pos) {
+    match try_point(s, spec, target, state, pos)? {
         Ok(v) => Ok(v),
-        Err(Error::Cancelled) => Err(Error::Cancelled),
         Err(e) => {
             let x = spec
                 .moving
@@ -206,13 +226,25 @@ fn solve_point(
     }
 }
 
+/// 解けない点の誤り（追跡できない系など）は内側の Err、設定の誤りと中断は外側の Err
+fn unsolved<T>(r: Result<T>) -> Result<std::result::Result<T, Error>> {
+    match r {
+        Ok(v) => Ok(Ok(v)),
+        Err(Error::Cancelled) => Err(Error::Cancelled),
+        Err(_) if lensbench_core::par::cancelled() => Err(Error::Cancelled),
+        Err(e) => Ok(Err(e)),
+    }
+}
+
+type PointResult = std::result::Result<(ZoomPoint, System), Error>;
+
 fn try_point(
     s: &System,
     spec: &ZoomSpec,
     target: Option<f64>,
     state: Option<usize>,
     pos: f64,
-) -> Result<(ZoomPoint, System)> {
+) -> Result<PointResult> {
     let lagrange = spec.method == TargetMethod::Lagrange;
     // 罰金: 近軸量の項の重みを、目標に届くまで 100 倍ずつ上げて解き直す（重みを初めから大きくすると条件が悪く、
     // 反復が遅い）。拡大ラグランジュ法: 重みはそのまま、目標との差だけ項の目標をずらす
@@ -224,7 +256,11 @@ fn try_point(
     let max_tries = if lagrange { 9 } else { 4 };
     let (r, img) = loop {
         let (full, img) = problem(&cur, spec, shifted, w)?;
-        let r = crate::dls_inner(&full, &spec.opts)?;
+        full.check()?;
+        let r = match unsolved(crate::dls_inner(&full, &spec.opts))? {
+            Ok(r) => r,
+            Err(e) => return Ok(Err(e)),
+        };
         iterations += r.iterations;
         tries += 1;
         let sys = &r.systems[0];
@@ -243,8 +279,11 @@ fn try_point(
         }
     };
     let sys = r.systems.into_iter().next().unwrap();
-    let merit = img.merit(&r.x)?;
-    Ok((
+    let merit = match unsolved(img.merit(&r.x))? {
+        Ok(m) => m,
+        Err(e) => return Ok(Err(e)),
+    };
+    Ok(Ok((
         ZoomPoint {
             state,
             pos,
@@ -256,7 +295,7 @@ fn try_point(
             iterations,
         },
         sys,
-    ))
+    )))
 }
 
 /// 目標を a から b へ割合 f だけ動かした値（同じ符号なら等比）
@@ -290,6 +329,7 @@ pub fn solve(configs: &[System], spec: &ZoomSpec) -> Result<ZoomResult> {
     if !(spec.target_weight > 0.0) {
         invalid!("weight of the paraxial term {}", spec.target_weight);
     }
+    spec.opts.check()?;
     let mut states = Vec::with_capacity(n);
     let mut systems = Vec::with_capacity(n);
     for (k, s) in configs.iter().enumerate() {

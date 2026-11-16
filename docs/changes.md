@@ -120,7 +120,11 @@
   （`small_gradient`）を足した。既定の値の結果は前と同じ。
 - ズーム軌跡（IOO-27）: `ZoomPoint::stop` は `PointStop`（`Solved(Stop)`・`Failed(String)`）。`zoom::solve` は点が解けなくても
   `Err` を返さない（中断だけ `Err(Cancelled)`）。目標の満たし方 `ZoomSpec::method`（`TargetMethod::Penalty`（既定、前と同じ）・
-  `Lagrange`（拡大ラグランジュ法））を足した。
+  `Lagrange`（拡大ラグランジュ法））を足した。設定の誤り（`Problem::check` を通らない: 動かすパラメータが状態の系にない、
+  範囲が逆など）と `DlsOpts` の誤りは `Failed` の点でなく `Err` を返す。`lensbench_engine::zoom::ZoomOpts` に `method` と
+  `dls`（`DlsChoice`: `qr`・`gtol`・`active_set`）を足した（構造体を全部の欄で書いていれば直す）。
+- DLS の設定の確かめ（IOO-13）: `DlsOpts::check` を足し、`dls` は `ftol`・`xtol`・`gtol` が負か NaN、`damping` が正の有限の値でないと
+  誤り（以前は黙って使った）。試しの一歩の評価の途中の中断は `no_progress` でなく `cancelled`。
 - 最適化の項の値（IOO-28）: `Problem::term_values` は `Vec<TermValue>`、`merit_and_terms` は `(f64, Vec<TermValue>)` を返す
   （`TermValue::Quantity`（目標のある項の量そのもの）・`Rms`（目標のない項の √Σr²）、数は `value()`）。`Problem` に
   `stopped_as_vignetted`（止まった光線をけられた光線と同じく除く。既定 false）と `ray_counts` を足した。JSON・Python の数の

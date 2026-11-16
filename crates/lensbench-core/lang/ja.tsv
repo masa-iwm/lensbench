@@ -140,6 +140,8 @@ user term {}: {} residuals (expected {})	ユーザーの項 {}: 残差 {} 個（
 user term {}: non-finite residual	ユーザーの項 {}: 有限でない残差
 no configurations	構成がありません
 no merit function terms	メリットファンクションの項がありません
+{k} must be 0 or more ({v})	{k} は 0 以上に（{v}）
+damping must be a positive number ({})	damping は正の数に（{}）
 variable {q}: moving the object point is not system data	変数 {q}: 物点の移動は系のデータではありません
 variable {q}: the wavelength is a tolerance item only	変数 {q}: 波長は変数にできません（公差の項目だけ）
 variable {q}: range [{}, {}]	変数 {q}: 範囲 [{}, {}]
@@ -184,6 +186,7 @@ no parameters to move	動かすパラメータがありません
 {} targets for {n} states	目標の数 {}（状態は {n}）
 {} ranges for {} parameters	範囲の数 {}（動かすパラメータは {}）
 weight of the paraxial term {}	近軸量の項のウェイト {}
+method must be penalty or lagrange ({})	method は penalty か lagrange（{}）
 state {}: not solved ({e})	状態 {}: 解けませんでした（{e}）
 between states {} and {} at {f:.3}: not solved ({e})	状態 {} と {} の間 {f:.3}: 解けませんでした（{e}）
 points between states {} and {} were skipped (a state without a target was not solved)	状態 {} と {} の間の点は飛ばしました（目標のない状態が解けませんでした）
@@ -1191,6 +1194,7 @@ vars items are "7.t" or {"name": ...}	vars の要素は "7.t" か {"name": ...}
 reference must be centroid or chief ({r})	reference は centroid か chief（{r}）
 merit must be spot, wavefront or none ({m})	merit は spot・wavefront・none（{m}）
 jac must be one of {} ({j})	jac は {} のどれか（{j}）
+{k} must be true or false	{k} は true か false
 no vars (the list of parameters to solve)	vars（解くパラメータの並び）がありません
 vars {v} has no name	vars の {v} に name がありません
 vars {v} must be a string or {name, lo, hi}	vars の {v} は文字列か {name, lo, hi}
@@ -1343,6 +1347,7 @@ Sampler needs n	Sampler では n が要る
 the batch run was stopped	一括実行を止めました
 merit must be "spot" or "wavefront" ({m})	merit は "spot" か "wavefront"（{m}）
 reference must be "centroid" or "chief" ({r})	reference は "centroid" か "chief"（{r}）
+method must be "penalty" or "lagrange" ({method})	method は "penalty" か "lagrange"（{method}）
 systems is empty	systems が空
 {what} must be a JSON string or a dict	{what} は JSON の文字列か dict
 shape {sh:?} of the user term result (should be ({k} systems, residuals))	ユーザーの項の返り値の形 {sh:?}（(系の数 {k}, 残差の数) のはず）
@@ -1622,6 +1627,10 @@ Image merit: spot or wavefront	像のメリットファンクション: spot か
 Reference: centroid or chief	基準: centroid か chief
 Maximum iterations per point	1 点の反復の上限
 Tolerance from the target (relative to the target)	目標との差の許し（目標に対する比）
+How to meet the targets: penalty (raise the weight of the target term) or lagrange (augmented Lagrangian: shift the target of the term)	目標の満たし方: penalty（目標の項のウェイトを上げる）か lagrange（拡大ラグランジュ法: 項の目標をずらす）
+Solve each step by QR instead of the normal equations (no squaring of the condition number; the path can differ by rounding on ill-conditioned problems)	一歩を正規方程式でなく QR で解く（条件数を 2 乗にしない。条件の悪い問題では丸めの差で反復の道筋が変わる）
+Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)	残差と変数ごとの列のなす角の余弦の最大がこれ未満で止める（0 は勾配の判定をしない）
+Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)	範囲: 一歩で範囲を出る変数を境界に固定して残りを解き直す（成分ごとに範囲へ切り詰めるのでなく）
 Write the result (json, csv or npz; csv and npz are the trajectory table)	結果をエクスポート（json・csv・npz。csv・npz は軌跡の表）
 Catalog lens swap search	カタログレンズの差し替え探索
 Run the combinations that replace the --spec slots (lens blocks) with candidates in parallel, optimize the variables (spacings, etc.) for each, and sort them by merit	--spec の所（レンズのブロック）を候補で差し替えた組を並列に回し、組ごとに変数（間隔など）を最適化してメリットファンクションの小さい順に並べる

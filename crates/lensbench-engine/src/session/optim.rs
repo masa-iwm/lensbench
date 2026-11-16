@@ -266,10 +266,7 @@ pub(super) fn optimize(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         ))
     })?;
     prob.check()?;
-    let o = optim::DlsOpts {
-        max_iter: opt_usize(p, "iters")?.unwrap_or(50),
-        ..Default::default()
-    };
+    let o = dls_choice(p)?.opts(opt_usize(p, "iters")?.unwrap_or(50));
     let m0 = prob.merit(&prob.x0()?)?;
     let job = Job {
         history: vec![m0],
@@ -522,10 +519,26 @@ pub(super) fn zoom(sess: &Session, p: &Value) -> Result<Value, RpcErr> {
         rings: opt_usize(p, "rings")?.unwrap_or(3),
         iters: opt_usize(p, "iters")?.unwrap_or(50),
         tol: p.get("tol").and_then(Value::as_f64).unwrap_or(1e-8),
+        method: str_of("method", "penalty"),
+        dls: dls_choice(p)?,
     };
     let mut out = crate::zoom::zoom_systems(&systems, &names, &a).map_err(RpcErr::params)?;
     out["notes"] = json!(notes);
     Ok(out)
+}
+
+/// optimize・zoom の DLS の設定（qr・gtol・active_set。省けば既定）
+fn dls_choice(p: &Value) -> Result<crate::zoom::DlsChoice, RpcErr> {
+    let flag = |k: &str| match p.get(k) {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(_) => Err(RpcErr::params(format!("{k} must be true or false"))),
+    };
+    Ok(crate::zoom::DlsChoice {
+        qr: flag("qr")?,
+        gtol: opt_f64(p, "gtol")?.unwrap_or(0.0),
+        active_set: flag("active_set")?,
+    })
 }
 
 // ------------------------------------------------------------------------------------ 差し替え探索

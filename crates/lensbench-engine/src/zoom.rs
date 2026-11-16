@@ -2,7 +2,7 @@
 
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::System;
-use lensbench_optim::zoom::{self, ZoomSpec};
+use lensbench_optim::zoom::{self, TargetMethod, ZoomSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ};
 use serde_json::{json, Value};
 
@@ -26,6 +26,34 @@ pub struct ZoomOpts {
     pub iters: usize,
     /// 目標との差の許し（目標に対する比）
     pub tol: f64,
+    /// 目標の満たし方: penalty か lagrange
+    pub method: String,
+    /// 1 点の DLS の設定（反復の上限は iters）
+    pub dls: DlsChoice,
+}
+
+/// CLI の旗・serve の params・Python の引数で選べる DLS の設定（[`DlsOpts`] の qr・gtol・active_set）
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DlsChoice {
+    /// 一歩を QR で解く
+    pub qr: bool,
+    /// 勾配の判定（0 は判定しない）
+    pub gtol: f64,
+    /// 境界の有効制約法
+    pub active_set: bool,
+}
+
+impl DlsChoice {
+    /// 反復の上限 iters の DLS の設定（ほかは既定）
+    pub fn opts(self, iters: usize) -> DlsOpts {
+        DlsOpts {
+            max_iter: iters,
+            qr: self.qr,
+            gtol: self.gtol,
+            active_set: self.active_set,
+            ..Default::default()
+        }
+    }
 }
 
 fn num(x: f64) -> Value {
@@ -115,10 +143,9 @@ pub fn zoom_systems(cs: &[System], names: &[String], a: &ZoomOpts) -> Result<Val
         "chief" => RmsRef::Chief,
         r => return Err(format!("--reference {r} (centroid, chief)")),
     };
-    sp.opts = DlsOpts {
-        max_iter: a.iters,
-        ..Default::default()
-    };
+    sp.method = TargetMethod::parse(&a.method)
+        .ok_or_else(|| format!("method must be penalty or lagrange ({})", a.method))?;
+    sp.opts = a.dls.opts(a.iters);
     let r = zoom::solve(cs, &sp).map_err(|e| e.to_string())?;
     let vnames: Vec<String> = sp.moving.iter().map(|&p| cs[0].param_name(p)).collect();
     let path: Vec<Value> = r

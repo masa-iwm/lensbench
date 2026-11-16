@@ -51,6 +51,18 @@ fn optimize_serve() {
         call(&sv, "get", json!({"param": "8.t"}))["value"],
         json!(0.3)
     );
+    // DLS の設定: 余弦は 1 を超えないので gtol 1.1 は初めの点で止まる。qr・active_set でも同じ所に着く
+    let mut pg = p.clone();
+    pg["gtol"] = json!(1.1);
+    let rg = call(&sv, "optimize", pg);
+    assert_eq!(rg["stop"], json!("small_gradient"));
+    assert_eq!(rg["x"], rg["x0"]);
+    let mut pq = p.clone();
+    pq["qr"] = json!(true);
+    pq["active_set"] = json!(true);
+    let rq = call(&sv, "optimize", pq);
+    let m = r["merit"].as_f64().unwrap();
+    assert!((rq["merit"].as_f64().unwrap() - m).abs() < 1e-6 * m, "{rq}");
     // apply で当てる
     let mut pa = p.clone();
     pa["apply"] = json!(true);
@@ -66,6 +78,8 @@ fn optimize_serve() {
         json!({"vars": ["8.t"], "terms": [{"type": "ray", "q": "y"}]}),
         json!({"vars": ["8.t"], "merit": "foo"}),
         json!({"vars": [{"name": "8.t", "configs": [3]}]}),
+        json!({"vars": ["8.t"], "qr": "yes"}),
+        json!({"vars": ["8.t"], "gtol": -1.0}),
     ] {
         assert!(
             lensbench_engine::call("optimize", &bad, None).is_err(),

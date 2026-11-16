@@ -175,6 +175,8 @@ enum Cmd {
         /// Jacobian: auto (analytic for terms with 16 or more analytic columns, central differences for fewer), fd (all central differences) or forward (all forward differences)
         #[arg(long, default_value = "auto")]
         jac: String,
+        #[command(flatten)]
+        dls: search_cmd::DlsArgs,
         /// .zmx to write the optimized system to
         #[arg(long, short)]
         out: Option<PathBuf>,
@@ -950,6 +952,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
             rings,
             iters,
             jac,
+            dls,
             out,
         } => {
             use lensbench_optim as optim;
@@ -1031,10 +1034,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 p.terms.push(t);
             }
             p.check().map_err(e)?;
-            let o = optim::DlsOpts {
-                max_iter: iters,
-                ..Default::default()
-            };
+            let o = dls.choice().opts(iters);
             let r = progress::with(c.json, || optim::dls(&p, &o)).map_err(e)?;
             if let Some(path) = &out {
                 warn_notes(zmx_write::save(path, &r.systems[0]).map_err(e)?);

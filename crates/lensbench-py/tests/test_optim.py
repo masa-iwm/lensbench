@@ -47,6 +47,19 @@ def test_optimize_matches_cli():
     assert r["history"][0] == r["merit0"] and r["history"][-1] == r["merit"]
 
 
+def test_optimize_dls_options():
+    s = lb.System.load(zmx("A0"), glass_dirs=GLASS).with_params({"8.t": 0.3, "6.tx": 0.2})
+    v = ["8.t", ("6.tx", -1.0, 1.0)]
+    r = s.optimize(v, merit="wavefront")
+    q = s.optimize(v, merit="wavefront", qr=True, active_set=True)
+    assert abs(q["merit"] - r["merit"]) < 1e-6 * r["merit0"]
+    # 余弦は 1 を超えないので、gtol 1.1 は初めの点で止まり変数は動かない
+    g = s.optimize(v, merit="wavefront", gtol=1.1)
+    assert g["stop"] == "small_gradient" and g["x"] == g["x0"]
+    with pytest.raises(ValueError):
+        s.optimize(v, gtol=-1.0)
+
+
 def test_cli_optimize(tmp_path):
     out = tmp_path / "opt.zmx"
     c = cli("optimize", zmx("A0"), "--var", "8.t", "--var", "6.c=0:0.05", "--out", str(out))

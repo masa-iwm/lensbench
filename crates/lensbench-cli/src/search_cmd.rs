@@ -49,12 +49,41 @@ pub struct ZoomArgs {
     /// Tolerance from the target (relative to the target)
     #[arg(long, default_value_t = 1e-8)]
     pub tol: f64,
+    /// How to meet the targets: penalty (raise the weight of the target term) or lagrange (augmented Lagrangian: shift the target of the term)
+    #[arg(long, default_value = "penalty")]
+    pub method: String,
+    #[command(flatten)]
+    pub dls: DlsArgs,
     /// Output JSON
     #[arg(long)]
     pub json: bool,
     /// Write the result (json, csv or npz; csv and npz are the trajectory table)
     #[arg(long)]
     pub save: Option<PathBuf>,
+}
+
+/// DLS の設定の旗（optimize・zoom）
+#[derive(Args, Clone, Copy)]
+pub struct DlsArgs {
+    /// Solve each step by QR instead of the normal equations (no squaring of the condition number; the path can differ by rounding on ill-conditioned problems)
+    #[arg(long)]
+    pub qr: bool,
+    /// Stop when the largest cosine between the residuals and a variable's column is below this (0: no gradient test)
+    #[arg(long, default_value_t = 0.0)]
+    pub gtol: f64,
+    /// Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)
+    #[arg(long = "active-set")]
+    pub active_set: bool,
+}
+
+impl DlsArgs {
+    pub fn choice(self) -> lensbench_engine::zoom::DlsChoice {
+        lensbench_engine::zoom::DlsChoice {
+            qr: self.qr,
+            gtol: self.gtol,
+            active_set: self.active_set,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -175,6 +204,8 @@ pub fn zoom(a: &ZoomArgs) -> Result<Value, String> {
         rings: a.rings,
         iters: a.iters,
         tol: a.tol,
+        method: a.method.clone(),
+        dls: a.dls.choice(),
     };
     lensbench_engine::zoom::zoom_systems(&cs, &names, &o)
 }

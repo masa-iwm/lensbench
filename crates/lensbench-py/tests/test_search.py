@@ -62,6 +62,22 @@ def test_zoom_errors():
         lb.zoom(states(), ["G2.shift"], efl=[1, 2, 3], pmag=[1, 2, 3])
     with pytest.raises(ValueError):
         lb.zoom([], ["G2.shift"])
+    with pytest.raises(ValueError):
+        lb.zoom(states(), ["G2.shift"], method="exact")
+    with pytest.raises(ValueError):
+        lb.zoom(states(), ["G2.shift"], gtol=-1.0)
+
+
+def test_zoom_method_and_dls_options_match_cli():
+    v = ["G2.shift", ("G3.shift", -10.0, 30.0)]
+    r = lb.zoom(states(), v, efl=[95.0, 110.0, 130.0], method="lagrange", qr=True, active_set=True)
+    for p in r["path"]:
+        assert abs(p["value"] - p["target"]) < 1e-8 * p["target"]
+    c = cli("zoom", ZOOM, "--var", "G2.shift", "--var", "G3.shift=-10:30", "--efl", "95,110,130",
+            "--method", "lagrange", "--qr", "--active-set")
+    for a, b in zip(r["path"], c["path"]):
+        assert a["value"] == b["efl"]
+        assert a["x"] == [b["G2.shift"], b["G3.shift"]]
 
 
 def test_swap_search_matches_cli(tmp_path):

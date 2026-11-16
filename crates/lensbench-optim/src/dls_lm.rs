@@ -40,6 +40,25 @@ impl Default for DlsOpts {
     }
 }
 
+impl DlsOpts {
+    /// 設定の確かめ（ftol・xtol・gtol は 0 以上、damping は正の有限の値）
+    pub fn check(&self) -> Result<()> {
+        for (k, v) in [
+            ("ftol", self.ftol),
+            ("xtol", self.xtol),
+            ("gtol", self.gtol),
+        ] {
+            if !(v >= 0.0) {
+                lensbench_core::invalid!("{k} must be 0 or more ({v})");
+            }
+        }
+        if !(self.damping > 0.0 && self.damping.is_finite()) {
+            lensbench_core::invalid!("damping must be a positive number ({})", self.damping);
+        }
+        Ok(())
+    }
+}
+
 /// 止まった理由
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
@@ -161,6 +180,7 @@ pub fn dls_inner(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
 
 fn dls_report(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
     p.check()?;
+    o.check()?;
     let nv = p.vars.len();
     let x0 = p.x0()?;
     let mut x: Vec<f64> = x0
@@ -283,6 +303,15 @@ fn dls_report(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
             evals += 1;
             let rn = match p.residuals(&xn) {
                 Ok(rn) => rn,
+                // 試しの一歩の評価の途中の中断は、進めないのでなく中断（その前の x を返す）
+                Err(Error::Cancelled) => {
+                    stop = Stop::Cancelled;
+                    break;
+                }
+                Err(_) if par::cancelled() => {
+                    stop = Stop::Cancelled;
+                    break;
+                }
                 Err(_) => {
                     mu *= nu;
                     nu *= 2.0;
@@ -312,7 +341,7 @@ fn dls_report(p: &Problem, o: &DlsOpts) -> Result<DlsResult> {
             raised = true;
         }
         let Some((xn, rn, fn_)) = accepted else {
-            if stop != Stop::SmallStep {
+            if !matches!(stop, Stop::SmallStep | Stop::Cancelled) {
                 stop = Stop::NoProgress;
             }
             break;

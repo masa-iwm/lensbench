@@ -1227,6 +1227,50 @@ fn zoom_of_loaded_project() {
         serde_json::from_slice(&o.stdout).unwrap()
     };
     assert_eq!(cli["path"], r["path"]);
+    // 目標の満たし方と DLS の設定（CLI の --method・--qr・--active-set と同じ値）
+    let mut m = p.clone();
+    m["method"] = json!("lagrange");
+    m["qr"] = json!(true);
+    m["active_set"] = json!(true);
+    let r = sv.call("zoom", m.clone());
+    let o = Command::new(env!("CARGO_BIN_EXE_lensbench"))
+        .current_dir(ROOT)
+        .args([
+            "zoom",
+            "examples/projects/P17_zoom_three_groups.json",
+            "--glass-dir",
+            "tests/glass",
+            "--var",
+            "G2.shift",
+            "--var",
+            "G3.shift=-10:30",
+            "--efl",
+            "140,160,175",
+            "--steps",
+            "1",
+            "--method",
+            "lagrange",
+            "--qr",
+            "--active-set",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    let cli: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(cli["path"], r["path"]);
+    for k in [0, 2, 4] {
+        let e = r["path"][k]["efl"].as_f64().unwrap();
+        let t = [140.0, 160.0, 175.0][k / 2];
+        assert!((e - t).abs() < 1e-8 * t, "{r}");
+    }
+    m["method"] = json!("exact");
+    assert!(sv.error("zoom", m.clone()).contains("method"));
+    m["method"] = json!("penalty");
+    m["qr"] = json!(1);
+    assert!(sv.error("zoom", m.clone()).contains("qr"));
+    m["qr"] = json!(false);
+    m["gtol"] = json!(-1.0);
+    assert!(sv.error("zoom", m).contains("gtol"));
     // 状態を選ぶ・目標の数が違えば誤り
     let mut q = p.clone();
     q["configs"] = json!(["wide", "tele"]);

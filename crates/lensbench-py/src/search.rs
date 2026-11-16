@@ -7,7 +7,7 @@ use lensbench_core::catalog::LensCatalog;
 use lensbench_core::sweep::RmsRef;
 use lensbench_core::with_threads;
 use lensbench_design::swap::{SwapSearch, SwapSpec};
-use lensbench_optim::zoom::{self as zoom_core, ZoomSpec};
+use lensbench_optim::zoom::{self as zoom_core, TargetMethod, ZoomSpec};
 use lensbench_optim::{DefaultMerit, DlsOpts, ParaxQ};
 use lensbench_project::{Env, Project};
 use pyo3::prelude::*;
@@ -35,14 +35,27 @@ fn reference_kind(r: &str) -> PyResult<RmsRef> {
     }
 }
 
+/// DLS の設定（optimize・zoom の qr・gtol・active_set、ほかは既定）
+pub(crate) fn dls_opts(iters: usize, qr: bool, gtol: f64, active_set: bool) -> DlsOpts {
+    DlsOpts {
+        max_iter: iters,
+        qr,
+        gtol,
+        active_set,
+        ..Default::default()
+    }
+}
+
 /// Zoom trajectory: solves vars ("G2.shift" or ("G2.shift", lower, upper)) for each state (systems: a system per zoom position, all of the same form).
 /// The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
 /// the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
+/// method is how to meet the targets: "penalty" (raise the weight of the target term) or "lagrange" (augmented Lagrangian: shift the target of the term).
+/// qr, gtol and active_set are the DLS settings of each point (as in System.optimize).
 /// Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
 /// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
 /// per state), warnings
 #[pyfunction]
-#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None))]
+#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None, method="penalty", qr=false, gtol=0.0, active_set=false))]
 #[allow(clippy::too_many_arguments)]
 fn zoom<'py>(
     py: Python<'py>,
@@ -57,6 +70,10 @@ fn zoom<'py>(
     iters: usize,
     tol: f64,
     threads: Option<usize>,
+    method: &str,
+    qr: bool,
+    gtol: f64,
+    active_set: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     if systems.is_empty() {
         return Err(value_err("systems is empty"));
@@ -86,10 +103,12 @@ fn zoom<'py>(
     sp.target_tol = tol;
     sp.merit = merit_kind(merit)?;
     sp.reference = reference_kind(reference)?;
-    sp.opts = DlsOpts {
-        max_iter: iters,
-        ..Default::default()
-    };
+    sp.method = TargetMethod::parse(method).ok_or_else(|| {
+        value_err(format!(
+            "method must be \"penalty\" or \"lagrange\" ({method})"
+        ))
+    })?;
+    sp.opts = dls_opts(iters, qr, gtol, active_set);
     let r = py
         .detach(|| with_threads(threads, || zoom_core::solve(&cs, &sp)))
         .map_err(err)?;

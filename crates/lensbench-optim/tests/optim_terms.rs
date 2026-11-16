@@ -595,3 +595,60 @@ fn stopped_rays_as_vignetted() {
     assert_eq!(r.len(), j.len());
     assert!(j.iter().all(|v| v.is_finite()));
 }
+
+/// 試しの一歩の評価の途中で中断を頼まれた: 3 回目の評価（最初の残差・差分の後の試しの一歩）で印を倒して中断の誤りを返す
+#[derive(Debug)]
+struct CancelOnTrial {
+    calls: AtomicUsize,
+    token: lensbench_core::par::CancelToken,
+}
+
+impl UserTerm for CancelOnTrial {
+    fn name(&self) -> &str {
+        "cancel_on_trial"
+    }
+    fn rows(&self) -> usize {
+        1
+    }
+    fn eval(&self, systems: &[&System]) -> Result<Vec<Vec<f64>>> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 2 {
+            self.token.cancel();
+            return Err(lensbench_core::Error::Cancelled);
+        }
+        systems
+            .iter()
+            .map(|s| {
+                let t = s.try_trace(FieldSel::Index(0), &[0.0], &[0.7], None, None, false)?;
+                Ok(vec![t.rays[0].xyz[1]])
+            })
+            .collect()
+    }
+}
+
+/// 試しの一歩の中断は no_progress でなく cancelled で、x は初めの値のまま
+#[test]
+fn cancel_during_trial_step_is_cancelled() {
+    let s = load("A0");
+    let f = s.param(&format!("{}.t", s.image() - 1)).unwrap();
+    let s0 = s
+        .with_params(&[(f, s.get_param(f).unwrap() + 0.5)])
+        .unwrap();
+    let token = lensbench_core::par::CancelToken::new();
+    let u = Arc::new(CancelOnTrial {
+        calls: AtomicUsize::new(0),
+        token: token.clone(),
+    });
+    let mut p = Problem::single(s0);
+    p.add_var(&format!("{}.t", s.image() - 1)).unwrap();
+    p.terms.push(Term {
+        side: Default::default(),
+        config: 0,
+        weight: 1.0,
+        kind: TermKind::User(UserTermRef(u.clone())),
+    });
+    let r =
+        lensbench_core::par::with_cancel(Some(&token), || dls(&p, &DlsOpts::default())).unwrap();
+    assert_eq!(r.stop, Stop::Cancelled);
+    assert_eq!(r.x, r.x0);
+    assert_eq!(u.calls.load(Ordering::SeqCst), 3);
+}
