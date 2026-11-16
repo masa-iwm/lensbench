@@ -78,6 +78,9 @@ pub struct DlsArgs {
     /// Bounds: fix variables that a step would take out of range at the bound and solve again for the rest (instead of clipping each component)
     #[arg(long = "active-set")]
     pub active_set: bool,
+    /// Drop stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation; the counts are in the result
+    #[arg(long = "stopped-as-vignetted")]
+    pub stopped_as_vignetted: bool,
 }
 
 #[derive(Args)]
@@ -203,6 +206,7 @@ pub fn zoom(a: &ZoomArgs) -> Result<Value, crate::error::AppError> {
         qr: a.dls.qr,
         gtol: a.dls.gtol,
         active_set: a.dls.active_set,
+        stopped_as_vignetted: a.dls.stopped_as_vignetted,
         ..ZoomParams::default()
     };
     let z = crate::progress::with(a.json, || {

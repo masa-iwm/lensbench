@@ -194,6 +194,9 @@
   Fresnel・理想レンズ・Jones の面は平らな基板（矢高 0）。
 
 ### Rust API
+- `lensbench_design::dls_spec::OptimizeParams`・`ZoomParams` と `lensbench_optim::zoom::ZoomSpec` に `stopped_as_vignetted`
+  （既定 false。止まった光線をけられた光線と同じく除く、IOO-28）を足した。構造体を全部の欄で書いていれば足す（`..Default::default()` なら要らない）。
+  CLI の `optimize`・`zoom` は `--stopped-as-vignetted`、serve・Python は `stopped_as_vignetted`。
 - `System` を書き換えられない値にした（KRN-04・XCT-05）: 利用者が書く値は `lensbench_core::Prescription`（欄は前の `System` と同じ）に
   移し、`System` はそれを共有して持つ（複製は軽い）。`sys.surfaces` などは前どおり読めるが、`sys.surfaces[j].t = …` のような書き換えと
   `changed()`・`refresh()`・`resolve_pickups()`・`solve_thickness()`・`update_indices()` は外から使えない。直すのは

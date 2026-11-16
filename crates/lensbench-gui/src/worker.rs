@@ -702,6 +702,10 @@ impl Worker {
             self.pending += 1;
             self.pending_core += core as usize;
             self.pending_long += long as usize;
+            // ブラウザ: 要求を Web Worker に渡すのは次のフレームの pump。入力の無いまま（ファイルを落とした
+            // だけなど）だと次のフレームが来ず、要求が渡らないまま止まっていた（GAR-25 の起動確認で見つけた）
+            #[cfg(target_arch = "wasm32")]
+            self.remote.wake();
         }
     }
 
@@ -1091,6 +1095,11 @@ mod remote {
                 r.spawn();
             }
             r
+        }
+
+        /// 次のフレームを描かせる（そこで pump が待っている要求を Web Worker に渡す）
+        pub fn wake(&self) {
+            (self.repaint)();
         }
 
         /// Web Worker を作る（中の wasm は見本のファイルだけを持って始まる）

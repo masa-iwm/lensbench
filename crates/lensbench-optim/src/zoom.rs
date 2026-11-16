@@ -82,6 +82,8 @@ pub struct ZoomSpec {
     /// 隣り合う状態の間にとる点の数
     pub steps: usize,
     pub opts: DlsOpts,
+    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除く（[`Problem::stopped_as_vignetted`]、IOO-28）
+    pub stopped_as_vignetted: bool,
 }
 
 impl ZoomSpec {
@@ -99,6 +101,7 @@ impl ZoomSpec {
             reference: RmsRef::Centroid,
             steps: 0,
             opts: DlsOpts::default(),
+            stopped_as_vignetted: false,
         }
     }
 }
@@ -167,6 +170,7 @@ fn problem(
     weight: f64,
 ) -> Result<(Problem, Problem)> {
     let mut img = Problem::single(s.clone());
+    img.stopped_as_vignetted = spec.stopped_as_vignetted;
     for (i, &p) in spec.moving.iter().enumerate() {
         let mut v = Var::new(p);
         if let Some(&(lo, hi)) = spec.bounds.get(i) {

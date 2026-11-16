@@ -11,6 +11,9 @@
   列のなす角の余弦の最大が g 未満で止める（`small_gradient`。0 は判定しない）。`--active-set` は一歩で範囲を出る変数を境界に固定して
   残りを解き直す（既定は成分ごとに範囲へ切り詰める）。serve の `optimize` は `qr`・`gtol`・`active_set`、Python は同じ名前の引数、
   Rust は `DlsOpts`。
+- 止まった光線（全反射・面に届かない）は、既定では項全体が評価できない誤りになる（最適化はその一歩を捨てて減衰を強める）。
+  `--stopped-as-vignetted`（serve・Python は `stopped_as_vignetted`、Rust は `Problem::stopped_as_vignetted`）で、けられた光線と
+  同じく除いて残りの重みで割り直す。どちらの場合も、瞳の光線を並べる項の結果の `rays` にけられた・止まった光線の数が出る。
 - 回転対称でない系の波面は、射出瞳を実光線の外挿で求める（OpticStudio と同じ）ので評価関数に 1e-8 程度の揺れがあり、
   差分の刻みを大きめ（相対 1e-3）にする。偏心・傾きが 0 の点では射出瞳の求め方が切り替わるので、評価関数はわずかに不連続。
 - Rust の `optim::Problem` は複数の構成（多重構成・ズームの状態）と構成ごとの変数、MTF の項も扱う。`Problem::jacobian` は

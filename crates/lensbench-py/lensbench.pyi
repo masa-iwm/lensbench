@@ -758,11 +758,12 @@ class System:
     def object_of(self, field: _Field) -> list[float]:
         """The object of a field (number or (hx, hy)): an object point (x, y) [mm] for a finite object, a direction (l, m, n) at infinity"""
 
-    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None, qr: bool = False, gtol: float = 0.0, active_set: bool = False) -> _OptimizeResult:
+    def optimize(self, vars: Sequence[str | tuple[str, float, float]], merit: str | None = ..., reference: str = "centroid", rings: int = 3, iters: int = 50, jac: str = "auto", threads: int | None = None, terms: Any = None, qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False) -> _OptimizeResult:
         """Return the system optimized by damped least squares (DLS) (the original system is not changed). vars is a list of variables, each "7.t" or
         ("7.t", lower, upper) (None for no bound on that side). The default merit function merit is "spot" (RMS spot) or "wavefront" (RMS wavefront),
         over all fields (field weights) and wavelengths. None for only the terms. jac is "auto" (analytic for terms with 16 or more analytic columns, central differences for the others),
         "fd" (all central differences) or "forward" (all forward differences, half the traces of central differences). qr solves each step by QR instead of the normal equations, gtol stops when the largest cosine between the residuals and a variable's column is below it (0: no test), active_set fixes variables a step would take out of range at the bound.
+        stopped_as_vignetted drops stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation.
 
         terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
         the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
@@ -1114,12 +1115,12 @@ def verify_compare(actual: Mapping[str, Any], expected: Mapping[str, Any], check
     """
 
 
-def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None, method: str = "penalty", qr: bool = False, gtol: float = 0.0, active_set: bool = False) -> _Zoom:
+def zoom(systems: Sequence[System], vars: Sequence[str | tuple[str, float, float]], efl: Sequence[float | None] | None = None, pmag: Sequence[float | None] | None = None, steps: int = 0, merit: str = "spot", reference: str = "centroid", rings: int = 3, iters: int = 50, tol: float = 1e-8, threads: int | None = None, method: str = "penalty", qr: bool = False, gtol: float = 0.0, active_set: bool = False, stopped_as_vignetted: bool = False) -> _Zoom:
     """Zoom trajectory: solves vars ("G2.shift" or ("G2.shift", lower, upper)) for each state (systems: a system per zoom position, all of the same form).
     The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
     the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
     method is how to meet the targets: "penalty" (raise the weight of the target term) or "lagrange" (augmented Lagrangian: shift the target of the term).
-    qr, gtol and active_set are the DLS settings of each point (as in System.optimize).
+    qr, gtol and active_set are the DLS settings of each point, and stopped_as_vignetted drops stopped rays like vignetted rays (as in System.optimize).
     Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
     None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
     per state), warnings

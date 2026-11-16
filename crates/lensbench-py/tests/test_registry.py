@@ -28,10 +28,11 @@ SAME_DEFAULTS = {
     lb.System.rms: ("rms", {"axis": "axis", "reference": "reference", "rings": "rings", "field_wave": "field_wave"}),
     lb.System.mech_check: ("mech-check", {"grid": "grid"}),
     lb.System.optimize: ("optimize", {"reference": "reference", "rings": "rings", "iters": "iters", "jac": "jac",
-                                      "qr": "qr", "gtol": "gtol", "active_set": "active_set"}),
+                                      "qr": "qr", "gtol": "gtol", "active_set": "active_set",
+                                      "stopped_as_vignetted": "stopped_as_vignetted"}),
     lb.zoom: ("zoom", {"steps": "steps", "merit": "merit", "reference": "reference", "rings": "rings",
                        "iters": "iters", "tol": "tol", "method": "method", "qr": "qr", "gtol": "gtol",
-                       "active_set": "active_set"}),
+                       "active_set": "active_set", "stopped_as_vignetted": "stopped_as_vignetted"}),
 }
 
 

@@ -241,6 +241,14 @@ mod web {
     }
 
     #[cfg(feature = "gui")]
+    /// 試験用の口: 画面の今の様子の JSON（待っている要求・開いている系・解析パネルの結果の有無）。
+    /// 起動確認（scripts/web_smoke.mjs）が要求の片付くのを待って結果を確かめる（GAR-25）
+    #[wasm_bindgen]
+    pub fn test_state() -> String {
+        lensbench_gui::web_test_state()
+    }
+
+    #[cfg(feature = "gui")]
     /// キャンバス（id）で GUI を始める。font は日本語のフォント（.ttf・.otf、無ければ欧文だけ）
     #[wasm_bindgen]
     pub async fn start(canvas_id: String, font: Option<Vec<u8>>) -> Result<(), JsValue> {

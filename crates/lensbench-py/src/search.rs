@@ -23,12 +23,12 @@ pub(crate) fn pick<T: std::str::FromStr<Err = String>>(what: &str, v: &str) -> P
 /// The merit is the RMS of the image (merit: "spot", "wavefront"; all fields, polychromatic) and
 /// the target of efl or pmag (a list of values per state; None for no target). steps is the number of points between neighboring states (continuation).
 /// method is how to meet the targets: "penalty" (raise the weight of the target term) or "lagrange" (augmented Lagrangian: shift the target of the term).
-/// qr, gtol and active_set are the DLS settings of each point (as in System.optimize).
+/// qr, gtol and active_set are the DLS settings of each point, and stopped_as_vignetted drops stopped rays like vignetted rays (as in System.optimize).
 /// Returned dict: quantity ("efl", "pmag"), names (variable names), path (a list of point dicts: pos, state (state number;
 /// None for points in between), target, value (paraxial quantity), x, merit (merit of the image only), stop ("failed" if not solved; the point keeps its start values), error (why), iterations), systems (solved system
 /// per state), warnings
 #[pyfunction]
-#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None, method="penalty", qr=false, gtol=0.0, active_set=false))]
+#[pyo3(signature = (systems, vars, efl=None, pmag=None, steps=0, merit="spot", reference="centroid", rings=3, iters=50, tol=1e-8, threads=None, method="penalty", qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false))]
 #[allow(clippy::too_many_arguments)]
 fn zoom<'py>(
     py: Python<'py>,
@@ -47,6 +47,7 @@ fn zoom<'py>(
     qr: bool,
     gtol: f64,
     active_set: bool,
+    stopped_as_vignetted: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     if systems.is_empty() {
         return Err(value_err("systems is empty"));
@@ -69,6 +70,7 @@ fn zoom<'py>(
         qr,
         gtol,
         active_set,
+        stopped_as_vignetted,
         ..ZoomParams::default()
     };
     let names: Vec<String> = (1..=cs.len()).map(|k| k.to_string()).collect();

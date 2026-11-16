@@ -151,6 +151,332 @@ fn s2(a: &str, b: &str) -> (String, String) {
     (a.to_string(), b.to_string())
 }
 
+/// 設定の項目の定義（既定値は登録簿に無い項目だけここに書く。登録簿にある項目は [`Plugin::params`] が埋める）
+impl Analysis {
+    /// 登録簿（[`crate::registry::Analyses::builtin`]）の同じ解析の名前（無ければ None）
+    fn registry_name(&self) -> Option<&'static str> {
+        match self {
+            Analysis::Spot => Some("spot"),
+            Analysis::Wavefront => Some("wavefront"),
+            Analysis::Zernike => Some("zernike"),
+            Analysis::Mtf => Some("mtf"),
+            Analysis::Psf | Analysis::HuygensPsf => Some("psf"),
+            Analysis::Rms => Some("rms"),
+            Analysis::GeoMtf => Some("geo-mtf"),
+            Analysis::HuygensMtf => Some("huygens-mtf"),
+            Analysis::Ghost => Some("ghost"),
+            Analysis::Pop | Analysis::Interferogram => None,
+        }
+    }
+
+    fn own_params(&self) -> Vec<ParamSpec> {
+        use ParamType::{Choice, Count, Flag, Num, Nums};
+        let p = ParamSpec::new;
+        let n = |x: f64| Some(Value::Num(x));
+        let b = |x: bool| Some(Value::Bool(x));
+        let st = |x: &str| Some(Value::Str(x.into()));
+        // 既定値は登録簿の同じ項目から（[`Plugin::params`] が埋める）
+        let reg = || None;
+        let ch = |v: &[&str]| Choice(v.iter().map(|x| x.to_string()).collect());
+        let wave = || {
+            p(
+                "wave",
+                Count,
+                None,
+                "",
+                "Wavelength number (from 1; polychromatic or primary wavelength if omitted)",
+            )
+        };
+        let freqs = || {
+            p(
+                "freqs",
+                Nums { len: None },
+                None,
+                "cycles/mm",
+                "Frequencies (21 points from 0 to 0.95 of the cutoff if omitted)",
+            )
+        };
+        let refp = || {
+            p(
+                "ref_primary",
+                Flag,
+                b(false),
+                "",
+                "Reference to the chief ray of the primary wavelength (false: the chief ray of that wavelength, as in the CLI and OpticStudio)",
+            )
+        };
+        let pupil = || {
+            p(
+                "pupil",
+                Count,
+                None,
+                "",
+                "Side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2)",
+            )
+        };
+        let image = || p("image", Count, reg(), "", "Side of the image grid");
+        let pixel = || {
+            p(
+                "pixel",
+                Num,
+                None,
+                "mm",
+                "Spacing of the image grid (automatic if omitted)",
+            )
+        };
+        match self {
+            Analysis::Spot => vec![
+                wave(),
+                p(
+                    "rings",
+                    Count,
+                    reg(),
+                    "",
+                    "Number of rings of the Gaussian quadrature",
+                ),
+            ],
+            Analysis::Wavefront => vec![wave(), p("n", Count, reg(), "", "Grid side"), refp()],
+            Analysis::Zernike => vec![
+                wave(),
+                p(
+                    "kind",
+                    ch(&["standard", "fringe"]),
+                    reg(),
+                    "",
+                    "Ordering",
+                ),
+                p("terms", Count, reg(), "", "Number of terms"),
+                p("n", Count, reg(), "", "Grid side"),
+                refp(),
+            ],
+            Analysis::Mtf => vec![
+                wave(),
+                freqs(),
+                p(
+                    "n",
+                    Count,
+                    None,
+                    "",
+                    "Side of the pupil grid (automatic if omitted)",
+                ),
+                p(
+                    "method",
+                    ch(&["auto", "interp", "direct", "fft"]),
+                    reg(),
+                    "",
+                    "Calculation method",
+                ),
+            ],
+            Analysis::Psf => vec![
+                wave(),
+                pupil(),
+                image(),
+                pixel(),
+                p(
+                    "plane",
+                    ch(&["image", "chief"]),
+                    reg(),
+                    "",
+                    "Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)",
+                ),
+            ],
+            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
+            Analysis::Rms => vec![
+                wave(),
+                p(
+                    "rings",
+                    Count,
+                    reg(),
+                    "",
+                    "Number of rings of the Gaussian quadrature",
+                ),
+                p(
+                    "reference",
+                    ch(&["centroid", "chief"]),
+                    reg(),
+                    "",
+                    "Reference",
+                ),
+            ],
+            Analysis::GeoMtf => vec![
+                wave(),
+                freqs(),
+                p("n", Count, reg(), "", "Number of quadrature points"),
+                p(
+                    "diff_limit",
+                    Flag,
+                    reg(),
+                    "",
+                    "Multiply by the diffraction limit",
+                ),
+            ],
+            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel()],
+            Analysis::Pop => vec![
+                wave(),
+                p(
+                    "surface",
+                    Count,
+                    None,
+                    "",
+                    "Surface to build the field on (required)",
+                ),
+                p(
+                    "dist",
+                    Num,
+                    None,
+                    "mm",
+                    "Propagation distance (either this or to)",
+                ),
+                p(
+                    "to",
+                    Count,
+                    None,
+                    "",
+                    "Surface to propagate to (surface + 1 if omitted)",
+                ),
+                p(
+                    "method",
+                    ch(&["auto", "fresnel", "angular", "direct"]),
+                    st("auto"),
+                    "",
+                    "Calculation method",
+                ),
+                p(
+                    "rays",
+                    Count,
+                    n(65.0),
+                    "",
+                    "Number of rays on a side of the pupil grid",
+                ),
+                p("n", Count, n(256.0), "", "Side of the input grid"),
+                p(
+                    "half",
+                    Num,
+                    None,
+                    "mm",
+                    "Half width of the input grid (automatic if omitted)",
+                ),
+                p(
+                    "aperture",
+                    Flag,
+                    b(true),
+                    "",
+                    "Clip by the surface aperture",
+                ),
+                p("out_n", Count, None, "", "Side of the output grid"),
+                p("out_half", Num, None, "mm", "Half width of the output grid"),
+                p(
+                    "out_center",
+                    Nums { len: Some(2) },
+                    None,
+                    "mm",
+                    "Center of the output grid (x, y)",
+                ),
+            ],
+            Analysis::Ghost => vec![
+                p("first", Count, reg(), "", "First surface"),
+                p(
+                    "last",
+                    Count,
+                    None,
+                    "",
+                    "Last surface (image surface if omitted)",
+                ),
+            ],
+            Analysis::Interferogram => vec![
+                wave(),
+                p("n", Count, n(64.0), "", "Grid side"),
+                p("beam1", Count, n(1.0), "", "Configuration of beam 1"),
+                p(
+                    "beam2",
+                    Count,
+                    n(2.0),
+                    "",
+                    "Configuration of beam 2 (0 for the reference sphere)",
+                ),
+                p(
+                    "scale",
+                    Num,
+                    n(1.0),
+                    "",
+                    "Factor applied to the OPD difference (2 for double pass)",
+                ),
+                p(
+                    "xtilt",
+                    Num,
+                    n(0.0),
+                    "",
+                    "Number of tilt fringes (per pupil diameter)",
+                ),
+                p(
+                    "ytilt",
+                    Num,
+                    n(0.0),
+                    "",
+                    "Number of tilt fringes (per pupil diameter)",
+                ),
+            ],
+        }
+    }
+}
+
+/// 登録簿の既定値（JSON）→ プラグインの設定の値（null は None）
+fn json_value(j: &serde_json::Value) -> Option<Value> {
+    use serde_json::Value as J;
+    match j {
+        J::Number(n) => n.as_f64().map(Value::Num),
+        J::Bool(b) => Some(Value::Bool(*b)),
+        J::String(x) => Some(Value::Str(x.clone())),
+        J::Array(a) => a
+            .iter()
+            .map(J::as_f64)
+            .collect::<Option<Vec<_>>>()
+            .map(Value::Nums),
+        _ => None,
+    }
+}
+
+/// 設定の既定値（[`Plugin::params`] の）。prepare で省いた項目に使う
+struct Defaults(Vec<ParamSpec>);
+
+impl Defaults {
+    fn get(&self, k: &str) -> Result<&Value> {
+        match self
+            .0
+            .iter()
+            .find(|p| p.name == k)
+            .and_then(|p| p.default.as_ref())
+        {
+            Some(v) => Ok(v),
+            None => invalid!("internal: plugin setting {k} has no default"),
+        }
+    }
+    fn count(&self, k: &str) -> Result<usize> {
+        match self.get(k)? {
+            Value::Num(x) => Ok(*x as usize),
+            v => invalid!("internal: default of plugin setting {k} is {v:?}"),
+        }
+    }
+    fn num(&self, k: &str) -> Result<f64> {
+        match self.get(k)? {
+            Value::Num(x) => Ok(*x),
+            v => invalid!("internal: default of plugin setting {k} is {v:?}"),
+        }
+    }
+    fn flag(&self, k: &str) -> Result<bool> {
+        match self.get(k)? {
+            Value::Bool(b) => Ok(*b),
+            v => invalid!("internal: default of plugin setting {k} is {v:?}"),
+        }
+    }
+    fn str(&self, k: &str) -> Result<&str> {
+        match self.get(k)? {
+            Value::Str(x) => Ok(x),
+            v => invalid!("internal: default of plugin setting {k} is {v:?}"),
+        }
+    }
+}
+
 impl Plugin for Analysis {
     fn name(&self) -> &str {
         match self {
@@ -339,279 +665,55 @@ impl Plugin for Analysis {
         }
     }
 
+    /// 設定の項目。登録簿に同じ解析・同じ名前の項目があれば、既定値はそちらから取る（既定値を 1 か所に、ANA-03・XCT-02）
     fn params(&self) -> Vec<ParamSpec> {
-        use ParamType::{Choice, Count, Flag, Num, Nums};
-        let p = ParamSpec::new;
-        let n = |x: f64| Some(Value::Num(x));
-        let b = |x: bool| Some(Value::Bool(x));
-        let st = |x: &str| Some(Value::Str(x.into()));
-        let ch = |v: &[&str]| Choice(v.iter().map(|x| x.to_string()).collect());
-        let wave = || {
-            p(
-                "wave",
-                Count,
-                None,
-                "",
-                "Wavelength number (from 1; polychromatic or primary wavelength if omitted)",
-            )
+        let mut v = self.own_params();
+        let Some(a) = self
+            .registry_name()
+            .and_then(|n| crate::registry::Analyses::builtin().get(n))
+        else {
+            return v;
         };
-        let freqs = || {
-            p(
-                "freqs",
-                Nums { len: None },
-                None,
-                "cycles/mm",
-                "Frequencies (21 points from 0 to 0.95 of the cutoff if omitted)",
-            )
-        };
-        let refp = || {
-            p(
-                "ref_primary",
-                Flag,
-                b(false),
-                "",
-                "Reference to the chief ray of the primary wavelength (false: the chief ray of that wavelength, as in the CLI and OpticStudio)",
-            )
-        };
-        let pupil = || {
-            p(
-                "pupil",
-                Count,
-                None,
-                "",
-                "Side of the pupil grid (automatic if omitted: phase difference between neighboring samples at most π/2)",
-            )
-        };
-        let image = || p("image", Count, n(128.0), "", "Side of the image grid");
-        let pixel = || {
-            p(
-                "pixel",
-                Num,
-                None,
-                "mm",
-                "Spacing of the image grid (automatic if omitted)",
-            )
-        };
-        match self {
-            Analysis::Spot => vec![
-                wave(),
-                p(
-                    "rings",
-                    Count,
-                    n(6.0),
-                    "",
-                    "Number of rings of the Gaussian quadrature",
-                ),
-            ],
-            Analysis::Wavefront => vec![wave(), p("n", Count, n(64.0), "", "Grid side"), refp()],
-            Analysis::Zernike => vec![
-                wave(),
-                p(
-                    "kind",
-                    ch(&["standard", "fringe"]),
-                    st("standard"),
-                    "",
-                    "Ordering",
-                ),
-                p("terms", Count, n(37.0), "", "Number of terms"),
-                p("n", Count, n(64.0), "", "Grid side"),
-                refp(),
-            ],
-            Analysis::Mtf => vec![
-                wave(),
-                freqs(),
-                p(
-                    "n",
-                    Count,
-                    None,
-                    "",
-                    "Side of the pupil grid (automatic if omitted)",
-                ),
-                p(
-                    "method",
-                    ch(&["auto", "interp", "direct", "fft"]),
-                    st("auto"),
-                    "",
-                    "Calculation method",
-                ),
-            ],
-            Analysis::Psf => vec![
-                wave(),
-                pupil(),
-                image(),
-                pixel(),
-                p(
-                    "plane",
-                    ch(&["image", "chief"]),
-                    st("image"),
-                    "",
-                    "Plane of the image grid (image: the image surface; chief: perpendicular to the chief ray, as in OpticStudio's FFT PSF)",
-                ),
-            ],
-            Analysis::HuygensPsf => vec![wave(), pupil(), image(), pixel()],
-            Analysis::Rms => vec![
-                wave(),
-                p(
-                    "rings",
-                    Count,
-                    n(6.0),
-                    "",
-                    "Number of rings of the Gaussian quadrature",
-                ),
-                p(
-                    "reference",
-                    ch(&["centroid", "chief"]),
-                    st("centroid"),
-                    "",
-                    "Reference",
-                ),
-            ],
-            Analysis::GeoMtf => vec![
-                wave(),
-                freqs(),
-                p("n", Count, n(128.0), "", "Number of quadrature points"),
-                p(
-                    "diff_limit",
-                    Flag,
-                    b(false),
-                    "",
-                    "Multiply by the diffraction limit",
-                ),
-            ],
-            Analysis::HuygensMtf => vec![wave(), freqs(), pupil(), image(), pixel()],
-            Analysis::Pop => vec![
-                wave(),
-                p(
-                    "surface",
-                    Count,
-                    None,
-                    "",
-                    "Surface to build the field on (required)",
-                ),
-                p(
-                    "dist",
-                    Num,
-                    None,
-                    "mm",
-                    "Propagation distance (either this or to)",
-                ),
-                p(
-                    "to",
-                    Count,
-                    None,
-                    "",
-                    "Surface to propagate to (surface + 1 if omitted)",
-                ),
-                p(
-                    "method",
-                    ch(&["auto", "fresnel", "angular", "direct"]),
-                    st("auto"),
-                    "",
-                    "Calculation method",
-                ),
-                p(
-                    "rays",
-                    Count,
-                    n(65.0),
-                    "",
-                    "Number of rays on a side of the pupil grid",
-                ),
-                p("n", Count, n(256.0), "", "Side of the input grid"),
-                p(
-                    "half",
-                    Num,
-                    None,
-                    "mm",
-                    "Half width of the input grid (automatic if omitted)",
-                ),
-                p(
-                    "aperture",
-                    Flag,
-                    b(true),
-                    "",
-                    "Clip by the surface aperture",
-                ),
-                p("out_n", Count, None, "", "Side of the output grid"),
-                p("out_half", Num, None, "mm", "Half width of the output grid"),
-                p(
-                    "out_center",
-                    Nums { len: Some(2) },
-                    None,
-                    "mm",
-                    "Center of the output grid (x, y)",
-                ),
-            ],
-            Analysis::Ghost => vec![
-                p("first", Count, n(1.0), "", "First surface"),
-                p(
-                    "last",
-                    Count,
-                    None,
-                    "",
-                    "Last surface (image surface if omitted)",
-                ),
-            ],
-            Analysis::Interferogram => vec![
-                wave(),
-                p("n", Count, n(64.0), "", "Grid side"),
-                p("beam1", Count, n(1.0), "", "Configuration of beam 1"),
-                p(
-                    "beam2",
-                    Count,
-                    n(2.0),
-                    "",
-                    "Configuration of beam 2 (0 for the reference sphere)",
-                ),
-                p(
-                    "scale",
-                    Num,
-                    n(1.0),
-                    "",
-                    "Factor applied to the OPD difference (2 for double pass)",
-                ),
-                p(
-                    "xtilt",
-                    Num,
-                    n(0.0),
-                    "",
-                    "Number of tilt fringes (per pupil diameter)",
-                ),
-                p(
-                    "ytilt",
-                    Num,
-                    n(0.0),
-                    "",
-                    "Number of tilt fringes (per pupil diameter)",
-                ),
-            ],
+        let reg: std::collections::BTreeMap<String, serde_json::Value> = a
+            .params()
+            .into_iter()
+            .map(|x| (x.name, x.default))
+            .collect();
+        for s in &mut v {
+            if let Some(d) = reg.get(&s.name).and_then(json_value) {
+                s.default = Some(d);
+            }
         }
+        v
     }
 
     fn prepare(&self, config: &Config) -> Result<Box<dyn Instance>> {
         let mut r = ConfigReader::new(config);
+        // 省いた項目は設定の項目の既定値（登録簿から取ったものも）
+        let d = Defaults(self.params());
         let wave = r.wave("wave")?;
         let p = match self {
             Analysis::Spot => Prepared::Spot {
                 wave,
-                rings: r.count("rings", 6)?,
+                rings: r.count("rings", d.count("rings")?)?,
             },
             Analysis::Wavefront => Prepared::Wavefront {
                 wave,
-                n: r.count("n", 64)?,
-                ref_primary: r.flag("ref_primary", false)?,
+                n: r.count("n", d.count("n")?)?,
+                ref_primary: r.flag("ref_primary", d.flag("ref_primary")?)?,
             },
             Analysis::Zernike => Prepared::Zernike {
                 wave,
-                kind: zern_kind(&r.str("kind", "standard")?)?,
-                terms: r.count("terms", 37)?,
-                n: r.count("n", 64)?,
-                ref_primary: r.flag("ref_primary", false)?,
+                kind: zern_kind(&r.str("kind", d.str("kind")?)?)?,
+                terms: r.count("terms", d.count("terms")?)?,
+                n: r.count("n", d.count("n")?)?,
+                ref_primary: r.flag("ref_primary", d.flag("ref_primary")?)?,
             },
             Analysis::Mtf => Prepared::Mtf {
                 wave,
                 freqs: r.nums("freqs")?,
                 n: r.opt_count("n")?,
-                method: match r.str("method", "auto")?.as_str() {
+                method: match r.str("method", d.str("method")?)?.as_str() {
                     "auto" => MtfMethod::Auto,
                     "interp" => MtfMethod::Interp,
                     "direct" => MtfMethod::Direct,
@@ -620,15 +722,14 @@ impl Plugin for Analysis {
                 },
             },
             Analysis::Psf => {
-                let d = PsfOpts::default();
                 let pixel = r.opt_num("pixel")?;
                 Prepared::Psf {
                     wave,
                     opts: PsfOpts {
                         pupil: r.opt_count("pupil")?,
-                        image: r.count("image", d.image)?,
+                        image: r.count("image", d.count("image")?)?,
                         pixel,
-                        plane: match r.str("plane", "image")?.as_str() {
+                        plane: match r.str("plane", d.str("plane")?)?.as_str() {
                             "image" => PsfPlane::Image,
                             "chief" => PsfPlane::ChiefPerp,
                             x => invalid!("setting plane must be image or chief ({x})"),
@@ -639,9 +740,9 @@ impl Plugin for Analysis {
             Analysis::Rms => Prepared::Rms {
                 wave,
                 opts: RmsOpts {
-                    rings: r.count("rings", RmsOpts::default().rings)?,
+                    rings: r.count("rings", d.count("rings")?)?,
                     reference: match r
-                        .str("reference", "centroid")?
+                        .str("reference", d.str("reference")?)?
                         .to_ascii_lowercase()
                         .as_str()
                     {
@@ -655,15 +756,14 @@ impl Plugin for Analysis {
             Analysis::GeoMtf => Prepared::GeoMtf {
                 wave,
                 freqs: r.nums("freqs")?,
-                n: r.count("n", 128)?,
-                diff_limit: r.flag("diff_limit", false)?,
+                n: r.count("n", d.count("n")?)?,
+                diff_limit: r.flag("diff_limit", d.flag("diff_limit")?)?,
             },
             Analysis::HuygensPsf | Analysis::HuygensMtf => {
-                let d = HuygensOpts::default();
                 let pixel = r.opt_num("pixel")?;
                 let opts = HuygensOpts {
                     pupil: r.opt_count("pupil")?,
-                    image: r.count("image", d.image)?,
+                    image: r.count("image", d.count("image")?)?,
                     pixel,
                 };
                 if *self == Analysis::HuygensPsf {
@@ -685,19 +785,18 @@ impl Plugin for Analysis {
                 if dist.is_some() && to.is_some() {
                     invalid!("give only one of the settings dist and to");
                 }
-                let method = match r.str("method", "auto")?.as_str() {
+                let method = match r.str("method", d.str("method")?)?.as_str() {
                     "auto" => PopMethod::Auto,
                     "fresnel" => PopMethod::Fresnel,
                     "angular" => PopMethod::Angular,
                     "direct" => PopMethod::Direct,
                     x => invalid!("setting method must be auto, fresnel, angular or direct ({x})"),
                 };
-                let d = RayBeamOpts::default();
                 let opts = RayBeamOpts {
-                    rays: r.count("rays", d.rays)?,
-                    n: r.count("n", d.n)?,
+                    rays: r.count("rays", d.count("rays")?)?,
+                    n: r.count("n", d.count("n")?)?,
                     half: opt_num(&mut r, "half")?,
-                    aperture: r.flag("aperture", true)?,
+                    aperture: r.flag("aperture", d.flag("aperture")?)?,
                     overfill: None,
                 };
                 let out = OutGrid {
@@ -726,24 +825,24 @@ impl Plugin for Analysis {
                     invalid!("wave can't be used with ghost (computed at the primary wavelength)");
                 }
                 Prepared::Ghost {
-                    first: r.count("first", 1)?,
+                    first: r.count("first", d.count("first")?)?,
                     last: r.opt_count("last")?,
                 }
             }
             Analysis::Interferogram => {
-                let beam1 = r.count("beam1", 1)?;
+                let beam1 = r.count("beam1", d.count("beam1")?)?;
                 if beam1 == 0 {
                     invalid!("setting beam1 must be 1 or more (a configuration number)");
                 }
                 Prepared::Interferogram {
                     wave,
                     beam1,
-                    beam2: r.count("beam2", 2)?,
+                    beam2: r.count("beam2", d.count("beam2")?)?,
                     opts: PupilOpts {
-                        n: r.count("n", 64)?,
-                        scale: r.num("scale", 1.0)?,
-                        xtilt: r.num("xtilt", 0.0)?,
-                        ytilt: r.num("ytilt", 0.0)?,
+                        n: r.count("n", d.count("n")?)?,
+                        scale: r.num("scale", d.num("scale")?)?,
+                        xtilt: r.num("xtilt", d.num("xtilt")?)?,
+                        ytilt: r.num("ytilt", d.num("ytilt")?)?,
                     },
                 }
             }
@@ -1045,5 +1144,32 @@ impl Instance for Prepared {
         let f = field_sel(s, r.req("field")?)?;
         r.finish()?;
         self.evaluate(s, f)
+    }
+}
+
+#[cfg(test)]
+mod defaults_tests {
+    use super::*;
+
+    /// どの同梱プラグインも、prepare が既定値を使う項目に既定値がある（省いた設定で準備できる）。
+    /// 登録簿にある項目は登録簿の既定値になる（ANA-03）
+    #[test]
+    fn every_plugin_prepares_with_defaults_from_the_registry() {
+        let mut r = Registry::new();
+        register(&mut r);
+        for p in r.plugins() {
+            let mut cfg = Config::new();
+            if p.name() == "pop" {
+                cfg.insert("surface".into(), Value::Num(1.0));
+            }
+            p.prepare(&cfg)
+                .unwrap_or_else(|e| panic!("{}: {e}", p.name()));
+        }
+        let spot = r.get("spot").unwrap().params();
+        let rings = spot.iter().find(|s| s.name == "rings").unwrap();
+        assert_eq!(rings.default, Some(Value::Num(6.0)));
+        let psf = r.get("huygens_psf").unwrap().params();
+        let image = psf.iter().find(|s| s.name == "image").unwrap();
+        assert_eq!(image.default, Some(Value::Num(128.0)));
     }
 }

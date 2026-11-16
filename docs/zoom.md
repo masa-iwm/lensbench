@@ -6,7 +6,8 @@
   `--tol`（相対、既定 1e-8）に入るまで 100 倍ずつ上げて解き直す。
 - `--method lagrange` は拡大ラグランジュ法: 近軸量の項の重みは上げず、解いた値と目標の差だけ項の目標をずらして解き直す
   （最大 8 回。重みを上げないので条件が悪くならない）。既定は `penalty`（上の重みを上げる方法）。1 点の DLS の設定は
-  `optimize` と同じ `--qr`・`--gtol`・`--active-set`。serve の `zoom` は `method`・`qr`・`gtol`・`active_set`、Python は同じ名前の引数。
+  `optimize` と同じ `--qr`・`--gtol`・`--active-set`・`--stopped-as-vignetted`。serve の `zoom` は `method`・`qr`・`gtol`・`active_set`・
+  `stopped_as_vignetted`、Python は同じ名前の引数。
 - 解けない点（追跡できない系になったなど）は `stop` を `failed`（理由は `error`、変数は解き始めの値）にして残りを続ける。
   設定の誤り（動かすパラメータが状態の系にない、範囲が逆など）は全体を誤りにする。
 - `--steps N` で隣り合う状態の間に N 点を継続法でたどる（目標は等比に、出発点は一つ前の解に両端の差の分を足した所）。

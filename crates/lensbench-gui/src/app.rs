@@ -26,6 +26,8 @@ use panels::Panels;
 use result::AnaRes;
 use sys_copy::SysCopy;
 mod take;
+#[cfg(target_arch = "wasm32")]
+mod test_state;
 mod to_combo;
 mod tour_steps;
 

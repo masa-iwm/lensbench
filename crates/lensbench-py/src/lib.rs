@@ -2311,6 +2311,7 @@ impl PySystem {
     /// ("7.t", lower, upper) (None for no bound on that side). The default merit function merit is "spot" (RMS spot) or "wavefront" (RMS wavefront),
     /// over all fields (field weights) and wavelengths. None for only the terms. jac is "auto" (analytic for terms with 16 or more analytic columns, central differences for the others),
     /// "fd" (all central differences) or "forward" (all forward differences, half the traces of central differences). qr solves each step by QR instead of the normal equations, gtol stops when the largest cosine between the residuals and a variable's column is below it (0: no test), active_set fixes variables a step would take out of range at the bound.
+    /// stopped_as_vignetted drops stopped rays (total internal reflection, missing a surface) like vignetted rays instead of failing the evaluation.
     ///
     /// terms is a list of dicts of terms to add, of the form {"type": "ray", "field": 1, "py": 1, "q": "y", "target": 0, "weight": 1};
     /// the types are spot, wavefront, mtf, paraxial (q: efl, pmag, enpp, epd, expp, expd, wfno, pwfn, isfn, pimh, totr,
@@ -2323,7 +2324,7 @@ impl PySystem {
     /// Returned dict: system (optimized system), x0, x (variable values), merit0, merit, history (merit per iteration),
     /// iterations, evals, stop ("converged", "small_step", "small_gradient", "no_progress", "max_iter", "jacobian_failed"), note (details of why it stopped),
     /// inactive (numbers of variables considered ineffective and not moved), term_values0, term_values (values per term of terms), term_value_kinds ("quantity": the value itself for terms with a target, "rms": √Σr² for the others)
-    #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None, qr=false, gtol=0.0, active_set=false))]
+    #[pyo3(signature = (vars, merit=Some("spot"), reference="centroid", rings=3, iters=50, jac="auto", threads=None, terms=None, qr=false, gtol=0.0, active_set=false, stopped_as_vignetted=false))]
     #[allow(clippy::too_many_arguments)]
     fn optimize<'py>(
         &self,
@@ -2339,9 +2340,10 @@ impl PySystem {
         qr: bool,
         gtol: f64,
         active_set: bool,
+        stopped_as_vignetted: bool,
     ) -> PyResult<Bound<'py, PyDict>> {
         let s = self.sys();
-        let (p, users, n_default) = opt_problem(
+        let (mut p, users, n_default) = opt_problem(
             py,
             &s,
             &vars,
@@ -2352,6 +2354,7 @@ impl PySystem {
             terms.as_ref(),
             &self.coat_files,
         )?;
+        p.stopped_as_vignetted = stopped_as_vignetted;
         let o = lensbench_design::dls_spec::DlsChoice {
             qr,
             gtol,

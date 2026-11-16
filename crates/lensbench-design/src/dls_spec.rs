@@ -392,6 +392,8 @@ pub struct OptimizeParams {
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
+    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り、IOO-28）
+    pub stopped_as_vignetted: bool,
 }
 
 impl Default for OptimizeParams {
@@ -409,6 +411,7 @@ impl Default for OptimizeParams {
             qr: false,
             gtol: 0.0,
             active_set: false,
+            stopped_as_vignetted: false,
         }
     }
 }
@@ -442,6 +445,7 @@ impl OptimizeParams {
             p.terms.push(t);
         }
         p.jac = self.jac.into();
+        p.stopped_as_vignetted = self.stopped_as_vignetted;
         Ok((p, n_default))
     }
 
@@ -526,6 +530,8 @@ pub struct ZoomParams {
     pub gtol: f64,
     /// 境界: 範囲を出る変数を境界に止めて残りを解き直す（成分ごとに切らずに）
     pub active_set: bool,
+    /// 止まった光線（全反射・面に届かない）をけられた光線と同じく除いて評価する（既定は評価できない誤り、IOO-28）
+    pub stopped_as_vignetted: bool,
 }
 
 impl Default for ZoomParams {
@@ -545,6 +551,7 @@ impl Default for ZoomParams {
             qr: false,
             gtol: 0.0,
             active_set: false,
+            stopped_as_vignetted: false,
         }
     }
 }
@@ -594,6 +601,7 @@ impl ZoomParams {
         sp.merit = self.merit.into();
         sp.reference = self.reference.into();
         sp.method = self.method.into();
+        sp.stopped_as_vignetted = self.stopped_as_vignetted;
         sp.opts = DlsChoice {
             qr: self.qr,
             gtol: self.gtol,
@@ -642,6 +650,28 @@ mod tests {
             .parse::<Jac>()
             .unwrap_err()
             .contains("auto, fd, forward"));
+    }
+
+    /// 止まった光線の扱いは JSON（serve）から問題とズームの設定まで届く（IOO-28）
+    #[test]
+    fn stopped_as_vignetted_reaches_the_problem() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let s = lensbench_core::zmx::load_with(
+            &root.join("tests/refs/A0/system.zmx"),
+            &lensbench_core::zmx::LoadOptions {
+                cfg: 1,
+                catalog_dirs: vec![root.join("tests/glass")],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let p: OptimizeParams = read(&json!({"merit": "none"})).unwrap();
+        assert!(!p.problem(vec![s.clone()]).unwrap().0.stopped_as_vignetted);
+        let p: OptimizeParams =
+            read(&json!({"merit": "none", "stopped_as_vignetted": true})).unwrap();
+        assert!(p.problem(vec![s]).unwrap().0.stopped_as_vignetted);
+        let z: ZoomParams = read(&json!({"stopped_as_vignetted": true})).unwrap();
+        assert!(z.stopped_as_vignetted && !ZoomParams::default().stopped_as_vignetted);
     }
 
     #[test]

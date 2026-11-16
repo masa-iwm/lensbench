@@ -964,6 +964,7 @@ fn execute(cmd: Cmd) -> Result<(bool, Value), AppError> {
                 qr: dls.qr,
                 gtol: dls.gtol,
                 active_set: dls.active_set,
+                stopped_as_vignetted: dls.stopped_as_vignetted,
                 ..OptimizeParams::default()
             };
             let (p, n_default) = op.problem(vec![s.clone()]).map_err(e)?;

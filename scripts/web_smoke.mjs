@@ -1,5 +1,6 @@
 // Web 版の起動確認: 配る形のフォルダ（scripts/build_web.sh の出力）を配って Chromium で開き、
-// 起動できること・JavaScript のエラーと Rust の panic が出ないことを確かめ、画面を撮る。
+// 起動できること・JavaScript のエラーと Rust の panic が出ないこと、見本の系と落としたプロジェクトの解析が
+// 誤りなく結果を出すこと（wasm の試験用の口 test_state で要求が片付くのを待つ）を確かめ、画面を撮る。
 //
 //   node scripts/web_smoke.mjs target/web shot.png
 //
@@ -60,42 +61,53 @@ await page.evaluate(() => {
   const f = t => { window.__gap = Math.max(window.__gap, t - last); last = t; requestAnimationFrame(f); };
   requestAnimationFrame(f);
 });
-// 見本の系を読んで解析が回るのを待つ
-await page.waitForTimeout(10000);
-// 開く: Ctrl+O → ブラウザのファイル選択（rfd の窓の Ok）で例題のプロジェクトを読み込む。
-// CI ではときどきファイル選択が出ない（キーが画面に届かない、または rfd の input.click() がユーザー操作の扱いに
-// ならない）。rfd の窓が出ていればその input に直にファイルを入れ、窓も出ていなければもう 1 回 Ctrl+O を押す。
-// どちらも ::warning:: を残す（起きる頻度を見るため）
-const file = path.resolve("examples/projects/P8_catalog_two.json");
-const okButton = page.getByRole("button", { name: "Ok" });
-let opened = false;
-for (let n = 1; n <= 2 && !opened; n++) {
-  await page.mouse.click(700, 400);
-  const chooser = page.waitForEvent("filechooser", { timeout: 15000 }).catch(() => null);
-  await page.keyboard.press("Control+o");
-  const fc = await chooser;
-  if (fc) {
-    await fc.setFiles([file]);
-    opened = true;
-  } else if (await okButton.isVisible()) {
-    console.log(`::warning::rfd の窓は出たがファイル選択が出ない（${n} 回目）。input に直に入れる`);
-    await page.locator("input[type=file]").last().setInputFiles(file);
-    opened = true;
-  } else {
-    console.log(`::warning::Ctrl+O でファイル選択も rfd の窓も出ない（${n} 回目）`);
+// 画面の今の様子（wasm の試験用の口 test_state、GAR-25）。画面は canvas なので DOM からは見えない。
+// index.html が読んだのと同じモジュール（ES モジュールは 1 回だけ読まれる）
+const state = () => page.evaluate(async () => JSON.parse((await import("./lensbench_web.js")).test_state()));
+// 要求が片付き、cond を満たすまで待つ（固定の時間で待たない）。待ちきれなければ最後の様子を返して誤りに足す
+async function settle(what, cond, timeout = 120000) {
+  const t = Date.now();
+  let s;
+  // 片付いた様子が 2 回続けて見えたら（次の要求を出す前の 1 フレームを拾わないように）
+  let calm = 0;
+  while (Date.now() - t < timeout) {
+    s = await state();
+    calm = s.started && !s.busy && cond(s) ? calm + 1 : 0;
+    if (calm >= 2) {
+      console.log(`${what}: ${Date.now() - t} ms`);
+      return s;
+    }
+    await page.waitForTimeout(250);
   }
+  errors.push(`${what}: ${timeout / 1000} 秒で片付かない（${JSON.stringify(s)}）`);
+  return s;
 }
-if (opened) {
-  await okButton.click().catch(e => errors.push(`Ok を押せない: ${e}`));
-  // 開いたファイルの名前がタブの題に出るまで待つ（固定の待ち時間でなく、読み込めたことを確かめる）
-  const name = path.basename(file);
-  await page.waitForFunction(n => document.title.includes(n), name, { timeout: 60000 })
-    .catch(async () => errors.push(`開いたのに題が「${name}」にならない（題: ${await page.title()}）`));
-  // 読み込んだ系の解析が回る間も画面が止まらないかを見る
-  await page.waitForTimeout(3000);
-} else {
-  errors.push("Ctrl+O でファイル選択が出ない");
-}
+// 解析パネルの結果: 1 つ以上あり、誤りのものが無い
+const analysesOk = (what, s) => {
+  const bad = (s.analyses ?? []).filter(a => a.error);
+  for (const a of bad) errors.push(`${what}: 解析 ${a.cmd} が誤り: ${a.error}`);
+  if (!(s.analyses ?? []).some(a => a.ok)) errors.push(`${what}: 結果の出た解析パネルが無い（${JSON.stringify(s)}）`);
+  if (s.status_error) errors.push(`${what}: 下の行が誤り: ${s.status}`);
+};
+// 起動時に開く見本の系を読み、解析が回り終わるのを待つ
+const s0 = await settle("見本の系の解析", s => s.system && (s.analyses ?? []).some(a => a.ok || a.error));
+analysesOk("見本の系", s0);
+// 開く: 例題のプロジェクトを canvas に落とす（窓にファイルを落とすのと同じ道。ファイル選択の窓は CI で出ないことがある）
+const file = path.resolve("examples/projects/P8_catalog_two.json");
+const name = path.basename(file);
+await page.evaluate(([n, text]) => {
+  const dt = new DataTransfer();
+  dt.items.add(new File([text], n, { type: "application/json" }));
+  const c = document.querySelector("canvas");
+  for (const type of ["dragenter", "dragover", "drop"]) {
+    c.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }
+}, [name, fs.readFileSync(file, "utf8")]);
+// 開いたファイルの名前が題に出て、その系の解析が回り終わるまで待つ
+await page.waitForFunction(n => document.title.includes(n), name, { timeout: 60000 })
+  .catch(async () => errors.push(`落としたのに題が「${name}」にならない（題: ${await page.title()}）`));
+const s1 = await settle("開いたプロジェクトの解析", s => s.sys_gen > s0.sys_gen && (s.file === name || s.doc === name));
+analysesOk("開いたプロジェクト", s1);
 const gap = await page.evaluate(() => window.__gap);
 console.log(`画面が止まった最長 ${gap.toFixed(0)} ms`);
 await page.screenshot({ path: shot });

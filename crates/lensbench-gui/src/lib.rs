@@ -213,6 +213,7 @@ async fn run_web(
             Box::new(move |cc| {
                 let panel = web_panel();
                 let a = std::rc::Rc::new(std::cell::RefCell::new(app::App::new(cc, args)));
+                TEST_APP.with(|t| *t.borrow_mut() = std::rc::Rc::downgrade(&a));
                 // 元のタブ: 裏に回っている間も別の窓のパネルを動かす（#237）
                 if !panel {
                     web_bg::install(std::rc::Rc::downgrade(&a), cc.egui_ctx.clone());
@@ -221,6 +222,31 @@ async fn run_web(
             }),
         )
         .await
+}
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    /// 試験用の口 [`web_test_state`] が見る画面（起動した後）
+    static TEST_APP: std::cell::RefCell<std::rc::Weak<std::cell::RefCell<app::App>>> =
+        Default::default();
+}
+
+/// Web 版の試験用の口: 画面の今の様子の JSON（待っている要求の数・開いている系・解析パネルの結果の有無）。
+/// 起動前は `{"started": false}`、画面を描いている最中は `{"busy": true}`（GAR-25、scripts/web_smoke.mjs）
+#[cfg(target_arch = "wasm32")]
+pub fn web_test_state() -> String {
+    let v = TEST_APP.with(|t| match t.borrow().upgrade() {
+        None => serde_json::json!({ "started": false }),
+        Some(a) => match a.try_borrow() {
+            Ok(a) => {
+                let mut v = a.test_state();
+                v["started"] = true.into();
+                v
+            }
+            Err(_) => serde_json::json!({ "started": true, "busy": true }),
+        },
+    });
+    v.to_string()
 }
 
 /// eframe に渡す画面。中身は [`web_bg`] とも分け合う（裏に回ったタブで別の窓の分を描く）
