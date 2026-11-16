@@ -656,7 +656,7 @@ fn clear_aperture_terms_keep_rays_inside() {
                     )
                     .unwrap();
                 for ray in &t.rays {
-                    if ray.err == 0 {
+                    if ray.status.is_ok() {
                         assert!(
                             ray.xyz[1].abs() <= semi * (1.0 + 1e-3),
                             "面 {j} 視野 {f}: {} > {semi}",
@@ -735,7 +735,7 @@ fn clear_aperture_with_fixed_semi_diameters() {
                         )
                         .unwrap();
                     for ray in &t.rays {
-                        if ray.err == 0 {
+                        if ray.status.is_ok() {
                             assert!(
                                 ray.xyz[1].abs() <= semi * (1.0 + 1e-3),
                                 "面 {j}: {} > {semi}",

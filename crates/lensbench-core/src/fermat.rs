@@ -649,7 +649,7 @@ impl System {
         let any_rot = runs.iter().flatten().any(|r| r.rot);
         let one = |i: usize| -> Vec<f64> {
             let mut g = vec![0.0; np];
-            if t.rays[i].err != 0 {
+            if t.rays[i].status.surf().is_some() {
                 return vec![f64::NAN; np];
             }
             // 面ごとの gv（局所）と区間の長さ、G = R gv と G Xᵀ の後ろからの累積和

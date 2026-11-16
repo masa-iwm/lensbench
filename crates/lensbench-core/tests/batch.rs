@@ -67,7 +67,7 @@ fn same(a: &Trace, b: &Trace, what: &str) {
     assert_eq!(a.rays.len(), b.rays.len());
     for (i, (x, y)) in a.rays.iter().zip(&b.rays).enumerate() {
         let w = format!("{what} 光線 {i}");
-        assert_eq!((x.err, x.vig), (y.err, y.vig), "{w}");
+        assert_eq!((x.status, x.vig), (y.status, y.vig), "{w}");
         assert_eq!(bits3(&x.xyz), bits3(&y.xyz), "{w}");
         assert_eq!(bits3(&x.lmn), bits3(&y.lmn), "{w}");
         assert_eq!(bits3(&x.p), bits3(&y.p), "{w}");
@@ -110,7 +110,11 @@ fn check(name: &str, s: &System, px: &[f64], py: &[f64]) -> usize {
                     &format!("{name} 視野 {fi} 波長 {w} record {record}"),
                 );
                 compared += 1;
-                stopped += a.rays.iter().filter(|r| r.err != 0 || r.vig != 0).count();
+                stopped += a
+                    .rays
+                    .iter()
+                    .filter(|r| r.status.surf().is_some() || r.vig != 0)
+                    .count();
             }
         }
     }

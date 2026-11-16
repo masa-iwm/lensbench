@@ -315,6 +315,60 @@ fn pol_surface_cement(
     Ok(())
 }
 
+/// 光線の追跡が止まったか・その理由（KRN-10）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RayStatus {
+    /// 最後の面まで届いた（けられたかは [`RayOut::vig`]）
+    #[default]
+    Ok,
+    /// 面 surf に当たらなかった（交点がない・面の定義域の外・媒質の外・数値が有限でない）
+    Missed { surf: usize },
+    /// 面 surf で全反射した
+    Tir { surf: usize },
+    /// 光線のエイミング（瞳座標・絞りの点を通る光線の解き）に失敗した。stop は絞りの面
+    AimFailed { stop: usize },
+}
+
+impl RayStatus {
+    /// 最後の面まで届いた
+    #[inline]
+    pub fn is_ok(self) -> bool {
+        self == RayStatus::Ok
+    }
+    /// 止まった面（エイミングの失敗は絞りの面）。届いたなら None
+    #[inline]
+    pub fn surf(self) -> Option<usize> {
+        match self {
+            RayStatus::Ok => None,
+            RayStatus::Missed { surf } | RayStatus::Tir { surf } => Some(surf),
+            RayStatus::AimFailed { stop } => Some(stop),
+        }
+    }
+    /// 数で表した止まった面（届いたなら 0）。Python・JSON の `err` の欄（前の約束と同じ数）
+    #[inline]
+    pub fn code(self) -> usize {
+        self.surf().unwrap_or(0)
+    }
+    /// 誤りの文に入れる理由（英語、訳は lang/ja.tsv）
+    pub fn why(self) -> &'static str {
+        match self {
+            RayStatus::Ok => "ok",
+            RayStatus::Missed { .. } => "missed",
+            RayStatus::Tir { .. } => "total reflection",
+            RayStatus::AimFailed { .. } => "ray aiming failed",
+        }
+    }
+    /// 理由の名前（"ok"・"missed"・"tir"・"aim_failed"）
+    pub fn name(self) -> &'static str {
+        match self {
+            RayStatus::Ok => "ok",
+            RayStatus::Missed { .. } => "missed",
+            RayStatus::Tir { .. } => "tir",
+            RayStatus::AimFailed { .. } => "aim_failed",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RayOut {
     /// 最後の面の局所座標での位置・方向（方向は物理的な向き）
@@ -322,9 +376,9 @@ pub struct RayOut {
     pub lmn: V3,
     /// 幾何的な光路長（理想レンズの位相を含まない）
     pub opl: f64,
-    pub err: usize,
-    /// err の面で全反射した（当たらなかったのではない）
-    pub tir: bool,
+    /// 追跡が止まったか・その理由。止まった光線の位置・方向・光路長・記録は NaN
+    pub status: RayStatus,
+    /// けられた面（0 = けられていない）。けられても追跡は続く
     pub vig: usize,
     /// 大域の位置・方向
     pub p: V3,

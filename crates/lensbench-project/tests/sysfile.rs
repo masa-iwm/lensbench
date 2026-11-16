@@ -44,7 +44,7 @@ fn rays(s: &System) -> Vec<u64> {
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn).map(|x| x.to_bits()));
                 out.push(r.opl.to_bits());
-                out.push(r.err as u64);
+                out.push(r.status.code() as u64);
                 out.push(r.vig as u64);
             }
         }

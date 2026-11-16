@@ -51,12 +51,15 @@ fn wide_angle_rays_are_aimed_like_opticstudio() {
                 // 列は x y z l m n opd opd_chief err vig
                 let os_ok = img[[h, w, i, 8]] == 0.0;
                 if os_ok {
-                    assert_eq!(r.err, 0, "視野 {h} 波長 {w} 光線 {i}: OpticStudio は通る");
+                    assert!(
+                        r.status.is_ok(),
+                        "視野 {h} 波長 {w} 光線 {i}: OpticStudio は通る"
+                    );
                     for j in 0..3 {
                         dp = dp.max((r.xyz[j] - img[[h, w, i, j]]).abs());
                     }
                     n += 1;
-                } else if r.err == 0 {
+                } else if r.status.is_ok() {
                     extra += 1;
                 }
             }
@@ -91,7 +94,7 @@ SURF 3\n  TYPE STANDARD\n  CURV 0.0\n  DISZ 0\n";
         .try_trace(FieldSel::Index(1), &[0.0], &[0.0], None, Some(1), false)
         .unwrap();
     let r = &t.rays[0];
-    assert_eq!(r.err, 0);
+    assert!(r.status.is_ok());
     // 向き: y 0.966、z −0.259
     assert!(
         (r.lmn[1] - 105f64.to_radians().sin()).abs() < 1e-12,

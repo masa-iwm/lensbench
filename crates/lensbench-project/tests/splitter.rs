@@ -58,13 +58,18 @@ fn same_global_opt(a: &System, b: &System, tol: f64, allow_vig: bool) {
             for i in 0..PX.len() {
                 let (r0, r1) = (&t0.rays[i], &t1.rays[i]);
                 if allow_vig {
-                    assert_eq!((r0.err, r0.vig), (r1.err, r1.vig), "{} {f} {w} {i}", a.name);
-                    if r0.err != 0 || r0.vig != 0 {
+                    assert_eq!(
+                        (r0.status, r0.vig),
+                        (r1.status, r1.vig),
+                        "{} {f} {w} {i}",
+                        a.name
+                    );
+                    if r0.status.surf().is_some() || r0.vig != 0 {
                         continue;
                     }
                 }
-                assert_eq!((r0.err, r0.vig), (0, 0), "{f} {w} {i}");
-                assert_eq!((r1.err, r1.vig), (0, 0), "{f} {w} {i}");
+                assert_eq!((r0.status.code(), r0.vig), (0, 0), "{f} {w} {i}");
+                assert_eq!((r1.status.code(), r1.vig), (0, 0), "{f} {w} {i}");
                 for k in 0..3 {
                     assert!(
                         (r0.p[k] - r1.p[k]).abs() < tol && (r0.k[k] - r1.k[k]).abs() < tol,
@@ -247,7 +252,10 @@ fn double_pass_turns_at_the_splitter() {
             .rays[0]
     };
     let (a, b) = (chief(&tr), chief(&tt));
-    assert_eq!((a.err, a.vig, b.err, b.vig), (0, 0, 0, 0));
+    assert_eq!(
+        (a.status.code(), a.vig, b.status.code(), b.vig),
+        (0, 0, 0, 0)
+    );
     let dc = {
         // 傾き [45, 0] の面での +z の反射
         let r = lensbench_core::math::rot(0, 45.0);
@@ -305,7 +313,10 @@ fn michelson_arms_meet_at_port_d() {
             .unwrap();
         for i in 0..PX.len() {
             let (ra, rb) = (a.rays[i], b.rays[i]);
-            assert_eq!((ra.err, ra.vig, rb.err, rb.vig), (0, 0, 0, 0));
+            assert_eq!(
+                (ra.status.code(), ra.vig, rb.status.code(), rb.vig),
+                (0, 0, 0, 0)
+            );
             // 同じ方向で D の口へ
             for k in 0..3 {
                 assert!((ra.k[k] - rb.k[k]).abs() < 1e-12);
@@ -532,7 +543,7 @@ fn paths_match_opticstudio() {
                 r["err"].as_u64().unwrap() as usize,
                 r["vig"].as_u64().unwrap() as usize,
             );
-            assert_eq!((t.err, t.vig), (err, vig), "{name} {r}");
+            assert_eq!((t.status.code(), t.vig), (err, vig), "{name} {r}");
             if err != 0 || vig != 0 {
                 continue;
             }

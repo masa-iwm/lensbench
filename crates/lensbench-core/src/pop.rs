@@ -914,7 +914,7 @@ pub fn beam_from_rays(
     let mut opl = vec![0.0; nr * nr];
     let mut kz = 0.0;
     for (i, r) in t.rays.iter().enumerate() {
-        let good = r.err == 0 && (r.vig == 0 || (ap.is_some() && r.vig == j));
+        let good = r.status.is_ok() && (r.vig == 0 || (ap.is_some() && r.vig == j));
         if !good || r.lmn[2].abs() < 1e-9 {
             continue;
         }

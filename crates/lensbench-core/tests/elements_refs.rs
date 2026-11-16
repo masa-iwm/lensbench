@@ -74,8 +74,8 @@ fn split_and_assemble_trace_the_same_rays() {
                     .unwrap();
                 for i in 0..px.len() {
                     let (r0, r1) = (&t0.rays[i], &t1.rays[i]);
-                    assert_eq!((r0.err, r0.vig), (r1.err, r1.vig));
-                    if r0.err == 0 {
+                    assert_eq!((r0.status, r0.vig), (r1.status, r1.vig));
+                    if r0.status.is_ok() {
                         assert_eq!(r0.xyz, r1.xyz);
                         assert_eq!(r0.opl, r1.opl);
                     }

@@ -15,7 +15,7 @@ use crate::glass::Glass;
 use crate::interp2d::interp_weights;
 use crate::math::*;
 use crate::surface::{After, Bire, SurfType, Surface};
-use crate::trace::{self, CryKind, PolKind, PolSurf, RayOut, RecEntry, CV3};
+use crate::trace::{self, CryKind, PolKind, PolSurf, RayOut, RayStatus, RecEntry, CV3};
 use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
 use rayon::prelude::*;

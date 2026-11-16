@@ -93,7 +93,7 @@ fn check(
         s.shift_end(&mut tb, w, z).unwrap();
     }
     for i in 0..px.len() {
-        assert_eq!(t.rays[i].err, 0, "{label}: 光線 {i} が止まる");
+        assert!(t.rays[i].status.is_ok(), "{label}: 光線 {i} が止まる");
         for c in 0..3 {
             assert!(
                 (base.rays[i].xyz[c] - tb.rays[i].xyz[c]).abs() < 1e-10,

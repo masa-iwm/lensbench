@@ -68,8 +68,8 @@ fn bits(s: &System) -> Vec<u64> {
             .unwrap();
         for r in &t.rays {
             // 極端な解（強い曲率など）では通らない光線もある: 通るかどうかも比べる
-            v.push(r.err as u64);
-            if r.err == 0 {
+            v.push(r.status.code() as u64);
+            if r.status.is_ok() {
                 v.extend([r.xyz[0], r.xyz[1], r.lmn[0], r.lmn[1]].map(f64::to_bits));
             }
         }

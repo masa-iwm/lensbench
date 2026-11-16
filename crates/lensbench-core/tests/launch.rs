@@ -53,8 +53,8 @@ fn rays_reproduce_pupil_trace() {
             let r = s.trace_launch(&Launch::Rays { p: &t.p0, k: &t.k0 }, w, None, true);
             assert_eq!(r.rec.len(), t.rec.len());
             for (i, (a, b)) in t.rays.iter().zip(&r.rays).enumerate() {
-                assert_eq!(a.err, b.err, "{name} {i}");
-                if a.err != 0 {
+                assert_eq!(a.status, b.status, "{name} {i}");
+                if a.status.surf().is_some() {
                     continue;
                 }
                 for c in 0..3 {
@@ -92,7 +92,7 @@ fn stop_points_hit_the_stop() {
         );
         let rs = r.rec.iter().find(|q| q.surf == st).unwrap();
         for i in 0..xs.len() {
-            if r.rays[i].err != 0 {
+            if r.rays[i].status.surf().is_some() {
                 continue;
             }
             let e = (rs.xyz[i][0] - xs[i])
@@ -100,7 +100,7 @@ fn stop_points_hit_the_stop() {
                 .max((rs.xyz[i][1] - ys[i]).abs());
             assert!(e < 1e-9, "{name} {i}: {e}");
         }
-        let ok = r.rays.iter().filter(|q| q.err == 0).count();
+        let ok = r.rays.iter().filter(|q| q.status.is_ok()).count();
         assert!(ok * 10 >= xs.len() * 9, "{name}: {ok}/{}", xs.len());
         if s.aiming == Aiming::Real {
             let t = s.trace_launch(
@@ -117,7 +117,7 @@ fn stop_points_hit_the_stop() {
                 false,
             );
             for i in 0..xs.len() {
-                if t.rays[i].err != 0 || r.rays[i].err != 0 {
+                if t.rays[i].status.surf().is_some() || r.rays[i].status.surf().is_some() {
                     continue;
                 }
                 for c in 0..3 {
@@ -161,7 +161,7 @@ fn stop_points_are_continuous_near_telecentric() {
             true,
         );
         for i in 0..xs.len() {
-            assert_eq!(r.rays[i].err, 0, "{dt} {i}");
+            assert!(r.rays[i].status.is_ok(), "{dt} {i}");
             let q = r.rays[i].xyz;
             assert!(
                 (q[0] - xs[i]).abs() < 1e-9 && (q[1] - ys[i]).abs() < 1e-9,
@@ -239,5 +239,46 @@ fn pupil_orientation_matches_opticstudio_and_signed_is_continuous() {
                 t.k0[0]
             );
         }
+    }
+}
+
+/// 解けない絞りの点（絞りの半径の 1e3 倍）はエイミングの失敗。数値・記録・開始の位置はすべて NaN（KRN-10）
+#[test]
+fn aim_failure_is_reported_and_nan() {
+    use lensbench_core::trace::RayStatus;
+    let s = load("A0");
+    let st = s.stop();
+    let (rx, _) = s.stop_radius();
+    let (xs, ys) = ([0.0, 1e3 * rx.abs()], [0.0, 0.0]);
+    let spec = s.object_spec(0.0, 0.0).unwrap();
+    for b in [true, false] {
+        let r = lensbench_core::par::with_batch(b, || {
+            s.trace_launch(
+                &Launch::Stop {
+                    spec,
+                    x: &xs,
+                    y: &ys,
+                },
+                s.primary,
+                None,
+                true,
+            )
+        });
+        assert!(r.rays[0].status.is_ok());
+        assert_eq!(r.rays[1].status, RayStatus::AimFailed { stop: st });
+        assert!(!r.ok(1) && !r.traced(1));
+        let x = r.rays[1];
+        assert!(x
+            .xyz
+            .iter()
+            .chain(&x.lmn)
+            .chain(&x.p)
+            .chain(&x.k)
+            .all(|v| v.is_nan()));
+        assert!(x.opl.is_nan() && r.opl_os[1].is_nan() && r.p0[1][0].is_nan());
+        assert!(r
+            .rec
+            .iter()
+            .all(|q| q.xyz[1][0].is_nan() && q.opl[1].is_nan()));
     }
 }

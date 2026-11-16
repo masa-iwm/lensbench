@@ -792,7 +792,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
             }
             for rs in &t.rec {
                 let (j, e) = (&rs.surf, rs.entry(i));
-                let stop_here = r.err != 0 && *j >= r.err;
+                let stop_here = r.status.surf().is_some_and(|s| *j >= s);
                 if stop_here || !e.p.iter().all(|v| v.is_finite()) {
                     break;
                 }
@@ -814,7 +814,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                     py: py[i],
                     points: pts,
                     vig: r.vig,
-                    err: r.err,
+                    err: r.status.code(),
                     cfg: 0,
                 });
             }

@@ -107,7 +107,7 @@ fn rays_match_opticstudio() {
                     .collect();
                 assert_eq!(v[0], 0.0);
                 let ray = &t.rays[i];
-                assert_eq!(ray.err, 0, "視野 {f} 波長 {w} 光線 {i}");
+                assert!(ray.status.is_ok(), "視野 {f} 波長 {w} 光線 {i}");
                 for k in 0..3 {
                     dp = dp.max((ray.xyz[k] - v[2 + k]).abs());
                     dd = dd.max((ray.lmn[k] - v[5 + k]).abs());

@@ -406,7 +406,7 @@ impl System {
             .unwrap_or(ns);
 
         let one = |i: usize| -> Vec<f64> {
-            if t.rays[i].err != 0 {
+            if t.rays[i].status.surf().is_some() {
                 return vec![f64::NAN; np * NY];
             }
             // 面ごとの幾何
@@ -728,7 +728,7 @@ impl System {
             let tt = (dz - r.xyz[2]) / r.lmn[2];
             let e = add(r.xyz, scale(r.lmn, tt));
             r.xyz = [e[0], e[1], dz];
-            if r.err != 0 {
+            if r.status.surf().is_some() {
                 r.xyz = [f64::NAN; 3];
             }
             r.p = add(f.o, mv(&f.r, r.xyz));

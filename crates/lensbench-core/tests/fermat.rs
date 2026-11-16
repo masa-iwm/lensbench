@@ -89,7 +89,7 @@ fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Pa
     let mut bad = 0;
     let (mut n_all, mut n_rel, mut n_round) = (0, 0, 0);
     for i in 0..px.len() {
-        assert_eq!(t.rays[i].err, 0, "{label}: 光線 {i} が止まる");
+        assert!(t.rays[i].status.is_ok(), "{label}: 光線 {i} が止まる");
         let x = rl.xyz[i];
         let target = [x[0], x[1]];
         let opl0 = t.rays[i].opl;

@@ -159,9 +159,9 @@ pub(super) fn trace(sess: &Session, p: &Value, bins: Vec<Bin>) -> Result<Reply, 
             c[3 + i].push(b[i]);
         }
         c[6].push(r.opl);
-        err.push(r.err as i32);
+        err.push(r.status.code() as i32);
         vig.push(r.vig as i32);
-        if r.err == 0 && r.vig == 0 {
+        if r.status.is_ok() && r.vig == 0 {
             ok += 1;
         }
     }

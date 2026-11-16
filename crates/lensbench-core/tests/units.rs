@@ -52,7 +52,7 @@ fn rays(s: &System) -> Vec<f64> {
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn));
                 out.push(r.opl);
-                out.push(r.err as f64);
+                out.push(r.status.code() as f64);
                 out.push(r.vig as f64);
             }
         }
@@ -469,7 +469,7 @@ fn check(label: &str, s: &System, fi: usize, w: usize, last: usize, params: &[Pa
     let mut worst: f64 = 0.0;
     let mut noise = 0;
     for i in 0..px.len() {
-        assert_eq!(t.rays[i].err, 0, "{label}: 光線 {i} が止まる");
+        assert!(t.rays[i].status.is_ok(), "{label}: 光線 {i} が止まる");
         let x = rl.xyz[i];
         let target = [x[0], x[1]];
         for (q, &p) in params.iter().enumerate() {

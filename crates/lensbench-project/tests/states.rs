@@ -64,7 +64,7 @@ fn same_rays(a: &System, b: &System, tol: f64) {
             .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
             .unwrap();
         for i in 0..px.len() {
-            assert_eq!(t0.rays[i].err, t1.rays[i].err);
+            assert_eq!(t0.rays[i].status, t1.rays[i].status);
             for k in 0..3 {
                 assert!(
                     (t0.rays[i].xyz[k] - t1.rays[i].xyz[k]).abs() < tol,

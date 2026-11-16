@@ -123,7 +123,7 @@ fn opd_solves_match_opticstudio() {
                 for (i, v) in rays.iter().enumerate() {
                     let l = &tr.rays[i];
                     assert_eq!(
-                        (l.err != 0, l.vig != 0),
+                        (l.status.surf().is_some(), l.vig != 0),
                         (v[0] != 0.0, v[1] != 0.0),
                         "{name} F{f} W{w} {i}"
                     );

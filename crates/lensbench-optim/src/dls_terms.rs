@@ -406,8 +406,12 @@ impl Problem {
             for w in waves(s, wave) {
                 let tr = s.try_trace(field, &pg.0, &pg.1, Some(w), None, false)?;
                 c.total += tr.rays.len();
-                c.stopped += tr.rays.iter().filter(|r| r.err != 0).count();
-                c.vignetted += tr.rays.iter().filter(|r| r.err == 0 && r.vig != 0).count();
+                c.stopped += tr.rays.iter().filter(|r| r.status.surf().is_some()).count();
+                c.vignetted += tr
+                    .rays
+                    .iter()
+                    .filter(|r| r.status.is_ok() && r.vig != 0)
+                    .count();
             }
             Ok(Some(c))
         })

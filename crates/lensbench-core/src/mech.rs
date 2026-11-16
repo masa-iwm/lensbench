@@ -513,7 +513,7 @@ pub fn vignetting(
                 passed: 0,
             };
             for (i, r) in t.rays.iter().enumerate() {
-                if r.err != 0 {
+                if r.status.surf().is_some() {
                     v.failed += 1;
                     continue;
                 }

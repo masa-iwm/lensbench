@@ -41,11 +41,11 @@ fn same_trace(a: &System, b: &System, tol: f64, what: &str) {
             for i in 0..PX.len() {
                 let (r0, r1) = (&t0.rays[i], &t1.rays[i]);
                 assert_eq!(
-                    (r0.err != 0, r0.vig != 0),
-                    (r1.err != 0, r1.vig != 0),
+                    (r0.status.surf().is_some(), r0.vig != 0),
+                    (r1.status.surf().is_some(), r1.vig != 0),
                     "{what} F{f} W{w} {i}"
                 );
-                if r0.err != 0 || r0.vig != 0 {
+                if r0.status.surf().is_some() || r0.vig != 0 {
                     continue;
                 }
                 for k in 0..3 {
@@ -178,7 +178,7 @@ fn configs_match_opticstudio() {
                 let (err, vig) = (r["err"].as_u64().unwrap(), r["vig"].as_u64().unwrap());
                 // けられ・エラーの面の番号はまとめた系の番号なので、有無だけ比べる
                 assert_eq!(
-                    (t.err != 0, t.vig != 0),
+                    (t.status.surf().is_some(), t.vig != 0),
                     (err != 0, vig != 0),
                     "{name} {} {r}",
                     names[k]

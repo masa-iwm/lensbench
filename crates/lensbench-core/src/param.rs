@@ -1966,7 +1966,7 @@ impl System {
             false,
         )?;
         let r = &tr.rays[0];
-        if r.err != 0 || r.lmn[2] == 0.0 {
+        if r.status.surf().is_some() || r.lmn[2] == 0.0 {
             return Ok(f64::NAN);
         }
         Ok(r.xyz[1] + r.lmn[1] / r.lmn[2] * (t - r.xyz[2]) - h)

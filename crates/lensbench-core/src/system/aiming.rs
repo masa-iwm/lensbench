@@ -32,7 +32,7 @@ impl System {
         let at_stop = |v: [f64; 2]| -> [f64; 2] {
             let (p, k) = start(v);
             let r = batch::trace_one_plain(&plan, p, k);
-            if r.err != 0 {
+            if r.status.surf().is_some() {
                 return [f64::NAN; 2];
             }
             [r.xyz[0], r.xyz[1]]
@@ -120,7 +120,7 @@ impl System {
             let r =
                 batch::trace_lanes::<batch::NoRec>(&plan, &st.map(|s| s.0), &st.map(|s| s.1), None);
             std::array::from_fn(|l| {
-                if r[l].err != 0 {
+                if r[l].status.surf().is_some() {
                     [f64::NAN; 2]
                 } else {
                     [r[l].xyz[0], r[l].xyz[1]]
@@ -434,7 +434,7 @@ impl System {
             };
             let mut rec = vec![trace::RecEntry::NAN; nrec];
             let r = batch::trace_one(&plan, p, k, Some(&mut rec[..]));
-            if r.err != 0 {
+            if r.status.surf().is_some() {
                 return [f64::NAN; 2];
             }
             // 光路長が面ごとに減らない（光線の向きに進む）
@@ -544,7 +544,7 @@ impl System {
         let at = |v: [f64; 2], tg: [f64; 2]| -> [f64; 2] {
             let (p, k) = self.start_ray(spec, v[0], v[1]);
             let r = batch::trace_one_plain(&plan, p, k);
-            if r.err != 0 {
+            if r.status.surf().is_some() {
                 return [f64::NAN; 2];
             }
             [r.xyz[0] - tg[0], r.xyz[1] - tg[1]]

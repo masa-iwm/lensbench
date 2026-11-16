@@ -170,7 +170,7 @@ fn compare(refs: &Path, glass: &[PathBuf], name: &str) -> (Cmp, Aiming) {
             for n in 0..px.len() {
                 let z = img.slice(ndarray::s![i, w, n, ..]);
                 let okz = z[8] == 0.0;
-                let okf = t.rays[n].err == 0;
+                let okf = t.rays[n].status.is_ok();
                 if okz != okf {
                     c.ok_mismatch += 1;
                 }

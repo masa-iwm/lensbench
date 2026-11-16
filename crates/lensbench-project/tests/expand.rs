@@ -50,7 +50,7 @@ fn same_rays(a: &System, b: &System, tol: f64) {
                 .unwrap();
             for i in 0..px.len() {
                 let (r0, r1) = (&t0.rays[i], &t1.rays[i]);
-                assert_eq!(r0.err, r1.err);
+                assert_eq!(r0.status, r1.status);
                 for k in 0..3 {
                     assert!(
                         (r0.xyz[k] - r1.xyz[k]).abs() < tol,

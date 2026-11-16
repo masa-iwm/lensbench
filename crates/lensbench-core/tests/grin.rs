@@ -56,7 +56,7 @@ fn ray_diff(name: &str) -> (f64, f64, f64, usize) {
             .unwrap();
         let surfs = r["surfaces"].as_array().unwrap();
         let ok = surfs.last().unwrap()["err"].as_f64().unwrap() == 0.0;
-        assert_eq!(ok, t.rays[0].err == 0, "{name}: {r}");
+        assert_eq!(ok, t.rays[0].status.is_ok(), "{name}: {r}");
         if !ok {
             continue;
         }
@@ -185,7 +185,7 @@ fn write_roundtrip() {
                 .try_trace(FieldSel::Index(fi), &px, &py, None, None, false)
                 .unwrap();
             for (x, y) in a.rays.iter().zip(&b.rays) {
-                assert_eq!(x.err, y.err, "{name}");
+                assert_eq!(x.status, y.status, "{name}");
                 assert_eq!(x.xyz, y.xyz, "{name}");
                 assert_eq!(x.lmn, y.lmn, "{name}");
                 assert_eq!(x.opl.to_bits(), y.opl.to_bits(), "{name}");
@@ -219,7 +219,7 @@ fn image_rays(s: &System) -> Vec<f64> {
                 .try_trace(FieldSel::Index(fi), &px, &py, Some(w), None, false)
                 .unwrap();
             for r in &t.rays {
-                assert_eq!(r.err, 0);
+                assert!(r.status.is_ok());
                 out.extend(r.xyz.iter().chain(&r.lmn));
                 out.push(r.opl);
             }

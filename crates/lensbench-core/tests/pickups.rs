@@ -42,7 +42,7 @@ fn bits(s: &System) -> Vec<u64> {
             .try_trace(FieldSel::Index(f), &px, &py, None, None, false)
             .unwrap();
         for r in &t.rays {
-            assert_eq!(r.err, 0);
+            assert!(r.status.is_ok());
             v.extend([r.xyz[0], r.xyz[1], r.lmn[0], r.opl].map(f64::to_bits));
         }
     }

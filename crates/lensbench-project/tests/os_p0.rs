@@ -129,7 +129,7 @@ fn matches_opticstudio_after_the_changes() {
             )
             .unwrap();
         let ray = &t.rays[0];
-        assert_eq!(ray.err, 0);
+        assert!(ray.status.is_ok());
         assert_eq!(r["err"].as_i64().unwrap(), 0);
         for (k, key) in ["x", "y", "z"].iter().enumerate() {
             let d = (ray.xyz[k] - r[key].as_f64().unwrap()).abs();

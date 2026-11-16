@@ -121,7 +121,7 @@ impl System {
                     .hxy((0.0, 0.0)),
             );
             let at = |j: usize| -> &RecSurf { t.rec_at(j).unwrap() };
-            let bad = t.rays[0].err != 0;
+            let bad = t.rays[0].status.surf().is_some();
             let r = match prob.residual {
                 Residual::Position { surf, target } => {
                     let x = at(surf).xyz[0];

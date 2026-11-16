@@ -302,7 +302,13 @@ pub fn fiber_coupling(
             let xyz: Vec<V3> = ts
                 .rays
                 .iter()
-                .map(|r| if r.err == 0 { r.xyz } else { [f64::NAN; 3] })
+                .map(|r| {
+                    if r.status.is_ok() {
+                        r.xyz
+                    } else {
+                        [f64::NAN; 3]
+                    }
+                })
                 .collect();
             stop_weights(&xyz, c, g, d, &inside)
         }

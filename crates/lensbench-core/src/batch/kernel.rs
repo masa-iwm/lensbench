@@ -5,7 +5,7 @@ use super::pol::{aperture_out_l, pol_surface_l, PolLanes, PolSoa};
 use super::{LaneSink, Move, Plan, Sag, Step};
 use crate::math::*;
 use crate::surface::{Aperture, SurfType};
-use crate::trace::{self, Isect, Norm, RayOut, RecEntry};
+use crate::trace::{self, Isect, Norm, RayOut, RayStatus, RecEntry};
 
 /// 3 成分の組
 pub(super) type VL<V> = [V; 3];
@@ -24,13 +24,15 @@ fn axpy<V: Lanes>(a: VL<V>, b: VL<V>, s: V) -> VL<V> {
 /// M v（[`mv`] と同じ順）
 #[inline(always)]
 pub(super) fn mv_l<V: Lanes>(m: &M3, v: &VL<V>) -> VL<V> {
-    [0, 1, 2].map(|r| v[0] * m[r][0] + v[1] * m[r][1] + v[2] * m[r][2])
+    let row = |r: usize| v[0] * m[r][0] + v[1] * m[r][1] + v[2] * m[r][2];
+    [row(0), row(1), row(2)]
 }
 
 /// Mᵀ v（[`mtv`] と同じ順）
 #[inline(always)]
 pub(super) fn mtv_l<V: Lanes>(m: &M3, v: &VL<V>) -> VL<V> {
-    [0, 1, 2].map(|r| v[0] * m[0][r] + v[1] * m[1][r] + v[2] * m[2][r])
+    let col = |r: usize| v[0] * m[0][r] + v[1] * m[1][r] + v[2] * m[2][r];
+    [col(0), col(1), col(2)]
 }
 
 /// a · b（[`dot`] と同じ順）
@@ -268,7 +270,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 }
                 Move::First => {
                     let o = st.f.o;
-                    let dp = [0, 1, 2].map(|c| p[c] - o[c]);
+                    let dp = {
+                        let f = |c: usize| p[c] - o[c];
+                        [f(0), f(1), f(2)]
+                    };
                     pl = mtv_l(&st.f.r, &dp);
                     kl = mtv_l(&st.f.r, &k);
                 }
@@ -527,7 +532,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                 let cosi = kl[0] * nv[0] + kl[1] * nv[1] + kl[2] * nv[2];
                 let kin = kl;
                 if d.mirror {
-                    kl = [0, 1, 2].map(|c| kl[c] - nv[c] * (cosi * 2.0));
+                    kl = {
+                        let f = |c: usize| kl[c] - nv[c] * (cosi * 2.0);
+                        [f(0), f(1), f(2)]
+                    };
                     nn = nprev;
                 } else if d.typ == SurfType::Jones {
                 } else if let Some((a, b)) = st.n_uniform {
@@ -540,7 +548,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         err = mark(err, total, jf);
                         tir = tir | total;
                         let t = cosi.signum() * disc.max0().sqrt() - cosi * mu;
-                        kl = [0, 1, 2].map(|c| kl[c] * mu + nv[c] * t);
+                        kl = {
+                            let f = |c: usize| kl[c] * mu + nv[c] * t;
+                            [f(0), f(1), f(2)]
+                        };
                     }
                 } else {
                     let refr = nn.ne(nprev);
@@ -552,7 +563,14 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         err = mark(err, total, jf);
                         tir = tir | total;
                         let t = cosi.signum() * disc.max0().sqrt() - mu * cosi;
-                        kl = sel3(refr, [0, 1, 2].map(|c| kl[c] * mu + nv[c] * t), kl);
+                        kl = sel3(
+                            refr,
+                            {
+                                let f = |c: usize| kl[c] * mu + nv[c] * t;
+                                [f(0), f(1), f(2)]
+                            },
+                            kl,
+                        );
                     }
                 }
                 if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
@@ -672,8 +690,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             xyz: [f64::NAN; 3],
             lmn: [f64::NAN; 3],
             opl: 0.0,
-            err: 0,
-            tir: false,
+            status: RayStatus::Ok,
             vig: 0,
             p: p0[i],
             k: k0[i],
@@ -686,8 +703,11 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
         xyz: get(&pl, i),
         lmn: get(&kl, i),
         opl: opl[i],
-        err: err[i] as usize,
-        tir: tir.at(i),
+        status: match err[i] as usize {
+            0 => RayStatus::Ok,
+            surf if tir.at(i) => RayStatus::Tir { surf },
+            surf => RayStatus::Missed { surf },
+        },
         vig: vig[i] as usize,
         p: add(f.o, get(&pg, i)),
         k: get(&kg, i),

@@ -57,7 +57,7 @@ impl System {
                         self.field_wave.unwrap_or(self.primary),
                         TraceOpts::new().vig([0.0; 5]).upto(s1.max(s2)).record(),
                     );
-                    if r.rays[0].err != 0 {
+                    if r.rays[0].status.surf().is_some() {
                         return [f64::NAN; 2];
                     }
                     let (Some(a), Some(b)) = (r.rec_at(s1), r.rec_at(s2)) else {

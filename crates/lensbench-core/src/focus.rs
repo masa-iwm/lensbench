@@ -159,7 +159,7 @@ impl FocusShift {
             hx_hy: hxy,
         };
         for (i, r) in t.rays.iter_mut().enumerate() {
-            if r.err == 0 {
+            if r.status.is_ok() {
                 // ずらす前の像面（z = 0）からずらした像面（z）まで直線で進め、ずらした像面の局所座標に直す
                 let tt = (z - r.xyz[2]) / r.lmn[2];
                 r.xyz = [r.xyz[0] + r.lmn[0] * tt, r.xyz[1] + r.lmn[1] * tt, 0.0];

@@ -262,7 +262,7 @@ fn vignetted_rays_out_of_a_table_do_not_stop_the_trace() {
             &c,
         )
         .unwrap();
-    assert!(t.trace.rays[1].vig == img - 1 && t.trace.rays[1].err == 0);
+    assert!(t.trace.rays[1].vig == img - 1 && t.trace.rays[1].status.is_ok());
     assert!(t.e[1][0][0].re.is_nan());
     s.surfaces[img - 1].ap = lensbench_core::surface::Aperture::None;
     // けられていない光線が範囲外なら止める

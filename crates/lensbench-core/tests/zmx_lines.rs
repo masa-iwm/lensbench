@@ -57,8 +57,12 @@ fn same_rays(a: &System, b: &System, px: &[f64], py: &[f64], tol: f64) {
             .try_trace(FieldSel::Index(fi), px, py, None, None, false)
             .unwrap();
         for (i, (ra, rb)) in ta.rays.iter().zip(&tb.rays).enumerate() {
-            assert_eq!((ra.err, ra.vig), (rb.err, rb.vig), "視野 {fi} 光線 {i}");
-            assert_eq!(ra.err, 0);
+            assert_eq!(
+                (ra.status, ra.vig),
+                (rb.status, rb.vig),
+                "視野 {fi} 光線 {i}"
+            );
+            assert!(ra.status.is_ok());
             for j in 0..3 {
                 assert!(
                     (ra.xyz[j] - rb.xyz[j]).abs() < tol,
@@ -161,7 +165,7 @@ fn toroidal_rays_land_on_the_surface() {
             .unwrap();
         let rec = t.rec_at(1).unwrap();
         for (i, e) in (0..rec.xyz.len()).map(|i| (i, rec.entry(i))) {
-            assert_eq!(t.rays[i].err, 0);
+            assert!(t.rays[i].status.is_ok());
             let q = e.xyz;
             let (z, zx, zy) = sag_toroidal(c, k, &asph, 1.0 / r, q[0], q[1]);
             assert!((q[2] - z).abs() < 1e-12, "視野 {fi} 光線 {i}");

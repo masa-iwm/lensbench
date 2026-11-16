@@ -47,7 +47,7 @@ fn bitmap(s: &System) -> Vec<String> {
             t.rays
                 .iter()
                 .map(|r| {
-                    assert_eq!(r.err, 0);
+                    assert!(r.status.is_ok());
                     assert!(r.vig == 0 || r.vig == 1);
                     if r.vig == 1 {
                         '#'

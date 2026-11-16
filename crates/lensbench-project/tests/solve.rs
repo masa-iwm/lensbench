@@ -62,7 +62,7 @@ fn chief_ray_returns_on_itself() {
         w,
         lensbench_core::TraceOpts::new().vig([0.0; 5]).record(),
     );
-    assert_eq!(t.rays[0].err, 0);
+    assert!(t.rays[0].status.is_ok());
     for (a, b) in [(1, 7), (2, 6)] {
         let (ra, rb) = (t.rec_at(a).unwrap(), t.rec_at(b).unwrap());
         let d = norm(sub(ra.p[0], rb.p[0]));

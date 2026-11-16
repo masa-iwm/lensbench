@@ -35,6 +35,7 @@ curve t	curve の t
 table R or T	表の R・T
 total reflection	で全反射
 missed	に当たりません
+ray aiming failed	で光線のエイミングに失敗
 maker	メーカー
 source	変換元
 part number	型番

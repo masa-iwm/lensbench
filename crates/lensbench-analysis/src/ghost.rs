@@ -360,8 +360,11 @@ pub fn survey(
             .try_trace_pol(FieldSel::Norm(0.0, 0.0), &[0.0], &[0.0], None, &pols, coat)
             .map_err(|e| e.to_string())?;
         let r = &t.trace.rays[0];
-        if r.err != 0 {
-            return Err(format!("the chief ray stops at surface {}", r.err));
+        if r.status.surf().is_some() {
+            return Err(format!(
+                "the chief ray stops at surface {}",
+                r.status.code()
+            ));
         }
         let p: f64 = t.e[0]
             .iter()

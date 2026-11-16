@@ -71,8 +71,8 @@ fn rays_and_efl_match_opticstudio() {
                 for (i, r) in t.rays.iter().enumerate() {
                     // 列は x y z l m n opd opd_chief err vig
                     let os_err = img[[h, w, i, 8]];
-                    assert_eq!(os_err == 0.0, r.err == 0, "{name}: 視野 {h} 光線 {i}");
-                    if r.err != 0 {
+                    assert_eq!(os_err == 0.0, r.status.is_ok(), "{name}: 視野 {h} 光線 {i}");
+                    if r.status.surf().is_some() {
                         continue;
                     }
                     for j in 0..3 {

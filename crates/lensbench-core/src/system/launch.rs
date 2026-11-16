@@ -336,7 +336,7 @@ impl System {
         let (p, k) = st[0];
         let plan = batch::Plan::new(self, fr, w, last, self.floating_clip);
         let r = batch::trace_one(&plan, p, k, Some(&mut rec[..]));
-        if r.err == 0 {
+        if r.status.is_ok() {
             for e in &rec {
                 if is_f(e.surf) {
                     f.fres_ref[e.surf] = [e.xyz[0], e.xyz[1]];
@@ -357,6 +357,14 @@ impl System {
     ) -> (Trace, Vec<Vec<CV3>>, Option<Error>) {
         let (starts, fail) = self.launch_starts(l, w);
         let n = starts.len();
+        // エイミングに失敗した光線は NaN から出す（位置・方向・光路長・記録・電場がすべて NaN になる）
+        let start_of = |i: usize| {
+            if fail[i] {
+                ([f64::NAN; 3], [f64::NAN; 3])
+            } else {
+                starts.get(i)
+            }
+        };
         let (spec, hxy) = match *l {
             Launch::Pupil { spec, hxy, .. } => (Some(spec), hxy),
             Launch::Stop { spec, .. } => (Some(spec), None),
@@ -429,7 +437,7 @@ impl System {
         // 面ごとの準備（光線によらない量）は 1 回だけ
         let plan = batch::Plan::new(self, fr, w, last, clip);
         let one = |i: usize| {
-            let (p, k) = starts.get(i);
+            let (p, k) = start_of(i);
             let mut row = SoaRow { out: &ptrs, i };
             let rec = if record { Some(&mut row) } else { None };
             let mut pr = pol.map(|(inp, surf, _)| {
@@ -442,7 +450,7 @@ impl System {
                 None => batch::trace_one(&plan, p, k, rec),
             };
             if fail[i] {
-                r.err = st;
+                r.status = RayStatus::AimFailed { stop: st };
             }
             // 偏光なしの追跡で結果を大きくしないよう箱に入れる
             let pe = pr.map(|mut pr| {
@@ -478,7 +486,7 @@ impl System {
             let group = |(b, ((ro, po), ko)): (usize, ((Out<RayOut>, Out<V3>), Out<V3>))| {
                 // 端の組の足りない分は最後の光線を繰り返す（結果は捨てる）
                 let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
-                let start = idx.map(|i| starts.get(i));
+                let start = idx.map(start_of);
                 let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
                 let mut sink = SoaLanes {
                     out: &ptrs,
@@ -488,7 +496,7 @@ impl System {
                 for l in 0..ro.len() {
                     let mut x = r[l];
                     if fail[idx[l]] {
-                        x.err = st;
+                        x.status = RayStatus::AimFailed { stop: st };
                     }
                     ro[l].write(x);
                     po[l].write(p[l]);
@@ -528,7 +536,7 @@ impl System {
             // 束を止めるのは、最後まで通った（けられず、エイミングにも失敗していない）光線のエラーだけ。
             // ほかの光線は電場が NaN になるだけ
             let mut take_err = |r: &RayOut, perr: Option<Error>| {
-                if first_err.is_none() && r.err == 0 && r.vig == 0 {
+                if first_err.is_none() && r.status.is_ok() && r.vig == 0 {
                     first_err = perr;
                 }
             };
@@ -538,7 +546,7 @@ impl System {
                 let np = inp.len();
                 let group = |b: usize| {
                     let idx: [usize; L] = std::array::from_fn(|l| (b * L + l).min(n - 1));
-                    let start = idx.map(|i| starts.get(i));
+                    let start = idx.map(start_of);
                     let (p, k) = (start.map(|s| s.0), start.map(|s| s.1));
                     let mut e = Vec::with_capacity(L * np);
                     for kk in &k {
@@ -554,7 +562,7 @@ impl System {
                     let m = (n - b * L).min(L);
                     for l in 0..m {
                         if fail[idx[l]] {
-                            r[l].err = st;
+                            r[l].status = RayStatus::AimFailed { stop: st };
                         }
                         put_phase(&mut pl.e[l * np..(l + 1) * np], r[l].opl);
                     }

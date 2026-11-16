@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
+use crate::trace::RayStatus;
 use crate::zpl::{Flow, Host, Program, Value};
 use crate::{RwLockExt, System};
 
@@ -213,13 +214,16 @@ impl<'a> SysHost<'a> {
         let t = s.try_trace(field, &[x[2]], &[x[3]], Some(w), None, true)?;
         self.fill(&t, w);
         let r = &t.rays[0];
-        if r.err != 0 {
+        if r.status.surf().is_some() {
             // 止まった光線の OPTH は面によらず 0
             self.ray.iter_mut().for_each(|v| v.opth = 0.0);
         }
-        self.raye = if r.tir { -(r.err as f64) } else { r.err as f64 };
+        self.raye = match r.status {
+            RayStatus::Tir { surf } => -(surf as f64),
+            st => st.code() as f64,
+        };
         self.rayv = r.vig as f64;
-        self.opdc = if r.err != 0 {
+        self.opdc = if r.status.surf().is_some() {
             0.0
         } else {
             crate::analysis::opd(s, field, &[x[2]], &[x[3]], Some(w), true)?.opd[0]

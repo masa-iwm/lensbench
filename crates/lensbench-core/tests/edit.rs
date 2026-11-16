@@ -48,7 +48,7 @@ fn rays(s: &System) -> Vec<f64> {
             for r in &t.rays {
                 out.extend(r.xyz.iter().chain(&r.lmn));
                 out.push(r.opl);
-                out.push(r.err as f64);
+                out.push(r.status.code() as f64);
                 out.push(r.vig as f64);
             }
         }
@@ -223,7 +223,7 @@ fn build_singlet() {
     let t = s
         .try_trace(FieldSel::Index(0), &[0.0], &[1.0], Some(1), None, false)
         .unwrap();
-    assert!(t.rays[0].vig != 0 || t.rays[0].err != 0);
+    assert!(t.rays[0].vig != 0 || t.rays[0].status.surf().is_some());
     s.set_coating(2, "AR").unwrap();
     assert_eq!(s.surfaces[2].coat, "AR");
 }

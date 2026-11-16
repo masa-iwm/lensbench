@@ -137,8 +137,14 @@ impl<V: Lanes> PolSoa<V> {
             let eu = (dot_l(xr, pu), dot_l(xi, pu));
             let ew = (dot_l(xr, pw), dot_l(xi, pw));
             let (a, b) = f(eu, ew);
-            *xr = [0, 1, 2].map(|c| a.0 * u[c] + b.0 * v[c]);
-            *xi = [0, 1, 2].map(|c| a.1 * u[c] + b.1 * v[c]);
+            *xr = {
+                let f = |c: usize| a.0 * u[c] + b.0 * v[c];
+                [f(0), f(1), f(2)]
+            };
+            *xi = {
+                let f = |c: usize| a.1 * u[c] + b.1 * v[c];
+                [f(0), f(1), f(2)]
+            };
         }
     }
 }

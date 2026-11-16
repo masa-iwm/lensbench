@@ -157,12 +157,12 @@ pub(crate) fn opd_chief(
     };
     for (t, wi) in [(&rc, w), (&rp, s.primary)] {
         let c = &t.rays[0];
-        if c.err != 0 {
-            let why = if c.tir { "total reflection" } else { "missed" };
+        if let Some(surf) = c.status.surf() {
+            let why = c.status.why();
             invalid!(
                 "the chief ray (wavelength {}) doesn't reach the image (surface {}, {why}); no OPD reference",
                 wi + 1,
-                c.err
+                surf
             );
         }
     }

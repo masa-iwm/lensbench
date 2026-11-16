@@ -120,6 +120,11 @@
   （`use lensbench_core::prelude::*;`）。CLI のクレートの `error`・`run`・`serve` のモジュールは外に出さない。
 - 追跡のカーネルを 1 本にした（KRN-06・IOO-20）: `batch::Plan::new(sys, frames, w, last, floating_clip)` は面 1 から（`first` を取らない）。
   1 本ずつの追跡も同じカーネル（幅 1）。結果はビット単位で前と同じ。
+  面ごとの準備（`Plan`）は系のキャッシュに持つので、系の欄を書き換えたら `changed()` を呼ぶこと（呼ばないと古い準備のまま追う。開口の半径だけは追跡のたびに読む）。
+- 光線の状態（KRN-10）: `RayOut` の `err: usize`・`tir: bool` を `status: RayStatus`（`Ok`・`Missed { surf }`・`Tir { surf }`・`AimFailed { stop }`）にした。
+  `r.err == 0` は `r.status.is_ok()`、面の番号は `r.status.surf()`（届いたなら None）か `r.status.code()`（前と同じ数、届いたなら 0）。
+  光線のエイミングに失敗した光線は、前は主光線の値のまま `err` に絞りの面を入れていたが、位置・方向・光路長・開始の位置・面ごとの記録・電場をすべて NaN にした。
+  Python・JSON の `err` の数は前と同じ。
 - 波長を足した系 `sweep::with_wavelength(&s, lam)` は `System::with_wavelength(lam)` に（ANA-28）。屈折率は材料から作り直す（ガラスの温度の補正は
   系の Adjust Index の設定のまま。前は系の値に合う方を 2 通りから選んだ）。材料の屈折率を任意の波長で `System::material_index_at`。
 - 膜のモデルの書き出し `format_models`・`format_models_bin` は `lensbench_design::coat_fit` から `lensbench_core::coating` へ移した

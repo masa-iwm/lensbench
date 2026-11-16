@@ -71,12 +71,12 @@ pub struct PolTrace {
 
 impl Trace {
     pub fn ok(&self, i: usize) -> bool {
-        self.rays[i].err == 0 && self.rays[i].vig == 0
+        self.rays[i].status.is_ok() && self.rays[i].vig == 0
     }
     /// 開口を無視して像面まで届いたか（けられても追跡は続く）。主光線などの基準の光線はこちらで見る
     /// （OpticStudio と同じく、基準の光線は開口・遮蔽を無視する。中心遮蔽の系など）
     pub fn traced(&self, i: usize) -> bool {
-        self.rays[i].err == 0
+        self.rays[i].status.is_ok()
     }
     /// 面 j の記録（無視する面と、record でない追跡では None）
     pub fn rec_at(&self, j: usize) -> Option<&RecSurf> {

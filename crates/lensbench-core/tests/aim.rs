@@ -41,12 +41,12 @@ fn many_rays_agree_with_few_rays() {
                 for (k, b) in part.rays.iter().enumerate() {
                     let a = &all.rays[c + k];
                     assert_eq!(
-                        (a.err, a.vig),
-                        (b.err, b.vig),
+                        (a.status, a.vig),
+                        (b.status, b.vig),
                         "{name} 視野 {fi} 光線 {}",
                         c + k
                     );
-                    if a.err != 0 || a.vig != 0 {
+                    if a.status.surf().is_some() || a.vig != 0 {
                         continue;
                     }
                     ok += 1;

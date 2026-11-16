@@ -862,12 +862,12 @@ fn trace_ok(
     record: bool,
 ) -> Result<Trace> {
     let t = s.try_trace(field, px, py, Some(w), None, record)?;
-    if let Some(i) = t.rays.iter().position(|r| r.err != 0) {
+    if let Some(i) = t.rays.iter().position(|r| r.status.surf().is_some()) {
         invalid!(
             "the ray stopped (wavelength {w}, pupil ({:.3}, {:.3}), surface {})",
             px[i],
             py[i],
-            t.rays[i].err
+            t.rays[i].status.code()
         );
     }
     Ok(t)
@@ -1011,10 +1011,10 @@ fn ray_term(
     let j = surf.unwrap_or(s.image());
     let t = s.try_trace(field, &[px], &[py], Some(w), Some(j), ps.is_some())?;
     let x = &t.rays[0];
-    if x.err != 0 {
+    if x.status.surf().is_some() {
         invalid!(
             "the ray stopped (wavelength {w}, pupil ({px:.3}, {py:.3}), surface {})",
-            x.err
+            x.status.code()
         );
     }
     let v = match q {

@@ -648,7 +648,7 @@ impl Soa {
                         c.push(x);
                     }
                 }
-                err.push(r.err as i32);
+                err.push(r.status.code() as i32);
                 vig.push(r.vig as i32);
                 ok.push(t.ok(i));
             }

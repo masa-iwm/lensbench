@@ -380,7 +380,7 @@ pub fn rays(s: &System, o: &RayOptions) -> Result<Table> {
                     for k in 0..10 {
                         v[k].push(vals[k]);
                     }
-                    c_err.push(r.err as i64);
+                    c_err.push(r.status.code() as i64);
                     c_vig.push(r.vig as i64);
                 }
             }

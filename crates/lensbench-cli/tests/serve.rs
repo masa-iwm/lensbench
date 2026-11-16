@@ -416,11 +416,15 @@ fn trace_binary_and_timing() {
             );
         }
         assert_eq!(get("vig")[i], r.vig as f64);
-        assert_eq!(get("err")[i], r.err as f64);
+        assert_eq!(get("err")[i], r.status.code() as f64);
     }
     assert_eq!(
         h["result"]["ok"],
-        json!(tr.rays.iter().filter(|r| r.err == 0 && r.vig == 0).count())
+        json!(tr
+            .rays
+            .iter()
+            .filter(|r| r.status.is_ok() && r.vig == 0)
+            .count())
     );
     // JSON の配列でも渡せる
     let (h, arr) = sv.call_bin(

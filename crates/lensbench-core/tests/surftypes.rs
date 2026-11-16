@@ -53,7 +53,7 @@ fn ray_diff(name: &str) -> (f64, f64, f64, usize) {
             .unwrap();
         let surfs = r["surfaces"].as_array().unwrap();
         let ok = surfs.last().unwrap()["err"].as_f64().unwrap() == 0.0;
-        assert_eq!(ok, t.rays[0].err == 0, "{name}: {r}");
+        assert_eq!(ok, t.rays[0].status.is_ok(), "{name}: {r}");
         if !ok {
             continue;
         }
