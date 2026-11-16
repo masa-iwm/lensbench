@@ -93,9 +93,10 @@ impl<'a> Choices<'a> {
     }
 }
 
-/// 1 行の高さ（selectable_label の高さに合わせる）
+/// 1 行の高さ（selectable_label の高さに合わせる。interact_size.y が下限）
 fn row_height(ui: &Ui) -> f32 {
-    ui.text_style_height(&egui::TextStyle::Body) + 2.0 * ui.spacing().button_padding.y
+    (ui.text_style_height(&egui::TextStyle::Body) + 2.0 * ui.spacing().button_padding.y)
+        .max(ui.spacing().interact_size.y)
 }
 
 /// 行 `k` が一覧の真ん中あたりに来る位置

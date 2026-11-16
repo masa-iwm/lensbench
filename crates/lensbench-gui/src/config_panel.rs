@@ -844,14 +844,17 @@ pub fn ui(ui: &mut Ui, st: &mut State, combo: bool, cands: &pp::Sys) -> Vec<Act>
         {
             // 数でなければ欄を閉じずに赤枠で（Esc でやめる）
             Some((_, Err(why))) => {
-                if let Some(e) = st.edit.as_mut() {
+                // 同じフレームでほかのセルを開いたら、誤りはそのセルに付けない
+                if let Some(e) = st.edit.as_mut().filter(|e| e.i == i && e.k == k) {
                     e.error = Some(why);
                     e.started = false;
                     e.select_all = true;
                 }
             }
             parsed => {
-                st.edit = None;
+                if st.edit.as_ref().is_some_and(|e| e.i == i && e.k == k) {
+                    st.edit = None;
+                }
                 // set_config_row は今の構成の値を系に入れ直す（ほかの構成の値を変えても系はそのまま）
                 if let Some((r, Ok(v))) = parsed {
                     if r.1.get(k) != Some(&v) {
