@@ -19,6 +19,7 @@ use crate::theme;
 use lensbench_project::edit_ops::{BlockRef, Ref, StopOp, SurfaceOp};
 
 mod ap_shape;
+mod bs;
 mod detector;
 mod element;
 mod figure;
@@ -27,7 +28,8 @@ mod raw;
 mod sys_extra;
 mod write_face;
 mod zgroup;
-pub use ap_shape::ApShape;
+pub use ap_shape::{ApData, ApShape};
+pub use bs::{Bs, BsForm, BsSplit};
 pub use detector::DetectorPick;
 use figure::figure;
 #[cfg(test)]
@@ -281,8 +283,6 @@ pub struct Pick {
     pub tilt: [f64; 3],
     /// BS: 反射側へ進む
     pub arm_r: bool,
-    /// BS: 透過率
-    pub ratio: f64,
     /// .zmx の玉: ファイルと、何番目の玉か
     pub path: String,
     pub lens: usize,
@@ -292,22 +292,13 @@ pub struct Pick {
     pub lock_place: bool,
     /// 鏡のコーニック
     pub conic: f64,
-    /// BS: 分ける面の向きを逆に（反射を反対側へ。キューブの分ける面の傾き −45°）
-    pub bs_flip: bool,
     /// 鏡の膜・BS の分ける面の膜（膜ファイル・LBCM の名前。空なら理想の鏡・ratio の分岐）
     pub coat: String,
-    /// カタログの BS の、組合せの欄に無い項目（form・ar・faces・pbs・thickness・semi・wedge など）
+    /// カタログの BS の、組合せの欄に無い項目（thickness・semi など）。そのまま持つブロック（Raw）はブロックの JSON
     pub extra: Value,
-    /// 開口・遮蔽の形。円・遮蔽の外径は semi、偏心は decenter（開口の dx・dy）
-    pub ap: ApShape,
-    /// 矩形・楕円の x・y の半幅 [mm]
-    pub ap_half: [f64; 2],
-    /// 円の開口・遮蔽の内径（半径）[mm]
-    pub ap_min: f64,
-    /// スパイダーの腕の幅（全幅）[mm]
-    pub spider_width: f64,
-    /// スパイダーの腕の本数（360° を等分、最初の腕は +x）
-    pub spider_arms: u32,
+    /// 開口・遮蔽の形と寸法（開口の要素だけが持つ。[`ApData`]）。円・遮蔽の外径は semi、偏心は decenter
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ap: Option<Box<ApData>>,
     /// 面の表で変えた面の値（プロジェクトの surface_edits になる）
     pub edits: Vec<SurfEdit>,
     /// 玉の前面を絞りにする（カタログの玉・自作の玉・平板・.zmx の玉）
@@ -331,22 +322,9 @@ pub struct Pick {
     pub state_air: BTreeMap<String, f64>,
     /// 状態ごとの偏心・傾き（無ければ decenter・tilt。置き方を持つ要素と鏡）
     pub state_place: BTreeMap<String, StatePlace>,
-    /// BS の形
-    pub form: BsForm,
-    /// BS（平板）: くさび。裏面を表面に対して傾ける角 x・y [deg]
-    pub wedge: [f64; 2],
-    /// BS（平板）: 裏の面で分ける
-    pub split_back: bool,
-    /// BS（平板・理想面）: 分ける面の傾き x・y [deg]。反射を逆向きにすると x の符号が変わる（キューブは 45° のまま）
-    pub bs_angle: [f64; 2],
-    /// BS: 分ける面の分け方（None は前の保存: 膜があれば膜、無ければ分岐比）
-    pub split: Option<BsSplit>,
-    /// BS: 理想の偏光 BS の p・s の強度の透過率
-    pub pbs: [f64; 2],
-    /// BS: 分ける面以外の面の膜の既定（空なら膜なし）
-    pub ar: String,
-    /// BS: 面ごとの膜（キューブは a〜d、平板は front・back）
-    pub faces: std::collections::BTreeMap<String, String>,
+    /// BS の形・分け方・膜など（BS だけが持つ。[`Bs`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bs: Option<Box<Bs>>,
     /// BS: 口 B・C・D の先の並びを持つ（並びの最後に置く）
     pub branched: bool,
     /// BS: 口 B（透過）・C（反射）・D（B から戻る光の反射）の先
@@ -365,66 +343,6 @@ pub struct Pick {
     pub id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub air_id: String,
-}
-
-/// BS の形
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BsForm {
-    /// キューブ（斜面が 45°）
-    #[default]
-    Cube,
-    /// 平板（表裏の 2 面、くさびも可）
-    Plate,
-    /// 厚さのない理想の面
-    Ideal,
-}
-
-impl BsForm {
-    pub fn label(self) -> &'static str {
-        match self {
-            BsForm::Cube => tr("Cube"),
-            BsForm::Plate => tr("Plate"),
-            BsForm::Ideal => tr("ideal surface"),
-        }
-    }
-    fn key(self) -> &'static str {
-        match self {
-            BsForm::Cube => "cube",
-            BsForm::Plate => "plate",
-            BsForm::Ideal => "ideal",
-        }
-    }
-    /// 面ごとの膜を付ける面（分ける面を除く）
-    pub fn faces(self) -> &'static [&'static str] {
-        match self {
-            BsForm::Cube => &["a", "b", "c", "d"],
-            BsForm::Plate => &["front", "back"],
-            BsForm::Ideal => &[],
-        }
-    }
-}
-
-/// BS の分ける面の分け方
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BsSplit {
-    /// 偏光によらない理想の分岐比
-    Ratio,
-    /// 膜（膜ファイル・膜モデル）
-    Coat,
-    /// 理想の偏光 BS
-    Pbs,
-}
-
-impl BsSplit {
-    pub fn label(self) -> &'static str {
-        match self {
-            BsSplit::Ratio => tr("Split ratio"),
-            BsSplit::Coat => tr("Coating"),
-            BsSplit::Pbs => tr("Ideal PBS"),
-        }
-    }
 }
 
 /// 要素の面の値の上書き（面は要素の面のうち座標ブレークを除いた番号）
@@ -452,29 +370,16 @@ impl Default for Pick {
             decenter: [0.0; 2],
             tilt: [0.0; 3],
             arm_r: false,
-            ratio: 0.5,
             path: String::new(),
             lens: 1,
             locked: false,
             lock_place: false,
             conic: 0.0,
-            bs_flip: false,
             coat: String::new(),
             extra: Value::Null,
-            ap: ApShape::Circle,
-            ap_half: [5.0, 5.0],
-            ap_min: 0.0,
-            spider_width: 1.0,
-            spider_arms: 4,
+            ap: None,
             edits: Vec::new(),
-            form: BsForm::Cube,
-            wedge: [0.0; 2],
-            split_back: false,
-            bs_angle: [45.0, 0.0],
-            split: None,
-            pbs: [1.0, 0.0],
-            ar: String::new(),
-            faces: Default::default(),
+            bs: None,
             branched: false,
             ports: Default::default(),
             back: false,
@@ -512,7 +417,7 @@ impl Pick {
             self.config,
             self.range,
             self.reversed,
-            self.form,
+            self.bs().form,
             kinds
         )
     }
@@ -609,168 +514,16 @@ impl Pick {
             ElemKind::Splitter => {
                 p.t = 12.7;
                 p.air = 10.0;
+                p.bs = Some(Box::default());
             }
             ElemKind::Aperture => {
                 p.semi = 5.0;
                 p.air = 10.0;
+                p.ap = Some(Box::default());
             }
             _ => {}
         }
         p
-    }
-
-    /// BS の分ける面の分け方
-    pub fn split_mode(&self) -> BsSplit {
-        self.split.unwrap_or(if self.coat.trim().is_empty() {
-            BsSplit::Ratio
-        } else {
-            BsSplit::Coat
-        })
-    }
-
-    /// BS の分ける面の傾き（反射を逆向きにすると x の符号が変わる）
-    pub fn split_angle(&self) -> [f64; 2] {
-        let a = match self.form {
-            BsForm::Cube => [45.0, 0.0],
-            _ => self.bs_angle,
-        };
-        if self.bs_flip {
-            [-a[0], a[1]]
-        } else {
-            a
-        }
-    }
-
-    /// splitter ブロック（分岐の t・r・d は [`Combo::project`] が足す）
-    fn splitter_block(&self, id: &str) -> Value {
-        let mut b = json!({
-            "type": "splitter", "id": id, "form": self.form.key(),
-            "arm": if self.arm_r { "r" } else { "t" },
-            "angle": self.split_angle(),
-        });
-        match self.form {
-            BsForm::Cube => {
-                b["size"] = json!(self.t);
-                b["glass"] = json!(self.glass);
-            }
-            BsForm::Plate => {
-                b["thickness"] = json!(self.t);
-                b["glass"] = json!(self.glass);
-                b["semi"] = json!(self.semi);
-                if self.wedge != [0.0; 2] {
-                    b["wedge"] = json!(self.wedge);
-                }
-                if self.split_back {
-                    b["split_face"] = json!("back");
-                }
-            }
-            BsForm::Ideal => {
-                b["semi"] = json!(self.semi);
-            }
-        }
-        match self.split_mode() {
-            BsSplit::Coat if !self.coat.trim().is_empty() => b["coat"] = json!(self.coat.trim()),
-            BsSplit::Pbs => b["pbs"] = json!({ "tp": self.pbs[0], "ts": self.pbs[1] }),
-            _ => b["ratio"] = json!(self.ratio),
-        }
-        if self.form != BsForm::Ideal {
-            if !self.ar.trim().is_empty() {
-                b["ar"] = json!(self.ar.trim());
-            }
-            let faces: serde_json::Map<String, Value> = self
-                .faces
-                .iter()
-                .filter(|(k, v)| !v.trim().is_empty() && self.form.faces().contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), json!(v.trim())))
-                .collect();
-            if !faces.is_empty() {
-                b["faces"] = Value::Object(faces);
-            }
-        }
-        b
-    }
-
-    /// カタログの BS の中身（[`Pick::extra`]）のうち、欄のある項目を欄へ移す
-    pub fn absorb_extra(&mut self) {
-        if self.kind != ElemKind::Splitter {
-            return;
-        }
-        let Some(m) = self.extra.as_object_mut() else {
-            return;
-        };
-        let num2 =
-            |v: &Value| -> Option<[f64; 2]> { Some([v.get(0)?.as_f64()?, v.get(1)?.as_f64()?]) };
-        if let Some(f) = m.remove("form") {
-            self.form = match f.as_str() {
-                Some("plate") => BsForm::Plate,
-                Some("ideal") => BsForm::Ideal,
-                _ => BsForm::Cube,
-            };
-        }
-        if let Some(x) = m.remove("thickness").and_then(|v| v.as_f64()) {
-            if self.form == BsForm::Plate {
-                self.t = x;
-            }
-        }
-        if let Some(x) = m.remove("size").and_then(|v| v.as_f64()) {
-            if self.form == BsForm::Cube && x > 0.0 {
-                self.t = x;
-            }
-        }
-        if let Some(x) = m.remove("semi").and_then(|v| v.as_f64()) {
-            self.semi = x;
-        }
-        if let Some(x) = m.remove("wedge").as_ref().and_then(num2) {
-            self.wedge = x;
-        }
-        if let Some(f) = m.remove("split_face") {
-            self.split_back = f == "back";
-        }
-        if let Some(a) = m.remove("angle").as_ref().and_then(num2) {
-            self.bs_flip = a[0] < 0.0;
-            self.bs_angle = [a[0].abs(), a[1]];
-        }
-        if let Some(a) = m.remove("arm") {
-            self.arm_r = a == "r";
-        }
-        if let Some(p) = m.remove("pbs").filter(|p| p.is_object()) {
-            self.pbs = [
-                p["tp"].as_f64().unwrap_or(1.0),
-                p["ts"].as_f64().unwrap_or(0.0),
-            ];
-            self.split = Some(BsSplit::Pbs);
-        }
-        if let Some(x) = m.remove("ratio").and_then(|v| v.as_f64()) {
-            self.ratio = x;
-        }
-        if let Some(c) = m
-            .remove("coat")
-            .and_then(|v| v.as_str().map(str::to_string))
-        {
-            self.coat = c;
-        }
-        if let Some(a) = m.remove("ar").and_then(|v| v.as_str().map(str::to_string)) {
-            self.ar = a;
-        }
-        if let Some(f) = m.remove("faces").and_then(|v| v.as_object().cloned()) {
-            for (k, v) in f {
-                if let Some(v) = v.as_str() {
-                    self.faces.insert(k, v.to_string());
-                }
-            }
-        }
-        if let Some(g) = m
-            .remove("glass")
-            .and_then(|v| v.as_str().map(str::to_string))
-        {
-            self.glass = g;
-        }
-        for k in ["type", "id"] {
-            m.remove(k);
-        }
-        if m.is_empty() {
-            self.extra = Value::Null;
-        }
     }
 
     /// 一覧・図に出す名前
@@ -788,7 +541,7 @@ impl Pick {
             ElemKind::Mirror | ElemKind::Splitter if !self.part.is_empty() => {
                 format!("{} {}", self.vendor, self.part)
             }
-            ElemKind::Aperture => self.ap.label().to_string(),
+            ElemKind::Aperture => self.ap().shape.label().to_string(),
             ElemKind::Raw => self.raw_label(),
             ElemKind::ZmxRange => {
                 let f = std::path::Path::new(&self.path)
@@ -811,21 +564,21 @@ impl Pick {
     /// 開口・遮蔽の面の開口（project の SurfAperture）
     fn aperture(&self) -> Value {
         let [dx, dy] = self.decenter;
-        match self.ap {
+        match self.ap().shape {
             ApShape::Circle => json!({
-                "type": "circular", "min": self.ap_min.max(0.0), "max": self.semi, "dx": dx, "dy": dy,
+                "type": "circular", "min": self.ap().min.max(0.0), "max": self.semi, "dx": dx, "dy": dy,
             }),
             ApShape::Rect => json!({
-                "type": "rect", "hx": self.ap_half[0], "hy": self.ap_half[1], "dx": dx, "dy": dy,
+                "type": "rect", "hx": self.ap().half[0], "hy": self.ap().half[1], "dx": dx, "dy": dy,
             }),
             ApShape::Ellipse => json!({
-                "type": "ellipse", "hx": self.ap_half[0], "hy": self.ap_half[1], "dx": dx, "dy": dy,
+                "type": "ellipse", "hx": self.ap().half[0], "hy": self.ap().half[1], "dx": dx, "dy": dy,
             }),
             ApShape::Obscuration => json!({
-                "type": "obscuration", "min": self.ap_min.max(0.0), "max": self.semi, "dx": dx, "dy": dy,
+                "type": "obscuration", "min": self.ap().min.max(0.0), "max": self.semi, "dx": dx, "dy": dy,
             }),
             ApShape::Spider => json!({
-                "type": "spider", "width": self.spider_width.max(0.0), "arms": self.spider_arms.max(1),
+                "type": "spider", "width": self.ap().spider_width.max(0.0), "arms": self.ap().spider_arms.max(1),
                 "dx": dx, "dy": dy,
             }),
         }
@@ -833,8 +586,8 @@ impl Pick {
 
     /// 開口・遮蔽の、図の縦の広がり（光軸から）。外の縁
     pub fn ap_extent(&self) -> f64 {
-        let h = match self.ap {
-            ApShape::Rect | ApShape::Ellipse => self.ap_half[0].hypot(self.ap_half[1]),
+        let h = match self.ap().shape {
+            ApShape::Rect | ApShape::Ellipse => self.ap().half[0].hypot(self.ap().half[1]),
             // スパイダーの腕は無限に伸びるので、図では半径（semi）まで
             ApShape::Circle | ApShape::Obscuration | ApShape::Spider => self.semi,
         };
@@ -970,25 +723,26 @@ impl Pick {
                 }
             }
         }
-        if self.kind == ElemKind::Catalog && !self.path.is_empty() {
-            // ユーザーカタログの項目は群として入る（反転は無い）
-            self.place(&mut b);
-        } else if matches!(
+        // 玉の反転・前面の絞り（ユーザーカタログの項目は群として入るので無い）
+        let lens = matches!(
             self.kind,
             ElemKind::Catalog | ElemKind::Zmx | ElemKind::Lens | ElemKind::Plate
-        ) {
+        );
+        if lens && !(self.kind == ElemKind::Catalog && !self.path.is_empty()) {
             if self.reversed {
                 b["reversed"] = json!(true);
             }
             if self.stop_front {
                 b["stop"] = json!(true);
             }
-            self.place(&mut b);
         }
-        if matches!(
-            self.kind,
-            ElemKind::Splitter | ElemKind::Surfaces | ElemKind::ZmxRange
-        ) {
+        // 置き方（鏡は傾きを本体に、絞り・開口は置き方を持たない）
+        if lens
+            || matches!(
+                self.kind,
+                ElemKind::Splitter | ElemKind::Surfaces | ElemKind::ZmxRange
+            )
+        {
             self.place(&mut b);
         }
         // ON/OFF
@@ -999,9 +753,6 @@ impl Pick {
             if self.off_air && self.kind.has_off_mode() {
                 b["off"] = json!("air");
             }
-        }
-        if self.kind == ElemKind::Mirror && self.back {
-            b["back"] = json!(true);
         }
         b
     }
@@ -1304,15 +1055,10 @@ impl Combo {
 
     /// 今の経路に沿った要素のブロックの id（= 玉・群の名前、[`Combo::ids_all`]）
     pub fn ids(&self) -> Vec<String> {
-        let all = self.ids_all();
+        let mut all: BTreeMap<Loc, String> = self.ids_all().into_iter().collect();
         self.chain()
             .iter()
-            .map(|s| {
-                all.iter()
-                    .find(|x| x.0 == s.loc)
-                    .map(|x| x.1.clone())
-                    .unwrap_or_default()
-            })
+            .map(|s| all.remove(&s.loc).unwrap_or_default())
             .collect()
     }
 
@@ -1435,7 +1181,7 @@ impl Combo {
         let st = self.active_state();
         self.ids()
             .into_iter()
-            .zip(self.chain_picks())
+            .zip(self.chain_view().picks)
             .map(|(id, p)| if p.on_in(st) { id } else { String::new() })
             .collect()
     }
@@ -2445,7 +2191,7 @@ fn keys(ui: &mut Ui, combo: &mut Combo, view: &mut View) {
                     .and_then(|k| combo.el_mut(k))
                     .filter(|p| p.kind == ElemKind::Splitter)
                 {
-                    p.bs_flip = !p.bs_flip;
+                    p.bs_mut().bs_flip = !p.bs_mut().bs_flip;
                 }
             }
             Key::Delete => {
@@ -2894,7 +2640,7 @@ fn kind_fields(
         ElemKind::Stop => num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001),
         ElemKind::Aperture => {
             egui::ComboBox::from_id_salt(("ap_shape", k))
-                .selected_text(p.ap.label())
+                .selected_text(p.ap_mut().shape.label())
                 .show_ui(ui, |ui| {
                     for a in [
                         ApShape::Circle,
@@ -2903,23 +2649,41 @@ fn kind_fields(
                         ApShape::Obscuration,
                         ApShape::Spider,
                     ] {
-                        ui.selectable_value(&mut p.ap, a, a.label());
+                        ui.selectable_value(&mut p.ap_mut().shape, a, a.label());
                     }
                 });
-            match p.ap {
+            match p.ap_mut().shape {
                 ApShape::Circle | ApShape::Obscuration => {
-                    num_in(ui, tr("Inner radius"), &mut p.ap_min, " mm", 0.0);
+                    num_in(ui, tr("Inner radius"), &mut p.ap_mut().min, " mm", 0.0);
                     num_in(ui, tr("Outer radius"), &mut p.semi, " mm", 0.001);
                 }
                 ApShape::Rect | ApShape::Ellipse => {
-                    num_in(ui, tr("Half width x"), &mut p.ap_half[0], " mm", 0.001);
-                    num_in(ui, tr("Half width y"), &mut p.ap_half[1], " mm", 0.001);
+                    num_in(
+                        ui,
+                        tr("Half width x"),
+                        &mut p.ap_mut().half[0],
+                        " mm",
+                        0.001,
+                    );
+                    num_in(
+                        ui,
+                        tr("Half width y"),
+                        &mut p.ap_mut().half[1],
+                        " mm",
+                        0.001,
+                    );
                 }
                 ApShape::Spider => {
-                    num_in(ui, tr("Arm width (full)"), &mut p.spider_width, " mm", 0.0);
-                    let mut n = p.spider_arms as f64;
+                    num_in(
+                        ui,
+                        tr("Arm width (full)"),
+                        &mut p.ap_mut().spider_width,
+                        " mm",
+                        0.0,
+                    );
+                    let mut n = p.ap_mut().spider_arms as f64;
                     num(ui, tr("Number of arms"), &mut n, "");
-                    p.spider_arms = n.round().clamp(1.0, 360.0) as u32;
+                    p.ap_mut().spider_arms = n.round().clamp(1.0, 360.0) as u32;
                     // 腕は無限に伸びる。図ではこの半径まで描く
                     num_in(ui, tr("Drawn radius"), &mut p.semi, " mm", 0.001);
                 }
@@ -2928,32 +2692,32 @@ fn kind_fields(
             num(ui, tr("Decenter y"), &mut p.decenter[1], " mm");
         }
         ElemKind::Splitter => {
-            let was = p.form;
+            let was = p.bs_mut().form;
             egui::ComboBox::from_id_salt(("bs_form", k))
-                .selected_text(p.form.label())
+                .selected_text(p.bs_mut().form.label())
                 .show_ui(ui, |ui| {
                     for f in [BsForm::Cube, BsForm::Plate, BsForm::Ideal] {
-                        ui.selectable_value(&mut p.form, f, f.label());
+                        ui.selectable_value(&mut p.bs_mut().form, f, f.label());
                     }
                 });
-            if p.form != was {
+            if p.bs_mut().form != was {
                 // 形を変えたら寸法を形の初めの値に
-                match p.form {
+                match p.bs_mut().form {
                     BsForm::Cube => p.t = 12.7,
                     BsForm::Plate => p.t = 1.0,
                     BsForm::Ideal => {}
                 }
             }
-            match p.form {
+            match p.bs_mut().form {
                 BsForm::Cube => num_in(ui, tr("Size"), &mut p.t, " mm", 0.001),
                 BsForm::Plate => num_in(ui, tr("Thickness"), &mut p.t, " mm", 0.0),
                 BsForm::Ideal => {}
             }
-            if p.form != BsForm::Ideal {
+            if p.bs_mut().form != BsForm::Ideal {
                 ui.label(RichText::new(tr("Glass")).color(weak));
                 ui.add(egui::TextEdit::singleline(&mut p.glass).desired_width(70.0));
             }
-            if p.form != BsForm::Cube {
+            if p.bs_mut().form != BsForm::Cube {
                 num_in(ui, tr("Semi-diameter"), &mut p.semi, " mm", 0.001);
             }
             let mut mode = p.split_mode();
@@ -2966,11 +2730,11 @@ fn kind_fields(
                 })
                 .response
                 .on_hover_text(tr("Splitting face: polarization-independent ratio, coating, or ideal polarizing BS"));
-            p.split = Some(mode);
+            p.bs_mut().split = Some(mode);
             match mode {
                 BsSplit::Ratio => {
                     ui.add(
-                        egui::DragValue::new(&mut p.ratio)
+                        egui::DragValue::new(&mut p.bs_mut().ratio)
                             .range(0.0..=1.0)
                             .speed(0.01)
                             .prefix("T "),
@@ -2979,13 +2743,13 @@ fn kind_fields(
                 BsSplit::Coat => crate::coat_defs::coat_edit(ui, &mut p.coat, k, weak, coats),
                 BsSplit::Pbs => {
                     ui.add(
-                        egui::DragValue::new(&mut p.pbs[0])
+                        egui::DragValue::new(&mut p.bs_mut().pbs[0])
                             .range(0.0..=1.0)
                             .speed(0.01)
                             .prefix("Tp "),
                     );
                     ui.add(
-                        egui::DragValue::new(&mut p.pbs[1])
+                        egui::DragValue::new(&mut p.bs_mut().pbs[1])
                             .range(0.0..=1.0)
                             .speed(0.01)
                             .prefix("Ts "),
@@ -2996,7 +2760,7 @@ fn kind_fields(
                 .on_hover_text(tr(
                     "Port to take when the path has no letter for this BS (default: transmitted)",
                 ));
-            ui.checkbox(&mut p.bs_flip, tr("Flip reflection"))
+            ui.checkbox(&mut p.bs_mut().bs_flip, tr("Flip reflection"))
                 .on_hover_text(tr(
                     "Swap the split face so the reflection goes to the other side (F key)",
                 ));
@@ -3033,7 +2797,7 @@ fn kind_fields(
 fn editor(ui: &mut Ui, combo: &mut Combo, view: &mut View) -> Option<usize> {
     let weak = theme::weak_text(ui.visuals());
     ui.add_space(4.0);
-    let els = combo.chain_picks();
+    let els = combo.chain_view().picks;
     let n = els.len();
     if let Some(g) = view.dim {
         if g != STOP_GAP && g >= n {
@@ -3156,38 +2920,38 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
         return;
     };
     ui.horizontal_wrapped(|ui| {
-        if p.form != BsForm::Cube {
-            num(ui, tr("Splitting face tilt x"), &mut p.bs_angle[0], "°");
-            num(ui, tr("Tilt y"), &mut p.bs_angle[1], "°");
+        if p.bs_mut().form != BsForm::Cube {
+            num(ui, tr("Splitting face tilt x"), &mut p.bs_mut().bs_angle[0], "°");
+            num(ui, tr("Tilt y"), &mut p.bs_mut().bs_angle[1], "°");
         }
-        if p.form == BsForm::Plate {
-            num(ui, tr("Wedge x"), &mut p.wedge[0], "°");
-            num(ui, tr("Wedge y"), &mut p.wedge[1], "°");
-            ui.checkbox(&mut p.split_back, tr("Split at the back face"));
+        if p.bs_mut().form == BsForm::Plate {
+            num(ui, tr("Wedge x"), &mut p.bs_mut().wedge[0], "°");
+            num(ui, tr("Wedge y"), &mut p.bs_mut().wedge[1], "°");
+            ui.checkbox(&mut p.bs_mut().split_back, tr("Split at the back face"));
         }
-        if p.form != BsForm::Ideal {
+        if p.bs_mut().form != BsForm::Ideal {
             ui.label(RichText::new(tr("Other faces' coating")).color(weak));
             ui.add(
-                egui::TextEdit::singleline(&mut p.ar)
+                egui::TextEdit::singleline(&mut p.bs_mut().ar)
                     .hint_text(tr("no coating"))
                     .desired_width(70.0),
             )
             .on_hover_text(tr("Default coating of faces other than the splitting face (faces without their own coating)"));
-            for f in p.form.faces() {
+            for f in p.bs_mut().form.faces() {
                 let name = match *f {
                     "front" => tr("Table"),
                     "back" => tr("Back"),
                     x => x,
                 };
                 ui.label(RichText::new(trf("Surface {}", &[&name])).color(weak));
-                let mut v = p.faces.get(*f).cloned().unwrap_or_default();
+                let mut v = p.bs_mut().faces.get(*f).cloned().unwrap_or_default();
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut v)
                             .hint_text(tr("Default"))
                             .desired_width(56.0),
                     )
-                    .on_hover_text(if p.form == BsForm::Cube {
+                    .on_hover_text(if p.bs_mut().form == BsForm::Cube {
                         tr("Coating of cube face a (port A), b (B), c (C), d (D). Empty uses the other faces' coating")
                     } else {
                         tr("Coating of the plate's front/back (not applied to the splitting face). Empty uses the other faces' coating")
@@ -3195,9 +2959,9 @@ pub fn bs_fields(ui: &mut Ui, combo: &mut Combo, loc: &[usize], weak: Color32) {
                     .changed()
                 {
                     if v.trim().is_empty() {
-                        p.faces.remove(*f);
+                        p.bs_mut().faces.remove(*f);
                     } else {
-                        p.faces.insert(f.to_string(), v);
+                        p.bs_mut().faces.insert(f.to_string(), v);
                     }
                 }
             }

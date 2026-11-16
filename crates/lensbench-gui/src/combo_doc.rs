@@ -26,7 +26,7 @@ impl ComboDoc {
 
     /// 素子 `lens` に合わせて機構部品を足す: 組合せにその素子があれば、そこに置いて保持する
     pub fn add_mech_for(&mut self, mech: &LensRow, lens: &LensRow, lenses: &[LensRow]) {
-        let chain = self.combo.chain_picks();
+        let chain = self.combo.chain_view().picks;
         let same = |p: &crate::combo::Pick| {
             p.kind == crate::combo::ElemKind::Catalog
                 && p.vendor == lens.vendor
@@ -35,8 +35,8 @@ impl ComboDoc {
         // 同じ玉が 2 つ以上あれば、選んでいる方を優先
         let k = self
             .insert_after
-            .filter(|&k| chain.get(k).is_some_and(same))
-            .or_else(|| chain.iter().position(same));
+            .filter(|&k| chain.get(k).is_some_and(|p| same(p)))
+            .or_else(|| chain.iter().position(|p| same(p)));
         let keep = self.insert_after;
         if k.is_some() {
             self.insert_after = k;

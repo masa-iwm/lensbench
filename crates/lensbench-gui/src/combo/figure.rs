@@ -285,8 +285,10 @@ fn scene(
     let s = xf.s;
     // 要素（今の経路に沿った並び）と玉の対応
     let ids = combo.span_ids();
-    let chain = combo.chain();
-    let els = combo.chain_picks();
+    let crate::combo_tree::ChainView {
+        steps: chain,
+        picks: els,
+    } = combo.chain_view();
     let spans = d.spans_for(&ids, combo.lead_stop());
     // 要素ごとの、画面の上での光軸の向き（矢印キー・ドラッグを画面の向きに合わせる）
     let vtx = |j: usize| d.vertices.get(j).copied().flatten().map(to);
@@ -598,9 +600,9 @@ fn scene(
 /// 開口は縁から外へ 14 pt（s は図の 1 mm の画面の長さ）
 fn ap_segments(p: &Pick, iv: usize, s: f64) -> Vec<(f64, f64)> {
     let dy = p.decenter[iv];
-    match p.ap {
+    match p.ap().shape {
         ApShape::Obscuration => {
-            let (lo, hi) = (p.ap_min.max(0.0), p.semi);
+            let (lo, hi) = (p.ap().min.max(0.0), p.semi);
             if lo <= 0.0 {
                 vec![(dy - hi, dy + hi)]
             } else {
@@ -609,9 +611,9 @@ fn ap_segments(p: &Pick, iv: usize, s: f64) -> Vec<(f64, f64)> {
         }
         ApShape::Spider => {
             // 中心の腕の幅と、断面の向きに沿う腕（半径 semi まで）
-            let hw = p.spider_width.max(0.0) / 2.0;
+            let hw = p.ap().spider_width.max(0.0) / 2.0;
             let mut v = vec![(dy - hw, dy + hw)];
-            let n = p.spider_arms.max(1);
+            let n = p.ap().spider_arms.max(1);
             for k in 0..n {
                 let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
                 let (c, s) = (a.cos(), a.sin());
@@ -627,15 +629,15 @@ fn ap_segments(p: &Pick, iv: usize, s: f64) -> Vec<(f64, f64)> {
             v
         }
         _ => {
-            let h = match p.ap {
+            let h = match p.ap().shape {
                 ApShape::Circle => p.semi,
-                _ => p.ap_half[iv],
+                _ => p.ap().half[iv],
             };
             let edge = 14.0 / s;
             let mut v = vec![(dy + h, dy + h + edge), (dy - h - edge, dy - h)];
             // 輪帯（内径）は真ん中を遮る
-            if p.ap == ApShape::Circle && p.ap_min > 0.0 {
-                v.push((dy - p.ap_min, dy + p.ap_min));
+            if p.ap().shape == ApShape::Circle && p.ap().min > 0.0 {
+                v.push((dy - p.ap().min, dy + p.ap().min));
             }
             v
         }
@@ -953,7 +955,7 @@ fn interact(
     if resp.dragged_by(egui::PointerButton::Primary) && !pan_drag {
         if let (Some(k), Some((p0, c0)), Some(p)) = (
             view.sel
-                .filter(|&k| combo.chain_picks().get(k).is_some_and(|p| !p.fixed())),
+                .filter(|&k| combo.el(k).is_some_and(|p| !p.fixed())),
             view.drag0.as_ref(),
             resp.interact_pointer_pos(),
         ) {

@@ -43,7 +43,7 @@ fn ids_and_blocks() {
     assert_eq!(b[8]["tilt"], json!([45.0, 0.0]));
     assert_eq!(b[12]["type"], "splitter");
     assert_eq!(b[12]["angle"], json!([45.0, 0.0]));
-    c.picks[5].bs_flip = true;
+    c.picks[5].bs_mut().bs_flip = true;
     assert_eq!(c.project()["blocks"][12]["angle"], json!([-45.0, 0.0]));
     // 絞りの要素があれば前の絞りは置かない
     c.picks.insert(0, Pick::new(ElemKind::Stop));
@@ -525,9 +525,9 @@ fn aperture_block_builds() {
         (ApShape::Spider, 0.0),
     ] {
         let mut a = Pick::new(ElemKind::Aperture);
-        a.ap = shape;
+        a.ap_mut().shape = shape;
         a.semi = 1.0;
-        a.ap_half = [3.0, 1.5];
+        a.ap_mut().half = [3.0, 1.5];
         a.decenter[1] = dy;
         a.air = 5.0;
         c.picks.push(a);

@@ -16,6 +16,27 @@ pub enum Detail {
 
 impl Pick {
     /// 反転できる（玉。ユーザーカタログの項目は群として入るので反転は無い）
+    /// 種類を変えた要素。置き方・後の空気・ON/OFF・状態ごとの値・群・id・ロックは残し、種類ごとの欄は新しい種類の
+    /// 既定にする（前の種類のファイル・面・上書きなどを持ち越さない、GPN-04）
+    pub fn retyped(&self, kind: ElemKind) -> Pick {
+        Pick {
+            air: self.air,
+            decenter: self.decenter,
+            tilt: self.tilt,
+            locked: self.locked,
+            lock_place: self.lock_place,
+            on: self.on,
+            off_air: self.off_air,
+            state_on: self.state_on.clone(),
+            state_air: self.state_air.clone(),
+            state_place: self.state_place.clone(),
+            group: self.group.clone(),
+            id: self.id.clone(),
+            air_id: self.air_id.clone(),
+            ..Pick::new(kind)
+        }
+    }
+
     pub fn can_reverse(&self) -> bool {
         matches!(
             self.kind,

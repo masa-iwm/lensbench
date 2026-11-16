@@ -1948,7 +1948,7 @@ pub fn pick_from(r: &LensRow) -> Pick {
             p.glass = g.to_string();
         }
         if let Some(x) = sp["ratio"].as_f64() {
-            p.ratio = x;
+            p.bs_mut().ratio = x;
         }
         p.coat = r.coat.clone();
         let mut extra = sp.clone();

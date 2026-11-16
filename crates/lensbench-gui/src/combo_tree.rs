@@ -147,6 +147,12 @@ fn walk(
     Flow::On
 }
 
+/// 経路に沿った要素（[`Combo::chain_view`]）。steps と picks は同じ長さ
+pub struct ChainView<'a> {
+    pub steps: Vec<Step>,
+    pub picks: Vec<&'a Pick>,
+}
+
 impl Combo {
     /// 場所の並び（場所の長さは偶数: 番号と口の組の並び）
     pub fn list_at(&self, prefix: &[usize]) -> Option<&Vec<Pick>> {
@@ -241,12 +247,14 @@ impl Combo {
         self.get_mut(&loc)
     }
 
-    /// 経路に沿った要素（写し）
-    pub fn chain_picks(&self) -> Vec<Pick> {
-        self.chain()
+    /// 経路に沿った要素の借用のビュー（経路を 1 度だけ作り、要素を写さない。GPN-13）
+    pub fn chain_view(&self) -> ChainView<'_> {
+        let steps = self.chain();
+        let picks = steps
             .iter()
-            .filter_map(|s| self.get(&s.loc).cloned())
-            .collect()
+            .map(|s| self.get(&s.loc).expect("経路の場所"))
+            .collect();
+        ChainView { steps, picks }
     }
 
     /// 間隔を変える。要素の後の空気は、状態を選んでいればその状態の値（無ければ作る）
@@ -325,7 +333,7 @@ impl Combo {
             } else {
                 base.clone()
             };
-            while taken.contains(&id) || ids.iter().any(|x| x.1 == id) {
+            while taken.contains(&id) {
                 k += 1;
                 id = if numbered {
                     format!("{base}{k}")
@@ -333,6 +341,7 @@ impl Combo {
                     format!("{base}#{k}")
                 };
             }
+            taken.insert(id.clone());
             ids.push((loc, id));
         }
         ids
@@ -346,13 +355,9 @@ impl Combo {
         edits: &mut Vec<Value>,
     ) -> std::collections::BTreeSet<String> {
         let ids = self.ids_all();
-        let id_of = |loc: &[usize]| {
-            ids.iter()
-                .find(|x| x.0 == loc)
-                .map(|x| x.1.clone())
-                .unwrap_or_default()
-        };
         let names: Vec<String> = ids.iter().map(|x| x.1.clone()).collect();
+        let map: std::collections::BTreeMap<Loc, String> = ids.into_iter().collect();
+        let id_of = |loc: &[usize]| map.get(loc).cloned().unwrap_or_default();
         let mut used = std::collections::BTreeSet::new();
         let cx = Cx {
             id_of: &id_of,
@@ -796,6 +801,16 @@ mod tests {
         assert_eq!(c.picks[0].ports[0].air, 12.0);
         assert_eq!(c.picks[0].ports[0].picks.len(), 2);
         assert_eq!(c.len(), 3);
+        // 借用のビューは経路と同じ並び（GPN-13）
+        let v = c.chain_view();
+        assert_eq!(v.picks.len(), v.steps.len());
+        for (s, p) in v.steps.iter().zip(&v.picks) {
+            assert!(std::ptr::eq(*p, c.get(&s.loc).unwrap()));
+        }
+        // id は木の全部で重ならない
+        let ids: std::collections::BTreeSet<String> =
+            c.ids_all().into_iter().map(|x| x.1).collect();
+        assert_eq!(ids.len(), c.all().len());
         c.set_branched(&[0], false);
         assert_eq!(c.picks.len(), 3);
         assert_eq!(c.picks[0].air, 12.0);
@@ -847,15 +862,15 @@ mod tests {
         for form in [BsForm::Cube, BsForm::Plate, BsForm::Ideal] {
             for split in [BsSplit::Ratio, BsSplit::Coat, BsSplit::Pbs] {
                 let bs = &mut c.picks[0];
-                bs.form = form;
+                bs.bs_mut().form = form;
                 bs.t = if form == BsForm::Plate { 2.0 } else { 12.7 };
-                bs.split = Some(split);
+                bs.bs_mut().split = Some(split);
                 bs.coat = "I.s=0.3,p=0.4".into();
-                bs.wedge = [0.5, 0.0];
-                bs.bs_angle = [40.0, 3.0];
-                bs.ar = "I.s=1,p=1".into();
-                bs.faces.insert("b".into(), "I.s=1,p=1".into());
-                bs.faces.insert("back".into(), "I.s=1,p=1".into());
+                bs.bs_mut().wedge = [0.5, 0.0];
+                bs.bs_mut().bs_angle = [40.0, 3.0];
+                bs.bs_mut().ar = "I.s=1,p=1".into();
+                bs.bs_mut().faces.insert("b".into(), "I.s=1,p=1".into());
+                bs.bs_mut().faces.insert("back".into(), "I.s=1,p=1".into());
                 let b = &c.project()["blocks"][2];
                 match split {
                     BsSplit::Ratio => assert_eq!(b["ratio"], 0.5),
@@ -872,7 +887,7 @@ mod tests {
         let b = &c.project()["blocks"][2];
         assert_eq!(b["form"], "ideal");
         assert_eq!(b["angle"], json!([40.0, 3.0]));
-        c.picks[0].form = BsForm::Plate;
+        c.picks[0].bs_mut().form = BsForm::Plate;
         let b = &c.project()["blocks"][2];
         assert_eq!(b["wedge"], json!([0.5, 0.0]));
         // 面ごとの膜は形の面だけ

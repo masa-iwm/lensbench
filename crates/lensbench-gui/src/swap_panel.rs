@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 use lensbench_design::swap::{SwapCand, SwapReply, SwapResult};
 
-use crate::combo::{Combo, ElemKind};
+use crate::combo::{Combo, ElemKind, Pick};
 use crate::i18n::{tr, trf};
 use crate::json_view::fmt_num;
 use crate::optim_panel::{section, small_edit, term_rows, terms_json, terms_ui, text_of, TermRow};
@@ -449,14 +449,15 @@ pub fn insert_row(c: &mut Combo, ids: &[String], row: &SwapResult) -> Result<(),
                     &[&b],
                 )
             })?;
+        // カタログの玉に替える。前の玉のファイル（.zmx・ユーザーカタログ）・面の上書き・面の操作は持ち越さない
         let pk = &mut n.picks[k];
-        pk.kind = ElemKind::Catalog;
-        pk.vendor = l.vendor.clone();
-        pk.part = l.part.clone();
-        pk.reversed = l.reversed;
-        // 面の上書き・面の操作は前の玉の面のもの
-        pk.edits.clear();
-        pk.ops.clear();
+        *pk = Pick {
+            vendor: l.vendor.clone(),
+            part: l.part.clone(),
+            reversed: l.reversed,
+            stop_front: pk.stop_front,
+            ..pk.retyped(ElemKind::Catalog)
+        };
     }
     for v in row.fit.iter().flat_map(|f| &f.vars) {
         let name = &v.name;
@@ -1115,6 +1116,31 @@ mod tests {
         let mut e = c.clone();
         assert!(insert_row(&mut e, &ids, &bad).is_err());
         assert_eq!(e.picks[0].air, 5.0);
+        // .zmx の玉・ユーザーカタログの項目からの差し替えは、前のファイルを持ち越さずカタログの玉のブロックに（GPN-04）
+        let mut z = Pick::new(ElemKind::Zmx);
+        z.path = "a.zmx".into();
+        z.lens = 2;
+        z.stop_front = true;
+        z.air = 3.0;
+        let c = Combo {
+            picks: vec![z, cat("LB", "ACH-45")],
+            ..Default::default()
+        };
+        let ids = c.ids();
+        let row = swap_row(json!({
+            "lenses": [{"block": ids[0], "vendor": "LB", "part": "BCX-50", "reversed": false}],
+            "vars": [],
+        }));
+        let mut d = c.clone();
+        insert_row(&mut d, &ids, &row).unwrap();
+        let p = &d.picks[0];
+        assert_eq!(
+            (p.kind, p.path.as_str(), p.air),
+            (ElemKind::Catalog, "", 3.0)
+        );
+        assert!(p.stop_front);
+        let b = p.block("x");
+        assert_eq!(b["source"], json!({"vendor": "LB", "part": "BCX-50"}));
     }
 
     #[test]

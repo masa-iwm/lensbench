@@ -6,7 +6,7 @@ pub(super) fn read_only(
     is_combo: bool,
     rows: &[lens_data::Row],
     spans: &[Option<[usize; 2]>],
-    picks: &[combo::Pick],
+    picks: &[&combo::Pick],
     lead: bool,
     j: usize,
     col: lens_data::Col,
@@ -86,7 +86,7 @@ pub(super) fn face_of(
 pub(super) fn overridden(
     rows: &[lens_data::Row],
     spans: &[Option<[usize; 2]>],
-    picks: &[combo::Pick],
+    picks: &[&combo::Pick],
     j: usize,
     col: lens_data::Col,
 ) -> bool {
@@ -127,7 +127,7 @@ mod tests {
             field: "semi_auto".into(),
             value: serde_json::json!(false),
         });
-        let picks = vec![p];
+        let picks = vec![&p];
         assert_eq!(face_of(&rows, &spans, 3), Some((0, 1)));
         assert_eq!(face_of(&rows, &spans, 2), None);
         assert!(overridden(&rows, &spans, &picks, 3, Col::Semi));

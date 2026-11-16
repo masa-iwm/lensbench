@@ -1047,26 +1047,26 @@ fn aperture_of(b: &Value) -> Option<Pick> {
     let off = p.decenter[0].hypot(p.decenter[1]);
     match a["type"].as_str()? {
         "circular" | "obscuration" => {
-            p.ap = if a["type"] == "circular" {
+            p.ap_mut().shape = if a["type"] == "circular" {
                 ApShape::Circle
             } else {
                 ApShape::Obscuration
             };
-            p.ap_min = f(&a["min"], 0.0);
+            p.ap_mut().min = f(&a["min"], 0.0);
             p.semi = f(&a["max"], 0.0);
         }
         "rect" | "ellipse" => {
-            p.ap = if a["type"] == "rect" {
+            p.ap_mut().shape = if a["type"] == "rect" {
                 ApShape::Rect
             } else {
                 ApShape::Ellipse
             };
-            p.ap_half = [f(&a["hx"], 0.0), f(&a["hy"], 0.0)];
+            p.ap_mut().half = [f(&a["hx"], 0.0), f(&a["hy"], 0.0)];
         }
         "spider" => {
-            p.ap = ApShape::Spider;
-            p.spider_width = f(&a["width"], 0.0);
-            p.spider_arms = a["arms"].as_u64().unwrap_or(1) as u32;
+            p.ap_mut().shape = ApShape::Spider;
+            p.ap_mut().spider_width = f(&a["width"], 0.0);
+            p.ap_mut().spider_arms = a["arms"].as_u64().unwrap_or(1) as u32;
             p.semi = f(&sf["semi"], 0.0) - off;
         }
         _ => return None,

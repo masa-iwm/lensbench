@@ -108,13 +108,73 @@ fn convert_file(f: &std::path::Path) -> Result<bool, String> {
     Ok(true)
 }
 
+/// 前の版の BS・開口の欄（要素に平たく持っていた form・ratio・ap・ap_half など）を今の
+/// [`crate::combo::Bs`]（要素の bs）・[`crate::combo::ApData`]（要素の ap）へ
+#[cfg(any(test, not(target_arch = "wasm32")))]
+fn nest_kind_fields(picks: &mut Value) {
+    const BS: [&str; 10] = [
+        "form",
+        "ratio",
+        "bs_flip",
+        "wedge",
+        "split_back",
+        "bs_angle",
+        "split",
+        "pbs",
+        "ar",
+        "faces",
+    ];
+    const AP: [(&str, &str); 5] = [
+        ("ap", "shape"),
+        ("ap_half", "half"),
+        ("ap_min", "min"),
+        ("spider_width", "spider_width"),
+        ("spider_arms", "spider_arms"),
+    ];
+    for p in picks.as_array_mut().into_iter().flatten() {
+        let Some(o) = p.as_object_mut() else { continue };
+        let kind = o
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let bs: serde_json::Map<String, Value> = BS
+            .iter()
+            .filter_map(|k| o.remove(*k).map(|v| (k.to_string(), v)))
+            .collect();
+        if kind == "splitter" && !o.contains_key("bs") {
+            o.insert("bs".into(), Value::Object(bs));
+        }
+        // 今の形の ap は object（前の版は形の名前の文字列）
+        if !o.get("ap").is_some_and(Value::is_object) {
+            let ap: serde_json::Map<String, Value> = AP
+                .iter()
+                .filter_map(|(k, n)| o.remove(*k).map(|v| (n.to_string(), v)))
+                .collect();
+            if kind == "aperture" {
+                o.insert("ap".into(), Value::Object(ap));
+            }
+        }
+        for b in o
+            .get_mut("ports")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            nest_kind_fields(&mut b["picks"]);
+        }
+    }
+}
+
 /// 前の版のプロジェクトの今の形（gui.combo が無ければ None）。パネルの設定など gui のほかの鍵は残す
 #[cfg(any(test, not(target_arch = "wasm32")))]
 fn converted(old: &Value) -> Result<Option<Value>, String> {
     let Some(cv) = old.pointer("/gui/combo") else {
         return Ok(None);
     };
-    let mut c: Combo = serde_json::from_value(cv.clone()).map_err(|e| format!("gui.combo: {e}"))?;
+    let mut cv = cv.clone();
+    nest_kind_fields(&mut cv["picks"]);
+    let mut c: Combo = serde_json::from_value(cv).map_err(|e| format!("gui.combo: {e}"))?;
     // 前の開き方と同じく、面の上書きを今の並びに合わせてから中身へ入れる
     c.drop_stale_edits();
     c.bake_edits();
@@ -187,13 +247,15 @@ mod tests {
         {
             // 形ごとに使う欄だけ変える（ほかの形の欄はブロックに書かない）
             let mut p = Pick::new(ElemKind::Aperture);
-            p.ap = ap;
+            p.ap_mut().shape = ap;
             match ap {
                 ApShape::Circle | ApShape::Obscuration => {
-                    (p.semi, p.ap_min) = (3.0 + i as f64, 1.0)
+                    (p.semi, p.ap_mut().min) = (3.0 + i as f64, 1.0)
                 }
-                ApShape::Rect | ApShape::Ellipse => p.ap_half = [2.0 + i as f64, 1.5],
-                ApShape::Spider => (p.semi, p.spider_width, p.spider_arms) = (6.0, 0.4, 3),
+                ApShape::Rect | ApShape::Ellipse => p.ap_mut().half = [2.0 + i as f64, 1.5],
+                ApShape::Spider => {
+                    (p.semi, p.ap_mut().spider_width, p.ap_mut().spider_arms) = (6.0, 0.4, 3)
+                }
             }
             p.decenter = [0.5, -0.25];
             p.air = 2.0;
@@ -252,5 +314,44 @@ mod tests {
         }
         assert_eq!(d, c);
         assert_eq!(converted(&v).unwrap(), None);
+    }
+
+    /// 前の版の BS・開口の欄は要素に平たく書いてあった（form・ratio・ap など）。今の bs・ap へ移して読む
+    #[test]
+    fn converts_flat_kind_fields() {
+        let mut c = Combo::default();
+        let mut b = combo::Pick::new(combo::ElemKind::Splitter);
+        b.bs_mut().ratio = 0.3;
+        b.bs_mut().form = combo::BsForm::Plate;
+        let mut a = combo::Pick::new(combo::ElemKind::Aperture);
+        a.ap_mut().shape = combo::ApShape::Rect;
+        a.ap_mut().half = [2.0, 1.0];
+        c.picks = vec![b, combo::Pick::new(combo::ElemKind::Plate), a];
+        let mut cv = serde_json::to_value(&c).unwrap();
+        for p in cv["picks"].as_array_mut().unwrap() {
+            let o = p.as_object_mut().unwrap();
+            // 前の版はどの要素も全部の欄を書いた
+            let bs = o
+                .remove("bs")
+                .unwrap_or_else(|| serde_json::to_value(combo::Bs::default()).unwrap());
+            for (k, v) in bs.as_object().unwrap() {
+                o.insert(k.clone(), v.clone());
+            }
+            let ap = o
+                .remove("ap")
+                .unwrap_or_else(|| serde_json::to_value(combo::ApData::default()).unwrap());
+            for (k, n) in [("ap", "shape"), ("ap_half", "half"), ("ap_min", "min")] {
+                o.insert(k.into(), ap[n].clone());
+            }
+        }
+        let mut old = c.project();
+        old["gui"] = json!({ "combo": cv });
+        let v = converted(&old).unwrap().unwrap();
+        let d = Combo::from_project(&v, std::path::Path::new("")).unwrap();
+        assert_eq!(d.picks[0].bs().ratio, 0.3);
+        assert_eq!(d.picks[0].bs().form, combo::BsForm::Plate);
+        assert!(d.picks[1].bs.is_none() && d.picks[1].ap.is_none());
+        assert_eq!(d.picks[2].ap().shape, combo::ApShape::Rect);
+        assert_eq!(d.picks[2].ap().half, [2.0, 1.0]);
     }
 }

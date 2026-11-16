@@ -1742,7 +1742,7 @@ impl Core {
             }
         }
         // 今の経路に沿った要素（分岐の無い組合せは並びそのもの）
-        let picks = &self.doc.combo.chain_picks();
+        let picks = &self.doc.combo.chain_view().picks;
         let locked: BTreeSet<String> = if is_combo {
             ids.iter()
                 .zip(picks)
