@@ -254,7 +254,6 @@ impl Done {
         (r.params.take(), v)
     }
 
-    /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info、config_table → ConfigTable）
     /// 系を変える要求に付けた読み直し（GUI の send_change）を分ける: 変更の返事と、残りを [`Tag::Refresh`] の返事として
     pub fn split_change(mut self) -> (Done, Done) {
         let rest = self.replies.split_off(1.min(self.replies.len()));
@@ -283,6 +282,7 @@ impl Done {
             .collect()
     }
 
+    /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info、config_table → ConfigTable）
     pub fn split(self) -> Vec<Done> {
         let (ms, gen) = (self.ms, self.gen);
         self.replies

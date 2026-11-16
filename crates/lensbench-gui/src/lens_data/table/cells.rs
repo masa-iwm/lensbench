@@ -361,6 +361,16 @@ fn value_cell(
     // クリックを取らない（取ると、文字の上と外で選ばれるセルが変わる）
     let cell_rect = ui.max_rect();
     let resp = ui.interact(cell_rect, ui.id().with("ld_cell"), Sense::click());
+    // AccessKit の木に名前（面の番号と列）と値を出す（読み上げ・画面の試験がセルを文言で探せる。公開 #254 の依頼）
+    resp.widget_info(|| {
+        let mut w = egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            ro.is_none(),
+            trf("Surface {} {}", &[&j, &col.header(Some(&r.typ))]),
+        );
+        w.current_text_value = Some(text.clone());
+        w
+    });
     let hover = ui.rect_contains_pointer(cell_rect);
     let mut extra_at: Option<egui::Pos2> = None;
     let mut drop_open = false;

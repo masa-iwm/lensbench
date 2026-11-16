@@ -21,18 +21,19 @@ pub struct ComboDoc {
     seen: Option<Combo>,
 }
 
-/// 組合せの写し（最後に系を作った・保存した組合せ）と、今の組合せと同じと確かめた版。版が同じ間は比べ直さない
+/// 組合せの写し（最後に系を作った・保存した組合せ）と、今の組合せと比べた版とその答え。版が同じ間は比べ直さない
 #[derive(Default)]
 pub struct Snap {
     combo: Option<Combo>,
-    same_at: std::cell::Cell<Option<u64>>,
+    /// 今の組合せと比べた版と、そのときの答え
+    seen_at: std::cell::Cell<Option<(u64, bool)>>,
 }
 
 impl Snap {
     pub fn new(combo: Option<Combo>) -> Snap {
         Snap {
             combo,
-            same_at: Default::default(),
+            seen_at: Default::default(),
         }
     }
 
@@ -44,14 +45,16 @@ impl Snap {
         self.combo.is_none()
     }
 
-    /// doc の今の組合せと同じか。同じと確かめた版のままなら比べない（版は画面ごとの [`ComboDoc::sync`] で進むので、
+    /// doc の今の組合せと同じか。比べた版のままなら前の答え（同じ・違う）を返す（版は画面ごとの [`ComboDoc::sync`] で進むので、
     /// 同じ画面の中で組合せを変えた直後は、次の sync まで前の答えのことがある）
     pub fn same(&self, doc: &ComboDoc) -> bool {
-        if self.combo.is_some() && self.same_at.get() == Some(doc.rev) {
-            return true;
+        if let Some((rev, same)) = self.seen_at.get() {
+            if rev == doc.rev {
+                return same;
+            }
         }
         let same = self.combo.as_ref() == Some(&doc.combo);
-        self.same_at.set(same.then_some(doc.rev));
+        self.seen_at.set(Some((doc.rev, same)));
         same
     }
 }

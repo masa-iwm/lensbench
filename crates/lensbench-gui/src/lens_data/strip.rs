@@ -53,11 +53,16 @@ pub(super) fn strip_ui(
             ),
             None => (RichText::new(t).size(15.0), 26.0),
         };
-        ui.add(
+        let r = ui.add(
             egui::Button::new(text)
                 .selected(on)
                 .min_size(egui::vec2(w, 26.0)),
-        )
+        );
+        // AccessKit の名前は帯の幅・字形に依らず字（Insert など）に（記号だけのボタンに名前が無かった、GPN-22）
+        if let Some(l) = icon_label(t) {
+            r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, tr(l)));
+        }
+        r
     };
     // 階層: 系と全部のブロックの入れ子の一覧（クリックでそのブロックに入る）と、表示の切り替え
     let here = st.scope.last().cloned();

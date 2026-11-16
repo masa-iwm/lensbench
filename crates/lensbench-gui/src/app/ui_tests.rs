@@ -141,6 +141,8 @@ fn free_edit_insert_delete() {
     let mut h = harness(Args::default());
     click(&mut h, "+ Add a surface");
     let rows0 = h.state().c.sys.ld_rows.len();
+    // 帯のアイコンの名前は字形・帯の幅に依らず字だけ（GPN-22）
+    assert!(h.query_by_label("Insert").is_some());
     click_icon(&mut h, "＋", "Insert");
     assert_eq!(
         h.state().c.sys.ld_rows.len(),
@@ -200,8 +202,10 @@ fn remove_thickness_solve() {
     };
     let j = *solved(&h).last().expect("A0 has a thickness solve");
     let t = h.state().c.sys.ld_rows[j].t;
-    h.state_mut().c.p.ld.click_cell(j, lens_data::Col::T);
+    // セルは AccessKit の木に「Surface 面 列」の名前で出る
+    h.get_by_label(&format!("Surface {j} Thickness")).click();
     h.run_steps(2);
+    assert_eq!(h.state().c.p.ld.cur, Some((j, lens_data::Col::T)));
     h.press_key_modifiers(Modifiers::SHIFT, Key::F10);
     h.run_steps(2);
     click(&mut h, "Remove");
