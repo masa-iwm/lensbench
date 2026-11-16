@@ -1,7 +1,7 @@
 //! 回転対称でない矢高の面: Zernike Standard Sag・Zernike Fringe Sag・Grid Sag。
 //!
 //! どれも「基準の面（曲率 c・円錐係数 k・偶数次非球面 r^2〜r^16）＋追加の矢高 z(x, y)」の形で、
-//! 交点はニュートン法、屈折・反射の法線は (−∂z/∂x, −∂z/∂y, 1) で求める（[`sag_xy`]・[`isect`]）。
+//! 交点はニュートン法、屈折・反射の法線は (−∂z/∂x, −∂z/∂y, 1) で求める（[`crate::shape::Shape`]・[`isect_with`]）。
 //! ほかの面タイプ（のフレネル面・回折面など）も、交点用の形と屈折用の傾きを分けて同じ道具で扱える
 //! （[`isect_with`]）。
 //!
@@ -501,187 +501,26 @@ impl GridSag {
     }
 }
 
-/// 回転対称でない矢高の面か（交点・法線を [`sag_xy`] で求める面）
+/// 回転対称でない矢高の面タイプか（[`crate::shape::Shape::is_freeform`]。面の値によらない）
 pub fn is_freeform(t: SurfType) -> bool {
-    matches!(
-        t,
-        SurfType::ZernikeStd
-            | SurfType::ZernikeFringe
-            | SurfType::GridSag
-            | SurfType::OddAsph
-            | SurfType::TiltSurf
-            | SurfType::Irregular
-    )
-}
-
-/// 偶数次非球面の項（`asph`）を基準の面に使う面タイプか（Odd Asphere・Tilted・Irregular の `asph` は別の意味）
-fn even_terms(t: SurfType) -> bool {
-    !matches!(
-        t,
-        SurfType::OddAsph | SurfType::TiltSurf | SurfType::Irregular
-    )
-}
-
-/// Irregular の形（偏心・傾ける前の座標）の矢高と勾配: 標準面 + Zs ρ⁴ + Za ρ_y² + Zc ρ² ρ_y。ρ は半直径で正規化、
-/// ρ_y は角度だけ回した y。OpticStudio 26.1 と照合（自作の系で面の交点 1e-15 mm）
-fn irregular_local(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
-    let p = |i: usize| d.asph.get(i).copied().unwrap_or(0.0);
-    let (zs, za, zc, ang) = (p(4), p(5), p(6), p(7).to_radians());
-    let (z0, dz) = sag(d.c, d.k, &[], x * x + y * y);
-    let (mut z, mut zx, mut zy) = (z0, 2.0 * dz * x, 2.0 * dz * y);
-    let r = d.semi;
-    if r > 0.0 && (zs != 0.0 || za != 0.0 || zc != 0.0) {
-        let (sa, ca) = ang.sin_cos();
-        let v = (-x * sa + y * ca) / r;
-        let rho2 = (x * x + y * y) / (r * r);
-        let (r2x, r2y) = (2.0 * x / (r * r), 2.0 * y / (r * r));
-        let (vx, vy) = (-sa / r, ca / r);
-        z += zs * rho2 * rho2 + za * v * v + zc * rho2 * v;
-        zx += zs * 2.0 * rho2 * r2x + za * 2.0 * v * vx + zc * (r2x * v + rho2 * vx);
-        zy += zs * 2.0 * rho2 * r2y + za * 2.0 * v * vy + zc * (r2y * v + rho2 * vy);
+    Surface {
+        typ: t,
+        ..Default::default()
     }
-    (z, zx, zy)
+    .shape()
+    .is_freeform()
 }
 
-/// Irregular の面の矢高と勾配（面の座標）。形は偏心 (dx, dy) の後に Rx(tx) Ry(ty) で傾けたもの:
-/// 点 P = d + Rx(tx) Ry(ty) Q（Q は [`irregular_local`] の座標）。z を Q_z = f(Q_x, Q_y) のニュートン法で解く
-fn irregular_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
-    let p = |i: usize| d.asph.get(i).copied().unwrap_or(0.0);
-    let (dx, dy, tx, ty) = (p(0), p(1), p(2).to_radians(), p(3).to_radians());
-    let (sx, cx) = tx.sin_cos();
-    let (sy, cy) = ty.sin_cos();
-    // M = Rx(tx) Ry(ty)（行優先）、Q = Mᵀ (P − d)
-    let m = [
-        [cy, 0.0, sy],
-        [sx * sy, cx, -sx * cy],
-        [-cx * sy, sx, cx * cy],
-    ];
-    let q = |px: f64, py: f64, pz: f64| -> [f64; 3] {
-        [
-            m[0][0] * px + m[1][0] * py + m[2][0] * pz,
-            m[0][1] * px + m[1][1] * py + m[2][1] * pz,
-            m[0][2] * px + m[1][2] * py + m[2][2] * pz,
-        ]
-    };
-    let (px, py) = (x - dx, y - dy);
-    let mut z = irregular_local(d, px, py).0;
-    for _ in 0..50 {
-        let qq = q(px, py, z);
-        let (f, fx, fy) = irregular_local(d, qq[0], qq[1]);
-        // g(z) = Q_z − f(Q_x, Q_y)。∂Q/∂z は M の 3 行目
-        let g = qq[2] - f;
-        let gz = m[2][2] - fx * m[2][0] - fy * m[2][1];
-        if !(g.is_finite() && gz.is_finite()) || gz == 0.0 {
-            return (f64::NAN, f64::NAN, f64::NAN);
-        }
-        let step = g / gz;
-        z -= step;
-        if step.abs() <= 1e-15 * (1.0 + z.abs()) {
-            break;
-        }
-    }
-    let qq = q(px, py, z);
-    let (_, fx, fy) = irregular_local(d, qq[0], qq[1]);
-    let gz = m[2][2] - fx * m[2][0] - fy * m[2][1];
-    let gx = m[0][2] - fx * m[0][0] - fy * m[0][1];
-    let gy = m[1][2] - fx * m[1][0] - fy * m[1][1];
-    (z, -gx / gz, -gy / gz)
-}
-
-/// 面の矢高と (∂z/∂x, ∂z/∂y)（面の局所座標）。面の外（基準の面の平方根が負、値のない格子点）は NaN
+/// 面の矢高と (∂z/∂x, ∂z/∂y)（面の局所座標）。面の外（基準の面の平方根が負、値のない格子点）は NaN。
+/// 回転対称でない面（[`is_freeform`]）は形どおり（[`crate::shape::Shape::sag`]）、ほかの面は従来どおり
+/// c・k・asph の偶数次非球面として求める（トロイダル面・Fresnel なども。形どおりの矢高は `Shape::sag`）
 pub fn sag_xy(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
-    let r2 = x * x + y * y;
-    match d.typ {
-        SurfType::TiltSurf => {
-            let a = d.asph.first().copied().unwrap_or(0.0);
-            let b = d.asph.get(1).copied().unwrap_or(0.0);
-            return (a * x + b * y, a, b);
-        }
-        SurfType::Irregular => return irregular_xy(d, x, y),
-        _ => {}
+    let s = d.shape();
+    if s.is_freeform() {
+        return s.sag(x, y);
     }
-    let asph: &[f64] = if even_terms(d.typ) { &d.asph } else { &[] };
-    let (z0, dz) = sag(d.c, d.k, asph, r2);
-    let (mut z, mut zx, mut zy) = (z0, 2.0 * dz * x, 2.0 * dz * y);
-    match d.typ {
-        SurfType::ZernikeStd | SurfType::ZernikeFringe => {
-            if let Some(zs) = &d.zern {
-                let (a, ax, ay) = zs.eval(x, y);
-                z += a;
-                zx += ax;
-                zy += ay;
-            }
-        }
-        SurfType::GridSag => {
-            // Grid Sag にも Zernike（Standard）の項がある（外挿する）
-            if let Some(zs) = &d.zern {
-                let (a, ax, ay) = zs.eval(x, y);
-                z += a;
-                zx += ax;
-                zy += ay;
-            }
-            if let Some(g) = &d.grid {
-                match g.eval(x, y) {
-                    Some((a, ax, ay)) => {
-                        z += a;
-                        zx += ax;
-                        zy += ay;
-                    }
-                    None => return (f64::NAN, f64::NAN, f64::NAN),
-                }
-            }
-        }
-        SurfType::OddAsph => {
-            // Σ β_i r^i（r = 0 の勾配は 0。β_1 の円錐の頂点）
-            let r = r2.sqrt();
-            let (mut a, mut ar) = (0.0, 0.0);
-            for (i, &b) in d.asph.iter().enumerate() {
-                if b != 0.0 {
-                    let n = (i + 1) as i32;
-                    a += b * r.powi(n);
-                    ar += n as f64 * b * r.powi(n - 1);
-                }
-            }
-            z += a;
-            if r > 0.0 {
-                zx += ar * x / r;
-                zy += ar * y / r;
-            }
-        }
-        _ => {}
-    }
-    (z, zx, zy)
-}
-
-/// 近軸の曲率（YZ 面）。OpticStudio 26.1 の EFFL に合わせたもの（OpticStudio と照合した Z・G 系）:
-/// - Zernike Sag: 基準の c + 2 α1 に、Zernike の項のうち Z4（デフォーカス）の分だけを足す
-///   （Standard Z4 = √3 (2ρ² − 1) → 4√3 A4 / R²、Fringe Z4 = 2ρ² − 1 → 4 A4 / R²。偏心は見ない）
-/// - Grid Sag: 双三次なら頂点での ∂²z/∂y²（格子の補間の分を含む。勾配 ∂z/∂y の中心差分）、双一次は基準の面だけ。
-///   OpticStudio は頂点の ∂²z/∂y² を矢高の差分（刻み 1e-2 mm 程度）で求めるらしく、円錐係数・r^4 以上の項・
-///   双一次の折れ目の分だけ違う（EFFL で相対 1e-9〜1e-8、頂点が格子点に乗る双一次では大きく違う。
-///   OpticStudio との照合）。ここでは差分を使わない厳密な値にしている
-pub(crate) fn paraxial_curv(d: &Surface) -> f64 {
-    match d.typ {
-        // r² の項（β_2）を足す
-        SurfType::OddAsph => return d.c + 2.0 * d.asph.get(1).copied().unwrap_or(0.0),
-        SurfType::TiltSurf => return 0.0,
-        SurfType::Irregular => return d.c,
-        _ => {}
-    }
-    let a1 = d.asph.first().copied().unwrap_or(0.0);
-    let mut c = d.c + 2.0 * a1;
-    if let Some(z) = &d.zern {
-        let a4 = z.coef.get(3).copied().unwrap_or(0.0);
-        let k = if z.fringe { 4.0 } else { 4.0 * 3f64.sqrt() };
-        c += k * a4 / (z.norm * z.norm);
-    }
-    if let Some(g) = d.grid.as_ref().filter(|g| !g.linear) {
-        let h = 1e-5;
-        let a = g.eval(0.0, h).map_or(0.0, |v| v.2);
-        let b = g.eval(0.0, -h).map_or(0.0, |v| v.2);
-        c += (a - b) / (2.0 * h);
-    }
-    c
+    let (z, dz) = sag(d.c, d.k, &d.asph, x * x + y * y);
+    (z, 2.0 * dz * x, 2.0 * dz * y)
 }
 
 /// 基準の二次曲面（c・k）との交点までの距離（頂点面上の pl から方向 kl に）。交わらなければ 0
@@ -694,7 +533,7 @@ fn conic_isect(c: f64, k: f64, pl: V3, kl: V3, sig: f64) -> f64 {
     let aa = c * (kl[0] * kl[0] + kl[1] * kl[1] + (1.0 + k) * kl[2] * kl[2]);
     let disc = gg * gg - aa * ff;
     if disc >= 0.0 {
-        let s = crate::trace::conic_root(ff, gg, aa, disc, sig);
+        let s = crate::shape::conic_root(ff, gg, aa, disc, sig);
         if s.is_finite() {
             return s;
         }
@@ -724,11 +563,6 @@ pub(crate) fn isect_with(
         }
     }
     (s, !(ds.abs() <= 1e-10))
-}
-
-/// [`is_freeform`] の面との交点までの距離
-pub(crate) fn isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
-    isect_with(d.c, d.k, pl, kl, sig, |x, y| sag_xy(d, x, y))
 }
 
 #[cfg(test)]

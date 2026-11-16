@@ -290,7 +290,7 @@ impl<'a> SysHost<'a> {
                     xyz: en.xyz,
                     lmn: en.lmn,
                     nor: scale(
-                        crate::trace::local_normal(&s.surfaces[e.surf], en.xyz),
+                        crate::shape::local_normal(&s.surfaces[e.surf], en.xyz),
                         -1.0,
                     ),
                     len: dot(sub(en.p, prev), kprev),

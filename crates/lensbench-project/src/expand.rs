@@ -462,7 +462,7 @@ pub(crate) fn expand_inner(
     let envr = p.environment;
     let mut prev = vec![1.0; wl.len()];
     for (j, d) in sf.iter_mut().enumerate() {
-        let n = if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
+        let n = if j > 0 && (d.mirror || d.is_coord_break()) {
             prev.clone()
         } else if is_air(&d.mat) {
             vec![1.0; wl.len()]
@@ -748,9 +748,7 @@ pub(crate) fn place_mechanics(
                     .and_then(|b| spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)))
                     .map_or(0.0, |x| {
                         (x.1 + 1..=x.2)
-                            .filter(|&j| {
-                                j < s.surfaces.len() && s.surfaces[j].typ != SurfType::CoordBrk
-                            })
+                            .filter(|&j| j < s.surfaces.len() && !s.surfaces[j].is_coord_break())
                             .map(|j| s.surfaces[j].t)
                             .sum::<f64>()
                     })
@@ -829,9 +827,9 @@ pub(crate) fn place_mechanics(
             }
             for b in &m.holds {
                 match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
-                    Some(x) => part0.holds.extend(
-                        (x.1 + 1..=x.2 + 1).filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk),
-                    ),
+                    Some(x) => part0
+                        .holds
+                        .extend((x.1 + 1..=x.2 + 1).filter(|&j| !s.surfaces[j].is_coord_break())),
                     None => warn.push(format!("{tag}: no block {b} for holds")),
                 }
             }
@@ -899,9 +897,9 @@ pub(crate) fn place_mechanics(
         let mut part = spec.part(&name, surface, offset, m.tilt);
         for b in &m.holds {
             match spans.iter().find(|x| &x.0 == b && !back_spans.contains(x)) {
-                Some(x) => part.holds.extend(
-                    (x.1 + 1..=x.2 + 1).filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk),
-                ),
+                Some(x) => part
+                    .holds
+                    .extend((x.1 + 1..=x.2 + 1).filter(|&j| !s.surfaces[j].is_coord_break())),
                 None => warn.push(format!("{tag}: no block {b} for holds")),
             }
         }
@@ -928,7 +926,7 @@ pub(crate) fn place_frames(
             continue;
         }
         let faces: Vec<usize> = (a + 1..=b + 1)
-            .filter(|&j| j < s.surfaces.len() && s.surfaces[j].typ != SurfType::CoordBrk)
+            .filter(|&j| j < s.surfaces.len() && !s.surfaces[j].is_coord_break())
             .collect();
         let Some(&first) = faces.first() else {
             continue;
@@ -956,7 +954,7 @@ pub(crate) fn block_face(
         return Ok(None);
     };
     let faces: Vec<usize> = (x.1 + 1..=x.2 + 1)
-        .filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk)
+        .filter(|&j| !s.surfaces[j].is_coord_break())
         .collect();
     faces
         .get(i)
@@ -1018,7 +1016,7 @@ pub(crate) fn apply_surface_edits(
     // 範囲の面（座標ブレークを除く）
     let faces = |s: &System, a: usize, b: usize| -> Vec<usize> {
         (a + 1..=b + 1)
-            .filter(|&j| s.surfaces[j].typ != SurfType::CoordBrk)
+            .filter(|&j| !s.surfaces[j].is_coord_break())
             .collect()
     };
     for e in edits {

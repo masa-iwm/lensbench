@@ -387,7 +387,7 @@ impl System {
         for s in &self.units[u].spans {
             for j in s[0]..=s[1] {
                 let d = &self.surfaces[j];
-                if !air[j] && !d.mirror && d.typ != SurfType::CoordBrk && !d.ignore {
+                if !air[j] && !d.mirror && !d.is_coord_break() && !d.ignore {
                     v.push(j);
                 }
             }
@@ -519,7 +519,7 @@ impl System {
     fn fill_cb_indices(&mut self) {
         let mut prev = self.surfaces[0].n.clone();
         for d in self.surfaces.iter_mut().skip(1) {
-            if d.typ == SurfType::CoordBrk {
+            if d.is_coord_break() {
                 d.n = prev.clone();
             }
             if !d.ignore {
@@ -636,7 +636,7 @@ pub(crate) fn raw_frames(s: &System) -> RawFrames {
         if d.ignore {
             continue;
         }
-        if d.typ == SurfType::CoordBrk {
+        if d.is_coord_break() {
             (o, r) = crate::system::apply_cb(
                 o,
                 r,

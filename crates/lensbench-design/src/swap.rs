@@ -720,10 +720,7 @@ impl<'a> SwapSearch<'a> {
                     for sp in &u.spans {
                         for j in sp[0]..=sp[1] {
                             let semi = sc.surfaces[j].semi;
-                            if semi.is_nan()
-                                || semi <= 0.0
-                                || sc.surfaces[j].typ == lensbench_core::surface::SurfType::CoordBrk
-                            {
+                            if semi.is_nan() || semi <= 0.0 || sc.surfaces[j].is_coord_break() {
                                 continue;
                             }
                             for f in 0..sc.fields.len() {

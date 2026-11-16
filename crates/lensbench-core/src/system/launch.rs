@@ -41,9 +41,9 @@ impl StartGeom {
             ObjSpec::Point(pt) => {
                 let f0 = fr.surf[0].expect("有限物体の座標系");
                 // 物体面が平面でない形（Tilted など）なら物点はその面の上（OpticStudio と同じ）
-                let d0 = &s.surfaces[0];
-                let z0 = if crate::freeform::is_freeform(d0.typ) {
-                    crate::freeform::sag_xy(d0, pt[0], pt[1]).0
+                let sh = s.surfaces[0].shape();
+                let z0 = if sh.is_freeform() {
+                    sh.sag(pt[0], pt[1]).0
                 } else {
                     0.0
                 };
@@ -296,7 +296,7 @@ impl System {
     pub(super) fn fresnel_frames(&self, l: &Launch, w: usize, last: usize) -> Option<Frames> {
         let is_f = |j: usize| {
             let d = &self.surfaces[j];
-            !d.ignore && matches!(d.typ, SurfType::Fresnel | SurfType::CylFresnel)
+            !d.ignore && matches!(d.action(), crate::action::Action::Fresnel(_))
         };
         if !(1..=last).any(is_f) {
             return None;

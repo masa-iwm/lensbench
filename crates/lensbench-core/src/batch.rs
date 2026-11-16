@@ -15,10 +15,12 @@
 //! トロイダル面・自由曲面・理想レンズ・Fresnel・Binary 2・GRIN の媒質・利用者定義の面・複屈折材の板・開口の
 //! 際どい判定など、まれな・重い処理はその面だけ光線ごとのスカラーで行う（系全体は組のまま）。
 
+use crate::action::Act;
 use crate::math::*;
-use crate::surface::{SurfType, Surface};
+use crate::shape::SurfKind;
+use crate::surface::Surface;
 use crate::system::{Frame, Frames, Rel, System};
-use crate::trace::{RayOut, RecEntry, RecSink, SurfKind};
+use crate::trace::{RayOut, RecEntry, RecSink};
 use crate::LockExt;
 use std::sync::{Arc, Mutex};
 
@@ -120,12 +122,7 @@ struct Step {
 
 /// 面の後ろの屈折率が前の値を引き継ぐか（座標ブレーク、鏡。理想レンズ・利用者定義の面の鏡は表の値）
 pub(crate) fn takes_prev(d: &Surface) -> bool {
-    d.typ == SurfType::CoordBrk
-        || d.mirror
-            && !matches!(
-                d.typ,
-                SurfType::Paraxial | SurfType::User | SurfType::CoordBrk
-            )
+    d.is_coord_break() || d.mirror && !d.action().is_ideal()
 }
 
 /// 面 1..=last の追跡の準備（波長 w）。光線によらない量を先に求めておく
@@ -248,7 +245,7 @@ impl<'a> Plan<'a> {
                 k1: 1.0 + d.k,
                 ck1: d.c * (1.0 + d.k),
                 sig: sigs[j],
-                conj: if d.typ == SurfType::Paraxial {
+                conj: if kinds[j].act == Act::Paraxial {
                     sys.lens_conjugate(j)
                 } else {
                     0.0
@@ -259,7 +256,7 @@ impl<'a> Plan<'a> {
             });
             // 座標ブレークの後ろも同じ GRIN の媒質
             if let Some(g) = steps.last().unwrap().grin {
-                if d.typ == SurfType::CoordBrk {
+                if d.is_coord_break() {
                     grin_from = Some(g.gj);
                 }
             }

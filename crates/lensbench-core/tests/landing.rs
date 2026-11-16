@@ -103,7 +103,7 @@ fn check(
     }
     let nlast = {
         let d = &s.surfaces[last];
-        if d.mirror || d.typ == SurfType::CoordBrk {
+        if d.mirror || d.is_coord_break() {
             s.index_before(last, w)
         } else {
             d.n[w]

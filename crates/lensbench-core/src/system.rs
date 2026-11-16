@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::glass::Glass;
 use crate::interp2d::interp_weights;
 use crate::math::*;
-use crate::surface::{After, Bire, SurfType, Surface};
+use crate::surface::{After, Bire, Surface};
 use crate::trace::{self, CryKind, PolKind, PolSurf, RayOut, RayStatus, RecEntry, CV3};
 use crate::LockExt;
 use crate::{invalid, notimpl, par::scoped};
@@ -37,7 +37,7 @@ struct Cache {
     /// 理想レンズの物体距離（面ごと。追跡の内側で読むのでロックなし）
     conj: OnceLock<Vec<f64>>,
     /// 面ごとの交点・法線の求め方（追跡の内側の分岐を前計算）。面の形で決まるので、[`Keep`] でも引き継がない
-    kinds: OnceLock<Vec<crate::trace::SurfKind>>,
+    kinds: OnceLock<Vec<crate::shape::SurfKind>>,
     /// 面ごとの空間の進む向き（[`crate::trace::space_signs`]、追跡の内側で光線ごとに作らないため）。面の並びで決まる
     signs: OnceLock<Vec<f64>>,
     /// 追跡の面ごとの準備（[`crate::batch::Plan`]。鍵は (波長, 最後の面, Floating 開口でけるか)。系の座標系で追う分だけ）
@@ -342,8 +342,8 @@ impl System {
         // 非球面の項を使わない面タイプに項が残っていれば誤り（交点・法線・近軸で解釈が食い違う）
         for (j, d) in sf.iter().enumerate() {
             if matches!(
-                d.typ,
-                SurfType::Standard | SurfType::Gradium | SurfType::Gradient9
+                d.shape(),
+                crate::shape::Shape::Conic { .. } | crate::shape::Shape::ConicTilted { .. }
             ) && d.has_asph()
             {
                 let typ = d.typ;
@@ -359,9 +359,9 @@ impl System {
                 .iter()
                 .enumerate()
                 .skip(j + 1)
-                .find(|(_, e)| !e.ignore && e.typ != SurfType::CoordBrk)
+                .find(|(_, e)| !e.ignore && !e.is_coord_break())
             {
-                if !crate::grin::next_ok(e.typ) {
+                if !crate::grin::next_ok(e) {
                     let typ = e.typ;
                     notimpl!("surface {k} ({typ:?}) after the GRIN medium of surface {j}");
                 }
@@ -414,11 +414,11 @@ impl System {
         !self.surfaces[0].t.is_finite()
     }
 
-    /// 面ごとの交点・法線の求め方（[`crate::trace::surf_kind`]）
-    pub(crate) fn surf_kinds(&self) -> &[crate::trace::SurfKind] {
+    /// 面ごとの交点・法線の求め方（[`crate::shape::surf_kind`]）
+    pub(crate) fn surf_kinds(&self) -> &[crate::shape::SurfKind] {
         self.cache
             .kinds
-            .get_or_init(|| self.surfaces.iter().map(crate::trace::surf_kind).collect())
+            .get_or_init(|| self.surfaces.iter().map(crate::shape::surf_kind).collect())
     }
 
     /// 追跡の面ごとの準備のキャッシュ（[`crate::batch::Plan::new`]）
@@ -440,7 +440,7 @@ impl System {
     pub fn index_before(&self, j: usize, w: usize) -> f64 {
         let mut n = self.surfaces[0].n[w];
         for d in &self.surfaces[1..j.max(1)] {
-            if !d.ignore && d.typ != SurfType::CoordBrk {
+            if !d.ignore && !d.is_coord_break() {
                 n = d.n[w];
             }
         }
@@ -476,7 +476,8 @@ impl System {
     /// 追跡の前に、未対応の項目がないかを確かめる（理想レンズの媒質など）
     pub fn validate(&self) -> Result<()> {
         for (j, d) in self.surfaces.iter().enumerate() {
-            if d.typ == SurfType::User && !d.ignore {
+            let action = d.action();
+            if matches!(action, crate::action::Action::User(_)) && !d.ignore {
                 if d.user.is_none() {
                     invalid!("user-defined surface (surface {j}) has no model (user)");
                 }
@@ -486,14 +487,14 @@ impl System {
                     notimpl!("user-defined surface in a medium other than air or on a mirror (surface {j}: {nb} → {na})");
                 }
             }
-            if d.typ == SurfType::Paraxial && !d.ignore {
+            if let (crate::action::Action::Paraxial { f, .. }, false) = (action, d.ignore) {
                 let w = self.primary;
                 let (nb, na) = (self.index_before(j, w), d.n[w]);
                 if nb != 1.0 || na != 1.0 {
                     notimpl!("paraxial lens in a medium other than air (surface {j}: {nb} → {na})");
                 }
                 let z = self.lens_conjugate(j);
-                if z.is_finite() && z.abs() <= 1e12 && 1.0 / d.focal + 1.0 / z == 0.0 {
+                if z.is_finite() && z.abs() <= 1e12 && 1.0 / f + 1.0 / z == 0.0 {
                     notimpl!("the paraxial lens images the object to infinity (OPD)");
                 }
             }

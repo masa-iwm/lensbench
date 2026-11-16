@@ -1,11 +1,14 @@
-//! 実光線の追跡の部品（面の形・交点・法線・屈折・偏光の面ごとの処理）。追跡のカーネル本体は
-//! [`crate::batch`]（1 本ずつとまとめ追跡を 1 つのジェネリックな実装で）。
+//! 実光線の追跡の部品（屈折・回折・Fresnel の光路長・開口・偏光の面ごとの処理）。面の形・交点・法線は
+//! [`crate::shape`]、面の働きは [`crate::action`]。追跡のカーネル本体は [`crate::batch`]（1 本ずつとまとめ追跡を
+//! 1 つのジェネリックな実装で）。
 
 use crate::coating::{Iface, C64};
 use crate::math::*;
-use crate::surface::{Aperture, SurfType, Surface};
+use crate::surface::Aperture;
 use crate::system::System;
 use crate::Error;
+
+pub use crate::shape::{powi, sag, sag_toroidal};
 
 /// 複素の 3 次元ベクトル（電場）
 pub(crate) type CV3 = [C64; 3];
@@ -431,22 +434,6 @@ impl RecEntry {
     };
 }
 
-/// Fresnel・Cylinder Fresnel の屈折に使う面の法線（規格化前、局所座標）。
-/// Fresnel は偶数次非球面（c・k・asph）、Cylinder Fresnel は [`crate::surface::CylFresnel`] の面（y だけ）の傾き
-pub(crate) fn fresnel_normal(d: &Surface, x: f64, y: f64) -> V3 {
-    match (d.typ, d.cylf.as_deref()) {
-        (SurfType::CylFresnel, Some(f)) => {
-            let (_, dz) = sag(f.c, f.k, &f.coef, y * y);
-            [0.0, -2.0 * dz * y, 1.0]
-        }
-        (SurfType::CylFresnel, None) => [0.0, 0.0, 1.0],
-        _ => {
-            let (_, dz) = sag(d.c, d.k, &d.asph, x * x + y * y);
-            [-2.0 * dz * x, -2.0 * dz * y, 1.0]
-        }
-    }
-}
-
 /// 方向 k を単位法線 nv の面で屈折する（屈折率 n1 → n2、mirror なら反射）。全反射なら None
 #[inline]
 fn bend(k: V3, nv: V3, n1: f64, n2: f64, mirror: bool) -> Option<V3> {
@@ -473,7 +460,8 @@ fn bend(k: V3, nv: V3, n1: f64, n2: f64, mirror: bool) -> Option<V3> {
 /// 平面の上の段差の高さを位相に置き換えたもので、OpticStudio 26.1 と一致する（合成系 F1・C1 で 1e-10。
 /// 基準点は同じ視野・波長の主光線の交点）。途中で全反射すれば None
 pub(crate) fn fresnel_opl(
-    d: &Surface,
+    fb: &crate::action::FresnelBend,
+    mirror: bool,
     k1: V3,
     n1: f64,
     n2: f64,
@@ -500,13 +488,12 @@ pub(crate) fn fresnel_opl(
         0.236_926_885_056_189,
     ];
     const NP: usize = 16;
-    let mirror = d.mirror;
     let mut t = 0.0;
     for i in 0..NP {
         for (gx, gw) in GX.iter().zip(GW) {
             let f = (i as f64 + 0.5 + 0.5 * gx) / NP as f64;
             let (x, y) = (a[0] + ux * f, a[1] + uy * f);
-            let nv = normalize(fresnel_normal(d, x, y));
+            let nv = normalize(fb.normal(x, y));
             let k2 = bend(k1, nv, n1, n2, mirror)?;
             t += 0.5 * gw * ((n2 * k2[0] - n1 * k1[0]) * ux + (n2 * k2[1] - n1 * k1[1]) * uy);
         }
@@ -531,88 +518,7 @@ pub(crate) fn diffract(k: V3, nv: V3, n: f64, g: [f64; 2]) -> Option<V3> {
     Some(scale(add(tv, scale(nv, mn.signum() * q.sqrt())), 1.0 / n))
 }
 
-/// 偶数次非球面のサグと d サグ / d(r^2)
-pub fn sag(c: f64, k: f64, asph: &[f64], r2: f64) -> (f64, f64) {
-    let arg = 1.0 - (1.0 + k) * c * c * r2;
-    let root = if c != 0.0 { arg.max(0.0).sqrt() } else { 1.0 };
-    let mut z = c * r2 / (1.0 + root);
-    let mut dz = if c != 0.0 {
-        if arg > 0.0 {
-            c / (2.0 * root)
-        } else {
-            f64::NAN
-        }
-    } else {
-        0.0
-    };
-    for (i, &a) in asph.iter().enumerate() {
-        if a != 0.0 {
-            let i = (i + 1) as i32;
-            z += a * powi(r2, i);
-            dz += i as f64 * a * powi(r2, i - 1);
-        }
-    }
-    (z, dz)
-}
-
-/// x^n（n ≥ 0）を 2 乗の繰り返しで。`f64::powi` と同じ手順（掛ける順も同じ）で、まとめて追う
-/// [`crate::batch`] が光線ごとに同じビットを出せるよう手順を固定する
-#[inline(always)]
-pub fn powi(mut x: f64, n: i32) -> f64 {
-    debug_assert!(n >= 0);
-    let mut n = n as u32;
-    let mut r = 1.0;
-    loop {
-        if n & 1 != 0 {
-            r *= x;
-        }
-        n /= 2;
-        if n == 0 {
-            return r;
-        }
-        x *= x;
-    }
-}
-
-/// トロイダル面のサグと (dz/dx, dz/dy)。YZ 面の曲線 z(y)（c・k・asph）を、頂点から 1/cx 離れた
-/// Y 軸に平行な軸の周りに回した面（cx = 0 は円柱面）。軸の向こう側の点は NaN
-pub fn sag_toroidal(c: f64, k: f64, asph: &[f64], cx: f64, x: f64, y: f64) -> (f64, f64, f64) {
-    let (zy, dzr) = sag(c, k, asph, y * y);
-    let dzy = 2.0 * y * dzr;
-    if cx == 0.0 {
-        return (zy, 0.0, dzy);
-    }
-    // 回転の円の曲率は点ごとに cx / (1 − cx z(y))（軸までの距離が 1/cx − z(y)）
-    let b = 1.0 - cx * zy;
-    if !(b > 0.0) {
-        return (f64::NAN, f64::NAN, f64::NAN);
-    }
-    let ce = cx / b;
-    let arg = 1.0 - ce * ce * x * x;
-    if !(arg > 0.0) {
-        return (f64::NAN, f64::NAN, f64::NAN);
-    }
-    let root = arg.sqrt();
-    (zy + ce * x * x / (1.0 + root), ce * x / root, dzy / root)
-}
-
 const NAN3: V3 = [f64::NAN; 3];
-
-/// 二次曲面との交点の根（頂点面上の点からの距離）: aa s² − 2 gg s + ff = 0 の根 ff / (gg + σ √disc)（σ はその空間の
-/// 進む向き: 鏡で反射するたびに反転、[`space_signs`]）。OpticStudio と同じく、光線が空間の向きと逆（gg σ < 0、
-/// 90° を超える視野の光線が面 1 へ向かうなど）でも同じ式の根を採る（以前は gg の符号で頂点に近い根を採っていた）。
-/// 桁落ちしないよう gg σ < 0 では同じ根を (gg − σ √disc) / aa で求める
-#[inline(always)]
-pub(crate) fn conic_root(ff: f64, gg: f64, aa: f64, disc: f64, sig: f64) -> f64 {
-    let q = sig * disc.sqrt();
-    if gg * sig >= 0.0 {
-        ff / (gg + q)
-    } else if aa != 0.0 {
-        (gg - q) / aa
-    } else {
-        ff / (2.0 * gg)
-    }
-}
 
 /// 面ごとの空間の進む向き（面 0 から +1、鏡の面の後で反転）。σ[j] は面 j に向かう空間の向き
 pub(crate) fn space_signs(sys: &System) -> Vec<f64> {
@@ -620,45 +526,11 @@ pub(crate) fn space_signs(sys: &System) -> Vec<f64> {
     let mut s = 1.0;
     for d in &sys.surfaces {
         out.push(s);
-        if d.mirror && !d.ignore && d.typ != SurfType::CoordBrk {
+        if d.mirror && !d.ignore && !d.is_coord_break() {
             s = -s;
         }
     }
     out
-}
-
-/// トロイダル面との交点までの距離（頂点面上の pl から方向 kl に）。収束しなければ true も返す。
-/// 初期値は y だけの二次曲面（円柱面）との交点、その後ニュートン法
-pub(crate) fn toroidal_isect(d: &Surface, pl: V3, kl: V3, sig: f64) -> (f64, bool) {
-    let (c, kc) = (d.c, d.k);
-    let mut s = 0.0;
-    if c != 0.0 {
-        let ff = c * pl[1] * pl[1];
-        let gg = kl[2] - c * pl[1] * kl[1];
-        let aa = c * (kl[1] * kl[1] + (1.0 + kc) * kl[2] * kl[2]);
-        let disc = gg * gg - aa * ff;
-        if disc >= 0.0 {
-            let s0 = conic_root(ff, gg, aa, disc, sig);
-            if s0.is_finite() {
-                s = s0;
-            }
-        }
-    }
-    let mut bad = false;
-    if d.cx != 0.0 || d.has_asph() || s == 0.0 && c != 0.0 {
-        let mut ds = f64::NAN;
-        for _ in 0..60 {
-            let q = add(pl, scale(kl, s));
-            let (z, zx, zy) = sag_toroidal(c, kc, &d.asph, d.cx, q[0], q[1]);
-            ds = (q[2] - z) / (kl[2] - zx * kl[0] - zy * kl[1]);
-            s -= ds;
-            if !(ds.abs() > crate::trace::newton_tol(s, z)) {
-                break;
-            }
-        }
-        bad = !(ds.abs() <= 1e-10);
-    }
-    (s, bad)
 }
 
 /// 開口の外か（遮蔽なら内側が「外」）。pl は面の局所座標の交点
@@ -768,132 +640,6 @@ pub(crate) fn paraxial(f: f64, pl: V3, kl: V3, z_obj: f64) -> (V3, f64) {
     let s_out = zi.signum() * norm(sub(pi, rr));
     let s_out0 = zi.signum() * norm(pi);
     (k2, (s_in0 + s_out0) - (s_in + s_out))
-}
-
-/// 交点の求め方（面ごとに前計算する。[`surf_kind`]）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Isect {
-    /// 頂点の平面（Fresnel もここ）
-    Plane,
-    /// 回転対称の曲面（asph: 非球面項があれば Newton で詰める）
-    Std {
-        asph: bool,
-    },
-    Toroidal,
-    /// 自由曲面（Zernike/Grid Sag）
-    Free,
-    /// Cylinder Fresnel の基板（y だけの関数）
-    CylSub,
-    /// 形を傾けた Gradient 9（標準面 + x tan α + y tan β）
-    Grad9Tilt,
-}
-
-/// 法線の求め方（Paraxial・座標ブレークは面の種類で別に扱う）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Norm {
-    Flat,
-    Conic,
-    Asph,
-    Toroidal,
-    Free,
-    Fresnel,
-    Grad9Tilt,
-}
-
-/// 追跡の内側で面ごとに分ける種類（光線ごと・面ごとの判定を系の更新時の 1 回にする）
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SurfKind {
-    pub isect: Isect,
-    pub norm: Norm,
-    /// Fresnel・Cylinder Fresnel（光路長の補正がある）
-    pub fresnel: bool,
-}
-
-/// 回転対称の面（[`Isect::Std`]）で非球面の項を使うか: 偶数次非球面・Binary 2 で項があるとき。標準面などに残った
-/// 項は使わない（[`crate::system::System::check`] で誤りにする）
-pub(crate) fn std_asph(d: &Surface) -> bool {
-    matches!(d.typ, SurfType::EvenAsph | SurfType::Binary2) && d.has_asph()
-}
-
-pub(crate) fn surf_kind(d: &Surface) -> SurfKind {
-    let curved = matches!(
-        d.typ,
-        SurfType::Standard
-            | SurfType::EvenAsph
-            | SurfType::Toroidal
-            | SurfType::Binary2
-            | SurfType::Gradium
-            | SurfType::Gradient9
-    ) && (d.c != 0.0 || !d.asph.is_empty() || d.cx != 0.0);
-    let free = crate::freeform::is_freeform(d.typ);
-    let g9tilt = d.typ == SurfType::Gradient9 && crate::grin::grad9_tilted(d);
-    let fresnel = matches!(d.typ, SurfType::Fresnel | SurfType::CylFresnel);
-    let isect = if g9tilt {
-        Isect::Grad9Tilt
-    } else if d.typ == SurfType::CylFresnel && (d.c != 0.0 || d.has_asph()) {
-        Isect::CylSub
-    } else if free {
-        Isect::Free
-    } else if curved && d.typ == SurfType::Toroidal {
-        Isect::Toroidal
-    } else if curved {
-        // 交点と法線は同じ判定で（非球面の項を使う型だけ。以前は交点だけ型を見ずに非球面の項を使っていた）
-        Isect::Std { asph: std_asph(d) }
-    } else {
-        Isect::Plane
-    };
-    let norm = if g9tilt {
-        Norm::Grad9Tilt
-    } else if free {
-        Norm::Free
-    } else if d.typ == SurfType::Toroidal {
-        Norm::Toroidal
-    } else if fresnel {
-        Norm::Fresnel
-    } else if std_asph(d) {
-        Norm::Asph
-    } else if d.c == 0.0 {
-        Norm::Flat
-    } else {
-        Norm::Conic
-    };
-    SurfKind {
-        isect,
-        norm,
-        fresnel,
-    }
-}
-
-/// 面 d の局所座標の点 pl での単位法線（+z 寄り。追跡の内側と同じ式。理想レンズ・Jones・座標ブレークなど平らな面は (0, 0, 1)）
-pub(crate) fn local_normal(d: &Surface, pl: V3) -> V3 {
-    if matches!(
-        d.typ,
-        SurfType::CoordBrk | SurfType::Paraxial | SurfType::Jones | SurfType::User
-    ) {
-        return [0.0, 0.0, 1.0];
-    }
-    let v = match surf_kind(d).norm {
-        Norm::Free => {
-            let (_, zx, zy) = crate::freeform::sag_xy(d, pl[0], pl[1]);
-            [-zx, -zy, 1.0]
-        }
-        Norm::Toroidal => {
-            let (_, zx, zy) = sag_toroidal(d.c, d.k, &d.asph, d.cx, pl[0], pl[1]);
-            [-zx, -zy, 1.0]
-        }
-        Norm::Grad9Tilt => {
-            let (_, zx, zy) = crate::grin::grad9_sag(d, pl[0], pl[1]);
-            [-zx, -zy, 1.0]
-        }
-        Norm::Fresnel => fresnel_normal(d, pl[0], pl[1]),
-        Norm::Asph => {
-            let (_, dz) = sag(d.c, d.k, &d.asph, pl[0] * pl[0] + pl[1] * pl[1]);
-            [-2.0 * dz * pl[0], -2.0 * dz * pl[1], 1.0]
-        }
-        Norm::Flat => [0.0, 0.0, 1.0],
-        Norm::Conic => [-d.c * pl[0], -d.c * pl[1], 1.0 - d.c * (1.0 + d.k) * pl[2]],
-    };
-    normalize(v)
 }
 
 /// 面 j での電場の変化を 1 本の光線について（複屈折材の板の入口・出口・貼り合わせを含む）。g は

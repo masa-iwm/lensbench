@@ -137,7 +137,7 @@ pub(crate) fn raw_frames_d(sys: &System, p: Param) -> Vec<Option<DFrame>> {
             }
         }
         let tilt_here = mine && p.kind.tilt_index().is_some();
-        if d.typ == SurfType::CoordBrk {
+        if d.is_coord_break() {
             f = apply_cb_d(
                 f,
                 &Tilt {
@@ -288,7 +288,7 @@ impl System {
         let mut own = vec![0usize; self.surfaces.len()];
         let mut cur = 0usize;
         for (j, d) in self.surfaces.iter().enumerate() {
-            if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
+            if j > 0 && (d.mirror || d.is_coord_break()) {
                 own[j] = cur;
             } else {
                 own[j] = j;
@@ -526,20 +526,16 @@ impl System {
         }
         for j in 1..=t.last {
             let d = &self.surfaces[j];
-            if !d.ignore && matches!(d.typ, SurfType::Paraxial | SurfType::User) {
+            if !d.ignore && d.action().is_ideal() {
                 notimpl!(
                     "dOPL/dp of rays through a paraxial lens or user-defined surface (surface {j})"
                 );
             }
             if !d.ignore
-                && matches!(
-                    d.typ,
-                    SurfType::Fresnel
-                        | SurfType::CylFresnel
-                        | SurfType::Binary2
-                        | SurfType::Gradium
-                        | SurfType::Gradient9
-                )
+                && (matches!(
+                    d.action(),
+                    crate::action::Action::Fresnel(_) | crate::action::Action::Binary2(_)
+                ) || matches!(d.typ, SurfType::Gradium | SurfType::Gradient9))
             {
                 notimpl!("dOPL/dp of rays through surface {j} ({:?})", d.typ);
             }
@@ -560,7 +556,7 @@ impl System {
             let j = rs.surf;
             n_in[k] = self.index_before(j, w);
             let d = &sf[j];
-            n_out[k] = if d.mirror || d.typ == SurfType::CoordBrk {
+            n_out[k] = if d.mirror || d.is_coord_break() {
                 n_in[k]
             } else {
                 d.n[w]
@@ -568,7 +564,7 @@ impl System {
             // index_before と同じ: 直前の無視しない・座標ブレークでない面
             let prev = (0..j)
                 .rev()
-                .find(|&i| i == 0 || (!sf[i].ignore && sf[i].typ != SurfType::CoordBrk))
+                .find(|&i| i == 0 || (!sf[i].ignore && !sf[i].is_coord_break()))
                 .unwrap_or(0);
             own_in[k] = prev;
         }

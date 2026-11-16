@@ -12,7 +12,6 @@
 use crate::coating::{Coatings, C64};
 use crate::math::V3;
 use crate::par::scoped;
-use crate::surface::SurfType;
 use crate::system::{FieldSel, Launch, RecSel, System};
 use crate::{invalid, Result};
 use rayon::prelude::*;
@@ -371,7 +370,7 @@ impl InputPol {
 fn has_phase_terms(sys: &System) -> bool {
     sys.surfaces
         .iter()
-        .any(|s| !s.ignore && matches!(s.typ, SurfType::Paraxial | SurfType::User))
+        .any(|s| !s.ignore && s.action().is_ideal())
 }
 
 /// 1 本の経路（系 `sys` = その構成、波長は追跡する波長 [`traced_wavelengths`] に置き換え、主波長 0）の光線の格子を

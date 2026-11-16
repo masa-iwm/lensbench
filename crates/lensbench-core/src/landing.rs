@@ -12,14 +12,15 @@
 //!
 //! 対象のパラメータは dOPL/dp と同じ。理想レンズの面を通る追跡と、トロイダル面の形のパラメータは未対応。
 
+use crate::action::Action;
 use crate::error::Result;
 use crate::fermat::{dsag, raw_frames_d, PrepParam};
 use crate::math::*;
 use crate::par::scoped;
 use crate::param::{Kind, Param};
+use crate::shape::{sag, Shape};
 use crate::surface::SurfType;
 use crate::system::Trace;
-use crate::trace::{sag, sag_toroidal};
 use crate::System;
 use crate::{invalid, notimpl};
 use rayon::prelude::*;
@@ -240,18 +241,12 @@ impl System {
         }
         for j in 1..=t.last {
             let d = &sf[j];
-            if !d.ignore && matches!(d.typ, SurfType::Paraxial | SurfType::User) {
+            if !d.ignore && d.action().is_ideal() {
                 notimpl!("landing derivatives of rays through a paraxial lens or user-defined surface (surface {j})");
             }
             if !d.ignore
-                && matches!(
-                    d.typ,
-                    SurfType::Fresnel
-                        | SurfType::CylFresnel
-                        | SurfType::Binary2
-                        | SurfType::Gradium
-                        | SurfType::Gradient9
-                )
+                && (matches!(d.action(), Action::Fresnel(_) | Action::Binary2(_))
+                    || matches!(d.typ, SurfType::Gradium | SurfType::Gradient9))
             {
                 notimpl!(
                     "landing derivatives of rays through surface {j} ({:?})",
@@ -301,14 +296,14 @@ impl System {
             let j = rs.surf;
             n_in[k] = self.index_before(j, w);
             let d = &sf[j];
-            n_out[k] = if d.mirror || d.typ == SurfType::CoordBrk {
+            n_out[k] = if d.mirror || d.is_coord_break() {
                 n_in[k]
             } else {
                 d.n[w]
             };
             own_in[k] = (0..j)
                 .rev()
-                .find(|&i| i == 0 || (!sf[i].ignore && sf[i].typ != SurfType::CoordBrk))
+                .find(|&i| i == 0 || (!sf[i].ignore && !sf[i].is_coord_break()))
                 .unwrap_or(0);
         }
         // パラメータごとの剛体運動の範囲 [s, e)（a, ω）
@@ -344,7 +339,7 @@ impl System {
                     .filter_map(|k| {
                         let j = t.rec[k].surf;
                         let a = pp.dn[own_in[k]];
-                        let b = if sf[j].mirror || sf[j].typ == SurfType::CoordBrk {
+                        let b = if sf[j].mirror || sf[j].is_coord_break() {
                             a
                         } else {
                             pp.dn[j]
@@ -358,12 +353,10 @@ impl System {
         let sag_k: Vec<Option<usize>> = pre
             .iter()
             .map(|pp| {
-                let shape =
-                    matches!(
-                        pp.kind,
-                        Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
-                    ) && (matches!(sf[pp.surf].typ, SurfType::Standard | SurfType::EvenAsph)
-                        || crate::freeform::is_freeform(sf[pp.surf].typ));
+                let shape = matches!(
+                    pp.kind,
+                    Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
+                ) && sf[pp.surf].shape_params();
                 if shape {
                     t.rec.iter().position(|rs| rs.surf == pp.surf)
                 } else {
@@ -423,45 +416,19 @@ impl System {
                 let kin = mtv(&r, kprev_g);
                 let s = (rs.opl[i] - opl_prev) / n_in[k];
                 opl_prev = rs.opl[i];
-                let plane = matches!(d.typ, SurfType::CoordBrk | SurfType::Jones);
-                let (g, h) = if plane {
+                // 方向を変えない面（座標ブレーク・Jones）は平面として通す
+                let pass = d.is_coord_break() || matches!(d.action(), Action::Jones(_));
+                let sh = d.shape();
+                let (g, h) = if pass {
                     ([0.0, 0.0, 1.0], [0.0; 3])
-                } else if crate::freeform::is_freeform(d.typ) {
-                    let (_, zx, zy) = crate::freeform::sag_xy(d, q[0], q[1]);
-                    // 2 階微分は勾配の中心差分（Grid Sag の升目の境では片側に寄らない平均になる）
-                    let hh = 1e-5 * (1.0 + q[0].abs().max(q[1].abs()));
-                    let gx = |x: f64, y: f64| {
-                        let (_, a, b) = crate::freeform::sag_xy(d, x, y);
-                        (a, b)
-                    };
-                    let (ax1, bx1) = gx(q[0] + hh, q[1]);
-                    let (ax0, bx0) = gx(q[0] - hh, q[1]);
-                    let (_, by1) = gx(q[0], q[1] + hh);
-                    let (_, by0) = gx(q[0], q[1] - hh);
-                    let zxx = (ax1 - ax0) / (2.0 * hh);
-                    let zxy = (bx1 - bx0) / (2.0 * hh);
-                    let zyy = (by1 - by0) / (2.0 * hh);
-                    ([-zx, -zy, 1.0], [zxx, zxy, zyy])
-                } else if d.typ == SurfType::Toroidal {
-                    let (_, zx, zy) = sag_toroidal(d.c, d.k, &d.asph, d.cx, q[0], q[1]);
-                    // 2 階微分は勾配の中心差分
-                    let hh = 1e-5 * (1.0 + q[0].abs().max(q[1].abs()));
-                    let gx = |x: f64, y: f64| {
-                        let (_, a, b) = sag_toroidal(d.c, d.k, &d.asph, d.cx, x, y);
-                        (a, b)
-                    };
-                    let (ax1, bx1) = gx(q[0] + hh, q[1]);
-                    let (ax0, bx0) = gx(q[0] - hh, q[1]);
-                    let (_, by1) = gx(q[0], q[1] + hh);
-                    let (_, by0) = gx(q[0], q[1] - hh);
-                    let zxx = (ax1 - ax0) / (2.0 * hh);
-                    let zxy = (bx1 - bx0) / (2.0 * hh);
-                    let zyy = (by1 - by0) / (2.0 * hh);
-                    ([-zx, -zy, 1.0], [zxx, zxy, zyy])
-                } else {
+                } else if let Some((c, k, a)) = match sh {
+                    Shape::Conic { c, k } => Some((c, k, &[][..])),
+                    Shape::EvenAsphere(b) => Some((b.c, b.k, b.a)),
+                    _ => None,
+                } {
                     let u = q[0] * q[0] + q[1] * q[1];
-                    let (_, z1) = sag(d.c, d.k, &d.asph, u);
-                    let z2 = sag_uu(d.c, d.k, &d.asph, u);
+                    let (_, z1) = sag(c, k, a, u);
+                    let z2 = sag_uu(c, k, a, u);
                     (
                         [-2.0 * z1 * q[0], -2.0 * z1 * q[1], 1.0],
                         [
@@ -470,10 +437,26 @@ impl System {
                             2.0 * z1 + 4.0 * z2 * q[1] * q[1],
                         ],
                     )
+                } else {
+                    // トロイダル面・自由曲面。2 階微分は勾配の中心差分（Grid Sag の升目の境では片側に寄らない平均になる）
+                    let (_, zx, zy) = sh.sag(q[0], q[1]);
+                    let hh = 1e-5 * (1.0 + q[0].abs().max(q[1].abs()));
+                    let gx = |x: f64, y: f64| {
+                        let (_, a, b) = sh.sag(x, y);
+                        (a, b)
+                    };
+                    let (ax1, bx1) = gx(q[0] + hh, q[1]);
+                    let (ax0, bx0) = gx(q[0] - hh, q[1]);
+                    let (_, by1) = gx(q[0], q[1] + hh);
+                    let (_, by0) = gx(q[0], q[1] - hh);
+                    let zxx = (ax1 - ax0) / (2.0 * hh);
+                    let zxy = (bx1 - bx0) / (2.0 * hh);
+                    let zyy = (by1 - by0) / (2.0 * hh);
+                    ([-zx, -zy, 1.0], [zxx, zxy, zyy])
                 };
                 let mode = if d.mirror {
                     Mode::Mirror
-                } else if matches!(d.typ, SurfType::CoordBrk | SurfType::Jones) {
+                } else if pass {
                     Mode::Pass
                 } else {
                     Mode::Refract
@@ -715,7 +698,7 @@ impl System {
         }
         let j = t.last;
         let d = &self.surfaces[j];
-        let nout = if d.mirror || d.typ == SurfType::CoordBrk {
+        let nout = if d.mirror || d.is_coord_break() {
             self.index_before(j, w)
         } else {
             d.n[w]
@@ -782,7 +765,7 @@ impl System {
         }
         let owner = self.medium_owner();
         let d = &self.surfaces[j];
-        let mirror_like = d.mirror || d.typ == SurfType::CoordBrk;
+        let mirror_like = d.mirror || d.is_coord_break();
         let nout = if mirror_like {
             self.index_before(j, w)
         } else {
@@ -790,9 +773,7 @@ impl System {
         };
         let own_in = (0..j)
             .rev()
-            .find(|&i| {
-                i == 0 || (!self.surfaces[i].ignore && self.surfaces[i].typ != SurfType::CoordBrk)
-            })
+            .find(|&i| i == 0 || (!self.surfaces[i].ignore && !self.surfaces[i].is_coord_break()))
             .unwrap_or(0);
         for (q, &p) in params.iter().enumerate() {
             let pp = self.prep_param(p, w, &owner)?;
@@ -802,8 +783,7 @@ impl System {
                     p.kind,
                     Kind::Curv | Kind::Radius | Kind::Conic | Kind::Asph(_) | Kind::Zern(_)
                 )
-                && (matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
-                    || crate::freeform::is_freeform(d.typ));
+                && d.shape_params();
             if dn == 0.0 && !shape {
                 continue;
             }

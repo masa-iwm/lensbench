@@ -296,11 +296,9 @@ pub(crate) fn bake_lens(s: &System, item: &mut UserItem, id: &str) -> lensbench_
     // 面の表の番号と同じく、座標ブレークを除いた面（偏心・傾きの座標ブレークは place のまま残る）
     let faces: Vec<&Surface> = (a..=z)
         .map(|j| &s.surfaces[j])
-        .filter(|x| x.typ != SurfType::CoordBrk)
+        .filter(|x| !x.is_coord_break())
         .collect();
-    let span_cbs = (a..=z)
-        .filter(|&j| s.surfaces[j].typ == SurfType::CoordBrk)
-        .count();
+    let span_cbs = (a..=z).filter(|&j| s.surfaces[j].is_coord_break()).count();
     let place_cbs = if place.moved() { 2 } else { 0 };
     // 元の面の並び（面を直接書いた玉なら、中の座標ブレークはそのまま残す）
     let orig: Option<Vec<SurfSpec>> = match &*source {

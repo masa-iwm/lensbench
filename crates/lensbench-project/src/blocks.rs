@@ -138,7 +138,7 @@ pub(crate) fn check_crystal_order(v: &[Surface]) -> lensbench_core::Result<()> {
                 )
             }
             (None, false) => {
-                if s.typ != SurfType::CoordBrk && !is_air(&s.mat) {
+                if !s.is_coord_break() && !is_air(&s.mat) {
                     return Err(
                         "a surface list block holds only surfaces in air (glass goes in lenses)"
                             .into(),
@@ -1004,7 +1004,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
                     let f = if rev {
                         let t: f64 = self.sf[start..self.sf.len() - 1]
                             .iter()
-                            .filter(|q| q.typ != SurfType::CoordBrk)
+                            .filter(|q| !q.is_coord_break())
                             .map(|q| q.t)
                             .sum();
                         f.flipped(t)

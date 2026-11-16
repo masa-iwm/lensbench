@@ -205,7 +205,7 @@ fn element_rims(s: &System, n: usize) -> Vec<(usize, f64, Vec<V3>)> {
     let mut prev_glass = false;
     for j in 1..img {
         let d = &s.surfaces[j];
-        if d.ignore || d.typ == crate::surface::SurfType::CoordBrk {
+        if d.ignore || d.is_coord_break() {
             continue;
         }
         let g = glass(&d.mat);

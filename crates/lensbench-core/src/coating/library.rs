@@ -450,7 +450,7 @@ pub fn media_keys(sys: &System) -> (Vec<Option<String>>, Vec<String>) {
     let mut nprev = sf[0].n[0];
     for (k, d) in sf.iter().enumerate() {
         before[k] = prev.clone();
-        if d.ignore || d.typ == SurfType::CoordBrk {
+        if d.ignore || d.is_coord_break() {
             continue;
         }
         let after = if d.mirror {

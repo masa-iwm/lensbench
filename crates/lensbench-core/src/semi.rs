@@ -81,11 +81,11 @@ impl System {
     /// 半直径のピックアップ、半径 0 のコバ厚のソルブ（半直径で測る）。最適化・公差の内側
     /// （[`System::with_params_fast`]）はこのときだけ求め直す
     pub(crate) fn semi_affects_trace(&self) -> bool {
-        use crate::surface::SurfType;
         let auto = |k: usize| self.surfaces.get(k).is_some_and(|d| d.semi_auto);
         self.surfaces.iter().any(|d| {
             d.semi_auto
-                && (matches!(d.ap, Aperture::Floating { .. }) || d.typ == SurfType::Irregular)
+                && (matches!(d.ap, Aperture::Floating { .. })
+                    || matches!(d.shape(), crate::shape::Shape::Irregular(_)))
         }) || self
             .pickups
             .iter()

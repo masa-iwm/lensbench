@@ -109,11 +109,7 @@ fn edit_with_coordinate_breaks() {
         },
     )
     .unwrap();
-    let cb = s
-        .surfaces
-        .iter()
-        .position(|d| d.typ == lensbench_core::surface::SurfType::CoordBrk)
-        .unwrap();
+    let cb = s.surfaces.iter().position(|d| d.is_coord_break()).unwrap();
     assert_eq!(s.surfaces[cb].mat, "-");
     let semi = s.surfaces[1].semi + 1.0;
     edit_ops::apply_json(

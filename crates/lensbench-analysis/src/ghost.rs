@@ -80,7 +80,7 @@ fn plain(d: &Surface) -> bool {
     d.ignore
         || (d.before.is_none()
             && matches!(d.after, After::None | After::Reverse)
-            && (d.typ != SurfType::CoordBrk || d.cb.iter().all(|&v| v == 0.0)))
+            && (!d.is_coord_break() || d.cb.iter().all(|&v| v == 0.0)))
 }
 
 /// 面 a で反射し、面 b で反射するゴーストの経路を展開した系
@@ -206,7 +206,7 @@ pub fn ghost_system(sys: &System, a: usize, b: usize) -> Result<GhostSystem> {
     let mut at_b = 0;
     for m in (b..a).rev() {
         let d = &sf[m];
-        if d.ignore || d.typ == SurfType::CoordBrk {
+        if d.ignore || d.is_coord_break() {
             continue;
         }
         let lp = out.len() - 1;

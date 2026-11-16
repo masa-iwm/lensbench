@@ -233,7 +233,7 @@ fn same_frames(a: &System, b: &System, what: &str) {
     let pick = |s: &System| -> Vec<lensbench_core::system::Frame> {
         let f = s.frames();
         (1..s.surfaces.len())
-            .filter(|&j| s.surfaces[j].typ != lensbench_core::surface::SurfType::CoordBrk)
+            .filter(|&j| !s.surfaces[j].is_coord_break())
             .filter_map(|j| f.surf[j])
             .collect()
     };

@@ -3,9 +3,11 @@
 use super::lanes::{sel, Lanes, Mask};
 use super::pol::{aperture_out_l, pol_surface_l, PolLanes, PolSoa};
 use super::{LaneSink, Move, Plan, Sag, Step};
+use crate::action::{Act, Action};
 use crate::math::*;
-use crate::surface::{Aperture, SurfType};
-use crate::trace::{self, Isect, Norm, RayOut, RayStatus, RecEntry};
+use crate::shape::{Isect, Norm};
+use crate::surface::Aperture;
+use crate::trace::{self, RayOut, RayStatus, RecEntry};
 
 /// 3 成分の組
 pub(super) type VL<V> = [V; 3];
@@ -70,7 +72,7 @@ fn powi_l<V: Lanes>(mut x: V, n: i32) -> V {
     }
 }
 
-/// [`trace::conic_root`] の光線ごと版（3 つの場合をすべて計算して選ぶ。同じ演算なので同じビット）
+/// [`crate::shape::conic_root`] の光線ごと版（3 つの場合をすべて計算して選ぶ。同じ演算なので同じビット）
 #[inline(always)]
 fn conic_root_l<V: Lanes>(ff: V, gg: V, aa: V, disc: V, sig: f64) -> V {
     let q = disc.sqrt() * sig;
@@ -149,7 +151,7 @@ fn grin_lane<V: Lanes, const N: usize>(
             }
         }
     }
-    let cb = d.typ == SurfType::CoordBrk;
+    let cb = d.is_coord_break();
     // 次の面は光線の後ろにもありうる（厚さ 0 の傾けた座標ブレーク、座標ブレークの後の負の厚さなど。
     // [`crate::grin::propagate_to`]）
     let kz = mv(&rr, loc.1)[2];
@@ -157,10 +159,10 @@ fn grin_lane<V: Lanes, const N: usize>(
         let fx = |q: V3| add(mv(&rr, q), tt)[2];
         crate::grin::propagate_to(gm, lam, loc.0, loc.1, fx, g.max_len, kz)
     } else {
-        crate::grin::next_sag(d).and_then(|sg| {
+        crate::grin::next_shape(d).and_then(|sh| {
             let fx = |q: V3| {
                 let q2 = add(mv(&rr, q), tt);
-                q2[2] - sg(q2[0], q2[1])
+                q2[2] - sh.sag(q2[0], q2[1]).0
             };
             crate::grin::propagate_to(gm, lam, loc.0, loc.1, fx, g.max_len, kz)
         })
@@ -321,19 +323,10 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             };
             match st.kind.isect {
                 Isect::Plane => {}
-                Isect::Free => lane_isect(&|pi, ki| crate::freeform::isect(d, pi, ki, st.sig)),
-                Isect::Toroidal => lane_isect(&|pi, ki| trace::toroidal_isect(d, pi, ki, st.sig)),
-                Isect::Grad9Tilt => lane_isect(&|pi, ki| {
-                    crate::freeform::isect_with(d.c, d.k, pi, ki, st.sig, |x, y| {
-                        crate::grin::grad9_sag(d, x, y)
-                    })
-                }),
-                Isect::CylSub => lane_isect(&|pi, ki| {
-                    crate::freeform::isect_with(0.0, 0.0, pi, ki, st.sig, |_, y| {
-                        let (z, dz) = trace::sag(d.c, d.k, &d.asph, y * y);
-                        (z, 0.0, 2.0 * dz * y)
-                    })
-                }),
+                Isect::Newton => {
+                    let sh = d.shape();
+                    lane_isect(&|pi, ki| sh.isect(pi, ki, st.sig))
+                }
                 Isect::Std { asph } => {
                     let m: V::B = err.eq(0.0);
                     let c = d.c;
@@ -424,9 +417,9 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             let ps = &pr.surf[j];
             cry_any || ps.cry.is_some() || ps.cement.is_some() || ps.cemented
         });
-        match d.typ {
-            SurfType::CoordBrk => nn = nprev,
-            SurfType::Paraxial => {
+        match st.kind.act {
+            Act::CoordBrk => nn = nprev,
+            Act::Paraxial => {
                 for i in 0..N {
                     if !es.at(i) {
                         let k1 = get(&kl, i);
@@ -440,8 +433,11 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     }
                 }
             }
-            SurfType::User => {
-                let u = d.user.as_ref();
+            Act::User => {
+                let u = match d.action() {
+                    Action::User(u) => u,
+                    _ => None,
+                };
                 for i in 0..N {
                     if es.at(i) {
                         continue;
@@ -474,9 +470,9 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
             // （求めても使わない。結果は同じビット）
             _ if !d.mirror
                 && st.kind.norm == Norm::Flat
-                && d.typ != SurfType::Binary2
+                && st.kind.act != Act::Binary2
                 && !pol_scalar
-                && (d.typ == SurfType::Jones || st.n_uniform.is_some_and(|(a, b)| a == b)) =>
+                && (st.kind.act == Act::Jones || st.n_uniform.is_some_and(|(a, b)| a == b)) =>
             {
                 // 偏光は法線 (0, 0, 1) で面の処理をする（法線を求めたときと同じ値）
                 if let (Some(pr), Some(e)) = (pol.as_deref_mut(), pe.as_mut()) {
@@ -502,19 +498,17 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                     nv
                 };
                 let nvec: VL<V> = match st.kind.norm {
-                    Norm::Free => lane_normal(&mut err, &|x, y| {
-                        let (_, zx, zy) = crate::freeform::sag_xy(d, x, y);
-                        [-zx, -zy, 1.0]
-                    }),
-                    Norm::Toroidal => lane_normal(&mut err, &|x, y| {
-                        let (_, zx, zy) = trace::sag_toroidal(d.c, d.k, &d.asph, d.cx, x, y);
-                        [-zx, -zy, 1.0]
-                    }),
-                    Norm::Grad9Tilt => lane_normal(&mut err, &|x, y| {
-                        let (_, zx, zy) = crate::grin::grad9_sag(d, x, y);
-                        [-zx, -zy, 1.0]
-                    }),
-                    Norm::Fresnel => lane_normal(&mut err, &|x, y| trace::fresnel_normal(d, x, y)),
+                    Norm::Grad => {
+                        let sh = d.shape();
+                        lane_normal(&mut err, &|x, y| {
+                            let (_, zx, zy) = sh.sag(x, y);
+                            [-zx, -zy, 1.0]
+                        })
+                    }
+                    Norm::Fresnel => match d.action() {
+                        Action::Fresnel(b) => lane_normal(&mut err, &|x, y| b.normal(x, y)),
+                        _ => unreachable!("Fresnel の法線は Fresnel の面だけ"),
+                    },
                     Norm::Asph => {
                         let r2 = pl[0] * pl[0] + pl[1] * pl[1];
                         let (_, dz) = st.sag.eval(r2);
@@ -537,7 +531,7 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         [f(0), f(1), f(2)]
                     };
                     nn = nprev;
-                } else if d.typ == SurfType::Jones {
+                } else if st.kind.act == Act::Jones {
                 } else if let Some((a, b)) = st.n_uniform {
                     // 前後の屈折率がどの光線でも同じ（GRIN の媒質が絡まない）: 比は数 1 つ
                     if b != a {
@@ -598,12 +592,18 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         pol_surface_l(sys, pr, e, j, (&kin, &kl, &nv, cosi), d.mirror, act);
                     }
                 }
-                if st.kind.fresnel {
+                // 働きの見方は使う面でだけ作る（どの面でも通る所なので）
+                let fres = match st.kind.fresnel.then(|| d.action()) {
+                    Some(Action::Fresnel(b)) => Some(b),
+                    _ => None,
+                };
+                if let Some(bend) = fres {
                     for i in 0..N {
                         if err[i] == 0.0 {
                             let a = [pl[0][i], pl[1][i]];
                             match trace::fresnel_opl(
-                                d,
+                                &bend,
+                                d.mirror,
                                 get(&kin, i),
                                 nprev[i],
                                 nn[i],
@@ -616,7 +616,11 @@ pub(super) fn run<V: Lanes, const N: usize, R: LaneSink>(
                         }
                     }
                 }
-                if let (SurfType::Binary2, Some(b)) = (d.typ, d.bin2.as_deref()) {
+                let bin2 = match (st.kind.act == Act::Binary2).then(|| d.action()) {
+                    Some(Action::Binary2(b)) => b,
+                    _ => None,
+                };
+                if let Some(b) = bin2 {
                     let sc = plan.lam * 1e-3 / (2.0 * std::f64::consts::PI);
                     for i in 0..N {
                         if err[i] != 0.0 {

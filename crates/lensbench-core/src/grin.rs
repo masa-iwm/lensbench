@@ -15,8 +15,8 @@
 //! 収束した値を出す（2026-11-08 決定）
 
 use crate::math::*;
+use crate::shape::Shape;
 use crate::surface::{SurfType, Surface};
-use crate::trace::{sag, sag_toroidal};
 use crate::{invalid, Error, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -316,59 +316,19 @@ fn poly_d(c: &[f64], x: f64) -> (f64, f64) {
     (v, dv)
 }
 
-/// Gradient 9 の面の形 z = 標準面 + x tan α + y tan β と (∂z/∂x, ∂z/∂y)
-pub(crate) fn grad9_sag(d: &Surface, x: f64, y: f64) -> (f64, f64, f64) {
-    let (z, dz) = sag(d.c, d.k, &[], x * x + y * y);
-    let t = match d.grin.as_deref().map(|g| &g.kind) {
-        Some(GrinKind::Grad9 { tan, .. }) => *tan,
-        _ => [0.0; 2],
-    };
-    (
-        z + x * t[0] + y * t[1],
-        2.0 * dz * x + t[0],
-        2.0 * dz * y + t[1],
-    )
+/// GRIN の媒質の次の面にできる面か: 座標ブレーク（平面。その後ろも同じ媒質が続く）か、交点を求められる形の面
+/// （Odd Asphere・Tilted・Irregular と、形を持たない理想レンズ・利用者定義の面はまだ扱わない）
+pub(crate) fn next_ok(d: &Surface) -> bool {
+    d.is_coord_break()
+        || !matches!(
+            d.shape(),
+            Shape::OddAsphere { .. } | Shape::Tilted { .. } | Shape::Irregular(_)
+        ) && !d.action().is_ideal()
 }
 
-/// Gradient 9 の形に傾きの項があるか
-pub(crate) fn grad9_tilted(d: &Surface) -> bool {
-    matches!(d.grin.as_deref().map(|g| &g.kind), Some(GrinKind::Grad9 { tan, .. }) if tan[0] != 0.0 || tan[1] != 0.0)
-}
-
-/// GRIN の媒質の次の面として交点を求められる面の矢高（局所 (x, y)）。対応しない面タイプは None。
-/// 座標ブレークは平面（その後ろも同じ媒質が続く）
-pub(crate) fn next_sag(d: &Surface) -> Option<impl Fn(f64, f64) -> f64 + '_> {
-    next_ok(d.typ).then_some(move |x: f64, y: f64| match d.typ {
-        SurfType::Fresnel | SurfType::Jones | SurfType::CoordBrk => 0.0,
-        SurfType::CylFresnel => sag(d.c, d.k, &d.asph, y * y).0,
-        SurfType::Toroidal => sag_toroidal(d.c, d.k, &d.asph, d.cx, x, y).0,
-        SurfType::ZernikeStd | SurfType::ZernikeFringe | SurfType::GridSag => {
-            crate::freeform::sag_xy(d, x, y).0
-        }
-        SurfType::Gradient9 => grad9_sag(d, x, y).0,
-        SurfType::Gradium | SurfType::Standard => sag(d.c, d.k, &[], x * x + y * y).0,
-        _ => sag(d.c, d.k, &d.asph, x * x + y * y).0,
-    })
-}
-
-/// GRIN の媒質の次の面にできる面タイプか（[`next_sag`]）
-pub(crate) fn next_ok(t: SurfType) -> bool {
-    matches!(
-        t,
-        SurfType::Standard
-            | SurfType::EvenAsph
-            | SurfType::Binary2
-            | SurfType::Toroidal
-            | SurfType::ZernikeStd
-            | SurfType::ZernikeFringe
-            | SurfType::GridSag
-            | SurfType::Fresnel
-            | SurfType::CylFresnel
-            | SurfType::Jones
-            | SurfType::Gradium
-            | SurfType::Gradient9
-            | SurfType::CoordBrk
-    )
+/// GRIN の媒質の次の面の形（交点は [`Shape::sag`] の矢高で求める）。[`next_ok`] でない面は None
+pub(crate) fn next_shape(d: &Surface) -> Option<Shape<'_>> {
+    next_ok(d).then(|| d.shape())
 }
 
 /// 媒質の中を進んだ結果（媒質の面の局所座標）
@@ -961,6 +921,7 @@ impl GrinData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shape::sag;
 
     fn g9() -> Grin {
         Grin {

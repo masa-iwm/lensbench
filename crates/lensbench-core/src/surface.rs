@@ -1,4 +1,8 @@
 //! 面のデータ（OpticStudio のレンズデータエディタの 1 行に当たる）。
+//!
+//! 値は面の種類によらない平たい形で持ち、種類ごとの意味（`asph` が何の係数かなど）は形の見方
+//! [`Surface::shape`]（[`crate::shape`]）と働きの見方 [`Surface::action`]（[`crate::action`]）で分ける。
+//! 形・働きに依る計算はこの 2 つを通す（.zmx の読み書き・編集・パラメータの番号の対応は `typ` を見る）
 
 use crate::freeform::{GridSag, ZernSag};
 use crate::grin::Grin;

@@ -9,9 +9,10 @@
 //! [`assemble`] は分けた並びを面の列に戻す。並び替え・反転・差し替えをした並びでもよい。
 //! 組み直した系はピックアップ（[`crate::param::Pickup`]）・玉・群（[`crate::units`]）を引き継がない（玉は作り直す）。
 
+use crate::action::Action;
 use crate::error::Result;
 use crate::invalid;
-use crate::surface::{Aperture, SurfType, Surface};
+use crate::surface::{Aperture, Surface};
 use crate::system::System;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,13 +79,10 @@ impl Element {
             } else {
                 s.n.get(w).copied().unwrap_or(1.0)
             };
-            let p = match s.typ {
-                SurfType::Paraxial => 1.0 / s.focal,
-                SurfType::User => s
-                    .user
-                    .as_ref()
-                    .map_or(0.0, |u| u.instance().paraxial_power()),
-                SurfType::CoordBrk => 0.0,
+            let p = match s.action() {
+                _ if s.is_coord_break() => 0.0,
+                Action::Paraxial { f, .. } => 1.0 / f,
+                Action::User(u) => u.map_or(0.0, |u| u.instance().paraxial_power()),
                 _ => (n1 - n0) * s.c,
             };
             m = mul(&[[1.0, 0.0], [-p, 1.0]], &m);
@@ -125,7 +123,7 @@ pub fn air_after(s: &System) -> Vec<bool> {
     for (j, d) in s.surfaces.iter().enumerate() {
         let a = if j == 0 {
             is_air_mat(&d.mat)
-        } else if d.mirror || d.typ == SurfType::CoordBrk || d.ignore {
+        } else if d.mirror || d.is_coord_break() || d.ignore {
             prev
         } else {
             is_air_mat(&d.mat)
@@ -158,7 +156,7 @@ pub fn split(s: &System) -> Result<Vec<Element>> {
                 k += 1;
             }
             (Kind::Lens, k)
-        } else if d.typ == SurfType::CoordBrk {
+        } else if d.is_coord_break() {
             (Kind::CoordBreak, j)
         } else if d.mirror {
             (Kind::Mirror, j)
@@ -188,10 +186,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
     if e.kind != Kind::Lens {
         invalid!("only a lens can be reversed");
     }
-    if e.surfaces
-        .iter()
-        .any(|s| s.mirror || s.typ == SurfType::CoordBrk)
-    {
+    if e.surfaces.iter().any(|s| s.mirror || s.is_coord_break()) {
         notimpl_rev()?;
     }
     if e.surfaces
@@ -207,7 +202,7 @@ pub fn reverse(e: &Element) -> Result<Element> {
         s.c = -s.c;
         s.cx = -s.cx;
         s.asph.iter_mut().for_each(|a| *a = -*a);
-        if s.typ == SurfType::Jones {
+        if matches!(s.action(), Action::Jones(_)) {
             invalid!("a lens with a Jones surface is not reversed");
         }
         s.ap = match s.ap {

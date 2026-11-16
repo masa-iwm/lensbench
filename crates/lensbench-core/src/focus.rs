@@ -69,7 +69,7 @@ impl FocusBase {
         let grin = s.surfaces[..s.image()]
             .iter()
             .rev()
-            .find(|d| !d.ignore && d.typ != SurfType::CoordBrk)
+            .find(|d| !d.ignore && !d.is_coord_break())
             .is_some_and(|d| d.grin.is_some());
         let ok = !grin
             && matches!(s.field_type, FieldType::Angle | FieldType::ObjH)

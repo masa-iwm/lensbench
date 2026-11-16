@@ -138,7 +138,7 @@ fn with_surface(s0: &System, at: usize, mut d: Surface) -> Option<System> {
         return None;
     }
     // 座標ブレークは材料を持たない（前の媒質が続く）
-    if d.typ != lensbench_core::surface::SurfType::CoordBrk {
+    if !d.is_coord_break() {
         d.mat = p.mat.clone();
         d.n = p.n.clone();
     }

@@ -1,6 +1,8 @@
 //! 近軸追跡・近軸量・射出瞳・対称性
 
 use super::*;
+use crate::action::Action;
+use crate::shape::Shape;
 
 impl System {
     /// 面 1 の頂点面で高さ y1、物体空間の傾き u0 の近軸光線 → 各面の頂点面での高さ y と面の後の傾き u（展開した向き）
@@ -24,37 +26,31 @@ impl System {
                 continue;
             }
             y[j] = yy;
-            match d.typ {
-                // トロイダル面は YZ 面の近軸（OpticStudio と同じ）
-                SurfType::Standard
-                | SurfType::EvenAsph
-                | SurfType::Toroidal
-                | SurfType::ZernikeStd
-                | SurfType::ZernikeFringe
-                | SurfType::GridSag
-                | SurfType::Fresnel
-                | SurfType::CylFresnel
-                | SurfType::Binary2
-                | SurfType::Gradium
-                | SurfType::Gradient9
-                | SurfType::OddAsph
-                | SurfType::TiltSurf
-                | SurfType::Irregular => {
-                    let a1 = d.asph.first().copied().unwrap_or(0.0);
-                    let c = sgn
-                        * if crate::freeform::is_freeform(d.typ) {
-                            crate::freeform::paraxial_curv(d)
-                        } else if let Some(f) =
-                            d.cylf.as_ref().filter(|_| d.typ == SurfType::CylFresnel)
-                        {
-                            // 屈折は Fresnel の面（YZ 面）で決まる
-                            f.c + 2.0 * f.coef.first().copied().unwrap_or(0.0)
-                        } else {
-                            d.c + 2.0 * a1
-                        };
+            let action = d.action();
+            match action {
+                _ if d.is_coord_break() => {}
+                Action::Paraxial { f, .. } => uu -= yy / f,
+                Action::User(u) => {
+                    if let Some(u) = u {
+                        uu -= yy * u.instance().paraxial_power();
+                    }
+                }
+                Action::Jones(_) => n = d.n[w],
+                Action::Refract
+                | Action::Reflect { .. }
+                | Action::Binary2(_)
+                | Action::Fresnel(_)
+                | Action::Birefringent(_) => {
+                    // 形の近軸の曲率（トロイダル面は YZ 面の近軸。OpticStudio と同じ）。Fresnel の屈折は
+                    // 屈折の面（YZ 面）で決まる
+                    let bend = match action {
+                        Action::Fresnel(b) => b.paraxial_curv(),
+                        _ => None,
+                    };
+                    let c = sgn * bend.unwrap_or_else(|| d.shape().paraxial_curv());
                     // Binary 2 の位相の 2 次の項: n′u′ に (λ/2π) ∂Φ/∂y を足す（λ はレンズの単位 mm）
-                    let dphi = match d.bin2.as_ref().filter(|_| d.typ == SurfType::Binary2) {
-                        Some(b) => {
+                    let dphi = match action {
+                        Action::Binary2(Some(b)) => {
                             let a = b.coef.first().copied().unwrap_or(0.0);
                             self.wavelengths[w] * 1e-3 / (2.0 * std::f64::consts::PI)
                                 * b.order
@@ -63,7 +59,7 @@ impl System {
                                 / (b.norm * b.norm)
                                 * yy
                         }
-                        None => 0.0,
+                        _ => 0.0,
                     };
                     if d.mirror {
                         uu += 2.0 * c * yy - sgn * dphi / n;
@@ -79,21 +75,13 @@ impl System {
                         n = n2;
                     }
                 }
-                SurfType::Paraxial => uu -= yy / d.focal,
-                SurfType::User => {
-                    if let Some(u) = &d.user {
-                        uu -= yy * u.instance().paraxial_power();
-                    }
-                }
-                SurfType::Jones => n = d.n[w],
-                SurfType::CoordBrk => {}
             }
             u[j] = uu;
             // GRIN の媒質（座標ブレークの後ろも続く）と、その面の局所 z の今の位置
-            gmed = match (d.grin.as_deref().filter(|_| !d.mirror), d.typ) {
-                (Some(g), _) => Some((g, 0.0)),
-                (None, SurfType::CoordBrk) => gmed,
-                _ => None,
+            gmed = match d.grin.as_deref().filter(|_| !d.mirror) {
+                Some(g) => Some((g, 0.0)),
+                None if d.is_coord_break() => gmed,
+                None => None,
             };
             if j < upto {
                 match gmed {
@@ -270,7 +258,7 @@ impl System {
             if d.ignore {
                 continue;
             }
-            if d.typ == SurfType::CoordBrk && d.cb.iter().any(|&v| v != 0.0) {
+            if d.is_coord_break() && d.cb.iter().any(|&v| v != 0.0) {
                 return false;
             }
             if d.before.is_some() || matches!(d.after, After::Tilt(_)) {
@@ -278,7 +266,7 @@ impl System {
             }
             // Zernike・Grid Sag・Odd Asphere・Tilted・Irregular の面は回転対称とみない（瞳は実光線で求める。OpticStudio と
             // 同じ。自作の系で、近軸の瞳にすると EXPD・OPDC の OpticStudio との差が大きくなった）
-            if freeform && crate::freeform::is_freeform(d.typ) {
+            if freeform && d.shape().is_freeform() {
                 return false;
             }
             // GRIN の公差の項・Gradient 9 の形の傾き
@@ -303,7 +291,7 @@ impl System {
                 // GRIN の分布・形を傾けた面も同じ（G8B で OpticStudio と OPDC 5e-7 波）
                 let free = self.surfaces.iter().any(|d| {
                     !d.ignore
-                        && (crate::freeform::is_freeform(d.typ)
+                        && (d.shape().is_freeform()
                             || d.grin.as_deref().is_some_and(|g| !g.symmetric()))
                 });
                 let cross_z = |p1: V3, k1: V3| -> f64 {
@@ -395,7 +383,8 @@ impl System {
         self.infinite()
             && self.field_type == FieldType::Angle
             && self.surfaces.iter().any(|d| {
-                !d.ignore && d.typ == SurfType::OddAsph && d.asph.first().is_some_and(|&b| b != 0.0)
+                !d.ignore
+                    && matches!(d.shape(), Shape::OddAsphere { b, .. } if b.first().is_some_and(|&b1| b1 != 0.0))
             })
     }
 

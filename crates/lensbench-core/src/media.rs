@@ -8,7 +8,7 @@
 use crate::error::{Error, Result};
 use crate::glass;
 use crate::invalid;
-use crate::surface::{Bire, SurfType};
+use crate::surface::Bire;
 use crate::system::System;
 
 /// 面の後の媒質の、材料からの作り方
@@ -26,7 +26,7 @@ enum Medium {
 
 fn medium_of(sys: &System, j: usize) -> Medium {
     let d = &sys.surfaces[j];
-    if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
+    if j > 0 && (d.mirror || d.is_coord_break()) {
         return Medium::Previous;
     }
     if d.grin.is_some() {

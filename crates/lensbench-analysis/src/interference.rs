@@ -255,14 +255,10 @@ fn trace_grid(
             &plain
         }
     };
-    let phase = sys.surfaces.iter().any(|s| {
-        !s.ignore
-            && matches!(
-                s.typ,
-                lensbench_core::surface::SurfType::Paraxial
-                    | lensbench_core::surface::SurfType::User
-            )
-    });
+    let phase = sys
+        .surfaces
+        .iter()
+        .any(|s| !s.ignore && s.action().is_ideal());
     let c_lens = if phase {
         let c = sys.try_trace(field, &[0.0], &[0.0], Some(w), None, false)?;
         if !c.traced(0) {

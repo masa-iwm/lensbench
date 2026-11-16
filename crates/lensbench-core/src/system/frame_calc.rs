@@ -2,7 +2,7 @@
 
 use super::{Frame, Frames, Rel, System};
 use crate::math::*;
-use crate::surface::{After, SurfType, Surface, Tilt};
+use crate::surface::{After, Surface, Tilt};
 
 /// 座標系を 1 面ぶん進める（[`frames`] と同じ）。面の座標系と、次の面へ渡す座標系を返す
 pub fn step_frame(o: V3, r: M3, d: &Surface) -> ((V3, M3), (V3, M3)) {
@@ -11,7 +11,7 @@ pub fn step_frame(o: V3, r: M3, d: &Surface) -> ((V3, M3), (V3, M3)) {
     }
     let (mut o, mut r) = (o, r);
     let frame;
-    if d.typ == SurfType::CoordBrk {
+    if d.is_coord_break() {
         (o, r) = apply_cb(
             o,
             r,
@@ -61,13 +61,13 @@ fn local_shift(s: &System, q: usize, j: usize) -> Option<f64> {
     if !s.surfaces[q + 1..j].iter().all(|d| d.ignore) {
         return None;
     }
-    let after = a.typ == SurfType::CoordBrk
+    let after = a.is_coord_break()
         || match &a.after {
             After::None => true,
             After::Reverse => a.before.as_ref().is_none_or(zero),
             After::Tilt(t) => zero(t),
         };
-    let before = if b.typ == SurfType::CoordBrk {
+    let before = if b.is_coord_break() {
         b.cb.iter().all(|&v| v == 0.0)
     } else {
         b.before.as_ref().is_none_or(zero)

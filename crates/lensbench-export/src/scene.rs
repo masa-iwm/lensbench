@@ -11,7 +11,8 @@
 use lensbench_core::elements::air_after;
 use lensbench_core::freeform;
 use lensbench_core::math::*;
-use lensbench_core::surface::{Aperture, SurfType, Surface};
+use lensbench_core::shape::Shape;
+use lensbench_core::surface::{Aperture, Surface};
 use lensbench_core::system::Frame;
 use lensbench_core::trace::{sag, sag_toroidal};
 use lensbench_core::{Error, FieldSel, Result, System};
@@ -174,7 +175,7 @@ pub fn unfold_maps(s: &System) -> Vec<(Unfold, Unfold)> {
     let mut out = Vec::with_capacity(s.surfaces.len());
     for (j, d) in s.surfaces.iter().enumerate() {
         let before = t;
-        if j > 0 && d.mirror && !d.ignore && d.typ != SurfType::CoordBrk {
+        if j > 0 && d.mirror && !d.ignore && !d.is_coord_break() {
             if let Some(f) = fr.surf[j] {
                 t = t.then_mirror(f.o, col(&f.r, 2));
             }
@@ -204,20 +205,19 @@ pub struct Face {
 
 impl Face {
     fn from_surface(d: &Surface, frame: Frame, semi: f64, surf: usize) -> Face {
-        let free = freeform::is_freeform(d.typ);
+        let sh = d.shape();
+        let free = sh.is_freeform();
         // Cylinder Fresnel の基板は y だけの関数（回転半径が無限のトロイダル面と同じ形）。
         // Fresnel は平面に描く（屈折の傾きだけを持つ）
-        let toroidal = matches!(d.typ, SurfType::Toroidal | SurfType::CylFresnel) || free;
+        let toroidal = matches!(sh, Shape::Toroid { .. } | Shape::Cylinder(_)) || free;
         let curved = free
             || matches!(
-                d.typ,
-                SurfType::Standard
-                    | SurfType::EvenAsph
-                    | SurfType::Toroidal
-                    | SurfType::CylFresnel
-                    | SurfType::Binary2
-                    | SurfType::Gradium
-                    | SurfType::Gradient9
+                sh,
+                Shape::Conic { .. }
+                    | Shape::EvenAsphere(_)
+                    | Shape::Toroid { .. }
+                    | Shape::Cylinder(_)
+                    | Shape::ConicTilted { .. }
             );
         let mut semi = semi;
         // 半球を超える面は、サグが決まる半径までにする
@@ -231,21 +231,17 @@ impl Face {
             k: if curved { d.k } else { 0.0 },
             asph: if free
                 || matches!(
-                    d.typ,
-                    SurfType::EvenAsph
-                        | SurfType::Toroidal
-                        | SurfType::CylFresnel
-                        | SurfType::Binary2
+                    sh,
+                    Shape::EvenAsphere(_) | Shape::Toroid { .. } | Shape::Cylinder(_)
                 ) {
                 d.asph.clone()
             } else {
                 Vec::new()
             },
             toroidal,
-            cx: if d.typ == SurfType::Toroidal {
-                d.cx
-            } else {
-                0.0
+            cx: match sh {
+                Shape::Toroid { cx, .. } => cx,
+                _ => 0.0,
             },
             free: free.then(|| Box::new(d.clone())),
             semi,
@@ -801,7 +797,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
                 }
                 reach[*j] = reach[*j].max(e.xyz[0].hypot(e.xyz[1]));
                 // 展開した図では座標ブレークの点を飛ばす（光線の延長の上の点で、戻って見える）
-                let cb = s.surfaces[*j].typ == SurfType::CoordBrk;
+                let cb = s.surfaces[*j].is_coord_break();
                 if *j >= first.max(1) && !(opt.unfold && cb) {
                     pts.push(maps[*j].0.point(e.p));
                 }
@@ -846,7 +842,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
     let active: Vec<usize> = (first.max(1)..=last)
         .filter(|&j| {
             let d = &s.surfaces[j];
-            !d.ignore && d.typ != SurfType::CoordBrk && fr.surf[j].is_some()
+            !d.ignore && !d.is_coord_break() && fr.surf[j].is_some()
         })
         .collect();
     let mut solids: Vec<Solid> = Vec::new();
@@ -859,8 +855,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
             continue;
         }
         let (da, db) = (&s.surfaces[a], &s.surfaces[b]);
-        let thin = |t: SurfType| matches!(t, SurfType::Paraxial | SurfType::User);
-        if thin(da.typ) || thin(db.typ) {
+        if da.action().is_ideal() || db.action().is_ideal() {
             continue;
         }
         let (sa, sb) = (semi_of(a), semi_of(b));
@@ -977,7 +972,7 @@ pub fn build(s: &System, opt: &Options) -> Result<Scene> {
         let d = &s.surfaces[j];
         let kind = if j == img {
             PlateKind::Image
-        } else if matches!(d.typ, SurfType::Paraxial | SurfType::User) {
+        } else if d.action().is_ideal() {
             PlateKind::Paraxial
         } else {
             continue;
@@ -1181,7 +1176,7 @@ fn medium_name(s: &System, j: usize) -> String {
     let mut k = j;
     loop {
         let d = &s.surfaces[k];
-        if k == 0 || !(d.mirror || d.typ == SurfType::CoordBrk || d.ignore) {
+        if k == 0 || !(d.mirror || d.is_coord_break() || d.ignore) {
             return d.mat.clone();
         }
         k -= 1;

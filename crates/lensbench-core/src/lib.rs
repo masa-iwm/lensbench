@@ -12,6 +12,7 @@
 pub mod error;
 pub mod math;
 
+pub mod action;
 mod aim;
 pub mod analysis;
 pub mod batch;
@@ -41,6 +42,7 @@ pub mod psf;
 pub mod raygrid;
 pub mod report;
 pub mod semi;
+pub mod shape;
 pub mod solve;
 pub mod surface;
 pub mod sweep;

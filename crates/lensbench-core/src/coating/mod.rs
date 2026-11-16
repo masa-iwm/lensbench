@@ -43,7 +43,6 @@ pub use thin_film::*;
 pub use num_complex::Complex64 as C64;
 
 use crate::glass;
-use crate::surface::SurfType;
 use crate::system::System;
 use crate::{invalid, notimpl, Error, Result};
 

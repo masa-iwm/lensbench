@@ -555,7 +555,7 @@ pub(crate) fn pick_set(d: &mut Surface, what: PickKind, v: f64) -> bool {
             After::Reverse => return false,
         },
         PickKind::Before(i) => {
-            if d.typ == SurfType::CoordBrk {
+            if d.is_coord_break() {
                 return false;
             }
             match &mut d.before {
@@ -592,7 +592,7 @@ pub(crate) fn pick_kind(d: &Surface, kind: Kind) -> Option<PickKind> {
         Kind::Dn => Some(PickKind::Dn),
         Kind::Disp => Some(PickKind::Disp),
         Kind::Asph(i) if d.typ == SurfType::EvenAsph => Some(PickKind::Parm(i + 1)),
-        k if d.typ == SurfType::CoordBrk => k.tilt_index().map(|i| PickKind::Parm(i as u8 + 1)),
+        k if d.is_coord_break() => k.tilt_index().map(|i| PickKind::Parm(i as u8 + 1)),
         k => k.tilt_index().map(|i| PickKind::Before(i as u8)),
     }
 }
@@ -758,14 +758,13 @@ impl System {
             invalid!("surface {j} (surfaces are 0 to {last})");
         }
         let d = &self.surfaces[j];
-        let curved = matches!(d.typ, SurfType::Standard | SurfType::EvenAsph)
-            || crate::freeform::is_freeform(d.typ);
+        let curved = d.shape_params();
         match p.kind {
             Kind::Curv | Kind::Radius | Kind::Conic if j == 0 || !curved => {
                 invalid!("surface {j} ({:?}) {}", d.typ, p.kind.name());
             }
             Kind::Asph(i) => {
-                if d.typ != SurfType::EvenAsph && !crate::freeform::is_freeform(d.typ) {
+                if d.typ != SurfType::EvenAsph && !d.shape().is_freeform() {
                     invalid!("surface {j} is not an even asphere ({})", p.kind.name());
                 }
                 if i >= 8 {
@@ -783,7 +782,7 @@ impl System {
             Kind::Dx | Kind::Dy | Kind::Tx | Kind::Ty | Kind::Tz if j == 0 => {
                 notimpl!("tilt or decenter of the object surface");
             }
-            Kind::Dn | Kind::Disp if d.mirror || d.typ == SurfType::CoordBrk => {
+            Kind::Dn | Kind::Disp if d.mirror || d.is_coord_break() => {
                 let kind = p.kind.name();
                 invalid!("surface {j} is a mirror or a coordinate break (the medium is surface {kind} before it)");
             }
@@ -853,7 +852,7 @@ impl System {
             Kind::Disp => d.disp,
             k => {
                 let i = k.tilt_index().unwrap();
-                if d.typ == SurfType::CoordBrk {
+                if d.is_coord_break() {
                     d.cb[i]
                 } else {
                     d.before.map(|b| b.d[i]).unwrap_or(0.0)
@@ -1148,7 +1147,7 @@ impl System {
                 }
                 k => {
                     let i = k.tilt_index().unwrap();
-                    if d.typ == SurfType::CoordBrk {
+                    if d.is_coord_break() {
                         d.cb[i] = v;
                     } else {
                         // 前の傾き偏心がなければ作り、面の後は「前を戻す」にする（その面だけが動く）。
@@ -1204,7 +1203,7 @@ impl System {
                         let a = &self.surfaces[q.src];
                         let (mat, mirror) = (a.mat.clone(), a.mirror);
                         let d = &mut self.surfaces[q.dst];
-                        if d.typ == SurfType::CoordBrk
+                        if d.is_coord_break()
                             || (mirror && q.dst == 0)
                             || (d.mat == mat && d.mirror == mirror)
                         {
@@ -1353,7 +1352,7 @@ impl System {
         let mut touched = false;
         for j in 0..self.surfaces.len() {
             let d = &mut self.surfaces[j];
-            if j > 0 && (d.mirror || d.typ == SurfType::CoordBrk) {
+            if j > 0 && (d.mirror || d.is_coord_break()) {
                 if touched {
                     if let Some(n) = &nprev {
                         d.n = n.clone();
@@ -1444,7 +1443,7 @@ impl System {
             {
                 invalid!("surface {}: both a solve and a pickup ({:?})", q.surf, what);
             }
-            if q.kind.is_curv() && self.surfaces[q.surf].typ == SurfType::CoordBrk {
+            if q.kind.is_curv() && self.surfaces[q.surf].is_coord_break() {
                 invalid!("surface {}: curvature solve on a coordinate break", q.surf);
             }
             if q.kind == SolveKind::Position(0) {
@@ -1615,7 +1614,7 @@ impl System {
             if d.ignore {
                 continue;
             }
-            let tilted = (d.typ == SurfType::CoordBrk && d.cb.iter().any(|&v| v != 0.0))
+            let tilted = (d.is_coord_break() && d.cb.iter().any(|&v| v != 0.0))
                 || d.before.is_some()
                 || matches!(d.after, After::Tilt(_));
             if d.mirror || tilted {
@@ -1919,10 +1918,10 @@ impl System {
     fn solve_real_height(&mut self, k: usize, h: f64, zone: f64) -> Result<bool> {
         let (d, n) = (&self.surfaces[k], &self.surfaces[k + 1]);
         if d.mirror
-            || d.typ == SurfType::CoordBrk
+            || d.is_coord_break()
             || d.after != After::None
             || n.before.is_some()
-            || n.typ == SurfType::CoordBrk
+            || n.is_coord_break()
             || n.ignore
         {
             notimpl!(
@@ -1979,7 +1978,7 @@ impl System {
     /// 満たす値。ほかのソルブを止めたままでは解がないことがある: 焦点ソルブの前の面の OPD のソルブ）。
     /// OPD のソルブどうしは外の繰り返し（[`System::solve_thickness`]）で揃える
     fn solve_opd(&mut self, k: usize, opd: f64, zone: f64) -> Result<bool> {
-        if self.surfaces[k].mirror || self.surfaces[k].typ == SurfType::CoordBrk {
+        if self.surfaces[k].mirror || self.surfaces[k].is_coord_break() {
             notimpl!("surface {k}: OPD thickness solve on a mirror or coordinate break");
         }
         if k + 1 >= self.surfaces.len() {

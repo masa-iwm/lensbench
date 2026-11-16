@@ -23,7 +23,7 @@ const X: [C64; 2] = [C64::new(1.0, 0.0), C64::new(0.0, 0.0)];
 /// 屈折率の変わる面（境界）
 fn interfaces(s: &System, w: usize) -> Vec<(usize, f64, f64)> {
     (1..s.surfaces.len())
-        .filter(|&j| !s.surfaces[j].ignore && s.surfaces[j].typ != SurfType::CoordBrk)
+        .filter(|&j| !s.surfaces[j].ignore && !s.surfaces[j].is_coord_break())
         .map(|j| (j, s.index_before(j, w), s.surfaces[j].n[w]))
         .filter(|&(_, a, b)| a != b)
         .collect()

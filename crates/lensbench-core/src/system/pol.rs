@@ -1,6 +1,7 @@
 //! 偏光追跡の入口（面ごとの偏光の準備）
 
 use super::*;
+use crate::action::Action;
 
 impl System {
     /// 偏光追跡での面ごとの処理を波長 w について用意する（境界の係数、Jones 行列、媒質の吸収）
@@ -13,15 +14,12 @@ impl System {
                 .glasses
                 .get(&before[j])
                 .and_then(|g| coating::internal_t(g, wl));
-            let kind = if d.ignore || j == 0 {
+            let kind = if d.ignore || j == 0 || d.is_coord_break() {
                 PolKind::None
             } else {
-                match d.typ {
-                    SurfType::Jones => {
-                        let a = match &d.retarder {
-                            Some(r) => r.jones8(wl),
-                            None => d.jones,
-                        };
+                match d.action() {
+                    Action::Jones(m) => {
+                        let a = m.jones8(wl);
                         PolKind::Jones([
                             C64::new(a[0], a[1]),
                             C64::new(a[2], a[3]),
@@ -29,7 +27,7 @@ impl System {
                             C64::new(a[6], a[7]),
                         ])
                     }
-                    SurfType::CoordBrk | SurfType::Paraxial | SurfType::User => PolKind::None,
+                    Action::Paraxial { .. } | Action::User(_) => PolKind::None,
                     _ => match &keys[j] {
                         Some(k) => PolKind::Iface(
                             coat.prepare(

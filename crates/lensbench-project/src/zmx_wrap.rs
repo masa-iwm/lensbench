@@ -75,7 +75,7 @@ pub fn zmx_project(s: &System, path: &str) -> lensbench_core::Result<Value> {
     // GLRS はブロックの面で書く（前に要素を足しても同じ面を指す）。ブロックの面は座標ブレークを数えないので、
     // 座標ブレーク・物体面・像面は系の面の番号のまま
     let image = s.surfaces.len().saturating_sub(1);
-    let cb = |j: usize| s.surfaces[j].typ == SurfType::CoordBrk;
+    let cb = |j: usize| s.surfaces[j].is_coord_break();
     if (1..image).contains(&s.glrs) && !cb(s.glrs) {
         p["blocks"][0]["id"] = json!(ZMX_ID);
         let k = (1..s.glrs).filter(|&j| !cb(j)).count();
