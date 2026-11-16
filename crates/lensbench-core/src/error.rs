@@ -31,9 +31,11 @@ pub mod code {
     pub const LENS_NOT_FOUND: &str = "catalog.lens_not_found";
     /// 引数の組み合わせ・値の誤り（読み方の構成・状態・経路の指定など。種類 invalid）
     pub const BAD_ARGUMENT: &str = "argument.invalid";
+    /// 瞳の光線が像面に届かず（けられ・止まり）、瞳の大きさを決められない系の状態（MTF など。種類 invalid）
+    pub const PUPIL_VIGNETTED: &str = "system.pupil_vignetted";
 
     /// 符号の一覧（docs・試験で使う）
-    pub const ALL: [&str; 7] = [
+    pub const ALL: [&str; 8] = [
         FILE_NOT_FOUND,
         IS_FOLDER,
         GLASS_NOT_FOUND,
@@ -41,6 +43,7 @@ pub mod code {
         BLOCK_NOT_FOUND,
         LENS_NOT_FOUND,
         BAD_ARGUMENT,
+        PUPIL_VIGNETTED,
     ];
 }
 

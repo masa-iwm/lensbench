@@ -669,12 +669,17 @@ impl App {
                 } else {
                     "🔍".to_string()
                 };
-                let search = egui::Button::new(RichText::new(label).color(weak))
-                    .min_size(egui::vec2(room.clamp(28.0, 300.0), 28.0));
-                let r = ui.add(search).on_hover_text(tr("Search analyses, panels and commands (Ctrl+K)"));
-                self.palette.anchor = Some(r.rect);
-                if r.clicked() {
-                    self.palette.show();
+                // 🔍 も入らなければ出さない（ファイル名に重ねない。Ctrl+K で開ける）
+                if room >= 32.0 {
+                    let search = egui::Button::new(RichText::new(label).color(weak))
+                        .min_size(egui::vec2(room.min(300.0), 28.0));
+                    let r = ui.add(search).on_hover_text(tr("Search analyses, panels and commands (Ctrl+K)"));
+                    self.palette.anchor = Some(r.rect);
+                    if r.clicked() {
+                        self.palette.show();
+                    }
+                } else {
+                    self.palette.anchor = None;
                 }
                 if custom {
                     crate::chrome::drag_area(ui);

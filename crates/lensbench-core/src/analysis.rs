@@ -341,7 +341,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
     }
     let r = s.try_trace(field, &px, &py, Some(w), None, false)?;
     if !r.traced(0) {
-        notimpl!("MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
+        invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
     }
     let (q0, k0) = (r.rays[0].xyz, r.rays[0].lmn);
     // 射出瞳の位置で主光線に垂直な平面（OPD の基準の平面、[`to_ref`]）まで光線を延ばした点の、主光線からの差。
@@ -375,7 +375,7 @@ fn afocal_jacobian(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 2]; 2
         let k = |ia: usize, neg: bool| 1 + axis * 2 * A.len() + 2 * ia + neg as usize;
         let Some(ia) = (0..A.len()).find(|&ia| r.traced(k(ia, false)) && r.traced(k(ia, true)))
         else {
-            notimpl!("MTF: rays on the pupil axes are vignetted (the pupil size can't be set)");
+            invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: rays on the pupil axes are vignetted (the pupil size can't be set)");
         };
         let (p, m) = (perp(k(ia, false)), perp(k(ia, true)));
         let h = 2.0 * A[ia];
@@ -414,18 +414,14 @@ fn pupil_jacobian_inner(s: &System, field: FieldSel, w: usize) -> Result<[[f64; 
             [(p[0] - m[0]) / h, (p[1] - m[1]) / h]
         } else {
             if !r.traced(0) {
-                notimpl!(
-                    "MTF: the chief ray doesn't reach the image (the pupil size can't be set)"
-                );
+                invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: the chief ray doesn't reach the image (the pupil size can't be set)");
             }
             let o = lm(0);
             let one = (0..A.len())
                 .flat_map(|ia| [(ia, false), (ia, true)])
                 .find(|&(ia, neg)| r.traced(k(ia, neg)));
             let Some((ia, neg)) = one else {
-                notimpl!(
-                    "MTF: rays inside the pupil are vignetted too (the pupil size can't be set)"
-                );
+                invalid!(code = crate::error::code::PUPIL_VIGNETTED; "MTF: rays inside the pupil are vignetted too (the pupil size can't be set)");
             };
             let p = lm(k(ia, neg));
             let h = if neg { -A[ia] } else { A[ia] };

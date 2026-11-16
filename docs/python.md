@@ -103,7 +103,7 @@ CLI では単数形の旗を繰り返します。
   例外の `code` は機械で見分ける符号です（例 `e.code == "glass.not_found"`。文は表示の言語で変わるので、判定には `code` を使う）。
   今ある符号: `file.not_found`（ファイルが無い）・`file.is_folder`（フォルダを渡した）・`glass.not_found`（ガラス・ガラスカタログが無い）・
 `project.state_not_found`（無い状態の名前）・`project.block_not_found`（無いブロックの id）・`catalog.lens_not_found`（カタログに無い品）・
-`argument.invalid`（構成・状態・経路の指定の誤り）。符号の無い誤りの `code` は種類と同じ。系の保存や編集などの一部の誤りは、まだ種類のない `lensbench.Error` になります（順に種類を付けていきます）。
+`argument.invalid`（構成・状態・経路の指定の誤り）・`system.pupil_vignetted`（瞳の光線が像面に届かず、MTF などで瞳の大きさを決められない）。符号の無い誤りの `code` は種類と同じ。系の保存や編集などの一部の誤りは、まだ種類のない `lensbench.Error` になります（順に種類を付けていきます）。
 - 文は「種類: 内容」の形です（`不正:`・`未対応:`・`読込:`）。**面に関わるエラーには面の名札が付きます**:
   `面 番号(種類, 材料, 膜 名前, 「コメント」)`（空の項は省く）。例:
 

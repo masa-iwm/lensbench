@@ -53,7 +53,8 @@ impl App {
             let right_w: f32 = ui
                 .data(|d| d.get_temp(egui::Id::new("status-right-w")))
                 .unwrap_or(320.0);
-            let room = (ui.available_width() - right_w - 180.0).max(80.0);
+            // 右の数値との間は 16 px 空ける（前は 180 px 引いていて、右に空きがあっても短く切れた、GUX-33）
+            let room = (ui.available_width() - right_w - 16.0).max(80.0);
             let rich = if self.c.status.error {
                 RichText::new(text.clone()).color(theme::error(ui.visuals()))
             } else {
@@ -227,6 +228,9 @@ pub(super) fn error_hint(e: &crate::worker::CallErr) -> Option<String> {
         code::STATE_NOT_FOUND | code::BLOCK_NOT_FOUND => {
             "The project may have been changed elsewhere; reopen it"
         }
+        code::PUPIL_VIGNETTED => {
+            "Rays in the pupil don't reach the image: check the aperture, fields and surface semi-diameters"
+        }
         "not_implemented" => {
             "Not supported yet: the manual lists the supported surfaces and items (Reading .zmx files)"
         }
@@ -251,4 +255,21 @@ pub(super) fn plain_error(e: &str) -> String {
             " (add catalogs: add_glasses, add_glass_catalogs)",
             &format!(" {add}"),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::worker::CallErr;
+    use lensbench_core::error::code;
+
+    /// GUX-33: 瞳がけられて MTF を計算できない誤りの案内は「未対応」でなく開口・視野を確かめる案内
+    #[test]
+    fn gux33_pupil_vignetted_hint() {
+        let h = error_hint(&CallErr::coded("MTF: …", code::PUPIL_VIGNETTED)).unwrap();
+        assert!(h.contains(tr(
+            "Rays in the pupil don't reach the image: check the aperture, fields and surface semi-diameters"
+        )));
+        assert_ne!(Some(h), error_hint(&CallErr::coded("x", "not_implemented")));
+    }
 }
