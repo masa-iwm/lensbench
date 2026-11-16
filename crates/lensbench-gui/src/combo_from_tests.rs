@@ -303,3 +303,30 @@ fn zmx_files_become_combos() {
         assert!(ok.iter().any(|x| x == n), "{n}: {no:?}");
     }
 }
+
+/// 保存はブロックが元（文書モデル段階 4）: examples の組合せをブロックに書いて開き直すと、2 回目からは変わらない
+/// （1 回目は id の無い要素に id が付く・状態の経路が基本と同じなら書かない）
+#[test]
+fn blocks_are_the_saved_form() {
+    let r = root();
+    let mut n = 0;
+    for dir in ["examples/combos", "examples/projects"] {
+        let dir = r.join(dir);
+        for e in std::fs::read_dir(&dir).unwrap() {
+            let f = e.unwrap().path();
+            let v: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+            let Ok(c) = Combo::from_project(&v, &dir) else {
+                continue;
+            };
+            let c1 = Combo::from_project(&c.project(), &dir).unwrap();
+            let c2 = Combo::from_project(&c1.project(), &dir).unwrap();
+            let (a, b) = (
+                serde_json::to_value(&c1).unwrap(),
+                serde_json::to_value(&c2).unwrap(),
+            );
+            assert!(a == b, "{}: {}", f.display(), super::first_diff(&a, &b, ""));
+            n += 1;
+        }
+    }
+    assert_eq!(n, 21);
+}

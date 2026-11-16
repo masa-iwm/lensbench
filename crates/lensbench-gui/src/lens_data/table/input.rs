@@ -224,11 +224,11 @@ pub(super) fn kbd_menu(ui: &mut Ui, st: &mut LensData, c: &Ctx, v: &View, out: &
                 .show(ui.ctx(), |ui| {
                     egui::Frame::menu(ui.style()).show(ui, |ui| {
                         ui.set_max_width(340.0);
-                        if let Some(a) = override_item(ui, c, j, col) {
-                            done = true;
-                            out.acts.push(a);
-                        }
                         if ro.is_none() {
+                            if let Some(a) = override_item(ui, c, j, col) {
+                                done = true;
+                                out.acts.push(a);
+                            }
                             let a = cell_menu(
                                 ui,
                                 menu,

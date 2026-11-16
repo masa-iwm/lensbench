@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 use crate::combo::{
-    Combo, ElemKind, GroupDef, MechPick, Pick, SurfEdit, SurfKind, SurfRow, ZGroup,
+    ApShape, Combo, ElemKind, GroupDef, MechPick, Pick, SurfEdit, SurfKind, SurfRow, ZGroup,
 };
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt};
 use lensbench_project::edit_ops::{BlockRef, Ref, SurfaceOp};
@@ -393,8 +393,11 @@ fn items(bs: &[Value], groups: &mut Vec<GroupDef>, group: &str) -> R<Vec<Item>> 
 fn place(b: &Value, p: &mut Pick) {
     p.on = b["on"].as_bool().unwrap_or(true);
     p.off_air = b["off"] == "air";
-    p.decenter = arr(&b["decenter"]);
-    p.tilt = arr(&b["tilt"]);
+    // 開口・遮蔽の偏心は開口の dx・dy（ブロックの置き方は書かない）
+    if p.kind != ElemKind::Aperture {
+        p.decenter = arr(&b["decenter"]);
+        p.tilt = arr(&b["tilt"]);
+    }
 }
 
 fn semi(v: &Value) -> (f64, bool) {
@@ -479,6 +482,7 @@ fn elem(b: &Value, groups: &mut Vec<GroupDef>) -> R<Pick> {
             p.id = s(&b["id"]);
             return Ok(p);
         }
+        Some("surfaces") if aperture_of(b).is_some() => aperture_of(b).unwrap_or_default(),
         Some("surfaces") => {
             let mut p = Pick::new(ElemKind::Surfaces);
             p.surfs = b["surfaces"]
@@ -987,7 +991,7 @@ fn norm(v: &mut Value) {
 }
 
 /// 最初に違う所（誤りの文）
-fn first_diff(a: &Value, b: &Value, at: &str) -> String {
+pub(crate) fn first_diff(a: &Value, b: &Value, at: &str) -> String {
     match (a, b) {
         (Value::Object(x), Value::Object(y)) => {
             let keys: BTreeSet<&String> = x.keys().chain(y.keys()).collect();
@@ -1023,4 +1027,52 @@ pub(crate) fn absolute(p: &Path) -> PathBuf {
         return p.to_path_buf();
     }
     std::env::current_dir().map_or_else(|_| p.to_path_buf(), |d| d.join(p))
+}
+
+/// 開口・遮蔽の要素が書くブロック（厚さ 0 の面 1 つに開口だけ、[`Pick::block`]）なら、その要素
+fn aperture_of(b: &Value) -> Option<Pick> {
+    let [sf] = b["surfaces"].as_array()?.as_slice() else {
+        return None;
+    };
+    let o = sf.as_object()?;
+    if o.keys()
+        .any(|k| !matches!(k.as_str(), "t" | "semi" | "aperture"))
+        || f(&sf["t"], 0.0) != 0.0
+    {
+        return None;
+    }
+    let a = &sf["aperture"];
+    let mut p = Pick::new(ElemKind::Aperture);
+    p.decenter = [f(&a["dx"], 0.0), f(&a["dy"], 0.0)];
+    let off = p.decenter[0].hypot(p.decenter[1]);
+    match a["type"].as_str()? {
+        "circular" | "obscuration" => {
+            p.ap = if a["type"] == "circular" {
+                ApShape::Circle
+            } else {
+                ApShape::Obscuration
+            };
+            p.ap_min = f(&a["min"], 0.0);
+            p.semi = f(&a["max"], 0.0);
+        }
+        "rect" | "ellipse" => {
+            p.ap = if a["type"] == "rect" {
+                ApShape::Rect
+            } else {
+                ApShape::Ellipse
+            };
+            p.ap_half = [f(&a["hx"], 0.0), f(&a["hy"], 0.0)];
+        }
+        "spider" => {
+            p.ap = ApShape::Spider;
+            p.spider_width = f(&a["width"], 0.0);
+            p.spider_arms = a["arms"].as_u64().unwrap_or(1) as u32;
+            p.semi = f(&sf["semi"], 0.0) - off;
+        }
+        _ => return None,
+    }
+    // 書いたブロックと同じでなければ（手で書いた面など）面の並びのまま
+    let mut q = p.clone();
+    q.id = s(&b["id"]);
+    (q.block(&q.id.clone())["surfaces"] == b["surfaces"]).then_some(p)
 }

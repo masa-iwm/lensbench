@@ -319,8 +319,8 @@ fn doc_peek(p: &Value) -> Result<Value, String> {
         "gui": v.get("gui").cloned().unwrap_or(Value::Null),
         "blocks": v.get("blocks").is_some(),
     });
-    // 組合せを同梱していないブロックのプロジェクトは、組合せで書ければ組合せにする（文書モデル 1 段目、GUX-11）
-    if v.get("blocks").is_some() && v.pointer("/gui/combo").is_none() {
+    // ブロックのプロジェクトは、組合せで書ければ組合せにする（文書モデル 1 段目・4 段目。ブロックが元）
+    if v.get("blocks").is_some() {
         let abs = crate::combo_from::absolute(std::path::Path::new(f));
         let base = abs.parent().unwrap_or(std::path::Path::new(""));
         if let Ok(c) = crate::combo::Combo::from_project(&v, base) {
@@ -335,13 +335,13 @@ fn doc_peek_reads_gui_and_blocks() {
     let dir = lensbench_core::vfs::temp_dir().join("lensbench-gui-doc-peek");
     lensbench_core::vfs::create_dir_all(&dir).unwrap();
     let f = dir.join("p.json");
-    lensbench_core::vfs::write(&f, r#"{"blocks": [], "gui": {"combo": {"name": "x"}}}"#).unwrap();
+    lensbench_core::vfs::write(&f, r#"{"blocks": [], "gui": {"view": {"state": "x"}}}"#).unwrap();
     let v = doc_peek(&serde_json::json!({ "file": f.display().to_string() })).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({ "gui": { "combo": { "name": "x" } }, "blocks": true })
+        serde_json::json!({ "gui": { "view": { "state": "x" } }, "blocks": true })
     );
-    // 組合せを同梱していないブロックのプロジェクト: 組合せで書ければ combo
+    // ブロックのプロジェクト: 組合せで書ければ combo
     let ex = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects");
     let peek = |n: &str| {
         let f = ex.join(n).display().to_string();

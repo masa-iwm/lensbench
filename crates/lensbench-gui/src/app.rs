@@ -5,6 +5,9 @@
 //! 系のブロック編集とレイアウト図は、系の編集・保存形式の上にパネルとして足す。
 
 mod ask;
+mod doc_file;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use doc_file::convert_old;
 mod doc_loc;
 mod folders;
 mod help;
@@ -530,20 +533,6 @@ fn glass_dirs(v: &[String]) -> Value {
     dirs(v)
 }
 
-/// 組合せを同梱したプロジェクト（`gui.combo` に組合せ。系の計算は残りのプロジェクトで、CLI でも開ける）
-fn project_with_combo(c: &Combo) -> Value {
-    let mut v = c.project();
-    if let Ok(cv) = serde_json::to_value(c) {
-        v["gui"] = json!({ "combo": cv });
-    }
-    v
-}
-
-/// プロジェクトに同梱した組合せ
-fn combo_of_project(v: &Value) -> Option<Combo> {
-    serde_json::from_value(v.get("gui")?.get("combo")?.clone()).ok()
-}
-
 impl Core {
     /// 最適化・公差・差し替えのパネルの設定（変数・項・公差の表。serve の optimize・tolerance・swap と同じ形）。
     /// 空のパネルは入れない（GPN-14）
@@ -965,7 +954,7 @@ impl Core {
             }
         };
         if combo {
-            let mut v = project_with_combo(&self.doc.combo);
+            let mut v = doc_file::project_file(&self.doc.combo);
             let panels = self.panels_value();
             if let Some(o) = panels.as_object() {
                 for (k, x) in o {
@@ -1928,6 +1917,10 @@ impl Core {
                 Act::DropOverride { j, col } => {
                     if let Some((k, i)) = self.combo_face(&spans, j) {
                         let names = ld_combo::override_fields(col);
+                        if self.doc.combo.el(k).is_some_and(|p| p.locked) {
+                            self.fail(tr("A locked element cannot be changed"));
+                            continue;
+                        }
                         if let Some(p) = self.doc.combo.el_mut(k) {
                             p.edits
                                 .retain(|e| !(e.surface == i && names.contains(&e.field.as_str())));
@@ -4668,25 +4661,6 @@ fn docs_urls() {
     assert!(!docs_url("gui.html").contains("//gui"));
 }
 
-/// 組合せを同梱したプロジェクト: 系のプロジェクトとして読め、組合せに戻せる（#129）
-#[test]
-fn project_keeps_combo() {
-    let mut c = Combo {
-        name: "two".into(),
-        ..Default::default()
-    };
-    c.picks.push(combo::Pick::new(combo::ElemKind::Plate));
-    let v = project_with_combo(&c);
-    let txt = serde_json::to_string_pretty(&v).unwrap();
-    let p = lensbench_project::Project::from_json(&txt).unwrap();
-    assert_eq!(
-        p.blocks.len(),
-        c.project()["blocks"].as_array().unwrap().len()
-    );
-    assert_eq!(combo_of_project(&v), Some(c));
-    assert_eq!(combo_of_project(&json!({ "blocks": [] })), None);
-}
-
 /// 見本の組合せ（examples/combos。Web 版の「見本」に出る、#134）
 #[cfg(test)]
 fn sample_combos() -> Vec<(&'static str, Combo)> {
@@ -4754,7 +4728,7 @@ fn sample_combos_are_up_to_date() {
     let update = std::env::var_os("LENSBENCH_UPDATE_SAMPLES").is_some();
     for (name, c) in sample_combos() {
         assert!(c.settings_problems().is_empty(), "{name}");
-        let want = serde_json::to_string_pretty(&project_with_combo(&c)).unwrap() + "\n";
+        let want = serde_json::to_string_pretty(&doc_file::project_file(&c)).unwrap() + "\n";
         let p = dir.join(format!("{name}.json"));
         if update {
             std::fs::create_dir_all(&dir).unwrap();
@@ -4768,6 +4742,15 @@ fn sample_combos_are_up_to_date() {
             "{name}: examples/combos が古い。LENSBENCH_UPDATE_SAMPLES=1 cargo test -p lensbench-gui sample_combos で作り直す"
         );
         lensbench_project::Project::from_json(&got).unwrap();
+        // 開くとブロックから同じ組合せ（ロックも）に戻る
+        let v: Value = serde_json::from_str(&got).unwrap();
+        let mut back = Combo::from_project(&v, &dir).unwrap();
+        doc_file::apply_view(&mut back, v.get("gui"));
+        for p in &mut back.picks {
+            p.id.clear();
+            p.air_id.clear();
+        }
+        assert_eq!(back, c, "{name}");
     }
 }
 

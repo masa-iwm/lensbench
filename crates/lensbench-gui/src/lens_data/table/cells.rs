@@ -576,8 +576,8 @@ fn value_cell(
         }
     }
     resp.context_menu(|ui| {
-        out.fx.acts.extend(override_item(ui, c, j, col));
         if ro.is_none() {
+            out.fx.acts.extend(override_item(ui, c, j, col));
             out.fx.acts.extend(cell_menu(
                 ui,
                 &mut st.menu,

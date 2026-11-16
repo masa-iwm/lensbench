@@ -583,6 +583,8 @@ impl Pick {
         };
         match kind {
             ElemKind::Plate => {
+                // 平板の面は平ら（ブロックにも半径を書かない。開き直しても同じ欄になるように）
+                (p.r1, p.r2) = (0.0, 0.0);
                 p.t = 3.0;
             }
             ElemKind::Mirror => {

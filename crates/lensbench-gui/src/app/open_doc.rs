@@ -32,10 +32,10 @@ impl Core {
             .map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into());
         self.flush_set();
         self.docs.opening = self.push_doc(trf("Open {}", &[&name]));
-        if let Some(c) = v.and_then(|v| combo_of_project(v).or_else(|| made(v))) {
-            // 前の保存（面の上書きに印が無い）は、開いたときに今の並びの印を付けてから「保存した形」にする。
-            // 付ける前を持つと、開いただけで未保存になる
-            let mut c = c;
+        if let Some(mut c) = v.and_then(made) {
+            // ブロックから作った組合せに見る状態（ロック・今の状態）を戻し、面の上書きを中身へ入れてから
+            // 「保存した形」にする。入れる前を持つと、開いただけで未保存になる
+            doc_file::apply_view(&mut c, v.and_then(|v| v.get("gui")));
             c.drop_stale_edits();
             c.bake_edits();
             self.loc.saved_combo = Some(c.clone());
