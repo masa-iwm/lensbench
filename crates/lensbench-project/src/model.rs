@@ -10,21 +10,10 @@ pub struct Wave {
     pub weight: f64,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ApertureType {
-    Epd,
-    Fnum,
-    Na,
-    Float,
-    Pwfn,
-    Cone,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ApertureSpec {
     #[serde(rename = "type")]
-    pub kind: ApertureType,
+    pub kind: ApertureKind,
     #[serde(default)]
     pub value: f64,
 }
@@ -65,28 +54,15 @@ pub struct FieldsSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub solve: Option<FieldSolveSpec>,
     /// 視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）
-    #[serde(default, skip_serializing_if = "FieldNormSpec::is_radial")]
-    pub norm: FieldNormSpec,
+    #[serde(default, skip_serializing_if = "is_radial")]
+    pub norm: FieldNorm,
     /// 視野ごとのケラレ係数 [VDX, VDY, VCX, VCY, VAN]（.zmx の VDXN〜VANN、VAN は度）。省略した視野は 0
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vignetting: Vec<[f64; 5]>,
 }
 
-/// 視野の正規化（[`FieldsSpec::norm`]）
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldNormSpec {
-    /// 半径（最も遠い視野が 1）
-    #[default]
-    Radial,
-    /// 矩形（x・y の最大がそれぞれ 1）
-    Rect,
-}
-
-impl FieldNormSpec {
-    fn is_radial(&self) -> bool {
-        *self == FieldNormSpec::Radial
-    }
+fn is_radial(n: &FieldNorm) -> bool {
+    *n == FieldNorm::Radial
 }
 
 impl Default for FieldsSpec {
@@ -96,19 +72,10 @@ impl Default for FieldsSpec {
             points: vec![[0.0, 0.0]],
             weights: Vec::new(),
             solve: None,
-            norm: FieldNormSpec::Radial,
+            norm: FieldNorm::Radial,
             vignetting: Vec::new(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AimingSpec {
-    #[default]
-    Off,
-    Paraxial,
-    Real,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, JsonSchema)]
@@ -810,7 +777,7 @@ pub struct Project {
     #[serde(default)]
     pub object_distance: Option<f64>,
     #[serde(default)]
-    pub aiming: AimingSpec,
+    pub aiming: Aiming,
     /// 物体側テレセントリック（物体距離が有限のときだけ）
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub telecentric: bool,

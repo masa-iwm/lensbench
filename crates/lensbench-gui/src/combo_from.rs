@@ -12,8 +12,9 @@ use crate::combo::{
     ApShape, Combo, ElemKind, GroupDef, MechPick, Pick, SurfEdit, SurfKind, SurfRow, ZGroup,
 };
 use crate::sysset::{Aiming, ApKind, FieldKind, FieldPt, FieldSolve, SolveCond, WavePt};
+use lensbench_core::system::ApertureKind;
 use lensbench_project::edit_ops::{BlockRef, Ref, SurfaceOp};
-use lensbench_project::{ApertureType, FieldSolveSpec, FieldsSpec, Project};
+use lensbench_project::{FieldSolveSpec, FieldsSpec, Project};
 
 type R<T> = Result<T, String>;
 
@@ -244,12 +245,12 @@ fn settings(c: &mut Combo, v: &Value) -> R<()> {
     let ap: lensbench_project::ApertureSpec =
         serde_json::from_value(v["aperture"].clone()).map_err(e)?;
     c.aperture = match ap.kind {
-        ApertureType::Epd => ApKind::Epd,
-        ApertureType::Fnum => ApKind::Fnum,
-        ApertureType::Na => ApKind::Na,
-        ApertureType::Float => ApKind::Float,
-        ApertureType::Pwfn => ApKind::Pwfn,
-        ApertureType::Cone => ApKind::Cone,
+        ApertureKind::Epd => ApKind::Epd,
+        ApertureKind::FNum => ApKind::Fnum,
+        ApertureKind::Na => ApKind::Na,
+        ApertureKind::Float => ApKind::Float,
+        ApertureKind::Pwfn => ApKind::Pwfn,
+        ApertureKind::Cone => ApKind::Cone,
     };
     match c.aperture {
         ApKind::Epd => c.epd = ap.value,

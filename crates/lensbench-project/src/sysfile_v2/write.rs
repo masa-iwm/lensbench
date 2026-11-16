@@ -2,7 +2,7 @@
 
 use super::*;
 use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
-use lensbench_core::system::{self as sy, ApertureKind, FieldCond, FieldType};
+use lensbench_core::system::{ApertureKind, FieldCond, FieldType};
 use lensbench_core::System;
 
 /// 系の処方。`catalogs` は使ったガラスのカタログ（[`catalogs::refs`]）
@@ -25,38 +25,17 @@ pub(crate) fn prescription(s: &System) -> lensbench_core::Result<Prescription> {
         primary: s.primary + 1,
         fields: fields(s),
         aperture: ApertureSpec {
-            kind: match s.aperture.0 {
-                ApertureKind::Epd => ApertureType::Epd,
-                ApertureKind::FNum => ApertureType::Fnum,
-                ApertureKind::Na => ApertureType::Na,
-                ApertureKind::Float => ApertureType::Float,
-                ApertureKind::Pwfn => ApertureType::Pwfn,
-                ApertureKind::Cone => ApertureType::Cone,
-            },
+            kind: s.aperture.0,
             value: s.aperture.1,
         },
         telecentric: s.telecentric,
-        aiming: match s.aiming {
-            sy::Aiming::Off => AimingSpec::Off,
-            sy::Aiming::Paraxial => AimingSpec::Paraxial,
-            sy::Aiming::Real => AimingSpec::Real,
-        },
+        aiming: s.aiming,
         temperature_c: s.temperature,
         pressure_atm: s.pressure,
         adjust_index: s.adjust_index,
         afocal: s.afocal,
-        afocal_unit: match s.afocal_unit {
-            sy::AfocalUnit::Microradians => AfocalUnitSpec::Microradians,
-            sy::AfocalUnit::Milliradians => AfocalUnitSpec::Milliradians,
-            sy::AfocalUnit::Radians => AfocalUnitSpec::Radians,
-            sy::AfocalUnit::ArcSeconds => AfocalUnitSpec::ArcSeconds,
-            sy::AfocalUnit::ArcMinutes => AfocalUnitSpec::ArcMinutes,
-            sy::AfocalUnit::Degrees => AfocalUnitSpec::Degrees,
-        },
-        vig_interp: match s.vig_interp {
-            sy::VigInterp::OpticStudio => VigInterpSpec::OpticStudio,
-            sy::VigInterp::Continuous => VigInterpSpec::Continuous,
-        },
+        afocal_unit: s.afocal_unit,
+        vig_interp: s.vig_interp,
         floating_clip: s.floating_clip,
         glrs: s.glrs,
         ropd: s.ropd,
@@ -112,10 +91,7 @@ fn fields(s: &System) -> Fields {
             weights
         },
         solve,
-        norm: match s.field_norm {
-            sy::FieldNorm::Radial => FieldNorm::Radial,
-            sy::FieldNorm::Rect => FieldNorm::Rect,
-        },
+        norm: s.field_norm,
         vignetting: if vig.iter().all(zeros) {
             Vec::new()
         } else {

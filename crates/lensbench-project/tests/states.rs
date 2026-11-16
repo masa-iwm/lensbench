@@ -402,7 +402,7 @@ fn afocal_and_telecentric_settings() {
     ));
     p.fields.kind = lensbench_project::FieldKind::ObjectHeight;
     p.fields.points = vec![[0.0, 0.0], [0.0, 3.0]];
-    p.aperture.kind = lensbench_project::ApertureType::Na;
+    p.aperture.kind = lensbench_core::system::ApertureKind::Na;
     p.aperture.value = 0.01;
     let s = expand(&p, &env()).unwrap();
     assert!(s.telecentric);

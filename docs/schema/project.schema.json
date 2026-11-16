@@ -1,6 +1,7 @@
 {
   "$defs": {
-    "AimingSpec": {
+    "Aiming": {
+      "description": "光線エイミング。JSON の名前は \"off\"・\"paraxial\"・\"real\"",
       "enum": [
         "off",
         "paraxial",
@@ -8,10 +9,45 @@
       ],
       "type": "string"
     },
+    "ApertureKind": {
+      "description": "系の開口の種類。JSON の名前は \"epd\"・\"fnum\"・\"na\"・\"float\"・\"pwfn\"・\"cone\"",
+      "oneOf": [
+        {
+          "const": "epd",
+          "description": "入射瞳径",
+          "type": "string"
+        },
+        {
+          "const": "fnum",
+          "description": "像側 F 値",
+          "type": "string"
+        },
+        {
+          "const": "na",
+          "description": "物体側 NA",
+          "type": "string"
+        },
+        {
+          "const": "float",
+          "description": "絞り径（絞りの半直径）",
+          "type": "string"
+        },
+        {
+          "const": "pwfn",
+          "description": "近軸作動 F 値",
+          "type": "string"
+        },
+        {
+          "const": "cone",
+          "description": "物体側コーン角",
+          "type": "string"
+        }
+      ]
+    },
     "ApertureSpec": {
       "properties": {
         "type": {
-          "$ref": "#/$defs/ApertureType"
+          "$ref": "#/$defs/ApertureKind"
         },
         "value": {
           "default": 0.0,
@@ -23,17 +59,6 @@
         "type"
       ],
       "type": "object"
-    },
-    "ApertureType": {
-      "enum": [
-        "epd",
-        "fnum",
-        "na",
-        "float",
-        "pwfn",
-        "cone"
-      ],
-      "type": "string"
     },
     "Arm": {
       "description": "経路の既定（文字を指定しないとき）",
@@ -1182,8 +1207,8 @@
         }
       ]
     },
-    "FieldNormSpec": {
-      "description": "視野の正規化（[`FieldsSpec::norm`]）",
+    "FieldNorm": {
+      "description": "視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）。JSON の名前は \"radial\"・\"rect\"",
       "oneOf": [
         {
           "const": "radial",
@@ -1264,7 +1289,7 @@
     "FieldsSpec": {
       "properties": {
         "norm": {
-          "$ref": "#/$defs/FieldNormSpec",
+          "$ref": "#/$defs/FieldNorm",
           "description": "視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）"
         },
         "points": {
@@ -2581,7 +2606,7 @@
       ]
     },
     "aiming": {
-      "$ref": "#/$defs/AimingSpec",
+      "$ref": "#/$defs/Aiming",
       "default": "off"
     },
     "aperture": {

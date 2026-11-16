@@ -19,6 +19,11 @@
   `sysfile::from_str_with`・`load_with`・`catalog_files`、`lensbench_core::glass::loaded_files`・`load_agf_shared`（公開に）。
 
 ### 名前・設定の書き方
+- 開口の種類・視野の正規化・エイミング・無限焦点の単位・ケラレの補間を、core・プロジェクト・系ファイルで同じ列挙にした（XCT-09）。
+  serve の `system_data`・`set_system_data` の `data`（GUI の系の設定もこれを使う）と Rust の core の列挙の serde の名前は系ファイル版 2 と同じ小文字（`"epd"`・`"fnum"`・`"na"`・
+  `"float"`・`"pwfn"`・`"cone"`、`"off"`・`"paraxial"`・`"real"`、`"radial"`・`"rect"`、`"degrees"` など、`"opticstudio"`・
+  `"continuous"`）。前の名前（`"FNum"`・`"Real"`・`"Rect"` など）も読む。Rust の `lensbench_project::model::ApertureType`・
+  `FieldNormSpec`・`AimingSpec` は消し、`lensbench_core::system` の `ApertureKind`・`FieldNorm`・`Aiming` を使う。
 - 物体空間 NA の量の名前を `obna` から OpticStudio の演算子名 `obsn` にした: 評価関数の `{"type":"paraxial","q":"obsn"}`、Python の
   `paraxial()` の鍵、`report::SystemData::obsn`、GUI の最適化パネルの選択肢。旧名 `obna` は受けない（誤りになる）。.zmx の系の行 `OBNA`（絞りの種類）はそのまま。
 - 名前を CLI・serve・Python でそろえた（CLI-14・CLI-17、11/16 masa 決定。旧名は受けない）:

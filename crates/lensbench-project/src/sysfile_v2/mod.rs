@@ -22,6 +22,7 @@ use lensbench_core::mech::MechPart;
 use lensbench_core::param::{Pickup, ThickSolve};
 use lensbench_core::plugin::Config;
 use lensbench_core::surface::{Binary2, CylFresnel};
+use lensbench_core::system::{AfocalUnit, Aiming, ApertureKind, FieldNorm, VigInterp};
 use lensbench_core::units::Unit;
 use lensbench_core::zpl_solve::{Macro, MacroParm};
 use schemars::JsonSchema;
@@ -98,7 +99,7 @@ pub struct Prescription {
     pub telecentric: bool,
     /// 光線エイミング
     #[serde(default, skip_serializing_if = "is_default")]
-    pub aiming: AimingSpec,
+    pub aiming: Aiming,
     /// 温度 [°C]
     #[serde(default = "t20", skip_serializing_if = "is_t20")]
     pub temperature_c: f64,
@@ -113,10 +114,10 @@ pub struct Prescription {
     pub afocal: bool,
     /// アフォーカル像空間の角度の単位
     #[serde(default, skip_serializing_if = "is_default")]
-    pub afocal_unit: AfocalUnitSpec,
+    pub afocal_unit: AfocalUnit,
     /// 定義した視野以外の点のケラレ係数の求め方
     #[serde(default, skip_serializing_if = "is_default")]
-    pub vig_interp: VigInterpSpec,
+    pub vig_interp: VigInterp,
     /// 浮動開口（半直径を固定した面）の外の光線をけるか
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub floating_clip: bool,
@@ -216,70 +217,13 @@ pub enum FieldSolve {
     DirDiff { s1: usize, s2: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldNorm {
-    #[default]
-    Radial,
-    Rect,
-}
-
 /// 系の開口
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ApertureSpec {
     #[serde(rename = "type")]
-    pub kind: ApertureType,
+    pub kind: ApertureKind,
     pub value: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ApertureType {
-    /// 入射瞳径
-    Epd,
-    /// 像側 F 値
-    Fnum,
-    /// 物体側 NA
-    Na,
-    /// 絞り径（絞りの半直径）
-    Float,
-    /// 近軸作動 F 値
-    Pwfn,
-    /// 物体側コーン角
-    Cone,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AimingSpec {
-    #[default]
-    Off,
-    Paraxial,
-    Real,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AfocalUnitSpec {
-    Microradians,
-    #[default]
-    Milliradians,
-    Radians,
-    ArcSeconds,
-    ArcMinutes,
-    Degrees,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum VigInterpSpec {
-    /// OpticStudio と同じ（視野の間で段差になる）
-    #[serde(rename = "opticstudio")]
-    OpticStudio,
-    /// 連続（既定）
-    #[default]
-    Continuous,
 }
 
 /// 使ったガラスのカタログ

@@ -500,14 +500,6 @@ pub(crate) fn expand_inner(
             };
         }
     }
-    let ap = match p.aperture.kind {
-        ApertureType::Epd => ApertureKind::Epd,
-        ApertureType::Fnum => ApertureKind::FNum,
-        ApertureType::Na => ApertureKind::Na,
-        ApertureType::Float => ApertureKind::Float,
-        ApertureType::Pwfn => ApertureKind::Pwfn,
-        ApertureType::Cone => ApertureKind::Cone,
-    };
     let ft = match p.fields.kind {
         FieldKind::Angle => FieldType::Angle,
         FieldKind::ObjectHeight => FieldType::ObjH,
@@ -538,11 +530,6 @@ pub(crate) fn expand_inner(
             f
         })
         .collect();
-    let aim = match p.aiming {
-        AimingSpec::Off => Aiming::Off,
-        AimingSpec::Paraxial => Aiming::Paraxial,
-        AimingSpec::Real => Aiming::Real,
-    };
     let mut s = System::new(
         sf,
         wl,
@@ -550,13 +537,10 @@ pub(crate) fn expand_inner(
         p.primary - 1,
         fields,
         ft,
-        match p.fields.norm {
-            FieldNormSpec::Radial => FieldNorm::Radial,
-            FieldNormSpec::Rect => FieldNorm::Rect,
-        },
-        (ap, p.aperture.value),
+        p.fields.norm,
+        (p.aperture.kind, p.aperture.value),
         p.telecentric,
-        aim,
+        p.aiming,
         c.glasses,
     )?
     .into_prescription();

@@ -4,7 +4,7 @@
 use super::*;
 use lensbench_core::glass::Glass;
 use lensbench_core::surface::{self as cs, Material, SurfType, Surface};
-use lensbench_core::system::{self as sy, ApertureKind, FieldCond, FieldType};
+use lensbench_core::system::{self as sy, FieldCond, FieldType};
 use lensbench_core::System;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -81,22 +81,8 @@ pub(crate) fn system(
         (FieldKind::ParaxialImageHeight, None) => FieldType::ParH,
         (FieldKind::RealImageHeight, None) => FieldType::RealH,
     };
-    let aperture = (
-        match p.aperture.kind {
-            ApertureType::Epd => ApertureKind::Epd,
-            ApertureType::Fnum => ApertureKind::FNum,
-            ApertureType::Na => ApertureKind::Na,
-            ApertureType::Float => ApertureKind::Float,
-            ApertureType::Pwfn => ApertureKind::Pwfn,
-            ApertureType::Cone => ApertureKind::Cone,
-        },
-        p.aperture.value,
-    );
-    let aiming = match p.aiming {
-        AimingSpec::Off => sy::Aiming::Off,
-        AimingSpec::Paraxial => sy::Aiming::Paraxial,
-        AimingSpec::Real => sy::Aiming::Real,
-    };
+    let aperture = (p.aperture.kind, p.aperture.value);
+    let aiming = p.aiming;
     let mut s = System::new(
         surfaces,
         p.wavelengths.iter().map(|w| w.um).collect(),
@@ -104,10 +90,7 @@ pub(crate) fn system(
         p.primary - 1,
         fields,
         field_type,
-        match f.norm {
-            FieldNorm::Radial => sy::FieldNorm::Radial,
-            FieldNorm::Rect => sy::FieldNorm::Rect,
-        },
+        f.norm,
         aperture,
         p.telecentric,
         aiming,
@@ -123,18 +106,8 @@ pub(crate) fn system(
     s.ropd = p.ropd;
     s.apodization = p.apodization;
     s.afocal = p.afocal;
-    s.afocal_unit = match p.afocal_unit {
-        AfocalUnitSpec::Microradians => sy::AfocalUnit::Microradians,
-        AfocalUnitSpec::Milliradians => sy::AfocalUnit::Milliradians,
-        AfocalUnitSpec::Radians => sy::AfocalUnit::Radians,
-        AfocalUnitSpec::ArcSeconds => sy::AfocalUnit::ArcSeconds,
-        AfocalUnitSpec::ArcMinutes => sy::AfocalUnit::ArcMinutes,
-        AfocalUnitSpec::Degrees => sy::AfocalUnit::Degrees,
-    };
-    s.vig_interp = match p.vig_interp {
-        VigInterpSpec::OpticStudio => sy::VigInterp::OpticStudio,
-        VigInterpSpec::Continuous => sy::VigInterp::Continuous,
-    };
+    s.afocal_unit = p.afocal_unit;
+    s.vig_interp = p.vig_interp;
     s.floating_clip = p.floating_clip;
     s.coating_file = p.coating_file.map(PathBuf::from);
     s.coat_tables = p.coat_tables.into_iter().collect();

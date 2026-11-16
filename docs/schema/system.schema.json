@@ -306,7 +306,8 @@
         }
       ]
     },
-    "AfocalUnitSpec": {
+    "AfocalUnit": {
+      "description": "アフォーカル像空間の角度の単位（.zmx の UNIT の値の 6 番目、OpticStudio の Afocal Mode Units）",
       "enum": [
         "microradians",
         "milliradians",
@@ -329,7 +330,8 @@
       ],
       "description": "面の後の傾き・偏心"
     },
-    "AimingSpec": {
+    "Aiming": {
+      "description": "光線エイミング。JSON の名前は \"off\"・\"paraxial\"・\"real\"",
       "enum": [
         "off",
         "paraxial",
@@ -684,32 +686,8 @@
         }
       ]
     },
-    "ApertureSpec": {
-      "additionalProperties": false,
-      "description": "系の開口",
-      "properties": {
-        "type": {
-          "$ref": "#/$defs/ApertureType"
-        },
-        "value": {
-          "anyOf": [
-            {
-              "format": "double",
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/NonFinite"
-            }
-          ]
-        }
-      },
-      "required": [
-        "type",
-        "value"
-      ],
-      "type": "object"
-    },
-    "ApertureType": {
+    "ApertureKind": {
+      "description": "系の開口の種類。JSON の名前は \"epd\"・\"fnum\"・\"na\"・\"float\"・\"pwfn\"・\"cone\"",
       "oneOf": [
         {
           "const": "epd",
@@ -742,6 +720,31 @@
           "type": "string"
         }
       ]
+    },
+    "ApertureSpec": {
+      "additionalProperties": false,
+      "description": "系の開口",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/ApertureKind"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/NonFinite"
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "type": "object"
     },
     "Apodization": {
       "description": "瞳のアポダイゼーション（系の設定。.zmx の系の行 GFAC 係数 種類、OpticStudio の System Explorer の Aperture の\nApodization Type・Apodization Factor）。解析の瞳関数の振幅に常に入る（FFT PSF・Huygens PSF・回折 MTF）。\n\n式は OpticStudio のヘルプ（System Explorer > Aperture）の定義に合わせる:\n- Gaussian: 「瞳の上で振幅がガウス形に変わる。アポダイゼーション係数は振幅が瞳の半径の座標で減る速さ」。\n  振幅 A(ρ) = exp(−G ρ²)（ρ は正規化瞳の半径、G が係数。瞳の中心で 1）。G = 1 で縁の振幅が 1/e（強度 1/e²）、\n  強度が 1/e² になる半径は ρ₀ = 1/√G（ヘルプの例「係数 3 なら入射瞳の直径が 1/e² の幅の √3 倍」と同じ）。\n- Cosine Cubed: 「点光源が平面を照らすときの強度の落ち方」。強度 I(θ) = cos³θ（θ は z 軸と、入射瞳と交わる\n  光線の角）を瞳の中心で 1 に正規化（I/I_中心）。振幅は √I。θ は物点から近軸の入射瞳の面の点\n  (ρ_x r, ρ_y r)（r は入射瞳の半径）への向きで求める。無限遠物体ではどの光線も同じ向きなので一様になる。\n\nOpticStudio 26.1 と照合済み（Cooke 40 の Strehl が OS の FFT PSF 瞳 512 と 0.3% 以内。試験は解析的に確かめたもの）",
@@ -1071,11 +1074,19 @@
       ]
     },
     "FieldNorm": {
-      "enum": [
-        "radial",
-        "rect"
-      ],
-      "type": "string"
+      "description": "視野の正規化（瞳・視野の座標の 1 を何にとるか。.zmx の FTYP の 6 番目）。JSON の名前は \"radial\"・\"rect\"",
+      "oneOf": [
+        {
+          "const": "radial",
+          "description": "半径（最も遠い視野が 1）",
+          "type": "string"
+        },
+        {
+          "const": "rect",
+          "description": "矩形（x・y の最大がそれぞれ 1）",
+          "type": "string"
+        }
+      ]
     },
     "FieldSolve": {
       "description": "条件で定める視野の条件（面は番号）",
@@ -2244,11 +2255,11 @@
           "type": "boolean"
         },
         "afocal_unit": {
-          "$ref": "#/$defs/AfocalUnitSpec",
+          "$ref": "#/$defs/AfocalUnit",
           "description": "アフォーカル像空間の角度の単位"
         },
         "aiming": {
-          "$ref": "#/$defs/AimingSpec",
+          "$ref": "#/$defs/Aiming",
           "description": "光線エイミング"
         },
         "aperture": {
@@ -2429,7 +2440,7 @@
           "type": "array"
         },
         "vig_interp": {
-          "$ref": "#/$defs/VigInterpSpec",
+          "$ref": "#/$defs/VigInterp",
           "description": "定義した視野以外の点のケラレ係数の求め方"
         },
         "wavelengths": {
@@ -3797,16 +3808,17 @@
       ],
       "description": "設定の値（系ファイルの JSON では数・真偽・文字列・数の並びをそのまま書く）"
     },
-    "VigInterpSpec": {
+    "VigInterp": {
+      "description": "定義した視野以外の点のケラレ係数の求め方（[`System::vig_factors`]）",
       "oneOf": [
         {
           "const": "opticstudio",
-          "description": "OpticStudio と同じ（視野の間で段差になる）",
+          "description": "OpticStudio 2026 R1.01 と同じ（y だけの視野は r² で補間、ほかは L1 で最も近い視野の値。視野の間で段差になる）。\nOpticStudio と照合するとき",
           "type": "string"
         },
         {
           "const": "continuous",
-          "description": "連続（既定）",
+          "description": "連続（既定、2026-11-13 masa 決定）: y だけの視野は r² で補間（外は最も外の視野の値。OpticStudio と同じ区間は\n同じ値）、ほかは視野の点の Delaunay 三角形分割で線形、外側は凸包の縁の最も近い点の値",
           "type": "string"
         }
       ]

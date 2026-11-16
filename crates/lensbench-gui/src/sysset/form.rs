@@ -64,12 +64,12 @@ const VIG: [&str; 5] = ["vdx", "vdy", "vcx", "vcy", "van"];
 
 fn ap_key(k: ApKind) -> &'static str {
     match k {
-        ApKind::Epd => "Epd",
-        ApKind::Fnum => "FNum",
-        ApKind::Na => "Na",
-        ApKind::Float => "Float",
-        ApKind::Pwfn => "Pwfn",
-        ApKind::Cone => "Cone",
+        ApKind::Epd => "epd",
+        ApKind::Fnum => "fnum",
+        ApKind::Na => "na",
+        ApKind::Float => "float",
+        ApKind::Pwfn => "pwfn",
+        ApKind::Cone => "cone",
     }
 }
 
@@ -85,9 +85,9 @@ fn field_key(k: FieldKind) -> Option<&'static str> {
 
 fn aiming_key(a: Aiming) -> &'static str {
     match a {
-        Aiming::Off => "Off",
-        Aiming::Paraxial => "Paraxial",
-        Aiming::Real => "Real",
+        Aiming::Off => "off",
+        Aiming::Paraxial => "paraxial",
+        Aiming::Real => "real",
     }
 }
 
@@ -178,7 +178,7 @@ impl SysForm {
             field_kind: field_kind.unwrap_or_default(),
             field_solve: None,
             field_cond: field_kind.is_none().then(|| d["field_type"].clone()),
-            field_rect: d["field_norm"].as_str() == Some("Rect"),
+            field_rect: d["field_norm"].as_str() == Some("rect"),
             fields: d["fields"]
                 .as_array()
                 .map(|a| {
@@ -203,8 +203,8 @@ impl SysForm {
             primary: d["primary"].as_u64().map_or(1, |p| p as usize + 1),
             telecentric: d["telecentric"].as_bool().unwrap_or(false),
             aiming: match d["aiming"].as_str() {
-                Some("Paraxial") => Aiming::Paraxial,
-                Some("Real") => Aiming::Real,
+                Some("paraxial") => Aiming::Paraxial,
+                Some("real") => Aiming::Real,
                 _ => Aiming::Off,
             },
             afocal: (d["afocal"].as_bool() == Some(true)).then(|| {
@@ -236,7 +236,7 @@ impl SysForm {
             ("afocal", json!(self.afocal.is_some())),
             (
                 "field_norm",
-                json!(if self.field_rect { "Rect" } else { "Radial" }),
+                json!(if self.field_rect { "rect" } else { "radial" }),
             ),
             (
                 "wavelengths",
@@ -649,14 +649,14 @@ mod tests {
     fn data() -> Map<String, Value> {
         json!({
             "name": "t",
-            "aperture": ["FNum", 4.0],
+            "aperture": ["fnum", 4.0],
             "telecentric": false,
             "floating_clip": true,
-            "aiming": "Real",
+            "aiming": "real",
             "afocal": true,
-            "afocal_unit": "Degrees",
+            "afocal_unit": "degrees",
             "field_type": "ObjH",
-            "field_norm": "Rect",
+            "field_norm": "rect",
             "fields": [{"x": 0.0, "y": 1.0, "w": 2.0, "vdx": 0.1, "vdy": 0.0, "vcx": 0.0, "vcy": 0.0, "van": 0.0, "extra": 7}],
             "wavelengths": [0.5, 0.6],
             "weights": [1.0, 3.0],
