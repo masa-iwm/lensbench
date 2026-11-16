@@ -488,6 +488,18 @@ def explore(shape, kind) -> list:
     return out
 
 
+def has_revolution(solid) -> bool:
+    """立体の面に回転面（非球面の SURFACE_OF_REVOLUTION）があるか"""
+    from OCP.BRep import BRep_Tool
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopoDS import TopoDS
+
+    return any(
+        BRep_Tool.Surface_s(_cast(TopoDS, "Face", f)).DynamicType().Name() == "Geom_SurfaceOfRevolution"
+        for f in explore(solid, TopAbs_FACE)
+    )
+
+
 def mesh_points(solid) -> np.ndarray:
     """立体を細かく三角形に分けた節点（面の上の点）"""
     from OCP.BRep import BRep_Tool
@@ -536,13 +548,20 @@ def test_step(name: str, tmp_path: Path) -> None:
         # 形: 面の上の点が系の面の上（STEP の面は厳密。継ぎ目の辺は読み込み器が近似で作り 5e-6 mm ずれる）
         p = mesh_points(s)
         check_solid_points(ref, n, p, tol=1e-5)
-        # 境界箱は glTF の立体と同じ（別の読み込み器で読んだ同じ場面）
+        # 境界箱は glTF の立体と同じ（別の読み込み器で読んだ同じ場面）。非球面の回転面（SURFACE_OF_REVOLUTION）を
+        # 含む立体は、OCCT が箱を断面の制御点の多角形を回した箱で返す（2 mm ほど大きい）ので、glTF の箱を含むことだけ
+        # 確かめる（形は上の面の点、大きさは下の体積で確かめる）
         b = Bnd_Box()
         BRepBndLib.AddOptimal_s(s, b, False, False)
         lo, hi = b.CornerMin(), b.CornerMax()
+        lo, hi = np.array([lo.X(), lo.Y(), lo.Z()]), np.array([hi.X(), hi.Y(), hi.Z()])
         g = glb.geometry[n].vertices * 1e3
-        np.testing.assert_allclose([lo.X(), lo.Y(), lo.Z()], g.min(axis=0), atol=2e-2)
-        np.testing.assert_allclose([hi.X(), hi.Y(), hi.Z()], g.max(axis=0), atol=2e-2)
+        if has_revolution(s):
+            assert (lo <= g.min(axis=0) + 2e-2).all() and (hi >= g.max(axis=0) - 2e-2).all(), n
+            assert (g.min(axis=0) - lo).max() < 5 and (hi - g.max(axis=0)).max() < 5, n
+        else:
+            np.testing.assert_allclose(lo, g.min(axis=0), atol=2e-2)
+            np.testing.assert_allclose(hi, g.max(axis=0), atol=2e-2)
         # 体積: レンズは .zmx と OpticStudio の面の座標から求めたものと、全部の立体を glTF の網と比べる
         js = solid_surfaces(n)
         if len(js) == 2:

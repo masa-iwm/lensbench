@@ -1,7 +1,8 @@
 //! STEP（ISO 10303-21、AP214）の書き出し: 玉と鏡は B-rep の立体、光線は折れ線、像面などは縁の円。
 //!
 //! - 球面は SPHERICAL_SURFACE、平面は PLANE、円錐係数・非球面係数のある面は、断面の曲線（3 次の B スプラインで
-//!   補間）を軸のまわりに回した SURFACE_OF_REVOLUTION。側面は CYLINDRICAL_SURFACE。
+//!   補間した B_SPLINE_CURVE_WITH_KNOTS）を軸のまわりに回した SURFACE_OF_REVOLUTION（PRJ-20）。断面の区間の数は
+//!   区間の中点のずれが [`OptionsStep::profile_tol`] 以下になるまで倍にする。側面は CYLINDRICAL_SURFACE。
 //! - 立体の 2 面が同じ軸の上にないもの（玉の中で偏心・傾きのあるもの）は、側面を 2 つの縁の円を結ぶ線織面
 //!   （有理 B スプライン）にする。
 //! - トロイダル面（円柱面など）を含む立体は、面を極座標（周 × 半径）の網で補間した B スプライン曲面にし、
@@ -25,8 +26,11 @@ pub struct StepReport {
 
 #[derive(Debug, Clone)]
 pub struct OptionsStep {
-    /// 非球面の断面を補間する区間の数
+    /// 非球面の断面を補間する区間の数の最小（トロイダル面の網の細かさにも使う）
     pub profile_segments: usize,
+    /// 非球面の断面の補間の許容差 [mm]: 区間の中点で補間の曲線と面のサグの差がこれ以下になるまで区間を倍にする
+    /// （上限 [`MAX_PROFILE_SEGMENTS`] 区間）
+    pub profile_tol: f64,
     /// 機構部品を、取った品の STEP の立体で書くときの読み手（[`crate::detail`]。None・無い部品は簡易外形）
     pub mech_detail: Option<crate::detail::Details>,
 }
@@ -35,6 +39,7 @@ impl Default for OptionsStep {
     fn default() -> Self {
         OptionsStep {
             profile_segments: 64,
+            profile_tol: 1e-6,
             mech_detail: None,
         }
     }
@@ -203,26 +208,32 @@ fn interpolate_n(q: &[Vec<f64>]) -> (Vec<Vec<f64>>, Vec<f64>) {
         knots.push(u[j..j + P].iter().sum::<f64>() / P as f64);
     }
     knots.extend([1.0; P + 1]);
-    // 連立方程式 N P = Q（密行列のガウス消去、n は数十）
+    // 連立方程式 N P = Q。N は帯行列（行 k の 0 でない列は k−P〜k+P）で、全正値なので枢軸の入れ替えなしの
+    // 消去が安定（de Boor）。帯だけを持ち O(n) で解く
     let m = n + 1;
-    let mut a: Vec<Vec<f64>> = (0..m)
-        .map(|k| (0..m).map(|i| basis(&knots, i, P, u[k])).collect())
+    const W: usize = 2 * P + 1;
+    let mut a: Vec<[f64; W]> = (0..m)
+        .map(|k| {
+            let mut row = [0.0; W];
+            for (j, x) in row.iter_mut().enumerate() {
+                if let Some(i) = (k + j).checked_sub(P).filter(|&i| i < m) {
+                    *x = basis(&knots, i, P, u[k]);
+                }
+            }
+            row
+        })
         .collect();
     let mut b: Vec<Vec<f64>> = q.to_vec();
     for c in 0..m {
-        let piv = (c..m)
-            .max_by(|&x, &y| a[x][c].abs().total_cmp(&a[y][c].abs()))
-            .expect("non-empty range");
-        a.swap(c, piv);
-        b.swap(c, piv);
-        for r in c + 1..m {
-            let f = a[r][c] / a[c][c];
+        for r in c + 1..m.min(c + P + 1) {
+            let f = a[r][c + P - r] / a[c][P];
             if f != 0.0 {
-                for k in c..m {
-                    a[r][k] -= f * a[c][k];
+                for k in c..m.min(c + P + 1) {
+                    a[r][k + P - r] -= f * a[c][k + P - c];
                 }
+                let (top, bot) = b.split_at_mut(r);
                 for d in 0..dim {
-                    b[r][d] -= f * b[c][d];
+                    bot[0][d] -= f * top[c][d];
                 }
             }
         }
@@ -230,12 +241,12 @@ fn interpolate_n(q: &[Vec<f64>]) -> (Vec<Vec<f64>>, Vec<f64>) {
     let mut x = vec![vec![0.0; dim]; m];
     for r in (0..m).rev() {
         let mut s = b[r].clone();
-        for k in r + 1..m {
+        for k in r + 1..m.min(r + P + 1) {
             for d in 0..dim {
-                s[d] -= a[r][k] * x[k][d];
+                s[d] -= a[r][k + P - r] * x[k][d];
             }
         }
-        x[r] = s.iter().map(|v| v / a[r][r]).collect();
+        x[r] = s.iter().map(|v| v / a[r][P]).collect();
     }
     // 端の制御点は端の点そのもの（隣の面と共有する縁の曲線が丸めでずれないよう）
     x[0] = q[0].clone();
@@ -255,70 +266,84 @@ pub fn bspline_eval(ctrl: &[[f64; 2]], knots: &[f64], u: f64) -> [f64; 2] {
 }
 
 /// 面の幾何（ADVANCED_FACE の面と、その自然な法線が頂点で外向きと同じ向きか）
-fn surface(e: &mut Ents, f: &Face, outward: V3, o: &OptionsStep) -> (usize, bool) {
+/// 回転面は縁 rim の頂点（基準 x の向き、θ = 0）から頂点の極までの断面の辺（継ぎ目）も返す
+fn surface(
+    e: &mut Ents,
+    f: &Face,
+    outward: V3,
+    o: &OptionsStep,
+    x: V3,
+    rim: &Circle,
+) -> (usize, bool, Option<usize>) {
     let z = f.axis();
-    let x = col(&f.frame.r, 0);
     let vtx = f.frame.o;
     if f.c == 0.0 && f.is_spherical() {
         let a = e.axis2(vtx, z, x);
         let s = e.add(format!("PLANE('',#{a})"));
-        return (s, dot(z, outward) > 0.0);
+        return (s, dot(z, outward) > 0.0, None);
     }
     if f.is_spherical() {
         let r = 1.0 / f.c;
         let a = e.axis2(add(vtx, scale(z, r)), z, x);
         let s = e.add(format!("SPHERICAL_SURFACE('',#{a},{})", real(r.abs())));
         // 球の法線は中心から外へ: 頂点では −sign(R)·z
-        return (s, dot(scale(z, -r.signum()), outward) > 0.0);
+        return (s, dot(scale(z, -r.signum()), outward) > 0.0, None);
     }
-    // 回転面: 断面（局所 xz 面、r = 0〜semi）を補間した B スプライン
-    let n = o.profile_segments.max(4);
-    let q: Vec<[f64; 2]> = (0..=n)
-        .map(|k| {
-            let r = f.semi * k as f64 / n as f64;
-            [r, f.sag(r)]
+    // 回転面: 断面（局所 xz 面、r = 0〜semi）を補間した B スプラインの曲線を軸のまわりに回す
+    let (ctrl, knots) = profile(f, o);
+    let (m, k) = knot_lists(&knots);
+    let pts: Vec<String> = ctrl
+        .iter()
+        .map(|c| {
+            format!(
+                "#{}",
+                e.point(add(add(vtx, scale(z, c[1])), scale(x, c[0])))
+            )
         })
         .collect();
-    let (ctrl, knots) = interpolate(&q);
-    // 節点を重複度でまとめる
-    let mut kv: Vec<(f64, usize)> = Vec::new();
-    for &k in &knots {
-        match kv.last_mut() {
-            Some((v, m)) if *v == k => *m += 1,
-            _ => kv.push((k, 1)),
-        }
-    }
-    let mults: Vec<String> = kv.iter().map(|(_, m)| m.to_string()).collect();
-    let ks: Vec<String> = kv.iter().map(|(v, _)| real(*v)).collect();
-    // 周（u、有理 2 次の円の 9 点）× 断面（v、3 次）の制御点
-    let y = cross(z, x);
-    let mut rows = Vec::new();
-    let mut ws = Vec::new();
-    for &(cx, cy, w) in &CIRCLE9 {
-        let row: Vec<String> = ctrl
-            .iter()
-            .map(|c| {
-                let p = add(
-                    add(vtx, scale(z, c[1])),
-                    add(scale(x, c[0] * cx), scale(y, c[0] * cy)),
-                );
-                format!("#{}", e.point(p))
+    let curve = e.add(format!(
+        "B_SPLINE_CURVE_WITH_KNOTS('',3,({}),.UNSPECIFIED.,.F.,.F.,({m}),({k}),.UNSPECIFIED.)",
+        pts.join(",")
+    ));
+    let (po, pz) = (e.point(vtx), e.dir(z));
+    let ax = e.add(format!("AXIS1_PLACEMENT('',#{po},#{pz})"));
+    let s = e.add(format!("SURFACE_OF_REVOLUTION('',#{curve},#{ax})"));
+    // 継ぎ目: 極（頂点）→ 縁の頂点の断面の辺。面の輪郭は縁の円と継ぎ目の行き帰り（周期の面を閉じる）
+    let pole = e.add(format!("VERTEX_POINT('',#{po})"));
+    let seam = e.add(format!(
+        "EDGE_CURVE('',#{pole},#{},#{curve},.T.)",
+        rim.vertex
+    ));
+    // u は軸のまわりに反時計回り、v は断面に沿って外へ: S_u × S_v は頂点の近くで −z
+    (s, dot(scale(z, -1.0), outward) > 0.0, Some(seam))
+}
+
+/// 断面の区間の数の上限
+pub const MAX_PROFILE_SEGMENTS: usize = 4096;
+
+/// 非球面の断面（r = 0〜semi の (r, サグ)）を補間した 3 次の B スプライン（制御点・節点）。区間の中点で曲線の点
+/// (r′, z′) と面のサグ sag(r′) の差が許容差を超えれば区間を倍にする
+pub fn profile(f: &Face, o: &OptionsStep) -> (Vec<[f64; 2]>, Vec<f64>) {
+    let mut n = o.profile_segments.max(4);
+    loop {
+        let q: Vec<[f64; 2]> = (0..=n)
+            .map(|k| {
+                let r = f.semi * k as f64 / n as f64;
+                [r, f.sag(r)]
             })
             .collect();
-        rows.push(format!("({})", row.join(",")));
-        ws.push(format!("({})", vec![real(w); ctrl.len()].join(",")));
+        let (ctrl, knots) = interpolate(&q);
+        let err = (0..n)
+            .map(|k| {
+                let p = bspline_eval(&ctrl, &knots, (k as f64 + 0.5) / n as f64);
+                (p[1] - f.sag(p[0].clamp(0.0, f.semi))).abs()
+            })
+            .fold(0.0, f64::max);
+        if err <= o.profile_tol || n >= MAX_PROFILE_SEGMENTS {
+            return (ctrl, knots);
+        }
+        n *= 2;
     }
-    let s = e.add(format!(
-        "(BOUNDED_SURFACE()B_SPLINE_SURFACE(2,3,({}),.UNSPECIFIED.,.T.,.F.,.F.)\
-B_SPLINE_SURFACE_WITH_KNOTS((3,2,2,2,3),({}),(0.,0.25,0.5,0.75,1.),({}),.UNSPECIFIED.)\
-GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_SURFACE(({}))REPRESENTATION_ITEM('')SURFACE())",
-        rows.join(","),
-        mults.join(","),
-        ks.join(","),
-        ws.join(",")
-    ));
-    // u は軸のまわりに反時計回り、v は外へ: S_u × S_v は頂点の近くで −z
-    (s, dot(scale(z, -1.0), outward) > 0.0)
 }
 
 /// 円を有理 2 次の B スプラインで表す 9 点（正方形の辺の中点と角、角の重みは 1/√2）
@@ -340,6 +365,8 @@ const CIRCLE9: [(f64, f64, f64); 9] = {
 /// 軸 A の上の円（立体の座標系: 原点 o、軸 a、基準 x）
 struct Circle {
     edge: usize,
+    /// 縁の頂点（θ = 0 の点）
+    vertex: usize,
 }
 
 fn circle(e: &mut Ents, o: V3, a: V3, x: V3, z: f64, r: f64) -> Circle {
@@ -349,7 +376,7 @@ fn circle(e: &mut Ents, o: V3, a: V3, x: V3, z: f64, r: f64) -> Circle {
     let p = e.point(add(c0, scale(x, r)));
     let v = e.add(format!("VERTEX_POINT('',#{p})"));
     let edge = e.add(format!("EDGE_CURVE('',#{v},#{v},#{cu},.T.)"));
-    Circle { edge }
+    Circle { edge, vertex: v }
 }
 
 /// 外向きの法線 n の面で、軸 a のまわりに反時計回りの円をたどる向き（外周なら T）
@@ -370,6 +397,16 @@ fn bound(e: &mut Ents, c: &Circle, sense: bool, outer: bool) -> usize {
         "FACE_BOUND"
     };
     e.add(format!("{kind}('',#{l},.T.)"))
+}
+
+/// 回転面の外周: 縁の円、継ぎ目を縁から極へ、極から縁へ（同じ辺を逆向きに 2 度）
+fn bound_seam(e: &mut Ents, c: &Circle, sense: bool, seam: usize) -> usize {
+    let t = |b: bool| if b { ".T." } else { ".F." };
+    let oc = e.add(format!("ORIENTED_EDGE('',*,*,#{},{})", c.edge, t(sense)));
+    let back = e.add(format!("ORIENTED_EDGE('',*,*,#{seam},.F.)"));
+    let out = e.add(format!("ORIENTED_EDGE('',*,*,#{seam},.T.)"));
+    let l = e.add(format!("EDGE_LOOP('',(#{oc},#{back},#{out}))"));
+    e.add(format!("FACE_OUTER_BOUND('',#{l},.T.)"))
 }
 
 fn face(e: &mut Ents, bounds: &[usize], surf: usize, same: bool) -> usize {
@@ -500,13 +537,16 @@ fn solid(e: &mut Ents, sd: &Solid, o: &OptionsStep) -> usize {
         let flat = Face { semi, ..f.clone() };
         let zc = dot(sub(flat.point(semi, 0.0), ax.o), ax.a);
         let inner = circle(e, ax.o, ax.a, ax.x, zc, semi);
-        let (srf, same) = if f.semi > 0.0 {
-            surface(e, &flat, outward, o)
+        let (srf, same, seam) = if f.semi > 0.0 {
+            surface(e, &flat, outward, o, ax.x, &inner)
         } else {
             let pa = e.axis2(add(ax.o, scale(ax.a, zc)), ax.a, ax.x);
-            (e.add(format!("PLANE('',#{pa})")), s > 0.0)
+            (e.add(format!("PLANE('',#{pa})")), s > 0.0, None)
         };
-        let b = bound(e, &inner, loop_sense(s, true), true);
+        let b = match seam {
+            Some(sm) => bound_seam(e, &inner, loop_sense(s, true), sm),
+            None => bound(e, &inner, loop_sense(s, true), true),
+        };
         faces.push(face(e, &[b], srf, same));
         if sd.rim > semi * (1.0 + 1e-12) {
             // 平らな輪
@@ -741,7 +781,7 @@ fn spline_edge(e: &mut Ents, r: &Ring) -> Circle {
     let p = e.point(r.ctrl[0]);
     let v = e.add(format!("VERTEX_POINT('',#{p})"));
     let edge = e.add(format!("EDGE_CURVE('',#{v},#{v},#{cu},.T.)"));
-    Circle { edge }
+    Circle { edge, vertex: v }
 }
 
 /// 制御点の網（u: 周 3 次、v: 3 次か 1 次）の B スプライン曲面

@@ -3,8 +3,9 @@
 - `layout`: レイアウトを `--out` の拡張子の形式で書き出す（複数可）。
   - 2D（大域の yz 面、`--plane xz` も可。`--unfold` で鏡・BS の折り曲げを伸ばした展開図）: `svg`・`png`（`--width` px）・`dxf`（R12、レイヤー LENS・MIRROR・SURFACE・RAYS）
   - 3D: `gltf`（バッファ埋め込み）・`glb`（m 単位）、`obj`・`stl`（mm）。STL は線を持てないので光線は細い管（`--tube` で半径）
-  - CAD 用: `step`・`stp`（AP214）。玉と鏡は B-rep の立体（球面・平面はそのまま、非球面は回転した B スプライン面、
-    玉の中に偏心・傾きがあれば側面は線織面）、光線は折れ線、像面は縁の円。傾いた 2 面の側面は、前の面の x を後ろの面に
+  - CAD 用: `step`・`stp`（AP214）。玉と鏡は B-rep の立体（球面・平面はそのまま、非球面は断面の 3 次の B スプライン曲線を軸のまわりに回した
+    SURFACE_OF_REVOLUTION で、断面の区間は中点で面のサグとの差が 1e-6 mm 以下になるまで倍にする。玉の中に偏心・傾きがあれば
+    側面は線織面）、光線は折れ線、像面は縁の円。傾いた 2 面の側面は、前の面の x を後ろの面に
     投げた向きから同じ角度の縁の点どうしを結ぶ（3D の網・2D の断面も同じ組）
   - 読み戻しの試験（`tests/readback`、CI の export-readback）: SVG（XML）・glb（trimesh）・STEP（OpenCascade）・
     追跡の CSV・JSON を別の実装で読み、要素の数、面の点が .zmx の形と OpticStudio の面の大域座標（GLRS）の上にあること、

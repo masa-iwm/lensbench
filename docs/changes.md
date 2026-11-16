@@ -139,6 +139,8 @@
   個々の誤りの文は順に英語へ移す（それまでは日本語だけの文が残る）。
 
 ### 結果の形
+- STEP の書き出しで、非球面の面を周 9 点 × 断面の有理 B スプライン曲面から、断面の B スプライン曲線を回した
+  `SURFACE_OF_REVOLUTION` にした（PRJ-20。回転が厳密、断面の区間は許容差 1e-6 mm から決める）。Rust の `OptionsStep` に `profile_tol`。
 - 回折 MTF（`mtf`・`geo-mtf`・`huygens-mtf`）の `cutoff` は `[x, y]` から `{"tangential", "sagittal"}` に（JSON・Python）。
   プラグインの出力 `cutoff` は (2,) のまま、並びを [子午, 球欠] にした。
 - 遮断周波数は計算した波長の値（以前は単色でも主波長）。多色は主波長のまま。単色の MTF で周波数を省いたときの範囲も

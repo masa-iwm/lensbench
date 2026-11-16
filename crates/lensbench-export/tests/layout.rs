@@ -264,28 +264,87 @@ fn step_has_solids_and_rays() {
     }
 }
 
+/// 書いた STEP を読み直し、非球面の回転面（SURFACE_OF_REVOLUTION の断面の B スプライン）の点がサグと
+/// 許容差の中で合う（PRJ-20）。読みは lensbench-step（品の STEP の読み手と同じ）
 #[test]
-fn step_profile_spline_follows_the_asphere() {
-    // E0 の面 1 の断面を補間した B スプラインが、区間の間でもサグと合う
+fn step_revolved_asphere_follows_the_sag() {
     let s = zmx("E0");
     let sc = scene::build(&s, &Options::default()).unwrap();
     let f = &sc.solids[0].front;
-    let n = 64;
-    let q: Vec<[f64; 2]> = (0..=n)
-        .map(|k| {
-            let r = f.semi * k as f64 / n as f64;
-            [r, f.sag(r)]
-        })
-        .collect();
-    let (c, kn) = step::interpolate(&q);
-    let mut worst: f64 = 0.0;
-    for i in 0..=1000 {
-        let u = i as f64 / 1000.0;
-        let p = step::bspline_eval(&c, &kn, u);
-        assert!((p[0] - f.semi * u).abs() < 1e-12);
-        worst = worst.max((p[1] - f.sag(p[0])).abs());
+    assert!(!f.is_spherical());
+    for tol in [1e-6, 1e-9] {
+        let o = step::OptionsStep {
+            profile_tol: tol,
+            ..Default::default()
+        };
+        let mut b = Vec::new();
+        step::write_step(&mut b, &sc, &o).unwrap();
+        let t = String::from_utf8(b).unwrap();
+        let k = check_step(&t);
+        assert!(
+            !k.contains_key("RATIONAL_B_SPLINE_SURFACE")
+                && !t.contains("RATIONAL_B_SPLINE_SURFACE")
+        );
+        let file = lensbench_step::StepFile::parse(&t).unwrap();
+        let one = |id: u64| -> &[lensbench_step::Arg] { &file.parts(id).unwrap()[0].1 };
+        let nums = |a: &lensbench_step::Arg| -> Vec<f64> {
+            a.list().unwrap().iter().map(|x| x.num().unwrap()).collect()
+        };
+        let point = |id: u64| -> V3 {
+            let v = nums(&one(id)[1]);
+            [v[0], v[1], v[2]]
+        };
+        // 面 1（頂点が f の頂点）の回転面
+        let revs: Vec<&[lensbench_step::Arg]> = file
+            .iter()
+            .filter(|(_, p)| p[0].0 == "SURFACE_OF_REVOLUTION")
+            .map(|(id, _)| one(id))
+            .filter(|rv| {
+                let axis = one(rv[2].r().unwrap());
+                norm(sub(point(axis[1].r().unwrap()), f.frame.o)) < 1e-9
+            })
+            .collect();
+        assert_eq!(revs.len(), 1);
+        let rv = revs[0];
+        let (curve, axis) = (one(rv[1].r().unwrap()), one(rv[2].r().unwrap()));
+        let o0 = point(axis[1].r().unwrap());
+        let az = nums(&one(axis[2].r().unwrap())[1]);
+        let az = [az[0], az[1], az[2]];
+        let ctrl3: Vec<V3> = curve[2]
+            .list()
+            .unwrap()
+            .iter()
+            .map(|x| point(x.r().unwrap()))
+            .collect();
+        // 断面の面の中の向き（軸に垂直）: 端の制御点から
+        let last = sub(*ctrl3.last().unwrap(), o0);
+        let xr = normalize(sub(last, scale(az, dot(last, az))));
+        let ctrl: Vec<[f64; 2]> = ctrl3
+            .iter()
+            .map(|p| {
+                let d = sub(*p, o0);
+                // 制御点は軸を含む面の中
+                assert!(norm(sub(d, add(scale(xr, dot(d, xr)), scale(az, dot(d, az))))) < 1e-9);
+                [dot(d, xr), dot(d, az)]
+            })
+            .collect();
+        let mults = nums(&curve[6]);
+        let kv = nums(&curve[7]);
+        let knots: Vec<f64> = kv
+            .iter()
+            .zip(&mults)
+            .flat_map(|(k, m)| std::iter::repeat_n(*k, *m as usize))
+            .collect();
+        assert_eq!(knots.len(), ctrl.len() + 4);
+        let mut worst: f64 = 0.0;
+        for i in 0..=4000 {
+            let p = step::bspline_eval(&ctrl, &knots, i as f64 / 4000.0);
+            worst = worst.max((p[1] - f.sag(p[0].clamp(0.0, f.semi))).abs());
+        }
+        // 区間の中点で確かめた許容差（間の点でも同じ桁）
+        assert!(worst < 2.0 * tol, "tol {tol}: {worst}");
+        assert!((ctrl.last().unwrap()[0] - f.semi).abs() < 1e-12);
     }
-    assert!(worst < 1e-7, "{worst}");
 }
 
 /// 円柱レンズ（トロイダル面）: 立体は閉じて体積が合い、STEP も書ける
