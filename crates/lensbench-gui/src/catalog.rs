@@ -2611,6 +2611,8 @@ mod tests {
     /// serve と同じ API で、カタログの一覧を取り、組合せのプロジェクトを読んで解析できる
     #[test]
     fn combo_loads_through_serve_api() {
+        // load で serve の系を差し替える（画面のテストと重ねない）
+        let _g = crate::serve_lock();
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let glass = root.join("tests/glass").display().to_string();
         let lb = root.join("examples/lenses/LB").display().to_string();

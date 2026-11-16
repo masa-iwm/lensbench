@@ -271,3 +271,11 @@ impl eframe::App for Shell {
         self.0.borrow_mut().save(storage);
     }
 }
+
+/// serve の系（lensbench_engine::session::global）はプロセスで 1 つなので、load で系を差し替えるテスト
+/// （App を回す画面のテスト・serve を直に呼ぶテスト）はこの鍵を持って 1 つずつ回す（cargo test は 1 プロセスで並行）
+#[cfg(test)]
+pub(crate) fn serve_lock() -> std::sync::MutexGuard<'static, ()> {
+    static M: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    M.lock().unwrap_or_else(|e| e.into_inner())
+}

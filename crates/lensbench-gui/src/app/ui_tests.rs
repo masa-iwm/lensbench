@@ -13,10 +13,10 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// App の試験は 1 つずつ回す（組合せの系を置くメモリの作業フォルダ・言語・ファイルの窓の文脈はプロセスで 1 つ）
+/// App の試験は 1 つずつ回し、serve を直に呼ぶほかのテストとも重ねない（serve の系・組合せの系を置くメモリの作業
+/// フォルダ・言語・ファイルの窓の文脈はプロセスで 1 つ）
 fn serial() -> std::sync::MutexGuard<'static, ()> {
-    static M: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    M.lock().unwrap_or_else(|e| e.into_inner())
+    crate::serve_lock()
 }
 
 /// 引数を付けて App を作る（設定は保存先から読まない: 試験の Harness は保存先を持たない）
@@ -57,6 +57,19 @@ fn click(h: &mut Harness<'static, App>, label: &str) {
     settle(h);
 }
 
+/// レンズデータの左の帯のアイコンを押す。文言は「記号 字」だが、記号の字形が無いフォント（日本語フォントの無い
+/// Linux など）では字だけ、帯が狭いと記号だけになる（fonts::glyph_or）ので、どれでも探す
+fn click_icon(h: &mut Harness<'static, App>, sym: &str, word: &str) {
+    let both = format!("{sym} {word}");
+    let (sym, word) = (sym.to_owned(), word.to_owned());
+    h.get(egui_kittest::kittest::by().predicate(move |n| {
+        n.label()
+            .is_some_and(|l| l == both || l == word || l == sym)
+    }))
+    .click();
+    settle(h);
+}
+
 /// 空の文書の「面を追加」で平面 1 枚の面の並びができ、表に出る（11/16 masa 決定: 表から自由に面を足す）
 #[test]
 fn empty_doc_add_surface() {
@@ -93,6 +106,9 @@ fn open_zmx_shows_system() {
     assert_eq!(st["system"], true, "{st}");
     assert_eq!(st["status_error"], false, "{st}");
     assert!(!h.state().c.sys.ld_rows.is_empty());
+    // 書ける .zmx は要素に分けて開く（#486）
+    assert!(h.state().c.is_combo(), "{st}");
+    assert!(!h.state().c.doc.combo.picks.is_empty());
 }
 
 fn a0() -> Args {
@@ -125,17 +141,41 @@ fn free_edit_insert_delete() {
     let mut h = harness(Args::default());
     click(&mut h, "+ Add a surface");
     let rows0 = h.state().c.sys.ld_rows.len();
-    click(&mut h, "＋ Insert");
+    click_icon(&mut h, "＋", "Insert");
     assert_eq!(
         h.state().c.sys.ld_rows.len(),
         rows0 + 1,
         "{}",
         h.state().test_state()
     );
-    click(&mut h, "－ Delete");
+    click_icon(&mut h, "－", "Delete");
     assert_eq!(
         h.state().c.sys.ld_rows.len(),
         rows0,
+        "{}",
+        h.state().test_state()
+    );
+}
+
+/// 面の追加を Ctrl+Z で戻し、Ctrl+Y でやり直す（組合せの文書の元に戻す）
+#[test]
+fn undo_redo_add_surface() {
+    let _g = serial();
+    let mut h = harness(Args::default());
+    click(&mut h, "+ Add a surface");
+    assert_eq!(h.state().c.doc.combo.picks.len(), 1);
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Z);
+    settle(&mut h);
+    assert!(
+        h.state().c.doc.combo.picks.is_empty(),
+        "{}",
+        h.state().test_state()
+    );
+    h.press_key_modifiers(Modifiers::COMMAND, Key::Y);
+    settle(&mut h);
+    assert_eq!(
+        h.state().c.doc.combo.picks.len(),
+        1,
         "{}",
         h.state().test_state()
     );
