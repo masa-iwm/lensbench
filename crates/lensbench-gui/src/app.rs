@@ -52,6 +52,7 @@ use crate::argform;
 use crate::catalog::{self, Browser, Combo};
 use crate::catsave::CatSave;
 use crate::combo;
+use crate::combo_doc::Snap;
 use crate::config_panel;
 use crate::figures;
 use crate::i18n::{self, n_, tr, trf, Lang};
@@ -355,6 +356,8 @@ struct Core {
     /// パネルの状態（GAR-01）
     p: Panels,
     s: Settings,
+    /// 系を変える要求の返事に付けた読み直しを受け取っている間（[`Core::refresh`] で頼み直さない）
+    bundled_refresh: bool,
     /// 開いていた文書と画面の様子のうち、画面で使い続けるもの（見るパラメータ・図の面・ロック）。組合せ・並び・
     /// パネルの設定・表の見せ方は開いたときに取り出し、保存するときだけ今のものを入れる
     ses: Session,
@@ -611,9 +614,10 @@ impl Core {
         let combo =
             self.is_combo() || (self.loc.file.is_none() && !self.doc.combo.picks.is_empty());
         if combo {
-            match &self.loc.saved_combo {
-                Some(c) => c != &self.doc.combo,
-                None => !self.doc.combo.picks.is_empty(),
+            if self.loc.saved_combo.is_none() {
+                !self.doc.combo.picks.is_empty()
+            } else {
+                !self.loc.saved_combo.same(&self.doc)
             }
         } else {
             self.loc.ld_dirty
@@ -867,10 +871,15 @@ impl Core {
         }
     }
 
+    /// 見るパラメータの値を 1 つの要求でまとめて読む（GAR-05。途中の誤りで止まれば残りは take が 1 つずつ頼み直す）
     fn read_params(&mut self) {
-        for p in self.ses.params.clone() {
-            self.worker.send(Tag::Get, "get", json!({ "param": p }));
-        }
+        let calls = self
+            .ses
+            .params
+            .iter()
+            .map(|p| ("get".to_string(), json!({ "param": p })))
+            .collect();
+        self.worker.send_batch(Tag::Gets, calls);
     }
 
     /// 組合せのプロジェクトを一時フォルダに書いて開く
@@ -898,7 +907,7 @@ impl Core {
             }
         ));
         // 失敗しても同じ組合せを毎フレーム書き直さない
-        self.loc.built_combo = Some(self.doc.combo.clone());
+        self.loc.built_combo = Snap::new(Some(self.doc.combo.clone()));
         // 作業フォルダはメモリ（work_fs）: 書きかけを読まれることも、読み中で置き換えられないことも無い
         let res = crate::work_fs::with(|| {
             lensbench_core::vfs::create_dir_all(&dir).and_then(|_| {
@@ -981,7 +990,7 @@ impl Core {
             self.status = match r {
                 Ok(()) => {
                     self.loc.doc_path = Some(path.clone());
-                    self.loc.saved_combo = Some(self.doc.combo.clone());
+                    self.loc.saved_combo = Snap::new(Some(self.doc.combo.clone()));
                     self.push_recent(&path.display().to_string());
                     Status {
                         text: trf("Saved to {}", &[&path.display()]),
@@ -1064,8 +1073,7 @@ impl Core {
             return;
         }
         let values = std::mem::take(&mut self.pending_set);
-        self.worker
-            .send(Tag::Set, "set", json!({ "values": values }));
+        self.send_change(Tag::Set, "set", json!({ "values": values }));
         self.last_set = Some(web_time::Instant::now());
     }
 
@@ -1143,9 +1151,21 @@ impl Core {
         self.rerun = Some(false);
     }
 
-    /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）
+    /// 面の表・要約・多重構成の表を 1 つの要求で読み直す（途中の状態を見せない、GAR-05）。系を変える要求に
+    /// 付けて読み直す途中（[`Core::send_change`]）なら頼まない
     fn refresh(&mut self) {
+        if self.bundled_refresh {
+            return;
+        }
         self.worker.send_batch(Tag::Refresh, take::refresh_calls());
+    }
+
+    /// 系を変える要求（set・edit・undo/redo）に、面の表・多重構成の表・要約の読み直しを続けて付けて 1 つの要求で
+    /// 送る（返事を受けてから読み直しを頼む往復をなくす、GAR-05）。返事は [`Core::take`] が分ける
+    fn send_change(&mut self, tag: Tag, method: &str, params: Value) {
+        let mut calls = vec![(method.to_string(), params)];
+        calls.extend(take::refresh_calls());
+        self.worker.send_batch(tag, calls);
     }
 
     /// レンズデータで面 j の行を選ぶ: 最上位のブロック（玉・群）の中なら、そのブロックの行（今のセルはブロックの最後の面）
@@ -1352,7 +1372,7 @@ impl Core {
             && !self
                 .loc
                 .built_combo
-                .as_ref()
+                .get()
                 .is_some_and(|b| !b.picks.is_empty())
         {
             self.to_combo = Some(true);
@@ -1372,7 +1392,7 @@ impl Core {
         if !self.s.auto_build
             || self.preview.busy()
             || self.doc.combo.picks.is_empty()
-            || self.loc.built_combo.as_ref() == Some(&self.doc.combo)
+            || self.loc.built_combo.same(&self.doc)
             || !self.doc.combo.settings_problems().is_empty()
         {
             return;
@@ -1468,7 +1488,7 @@ impl Core {
                             c.doc.combo.remove_chain(k);
                         } else {
                             // 置き換えない: 前の組合せに足したまま、開いた系は作り直さない
-                            c.loc.built_combo = Some(c.doc.combo.clone());
+                            c.loc.built_combo = Snap::new(Some(c.doc.combo.clone()));
                             c.p.combo_view.select(k);
                             c.info(tr(
                                 "Added to the combination (the open system is unchanged; build it with \"▶ Build a system from this combination\")",
@@ -1686,7 +1706,7 @@ impl Core {
 
     /// ユーザーカタログに保存する窓。保存は読み込んだ組合せの系から（解析と同じ worker）、一覧・変更は下書きの worker
     fn cat_save_window(&mut self, ctx: &egui::Context) {
-        let ready = self.is_combo() && self.loc.built_combo.as_ref() == Some(&self.doc.combo);
+        let ready = self.is_combo() && self.loc.built_combo.same(&self.doc);
         let req = self
             .p
             .cat_save
@@ -2034,6 +2054,7 @@ impl App {
             c: Core {
                 s,
                 ses,
+                bundled_refresh: false,
                 samples: menus::samples(&args),
                 worker,
                 preview,
@@ -2081,7 +2102,7 @@ impl App {
                 drawing_in: None,
                 layout_name: String::new(),
                 loc: DocLoc {
-                    built_combo,
+                    built_combo: Snap::new(built_combo),
                     ..Default::default()
                 },
                 _work: doc_loc::WorkDir::new(),
@@ -2534,6 +2555,8 @@ impl App {
         if cfg!(target_arch = "wasm32") || self.tour.is_some() {
             return;
         }
+        // 未保存の変更は版で見るので、この画面で変えた分も数える
+        self.c.doc.sync();
         if ctx.input(|i| i.viewport().close_requested()) && !self.c.close_ok && self.c.close_loses()
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);

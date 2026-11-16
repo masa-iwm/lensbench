@@ -10,8 +10,10 @@ pub(super) struct ComboHist {
     hist: History<Combo>,
     /// 最後に段に積んだ（落ち着いた）組合せ
     last: Option<Combo>,
-    /// 前の画面の組合せと、最後に変わった時刻（入力・ドラッグの途中は積まない）
-    seen: Option<Combo>,
+    /// last が今の組合せと同じと確かめた版（GPN-13: 版が同じ間は比べない）
+    last_at: std::cell::Cell<Option<u64>>,
+    /// 前の画面の組合せの版と、最後に変わった時刻（入力・ドラッグの途中は積まない）
+    seen_rev: u64,
     changed_at: Option<web_time::Instant>,
 }
 
@@ -22,12 +24,12 @@ pub(super) struct NewSnap {
     file: Option<PathBuf>,
     summary: Option<Value>,
     built: Option<Value>,
-    built_combo: Option<Combo>,
+    built_combo: crate::combo_doc::Snap,
     combo_path: Option<PathBuf>,
     doc_path: Option<PathBuf>,
     doc_from: Option<PathBuf>,
     ld_dirty: bool,
-    saved_combo: Option<Combo>,
+    saved_combo: crate::combo_doc::Snap,
     hist: (usize, usize),
     hist_list: (Vec<Value>, Vec<Value>),
 }
@@ -62,16 +64,21 @@ pub(super) fn combo_change(a: &Combo, b: &Combo) -> String {
 
 impl ComboHist {
     /// 画面ごとに呼ぶ。組合せが変わって落ち着いたら（ポインタを離し、入力欄を離れるか 0.8 秒たったら）前を積む
-    pub(super) fn track(&mut self, cur: &Combo, busy: bool) {
-        if self.seen.as_ref() != Some(cur) {
-            self.seen = Some(cur.clone());
+    pub(super) fn track(&mut self, cur: &Combo, rev: u64, busy: bool) {
+        if self.seen_rev != rev {
+            self.seen_rev = rev;
             self.changed_at = Some(web_time::Instant::now());
         }
         let Some(last) = &self.last else {
             self.last = Some(cur.clone());
+            self.last_at.set(Some(rev));
             return;
         };
+        if self.last_at.get() == Some(rev) {
+            return;
+        }
         if last == cur {
+            self.last_at.set(Some(rev));
             return;
         }
         let quiet = self
@@ -79,11 +86,13 @@ impl ComboHist {
             .is_some_and(|t| t.elapsed().as_secs_f64() > 0.8);
         if !busy || quiet {
             self.commit(cur);
+            self.last_at.set(Some(rev));
         }
     }
 
     /// 前の落ち着いた組合せを積む
     pub(super) fn commit(&mut self, cur: &Combo) {
+        self.last_at.set(None);
         if let Some(last) = self.last.replace(cur.clone()) {
             if &last != cur {
                 let what = combo_change(&last, cur);
@@ -92,9 +101,19 @@ impl ComboHist {
         }
     }
 
-    pub(super) fn can(&self, cur: &Combo, back: bool) -> bool {
+    pub(super) fn can(&self, cur: &Combo, rev: u64, back: bool) -> bool {
         if back {
-            !self.hist.is_empty(true) || self.last.as_ref().is_some_and(|l| l != cur)
+            if !self.hist.is_empty(true) {
+                return true;
+            }
+            if self.last_at.get() == Some(rev) {
+                return false;
+            }
+            let differs = self.last.as_ref().is_some_and(|l| l != cur);
+            if !differs && self.last.is_some() {
+                self.last_at.set(Some(rev));
+            }
+            differs
         } else {
             !self.hist.is_empty(false)
         }
@@ -121,7 +140,7 @@ impl ComboHist {
             return None;
         }
         self.last = Some(c.clone());
-        self.seen = Some(c.clone());
+        self.last_at.set(None);
         Some(c)
     }
 }
@@ -163,12 +182,12 @@ impl Core {
             file: self.loc.file.take(),
             summary: self.sys.summary.take(),
             built: self.loc.built.take(),
-            built_combo: self.loc.built_combo.take(),
+            built_combo: std::mem::take(&mut self.loc.built_combo),
             combo_path: self.loc.combo_path.take(),
             doc_path: self.loc.doc_path.take(),
             doc_from: self.loc.doc_from.take(),
             ld_dirty: std::mem::take(&mut self.loc.ld_dirty),
-            saved_combo: self.loc.saved_combo.take(),
+            saved_combo: std::mem::take(&mut self.loc.saved_combo),
             hist: std::mem::take(&mut self.sys.hist),
             hist_list: std::mem::take(&mut self.sys.hist_list),
         }
@@ -301,8 +320,7 @@ impl Core {
             self.docs.skip = if back { redo + steps } else { skip };
             self.docs.pending = Some(n);
             let m = if back { "undo" } else { "redo" };
-            self.worker
-                .send(Tag::History, m, json!({ "back": back, "steps": steps }));
+            self.send_change(Tag::History, m, json!({ "back": back, "steps": steps }));
         } else if steps == 0 && combo_doc {
             self.apply_snap(n);
             self.docs.skip = skip;
@@ -377,7 +395,7 @@ impl Core {
 
     /// 元に戻す（back）・やり直すことができるか
     pub(super) fn can_undo(&self, back: bool) -> bool {
-        (self.is_combo() && self.combo_hist.can(&self.doc.combo, back))
+        (self.is_combo() && self.combo_hist.can(&self.doc.combo, self.doc.rev, back))
             || self.serve_in_doc(back) > 0
             || if back {
                 !self.docs.hist.is_empty(true)
@@ -447,7 +465,7 @@ impl Core {
             return;
         }
         self.flush_set();
-        self.worker.send(
+        self.send_change(
             Tag::History,
             if back { "undo" } else { "redo" },
             json!({ "back": back, "steps": n }),
@@ -463,19 +481,33 @@ mod tests {
     #[test]
     fn combo_history_steps() {
         let mut h = ComboHist::default();
+        // 版は文書が画面ごとに進める（ここでは変えるたびに sync）
+        let mut d = crate::combo_doc::ComboDoc::default();
+        let mut at = |c: &Combo| {
+            d.combo = c.clone();
+            d.sync();
+            d.rev
+        };
         let mut c = Combo::default();
         let name0 = c.name.clone();
-        h.track(&c, false);
-        assert!(!h.can(&c, true));
+        let r = at(&c);
+        h.track(&c, r, false);
+        assert!(!h.can(&c, r, true));
         c.name = "a".into();
-        h.track(&c, true);
+        let r = at(&c);
+        h.track(&c, r, true);
         c.name = "ab".into();
-        h.track(&c, true);
-        assert!(h.hist.is_empty(true) && h.can(&c, true));
-        h.track(&c, false);
+        let r = at(&c);
+        h.track(&c, r, true);
+        assert!(h.hist.is_empty(true) && h.can(&c, r, true));
+        h.track(&c, r, false);
+        assert_eq!(h.hist.len(true), 1);
+        // 同じ版のままなら比べ直さず、元に戻す段も増えない
+        h.track(&c, r, false);
         assert_eq!(h.hist.len(true), 1);
         c.name = "x".into();
-        h.track(&c, false);
+        let r = at(&c);
+        h.track(&c, r, false);
         assert_eq!(h.list(true).len(), 2);
         assert_eq!(h.list(true)[0], "Combination settings");
         let b = h.step(&c, true, 1).unwrap();
@@ -485,12 +517,34 @@ mod tests {
         assert!(h.step(&b, true, 1).is_none());
         let f = h.step(&b, false, 1).unwrap();
         assert_eq!(f.name, "ab");
+        let r = at(&f);
+        h.track(&f, r, false);
+        assert!(h.can(&f, r, true));
         let mut g = f.clone();
         g.name = "y".into();
-        h.track(&g, false);
-        assert!(!h.can(&g, false));
+        let r = at(&g);
+        h.track(&g, r, false);
+        assert!(!h.can(&g, r, false));
         assert_eq!(h.step(&g, true, 1).unwrap().name, "ab");
         // まとめて 2 段戻す
         assert_eq!(h.step(&f, true, 2).map(|c| c.name), Some(name0.clone()));
+    }
+
+    /// 写しが今の組合せと同じかは、版が同じ間は比べ直さず、組合せが変わって版が進めば比べ直す（GPN-13）
+    #[test]
+    fn gpn13_snap_follows_rev() {
+        use crate::combo_doc::{ComboDoc, Snap};
+        let mut d = ComboDoc::default();
+        d.sync();
+        let s = Snap::new(Some(d.combo.clone()));
+        assert!(s.same(&d));
+        let name0 = d.combo.name.clone();
+        d.combo.name = "changed".into();
+        d.sync();
+        assert!(!s.same(&d));
+        d.combo.name = name0;
+        d.sync();
+        assert!(s.same(&d));
+        assert!(!Snap::default().same(&d));
     }
 }

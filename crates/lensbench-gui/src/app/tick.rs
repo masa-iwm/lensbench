@@ -122,11 +122,15 @@ impl App {
                 ));
             }
         }
-        self.c.combo_hist.track(&self.c.doc.combo, busy);
+        // 組合せの版をここで進める（以下と次の画面の「写しと同じか」は版で見る、GPN-13）
+        self.c.doc.sync();
+        self.c
+            .combo_hist
+            .track(&self.c.doc.combo, self.c.doc.rev, busy);
         // 最後に玉を足した組合せの系ができたら、像面を近軸の焦点へ（GUX-10）
         if self.c.doc.refocus
             && self.c.is_combo()
-            && self.c.loc.built_combo.as_ref() == Some(&self.c.doc.combo)
+            && self.c.loc.built_combo.same(&self.c.doc)
             && self.c.layout_data.is_some()
             && !self.c.worker.busy_short()
         {

@@ -17,9 +17,9 @@ pub(super) struct DocLoc {
     /// 最後に組合せから作ったプロジェクト
     pub(super) built: Option<Value>,
     /// 最後に系を作った組合せ（今の組合せと違えば作り直す）
-    pub(super) built_combo: Option<Combo>,
+    pub(super) built_combo: crate::combo_doc::Snap,
     /// 最後に保存した・開いた組合せ（今の組合せと違えば未保存の変更あり、GUX-02）
-    pub(super) saved_combo: Option<Combo>,
+    pub(super) saved_combo: crate::combo_doc::Snap,
     /// 開いた系を面の表で変えて、まだ保存していない
     pub(super) ld_dirty: bool,
 }

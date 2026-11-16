@@ -13,6 +13,40 @@ impl Core {
             }
             return d.split().into_iter().for_each(|d| self.take(d));
         }
+        // 束ねたパラメータの get: 1 つずつ Get として受ける。途中の誤り（消えたパラメータなど）で止まったら、返事の無い
+        // ものは 1 つずつ頼み直す（先頭で止まって返事が 1 つでも同じ。束ねた要求は Gets の印で見分ける）
+        if d.tag == Tag::Gets {
+            let asked: Vec<String> = d
+                .replies
+                .iter()
+                .filter_map(|r| r.params["param"].as_str().map(String::from))
+                .collect();
+            let stopped = d.error().is_some() && !d.skipped;
+            let mut d = d;
+            d.tag = Tag::Get;
+            d.split_same().into_iter().for_each(|d| self.take(d));
+            if stopped {
+                for p in self.ses.params.clone() {
+                    if !asked.contains(&p) {
+                        self.worker.send(Tag::Get, "get", json!({ "param": p }));
+                    }
+                }
+            }
+            return;
+        }
+        // 系を変える要求に付けた読み直し（send_change）: 変更の返事を先に受け、通ったら残りを読み直しとして受ける。
+        // 断られたら読み直しは回っていない（途中の誤りで止まる）
+        if matches!(d.tag, Tag::Set | Tag::Edit | Tag::History) && d.replies.len() > 1 {
+            let (d, rest) = d.split_change();
+            let ok = d.error().is_none() && !d.skipped;
+            self.bundled_refresh = ok;
+            self.take(d);
+            self.bundled_refresh = false;
+            if ok {
+                self.take(rest);
+            }
+            return;
+        }
         self.rev += 1;
         if matches!(d.tag, Tag::Load | Tag::Set | Tag::Edit | Tag::History) {
             self.sys_gen += 1;
@@ -261,7 +295,7 @@ impl Core {
                 self.rerun = Some(true);
             }
             // take の頭で分けて回すので来ない
-            Tag::Write | Tag::Refresh => {}
+            Tag::Write | Tag::Refresh | Tag::Gets => {}
             Tag::LayoutExport => {
                 text = trf(
                     "Exported the layout to {}",
@@ -344,7 +378,7 @@ impl Core {
                     })
                     .unwrap_or_default();
                 let ops = v["ops"].clone();
-                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
                 text = trf(
                     "Imported {} rows into the multi-configuration table",
                     &[&v["rows"]],

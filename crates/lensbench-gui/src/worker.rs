@@ -30,6 +30,8 @@ pub enum Tag {
     Glasses,
     Lenses,
     Get,
+    /// 見るパラメータの get を束ねた要求（返事は 1 つずつ Get として受ける。途中の誤りで止まっても分かるように別の印）
+    Gets,
     Set,
     Write,
     /// 組合せのレイアウト図
@@ -101,6 +103,7 @@ impl Tag {
                 | Tag::Glasses
                 | Tag::Lenses
                 | Tag::Get
+                | Tag::Gets
                 | Tag::Layout
                 | Tag::LensPreview(_)
                 | Tag::Surfaces
@@ -252,6 +255,34 @@ impl Done {
     }
 
     /// 返事ごとの結果に分ける（[`Tag::Refresh`]: surface → Surfaces、analyze → Info、config_table → ConfigTable）
+    /// 系を変える要求に付けた読み直し（GUI の send_change）を分ける: 変更の返事と、残りを [`Tag::Refresh`] の返事として
+    pub fn split_change(mut self) -> (Done, Done) {
+        let rest = self.replies.split_off(1.min(self.replies.len()));
+        let r = Done {
+            tag: Tag::Refresh,
+            replies: rest,
+            ms: self.ms,
+            skipped: self.skipped,
+            gen: self.gen,
+        };
+        (self, r)
+    }
+
+    /// 返事ごとに同じ tag の Done に分ける（束ねた get）
+    pub fn split_same(self) -> Vec<Done> {
+        let (tag, ms, gen) = (self.tag, self.ms, self.gen);
+        self.replies
+            .into_iter()
+            .map(|r| Done {
+                tag: tag.clone(),
+                replies: vec![r],
+                ms,
+                skipped: false,
+                gen,
+            })
+            .collect()
+    }
+
     pub fn split(self) -> Vec<Done> {
         let (ms, gen) = (self.ms, self.gen);
         self.replies

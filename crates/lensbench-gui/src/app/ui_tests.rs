@@ -214,3 +214,23 @@ fn remove_thickness_solve() {
     settle(&mut h);
     assert!(solved(&h).contains(&j), "{}", h.state().test_state());
 }
+
+/// 見るパラメータの get は 1 つの要求に束ねる。先頭のパラメータが誤り（無い面）で止まっても、残りは 1 つずつ
+/// 頼み直して値が入る（GAR-05）
+#[test]
+fn bundled_gets_survive_first_error() {
+    let _g = serial();
+    let mut h = harness(a0());
+    for params in [["99.t", "1.t", "2.t"], ["1.t", "99.t", "2.t"]] {
+        h.state_mut().c.ses.params = params.iter().map(|s| s.to_string()).collect();
+        h.state_mut().c.sys.param_vals.clear();
+        h.state_mut().c.read_params();
+        settle(&mut h);
+        let vals = &h.state().c.sys.param_vals;
+        assert!(
+            vals.contains_key("1.t") && vals.contains_key("2.t"),
+            "{params:?}: {vals:?}"
+        );
+        assert!(!vals.contains_key("99.t"));
+    }
+}

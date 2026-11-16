@@ -14,6 +14,46 @@ pub struct ComboDoc {
     pub added: Option<usize>,
     /// 最後に玉を足した: 系ができたら像面を近軸の焦点へ動かす（GUX-10）
     pub refocus: bool,
+    /// 組合せの版。[`ComboDoc::sync`] が前の画面から変わったのを見たら 1 つ進める（GPN-13: 写しと同じかは版で見て、
+    /// 毎フレーム組合せを丸ごと比べない）
+    pub rev: u64,
+    /// 版を進めたときの組合せ
+    seen: Option<Combo>,
+}
+
+/// 組合せの写し（最後に系を作った・保存した組合せ）と、今の組合せと同じと確かめた版。版が同じ間は比べ直さない
+#[derive(Default)]
+pub struct Snap {
+    combo: Option<Combo>,
+    same_at: std::cell::Cell<Option<u64>>,
+}
+
+impl Snap {
+    pub fn new(combo: Option<Combo>) -> Snap {
+        Snap {
+            combo,
+            same_at: Default::default(),
+        }
+    }
+
+    pub fn get(&self) -> Option<&Combo> {
+        self.combo.as_ref()
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.combo.is_none()
+    }
+
+    /// doc の今の組合せと同じか。同じと確かめた版のままなら比べない（版は画面ごとの [`ComboDoc::sync`] で進むので、
+    /// 同じ画面の中で組合せを変えた直後は、次の sync まで前の答えのことがある）
+    pub fn same(&self, doc: &ComboDoc) -> bool {
+        if self.combo.is_some() && self.same_at.get() == Some(doc.rev) {
+            return true;
+        }
+        let same = self.combo.as_ref() == Some(&doc.combo);
+        self.same_at.set(same.then_some(doc.rev));
+        same
+    }
 }
 
 impl ComboDoc {
@@ -21,6 +61,14 @@ impl ComboDoc {
         Self {
             combo,
             ..Default::default()
+        }
+    }
+
+    /// 画面ごとに 1 回呼ぶ: 組合せが前の版と違えば版を進める（組合せを比べるのはここだけ）
+    pub fn sync(&mut self) {
+        if self.seen.as_ref() != Some(&self.combo) {
+            self.seen = Some(self.combo.clone());
+            self.rev += 1;
         }
     }
 

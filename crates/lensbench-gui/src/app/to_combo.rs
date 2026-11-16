@@ -63,7 +63,7 @@ impl Core {
                     }
                     if keep {
                         // 足した要素は残し、開いた系はそのまま
-                        c.loc.built_combo = Some(c.doc.combo.clone());
+                        c.loc.built_combo = crate::combo_doc::Snap::new(Some(c.doc.combo.clone()));
                     }
                     c.open_insert = None;
                 },
@@ -81,7 +81,7 @@ impl Core {
         if let Err(e) = c.take_system_data(&Value::Object(d), obj_t) {
             self.fail(e);
             if keep {
-                self.loc.built_combo = Some(self.doc.combo.clone());
+                self.loc.built_combo = crate::combo_doc::Snap::new(Some(self.doc.combo.clone()));
             }
             self.open_insert = None;
             return;

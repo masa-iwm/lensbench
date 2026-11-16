@@ -38,7 +38,7 @@ impl Core {
             doc_file::apply_view(&mut c, v.and_then(|v| v.get("gui")));
             c.drop_stale_edits();
             c.bake_edits();
-            self.loc.saved_combo = Some(c.clone());
+            self.loc.saved_combo = crate::combo_doc::Snap::new(Some(c.clone()));
             if let Some(g) = v.and_then(|v| v.get("gui")) {
                 self.set_panels(g);
             }

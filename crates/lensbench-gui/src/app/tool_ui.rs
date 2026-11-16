@@ -352,7 +352,7 @@ impl Core {
         }
         if !self.is_combo() {
             let m: Map<String, Value> = vals.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
-            self.worker.send(Tag::Set, "set", json!({ "values": m }));
+            self.send_change(Tag::Set, "set", json!({ "values": m }));
             return true;
         }
         let mut edits = Vec::new();
@@ -402,7 +402,7 @@ impl Core {
                         .weak(),
                     );
                     if let Some(op) = open_sysset::ui(ui, &mut self.p.oss, ns) {
-                        self.worker.send(Tag::Edit, "edit", json!({ "ops": [op] }));
+                        self.send_change(Tag::Edit, "edit", json!({ "ops": [op] }));
                     }
                     ui.add_space(8.0);
                     egui::CollapsingHeader::new(tr("Combination settings (used when a combination is built)"))

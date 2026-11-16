@@ -187,7 +187,7 @@ impl Core {
                             Err(e) => self.fail(e),
                         }
                     } else {
-                        self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                        self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
                     }
                 }
                 Act::DropOverride { j, col } => {
@@ -297,7 +297,7 @@ impl Core {
                     ops = crate::unit_mech::ui(ui, &mut self.p.um, n);
                 });
             if !ops.is_empty() {
-                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
             }
             self.um_open = open;
         }
@@ -320,7 +320,7 @@ impl Core {
             t.active + 1
         };
         self.info(trf("Configuration {} / {}", &[&k, &t.n]));
-        self.worker.send(
+        self.send_change(
             Tag::Edit,
             "edit",
             json!({ "ops": [{ "op": "set_config", "k": k }] }),
@@ -335,7 +335,7 @@ impl Core {
             match a {
                 config_panel::Act::Ops(ops) => {
                     self.p.mc.notes.clear();
-                    self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                    self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
                 }
                 config_panel::Act::Import => {
                     self.worker.send(Tag::ConfigDiff, "config_diff", json!({}));
@@ -364,7 +364,7 @@ impl Core {
                 }
             }
             if !ops.is_empty() {
-                self.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                self.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
             }
         }
         let Some(u) = self.sys.ld_units.iter_mut().find(|u| u.name == name) else {
@@ -479,7 +479,7 @@ impl Core {
             } else {
                 json!({ "op": "set_surface", "surface": j, "fields": fields })
             };
-            self.worker.send(Tag::Edit, "edit", json!({ "ops": [op] }));
+            self.send_change(Tag::Edit, "edit", json!({ "ops": [op] }));
             return;
         }
         let why = (self.sys.ld_rows.get(j))

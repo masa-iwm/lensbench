@@ -108,7 +108,7 @@ impl App {
                     "name": "tube", "surface": 1, "offset": [0.0, 0.0, -2.0],
                     "bores": [{ "z0": 0.0, "z1": 40.0, "radius": 15.0 }], "outer_radius": 18.0,
                 }}));
-                self.c.worker.send(Tag::Edit, "edit", json!({ "ops": ops }));
+                self.c.send_change(Tag::Edit, "edit", json!({ "ops": ops }));
                 self.c.p.ld.scope.clear();
                 self.c.p.ld.sel = Some("G2".into());
                 self.c.p.ld.block_view = Some("G2".into());
